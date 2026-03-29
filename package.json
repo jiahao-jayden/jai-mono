@@ -1,0 +1,16 @@
+{
+	"name": "@jayden/jai-mono",
+	"private": true,
+	"version": "1.0.0",
+	"description": "Jai Mono is a monorepo for Jayden's projects.",
+	"workspaces": ["packages/*"],
+	"scripts": {
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"format": "biome format --write ."
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.9",
+		"typescript": "^5.8"
+	}
+}
