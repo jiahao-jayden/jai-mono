@@ -10,9 +10,10 @@
 		"dev": "tsc --build --watch"
 	},
 	"dependencies": {
-		"@jayden/jai-ai": "workspace:*"
+		"@jayden/jai-ai": "workspace:*",
+		"@jayden/jai-utils": "workspace:*"
 	},
 	"devDependencies": {
-		"typescript": "^5.8"
+		"typescript": "catalog:"
 	}
 }

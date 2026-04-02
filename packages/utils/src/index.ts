@@ -1,0 +1,1 @@
+export { NamedError } from "./error";
