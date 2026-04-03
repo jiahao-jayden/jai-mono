@@ -1,12 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolveModelInfo } from "../src/models.js";
-import type {
-	AssistantMessage,
-	Message,
-	ModelInfo,
-	ResolvedModel,
-	StreamMessageInput,
-} from "../src/types.js";
+import { streamMessage } from "../src/stream.js";
+import type { AssistantMessage, Message, ModelInfo, StreamMessageInput } from "../src/types.js";
 
 // ── resolveModelInfo → streamMessage input ───────────────────
 // Tests the full model resolution path that streamMessage uses internally
@@ -301,4 +296,72 @@ describe("multi-turn conversation", () => {
 			expect(tc.toolCallId).toBe("call_1");
 		}
 	});
+});
+
+// ── Live streaming (openai-compatible) ───────────────────────
+// 需要环境变量 API_OPENAI_NEXT，没有则跳过
+
+describe("live streaming", () => {
+	const apiKey = process.env.API_OPENAI_NEXT;
+
+	test.skipIf(!apiKey)(
+		"openai-compatible provider streams text",
+		async () => {
+			const model: ModelInfo = {
+				config: {
+					provider: "openai-compatible",
+					model: "claude-opus-4-6",
+					apiKey: apiKey!,
+					baseURL: "https://api.openai-next.com/v1",
+					name: "openai-next",
+				},
+				capabilities: {
+					reasoning: true,
+					toolCall: true,
+					structuredOutput: true,
+					input: {
+						text: true,
+						image: true,
+						audio: false,
+						video: false,
+						pdf: false,
+					},
+					output: { text: true, image: false },
+				},
+				limit: { context: 128000, output: 16384 },
+			};
+
+			const stream = streamMessage({
+				model,
+				messages: [
+					{
+						role: "user",
+						content: [{ type: "text", text: "用一句话解释什么是 bun" }],
+						timestamp: Date.now(),
+					},
+				],
+			});
+
+			for await (const event of stream) {
+				switch (event.type) {
+					case "reasoning_delta":
+						process.stdout.write(`\x1b[2m${event.text}\x1b[0m`);
+						break;
+					case "text_delta":
+						process.stdout.write(event.text);
+						break;
+					case "message_end":
+						console.log("\n\n--- 完成 ---");
+						console.log("stopReason:", event.message.stopReason);
+						console.log("usage:", event.message.usage);
+						console.log("thinking blocks:", event.message.content.filter((b) => b.type === "thinking").length);
+						break;
+					case "error":
+						console.error("\n错误:", event.error);
+						break;
+				}
+			}
+		},
+		60_000,
+	);
 });

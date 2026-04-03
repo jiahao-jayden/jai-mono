@@ -2,11 +2,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type {
-	LanguageModelV3,
-	LanguageModelV3Message,
-	LanguageModelV3Middleware,
-} from "@ai-sdk/provider";
+import type { LanguageModelV3, LanguageModelV3Message, LanguageModelV3Middleware } from "@ai-sdk/provider";
 import { NamedError } from "@jayden/jai-utils";
 import { streamText, wrapLanguageModel } from "ai";
 import z from "zod";
@@ -27,9 +23,7 @@ import { ProviderTransform } from "./utils.js";
 
 // ── 入口 ──────────────────────────────────────────────────────
 
-export async function* streamMessage(
-	input: StreamMessageInput,
-): AsyncGenerator<StreamEvent> {
+export async function* streamMessage(input: StreamMessageInput): AsyncGenerator<StreamEvent> {
 	const modelInfo: ResolvedModel =
 		typeof input.model === "string"
 			? resolveModelInfo(input.model, {
@@ -44,20 +38,14 @@ export async function* streamMessage(
 		model: modelInfo,
 		sessionId: input.sessionId ?? crypto.randomUUID(),
 	});
-	const wrappedOpts = ProviderTransform.providerOptions(
-		modelInfo,
-		providerOpts,
-	);
+	const wrappedOpts = ProviderTransform.providerOptions(modelInfo, providerOpts);
 
 	const llmModel = wrapLanguageModel({
 		model: resolveModel(config),
 		middleware: buildMiddleware(modelInfo),
 	});
 
-	const tools =
-		capabilities.toolCall && input.tools?.length
-			? convertTools(input.tools)
-			: undefined;
+	const tools = capabilities.toolCall && input.tools?.length ? convertTools(input.tools) : undefined;
 
 	const temp = ProviderTransform.temperature(modelInfo);
 	const tp = ProviderTransform.topP(modelInfo);
@@ -149,9 +137,11 @@ export async function* streamMessage(
 
 			case "error": {
 				const error =
-					chunk.error instanceof Error
+					chunk.error instanceof NamedError
 						? chunk.error
-						: new Error(String(chunk.error));
+						: new NamedError.Unknown({
+								message: chunk.error instanceof Error ? chunk.error.message : String(chunk.error),
+							});
 				yield { type: "error", error };
 				return;
 			}
@@ -181,9 +171,7 @@ function resolveModel(config: ProviderConfig): LanguageModelV3 {
 		}
 		case "openai-compatible": {
 			if (!baseURL) {
-				throw new BaseURLRequiredError(
-					"baseURL is required for openai-compatible providers",
-				);
+				throw new BaseURLRequiredError("baseURL is required for openai-compatible providers");
 			}
 			const p = createOpenAICompatible({
 				apiKey,
@@ -209,11 +197,7 @@ function buildMiddleware(model: ResolvedModel): LanguageModelV3Middleware {
 	return {
 		specificationVersion: "v3",
 		transformParams: async ({ params }) => {
-			params.prompt = ProviderTransform.message(
-				params.prompt as any[],
-				model,
-				{},
-			) as typeof params.prompt;
+			params.prompt = ProviderTransform.message(params.prompt as any[], model, {}) as typeof params.prompt;
 			return params;
 		},
 	};
@@ -221,10 +205,7 @@ function buildMiddleware(model: ResolvedModel): LanguageModelV3Middleware {
 
 // ── convertMessages ───────────────────────────────────────────
 
-function convertMessages(
-	messages: Message[],
-	capabilities: ModelCapabilities,
-): LanguageModelV3Message[] {
+function convertMessages(messages: Message[], capabilities: ModelCapabilities): LanguageModelV3Message[] {
 	const result: LanguageModelV3Message[] = [];
 
 	for (const msg of messages) {
@@ -276,9 +257,7 @@ function convertMessages(
 						}
 						if (block.type === "thinking") {
 							if (!capabilities.reasoning) {
-								return [
-									{ type: "text" as const, text: block.text },
-								];
+								return [{ type: "text" as const, text: block.text }];
 							}
 							return [];
 						}
@@ -321,25 +300,15 @@ function convertMessages(
 
 function convertTools(
 	tools: ToolDefinition[],
-): Record<
-	string,
-	{ description: string; inputSchema: ToolDefinition["parameters"] }
-> {
-	return Object.fromEntries(
-		tools.map((t) => [
-			t.name,
-			{ description: t.description, inputSchema: t.parameters },
-		]),
-	);
+): Record<string, { description: string; inputSchema: ToolDefinition["parameters"] }> {
+	return Object.fromEntries(tools.map((t) => [t.name, { description: t.description, inputSchema: t.parameters }]));
 }
 
 // ── toResolvedModel ───────────────────────────────────────────
 // Adapts a manually-constructed ModelInfo to a ResolvedModel
 // for callers that don't use the registry.
 
-function toResolvedModel(
-	info: Exclude<StreamMessageInput["model"], string>,
-): ResolvedModel {
+function toResolvedModel(info: Exclude<StreamMessageInput["model"], string>): ResolvedModel {
 	return {
 		...info,
 		id: `${info.config.provider}/${info.config.model}`,
@@ -397,7 +366,4 @@ function convertUsage(usage: {
 
 // ── Errors ────────────────────────────────────────────────────
 
-const BaseURLRequiredError = NamedError.create(
-	"BaseURLRequiredError",
-	z.string(),
-);
+const BaseURLRequiredError = NamedError.create("BaseURLRequiredError", z.string());

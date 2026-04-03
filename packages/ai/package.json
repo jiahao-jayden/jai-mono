@@ -7,7 +7,8 @@
 	"types": "dist/index.d.ts",
 	"scripts": {
 		"build": "tsc --build",
-		"dev": "tsc --build --watch"
+		"dev": "tsc --build --watch",
+		"update-models": "curl -sL https://models.dev/api.json -o src/models-snapshot.json && echo 'models-snapshot.json updated'"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "^3.0.64",
