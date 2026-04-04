@@ -11,7 +11,8 @@
 	},
 	"dependencies": {
 		"@jayden/jai-ai": "workspace:*",
-		"@jayden/jai-utils": "workspace:*"
+		"@jayden/jai-utils": "workspace:*",
+		"zod": "catalog:"
 	},
 	"devDependencies": {
 		"typescript": "catalog:"
