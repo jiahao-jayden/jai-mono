@@ -53,7 +53,7 @@ export async function* streamMessage(input: StreamMessageInput): AsyncGenerator<
 	const result = streamText({
 		model: llmModel,
 		system: input.systemPrompt,
-		messages: convertMessages(input.messages, capabilities),
+		messages: convertMessages(normalizeMessages(input.messages), capabilities),
 		tools,
 		abortSignal: input.abortSignal,
 		maxRetries: input.maxRetries ?? 2,
@@ -201,6 +201,57 @@ function buildMiddleware(model: ResolvedModel): LanguageModelV3Middleware {
 			return params;
 		},
 	};
+}
+
+// ── normalizeMessages ─────────────────────────────────────────
+
+function normalizeMessages(messages: Message[]): Message[] {
+	const result: Message[] = [];
+	let pendingToolCalls: ToolCall[] = [];
+	const seenToolResultIds = new Set<string>();
+
+	function flushOrphans() {
+		for (const tc of pendingToolCalls) {
+			if (!seenToolResultIds.has(tc.toolCallId)) {
+				result.push({
+					role: "tool_result",
+					toolCallId: tc.toolCallId,
+					toolName: tc.toolName,
+					content: [{ type: "text", text: "No result provided" }],
+					isError: true,
+					timestamp: Date.now(),
+				});
+			}
+		}
+		pendingToolCalls = [];
+		seenToolResultIds.clear();
+	}
+
+	for (const msg of messages) {
+		if (msg.role === "assistant") {
+			flushOrphans();
+
+			if (msg.stopReason === "error" || msg.stopReason === "aborted") {
+				continue;
+			}
+
+			const toolCalls = msg.content.filter((b): b is ToolCall => b.type === "tool_call");
+			if (toolCalls.length > 0) {
+				pendingToolCalls = toolCalls;
+			}
+
+			result.push(msg);
+		} else if (msg.role === "tool_result") {
+			seenToolResultIds.add(msg.toolCallId);
+			result.push(msg);
+		} else {
+			flushOrphans();
+			result.push(msg);
+		}
+	}
+
+	flushOrphans();
+	return result;
 }
 
 // ── convertMessages ───────────────────────────────────────────
