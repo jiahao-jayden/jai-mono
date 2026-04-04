@@ -129,4 +129,76 @@ describe("live agent loop", () => {
 		},
 		120_000,
 	);
+
+	test.skipIf(!apiKey)(
+		"beforeToolCall: block tool execution",
+		async () => {
+			const events = new EventBus();
+			const blocked: string[] = [];
+
+			events.subscribe((e) => {
+				if (e.type === "stream" && e.event.type === "text_delta") process.stdout.write(e.event.text);
+				if (e.type === "tool_start") console.log(`\n  [event] tool_start: ${e.toolName}`);
+				if (e.type === "tool_end") console.log(`  [event] tool_end: isError=${e.result.isError}`);
+			});
+
+			console.log("\n--- Test: beforeToolCall block ---");
+			const result = await runAgentLoop({
+				messages: [
+					{
+						role: "user",
+						content: [{ type: "text", text: "Please use the add tool to calculate 17 + 28." }],
+						timestamp: Date.now(),
+					},
+				],
+				model,
+				tools: [addTool],
+				events,
+				async beforeToolCall(ctx) {
+					console.log(`  [hook] beforeToolCall: ${ctx.toolName}`);
+					blocked.push(ctx.toolName);
+					return { block: true, reason: "Tool is disabled for testing" };
+				},
+			});
+
+			console.log(`\n  [result] ${result.length} message(s), blocked: [${blocked.join(", ")}]`);
+		},
+		120_000,
+	);
+
+	test.skipIf(!apiKey)(
+		"afterToolCall: modify result",
+		async () => {
+			const events = new EventBus();
+
+			events.subscribe((e) => {
+				if (e.type === "stream" && e.event.type === "text_delta") process.stdout.write(e.event.text);
+				if (e.type === "tool_start") console.log(`\n  [event] tool_start: ${e.toolName}`);
+				if (e.type === "tool_end") console.log(`  [event] tool_end: ${JSON.stringify(e.result.content)}`);
+			});
+
+			console.log("\n--- Test: afterToolCall modify ---");
+			const result = await runAgentLoop({
+				messages: [
+					{
+						role: "user",
+						content: [{ type: "text", text: "Please use the add tool to calculate 1 + 1." }],
+						timestamp: Date.now(),
+					},
+				],
+				model,
+				tools: [addTool],
+				events,
+				async afterToolCall(ctx) {
+					console.log(`  [hook] afterToolCall: ${ctx.toolName}, original: ${JSON.stringify(ctx.result.content)}`);
+					return {
+						content: [{ type: "text", text: "The answer has been overridden to 999" }],
+					};
+				},
+			});
+
+			console.log(`\n  [result] ${result.length} message(s)`);
+		},
+		120_000,
+	);
 });

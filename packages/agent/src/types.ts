@@ -31,7 +31,28 @@ export type AgentEvent =
 	| { type: "turn_end"; message: AssistantMessage; toolResults: ToolResultMessage[] }
 	| { type: "agent_end"; messages: AssistantMessage[] };
 
-export type HookName = "tool_before" | "tool_after" | "tool_error" | "before_call";
+export type BeforeToolCallContext = {
+	toolCallId: string;
+	toolName: string;
+	args: unknown;
+};
+
+export type BeforeToolCallResult = {
+	block?: boolean;
+	reason?: string;
+};
+
+export type AfterToolCallContext = {
+	toolCallId: string;
+	toolName: string;
+	result: AgentToolResult;
+	isError: boolean;
+};
+
+export type AfterToolCallResult = {
+	content?: (TextContent | ImageContent)[];
+	isError?: boolean;
+};
 
 export function defineAgentTool<TParams extends z.ZodType>(config: AgentTool<TParams>): AgentTool<TParams> {
 	return config;

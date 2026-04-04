@@ -3,28 +3,22 @@ import {
 	type Message,
 	type ModelInfo,
 	type StreamMessageInput,
+	type ToolCall,
 	streamMessage,
 	type ToolResultMessage,
 } from "@jayden/jai-ai";
 import { NamedError } from "@jayden/jai-utils";
 import z from "zod";
 import type { EventBus } from "./events.js";
-import type { AgentTool, AgentToolResult } from "./types.js";
-
-function isAgentToolResult(value: unknown): value is AgentToolResult {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		"content" in value &&
-		Array.isArray((value as AgentToolResult).content)
-	);
-}
-
-function toToolResult(value: unknown): AgentToolResult {
-	if (isAgentToolResult(value)) return value;
-	const text = typeof value === "string" ? value : JSON.stringify(value);
-	return { content: [{ type: "text", text }] };
-}
+import type {
+	AfterToolCallContext,
+	AfterToolCallResult,
+	AgentTool,
+	AgentToolResult,
+	BeforeToolCallContext,
+	BeforeToolCallResult,
+} from "./types.js";
+import { createErrorResult, toToolResult } from "./utils.js";
 
 export type AgentLoopOptions = {
 	messages: Message[];
@@ -34,6 +28,10 @@ export type AgentLoopOptions = {
 	signal?: AbortSignal;
 	events?: EventBus;
 	maxIterations?: number;
+
+	// hooks
+	beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;
+	afterToolCall?: (ctx: AfterToolCallContext) => Promise<AfterToolCallResult | undefined>;
 };
 
 /**
@@ -47,7 +45,6 @@ export type AgentLoopOptions = {
  */
 export async function runAgentLoop(options: AgentLoopOptions) {
 	const { messages, model, systemPrompt, tools, signal, events, maxIterations = 25 } = options;
-
 	const newMessages: AssistantMessage[] = [];
 	events?.emit({ type: "agent_start" });
 
@@ -70,48 +67,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
 			break;
 		}
 
-		const toolResults: ToolResultMessage[] = [];
-
-		for (const call of toolCalls) {
-			const tool = tools.find((t) => t.name === call.toolName);
-
-			events?.emit({
-				type: "tool_start",
-				toolCallId: call.toolCallId,
-				toolName: call.toolName,
-				args: call.input,
-			});
-
-			let result: AgentToolResult;
-
-			if (!tool) {
-				result = {
-					content: [{ type: "text", text: `Tool "${call.toolName}" not found` }],
-					isError: true,
-				};
-			} else {
-				try {
-					const raw = await tool.execute(call.input, signal);
-					result = toToolResult(raw);
-				} catch (err) {
-					result = {
-						content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
-						isError: true,
-					};
-				}
-			}
-
-			events?.emit({ type: "tool_end", toolCallId: call.toolCallId, result });
-
-			toolResults.push({
-				role: "tool_result",
-				toolCallId: call.toolCallId,
-				toolName: call.toolName,
-				content: result.content,
-				isError: result.isError ?? false,
-				timestamp: Date.now(),
-			});
-		}
+		const toolResults = await executeToolCalls(toolCalls, options);
 
 		newMessages.push(assistantMsg);
 		messages.push(assistantMsg, ...toolResults);
@@ -121,6 +77,91 @@ export async function runAgentLoop(options: AgentLoopOptions) {
 	events?.emit({ type: "agent_end", messages: newMessages });
 
 	return newMessages;
+}
+
+// ── Tool execution pipeline ─────────────────────────────────
+
+async function executeToolCalls(
+	toolCalls: ToolCall[],
+	options: Pick<AgentLoopOptions, "tools" | "signal" | "events" | "beforeToolCall" | "afterToolCall">,
+): Promise<ToolResultMessage[]> {
+	const results: ToolResultMessage[] = [];
+	for (const call of toolCalls) {
+		results.push(await executeOneToolCall(call, options));
+	}
+	return results;
+}
+
+async function executeOneToolCall(
+	call: ToolCall,
+	options: Pick<AgentLoopOptions, "tools" | "signal" | "events" | "beforeToolCall" | "afterToolCall">,
+): Promise<ToolResultMessage> {
+	const { events } = options;
+
+	events?.emit({ type: "tool_start", toolCallId: call.toolCallId, toolName: call.toolName, args: call.input });
+
+	let result = await prepareAndExecute(call, options);
+	result = await applyAfterHook(call, result, options);
+
+	events?.emit({ type: "tool_end", toolCallId: call.toolCallId, result });
+
+	return {
+		role: "tool_result",
+		toolCallId: call.toolCallId,
+		toolName: call.toolName,
+		content: result.content,
+		isError: result.isError ?? false,
+		timestamp: Date.now(),
+	};
+}
+
+async function prepareAndExecute(
+	call: ToolCall,
+	options: Pick<AgentLoopOptions, "tools" | "signal" | "beforeToolCall">,
+): Promise<AgentToolResult> {
+	const { tools, signal, beforeToolCall } = options;
+	const tool = tools.find((t) => t.name === call.toolName);
+
+	if (!tool) {
+		return createErrorResult(`Tool "${call.toolName}" not found`);
+	}
+
+	try {
+		const beforeResult = await beforeToolCall?.({
+			toolCallId: call.toolCallId,
+			toolName: call.toolName,
+			args: call.input,
+		});
+
+		if (beforeResult?.block) {
+			return createErrorResult(beforeResult.reason ?? "Tool call blocked");
+		}
+
+		const raw = await tool.execute(call.input, signal);
+		return toToolResult(raw);
+	} catch (err) {
+		return createErrorResult(err instanceof Error ? err.message : String(err));
+	}
+}
+
+async function applyAfterHook(
+	call: ToolCall,
+	result: AgentToolResult,
+	options: Pick<AgentLoopOptions, "afterToolCall">,
+): Promise<AgentToolResult> {
+	const afterResult = await options.afterToolCall?.({
+		toolCallId: call.toolCallId,
+		toolName: call.toolName,
+		result,
+		isError: result.isError ?? false,
+	});
+
+	if (!afterResult) return result;
+
+	return {
+		content: afterResult.content ?? result.content,
+		isError: afterResult.isError ?? result.isError,
+	};
 }
 
 async function streamAndCollect(input: StreamMessageInput, events?: EventBus): Promise<AssistantMessage> {
