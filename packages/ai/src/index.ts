@@ -1,15 +1,14 @@
-export { streamMessage } from "./stream.js";
-export {
-	resolveModelInfo,
-	getProvider,
-	getModel,
-	listProviders,
-	listModels,
-	npmToSdkType,
-	ModelNotFoundError,
-} from "./models.js";
-export { ProviderTransform } from "./utils.js";
 export type { RegistryModel, RegistryProvider, SdkType } from "./models.js";
+export {
+	getModel,
+	getProvider,
+	listModels,
+	listProviders,
+	ModelNotFoundError,
+	npmToSdkType,
+	resolveModelInfo,
+} from "./models.js";
+export { streamMessage } from "./stream.js";
 export type {
 	AIProvider,
 	AssistantMessage,
@@ -31,3 +30,4 @@ export type {
 	Usage,
 	UserMessage,
 } from "./types.js";
+export { ProviderTransform } from "./utils.js";

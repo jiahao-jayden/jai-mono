@@ -1,5 +1,5 @@
 import type { Message } from "@jayden/jai-ai";
-import type { CompactionEntry, SessionStore } from "./types";
+import type { CompactionEntry, SessionStore } from "./types.js";
 
 export function buildSessionContext(store: SessionStore, leafId?: string): Message[] {
 	const messages: Message[] = [];
