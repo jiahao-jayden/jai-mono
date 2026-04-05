@@ -1,17 +1,15 @@
 #!/usr/bin/env node
 
-import { AgentSession } from "./core/agent-session.js";
-import { SettingsManager } from "./core/settings.js";
-import { Workspace } from "./core/workspace.js";
-import { createDefaultTools } from "./tools/index.js";
+import {
+	AgentSession,
+	SettingsManager,
+	Workspace,
+	createDefaultTools,
+} from "@jayden/jai-coding-agent";
+import { render } from "ink";
+import { App } from "./App.js";
 
 async function main() {
-	const userInput = process.argv.slice(2).join(" ");
-	if (!userInput) {
-		console.log("Usage: jai <message>");
-		process.exit(1);
-	}
-
 	const workspace = Workspace.create({ cwd: process.cwd() });
 	const settings = await SettingsManager.load(workspace);
 
@@ -27,15 +25,10 @@ async function main() {
 		maxIterations: settings.get("maxIterations"),
 	});
 
-	session.onEvent((event) => {
-		if (event.type === "stream" && event.event.type === "text_delta") {
-			process.stdout.write(event.event.text);
-		}
-	});
+	const { waitUntilExit } = render(<App session={session} />);
 
 	try {
-		await session.chat(userInput);
-		console.log();
+		await waitUntilExit();
 	} finally {
 		await session.close();
 	}

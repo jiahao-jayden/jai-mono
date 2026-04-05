@@ -2,6 +2,7 @@
 	"extends": "./tsconfig.base.json",
 	"compilerOptions": {
 		"noEmit": true,
+		"jsx": "react-jsx",
 		"paths": {
 			"@jayden/jai-utils": ["./packages/utils/src/index.ts"],
 			"@jayden/jai-utils/*": ["./packages/utils/src/*"],
@@ -12,7 +13,9 @@
 			"@jayden/jai-session": ["./packages/session/src/index.ts"],
 			"@jayden/jai-session/*": ["./packages/session/src/*"],
 			"@jayden/jai-coding-agent": ["./packages/coding-agent/src/index.ts"],
-			"@jayden/jai-coding-agent/*": ["./packages/coding-agent/src/*"]
+			"@jayden/jai-coding-agent/*": ["./packages/coding-agent/src/*"],
+			"@jayden/jai-tui": ["./packages/tui/src/index.ts"],
+			"@jayden/jai-tui/*": ["./packages/tui/src/*"]
 		}
 	},
 	"include": ["packages/*/src/**/*", "packages/*/test/**/*"],
