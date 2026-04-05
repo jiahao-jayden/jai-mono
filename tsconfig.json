@@ -8,7 +8,11 @@
 			"@jayden/jai-ai": ["./packages/ai/src/index.ts"],
 			"@jayden/jai-ai/*": ["./packages/ai/src/*"],
 			"@jayden/jai-agent": ["./packages/agent/src/index.ts"],
-			"@jayden/jai-agent/*": ["./packages/agent/src/*"]
+			"@jayden/jai-agent/*": ["./packages/agent/src/*"],
+			"@jayden/jai-session": ["./packages/session/src/index.ts"],
+			"@jayden/jai-session/*": ["./packages/session/src/*"],
+			"@jayden/jai": ["./packages/jai/src/index.ts"],
+			"@jayden/jai/*": ["./packages/jai/src/*"]
 		}
 	},
 	"include": ["packages/*/src/**/*", "packages/*/test/**/*"],

@@ -127,6 +127,13 @@ async function prepareAndExecute(
 	}
 
 	try {
+		if (tool.validate) {
+			const validationError = tool.validate(call.input);
+			if (validationError) {
+				return createErrorResult(validationError);
+			}
+		}
+
 		const beforeResult = await beforeToolCall?.({
 			toolCallId: call.toolCallId,
 			toolName: call.toolName,
