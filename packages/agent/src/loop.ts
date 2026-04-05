@@ -32,6 +32,7 @@ export type AgentLoopOptions = {
 	// hooks
 	beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;
 	afterToolCall?: (ctx: AfterToolCallContext) => Promise<AfterToolCallResult | undefined>;
+	contextTransform?: (messages: Message[]) => Promise<Message[]>;
 };
 
 /**
@@ -54,8 +55,10 @@ export async function runAgentLoop(options: AgentLoopOptions) {
 		if (signal?.aborted) break;
 		events?.emit({ type: "turn_start" });
 
+		const transformedMessages = (await options?.contextTransform?.(messages)) ?? messages;
+
 		const assistantMsg = await streamAndCollect(
-			{ model, messages, systemPrompt, tools, abortSignal: signal },
+			{ model, messages: transformedMessages, systemPrompt, tools, abortSignal: signal },
 			events,
 		);
 
