@@ -1,7 +1,11 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, afterEach } from "bun:test";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { Message } from "@jayden/jai-ai";
 import { buildSessionContext } from "../src/context.js";
-import { InMemorySessionStore } from "../src/memory-store.js";
+import { InMemorySessionStore } from "../src/stores/memory-store.js";
+import { JsonlSessionStore } from "../src/stores/jsonl-store.js";
 import type { CompactionEntry, MessageEntry, SessionHeader, SessionStore } from "../src/types.js";
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -166,6 +170,141 @@ describe("InMemorySessionStore", () => {
 		const b = sessions.find((s) => s.sessionId === "session-b")!;
 		expect(a.messageCount).toBe(1);
 		expect(b.messageCount).toBe(2);
+	});
+});
+
+// ── JsonlSessionStore ────────────────────────────────────────
+
+describe("JsonlSessionStore", () => {
+	let tmpDir: string;
+
+	afterEach(async () => {
+		if (tmpDir) {
+			await fs.rm(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	async function makeTmpStore(): Promise<JsonlSessionStore> {
+		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "jai-jsonl-test-"));
+		return JsonlSessionStore.open(path.join(tmpDir, "test.jsonl"));
+	}
+
+	test("append and getBranch: linear history", async () => {
+		const store = await makeTmpStore();
+
+		const header = makeHeader(store);
+		await store.append(header);
+
+		const m1 = makeMessageEntry(store, header.id, makeUserMessage("hello"));
+		await store.append(m1);
+
+		const m2 = makeMessageEntry(store, m1.id, makeAssistantMessage("hi there"));
+		await store.append(m2);
+
+		const m3 = makeMessageEntry(store, m2.id, makeUserMessage("how are you"));
+		await store.append(m3);
+
+		const branch = store.getBranch(m3.id);
+		expect(branch).toHaveLength(4);
+		expect(branch[0].type).toBe("session");
+		expect(branch[1].id).toBe(m1.id);
+		expect(branch[2].id).toBe(m2.id);
+		expect(branch[3].id).toBe(m3.id);
+	});
+
+	test("getBranch: fork returns correct branch", async () => {
+		const store = await makeTmpStore();
+
+		const header = makeHeader(store);
+		await store.append(header);
+
+		const m1 = makeMessageEntry(store, header.id, makeUserMessage("start"));
+		await store.append(m1);
+
+		const m2 = makeMessageEntry(store, m1.id, makeAssistantMessage("response"));
+		await store.append(m2);
+
+		const m3a = makeMessageEntry(store, m2.id, makeUserMessage("branch A"));
+		await store.append(m3a);
+
+		const m3b = makeMessageEntry(store, m2.id, makeUserMessage("branch B"));
+		await store.append(m3b);
+
+		const branchA = store.getBranch(m3a.id);
+		expect(branchA).toHaveLength(4);
+		expect((branchA[3] as MessageEntry).message).toEqual(m3a.message);
+
+		const branchB = store.getBranch(m3b.id);
+		expect(branchB).toHaveLength(4);
+		expect((branchB[3] as MessageEntry).message).toEqual(m3b.message);
+	});
+
+	test("survives restart — data persists across open calls", async () => {
+		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "jai-jsonl-test-"));
+		const filePath = path.join(tmpDir, "persist.jsonl");
+
+		const store1 = await JsonlSessionStore.open(filePath);
+		const header = makeHeader(store1);
+		await store1.append(header);
+
+		const m1 = makeMessageEntry(store1, header.id, makeUserMessage("hello"));
+		await store1.append(m1);
+
+		const m2 = makeMessageEntry(store1, m1.id, makeAssistantMessage("hi"));
+		await store1.append(m2);
+		await store1.close();
+
+		const store2 = await JsonlSessionStore.open(filePath);
+		expect(store2.getAllEntries()).toHaveLength(3);
+
+		const branch = store2.getBranch();
+		expect(branch).toHaveLength(3);
+		expect(branch[0].type).toBe("session");
+		expect((branch[1] as MessageEntry).message.role).toBe("user");
+		expect((branch[2] as MessageEntry).message.role).toBe("assistant");
+	});
+
+	test("handles non-existent file gracefully", async () => {
+		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "jai-jsonl-test-"));
+		const store = await JsonlSessionStore.open(path.join(tmpDir, "nope.jsonl"));
+		expect(store.getAllEntries()).toHaveLength(0);
+		expect(store.getBranch()).toHaveLength(0);
+	});
+
+	test("list returns session info", async () => {
+		const store = await makeTmpStore();
+
+		const header = makeHeader(store);
+		await store.append(header);
+
+		const m1 = makeMessageEntry(store, header.id, makeUserMessage("hello"));
+		await store.append(m1);
+
+		const m2 = makeMessageEntry(store, m1.id, makeAssistantMessage("hi"));
+		await store.append(m2);
+
+		const sessions = await store.list();
+		expect(sessions).toHaveLength(1);
+		expect(sessions[0].sessionId).toBe("test-session");
+		expect(sessions[0].messageCount).toBe(2);
+	});
+
+	test("buildSessionContext works with jsonl store", async () => {
+		const store = await makeTmpStore();
+
+		const header = makeHeader(store);
+		await store.append(header);
+
+		const m1 = makeMessageEntry(store, header.id, makeUserMessage("hello"));
+		await store.append(m1);
+
+		const m2 = makeMessageEntry(store, m1.id, makeAssistantMessage("hi"));
+		await store.append(m2);
+
+		const messages = buildSessionContext(store, m2.id);
+		expect(messages).toHaveLength(2);
+		expect(messages[0].role).toBe("user");
+		expect(messages[1].role).toBe("assistant");
 	});
 });
 

@@ -1,36 +1,35 @@
-import type { SessionEntry, SessionInfo, SessionStore } from "./types.js";
+import type {
+	SessionEntry,
+	SessionInfo,
+	SessionStore,
+} from "../types.js";
 
-export class InMemorySessionStore implements SessionStore {
-	private entries: SessionEntry[] = [];
+export abstract class BaseSessionStore implements SessionStore {
+	protected entries: SessionEntry[] = [];
 
-	append(entry: SessionEntry): Promise<void> {
-		this.entries.push(entry);
-		return Promise.resolve();
-	}
+	abstract append(entry: SessionEntry): Promise<void>;
 
 	getBranch(leafId?: string): SessionEntry[] {
 		if (this.entries.length === 0) return [];
 
 		const leaf = leafId ?? this.entries[this.entries.length - 1].id;
 
-		// 建立索引
 		const byId = new Map<string, SessionEntry>();
 		for (const e of this.entries) {
 			byId.set(e.id, e);
 		}
 
-		// Search for the leaf and build the path
-		const path: SessionEntry[] = [];
+		const branch: SessionEntry[] = [];
 		let currentId: string | null = leaf;
 
 		while (currentId !== null) {
 			const entry = byId.get(currentId);
 			if (!entry) break;
-			path.push(entry);
+			branch.push(entry);
 			currentId = entry.parentId;
 		}
-		path.reverse();
-		return path;
+		branch.reverse();
+		return branch;
 	}
 
 	getAllEntries(): SessionEntry[] {
@@ -43,7 +42,6 @@ export class InMemorySessionStore implements SessionStore {
 
 	async list(): Promise<SessionInfo[]> {
 		const sessions = new Map<string, SessionInfo>();
-		// session header 的 id → sessionId 映射
 		const headerIdToSessionId = new Map<string, string>();
 
 		for (const entry of this.entries) {
@@ -60,13 +58,11 @@ export class InMemorySessionStore implements SessionStore {
 			}
 		}
 
-		// 建索引，用于沿 parentId 往上查找所属 session
 		const byId = new Map<string, SessionEntry>();
 		for (const e of this.entries) {
 			byId.set(e.id, e);
 		}
 
-		// 缓存：entry id → 所属的 sessionId
 		const ownerCache = new Map<string, string>();
 
 		const findOwnerSession = (entryId: string): string | undefined => {
@@ -109,6 +105,7 @@ export class InMemorySessionStore implements SessionStore {
 
 		return [...sessions.values()];
 	}
+
 	async close(): Promise<void> {
 		this.entries = [];
 	}

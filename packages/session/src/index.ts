@@ -1,5 +1,6 @@
 export { buildSessionContext } from "./context.js";
-export { InMemorySessionStore } from "./memory-store.js";
+export { JsonlSessionStore } from "./stores/jsonl-store.js";
+export { InMemorySessionStore } from "./stores/memory-store.js";
 export type {
 	CompactionEntry,
 	MessageEntry,
