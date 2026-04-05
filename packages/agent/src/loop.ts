@@ -23,6 +23,7 @@ import { createErrorResult, toToolResult } from "./utils.js";
 export type AgentLoopOptions = {
 	messages: Message[];
 	model: ModelInfo | string;
+	baseURL?: string;
 	systemPrompt?: string;
 	tools: AgentTool[];
 	signal?: AbortSignal;
@@ -45,7 +46,7 @@ export type AgentLoopOptions = {
  * 6. 把 assistant + toolResults 追加到 messages
  */
 export async function runAgentLoop(options: AgentLoopOptions) {
-	const { messages, model, systemPrompt, tools, signal, events, maxIterations = 25 } = options;
+	const { messages, model, baseURL, systemPrompt, tools, signal, events, maxIterations = 25 } = options;
 	const newMessages: AssistantMessage[] = [];
 	events?.emit({ type: "agent_start" });
 
@@ -58,7 +59,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
 		const transformedMessages = (await options?.contextTransform?.(messages)) ?? messages;
 
 		const assistantMsg = await streamAndCollect(
-			{ model, messages: transformedMessages, systemPrompt, tools, abortSignal: signal },
+			{ model, baseURL, messages: transformedMessages, systemPrompt, tools, abortSignal: signal },
 			events,
 		);
 		events?.emit({ type: "message_end", message: assistantMsg });

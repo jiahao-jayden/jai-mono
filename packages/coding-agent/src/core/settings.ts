@@ -3,9 +3,18 @@ import z from "zod";
 import type { Workspace } from "./workspace.js";
 
 const SettingsSchema = z.object({
-	defaultModel: z.string(),
-	defaultProvider: z.string(),
+	/** 默认模型，格式 "provider/model" */
+	model: z.string(),
+	/** 默认 provider（当 model 未指定 provider 前缀时使用） */
+	provider: z.string(),
+	/** base url */
+	baseURL: z.string().optional(),
+	/** agent loop 最大迭代次数 */
 	maxIterations: z.number().int().positive(),
+	/** 回复语言偏好 */
+	language: z.string(),
+	/** 注入到 session 的环境变量 */
+	env: z.record(z.string(), z.string()),
 });
 
 const PartialSettingsSchema = SettingsSchema.partial().strict();
@@ -14,9 +23,11 @@ export type Settings = z.infer<typeof PartialSettingsSchema>;
 export type ResolvedSettings = z.infer<typeof SettingsSchema>;
 
 const DEFAULTS: ResolvedSettings = {
-	defaultModel: "anthropic/claude-sonnet-4-20250514",
-	defaultProvider: "anthropic",
+	model: "anthropic/claude-sonnet-4-20250514",
+	provider: "anthropic",
 	maxIterations: 25,
+	language: "zh-CN",
+	env: {},
 };
 
 export const SettingsParseError = NamedError.create(

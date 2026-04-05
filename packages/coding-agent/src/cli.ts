@@ -15,9 +15,14 @@ async function main() {
 	const workspace = Workspace.create({ cwd: process.cwd() });
 	const settings = await SettingsManager.load(workspace);
 
+	for (const [key, value] of Object.entries(settings.get("env"))) {
+		process.env[key] ??= value;
+	}
+
 	const session = await AgentSession.create({
 		workspace,
-		model: settings.get("defaultModel"),
+		model: settings.get("model"),
+		baseURL: settings.get("baseURL"),
 		tools: createDefaultTools(workspace.cwd),
 		maxIterations: settings.get("maxIterations"),
 	});
