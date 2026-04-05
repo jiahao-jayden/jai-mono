@@ -61,6 +61,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
 			{ model, messages: transformedMessages, systemPrompt, tools, abortSignal: signal },
 			events,
 		);
+		events?.emit({ type: "message_end", message: assistantMsg });
 
 		const toolCalls = assistantMsg.content.filter((msg) => msg.type === "tool_call");
 
@@ -108,7 +109,7 @@ async function executeOneToolCall(
 
 	events?.emit({ type: "tool_end", toolCallId: call.toolCallId, result });
 
-	return {
+	const toolResultMsg: ToolResultMessage = {
 		role: "tool_result",
 		toolCallId: call.toolCallId,
 		toolName: call.toolName,
@@ -116,6 +117,9 @@ async function executeOneToolCall(
 		isError: result.isError ?? false,
 		timestamp: Date.now(),
 	};
+	events?.emit({ type: "message_end", message: toolResultMsg });
+
+	return toolResultMsg;
 }
 
 async function prepareAndExecute(

@@ -25,6 +25,7 @@ export type AgentEvent =
 	| { type: "agent_start" }
 	| { type: "turn_start" }
 	| { type: "stream"; event: StreamEvent }
+	| { type: "message_end"; message: AssistantMessage | ToolResultMessage }
 	| { type: "tool_start"; toolCallId: string; toolName: string; args: unknown }
 	| { type: "tool_update"; toolCallId: string; partial: AgentToolResult }
 	| { type: "tool_end"; toolCallId: string; result: AgentToolResult }
