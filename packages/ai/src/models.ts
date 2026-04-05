@@ -1,12 +1,7 @@
 import { NamedError } from "@jayden/jai-utils";
 import z from "zod";
 import registry from "./models-snapshot.json" with { type: "json" };
-import type {
-	ModelCapabilities,
-	ModelCost,
-	ModelLimit,
-	ResolvedModel,
-} from "./types.js";
+import type { ModelCapabilities, ModelCost, ModelLimit, ResolvedModel } from "./types.js";
 
 // ── Registry types (mirrors models.dev schema) ───────────────
 
@@ -73,10 +68,7 @@ export function getProvider(providerId: string): RegistryProvider | undefined {
 	return data[providerId];
 }
 
-export function getModel(
-	providerId: string,
-	modelId: string,
-): RegistryModel | undefined {
+export function getModel(providerId: string, modelId: string): RegistryModel | undefined {
 	return data[providerId]?.models[modelId];
 }
 
@@ -95,15 +87,10 @@ export function listModels(providerId: string): string[] {
 // The modelId format is "provider/model".
 // Overrides let caller inject apiKey, baseURL, etc.
 
-export function resolveModelInfo(
-	modelId: string,
-	overrides?: { apiKey?: string; baseURL?: string },
-): ResolvedModel {
+export function resolveModelInfo(modelId: string, overrides?: { apiKey?: string; baseURL?: string }): ResolvedModel {
 	const slash = modelId.indexOf("/");
 	if (slash === -1) {
-		throw new ModelNotFoundError(
-			`Invalid modelId format: "${modelId}". Expected "provider/model".`,
-		);
+		throw new ModelNotFoundError(`Invalid modelId format: "${modelId}". Expected "provider/model".`);
 	}
 
 	const providerId = modelId.slice(0, slash);
@@ -111,16 +98,12 @@ export function resolveModelInfo(
 
 	const provider = data[providerId];
 	if (!provider) {
-		throw new ModelNotFoundError(
-			`Provider "${providerId}" not found in registry.`,
-		);
+		throw new ModelNotFoundError(`Provider "${providerId}" not found in registry.`);
 	}
 
 	const model = provider.models[modelName];
 	if (!model) {
-		throw new ModelNotFoundError(
-			`Model "${modelName}" not found under provider "${providerId}".`,
-		);
+		throw new ModelNotFoundError(`Model "${modelName}" not found under provider "${providerId}".`);
 	}
 
 	const sdkType = npmToSdkType(provider.npm);
@@ -197,7 +180,4 @@ function extractCost(model: RegistryModel): ModelCost | undefined {
 
 // ── Errors ────────────────────────────────────────────────────
 
-export const ModelNotFoundError = NamedError.create(
-	"ModelNotFoundError",
-	z.string(),
-);
+export const ModelNotFoundError = NamedError.create("ModelNotFoundError", z.string());

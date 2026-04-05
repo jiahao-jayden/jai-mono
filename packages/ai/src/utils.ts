@@ -1,7 +1,4 @@
-import type {
-	JSONSchema7,
-	LanguageModelV3Message,
-} from "@ai-sdk/provider";
+import type { JSONSchema7, LanguageModelV3Message } from "@ai-sdk/provider";
 import type { ResolvedModel } from "./types.js";
 
 type Msg = LanguageModelV3Message;
@@ -16,10 +13,7 @@ function mimeToModality(mime: string): Modality | undefined {
 	return undefined;
 }
 
-function mergeDeep(
-	target: Record<string, any>,
-	source: Record<string, any>,
-): Record<string, any> {
+function mergeDeep(target: Record<string, any>, source: Record<string, any>): Record<string, any> {
 	const result = { ...target };
 	for (const key of Object.keys(source)) {
 		const tv = target[key];
@@ -78,15 +72,8 @@ export namespace ProviderTransform {
 		return undefined;
 	}
 
-	function normalizeMessages(
-		msgs: Msg[],
-		model: ResolvedModel,
-		_options: Record<string, unknown>,
-	): Msg[] {
-		if (
-			model.npm === "@ai-sdk/anthropic" ||
-			model.npm === "@ai-sdk/amazon-bedrock"
-		) {
+	function normalizeMessages(msgs: Msg[], model: ResolvedModel, _options: Record<string, unknown>): Msg[] {
+		if (model.npm === "@ai-sdk/anthropic" || model.npm === "@ai-sdk/amazon-bedrock") {
 			msgs = msgs
 				.map((msg) => {
 					if (typeof msg.content === "string") {
@@ -103,10 +90,7 @@ export namespace ProviderTransform {
 					if (filtered.length === 0) return undefined;
 					return { ...msg, content: filtered };
 				})
-				.filter(
-					(msg): msg is Msg =>
-						msg !== undefined && msg.content !== "",
-				);
+				.filter((msg): msg is Msg => msg !== undefined && msg.content !== "");
 		}
 
 		if (model.apiModelId.includes("claude")) {
@@ -116,10 +100,7 @@ export namespace ProviderTransform {
 					return {
 						...msg,
 						content: msg.content.map((part) => {
-							if (
-								part.type === "tool-call" ||
-								part.type === "tool-result"
-							) {
+							if (part.type === "tool-call" || part.type === "tool-result") {
 								return { ...part, toolCallId: scrub(part.toolCallId) };
 							}
 							return part;
@@ -159,10 +140,7 @@ export namespace ProviderTransform {
 
 				if (msg.role === "assistant" && Array.isArray(msg.content)) {
 					msg.content = msg.content.map((part) => {
-						if (
-							part.type === "tool-call" ||
-							part.type === "tool-result"
-						) {
+						if (part.type === "tool-call" || part.type === "tool-result") {
 							return { ...part, toolCallId: scrub(part.toolCallId) };
 						}
 						return part;
@@ -188,22 +166,13 @@ export namespace ProviderTransform {
 			return result;
 		}
 
-		if (
-			typeof model.interleaved === "object" &&
-			model.interleaved?.field
-		) {
+		if (typeof model.interleaved === "object" && model.interleaved?.field) {
 			const field = model.interleaved.field;
 			return msgs.map((msg) => {
 				if (msg.role === "assistant" && Array.isArray(msg.content)) {
-					const reasoningParts = msg.content.filter(
-						(part: any) => part.type === "reasoning",
-					);
-					const reasoningText = reasoningParts
-						.map((part: any) => part.text)
-						.join("");
-					const filteredContent = msg.content.filter(
-						(part: any) => part.type !== "reasoning",
-					);
+					const reasoningParts = msg.content.filter((part: any) => part.type === "reasoning");
+					const reasoningText = reasoningParts.map((part: any) => part.text).join("");
+					const filteredContent = msg.content.filter((part: any) => part.type !== "reasoning");
 
 					if (reasoningText) {
 						return {
@@ -228,10 +197,7 @@ export namespace ProviderTransform {
 		return msgs;
 	}
 
-	function applyCaching(
-		msgs: Msg[],
-		_model: ResolvedModel,
-	): Msg[] {
+	function applyCaching(msgs: Msg[], _model: ResolvedModel): Msg[] {
 		const system = msgs.filter((msg) => msg.role === "system").slice(0, 2);
 		const final = msgs.filter((msg) => msg.role !== "system").slice(-2);
 
@@ -249,9 +215,7 @@ export namespace ProviderTransform {
 				_model.providerId.includes("bedrock") ||
 				_model.npm === "@ai-sdk/amazon-bedrock";
 			const shouldUseContentOptions =
-				!useMessageLevelOptions &&
-				Array.isArray(msg.content) &&
-				msg.content.length > 0;
+				!useMessageLevelOptions && Array.isArray(msg.content) && msg.content.length > 0;
 
 			if (shouldUseContentOptions) {
 				const lastContent = msg.content[msg.content.length - 1] as any;
@@ -261,27 +225,18 @@ export namespace ProviderTransform {
 					lastContent.type !== "tool-approval-request" &&
 					lastContent.type !== "tool-approval-response"
 				) {
-					lastContent.providerOptions = mergeDeep(
-						lastContent.providerOptions ?? {},
-						providerOptions,
-					);
+					lastContent.providerOptions = mergeDeep(lastContent.providerOptions ?? {}, providerOptions);
 					continue;
 				}
 			}
 
-			msg.providerOptions = mergeDeep(
-				msg.providerOptions ?? {},
-				providerOptions,
-			);
+			msg.providerOptions = mergeDeep(msg.providerOptions ?? {}, providerOptions);
 		}
 
 		return msgs;
 	}
 
-	function unsupportedParts(
-		msgs: Msg[],
-		model: ResolvedModel,
-	): Msg[] {
+	function unsupportedParts(msgs: Msg[], model: ResolvedModel): Msg[] {
 		return msgs.map((msg) => {
 			if (msg.role !== "user" || !Array.isArray(msg.content)) return msg;
 
@@ -291,9 +246,7 @@ export namespace ProviderTransform {
 				if (part.type === "image") {
 					const imageStr = part.image.toString();
 					if (imageStr.startsWith("data:")) {
-						const match = imageStr.match(
-							/^data:([^;]+);base64,(.*)$/,
-						);
+						const match = imageStr.match(/^data:([^;]+);base64,(.*)$/);
 						if (match && (!match[2] || match[2].length === 0)) {
 							return {
 								type: "text" as const,
@@ -304,9 +257,7 @@ export namespace ProviderTransform {
 				}
 
 				const mime =
-					part.type === "image"
-						? part.image.toString().split(";")[0].replace("data:", "")
-						: part.mediaType;
+					part.type === "image" ? part.image.toString().split(";")[0].replace("data:", "") : part.mediaType;
 				const filename = part.type === "file" ? part.filename : undefined;
 				const modality = mimeToModality(mime);
 				if (!modality) return part;
@@ -323,11 +274,7 @@ export namespace ProviderTransform {
 		});
 	}
 
-	export function message(
-		msgs: Msg[],
-		model: ResolvedModel,
-		options: Record<string, unknown>,
-	) {
+	export function message(msgs: Msg[], model: ResolvedModel, options: Record<string, unknown>) {
 		msgs = unsupportedParts(msgs, model);
 		msgs = normalizeMessages(msgs, model, options);
 
@@ -356,16 +303,12 @@ export namespace ProviderTransform {
 			};
 
 			msgs = msgs.map((msg) => {
-				if (!Array.isArray(msg.content))
-					return { ...msg, providerOptions: remap(msg.providerOptions) };
+				if (!Array.isArray(msg.content)) return { ...msg, providerOptions: remap(msg.providerOptions) };
 				return {
 					...msg,
 					providerOptions: remap(msg.providerOptions),
 					content: (msg.content as any[]).map((part: any) => {
-						if (
-							part.type === "tool-approval-request" ||
-							part.type === "tool-approval-response"
-						) {
+						if (part.type === "tool-approval-request" || part.type === "tool-approval-response") {
 							return { ...part };
 						}
 						return {
@@ -389,9 +332,7 @@ export namespace ProviderTransform {
 		if (id.includes("glm-4.7")) return 1.0;
 		if (id.includes("minimax-m2")) return 1.0;
 		if (id.includes("kimi-k2")) {
-			if (
-				["thinking", "k2.", "k2p", "k2-5"].some((s) => id.includes(s))
-			) {
+			if (["thinking", "k2.", "k2p", "k2-5"].some((s) => id.includes(s))) {
 				return 1.0;
 			}
 			return 0.6;
@@ -402,11 +343,7 @@ export namespace ProviderTransform {
 	export function topP(model: ResolvedModel) {
 		const id = model.id.toLowerCase();
 		if (id.includes("qwen")) return 1;
-		if (
-			["minimax-m2", "gemini", "kimi-k2.5", "kimi-k2p5", "kimi-k2-5"].some(
-				(s) => id.includes(s),
-			)
-		) {
+		if (["minimax-m2", "gemini", "kimi-k2.5", "kimi-k2p5", "kimi-k2-5"].some((s) => id.includes(s))) {
 			return 0.95;
 		}
 		return undefined;
@@ -425,18 +362,13 @@ export namespace ProviderTransform {
 	const WIDELY_SUPPORTED_EFFORTS = ["low", "medium", "high"];
 	const OPENAI_EFFORTS = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"];
 
-	export function variants(
-		model: ResolvedModel,
-	): Record<string, Record<string, any>> {
+	export function variants(model: ResolvedModel): Record<string, Record<string, any>> {
 		if (!model.capabilities.reasoning) return {};
 
 		const id = model.id.toLowerCase();
-		const isAnthropicAdaptive = [
-			"opus-4-6",
-			"opus-4.6",
-			"sonnet-4-6",
-			"sonnet-4.6",
-		].some((v) => model.apiModelId.includes(v));
+		const isAnthropicAdaptive = ["opus-4-6", "opus-4.6", "sonnet-4-6", "sonnet-4.6"].some((v) =>
+			model.apiModelId.includes(v),
+		);
 		const adaptiveEfforts = ["low", "medium", "high", "max"];
 
 		if (
@@ -465,27 +397,14 @@ export namespace ProviderTransform {
 
 		switch (model.npm) {
 			case "@openrouter/ai-sdk-provider":
-				if (
-					!model.id.includes("gpt") &&
-					!model.id.includes("gemini-3") &&
-					!model.id.includes("claude")
-				)
-					return {};
-				return Object.fromEntries(
-					OPENAI_EFFORTS.map((effort) => [
-						effort,
-						{ reasoning: { effort } },
-					]),
-				);
+				if (!model.id.includes("gpt") && !model.id.includes("gemini-3") && !model.id.includes("claude")) return {};
+				return Object.fromEntries(OPENAI_EFFORTS.map((effort) => [effort, { reasoning: { effort } }]));
 
 			case "@ai-sdk/gateway":
 				if (model.id.includes("anthropic")) {
 					if (isAnthropicAdaptive) {
 						return Object.fromEntries(
-							adaptiveEfforts.map((effort) => [
-								effort,
-								{ thinking: { type: "adaptive" }, effort },
-							]),
+							adaptiveEfforts.map((effort) => [effort, { thinking: { type: "adaptive" }, effort }]),
 						);
 					}
 					return {
@@ -511,18 +430,10 @@ export namespace ProviderTransform {
 						};
 					}
 					return Object.fromEntries(
-						["low", "high"].map((effort) => [
-							effort,
-							{ includeThoughts: true, thinkingLevel: effort },
-						]),
+						["low", "high"].map((effort) => [effort, { includeThoughts: true, thinkingLevel: effort }]),
 					);
 				}
-				return Object.fromEntries(
-					OPENAI_EFFORTS.map((effort) => [
-						effort,
-						{ reasoningEffort: effort },
-					]),
-				);
+				return Object.fromEntries(OPENAI_EFFORTS.map((effort) => [effort, { reasoningEffort: effort }]));
 
 			case "@ai-sdk/github-copilot": {
 				if (model.id.includes("gemini")) return {};
@@ -530,18 +441,10 @@ export namespace ProviderTransform {
 					return { thinking: { thinking_budget: 4000 } };
 				}
 				const copilotEfforts = (() => {
-					if (
-						id.includes("5.1-codex-max") ||
-						id.includes("5.2") ||
-						id.includes("5.3")
-					)
+					if (id.includes("5.1-codex-max") || id.includes("5.2") || id.includes("5.3"))
 						return [...WIDELY_SUPPORTED_EFFORTS, "xhigh"];
 					const arr = [...WIDELY_SUPPORTED_EFFORTS];
-					if (
-						id.includes("gpt-5") &&
-						(model.releaseDate ?? "") >= "2025-12-04"
-					)
-						arr.push("xhigh");
+					if (id.includes("gpt-5") && (model.releaseDate ?? "") >= "2025-12-04") arr.push("xhigh");
 					return arr;
 				})();
 				return Object.fromEntries(
@@ -562,12 +465,7 @@ export namespace ProviderTransform {
 			case "@ai-sdk/deepinfra":
 			case "venice-ai-sdk-provider":
 			case "@ai-sdk/openai-compatible":
-				return Object.fromEntries(
-					WIDELY_SUPPORTED_EFFORTS.map((effort) => [
-						effort,
-						{ reasoningEffort: effort },
-					]),
-				);
+				return Object.fromEntries(WIDELY_SUPPORTED_EFFORTS.map((effort) => [effort, { reasoningEffort: effort }]));
 
 			case "@ai-sdk/azure": {
 				if (id === "o1-mini") return {};
@@ -591,8 +489,7 @@ export namespace ProviderTransform {
 				if (id === "gpt-5-pro") return {};
 				const openaiEfforts = (() => {
 					if (id.includes("codex")) {
-						if (id.includes("5.2") || id.includes("5.3"))
-							return [...WIDELY_SUPPORTED_EFFORTS, "xhigh"];
+						if (id.includes("5.2") || id.includes("5.3")) return [...WIDELY_SUPPORTED_EFFORTS, "xhigh"];
 						return WIDELY_SUPPORTED_EFFORTS;
 					}
 					const arr = [...WIDELY_SUPPORTED_EFFORTS];
@@ -623,20 +520,14 @@ export namespace ProviderTransform {
 			case "@ai-sdk/google-vertex/anthropic":
 				if (isAnthropicAdaptive) {
 					return Object.fromEntries(
-						adaptiveEfforts.map((effort) => [
-							effort,
-							{ thinking: { type: "adaptive" }, effort },
-						]),
+						adaptiveEfforts.map((effort) => [effort, { thinking: { type: "adaptive" }, effort }]),
 					);
 				}
 				return {
 					high: {
 						thinking: {
 							type: "enabled",
-							budgetTokens: Math.min(
-								16_000,
-								Math.floor(model.limit.output / 2 - 1),
-							),
+							budgetTokens: Math.min(16_000, Math.floor(model.limit.output / 2 - 1)),
 						},
 					},
 					max: {
@@ -731,22 +622,14 @@ export namespace ProviderTransform {
 
 			case "@ai-sdk/groq": {
 				const groqEffort = ["none", ...WIDELY_SUPPORTED_EFFORTS];
-				return Object.fromEntries(
-					groqEffort.map((effort) => [
-						effort,
-						{ reasoningEffort: effort },
-					]),
-				);
+				return Object.fromEntries(groqEffort.map((effort) => [effort, { reasoningEffort: effort }]));
 			}
 
 			case "@jerome-benoit/sap-ai-provider-v2":
 				if (model.apiModelId.includes("anthropic")) {
 					if (isAnthropicAdaptive) {
 						return Object.fromEntries(
-							adaptiveEfforts.map((effort) => [
-								effort,
-								{ thinking: { type: "adaptive" }, effort },
-							]),
+							adaptiveEfforts.map((effort) => [effort, { thinking: { type: "adaptive" }, effort }]),
 						);
 					}
 					return {
@@ -758,10 +641,7 @@ export namespace ProviderTransform {
 						},
 					};
 				}
-				if (
-					model.apiModelId.includes("gemini") &&
-					id.includes("2.5")
-				) {
+				if (model.apiModelId.includes("gemini") && id.includes("2.5")) {
 					return {
 						high: {
 							thinkingConfig: {
@@ -777,15 +657,9 @@ export namespace ProviderTransform {
 						},
 					};
 				}
-				if (
-					model.apiModelId.includes("gpt") ||
-					/\bo[1-9]/.test(model.apiModelId)
-				) {
+				if (model.apiModelId.includes("gpt") || /\bo[1-9]/.test(model.apiModelId)) {
 					return Object.fromEntries(
-						WIDELY_SUPPORTED_EFFORTS.map((effort) => [
-							effort,
-							{ reasoningEffort: effort },
-						]),
+						WIDELY_SUPPORTED_EFFORTS.map((effort) => [effort, { reasoningEffort: effort }]),
 					);
 				}
 				return {};
@@ -817,30 +691,20 @@ export namespace ProviderTransform {
 
 		if (
 			input.model.providerId === "baseten" ||
-			(input.model.providerId === "opencode" &&
-				["kimi-k2-thinking", "glm-4.6"].includes(input.model.apiModelId))
+			(input.model.providerId === "opencode" && ["kimi-k2-thinking", "glm-4.6"].includes(input.model.apiModelId))
 		) {
 			result.chat_template_args = { enable_thinking: true };
 		}
 
-		if (
-			["zai", "zhipuai"].includes(input.model.providerId) &&
-			input.model.npm === "@ai-sdk/openai-compatible"
-		) {
+		if (["zai", "zhipuai"].includes(input.model.providerId) && input.model.npm === "@ai-sdk/openai-compatible") {
 			result.thinking = { type: "enabled", clear_thinking: false };
 		}
 
-		if (
-			input.model.providerId === "openai" ||
-			input.providerOptions?.setCacheKey
-		) {
+		if (input.model.providerId === "openai" || input.providerOptions?.setCacheKey) {
 			result.promptCacheKey = input.sessionId;
 		}
 
-		if (
-			input.model.npm === "@ai-sdk/google" ||
-			input.model.npm === "@ai-sdk/google-vertex"
-		) {
+		if (input.model.npm === "@ai-sdk/google" || input.model.npm === "@ai-sdk/google-vertex") {
 			if (input.model.capabilities.reasoning) {
 				result.thinkingConfig = { includeThoughts: true };
 				if (input.model.apiModelId.includes("gemini-3")) {
@@ -851,18 +715,12 @@ export namespace ProviderTransform {
 
 		const modelId = input.model.apiModelId.toLowerCase();
 		if (
-			(input.model.npm === "@ai-sdk/anthropic" ||
-				input.model.npm === "@ai-sdk/google-vertex/anthropic") &&
-			(modelId.includes("k2p5") ||
-				modelId.includes("kimi-k2.5") ||
-				modelId.includes("kimi-k2p5"))
+			(input.model.npm === "@ai-sdk/anthropic" || input.model.npm === "@ai-sdk/google-vertex/anthropic") &&
+			(modelId.includes("k2p5") || modelId.includes("kimi-k2.5") || modelId.includes("kimi-k2p5"))
 		) {
 			result.thinking = {
 				type: "enabled",
-				budgetTokens: Math.min(
-					16_000,
-					Math.floor(input.model.limit.output / 2 - 1),
-				),
+				budgetTokens: Math.min(16_000, Math.floor(input.model.limit.output / 2 - 1)),
 			};
 		}
 
@@ -875,10 +733,7 @@ export namespace ProviderTransform {
 			result.enable_thinking = true;
 		}
 
-		if (
-			input.model.apiModelId.includes("gpt-5") &&
-			!input.model.apiModelId.includes("gpt-5-chat")
-		) {
+		if (input.model.apiModelId.includes("gpt-5") && !input.model.apiModelId.includes("gpt-5-chat")) {
 			if (!input.model.apiModelId.includes("gpt-5-pro")) {
 				result.reasoningEffort = "medium";
 				result.reasoningSummary = "auto";
@@ -914,11 +769,7 @@ export namespace ProviderTransform {
 	}
 
 	export function smallOptions(model: ResolvedModel) {
-		if (
-			model.providerId === "openai" ||
-			model.npm === "@ai-sdk/openai" ||
-			model.npm === "@ai-sdk/github-copilot"
-		) {
+		if (model.providerId === "openai" || model.npm === "@ai-sdk/openai" || model.npm === "@ai-sdk/github-copilot") {
 			if (model.apiModelId.includes("gpt-5")) {
 				if (model.apiModelId.includes("5.")) {
 					return { store: false, reasoningEffort: "low" };
@@ -949,20 +800,13 @@ export namespace ProviderTransform {
 		amazon: "bedrock",
 	};
 
-	export function providerOptions(
-		model: ResolvedModel,
-		opts: Record<string, any>,
-	) {
+	export function providerOptions(model: ResolvedModel, opts: Record<string, any>) {
 		if (model.npm === "@ai-sdk/gateway") {
 			const i = model.apiModelId.indexOf("/");
 			const rawSlug = i > 0 ? model.apiModelId.slice(0, i) : undefined;
-			const slug = rawSlug
-				? (SLUG_OVERRIDES[rawSlug] ?? rawSlug)
-				: undefined;
+			const slug = rawSlug ? (SLUG_OVERRIDES[rawSlug] ?? rawSlug) : undefined;
 			const gateway = opts.gateway;
-			const rest = Object.fromEntries(
-				Object.entries(opts).filter(([k]) => k !== "gateway"),
-			);
+			const rest = Object.fromEntries(Object.entries(opts).filter(([k]) => k !== "gateway"));
 			const has = Object.keys(rest).length > 0;
 
 			const result: Record<string, any> = {};
@@ -971,11 +815,7 @@ export namespace ProviderTransform {
 			if (has) {
 				if (slug) {
 					result[slug] = rest;
-				} else if (
-					gateway &&
-					typeof gateway === "object" &&
-					!Array.isArray(gateway)
-				) {
+				} else if (gateway && typeof gateway === "object" && !Array.isArray(gateway)) {
 					result.gateway = { ...gateway, ...rest };
 				} else {
 					result.gateway = rest;
@@ -990,30 +830,16 @@ export namespace ProviderTransform {
 	}
 
 	export function maxOutputTokens(model: ResolvedModel): number {
-		return (
-			Math.min(model.limit.output, OUTPUT_TOKEN_MAX) || OUTPUT_TOKEN_MAX
-		);
+		return Math.min(model.limit.output, OUTPUT_TOKEN_MAX) || OUTPUT_TOKEN_MAX;
 	}
 
-	export function schema(
-		model: ResolvedModel,
-		inputSchema: JSONSchema7,
-	): JSONSchema7 {
-		if (
-			model.providerId === "google" ||
-			model.apiModelId.includes("gemini")
-		) {
-			const isPlainObject = (
-				node: unknown,
-			): node is Record<string, any> =>
-				typeof node === "object" &&
-				node !== null &&
-				!Array.isArray(node);
+	export function schema(model: ResolvedModel, inputSchema: JSONSchema7): JSONSchema7 {
+		if (model.providerId === "google" || model.apiModelId.includes("gemini")) {
+			const isPlainObject = (node: unknown): node is Record<string, any> =>
+				typeof node === "object" && node !== null && !Array.isArray(node);
 			const hasCombiner = (node: unknown) =>
 				isPlainObject(node) &&
-				(Array.isArray(node.anyOf) ||
-					Array.isArray(node.oneOf) ||
-					Array.isArray(node.allOf));
+				(Array.isArray(node.anyOf) || Array.isArray(node.oneOf) || Array.isArray(node.allOf));
 			const hasSchemaIntent = (node: unknown) => {
 				if (!isPlainObject(node)) return false;
 				if (hasCombiner(node)) return true;
@@ -1043,10 +869,7 @@ export namespace ProviderTransform {
 				for (const [key, value] of Object.entries(obj)) {
 					if (key === "enum" && Array.isArray(value)) {
 						result[key] = value.map((v) => String(v));
-						if (
-							result.type === "integer" ||
-							result.type === "number"
-						) {
+						if (result.type === "integer" || result.type === "number") {
 							result.type = "string";
 						}
 					} else if (typeof value === "object" && value !== null) {
@@ -1056,31 +879,18 @@ export namespace ProviderTransform {
 					}
 				}
 
-				if (
-					result.type === "object" &&
-					result.properties &&
-					Array.isArray(result.required)
-				) {
-					result.required = result.required.filter(
-						(field: any) => field in result.properties,
-					);
+				if (result.type === "object" && result.properties && Array.isArray(result.required)) {
+					result.required = result.required.filter((field: any) => field in result.properties);
 				}
 
 				if (result.type === "array" && !hasCombiner(result)) {
 					if (result.items == null) result.items = {};
-					if (
-						isPlainObject(result.items) &&
-						!hasSchemaIntent(result.items)
-					) {
+					if (isPlainObject(result.items) && !hasSchemaIntent(result.items)) {
 						result.items.type = "string";
 					}
 				}
 
-				if (
-					result.type &&
-					result.type !== "object" &&
-					!hasCombiner(result)
-				) {
+				if (result.type && result.type !== "object" && !hasCombiner(result)) {
 					delete result.properties;
 					delete result.required;
 				}

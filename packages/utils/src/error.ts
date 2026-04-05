@@ -8,7 +8,10 @@ export abstract class NamedError extends Error {
 		name: Name,
 		data: Data,
 	): {
-		new (data: z.input<Data>, options?: ErrorOptions): NamedError & {
+		new (
+			data: z.input<Data>,
+			options?: ErrorOptions,
+		): NamedError & {
 			readonly name: Name;
 			readonly data: z.input<Data>;
 		};
