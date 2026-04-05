@@ -42,14 +42,18 @@
         "typescript": "catalog:",
       },
     },
-    "packages/jai": {
-      "name": "@jayden/jai",
+    "packages/coding-agent": {
+      "name": "@jayden/jai-coding-agent",
       "version": "0.0.0",
+      "bin": {
+        "jai": "dist/cli.js",
+      },
       "dependencies": {
         "@jayden/jai-agent": "workspace:*",
         "@jayden/jai-ai": "workspace:*",
         "@jayden/jai-session": "workspace:*",
         "@jayden/jai-utils": "workspace:*",
+        "zod": "catalog:",
       },
       "devDependencies": {
         "typescript": "catalog:",
@@ -116,11 +120,11 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.4.9", "", { "os": "win32", "cpu": "x64" }, "sha512-NS4g/2G9SoQ4ktKtz31pvyc/rmgzlcIDCGU/zWbmHJAqx6gcRj2gj5Q/guXhoWTzCUaQZDIqiCQXHS7BcGYc0w=="],
 
-    "@jayden/jai": ["@jayden/jai@workspace:packages/jai"],
-
     "@jayden/jai-agent": ["@jayden/jai-agent@workspace:packages/agent"],
 
     "@jayden/jai-ai": ["@jayden/jai-ai@workspace:packages/ai"],
+
+    "@jayden/jai-coding-agent": ["@jayden/jai-coding-agent@workspace:packages/coding-agent"],
 
     "@jayden/jai-session": ["@jayden/jai-session@workspace:packages/session"],
 

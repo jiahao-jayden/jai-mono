@@ -1,0 +1,25 @@
+{
+	"name": "@jayden/jai-coding-agent",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"bin": {
+		"jai": "dist/cli.js"
+	},
+	"scripts": {
+		"build": "tsc --build",
+		"dev": "tsc --build --watch"
+	},
+	"dependencies": {
+		"@jayden/jai-ai": "workspace:*",
+		"@jayden/jai-agent": "workspace:*",
+		"@jayden/jai-session": "workspace:*",
+		"@jayden/jai-utils": "workspace:*",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"typescript": "catalog:"
+	}
+}

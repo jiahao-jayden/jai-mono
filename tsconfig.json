@@ -11,8 +11,8 @@
 			"@jayden/jai-agent/*": ["./packages/agent/src/*"],
 			"@jayden/jai-session": ["./packages/session/src/index.ts"],
 			"@jayden/jai-session/*": ["./packages/session/src/*"],
-			"@jayden/jai": ["./packages/jai/src/index.ts"],
-			"@jayden/jai/*": ["./packages/jai/src/*"]
+			"@jayden/jai-coding-agent": ["./packages/coding-agent/src/index.ts"],
+			"@jayden/jai-coding-agent/*": ["./packages/coding-agent/src/*"]
 		}
 	},
 	"include": ["packages/*/src/**/*", "packages/*/test/**/*"],
