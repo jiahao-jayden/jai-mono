@@ -8,7 +8,6 @@ export type SessionHeader = {
 	sessionId: string;
 	timestamp: number;
 	cwd?: string;
-	model?: string;
 };
 
 export type MessageEntry = {
@@ -36,7 +35,6 @@ export type SessionInfo = {
 	lastActivity: number;
 	messageCount: number;
 	cwd?: string;
-	model?: string;
 };
 
 export interface SessionStore {

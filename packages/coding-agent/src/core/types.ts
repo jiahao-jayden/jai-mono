@@ -1,13 +1,25 @@
 import type { AgentTool } from "@jayden/jai-agent";
 import type { ModelInfo } from "@jayden/jai-ai";
+import type { Workspace } from "./workspace.js";
+
+/**
+ * 完全解析后的 prompt 内容。
+ * 由 Workspace.loadPrompts() 产出，传入 buildSystemPrompt()。
+ */
+export type ResolvedPrompts = {
+	static: string;
+	soul: string;
+	agents: string;
+	tools: string;
+};
 
 /**
  * AgentSession 的配置。
  * 创建 session 时传入，整个生命周期不可变。
  */
 export type SessionConfig = {
-	/** 工作目录 — 决定文件操作的根路径、system prompt 里的 cwd */
-	cwd: string;
+	/** workspace 实例 — 由外部创建，注入到 session */
+	workspace: Workspace;
 	/** 模型信息 — ModelInfo 对象或 "provider/model" 字符串 */
 	model: ModelInfo | string;
 	/** 恢复已有 session 时传入 sessionId，否则新建 */

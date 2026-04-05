@@ -3,13 +3,11 @@ import type { AssistantMessage, Message, UserMessage } from "@jayden/jai-ai";
 import { buildSessionContext, JsonlSessionStore, type SessionStore } from "@jayden/jai-session";
 import { NamedError } from "@jayden/jai-utils";
 import z from "zod";
-import { buildSystemPrompt, type SystemPromptContext } from "./system-prompt.js";
-import type { SessionConfig, SessionState } from "./types.js";
-import { Workspace } from "./workspace.js";
+import { buildSystemPrompt } from "./system-prompt.js";
+import type { ResolvedPrompts, SessionConfig, SessionState } from "./types.js";
 
 export class AgentSession {
 	private config: SessionConfig;
-	private workspace: Workspace;
 	private store!: SessionStore;
 	private eventBus = new EventBus();
 	private abortController: AbortController | null = null;
@@ -20,18 +18,21 @@ export class AgentSession {
 
 	private externalListeners: Array<(event: AgentEvent) => void> = [];
 
-	private workspacePrompts: SystemPromptContext["workspace"] = {};
+	private prompts!: ResolvedPrompts;
 
 	private constructor(config: SessionConfig) {
 		this.config = config;
 		this.sessionId = config.sessionId ?? crypto.randomUUID();
-		this.workspace = Workspace.create({ cwd: config.cwd });
 	}
 
 	static async create(config: SessionConfig): Promise<AgentSession> {
 		const session = new AgentSession(config);
 		await session.init();
 		return session;
+	}
+
+	private get workspace() {
+		return this.config.workspace;
 	}
 
 	private async init(): Promise<void> {
@@ -46,12 +47,11 @@ export class AgentSession {
 			version: 1,
 			sessionId: this.sessionId,
 			timestamp: Date.now(),
-			cwd: this.config.cwd,
-			model: typeof this.config.model === "string" ? this.config.model : this.config.model.config.model,
+			cwd: this.workspace.cwd,
 		});
 		this.lastEntryId = headerId;
 
-		this.workspacePrompts = await this.loadWorkspacePrompts();
+		this.prompts = await this.workspace.loadPrompts();
 		this.wireEventPipeline();
 	}
 
@@ -72,10 +72,10 @@ export class AgentSession {
 
 			const messages = buildSessionContext(this.store, this.lastEntryId);
 
-			const systemPrompt = await buildSystemPrompt({
-				cwd: this.config.cwd,
+			const systemPrompt = buildSystemPrompt({
+				cwd: this.workspace.cwd,
 				tools: this.config.tools,
-				workspace: this.workspacePrompts,
+				prompts: this.prompts,
 			});
 
 			const result = await runAgentLoop({
@@ -123,17 +123,6 @@ export class AgentSession {
 				listener(event);
 			}
 		});
-	}
-
-	private async loadWorkspacePrompts(): Promise<SystemPromptContext["workspace"]> {
-		const ws = this.workspace;
-		const [soul, agents, tools] = await Promise.all([
-			ws.resolvePromptFile("SOUL.md"),
-			ws.resolvePromptFile("AGENTS.md"),
-			ws.resolvePromptFile("TOOLS.md"),
-		]);
-
-		return { soul, agents, tools };
 	}
 
 	private async persistMessage(message: Message): Promise<void> {

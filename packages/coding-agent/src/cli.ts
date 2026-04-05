@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { AgentSession } from "./core/agent-session.js";
+import { SettingsManager } from "./core/settings.js";
+import { Workspace } from "./core/workspace.js";
 import { createDefaultTools } from "./tools/index.js";
 
 async function main() {
@@ -10,12 +12,14 @@ async function main() {
 		process.exit(1);
 	}
 
-	const cwd = process.cwd();
+	const workspace = Workspace.create({ cwd: process.cwd() });
+	const settings = await SettingsManager.load(workspace);
 
 	const session = await AgentSession.create({
-		cwd,
-		model: "anthropic/claude-sonnet-4-20250514",
-		tools: createDefaultTools(cwd),
+		workspace,
+		model: settings.get("defaultModel"),
+		tools: createDefaultTools(workspace.cwd),
+		maxIterations: settings.get("maxIterations"),
 	});
 
 	session.onEvent((event) => {

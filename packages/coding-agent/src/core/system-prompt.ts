@@ -1,5 +1,5 @@
-import { join } from "node:path";
 import type { AgentTool } from "@jayden/jai-agent";
+import type { ResolvedPrompts } from "./types.js";
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -11,21 +11,8 @@ type PromptSection = {
 export type SystemPromptContext = {
 	cwd: string;
 	tools: AgentTool[];
-	/** 用户 workspace 里的覆盖文件内容 */
-	workspace?: {
-		soul?: string;
-		agents?: string;
-		tools?: string;
-	};
+	prompts: ResolvedPrompts;
 };
-
-// ── Built-in prompts ──────────────────────────────────────
-
-const PROMPT_DIR = join(import.meta.dirname, "prompt");
-
-async function loadBuiltin(name: string): Promise<string> {
-	return Bun.file(join(PROMPT_DIR, name)).text();
-}
 
 // ── Section builders ─────────────────────────────────────
 
@@ -59,19 +46,13 @@ function environment(cwd: string): PromptSection {
 
 // ── Main ──────────────────────────────────────────────────
 
-export async function buildSystemPrompt(ctx: SystemPromptContext): Promise<string> {
+export function buildSystemPrompt(ctx: SystemPromptContext): string {
 	const sections: PromptSection[] = [
-		// 1. STATIC — 内置，不可覆盖
-		{ name: "static", content: await loadBuiltin("STATIC.md") },
-		// 2. SOUL — 用户可覆盖
-		{ name: "soul", content: ctx.workspace?.soul ?? (await loadBuiltin("SOUL.md")) },
-		// 3. AGENTS — 用户可覆盖
-		{ name: "agents", content: ctx.workspace?.agents ?? (await loadBuiltin("AGENTS.md")) },
-		// 4. TOOLS — 用户可覆盖
-		{ name: "tools_config", content: ctx.workspace?.tools ?? (await loadBuiltin("TOOLS.md")) },
-		// 5. Tool descriptions — 代码生成
+		{ name: "static", content: ctx.prompts.static },
+		{ name: "agents", content: ctx.prompts.agents },
+		{ name: "tools_config", content: ctx.prompts.tools },
+		{ name: "soul", content: ctx.prompts.soul },
 		toolDescriptions(ctx.tools),
-		// 6. Environment — 代码生成
 		environment(ctx.cwd),
 	];
 

@@ -33,6 +33,20 @@ describe("Workspace directories", () => {
 	});
 });
 
+// ── Settings paths ──────────────────────────────────────────
+
+describe("settings paths", () => {
+	test("globalSettingsPath", () => {
+		const ws = Workspace.create({ cwd: PROJECT_A, home: FAKE_HOME });
+		expect(ws.globalSettingsPath).toBe(join(FAKE_HOME, ".jai", "settings.json"));
+	});
+
+	test("projectSettingsPath", () => {
+		const ws = Workspace.create({ cwd: PROJECT_A, home: FAKE_HOME });
+		expect(ws.projectSettingsPath).toBe(join(PROJECT_A, ".jai", "settings.json"));
+	});
+});
+
 // ── sessionPath ──────────────────────────────────────────────
 
 describe("sessionPath", () => {
@@ -43,38 +57,51 @@ describe("sessionPath", () => {
 	});
 });
 
-// ── resolvePromptFile ────────────────────────────────────────
+// ── loadPrompts ──────────────────────────────────────────────
 
-describe("resolvePromptFile", () => {
-	test("returns project-level file when it exists", async () => {
+describe("loadPrompts", () => {
+	test("project-level takes priority over global and builtin", async () => {
 		writeFileSync(join(PROJECT_A, ".jai", "SOUL.md"), "project soul");
 		writeFileSync(join(FAKE_HOME, ".jai", "SOUL.md"), "global soul");
 
 		const ws = Workspace.create({ cwd: PROJECT_A, home: FAKE_HOME });
-		const content = await ws.resolvePromptFile("SOUL.md");
-		expect(content).toBe("project soul");
+		const prompts = await ws.loadPrompts();
+		expect(prompts.soul).toBe("project soul");
 	});
 
 	test("falls back to global when project file missing", async () => {
 		writeFileSync(join(FAKE_HOME, ".jai", "AGENTS.md"), "global agents");
 
 		const ws = Workspace.create({ cwd: PROJECT_A, home: FAKE_HOME });
-		const content = await ws.resolvePromptFile("AGENTS.md");
-		expect(content).toBe("global agents");
+		const prompts = await ws.loadPrompts();
+		expect(prompts.agents).toBe("global agents");
 	});
 
-	test("returns undefined when both missing", async () => {
+	test("falls back to builtin when both missing", async () => {
 		const ws = Workspace.create({ cwd: PROJECT_B, home: FAKE_HOME });
-		const content = await ws.resolvePromptFile("TOOLS.md");
-		expect(content).toBeUndefined();
+		const prompts = await ws.loadPrompts();
+		expect(prompts.soul).toContain("我是谁");
+		expect(prompts.agents).toBeTruthy();
+		expect(prompts.tools).toBeTruthy();
 	});
 
-	test("project-level takes priority over global", async () => {
-		writeFileSync(join(PROJECT_A, ".jai", "TOOLS.md"), "project tools");
-		writeFileSync(join(FAKE_HOME, ".jai", "TOOLS.md"), "global tools");
+	test("static is always builtin (never overridden)", async () => {
+		writeFileSync(join(PROJECT_A, ".jai", "STATIC.md"), "hacked static");
 
 		const ws = Workspace.create({ cwd: PROJECT_A, home: FAKE_HOME });
-		const content = await ws.resolvePromptFile("TOOLS.md");
-		expect(content).toBe("project tools");
+		const prompts = await ws.loadPrompts();
+		expect(prompts.static).toContain("安全规则");
+		expect(prompts.static).not.toContain("hacked");
+	});
+
+	test("loads all files in parallel", async () => {
+		writeFileSync(join(PROJECT_A, ".jai", "SOUL.md"), "custom soul");
+		writeFileSync(join(FAKE_HOME, ".jai", "TOOLS.md"), "custom tools");
+
+		const ws = Workspace.create({ cwd: PROJECT_A, home: FAKE_HOME });
+		const prompts = await ws.loadPrompts();
+		expect(prompts.soul).toBe("custom soul");
+		expect(prompts.tools).toBe("custom tools");
+		expect(prompts.static).toContain("安全规则");
 	});
 });

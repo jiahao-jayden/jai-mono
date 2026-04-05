@@ -1,5 +1,6 @@
 export { AgentSession } from "./core/agent-session.js";
+export { type ResolvedSettings, type Settings, SettingsManager } from "./core/settings.js";
 export { buildSystemPrompt } from "./core/system-prompt.js";
-export type { SessionConfig, SessionState } from "./core/types.js";
+export type { ResolvedPrompts, SessionConfig, SessionState } from "./core/types.js";
 export { Workspace, type WorkspaceConfig } from "./core/workspace.js";
 export { createDefaultTools } from "./tools/index.js";
