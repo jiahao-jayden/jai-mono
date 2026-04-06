@@ -1,0 +1,27 @@
+{
+	"compilerOptions": {
+		"jsx": "react-jsx",
+		"target": "ESNext",
+		"module": "ESNext",
+		"lib": ["dom", "dom.iterable", "ESNext"],
+		"strict": true,
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"forceConsistentCasingInFileNames": true,
+		"moduleResolution": "bundler",
+		"resolveJsonModule": true,
+		"sourceMap": true,
+		"paths": {
+			"@/*": ["./src/*"]
+		},
+		"outDir": "dist"
+	},
+	"include": [
+		"src/**/*",
+		"electron/**/*",
+		"*.mts",
+		"env.d.ts",
+		"forge.env.d.ts",
+		"forge.config.ts"
+	]
+}

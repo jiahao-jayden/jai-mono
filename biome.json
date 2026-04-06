@@ -27,10 +27,16 @@
 		"includes": [
 			"packages/*/src/**/*.ts",
 			"packages/*/test/**/*.ts",
-			"!**/node_modules/**/*",
-			"!**/dist/**/*",
-			"!**/models-snapshot.json",
-			"!**/test/*.test.ts"
+			"app/*/src/**/*.{ts,tsx}",
+			"app/*/electron/**/*.ts"
+		],
+		"ignores": [
+			"**/node_modules/**",
+			"**/dist/**",
+			"**/models-snapshot.json",
+			"**/test/*.test.ts",
+			"**/components/ui/**",
+			"**/components/ai-elements/**"
 		]
 	}
 }

@@ -4,7 +4,7 @@
 	"version": "1.0.0",
 	"description": "Jai Mono is a monorepo for Jayden's projects.",
 	"workspaces": {
-		"packages": ["packages/*"],
+		"packages": ["packages/*", "app/*"],
 		"catalog": {
 			"typescript": "^5.8",
 			"zod": "^4.3.6"
