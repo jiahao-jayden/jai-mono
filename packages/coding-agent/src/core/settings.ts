@@ -33,12 +33,16 @@ const ProviderModelSchema = z.object({
 		.optional(),
 });
 
+const ProviderModelEntry = z.union([z.string(), ProviderModelSchema]).transform((v) =>
+	typeof v === "string" ? { id: v } : v,
+);
+
 export const ProviderConfigSchema = z.object({
 	enabled: z.boolean().default(true),
 	api_key: z.string().optional(),
 	api_base: z.string(),
 	api_format: z.enum(["anthropic", "openai", "openai-compatible", "google"]),
-	models: z.array(ProviderModelSchema),
+	models: z.array(ProviderModelEntry),
 });
 
 export type ProviderModel = z.infer<typeof ProviderModelSchema>;
