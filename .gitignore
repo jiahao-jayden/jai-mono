@@ -5,6 +5,7 @@ dist/
 *.tsbuildinfo
 .claude/
 .vite/
+.jai/
 # packages/*/node_modules/
 packages/*/dist/
 packages/*/dist-chrome/
