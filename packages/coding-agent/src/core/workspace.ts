@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ResolvedPrompts } from "./types.js";
@@ -32,8 +33,13 @@ export class Workspace {
 		this.globalDir = join(home, CONFIG_DIR);
 	}
 
-	static create(config: WorkspaceConfig): Workspace {
-		return new Workspace(config.cwd, config.home ?? homedir());
+	static async create(config: WorkspaceConfig): Promise<Workspace> {
+		const ws = new Workspace(config.cwd, config.home ?? homedir());
+		await Promise.all([
+			mkdir(ws.globalDir, { recursive: true }),
+			mkdir(ws.projectDir, { recursive: true }),
+		]);
+		return ws;
 	}
 
 	// ── Settings ──────────────────────────────────────────

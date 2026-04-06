@@ -1,8 +1,4 @@
-import type {
-	SessionEntry,
-	SessionInfo,
-	SessionStore,
-} from "../types.js";
+import type { SessionEntry, SessionInfo, SessionStore } from "../types.js";
 
 export abstract class BaseSessionStore implements SessionStore {
 	protected entries: SessionEntry[] = [];

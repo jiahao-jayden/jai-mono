@@ -10,7 +10,7 @@ import { render } from "ink";
 import { App } from "./App.js";
 
 async function main() {
-	const workspace = Workspace.create({ cwd: process.cwd() });
+	const workspace = await Workspace.create({ cwd: process.cwd() });
 	const settings = await SettingsManager.load(workspace);
 
 	for (const [key, value] of Object.entries(settings.get("env"))) {

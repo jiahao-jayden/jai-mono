@@ -78,16 +78,16 @@ export class AgentSession {
 				prompts: this.prompts,
 			});
 
-		const result = await runAgentLoop({
-			messages,
-			model: this.config.model,
-			baseURL: this.config.baseURL,
-			systemPrompt,
-			tools: this.config.tools,
-			signal: this.abortController.signal,
-			events: this.eventBus,
-			maxIterations: this.config.maxIterations,
-		});
+			const result = await runAgentLoop({
+				messages,
+				model: this.config.model,
+				baseURL: this.config.baseURL,
+				systemPrompt,
+				tools: this.config.tools,
+				signal: this.abortController.signal,
+				events: this.eventBus,
+				maxIterations: this.config.maxIterations,
+			});
 
 			this.state = "idle";
 			return result;
