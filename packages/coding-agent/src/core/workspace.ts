@@ -35,10 +35,7 @@ export class Workspace {
 
 	static async create(config: WorkspaceConfig): Promise<Workspace> {
 		const ws = new Workspace(config.cwd, config.home ?? homedir());
-		await Promise.all([
-			mkdir(ws.globalDir, { recursive: true }),
-			mkdir(ws.projectDir, { recursive: true }),
-		]);
+		await Promise.all([mkdir(ws.globalDir, { recursive: true }), mkdir(ws.projectDir, { recursive: true })]);
 		return ws;
 	}
 

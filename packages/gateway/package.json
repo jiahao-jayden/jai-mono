@@ -1,0 +1,29 @@
+{
+	"name": "@jayden/jai-gateway",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"bin": {
+		"jai-gateway": "dist/cli.js"
+	},
+	"scripts": {
+		"build": "tsc --build",
+		"dev": "tsc --build --watch",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@jayden/jai-ai": "workspace:*",
+		"@jayden/jai-agent": "workspace:*",
+		"@jayden/jai-coding-agent": "workspace:*",
+		"@jayden/jai-session": "workspace:*",
+		"hono": "^4"
+	},
+	"devDependencies": {
+		"typescript": "catalog:"
+	}
+}

@@ -33,9 +33,9 @@ const ProviderModelSchema = z.object({
 		.optional(),
 });
 
-const ProviderModelEntry = z.union([z.string(), ProviderModelSchema]).transform((v) =>
-	typeof v === "string" ? { id: v } : v,
-);
+const ProviderModelEntry = z
+	.union([z.string(), ProviderModelSchema])
+	.transform((v) => (typeof v === "string" ? { id: v } : v));
 
 export const ProviderConfigSchema = z.object({
 	enabled: z.boolean().default(true),

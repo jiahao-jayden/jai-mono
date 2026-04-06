@@ -1,2 +1,2 @@
 export { NamedError } from "./error";
-export { parseModelId, type ParsedModelId } from "./model-id";
+export { type ParsedModelId, parseModelId } from "./model-id";

@@ -1,6 +1,6 @@
 import { type AgentEvent, EventBus, runAgentLoop } from "@jayden/jai-agent";
 import type { AssistantMessage, Message, UserMessage } from "@jayden/jai-ai";
-import { buildSessionContext, JsonlSessionStore, type SessionStore } from "@jayden/jai-session";
+import { buildSessionContext, JsonlSessionStore, type MessageEntry, type SessionStore } from "@jayden/jai-session";
 import { NamedError } from "@jayden/jai-utils";
 import z from "zod";
 import { buildSystemPrompt } from "./system-prompt.js";
@@ -95,6 +95,19 @@ export class AgentSession {
 			this.state = this.abortController?.signal.aborted ? "aborted" : "idle";
 			throw err;
 		}
+	}
+
+	getSessionId(): string {
+		return this.sessionId;
+	}
+
+	getState(): SessionState {
+		return this.state;
+	}
+
+	getMessages(): Message[] {
+		const entries = this.store.getBranch(this.lastEntryId);
+		return entries.filter((e): e is MessageEntry => e.type === "message").map((e) => e.message);
 	}
 
 	abort(): void {
