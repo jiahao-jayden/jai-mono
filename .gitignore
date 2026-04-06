@@ -4,6 +4,7 @@ dist/
 .DS_Store
 *.tsbuildinfo
 .claude/
+.vite/
 # packages/*/node_modules/
 packages/*/dist/
 packages/*/dist-chrome/

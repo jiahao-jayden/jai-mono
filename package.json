@@ -13,7 +13,8 @@
 	"scripts": {
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
-		"format": "biome format --write ."
+		"format": "biome format --write .",
+    "desktop:dev": "cd app/desktop && bun dev"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.9",
