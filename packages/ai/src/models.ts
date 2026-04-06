@@ -1,4 +1,4 @@
-import { NamedError } from "@jayden/jai-utils";
+import { NamedError, parseModelId } from "@jayden/jai-utils";
 import z from "zod";
 import registry from "./models-snapshot.json" with { type: "json" };
 import type { ModelCapabilities, ModelCost, ModelLimit, ResolvedModel } from "./types.js";
@@ -88,13 +88,12 @@ export function listModels(providerId: string): string[] {
 // Overrides let caller inject apiKey, baseURL, etc.
 
 export function resolveModelInfo(modelId: string, overrides?: { apiKey?: string; baseURL?: string }): ResolvedModel {
-	const slash = modelId.indexOf("/");
-	if (slash === -1) {
+	const parsed = parseModelId(modelId);
+	if (!parsed) {
 		throw new ModelNotFoundError(`Invalid modelId format: "${modelId}". Expected "provider/model".`);
 	}
 
-	const providerId = modelId.slice(0, slash);
-	const modelName = modelId.slice(slash + 1);
+	const { provider: providerId, model: modelName } = parsed;
 
 	const provider = data[providerId];
 	if (!provider) {
@@ -129,6 +128,43 @@ export function resolveModelInfo(modelId: string, overrides?: { apiKey?: string;
 	};
 }
 
+// ── Cross-provider lookup ────────────────────────────────────
+
+export type ModelMatch = {
+	providerId: string;
+	model: RegistryModel;
+};
+
+/**
+ * 在所有注册表 provider 中按 model ID 精确查找。
+ * 用于中转站场景：model ID（如 "claude-sonnet-4-6"）存在于原始 provider 下。
+ */
+export function findModelAcrossProviders(modelId: string): ModelMatch | undefined {
+	for (const [providerId, provider] of Object.entries(data)) {
+		const model = provider.models[modelId];
+		if (model) return { providerId, model };
+	}
+	return undefined;
+}
+
+/**
+ * 在所有注册表 provider 中按 family 模糊匹配。
+ * 优先返回 release_date 最新的模型。
+ */
+export function findModelByFamily(family: string): ModelMatch | undefined {
+	let best: ModelMatch | undefined;
+
+	for (const [providerId, provider] of Object.entries(data)) {
+		for (const model of Object.values(provider.models)) {
+			if (model.family !== family) continue;
+			if (!best || (model.release_date ?? "") > (best.model.release_date ?? "")) {
+				best = { providerId, model };
+			}
+		}
+	}
+	return best;
+}
+
 // ── Internal helpers ─────────────────────────────────────────
 
 function resolveApiKey(provider: RegistryProvider): string | undefined {
@@ -139,7 +175,7 @@ function resolveApiKey(provider: RegistryProvider): string | undefined {
 	return undefined;
 }
 
-function extractCapabilities(model: RegistryModel): ModelCapabilities {
+export function extractCapabilities(model: RegistryModel): ModelCapabilities {
 	const input = model.modalities?.input ?? ["text"];
 	const output = model.modalities?.output ?? ["text"];
 
@@ -161,7 +197,7 @@ function extractCapabilities(model: RegistryModel): ModelCapabilities {
 	};
 }
 
-function extractLimit(model: RegistryModel): ModelLimit {
+export function extractLimit(model: RegistryModel): ModelLimit {
 	return {
 		context: model.limit?.context ?? 128000,
 		output: model.limit?.output ?? 4096,

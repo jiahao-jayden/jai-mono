@@ -1,5 +1,9 @@
-export type { RegistryModel, RegistryProvider, SdkType } from "./models.js";
+export type { ModelMatch, RegistryModel, RegistryProvider, SdkType } from "./models.js";
 export {
+	extractCapabilities,
+	extractLimit,
+	findModelAcrossProviders,
+	findModelByFamily,
 	getModel,
 	getProvider,
 	listModels,

@@ -19,8 +19,7 @@ async function main() {
 
 	const session = await AgentSession.create({
 		workspace,
-		model: settings.get("model"),
-		baseURL: settings.get("baseURL"),
+		model: settings.resolveModel(),
 		tools: createDefaultTools(workspace.cwd),
 		maxIterations: settings.get("maxIterations"),
 	});

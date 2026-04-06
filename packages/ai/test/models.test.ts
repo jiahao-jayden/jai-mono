@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
 	ModelNotFoundError,
+	findModelAcrossProviders,
+	findModelByFamily,
 	getModel,
 	getProvider,
 	listModels,
@@ -206,6 +208,57 @@ describe("resolveModelInfo", () => {
 		expect(() =>
 			resolveModelInfo("anthropic/claude-nonexistent-999"),
 		).toThrow();
+	});
+});
+
+// ── Cross-provider lookup ────────────────────────────────────
+
+describe("findModelAcrossProviders", () => {
+	test("finds claude-sonnet-4-20250514 across all providers", () => {
+		const match = findModelAcrossProviders("claude-sonnet-4-20250514");
+		expect(match).toBeDefined();
+		expect(match!.providerId).toBe("anthropic");
+		expect(match!.model.id).toBe("claude-sonnet-4-20250514");
+		expect(match!.model.tool_call).toBe(true);
+	});
+
+	test("finds gpt-4o across all providers", () => {
+		const match = findModelAcrossProviders("gpt-4o");
+		expect(match).toBeDefined();
+		expect(match!.providerId).toBe("openai");
+	});
+
+	test("returns undefined for nonexistent model", () => {
+		expect(findModelAcrossProviders("nonexistent-model-xyz")).toBeUndefined();
+	});
+});
+
+describe("findModelByFamily", () => {
+	test("finds model by claude-sonnet family", () => {
+		const match = findModelByFamily("claude-sonnet");
+		expect(match).toBeDefined();
+		expect(match!.model.family).toBe("claude-sonnet");
+	});
+
+	test("finds model by gpt family", () => {
+		const match = findModelByFamily("gpt");
+		expect(match).toBeDefined();
+		expect(match!.model.family).toBe("gpt");
+	});
+
+	test("returns undefined for nonexistent family", () => {
+		expect(findModelByFamily("nonexistent-family-xyz")).toBeUndefined();
+	});
+
+	test("prefers latest release_date", () => {
+		const match = findModelByFamily("claude-sonnet");
+		expect(match).toBeDefined();
+		if (match!.model.release_date) {
+			const earlier = findModelAcrossProviders("claude-sonnet-4-20250514");
+			if (earlier?.model.release_date) {
+				expect(match!.model.release_date >= earlier.model.release_date).toBe(true);
+			}
+		}
 	});
 });
 

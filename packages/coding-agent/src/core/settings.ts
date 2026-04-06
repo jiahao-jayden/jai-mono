@@ -1,6 +1,50 @@
+import type { ModelInfo } from "@jayden/jai-ai";
 import { NamedError } from "@jayden/jai-utils";
 import z from "zod";
+import { resolveSettingsModel } from "./model-resolver.js";
 import type { Workspace } from "./workspace.js";
+
+// ── Provider config schemas ─────────────────────────────────
+
+const ModalitySchema = z.object({
+	text: z.boolean().optional(),
+	image: z.boolean().optional(),
+	audio: z.boolean().optional(),
+	video: z.boolean().optional(),
+	pdf: z.boolean().optional(),
+});
+
+const ProviderModelSchema = z.object({
+	id: z.string(),
+	capabilities: z
+		.object({
+			reasoning: z.boolean().optional(),
+			toolCall: z.boolean().optional(),
+			structuredOutput: z.boolean().optional(),
+			input: ModalitySchema.optional(),
+			output: ModalitySchema.optional(),
+		})
+		.optional(),
+	limit: z
+		.object({
+			context: z.number(),
+			output: z.number(),
+		})
+		.optional(),
+});
+
+export const ProviderConfigSchema = z.object({
+	enabled: z.boolean().default(true),
+	api_key: z.string().optional(),
+	api_base: z.string(),
+	api_format: z.enum(["anthropic", "openai", "openai-compatible", "google"]),
+	models: z.array(ProviderModelSchema),
+});
+
+export type ProviderModel = z.infer<typeof ProviderModelSchema>;
+export type ProviderSettings = z.infer<typeof ProviderConfigSchema>;
+
+// ── Settings schema ─────────────────────────────────────────
 
 const SettingsSchema = z.object({
 	/** 默认模型，格式 "provider/model" */
@@ -15,9 +59,11 @@ const SettingsSchema = z.object({
 	language: z.string(),
 	/** 注入到 session 的环境变量 */
 	env: z.record(z.string(), z.string()),
+	/** 自定义 provider 配置 */
+	providers: z.record(z.string(), ProviderConfigSchema).optional(),
 });
 
-const PartialSettingsSchema = SettingsSchema.partial().strict();
+const PartialSettingsSchema = SettingsSchema.partial();
 
 export type Settings = z.infer<typeof PartialSettingsSchema>;
 export type ResolvedSettings = z.infer<typeof SettingsSchema>;
@@ -100,6 +146,10 @@ export class SettingsManager {
 
 	getAll(): Readonly<ResolvedSettings> {
 		return this.resolved;
+	}
+
+	resolveModel(): ModelInfo | string {
+		return resolveSettingsModel(this.resolved);
 	}
 
 	withOverrides(overrides: Settings): SettingsManager {
