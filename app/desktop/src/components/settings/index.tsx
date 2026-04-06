@@ -3,8 +3,8 @@ import { ChevronRight, Info, Layers, Settings2 } from "lucide-react";
 import { useState } from "react";
 import { gateway } from "@/lib/gateway-client";
 import { cn } from "@/lib/utils";
-import { Titlebar } from "../shell/titlebar";
 import type { ModelInfo } from "@/types/chat";
+import { Titlebar } from "../shell/titlebar";
 
 const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
 
@@ -67,16 +67,12 @@ function GeneralPane({ config }: { config?: Record<string, unknown> }) {
 	const provider = config?.provider as string | undefined;
 	return (
 		<section>
-			<h2 className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest mb-2.5">
-				通用
-			</h2>
+			<h2 className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest mb-2.5">通用</h2>
 			<div className="rounded-xl border bg-card divide-y divide-border/60">
 				<SettingsRow label="默认模型" value={model ?? "未配置"} />
 				<SettingsRow label="Provider" value={provider ?? "未配置"} />
 			</div>
-			<p className="text-[12px] text-muted-foreground/50 mt-3">
-				编辑 ~/.jai/settings.toml 以修改配置
-			</p>
+			<p className="text-[12px] text-muted-foreground/50 mt-3">编辑 ~/.jai/settings.toml 以修改配置</p>
 		</section>
 	);
 }
@@ -91,9 +87,7 @@ function ModelPane() {
 
 	return (
 		<section>
-			<h2 className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest mb-2.5">
-				可用模型
-			</h2>
+			<h2 className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest mb-2.5">可用模型</h2>
 			{isLoading ? (
 				<p className="text-[13px] text-muted-foreground/50">加载中...</p>
 			) : models.length === 0 ? (
@@ -106,16 +100,12 @@ function ModelPane() {
 							className="flex items-center justify-between px-4 py-3 first:rounded-t-xl last:rounded-b-xl"
 						>
 							<span className="text-[13px] font-medium">{m.id.split("/").pop()}</span>
-							<span className="text-[12px] text-muted-foreground/60 font-mono">
-								{m.provider}
-							</span>
+							<span className="text-[12px] text-muted-foreground/60 font-mono">{m.provider}</span>
 						</div>
 					))}
 				</div>
 			)}
-			<p className="text-[12px] text-muted-foreground/50 mt-3">
-				编辑 ~/.jai/settings.toml 以添加或修改模型配置
-			</p>
+			<p className="text-[12px] text-muted-foreground/50 mt-3">编辑 ~/.jai/settings.toml 以添加或修改模型配置</p>
 		</section>
 	);
 }
@@ -123,9 +113,7 @@ function ModelPane() {
 function AboutPane() {
 	return (
 		<section>
-			<h2 className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest mb-2.5">
-				关于
-			</h2>
+			<h2 className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest mb-2.5">关于</h2>
 			<div className="rounded-xl border bg-card px-4 py-4">
 				<p className="text-base font-semibold tracking-tight">JAI</p>
 				<p className="text-[13px] text-muted-foreground mt-0.5">Version 0.0.0</p>

@@ -1,6 +1,4 @@
 import { ChevronDown } from "lucide-react";
-import type { ModelInfo } from "@/types/chat";
-import { cn } from "@/lib/utils";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -9,6 +7,8 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+import type { ModelInfo } from "@/types/chat";
 
 interface ModelSelectorProps {
 	models: ModelInfo[];
@@ -55,9 +55,7 @@ export function ModelSelector({ models, currentModelId, onSelect }: ModelSelecto
 								className={cn("text-xs", m.id === currentModelId && "font-medium text-foreground")}
 							>
 								<span className="truncate">{m.id.split("/").pop()}</span>
-								{m.id === currentModelId && (
-									<span className="ml-auto text-primary text-[10px]">✓</span>
-								)}
+								{m.id === currentModelId && <span className="ml-auto text-primary text-[10px]">✓</span>}
 							</DropdownMenuItem>
 						))}
 					</div>

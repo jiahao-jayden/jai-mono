@@ -1,12 +1,8 @@
 import { useRef } from "react";
-import type { useGatewayChat } from "@/hooks/use-gateway-chat";
 import { useCursorEffect } from "@/hooks/use-cursor-effect";
+import type { useGatewayChat } from "@/hooks/use-gateway-chat";
 import { cn } from "@/lib/utils";
-import {
-	Conversation,
-	ConversationContent,
-	ConversationEmptyState,
-} from "../ai-elements/conversation";
+import { Conversation, ConversationContent, ConversationEmptyState } from "../ai-elements/conversation";
 import { MessageResponse } from "../ai-elements/message";
 import {
 	PromptInput,
@@ -48,9 +44,7 @@ export function ChatArea({ chat }: { chat: ReturnType<typeof useGatewayChat> }) 
 	};
 
 	return (
-		<main
-			className={cn("flex-1 flex flex-col h-full relative overflow-hidden border border-border/50")}
-		>
+		<main className={cn("flex-1 flex flex-col h-full relative overflow-hidden border border-border/50")}>
 			<ChatHeader status={status} />
 
 			<Conversation className="flex-1">
@@ -68,9 +62,7 @@ export function ChatArea({ chat }: { chat: ReturnType<typeof useGatewayChat> }) 
 								<MessageAssistant key={message.id}>
 									{message.parts.map((part, i) => {
 										if (part.type === "text" && part.text) {
-											return (
-												<MessageResponse key={`${message.id}-${i}`}>{part.text}</MessageResponse>
-											);
+											return <MessageResponse key={`${message.id}-${i}`}>{part.text}</MessageResponse>;
 										}
 										if (part.type === "tool_call" && part.toolCall) {
 											return (
@@ -109,11 +101,7 @@ export function ChatArea({ chat }: { chat: ReturnType<typeof useGatewayChat> }) 
 						</PromptInputBody>
 						<PromptInputFooter>
 							<PromptInputTools>
-								<ModelSelector
-									models={availableModels}
-									currentModelId={currentModelId}
-									onSelect={setModel}
-								/>
+								<ModelSelector models={availableModels} currentModelId={currentModelId} onSelect={setModel} />
 							</PromptInputTools>
 							<PromptInputSubmit status={status} onStop={stop} />
 						</PromptInputFooter>

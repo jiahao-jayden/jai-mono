@@ -1,11 +1,4 @@
-import {
-	app,
-	BrowserWindow,
-	type IpcMainInvokeEvent,
-	ipcMain,
-	session,
-	systemPreferences,
-} from "electron";
+import { app, BrowserWindow, type IpcMainInvokeEvent, ipcMain, session, systemPreferences } from "electron";
 import { gatewayProcess } from "./gateway-process";
 import { createMainWindow, createSettingsWindow } from "./windows";
 
@@ -23,7 +16,10 @@ app.whenReady().then(() => {
 
 	session.defaultSession.webRequest.onBeforeSendHeaders(
 		externalFilter,
-		(details: Electron.OnBeforeSendHeadersListenerDetails, callback: (response: Electron.BeforeSendResponse) => void) => {
+		(
+			details: Electron.OnBeforeSendHeadersListenerDetails,
+			callback: (response: Electron.BeforeSendResponse) => void,
+		) => {
 			const headers = { ...details.requestHeaders };
 			delete headers["Origin"];
 			callback({ requestHeaders: headers });
@@ -32,7 +28,10 @@ app.whenReady().then(() => {
 
 	session.defaultSession.webRequest.onHeadersReceived(
 		externalFilter,
-		(details: Electron.OnHeadersReceivedListenerDetails, callback: (response: Electron.HeadersReceivedResponse) => void) => {
+		(
+			details: Electron.OnHeadersReceivedListenerDetails,
+			callback: (response: Electron.HeadersReceivedResponse) => void,
+		) => {
 			const headers: Record<string, string[]> = { ...details.responseHeaders } as Record<string, string[]>;
 			for (const key of Object.keys(headers)) {
 				if (key.toLowerCase().startsWith("access-control-")) {

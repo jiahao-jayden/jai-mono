@@ -6,11 +6,7 @@ import type { ChatMessage, ChatMessagePart, ChatStatus, ModelInfo } from "@/type
 
 type SetMessages = React.Dispatch<React.SetStateAction<ChatMessage[]>>;
 
-function appendTextToParts(
-	parts: ChatMessagePart[],
-	partType: "text" | "reasoning",
-	text: string,
-): ChatMessagePart[] {
+function appendTextToParts(parts: ChatMessagePart[], partType: "text" | "reasoning", text: string): ChatMessagePart[] {
 	const last = parts[parts.length - 1];
 	if (last?.type === partType) {
 		return [...parts.slice(0, -1), { ...last, text: (last.text ?? "") + text }];
@@ -188,10 +184,7 @@ export function useGatewayChat() {
 			try {
 				const sid = await ensureSession();
 
-				setMessages((prev) => [
-					...prev,
-					{ id: nanoid(), role: "user", parts: [{ type: "text", text }] },
-				]);
+				setMessages((prev) => [...prev, { id: nanoid(), role: "user", parts: [{ type: "text", text }] }]);
 
 				currentAssistantIdRef.current = null;
 				setStatus("streaming");

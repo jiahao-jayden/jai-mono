@@ -23,8 +23,8 @@ import {
 	SidebarMenuItem,
 	useSidebar,
 } from "@/components/ui/sidebar";
-import { windowClient } from "@/lib/ipc-client";
 import { gateway } from "@/lib/gateway-client";
+import { windowClient } from "@/lib/ipc-client";
 import type { SessionInfo } from "@/types/chat";
 import { Titlebar, ToolbarButton } from "./titlebar";
 
@@ -118,13 +118,9 @@ export function AppSidebar({ activeSessionId, onNewChat, onSelectSession }: AppS
 											<SidebarMenuButton
 												className="p-3!"
 												isActive={s.sessionId === activeSessionId}
-												onClick={() =>
-													onSelectSession?.({ sessionId: s.sessionId })
-												}
+												onClick={() => onSelectSession?.({ sessionId: s.sessionId })}
 											>
-												<span className="truncate">
-													{s.sessionId.slice(0, 8)}...
-												</span>
+												<span className="truncate">{s.sessionId.slice(0, 8)}...</span>
 											</SidebarMenuButton>
 											<SidebarMenuAction
 												showOnHover
@@ -172,9 +168,7 @@ export function AppSidebar({ activeSessionId, onNewChat, onSelectSession }: AppS
 				<DialogContent className="max-w-sm">
 					<DialogHeader>
 						<DialogTitle>删除对话</DialogTitle>
-						<DialogDescription>
-							确定要删除此对话吗？此操作不可撤销。
-						</DialogDescription>
+						<DialogDescription>确定要删除此对话吗？此操作不可撤销。</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="ghost" onClick={() => setDeleteTarget(null)}>

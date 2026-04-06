@@ -10,10 +10,7 @@ interface MessageToolCallProps {
 	className?: string;
 }
 
-const STATUS_CONFIG: Record<
-	string,
-	{ label: string; className: string }
-> = {
+const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
 	completed: {
 		label: "COMPLETED",
 		className: "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400",
@@ -33,29 +30,17 @@ const STATUS_CONFIG: Record<
 };
 
 export function MessageToolCall({ title, status, output, className }: MessageToolCallProps) {
-	const cfg = status ? STATUS_CONFIG[status] ?? STATUS_CONFIG.pending : STATUS_CONFIG.pending;
+	const cfg = status ? (STATUS_CONFIG[status] ?? STATUS_CONFIG.pending) : STATUS_CONFIG.pending;
 
 	return (
-		<div
-			className={cn(
-				"w-full rounded-xl border border-border/60 bg-card overflow-hidden",
-				className,
-			)}
-		>
+		<div className={cn("w-full rounded-xl border border-border/60 bg-card overflow-hidden", className)}>
 			{/* Tool header */}
 			<div className="flex items-center gap-3 px-4 py-3">
 				<div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center shrink-0">
 					<Search className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
 				</div>
-				<span className="text-sm font-medium text-foreground flex-1 min-w-0 truncate">
-					{title}
-				</span>
-				<span
-					className={cn(
-						"text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded",
-						cfg.className,
-					)}
-				>
+				<span className="text-sm font-medium text-foreground flex-1 min-w-0 truncate">{title}</span>
+				<span className={cn("text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded", cfg.className)}>
 					{cfg.label}
 				</span>
 			</div>
@@ -63,9 +48,7 @@ export function MessageToolCall({ title, status, output, className }: MessageToo
 			{/* Terminal output */}
 			{output && (
 				<div className="border-t border-border/40 bg-zinc-950 dark:bg-zinc-950 px-4 py-3 mx-0">
-					<pre className="text-[12px] font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed">
-						{output}
-					</pre>
+					<pre className="text-[12px] font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed">{output}</pre>
 				</div>
 			)}
 		</div>

@@ -4,13 +4,7 @@ import { WindowControls } from "./window-controls";
 const isMac = window.desktop?.isMac ?? false;
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
-export function Titlebar({
-	children,
-	className,
-}: {
-	children?: React.ReactNode;
-	className?: string;
-}) {
+export function Titlebar({ children, className }: { children?: React.ReactNode; className?: string }) {
 	return (
 		<div className={cn("flex h-12 items-center gap-0.5 px-3", className)}>
 			{isMac && (
@@ -23,11 +17,7 @@ export function Titlebar({
 	);
 }
 
-export function ToolbarButton({
-	children,
-	className,
-	...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+export function ToolbarButton({ children, className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
 	return (
 		<button
 			className={cn(

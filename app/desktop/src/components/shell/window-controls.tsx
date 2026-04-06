@@ -100,12 +100,7 @@ function TrafficButton({
 function CloseIcon() {
 	return (
 		<svg width="6" height="6" viewBox="0 0 6 6" fill="none" role="img" aria-label="close">
-			<path
-				d="M0.5 0.5L5.5 5.5M5.5 0.5L0.5 5.5"
-				stroke="rgba(0,0,0,0.65)"
-				strokeWidth="1.1"
-				strokeLinecap="round"
-			/>
+			<path d="M0.5 0.5L5.5 5.5M5.5 0.5L0.5 5.5" stroke="rgba(0,0,0,0.65)" strokeWidth="1.1" strokeLinecap="round" />
 		</svg>
 	);
 }
@@ -121,12 +116,7 @@ function MinimizeIcon() {
 function FullscreenIcon() {
 	return (
 		<svg width="6" height="6" viewBox="0 0 8 8" fill="none" role="img" aria-label="fullscreen">
-			<path
-				d="M1 7L3.5 4.5M7 1L4.5 3.5"
-				stroke="rgba(0,0,0,0.65)"
-				strokeWidth="1.1"
-				strokeLinecap="round"
-			/>
+			<path d="M1 7L3.5 4.5M7 1L4.5 3.5" stroke="rgba(0,0,0,0.65)" strokeWidth="1.1" strokeLinecap="round" />
 			<path
 				d="M1 4.5V7H3.5M7 3.5V1H4.5"
 				stroke="rgba(0,0,0,0.65)"

@@ -18,12 +18,7 @@ function StatusBadge({ status }: { status: ChatStatus }) {
 					: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
 			)}
 		>
-			<span
-				className={cn(
-					"h-1.5 w-1.5 rounded-full",
-					isActive ? "bg-emerald-500 animate-pulse" : "bg-zinc-400",
-				)}
-			/>
+			<span className={cn("h-1.5 w-1.5 rounded-full", isActive ? "bg-emerald-500 animate-pulse" : "bg-zinc-400")} />
 			{isActive ? "Agent Active" : "Ready"}
 		</div>
 	);

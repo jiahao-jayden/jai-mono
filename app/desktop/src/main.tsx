@@ -10,8 +10,6 @@ const isSettings = window.location.hash === "#/settings";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
 	<React.StrictMode>
-		<QueryClientProvider client={queryClient}>
-			{isSettings ? <Settings /> : <App />}
-		</QueryClientProvider>
+		<QueryClientProvider client={queryClient}>{isSettings ? <Settings /> : <App />}</QueryClientProvider>
 	</React.StrictMode>,
 );
