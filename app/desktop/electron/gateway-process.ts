@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 
 const DEFAULT_PORT = 18900;
 

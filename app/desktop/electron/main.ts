@@ -21,7 +21,7 @@ app.whenReady().then(() => {
 			callback: (response: Electron.BeforeSendResponse) => void,
 		) => {
 			const headers = { ...details.requestHeaders };
-			delete headers["Origin"];
+			delete headers.Origin;
 			callback({ requestHeaders: headers });
 		},
 	);

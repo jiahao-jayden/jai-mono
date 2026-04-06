@@ -1,5 +1,3 @@
-import type { AgentTool } from "@jayden/jai-agent";
-import type { ModelInfo } from "@jayden/jai-ai";
 import { AgentSession, createDefaultTools, SettingsManager, Workspace } from "@jayden/jai-coding-agent";
 
 export type GatewaySessionInfo = {

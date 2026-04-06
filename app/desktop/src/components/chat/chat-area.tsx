@@ -61,13 +61,14 @@ export function ChatArea({ chat }: { chat: ReturnType<typeof useGatewayChat> }) 
 							return (
 								<MessageAssistant key={message.id}>
 									{message.parts.map((part, i) => {
+										const key = `${message.id}-${i}`;
 										if (part.type === "text" && part.text) {
-											return <MessageResponse key={`${message.id}-${i}`}>{part.text}</MessageResponse>;
+											return <MessageResponse key={key}>{part.text}</MessageResponse>;
 										}
 										if (part.type === "tool_call" && part.toolCall) {
 											return (
 												<MessageToolCall
-													key={`${message.id}-${i}`}
+													key={key}
 													title={part.toolCall.name}
 													status={part.toolCall.status ?? "pending"}
 												/>

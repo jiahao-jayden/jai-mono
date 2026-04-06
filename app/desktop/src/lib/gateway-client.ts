@@ -81,68 +81,64 @@ export const gateway = {
 		return res.json();
 	},
 
-	sendMessage(
+	async sendMessage(
 		sessionId: string,
 		text: string,
 		onEvent: (event: SSEEvent) => void,
 		signal?: AbortSignal,
 	): Promise<void> {
-		return new Promise(async (resolve, reject) => {
-			try {
-				const res = await gatewayFetch(`/sessions/${sessionId}/message`, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ text }),
-					signal,
-				});
+		try {
+			const res = await gatewayFetch(`/sessions/${sessionId}/message`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ text }),
+				signal,
+			});
 
-				if (!res.ok) {
-					const body = await res.text().catch(() => "");
-					return reject(new Error(`Send message failed: ${res.status} ${body}`));
-				}
+			if (!res.ok) {
+				const body = await res.text().catch(() => "");
+				throw new Error(`Send message failed: ${res.status} ${body}`);
+			}
 
-				const reader = res.body?.getReader();
-				if (!reader) return reject(new Error("No response body"));
+			const reader = res.body?.getReader();
+			if (!reader) throw new Error("No response body");
 
-				const decoder = new TextDecoder();
-				let buffer = "";
+			const decoder = new TextDecoder();
+			let buffer = "";
 
-				while (true) {
-					const { done, value } = await reader.read();
-					if (done) break;
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
 
-					buffer += decoder.decode(value, { stream: true });
-					const lines = buffer.split("\n");
-					buffer = lines.pop() ?? "";
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split("\n");
+				buffer = lines.pop() ?? "";
 
-					for (const line of lines) {
-						if (line.startsWith("data:")) {
-							const data = line.slice(5).trim();
-							if (!data) continue;
-							try {
-								const event = JSON.parse(data) as SSEEvent;
-								onEvent(event);
-							} catch {}
-						}
-					}
-				}
-
-				if (buffer.startsWith("data:")) {
-					const data = buffer.slice(5).trim();
-					if (data) {
+				for (const line of lines) {
+					if (line.startsWith("data:")) {
+						const data = line.slice(5).trim();
+						if (!data) continue;
 						try {
 							const event = JSON.parse(data) as SSEEvent;
 							onEvent(event);
 						} catch {}
 					}
 				}
-
-				resolve();
-			} catch (err) {
-				if (signal?.aborted) return resolve();
-				reject(err);
 			}
-		});
+
+			if (buffer.startsWith("data:")) {
+				const data = buffer.slice(5).trim();
+				if (data) {
+					try {
+						const event = JSON.parse(data) as SSEEvent;
+						onEvent(event);
+					} catch {}
+				}
+			}
+		} catch (err) {
+			if (signal?.aborted) return;
+			throw err;
+		}
 	},
 };
 

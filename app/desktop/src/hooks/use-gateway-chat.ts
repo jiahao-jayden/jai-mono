@@ -125,6 +125,8 @@ export function useGatewayChat() {
 	const currentAssistantIdRef = useRef<string | null>(null);
 	const messageIdMapRef = useRef(new Map<string, string>());
 	const abortRef = useRef<AbortController | null>(null);
+	const currentModelIdRef = useRef(currentModelId);
+	currentModelIdRef.current = currentModelId;
 
 	useEffect(() => {
 		(async () => {
@@ -132,7 +134,7 @@ export function useGatewayChat() {
 				await gateway.waitForReady();
 				const { models } = await gateway.getModels();
 				setAvailableModels(models);
-				if (models.length > 0 && !currentModelId) {
+				if (models.length > 0 && !currentModelIdRef.current) {
 					setCurrentModelId(models[0].id);
 				}
 			} catch (err) {
