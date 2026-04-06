@@ -1,8 +1,22 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execSync, spawn } from "node:child_process";
+import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import { app } from "electron";
 
 const DEFAULT_PORT = 18900;
+
+function findBun(): string {
+	const candidates = [resolve(homedir(), ".bun", "bin", "bun"), "/opt/homebrew/bin/bun", "/usr/local/bin/bun"];
+	for (const p of candidates) {
+		if (existsSync(p)) return p;
+	}
+	try {
+		return execSync("which bun", { encoding: "utf-8" }).trim();
+	} catch {
+		return "bun";
+	}
+}
 
 export class GatewayProcess {
 	private child: ChildProcess | null = null;
@@ -25,9 +39,17 @@ export class GatewayProcess {
 		if (this.child) return;
 
 		const workspaceCwd = cwd ?? resolve(homedir(), ".jai", "workspace");
-		const cliPath = resolve(__dirname, "../../packages/gateway/src/cli.ts");
+		if (!existsSync(workspaceCwd)) {
+			mkdirSync(workspaceCwd, { recursive: true });
+		}
 
-		this.child = spawn("bun", ["run", cliPath, "--port", String(this._port)], {
+		const appRoot = app.getAppPath();
+		const cliPath = resolve(appRoot, "../../packages/gateway/src/cli.ts");
+		const bunPath = findBun();
+
+		console.log("[gateway] cli:", cliPath, "bun:", bunPath, "cwd:", workspaceCwd);
+
+		this.child = spawn(bunPath, ["run", cliPath, "--port", String(this._port)], {
 			cwd: workspaceCwd,
 			stdio: ["ignore", "pipe", "pipe"],
 			env: { ...process.env },

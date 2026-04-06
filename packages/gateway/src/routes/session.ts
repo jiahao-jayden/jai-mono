@@ -73,10 +73,12 @@ export function sessionRoutes(manager: SessionManager): Hono {
 				stream.writeSSE({ data: "", event: "heartbeat", id: "" }).catch(() => {});
 			}, 15_000);
 
+			let errorEmitted = false;
 			const pendingWrites: Array<Promise<void>> = [];
 			const unsubscribe = session.onEvent((event: AgentEvent) => {
 				const aguiEvents = adapter.translate(event);
 				for (const e of aguiEvents) {
+					if (e.type === "RUN_ERROR") errorEmitted = true;
 					pendingWrites.push(stream.writeSSE({ data: JSON.stringify(e) }));
 				}
 			});
@@ -85,11 +87,14 @@ export function sessionRoutes(manager: SessionManager): Hono {
 				await session.chat(body.text);
 				await Promise.all(pendingWrites);
 			} catch (err) {
-				const errorEvent = {
-					type: "RUN_ERROR" as const,
-					message: err instanceof Error ? err.message : String(err),
-				};
-				await stream.writeSSE({ data: JSON.stringify(errorEvent) });
+				await Promise.all(pendingWrites);
+				if (!errorEmitted) {
+					const errorEvent = {
+						type: "RUN_ERROR" as const,
+						message: err instanceof Error ? err.message : String(err),
+					};
+					await stream.writeSSE({ data: JSON.stringify(errorEvent) });
+				}
 			} finally {
 				clearInterval(heartbeatInterval);
 				unsubscribe();

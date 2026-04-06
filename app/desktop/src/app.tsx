@@ -1,15 +1,15 @@
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { useGatewayChat } from "@/hooks/use-gateway-chat";
+import { useChat } from "@/hooks/use-chat";
 import { ChatArea } from "./components/chat/chat-area";
 import { AppSidebar } from "./components/shell/app-sidebar";
 
 function App(): React.JSX.Element {
-	const chat = useGatewayChat();
+	useChat();
 
 	return (
 		<SidebarProvider className="h-svh overflow-hidden bg-background">
-			<AppSidebar activeSessionId={chat.sessionId} onNewChat={chat.newChat} onSelectSession={chat.loadSession} />
-			<ChatArea chat={chat} />
+			<AppSidebar />
+			<ChatArea />
 		</SidebarProvider>
 	);
 }

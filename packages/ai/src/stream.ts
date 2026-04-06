@@ -136,13 +136,8 @@ export async function* streamMessage(input: StreamMessageInput): AsyncGenerator<
 			}
 
 			case "error": {
-				const error =
-					chunk.error instanceof NamedError
-						? chunk.error
-						: new NamedError.Unknown({
-								message: chunk.error instanceof Error ? chunk.error.message : String(chunk.error),
-							});
-				yield { type: "error", error };
+				const message = chunk.error instanceof Error ? chunk.error.message : String(chunk.error);
+				yield { type: "error", error: new Error(message, { cause: chunk.error }) };
 				return;
 			}
 		}

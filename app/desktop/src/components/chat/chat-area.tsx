@@ -1,7 +1,6 @@
-import { useRef } from "react";
 import { useCursorEffect } from "@/hooks/use-cursor-effect";
-import type { useGatewayChat } from "@/hooks/use-gateway-chat";
 import { cn } from "@/lib/utils";
+import { useChatStore } from "@/stores/chat";
 import { Conversation, ConversationContent, ConversationEmptyState } from "../ai-elements/conversation";
 import { MessageResponse } from "../ai-elements/message";
 import {
@@ -19,23 +18,9 @@ import { MessageToolCall } from "./message-tool-call";
 import { MessageUser } from "./message-user";
 import { ModelSelector } from "./model-selector";
 
-export function ChatArea({ chat }: { chat: ReturnType<typeof useGatewayChat> }) {
+export function ChatArea() {
 	const { wrapperRef, cursorRef, resetCursor, handlers } = useCursorEffect();
-	const { messages, sendMessage, status, stop, availableModels, currentModelId, setModel } = chat;
-
-	// Track message timestamps keyed by message ID
-	const timestampsRef = useRef<Map<string, Date>>(new Map());
-	const prevCountRef = useRef(0);
-
-	if (messages.length > prevCountRef.current) {
-		for (let i = prevCountRef.current; i < messages.length; i++) {
-			const msg = messages[i];
-			if (!timestampsRef.current.has(msg.id)) {
-				timestampsRef.current.set(msg.id, new Date());
-			}
-		}
-		prevCountRef.current = messages.length;
-	}
+	const { messages, sendMessage, status, stop, availableModels, currentModelId, setModel } = useChatStore();
 
 	const handleSubmit = (message: PromptInputMessage) => {
 		if (!message.text.trim()) return;

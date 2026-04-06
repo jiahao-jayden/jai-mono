@@ -7,8 +7,6 @@ import {
 	type ToolCall,
 	type ToolResultMessage,
 } from "@jayden/jai-ai";
-import { NamedError } from "@jayden/jai-utils";
-import z from "zod";
 import type { EventBus } from "./events.js";
 import type {
 	AfterToolCallContext,
@@ -181,22 +179,27 @@ async function applyAfterHook(
 
 async function streamAndCollect(input: StreamMessageInput, events?: EventBus): Promise<AssistantMessage> {
 	let assistantMessage: AssistantMessage | undefined;
+	let streamError: Error | undefined;
 
 	for await (const event of streamMessage(input)) {
-		// 透传所有 stream 事件给外部
 		events?.emit({ type: "stream", event });
 
-		// 在 message_end 里拿到完整的 AssistantMessage
 		if (event.type === "message_end") {
 			assistantMessage = event.message;
 		}
+
+		if (event.type === "error") {
+			streamError = event.error instanceof Error ? event.error : new Error(String(event.error));
+		}
+	}
+
+	if (streamError) {
+		throw streamError;
 	}
 
 	if (!assistantMessage) {
-		throw new StreamWithoutMessageError("Stream ended without producing a message");
+		throw new Error("Stream ended without producing a message");
 	}
 
 	return assistantMessage;
 }
-
-const StreamWithoutMessageError = NamedError.create("StreamWithoutMessageError", z.string());
