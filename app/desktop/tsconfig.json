@@ -1,15 +1,13 @@
 {
+	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
 		"jsx": "react-jsx",
 		"target": "ESNext",
 		"module": "ESNext",
 		"lib": ["dom", "dom.iterable", "ESNext"],
-		"strict": true,
-		"esModuleInterop": true,
-		"allowSyntheticDefaultImports": true,
-		"forceConsistentCasingInFileNames": true,
-		"moduleResolution": "bundler",
-		"resolveJsonModule": true,
+		"noEmit": true,
+		"declaration": false,
+		"declarationMap": false,
 		"sourceMap": true,
 		"paths": {
 			"@/*": ["./src/*"]
