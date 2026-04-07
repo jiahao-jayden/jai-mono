@@ -115,9 +115,8 @@ export function AppSidebar() {
 													<DropdownMenuItem
 														variant="destructive"
 														onClick={() => setDeleteTarget(s)}
-														className="text-destructive! focus:bg-destructive/10! focus:text-destructive!"
 													>
-														<HugeiconsIcon icon={Delete03Icon} className="w-4 h-4 text-destructive" />
+														<HugeiconsIcon icon={Delete03Icon} className="w-4 h-4" />
 														删除
 													</DropdownMenuItem>
 												</DropdownMenuContent>
