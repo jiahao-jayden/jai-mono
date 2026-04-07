@@ -75,7 +75,7 @@ export function ChatArea() {
 							<div ref={wrapperRef} className="relative w-full">
 								<div
 									ref={cursorRef}
-									className="absolute w-0.75 rounded-full bg-primary opacity-0 z-20 pointer-events-none"
+									className="absolute w-0.75 rounded-full bg-primary-2 opacity-0 z-20 pointer-events-none"
 									style={{ height: "18px", top: "12px", left: "12px" }}
 								/>
 								<PromptInputTextarea

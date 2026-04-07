@@ -127,10 +127,7 @@ export function AppSidebar() {
 				<SidebarFooter className="border-t border-sidebar-foreground/6">
 					<SidebarMenu>
 						<SidebarMenuItem>
-							<SidebarMenuButton
-								className="text-sidebar-foreground/50 hover:text-sidebar-foreground"
-								onClick={() => windowClient.openSettings()}
-							>
+							<SidebarMenuButton onClick={() => windowClient.openSettings()}>
 								<Settings2 className="w-4 h-4" />
 								<span>Settings</span>
 							</SidebarMenuButton>
