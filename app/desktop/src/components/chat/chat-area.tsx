@@ -1,3 +1,5 @@
+import { ArrowUpIcon, SquareIcon } from "lucide-react";
+import panda_logo_1 from "@/assets/icons/chat-area/panda-1.svg";
 import { useCursorEffect } from "@/hooks/use-cursor-effect";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chat";
@@ -12,6 +14,7 @@ import {
 	PromptInputTextarea,
 	PromptInputTools,
 } from "../ai-elements/prompt-input";
+import { Spinner } from "../ui/spinner";
 import { ChatHeader } from "./chat-header";
 import { MessageAssistant } from "./message-assistant";
 import { MessageToolCall } from "./message-tool-call";
@@ -66,12 +69,16 @@ export function ChatArea() {
 
 			<div
 				className={cn(
-					messages.length === 0 && "w-full h-full flex items-center justify-center pt-10 pb-4 px-4",
-					messages.length > 0 &&
-						"absolute bottom-0 w-full pt-10 pb-4 px-4 bg-linear-to-t from-background via-background/95 to-transparent pointer-events-none",
+					"px-4",
+					messages.length === 0 && "w-full h-full flex flex-col items-center justify-center ",
+					messages.length > 0 && "absolute bottom-0 w-full pointer-events-none",
 				)}
 			>
-				<div className="max-w-3xl w-full mx-auto pointer-events-auto **:data-[slot=input-group]:rounded-2xl **:data-[slot=input-group]:border-primary/10 [&_[data-slot=input-group]:focus-within]:border-primary/20 [&_[data-slot=input-group]:focus-within]:ring-0">
+				<div className="flex flex-col items-center justify-center gap-4 my-10">
+					<img src={panda_logo_1} alt="JAI" className="w-64 object-contain" />
+					<p className="text-center text-xl">Hi! Jayden, JAI is here to help you.</p>
+				</div>
+				<div className="max-w-3xl w-full mx-auto pointer-events-auto **:data-[slot=input-group]:rounded-2xl **:data-[slot=input-group]:border-primary/10 **:data-[slot=input-group]:transition-[border-color] **:data-[slot=input-group]:duration-200 [&_[data-slot=input-group]:hover]:border-primary/20 [&_[data-slot=input-group]:focus-within]:border-primary/20 [&_[data-slot=input-group]:focus-within]:ring-0">
 					<PromptInput onSubmit={handleSubmit}>
 						<PromptInputBody>
 							<div ref={wrapperRef} className="relative w-full">
@@ -91,7 +98,15 @@ export function ChatArea() {
 							<PromptInputTools>
 								<ModelSelector models={availableModels} currentModelId={currentModelId} onSelect={setModel} />
 							</PromptInputTools>
-							<PromptInputSubmit status={status} onStop={stop} />
+							<PromptInputSubmit status={status} onStop={stop} className="bg-primary-2 rounded-full">
+								{status === "submitted" ? (
+									<Spinner />
+								) : status === "streaming" ? (
+									<SquareIcon className="size-4" />
+								) : (
+									<ArrowUpIcon className="size-4" />
+								)}
+							</PromptInputSubmit>
 						</PromptInputFooter>
 					</PromptInput>
 				</div>
