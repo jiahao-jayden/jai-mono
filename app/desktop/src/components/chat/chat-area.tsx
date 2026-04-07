@@ -1,7 +1,7 @@
 import { useCursorEffect } from "@/hooks/use-cursor-effect";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chat";
-import { Conversation, ConversationContent, ConversationEmptyState } from "../ai-elements/conversation";
+import { Conversation, ConversationContent } from "../ai-elements/conversation";
 import { MessageResponse } from "../ai-elements/message";
 import {
 	PromptInput,
@@ -34,48 +34,50 @@ export function ChatArea() {
 
 			<Conversation className="flex-1">
 				<ConversationContent className="max-w-3xl mx-auto w-full pb-32 gap-5">
-					{messages.length === 0 ? (
-						<ConversationEmptyState />
-					) : (
-						messages.map((message) => {
-							if (message.role === "user") {
-								const text = message.parts.find((p) => p.type === "text")?.text ?? "";
-								return <MessageUser key={message.id}>{text}</MessageUser>;
-							}
+					{messages.map((message) => {
+						if (message.role === "user") {
+							const text = message.parts.find((p) => p.type === "text")?.text ?? "";
+							return <MessageUser key={message.id}>{text}</MessageUser>;
+						}
 
-							return (
-								<MessageAssistant key={message.id}>
-									{message.parts.map((part, i) => {
-										const key = `${message.id}-${i}`;
-										if (part.type === "text" && part.text) {
-											return <MessageResponse key={key}>{part.text}</MessageResponse>;
-										}
-										if (part.type === "tool_call" && part.toolCall) {
-											return (
-												<MessageToolCall
-													key={key}
-													title={part.toolCall.name}
-													status={part.toolCall.status ?? "pending"}
-												/>
-											);
-										}
-										return null;
-									})}
-								</MessageAssistant>
-							);
-						})
-					)}
+						return (
+							<MessageAssistant key={message.id}>
+								{message.parts.map((part, i) => {
+									const key = `${message.id}-${i}`;
+									if (part.type === "text" && part.text) {
+										return <MessageResponse key={key}>{part.text}</MessageResponse>;
+									}
+									if (part.type === "tool_call" && part.toolCall) {
+										return (
+											<MessageToolCall
+												key={key}
+												title={part.toolCall.name}
+												status={part.toolCall.status ?? "pending"}
+											/>
+										);
+									}
+									return null;
+								})}
+							</MessageAssistant>
+						);
+					})}
 				</ConversationContent>
 			</Conversation>
 
-			<div className="absolute bottom-0 w-full pt-10 pb-4 px-4 md:px-24 bg-linear-to-t from-background via-background/95 to-transparent pointer-events-none">
-				<div className="max-w-3xl mx-auto pointer-events-auto">
+			<div
+				className={cn(
+					messages.length === 0 && "w-full h-full flex items-center justify-center pt-10 pb-4 px-4",
+					messages.length > 0 &&
+						"absolute bottom-0 w-full pt-10 pb-4 px-4 bg-linear-to-t from-background via-background/95 to-transparent pointer-events-none",
+				)}
+			>
+				<div className="max-w-3xl w-full mx-auto pointer-events-auto **:data-[slot=input-group]:rounded-2xl **:data-[slot=input-group]:border-primary/10 [&_[data-slot=input-group]:focus-within]:border-primary/20 [&_[data-slot=input-group]:focus-within]:ring-0">
 					<PromptInput onSubmit={handleSubmit}>
 						<PromptInputBody>
 							<div ref={wrapperRef} className="relative w-full">
 								<div
 									ref={cursorRef}
-									className="absolute w-0.75 rounded-full bg-primary-2 opacity-0 z-20 pointer-events-none"
+									className="absolute w-0.5 rounded-full bg-primary-2 opacity-0 z-20 pointer-events-none"
 									style={{ height: "18px", top: "12px", left: "12px" }}
 								/>
 								<PromptInputTextarea
@@ -92,10 +94,6 @@ export function ChatArea() {
 							<PromptInputSubmit status={status} onStop={stop} />
 						</PromptInputFooter>
 					</PromptInput>
-
-					<p className="text-center text-[11px] text-muted-foreground/50 mt-2.5 select-none">
-						JAI can make mistakes. Verify important information.
-					</p>
 				</div>
 			</div>
 		</main>
