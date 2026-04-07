@@ -1,4 +1,6 @@
-import { PanelLeftIcon, PenLine, Search, Settings2, X } from "lucide-react";
+import { Delete03Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { MoreHorizontalIcon, PanelLeftIcon, PenLine, Search, Settings2, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,6 +11,12 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
 	Sidebar,
 	SidebarContent,
@@ -63,7 +71,7 @@ export function AppSidebar() {
 					</Titlebar>
 				</SidebarHeader>
 
-				<SidebarContent className="px-2">
+				<SidebarContent className="px-1">
 					<SidebarGroup className="gap-3">
 						<div className="px-2 pt-1 text-base font-serif italic tracking-tight text-sidebar-foreground/80">
 							JAI
@@ -91,22 +99,29 @@ export function AppSidebar() {
 									{sorted.map((s) => (
 										<SidebarMenuItem key={s.sessionId}>
 											<SidebarMenuButton
-												className="p-3!"
+												className="rounded-md! px-4! group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-accent-foreground cursor-pointer"
 												isActive={s.sessionId === activeSessionId}
 												onClick={() => loadSession({ sessionId: s.sessionId })}
 											>
 												<span className="truncate">{s.sessionId.slice(0, 8)}...</span>
 											</SidebarMenuButton>
-											<SidebarMenuAction
-												showOnHover
-												className="text-sidebar-foreground/40 hover:text-destructive"
-												onClick={(e) => {
-													e.stopPropagation();
-													setDeleteTarget(s);
-												}}
-											>
-												<X className="w-3.5 h-3.5" />
-											</SidebarMenuAction>
+											<DropdownMenu>
+												<DropdownMenuTrigger asChild>
+													<SidebarMenuAction showOnHover className="cursor-pointer">
+														<MoreHorizontalIcon className="w-4 h-4 text-sidebar-foreground/30 hover:text-sidebar-foreground" />
+													</SidebarMenuAction>
+												</DropdownMenuTrigger>
+												<DropdownMenuContent side="bottom" align="center">
+													<DropdownMenuItem
+														variant="destructive"
+														onClick={() => setDeleteTarget(s)}
+														className="text-destructive! focus:bg-destructive/10! focus:text-destructive!"
+													>
+														<HugeiconsIcon icon={Delete03Icon} className="w-4 h-4 text-destructive" />
+														删除
+													</DropdownMenuItem>
+												</DropdownMenuContent>
+											</DropdownMenu>
 										</SidebarMenuItem>
 									))}
 								</SidebarMenu>
