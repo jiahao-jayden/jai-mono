@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -9,12 +10,17 @@ import { defineConfig } from "vite";
 function bunCompat(): Plugin {
 	const bunCacheDir = path.resolve(import.meta.dirname, "../../node_modules/.bun");
 	let extraNodePaths: string[] = [];
+	const fallbackResolvers = new Map<string, NodeJS.Require>();
 
 	if (fs.existsSync(bunCacheDir)) {
 		extraNodePaths = fs
 			.readdirSync(bunCacheDir)
 			.map((entry) => path.join(bunCacheDir, entry, "node_modules"))
 			.filter((p) => fs.existsSync(p));
+
+		for (const nodePath of extraNodePaths) {
+			fallbackResolvers.set(nodePath, createRequire(path.join(nodePath, "__bun-compat__.cjs")));
+		}
 	}
 
 	return {
@@ -27,17 +33,37 @@ function bunCompat(): Plugin {
 				},
 			};
 		},
-		resolveId(source) {
+		async resolveId(source, importer) {
 			if (source.startsWith(".") || source.startsWith("/") || source.startsWith("\0")) return null;
-			const pkgName = source.startsWith("@") ? source.split("/").slice(0, 2).join("/") : source.split("/")[0];
-			const subpath = source.slice(pkgName.length);
 
-			for (const np of extraNodePaths) {
-				const candidate = path.join(np, pkgName);
-				if (fs.existsSync(candidate)) {
-					return { id: subpath ? path.join(candidate, subpath) : candidate, external: false };
+			const resolved = await this.resolve(source, importer, { skipSelf: true });
+			if (resolved) return resolved;
+
+			const resolvers: NodeJS.Require[] = [];
+
+			if (importer && !importer.startsWith("\0")) {
+				const importerPath = importer.split("?")[0];
+				if (importerPath) {
+					try {
+						resolvers.push(createRequire(fs.realpathSync(importerPath)));
+					} catch {
+						// Ignore unresolved virtual or non-file importers and fall back to Bun store resolvers.
+					}
 				}
 			}
+
+			for (const resolver of fallbackResolvers.values()) {
+				resolvers.push(resolver);
+			}
+
+			for (const resolver of resolvers) {
+				try {
+					return { id: resolver.resolve(source), external: false };
+				} catch {
+					// Try the next resolver.
+				}
+			}
+
 			return null;
 		},
 	};
