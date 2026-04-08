@@ -1,5 +1,6 @@
 import { Delete03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { SessionInfo } from "@jayden/jai-gateway";
 import { MoreHorizontalIcon, PanelLeftIcon, PenLine, Search, Settings2, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,6 @@ import {
 import { useSessions } from "@/hooks/use-sessions";
 import { windowClient } from "@/lib/ipc-client";
 import { useChatStore } from "@/stores/chat";
-import type { SessionInfo } from "@jayden/jai-gateway";
 import { Titlebar, ToolbarButton } from "./titlebar";
 
 export function AppSidebar() {
@@ -112,10 +112,7 @@ export function AppSidebar() {
 													</SidebarMenuAction>
 												</DropdownMenuTrigger>
 												<DropdownMenuContent side="bottom" align="center">
-													<DropdownMenuItem
-														variant="destructive"
-														onClick={() => setDeleteTarget(s)}
-													>
+													<DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(s)}>
 														<HugeiconsIcon icon={Delete03Icon} className="w-4 h-4" />
 														删除
 													</DropdownMenuItem>

@@ -33,11 +33,7 @@ export async function parseSSEStream(
 	}
 }
 
-function processLine(
-	line: string,
-	onEvent: (event: SSEEvent) => void,
-	onError?: (error: unknown) => void,
-): void {
+function processLine(line: string, onEvent: (event: SSEEvent) => void, onError?: (error: unknown) => void): void {
 	if (!line.startsWith("data:")) return;
 	const data = line.slice(5).trim();
 	if (!data) return;

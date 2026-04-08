@@ -1,13 +1,11 @@
 import type { $Fetch } from "ofetch";
-import { type SSEParserOptions, parseSSEStream } from "./sse-parser";
+import { parseSSEStream, type SSEParserOptions } from "./sse-parser";
 
 export function createMessagesApi(gw: () => $Fetch) {
 	return {
-		get: (sessionId: string) =>
-			gw()<{ messages: unknown[] }>(`/sessions/${sessionId}/messages`),
+		get: (sessionId: string) => gw()<{ messages: unknown[] }>(`/sessions/${sessionId}/messages`),
 
-		abort: (sessionId: string) =>
-			gw()<void>(`/sessions/${sessionId}/abort`, { method: "POST" }),
+		abort: (sessionId: string) => gw()<void>(`/sessions/${sessionId}/abort`, { method: "POST" }),
 
 		async send(
 			sessionId: string,

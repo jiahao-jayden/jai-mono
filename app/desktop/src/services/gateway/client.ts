@@ -1,4 +1,4 @@
-import { ofetch, type $Fetch } from "ofetch";
+import { type $Fetch, ofetch } from "ofetch";
 import { getGatewayInfo } from "@/lib/ipc-client";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:18900";
