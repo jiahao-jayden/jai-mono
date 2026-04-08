@@ -6,7 +6,7 @@ import { sessionRoutes } from "./routes/session.js";
 import { SessionManager } from "./session-manager.js";
 
 export type GatewayOptions = {
-	cwd: string;
+	jaiHome?: string;
 	port?: number;
 	hostname?: string;
 };
@@ -22,7 +22,7 @@ export class GatewayServer {
 	}
 
 	static async create(options: GatewayOptions): Promise<GatewayServer> {
-		const manager = await SessionManager.create({ cwd: options.cwd });
+		const manager = await SessionManager.create({ jaiHome: options.jaiHome });
 
 		const app = new Hono();
 		app.use("*", cors());

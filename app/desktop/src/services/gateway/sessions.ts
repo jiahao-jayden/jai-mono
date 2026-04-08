@@ -3,8 +3,10 @@ import type { $Fetch } from "ofetch";
 
 export function createSessionsApi(gw: () => $Fetch) {
 	return {
-		create: () => gw()<SessionInfo>("/sessions", { method: "POST" }),
-		list: () => gw()<SessionInfo[]>("/sessions"),
+		create: (options?: { workspaceId?: string }) =>
+			gw()<SessionInfo>("/sessions", { method: "POST", body: options }),
+		list: (options?: { workspaceId?: string }) =>
+			gw()<SessionInfo[]>("/sessions", { query: options }),
 		get: (id: string) => gw()<SessionInfo>(`/sessions/${id}`),
 		delete: (id: string) => gw()<void>(`/sessions/${id}`, { method: "DELETE" }),
 	};

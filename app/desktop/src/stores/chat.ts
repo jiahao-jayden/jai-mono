@@ -1,9 +1,31 @@
-import type { ModelInfo } from "@jayden/jai-gateway";
+import type { ConfigResponse, ProviderSettings } from "@jayden/jai-gateway";
 import { nanoid } from "nanoid";
 import { create } from "zustand";
 import { gateway, type SSEEvent } from "@/services/gateway";
 import type { ChatMessage, ChatMessagePart, ChatStatus } from "@/types/chat";
 import { useSessionStore } from "./session";
+
+export interface ModelItem {
+	id: string;
+	provider: string;
+}
+
+function flattenModels(config: ConfigResponse): ModelItem[] {
+	const items: ModelItem[] = [];
+	if (config.providers) {
+		for (const [providerId, pc] of Object.entries(config.providers) as [string, ProviderSettings][]) {
+			if (!pc.enabled) continue;
+			for (const m of pc.models) {
+				const modelId = typeof m === "string" ? m : m.id;
+				items.push({ id: `${providerId}/${modelId}`, provider: providerId });
+			}
+		}
+	}
+	if (items.length === 0) {
+		items.push({ id: config.model, provider: config.provider });
+	}
+	return items;
+}
 
 function appendTextToParts(parts: ChatMessagePart[], partType: "text" | "reasoning", text: string): ChatMessagePart[] {
 	const last = parts[parts.length - 1];
@@ -25,7 +47,7 @@ interface ChatState {
 	messages: ChatMessage[];
 	status: ChatStatus;
 	currentModelId: string | null;
-	availableModels: ModelInfo[];
+	availableModels: ModelItem[];
 	sessionId: string | null;
 
 	init: () => Promise<void>;
@@ -133,7 +155,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	async init() {
 		try {
 			await gateway.waitForReady();
-			const { models } = await gateway.config.getModels();
+			const config = await gateway.config.get();
+			const models = flattenModels(config);
 			set({ availableModels: models });
 			if (models.length > 0 && !get().currentModelId) {
 				set({ currentModelId: models[0].id });

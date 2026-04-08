@@ -1,26 +1,35 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { AgentSession, createDefaultTools, SettingsManager, Workspace } from "@jayden/jai-coding-agent";
+import { SessionIndex } from "./storage/session-index.js";
 import type { SessionInfo } from "./types/api.js";
 
 export type SessionManagerConfig = {
-	cwd: string;
+	jaiHome?: string;
 };
 
 export class SessionManager {
-	private sessions = new Map<string, { session: AgentSession; createdAt: number }>();
-	private workspace!: Workspace;
+	private activeSessions = new Map<string, { session: AgentSession; workspaceId: string }>();
+	private workspaces = new Map<string, Workspace>();
+	private index!: SessionIndex;
 	private settings!: SettingsManager;
+	private jaiHome: string;
 
-	private constructor(private config: SessionManagerConfig) {}
+	private constructor(config: SessionManagerConfig) {
+		this.jaiHome = config.jaiHome ?? join(homedir(), ".jai");
+	}
 
-	static async create(config: SessionManagerConfig): Promise<SessionManager> {
-		const mgr = new SessionManager(config);
+	static async create(config?: SessionManagerConfig): Promise<SessionManager> {
+		const mgr = new SessionManager(config ?? {});
 		await mgr.init();
 		return mgr;
 	}
 
 	private async init(): Promise<void> {
-		this.workspace = await Workspace.create({ cwd: this.config.cwd });
-		this.settings = await SettingsManager.load(this.workspace);
+		this.index = await SessionIndex.open(join(this.jaiHome, "index.db"));
+
+		const defaultWs = await this.resolveWorkspace("default");
+		this.settings = await SettingsManager.load(defaultWs);
 
 		const env = this.settings.get("env");
 		for (const [key, value] of Object.entries(env)) {
@@ -28,12 +37,26 @@ export class SessionManager {
 		}
 	}
 
-	async createSession(): Promise<SessionInfo> {
+	private async resolveWorkspace(workspaceId: string): Promise<Workspace> {
+		let ws = this.workspaces.get(workspaceId);
+		if (ws) return ws;
+
+		const cwd = join(this.jaiHome, "workspace", workspaceId);
+		ws = await Workspace.create({ cwd });
+		this.workspaces.set(workspaceId, ws);
+		return ws;
+	}
+
+	async createSession(options?: { workspaceId?: string }): Promise<SessionInfo> {
+		let wsId = options?.workspaceId ?? "default";
+		if (wsId === "new") wsId = crypto.randomUUID();
+
+		const workspace = await this.resolveWorkspace(wsId);
 		const model = this.settings.resolveModel();
-		const tools = createDefaultTools(this.workspace.cwd);
+		const tools = createDefaultTools(workspace.cwd);
 
 		const session = await AgentSession.create({
-			workspace: this.workspace,
+			workspace,
 			model,
 			baseURL: this.settings.get("baseURL"),
 			tools,
@@ -41,47 +64,70 @@ export class SessionManager {
 		});
 
 		const sessionId = session.getSessionId();
-		const createdAt = Date.now();
-		this.sessions.set(sessionId, { session, createdAt });
+		const now = Date.now();
+		this.activeSessions.set(sessionId, { session, workspaceId: wsId });
 
-		return {
+		const modelId = typeof model === "string" ? model : model.config?.model ?? null;
+		const info: SessionInfo = {
 			sessionId,
+			workspaceId: wsId,
 			state: session.getState(),
-			createdAt,
+			title: null,
+			model: modelId,
+			firstMessage: null,
+			messageCount: 0,
+			totalTokens: 0,
+			tags: [],
+			createdAt: now,
+			updatedAt: now,
 		};
+		this.index.upsert(info);
+		return info;
 	}
 
 	get(sessionId: string): AgentSession | undefined {
-		return this.sessions.get(sessionId)?.session;
+		return this.activeSessions.get(sessionId)?.session;
 	}
 
-	list(): SessionInfo[] {
-		return Array.from(this.sessions.entries()).map(([id, { session, createdAt }]) => ({
-			sessionId: id,
-			state: session.getState(),
-			createdAt,
-		}));
+	getSessionInfo(sessionId: string): SessionInfo | null {
+		const record = this.index.get(sessionId);
+		if (!record) return null;
+
+		const active = this.activeSessions.get(sessionId);
+		const state = active ? active.session.getState() : (record.state as SessionInfo["state"]);
+		return { ...record, state };
+	}
+
+	list(options?: { workspaceId?: string }): SessionInfo[] {
+		const rows = this.index.list(options);
+		return rows.map((row) => {
+			const active = this.activeSessions.get(row.sessionId);
+			const state = active ? active.session.getState() : (row.state as SessionInfo["state"]);
+			return { ...row, state };
+		});
 	}
 
 	async close(sessionId: string): Promise<boolean> {
-		const entry = this.sessions.get(sessionId);
-		if (!entry) return false;
-		await entry.session.close();
-		this.sessions.delete(sessionId);
-		return true;
+		const entry = this.activeSessions.get(sessionId);
+		if (entry) {
+			await entry.session.close();
+			this.activeSessions.delete(sessionId);
+		}
+		return this.index.delete(sessionId);
 	}
 
 	async closeAll(): Promise<void> {
-		const promises = Array.from(this.sessions.values()).map((e) => e.session.close());
+		const promises = Array.from(this.activeSessions.values()).map((e) => e.session.close());
 		await Promise.all(promises);
-		this.sessions.clear();
+		this.activeSessions.clear();
+		this.index.close();
+	}
+
+	updateSessionIndex(sessionId: string, field: keyof SessionInfo, value: string | number | null): void {
+		this.index.updateField(sessionId, field, value);
 	}
 
 	getSettings(): SettingsManager {
 		return this.settings;
-	}
-
-	getWorkspace(): Workspace {
-		return this.workspace;
 	}
 }

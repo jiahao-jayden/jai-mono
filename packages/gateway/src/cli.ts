@@ -17,7 +17,6 @@ async function main() {
 	const opts = parseArgs(process.argv.slice(2));
 
 	const server = await GatewayServer.create({
-		cwd: process.cwd(),
 		port: opts.port,
 	});
 

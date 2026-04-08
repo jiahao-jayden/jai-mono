@@ -1,4 +1,4 @@
-import type { ModelInfo } from "@jayden/jai-gateway";
+import type { ConfigResponse, ProviderSettings } from "@jayden/jai-gateway";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Info, Layers, Settings2 } from "lucide-react";
 import { useState } from "react";
@@ -23,6 +23,7 @@ export default function Settings() {
 		queryFn: () => gateway.config.get(),
 	});
 
+	console.log(config);
 	return (
 		<div className="h-svh flex bg-background text-foreground">
 			<aside className="w-52 shrink-0 flex flex-col bg-sidebar border-r border-sidebar-border/40">
@@ -55,7 +56,7 @@ export default function Settings() {
 				<div className="h-12 shrink-0" style={drag} />
 				<div className="flex-1 overflow-y-auto px-8 pb-8">
 					{active === "general" && <GeneralPane config={config} />}
-					{active === "model" && <ModelPane />}
+					{active === "model" && <ModelPane config={config} />}
 					{active === "about" && <AboutPane />}
 				</div>
 			</main>
@@ -63,45 +64,58 @@ export default function Settings() {
 	);
 }
 
-function GeneralPane({ config }: { config?: Record<string, unknown> }) {
-	const model = config?.model as string | undefined;
-	const provider = config?.provider as string | undefined;
+function GeneralPane({ config }: { config?: ConfigResponse }) {
 	return (
 		<section>
 			<h2 className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest mb-2.5">通用</h2>
 			<div className="rounded-xl border bg-card divide-y divide-border/60">
-				<SettingsRow label="默认模型" value={model ?? "未配置"} />
-				<SettingsRow label="Provider" value={provider ?? "未配置"} />
+				<SettingsRow label="默认模型" value={config?.model ?? "未配置"} />
+				<SettingsRow label="Provider" value={config?.provider ?? "未配置"} />
 			</div>
 			<p className="text-[12px] text-muted-foreground/50 mt-3">编辑 ~/.jai/settings.toml 以修改配置</p>
 		</section>
 	);
 }
 
-function ModelPane() {
-	const { data, isLoading } = useQuery({
-		queryKey: ["models"],
-		queryFn: () => gateway.config.getModels(),
-	});
-
-	const models: ModelInfo[] = data?.models ?? [];
+function ModelPane({ config }: { config?: ConfigResponse }) {
+	const providers = config?.providers ?? {};
+	const entries = Object.entries(providers) as [string, ProviderSettings][];
 
 	return (
 		<section>
-			<h2 className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest mb-2.5">可用模型</h2>
-			{isLoading ? (
-				<p className="text-[13px] text-muted-foreground/50">加载中...</p>
-			) : models.length === 0 ? (
-				<p className="text-[13px] text-muted-foreground/50">无可用模型</p>
+			<h2 className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest mb-2.5">
+				Providers & 模型
+			</h2>
+			{entries.length === 0 ? (
+				<p className="text-[13px] text-muted-foreground/50">无配置的 provider，使用默认模型 {config?.model}</p>
 			) : (
-				<div className="rounded-xl border bg-card divide-y divide-border/60">
-					{models.map((m) => (
-						<div
-							key={m.id}
-							className="flex items-center justify-between px-4 py-3 first:rounded-t-xl last:rounded-b-xl"
-						>
-							<span className="text-[13px] font-medium">{m.id.split("/").pop()}</span>
-							<span className="text-[12px] text-muted-foreground/60 font-mono">{m.provider}</span>
+				<div className="space-y-4">
+					{entries.map(([providerId, providerConfig]) => (
+						<div key={providerId} className="rounded-xl border bg-card overflow-hidden">
+							<div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b border-border/40">
+								<span className="text-[13px] font-medium">{providerId}</span>
+								<span
+									className={cn(
+										"text-[11px] px-1.5 py-0.5 rounded-md font-mono",
+										providerConfig.enabled
+											? "bg-emerald-500/10 text-emerald-600"
+											: "bg-muted text-muted-foreground/50",
+									)}
+								>
+									{providerConfig.enabled ? "已启用" : "已禁用"}
+								</span>
+							</div>
+							<div className="divide-y divide-border/60">
+								{providerConfig.models.map((model) => {
+									const modelId = typeof model === "string" ? model : model.id;
+									return (
+										<div key={modelId} className="flex items-center justify-between px-4 py-3">
+											<span className="text-[13px] font-medium">{modelId}</span>
+											<span className="text-[12px] text-muted-foreground/60 font-mono">{providerId}</span>
+										</div>
+									);
+								})}
+							</div>
 						</div>
 					))}
 				</div>

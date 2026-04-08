@@ -36,22 +36,22 @@ export class GatewayProcess {
 		return `http://127.0.0.1:${this._port}`;
 	}
 
-	async start(cwd?: string): Promise<void> {
+	async start(): Promise<void> {
 		if (this.child) return;
 
-		const workspaceCwd = cwd ?? resolve(homedir(), ".jai");
-		if (!existsSync(workspaceCwd)) {
-			mkdirSync(workspaceCwd, { recursive: true });
+		const jaiHome = resolve(homedir(), ".jai");
+		if (!existsSync(jaiHome)) {
+			mkdirSync(jaiHome, { recursive: true });
 		}
 
 		const appRoot = app.getAppPath();
 		const cliPath = resolve(appRoot, "../../packages/gateway/src/cli.ts");
 		const bunPath = findBun();
 
-		gatewayLog.info("cli:", cliPath, "bun:", bunPath, "cwd:", workspaceCwd);
+		gatewayLog.info("cli:", cliPath, "bun:", bunPath, "jaiHome:", jaiHome);
 
 		this.child = spawn(bunPath, ["run", cliPath, "--port", String(this._port)], {
-			cwd: workspaceCwd,
+			cwd: jaiHome,
 			stdio: ["ignore", "pipe", "pipe"],
 			env: { ...process.env },
 		});

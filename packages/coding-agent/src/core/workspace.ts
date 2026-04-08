@@ -83,6 +83,6 @@ export class Workspace {
 	// ── Sessions ──────────────────────────────────────────
 
 	sessionPath(sessionId: string): string {
-		return join(this.projectDir, "sessions", `${sessionId}.jsonl`);
+		return join(this.cwd, "sessions", `${sessionId}.jsonl`);
 	}
 }

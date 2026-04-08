@@ -1,4 +1,3 @@
-import type { ModelInfo } from "@jayden/jai-gateway";
 import { ChevronDown } from "lucide-react";
 import {
 	DropdownMenu,
@@ -9,9 +8,10 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import type { ModelItem } from "@/stores/chat";
 
 interface ModelSelectorProps {
-	models: ModelInfo[];
+	models: ModelItem[];
 	currentModelId: string | null;
 	onSelect: (modelId: string) => void;
 }
@@ -24,7 +24,7 @@ export function ModelSelector({ models, currentModelId, onSelect }: ModelSelecto
 		return <span className="text-xs text-muted-foreground px-2 py-1 select-none">{label}</span>;
 	}
 
-	const grouped = models.reduce<Record<string, ModelInfo[]>>((acc, m) => {
+	const grouped = models.reduce<Record<string, ModelItem[]>>((acc, m) => {
 		if (!acc[m.provider]) acc[m.provider] = [];
 		acc[m.provider].push(m);
 		return acc;

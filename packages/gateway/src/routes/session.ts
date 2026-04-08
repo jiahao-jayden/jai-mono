@@ -9,7 +9,8 @@ export function sessionRoutes(manager: SessionManager): Hono {
 
 	app.post("/sessions", async (c) => {
 		try {
-			const info = await manager.createSession();
+			const body = (await c.req.json<{ workspaceId?: string }>().catch(() => null)) ?? {};
+			const info = await manager.createSession({ workspaceId: body.workspaceId });
 			return c.json(info, 201);
 		} catch (err) {
 			return c.json({ error: String(err) }, 500);
@@ -17,17 +18,14 @@ export function sessionRoutes(manager: SessionManager): Hono {
 	});
 
 	app.get("/sessions", (c) => {
-		return c.json(manager.list());
+		const workspaceId = c.req.query("workspaceId") || undefined;
+		return c.json(manager.list({ workspaceId }));
 	});
 
 	app.get("/sessions/:id", (c) => {
-		const session = manager.get(c.req.param("id"));
-		if (!session) return c.json({ error: "Session not found" }, 404);
-
-		return c.json({
-			sessionId: session.getSessionId(),
-			state: session.getState(),
-		});
+		const info = manager.getSessionInfo(c.req.param("id"));
+		if (!info) return c.json({ error: "Session not found" }, 404);
+		return c.json(info);
 	});
 
 	app.delete("/sessions/:id", async (c) => {
