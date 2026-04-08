@@ -1,4 +1,5 @@
 declare module "*.css";
+declare module "electron-log/preload";
 
 import type { IpcRenderer, IpcRendererEvent } from "electron";
 
@@ -14,6 +15,15 @@ declare global {
 		};
 		desktop: {
 			isMac: boolean;
+		};
+		__electronLog: {
+			sendToMain(message: Record<string, unknown>): void;
+			log(...data: unknown[]): void;
+			error(...data: unknown[]): void;
+			warn(...data: unknown[]): void;
+			info(...data: unknown[]): void;
+			verbose(...data: unknown[]): void;
+			debug(...data: unknown[]): void;
 		};
 	}
 }

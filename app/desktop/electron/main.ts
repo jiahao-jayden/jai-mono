@@ -1,5 +1,6 @@
 import { app, BrowserWindow, type IpcMainInvokeEvent, ipcMain, session, systemPreferences } from "electron";
 import { gatewayProcess } from "./gateway-process";
+import { mainLog } from "./logger";
 import { createMainWindow, createSettingsWindow } from "./windows";
 
 const isMac = process.platform === "darwin";
@@ -9,7 +10,7 @@ app.whenReady().then(() => {
 	createMainWindow();
 
 	gatewayProcess.start().catch((err: unknown) => {
-		console.error("[main] failed to start gateway:", err);
+		mainLog.error("failed to start gateway:", err);
 	});
 
 	const externalFilter = { urls: ["https://*/*", "http://*/*"] };

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import "electron-log/preload";
 
 contextBridge.exposeInMainWorld("ipc", {
 	invoke: ipcRenderer.invoke.bind(ipcRenderer),

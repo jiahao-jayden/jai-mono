@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { app } from "electron";
+import { gatewayLog } from "./logger";
 
 const DEFAULT_PORT = 18900;
 
@@ -47,7 +48,7 @@ export class GatewayProcess {
 		const cliPath = resolve(appRoot, "../../packages/gateway/src/cli.ts");
 		const bunPath = findBun();
 
-		console.log("[gateway] cli:", cliPath, "bun:", bunPath, "cwd:", workspaceCwd);
+		gatewayLog.info("cli:", cliPath, "bun:", bunPath, "cwd:", workspaceCwd);
 
 		this.child = spawn(bunPath, ["run", cliPath, "--port", String(this._port)], {
 			cwd: workspaceCwd,
@@ -57,18 +58,18 @@ export class GatewayProcess {
 
 		this.child.stdout?.on("data", (chunk: Buffer) => {
 			const text = chunk.toString();
-			console.log("[gateway]", text.trimEnd());
+			gatewayLog.info(text.trimEnd());
 			if (text.includes("listening")) {
 				this._ready = true;
 			}
 		});
 
 		this.child.stderr?.on("data", (chunk: Buffer) => {
-			console.error("[gateway]", chunk.toString().trimEnd());
+			gatewayLog.error(chunk.toString().trimEnd());
 		});
 
 		this.child.on("exit", (code) => {
-			console.log(`[gateway] process exited with code ${code}`);
+			gatewayLog.warn(`process exited with code ${code}`);
 			this.child = null;
 			this._ready = false;
 		});
