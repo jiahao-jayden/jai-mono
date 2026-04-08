@@ -1,6 +1,6 @@
+import type { SessionInfo } from "@jayden/jai-gateway";
 import { create } from "zustand";
-import { gateway } from "@/lib/gateway-client";
-import type { SessionInfo } from "@/types/chat";
+import { gateway } from "@/services/gateway";
 
 interface SessionState {
 	sessions: SessionInfo[];
@@ -17,7 +17,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
 	async fetchSessions() {
 		try {
-			const list = await gateway.listSessions();
+			const list = await gateway.sessions.list();
 			set({ sessions: list });
 		} catch {
 			/* gateway not ready yet */
@@ -26,7 +26,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
 	async deleteSession(sessionId: string) {
 		try {
-			await gateway.deleteSession(sessionId);
+			await gateway.sessions.delete(sessionId);
 			set({ sessions: get().sessions.filter((s) => s.sessionId !== sessionId) });
 		} catch (err) {
 			console.error("[gateway] deleteSession failed:", err);

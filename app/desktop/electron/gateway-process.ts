@@ -38,7 +38,7 @@ export class GatewayProcess {
 	async start(cwd?: string): Promise<void> {
 		if (this.child) return;
 
-		const workspaceCwd = cwd ?? resolve(homedir(), ".jai", "workspace");
+		const workspaceCwd = cwd ?? resolve(homedir(), ".jai");
 		if (!existsSync(workspaceCwd)) {
 			mkdirSync(workspaceCwd, { recursive: true });
 		}

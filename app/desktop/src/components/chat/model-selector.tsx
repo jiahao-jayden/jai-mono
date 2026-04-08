@@ -1,3 +1,4 @@
+import type { ModelInfo } from "@jayden/jai-gateway";
 import { ChevronDown } from "lucide-react";
 import {
 	DropdownMenu,
@@ -8,7 +9,6 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import type { ModelInfo } from "@/types/chat";
 
 interface ModelSelectorProps {
 	models: ModelInfo[];

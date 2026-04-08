@@ -1,8 +1,8 @@
+import type { ModelInfo } from "@jayden/jai-gateway";
 import { nanoid } from "nanoid";
 import { create } from "zustand";
-import { gateway } from "@/lib/gateway-client";
-import type { SSEEvent } from "@/lib/sse-parser";
-import type { ChatMessage, ChatMessagePart, ChatStatus, ModelInfo } from "@/types/chat";
+import { gateway, type SSEEvent } from "@/services/gateway";
+import type { ChatMessage, ChatMessagePart, ChatStatus } from "@/types/chat";
 import { useSessionStore } from "./session";
 
 function appendTextToParts(parts: ChatMessagePart[], partType: "text" | "reasoning", text: string): ChatMessagePart[] {
@@ -133,7 +133,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	async init() {
 		try {
 			await gateway.waitForReady();
-			const { models } = await gateway.getModels();
+			const { models } = await gateway.config.getModels();
 			set({ availableModels: models });
 			if (models.length > 0 && !get().currentModelId) {
 				set({ currentModelId: models[0].id });
@@ -153,7 +153,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			let sid = sessionId;
 			if (!sid) {
 				await gateway.waitForReady();
-				const session = await gateway.createSession();
+				const session = await gateway.sessions.create();
 				sid = session.sessionId;
 				set({ sessionId: sid });
 			}
@@ -169,7 +169,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			const controller = new AbortController();
 			abortController = controller;
 
-			await gateway.sendMessage(sid, text, {
+			await gateway.messages.send(sid, text, {
 				onEvent: (event) => handleSSEEvent(event, get, set),
 				modelId: currentModelId ?? undefined,
 				signal: controller.signal,
@@ -189,7 +189,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		abortController = null;
 		const { sessionId } = get();
 		if (sessionId) {
-			gateway.abort(sessionId).catch(() => {});
+			gateway.messages.abort(sessionId).catch(() => {});
 		}
 		set({ status: "ready" });
 	},

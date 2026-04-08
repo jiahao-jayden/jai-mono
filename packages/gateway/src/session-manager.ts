@@ -1,10 +1,5 @@
 import { AgentSession, createDefaultTools, SettingsManager, Workspace } from "@jayden/jai-coding-agent";
-
-export type GatewaySessionInfo = {
-	sessionId: string;
-	state: "idle" | "running" | "aborted";
-	createdAt: number;
-};
+import type { SessionInfo } from "./types/api.js";
 
 export type SessionManagerConfig = {
 	cwd: string;
@@ -33,7 +28,7 @@ export class SessionManager {
 		}
 	}
 
-	async createSession(): Promise<GatewaySessionInfo> {
+	async createSession(): Promise<SessionInfo> {
 		const model = this.settings.resolveModel();
 		const tools = createDefaultTools(this.workspace.cwd);
 
@@ -60,7 +55,7 @@ export class SessionManager {
 		return this.sessions.get(sessionId)?.session;
 	}
 
-	list(): GatewaySessionInfo[] {
+	list(): SessionInfo[] {
 		return Array.from(this.sessions.entries()).map(([id, { session, createdAt }]) => ({
 			sessionId: id,
 			state: session.getState(),

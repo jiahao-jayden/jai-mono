@@ -1,9 +1,9 @@
+import type { ModelInfo } from "@jayden/jai-gateway";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Info, Layers, Settings2 } from "lucide-react";
 import { useState } from "react";
-import { gateway } from "@/lib/gateway-client";
 import { cn } from "@/lib/utils";
-import type { ModelInfo } from "@/types/chat";
+import { gateway } from "@/services/gateway";
 import { Titlebar } from "../shell/titlebar";
 
 const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
@@ -20,7 +20,7 @@ export default function Settings() {
 	const [active, setActive] = useState<NavId>("general");
 	const { data: config } = useQuery({
 		queryKey: ["config"],
-		queryFn: () => gateway.getConfig(),
+		queryFn: () => gateway.config.get(),
 	});
 
 	return (
@@ -81,7 +81,7 @@ function GeneralPane({ config }: { config?: Record<string, unknown> }) {
 function ModelPane() {
 	const { data, isLoading } = useQuery({
 		queryKey: ["models"],
-		queryFn: () => gateway.getModels(),
+		queryFn: () => gateway.config.getModels(),
 	});
 
 	const models: ModelInfo[] = data?.models ?? [];

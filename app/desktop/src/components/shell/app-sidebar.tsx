@@ -34,7 +34,7 @@ import {
 import { useSessions } from "@/hooks/use-sessions";
 import { windowClient } from "@/lib/ipc-client";
 import { useChatStore } from "@/stores/chat";
-import type { SessionInfo } from "@/types/chat";
+import type { SessionInfo } from "@jayden/jai-gateway";
 import { Titlebar, ToolbarButton } from "./titlebar";
 
 export function AppSidebar() {
