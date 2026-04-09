@@ -5,9 +5,21 @@ import { gateway, type SSEEvent } from "@/services/gateway";
 import type { ChatMessage, ChatMessagePart, ChatStatus } from "@/types/chat";
 import { useSessionStore } from "./session";
 
+export interface ModelCapabilities {
+	reasoning?: boolean;
+	toolCall?: boolean;
+	structuredOutput?: boolean;
+	vision?: boolean;
+	imageGen?: boolean;
+	audio?: boolean;
+	pdf?: boolean;
+}
+
 export interface ModelItem {
 	id: string;
 	provider: string;
+	displayName: string;
+	capabilities?: ModelCapabilities;
 }
 
 function flattenModels(config: ConfigResponse): ModelItem[] {
@@ -16,13 +28,36 @@ function flattenModels(config: ConfigResponse): ModelItem[] {
 		for (const [providerId, pc] of Object.entries(config.providers) as [string, ProviderSettings][]) {
 			if (!pc.enabled) continue;
 			for (const m of pc.models) {
-				const modelId = typeof m === "string" ? m : m.id;
-				items.push({ id: `${providerId}/${modelId}`, provider: providerId });
+				const isString = typeof m === "string";
+				const modelId = isString ? m : m.id;
+				const entry = isString ? undefined : m;
+				const caps = entry?.capabilities;
+
+				items.push({
+					id: `${providerId}/${modelId}`,
+					provider: providerId,
+					displayName: modelId,
+					capabilities: caps
+						? {
+								reasoning: caps.reasoning,
+								toolCall: caps.toolCall,
+								structuredOutput: caps.structuredOutput,
+								vision: caps.input?.image,
+								imageGen: caps.output?.image,
+								audio: caps.input?.audio,
+								pdf: caps.input?.pdf,
+							}
+						: undefined,
+				});
 			}
 		}
 	}
 	if (items.length === 0) {
-		items.push({ id: config.model, provider: config.provider });
+		items.push({
+			id: config.model,
+			provider: config.provider,
+			displayName: config.model.split("/").pop() ?? config.model,
+		});
 	}
 	return items;
 }
