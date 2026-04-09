@@ -127,7 +127,19 @@ export class SessionManager {
 		this.index.updateField(sessionId, field, value);
 	}
 
+	getJaiHome(): string {
+		return this.jaiHome;
+	}
+
 	getSettings(): SettingsManager {
 		return this.settings;
+	}
+
+	async saveSettings(patch: import("@jayden/jai-coding-agent").Settings): Promise<void> {
+		await this.settings.save(patch);
+	}
+
+	async deleteProvider(providerId: string): Promise<void> {
+		await this.settings.deleteProvider(providerId);
 	}
 }

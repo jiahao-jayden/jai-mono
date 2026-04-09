@@ -21,3 +21,17 @@ export interface ConfigResponse {
 	maxIterations: number;
 	language: string;
 }
+
+export interface ConfigUpdateRequest {
+	model?: string;
+	provider?: string;
+	maxIterations?: number;
+	language?: string;
+}
+
+export interface FetchModelsResponse {
+	providerId: string;
+	models: import("@jayden/jai-coding-agent").ProviderModel[];
+	fetchedAt: number;
+	cached: boolean;
+}

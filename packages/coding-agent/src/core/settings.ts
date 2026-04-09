@@ -131,6 +131,8 @@ function resolve(merged: Settings): ResolvedSettings {
 }
 
 export class SettingsManager {
+	private globalPath!: string;
+
 	private constructor(
 		private global: Settings,
 		private project: Settings,
@@ -141,7 +143,9 @@ export class SettingsManager {
 		const global = await readSettingsFile(workspace.globalSettingsPath);
 		const project = await readSettingsFile(workspace.projectSettingsPath);
 		const merged = deepMergeSettings(global, project);
-		return new SettingsManager(global, project, resolve(merged));
+		const mgr = new SettingsManager(global, project, resolve(merged));
+		mgr.globalPath = workspace.globalSettingsPath;
+		return mgr;
 	}
 
 	get<K extends keyof ResolvedSettings>(key: K): ResolvedSettings[K] {
@@ -159,5 +163,22 @@ export class SettingsManager {
 	withOverrides(overrides: Settings): SettingsManager {
 		const merged = deepMergeSettings(deepMergeSettings(this.global, this.project), overrides);
 		return new SettingsManager(this.global, this.project, resolve(merged));
+	}
+
+	async save(patch: Settings): Promise<void> {
+		this.global = deepMergeSettings(this.global, patch);
+		const merged = deepMergeSettings(this.global, this.project);
+		this.resolved = resolve(merged);
+		await Bun.write(this.globalPath, JSON.stringify(this.global, null, 2));
+	}
+
+	async deleteProvider(providerId: string): Promise<void> {
+		if (this.global.providers) {
+			const { [providerId]: _, ...rest } = this.global.providers;
+			this.global = { ...this.global, providers: rest };
+		}
+		const merged = deepMergeSettings(this.global, this.project);
+		this.resolved = resolve(merged);
+		await Bun.write(this.globalPath, JSON.stringify(this.global, null, 2));
 	}
 }
