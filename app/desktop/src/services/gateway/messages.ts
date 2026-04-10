@@ -1,4 +1,5 @@
 import type { $Fetch } from "ofetch";
+import { getBaseURL } from "./client";
 import { parseSSEStream, type SSEParserOptions } from "./sse-parser";
 
 export function createMessagesApi(gw: () => $Fetch) {
@@ -17,15 +18,18 @@ export function createMessagesApi(gw: () => $Fetch) {
 			const body: Record<string, unknown> = { text };
 			if (modelId) body.modelId = modelId;
 
-			const res = await gw().raw(`/sessions/${sessionId}/message`, {
+			const res = await fetch(`${getBaseURL()}/sessions/${sessionId}/message`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body,
-				responseType: "stream",
+				body: JSON.stringify(body),
 				signal,
 			});
 
-			const reader = (res as Response).body?.getReader();
+			if (!res.ok) {
+				throw new Error(`Gateway returned ${res.status}: ${await res.text()}`);
+			}
+
+			const reader = res.body?.getReader();
 			if (!reader) throw new Error("No response body");
 
 			await parseSSEStream(reader, { onEvent, onError });

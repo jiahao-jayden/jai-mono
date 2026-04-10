@@ -41,6 +41,7 @@ export class GatewayServer {
 		this.server = Bun.serve({
 			port: listenPort,
 			hostname,
+			idleTimeout: 255,
 			fetch: this.app.fetch as (req: Request, server: any) => Response | Promise<Response>,
 		});
 

@@ -7,6 +7,8 @@ export interface ChatMessagePart {
 		toolCallId: string;
 		name: string;
 		status: "pending" | "running" | "completed" | "error";
+		args?: string;
+		result?: string;
 	};
 }
 

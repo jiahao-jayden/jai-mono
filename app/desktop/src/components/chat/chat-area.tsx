@@ -3,6 +3,7 @@ import panda_logo_1 from "@/assets/icons/chat-area/panda-1.svg";
 import { useCursorEffect } from "@/hooks/use-cursor-effect";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chat";
+import type { ChatMessagePart } from "@/types/chat";
 import { Conversation, ConversationContent } from "../ai-elements/conversation";
 import { MessageResponse } from "../ai-elements/message";
 import {
@@ -17,9 +18,10 @@ import {
 import { Spinner } from "../ui/spinner";
 import { ChatHeader } from "./chat-header";
 import { MessageAssistant } from "./message-assistant";
-import { MessageToolCall } from "./message-tool-call";
+import { MessageReasoning } from "./message-reasoning";
 import { MessageUser } from "./message-user";
 import { ModelSelector } from "./model-selector";
+import { ToolCallGroup } from "./tool-call-group";
 
 export function ChatArea() {
 	const { wrapperRef, cursorRef, resetCursor, handlers } = useCursorEffect();
@@ -59,7 +61,11 @@ export function ChatArea() {
 							</PromptInputBody>
 							<PromptInputFooter>
 								<PromptInputTools>
-									<ModelSelector models={availableModels} currentModelId={currentModelId} onSelect={setModel} />
+									<ModelSelector
+										models={availableModels}
+										currentModelId={currentModelId}
+										onSelect={setModel}
+									/>
 								</PromptInputTools>
 								<PromptInputSubmit status={status} onStop={stop} className="bg-primary-2 rounded-full">
 									{status === "submitted" ? (
@@ -77,34 +83,64 @@ export function ChatArea() {
 			) : (
 				<>
 					<Conversation className="flex-1">
-						<ConversationContent className="max-w-3xl mx-auto w-full pb-6 gap-5">
-							{messages.map((message) => {
+						<ConversationContent className="max-w-3xl mx-auto w-full pb-1 gap-1">
+							{messages.map((message, msgIdx) => {
 								if (message.role === "user") {
 									const text = message.parts.find((p) => p.type === "text")?.text ?? "";
 									return <MessageUser key={message.id}>{text}</MessageUser>;
 								}
 
+								const isLastAssistant = msgIdx === messages.length - 1 && message.role === "assistant";
+								const isStreaming = isLastAssistant && status === "streaming";
+								const lastPart = message.parts[message.parts.length - 1];
+								const hasNoTextYet = isStreaming && !message.parts.some((p) => p.type === "text");
+								const showIndicator =
+									isStreaming &&
+									lastPart &&
+									(lastPart.type === "reasoning" ||
+										(lastPart.type === "tool_call" && lastPart.toolCall?.status === "completed"));
+
+								const segments = groupParts(message.parts);
+
 								return (
 									<MessageAssistant key={message.id}>
-										{message.parts.map((part, i) => {
-											const key = `${message.id}-${i}`;
-											if (part.type === "text" && part.text) {
-												return <MessageResponse key={key}>{part.text}</MessageResponse>;
-											}
-											if (part.type === "tool_call" && part.toolCall) {
-												return (
-													<MessageToolCall
-														key={key}
-														title={part.toolCall.name}
-														status={part.toolCall.status ?? "pending"}
-													/>
-												);
-											}
-											return null;
-										})}
+										<div className="flex flex-col gap-0.5">
+											{segments.map((seg) => {
+												if (seg.type === "tool_group") {
+													return (
+														<ToolCallGroup
+															key={`${message.id}-tg-${seg.tools[0].toolCallId}`}
+															tools={seg.tools}
+														/>
+													);
+												}
+
+												const part = seg.part;
+												const partIdx = seg.index;
+												const key = `${message.id}-${partIdx}`;
+
+												if (part.type === "reasoning" && part.text) {
+													const isReasoningStreaming =
+														isStreaming &&
+														partIdx === message.parts.length - 1 &&
+														lastPart?.type === "reasoning";
+													return (
+														<MessageReasoning key={key} streaming={isReasoningStreaming}>
+															{part.text}
+														</MessageReasoning>
+													);
+												}
+												if (part.type === "text" && part.text) {
+													return <MessageResponse key={key}>{part.text}</MessageResponse>;
+												}
+												return null;
+											})}
+											{showIndicator && hasNoTextYet && <TypingIndicator />}
+										</div>
 									</MessageAssistant>
 								);
 							})}
+							{status === "submitted" && <StreamingPlaceholder />}
 						</ConversationContent>
 					</Conversation>
 
@@ -127,7 +163,11 @@ export function ChatArea() {
 								</PromptInputBody>
 								<PromptInputFooter>
 									<PromptInputTools>
-										<ModelSelector models={availableModels} currentModelId={currentModelId} onSelect={setModel} />
+										<ModelSelector
+											models={availableModels}
+											currentModelId={currentModelId}
+											onSelect={setModel}
+										/>
 									</PromptInputTools>
 									<PromptInputSubmit status={status} onStop={stop} className="bg-primary-2 rounded-full">
 										{status === "submitted" ? (
@@ -145,5 +185,53 @@ export function ChatArea() {
 				</>
 			)}
 		</main>
+	);
+}
+
+type Segment =
+	| { type: "tool_group"; tools: NonNullable<ChatMessagePart["toolCall"]>[] }
+	| { type: "single"; part: ChatMessagePart; index: number };
+
+function groupParts(parts: ChatMessagePart[]): Segment[] {
+	const segments: Segment[] = [];
+	let toolBuf: NonNullable<ChatMessagePart["toolCall"]>[] = [];
+
+	for (let i = 0; i < parts.length; i++) {
+		const part = parts[i];
+		if (part.type === "tool_call" && part.toolCall) {
+			toolBuf.push(part.toolCall);
+		} else {
+			if (toolBuf.length > 0) {
+				segments.push({ type: "tool_group", tools: toolBuf });
+				toolBuf = [];
+			}
+			segments.push({ type: "single", part, index: i });
+		}
+	}
+	if (toolBuf.length > 0) {
+		segments.push({ type: "tool_group", tools: toolBuf });
+	}
+	return segments;
+}
+
+function StreamingPlaceholder() {
+	return (
+		<MessageAssistant>
+			<div className="flex items-center gap-1.5 py-1">
+				<span className="size-1.5 rounded-full bg-muted-foreground/40 animate-[pulse_1.4s_ease-in-out_infinite]" />
+				<span className="size-1.5 rounded-full bg-muted-foreground/40 animate-[pulse_1.4s_ease-in-out_0.2s_infinite]" />
+				<span className="size-1.5 rounded-full bg-muted-foreground/40 animate-[pulse_1.4s_ease-in-out_0.4s_infinite]" />
+			</div>
+		</MessageAssistant>
+	);
+}
+
+function TypingIndicator() {
+	return (
+		<div className="flex items-center gap-1.5 py-1">
+			<span className="size-1.5 rounded-full bg-muted-foreground/40 animate-[pulse_1.4s_ease-in-out_infinite]" />
+			<span className="size-1.5 rounded-full bg-muted-foreground/40 animate-[pulse_1.4s_ease-in-out_0.2s_infinite]" />
+			<span className="size-1.5 rounded-full bg-muted-foreground/40 animate-[pulse_1.4s_ease-in-out_0.4s_infinite]" />
+		</div>
 	);
 }

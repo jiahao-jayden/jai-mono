@@ -18,6 +18,7 @@ async function init(): Promise<void> {
 		} catch {
 			baseURL = DEFAULT_BASE_URL;
 		}
+		resolvedBaseURL = baseURL;
 		instance = ofetch.create({ baseURL, retry: false });
 	})();
 
@@ -26,6 +27,12 @@ async function init(): Promise<void> {
 
 export function gw(): $Fetch {
 	return instance ?? ofetch.create({ baseURL: DEFAULT_BASE_URL, retry: false });
+}
+
+let resolvedBaseURL: string | null = null;
+
+export function getBaseURL(): string {
+	return resolvedBaseURL ?? DEFAULT_BASE_URL;
 }
 
 export async function health(): Promise<boolean> {

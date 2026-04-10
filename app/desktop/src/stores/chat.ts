@@ -85,11 +85,20 @@ interface GatewayMessage {
 		text?: string;
 		toolCallId?: string;
 		toolName?: string;
+		input?: unknown;
 	}>;
 }
 
 function convertGatewayMessages(raw: GatewayMessage[]): ChatMessage[] {
 	const messages: ChatMessage[] = [];
+
+	const toolResults = new Map<string, string>();
+	for (const msg of raw) {
+		if (msg.role !== "tool_result") continue;
+		const id = (msg as { toolCallId?: string }).toolCallId;
+		const text = msg.content?.find((c) => c.type === "text")?.text;
+		if (id && text) toolResults.set(id, text);
+	}
 
 	for (const msg of raw) {
 		if (msg.role === "tool_result") continue;
@@ -101,12 +110,15 @@ function convertGatewayMessages(raw: GatewayMessage[]): ChatMessage[] {
 			} else if (block.type === "thinking" && block.text) {
 				parts.push({ type: "reasoning", text: block.text });
 			} else if (block.type === "tool_call") {
+				const toolCallId = block.toolCallId ?? "";
 				parts.push({
 					type: "tool_call",
 					toolCall: {
-						toolCallId: block.toolCallId ?? "",
+						toolCallId,
 						name: block.toolName ?? "",
 						status: "completed",
+						args: block.input != null ? JSON.stringify(block.input) : undefined,
+						result: toolResults.get(toolCallId),
 					},
 				});
 			}
@@ -191,6 +203,36 @@ function handleSSEEvent(event: SSEEvent, get: () => ChatState, set: (partial: Pa
 				messages: updateMessageById(get().messages, msgId, (msg) => ({
 					...msg,
 					parts: [...msg.parts, { type: "tool_call", toolCall }],
+				})),
+			});
+			break;
+		}
+		case "TOOL_CALL_ARGS": {
+			const toolCallId = event.toolCallId as string;
+			const delta = event.delta as string;
+			set({
+				messages: get().messages.map((msg) => ({
+					...msg,
+					parts: msg.parts.map((part) =>
+						part.type === "tool_call" && part.toolCall?.toolCallId === toolCallId
+							? { ...part, toolCall: { ...part.toolCall, args: (part.toolCall.args ?? "") + delta } }
+							: part,
+					),
+				})),
+			});
+			break;
+		}
+		case "TOOL_CALL_RESULT": {
+			const toolCallId = event.toolCallId as string;
+			const content = event.content as string;
+			set({
+				messages: get().messages.map((msg) => ({
+					...msg,
+					parts: msg.parts.map((part) =>
+						part.type === "tool_call" && part.toolCall?.toolCallId === toolCallId
+							? { ...part, toolCall: { ...part.toolCall, result: content } }
+							: part,
+					),
 				})),
 			});
 			break;
