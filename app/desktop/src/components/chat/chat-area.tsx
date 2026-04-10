@@ -58,38 +58,44 @@ export function ChatArea() {
 										className="absolute w-0.5 rounded-full bg-primary-2 opacity-0 z-20 pointer-events-none"
 										style={{ height: "18px", top: "12px", left: "12px" }}
 									/>
-								<PromptInputTextarea
-									placeholder="Type a message or command..."
-									style={{ caretColor: "transparent" }}
-									{...handlers}
-									onChange={(e) => { handlers.onChange(); setInputValue(e.target.value); }}
-								/>
-							</div>
-						</PromptInputBody>
-						<PromptInputFooter>
-							<PromptInputTools>
-								<ModelSelector
-									models={availableModels}
-									currentModelId={currentModelId}
-									onSelect={setModel}
-								/>
-							</PromptInputTools>
-							<PromptInputSubmit
-								disabled={isEmpty && !isGenerating}
-								status={status}
-								onStop={stop}
-								className={cn("rounded-full", isEmpty && !isGenerating ? "bg-muted text-muted-foreground" : "bg-primary-2")}
-							>
-								{status === "submitted" ? (
-									<Spinner />
-								) : status === "streaming" ? (
-									<SquareIcon className="size-4" />
-								) : (
-									<ArrowUpIcon className="size-4" />
-								)}
-							</PromptInputSubmit>
-						</PromptInputFooter>
-					</PromptInput>
+									<PromptInputTextarea
+										placeholder="Type a message or command..."
+										style={{ caretColor: "transparent" }}
+										{...handlers}
+										onChange={(e) => {
+											handlers.onChange();
+											setInputValue(e.target.value);
+										}}
+									/>
+								</div>
+							</PromptInputBody>
+							<PromptInputFooter>
+								<PromptInputTools>
+									<ModelSelector
+										models={availableModels}
+										currentModelId={currentModelId}
+										onSelect={setModel}
+									/>
+								</PromptInputTools>
+								<PromptInputSubmit
+									disabled={isEmpty && !isGenerating}
+									status={status}
+									onStop={stop}
+									className={cn(
+										"rounded-full",
+										isEmpty && !isGenerating ? "bg-muted text-muted-foreground" : "bg-primary-2",
+									)}
+								>
+									{status === "submitted" ? (
+										<Spinner />
+									) : status === "streaming" ? (
+										<SquareIcon className="size-4" />
+									) : (
+										<ArrowUpIcon className="size-4" />
+									)}
+								</PromptInputSubmit>
+							</PromptInputFooter>
+						</PromptInput>
 					</div>
 				</div>
 			) : (
@@ -157,7 +163,8 @@ export function ChatArea() {
 									</MessageAssistant>
 								);
 							})}
-							{(status === "submitted" || (status === "streaming" && messages[messages.length - 1]?.role === "user")) && (
+							{(status === "submitted" ||
+								(status === "streaming" && messages[messages.length - 1]?.role === "user")) && (
 								<StreamingPlaceholder />
 							)}
 						</ConversationContent>
@@ -173,36 +180,42 @@ export function ChatArea() {
 											className="absolute w-0.5 rounded-full bg-primary-2 opacity-0 z-20 pointer-events-none"
 											style={{ height: "18px", top: "12px", left: "12px" }}
 										/>
-									<PromptInputTextarea
-										placeholder="Type a message or command..."
-										style={{ caretColor: "transparent" }}
-										{...handlers}
-										onChange={(e) => { handlers.onChange(); setInputValue(e.target.value); }}
-									/>
-								</div>
-							</PromptInputBody>
-							<PromptInputFooter>
-								<PromptInputTools>
-									<ModelSelector
-										models={availableModels}
-										currentModelId={currentModelId}
-										onSelect={setModel}
-									/>
-								</PromptInputTools>
-								<PromptInputSubmit
-									disabled={isEmpty && !isGenerating}
-									status={status}
-									onStop={stop}
-									className={cn("rounded-full", isEmpty && !isGenerating ? "bg-muted text-muted-foreground" : "bg-primary-2")}
-								>
-									{status === "submitted" ? (
-										<Spinner />
-									) : status === "streaming" ? (
-										<SquareIcon className="size-4" />
-									) : (
-										<ArrowUpIcon className="size-4" />
-									)}
-								</PromptInputSubmit>
+										<PromptInputTextarea
+											placeholder="Type a message or command..."
+											style={{ caretColor: "transparent" }}
+											{...handlers}
+											onChange={(e) => {
+												handlers.onChange();
+												setInputValue(e.target.value);
+											}}
+										/>
+									</div>
+								</PromptInputBody>
+								<PromptInputFooter>
+									<PromptInputTools>
+										<ModelSelector
+											models={availableModels}
+											currentModelId={currentModelId}
+											onSelect={setModel}
+										/>
+									</PromptInputTools>
+									<PromptInputSubmit
+										disabled={isEmpty && !isGenerating}
+										status={status}
+										onStop={stop}
+										className={cn(
+											"rounded-full",
+											isEmpty && !isGenerating ? "bg-muted text-muted-foreground" : "bg-primary-2",
+										)}
+									>
+										{status === "submitted" ? (
+											<Spinner />
+										) : status === "streaming" ? (
+											<SquareIcon className="size-4" />
+										) : (
+											<ArrowUpIcon className="size-4" />
+										)}
+									</PromptInputSubmit>
 								</PromptInputFooter>
 							</PromptInput>
 						</div>
