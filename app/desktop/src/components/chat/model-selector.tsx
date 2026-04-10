@@ -77,7 +77,7 @@ export function ModelSelector({ models, currentModelId, onSelect }: ModelSelecto
 				</button>
 			</PopoverTrigger>
 
-			<PopoverContent align="start" side="top" sideOffset={8} className="w-80 p-0 overflow-hidden">
+			<PopoverContent align="start" side="top" sideOffset={8} className="w-96 p-0 overflow-hidden">
 				{/* Search Bar */}
 				<div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-border/40">
 					<HugeiconsIcon

@@ -1,7 +1,16 @@
-import { Delete03Icon } from "@hugeicons/core-free-icons";
+import { BubbleChatAddIcon, Delete03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { SessionInfo } from "@jayden/jai-gateway";
-import { MoreHorizontalIcon, PanelLeftIcon, PenLine, Search, Settings2, Trash2 } from "lucide-react";
+import {
+	MessageCircleIcon,
+	MessageCirclePlusIcon,
+	MoreHorizontalIcon,
+	PanelLeftIcon,
+	PenLine,
+	Search,
+	Settings2,
+	Trash2,
+} from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -74,16 +83,13 @@ export function AppSidebar() {
 				<SidebarContent className="px-1">
 					<SidebarGroup className="gap-3">
 						<div className="px-2 pt-1 text-base font-serif italic tracking-tight text-sidebar-foreground/80">
-							JAI
+							OpenPanda - JAI
 						</div>
 						<SidebarGroupContent>
 							<SidebarMenu>
 								<SidebarMenuItem>
-									<SidebarMenuButton
-										className="bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground active:bg-sidebar-primary/85 active:text-sidebar-primary-foreground py-3! justify-center rounded-lg active:scale-[0.98] transition-all"
-										onClick={newChat}
-									>
-										<PenLine className="w-4 h-4" />
+									<SidebarMenuButton className=" text-sm" onClick={newChat}>
+										<MessageCirclePlusIcon className="w-4 h-4" />
 										New Chat
 									</SidebarMenuButton>
 								</SidebarMenuItem>
