@@ -254,9 +254,10 @@ function handleSSEEvent(event: SSEEvent, get: () => ChatState, set: (partial: Pa
 		case "RUN_ERROR": {
 			const msgId = ensureAssistantMessage(get, set);
 			set({
+				status: "error",
 				messages: updateMessageById(get().messages, msgId, (msg) => ({
 					...msg,
-					parts: appendTextToParts(msg.parts, "text", `\n\nError: ${event.message}`),
+					parts: [...msg.parts, { type: "error", text: String(event.message ?? "Unknown error") }],
 				})),
 			});
 			break;
@@ -289,7 +290,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		const { status, sessionId, currentModelId } = get();
 		if (!text.trim() || status === "streaming" || status === "submitted") return;
 
-		set({ status: "submitted" });
+		const userMessage: ChatMessage = {
+			id: nanoid(),
+			role: "user",
+			parts: [{ type: "text", text }],
+		};
+		set({ status: "submitted", messages: [...get().messages, userMessage] });
+		currentAssistantId = null;
 
 		try {
 			let sid = sessionId;
@@ -300,13 +307,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				set({ sessionId: sid });
 			}
 
-			const userMessage: ChatMessage = {
-				id: nanoid(),
-				role: "user",
-				parts: [{ type: "text", text }],
-			};
-			set({ messages: [...get().messages, userMessage], status: "streaming" });
-			currentAssistantId = null;
+			set({ status: "streaming" });
 
 			const controller = new AbortController();
 			abortController = controller;
@@ -318,7 +319,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			});
 		} catch (err) {
 			console.error("[gateway] prompt failed:", err);
-			set({ status: "error" });
+			const errorText = err instanceof Error ? err.message : String(err);
+			const errorMsgId = currentAssistantId ?? nanoid();
+			if (!currentAssistantId) {
+				set({ messages: [...get().messages, { id: errorMsgId, role: "assistant", parts: [] }] });
+			}
+			set({
+				status: "error",
+				messages: updateMessageById(get().messages, errorMsgId, (msg) => ({
+					...msg,
+					parts: [...msg.parts, { type: "error", text: errorText }],
+				})),
+			});
 			return;
 		}
 

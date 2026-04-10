@@ -1,4 +1,4 @@
-import { ArrowUpIcon, SquareIcon } from "lucide-react";
+import { AlertCircleIcon, ArrowUpIcon, SquareIcon } from "lucide-react";
 import { useState } from "react";
 import panda_logo_1 from "@/assets/icons/chat-area/panda-1.svg";
 import { useCursorEffect } from "@/hooks/use-cursor-effect";
@@ -108,9 +108,11 @@ export function ChatArea() {
 								const hasNoTextYet = isStreaming && !message.parts.some((p) => p.type === "text");
 								const showIndicator =
 									isStreaming &&
-									lastPart &&
-									(lastPart.type === "reasoning" ||
-										(lastPart.type === "tool_call" && lastPart.toolCall?.status === "completed"));
+									(message.parts.length === 0 ||
+										(hasNoTextYet &&
+											lastPart &&
+											(lastPart.type === "reasoning" ||
+												(lastPart.type === "tool_call" && lastPart.toolCall?.status === "completed"))));
 
 								const segments = groupParts(message.parts);
 
@@ -145,14 +147,19 @@ export function ChatArea() {
 												if (part.type === "text" && part.text) {
 													return <MessageResponse key={key}>{part.text}</MessageResponse>;
 												}
+												if (part.type === "error" && part.text) {
+													return <ErrorBlock key={key}>{part.text}</ErrorBlock>;
+												}
 												return null;
 											})}
-											{showIndicator && hasNoTextYet && <TypingIndicator />}
+											{showIndicator && <TypingIndicator />}
 										</div>
 									</MessageAssistant>
 								);
 							})}
-							{status === "submitted" && <StreamingPlaceholder />}
+							{(status === "submitted" || (status === "streaming" && messages[messages.length - 1]?.role === "user")) && (
+								<StreamingPlaceholder />
+							)}
 						</ConversationContent>
 					</Conversation>
 
@@ -235,21 +242,30 @@ function groupParts(parts: ChatMessagePart[]): Segment[] {
 function StreamingPlaceholder() {
 	return (
 		<MessageAssistant>
-			<div className="flex items-center gap-1.5 py-1">
-				<span className="size-1.5 rounded-full bg-muted-foreground/40 animate-[pulse_1.4s_ease-in-out_infinite]" />
-				<span className="size-1.5 rounded-full bg-muted-foreground/40 animate-[pulse_1.4s_ease-in-out_0.2s_infinite]" />
-				<span className="size-1.5 rounded-full bg-muted-foreground/40 animate-[pulse_1.4s_ease-in-out_0.4s_infinite]" />
+			<div className="flex items-center gap-2 py-2">
+				<span className="size-2 rounded-full bg-foreground/30 animate-[bounce_1.4s_ease-in-out_infinite]" />
+				<span className="size-2 rounded-full bg-foreground/30 animate-[bounce_1.4s_ease-in-out_0.2s_infinite]" />
+				<span className="size-2 rounded-full bg-foreground/30 animate-[bounce_1.4s_ease-in-out_0.4s_infinite]" />
 			</div>
 		</MessageAssistant>
 	);
 }
 
+function ErrorBlock({ children }: { children: React.ReactNode }) {
+	return (
+		<div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+			<AlertCircleIcon className="size-4 mt-0.5 shrink-0" />
+			<span>{children}</span>
+		</div>
+	);
+}
+
 function TypingIndicator() {
 	return (
-		<div className="flex items-center gap-1.5 py-1">
-			<span className="size-1.5 rounded-full bg-muted-foreground/40 animate-[pulse_1.4s_ease-in-out_infinite]" />
-			<span className="size-1.5 rounded-full bg-muted-foreground/40 animate-[pulse_1.4s_ease-in-out_0.2s_infinite]" />
-			<span className="size-1.5 rounded-full bg-muted-foreground/40 animate-[pulse_1.4s_ease-in-out_0.4s_infinite]" />
+		<div className="flex items-center gap-2 py-2">
+			<span className="size-2 rounded-full bg-foreground/30 animate-[bounce_1.4s_ease-in-out_infinite]" />
+			<span className="size-2 rounded-full bg-foreground/30 animate-[bounce_1.4s_ease-in-out_0.2s_infinite]" />
+			<span className="size-2 rounded-full bg-foreground/30 animate-[bounce_1.4s_ease-in-out_0.4s_infinite]" />
 		</div>
 	);
 }

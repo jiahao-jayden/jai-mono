@@ -1,5 +1,5 @@
 import { type $Fetch, ofetch } from "ofetch";
-import { getGatewayInfo } from "@/lib/ipc-client";
+import { rpc } from "@/lib/rpc";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:18900";
 
@@ -13,7 +13,7 @@ async function init(): Promise<void> {
 	initPromise = (async () => {
 		let baseURL: string;
 		try {
-			const info = await getGatewayInfo();
+			const info = await rpc.gateway.info();
 			baseURL = info.baseURL;
 		} catch {
 			baseURL = DEFAULT_BASE_URL;

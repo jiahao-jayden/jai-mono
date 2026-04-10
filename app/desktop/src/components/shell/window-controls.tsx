@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { windowClient } from "@/lib/ipc-client";
+import { rpc } from "@/lib/rpc";
 
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
@@ -34,7 +34,7 @@ export function WindowControls() {
 				activeColor="#BF4740"
 				blur={isBlur}
 				showIcon={hovered}
-				onClick={() => windowClient.close()}
+				onClick={() => rpc.window.close()}
 				icon={<CloseIcon />}
 			/>
 			<TrafficButton
@@ -42,7 +42,7 @@ export function WindowControls() {
 				activeColor="#BF9123"
 				blur={isBlur}
 				showIcon={hovered}
-				onClick={() => windowClient.minimize()}
+				onClick={() => rpc.window.minimize()}
 				icon={<MinimizeIcon />}
 			/>
 			<TrafficButton
@@ -50,7 +50,7 @@ export function WindowControls() {
 				activeColor="#1F9A31"
 				blur={isBlur}
 				showIcon={hovered}
-				onClick={() => windowClient.fullscreen()}
+				onClick={() => rpc.window.fullscreen()}
 				icon={<FullscreenIcon />}
 			/>
 		</div>

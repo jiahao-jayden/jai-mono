@@ -1,7 +1,7 @@
 export type ChatMessageRole = "user" | "assistant";
 
 export interface ChatMessagePart {
-	type: "text" | "reasoning" | "tool_call";
+	type: "text" | "reasoning" | "tool_call" | "error";
 	text?: string;
 	toolCall?: {
 		toolCallId: string;

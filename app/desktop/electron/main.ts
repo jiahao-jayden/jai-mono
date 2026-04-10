@@ -1,50 +1,34 @@
-import { app, BrowserWindow, type IpcMainInvokeEvent, ipcMain, session, systemPreferences } from "electron";
+import { app, BrowserWindow } from "electron";
+import { setupCorsProxy } from "./cors";
 import { gatewayProcess } from "./gateway-process";
 import { mainLog } from "./logger";
-import { createMainWindow, createSettingsWindow } from "./windows";
+import { createHandlers } from "./rpc/handlers";
+import { restoreTheme } from "./rpc/handlers/theme";
+import { registerRpcHandlers } from "./rpc/register";
+import { createMainWindow } from "./windows";
 
 const isMac = process.platform === "darwin";
 
+if (!app.isPackaged) {
+	app.commandLine.appendSwitch("remote-debugging-port", "9229");
+}
+
+process.on("uncaughtException", (err) => {
+	mainLog.error("uncaughtException:", err);
+});
+process.on("unhandledRejection", (reason) => {
+	mainLog.error("unhandledRejection:", reason);
+});
+
 app.whenReady().then(() => {
-	registerIpcHandlers();
+	restoreTheme();
+	registerRpcHandlers(createHandlers());
+	setupCorsProxy();
 	createMainWindow();
 
 	gatewayProcess.start().catch((err: unknown) => {
 		mainLog.error("failed to start gateway:", err);
 	});
-
-	const externalFilter = { urls: ["https://*/*", "http://*/*"] };
-
-	session.defaultSession.webRequest.onBeforeSendHeaders(
-		externalFilter,
-		(
-			details: Electron.OnBeforeSendHeadersListenerDetails,
-			callback: (response: Electron.BeforeSendResponse) => void,
-		) => {
-			const headers = { ...details.requestHeaders };
-			delete headers.Origin;
-			callback({ requestHeaders: headers });
-		},
-	);
-
-	session.defaultSession.webRequest.onHeadersReceived(
-		externalFilter,
-		(
-			details: Electron.OnHeadersReceivedListenerDetails,
-			callback: (response: Electron.HeadersReceivedResponse) => void,
-		) => {
-			const headers: Record<string, string[]> = { ...details.responseHeaders } as Record<string, string[]>;
-			for (const key of Object.keys(headers)) {
-				if (key.toLowerCase().startsWith("access-control-")) {
-					delete headers[key];
-				}
-			}
-			headers["Access-Control-Allow-Origin"] = ["*"];
-			headers["Access-Control-Allow-Methods"] = ["GET, POST, PUT, DELETE, OPTIONS"];
-			headers["Access-Control-Allow-Headers"] = ["*"];
-			callback({ responseHeaders: headers });
-		},
-	);
 
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
@@ -58,39 +42,3 @@ app.on("before-quit", () => {
 app.on("window-all-closed", () => {
 	if (!isMac) app.quit();
 });
-
-function registerIpcHandlers(): void {
-	ipcMain.handle("window:close", (event: IpcMainInvokeEvent) => {
-		BrowserWindow.fromWebContents(event.sender)?.close();
-	});
-
-	ipcMain.handle("window:minimize", (event: IpcMainInvokeEvent) => {
-		BrowserWindow.fromWebContents(event.sender)?.minimize();
-	});
-
-	ipcMain.handle("window:fullscreen", (event: IpcMainInvokeEvent) => {
-		const win = BrowserWindow.fromWebContents(event.sender);
-		if (win) win.setFullScreen(!win.isFullScreen());
-	});
-
-	ipcMain.handle("window:titlebar-dblclick", (event: IpcMainInvokeEvent) => {
-		if (!isMac) return;
-		const win = BrowserWindow.fromWebContents(event.sender);
-		if (!win) return;
-		const action = systemPreferences.getUserDefault("AppleActionOnDoubleClick", "string");
-		if (action === "Minimize") win.minimize();
-		else if (action === "Maximize") win.isMaximized() ? win.unmaximize() : win.maximize();
-	});
-
-	ipcMain.handle("window:open-settings", () => {
-		createSettingsWindow();
-	});
-
-	ipcMain.handle("gateway:info", () => {
-		return {
-			port: gatewayProcess.port,
-			baseURL: gatewayProcess.baseURL,
-			ready: gatewayProcess.ready,
-		};
-	});
-}

@@ -8,6 +8,8 @@ export interface SSEParserOptions {
 	onError?: (error: unknown) => void;
 }
 
+const yieldToRenderer = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
 export async function parseSSEStream(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
 	{ onEvent, onError }: SSEParserOptions,
@@ -24,7 +26,9 @@ export async function parseSSEStream(
 		buffer = lines.pop() ?? "";
 
 		for (const line of lines) {
-			processLine(line, onEvent, onError);
+			if (processLine(line, onEvent, onError)) {
+				await yieldToRenderer();
+			}
 		}
 	}
 
@@ -33,15 +37,17 @@ export async function parseSSEStream(
 	}
 }
 
-function processLine(line: string, onEvent: (event: SSEEvent) => void, onError?: (error: unknown) => void): void {
-	if (!line.startsWith("data:")) return;
+function processLine(line: string, onEvent: (event: SSEEvent) => void, onError?: (error: unknown) => void): boolean {
+	if (!line.startsWith("data:")) return false;
 	const data = line.slice(5).trim();
-	if (!data) return;
+	if (!data) return false;
 
 	try {
 		const event = JSON.parse(data) as SSEEvent;
 		onEvent(event);
+		return true;
 	} catch (err) {
 		onError?.(err);
+		return false;
 	}
 }

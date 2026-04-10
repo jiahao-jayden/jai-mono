@@ -9,17 +9,25 @@ const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
 
 function StatusBadge({ status }: { status: ChatStatus }) {
 	const isActive = status === "streaming" || status === "submitted";
+	const isError = status === "error";
 	return (
 		<div
 			className={cn(
 				"inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-				isActive
-					? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
-					: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
+				isError
+					? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400"
+					: isActive
+						? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+						: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
 			)}
 		>
-			<span className={cn("h-1.5 w-1.5 rounded-full", isActive ? "bg-emerald-500 animate-pulse" : "bg-zinc-400")} />
-			{isActive ? "Agent Active" : "Ready"}
+			<span
+				className={cn(
+					"h-1.5 w-1.5 rounded-full",
+					isError ? "bg-red-500" : isActive ? "bg-emerald-500 animate-pulse" : "bg-zinc-400",
+				)}
+			/>
+			{isError ? "Error" : isActive ? "Agent Active" : "Ready"}
 		</div>
 	);
 }

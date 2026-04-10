@@ -42,7 +42,7 @@ import {
 	useSidebar,
 } from "@/components/ui/sidebar";
 import { useSessions } from "@/hooks/use-sessions";
-import { windowClient } from "@/lib/ipc-client";
+import { rpc } from "@/lib/rpc";
 import { useChatStore } from "@/stores/chat";
 import { Titlebar, ToolbarButton } from "./titlebar";
 
@@ -144,7 +144,7 @@ export function AppSidebar() {
 				<SidebarFooter className="border-t border-sidebar-foreground/6">
 					<SidebarMenu>
 						<SidebarMenuItem>
-							<SidebarMenuButton onClick={() => windowClient.openSettings()}>
+							<SidebarMenuButton onClick={() => rpc.window.openSettings()}>
 								<Settings2 className="w-4 h-4" />
 								<span>Settings</span>
 							</SidebarMenuButton>

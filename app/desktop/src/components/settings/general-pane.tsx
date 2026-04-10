@@ -1,10 +1,12 @@
 import type { ConfigResponse, ProviderSettings } from "@jayden/jai-gateway";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 import { useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { gateway } from "@/services/gateway";
+import { useThemeStore } from "@/stores/theme";
 
 function getAllModels(config: ConfigResponse): { id: string; label: string; provider: string }[] {
 	const items: { id: string; label: string; provider: string }[] = [];
@@ -53,11 +55,36 @@ export function GeneralPane({ config }: { config?: ConfigResponse }) {
 		[mutation],
 	);
 
+	const { theme, setTheme } = useThemeStore();
+
 	return (
 		<section className="space-y-6">
 			<h2 className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-widest">General</h2>
 
 			<div className="space-y-5">
+				<div className="space-y-2">
+					<Label className="text-[13px] text-muted-foreground">Theme</Label>
+					<Select value={theme} onValueChange={(v) => setTheme(v as "light" | "dark" | "system")}>
+						<SelectTrigger className="w-full">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="light">
+								<SunIcon className="size-3.5 mr-2 inline-block" />
+								Light
+							</SelectItem>
+							<SelectItem value="dark">
+								<MoonIcon className="size-3.5 mr-2 inline-block" />
+								Dark
+							</SelectItem>
+							<SelectItem value="system">
+								<MonitorIcon className="size-3.5 mr-2 inline-block" />
+								System
+							</SelectItem>
+						</SelectContent>
+					</Select>
+				</div>
+
 				<div className="space-y-2">
 					<Label className="text-[13px] text-muted-foreground">Default Model</Label>
 					<Select value={config?.model ?? ""} onValueChange={handleModelChange}>
