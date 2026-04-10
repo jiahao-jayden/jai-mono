@@ -1,6 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { Message } from "@jayden/jai-ai";
 import { AgentSession, createDefaultTools, SettingsManager, Workspace } from "@jayden/jai-coding-agent";
+import { JsonlSessionStore, type MessageEntry } from "@jayden/jai-session";
 import { SessionIndex } from "./storage/session-index.js";
 import type { SessionInfo } from "./types/api.js";
 
@@ -89,6 +91,30 @@ export class SessionManager {
 		return this.activeSessions.get(sessionId)?.session;
 	}
 
+	async getOrRestore(sessionId: string): Promise<AgentSession | undefined> {
+		const active = this.activeSessions.get(sessionId);
+		if (active) return active.session;
+
+		const record = this.index.get(sessionId);
+		if (!record) return undefined;
+
+		const workspace = await this.resolveWorkspace(record.workspaceId);
+		const model = this.settings.resolveModel();
+		const tools = createDefaultTools(workspace.cwd);
+
+		const session = await AgentSession.restore({
+			workspace,
+			model,
+			baseURL: this.settings.get("baseURL"),
+			tools,
+			sessionId,
+			maxIterations: this.settings.get("maxIterations"),
+		});
+
+		this.activeSessions.set(sessionId, { session, workspaceId: record.workspaceId });
+		return session;
+	}
+
 	getSessionInfo(sessionId: string): SessionInfo | null {
 		const record = this.index.get(sessionId);
 		if (!record) return null;
@@ -105,6 +131,21 @@ export class SessionManager {
 			const state = active ? active.session.getState() : (row.state as SessionInfo["state"]);
 			return { ...row, state };
 		});
+	}
+
+	async readMessages(sessionId: string): Promise<Message[] | null> {
+		const active = this.activeSessions.get(sessionId);
+		if (active) return active.session.getMessages();
+
+		const record = this.index.get(sessionId);
+		if (!record) return null;
+
+		const filePath = join(this.jaiHome, "workspace", record.workspaceId, "sessions", `${sessionId}.jsonl`);
+		const store = await JsonlSessionStore.open(filePath);
+		const entries = store.getAllEntries();
+		await store.close();
+
+		return entries.filter((e): e is MessageEntry => e.type === "message").map((e) => e.message);
 	}
 
 	async close(sessionId: string): Promise<boolean> {

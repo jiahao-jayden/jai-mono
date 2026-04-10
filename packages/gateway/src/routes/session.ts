@@ -34,16 +34,14 @@ export function sessionRoutes(manager: SessionManager): Hono {
 		return c.body(null, 204);
 	});
 
-	app.get("/sessions/:id/messages", (c) => {
-		const session = manager.get(c.req.param("id"));
-		if (!session) return c.json({ error: "Session not found" }, 404);
-
-		const messages = session.getMessages();
+	app.get("/sessions/:id/messages", async (c) => {
+		const messages = await manager.readMessages(c.req.param("id"));
+		if (!messages) return c.json({ error: "Session not found" }, 404);
 		return c.json({ messages });
 	});
 
-	app.post("/sessions/:id/abort", (c) => {
-		const session = manager.get(c.req.param("id"));
+	app.post("/sessions/:id/abort", async (c) => {
+		const session = await manager.getOrRestore(c.req.param("id"));
 		if (!session) return c.json({ error: "Session not found" }, 404);
 
 		session.abort();
@@ -51,7 +49,7 @@ export function sessionRoutes(manager: SessionManager): Hono {
 	});
 
 	app.post("/sessions/:id/message", async (c) => {
-		const session = manager.get(c.req.param("id"));
+		const session = await manager.getOrRestore(c.req.param("id"));
 		if (!session) return c.json({ error: "Session not found" }, 404);
 
 		if (session.getState() === "running") {

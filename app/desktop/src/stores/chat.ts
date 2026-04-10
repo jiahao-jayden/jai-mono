@@ -2,7 +2,7 @@ import type { ConfigResponse, ProviderSettings } from "@jayden/jai-gateway";
 import { nanoid } from "nanoid";
 import { create } from "zustand";
 import { gateway, type SSEEvent } from "@/services/gateway";
-import type { ChatMessage, ChatMessagePart, ChatStatus } from "@/types/chat";
+import type { ChatMessage, ChatMessagePart, ChatMessageRole, ChatStatus } from "@/types/chat";
 import { useSessionStore } from "./session";
 
 export interface ModelCapabilities {
@@ -76,6 +76,48 @@ function updateMessageById(
 	updater: (msg: ChatMessage) => ChatMessage,
 ): ChatMessage[] {
 	return messages.map((m) => (m.id === id ? updater(m) : m));
+}
+
+interface GatewayMessage {
+	role: "user" | "assistant" | "tool_result";
+	content: Array<{
+		type: "text" | "thinking" | "tool_call" | "image";
+		text?: string;
+		toolCallId?: string;
+		toolName?: string;
+	}>;
+}
+
+function convertGatewayMessages(raw: GatewayMessage[]): ChatMessage[] {
+	const messages: ChatMessage[] = [];
+
+	for (const msg of raw) {
+		if (msg.role === "tool_result") continue;
+
+		const parts: ChatMessagePart[] = [];
+		for (const block of msg.content) {
+			if (block.type === "text" && block.text) {
+				parts.push({ type: "text", text: block.text });
+			} else if (block.type === "thinking" && block.text) {
+				parts.push({ type: "reasoning", text: block.text });
+			} else if (block.type === "tool_call") {
+				parts.push({
+					type: "tool_call",
+					toolCall: {
+						toolCallId: block.toolCallId ?? "",
+						name: block.toolName ?? "",
+						status: "completed",
+					},
+				});
+			}
+		}
+
+		if (parts.length > 0) {
+			messages.push({ id: nanoid(), role: msg.role as ChatMessageRole, parts });
+		}
+	}
+
+	return messages;
 }
 
 interface ChatState {
@@ -276,5 +318,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		});
 		currentAssistantId = null;
 		useSessionStore.getState().setTitle(info.title ?? null);
+
+		try {
+			const { messages: raw } = await gateway.messages.get(info.sessionId);
+			const converted = convertGatewayMessages(raw as GatewayMessage[]);
+			set({ messages: converted });
+		} catch (err) {
+			console.error("[gateway] loadSession messages failed:", err);
+		}
 	},
 }));

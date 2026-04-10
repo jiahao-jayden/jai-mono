@@ -31,6 +31,12 @@ export class AgentSession {
 		return session;
 	}
 
+	static async restore(config: SessionConfig & { sessionId: string }): Promise<AgentSession> {
+		const session = new AgentSession(config);
+		await session.rehydrate();
+		return session;
+	}
+
 	private get workspace() {
 		return this.config.workspace;
 	}
@@ -50,6 +56,20 @@ export class AgentSession {
 			cwd: this.workspace.cwd,
 		});
 		this.lastEntryId = headerId;
+
+		this.prompts = await this.workspace.loadPrompts();
+		this.wireEventPipeline();
+	}
+
+	private async rehydrate(): Promise<void> {
+		const sessionPath = this.workspace.sessionPath(this.sessionId);
+		this.store = await JsonlSessionStore.open(sessionPath);
+
+		const entries = this.store.getAllEntries();
+		if (entries.length === 0) {
+			throw new Error(`Session file is empty: ${sessionPath}`);
+		}
+		this.lastEntryId = entries[entries.length - 1].id;
 
 		this.prompts = await this.workspace.loadPrompts();
 		this.wireEventPipeline();
