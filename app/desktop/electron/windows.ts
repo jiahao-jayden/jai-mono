@@ -1,4 +1,4 @@
-import { BrowserWindow, shell } from "electron";
+import { BrowserWindow, screen, shell } from "electron";
 import { join } from "path";
 
 const isMac = process.platform === "darwin";
@@ -47,9 +47,20 @@ export function createSettingsWindow(): void {
 		return;
 	}
 
+	const width = 1060;
+	const height = 760;
+
+	const parentWindow = BrowserWindow.getFocusedWindow();
+	const display = parentWindow
+		? screen.getDisplayMatching(parentWindow.getBounds())
+		: screen.getPrimaryDisplay();
+	const { x: dX, y: dY, width: dW, height: dH } = display.workArea;
+
 	settingsWindow = new BrowserWindow({
-		width: 1060,
-		height: 760,
+		width,
+		height,
+		x: Math.round(dX + (dW - width) / 2),
+		y: Math.round(dY + (dH - height) / 2),
 		minWidth: 840,
 		minHeight: 580,
 		show: false,
