@@ -298,6 +298,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		set({ status: "submitted", messages: [...get().messages, userMessage] });
 		currentAssistantId = null;
 
+		const isNewChat = !sessionId;
+
 		try {
 			let sid = sessionId;
 			if (!sid) {
@@ -305,6 +307,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				const session = await gateway.sessions.create();
 				sid = session.sessionId;
 				set({ sessionId: sid });
+				useSessionStore.getState().setTitle(text.slice(0, 50));
 			}
 
 			set({ status: "streaming" });
@@ -336,6 +339,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
 		abortController = null;
 		set({ status: "ready" });
+		if (isNewChat) {
+			useSessionStore.getState().fetchSessions();
+		}
 	},
 
 	stop() {

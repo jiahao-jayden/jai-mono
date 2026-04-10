@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { EventAdapter } from "../events/adapter.js";
 import type { SessionManager } from "../session-manager.js";
+import { generateTitle } from "../title-generator.js";
 
 export function sessionRoutes(manager: SessionManager): Hono {
 	const app = new Hono();
@@ -32,6 +33,18 @@ export function sessionRoutes(manager: SessionManager): Hono {
 		const closed = await manager.close(c.req.param("id"));
 		if (!closed) return c.json({ error: "Session not found" }, 404);
 		return c.body(null, 204);
+	});
+
+	app.patch("/sessions/:id", async (c) => {
+		const body = await c.req.json<{ title?: string }>().catch(() => null);
+		if (!body) return c.json({ error: "Invalid body" }, 400);
+		const sessionId = c.req.param("id");
+		const info = manager.getSessionInfo(sessionId);
+		if (!info) return c.json({ error: "Session not found" }, 404);
+		if (body.title !== undefined) {
+			manager.updateSessionIndex(sessionId, "title", body.title);
+		}
+		return c.json({ ...info, title: body.title ?? info.title });
 	});
 
 	app.get("/sessions/:id/messages", async (c) => {
@@ -94,6 +107,22 @@ export function sessionRoutes(manager: SessionManager): Hono {
 			} finally {
 				clearInterval(heartbeatInterval);
 				unsubscribe();
+
+				const sessionId = c.req.param("id");
+				const info = manager.getSessionInfo(sessionId);
+				if (info && !info.firstMessage) {
+					manager.updateSessionIndex(sessionId, "firstMessage", body.text.slice(0, 200));
+				}
+				if (info && !info.title) {
+					const settings = manager.getSettings();
+					generateTitle(body.text, settings.resolveModel(), settings.get("baseURL"))
+						.then((title) => {
+							manager.updateSessionIndex(sessionId, "title", title || body.text.slice(0, 50));
+						})
+						.catch(() => {
+							manager.updateSessionIndex(sessionId, "title", body.text.slice(0, 50));
+						});
+				}
 			}
 		});
 	});

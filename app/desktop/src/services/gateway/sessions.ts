@@ -8,6 +8,8 @@ export function createSessionsApi(gw: () => $Fetch) {
 		list: (options?: { workspaceId?: string }) =>
 			gw()<SessionInfo[]>("/sessions", { query: options }),
 		get: (id: string) => gw()<SessionInfo>(`/sessions/${id}`),
+		update: (id: string, patch: { title?: string }) =>
+			gw()<SessionInfo>(`/sessions/${id}`, { method: "PATCH", body: patch }),
 		delete: (id: string) => gw()<void>(`/sessions/${id}`, { method: "DELETE" }),
 	};
 }
