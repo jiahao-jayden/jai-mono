@@ -38,6 +38,15 @@ export async function* streamMessage(input: StreamMessageInput): AsyncGenerator<
 		model: modelInfo,
 		sessionId: input.sessionId ?? crypto.randomUUID(),
 	});
+
+	if (input.reasoningEffort) {
+		const vars = ProviderTransform.variants(modelInfo);
+		const effortOpts = vars[input.reasoningEffort];
+		if (effortOpts) {
+			Object.assign(providerOpts, effortOpts);
+		}
+	}
+
 	const wrappedOpts = ProviderTransform.providerOptions(modelInfo, providerOpts);
 
 	const llmModel = wrapLanguageModel({

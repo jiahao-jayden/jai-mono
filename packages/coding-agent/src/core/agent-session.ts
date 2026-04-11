@@ -77,7 +77,7 @@ export class AgentSession {
 
 	async chat(
 		text: string,
-		options?: { model?: ModelInfo | string; baseURL?: string },
+		options?: { model?: ModelInfo | string; baseURL?: string; reasoningEffort?: string },
 	): Promise<AssistantMessage[]> {
 		if (this.state === "running") {
 			throw new AgentRunningError("AgentSession is already running");
@@ -105,6 +105,7 @@ export class AgentSession {
 				messages,
 				model: options?.model ?? this.config.model,
 				baseURL: options?.baseURL ?? this.config.baseURL,
+				reasoningEffort: options?.reasoningEffort,
 				systemPrompt,
 				tools: this.config.tools,
 				signal: this.abortController.signal,

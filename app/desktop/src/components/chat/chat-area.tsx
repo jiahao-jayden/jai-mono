@@ -22,15 +22,28 @@ import { MessageAssistant } from "./message-assistant";
 import { MessageReasoning } from "./message-reasoning";
 import { MessageUser } from "./message-user";
 import { ModelSelector } from "./model-selector";
+import { ReasoningEffortSelector } from "./reasoning-effort-selector";
 import { ToolCallGroup } from "./tool-call-group";
 
 export function ChatArea() {
 	const { wrapperRef, cursorRef, resetCursor, handlers } = useCursorEffect();
-	const { messages, sendMessage, status, stop, availableModels, currentModelId, setModel } = useChatStore();
+	const {
+		messages,
+		sendMessage,
+		status,
+		stop,
+		availableModels,
+		currentModelId,
+		setModel,
+		reasoningEffort,
+		setReasoningEffort,
+	} = useChatStore();
 	const [inputValue, setInputValue] = useState("");
 
 	const isEmpty = inputValue.trim().length === 0;
 	const isGenerating = status === "submitted" || status === "streaming";
+	const currentModel = availableModels.find((m) => m.id === currentModelId);
+	const supportsReasoning = currentModel?.capabilities?.reasoning === true;
 
 	const handleSubmit = (message: PromptInputMessage) => {
 		if (!message.text.trim()) return;
@@ -49,7 +62,7 @@ export function ChatArea() {
 						<img src={panda_logo_1} alt="JAI" className="w-64 object-contain" />
 						<p className="text-center text-xl">Hi! Jayden, JAI is here to help you.</p>
 					</div>
-					<div className="max-w-3xl w-full mx-auto **:data-[slot=input-group]:rounded-2xl **:data-[slot=input-group]:border-primary/10 **:data-[slot=input-group]:transition-[border-color] **:data-[slot=input-group]:duration-200 [&_[data-slot=input-group]:hover]:border-primary/20 [&_[data-slot=input-group]:focus-within]:border-primary/20 [&_[data-slot=input-group]:focus-within]:ring-0">
+					<div className="max-w-3xl w-full mx-auto **:data-[slot=input-group]:rounded-2xl **:data-[slot=input-group]:border-primary/10 **:data-[slot=input-group]:transition-[border-color] **:data-[slot=input-group]:duration-200 [&_[data-slot=input-group]:hover]:border-primary/20 [&_[data-slot=input-group]:focus-within]:border-primary/20 [&_[data-slot=input-group]:focus-within]:ring-0 **:data-[slot=input-group]:bg-accent">
 						<PromptInput onSubmit={handleSubmit}>
 							<PromptInputBody>
 								<div ref={wrapperRef} className="relative w-full">
@@ -76,6 +89,9 @@ export function ChatArea() {
 										currentModelId={currentModelId}
 										onSelect={setModel}
 									/>
+									{supportsReasoning && (
+										<ReasoningEffortSelector value={reasoningEffort} onChange={setReasoningEffort} />
+									)}
 								</PromptInputTools>
 								<PromptInputSubmit
 									disabled={isEmpty && !isGenerating}
@@ -198,6 +214,9 @@ export function ChatArea() {
 											currentModelId={currentModelId}
 											onSelect={setModel}
 										/>
+										{supportsReasoning && (
+											<ReasoningEffortSelector value={reasoningEffort} onChange={setReasoningEffort} />
+										)}
 									</PromptInputTools>
 									<PromptInputSubmit
 										disabled={isEmpty && !isGenerating}

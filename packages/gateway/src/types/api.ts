@@ -20,6 +20,7 @@ export interface ConfigResponse {
 	providers?: Record<string, import("@jayden/jai-coding-agent").ProviderSettings>;
 	maxIterations: number;
 	language: string;
+	reasoningEffort?: string;
 }
 
 export interface ConfigUpdateRequest {
@@ -27,6 +28,7 @@ export interface ConfigUpdateRequest {
 	provider?: string;
 	maxIterations?: number;
 	language?: string;
+	reasoningEffort?: string;
 }
 
 export interface FetchModelsResponse {

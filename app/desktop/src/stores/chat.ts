@@ -138,11 +138,13 @@ interface ChatState {
 	currentModelId: string | null;
 	availableModels: ModelItem[];
 	sessionId: string | null;
+	reasoningEffort: string | null;
 
 	syncModels: (config: ConfigResponse) => void;
 	sendMessage: (text: string) => Promise<void>;
 	stop: () => void;
 	setModel: (modelId: string) => void;
+	setReasoningEffort: (effort: string | null) => void;
 	newChat: () => void;
 	loadSession: (info: { sessionId: string; title?: string }) => Promise<void>;
 }
@@ -271,6 +273,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	currentModelId: null,
 	availableModels: [],
 	sessionId: null,
+	reasoningEffort: null,
 
 	syncModels(config: ConfigResponse) {
 		const models = flattenModels(config);
@@ -278,6 +281,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		if (models.length > 0 && !get().currentModelId) {
 			const defaultId = models.find((m) => m.id === config.model)?.id ?? models[0].id;
 			set({ currentModelId: defaultId });
+		}
+		if (config.reasoningEffort !== undefined) {
+			set({ reasoningEffort: config.reasoningEffort ?? null });
 		}
 	},
 
@@ -313,6 +319,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			await gateway.messages.send(sid, text, {
 				onEvent: (event) => handleSSEEvent(event, get, set),
 				modelId: currentModelId ?? undefined,
+				reasoningEffort: get().reasoningEffort ?? undefined,
 				signal: controller.signal,
 			});
 		} catch (err) {
@@ -352,6 +359,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	setModel(modelId: string) {
 		set({ currentModelId: modelId });
 		gateway.config.update({ model: modelId }).catch(() => {});
+	},
+
+	setReasoningEffort(effort: string | null) {
+		set({ reasoningEffort: effort });
+		gateway.config.update({ reasoningEffort: effort ?? undefined }).catch(() => {});
 	},
 
 	newChat() {

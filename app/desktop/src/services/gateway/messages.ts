@@ -11,12 +11,13 @@ export function createMessagesApi(gw: () => $Fetch) {
 		async send(
 			sessionId: string,
 			text: string,
-			options: SSEParserOptions & { modelId?: string; signal?: AbortSignal },
+			options: SSEParserOptions & { modelId?: string; reasoningEffort?: string; signal?: AbortSignal },
 		): Promise<void> {
-			const { onEvent, onError, modelId, signal } = options;
+			const { onEvent, onError, modelId, reasoningEffort, signal } = options;
 
 			const body: Record<string, unknown> = { text };
 			if (modelId) body.modelId = modelId;
+			if (reasoningEffort) body.reasoningEffort = reasoningEffort;
 
 			const res = await fetch(`${getBaseURL()}/sessions/${sessionId}/message`, {
 				method: "POST",

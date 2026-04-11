@@ -15,6 +15,7 @@ function toConfigResponse(manager: SessionManager) {
 		providers: all.providers ?? {},
 		maxIterations: all.maxIterations,
 		language: all.language,
+		reasoningEffort: all.reasoningEffort,
 	};
 }
 

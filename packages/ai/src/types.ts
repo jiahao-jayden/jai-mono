@@ -105,6 +105,7 @@ export type StreamMessageInput = {
 	apiKey?: string;
 	baseURL?: string;
 	sessionId?: string;
+	reasoningEffort?: string;
 };
 // ── 模型能力 ──────────────────────────────────────────────────
 

@@ -69,17 +69,20 @@ export function sessionRoutes(manager: SessionManager): Hono {
 			return c.json({ error: "Session is already running" }, 409);
 		}
 
-		const body = await c.req.json<{ text: string; modelId?: string }>().catch(() => null);
+		const body = await c.req.json<{ text: string; modelId?: string; reasoningEffort?: string }>().catch(() => null);
 		if (!body?.text) {
 			return c.json({ error: "Request body must include 'text'" }, 400);
 		}
 
+		const settings = manager.getSettings();
 		const override = body.modelId
-			? manager.getSettings().withOverrides({ model: body.modelId })
+			? settings.withOverrides({ model: body.modelId })
 			: null;
-		const chatOptions = override
-			? { model: override.resolveModel(), baseURL: override.get("baseURL") }
-			: undefined;
+		const resolved = override ?? settings;
+		const chatOptions = {
+			...(override && { model: resolved.resolveModel(), baseURL: resolved.get("baseURL") }),
+			reasoningEffort: body.reasoningEffort ?? resolved.get("reasoningEffort"),
+		};
 
 		const threadId = session.getSessionId();
 		const adapter = new EventAdapter(threadId);
@@ -121,8 +124,8 @@ export function sessionRoutes(manager: SessionManager): Hono {
 					manager.updateSessionIndex(sessionId, "firstMessage", body.text.slice(0, 200));
 				}
 				if (info && !info.title) {
-					const settings = manager.getSettings();
-					generateTitle(body.text, settings.resolveModel(), settings.get("baseURL"))
+					const s = manager.getSettings();
+					generateTitle(body.text, s.resolveModel(), s.get("baseURL"))
 						.then((title) => {
 							manager.updateSessionIndex(sessionId, "title", title || body.text.slice(0, 50));
 						})

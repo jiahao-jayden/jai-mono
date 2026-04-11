@@ -27,6 +27,7 @@ export type AgentLoopOptions = {
 	signal?: AbortSignal;
 	events?: EventBus;
 	maxIterations?: number;
+	reasoningEffort?: string;
 
 	// hooks
 	beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;
@@ -44,7 +45,8 @@ export type AgentLoopOptions = {
  * 6. 把 assistant + toolResults 追加到 messages
  */
 export async function runAgentLoop(options: AgentLoopOptions) {
-	const { messages, model, baseURL, systemPrompt, tools, signal, events, maxIterations = 25 } = options;
+	const { messages, model, baseURL, systemPrompt, tools, signal, events, maxIterations = 25, reasoningEffort } =
+		options;
 	const newMessages: AssistantMessage[] = [];
 	events?.emit({ type: "agent_start" });
 
@@ -57,7 +59,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
 		const transformedMessages = (await options?.contextTransform?.(messages)) ?? messages;
 
 		const assistantMsg = await streamAndCollect(
-			{ model, baseURL, messages: transformedMessages, systemPrompt, tools, abortSignal: signal },
+			{ model, baseURL, messages: transformedMessages, systemPrompt, tools, abortSignal: signal, reasoningEffort },
 			events,
 		);
 		events?.emit({ type: "message_end", message: assistantMsg });

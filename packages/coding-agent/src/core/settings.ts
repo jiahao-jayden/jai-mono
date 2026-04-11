@@ -57,6 +57,8 @@ const SettingsSchema = z.object({
 	provider: z.string(),
 	/** base url */
 	baseURL: z.string().optional(),
+	/** 推理强度 (e.g. "low", "medium", "high", "max") */
+	reasoningEffort: z.string().optional(),
 	/** agent loop 最大迭代次数 */
 	maxIterations: z.number().int().positive(),
 	/** 回复语言偏好 */
