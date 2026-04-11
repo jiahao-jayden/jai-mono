@@ -69,10 +69,17 @@ export function sessionRoutes(manager: SessionManager): Hono {
 			return c.json({ error: "Session is already running" }, 409);
 		}
 
-		const body = await c.req.json<{ text: string }>().catch(() => null);
+		const body = await c.req.json<{ text: string; modelId?: string }>().catch(() => null);
 		if (!body?.text) {
 			return c.json({ error: "Request body must include 'text'" }, 400);
 		}
+
+		const override = body.modelId
+			? manager.getSettings().withOverrides({ model: body.modelId })
+			: null;
+		const chatOptions = override
+			? { model: override.resolveModel(), baseURL: override.get("baseURL") }
+			: undefined;
 
 		const threadId = session.getSessionId();
 		const adapter = new EventAdapter(threadId);
@@ -93,7 +100,7 @@ export function sessionRoutes(manager: SessionManager): Hono {
 			});
 
 			try {
-				await session.chat(body.text);
+				await session.chat(body.text, chatOptions);
 				await Promise.all(pendingWrites);
 			} catch (err) {
 				await Promise.all(pendingWrites);

@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { ConfigResponse, FetchModelsResponse, ProviderModel, ProviderSettings } from "@jayden/jai-gateway";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLinkIcon, EyeIcon, EyeOffIcon, LoaderIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
 import { useCallback, useMemo, useState } from "react";
 import { CapabilityBadges } from "@/components/common/capability-badges";
 import { BrandAvatar, resolveProviderIcon } from "@/components/common/provider-icons";
@@ -88,7 +89,6 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 	const [showKey, setShowKey] = useState(false);
 	const [modelSearch, setModelSearch] = useState("");
 	const [fetchedData, setFetchedData] = useState<FetchModelsResponse | null>(null);
-	const [fetchError, setFetchError] = useState<string | null>(null);
 
 	const defaults = builtin
 		? { api_base: builtin.api_base, api_format: builtin.api_format }
@@ -123,10 +123,9 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 		mutationFn: (force: boolean) => gateway.config.fetchModels(providerId, force),
 		onSuccess: (data) => {
 			setFetchedData(data);
-			setFetchError(null);
 		},
 		onError: (err) => {
-			setFetchError(err instanceof Error ? err.message : String(err));
+			toast.error(err instanceof Error ? err.message : String(err));
 		},
 	});
 
@@ -175,7 +174,6 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 
 	const handleCancel = useCallback(() => {
 		setDraftConfig(initialConfig);
-		setFetchError(null);
 	}, [initialConfig]);
 
 	const handleSave = useCallback(() => {
@@ -333,32 +331,29 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 							<Button
 								variant="outline"
 								size="sm"
-								onClick={() => fetchModelsMutation.mutate(!resolvedFetchedData)}
-								disabled={fetchModelsMutation.isPending || hasFetchConfigChanges}
+								onClick={async () => {
+									if (!draftConfig.api_key) {
+										toast.error("Please enter an API key first");
+										return;
+									}
+									if (hasFetchConfigChanges) {
+										await putMutation.mutateAsync(draftConfig);
+									}
+									fetchModelsMutation.mutate(!resolvedFetchedData);
+								}}
+								disabled={fetchModelsMutation.isPending || putMutation.isPending}
 								className="shrink-0 gap-1.5"
 							>
-								{fetchModelsMutation.isPending ? (
+								{fetchModelsMutation.isPending || putMutation.isPending ? (
 									<LoaderIcon className="size-3.5 animate-spin" />
 								) : (
 									<RefreshCwIcon className="size-3.5" />
 								)}
-								{fetchModelsMutation.isPending ? "Fetching..." : "Fetch"}
+								{putMutation.isPending ? "Saving..." : fetchModelsMutation.isPending ? "Fetching..." : "Fetch"}
 							</Button>
 						</div>
 
-						{hasFetchConfigChanges && (
-							<p className="mb-3 text-[11px] text-muted-foreground/40">
-								Save API settings before fetching models.
-							</p>
-						)}
-
-						{fetchError && (
-							<div className="mb-3 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2">
-								<p className="text-[12px] text-destructive">{fetchError}</p>
-							</div>
-						)}
-
-						{fetchModelsMutation.isPending && !resolvedFetchedData && (
+					{fetchModelsMutation.isPending && !resolvedFetchedData && (
 							<div className="flex-1 space-y-0 divide-y divide-border/20 overflow-hidden rounded-xl border border-border/20">
 								{["s0", "s1", "s2", "s3", "s4"].map((key) => (
 									<div key={key} className="flex items-center justify-between px-3 py-2.5">
@@ -428,8 +423,17 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 								<Button
 									variant="outline"
 									size="sm"
-									onClick={() => fetchModelsMutation.mutate(false)}
-									disabled={fetchModelsMutation.isPending || hasFetchConfigChanges}
+									onClick={async () => {
+										if (!draftConfig.api_key) {
+											toast.error("Please enter an API key first");
+											return;
+										}
+										if (hasFetchConfigChanges) {
+											await putMutation.mutateAsync(draftConfig);
+										}
+										fetchModelsMutation.mutate(false);
+									}}
+									disabled={fetchModelsMutation.isPending || putMutation.isPending}
 									className="gap-1.5"
 								>
 									<RefreshCwIcon className="size-3.5" />

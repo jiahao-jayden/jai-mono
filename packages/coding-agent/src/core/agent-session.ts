@@ -1,5 +1,5 @@
 import { type AgentEvent, EventBus, runAgentLoop } from "@jayden/jai-agent";
-import type { AssistantMessage, Message, UserMessage } from "@jayden/jai-ai";
+import type { AssistantMessage, Message, ModelInfo, UserMessage } from "@jayden/jai-ai";
 import { buildSessionContext, JsonlSessionStore, type MessageEntry, type SessionStore } from "@jayden/jai-session";
 import { NamedError } from "@jayden/jai-utils";
 import z from "zod";
@@ -75,7 +75,10 @@ export class AgentSession {
 		this.wireEventPipeline();
 	}
 
-	async chat(text: string): Promise<AssistantMessage[]> {
+	async chat(
+		text: string,
+		options?: { model?: ModelInfo | string; baseURL?: string },
+	): Promise<AssistantMessage[]> {
 		if (this.state === "running") {
 			throw new AgentRunningError("AgentSession is already running");
 		}
@@ -100,8 +103,8 @@ export class AgentSession {
 
 			const result = await runAgentLoop({
 				messages,
-				model: this.config.model,
-				baseURL: this.config.baseURL,
+				model: options?.model ?? this.config.model,
+				baseURL: options?.baseURL ?? this.config.baseURL,
 				systemPrompt,
 				tools: this.config.tools,
 				signal: this.abortController.signal,

@@ -139,7 +139,7 @@ interface ChatState {
 	availableModels: ModelItem[];
 	sessionId: string | null;
 
-	init: () => Promise<void>;
+	syncModels: (config: ConfigResponse) => void;
 	sendMessage: (text: string) => Promise<void>;
 	stop: () => void;
 	setModel: (modelId: string) => void;
@@ -272,17 +272,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	availableModels: [],
 	sessionId: null,
 
-	async init() {
-		try {
-			await gateway.waitForReady();
-			const config = await gateway.config.get();
-			const models = flattenModels(config);
-			set({ availableModels: models });
-			if (models.length > 0 && !get().currentModelId) {
-				set({ currentModelId: models[0].id });
-			}
-		} catch (err) {
-			console.error("[gateway] init failed:", err);
+	syncModels(config: ConfigResponse) {
+		const models = flattenModels(config);
+		set({ availableModels: models });
+		if (models.length > 0 && !get().currentModelId) {
+			const defaultId = models.find((m) => m.id === config.model)?.id ?? models[0].id;
+			set({ currentModelId: defaultId });
 		}
 	},
 
@@ -356,6 +351,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
 	setModel(modelId: string) {
 		set({ currentModelId: modelId });
+		gateway.config.update({ model: modelId }).catch(() => {});
 	},
 
 	newChat() {

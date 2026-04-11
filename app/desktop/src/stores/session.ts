@@ -6,6 +6,7 @@ interface SessionState {
 	sessions: SessionInfo[];
 	title: string | null;
 
+	setSessions: (sessions: SessionInfo[]) => void;
 	fetchSessions: () => Promise<void>;
 	deleteSession: (sessionId: string) => Promise<void>;
 	setTitle: (title: string | null) => void;
@@ -14,6 +15,8 @@ interface SessionState {
 export const useSessionStore = create<SessionState>((set, get) => ({
 	sessions: [],
 	title: null,
+
+	setSessions: (sessions) => set({ sessions }),
 
 	async fetchSessions() {
 		try {

@@ -39,14 +39,14 @@ import {
 	SidebarMenuItem,
 	useSidebar,
 } from "@/components/ui/sidebar";
-import { useSessions } from "@/hooks/use-sessions";
 import { rpc } from "@/lib/rpc";
 import { useChatStore } from "@/stores/chat";
+import { useSessionStore } from "@/stores/session";
 import { Titlebar, ToolbarButton } from "./titlebar";
 
 export function AppSidebar() {
 	const { open, setOpen } = useSidebar();
-	const { sessions, deleteSession } = useSessions();
+	const { sessions, deleteSession } = useSessionStore();
 	const { sessionId: activeSessionId, newChat, loadSession } = useChatStore();
 	const [deleteTarget, setDeleteTarget] = useState<SessionInfo | null>(null);
 
