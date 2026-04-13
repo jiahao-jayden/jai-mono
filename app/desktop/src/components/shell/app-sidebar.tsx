@@ -1,14 +1,7 @@
-import { Delete03Icon } from "@hugeicons/core-free-icons";
+import { BubbleChatAddIcon, Delete03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { SessionInfo } from "@jayden/jai-gateway";
-import {
-	MessageCirclePlusIcon,
-	MoreHorizontalIcon,
-	PanelLeftIcon,
-	PenLine,
-	Search,
-	Settings2,
-} from "lucide-react";
+import { MessageCirclePlusIcon, MoreHorizontalIcon, PanelLeftIcon, PenLine, Search, Settings2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -89,8 +82,14 @@ export function AppSidebar() {
 						<SidebarGroupContent>
 							<SidebarMenu>
 								<SidebarMenuItem>
-									<SidebarMenuButton className=" text-sm" onClick={newChat}>
-										<MessageCirclePlusIcon className="w-4 h-4" />
+									<SidebarMenuButton className="text-sm" onClick={newChat}>
+										{/* <MessageCirclePlusIcon className="w-4 h-4" /> */}
+										<HugeiconsIcon
+											icon={BubbleChatAddIcon}
+											size={24}
+											strokeWidth={1.5}
+											shapeRendering="geometricPrecision"
+										/>
 										New Chat
 									</SidebarMenuButton>
 								</SidebarMenuItem>
@@ -106,11 +105,13 @@ export function AppSidebar() {
 									{sorted.map((s) => (
 										<SidebarMenuItem key={s.sessionId}>
 											<SidebarMenuButton
-												className="rounded-md! px-4! group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-accent-foreground cursor-pointer"
+												className="rounded-sm! px-4! group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-primary cursor-pointer"
 												isActive={s.sessionId === activeSessionId}
 												onClick={() => loadSession({ sessionId: s.sessionId, title: s.title ?? undefined })}
 											>
-												<span className="truncate">{s.title || s.firstMessage?.slice(0, 30) || `${s.sessionId.slice(0, 8)}...`}</span>
+												<span className="truncate">
+													{s.title || s.firstMessage?.slice(0, 30) || `${s.sessionId.slice(0, 8)}...`}
+												</span>
 											</SidebarMenuButton>
 											<DropdownMenu>
 												<DropdownMenuTrigger asChild>
@@ -120,14 +121,14 @@ export function AppSidebar() {
 												</DropdownMenuTrigger>
 												<DropdownMenuContent side="bottom" align="center">
 													<DropdownMenuItem
-													variant="destructive"
-													onSelect={() => {
-														setTimeout(() => setDeleteTarget(s), 0);
-													}}
-												>
-													<HugeiconsIcon icon={Delete03Icon} className="w-4 h-4" />
-													删除
-												</DropdownMenuItem>
+														variant="destructive"
+														onSelect={() => {
+															setTimeout(() => setDeleteTarget(s), 0);
+														}}
+													>
+														<HugeiconsIcon icon={Delete03Icon} size={16} />
+														删除
+													</DropdownMenuItem>
 												</DropdownMenuContent>
 											</DropdownMenu>
 										</SidebarMenuItem>
