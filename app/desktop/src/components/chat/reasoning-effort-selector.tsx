@@ -57,7 +57,7 @@ export function ReasoningEffortSelector({ value, onChange }: ReasoningEffortSele
 				</Tooltip>
 			</TooltipProvider>
 
-			<PopoverContent align="start" side="top" sideOffset={8} className="w-auto p-1">
+			<PopoverContent align="start" side="top" sideOffset={8} className="w-auto p-1 rounded-md!">
 				<div className="flex items-center gap-0.5">
 					<button
 						type="button"

@@ -1,6 +1,6 @@
 import { AlertCircleIcon, ArrowUpIcon, SquareIcon } from "lucide-react";
 import { useState } from "react";
-import panda_logo_1 from "@/assets/icons/chat-area/panda-1.svg";
+import panda_logo_2 from "@/assets/icons/chat-area/panda-2.svg";
 import { useCursorEffect } from "@/hooks/use-cursor-effect";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chat";
@@ -59,10 +59,10 @@ export function ChatArea() {
 			{messages.length === 0 ? (
 				<div className="flex-1 flex flex-col items-center justify-center px-4">
 					<div className="flex flex-col items-center justify-center gap-4 my-10">
-						<img src={panda_logo_1} alt="JAI" className="w-64 object-contain" />
+						<img src={panda_logo_2} alt="JAI" className="w-64 object-contain" />
 						<p className="text-center text-xl">Hi! Jayden, JAI is here to help you.</p>
 					</div>
-					<div className="max-w-3xl w-full mx-auto **:data-[slot=input-group]:rounded-2xl **:data-[slot=input-group]:border-primary/10 **:data-[slot=input-group]:transition-[border-color] **:data-[slot=input-group]:duration-200 [&_[data-slot=input-group]:hover]:border-primary/20 [&_[data-slot=input-group]:focus-within]:border-primary/20 [&_[data-slot=input-group]:focus-within]:ring-0 **:data-[slot=input-group]:bg-accent">
+					<div className="max-w-3xl w-full mx-auto **:data-[slot=input-group]:rounded-xl **:data-[slot=input-group]:border-primary/10 **:data-[slot=input-group]:transition-[border-color] **:data-[slot=input-group]:duration-200 [&_[data-slot=input-group]:hover]:border-primary/20 [&_[data-slot=input-group]:focus-within]:border-primary/20 [&_[data-slot=input-group]:focus-within]:ring-0 **:data-[slot=input-group]:bg-card">
 						<PromptInput onSubmit={handleSubmit}>
 							<PromptInputBody>
 								<div ref={wrapperRef} className="relative w-full">

@@ -168,6 +168,17 @@
   }
 }
 
+@utility scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  & [data-slot="scroll-area-scrollbar"] {
+    display: none;
+  }
+}
+
 @layer components {
   .prose {
     @apply max-w-[65ch] text-base leading-relaxed md:text-lg md:leading-loose;
@@ -197,6 +208,7 @@
     @apply overflow-x-auto rounded-lg border border-border bg-muted/50 p-4 font-mono text-sm text-foreground;
   }
 }
+
 
 ::-webkit-scrollbar {
 	width: 4px;

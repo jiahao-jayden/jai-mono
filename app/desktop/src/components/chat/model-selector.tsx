@@ -77,7 +77,12 @@ export function ModelSelector({ models, currentModelId, onSelect }: ModelSelecto
 				</button>
 			</PopoverTrigger>
 
-			<PopoverContent align="start" side="top" sideOffset={8} className="w-96 p-0 overflow-hidden">
+			<PopoverContent
+				align="start"
+				side="top"
+				sideOffset={8}
+				className="w-96 p-0 overflow-hidden rounded-md! scrollbar-hidden"
+			>
 				{/* Search Bar */}
 				<div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-border/40">
 					<HugeiconsIcon
@@ -101,7 +106,7 @@ export function ModelSelector({ models, currentModelId, onSelect }: ModelSelecto
 				<div className="flex" style={{ height: 260 }}>
 					{/* Provider sidebar */}
 					<div className="w-10 shrink-0 border-r border-border/40 py-1">
-						<ScrollArea className="h-full">
+						<ScrollArea className="h-full scrollbar-hidden">
 							<div className="flex flex-col items-center gap-0.5 px-0.5">
 								<TooltipProvider>
 									<Tooltip>
