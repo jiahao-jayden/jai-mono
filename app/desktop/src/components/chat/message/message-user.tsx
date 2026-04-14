@@ -1,5 +1,5 @@
 import type { ChatAttachment } from "@/types/chat";
-import { Message, MessageContent } from "../ai-elements/message";
+import { Message, MessageContent } from "../../ai-elements/message";
 import { AttachmentList } from "./attachment-preview";
 
 interface MessageUserProps {

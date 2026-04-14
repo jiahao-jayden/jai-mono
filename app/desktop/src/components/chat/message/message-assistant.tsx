@@ -1,4 +1,4 @@
-import { Message, MessageContent } from "../ai-elements/message";
+import { Message, MessageContent } from "../../ai-elements/message";
 
 interface MessageAssistantProps {
 	children: React.ReactNode;
