@@ -1,3 +1,5 @@
+import { Idea01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { ChevronRightIcon, SparklesIcon } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -20,7 +22,7 @@ export function MessageReasoning({ children, streaming }: MessageReasoningProps)
 					streaming && "text-muted-foreground/70",
 				)}
 			>
-				<SparklesIcon className={cn("size-3", streaming && "animate-pulse text-amber-400/70")} />
+				<HugeiconsIcon icon={Idea01Icon} size={16} strokeWidth={2} />
 				<span>{streaming ? "思考中…" : "思考过程"}</span>
 				<ChevronRightIcon className={cn("size-2.5 transition-transform duration-200", open && "rotate-90")} />
 			</button>

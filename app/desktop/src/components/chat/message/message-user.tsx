@@ -1,3 +1,4 @@
+import { motion } from "motion/react";
 import type { ChatAttachment } from "@/types/chat";
 import { Message, MessageContent } from "../../ai-elements/message";
 import { AttachmentList } from "./attachment-preview";
@@ -11,7 +12,12 @@ export function MessageUser({ children, attachments }: MessageUserProps) {
 	const hasAttachments = attachments && attachments.length > 0;
 	const hasText = typeof children === "string" ? children.trim().length > 0 : children != null;
 	return (
-		<div className="flex flex-col items-end gap-1.5 w-full">
+		<motion.div
+			className="flex flex-col items-end gap-1.5 w-full"
+			initial={{ opacity: 0, x: 12 }}
+			animate={{ opacity: 1, x: 0 }}
+			transition={{ type: "spring", stiffness: 300, damping: 24 }}
+		>
 			{hasAttachments && (
 				<div className="flex justify-end max-w-[75%]">
 					<AttachmentList attachments={attachments} />
@@ -24,6 +30,6 @@ export function MessageUser({ children, attachments }: MessageUserProps) {
 					</MessageContent>
 				</Message>
 			)}
-		</div>
+		</motion.div>
 	);
 }

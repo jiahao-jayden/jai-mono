@@ -1,7 +1,8 @@
-import { BubbleChatAddIcon, Delete03Icon } from "@hugeicons/core-free-icons";
+import { BubbleChatAddIcon, Delete03Icon, Settings01Icon, Settings05Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { SessionInfo } from "@jayden/jai-gateway";
 import { MoreHorizontalIcon, PenLine, Search, Settings2 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -156,7 +157,7 @@ function SessionItem({
 }
 
 export function AppSidebar() {
-	const { toggleSidebar } = useSidebar();
+	const { toggleSidebar, open } = useSidebar();
 	const { sessions, deleteSession } = useSessionStore();
 	const { sessionId: activeSessionId, newChat, loadSession } = useChatStore();
 	const [deleteTarget, setDeleteTarget] = useState<SessionInfo | null>(null);
@@ -183,61 +184,84 @@ export function AppSidebar() {
 				</SidebarHeader>
 
 				<SidebarContent className="px-1">
-					<SidebarGroup className="gap-3">
-						<div className="px-2 pt-1 text-base font-serif italic tracking-tight text-sidebar-foreground/80">
-							OpenPanda - JAI
-						</div>
-						<SidebarGroupContent>
-							<SidebarMenu>
-								<SidebarMenuItem>
-									<SidebarMenuButton className="text-sm" onClick={newChat}>
-										<HugeiconsIcon
-											icon={BubbleChatAddIcon}
-											size={24}
-											strokeWidth={1.5}
-											shapeRendering="geometricPrecision"
-										/>
-										New Chat
-									</SidebarMenuButton>
-								</SidebarMenuItem>
-							</SidebarMenu>
-						</SidebarGroupContent>
-					</SidebarGroup>
-
-					{sorted.length > 0 ? (
-						<SidebarGroup>
-							<SidebarGroupLabel>对话记录</SidebarGroupLabel>
+					<motion.div
+						animate={{ opacity: open ? 1 : 0 }}
+						transition={{ duration: 0.15 }}
+						className="flex flex-col flex-1 min-h-0"
+					>
+						<SidebarGroup className="gap-3">
+							<div className="px-2 pt-1 text-base font-serif italic tracking-tight text-sidebar-foreground/80">
+								OpenPanda - JAI
+							</div>
 							<SidebarGroupContent>
 								<SidebarMenu>
-									{sorted.map((s) => (
-										<SessionItem
-											key={s.sessionId}
-											session={s}
-											isActive={s.sessionId === activeSessionId}
-											onSelect={() => loadSession({ sessionId: s.sessionId, title: s.title ?? undefined })}
-											onDelete={() => setDeleteTarget(s)}
-										/>
-									))}
+									<SidebarMenuItem>
+										<SidebarMenuButton className="text-sm" onClick={newChat}>
+											<HugeiconsIcon
+												icon={BubbleChatAddIcon}
+												size={24}
+												strokeWidth={1.5}
+												shapeRendering="geometricPrecision"
+											/>
+											New Chat
+										</SidebarMenuButton>
+									</SidebarMenuItem>
 								</SidebarMenu>
 							</SidebarGroupContent>
 						</SidebarGroup>
-					) : (
-						<SidebarGroup>
-							<SidebarGroupContent>
-								<div className="flex flex-col items-center gap-1.5 py-10 text-center">
-									<Search className="w-5 h-5 text-sidebar-foreground/20" />
-									<p className="text-xs text-sidebar-foreground/40">暂无对话记录</p>
-								</div>
-							</SidebarGroupContent>
-						</SidebarGroup>
-					)}
+
+						{sorted.length > 0 ? (
+							<SidebarGroup>
+								<SidebarGroupLabel>对话记录</SidebarGroupLabel>
+								<SidebarGroupContent>
+									<SidebarMenu>
+										<AnimatePresence initial={false}>
+											{sorted.map((s) => (
+												<motion.div
+													key={s.sessionId}
+													layout
+													initial={{ opacity: 0, y: -4 }}
+													animate={{ opacity: 1, y: 0 }}
+													exit={{ opacity: 0, height: 0, overflow: "hidden" }}
+													transition={{ type: "spring", stiffness: 300, damping: 24 }}
+												>
+													<SessionItem
+														session={s}
+														isActive={s.sessionId === activeSessionId}
+														onSelect={() =>
+															loadSession({ sessionId: s.sessionId, title: s.title ?? undefined })
+														}
+														onDelete={() => setDeleteTarget(s)}
+													/>
+												</motion.div>
+											))}
+										</AnimatePresence>
+									</SidebarMenu>
+								</SidebarGroupContent>
+							</SidebarGroup>
+						) : (
+							<SidebarGroup>
+								<SidebarGroupContent>
+									<motion.div
+										className="flex flex-col items-center gap-1.5 py-10 text-center"
+										initial={{ opacity: 0 }}
+										animate={{ opacity: 1 }}
+										transition={{ duration: 0.2 }}
+									>
+										<Search className="w-5 h-5 text-sidebar-foreground/20" />
+										<p className="text-xs text-sidebar-foreground/40">暂无对话记录</p>
+									</motion.div>
+								</SidebarGroupContent>
+							</SidebarGroup>
+						)}
+					</motion.div>
 				</SidebarContent>
 
 				<SidebarFooter className="border-t border-sidebar-foreground/6">
 					<SidebarMenu>
 						<SidebarMenuItem>
 							<SidebarMenuButton onClick={() => rpc.window.openSettings()}>
-								<Settings2 className="w-4 h-4" />
+								<HugeiconsIcon icon={Settings01Icon} size={16} strokeWidth={1.8} />
 								<span>Settings</span>
 							</SidebarMenuButton>
 						</SidebarMenuItem>

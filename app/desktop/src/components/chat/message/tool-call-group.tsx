@@ -1,3 +1,5 @@
+import { CommandLineIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { CheckIcon, ChevronRightIcon, LoaderIcon, TerminalIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -95,7 +97,11 @@ export function ToolCallGroup({ tools }: ToolCallGroupProps) {
 				onClick={() => setExpanded(!expanded)}
 				className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground/50 hover:text-muted-foreground/80 transition-colors py-0.5 rounded"
 			>
-				{hasRunning ? <LoaderIcon className="size-3 animate-spin" /> : <TerminalIcon className="size-3" />}
+				{hasRunning ? (
+					<LoaderIcon className="size-3 animate-spin" />
+				) : (
+					<HugeiconsIcon icon={CommandLineIcon} size={16} strokeWidth={2} />
+				)}
 				<span>{summarize(tools)}</span>
 				<ChevronRightIcon className={cn("size-2.5 transition-transform duration-150", expanded && "rotate-90")} />
 			</button>

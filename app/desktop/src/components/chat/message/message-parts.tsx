@@ -1,14 +1,21 @@
+import { motion } from "motion/react";
 import { AlertCircleIcon } from "lucide-react";
+import { TextShimmer } from "../../motion-primitives/text-shimmer";
 import { MessageAssistant } from "./message-assistant";
 
 export function StreamingPlaceholder() {
 	return (
 		<MessageAssistant>
-			<div className="flex items-center gap-2 py-2">
-				<span className="size-2 rounded-full bg-foreground/30 animate-[bounce_1.4s_ease-in-out_infinite]" />
-				<span className="size-2 rounded-full bg-foreground/30 animate-[bounce_1.4s_ease-in-out_0.2s_infinite]" />
-				<span className="size-2 rounded-full bg-foreground/30 animate-[bounce_1.4s_ease-in-out_0.4s_infinite]" />
-			</div>
+			<motion.div
+				className="py-2"
+				initial={{ opacity: 0 }}
+				animate={{ opacity: 1 }}
+				transition={{ duration: 0.2 }}
+			>
+				<TextShimmer className="text-sm font-sans" duration={1.5}>
+					思考中...
+				</TextShimmer>
+			</motion.div>
 		</MessageAssistant>
 	);
 }
@@ -24,10 +31,15 @@ export function ErrorBlock({ children }: { children: React.ReactNode }) {
 
 export function TypingIndicator() {
 	return (
-		<div className="flex items-center gap-2 py-2">
-			<span className="size-2 rounded-full bg-foreground/30 animate-[bounce_1.4s_ease-in-out_infinite]" />
-			<span className="size-2 rounded-full bg-foreground/30 animate-[bounce_1.4s_ease-in-out_0.2s_infinite]" />
-			<span className="size-2 rounded-full bg-foreground/30 animate-[bounce_1.4s_ease-in-out_0.4s_infinite]" />
-		</div>
+		<motion.div
+			className="py-2"
+			initial={{ opacity: 0 }}
+			animate={{ opacity: 1 }}
+			transition={{ duration: 0.2 }}
+		>
+			<TextShimmer className="text-sm font-sans" duration={1.5}>
+				思考中...
+			</TextShimmer>
+		</motion.div>
 	);
 }

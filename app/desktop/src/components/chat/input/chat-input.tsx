@@ -1,6 +1,7 @@
-import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
+import { ArrowUp02Icon, Link02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { PaperclipIcon, SquareIcon } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { nanoid } from "nanoid";
 import { useState } from "react";
 import { useCursorEffect } from "@/hooks/use-cursor-effect";
@@ -51,7 +52,7 @@ function AttachButton() {
 			title="Attach files"
 			className="text-muted-foreground hover:text-foreground"
 		>
-			<PaperclipIcon className="size-4" />
+			<HugeiconsIcon icon={Link02Icon} size={16} strokeWidth={1.8} />
 		</PromptInputButton>
 	);
 }
@@ -131,13 +132,42 @@ export function ChatInput({ className }: { className?: string }) {
 							isEmpty && !isGenerating ? "bg-muted text-muted-foreground" : "bg-primary-2",
 						)}
 					>
-						{status === "submitted" ? (
-							<Spinner />
-						) : status === "streaming" ? (
-							<SquareIcon className="size-4" />
-						) : (
-							<HugeiconsIcon icon={ArrowUp02Icon} size={24} strokeWidth={2} />
-						)}
+						<AnimatePresence mode="wait" initial={false}>
+							{status === "submitted" ? (
+								<motion.span
+									key="spinner"
+									initial={{ opacity: 0, scale: 0.5 }}
+									animate={{ opacity: 1, scale: 1 }}
+									exit={{ opacity: 0, scale: 0.5 }}
+									transition={{ duration: 0.15 }}
+									className="flex items-center justify-center"
+								>
+									<Spinner />
+								</motion.span>
+							) : status === "streaming" ? (
+								<motion.span
+									key="stop"
+									initial={{ opacity: 0, scale: 0.5 }}
+									animate={{ opacity: 1, scale: 1 }}
+									exit={{ opacity: 0, scale: 0.5 }}
+									transition={{ duration: 0.15 }}
+									className="flex items-center justify-center"
+								>
+									<SquareIcon className="size-4" />
+								</motion.span>
+							) : (
+								<motion.span
+									key="send"
+									initial={{ opacity: 0, scale: 0.5 }}
+									animate={{ opacity: 1, scale: 1 }}
+									exit={{ opacity: 0, scale: 0.5 }}
+									transition={{ duration: 0.15 }}
+									className="flex items-center justify-center"
+								>
+									<HugeiconsIcon icon={ArrowUp02Icon} size={24} strokeWidth={2} />
+								</motion.span>
+							)}
+						</AnimatePresence>
 					</PromptInputSubmit>
 				</PromptInputFooter>
 			</PromptInput>
