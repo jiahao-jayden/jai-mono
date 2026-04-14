@@ -4,9 +4,9 @@ import { ChatInput } from "./input/chat-input";
 export function EmptyState() {
 	return (
 		<div className="flex-1 flex flex-col items-center justify-center px-4">
-			<div className="flex flex-col items-center justify-center gap-4 my-10">
-				<img src={panda_logo_2} alt="JAI" className="w-64 object-contain" />
-				<p className="text-center text-xl">Hi! Jayden, JAI is here to help you.</p>
+			<div className="flex items-center justify-center my-10 gap-4">
+				<img src={panda_logo_2} alt="JAI" className="w-20 object-contain" />
+				<h1 className="text-4xl font-bold font-serif text-primary-2">OpenPanda</h1>
 			</div>
 			<ChatInput className="**:data-[slot=input-group]:rounded-xl" />
 		</div>
