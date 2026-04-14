@@ -197,12 +197,7 @@ export function AppSidebar() {
 								<SidebarMenu>
 									<SidebarMenuItem>
 										<SidebarMenuButton className="text-sm" onClick={newChat}>
-											<HugeiconsIcon
-												icon={BubbleChatAddIcon}
-												size={24}
-												strokeWidth={1.5}
-												shapeRendering="geometricPrecision"
-											/>
+											<HugeiconsIcon icon={BubbleChatAddIcon} size={24} strokeWidth={2} />
 											New Chat
 										</SidebarMenuButton>
 									</SidebarMenuItem>
