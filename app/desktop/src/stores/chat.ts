@@ -2,7 +2,7 @@ import type { ConfigResponse, ProviderSettings } from "@jayden/jai-gateway";
 import { nanoid } from "nanoid";
 import { create } from "zustand";
 import { gateway, type SSEEvent } from "@/services/gateway";
-import type { ChatMessage, ChatMessagePart, ChatMessageRole, ChatStatus } from "@/types/chat";
+import type { ChatAttachment, ChatMessage, ChatMessagePart, ChatMessageRole, ChatStatus } from "@/types/chat";
 import { useSessionStore } from "./session";
 
 export interface ModelCapabilities {
@@ -141,7 +141,7 @@ interface ChatState {
 	reasoningEffort: string | null;
 
 	syncModels: (config: ConfigResponse) => void;
-	sendMessage: (text: string) => Promise<void>;
+	sendMessage: (text: string, attachments?: ChatAttachment[]) => Promise<void>;
 	stop: () => void;
 	setModel: (modelId: string) => void;
 	setReasoningEffort: (effort: string | null) => void;
@@ -264,6 +264,12 @@ function handleSSEEvent(event: SSEEvent, get: () => ChatState, set: (partial: Pa
 			});
 			break;
 		}
+		case "TITLE_GENERATED": {
+			const title = event.title as string;
+			useSessionStore.getState().setTitle(title);
+			useSessionStore.getState().updateSessionTitle(get().sessionId!, title);
+			break;
+		}
 	}
 }
 
@@ -289,14 +295,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		}
 	},
 
-	async sendMessage(text: string) {
+	async sendMessage(text: string, attachments?: ChatAttachment[]) {
 		const { status, sessionId, currentModelId } = get();
 		if (!text.trim() || status === "streaming" || status === "submitted") return;
+
+		const parts: ChatMessagePart[] = [{ type: "text", text }];
+		if (attachments?.length) {
+			for (const att of attachments) {
+				parts.push({ type: "attachment", attachment: att });
+			}
+		}
 
 		const userMessage: ChatMessage = {
 			id: nanoid(),
 			role: "user",
-			parts: [{ type: "text", text }],
+			parts,
 		};
 		set({ status: "submitted", messages: [...get().messages, userMessage] });
 		currentAssistantId = null;
@@ -310,7 +323,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				const session = await gateway.sessions.create();
 				sid = session.sessionId;
 				set({ sessionId: sid });
-				useSessionStore.getState().setTitle(text.slice(0, 50));
+				useSessionStore.getState().setTitle("Untitled");
 			}
 
 			set({ status: "streaming" });
@@ -318,11 +331,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			const controller = new AbortController();
 			abortController = controller;
 
+			const rawAttachments = attachments?.map((a) => ({
+				filename: a.filename,
+				data: a.dataUrl ? a.dataUrl.replace(/^data:[^;]+;base64,/, "") : "",
+				mimeType: a.mimeType,
+				size: a.size,
+			}));
+
 			await gateway.messages.send(sid, text, {
 				onEvent: (event) => handleSSEEvent(event, get, set),
 				modelId: currentModelId ?? undefined,
 				reasoningEffort: get().reasoningEffort ?? undefined,
 				signal: controller.signal,
+				attachments: rawAttachments?.length ? rawAttachments : undefined,
 			});
 		} catch (err) {
 			console.error("[gateway] prompt failed:", err);

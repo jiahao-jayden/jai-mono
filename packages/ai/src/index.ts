@@ -16,6 +16,7 @@ export { streamMessage } from "./stream.js";
 export type {
 	AIProvider,
 	AssistantMessage,
+	FileContent,
 	ImageContent,
 	Message,
 	ModelCapabilities,

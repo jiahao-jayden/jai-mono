@@ -10,6 +10,7 @@ interface SessionState {
 	fetchSessions: () => Promise<void>;
 	deleteSession: (sessionId: string) => Promise<void>;
 	setTitle: (title: string | null) => void;
+	updateSessionTitle: (sessionId: string, title: string) => void;
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -37,4 +38,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 	},
 
 	setTitle: (title) => set({ title }),
+
+	updateSessionTitle: (sessionId, title) =>
+		set({
+			sessions: get().sessions.map((s) =>
+				s.sessionId === sessionId ? { ...s, title } : s,
+			),
+		}),
 }));

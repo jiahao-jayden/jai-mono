@@ -1,22 +1,26 @@
-import { AlertCircleIcon, ArrowUpIcon, SquareIcon } from "lucide-react";
+import { AlertCircleIcon, ArrowUpIcon, PaperclipIcon, SquareIcon } from "lucide-react";
+import { nanoid } from "nanoid";
 import { useState } from "react";
 import panda_logo_2 from "@/assets/icons/chat-area/panda-2.svg";
 import { useCursorEffect } from "@/hooks/use-cursor-effect";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chat";
-import type { ChatMessagePart } from "@/types/chat";
+import type { ChatAttachment, ChatMessagePart } from "@/types/chat";
 import { Conversation, ConversationContent } from "../ai-elements/conversation";
 import { MessageResponse } from "../ai-elements/message";
 import {
 	PromptInput,
 	PromptInputBody,
+	PromptInputButton,
 	PromptInputFooter,
 	type PromptInputMessage,
 	PromptInputSubmit,
 	PromptInputTextarea,
 	PromptInputTools,
+	usePromptInputAttachments,
 } from "../ai-elements/prompt-input";
 import { Spinner } from "../ui/spinner";
+import { AttachmentList } from "./attachment-preview";
 import { ChatHeader } from "./chat-header";
 import { MessageAssistant } from "./message-assistant";
 import { MessageReasoning } from "./message-reasoning";
@@ -24,6 +28,25 @@ import { MessageUser } from "./message-user";
 import { ModelSelector } from "./model-selector";
 import { ReasoningEffortSelector } from "./reasoning-effort-selector";
 import { ToolCallGroup } from "./tool-call-group";
+
+function InputAttachments() {
+	const { files, remove } = usePromptInputAttachments();
+	if (files.length === 0) return null;
+
+	const attachments: ChatAttachment[] = files.map((f) => ({
+		id: f.id,
+		filename: f.filename ?? "file",
+		mimeType: f.mediaType ?? "application/octet-stream",
+		size: 0,
+		previewUrl: f.url,
+	}));
+
+	return (
+		<div className="w-full px-3 pt-2">
+			<AttachmentList attachments={attachments} onRemove={remove} />
+		</div>
+	);
+}
 
 function ChatInput({ className }: { className?: string }) {
 	const { wrapperRef, cursorRef, resetCursor, handlers } = useCursorEffect();
@@ -37,8 +60,21 @@ function ChatInput({ className }: { className?: string }) {
 	const supportsReasoning = currentModel?.capabilities?.reasoning === true;
 
 	const handleSubmit = (message: PromptInputMessage) => {
-		if (!message.text.trim()) return;
-		sendMessage(message.text);
+		if (!message.text.trim() && message.files.length === 0) return;
+
+		let attachments: ChatAttachment[] | undefined;
+		if (message.files.length > 0) {
+			attachments = message.files.map((f) => ({
+				id: nanoid(),
+				filename: f.filename ?? "file",
+				mimeType: f.mediaType ?? "application/octet-stream",
+				size: 0,
+				dataUrl: f.url,
+				previewUrl: f.url,
+			}));
+		}
+
+		sendMessage(message.text, attachments);
 		setInputValue("");
 		resetCursor();
 	};
@@ -50,8 +86,9 @@ function ChatInput({ className }: { className?: string }) {
 				className,
 			)}
 		>
-			<PromptInput onSubmit={handleSubmit}>
+			<PromptInput onSubmit={handleSubmit} maxFileSize={20 * 1024 * 1024} maxFiles={10}>
 				<PromptInputBody>
+					<InputAttachments />
 					<div ref={wrapperRef} className="relative w-full">
 						<div
 							ref={cursorRef}
@@ -71,6 +108,7 @@ function ChatInput({ className }: { className?: string }) {
 				</PromptInputBody>
 				<PromptInputFooter>
 					<PromptInputTools>
+						<AttachButton />
 						<ModelSelector models={availableModels} currentModelId={currentModelId} onSelect={setModel} />
 						{supportsReasoning && (
 							<ReasoningEffortSelector value={reasoningEffort} onChange={setReasoningEffort} />
@@ -98,6 +136,19 @@ function ChatInput({ className }: { className?: string }) {
 	);
 }
 
+function AttachButton() {
+	const { openFileDialog } = usePromptInputAttachments();
+	return (
+		<PromptInputButton
+			onClick={openFileDialog}
+			title="Attach files"
+			className="text-muted-foreground hover:text-foreground"
+		>
+			<PaperclipIcon className="size-4" />
+		</PromptInputButton>
+	);
+}
+
 export function ChatArea() {
 	const { messages, status } = useChatStore();
 
@@ -120,7 +171,14 @@ export function ChatArea() {
 							{messages.map((message, msgIdx) => {
 								if (message.role === "user") {
 									const text = message.parts.find((p) => p.type === "text")?.text ?? "";
-									return <MessageUser key={message.id}>{text}</MessageUser>;
+									const attachments = message.parts
+										.filter((p) => p.type === "attachment" && p.attachment)
+										.map((p) => p.attachment!);
+									return (
+										<MessageUser key={message.id} attachments={attachments}>
+											{text}
+										</MessageUser>
+									);
 								}
 
 								const isLastAssistant = msgIdx === messages.length - 1 && message.role === "assistant";

@@ -9,8 +9,16 @@ export type TextContent = {
 
 export type ImageContent = {
 	type: "image";
-	url: string;
+	url?: string;
+	data?: string;
 	mimeType: string;
+};
+
+export type FileContent = {
+	type: "file";
+	data: string;
+	mimeType: string;
+	filename?: string;
 };
 
 export type ThinkingContent = {
@@ -29,7 +37,7 @@ export type ToolCall = {
 
 export type UserMessage = {
 	role: "user";
-	content: (TextContent | ImageContent)[];
+	content: (TextContent | ImageContent | FileContent)[];
 	timestamp: number;
 };
 

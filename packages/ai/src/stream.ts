@@ -274,21 +274,45 @@ function convertMessages(messages: Message[], capabilities: ModelCapabilities): 
 						| { type: "text"; text: string }
 						| {
 								type: "file";
-								data: URL;
+								data: URL | Buffer;
 								mediaType: string;
 						  }
 					)[] => {
 						if (block.type === "text") {
 							return [{ type: "text" as const, text: block.text }];
 						}
-						if (!capabilities.input.image) return [];
-						return [
-							{
-								type: "file" as const,
-								data: new URL(block.url),
-								mediaType: block.mimeType,
-							},
-						];
+						if (block.type === "image") {
+							if (!capabilities.input.image) return [];
+							if (block.data) {
+								return [
+									{
+										type: "file" as const,
+										data: Buffer.from(block.data, "base64"),
+										mediaType: block.mimeType,
+									},
+								];
+							}
+							if (block.url) {
+								return [
+									{
+										type: "file" as const,
+										data: new URL(block.url),
+										mediaType: block.mimeType,
+									},
+								];
+							}
+							return [];
+						}
+						if (block.type === "file") {
+							return [
+								{
+									type: "file" as const,
+									data: Buffer.from(block.data, "base64"),
+									mediaType: block.mimeType,
+								},
+							];
+						}
+						return [];
 					},
 				),
 			});

@@ -9,7 +9,7 @@ export function createSessionsApi(gw: () => $Fetch) {
 			gw()<SessionInfo[]>("/sessions", { query: options }),
 		get: (id: string) => gw()<SessionInfo>(`/sessions/${id}`),
 		update: (id: string, patch: { title?: string }) =>
-			gw()<SessionInfo>(`/sessions/${id}`, { method: "PATCH", body: patch }),
+			gw()<SessionInfo>(`/sessions/${id}`, { method: "POST", body: patch }),
 		delete: (id: string) => gw()<void>(`/sessions/${id}`, { method: "DELETE" }),
 	};
 }

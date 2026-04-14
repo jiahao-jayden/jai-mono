@@ -1,9 +1,13 @@
 import { type AgentEvent, EventBus, runAgentLoop } from "@jayden/jai-agent";
-import type { AssistantMessage, Message, ModelInfo, UserMessage } from "@jayden/jai-ai";
+import type { AssistantMessage, FileContent, ImageContent, Message, ModelInfo, TextContent, UserMessage } from "@jayden/jai-ai";
+import { resolveModelInfo } from "@jayden/jai-ai";
 import { buildSessionContext, JsonlSessionStore, type MessageEntry, type SessionStore } from "@jayden/jai-session";
 import { NamedError } from "@jayden/jai-utils";
 import z from "zod";
+import { processAttachments } from "./attachments/processor.js";
+import type { RawAttachment } from "./attachments/types.js";
 import { buildSystemPrompt } from "./system-prompt.js";
+import { buildTitleInput, generateTitle } from "./title.js";
 import type { ResolvedPrompts, SessionConfig, SessionState } from "./types.js";
 
 export class AgentSession {
@@ -19,6 +23,8 @@ export class AgentSession {
 	private externalListeners: Array<(event: AgentEvent) => void> = [];
 
 	private prompts!: ResolvedPrompts;
+
+	private firstUserInput: { text: string; attachments?: RawAttachment[] } | null = null;
 
 	private constructor(config: SessionConfig) {
 		this.config = config;
@@ -77,7 +83,12 @@ export class AgentSession {
 
 	async chat(
 		text: string,
-		options?: { model?: ModelInfo | string; baseURL?: string; reasoningEffort?: string },
+		options?: {
+			model?: ModelInfo | string;
+			baseURL?: string;
+			reasoningEffort?: string;
+			attachments?: RawAttachment[];
+		},
 	): Promise<AssistantMessage[]> {
 		if (this.state === "running") {
 			throw new AgentRunningError("AgentSession is already running");
@@ -86,9 +97,28 @@ export class AgentSession {
 		this.abortController = new AbortController();
 
 		try {
+			if (!this.firstUserInput) {
+				this.firstUserInput = { text, attachments: options?.attachments };
+			}
+
+			const content: (TextContent | ImageContent | FileContent)[] = [{ type: "text", text }];
+
+			if (options?.attachments?.length) {
+				const modelRef = options?.model ?? this.config.model;
+				const capabilities =
+					typeof modelRef === "string"
+						? resolveModelInfo(modelRef, {
+								apiKey: undefined,
+								baseURL: options?.baseURL ?? this.config.baseURL,
+							}).capabilities
+						: modelRef.capabilities;
+				const processed = await processAttachments(options.attachments, capabilities);
+				content.push(...processed);
+			}
+
 			const userMsg: UserMessage = {
 				role: "user",
-				content: [{ type: "text", text }],
+				content,
 				timestamp: Date.now(),
 			};
 			await this.persistMessage(userMsg);
@@ -142,6 +172,19 @@ export class AgentSession {
 	async close(): Promise<void> {
 		this.abort();
 		await this.store.close();
+	}
+
+	async generateSessionTitle(options?: {
+		model?: ModelInfo | string;
+		baseURL?: string;
+	}): Promise<string | null> {
+		if (!this.firstUserInput) return null;
+		const titleInput = buildTitleInput(this.firstUserInput.text, this.firstUserInput.attachments);
+		return generateTitle(
+			titleInput,
+			options?.model ?? this.config.model,
+			options?.baseURL ?? this.config.baseURL,
+		);
 	}
 
 	onEvent(listener: (event: AgentEvent) => void): () => void {

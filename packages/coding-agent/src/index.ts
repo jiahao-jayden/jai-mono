@@ -1,5 +1,7 @@
 export { AgentSession } from "./core/agent-session.js";
+export { ACCEPTED_FILE_TYPES, ATTACHMENT_LIMITS, type RawAttachment } from "./core/attachments/index.js";
 export { ModelResolveError } from "./core/model-resolver.js";
+export { buildTitleInput, sanitizeTitle } from "./core/title.js";
 export {
 	type ProviderModel,
 	type ProviderSettings,

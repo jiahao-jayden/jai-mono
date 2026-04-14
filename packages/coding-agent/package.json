@@ -4,7 +4,8 @@
 	"private": true,
 	"type": "module",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./attachments": "./src/core/attachments/types.ts"
 	},
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -13,13 +14,16 @@
 		"dev": "tsc --build --watch"
 	},
 	"dependencies": {
-		"@jayden/jai-ai": "workspace:*",
 		"@jayden/jai-agent": "workspace:*",
+		"@jayden/jai-ai": "workspace:*",
 		"@jayden/jai-session": "workspace:*",
 		"@jayden/jai-utils": "workspace:*",
+		"pdf-parse": "^2.4.5",
+		"sharp": "^0.34.5",
 		"zod": "catalog:"
 	},
 	"devDependencies": {
+		"@types/pdf-parse": "^1.1.5",
 		"typescript": "catalog:"
 	}
 }

@@ -1,7 +1,18 @@
 export type ChatMessageRole = "user" | "assistant";
 
+export interface ChatAttachment {
+	id: string;
+	filename: string;
+	mimeType: string;
+	size: number;
+	/** blob: URL for local preview (images) */
+	previewUrl?: string;
+	/** data: URL after conversion (for sending to gateway) */
+	dataUrl?: string;
+}
+
 export interface ChatMessagePart {
-	type: "text" | "reasoning" | "tool_call" | "error";
+	type: "text" | "reasoning" | "tool_call" | "error" | "attachment";
 	text?: string;
 	toolCall?: {
 		toolCallId: string;
@@ -10,6 +21,7 @@ export interface ChatMessagePart {
 		args?: string;
 		result?: string;
 	};
+	attachment?: ChatAttachment;
 }
 
 export interface ChatMessage {

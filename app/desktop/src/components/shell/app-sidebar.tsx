@@ -1,8 +1,8 @@
 import { BubbleChatAddIcon, Delete03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { SessionInfo } from "@jayden/jai-gateway";
-import { MessageCirclePlusIcon, MoreHorizontalIcon, PanelLeftIcon, PenLine, Search, Settings2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { MoreHorizontalIcon, PanelLeftIcon, PenLine, Search, Settings2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -33,9 +33,129 @@ import {
 	useSidebar,
 } from "@/components/ui/sidebar";
 import { rpc } from "@/lib/rpc";
+import { gateway } from "@/services/gateway";
 import { useChatStore } from "@/stores/chat";
 import { useSessionStore } from "@/stores/session";
 import { Titlebar, ToolbarButton } from "./titlebar";
+
+function SessionItem({
+	session,
+	isActive,
+	onSelect,
+	onDelete,
+}: {
+	session: SessionInfo;
+	isActive: boolean;
+	onSelect: () => void;
+	onDelete: () => void;
+}) {
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState("");
+	const inputRef = useRef<HTMLInputElement>(null);
+	const { setTitle, updateSessionTitle } = useSessionStore();
+
+	useEffect(() => {
+		if (editing) {
+			inputRef.current?.focus();
+			inputRef.current?.select();
+		}
+	}, [editing]);
+
+	const startRename = useCallback(() => {
+		const current = session.title || session.firstMessage?.slice(0, 30) || "";
+		setDraft(current);
+		setEditing(true);
+	}, [session]);
+
+	const commit = useCallback(() => {
+		setEditing(false);
+		const trimmed = draft.trim();
+		if (!trimmed || trimmed === session.title) return;
+
+		updateSessionTitle(session.sessionId, trimmed);
+		if (isActive) setTitle(trimmed);
+		gateway.sessions.update(session.sessionId, { title: trimmed }).catch((err) => {
+			console.error("[gateway] rename session failed:", err);
+		});
+	}, [draft, session, isActive, setTitle, updateSessionTitle]);
+
+	const cancel = useCallback(() => {
+		setEditing(false);
+	}, []);
+
+	const handleKeyDown = useCallback(
+		(e: React.KeyboardEvent) => {
+			if (e.key === "Enter") {
+				e.preventDefault();
+				commit();
+			} else if (e.key === "Escape") {
+				cancel();
+			}
+		},
+		[commit, cancel],
+	);
+
+	const displayTitle =
+		(session.title && session.title.length > 30
+			? `${session.title.slice(0, 30)}…`
+			: session.title) ||
+		session.firstMessage?.slice(0, 30) ||
+		`${session.sessionId.slice(0, 8)}…`;
+
+	if (editing) {
+		return (
+			<SidebarMenuItem>
+				<input
+					ref={inputRef}
+					value={draft}
+					onChange={(e) => setDraft(e.target.value)}
+					onBlur={commit}
+					onKeyDown={handleKeyDown}
+					maxLength={30}
+					className="w-full rounded-sm bg-sidebar-accent/50 px-4 py-1.5 text-sm outline-none border border-sidebar-foreground/10 focus:border-sidebar-foreground/25 transition-colors"
+				/>
+			</SidebarMenuItem>
+		);
+	}
+
+	return (
+		<SidebarMenuItem>
+			<SidebarMenuButton
+				className="rounded-sm! px-4! group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-primary cursor-pointer"
+				isActive={isActive}
+				onClick={onSelect}
+			>
+				<span className="truncate">{displayTitle}</span>
+			</SidebarMenuButton>
+			<DropdownMenu>
+				<DropdownMenuTrigger asChild>
+					<SidebarMenuAction showOnHover className="cursor-pointer">
+						<MoreHorizontalIcon className="w-4 h-4 text-sidebar-foreground/30 hover:text-sidebar-foreground" />
+					</SidebarMenuAction>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent side="bottom" align="center">
+					<DropdownMenuItem
+						onSelect={() => {
+							setTimeout(startRename, 0);
+						}}
+					>
+						<PenLine className="w-4 h-4" />
+						重命名
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						variant="destructive"
+						onSelect={() => {
+							setTimeout(onDelete, 0);
+						}}
+					>
+						<HugeiconsIcon icon={Delete03Icon} size={16} />
+						删除
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+		</SidebarMenuItem>
+	);
+}
 
 export function AppSidebar() {
 	const { open, setOpen } = useSidebar();
@@ -83,7 +203,6 @@ export function AppSidebar() {
 							<SidebarMenu>
 								<SidebarMenuItem>
 									<SidebarMenuButton className="text-sm" onClick={newChat}>
-										{/* <MessageCirclePlusIcon className="w-4 h-4" /> */}
 										<HugeiconsIcon
 											icon={BubbleChatAddIcon}
 											size={24}
@@ -103,35 +222,13 @@ export function AppSidebar() {
 							<SidebarGroupContent>
 								<SidebarMenu>
 									{sorted.map((s) => (
-										<SidebarMenuItem key={s.sessionId}>
-											<SidebarMenuButton
-												className="rounded-sm! px-4! group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-primary cursor-pointer"
-												isActive={s.sessionId === activeSessionId}
-												onClick={() => loadSession({ sessionId: s.sessionId, title: s.title ?? undefined })}
-											>
-												<span className="truncate">
-													{s.title || s.firstMessage?.slice(0, 30) || `${s.sessionId.slice(0, 8)}...`}
-												</span>
-											</SidebarMenuButton>
-											<DropdownMenu>
-												<DropdownMenuTrigger asChild>
-													<SidebarMenuAction showOnHover className="cursor-pointer">
-														<MoreHorizontalIcon className="w-4 h-4 text-sidebar-foreground/30 hover:text-sidebar-foreground" />
-													</SidebarMenuAction>
-												</DropdownMenuTrigger>
-												<DropdownMenuContent side="bottom" align="center">
-													<DropdownMenuItem
-														variant="destructive"
-														onSelect={() => {
-															setTimeout(() => setDeleteTarget(s), 0);
-														}}
-													>
-														<HugeiconsIcon icon={Delete03Icon} size={16} />
-														删除
-													</DropdownMenuItem>
-												</DropdownMenuContent>
-											</DropdownMenu>
-										</SidebarMenuItem>
+										<SessionItem
+											key={s.sessionId}
+											session={s}
+											isActive={s.sessionId === activeSessionId}
+											onSelect={() => loadSession({ sessionId: s.sessionId, title: s.title ?? undefined })}
+											onDelete={() => setDeleteTarget(s)}
+										/>
 									))}
 								</SidebarMenu>
 							</SidebarGroupContent>

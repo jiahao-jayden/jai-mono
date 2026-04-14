@@ -3,7 +3,6 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { EventAdapter } from "../events/adapter.js";
 import type { SessionManager } from "../session-manager.js";
-import { generateTitle } from "../title-generator.js";
 
 export function sessionRoutes(manager: SessionManager): Hono {
 	const app = new Hono();
@@ -35,7 +34,7 @@ export function sessionRoutes(manager: SessionManager): Hono {
 		return c.body(null, 204);
 	});
 
-	app.patch("/sessions/:id", async (c) => {
+	app.on(["POST", "PATCH"], "/sessions/:id", async (c) => {
 		const body = await c.req.json<{ title?: string }>().catch(() => null);
 		if (!body) return c.json({ error: "Invalid body" }, 400);
 		const sessionId = c.req.param("id");
@@ -69,7 +68,14 @@ export function sessionRoutes(manager: SessionManager): Hono {
 			return c.json({ error: "Session is already running" }, 409);
 		}
 
-		const body = await c.req.json<{ text: string; modelId?: string; reasoningEffort?: string }>().catch(() => null);
+		const body = await c.req
+			.json<{
+				text: string;
+				attachments?: { filename: string; data: string; mimeType: string; size: number }[];
+				modelId?: string;
+				reasoningEffort?: string;
+			}>()
+			.catch(() => null);
 		if (!body?.text) {
 			return c.json({ error: "Request body must include 'text'" }, 400);
 		}
@@ -82,6 +88,7 @@ export function sessionRoutes(manager: SessionManager): Hono {
 		const chatOptions = {
 			...(override && { model: resolved.resolveModel(), baseURL: resolved.get("baseURL") }),
 			reasoningEffort: body.reasoningEffort ?? resolved.get("reasoningEffort"),
+			attachments: body.attachments,
 		};
 
 		const threadId = session.getSessionId();
@@ -125,13 +132,19 @@ export function sessionRoutes(manager: SessionManager): Hono {
 				}
 				if (info && !info.title) {
 					const s = manager.getSettings();
-					generateTitle(body.text, s.resolveModel(), s.get("baseURL"))
-						.then((title) => {
-							manager.updateSessionIndex(sessionId, "title", title || body.text.slice(0, 50));
-						})
-						.catch(() => {
-							manager.updateSessionIndex(sessionId, "title", body.text.slice(0, 50));
+					let title: string | null = null;
+					try {
+						title = await session.generateSessionTitle({
+							model: s.resolveModel(),
+							baseURL: s.get("baseURL"),
 						});
+					} catch {}
+					if (title) {
+						manager.updateSessionIndex(sessionId, "title", title);
+						await stream
+							.writeSSE({ data: JSON.stringify({ type: "TITLE_GENERATED", title }) })
+							.catch(() => {});
+					}
 				}
 			}
 		});
