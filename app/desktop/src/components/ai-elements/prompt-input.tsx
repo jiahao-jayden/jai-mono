@@ -829,13 +829,17 @@ export const PromptInputBody = ({
 
 export type PromptInputTextareaProps = ComponentProps<
   typeof InputGroupTextarea
->;
+> & {
+  transformPastedTextToFile?: (text: string) => File | null | undefined;
+};
 
 export const PromptInputTextarea = ({
   onChange,
   onKeyDown,
+  onPaste,
   className,
   placeholder = "What would you like to know?",
+  transformPastedTextToFile,
   ...props
 }: PromptInputTextareaProps) => {
   const controller = useOptionalPromptInputController();
@@ -891,6 +895,11 @@ export const PromptInputTextarea = ({
 
   const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = useCallback(
     (event) => {
+      onPaste?.(event);
+      if (event.defaultPrevented) {
+        return;
+      }
+
       const items = event.clipboardData?.items;
 
       if (!items) {
@@ -911,9 +920,21 @@ export const PromptInputTextarea = ({
       if (files.length > 0) {
         event.preventDefault();
         attachments.add(files);
+        return;
+      }
+
+      if (!transformPastedTextToFile) {
+        return;
+      }
+
+      const text = event.clipboardData.getData("text/plain");
+      const generatedFile = transformPastedTextToFile(text);
+      if (generatedFile) {
+        event.preventDefault();
+        attachments.add([generatedFile]);
       }
     },
-    [attachments]
+    [attachments, onPaste, transformPastedTextToFile]
   );
 
   const handleCompositionEnd = useCallback(() => setIsComposing(false), []);

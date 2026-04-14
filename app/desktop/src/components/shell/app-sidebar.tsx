@@ -1,7 +1,7 @@
 import { BubbleChatAddIcon, Delete03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { SessionInfo } from "@jayden/jai-gateway";
-import { MoreHorizontalIcon, PanelLeftIcon, PenLine, Search, Settings2 } from "lucide-react";
+import { MoreHorizontalIcon, PenLine, Search, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,7 +36,7 @@ import { rpc } from "@/lib/rpc";
 import { gateway } from "@/services/gateway";
 import { useChatStore } from "@/stores/chat";
 import { useSessionStore } from "@/stores/session";
-import { Titlebar, ToolbarButton } from "./titlebar";
+import { AppToolbar } from "./app-toolbar";
 
 function SessionItem({
 	session,
@@ -96,9 +96,7 @@ function SessionItem({
 	);
 
 	const displayTitle =
-		(session.title && session.title.length > 30
-			? `${session.title.slice(0, 30)}…`
-			: session.title) ||
+		(session.title && session.title.length > 30 ? `${session.title.slice(0, 30)}…` : session.title) ||
 		session.firstMessage?.slice(0, 30) ||
 		`${session.sessionId.slice(0, 8)}…`;
 
@@ -158,7 +156,7 @@ function SessionItem({
 }
 
 export function AppSidebar() {
-	const { open, setOpen } = useSidebar();
+	const { toggleSidebar } = useSidebar();
 	const { sessions, deleteSession } = useSessionStore();
 	const { sessionId: activeSessionId, newChat, loadSession } = useChatStore();
 	const [deleteTarget, setDeleteTarget] = useState<SessionInfo | null>(null);
@@ -180,18 +178,8 @@ export function AppSidebar() {
 	return (
 		<>
 			<Sidebar className="border-none">
-				<SidebarHeader className="p-0">
-					<Titlebar>
-						<ToolbarButton onClick={() => setOpen(!open)}>
-							<PanelLeftIcon className="h-4 w-4" />
-						</ToolbarButton>
-						<ToolbarButton>
-							<Search className="h-4 w-4" />
-						</ToolbarButton>
-						<ToolbarButton onClick={newChat}>
-							<PenLine className="h-4 w-4" />
-						</ToolbarButton>
-					</Titlebar>
+				<SidebarHeader className="hidden p-0 md:block">
+					<AppToolbar mode="desktop" sidebarIcon="left" onToggleSidebar={toggleSidebar} onNewChat={newChat} />
 				</SidebarHeader>
 
 				<SidebarContent className="px-1">

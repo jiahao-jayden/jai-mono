@@ -76,8 +76,10 @@ export function sessionRoutes(manager: SessionManager): Hono {
 				reasoningEffort?: string;
 			}>()
 			.catch(() => null);
-		if (!body?.text) {
-			return c.json({ error: "Request body must include 'text'" }, 400);
+		const text = body?.text?.trim() ?? "";
+		const hasAttachments = (body?.attachments?.length ?? 0) > 0;
+		if (!body || (!text && !hasAttachments)) {
+			return c.json({ error: "Request body must include 'text' or 'attachments'" }, 400);
 		}
 
 		const settings = manager.getSettings();
@@ -110,7 +112,7 @@ export function sessionRoutes(manager: SessionManager): Hono {
 			});
 
 			try {
-				await session.chat(body.text, chatOptions);
+				await session.chat(text, chatOptions);
 				await Promise.all(pendingWrites);
 			} catch (err) {
 				await Promise.all(pendingWrites);
@@ -128,7 +130,11 @@ export function sessionRoutes(manager: SessionManager): Hono {
 				const sessionId = c.req.param("id");
 				const info = manager.getSessionInfo(sessionId);
 				if (info && !info.firstMessage) {
-					manager.updateSessionIndex(sessionId, "firstMessage", body.text.slice(0, 200));
+					const firstMessage =
+						text.slice(0, 200) ||
+						body.attachments?.[0]?.filename ||
+						"Attachment";
+					manager.updateSessionIndex(sessionId, "firstMessage", firstMessage);
 				}
 				if (info && !info.title) {
 					const s = manager.getSettings();

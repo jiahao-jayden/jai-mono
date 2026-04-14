@@ -297,11 +297,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
 	async sendMessage(text: string, attachments?: ChatAttachment[]) {
 		const { status, sessionId, currentModelId } = get();
-		if (!text.trim() || status === "streaming" || status === "submitted") return;
+		const trimmedText = text.trim();
+		const attachmentList = attachments ?? [];
+		const hasAttachments = attachmentList.length > 0;
+		if ((!trimmedText && !hasAttachments) || status === "streaming" || status === "submitted") return;
 
-		const parts: ChatMessagePart[] = [{ type: "text", text }];
-		if (attachments?.length) {
-			for (const att of attachments) {
+		const parts: ChatMessagePart[] = [];
+		if (trimmedText) {
+			parts.push({ type: "text", text: trimmedText });
+		}
+		if (hasAttachments) {
+			for (const att of attachmentList) {
 				parts.push({ type: "attachment", attachment: att });
 			}
 		}
@@ -331,19 +337,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			const controller = new AbortController();
 			abortController = controller;
 
-			const rawAttachments = attachments?.map((a) => ({
+			const rawAttachments = attachmentList.map((a) => ({
 				filename: a.filename,
 				data: a.dataUrl ? a.dataUrl.replace(/^data:[^;]+;base64,/, "") : "",
 				mimeType: a.mimeType,
 				size: a.size,
 			}));
 
-			await gateway.messages.send(sid, text, {
+			await gateway.messages.send(sid, trimmedText, {
 				onEvent: (event) => handleSSEEvent(event, get, set),
 				modelId: currentModelId ?? undefined,
 				reasoningEffort: get().reasoningEffort ?? undefined,
 				signal: controller.signal,
-				attachments: rawAttachments?.length ? rawAttachments : undefined,
+				attachments: rawAttachments.length ? rawAttachments : undefined,
 			});
 		} catch (err) {
 			console.error("[gateway] prompt failed:", err);

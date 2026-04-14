@@ -1,4 +1,6 @@
-import { AlertCircleIcon, ArrowUpIcon, PaperclipIcon, SquareIcon } from "lucide-react";
+import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { AlertCircleIcon, PaperclipIcon, SquareIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useState } from "react";
 import panda_logo_2 from "@/assets/icons/chat-area/panda-2.svg";
@@ -28,6 +30,16 @@ import { MessageUser } from "./message-user";
 import { ModelSelector } from "./model-selector";
 import { ReasoningEffortSelector } from "./reasoning-effort-selector";
 import { ToolCallGroup } from "./tool-call-group";
+
+const PASTED_TEXT_ATTACHMENT_THRESHOLD = 200;
+const PASTED_TEXT_ATTACHMENT_NAME = "pasted-content.txt";
+
+function createPastedTextAttachment(text: string): File | null {
+	if (text.length <= PASTED_TEXT_ATTACHMENT_THRESHOLD) return null;
+	return new File([text], PASTED_TEXT_ATTACHMENT_NAME, {
+		type: "text/plain",
+	});
+}
 
 function InputAttachments() {
 	const { files, remove } = usePromptInputAttachments();
@@ -98,6 +110,7 @@ function ChatInput({ className }: { className?: string }) {
 						<PromptInputTextarea
 							placeholder="Type a message or command..."
 							style={{ caretColor: "transparent" }}
+							transformPastedTextToFile={createPastedTextAttachment}
 							{...handlers}
 							onChange={(e) => {
 								handlers.onChange();
@@ -127,7 +140,8 @@ function ChatInput({ className }: { className?: string }) {
 						) : status === "streaming" ? (
 							<SquareIcon className="size-4" />
 						) : (
-							<ArrowUpIcon className="size-4" />
+							// <ArrowUpIcon className="size-4" />
+							<HugeiconsIcon icon={ArrowUp02Icon} size={24} strokeWidth={2} />
 						)}
 					</PromptInputSubmit>
 				</PromptInputFooter>
@@ -154,7 +168,7 @@ export function ChatArea() {
 
 	return (
 		<main className={cn("flex-1 flex flex-col h-full relative overflow-hidden border border-border/50")}>
-			<ChatHeader status={status} />
+			<ChatHeader />
 
 			{messages.length === 0 ? (
 				<div className="flex-1 flex flex-col items-center justify-center px-4">
