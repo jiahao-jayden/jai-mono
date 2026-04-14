@@ -278,10 +278,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	syncModels(config: ConfigResponse) {
 		const models = flattenModels(config);
 		set({ availableModels: models });
-		if (models.length > 0 && !get().currentModelId) {
-			const defaultId = models.find((m) => m.id === config.model)?.id ?? models[0].id;
-			set({ currentModelId: defaultId });
+
+		const current = get().currentModelId;
+		if (models.length > 0 && (!current || !models.some((m) => m.id === current))) {
+			set({ currentModelId: models.find((m) => m.id === config.model)?.id ?? models[0].id });
 		}
+
 		if (config.reasoningEffort !== undefined) {
 			set({ reasoningEffort: config.reasoningEffort ?? null });
 		}
@@ -358,7 +360,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
 	setModel(modelId: string) {
 		set({ currentModelId: modelId });
-		gateway.config.update({ model: modelId }).catch(() => {});
+		gateway.config
+			.update({ model: modelId })
+			.then((config) => {
+				const models = flattenModels(config);
+				const confirmed = models.find((m) => m.id === config.model)?.id ?? modelId;
+				set({ currentModelId: confirmed, availableModels: models });
+			})
+			.catch((err) => {
+				console.error("[chat] failed to persist model selection:", err);
+			});
 	},
 
 	setReasoningEffort(effort: string | null) {

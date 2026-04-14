@@ -27,16 +27,8 @@ import { ToolCallGroup } from "./tool-call-group";
 
 function ChatInput({ className }: { className?: string }) {
 	const { wrapperRef, cursorRef, resetCursor, handlers } = useCursorEffect();
-	const {
-		sendMessage,
-		status,
-		stop,
-		availableModels,
-		currentModelId,
-		setModel,
-		reasoningEffort,
-		setReasoningEffort,
-	} = useChatStore();
+	const { sendMessage, status, stop, availableModels, currentModelId, setModel, reasoningEffort, setReasoningEffort } =
+		useChatStore();
 	const [inputValue, setInputValue] = useState("");
 
 	const isEmpty = inputValue.trim().length === 0;
@@ -52,10 +44,12 @@ function ChatInput({ className }: { className?: string }) {
 	};
 
 	return (
-		<div className={cn(
-			"max-w-3xl w-full mx-auto **:data-[slot=input-group]:border-primary/10 **:data-[slot=input-group]:transition-[border-color] **:data-[slot=input-group]:duration-200 [&_[data-slot=input-group]:hover]:border-primary/20 [&_[data-slot=input-group]:focus-within]:border-primary/20 [&_[data-slot=input-group]:focus-within]:ring-0 **:data-[slot=input-group]:bg-card",
-			className,
-		)}>
+		<div
+			className={cn(
+				"max-w-3xl w-full mx-auto **:data-[slot=input-group]:rounded-lg! **:data-[slot=input-group]:border-primary/10 **:data-[slot=input-group]:transition-[border-color] **:data-[slot=input-group]:duration-200 [&_[data-slot=input-group]:hover]:border-primary/20 [&_[data-slot=input-group]:focus-within]:border-primary/20 [&_[data-slot=input-group]:focus-within]:ring-0 **:data-[slot=input-group]:bg-card!",
+				className,
+			)}
+		>
 			<PromptInput onSubmit={handleSubmit}>
 				<PromptInputBody>
 					<div ref={wrapperRef} className="relative w-full">
@@ -77,17 +71,12 @@ function ChatInput({ className }: { className?: string }) {
 				</PromptInputBody>
 				<PromptInputFooter>
 					<PromptInputTools>
-						<ModelSelector
-							models={availableModels}
-							currentModelId={currentModelId}
-							onSelect={setModel}
-						/>
+						<ModelSelector models={availableModels} currentModelId={currentModelId} onSelect={setModel} />
 						{supportsReasoning && (
 							<ReasoningEffortSelector value={reasoningEffort} onChange={setReasoningEffort} />
 						)}
 					</PromptInputTools>
 					<PromptInputSubmit
-						disabled={isEmpty && !isGenerating}
 						status={status}
 						onStop={stop}
 						className={cn(

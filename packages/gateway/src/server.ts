@@ -25,7 +25,7 @@ export class GatewayServer {
 		const manager = await SessionManager.create({ jaiHome: options.jaiHome });
 
 		const app = new Hono();
-		app.use("*", cors());
+		app.use("*", cors({ origin: "*", allowMethods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] }));
 
 		app.route("/", healthRoutes());
 		app.route("/", configRoutes(manager));

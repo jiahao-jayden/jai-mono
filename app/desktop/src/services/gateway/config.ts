@@ -4,7 +4,7 @@ import type { $Fetch } from "ofetch";
 export function createConfigApi(gw: () => $Fetch) {
 	return {
 		get: () => gw()<ConfigResponse>("/config"),
-		update: (patch: ConfigUpdateRequest) => gw()<ConfigResponse>("/config", { method: "PATCH", body: patch }),
+		update: (patch: ConfigUpdateRequest) => gw()<ConfigResponse>("/config", { method: "POST", body: patch }),
 		putProvider: (id: string, config: ProviderSettings) =>
 			gw()<ConfigResponse>(`/config/providers/${id}`, { method: "PUT", body: config }),
 		deleteProvider: (id: string) => gw()<ConfigResponse>(`/config/providers/${id}`, { method: "DELETE" }),

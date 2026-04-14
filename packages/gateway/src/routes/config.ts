@@ -62,11 +62,24 @@ export function configRoutes(manager: SessionManager): Hono {
 		return c.json(toConfigResponse(manager));
 	});
 
-	app.patch("/config", async (c) => {
+	const updateConfig = async (c: any) => {
 		const body = await c.req.json();
+
+		if (body.model && typeof body.model === "string") {
+			const slash = body.model.indexOf("/");
+			if (slash !== -1) {
+				body.provider = body.model.slice(0, slash);
+			} else if (body.provider) {
+				body.model = `${body.provider}/${body.model}`;
+			}
+		}
+
 		await manager.saveSettings(body);
 		return c.json(toConfigResponse(manager));
-	});
+	};
+
+	app.patch("/config", updateConfig);
+	app.post("/config", updateConfig);
 
 	app.put("/config/providers/:id", async (c) => {
 		const providerId = c.req.param("id");
