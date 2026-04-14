@@ -19,9 +19,7 @@ export function handleText(attachment: RawAttachment): TextContent {
 		truncated = true;
 	}
 
-	const header = truncated
-		? `[File: ${attachment.filename} (truncated)]`
-		: `[File: ${attachment.filename}]`;
+	const header = truncated ? `[File: ${attachment.filename} (truncated)]` : `[File: ${attachment.filename}]`;
 
 	return {
 		type: "text",

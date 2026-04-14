@@ -51,9 +51,7 @@ export function createSettingsWindow(): void {
 	const height = 760;
 
 	const parentWindow = BrowserWindow.getFocusedWindow();
-	const display = parentWindow
-		? screen.getDisplayMatching(parentWindow.getBounds())
-		: screen.getPrimaryDisplay();
+	const display = parentWindow ? screen.getDisplayMatching(parentWindow.getBounds()) : screen.getPrimaryDisplay();
 	const { x: dX, y: dY, width: dW, height: dH } = display.workArea;
 
 	settingsWindow = new BrowserWindow({

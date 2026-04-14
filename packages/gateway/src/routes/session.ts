@@ -83,9 +83,7 @@ export function sessionRoutes(manager: SessionManager): Hono {
 		}
 
 		const settings = manager.getSettings();
-		const override = body.modelId
-			? settings.withOverrides({ model: body.modelId })
-			: null;
+		const override = body.modelId ? settings.withOverrides({ model: body.modelId }) : null;
 		const resolved = override ?? settings;
 		const chatOptions = {
 			...(override && { model: resolved.resolveModel(), baseURL: resolved.get("baseURL") }),
@@ -130,10 +128,7 @@ export function sessionRoutes(manager: SessionManager): Hono {
 				const sessionId = c.req.param("id");
 				const info = manager.getSessionInfo(sessionId);
 				if (info && !info.firstMessage) {
-					const firstMessage =
-						text.slice(0, 200) ||
-						body.attachments?.[0]?.filename ||
-						"Attachment";
+					const firstMessage = text.slice(0, 200) || body.attachments?.[0]?.filename || "Attachment";
 					manager.updateSessionIndex(sessionId, "firstMessage", firstMessage);
 				}
 				if (info && !info.title) {
@@ -147,9 +142,7 @@ export function sessionRoutes(manager: SessionManager): Hono {
 					} catch {}
 					if (title) {
 						manager.updateSessionIndex(sessionId, "title", title);
-						await stream
-							.writeSSE({ data: JSON.stringify({ type: "TITLE_GENERATED", title }) })
-							.catch(() => {});
+						await stream.writeSSE({ data: JSON.stringify({ type: "TITLE_GENERATED", title }) }).catch(() => {});
 					}
 				}
 			}

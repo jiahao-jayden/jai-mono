@@ -28,10 +28,7 @@ export async function processAttachments(
 	return results;
 }
 
-async function processOne(
-	attachment: RawAttachment,
-	capabilities: ModelCapabilities,
-): Promise<ProcessedContent> {
+async function processOne(attachment: RawAttachment, capabilities: ModelCapabilities): Promise<ProcessedContent> {
 	const { mimeType, filename } = attachment;
 
 	if (mimeType.startsWith("image/")) {

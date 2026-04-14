@@ -22,7 +22,5 @@ export function onEvent<K extends keyof EventSchema>(
 	channel: K,
 	handler: (...args: EventSchema[K]) => void,
 ): () => void {
-	return window.ipc.on(channel, (_event: unknown, ...args: unknown[]) =>
-		handler(...(args as EventSchema[K])),
-	);
+	return window.ipc.on(channel, (_event: unknown, ...args: unknown[]) => handler(...(args as EventSchema[K])));
 }

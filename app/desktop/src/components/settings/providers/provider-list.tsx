@@ -1,9 +1,9 @@
 import type { ConfigResponse, ProviderSettings } from "@jayden/jai-gateway";
 import { PlusIcon } from "lucide-react";
+import { BrandAvatar, resolveProviderIcon } from "@/components/common/provider-icons";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { BrandAvatar, resolveProviderIcon } from "@/components/common/provider-icons";
 import { cn } from "@/lib/utils";
 import { BUILTIN_IDS, BUILTIN_PROVIDERS } from "./provider-registry";
 

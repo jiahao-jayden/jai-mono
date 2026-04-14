@@ -1,9 +1,9 @@
 import type { ChatMessage, ChatMessagePart, ChatStatus } from "@/types/chat";
 import { MessageResponse } from "../ai-elements/message";
 import { MessageAssistant } from "./message/message-assistant";
+import { ErrorBlock, StreamingPlaceholder, TypingIndicator } from "./message/message-parts";
 import { MessageReasoning } from "./message/message-reasoning";
 import { MessageUser } from "./message/message-user";
-import { ErrorBlock, StreamingPlaceholder, TypingIndicator } from "./message/message-parts";
 import { ToolCallGroup } from "./message/tool-call-group";
 
 type Segment =
@@ -73,10 +73,7 @@ export function MessageList({ messages, status }: MessageListProps) {
 							{segments.map((seg) => {
 								if (seg.type === "tool_group") {
 									return (
-										<ToolCallGroup
-											key={`${message.id}-tg-${seg.tools[0].toolCallId}`}
-											tools={seg.tools}
-										/>
+										<ToolCallGroup key={`${message.id}-tg-${seg.tools[0].toolCallId}`} tools={seg.tools} />
 									);
 								}
 
@@ -86,9 +83,7 @@ export function MessageList({ messages, status }: MessageListProps) {
 
 								if (part.type === "reasoning" && part.text) {
 									const isReasoningStreaming =
-										isStreaming &&
-										partIdx === message.parts.length - 1 &&
-										lastPart?.type === "reasoning";
+										isStreaming && partIdx === message.parts.length - 1 && lastPart?.type === "reasoning";
 									return (
 										<MessageReasoning key={key} streaming={isReasoningStreaming}>
 											{part.text}
@@ -108,8 +103,7 @@ export function MessageList({ messages, status }: MessageListProps) {
 					</MessageAssistant>
 				);
 			})}
-			{(status === "submitted" ||
-				(status === "streaming" && messages[messages.length - 1]?.role === "user")) && (
+			{(status === "submitted" || (status === "streaming" && messages[messages.length - 1]?.role === "user")) && (
 				<StreamingPlaceholder />
 			)}
 		</>

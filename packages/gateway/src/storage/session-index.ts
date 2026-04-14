@@ -143,7 +143,9 @@ export class SessionIndex {
 		const column = columnMap[field];
 		if (!column) return;
 
-		this.db.prepare(`UPDATE sessions SET ${column} = ?, updated_at = ? WHERE session_id = ?`).run(value, Date.now(), sessionId);
+		this.db
+			.prepare(`UPDATE sessions SET ${column} = ?, updated_at = ? WHERE session_id = ?`)
+			.run(value, Date.now(), sessionId);
 	}
 
 	close(): void {

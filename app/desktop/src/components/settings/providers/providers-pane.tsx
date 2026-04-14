@@ -18,11 +18,7 @@ export function ProvidersPane({ config }: { config?: ConfigResponse }) {
 				onAddCustom={() => setDialogOpen(true)}
 			/>
 			<ProviderDetail key={selectedId} providerId={selectedId} config={config} />
-			<AddProviderDialog
-				open={dialogOpen}
-				onOpenChange={setDialogOpen}
-				onCreated={(id) => setSelectedId(id)}
-			/>
+			<AddProviderDialog open={dialogOpen} onOpenChange={setDialogOpen} onCreated={(id) => setSelectedId(id)} />
 		</div>
 	);
 }

@@ -45,8 +45,17 @@ export type AgentLoopOptions = {
  * 6. 把 assistant + toolResults 追加到 messages
  */
 export async function runAgentLoop(options: AgentLoopOptions) {
-	const { messages, model, baseURL, systemPrompt, tools, signal, events, maxIterations = 25, reasoningEffort } =
-		options;
+	const {
+		messages,
+		model,
+		baseURL,
+		systemPrompt,
+		tools,
+		signal,
+		events,
+		maxIterations = 25,
+		reasoningEffort,
+	} = options;
 	const newMessages: AssistantMessage[] = [];
 	events?.emit({ type: "agent_start" });
 

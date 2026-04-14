@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import type { Theme } from "../../electron/rpc/schema";
 import { onEvent, rpc } from "@/lib/rpc";
+import type { Theme } from "../../electron/rpc/schema";
 
 function getSystemDark(): boolean {
 	return window.matchMedia("(prefers-color-scheme: dark)").matches;

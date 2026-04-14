@@ -22,12 +22,7 @@ export function MessageReasoning({ children, streaming }: MessageReasoningProps)
 			>
 				<SparklesIcon className={cn("size-3", streaming && "animate-pulse text-amber-400/70")} />
 				<span>{streaming ? "思考中…" : "思考过程"}</span>
-				<ChevronRightIcon
-					className={cn(
-						"size-2.5 transition-transform duration-200",
-						open && "rotate-90",
-					)}
-				/>
+				<ChevronRightIcon className={cn("size-2.5 transition-transform duration-200", open && "rotate-90")} />
 			</button>
 			<div
 				className={cn(

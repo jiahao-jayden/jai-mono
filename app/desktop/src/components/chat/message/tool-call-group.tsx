@@ -47,9 +47,7 @@ function ToolCallItem({ tool }: { tool: ToolCallData }) {
 				onClick={() => hasDetail && setExpanded(!expanded)}
 				className={cn(
 					"flex items-center gap-2 w-full py-1 text-left text-[11px] rounded transition-colors",
-					hasDetail
-						? "hover:text-muted-foreground/80 cursor-pointer"
-						: "cursor-default",
+					hasDetail ? "hover:text-muted-foreground/80 cursor-pointer" : "cursor-default",
 					"text-muted-foreground/50",
 				)}
 			>
@@ -57,10 +55,7 @@ function ToolCallItem({ tool }: { tool: ToolCallData }) {
 				<span className="font-medium truncate flex-1">{tool.name}</span>
 				{hasDetail && (
 					<ChevronRightIcon
-						className={cn(
-							"size-2.5 shrink-0 transition-transform duration-150",
-							expanded && "rotate-90",
-						)}
+						className={cn("size-2.5 shrink-0 transition-transform duration-150", expanded && "rotate-90")}
 					/>
 				)}
 			</button>
@@ -78,13 +73,9 @@ function ToolCallItem({ tool }: { tool: ToolCallData }) {
 								{tryFormatJson(tool.args)}
 							</pre>
 						)}
-						{tool.args && tool.result && (
-							<div className="border-t border-muted-foreground/8" />
-						)}
+						{tool.args && tool.result && <div className="border-t border-muted-foreground/8" />}
 						{tool.result && (
-							<pre className="whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
-								{tool.result}
-							</pre>
+							<pre className="whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{tool.result}</pre>
 						)}
 					</div>
 				</div>
@@ -104,18 +95,9 @@ export function ToolCallGroup({ tools }: ToolCallGroupProps) {
 				onClick={() => setExpanded(!expanded)}
 				className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground/50 hover:text-muted-foreground/80 transition-colors py-0.5 rounded"
 			>
-				{hasRunning ? (
-					<LoaderIcon className="size-3 animate-spin" />
-				) : (
-					<TerminalIcon className="size-3" />
-				)}
+				{hasRunning ? <LoaderIcon className="size-3 animate-spin" /> : <TerminalIcon className="size-3" />}
 				<span>{summarize(tools)}</span>
-				<ChevronRightIcon
-					className={cn(
-						"size-2.5 transition-transform duration-150",
-						expanded && "rotate-90",
-					)}
-				/>
+				<ChevronRightIcon className={cn("size-2.5 transition-transform duration-150", expanded && "rotate-90")} />
 			</button>
 
 			<div

@@ -3,8 +3,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { ConfigResponse, FetchModelsResponse, ProviderModel, ProviderSettings } from "@jayden/jai-gateway";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLinkIcon, EyeIcon, EyeOffIcon, LoaderIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
-import { toast } from "sonner";
 import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { CapabilityBadges } from "@/components/common/capability-badges";
 import { BrandAvatar, resolveProviderIcon } from "@/components/common/provider-icons";
 import { Badge } from "@/components/ui/badge";
@@ -353,7 +353,7 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 							</Button>
 						</div>
 
-					{fetchModelsMutation.isPending && !resolvedFetchedData && (
+						{fetchModelsMutation.isPending && !resolvedFetchedData && (
 							<div className="flex-1 space-y-0 divide-y divide-border/20 overflow-hidden rounded-xl border border-border/20">
 								{["s0", "s1", "s2", "s3", "s4"].map((key) => (
 									<div key={key} className="flex items-center justify-between px-3 py-2.5">

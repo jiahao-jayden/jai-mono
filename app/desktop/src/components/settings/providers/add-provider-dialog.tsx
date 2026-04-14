@@ -69,11 +69,7 @@ export function AddProviderDialog({ open, onOpenChange, onCreated }: AddProvider
 				<div className="space-y-4">
 					<div className="space-y-2">
 						<Label className="text-[13px]">Provider Name</Label>
-						<Input
-							value={name}
-							onChange={(e) => setName(e.target.value)}
-							placeholder="My Custom Provider"
-						/>
+						<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="My Custom Provider" />
 					</div>
 
 					<div className="space-y-2">

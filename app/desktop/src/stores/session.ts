@@ -41,8 +41,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
 	updateSessionTitle: (sessionId, title) =>
 		set({
-			sessions: get().sessions.map((s) =>
-				s.sessionId === sessionId ? { ...s, title } : s,
-			),
+			sessions: get().sessions.map((s) => (s.sessionId === sessionId ? { ...s, title } : s)),
 		}),
 }));

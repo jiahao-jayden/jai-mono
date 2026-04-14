@@ -21,8 +21,8 @@ import {
 import { Spinner } from "../../ui/spinner";
 import { AttachmentList } from "../message/attachment-preview";
 import { ModelSelector } from "./model-selector";
-import { ReasoningEffortSelector } from "./reasoning-effort-selector";
 import { createPastedTextAttachment } from "./paste-attachment";
+import { ReasoningEffortSelector } from "./reasoning-effort-selector";
 
 function InputAttachments() {
 	const { files, remove } = usePromptInputAttachments();

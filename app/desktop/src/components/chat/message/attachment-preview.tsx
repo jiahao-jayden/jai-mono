@@ -42,10 +42,7 @@ function ImageCard({ attachment, onRemove }: AttachmentCardProps) {
 function useTextPreview(attachment: ChatAttachment): string | null {
 	const [preview, setPreview] = useState<string | null>(null);
 	const url = attachment.previewUrl ?? attachment.dataUrl;
-	const isPastedText =
-		attachment.mimeType === "text/plain" &&
-		attachment.filename === "pasted-content.txt" &&
-		!!url;
+	const isPastedText = attachment.mimeType === "text/plain" && attachment.filename === "pasted-content.txt" && !!url;
 
 	useEffect(() => {
 		if (!isPastedText || !url) return;
@@ -85,9 +82,7 @@ function PastedTextCard({ attachment, onRemove, preview }: AttachmentCardProps &
 		<div className="group relative flex h-24 w-56 shrink-0 flex-col gap-1.5 rounded-lg border border-zinc-200/80 bg-zinc-50 p-2.5 dark:border-zinc-700/60 dark:bg-zinc-800/50">
 			<div className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
 				<FileTextIcon className="size-3.5 shrink-0" />
-				<span className="text-[11px] font-medium">
-					Pasted text{charCount > 0 ? ` · ${charCount} chars` : ""}
-				</span>
+				<span className="text-[11px] font-medium">Pasted text{charCount > 0 ? ` · ${charCount} chars` : ""}</span>
 			</div>
 			<p className="line-clamp-2 flex-1 text-[12px] leading-relaxed text-foreground/70">{preview}</p>
 			{onRemove && <RemoveButton onClick={onRemove} />}

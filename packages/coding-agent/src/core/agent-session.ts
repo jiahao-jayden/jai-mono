@@ -1,5 +1,13 @@
 import { type AgentEvent, EventBus, runAgentLoop } from "@jayden/jai-agent";
-import type { AssistantMessage, FileContent, ImageContent, Message, ModelInfo, TextContent, UserMessage } from "@jayden/jai-ai";
+import type {
+	AssistantMessage,
+	FileContent,
+	ImageContent,
+	Message,
+	ModelInfo,
+	TextContent,
+	UserMessage,
+} from "@jayden/jai-ai";
 import { resolveModelInfo } from "@jayden/jai-ai";
 import { buildSessionContext, JsonlSessionStore, type MessageEntry, type SessionStore } from "@jayden/jai-session";
 import { NamedError } from "@jayden/jai-utils";
@@ -174,17 +182,10 @@ export class AgentSession {
 		await this.store.close();
 	}
 
-	async generateSessionTitle(options?: {
-		model?: ModelInfo | string;
-		baseURL?: string;
-	}): Promise<string | null> {
+	async generateSessionTitle(options?: { model?: ModelInfo | string; baseURL?: string }): Promise<string | null> {
 		if (!this.firstUserInput) return null;
 		const titleInput = buildTitleInput(this.firstUserInput.text, this.firstUserInput.attachments);
-		return generateTitle(
-			titleInput,
-			options?.model ?? this.config.model,
-			options?.baseURL ?? this.config.baseURL,
-		);
+		return generateTitle(titleInput, options?.model ?? this.config.model, options?.baseURL ?? this.config.baseURL);
 	}
 
 	onEvent(listener: (event: AgentEvent) => void): () => void {

@@ -69,7 +69,7 @@ export class SessionManager {
 		const now = Date.now();
 		this.activeSessions.set(sessionId, { session, workspaceId: wsId });
 
-		const modelId = typeof model === "string" ? model : model.config?.model ?? null;
+		const modelId = typeof model === "string" ? model : (model.config?.model ?? null);
 		const info: SessionInfo = {
 			sessionId,
 			workspaceId: wsId,

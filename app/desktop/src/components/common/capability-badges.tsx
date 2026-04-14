@@ -30,7 +30,10 @@ const CAPABILITY_DEFS: {
 export function CapabilityBadges({
 	capabilities,
 	iconSize = 14,
-}: { capabilities?: ModelCapabilities; iconSize?: number }) {
+}: {
+	capabilities?: ModelCapabilities;
+	iconSize?: number;
+}) {
 	if (!capabilities) return null;
 	const active = CAPABILITY_DEFS.filter((d) => capabilities[d.key]);
 	if (active.length === 0) return null;
