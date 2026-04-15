@@ -1,7 +1,7 @@
-import { BubbleChatAddIcon, Delete03Icon, Settings01Icon, Settings05Icon } from "@hugeicons/core-free-icons";
+import { BubbleChatAddIcon, Delete03Icon, Settings01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { SessionInfo } from "@jayden/jai-gateway";
-import { MoreHorizontalIcon, PenLine, Search, Settings2 } from "lucide-react";
+import { MoreHorizontalIcon, PenLine, Search } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";

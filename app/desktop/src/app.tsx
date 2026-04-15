@@ -31,10 +31,10 @@ export default function App() {
 	}, [sessionId, sessions]);
 
 	return (
-		<SidebarProvider className="h-svh overflow-hidden bg-background">
+		<SidebarProvider className="h-svh overflow-hidden bg-sidebar">
 			<AppSidebar />
-			<div className="flex flex-1 min-w-0 h-full">
-				<div className="flex-1 min-w-0">
+			<div className="flex flex-1 min-w-0 h-full py-2 pr-2 gap-2">
+				<div className="flex-1 min-w-0 rounded-lg bg-background overflow-hidden">
 					<ChatArea />
 				</div>
 				<div

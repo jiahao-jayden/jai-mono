@@ -8,6 +8,7 @@ import { FileTree } from "./file-tree";
 import { FileViewer } from "./file-viewer";
 
 const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
+const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 export function FilePanel() {
 	const { workspaceId, selectedPath, openFile, closeFile, setOpen } = useFilePanelStore();
@@ -50,12 +51,9 @@ export function FilePanel() {
 	if (!workspaceId) return null;
 
 	return (
-		<div className="flex flex-col h-full border-l border-border/50 bg-background">
-			{/* Drag region for macOS titlebar */}
-			<div className="h-3 shrink-0" style={drag} />
-
-			{/* Panel header */}
-			<div className="flex items-center justify-between px-3 py-1.5 shrink-0">
+		<div className="flex flex-col h-full rounded-lg bg-background overflow-hidden">
+			{/* Panel header — entire bar is draggable, buttons are no-drag */}
+			<div className="flex items-center justify-between px-3 h-12 shrink-0" style={drag}>
 				<div className="flex items-center gap-1.5 text-[12px] font-medium text-foreground/70">
 					<FolderIcon className="size-3.5" />
 					<span>Workspace</span>
@@ -63,6 +61,7 @@ export function FilePanel() {
 				<button
 					type="button"
 					onClick={handleClose}
+					style={noDrag}
 					className="p-0.5 rounded-sm hover:bg-muted transition-colors text-muted-foreground/50 hover:text-foreground"
 				>
 					<XIcon className="size-3.5" />

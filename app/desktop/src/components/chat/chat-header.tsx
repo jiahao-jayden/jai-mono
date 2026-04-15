@@ -9,6 +9,7 @@ import { useFilePanelStore } from "@/stores/file-panel";
 import { useSessionStore } from "@/stores/session";
 
 const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
+const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 function EditableTitle() {
 	const title = useSessionStore((s) => s.title);
@@ -111,23 +112,21 @@ export function ChatHeader() {
 
 	return (
 		<>
-			{/* Desktop drag region + titlebar buttons */}
-			<div className={cn("w-full shrink-0 hidden md:flex items-center", open ? "h-3" : "h-12")}>
+			{/* Desktop: single draggable header bar */}
+			<div className="hidden md:flex shrink-0 items-center h-12 px-5" style={drag}>
 				{!open && (
-					<AppToolbar mode="desktop" sidebarIcon="right" onToggleSidebar={toggleSidebar} onNewChat={newChat} />
+					<div style={noDrag}>
+						<AppToolbar mode="desktop" sidebarIcon="right" onToggleSidebar={toggleSidebar} onNewChat={newChat} />
+					</div>
 				)}
-				<div className="h-full flex-1" style={drag} />
-			</div>
-
-			{/* Session info header */}
-			<div className="hidden shrink-0 items-center justify-between px-5 md:flex">
-				<div className="flex flex-col gap-0.5 min-w-0 flex-1 mr-3">
+				<div className="flex-1 min-w-0 flex items-center" style={noDrag}>
 					<EditableTitle />
 				</div>
 				{sessionId && (
 					<button
 						type="button"
 						onClick={toggleFilePanel}
+						style={noDrag}
 						className={cn(
 							"p-1.5 rounded-md transition-colors",
 							filePanelOpen
