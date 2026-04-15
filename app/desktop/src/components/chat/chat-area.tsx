@@ -12,7 +12,7 @@ export function ChatArea() {
 	const showEmpty = messages.length === 0 && !sessionId;
 
 	return (
-		<main className={cn("flex-1 flex flex-col h-full relative overflow-hidden border border-border/50")}>
+		<main className={cn("flex-1 flex flex-col h-full relative overflow-hidden ")}>
 			<ChatHeader />
 
 			<AnimatePresence mode="wait">

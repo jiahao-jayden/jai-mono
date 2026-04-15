@@ -178,7 +178,7 @@ export function AppSidebar() {
 
 	return (
 		<>
-			<Sidebar className="border-none">
+			<Sidebar variant="floating" className="border-none">
 				<SidebarHeader className="hidden p-0 md:block">
 					<AppToolbar mode="desktop" sidebarIcon="left" onToggleSidebar={toggleSidebar} onNewChat={newChat} />
 				</SidebarHeader>
