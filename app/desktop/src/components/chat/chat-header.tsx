@@ -1,9 +1,11 @@
+import { FolderOpenIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppToolbar } from "@/components/shell/app-toolbar";
 import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { gateway } from "@/services/gateway";
 import { useChatStore } from "@/stores/chat";
+import { useFilePanelStore } from "@/stores/file-panel";
 import { useSessionStore } from "@/stores/session";
 
 const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
@@ -101,7 +103,10 @@ function EditableTitle() {
 export function ChatHeader() {
 	const { open, toggleSidebar } = useSidebar();
 	const newChat = useChatStore((s) => s.newChat);
+	const sessionId = useChatStore((s) => s.sessionId);
 	const title = useSessionStore((s) => s.title);
+	const toggleFilePanel = useFilePanelStore((s) => s.toggle);
+	const filePanelOpen = useFilePanelStore((s) => s.open);
 	const mobileTitle = title?.trim() ? (title.length > 18 ? `${title.slice(0, 18)}…` : title) : "Untitled";
 
 	return (
@@ -119,6 +124,21 @@ export function ChatHeader() {
 				<div className="flex flex-col gap-0.5 min-w-0 flex-1 mr-3">
 					<EditableTitle />
 				</div>
+				{sessionId && (
+					<button
+						type="button"
+						onClick={toggleFilePanel}
+						className={cn(
+							"p-1.5 rounded-md transition-colors",
+							filePanelOpen
+								? "bg-foreground/8 text-foreground"
+								: "text-muted-foreground/50 hover:text-foreground hover:bg-foreground/4",
+						)}
+						title="Toggle file panel"
+					>
+						<FolderOpenIcon className="size-4" />
+					</button>
+				)}
 			</div>
 
 			{/* Mobile header */}

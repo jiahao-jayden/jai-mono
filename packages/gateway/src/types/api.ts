@@ -37,3 +37,19 @@ export interface FetchModelsResponse {
 	fetchedAt: number;
 	cached: boolean;
 }
+
+export interface FileEntry {
+	name: string;
+	path: string;
+	type: "file" | "directory";
+	size: number;
+	mimeType?: string;
+	children?: FileEntry[];
+}
+
+export interface FileContent {
+	content: string;
+	path: string;
+	size: number;
+	mimeType: string;
+}

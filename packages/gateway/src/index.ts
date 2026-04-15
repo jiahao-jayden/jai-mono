@@ -7,6 +7,8 @@ export type {
 	ConfigResponse,
 	ConfigUpdateRequest,
 	FetchModelsResponse,
+	FileContent,
+	FileEntry,
 	ProviderModel,
 	ProviderSettings,
 	SessionInfo,

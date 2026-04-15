@@ -172,6 +172,10 @@ export class SessionManager {
 		return this.jaiHome;
 	}
 
+	getWorkspacePath(workspaceId: string): string {
+		return join(this.jaiHome, "workspace", workspaceId);
+	}
+
 	getSettings(): SettingsManager {
 		return this.settings;
 	}

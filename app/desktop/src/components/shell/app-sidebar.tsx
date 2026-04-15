@@ -190,9 +190,6 @@ export function AppSidebar() {
 						className="flex flex-col flex-1 min-h-0"
 					>
 						<SidebarGroup className="gap-3">
-							<div className="px-2 pt-1 text-base font-serif italic tracking-tight text-sidebar-foreground/80">
-								OpenPanda - JAI
-							</div>
 							<SidebarGroupContent>
 								<SidebarMenu>
 									<SidebarMenuItem>
