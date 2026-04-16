@@ -25,6 +25,11 @@ export class EventAdapter {
 	private runId: string;
 	private currentMessageId: string | null = null;
 	private inReasoning = false;
+	private _totalTokens = 0;
+
+	get totalTokens(): number {
+		return this._totalTokens;
+	}
 
 	constructor(threadId: string, runId?: string) {
 		this.threadId = threadId;
@@ -141,8 +146,20 @@ export class EventAdapter {
 			}
 
 			case "tool_call":
-			case "step_finish":
 				return [];
+
+			case "step_finish": {
+				const { inputTokens, outputTokens } = streamEvent.usage;
+				this._totalTokens += inputTokens + outputTokens;
+				return [
+					{
+						type: AGUIEventType.USAGE_UPDATE,
+						inputTokens,
+						outputTokens,
+						totalTokens: this._totalTokens,
+					},
+				];
+			}
 
 			default:
 				return [];

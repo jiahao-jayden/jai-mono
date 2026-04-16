@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { CustomCode } from "./code-block";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
 	from: UIMessage["role"];
@@ -272,11 +273,16 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
 const streamdownPlugins = { cjk, code, math, mermaid };
 
+const streamdownComponents = {
+	code: CustomCode,
+} as ComponentProps<typeof Streamdown>["components"];
+
 export const MessageResponse = memo(
 	({ className, ...props }: MessageResponseProps) => (
 		<Streamdown
 			className={cn("size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}
 			plugins={streamdownPlugins}
+			components={streamdownComponents}
 			{...props}
 		/>
 	),

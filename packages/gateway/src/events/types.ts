@@ -21,6 +21,8 @@ export const AGUIEventType = {
 	REASONING_END: "REASONING_END",
 
 	MESSAGES_SNAPSHOT: "MESSAGES_SNAPSHOT",
+
+	USAGE_UPDATE: "USAGE_UPDATE",
 } as const;
 
 export type AGUIEventType = (typeof AGUIEventType)[keyof typeof AGUIEventType];
@@ -115,6 +117,15 @@ export type MessagesSnapshotEvent = {
 	messages: Message[];
 };
 
+// ── Usage Events ────────────────────────────────────────────
+
+export type UsageUpdateEvent = {
+	type: typeof AGUIEventType.USAGE_UPDATE;
+	inputTokens: number;
+	outputTokens: number;
+	totalTokens: number;
+};
+
 // ── Union Type ───────────────────────────────────────────────
 
 export type AGUIEvent =
@@ -131,4 +142,5 @@ export type AGUIEvent =
 	| ReasoningStartEvent
 	| ReasoningContentEvent
 	| ReasoningEndEvent
-	| MessagesSnapshotEvent;
+	| MessagesSnapshotEvent
+	| UsageUpdateEvent;

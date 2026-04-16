@@ -139,6 +139,8 @@ interface ChatState {
 	availableModels: ModelItem[];
 	sessionId: string | null;
 	reasoningEffort: string | null;
+	contextTokens: number;
+	contextWindow: number;
 
 	syncModels: (config: ConfigResponse) => void;
 	sendMessage: (text: string, attachments?: ChatAttachment[]) => Promise<void>;
@@ -270,6 +272,10 @@ function handleSSEEvent(event: SSEEvent, get: () => ChatState, set: (partial: Pa
 			useSessionStore.getState().updateSessionTitle(get().sessionId!, title);
 			break;
 		}
+		case "USAGE_UPDATE": {
+			set({ contextTokens: event.totalTokens as number });
+			break;
+		}
 	}
 }
 
@@ -280,10 +286,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	availableModels: [],
 	sessionId: null,
 	reasoningEffort: null,
+	contextTokens: 0,
+	contextWindow: 0,
 
 	syncModels(config: ConfigResponse) {
 		const models = flattenModels(config);
-		set({ availableModels: models });
+		set({ availableModels: models, contextWindow: config.contextWindow ?? 0 });
 
 		const current = get().currentModelId;
 		if (models.length > 0 && (!current || !models.some((m) => m.id === current))) {
@@ -392,7 +400,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			.then((config) => {
 				const models = flattenModels(config);
 				const confirmed = models.find((m) => m.id === config.model)?.id ?? modelId;
-				set({ currentModelId: confirmed, availableModels: models });
+				set({ currentModelId: confirmed, availableModels: models, contextWindow: config.contextWindow ?? 0 });
 			})
 			.catch((err) => {
 				console.error("[chat] failed to persist model selection:", err);
@@ -409,6 +417,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			sessionId: null,
 			messages: [],
 			status: "ready",
+			contextTokens: 0,
 		});
 		currentAssistantId = null;
 		useSessionStore.getState().setTitle(null);
@@ -421,14 +430,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			messages: [],
 			status: "ready",
 			sessionId: info.sessionId,
+			contextTokens: 0,
 		});
 		currentAssistantId = null;
 		useSessionStore.getState().setTitle(info.title ?? null);
 
 		try {
-			const { messages: raw } = await gateway.messages.get(info.sessionId);
+			const [{ messages: raw }, sessionInfo] = await Promise.all([
+				gateway.messages.get(info.sessionId),
+				gateway.sessions.get(info.sessionId),
+			]);
 			const converted = convertGatewayMessages(raw as GatewayMessage[]);
-			set({ messages: converted });
+			set({ messages: converted, contextTokens: sessionInfo.totalTokens ?? 0 });
 		} catch (err) {
 			console.error("[gateway] loadSession messages failed:", err);
 		}

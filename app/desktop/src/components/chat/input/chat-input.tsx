@@ -21,6 +21,7 @@ import {
 } from "../../ai-elements/prompt-input";
 import { Spinner } from "../../ui/spinner";
 import { AttachmentList } from "../message/attachment-preview";
+import { ContextUsageRing } from "./context-usage";
 import { ModelSelector } from "./model-selector";
 import { createPastedTextAttachment } from "./paste-attachment";
 import { ReasoningEffortSelector } from "./reasoning-effort-selector";
@@ -123,6 +124,7 @@ export function ChatInput({ className }: { className?: string }) {
 						{supportsReasoning && (
 							<ReasoningEffortSelector value={reasoningEffort} onChange={setReasoningEffort} />
 						)}
+						<ContextUsageRing />
 					</PromptInputTools>
 					<PromptInputSubmit
 						status={status}

@@ -9,6 +9,8 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 
 function toConfigResponse(manager: SessionManager) {
 	const all = manager.getSettings().getAll();
+	const match = findModelAcrossProviders(all.model);
+	const limit = match ? extractLimit(match.model) : null;
 	return {
 		model: all.model,
 		provider: all.provider,
@@ -16,6 +18,7 @@ function toConfigResponse(manager: SessionManager) {
 		maxIterations: all.maxIterations,
 		language: all.language,
 		reasoningEffort: all.reasoningEffort,
+		contextWindow: limit?.context ?? 128_000,
 	};
 }
 

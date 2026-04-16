@@ -73,13 +73,11 @@ export class SessionManager {
 		const info: SessionInfo = {
 			sessionId,
 			workspaceId: wsId,
-			state: session.getState(),
 			title: null,
 			model: modelId,
 			firstMessage: null,
 			messageCount: 0,
 			totalTokens: 0,
-			tags: [],
 			createdAt: now,
 			updatedAt: now,
 		};
@@ -118,19 +116,11 @@ export class SessionManager {
 	getSessionInfo(sessionId: string): SessionInfo | null {
 		const record = this.index.get(sessionId);
 		if (!record) return null;
-
-		const active = this.activeSessions.get(sessionId);
-		const state = active ? active.session.getState() : (record.state as SessionInfo["state"]);
-		return { ...record, state };
+		return { ...record };
 	}
 
 	list(options?: { workspaceId?: string }): SessionInfo[] {
-		const rows = this.index.list(options);
-		return rows.map((row) => {
-			const active = this.activeSessions.get(row.sessionId);
-			const state = active ? active.session.getState() : (row.state as SessionInfo["state"]);
-			return { ...row, state };
-		});
+		return this.index.list(options);
 	}
 
 	async readMessages(sessionId: string): Promise<Message[] | null> {

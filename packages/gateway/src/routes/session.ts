@@ -126,6 +126,11 @@ export function sessionRoutes(manager: SessionManager): Hono {
 				unsubscribe();
 
 				const sessionId = c.req.param("id");
+				if (adapter.totalTokens > 0) {
+					const current = manager.getSessionInfo(sessionId);
+					const accumulated = (current?.totalTokens ?? 0) + adapter.totalTokens;
+					manager.updateSessionIndex(sessionId, "totalTokens", accumulated);
+				}
 				const info = manager.getSessionInfo(sessionId);
 				if (info && !info.firstMessage) {
 					const firstMessage = text.slice(0, 200) || body.attachments?.[0]?.filename || "Attachment";
