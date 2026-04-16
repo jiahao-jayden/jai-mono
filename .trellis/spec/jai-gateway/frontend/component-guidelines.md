@@ -1,59 +1,12 @@
 # Component Guidelines
 
-> How components are built in this project.
+> Component patterns for `@jayden/jai-gateway`.
 
 ---
 
-## Overview
+## Not Applicable
 
-<!--
-Document your project's component conventions here.
+`@jayden/jai-gateway` is a backend HTTP server package. It contains no UI components.
 
-Questions to answer:
-- What component patterns do you use?
-- How are props defined?
-- How do you handle composition?
-- What accessibility standards apply?
--->
-
-(To be filled by the team)
-
----
-
-## Component Structure
-
-<!-- Standard structure of a component file -->
-
-(To be filled by the team)
-
----
-
-## Props Conventions
-
-<!-- How props should be defined and typed -->
-
-(To be filled by the team)
-
----
-
-## Styling Patterns
-
-<!-- How styles are applied (CSS modules, styled-components, Tailwind, etc.) -->
-
-(To be filled by the team)
-
----
-
-## Accessibility
-
-<!-- A11y requirements and patterns -->
-
-(To be filled by the team)
-
----
-
-## Common Mistakes
-
-<!-- Component-related mistakes your team has made -->
-
-(To be filled by the team)
+For frontend component guidelines, see:
+- `@jayden/jai-desktop` -- the Electron desktop client that consumes gateway's REST API

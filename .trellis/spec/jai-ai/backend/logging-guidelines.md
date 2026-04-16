@@ -1,51 +1,34 @@
 # Logging Guidelines
 
-> How logging is done in this project.
+> How logging is done in `@jayden/jai-ai`.
 
 ---
 
 ## Overview
 
-<!--
-Document your project's logging conventions here.
+`jai-ai` has **no explicit logging**. The package communicates state through its return types:
 
-Questions to answer:
-- What logging library do you use?
-- What are the log levels and when to use each?
-- What should be logged?
-- What should NOT be logged (PII, secrets)?
--->
+- `streamMessage()` yields `StreamEvent` objects (including `{ type: "error" }` for failures)
+- `resolveModelInfo()` throws `ModelNotFoundError` for lookup failures
+- `enrichModelInfo()` returns partial results silently on failure
 
-(To be filled by the team)
+Logging of AI interactions (token usage, model selection, errors) is the responsibility of the consuming layer -- typically `jai-agent` (via `EventBus`) or `jai-gateway` (in route handlers).
 
 ---
 
-## Log Levels
+## Guidelines
 
-<!-- When to use each level: debug, info, warn, error -->
-
-(To be filled by the team)
-
----
-
-## Structured Logging
-
-<!-- Log format, required fields -->
-
-(To be filled by the team)
-
----
-
-## What to Log
-
-<!-- Important events to log -->
-
-(To be filled by the team)
+- Do not add `console.log` or logging library calls to this package.
+- Errors are communicated by throwing `NamedError` subclasses or yielding `{ type: "error" }` stream events -- not by logging.
+- API keys and other secrets must never be included in error messages. The `resolveApiKey()` function reads from `process.env` but does not log the values.
+- Token usage information is included in `StreamEvent` objects (`step_finish` and `message_end` events) for upstream logging.
 
 ---
 
 ## What NOT to Log
 
-<!-- Sensitive data, PII, secrets -->
+Even if logging were added in the future, these must never be logged:
 
-(To be filled by the team)
+- API keys or authentication tokens
+- Full message content (may contain user PII)
+- Base64-encoded image/file data

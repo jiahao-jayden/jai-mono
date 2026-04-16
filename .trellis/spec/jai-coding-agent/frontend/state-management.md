@@ -1,51 +1,16 @@
 # State Management
 
-> How state is managed in this project.
+> State management in `@jayden/jai-coding-agent`.
 
 ---
 
 ## Overview
 
-<!--
-Document your project's state management conventions here.
+This is a backend library package. There is no UI state management (no React state, no stores, no signals). State is managed through server-side classes:
 
-Questions to answer:
-- What state management solution do you use?
-- How is local vs global state decided?
-- How do you handle server state?
-- What are the patterns for derived state?
--->
+- **`SessionManager`**: Manages the lifecycle of multiple `AgentSession` instances in memory (`Map<string, { session, workspaceId }>`). Handles creation, restoration, and cleanup.
+- **`SessionIndex`** (SQLite): Persists session metadata for fast queries across restarts.
+- **`JsonlSessionStore`** (from `jai-session`): Persists full conversation history as append-only JSONL files.
+- **`SettingsManager`**: Holds the merged (global + project) settings in memory, persists changes to `~/.jai/settings.json`.
 
-(To be filled by the team)
-
----
-
-## State Categories
-
-<!-- Local state, global state, server state, URL state -->
-
-(To be filled by the team)
-
----
-
-## When to Use Global State
-
-<!-- Criteria for promoting state to global -->
-
-(To be filled by the team)
-
----
-
-## Server State
-
-<!-- How server data is cached and synchronized -->
-
-(To be filled by the team)
-
----
-
-## Common Mistakes
-
-<!-- State management mistakes your team has made -->
-
-(To be filled by the team)
+See the backend database guidelines for details on persistence patterns.

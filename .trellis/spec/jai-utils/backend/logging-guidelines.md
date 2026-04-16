@@ -1,51 +1,19 @@
 # Logging Guidelines
 
-> How logging is done in this project.
+> How logging is done in `@jayden/jai-utils`.
 
 ---
 
 ## Overview
 
-<!--
-Document your project's logging conventions here.
+This package has **no logging**. It is a pure utility library that provides data structures and pure functions. There are no log statements, no logging library dependencies, and no console output.
 
-Questions to answer:
-- What logging library do you use?
-- What are the log levels and when to use each?
-- What should be logged?
-- What should NOT be logged (PII, secrets)?
--->
-
-(To be filled by the team)
+Logging is the responsibility of higher-level packages (`jai-agent`, `jai-coding-agent`, `jai-gateway`) that orchestrate behavior and have runtime context.
 
 ---
 
-## Log Levels
+## Guidelines
 
-<!-- When to use each level: debug, info, warn, error -->
-
-(To be filled by the team)
-
----
-
-## Structured Logging
-
-<!-- Log format, required fields -->
-
-(To be filled by the team)
-
----
-
-## What to Log
-
-<!-- Important events to log -->
-
-(To be filled by the team)
-
----
-
-## What NOT to Log
-
-<!-- Sensitive data, PII, secrets -->
-
-(To be filled by the team)
+- Do not add `console.log`, `console.warn`, or any logging calls to this package.
+- Do not add logging library dependencies (e.g., `pino`, `winston`).
+- Errors should be communicated by throwing `NamedError` subclasses or returning `undefined`, not by logging.

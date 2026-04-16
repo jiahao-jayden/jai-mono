@@ -1,54 +1,29 @@
 # Directory Structure
 
-> How frontend code is organized in this project.
+> Frontend directory structure for `@jayden/jai-coding-agent`.
 
 ---
 
 ## Overview
 
-<!--
-Document your project's frontend directory structure here.
+This is a **backend library package**. It contains no UI components, no React code, and no frontend assets.
 
-Questions to answer:
-- Where do components live?
-- How are features/modules organized?
-- Where are shared utilities?
-- How are assets organized?
--->
-
-(To be filled by the team)
+It is consumed by `@jayden/jai-gateway`, which exposes its capabilities as a REST/SSE API. The desktop client (`@jayden/jai-desktop`) interacts with this package indirectly through the gateway's HTTP endpoints.
 
 ---
 
-## Directory Layout
+## Package Exports
 
-```
-<!-- Replace with your actual structure -->
-src/
-├── ...
-└── ...
+The package exposes two entry points defined in `package.json`:
+
+```json
+{
+  "exports": {
+    ".": "./src/index.ts",
+    "./attachments": "./src/core/attachments/types.ts"
+  }
+}
 ```
 
----
-
-## Module Organization
-
-<!-- How should new features be organized? -->
-
-(To be filled by the team)
-
----
-
-## Naming Conventions
-
-<!-- File and folder naming rules -->
-
-(To be filled by the team)
-
----
-
-## Examples
-
-<!-- Link to well-organized modules as examples -->
-
-(To be filled by the team)
+- **Main export** (`.`): Core classes and functions (`AgentSession`, `SessionManager`, `Workspace`, `SettingsManager`, `SessionIndex`, `createDefaultTools`, `buildSystemPrompt`, etc.)
+- **Attachments subpath** (`./attachments`): Attachment types (`RawAttachment`, `ATTACHMENT_LIMITS`, `ACCEPTED_FILE_TYPES`) used by the gateway for upload handling and by the desktop client for file picker configuration.

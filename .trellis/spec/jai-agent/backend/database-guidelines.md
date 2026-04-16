@@ -1,51 +1,15 @@
 # Database Guidelines
 
-> Database patterns and conventions for this project.
+> Database patterns for `@jayden/jai-agent`.
 
 ---
 
-## Overview
+## Not Applicable
 
-<!--
-Document your project's database conventions here.
+`@jayden/jai-agent` is a pure event/loop engine with **no database access**. It has no persistence layer, no file I/O, and no storage concerns.
 
-Questions to answer:
-- What ORM/query library do you use?
-- How are migrations managed?
-- What are the naming conventions for tables/columns?
-- How do you handle transactions?
--->
+- Session persistence is handled by `@jayden/jai-session`
+- SQLite session indexing is handled by `@jayden/jai-coding-agent`
+- File operations are tool implementations in `@jayden/jai-coding-agent`
 
-(To be filled by the team)
-
----
-
-## Query Patterns
-
-<!-- How should queries be written? Batch operations? -->
-
-(To be filled by the team)
-
----
-
-## Migrations
-
-<!-- How to create and run migrations -->
-
-(To be filled by the team)
-
----
-
-## Naming Conventions
-
-<!-- Table names, column names, index names -->
-
-(To be filled by the team)
-
----
-
-## Common Mistakes
-
-<!-- Database-related mistakes your team has made -->
-
-(To be filled by the team)
+Any code that introduces database access, file writes, or persistent state to this package violates its boundary constraints and should be placed in the appropriate downstream package.

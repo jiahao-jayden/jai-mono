@@ -1,51 +1,12 @@
 # Hook Guidelines
 
-> How hooks are used in this project.
+> Hook patterns for `@jayden/jai-gateway`.
 
 ---
 
-## Overview
+## Not Applicable
 
-<!--
-Document your project's hook conventions here.
+`@jayden/jai-gateway` is a backend HTTP server package. It does not contain React hooks.
 
-Questions to answer:
-- What custom hooks do you have?
-- How do you handle data fetching?
-- What are the naming conventions?
-- How do you share stateful logic?
--->
-
-(To be filled by the team)
-
----
-
-## Custom Hook Patterns
-
-<!-- How to create and structure custom hooks -->
-
-(To be filled by the team)
-
----
-
-## Data Fetching
-
-<!-- How data fetching is handled (React Query, SWR, etc.) -->
-
-(To be filled by the team)
-
----
-
-## Naming Conventions
-
-<!-- Hook naming rules (use*, etc.) -->
-
-(To be filled by the team)
-
----
-
-## Common Mistakes
-
-<!-- Hook-related mistakes your team has made -->
-
-(To be filled by the team)
+For HTTP/SSE hook patterns used to consume gateway APIs, see:
+- `@jayden/jai-desktop` -- the Electron desktop client that implements hooks for gateway API calls and SSE event streaming

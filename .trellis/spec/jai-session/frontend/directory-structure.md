@@ -1,54 +1,11 @@
 # Directory Structure
 
-> How frontend code is organized in this project.
+> Frontend applicability for `@jayden/jai-session`.
 
 ---
 
 ## Overview
 
-<!--
-Document your project's frontend directory structure here.
+`@jayden/jai-session` is a **backend-only session storage package**. It contains no UI components, no React code, and no frontend assets.
 
-Questions to answer:
-- Where do components live?
-- How are features/modules organized?
-- Where are shared utilities?
-- How are assets organized?
--->
-
-(To be filled by the team)
-
----
-
-## Directory Layout
-
-```
-<!-- Replace with your actual structure -->
-src/
-├── ...
-└── ...
-```
-
----
-
-## Module Organization
-
-<!-- How should new features be organized? -->
-
-(To be filled by the team)
-
----
-
-## Naming Conventions
-
-<!-- File and folder naming rules -->
-
-(To be filled by the team)
-
----
-
-## Examples
-
-<!-- Link to well-organized modules as examples -->
-
-(To be filled by the team)
+Its TypeScript types are used by other backend packages (`jai-coding-agent`, `jai-gateway`) for session persistence. Frontend packages do not directly depend on this package -- session data reaches the frontend via the gateway HTTP API.

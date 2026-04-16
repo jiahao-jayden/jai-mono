@@ -1,51 +1,14 @@
 # State Management
 
-> How state is managed in this project.
+> State management for `@jayden/jai-gateway`.
 
 ---
 
-## Overview
+## Not Applicable
 
-<!--
-Document your project's state management conventions here.
+`@jayden/jai-gateway` is a backend HTTP server package. It has no frontend state management.
 
-Questions to answer:
-- What state management solution do you use?
-- How is local vs global state decided?
-- How do you handle server state?
-- What are the patterns for derived state?
--->
+The gateway is intentionally **stateless** at the HTTP layer. All state (sessions, settings, message history) is managed by `@jayden/jai-coding-agent` via `SessionManager`.
 
-(To be filled by the team)
-
----
-
-## State Categories
-
-<!-- Local state, global state, server state, URL state -->
-
-(To be filled by the team)
-
----
-
-## When to Use Global State
-
-<!-- Criteria for promoting state to global -->
-
-(To be filled by the team)
-
----
-
-## Server State
-
-<!-- How server data is cached and synchronized -->
-
-(To be filled by the team)
-
----
-
-## Common Mistakes
-
-<!-- State management mistakes your team has made -->
-
-(To be filled by the team)
+For client-side state management patterns when consuming gateway APIs, see:
+- `@jayden/jai-desktop` -- manages session state, chat messages, and config through gateway HTTP calls

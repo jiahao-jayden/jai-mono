@@ -1,51 +1,43 @@
 # Quality Guidelines
 
-> Code quality standards for frontend development.
+> Code quality standards when using `@jayden/jai-utils` types and functions.
 
 ---
 
 ## Overview
 
-<!--
-Document your project's quality standards here.
-
-Questions to answer:
-- What patterns are forbidden?
-- What linting rules do you enforce?
-- What are your testing requirements?
-- What code review standards apply?
--->
-
-(To be filled by the team)
+While `jai-utils` has no frontend code itself, its exports are consumed by frontend packages. These guidelines cover how to correctly import and use `jai-utils` in frontend contexts.
 
 ---
 
 ## Forbidden Patterns
 
-<!-- Patterns that should never be used and why -->
-
-(To be filled by the team)
+- **Do not duplicate utility logic** -- if `parseModelId` or `NamedError` exist in this package, use them. Do not reimplement in frontend code.
+- **Do not use `instanceof` for NamedError** -- always use the static `isInstance()` method for error type checks.
 
 ---
 
 ## Required Patterns
 
-<!-- Patterns that must always be used -->
+- **Use type-only imports for types** -- when importing `ParsedModelId` in frontend code:
 
-(To be filled by the team)
+```ts
+import type { ParsedModelId } from "@jayden/jai-utils";
+import { parseModelId } from "@jayden/jai-utils";
+```
+
+- **Handle `undefined` returns** -- `parseModelId()` returns `ParsedModelId | undefined`. Always check the return value before accessing `.provider` or `.model`.
 
 ---
 
 ## Testing Requirements
 
-<!-- What level of testing is expected -->
-
-(To be filled by the team)
+Frontend code using `jai-utils` functions should test edge cases (e.g., model ID strings without a `/` separator returning `undefined`).
 
 ---
 
 ## Code Review Checklist
 
-<!-- What reviewers should check -->
-
-(To be filled by the team)
+- [ ] Type-only imports used for types
+- [ ] `parseModelId` return value checked for `undefined`
+- [ ] No reimplementation of existing utility functions

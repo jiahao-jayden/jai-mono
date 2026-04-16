@@ -1,51 +1,45 @@
 # Logging Guidelines
 
-> How logging is done in this project.
+> How logging works in `@jayden/jai-session`.
 
 ---
 
 ## Overview
 
-<!--
-Document your project's logging conventions here.
-
-Questions to answer:
-- What logging library do you use?
-- What are the log levels and when to use each?
-- What should be logged?
-- What should NOT be logged (PII, secrets)?
--->
-
-(To be filled by the team)
+`jai-session` does **not** use any logging library. The package performs I/O operations (JSONL file read/write) but does so silently. There are no `console.log`, `console.error`, or structured logging calls in the codebase.
 
 ---
 
-## Log Levels
+## Design Rationale
 
-<!-- When to use each level: debug, info, warn, error -->
-
-(To be filled by the team)
+This package is a low-level persistence layer. Logging decisions are deferred to the consuming package (`jai-coding-agent`), which has more context about what is operationally significant.
 
 ---
 
-## Structured Logging
+## What Is Silently Handled
 
-<!-- Log format, required fields -->
-
-(To be filled by the team)
-
----
-
-## What to Log
-
-<!-- Important events to log -->
-
-(To be filled by the team)
+| Situation | Behavior | Rationale |
+|-----------|----------|-----------|
+| Malformed JSONL line during `load()` | Silently skipped | Crash recovery -- last line may be incomplete |
+| Empty lines in JSONL file | Silently skipped | Normal after appending with trailing newline |
+| Missing JSONL file on `open()` | Returns empty store | New session -- no file yet |
 
 ---
 
-## What NOT to Log
+## What Propagates as Exceptions
 
-<!-- Sensitive data, PII, secrets -->
+| Situation | Behavior |
+|-----------|----------|
+| Disk full during `append()` | `appendFile` throws -- propagated to caller |
+| Permission denied on file | `mkdir` or `appendFile` throws -- propagated to caller |
+| Invalid JSON in `append()` input | Would never happen (`JSON.stringify` on typed input) |
 
-(To be filled by the team)
+---
+
+## Guidelines for Future Changes
+
+1. **Do not add logging to this package** -- If operational visibility is needed, the consuming layer should wrap store operations.
+
+2. **Do not swallow I/O errors** -- File system failures must propagate to the caller. The only exception is the JSONL parse-skip pattern for crash recovery.
+
+3. **If adding a new store implementation** (e.g., SQLite-backed), follow the same pattern: no internal logging, propagate I/O errors, silently handle recoverable corruption.

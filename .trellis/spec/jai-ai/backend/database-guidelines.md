@@ -1,51 +1,14 @@
 # Database Guidelines
 
-> Database patterns and conventions for this project.
+> Database patterns and conventions for `@jayden/jai-ai`.
 
 ---
 
-## Overview
+Not Applicable -- this package uses a static JSON file (`models-snapshot.json`) as a read-only model registry, not a database. The snapshot is updated via the `update-models` script which fetches from the models.dev API:
 
-<!--
-Document your project's database conventions here.
+```bash
+pnpm --filter @jayden/jai-ai update-models
+# Runs: curl -sL https://models.dev/api.json -o src/models-snapshot.json
+```
 
-Questions to answer:
-- What ORM/query library do you use?
-- How are migrations managed?
-- What are the naming conventions for tables/columns?
-- How do you handle transactions?
--->
-
-(To be filled by the team)
-
----
-
-## Query Patterns
-
-<!-- How should queries be written? Batch operations? -->
-
-(To be filled by the team)
-
----
-
-## Migrations
-
-<!-- How to create and run migrations -->
-
-(To be filled by the team)
-
----
-
-## Naming Conventions
-
-<!-- Table names, column names, index names -->
-
-(To be filled by the team)
-
----
-
-## Common Mistakes
-
-<!-- Database-related mistakes your team has made -->
-
-(To be filled by the team)
+The JSON is imported at module load time with `import registry from "./models-snapshot.json" with { type: "json" }` and accessed through typed lookup functions. There are no writes, no migrations, and no query patterns.

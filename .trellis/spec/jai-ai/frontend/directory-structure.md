@@ -1,54 +1,17 @@
 # Directory Structure
 
-> How frontend code is organized in this project.
+> Frontend directory structure for `@jayden/jai-ai`.
 
 ---
 
-## Overview
+This package is used as a library. It contains no UI components, React code, or frontend-specific modules. However, its type exports are heavily consumed by frontend packages (especially `@jayden/jai-desktop`).
 
-<!--
-Document your project's frontend directory structure here.
+Frontend code imports types from `@jayden/jai-ai` for:
 
-Questions to answer:
-- Where do components live?
-- How are features/modules organized?
-- Where are shared utilities?
-- How are assets organized?
--->
+- Message types (`Message`, `UserMessage`, `AssistantMessage`, `ToolResultMessage`)
+- Content block types (`TextContent`, `ImageContent`, `ThinkingContent`, `ToolCall`)
+- Model types (`ModelInfo`, `ModelCapabilities`, `ModelLimit`, `EnrichedModelInfo`)
+- Stream events (`StreamEvent`)
+- Usage tracking (`Usage`)
 
-(To be filled by the team)
-
----
-
-## Directory Layout
-
-```
-<!-- Replace with your actual structure -->
-src/
-├── ...
-└── ...
-```
-
----
-
-## Module Organization
-
-<!-- How should new features be organized? -->
-
-(To be filled by the team)
-
----
-
-## Naming Conventions
-
-<!-- File and folder naming rules -->
-
-(To be filled by the team)
-
----
-
-## Examples
-
-<!-- Link to well-organized modules as examples -->
-
-(To be filled by the team)
+All imports should use the package entry point: `import type { ... } from "@jayden/jai-ai"`.

@@ -1,12 +1,12 @@
 # Frontend Development Guidelines
 
-> Best practices for frontend development in this project.
+> Best practices for frontend development in the jai-desktop project.
 
 ---
 
 ## Overview
 
-This directory contains guidelines for frontend development. Fill in each file with your project's specific conventions.
+This directory contains guidelines for the Electron desktop client (`@jayden/jai-desktop`). The app is built with React 19, TypeScript (strict mode), TailwindCSS v4, Zustand v5, and communicates with the backend via the gateway HTTP API.
 
 ---
 
@@ -14,26 +14,21 @@ This directory contains guidelines for frontend development. Fill in each file w
 
 | Guide | Description | Status |
 |-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
-| [Component Guidelines](./component-guidelines.md) | Component patterns, props, composition | To fill |
-| [Hook Guidelines](./hook-guidelines.md) | Custom hooks, data fetching patterns | To fill |
-| [State Management](./state-management.md) | Local state, global state, server state | To fill |
-| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
-| [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
+| [Directory Structure](./directory-structure.md) | Module organization and file layout | Filled |
+| [Component Guidelines](./component-guidelines.md) | Component patterns, props, styling, shadcn/ui | Filled |
+| [Hook Guidelines](./hook-guidelines.md) | Custom hooks, data fetching, React Query usage | Filled |
+| [State Management](./state-management.md) | Zustand stores, local state, server state | Filled |
+| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns, review checklist | Filled |
+| [Type Safety](./type-safety.md) | AGUIEvent handling, gateway types, type organization | Filled |
 
 ---
 
-## How to Fill These Guidelines
+## Key Constraints
 
-For each guideline file:
-
-1. Document your project's **actual conventions** (not ideals)
-2. Include **code examples** from your codebase
-3. List **forbidden patterns** and why
-4. Add **common mistakes** your team has made
-
-The goal is to help AI assistants and new team members understand how YOUR project works.
+1. **No direct imports from `@jayden/jai-coding-agent`** -- all interaction through gateway HTTP API
+2. **SSE events must use `AGUIEventType` enum** -- never raw string matching
+3. **API types from `@jayden/jai-gateway`** -- do not re-declare locally
 
 ---
 
-**Language**: All documentation should be written in **English**.
+**Language**: All documentation is written in **English**.
