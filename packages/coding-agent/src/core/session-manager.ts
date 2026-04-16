@@ -1,10 +1,13 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "@jayden/jai-ai";
-import { AgentSession, createDefaultTools, SettingsManager, Workspace } from "@jayden/jai-coding-agent";
 import { JsonlSessionStore, type MessageEntry } from "@jayden/jai-session";
-import { SessionIndex } from "./storage/session-index.js";
-import type { SessionInfo } from "./types/api.js";
+import { AgentSession } from "./agent-session.js";
+import { type SessionInfo, SessionIndex } from "./session-index.js";
+import type { Settings } from "./settings.js";
+import { SettingsManager } from "./settings.js";
+import { createDefaultTools } from "../tools/index.js";
+import { Workspace } from "./workspace.js";
 
 export type SessionManagerConfig = {
 	jaiHome?: string;
@@ -171,7 +174,7 @@ export class SessionManager {
 		return this.settings;
 	}
 
-	async saveSettings(patch: import("@jayden/jai-coding-agent").Settings): Promise<void> {
+	async saveSettings(patch: Settings): Promise<void> {
 		await this.settings.save(patch);
 	}
 

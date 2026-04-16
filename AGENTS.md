@@ -1,25 +1,29 @@
-<!-- TRELLIS:START -->
+
+
 # Trellis Instructions
 
 These instructions are for AI assistants working in this project.
 
 Use the `/trellis:start` command when starting a new session to:
+
 - Initialize your developer identity
 - Understand current project context
 - Read relevant guidelines
 
 Use `@/.trellis/` to learn:
+
 - Development workflow (`workflow.md`)
 - Project structure guidelines (`spec/`)
 - Developer workspace (`workspace/`)
 
 If you're using Codex, project-scoped helpers may also live in:
+
 - `.agents/skills/` for reusable Trellis skills
 - `.codex/agents/` for optional custom subagents
 
 Keep this managed block so 'trellis update' can refresh the instructions.
 
-<!-- TRELLIS:END -->
+
 
 ## Package Responsibilities
 
@@ -65,7 +69,9 @@ Keep this managed block so 'trellis update' can refresh the instructions.
 
 **编码 Agent 的领域核心（可嵌入的库，不含 HTTP/SSE）。**
 
-- `AgentSession`：会话生命周期（创建/恢复/chat/abort/close）、消息持久化
+- `AgentSession`：单会话生命周期（创建/恢复/chat/abort/close）、消息持久化
+- `SessionManager`：多会话编排——创建/恢复/关闭会话，管理 workspace 与设置代理
+- `SessionIndex`：SQLite 会话索引（元数据：标题、模型、token 统计），`SessionInfo` 为统一类型
 - `Workspace`：工作区路径约定（`~/.jai` + `cwd/.jai`），三层 prompt 解析
 - `SettingsManager`：全局/项目设置的读取、合并、持久化，模型解析
 - `createDefaultTools`：文件读写、Bash、Glob、Grep 等编码工具集
@@ -73,22 +79,25 @@ Keep this managed block so 'trellis update' can refresh the instructions.
 - 附件处理：图片/PDF/文本的多模态转换
 
 **边界约束**：
+
 - 不包含 HTTP 服务器、SSE 协议、事件序列化 —— 这些是 gateway 的职责
 - 通过 `onEvent` 回调暴露 `AgentEvent`，由上层（gateway）翻译为 wire format
 - Session 文件路径的唯一事实来源是 `Workspace.sessionPath()`，其他包不得硬编码路径
 
 ### `@jayden/jai-gateway`
 
-**薄 HTTP/SSE 网关层，把 coding-agent 的能力暴露为 REST API。**
+**纯 HTTP/SSE 代理层，把 coding-agent 的能力暴露为 REST API。**
 
 - `GatewayServer`：Hono + Bun.serve，默认 `127.0.0.1:18900`
-- `SessionManager`：多 workspace 管理、会话索引（SQLite）、设置代理
 - `EventAdapter`：`AgentEvent` → `AGUIEvent`（AG-UI 协议）的翻译层
 - 路由：会话 CRUD、聊天 SSE、配置读写、模型列表、工作区文件浏览
 - `AGUIEventType` / `AGUIEvent`：面向客户端的事件协议定义
+- `SessionManager` / `SessionIndex` / `SessionInfo` 从 `@jayden/jai-coding-agent` 再导出（向后兼容）
 
 **边界约束**：
-- 路由层应保持薄——业务逻辑（标题生成时机、token 累计等）收敛在 `SessionManager`
+
+- 本包不包含会话生命周期管理或 SQLite 索引——这些已迁移到 `coding-agent`
+- 路由层应保持薄——仅做 HTTP 参数解析 + 转发到 `SessionManager`
 - 模型能力查询使用 `jai-ai` 的 `enrichModelInfo`，不在本包重复实现
 - 对 session 文件路径的访问必须经过 `Workspace.sessionPath()`
 
@@ -97,10 +106,11 @@ Keep this managed block so 'trellis update' can refresh the instructions.
 **Electron 桌面客户端（渲染进程）。**
 
 - 通过 HTTP 调用本机 gateway API，不直接依赖 `jai-coding-agent`
-- SSE 事件使用 `AGUIEvent` 强类型（从 `@jayden/jai-gateway` 导入），用 `AGUIEventType.*` 常量匹配
+- SSE 事件使用 `AGUIEvent` 强类型（从 `@jayden/jai-gateway` 导入），用 `AGUIEventType.`* 常量匹配
 - API 契约类型（`ConfigResponse`、`SessionInfo` 等）从 `@jayden/jai-gateway` 导入
 
 **边界约束**：
+
 - 禁止直接 import `@jayden/jai-coding-agent` —— 所有交互通过 gateway HTTP API
 - 事件处理必须使用 `AGUIEventType` 枚举，禁止裸字符串匹配
 

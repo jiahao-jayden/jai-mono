@@ -1,4 +1,5 @@
-import { type AGUIEvent, AGUIEventType, type ConfigResponse, type ProviderSettings } from "@jayden/jai-gateway";
+import type { AGUIEvent, ConfigResponse, ProviderSettings } from "@jayden/jai-gateway";
+import { AGUIEventType } from "@jayden/jai-gateway/events";
 import { nanoid } from "nanoid";
 import { create } from "zustand";
 import { gateway } from "@/services/gateway";

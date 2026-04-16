@@ -1,17 +1,5 @@
 export type { EnrichedModelInfo as ProviderModel } from "@jayden/jai-ai";
-export type { ProviderSettings } from "@jayden/jai-coding-agent";
-
-export interface SessionInfo {
-	sessionId: string;
-	workspaceId: string;
-	title: string | null;
-	model: string | null;
-	firstMessage: string | null;
-	messageCount: number;
-	totalTokens: number;
-	createdAt: number;
-	updatedAt: number;
-}
+export type { ProviderSettings, SessionInfo } from "@jayden/jai-coding-agent";
 
 export interface ConfigResponse {
 	model: string;

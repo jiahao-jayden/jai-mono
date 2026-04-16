@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { EventAdapter } from "../events/adapter.js";
 import { AGUIEventType } from "../events/types.js";
-import type { SessionManager } from "../session-manager.js";
+import type { SessionManager } from "@jayden/jai-coding-agent";
 
 export function sessionRoutes(manager: SessionManager): Hono {
 	const app = new Hono();

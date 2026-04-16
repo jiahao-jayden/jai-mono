@@ -12,4 +12,7 @@ export { buildSystemPrompt } from "./core/system-prompt.js";
 export { buildTitleInput, sanitizeTitle } from "./core/title.js";
 export type { ResolvedPrompts, SessionConfig, SessionState } from "./core/types.js";
 export { Workspace, type WorkspaceConfig } from "./core/workspace.js";
+export { SessionIndex } from "./core/session-index.js";
+export type { SessionInfo } from "./core/session-index.js";
+export { SessionManager, type SessionManagerConfig } from "./core/session-manager.js";
 export { createDefaultTools } from "./tools/index.js";

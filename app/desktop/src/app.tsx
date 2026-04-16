@@ -1,13 +1,13 @@
 import { useEffect } from "react";
+import { ChatArea } from "@/components/chat/chat-area";
+import { FilePanel } from "@/components/file-panel/file-panel";
+import { AppSidebar } from "@/components/shell/app-sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useAppData } from "@/hooks/use-app-data";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chat";
 import { useFilePanelStore } from "@/stores/file-panel";
 import { useSessionStore } from "@/stores/session";
-import { ChatArea } from "./components/chat/chat-area";
-import { FilePanel } from "./components/file-panel/file-panel";
-import { AppSidebar } from "./components/shell/app-sidebar";
 
 export default function App() {
 	useAppData();
@@ -31,10 +31,10 @@ export default function App() {
 	}, [sessionId, sessions]);
 
 	return (
-		<SidebarProvider className="h-svh overflow-hidden bg-sidebar">
+		<SidebarProvider className="h-svh overflow-hidden bg-background">
 			<AppSidebar />
 			<div className="flex flex-1 min-w-0 h-full py-2 pr-2 gap-2">
-				<div className="flex-1 min-w-0 rounded-lg bg-background overflow-hidden">
+				<div className="flex-1 min-w-0 overflow-hidden">
 					<ChatArea />
 				</div>
 				<div

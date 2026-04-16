@@ -51,7 +51,7 @@ export function FilePanel() {
 	if (!workspaceId) return null;
 
 	return (
-		<div className="flex flex-col h-full rounded-lg bg-background overflow-hidden">
+		<div className="flex flex-col h-full rounded-lg bg-card overflow-hidden">
 			{/* Panel header — entire bar is draggable, buttons are no-drag */}
 			<div className="flex items-center justify-between px-3 h-12 shrink-0" style={drag}>
 				<div className="flex items-center gap-1.5 text-[12px] font-medium text-foreground/70">

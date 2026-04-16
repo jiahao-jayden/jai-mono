@@ -19,7 +19,7 @@ CREATE INDEX IF NOT EXISTS idx_workspace ON sessions(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_updated   ON sessions(updated_at DESC);
 `;
 
-export interface SessionRecord {
+export interface SessionInfo {
 	sessionId: string;
 	workspaceId: string;
 	title: string | null;
@@ -43,7 +43,7 @@ interface RawRow {
 	updated_at: number;
 }
 
-function rowToRecord(row: RawRow): SessionRecord {
+function rowToRecord(row: RawRow): SessionInfo {
 	return {
 		sessionId: row.session_id,
 		workspaceId: row.workspace_id,
@@ -72,7 +72,7 @@ export class SessionIndex {
 		return new SessionIndex(db);
 	}
 
-	upsert(record: SessionRecord): void {
+	upsert(record: SessionInfo): void {
 		this.db
 			.prepare(
 				`INSERT OR REPLACE INTO sessions
@@ -92,12 +92,12 @@ export class SessionIndex {
 			);
 	}
 
-	get(sessionId: string): SessionRecord | null {
+	get(sessionId: string): SessionInfo | null {
 		const row = this.db.prepare("SELECT * FROM sessions WHERE session_id = ?").get(sessionId) as RawRow | null;
 		return row ? rowToRecord(row) : null;
 	}
 
-	list(options?: { workspaceId?: string; limit?: number; offset?: number }): SessionRecord[] {
+	list(options?: { workspaceId?: string; limit?: number; offset?: number }): SessionInfo[] {
 		const { workspaceId, limit = 100, offset = 0 } = options ?? {};
 
 		if (workspaceId) {
@@ -118,7 +118,7 @@ export class SessionIndex {
 		return result.changes > 0;
 	}
 
-	updateField(sessionId: string, field: keyof SessionRecord, value: string | number | null): void {
+	updateField(sessionId: string, field: keyof SessionInfo, value: string | number | null): void {
 		const columnMap: Record<string, string> = {
 			title: "title",
 			model: "model",

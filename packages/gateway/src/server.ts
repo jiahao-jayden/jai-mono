@@ -4,7 +4,7 @@ import { configRoutes } from "./routes/config.js";
 import { healthRoutes } from "./routes/health.js";
 import { sessionRoutes } from "./routes/session.js";
 import { workspaceRoutes } from "./routes/workspace.js";
-import { SessionManager } from "./session-manager.js";
+import { SessionManager } from "@jayden/jai-coding-agent";
 
 export type GatewayOptions = {
 	jaiHome?: string;

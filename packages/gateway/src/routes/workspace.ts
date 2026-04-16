@@ -1,7 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 import { Hono } from "hono";
-import type { SessionManager } from "../session-manager.js";
+import type { SessionManager } from "@jayden/jai-coding-agent";
 
 interface FileEntry {
 	name: string;
