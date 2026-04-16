@@ -1,5 +1,3 @@
-
-
 # Trellis Instructions
 
 These instructions are for AI assistants working in this project.
