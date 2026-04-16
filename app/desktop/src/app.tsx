@@ -2,9 +2,13 @@ import { useEffect } from "react";
 import { ChatArea } from "@/components/chat/chat-area";
 import { FilePanel } from "@/components/file-panel/file-panel";
 import { AppSidebar } from "@/components/shell/app-sidebar";
+import {
+	ResizableHandle,
+	ResizablePanel,
+	ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useAppData } from "@/hooks/use-app-data";
-import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chat";
 import { useFilePanelStore } from "@/stores/file-panel";
 import { useSessionStore } from "@/stores/session";
@@ -33,18 +37,22 @@ export default function App() {
 	return (
 		<SidebarProvider className="h-svh overflow-hidden bg-background">
 			<AppSidebar />
-			<div className="flex flex-1 min-w-0 h-full py-2 pr-2 gap-2">
-				<div className="flex-1 min-w-0 overflow-hidden">
+			<div className="flex-1 min-w-0 h-full py-2 pr-2">
+				{filePanelOpen ? (
+					<ResizablePanelGroup orientation="horizontal">
+						<ResizablePanel defaultSize="60%" minSize="30%">
+							<div className="h-full overflow-hidden">
+								<ChatArea />
+							</div>
+						</ResizablePanel>
+						<ResizableHandle className="mx-1 bg-transparent" />
+						<ResizablePanel defaultSize="40%" minSize="20%" maxSize="60%">
+							<FilePanel />
+						</ResizablePanel>
+					</ResizablePanelGroup>
+				) : (
 					<ChatArea />
-				</div>
-				<div
-					className={cn(
-						"shrink-0 overflow-hidden transition-[width] duration-200 ease-out",
-						filePanelOpen ? "w-[38%]" : "w-0",
-					)}
-				>
-					{filePanelOpen && <FilePanel />}
-				</div>
+				)}
 			</div>
 		</SidebarProvider>
 	);

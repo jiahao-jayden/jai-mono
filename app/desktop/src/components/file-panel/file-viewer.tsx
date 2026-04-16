@@ -1,14 +1,11 @@
 import type { FileContent } from "@jayden/jai-gateway";
-import { XIcon } from "lucide-react";
-import { useEffect, useState } from "react";
-import { MessageResponse } from "@/components/ai-elements/message";
-import { cn } from "@/lib/utils";
+import Editor, { type OnMount } from "@monaco-editor/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { gateway } from "@/services/gateway";
 
 interface FileViewerProps {
 	workspaceId: string;
 	filePath: string;
-	onClose: () => void;
 }
 
 function isImageMime(mime: string): boolean {
@@ -21,59 +18,66 @@ function isVideoMime(mime: string): boolean {
 
 function isTextMime(mime: string): boolean {
 	return (
-		mime.startsWith("text/") || mime === "application/json" || mime === "application/xml" || mime === "image/svg+xml"
+		mime.startsWith("text/") ||
+		mime === "application/json" ||
+		mime === "application/xml" ||
+		mime === "image/svg+xml"
 	);
 }
 
-function getLanguage(filename: string): string {
-	const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-	const map: Record<string, string> = {
-		ts: "typescript",
-		tsx: "tsx",
-		js: "javascript",
-		jsx: "jsx",
-		mjs: "javascript",
-		cjs: "javascript",
-		py: "python",
-		rs: "rust",
-		go: "go",
-		java: "java",
-		c: "c",
-		cpp: "cpp",
-		h: "c",
-		cs: "csharp",
-		rb: "ruby",
-		php: "php",
-		swift: "swift",
-		kt: "kotlin",
-		json: "json",
-		jsonl: "json",
-		yaml: "yaml",
-		yml: "yaml",
-		toml: "toml",
-		md: "markdown",
-		html: "html",
-		css: "css",
-		scss: "scss",
-		sh: "bash",
-		bash: "bash",
-		zsh: "bash",
-		sql: "sql",
-		xml: "xml",
-		graphql: "graphql",
-		txt: "text",
-		log: "text",
-		env: "text",
-		svg: "xml",
-	};
-	return map[ext] ?? "text";
+const LANG_MAP: Record<string, string> = {
+	ts: "typescript",
+	tsx: "typescript",
+	js: "javascript",
+	jsx: "javascript",
+	mjs: "javascript",
+	cjs: "javascript",
+	py: "python",
+	rs: "rust",
+	go: "go",
+	java: "java",
+	c: "c",
+	cpp: "cpp",
+	h: "c",
+	cs: "csharp",
+	rb: "ruby",
+	php: "php",
+	swift: "swift",
+	kt: "kotlin",
+	json: "json",
+	jsonl: "json",
+	yaml: "yaml",
+	yml: "yaml",
+	toml: "ini",
+	md: "markdown",
+	mdx: "markdown",
+	html: "html",
+	htm: "html",
+	css: "css",
+	scss: "scss",
+	less: "less",
+	sh: "shell",
+	bash: "shell",
+	zsh: "shell",
+	sql: "sql",
+	xml: "xml",
+	svg: "xml",
+	graphql: "graphql",
+	txt: "plaintext",
+	log: "plaintext",
+	env: "ini",
+	dockerfile: "dockerfile",
+	makefile: "makefile",
+};
+
+function getMonacoLang(filePath: string): string {
+	const name = filePath.split("/").pop()?.toLowerCase() ?? "";
+	if (name === "dockerfile") return "dockerfile";
+	if (name === "makefile") return "makefile";
+	const ext = name.split(".").pop() ?? "";
+	return LANG_MAP[ext] ?? "plaintext";
 }
 
-function shortPath(fullPath: string): string {
-	const parts = fullPath.split("/");
-	if (parts.length <= 3) return fullPath;
-	return `.../${parts.slice(-3).join("/")}`;
-}
 
 const MIME_MAP: Record<string, string> = {
 	ts: "text/typescript",
@@ -85,6 +89,7 @@ const MIME_MAP: Record<string, string> = {
 	json: "application/json",
 	jsonl: "application/json",
 	md: "text/markdown",
+	mdx: "text/markdown",
 	yaml: "text/yaml",
 	yml: "text/yaml",
 	toml: "text/toml",
@@ -137,10 +142,34 @@ function guessMime(filePath: string): string {
 	return MIME_MAP[ext] ?? "application/octet-stream";
 }
 
-function TextFileViewer({ workspaceId, filePath }: { workspaceId: string; filePath: string }) {
+function useIsDark() {
+	const [dark, setDark] = useState(() =>
+		document.documentElement.classList.contains("dark"),
+	);
+
+	useEffect(() => {
+		const observer = new MutationObserver(() => {
+			setDark(document.documentElement.classList.contains("dark"));
+		});
+		observer.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ["class"],
+		});
+		return () => observer.disconnect();
+	}, []);
+
+	return dark;
+}
+
+function MonacoViewer({
+	workspaceId,
+	filePath,
+}: { workspaceId: string; filePath: string }) {
 	const [data, setData] = useState<FileContent | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
+	const isDark = useIsDark();
+	const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -165,37 +194,85 @@ function TextFileViewer({ workspaceId, filePath }: { workspaceId: string; filePa
 		};
 	}, [workspaceId, filePath]);
 
+	const handleMount: OnMount = useCallback((editor) => {
+		editorRef.current = editor;
+	}, []);
+
 	if (loading) {
-		return <div className="p-4 text-sm text-muted-foreground/50">Loading...</div>;
+		return (
+			<div className="flex items-center justify-center h-full text-sm text-muted-foreground/50">
+				Loading...
+			</div>
+		);
 	}
 	if (error) {
-		return <div className="p-4 text-sm text-destructive/70">{error}</div>;
+		return (
+			<div className="p-4 text-sm text-destructive/70">{error}</div>
+		);
 	}
 	if (!data) return null;
 
-	const lang = getLanguage(filePath);
-	const codeBlock = `\`\`\`${lang}\n${data.content}\n\`\`\``;
+	const lang = getMonacoLang(filePath);
 
 	return (
-		<div className="overflow-auto text-[13px] leading-relaxed [&_pre]:rounded-none! [&_pre]:border-0! [&_pre]:bg-transparent!">
-			<MessageResponse>{codeBlock}</MessageResponse>
+		<Editor
+			height="100%"
+			language={lang}
+			value={data.content}
+			theme={isDark ? "vs-dark" : "vs"}
+			onMount={handleMount}
+			options={{
+				readOnly: true,
+				domReadOnly: true,
+				minimap: { enabled: false },
+				scrollBeyondLastLine: false,
+				fontSize: 13,
+				lineHeight: 20,
+				lineNumbers: "on",
+				renderLineHighlight: "none",
+				overviewRulerBorder: false,
+				overviewRulerLanes: 0,
+				hideCursorInOverviewRuler: true,
+				scrollbar: {
+					verticalScrollbarSize: 4,
+					horizontalScrollbarSize: 4,
+					verticalSliderSize: 4,
+				},
+				padding: { top: 8 },
+				wordWrap: "on",
+				contextmenu: false,
+				folding: true,
+				glyphMargin: false,
+				lineDecorationsWidth: 0,
+				lineNumbersMinChars: 3,
+			}}
+		/>
+	);
+}
+
+function ImageViewer({
+	workspaceId,
+	filePath,
+}: { workspaceId: string; filePath: string }) {
+	const url = gateway.workspace.rawUrl(workspaceId, filePath);
+	return (
+		<div className="flex items-center justify-center p-4 overflow-auto h-full">
+			<img
+				src={url}
+				alt={filePath}
+				className="max-w-full max-h-[70vh] object-contain rounded-lg"
+			/>
 		</div>
 	);
 }
 
-function ImageViewer({ workspaceId, filePath }: { workspaceId: string; filePath: string }) {
+function VideoViewer({
+	workspaceId,
+	filePath,
+}: { workspaceId: string; filePath: string }) {
 	const url = gateway.workspace.rawUrl(workspaceId, filePath);
 	return (
-		<div className="flex items-center justify-center p-4 overflow-auto">
-			<img src={url} alt={filePath} className="max-w-full max-h-[70vh] object-contain rounded-lg" />
-		</div>
-	);
-}
-
-function VideoViewer({ workspaceId, filePath }: { workspaceId: string; filePath: string }) {
-	const url = gateway.workspace.rawUrl(workspaceId, filePath);
-	return (
-		<div className="flex items-center justify-center p-4">
+		<div className="flex items-center justify-center p-4 h-full">
 			<video src={url} controls className="max-w-full max-h-[70vh] rounded-lg">
 				<track kind="captions" />
 			</video>
@@ -206,40 +283,27 @@ function VideoViewer({ workspaceId, filePath }: { workspaceId: string; filePath:
 function BinaryViewer({ filePath }: { filePath: string }) {
 	const ext = filePath.split(".").pop()?.toUpperCase() ?? "FILE";
 	return (
-		<div className="flex flex-col items-center justify-center gap-2 p-8 text-muted-foreground/50">
-			<span className="rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wider bg-muted">{ext}</span>
+		<div className="flex flex-col items-center justify-center gap-2 p-8 h-full text-muted-foreground/50">
+			<span className="rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wider bg-muted">
+				{ext}
+			</span>
 			<p className="text-sm">Binary file — preview not available</p>
 		</div>
 	);
 }
 
-export function FileViewer({ workspaceId, filePath, onClose }: FileViewerProps) {
+export function FileViewer({ workspaceId, filePath }: FileViewerProps) {
 	const mime = guessMime(filePath);
 	const isText = isTextMime(mime);
 	const isImage = isImageMime(mime);
 	const isVideo = isVideoMime(mime);
 
 	return (
-		<div className="flex flex-col h-full min-h-0">
-			<div className="flex items-center justify-between px-3 py-2 border-b border-border/50 shrink-0">
-				<span className="text-[12px] text-muted-foreground truncate" title={filePath}>
-					{shortPath(filePath)}
-				</span>
-				<button
-					type="button"
-					onClick={onClose}
-					className="p-0.5 rounded-sm hover:bg-muted transition-colors text-muted-foreground/50 hover:text-foreground"
-				>
-					<XIcon className="size-3.5" />
-				</button>
-			</div>
-
-			<div className={cn("flex-1 min-h-0 overflow-auto", isText && "is-assistant")}>
-				{isText && <TextFileViewer workspaceId={workspaceId} filePath={filePath} />}
-				{isImage && <ImageViewer workspaceId={workspaceId} filePath={filePath} />}
-				{isVideo && <VideoViewer workspaceId={workspaceId} filePath={filePath} />}
-				{!isText && !isImage && !isVideo && <BinaryViewer filePath={filePath} />}
-			</div>
+		<div className="h-full min-h-0 overflow-hidden">
+			{isText && <MonacoViewer workspaceId={workspaceId} filePath={filePath} />}
+			{isImage && <ImageViewer workspaceId={workspaceId} filePath={filePath} />}
+			{isVideo && <VideoViewer workspaceId={workspaceId} filePath={filePath} />}
+			{!isText && !isImage && !isVideo && <BinaryViewer filePath={filePath} />}
 		</div>
 	);
 }

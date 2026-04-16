@@ -1,3 +1,5 @@
+import { FolderTreeIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { FolderOpenIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppToolbar } from "@/components/shell/app-toolbar";
@@ -135,7 +137,7 @@ export function ChatHeader() {
 						)}
 						title="Toggle file panel"
 					>
-						<FolderOpenIcon className="size-4" />
+						<HugeiconsIcon icon={FolderTreeIcon} size={16} strokeWidth={1.8} />
 					</button>
 				)}
 			</div>
