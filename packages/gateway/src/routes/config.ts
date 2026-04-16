@@ -1,6 +1,5 @@
 import { join } from "node:path";
-import { extractCapabilities, extractLimit, findModelAcrossProviders } from "@jayden/jai-ai";
-import type { ProviderModel } from "@jayden/jai-coding-agent";
+import { type EnrichedModelInfo, enrichModelInfo, findModelAcrossProviders, extractLimit } from "@jayden/jai-ai";
 import { Hono } from "hono";
 import type { SessionManager } from "../session-manager.js";
 import type { FetchModelsResponse } from "../types/api.js";
@@ -22,7 +21,7 @@ function toConfigResponse(manager: SessionManager) {
 	};
 }
 
-type ModelsCache = Record<string, { fetchedAt: number; models: ProviderModel[] }>;
+type ModelsCache = Record<string, { fetchedAt: number; models: EnrichedModelInfo[] }>;
 
 async function readModelsCache(cachePath: string): Promise<ModelsCache> {
 	const file = Bun.file(cachePath);
@@ -36,26 +35,6 @@ async function readModelsCache(cachePath: string): Promise<ModelsCache> {
 
 async function writeModelsCache(cachePath: string, cache: ModelsCache): Promise<void> {
 	await Bun.write(cachePath, JSON.stringify(cache, null, 2));
-}
-
-function enrichModel(rawId: string): ProviderModel {
-	const match = findModelAcrossProviders(rawId);
-	if (match) {
-		const caps = extractCapabilities(match.model);
-		const limit = extractLimit(match.model);
-		return {
-			id: rawId,
-			capabilities: {
-				reasoning: caps.reasoning,
-				toolCall: caps.toolCall,
-				structuredOutput: caps.structuredOutput,
-				input: caps.input,
-				output: caps.output,
-			},
-			limit: { context: limit.context, output: limit.output },
-		};
-	}
-	return { id: rawId };
 }
 
 export function configRoutes(manager: SessionManager): Hono {
@@ -152,7 +131,7 @@ export function configRoutes(manager: SessionManager): Hono {
 			const body = (await resp.json()) as { data?: { id: string }[]; object?: string };
 			const rawModels: string[] = (body.data ?? []).map((m) => m.id);
 
-			const enriched = rawModels.map(enrichModel);
+			const enriched = rawModels.map(enrichModelInfo);
 
 			const now = Date.now();
 			cache[providerId] = { fetchedAt: now, models: enriched };

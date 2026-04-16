@@ -71,7 +71,6 @@
 		"@electron-forge/plugin-vite": "^7.11.0",
 		"@electron-forge/shared-types": "^7.11.0",
 		"@electron/fuses": "^1.8.0",
-		"@jayden/jai-coding-agent": "workspace:*",
 		"@jayden/jai-gateway": "workspace:*",
 		"@tailwindcss/vite": "^4.1.0",
 		"@types/node": "^22.0.0",

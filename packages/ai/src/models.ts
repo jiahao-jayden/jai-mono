@@ -1,7 +1,7 @@
 import { NamedError, parseModelId } from "@jayden/jai-utils";
 import z from "zod";
 import registry from "./models-snapshot.json" with { type: "json" };
-import type { ModelCapabilities, ModelCost, ModelLimit, ResolvedModel } from "./types.js";
+import type { EnrichedModelInfo, ModelCapabilities, ModelCost, ModelLimit, ResolvedModel } from "./types.js";
 
 // ── Registry types (mirrors models.dev schema) ───────────────
 
@@ -212,6 +212,22 @@ function extractCost(model: RegistryModel): ModelCost | undefined {
 		cacheRead: model.cost.cache_read,
 		cacheWrite: model.cost.cache_write,
 	};
+}
+
+// ── enrichModelInfo ──────────────────────────────────────────
+// Best-effort enrichment: looks up model in registry and attaches
+// capabilities/limits if found. Returns bare { id } otherwise.
+
+export function enrichModelInfo(modelId: string): EnrichedModelInfo {
+	const match = findModelAcrossProviders(modelId);
+	if (match) {
+		return {
+			id: modelId,
+			capabilities: extractCapabilities(match.model),
+			limit: extractLimit(match.model),
+		};
+	}
+	return { id: modelId };
 }
 
 // ── Errors ────────────────────────────────────────────────────

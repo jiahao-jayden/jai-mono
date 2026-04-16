@@ -1,7 +1,7 @@
-import type { ConfigResponse, ProviderSettings } from "@jayden/jai-gateway";
+import { type AGUIEvent, AGUIEventType, type ConfigResponse, type ProviderSettings } from "@jayden/jai-gateway";
 import { nanoid } from "nanoid";
 import { create } from "zustand";
-import { gateway, type SSEEvent } from "@/services/gateway";
+import { gateway } from "@/services/gateway";
 import type { ChatAttachment, ChatMessage, ChatMessagePart, ChatMessageRole, ChatStatus } from "@/types/chat";
 import { useSessionStore } from "./session";
 
@@ -162,45 +162,43 @@ function ensureAssistantMessage(get: () => ChatState, set: (partial: Partial<Cha
 	return id;
 }
 
-function handleSSEEvent(event: SSEEvent, get: () => ChatState, set: (partial: Partial<ChatState>) => void): void {
+function handleSSEEvent(event: AGUIEvent, get: () => ChatState, set: (partial: Partial<ChatState>) => void): void {
 	switch (event.type) {
-		case "TEXT_MESSAGE_START": {
+		case AGUIEventType.TEXT_MESSAGE_START: {
 			ensureAssistantMessage(get, set);
 			break;
 		}
-		case "TEXT_MESSAGE_CONTENT": {
-			const delta = event.delta as string;
+		case AGUIEventType.TEXT_MESSAGE_CONTENT: {
 			const msgId = currentAssistantId;
 			if (!msgId) break;
 			set({
 				messages: updateMessageById(get().messages, msgId, (msg) => ({
 					...msg,
-					parts: appendTextToParts(msg.parts, "text", delta),
+					parts: appendTextToParts(msg.parts, "text", event.delta),
 				})),
 			});
 			break;
 		}
-		case "REASONING_START": {
+		case AGUIEventType.REASONING_START: {
 			ensureAssistantMessage(get, set);
 			break;
 		}
-		case "REASONING_CONTENT": {
-			const delta = event.delta as string;
+		case AGUIEventType.REASONING_CONTENT: {
 			const msgId = currentAssistantId;
 			if (!msgId) break;
 			set({
 				messages: updateMessageById(get().messages, msgId, (msg) => ({
 					...msg,
-					parts: appendTextToParts(msg.parts, "reasoning", delta),
+					parts: appendTextToParts(msg.parts, "reasoning", event.delta),
 				})),
 			});
 			break;
 		}
-		case "TOOL_CALL_START": {
+		case AGUIEventType.TOOL_CALL_START: {
 			const msgId = ensureAssistantMessage(get, set);
 			const toolCall: ChatMessagePart["toolCall"] = {
-				toolCallId: event.toolCallId as string,
-				name: event.toolCallName as string,
+				toolCallId: event.toolCallId,
+				name: event.toolCallName,
 				status: "running",
 			};
 			set({
@@ -211,43 +209,38 @@ function handleSSEEvent(event: SSEEvent, get: () => ChatState, set: (partial: Pa
 			});
 			break;
 		}
-		case "TOOL_CALL_ARGS": {
-			const toolCallId = event.toolCallId as string;
-			const delta = event.delta as string;
+		case AGUIEventType.TOOL_CALL_ARGS: {
 			set({
 				messages: get().messages.map((msg) => ({
 					...msg,
 					parts: msg.parts.map((part) =>
-						part.type === "tool_call" && part.toolCall?.toolCallId === toolCallId
-							? { ...part, toolCall: { ...part.toolCall, args: (part.toolCall.args ?? "") + delta } }
+						part.type === "tool_call" && part.toolCall?.toolCallId === event.toolCallId
+							? { ...part, toolCall: { ...part.toolCall, args: (part.toolCall.args ?? "") + event.delta } }
 							: part,
 					),
 				})),
 			});
 			break;
 		}
-		case "TOOL_CALL_RESULT": {
-			const toolCallId = event.toolCallId as string;
-			const content = event.content as string;
+		case AGUIEventType.TOOL_CALL_RESULT: {
 			set({
 				messages: get().messages.map((msg) => ({
 					...msg,
 					parts: msg.parts.map((part) =>
-						part.type === "tool_call" && part.toolCall?.toolCallId === toolCallId
-							? { ...part, toolCall: { ...part.toolCall, result: content } }
+						part.type === "tool_call" && part.toolCall?.toolCallId === event.toolCallId
+							? { ...part, toolCall: { ...part.toolCall, result: event.content } }
 							: part,
 					),
 				})),
 			});
 			break;
 		}
-		case "TOOL_CALL_END": {
-			const toolCallId = event.toolCallId as string;
+		case AGUIEventType.TOOL_CALL_END: {
 			set({
 				messages: get().messages.map((msg) => ({
 					...msg,
 					parts: msg.parts.map((part) =>
-						part.type === "tool_call" && part.toolCall?.toolCallId === toolCallId
+						part.type === "tool_call" && part.toolCall?.toolCallId === event.toolCallId
 							? { ...part, toolCall: { ...part.toolCall, status: "completed" as const } }
 							: part,
 					),
@@ -255,7 +248,7 @@ function handleSSEEvent(event: SSEEvent, get: () => ChatState, set: (partial: Pa
 			});
 			break;
 		}
-		case "RUN_ERROR": {
+		case AGUIEventType.RUN_ERROR: {
 			const msgId = ensureAssistantMessage(get, set);
 			set({
 				status: "error",
@@ -266,14 +259,13 @@ function handleSSEEvent(event: SSEEvent, get: () => ChatState, set: (partial: Pa
 			});
 			break;
 		}
-		case "TITLE_GENERATED": {
-			const title = event.title as string;
-			useSessionStore.getState().setTitle(title);
-			useSessionStore.getState().updateSessionTitle(get().sessionId!, title);
+		case AGUIEventType.TITLE_GENERATED: {
+			useSessionStore.getState().setTitle(event.title);
+			useSessionStore.getState().updateSessionTitle(get().sessionId!, event.title);
 			break;
 		}
-		case "USAGE_UPDATE": {
-			set({ contextTokens: event.totalTokens as number });
+		case AGUIEventType.USAGE_UPDATE: {
+			set({ contextTokens: event.totalTokens });
 			break;
 		}
 	}

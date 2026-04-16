@@ -1,5 +1,6 @@
 export type { ModelMatch, RegistryModel, RegistryProvider, SdkType } from "./models.js";
 export {
+	enrichModelInfo,
 	extractCapabilities,
 	extractLimit,
 	findModelAcrossProviders,
@@ -16,6 +17,7 @@ export { streamMessage } from "./stream.js";
 export type {
 	AIProvider,
 	AssistantMessage,
+	EnrichedModelInfo,
 	FileContent,
 	ImageContent,
 	Message,

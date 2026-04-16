@@ -1,4 +1,5 @@
-export type { ProviderModel, ProviderSettings } from "@jayden/jai-coding-agent";
+export type { EnrichedModelInfo as ProviderModel } from "@jayden/jai-ai";
+export type { ProviderSettings } from "@jayden/jai-coding-agent";
 
 export interface SessionInfo {
 	sessionId: string;
@@ -32,7 +33,7 @@ export interface ConfigUpdateRequest {
 
 export interface FetchModelsResponse {
 	providerId: string;
-	models: import("@jayden/jai-coding-agent").ProviderModel[];
+	models: import("@jayden/jai-ai").EnrichedModelInfo[];
 	fetchedAt: number;
 	cached: boolean;
 }

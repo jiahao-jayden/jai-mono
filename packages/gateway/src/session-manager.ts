@@ -130,7 +130,8 @@ export class SessionManager {
 		const record = this.index.get(sessionId);
 		if (!record) return null;
 
-		const filePath = join(this.jaiHome, "workspace", record.workspaceId, "sessions", `${sessionId}.jsonl`);
+		const workspace = await this.resolveWorkspace(record.workspaceId);
+		const filePath = workspace.sessionPath(sessionId);
 		const store = await JsonlSessionStore.open(filePath);
 		const entries = store.getAllEntries();
 		await store.close();
@@ -176,5 +177,39 @@ export class SessionManager {
 
 	async deleteProvider(providerId: string): Promise<void> {
 		await this.settings.deleteProvider(providerId);
+	}
+
+	async handlePostChat(
+		sessionId: string,
+		opts: { text: string; attachmentFilename?: string; totalTokens: number },
+	): Promise<{ title?: string }> {
+		if (opts.totalTokens > 0) {
+			const current = this.index.get(sessionId);
+			const accumulated = (current?.totalTokens ?? 0) + opts.totalTokens;
+			this.index.updateField(sessionId, "totalTokens", accumulated);
+		}
+
+		const info = this.index.get(sessionId);
+		if (info && !info.firstMessage) {
+			const firstMessage = opts.text.slice(0, 200) || opts.attachmentFilename || "Attachment";
+			this.index.updateField(sessionId, "firstMessage", firstMessage);
+		}
+
+		if (info && !info.title) {
+			const session = this.activeSessions.get(sessionId)?.session;
+			if (session) {
+				try {
+					const model = this.settings.resolveModel();
+					const baseURL = this.settings.get("baseURL");
+					const title = await session.generateSessionTitle({ model, baseURL });
+					if (title) {
+						this.index.updateField(sessionId, "title", title);
+						return { title };
+					}
+				} catch {}
+			}
+		}
+
+		return {};
 	}
 }

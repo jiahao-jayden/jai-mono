@@ -1,10 +1,9 @@
-export interface SSEEvent {
-	type: string;
-	[key: string]: unknown;
-}
+import type { AGUIEvent } from "@jayden/jai-gateway";
+
+export type SSEEvent = AGUIEvent;
 
 export interface SSEParserOptions {
-	onEvent: (event: SSEEvent) => void;
+	onEvent: (event: AGUIEvent) => void;
 	onError?: (error: unknown) => void;
 }
 
@@ -37,13 +36,13 @@ export async function parseSSEStream(
 	}
 }
 
-function processLine(line: string, onEvent: (event: SSEEvent) => void, onError?: (error: unknown) => void): boolean {
+function processLine(line: string, onEvent: (event: AGUIEvent) => void, onError?: (error: unknown) => void): boolean {
 	if (!line.startsWith("data:")) return false;
 	const data = line.slice(5).trim();
 	if (!data) return false;
 
 	try {
-		const event = JSON.parse(data) as SSEEvent;
+		const event = JSON.parse(data) as AGUIEvent;
 		onEvent(event);
 		return true;
 	} catch (err) {

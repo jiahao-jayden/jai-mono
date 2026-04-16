@@ -2,6 +2,7 @@ import type { AgentEvent } from "@jayden/jai-agent";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { EventAdapter } from "../events/adapter.js";
+import { AGUIEventType } from "../events/types.js";
 import type { SessionManager } from "../session-manager.js";
 
 export function sessionRoutes(manager: SessionManager): Hono {
@@ -126,29 +127,13 @@ export function sessionRoutes(manager: SessionManager): Hono {
 				unsubscribe();
 
 				const sessionId = c.req.param("id");
-				if (adapter.totalTokens > 0) {
-					const current = manager.getSessionInfo(sessionId);
-					const accumulated = (current?.totalTokens ?? 0) + adapter.totalTokens;
-					manager.updateSessionIndex(sessionId, "totalTokens", accumulated);
-				}
-				const info = manager.getSessionInfo(sessionId);
-				if (info && !info.firstMessage) {
-					const firstMessage = text.slice(0, 200) || body.attachments?.[0]?.filename || "Attachment";
-					manager.updateSessionIndex(sessionId, "firstMessage", firstMessage);
-				}
-				if (info && !info.title) {
-					const s = manager.getSettings();
-					let title: string | null = null;
-					try {
-						title = await session.generateSessionTitle({
-							model: s.resolveModel(),
-							baseURL: s.get("baseURL"),
-						});
-					} catch {}
-					if (title) {
-						manager.updateSessionIndex(sessionId, "title", title);
-						await stream.writeSSE({ data: JSON.stringify({ type: "TITLE_GENERATED", title }) }).catch(() => {});
-					}
+				const result = await manager.handlePostChat(sessionId, {
+					text,
+					attachmentFilename: body.attachments?.[0]?.filename,
+					totalTokens: adapter.totalTokens,
+				});
+				if (result.title) {
+					await stream.writeSSE({ data: JSON.stringify({ type: AGUIEventType.TITLE_GENERATED, title: result.title }) }).catch(() => {});
 				}
 			}
 		});

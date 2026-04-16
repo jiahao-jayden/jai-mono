@@ -23,6 +23,8 @@ export const AGUIEventType = {
 	MESSAGES_SNAPSHOT: "MESSAGES_SNAPSHOT",
 
 	USAGE_UPDATE: "USAGE_UPDATE",
+
+	TITLE_GENERATED: "TITLE_GENERATED",
 } as const;
 
 export type AGUIEventType = (typeof AGUIEventType)[keyof typeof AGUIEventType];
@@ -126,6 +128,13 @@ export type UsageUpdateEvent = {
 	totalTokens: number;
 };
 
+// ── Title Events ─────────────────────────────────────────────
+
+export type TitleGeneratedEvent = {
+	type: typeof AGUIEventType.TITLE_GENERATED;
+	title: string;
+};
+
 // ── Union Type ───────────────────────────────────────────────
 
 export type AGUIEvent =
@@ -143,4 +152,5 @@ export type AGUIEvent =
 	| ReasoningContentEvent
 	| ReasoningEndEvent
 	| MessagesSnapshotEvent
-	| UsageUpdateEvent;
+	| UsageUpdateEvent
+	| TitleGeneratedEvent;

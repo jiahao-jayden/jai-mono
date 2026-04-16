@@ -153,6 +153,16 @@ export type ModelInfo = {
 	cost?: ModelCost;
 };
 
+/**
+ * Lightweight model info returned by enrichModelInfo().
+ * Structurally compatible with coding-agent's ProviderModel.
+ */
+export type EnrichedModelInfo = {
+	id: string;
+	capabilities?: ModelCapabilities;
+	limit?: ModelLimit;
+};
+
 // ── ResolvedModel ────────────────────────────────────────────
 // Enriched model info with registry context.
 // This is what ProviderTransform functions operate on.
