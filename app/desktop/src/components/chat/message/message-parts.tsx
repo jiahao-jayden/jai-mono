@@ -22,10 +22,20 @@ export function StreamingPlaceholder() {
 
 export function ErrorBlock({ children }: { children: React.ReactNode }) {
 	return (
-		<div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
-			<AlertCircleIcon className="size-4 mt-0.5 shrink-0" />
-			<span>{children}</span>
-		</div>
+		<motion.div
+			role="alert"
+			initial={{ opacity: 0, y: -2 }}
+			animate={{ opacity: 1, y: 0 }}
+			transition={{ duration: 0.25, ease: "easeOut" }}
+			className="relative flex items-start gap-2.5 overflow-hidden rounded-lg border border-border/70 bg-card/60 py-2.5 pl-3.5 pr-3 text-[13px] leading-relaxed text-foreground/85 shadow-xs"
+		>
+			<span
+				aria-hidden
+				className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-destructive/70"
+			/>
+			<AlertCircleIcon className="mt-0.5 size-3.5 shrink-0 text-destructive/80" />
+			<span className="min-w-0 flex-1 wrap-break-word">{children}</span>
+		</motion.div>
 	);
 }
 

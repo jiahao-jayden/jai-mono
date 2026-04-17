@@ -7,6 +7,8 @@ import {
 	type ToolCall,
 	type ToolResultMessage,
 } from "@jayden/jai-ai";
+import { NamedError } from "@jayden/jai-utils";
+import z from "zod";
 import type { EventBus } from "./events.js";
 import type {
 	AfterToolCallContext,
@@ -66,11 +68,28 @@ export async function runAgentLoop(options: AgentLoopOptions) {
 		events?.emit({ type: "turn_start" });
 
 		const transformedMessages = (await options?.contextTransform?.(messages)) ?? messages;
+		const streamInput = {
+			model,
+			baseURL,
+			messages: transformedMessages,
+			systemPrompt,
+			tools,
+			abortSignal: signal,
+			reasoningEffort,
+		};
 
-		const assistantMsg = await streamAndCollect(
-			{ model, baseURL, messages: transformedMessages, systemPrompt, tools, abortSignal: signal, reasoningEffort },
-			events,
-		);
+		let assistantMsg = await streamAndCollect(streamInput, events);
+
+		// Provider 偶发会返回"有 finish 但无任何 delta"的空响应（例如 OpenRouter/Minimax
+		// 抖动时）。这种情况不是 tool_calls 也没有 text，如果直接 break 出去会让 UI
+		// 悄无声息，用户以为"发了没反应"。重试一次通常就能恢复；仍然为空则抛错上浮。
+		if (isEmptyAssistantMessage(assistantMsg)) {
+			assistantMsg = await streamAndCollect(streamInput, events);
+			if (isEmptyAssistantMessage(assistantMsg)) {
+				throw new EmptyAssistantResponseError("模型返回了空响应，请稍后再试。");
+			}
+		}
+
 		events?.emit({ type: "message_end", message: assistantMsg });
 
 		const toolCalls = assistantMsg.content.filter((msg) => msg.type === "tool_call");
@@ -91,6 +110,16 @@ export async function runAgentLoop(options: AgentLoopOptions) {
 	events?.emit({ type: "agent_end", messages: newMessages });
 
 	return newMessages;
+}
+
+export const EmptyAssistantResponseError = NamedError.create("EmptyAssistantResponseError", z.string());
+
+function isEmptyAssistantMessage(msg: AssistantMessage): boolean {
+	return !msg.content.some((block) => {
+		if (block.type === "tool_call") return true;
+		if (block.type === "text" || block.type === "thinking") return block.text.trim() !== "";
+		return false;
+	});
 }
 
 // ── Tool execution pipeline ─────────────────────────────────
