@@ -23,11 +23,7 @@ export function ContextUsageRing() {
 	const offset = CIRCUMFERENCE * (1 - ratio);
 
 	const strokeColor =
-		ratio > 0.75
-			? "var(--destructive)"
-			: ratio > 0.5
-				? "oklch(0.75 0.15 75)"
-				: "var(--muted-foreground)";
+		ratio > 0.75 ? "var(--destructive)" : ratio > 0.5 ? "oklch(0.75 0.15 75)" : "var(--muted-foreground)";
 
 	return (
 		<TooltipProvider delayDuration={200}>
@@ -42,6 +38,8 @@ export function ContextUsageRing() {
 							height={SIZE}
 							viewBox={`0 0 ${SIZE} ${SIZE}`}
 							className="rotate-[-90deg]"
+							aria-hidden="true"
+							focusable="false"
 						>
 							<circle
 								cx={SIZE / 2}
