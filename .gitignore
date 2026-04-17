@@ -6,6 +6,7 @@ dist/
 .claude/
 .vite/
 .jai/
+.trellis/
 # packages/*/node_modules/
 packages/*/dist/
 packages/*/dist-chrome/

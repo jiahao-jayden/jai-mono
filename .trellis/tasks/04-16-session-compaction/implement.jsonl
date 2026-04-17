@@ -1,9 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/jai-coding-agent/backend/index.md", "reason": "Backend development guide"}
-{"file": ".trellis/spec/jai-coding-agent/backend/error-handling.md", "reason": "compaction error handling patterns"}
-{"file": ".trellis/spec/jai-coding-agent/backend/quality-guidelines.md", "reason": "coding patterns and boundary constraints"}
-{"file": ".trellis/spec/jai-coding-agent/backend/directory-structure.md", "reason": "file organization"}
-{"file": "packages/coding-agent/src/core/agent-session.ts", "reason": "main file to modify"}
-{"file": "packages/session/src/types.ts", "reason": "CompactionEntry type definition"}
-{"file": "packages/session/src/context.ts", "reason": "buildSessionContext - read path"}
-{"file": "packages/agent/src/types.ts", "reason": "AgentEvent union to extend"}
