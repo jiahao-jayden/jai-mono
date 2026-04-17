@@ -7,11 +7,10 @@ import {
 	microcompact,
 	RESERVED_OUTPUT_TOKENS,
 	shouldCompact,
-	stripMediaFromMessages,
 	__internal,
 } from "../src/core/session/compaction.js";
 
-const { getCompactThreshold, getEffectiveContextWindow } = __internal;
+const { getCompactThreshold, getEffectiveContextWindow, stripMediaFromMessages } = __internal;
 
 // ── Fixture helpers ──────────────────────────────────────────
 

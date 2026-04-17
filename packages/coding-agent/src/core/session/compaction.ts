@@ -198,8 +198,14 @@ export function microcompact(opts: MicrocompactOptions): Message[] {
  * 把 image / file 块替换成文本占位符，保持消息结构不变但大幅缩小 compact
  * 请求体。只有 UserMessage / ToolResultMessage 可能带媒体，AssistantMessage
  * 的 content 是 text/thinking/tool_call，直接透传。
+ *
+ * ⚠️ 作用域：仅用于生成 summarize 调用的 LLM 输入（见 runCompactStream）。
+ * 绝不可用于：
+ *   - 持久化前的消息处理（会破坏 session JSONL 里的真实内容）
+ *   - 正常对话流（agent loop 的 contextTransform 要保留媒体以供模型看图）
+ * 该函数不从包顶层导出，仅通过 `__internal` 暴露给 compaction 测试。
  */
-export function stripMediaFromMessages(messages: Message[]): Message[] {
+function stripMediaFromMessages(messages: Message[]): Message[] {
 	return messages.map((msg) => {
 		if (msg.role === "user") {
 			return stripUserMessage(msg);
@@ -319,7 +325,13 @@ export function truncateOldestByUserBoundary(messages: Message[], keepRatio = PT
 	return messages.slice(cut);
 }
 
-/** compact 系列 LLM 调用的共享流式封装：统一处理媒体剥离、abort、空输出报错、PTL 重试。 */
+/**
+ * compact 系列 LLM 调用的共享流式封装：统一处理媒体剥离、abort、空输出报错、PTL 重试。
+ *
+ * 媒体剥离（stripMediaFromMessages）**只**发生在此函数内：入参 `messages` 被转成一个
+ * 独立的 `stripped` 数组送给 provider，原始消息（包括持久化到 session JSONL 的副本）
+ * 永不受影响。持久化与 agent loop 的正常对话流都应走原始 Message。
+ */
 async function runCompactStream(opts: {
 	messages: Message[];
 	promptText: string;
@@ -452,4 +464,5 @@ export const __internal = {
 	COMPACT_USER_PROMPT,
 	getEffectiveContextWindow,
 	getCompactThreshold,
+	stripMediaFromMessages,
 };
