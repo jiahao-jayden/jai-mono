@@ -265,7 +265,61 @@ export async function compactMessages(options: CompactOptions): Promise<string> 
 	});
 }
 
-/** compact 系列 LLM 调用的共享流式封装：统一处理媒体剥离、abort、空输出报错。 */
+/** summarize 请求本身超出上下文时的最大重试次数（每次砍掉最老 20% 消息）。 */
+const PTL_MAX_RETRIES = 3;
+/** 每次 PTL 重试保留的比例：丢掉最老 20%。 */
+const PTL_KEEP_RATIO = 0.8;
+
+/**
+ * 识别 provider 返回的 prompt-too-long 类错误。匹配常见 provider 的错误文本：
+ * - Anthropic: "prompt is too long"
+ * - OpenAI: "context_length_exceeded" / "maximum context length"
+ * - 通用/第三方: "prompt_too_long" / "string too long"
+ *
+ * 递归向下遍历 `cause` 链，因为 AI SDK 会把底层错误包一层。
+ */
+export function isPromptTooLongError(err: unknown): boolean {
+	const blob: string[] = [];
+	let cur: unknown = err;
+	for (let depth = 0; depth < 5 && cur; depth++) {
+		if (cur instanceof Error) {
+			blob.push(cur.message);
+			cur = (cur as { cause?: unknown }).cause;
+		} else if (typeof cur === "string") {
+			blob.push(cur);
+			break;
+		} else {
+			break;
+		}
+	}
+	const text = blob.join(" ").toLowerCase();
+	return (
+		text.includes("prompt is too long") ||
+		text.includes("prompt_too_long") ||
+		text.includes("context_length_exceeded") ||
+		text.includes("maximum context length") ||
+		text.includes("string too long") ||
+		text.includes("input length") // e.g. "input length exceeds max"
+	);
+}
+
+/**
+ * 按 user 边界把最老的一段消息砍掉，保留后面约 `keepRatio` 的条目。
+ * 切点向后对齐到下一个 user 消息，保证不产生孤儿 tool_call / tool_result。
+ * 无法对齐时返回原数组（调用方应据此终止重试）。
+ */
+export function truncateOldestByUserBoundary(messages: Message[], keepRatio = PTL_KEEP_RATIO): Message[] {
+	if (messages.length < 4) return messages;
+	const initialDrop = Math.max(1, Math.floor(messages.length * (1 - keepRatio)));
+	let cut = initialDrop;
+	while (cut < messages.length && messages[cut].role !== "user") {
+		cut++;
+	}
+	if (cut >= messages.length) return messages;
+	return messages.slice(cut);
+}
+
+/** compact 系列 LLM 调用的共享流式封装：统一处理媒体剥离、abort、空输出报错、PTL 重试。 */
 async function runCompactStream(opts: {
 	messages: Message[];
 	promptText: string;
@@ -274,9 +328,39 @@ async function runCompactStream(opts: {
 	signal?: AbortSignal;
 	errorLabel: string;
 }): Promise<string> {
-	const { messages, promptText, model, baseURL, signal, errorLabel } = opts;
+	const { promptText, model, baseURL, signal, errorLabel } = opts;
 
-	const stripped = stripMediaFromMessages(messages);
+	const stripped = stripMediaFromMessages(opts.messages);
+	let working = stripped;
+
+	for (let attempt = 0; attempt <= PTL_MAX_RETRIES; attempt++) {
+		try {
+			return await runOnce({ messages: working, promptText, model, baseURL, signal, errorLabel });
+		} catch (err) {
+			if (signal?.aborted) throw err;
+			if (!isPromptTooLongError(err)) throw err;
+			if (attempt === PTL_MAX_RETRIES) throw err;
+
+			const shrunk = truncateOldestByUserBoundary(working);
+			// 没法继续缩短（user 边界找不到 / 太短），放弃重试抛原错。
+			if (shrunk.length === working.length || shrunk.length < 2) throw err;
+			working = shrunk;
+		}
+	}
+
+	// 理论不可达；循环里 return 或 throw。
+	throw new Error(`${errorLabel} exhausted PTL retry budget`);
+}
+
+async function runOnce(opts: {
+	messages: Message[];
+	promptText: string;
+	model: ModelInfo | string;
+	baseURL?: string;
+	signal?: AbortSignal;
+	errorLabel: string;
+}): Promise<string> {
+	const { messages, promptText, model, baseURL, signal, errorLabel } = opts;
 
 	const summaryRequest: UserMessage = {
 		role: "user",
@@ -290,7 +374,7 @@ async function runCompactStream(opts: {
 		model,
 		baseURL,
 		systemPrompt: COMPACT_SYSTEM_PROMPT,
-		messages: [...stripped, summaryRequest],
+		messages: [...messages, summaryRequest],
 		maxRetries: 0,
 		abortSignal: signal,
 	});
