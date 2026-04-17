@@ -30,7 +30,9 @@ export type AgentEvent =
 	| { type: "tool_update"; toolCallId: string; partial: AgentToolResult }
 	| { type: "tool_end"; toolCallId: string; result: AgentToolResult }
 	| { type: "turn_end"; message: AssistantMessage; toolResults: ToolResultMessage[] }
-	| { type: "agent_end"; messages: AssistantMessage[] };
+	| { type: "agent_end"; messages: AssistantMessage[] }
+	| { type: "compaction_start" }
+	| { type: "compaction_end"; summary: string };
 
 export type BeforeToolCallContext = {
 	toolCallId: string;

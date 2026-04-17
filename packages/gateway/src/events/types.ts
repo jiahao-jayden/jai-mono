@@ -25,6 +25,9 @@ export const AGUIEventType = {
 	USAGE_UPDATE: "USAGE_UPDATE",
 
 	TITLE_GENERATED: "TITLE_GENERATED",
+
+	COMPACTION_START: "COMPACTION_START",
+	COMPACTION_END: "COMPACTION_END",
 } as const;
 
 export type AGUIEventType = (typeof AGUIEventType)[keyof typeof AGUIEventType];
@@ -135,6 +138,17 @@ export type TitleGeneratedEvent = {
 	title: string;
 };
 
+// ── Compaction Events ───────────────────────────────────────
+
+export type CompactionStartEvent = {
+	type: typeof AGUIEventType.COMPACTION_START;
+};
+
+export type CompactionEndEvent = {
+	type: typeof AGUIEventType.COMPACTION_END;
+	summary: string;
+};
+
 // ── Union Type ───────────────────────────────────────────────
 
 export type AGUIEvent =
@@ -153,4 +167,6 @@ export type AGUIEvent =
 	| ReasoningEndEvent
 	| MessagesSnapshotEvent
 	| UsageUpdateEvent
-	| TitleGeneratedEvent;
+	| TitleGeneratedEvent
+	| CompactionStartEvent
+	| CompactionEndEvent;

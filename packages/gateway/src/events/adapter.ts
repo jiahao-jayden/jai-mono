@@ -48,6 +48,10 @@ export class EventAdapter {
 				return this.onToolStart(event.toolCallId, event.toolName, event.args);
 			case "tool_end":
 				return this.onToolEnd(event.toolCallId, event.result);
+			case "compaction_start":
+				return [{ type: AGUIEventType.COMPACTION_START }];
+			case "compaction_end":
+				return [{ type: AGUIEventType.COMPACTION_END, summary: event.summary }];
 			case "turn_start":
 			case "turn_end":
 			case "message_end":
