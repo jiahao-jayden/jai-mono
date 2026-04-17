@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import type { AgentEvent } from "@jayden/jai-agent";
 import type { ModelInfo } from "@jayden/jai-ai";
 import { AgentSession } from "../src/core/session/agent-session.js";
+import { Workspace } from "../src/core/config/workspace.js";
 
 // ── Live integration test ────────────────────────────────────
 // 需要环境变量，没有则跳过
@@ -43,8 +44,13 @@ describe("AgentSession live", () => {
 				limit: { context: 200000, output: 16384 },
 			};
 
-			const session = await AgentSession.create({
+			const workspace = await Workspace.create({
 				cwd: TMP,
+				home: TMP,
+				workspaceId: "test",
+			});
+			const session = await AgentSession.create({
+				workspace,
 				model,
 				tools: [],
 			});
@@ -71,7 +77,7 @@ describe("AgentSession live", () => {
 
 			// session 文件已创建
 			const { Glob } = await import("bun");
-			const sessionFiles = new Glob("**/*.jsonl").scanSync(join(TMP, ".jai", "sessions"));
+			const sessionFiles = new Glob("**/*.jsonl").scanSync(workspace.sessionsDir);
 			const files = [...sessionFiles];
 			expect(files.length).toBe(1);
 		},

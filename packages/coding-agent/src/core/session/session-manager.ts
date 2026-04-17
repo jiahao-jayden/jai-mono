@@ -1,5 +1,7 @@
+import { existsSync } from "node:fs";
+import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { Message } from "@jayden/jai-ai";
 import { JsonlSessionStore } from "@jayden/jai-session";
 import { createDefaultTools } from "../../tools/index.js";
@@ -12,6 +14,8 @@ import { SessionIndex, type SessionInfo } from "./session-index.js";
 export type SessionManagerConfig = {
 	jaiHome?: string;
 };
+
+const MIGRATION_V1_SENTINEL = ".migration-v1-done";
 
 export class SessionManager {
 	private activeSessions = new Map<string, { session: AgentSession; workspaceId: string }>();
@@ -33,6 +37,8 @@ export class SessionManager {
 	private async init(): Promise<void> {
 		this.index = await SessionIndex.open(join(this.jaiHome, "index.db"));
 
+		await this.migrateV1Storage();
+
 		const defaultWs = await this.resolveWorkspace("default");
 		this.settings = await SettingsManager.load(defaultWs);
 
@@ -42,12 +48,63 @@ export class SessionManager {
 		}
 	}
 
+	/**
+	 * 一次性迁移：`~/.jai/workspace/<wsId>/sessions/<id>.jsonl`
+	 * → `~/.jai/projects/<wsId>/<id>.jsonl`，并回填 index.file_path。
+	 *
+	 * 幂等：首次执行成功后写入 sentinel 文件，之后跳过。
+	 */
+	private async migrateV1Storage(): Promise<void> {
+		const sentinel = join(this.jaiHome, MIGRATION_V1_SENTINEL);
+		if (existsSync(sentinel)) return;
+
+		const legacyRoot = join(this.jaiHome, "workspace");
+		if (!existsSync(legacyRoot)) {
+			await writeFile(sentinel, new Date().toISOString(), "utf8");
+			return;
+		}
+
+		let movedCount = 0;
+		const workspaceDirs = await readdir(legacyRoot, { withFileTypes: true });
+		for (const wsEntry of workspaceDirs) {
+			if (!wsEntry.isDirectory()) continue;
+			const workspaceId = wsEntry.name;
+			const legacySessionsDir = join(legacyRoot, workspaceId, "sessions");
+			if (!existsSync(legacySessionsDir)) continue;
+
+			const files = await readdir(legacySessionsDir);
+			if (files.length === 0) continue;
+
+			const targetDir = join(this.jaiHome, "projects", workspaceId);
+			await mkdir(targetDir, { recursive: true });
+
+			for (const file of files) {
+				if (!file.endsWith(".jsonl")) continue;
+				const sessionId = basename(file, ".jsonl");
+				const src = join(legacySessionsDir, file);
+				const dst = join(targetDir, file);
+				if (existsSync(dst)) continue;
+				try {
+					await rename(src, dst);
+					movedCount++;
+					this.index.updateField(sessionId, "filePath", dst);
+				} catch {
+					// 单文件失败不阻塞其他文件；下次启动会重试（sentinel 尚未写入）。
+				}
+			}
+		}
+
+		if (movedCount >= 0) {
+			await writeFile(sentinel, new Date().toISOString(), "utf8");
+		}
+	}
+
 	private async resolveWorkspace(workspaceId: string): Promise<Workspace> {
 		let ws = this.workspaces.get(workspaceId);
 		if (ws) return ws;
 
 		const cwd = join(this.jaiHome, "workspace", workspaceId);
-		ws = await Workspace.create({ cwd });
+		ws = await Workspace.create({ cwd, workspaceId, jaiHome: this.jaiHome });
 		this.workspaces.set(workspaceId, ws);
 		return ws;
 	}
@@ -76,6 +133,7 @@ export class SessionManager {
 		const info: SessionInfo = {
 			sessionId,
 			workspaceId: wsId,
+			filePath: workspace.sessionPath(sessionId),
 			title: null,
 			model: modelId,
 			firstMessage: null,
@@ -134,7 +192,7 @@ export class SessionManager {
 		if (!record) return null;
 
 		const workspace = await this.resolveWorkspace(record.workspaceId);
-		const filePath = workspace.sessionPath(sessionId);
+		const filePath = record.filePath ?? workspace.sessionPath(sessionId);
 		const store = await JsonlSessionStore.open(filePath);
 		const entries = store.getAllEntries();
 		await store.close();

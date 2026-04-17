@@ -61,10 +61,20 @@ describe("settings paths", () => {
 // ── sessionPath ──────────────────────────────────────────────
 
 describe("sessionPath", () => {
-	test("returns cwd/.jai/sessions/<id>.jsonl", async () => {
+	test("returns ~/.jai/projects/<workspaceId>/<id>.jsonl", async () => {
+		const ws = await Workspace.create({
+			cwd: PROJECT_A,
+			home: FAKE_HOME,
+			workspaceId: "proj-a",
+		});
+		const path = ws.sessionPath("abc-123");
+		expect(path).toBe(join(FAKE_HOME, ".jai", "projects", "proj-a", "abc-123.jsonl"));
+	});
+
+	test("defaults workspaceId to 'default'", async () => {
 		const ws = await Workspace.create({ cwd: PROJECT_A, home: FAKE_HOME });
 		const path = ws.sessionPath("abc-123");
-		expect(path).toBe(join(PROJECT_A, ".jai", "sessions", "abc-123.jsonl"));
+		expect(path).toBe(join(FAKE_HOME, ".jai", "projects", "default", "abc-123.jsonl"));
 	});
 });
 

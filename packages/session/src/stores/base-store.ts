@@ -49,7 +49,6 @@ export abstract class BaseSessionStore implements SessionStore {
 					lastActivity: entry.timestamp,
 					messageCount: 0,
 					cwd: entry.cwd,
-					model: entry.model,
 				});
 			}
 		}
