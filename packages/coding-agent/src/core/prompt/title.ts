@@ -1,5 +1,5 @@
 import { type ModelInfo, streamMessage } from "@jayden/jai-ai";
-import type { RawAttachment } from "./attachments/types.js";
+import type { RawAttachment } from "../attachments/types.js";
 
 const TITLE_SYSTEM_PROMPT =
 	"Generate a concise title (max 20 characters, same language as the user message) for a conversation. Return ONLY the title text, no quotes, no punctuation wrapping.";

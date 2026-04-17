@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { buildSystemPrompt } from "../src/core/system-prompt.js";
-import type { ResolvedPrompts } from "../src/core/types.js";
+import { buildSystemPrompt } from "../src/core/prompt/builder.js";
+import type { ResolvedPrompts } from "../src/core/config/workspace.js";
 
 const MOCK_PROMPTS: ResolvedPrompts = {
 	static: "# Static\n安全规则\n破坏性操作",

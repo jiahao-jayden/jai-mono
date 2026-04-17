@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildTitleInput, sanitizeTitle } from "../src/core/title.js";
+import { buildTitleInput, sanitizeTitle } from "../src/core/prompt/title.js";
 
 describe("sanitizeTitle", () => {
 	test("keeps concise single-line titles", () => {

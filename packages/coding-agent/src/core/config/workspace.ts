@@ -1,15 +1,25 @@
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { ResolvedPrompts } from "./types.js";
 
 const CONFIG_DIR = ".jai";
 const SETTINGS_FILE = "settings.json";
-const BUILTIN_PROMPT_DIR = join(import.meta.dirname, "prompt");
+const BUILTIN_PROMPT_DIR = join(import.meta.dirname, "..", "prompt", "builtin");
 
 export type WorkspaceConfig = {
 	cwd: string;
 	home?: string;
+};
+
+/**
+ * 完全解析后的 prompt 内容。
+ * 由 Workspace.loadPrompts() 产出，传入 buildSystemPrompt()。
+ */
+export type ResolvedPrompts = {
+	static: string;
+	soul: string;
+	agents: string;
+	tools: string;
 };
 
 /**
@@ -83,6 +93,6 @@ export class Workspace {
 	// ── Sessions ──────────────────────────────────────────
 
 	sessionPath(sessionId: string): string {
-		return join(this.cwd, "sessions", `${sessionId}.jsonl`);
+		return join(this.projectDir, "sessions", `${sessionId}.jsonl`);
 	}
 }

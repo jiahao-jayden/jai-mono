@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { AgentEvent } from "@jayden/jai-agent";
 import type { ModelInfo } from "@jayden/jai-ai";
-import { AgentSession } from "../src/core/agent-session.js";
+import { AgentSession } from "../src/core/session/agent-session.js";
 
 // ── Live integration test ────────────────────────────────────
 // 需要环境变量，没有则跳过

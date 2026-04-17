@@ -1,5 +1,5 @@
 import type { AgentTool } from "@jayden/jai-agent";
-import type { ResolvedPrompts } from "./types.js";
+import type { ResolvedPrompts } from "../config/workspace.js";
 
 // ── Types ─────────────────────────────────────────────────
 

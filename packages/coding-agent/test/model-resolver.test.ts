@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ModelInfo } from "@jayden/jai-ai";
-import { ModelResolveError, resolveSettingsModel } from "../src/core/model-resolver.js";
-import type { ResolvedSettings } from "../src/core/settings.js";
+import { ModelResolveError, resolveSettingsModel } from "../src/core/config/model-resolver.js";
+import type { ResolvedSettings } from "../src/core/config/settings.js";
 
 function makeSettings(overrides: Partial<ResolvedSettings> = {}): ResolvedSettings {
 	return {

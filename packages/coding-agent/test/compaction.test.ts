@@ -11,7 +11,7 @@ import {
 	shouldCompact,
 	stripMediaFromMessages,
 	__internal,
-} from "../src/core/compaction.js";
+} from "../src/core/session/compaction.js";
 
 // ── Fixture helpers ──────────────────────────────────────────
 

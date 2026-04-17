@@ -1,4 +1,4 @@
-import { type AgentEvent, EventBus, runAgentLoop } from "@jayden/jai-agent";
+import { type AgentEvent, type AgentTool, EventBus, runAgentLoop } from "@jayden/jai-agent";
 import type {
 	AssistantMessage,
 	FileContent,
@@ -12,8 +12,11 @@ import { resolveModelInfo } from "@jayden/jai-ai";
 import { buildSessionContext, JsonlSessionStore, type MessageEntry, type SessionStore } from "@jayden/jai-session";
 import { NamedError } from "@jayden/jai-utils";
 import z from "zod";
-import { processAttachments } from "./attachments/processor.js";
-import type { RawAttachment } from "./attachments/types.js";
+import { processAttachments } from "../attachments/processor.js";
+import type { RawAttachment } from "../attachments/types.js";
+import type { ResolvedPrompts, Workspace } from "../config/workspace.js";
+import { buildSystemPrompt } from "../prompt/builder.js";
+import { buildTitleInput, generateTitle } from "../prompt/title.js";
 import {
 	collectRecentFileReadPaths,
 	compactMessages,
@@ -21,9 +24,32 @@ import {
 	microcompact,
 	shouldCompact,
 } from "./compaction.js";
-import { buildSystemPrompt } from "./system-prompt.js";
-import { buildTitleInput, generateTitle } from "./title.js";
-import type { ResolvedPrompts, SessionConfig, SessionState } from "./types.js";
+
+/**
+ * AgentSession 的配置。创建 session 时传入，整个生命周期不可变。
+ */
+export type SessionConfig = {
+	/** workspace 实例 — 由外部创建，注入到 session */
+	workspace: Workspace;
+	/** 模型信息 — ModelInfo 对象或 "provider/model" 字符串 */
+	model: ModelInfo | string;
+	/** 自定义 API 地址，透传给 AI SDK */
+	baseURL?: string;
+	/** 恢复已有 session 时传入 sessionId，否则新建 */
+	sessionId?: string;
+	/** 注册的工具列表 */
+	tools: AgentTool[];
+	/** agent loop 最大迭代次数 */
+	maxIterations?: number;
+};
+
+/**
+ * AgentSession 的运行时状态。
+ *
+ * 状态机: idle → running → idle
+ *              ↘ aborted ↗
+ */
+export type SessionState = "idle" | "running" | "aborted";
 
 export class AgentSession {
 	private config: SessionConfig;

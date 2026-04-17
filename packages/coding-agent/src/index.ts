@@ -1,18 +1,20 @@
-export { AgentSession } from "./core/agent-session.js";
 export { ACCEPTED_FILE_TYPES, ATTACHMENT_LIMITS, type RawAttachment } from "./core/attachments/index.js";
-export { ModelResolveError } from "./core/model-resolver.js";
+export { ModelResolveError } from "./core/config/model-resolver.js";
 export {
 	type ProviderModel,
 	type ProviderSettings,
 	type ResolvedSettings,
 	type Settings,
 	SettingsManager,
-} from "./core/settings.js";
-export { buildSystemPrompt } from "./core/system-prompt.js";
-export { buildTitleInput, sanitizeTitle } from "./core/title.js";
-export type { ResolvedPrompts, SessionConfig, SessionState } from "./core/types.js";
-export { Workspace, type WorkspaceConfig } from "./core/workspace.js";
-export { SessionIndex } from "./core/session-index.js";
-export type { SessionInfo } from "./core/session-index.js";
-export { SessionManager, type SessionManagerConfig } from "./core/session-manager.js";
+} from "./core/config/settings.js";
+export { type ResolvedPrompts, Workspace, type WorkspaceConfig } from "./core/config/workspace.js";
+export { buildSystemPrompt } from "./core/prompt/builder.js";
+export { buildTitleInput, sanitizeTitle } from "./core/prompt/title.js";
+export {
+	AgentSession,
+	type SessionConfig,
+	type SessionState,
+} from "./core/session/agent-session.js";
+export { SessionIndex, type SessionInfo } from "./core/session/session-index.js";
+export { SessionManager, type SessionManagerConfig } from "./core/session/session-manager.js";
 export { createDefaultTools } from "./tools/index.js";

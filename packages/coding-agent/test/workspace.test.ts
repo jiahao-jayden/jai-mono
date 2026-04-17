@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { Workspace } from "../src/core/workspace.js";
+import { Workspace } from "../src/core/config/workspace.js";
 
 const TMP = join(tmpdir(), `jai-test-${Date.now()}`);
 const FAKE_HOME = join(TMP, "home");

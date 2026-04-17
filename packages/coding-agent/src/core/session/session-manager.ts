@@ -2,12 +2,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "@jayden/jai-ai";
 import { JsonlSessionStore, type MessageEntry } from "@jayden/jai-session";
+import { createDefaultTools } from "../../tools/index.js";
+import type { Settings } from "../config/settings.js";
+import { SettingsManager } from "../config/settings.js";
+import { Workspace } from "../config/workspace.js";
 import { AgentSession } from "./agent-session.js";
-import { type SessionInfo, SessionIndex } from "./session-index.js";
-import type { Settings } from "./settings.js";
-import { SettingsManager } from "./settings.js";
-import { createDefaultTools } from "../tools/index.js";
-import { Workspace } from "./workspace.js";
+import { SessionIndex, type SessionInfo } from "./session-index.js";
 
 export type SessionManagerConfig = {
 	jaiHome?: string;
