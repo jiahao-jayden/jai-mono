@@ -51,12 +51,13 @@ export function CompactionDivider({ status, timestamp }: CompactionDividerProps)
 					className={cn("size-3 shrink-0 text-muted-foreground/70", streaming && "animate-pulse text-primary/80")}
 				/>
 				{streaming ? (
-					<TextShimmer as="span" className="text-[11px] font-sans" duration={1.4}>
+					<TextShimmer as="span" className="text-[11px] font-serif italic" duration={1.4}>
 						正在总结对话…
 					</TextShimmer>
 				) : (
-					<span className="tabular-nums">
-						对话已总结 · <span className="text-muted-foreground/70">{formatTime(timestamp)}</span>
+					<span>
+						<span className="font-serif italic">对话已总结</span>
+						<span className="tabular-nums text-muted-foreground/70"> · {formatTime(timestamp)}</span>
 					</span>
 				)}
 			</motion.div>
