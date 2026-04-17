@@ -123,29 +123,6 @@ ${SUMMARY_EXAMPLE}
 
 Please provide your summary based on the conversation so far, following this structure and ensuring precision and thoroughness in your response.${NO_TOOLS_TRAILER}`;
 
-/**
- * 迭代 summary 的增量更新 prompt。当 session 中已存在上一次的 CompactionEntry
- * 时使用：只把「上次 compact 之后新增的消息」喂给模型，让它把新内容叠加进
- * 已有 summary，而不是从头重写。
- */
-const UPDATE_SUMMARIZATION_PROMPT = `${NO_TOOLS_PREAMBLE}The messages above are NEW conversation messages to incorporate into the existing summary provided in <previous-summary> tags at the end of this prompt.
-
-Produce an updated structured summary that follows the same 9-section shape as the previous summary (Primary Request / Key Technical Concepts / Files and Code Sections / Errors and fixes / Problem Solving / All user messages / Pending Tasks / Current Work / Optional Next Step), wrapped in <analysis> + <summary> blocks.
-
-RULES:
-- PRESERVE all existing information from the previous summary that is still relevant.
-- ADD new progress, decisions, technical concepts, files touched, and user messages from the new messages above.
-- UPDATE the "Pending Tasks" and "Current Work" sections: move items from pending/in-progress to completed when the new messages show they are done.
-- UPDATE "Optional Next Step" based on what the latest messages are actually trying to do.
-- PRESERVE exact file paths, function names, and error strings — do not paraphrase them.
-- You MAY remove items from "Pending Tasks" that are clearly no longer relevant (e.g. user explicitly cancelled them). Do NOT silently drop earlier history just because it hasn't been touched recently.
-
-${ANALYSIS_INSTRUCTION}
-
-${SUMMARY_STRUCTURE}
-
-${SUMMARY_EXAMPLE}${NO_TOOLS_TRAILER}`;
-
 // ── 上下文窗口 ─────────────────────────────────────────────────
 
 /** 有效窗口 = contextLimit 减去给 summary 输出预留的空间。 */
@@ -270,12 +247,6 @@ export type CompactOptions = {
 	model: ModelInfo | string;
 	baseURL?: string;
 	signal?: AbortSignal;
-	/**
-	 * 传入时走「增量更新」路径：`messages` 只需要包含上次 compact 之后的新
-	 * 消息，`previousSummary` 会内联进 prompt 的 <previous-summary> 标签。
-	 * 不传则走全量重写。
-	 */
-	previousSummary?: string;
 };
 
 /**
@@ -284,13 +255,9 @@ export type CompactOptions = {
  * 返回模型原始输出，调用方需过 `formatCompactSummary()` 剥掉 <analysis> 再持久化。
  */
 export async function compactMessages(options: CompactOptions): Promise<string> {
-	const promptText = options.previousSummary
-		? `${UPDATE_SUMMARIZATION_PROMPT}\n\n<previous-summary>\n${options.previousSummary}\n</previous-summary>`
-		: COMPACT_USER_PROMPT;
-
 	return runCompactStream({
 		messages: options.messages,
-		promptText,
+		promptText: COMPACT_USER_PROMPT,
 		model: options.model,
 		baseURL: options.baseURL,
 		signal: options.signal,
@@ -475,7 +442,6 @@ export const __internal = {
 	MICROCOMPACT_THRESHOLD,
 	COMPACT_USER_PROMPT,
 	TURN_PREFIX_SUMMARIZATION_PROMPT,
-	UPDATE_SUMMARIZATION_PROMPT,
 	getEffectiveContextWindow,
 	getCompactThreshold,
 };

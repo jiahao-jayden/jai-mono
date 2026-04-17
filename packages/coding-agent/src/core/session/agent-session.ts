@@ -17,10 +17,6 @@ import {
 	type SessionEntry,
 	type SessionStore,
 } from "@jayden/jai-session";
-
-/** 迭代 summary 漂移阈值：新 summary 短于旧的此比例即判定为丢内容，回退全量重写。 */
-const SUMMARY_DRIFT_RATIO = 0.5;
-
 import { NamedError } from "@jayden/jai-utils";
 import z from "zod";
 import { processAttachments } from "../attachments/processor.js";
@@ -116,35 +112,6 @@ export function planCompactionCut(messageEntries: MessageEntry[]): CompactionCut
 	if (splitPointInsideTurn === null) return null;
 
 	return { firstKeptIndex: splitPointInsideTurn, splitPoint: turnStart };
-}
-
-/** 返回 branch 中最近一个 CompactionEntry；没有则返回 null。 */
-export function findLastCompactionEntryInBranch(branch: SessionEntry[]): CompactionEntry | null {
-	for (let i = branch.length - 1; i >= 0; i--) {
-		if (branch[i].type === "compaction") return branch[i] as CompactionEntry;
-	}
-	return null;
-}
-
-export function indexOfEntryById(entries: MessageEntry[], id: string): number {
-	for (let i = 0; i < entries.length; i++) {
-		if (entries[i].id === id) return i;
-	}
-	return -1;
-}
-
-/** 更新后的 summary 若明显短于旧 summary，判定为丢内容。 */
-export function isSummaryDrift(updatedRaw: string, previousSummary: string): boolean {
-	const updatedBody = extractSummaryBody(updatedRaw);
-	const previousBody = extractSummaryBody(previousSummary);
-	if (previousBody.length === 0) return false;
-	return updatedBody.length < previousBody.length * SUMMARY_DRIFT_RATIO;
-}
-
-function extractSummaryBody(raw: string): string {
-	const match = raw.match(/<summary>([\s\S]*?)<\/summary>/);
-	if (match?.[1]) return match[1].trim();
-	return raw.trim();
 }
 
 export function extractHistory(entries: SessionEntry[]): {
@@ -395,18 +362,8 @@ export class AgentSession {
 		const fullHistoryMessages = prefixMessages.slice(0, historyEnd);
 		const turnPrefixMessages = plan.splitPoint !== null ? prefixMessages.slice(plan.splitPoint) : [];
 
-		// 迭代更新的增量起点：跳过上一个 CompactionEntry 已经覆盖的消息。
-		const prevCompaction = findLastCompactionEntryInBranch(branch);
-		const previousSummary = prevCompaction?.summary;
-		const incrementalStart = prevCompaction ? indexOfEntryById(messageEntries, prevCompaction.firstKeptEntryId) : 0;
-		const incrementalHistoryMessages =
-			incrementalStart >= 0 && incrementalStart < historyEnd
-				? prefixMessages.slice(incrementalStart, historyEnd)
-				: [];
-
-		// 主路径且无旧 summary 时，历史至少 2 条才值得压。split-turn 路径允许
-		// 历史为空（turn-prefix 本身仍有价值）；迭代路径若没有新历史则直接复用旧 summary。
-		if (plan.splitPoint === null && !previousSummary && fullHistoryMessages.length < 2) return;
+		// 主路径需要至少 2 条历史才值得压；split-turn 路径允许历史为空（turn-prefix 本身仍有价值）。
+		if (plan.splitPoint === null && fullHistoryMessages.length < 2) return;
 
 		const firstKeptEntry = messageEntries[plan.firstKeptIndex];
 
@@ -415,11 +372,11 @@ export class AgentSession {
 				listener({ type: "compaction_start" });
 			}
 
-			const historyPromise = this.summarizeHistory({
-				fullHistoryMessages,
-				incrementalHistoryMessages,
-				previousSummary,
-				modelInfo,
+			const historyPromise = compactMessages({
+				messages: fullHistoryMessages,
+				model: modelInfo,
+				baseURL: this.config.baseURL,
+				signal: this.abortController?.signal,
 			});
 
 			const turnPrefixPromise =
@@ -466,55 +423,6 @@ export class AgentSession {
 			// compact 失败不致命，仅计数。
 			this.compactFailCount++;
 		}
-	}
-
-	/**
-	 * 生成 compaction 中「历史部分」的摘要：
-	 *  1. 无旧 summary → 对 `fullHistoryMessages` 全量 summary。
-	 *  2. 有旧 summary 且无新消息 → 原样复用。
-	 *  3. 有旧 summary 且有新消息 → 走 UPDATE；若漂移启发式命中则回退全量重写。
-	 */
-	private async summarizeHistory(opts: {
-		fullHistoryMessages: Message[];
-		incrementalHistoryMessages: Message[];
-		previousSummary: string | undefined;
-		modelInfo: ModelInfo;
-	}): Promise<string> {
-		const { fullHistoryMessages, incrementalHistoryMessages, previousSummary, modelInfo } = opts;
-
-		if (!previousSummary) {
-			return compactMessages({
-				messages: fullHistoryMessages,
-				model: modelInfo,
-				baseURL: this.config.baseURL,
-				signal: this.abortController?.signal,
-			});
-		}
-
-		if (incrementalHistoryMessages.length === 0) {
-			// 没有新历史，旧 summary 仍准确；套回 <summary> 让下游统一处理。
-			return `<summary>\n${previousSummary}\n</summary>`;
-		}
-
-		const updated = await compactMessages({
-			messages: incrementalHistoryMessages,
-			model: modelInfo,
-			baseURL: this.config.baseURL,
-			signal: this.abortController?.signal,
-			previousSummary,
-		});
-
-		if (isSummaryDrift(updated, previousSummary)) {
-			// 漂移兜底：对完整历史窗口重跑全量重写。
-			return compactMessages({
-				messages: fullHistoryMessages,
-				model: modelInfo,
-				baseURL: this.config.baseURL,
-				signal: this.abortController?.signal,
-			});
-		}
-
-		return updated;
 	}
 
 	private wireEventPipeline(): void {
