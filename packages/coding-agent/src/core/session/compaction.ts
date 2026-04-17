@@ -265,46 +265,6 @@ export async function compactMessages(options: CompactOptions): Promise<string> 
 	});
 }
 
-// ── Turn-prefix 摘要（split-turn 退路） ───────────────────────
-
-/**
- * 为「被切断的 turn 前缀」生成摘要的 prompt。仅用于最后一个 turn 过大、
- * 整段留不下的场景：turn 内部找合法切点，后半段原样保留，前半段走此 prompt
- * 生成独立摘要，让 agent 能从 turn 中段安全续写。
- */
-const TURN_PREFIX_SUMMARIZATION_PROMPT = `${NO_TOOLS_PREAMBLE}The messages above are the PREFIX of a single turn that was too large to keep verbatim. The SUFFIX (recent messages in this turn) is retained after you finish.
-
-Summarize ONLY what is needed for the agent to continue the suffix without losing context. Respond with a single <summary> block using the following sections:
-
-<summary>
-## Original Request
-[What did the user ask for at the start of this turn?]
-
-## Early Progress
-- [Key actions, files touched, decisions made in the prefix]
-
-## Unresolved State
-- [Anything the suffix must still address: errors surfaced, branches left open, intermediate values needed]
-
-## Context for Suffix
-- [File paths, function names, variable names, error strings the suffix refers back to]
-</summary>${NO_TOOLS_TRAILER}`;
-
-/**
- * 为 split-turn 场景下被切掉的 turn 前缀生成摘要。与 compactMessages 共用
- * 同一条流式管线，只是换成 turn-prefix prompt。返回值仍需 formatCompactSummary。
- */
-export async function generateTurnPrefixSummary(options: CompactOptions): Promise<string> {
-	return runCompactStream({
-		messages: options.messages,
-		promptText: TURN_PREFIX_SUMMARIZATION_PROMPT,
-		model: options.model,
-		baseURL: options.baseURL,
-		signal: options.signal,
-		errorLabel: "Turn-prefix summarization",
-	});
-}
-
 /** compact 系列 LLM 调用的共享流式封装：统一处理媒体剥离、abort、空输出报错。 */
 async function runCompactStream(opts: {
 	messages: Message[];
@@ -349,41 +309,6 @@ async function runCompactStream(opts: {
 	}
 
 	return summary;
-}
-
-// ── Split-turn 切点 ───────────────────────────────────────────
-
-/** 最后一个 turn 的起始下标（最后一条 user 消息的位置，无 user 时回落到 0）。 */
-export function findLastTurnStart(messages: Message[]): number {
-	for (let i = messages.length - 1; i >= 0; i--) {
-		if (messages[i].role === "user") return i;
-	}
-	return 0;
-}
-
-/**
- * 在以 `turnStart` 为起点的 turn 内部寻找合法切点 `k`，同时满足：
- *  - 前缀 `messages[0..k-1]` 不以带 tool_call 的 assistant 结尾（避免孤儿 tool_call）
- *  - 后缀 `messages[k..]` 不以 tool_result 开头（避免孤儿 tool_result）
- *  - 后缀至少保留 `minSuffixCount` 条
- * 找不到合法切点时返回 null。
- */
-export function findSplitPointInLastTurn(messages: Message[], turnStart: number, minSuffixCount = 4): number | null {
-	const maxCut = messages.length - minSuffixCount;
-	if (maxCut <= turnStart) return null;
-
-	for (let i = maxCut; i > turnStart; i--) {
-		if (isValidCutPoint(messages, i)) return i;
-	}
-	return null;
-}
-
-function isValidCutPoint(messages: Message[], i: number): boolean {
-	if (i <= 0 || i >= messages.length) return false;
-	if (messages[i].role === "tool_result") return false;
-	const prev = messages[i - 1];
-	if (prev.role === "assistant" && prev.content.some((c) => c.type === "tool_call")) return false;
-	return true;
 }
 
 /**
@@ -441,7 +366,6 @@ export const __internal = {
 	CLEARED_PLACEHOLDER,
 	MICROCOMPACT_THRESHOLD,
 	COMPACT_USER_PROMPT,
-	TURN_PREFIX_SUMMARIZATION_PROMPT,
 	getEffectiveContextWindow,
 	getCompactThreshold,
 };

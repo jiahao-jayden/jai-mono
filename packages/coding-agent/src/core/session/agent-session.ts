@@ -27,10 +27,7 @@ import { buildTitleInput, generateTitle } from "../prompt/title.js";
 import {
 	collectRecentFileReadPaths,
 	compactMessages,
-	findLastTurnStart,
-	findSplitPointInLastTurn,
 	formatCompactSummary,
-	generateTurnPrefixSummary,
 	microcompact,
 	shouldCompact,
 } from "./compaction.js";
@@ -69,26 +66,10 @@ export type CompactionMarker = {
 };
 
 /**
- * compact 切点规划结果。
- * - `firstKeptIndex`：保留后缀起点，`messages[0..firstKeptIndex)` 全部进入 summarization。
- * - `splitPoint`：非 null 时把前缀再切一刀：`[0..splitPoint)` 走历史 summary，
- *   `[splitPoint..firstKeptIndex)` 走 turn-prefix summary。仅在最后一个 turn 过大、
- *   无法按 user 边界对齐时出现。
+ * 规划本次 compact 的切点。保留约 20%（≥6 条）并向后对齐到下一条 user 消息，
+ * 保证后缀从干净的 turn 边界开始。找不到 user 边界时返回 null（由调用方自增失败计数）。
  */
-export type CompactionCutPlan = {
-	firstKeptIndex: number;
-	splitPoint: number | null;
-};
-
-/**
- * 规划本次 compact 的切点。
- * - 主路径：保留约 20%（≥6 条）并向后对齐到下一条 user 消息，保证后缀从干净的 turn 边界开始。
- * - 退路（split-turn）：最后一个 turn 本身过大时，在 turn 内部寻找合法切点。
- *   `splitPoint` 设为该 turn 的起点：`[0..splitPoint)` → 历史 summary，
- *   `[splitPoint..firstKeptIndex)` → turn-prefix summary，`[firstKeptIndex..]` → 原样保留。
- * 两条路径都不可行时返回 null。
- */
-export function planCompactionCut(messageEntries: MessageEntry[]): CompactionCutPlan | null {
+export function planCompactionCut(messageEntries: MessageEntry[]): number | null {
 	if (messageEntries.length < 4) return null;
 
 	const initialKeepCount = Math.max(6, Math.floor(messageEntries.length * 0.2));
@@ -98,20 +79,7 @@ export function planCompactionCut(messageEntries: MessageEntry[]): CompactionCut
 		firstKeptIndex++;
 	}
 
-	if (firstKeptIndex < messageEntries.length) {
-		return { firstKeptIndex, splitPoint: null };
-	}
-
-	const allMessages = messageEntries.map((e) => e.message);
-	const turnStart = findLastTurnStart(allMessages);
-	// 需要最后一个 turn 之前至少 2 条历史消息，否则 split-turn 退化成仅剩 turn-prefix，
-	// 为此多开一次 LLM 调用不划算。
-	if (turnStart < 2) return null;
-
-	const splitPointInsideTurn = findSplitPointInLastTurn(allMessages, turnStart);
-	if (splitPointInsideTurn === null) return null;
-
-	return { firstKeptIndex: splitPointInsideTurn, splitPoint: turnStart };
+	return firstKeptIndex < messageEntries.length ? firstKeptIndex : null;
 }
 
 export function extractHistory(entries: SessionEntry[]): {
@@ -349,47 +317,28 @@ export class AgentSession {
 		const messageEntries = branch.filter((e): e is MessageEntry => e.type === "message");
 		if (messageEntries.length < 4) return;
 
-		const plan = planCompactionCut(messageEntries);
-		if (!plan) {
+		const firstKeptIndex = planCompactionCut(messageEntries);
+		if (firstKeptIndex === null) {
 			this.compactFailCount++;
 			return;
 		}
 
-		const prefixEntries = messageEntries.slice(0, plan.firstKeptIndex);
-		const prefixMessages = prefixEntries.map((e) => e.message);
+		const prefixMessages = messageEntries.slice(0, firstKeptIndex).map((e) => e.message);
+		if (prefixMessages.length < 2) return;
 
-		const historyEnd = plan.splitPoint ?? prefixMessages.length;
-		const fullHistoryMessages = prefixMessages.slice(0, historyEnd);
-		const turnPrefixMessages = plan.splitPoint !== null ? prefixMessages.slice(plan.splitPoint) : [];
-
-		// 主路径需要至少 2 条历史才值得压；split-turn 路径允许历史为空（turn-prefix 本身仍有价值）。
-		if (plan.splitPoint === null && fullHistoryMessages.length < 2) return;
-
-		const firstKeptEntry = messageEntries[plan.firstKeptIndex];
+		const firstKeptEntry = messageEntries[firstKeptIndex];
 
 		try {
 			for (const listener of this.externalListeners) {
 				listener({ type: "compaction_start" });
 			}
 
-			const historyPromise = compactMessages({
-				messages: fullHistoryMessages,
+			const historyRaw = await compactMessages({
+				messages: prefixMessages,
 				model: modelInfo,
 				baseURL: this.config.baseURL,
 				signal: this.abortController?.signal,
 			});
-
-			const turnPrefixPromise =
-				turnPrefixMessages.length > 0
-					? generateTurnPrefixSummary({
-							messages: turnPrefixMessages,
-							model: modelInfo,
-							baseURL: this.config.baseURL,
-							signal: this.abortController?.signal,
-						})
-					: Promise.resolve<string | undefined>(undefined);
-
-			const [historyRaw, rawTurnPrefixSummary] = await Promise.all([historyPromise, turnPrefixPromise]);
 
 			let summary = formatCompactSummary(historyRaw);
 
@@ -400,8 +349,6 @@ export class AgentSession {
 				summary = `${summary}\n\n[Recently viewed files before compaction]\n${list}\n(Their contents are not re-attached — re-read if needed.)`;
 			}
 
-			const turnPrefixSummary = rawTurnPrefixSummary ? formatCompactSummary(rawTurnPrefixSummary) : undefined;
-
 			const compactionId = this.store.nextId();
 			await this.store.append({
 				type: "compaction",
@@ -410,7 +357,6 @@ export class AgentSession {
 				timestamp: Date.now(),
 				summary,
 				firstKeptEntryId: firstKeptEntry.id,
-				...(turnPrefixSummary ? { turnPrefixSummary } : {}),
 			});
 			this.lastEntryId = compactionId;
 

@@ -25,11 +25,6 @@ export type CompactionEntry = {
 	timestamp: number;
 	summary: string;
 	firstKeptEntryId: string;
-	/**
-	 * 仅在 split-turn 场景下存在（最后一个 turn 过大、必须从 turn 内部切）。
-	 * 保存被切掉的 turn 前缀的独立摘要，由 buildSessionContext 拼进 wrapped-summary 回放。
-	 */
-	turnPrefixSummary?: string;
 };
 
 export type SessionEntry = SessionHeader | MessageEntry | CompactionEntry;
