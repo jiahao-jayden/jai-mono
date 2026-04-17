@@ -25,10 +25,21 @@ export class EventAdapter {
 	private runId: string;
 	private currentMessageId: string | null = null;
 	private inReasoning = false;
-	private _totalTokens = 0;
 
-	get totalTokens(): number {
-		return this._totalTokens;
+	private _lastInputTokens = 0;
+	private _lastOutputTokens = 0;
+	private _stepTokensSum = 0;
+
+	get lastInputTokens(): number {
+		return this._lastInputTokens;
+	}
+
+	get lastOutputTokens(): number {
+		return this._lastOutputTokens;
+	}
+
+	get stepTokensSum(): number {
+		return this._stepTokensSum;
 	}
 
 	constructor(threadId: string, runId?: string) {
@@ -154,13 +165,16 @@ export class EventAdapter {
 
 			case "step_finish": {
 				const { inputTokens, outputTokens } = streamEvent.usage;
-				this._totalTokens += inputTokens + outputTokens;
+				// inputTokens 已含全部历史；快照取覆盖，lifetime 统计走 sum。
+				this._lastInputTokens = inputTokens;
+				this._lastOutputTokens = outputTokens;
+				this._stepTokensSum += inputTokens + outputTokens;
 				return [
 					{
 						type: AGUIEventType.USAGE_UPDATE,
 						inputTokens,
 						outputTokens,
-						totalTokens: this._totalTokens,
+						contextTokens: inputTokens,
 					},
 				];
 			}

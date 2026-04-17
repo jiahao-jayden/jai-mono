@@ -70,8 +70,10 @@ export function ContextUsageRing() {
 					</button>
 				</TooltipTrigger>
 				<TooltipContent side="top" className="text-xs tabular-nums">
-					{formatTokens(contextTokens)} / {formatTokens(contextWindow)} tokens
-					<span className="ml-1.5 text-muted-foreground">{percent}%</span>
+					<span>
+						{formatTokens(contextTokens)} / {formatTokens(contextWindow)} tokens
+					</span>
+					<span className="text-background/60">{percent}%</span>
 				</TooltipContent>
 			</Tooltip>
 		</TooltipProvider>

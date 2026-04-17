@@ -139,6 +139,8 @@ export class SessionManager {
 			firstMessage: null,
 			messageCount: 0,
 			totalTokens: 0,
+			lastInputTokens: 0,
+			lastOutputTokens: 0,
 			createdAt: now,
 			updatedAt: now,
 		};
@@ -242,12 +244,22 @@ export class SessionManager {
 
 	async handlePostChat(
 		sessionId: string,
-		opts: { text: string; attachmentFilename?: string; totalTokens: number },
+		opts: {
+			text: string;
+			attachmentFilename?: string;
+			stepTokensSum: number;
+			lastInputTokens: number;
+			lastOutputTokens: number;
+		},
 	): Promise<{ title?: string }> {
-		if (opts.totalTokens > 0) {
+		if (opts.stepTokensSum > 0) {
 			const current = this.index.get(sessionId);
-			const accumulated = (current?.totalTokens ?? 0) + opts.totalTokens;
+			const accumulated = (current?.totalTokens ?? 0) + opts.stepTokensSum;
 			this.index.updateField(sessionId, "totalTokens", accumulated);
+		}
+		if (opts.lastInputTokens > 0 || opts.lastOutputTokens > 0) {
+			this.index.updateField(sessionId, "lastInputTokens", opts.lastInputTokens);
+			this.index.updateField(sessionId, "lastOutputTokens", opts.lastOutputTokens);
 		}
 
 		const info = this.index.get(sessionId);

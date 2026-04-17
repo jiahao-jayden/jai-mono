@@ -6,13 +6,17 @@ import { AttachmentList } from "./attachment-preview";
 interface MessageUserProps {
 	children: React.ReactNode;
 	attachments?: ChatAttachment[];
+	/** Exposed on the DOM so Conversation can pin this message to the viewport top on send. */
+	messageId?: string;
 }
 
-export function MessageUser({ children, attachments }: MessageUserProps) {
+export function MessageUser({ children, attachments, messageId }: MessageUserProps) {
 	const hasAttachments = attachments && attachments.length > 0;
 	const hasText = typeof children === "string" ? children.trim().length > 0 : children != null;
 	return (
 		<motion.div
+			data-message-id={messageId}
+			data-role="user"
 			className="flex flex-col items-end gap-1.5 w-full"
 			initial={{ opacity: 0, x: 12 }}
 			animate={{ opacity: 1, x: 0 }}

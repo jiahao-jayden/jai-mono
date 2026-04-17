@@ -130,7 +130,9 @@ export function sessionRoutes(manager: SessionManager): Hono {
 				const result = await manager.handlePostChat(sessionId, {
 					text,
 					attachmentFilename: body.attachments?.[0]?.filename,
-					totalTokens: adapter.totalTokens,
+					stepTokensSum: adapter.stepTokensSum,
+					lastInputTokens: adapter.lastInputTokens,
+					lastOutputTokens: adapter.lastOutputTokens,
 				});
 				if (result.title) {
 					await stream

@@ -22,6 +22,7 @@
 		"@jayden/jai-agent": "workspace:*",
 		"@jayden/jai-coding-agent": "workspace:*",
 		"@jayden/jai-session": "workspace:*",
+		"@jayden/jai-utils": "workspace:*",
 		"hono": "^4"
 	},
 	"devDependencies": {

@@ -303,3 +303,54 @@
 	border-radius: 0 !important;
 	background: transparent !important;
 }
+
+/* ============================================================
+ * Streaming motion — text should FLOW IN, not type out.
+ * ============================================================
+ *
+ * Three cooperating layers (see also stores/chat.ts for layer 1):
+ *
+ *   1. 120ms batch flush in the store smooths bursty network
+ *      arrivals into coherent half-line chunks.
+ *
+ *   2. @starting-style gives each freshly-mounted markdown block
+ *      a gentle lift + fade + blur as it materializes. React
+ *      reconciles existing nodes, so growing an existing
+ *      paragraph does NOT re-play the animation — only truly new
+ *      blocks (new <p>, <ul>, <pre>, etc.) enter this way.
+ *
+ *   3. .is-streaming-tip > *:last-child mutes the currently-
+ *      growing block's contrast ~22% (墨未干 / "ink not yet
+ *      dry"). When streaming ends or moves to a new block, the
+ *      class drops and `color` transitions back to full
+ *      foreground via the 380ms transition declared on the block
+ *      selector — "the ink dries".
+ *
+ * No per-character reveal, no cursor, no transform on the growing
+ * block. Motion is on the text only.
+ */
+
+.is-assistant :is(p, li, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, details, figure) {
+	transition:
+		opacity 380ms cubic-bezier(0.16, 1, 0.3, 1),
+		color 380ms ease-out;
+	opacity: 1;
+
+	@starting-style {
+		opacity: 0;
+	}
+}
+
+.is-streaming-tip > *:last-child {
+	color: color-mix(in oklch, var(--foreground) 78%, var(--background));
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.is-assistant :is(p, li, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, details, figure) {
+		transition: none;
+
+		@starting-style {
+			opacity: 1;
+		}
+	}
+}

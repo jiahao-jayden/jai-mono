@@ -124,11 +124,16 @@ export type MessagesSnapshotEvent = {
 
 // ── Usage Events ────────────────────────────────────────────
 
+/**
+ * `contextTokens` = 最近一步的 inputTokens 快照，不可跨 step 累加
+ * （inputTokens 本身已含全部历史，累加会被重复计数 N 倍）。
+ * 累计消耗走 SessionIndex.totalTokens。
+ */
 export type UsageUpdateEvent = {
 	type: typeof AGUIEventType.USAGE_UPDATE;
 	inputTokens: number;
 	outputTokens: number;
-	totalTokens: number;
+	contextTokens: number;
 };
 
 // ── Title Events ─────────────────────────────────────────────

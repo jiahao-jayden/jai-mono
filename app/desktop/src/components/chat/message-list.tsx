@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import type { ChatItem, ChatMessagePart, ChatStatus } from "@/types/chat";
 import { MessageResponse } from "../ai-elements/message";
 import { CompactionDivider } from "./compaction-divider";
@@ -62,7 +63,7 @@ export function MessageList({ messages, status }: MessageListProps) {
 						.filter((p) => p.type === "attachment" && p.attachment)
 						.map((p) => p.attachment!);
 					return (
-						<MessageUser key={message.id} attachments={attachments}>
+						<MessageUser key={message.id} messageId={message.id} attachments={attachments}>
 							{text}
 						</MessageUser>
 					);
@@ -106,7 +107,13 @@ export function MessageList({ messages, status }: MessageListProps) {
 									);
 								}
 								if (part.type === "text" && part.text) {
-									return <MessageResponse key={key}>{part.text}</MessageResponse>;
+									const isTextTip =
+										isStreaming && partIdx === message.parts.length - 1 && lastPart?.type === "text";
+									return (
+										<MessageResponse key={key} className={cn(isTextTip && "is-streaming-tip")}>
+											{part.text}
+										</MessageResponse>
+									);
 								}
 								if (part.type === "error" && part.text) {
 									return <ErrorBlock key={key}>{part.text}</ErrorBlock>;

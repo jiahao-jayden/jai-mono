@@ -1,15 +1,32 @@
 import { join } from "node:path";
-import { type EnrichedModelInfo, enrichModelInfo, extractLimit, findModelAcrossProviders } from "@jayden/jai-ai";
+import { type EnrichedModelInfo, enrichModelInfo } from "@jayden/jai-ai";
 import type { SessionManager } from "@jayden/jai-coding-agent";
+import { parseModelId } from "@jayden/jai-utils";
 import { Hono } from "hono";
 import type { FetchModelsResponse } from "../types/api.js";
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
+const DEFAULT_CONTEXT_WINDOW = 128_000;
+
+// 优先级：自定义 provider 显式 limit > 注册表（enrichModelInfo）> 128K 兜底。
+// 注册表 key 是裸 modelId，先 parseModelId 去 "provider/" 前缀再查。
+function resolveContextWindow(manager: SessionManager): number {
+	const all = manager.getSettings().getAll();
+	const parsed = parseModelId(all.model);
+	const bareModelId = parsed?.model ?? all.model;
+	const providerId = parsed?.provider;
+
+	const customModels = providerId ? all.providers?.[providerId]?.models : undefined;
+	const customEntry = customModels?.find((m) => (typeof m === "string" ? m : m.id) === bareModelId);
+	if (customEntry && typeof customEntry !== "string" && customEntry.limit) {
+		return customEntry.limit.context;
+	}
+
+	return enrichModelInfo(bareModelId).limit?.context ?? DEFAULT_CONTEXT_WINDOW;
+}
 
 function toConfigResponse(manager: SessionManager) {
 	const all = manager.getSettings().getAll();
-	const match = findModelAcrossProviders(all.model);
-	const limit = match ? extractLimit(match.model) : null;
 	return {
 		model: all.model,
 		provider: all.provider,
@@ -17,7 +34,7 @@ function toConfigResponse(manager: SessionManager) {
 		maxIterations: all.maxIterations,
 		language: all.language,
 		reasoningEffort: all.reasoningEffort,
-		contextWindow: limit?.context ?? 128_000,
+		contextWindow: resolveContextWindow(manager),
 	};
 }
 

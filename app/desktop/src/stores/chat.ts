@@ -172,6 +172,13 @@ interface ChatState {
 	reasoningEffort: string | null;
 	contextTokens: number;
 	contextWindow: number;
+	/**
+	 * Monotonic counter bumped every time `loadSession` finishes populating
+	 * a historical conversation. The chat view watches it to jump the
+	 * scroll container to the bottom without animation, sidestepping the
+	 * pin-to-user-message behavior that only makes sense for live sends.
+	 */
+	scrollBottomToken: number;
 
 	syncModels: (config: ConfigResponse) => void;
 	sendMessage: (text: string, attachments?: ChatAttachment[]) => Promise<void>;
@@ -186,6 +193,79 @@ let abortController: AbortController | null = null;
 let currentAssistantId: string | null = null;
 let currentCompactionId: string | null = null;
 
+/**
+ * Streaming smoothing buffer.
+ *
+ * Raw LLM tokens arrive bursty (network jitter + provider batching). Writing
+ * every delta straight to React causes a "一顿一顿" feel. Instead we
+ * accumulate TEXT / REASONING deltas per-message and flush to the store on a
+ * fixed ~120ms cadence so each visible update is a short phrase, not a single
+ * character — which also makes the `@starting-style` block-entrance animation
+ * land on a coherent unit rather than on each token.
+ *
+ * Invariants:
+ *  - Any non-text structural event (TOOL_CALL_START / REASONING_END /
+ *    COMPACTION_* / TEXT_MESSAGE_END / RUN_ERROR) must flush the buffer for
+ *    the current assistant message first, so visual order matches event
+ *    order.
+ *  - `sendMessage` drains all buffers when the stream ends.
+ */
+const FLUSH_INTERVAL_MS = 120;
+
+interface TextBuffer {
+	text: string;
+	reasoning: string;
+	timer: ReturnType<typeof setTimeout> | null;
+}
+
+const textBuffers = new Map<string, TextBuffer>();
+
+function getOrCreateBuffer(msgId: string): TextBuffer {
+	let buf = textBuffers.get(msgId);
+	if (!buf) {
+		buf = { text: "", reasoning: "", timer: null };
+		textBuffers.set(msgId, buf);
+	}
+	return buf;
+}
+
+function flushBuffer(msgId: string, get: () => ChatState, set: (partial: Partial<ChatState>) => void): void {
+	const buf = textBuffers.get(msgId);
+	if (!buf) return;
+	if (buf.timer !== null) {
+		clearTimeout(buf.timer);
+		buf.timer = null;
+	}
+	const { text, reasoning } = buf;
+	buf.text = "";
+	buf.reasoning = "";
+	if (!text && !reasoning) return;
+
+	set({
+		messages: updateMessageById(get().messages, msgId, (msg) => {
+			let parts = msg.parts;
+			if (text) parts = appendTextToParts(parts, "text", text);
+			if (reasoning) parts = appendTextToParts(parts, "reasoning", reasoning);
+			return { ...msg, parts };
+		}),
+	});
+}
+
+function scheduleFlush(msgId: string, get: () => ChatState, set: (partial: Partial<ChatState>) => void): void {
+	const buf = getOrCreateBuffer(msgId);
+	if (buf.timer !== null) return;
+	buf.timer = setTimeout(() => {
+		flushBuffer(msgId, get, set);
+	}, FLUSH_INTERVAL_MS);
+}
+
+function flushAllBuffers(get: () => ChatState, set: (partial: Partial<ChatState>) => void): void {
+	for (const msgId of Array.from(textBuffers.keys())) {
+		flushBuffer(msgId, get, set);
+	}
+	textBuffers.clear();
+}
+
 function ensureAssistantMessage(get: () => ChatState, set: (partial: Partial<ChatState>) => void): string {
 	if (currentAssistantId) return currentAssistantId;
 	const id = nanoid();
@@ -195,6 +275,15 @@ function ensureAssistantMessage(get: () => ChatState, set: (partial: Partial<Cha
 }
 
 function handleSSEEvent(event: AGUIEvent, get: () => ChatState, set: (partial: Partial<ChatState>) => void): void {
+	// Text/reasoning deltas are buffered for smoothing (see FLUSH_INTERVAL_MS).
+	// Every other event must observe the already-buffered text first, otherwise
+	// a tool-call card could render above text that arrived earlier in time.
+	const isBufferedEvent =
+		event.type === AGUIEventType.TEXT_MESSAGE_CONTENT || event.type === AGUIEventType.REASONING_CONTENT;
+	if (!isBufferedEvent && currentAssistantId) {
+		flushBuffer(currentAssistantId, get, set);
+	}
+
 	switch (event.type) {
 		case AGUIEventType.TEXT_MESSAGE_START: {
 			ensureAssistantMessage(get, set);
@@ -203,12 +292,9 @@ function handleSSEEvent(event: AGUIEvent, get: () => ChatState, set: (partial: P
 		case AGUIEventType.TEXT_MESSAGE_CONTENT: {
 			const msgId = currentAssistantId;
 			if (!msgId) break;
-			set({
-				messages: updateMessageById(get().messages, msgId, (msg) => ({
-					...msg,
-					parts: appendTextToParts(msg.parts, "text", event.delta),
-				})),
-			});
+			const buf = getOrCreateBuffer(msgId);
+			buf.text += event.delta;
+			scheduleFlush(msgId, get, set);
 			break;
 		}
 		case AGUIEventType.REASONING_START: {
@@ -218,12 +304,9 @@ function handleSSEEvent(event: AGUIEvent, get: () => ChatState, set: (partial: P
 		case AGUIEventType.REASONING_CONTENT: {
 			const msgId = currentAssistantId;
 			if (!msgId) break;
-			set({
-				messages: updateMessageById(get().messages, msgId, (msg) => ({
-					...msg,
-					parts: appendTextToParts(msg.parts, "reasoning", event.delta),
-				})),
-			});
+			const buf = getOrCreateBuffer(msgId);
+			buf.reasoning += event.delta;
+			scheduleFlush(msgId, get, set);
 			break;
 		}
 		case AGUIEventType.TOOL_CALL_START: {
@@ -323,7 +406,7 @@ function handleSSEEvent(event: AGUIEvent, get: () => ChatState, set: (partial: P
 			break;
 		}
 		case AGUIEventType.USAGE_UPDATE: {
-			set({ contextTokens: event.totalTokens });
+			set({ contextTokens: event.contextTokens ?? event.inputTokens ?? 0 });
 			break;
 		}
 	}
@@ -338,6 +421,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	reasoningEffort: null,
 	contextTokens: 0,
 	contextWindow: 0,
+	scrollBottomToken: 0,
 
 	syncModels(config: ConfigResponse) {
 		const models = flattenModels(config);
@@ -412,6 +496,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				attachments: rawAttachments.length ? rawAttachments : undefined,
 			});
 		} catch (err) {
+			flushAllBuffers(get, set);
 			console.error("[gateway] prompt failed:", err);
 			const errorText = err instanceof Error ? err.message : String(err);
 			const errorMsgId = currentAssistantId ?? nanoid();
@@ -430,6 +515,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			return;
 		}
 
+		flushAllBuffers(get, set);
 		abortController = null;
 		set({ status: "ready" });
 		if (isNewChat) {
@@ -438,6 +524,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	},
 
 	stop() {
+		flushAllBuffers(get, set);
 		abortController?.abort();
 		abortController = null;
 		const { sessionId } = get();
@@ -467,6 +554,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	},
 
 	newChat() {
+		flushAllBuffers(get, set);
 		set({
 			sessionId: null,
 			messages: [],
@@ -481,6 +569,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	async loadSession(info) {
 		if (get().sessionId === info.sessionId) return;
 
+		flushAllBuffers(get, set);
 		set({
 			messages: [],
 			status: "ready",
@@ -500,7 +589,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				result.messages as GatewayMessage[],
 				(result.compactions ?? []) as GatewayCompactionMarker[],
 			);
-			set({ messages: converted, contextTokens: sessionInfo.totalTokens ?? 0 });
+			set((s) => ({
+				messages: converted,
+				contextTokens: sessionInfo.lastInputTokens ?? 0,
+				scrollBottomToken: s.scrollBottomToken + 1,
+			}));
 		} catch (err) {
 			console.error("[gateway] loadSession messages failed:", err);
 		}

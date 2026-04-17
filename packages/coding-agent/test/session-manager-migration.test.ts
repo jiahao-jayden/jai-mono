@@ -40,6 +40,8 @@ describe("SessionManager.migrateV1Storage", () => {
 			firstMessage: null,
 			messageCount: 0,
 			totalTokens: 0,
+			lastInputTokens: 0,
+			lastOutputTokens: 0,
 			createdAt: now,
 			updatedAt: now,
 		});

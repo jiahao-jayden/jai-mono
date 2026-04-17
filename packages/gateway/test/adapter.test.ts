@@ -228,4 +228,90 @@ describe("EventAdapter", () => {
 		expect(types).toContain(AGUIEventType.REASONING_END);
 		expect(types).toContain(AGUIEventType.RUN_FINISHED);
 	});
+
+	// ── USAGE_UPDATE 语义：contextTokens = 最近一步的 inputTokens 快照 ──
+
+	test("step_finish → USAGE_UPDATE with contextTokens = this step's inputTokens", () => {
+		const adapter = createAdapter();
+		const events = adapter.translate({
+			type: "stream",
+			event: {
+				type: "step_finish",
+				finishReason: "stop",
+				usage: { inputTokens: 1000, outputTokens: 200, cacheReadTokens: 0, cacheWriteTokens: 0 },
+			},
+		});
+		expect(events.length).toBe(1);
+		expect(events[0]).toEqual({
+			type: AGUIEventType.USAGE_UPDATE,
+			inputTokens: 1000,
+			outputTokens: 200,
+			contextTokens: 1000,
+		});
+	});
+
+	test("multiple step_finish → contextTokens tracks LAST step (no accumulation)", () => {
+		const adapter = createAdapter();
+
+		const e1 = adapter.translate({
+			type: "stream",
+			event: {
+				type: "step_finish",
+				finishReason: "tool-calls",
+				usage: { inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 },
+			},
+		});
+		const e2 = adapter.translate({
+			type: "stream",
+			event: {
+				type: "step_finish",
+				finishReason: "tool-calls",
+				usage: { inputTokens: 1500, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 },
+			},
+		});
+		const e3 = adapter.translate({
+			type: "stream",
+			event: {
+				type: "step_finish",
+				finishReason: "stop",
+				usage: { inputTokens: 3000, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 },
+			},
+		});
+
+		expect((e1[0] as any).contextTokens).toBe(1000);
+		expect((e2[0] as any).contextTokens).toBe(1500);
+		expect((e3[0] as any).contextTokens).toBe(3000);
+
+		// getter: lastInputTokens 跟踪最后一步
+		expect(adapter.lastInputTokens).toBe(3000);
+		expect(adapter.lastOutputTokens).toBe(100);
+		// stepTokensSum 仍然累加（用于 lifetime 统计）
+		expect(adapter.stepTokensSum).toBe(1100 + 1600 + 3100);
+	});
+
+	test("step_finish after compaction → contextTokens drops", () => {
+		const adapter = createAdapter();
+
+		adapter.translate({
+			type: "stream",
+			event: {
+				type: "step_finish",
+				finishReason: "tool-calls",
+				usage: { inputTokens: 150_000, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 },
+			},
+		});
+
+		// compaction happens between turns; next step's input should be much smaller
+		const afterCompact = adapter.translate({
+			type: "stream",
+			event: {
+				type: "step_finish",
+				finishReason: "stop",
+				usage: { inputTokens: 20_000, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 },
+			},
+		});
+
+		expect((afterCompact[0] as any).contextTokens).toBe(20_000);
+		expect(adapter.lastInputTokens).toBe(20_000);
+	});
 });

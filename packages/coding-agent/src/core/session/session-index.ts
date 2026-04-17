@@ -4,16 +4,18 @@ import { dirname } from "node:path";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS sessions (
-  session_id    TEXT PRIMARY KEY,
-  workspace_id  TEXT NOT NULL DEFAULT 'default',
-  file_path     TEXT,
-  title         TEXT,
-  model         TEXT,
-  first_message TEXT,
-  message_count INTEGER DEFAULT 0,
-  total_tokens  INTEGER DEFAULT 0,
-  created_at    INTEGER NOT NULL,
-  updated_at    INTEGER NOT NULL
+  session_id         TEXT PRIMARY KEY,
+  workspace_id       TEXT NOT NULL DEFAULT 'default',
+  file_path          TEXT,
+  title              TEXT,
+  model              TEXT,
+  first_message      TEXT,
+  message_count      INTEGER DEFAULT 0,
+  total_tokens       INTEGER DEFAULT 0,
+  last_input_tokens  INTEGER DEFAULT 0,
+  last_output_tokens INTEGER DEFAULT 0,
+  created_at         INTEGER NOT NULL,
+  updated_at         INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_workspace ON sessions(workspace_id);
@@ -29,7 +31,10 @@ export interface SessionInfo {
 	model: string | null;
 	firstMessage: string | null;
 	messageCount: number;
+	/** 跨 turn 累计消耗；当前上下文占用看 lastInputTokens。 */
 	totalTokens: number;
+	lastInputTokens: number;
+	lastOutputTokens: number;
 	createdAt: number;
 	updatedAt: number;
 }
@@ -43,6 +48,8 @@ interface RawRow {
 	first_message: string | null;
 	message_count: number;
 	total_tokens: number;
+	last_input_tokens: number;
+	last_output_tokens: number;
 	created_at: number;
 	updated_at: number;
 }
@@ -57,6 +64,8 @@ function rowToRecord(row: RawRow): SessionInfo {
 		firstMessage: row.first_message,
 		messageCount: row.message_count,
 		totalTokens: row.total_tokens,
+		lastInputTokens: row.last_input_tokens ?? 0,
+		lastOutputTokens: row.last_output_tokens ?? 0,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -74,10 +83,17 @@ export class SessionIndex {
 		const db = new Database(dbPath);
 		db.exec("PRAGMA journal_mode=WAL");
 		db.exec(SCHEMA);
-		// 老数据库迁移：补 file_path 列（SQLite 的 IF NOT EXISTS 不支持 ALTER，手动探测）。
+		// SQLite 的 ALTER 不支持 IF NOT EXISTS，按列名探测补齐。
 		const cols = db.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>;
-		if (!cols.some((c) => c.name === "file_path")) {
+		const have = new Set(cols.map((c) => c.name));
+		if (!have.has("file_path")) {
 			db.exec("ALTER TABLE sessions ADD COLUMN file_path TEXT");
+		}
+		if (!have.has("last_input_tokens")) {
+			db.exec("ALTER TABLE sessions ADD COLUMN last_input_tokens INTEGER NOT NULL DEFAULT 0");
+		}
+		if (!have.has("last_output_tokens")) {
+			db.exec("ALTER TABLE sessions ADD COLUMN last_output_tokens INTEGER NOT NULL DEFAULT 0");
 		}
 		return new SessionIndex(db);
 	}
@@ -86,8 +102,8 @@ export class SessionIndex {
 		this.db
 			.prepare(
 				`INSERT OR REPLACE INTO sessions
-				(session_id, workspace_id, file_path, title, model, first_message, message_count, total_tokens, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				(session_id, workspace_id, file_path, title, model, first_message, message_count, total_tokens, last_input_tokens, last_output_tokens, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.run(
 				record.sessionId,
@@ -98,6 +114,8 @@ export class SessionIndex {
 				record.firstMessage,
 				record.messageCount,
 				record.totalTokens,
+				record.lastInputTokens,
+				record.lastOutputTokens,
 				record.createdAt,
 				record.updatedAt,
 			);
@@ -136,6 +154,8 @@ export class SessionIndex {
 			firstMessage: "first_message",
 			messageCount: "message_count",
 			totalTokens: "total_tokens",
+			lastInputTokens: "last_input_tokens",
+			lastOutputTokens: "last_output_tokens",
 			updatedAt: "updated_at",
 			filePath: "file_path",
 		};
