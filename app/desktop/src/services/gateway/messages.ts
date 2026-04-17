@@ -2,9 +2,14 @@ import type { $Fetch } from "ofetch";
 import { getBaseURL } from "./client";
 import { parseSSEStream, type SSEParserOptions } from "./sse-parser";
 
+interface MessagesResponse {
+	messages: unknown[];
+	compactions?: Array<{ id: string; timestamp: number; beforeMessageIndex: number }>;
+}
+
 export function createMessagesApi(gw: () => $Fetch) {
 	return {
-		get: (sessionId: string) => gw()<{ messages: unknown[] }>(`/sessions/${sessionId}/messages`),
+		get: (sessionId: string) => gw()<MessagesResponse>(`/sessions/${sessionId}/messages`),
 
 		abort: (sessionId: string) => gw()<void>(`/sessions/${sessionId}/abort`, { method: "POST" }),
 

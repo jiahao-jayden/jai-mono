@@ -1,9 +1,9 @@
 import type { AgentEvent } from "@jayden/jai-agent";
+import type { SessionManager } from "@jayden/jai-coding-agent";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { EventAdapter } from "../events/adapter.js";
 import { AGUIEventType } from "../events/types.js";
-import type { SessionManager } from "@jayden/jai-coding-agent";
 
 export function sessionRoutes(manager: SessionManager): Hono {
 	const app = new Hono();
@@ -48,9 +48,9 @@ export function sessionRoutes(manager: SessionManager): Hono {
 	});
 
 	app.get("/sessions/:id/messages", async (c) => {
-		const messages = await manager.readMessages(c.req.param("id"));
-		if (!messages) return c.json({ error: "Session not found" }, 404);
-		return c.json({ messages });
+		const result = await manager.readMessages(c.req.param("id"));
+		if (!result) return c.json({ error: "Session not found" }, 404);
+		return c.json(result);
 	});
 
 	app.post("/sessions/:id/abort", async (c) => {
@@ -133,7 +133,9 @@ export function sessionRoutes(manager: SessionManager): Hono {
 					totalTokens: adapter.totalTokens,
 				});
 				if (result.title) {
-					await stream.writeSSE({ data: JSON.stringify({ type: AGUIEventType.TITLE_GENERATED, title: result.title }) }).catch(() => {});
+					await stream
+						.writeSSE({ data: JSON.stringify({ type: AGUIEventType.TITLE_GENERATED, title: result.title }) })
+						.catch(() => {});
 				}
 			}
 		});

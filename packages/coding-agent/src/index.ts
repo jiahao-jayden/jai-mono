@@ -12,6 +12,7 @@ export { buildSystemPrompt } from "./core/prompt/builder.js";
 export { buildTitleInput, sanitizeTitle } from "./core/prompt/title.js";
 export {
 	AgentSession,
+	type CompactionMarker,
 	type SessionConfig,
 	type SessionState,
 } from "./core/session/agent-session.js";

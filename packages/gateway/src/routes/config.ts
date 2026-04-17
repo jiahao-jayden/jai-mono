@@ -1,7 +1,7 @@
 import { join } from "node:path";
-import { type EnrichedModelInfo, enrichModelInfo, findModelAcrossProviders, extractLimit } from "@jayden/jai-ai";
-import { Hono } from "hono";
+import { type EnrichedModelInfo, enrichModelInfo, extractLimit, findModelAcrossProviders } from "@jayden/jai-ai";
 import type { SessionManager } from "@jayden/jai-coding-agent";
+import { Hono } from "hono";
 import type { FetchModelsResponse } from "../types/api.js";
 
 const CACHE_TTL_MS = 60 * 60 * 1000;

@@ -4,14 +4,14 @@ import {
 	collectRecentFileReadPaths,
 	COMPACT_BUFFER_TOKENS,
 	formatCompactSummary,
-	getCompactThreshold,
-	getEffectiveContextWindow,
 	microcompact,
 	RESERVED_OUTPUT_TOKENS,
 	shouldCompact,
 	stripMediaFromMessages,
 	__internal,
 } from "../src/core/session/compaction.js";
+
+const { getCompactThreshold, getEffectiveContextWindow } = __internal;
 
 // ── Fixture helpers ──────────────────────────────────────────
 

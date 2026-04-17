@@ -25,9 +25,28 @@ export interface ChatMessagePart {
 }
 
 export interface ChatMessage {
+	kind: "message";
 	id: string;
 	role: ChatMessageRole;
 	parts: ChatMessagePart[];
 }
+
+/**
+ * Shown in the chat timeline where an older slice of the conversation was
+ * summarized ("context compacted"). Two states:
+ *   - "streaming":  compaction is in-flight, render a pill with a shimmer
+ *   - "done":       compaction finished (or loaded from history), render a static divider
+ *
+ * The summary text itself is intentionally NOT exposed — per product decision,
+ * users can see that a compaction happened but cannot expand the contents.
+ */
+export interface CompactionItem {
+	kind: "compaction";
+	id: string;
+	status: "streaming" | "done";
+	timestamp: number;
+}
+
+export type ChatItem = ChatMessage | CompactionItem;
 
 export type ChatStatus = "ready" | "submitted" | "streaming" | "error";

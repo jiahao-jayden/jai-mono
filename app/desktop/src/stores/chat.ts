@@ -3,7 +3,15 @@ import { AGUIEventType } from "@jayden/jai-gateway/events";
 import { nanoid } from "nanoid";
 import { create } from "zustand";
 import { gateway } from "@/services/gateway";
-import type { ChatAttachment, ChatMessage, ChatMessagePart, ChatMessageRole, ChatStatus } from "@/types/chat";
+import type {
+	ChatAttachment,
+	ChatItem,
+	ChatMessage,
+	ChatMessagePart,
+	ChatMessageRole,
+	ChatStatus,
+	CompactionItem,
+} from "@/types/chat";
 import { useSessionStore } from "./session";
 
 export interface ModelCapabilities {
@@ -71,12 +79,12 @@ function appendTextToParts(parts: ChatMessagePart[], partType: "text" | "reasoni
 	return [...parts, { type: partType, text }];
 }
 
-function updateMessageById(
-	messages: ChatMessage[],
-	id: string,
-	updater: (msg: ChatMessage) => ChatMessage,
-): ChatMessage[] {
-	return messages.map((m) => (m.id === id ? updater(m) : m));
+function updateMessageById(items: ChatItem[], id: string, updater: (msg: ChatMessage) => ChatMessage): ChatItem[] {
+	return items.map((m) => (m.kind === "message" && m.id === id ? updater(m) : m));
+}
+
+function mapMessages(items: ChatItem[], fn: (msg: ChatMessage) => ChatMessage): ChatItem[] {
+	return items.map((m) => (m.kind === "message" ? fn(m) : m));
 }
 
 interface GatewayMessage {
@@ -90,9 +98,19 @@ interface GatewayMessage {
 	}>;
 }
 
-function convertGatewayMessages(raw: GatewayMessage[]): ChatMessage[] {
-	const messages: ChatMessage[] = [];
+interface GatewayCompactionMarker {
+	id: string;
+	timestamp: number;
+	beforeMessageIndex: number;
+}
 
+/**
+ * Convert backend messages + compaction markers into a flat ChatItem timeline.
+ * Compactions are inserted such that `beforeMessageIndex` messages have been
+ * emitted before each marker (i.e. the marker appears BEFORE the first kept
+ * message that followed the summary).
+ */
+function convertGatewayMessages(raw: GatewayMessage[], compactions: GatewayCompactionMarker[] = []): ChatItem[] {
 	const toolResults = new Map<string, string>();
 	for (const msg of raw) {
 		if (msg.role !== "tool_result") continue;
@@ -101,6 +119,7 @@ function convertGatewayMessages(raw: GatewayMessage[]): ChatMessage[] {
 		if (id && text) toolResults.set(id, text);
 	}
 
+	const chatMessages: ChatMessage[] = [];
 	for (const msg of raw) {
 		if (msg.role === "tool_result") continue;
 
@@ -126,15 +145,26 @@ function convertGatewayMessages(raw: GatewayMessage[]): ChatMessage[] {
 		}
 
 		if (parts.length > 0) {
-			messages.push({ id: nanoid(), role: msg.role as ChatMessageRole, parts });
+			chatMessages.push({ kind: "message", id: nanoid(), role: msg.role as ChatMessageRole, parts });
 		}
 	}
 
-	return messages;
+	// Interleave compaction markers by beforeMessageIndex (stable, in order).
+	const sorted = [...compactions].sort((a, b) => a.beforeMessageIndex - b.beforeMessageIndex);
+	const items: ChatItem[] = [];
+	let cIdx = 0;
+	for (let i = 0; i <= chatMessages.length; i++) {
+		while (cIdx < sorted.length && sorted[cIdx].beforeMessageIndex === i) {
+			const m = sorted[cIdx++];
+			items.push({ kind: "compaction", id: m.id, status: "done", timestamp: m.timestamp });
+		}
+		if (i < chatMessages.length) items.push(chatMessages[i]);
+	}
+	return items;
 }
 
 interface ChatState {
-	messages: ChatMessage[];
+	messages: ChatItem[];
 	status: ChatStatus;
 	currentModelId: string | null;
 	availableModels: ModelItem[];
@@ -154,12 +184,13 @@ interface ChatState {
 
 let abortController: AbortController | null = null;
 let currentAssistantId: string | null = null;
+let currentCompactionId: string | null = null;
 
 function ensureAssistantMessage(get: () => ChatState, set: (partial: Partial<ChatState>) => void): string {
 	if (currentAssistantId) return currentAssistantId;
 	const id = nanoid();
 	currentAssistantId = id;
-	set({ messages: [...get().messages, { id, role: "assistant", parts: [] }] });
+	set({ messages: [...get().messages, { kind: "message", id, role: "assistant", parts: [] }] });
 	return id;
 }
 
@@ -212,7 +243,7 @@ function handleSSEEvent(event: AGUIEvent, get: () => ChatState, set: (partial: P
 		}
 		case AGUIEventType.TOOL_CALL_ARGS: {
 			set({
-				messages: get().messages.map((msg) => ({
+				messages: mapMessages(get().messages, (msg) => ({
 					...msg,
 					parts: msg.parts.map((part) =>
 						part.type === "tool_call" && part.toolCall?.toolCallId === event.toolCallId
@@ -225,7 +256,7 @@ function handleSSEEvent(event: AGUIEvent, get: () => ChatState, set: (partial: P
 		}
 		case AGUIEventType.TOOL_CALL_RESULT: {
 			set({
-				messages: get().messages.map((msg) => ({
+				messages: mapMessages(get().messages, (msg) => ({
 					...msg,
 					parts: msg.parts.map((part) =>
 						part.type === "tool_call" && part.toolCall?.toolCallId === event.toolCallId
@@ -238,7 +269,7 @@ function handleSSEEvent(event: AGUIEvent, get: () => ChatState, set: (partial: P
 		}
 		case AGUIEventType.TOOL_CALL_END: {
 			set({
-				messages: get().messages.map((msg) => ({
+				messages: mapMessages(get().messages, (msg) => ({
 					...msg,
 					parts: msg.parts.map((part) =>
 						part.type === "tool_call" && part.toolCall?.toolCallId === event.toolCallId
@@ -247,6 +278,32 @@ function handleSSEEvent(event: AGUIEvent, get: () => ChatState, set: (partial: P
 					),
 				})),
 			});
+			break;
+		}
+		case AGUIEventType.COMPACTION_START: {
+			const id = nanoid();
+			currentCompactionId = id;
+			const placeholder: CompactionItem = {
+				kind: "compaction",
+				id,
+				status: "streaming",
+				timestamp: Date.now(),
+			};
+			set({ messages: [...get().messages, placeholder] });
+			break;
+		}
+		case AGUIEventType.COMPACTION_END: {
+			const id = currentCompactionId;
+			if (!id) break;
+			set({
+				messages: get().messages.map((m) =>
+					m.kind === "compaction" && m.id === id ? { ...m, status: "done" as const } : m,
+				),
+			});
+			currentCompactionId = null;
+			// Compaction rewrote history — the next assistant message belongs to
+			// a fresh turn, force-allocate a new assistant bubble.
+			currentAssistantId = null;
 			break;
 		}
 		case AGUIEventType.RUN_ERROR: {
@@ -314,12 +371,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		}
 
 		const userMessage: ChatMessage = {
+			kind: "message",
 			id: nanoid(),
 			role: "user",
 			parts,
 		};
 		set({ status: "submitted", messages: [...get().messages, userMessage] });
 		currentAssistantId = null;
+		currentCompactionId = null;
 
 		const isNewChat = !sessionId;
 
@@ -357,7 +416,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			const errorText = err instanceof Error ? err.message : String(err);
 			const errorMsgId = currentAssistantId ?? nanoid();
 			if (!currentAssistantId) {
-				set({ messages: [...get().messages, { id: errorMsgId, role: "assistant", parts: [] }] });
+				set({
+					messages: [...get().messages, { kind: "message", id: errorMsgId, role: "assistant", parts: [] }],
+				});
 			}
 			set({
 				status: "error",
@@ -413,6 +474,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			contextTokens: 0,
 		});
 		currentAssistantId = null;
+		currentCompactionId = null;
 		useSessionStore.getState().setTitle(null);
 	},
 
@@ -426,14 +488,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			contextTokens: 0,
 		});
 		currentAssistantId = null;
+		currentCompactionId = null;
 		useSessionStore.getState().setTitle(info.title ?? null);
 
 		try {
-			const [{ messages: raw }, sessionInfo] = await Promise.all([
+			const [result, sessionInfo] = await Promise.all([
 				gateway.messages.get(info.sessionId),
 				gateway.sessions.get(info.sessionId),
 			]);
-			const converted = convertGatewayMessages(raw as GatewayMessage[]);
+			const converted = convertGatewayMessages(
+				result.messages as GatewayMessage[],
+				(result.compactions ?? []) as GatewayCompactionMarker[],
+			);
 			set({ messages: converted, contextTokens: sessionInfo.totalTokens ?? 0 });
 		} catch (err) {
 			console.error("[gateway] loadSession messages failed:", err);

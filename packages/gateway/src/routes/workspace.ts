@@ -1,7 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
-import { Hono } from "hono";
 import type { SessionManager } from "@jayden/jai-coding-agent";
+import { Hono } from "hono";
 
 interface FileEntry {
 	name: string;
@@ -83,7 +83,9 @@ function getMimeType(filename: string): string {
 }
 
 function isTextMime(mime: string): boolean {
-	return mime.startsWith("text/") || mime === "application/json" || mime === "application/xml" || mime === "image/svg+xml";
+	return (
+		mime.startsWith("text/") || mime === "application/json" || mime === "application/xml" || mime === "image/svg+xml"
+	);
 }
 
 const BLOCKED_DIRS = ["sessions", ".jai"];
@@ -105,7 +107,7 @@ async function listDir(root: string, relativePath: string, depth: number): Promi
 
 	let entries: import("node:fs").Dirent[];
 	try {
-		entries = await readdir(absPath, { withFileTypes: true, encoding: "utf-8" }) as import("node:fs").Dirent[];
+		entries = (await readdir(absPath, { withFileTypes: true, encoding: "utf-8" })) as import("node:fs").Dirent[];
 	} catch {
 		return [];
 	}

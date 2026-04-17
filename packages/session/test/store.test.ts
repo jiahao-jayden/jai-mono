@@ -382,4 +382,61 @@ describe("buildSessionContext", () => {
 		expect((messages[1] as any).content[0].text).toBe("second");
 		expect(messages[2].role).toBe("assistant");
 	});
+
+	test("compaction with turnPrefixSummary injects the split-turn context block", async () => {
+		const store = new InMemorySessionStore();
+		const header = makeHeader(store);
+		await store.append(header);
+
+		const m1 = makeMessageEntry(store, header.id, makeUserMessage("hello"));
+		await store.append(m1);
+		const m2 = makeMessageEntry(store, m1.id, makeAssistantMessage("hi"));
+		await store.append(m2);
+
+		const compEntry: CompactionEntry = {
+			type: "compaction",
+			id: store.nextId(),
+			parentId: m2.id,
+			timestamp: Date.now(),
+			summary: "History summary body.",
+			firstKeptEntryId: m2.id,
+			turnPrefixSummary: "Turn prefix summary body.",
+		};
+		await store.append(compEntry);
+
+		const messages = buildSessionContext(store, compEntry.id);
+		const wrapped = (messages[0] as any).content[0].text as string;
+
+		expect(wrapped).toContain("History summary body.");
+		expect(wrapped).toContain("[Context for retained recent turn");
+		expect(wrapped).toContain("Turn prefix summary body.");
+		expect(wrapped.indexOf("Turn prefix summary body.")).toBeGreaterThan(
+			wrapped.indexOf("History summary body."),
+		);
+	});
+
+	test("compaction without turnPrefixSummary does not inject the split-turn block", async () => {
+		const store = new InMemorySessionStore();
+		const header = makeHeader(store);
+		await store.append(header);
+
+		const m1 = makeMessageEntry(store, header.id, makeUserMessage("hello"));
+		await store.append(m1);
+		const m2 = makeMessageEntry(store, m1.id, makeAssistantMessage("hi"));
+		await store.append(m2);
+
+		const compEntry: CompactionEntry = {
+			type: "compaction",
+			id: store.nextId(),
+			parentId: m2.id,
+			timestamp: Date.now(),
+			summary: "History summary body.",
+			firstKeptEntryId: m2.id,
+		};
+		await store.append(compEntry);
+
+		const messages = buildSessionContext(store, compEntry.id);
+		const wrapped = (messages[0] as any).content[0].text as string;
+		expect(wrapped).not.toContain("[Context for retained recent turn");
+	});
 });

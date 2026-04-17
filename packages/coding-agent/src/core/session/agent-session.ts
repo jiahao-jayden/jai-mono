@@ -9,7 +9,18 @@ import type {
 	UserMessage,
 } from "@jayden/jai-ai";
 import { resolveModelInfo } from "@jayden/jai-ai";
-import { buildSessionContext, JsonlSessionStore, type MessageEntry, type SessionStore } from "@jayden/jai-session";
+import {
+	buildSessionContext,
+	type CompactionEntry,
+	JsonlSessionStore,
+	type MessageEntry,
+	type SessionEntry,
+	type SessionStore,
+} from "@jayden/jai-session";
+
+/** 迭代 summary 漂移阈值：新 summary 短于旧的此比例即判定为丢内容，回退全量重写。 */
+const SUMMARY_DRIFT_RATIO = 0.5;
+
 import { NamedError } from "@jayden/jai-utils";
 import z from "zod";
 import { processAttachments } from "../attachments/processor.js";
@@ -20,7 +31,10 @@ import { buildTitleInput, generateTitle } from "../prompt/title.js";
 import {
 	collectRecentFileReadPaths,
 	compactMessages,
+	findLastTurnStart,
+	findSplitPointInLastTurn,
 	formatCompactSummary,
+	generateTurnPrefixSummary,
 	microcompact,
 	shouldCompact,
 } from "./compaction.js";
@@ -50,6 +64,109 @@ export type SessionConfig = {
  *              ↘ aborted ↗
  */
 export type SessionState = "idle" | "running" | "aborted";
+
+/** compaction 在可见时间线上的标记；`beforeMessageIndex` 指向它后面第一条消息的下标。 */
+export type CompactionMarker = {
+	id: string;
+	timestamp: number;
+	beforeMessageIndex: number;
+};
+
+/**
+ * compact 切点规划结果。
+ * - `firstKeptIndex`：保留后缀起点，`messages[0..firstKeptIndex)` 全部进入 summarization。
+ * - `splitPoint`：非 null 时把前缀再切一刀：`[0..splitPoint)` 走历史 summary，
+ *   `[splitPoint..firstKeptIndex)` 走 turn-prefix summary。仅在最后一个 turn 过大、
+ *   无法按 user 边界对齐时出现。
+ */
+export type CompactionCutPlan = {
+	firstKeptIndex: number;
+	splitPoint: number | null;
+};
+
+/**
+ * 规划本次 compact 的切点。
+ * - 主路径：保留约 20%（≥6 条）并向后对齐到下一条 user 消息，保证后缀从干净的 turn 边界开始。
+ * - 退路（split-turn）：最后一个 turn 本身过大时，在 turn 内部寻找合法切点。
+ *   `splitPoint` 设为该 turn 的起点：`[0..splitPoint)` → 历史 summary，
+ *   `[splitPoint..firstKeptIndex)` → turn-prefix summary，`[firstKeptIndex..]` → 原样保留。
+ * 两条路径都不可行时返回 null。
+ */
+export function planCompactionCut(messageEntries: MessageEntry[]): CompactionCutPlan | null {
+	if (messageEntries.length < 4) return null;
+
+	const initialKeepCount = Math.max(6, Math.floor(messageEntries.length * 0.2));
+	let firstKeptIndex = messageEntries.length - initialKeepCount;
+
+	while (firstKeptIndex < messageEntries.length && messageEntries[firstKeptIndex].message.role !== "user") {
+		firstKeptIndex++;
+	}
+
+	if (firstKeptIndex < messageEntries.length) {
+		return { firstKeptIndex, splitPoint: null };
+	}
+
+	const allMessages = messageEntries.map((e) => e.message);
+	const turnStart = findLastTurnStart(allMessages);
+	// 需要最后一个 turn 之前至少 2 条历史消息，否则 split-turn 退化成仅剩 turn-prefix，
+	// 为此多开一次 LLM 调用不划算。
+	if (turnStart < 2) return null;
+
+	const splitPointInsideTurn = findSplitPointInLastTurn(allMessages, turnStart);
+	if (splitPointInsideTurn === null) return null;
+
+	return { firstKeptIndex: splitPointInsideTurn, splitPoint: turnStart };
+}
+
+/** 返回 branch 中最近一个 CompactionEntry；没有则返回 null。 */
+export function findLastCompactionEntryInBranch(branch: SessionEntry[]): CompactionEntry | null {
+	for (let i = branch.length - 1; i >= 0; i--) {
+		if (branch[i].type === "compaction") return branch[i] as CompactionEntry;
+	}
+	return null;
+}
+
+export function indexOfEntryById(entries: MessageEntry[], id: string): number {
+	for (let i = 0; i < entries.length; i++) {
+		if (entries[i].id === id) return i;
+	}
+	return -1;
+}
+
+/** 更新后的 summary 若明显短于旧 summary，判定为丢内容。 */
+export function isSummaryDrift(updatedRaw: string, previousSummary: string): boolean {
+	const updatedBody = extractSummaryBody(updatedRaw);
+	const previousBody = extractSummaryBody(previousSummary);
+	if (previousBody.length === 0) return false;
+	return updatedBody.length < previousBody.length * SUMMARY_DRIFT_RATIO;
+}
+
+function extractSummaryBody(raw: string): string {
+	const match = raw.match(/<summary>([\s\S]*?)<\/summary>/);
+	if (match?.[1]) return match[1].trim();
+	return raw.trim();
+}
+
+export function extractHistory(entries: SessionEntry[]): {
+	messages: Message[];
+	compactions: CompactionMarker[];
+} {
+	const messages: Message[] = [];
+	const compactions: CompactionMarker[] = [];
+	for (const entry of entries) {
+		if (entry.type === "message") {
+			messages.push((entry as MessageEntry).message);
+		} else if (entry.type === "compaction") {
+			const ce = entry as CompactionEntry;
+			compactions.push({
+				id: ce.id,
+				timestamp: ce.timestamp,
+				beforeMessageIndex: messages.length,
+			});
+		}
+	}
+	return { messages, compactions };
+}
 
 export class AgentSession {
 	private config: SessionConfig;
@@ -175,9 +292,7 @@ export class AgentSession {
 					: modelRef;
 			const contextLimit = modelInfo.limit.context;
 
-			// Pre-loop compact check: covers the "first turn already over-limit"
-			// case that the post-loop fallback can't help with (it never runs
-			// if runAgentLoop throws prompt_too_long).
+			// 进入 loop 前兜底：首轮就已超限时，runAgentLoop 会直接抛 prompt_too_long。
 			await this.maybeCompact(this.lastInputTokens, modelInfo);
 
 			const messages = buildSessionContext(this.store, this.lastEntryId);
@@ -206,8 +321,7 @@ export class AgentSession {
 					}),
 			});
 
-			// Post-loop fallback: if the loop ran successfully but we're now close
-			// to the ceiling, compact proactively so the next chat() won't blow up.
+			// loop 结束后兜底：token 逼近上限则主动压一次，避免下一次 chat 炸掉。
 			await this.maybeCompact(this.lastInputTokens, modelInfo);
 
 			this.state = "idle";
@@ -229,6 +343,11 @@ export class AgentSession {
 	getMessages(): Message[] {
 		const entries = this.store.getBranch(this.lastEntryId);
 		return entries.filter((e): e is MessageEntry => e.type === "message").map((e) => e.message);
+	}
+
+	/** 返回用于 UI 渲染的完整历史：消息列表与 compaction 标记交织。 */
+	getHistory(): { messages: Message[]; compactions: CompactionMarker[] } {
+		return extractHistory(this.store.getBranch(this.lastEntryId));
 	}
 
 	abort(): void {
@@ -255,59 +374,76 @@ export class AgentSession {
 	}
 
 	private async maybeCompact(inputTokens: number, modelInfo: ModelInfo): Promise<void> {
-		// Circuit breaker: stop trying after repeated failures
 		if (this.compactFailCount >= AgentSession.MAX_COMPACT_FAILURES) return;
 		if (inputTokens <= 0) return;
 		if (!shouldCompact(inputTokens, modelInfo.limit.context)) return;
 
-		// Collect MessageEntries from the current branch once; we need both the
-		// reconstructed Message[] (for the LLM call) and the entry IDs (for the
-		// persisted CompactionEntry).
 		const branch = this.store.getBranch(this.lastEntryId);
 		const messageEntries = branch.filter((e): e is MessageEntry => e.type === "message");
 		if (messageEntries.length < 4) return;
 
-		// Initial split: keep ~20% of messages (minimum 6).
-		const initialKeepCount = Math.max(6, Math.floor(messageEntries.length * 0.2));
-		let firstKeptIndex = messageEntries.length - initialKeepCount;
-
-		// Align firstKeptIndex forward to a user-role boundary so the kept tail
-		// never starts with an orphan tool_result and the summarized prefix never
-		// ends with an assistant whose tool_call has no matching tool_result.
-		// Pairings within a turn: [user] -> [assistant(tool_call)] -> [tool_result, ...]
-		while (firstKeptIndex < messageEntries.length && messageEntries[firstKeptIndex].message.role !== "user") {
-			firstKeptIndex++;
+		const plan = planCompactionCut(messageEntries);
+		if (!plan) {
+			this.compactFailCount++;
+			return;
 		}
-		if (firstKeptIndex >= messageEntries.length) return;
 
-		const toSummarizeEntries = messageEntries.slice(0, firstKeptIndex);
-		const toSummarize = toSummarizeEntries.map((e) => e.message);
-		if (toSummarize.length < 2) return;
+		const prefixEntries = messageEntries.slice(0, plan.firstKeptIndex);
+		const prefixMessages = prefixEntries.map((e) => e.message);
 
-		const firstKeptEntry = messageEntries[firstKeptIndex];
+		const historyEnd = plan.splitPoint ?? prefixMessages.length;
+		const fullHistoryMessages = prefixMessages.slice(0, historyEnd);
+		const turnPrefixMessages = plan.splitPoint !== null ? prefixMessages.slice(plan.splitPoint) : [];
+
+		// 迭代更新的增量起点：跳过上一个 CompactionEntry 已经覆盖的消息。
+		const prevCompaction = findLastCompactionEntryInBranch(branch);
+		const previousSummary = prevCompaction?.summary;
+		const incrementalStart = prevCompaction ? indexOfEntryById(messageEntries, prevCompaction.firstKeptEntryId) : 0;
+		const incrementalHistoryMessages =
+			incrementalStart >= 0 && incrementalStart < historyEnd
+				? prefixMessages.slice(incrementalStart, historyEnd)
+				: [];
+
+		// 主路径且无旧 summary 时，历史至少 2 条才值得压。split-turn 路径允许
+		// 历史为空（turn-prefix 本身仍有价值）；迭代路径若没有新历史则直接复用旧 summary。
+		if (plan.splitPoint === null && !previousSummary && fullHistoryMessages.length < 2) return;
+
+		const firstKeptEntry = messageEntries[plan.firstKeptIndex];
 
 		try {
 			for (const listener of this.externalListeners) {
 				listener({ type: "compaction_start" });
 			}
 
-			const rawSummary = await compactMessages({
-				messages: toSummarize,
-				model: modelInfo,
-				baseURL: this.config.baseURL,
-				signal: this.abortController?.signal,
+			const historyPromise = this.summarizeHistory({
+				fullHistoryMessages,
+				incrementalHistoryMessages,
+				previousSummary,
+				modelInfo,
 			});
 
-			let summary = formatCompactSummary(rawSummary);
+			const turnPrefixPromise =
+				turnPrefixMessages.length > 0
+					? generateTurnPrefixSummary({
+							messages: turnPrefixMessages,
+							model: modelInfo,
+							baseURL: this.config.baseURL,
+							signal: this.abortController?.signal,
+						})
+					: Promise.resolve<string | undefined>(undefined);
 
-			// Post-compact file hints: remind the agent which files were in
-			// focus before compaction. Contents are not re-attached — the agent
-			// should FileRead them again on demand.
-			const recentFiles = collectRecentFileReadPaths(toSummarize);
+			const [historyRaw, rawTurnPrefixSummary] = await Promise.all([historyPromise, turnPrefixPromise]);
+
+			let summary = formatCompactSummary(historyRaw);
+
+			// compact 后的文件线索：只给出路径列表，内容由 agent 按需重新 FileRead。
+			const recentFiles = collectRecentFileReadPaths(prefixMessages);
 			if (recentFiles.length > 0) {
 				const list = recentFiles.map((p) => `- ${p}`).join("\n");
 				summary = `${summary}\n\n[Recently viewed files before compaction]\n${list}\n(Their contents are not re-attached — re-read if needed.)`;
 			}
+
+			const turnPrefixSummary = rawTurnPrefixSummary ? formatCompactSummary(rawTurnPrefixSummary) : undefined;
 
 			const compactionId = this.store.nextId();
 			await this.store.append({
@@ -317,6 +453,7 @@ export class AgentSession {
 				timestamp: Date.now(),
 				summary,
 				firstKeptEntryId: firstKeptEntry.id,
+				...(turnPrefixSummary ? { turnPrefixSummary } : {}),
 			});
 			this.lastEntryId = compactionId;
 
@@ -326,9 +463,58 @@ export class AgentSession {
 				listener({ type: "compaction_end", summary });
 			}
 		} catch {
+			// compact 失败不致命，仅计数。
 			this.compactFailCount++;
-			// Non-fatal: compaction failure should not break the session
 		}
+	}
+
+	/**
+	 * 生成 compaction 中「历史部分」的摘要：
+	 *  1. 无旧 summary → 对 `fullHistoryMessages` 全量 summary。
+	 *  2. 有旧 summary 且无新消息 → 原样复用。
+	 *  3. 有旧 summary 且有新消息 → 走 UPDATE；若漂移启发式命中则回退全量重写。
+	 */
+	private async summarizeHistory(opts: {
+		fullHistoryMessages: Message[];
+		incrementalHistoryMessages: Message[];
+		previousSummary: string | undefined;
+		modelInfo: ModelInfo;
+	}): Promise<string> {
+		const { fullHistoryMessages, incrementalHistoryMessages, previousSummary, modelInfo } = opts;
+
+		if (!previousSummary) {
+			return compactMessages({
+				messages: fullHistoryMessages,
+				model: modelInfo,
+				baseURL: this.config.baseURL,
+				signal: this.abortController?.signal,
+			});
+		}
+
+		if (incrementalHistoryMessages.length === 0) {
+			// 没有新历史，旧 summary 仍准确；套回 <summary> 让下游统一处理。
+			return `<summary>\n${previousSummary}\n</summary>`;
+		}
+
+		const updated = await compactMessages({
+			messages: incrementalHistoryMessages,
+			model: modelInfo,
+			baseURL: this.config.baseURL,
+			signal: this.abortController?.signal,
+			previousSummary,
+		});
+
+		if (isSummaryDrift(updated, previousSummary)) {
+			// 漂移兜底：对完整历史窗口重跑全量重写。
+			return compactMessages({
+				messages: fullHistoryMessages,
+				model: modelInfo,
+				baseURL: this.config.baseURL,
+				signal: this.abortController?.signal,
+			});
+		}
+
+		return updated;
 	}
 
 	private wireEventPipeline(): void {
@@ -337,9 +523,7 @@ export class AgentSession {
 				this.persistMessage(event.message);
 			}
 
-			// Track inputTokens in real time so microcompact / maybeCompact see
-			// the latest count without a one-turn lag. step_finish carries the
-			// usage delta for each API call within the loop.
+			// 实时追踪 inputTokens，供 microcompact / maybeCompact 使用（避免滞后一轮）。
 			if (event.type === "stream" && event.event.type === "step_finish") {
 				this.lastInputTokens = event.event.usage.inputTokens;
 			}

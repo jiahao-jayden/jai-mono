@@ -1,5 +1,6 @@
-import type { ChatMessage, ChatMessagePart, ChatStatus } from "@/types/chat";
+import type { ChatItem, ChatMessagePart, ChatStatus } from "@/types/chat";
 import { MessageResponse } from "../ai-elements/message";
+import { CompactionDivider } from "./compaction-divider";
 import { MessageAssistant } from "./message/message-assistant";
 import { ErrorBlock, StreamingPlaceholder, TypingIndicator } from "./message/message-parts";
 import { MessageReasoning } from "./message/message-reasoning";
@@ -33,14 +34,28 @@ function groupParts(parts: ChatMessagePart[]): Segment[] {
 }
 
 interface MessageListProps {
-	messages: ChatMessage[];
+	messages: ChatItem[];
 	status: ChatStatus;
 }
 
+function findLastMessageIndex(items: ChatItem[]): number {
+	for (let i = items.length - 1; i >= 0; i--) {
+		if (items[i].kind === "message") return i;
+	}
+	return -1;
+}
+
 export function MessageList({ messages, status }: MessageListProps) {
+	const lastMessageIdx = findLastMessageIndex(messages);
+	const lastItem = messages[messages.length - 1];
+
 	return (
 		<>
-			{messages.map((message, msgIdx) => {
+			{messages.map((item, msgIdx) => {
+				if (item.kind === "compaction") {
+					return <CompactionDivider key={item.id} status={item.status} timestamp={item.timestamp} />;
+				}
+				const message = item;
 				if (message.role === "user") {
 					const text = message.parts.find((p) => p.type === "text")?.text ?? "";
 					const attachments = message.parts
@@ -53,7 +68,7 @@ export function MessageList({ messages, status }: MessageListProps) {
 					);
 				}
 
-				const isLastAssistant = msgIdx === messages.length - 1 && message.role === "assistant";
+				const isLastAssistant = msgIdx === lastMessageIdx && message.role === "assistant";
 				const isStreaming = isLastAssistant && status === "streaming";
 				const lastPart = message.parts[message.parts.length - 1];
 				const hasNoTextYet = isStreaming && !message.parts.some((p) => p.type === "text");
@@ -103,9 +118,9 @@ export function MessageList({ messages, status }: MessageListProps) {
 					</MessageAssistant>
 				);
 			})}
-			{(status === "submitted" || (status === "streaming" && messages[messages.length - 1]?.role === "user")) && (
-				<StreamingPlaceholder />
-			)}
+			{(status === "submitted" ||
+				(status === "streaming" && lastItem?.kind === "message" && lastItem.role === "user") ||
+				(status === "streaming" && lastItem?.kind === "compaction")) && <StreamingPlaceholder />}
 		</>
 	);
 }

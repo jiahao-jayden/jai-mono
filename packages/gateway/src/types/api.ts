@@ -1,5 +1,13 @@
 export type { EnrichedModelInfo as ProviderModel } from "@jayden/jai-ai";
-export type { ProviderSettings, SessionInfo } from "@jayden/jai-coding-agent";
+export type { CompactionMarker, ProviderSettings, SessionInfo } from "@jayden/jai-coding-agent";
+
+import type { Message } from "@jayden/jai-ai";
+import type { CompactionMarker } from "@jayden/jai-coding-agent";
+
+export interface MessagesResponse {
+	messages: Message[];
+	compactions: CompactionMarker[];
+}
 
 export interface ConfigResponse {
 	model: string;

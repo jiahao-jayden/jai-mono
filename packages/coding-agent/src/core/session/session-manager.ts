@@ -1,12 +1,12 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "@jayden/jai-ai";
-import { JsonlSessionStore, type MessageEntry } from "@jayden/jai-session";
+import { JsonlSessionStore } from "@jayden/jai-session";
 import { createDefaultTools } from "../../tools/index.js";
 import type { Settings } from "../config/settings.js";
 import { SettingsManager } from "../config/settings.js";
 import { Workspace } from "../config/workspace.js";
-import { AgentSession } from "./agent-session.js";
+import { AgentSession, type CompactionMarker, extractHistory } from "./agent-session.js";
 import { SessionIndex, type SessionInfo } from "./session-index.js";
 
 export type SessionManagerConfig = {
@@ -126,9 +126,9 @@ export class SessionManager {
 		return this.index.list(options);
 	}
 
-	async readMessages(sessionId: string): Promise<Message[] | null> {
+	async readMessages(sessionId: string): Promise<{ messages: Message[]; compactions: CompactionMarker[] } | null> {
 		const active = this.activeSessions.get(sessionId);
-		if (active) return active.session.getMessages();
+		if (active) return active.session.getHistory();
 
 		const record = this.index.get(sessionId);
 		if (!record) return null;
@@ -139,7 +139,7 @@ export class SessionManager {
 		const entries = store.getAllEntries();
 		await store.close();
 
-		return entries.filter((e): e is MessageEntry => e.type === "message").map((e) => e.message);
+		return extractHistory(entries);
 	}
 
 	async close(sessionId: string): Promise<boolean> {

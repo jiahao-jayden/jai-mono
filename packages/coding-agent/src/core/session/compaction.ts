@@ -1,27 +1,18 @@
 import type { ImageContent, Message, ModelInfo, TextContent, ToolResultMessage, UserMessage } from "@jayden/jai-ai";
 import { streamMessage } from "@jayden/jai-ai";
 
-// ── Constants ─────────────────────────────────────────────────
-
-// Tool names whose results can be compacted (matches createDefaultTools output)
+/** 可被 microcompact 清空的工具集合（对齐 createDefaultTools 的输出）。 */
 const COMPACTABLE_TOOLS = new Set(["FileRead", "FileWrite", "FileEdit", "Bash", "Glob", "Grep"]);
 
 const CLEARED_PLACEHOLDER = "[Tool result cleared to save context]";
 
-/**
- * Reserve this many tokens for the summary output during a compact call.
- * Based on Claude Code's p99.99 of compact summary output being ~17k.
- * See claude-code-analysis/src/services/compact/autoCompact.ts:30.
- */
+/** 一次 compact 调用预留给 summary 输出的 token 数 */
 export const RESERVED_OUTPUT_TOKENS = 20_000;
 
-/**
- * Buffer below the effective context window that triggers full compact.
- * Matches Claude Code's AUTOCOMPACT_BUFFER_TOKENS (13k).
- */
+/** 有效窗口之下再预留的 buffer，超过即触发 full compact。 */
 export const COMPACT_BUFFER_TOKENS = 13_000;
 
-// Microcompact only kicks in when token usage exceeds this fraction of context window
+/** token 使用率超过此比例时才启用 microcompact。 */
 const MICROCOMPACT_THRESHOLD = 0.5;
 
 const COMPACT_SYSTEM_PROMPT = "You are a helpful AI assistant tasked with summarizing conversations.";
@@ -99,7 +90,7 @@ const SUMMARY_EXAMPLE = `Here's an example of how your output should be structur
 5. Problem Solving:
    [Description of solved problems and ongoing troubleshooting]
 
-6. All user messages: 
+6. All user messages:
     - [Detailed non tool use user message]
     - [...]
 
@@ -132,27 +123,42 @@ ${SUMMARY_EXAMPLE}
 
 Please provide your summary based on the conversation so far, following this structure and ensuring precision and thoroughness in your response.${NO_TOOLS_TRAILER}`;
 
-// ── Token window helpers ──────────────────────────────────────
-
 /**
- * Effective usable window for main-loop conversation = contextLimit minus the
- * reserve that a future compact call needs for its own summary output.
+ * 迭代 summary 的增量更新 prompt。当 session 中已存在上一次的 CompactionEntry
+ * 时使用：只把「上次 compact 之后新增的消息」喂给模型，让它把新内容叠加进
+ * 已有 summary，而不是从头重写。
  */
-export function getEffectiveContextWindow(contextLimit: number): number {
+const UPDATE_SUMMARIZATION_PROMPT = `${NO_TOOLS_PREAMBLE}The messages above are NEW conversation messages to incorporate into the existing summary provided in <previous-summary> tags at the end of this prompt.
+
+Produce an updated structured summary that follows the same 9-section shape as the previous summary (Primary Request / Key Technical Concepts / Files and Code Sections / Errors and fixes / Problem Solving / All user messages / Pending Tasks / Current Work / Optional Next Step), wrapped in <analysis> + <summary> blocks.
+
+RULES:
+- PRESERVE all existing information from the previous summary that is still relevant.
+- ADD new progress, decisions, technical concepts, files touched, and user messages from the new messages above.
+- UPDATE the "Pending Tasks" and "Current Work" sections: move items from pending/in-progress to completed when the new messages show they are done.
+- UPDATE "Optional Next Step" based on what the latest messages are actually trying to do.
+- PRESERVE exact file paths, function names, and error strings — do not paraphrase them.
+- You MAY remove items from "Pending Tasks" that are clearly no longer relevant (e.g. user explicitly cancelled them). Do NOT silently drop earlier history just because it hasn't been touched recently.
+
+${ANALYSIS_INSTRUCTION}
+
+${SUMMARY_STRUCTURE}
+
+${SUMMARY_EXAMPLE}${NO_TOOLS_TRAILER}`;
+
+// ── 上下文窗口 ─────────────────────────────────────────────────
+
+/** 有效窗口 = contextLimit 减去给 summary 输出预留的空间。 */
+function getEffectiveContextWindow(contextLimit: number): number {
 	return Math.max(0, contextLimit - RESERVED_OUTPUT_TOKENS);
 }
 
-/**
- * Auto-compact triggers when inputTokens crosses this threshold.
- */
-export function getCompactThreshold(contextLimit: number): number {
+/** auto-compact 触发阈值 = 有效窗口再减去一个安全 buffer。 */
+function getCompactThreshold(contextLimit: number): number {
 	return getEffectiveContextWindow(contextLimit) - COMPACT_BUFFER_TOKENS;
 }
 
-/**
- * Returns true when the input token count exceeds the safe threshold.
- * Threshold = context - reservedSummaryOutput - buffer.
- */
+/** 触发决策的唯一对外入口：inputTokens 越过阈值即返回 true。 */
 export function shouldCompact(inputTokens: number, contextLimit: number): boolean {
 	return inputTokens > getCompactThreshold(contextLimit);
 }
@@ -167,16 +173,12 @@ export type MicrocompactOptions = {
 };
 
 /**
- * Replace old tool_result contents with a placeholder to reduce context size.
+ * 非破坏性地把老的 tool_result 内容替换成占位符以降低上下文体积。
  *
- * Only triggers when token usage exceeds MICROCOMPACT_THRESHOLD (50%) of the
- * context window. Below that threshold, returns the original messages unchanged.
- *
- * Only compacts tool_result messages whose toolName is in the whitelist and
- * that are NOT in the last `keepRecentTurns` turns. A "turn" boundary is
- * defined by each assistant message (assistant + its tool results + next user).
- *
- * Returns a cloned array -- the input is never mutated.
+ * - 仅当 token 使用率超过 MICROCOMPACT_THRESHOLD 时生效；否则原样返回。
+ * - 只处理 toolName 在白名单内、且不在最后 `keepRecentTurns` 个 turn 中的
+ *   tool_result。turn 边界按 assistant 消息切分。
+ * - 返回一个新数组，不修改入参。
  */
 export function microcompact(opts: MicrocompactOptions): Message[] {
 	const { messages, lastInputTokens, contextLimit, keepRecentTurns = 4 } = opts;
@@ -213,15 +215,12 @@ export function microcompact(opts: MicrocompactOptions): Message[] {
 	});
 }
 
-// ── Media stripping ───────────────────────────────────────────
+// ── 媒体剥离 ──────────────────────────────────────────────────
 
 /**
- * Replace image/file blocks with text placeholders so the compact request
- * payload stays small without losing message structure. Mirrors Claude Code's
- * stripImagesFromMessages (services/compact/compact.ts:145-188).
- *
- * Only UserMessage and ToolResultMessage can hold media; AssistantMessage
- * content is text/thinking/tool_call, so it passes through unchanged.
+ * 把 image / file 块替换成文本占位符，保持消息结构不变但大幅缩小 compact
+ * 请求体。只有 UserMessage / ToolResultMessage 可能带媒体，AssistantMessage
+ * 的 content 是 text/thinking/tool_call，直接透传。
  */
 export function stripMediaFromMessages(messages: Message[]): Message[] {
 	return messages.map((msg) => {
@@ -264,34 +263,97 @@ function stripToolResultMessage(msg: ToolResultMessage): ToolResultMessage {
 	return touched ? { ...msg, content: newContent } : msg;
 }
 
-// ── Full compact (LLM summary) ────────────────────────────────
+// ── Full compact（LLM summary） ───────────────────────────────
 
 export type CompactOptions = {
 	messages: Message[];
 	model: ModelInfo | string;
 	baseURL?: string;
 	signal?: AbortSignal;
+	/**
+	 * 传入时走「增量更新」路径：`messages` 只需要包含上次 compact 之后的新
+	 * 消息，`previousSummary` 会内联进 prompt 的 <previous-summary> 标签。
+	 * 不传则走全量重写。
+	 */
+	previousSummary?: string;
 };
 
 /**
- * Generate a structured summary of messages using an LLM call.
- *
- * The original Message[] is passed as conversation (role-preserved) with a
- * final summaryRequest user message carrying the compact prompt. Media is
- * replaced with placeholders but message structure is kept intact so tool_use
- * and tool_result pairings remain valid for the provider SDK.
- *
- * Returns the raw summary text — callers should run it through
- * formatCompactSummary() before persistence to strip the <analysis> scratchpad.
+ * 一次 LLM 调用生成一段消息的结构化 summary。
+ * 媒体被替换成占位符，但 tool_call / tool_result 配对保留以兼容 provider。
+ * 返回模型原始输出，调用方需过 `formatCompactSummary()` 剥掉 <analysis> 再持久化。
  */
 export async function compactMessages(options: CompactOptions): Promise<string> {
-	const { messages, model, baseURL, signal } = options;
+	const promptText = options.previousSummary
+		? `${UPDATE_SUMMARIZATION_PROMPT}\n\n<previous-summary>\n${options.previousSummary}\n</previous-summary>`
+		: COMPACT_USER_PROMPT;
+
+	return runCompactStream({
+		messages: options.messages,
+		promptText,
+		model: options.model,
+		baseURL: options.baseURL,
+		signal: options.signal,
+		errorLabel: "Compaction",
+	});
+}
+
+// ── Turn-prefix 摘要（split-turn 退路） ───────────────────────
+
+/**
+ * 为「被切断的 turn 前缀」生成摘要的 prompt。仅用于最后一个 turn 过大、
+ * 整段留不下的场景：turn 内部找合法切点，后半段原样保留，前半段走此 prompt
+ * 生成独立摘要，让 agent 能从 turn 中段安全续写。
+ */
+const TURN_PREFIX_SUMMARIZATION_PROMPT = `${NO_TOOLS_PREAMBLE}The messages above are the PREFIX of a single turn that was too large to keep verbatim. The SUFFIX (recent messages in this turn) is retained after you finish.
+
+Summarize ONLY what is needed for the agent to continue the suffix without losing context. Respond with a single <summary> block using the following sections:
+
+<summary>
+## Original Request
+[What did the user ask for at the start of this turn?]
+
+## Early Progress
+- [Key actions, files touched, decisions made in the prefix]
+
+## Unresolved State
+- [Anything the suffix must still address: errors surfaced, branches left open, intermediate values needed]
+
+## Context for Suffix
+- [File paths, function names, variable names, error strings the suffix refers back to]
+</summary>${NO_TOOLS_TRAILER}`;
+
+/**
+ * 为 split-turn 场景下被切掉的 turn 前缀生成摘要。与 compactMessages 共用
+ * 同一条流式管线，只是换成 turn-prefix prompt。返回值仍需 formatCompactSummary。
+ */
+export async function generateTurnPrefixSummary(options: CompactOptions): Promise<string> {
+	return runCompactStream({
+		messages: options.messages,
+		promptText: TURN_PREFIX_SUMMARIZATION_PROMPT,
+		model: options.model,
+		baseURL: options.baseURL,
+		signal: options.signal,
+		errorLabel: "Turn-prefix summarization",
+	});
+}
+
+/** compact 系列 LLM 调用的共享流式封装：统一处理媒体剥离、abort、空输出报错。 */
+async function runCompactStream(opts: {
+	messages: Message[];
+	promptText: string;
+	model: ModelInfo | string;
+	baseURL?: string;
+	signal?: AbortSignal;
+	errorLabel: string;
+}): Promise<string> {
+	const { messages, promptText, model, baseURL, signal, errorLabel } = opts;
 
 	const stripped = stripMediaFromMessages(messages);
 
 	const summaryRequest: UserMessage = {
 		role: "user",
-		content: [{ type: "text", text: COMPACT_USER_PROMPT }],
+		content: [{ type: "text", text: promptText }],
 		timestamp: Date.now(),
 	};
 
@@ -316,20 +378,50 @@ export async function compactMessages(options: CompactOptions): Promise<string> 
 	}
 
 	if (!summary.trim()) {
-		throw new Error("Compaction produced empty summary");
+		throw new Error(`${errorLabel} produced empty summary`);
 	}
 
 	return summary;
 }
 
+// ── Split-turn 切点 ───────────────────────────────────────────
+
+/** 最后一个 turn 的起始下标（最后一条 user 消息的位置，无 user 时回落到 0）。 */
+export function findLastTurnStart(messages: Message[]): number {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		if (messages[i].role === "user") return i;
+	}
+	return 0;
+}
+
 /**
- * Strip the <analysis> drafting scratchpad and extract <summary> content.
- * Matches Claude Code's formatCompactSummary (services/compact/prompt.ts:311).
- *
- * - Removes <analysis>...</analysis> entirely.
- * - Replaces <summary>...</summary> with "Summary:\n<content>".
- * - Collapses excessive blank lines.
- * - If neither tag is present, returns the trimmed input unchanged.
+ * 在以 `turnStart` 为起点的 turn 内部寻找合法切点 `k`，同时满足：
+ *  - 前缀 `messages[0..k-1]` 不以带 tool_call 的 assistant 结尾（避免孤儿 tool_call）
+ *  - 后缀 `messages[k..]` 不以 tool_result 开头（避免孤儿 tool_result）
+ *  - 后缀至少保留 `minSuffixCount` 条
+ * 找不到合法切点时返回 null。
+ */
+export function findSplitPointInLastTurn(messages: Message[], turnStart: number, minSuffixCount = 4): number | null {
+	const maxCut = messages.length - minSuffixCount;
+	if (maxCut <= turnStart) return null;
+
+	for (let i = maxCut; i > turnStart; i--) {
+		if (isValidCutPoint(messages, i)) return i;
+	}
+	return null;
+}
+
+function isValidCutPoint(messages: Message[], i: number): boolean {
+	if (i <= 0 || i >= messages.length) return false;
+	if (messages[i].role === "tool_result") return false;
+	const prev = messages[i - 1];
+	if (prev.role === "assistant" && prev.content.some((c) => c.type === "tool_call")) return false;
+	return true;
+}
+
+/**
+ * 剥掉 <analysis> scratchpad、把 <summary>...</summary> 展开为
+ * "Summary:\n<content>"，并压掉多余空行。两个标签都不存在时直接 trim 返回。
  */
 export function formatCompactSummary(raw: string): string {
 	let formatted = raw.replace(/<analysis>[\s\S]*?<\/analysis>/, "");
@@ -346,11 +438,8 @@ export function formatCompactSummary(raw: string): string {
 }
 
 /**
- * Extract paths from recent FileRead tool calls in the messages being
- * summarized. Used for post-compact file-hint injection so the agent knows
- * which files were in focus before context was compacted.
- *
- * Returns de-duplicated paths (last-occurrence wins) up to `limit`.
+ * 从被压缩的消息里抽取近期 FileRead 的路径，用于 compact 后注入文件线索。
+ * 路径去重（保留最后一次出现的位置），最多返回 `limit` 个。
  */
 export function collectRecentFileReadPaths(messages: Message[], limit = 8): string[] {
 	const seen = new Set<string>();
@@ -381,10 +470,12 @@ function extractPath(input: unknown): string | null {
 	return typeof candidate === "string" && candidate.length > 0 ? candidate : null;
 }
 
-// ── Re-exports for tests ──────────────────────────────────────
-
 export const __internal = {
 	CLEARED_PLACEHOLDER,
 	MICROCOMPACT_THRESHOLD,
 	COMPACT_USER_PROMPT,
+	TURN_PREFIX_SUMMARIZATION_PROMPT,
+	UPDATE_SUMMARIZATION_PROMPT,
+	getEffectiveContextWindow,
+	getCompactThreshold,
 };
