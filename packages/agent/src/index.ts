@@ -10,6 +10,8 @@ export type {
 	AgentToolResult,
 	BeforeToolCallContext,
 	BeforeToolCallResult,
+	PreModelRequestContext,
+	PreModelRequestResult,
 } from "./types.js";
 export { defineAgentTool } from "./types.js";
 export { createErrorResult, toToolResult } from "./utils.js";

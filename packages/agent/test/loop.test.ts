@@ -1,9 +1,10 @@
-import { describe, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { ModelInfo } from "@jayden/jai-ai";
 import z from "zod";
 import { EventBus } from "../src/events.js";
 import { runAgentLoop } from "../src/loop.js";
 import { defineAgentTool } from "../src/types.js";
+import type { BeforeToolCallResult } from "../src/types.js";
 
 // ── Tools ────────────────────────────────────────────────────
 
@@ -201,4 +202,19 @@ describe("live agent loop", () => {
 		},
 		120_000,
 	);
+});
+
+describe("BeforeToolCallResult · extended shape (compile-time)", () => {
+	test("accepts skip+result", () => {
+		const r: BeforeToolCallResult = { skip: true, result: { content: [{ type: "text", text: "x" }] } };
+		expect(r.skip).toBe(true);
+	});
+	test("accepts input override", () => {
+		const r: BeforeToolCallResult = { input: { foo: "bar" } };
+		expect(r.input).toEqual({ foo: "bar" });
+	});
+	test("accepts legacy block+reason", () => {
+		const r: BeforeToolCallResult = { block: true, reason: "no" };
+		expect(r.block).toBe(true);
+	});
 });

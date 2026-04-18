@@ -18,10 +18,13 @@ import {
 	type SessionStore,
 } from "@jayden/jai-session";
 import { NamedError } from "@jayden/jai-utils";
+import { join } from "node:path";
 import z from "zod";
 import { processAttachments } from "../attachments/processor.js";
 import type { RawAttachment } from "../attachments/types.js";
 import type { ResolvedPrompts, Workspace } from "../config/workspace.js";
+import { loadPluginsFromDirs, type LoadResult } from "../../plugin/loader.js";
+import type { PluginMeta, RegisteredCommand } from "../../plugin/types.js";
 import { buildSystemPrompt } from "../prompt/builder.js";
 import { buildTitleInput, generateTitle } from "../prompt/title.js";
 import {
@@ -121,6 +124,8 @@ export class AgentSession {
 
 	private prompts!: ResolvedPrompts;
 
+	private plugins?: LoadResult;
+
 	private firstUserInput: { text: string; attachments?: RawAttachment[] } | null = null;
 
 	private constructor(config: SessionConfig) {
@@ -161,6 +166,7 @@ export class AgentSession {
 		this.lastEntryId = headerId;
 
 		this.prompts = await this.workspace.loadPrompts();
+		await this.loadPlugins();
 		this.wireEventPipeline();
 	}
 
@@ -175,7 +181,18 @@ export class AgentSession {
 		this.lastEntryId = entries[entries.length - 1].id;
 
 		this.prompts = await this.workspace.loadPrompts();
+		await this.loadPlugins();
 		this.wireEventPipeline();
+	}
+
+	private async loadPlugins(): Promise<void> {
+		this.plugins = await loadPluginsFromDirs([
+			{ path: join(this.workspace.cwd, ".jai", "plugins"), scope: "project" },
+			{ path: join(this.workspace.jaiHome, "plugins"), scope: "user" },
+		]);
+		for (const err of this.plugins.errors) {
+			console.warn(`[plugin:${err.pluginName}] load error in ${err.dir}: ${err.message}`);
+		}
 	}
 
 	async chat(
@@ -198,7 +215,16 @@ export class AgentSession {
 				this.firstUserInput = { text, attachments: options?.attachments };
 			}
 
-			const content: (TextContent | ImageContent | FileContent)[] = [{ type: "text", text }];
+			// Command expansion: if text matches a plugin command, replace with expanded prompt
+			let effectiveText = text;
+			let originalCommand: string | undefined;
+			const expansion = await this.tryExpandCommand(text);
+			if (expansion) {
+				effectiveText = expansion.expanded;
+				originalCommand = expansion.originalCommand;
+			}
+
+			const content: (TextContent | ImageContent | FileContent)[] = [{ type: "text", text: effectiveText }];
 
 			if (options?.attachments?.length) {
 				const modelRef = options?.model ?? this.config.model;
@@ -218,7 +244,7 @@ export class AgentSession {
 				content,
 				timestamp: Date.now(),
 			};
-			await this.persistMessage(userMsg);
+			await this.persistMessage(userMsg, originalCommand ? { originalCommand } : undefined);
 
 			const modelRef = options?.model ?? this.config.model;
 			const modelInfo =
@@ -238,13 +264,16 @@ export class AgentSession {
 				prompts: this.prompts,
 			});
 
+			const preToolCall = this.getCombinedPreToolCall();
+			const preModelRequest = this.getCombinedPreModelRequest();
+
 			const result = await runAgentLoop({
 				messages,
 				model: modelRef,
 				baseURL: options?.baseURL ?? this.config.baseURL,
 				reasoningEffort: options?.reasoningEffort,
 				systemPrompt,
-				tools: this.config.tools,
+				tools: [...this.config.tools, ...(this.plugins?.registry.listTools() ?? [])],
 				signal: this.abortController.signal,
 				events: this.eventBus,
 				maxIterations: this.config.maxIterations,
@@ -254,6 +283,8 @@ export class AgentSession {
 						lastInputTokens: this.lastInputTokens,
 						contextLimit,
 					}),
+				...(preToolCall && { beforeToolCall: preToolCall as never }),
+				...(preModelRequest && { preModelRequest: preModelRequest as never }),
 			});
 
 			// loop 结束后兜底：token 逼近上限则主动压一次，避免下一次 chat 炸掉。
@@ -312,6 +343,18 @@ export class AgentSession {
 		if (this.compactFailCount >= AgentSession.MAX_COMPACT_FAILURES) return;
 		if (inputTokens <= 0) return;
 		if (!shouldCompact(inputTokens, modelInfo.limit.context)) return;
+
+		// Plugin preCompact hook
+		const preCompact = this.getCombinedPreCompact();
+		if (preCompact) {
+			const hookResult = await preCompact({
+				sessionId: this.sessionId,
+				messageCount: this.store.getAllEntries().filter((e) => e.type === "message").length,
+				inputTokens,
+				contextLimit: modelInfo.limit.context,
+			});
+			if (hookResult?.skip) return;
+		}
 
 		const branch = this.store.getBranch(this.lastEntryId);
 		const messageEntries = branch.filter((e): e is MessageEntry => e.type === "message");
@@ -388,7 +431,10 @@ export class AgentSession {
 		});
 	}
 
-	private async persistMessage(message: Message): Promise<void> {
+	private async persistMessage(
+		message: Message,
+		meta?: { originalCommand?: string },
+	): Promise<void> {
 		const entryId = this.store.nextId();
 		await this.store.append({
 			type: "message",
@@ -396,8 +442,77 @@ export class AgentSession {
 			parentId: this.lastEntryId,
 			timestamp: message.timestamp,
 			message,
+			...(meta && { meta }),
 		});
 		this.lastEntryId = entryId;
+	}
+
+	listPluginCommands(): RegisteredCommand[] {
+		return this.plugins?.registry.listCommands() ?? [];
+	}
+
+	listPluginMetas(): PluginMeta[] {
+		return this.plugins?.loaded.map((p) => p.meta) ?? [];
+	}
+
+	/**
+	 * If text starts with /<plugin:cmd> and matches a registered command,
+	 * returns { expanded, originalCommand }. Otherwise returns null.
+	 *
+	 * Currently only supports prompt-template commands (.md), which register handlers
+	 * that call `ctx.sendUserMessage(expanded)`. We intercept that call and return
+	 * the expanded text instead of actually sending.
+	 */
+	async tryExpandCommand(
+		text: string,
+	): Promise<{ expanded: string; originalCommand: string } | null> {
+		if (!text.startsWith("/")) return null;
+		const spaceIdx = text.indexOf(" ");
+		const cmdName = spaceIdx === -1 ? text.slice(1) : text.slice(1, spaceIdx);
+		const args = spaceIdx === -1 ? "" : text.slice(spaceIdx + 1);
+
+		const cmd = this.plugins?.registry.findCommand(cmdName);
+		if (!cmd) return null;
+
+		let captured: string | null = null;
+		await cmd.handler(args, {
+			sessionId: this.sessionId,
+			workspaceId: this.workspace.workspaceId,
+			meta: cmd.meta,
+			sendUserMessage: async (expanded: string) => {
+				captured = expanded;
+			},
+		});
+
+		if (captured === null) return null;
+		return { expanded: captured, originalCommand: text };
+	}
+
+	/** @internal — used by chat() to pass into runAgentLoop; exposed for tests */
+	getCombinedPreToolCall() {
+		if (!this.plugins) return undefined;
+		return this.plugins.registry.buildPreToolCall({
+			sessionId: this.sessionId,
+			workspaceId: this.workspace.workspaceId,
+		});
+	}
+
+	/** @internal */
+	getCombinedPreModelRequest() {
+		if (!this.plugins) return undefined;
+		return this.plugins.registry.buildPreModelRequest({
+			sessionId: this.sessionId,
+			workspaceId: this.workspace.workspaceId,
+		});
+	}
+
+	/** @internal */
+	getCombinedPreCompact() {
+		if (!this.plugins) return undefined;
+		return this.plugins.registry.buildPreCompact({
+			sessionId: this.sessionId,
+			workspaceId: this.workspace.workspaceId,
+		});
 	}
 }
 

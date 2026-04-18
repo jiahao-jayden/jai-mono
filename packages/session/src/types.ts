@@ -16,6 +16,9 @@ export type MessageEntry = {
 	parentId: string;
 	timestamp: number;
 	message: Message;
+	meta?: {
+		originalCommand?: string;
+	};
 };
 
 export type CompactionEntry = {

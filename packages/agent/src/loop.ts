@@ -17,6 +17,8 @@ import type {
 	AgentToolResult,
 	BeforeToolCallContext,
 	BeforeToolCallResult,
+	PreModelRequestContext,
+	PreModelRequestResult,
 } from "./types.js";
 import { createErrorResult, toToolResult } from "./utils.js";
 
@@ -35,6 +37,9 @@ export type AgentLoopOptions = {
 	beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;
 	afterToolCall?: (ctx: AfterToolCallContext) => Promise<AfterToolCallResult | undefined>;
 	contextTransform?: (messages: Message[]) => Promise<Message[]>;
+	preModelRequest?: (
+		ctx: PreModelRequestContext,
+	) => Promise<PreModelRequestResult | undefined> | PreModelRequestResult | undefined;
 };
 
 /**
@@ -67,13 +72,18 @@ export async function runAgentLoop(options: AgentLoopOptions) {
 		if (signal?.aborted) break;
 		events?.emit({ type: "turn_start" });
 
-		const transformedMessages = (await options?.contextTransform?.(messages)) ?? messages;
+		const baseCtx: PreModelRequestContext = {
+			messages: (await options?.contextTransform?.(messages)) ?? messages,
+			systemPrompt,
+			tools,
+		};
+		const preResult = await options.preModelRequest?.(baseCtx);
 		const streamInput = {
 			model,
 			baseURL,
-			messages: transformedMessages,
-			systemPrompt,
-			tools,
+			messages: preResult?.messages ?? baseCtx.messages,
+			systemPrompt: preResult?.systemPrompt ?? baseCtx.systemPrompt,
+			tools: preResult?.tools ?? baseCtx.tools,
 			abortSignal: signal,
 			reasoningEffort,
 		};
@@ -172,25 +182,31 @@ async function prepareAndExecute(
 		return createErrorResult(`Tool "${call.toolName}" not found`);
 	}
 
+	const beforeResult = await beforeToolCall?.({
+		toolCallId: call.toolCallId,
+		toolName: call.toolName,
+		args: call.input,
+	});
+
+	// Priority: skip+result > input rewrite > legacy block > passthrough
+	if (beforeResult?.skip) {
+		return beforeResult.result ?? createErrorResult("Plugin requested skip but provided no result");
+	}
+
+	if (beforeResult?.block) {
+		return createErrorResult(beforeResult.reason ?? "Tool call blocked");
+	}
+
+	const effectiveInput = beforeResult?.input ?? call.input;
+
 	try {
 		if (tool.validate) {
-			const validationError = tool.validate(call.input);
+			const validationError = tool.validate(effectiveInput);
 			if (validationError) {
 				return createErrorResult(validationError);
 			}
 		}
-
-		const beforeResult = await beforeToolCall?.({
-			toolCallId: call.toolCallId,
-			toolName: call.toolName,
-			args: call.input,
-		});
-
-		if (beforeResult?.block) {
-			return createErrorResult(beforeResult.reason ?? "Tool call blocked");
-		}
-
-		const raw = await tool.execute(call.input, signal);
+		const raw = await tool.execute(effectiveInput, signal);
 		return toToolResult(raw);
 	} catch (err) {
 		return createErrorResult(err instanceof Error ? err.message : String(err));

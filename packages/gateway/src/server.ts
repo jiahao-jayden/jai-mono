@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { configRoutes } from "./routes/config.js";
 import { healthRoutes } from "./routes/health.js";
+import { pluginRoutes } from "./routes/plugins.js";
 import { sessionRoutes } from "./routes/session.js";
 import { workspaceRoutes } from "./routes/workspace.js";
 
@@ -32,6 +33,7 @@ export class GatewayServer {
 		app.route("/", configRoutes(manager));
 		app.route("/", sessionRoutes(manager));
 		app.route("/", workspaceRoutes(manager));
+		app.route("/", pluginRoutes(manager));
 
 		return new GatewayServer(app, manager);
 	}

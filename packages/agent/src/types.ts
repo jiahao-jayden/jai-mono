@@ -1,6 +1,7 @@
 import type {
 	AssistantMessage,
 	ImageContent,
+	Message,
 	StreamEvent,
 	TextContent,
 	ToolDefinition,
@@ -41,6 +42,12 @@ export type BeforeToolCallContext = {
 };
 
 export type BeforeToolCallResult = {
+	/** Skip real tool execution and use this result instead */
+	skip?: boolean;
+	result?: AgentToolResult;
+	/** Rewrite tool input before execution */
+	input?: unknown;
+	/** Legacy: block with reason (rendered as error tool result) */
 	block?: boolean;
 	reason?: string;
 };
@@ -60,3 +67,15 @@ export type AfterToolCallResult = {
 export function defineAgentTool<TParams extends z.ZodType>(config: AgentTool<TParams>): AgentTool<TParams> {
 	return config;
 }
+
+export type PreModelRequestContext = {
+	messages: Message[];
+	systemPrompt?: string;
+	tools: AgentTool[];
+};
+
+export type PreModelRequestResult = {
+	messages?: Message[];
+	systemPrompt?: string;
+	tools?: AgentTool[];
+};
