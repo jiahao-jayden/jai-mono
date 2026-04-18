@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { PluginRegistry } from "../../src/plugin/registry.js";
+import { PluginRegistry } from "../../src/plugin/host/registry.js";
 import type { PluginMeta } from "../../src/plugin/types.js";
 
 const meta = (name: string): PluginMeta => ({

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { loadPluginsFromDirs } from "../../src/plugin/loader.js";
+import { loadPluginsFromDirs } from "../../src/plugin/host/loader.js";
 import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

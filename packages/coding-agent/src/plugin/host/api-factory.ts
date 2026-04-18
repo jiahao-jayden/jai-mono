@@ -7,7 +7,7 @@ import type {
   PreCompactHandler,
   PreModelRequestHandler,
   PreToolCallHandler,
-} from "./types.js";
+} from "../types.js";
 
 export function createPluginAPI(registry: PluginRegistry, meta: PluginMeta): PluginAPI {
   const warn = (msg: string) => console.warn(`[plugin:${meta.name}] ${msg}`);

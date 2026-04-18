@@ -5,7 +5,7 @@ import { createPluginAPI } from "./api-factory.js";
 import { expandTemplate, loadCommandTemplatesFromDir } from "./commands.js";
 import { loadManifest, type PluginManifest } from "./manifest.js";
 import { PluginRegistry } from "./registry.js";
-import type { PluginCommandContext, PluginFactory, PluginMeta } from "./types.js";
+import type { PluginCommandContext, PluginFactory, PluginMeta } from "../types.js";
 import type { Dirent } from "node:fs";
 
 export type ScanDir = { path: string; scope: "project" | "user" };

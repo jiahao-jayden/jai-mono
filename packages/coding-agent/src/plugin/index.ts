@@ -1,5 +1,5 @@
 // packages/coding-agent/src/plugin/index.ts
-export { definePlugin } from "./define.js";
+export { definePlugin } from "./sdk/define.js";
 export type {
   PluginAPI,
   PluginContext,

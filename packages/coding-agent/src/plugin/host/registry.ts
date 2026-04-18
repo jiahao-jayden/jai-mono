@@ -9,7 +9,7 @@ import type {
   PreModelRequestResult,
   PreToolCallHandler,
   RegisteredCommand,
-} from "./types.js";
+} from "../types.js";
 
 type Bound<T> = { meta: PluginMeta; handler: T };
 

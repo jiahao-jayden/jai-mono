@@ -23,7 +23,7 @@ import z from "zod";
 import { processAttachments } from "../attachments/processor.js";
 import type { RawAttachment } from "../attachments/types.js";
 import type { ResolvedPrompts, Workspace } from "../config/workspace.js";
-import { loadPluginsFromDirs, type LoadResult } from "../../plugin/loader.js";
+import { loadPluginsFromDirs, type LoadResult } from "../../plugin/host/loader.js";
 import type { PluginMeta, RegisteredCommand } from "../../plugin/types.js";
 import { buildSystemPrompt } from "../prompt/builder.js";
 import { buildTitleInput, generateTitle } from "../prompt/title.js";

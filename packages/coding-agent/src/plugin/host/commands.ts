@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import { join } from "node:path";
-import { parseFrontmatter } from "../utils/frontmatter.js";
+import { parseFrontmatter } from "../../utils/frontmatter.js";
 
 export type CommandTemplate = {
   name: string;

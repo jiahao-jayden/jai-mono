@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { manifestSchema, loadManifest } from "../../src/plugin/manifest.js";
+import { manifestSchema, loadManifest } from "../../src/plugin/host/manifest.js";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { createPluginAPI } from "../../src/plugin/api-factory.js";
-import { PluginRegistry } from "../../src/plugin/registry.js";
+import { createPluginAPI } from "../../src/plugin/host/api-factory.js";
+import { PluginRegistry } from "../../src/plugin/host/registry.js";
 import type { PluginMeta } from "../../src/plugin/types.js";
 
 const meta: PluginMeta = { name: "demo", version: "1.0.0", rootPath: "/tmp/demo", scope: "user" };

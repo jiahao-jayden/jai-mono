@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { loadCommandTemplatesFromDir, expandTemplate } from "../../src/plugin/commands.js";
+import { loadCommandTemplatesFromDir, expandTemplate } from "../../src/plugin/host/commands.js";
 import { mkdtemp, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
