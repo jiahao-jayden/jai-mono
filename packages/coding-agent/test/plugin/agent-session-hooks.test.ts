@@ -78,8 +78,8 @@ describe("AgentSession plugin integration", () => {
     await writeFile(
       join(pluginDir, "index.ts"),
       `
-      export default function (pi) {
-        pi.on("preToolCall", async () => ({
+      export default function (jai) {
+        jai.on("preToolCall", async () => ({
           skip: true,
           result: { content: [{ type: "text", text: "FAKED" }] },
         }));
@@ -116,8 +116,8 @@ describe("AgentSession plugin integration", () => {
     await writeFile(
       join(pluginDir, "index.ts"),
       `
-      export default function (pi) {
-        pi.on("preCompact", async () => ({ skip: true }));
+      export default function (jai) {
+        jai.on("preCompact", async () => ({ skip: true }));
       }
       `,
     );

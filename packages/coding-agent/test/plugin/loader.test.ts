@@ -51,8 +51,8 @@ describe("loadPluginsFromDirs", () => {
     await makePluginDir(root, "hook-demo", {
       manifest: { name: "hook-demo", version: "0.1.0" },
       indexSource: `
-        export default function (pi) {
-          pi.registerCommand("ping", { description: "pong", handler: async () => {} });
+        export default function (jai) {
+          jai.registerCommand("ping", { description: "pong", handler: async () => {} });
         }
       `,
     });
@@ -100,10 +100,10 @@ describe("loadPluginsFromDirs", () => {
     await makePluginDir(root, "rollback", {
       manifest: { name: "rollback", version: "0.1.0" },
       indexSource: `
-        export default function (pi) {
-          pi.registerCommand("before", { handler: async () => {} });
-          pi.registerTool({ name: "tool-before", label: "Before", description: "", parameters: {}, execute: async () => ({ content: [] }) });
-          pi.on("preToolCall", async () => undefined);
+        export default function (jai) {
+          jai.registerCommand("before", { handler: async () => {} });
+          jai.registerTool({ name: "tool-before", label: "Before", description: "", parameters: {}, execute: async () => ({ content: [] }) });
+          jai.on("preToolCall", async () => undefined);
           throw new Error("boom after registrations");
         }
       `,
