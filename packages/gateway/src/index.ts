@@ -1,6 +1,5 @@
-/** @deprecated Use SessionInfo instead */
-export type { SessionInfo, SessionInfo as SessionRecord } from "@jayden/jai-coding-agent";
-export { SessionIndex, SessionManager, type SessionManagerConfig } from "@jayden/jai-coding-agent";
+export type { SessionInfo } from "@jayden/jai-coding-agent";
+export { SessionManager, type SessionManagerConfig } from "@jayden/jai-coding-agent";
 export { EventAdapter } from "./events/adapter.js";
 export { type AGUIEvent, AGUIEventType } from "./events/types.js";
 export { type GatewayOptions, GatewayServer } from "./server.js";
