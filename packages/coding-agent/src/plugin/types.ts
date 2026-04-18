@@ -103,4 +103,4 @@ export interface PluginAPI {
 }
 
 /** Plugin factory signature */
-export type PluginFactory = (pi: PluginAPI) => void | Promise<void>;
+export type PluginFactory = (jai: PluginAPI) => void | Promise<void>;
