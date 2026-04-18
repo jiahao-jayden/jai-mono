@@ -1,0 +1,27 @@
+{
+	"model": "test/mock-model",
+	"provider": "test",
+	"maxIterations": 3,
+	"language": "en",
+	"providers": {
+		"test": {
+			"enabled": true,
+			"api_base": "http://mock.local",
+			"api_format": "openai-compatible",
+			"api_key": "sk-test",
+			"models": [
+				{
+					"id": "mock-model",
+					"capabilities": {
+						"reasoning": false,
+						"toolCall": true,
+						"structuredOutput": false,
+						"input": { "text": true, "image": false, "audio": false, "video": false, "pdf": false },
+						"output": { "text": true, "image": false }
+					},
+					"limit": { "context": 128000, "output": 4096 }
+				}
+			]
+		}
+	}
+}
