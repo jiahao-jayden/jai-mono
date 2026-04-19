@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -59,10 +60,14 @@ export async function* streamMessage(input: StreamMessageInput): AsyncGenerator<
 	const temp = ProviderTransform.temperature(modelInfo);
 	const tp = ProviderTransform.topP(modelInfo);
 
+	const normalized = normalizeMessages(input.messages);
+	const convertedMessages = convertMessages(normalized, capabilities);
+
+	let rawError: unknown;
 	const result = streamText({
 		model: llmModel,
 		system: input.systemPrompt,
-		messages: convertMessages(normalizeMessages(input.messages), capabilities),
+		messages: convertedMessages,
 		tools,
 		abortSignal: input.abortSignal,
 		maxRetries: input.maxRetries ?? 2,
@@ -70,6 +75,10 @@ export async function* streamMessage(input: StreamMessageInput): AsyncGenerator<
 		...(temp !== undefined && { temperature: temp }),
 		...(tp !== undefined && { topP: tp }),
 		providerOptions: wrappedOpts,
+		onError({ error }) {
+			rawError = error;
+			console.error("[ai] provider error:", inspect(error, { depth: 5, getters: true }));
+		},
 	});
 
 	yield { type: "message_start" };
@@ -145,8 +154,9 @@ export async function* streamMessage(input: StreamMessageInput): AsyncGenerator<
 			}
 
 			case "error": {
-				const message = chunk.error instanceof Error ? chunk.error.message : String(chunk.error);
-				yield { type: "error", error: new Error(message, { cause: chunk.error }) };
+				const original = rawError ?? chunk.error;
+				const message = formatProviderError(original);
+				yield { type: "error", error: new Error(message, { cause: original }) };
 				return;
 			}
 		}
@@ -213,6 +223,9 @@ function normalizeMessages(messages: Message[]): Message[] {
 	const result: Message[] = [];
 	let pendingToolCalls: ToolCall[] = [];
 	const seenToolResultIds = new Set<string>();
+	// 全程累积所有出现过的 assistant tool_call id；用于判断 tool_result 是否「孤儿」
+	// （前面没有任何 assistant 发起过对应的 tool_call）。
+	const knownToolCallIds = new Set<string>();
 
 	function flushOrphans() {
 		for (const tc of pendingToolCalls) {
@@ -242,10 +255,22 @@ function normalizeMessages(messages: Message[]): Message[] {
 			const toolCalls = msg.content.filter((b): b is ToolCall => b.type === "tool_call");
 			if (toolCalls.length > 0) {
 				pendingToolCalls = toolCalls;
+				for (const tc of toolCalls) knownToolCallIds.add(tc.toolCallId);
 			}
 
 			result.push(msg);
 		} else if (msg.role === "tool_result") {
+			// 兜底：如果上下文里没有任何 assistant 发起过这个 tool_call（典型场景：
+			// 历史 jsonl 因为旧版 race condition 导致 parentId 链丢失了 assistant
+			// tool_calls 那条 entry），就丢弃这条孤儿 tool_result —— 否则会触发
+			// provider 报 "tool result's tool id not found"。
+			if (!knownToolCallIds.has(msg.toolCallId)) {
+				console.warn(
+					`[ai] dropping orphan tool_result (toolCallId=${msg.toolCallId}, toolName=${msg.toolName}) ` +
+						`— no preceding assistant tool_call found in history`,
+				);
+				continue;
+			}
 			seenToolResultIds.add(msg.toolCallId);
 			result.push(msg);
 		} else {
@@ -446,3 +471,60 @@ function convertUsage(usage: {
 // ── Errors ────────────────────────────────────────────────────
 
 const BaseURLRequiredError = NamedError.create("BaseURLRequiredError", z.string());
+
+function formatProviderError(error: unknown): string {
+	if (!(error instanceof Error)) return String(error);
+
+	const e = error as Error & {
+		statusCode?: number;
+		url?: string;
+		responseBody?: string;
+		data?: unknown;
+	};
+
+	const parts: string[] = [];
+	if (typeof e.statusCode === "number") parts.push(`HTTP ${e.statusCode}`);
+	if (e.message) parts.push(e.message);
+
+	const detail = extractProviderDetail(e.responseBody, e.data);
+	if (detail) parts.push(detail);
+
+	if (e.url) parts.push(`(${redactUrl(e.url)})`);
+
+	return parts.join(" — ") || e.message || "Unknown provider error";
+}
+
+function extractProviderDetail(responseBody: unknown, data: unknown): string | undefined {
+	const candidates: unknown[] = [];
+	if (typeof responseBody === "string" && responseBody.length > 0) {
+		try {
+			candidates.push(JSON.parse(responseBody));
+		} catch {
+			return responseBody.slice(0, 500);
+		}
+	}
+	if (data !== undefined) candidates.push(data);
+
+	for (const c of candidates) {
+		if (!c || typeof c !== "object") continue;
+		const obj = c as Record<string, unknown>;
+		const err = (obj.error ?? obj) as Record<string, unknown> | undefined;
+		if (err && typeof err === "object") {
+			const msg = typeof err.message === "string" ? err.message : undefined;
+			const code = typeof err.code === "string" ? err.code : undefined;
+			const type = typeof err.type === "string" ? err.type : undefined;
+			const tag = [type, code].filter(Boolean).join("/");
+			if (msg) return tag ? `${tag}: ${msg}` : msg;
+		}
+	}
+	return undefined;
+}
+
+function redactUrl(url: string): string {
+	try {
+		const u = new URL(url);
+		return `${u.origin}${u.pathname}`;
+	} catch {
+		return url;
+	}
+}

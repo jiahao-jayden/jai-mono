@@ -2,11 +2,7 @@ import { useEffect } from "react";
 import { ChatArea } from "@/components/chat/chat-area";
 import { FilePanel } from "@/components/file-panel/file-panel";
 import { AppSidebar } from "@/components/shell/app-sidebar";
-import {
-	ResizableHandle,
-	ResizablePanel,
-	ResizablePanelGroup,
-} from "@/components/ui/resizable";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useAppData } from "@/hooks/use-app-data";
 import { useChatStore } from "@/stores/chat";

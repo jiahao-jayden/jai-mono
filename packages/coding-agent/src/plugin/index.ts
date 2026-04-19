@@ -1,20 +1,21 @@
 // packages/coding-agent/src/plugin/index.ts
+
+export { defineAgentTool as defineTool } from "@jayden/jai-agent";
 export { definePlugin } from "./sdk/define.js";
 export type {
-  PluginAPI,
-  PluginContext,
-  PluginCommandContext,
-  PluginMeta,
-  PluginFactory,
-  PreToolCallEvent,
-  PreToolCallResult,
-  PreToolCallHandler,
-  PreModelRequestEvent,
-  PreModelRequestResult,
-  PreModelRequestHandler,
-  PreCompactEvent,
-  PreCompactResult,
-  PreCompactHandler,
-  RegisteredCommand,
+	PluginAPI,
+	PluginCommandContext,
+	PluginContext,
+	PluginFactory,
+	PluginMeta,
+	PreCompactEvent,
+	PreCompactHandler,
+	PreCompactResult,
+	PreModelRequestEvent,
+	PreModelRequestHandler,
+	PreModelRequestResult,
+	PreToolCallEvent,
+	PreToolCallHandler,
+	PreToolCallResult,
+	RegisteredCommand,
 } from "./types.js";
-export { defineAgentTool as defineTool } from "@jayden/jai-agent";

@@ -31,13 +31,7 @@ function sortEntries(entries: FileEntry[]): FileEntry[] {
 	});
 }
 
-const TreeNode = memo(function TreeNode({
-	entry,
-	workspaceId,
-	depth,
-	selectedPath,
-	onSelect,
-}: TreeNodeProps) {
+const TreeNode = memo(function TreeNode({ entry, workspaceId, depth, selectedPath, onSelect }: TreeNodeProps) {
 	const [expanded, setExpanded] = useState(false);
 	const [children, setChildren] = useState<FileEntry[] | null>(entry.children ?? null);
 	const [loading, setLoading] = useState(false);
@@ -91,16 +85,17 @@ const TreeNode = memo(function TreeNode({
 				style={{ paddingLeft: `${leftPad}px` }}
 			>
 				{/* Indent guides */}
-				{depth > 0 && Array.from({ length: depth }, (_, i) => {
-					const key = `guide-${entry.path}-${i}`;
-					return (
-						<span
-							key={key}
-							className="absolute top-0 bottom-0 w-px bg-foreground/6 pointer-events-none"
-							style={{ left: `${i * INDENT_PX + BASE_LEFT + 7}px` }}
-						/>
-					);
-				})}
+				{depth > 0 &&
+					Array.from({ length: depth }, (_, i) => {
+						const key = `guide-${entry.path}-${i}`;
+						return (
+							<span
+								key={key}
+								className="absolute top-0 bottom-0 w-px bg-foreground/6 pointer-events-none"
+								style={{ left: `${i * INDENT_PX + BASE_LEFT + 7}px` }}
+							/>
+						);
+					})}
 
 				{/* Chevron */}
 				{isDir ? (
@@ -123,12 +118,7 @@ const TreeNode = memo(function TreeNode({
 				)}
 
 				{/* Name */}
-				<span className={cn(
-					"truncate leading-none",
-					isDir && "font-medium text-foreground/80",
-				)}>
-					{entry.name}
-				</span>
+				<span className={cn("truncate leading-none", isDir && "font-medium text-foreground/80")}>{entry.name}</span>
 
 				{/* Loading spinner */}
 				{loading && (

@@ -1,6 +1,7 @@
 import type { ModelInfo } from "@jayden/jai-ai";
 import { NamedError } from "@jayden/jai-utils";
 import z from "zod";
+import { PermissionSettingsSchema } from "../../permission/schema.js";
 import { resolveSettingsModel } from "./model-resolver.js";
 import type { Workspace } from "./workspace.js";
 
@@ -67,6 +68,8 @@ const SettingsSchema = z.object({
 	env: z.record(z.string(), z.string()),
 	/** 自定义 provider 配置 */
 	providers: z.record(z.string(), ProviderConfigSchema).optional(),
+	/** 工具调用权限配置（mode + rules） */
+	permission: PermissionSettingsSchema.optional(),
 });
 
 const PartialSettingsSchema = SettingsSchema.partial();

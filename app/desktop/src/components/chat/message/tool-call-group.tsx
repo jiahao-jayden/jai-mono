@@ -1,9 +1,10 @@
 import { CommandLineIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { CheckIcon, ChevronRightIcon, LoaderIcon, TerminalIcon, XIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon, LoaderIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChatMessagePart } from "@/types/chat";
+import { PermissionResolvedTrace } from "./permission-prompt";
 
 type ToolCallData = NonNullable<ChatMessagePart["toolCall"]>;
 
@@ -11,7 +12,10 @@ interface ToolCallGroupProps {
 	tools: ToolCallData[];
 }
 
-function StatusDot({ status }: { status: ToolCallData["status"] }) {
+function StatusDot({ status, awaitingPermission }: { status: ToolCallData["status"]; awaitingPermission?: boolean }) {
+	if (awaitingPermission) {
+		return <span className="size-1.5 rounded-full bg-primary-2/70 animate-pulse" />;
+	}
 	switch (status) {
 		case "running":
 			return <LoaderIcon className="size-3 animate-spin text-muted-foreground/60" />;
@@ -25,9 +29,13 @@ function StatusDot({ status }: { status: ToolCallData["status"] }) {
 }
 
 function summarize(tools: ToolCallData[]): string {
+	const pendingPerm = tools.filter((t) => t.permission?.status === "pending");
 	const running = tools.filter((t) => t.status === "running");
 	const errors = tools.filter((t) => t.status === "error");
 
+	if (pendingPerm.length > 0) {
+		return `Waiting on you · ${pendingPerm[pendingPerm.length - 1].name}`;
+	}
 	if (running.length > 0) {
 		return `Running ${running[running.length - 1].name}...`;
 	}
@@ -38,8 +46,10 @@ function summarize(tools: ToolCallData[]): string {
 }
 
 function ToolCallItem({ tool }: { tool: ToolCallData }) {
+	const awaitingPermission = tool.permission?.status === "pending";
+	const resolvedPermission = tool.permission?.status === "resolved" ? tool.permission : null;
 	const [expanded, setExpanded] = useState(false);
-	const hasDetail = tool.args || tool.result;
+	const hasDetail = tool.args || tool.result || resolvedPermission;
 
 	return (
 		<div>
@@ -50,11 +60,13 @@ function ToolCallItem({ tool }: { tool: ToolCallData }) {
 				className={cn(
 					"flex items-center gap-2 w-full py-1 text-left text-[11px] rounded transition-colors",
 					hasDetail ? "hover:text-muted-foreground/80 cursor-pointer" : "cursor-default",
-					"text-muted-foreground/50",
+					awaitingPermission ? "text-foreground/75" : "text-muted-foreground/50",
 				)}
 			>
-				<StatusDot status={tool.status} />
-				<span className="font-medium truncate flex-1">{tool.name}</span>
+				<StatusDot status={tool.status} awaitingPermission={awaitingPermission} />
+				<span className={cn("font-medium truncate flex-1", awaitingPermission && "text-foreground/85")}>
+					{tool.name}
+				</span>
 				{hasDetail && (
 					<ChevronRightIcon
 						className={cn("size-2.5 shrink-0 transition-transform duration-150", expanded && "rotate-90")}
@@ -69,17 +81,20 @@ function ToolCallItem({ tool }: { tool: ToolCallData }) {
 				)}
 			>
 				<div className="overflow-hidden">
-					<div className="ml-5 mb-1.5 rounded-md bg-muted/30 px-3 py-2 space-y-1.5 text-[11px] font-mono text-muted-foreground/50 leading-relaxed">
-						{tool.args && (
-							<pre className="whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
-								{tryFormatJson(tool.args)}
-							</pre>
-						)}
-						{tool.args && tool.result && <div className="border-t border-muted-foreground/8" />}
-						{tool.result && (
-							<pre className="whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{tool.result}</pre>
-						)}
-					</div>
+					{(tool.args || tool.result) && (
+						<div className="ml-5 mb-1.5 rounded-md bg-muted/30 px-3 py-2 space-y-1.5 text-[11px] font-mono text-muted-foreground/50 leading-relaxed">
+							{tool.args && (
+								<pre className="whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+									{tryFormatJson(tool.args)}
+								</pre>
+							)}
+							{tool.args && tool.result && <div className="border-t border-muted-foreground/8" />}
+							{tool.result && (
+								<pre className="whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{tool.result}</pre>
+							)}
+						</div>
+					)}
+					{resolvedPermission && <PermissionResolvedTrace permission={resolvedPermission} />}
 				</div>
 			</div>
 		</div>
@@ -87,17 +102,25 @@ function ToolCallItem({ tool }: { tool: ToolCallData }) {
 }
 
 export function ToolCallGroup({ tools }: ToolCallGroupProps) {
-	const [expanded, setExpanded] = useState(false);
+	const hasPendingPermission = tools.some((t) => t.permission?.status === "pending");
 	const hasRunning = tools.some((t) => t.status === "running");
+	const [expanded, setExpanded] = useState(false);
 
 	return (
 		<div className="w-full">
 			<button
 				type="button"
 				onClick={() => setExpanded(!expanded)}
-				className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground/50 hover:text-muted-foreground/80 transition-colors py-0.5 rounded"
+				className={cn(
+					"inline-flex items-center gap-1.5 text-[11px] py-0.5 rounded transition-colors",
+					hasPendingPermission
+						? "text-primary-2/80 hover:text-primary-2"
+						: "text-muted-foreground/50 hover:text-muted-foreground/80",
+				)}
 			>
-				{hasRunning ? (
+				{hasPendingPermission ? (
+					<span className="size-1.5 rounded-full bg-primary-2/70 animate-pulse" />
+				) : hasRunning ? (
 					<LoaderIcon className="size-3 animate-spin" />
 				) : (
 					<HugeiconsIcon icon={CommandLineIcon} size={16} strokeWidth={2} />

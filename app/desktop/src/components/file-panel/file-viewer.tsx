@@ -18,10 +18,7 @@ function isVideoMime(mime: string): boolean {
 
 function isTextMime(mime: string): boolean {
 	return (
-		mime.startsWith("text/") ||
-		mime === "application/json" ||
-		mime === "application/xml" ||
-		mime === "image/svg+xml"
+		mime.startsWith("text/") || mime === "application/json" || mime === "application/xml" || mime === "image/svg+xml"
 	);
 }
 
@@ -77,7 +74,6 @@ function getMonacoLang(filePath: string): string {
 	const ext = name.split(".").pop() ?? "";
 	return LANG_MAP[ext] ?? "plaintext";
 }
-
 
 const MIME_MAP: Record<string, string> = {
 	ts: "text/typescript",
@@ -143,9 +139,7 @@ function guessMime(filePath: string): string {
 }
 
 function useIsDark() {
-	const [dark, setDark] = useState(() =>
-		document.documentElement.classList.contains("dark"),
-	);
+	const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
 
 	useEffect(() => {
 		const observer = new MutationObserver(() => {
@@ -161,10 +155,7 @@ function useIsDark() {
 	return dark;
 }
 
-function MonacoViewer({
-	workspaceId,
-	filePath,
-}: { workspaceId: string; filePath: string }) {
+function MonacoViewer({ workspaceId, filePath }: { workspaceId: string; filePath: string }) {
 	const [data, setData] = useState<FileContent | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -199,16 +190,10 @@ function MonacoViewer({
 	}, []);
 
 	if (loading) {
-		return (
-			<div className="flex items-center justify-center h-full text-sm text-muted-foreground/50">
-				Loading...
-			</div>
-		);
+		return <div className="flex items-center justify-center h-full text-sm text-muted-foreground/50">Loading...</div>;
 	}
 	if (error) {
-		return (
-			<div className="p-4 text-sm text-destructive/70">{error}</div>
-		);
+		return <div className="p-4 text-sm text-destructive/70">{error}</div>;
 	}
 	if (!data) return null;
 
@@ -250,26 +235,16 @@ function MonacoViewer({
 	);
 }
 
-function ImageViewer({
-	workspaceId,
-	filePath,
-}: { workspaceId: string; filePath: string }) {
+function ImageViewer({ workspaceId, filePath }: { workspaceId: string; filePath: string }) {
 	const url = gateway.workspace.rawUrl(workspaceId, filePath);
 	return (
 		<div className="flex items-center justify-center p-4 overflow-auto h-full">
-			<img
-				src={url}
-				alt={filePath}
-				className="max-w-full max-h-[70vh] object-contain rounded-lg"
-			/>
+			<img src={url} alt={filePath} className="max-w-full max-h-[70vh] object-contain rounded-lg" />
 		</div>
 	);
 }
 
-function VideoViewer({
-	workspaceId,
-	filePath,
-}: { workspaceId: string; filePath: string }) {
+function VideoViewer({ workspaceId, filePath }: { workspaceId: string; filePath: string }) {
 	const url = gateway.workspace.rawUrl(workspaceId, filePath);
 	return (
 		<div className="flex items-center justify-center p-4 h-full">
@@ -284,9 +259,7 @@ function BinaryViewer({ filePath }: { filePath: string }) {
 	const ext = filePath.split(".").pop()?.toUpperCase() ?? "FILE";
 	return (
 		<div className="flex flex-col items-center justify-center gap-2 p-8 h-full text-muted-foreground/50">
-			<span className="rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wider bg-muted">
-				{ext}
-			</span>
+			<span className="rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wider bg-muted">{ext}</span>
 			<p className="text-sm">Binary file — preview not available</p>
 		</div>
 	);

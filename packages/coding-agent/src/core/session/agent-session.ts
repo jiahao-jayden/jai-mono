@@ -1,4 +1,12 @@
-import { type AgentEvent, type AgentTool, EventBus, runAgentLoop } from "@jayden/jai-agent";
+import { join } from "node:path";
+import {
+	type AgentEvent,
+	type AgentTool,
+	type BeforeToolCallContext,
+	type BeforeToolCallResult,
+	EventBus,
+	runAgentLoop,
+} from "@jayden/jai-agent";
 import type {
 	AssistantMessage,
 	FileContent,
@@ -18,13 +26,15 @@ import {
 	type SessionStore,
 } from "@jayden/jai-session";
 import { NamedError } from "@jayden/jai-utils";
-import { join } from "node:path";
 import z from "zod";
+import { PermissionPolicy } from "../../permission/policy.js";
+import type { PermissionSettings } from "../../permission/schema.js";
+import { PermissionService } from "../../permission/service.js";
+import { type LoadResult, loadPluginsFromDirs } from "../../plugin/host/loader.js";
+import type { PluginMeta, RegisteredCommand } from "../../plugin/types.js";
 import { processAttachments } from "../attachments/processor.js";
 import type { RawAttachment } from "../attachments/types.js";
 import type { ResolvedPrompts, Workspace } from "../config/workspace.js";
-import { loadPluginsFromDirs, type LoadResult } from "../../plugin/host/loader.js";
-import type { PluginMeta, RegisteredCommand } from "../../plugin/types.js";
 import { buildSystemPrompt } from "../prompt/builder.js";
 import { buildTitleInput, generateTitle } from "../prompt/title.js";
 import {
@@ -51,6 +61,8 @@ export type SessionConfig = {
 	tools: AgentTool[];
 	/** agent loop 最大迭代次数 */
 	maxIterations?: number;
+	/** 工具权限：仅 dangerousPaths（额外敏感路径），其余 auto 直接放行 */
+	permissionSettings?: PermissionSettings;
 };
 
 /**
@@ -116,6 +128,10 @@ export class AgentSession {
 
 	private lastEntryId!: string;
 
+	// 串行化所有写入 store 的操作，避免 message_end 事件并发触发 persistMessage
+	// 时多条 entry 共享同一个 parentId（race condition → fork → getBranch 漏 entry）。
+	private writeQueue: Promise<unknown> = Promise.resolve();
+
 	private externalListeners: Array<(event: AgentEvent) => void> = [];
 
 	private compactFailCount = 0;
@@ -125,6 +141,9 @@ export class AgentSession {
 	private prompts!: ResolvedPrompts;
 
 	private plugins?: LoadResult;
+
+	private permissionService = new PermissionService();
+	private permissionPolicy?: PermissionPolicy;
 
 	private firstUserInput: { text: string; attachments?: RawAttachment[] } | null = null;
 
@@ -167,6 +186,7 @@ export class AgentSession {
 
 		this.prompts = await this.workspace.loadPrompts();
 		await this.loadPlugins();
+		this.loadPermissionPolicy();
 		this.wireEventPipeline();
 	}
 
@@ -182,7 +202,17 @@ export class AgentSession {
 
 		this.prompts = await this.workspace.loadPrompts();
 		await this.loadPlugins();
+		this.loadPermissionPolicy();
 		this.wireEventPipeline();
+	}
+
+	private loadPermissionPolicy(): void {
+		const settings = this.config.permissionSettings ?? { dangerousPaths: [] };
+		this.permissionPolicy = new PermissionPolicy({
+			cwd: this.workspace.cwd,
+			settings,
+			service: this.permissionService,
+		});
 	}
 
 	private async loadPlugins(): Promise<void> {
@@ -264,7 +294,7 @@ export class AgentSession {
 				prompts: this.prompts,
 			});
 
-			const preToolCall = this.getCombinedPreToolCall();
+			const preToolCall = this.buildBeforeToolCall();
 			const preModelRequest = this.getCombinedPreModelRequest();
 
 			const result = await runAgentLoop({
@@ -283,7 +313,7 @@ export class AgentSession {
 						lastInputTokens: this.lastInputTokens,
 						contextLimit,
 					}),
-				...(preToolCall && { beforeToolCall: preToolCall as never }),
+				...(preToolCall && { beforeToolCall: preToolCall }),
 				...(preModelRequest && { preModelRequest: preModelRequest as never }),
 			});
 
@@ -319,6 +349,7 @@ export class AgentSession {
 	abort(): void {
 		this.abortController?.abort();
 		this.state = "aborted";
+		this.permissionService.abortAll("session aborted");
 	}
 
 	async close(): Promise<void> {
@@ -392,16 +423,18 @@ export class AgentSession {
 				summary = `${summary}\n\n[Recently viewed files before compaction]\n${list}\n(Their contents are not re-attached — re-read if needed.)`;
 			}
 
-			const compactionId = this.store.nextId();
-			await this.store.append({
-				type: "compaction",
-				id: compactionId,
-				parentId: this.lastEntryId,
-				timestamp: Date.now(),
-				summary,
-				firstKeptEntryId: firstKeptEntry.id,
+			await this.enqueueWrite(async () => {
+				const compactionId = this.store.nextId();
+				await this.store.append({
+					type: "compaction",
+					id: compactionId,
+					parentId: this.lastEntryId,
+					timestamp: Date.now(),
+					summary,
+					firstKeptEntryId: firstKeptEntry.id,
+				});
+				this.lastEntryId = compactionId;
 			});
-			this.lastEntryId = compactionId;
 
 			this.compactFailCount = 0;
 
@@ -417,7 +450,9 @@ export class AgentSession {
 	private wireEventPipeline(): void {
 		this.eventBus.subscribe((event) => {
 			if (event.type === "message_end") {
-				this.persistMessage(event.message);
+				this.persistMessage(event.message).catch((err) => {
+					console.error("[agent-session] persistMessage failed:", err);
+				});
 			}
 
 			// 实时追踪 inputTokens，供 microcompact / maybeCompact 使用（避免滞后一轮）。
@@ -431,20 +466,33 @@ export class AgentSession {
 		});
 	}
 
-	private async persistMessage(
-		message: Message,
-		meta?: { originalCommand?: string },
-	): Promise<void> {
-		const entryId = this.store.nextId();
-		await this.store.append({
-			type: "message",
-			id: entryId,
-			parentId: this.lastEntryId,
-			timestamp: message.timestamp,
-			message,
-			...(meta && { meta }),
+	private persistMessage(message: Message, meta?: { originalCommand?: string }): Promise<void> {
+		return this.enqueueWrite(async () => {
+			const entryId = this.store.nextId();
+			await this.store.append({
+				type: "message",
+				id: entryId,
+				parentId: this.lastEntryId,
+				timestamp: message.timestamp,
+				message,
+				...(meta && { meta }),
+			});
+			this.lastEntryId = entryId;
 		});
-		this.lastEntryId = entryId;
+	}
+
+	/**
+	 * 把一段「读 lastEntryId → store.append → 写 lastEntryId」的写操作排进串行队列。
+	 * 即使调用方不 await，也能保证父子链单调；调用方 await 时拿到本次任务完成的 promise。
+	 * 单次任务失败不会毒化后续任务。
+	 */
+	private enqueueWrite<T>(task: () => Promise<T>): Promise<T> {
+		const next = this.writeQueue.then(task, task);
+		this.writeQueue = next.then(
+			() => {},
+			() => {},
+		);
+		return next;
 	}
 
 	listPluginCommands(): RegisteredCommand[] {
@@ -463,9 +511,7 @@ export class AgentSession {
 	 * that call `ctx.sendUserMessage(expanded)`. We intercept that call and return
 	 * the expanded text instead of actually sending.
 	 */
-	async tryExpandCommand(
-		text: string,
-	): Promise<{ expanded: string; originalCommand: string } | null> {
+	async tryExpandCommand(text: string): Promise<{ expanded: string; originalCommand: string } | null> {
 		if (!text.startsWith("/")) return null;
 		const spaceIdx = text.indexOf(" ");
 		const cmdName = spaceIdx === -1 ? text.slice(1) : text.slice(1, spaceIdx);
@@ -495,6 +541,40 @@ export class AgentSession {
 			sessionId: this.sessionId,
 			workspaceId: this.workspace.workspaceId,
 		});
+	}
+
+	/**
+	 * 把 plugin chain + PermissionPolicy 串成 jai-agent 用的 beforeToolCall。
+	 *
+	 * 顺序：
+	 *   1. plugin chain                    — 用户插件可任意 short-circuit / 改写参数
+	 *   2. PermissionPolicy.dangerHandler  — 内置危险检测：命中即问用户
+	 *
+	 * 任何一步返回非 undefined → 短路。
+	 */
+	private buildBeforeToolCall() {
+		const plugin = this.getCombinedPreToolCall() as
+			| ((ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>)
+			| undefined;
+		const danger = this.permissionPolicy?.dangerHandler;
+
+		const chain = [plugin, danger].filter(
+			(h): h is (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined> => Boolean(h),
+		);
+		if (chain.length === 0) return undefined;
+
+		return async (ctx: BeforeToolCallContext): Promise<BeforeToolCallResult | undefined> => {
+			for (const handler of chain) {
+				const result = await handler(ctx);
+				if (result !== undefined) return result;
+			}
+			return undefined;
+		};
+	}
+
+	/** Gateway 用：订阅 pending 权限请求 / reply / abort。 */
+	getPermissionService(): PermissionService {
+		return this.permissionService;
 	}
 
 	/** @internal */

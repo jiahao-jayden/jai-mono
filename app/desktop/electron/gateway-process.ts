@@ -65,7 +65,27 @@ export class GatewayProcess {
 		});
 
 		this.child.stderr?.on("data", (chunk: Buffer) => {
-			gatewayLog.error(chunk.toString().trimEnd());
+			const text = chunk.toString().trimEnd();
+			if (!text) return;
+			// stderr 不等于 error：Bun/Hono/Vercel SDK 的诊断、console.warn 都走 stderr。
+			// 按行内容判断 level，避免红色刷屏。
+			for (const line of text.split("\n")) {
+				if (!line) continue;
+				const lower = line.toLowerCase();
+				if (
+					lower.includes("error:") ||
+					lower.includes("[error]") ||
+					/^\s*error\b/.test(lower) ||
+					lower.includes("uncaughtexception") ||
+					lower.includes("unhandledrejection")
+				) {
+					gatewayLog.error(line);
+				} else if (lower.includes("warn:") || lower.includes("[warn]") || lower.includes("warning:")) {
+					gatewayLog.warn(line);
+				} else {
+					gatewayLog.info(line);
+				}
+			}
 		});
 
 		this.child.on("exit", (code) => {

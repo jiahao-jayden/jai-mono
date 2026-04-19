@@ -6,6 +6,7 @@ import { Conversation, ConversationContent } from "../ai-elements/conversation";
 import { ChatHeader } from "./chat-header";
 import { EmptyState } from "./empty-state";
 import { ChatInput } from "./input/chat-input";
+import { PermissionBar } from "./message/permission-prompt";
 import { MessageList } from "./message-list";
 
 export function ChatArea() {
@@ -55,7 +56,8 @@ export function ChatArea() {
 							</ConversationContent>
 						</Conversation>
 
-						<div className="px-4 pb-4">
+						<div className="px-4 pb-4 relative">
+							<PermissionBar />
 							<ChatInput className="**:data-[slot=input-group]:rounded-2xl" />
 						</div>
 					</motion.div>

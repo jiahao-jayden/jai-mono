@@ -422,6 +422,77 @@ describe("POST /sessions/:id/message SSE", () => {
 	});
 });
 
+// ── Permission Reply Route Tests ────────────────────────────
+
+describe("POST /sessions/:id/permission/:reqId/reply", () => {
+	test("returns 404 for unknown session", async () => {
+		const { app } = await createTestApp();
+		const res = await app.request("/sessions/nope/permission/perm_x/reply", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ kind: "allow_once" }),
+		});
+		expect(res.status).toBe(404);
+	});
+
+	test("returns 400 for invalid kind", async () => {
+		const { app } = await createTestApp();
+		const create = await app.request("/sessions", { method: "POST" });
+		const { sessionId } = await create.json();
+
+		const res = await app.request(`/sessions/${sessionId}/permission/perm_x/reply`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ kind: "yolo" }),
+		});
+		expect(res.status).toBe(400);
+	});
+
+	test("returns 404 when reqId not pending", async () => {
+		const { app } = await createTestApp();
+		const create = await app.request("/sessions", { method: "POST" });
+		const { sessionId } = await create.json();
+
+		const res = await app.request(`/sessions/${sessionId}/permission/perm_missing/reply`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ kind: "allow_once" }),
+		});
+		expect(res.status).toBe(404);
+	});
+
+	test("resolves a pending request with the chosen decision", async () => {
+		const { app, manager } = await createTestApp();
+		const create = await app.request("/sessions", { method: "POST" });
+		const { sessionId } = await create.json();
+
+		const session = await manager.getOrRestore(sessionId);
+		expect(session).toBeTruthy();
+		const service = session?.getPermissionService();
+		expect(service).toBeTruthy();
+
+		const { id, promise } = service?.request({
+			toolCallId: "tc_1",
+			toolName: "FileWrite",
+			request: {
+				category: "external_write",
+				reason: "test",
+				muteKey: "k1",
+			},
+		}) as { id: string; promise: Promise<{ kind: string }> };
+
+		const res = await app.request(`/sessions/${sessionId}/permission/${id}/reply`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ kind: "allow_session" }),
+		});
+		expect(res.status).toBe(200);
+
+		const decision = await promise;
+		expect(decision.kind).toBe("allow_session");
+	});
+});
+
 // ── Workspace Routes ─────────────────────────────────────────
 
 describe("Workspace Routes", () => {

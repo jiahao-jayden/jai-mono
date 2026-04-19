@@ -123,6 +123,7 @@ export class SessionManager {
 			baseURL: this.settings.get("baseURL"),
 			tools,
 			maxIterations: this.settings.get("maxIterations"),
+			permissionSettings: this.settings.get("permission"),
 		});
 
 		const sessionId = session.getSessionId();
@@ -170,6 +171,7 @@ export class SessionManager {
 			tools,
 			sessionId,
 			maxIterations: this.settings.get("maxIterations"),
+			permissionSettings: this.settings.get("permission"),
 		});
 
 		this.activeSessions.set(sessionId, { session, workspaceId: record.workspaceId });

@@ -1,17 +1,7 @@
 import type { FileEntry } from "@jayden/jai-gateway";
-import {
-	ArrowLeftIcon,
-	ArrowRightIcon,
-	FilePlusIcon,
-	FolderOpenIcon,
-	XIcon,
-} from "lucide-react";
+import { ArrowLeftIcon, ArrowRightIcon, FilePlusIcon, FolderOpenIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-	ResizableHandle,
-	ResizablePanel,
-	ResizablePanelGroup,
-} from "@/components/ui/resizable";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
 import { gateway } from "@/services/gateway";
 import { useChatStore } from "@/stores/chat";
@@ -71,12 +61,7 @@ function TreeContent({
 						<span className="text-[12px]">No files</span>
 					</div>
 				) : (
-					<FileTree
-						workspaceId={workspaceId}
-						entries={entries}
-						selectedPath={selectedPath}
-						onSelect={onSelect}
-					/>
+					<FileTree workspaceId={workspaceId} entries={entries} selectedPath={selectedPath} onSelect={onSelect} />
 				)}
 			</div>
 		</div>
@@ -84,8 +69,7 @@ function TreeContent({
 }
 
 export function FilePanel() {
-	const { workspaceId, selectedPath, openFile, setOpen } =
-		useFilePanelStore();
+	const { workspaceId, selectedPath, openFile, setOpen } = useFilePanelStore();
 	const [entries, setEntries] = useState<FileEntry[]>([]);
 	const [loading, setLoading] = useState(true);
 
@@ -138,8 +122,7 @@ export function FilePanel() {
 	);
 
 	const canGoBack = historyIdxRef.current > 0;
-	const canGoForward =
-		historyIdxRef.current < historyRef.current.length - 1;
+	const canGoForward = historyIdxRef.current < historyRef.current.length - 1;
 
 	const goBack = useCallback(() => {
 		if (historyIdxRef.current <= 0) return;
@@ -166,10 +149,7 @@ export function FilePanel() {
 	return (
 		<div className="flex flex-col h-full rounded-lg bg-card overflow-hidden">
 			{/* Top bar */}
-			<div
-				className="flex items-center gap-1 px-2 h-11 shrink-0 border-b border-border/20"
-				style={drag}
-			>
+			<div className="flex items-center gap-1 px-2 h-11 shrink-0 border-b border-border/20" style={drag}>
 				{/* Nav buttons */}
 				<div className="flex items-center gap-0.5" style={noDrag}>
 					<button
@@ -203,13 +183,9 @@ export function FilePanel() {
 				{/* Title */}
 				<div className="flex-1 min-w-0 flex items-center px-1">
 					{fileName ? (
-						<span className="text-[13px] font-medium text-foreground truncate">
-							{fileName}
-						</span>
+						<span className="text-[13px] font-medium text-foreground truncate">{fileName}</span>
 					) : (
-						<span className="text-[12px] text-foreground/30">
-							{workspaceName}
-						</span>
+						<span className="text-[12px] text-foreground/30">{workspaceName}</span>
 					)}
 				</div>
 

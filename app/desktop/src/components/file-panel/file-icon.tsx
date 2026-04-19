@@ -2,10 +2,11 @@ import { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import manifest from "./icon-manifest.json";
 
-const svgModules = import.meta.glob<string>(
-	"/node_modules/material-icon-theme/icons/*.svg",
-	{ eager: true, query: "?raw", import: "default" },
-);
+const svgModules = import.meta.glob<string>("/node_modules/material-icon-theme/icons/*.svg", {
+	eager: true,
+	query: "?raw",
+	import: "default",
+});
 
 function normalizeSvgKey(name: string): string {
 	for (const key of Object.keys(svgModules)) {
@@ -16,7 +17,7 @@ function normalizeSvgKey(name: string): string {
 
 function getSvg(iconName: string): string | null {
 	const key = normalizeSvgKey(iconName);
-	return key ? svgModules[key] ?? null : null;
+	return key ? (svgModules[key] ?? null) : null;
 }
 
 function resolveFileIconName(fileName: string): string {
@@ -45,14 +46,10 @@ function resolveFolderIconName(folderName: string, expanded: boolean): string {
 	}
 
 	if (folderNames[lower]) {
-		return expanded
-			? (folderNamesExpanded[lower] ?? manifest.folderExpanded ?? "folder-open")
-			: folderNames[lower];
+		return expanded ? (folderNamesExpanded[lower] ?? manifest.folderExpanded ?? "folder-open") : folderNames[lower];
 	}
 
-	return expanded
-		? (manifest.folderExpanded ?? "folder-open")
-		: (manifest.folder ?? "folder");
+	return expanded ? (manifest.folderExpanded ?? "folder-open") : (manifest.folder ?? "folder");
 }
 
 interface FileTypeIconProps {
@@ -66,10 +63,7 @@ interface FolderTypeIconProps {
 	className?: string;
 }
 
-export const FileTypeIcon = memo(function FileTypeIcon({
-	fileName,
-	className,
-}: FileTypeIconProps) {
+export const FileTypeIcon = memo(function FileTypeIcon({ fileName, className }: FileTypeIconProps) {
 	const svg = useMemo(() => {
 		const iconName = resolveFileIconName(fileName);
 		return getSvg(iconName);
@@ -86,11 +80,7 @@ export const FileTypeIcon = memo(function FileTypeIcon({
 	);
 });
 
-export const FolderTypeIcon = memo(function FolderTypeIcon({
-	folderName,
-	expanded,
-	className,
-}: FolderTypeIconProps) {
+export const FolderTypeIcon = memo(function FolderTypeIcon({ folderName, expanded, className }: FolderTypeIconProps) {
 	const svg = useMemo(() => {
 		const iconName = resolveFolderIconName(folderName, expanded);
 		return getSvg(iconName);

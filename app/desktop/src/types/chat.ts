@@ -11,6 +11,14 @@ export interface ChatAttachment {
 	dataUrl?: string;
 }
 
+export interface ToolPermission {
+	reqId: string;
+	category: string;
+	reason: string;
+	status: "pending" | "resolved";
+	outcome?: "allow_once" | "allow_session" | "reject" | "aborted";
+}
+
 export interface ChatMessagePart {
 	type: "text" | "reasoning" | "tool_call" | "error" | "attachment";
 	text?: string;
@@ -20,6 +28,7 @@ export interface ChatMessagePart {
 		status: "pending" | "running" | "completed" | "error";
 		args?: string;
 		result?: string;
+		permission?: ToolPermission;
 	};
 	attachment?: ChatAttachment;
 }

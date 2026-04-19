@@ -2,6 +2,7 @@ import type { AGUIEvent, ConfigResponse, ProviderSettings } from "@jayden/jai-ga
 import { AGUIEventType } from "@jayden/jai-gateway/events";
 import { nanoid } from "nanoid";
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { gateway } from "@/services/gateway";
 import type {
 	ChatAttachment,
@@ -363,6 +364,53 @@ function handleSSEEvent(event: AGUIEvent, get: () => ChatState, set: (partial: P
 			});
 			break;
 		}
+		case AGUIEventType.PERMISSION_REQUEST: {
+			set({
+				messages: mapMessages(get().messages, (msg) => ({
+					...msg,
+					parts: msg.parts.map((part) => {
+						if (part.type !== "tool_call") return part;
+						if (part.toolCall?.toolCallId !== event.toolCallId) return part;
+						return {
+							...part,
+							toolCall: {
+								...part.toolCall,
+								permission: {
+									reqId: event.reqId,
+									category: event.category,
+									reason: event.reason,
+									status: "pending" as const,
+								},
+							},
+						};
+					}),
+				})),
+			});
+			break;
+		}
+		case AGUIEventType.PERMISSION_RESOLVED: {
+			set({
+				messages: mapMessages(get().messages, (msg) => ({
+					...msg,
+					parts: msg.parts.map((part) => {
+						if (part.type !== "tool_call") return part;
+						if (part.toolCall?.permission?.reqId !== event.reqId) return part;
+						return {
+							...part,
+							toolCall: {
+								...part.toolCall,
+								permission: {
+									...part.toolCall.permission,
+									status: "resolved" as const,
+									outcome: event.outcome,
+								},
+							},
+						};
+					}),
+				})),
+			});
+			break;
+		}
 		case AGUIEventType.COMPACTION_START: {
 			const id = nanoid();
 			currentCompactionId = id;
@@ -599,3 +647,37 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		}
 	},
 }));
+
+export interface PendingPermissionView {
+	permission: ToolPermissionState;
+	toolCallId: string;
+	toolName: string;
+}
+
+export function usePendingPermission(): PendingPermissionView | null {
+	return useChatStore(
+		useShallow((state) => {
+			for (const item of state.messages) {
+				if (item.kind !== "message") continue;
+				for (const part of item.parts) {
+					if (part.type !== "tool_call" || !part.toolCall) continue;
+					const perm = part.toolCall.permission;
+					if (perm?.status === "pending") {
+						return {
+							permission: perm,
+							toolCallId: part.toolCall.toolCallId,
+							toolName: part.toolCall.name,
+						};
+					}
+				}
+			}
+			return null;
+		}),
+	);
+}
+
+type ToolPermissionState = NonNullable<NonNullable<ChatMessagePart["toolCall"]>["permission"]>;
+
+if (import.meta.env.DEV && typeof window !== "undefined") {
+	(window as unknown as { __chatStore: typeof useChatStore }).__chatStore = useChatStore;
+}

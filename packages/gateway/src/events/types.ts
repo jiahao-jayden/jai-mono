@@ -28,6 +28,9 @@ export const AGUIEventType = {
 
 	COMPACTION_START: "COMPACTION_START",
 	COMPACTION_END: "COMPACTION_END",
+
+	PERMISSION_REQUEST: "PERMISSION_REQUEST",
+	PERMISSION_RESOLVED: "PERMISSION_RESOLVED",
 } as const;
 
 export type AGUIEventType = (typeof AGUIEventType)[keyof typeof AGUIEventType];
@@ -154,6 +157,36 @@ export type CompactionEndEvent = {
 	summary: string;
 };
 
+// ── Permission Events ───────────────────────────────────────
+
+/**
+ * Agent 触发了一个被内置危险检测拦下的工具调用。
+ * 客户端应在对应 toolCallId 的卡片上 inline 渲染审批 UI。
+ *
+ * 客户端 reply 的端点：POST /sessions/:id/permission/:reqId/reply
+ */
+export type PermissionRequestEvent = {
+	type: typeof AGUIEventType.PERMISSION_REQUEST;
+	reqId: string;
+	toolCallId: string;
+	toolName: string;
+	category: string;
+	reason: string;
+	metadata?: Record<string, unknown>;
+};
+
+/**
+ * 已挂起的权限请求被解决（用户回复 / abort / 客户端断开等）。
+ * 客户端可据此清除对应 reqId 的 inline UI；不强依赖（收到 TOOL_CALL_RESULT 也能推断）。
+ */
+export type PermissionResolvedEvent = {
+	type: typeof AGUIEventType.PERMISSION_RESOLVED;
+	reqId: string;
+	toolCallId: string;
+	outcome: "allow_once" | "allow_session" | "reject" | "aborted";
+	reason?: string;
+};
+
 // ── Union Type ───────────────────────────────────────────────
 
 export type AGUIEvent =
@@ -174,4 +207,6 @@ export type AGUIEvent =
 	| UsageUpdateEvent
 	| TitleGeneratedEvent
 	| CompactionStartEvent
-	| CompactionEndEvent;
+	| CompactionEndEvent
+	| PermissionRequestEvent
+	| PermissionResolvedEvent;
