@@ -95,6 +95,26 @@ export interface PluginAPI {
 		warn(msg: string, data?: unknown): void;
 		error(msg: string, data?: unknown): void;
 	};
+	/**
+	 * Environment variables declared by this plugin in `plugin.json`.
+	 * Only keys listed under `manifest.env` are exposed here; all other
+	 * `process.env` values are hidden. Plugins MUST NOT read `process.env`
+	 * directly — use `jai.env.KEY` instead.
+	 */
+	readonly env: Readonly<Record<string, string | undefined>>;
+	/**
+	 * Validated user config for this plugin, sourced from
+	 * `settings.json → plugins[<name>]`.
+	 *
+	 * If the plugin's `index.ts` exports a `configSchema` (a Zod schema),
+	 * the loader parses the raw value through it and `config` is the parsed
+	 * result (typed by `z.infer<typeof configSchema>`). On parse failure the
+	 * plugin is not loaded and a LoadError is recorded.
+	 *
+	 * If no `configSchema` is exported, `config` is the raw JSON value
+	 * (or `undefined` when settings don't include an entry for this plugin).
+	 */
+	readonly config: unknown;
 }
 
 /** Plugin factory signature */

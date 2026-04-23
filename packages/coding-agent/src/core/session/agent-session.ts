@@ -45,24 +45,16 @@ import {
 	shouldCompact,
 } from "./compaction.js";
 
-/**
- * AgentSession 的配置。创建 session 时传入，整个生命周期不可变。
- */
 export type SessionConfig = {
-	/** workspace 实例 — 由外部创建，注入到 session */
 	workspace: Workspace;
-	/** 模型信息 — ModelInfo 对象或 "provider/model" 字符串 */
 	model: ModelInfo | string;
-	/** 自定义 API 地址，透传给 AI SDK */
 	baseURL?: string;
-	/** 恢复已有 session 时传入 sessionId，否则新建 */
 	sessionId?: string;
-	/** 注册的工具列表 */
 	tools: AgentTool[];
-	/** agent loop 最大迭代次数 */
 	maxIterations?: number;
-	/** 工具权限：仅 dangerousPaths（额外敏感路径），其余 auto 直接放行 */
 	permissionSettings?: PermissionSettings;
+	pluginSettings?: Readonly<Record<string, unknown>>;
+	envSettings?: Readonly<Record<string, string>>;
 };
 
 /**
@@ -216,10 +208,16 @@ export class AgentSession {
 	}
 
 	private async loadPlugins(): Promise<void> {
-		this.plugins = await loadPluginsFromDirs([
-			{ path: join(this.workspace.cwd, ".jai", "plugins"), scope: "project" },
-			{ path: join(this.workspace.jaiHome, "plugins"), scope: "user" },
-		]);
+		this.plugins = await loadPluginsFromDirs(
+			[
+				{ path: join(this.workspace.cwd, ".jai", "plugins"), scope: "project" },
+				{ path: join(this.workspace.jaiHome, "plugins"), scope: "user" },
+			],
+			{
+				pluginSettings: this.config.pluginSettings,
+				envSettings: this.config.envSettings,
+			},
+		);
 		for (const err of this.plugins.errors) {
 			console.warn(`[plugin:${err.pluginName}] load error in ${err.dir}: ${err.message}`);
 		}

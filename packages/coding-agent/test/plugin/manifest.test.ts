@@ -20,6 +20,84 @@ describe("manifestSchema", () => {
 		expect(result.success).toBe(false);
 	});
 
+	test("accepts setup field with check + command", () => {
+		const result = manifestSchema.safeParse({
+			name: "my-plugin",
+			version: "1.0.0",
+			setup: { check: "node_modules", command: "bun install" },
+		});
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.setup).toEqual({ check: "node_modules", command: "bun install" });
+		}
+	});
+
+	test("rejects setup missing check", () => {
+		const result = manifestSchema.safeParse({
+			name: "my-plugin",
+			version: "1.0.0",
+			setup: { command: "bun install" },
+		});
+		expect(result.success).toBe(false);
+	});
+
+	test("rejects setup with empty strings", () => {
+		const result = manifestSchema.safeParse({
+			name: "my-plugin",
+			version: "1.0.0",
+			setup: { check: "", command: "" },
+		});
+		expect(result.success).toBe(false);
+	});
+
+	test("accepts env field with required + description", () => {
+		const result = manifestSchema.safeParse({
+			name: "my-plugin",
+			version: "1.0.0",
+			env: {
+				API_KEY: { required: true, description: "upstream api key" },
+				OPTIONAL_TOKEN: { description: "increases rate limit" },
+			},
+		});
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.env?.API_KEY).toEqual({
+				required: true,
+				description: "upstream api key",
+			});
+			expect(result.data.env?.OPTIONAL_TOKEN).toEqual({
+				required: false,
+				description: "increases rate limit",
+			});
+		}
+	});
+
+	test("rejects env key that is not SCREAMING_SNAKE_CASE", () => {
+		const result = manifestSchema.safeParse({
+			name: "my-plugin",
+			version: "1.0.0",
+			env: { apiKey: { required: true } },
+		});
+		expect(result.success).toBe(false);
+	});
+
+	test("rejects env key starting with digit or underscore", () => {
+		expect(
+			manifestSchema.safeParse({
+				name: "x",
+				version: "1.0.0",
+				env: { "1FOO": {} },
+			}).success,
+		).toBe(false);
+		expect(
+			manifestSchema.safeParse({
+				name: "x",
+				version: "1.0.0",
+				env: { _FOO: {} },
+			}).success,
+		).toBe(false);
+	});
+
 	test("passes through unknown fields (forward-compat)", () => {
 		const result = manifestSchema.safeParse({
 			name: "x",
@@ -28,7 +106,7 @@ describe("manifestSchema", () => {
 		});
 		expect(result.success).toBe(true);
 		if (result.success) {
-			expect((result.data as { mcpServers: unknown }).mcpServers).toBeDefined();
+			expect((result.data as unknown as { mcpServers: unknown }).mcpServers).toBeDefined();
 		}
 	});
 });

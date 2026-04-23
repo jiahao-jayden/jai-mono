@@ -9,11 +9,18 @@ import type {
 } from "../types.js";
 import type { PluginRegistry } from "./registry.js";
 
-export function createPluginAPI(registry: PluginRegistry, meta: PluginMeta): PluginAPI {
+export function createPluginAPI(
+	registry: PluginRegistry,
+	meta: PluginMeta,
+	env: Readonly<Record<string, string | undefined>> = {},
+	config: unknown = undefined,
+): PluginAPI {
 	const warn = (msg: string) => console.warn(`[plugin:${meta.name}] ${msg}`);
 
 	return {
 		meta,
+		env: Object.freeze({ ...env }),
+		config,
 		log: {
 			info: (msg, data) => console.info(`[plugin:${meta.name}] ${msg}`, data ?? ""),
 			warn: (msg, data) => console.warn(`[plugin:${meta.name}] ${msg}`, data ?? ""),

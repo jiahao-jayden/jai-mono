@@ -124,6 +124,8 @@ export class SessionManager {
 			tools,
 			maxIterations: this.settings.get("maxIterations"),
 			permissionSettings: this.settings.get("permission"),
+			pluginSettings: this.settings.get("plugins"),
+			envSettings: this.settings.get("env"),
 		});
 
 		const sessionId = session.getSessionId();
@@ -172,6 +174,8 @@ export class SessionManager {
 			sessionId,
 			maxIterations: this.settings.get("maxIterations"),
 			permissionSettings: this.settings.get("permission"),
+			pluginSettings: this.settings.get("plugins"),
+			envSettings: this.settings.get("env"),
 		});
 
 		this.activeSessions.set(sessionId, { session, workspaceId: record.workspaceId });

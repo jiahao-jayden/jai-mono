@@ -70,6 +70,12 @@ const SettingsSchema = z.object({
 	providers: z.record(z.string(), ProviderConfigSchema).optional(),
 	/** 工具调用权限配置（mode + rules） */
 	permission: PermissionSettingsSchema.optional(),
+	/**
+	 * 插件配置。key = plugin name（对应 plugin.json 的 name）。
+	 * value 是任意 JSON，由插件在 index.ts 里导出的 `configSchema` 自行校验。
+	 * 加载时未通过校验的插件会记录到 LoadError 并跳过。
+	 */
+	plugins: z.record(z.string(), z.unknown()).optional(),
 });
 
 const PartialSettingsSchema = SettingsSchema.partial();
