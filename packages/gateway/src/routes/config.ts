@@ -75,7 +75,7 @@ export function configRoutes(manager: SessionManager): Hono {
 			}
 		}
 
-		await manager.saveSettings(body);
+		await manager.getSettings().save(body);
 		return c.json(toConfigResponse(manager));
 	};
 
@@ -85,13 +85,13 @@ export function configRoutes(manager: SessionManager): Hono {
 	app.put("/config/providers/:id", async (c) => {
 		const providerId = c.req.param("id");
 		const providerConfig = await c.req.json();
-		await manager.saveSettings({ providers: { [providerId]: providerConfig } });
+		await manager.getSettings().save({ providers: { [providerId]: providerConfig } });
 		return c.json(toConfigResponse(manager));
 	});
 
 	app.delete("/config/providers/:id", async (c) => {
 		const providerId = c.req.param("id");
-		await manager.deleteProvider(providerId);
+		await manager.getSettings().deleteProvider(providerId);
 		return c.json(toConfigResponse(manager));
 	});
 

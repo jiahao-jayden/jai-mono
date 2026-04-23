@@ -1,66 +1,19 @@
-import { existsSync } from "node:fs";
-import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import type { Message } from "@jayden/jai-ai";
 import { JsonlSessionStore } from "@jayden/jai-session";
-import { z } from "zod";
-import type { PluginConfigSchema } from "../../plugin/host/loader.js";
-import { loadPluginsFromDirs, type ScanDir } from "../../plugin/host/loader.js";
+import { type PluginScanResult, scanPlugins } from "../../plugin/host/scanner.js";
 import { createDefaultTools } from "../../tools/index.js";
-import type { Settings } from "../config/settings.js";
 import { SettingsManager } from "../config/settings.js";
 import { Workspace } from "../config/workspace.js";
 import { AgentSession, type CompactionMarker, extractHistory } from "./agent-session.js";
 import { SessionIndex, type SessionInfo } from "./session-index.js";
 
-/** Declared env entry from a plugin manifest. */
-export type PluginEnvEntry = {
-	required?: boolean;
-	description?: string;
-};
-
-/** One plugin's discovery + load status, as shown in the settings UI. */
-export type PluginScanEntry = {
-	name: string;
-	version: string | null;
-	description?: string;
-	rootPath: string;
-	status: "loaded" | "error";
-	loadError?: string;
-	/** Env declaration from plugin.json (empty object when none declared). */
-	env: Record<string, PluginEnvEntry>;
-	/**
-	 * JSON Schema derived from the plugin's exported `configSchema` (zod).
-	 * `null` when the plugin does not export a schema or when conversion fails.
-	 */
-	configSchema: Record<string, unknown> | null;
-};
-
-export type PluginScanResult = {
-	entries: PluginScanEntry[];
-};
+export type { PluginEnvEntry, PluginScanEntry, PluginScanResult } from "../../plugin/host/scanner.js";
 
 export type SessionManagerConfig = {
 	jaiHome?: string;
 };
-
-const MIGRATION_V1_SENTINEL = ".migration-v1-done";
-
-/**
- * Convert a zod-like schema to a JSON Schema using zod v4's built-in
- * `z.toJSONSchema`. Returns `null` for non-zod schemas or when conversion
- * throws — callers treat that as "no IntelliSense available".
- */
-function toJsonSchema(schema: PluginConfigSchema | null, _name: string): Record<string, unknown> | null {
-	if (!schema) return null;
-	try {
-		const json = z.toJSONSchema(schema as unknown as z.ZodType);
-		return json as Record<string, unknown>;
-	} catch {
-		return null;
-	}
-}
 
 export class SessionManager {
 	private activeSessions = new Map<string, { session: AgentSession; workspaceId: string }>();
@@ -82,8 +35,6 @@ export class SessionManager {
 	private async init(): Promise<void> {
 		this.index = await SessionIndex.open(join(this.jaiHome, "index.db"));
 
-		await this.migrateV1Storage();
-
 		const defaultWs = await this.resolveWorkspace("default");
 		this.settings = await SettingsManager.load(defaultWs);
 
@@ -93,63 +44,16 @@ export class SessionManager {
 		}
 	}
 
-	/**
-	 * 一次性迁移：`~/.jai/workspace/<wsId>/sessions/<id>.jsonl`
-	 * → `~/.jai/projects/<wsId>/<id>.jsonl`，并回填 index.file_path。
-	 *
-	 * 幂等：首次执行成功后写入 sentinel 文件，之后跳过。
-	 */
-	private async migrateV1Storage(): Promise<void> {
-		const sentinel = join(this.jaiHome, MIGRATION_V1_SENTINEL);
-		if (existsSync(sentinel)) return;
-
-		const legacyRoot = join(this.jaiHome, "workspace");
-		if (!existsSync(legacyRoot)) {
-			await writeFile(sentinel, new Date().toISOString(), "utf8");
-			return;
-		}
-
-		let movedCount = 0;
-		const workspaceDirs = await readdir(legacyRoot, { withFileTypes: true });
-		for (const wsEntry of workspaceDirs) {
-			if (!wsEntry.isDirectory()) continue;
-			const workspaceId = wsEntry.name;
-			const legacySessionsDir = join(legacyRoot, workspaceId, "sessions");
-			if (!existsSync(legacySessionsDir)) continue;
-
-			const files = await readdir(legacySessionsDir);
-			if (files.length === 0) continue;
-
-			const targetDir = join(this.jaiHome, "projects", workspaceId);
-			await mkdir(targetDir, { recursive: true });
-
-			for (const file of files) {
-				if (!file.endsWith(".jsonl")) continue;
-				const sessionId = basename(file, ".jsonl");
-				const src = join(legacySessionsDir, file);
-				const dst = join(targetDir, file);
-				if (existsSync(dst)) continue;
-				try {
-					await rename(src, dst);
-					movedCount++;
-					this.index.updateField(sessionId, "filePath", dst);
-				} catch {
-					// 单文件失败不阻塞其他文件；下次启动会重试（sentinel 尚未写入）。
-				}
-			}
-		}
-
-		if (movedCount >= 0) {
-			await writeFile(sentinel, new Date().toISOString(), "utf8");
-		}
+	/** Single source of truth for "where is workspace <id> on disk". */
+	private workspaceCwd(workspaceId: string): string {
+		return join(this.jaiHome, "workspace", workspaceId);
 	}
 
 	private async resolveWorkspace(workspaceId: string): Promise<Workspace> {
 		let ws = this.workspaces.get(workspaceId);
 		if (ws) return ws;
 
-		const cwd = join(this.jaiHome, "workspace", workspaceId);
-		ws = await Workspace.create({ cwd, workspaceId, jaiHome: this.jaiHome });
+		ws = await Workspace.create({ cwd: this.workspaceCwd(workspaceId), workspaceId, jaiHome: this.jaiHome });
 		this.workspaces.set(workspaceId, ws);
 		return ws;
 	}
@@ -278,62 +182,20 @@ export class SessionManager {
 	}
 
 	getWorkspacePath(workspaceId: string): string {
-		return join(this.jaiHome, "workspace", workspaceId);
+		return this.workspaceCwd(workspaceId);
 	}
 
 	getSettings(): SettingsManager {
 		return this.settings;
 	}
 
-	/**
-	 * Scan plugin directories using current settings (env + plugin configs)
-	 * and return a unified list with load status. Safe to call repeatedly:
-	 * `setup.command` is guarded by its `check` file, and factory runs are
-	 * idempotent against a throwaway registry.
-	 *
-	 * Only scans `~/.jai/plugins`; project-local plugin directories are not
-	 * supported.
-	 */
+	/** Scan `<jaiHome>/plugins` and return each plugin's load status. */
 	async scanPlugins(): Promise<PluginScanResult> {
-		const dirs: ScanDir[] = [{ path: join(this.jaiHome, "plugins") }];
-
-		const result = await loadPluginsFromDirs(dirs, {
+		return scanPlugins({
+			jaiHome: this.jaiHome,
 			pluginSettings: this.settings.get("plugins"),
 			envSettings: this.settings.get("env"),
 		});
-
-		const entries: PluginScanEntry[] = [];
-		for (const p of result.loaded) {
-			entries.push({
-				name: p.meta.name,
-				version: p.meta.version,
-				description: p.meta.description,
-				rootPath: p.meta.rootPath,
-				status: "loaded",
-				env: p.manifest.env ?? {},
-				configSchema: toJsonSchema(p.configSchema, p.meta.name),
-			});
-		}
-		for (const err of result.errors) {
-			entries.push({
-				name: err.pluginName,
-				version: null,
-				rootPath: err.dir,
-				status: "error",
-				loadError: err.message,
-				env: {},
-				configSchema: null,
-			});
-		}
-		return { entries };
-	}
-
-	async saveSettings(patch: Settings): Promise<void> {
-		await this.settings.save(patch);
-	}
-
-	async deleteProvider(providerId: string): Promise<void> {
-		await this.settings.deleteProvider(providerId);
 	}
 
 	async handlePostChat(
