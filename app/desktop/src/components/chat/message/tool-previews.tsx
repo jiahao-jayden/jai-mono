@@ -89,32 +89,15 @@ export function WebSearchPreview({ tool }: PreviewProps) {
 	const results = useMemo(() => (tool.result ? parseSearchResults(tool.result) : []), [tool.result]);
 
 	if (tool.status === "running") {
-		return (
-			<div className="ml-5 mt-0.5 mb-1 flex items-center gap-2 text-[11.5px] text-muted-foreground/60">
-				<span className="inline-flex gap-0.5" aria-hidden>
-					<span className="size-1 rounded-full bg-muted-foreground/50 animate-[pulse_1.1s_ease-in-out_infinite]" />
-					<span className="size-1 rounded-full bg-muted-foreground/50 animate-[pulse_1.1s_ease-in-out_0.15s_infinite]" />
-					<span className="size-1 rounded-full bg-muted-foreground/50 animate-[pulse_1.1s_ease-in-out_0.3s_infinite]" />
-				</span>
-				<span>Searching{query ? ` for "${query}"` : "…"}</span>
-			</div>
-		);
+		return <SearchSkeleton />;
 	}
 
 	if (tool.status === "error") {
-		return (
-			<div className="ml-5 mt-0.5 mb-1 rounded-md bg-destructive/5 px-3 py-2 text-[11.5px] text-destructive/75 leading-relaxed">
-				{tool.result ?? "Search failed"}
-			</div>
-		);
+		return <ErrorBlock text={tool.result ?? "Search failed"} />;
 	}
 
 	if (results.length === 0) {
-		return (
-			<div className="ml-5 mt-0.5 mb-1 text-[11.5px] text-muted-foreground/55 italic">
-				No results{query ? ` for "${query}"` : ""}
-			</div>
-		);
+		return <EmptyResult text={query ? `No results for "${query}"` : "No results"} />;
 	}
 
 	return (
@@ -195,11 +178,7 @@ export function WebFetchPreview({ tool }: PreviewProps) {
 	}
 
 	if (tool.status === "error") {
-		return (
-			<div className="ml-5 mt-0.5 mb-1 rounded-md bg-destructive/5 px-3 py-2 text-[11.5px] text-destructive/75 leading-relaxed">
-				{tool.result ?? "Fetch failed"}
-			</div>
-		);
+		return <ErrorBlock text={tool.result ?? "Fetch failed"} />;
 	}
 
 	return (
@@ -232,6 +211,165 @@ function tryFormatJson(str: string): string {
 	}
 }
 
+function tryParse<T = Record<string, unknown>>(raw: string | undefined): T | null {
+	if (!raw) return null;
+	try {
+		return JSON.parse(raw) as T;
+	} catch {
+		return null;
+	}
+}
+
+function RunningPlaceholder({ text }: { text: string }) {
+	return (
+		<div className="ml-5 mt-0.5 mb-1 flex items-center gap-2 text-[11.5px] text-muted-foreground/60">
+			<span className="inline-flex gap-0.5" aria-hidden>
+				<span className="size-1 rounded-full bg-muted-foreground/50 animate-[pulse_1.1s_ease-in-out_infinite]" />
+				<span className="size-1 rounded-full bg-muted-foreground/50 animate-[pulse_1.1s_ease-in-out_0.15s_infinite]" />
+				<span className="size-1 rounded-full bg-muted-foreground/50 animate-[pulse_1.1s_ease-in-out_0.3s_infinite]" />
+			</span>
+			<span>{text}</span>
+		</div>
+	);
+}
+
+function EmptyResult({ text }: { text: string }) {
+	return <div className="ml-5 mt-0.5 mb-1 text-[11.5px] text-muted-foreground/50 italic">{text}</div>;
+}
+
+// Skeleton rows shown while a WebSearch is running — gives a visual promise
+// of "results will appear here", shaped like the eventual favicon+title rows.
+function SearchSkeleton() {
+	const rows = [
+		{ id: "a", width: 68 },
+		{ id: "b", width: 82 },
+		{ id: "c", width: 55 },
+	];
+	return (
+		<ul className="ml-5 mt-0.5 mb-1 flex flex-col gap-1.5" aria-label="searching">
+			{rows.map((r, i) => (
+				<li key={r.id} className="flex items-center gap-2">
+					<div className="size-3.5 shrink-0 rounded-sm bg-muted-foreground/15 animate-pulse" />
+					<div
+						className="h-2.5 rounded-sm bg-muted-foreground/12 animate-pulse"
+						style={{ width: `${r.width}%`, animationDelay: `${i * 120}ms` }}
+					/>
+				</li>
+			))}
+		</ul>
+	);
+}
+
+function ErrorBlock({ text }: { text: string }) {
+	return (
+		<div className="ml-5 mt-0.5 mb-1 rounded-md bg-destructive/5 px-3 py-2 text-[11.5px] text-destructive/75 leading-relaxed font-mono whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
+			{text}
+		</div>
+	);
+}
+
+function ResultMono({ text, maxHeight = "max-h-48" }: { text: string; maxHeight?: string }) {
+	return (
+		<div
+			className={cn(
+				"ml-5 mt-0.5 mb-1 rounded-md bg-muted/30 px-3 py-2 text-[11px] font-mono text-muted-foreground/70 leading-relaxed",
+			)}
+		>
+			<pre className={cn("whitespace-pre-wrap break-all overflow-y-auto", maxHeight)}>{text}</pre>
+		</div>
+	);
+}
+
+export function BashPreview({ tool }: PreviewProps) {
+	const args = tryParse<{ command?: string; cwd?: string }>(tool.args);
+	const command = args?.command ?? "";
+
+	if (tool.status === "error") {
+		return (
+			<div className="ml-5 mt-0.5 mb-1 space-y-1">
+				{command && <CommandLine command={command} />}
+				<ErrorBlock text={tool.result ?? "Command failed"} />
+			</div>
+		);
+	}
+
+	if (tool.status === "running") {
+		return (
+			<div className="ml-5 mt-0.5 mb-1 space-y-1">
+				{command && <CommandLine command={command} />}
+				<div className="flex items-center gap-2 text-[11.5px] text-muted-foreground/55 px-1">
+					<span className="inline-flex gap-0.5" aria-hidden>
+						<span className="size-1 rounded-full bg-muted-foreground/50 animate-[pulse_1.1s_ease-in-out_infinite]" />
+						<span className="size-1 rounded-full bg-muted-foreground/50 animate-[pulse_1.1s_ease-in-out_0.15s_infinite]" />
+						<span className="size-1 rounded-full bg-muted-foreground/50 animate-[pulse_1.1s_ease-in-out_0.3s_infinite]" />
+					</span>
+					<span>Running…</span>
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<div className="ml-5 mt-0.5 mb-1 space-y-1">
+			{command && <CommandLine command={command} />}
+			{tool.result && (
+				<div className="rounded-md bg-muted/30 px-3 py-2 text-[11px] font-mono text-muted-foreground/70 leading-relaxed">
+					<pre className="whitespace-pre-wrap break-all max-h-48 overflow-y-auto">{tool.result}</pre>
+				</div>
+			)}
+		</div>
+	);
+}
+
+function CommandLine({ command }: { command: string }) {
+	return (
+		<div className="rounded-md bg-foreground/[0.035] px-3 py-1.5 text-[11px] font-mono text-foreground/75 leading-relaxed border border-foreground/5">
+			<span aria-hidden className="select-none text-muted-foreground/55 mr-2">
+				$
+			</span>
+			<span className="whitespace-pre-wrap break-all">{command}</span>
+		</div>
+	);
+}
+
+export function FileReadPreview({ tool }: PreviewProps) {
+	if (tool.status === "running") return <RunningPlaceholder text="Reading…" />;
+	if (tool.status === "error") return <ErrorBlock text={tool.result ?? "Read failed"} />;
+	if (!tool.result) return null;
+	// Strip the synthetic "// File: path (lines X-Y of N)" header line added by the tool,
+	// since the path is already shown in the row header.
+	const body = tool.result.replace(/^\/\/\s*File:[^\n]*\n?/, "");
+	return <ResultMono text={body} />;
+}
+
+export function FileWritePreview({ tool }: PreviewProps) {
+	if (tool.status === "running") return <RunningPlaceholder text="Writing…" />;
+	if (tool.status === "error") return <ErrorBlock text={tool.result ?? "Write failed"} />;
+	if (!tool.result) return null;
+	return <ResultMono text={tool.result.trim()} maxHeight="max-h-32" />;
+}
+
+export function FileEditPreview({ tool }: PreviewProps) {
+	if (tool.status === "running") return <RunningPlaceholder text="Editing…" />;
+	if (tool.status === "error") return <ErrorBlock text={tool.result ?? "Edit failed"} />;
+	if (!tool.result) return null;
+	return <ResultMono text={tool.result.trim()} maxHeight="max-h-40" />;
+}
+
+export function GrepPreview({ tool }: PreviewProps) {
+	if (tool.status === "running") return <RunningPlaceholder text="Searching…" />;
+	if (tool.status === "error") return <ErrorBlock text={tool.result ?? "Search failed"} />;
+	if (!tool.result?.trim()) return <EmptyResult text="No matches" />;
+	return <ResultMono text={tool.result} maxHeight="max-h-56" />;
+}
+
+export function GlobPreview({ tool }: PreviewProps) {
+	if (tool.status === "running") return <RunningPlaceholder text="Searching files…" />;
+	if (tool.status === "error") return <ErrorBlock text={tool.result ?? "Glob failed"} />;
+	if (!tool.result?.trim()) return <EmptyResult text="No files matched" />;
+	return <ResultMono text={tool.result} maxHeight="max-h-56" />;
+}
+
 export function DefaultPreview({ tool }: PreviewProps) {
 	if (!tool.args && !tool.result) return null;
 	return (
@@ -251,6 +389,18 @@ export function pickPreview(toolName: string) {
 			return WebSearchPreview;
 		case "WebFetch":
 			return WebFetchPreview;
+		case "Bash":
+			return BashPreview;
+		case "FileRead":
+			return FileReadPreview;
+		case "FileWrite":
+			return FileWritePreview;
+		case "FileEdit":
+			return FileEditPreview;
+		case "Grep":
+			return GrepPreview;
+		case "Glob":
+			return GlobPreview;
 		default:
 			return DefaultPreview;
 	}

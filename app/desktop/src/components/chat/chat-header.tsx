@@ -114,7 +114,6 @@ export function ChatHeader() {
 
 	return (
 		<>
-			{/* Desktop: single draggable header bar */}
 			<div className="hidden md:flex shrink-0 items-center h-12 px-5" style={drag}>
 				{!open && (
 					<div style={noDrag}>
@@ -142,7 +141,6 @@ export function ChatHeader() {
 				)}
 			</div>
 
-			{/* Mobile header */}
 			<AppToolbar mode="mobile" title={mobileTitle} onToggleSidebar={toggleSidebar} onNewChat={newChat} />
 		</>
 	);

@@ -46,12 +46,10 @@ function TreeContent({
 }) {
 	return (
 		<div className="h-full flex flex-col overflow-hidden">
-			{/* Section label */}
 			<div className="flex items-center gap-1.5 px-3 h-7 shrink-0 text-[10px] font-semibold text-foreground/35 uppercase tracking-widest">
 				{workspaceName}
 			</div>
 
-			{/* Tree body */}
 			<div className="flex-1 min-h-0 overflow-auto">
 				{loading ? (
 					<TreeSkeleton />
@@ -148,9 +146,7 @@ export function FilePanel() {
 
 	return (
 		<div className="flex flex-col h-full rounded-lg bg-card overflow-hidden">
-			{/* Top bar */}
 			<div className="flex items-center gap-1 px-2 h-11 shrink-0 border-b border-border/20" style={drag}>
-				{/* Nav buttons */}
 				<div className="flex items-center gap-0.5" style={noDrag}>
 					<button
 						type="button"
@@ -180,7 +176,6 @@ export function FilePanel() {
 					</button>
 				</div>
 
-				{/* Title */}
 				<div className="flex-1 min-w-0 flex items-center px-1">
 					{fileName ? (
 						<span className="text-[13px] font-medium text-foreground truncate">{fileName}</span>
@@ -189,7 +184,6 @@ export function FilePanel() {
 					)}
 				</div>
 
-				{/* Close */}
 				<button
 					type="button"
 					onClick={handleClose}
@@ -200,7 +194,6 @@ export function FilePanel() {
 				</button>
 			</div>
 
-			{/* Main content */}
 			<div className="flex-1 min-h-0">
 				{selectedPath ? (
 					<ResizablePanelGroup orientation="horizontal">
@@ -233,7 +226,6 @@ export function FilePanel() {
 				)}
 			</div>
 
-			{/* Bottom toolbar */}
 			<div className="flex items-center gap-0.5 px-1.5 py-1 border-t border-border/20 shrink-0">
 				<button
 					type="button"

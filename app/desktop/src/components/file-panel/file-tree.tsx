@@ -84,7 +84,6 @@ const TreeNode = memo(function TreeNode({ entry, workspaceId, depth, selectedPat
 				)}
 				style={{ paddingLeft: `${leftPad}px` }}
 			>
-				{/* Indent guides */}
 				{depth > 0 &&
 					Array.from({ length: depth }, (_, i) => {
 						const key = `guide-${entry.path}-${i}`;
@@ -97,7 +96,6 @@ const TreeNode = memo(function TreeNode({ entry, workspaceId, depth, selectedPat
 						);
 					})}
 
-				{/* Chevron */}
 				{isDir ? (
 					<ChevronRightIcon
 						className={cn(
@@ -110,17 +108,14 @@ const TreeNode = memo(function TreeNode({ entry, workspaceId, depth, selectedPat
 					<span className="w-4 shrink-0" />
 				)}
 
-				{/* Icon */}
 				{isDir ? (
 					<FolderTypeIcon folderName={entry.name} expanded={expanded} className="mr-1.5" />
 				) : (
 					<FileTypeIcon fileName={entry.name} className="mr-1.5" />
 				)}
 
-				{/* Name */}
 				<span className={cn("truncate leading-none", isDir && "font-medium text-foreground/80")}>{entry.name}</span>
 
-				{/* Loading spinner */}
 				{loading && (
 					<span className="ml-auto pr-2">
 						<span className="inline-block size-2.5 rounded-full border border-foreground/15 border-t-foreground/50 animate-spin" />
@@ -128,7 +123,6 @@ const TreeNode = memo(function TreeNode({ entry, workspaceId, depth, selectedPat
 				)}
 			</button>
 
-			{/* Children */}
 			{isDir && expanded && sortedChildren && (
 				<div className="animate-in fade-in-0 slide-in-from-top-0.5 duration-100">
 					{sortedChildren.map((child) => (

@@ -183,23 +183,13 @@ export const Conversation = ({
 		<div className="relative flex-1 min-h-0">
 			<div
 				ref={scrollRef}
-				// `overflow-anchor: none`: we take full ownership of scroll
-				// position via the pin / scroll-to-bottom effects. If the
-				// browser's native scroll anchoring is on, appending a new
-				// user message or growing the spacer can fight our scrollTo
-				// and leave the pinned message clipped behind the top edge.
-				className={cn("h-full overflow-y-auto [overflow-anchor:none]", className)}
+				className={cn("h-full overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable]", className)}
 				onScroll={handleScroll}
 				{...props}
 			>
 				<div ref={contentRef}>{children}</div>
 				<div aria-hidden style={{ height: spacerHeight }} className="shrink-0" />
 			</div>
-			{/* Top fade mask. The pinned user message sits ~24px below the
-			    container top; without this mask the previous turn's tail
-			    bleeds through that gap on send. A short gradient from
-			    solid background to transparent hides the bleed-through while
-			    keeping a soft edge (no hard ruled line). */}
 			<div
 				aria-hidden
 				className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-background via-background/90 to-transparent"

@@ -57,37 +57,58 @@ export function MessageList({ messages, status }: MessageListProps) {
 
 				return (
 					<MessageAssistant key={message.id}>
-						<div className="flex flex-col gap-0.5">
+						<div className="flex flex-col">
 							{message.parts.map((part, partIdx) => {
 								const key = `${message.id}-${partIdx}`;
+								const prev = partIdx > 0 ? message.parts[partIdx - 1] : null;
+								// Only one special case: consecutive tool calls form a tight cluster.
+								// Everything else gets a uniform breathing gap so vertical rhythm
+								// is predictable regardless of what kinds are adjacent.
+								const spacing = (() => {
+									if (!prev) return "";
+									const curIsTool = part.type === "tool_call";
+									const prevIsTool = prev.type === "tool_call";
+									if (curIsTool && prevIsTool) return "mt-0.5";
+									return "mt-2";
+								})();
 
 								if (part.type === "tool_call" && part.toolCall) {
-									return <ToolCallRow key={`${key}-${part.toolCall.toolCallId}`} tool={part.toolCall} />;
+									return (
+										<div key={`${key}-${part.toolCall.toolCallId}`} className={spacing}>
+											<ToolCallRow tool={part.toolCall} />
+										</div>
+									);
 								}
 								if (part.type === "reasoning" && part.text) {
 									const isReasoningStreaming =
 										isStreaming && partIdx === message.parts.length - 1 && lastPart?.type === "reasoning";
 									return (
-										<MessageReasoning key={key} streaming={isReasoningStreaming}>
-											{part.text}
-										</MessageReasoning>
+										<div key={key} className={spacing}>
+											<MessageReasoning streaming={isReasoningStreaming}>{part.text}</MessageReasoning>
+										</div>
 									);
 								}
 								if (part.type === "text" && part.text) {
 									const isTextTip =
 										isStreaming && partIdx === message.parts.length - 1 && lastPart?.type === "text";
 									return (
-										<MessageResponse key={key} className={cn(isTextTip && "is-streaming-tip")}>
-											{part.text}
-										</MessageResponse>
+										<div key={key} className={spacing}>
+											<MessageResponse className={cn(isTextTip && "is-streaming-tip")}>
+												{part.text}
+											</MessageResponse>
+										</div>
 									);
 								}
 								if (part.type === "error" && part.text) {
-									return <ErrorBlock key={key}>{part.text}</ErrorBlock>;
+									return (
+										<div key={key} className={spacing}>
+											<ErrorBlock>{part.text}</ErrorBlock>
+										</div>
+									);
 								}
 								return null;
 							})}
-							{showIndicator && <TypingIndicator />}
+							{showIndicator && <div className="mt-2.5"><TypingIndicator /></div>}
 						</div>
 					</MessageAssistant>
 				);

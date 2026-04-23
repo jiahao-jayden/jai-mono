@@ -33,8 +33,16 @@ export function bashTool(defaultCwd: string): AgentTool {
 		label: "Run command",
 		description: `Execute a shell command. Use this only when FileRead, FileWrite, FileEdit, Glob, and Grep cannot accomplish the task.
 Commands that time out are killed automatically.
-Dangerous commands (rm -rf /, fork bombs, etc.) are blocked.`,
+Dangerous commands (rm -rf /, fork bombs, etc.) are blocked.
+You MUST provide a short 'description' (≤ 60 chars) describing the intent in plain language — it is shown to the user while the command runs.`,
 		parameters: z.object({
+			description: z
+				.string()
+				.min(1)
+				.max(60)
+				.describe(
+					"One-line plain-language intent of this command, shown to the user. Examples: 'Install dependencies', 'List project files', 'Check git status'. Write what the command accomplishes, not how.",
+				),
 			command: z.string().describe("Shell command to execute"),
 			timeout: z.number().int().min(1).max(MAX_TIMEOUT).default(DEFAULT_TIMEOUT).describe("Timeout in milliseconds"),
 			cwd: z.string().optional().describe("Working directory (defaults to workspace cwd)"),
@@ -42,6 +50,9 @@ Dangerous commands (rm -rf /, fork bombs, etc.) are blocked.`,
 		validate(params) {
 			if (!params.command.trim()) {
 				return "Command must not be empty.";
+			}
+			if (!params.description?.trim()) {
+				return "description must not be empty — provide a one-line intent for this command.";
 			}
 			for (const { pattern, label } of BLOCKED_PATTERNS) {
 				if (pattern.test(params.command)) {

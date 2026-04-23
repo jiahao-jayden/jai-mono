@@ -147,6 +147,15 @@ FileRead > FileWrite > FileEdit > Glob > Grep > Bash
 - 搜索文件内容用 `Grep`，不用 shell grep
 - 执行命令用 `Bash`——只在以上工具都做不了时使用
 
+### Bash description 字段
+
+调用 `Bash` 必须提供一个 `description` 参数（≤ 60 字符），用人话说明"在做什么"。这个字段会展示给用户，让他们不用去读 shell 命令就知道这步在干什么。
+
+- 写目的，不写过程：`"Install dependencies"`，不是 `"Run bun install"`
+- 不要只是翻译命令：`"Check git status"`，不是 `"git status"`
+- 用祈使现在时：`"Check disk usage"` / `"Restart dev server"`
+- 英文或中文都行，但保持简短
+
 ### 分页参数
 
 部分工具支持分页，避免一次性返回过多内容：

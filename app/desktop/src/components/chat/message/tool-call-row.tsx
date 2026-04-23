@@ -1,4 +1,4 @@
-import { CheckIcon, ChevronRightIcon, LoaderIcon, XIcon } from "lucide-react";
+import { ChevronRightIcon, LoaderIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChatMessagePart } from "@/types/chat";
@@ -35,14 +35,10 @@ function LeadingIcon({ tool }: { tool: ToolCallData }) {
 				? "text-muted-foreground/70"
 				: "text-muted-foreground/40";
 
-	return <Icon strokeWidth={1.75} aria-hidden className={cn("size-3", tone)} />;
+	return <Icon strokeWidth={1.75} aria-hidden className={cn("size-3 shrink-0", tone)} />;
 }
 
 function TrailingStatus({ tool }: { tool: ToolCallData }) {
-	if (tool.permission?.status === "pending") return null;
-	if (tool.status === "completed") {
-		return <CheckIcon aria-label="completed" className="size-2.5 text-emerald-500/70 shrink-0" />;
-	}
 	if (tool.status === "error") {
 		return <XIcon aria-label="failed" className="size-2.5 text-destructive/70 shrink-0" />;
 	}
@@ -55,6 +51,8 @@ function extractPrimaryArg(toolName: string, argsRaw: string | undefined): strin
 		const parsed = JSON.parse(argsRaw) as Record<string, unknown>;
 		if (toolName === "WebSearch" && typeof parsed.query === "string") return parsed.query;
 		if (toolName === "WebFetch" && typeof parsed.url === "string") return hostOf(parsed.url);
+		if (toolName === "Bash" && typeof parsed.description === "string" && parsed.description.trim())
+			return parsed.description.trim();
 		const candidate =
 			parsed.path ?? parsed.file_path ?? parsed.command ?? parsed.pattern ?? parsed.url ?? parsed.query ?? null;
 		if (typeof candidate !== "string") return null;
@@ -97,48 +95,97 @@ function useAutoExpand(tool: ToolCallData) {
 	return [expanded, setExpanded] as const;
 }
 
+// Ticks once per second while `active` is true. Returns elapsed seconds since
+// the most recent transition into active. Resets to 0 when active flips off.
+function useElapsedSeconds(active: boolean): number {
+	const [sec, setSec] = useState(0);
+	const startAt = useRef<number | null>(null);
+
+	useEffect(() => {
+		if (!active) {
+			startAt.current = null;
+			setSec(0);
+			return;
+		}
+		startAt.current = Date.now();
+		setSec(0);
+		const id = setInterval(() => {
+			if (startAt.current != null) setSec(Math.floor((Date.now() - startAt.current) / 1000));
+		}, 1000);
+		return () => clearInterval(id);
+	}, [active]);
+
+	return sec;
+}
+
 export function ToolCallRow({ tool }: ToolCallRowProps) {
 	const awaitingPermission = tool.permission?.status === "pending";
 	const resolvedPermission = tool.permission?.status === "resolved" ? tool.permission : null;
 	const [expanded, setExpanded] = useAutoExpand(tool);
+	const elapsed = useElapsedSeconds(tool.status === "running");
 	const primaryArg = extractPrimaryArg(tool.name, tool.args);
 	const displayName = getToolDisplayName(tool.name);
 	const Preview = pickPreview(tool.name);
 	const hasPreview = Boolean(tool.args || tool.result || resolvedPermission);
+
+	const isError = tool.status === "error";
+	const rowTone = awaitingPermission
+		? "text-foreground/75"
+		: isError
+			? "text-destructive/85 hover:text-destructive"
+			: "text-muted-foreground/70 hover:text-foreground/85";
+	const labelTone = awaitingPermission
+		? "text-foreground/90"
+		: isError
+			? "text-destructive/90"
+			: "text-foreground/75";
+	const argTone = isError ? "text-destructive/60" : "text-muted-foreground/55";
+	const dotTone = isError ? "text-destructive/30" : "text-muted-foreground/30";
 
 	return (
 		<div>
 			<button
 				type="button"
 				disabled={!hasPreview}
+				aria-expanded={expanded}
 				onClick={() => hasPreview && setExpanded(!expanded)}
 				className={cn(
-					"flex items-center gap-2 w-full py-1 text-left text-[11.5px] rounded-sm transition-colors",
+					"group/row flex items-center gap-2 w-full py-1 text-left text-[11.5px] rounded-sm transition-colors",
 					hasPreview ? "cursor-pointer" : "cursor-default",
-					awaitingPermission ? "text-foreground/75" : "text-muted-foreground/70 hover:text-foreground/85",
+					rowTone,
 				)}
 			>
 				<LeadingIcon tool={tool} />
-				<span
-					className={cn("font-medium shrink-0", awaitingPermission ? "text-foreground/90" : "text-foreground/75")}
-				>
-					{displayName}
-				</span>
-				{primaryArg && (
+				<span className={cn("font-medium shrink-0", labelTone)}>{displayName}</span>
+				{primaryArg ? (
 					<>
-						<span aria-hidden className="text-muted-foreground/30">
+						<span aria-hidden className={cn("shrink-0", dotTone)}>
 							·
 						</span>
-						<span className="truncate font-mono text-[11px] text-muted-foreground/55">{primaryArg}</span>
+						<span className={cn("min-w-0 flex-1 truncate font-mono text-[11px]", argTone)}>{primaryArg}</span>
 					</>
+				) : (
+					<span className="flex-1" />
 				)}
-				<span className="flex-1" />
+				{tool.status === "running" && elapsed >= 3 && (
+					<span
+						role="timer"
+						aria-label={`${elapsed} seconds elapsed`}
+						className="text-[10.5px] tabular-nums text-muted-foreground/55 shrink-0"
+					>
+						{elapsed}s
+					</span>
+				)}
 				<TrailingStatus tool={tool} />
 				{hasPreview && (
 					<ChevronRightIcon
+						aria-hidden
 						className={cn(
-							"size-2.5 shrink-0 transition-transform duration-200 ease-out text-muted-foreground/35",
-							expanded && "rotate-90",
+							"size-2.5 shrink-0 transition-[transform,opacity] duration-200 ease-out",
+							isError ? "text-destructive/45" : "text-muted-foreground/35",
+							expanded
+								? "rotate-90 opacity-100"
+								: "opacity-0 group-hover/row:opacity-100 group-focus-visible/row:opacity-100",
 						)}
 					/>
 				)}
