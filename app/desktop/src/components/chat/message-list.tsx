@@ -1,38 +1,12 @@
 import { cn } from "@/lib/utils";
-import type { ChatItem, ChatMessagePart, ChatStatus } from "@/types/chat";
+import type { ChatItem, ChatStatus } from "@/types/chat";
 import { MessageResponse } from "../ai-elements/message";
 import { CompactionDivider } from "./compaction-divider";
 import { MessageAssistant } from "./message/message-assistant";
 import { ErrorBlock, StreamingPlaceholder, TypingIndicator } from "./message/message-parts";
 import { MessageReasoning } from "./message/message-reasoning";
 import { MessageUser } from "./message/message-user";
-import { ToolCallGroup } from "./message/tool-call-group";
-
-type Segment =
-	| { type: "tool_group"; tools: NonNullable<ChatMessagePart["toolCall"]>[] }
-	| { type: "single"; part: ChatMessagePart; index: number };
-
-function groupParts(parts: ChatMessagePart[]): Segment[] {
-	const segments: Segment[] = [];
-	let toolBuf: NonNullable<ChatMessagePart["toolCall"]>[] = [];
-
-	for (let i = 0; i < parts.length; i++) {
-		const part = parts[i];
-		if (part.type === "tool_call" && part.toolCall) {
-			toolBuf.push(part.toolCall);
-		} else {
-			if (toolBuf.length > 0) {
-				segments.push({ type: "tool_group", tools: toolBuf });
-				toolBuf = [];
-			}
-			segments.push({ type: "single", part, index: i });
-		}
-	}
-	if (toolBuf.length > 0) {
-		segments.push({ type: "tool_group", tools: toolBuf });
-	}
-	return segments;
-}
+import { ToolCallRow } from "./message/tool-call-row";
 
 interface MessageListProps {
 	messages: ChatItem[];
@@ -81,22 +55,15 @@ export function MessageList({ messages, status }: MessageListProps) {
 							(lastPart.type === "reasoning" ||
 								(lastPart.type === "tool_call" && lastPart.toolCall?.status === "completed"))));
 
-				const segments = groupParts(message.parts);
-
 				return (
 					<MessageAssistant key={message.id}>
 						<div className="flex flex-col gap-0.5">
-							{segments.map((seg) => {
-								if (seg.type === "tool_group") {
-									return (
-										<ToolCallGroup key={`${message.id}-tg-${seg.tools[0].toolCallId}`} tools={seg.tools} />
-									);
-								}
-
-								const part = seg.part;
-								const partIdx = seg.index;
+							{message.parts.map((part, partIdx) => {
 								const key = `${message.id}-${partIdx}`;
 
+								if (part.type === "tool_call" && part.toolCall) {
+									return <ToolCallRow key={`${key}-${part.toolCall.toolCallId}`} tool={part.toolCall} />;
+								}
 								if (part.type === "reasoning" && part.text) {
 									const isReasoningStreaming =
 										isStreaming && partIdx === message.parts.length - 1 && lastPart?.type === "reasoning";
