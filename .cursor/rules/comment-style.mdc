@@ -1,0 +1,22 @@
+---
+description: Keep code comments minimal and avoid large comment blocks
+alwaysApply: true
+---
+
+# Minimal Comments
+
+- Do not add large explanatory comments, banner comments, or long block comments in code files.
+- Prefer self-explanatory code first; only add comments when they clarify non-obvious intent, constraints, or trade-offs.
+- Keep comments short and local, usually one line or a very small block.
+- Avoid narrating obvious code or restating the implementation.
+- If extra explanation is useful, put it in the response to the user instead of in the source file.
+
+Examples:
+
+- Avoid:
+  - multi-paragraph comments before helper functions
+  - long "why this works" blocks for simple code
+  - decorative section banners
+- Prefer:
+  - a brief note before tricky logic
+  - a short warning near a constraint or workaround

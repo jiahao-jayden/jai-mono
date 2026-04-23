@@ -1,12 +1,20 @@
 "use client";
 
+import {
+	Cancel01Icon,
+	Copy01Icon,
+	Download04Icon,
+	SquareArrowExpand01Icon,
+	Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
+import type { ComponentProps, HTMLAttributes, ReactElement, SVGProps } from "react";
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
 import { Button } from "@/components/ui/button";
@@ -277,12 +285,31 @@ const streamdownComponents = {
 	code: CustomCode,
 } as ComponentProps<typeof Streamdown>["components"];
 
+type StreamdownIconProps = SVGProps<SVGSVGElement> & { size?: number };
+
+const makeStreamdownIcon = (icon: Parameters<typeof HugeiconsIcon>[0]["icon"]) => {
+	const Icon = ({ size = 16, strokeWidth: _strokeWidth, ...rest }: StreamdownIconProps) => (
+		<HugeiconsIcon icon={icon} size={size} strokeWidth={1.6} {...rest} />
+	);
+	Icon.displayName = "StreamdownHugeIcon";
+	return Icon;
+};
+
+const streamdownIcons = {
+	CopyIcon: makeStreamdownIcon(Copy01Icon),
+	CheckIcon: makeStreamdownIcon(Tick02Icon),
+	DownloadIcon: makeStreamdownIcon(Download04Icon),
+	Maximize2Icon: makeStreamdownIcon(SquareArrowExpand01Icon),
+	XIcon: makeStreamdownIcon(Cancel01Icon),
+};
+
 export const MessageResponse = memo(
 	({ className, ...props }: MessageResponseProps) => (
 		<Streamdown
 			className={cn("size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}
 			plugins={streamdownPlugins}
 			components={streamdownComponents}
+			icons={streamdownIcons}
 			{...props}
 		/>
 	),

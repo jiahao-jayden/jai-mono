@@ -13,7 +13,10 @@ export function CustomCode({ node, className, children, ...props }: CustomCodePr
 	if (!isBlock) {
 		return (
 			<code
-				className={cn("rounded bg-muted px-1.5 py-0.5 font-mono text-sm", className)}
+				className={cn(
+					"rounded-[5px] bg-foreground/6 px-1.25 py-px font-mono text-[0.875em] text-foreground/90",
+					className,
+				)}
 				data-streamdown="inline-code"
 				{...props}
 			>
