@@ -1,6 +1,5 @@
 import { AiGenerativeIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import Anthropic from "@lobehub/icons/es/Anthropic";
 import Baichuan from "@lobehub/icons/es/Baichuan";
 import ChatGLM from "@lobehub/icons/es/ChatGLM";
 import Claude from "@lobehub/icons/es/Claude";
@@ -23,6 +22,7 @@ import Mistral from "@lobehub/icons/es/Mistral";
 import Moonshot from "@lobehub/icons/es/Moonshot";
 import Nvidia from "@lobehub/icons/es/Nvidia";
 import OpenAI from "@lobehub/icons/es/OpenAI";
+import OpenRouter from "@lobehub/icons/es/OpenRouter";
 import Qwen from "@lobehub/icons/es/Qwen";
 import Spark from "@lobehub/icons/es/Spark";
 import Stepfun from "@lobehub/icons/es/Stepfun";
@@ -63,7 +63,7 @@ export const MODEL_BRAND_RULES: [patterns: string[], icon: IconComponent, brand:
 
 export const PROVIDER_BRAND_RULES: [patterns: string[], icon: IconComponent, brand: string][] = [
 	[["openai"], OpenAI, "OpenAI"],
-	[["anthropic"], Anthropic, "Anthropic"],
+	[["anthropic"], Claude, "Anthropic"],
 	[["claude"], Claude, "Claude"],
 	[["google"], Google, "Google"],
 	[["gemini"], Gemini, "Gemini"],
@@ -86,7 +86,7 @@ export const PROVIDER_BRAND_RULES: [patterns: string[], icon: IconComponent, bra
 	[["cohere"], Cohere, "Cohere"],
 	[["microsoft", "azure"], Microsoft, "Microsoft"],
 	[["nvidia"], Nvidia, "Nvidia"],
-	[["openrouter"], OpenAI, "OpenRouter"],
+	[["openrouter"], OpenRouter, "OpenRouter"],
 ];
 
 export function matchBrand(

@@ -1,23 +1,27 @@
-import { Search01Icon } from "@hugeicons/core-free-icons";
+import {
+	Delete02Icon,
+	LinkSquare02Icon,
+	Loading03Icon,
+	Refresh01Icon,
+	Search01Icon,
+	ViewIcon,
+	ViewOffSlashIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { ConfigResponse, FetchModelsResponse, ProviderModel, ProviderSettings } from "@jayden/jai-gateway";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLinkIcon, EyeIcon, EyeOffIcon, LoaderIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CapabilityBadges } from "@/components/common/capability-badges";
 import { BrandAvatar, resolveProviderIcon } from "@/components/common/provider-icons";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { gateway } from "@/services/gateway";
 import type { ModelCapabilities } from "@/stores/chat";
+import { SettingsField, SettingsGroup } from "../common/settings-layout";
 import { API_FORMAT_OPTIONS, BUILTIN_IDS, getBuiltinProvider, type ProviderFormat } from "./provider-registry";
 
 function toUiCapabilities(model: ProviderModel): ModelCapabilities | undefined {
@@ -60,7 +64,6 @@ interface ProviderDetailProps {
 export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 	const builtin = getBuiltinProvider(providerId);
 	const providerConfig = config?.providers?.[providerId];
-	const isConfigured = !!providerConfig;
 
 	const queryClient = useQueryClient();
 	const putMutation = useMutation({
@@ -180,274 +183,252 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 		putMutation.mutate(draftConfig);
 	}, [draftConfig, putMutation]);
 
+	const triggerFetch = useCallback(
+		async (force: boolean) => {
+			if (!draftConfig.api_key) {
+				toast.error("Please enter an API key first");
+				return;
+			}
+			if (hasFetchConfigChanges) {
+				await putMutation.mutateAsync(draftConfig);
+			}
+			fetchModelsMutation.mutate(force);
+		},
+		[draftConfig, hasFetchConfigChanges, putMutation, fetchModelsMutation],
+	);
+
 	const displayName = builtin?.name ?? providerId;
 	const description = builtin?.description ?? "Custom provider";
 	const resolvedIcon = resolveProviderIcon(providerId);
 
 	return (
-		<div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-			<div className="flex-1 min-h-0 px-6 py-5">
-				<div className="flex h-full max-w-xl flex-col gap-6">
-					<div className="flex items-start justify-between">
-						<div className="space-y-1">
-							<div className="flex items-center gap-2.5">
-								<BrandAvatar icon={resolvedIcon?.icon ?? null} size={24} />
-								<h2 className="text-lg font-semibold tracking-tight">{displayName}</h2>
-								{isConfigured && draftConfig.enabled && (
-									<Badge variant="secondary" className="text-[10px] font-medium">
-										Active
-									</Badge>
-								)}
+		<div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
+			<div className="flex-1 min-h-0 overflow-y-auto px-8 pt-6 pb-8 [scrollbar-gutter:stable]">
+				<div className="mx-auto flex max-w-[640px] flex-col gap-7">
+					<ProviderIdentity
+						icon={resolvedIcon?.icon ?? null}
+						name={displayName}
+						description={description}
+						enabled={draftConfig.enabled}
+						onToggle={handleToggle}
+						isCustom={!BUILTIN_IDS.has(providerId)}
+						onDelete={() => deleteMutation.mutate()}
+					/>
+
+					<SettingsGroup title="Connection" bare>
+						<SettingsField label="API Key">
+							<div className="relative">
+								<Input
+									type={showKey ? "text" : "password"}
+									value={draftConfig.api_key ?? ""}
+									placeholder="sk-..."
+									className="h-9 pr-10 font-mono text-[13px]"
+									onChange={(e) =>
+										setDraftConfig((prev) => ({
+											...prev,
+											api_key: e.target.value || undefined,
+										}))
+									}
+								/>
+								<button
+									type="button"
+									onClick={() => setShowKey((v) => !v)}
+									className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/45 hover:text-foreground/80 transition-colors"
+									aria-label={showKey ? "Hide API key" : "Show API key"}
+								>
+									<HugeiconsIcon icon={showKey ? ViewOffSlashIcon : ViewIcon} size={16} strokeWidth={1.75} />
+								</button>
 							</div>
-							<p className="text-[13px] text-muted-foreground/50">{description}</p>
-						</div>
-						<div className="flex items-center gap-2" style={noDrag}>
-							{!BUILTIN_IDS.has(providerId) && (
-								<Button variant="destructive" size="icon-sm" onClick={() => deleteMutation.mutate()}>
-									<Trash2Icon className="size-3.5" />
-								</Button>
+							{builtin?.apiKeyUrl && (
+								<a
+									href={builtin.apiKeyUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="mt-1 inline-flex w-fit items-center gap-1 text-[11.5px] text-muted-foreground/55 underline decoration-muted-foreground/25 underline-offset-4 transition-colors hover:text-primary-2 hover:decoration-primary-2/60"
+								>
+									Get an API key from {displayName}
+									<HugeiconsIcon icon={LinkSquare02Icon} size={12} strokeWidth={1.75} />
+								</a>
 							)}
-							<Switch checked={draftConfig.enabled} onCheckedChange={handleToggle} size="sm" />
-						</div>
-					</div>
+						</SettingsField>
 
-					<Separator className="opacity-30" />
+						<div className="border-t border-border/35" />
 
-					<div className="space-y-2">
-						<Label className="text-[13px] text-muted-foreground">API Key</Label>
-						<div className="relative">
+						<SettingsField
+							label="Base URL"
+							optional={!!builtin}
+							hint={builtin ? `Leave empty to use the default ${displayName} endpoint.` : undefined}
+						>
 							<Input
-								type={showKey ? "text" : "password"}
-								value={draftConfig.api_key ?? ""}
-								placeholder="sk-..."
-								className="pr-10 font-mono text-[13px]"
+								value={draftConfig.api_base}
+								placeholder={defaults.api_base || "https://api.example.com/v1"}
+								className="h-9 font-mono text-[13px]"
 								onChange={(e) =>
 									setDraftConfig((prev) => ({
 										...prev,
-										api_key: e.target.value || undefined,
+										api_base: e.target.value,
 									}))
 								}
 							/>
-							<button
-								type="button"
-								onClick={() => setShowKey(!showKey)}
-								className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
-							>
-								{showKey ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
-							</button>
-						</div>
-						{builtin?.apiKeyUrl && (
-							<a
-								href={builtin.apiKeyUrl}
-								target="_blank"
-								rel="noopener noreferrer"
-								className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors"
-							>
-								Get your API key from {displayName}
-								<ExternalLinkIcon className="size-3" />
-							</a>
+						</SettingsField>
+
+						{!builtin && (
+							<>
+								<div className="border-t border-border/35" />
+								<SettingsField label="API Format">
+									<Select value={draftConfig.api_format} onValueChange={handleFormatChange}>
+										<SelectTrigger className="w-full h-9">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{API_FORMAT_OPTIONS.map((opt) => (
+												<SelectItem key={opt.value} value={opt.value}>
+													{opt.label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</SettingsField>
+							</>
 						)}
-					</div>
+					</SettingsGroup>
 
-					<div className="space-y-2">
-						<Label className="text-[13px] text-muted-foreground">
-							Base URL{builtin && <span className="ml-1 text-muted-foreground/30">(Optional)</span>}
-						</Label>
-						<Input
-							value={draftConfig.api_base}
-							placeholder={defaults.api_base || "https://api.example.com/v1"}
-							className="font-mono text-[13px]"
-							onChange={(e) =>
-								setDraftConfig((prev) => ({
-									...prev,
-									api_base: e.target.value,
-								}))
-							}
-						/>
-						{builtin && (
-							<p className="text-[11px] text-muted-foreground/30">
-								Leave empty to use the default {displayName} endpoint
-							</p>
-						)}
-					</div>
-
-					{!builtin && (
-						<div className="space-y-2">
-							<Label className="text-[13px] text-muted-foreground">API Format</Label>
-							<Select value={draftConfig.api_format} onValueChange={handleFormatChange}>
-								<SelectTrigger className="w-full">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{API_FORMAT_OPTIONS.map((opt) => (
-										<SelectItem key={opt.value} value={opt.value}>
-											{opt.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-					)}
-
-					<Separator className="opacity-30" />
-
-					<div className="flex min-h-0 flex-1 flex-col">
-						<div className="mb-3 flex items-center justify-between">
-							<Label className="text-[13px] text-muted-foreground">Models</Label>
-							<div className="flex items-center gap-2">
+					<SettingsGroup
+						title="Models"
+						bare
+						action={
+							<div className="flex items-center gap-3">
 								{resolvedFetchedData && (
 									<span
 										className={cn(
-											"text-[11px] tabular-nums",
+											"font-serif italic text-[11.5px] tabular-nums",
 											Date.now() - resolvedFetchedData.fetchedAt > 3600000
-												? "text-amber-500/60"
-												: "text-muted-foreground/30",
+												? "text-amber-600/70"
+												: "text-muted-foreground/55",
 										)}
 									>
-										Fetched {timeAgo(resolvedFetchedData.fetchedAt)}
+										Synced {timeAgo(resolvedFetchedData.fetchedAt)}
 									</span>
 								)}
-								<span className="text-[11px] text-muted-foreground/30 tabular-nums">
+								<span className="text-[11.5px] text-muted-foreground/55 tabular-nums">
 									{enabledModelIds.size} enabled
 								</span>
 							</div>
-						</div>
-
-						<div className="mb-3 flex gap-2">
+						}
+					>
+						<div className="flex items-center gap-2 px-4 py-3 border-b border-border/35" style={noDrag}>
 							<div className="relative flex-1">
 								<HugeiconsIcon
 									icon={Search01Icon}
 									size={14}
 									strokeWidth={2}
-									className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/40"
+									className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/45"
 								/>
 								<Input
 									value={modelSearch}
 									onChange={(e) => setModelSearch(e.target.value)}
-									placeholder="Search models..."
-									className="pl-8 text-[13px]"
+									placeholder="Search models…"
+									className="h-8 pl-8 text-[13px]"
 								/>
 							</div>
 							<Button
 								variant="outline"
 								size="sm"
-								onClick={async () => {
-									if (!draftConfig.api_key) {
-										toast.error("Please enter an API key first");
-										return;
-									}
-									if (hasFetchConfigChanges) {
-										await putMutation.mutateAsync(draftConfig);
-									}
-									fetchModelsMutation.mutate(!resolvedFetchedData);
-								}}
+								onClick={() => triggerFetch(!!resolvedFetchedData)}
 								disabled={fetchModelsMutation.isPending || putMutation.isPending}
 								className="shrink-0 gap-1.5"
 							>
 								{fetchModelsMutation.isPending || putMutation.isPending ? (
-									<LoaderIcon className="size-3.5 animate-spin" />
+									<HugeiconsIcon icon={Loading03Icon} size={14} strokeWidth={1.75} className="animate-spin" />
 								) : (
-									<RefreshCwIcon className="size-3.5" />
+									<HugeiconsIcon icon={Refresh01Icon} size={14} strokeWidth={1.75} />
 								)}
-								{putMutation.isPending ? "Saving..." : fetchModelsMutation.isPending ? "Fetching..." : "Fetch"}
+								{putMutation.isPending ? "Saving…" : fetchModelsMutation.isPending ? "Fetching…" : "Fetch"}
 							</Button>
 						</div>
 
-						{fetchModelsMutation.isPending && !resolvedFetchedData && (
-							<div className="flex-1 space-y-0 divide-y divide-border/20 overflow-hidden rounded-xl border border-border/20">
-								{["s0", "s1", "s2", "s3", "s4"].map((key) => (
-									<div key={key} className="flex items-center justify-between px-3 py-2.5">
-										<div className="flex items-center gap-2">
-											<div className="h-4 w-32 animate-pulse rounded bg-muted/40" />
-											<div className="h-3 w-12 animate-pulse rounded bg-muted/30" />
-										</div>
-										<div className="h-4 w-8 animate-pulse rounded-full bg-muted/30" />
-									</div>
-								))}
-							</div>
-						)}
+						{fetchModelsMutation.isPending && !resolvedFetchedData && <ModelsSkeleton />}
 
-						{resolvedFetchedData && !fetchModelsMutation.isPending && (
-							<ScrollArea className="min-h-0 flex-1 rounded-xl border border-border/20">
-								{filteredFetchedModels.length > 0 ? (
-									<div className="divide-y divide-border/20">
-										{filteredFetchedModels.map((model) => {
-											const isEnabled = enabledModelIds.has(model.id);
-											const uiCaps = toUiCapabilities(model);
-											const ctxLabel = formatContextLimit(model.limit);
-											return (
-												<div
-													key={model.id}
-													className="flex items-center gap-3 px-3 py-2 transition-colors duration-150 hover:bg-muted/20"
-												>
-													<div className="min-w-0 flex-1">
-														<div className="flex items-center gap-2">
-															<span className="truncate font-mono text-[13px]">{model.id}</span>
-															{ctxLabel && (
-																<span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/40">
-																	{ctxLabel}
-																</span>
-															)}
-														</div>
-														{uiCaps && (
-															<div className="mt-0.5">
-																<CapabilityBadges capabilities={uiCaps} iconSize={12} />
-															</div>
+						{resolvedFetchedData &&
+							!fetchModelsMutation.isPending &&
+							(filteredFetchedModels.length > 0 ? (
+								<ul className="divide-y divide-border/30">
+									{filteredFetchedModels.map((model) => {
+										const isEnabled = enabledModelIds.has(model.id);
+										const uiCaps = toUiCapabilities(model);
+										const ctxLabel = formatContextLimit(model.limit);
+										return (
+											<li
+												key={model.id}
+												className="flex items-center gap-3 px-4 py-2.5 transition-colors duration-150 hover:bg-muted/25"
+											>
+												<div className="min-w-0 flex-1">
+													<div className="flex items-center gap-2">
+														<span className="truncate font-mono text-[13px] text-foreground">
+															{model.id}
+														</span>
+														{ctxLabel && (
+															<span className="shrink-0 rounded bg-muted/60 px-1.5 py-px font-mono text-[10px] tabular-nums text-muted-foreground/70">
+																{ctxLabel}
+															</span>
 														)}
 													</div>
-													<Switch
-														checked={isEnabled}
-														onCheckedChange={(checked) => handleModelToggle(model.id, checked)}
-														size="sm"
-													/>
+													{uiCaps && (
+														<div className="mt-1">
+															<CapabilityBadges capabilities={uiCaps} iconSize={12} />
+														</div>
+													)}
 												</div>
-											);
-										})}
-									</div>
-								) : (
-									<div className="py-6 text-center">
-										<p className="text-[13px] text-muted-foreground/30">
-											{modelSearch ? "No models match your search" : "No models available"}
-										</p>
-									</div>
-								)}
-							</ScrollArea>
-						)}
+												<Switch
+													checked={isEnabled}
+													onCheckedChange={(checked) => handleModelToggle(model.id, checked)}
+													size="sm"
+												/>
+											</li>
+										);
+									})}
+								</ul>
+							) : (
+								<div className="py-10 text-center">
+									<p className="font-serif italic text-[13px] text-muted-foreground/55">
+										{modelSearch ? "No models match your search." : "No models available."}
+									</p>
+								</div>
+							))}
 
 						{!resolvedFetchedData && !fetchModelsMutation.isPending && (
-							<div className="flex flex-1 flex-col items-center justify-center space-y-3 rounded-xl border border-dashed border-border/30 py-8 text-center">
-								<p className="text-[13px] text-muted-foreground/30">No models fetched yet</p>
-								<p className="text-[11px] text-muted-foreground/20">
-									Click Fetch to discover available models from {displayName}
+							<div className="flex flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+								<p className="font-serif text-[13.5px] italic text-muted-foreground/60">
+									No models fetched yet.
+								</p>
+								<p className="max-w-[42ch] text-[12px] leading-snug text-muted-foreground/50">
+									Fetch to discover the models {displayName} currently exposes. You can enable the ones you
+									want to keep.
 								</p>
 								<Button
 									variant="outline"
 									size="sm"
-									onClick={async () => {
-										if (!draftConfig.api_key) {
-											toast.error("Please enter an API key first");
-											return;
-										}
-										if (hasFetchConfigChanges) {
-											await putMutation.mutateAsync(draftConfig);
-										}
-										fetchModelsMutation.mutate(false);
-									}}
+									onClick={() => triggerFetch(false)}
 									disabled={fetchModelsMutation.isPending || putMutation.isPending}
 									className="gap-1.5"
 								>
-									<RefreshCwIcon className="size-3.5" />
-									Fetch Models
+									<HugeiconsIcon icon={Refresh01Icon} size={14} strokeWidth={1.75} />
+									Fetch models
 								</Button>
 							</div>
 						)}
-					</div>
+					</SettingsGroup>
 				</div>
 			</div>
 
-			<div className="shrink-0 border-t border-border/30 bg-background/95 px-6 py-4 backdrop-blur" style={noDrag}>
-				<div className="mx-auto flex max-w-xl items-center justify-between gap-3">
-					<p className="text-[12px] text-muted-foreground/45">
+			<div className="shrink-0 border-t border-border/35 bg-background/95 px-8 py-3.5 backdrop-blur" style={noDrag}>
+				<div className="mx-auto flex max-w-[640px] items-center justify-between gap-3">
+					<p
+						className={cn(
+							"font-serif italic text-[12.5px] transition-colors",
+							hasChanges ? "text-amber-700/75" : "text-muted-foreground/50",
+						)}
+					>
 						{hasChanges ? "You have unsaved changes." : "All changes saved."}
 					</p>
 					<div className="flex items-center gap-2">
@@ -455,11 +436,86 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 							Cancel
 						</Button>
 						<Button onClick={handleSave} disabled={!hasChanges || putMutation.isPending}>
-							{putMutation.isPending ? "Saving..." : "Save"}
+							{putMutation.isPending ? "Saving…" : "Save"}
 						</Button>
 					</div>
 				</div>
 			</div>
 		</div>
+	);
+}
+
+function ProviderIdentity({
+	icon,
+	name,
+	description,
+	enabled,
+	onToggle,
+	isCustom,
+	onDelete,
+}: {
+	icon: React.ComponentType<{ size?: number; className?: string }> | null;
+	name: string;
+	description: string;
+	enabled: boolean;
+	onToggle: (checked: boolean) => void;
+	isCustom: boolean;
+	onDelete: () => void;
+}) {
+	return (
+		<div className="flex items-start justify-between gap-4">
+			<div className="flex min-w-0 items-start gap-3">
+				<span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-card ring-1 ring-border/50">
+					<BrandAvatar icon={icon} size={22} />
+				</span>
+				<div className="flex min-w-0 flex-col gap-1 pt-0.5">
+					<div className="flex items-center gap-2">
+						<h2 className="font-serif text-[22px] leading-tight tracking-tight text-foreground">{name}</h2>
+						<span
+							className={cn(
+								"inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.12em]",
+								enabled ? "text-primary-2" : "text-muted-foreground/45",
+							)}
+						>
+							<span
+								className={cn("size-1.5 rounded-full", enabled ? "bg-primary-2" : "bg-muted-foreground/30")}
+							/>
+							{enabled ? "Active" : "Disabled"}
+						</span>
+					</div>
+					<p className="text-[13px] leading-relaxed text-muted-foreground/70">{description}</p>
+				</div>
+			</div>
+			<div className="flex shrink-0 items-center gap-2 pt-1" style={noDrag}>
+				{isCustom && (
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						onClick={onDelete}
+						className="text-muted-foreground/60 hover:text-destructive"
+						aria-label="Delete provider"
+					>
+						<HugeiconsIcon icon={Delete02Icon} size={15} strokeWidth={1.75} />
+					</Button>
+				)}
+				<Switch checked={enabled} onCheckedChange={onToggle} size="sm" />
+			</div>
+		</div>
+	);
+}
+
+function ModelsSkeleton() {
+	return (
+		<ul className="divide-y divide-border/30">
+			{["s0", "s1", "s2", "s3", "s4"].map((key) => (
+				<li key={key} className="flex items-center justify-between px-4 py-2.5">
+					<div className="flex items-center gap-2">
+						<div className="h-4 w-32 animate-pulse rounded bg-muted/40" />
+						<div className="h-3 w-12 animate-pulse rounded bg-muted/30" />
+					</div>
+					<div className="h-4 w-8 animate-pulse rounded-full bg-muted/30" />
+				</li>
+			))}
+		</ul>
 	);
 }

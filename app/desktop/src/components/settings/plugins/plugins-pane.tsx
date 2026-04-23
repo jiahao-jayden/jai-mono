@@ -1,8 +1,10 @@
+import { CancelCircleIcon, Search01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type { PluginListItem } from "@jayden/jai-gateway";
 import { useQuery } from "@tanstack/react-query";
-import { SearchIcon, XIcon } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
 import { gateway } from "@/services/gateway";
+import { SettingsHeader, SettingsPage } from "../common/settings-layout";
 import { PluginCard } from "./plugin-card";
 import { PluginsEmpty } from "./plugins-empty";
 
@@ -31,23 +33,25 @@ export function PluginsPane() {
 	const hasMatches = visible.length > 0;
 
 	return (
-		<section className="mx-auto max-w-170 px-8 pt-2 pb-16">
-			<header className="pb-6 mb-6 border-b border-border/30">
-				<p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-widest">Plugins</p>
-				<h2 className="mt-2 font-serif text-[22px] leading-tight tracking-tight text-foreground">已安装的插件</h2>
-				<p className="mt-1.5 text-[13px] text-muted-foreground/70 leading-relaxed max-w-[60ch]">
-					插件来自 <code className="font-mono text-[12px]">~/.jai/plugins/</code>。
-					点击条目展开以编辑环境变量和配置。
-				</p>
+		<SettingsPage>
+			<SettingsHeader
+				title="Plugins"
+				description={
+					<>
+						Plugins live under <code className="font-mono text-[12px] text-foreground/80">~/.jai/plugins/</code>.
+						Expand an entry to tweak its environment and configuration.
+					</>
+				}
+				action={
+					hasPlugins ? (
+						<span className="font-serif text-[12.5px] italic text-muted-foreground/60 tabular-nums">
+							{deferredQuery ? `${visible.length} / ${plugins.length}` : `${plugins.length} installed`}
+						</span>
+					) : undefined
+				}
+			/>
 
-				{hasPlugins && (
-					<SearchField
-						query={query}
-						onChange={setQuery}
-						hint={deferredQuery ? `${visible.length} / ${plugins.length}` : `共 ${plugins.length} 个`}
-					/>
-				)}
-			</header>
+			{hasPlugins && <SearchField query={query} onChange={setQuery} />}
 
 			{isLoading && <PluginsLoading />}
 			{isError && <PluginsError message={error instanceof Error ? error.message : String(error)} />}
@@ -62,19 +66,24 @@ export function PluginsPane() {
 					))}
 				</ul>
 			)}
-		</section>
+		</SettingsPage>
 	);
 }
 
-function SearchField({ query, onChange, hint }: { query: string; onChange: (v: string) => void; hint: string }) {
+function SearchField({ query, onChange }: { query: string; onChange: (v: string) => void }) {
 	return (
-		<div className="mt-5 flex items-center gap-3 border-b border-border/40 focus-within:border-border/70 transition-colors pb-2">
-			<SearchIcon className="size-3.5 shrink-0 text-muted-foreground/50" strokeWidth={1.5} />
+		<div className="flex items-center gap-2.5 border-b border-border/40 pb-2.5 focus-within:border-border/70 transition-colors -mt-4">
+			<HugeiconsIcon
+				icon={Search01Icon}
+				size={14}
+				strokeWidth={1.75}
+				className="shrink-0 text-muted-foreground/50"
+			/>
 			<input
 				type="search"
 				value={query}
 				onChange={(e) => onChange(e.target.value)}
-				placeholder="搜索插件名、描述…"
+				placeholder="Search plugins…"
 				spellCheck={false}
 				autoComplete="off"
 				className="flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/45 placeholder:font-serif placeholder:italic outline-none"
@@ -86,17 +95,16 @@ function SearchField({ query, onChange, hint }: { query: string; onChange: (v: s
 					className="p-0.5 rounded text-muted-foreground/50 hover:text-foreground/80 transition-colors"
 					aria-label="清除搜索"
 				>
-					<XIcon className="size-3.5" strokeWidth={1.5} />
+					<HugeiconsIcon icon={CancelCircleIcon} size={14} strokeWidth={1.75} />
 				</button>
 			)}
-			<span className="text-[11px] tabular-nums text-muted-foreground/50">{hint}</span>
 		</div>
 	);
 }
 
 function NoMatches({ query }: { query: string }) {
 	return (
-		<div className="rounded-2xl border border-border/40 bg-card/30 px-6 py-7 text-center">
+		<div className="rounded-2xl bg-card/50 ring-1 ring-border/40 px-6 py-7 text-center">
 			<p className="font-serif italic text-[13.5px] text-foreground/70">
 				没有匹配 <span className="not-italic font-mono text-[12.5px] text-foreground/85">“{query}”</span> 的插件。
 			</p>
@@ -108,7 +116,7 @@ function PluginsLoading() {
 	return (
 		<ul className="space-y-2.5" aria-busy="true">
 			{[0, 1, 2].map((i) => (
-				<li key={i} className="rounded-2xl border border-border/40 bg-card/30 px-5 py-4">
+				<li key={i} className="rounded-2xl bg-card/50 ring-1 ring-border/40 px-5 py-4">
 					<div className="h-4 w-40 rounded bg-muted/50 animate-pulse" />
 					<div className="mt-2.5 h-3 w-64 rounded bg-muted/30 animate-pulse" />
 				</li>
@@ -119,7 +127,7 @@ function PluginsLoading() {
 
 function PluginsError({ message }: { message: string }) {
 	return (
-		<div className="rounded-2xl border border-border/40 bg-card/30 px-5 py-5">
+		<div className="rounded-2xl bg-card/50 ring-1 ring-border/40 px-5 py-5">
 			<p className="text-[13px] text-foreground/80">无法加载插件列表</p>
 			<p className="mt-1.5 font-serif italic text-[12.5px] text-muted-foreground/70">{message}</p>
 		</div>

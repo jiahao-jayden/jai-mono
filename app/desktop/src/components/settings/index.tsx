@@ -1,5 +1,6 @@
+import { InformationCircleIcon, Layers01Icon, PuzzleIcon, Setting07Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
-import { BlocksIcon, InfoIcon, LayersIcon, Settings2Icon } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { gateway } from "@/services/gateway";
@@ -12,10 +13,10 @@ import { ProvidersPane } from "./providers/providers-pane";
 const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
 
 const navItems = [
-	{ id: "general", label: "General", icon: Settings2Icon },
-	{ id: "providers", label: "Providers", icon: LayersIcon },
-	{ id: "plugins", label: "Plugins", icon: BlocksIcon },
-	{ id: "about", label: "About", icon: InfoIcon },
+	{ id: "general", label: "General", icon: Setting07Icon },
+	{ id: "providers", label: "Providers", icon: Layers01Icon },
+	{ id: "plugins", label: "Plugins", icon: PuzzleIcon },
+	{ id: "about", label: "About", icon: InformationCircleIcon },
 ] as const;
 
 type NavId = (typeof navItems)[number]["id"];
@@ -28,46 +29,43 @@ export default function Settings() {
 	});
 
 	return (
-		<div className="h-svh flex bg-background text-foreground">
-			<aside className="w-52 shrink-0 flex flex-col bg-sidebar border-r border-sidebar-border/40">
+		<div className="flex h-svh bg-background text-foreground">
+			<aside className="flex w-52 shrink-0 flex-col border-r border-sidebar-border/40 bg-sidebar">
 				<Titlebar />
-				<nav className="flex-1 px-3 space-y-px">
+				<nav className="flex-1 space-y-px px-3">
 					{navItems.map((item) => {
-						const Icon = item.icon;
 						const isActive = active === item.id;
 						return (
 							<button
 								type="button"
 								key={item.id}
 								className={cn(
-									"w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all duration-150",
+									"group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150",
 									isActive
 										? "bg-sidebar-accent text-sidebar-foreground font-medium"
-										: "text-sidebar-foreground/60 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground/80",
+										: "text-sidebar-foreground/60 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground/85",
 								)}
 								onClick={() => setActive(item.id)}
 							>
-								<Icon className="size-3.75 shrink-0" strokeWidth={1.5} />
-								{item.label}
+								<HugeiconsIcon icon={item.icon} size={15} strokeWidth={1.5} className="shrink-0" />
+								<span className="flex-1 text-left">{item.label}</span>
+								{isActive && <span aria-hidden className="size-1.5 rounded-full bg-primary-2/80" />}
 							</button>
 						);
 					})}
 				</nav>
 			</aside>
 
-			<main className="flex-1 flex flex-col overflow-hidden">
+			<main className="flex flex-1 flex-col overflow-hidden">
 				<div className="h-12 shrink-0" style={drag} />
 				{active === "providers" ? (
 					<div className="flex-1 overflow-hidden">
 						<ProvidersPane config={config} />
 					</div>
-				) : active === "plugins" ? (
-					<div className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
-						<PluginsPane />
-					</div>
 				) : (
-					<div className="flex-1 overflow-y-auto px-8 pb-8">
+					<div className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
 						{active === "general" && <GeneralPane config={config} />}
+						{active === "plugins" && <PluginsPane />}
 						{active === "about" && <AboutPane />}
 					</div>
 				)}
