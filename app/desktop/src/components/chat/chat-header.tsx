@@ -1,6 +1,5 @@
 import { FolderTreeIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { FolderOpenIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppToolbar } from "@/components/shell/app-toolbar";
 import { useSidebar } from "@/components/ui/sidebar";

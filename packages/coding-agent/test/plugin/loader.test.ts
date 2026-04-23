@@ -241,15 +241,12 @@ describe("loadPluginsFromDirs", () => {
       `,
 		});
 
-		const { registry, errors } = await loadPluginsFromDirs(
-			[{ path: root, scope: "user" }],
-			{
-				envSettings: {
-					JAI_TEST_DECLARED: "visible",
-					JAI_TEST_UNDECLARED: "should-be-hidden",
-				},
+		const { registry, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], {
+			envSettings: {
+				JAI_TEST_DECLARED: "visible",
+				JAI_TEST_UNDECLARED: "should-be-hidden",
 			},
-		);
+		});
 		expect(errors.length).toBe(0);
 		const cmd = registry.findCommand("env-filter:dump");
 		expect(cmd).toBeDefined();
@@ -282,10 +279,7 @@ describe("loadPluginsFromDirs", () => {
       `,
 		});
 
-		const { registry, errors } = await loadPluginsFromDirs(
-			[{ path: root, scope: "user" }],
-			{ envSettings: {} },
-		);
+		const { registry, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], { envSettings: {} });
 		expect(errors.length).toBe(0);
 		expect(JSON.parse(registry.findCommand("env-source:dump")?.description ?? "{}")).toEqual({
 			declared: null,
@@ -309,10 +303,7 @@ describe("loadPluginsFromDirs", () => {
 			indexSource: `export default function () {}`,
 		});
 
-		const { loaded, errors } = await loadPluginsFromDirs(
-			[{ path: root, scope: "user" }],
-			{ envSettings: {} },
-		);
+		const { loaded, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], { envSettings: {} });
 		expect(loaded.find((p) => p.meta.name === "needs-env")).toBeUndefined();
 		const err = errors.find((e) => e.pluginName === "needs-env");
 		expect(err).toBeDefined();
@@ -337,10 +328,9 @@ describe("loadPluginsFromDirs", () => {
       }`,
 		});
 
-		const { registry, errors } = await loadPluginsFromDirs(
-			[{ path: root, scope: "user" }],
-			{ envSettings: { JAI_TEST_REQUIRED_OK: "yes" } },
-		);
+		const { registry, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], {
+			envSettings: { JAI_TEST_REQUIRED_OK: "yes" },
+		});
 		expect(errors.length).toBe(0);
 		expect(registry.findCommand("has-env:x")?.description).toBe("yes");
 
@@ -389,10 +379,9 @@ describe("loadPluginsFromDirs", () => {
       `,
 		});
 
-		const { registry, errors } = await loadPluginsFromDirs(
-			[{ path: root, scope: "user" }],
-			{ pluginSettings: { "raw-config": { hello: "world" } } },
-		);
+		const { registry, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], {
+			pluginSettings: { "raw-config": { hello: "world" } },
+		});
 		expect(errors.length).toBe(0);
 		const cmd = registry.findCommand("raw-config:dump");
 		expect(JSON.parse(cmd?.description ?? "null")).toEqual({ hello: "world" });
@@ -431,10 +420,9 @@ describe("loadPluginsFromDirs", () => {
       `,
 		});
 
-		const { registry, errors } = await loadPluginsFromDirs(
-			[{ path: root, scope: "user" }],
-			{ pluginSettings: { "typed-config": { provider: "b" } } },
-		);
+		const { registry, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], {
+			pluginSettings: { "typed-config": { provider: "b" } },
+		});
 		expect(errors.map((e) => e.message)).toEqual([]);
 		const cmd = registry.findCommand("typed-config:dump");
 		expect(JSON.parse(cmd?.description ?? "{}")).toEqual({ provider: "b", retries: 3 });
@@ -459,10 +447,9 @@ describe("loadPluginsFromDirs", () => {
       `,
 		});
 
-		const { loaded, errors } = await loadPluginsFromDirs(
-			[{ path: root, scope: "user" }],
-			{ pluginSettings: { "bad-config": { provider: "not-in-enum" } } },
-		);
+		const { loaded, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], {
+			pluginSettings: { "bad-config": { provider: "not-in-enum" } },
+		});
 		expect(loaded.find((p) => p.meta.name === "bad-config")).toBeUndefined();
 		const err = errors.find((e) => e.pluginName === "bad-config");
 		expect(err).toBeDefined();

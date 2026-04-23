@@ -108,7 +108,11 @@ export function MessageList({ messages, status }: MessageListProps) {
 								}
 								return null;
 							})}
-							{showIndicator && <div className="mt-2.5"><TypingIndicator /></div>}
+							{showIndicator && (
+								<div className="mt-2.5">
+									<TypingIndicator />
+								</div>
+							)}
 						</div>
 					</MessageAssistant>
 				);

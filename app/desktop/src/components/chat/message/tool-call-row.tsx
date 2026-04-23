@@ -134,11 +134,7 @@ export function ToolCallRow({ tool }: ToolCallRowProps) {
 		: isError
 			? "text-destructive/85 hover:text-destructive"
 			: "text-muted-foreground/70 hover:text-foreground/85";
-	const labelTone = awaitingPermission
-		? "text-foreground/90"
-		: isError
-			? "text-destructive/90"
-			: "text-foreground/75";
+	const labelTone = awaitingPermission ? "text-foreground/90" : isError ? "text-destructive/90" : "text-foreground/75";
 	const argTone = isError ? "text-destructive/60" : "text-muted-foreground/55";
 	const dotTone = isError ? "text-destructive/30" : "text-muted-foreground/30";
 

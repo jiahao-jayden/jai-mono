@@ -26,10 +26,7 @@ function resolvePluginEnv(
 		}
 	}
 	if (missing.length > 0) {
-		throw new Error(
-			`Missing required env: ${missing.join(", ")}. ` +
-				`Declared in plugin.json → "env".`,
-		);
+		throw new Error(`Missing required env: ${missing.join(", ")}. Declared in plugin.json → "env".`);
 	}
 	return Object.freeze(result);
 }
@@ -63,8 +60,7 @@ async function runSetupIfNeeded(pluginDir: string, manifest: PluginManifest): Pr
 	try {
 		await access(checkPath);
 		return;
-	} catch {
-	}
+	} catch {}
 
 	const proc = Bun.spawn(["sh", "-c", setup.command], {
 		cwd: pluginDir,
@@ -72,10 +68,7 @@ async function runSetupIfNeeded(pluginDir: string, manifest: PluginManifest): Pr
 		stderr: "pipe",
 	});
 
-	const [exitCode, stderrText] = await Promise.all([
-		proc.exited,
-		new Response(proc.stderr).text(),
-	]);
+	const [exitCode, stderrText] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
 
 	if (exitCode !== 0) {
 		const stderrSnippet = stderrText.trim().slice(-400);
@@ -123,11 +116,7 @@ type PluginConfigSchema = {
 };
 
 function isPluginConfigSchema(v: unknown): v is PluginConfigSchema {
-	return (
-		typeof v === "object" &&
-		v !== null &&
-		typeof (v as { safeParse?: unknown }).safeParse === "function"
-	);
+	return typeof v === "object" && v !== null && typeof (v as { safeParse?: unknown }).safeParse === "function";
 }
 
 type PluginModule = {
@@ -154,11 +143,7 @@ async function importPluginModule(pluginDir: string): Promise<PluginModule> {
 }
 
 /** Validate raw plugin config when configSchema is exported. */
-function resolvePluginConfig(
-	pluginName: string,
-	raw: unknown,
-	schema: PluginConfigSchema | null,
-): unknown {
+function resolvePluginConfig(pluginName: string, raw: unknown, schema: PluginConfigSchema | null): unknown {
 	if (!schema) return raw;
 	const result = schema.safeParse(raw);
 	if (!result.success) {
@@ -176,10 +161,7 @@ export type LoadOptions = {
 	envSettings?: Readonly<Record<string, string>>;
 };
 
-export async function loadPluginsFromDirs(
-	dirs: ScanDir[],
-	options: LoadOptions = {},
-): Promise<LoadResult> {
+export async function loadPluginsFromDirs(dirs: ScanDir[], options: LoadOptions = {}): Promise<LoadResult> {
 	const registry = new PluginRegistry();
 	const loaded: LoadedPlugin[] = [];
 	const errors: LoadError[] = [];
@@ -214,17 +196,17 @@ export async function loadPluginsFromDirs(
 				scope: scan.scope,
 			};
 
-		try {
-			await runSetupIfNeeded(dir, manifest);
-			const env = resolvePluginEnv(manifest, envSettings);
-			await warnIfProcessEnvUsed(dir, manifest.name);
-			const { factory, configSchema } = await importPluginModule(dir);
-			const rawConfig = pluginSettings[manifest.name];
-			const config = resolvePluginConfig(manifest.name, rawConfig, configSchema);
-			if (factory) {
-				const api = createPluginAPI(registry, meta, env, config);
-				await factory(api);
-			}
+			try {
+				await runSetupIfNeeded(dir, manifest);
+				const env = resolvePluginEnv(manifest, envSettings);
+				await warnIfProcessEnvUsed(dir, manifest.name);
+				const { factory, configSchema } = await importPluginModule(dir);
+				const rawConfig = pluginSettings[manifest.name];
+				const config = resolvePluginConfig(manifest.name, rawConfig, configSchema);
+				if (factory) {
+					const api = createPluginAPI(registry, meta, env, config);
+					await factory(api);
+				}
 
 				const templates = await loadCommandTemplatesFromDir(join(dir, "commands"));
 				for (const tpl of templates) {
