@@ -27,7 +27,17 @@ function toolDescriptions(tools: AgentTool[]): PromptSection {
 }
 
 function environment(cwd: string): PromptSection {
-	const date = new Date().toISOString().slice(0, 10);
+	const now = new Date();
+	const localTime = new Intl.DateTimeFormat("sv-SE", {
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+		hourCycle: "h23",
+	}).format(now);
+	const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
 	const platform = process.platform;
 	const shell = process.env.SHELL ?? "unknown";
 
@@ -36,7 +46,7 @@ function environment(cwd: string): PromptSection {
 		content: [
 			"# Environment",
 			"",
-			`- **Date**: ${date}`,
+			`- **Current local time**: ${localTime} (${timeZone})`,
 			`- **OS**: ${platform}`,
 			`- **Shell**: ${shell}`,
 			`- **Working directory**: ${cwd}`,

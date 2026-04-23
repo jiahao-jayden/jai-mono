@@ -31,6 +31,7 @@ describe("buildSystemPrompt", () => {
 	test("includes environment section with cwd", () => {
 		const prompt = buildSystemPrompt({ cwd: "/Users/test/project", tools: [], prompts: MOCK_PROMPTS });
 		expect(prompt).toContain("/Users/test/project");
+		expect(prompt).toContain("Current local time");
 		expect(prompt).toContain("Working directory");
 	});
 
