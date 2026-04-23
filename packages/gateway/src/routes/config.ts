@@ -35,6 +35,8 @@ function toConfigResponse(manager: SessionManager) {
 		language: all.language,
 		reasoningEffort: all.reasoningEffort,
 		contextWindow: resolveContextWindow(manager),
+		env: all.env ?? {},
+		plugins: all.plugins ?? {},
 	};
 }
 

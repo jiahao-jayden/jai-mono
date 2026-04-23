@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { InfoIcon, LayersIcon, Settings2Icon } from "lucide-react";
+import { BlocksIcon, InfoIcon, LayersIcon, Settings2Icon } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { gateway } from "@/services/gateway";
 import { Titlebar } from "../shell/titlebar";
 import { AboutPane } from "./about-pane";
 import { GeneralPane } from "./general-pane";
+import { PluginsPane } from "./plugins/plugins-pane";
 import { ProvidersPane } from "./providers/providers-pane";
 
 const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
@@ -13,6 +14,7 @@ const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
 const navItems = [
 	{ id: "general", label: "General", icon: Settings2Icon },
 	{ id: "providers", label: "Providers", icon: LayersIcon },
+	{ id: "plugins", label: "Plugins", icon: BlocksIcon },
 	{ id: "about", label: "About", icon: InfoIcon },
 ] as const;
 
@@ -58,6 +60,10 @@ export default function Settings() {
 				{active === "providers" ? (
 					<div className="flex-1 overflow-hidden">
 						<ProvidersPane config={config} />
+					</div>
+				) : active === "plugins" ? (
+					<div className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+						<PluginsPane />
 					</div>
 				) : (
 					<div className="flex-1 overflow-y-auto px-8 pb-8">

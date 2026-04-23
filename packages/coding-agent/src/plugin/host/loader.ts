@@ -80,11 +80,13 @@ async function runSetupIfNeeded(pluginDir: string, manifest: PluginManifest): Pr
 	}
 }
 
-export type ScanDir = { path: string; scope: "project" | "user" };
+export type ScanDir = { path: string };
 
 export type LoadedPlugin = {
 	meta: PluginMeta;
 	manifest: PluginManifest;
+	/** Raw schema exported by the plugin (typically a zod schema). */
+	configSchema: PluginConfigSchema | null;
 };
 
 export type LoadError = {
@@ -110,8 +112,8 @@ async function listPluginDirs(root: string): Promise<string[]> {
 	return entries.filter((e) => e.isDirectory()).map((e) => join(root, e.name));
 }
 
-/** Optional plugin config schema export. */
-type PluginConfigSchema = {
+/** Optional plugin config schema export (duck-typed zod-like). */
+export type PluginConfigSchema = {
 	safeParse(v: unknown): { success: true; data: unknown } | { success: false; error: unknown };
 };
 
@@ -193,7 +195,6 @@ export async function loadPluginsFromDirs(dirs: ScanDir[], options: LoadOptions 
 				version: manifest.version,
 				description: manifest.description,
 				rootPath: dir,
-				scope: scan.scope,
 			};
 
 			try {
@@ -221,7 +222,7 @@ export async function loadPluginsFromDirs(dirs: ScanDir[], options: LoadOptions 
 					});
 				}
 
-				loaded.push({ meta, manifest });
+				loaded.push({ meta, manifest, configSchema });
 			} catch (err: unknown) {
 				registry.removeByPlugin(meta.name);
 				errors.push({

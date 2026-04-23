@@ -1,5 +1,12 @@
 export type { EnrichedModelInfo as ProviderModel } from "@jayden/jai-ai";
-export type { CompactionMarker, ProviderSettings, SessionInfo } from "@jayden/jai-coding-agent";
+export type {
+	CompactionMarker,
+	PluginEnvEntry,
+	PluginScanEntry,
+	ProviderSettings,
+	SessionInfo,
+} from "@jayden/jai-coding-agent";
+export type { PluginListItem, PluginListResponse } from "../routes/plugins.js";
 
 import type { Message } from "@jayden/jai-ai";
 import type { CompactionMarker } from "@jayden/jai-coding-agent";
@@ -17,6 +24,8 @@ export interface ConfigResponse {
 	language: string;
 	reasoningEffort?: string;
 	contextWindow: number;
+	env: Record<string, string>;
+	plugins: Record<string, unknown>;
 }
 
 export interface ConfigUpdateRequest {
@@ -25,6 +34,8 @@ export interface ConfigUpdateRequest {
 	maxIterations?: number;
 	language?: string;
 	reasoningEffort?: string;
+	env?: Record<string, string>;
+	plugins?: Record<string, unknown>;
 }
 
 export interface FetchModelsResponse {

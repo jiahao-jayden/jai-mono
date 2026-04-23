@@ -4,6 +4,9 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import type { Message } from "@jayden/jai-ai";
 import { JsonlSessionStore } from "@jayden/jai-session";
+import { z } from "zod";
+import type { PluginConfigSchema } from "../../plugin/host/loader.js";
+import { loadPluginsFromDirs, type ScanDir } from "../../plugin/host/loader.js";
 import { createDefaultTools } from "../../tools/index.js";
 import type { Settings } from "../config/settings.js";
 import { SettingsManager } from "../config/settings.js";
@@ -11,11 +14,53 @@ import { Workspace } from "../config/workspace.js";
 import { AgentSession, type CompactionMarker, extractHistory } from "./agent-session.js";
 import { SessionIndex, type SessionInfo } from "./session-index.js";
 
+/** Declared env entry from a plugin manifest. */
+export type PluginEnvEntry = {
+	required?: boolean;
+	description?: string;
+};
+
+/** One plugin's discovery + load status, as shown in the settings UI. */
+export type PluginScanEntry = {
+	name: string;
+	version: string | null;
+	description?: string;
+	rootPath: string;
+	status: "loaded" | "error";
+	loadError?: string;
+	/** Env declaration from plugin.json (empty object when none declared). */
+	env: Record<string, PluginEnvEntry>;
+	/**
+	 * JSON Schema derived from the plugin's exported `configSchema` (zod).
+	 * `null` when the plugin does not export a schema or when conversion fails.
+	 */
+	configSchema: Record<string, unknown> | null;
+};
+
+export type PluginScanResult = {
+	entries: PluginScanEntry[];
+};
+
 export type SessionManagerConfig = {
 	jaiHome?: string;
 };
 
 const MIGRATION_V1_SENTINEL = ".migration-v1-done";
+
+/**
+ * Convert a zod-like schema to a JSON Schema using zod v4's built-in
+ * `z.toJSONSchema`. Returns `null` for non-zod schemas or when conversion
+ * throws — callers treat that as "no IntelliSense available".
+ */
+function toJsonSchema(schema: PluginConfigSchema | null, _name: string): Record<string, unknown> | null {
+	if (!schema) return null;
+	try {
+		const json = z.toJSONSchema(schema as unknown as z.ZodType);
+		return json as Record<string, unknown>;
+	} catch {
+		return null;
+	}
+}
 
 export class SessionManager {
 	private activeSessions = new Map<string, { session: AgentSession; workspaceId: string }>();
@@ -238,6 +283,49 @@ export class SessionManager {
 
 	getSettings(): SettingsManager {
 		return this.settings;
+	}
+
+	/**
+	 * Scan plugin directories using current settings (env + plugin configs)
+	 * and return a unified list with load status. Safe to call repeatedly:
+	 * `setup.command` is guarded by its `check` file, and factory runs are
+	 * idempotent against a throwaway registry.
+	 *
+	 * Only scans `~/.jai/plugins`; project-local plugin directories are not
+	 * supported.
+	 */
+	async scanPlugins(): Promise<PluginScanResult> {
+		const dirs: ScanDir[] = [{ path: join(this.jaiHome, "plugins") }];
+
+		const result = await loadPluginsFromDirs(dirs, {
+			pluginSettings: this.settings.get("plugins"),
+			envSettings: this.settings.get("env"),
+		});
+
+		const entries: PluginScanEntry[] = [];
+		for (const p of result.loaded) {
+			entries.push({
+				name: p.meta.name,
+				version: p.meta.version,
+				description: p.meta.description,
+				rootPath: p.meta.rootPath,
+				status: "loaded",
+				env: p.manifest.env ?? {},
+				configSchema: toJsonSchema(p.configSchema, p.meta.name),
+			});
+		}
+		for (const err of result.errors) {
+			entries.push({
+				name: err.pluginName,
+				version: null,
+				rootPath: err.dir,
+				status: "error",
+				loadError: err.message,
+				env: {},
+				configSchema: null,
+			});
+		}
+		return { entries };
 	}
 
 	async saveSettings(patch: Settings): Promise<void> {

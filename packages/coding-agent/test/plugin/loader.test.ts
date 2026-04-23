@@ -38,7 +38,7 @@ describe("loadPluginsFromDirs", () => {
 			commands: { "hello.md": "---\ndescription: greet\n---\nHi $ARGUMENTS" },
 		});
 
-		const { registry, loaded, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }]);
+		const { registry, loaded, errors } = await loadPluginsFromDirs([{ path: root }]);
 		expect(errors.length).toBe(0);
 		expect(loaded.length).toBe(1);
 		expect(registry.findCommand("docs-only:hello")).toBeDefined();
@@ -57,7 +57,7 @@ describe("loadPluginsFromDirs", () => {
       `,
 		});
 
-		const { registry, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }]);
+		const { registry, errors } = await loadPluginsFromDirs([{ path: root }]);
 		expect(errors.length).toBe(0);
 		expect(registry.findCommand("hook-demo:ping")).toBeDefined();
 
@@ -75,7 +75,7 @@ describe("loadPluginsFromDirs", () => {
 			indexSource: `throw new Error("boom");`,
 		});
 
-		const { registry, loaded, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }]);
+		const { registry, loaded, errors } = await loadPluginsFromDirs([{ path: root }]);
 		expect(loaded.find((p) => p.meta.name === "good")).toBeDefined();
 		expect(errors.find((e) => e.pluginName === "broken")).toBeDefined();
 		expect(registry.findCommand("good:ok")).toBeDefined();
@@ -88,7 +88,7 @@ describe("loadPluginsFromDirs", () => {
 		await mkdir(join(root, "not-a-plugin"));
 		await writeFile(join(root, "not-a-plugin", "README.md"), "just docs");
 
-		const { loaded, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }]);
+		const { loaded, errors } = await loadPluginsFromDirs([{ path: root }]);
 		expect(loaded.length).toBe(0);
 		expect(errors.length).toBe(0);
 
@@ -109,7 +109,7 @@ describe("loadPluginsFromDirs", () => {
       `,
 		});
 
-		const { registry, errors, loaded } = await loadPluginsFromDirs([{ path: root, scope: "user" }]);
+		const { registry, errors, loaded } = await loadPluginsFromDirs([{ path: root }]);
 
 		expect(errors.length).toBe(1);
 		expect(errors[0].pluginName).toBe("rollback");
@@ -126,30 +126,27 @@ describe("loadPluginsFromDirs", () => {
 		await rm(root, { recursive: true });
 	});
 
-	test("project scope overrides user scope for duplicate plugin name", async () => {
-		const userRoot = await mkdtemp(join(tmpdir(), "user-"));
-		const projectRoot = await mkdtemp(join(tmpdir(), "project-"));
-		await makePluginDir(userRoot, "dup", {
+	test("first scan dir wins for duplicate plugin name", async () => {
+		const firstRoot = await mkdtemp(join(tmpdir(), "first-"));
+		const secondRoot = await mkdtemp(join(tmpdir(), "second-"));
+		await makePluginDir(secondRoot, "dup", {
 			manifest: { name: "dup", version: "0.1.0" },
-			commands: { "a.md": "user-a" },
+			commands: { "a.md": "second-a" },
 		});
-		await makePluginDir(projectRoot, "dup", {
+		await makePluginDir(firstRoot, "dup", {
 			manifest: { name: "dup", version: "0.2.0" },
-			commands: { "a.md": "project-a" },
+			commands: { "a.md": "first-a" },
 		});
 
-		// Pass PROJECT first so it wins (first-come-first-served after dedup)
-		const { loaded } = await loadPluginsFromDirs([
-			{ path: projectRoot, scope: "project" },
-			{ path: userRoot, scope: "user" },
-		]);
+		const { loaded } = await loadPluginsFromDirs([{ path: firstRoot }, { path: secondRoot }]);
 
 		const dups = loaded.filter((p) => p.meta.name === "dup");
 		expect(dups.length).toBe(1);
-		expect(dups[0].meta.scope).toBe("project");
+		expect(dups[0].meta.version).toBe("0.2.0");
+		expect(dups[0].meta.rootPath.startsWith(firstRoot)).toBe(true);
 
-		await rm(userRoot, { recursive: true });
-		await rm(projectRoot, { recursive: true });
+		await rm(secondRoot, { recursive: true });
+		await rm(firstRoot, { recursive: true });
 	});
 
 	test("skips setup when no setup declared", async () => {
@@ -159,7 +156,7 @@ describe("loadPluginsFromDirs", () => {
 			commands: { "hello.md": "hi" },
 		});
 
-		const { loaded, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }]);
+		const { loaded, errors } = await loadPluginsFromDirs([{ path: root }]);
 		expect(errors.length).toBe(0);
 		expect(loaded.length).toBe(1);
 
@@ -181,7 +178,7 @@ describe("loadPluginsFromDirs", () => {
 		);
 		await writeFile(join(dir, "READY"), "ok");
 
-		const { loaded, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }]);
+		const { loaded, errors } = await loadPluginsFromDirs([{ path: root }]);
 		expect(errors.length).toBe(0);
 		expect(loaded.length).toBe(1);
 
@@ -201,7 +198,7 @@ describe("loadPluginsFromDirs", () => {
 			}),
 		);
 
-		const { loaded, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }]);
+		const { loaded, errors } = await loadPluginsFromDirs([{ path: root }]);
 		expect(errors.length).toBe(0);
 		expect(loaded.length).toBe(1);
 
@@ -241,7 +238,7 @@ describe("loadPluginsFromDirs", () => {
       `,
 		});
 
-		const { registry, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], {
+		const { registry, errors } = await loadPluginsFromDirs([{ path: root }], {
 			envSettings: {
 				JAI_TEST_DECLARED: "visible",
 				JAI_TEST_UNDECLARED: "should-be-hidden",
@@ -279,7 +276,7 @@ describe("loadPluginsFromDirs", () => {
       `,
 		});
 
-		const { registry, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], { envSettings: {} });
+		const { registry, errors } = await loadPluginsFromDirs([{ path: root }], { envSettings: {} });
 		expect(errors.length).toBe(0);
 		expect(JSON.parse(registry.findCommand("env-source:dump")?.description ?? "{}")).toEqual({
 			declared: null,
@@ -303,7 +300,7 @@ describe("loadPluginsFromDirs", () => {
 			indexSource: `export default function () {}`,
 		});
 
-		const { loaded, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], { envSettings: {} });
+		const { loaded, errors } = await loadPluginsFromDirs([{ path: root }], { envSettings: {} });
 		expect(loaded.find((p) => p.meta.name === "needs-env")).toBeUndefined();
 		const err = errors.find((e) => e.pluginName === "needs-env");
 		expect(err).toBeDefined();
@@ -328,7 +325,7 @@ describe("loadPluginsFromDirs", () => {
       }`,
 		});
 
-		const { registry, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], {
+		const { registry, errors } = await loadPluginsFromDirs([{ path: root }], {
 			envSettings: { JAI_TEST_REQUIRED_OK: "yes" },
 		});
 		expect(errors.length).toBe(0);
@@ -355,7 +352,7 @@ describe("loadPluginsFromDirs", () => {
 			warnings.push(args.map(String).join(" "));
 		};
 		try {
-			const { errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }]);
+			const { errors } = await loadPluginsFromDirs([{ path: root }]);
 			expect(errors.length).toBe(0);
 		} finally {
 			console.warn = origWarn;
@@ -379,7 +376,7 @@ describe("loadPluginsFromDirs", () => {
       `,
 		});
 
-		const { registry, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], {
+		const { registry, errors } = await loadPluginsFromDirs([{ path: root }], {
 			pluginSettings: { "raw-config": { hello: "world" } },
 		});
 		expect(errors.length).toBe(0);
@@ -420,7 +417,7 @@ describe("loadPluginsFromDirs", () => {
       `,
 		});
 
-		const { registry, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], {
+		const { registry, errors } = await loadPluginsFromDirs([{ path: root }], {
 			pluginSettings: { "typed-config": { provider: "b" } },
 		});
 		expect(errors.map((e) => e.message)).toEqual([]);
@@ -447,7 +444,7 @@ describe("loadPluginsFromDirs", () => {
       `,
 		});
 
-		const { loaded, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }], {
+		const { loaded, errors } = await loadPluginsFromDirs([{ path: root }], {
 			pluginSettings: { "bad-config": { provider: "not-in-enum" } },
 		});
 		expect(loaded.find((p) => p.meta.name === "bad-config")).toBeUndefined();
@@ -477,7 +474,7 @@ describe("loadPluginsFromDirs", () => {
 		});
 
 		const { loaded, errors } = await loadPluginsFromDirs(
-			[{ path: root, scope: "user" }],
+			[{ path: root }],
 			// No pluginSettings entry → raw is undefined, should fail validation
 		);
 		expect(loaded.find((p) => p.meta.name === "needs-config")).toBeUndefined();
@@ -499,7 +496,7 @@ describe("loadPluginsFromDirs", () => {
 			}),
 		);
 
-		const { loaded, errors } = await loadPluginsFromDirs([{ path: root, scope: "user" }]);
+		const { loaded, errors } = await loadPluginsFromDirs([{ path: root }]);
 		expect(loaded.find((p) => p.meta.name === "bad-setup")).toBeUndefined();
 		const err = errors.find((e) => e.pluginName === "bad-setup");
 		expect(err).toBeDefined();

@@ -11,6 +11,10 @@ export type {
 	FileContent,
 	FileEntry,
 	MessagesResponse,
+	PluginEnvEntry,
+	PluginListItem,
+	PluginListResponse,
+	PluginScanEntry,
 	ProviderModel,
 	ProviderSettings,
 } from "./types/api.js";

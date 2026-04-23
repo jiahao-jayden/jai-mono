@@ -20,7 +20,7 @@ describe("AgentSession.chat command expansion", () => {
 	});
 
 	test("tryExpandCommand returns expanded text + originalCommand when /plugin:cmd matches", async () => {
-		const pluginDir = join(cwd, ".jai", "plugins", "demo");
+		const pluginDir = join(home, ".jai", "plugins", "demo");
 		await mkdir(join(pluginDir, "commands"), { recursive: true });
 		await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "demo", version: "0.1.0" }));
 		await writeFile(

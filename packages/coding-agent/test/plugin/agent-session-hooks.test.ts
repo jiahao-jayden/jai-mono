@@ -19,12 +19,26 @@ describe("AgentSession plugin integration", () => {
 		await rm(cwd, { recursive: true }).catch(() => {});
 	});
 
-	test("loads plugins from ~/.jai/plugins and cwd/.jai/plugins", async () => {
+	test("loads plugins from ~/.jai/plugins", async () => {
 		const userPluginDir = join(home, ".jai", "plugins", "user-demo");
 		await mkdir(join(userPluginDir, "commands"), { recursive: true });
 		await writeFile(join(userPluginDir, "plugin.json"), JSON.stringify({ name: "user-demo", version: "0.1.0" }));
 		await writeFile(join(userPluginDir, "commands", "hello.md"), "---\ndescription: say hello\n---\nHi there");
 
+		const workspace = await Workspace.create({ cwd, jaiHome: join(home, ".jai") });
+		const session = await AgentSession.create({
+			workspace,
+			model: "anthropic/claude-3-5-sonnet-latest",
+			tools: [],
+		});
+
+		const commands = session.listPluginCommands();
+		expect(commands.find((c) => c.fullName === "user-demo:hello")).toBeDefined();
+
+		await session.close?.();
+	});
+
+	test("does not load plugins from cwd/.jai/plugins (project scope disabled)", async () => {
 		const projectPluginDir = join(cwd, ".jai", "plugins", "project-demo");
 		await mkdir(join(projectPluginDir, "commands"), { recursive: true });
 		await writeFile(
@@ -44,8 +58,7 @@ describe("AgentSession plugin integration", () => {
 		});
 
 		const commands = session.listPluginCommands();
-		expect(commands.find((c) => c.fullName === "user-demo:hello")).toBeDefined();
-		expect(commands.find((c) => c.fullName === "project-demo:commit")).toBeDefined();
+		expect(commands.find((c) => c.fullName === "project-demo:commit")).toBeUndefined();
 
 		await session.close?.();
 	});
@@ -63,7 +76,7 @@ describe("AgentSession plugin integration", () => {
 
 	test("preToolCall hook sees events and can skip execution", async () => {
 		// Register a plugin that intercepts all tool calls via index.ts
-		const pluginDir = join(cwd, ".jai", "plugins", "interceptor");
+		const pluginDir = join(home, ".jai", "plugins", "interceptor");
 		await mkdir(pluginDir, { recursive: true });
 		await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "interceptor", version: "0.1.0" }));
 		await writeFile(
@@ -98,7 +111,7 @@ describe("AgentSession plugin integration", () => {
 	});
 
 	test("preCompact hook receives event and can skip", async () => {
-		const pluginDir = join(cwd, ".jai", "plugins", "no-compact");
+		const pluginDir = join(home, ".jai", "plugins", "no-compact");
 		await mkdir(pluginDir, { recursive: true });
 		await writeFile(join(pluginDir, "plugin.json"), JSON.stringify({ name: "no-compact", version: "0.1.0" }));
 		await writeFile(

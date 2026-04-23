@@ -208,16 +208,10 @@ export class AgentSession {
 	}
 
 	private async loadPlugins(): Promise<void> {
-		this.plugins = await loadPluginsFromDirs(
-			[
-				{ path: join(this.workspace.cwd, ".jai", "plugins"), scope: "project" },
-				{ path: join(this.workspace.jaiHome, "plugins"), scope: "user" },
-			],
-			{
-				pluginSettings: this.config.pluginSettings,
-				envSettings: this.config.envSettings,
-			},
-		);
+		this.plugins = await loadPluginsFromDirs([{ path: join(this.workspace.jaiHome, "plugins") }], {
+			pluginSettings: this.config.pluginSettings,
+			envSettings: this.config.envSettings,
+		});
 		for (const err of this.plugins.errors) {
 			console.warn(`[plugin:${err.pluginName}] load error in ${err.dir}: ${err.message}`);
 		}

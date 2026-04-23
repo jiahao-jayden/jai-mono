@@ -22,6 +22,9 @@ export type {
 export type { CompactionMarker } from "./core/session/agent-session.js";
 export type { SessionInfo } from "./core/session/session-index.js";
 export {
+	type PluginEnvEntry,
+	type PluginScanEntry,
+	type PluginScanResult,
 	SessionManager,
 	type SessionManagerConfig,
 } from "./core/session/session-manager.js";

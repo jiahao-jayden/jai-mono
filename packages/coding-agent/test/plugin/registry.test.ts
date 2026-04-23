@@ -6,7 +6,6 @@ const meta = (name: string): PluginMeta => ({
 	name,
 	version: "0.0.1",
 	rootPath: `/tmp/${name}`,
-	scope: "user",
 });
 
 describe("PluginRegistry", () => {

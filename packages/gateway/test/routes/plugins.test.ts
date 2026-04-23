@@ -5,9 +5,7 @@ import { pluginRoutes } from "../../src/routes/plugins.js";
 describe("pluginRoutes", () => {
 	test("GET /sessions/:id/plugins returns plugin metas from session", async () => {
 		const fakeSession = {
-			listPluginMetas: () => [
-				{ name: "demo", version: "1.0.0", description: "", rootPath: "/tmp/demo", scope: "user" as const },
-			],
+			listPluginMetas: () => [{ name: "demo", version: "1.0.0", description: "", rootPath: "/tmp/demo" }],
 			listPluginCommands: () => [],
 		};
 		const manager = { get: (_id: string) => fakeSession };

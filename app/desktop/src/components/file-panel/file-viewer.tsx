@@ -1,6 +1,7 @@
 import type { FileContent } from "@jayden/jai-gateway";
 import Editor, { type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useIsDark } from "@/hooks/use-is-dark";
 import { gateway } from "@/services/gateway";
 
 interface FileViewerProps {
@@ -136,23 +137,6 @@ const MIME_MAP: Record<string, string> = {
 function guessMime(filePath: string): string {
 	const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
 	return MIME_MAP[ext] ?? "application/octet-stream";
-}
-
-function useIsDark() {
-	const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
-
-	useEffect(() => {
-		const observer = new MutationObserver(() => {
-			setDark(document.documentElement.classList.contains("dark"));
-		});
-		observer.observe(document.documentElement, {
-			attributes: true,
-			attributeFilter: ["class"],
-		});
-		return () => observer.disconnect();
-	}, []);
-
-	return dark;
 }
 
 function MonacoViewer({ workspaceId, filePath }: { workspaceId: string; filePath: string }) {

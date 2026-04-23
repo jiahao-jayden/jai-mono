@@ -1,8 +1,31 @@
-import type { SessionManager } from "@jayden/jai-coding-agent";
+import type { PluginScanEntry, SessionManager } from "@jayden/jai-coding-agent";
 import { Hono } from "hono";
+
+export type PluginListItem = PluginScanEntry & {
+	/** Raw config from settings.json → plugins[<name>], may be undefined. */
+	config: unknown;
+};
+
+export type PluginListResponse = {
+	plugins: PluginListItem[];
+};
 
 export function pluginRoutes(manager: SessionManager): Hono {
 	const app = new Hono();
+
+	app.get("/plugins", async (c) => {
+		const result = await manager.scanPlugins();
+		const rawPlugins = (manager.getSettings().get("plugins") ?? {}) as Record<string, unknown>;
+
+		const plugins: PluginListItem[] = result.entries.map((entry) => ({
+			...entry,
+			config: rawPlugins[entry.name],
+		}));
+
+		plugins.sort((a, b) => a.name.localeCompare(b.name));
+
+		return c.json({ plugins } satisfies PluginListResponse);
+	});
 
 	app.get("/sessions/:id/plugins", (c) => {
 		const sessionId = c.req.param("id");

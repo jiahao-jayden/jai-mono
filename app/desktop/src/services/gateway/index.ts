@@ -1,6 +1,7 @@
 import { gw, health, waitForReady } from "./client";
 import { createConfigApi } from "./config";
 import { createMessagesApi } from "./messages";
+import { createPluginsApi } from "./plugins";
 import { createSessionsApi } from "./sessions";
 import { createWorkspaceApi } from "./workspace";
 
@@ -13,4 +14,5 @@ export const gateway = {
 	config: createConfigApi(gw),
 	messages: createMessagesApi(gw),
 	workspace: createWorkspaceApi(gw),
+	plugins: createPluginsApi(gw),
 };

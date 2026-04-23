@@ -6,7 +6,6 @@ export type PluginMeta = {
 	version: string;
 	description?: string;
 	rootPath: string;
-	scope: "project" | "user";
 };
 
 export type PluginContext = {
