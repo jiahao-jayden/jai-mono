@@ -1,0 +1,30 @@
+{
+	"name": "@jayden/jai-capsule-protocol",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Capsule Protocol v0 — an open protocol for agent UI capsules.",
+	"exports": {
+		".": "./src/index.ts",
+		"./runtime": "./src/runtime.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"test": "bun test"
+	},
+	"peerDependencies": {
+		"react": "^18.0.0 || ^19.0.0",
+		"react-dom": "^18.0.0 || ^19.0.0"
+	},
+	"peerDependenciesMeta": {
+		"react": { "optional": true },
+		"react-dom": { "optional": true }
+	},
+	"devDependencies": {
+		"@types/react": "^19.2.0",
+		"@types/react-dom": "^19.2.0",
+		"react": "^19.2.0",
+		"react-dom": "^19.2.0",
+		"typescript": "catalog:"
+	}
+}

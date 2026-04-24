@@ -6,17 +6,28 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import App from "./app";
 import Settings from "./components/settings";
 import { initTheme } from "./stores/theme";
+import CapsulePlaygroundView from "./views/capsule-playground-view";
 import "./styles/global.css";
 
 const queryClient = new QueryClient();
-const isSettings = window.location.hash === "#/settings";
+
+function resolveView(): React.ReactNode {
+	switch (window.location.hash) {
+		case "#/settings":
+			return <Settings />;
+		case "#/capsule-playground":
+			return <CapsulePlaygroundView />;
+		default:
+			return <App />;
+	}
+}
 
 initTheme().then(() => {
 	ReactDOM.createRoot(document.getElementById("root")!).render(
 		<React.StrictMode>
 			<QueryClientProvider client={queryClient}>
 				<TooltipProvider delayDuration={300}>
-					{isSettings ? <Settings /> : <App />}
+					{resolveView()}
 					<Toaster richColors position="bottom-right" />
 				</TooltipProvider>
 			</QueryClientProvider>
