@@ -1,6 +1,8 @@
-import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { CloudServerIcon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { ConfigResponse, ProviderSettings } from "@jayden/jai-gateway";
+import type { ReactNode } from "react";
+import { useMemo } from "react";
 import { BrandAvatar, resolveProviderIcon } from "@/components/common/provider-icons";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
@@ -18,9 +20,23 @@ function isProviderActive(providers: Record<string, ProviderSettings> | undefine
 	return !!p && p.enabled !== false && !!p.api_key;
 }
 
+// stable sort: active providers first, original order preserved within each group
+function sortByActive<T>(items: T[], isActive: (item: T) => boolean): T[] {
+	return items.slice().sort((a, b) => Number(isActive(b)) - Number(isActive(a)));
+}
+
 export function ProviderList({ config, selectedId, onSelect, onAddCustom }: ProviderListProps) {
 	const providers = config?.providers ?? {};
-	const customIds = Object.keys(providers).filter((id) => !BUILTIN_IDS.has(id));
+
+	const sortedBuiltin = useMemo(
+		() => sortByActive(BUILTIN_PROVIDERS, (bp) => isProviderActive(providers, bp.id)),
+		[providers],
+	);
+
+	const sortedCustomIds = useMemo(() => {
+		const ids = Object.keys(providers).filter((id) => !BUILTIN_IDS.has(id));
+		return sortByActive(ids, (id) => isProviderActive(providers, id));
+	}, [providers]);
 
 	return (
 		<aside className="flex w-56 shrink-0 flex-col border-r border-border/35 bg-sidebar/40">
@@ -28,14 +44,14 @@ export function ProviderList({ config, selectedId, onSelect, onAddCustom }: Prov
 				<div className="space-y-4 px-3 pt-4 pb-3">
 					<SectionLabel>Built-in</SectionLabel>
 					<ul className="space-y-px">
-						{BUILTIN_PROVIDERS.map((bp) => {
+						{sortedBuiltin.map((bp) => {
 							const active = isProviderActive(providers, bp.id);
 							const resolved = resolveProviderIcon(bp.id);
 							return (
 								<li key={bp.id}>
 									<ProviderRow
 										label={bp.name}
-										icon={resolved?.icon ?? null}
+										leading={<BrandAvatar icon={resolved?.icon ?? null} size={18} />}
 										active={active}
 										selected={selectedId === bp.id}
 										onSelect={() => onSelect(bp.id)}
@@ -45,18 +61,17 @@ export function ProviderList({ config, selectedId, onSelect, onAddCustom }: Prov
 						})}
 					</ul>
 
-					{customIds.length > 0 && (
+					{sortedCustomIds.length > 0 && (
 						<>
 							<SectionLabel>Custom</SectionLabel>
 							<ul className="space-y-px">
-								{customIds.map((id) => {
+								{sortedCustomIds.map((id) => {
 									const active = isProviderActive(providers, id);
-									const resolved = resolveProviderIcon(id);
 									return (
 										<li key={id}>
 											<ProviderRow
 												label={id}
-												icon={resolved?.icon ?? null}
+												leading={<CustomProviderIcon />}
 												active={active}
 												selected={selectedId === id}
 												onSelect={() => onSelect(id)}
@@ -86,6 +101,12 @@ export function ProviderList({ config, selectedId, onSelect, onAddCustom }: Prov
 	);
 }
 
+function CustomProviderIcon() {
+	return (
+		<HugeiconsIcon icon={CloudServerIcon} size={17} strokeWidth={1.5} className="shrink-0 text-muted-foreground/65" />
+	);
+}
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
 	return (
 		<p className="px-2 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/50">{children}</p>
@@ -94,13 +115,13 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function ProviderRow({
 	label,
-	icon,
+	leading,
 	active,
 	selected,
 	onSelect,
 }: {
 	label: string;
-	icon: React.ComponentType<{ size?: number; className?: string }> | null;
+	leading: ReactNode;
 	active: boolean;
 	selected: boolean;
 	onSelect: () => void;
@@ -116,7 +137,7 @@ function ProviderRow({
 					: "text-muted-foreground/80 hover:bg-card/60 hover:text-foreground",
 			)}
 		>
-			<BrandAvatar icon={icon} size={18} />
+			{leading}
 			<span className="flex-1 truncate text-left">{label}</span>
 			<StatusDot active={active} />
 		</button>

@@ -72,7 +72,7 @@ export function PluginsPane() {
 
 function SearchField({ query, onChange }: { query: string; onChange: (v: string) => void }) {
 	return (
-		<div className="flex items-center gap-2.5 border-b border-border/40 pb-2.5 focus-within:border-border/70 transition-colors -mt-4">
+		<div className="flex items-center gap-2.5 border-b border-border/40 pb-2.5 focus-within:border-border/70 transition-colors">
 			<HugeiconsIcon
 				icon={Search01Icon}
 				size={14}

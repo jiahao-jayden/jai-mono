@@ -12,7 +12,7 @@ export function ProvidersPane({ config }: { config?: ConfigResponse }) {
 
 	return (
 		<div className="flex h-full flex-col">
-			<div className="shrink-0 px-8 pt-4">
+			<div className="shrink-0 px-8">
 				<SettingsHeader
 					title="Providers"
 					description="Connect model providers and pick which models you want visible to JAI."

@@ -1,4 +1,5 @@
 import {
+	CloudServerIcon,
 	Delete02Icon,
 	LinkSquare02Icon,
 	Loading03Icon,
@@ -10,7 +11,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { ConfigResponse, FetchModelsResponse, ProviderModel, ProviderSettings } from "@jayden/jai-gateway";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CapabilityBadges } from "@/components/common/capability-badges";
 import { BrandAvatar, resolveProviderIcon } from "@/components/common/provider-icons";
@@ -93,16 +94,24 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 	const [modelSearch, setModelSearch] = useState("");
 	const [fetchedData, setFetchedData] = useState<FetchModelsResponse | null>(null);
 
-	const defaults = builtin
-		? { api_base: builtin.api_base, api_format: builtin.api_format }
-		: { api_base: "", api_format: "openai-compatible" as ProviderFormat };
+	const defaults = useMemo(
+		() =>
+			builtin
+				? { api_base: builtin.api_base, api_format: builtin.api_format }
+				: { api_base: "", api_format: "openai-compatible" as ProviderFormat },
+		[builtin],
+	);
 
-	const initialConfig: ProviderSettings = providerConfig ?? {
-		enabled: true,
-		api_base: defaults.api_base,
-		api_format: defaults.api_format,
-		models: [],
-	};
+	const initialConfig = useMemo<ProviderSettings>(
+		() =>
+			providerConfig ?? {
+				enabled: true,
+				api_base: defaults.api_base,
+				api_format: defaults.api_format,
+				models: [],
+			},
+		[providerConfig, defaults.api_base, defaults.api_format],
+	);
 
 	const [draftConfig, setDraftConfig] = useState<ProviderSettings>(initialConfig);
 
@@ -140,13 +149,34 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 		return set;
 	}, [draftConfig.models]);
 
+	const fetchedModels = useMemo(
+		() => fetchedData?.models ?? cachedModelsQuery.data?.models ?? [],
+		[fetchedData?.models, cachedModelsQuery.data?.models],
+	);
+
+	const deferredSearch = useDeferredValue(modelSearch);
+
 	const filteredFetchedModels = useMemo(() => {
-		const models = fetchedData?.models ?? cachedModelsQuery.data?.models ?? [];
-		if (!models.length) return [];
-		if (!modelSearch.trim()) return models;
-		const q = modelSearch.toLowerCase();
-		return models.filter((m) => m.id.toLowerCase().includes(q));
-	}, [cachedModelsQuery.data?.models, fetchedData?.models, modelSearch]);
+		if (!fetchedModels.length) return [];
+		const q = deferredSearch.trim().toLowerCase();
+		if (!q) return fetchedModels;
+		return fetchedModels.filter((m) => m.id.toLowerCase().includes(q));
+	}, [fetchedModels, deferredSearch]);
+
+	const fetchedModelsById = useMemo(() => {
+		const map = new Map<string, ProviderModel>();
+		for (const m of fetchedModels) map.set(m.id, m);
+		return map;
+	}, [fetchedModels]);
+
+	const [showAll, setShowAll] = useState(false);
+	const INITIAL_LIMIT = 50;
+	const isSearching = deferredSearch.trim().length > 0;
+	const visibleModels = useMemo(
+		() => (showAll || isSearching ? filteredFetchedModels : filteredFetchedModels.slice(0, INITIAL_LIMIT)),
+		[filteredFetchedModels, showAll, isSearching],
+	);
+	const hiddenCount = filteredFetchedModels.length - visibleModels.length;
 
 	const resolvedFetchedData = fetchedData ?? (cachedModelsQuery.data?.models.length ? cachedModelsQuery.data : null);
 
@@ -161,8 +191,7 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 	const handleModelToggle = useCallback(
 		(modelId: string, enabled: boolean) => {
 			if (enabled) {
-				const fetched = (resolvedFetchedData?.models ?? []).find((m) => m.id === modelId);
-				const entry: ProviderModel = fetched ?? { id: modelId };
+				const entry: ProviderModel = fetchedModelsById.get(modelId) ?? { id: modelId };
 				setDraftConfig((prev) => ({ ...prev, models: [...prev.models, entry] }));
 				return;
 			}
@@ -172,7 +201,7 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 				models: prev.models.filter((m) => m.id !== modelId),
 			}));
 		},
-		[resolvedFetchedData?.models],
+		[fetchedModelsById],
 	);
 
 	const handleCancel = useCallback(() => {
@@ -199,7 +228,8 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 
 	const displayName = builtin?.name ?? providerId;
 	const description = builtin?.description ?? "Custom provider";
-	const resolvedIcon = resolveProviderIcon(providerId);
+	const isCustom = !BUILTIN_IDS.has(providerId);
+	const resolvedIcon = isCustom ? null : resolveProviderIcon(providerId);
 
 	return (
 		<div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
@@ -207,11 +237,12 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 				<div className="mx-auto flex max-w-[640px] flex-col gap-7">
 					<ProviderIdentity
 						icon={resolvedIcon?.icon ?? null}
+						isCustomIcon={isCustom}
 						name={displayName}
 						description={description}
 						enabled={draftConfig.enabled}
 						onToggle={handleToggle}
-						isCustom={!BUILTIN_IDS.has(providerId)}
+						isCustom={isCustom}
 						onDelete={() => deleteMutation.mutate()}
 					/>
 
@@ -352,42 +383,30 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 						{resolvedFetchedData &&
 							!fetchModelsMutation.isPending &&
 							(filteredFetchedModels.length > 0 ? (
-								<ul className="divide-y divide-border/30">
-									{filteredFetchedModels.map((model) => {
-										const isEnabled = enabledModelIds.has(model.id);
-										const uiCaps = toUiCapabilities(model);
-										const ctxLabel = formatContextLimit(model.limit);
-										return (
-											<li
-												key={model.id}
-												className="flex items-center gap-3 px-4 py-2.5 transition-colors duration-150 hover:bg-muted/25"
-											>
-												<div className="min-w-0 flex-1">
-													<div className="flex items-center gap-2">
-														<span className="truncate font-mono text-[13px] text-foreground">
-															{model.id}
-														</span>
-														{ctxLabel && (
-															<span className="shrink-0 rounded bg-muted/60 px-1.5 py-px font-mono text-[10px] tabular-nums text-muted-foreground/70">
-																{ctxLabel}
-															</span>
-														)}
-													</div>
-													{uiCaps && (
-														<div className="mt-1">
-															<CapabilityBadges capabilities={uiCaps} iconSize={12} />
-														</div>
-													)}
-												</div>
-												<Switch
-													checked={isEnabled}
-													onCheckedChange={(checked) => handleModelToggle(model.id, checked)}
-													size="sm"
+								<>
+									<div className="max-h-[360px] overflow-y-auto [scrollbar-gutter:stable]">
+										<ul className="divide-y divide-border/30">
+											{visibleModels.map((model) => (
+												<ModelRow
+													key={model.id}
+													model={model}
+													enabled={enabledModelIds.has(model.id)}
+													onToggle={handleModelToggle}
 												/>
-											</li>
-										);
-									})}
-								</ul>
+											))}
+										</ul>
+									</div>
+									{hiddenCount > 0 && (
+										<div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-border/35 bg-muted/15">
+											<span className="font-serif italic text-[12.5px] text-muted-foreground/55">
+												Showing {visibleModels.length} of {filteredFetchedModels.length} models.
+											</span>
+											<Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>
+												Show all
+											</Button>
+										</div>
+									)}
+								</>
 							) : (
 								<div className="py-10 text-center">
 									<p className="font-serif italic text-[13px] text-muted-foreground/55">
@@ -447,6 +466,7 @@ export function ProviderDetail({ providerId, config }: ProviderDetailProps) {
 
 function ProviderIdentity({
 	icon,
+	isCustomIcon,
 	name,
 	description,
 	enabled,
@@ -455,6 +475,7 @@ function ProviderIdentity({
 	onDelete,
 }: {
 	icon: React.ComponentType<{ size?: number; className?: string }> | null;
+	isCustomIcon: boolean;
 	name: string;
 	description: string;
 	enabled: boolean;
@@ -466,7 +487,16 @@ function ProviderIdentity({
 		<div className="flex items-start justify-between gap-4">
 			<div className="flex min-w-0 items-start gap-3">
 				<span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-card ring-1 ring-border/50">
-					<BrandAvatar icon={icon} size={22} />
+					{isCustomIcon ? (
+						<HugeiconsIcon
+							icon={CloudServerIcon}
+							size={20}
+							strokeWidth={1.5}
+							className="text-muted-foreground/65"
+						/>
+					) : (
+						<BrandAvatar icon={icon} size={22} />
+					)}
 				</span>
 				<div className="flex min-w-0 flex-col gap-1 pt-0.5">
 					<div className="flex items-center gap-2">
@@ -519,3 +549,36 @@ function ModelsSkeleton() {
 		</ul>
 	);
 }
+
+interface ModelRowProps {
+	model: ProviderModel;
+	enabled: boolean;
+	onToggle: (modelId: string, enabled: boolean) => void;
+}
+
+const ModelRow = memo(function ModelRow({ model, enabled, onToggle }: ModelRowProps) {
+	const uiCaps = useMemo(() => toUiCapabilities(model), [model]);
+	const ctxLabel = useMemo(() => formatContextLimit(model.limit), [model.limit]);
+	const handleChange = useCallback((checked: boolean) => onToggle(model.id, checked), [model.id, onToggle]);
+
+	return (
+		<li className="flex items-center gap-3 px-4 py-2.5 transition-colors duration-150 hover:bg-muted/25">
+			<div className="min-w-0 flex-1">
+				<div className="flex items-center gap-2">
+					<span className="truncate font-mono text-[13px] text-foreground">{model.id}</span>
+					{ctxLabel && (
+						<span className="shrink-0 rounded bg-muted/60 px-1.5 py-px font-mono text-[10px] tabular-nums text-muted-foreground/70">
+							{ctxLabel}
+						</span>
+					)}
+				</div>
+				{uiCaps && (
+					<div className="mt-1">
+						<CapabilityBadges capabilities={uiCaps} iconSize={12} />
+					</div>
+				)}
+			</div>
+			<Switch checked={enabled} onCheckedChange={handleChange} size="sm" />
+		</li>
+	);
+});

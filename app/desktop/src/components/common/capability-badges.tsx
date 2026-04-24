@@ -8,7 +8,7 @@ import {
 	Wrench01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ModelCapabilities } from "@/stores/chat";
 
@@ -39,19 +39,17 @@ export function CapabilityBadges({
 	if (active.length === 0) return null;
 
 	return (
-		<TooltipProvider>
-			<div className="flex items-center gap-1">
-				{active.map((d) => (
-					<Tooltip key={d.key}>
-						<TooltipTrigger asChild>
-							<span className={cn("inline-flex items-center justify-center rounded-md p-0.5", d.color)}>
-								<HugeiconsIcon icon={d.icon} size={iconSize} strokeWidth={2} />
-							</span>
-						</TooltipTrigger>
-						<TooltipContent side="top">{d.label}</TooltipContent>
-					</Tooltip>
-				))}
-			</div>
-		</TooltipProvider>
+		<div className="flex items-center gap-1">
+			{active.map((d) => (
+				<Tooltip key={d.key}>
+					<TooltipTrigger asChild>
+						<span className={cn("inline-flex items-center justify-center rounded-md p-0.5", d.color)}>
+							<HugeiconsIcon icon={d.icon} size={iconSize} strokeWidth={2} />
+						</span>
+					</TooltipTrigger>
+					<TooltipContent side="top">{d.label}</TooltipContent>
+				</Tooltip>
+			))}
+		</div>
 	);
 }

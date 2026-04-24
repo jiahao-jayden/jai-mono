@@ -14,7 +14,7 @@ export function SettingsPage({ children, className, variant = "default" }: Setti
 		return <div className={cn("flex h-full flex-col", className)}>{children}</div>;
 	}
 	return (
-		<div className={cn("mx-auto w-full max-w-[680px] px-8 pt-4 pb-16", className)}>
+		<div className={cn("mx-auto w-full max-w-[680px] px-8 pb-12", className)}>
 			<div className="flex flex-col gap-10">{children}</div>
 		</div>
 	);
