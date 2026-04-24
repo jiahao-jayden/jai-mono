@@ -138,7 +138,7 @@ function SessionItem({
 							setTimeout(startRename, 0);
 						}}
 					>
-						<PenLine className="w-4 h-4" />
+						<PenLine strokeWidth={1.5} />
 						重命名
 					</DropdownMenuItem>
 					<DropdownMenuItem
@@ -147,7 +147,7 @@ function SessionItem({
 							setTimeout(onDelete, 0);
 						}}
 					>
-						<HugeiconsIcon icon={Delete03Icon} size={16} />
+						<HugeiconsIcon icon={Delete03Icon} strokeWidth={1.5} />
 						删除
 					</DropdownMenuItem>
 				</DropdownMenuContent>

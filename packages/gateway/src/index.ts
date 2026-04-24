@@ -17,4 +17,5 @@ export type {
 	PluginScanEntry,
 	ProviderModel,
 	ProviderSettings,
+	WorkspacePathsResponse,
 } from "./types/api.js";

@@ -60,3 +60,8 @@ export interface FileContent {
 	size: number;
 	mimeType: string;
 }
+
+export interface WorkspacePathsResponse {
+	paths: string[];
+	truncated: boolean;
+}

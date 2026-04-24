@@ -429,32 +429,6 @@
 	font-weight: 600;
 }
 
-/* ============================================================
- * Streaming motion — text should FLOW IN, not type out.
- * ============================================================
- *
- * Three cooperating layers (see also stores/chat.ts for layer 1):
- *
- *   1. 120ms batch flush in the store smooths bursty network
- *      arrivals into coherent half-line chunks.
- *
- *   2. @starting-style gives each freshly-mounted markdown block
- *      a gentle lift + fade + blur as it materializes. React
- *      reconciles existing nodes, so growing an existing
- *      paragraph does NOT re-play the animation — only truly new
- *      blocks (new <p>, <ul>, <pre>, etc.) enter this way.
- *
- *   3. .is-streaming-tip > *:last-child mutes the currently-
- *      growing block's contrast ~22% (墨未干 / "ink not yet
- *      dry"). When streaming ends or moves to a new block, the
- *      class drops and `color` transitions back to full
- *      foreground via the 380ms transition declared on the block
- *      selector — "the ink dries".
- *
- * No per-character reveal, no cursor, no transform on the growing
- * block. Motion is on the text only.
- */
-
 .is-assistant :is(p, li, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, details, figure) {
 	transition:
 		opacity 380ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -478,4 +452,92 @@
 			opacity: 1;
 		}
 	}
+}
+
+
+.pierre-trees-host {
+	/* Typography — inherit Hanken Grotesk from host, never system fallback */
+	--trees-font-family-override: var(--font-sans);
+	--trees-font-size-override: 13px;
+	--trees-font-weight-regular-override: 400;
+	--trees-font-weight-semibold-override: 520;
+	--trees-search-font-weight-override: 420;
+
+	/* Surface — sit inside card without its own background, borrow card warmth */
+	--trees-bg-override: transparent;
+	--trees-bg-muted-override: color-mix(in oklch, var(--foreground) 4%, transparent);
+	--trees-fg-override: color-mix(in oklch, var(--foreground) 82%, var(--background));
+	--trees-fg-muted-override: color-mix(in oklch, var(--foreground) 40%, var(--background));
+	--trees-accent-override: var(--primary-2);
+	--trees-border-color-override: color-mix(in oklch, var(--foreground) 9%, transparent);
+	--trees-border-radius-override: calc(var(--radius) * 0.5);
+
+	/* Layout — editorial breathing room, not IDE-compact */
+	--trees-padding-inline-override: 0.5rem;
+	--trees-item-padding-x-override: 0.5rem;
+	--trees-item-margin-x-override: 0.25rem;
+	--trees-item-row-gap-override: 1px;
+	--trees-level-gap-override: 0.875rem;
+	--trees-icon-width-override: 14px;
+	--trees-icon-nudge-override: 0px;
+
+	/* Selected row — editorial whisper.
+	 *
+	 * Design intent: selected is a pencil-mark in the margin, not a highlighter.
+	 * BG is a neutral foreground tint (reads "this row is marked") rather than
+	 * the cold default blue wash. Moss accent shows up elsewhere — on the icon
+	 * tint and on the focus ring — so the ONE chromatic accent stays reserved
+	 * for intentional moments, per .impeccable.md.
+	 */
+	--trees-selected-bg-override: color-mix(in oklch, var(--foreground) 11%, transparent);
+	--trees-selected-fg-override: var(--foreground);
+	--trees-selected-focused-border-color-override: transparent;
+
+	/* Focus — moss outline, only visible via keyboard focus-visible */
+	--trees-focus-ring-color-override: color-mix(in oklch, var(--primary-2) 36%, transparent);
+	--trees-focus-ring-width-override: 1px;
+	--trees-focus-ring-offset-override: -1px;
+
+	/* Search / input — fade into the surface, not a dashboard input */
+	--trees-search-bg-override: color-mix(in oklch, var(--foreground) 4%, transparent);
+	--trees-search-fg-override: var(--foreground);
+	--trees-input-bg-override: color-mix(in oklch, var(--foreground) 4%, transparent);
+
+	--trees-scrollbar-thumb-override: color-mix(in oklch, var(--foreground) 14%, transparent);
+	--trees-indent-guide-bg-override: color-mix(in oklch, var(--foreground) 9%, transparent);
+
+	/* Git lanes — warm tint so the gutter reads as ink, not signal lights */
+	--trees-git-lane-width-override: 2px;
+	--trees-git-added-color-override: color-mix(in oklch, var(--primary-2) 72%, var(--background));
+	--trees-git-modified-color-override: color-mix(in oklch, var(--primary-2) 85%, var(--background));
+	--trees-git-untracked-color-override: color-mix(in oklch, var(--primary-2) 55%, var(--background));
+	--trees-git-deleted-color-override: color-mix(in oklch, var(--destructive) 65%, var(--background));
+	--trees-git-renamed-color-override: color-mix(in oklch, var(--primary-2) 78%, var(--background));
+	--trees-git-ignored-color-override: color-mix(in oklch, var(--foreground) 25%, var(--background));
+
+	/* File icons — single warm-neutral ink, no IDE rainbow.
+	 *
+	 * Note: Pierre re-assigns every `--trees-icon-{gray,blue,green,...}` inside
+	 * `:host` with hard-coded `light-dark()` values and no override chain. Those
+	 * variables are NOT a user-override interface — attempting to set them from
+	 * the outside has no effect. Only `--trees-file-icon-color` is a legitimate
+	 * single-point-of-entry, because every `--trees-file-icon-color-<kind>` in
+	 * the shadow falls back to it. With `icons.colored: false` on the React
+	 * side, token color rules don't apply anyway; items paint in `--trees-fg-muted`.
+	 */
+	--trees-file-icon-color: color-mix(in oklch, var(--foreground) 48%, var(--background));
+
+	width: 100%;
+	height: 100%;
+	display: block;
+}
+
+.dark .pierre-trees-host,
+.pierre-trees-host.dark {
+	/* Dark: lift text contrast and bump the marked-row tint slightly so it still
+	   reads at low ambient light, without becoming a chrome panel. */
+	--trees-fg-override: color-mix(in oklch, var(--foreground) 85%, var(--background));
+	--trees-fg-muted-override: color-mix(in oklch, var(--foreground) 48%, var(--background));
+	--trees-selected-bg-override: color-mix(in oklch, var(--foreground) 14%, transparent);
+	--trees-file-icon-color: color-mix(in oklch, var(--foreground) 58%, var(--background));
 }
