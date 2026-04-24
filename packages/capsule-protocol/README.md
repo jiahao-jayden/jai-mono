@@ -17,54 +17,102 @@ provides a single contract that any producer and any host can implement:
 - Hosts render capsules inside their own sandbox of choice.
 - Data → UI and UI → action messages are standardised.
 
-## Packages
+## Authoring a capsule (zod-first)
 
-This entry point is **zero-runtime** — pure types and a structural manifest
-validator. Safe to depend on from builders, servers, and headless hosts.
+Authors write one zod schema per capsule and get three things in return:
+TypeScript types, runtime validation, and a JSON Schema exported into the
+wire-format manifest.
+
+```tsx
+// src/capsule.tsx
+import { z } from "zod";
+import { defineCapsule } from "@jayden/jai-capsule-protocol/runtime";
+
+const dataSchema = z.object({
+  city: z.string(),
+  temp: z.number(),
+  condition: z.string(),
+});
+
+const actions = {
+  refresh: z.object({ city: z.string().optional() }),
+};
+
+export default defineCapsule({
+  id: "weather",
+  version: "1.0.0",
+  title: "Weather",
+  description: "Current weather for a city",
+  dataSchema,
+  actions,
+  render: ({ data, postAction }) => (
+    // `data` is inferred as { city: string; temp: number; condition: string }
+    // `postAction("refresh", args)` requires args to match the zod schema
+    <div>
+      <h1>{data.city}</h1>
+      <p>{data.temp}°C · {data.condition}</p>
+      <button onClick={() => postAction("refresh", {})}>Refresh</button>
+    </div>
+  ),
+  fallback: { text: "{city}: {temp}°C" },
+});
+```
+
+The module is dual-mode:
+
+- **Imported as a library** (Storybook, tests, other hosts): the export is a
+  plain React component whose props are the inferred `CapsuleProps`.
+- **Loaded in a sandbox** (host provides `window.__CAPSULE_BOOT__`): the
+  bundle auto-mounts into the host's element on module load.
+
+The returned component carries a non-enumerable `__capsule` static holding
+the zod definition — build tools read it to emit `capsule.json`.
+
+## Build script (esbuild + `buildCapsuleManifest`)
+
+```ts
+// scripts/build.ts
+import { build } from "esbuild";
+import { writeFileSync } from "node:fs";
+import { buildCapsuleManifest } from "@jayden/jai-capsule-protocol";
+import Capsule from "../src/capsule";
+
+await build({
+  entryPoints: ["./src/capsule.tsx"],
+  bundle: true,
+  format: "esm",
+  outfile: "./dist/index.js",
+  jsx: "automatic",
+  minify: true,
+});
+
+// zod schemas → JSON Schema, via zod 4's built-in `z.toJSONSchema`
+const manifest = buildCapsuleManifest(Capsule, { entry: "./index.js" });
+writeFileSync("./dist/capsule.json", JSON.stringify(manifest, null, 2));
+```
+
+Authors never hand-write JSON Schema; hosts never see zod. The zod dependency
+lives entirely on the authoring side and in the build step.
+
+## Host integration
+
+Hosts only need the protocol's wire types:
 
 ```ts
 import {
   CAPSULE_PROTOCOL_VERSION,
+  CapsuleMessageType,
   validateCapsuleManifest,
   renderFallbackText,
   type CapsuleManifest,
-  type CapsuleProps,
   type CapsuleMessage,
 } from "@jayden/jai-capsule-protocol";
 ```
 
-The React runtime helper lives behind the `/runtime` subpath and depends on
-`react` + `react-dom`:
+and the bootstrap contract from `SPEC.md` §6. A reference implementation
+ships in `app/desktop/src/components/capsule/`.
 
-```tsx
-import { defineCapsule } from "@jayden/jai-capsule-protocol/runtime";
-
-interface WeatherData {
-  city: string;
-  temp: number;
-}
-
-export default defineCapsule<WeatherData, { refresh: {} }>(
-  function Weather({ data, postAction }) {
-    return (
-      <div>
-        <h1>{data.city}</h1>
-        <p>{data.temp}°C</p>
-        <button onClick={() => postAction("refresh", {})}>Refresh</button>
-      </div>
-    );
-  },
-);
-```
-
-The same module works in two contexts:
-
-- **Imported as a library** (Storybook, tests, other hosts): the export is
-  a plain React component.
-- **Loaded in a sandbox** (host-provided `window.__CAPSULE_BOOT__`): the
-  bundle auto-mounts on module load.
-
-## Minimal host
+## Minimal sandbox bootstrap
 
 ```ts
 const srcDoc = `<!doctype html>

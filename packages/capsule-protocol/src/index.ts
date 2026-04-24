@@ -4,7 +4,14 @@ export type {
 	CapsuleUpdateSubscriber,
 } from "./bootstrap";
 export {
+	type BuildCapsuleManifestOptions,
+	buildCapsuleManifest,
+	type CapsuleActionZodDef,
+	type CapsuleDefinition,
+} from "./build";
+export {
 	assertCapsuleManifest,
+	capsuleManifestSchema,
 	type ManifestValidationIssue,
 	type ManifestValidationResult,
 	renderFallbackText,

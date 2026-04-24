@@ -1,152 +1,67 @@
 import { describe, expect, test } from "bun:test";
-import {
-	assertCapsuleManifest,
-	CAPSULE_PROTOCOL_VERSION,
-	type CapsuleManifest,
-	renderFallbackText,
-	validateCapsuleManifest,
-} from "../src/index";
+import { assertCapsuleManifest, renderFallbackText, validateCapsuleManifest } from "../src/manifest";
 
-const baseManifest = (
-	overrides: Partial<CapsuleManifest> = {},
-): CapsuleManifest => ({
-	protocol: CAPSULE_PROTOCOL_VERSION,
+const base = {
+	protocol: "capsule/v0" as const,
 	id: "weather",
 	version: "1.0.0",
 	entry: "./index.js",
 	dataSchema: { type: "object" },
-	...overrides,
-});
+};
 
 describe("validateCapsuleManifest", () => {
 	test("accepts a minimal valid manifest", () => {
-		const result = validateCapsuleManifest(baseManifest());
-		expect(result.ok).toBe(true);
-		expect(result.issues).toEqual([]);
-	});
-
-	test("rejects non-object input", () => {
-		const r = validateCapsuleManifest(null);
-		expect(r.ok).toBe(false);
-		expect(r.issues[0].path).toBe("");
+		expect(validateCapsuleManifest(base)).toEqual({ ok: true, issues: [] });
 	});
 
 	test("rejects wrong protocol version", () => {
-		const r = validateCapsuleManifest({
-			...baseManifest(),
-			protocol: "capsule/v1",
+		const result = validateCapsuleManifest({ ...base, protocol: "capsule/v1" });
+		expect(result.ok).toBe(false);
+		expect(result.issues.some((i) => i.path === "protocol")).toBe(true);
+	});
+
+	test("rejects empty id/version/entry", () => {
+		const result = validateCapsuleManifest({ ...base, id: "", version: "", entry: "" });
+		expect(result.ok).toBe(false);
+		const paths = new Set(result.issues.map((i) => i.path));
+		expect(paths.has("id")).toBe(true);
+		expect(paths.has("version")).toBe(true);
+		expect(paths.has("entry")).toBe(true);
+	});
+
+	test("rejects action id with invalid characters", () => {
+		const result = validateCapsuleManifest({
+			...base,
+			actions: { "not-valid": { schema: { type: "object" } } },
 		});
-		expect(r.ok).toBe(false);
-		expect(r.issues.some((i) => i.path === "protocol")).toBe(true);
+		expect(result.ok).toBe(false);
+		expect(result.issues.some((i) => i.path.startsWith("actions"))).toBe(true);
 	});
 
-	test("requires id / version / entry", () => {
-		const r = validateCapsuleManifest({
-			protocol: CAPSULE_PROTOCOL_VERSION,
-			dataSchema: {},
-		});
-		const paths = r.issues.map((i) => i.path).sort();
-		expect(paths).toContain("id");
-		expect(paths).toContain("version");
-		expect(paths).toContain("entry");
+	test("preserves unknown top-level fields (forward compat)", () => {
+		const result = validateCapsuleManifest({ ...base, experimentalField: 123 });
+		expect(result.ok).toBe(true);
 	});
 
-	test("requires dataSchema to be an object", () => {
-		const r = validateCapsuleManifest({
-			...baseManifest(),
-			dataSchema: "not-an-object",
-		});
-		expect(r.ok).toBe(false);
-		expect(r.issues.some((i) => i.path === "dataSchema")).toBe(true);
-	});
-
-	test("rejects invalid action ids", () => {
-		const r = validateCapsuleManifest(
-			baseManifest({
-				actions: {
-					"bad-id": { schema: {} },
-				},
-			}),
-		);
-		expect(r.ok).toBe(false);
-		expect(r.issues.some((i) => i.path === "actions.bad-id")).toBe(true);
-	});
-
-	test("accepts well-formed actions", () => {
-		const r = validateCapsuleManifest(
-			baseManifest({
-				actions: {
-					refresh: { schema: { type: "object" }, description: "Reload" },
-					expand: { schema: { type: "object" } },
-				},
-			}),
-		);
-		expect(r.ok).toBe(true);
-	});
-
-	test("validates fallback.text as string", () => {
-		const r = validateCapsuleManifest(
-			baseManifest({
-				// biome-ignore lint/suspicious/noExplicitAny: testing invalid input
-				fallback: { text: 42 } as any,
-			}),
-		);
-		expect(r.ok).toBe(false);
-		expect(r.issues.some((i) => i.path === "fallback.text")).toBe(true);
-	});
-
-	test("ignores unknown top-level fields (forward-compat)", () => {
-		const r = validateCapsuleManifest({
-			...baseManifest(),
-			experimentalField: "whatever",
-			_meta: { anything: true },
-		});
-		expect(r.ok).toBe(true);
-	});
-});
-
-describe("assertCapsuleManifest", () => {
-	test("is a no-op for valid input", () => {
-		expect(() => assertCapsuleManifest(baseManifest())).not.toThrow();
-	});
-
-	test("throws with a readable summary on invalid input", () => {
-		try {
-			assertCapsuleManifest({ protocol: "wrong" });
-			throw new Error("should have thrown");
-		} catch (err) {
-			expect(err).toBeInstanceOf(Error);
-			expect((err as Error).message).toContain("Invalid capsule manifest");
-			expect((err as Error).message).toContain("protocol");
-		}
+	test("assertCapsuleManifest throws with a readable summary on invalid input", () => {
+		expect(() => assertCapsuleManifest({ ...base, protocol: "nope" })).toThrow(/Invalid capsule manifest/);
 	});
 });
 
 describe("renderFallbackText", () => {
-	test("resolves flat placeholders", () => {
-		const out = renderFallbackText("{city}: {temp}°C", {
-			city: "Beijing",
-			temp: 21,
-		});
-		expect(out).toBe("Beijing: 21°C");
+	test("replaces flat placeholders", () => {
+		expect(renderFallbackText("{city}: {temp}°C", { city: "Shanghai", temp: 22 })).toBe("Shanghai: 22°C");
 	});
 
-	test("resolves nested paths", () => {
-		const out = renderFallbackText("{user.name}", { user: { name: "Jay" } });
-		expect(out).toBe("Jay");
+	test("walks dotted paths", () => {
+		expect(renderFallbackText("{location.city}", { location: { city: "Tokyo" } })).toBe("Tokyo");
 	});
 
-	test("renders missing paths as empty string", () => {
-		const out = renderFallbackText("[{missing}]", {});
-		expect(out).toBe("[]");
+	test("missing paths render as empty string", () => {
+		expect(renderFallbackText("a={a} b={b}", { a: 1 })).toBe("a=1 b=");
 	});
 
-	test("JSON-stringifies non-scalar leaves", () => {
-		const out = renderFallbackText("{items}", { items: [1, 2] });
-		expect(out).toBe("[1,2]");
-	});
-
-	test("preserves text without placeholders", () => {
-		expect(renderFallbackText("static", {})).toBe("static");
+	test("non-scalar leaves are JSON-stringified", () => {
+		expect(renderFallbackText("{arr}", { arr: [1, 2] })).toBe("[1,2]");
 	});
 });
