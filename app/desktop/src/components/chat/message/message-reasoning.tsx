@@ -1,4 +1,4 @@
-import { Idea01Icon } from "@hugeicons/core-free-icons";
+import { IdeaIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ChevronRightIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -27,14 +27,14 @@ export function MessageReasoning({ children, streaming }: MessageReasoningProps)
 				onClick={() => setOpen(!open)}
 				aria-expanded={open}
 				className={cn(
-					"group/row flex items-center gap-2 w-full py-1 text-left text-[11.5px] rounded-sm transition-colors cursor-pointer",
+					"group/row flex items-center gap-2 w-full py-1.5 text-left text-[11.5px] leading-none rounded-sm transition-colors cursor-pointer",
 					streaming
 						? "text-muted-foreground/80 hover:text-foreground/85"
 						: "text-muted-foreground/55 hover:text-foreground/75",
 				)}
 			>
 				<HugeiconsIcon
-					icon={Idea01Icon}
+					icon={IdeaIcon}
 					size={12}
 					strokeWidth={1.75}
 					aria-hidden

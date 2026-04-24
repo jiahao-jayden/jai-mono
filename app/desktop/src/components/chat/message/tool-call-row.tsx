@@ -1,3 +1,4 @@
+import { HugeiconsIcon } from "@hugeicons/react";
 import { ChevronRightIcon, LoaderIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -27,7 +28,7 @@ function LeadingIcon({ tool }: { tool: ToolCallData }) {
 		return <LoaderIcon role="img" aria-label="running" className="size-3 animate-spin text-muted-foreground/60" />;
 	}
 
-	const Icon = getToolIcon(tool.name);
+	const icon = getToolIcon(tool.name);
 	const tone =
 		tool.status === "error"
 			? "text-destructive/70"
@@ -35,7 +36,15 @@ function LeadingIcon({ tool }: { tool: ToolCallData }) {
 				? "text-muted-foreground/70"
 				: "text-muted-foreground/40";
 
-	return <Icon strokeWidth={1.75} aria-hidden className={cn("size-3 shrink-0", tone)} />;
+	return (
+		<HugeiconsIcon
+			icon={icon}
+			size={12}
+			strokeWidth={1.75}
+			aria-hidden
+			className={cn("shrink-0 translate-y-px", tone)}
+		/>
+	);
 }
 
 function TrailingStatus({ tool }: { tool: ToolCallData }) {
@@ -146,7 +155,7 @@ export function ToolCallRow({ tool }: ToolCallRowProps) {
 				aria-expanded={expanded}
 				onClick={() => hasPreview && setExpanded(!expanded)}
 				className={cn(
-					"group/row flex items-center gap-2 w-full py-1 text-left text-[11.5px] rounded-sm transition-colors",
+					"group/row flex items-center gap-2 w-full py-1.5 text-left text-[11.5px] leading-none rounded-sm transition-colors",
 					hasPreview ? "cursor-pointer" : "cursor-default",
 					rowTone,
 				)}

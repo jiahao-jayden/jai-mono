@@ -1,15 +1,15 @@
 import {
-	FilePenIcon,
-	FileTextIcon,
+	CheckListIcon,
+	File02Icon,
+	FileEditIcon,
+	FileSearchIcon,
 	FolderSearchIcon,
-	GlobeIcon,
-	ListTodoIcon,
-	type LucideIcon,
-	ScanTextIcon,
-	SearchIcon,
+	Globe02Icon,
+	Search01Icon,
 	TerminalIcon,
-	WrenchIcon,
-} from "lucide-react";
+	Wrench01Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
 export const TOOL_DISPLAY_NAME: Record<string, string> = {
 	WebSearch: "Search",
@@ -23,20 +23,20 @@ export const TOOL_DISPLAY_NAME: Record<string, string> = {
 	TodoWrite: "Todo",
 };
 
-export const TOOL_ICON: Record<string, LucideIcon> = {
-	WebSearch: SearchIcon,
-	WebFetch: GlobeIcon,
+export const TOOL_ICON: Record<string, IconSvgElement> = {
+	WebSearch: Search01Icon,
+	WebFetch: Globe02Icon,
 	Bash: TerminalIcon,
-	FileRead: FileTextIcon,
-	FileWrite: FilePenIcon,
-	FileEdit: FilePenIcon,
-	Grep: ScanTextIcon,
+	FileRead: File02Icon,
+	FileWrite: FileEditIcon,
+	FileEdit: FileEditIcon,
+	Grep: FileSearchIcon,
 	Glob: FolderSearchIcon,
-	TodoWrite: ListTodoIcon,
+	TodoWrite: CheckListIcon,
 };
 
-export function getToolIcon(toolName: string): LucideIcon {
-	return TOOL_ICON[toolName] ?? WrenchIcon;
+export function getToolIcon(toolName: string): IconSvgElement {
+	return TOOL_ICON[toolName] ?? Wrench01Icon;
 }
 
 export function getToolDisplayName(toolName: string): string {
