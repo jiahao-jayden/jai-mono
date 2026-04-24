@@ -2,11 +2,12 @@ import { cn } from "@/lib/utils";
 import { WindowControls } from "./window-controls";
 
 const isMac = window.desktop?.isMac ?? false;
+const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 export function Titlebar({ children, className }: { children?: React.ReactNode; className?: string }) {
 	return (
-		<div className={cn("flex h-12 items-center gap-0.5 px-3", className)}>
+		<div className={cn("flex h-12 items-center gap-0.5 px-3", className)} style={drag}>
 			{isMac && (
 				<div className="mr-2 ml-1">
 					<WindowControls />

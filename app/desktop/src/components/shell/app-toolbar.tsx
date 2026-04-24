@@ -1,6 +1,6 @@
 import { Search01Icon, SidebarLeftIcon, SidebarRightIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { PanelLeftIcon, PenLine, Search } from "lucide-react";
+import { PanelLeftIcon, PenLine } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Titlebar, ToolbarButton } from "./titlebar";
@@ -11,6 +11,7 @@ const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
 const isMacDesktop = window.desktop?.isMac ?? false;
 
 interface BaseToolbarProps {
+	className?: string;
 	onToggleSidebar: () => void;
 	onNewChat: () => void;
 }
@@ -67,7 +68,7 @@ export function AppToolbar(props: AppToolbarProps) {
 	}
 
 	return (
-		<Titlebar>
+		<Titlebar className={props.className}>
 			<DesktopSidebarToggle sidebarIcon={props.sidebarIcon} onToggleSidebar={props.onToggleSidebar} />
 			<ToolbarButton className="hover:cursor-pointer">
 				<HugeiconsIcon icon={Search01Icon} size={16} />

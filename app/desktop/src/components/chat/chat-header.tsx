@@ -74,7 +74,7 @@ function EditableTitle() {
 				onKeyDown={handleKeyDown}
 				maxLength={30}
 				className={cn(
-					"text-sm font-semibold tracking-tight leading-none font-serif",
+					"-translate-y-px text-sm font-semibold tracking-tight leading-none font-serif",
 					"bg-transparent outline-none w-[15ch]",
 					"border-b border-foreground/20 focus:border-foreground/50",
 					"py-0.5 transition-colors duration-150",
@@ -88,9 +88,9 @@ function EditableTitle() {
 			type="button"
 			onClick={startEditing}
 			className={cn(
-				"text-sm font-semibold text-foreground tracking-tight leading-none font-serif",
+				"-translate-y-px text-sm font-semibold text-foreground tracking-tight leading-none font-serif",
 				"truncate text-left w-fit",
-				"rounded-sm px-1 -mx-1 py-0.5",
+				"rounded-lg px-1 -mx-1 py-2",
 				"transition-all duration-150 ease-out",
 				"hover:bg-foreground/4 hover:text-foreground hover:cursor-pointer",
 				"active:scale-[0.98]",
@@ -113,14 +113,20 @@ export function ChatHeader() {
 
 	return (
 		<>
-			<div className="hidden md:flex shrink-0 items-center h-12 px-5" style={drag}>
+			<div className="hidden md:flex shrink-0 items-center gap-4 h-12 px-5" style={drag}>
 				{!open && (
-					<div style={noDrag}>
-						<AppToolbar mode="desktop" sidebarIcon="right" onToggleSidebar={toggleSidebar} onNewChat={newChat} />
-					</div>
+					<AppToolbar
+						mode="desktop"
+						className="px-0"
+						sidebarIcon="right"
+						onToggleSidebar={toggleSidebar}
+						onNewChat={newChat}
+					/>
 				)}
-				<div className="flex-1 min-w-0 flex items-center" style={noDrag}>
-					<EditableTitle />
+				<div className="flex flex-1 min-w-0 items-center">
+					<div className="min-w-0" style={noDrag}>
+						<EditableTitle />
+					</div>
 				</div>
 				{sessionId && (
 					<button
