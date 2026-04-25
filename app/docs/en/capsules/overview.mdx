@@ -7,9 +7,9 @@ description: "Background, problems solved, and use cases for the Capsule Protoco
 
 Capsule lets AI agents output rich UI.
 
-Traditional agents can only reply with text and Markdown. Weather, charts, forms — plain text doesn't cut it. Capsule separates UI from data: UI components are pre-built and installed locally, the agent just provides data, and the host application injects it into a sandbox to render.
+Traditional agents can only reply with text and Markdown. Weather, charts, forms — plain text doesn't cut it. Capsule separates UI from data: UI components are pre-built in React, the agent just provides data, and the host application renders it in a sandbox.
 
-The agent doesn't write code, doesn't generate HTML, doesn't touch the network. What it does is essentially filling in form fields.
+The agent doesn't write code, doesn't generate HTML, doesn't touch the network. All it does is pick a component and fill in the data.
 
 ## Problems solved
 
@@ -25,11 +25,21 @@ Capsule's division of labor:
 - The agent picks a component and provides data
 - The host renders it in a sandbox
 
+## Key features
+
+**React component model.** Capsule uses React as its only UI framework. Components are registered via `defineCapsule()`, the host provides the React runtime, and the capsule contains only business code.
+
+**Multi-component support.** A single capsule can register multiple components. For example, a `finance` capsule can include a stock chart, portfolio overview, and transaction list — the agent picks whichever fits.
+
+**One-shot rendering.** Data is injected once at startup, the capsule renders once, done. No data updates, no bidirectional communication, no dispose lifecycle. To show new data, the agent calls the tool again and the host creates a new instance.
+
+**Sandbox isolation.** Capsules run in isolated iframe sandboxes with CSP blocking external network requests. Capsules cannot access the host DOM, make network requests, or read localStorage. All data must be fetched by the agent beforehand and passed in as initial data.
+
 ## Design reference
 
 The approach borrows from Google's [A2UI protocol](https://a2ui.org/). A2UI has the client maintain a component registry — the agent just says "use the Text component, content is this."
 
-Capsule differs from A2UI in extensibility. A2UI limits agents to predefined primitives (Text, Card, List) — no custom weather cards or candlestick charts. Capsule allows arbitrary custom UI, at the cost of each capsule needing to be packaged as a standalone JS bundle.
+Capsule differs from A2UI in extensibility. A2UI limits agents to predefined primitives (Text, Card, List) — no custom weather cards or candlestick charts. Capsule allows arbitrary custom UI components — as long as they're built with React and registered via `defineCapsule()`.
 
 The shared principle: **the agent sends data, not code. The client decides how to render.**
 
@@ -40,6 +50,7 @@ Good fit:
 - Data display. Weather, stocks, charts — the agent fetches data and passes it to a capsule, much richer than Markdown
 - Components needing specific visual design. Brand cards, product showcases — Markdown can't do these
 - Standardized information with variable data. Calendar cards, contact cards, order status
+- A group of related UIs. One capsule registers multiple components, sharing styles and dependencies
 
 Not a good fit:
 

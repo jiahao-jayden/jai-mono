@@ -13,6 +13,12 @@ export interface ManifestValidationResult {
 
 const jsonSchemaObject = z.record(z.string(), z.unknown());
 
+const componentManifestSchema = z.object({
+	title: z.string().optional(),
+	description: z.string().optional(),
+	dataSchema: jsonSchemaObject,
+});
+
 /**
  * Normative manifest shape. `.passthrough()` enforces forward compatibility —
  * unknown top-level fields are preserved and ignored rather than rejected.
@@ -22,11 +28,8 @@ export const capsuleManifestSchema = z
 		protocol: z.literal(CAPSULE_PROTOCOL_VERSION),
 		id: z.string().min(1),
 		version: z.string().min(1),
-		title: z.string().optional(),
-		description: z.string().optional(),
 		entry: z.string().min(1),
-		dataSchema: jsonSchemaObject,
-		fallback: z.object({ text: z.string().optional() }).optional(),
+		components: z.record(z.string(), componentManifestSchema),
 		_meta: z.record(z.string(), z.unknown()).optional(),
 	})
 	.passthrough();
@@ -48,20 +51,4 @@ export function assertCapsuleManifest(input: unknown): asserts input is CapsuleM
 	if (result.ok) return;
 	const summary = result.issues.map((i) => `  - ${i.path || "<root>"}: ${i.message}`).join("\n");
 	throw new Error(`Invalid capsule manifest:\n${summary}`);
-}
-
-/** Resolve `{path.to.field}` placeholders; unknown paths render as `""`. */
-export function renderFallbackText(template: string, data: unknown): string {
-	return template.replace(/\{([^{}]+)\}/g, (_match, rawPath: string) => {
-		const segments = rawPath.trim().split(".");
-		let cursor: unknown = data;
-		for (const seg of segments) {
-			if (cursor == null) return "";
-			if (typeof cursor !== "object") return "";
-			cursor = (cursor as Record<string, unknown>)[seg];
-		}
-		if (cursor == null) return "";
-		if (typeof cursor === "object") return JSON.stringify(cursor);
-		return String(cursor);
-	});
 }

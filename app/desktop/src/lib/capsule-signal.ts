@@ -1,5 +1,6 @@
 export interface ParsedCapsuleSignal {
 	id: string;
+	component: string;
 	schemaHash: string;
 	data: unknown;
 }
@@ -13,17 +14,28 @@ function decodeAttr(s: string): string {
 		.replace(/&amp;/g, "&");
 }
 
-const SIGNAL_RE = /<jai-capsule\s+id=(['"])([\s\S]*?)\1\s+schema-hash=(['"])([\s\S]*?)\3\s+data=(['"])([\s\S]*?)\5\s*\/?>/;
+const SIGNAL_RE = /<jai-capsule\s+([\s\S]*?)\/?>/;
+const ATTR_RE = /([\w-]+)=(['"])([\s\S]*?)\2/g;
 
 export function parseCapsuleSignal(text: string | undefined | null): ParsedCapsuleSignal | null {
 	if (!text) return null;
 	const match = SIGNAL_RE.exec(text);
 	if (!match) return null;
-	const id = decodeAttr(match[2]).trim();
-	const schemaHash = decodeAttr(match[4]).trim();
+
+	const attrs: Record<string, string> = {};
+	ATTR_RE.lastIndex = 0;
+	for (let m = ATTR_RE.exec(match[1]); m !== null; m = ATTR_RE.exec(match[1])) {
+		attrs[m[1]] = decodeAttr(m[3]);
+	}
+
+	const id = attrs.id?.trim();
+	const schemaHash = attrs["schema-hash"]?.trim();
 	if (!id || !schemaHash) return null;
+
+	const component = attrs.component?.trim() || "default";
+
 	let data: unknown = null;
-	const dataRaw = decodeAttr(match[6]);
+	const dataRaw = attrs.data;
 	if (dataRaw) {
 		try {
 			data = JSON.parse(dataRaw);
@@ -31,5 +43,5 @@ export function parseCapsuleSignal(text: string | undefined | null): ParsedCapsu
 			return null;
 		}
 	}
-	return { id, schemaHash, data };
+	return { id, component, schemaHash, data };
 }

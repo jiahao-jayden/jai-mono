@@ -1,29 +1,26 @@
 import { z } from "zod";
 import {
 	CAPSULE_PROTOCOL_VERSION,
-	type CapsuleFallback,
+	type CapsuleComponentManifest,
 	type CapsuleManifest,
 	type JSONSchema,
 } from "./types";
 
 /**
  * Static description of a capsule as written by its author (zod-first).
- * Converted to the wire-format `CapsuleManifest` by `buildCapsuleManifest()`
- * at build time.
+ * Converted to the wire-format `CapsuleManifest` by `buildCapsuleManifest()`.
  */
 export interface CapsuleDefinition {
 	id: string;
 	version: string;
-	title?: string;
-	description?: string;
-	dataSchema: z.ZodType;
-	fallback?: CapsuleFallback;
-	_meta?: Record<string, unknown>;
+	components: Record<string, z.ZodType>;
 }
 
 export interface BuildCapsuleManifestOptions {
 	/** Path of the bundled ESM entry, relative to the emitted `capsule.json`. */
 	entry: string;
+	/** Optional per-component metadata (title, description) not captured in zod schemas. */
+	componentMeta?: Record<string, { title?: string; description?: string }>;
 }
 
 /**
@@ -36,17 +33,24 @@ export function buildCapsuleManifest(
 ): CapsuleManifest {
 	const def = "__capsule" in input ? input.__capsule : input;
 
+	const components: Record<string, CapsuleComponentManifest> = {};
+	for (const [key, schema] of Object.entries(def.components)) {
+		const meta = options.componentMeta?.[key];
+		const comp: CapsuleComponentManifest = {
+			dataSchema: toJsonSchema(schema),
+		};
+		if (meta?.title !== undefined) comp.title = meta.title;
+		if (meta?.description !== undefined) comp.description = meta.description;
+		components[key] = comp;
+	}
+
 	const manifest: CapsuleManifest = {
 		protocol: CAPSULE_PROTOCOL_VERSION,
 		id: def.id,
 		version: def.version,
 		entry: options.entry,
-		dataSchema: toJsonSchema(def.dataSchema),
+		components,
 	};
-	if (def.title !== undefined) manifest.title = def.title;
-	if (def.description !== undefined) manifest.description = def.description;
-	if (def.fallback) manifest.fallback = def.fallback;
-	if (def._meta) manifest._meta = def._meta;
 	return manifest;
 }
 

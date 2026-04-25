@@ -1,11 +1,11 @@
 ---
 title: "Protocol spec"
-description: "Capsule Protocol v0 formal spec: manifest, bundle, bootstrap, wire messages."
+description: "Capsule Protocol v0 formal spec: manifest, bundle, component registration, wire messages."
 ---
 
 # Protocol spec
 
-The Capsule Protocol defines four things: how a capsule describes itself (manifest), how code is packaged (bundle), how the host starts a capsule (bootstrap), and how they communicate at runtime (wire messages).
+The Capsule Protocol defines four things: how a capsule describes itself (manifest), how code is packaged (bundle), how components are registered (defineCapsule), and how they communicate at runtime (wire messages).
 
 The protocol is host-agnostic. iframes, WebViews, separate processes — all valid.
 
@@ -18,11 +18,12 @@ interface CapsuleManifest {
   protocol: "capsule/v0";
   id: string;
   version: string;
-  title?: string;
-  description?: string;
   entry: string;
-  dataSchema: JSONSchema;
-  fallback?: { text?: string };
+  components: Record<string, {
+    title?: string;
+    description?: string;
+    dataSchema: JSONSchema;
+  }>;
   _meta?: Record<string, unknown>;
 }
 ```
@@ -33,11 +34,45 @@ interface CapsuleManifest {
 | `id` | Yes | Unique identifier, non-empty string |
 | `version` | Yes | SemVer recommended |
 | `entry` | Yes | ESM bundle path, relative to the manifest directory |
-| `dataSchema` | Yes | JSON Schema draft-07 describing the data the capsule accepts |
-| `title` | No | Human-readable name |
-| `description` | No | Detailed description — should specify when to use this capsule |
-| `fallback` | No | Plain-text template with `{field.name}` placeholders replaced by data values |
+| `components` | Yes | Component registry, keys are component names |
 | `_meta` | No | Extension field, not parsed by the protocol |
+
+### components
+
+Each component has its own `dataSchema` and optional `title` and `description`.
+
+Single-component capsules use `"default"` as the key:
+
+```json
+{
+  "components": {
+    "default": {
+      "title": "Weather",
+      "description": "Show current weather for a city",
+      "dataSchema": { "type": "object", "properties": { "city": { "type": "string" } } }
+    }
+  }
+}
+```
+
+Multi-component capsules use meaningful keys:
+
+```json
+{
+  "components": {
+    "stock-chart": {
+      "title": "Stock Chart",
+      "dataSchema": { ... }
+    },
+    "portfolio": {
+      "title": "Portfolio",
+      "dataSchema": { ... }
+    }
+  }
+}
+```
+
+`description` gets written into the AI tool description. Be specific about when to use this component so the LLM can judge correctly.
 
 ### Forward compatibility
 
@@ -49,35 +84,83 @@ Validators must ignore unknown fields in the manifest rather than rejecting them
 
 Requirements:
 
-- All dependencies (React, CSS-in-JS, etc.) bundled in — the sandbox has no module loader
+- All business dependencies bundled in — the sandbox has no module loader
+- **React is not bundled.** The host provides the React runtime. Mark `react`, `react-dom`, and `react-dom/client` as external when bundling
+- Must have a default export — the return value of `defineCapsule()`
 - Must be loadable via dynamic `import()`
-- When imported outside a sandbox (tests, Storybook), should not produce side effects. Achieve this by only executing mount logic when `window.__CAPSULE_BOOT__` is present
 
-No UI framework restrictions. React, Vue, Svelte, vanilla DOM all work.
+```bash
+esbuild src/index.tsx --bundle --format=esm --outfile=index.js \
+  --external:react --external:react-dom --external:react-dom/client
+```
 
-## Bootstrap
+## Component registration
 
-Before loading the capsule bundle, the host injects startup info at `window.__CAPSULE_BOOT__`:
+Capsules register components via `defineCapsule()`. This function does not execute rendering — it only returns a registry object.
 
 ```ts
-interface CapsuleBootstrap<D = unknown> {
-  element: HTMLElement;
-  instanceId: string;
-  initialData: D;
+import { defineCapsule } from "@jayden/capsule-protocol/runtime";
+import { z } from "zod";
+
+export default defineCapsule({
+  id: "weather",
+  version: "0.1.0",
+  components: {
+    default: {
+      dataSchema: z.object({ city: z.string() }),
+      render({ data, theme }) {
+        return <div>{data.city}</div>;
+      },
+    },
+  },
+});
+```
+
+### defineCapsule signature
+
+```ts
+function defineCapsule(config: {
+  id: string;
+  version: string;
+  components: Record<string, {
+    title?: string;
+    description?: string;
+    dataSchema: z.ZodType;
+    render: (props: CapsuleProps) => ReactElement | null;
+  }>;
+}): CapsuleRegistry;
+```
+
+### CapsuleProps
+
+```ts
+interface CapsuleProps<D = unknown> {
+  data: D;
   theme: "light" | "dark" | null;
+  instanceId: string;
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `element` | Mount point — capsule attaches DOM here |
-| `instanceId` | Instance identifier, used in messages to distinguish capsule instances |
-| `initialData` | Data from the agent, typed by the manifest's `dataSchema` |
-| `theme` | Host's current theme. `null` means the host didn't provide one |
+- `data` — Data from the agent, typed by `dataSchema`
+- `theme` — Host's current theme. `null` means the host didn't provide one
+- `instanceId` — Instance identifier
 
-The capsule reads `__CAPSULE_BOOT__` on module load, mounts DOM, finishes rendering. One-shot.
+### render function
 
-In non-sandbox environments, `window.__CAPSULE_BOOT__` does not exist and the capsule should not execute mount logic.
+- Returns a React element
+- Pure function, should not have side effects
+- Does not call `ReactDOM.render()` — the host handles mounting
+
+### How the host uses the registry
+
+After loading the bundle, the host:
+
+1. Gets the default export (`CapsuleRegistry`) via dynamic import
+2. Looks up the target component in `registry.components` by key
+3. Calls `component.render({ data, theme, instanceId })` to get a React element
+4. Mounts with `createRoot(element).render(...)`
+
+Capsule code does not need to be aware of the host's loading mechanism.
 
 ## Wire messages
 
@@ -123,13 +206,13 @@ The protocol recommends hosts:
 - Validate `data` against `dataSchema` before sending it to the capsule
 - Isolate capsule instances — no shared globals
 
-Capsules should not assume network or storage access. External data should be fetched by the agent beforehand and passed via `initialData`.
+Capsules should not assume network or storage access. External data should be fetched by the agent beforehand and passed via `data`.
 
 ## Rendering model
 
 Capsules are one-shot.
 
-Data is injected once at bootstrap, the capsule renders once, done. No data update mechanism, no bidirectional communication, no dispose lifecycle.
+Data is injected once at startup, the capsule renders once, done. No data update mechanism, no bidirectional communication, no dispose lifecycle.
 
 To show new data, the agent calls the tool again and the host creates a new capsule instance.
 

@@ -14,7 +14,7 @@ interface ToolResultCapsuleProps {
 const MIN_HEIGHT = 120;
 
 export function ToolResultCapsule({ instanceId, signal }: ToolResultCapsuleProps) {
-	const state = useCapsuleResource(signal.id, signal.schemaHash);
+	const state = useCapsuleResource(signal.id, signal.component, signal.schemaHash);
 	const theme = useResolvedTheme();
 	const [measuredHeight, setMeasuredHeight] = useState<number | null>(null);
 
@@ -34,6 +34,7 @@ export function ToolResultCapsule({ instanceId, signal }: ToolResultCapsuleProps
 					<CapsuleHost
 						instanceId={instanceId}
 						bundleCode={state.resource.bundleCode}
+						component={signal.component}
 						data={signal.data}
 						theme={theme}
 						onResize={(_w, h) => {

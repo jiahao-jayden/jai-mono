@@ -5,6 +5,7 @@ import { buildSandboxHTML } from "./sandbox-html";
 export interface CapsuleHostProps {
 	instanceId: string;
 	bundleCode: string;
+	component: string;
 	data: unknown;
 	theme?: "light" | "dark";
 	onReady?: () => void;
@@ -17,6 +18,7 @@ export interface CapsuleHostProps {
 export function CapsuleHost({
 	instanceId,
 	bundleCode,
+	component,
 	data,
 	theme,
 	onReady,
@@ -30,8 +32,8 @@ export function CapsuleHost({
 	callbacksRef.current = { onReady, onError, onResize };
 
 	const srcDoc = useMemo(
-		() => buildSandboxHTML({ instanceId, initialData: data, theme, bundleCode }),
-		[instanceId, bundleCode, data, theme],
+		() => buildSandboxHTML({ instanceId, initialData: data, component, theme, bundleCode }),
+		[instanceId, bundleCode, component, data, theme],
 	);
 
 	useEffect(() => {

@@ -6,7 +6,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import App from "./app";
 import Settings from "./components/settings";
 import { initTheme } from "./stores/theme";
-import CapsulePlaygroundView from "./views/capsule-playground-view";
 import "./styles/global.css";
 
 const queryClient = new QueryClient();
@@ -15,9 +14,7 @@ function resolveView(): React.ReactNode {
 	switch (window.location.hash) {
 		case "#/settings":
 			return <Settings />;
-		case "#/capsule-playground":
-			return <CapsulePlaygroundView />;
-		default:
+default:
 			return <App />;
 	}
 }

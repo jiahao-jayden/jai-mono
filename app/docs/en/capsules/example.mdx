@@ -1,13 +1,11 @@
 ---
 title: "Example: weather capsule"
-description: "Build a weather capsule from scratch — directory structure, manifest, and bundle code."
+description: "Build a weather capsule from scratch — directory structure, manifest, and component code."
 ---
 
 # Example: weather capsule
 
-This example walks through a complete capsule that displays current weather for a city. Written in vanilla JS, no build tools required.
-
-End result: when a user asks "what's the weather in Beijing," the agent calls the `RenderCapsule` tool with city name, temperature, and conditions. The host renders a styled weather card.
+This example builds a weather capsule from scratch. End result: when a user asks "what's the weather in Beijing," the agent calls `RenderCapsule` with city name, temperature, and conditions, and the host renders a weather card.
 
 ## Directory structure
 
@@ -16,43 +14,112 @@ A capsule is a directory under `~/.jai/capsules/`:
 ```
 ~/.jai/capsules/weather/
 ├── capsule.json    # manifest
-└── index.js        # bundle
+├── index.js        # bundle (build output)
+└── src/            # source (optional, for development)
+    └── index.tsx
 ```
 
-Two files. That's it.
+## Source code
+
+Capsules use React, registered via `defineCapsule()`. The host provides the React runtime — capsules don't bundle React.
+
+```tsx
+import { defineCapsule } from "@jayden/capsule-protocol/runtime";
+import { z } from "zod";
+
+export default defineCapsule({
+  id: "weather",
+  version: "0.1.0",
+  components: {
+    default: {
+      title: "Weather",
+      description: "Show current weather for a city. Use when the user asks about weather.",
+      dataSchema: z.object({
+        city: z.string().describe("City name, e.g. Beijing"),
+        temp: z.number().optional().describe("Temperature in Celsius"),
+        condition: z.string().optional().describe("Short weather phrase, e.g. Sunny, Light rain"),
+      }),
+      render({ data, theme }) {
+        const isDark = theme === "dark";
+        const bg = isDark ? "#111418" : "#f8f9fb";
+        const fg = isDark ? "#e6e8ec" : "#1d1f23";
+        const badgeBg = isDark ? "#2a313a" : "#e7ecf2";
+
+        return (
+          <div style={{
+            padding: "20px 22px",
+            borderRadius: 12,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            background: bg,
+            color: fg,
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 13, fontWeight: 500, opacity: 0.7, textTransform: "uppercase" }}>
+                {data.city}
+              </div>
+              <div style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: badgeBg }}>
+                {data.condition ?? "—"}
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+              <span style={{ fontSize: 48, fontWeight: 700, lineHeight: 1 }}>
+                {data.temp ?? "--"}
+              </span>
+              <span style={{ fontSize: 20, opacity: 0.55, fontWeight: 500 }}>°C</span>
+            </div>
+          </div>
+        );
+      },
+    },
+  },
+});
+```
+
+Key points:
+
+- `components` registers components. This capsule has one component with key `"default"`
+- `dataSchema` is defined with zod. The `describe()` text appears in the AI tool description, helping the LLM understand each field
+- `render` receives `data` (from the agent) and `theme` (host's current theme), returns a React element
+- The capsule doesn't call `ReactDOM.render()` itself — the host takes the `render` function and handles mounting
 
 ## Manifest
 
-`capsule.json` tells the host what this capsule is and what data it needs:
+`capsule.json` can be hand-written or auto-generated from `defineCapsule()`'s return value using `buildCapsuleManifest()`.
+
+Hand-written:
 
 ```json
 {
   "protocol": "capsule/v0",
   "id": "weather",
   "version": "0.1.0",
-  "title": "Weather",
-  "description": "Show today's weather for a city.",
   "entry": "./index.js",
-  "dataSchema": {
-    "type": "object",
-    "required": ["city"],
-    "properties": {
-      "city": {
-        "type": "string",
-        "description": "City name, e.g. Beijing."
-      },
-      "temp": {
-        "type": "number",
-        "description": "Temperature in Celsius."
-      },
-      "condition": {
-        "type": "string",
-        "description": "Short weather phrase, e.g. 'Sunny', 'Light rain'."
+  "components": {
+    "default": {
+      "title": "Weather",
+      "description": "Show current weather for a city. Use when the user asks about weather.",
+      "dataSchema": {
+        "type": "object",
+        "required": ["city"],
+        "properties": {
+          "city": {
+            "type": "string",
+            "description": "City name, e.g. Beijing"
+          },
+          "temp": {
+            "type": "number",
+            "description": "Temperature in Celsius"
+          },
+          "condition": {
+            "type": "string",
+            "description": "Short weather phrase, e.g. Sunny, Light rain"
+          }
+        }
       }
     }
-  },
-  "fallback": {
-    "text": "{city}: {temp}°C, {condition}"
   }
 }
 ```
@@ -60,98 +127,41 @@ Two files. That's it.
 Key points:
 
 - `id` must match the directory name — both are `weather` here
-- `dataSchema` is JSON Schema format. Only `city` is required, meaning the agent must provide at least a city name; temperature and condition are optional
-- `description` gets written into the AI tool's description. Be specific about when to use this capsule so the LLM can judge correctly
-- `fallback.text` is a plain-text template where `{city}` placeholders get replaced with actual data. For hosts that don't support UI rendering
+- `components` maps component keys to definitions. Single-component capsules use `"default"`
+- `dataSchema` is JSON Schema format. Only `city` is required, the rest are optional
+- `description` gets written into the AI tool description — be specific about when to use this capsule
 
-## Bundle
+## Building
 
-`index.js` is the capsule's entire code. It runs in a sandboxed iframe and reads host-injected data from `window.__CAPSULE_BOOT__`:
+The capsule's `entry` points to the bundled ESM file. React is provided by the host, so mark it as external when bundling:
 
-```js
-const boot = window.__CAPSULE_BOOT__;
-if (!boot) throw new Error("no-bootstrap");
-
-const isDark = boot.theme === "dark";
-const data = boot.initialData || {};
-
-// Create container
-const container = document.createElement("div");
-container.style.cssText = [
-  "padding:20px 22px",
-  "border-radius:12px",
-  "display:flex",
-  "flex-direction:column",
-  "gap:6px",
-  "background:" + (isDark ? "#111418" : "#f8f9fb"),
-  "color:" + (isDark ? "#e6e8ec" : "#1d1f23"),
-  "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-].join(";");
-boot.element.appendChild(container);
-
-// Helper
-function el(tag, style, text) {
-  const n = document.createElement(tag);
-  if (style) n.style.cssText = style;
-  if (text != null) n.textContent = String(text);
-  return n;
-}
-
-// Header: city name + condition badge
-const header = el("div", "display:flex;align-items:center;justify-content:space-between;gap:12px");
-header.appendChild(
-  el("div", "font-size:13px;font-weight:500;opacity:0.7;text-transform:uppercase", data.city || "—")
-);
-header.appendChild(
-  el("div", "font-size:11px;padding:2px 8px;border-radius:999px;background:" +
-    (isDark ? "#2a313a" : "#e7ecf2"), data.condition || "clear")
-);
-container.appendChild(header);
-
-// Temperature
-const tempRow = el("div", "display:flex;align-items:baseline;gap:6px;margin-top:2px");
-tempRow.appendChild(
-  el("span", "font-size:48px;font-weight:700;line-height:1", data.temp == null ? "--" : data.temp)
-);
-tempRow.appendChild(
-  el("span", "font-size:20px;opacity:0.55;font-weight:500", "°C")
-);
-container.appendChild(tempRow);
+```bash
+# Bundle with esbuild
+esbuild src/index.tsx --bundle --format=esm --outfile=index.js \
+  --external:react --external:react-dom --external:react-dom/client
 ```
 
-What the code does:
+The output `index.js` contains only business code — typically a few KB.
 
-1. Reads `initialData` (weather data from the agent) and `theme` (light/dark) from `boot`
-2. Creates a rounded container with theme-appropriate background
-3. Shows city name and a condition badge in the header
-4. Displays temperature in large type below
-
-Note that `boot.element` is the mount point provided by the host. The capsule just appends DOM to it.
-
-## The `__CAPSULE_BOOT__` interface
-
-The host injects this object on `window` before loading the bundle:
+You can also use `buildCapsuleManifest()` to auto-generate `capsule.json`:
 
 ```ts
-interface CapsuleBootstrap {
-  element: HTMLElement;    // mount point
-  instanceId: string;      // instance ID
-  initialData: unknown;    // data from the agent, matches dataSchema
-  theme: "light" | "dark" | null;
-}
-```
+import { buildCapsuleManifest } from "@jayden/capsule-protocol";
+import capsule from "./src/index";
 
-Four fields. The capsule reads data, creates DOM, renders. No callbacks, no lifecycle hooks.
+const manifest = buildCapsuleManifest(capsule, { entry: "./index.js" });
+// write to capsule.json
+```
 
 ## What the agent sees
 
-After the capsule is installed, the AI's tool list includes a `RenderCapsule` tool. The tool description contains capsule info:
+After the capsule is installed, the AI's tool list includes a `RenderCapsule` tool. The tool description includes capsule info:
 
 ```
 Available capsules:
 
 - weather — Weather
-  description: Show today's weather for a city.
+  description: Show current weather for a city. Use when the user asks about weather.
   data: { city: string (required), temp: number, condition: string }
 ```
 
@@ -161,41 +171,65 @@ When a user asks "what's the weather in Beijing," the agent:
 2. Calls `RenderCapsule({ capsuleId: "weather", data: { city: "Beijing", temp: 22, condition: "Sunny" } })`
 3. The host renders the weather card, agent's turn ends
 
-## Theme support
+For single-component capsules, `capsuleId` is just the capsule's `id` — no need to specify a component.
 
-`boot.theme` tells the capsule whether the host is in light or dark mode. The example above switches background and text colors based on `isDark`.
+## Multi-component example
 
-Not required, but capsules with theme support look better integrated.
-
-## Using React
-
-The vanilla JS example above is for simplicity. In practice you can use React with `defineCapsule()`:
+A capsule can register multiple components. For example, a finance capsule:
 
 ```tsx
-import { defineCapsule } from "@jayden/jai-capsule-protocol/runtime";
-import { z } from "zod";
-
 export default defineCapsule({
-  id: "weather",
+  id: "finance",
   version: "0.1.0",
-  dataSchema: z.object({
-    city: z.string(),
-    temp: z.number().optional(),
-    condition: z.string().optional(),
-  }),
-  render({ data, theme }) {
-    const isDark = theme === "dark";
-    return (
-      <div style={{ padding: "20px", borderRadius: 12, background: isDark ? "#111418" : "#f8f9fb" }}>
-        <div style={{ fontSize: 13, opacity: 0.7, textTransform: "uppercase" }}>{data.city}</div>
-        <div style={{ fontSize: 48, fontWeight: 700 }}>{data.temp ?? "--"}°C</div>
-        <div>{data.condition}</div>
-      </div>
-    );
+  components: {
+    "stock-chart": {
+      title: "Stock Chart",
+      description: "Show stock price trends. Use when the user asks about a stock.",
+      dataSchema: z.object({
+        symbol: z.string().describe("Stock ticker symbol"),
+        prices: z.array(z.object({
+          date: z.string(),
+          close: z.number(),
+        })).describe("Historical closing price series"),
+      }),
+      render({ data, theme }) {
+        return <StockChart symbol={data.symbol} prices={data.prices} theme={theme} />;
+      },
+    },
+    "portfolio": {
+      title: "Portfolio",
+      description: "Show current portfolio allocation. Use when the user asks about holdings.",
+      dataSchema: z.object({
+        holdings: z.array(z.object({
+          name: z.string(),
+          value: z.number(),
+          percent: z.number(),
+        })),
+      }),
+      render({ data, theme }) {
+        return <PortfolioView holdings={data.holdings} theme={theme} />;
+      },
+    },
   },
 });
 ```
 
-React capsules need to be bundled into a single ESM file with esbuild or tsup, then use `buildCapsuleManifest()` to generate `capsule.json`.
+The agent sees:
 
-Vanilla JS capsules work as-is with no build step.
+```
+- finance/stock-chart — Stock Chart
+  description: Show stock price trends. Use when the user asks about a stock.
+  data: { symbol: string (required), prices: Array<{ date: string, close: number }> (required) }
+
+- finance/portfolio — Portfolio
+  description: Show current portfolio allocation. Use when the user asks about holdings.
+  data: { holdings: Array<{ name: string, value: number, percent: number }> (required) }
+```
+
+The `capsuleId` uses `"finance/stock-chart"` format — everything before the slash is the capsule id, after is the component key.
+
+## Theme support
+
+The `render` function's `theme` parameter indicates whether the host is in light or dark mode. The example above switches background and text colors based on `isDark`.
+
+Not required, but capsules with theme support look better integrated.

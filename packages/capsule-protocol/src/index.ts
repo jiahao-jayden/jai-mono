@@ -1,4 +1,3 @@
-export type { CapsuleBootstrap } from "./bootstrap";
 export {
 	type BuildCapsuleManifestOptions,
 	buildCapsuleManifest,
@@ -9,7 +8,6 @@ export {
 	capsuleManifestSchema,
 	type ManifestValidationIssue,
 	type ManifestValidationResult,
-	renderFallbackText,
 	validateCapsuleManifest,
 } from "./manifest";
 export {
@@ -22,10 +20,9 @@ export {
 } from "./messages";
 export {
 	CAPSULE_PROTOCOL_VERSION,
-	type CapsuleFallback,
+	type CapsuleComponentManifest,
 	type CapsuleManifest,
 	type CapsuleProps,
 	type CapsuleProtocolVersion,
 	type JSONSchema,
-	type PackageJsonCapsuleField,
 } from "./types";
