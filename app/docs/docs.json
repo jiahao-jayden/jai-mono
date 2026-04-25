@@ -1,0 +1,114 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Jai Docs",
+  "description": "Documentation for Jai.",
+  "colors": {
+    "primary": "#2563eb"
+  },
+  "navigation": {
+    "languages": [
+      {
+        "language": "en",
+        "default": true,
+        "tabs": [
+          {
+            "tab": "Get started",
+            "groups": [
+              {
+                "group": "Overview",
+                "pages": ["en/index"]
+              }
+            ]
+          },
+          {
+            "tab": "Desktop",
+            "groups": [
+              {
+                "group": "Overview",
+                "pages": ["en/desktop/overview"]
+              }
+            ]
+          },
+          {
+            "tab": "Gateway & API",
+            "groups": [
+              {
+                "group": "Overview",
+                "pages": ["en/gateway-api/overview"]
+              }
+            ]
+          },
+          {
+            "tab": "Capsules",
+            "groups": [
+              {
+                "group": "Overview",
+                "pages": ["en/capsules/overview"]
+              }
+            ]
+          },
+          {
+            "tab": "Architecture",
+            "groups": [
+              {
+                "group": "Overview",
+                "pages": ["en/architecture/overview"]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "language": "zh",
+        "tabs": [
+          {
+            "tab": "开始使用",
+            "groups": [
+              {
+                "group": "总览",
+                "pages": ["zh/index"]
+              }
+            ]
+          },
+          {
+            "tab": "桌面端",
+            "groups": [
+              {
+                "group": "总览",
+                "pages": ["zh/desktop/overview"]
+              }
+            ]
+          },
+          {
+            "tab": "Gateway 与 API",
+            "groups": [
+              {
+                "group": "总览",
+                "pages": ["zh/gateway-api/overview"]
+              }
+            ]
+          },
+          {
+            "tab": "Capsules",
+            "groups": [
+              {
+                "group": "总览",
+                "pages": ["zh/capsules/overview"]
+              }
+            ]
+          },
+          {
+            "tab": "架构",
+            "groups": [
+              {
+                "group": "总览",
+                "pages": ["zh/architecture/overview"]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
