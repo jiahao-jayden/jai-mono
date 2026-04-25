@@ -23,20 +23,14 @@ export function ToolResultCapsule({ instanceId, signal }: ToolResultCapsuleProps
 			initial={{ opacity: 0, y: 4 }}
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ type: "spring", stiffness: 300, damping: 24 }}
-			className={cn(
-				"my-1 rounded-lg overflow-hidden",
-				"border border-border/40 bg-card/40",
-			)}
+			className={cn("my-1 rounded-lg overflow-hidden", "border border-border/40 bg-card/40")}
 		>
 			{state.kind === "loading" && <CapsuleSkeleton title={titleFromUrl(signal.url)} />}
 
 			{state.kind === "error" && <CapsuleError signal={signal} message={state.error.message} />}
 
 			{state.kind === "ready" && (
-				<div
-					className="transition-[height] duration-200 ease-out"
-					style={{ height: measuredHeight ?? MIN_HEIGHT }}
-				>
+				<div className="transition-[height] duration-200 ease-out" style={{ height: measuredHeight ?? MIN_HEIGHT }}>
 					<CapsuleHost
 						instanceId={instanceId}
 						bundleCode={state.resource.bundleCode}

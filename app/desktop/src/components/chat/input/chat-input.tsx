@@ -1,6 +1,6 @@
 import { ArrowUp02Icon, Link02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { PaperclipIcon, SquareIcon } from "lucide-react";
+import { SquareIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { nanoid } from "nanoid";
 import { useState } from "react";

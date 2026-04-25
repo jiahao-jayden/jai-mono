@@ -364,9 +364,7 @@ function TabsBar({ openPaths, selectedPath, onSelect, onClose }: TabsBarProps) {
 	}, [selectedPath]);
 
 	return (
-		<div
-			className="flex items-center gap-0.5 overflow-x-auto -mx-0.5 px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-		>
+		<div className="flex items-center gap-0.5 overflow-x-auto -mx-0.5 px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 			{openPaths.map((path) => (
 				<FileTab
 					key={path}

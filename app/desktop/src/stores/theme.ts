@@ -44,9 +44,7 @@ export async function initTheme(): Promise<void> {
 
 export function useResolvedTheme(): "light" | "dark" {
 	const theme = useThemeStore((s) => s.theme);
-	const [systemDark, setSystemDark] = useState(() =>
-		typeof window === "undefined" ? false : getSystemDark(),
-	);
+	const [systemDark, setSystemDark] = useState(() => (typeof window === "undefined" ? false : getSystemDark()));
 
 	useEffect(() => {
 		const mq = window.matchMedia("(prefers-color-scheme: dark)");

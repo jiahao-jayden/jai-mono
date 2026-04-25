@@ -104,7 +104,7 @@ export class PluginRegistry {
 		const bound = this.preToolCalls.slice();
 		return async (ctx: { toolCallId: string; toolName: string; args: unknown }) => {
 			for (const { meta, handler } of bound) {
-				let result;
+				let result: Awaited<ReturnType<typeof handler>> | undefined;
 				try {
 					result = await handler(
 						{ toolCallId: ctx.toolCallId, toolName: ctx.toolName, input: ctx.args },
@@ -135,7 +135,7 @@ export class PluginRegistry {
 		return async (ctx: PreModelRequestContext) => {
 			let acc: PreModelRequestResult | undefined;
 			for (const { meta, handler } of bound) {
-				let result;
+				let result: Awaited<ReturnType<typeof handler>> | undefined;
 				try {
 					result = await handler(ctx, {
 						sessionId: combineCtx.sessionId,
@@ -164,7 +164,7 @@ export class PluginRegistry {
 		const bound = this.preCompacts.slice();
 		return async (event: PreCompactEvent): Promise<PreCompactResult> => {
 			for (const { meta, handler } of bound) {
-				let result;
+				let result: Awaited<ReturnType<typeof handler>> | undefined;
 				try {
 					result = await handler(event, {
 						sessionId: combineCtx.sessionId,
