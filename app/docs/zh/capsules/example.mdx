@@ -1,0 +1,201 @@
+---
+title: "例子：天气 Capsule"
+description: "从零开始搭建一个天气 capsule，展示完整的目录结构、manifest 和 bundle 代码。"
+---
+
+# 例子：天气 Capsule
+
+这个例子展示一个完整的 capsule——显示某个城市的当前天气。用原生 JS 写，不需要任何构建工具。
+
+最终效果：Agent 被问到"北京天气怎么样"时，调用 `RenderCapsule` 工具传入城市名、温度和天气状况，宿主渲染出一个带样式的天气卡片。
+
+## 目录结构
+
+一个 capsule 就是一个目录，放在 `~/.jai/capsules/` 下面：
+
+```
+~/.jai/capsules/weather/
+├── capsule.json    # manifest
+└── index.js        # bundle
+```
+
+两个文件。就这些。
+
+## Manifest
+
+`capsule.json` 告诉宿主这个 capsule 是什么、需要什么数据：
+
+```json
+{
+  "protocol": "capsule/v0",
+  "id": "weather",
+  "version": "0.1.0",
+  "title": "Weather",
+  "description": "Show today's weather for a city.",
+  "entry": "./index.js",
+  "dataSchema": {
+    "type": "object",
+    "required": ["city"],
+    "properties": {
+      "city": {
+        "type": "string",
+        "description": "City name, e.g. Beijing."
+      },
+      "temp": {
+        "type": "number",
+        "description": "Temperature in Celsius."
+      },
+      "condition": {
+        "type": "string",
+        "description": "Short weather phrase, e.g. 'Sunny', 'Light rain'."
+      }
+    }
+  },
+  "fallback": {
+    "text": "{city}: {temp}°C, {condition}"
+  }
+}
+```
+
+几个要点：
+
+- `id` 必须和目录名一致，这里都是 `weather`
+- `dataSchema` 是 JSON Schema 格式。`required` 里只有 `city`，意味着 Agent 至少要提供城市名，温度和天气状况可选
+- `description` 会被写进 AI 工具的描述里。写清楚什么时候该用这个 capsule，LLM 才能准确地判断
+- `fallback.text` 是纯文本模板，`{city}` 这样的占位符会被替换成实际数据。给不支持 UI 渲染的宿主用
+
+## Bundle
+
+`index.js` 是 capsule 的全部代码。运行在沙箱的 iframe 里，通过 `window.__CAPSULE_BOOT__` 拿到宿主注入的数据：
+
+```js
+const boot = window.__CAPSULE_BOOT__;
+if (!boot) throw new Error("no-bootstrap");
+
+const isDark = boot.theme === "dark";
+const data = boot.initialData || {};
+
+// 创建容器
+const container = document.createElement("div");
+container.style.cssText = [
+  "padding:20px 22px",
+  "border-radius:12px",
+  "display:flex",
+  "flex-direction:column",
+  "gap:6px",
+  "background:" + (isDark ? "#111418" : "#f8f9fb"),
+  "color:" + (isDark ? "#e6e8ec" : "#1d1f23"),
+  "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+].join(";");
+boot.element.appendChild(container);
+
+// 辅助函数
+function el(tag, style, text) {
+  const n = document.createElement(tag);
+  if (style) n.style.cssText = style;
+  if (text != null) n.textContent = String(text);
+  return n;
+}
+
+// 头部：城市名 + 天气状况标签
+const header = el("div", "display:flex;align-items:center;justify-content:space-between;gap:12px");
+header.appendChild(
+  el("div", "font-size:13px;font-weight:500;opacity:0.7;text-transform:uppercase", data.city || "—")
+);
+header.appendChild(
+  el("div", "font-size:11px;padding:2px 8px;border-radius:999px;background:" +
+    (isDark ? "#2a313a" : "#e7ecf2"), data.condition || "clear")
+);
+container.appendChild(header);
+
+// 温度
+const tempRow = el("div", "display:flex;align-items:baseline;gap:6px;margin-top:2px");
+tempRow.appendChild(
+  el("span", "font-size:48px;font-weight:700;line-height:1", data.temp == null ? "--" : data.temp)
+);
+tempRow.appendChild(
+  el("span", "font-size:20px;opacity:0.55;font-weight:500", "°C")
+);
+container.appendChild(tempRow);
+```
+
+代码做了这几件事：
+
+1. 从 `boot` 读取 `initialData`（Agent 传的天气数据）和 `theme`（明暗主题）
+2. 创建一个圆角容器，根据主题设置背景色
+3. 头部显示城市名和天气状况标签
+4. 下方大号数字显示温度
+
+注意 `boot.element` 是宿主提供的挂载点，capsule 把 DOM 挂上去就行。
+
+## `__CAPSULE_BOOT__` 接口
+
+宿主在加载 bundle 之前会在 `window` 上注入这个对象：
+
+```ts
+interface CapsuleBootstrap {
+  element: HTMLElement;    // 挂载点
+  instanceId: string;      // 实例 ID
+  initialData: unknown;    // Agent 提供的数据，对应 dataSchema
+  theme: "light" | "dark" | null;
+}
+```
+
+就四个字段。capsule 读取数据，创建 DOM，渲染。没有回调，没有生命周期钩子。
+
+## Agent 看到的
+
+capsule 安装后，AI 的工具列表里会多一个 `RenderCapsule` 工具。工具描述里会包含这个 capsule 的信息：
+
+```
+Available capsules:
+
+- weather — Weather
+  description: Show today's weather for a city.
+  data: { city: string (required), temp: number, condition: string }
+```
+
+当用户问"北京天气怎么样"，Agent 会：
+
+1. 用其他工具（比如网络搜索）拿到实际天气数据
+2. 调用 `RenderCapsule({ capsuleId: "weather", data: { city: "Beijing", temp: 22, condition: "Sunny" } })`
+3. 宿主渲染天气卡片，Agent 这轮结束
+
+## 主题适配
+
+`boot.theme` 告诉 capsule 当前宿主是亮色还是暗色主题。上面的例子根据 `isDark` 切换了背景色和文字颜色。
+
+不是必须的，但做了主题适配的 capsule 在视觉上会更协调。
+
+## 用 React 写
+
+上面的例子用原生 JS 写是为了简单。实际开发中可以用 React，通过 `defineCapsule()` 导出：
+
+```tsx
+import { defineCapsule } from "@jayden/jai-capsule-protocol/runtime";
+import { z } from "zod";
+
+export default defineCapsule({
+  id: "weather",
+  version: "0.1.0",
+  dataSchema: z.object({
+    city: z.string(),
+    temp: z.number().optional(),
+    condition: z.string().optional(),
+  }),
+  render({ data, theme }) {
+    const isDark = theme === "dark";
+    return (
+      <div style={{ padding: "20px", borderRadius: 12, background: isDark ? "#111418" : "#f8f9fb" }}>
+        <div style={{ fontSize: 13, opacity: 0.7, textTransform: "uppercase" }}>{data.city}</div>
+        <div style={{ fontSize: 48, fontWeight: 700 }}>{data.temp ?? "--"}°C</div>
+        <div>{data.condition}</div>
+      </div>
+    );
+  },
+});
+```
+
+用 React 写的话需要用 esbuild 或 tsup 打包成单文件 ESM bundle，然后用 `buildCapsuleManifest()` 生成 `capsule.json`。
+
+原生 JS 写的 capsule 可以直接用，不需要任何构建步骤。

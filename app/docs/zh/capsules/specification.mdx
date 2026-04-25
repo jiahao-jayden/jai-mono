@@ -1,0 +1,144 @@
+---
+title: "协议规格"
+description: "Capsule Protocol v0 的正式规格：manifest、bundle、bootstrap、wire messages。"
+---
+
+# 协议规格
+
+Capsule Protocol 定义四件事：capsule 怎么描述自己（manifest）、代码怎么打包（bundle）、宿主怎么启动 capsule（bootstrap）、运行时怎么通信（wire messages）。
+
+协议不限定宿主实现。iframe、WebView、独立进程都行。
+
+## Manifest
+
+每个 capsule 有一个 `capsule.json` 文件：
+
+```ts
+interface CapsuleManifest {
+  protocol: "capsule/v0";
+  id: string;
+  version: string;
+  title?: string;
+  description?: string;
+  entry: string;
+  dataSchema: JSONSchema;
+  fallback?: { text?: string };
+  _meta?: Record<string, unknown>;
+}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `protocol` | 是 | 固定值 `"capsule/v0"` |
+| `id` | 是 | 唯一标识，非空字符串 |
+| `version` | 是 | 建议 SemVer |
+| `entry` | 是 | ESM bundle 路径，相对于 manifest 所在目录 |
+| `dataSchema` | 是 | JSON Schema draft-07，描述 capsule 接受的数据结构 |
+| `title` | 否 | 给人看的名字 |
+| `description` | 否 | 详细描述，建议写清什么场景该用这个 capsule |
+| `fallback` | 否 | 纯文本模板，`{field.name}` 占位符会被替换成 data 中对应的值 |
+| `_meta` | 否 | 扩展字段，协议不解析，留给第三方 |
+
+### 前向兼容
+
+校验器遇到 manifest 中的未知字段时，必须忽略而不是报错。`_meta` 下面的内容视为不透明数据。
+
+## Bundle
+
+`entry` 指向一个自包含的 ESM 文件。
+
+要求：
+
+- 所有依赖（React、CSS-in-JS 等）打包进去，沙箱里没有模块加载器
+- 可以通过 `import()` 动态加载
+- 在非沙箱环境（测试、Storybook）中 import 时，不应产生副作用。做法是在 `window.__CAPSULE_BOOT__` 存在时才执行挂载逻辑
+
+不限定 UI 框架。React、Vue、Svelte、原生 DOM 都行。
+
+## Bootstrap
+
+宿主在加载 capsule bundle 之前，在 `window.__CAPSULE_BOOT__` 上注入启动信息：
+
+```ts
+interface CapsuleBootstrap<D = unknown> {
+  element: HTMLElement;
+  instanceId: string;
+  initialData: D;
+  theme: "light" | "dark" | null;
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `element` | 挂载点，capsule 把 DOM 挂到这里 |
+| `instanceId` | 实例标识，消息中用它区分不同的 capsule 实例 |
+| `initialData` | Agent 提供的数据，类型对应 manifest 的 `dataSchema` |
+| `theme` | 宿主当前主题。`null` 表示宿主没有提供 |
+
+Capsule 在模块加载时读取 `__CAPSULE_BOOT__`、挂载 DOM、完成渲染。一次性的。
+
+非沙箱环境中 `window.__CAPSULE_BOOT__` 不存在，capsule 不应执行挂载逻辑。
+
+## Wire Messages
+
+运行时通信只有三种消息，全部从 sandbox 发往 host。传输方式不限（postMessage、IPC 等），协议只定义消息形状。
+
+### capsule/ready
+
+```ts
+{ type: "capsule/ready", instanceId: string }
+```
+
+Bundle 执行完毕，首次渲染完成。可选——宿主在没收到 ready 的情况下也应正常工作。
+
+### capsule/error
+
+```ts
+{ type: "capsule/error", instanceId: string, message: string, stack?: string }
+```
+
+未捕获的异常或未处理的 Promise rejection。
+
+### capsule/resize
+
+```ts
+{ type: "capsule/resize", instanceId: string, width?: number, height?: number }
+```
+
+Capsule 根元素的尺寸变化。宿主可以据此调整容器大小。可选。
+
+### 通用规则
+
+- 每条消息都带 `instanceId`，必须匹配宿主分配的值
+- 宿主收到未知 `instanceId` 的消息应丢弃
+- 宿主收到未知 `type` 的消息应忽略（前向兼容）
+- 没有 host → sandbox 方向的消息
+
+## 安全指导（非规范性）
+
+协议建议宿主：
+
+- 在 null-origin 沙箱中加载 capsule（如 `<iframe sandbox="allow-scripts">`）
+- 对沙箱施加严格的 Content Security Policy
+- 在发送数据到 capsule 之前，校验 `data` 是否符合 `dataSchema`
+- 隔离不同 capsule 实例，不共享全局变量
+
+Capsule 不应假设自己有网络或存储访问权限。需要外部数据的话，应该由 Agent 在调用前获取并通过 `initialData` 传入。
+
+## 渲染模型
+
+Capsule 是一次性渲染。
+
+数据在 bootstrap 时注入一次，capsule 渲染一次，结束。没有数据更新机制，没有双向通信，没有销毁生命周期。
+
+如果需要展示新数据，由 Agent 再次调用工具，宿主创建新的 capsule 实例。
+
+## 版本
+
+当前协议标识 `capsule/v0`，不稳定，可能有 breaking change。
+
+`capsule/v1`（未来）承诺同一大版本内向后兼容：
+
+- 新增字段不算 breaking
+- 删除或改变字段语义是 breaking，升大版本
+- 宿主必须忽略不认识的字段和消息类型

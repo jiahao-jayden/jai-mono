@@ -46,8 +46,9 @@
                 "group": "Capsule Protocol",
                 "pages": [
                   "en/capsules/overview",
-                  "en/capsules/concepts",
-                  "en/capsules/protocol"
+                  "en/capsules/example",
+                  "en/capsules/specification",
+                  "en/capsules/jai-implementation"
                 ]
               }
             ]
@@ -100,8 +101,9 @@
                 "group": "Capsule 协议",
                 "pages": [
                   "zh/capsules/overview",
-                  "zh/capsules/concepts",
-                  "zh/capsules/protocol"
+                  "zh/capsules/example",
+                  "zh/capsules/specification",
+                  "zh/capsules/jai-implementation"
                 ]
               }
             ]

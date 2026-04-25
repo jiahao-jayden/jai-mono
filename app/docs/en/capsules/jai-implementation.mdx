@@ -1,0 +1,112 @@
+---
+title: "Jai's implementation"
+description: "How Jai Desktop implements the Capsule Protocol — plugin mechanism, catalog, signal format, and schema compatibility."
+---
+
+# Jai's implementation
+
+This section describes how Jai Desktop, as the first host, implements the Capsule Protocol. These are reference designs, not part of the protocol — other hosts can implement things differently.
+
+## Three-layer architecture
+
+Jai splits the capsule implementation into three layers:
+
+**capsule-plugin** (plugin layer) runs in the gateway process. It discovers locally installed capsules, registers the `RenderCapsule` AI tool, validates data, and generates signals. It's a standard Jai plugin installed at `~/.jai/plugins/capsule-plugin/`.
+
+**Individual capsules** (capsule layer) are directories under `~/.jai/capsules/<id>/` — a `capsule.json` plus an `index.js`. Capsule authors don't need to know the plugin system exists.
+
+**Jai Desktop** (host layer) parses signals, looks up capsules from the catalog, and renders in iframe sandboxes.
+
+Dependencies between layers are one-directional. The plugin scans capsules, the desktop consumes the plugin's output.
+
+## Capsule discovery
+
+On gateway startup, capsule-plugin's `boot()` function scans `~/.jai/capsules/`:
+
+- Iterates each subdirectory, reads `capsule.json`
+- Validates manifest format and required fields
+- Confirms `manifest.id` matches the directory name
+- Confirms `entry` points to an existing file
+- Follows symlinks — for development, `ln -s <repo>/my-capsule ~/.jai/capsules/my-capsule` works
+
+Results are cached in memory. Session-level tool registration reuses the boot scan, no redundant scanning.
+
+## Signal format
+
+When the agent calls `RenderCapsule`, capsule-plugin returns an XML tag as the tool result:
+
+```xml
+<jai-capsule id="weather" schema-hash="a3f8c1e2" data='{"city":"Beijing","temp":22,"condition":"Sunny"}' />
+```
+
+| Attribute | Description |
+|-----------|-------------|
+| `id` | Capsule identifier |
+| `schema-hash` | First 8 hex chars of SHA-256 of `dataSchema` |
+| `data` | JSON object, HTML-entity encoded |
+
+XML is a deliberate choice — LLMs generate XML tags more reliably than structured JSON. The `data` attribute uses single quotes, with internal double quotes encoded as `&quot;`.
+
+The signal is self-contained. The desktop knows what to render and what data to pass.
+
+## Catalog
+
+capsule-plugin's `boot()` registers a `GET /api/plugins/capsule-plugin/catalog` endpoint that returns all capsule manifests, bundle code, and schema hashes:
+
+```json
+{
+  "capsules": [
+    {
+      "id": "weather",
+      "schemaHash": "a3f8c1e2",
+      "manifest": { "protocol": "capsule/v0", "id": "weather", ... },
+      "bundleCode": "const boot = window.__CAPSULE_BOOT__; ..."
+    }
+  ]
+}
+```
+
+The desktop calls this once on startup and loads all capsules into memory. At render time, lookup is by `id` with no network requests.
+
+This is A2UI's catalog model — the client holds the full component library, zero network dependency at runtime.
+
+## Schema compatibility
+
+The `schema-hash` in the signal is a fingerprint of `dataSchema` at the moment the capsule was invoked.
+
+Desktop rendering logic:
+
+1. Find capsule by `id` in the catalog
+2. Compare signal's `schema-hash` against catalog's `schemaHash`
+3. Match → render normally
+4. Mismatch → capsule's schema was updated, old data may be incompatible, show error
+
+In practice:
+
+- Capsule updated UI only (bug fixes, style changes) → hash unchanged → old chat history renders fine
+- Capsule changed data structure (added fields, changed types) → hash changed → old chat history shows load failure
+
+## Sandbox implementation
+
+The desktop renders capsules in `<iframe sandbox="allow-scripts" srcDoc="...">`. The generated srcDoc HTML:
+
+- Injects CSP in `<head>`: `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';`
+- Injects `window.__CAPSULE_BOOT__` via `<script>` with `element`, `instanceId`, `initialData`, `theme`
+- Inlines bundle code in `<script type="module">`
+- Uses ResizeObserver to watch root element size changes, sends `capsule/resize`
+- Catches exceptions via `window.onerror` and `window.onunhandledrejection`, sends `capsule/error`
+- Sends `capsule/ready` after bundle execution
+
+All messages are sent via `window.parent.postMessage()`. The host verifies message source with `e.source === iframe.contentWindow`.
+
+## Data validation
+
+capsule-plugin validates data in `RenderCapsule`'s `execute` function with basic checks:
+
+- Are required fields present?
+- Do field types match (string / number / boolean / object / array)?
+- Handles LLMs passing data as a string (auto JSON.parse)
+
+On failure, returns `isError: true` with a schema summary so the agent can fix and retry.
+
+This isn't a full JSON Schema validator — no pattern, minLength, enum checks — but it catches the most common LLM errors.

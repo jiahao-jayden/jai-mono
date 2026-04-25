@@ -1,0 +1,144 @@
+---
+title: "Protocol spec"
+description: "Capsule Protocol v0 formal spec: manifest, bundle, bootstrap, wire messages."
+---
+
+# Protocol spec
+
+The Capsule Protocol defines four things: how a capsule describes itself (manifest), how code is packaged (bundle), how the host starts a capsule (bootstrap), and how they communicate at runtime (wire messages).
+
+The protocol is host-agnostic. iframes, WebViews, separate processes — all valid.
+
+## Manifest
+
+Every capsule has a `capsule.json` file:
+
+```ts
+interface CapsuleManifest {
+  protocol: "capsule/v0";
+  id: string;
+  version: string;
+  title?: string;
+  description?: string;
+  entry: string;
+  dataSchema: JSONSchema;
+  fallback?: { text?: string };
+  _meta?: Record<string, unknown>;
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `protocol` | Yes | Fixed value `"capsule/v0"` |
+| `id` | Yes | Unique identifier, non-empty string |
+| `version` | Yes | SemVer recommended |
+| `entry` | Yes | ESM bundle path, relative to the manifest directory |
+| `dataSchema` | Yes | JSON Schema draft-07 describing the data the capsule accepts |
+| `title` | No | Human-readable name |
+| `description` | No | Detailed description — should specify when to use this capsule |
+| `fallback` | No | Plain-text template with `{field.name}` placeholders replaced by data values |
+| `_meta` | No | Extension field, not parsed by the protocol |
+
+### Forward compatibility
+
+Validators must ignore unknown fields in the manifest rather than rejecting them. Contents of `_meta` are treated as opaque.
+
+## Bundle
+
+`entry` points to a self-contained ESM file.
+
+Requirements:
+
+- All dependencies (React, CSS-in-JS, etc.) bundled in — the sandbox has no module loader
+- Must be loadable via dynamic `import()`
+- When imported outside a sandbox (tests, Storybook), should not produce side effects. Achieve this by only executing mount logic when `window.__CAPSULE_BOOT__` is present
+
+No UI framework restrictions. React, Vue, Svelte, vanilla DOM all work.
+
+## Bootstrap
+
+Before loading the capsule bundle, the host injects startup info at `window.__CAPSULE_BOOT__`:
+
+```ts
+interface CapsuleBootstrap<D = unknown> {
+  element: HTMLElement;
+  instanceId: string;
+  initialData: D;
+  theme: "light" | "dark" | null;
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `element` | Mount point — capsule attaches DOM here |
+| `instanceId` | Instance identifier, used in messages to distinguish capsule instances |
+| `initialData` | Data from the agent, typed by the manifest's `dataSchema` |
+| `theme` | Host's current theme. `null` means the host didn't provide one |
+
+The capsule reads `__CAPSULE_BOOT__` on module load, mounts DOM, finishes rendering. One-shot.
+
+In non-sandbox environments, `window.__CAPSULE_BOOT__` does not exist and the capsule should not execute mount logic.
+
+## Wire messages
+
+Runtime communication consists of three message types, all from sandbox to host. Transport is unspecified (postMessage, IPC, etc.) — the protocol only defines message shapes.
+
+### capsule/ready
+
+```ts
+{ type: "capsule/ready", instanceId: string }
+```
+
+Bundle execution complete, first paint done. Optional — hosts should work fine without it.
+
+### capsule/error
+
+```ts
+{ type: "capsule/error", instanceId: string, message: string, stack?: string }
+```
+
+Uncaught exception or unhandled promise rejection.
+
+### capsule/resize
+
+```ts
+{ type: "capsule/resize", instanceId: string, width?: number, height?: number }
+```
+
+Root element dimensions changed. The host can use this to adjust container size. Optional.
+
+### General rules
+
+- Every message carries `instanceId`, which must match the host-assigned value
+- Hosts should drop messages with unknown `instanceId`
+- Hosts should ignore messages with unknown `type` (forward compatibility)
+- No host → sandbox messages exist
+
+## Security guidance (non-normative)
+
+The protocol recommends hosts:
+
+- Load capsules in a null-origin sandbox (e.g. `<iframe sandbox="allow-scripts">`)
+- Apply strict Content Security Policy to the sandbox
+- Validate `data` against `dataSchema` before sending it to the capsule
+- Isolate capsule instances — no shared globals
+
+Capsules should not assume network or storage access. External data should be fetched by the agent beforehand and passed via `initialData`.
+
+## Rendering model
+
+Capsules are one-shot.
+
+Data is injected once at bootstrap, the capsule renders once, done. No data update mechanism, no bidirectional communication, no dispose lifecycle.
+
+To show new data, the agent calls the tool again and the host creates a new capsule instance.
+
+## Versioning
+
+Current protocol identifier: `capsule/v0`. Unstable, breaking changes possible.
+
+`capsule/v1` (future) commits to backward compatibility within the major version:
+
+- Adding fields is non-breaking
+- Removing or repurposing fields is breaking — bumps the major version
+- Hosts must ignore unrecognized fields and message types

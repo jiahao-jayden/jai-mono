@@ -1,0 +1,112 @@
+---
+title: "Jai 的实现"
+description: "Jai Desktop 如何实现 Capsule Protocol——plugin 机制、catalog、signal 格式和 schema 兼容性检测。"
+---
+
+# Jai 的实现
+
+这一节描述 Jai Desktop 作为第一个宿主对 Capsule Protocol 的具体实现。这些设计是参考而不是协议本身的一部分——其他宿主可以有完全不同的实现方式。
+
+## 三层架构
+
+Jai 把 capsule 的实现拆成三层：
+
+**capsule-plugin**（plugin 层）跑在 gateway 进程里，负责发现本地安装的 capsule、注册 `RenderCapsule` AI 工具、校验数据、生成 signal。它是一个标准的 Jai 插件，安装在 `~/.jai/plugins/capsule-plugin/`。
+
+**单个 capsule**（capsule 层）就是 `~/.jai/capsules/<id>/` 下面的一个目录——`capsule.json` 加 `index.js`。capsule 作者不需要知道 plugin 系统。
+
+**Jai Desktop**（宿主层）解析 signal、从 catalog 查找 capsule、在 iframe 沙箱中渲染。
+
+层与层之间的依赖是单向的。plugin 扫描 capsule，desktop 消费 plugin 的输出。
+
+## Capsule 发现
+
+gateway 启动时，capsule-plugin 的 `boot()` 函数扫描 `~/.jai/capsules/` 目录：
+
+- 遍历每个子目录，读取 `capsule.json`
+- 校验 manifest 格式和必填字段
+- 确认 `manifest.id` 和目录名一致
+- 确认 `entry` 指向的文件存在
+- 支持符号链接——开发时可以 `ln -s <repo>/my-capsule ~/.jai/capsules/my-capsule`
+
+发现结果缓存在内存里。session 级别的工具注册复用 boot 时的扫描结果，不会重复扫描。
+
+## Signal 格式
+
+当 Agent 调用 `RenderCapsule` 工具，capsule-plugin 返回一段 XML 作为 tool result：
+
+```xml
+<jai-capsule id="weather" schema-hash="a3f8c1e2" data='{"city":"Beijing","temp":22,"condition":"Sunny"}' />
+```
+
+| 属性 | 说明 |
+|------|------|
+| `id` | capsule 标识 |
+| `schema-hash` | `dataSchema` 的 SHA-256 前 8 位十六进制 |
+| `data` | JSON 对象，HTML 实体编码 |
+
+XML 格式是刻意选择——LLM 对 XML 标签的生成比结构化 JSON 更稳定。用单引号包裹 `data` 属性，内部的双引号编码为 `&quot;`。
+
+Signal 是自包含的。desktop 拿到它就知道渲染什么、传什么数据。
+
+## Catalog
+
+capsule-plugin 的 `boot()` 注册了一个 `GET /api/plugins/capsule-plugin/catalog` 端点，返回所有 capsule 的 manifest、bundle 代码和 schemaHash：
+
+```json
+{
+  "capsules": [
+    {
+      "id": "weather",
+      "schemaHash": "a3f8c1e2",
+      "manifest": { "protocol": "capsule/v0", "id": "weather", ... },
+      "bundleCode": "const boot = window.__CAPSULE_BOOT__; ..."
+    }
+  ]
+}
+```
+
+Desktop 启动时调用一次这个端点，把所有 capsule 加载到内存。渲染时按 `id` 查找，不再请求网络。
+
+这是 A2UI 的 catalog 模式——客户端持有完整组件库，运行时零网络依赖。
+
+## Schema 兼容性检测
+
+Signal 里的 `schema-hash` 是 capsule 被调用那一刻 `dataSchema` 的指纹。
+
+Desktop 渲染时的逻辑：
+
+1. 按 `id` 从 catalog 找到 capsule
+2. 对比 signal 的 `schema-hash` 和 catalog 里的 `schemaHash`
+3. 匹配 → 正常渲染
+4. 不匹配 → capsule 的 schema 更新了，旧数据可能不兼容，显示错误
+
+效果：
+
+- capsule 只改了 UI（修 bug、换样式）→ hash 没变 → 旧的聊天记录照常渲染
+- capsule 改了数据结构（加字段、改类型）→ hash 变了 → 旧的聊天记录显示加载失败
+
+## 沙箱实现
+
+Desktop 用 `<iframe sandbox="allow-scripts" srcDoc="...">` 渲染 capsule。srcDoc 是一段生成的 HTML：
+
+- `<head>` 里注入 CSP：`default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';`
+- `<script>` 注入 `window.__CAPSULE_BOOT__`，包含 `element`、`instanceId`、`initialData`、`theme`
+- `<script type="module">` 内联 bundle 代码
+- 通过 ResizeObserver 监测根元素尺寸变化，发 `capsule/resize` 消息
+- 通过 `window.onerror` 和 `window.onunhandledrejection` 捕获异常，发 `capsule/error` 消息
+- bundle 执行完毕后发 `capsule/ready` 消息
+
+所有消息通过 `window.parent.postMessage()` 发给 host。host 通过 `e.source === iframe.contentWindow` 校验消息来源。
+
+## 数据校验
+
+capsule-plugin 在 `RenderCapsule` 工具的 `execute` 函数里做基础校验：
+
+- 检查 required 字段是否存在
+- 检查字段类型（string / number / boolean / object / array）
+- 处理 LLM 把 data 传成字符串的情况（自动 JSON.parse）
+
+校验失败返回 `isError: true` 和 schema 摘要，Agent 可以修正后重试。
+
+这不是完整的 JSON Schema 校验。不做 pattern、minLength、enum 这些，但能挡住最常见的 LLM 错误。
