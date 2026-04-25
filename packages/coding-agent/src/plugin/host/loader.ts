@@ -1,8 +1,8 @@
 import type { Dirent } from "node:fs";
-import { access, readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { PluginCommandContext, PluginFactory, PluginMeta } from "../types.js";
+import type { PluginBootFactory, PluginCommandContext, PluginFactory, PluginMeta } from "../types.js";
 import { createPluginAPI } from "./api-factory.js";
 import { expandTemplate, loadCommandTemplatesFromDir } from "./commands.js";
 import { loadManifest, type PluginManifest } from "./manifest.js";
@@ -109,7 +109,23 @@ async function listPluginDirs(root: string): Promise<string[]> {
 		if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
 		throw err;
 	}
-	return entries.filter((e) => e.isDirectory()).map((e) => join(root, e.name));
+	const out: string[] = [];
+	for (const e of entries) {
+		const full = join(root, e.name);
+		if (e.isDirectory()) {
+			out.push(full);
+			continue;
+		}
+		if (e.isSymbolicLink()) {
+			try {
+				const s = await stat(full);
+				if (s.isDirectory()) out.push(full);
+			} catch {
+				// dangling link, skip
+			}
+		}
+	}
+	return out;
 }
 
 /** Optional plugin config schema export (duck-typed zod-like). */
@@ -123,10 +139,11 @@ function isPluginConfigSchema(v: unknown): v is PluginConfigSchema {
 
 type PluginModule = {
 	factory: PluginFactory | null;
+	boot: PluginBootFactory | null;
 	configSchema: PluginConfigSchema | null;
 };
 
-async function importPluginModule(pluginDir: string): Promise<PluginModule> {
+export async function importPluginModule(pluginDir: string): Promise<PluginModule> {
 	for (const filename of ["index.ts", "index.js"]) {
 		const full = join(pluginDir, filename);
 		try {
@@ -136,12 +153,13 @@ async function importPluginModule(pluginDir: string): Promise<PluginModule> {
 		}
 		const mod = await import(pathToFileURL(full).href);
 		const factory = typeof mod?.default === "function" ? (mod.default as PluginFactory) : null;
+		const boot = typeof mod?.boot === "function" ? (mod.boot as PluginBootFactory) : null;
 		const configSchema = isPluginConfigSchema(mod?.configSchema) ? mod.configSchema : null;
-		if (factory || configSchema) {
-			return { factory, configSchema };
+		if (factory || boot || configSchema) {
+			return { factory, boot, configSchema };
 		}
 	}
-	return { factory: null, configSchema: null };
+	return { factory: null, boot: null, configSchema: null };
 }
 
 /** Validate raw plugin config when configSchema is exported. */
@@ -202,6 +220,9 @@ export async function loadPluginsFromDirs(dirs: ScanDir[], options: LoadOptions 
 				const env = resolvePluginEnv(manifest, envSettings);
 				await warnIfProcessEnvUsed(dir, manifest.name);
 				const { factory, configSchema } = await importPluginModule(dir);
+				// `boot` is intentionally ignored here; session-time loading
+				// only runs the `default` factory. Process-level boot is run
+				// separately by the gateway via `loadPluginRoutes`.
 				const rawConfig = pluginSettings[manifest.name];
 				const config = resolvePluginConfig(manifest.name, rawConfig, configSchema);
 				if (factory) {

@@ -74,7 +74,7 @@ export class SessionManager {
 			maxIterations: this.settings.get("maxIterations"),
 			permissionSettings: this.settings.get("permission"),
 			pluginSettings: this.settings.get("plugins"),
-			envSettings: this.settings.get("env"),
+			envSettings: this.getPluginEnvSettings(),
 		});
 
 		const sessionId = session.getSessionId();
@@ -124,7 +124,7 @@ export class SessionManager {
 			maxIterations: this.settings.get("maxIterations"),
 			permissionSettings: this.settings.get("permission"),
 			pluginSettings: this.settings.get("plugins"),
-			envSettings: this.settings.get("env"),
+			envSettings: this.getPluginEnvSettings(),
 		});
 
 		this.activeSessions.set(sessionId, { session, workspaceId: record.workspaceId });
@@ -189,12 +189,28 @@ export class SessionManager {
 		return this.settings;
 	}
 
+	/**
+	 * Merged env exposed to plugins via `jai.env`.
+	 *
+	 * Convention: the host pre-populates a small set of well-known keys
+	 * (currently just `JAI_HOME`) so plugins can rely on them by declaring
+	 * the key in `plugin.json → env` without forcing the end-user to set
+	 * the same value in `settings.json`. User-provided env wins on
+	 * collision so power users can still override.
+	 *
+	 * See `.trellis/spec/jai-coding-agent/backend/plugin-env-injection.md`.
+	 */
+	getPluginEnvSettings(): Readonly<Record<string, string>> {
+		const userEnv = this.settings.get("env") ?? {};
+		return Object.freeze({ JAI_HOME: this.jaiHome, ...userEnv });
+	}
+
 	/** Scan `<jaiHome>/plugins` and return each plugin's load status. */
 	async scanPlugins(): Promise<PluginScanResult> {
 		return scanPlugins({
 			jaiHome: this.jaiHome,
 			pluginSettings: this.settings.get("plugins"),
-			envSettings: this.settings.get("env"),
+			envSettings: this.getPluginEnvSettings(),
 		});
 	}
 

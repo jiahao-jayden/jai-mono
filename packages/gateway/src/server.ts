@@ -1,8 +1,10 @@
 import { SessionManager } from "@jayden/jai-coding-agent";
+import { loadPluginRoutes } from "@jayden/jai-coding-agent/plugin";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { configRoutes } from "./routes/config.js";
 import { healthRoutes } from "./routes/health.js";
+import { pluginApiRoutes } from "./routes/plugin-api.js";
 import { pluginRoutes } from "./routes/plugins.js";
 import { sessionRoutes } from "./routes/session.js";
 import { workspaceRoutes } from "./routes/workspace.js";
@@ -26,6 +28,21 @@ export class GatewayServer {
 	static async create(options: GatewayOptions): Promise<GatewayServer> {
 		const manager = await SessionManager.create({ jaiHome: options.jaiHome });
 
+		// Run every plugin's `boot` named export once at process startup so
+		// plugins can contribute HTTP routes via `registerApiRoute`. Failures
+		// are isolated per-plugin; a bad plugin only loses its own routes.
+		// envSettings comes from `manager.getPluginEnvSettings()` so the
+		// host-injected `JAI_HOME` (and any future host keys) reach plugin
+		// `boot()` via `jai.env`.
+		const bootResult = await loadPluginRoutes({
+			jaiHome: manager.getJaiHome(),
+			pluginSettings: (manager.getSettings().get("plugins") ?? {}) as Record<string, unknown>,
+			envSettings: manager.getPluginEnvSettings(),
+		});
+		for (const err of bootResult.errors) {
+			console.warn(`[plugin-boot] failed to boot plugin "${err.pluginName}" in ${err.dir}: ${err.message}`);
+		}
+
 		const app = new Hono();
 		app.use("*", cors({ origin: "*", allowMethods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] }));
 
@@ -34,6 +51,7 @@ export class GatewayServer {
 		app.route("/", sessionRoutes(manager));
 		app.route("/", workspaceRoutes(manager));
 		app.route("/", pluginRoutes(manager));
+		app.route("/", pluginApiRoutes(bootResult.routes));
 
 		return new GatewayServer(app, manager);
 	}

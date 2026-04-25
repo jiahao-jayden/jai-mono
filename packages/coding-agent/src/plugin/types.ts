@@ -118,3 +118,54 @@ export interface PluginAPI {
 
 /** Plugin factory signature */
 export type PluginFactory = (jai: PluginAPI) => void | Promise<void>;
+
+// ── Boot lifecycle (process-level) ─────────────────────
+/**
+ * HTTP methods supported by `registerApiRoute`. Restricted to read/write
+ * verbs to keep the surface area small; PATCH/DELETE/PUT are intentionally
+ * not supported in the first version.
+ */
+export type PluginRouteMethod = "GET" | "POST";
+
+/**
+ * Handler for a plugin-registered API route. Receives the raw `Request` and
+ * must return a `Response` (sync or async). Plugins are expected to capture
+ * any plugin-local state (paths, config) via closure.
+ */
+export type PluginRouteHandler = (req: Request) => Response | Promise<Response>;
+
+/**
+ * SDK surface available inside `boot(jai)`.
+ *
+ * `boot` runs once per gateway process at startup, *not* per session.
+ * Therefore the boot SDK only exposes capabilities that are meaningful at
+ * process scope (HTTP routes, log, env, config). Session-scoped capabilities
+ * such as `registerTool` / `registerCommand` / `on(...)` belong to the
+ * `default` factory's `PluginAPI`.
+ */
+export interface PluginBootAPI {
+	/**
+	 * Register an HTTP route under this plugin's namespace. The gateway
+	 * automatically mounts it at `/api/plugins/<plugin-name><path>`.
+	 *
+	 * - `path` MUST start with `/` (relative to the plugin namespace).
+	 * - Only GET / POST are supported.
+	 * - Throws synchronously if the same `(method, path)` is registered twice
+	 *   inside this plugin's boot.
+	 */
+	registerApiRoute(method: PluginRouteMethod, path: string, handler: PluginRouteHandler): void;
+
+	readonly meta: PluginMeta;
+	readonly log: {
+		info(msg: string, data?: unknown): void;
+		warn(msg: string, data?: unknown): void;
+		error(msg: string, data?: unknown): void;
+	};
+	/** Same shape as `PluginAPI.env`. */
+	readonly env: Readonly<Record<string, string | undefined>>;
+	/** Same shape as `PluginAPI.config`. */
+	readonly config: unknown;
+}
+
+/** Process-level boot factory signature. Optional named export `boot`. */
+export type PluginBootFactory = (jai: PluginBootAPI) => void | Promise<void>;
