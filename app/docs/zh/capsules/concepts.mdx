@@ -1,0 +1,127 @@
+---
+title: "核心概念"
+description: "Signal、Catalog、Manifest、Bundle 和一次性渲染模型。"
+---
+
+# 核心概念
+
+## Signal
+
+Agent 调用 `RenderCapsule` 工具后，tool result 里会出现一段 XML：
+
+```xml
+<jai-capsule id="weather" schema-hash="a3f8c1e2" data='{"city":"Beijing","temp":22,"condition":"Sunny"}' />
+```
+
+三个属性：
+
+| 属性 | 说明 |
+|------|------|
+| `id` | capsule 标识，对应安装目录名 |
+| `schema-hash` | `dataSchema` 的 SHA-256 前 8 位，用于兼容性检测 |
+| `data` | JSON 对象，Agent 填充的数据 |
+
+signal 是自包含的。宿主拿到它就知道该渲染什么、传什么数据，不需要额外的网络请求。
+
+XML 格式是有意的选择——LLM 生成 XML 标签比生成结构化 JSON tool result 更稳定。
+
+## Catalog
+
+宿主启动时调用 `GET /api/plugins/capsule-plugin/catalog`，一次拉回所有 capsule 的 manifest 和 bundle 代码，建立本地注册表。
+
+```json
+{
+  "capsules": [
+    {
+      "id": "weather",
+      "schemaHash": "a3f8c1e2",
+      "manifest": { ... },
+      "bundleCode": "const boot = window.__CAPSULE_BOOT__; ..."
+    }
+  ]
+}
+```
+
+渲染时按 `id` 从内存中查找，不再请求网络。
+
+这就是 A2UI 里 catalog 概念的实现——客户端持有完整的组件库，Agent 只需要指定组件名称。
+
+## Manifest
+
+每个 capsule 目录下有一个 `capsule.json`：
+
+```json
+{
+  "protocol": "capsule/v0",
+  "id": "weather",
+  "version": "0.1.0",
+  "title": "Weather",
+  "description": "Show current weather for a city.",
+  "entry": "./index.js",
+  "dataSchema": {
+    "type": "object",
+    "required": ["city"],
+    "properties": {
+      "city": { "type": "string" },
+      "temp": { "type": "number" },
+      "condition": { "type": "string" }
+    }
+  }
+}
+```
+
+各字段说明：
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `protocol` | 是 | 必须是 `"capsule/v0"` |
+| `id` | 是 | 唯一标识，必须和目录名一致 |
+| `version` | 是 | 建议遵循 SemVer |
+| `entry` | 是 | ESM bundle 的路径，相对于 manifest 文件 |
+| `dataSchema` | 是 | JSON Schema draft-07，描述 Agent 要提供的数据结构 |
+| `title` | 否 | 写进 tool description，帮 LLM 理解这个 capsule 干什么 |
+| `description` | 否 | 同上，更详细的说明 |
+| `fallback` | 否 | `{ "text": "{city}: {temp}°C" }` 模板，纯文本环境降级用 |
+| `_meta` | 否 | 扩展字段，协议不解析 |
+
+`dataSchema` 有两个用途：plugin 用它做运行时校验（Agent 传的数据不对就报错让它重试），也用它生成 tool description 里的 schema 摘要帮 LLM 理解要填什么。
+
+## Bundle
+
+`entry` 指向一个自包含的 ESM 文件。React、Vue、Svelte、原生 JS 都行。所有依赖必须打包进去——沙箱里没有 npm，也没有网络。
+
+Bundle 在沙箱中执行时，通过全局变量拿到宿主注入的启动信息：
+
+```js
+const boot = window.__CAPSULE_BOOT__;
+
+boot.element      // HTMLElement — 挂载点
+boot.instanceId   // string — 实例 ID
+boot.initialData  // object — Agent 提供的数据
+boot.theme        // "light" | "dark" | null
+```
+
+一个最小的 capsule 就这几行：
+
+```js
+const boot = window.__CAPSULE_BOOT__;
+if (!boot) throw new Error("no-bootstrap");
+
+const el = document.createElement("div");
+el.textContent = boot.initialData.message;
+boot.element.appendChild(el);
+```
+
+`__CAPSULE_BOOT__` 只有在沙箱环境里才存在。如果你的 capsule 用 React 写并通过 `defineCapsule()` 导出，可以在非沙箱环境中（测试、Storybook）当普通组件 import。
+
+## 一次性渲染
+
+Capsule 渲染一次就结束了。
+
+Agent 提供数据 → capsule 读取数据 → 渲染 DOM → 完成。
+
+没有 `onUpdate`。没有 `onDispose`。没有 `postAction`。宿主不会再往沙箱里发任何消息。
+
+如果 Agent 需要展示新的数据，它会再调一次 `RenderCapsule`，生成一个新的 signal，宿主创建一个新的沙箱实例来渲染。旧的 capsule 实例就留在聊天历史里不动了。
+
+这个限制是刻意的。双向通信和状态管理会让协议和实现的复杂度急剧上升，而 Agent 场景下绝大多数 UI 需求就是"拿到数据、展示出来"。

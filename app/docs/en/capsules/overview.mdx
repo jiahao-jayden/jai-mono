@@ -1,17 +1,60 @@
 ---
-title: "Capsules overview"
-description: "See how capsule-based UI fits into Jai and the Capsule Protocol."
+title: "What is Capsule"
+description: "Background, problems solved, and use cases for the Capsule Protocol."
 ---
 
-# Capsules overview
+# What is Capsule
 
-Capsules are reusable agent UI surfaces that can render inside a compatible host.
+Capsule is the mechanism for AI agents in Jai to output rich UI.
 
-This section will cover the Capsule Protocol, capsule authoring, runtime behavior, and host-side integration patterns used in this repository.
+Traditional agents can only output text and Markdown. When it comes to weather, charts, or forms, plain text falls short. Capsule lets an agent call a tool, output a structured tag, and the host application renders it as an actual interactive UI component.
 
-## Planned coverage
+## Problems solved
 
-- Protocol concepts
-- Authoring and manifests
-- Runtime behavior
-- Host integration in Jai Desktop
+**Agent output is text-only.** Markdown tables can sort of show structured data, but there's no interactivity, no style control, and no way to embed charts or custom visualizations.
+
+**Having LLMs write HTML directly is unreliable.** Model-generated HTML is inconsistent — layouts break in unpredictable ways. Every response regenerates the entire UI from scratch with no reuse. Security is messy too — you don't want agents making arbitrary network requests or manipulating the DOM.
+
+**UI and data get tangled together.** When the agent is responsible for both the UI structure and filling in data, the two concerns are interleaved and the chance of errors doubles.
+
+Capsule separates the two:
+
+- UI components are pre-built, installed locally, and reviewed
+- The agent only decides "which component" and "what data"
+- The host injects data into a sandboxed component to render
+
+The agent doesn't write code, doesn't generate HTML, doesn't touch the network. What it does is roughly equivalent to filling in fields on a form.
+
+## Design reference
+
+This approach borrows from Google's [A2UI protocol](https://a2ui.org/). A2UI has the client maintain a component registry (catalog), and the agent just says "use the Text component, content is this." The client knows how to render Text on its own.
+
+Capsule differs from A2UI in extensibility. A2UI limits agents to a set of predefined primitives (Text, Card, List) — you can't build a custom weather card or a candlestick chart. Capsule allows arbitrary custom UI, at the cost of each capsule needing to be packaged as a standalone JS bundle.
+
+The shared core principle: **the agent sends data, not code. The client decides how to render.**
+
+## Use cases
+
+Good fit for Capsule:
+
+- Data display UI. Weather, stocks, charts. The agent fetches data and passes it to a capsule — much richer than Markdown.
+- Components requiring specific visual design. Brand cards, product showcases. Markdown can't do these.
+- Standardized information displays. Calendar cards, contact cards, order status. Fixed format, variable data — a natural fit.
+
+Not a good fit:
+
+- When a plain text answer is sufficient. Don't use a capsule just for aesthetics.
+- Complex forms with multi-step interaction. Capsules render once with no data updates or bidirectional communication.
+- When the UI structure is completely different every time. Capsule UI is predefined — the agent only fills in data. If you need a different layout each time, capsules won't help.
+
+## Three-layer architecture
+
+The Capsule implementation has three layers, each independent:
+
+**Plugin layer.** `capsule-plugin` is a Jai plugin that discovers locally installed capsules, registers the `RenderCapsule` tool, validates data, and generates signals. It runs in the gateway process.
+
+**Capsule layer.** A single capsule is a directory: `capsule.json` (manifest) + `index.js` (bundle), placed under `~/.jai/capsules/<id>/`. Capsule authors don't need to know the plugin system exists.
+
+**Host layer.** The desktop app or other host application is responsible for parsing signals, looking up capsules from the catalog, and rendering in a sandbox. Jai Desktop is the first host implementation.
+
+Dependencies between layers are one-directional: the plugin scans capsules, the host consumes signals output by the plugin. Layers are decoupled through the manifest and signal formats.

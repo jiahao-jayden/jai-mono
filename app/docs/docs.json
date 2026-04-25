@@ -43,8 +43,12 @@
             "tab": "Capsules",
             "groups": [
               {
-                "group": "Overview",
-                "pages": ["en/capsules/overview"]
+                "group": "Capsule Protocol",
+                "pages": [
+                  "en/capsules/overview",
+                  "en/capsules/concepts",
+                  "en/capsules/protocol"
+                ]
               }
             ]
           },
@@ -93,8 +97,12 @@
             "tab": "Capsules",
             "groups": [
               {
-                "group": "总览",
-                "pages": ["zh/capsules/overview"]
+                "group": "Capsule 协议",
+                "pages": [
+                  "zh/capsules/overview",
+                  "zh/capsules/concepts",
+                  "zh/capsules/protocol"
+                ]
               }
             ]
           },

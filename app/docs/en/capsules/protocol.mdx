@@ -1,0 +1,108 @@
+---
+title: "Protocol spec"
+description: "Wire protocol, security model, schema compatibility, and versioning."
+---
+
+# Protocol spec
+
+## Wire protocol
+
+Three message types between sandbox and host, all from sandbox to host:
+
+| Message type | Purpose |
+|---|---|
+| `capsule/ready` | Bundle execution complete, first paint done |
+| `capsule/error` | Uncaught exception or unhandled promise rejection |
+| `capsule/resize` | Root element dimensions changed |
+
+Every message carries an `instanceId` for the host to distinguish between concurrent capsule instances.
+
+Message shapes:
+
+```ts
+// capsule/ready
+{ type: "capsule/ready", instanceId: string }
+
+// capsule/error
+{ type: "capsule/error", instanceId: string, message: string, stack?: string }
+
+// capsule/resize
+{ type: "capsule/resize", instanceId: string, width?: number, height?: number }
+```
+
+No host → sandbox messages exist. Data is injected once at startup via `__CAPSULE_BOOT__`.
+
+Hosts should ignore unknown message types — this leaves room for future protocol extensions.
+
+## Schema compatibility
+
+The `schema-hash` in the signal is a fingerprint of the `dataSchema` at the moment the capsule was invoked (first 8 hex characters of SHA-256).
+
+Host rendering logic:
+
+1. Find capsule by `id` in the catalog
+2. Compare signal's `schema-hash` against catalog's `schemaHash`
+3. Match → render normally
+4. Mismatch → capsule's schema was updated, old data may be incompatible, show error
+
+This means:
+
+- Capsule updated UI only (bug fixes, style changes) → schemaHash unchanged → old signals render fine
+- Capsule changed data structure (added fields, changed types) → schemaHash changed → old signals show error
+
+No degraded rendering, no field migration. If old data doesn't match the new schema, the user sees a load failure.
+
+## Security model
+
+### Sandbox isolation
+
+Capsules run in `<iframe sandbox="allow-scripts">`. `allow-scripts` is the only sandbox flag — capsules need JS execution but nothing else.
+
+### CSP
+
+A Content Security Policy is injected in the sandbox HTML `<head>`:
+
+```
+default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';
+```
+
+`default-src 'none'` shuts off all default resource loading. Only inline scripts and inline styles are allowed — the bundle code is inlined in the HTML, not loaded from a URL.
+
+What capsule code cannot do:
+
+- `fetch()` or `XMLHttpRequest` — blocked by `connect-src` (inherited from `default-src 'none'`)
+- `<img src="...">` — blocked by `img-src`
+- `<script src="...">` — `script-src` only allows inline
+- `localStorage` / `IndexedDB` — sandbox iframe has no storage access
+- Access `window.parent` DOM — sandbox restricts same-origin policy
+
+### Data fetching strategy
+
+Capsules can't fetch their own data. If external information is needed (API calls, file reads), the agent should do it before calling `RenderCapsule` and put the results in `data`.
+
+The tool description includes this instruction:
+
+> If the capsule's `dataSchema` requires data you don't yet have, FIRST gather it via whatever data-fetching tools you have available, THEN call this tool with the result.
+
+This tells the agent to collect data first, render second.
+
+## Data validation
+
+The plugin validates `data` in `RenderCapsule`'s `execute` function with basic checks:
+
+- Are required fields present?
+- Do field types match (string / number / boolean / object / array)?
+
+On failure, the tool returns `isError: true` with a schema summary. The agent can fix the data and retry.
+
+This isn't a full JSON Schema validator (no pattern, minLength, etc.), but it catches the most common LLM errors: missing fields and wrong types.
+
+## Versioning
+
+Current protocol identifier: `capsule/v0`. No stability guarantees. Breaking changes possible.
+
+`capsule/v1` (future) commitments:
+
+- Adding fields is non-breaking: unknown fields in manifests and messages must be ignored by hosts and capsules
+- Removing or repurposing fields is breaking: bumps the major version
+- Hosts must support all manifests within the same major version

@@ -1,0 +1,108 @@
+---
+title: "协议规格"
+description: "Wire protocol、安全模型、schema 兼容性和版本策略。"
+---
+
+# 协议规格
+
+## Wire Protocol
+
+沙箱和宿主之间只有三种消息，全部从 sandbox 发往 host：
+
+| 消息类型 | 用途 |
+|---------|------|
+| `capsule/ready` | bundle 执行完毕，首次渲染完成 |
+| `capsule/error` | 未捕获的异常或未处理的 Promise rejection |
+| `capsule/resize` | capsule 根元素尺寸变化 |
+
+每条消息都带 `instanceId`，宿主用它区分同时存在的多个 capsule 实例。
+
+消息格式：
+
+```ts
+// capsule/ready
+{ type: "capsule/ready", instanceId: string }
+
+// capsule/error
+{ type: "capsule/error", instanceId: string, message: string, stack?: string }
+
+// capsule/resize
+{ type: "capsule/resize", instanceId: string, width?: number, height?: number }
+```
+
+没有 host → sandbox 方向的消息。数据在启动时通过 `__CAPSULE_BOOT__` 一次性注入。
+
+宿主应该忽略未知的消息类型——这为未来扩展协议留了空间。
+
+## Schema 兼容性
+
+Signal 里的 `schema-hash` 是 capsule 被调用那一刻 `dataSchema` 的指纹（SHA-256 前 8 位十六进制）。
+
+宿主渲染时的逻辑：
+
+1. 从 catalog 里按 `id` 找到 capsule
+2. 对比 signal 的 `schema-hash` 和 catalog 中的 `schemaHash`
+3. 一致 → 正常渲染
+4. 不一致 → capsule 的 schema 更新了，旧数据可能不兼容，显示错误
+
+这意味着：
+
+- capsule 只改了 UI（修 bug、换样式）→ schemaHash 没变 → 旧 signal 照常渲染
+- capsule 改了数据结构（加字段、改类型）→ schemaHash 变了 → 旧 signal 显示错误
+
+不做降级渲染，不做字段迁移。老数据配不上新 schema，直接告诉用户加载失败。
+
+## 安全模型
+
+### 沙箱隔离
+
+capsule 运行在 `<iframe sandbox="allow-scripts">` 里。`allow-scripts` 是唯一的 sandbox flag——capsule 需要执行 JS，但不需要别的权限。
+
+### CSP
+
+沙箱 HTML 的 `<head>` 里注入了 Content Security Policy：
+
+```
+default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';
+```
+
+`default-src 'none'` 关掉了所有默认资源加载。只放行了内联脚本和内联样式——因为 bundle 代码是内联在 HTML 里的，不是从 URL 加载的。
+
+capsule 内部做不了这些事情：
+
+- `fetch()` 或 `XMLHttpRequest` — 被 `connect-src` 封了（继承自 `default-src 'none'`）
+- `<img src="...">` — 被 `img-src` 封了
+- `<script src="...">` — 被 `script-src` 限制为只允许 inline
+- `localStorage` / `IndexedDB` — sandbox iframe 没有存储权限
+- 访问 `window.parent` 的 DOM — sandbox 限制了同源策略
+
+### 数据获取策略
+
+capsule 不能自己去拿数据。如果需要外部信息（API 调用、文件读取），应该由 Agent 在调用 `RenderCapsule` 之前完成，把结果放进 `data` 传入。
+
+capsule 的 tool description 里有这句话：
+
+> If the capsule's `dataSchema` requires data you don't yet have, FIRST gather it via whatever data-fetching tools you have available, THEN call this tool with the result.
+
+这样 Agent 知道自己要先收集数据再渲染。
+
+## 数据校验
+
+Plugin 在 `RenderCapsule` 的 `execute` 函数里对 `data` 做基础校验：
+
+- 检查 required 字段是否存在
+- 检查字段类型是否匹配（string / number / boolean / object / array）
+
+不符合的话返回 `isError: true`，附带 schema 摘要。Agent 收到错误可以修正数据重试。
+
+这不是完整的 JSON Schema 校验器（不做 pattern、minLength 这些），但能挡住最常见的 LLM 错误：漏字段和类型搞反。
+
+## 版本
+
+当前协议标识 `capsule/v0`。v0 不保证稳定，可能有 breaking change。
+
+`capsule/v1`（未来）的承诺：
+
+- 加字段不 break：manifest 和 message 里出现的未知字段，宿主和 capsule 都必须忽略
+- 删字段或改语义算 break：会升大版本
+- 宿主必须支持同一大版本内的所有 manifest
