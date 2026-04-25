@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { onEvent, rpc } from "@/lib/rpc";
 import type { Theme } from "../../electron/rpc/schema";
@@ -39,4 +40,22 @@ export async function initTheme(): Promise<void> {
 		useThemeStore.setState({ theme: value });
 		applyToDOM(value);
 	});
+}
+
+export function useResolvedTheme(): "light" | "dark" {
+	const theme = useThemeStore((s) => s.theme);
+	const [systemDark, setSystemDark] = useState(() =>
+		typeof window === "undefined" ? false : getSystemDark(),
+	);
+
+	useEffect(() => {
+		const mq = window.matchMedia("(prefers-color-scheme: dark)");
+		const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+		mq.addEventListener("change", handler);
+		return () => mq.removeEventListener("change", handler);
+	}, []);
+
+	if (theme === "dark") return "dark";
+	if (theme === "light") return "light";
+	return systemDark ? "dark" : "light";
 }

@@ -1,3 +1,4 @@
+import { parseCapsuleSignal } from "@/lib/capsule-signal";
 import { cn } from "@/lib/utils";
 import type { ChatItem, ChatStatus } from "@/types/chat";
 import { MessageResponse } from "../ai-elements/message";
@@ -7,6 +8,7 @@ import { ErrorBlock, StreamingPlaceholder, TypingIndicator } from "./message/mes
 import { MessageReasoning } from "./message/message-reasoning";
 import { MessageUser } from "./message/message-user";
 import { ToolCallRow } from "./message/tool-call-row";
+import { ToolResultCapsule } from "./message/tool-result-capsule";
 
 interface MessageListProps {
 	messages: ChatItem[];
@@ -73,9 +75,20 @@ export function MessageList({ messages, status }: MessageListProps) {
 								})();
 
 								if (part.type === "tool_call" && part.toolCall) {
+									const tc = part.toolCall;
+									if (tc.name === "RenderCapsule" && tc.status === "completed" && tc.result) {
+										const signal = parseCapsuleSignal(tc.result);
+										if (signal) {
+											return (
+												<div key={`${key}-${tc.toolCallId}`} className={spacing}>
+													<ToolResultCapsule instanceId={tc.toolCallId} signal={signal} />
+												</div>
+											);
+										}
+									}
 									return (
-										<div key={`${key}-${part.toolCall.toolCallId}`} className={spacing}>
-											<ToolCallRow tool={part.toolCall} />
+										<div key={`${key}-${tc.toolCallId}`} className={spacing}>
+											<ToolCallRow tool={tc} />
 										</div>
 									);
 								}
