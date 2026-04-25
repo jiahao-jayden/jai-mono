@@ -1,5 +1,6 @@
 export interface ParsedCapsuleSignal {
-	url: string;
+	id: string;
+	schemaHash: string;
 	data: unknown;
 }
 
@@ -12,19 +13,17 @@ function decodeAttr(s: string): string {
 		.replace(/&amp;/g, "&");
 }
 
-// Mirrors the XML emitted by the capsule-plugin RenderCapsule tool.
-// The data attribute is single-quoted by the plugin so quotes inside the
-// JSON payload are escaped as &quot; rather than colliding with the wrapper.
-const SIGNAL_RE = /<jai-capsule\s+url=(['"])([\s\S]*?)\1\s+data=(['"])([\s\S]*?)\3\s*\/?>/;
+const SIGNAL_RE = /<jai-capsule\s+id=(['"])([\s\S]*?)\1\s+schema-hash=(['"])([\s\S]*?)\3\s+data=(['"])([\s\S]*?)\5\s*\/?>/;
 
 export function parseCapsuleSignal(text: string | undefined | null): ParsedCapsuleSignal | null {
 	if (!text) return null;
 	const match = SIGNAL_RE.exec(text);
 	if (!match) return null;
-	const url = decodeAttr(match[2]).trim();
-	if (!url) return null;
+	const id = decodeAttr(match[2]).trim();
+	const schemaHash = decodeAttr(match[4]).trim();
+	if (!id || !schemaHash) return null;
 	let data: unknown = null;
-	const dataRaw = decodeAttr(match[4]);
+	const dataRaw = decodeAttr(match[6]);
 	if (dataRaw) {
 		try {
 			data = JSON.parse(dataRaw);
@@ -32,5 +31,5 @@ export function parseCapsuleSignal(text: string | undefined | null): ParsedCapsu
 			return null;
 		}
 	}
-	return { url, data };
+	return { id, schemaHash, data };
 }

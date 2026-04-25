@@ -13,14 +13,9 @@ export interface ManifestValidationResult {
 
 const jsonSchemaObject = z.record(z.string(), z.unknown());
 
-const actionDefinitionSchema = z.object({
-	schema: jsonSchemaObject,
-	description: z.string().optional(),
-});
-
 /**
- * Normative manifest shape. `.passthrough()` enforces SPEC §4.2 — unknown
- * top-level fields are preserved and ignored rather than rejected.
+ * Normative manifest shape. `.passthrough()` enforces forward compatibility —
+ * unknown top-level fields are preserved and ignored rather than rejected.
  */
 export const capsuleManifestSchema = z
 	.object({
@@ -31,12 +26,6 @@ export const capsuleManifestSchema = z
 		description: z.string().optional(),
 		entry: z.string().min(1),
 		dataSchema: jsonSchemaObject,
-		actions: z
-			.record(
-				z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, "action id must match /^[a-zA-Z_][a-zA-Z0-9_]*$/"),
-				actionDefinitionSchema,
-			)
-			.optional(),
 		fallback: z.object({ text: z.string().optional() }).optional(),
 		_meta: z.record(z.string(), z.unknown()).optional(),
 	})

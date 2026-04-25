@@ -11,7 +11,6 @@ interface Fixture {
 	label: string;
 	bundle: string;
 	initial: Record<string, unknown>;
-	handleAction: (prev: Record<string, unknown>, actionId: string, args: unknown) => Record<string, unknown> | null;
 }
 
 const FIXTURES: Record<FixtureId, Fixture> = {
@@ -20,23 +19,12 @@ const FIXTURES: Record<FixtureId, Fixture> = {
 		label: "Weather",
 		bundle: VANILLA_WEATHER_BUNDLE,
 		initial: { city: "Shanghai", temp: 22, condition: "Clear" },
-		handleAction: (prev, actionId) => {
-			if (actionId !== "refresh") return null;
-			const next = { ...prev, temp: Math.round(8 + Math.random() * 28) };
-			return next;
-		},
 	},
 	counter: {
 		id: "counter",
 		label: "Counter",
 		bundle: VANILLA_COUNTER_BUNDLE,
 		initial: { count: 0 },
-		handleAction: (prev, actionId, args) => {
-			if (actionId !== "increment") return null;
-			const by = (args as { by?: number })?.by ?? 1;
-			const current = (prev.count as number) ?? 0;
-			return { ...prev, count: current + by };
-		},
 	},
 };
 
@@ -62,25 +50,9 @@ export default function CapsulePlaygroundView() {
 		setLog([]);
 	}, []);
 
-	const handleAction = useCallback(
-		async (actionId: string, args: unknown) => {
-			appendLog("action", `${actionId} ${formatJson(args)}`);
-			await new Promise((r) => setTimeout(r, 250));
-			const next = fixture.handleAction(data, actionId, args);
-			if (next) {
-				setData(next);
-				appendLog("update", formatJson(next));
-				return { ok: true };
-			}
-			throw new Error(`unknown-action:${actionId}`);
-		},
-		[appendLog, data, fixture],
-	);
-
 	const handleReady = useCallback(() => appendLog("ready", "capsule ready"), [appendLog]);
 	const handleError = useCallback((m: string) => appendLog("error", m), [appendLog]);
 
-	// Stable instance id per fixture, so switching remounts.
 	const instanceId = useMemo(() => `pg-${fixtureId}`, [fixtureId]);
 
 	return (
@@ -145,7 +117,6 @@ export default function CapsulePlaygroundView() {
 								bundleCode={fixture.bundle}
 								data={data}
 								theme={theme}
-								onAction={handleAction}
 								onReady={handleReady}
 								onError={handleError}
 							/>
@@ -165,9 +136,7 @@ export default function CapsulePlaygroundView() {
 						</div>
 						<div className="flex-1 overflow-auto font-mono text-[11px] leading-[1.5]">
 							{log.length === 0 ? (
-								<div className="p-3 text-muted-foreground/50">
-									No events yet — try interacting with the capsule.
-								</div>
+								<div className="p-3 text-muted-foreground/50">No events yet.</div>
 							) : (
 								<ul>
 									{log.map((e) => (
@@ -192,7 +161,7 @@ export default function CapsulePlaygroundView() {
 
 interface LogEntry {
 	id: number;
-	kind: "ready" | "action" | "update" | "error";
+	kind: "ready" | "error";
 	text: string;
 	at: Date;
 }
@@ -255,10 +224,6 @@ function logKindClass(kind: LogEntry["kind"]): string {
 	switch (kind) {
 		case "ready":
 			return "text-emerald-500";
-		case "action":
-			return "text-primary-2";
-		case "update":
-			return "text-muted-foreground";
 		case "error":
 			return "text-destructive";
 	}
@@ -270,12 +235,4 @@ function formatTime(d: Date): string {
 	const s = d.getSeconds().toString().padStart(2, "0");
 	const ms = d.getMilliseconds().toString().padStart(3, "0");
 	return `${h}:${m}:${s}.${ms}`;
-}
-
-function formatJson(v: unknown): string {
-	try {
-		return JSON.stringify(v);
-	} catch {
-		return String(v);
-	}
 }

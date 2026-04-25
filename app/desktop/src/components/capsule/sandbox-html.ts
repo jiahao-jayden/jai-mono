@@ -29,72 +29,17 @@ export function buildSandboxHTML(opts: BuildSandboxHTMLOptions): string {
 (function () {
   var instanceId = ${instanceIdJson};
   var root = document.getElementById("capsule-root");
-  var updateHandlers = [];
-  var pendingActions = new Map();
 
   function postToHost(msg) {
     try { window.parent.postMessage(msg, "*"); } catch (_) {}
-  }
-
-  function safeRun(fn) {
-    try { fn(); } catch (e) {
-      postToHost({
-        type: "capsule/error",
-        instanceId: instanceId,
-        message: (e && e.message) ? String(e.message) : String(e),
-        stack: e && e.stack ? String(e.stack) : undefined,
-      });
-    }
   }
 
   window.__CAPSULE_BOOT__ = {
     element: root,
     instanceId: instanceId,
     initialData: ${dataJson},
-    props: {
-      instanceId: instanceId,
-      theme: ${themeJson},
-      postAction: function (actionId, args) {
-        return new Promise(function (resolve, reject) {
-          var requestId = "req-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
-          pendingActions.set(requestId, { resolve: resolve, reject: reject });
-          postToHost({
-            type: "capsule/action",
-            instanceId: instanceId,
-            actionId: String(actionId),
-            requestId: requestId,
-            args: args,
-          });
-        });
-      },
-    },
-    onUpdate: function (handler) {
-      updateHandlers.push(handler);
-      return function () {
-        updateHandlers = updateHandlers.filter(function (h) { return h !== handler; });
-      };
-    },
+    theme: ${themeJson},
   };
-
-  window.addEventListener("message", function (e) {
-    var m = e.data;
-    if (!m || typeof m !== "object") return;
-    if (m.instanceId !== instanceId) return;
-    switch (m.type) {
-      case "capsule/update":
-        updateHandlers.slice().forEach(function (h) {
-          safeRun(function () { h(m.data); });
-        });
-        break;
-      case "capsule/action_result":
-        var pending = pendingActions.get(m.requestId);
-        if (!pending) return;
-        pendingActions.delete(m.requestId);
-        if (m.ok) pending.resolve(m.result);
-        else pending.reject(new Error(m.error || "action-failed"));
-        break;
-    }
-  });
 
   window.addEventListener("error", function (e) {
     postToHost({

@@ -14,7 +14,7 @@ interface ToolResultCapsuleProps {
 const MIN_HEIGHT = 120;
 
 export function ToolResultCapsule({ instanceId, signal }: ToolResultCapsuleProps) {
-	const state = useCapsuleResource(signal.url);
+	const state = useCapsuleResource(signal.id, signal.schemaHash);
 	const theme = useResolvedTheme();
 	const [measuredHeight, setMeasuredHeight] = useState<number | null>(null);
 
@@ -25,9 +25,9 @@ export function ToolResultCapsule({ instanceId, signal }: ToolResultCapsuleProps
 			transition={{ type: "spring", stiffness: 300, damping: 24 }}
 			className={cn("my-1 rounded-lg overflow-hidden", "border border-border/40 bg-card/40")}
 		>
-			{state.kind === "loading" && <CapsuleSkeleton title={titleFromUrl(signal.url)} />}
+			{state.kind === "loading" && <CapsuleSkeleton title={signal.id} />}
 
-			{state.kind === "error" && <CapsuleError signal={signal} message={state.error.message} />}
+			{state.kind === "error" && <CapsuleError id={signal.id} message={state.error.message} />}
 
 			{state.kind === "ready" && (
 				<div className="transition-[height] duration-200 ease-out" style={{ height: measuredHeight ?? MIN_HEIGHT }}>
@@ -61,20 +61,15 @@ function CapsuleSkeleton({ title }: { title: string }) {
 	);
 }
 
-function CapsuleError({ signal, message }: { signal: ParsedCapsuleSignal; message: string }) {
+function CapsuleError({ id, message }: { id: string; message: string }) {
 	return (
 		<div role="status" title={message} className="flex h-22 items-center justify-center px-4 text-center">
 			<p className="text-[12.5px] italic text-muted-foreground/65 leading-relaxed">
 				无法加载 capsule
 				<span className="not-italic font-mono text-[11.5px] text-muted-foreground/50 ml-1.5">
-					{titleFromUrl(signal.url)}
+					{id}
 				</span>
 			</p>
 		</div>
 	);
-}
-
-function titleFromUrl(url: string): string {
-	const m = url.match(/\/r\/([^/]+)\/?$/);
-	return m?.[1] ?? url;
 }
