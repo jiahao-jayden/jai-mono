@@ -94,13 +94,7 @@ function bootstrapCapsule<D, A extends Record<string, unknown>>(
 
 	render(boot.initialData);
 
-	const offUpdate = boot.onUpdate((data) => {
+	boot.onUpdate((data) => {
 		render(data);
-	});
-
-	const offDispose = boot.onDispose(() => {
-		offUpdate();
-		offDispose();
-		root.unmount();
 	});
 }

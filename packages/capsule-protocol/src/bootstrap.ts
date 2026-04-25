@@ -1,7 +1,6 @@
 import type { CapsuleProps } from "./types";
 
 export type CapsuleUpdateSubscriber<D = unknown> = (handler: (data: D) => void) => () => void;
-export type CapsuleDisposeSubscriber = (handler: () => void) => () => void;
 
 /** Payload the host injects as `window.__CAPSULE_BOOT__` before importing a capsule bundle. */
 export interface CapsuleBootstrap<D = unknown, A extends Record<string, unknown> = Record<string, never>> {
@@ -10,7 +9,6 @@ export interface CapsuleBootstrap<D = unknown, A extends Record<string, unknown>
 	initialData: D;
 	props: Omit<CapsuleProps<D, A>, "data">;
 	onUpdate: CapsuleUpdateSubscriber<D>;
-	onDispose: CapsuleDisposeSubscriber;
 }
 
 declare global {

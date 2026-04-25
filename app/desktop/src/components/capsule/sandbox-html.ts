@@ -16,6 +16,7 @@ export function buildSandboxHTML(opts: BuildSandboxHTMLOptions): string {
 <html>
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';">
 <style>
   html, body { margin: 0; padding: 0; background: transparent; color: inherit; }
   body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; }
@@ -29,9 +30,7 @@ export function buildSandboxHTML(opts: BuildSandboxHTMLOptions): string {
   var instanceId = ${instanceIdJson};
   var root = document.getElementById("capsule-root");
   var updateHandlers = [];
-  var disposeHandlers = [];
   var pendingActions = new Map();
-  var disposed = false;
 
   function postToHost(msg) {
     try { window.parent.postMessage(msg, "*"); } catch (_) {}
@@ -57,10 +56,6 @@ export function buildSandboxHTML(opts: BuildSandboxHTMLOptions): string {
       theme: ${themeJson},
       postAction: function (actionId, args) {
         return new Promise(function (resolve, reject) {
-          if (disposed) {
-            reject(new Error("capsule-disposed"));
-            return;
-          }
           var requestId = "req-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
           pendingActions.set(requestId, { resolve: resolve, reject: reject });
           postToHost({
@@ -77,12 +72,6 @@ export function buildSandboxHTML(opts: BuildSandboxHTMLOptions): string {
       updateHandlers.push(handler);
       return function () {
         updateHandlers = updateHandlers.filter(function (h) { return h !== handler; });
-      };
-    },
-    onDispose: function (handler) {
-      disposeHandlers.push(handler);
-      return function () {
-        disposeHandlers = disposeHandlers.filter(function (h) { return h !== handler; });
       };
     },
   };
@@ -103,16 +92,6 @@ export function buildSandboxHTML(opts: BuildSandboxHTMLOptions): string {
         pendingActions.delete(m.requestId);
         if (m.ok) pending.resolve(m.result);
         else pending.reject(new Error(m.error || "action-failed"));
-        break;
-      case "capsule/dispose":
-        if (disposed) return;
-        disposed = true;
-        disposeHandlers.slice().forEach(function (h) {
-          safeRun(function () { h(); });
-        });
-        updateHandlers = [];
-        disposeHandlers = [];
-        pendingActions.clear();
         break;
     }
   });

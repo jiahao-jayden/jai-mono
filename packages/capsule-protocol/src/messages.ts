@@ -34,11 +34,6 @@ export interface CapsuleActionResultMessage {
 	error?: string;
 }
 
-export interface CapsuleDisposeMessage {
-	type: "capsule/dispose";
-	instanceId: string;
-}
-
 export interface CapsuleReadyMessage {
 	type: "capsule/ready";
 	instanceId: string;
@@ -61,8 +56,7 @@ export interface CapsuleErrorMessage {
 export type CapsuleHostToSandboxMessage =
 	| CapsuleRenderMessage
 	| CapsuleUpdateMessage
-	| CapsuleActionResultMessage
-	| CapsuleDisposeMessage;
+	| CapsuleActionResultMessage;
 
 export type CapsuleSandboxToHostMessage =
 	| CapsuleActionMessage
@@ -77,7 +71,6 @@ export const CapsuleMessageType = {
 	Update: "capsule/update",
 	Action: "capsule/action",
 	ActionResult: "capsule/action_result",
-	Dispose: "capsule/dispose",
 	Ready: "capsule/ready",
 	Resize: "capsule/resize",
 	Error: "capsule/error",

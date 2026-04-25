@@ -1,6 +1,5 @@
 export type {
 	CapsuleBootstrap,
-	CapsuleDisposeSubscriber,
 	CapsuleUpdateSubscriber,
 } from "./bootstrap";
 export {
@@ -20,7 +19,6 @@ export {
 export {
 	type CapsuleActionMessage,
 	type CapsuleActionResultMessage,
-	type CapsuleDisposeMessage,
 	type CapsuleErrorMessage,
 	type CapsuleHostToSandboxMessage,
 	type CapsuleMessage,

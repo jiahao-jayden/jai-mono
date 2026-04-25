@@ -70,7 +70,6 @@ function render(data) {
 
 render(boot.initialData);
 boot.onUpdate(render);
-boot.onDispose(() => { container.remove(); });
 `;
 
 export const VANILLA_COUNTER_BUNDLE = /* js */ `
@@ -104,5 +103,4 @@ function render(data) {
 }
 render(current);
 boot.onUpdate(render);
-boot.onDispose(() => { root.remove(); });
 `;

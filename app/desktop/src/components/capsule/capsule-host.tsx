@@ -1,6 +1,5 @@
 import type {
 	CapsuleActionResultMessage,
-	CapsuleDisposeMessage,
 	CapsuleSandboxToHostMessage,
 	CapsuleUpdateMessage,
 } from "@jayden/jai-capsule-protocol";
@@ -141,20 +140,6 @@ export function CapsuleHost({
 		window.addEventListener("message", handleMessage);
 		return () => {
 			window.removeEventListener("message", handleMessage);
-		};
-	}, [instanceId]);
-
-	useEffect(() => {
-		const iframe = iframeRef.current;
-		return () => {
-			const win = iframe?.contentWindow;
-			if (!win) return;
-			const msg: CapsuleDisposeMessage = { type: "capsule/dispose", instanceId };
-			try {
-				win.postMessage(msg, "*");
-			} catch {
-				// iframe already detached
-			}
 		};
 	}, [instanceId]);
 
