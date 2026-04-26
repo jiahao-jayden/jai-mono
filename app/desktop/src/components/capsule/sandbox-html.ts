@@ -1,3 +1,5 @@
+import REACT_RUNTIME from "./react-sandbox-runtime.js?raw";
+
 export interface BuildSandboxHTMLOptions {
 	instanceId: string;
 	initialData: unknown;
@@ -13,6 +15,7 @@ export function buildSandboxHTML(opts: BuildSandboxHTMLOptions): string {
 	const themeJson = JSON.stringify(opts.theme ?? null);
 	const componentJson = JSON.stringify(opts.component);
 	const bundleEscaped = escapeForInlineScript(opts.bundleCode);
+	const reactRuntimeEscaped = escapeForInlineScript(REACT_RUNTIME);
 
 	return `<!DOCTYPE html>
 <html>
@@ -26,6 +29,9 @@ export function buildSandboxHTML(opts: BuildSandboxHTMLOptions): string {
 </style>
 </head>
 <body>
+<script>
+${reactRuntimeEscaped}
+</script>
 <div id="capsule-root"></div>
 <script>
 (function () {
