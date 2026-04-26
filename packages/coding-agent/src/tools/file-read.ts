@@ -54,10 +54,14 @@ const MAX_LIMIT = 500;
 export const fileReadTool = defineAgentTool({
 	name: "FileRead",
 	label: "Read file",
-	description: `Read file contents from disk.
-Prefer this over bash cat/head/tail commands.
-For large files, use offset and limit parameters to read in chunks — do not attempt to read entire files that may be very large.
-Returns file content as text. Binary files are not supported.`,
+	description: `Read file contents from disk. Always use this instead of Bash cat/head/tail.
+
+IMPORTANT RULES:
+- You MUST read a file before editing it with FileEdit or overwriting it with FileWrite.
+- For files within the default limit (200 lines), omit offset/limit to read the entire file.
+- For large files (>200 lines), first read without offset to see the beginning and total line count, then use offset to jump to specific sections.
+- Binary files (images, archives, compiled files, etc.) are not supported — use Bash if you need to inspect them.
+- Output includes a header with file path, line range, and total lines. Use this metadata to plan subsequent reads or edits.`,
 	parameters: z.object({
 		path: z.string().describe("File path (absolute or relative to cwd)"),
 		offset: z.number().int().min(0).default(0).describe("Line offset to start reading from (0-indexed)"),

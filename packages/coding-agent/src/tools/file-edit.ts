@@ -26,10 +26,19 @@ function charOffsetToLine(content: string, offset: number): number {
 export const fileEditTool = defineAgentTool({
 	name: "FileEdit",
 	label: "Edit file",
-	description: `Make precise string replacements in an existing file.
-Use this instead of FileWrite when modifying part of a file — do not rewrite the entire file.
-old_string must exactly match the file content including whitespace and indentation.
-If old_string is not found, the error will include file content to help you locate the correct text.`,
+	description: `Make precise string replacements in an existing file. Preferred over FileWrite for any partial modification.
+
+HOW TO SUCCEED:
+- old_string must be an EXACT verbatim copy from the file (whitespace, indentation, line breaks all matter). Copy it directly from FileRead output.
+- Include 3–5 lines of surrounding context in old_string so it uniquely identifies the target location. Single-line matches often collide.
+- When making multiple edits to the same file, work from BOTTOM to TOP so earlier edits don't shift line numbers of later targets.
+- If old_string is not found, the error includes the file's current content — use it to correct your match.
+- If old_string matches multiple locations, either add more context to make it unique, or set replace_all=true.
+
+RULES:
+- You MUST FileRead the file first — never guess file content.
+- old_string and new_string must differ.
+- To delete code, set new_string to an empty string.`,
 	parameters: z.object({
 		path: z.string().describe("File path to edit"),
 		old_string: z.string().describe("Exact string to find and replace"),

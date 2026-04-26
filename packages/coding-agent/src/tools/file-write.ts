@@ -8,9 +8,20 @@ const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 export const fileWriteTool = defineAgentTool({
 	name: "FileWrite",
 	label: "Write file",
-	description: `Write content to a file, creating it if it doesn't exist or overwriting if it does.
-Parent directories are created automatically.
-For partial modifications to existing files, use FileEdit instead — do not rewrite the entire file with FileWrite.`,
+	description: `Write complete content to a file, creating it (and parent directories) if needed, or overwriting if it exists.
+
+WHEN TO USE:
+- Creating a brand-new file.
+- Rewriting a file where the majority of content is changing.
+
+WHEN NOT TO USE:
+- Modifying part of an existing file → use FileEdit instead. Rewriting a large file just to change a few lines wastes tokens and risks losing content.
+
+RULES:
+- You MUST read the file first (FileRead) before deciding between FileWrite and FileEdit.
+- Provide the COMPLETE final content — this tool replaces the entire file.
+- Preserve the existing file's indentation style (tabs vs spaces) and line ending convention.
+- Max content size: 10 MB.`,
 	parameters: z.object({
 		path: z.string().describe("File path to write to"),
 		content: z.string().describe("Complete file content to write"),

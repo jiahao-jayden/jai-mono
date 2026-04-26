@@ -31,10 +31,18 @@ export function bashTool(defaultCwd: string): AgentTool {
 	return defineAgentTool({
 		name: "Bash",
 		label: "Run command",
-		description: `Execute a shell command. Use this only when FileRead, FileWrite, FileEdit, Glob, and Grep cannot accomplish the task.
-Commands that time out are killed automatically.
-Dangerous commands (rm -rf /, fork bombs, etc.) are blocked.
-You MUST provide a short 'description' (≤ 60 chars) describing the intent in plain language — it is shown to the user while the command runs.`,
+		description: `Execute a shell command. This is the LAST RESORT — only use when FileRead, FileWrite, FileEdit, Glob, and Grep cannot accomplish the task.
+
+GOOD USE CASES: git operations, package management (npm/bun install), running tests, build commands, starting/stopping services, checking system state.
+BAD USE CASES: reading files (use FileRead), finding files (use Glob), searching content (use Grep), writing files (use FileWrite/FileEdit).
+
+RULES:
+- You MUST provide a 'description' (≤ 60 chars) — a plain-language intent shown to the user while the command runs. Write WHAT it accomplishes, not HOW (e.g. "Install dependencies" not "run npm install").
+- Default timeout is 30s. For long-running commands (builds, large installs), increase the timeout accordingly.
+- Commands that exceed the timeout are killed automatically (SIGTERM → SIGKILL).
+- Dangerous commands (rm -rf /, fork bombs, dd, mkfs) are blocked.
+- Output is truncated to 500 lines (first 200 + last 100) for very verbose commands.
+- Prefer absolute paths or verify cwd is correct before running file-system commands.`,
 		parameters: z.object({
 			description: z
 				.string()

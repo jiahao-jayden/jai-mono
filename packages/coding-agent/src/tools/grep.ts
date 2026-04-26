@@ -25,10 +25,22 @@ function parseGrepOutput(output: string): GrepMatch[] {
 export const grepTool = defineAgentTool({
 	name: "Grep",
 	label: "Search content",
-	description: `Search file contents for a text pattern (string or regex). Prefer this over bash grep/rg.
-Returns matching lines with file paths and line numbers.
-Supports pagination with offset/limit for large result sets.
-Use file_pattern to restrict search to specific file types (e.g. "*.ts").`,
+	description: `Search file contents by text or regex pattern. Always use this instead of Bash grep/rg.
+
+WHEN TO USE:
+- Finding where a symbol (function, class, variable, type) is defined or used.
+- Searching for import statements, error messages, or string literals.
+- Understanding how a module is consumed across the codebase.
+
+HOW TO SUCCEED:
+- For exact symbol lookup, use a literal string (e.g. "parseModelId"). For flexible matching, use regex (e.g. "function\\s+parse").
+- Start with the project root directory and use file_pattern to scope (e.g. "*.ts"). Narrow to a subdirectory only if results are overwhelming.
+- Default is case-insensitive. Set case_sensitive=true when searching for exact identifiers to reduce noise.
+- Results are paginated (default limit: 50). Check the footer message for remaining matches and use offset to continue.
+
+RULES:
+- path is required — set it to "." or the project root to search everything.
+- Returns file path, line number, and matching line text for each result.`,
 	parameters: z.object({
 		pattern: z.string().describe("Search pattern (text or regex)"),
 		path: z.string().describe("File or directory to search in"),

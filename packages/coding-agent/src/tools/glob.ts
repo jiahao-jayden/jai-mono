@@ -7,9 +7,23 @@ export function globTool(defaultCwd: string): AgentTool {
 	return defineAgentTool({
 		name: "Glob",
 		label: "Find files",
-		description: `Find files matching a glob pattern. Prefer this over bash find.
-Common patterns: "**/*.ts" (all .ts files), "src/**/*.test.ts" (test files in src), "**/package.json" (all package.json files).
-Results are capped at ${MAX_RESULTS} files — use a more specific pattern if too many results are returned.`,
+		description: `Find files by name/path pattern. Always use this instead of Bash find.
+
+WHEN TO USE:
+- Discovering project structure before diving into code.
+- Locating files by name or extension (e.g. config files, test files, specific modules).
+- Checking whether a file exists before reading it.
+
+COMMON PATTERNS:
+- "**/*.ts" → all TypeScript files
+- "src/**/*.test.ts" → test files under src
+- "**/package.json" → all package.json files
+- "**/*.{ts,tsx}" → multiple extensions
+
+RULES:
+- Results are capped at ${MAX_RESULTS} files. If too many results, use a more specific pattern or add directory prefixes.
+- Results are sorted alphabetically. Use the output to plan which files to read.
+- node_modules and .git are not automatically excluded — prefix your pattern with a directory if you want to scope results (e.g. "src/**/*.ts" instead of "**/*.ts").`,
 		parameters: z.object({
 			pattern: z.string().describe('Glob pattern, e.g. "**/*.ts"'),
 			cwd: z.string().optional().describe("Search root directory (defaults to workspace cwd)"),
