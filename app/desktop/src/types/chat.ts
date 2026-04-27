@@ -22,6 +22,8 @@ export interface ToolPermission {
 export interface ChatMessagePart {
 	type: "text" | "reasoning" | "tool_call" | "error" | "attachment";
 	text?: string;
+	synthetic?: boolean;
+	source?: string;
 	toolCall?: {
 		toolCallId: string;
 		name: string;

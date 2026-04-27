@@ -5,6 +5,8 @@ import type { z } from "zod";
 export type TextContent = {
 	type: "text";
 	text: string;
+	synthetic?: boolean;
+	source?: string;
 };
 
 export type ImageContent = {

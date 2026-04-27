@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import type { ChatItem, ChatStatus } from "@/types/chat";
 import { MessageResponse } from "../ai-elements/message";
 import { CompactionDivider } from "./compaction-divider";
+import { renderTextWithInlineTags } from "./message/inline-tag-render";
 import { MessageAssistant } from "./message/message-assistant";
 import { ErrorBlock, StreamingPlaceholder, TypingIndicator } from "./message/message-parts";
 import { MessageReasoning } from "./message/message-reasoning";
@@ -22,6 +23,11 @@ function findLastMessageIndex(items: ChatItem[]): number {
 	return -1;
 }
 
+function parseLeadingCommand(text: string): string | null {
+	const match = text.match(/^\/([\w:-]+)/);
+	return match ? match[1] : null;
+}
+
 export function MessageList({ messages, status }: MessageListProps) {
 	const lastMessageIdx = findLastMessageIndex(messages);
 	const lastItem = messages[messages.length - 1];
@@ -34,13 +40,22 @@ export function MessageList({ messages, status }: MessageListProps) {
 				}
 				const message = item;
 				if (message.role === "user") {
-					const text = message.parts.find((p) => p.type === "text")?.text ?? "";
+					const text = message.parts.find((p) => p.type === "text" && !p.synthetic)?.text ?? "";
+					const hasCommandExpansion = message.parts.some(
+						(p) => p.type === "text" && p.synthetic && p.source === "command-expansion",
+					);
+					const commandName = hasCommandExpansion ? parseLeadingCommand(text) : null;
 					const attachments = message.parts
 						.filter((p) => p.type === "attachment" && p.attachment)
 						.map((p) => p.attachment!);
 					return (
-						<MessageUser key={message.id} messageId={message.id} attachments={attachments}>
-							{text}
+						<MessageUser
+							key={message.id}
+							messageId={message.id}
+							attachments={attachments}
+							commandName={commandName}
+						>
+							{renderTextWithInlineTags(text)}
 						</MessageUser>
 					);
 				}

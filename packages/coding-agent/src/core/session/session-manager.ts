@@ -2,7 +2,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "@jayden/jai-ai";
 import { JsonlSessionStore } from "@jayden/jai-session";
+import { loadBuiltinSkillsPlugin } from "../../plugin/builtins/skills/index.js";
+import { createPluginAPI } from "../../plugin/host/api-factory.js";
+import { loadPluginsFromDirs } from "../../plugin/host/loader.js";
 import { type PluginScanResult, scanPlugins } from "../../plugin/host/scanner.js";
+import type { PluginMeta, RegisteredCommand } from "../../plugin/types.js";
 import { createDefaultTools } from "../../tools/index.js";
 import { SettingsManager } from "../config/settings.js";
 import { Workspace } from "../config/workspace.js";
@@ -44,7 +48,6 @@ export class SessionManager {
 		}
 	}
 
-	/** Single source of truth for "where is workspace <id> on disk". */
 	private workspaceCwd(workspaceId: string): string {
 		return join(this.jaiHome, "workspace", workspaceId);
 	}
@@ -189,23 +192,42 @@ export class SessionManager {
 		return this.settings;
 	}
 
-	/**
-	 * Merged env exposed to plugins via `jai.env`.
-	 *
-	 * Convention: the host pre-populates a small set of well-known keys
-	 * (currently just `JAI_HOME`) so plugins can rely on them by declaring
-	 * the key in `plugin.json → env` without forcing the end-user to set
-	 * the same value in `settings.json`. User-provided env wins on
-	 * collision so power users can still override.
-	 *
-	 * See `.trellis/spec/jai-coding-agent/backend/plugin-env-injection.md`.
-	 */
 	getPluginEnvSettings(): Readonly<Record<string, string>> {
 		const userEnv = this.settings.get("env") ?? {};
 		return Object.freeze({ JAI_HOME: this.jaiHome, ...userEnv });
 	}
 
-	/** Scan `<jaiHome>/plugins` and return each plugin's load status. */
+	async listAvailableCommands(options?: { workspaceId?: string }): Promise<RegisteredCommand[]> {
+		const wsId = options?.workspaceId ?? "default";
+		const workspace = await this.resolveWorkspace(wsId);
+
+		const result = await loadPluginsFromDirs([{ path: join(this.jaiHome, "plugins") }], {
+			pluginSettings: this.settings.get("plugins"),
+			envSettings: this.getPluginEnvSettings(),
+		});
+
+		const skillsMeta: PluginMeta = {
+			name: "skills",
+			version: "0.1.0",
+			description: "Builtin skills plugin",
+			rootPath: "",
+		};
+		try {
+			const api = createPluginAPI(result.registry, skillsMeta);
+			await loadBuiltinSkillsPlugin(api, {
+				cwd: workspace.cwd,
+				jaiHome: workspace.jaiHome,
+				onSkillInvoked: () => {},
+			});
+		} catch (err) {
+			console.warn(
+				`[builtin:skills] command enumeration error: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+
+		return result.registry.listCommands();
+	}
+
 	async scanPlugins(): Promise<PluginScanResult> {
 		return scanPlugins({
 			jaiHome: this.jaiHome,

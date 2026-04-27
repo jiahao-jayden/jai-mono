@@ -1,4 +1,4 @@
-import type { AGUIEvent, ConfigResponse, ProviderSettings } from "@jayden/jai-gateway";
+import type { AGUIEvent, CommandListItem, ConfigResponse, ProviderSettings } from "@jayden/jai-gateway";
 import { AGUIEventType } from "@jayden/jai-gateway/events";
 import { nanoid } from "nanoid";
 import { create } from "zustand";
@@ -96,6 +96,8 @@ interface GatewayMessage {
 		toolCallId?: string;
 		toolName?: string;
 		input?: unknown;
+		synthetic?: boolean;
+		source?: string;
 	}>;
 }
 
@@ -127,7 +129,12 @@ function convertGatewayMessages(raw: GatewayMessage[], compactions: GatewayCompa
 		const parts: ChatMessagePart[] = [];
 		for (const block of msg.content) {
 			if (block.type === "text" && block.text) {
-				parts.push({ type: "text", text: block.text });
+				parts.push({
+					type: "text",
+					text: block.text,
+					...(block.synthetic && { synthetic: block.synthetic }),
+					...(block.source && { source: block.source }),
+				});
 			} else if (block.type === "thinking" && block.text) {
 				parts.push({ type: "reasoning", text: block.text });
 			} else if (block.type === "tool_call") {
@@ -169,6 +176,7 @@ interface ChatState {
 	status: ChatStatus;
 	currentModelId: string | null;
 	availableModels: ModelItem[];
+	availableCommands: CommandListItem[];
 	sessionId: string | null;
 	reasoningEffort: string | null;
 	contextTokens: number;
@@ -188,6 +196,7 @@ interface ChatState {
 	setReasoningEffort: (effort: string | null) => void;
 	newChat: () => void;
 	loadSession: (info: { sessionId: string; title?: string }) => Promise<void>;
+	refreshCommands: () => Promise<void>;
 }
 
 let abortController: AbortController | null = null;
@@ -465,6 +474,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	status: "ready",
 	currentModelId: null,
 	availableModels: [],
+	availableCommands: [],
 	sessionId: null,
 	reasoningEffort: null,
 	contextTokens: 0,
@@ -644,6 +654,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			}));
 		} catch (err) {
 			console.error("[gateway] loadSession messages failed:", err);
+		}
+	},
+
+	async refreshCommands() {
+		try {
+			const result = await gateway.plugins.allCommands();
+			set({ availableCommands: result.commands });
+		} catch (err) {
+			console.error("[gateway] refreshCommands failed:", err);
 		}
 	},
 }));

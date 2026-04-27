@@ -6,7 +6,12 @@ export type {
 	ProviderSettings,
 	SessionInfo,
 } from "@jayden/jai-coding-agent";
-export type { PluginListItem, PluginListResponse } from "../routes/plugins.js";
+export type {
+	CommandListItem,
+	CommandListResponse,
+	PluginListItem,
+	PluginListResponse,
+} from "../routes/plugins.js";
 
 import type { Message } from "@jayden/jai-ai";
 import type { CompactionMarker } from "@jayden/jai-coding-agent";

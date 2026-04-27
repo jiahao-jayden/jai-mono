@@ -8,6 +8,10 @@ async function refresh() {
 
 	useChatStore.getState().syncModels(config);
 	useSessionStore.getState().setSessions(sessions);
+	useChatStore
+		.getState()
+		.refreshCommands()
+		.catch(() => {});
 }
 
 export function useAppData() {

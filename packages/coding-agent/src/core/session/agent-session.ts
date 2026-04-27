@@ -30,6 +30,10 @@ import z from "zod";
 import { PermissionPolicy } from "../../permission/policy.js";
 import type { PermissionSettings } from "../../permission/schema.js";
 import { PermissionService } from "../../permission/service.js";
+import { createSkillAttachmentText, stripSkillMessages } from "../../plugin/builtins/skills/compaction.js";
+import { loadBuiltinSkillsPlugin } from "../../plugin/builtins/skills/index.js";
+import type { InvokedSkillInfo } from "../../plugin/builtins/skills/types.js";
+import { createPluginAPI } from "../../plugin/host/api-factory.js";
 import { type LoadResult, loadPluginsFromDirs } from "../../plugin/host/loader.js";
 import type { PluginMeta, RegisteredCommand } from "../../plugin/types.js";
 import { processAttachments } from "../attachments/processor.js";
@@ -139,6 +143,8 @@ export class AgentSession {
 
 	private firstUserInput: { text: string; attachments?: RawAttachment[] } | null = null;
 
+	private invokedSkills = new Map<string, InvokedSkillInfo>();
+
 	private constructor(config: SessionConfig) {
 		this.config = config;
 		this.sessionId = config.sessionId ?? crypto.randomUUID();
@@ -215,6 +221,26 @@ export class AgentSession {
 		for (const err of this.plugins.errors) {
 			console.warn(`[plugin:${err.pluginName}] load error in ${err.dir}: ${err.message}`);
 		}
+
+		await this.loadBuiltinPlugins();
+	}
+
+	private async loadBuiltinPlugins(): Promise<void> {
+		if (!this.plugins) return;
+		const meta: PluginMeta = { name: "skills", version: "0.1.0", description: "Builtin skills plugin", rootPath: "" };
+		const api = createPluginAPI(this.plugins.registry, meta);
+
+		try {
+			await loadBuiltinSkillsPlugin(api, {
+				cwd: this.workspace.cwd,
+				jaiHome: this.workspace.jaiHome,
+				onSkillInvoked: (info) => {
+					this.invokedSkills.set(info.skillName, info);
+				},
+			});
+		} catch (err) {
+			console.warn(`[builtin:skills] load error: ${err instanceof Error ? err.message : String(err)}`);
+		}
 	}
 
 	async chat(
@@ -237,16 +263,19 @@ export class AgentSession {
 				this.firstUserInput = { text, attachments: options?.attachments };
 			}
 
-			// Command expansion: if text matches a plugin command, replace with expanded prompt
-			let effectiveText = text;
-			let originalCommand: string | undefined;
 			const expansion = await this.tryExpandCommand(text);
-			if (expansion) {
-				effectiveText = expansion.expanded;
-				originalCommand = expansion.originalCommand;
-			}
 
-			const content: (TextContent | ImageContent | FileContent)[] = [{ type: "text", text: effectiveText }];
+			const content: (TextContent | ImageContent | FileContent)[] = [];
+
+			if (expansion) {
+				content.push({
+					type: "text",
+					text: expansion.expanded,
+					synthetic: true,
+					source: "command-expansion",
+				});
+			}
+			content.push({ type: "text", text });
 
 			if (options?.attachments?.length) {
 				const modelRef = options?.model ?? this.config.model;
@@ -266,7 +295,7 @@ export class AgentSession {
 				content,
 				timestamp: Date.now(),
 			};
-			await this.persistMessage(userMsg, originalCommand ? { originalCommand } : undefined);
+			await this.persistMessage(userMsg);
 
 			const modelRef = options?.model ?? this.config.model;
 			const modelInfo =
@@ -399,8 +428,10 @@ export class AgentSession {
 				listener({ type: "compaction_start" });
 			}
 
+			const messagesForSummary = stripSkillMessages(prefixMessages);
+
 			const historyRaw = await compactMessages({
-				messages: prefixMessages,
+				messages: messagesForSummary,
 				model: modelInfo,
 				baseURL: this.config.baseURL,
 				signal: this.abortController?.signal,
@@ -408,11 +439,15 @@ export class AgentSession {
 
 			let summary = formatCompactSummary(historyRaw);
 
-			// compact 后的文件线索：只给出路径列表，内容由 agent 按需重新 FileRead。
 			const recentFiles = collectRecentFileReadPaths(prefixMessages);
 			if (recentFiles.length > 0) {
 				const list = recentFiles.map((p) => `- ${p}`).join("\n");
 				summary = `${summary}\n\n[Recently viewed files before compaction]\n${list}\n(Their contents are not re-attached — re-read if needed.)`;
+			}
+
+			const skillAttachment = createSkillAttachmentText(this.invokedSkills);
+			if (skillAttachment) {
+				summary = `${summary}\n\n${skillAttachment}`;
 			}
 
 			await this.enqueueWrite(async () => {
@@ -458,7 +493,7 @@ export class AgentSession {
 		});
 	}
 
-	private persistMessage(message: Message, meta?: { originalCommand?: string }): Promise<void> {
+	private persistMessage(message: Message): Promise<void> {
 		return this.enqueueWrite(async () => {
 			const entryId = this.store.nextId();
 			await this.store.append({
@@ -467,7 +502,6 @@ export class AgentSession {
 				parentId: this.lastEntryId,
 				timestamp: message.timestamp,
 				message,
-				...(meta && { meta }),
 			});
 			this.lastEntryId = entryId;
 		});

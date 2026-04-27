@@ -1,9 +1,15 @@
-export const PASTED_TEXT_ATTACHMENT_THRESHOLD = 200;
-export const PASTED_TEXT_ATTACHMENT_NAME = "pasted-content.txt";
+export const PASTE_THRESHOLD = 100;
 
-export function createPastedTextAttachment(text: string): File | null {
-	if (text.length <= PASTED_TEXT_ATTACHMENT_THRESHOLD) return null;
-	return new File([text], PASTED_TEXT_ATTACHMENT_NAME, {
-		type: "text/plain",
-	});
+export interface PastedText {
+	id: string;
+	text: string;
+}
+
+export function combineWithPastedTexts(text: string, pasted: PastedText[]): string {
+	if (pasted.length === 0) return text;
+	const blocks = pasted
+		.map((p, i) => `<pasted-text index="${i + 1}" chars="${p.text.length}">\n${p.text}\n</pasted-text>`)
+		.join("\n\n");
+	const trimmed = text.trim();
+	return trimmed ? `${blocks}\n\n${trimmed}` : blocks;
 }
