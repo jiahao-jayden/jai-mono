@@ -63,6 +63,8 @@ export class EventAdapter {
 				return [{ type: AGUIEventType.COMPACTION_START }];
 			case "compaction_end":
 				return [{ type: AGUIEventType.COMPACTION_END, summary: event.summary }];
+			case "title_generated":
+				return [{ type: AGUIEventType.TITLE_GENERATED, title: event.title }];
 			case "turn_start":
 			case "turn_end":
 			case "message_end":

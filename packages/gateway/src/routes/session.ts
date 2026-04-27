@@ -109,6 +109,9 @@ export function sessionRoutes(manager: SessionManager): Hono {
 			};
 
 			const unsubscribe = session.onEvent((event: AgentEvent) => {
+				if (event.type === "title_generated") {
+					manager.persistSessionTitle(c.req.param("id"), event.title);
+				}
 				const aguiEvents = adapter.translate(event);
 				for (const e of aguiEvents) {
 					if (e.type === "RUN_ERROR") errorEmitted = true;
@@ -171,18 +174,13 @@ export function sessionRoutes(manager: SessionManager): Hono {
 				unsubscribeResolved();
 
 				const sessionId = c.req.param("id");
-				const result = await manager.handlePostChat(sessionId, {
+				await manager.handlePostChat(sessionId, {
 					text,
 					attachmentFilename: body.attachments?.[0]?.filename,
 					stepTokensSum: adapter.stepTokensSum,
 					lastInputTokens: adapter.lastInputTokens,
 					lastOutputTokens: adapter.lastOutputTokens,
 				});
-				if (result.title) {
-					await stream
-						.writeSSE({ data: JSON.stringify({ type: AGUIEventType.TITLE_GENERATED, title: result.title }) })
-						.catch(() => {});
-				}
 			}
 		});
 	});

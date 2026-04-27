@@ -99,7 +99,7 @@ function SessionItem({
 	const displayTitle =
 		(session.title && session.title.length > 30 ? `${session.title.slice(0, 30)}…` : session.title) ||
 		session.firstMessage?.slice(0, 30) ||
-		`${session.sessionId.slice(0, 8)}…`;
+		"未命名";
 
 	if (editing) {
 		return (

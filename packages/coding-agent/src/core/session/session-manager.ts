@@ -245,7 +245,7 @@ export class SessionManager {
 			lastInputTokens: number;
 			lastOutputTokens: number;
 		},
-	): Promise<{ title?: string }> {
+	): Promise<void> {
 		if (opts.stepTokensSum > 0) {
 			const current = this.index.get(sessionId);
 			const accumulated = (current?.totalTokens ?? 0) + opts.stepTokensSum;
@@ -261,22 +261,11 @@ export class SessionManager {
 			const firstMessage = opts.text.slice(0, 200) || opts.attachmentFilename || "Attachment";
 			this.index.updateField(sessionId, "firstMessage", firstMessage);
 		}
+	}
 
-		if (info && !info.title) {
-			const session = this.activeSessions.get(sessionId)?.session;
-			if (session) {
-				try {
-					const model = this.settings.resolveModel();
-					const baseURL = this.settings.get("baseURL");
-					const title = await session.generateSessionTitle({ model, baseURL });
-					if (title) {
-						this.index.updateField(sessionId, "title", title);
-						return { title };
-					}
-				} catch {}
-			}
-		}
-
-		return {};
+	persistSessionTitle(sessionId: string, title: string): void {
+		const info = this.index.get(sessionId);
+		if (!info || info.title) return;
+		this.index.updateField(sessionId, "title", title);
 	}
 }

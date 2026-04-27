@@ -259,8 +259,13 @@ export class AgentSession {
 		this.abortController = new AbortController();
 
 		try {
-			if (!this.firstUserInput) {
+			const isFirstUserInput = !this.firstUserInput;
+			if (isFirstUserInput) {
 				this.firstUserInput = { text, attachments: options?.attachments };
+				void this.kickoffTitleGeneration({
+					model: options?.model ?? this.config.model,
+					baseURL: options?.baseURL ?? this.config.baseURL,
+				});
 			}
 
 			const expansion = await this.tryExpandCommand(text);
@@ -378,10 +383,26 @@ export class AgentSession {
 		await this.store.close();
 	}
 
-	async generateSessionTitle(options?: { model?: ModelInfo | string; baseURL?: string }): Promise<string | null> {
-		if (!this.firstUserInput) return null;
-		const titleInput = buildTitleInput(this.firstUserInput.text, this.firstUserInput.attachments);
+	async generateSessionTitle(options?: { model?: ModelInfo | string; baseURL?: string }): Promise<string> {
+		const seed = this.firstUserInput?.text ?? "";
+		const titleInput = buildTitleInput(seed, this.firstUserInput?.attachments);
 		return generateTitle(titleInput, options?.model ?? this.config.model, options?.baseURL ?? this.config.baseURL);
+	}
+
+	private async kickoffTitleGeneration(options: { model: ModelInfo | string; baseURL?: string }): Promise<void> {
+		try {
+			const title = await this.generateSessionTitle(options);
+			if (!title) return;
+			for (const listener of this.externalListeners) {
+				try {
+					listener({ type: "title_generated", title });
+				} catch (err) {
+					console.error("[agent-session] title listener failed:", err);
+				}
+			}
+		} catch (err) {
+			console.error("[agent-session] kickoffTitleGeneration failed:", err);
+		}
 	}
 
 	onEvent(listener: (event: AgentEvent) => void): () => void {
