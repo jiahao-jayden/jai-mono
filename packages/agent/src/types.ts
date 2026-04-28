@@ -1,10 +1,12 @@
 import type {
 	AssistantMessage,
 	ImageContent,
+	JSONSchema7,
 	Message,
 	StreamEvent,
 	TextContent,
 	ToolDefinition,
+	ToolParameters,
 	ToolResultMessage,
 } from "@jayden/jai-ai";
 import type z from "zod";
@@ -15,11 +17,14 @@ export type AgentToolResult<TDetails = unknown> = {
 	isError?: boolean;
 };
 
-export type AgentTool<TParams extends z.ZodType = z.ZodType> = ToolDefinition<TParams> & {
+// 推断工具调用参数类型：Zod 走 z.infer，JSON Schema 退化为 unknown（运行时校验或工具自管）
+type InferToolInput<TParams extends ToolParameters> = TParams extends z.ZodType ? z.infer<TParams> : unknown;
+
+export type AgentTool<TParams extends ToolParameters = ToolParameters> = ToolDefinition<TParams> & {
 	label: string;
 	lazy?: boolean;
-	validate?(params: z.infer<TParams>): string | undefined;
-	execute(params: z.infer<TParams>, signal?: AbortSignal): Promise<unknown>;
+	validate?(params: InferToolInput<TParams>): string | undefined;
+	execute(params: InferToolInput<TParams>, signal?: AbortSignal): Promise<unknown>;
 };
 
 export type AgentEvent =
@@ -67,6 +72,14 @@ export type AfterToolCallResult = {
 
 export function defineAgentTool<TParams extends z.ZodType>(config: AgentTool<TParams>): AgentTool<TParams> {
 	return config;
+}
+
+/**
+ * 用 JSON Schema 直接定义 AgentTool（typically MCP 工具——schema 来自远端 server）。
+ * 参数类型为 unknown，由 execute 自己处理 / 校验。
+ */
+export function defineJsonSchemaTool(config: AgentTool<JSONSchema7>): AgentTool {
+	return config as AgentTool;
 }
 
 export type PreModelRequestContext = {

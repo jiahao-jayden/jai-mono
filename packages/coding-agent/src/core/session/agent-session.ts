@@ -30,8 +30,9 @@ import z from "zod";
 import { PermissionPolicy } from "../../permission/policy.js";
 import type { PermissionSettings } from "../../permission/schema.js";
 import { PermissionService } from "../../permission/service.js";
+import { BUILTIN_PLUGINS, type BuiltinPluginContext, type BuiltinPluginDef } from "../../plugin/builtins/index.js";
+import { getMcpManager, type McpManager } from "../../plugin/builtins/mcp/index.js";
 import { createSkillAttachmentText, stripSkillMessages } from "../../plugin/builtins/skills/compaction.js";
-import { loadBuiltinSkillsPlugin } from "../../plugin/builtins/skills/index.js";
 import type { InvokedSkillInfo } from "../../plugin/builtins/skills/types.js";
 import { createPluginAPI } from "../../plugin/host/api-factory.js";
 import { type LoadResult, loadPluginsFromDirs } from "../../plugin/host/loader.js";
@@ -59,6 +60,9 @@ export type SessionConfig = {
 	permissionSettings?: PermissionSettings;
 	pluginSettings?: Readonly<Record<string, unknown>>;
 	envSettings?: Readonly<Record<string, string>>;
+	mcpServers?: Readonly<Record<string, import("../../plugin/builtins/mcp/types.js").McpServerConfig>>;
+	/** Gateway exposed OAuth callback URL，传给 MCP HTTP server 走 OAuth 2.1 */
+	oauthRedirectUrl?: string;
 };
 
 /**
@@ -225,22 +229,51 @@ export class AgentSession {
 		await this.loadBuiltinPlugins();
 	}
 
+	private builtinTeardowns: Array<(ctx: BuiltinPluginContext) => Promise<void> | void> = [];
+
 	private async loadBuiltinPlugins(): Promise<void> {
 		if (!this.plugins) return;
-		const meta: PluginMeta = { name: "skills", version: "0.1.0", description: "Builtin skills plugin", rootPath: "" };
-		const api = createPluginAPI(this.plugins.registry, meta);
 
-		try {
-			await loadBuiltinSkillsPlugin(api, {
-				cwd: this.workspace.cwd,
-				jaiHome: this.workspace.jaiHome,
-				onSkillInvoked: (info) => {
-					this.invokedSkills.set(info.skillName, info);
-				},
-			});
-		} catch (err) {
-			console.warn(`[builtin:skills] load error: ${err instanceof Error ? err.message : String(err)}`);
+		const ctx: BuiltinPluginContext = {
+			cwd: this.workspace.cwd,
+			jaiHome: this.workspace.jaiHome,
+			pluginSettings: this.config.pluginSettings ?? {},
+			mcpServers: this.config.mcpServers,
+			oauthRedirectUrl: this.config.oauthRedirectUrl,
+			onSkillInvoked: (info) => {
+				this.invokedSkills.set(info.skillName, info);
+			},
+		};
+
+		for (const def of BUILTIN_PLUGINS) {
+			if (def.enabled && !(await def.enabled(ctx))) continue;
+
+			const api = createPluginAPI(this.plugins.registry, def.meta);
+			try {
+				await def.setup(api, ctx);
+				if (def.teardown) this.builtinTeardowns.push(def.teardown);
+			} catch (err) {
+				console.warn(`[builtin:${def.meta.name}] load error: ${err instanceof Error ? err.message : String(err)}`);
+			}
 		}
+
+		this.builtinCtx = ctx;
+	}
+
+	private builtinCtx?: BuiltinPluginContext;
+
+	private async runBuiltinTeardowns(): Promise<void> {
+		if (!this.builtinCtx) return;
+		const ctx = this.builtinCtx;
+		await Promise.all(
+			this.builtinTeardowns.map(async (teardown) => {
+				try {
+					await teardown(ctx);
+				} catch (err) {
+					console.warn(`[builtin] teardown error: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			}),
+		);
 	}
 
 	async chat(
@@ -380,6 +413,7 @@ export class AgentSession {
 
 	async close(): Promise<void> {
 		this.abort();
+		await this.runBuiltinTeardowns();
 		await this.store.close();
 	}
 
@@ -622,6 +656,48 @@ export class AgentSession {
 	/** Gateway 用：订阅 pending 权限请求 / reply / abort。 */
 	getPermissionService(): PermissionService {
 		return this.permissionService;
+	}
+
+	/** Gateway 用：拿当前 session 的 MCP manager（status / reload / OAuth）。 */
+	getMcpManager(): McpManager | undefined {
+		if (!this.builtinCtx) return undefined;
+		return getMcpManager(this.builtinCtx);
+	}
+
+	/**
+	 * Gateway 用：重新启动当前 session 的 MCP servers。
+	 *
+	 *  1. 从 registry 移除所有 mcp 名义注册的工具
+	 *  2. 关掉旧 manager
+	 *  3. 用最新 mcpServers 配置重新跑 mcpBuiltin.setup —— 它会创建新 manager 并 registerTool
+	 *
+	 * `mcpServers` 由 SessionManager 从 settings 读取后注入。
+	 */
+	async reloadMcp(mcpServers?: SessionConfig["mcpServers"]): Promise<void> {
+		if (!this.plugins || !this.builtinCtx) return;
+
+		const def = BUILTIN_PLUGINS.find((d) => d.meta.name === "mcp");
+		if (!def) return;
+
+		this.plugins.registry.removeByPlugin(def.meta.name);
+
+		if (def.teardown) {
+			try {
+				await def.teardown(this.builtinCtx);
+			} catch {
+				// ignore teardown errors during reload
+			}
+		}
+
+		const updatedCtx: BuiltinPluginContext = {
+			...this.builtinCtx,
+			mcpServers,
+		};
+		this.builtinCtx = updatedCtx;
+		this.config = { ...this.config, mcpServers };
+
+		const api = createPluginAPI(this.plugins.registry, def.meta);
+		await def.setup(api, updatedCtx);
 	}
 
 	/** @internal */

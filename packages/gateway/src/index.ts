@@ -1,5 +1,13 @@
-export type { SessionInfo } from "@jayden/jai-coding-agent";
+export type {
+	McpHttpServerConfig,
+	McpServerConfig,
+	McpServerInfo,
+	McpServerStatus,
+	McpStdioServerConfig,
+	SessionInfo,
+} from "@jayden/jai-coding-agent";
 export { SessionManager, type SessionManagerConfig } from "@jayden/jai-coding-agent";
+export type { McpServersConfigResponse, McpStatusResponse } from "./routes/mcp.js";
 export { EventAdapter } from "./events/adapter.js";
 export { type AGUIEvent, AGUIEventType } from "./events/types.js";
 export { type GatewayOptions, GatewayServer } from "./server.js";

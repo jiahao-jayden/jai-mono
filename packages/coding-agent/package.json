@@ -19,8 +19,10 @@
 		"@jayden/jai-ai": "workspace:*",
 		"@jayden/jai-session": "workspace:*",
 		"@jayden/jai-utils": "workspace:*",
+		"@modelcontextprotocol/sdk": "^1.29.0",
 		"pdf-parse": "^2.4.5",
 		"sharp": "^0.34.5",
+		"tree-kill": "^1.2.2",
 		"yaml": "^2.8.3",
 		"zod": "catalog:"
 	},

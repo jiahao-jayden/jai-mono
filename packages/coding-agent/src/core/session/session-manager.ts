@@ -2,14 +2,15 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Message } from "@jayden/jai-ai";
 import { JsonlSessionStore } from "@jayden/jai-session";
-import { loadBuiltinSkillsPlugin } from "../../plugin/builtins/skills/index.js";
+import { BUILTIN_PLUGINS, type BuiltinPluginContext } from "../../plugin/builtins/index.js";
 import { createPluginAPI } from "../../plugin/host/api-factory.js";
 import { loadPluginsFromDirs } from "../../plugin/host/loader.js";
 import { type PluginScanResult, scanPlugins } from "../../plugin/host/scanner.js";
-import type { PluginMeta, RegisteredCommand } from "../../plugin/types.js";
+import type { RegisteredCommand } from "../../plugin/types.js";
 import { createDefaultTools } from "../../tools/index.js";
 import { SettingsManager } from "../config/settings.js";
 import { Workspace } from "../config/workspace.js";
+import type { McpServerInfo } from "../../plugin/builtins/mcp/index.js";
 import { AgentSession, type CompactionMarker, extractHistory } from "./agent-session.js";
 import { SessionIndex, type SessionInfo } from "./session-index.js";
 
@@ -17,6 +18,8 @@ export type { PluginEnvEntry, PluginScanEntry, PluginScanResult } from "../../pl
 
 export type SessionManagerConfig = {
 	jaiHome?: string;
+	/** Gateway 暴露的 OAuth 回调 URL；MCP HTTP server 用它走 OAuth 2.1 授权码流 */
+	oauthRedirectUrl?: string;
 };
 
 export class SessionManager {
@@ -25,9 +28,16 @@ export class SessionManager {
 	private index!: SessionIndex;
 	private settings!: SettingsManager;
 	private jaiHome: string;
+	private oauthRedirectUrl?: string;
 
 	private constructor(config: SessionManagerConfig) {
 		this.jaiHome = config.jaiHome ?? join(homedir(), ".jai");
+		this.oauthRedirectUrl = config.oauthRedirectUrl;
+	}
+
+	/** 由 gateway 在已知监听端口后注入；之后创建/恢复的 session 都用这个 URL。 */
+	setOAuthRedirectUrl(url: string | undefined): void {
+		this.oauthRedirectUrl = url;
 	}
 
 	static async create(config?: SessionManagerConfig): Promise<SessionManager> {
@@ -78,6 +88,8 @@ export class SessionManager {
 			permissionSettings: this.settings.get("permission"),
 			pluginSettings: this.settings.get("plugins"),
 			envSettings: this.getPluginEnvSettings(),
+			mcpServers: this.settings.get("mcpServers"),
+			oauthRedirectUrl: this.oauthRedirectUrl,
 		});
 
 		const sessionId = session.getSessionId();
@@ -128,6 +140,8 @@ export class SessionManager {
 			permissionSettings: this.settings.get("permission"),
 			pluginSettings: this.settings.get("plugins"),
 			envSettings: this.getPluginEnvSettings(),
+			mcpServers: this.settings.get("mcpServers"),
+			oauthRedirectUrl: this.oauthRedirectUrl,
 		});
 
 		this.activeSessions.set(sessionId, { session, workspaceId: record.workspaceId });
@@ -206,23 +220,24 @@ export class SessionManager {
 			envSettings: this.getPluginEnvSettings(),
 		});
 
-		const skillsMeta: PluginMeta = {
-			name: "skills",
-			version: "0.1.0",
-			description: "Builtin skills plugin",
-			rootPath: "",
+		const ctx: BuiltinPluginContext = {
+			cwd: workspace.cwd,
+			jaiHome: workspace.jaiHome,
+			pluginSettings: this.settings.get("plugins") ?? {},
+			mcpServers: this.settings.get("mcpServers"),
+			onSkillInvoked: () => {},
 		};
-		try {
-			const api = createPluginAPI(result.registry, skillsMeta);
-			await loadBuiltinSkillsPlugin(api, {
-				cwd: workspace.cwd,
-				jaiHome: workspace.jaiHome,
-				onSkillInvoked: () => {},
-			});
-		} catch (err) {
-			console.warn(
-				`[builtin:skills] command enumeration error: ${err instanceof Error ? err.message : String(err)}`,
-			);
+
+		for (const def of BUILTIN_PLUGINS) {
+			if (def.enabled && !(await def.enabled(ctx))) continue;
+			try {
+				const api = createPluginAPI(result.registry, def.meta);
+				await def.setup(api, ctx);
+			} catch (err) {
+				console.warn(
+					`[builtin:${def.meta.name}] command enumeration error: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
 		}
 
 		return result.registry.listCommands();
@@ -267,5 +282,50 @@ export class SessionManager {
 		const info = this.index.get(sessionId);
 		if (!info || info.title) return;
 		this.index.updateField(sessionId, "title", title);
+	}
+
+	/**
+	 * 聚合所有活跃 session 的 MCP server 状态。
+	 * 多个 session 共享同一组配置，状态以「最后写入」为准（同 server 名通常一致）。
+	 */
+	listMcpStatus(): McpServerInfo[] {
+		const merged = new Map<string, McpServerInfo>();
+		for (const { session } of this.activeSessions.values()) {
+			const mgr = session.getMcpManager();
+			if (!mgr) continue;
+			for (const info of mgr.getInfos()) {
+				merged.set(info.name, info);
+			}
+		}
+		return Array.from(merged.values());
+	}
+
+	/**
+	 * 用 state 找对应 session 的 MCP manager，注入授权码完成 OAuth。
+	 * 返回是否成功匹配 state（false 表示找不到对应的 pending flow）。
+	 */
+	async completeMcpAuth(state: string, code: string): Promise<boolean> {
+		for (const { session } of this.activeSessions.values()) {
+			const mgr = session.getMcpManager();
+			if (!mgr) continue;
+			if (await mgr.completeAuthByState(state, code)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * 重新加载所有活跃 session 的 MCP servers：从 registry 摘掉旧工具，
+	 * 关掉旧 manager，再按当前 settings 重新 setup。
+	 */
+	async reloadMcp(): Promise<void> {
+		const configs = this.settings.get("mcpServers");
+		const tasks = Array.from(this.activeSessions.values()).map(({ session }) =>
+			session.reloadMcp(configs).catch((err) => {
+				console.warn(
+					`[mcp:reload] session ${session.getSessionId()} failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}),
+		);
+		await Promise.all(tasks);
 	}
 }

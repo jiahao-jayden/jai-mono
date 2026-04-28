@@ -1,4 +1,7 @@
+import type { JSONSchema7 } from "@ai-sdk/provider";
 import type { z } from "zod";
+
+export type { JSONSchema7 } from "@ai-sdk/provider";
 
 // ── Content blocks ────────────────────────────────────────────
 
@@ -64,8 +67,11 @@ export type Message = UserMessage | AssistantMessage | ToolResultMessage;
 
 // ── Tool ──────────────────────────────────────────────────────
 // execute 是 jai-agent 层的职责，这里只定义 schema
+// parameters 接受 Zod schema 或 JSON Schema 7（用于 MCP 等场景，schema 在运行时才知道）
 
-export type ToolDefinition<TParams extends z.ZodType = z.ZodType> = {
+export type ToolParameters = z.ZodType | JSONSchema7;
+
+export type ToolDefinition<TParams extends ToolParameters = ToolParameters> = {
 	name: string;
 	description: string;
 	parameters: TParams;

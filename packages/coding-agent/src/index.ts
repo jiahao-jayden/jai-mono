@@ -28,3 +28,11 @@ export {
 	SessionManager,
 	type SessionManagerConfig,
 } from "./core/session/session-manager.js";
+export type {
+	McpServerConfig,
+	McpServerInfo,
+	McpServerStatus,
+	McpStdioServerConfig,
+	McpHttpServerConfig,
+} from "./plugin/builtins/mcp/index.js";
+export { McpServerConfigSchema, McpServersSchema, isHttpConfig, isStdioConfig } from "./plugin/builtins/mcp/index.js";

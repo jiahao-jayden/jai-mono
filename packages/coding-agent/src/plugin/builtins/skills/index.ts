@@ -2,8 +2,9 @@ import { readFile } from "node:fs/promises";
 import z from "zod";
 import { expandTemplate } from "../../host/commands.js";
 import type { PluginAPI, PluginCommandContext } from "../../types.js";
+import type { BuiltinPluginContext, BuiltinPluginDef } from "../types.js";
 import { discoverSkills } from "./discovery.js";
-import type { InvokedSkillInfo, SkillInfo } from "./types.js";
+import type { SkillInfo } from "./types.js";
 
 // TODO(skill-watcher): 结构热更新（新增/删除 SKILL.md 自动注册/反注册）
 //   需要扩展 PluginAPI: unregisterCommand / unregisterTool / replaceTool
@@ -19,12 +20,6 @@ function appendOrExpandArgs(content: string, args: string): string {
 	}
 	return `${content}\n\n---\n\n## User Request\n\n${args}`;
 }
-
-export type SkillsPluginContext = {
-	cwd: string;
-	jaiHome: string;
-	onSkillInvoked: (info: InvokedSkillInfo) => void;
-};
 
 function buildToolDescription(skills: SkillInfo[]): string {
 	const visible = skills.filter((s) => !s.frontmatter["disable-model-invocation"]);
@@ -56,10 +51,7 @@ When a task matches an available skill, use the Skill tool to load its full inst
 ${listing}`;
 }
 
-export async function loadBuiltinSkillsPlugin(
-	jai: PluginAPI,
-	ctx: SkillsPluginContext,
-): Promise<{ skills: SkillInfo[] }> {
+async function setupSkills(jai: PluginAPI, ctx: BuiltinPluginContext): Promise<void> {
 	const skills = await discoverSkills({
 		cwd: ctx.cwd,
 		jaiHome: ctx.jaiHome,
@@ -68,7 +60,7 @@ export async function loadBuiltinSkillsPlugin(
 
 	if (skills.length === 0) {
 		jai.log.info("skills: no skills discovered");
-		return { skills };
+		return;
 	}
 
 	jai.log.info(`skills: discovered ${skills.length} skill(s)`);
@@ -156,6 +148,14 @@ export async function loadBuiltinSkillsPlugin(
 			},
 		});
 	}
-
-	return { skills };
 }
+
+export const skillsBuiltin: BuiltinPluginDef = {
+	meta: {
+		name: "skills",
+		version: "0.1.0",
+		description: "Builtin skills plugin",
+		rootPath: "",
+	},
+	setup: setupSkills,
+};

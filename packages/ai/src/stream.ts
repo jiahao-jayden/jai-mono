@@ -3,9 +3,9 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { LanguageModelV3, LanguageModelV3Message, LanguageModelV3Middleware } from "@ai-sdk/provider";
+import type { JSONSchema7, LanguageModelV3, LanguageModelV3Message, LanguageModelV3Middleware } from "@ai-sdk/provider";
 import { NamedError } from "@jayden/jai-utils";
-import { streamText, wrapLanguageModel } from "ai";
+import { jsonSchema, streamText, wrapLanguageModel } from "ai";
 import z from "zod";
 import { resolveModelInfo } from "./models.js";
 import type {
@@ -402,10 +402,26 @@ function convertMessages(messages: Message[], capabilities: ModelCapabilities): 
 
 // ── convertTools ──────────────────────────────────────────────
 
-function convertTools(
-	tools: ToolDefinition[],
-): Record<string, { description: string; inputSchema: ToolDefinition["parameters"] }> {
-	return Object.fromEntries(tools.map((t) => [t.name, { description: t.description, inputSchema: t.parameters }]));
+function convertTools(tools: ToolDefinition[]) {
+	return Object.fromEntries(
+		tools.map((t) => [
+			t.name,
+			{
+				description: t.description,
+				inputSchema: isZodSchema(t.parameters) ? t.parameters : jsonSchema(t.parameters as JSONSchema7),
+			},
+		]),
+	);
+}
+
+function isZodSchema(value: unknown): value is z.ZodType {
+	// Zod schemas have a `_def` object; plain JSON Schema does not.
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"_def" in value &&
+		typeof (value as { _def: unknown })._def === "object"
+	);
 }
 
 // ── toResolvedModel ───────────────────────────────────────────

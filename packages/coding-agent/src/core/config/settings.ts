@@ -2,6 +2,7 @@ import type { ModelInfo } from "@jayden/jai-ai";
 import { NamedError } from "@jayden/jai-utils";
 import z from "zod";
 import { PermissionSettingsSchema } from "../../permission/schema.js";
+import { McpServersSchema } from "../../plugin/builtins/mcp/types.js";
 import { resolveSettingsModel } from "./model-resolver.js";
 import type { Workspace } from "./workspace.js";
 
@@ -76,6 +77,12 @@ const SettingsSchema = z.object({
 	 * 加载时未通过校验的插件会记录到 LoadError 并跳过。
 	 */
 	plugins: z.record(z.string(), z.unknown()).optional(),
+	/**
+	 * MCP server 配置（Claude Code 风格）。
+	 * key = server 名（出现在 tool 名前缀里：`mcp__<server>__<tool>`）。
+	 * value = stdio (`{ command, args }`) 或 HTTP (`{ url }`)。
+	 */
+	mcpServers: McpServersSchema.optional(),
 });
 
 const PartialSettingsSchema = SettingsSchema.partial();
@@ -191,5 +198,21 @@ export class SettingsManager {
 		const merged = deepMergeSettings(this.global, this.project);
 		this.resolved = resolve(merged);
 		await Bun.write(this.globalPath, JSON.stringify(this.global, null, 2));
+	}
+
+	/** 从全局 settings 移除指定 MCP server 配置；不存在时静默通过。 */
+	async deleteMcpServer(name: string): Promise<void> {
+		if (this.global.mcpServers && name in this.global.mcpServers) {
+			const { [name]: _, ...rest } = this.global.mcpServers;
+			this.global = { ...this.global, mcpServers: rest };
+		}
+		const merged = deepMergeSettings(this.global, this.project);
+		this.resolved = resolve(merged);
+		await Bun.write(this.globalPath, JSON.stringify(this.global, null, 2));
+	}
+
+	/** 全局 mcpServers 原始配置（用于 UI 编辑回填）。 */
+	getMcpServers(): Record<string, unknown> {
+		return (this.global.mcpServers ?? {}) as Record<string, unknown>;
 	}
 }

@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { configRoutes } from "./routes/config.js";
 import { healthRoutes } from "./routes/health.js";
+import { mcpRoutes } from "./routes/mcp.js";
 import { pluginApiRoutes } from "./routes/plugin-api.js";
 import { pluginRoutes } from "./routes/plugins.js";
 import { sessionRoutes } from "./routes/session.js";
@@ -51,6 +52,7 @@ export class GatewayServer {
 		app.route("/", sessionRoutes(manager));
 		app.route("/", workspaceRoutes(manager));
 		app.route("/", pluginRoutes(manager));
+		app.route("/", mcpRoutes(manager));
 		app.route("/", pluginApiRoutes(bootResult.routes));
 
 		return new GatewayServer(app, manager);
@@ -67,7 +69,12 @@ export class GatewayServer {
 			fetch: this.app.fetch as (req: Request, server: any) => Response | Promise<Response>,
 		});
 
-		return { port: this.server.port ?? listenPort, hostname };
+		const actualPort = this.server.port ?? listenPort;
+		// 把 OAuth 回调 URL 注入 SessionManager —— 之后创建/恢复的 session
+		// 才会把它传给 MCP HTTP server 走 OAuth 2.1。
+		this.manager.setOAuthRedirectUrl(`http://${hostname}:${actualPort}/mcp/oauth/callback`);
+
+		return { port: actualPort, hostname };
 	}
 
 	async close(): Promise<void> {

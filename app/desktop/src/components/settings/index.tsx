@@ -1,4 +1,10 @@
-import { InformationCircleIcon, Layers01Icon, PuzzleIcon, Setting07Icon } from "@hugeicons/core-free-icons";
+import {
+	InformationCircleIcon,
+	Layers01Icon,
+	McpServerIcon,
+	PuzzleIcon,
+	Setting07Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -7,6 +13,7 @@ import { gateway } from "@/services/gateway";
 import { Titlebar } from "../shell/titlebar";
 import { AboutPane } from "./about-pane";
 import { GeneralPane } from "./general-pane";
+import { McpPane } from "./mcp/mcp-pane";
 import { PluginsPane } from "./plugins/plugins-pane";
 import { ProvidersPane } from "./providers/providers-pane";
 
@@ -16,6 +23,7 @@ const navItems = [
 	{ id: "general", label: "General", icon: Setting07Icon },
 	{ id: "providers", label: "Providers", icon: Layers01Icon },
 	{ id: "plugins", label: "Plugins", icon: PuzzleIcon },
+	{ id: "mcp", label: "MCP", icon: McpServerIcon },
 	{ id: "about", label: "About", icon: InformationCircleIcon },
 ] as const;
 
@@ -66,6 +74,7 @@ export default function Settings() {
 					<div className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
 						{active === "general" && <GeneralPane config={config} />}
 						{active === "plugins" && <PluginsPane />}
+						{active === "mcp" && <McpPane />}
 						{active === "about" && <AboutPane />}
 					</div>
 				)}
