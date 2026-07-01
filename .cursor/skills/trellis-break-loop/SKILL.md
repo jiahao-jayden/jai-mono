@@ -1,6 +1,11 @@
+---
+name: trellis-break-loop
+description: "Deep bug analysis to break the fix-forget-repeat cycle. Analyzes root cause category, why fixes failed, prevention mechanisms, and captures knowledge into specs. Use after fixing a bug to prevent the same class of bugs."
+---
+
 # Break the Loop - Deep Bug Analysis
 
-When debug is complete, use this command for deep analysis to break the "fix bug -> forget -> repeat" cycle.
+When debug is complete, use this for deep analysis to break the "fix bug -> forget -> repeat" cycle.
 
 ---
 
@@ -37,7 +42,7 @@ What mechanisms would prevent this from happening again?
 |------|-------------|---------|
 | **Documentation** | Write it down so people know | Update thinking guide |
 | **Architecture** | Make the error impossible structurally | Type-safe wrappers |
-| **Compile-time** | TypeScript strict, no any | Signature change causes compile error |
+| **Compile-time** | Strict type checking, no escape hatches | Signature change causes compile error |
 | **Runtime** | Monitoring, alerts, scans | Detect orphan entities |
 | **Test Coverage** | E2E tests, integration tests | Verify full flow |
 | **Code Review** | Checklist, PR template | "Did you check X?" |
@@ -56,10 +61,10 @@ What broader problems does this bug reveal?
 Solidify insights into the system:
 
 - [ ] Update `.trellis/spec/guides/` thinking guides
-- [ ] Update `.trellis/spec/backend/` or `frontend/` docs
+- [ ] Update relevant `.trellis/spec/` docs
 - [ ] Create issue record (if applicable)
 - [ ] Create feature ticket for root fix
-- [ ] Update check commands if needed
+- [ ] Update check guidelines if needed
 
 ---
 
@@ -105,3 +110,21 @@ Three levels of insight:
 3. **Philosophical**: How to expand thinking patterns
 
 30 minutes of analysis saves 30 hours of future debugging.
+
+---
+
+## After Analysis: Immediate Actions
+
+**IMPORTANT**: After completing the analysis above, you MUST immediately:
+
+1. **Update spec/guides** - Don't just list TODOs, actually update the relevant files:
+   - If it's a cross-platform issue → update `cross-platform-thinking-guide.md`
+   - If it's a cross-layer issue → update `cross-layer-thinking-guide.md`
+   - If it's a code reuse issue → update `code-reuse-thinking-guide.md`
+   - If it's domain-specific → update `backend/*.md` or `frontend/*.md`
+
+2. **Sync templates** - After updating `.trellis/spec/`, sync to `src/templates/markdown/spec/`
+
+3. **Commit the spec updates** - This is the primary output, not just the analysis text
+
+> **The analysis is worthless if it stays in chat. The value is in the updated specs.**

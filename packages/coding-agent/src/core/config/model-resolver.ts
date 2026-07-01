@@ -112,10 +112,10 @@ function resolveCapabilities(
 		}
 	}
 
-	throw new ModelResolveError(
-		`Cannot determine capabilities for model "${modelId}" in provider "${providerName}". ` +
-			"Add capabilities to the model config, or use a model ID that exists in the registry.",
-	);
+	return {
+		capabilities: defaultCapabilities(modelEntry),
+		limit: modelEntry.limit ?? { context: 128000, output: 4096 },
+	};
 }
 
 /**
@@ -130,4 +130,23 @@ function guessFamily(modelId: string): string | undefined {
 		if (findModelByFamily(candidate)) return candidate;
 	}
 	return undefined;
+}
+
+function defaultCapabilities(modelEntry: ProviderModel): ModelCapabilities {
+	return {
+		reasoning: modelEntry.capabilities?.reasoning ?? false,
+		toolCall: modelEntry.capabilities?.toolCall ?? true,
+		structuredOutput: modelEntry.capabilities?.structuredOutput ?? false,
+		input: {
+			text: modelEntry.capabilities?.input?.text ?? true,
+			image: modelEntry.capabilities?.input?.image ?? false,
+			audio: modelEntry.capabilities?.input?.audio ?? false,
+			video: modelEntry.capabilities?.input?.video ?? false,
+			pdf: modelEntry.capabilities?.input?.pdf ?? false,
+		},
+		output: {
+			text: modelEntry.capabilities?.output?.text ?? true,
+			image: modelEntry.capabilities?.output?.image ?? false,
+		},
+	};
 }

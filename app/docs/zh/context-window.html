@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>探索上下文窗口 · 交互讲解</title>
+<style>
+  :root{
+    --primary:#2563eb;
+    --primary-dark:#1d4ed8;
+    --bg:#f7f8fb;
+    --panel:#ffffff;
+    --ink:#0f172a;
+    --ink-soft:#475569;
+    --line:#e2e8f0;
+
+    --c-system:#64748b;
+    --c-claudemd:#0ea5e9;
+    --c-memory:#8b5cf6;
+    --c-skills:#f59e0b;
+    --c-mcp:#14b8a6;
+    --c-rules:#ec4899;
+    --c-user:#22c55e;
+    --c-files:#3b82f6;
+    --c-output:#f97316;
+    --c-hooks:#a855f7;
+    --c-sub:#a78bfa;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    line-height:1.65;
+  }
+  .page{max-width:1020px;margin:0 auto;padding:48px 24px 96px}
+  header.hero{margin-bottom:36px}
+  .eyebrow{
+    display:inline-block;font-size:12px;font-weight:700;letter-spacing:.08em;
+    color:var(--primary);background:#eff6ff;border-radius:999px;padding:4px 12px;margin-bottom:14px;
+  }
+  h1{font-size:34px;margin:0 0 12px;letter-spacing:-0.02em}
+  .lede{font-size:17px;color:var(--ink-soft);max-width:70ch}
+  .disclaimer{
+    margin-top:18px;font-size:13px;color:#64748b;background:#f1f5f9;
+    border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+  }
+
+  section{margin-top:56px}
+  h2{font-size:22px;margin:0 0 6px;letter-spacing:-0.01em}
+  h3{font-size:16px;margin:22px 0 8px}
+  p{color:var(--ink-soft)}
+  code{background:#eef1f6;border-radius:6px;padding:2px 6px;font-size:.92em;color:#0f172a}
+  .section-sub{font-size:14px;color:#94a3b8;margin-bottom:20px}
+
+  /* ---------- simulator shell ---------- */
+  .sim{
+    background:var(--panel);border:1px solid var(--line);border-radius:20px;
+    padding:24px;box-shadow:0 1px 2px rgba(15,23,42,.04), 0 12px 32px -20px rgba(15,23,42,.25);
+  }
+  .sim:fullscreen{max-width:none;border-radius:0;overflow:auto;padding:40px}
+
+  .sim-header-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+  .sim-title{font-weight:700;font-size:16px}
+  .sim-sub{font-size:13px;color:#94a3b8;margin-top:2px}
+  .token-counter{text-align:right}
+  .token-counter .num{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+  .token-counter .num small{font-size:12.5px;font-weight:600;color:#94a3b8;margin-left:4px}
+  .token-counter .sub{font-size:11.5px;color:#94a3b8;margin-top:2px}
+
+  .gauge{
+    margin-top:14px;height:8px;border-radius:999px;background:#eef1f6;overflow:hidden;display:flex;
+  }
+  .gauge-seg{height:100%}
+
+  .legend-row{
+    display:flex;flex-wrap:wrap;align-items:center;gap:7px 14px;margin-top:12px;padding-bottom:16px;
+    border-bottom:1px solid var(--line);
+  }
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-soft);cursor:default}
+  .dot{width:8px;height:8px;border-radius:2px;flex:none}
+  .eye-hint{margin-left:auto;font-size:11.5px;color:#94a3b8;display:flex;align-items:center;gap:5px}
+
+  .start-row{display:flex;flex-direction:column;align-items:center;gap:10px;padding:36px 0}
+  .term-chip{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;
+    color:#94a3b8;display:flex;align-items:center;gap:2px;
+  }
+  .caret{display:inline-block;width:7px;height:15px;background:#94a3b8;opacity:.6;animation:blink 1s step-end infinite}
+  @keyframes blink{50%{opacity:0}}
+  .btn{
+    border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 14px;
+    font-size:13.5px;font-weight:600;cursor:pointer;color:var(--ink);display:inline-flex;align-items:center;gap:6px;
+    transition:background .15s, border-color .15s;
+  }
+  .btn:hover{background:#f8fafc;border-color:#cbd5e1}
+  .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .btn.primary:hover{background:var(--primary-dark)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.icon{padding:9px 11px}
+  .start-caption{font-size:12.5px;color:#94a3b8;max-width:280px;text-align:center}
+
+  /* ---------- split view ---------- */
+  .split{display:none;gap:20px;margin-top:14px}
+  .split.visible{display:grid;grid-template-columns:1.15fr 1fr}
+  @media(max-width:760px){ .split.visible{grid-template-columns:1fr} }
+
+  .timeline-col{max-height:460px;overflow-y:auto;padding-right:6px}
+  .phase-heading{
+    font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;
+    padding:14px 4px 6px 32px;
+  }
+  .phase-heading:first-child{padding-top:2px}
+
+  .sub-enter{
+    margin:6px 0 2px 28px;padding-left:10px;border-left:2px solid rgba(167,139,250,.4);
+    font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--c-sub);
+  }
+  .sub-exit{
+    margin-left:28px;padding:0 0 8px 10px;border-left:2px solid rgba(167,139,250,.4);
+    font-size:11.5px;color:#94a3b8;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+
+  .event-row{
+    display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:9px;cursor:pointer;
+    border:1px solid transparent;
+  }
+  .event-row.nested{margin-left:28px;padding-left:10px;border-left:2px solid rgba(167,139,250,.35)}
+  .event-row:hover{background:#f8fafc}
+  .event-row.is-hover{background:#eff6ff;border-color:#bfdbfe}
+  .event-row.is-pinned{background:#eff6ff;border-color:#bfdbfe}
+  .event-row:not(.is-reached) .event-row-title{color:#c7cdd6}
+  .rail{width:22px;display:flex;flex-direction:column;align-items:center;flex:none}
+  .event-dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .auto-tag{
+    font-size:9.5px;font-weight:700;color:#94a3b8;background:#f1f5f9;border-radius:5px;
+    padding:2px 6px;letter-spacing:.03em;flex:none;font-family:ui-monospace,monospace;
+  }
+  .event-row-title{font-size:12.5px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .event-row-delta{font-size:11px;color:#94a3b8;font-variant-numeric:tabular-nums;width:42px;text-align:right;flex:none;font-family:ui-monospace,monospace}
+  .event-mini-bar{width:34px;height:4px;border-radius:999px;background:#eef1f6;overflow:hidden;flex:none}
+  .event-mini-fill{height:100%}
+  .vis-icon{width:14px;flex:none;text-align:center;font-size:10px}
+  .pin-flag{font-size:9.5px;color:var(--primary);font-weight:700;flex:none;width:14px}
+
+  /* gate: a paused "you type in terminal" prompt */
+  .gate-box{margin:10px 0 10px 32px;padding:10px 12px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0}
+  .gate-box.compact-gate{background:#fff7ed;border-color:#fed7aa}
+  .gate-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#16a34a;margin-bottom:6px;font-family:ui-monospace,monospace}
+  .compact-gate .gate-label{color:#ea580c}
+  .gate-row{display:flex;align-items:center;gap:8px}
+  .gate-prompt{color:#16a34a;font-family:ui-monospace,monospace}
+  .compact-gate .gate-prompt{color:#ea580c}
+  .gate-text{flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13.5px;color:var(--ink-soft)}
+  .gate-send{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer}
+  .compact-gate .gate-send{background:#ea580c}
+
+  /* ---------- right column ---------- */
+  .detail-col{display:flex;flex-direction:column;gap:12px}
+  .preview-idle{
+    display:flex;flex-direction:column;align-items:center;text-align:center;justify-content:center;gap:6px;
+    padding:26px 18px;border:1px dashed var(--line);border-radius:12px;color:#94a3b8;
+  }
+  .preview-idle .eye{font-size:20px;opacity:.5}
+  .preview-idle .idle-title{font-size:13.5px;font-weight:700;color:var(--ink-soft)}
+  .preview-idle .idle-caption{font-size:12px;max-width:32ch;color:#94a3b8}
+
+  .preview-active{border:1px solid var(--line);border-radius:12px;padding:16px}
+  .phase-tag{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft)}
+  .preview-title{font-size:15px;font-weight:700;margin:8px 0 6px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .preview-text{font-size:13px;color:var(--ink-soft)}
+  .delta-badge{
+    display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;font-weight:700;
+    padding:5px 10px;border-radius:999px;color:#fff;
+  }
+  .vis-box{
+    display:flex;gap:8px;align-items:flex-start;border-radius:8px;padding:9px 10px;margin-top:10px;font-size:11.5px;
+  }
+  .vis-box.v-hidden{background:#f1f5f9;color:#64748b}
+  .vis-box.v-brief{background:#f1f5f9;color:#64748b}
+  .vis-box.v-full{background:#f0fdf4;color:#166534}
+
+  .callout{border-radius:12px;padding:14px 16px;font-size:13px}
+  .callout b{display:block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+  .callout.takeaway{background:#eff6ff;border:1px solid #dbeafe;color:#1e3a8a}
+  .callout.takeaway b{color:var(--primary)}
+  .callout.terminalinfo{background:#f8fafc;border:1px solid var(--line);color:var(--ink-soft)}
+  .callout.terminalinfo b{color:#94a3b8}
+  .callout.freed{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412}
+  .callout.freed b{color:#ea580c}
+
+  /* ---------- playback bar ---------- */
+  .playbar{display:flex;align-items:center;gap:12px;margin-top:18px}
+  .progress-track{
+    flex:1;height:6px;border-radius:999px;background:#eef1f6;position:relative;overflow:hidden;cursor:pointer;
+  }
+  .progress-fill{position:absolute;inset:0;width:0%;background:var(--primary);border-radius:999px;transition:width .25s linear}
+  .progress-pct{font-size:12.5px;color:var(--ink-soft);width:38px;text-align:right;font-variant-numeric:tabular-nums}
+
+  /* ---------- tables & lists ---------- */
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:8px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--ink-soft);font-weight:600;font-size:12.5px}
+  td:first-child{font-weight:600;white-space:nowrap}
+
+  ul.tips{padding-left:20px}
+  ul.tips li{margin-bottom:10px;color:var(--ink-soft)}
+  ul.tips b{color:var(--ink)}
+
+  footer.note{
+    margin-top:64px;padding-top:20px;border-top:1px solid var(--line);font-size:12.5px;color:#94a3b8;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="hero">
+    <span class="eyebrow">核心概念 · 原创图解</span>
+    <h1>探索上下文窗口</h1>
+    <p class="lede">
+      编码助手（如 Claude Code）在一次会话里"知道"的一切——你的指令、它读过的文件、它自己说过的话，
+      甚至一些从不出现在终端里的内容——都装在同一个上下文窗口里。下面这个小模拟按时间顺序演示了
+      从你敲下启动命令，到上下文写满触发压缩为止，窗口里都发生了什么。播放到你发消息的节点会停下来，
+      点「发送」才会继续；平时悬停任意一行可以预览，点一下能固定住方便你滚动查看。
+    </p>
+    <div class="disclaimer">
+      说明：本页基于 Claude Code 官方文档"Explore the context window"一文所讲解的概念与部分交互机制
+      （例如分阶段暂停等待发送、终端可见性分级、子代理独立上下文的嵌套展示），用自己的场景、文字、
+      数值和代码重新实现，并非官方页面的逐句翻译或源码移植。若需查阅权威原文，请前往 Claude Code
+      官方文档站点的同名页面。
+    </div>
+  </header>
+
+  <section class="simulator">
+    <h2>交互模拟：一次真实会话里，上下文是怎么被填满的</h2>
+    <p class="section-sub">悬停预览、点击固定，播放到发消息的节点会暂停等你点「发送」</p>
+
+    <div class="sim" id="simRoot">
+      <div class="sim-header-row">
+        <div>
+          <div class="sim-title">场景：修复登录页的样式问题</div>
+          <div class="sim-sub">一次模拟会话，展示进入上下文的内容与其代价</div>
+        </div>
+        <div class="token-counter">
+          <div><span class="num" id="totalTokens">0</span><small>tokens</small></div>
+          <div class="sub">/ 200,000 · 示意数据</div>
+        </div>
+      </div>
+
+      <div class="gauge" id="gauge"></div>
+
+      <div class="legend-row" id="legend">
+        <span class="eye-hint">👁 = 会出现在你的终端里</span>
+      </div>
+
+      <div class="start-row" id="startRow">
+        <div class="term-chip">$ claude<span class="caret"></span></div>
+        <button class="btn primary" id="startBtn">▶ 开始会话</button>
+        <div class="start-caption">从你敲下 <code>claude</code> 命令开始，一路看到压缩为止</div>
+      </div>
+
+      <div class="split" id="splitView">
+        <div class="timeline-col" id="timeline"></div>
+
+        <div class="detail-col">
+          <div class="preview-idle" id="previewIdle">
+            <div class="eye">👁</div>
+            <div class="idle-title">悬停或点击任意事件</div>
+            <div class="idle-caption">悬停即可预览，点击可以固定，方便你挪开鼠标继续查看</div>
+          </div>
+          <div class="preview-active" id="previewActive" style="display:none">
+            <div class="phase-tag" id="phaseTag"></div>
+            <div class="preview-title" id="previewTitle"></div>
+            <div class="preview-text" id="previewText"></div>
+            <div id="deltaBadgeWrap"></div>
+            <div id="visBoxWrap"></div>
+          </div>
+
+          <div class="callout takeaway" id="takeaway" style="display:none">
+            <b>关键结论</b>
+            <span id="takeawayText"></span>
+          </div>
+
+          <div class="callout terminalinfo" id="terminalBox" style="display:none">
+            <b>你在终端里实际看到的内容</b>
+            <span id="terminalViewText"></span>
+          </div>
+
+          <div class="callout freed" id="freedBox" style="display:none">
+            <b>压缩释放了多少空间</b>
+            <span id="freedText"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="playbar" id="playbar" style="display:none">
+        <button class="btn" id="playPauseBtn">▶</button>
+        <div class="progress-track" id="progressTrack">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <span class="progress-pct" id="progressPct">0%</span>
+        <button class="btn icon" id="fullscreenBtn" title="全屏">⛶</button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>这条时间线在演示什么</h2>
+    <p>整个模拟按四个阶段展开，token 数字都是示意性的，用来体现相对量级，不代表真实精确值：</p>
+    <h3>1. 会话启动时（你还没打字）</h3>
+    <p>
+      系统提示词、项目里的 <code>CLAUDE.md</code>、自动记忆、已注册的技能描述、以及可用 MCP
+      工具的名称与说明，会在你输入任何内容之前就全部进入上下文。你自己的配置可能还会追加更多，
+      比如自定义的输出风格，或者启动时通过参数追加的额外系统提示——它们都会并入同一份系统提示词。
+    </p>
+    <h3>2. Claude 工作过程中</h3>
+    <p>
+      每读一个文件都会往上下文里加内容；如果这个文件路径命中了某条"路径限定规则"，规则也会跟着自动加载；
+      每次编辑完成后，如果配置了 <code>PostToolUse</code> 钩子，钩子的执行结果也会写回上下文——但钩子本身
+      是代码执行，不会出现在你的终端里。
+    </p>
+    <h3>3. 追加需求时</h3>
+    <p>
+      当你临时提出一个需要大量翻阅文件的调研请求时，助手可以把这部分工作交给一个子代理，
+      在它自己独立的上下文窗口里完成——大量文件内容不会挤占你当前对话的空间，
+      主对话里只会收到一段摘要和一点点元数据。
+    </p>
+    <h3>4. 上下文快写满时</h3>
+    <p>
+      触发 <code>/compact</code> 后，冗长的对话历史会被替换成一份结构化摘要。
+      大部分启动阶段加载的内容会自动重新注入，但具体机制各不相同——下表列出了每一类内容在压缩后的命运。
+    </p>
+  </section>
+
+  <section>
+    <h2>压缩之后，哪些内容会留下</h2>
+    <p>长会话触发压缩时，Claude Code 会把对话历史总结成摘要以腾出空间。你的各类指令是否留存，取决于它们最初是怎么加载进来的：</p>
+    <table>
+      <thead><tr><th>加载方式</th><th>压缩之后</th></tr></thead>
+      <tbody>
+        <tr><td>系统提示词 / 输出风格</td><td>不受影响，它们本来就不属于对话历史</td></tr>
+        <tr><td>项目根目录 CLAUDE.md、未加路径限定的规则</td><td>从磁盘重新注入</td></tr>
+        <tr><td>自动记忆</td><td>从磁盘重新注入</td></tr>
+        <tr><td>带 <code>paths:</code> 限定的规则</td><td>丢失，直到再次读取匹配的文件才会重新加载</td></tr>
+        <tr><td>子目录里的嵌套 CLAUDE.md</td><td>丢失，直到再次读取该子目录下的文件</td></tr>
+        <tr><td>已调用的技能正文</td><td>会重新注入，但每个技能上限约 5,000 tokens、全部技能合计上限约 25,000 tokens，超出部分优先丢弃较早调用的技能</td></tr>
+        <tr><td>钩子（Hooks）</td><td>不涉及，钩子是代码执行，本身不占用上下文</td></tr>
+      </tbody>
+    </table>
+    <p>
+      路径限定的规则和嵌套 CLAUDE.md 是随对话消息一起加载的，所以压缩时会连同其余对话一起被总结掉，
+      下次读到匹配文件时才会再次出现。如果某条规则必须在压缩后依然生效，去掉它的 <code>paths:</code>
+      限定，或者把内容挪到项目根目录的 CLAUDE.md 里。技能正文的截断策略是保留文件开头部分，
+      所以重要说明应该写在 <code>SKILL.md</code> 靠前的位置。
+    </p>
+  </section>
+
+  <section>
+    <h2>上下文快写满时可以做什么</h2>
+    <p>
+      Claude Code 会在接近上限前自动压缩，所以上下文写满本身不会中断会话；自动压缩的效果和上面
+      <code>/compact</code> 那一步是一样的。除此之外，你也可以在自动压缩发生之前主动出手：
+    </p>
+    <ul class="tips">
+      <li><b>带着重点手动压缩</b>：开始一段新的长任务前，运行 <code>/compact 聚焦在登录鉴权那个 bug 上</code> 这样带说明的压缩，摘要会保留你指定的重点，而不是让自动压缩去猜。</li>
+      <li><b>切换任务就清空</b>：处理不相关的新任务时运行 <code>/clear</code>。留着旧对话不但占地方，还会让接下来每条消息都多花 token。</li>
+      <li><b>把大批量阅读甩给子代理</b>：需要大量翻阅文件做调研时，交给子代理去做，文件内容留在它自己的上下文里，不进你的主对话。</li>
+      <li><b>换一个更大的窗口</b>：如果问题是"任务本身就需要很大的窗口"而不是"对话太啰嗦"，部分模型支持百万级 token 的扩展上下文，可以按需切换。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>查看你自己会话的真实数据</h2>
+    <p>
+      本页的模拟数字只是示意。想知道当前这次会话真实的上下文占用情况，随时运行
+      <code>/context</code> 查看按类别拆分的实时用量和优化建议；运行 <code>/memory</code>
+      可以确认启动时到底加载了哪些 CLAUDE.md 和自动记忆文件。
+    </p>
+  </section>
+
+  <footer class="note">
+    本页为内部文档中的原创讲解材料，用于帮助团队理解上下文窗口的工作机制，配合 jai 自身的编码助手实现参考使用。
+  </footer>
+</div>
+
+<script>
+(function(){
+  const CATS = {
+    system:  { label:'系统提示词', color:'var(--c-system)'  },
+    claudemd:{ label:'CLAUDE.md', color:'var(--c-claudemd)' },
+    memory:  { label:'自动记忆',  color:'var(--c-memory)'   },
+    skills:  { label:'技能',      color:'var(--c-skills)'   },
+    mcp:     { label:'MCP',       color:'var(--c-mcp)'      },
+    rules:   { label:'规则',      color:'var(--c-rules)'    },
+    user:    { label:'你',        color:'var(--c-user)'     },
+    files:   { label:'文件',      color:'var(--c-files)'    },
+    output:  { label:'Claude 输出', color:'var(--c-output)' },
+    hooks:   { label:'钩子',      color:'var(--c-hooks)'    },
+  };
+  const VIS_META = {
+    hidden: { icon:'○', cls:'v-hidden', label:'终端里完全看不到', text:'这部分内容只存在于上下文里，你的终端画面不会显示任何东西。' },
+    brief:  { icon:'◐', cls:'v-brief',  label:'终端里只有一行提示', text:'终端会显示一句简短提示，但具体内容只有模型自己看得到。' },
+    full:   { icon:'●', cls:'v-full',   label:'终端里显示完整内容', text:'这部分内容会完整地打印在你的终端里，你和模型看到的是一样的。' },
+  };
+
+  const MAX = 200000;
+
+  // gate: 播放到这一步会暂停，展示一个终端输入框，点「发送/运行」才会继续
+  const EVENTS = [
+    { phase:'启动阶段 · 你还没打字', cat:'system', delta:3200, vis:'hidden',
+      title:'系统提示词', text:'助手的核心指令、可用工具列表和行为规范，在你敲下启动命令的瞬间就已经加载进上下文。' },
+    { phase:'启动阶段 · 你还没打字', cat:'claudemd', delta:2100, vis:'hidden',
+      title:'读取项目 CLAUDE.md', text:'项目根目录的 CLAUDE.md 写着代码风格、目录约定这些团队共识，自动并入上下文。' },
+    { phase:'启动阶段 · 你还没打字', cat:'memory', delta:900, vis:'hidden',
+      title:'自动记忆加载', text:'之前会话里沉淀下来的偏好和长期记忆，也会在启动时自动带进来。' },
+    { phase:'启动阶段 · 你还没打字', cat:'skills', delta:1400, vis:'hidden',
+      title:'已注册技能的简介', text:'这一步只加载每个技能的一句话描述；完整正文要等真正被调用时才会加载。' },
+    { phase:'启动阶段 · 你还没打字', cat:'mcp', delta:2600, vis:'hidden',
+      title:'MCP 工具清单', text:'所有已连接 MCP server 暴露出来的工具名称和参数说明，一次性加进上下文。' },
+
+    { phase:'你', cat:'user', delta:90, vis:'full', gate:{ prompt:'帮我修个登录页的样式问题，按钮在移动端挤到一起了', action:'发送' },
+      title:'你的第一条消息', text:'终端在此之前其实什么都没显示——直到你敲下这条消息并点发送。' },
+
+    { phase:'Claude 工作', cat:'files', delta:4300, vis:'brief',
+      title:'读取 LoginPage.tsx', text:'文件内容原样进入上下文，但终端只提示"正在读取文件"这一行。' },
+    { phase:'Claude 工作', cat:'rules', delta:550, vis:'brief',
+      title:'规则：mobile-layout.md', text:'这条只对 src/pages/** 生效的路径规则，因为命中了刚读的文件而自动加载。终端只显示一行"已加载规则"。' },
+    { phase:'Claude 工作', cat:'output', delta:850, vis:'full',
+      title:'Claude 说明修改思路', text:'助手把打算怎么改的思路说出来，完整显示在你的终端里。' },
+    { phase:'Claude 工作', cat:'hooks', delta:320, vis:'hidden',
+      title:'编辑完成，钩子触发', text:'文件保存后，配置好的格式化钩子把执行结果写回了上下文，但钩子是代码执行，终端里看不到这部分内容。' },
+    { phase:'Claude 工作', cat:'output', delta:500, vis:'full',
+      title:'Claude 总结改动', text:'"已经把按钮容器改成 flex-wrap，移动端断点也加了间距。"' },
+
+    { phase:'你追加了新需求', cat:'user', delta:140, vis:'full', gate:{ prompt:'顺便查一下全项目还有哪些地方在用旧版按钮组件', action:'发送' },
+      title:'你的追加请求', text:'这次的要求明显要翻很多文件才能回答完整——播放会再次暂停，等你点发送。' },
+    { phase:'交给子代理处理', cat:'output', delta:120, vis:'brief', subStart:true,
+      title:'派生调研子代理', text:'助手把这个调研交给一个子代理，在它自己独立的上下文窗口里完成，主对话只显示一行简短提示。' },
+    { phase:'交给子代理处理', cat:'output', delta:0, subTokens:1600, vis:'hidden', nested:true,
+      title:'子代理：读取 Button.tsx 等 12 个文件', text:'子代理在自己的上下文里翻遍相关文件——这一步产生的 token 完全不计入你的主对话。' },
+    { phase:'交给子代理处理', cat:'output', delta:0, subTokens:2400, vis:'hidden', nested:true,
+      title:'子代理：grep 全项目引用', text:'继续在子代理自己的上下文里搜索、比对，同样不占用主对话空间。' },
+    { phase:'交给子代理处理', cat:'output', delta:900, vis:'brief', subEnd:true, subTotalShown:4000,
+      title:'子代理返回摘要', text:'子代理自己用掉了约 4,000 tokens，但主对话只收到一份 900 tokens 的浓缩摘要和一点元数据。' },
+
+    { phase:'继续开发若干轮之后', cat:'files', delta:118000, vis:'hidden', fastForward:true,
+      title:'……又过了几十轮文件读取与修改', text:'跳过中间反复的读文件、改代码、看输出的过程——上下文占用持续累积，眼看就要触及上限。' },
+
+    { phase:'触发压缩', type:'compact', vis:'brief', gate:{ prompt:'/compact', action:'运行', compact:true },
+      resetTo:{ system:3200, claudemd:2100, memory:900, skills:1400, mcp:2600, rules:0, user:0, files:0, output:1800, hooks:0 },
+      title:'/compact 把对话历史压缩成摘要',
+      text:'冗长的对话历史被替换成一份结构化摘要。系统提示词、CLAUDE.md、自动记忆、技能简介和 MCP 工具清单几乎原样保留；被临时加载的规则、这一路的文件内容和往来消息则被压缩掉。' },
+  ];
+
+  const MINI_BAR_MAX = 5000;
+
+  const els = {};
+  ['simRoot','totalTokens','gauge','legend','startRow','startBtn',
+   'splitView','timeline','previewIdle','previewActive','phaseTag','previewTitle','previewText',
+   'deltaBadgeWrap','visBoxWrap','takeaway','takeawayText','terminalBox','terminalViewText',
+   'freedBox','freedText','playbar','playPauseBtn','progressTrack','progressFill','progressPct','fullscreenBtn']
+   .forEach(id => els[id] = document.getElementById(id));
+
+  let current = -1;        // committed playhead
+  let pinnedIndex = null;
+  let hoverIndex = null;
+  let playing = false;
+  let timer = null;
+  let awaitingGate = false; // true when paused at a gate, waiting for "send" click
+
+  function previewIndex(){
+    if(hoverIndex !== null) return hoverIndex;
+    if(pinnedIndex !== null) return pinnedIndex;
+    return null;
+  }
+
+  function buildLegend(){
+    const chips = Object.entries(CATS).map(([key,c]) =>
+      `<span class="legend-item"><span class="dot" style="background:${c.color}"></span>${c.label}</span>`
+    ).join('');
+    els.legend.innerHTML = chips + '<span class="eye-hint">👁 = 会出现在你的终端里</span>';
+  }
+
+  function buildTimeline(){
+    const groups = [];
+    EVENTS.forEach((e,i) => {
+      const phaseName = e.phase || '触发压缩';
+      let g = groups.find(g => g.phase === phaseName);
+      if(!g){ g = { phase: phaseName, items: [] }; groups.push(g); }
+      g.items.push(i);
+    });
+
+    els.timeline.innerHTML = groups.map(g => `
+      <div class="phase-heading">${g.phase}</div>
+      ${g.items.map(i => {
+        const e = EVENTS[i];
+        if(e.subStart) return renderRow(i,e) + `<div class="sub-enter">子代理的独立上下文窗口</div>`;
+        if(e.subEnd) return `<div class="sub-exit" data-subexit="${i}"></div>` + renderRow(i,e,true);
+        return renderRow(i,e,e.nested);
+      }).join('')}
+    `).join('');
+
+    // fill subExit text after render (needs prior subTokens sum which we know statically)
+    document.querySelectorAll('[data-subexit]').forEach(el => {
+      const idx = parseInt(el.dataset.subexit,10);
+      const total = EVENTS[idx].subTotalShown || 0;
+      el.textContent = `↓ 约 ${fmt(total)} tokens 留在了子代理的上下文里 · 只带回摘要`;
+    });
+
+    els.timeline.querySelectorAll('.event-row').forEach(row => {
+      const i = parseInt(row.dataset.i, 10);
+      row.addEventListener('mouseenter', () => { hoverIndex = i; renderAll(); });
+      row.addEventListener('mouseleave', () => { hoverIndex = null; renderAll(); });
+      row.addEventListener('click', () => {
+        if(awaitingGate) return;
+        stopPlaying();
+        if(pinnedIndex === i){ pinnedIndex = null; } else { pinnedIndex = i; }
+        current = i;
+        renderAll();
+      });
+    });
+  }
+
+  function fmt(n){
+    return n >= 1000 ? (Math.round(n/100)/10) + 'K' : String(n);
+  }
+
+  function renderRow(i, e, nested){
+    const color = e.type === 'compact' ? 'var(--primary)' : CATS[e.cat].color;
+    const shownDelta = e.subTokens ? e.subTokens : e.delta;
+    const barPct = e.type === 'compact' ? 100 : Math.min(100, Math.max(10, (shownDelta / MINI_BAR_MAX) * 100));
+    const deltaLabel = e.type === 'compact' ? '压缩' : '+' + fmt(shownDelta);
+    const visIcon = VIS_META[e.vis].icon;
+    return `<div class="event-row${nested?' nested':''}" data-i="${i}">
+      ${(e.vis==='hidden') ? `<span class="auto-tag">自动</span>` : `<span style="width:30px"></span>`}
+      <span class="event-dot" style="background:${color}"></span>
+      <span class="event-row-title">${e.title}</span>
+      <span class="pin-flag" data-role="pin"></span>
+      <span class="event-row-delta">${deltaLabel}</span>
+      <span class="event-mini-bar"><span class="event-mini-fill" style="width:${barPct}%;background:${color}"></span></span>
+      <span class="vis-icon" title="${VIS_META[e.vis].label}" style="color:${e.vis==='full'?'#16a34a':'#94a3b8'}">${visIcon}</span>
+    </div>`;
+  }
+
+  function computeTotals(uptoIndex){
+    const totals = {}; Object.keys(CATS).forEach(k=>totals[k]=0);
+    for(let i=0;i<=uptoIndex;i++){
+      const e = EVENTS[i];
+      if(!e) continue;
+      if(e.type === 'compact'){
+        Object.keys(totals).forEach(k=> totals[k] = e.resetTo[k] ?? 0);
+      } else {
+        totals[e.cat] += e.delta;
+      }
+    }
+    return totals;
+  }
+
+  function preCompactTotal(){
+    // sum of everything right before the compact event fires
+    return Object.values(computeTotals(EVENTS.length - 2)).reduce((a,b)=>a+b,0);
+  }
+
+  function renderGauge(){
+    const totals = computeTotals(current);
+    const sum = Object.values(totals).reduce((a,b)=>a+b,0);
+    els.totalTokens.textContent = sum.toLocaleString('en-US');
+    els.gauge.innerHTML = Object.entries(totals).map(([key,val])=>{
+      if(val<=0) return '';
+      const pct = Math.max(0.15, val/MAX*100);
+      return `<div class="gauge-seg" style="width:${pct}%;background:${CATS[key].color}"></div>`;
+    }).join('');
+  }
+
+  function renderRowStates(){
+    els.timeline.querySelectorAll('.event-row').forEach(row => {
+      const i = parseInt(row.dataset.i, 10);
+      row.classList.toggle('is-hover', hoverIndex === i);
+      row.classList.toggle('is-pinned', pinnedIndex === i && hoverIndex === null);
+      row.classList.toggle('is-reached', i <= current);
+      const pinEl = row.querySelector('[data-role="pin"]');
+      pinEl.textContent = (pinnedIndex === i) ? '📌' : '';
+    });
+  }
+
+  function renderPreview(){
+    const idx = previewIndex();
+    if(idx === null){
+      els.previewIdle.style.display = 'flex';
+      els.previewActive.style.display = 'none';
+      return;
+    }
+    els.previewIdle.style.display = 'none';
+    els.previewActive.style.display = 'block';
+    const e = EVENTS[idx];
+    els.phaseTag.textContent = e.phase || '触发压缩';
+    els.previewTitle.textContent = e.title;
+    els.previewText.textContent = e.text;
+
+    const shownDelta = e.subTokens || e.delta;
+    if(e.type === 'compact'){
+      els.deltaBadgeWrap.innerHTML = `<span class="delta-badge" style="background:var(--primary)">压缩重排 · 上下文回落</span>`;
+    } else if(shownDelta){
+      const c = CATS[e.cat];
+      const label = e.subTokens ? '子代理内部消耗' : c.label;
+      els.deltaBadgeWrap.innerHTML = `<span class="delta-badge" style="background:${c.color}">+${shownDelta.toLocaleString('en-US')} tokens · ${label}</span>`;
+    } else {
+      els.deltaBadgeWrap.innerHTML = '';
+    }
+
+    const vm = VIS_META[e.vis];
+    els.visBoxWrap.innerHTML = `<div class="vis-box ${vm.cls}"><span>${vm.icon}</span><span><b style="display:block;font-size:11.5px;margin-bottom:2px">${vm.label}</b>${vm.text}</span></div>`;
+  }
+
+  function renderTakeawayAndTerminal(){
+    if(current < 0){
+      els.takeaway.style.display = 'none';
+      els.terminalBox.style.display = 'none';
+      els.freedBox.style.display = 'none';
+      return;
+    }
+
+    const takeaways = {
+      4: '打字之前，上下文已经不是空的了。CLAUDE.md、自动记忆、技能简介和 MCP 工具清单，全都在你第一次提问之前就位了。',
+      9: '规则和钩子经常是"隐形"的：它们会实实在在地占用 token，却几乎不会出现在你的终端画面里。',
+      15: '子代理是控制上下文膨胀的关键手段：翻文件的活留在它自己的窗口里，主对话只收一份摘要。',
+      [EVENTS.length-1]: '压缩不是清空重来：系统提示词、CLAUDE.md、自动记忆这些"启动型"内容会自动回归，真正被总结掉的是这一路的对话细节。',
+    };
+    if(takeaways[current]){
+      els.takeaway.style.display = 'block';
+      els.takeawayText.textContent = takeaways[current];
+    } else {
+      els.takeaway.style.display = 'none';
+    }
+
+    const terminalViews = {
+      startup: '输入框在等待你打第一个字，上面提到的一切都已悄悄加载完毕。',
+      firstPrompt: '你的第一条消息，Claude 还没开始动手。',
+      working: '你的消息、"正在读取文件…"这类一行提示，以及 Claude 的完整回复；规则和钩子都不会出现在这里。',
+      followup: '你的追加消息。',
+      subagent: '一行"子代理正在调研…"的提示，然后是它带回来的结果——你看不到它具体读了哪些文件。',
+      compact: '"对话已压缩"的提示。压缩这个动作本身在幕后完成，不会打印过程。',
+    };
+    let key = 'startup';
+    if(current >= 5 && current < 6) key = 'firstPrompt';
+    else if(current >= 6 && current < 11) key = 'working';
+    else if(current === 11) key = 'followup';
+    else if(current >= 12 && current <= 16) key = 'subagent';
+    else if(current >= 17) key = 'compact';
+    els.terminalBox.style.display = 'block';
+    els.terminalViewText.textContent = terminalViews[key];
+
+    if(current === EVENTS.length - 1){
+      const before = preCompactTotal();
+      const after = Object.values(computeTotals(current)).reduce((a,b)=>a+b,0);
+      els.freedBox.style.display = 'block';
+      els.freedText.textContent = `${fmt(before)} → ${fmt(after)} tokens，释放了约 ${fmt(before-after)} tokens。`;
+    } else {
+      els.freedBox.style.display = 'none';
+    }
+  }
+
+  function renderPlaybar(){
+    const pct = current < 0 ? 0 : Math.round((current+1)/EVENTS.length*100);
+    els.progressFill.style.width = pct + '%';
+    els.progressPct.textContent = pct + '%';
+    els.playPauseBtn.textContent = playing ? '⏸' : '▶';
+  }
+
+  function renderGate(){
+    document.querySelectorAll('.gate-inline').forEach(n => n.remove());
+    if(!awaitingGate) return;
+    const e = EVENTS[current + 1];
+    if(!e || !e.gate) return;
+    const row = els.timeline.querySelector(`.event-row[data-i="${current+1}"]`);
+    const box = document.createElement('div');
+    box.className = 'gate-box gate-inline' + (e.gate.compact ? ' compact-gate' : '');
+    box.innerHTML = `
+      <div class="gate-label">你在终端里输入</div>
+      <div class="gate-row">
+        <span class="gate-prompt">❯</span>
+        <span class="gate-text">${escapeHtml(e.gate.prompt)}</span>
+        <button class="gate-send">${e.gate.action} ↵</button>
+      </div>`;
+    row.parentElement.insertBefore(box, row);
+    box.querySelector('.gate-send').addEventListener('click', () => {
+      awaitingGate = false;
+      current += 1;
+      renderAll();
+      if(playing) scheduleNextTick();
+    });
+  }
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function renderAll(){
+    renderGauge();
+    renderRowStates();
+    renderPreview();
+    renderTakeawayAndTerminal();
+    renderPlaybar();
+    renderGate();
+  }
+
+  function beginSession(){
+    els.startRow.style.display = 'none';
+    els.splitView.classList.add('visible');
+    els.playbar.style.display = 'flex';
+    current = 0;
+    renderAll();
+  }
+
+  function stopPlaying(){
+    playing = false;
+    clearInterval(timer);
+    renderPlaybar();
+  }
+
+  function scheduleNextTick(){
+    clearInterval(timer);
+    timer = setInterval(()=>{
+      if(awaitingGate){ return; }
+      if(current >= EVENTS.length - 1){ stopPlaying(); renderAll(); return; }
+      const next = EVENTS[current + 1];
+      if(next && next.gate){
+        awaitingGate = true;
+        renderAll();
+        return;
+      }
+      current += 1;
+      renderAll();
+    }, 1500);
+  }
+
+  function startPlaying(){
+    if(current < 0) beginSession();
+    if(current >= EVENTS.length - 1){ current = 0; }
+    pinnedIndex = null; hoverIndex = null; awaitingGate = false;
+    playing = true;
+    renderAll();
+    scheduleNextTick();
+  }
+
+  els.startBtn.addEventListener('click', () => {
+    if(current >= 0) return;
+    beginSession();
+  });
+
+  els.playPauseBtn.addEventListener('click', () => {
+    if(playing) { stopPlaying(); renderAll(); } else { startPlaying(); }
+  });
+
+  els.progressTrack.addEventListener('click', (ev) => {
+    if(current < 0) beginSession();
+    stopPlaying();
+    awaitingGate = false;
+    const rect = els.progressTrack.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
+    current = Math.round(ratio * (EVENTS.length - 1));
+    pinnedIndex = null; hoverIndex = null;
+    renderAll();
+  });
+
+  els.fullscreenBtn.addEventListener('click', () => {
+    if(document.fullscreenElement){
+      document.exitFullscreen();
+    } else {
+      els.simRoot.requestFullscreen?.();
+    }
+  });
+
+  buildLegend();
+  buildTimeline();
+  renderAll();
+})();
+</script>
+</body>
+</html>

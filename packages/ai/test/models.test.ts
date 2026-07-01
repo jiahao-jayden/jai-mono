@@ -231,6 +231,12 @@ describe("findModelAcrossProviders", () => {
 	test("returns undefined for nonexistent model", () => {
 		expect(findModelAcrossProviders("nonexistent-model-xyz")).toBeUndefined();
 	});
+
+	test("matches model ids case-insensitively", () => {
+		const match = findModelAcrossProviders("MINIMAX-M2.5");
+		expect(match).toBeDefined();
+		expect(match!.model.id.toLowerCase()).toBe("minimax-m2.5");
+	});
 });
 
 describe("findModelByFamily", () => {
@@ -248,6 +254,12 @@ describe("findModelByFamily", () => {
 
 	test("returns undefined for nonexistent family", () => {
 		expect(findModelByFamily("nonexistent-family-xyz")).toBeUndefined();
+	});
+
+	test("matches family case-insensitively", () => {
+		const match = findModelByFamily("MiniMax");
+		expect(match).toBeDefined();
+		expect(match!.model.family.toLowerCase()).toBe("minimax");
 	});
 
 	test("prefers latest release_date", () => {

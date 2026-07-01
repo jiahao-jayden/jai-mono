@@ -231,26 +231,48 @@ describe("capability overrides", () => {
 		expect(info.limit.output).toBe(4096);
 	});
 
-	test("throws for unknown model without capabilities", () => {
-		try {
-			resolveSettingsModel(
-				makeSettings({
-					model: "zenmux/totally-unknown-model",
-					providers: {
-						zenmux: {
-							enabled: true,
-							api_base: "https://zenmux.ai/api",
-							api_format: "openai",
-							models: [{ id: "totally-unknown-model" }],
-						},
+	test("falls back to conservative defaults for unknown model without capabilities", () => {
+		const result = resolveSettingsModel(
+			makeSettings({
+				model: "zenmux/totally-unknown-model",
+				providers: {
+					zenmux: {
+						enabled: true,
+						api_base: "https://zenmux.ai/api",
+						api_format: "openai",
+						models: [{ id: "totally-unknown-model" }],
 					},
-				}),
-			);
-			expect.unreachable("should have thrown");
-		} catch (e: any) {
-			expect(ModelResolveError.isInstance(e)).toBe(true);
-			expect(e.data).toContain("Cannot determine capabilities");
-		}
+				},
+			}),
+		);
+
+		const info = result as ModelInfo;
+		expect(info.capabilities.reasoning).toBe(false);
+		expect(info.capabilities.toolCall).toBe(true);
+		expect(info.capabilities.input.text).toBe(true);
+		expect(info.capabilities.input.image).toBe(false);
+		expect(info.limit.context).toBe(128000);
+		expect(info.limit.output).toBe(4096);
+	});
+
+	test("reuses family capabilities with case-insensitive family matching", () => {
+		const result = resolveSettingsModel(
+			makeSettings({
+				model: "relay/MiniMax-M3",
+				providers: {
+					relay: {
+						enabled: true,
+						api_base: "https://relay.example.com/v1",
+						api_format: "openai-compatible",
+						models: [{ id: "MiniMax-M3" }],
+					},
+				},
+			}),
+		);
+
+		const info = result as ModelInfo;
+		expect(info.capabilities.toolCall).toBe(true);
+		expect(info.limit.context).toBeGreaterThan(128000);
 	});
 });
 

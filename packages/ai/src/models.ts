@@ -72,6 +72,10 @@ export function getModel(providerId: string, modelId: string): RegistryModel | u
 	return data[providerId]?.models[modelId];
 }
 
+function normalizeLookupKey(value: string | undefined): string | undefined {
+	return value?.trim().toLowerCase();
+}
+
 export function listProviders(): string[] {
 	return Object.keys(data);
 }
@@ -140,9 +144,15 @@ export type ModelMatch = {
  * 用于中转站场景：model ID（如 "claude-sonnet-4-6"）存在于原始 provider 下。
  */
 export function findModelAcrossProviders(modelId: string): ModelMatch | undefined {
+	const normalizedId = normalizeLookupKey(modelId);
 	for (const [providerId, provider] of Object.entries(data)) {
 		const model = provider.models[modelId];
 		if (model) return { providerId, model };
+		for (const candidate of Object.values(provider.models)) {
+			if (normalizedId && normalizeLookupKey(candidate.id) === normalizedId) {
+				return { providerId, model: candidate };
+			}
+		}
 	}
 	return undefined;
 }
@@ -153,10 +163,12 @@ export function findModelAcrossProviders(modelId: string): ModelMatch | undefine
  */
 export function findModelByFamily(family: string): ModelMatch | undefined {
 	let best: ModelMatch | undefined;
+	const normalizedFamily = normalizeLookupKey(family);
+	if (!normalizedFamily) return undefined;
 
 	for (const [providerId, provider] of Object.entries(data)) {
 		for (const model of Object.values(provider.models)) {
-			if (model.family !== family) continue;
+			if (normalizeLookupKey(model.family) !== normalizedFamily) continue;
 			if (!best || (model.release_date ?? "") > (best.model.release_date ?? "")) {
 				best = { providerId, model };
 			}
