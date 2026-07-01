@@ -2,22 +2,8 @@
 	"extends": "./tsconfig.base.json",
 	"compilerOptions": {
 		"noEmit": true,
-		"jsx": "react-jsx",
-		"paths": {
-			"@jayden/jai-utils": ["./packages/utils/src/index.ts"],
-			"@jayden/jai-utils/*": ["./packages/utils/src/*"],
-			"@jayden/jai-ai": ["./packages/ai/src/index.ts"],
-			"@jayden/jai-ai/*": ["./packages/ai/src/*"],
-			"@jayden/jai-agent": ["./packages/agent/src/index.ts"],
-			"@jayden/jai-agent/*": ["./packages/agent/src/*"],
-			"@jayden/jai-session": ["./packages/session/src/index.ts"],
-			"@jayden/jai-session/*": ["./packages/session/src/*"],
-			"@jayden/jai-coding-agent": ["./packages/coding-agent/src/index.ts"],
-			"@jayden/jai-coding-agent/*": ["./packages/coding-agent/src/*"],
-			"@jayden/jai-tui": ["./packages/tui/src/index.ts"],
-			"@jayden/jai-tui/*": ["./packages/tui/src/*"]
-		}
+		"jsx": "react-jsx"
 	},
-	"include": ["packages/*/src/**/*", "packages/*/test/**/*"],
+	"include": ["app/*/src/**/*", "app/*/electron/**/*"],
 	"exclude": ["**/dist/**"]
 }
