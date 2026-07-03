@@ -27,6 +27,8 @@
 		"includes": [
 			"app/*/src/**/*.{ts,tsx}",
 			"app/*/electron/**/*.ts",
+			"packages/*/src/**/*.ts",
+			"packages/*/test/**/*.ts",
 			"!**/node_modules",
 			"!**/dist",
 			"!**/models-snapshot.json",

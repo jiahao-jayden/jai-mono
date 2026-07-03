@@ -4,6 +4,6 @@
 		"noEmit": true,
 		"jsx": "react-jsx"
 	},
-	"include": ["app/*/src/**/*", "app/*/electron/**/*"],
+	"include": ["app/*/src/**/*", "app/*/electron/**/*", "packages/*/src/**/*", "packages/*/test/**/*"],
 	"exclude": ["**/dist/**"]
 }

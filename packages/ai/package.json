@@ -1,0 +1,22 @@
+{
+	"name": "@jai/ai",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Provider-neutral AI streaming layer for Jai.",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@anthropic-ai/sdk": "^0.110.0",
+		"@sinclair/typebox": "catalog:",
+		"openai": "^6.45.0"
+	},
+	"devDependencies": {
+		"typescript": "catalog:"
+	}
+}
