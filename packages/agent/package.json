@@ -1,0 +1,21 @@
+{
+	"name": "@jai/agent",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Agent loop layer for Jai: tool-calling loop, steering/follow-up.",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@jai/ai": "workspace:*",
+		"@sinclair/typebox": "catalog:"
+	},
+	"devDependencies": {
+		"typescript": "catalog:"
+	}
+}

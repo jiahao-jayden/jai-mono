@@ -9,7 +9,8 @@
 	},
 	"scripts": {
 		"typecheck": "tsc -p tsconfig.json --noEmit",
-		"test": "bun test"
+		"test": "bun test test/*.test.ts",
+		"test:e2e": "for f in test/integration/*.e2e.test.ts; do echo \"== $f ==\"; AI_E2E=1 bun test \"$f\" || exit 1; done"
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.110.0",

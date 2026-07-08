@@ -24,7 +24,7 @@ export interface ImageContent {
 	mimeType: string;
 }
 
-export interface ToolCallContent {
+export interface ToolCall {
 	type: "toolCall";
 	id: string;
 	name: string;
@@ -42,7 +42,7 @@ export interface UserMessage {
 
 export interface AssistantMessage {
 	role: "assistant";
-	content: string | (TextContent | ImageContent | ToolCallContent)[];
+	content: (TextContent | ThinkingContent | ToolCall)[];
 	provider: string;
 	model: string;
 	usage: Usage;
@@ -90,18 +90,18 @@ export interface ModelCost {
 	cacheWrite: number;
 }
 
-export interface OpenAICompat {
+export interface OpenAICompatibility {
 	maxTokensField?: "max_tokens" | "max_completion_tokens";
 	supportsUsageInStreaming?: boolean;
 	supportsStrictTools?: boolean;
 	reasoningFormat?: "openai" | "deepseek" | "none";
 }
 
-export interface AnthropicCompat {
+export interface AnthropicCompatibility {
 	supportsThinking?: boolean;
 }
 
-export type ModelCompat = OpenAICompat | AnthropicCompat;
+export type ModelCompatibility = OpenAICompatibility | AnthropicCompatibility;
 
 export interface Model<TApi extends Api = Api> {
 	id: string;
@@ -114,11 +114,11 @@ export interface Model<TApi extends Api = Api> {
 	cost: ModelCost;
 	contextWindow: number;
 	maxTokens: number;
-	compat?: TApi extends "openai-chat-completions"
-		? OpenAICompat
+	compatibility?: TApi extends "openai-chat-completions"
+		? OpenAICompatibility
 		: TApi extends "anthropic-messages"
-			? AnthropicCompat
-			: ModelCompat;
+			? AnthropicCompatibility
+			: ModelCompatibility;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -136,9 +136,26 @@ export interface Usage {
 		output: number;
 		cacheRead: number;
 		cacheWrite: number;
-		reasoning?: number;
-		totalTokens: number;
+		total: number;
 	};
 }
 
 export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
+
+/* -------------------------------------------------------------------------- */
+/*                                    Event                                   */
+/* -------------------------------------------------------------------------- */
+
+export type AssistantMessageEvent =
+	| { type: "start"; partial: AssistantMessage }
+	| { type: "text_start"; contentIndex: number; partial: AssistantMessage }
+	| { type: "text_delta"; contentIndex: number; delta: string; partial: AssistantMessage }
+	| { type: "text_end"; contentIndex: number; content: string; partial: AssistantMessage }
+	| { type: "thinking_start"; contentIndex: number; partial: AssistantMessage }
+	| { type: "thinking_delta"; contentIndex: number; delta: string; partial: AssistantMessage }
+	| { type: "thinking_end"; contentIndex: number; content: string; partial: AssistantMessage }
+	| { type: "toolcall_start"; contentIndex: number; partial: AssistantMessage }
+	| { type: "toolcall_delta"; contentIndex: number; delta: string; partial: AssistantMessage }
+	| { type: "toolcall_end"; contentIndex: number; toolCall: ToolCall; partial: AssistantMessage }
+	| { type: "done"; reason: Extract<StopReason, "stop" | "length" | "toolUse">; message: AssistantMessage }
+	| { type: "error"; reason: Extract<StopReason, "error" | "aborted">; error: AssistantMessage };
