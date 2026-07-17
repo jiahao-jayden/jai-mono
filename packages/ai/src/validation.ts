@@ -16,6 +16,9 @@ export function validateToolCall(tools: Tool[], toolCall: ToolCall): ValidationR
 	return validateToolArguments(tool, toolCall) as ValidationResult;
 }
 
+/**
+ * 验证工具参数
+ */
 export function validateToolArguments<T extends TSchema>(
 	tool: Tool<T>,
 	toolCall: ToolCall,
@@ -29,7 +32,9 @@ export function validateToolArguments<T extends TSchema>(
 		return { success: true, data: args as Static<T> };
 	}
 
-	const errors = [...Value.Errors(tool.parameters, args)].map((e) => `  - ${e.path || "/"}: ${e.message}`).join("\n");
+	const errors = [...Value.Errors(tool.parameters, args)]
+		.map((error) => `  - ${error.path || "/"}: ${error.message}`)
+		.join("\n");
 
 	const received = JSON.stringify(toolCall.arguments, null, 2);
 	return {

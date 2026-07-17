@@ -1,3 +1,4 @@
+import { getErrorMessage } from "@jai/common";
 import type { AssistantMessageEventStream } from "./event-stream";
 import type { AssistantMessage, AssistantMessageEvent, StopReason } from "./types";
 import { zeroUsage } from "./utils";
@@ -63,7 +64,7 @@ export async function runAdapterStream<TChunk>(
 		});
 	} catch (error) {
 		output.stopReason = signal?.aborted ? "aborted" : "error";
-		output.errorMessage = error instanceof Error ? error.message : String(error);
+		output.errorMessage = getErrorMessage(error);
 		eventStream.push({
 			type: "error",
 			reason: output.stopReason,
