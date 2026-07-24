@@ -9,7 +9,7 @@ import {
 	zeroUsage,
 } from "@jai/ai";
 import { Type } from "@sinclair/typebox";
-import { Agent, type AgentTool } from "../src";
+import { Agent, type AgentEvent, type AgentTool } from "../src";
 
 const model: Model = {
 	id: "test-model",
@@ -86,12 +86,10 @@ function providerFor(responses: AssistantMessage[], contexts: Context[] = []): P
 
 function createAgent(provider: Provider, tools: AgentTool[] = []): Agent {
 	return new Agent({
-		context: {
-			systemPrompt: "You are helpful.",
-			messages: [],
-			tools,
-		},
-		config: { model, provider },
+		model,
+		provider,
+		instructions: "You are helpful.",
+		tools,
 	});
 }
 
@@ -138,70 +136,41 @@ function finish(call: ControlledCall, message: AssistantMessage): void {
 }
 
 describe("Agent", () => {
-	test("keeps the run active through agent_end listeners and finishes idle", async () => {
+	test("keeps the run active through agent_end and finishes idle", async () => {
 		const agent = createAgent(providerFor([assistant("done")]));
 		let isRunningAtEnd: boolean | undefined;
 		let signalAtStart: AbortSignal | undefined;
 
-		agent.subscribe((event, signal) => {
+		const run = agent.stream(user("start"));
+		for await (const event of run) {
 			if (event.type === "agent_start") {
 				signalAtStart = agent.signal;
-				expect(agent.signal).toBe(signal);
 			}
 			if (event.type === "agent_end") {
-				isRunningAtEnd = agent.state.isRunning;
+				isRunningAtEnd = agent.getSession().isRunning;
 			}
-		});
-
-		await agent.prompt(user("start"));
+		}
 
 		expect(signalAtStart).toBeInstanceOf(AbortSignal);
 		expect(isRunningAtEnd).toBe(true);
-		expect(agent.state.isRunning).toBe(false);
+		expect(agent.getSession().isRunning).toBe(false);
 		expect(agent.signal).toBeUndefined();
-		expect(agent.state.pendingToolCallIds.size).toBe(0);
+		expect(agent.getSession().pendingToolCallIds.length).toBe(0);
 	});
 
-	test("reduces each message lifecycle before notifying listeners", async () => {
+	test("reduces each event before yielding it from stream", async () => {
 		const agent = createAgent(providerFor([assistant("done")]));
 		const statesAtMessageStart: Array<string | undefined> = [];
 
-		agent.subscribe((event) => {
+		for await (const event of agent.stream(user("start"))) {
 			if (event.type === "message_start") {
-				statesAtMessageStart.push(agent.state.streamingMessage?.role);
+				statesAtMessageStart.push(agent.getSession().streamingMessage?.role);
 			}
-		});
-
-		await agent.prompt(user("start"));
+		}
 
 		expect(statesAtMessageStart).toEqual(["user", "assistant"]);
-		expect(agent.state.streamingMessage).toBeUndefined();
-		expect(agent.state.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
-	});
-
-	test("recovers from listener failure without discarding queued messages", async () => {
-		const contexts: Context[] = [];
-		const agent = createAgent(
-			providerFor([assistant("first reply"), assistant("second reply")], contexts),
-		);
-		const staleMessage = user("stale steering");
-		let failListener = true;
-
-		const unsubscribe = agent.subscribe((event) => {
-			if (event.type === "agent_start" && failListener) {
-				failListener = false;
-				agent.steer(staleMessage);
-				throw new Error("listener failed");
-			}
-		});
-
-		await expect(agent.prompt(user("first"))).rejects.toThrow("listener failed");
-		unsubscribe();
-		await agent.prompt(user("second"));
-
-		expect(contexts).toHaveLength(2);
-		expect(contexts[1]?.messages).toContain(staleMessage);
-		expect(agent.state.isRunning).toBe(false);
+		expect(agent.getSession().streamingMessage).toBeUndefined();
+		expect(agent.getSession().messages.map((message) => message.role)).toEqual(["user", "assistant"]);
 	});
 
 	test("abort is a no-op while idle", () => {
@@ -217,7 +186,7 @@ describe("Agent", () => {
 		expect(() => agent.followUp(user("follow up"))).toThrow("Agent is idle");
 	});
 
-	test("rejects concurrent prompts", async () => {
+	test("rejects concurrent invocations", async () => {
 		const stream = new AssistantMessageEventStream();
 		const provider: Provider = {
 			id: "test",
@@ -226,16 +195,16 @@ describe("Agent", () => {
 			},
 		};
 		const agent = createAgent(provider);
-		const firstPrompt = agent.prompt(user("first"));
+		const firstInvocation = agent.invoke(user("first"));
 
-		await expect(agent.prompt(user("second"))).rejects.toThrow("Agent is already running");
+		expect(() => agent.invoke(user("second"))).toThrow("Agent is already running");
 
 		const reply = assistant("done");
 		stream.push({ type: "start", partial: reply });
 		stream.push({ type: "done", reason: "stop", message: reply });
 
-		await firstPrompt;
-		expect(agent.state.isRunning).toBe(false);
+		await firstInvocation;
+		expect(agent.getSession().isRunning).toBe(false);
 	});
 
 	test("injects steering before follow-up through its internal queues", async () => {
@@ -243,7 +212,7 @@ describe("Agent", () => {
 		const agent = createAgent(provider);
 		const steering = user("steer");
 		const followUp = user("follow up");
-		const run = agent.prompt(user("start"));
+		const run = agent.invoke(user("start"));
 
 		const first = await nextCall();
 		agent.steer(steering);
@@ -287,13 +256,13 @@ describe("Agent", () => {
 			},
 		};
 		const agent = createAgent(provider);
-		const run = agent.prompt(user("start"));
+		const run = agent.invoke(user("start"));
 
 		agent.abort();
 		const messages = await run;
 
 		expect(messages.at(-1)).toBe(abortedMessage);
-		expect(agent.state.isRunning).toBe(false);
+		expect(agent.getSession().isRunning).toBe(false);
 		expect(agent.signal).toBeUndefined();
 	});
 
@@ -325,41 +294,24 @@ describe("Agent", () => {
 		let pendingAtStart = false;
 		let pendingAtEnd = true;
 
-		agent.subscribe((event) => {
+		for await (const event of agent.stream(user("read"))) {
 			if (event.type === "tool_execution_start") {
-				pendingAtStart = agent.state.pendingToolCallIds.has(event.toolCallId);
+				pendingAtStart = agent.getSession().pendingToolCallIds.includes(event.toolCallId);
 			}
 			if (event.type === "tool_execution_end") {
-				pendingAtEnd = agent.state.pendingToolCallIds.has(event.toolCallId);
+				pendingAtEnd = agent.getSession().pendingToolCallIds.includes(event.toolCallId);
 			}
-		});
-
-		await agent.prompt(user("read"));
+		}
 
 		expect(pendingAtStart).toBe(true);
 		expect(pendingAtEnd).toBe(false);
 	});
 
-	test("waitForIdle resolves after asynchronous listeners finish", async () => {
-		const agent = createAgent(providerFor([assistant("done")]));
-		let releaseListener = () => {};
-		let markListenerStarted = () => {};
-		const listenerStarted = new Promise<void>((resolve) => {
-			markListenerStarted = resolve;
-		});
-		const listenerDone = new Promise<void>((resolve) => {
-			releaseListener = resolve;
-		});
-
-		agent.subscribe(async (event) => {
-			if (event.type === "agent_end") {
-				markListenerStarted();
-				await listenerDone;
-			}
-		});
-
-		const run = agent.prompt(user("start"));
-		await listenerStarted;
+	test("waitForIdle resolves after the active invocation finishes", async () => {
+		const { provider, nextCall } = createControlledProvider();
+		const agent = createAgent(provider);
+		const run = agent.invoke(user("start"));
+		const call = await nextCall();
 
 		let idle = false;
 		const waiting = agent.waitForIdle().then(() => {
@@ -368,7 +320,7 @@ describe("Agent", () => {
 		await Promise.resolve();
 		expect(idle).toBe(false);
 
-		releaseListener();
+		finish(call, assistant("done"));
 		await run;
 		await waiting;
 		expect(idle).toBe(true);
@@ -383,26 +335,103 @@ describe("Agent", () => {
 		};
 		const reply = assistant("done");
 		const agent = new Agent({
-			context: originalContext,
-			config: { model, provider: providerFor([reply]) },
+			model,
+			provider: providerFor([reply]),
+			instructions: originalContext.systemPrompt,
+			messages: originalContext.messages,
+			tools: originalContext.tools,
 		});
-		const prompt = user("start");
+		const input = user("start");
 
-		const messages = await agent.prompt(prompt);
+		const messages = await agent.invoke(input);
 
-		expect(messages).toEqual([prompt, reply]);
-		expect(agent.state.messages).toEqual([previous, prompt, reply]);
+		expect(messages).toEqual([input, reply]);
+		expect(agent.getSession().messages).toEqual([previous, input, reply]);
 		expect(originalContext.messages).toEqual([previous]);
+	});
+
+	test("accepts a string input", async () => {
+		const contexts: Context[] = [];
+		const agent = createAgent(providerFor([assistant("done")], contexts));
+
+		const messages = await agent.invoke("hello");
+
+		expect(messages[0]).toMatchObject({ role: "user", content: "hello" });
+		expect(contexts[0]?.messages[0]).toMatchObject({ role: "user", content: "hello" });
+		expect(agent.getSession().messages[0]).toMatchObject({ role: "user", content: "hello" });
+	});
+
+	test("restores transcript from a Session without restoring transient run state", async () => {
+		const previous = user("previous");
+		const agent = new Agent({
+			model,
+			provider: providerFor([assistant("done")]),
+			tools: [],
+			session: {
+				systemPrompt: "Restored instructions",
+				messages: [previous],
+				tools: [{ name: "old", description: "Old tool metadata" }],
+				isRunning: true,
+				pendingToolCallIds: ["stale-call"],
+			},
+		});
+
+		const session = agent.getSession();
+
+		expect(session.systemPrompt).toBe("Restored instructions");
+		expect(session.messages).toEqual([previous]);
+		expect(session.tools).toEqual([]);
+		expect(session.isRunning).toBe(false);
+		expect(session.pendingToolCallIds).toEqual([]);
 	});
 
 	test("reset clears transcript and preserves configuration", async () => {
 		const agent = createAgent(providerFor([assistant("done")]));
 
-		await agent.prompt(user("start"));
+		await agent.invoke(user("start"));
 		agent.reset();
 
-		expect(agent.state.messages).toEqual([]);
-		expect(agent.state.systemPrompt).toBe("You are helpful.");
-		expect(agent.state.tools).toEqual([]);
+		expect(agent.getSession().messages).toEqual([]);
+		expect(agent.getSession().systemPrompt).toBe("You are helpful.");
+		expect(agent.getSession().tools).toEqual([]);
+	});
+
+	test("session and events survive JSON round-trip (wire-safe)", async () => {
+		const parameters = Type.Object({});
+		const tool: AgentTool<typeof parameters> = {
+			name: "read",
+			label: "Read File",
+			description: "Read a file",
+			parameters,
+			async execute() {
+				return {
+					content: [{ type: "text", text: "contents" }],
+					details: { path: "/a", lines: 1 },
+				};
+			},
+		};
+		const toolReply: AssistantMessage = {
+			...assistant(""),
+			content: [{ type: "toolCall", id: "read-1", name: "read", arguments: {} }],
+			stopReason: "toolUse",
+		};
+		const agent = createAgent(providerFor([toolReply, assistant("done")]), [tool]);
+		const events: AgentEvent[] = [];
+
+		const run = agent.stream(user("read"));
+		for await (const event of run) {
+			events.push(event);
+		}
+		expect(await run.result()).toHaveLength(4);
+
+		for (const event of events) {
+			expect(JSON.parse(JSON.stringify(event))).toEqual(event);
+		}
+
+		const session = agent.getSession();
+		expect(JSON.parse(JSON.stringify(session))).toEqual(session);
+		expect(session.tools).toEqual([
+			{ name: "read", label: "Read File", description: "Read a file" },
+		]);
 	});
 });

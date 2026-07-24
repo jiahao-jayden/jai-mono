@@ -1,0 +1,22 @@
+{
+	"name": "@jai/coding",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Built-in coding tools for Jai: read/glob/grep/write/edit/bash with workspace boundaries.",
+	"exports": {
+		".": "./src/index.ts",
+		"./tools": "./src/tools/index.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@jai/agent": "workspace:*",
+		"@sinclair/typebox": "catalog:"
+	},
+	"devDependencies": {
+		"typescript": "catalog:"
+	}
+}

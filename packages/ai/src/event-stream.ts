@@ -5,14 +5,16 @@ export class EventStream<TEvent, TResult = TEvent> implements AsyncIterable<TEve
 	private waiting: Array<(value: IteratorResult<TEvent>) => void> = [];
 	private done = false;
 	private resolveResult!: (result: TResult) => void;
+	private rejectResult!: (error: unknown) => void;
 	private finalResultPromise: Promise<TResult>;
 
 	constructor(
 		private readonly isComplete: (event: TEvent) => boolean,
 		private readonly extractResult: (event: TEvent) => TResult,
 	) {
-		this.finalResultPromise = new Promise<TResult>((resolve) => {
+		this.finalResultPromise = new Promise<TResult>((resolve, reject) => {
 			this.resolveResult = resolve;
+			this.rejectResult = reject;
 		});
 	}
 
@@ -40,6 +42,14 @@ export class EventStream<TEvent, TResult = TEvent> implements AsyncIterable<TEve
 
 		this.done = true;
 		this.resolveResult(result);
+		this.finishWaiting();
+	}
+
+	fail(error: unknown): void {
+		if (this.done) return;
+
+		this.done = true;
+		this.rejectResult(error);
 		this.finishWaiting();
 	}
 

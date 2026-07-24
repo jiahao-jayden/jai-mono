@@ -1,3 +1,18 @@
-export { Agent, type AgentListener, type AgentOptions, type AgentState } from "./agent";
-export { type AgentEventStream, agentLoop } from "./agent-loop";
-export * from "./types";
+export {
+	Agent,
+	type AgentInput,
+	type AgentOptions,
+	type AgentRun,
+	type Session,
+	type ToolInfo,
+} from "./agent";
+export type {
+	AgentEvent,
+	AgentMessage,
+	AgentTool,
+	AgentToolResult,
+	ToolCallContext,
+	ToolExecutionMode,
+	ToolMiddleware,
+	ToolUpdateCallback,
+} from "./types";

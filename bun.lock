@@ -116,9 +116,30 @@
         "typescript": "catalog:",
       },
     },
+    "packages/coding": {
+      "name": "@jai/coding",
+      "version": "0.0.0",
+      "dependencies": {
+        "@jai/agent": "workspace:*",
+        "@sinclair/typebox": "catalog:",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
+      },
+    },
     "packages/common": {
       "name": "@jai/common",
       "version": "0.0.0",
+      "devDependencies": {
+        "typescript": "catalog:",
+      },
+    },
+    "packages/sdk": {
+      "name": "@jai/sdk",
+      "version": "0.0.0",
+      "dependencies": {
+        "@jai/agent": "workspace:*",
+      },
       "devDependencies": {
         "typescript": "catalog:",
       },
@@ -479,7 +500,11 @@
 
     "@jai/ai": ["@jai/ai@workspace:packages/ai"],
 
+    "@jai/coding": ["@jai/coding@workspace:packages/coding"],
+
     "@jai/common": ["@jai/common@workspace:packages/common"],
+
+    "@jai/sdk": ["@jai/sdk@workspace:packages/sdk"],
 
     "@jayden/jai-desktop": ["@jayden/jai-desktop@workspace:app/desktop"],
 

@@ -60,6 +60,17 @@ describe("EventStream", () => {
 		stream.end("manual");
 		expect(await iterator.next()).toEqual({ done: true, value: undefined });
 	});
+
+	test("rejects the result and closes iterators on failure", async () => {
+		const stream = new EventStream<string, string>(() => false, (event) => event);
+		const iterator = stream[Symbol.asyncIterator]();
+		const next = iterator.next();
+
+		stream.fail(new Error("boom"));
+
+		expect(await next).toEqual({ done: true, value: undefined });
+		await expect(stream.result()).rejects.toThrow("boom");
+	});
 });
 
 describe("AssistantMessageEventStream", () => {
