@@ -434,4 +434,35 @@ describe("Agent", () => {
 			{ name: "read", label: "Read File", description: "Read a file" },
 		]);
 	});
+
+	test("rejects a model whose provider does not match the given provider", () => {
+		expect(
+			() =>
+				new Agent({
+					model,
+					provider: { id: "other", stream: providerFor([]).stream },
+				}),
+		).toThrow('Model "test-model" belongs to provider "test", not "other"');
+	});
+
+	test("rejects duplicate tool names", () => {
+		const parameters = Type.Object({});
+		const makeTool = (): AgentTool<typeof parameters> => ({
+			name: "read",
+			description: "Read a file",
+			parameters,
+			async execute() {
+				return { content: [{ type: "text", text: "" }] };
+			},
+		});
+
+		expect(
+			() =>
+				new Agent({
+					model,
+					provider: providerFor([]),
+					tools: [makeTool(), makeTool()],
+				}),
+		).toThrow('Duplicate tool name "read"');
+	});
 });

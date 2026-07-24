@@ -58,9 +58,11 @@ export class Agent {
 	private activeRun?: ActiveRun;
 
 	constructor(options: AgentOptions) {
+		assertModelMatchesProvider(options.model, options.provider);
+
 		this.systemPrompt = options.instructions ?? options.session?.systemPrompt ?? "";
 		this.messages = [...(options.session?.messages ?? options.messages ?? [])];
-		this.tools = [...(options.tools ?? [])];
+		this.tools = assertUniqueTools(options.tools ?? []);
 		this.config = {
 			model: options.model,
 			provider: options.provider,
@@ -272,6 +274,24 @@ function createAgentRun(): EventStream<AgentEvent, AgentMessage[]> {
 		() => false,
 		() => [],
 	);
+}
+
+function assertModelMatchesProvider(model: AgentOptions["model"], provider: AgentOptions["provider"]): void {
+	if (model.provider !== provider.id) {
+		throw new Error(`Model "${model.id}" belongs to provider "${model.provider}", not "${provider.id}"`);
+	}
+}
+
+/** 工具保持给定顺序，但名字必须唯一。 */
+function assertUniqueTools(tools: AgentTool[]): AgentTool[] {
+	const seen = new Set<string>();
+	for (const tool of tools) {
+		if (seen.has(tool.name)) {
+			throw new Error(`Duplicate tool name "${tool.name}"`);
+		}
+		seen.add(tool.name);
+	}
+	return [...tools];
 }
 
 function toMessages(input: AgentInput): AgentMessage[] {
