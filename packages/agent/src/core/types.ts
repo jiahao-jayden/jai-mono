@@ -65,10 +65,7 @@ export interface ToolCallContext {
  * - 不调 next() 直接返回 → 相当于 beforeToolCall 否决（如权限拦截）。
  * - await next() 后包装结果 → 相当于 afterToolCall。
  */
-export type ToolMiddleware = (
-	ctx: ToolCallContext,
-	next: () => Promise<AgentToolResult>,
-) => Promise<AgentToolResult>;
+export type ToolMiddleware = (ctx: ToolCallContext, next: () => Promise<AgentToolResult>) => Promise<AgentToolResult>;
 
 export type AgentMessage = Message;
 

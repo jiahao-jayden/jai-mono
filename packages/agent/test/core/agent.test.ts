@@ -9,7 +9,7 @@ import {
 	zeroUsage,
 } from "@jai/ai";
 import { Type } from "@sinclair/typebox";
-import { Agent, type AgentEvent, type AgentTool } from "../src";
+import { Agent, type AgentEvent, type AgentTool } from "../../src";
 
 const model: Model = {
 	id: "test-model",

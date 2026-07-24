@@ -67,9 +67,7 @@ function CapsuleError({ id, message }: { id: string; message: string }) {
 		<div role="status" title={message} className="flex h-22 items-center justify-center px-4 text-center">
 			<p className="text-[12.5px] italic text-muted-foreground/65 leading-relaxed">
 				无法加载 capsule
-				<span className="not-italic font-mono text-[11.5px] text-muted-foreground/50 ml-1.5">
-					{id}
-				</span>
+				<span className="not-italic font-mono text-[11.5px] text-muted-foreground/50 ml-1.5">{id}</span>
 			</p>
 		</div>
 	);

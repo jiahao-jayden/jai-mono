@@ -142,9 +142,7 @@ export function McpPane() {
 									server={s}
 									isToggling={togglingName === s.name}
 									onEdit={
-										cfg
-											? () => setEditor({ open: true, mode: "edit", name: s.name, config: cfg })
-											: undefined
+										cfg ? () => setEditor({ open: true, mode: "edit", name: s.name, config: cfg }) : undefined
 									}
 									onToggle={cfg ? () => toggle.mutate(s.name) : undefined}
 									onRemove={() => setPendingRemove(s.name)}

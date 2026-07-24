@@ -134,16 +134,6 @@
         "typescript": "catalog:",
       },
     },
-    "packages/sdk": {
-      "name": "@jai/sdk",
-      "version": "0.0.0",
-      "dependencies": {
-        "@jai/agent": "workspace:*",
-      },
-      "devDependencies": {
-        "typescript": "catalog:",
-      },
-    },
   },
   "catalog": {
     "@sinclair/typebox": "^0.34.49",
@@ -503,8 +493,6 @@
     "@jai/coding": ["@jai/coding@workspace:packages/coding"],
 
     "@jai/common": ["@jai/common@workspace:packages/common"],
-
-    "@jai/sdk": ["@jai/sdk@workspace:packages/sdk"],
 
     "@jayden/jai-desktop": ["@jayden/jai-desktop@workspace:app/desktop"],
 

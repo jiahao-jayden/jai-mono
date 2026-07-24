@@ -39,8 +39,14 @@ function getCatalog(): Promise<Map<string, CatalogCapsule>> {
 	if (_catalog) return Promise.resolve(_catalog);
 	if (!_catalogPromise) {
 		_catalogPromise = fetchCatalog().then(
-			(m) => { _catalog = m; return m; },
-			(err) => { _catalogPromise = null; throw err; },
+			(m) => {
+				_catalog = m;
+				return m;
+			},
+			(err) => {
+				_catalogPromise = null;
+				throw err;
+			},
 		);
 	}
 	return _catalogPromise;
@@ -106,7 +112,9 @@ export function useCapsuleResource(id: string | null, component: string, schemaH
 				if (alive) setState({ kind: "error", error: err instanceof Error ? err : new Error(String(err)) });
 			});
 
-		return () => { alive = false; };
+		return () => {
+			alive = false;
+		};
 	}, [id, component, schemaHash]);
 
 	return state;

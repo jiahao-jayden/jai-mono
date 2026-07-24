@@ -26,7 +26,9 @@ export function McpServerCard({ server, onEdit, onToggle, onRemove, isToggling }
 				<StatusDot status={server.status} />
 				<div className="min-w-0 flex-1">
 					<div className="flex items-baseline gap-2.5 flex-wrap">
-						<span className="font-serif text-[15.5px] tracking-tight text-foreground truncate">{server.name}</span>
+						<span className="font-serif text-[15.5px] tracking-tight text-foreground truncate">
+							{server.name}
+						</span>
 						<span className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground/55">
 							{server.transport}
 						</span>
@@ -141,9 +143,7 @@ function StatusBody({ server }: { server: McpServerInfo }) {
 		);
 	}
 	if (status.status === "pending") {
-		return (
-			<p className="mt-1 font-serif italic text-[12.5px] text-muted-foreground/60 leading-snug">Connecting…</p>
-		);
+		return <p className="mt-1 font-serif italic text-[12.5px] text-muted-foreground/60 leading-snug">Connecting…</p>;
 	}
 	return null;
 }

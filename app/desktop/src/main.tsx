@@ -14,7 +14,7 @@ function resolveView(): React.ReactNode {
 	switch (window.location.hash) {
 		case "#/settings":
 			return <Settings />;
-default:
+		default:
 			return <App />;
 	}
 }

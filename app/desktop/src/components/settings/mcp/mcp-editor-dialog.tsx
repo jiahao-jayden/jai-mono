@@ -43,8 +43,7 @@ function validateLocally(name: string, jsonText: string, isEdit: boolean): Local
 	if (!isEdit) {
 		if (!trimmed) return { kind: "name", msg: "Name is required" };
 		if (trimmed.length > 64) return { kind: "name", msg: "Name must be ≤ 64 characters" };
-		if (!NAME_RE.test(trimmed))
-			return { kind: "name", msg: "Only letters, digits, '.', '-', '_' allowed" };
+		if (!NAME_RE.test(trimmed)) return { kind: "name", msg: "Only letters, digits, '.', '-', '_' allowed" };
 	}
 
 	if (!jsonText.trim()) return { kind: "json", msg: "Config JSON is required" };
@@ -84,13 +83,7 @@ function detectTransport(jsonText: string): "stdio" | "http" | null {
 	return null;
 }
 
-export function McpEditorDialog({
-	open,
-	onOpenChange,
-	mode,
-	initialName = "",
-	initialConfig,
-}: McpEditorDialogProps) {
+export function McpEditorDialog({ open, onOpenChange, mode, initialName = "", initialConfig }: McpEditorDialogProps) {
 	const isEdit = mode === "edit";
 	const [name, setName] = useState(initialName);
 	const [jsonText, setJsonText] = useState(() =>
@@ -155,9 +148,7 @@ export function McpEditorDialog({
 								localErr?.kind === "name" && "border-destructive focus-visible:ring-destructive/30",
 							)}
 						/>
-						{localErr?.kind === "name" && (
-							<p className="text-[11.5px] text-destructive/90">{localErr.msg}</p>
-						)}
+						{localErr?.kind === "name" && <p className="text-[11.5px] text-destructive/90">{localErr.msg}</p>}
 						{!isEdit && !localErr && (
 							<p className="text-[11.5px] text-muted-foreground/70">
 								Used as tool prefix:{" "}
@@ -230,10 +221,7 @@ export function McpEditorDialog({
 	);
 }
 
-function describeOutcome(
-	name: string,
-	server: McpStatusResponse["servers"][number] | undefined,
-): void {
+function describeOutcome(name: string, server: McpStatusResponse["servers"][number] | undefined): void {
 	if (!server) {
 		toast.success(`Saved ${name}`);
 		return;

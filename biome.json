@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.4.9/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.3.14/schema.json",
 	"linter": {
 		"enabled": true,
 		"rules": {
@@ -28,11 +28,10 @@
 			"app/*/src/**/*.{ts,tsx}",
 			"app/*/electron/**/*.ts",
 			"packages/*/src/**/*.ts",
-			"packages/*/test/**/*.ts",
+			"!**/test",
 			"!**/node_modules",
 			"!**/dist",
 			"!**/models-snapshot.json",
-			"!**/test/*.test.ts",
 			"!**/components/ui",
 			"!**/components/ai-elements"
 		]

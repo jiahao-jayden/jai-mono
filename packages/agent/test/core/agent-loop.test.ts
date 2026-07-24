@@ -10,13 +10,13 @@ import {
 	zeroUsage,
 } from "@jai/ai";
 import { Type } from "@sinclair/typebox";
-import { agentLoop } from "../src/agent-loop";
+import { agentLoop } from "../../src/core/agent-loop";
 import type {
 	AgentContext,
 	AgentEvent,
 	AgentMessage,
 	AgentTool,
-} from "../src/types";
+} from "../../src/core/types";
 
 const model: Model = {
 	id: "test-model",

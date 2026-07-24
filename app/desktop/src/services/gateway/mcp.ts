@@ -1,8 +1,4 @@
-import type {
-	McpServerConfig,
-	McpServersConfigResponse,
-	McpStatusResponse,
-} from "@jayden/jai-gateway";
+import type { McpServerConfig, McpServersConfigResponse, McpStatusResponse } from "@jayden/jai-gateway";
 import type { $Fetch } from "ofetch";
 
 export function createMcpApi(gw: () => $Fetch) {
