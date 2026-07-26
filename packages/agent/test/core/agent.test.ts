@@ -370,6 +370,7 @@ describe("Agent", () => {
 			session: {
 				systemPrompt: "Restored instructions",
 				messages: [previous],
+				appState: { resolved: true },
 				tools: [{ name: "old", description: "Old tool metadata" }],
 				isRunning: true,
 				pendingToolCallIds: ["stale-call"],
@@ -380,6 +381,7 @@ describe("Agent", () => {
 
 		expect(session.systemPrompt).toBe("Restored instructions");
 		expect(session.messages).toEqual([previous]);
+		expect(session.appState).toEqual({ resolved: true });
 		expect(session.tools).toEqual([]);
 		expect(session.isRunning).toBe(false);
 		expect(session.pendingToolCallIds).toEqual([]);

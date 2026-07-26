@@ -1,9 +1,13 @@
 import { EventStream } from "@jai/ai";
 import { agentLoop } from "./agent-loop";
+import { type AgentState, cloneJson, freezeState, type JsonObject, type MutableAgentState } from "./agent-state";
 import { type Session, toToolInfo } from "./session";
 import type { AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentTool } from "./types";
 
 export type AgentInput = string | AgentMessage | AgentMessage[];
+
+/** 事件监听器；返回 Promise 时 loop 会等待它，失败则整次 run 失败。 */
+export type AgentEventListener = (event: AgentEvent) => void | Promise<void>;
 
 /** 一次流式调用：可迭代过程事件，也可等待最终消息。 */
 export interface AgentRun extends AsyncIterable<AgentEvent> {
@@ -11,11 +15,14 @@ export interface AgentRun extends AsyncIterable<AgentEvent> {
 }
 
 /** Agent 负责执行；Session 只用于恢复它持有的对话状态。 */
-export interface AgentOptions extends Omit<AgentLoopConfig, "getSteeringMessages" | "getFollowUpMessages"> {
+export interface AgentOptions<TAppState extends JsonObject = JsonObject>
+	extends Omit<AgentLoopConfig, "getSteeringMessages" | "getFollowUpMessages"> {
 	instructions?: string;
 	messages?: AgentMessage[];
+	/** 业务状态：跨调用持久化，默认不进入模型上下文。 */
+	appState?: TAppState;
 	tools?: AgentTool[];
-	session?: Session;
+	session?: Session<TAppState>;
 }
 
 interface ActiveRun {
@@ -42,26 +49,27 @@ class PendingMessageQueue {
 }
 
 /** 在进程内调用 LLM、执行工具，并维护一段对话状态。 */
-export class Agent {
+export class Agent<TAppState extends JsonObject = JsonObject> {
 	private readonly config: Omit<AgentLoopConfig, "getSteeringMessages" | "getFollowUpMessages">;
 	private readonly steeringQueue = new PendingMessageQueue();
 	private readonly followUpQueue = new PendingMessageQueue();
+	private readonly listeners = new Set<AgentEventListener>();
 
-	private systemPrompt: string;
-	private messages: AgentMessage[];
+	private readonly internalState: MutableAgentState<TAppState>;
 	private tools: AgentTool[];
-
-	private isRunning = false;
-	private streamingMessage?: AgentMessage;
-	private pendingToolCallIds = new Set<string>();
-	private errorMessage?: string;
 	private activeRun?: ActiveRun;
 
-	constructor(options: AgentOptions) {
+	constructor(options: AgentOptions<TAppState>) {
 		assertModelMatchesProvider(options.model, options.provider);
 
-		this.systemPrompt = options.instructions ?? options.session?.systemPrompt ?? "";
-		this.messages = [...(options.session?.messages ?? options.messages ?? [])];
+		const appState = options.appState ?? options.session?.appState ?? ({} as TAppState);
+		this.internalState = {
+			systemPrompt: options.instructions ?? options.session?.systemPrompt ?? "",
+			messages: [...(options.session?.messages ?? options.messages ?? [])],
+			appState: cloneJson(appState),
+			isRunning: false,
+			pendingToolCallIds: new Set(),
+		};
 		this.tools = assertUniqueTools(options.tools ?? []);
 		this.config = {
 			model: options.model,
@@ -73,16 +81,39 @@ export class Agent {
 		};
 	}
 
+	/** 当前状态的防御性副本。 */
+	get state(): AgentState<TAppState> {
+		return freezeState(this.internalState);
+	}
+
 	/** 返回 wire-safe 状态；工具只保留元信息。 */
-	getSession(): Session {
+	getSession(): Session<TAppState> {
+		const state = this.internalState;
 		return {
-			systemPrompt: this.systemPrompt,
-			messages: [...this.messages],
+			systemPrompt: state.systemPrompt,
+			messages: [...state.messages],
+			appState: cloneJson(state.appState),
 			tools: this.tools.map((tool) => toToolInfo(tool)),
-			isRunning: this.isRunning,
-			streamingMessage: this.streamingMessage,
-			pendingToolCallIds: [...this.pendingToolCallIds],
-			errorMessage: this.errorMessage,
+			isRunning: state.isRunning,
+			streamingMessage: state.streamingMessage,
+			pendingToolCallIds: [...state.pendingToolCallIds],
+			errorMessage: state.errorMessage,
+		};
+	}
+
+	setAppState(next: TAppState): void {
+		this.internalState.appState = cloneJson(next);
+	}
+
+	updateAppState(update: (current: TAppState) => TAppState): void {
+		this.setAppState(update(cloneJson(this.internalState.appState)));
+	}
+
+	/** 唯一的事件出口：UI、持久化与日志都挂在这里。 */
+	subscribe(listener: AgentEventListener): () => void {
+		this.listeners.add(listener);
+		return () => {
+			this.listeners.delete(listener);
 		};
 	}
 
@@ -96,14 +127,29 @@ export class Agent {
 
 	stream(input: AgentInput): AgentRun {
 		const output = createAgentRun();
-		void this.startRun(input, (event) => output.push(event)).then(
-			(messages) => output.end(messages),
-			(error) => output.fail(error),
-		);
+		const unsubscribe = this.subscribe((event) => {
+			output.push(event);
+		});
+
+		let run: Promise<AgentMessage[]>;
+		try {
+			run = this.startRun(input);
+		} catch (error) {
+			unsubscribe();
+			throw error;
+		}
+
+		void run
+			.then(
+				(messages) => output.end(messages),
+				(error) => output.fail(error),
+			)
+			.finally(unsubscribe);
+
 		return output;
 	}
 
-	private startRun(input: AgentInput, emit?: (event: AgentEvent) => void): Promise<AgentMessage[]> {
+	private startRun(input: AgentInput): Promise<AgentMessage[]> {
 		if (this.activeRun) {
 			throw new Error("Agent is already running. Use steer() or followUp().");
 		}
@@ -111,19 +157,15 @@ export class Agent {
 		const prompts = toMessages(input);
 		const activeRun = this.createActiveRun();
 		this.activeRun = activeRun;
-		this.isRunning = true;
-		this.streamingMessage = undefined;
-		this.pendingToolCallIds = new Set();
-		this.errorMessage = undefined;
+		this.internalState.isRunning = true;
+		this.internalState.streamingMessage = undefined;
+		this.internalState.pendingToolCallIds = new Set();
+		this.internalState.errorMessage = undefined;
 
-		return this.processRun(prompts, activeRun, emit);
+		return this.processRun(prompts, activeRun);
 	}
 
-	private async processRun(
-		prompts: AgentMessage[],
-		activeRun: ActiveRun,
-		emit?: (event: AgentEvent) => void,
-	): Promise<AgentMessage[]> {
+	private async processRun(prompts: AgentMessage[], activeRun: ActiveRun): Promise<AgentMessage[]> {
 		try {
 			const stream = agentLoop(
 				prompts,
@@ -134,7 +176,7 @@ export class Agent {
 
 			for await (const event of stream) {
 				this.reduce(event);
-				emit?.(event);
+				await this.notify(event);
 			}
 
 			return await stream.result();
@@ -162,7 +204,7 @@ export class Agent {
 	}
 
 	/**
-	 * 清空 transcript 与运行残留。
+	 * 清空 transcript 与运行残留；appState 属于业务状态，不受影响。
 	 * 运行中 reset 会破坏 loop 使用的上下文，因此直接拒绝。
 	 */
 	reset(): void {
@@ -170,49 +212,58 @@ export class Agent {
 			throw new Error("Cannot reset Agent while a run is active.");
 		}
 
-		this.messages = [];
-		this.streamingMessage = undefined;
-		this.pendingToolCallIds = new Set();
-		this.errorMessage = undefined;
+		this.internalState.messages = [];
+		this.internalState.streamingMessage = undefined;
+		this.internalState.pendingToolCallIds = new Set();
+		this.internalState.errorMessage = undefined;
 		this.steeringQueue.clear();
 		this.followUpQueue.clear();
+	}
+
+	/** 状态先更新，再分发；监听器因此总能读到与事件一致的 state。 */
+	private async notify(event: AgentEvent): Promise<void> {
+		for (const listener of [...this.listeners]) {
+			await listener(event);
+		}
 	}
 
 	/**
 	 * 状态归约器（reducer）：把 agentLoop 发出的事件转换成会话当前状态。
 	 */
 	private reduce(event: AgentEvent): void {
+		const state = this.internalState;
+
 		switch (event.type) {
 			case "message_start":
 			case "message_update":
-				this.streamingMessage = event.message;
+				state.streamingMessage = event.message;
 				break;
 
 			case "message_end":
-				this.streamingMessage = undefined;
-				this.messages.push(event.message);
+				state.streamingMessage = undefined;
+				state.messages.push(event.message);
 				break;
 
 			case "tool_execution_start": {
-				const pending = new Set(this.pendingToolCallIds);
+				const pending = new Set(state.pendingToolCallIds);
 				pending.add(event.toolCallId);
-				this.pendingToolCallIds = pending;
+				state.pendingToolCallIds = pending;
 				break;
 			}
 
 			case "tool_execution_end": {
-				const pending = new Set(this.pendingToolCallIds);
+				const pending = new Set(state.pendingToolCallIds);
 				pending.delete(event.toolCallId);
-				this.pendingToolCallIds = pending;
+				state.pendingToolCallIds = pending;
 				break;
 			}
 
 			case "turn_end":
-				this.errorMessage = event.message.errorMessage;
+				state.errorMessage = event.message.errorMessage;
 				break;
 
 			case "agent_end":
-				this.streamingMessage = undefined;
+				state.streamingMessage = undefined;
 				break;
 		}
 	}
@@ -220,8 +271,8 @@ export class Agent {
 	/** 每次 run 都拿独立数组，loop 无法直接修改会话内部状态。 */
 	private createContextSnapshot(): AgentContext {
 		return {
-			systemPrompt: this.systemPrompt,
-			messages: [...this.messages],
+			systemPrompt: this.internalState.systemPrompt,
+			messages: [...this.internalState.messages],
 			tools: [...this.tools],
 		};
 	}
@@ -258,9 +309,9 @@ export class Agent {
 	 * 所有退出路径都经过 finally；先恢复状态，再唤醒 waitForIdle。
 	 */
 	private finishRun(activeRun: ActiveRun): void {
-		this.isRunning = false;
-		this.streamingMessage = undefined;
-		this.pendingToolCallIds = new Set();
+		this.internalState.isRunning = false;
+		this.internalState.streamingMessage = undefined;
+		this.internalState.pendingToolCallIds = new Set();
 
 		if (this.activeRun === activeRun) {
 			this.activeRun = undefined;

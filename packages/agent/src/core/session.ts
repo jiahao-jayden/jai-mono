@@ -1,3 +1,4 @@
+import type { JsonObject } from "./agent-state";
 import type { AgentMessage, AgentTool } from "./types";
 
 /**
@@ -11,9 +12,10 @@ export interface ToolInfo {
 }
 
 /** 一段对话的 wire-safe 状态，可用于渲染、持久化与恢复。 */
-export interface Session {
+export interface Session<TAppState extends JsonObject = JsonObject> {
 	systemPrompt: string;
 	messages: AgentMessage[];
+	appState: TAppState;
 	tools: ToolInfo[];
 
 	isRunning: boolean;
