@@ -6,6 +6,7 @@ export { InMemorySessionStore } from "./stores/memory";
 export { serialized } from "./stores/serialized";
 export {
 	type AppStateEntry,
+	type CompactionEntry,
 	type MessageEntry,
 	SessionBusyError,
 	SessionConflictError,

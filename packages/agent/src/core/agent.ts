@@ -79,6 +79,7 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 			toolExecution: options.toolExecution,
 			toolMiddlewares: options.toolMiddlewares ? [...options.toolMiddlewares] : undefined,
 			prepareContext: options.prepareContext,
+			onModelError: options.onModelError,
 		};
 	}
 

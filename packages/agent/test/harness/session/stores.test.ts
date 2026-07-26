@@ -10,7 +10,13 @@ import {
 	serialized,
 	type SessionStore,
 } from "../../../src/harness";
-import { appStateEntry, messageEntry, sessionInit as init, type AppState } from "../../support/fixtures";
+import {
+	appStateEntry,
+	compactionEntry,
+	messageEntry,
+	sessionInit as init,
+	type AppState,
+} from "../../support/fixtures";
 
 const message = (id: string, text: string) => messageEntry(id, text, `2026-01-01T00:00:0${id.length}.000Z`);
 const appState = (id: string, resolved: boolean) => appStateEntry(id, resolved, "2026-01-01T00:01:00.000Z");
@@ -90,6 +96,19 @@ for (const harness of harnesses) {
 			expect(record?.snapshot.entries.map((entry) => entry.id)).toEqual(["e0", "e1", "e2"]);
 			expect(record?.snapshot.appState).toEqual({ resolved: true });
 			expect(record?.snapshot.updatedAt).toBe("2026-01-01T00:01:00.000Z");
+		});
+
+		test("append round-trips compaction entries", async () => {
+			let revision = await store.create("s1", init);
+			revision = await store.append("s1", message("e0", "first"), revision);
+			revision = await store.append("s1", compactionEntry("e1", "summary", "e0", "2026-01-01T00:02:00.000Z"), revision);
+
+			const record = await store.load("s1");
+
+			expect(record?.readOnly).toBe(false);
+			expect(record?.snapshot.entries[1]).toEqual(
+				compactionEntry("e1", "summary", "e0", "2026-01-01T00:02:00.000Z"),
+			);
 		});
 
 		test("append against a stale revision conflicts instead of overwriting", async () => {

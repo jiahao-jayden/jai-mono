@@ -1,18 +1,66 @@
-import { EventStream } from "@jai/ai";
-import { Agent, type AgentEventListener, type AgentInput, type AgentOptions, type AgentRun } from "../core/agent";
+import { type AssistantMessage, EventStream, type Model, type Provider } from "@jai/ai";
+import { getErrorMessage } from "@jai/common";
+import { Agent, type AgentInput, type AgentOptions } from "../core/agent";
 import { type AgentState, cloneJson, type JsonObject } from "../core/agent-state";
 import type { Session } from "../core/session";
-import type { AgentContext, AgentEvent, AgentMessage } from "../core/types";
-import { type PromptSlot, renderPrompt } from "./prompt";
+import type { AgentContext, AgentEvent, AgentMessage, RetryModelCall } from "../core/types";
+import { compact } from "./compaction/compact";
+import { estimateContextTokens, estimateTokens, resolveCompactionSettings, shouldCompact } from "./compaction/estimate";
+import { hasUncompactedTruncation, isContextOverflow } from "./compaction/overflow";
+import { isSafeCutPoint, projectWithCompaction } from "./compaction/projection";
+import {
+	type CompactionDecisionInput,
+	type CompactionErrorInfo,
+	CompactionFailure,
+	type CompactionResult,
+	type CompactionSettings,
+	type CompactionSettingsOverrides,
+	type CompactionStrategy,
+	type CompactionTrigger,
+} from "./compaction/types";
+import type { HarnessEvent, HarnessEventListener, HarnessRun } from "./events";
 import { restoreFromSnapshot } from "./session/agent-binding";
-import type { SessionHandle } from "./session/types";
+import { SessionLedger } from "./session/ledger";
+import {
+	type CompactionEntry,
+	SessionBusyError,
+	SessionConflictError,
+	type SessionHandle,
+	SessionReadOnlyError,
+} from "./session/types";
+
+export interface DefaultCompactionOptions {
+	settings?: CompactionSettingsOverrides;
+	/** 追加到默认摘要 Prompt 末尾的领域要求，例如"保留所有文件路径"。 */
+	summaryInstructions?: string;
+	/** 完整接管"要不要压"和"压成什么"。 */
+	strategy?: CompactionStrategy;
+}
+
+/** false 表示关闭主动压缩与 overflow 自动恢复；不用 { enabled: false } 是为了不出现"已关闭但仍带参数"。 */
+export type AgentHarnessCompactionOptions = false | DefaultCompactionOptions;
 
 type AgentHarnessCommonOptions<TAppState extends JsonObject> = Omit<
 	AgentOptions<TAppState>,
-	"session" | "instructions" | "messages" | "appState" | "prepareContext"
+	"session" | "instructions" | "messages" | "appState" | "prepareContext" | "onModelError"
 > & {
-	promptSlots?: readonly PromptSlot[];
+	compaction?: AgentHarnessCompactionOptions;
 };
+
+interface CompactionRuntime {
+	settings: CompactionSettings;
+	strategy: CompactionStrategy;
+	summaryInstructions?: string;
+}
+
+/** 默认策略：阈值判断用 hybrid 估算，摘要用内置 compact()。 */
+function defaultCompactionStrategy(): CompactionStrategy {
+	return {
+		shouldCompact: (input) =>
+			shouldCompact(estimateContextTokens(input.context, input.entries).tokens, input.model, input.settings),
+		compact,
+	};
+}
 
 /**
  * 要么给一个已打开的 SessionHandle，由门面从它的 snapshot 恢复 durable 初值，
@@ -40,17 +88,23 @@ export type AgentHarnessOptions<TAppState extends JsonObject = JsonObject> =
  */
 export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 	private readonly agent: Agent<TAppState>;
-	private readonly listeners = new Set<AgentEventListener>();
-	private readonly promptSlots: readonly PromptSlot[];
-	private readonly sessionHandle?: SessionHandle<TAppState>;
-	private sequence: number;
+	private readonly listeners = new Set<HarnessEventListener>();
+	private readonly ledger: SessionLedger<TAppState>;
+	private readonly model: Model;
+	private readonly provider: Provider;
+	private readonly compaction?: CompactionRuntime;
+	/**
+	 * 本次 model call 的完整 transcript。prepareContext → provider → onModelError
+	 * 是严格嵌套的，且 Agent 不允许并发 run，所以这一格暂存是安全的。
+	 */
+	private rawMessages: readonly AgentMessage[] = [];
 
 	constructor(options: AgentHarnessOptions<TAppState>) {
 		assertSingleDurableSource(options);
 
-		this.promptSlots = [...(options.promptSlots ?? [])];
-		this.sessionHandle = options.sessionHandle;
-		this.sequence = options.sessionHandle?.snapshot.entries.length ?? 0;
+		this.model = options.model;
+		this.provider = options.provider;
+		this.compaction = resolveCompaction(options.model, options.compaction);
 
 		const durable = options.sessionHandle
 			? restoreFromSnapshot(options.sessionHandle.snapshot)
@@ -59,6 +113,11 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 					messages: options.messages,
 					appState: options.appState,
 				};
+
+		this.ledger = new SessionLedger<TAppState>(
+			options.sessionHandle,
+			durable.messages ?? options.session?.messages ?? [],
+		);
 
 		this.agent = new Agent<TAppState>({
 			model: options.model,
@@ -71,6 +130,7 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 			session: options.session,
 			...durable,
 			prepareContext: (context) => this.prepareContext(context),
+			onModelError: (error, context) => this.onModelError(error, context),
 		});
 
 		this.agent.subscribe((event) => this.handleCoreEvent(event));
@@ -96,8 +156,8 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 		this.agent.updateAppState(update);
 	}
 
-	/** 唯一的事件出口：core 事件与后续 harness 自身产生的事件都从这里出去。 */
-	subscribe(listener: AgentEventListener): () => void {
+	/** 唯一的事件出口：core 事件与 harness 自身产生的事件都从这里出去。 */
+	subscribe(listener: HarnessEventListener): () => void {
 		this.listeners.add(listener);
 		return () => {
 			this.listeners.delete(listener);
@@ -112,8 +172,8 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 	 * 走门面自己的 listeners，而不是直接返回 agent.stream()：
 	 * 否则 harness 自己产生的事件（Spec 16 的 compaction、Spec 17 的 skill）不会进入这条流。
 	 */
-	stream(input: AgentInput): AgentRun {
-		const output = new EventStream<AgentEvent, AgentMessage[]>(
+	stream(input: AgentInput): HarnessRun {
+		const output = new EventStream<HarnessEvent, AgentMessage[]>(
 			() => false,
 			() => [],
 		);
@@ -156,20 +216,118 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 	}
 
 	/**
-	 * 只透传 core 行为：清空进程内 transcript。
-	 * SessionStore 是 append-only 的，磁盘上的历史不会因此消失。
+	 * 清空进程内 transcript 与压缩视图，保留 appState。
+	 * SessionStore 是 append-only 的，磁盘上的历史不会因此消失；重新打开同一个 session 仍会恢复。
 	 */
 	reset(): void {
 		this.agent.reset();
+		this.ledger.clear();
 	}
 
-	/** 动态结果只进入本次请求，不回写 AgentState.systemPrompt。 */
+	/**
+	 * 组装本次请求的 context，顺序是固定的：
+	 * 先套用既有压缩投影，最后才判断要不要新压一次。
+	 */
 	private async prepareContext(context: AgentContext): Promise<AgentContext> {
-		if (this.promptSlots.length === 0) return context;
+		const compaction = this.compaction;
+		if (!compaction) return context;
+
+		this.rawMessages = context.messages;
+		const projected = { ...context, messages: this.ledger.project(context.messages) };
+		const input: CompactionDecisionInput = {
+			context: projected,
+			entries: this.ledger.log,
+			model: this.model,
+			settings: compaction.settings,
+		};
+
+		// 上一次响应被截断时无条件压一次：provider 已经说过这个 context 装不下了。
+		const due = hasUncompactedTruncation(this.ledger.log) || (await compaction.strategy.shouldCompact(input));
+		if (!due) return projected;
+
+		const compacted = await this.runCompaction("threshold", input);
+		return compacted ? { ...projected, messages: this.ledger.project(this.rawMessages) } : projected;
+	}
+
+	/**
+	 * provider 拒绝请求时的恢复：压缩后确实变小、且降到阈值以下，才消耗那唯一一次重试。
+	 * 收到的 context 是第一次请求实际使用的 prepared context，可能已含旧投影，因此前后都用全量估算。
+	 */
+	private async onModelError(error: AssistantMessage, context: AgentContext): Promise<RetryModelCall | undefined> {
+		const compaction = this.compaction;
+		if (!compaction || !isContextOverflow(error)) return undefined;
+
+		const before = estimateTokens(context);
+		const entry = await this.runCompaction("overflow", {
+			context,
+			entries: this.ledger.log,
+			model: this.model,
+			settings: compaction.settings,
+		});
+		if (!entry) return undefined;
+
+		// 投影必须从完整 transcript 出发：收到的 context 已经是上一次投影的结果，
+		// 而 compaction 的切点是相对完整历史的位置。
+		const compacted = { ...context, messages: this.ledger.project(this.rawMessages) };
+		const after = estimateTokens(compacted);
+
+		if (after >= before || shouldCompact(after, this.model, compaction.settings)) return undefined;
+		return { type: "retry", context: compacted };
+	}
+
+	/**
+	 * 一次压缩的完整生命周期。策略只回答"压成什么"，事件、entry id、append 与失败归类留在这里。
+	 * entry 先落盘再发 success，监听器看到成功时 store 已经包含结果。
+	 */
+	private async runCompaction(
+		trigger: CompactionTrigger,
+		input: CompactionDecisionInput,
+	): Promise<CompactionEntry | undefined> {
+		const compaction = this.compaction;
+		if (!compaction) return undefined;
+
+		await this.emit({ type: "compaction_start", trigger, tokensBefore: estimateTokens(input.context) });
+
+		try {
+			const result = await compaction.strategy.compact({
+				...input,
+				provider: this.provider,
+				trigger,
+				previous: this.ledger.latestCompaction,
+				summaryInstructions: compaction.summaryInstructions,
+				signal: this.agent.signal,
+			});
+
+			const entry = await this.ledger.appendCompaction(this.verify(result, input));
+			await this.emit({ type: "compaction_end", trigger, outcome: { status: "success", entry } });
+			return entry;
+		} catch (error) {
+			await this.emit({ type: "compaction_end", trigger, outcome: { status: "error", error: toErrorInfo(error) } });
+			// 摘要失败只是放弃这次压缩；durable 写入失败必须让 run 失败，否则会静默丢历史。
+			if (isSessionError(error)) throw error;
+			return undefined;
+		}
+	}
+
+	/** 不信任 strategy 报的 token 数：按真实投影重算，顺便挡住会产出无效上下文的切点。 */
+	private verify(result: CompactionResult, input: CompactionDecisionInput): NewCompactionEntry {
+		const summary = result.summary.trim();
+		if (summary.length === 0) throw new CompactionFailure("unknown", "Compaction strategy returned an empty summary");
+		if (!isSafeCutPoint(input.entries, result.firstKeptEntryId)) {
+			throw new CompactionFailure(
+				"unknown",
+				`Compaction strategy returned an unusable cut point "${result.firstKeptEntryId}"`,
+			);
+		}
+
+		const messages = projectWithCompaction(input.entries, summary, result.firstKeptEntryId, Date.now());
 
 		return {
-			...context,
-			systemPrompt: await renderPrompt(this.promptSlots, context),
+			summary,
+			firstKeptEntryId: result.firstKeptEntryId,
+			tokensBefore: estimateTokens(input.context),
+			tokensAfter: estimateTokens({ ...input.context, messages }),
+			usage: result.usage,
 		};
 	}
 
@@ -180,36 +338,46 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 	}
 
 	private async persist(event: AgentEvent): Promise<void> {
-		const handle = this.sessionHandle;
-		if (!handle) return;
-
-		const timestamp = new Date().toISOString();
-
-		if (event.type === "message_end") {
-			await handle.append({
-				type: "message",
-				id: `${handle.id}:${this.sequence++}`,
-				timestamp,
-				message: event.message,
-			});
-		}
-
-		if (event.type === "agent_end") {
-			await handle.append({
-				type: "app_state",
-				id: `${handle.id}:${this.sequence++}`,
-				timestamp,
-				value: cloneJson(this.agent.state.appState),
-			});
-		}
+		if (event.type === "message_end") await this.ledger.appendMessage(event.message);
+		if (event.type === "agent_end") await this.ledger.appendAppState(cloneJson(this.agent.state.appState));
 	}
 
 	/** 保留 core 的 listener 语义：按订阅顺序 await，任一失败让整次 run 失败。 */
-	private async emit(event: AgentEvent): Promise<void> {
+	private async emit(event: HarnessEvent): Promise<void> {
 		for (const listener of [...this.listeners]) {
 			await listener(event);
 		}
 	}
+}
+
+/** id 与 timestamp 由 ledger 补，策略不参与。 */
+type NewCompactionEntry = Omit<CompactionEntry, "type" | "id" | "timestamp">;
+
+function resolveCompaction(
+	model: Model,
+	options: AgentHarnessCompactionOptions | undefined,
+): CompactionRuntime | undefined {
+	if (options === false) return undefined;
+
+	return {
+		settings: resolveCompactionSettings(model, options?.settings),
+		strategy: options?.strategy ?? defaultCompactionStrategy(),
+		summaryInstructions: options?.summaryInstructions,
+	};
+}
+
+/** provider SDK 的异常先经过 ProviderErrorInfo，再在这里归到一个稳定 code 上。 */
+function toErrorInfo(error: unknown): CompactionErrorInfo {
+	if (error instanceof CompactionFailure) return { code: error.code, message: error.message };
+	return { code: "unknown", message: getErrorMessage(error) };
+}
+
+function isSessionError(error: unknown): boolean {
+	return (
+		error instanceof SessionConflictError ||
+		error instanceof SessionBusyError ||
+		error instanceof SessionReadOnlyError
+	);
 }
 
 /**

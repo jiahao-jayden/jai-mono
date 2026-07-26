@@ -124,9 +124,26 @@ export interface AgentLoopConfig {
 	 * 动态 system prompt 与后续 compaction 都接在这个点位上。默认无（原样使用）。
 	 */
 	prepareContext?: PrepareContext;
+	/**
+	 * model 请求失败时调用，返回 directive 则重试一次。
+	 * 只在 provider 还没发出 start 时调用：UI 已经看见 partial 时透明重试需要撤回事件协议。
+	 * 每次 model call 最多接受一次 directive，且 core 不判断失败原因。默认无（沿用原错误）。
+	 */
+	onModelError?: OnModelError;
 }
 
 export type PrepareContext = (context: AgentContext) => AgentContext | Promise<AgentContext>;
+
+export interface RetryModelCall {
+	type: "retry";
+	/** 已完成 Prompt 与 compaction 的 provider-ready context；core 不再调用 prepareContext。 */
+	context: AgentContext;
+}
+
+export type OnModelError = (
+	error: AssistantMessage,
+	context: AgentContext,
+) => RetryModelCall | undefined | Promise<RetryModelCall | undefined>;
 
 export interface AgentContext {
 	systemPrompt: string;

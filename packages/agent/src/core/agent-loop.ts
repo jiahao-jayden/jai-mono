@@ -163,7 +163,9 @@ async function runTurn(run: AgentLoopRuntime, pendingMessages: AgentMessage[]): 
 	const message = await streamAssistantResponse(run);
 	newMessages.push(message);
 
-	if (message.stopReason === "error" || message.stopReason === "aborted") {
+	// contextOverflow 是"成功但被截断"：partial 保留下来，但其中的 tool calls 不再执行。
+	// core 认识的只是 provider-neutral 的 StopReason，压缩由上层在下次请求前处理。
+	if (message.stopReason === "error" || message.stopReason === "aborted" || message.stopReason === "contextOverflow") {
 		emit({ type: "turn_end", message, toolResults: [] });
 		return { hasMoreToolCalls: false, stopped: true };
 	}
@@ -188,8 +190,17 @@ async function runTurn(run: AgentLoopRuntime, pendingMessages: AgentMessage[]): 
 	return { hasMoreToolCalls, stopped: false };
 }
 
+/**
+ * 一次 model call 的产出。started 记录 provider 是否已经发出 start——
+ * 它决定这次失败还能不能重试，也决定 publish 时是否需要补一条 message_start。
+ */
+interface ModelCallAttempt {
+	message: AssistantMessage;
+	started: boolean;
+}
+
 async function streamAssistantResponse(run: AgentLoopRuntime): Promise<AssistantMessage> {
-	const { context, config, signal, emit } = run;
+	const { context, config, emit } = run;
 	// 组装 context：给 prepareContext 的是副本，回调改不动 run 内部的 transcript。
 	const input: AgentContext = {
 		systemPrompt: context.systemPrompt,
@@ -198,10 +209,30 @@ async function streamAssistantResponse(run: AgentLoopRuntime): Promise<Assistant
 	};
 	const prepared = config.prepareContext ? await config.prepareContext(input) : input;
 
+	let attempt = await attemptModelCall(run, prepared);
+
+	// 只有 provider 还没发出 start 的失败才可恢复：外界已经看过 partial 时，
+	// 透明重试需要一套撤回事件的协议，这里不引入。每个 model call 只给一次机会。
+	if (!attempt.started && attempt.message.stopReason === "error" && config.onModelError) {
+		const directive = await config.onModelError(attempt.message, prepared);
+		if (directive) attempt = await attemptModelCall(run, directive.context);
+	}
+
+	// 只有最终采纳的那次尝试才进入 transcript 与 message 事件。
+	if (!attempt.started) emit({ type: "message_start", message: attempt.message });
+	context.messages.push(attempt.message);
+	emit({ type: "message_end", message: attempt.message });
+
+	return attempt.message;
+}
+
+async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): Promise<ModelCallAttempt> {
+	const { config, signal, emit } = run;
+
 	const llmContext: Context = {
-		systemPrompt: prepared.systemPrompt,
-		messages: prepared.messages,
-		tools: prepared.tools,
+		systemPrompt: request.systemPrompt,
+		messages: request.messages,
+		tools: request.tools,
 	};
 
 	// 调用 LLM
@@ -237,30 +268,12 @@ async function streamAssistantResponse(run: AgentLoopRuntime): Promise<Assistant
 				break;
 
 			case "done":
-			case "error": {
-				const finalMessage = await response.result();
-
-				if (!started) {
-					emit({ type: "message_start", message: finalMessage });
-				}
-
-				context.messages.push(finalMessage);
-				emit({ type: "message_end", message: finalMessage });
-				return finalMessage;
-			}
+			case "error":
+				return { message: await response.result(), started };
 		}
 	}
 
-	const finalMessage = await response.result();
-
-	if (!started) {
-		emit({ type: "message_start", message: finalMessage });
-	}
-
-	context.messages.push(finalMessage);
-	emit({ type: "message_end", message: finalMessage });
-
-	return finalMessage;
+	return { message: await response.result(), started };
 }
 
 /**

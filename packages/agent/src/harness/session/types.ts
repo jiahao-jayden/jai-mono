@@ -1,3 +1,4 @@
+import type { Usage } from "@jai/ai";
 import type { JsonObject } from "../../core/agent-state";
 import type { AgentMessage } from "../../core/types";
 
@@ -15,8 +16,28 @@ export interface AppStateEntry<TAppState extends JsonObject = JsonObject> {
 	value: TAppState;
 }
 
+/**
+ * 一次压缩的事实：摘要文本，加上"从哪条 message entry 开始保留原文"。
+ * 原始 message entry 一条不删，压缩只是叠加一层新的读取视角。
+ */
+export interface CompactionEntry {
+	type: "compaction";
+	id: string;
+	timestamp: string;
+	summary: string;
+	/** 摘要之后第一条保留原文的 message entry id */
+	firstKeptEntryId: string;
+	tokensBefore: number;
+	tokensAfter: number;
+	/** 生成这条摘要本身花掉的 tokens */
+	usage: Usage;
+}
+
 /** 一次 session 变更的最小事实单位 */
-export type SessionEntry<TAppState extends JsonObject = JsonObject> = MessageEntry | AppStateEntry<TAppState>;
+export type SessionEntry<TAppState extends JsonObject = JsonObject> =
+	| MessageEntry
+	| AppStateEntry<TAppState>
+	| CompactionEntry;
 
 export interface SessionSnapshot<TAppState extends JsonObject = JsonObject> {
 	systemPrompt: string;

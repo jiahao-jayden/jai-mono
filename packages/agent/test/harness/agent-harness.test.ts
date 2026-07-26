@@ -1,24 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Context } from "@jai/ai";
-import { Type } from "@sinclair/typebox";
-import type { AgentEvent, AgentTool } from "../../src";
-import { AgentHarness, InMemorySessionStore, openSession, type PromptSlot } from "../../src/harness";
+import { AgentHarness, type HarnessEvent, InMemorySessionStore, openSession } from "../../src/harness";
 import { assistant, messageEntry, model, providerFor, sessionInit, type AppState } from "../support/fixtures";
-
-const readTool: AgentTool<ReturnType<typeof Type.Object>> = {
-	name: "read",
-	description: "Read a file",
-	parameters: Type.Object({}),
-	async execute() {
-		return { content: [{ type: "text", text: "contents" }] };
-	},
-};
-
-const toolReply = {
-	...assistant(""),
-	content: [{ type: "toolCall" as const, id: "read-1", name: "read", arguments: {} }],
-	stopReason: "toolUse" as const,
-};
 
 describe("AgentHarness", () => {
 	test("restores durable state from a session handle and persists the run", async () => {
@@ -61,32 +44,7 @@ describe("AgentHarness", () => {
 		expect(record?.snapshot.entries.filter((entry) => entry.type === "message")).toHaveLength(4);
 	});
 
-	test("re-evaluates prompt slots before every model call without touching durable state", async () => {
-		const contexts: Context[] = [];
-		let calls = 0;
-		const promptSlots: PromptSlot[] = [
-			{ name: "base", content: (context) => context.systemPrompt },
-			{ name: "environment", content: async () => `call ${++calls}` },
-		];
-		const harness = new AgentHarness<AppState>({
-			model,
-			provider: providerFor([toolReply, assistant("done")], contexts),
-			instructions: sessionInit.systemPrompt,
-			tools: [readTool],
-			promptSlots,
-		});
-
-		await harness.invoke("read");
-
-		expect(contexts.map((context) => context.systemPrompt)).toEqual([
-			"You are helpful.\n\ncall 1",
-			"You are helpful.\n\ncall 2",
-		]);
-		expect(harness.state.systemPrompt).toBe(sessionInit.systemPrompt);
-		expect(harness.getSession().systemPrompt).toBe(sessionInit.systemPrompt);
-	});
-
-	test("keeps the restored system prompt when no slots are given", async () => {
+	test("keeps the restored system prompt", async () => {
 		const contexts: Context[] = [];
 		const harness = new AgentHarness<AppState>({
 			model,
@@ -97,33 +55,6 @@ describe("AgentHarness", () => {
 		await harness.invoke("hello");
 
 		expect(contexts[0]?.systemPrompt).toBe(sessionInit.systemPrompt);
-	});
-
-	test("a failing slot keeps the request away from the provider", async () => {
-		const contexts: Context[] = [];
-		const harness = new AgentHarness<AppState>({
-			model,
-			provider: providerFor([assistant("done")], contexts),
-			instructions: sessionInit.systemPrompt,
-			promptSlots: [
-				{
-					name: "project",
-					content: () => {
-						throw new Error("AGENTS.md unreadable");
-					},
-				},
-			],
-		});
-
-		const messages = await harness.invoke("hello");
-
-		expect(contexts).toEqual([]);
-		expect(messages.at(-1)).toMatchObject({
-			stopReason: "error",
-			error: { message: "AGENTS.md unreadable" },
-		});
-		expect(harness.state.error).toEqual({ message: "AGENTS.md unreadable" });
-		expect(harness.getSession().error).toEqual({ message: "AGENTS.md unreadable" });
 	});
 
 	test("persists an event before external listeners observe it", async () => {
@@ -168,12 +99,12 @@ describe("AgentHarness", () => {
 			provider: providerFor([assistant("first"), assistant("second")]),
 			instructions: sessionInit.systemPrompt,
 		});
-		const observed: AgentEvent[] = [];
+		const observed: HarnessEvent[] = [];
 		harness.subscribe((event) => {
 			observed.push(event);
 		});
 
-		const streamed: AgentEvent[] = [];
+		const streamed: HarnessEvent[] = [];
 		for await (const event of harness.stream("hello")) {
 			streamed.push(event);
 		}

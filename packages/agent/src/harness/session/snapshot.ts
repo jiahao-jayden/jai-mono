@@ -27,6 +27,7 @@ export function applyEntry<T extends JsonObject>(
 
 	switch (entry.type) {
 		case "message":
+		case "compaction":
 			return next;
 		case "app_state":
 			return { ...next, appState: cloneJson(entry.value) };

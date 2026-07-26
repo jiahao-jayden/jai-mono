@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { applyEntry, emptySnapshot, replay } from "../../../src/harness";
-import { appStateEntry, messageEntry, sessionInit } from "../../support/fixtures";
+import { appStateEntry, compactionEntry, messageEntry, sessionInit } from "../../support/fixtures";
 
 describe("applyEntry", () => {
 	const base = emptySnapshot(sessionInit, "2026-01-01T00:00:00.000Z");
@@ -21,6 +21,15 @@ describe("applyEntry", () => {
 		value.resolved = false;
 
 		expect(next.appState).toEqual({ resolved: true });
+	});
+
+	test("compaction entries only extend the log", () => {
+		const entry = compactionEntry("e1", "summary so far", "e0", "2026-01-01T00:00:02.000Z");
+		const next = applyEntry(applyEntry(base, messageEntry("e0", "hi")), entry);
+
+		expect(next.entries.map((item) => item.type)).toEqual(["message", "compaction"]);
+		expect(next.appState).toEqual({ resolved: false });
+		expect(next.updatedAt).toBe("2026-01-01T00:00:02.000Z");
 	});
 
 	test("replay folds a whole log", () => {

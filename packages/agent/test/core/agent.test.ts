@@ -84,6 +84,11 @@ function providerFor(responses: AssistantMessage[], contexts: Context[] = []): P
 	};
 }
 
+function lastStopReason(agent: Agent): string | undefined {
+	const last = agent.state.messages.at(-1);
+	return last?.role === "assistant" ? last.stopReason : undefined;
+}
+
 function createAgent(provider: Provider, tools: AgentTool[] = []): Agent {
 	return new Agent({
 		model,
@@ -491,6 +496,136 @@ describe("Agent", () => {
 
 		expect(contexts[0]?.messages).toEqual([]);
 		expect(agent.getSession().messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+	});
+
+	test("onModelError retries once with the context it is handed back", async () => {
+		const contexts: Context[] = [];
+		const failure: AssistantMessage = {
+			...assistant(""),
+			content: [],
+			stopReason: "error",
+			error: { message: "prompt is too long", code: "context_length_exceeded" },
+		};
+		const events: AgentEvent[] = [];
+		let calls = 0;
+		const agent = new Agent({
+			model,
+			provider: providerFor([failure, assistant("recovered")], contexts),
+			instructions: "You are helpful.",
+			onModelError: (error, context) => {
+				calls += 1;
+				return { type: "retry", context: { ...context, messages: [user("compacted")] } };
+			},
+		});
+		agent.subscribe((event) => {
+			events.push(event);
+		});
+
+		await agent.invoke(user("start"));
+
+		expect(calls).toBe(1);
+		expect(contexts[1]?.messages.map((message) => message.content)).toEqual(["compacted"]);
+		// 失败的那次尝试不留痕迹：既不进 transcript，也不发 message 事件。
+		expect(agent.getSession().messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+		expect(events.filter((event) => event.type === "message_end")).toHaveLength(2);
+		expect(agent.state.error).toBeUndefined();
+	});
+
+	test("retry skips prepareContext so dynamic prompts are not evaluated twice", async () => {
+		const contexts: Context[] = [];
+		const failure: AssistantMessage = {
+			...assistant(""),
+			content: [],
+			stopReason: "error",
+			error: { message: "too long", code: "context_length_exceeded" },
+		};
+		let prepared = 0;
+		const agent = new Agent({
+			model,
+			provider: providerFor([failure, assistant("recovered")], contexts),
+			instructions: "You are helpful.",
+			prepareContext: (context) => {
+				prepared += 1;
+				return context;
+			},
+			onModelError: (_error, context) => ({ type: "retry", context }),
+		});
+
+		await agent.invoke(user("start"));
+
+		expect(prepared).toBe(1);
+	});
+
+	test("declining to retry keeps the original failure", async () => {
+		const failure: AssistantMessage = { ...assistant(""), content: [], stopReason: "error" };
+		const agent = new Agent({
+			model,
+			provider: providerFor([failure]),
+			instructions: "You are helpful.",
+			onModelError: () => undefined,
+		});
+
+		await agent.invoke(user("start"));
+
+		expect(lastStopReason(agent)).toBe("error");
+	});
+
+	test("a failed retry is not retried again", async () => {
+		const failure: AssistantMessage = { ...assistant(""), content: [], stopReason: "error" };
+		let calls = 0;
+		const agent = new Agent({
+			model,
+			provider: providerFor([failure, failure]),
+			instructions: "You are helpful.",
+			onModelError: (_error, context) => {
+				calls += 1;
+				return { type: "retry", context };
+			},
+		});
+
+		await agent.invoke(user("start"));
+
+		expect(calls).toBe(1);
+		expect(lastStopReason(agent)).toBe("error");
+	});
+
+	test("a truncated response ends the turn without running its tool calls", async () => {
+		const parameters = Type.Object({});
+		let executed = 0;
+		const tool: AgentTool<typeof parameters> = {
+			name: "read",
+			description: "Read a file",
+			parameters,
+			async execute() {
+				executed += 1;
+				return { content: [{ type: "text", text: "contents" }] };
+			},
+		};
+		const truncated: AssistantMessage = {
+			...assistant("partial answer"),
+			content: [
+				{ type: "text", text: "partial answer" },
+				{ type: "toolCall", id: "read-1", name: "read", arguments: {} },
+			],
+			stopReason: "contextOverflow",
+		};
+		const events: AgentEvent[] = [];
+		const agent = new Agent({
+			model,
+			provider: providerFor([truncated]),
+			instructions: "You are helpful.",
+			tools: [tool],
+		});
+		agent.subscribe((event) => {
+			events.push(event);
+		});
+
+		await agent.invoke(user("start"));
+
+		expect(executed).toBe(0);
+		expect(agent.getSession().messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+		expect(events.filter((event) => event.type === "turn_end")).toHaveLength(1);
+		expect(events.at(-1)?.type).toBe("agent_end");
 	});
 
 	test("rejects a model whose provider does not match the given provider", () => {

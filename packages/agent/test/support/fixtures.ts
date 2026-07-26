@@ -79,3 +79,21 @@ export function messageEntry(id: string, text: string, timestamp = id): SessionE
 export function appStateEntry(id: string, resolved: boolean, timestamp = id): SessionEntry<AppState> {
 	return { type: "app_state", id, timestamp, value: { resolved } };
 }
+
+export function compactionEntry(
+	id: string,
+	summary: string,
+	firstKeptEntryId: string,
+	timestamp = id,
+): SessionEntry<AppState> {
+	return {
+		type: "compaction",
+		id,
+		timestamp,
+		summary,
+		firstKeptEntryId,
+		tokensBefore: 1_000,
+		tokensAfter: 100,
+		usage: zeroUsage(),
+	};
+}

@@ -150,7 +150,7 @@ export class FileSessionStore<TAppState extends JsonObject = JsonObject> impleme
 				continue;
 			}
 
-			if (record.type === "message" || record.type === "app_state") {
+			if (record.type === "message" || record.type === "app_state" || record.type === "compaction") {
 				pending.push(record as unknown as SessionEntry<TAppState>);
 				continue;
 			}
