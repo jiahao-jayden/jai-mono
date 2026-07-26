@@ -1,5 +1,6 @@
 export {
 	Agent,
+	type AgentContext,
 	type AgentEvent,
 	type AgentEventListener,
 	type AgentInput,
@@ -12,6 +13,7 @@ export {
 	cloneJson,
 	type JsonObject,
 	type JsonValue,
+	type PrepareContext,
 	type Session,
 	type ToolCallContext,
 	type ToolExecutionMode,
@@ -19,3 +21,5 @@ export {
 	type ToolMiddleware,
 	type ToolUpdateCallback,
 } from "./core";
+// 上层包只依赖包根入口即可拿到 harness 的门面与各项能力。
+export * from "./harness";

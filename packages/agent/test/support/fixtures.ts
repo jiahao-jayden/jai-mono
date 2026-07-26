@@ -1,4 +1,11 @@
-import { AssistantMessageEventStream, type AssistantMessage, type Model, type Provider, zeroUsage } from "@jai/ai";
+import {
+	AssistantMessageEventStream,
+	type AssistantMessage,
+	type Context,
+	type Model,
+	type Provider,
+	zeroUsage,
+} from "@jai/ai";
 import { Agent } from "../../src";
 import type { SessionEntry } from "../../src/harness";
 
@@ -27,12 +34,15 @@ export function assistant(text: string): AssistantMessage {
 	};
 }
 
-export function providerFor(responses: AssistantMessage[]): Provider {
+/** 传入 contexts 时记录每次请求收到的 context 副本，供断言 prepareContext 的效果。 */
+export function providerFor(responses: AssistantMessage[], contexts?: Context[]): Provider {
 	let index = 0;
 
 	return {
 		id: "test",
-		stream(_model, _context) {
+		stream(_model, context) {
+			contexts?.push({ ...context, messages: [...context.messages], tools: [...context.tools] });
+
 			const message = responses[index++];
 			if (!message) throw new Error("Unexpected provider call");
 

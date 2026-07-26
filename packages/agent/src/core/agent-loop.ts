@@ -189,11 +189,18 @@ async function runTurn(run: AgentLoopRuntime, pendingMessages: AgentMessage[]): 
 
 async function streamAssistantResponse(run: AgentLoopRuntime): Promise<AssistantMessage> {
 	const { context, config, signal, emit } = run;
-	// 组装 context
-	const llmContext: Context = {
+	// 组装 context：给 prepareContext 的是副本，回调改不动 run 内部的 transcript。
+	const input: AgentContext = {
 		systemPrompt: context.systemPrompt,
-		messages: context.messages,
-		tools: context.tools,
+		messages: [...context.messages],
+		tools: [...context.tools],
+	};
+	const prepared = config.prepareContext ? await config.prepareContext(input) : input;
+
+	const llmContext: Context = {
+		systemPrompt: prepared.systemPrompt,
+		messages: prepared.messages,
+		tools: prepared.tools,
 	};
 
 	// 调用 LLM

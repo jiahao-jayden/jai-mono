@@ -118,7 +118,15 @@ export interface AgentLoopConfig {
 	 * loop 只调用它，不持有队列。默认无（返回 []）。
 	 */
 	getFollowUpMessages?: () => AgentMessage[] | Promise<AgentMessage[]>;
+	/**
+	 * 每次 model call 前调用，返回本次请求实际使用的 context。
+	 * 收到的是本次请求的副本，返回值只影响这一次请求，不会改写 Agent 的 transcript。
+	 * 动态 system prompt 与后续 compaction 都接在这个点位上。默认无（原样使用）。
+	 */
+	prepareContext?: PrepareContext;
 }
+
+export type PrepareContext = (context: AgentContext) => AgentContext | Promise<AgentContext>;
 
 export interface AgentContext {
 	systemPrompt: string;

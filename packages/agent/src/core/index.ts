@@ -8,10 +8,12 @@ export {
 } from "./agent-state";
 export type { Session, ToolInfo } from "./session";
 export type {
+	AgentContext,
 	AgentEvent,
 	AgentMessage,
 	AgentTool,
 	AgentToolResult,
+	PrepareContext,
 	ToolCallContext,
 	ToolExecutionMode,
 	ToolMiddleware,

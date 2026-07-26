@@ -437,6 +437,62 @@ describe("Agent", () => {
 		]);
 	});
 
+	test("prepareContext rewrites the context of every model call", async () => {
+		const parameters = Type.Object({});
+		const tool: AgentTool<typeof parameters> = {
+			name: "read",
+			description: "Read a file",
+			parameters,
+			async execute() {
+				return { content: [{ type: "text", text: "contents" }] };
+			},
+		};
+		const toolReply: AssistantMessage = {
+			...assistant(""),
+			content: [{ type: "toolCall", id: "read-1", name: "read", arguments: {} }],
+			stopReason: "toolUse",
+		};
+		const contexts: Context[] = [];
+		let calls = 0;
+		const agent = new Agent({
+			model,
+			provider: providerFor([toolReply, assistant("done")], contexts),
+			instructions: "You are helpful.",
+			tools: [tool],
+			prepareContext: (context) => ({
+				...context,
+				systemPrompt: `${context.systemPrompt} [prepared ${++calls}]`,
+			}),
+		});
+
+		await agent.invoke(user("read"));
+
+		expect(calls).toBe(2);
+		expect(contexts.map((context) => context.systemPrompt)).toEqual([
+			"You are helpful. [prepared 1]",
+			"You are helpful. [prepared 2]",
+		]);
+		expect(agent.getSession().systemPrompt).toBe("You are helpful.");
+	});
+
+	test("prepareContext receives a copy it cannot use to rewrite the transcript", async () => {
+		const contexts: Context[] = [];
+		const agent = new Agent({
+			model,
+			provider: providerFor([assistant("done")], contexts),
+			instructions: "You are helpful.",
+			prepareContext: (context) => {
+				context.messages.push(user("smuggled"));
+				return { systemPrompt: context.systemPrompt, messages: [], tools: [] };
+			},
+		});
+
+		await agent.invoke(user("start"));
+
+		expect(contexts[0]?.messages).toEqual([]);
+		expect(agent.getSession().messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+	});
+
 	test("rejects a model whose provider does not match the given provider", () => {
 		expect(
 			() =>

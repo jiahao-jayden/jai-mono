@@ -1,4 +1,4 @@
-export { attachSessionStore, toAgentOptions, toSnapshot } from "./agent-binding";
+export { toSnapshot } from "./agent-binding";
 export { openSession } from "./handle";
 export { applyEntry, emptySnapshot, replay } from "./snapshot";
 export { FileSessionStore } from "./stores/file";
