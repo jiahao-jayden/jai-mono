@@ -90,7 +90,7 @@ describe("AssistantMessageEventStream", () => {
 
 	test("resolves result from error events instead of rejecting", async () => {
 		const stream = new AssistantMessageEventStream();
-		const errorMessage = { ...message("error"), errorMessage: "boom" };
+		const errorMessage = { ...message("error"), error: { message: "boom" } };
 		const event: AssistantMessageEvent = {
 			type: "error",
 			reason: "error",

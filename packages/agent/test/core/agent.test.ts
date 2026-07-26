@@ -236,7 +236,7 @@ describe("Agent", () => {
 			...assistant(""),
 			content: [],
 			stopReason: "aborted",
-			errorMessage: "aborted",
+			error: { message: "aborted" },
 		};
 		const provider: Provider = {
 			id: "test",

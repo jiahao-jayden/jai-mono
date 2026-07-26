@@ -1,6 +1,5 @@
-import { getErrorMessage } from "@jai/common";
 import type { AssistantMessageEventStream } from "./event-stream";
-import type { AssistantMessage, AssistantMessageEvent, StopReason } from "./types";
+import type { AssistantMessage, AssistantMessageEvent, ProviderErrorInfo, StopReason } from "./types";
 import { zeroUsage } from "./utils";
 
 /**
@@ -59,16 +58,44 @@ export async function runAdapterStream<TChunk>(
 
 		eventStream.push({
 			type: "done",
-			reason: output.stopReason as Extract<StopReason, "stop" | "length" | "toolUse">,
+			reason: output.stopReason as Extract<StopReason, "stop" | "length" | "toolUse" | "contextOverflow">,
 			message: output,
 		});
 	} catch (error) {
 		output.stopReason = signal?.aborted ? "aborted" : "error";
-		output.errorMessage = getErrorMessage(error);
+		output.error = normalizeProviderError(error);
 		eventStream.push({
 			type: "error",
 			reason: output.stopReason,
 			error: output,
 		});
 	}
+}
+
+/** 只保留 SDK Error 上稳定、可序列化的诊断字段。 */
+export function normalizeProviderError(error: unknown): ProviderErrorInfo {
+	if (!(error instanceof Error)) {
+		return { message: String(error) };
+	}
+
+	const source = error as Error & {
+		status?: unknown;
+		code?: unknown;
+		type?: unknown;
+		requestID?: unknown;
+		requestId?: unknown;
+	};
+
+	const result: ProviderErrorInfo = {
+		message: error.message,
+	};
+
+	if (typeof source.status === "number") result.status = source.status;
+	if (typeof source.code === "string") result.code = source.code;
+	if (typeof source.type === "string") result.type = source.type;
+
+	const requestId = source.requestID ?? source.requestId;
+	if (typeof requestId === "string") result.requestId = requestId;
+
+	return result;
 }

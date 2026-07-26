@@ -2,6 +2,7 @@ import {
 	type AssistantMessage,
 	type Context,
 	EventStream,
+	normalizeProviderError,
 	type ToolCall,
 	type ToolResultMessage,
 	validateToolArguments,
@@ -410,7 +411,7 @@ function createUnexpectedErrorMessage(config: AgentLoopConfig, error: unknown): 
 		model: config.model.id,
 		usage: zeroUsage(),
 		stopReason: "error",
-		errorMessage: getErrorMessage(error),
+		error: normalizeProviderError(error),
 		timestamp: Date.now(),
 	};
 }

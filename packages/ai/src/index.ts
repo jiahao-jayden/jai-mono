@@ -1,4 +1,4 @@
-export { type AdapterSpec, createAssistantMessage, runAdapterStream } from "./adapter";
+export { type AdapterSpec, createAssistantMessage, normalizeProviderError, runAdapterStream } from "./adapter";
 export { AssistantMessageEventStream, EventStream } from "./event-stream";
 export * from "./provider";
 export { AnthropicProvider, type AnthropicProviderConfig } from "./providers/anthropic";

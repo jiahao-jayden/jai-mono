@@ -143,11 +143,22 @@ describe("OpenAIProvider · 出向翻译", () => {
 	});
 
 	it("emits an error event when the SDK call throws", async () => {
-		throwError = new Error("kaboom");
+		throwError = Object.assign(new Error("maximum context exceeded"), {
+			status: 400,
+			code: "context_length_exceeded",
+			type: "invalid_request_error",
+			requestID: "req_openai",
+		});
 		const { events, message } = await collect(ctx());
 		expect(events.at(-1)?.type).toBe("error");
 		expect(message.stopReason).toBe("error");
-		expect(message.errorMessage).toBe("kaboom");
+		expect(message.error).toEqual({
+			message: "maximum context exceeded",
+			status: 400,
+			code: "context_length_exceeded",
+			type: "invalid_request_error",
+			requestId: "req_openai",
+		});
 	});
 });
 

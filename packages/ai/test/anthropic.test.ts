@@ -141,11 +141,40 @@ describe("AnthropicProvider · 出向翻译", () => {
 	});
 
 	it("emits an error event when the SDK call throws", async () => {
-		throwError = new Error("boom");
+		throwError = Object.assign(new Error("prompt is too long"), {
+			status: 400,
+			type: "invalid_request_error",
+			requestID: "req_anthropic",
+		});
 		const { events, message } = await collect(ctx());
 		expect(events.at(-1)?.type).toBe("error");
 		expect(message.stopReason).toBe("error");
-		expect(message.errorMessage).toBe("boom");
+		expect(message.error).toEqual({
+			message: "prompt is too long",
+			status: 400,
+			type: "invalid_request_error",
+			requestId: "req_anthropic",
+		});
+	});
+
+	it("preserves model_context_window_exceeded as a successful truncated response", async () => {
+		streamEvents = [
+			{ type: "message_start", message: { usage: { input_tokens: 100, output_tokens: 0 } } },
+			{ type: "content_block_start", index: 0, content_block: { type: "text" } },
+			{ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "partial" } },
+			{ type: "content_block_stop", index: 0 },
+			{
+				type: "message_delta",
+				delta: { stop_reason: "model_context_window_exceeded" },
+				usage: { output_tokens: 10 },
+			},
+		];
+
+		const { events, message } = await collect(ctx());
+
+		expect(events.at(-1)).toMatchObject({ type: "done", reason: "contextOverflow" });
+		expect(message.stopReason).toBe("contextOverflow");
+		expect(message.content[0]).toEqual({ type: "text", text: "partial" });
 	});
 });
 

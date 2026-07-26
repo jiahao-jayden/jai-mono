@@ -540,7 +540,7 @@ describe("agentLoop", () => {
 	test("closes normally with an aborted assistant message", async () => {
 		const aborted = {
 			...assistant([], "aborted"),
-			errorMessage: "aborted",
+			error: { message: "aborted" },
 		};
 
 		const { events, messages } = await collect(
@@ -572,7 +572,7 @@ describe("agentLoop", () => {
 		expect(messages.at(-1)).toMatchObject({
 			role: "assistant",
 			stopReason: "error",
-			errorMessage: "provider crashed",
+			error: { message: "provider crashed" },
 		});
 	});
 });

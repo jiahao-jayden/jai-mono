@@ -118,7 +118,12 @@ describe("AgentHarness", () => {
 		const messages = await harness.invoke("hello");
 
 		expect(contexts).toEqual([]);
-		expect(messages.at(-1)).toMatchObject({ stopReason: "error", errorMessage: "AGENTS.md unreadable" });
+		expect(messages.at(-1)).toMatchObject({
+			stopReason: "error",
+			error: { message: "AGENTS.md unreadable" },
+		});
+		expect(harness.state.error).toEqual({ message: "AGENTS.md unreadable" });
+		expect(harness.getSession().error).toEqual({ message: "AGENTS.md unreadable" });
 	});
 
 	test("persists an event before external listeners observe it", async () => {

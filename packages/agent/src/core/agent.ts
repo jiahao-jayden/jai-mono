@@ -98,7 +98,7 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 			isRunning: state.isRunning,
 			streamingMessage: state.streamingMessage,
 			pendingToolCallIds: [...state.pendingToolCallIds],
-			errorMessage: state.errorMessage,
+			error: state.error ? structuredClone(state.error) : undefined,
 		};
 	}
 
@@ -161,7 +161,7 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		this.internalState.isRunning = true;
 		this.internalState.streamingMessage = undefined;
 		this.internalState.pendingToolCallIds = new Set();
-		this.internalState.errorMessage = undefined;
+		this.internalState.error = undefined;
 
 		return this.processRun(prompts, activeRun);
 	}
@@ -216,7 +216,7 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		this.internalState.messages = [];
 		this.internalState.streamingMessage = undefined;
 		this.internalState.pendingToolCallIds = new Set();
-		this.internalState.errorMessage = undefined;
+		this.internalState.error = undefined;
 		this.steeringQueue.clear();
 		this.followUpQueue.clear();
 	}
@@ -260,7 +260,7 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 			}
 
 			case "turn_end":
-				state.errorMessage = event.message.errorMessage;
+				state.error = event.message.error ? structuredClone(event.message.error) : undefined;
 				break;
 
 			case "agent_end":

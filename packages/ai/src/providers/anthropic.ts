@@ -494,6 +494,8 @@ export function mapStopReason(reason: string): StopReason {
 			return "length";
 		case "tool_use":
 			return "toolUse";
+		case "model_context_window_exceeded":
+			return "contextOverflow";
 		default:
 			return "error";
 	}

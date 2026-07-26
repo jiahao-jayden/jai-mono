@@ -1,3 +1,4 @@
+import type { ProviderErrorInfo } from "@jai/ai";
 import type { JsonObject } from "./agent-state";
 import type { AgentMessage, AgentTool } from "./types";
 
@@ -21,7 +22,7 @@ export interface Session<TAppState extends JsonObject = JsonObject> {
 	isRunning: boolean;
 	streamingMessage?: AgentMessage;
 	pendingToolCallIds: readonly string[];
-	errorMessage?: string;
+	error?: ProviderErrorInfo;
 }
 
 export function toToolInfo(tool: AgentTool): ToolInfo {

@@ -1,3 +1,4 @@
+import type { ProviderErrorInfo } from "@jai/ai";
 import type { AgentMessage } from "./types";
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
@@ -43,7 +44,7 @@ export interface AgentState<TAppState extends JsonObject = JsonObject> {
 	readonly isRunning: boolean;
 	readonly streamingMessage?: AgentMessage;
 	readonly pendingToolCallIds: ReadonlySet<string>;
-	readonly errorMessage?: string;
+	readonly error?: ProviderErrorInfo;
 }
 
 /** Agent 内部持有的可变版本，只由 reducer 与显式的 appState API 修改。 */
@@ -55,7 +56,7 @@ export interface MutableAgentState<TAppState extends JsonObject = JsonObject> {
 	isRunning: boolean;
 	streamingMessage?: AgentMessage;
 	pendingToolCallIds: Set<string>;
-	errorMessage?: string;
+	error?: ProviderErrorInfo;
 }
 
 export function freezeState<TAppState extends JsonObject>(state: MutableAgentState<TAppState>): AgentState<TAppState> {
@@ -66,6 +67,6 @@ export function freezeState<TAppState extends JsonObject>(state: MutableAgentSta
 		isRunning: state.isRunning,
 		streamingMessage: state.streamingMessage,
 		pendingToolCallIds: new Set(state.pendingToolCallIds),
-		errorMessage: state.errorMessage,
+		error: state.error ? structuredClone(state.error) : undefined,
 	};
 }

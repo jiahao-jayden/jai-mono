@@ -108,7 +108,6 @@
       "version": "0.0.0",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.110.0",
-        "@jai/common": "workspace:*",
         "@sinclair/typebox": "catalog:",
         "openai": "^6.45.0",
       },
