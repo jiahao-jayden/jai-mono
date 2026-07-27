@@ -507,6 +507,55 @@ describe("agentLoop", () => {
 		]);
 	});
 
+	test("re-validates arguments a middleware rewrote before calling the tool", async () => {
+		const parameters = Type.Object({ value: Type.Number() });
+		let executed = false;
+		const tool: AgentTool<typeof parameters> = {
+			name: "double",
+			description: "Double a value",
+			parameters,
+			async execute() {
+				executed = true;
+				return { content: [] };
+			},
+		};
+
+		const { messages } = await collect(
+			agentLoop([user("double")], context([tool]), {
+				model,
+				provider: providerFor([
+					assistant(
+						[
+							{
+								type: "toolCall",
+								id: "double-1",
+								name: "double",
+								arguments: { value: 1 },
+							},
+						],
+						"toolUse",
+					),
+					assistant(),
+				]),
+				toolMiddlewares: [
+					async (ctx, next) => {
+						ctx.args.value = "not a number";
+						return next();
+					},
+				],
+			}),
+		);
+
+		const result = messages.find(
+			(message) => message.role === "toolResult",
+		);
+		expect(executed).toBe(false);
+		expect(result?.isError).toBe(true);
+		expect(result?.content[0]).toMatchObject({
+			text: expect.stringContaining("Validation failed"),
+		});
+	});
+
 	test("injects steering before the next turn and follow-up after the task", async () => {
 		const steering = user("keep the public API");
 		const followUp = user("write a summary");

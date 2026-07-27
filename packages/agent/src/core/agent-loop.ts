@@ -14,6 +14,7 @@ import type {
 	AgentEvent,
 	AgentLoopConfig,
 	AgentMessage,
+	AgentTool,
 	AgentToolResult,
 	ToolCallContext,
 } from "./types";
@@ -365,9 +366,10 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 			signal,
 		};
 
-		// 工具执行
+		// 工具执行。中间件可能改写过 ctx.args，进真实工具前再校验一次：
+		// 首次校验的结论对改写后的参数不成立，短路的中间件则走不到这里。
 		const invoke = (): Promise<AgentToolResult> =>
-			tool.execute(toolCall.id, ctx.args, signal, (partial) => {
+			tool.execute(toolCall.id, finalArguments(tool, toolCall, ctx.args), signal, (partial) => {
 				if (!acceptingUpdates) return;
 
 				emit({
@@ -414,6 +416,16 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 	});
 
 	return outcome;
+}
+
+function finalArguments(tool: AgentTool, toolCall: ToolCall, args: Record<string, unknown>): Record<string, unknown> {
+	const validation = validateToolArguments(tool, { ...toolCall, arguments: args });
+
+	if (!validation.success || validation.data === undefined) {
+		throw new Error(validation.error ?? `Invalid arguments for tool "${toolCall.name}"`);
+	}
+
+	return validation.data as Record<string, unknown>;
 }
 
 function createUnexpectedErrorMessage(config: AgentLoopConfig, error: unknown): AssistantMessage {

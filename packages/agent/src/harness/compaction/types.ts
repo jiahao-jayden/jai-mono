@@ -54,15 +54,6 @@ export interface CompactionResult {
 	usage: Usage;
 }
 
-/**
- * 策略只回答"要不要压"和"压成什么"。事件、entry id、append、重试上限、
- * listener 失败语义都留在门面，替换策略不会连带改写这些不变量。
- */
-export interface CompactionStrategy {
-	shouldCompact(input: CompactionDecisionInput): boolean | Promise<boolean>;
-	compact(input: CompactInput): Promise<CompactionResult>;
-}
-
 export type CompactionErrorCode = "aborted" | "nothing_to_compact" | "summarization_failed" | "unknown";
 
 /** 事件里只出现这个稳定形状，provider SDK 的异常不外泄。 */

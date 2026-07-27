@@ -9,16 +9,17 @@ import { estimateContextTokens, estimateTokens, resolveCompactionSettings, shoul
 import { hasUncompactedTruncation, isContextOverflow } from "./compaction/overflow";
 import { isSafeCutPoint, projectWithCompaction } from "./compaction/projection";
 import {
+	type CompactInput,
 	type CompactionDecisionInput,
 	type CompactionErrorInfo,
 	CompactionFailure,
 	type CompactionResult,
 	type CompactionSettings,
 	type CompactionSettingsOverrides,
-	type CompactionStrategy,
 	type CompactionTrigger,
 } from "./compaction/types";
 import type { HarnessEvent, HarnessEventListener, HarnessRun } from "./events";
+import { type AgentHarnessHookMap, type BeforeModelCallPhase, HookHost } from "./hooks";
 import { restoreFromSnapshot } from "./session/agent-binding";
 import { SessionLedger } from "./session/ledger";
 import {
@@ -33,33 +34,23 @@ export interface DefaultCompactionOptions {
 	settings?: CompactionSettingsOverrides;
 	/** 追加到默认摘要 Prompt 末尾的领域要求，例如"保留所有文件路径"。 */
 	summaryInstructions?: string;
-	/** 完整接管"要不要压"和"压成什么"。 */
-	strategy?: CompactionStrategy;
 }
 
 /** false 表示关闭主动压缩与 overflow 自动恢复；不用 { enabled: false } 是为了不出现"已关闭但仍带参数"。 */
 export type AgentHarnessCompactionOptions = false | DefaultCompactionOptions;
 
+/** 门面表面只留 hooks 一个扩展入口，core 的 seam 不再从这里透出去。 */
 type AgentHarnessCommonOptions<TAppState extends JsonObject> = Omit<
 	AgentOptions<TAppState>,
-	"session" | "instructions" | "messages" | "appState" | "prepareContext" | "onModelError"
+	"session" | "instructions" | "messages" | "appState" | "prepareContext" | "onModelError" | "toolMiddlewares"
 > & {
 	compaction?: AgentHarnessCompactionOptions;
+	hooks?: AgentHarnessHookMap;
 };
 
 interface CompactionRuntime {
 	settings: CompactionSettings;
-	strategy: CompactionStrategy;
 	summaryInstructions?: string;
-}
-
-/** 默认策略：阈值判断用 hybrid 估算，摘要用内置 compact()。 */
-function defaultCompactionStrategy(): CompactionStrategy {
-	return {
-		shouldCompact: (input) =>
-			shouldCompact(estimateContextTokens(input.context, input.entries).tokens, input.model, input.settings),
-		compact,
-	};
 }
 
 /**
@@ -93,6 +84,7 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 	private readonly model: Model;
 	private readonly provider: Provider;
 	private readonly compaction?: CompactionRuntime;
+	private readonly hooks: HookHost;
 	/**
 	 * 本次 model call 的完整 transcript。prepareContext → provider → onModelError
 	 * 是严格嵌套的，且 Agent 不允许并发 run，所以这一格暂存是安全的。
@@ -105,6 +97,9 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 		this.model = options.model;
 		this.provider = options.provider;
 		this.compaction = resolveCompaction(options.model, options.compaction);
+		this.hooks = new HookHost(options.hooks);
+		// 构造期 handler 先入队，运行期 subscribe() 的观察者排在它们后面。
+		for (const listener of this.hooks.onEvent) this.listeners.add(listener);
 
 		const durable = options.sessionHandle
 			? restoreFromSnapshot(options.sessionHandle.snapshot)
@@ -126,7 +121,7 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 			temperature: options.temperature,
 			maxTokens: options.maxTokens,
 			toolExecution: options.toolExecution,
-			toolMiddlewares: options.toolMiddlewares,
+			toolMiddlewares: this.hooks.aroundToolCall,
 			session: options.session,
 			...durable,
 			prepareContext: (context) => this.prepareContext(context),
@@ -170,7 +165,7 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 
 	/**
 	 * 走门面自己的 listeners，而不是直接返回 agent.stream()：
-	 * 否则 harness 自己产生的事件（Spec 16 的 compaction、Spec 17 的 skill）不会进入这条流。
+	 * 否则 harness 自己产生的事件（Spec 16 的 compaction、Spec 18 的 skill）不会进入这条流。
 	 */
 	stream(input: AgentInput): HarnessRun {
 		const output = new EventStream<HarnessEvent, AgentMessage[]>(
@@ -226,14 +221,18 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 
 	/**
 	 * 组装本次请求的 context，顺序是固定的：
-	 * 先套用既有压缩投影，最后才判断要不要新压一次。
+	 * 先套用既有压缩投影，再交给 beforeModelCall hooks，最后才判断要不要新压一次。
+	 *
+	 * 阈值必须按 hook 之后的消息算：外层裁剪掉的旧工具输出如果已经让上下文回到安全区，
+	 * 就不该再花一次摘要调用。
 	 */
 	private async prepareContext(context: AgentContext): Promise<AgentContext> {
-		const compaction = this.compaction;
-		if (!compaction) return context;
-
 		this.rawMessages = context.messages;
-		const projected = { ...context, messages: this.ledger.project(context.messages) };
+		const projected = await this.projectContext(context, "initial");
+
+		const compaction = this.compaction;
+		if (!compaction) return projected;
+
 		const input: CompactionDecisionInput = {
 			context: projected,
 			entries: this.ledger.log,
@@ -241,22 +240,29 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 			settings: compaction.settings,
 		};
 
-		// 上一次响应被截断时无条件压一次：provider 已经说过这个 context 装不下了。
-		const due = hasUncompactedTruncation(this.ledger.log) || (await compaction.strategy.shouldCompact(input));
+		// 上一次响应被截断时无条件压一次：provider 已经说过这个 context 装不下了，
+		// 这条路径不经过 shouldCompact hooks，外层取消不了。
+		const due = hasUncompactedTruncation(this.ledger.log) || (await this.decideCompaction(input));
 		if (!due) return projected;
 
 		const compacted = await this.runCompaction("threshold", input);
-		return compacted ? { ...projected, messages: this.ledger.project(this.rawMessages) } : projected;
+		// 压缩改变了消息序列，上一遍 hook 的产出对不上新下标，只能重跑。
+		return compacted ? await this.projectContext(context, "after_compaction") : projected;
 	}
 
 	/**
-	 * provider 拒绝请求时的恢复：压缩后确实变小、且降到阈值以下，才消耗那唯一一次重试。
-	 * 收到的 context 是第一次请求实际使用的 prepared context，可能已含旧投影，因此前后都用全量估算。
+	 * provider 拒绝请求时的恢复：外层 hook 优先，都不接手才用默认的压缩重试。
+	 * 压缩后确实变小、且降到阈值以下，才消耗那唯一一次重试。
 	 */
 	private async onModelError(error: AssistantMessage, context: AgentContext): Promise<RetryModelCall | undefined> {
+		const recovery = await this.hooks.runModelError(error, context.messages, this.agent.signal);
+		if (recovery) return { type: "retry", context: { ...context, messages: recovery.messages } };
+
 		const compaction = this.compaction;
 		if (!compaction || !isContextOverflow(error)) return undefined;
 
+		// 收到的 context 是第一次请求实际使用的版本，可能已含旧投影与 beforeModelCall 的裁剪，
+		// 因此前后都用全量估算，比较的才是同一把尺子。
 		const before = estimateTokens(context);
 		const entry = await this.runCompaction("overflow", {
 			context,
@@ -266,9 +272,7 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 		});
 		if (!entry) return undefined;
 
-		// 投影必须从完整 transcript 出发：收到的 context 已经是上一次投影的结果，
-		// 而 compaction 的切点是相对完整历史的位置。
-		const compacted = { ...context, messages: this.ledger.project(this.rawMessages) };
+		const compacted = await this.projectContext(context, "overflow_retry");
 		const after = estimateTokens(compacted);
 
 		if (after >= before || shouldCompact(after, this.model, compaction.settings)) return undefined;
@@ -276,7 +280,26 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 	}
 
 	/**
-	 * 一次压缩的完整生命周期。策略只回答"压成什么"，事件、entry id、append 与失败归类留在这里。
+	 * 投影必须从完整 transcript 出发：手上的 context 可能已经是上一次投影的结果，
+	 * 而 compaction 的切点是相对完整历史的位置。
+	 */
+	private async projectContext(context: AgentContext, phase: BeforeModelCallPhase): Promise<AgentContext> {
+		const projected = this.ledger.project(this.rawMessages);
+		return { ...context, messages: await this.hooks.runBeforeModelCall(phase, projected, this.agent.signal) };
+	}
+
+	/** 默认算法先给结论，hooks 再在它上面依次修改。 */
+	private decideCompaction(input: CompactionDecisionInput): Promise<boolean> {
+		const decision = shouldCompact(
+			estimateContextTokens(input.context, input.entries).tokens,
+			input.model,
+			input.settings,
+		);
+		return this.hooks.runShouldCompact(input, decision, this.agent.signal);
+	}
+
+	/**
+	 * 一次压缩的完整生命周期。hook 只回答"压成什么"，事件、entry id、append 与失败归类留在这里。
 	 * entry 先落盘再发 success，监听器看到成功时 store 已经包含结果。
 	 */
 	private async runCompaction(
@@ -289,14 +312,16 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 		await this.emit({ type: "compaction_start", trigger, tokensBefore: estimateTokens(input.context) });
 
 		try {
-			const result = await compaction.strategy.compact({
+			// 摘要的事实来源始终是原始 entries：beforeModelCall 的临时裁剪不能让摘要模型看不到原文。
+			const compactInput: CompactInput = {
 				...input,
 				provider: this.provider,
 				trigger,
 				previous: this.ledger.latestCompaction,
 				summaryInstructions: compaction.summaryInstructions,
 				signal: this.agent.signal,
-			});
+			};
+			const result = await this.hooks.runAroundCompact(compactInput, () => compact(compactInput));
 
 			const entry = await this.ledger.appendCompaction(this.verify(result, input));
 			await this.emit({ type: "compaction_end", trigger, outcome: { status: "success", entry } });
@@ -361,7 +386,6 @@ function resolveCompaction(
 
 	return {
 		settings: resolveCompactionSettings(model, options?.settings),
-		strategy: options?.strategy ?? defaultCompactionStrategy(),
 		summaryInstructions: options?.summaryInstructions,
 	};
 }

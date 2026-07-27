@@ -10,7 +10,6 @@ export type {
 	CompactionResult,
 	CompactionSettings,
 	CompactionSettingsOverrides,
-	CompactionStrategy,
 	CompactionTrigger,
 	ContextTokenEstimate,
 } from "./types";

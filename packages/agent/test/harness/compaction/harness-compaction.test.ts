@@ -11,7 +11,7 @@ import {
 	AgentHarness,
 	InMemorySessionStore,
 	openSession,
-	type CompactionStrategy,
+	type AgentHarnessHookMap,
 	type HarnessEvent,
 } from "../../../src/harness";
 import { model, sessionInit, type AppState } from "../../support/fixtures";
@@ -76,6 +76,21 @@ function scripted(responses: AssistantMessage[], contexts: Context[] = []): Prov
 	};
 }
 
+const PRUNED = "[Old tool result content cleared]";
+
+/** 站在工具裁剪的位置：把最老那条长内容换成占位文字，只改本次请求。 */
+const prune: NonNullable<AgentHarnessHookMap["beforeModelCall"]>[number] = ({ messages }) => ({
+	messages: messages.map((message, index) =>
+		index === 0 && message.role === "user" ? { ...message, content: PRUNED } : message,
+	),
+});
+
+/** 只砍掉一点：裁剪之后仍然越过阈值，压缩必须接手。 */
+const shave = (message: AgentMessage): AgentMessage =>
+	message.role === "user" && typeof message.content === "string"
+		? { ...message, content: message.content.slice(0, -1_000) }
+		: message;
+
 const summaryText = (messages: AgentMessage[]): string =>
 	typeof messages[0]?.content === "string" ? messages[0].content : JSON.stringify(messages[0]?.content);
 
@@ -109,6 +124,101 @@ describe("AgentHarness compaction", () => {
 		]);
 		// transcript 保持完整：压缩只改变发给 provider 的投影。
 		expect(harness.getSession().messages).toHaveLength(6);
+	});
+
+	test("pruning old tool output in a beforeModelCall hook can make compaction unnecessary", async () => {
+		const contexts: Context[] = [];
+		const events: HarnessEvent[] = [];
+		const harness = new AgentHarness({
+			model: smallModel,
+			provider: scripted([reply("answer")], contexts),
+			instructions: "identity",
+			messages: longHistory(),
+			compaction: { settings },
+			hooks: { beforeModelCall: [prune] },
+		});
+		harness.subscribe((event) => {
+			events.push(event);
+		});
+
+		await harness.invoke("next question");
+
+		// 只有一次请求：裁剪后已经回到阈值以下，没有花掉一次摘要调用。
+		expect(contexts).toHaveLength(1);
+		expect(contexts[0]?.messages[0]?.content).toBe(PRUNED);
+		expect(events.filter((event) => event.type === "compaction_start")).toHaveLength(0);
+		// 裁剪只作用于本次请求，transcript 里仍是原文。
+		expect(harness.getSession().messages[0]?.content).toHaveLength(8_000);
+	});
+
+	test("compaction still runs when pruning is not enough, and the hook replays afterwards", async () => {
+		const contexts: Context[] = [];
+		const phases: string[] = [];
+		const harness = new AgentHarness({
+			model: smallModel,
+			provider: scripted([reply("SUMMARY"), reply("answer")], contexts),
+			instructions: "identity",
+			messages: longHistory(),
+			compaction: { settings },
+			hooks: {
+				beforeModelCall: [
+					({ phase, messages }) => {
+						phases.push(phase);
+						return { messages: messages.map((message) => ({ ...message, marked: true })) };
+					},
+				],
+			},
+		});
+
+		await harness.invoke("next question");
+
+		expect(phases).toEqual(["initial", "after_compaction"]);
+		expect(contexts).toHaveLength(2);
+		// 最终请求同时带着摘要和 hook 的改动。
+		expect(summaryText(contexts[1]?.messages as AgentMessage[])).toContain("<summary>");
+		expect(contexts[1]?.messages.every((message) => "marked" in message)).toBe(true);
+	});
+
+	test("the summary still reads the original tool output, not the pruned projection", async () => {
+		const contexts: Context[] = [];
+		const harness = new AgentHarness({
+			model: smallModel,
+			provider: scripted([reply("SUMMARY"), reply("answer")], contexts),
+			instructions: "identity",
+			messages: longHistory(),
+			compaction: { settings },
+			// 裁剪后仍然超阈值，所以摘要一定会发生。
+			hooks: { beforeModelCall: [({ messages }) => ({ messages: messages.map(shave) })] },
+		});
+
+		await harness.invoke("next question");
+
+		expect(contexts).toHaveLength(2);
+		expect(summaryText(contexts[0]?.messages as AgentMessage[])).toContain("x".repeat(8_000));
+	});
+
+	test("an onModelError hook recovers before the built-in overflow compaction", async () => {
+		const contexts: Context[] = [];
+		const events: HarnessEvent[] = [];
+		const harness = new AgentHarness({
+			model: roomyModel,
+			provider: scripted([failure(overflowError), reply("answer")], contexts),
+			instructions: "identity",
+			messages: longHistory(),
+			compaction: { settings },
+			hooks: {
+				onModelError: [({ messages }) => ({ type: "retry", messages: messages.slice(-1) })],
+			},
+		});
+		harness.subscribe((event) => {
+			events.push(event);
+		});
+
+		await harness.invoke("next question");
+
+		expect(contexts).toHaveLength(2);
+		expect(contexts[1]?.messages).toHaveLength(1);
+		expect(events.filter((event) => event.type === "compaction_start")).toHaveLength(0);
 	});
 
 	test("compaction: false leaves an oversized context alone", async () => {
@@ -238,16 +348,18 @@ describe("AgentHarness compaction", () => {
 		expect(contexts[1]?.messages).toHaveLength(5);
 	});
 
-	test("a custom strategy takes over both the decision and the summary", async () => {
-		const strategy: CompactionStrategy = {
-			shouldCompact: () => true,
-			compact: async (input) => ({
-				summary: "CUSTOM",
-				firstKeptEntryId: (input.entries.at(-1) as { id: string }).id,
-				tokensBefore: 0,
-				tokensAfter: 0,
-				usage: zeroUsage(),
-			}),
+	test("hooks can take over both the decision and the summary", async () => {
+		const hooks: AgentHarnessHookMap = {
+			shouldCompact: [() => true],
+			aroundCompact: [
+				async (input) => ({
+					summary: "CUSTOM",
+					firstKeptEntryId: (input.entries.at(-1) as { id: string }).id,
+					tokensBefore: 0,
+					tokensAfter: 0,
+					usage: zeroUsage(),
+				}),
+			],
 		};
 		const contexts: Context[] = [];
 		const harness = new AgentHarness({
@@ -255,7 +367,8 @@ describe("AgentHarness compaction", () => {
 			provider: scripted([reply("answer")], contexts),
 			instructions: "identity",
 			messages: longHistory(),
-			compaction: { settings, strategy },
+			compaction: { settings },
+			hooks,
 		});
 
 		await harness.invoke("next question");
@@ -264,17 +377,7 @@ describe("AgentHarness compaction", () => {
 		expect(summaryText(contexts[0]?.messages as AgentMessage[])).toContain("CUSTOM");
 	});
 
-	test("a custom strategy pointing at an unknown entry is rejected without persisting", async () => {
-		const strategy: CompactionStrategy = {
-			shouldCompact: () => true,
-			compact: async () => ({
-				summary: "CUSTOM",
-				firstKeptEntryId: "nope",
-				tokensBefore: 0,
-				tokensAfter: 0,
-				usage: zeroUsage(),
-			}),
-		};
+	test("an aroundCompact hook pointing at an unknown entry is rejected without persisting", async () => {
 		const events: HarnessEvent[] = [];
 		const contexts: Context[] = [];
 		const harness = new AgentHarness({
@@ -282,7 +385,19 @@ describe("AgentHarness compaction", () => {
 			provider: scripted([reply("answer")], contexts),
 			instructions: "identity",
 			messages: longHistory(),
-			compaction: { settings, strategy },
+			compaction: { settings },
+			hooks: {
+				shouldCompact: [() => true],
+				aroundCompact: [
+					async () => ({
+						summary: "CUSTOM",
+						firstKeptEntryId: "nope",
+						tokensBefore: 0,
+						tokensAfter: 0,
+						usage: zeroUsage(),
+					}),
+				],
+			},
 		});
 		harness.subscribe((event) => {
 			events.push(event);

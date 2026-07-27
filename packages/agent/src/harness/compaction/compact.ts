@@ -98,7 +98,7 @@ function extractSummary(message: AssistantMessage): string {
 
 /**
  * 摘要 Prompt 是内部固定模板：顺序永远固定，也不对外公开。
- * 想补一句走 summaryInstructions，想整段接管走 CompactionStrategy。
+ * 想补一句走 summaryInstructions，想整段接管走 hooks.aroundCompact。
  *
  * 重复压缩时输入是"上一条摘要 + 新增原文"，而不是串联所有摘要或整份 session：
  * 摘要调用的成本因此随新增历史增长，不随会话总长度增长。
