@@ -10,6 +10,7 @@ export {
 	type AgentState,
 	type AgentTool,
 	type AgentToolResult,
+	type CustomEvent,
 	cloneJson,
 	type JsonObject,
 	type JsonValue,

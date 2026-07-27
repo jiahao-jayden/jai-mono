@@ -1,21 +1,21 @@
-import type { AgentEvent, AgentMessage } from "../core/types";
+import type { AgentEvent, AgentMessage, CustomEvent } from "../core/types";
 import type { CompactionErrorInfo, CompactionTrigger } from "./compaction/types";
 import type { CompactionEntry } from "./session/types";
 
+export type CompactionOutcome =
+	| { status: "success"; entry: CompactionEntry }
+	| { status: "error"; error: CompactionErrorInfo };
+
 /**
- * harness 的事件词汇：core 的全部事件，加上只有 harness 会产生的那些。
- *
- * 没有把它们塞进 core 的 AgentEvent：直接使用 Agent 的调用方不该在 switch 里
- * 处理一批永远不会到来的事件。
+ * 压缩事件走 core 的 custom 外壳：core 不必认识 CompactionEntry，
+ * 也就不会为了声明这两条事件反过来依赖 harness。
  */
-export type HarnessEvent =
-	| AgentEvent
-	| { type: "compaction_start"; trigger: CompactionTrigger; tokensBefore: number }
-	| {
-			type: "compaction_end";
-			trigger: CompactionTrigger;
-			outcome: { status: "success"; entry: CompactionEntry } | { status: "error"; error: CompactionErrorInfo };
-	  };
+export type CompactionEvent =
+	| CustomEvent<"compaction_start", { trigger: CompactionTrigger; tokensBefore: number }>
+	| CustomEvent<"compaction_end", { trigger: CompactionTrigger; outcome: CompactionOutcome }>;
+
+/** harness 的事件词汇：core 的全部事件，加上只有 harness 会产生的那些。 */
+export type HarnessEvent = AgentEvent | CompactionEvent;
 
 export type HarnessEventListener = (event: HarnessEvent) => void | Promise<void>;
 

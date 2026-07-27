@@ -309,7 +309,11 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 		const compaction = this.compaction;
 		if (!compaction) return undefined;
 
-		await this.emit({ type: "compaction_start", trigger, tokensBefore: estimateTokens(input.context) });
+		await this.emit({
+			type: "custom",
+			name: "compaction_start",
+			data: { trigger, tokensBefore: estimateTokens(input.context) },
+		});
 
 		try {
 			// 摘要的事实来源始终是原始 entries：beforeModelCall 的临时裁剪不能让摘要模型看不到原文。
@@ -324,10 +328,18 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 			const result = await this.hooks.runAroundCompact(compactInput, () => compact(compactInput));
 
 			const entry = await this.ledger.appendCompaction(this.verify(result, input));
-			await this.emit({ type: "compaction_end", trigger, outcome: { status: "success", entry } });
+			await this.emit({
+				type: "custom",
+				name: "compaction_end",
+				data: { trigger, outcome: { status: "success", entry } },
+			});
 			return entry;
 		} catch (error) {
-			await this.emit({ type: "compaction_end", trigger, outcome: { status: "error", error: toErrorInfo(error) } });
+			await this.emit({
+				type: "custom",
+				name: "compaction_end",
+				data: { trigger, outcome: { status: "error", error: toErrorInfo(error) } },
+			});
 			// 摘要失败只是放弃这次压缩；durable 写入失败必须让 run 失败，否则会静默丢历史。
 			if (isSessionError(error)) throw error;
 			return undefined;

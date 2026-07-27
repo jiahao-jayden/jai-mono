@@ -5,7 +5,13 @@ export {
 	type DefaultCompactionOptions,
 } from "./agent-harness";
 export * from "./compaction";
-export type { HarnessEvent, HarnessEventListener, HarnessRun } from "./events";
+export type {
+	CompactionEvent,
+	CompactionOutcome,
+	HarnessEvent,
+	HarnessEventListener,
+	HarnessRun,
+} from "./events";
 export type {
 	AgentHarnessHookMap,
 	BeforeModelCallHook,

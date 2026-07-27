@@ -70,6 +70,18 @@ export type ToolMiddleware = (ctx: ToolCallContext, next: () => Promise<AgentToo
 export type AgentMessage = Message;
 
 /**
+ * 上层自定义事件的统一外壳。core 不认识 name 与 data，只把它原样送到订阅者手上。
+ *
+ * 有了它，harness、skills、产品层再加事件都不必改动 core 的 union；
+ * 泛型参数让发出方收窄 name 与 data，消费者拿到的仍是有类型的 payload。
+ */
+export interface CustomEvent<TName extends string = string, TData = unknown> {
+	type: "custom";
+	name: TName;
+	data: TData;
+}
+
+/**
  * 生命周期分三层，由外到内：
  * - run：一次 agentLoop 调用，可包含多个 turn（agent_start / agent_end）。
  * - turn：一次 LLM 响应 + 它触发的工具执行（turn_start / turn_end）。
@@ -90,7 +102,9 @@ export type AgentEvent =
 	// 工具执行生命周期
 	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown }
 	| { type: "tool_execution_update"; toolCallId: string; toolName: string; partial: AgentToolResult }
-	| { type: "tool_execution_end"; toolCallId: string; toolName: string; result: AgentToolResult; isError: boolean };
+	| { type: "tool_execution_end"; toolCallId: string; toolName: string; result: AgentToolResult; isError: boolean }
+	// 上层扩展发出的事件，core 只透传
+	| CustomEvent;
 
 export interface AgentLoopConfig {
 	/** 目标模型元数据。 */

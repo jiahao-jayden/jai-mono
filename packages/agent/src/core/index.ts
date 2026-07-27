@@ -13,6 +13,7 @@ export type {
 	AgentMessage,
 	AgentTool,
 	AgentToolResult,
+	CustomEvent,
 	OnModelError,
 	PrepareContext,
 	RetryModelCall,

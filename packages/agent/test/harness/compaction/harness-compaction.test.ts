@@ -12,6 +12,7 @@ import {
 	InMemorySessionStore,
 	openSession,
 	type AgentHarnessHookMap,
+	type CompactionEvent,
 	type HarnessEvent,
 } from "../../../src/harness";
 import { model, sessionInit, type AppState } from "../../support/fixtures";
@@ -44,6 +45,11 @@ const failure = (error: NonNullable<AssistantMessage["error"]>): AssistantMessag
 });
 
 const overflowError = { message: "prompt is too long", code: "context_length_exceeded" };
+
+const compactionEvents = (events: HarnessEvent[]): CompactionEvent[] =>
+	events.filter(
+		(event): event is CompactionEvent => event.type === "custom" && event.name.startsWith("compaction_"),
+	);
 
 /** 一段已经超过阈值的历史：两个 user turn，第一个很长。 */
 const longHistory = (): AgentMessage[] => [
@@ -118,10 +124,7 @@ describe("AgentHarness compaction", () => {
 		// 压缩掉的是旧历史，最新那条问题必须还在。
 		expect(contexts[1]?.messages.at(-1)?.content).toBe("next question");
 
-		expect(events.filter((event) => event.type.startsWith("compaction_")).map((event) => event.type)).toEqual([
-			"compaction_start",
-			"compaction_end",
-		]);
+		expect(compactionEvents(events).map((event) => event.name)).toEqual(["compaction_start", "compaction_end"]);
 		// transcript 保持完整：压缩只改变发给 provider 的投影。
 		expect(harness.getSession().messages).toHaveLength(6);
 	});
@@ -146,7 +149,7 @@ describe("AgentHarness compaction", () => {
 		// 只有一次请求：裁剪后已经回到阈值以下，没有花掉一次摘要调用。
 		expect(contexts).toHaveLength(1);
 		expect(contexts[0]?.messages[0]?.content).toBe(PRUNED);
-		expect(events.filter((event) => event.type === "compaction_start")).toHaveLength(0);
+		expect(compactionEvents(events)).toHaveLength(0);
 		// 裁剪只作用于本次请求，transcript 里仍是原文。
 		expect(harness.getSession().messages[0]?.content).toHaveLength(8_000);
 	});
@@ -218,7 +221,7 @@ describe("AgentHarness compaction", () => {
 
 		expect(contexts).toHaveLength(2);
 		expect(contexts[1]?.messages).toHaveLength(1);
-		expect(events.filter((event) => event.type === "compaction_start")).toHaveLength(0);
+		expect(compactionEvents(events)).toHaveLength(0);
 	});
 
 	test("compaction: false leaves an oversized context alone", async () => {
@@ -278,7 +281,7 @@ describe("AgentHarness compaction", () => {
 
 		expect(contexts).toHaveLength(3);
 		expect(summaryText(contexts[2]?.messages as AgentMessage[])).toContain("<summary>");
-		expect(events.filter((event) => event.type === "compaction_start")).toMatchObject([{ trigger: "overflow" }]);
+		expect(compactionEvents(events).filter((event) => event.name === "compaction_start")).toMatchObject([{ data: { trigger: "overflow" } }]);
 		expect(harness.state.error).toBeUndefined();
 	});
 
@@ -340,9 +343,12 @@ describe("AgentHarness compaction", () => {
 		await harness.invoke("next question");
 
 		expect(events).toContainEqual({
-			type: "compaction_end",
-			trigger: "threshold",
-			outcome: { status: "error", error: { code: "summarization_failed", message: expect.any(String) } },
+			type: "custom",
+			name: "compaction_end",
+			data: {
+				trigger: "threshold",
+				outcome: { status: "error", error: { code: "summarization_failed", message: expect.any(String) } },
+			},
 		});
 		expect(contexts).toHaveLength(2);
 		expect(contexts[1]?.messages).toHaveLength(5);
@@ -406,9 +412,12 @@ describe("AgentHarness compaction", () => {
 		await harness.invoke("next question");
 
 		expect(events).toContainEqual({
-			type: "compaction_end",
-			trigger: "threshold",
-			outcome: { status: "error", error: { code: "unknown", message: expect.any(String) } },
+			type: "custom",
+			name: "compaction_end",
+			data: {
+				trigger: "threshold",
+				outcome: { status: "error", error: { code: "unknown", message: expect.any(String) } },
+			},
 		});
 		expect(contexts[0]?.messages).toHaveLength(5);
 	});
