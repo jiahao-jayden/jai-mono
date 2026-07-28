@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { applyEntry, emptySnapshot, replay } from "../../../src/harness";
-import { appStateEntry, compactionEntry, messageEntry, sessionInit } from "../../support/fixtures";
+import { appStateEntry, compactionEntry, defaultAppState, messageEntry } from "../../support/fixtures";
 
 describe("applyEntry", () => {
-	const base = emptySnapshot(sessionInit, "2026-01-01T00:00:00.000Z");
+	const base = emptySnapshot(defaultAppState, "2026-01-01T00:00:00.000Z");
 
 	test("appends messages without touching business state", () => {
 		const entry = messageEntry("e0", "hi", "2026-01-01T00:00:01.000Z");
@@ -35,6 +35,6 @@ describe("applyEntry", () => {
 	test("replay folds a whole log", () => {
 		const entries = [appStateEntry("e0", true), appStateEntry("e1", false)];
 
-		expect(replay(sessionInit, entries, "t").appState).toEqual({ resolved: false });
+		expect(replay(defaultAppState, entries, "t").appState).toEqual({ resolved: false });
 	});
 });

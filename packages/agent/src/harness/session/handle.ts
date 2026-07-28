@@ -1,16 +1,16 @@
 import type { JsonObject } from "../../core/agent-state";
 import { applyEntry } from "./snapshot";
-import { type SessionHandle, type SessionInit, SessionReadOnlyError, type SessionStore } from "./types";
+import { type SessionHandle, SessionReadOnlyError, type SessionStore } from "./types";
 
 /** 不存在则创建，存在则载入；revision 从此由 handle 内部维护。 */
 export async function openSession<TAppState extends JsonObject>(
 	store: SessionStore<TAppState>,
 	id: string,
-	init: SessionInit<TAppState>,
+	appState: TAppState,
 ): Promise<SessionHandle<TAppState>> {
 	let record = await store.load(id);
 	if (!record) {
-		await store.create(id, init);
+		await store.create(id, appState);
 		record = await store.load(id);
 		if (!record) throw new Error(`Session "${id}" disappeared right after creation`);
 	}

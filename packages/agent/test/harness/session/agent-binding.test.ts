@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { toSnapshot } from "../../../src/harness";
-import { createAgent, sessionInit } from "../../support/fixtures";
+import { createAgent } from "../../support/fixtures";
 
 describe("toSnapshot", () => {
 	test("projects the same state to identical entries every time", async () => {
@@ -21,7 +21,6 @@ describe("toSnapshot", () => {
 
 		const snapshot = toSnapshot("s1", agent.state, "2026-01-01T00:00:00.000Z");
 
-		expect(snapshot.systemPrompt).toBe(sessionInit.systemPrompt);
 		expect(snapshot.appState).toEqual({ resolved: true });
 		expect(snapshot.entries.every((entry) => entry.type === "message")).toBe(true);
 	});

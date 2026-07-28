@@ -40,16 +40,10 @@ export type SessionEntry<TAppState extends JsonObject = JsonObject> =
 	| CompactionEntry;
 
 export interface SessionSnapshot<TAppState extends JsonObject = JsonObject> {
-	systemPrompt: string;
 	entries: SessionEntry<TAppState>[];
 	appState: TAppState;
 	createdAt: string;
 	updatedAt: string;
-}
-
-export interface SessionInit<TAppState extends JsonObject = JsonObject> {
-	systemPrompt: string;
-	appState: TAppState;
 }
 
 export interface StoredSession<TAppState extends JsonObject = JsonObject> {
@@ -66,7 +60,7 @@ export interface StoredSession<TAppState extends JsonObject = JsonObject> {
 export interface SessionStore<TAppState extends JsonObject = JsonObject> {
 	load(id: string): Promise<StoredSession<TAppState> | undefined>;
 	/** 仅当 session 不存在时创建，返回初始 revision。 */
-	create(id: string, init: SessionInit<TAppState>): Promise<string>;
+	create(id: string, appState: TAppState): Promise<string>;
 	append(id: string, entry: SessionEntry<TAppState>, expectedRevision: string): Promise<string>;
 	list(): Promise<string[]>;
 }

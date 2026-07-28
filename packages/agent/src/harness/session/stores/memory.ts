@@ -3,7 +3,6 @@ import { applyEntry, emptySnapshot } from "../snapshot";
 import {
 	SessionConflictError,
 	type SessionEntry,
-	type SessionInit,
 	type SessionStore,
 	type StoredSession,
 } from "../types";
@@ -16,14 +15,14 @@ export class InMemorySessionStore<TAppState extends JsonObject = JsonObject> imp
 		return record ? structuredClone(record) : undefined;
 	}
 
-	async create(id: string, init: SessionInit<TAppState>): Promise<string> {
+	async create(id: string, appState: TAppState): Promise<string> {
 		if (this.records.has(id)) {
 			throw new SessionConflictError(`Session "${id}" already exists`);
 		}
 
 		const revision = crypto.randomUUID();
 		this.records.set(id, {
-			snapshot: emptySnapshot(init, new Date().toISOString()),
+			snapshot: emptySnapshot(appState, new Date().toISOString()),
 			revision,
 			readOnly: false,
 		});

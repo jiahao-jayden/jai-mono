@@ -1,22 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import type { Context } from "@jai/ai";
 import { Agent, type AgentEvent, InMemorySessionStore, openSession } from "../../src";
-import { assistant, messageEntry, model, providerFor, sessionInit, type AppState } from "../support/fixtures";
+import { assistant, defaultAppState, messageEntry, model, providerFor, testInstructions, type AppState } from "../support/fixtures";
 
 describe("Agent", () => {
 	test("restores durable state from a session handle and persists the run", async () => {
 		const store = new InMemorySessionStore<AppState>();
-		const handle = await openSession(store, "s1", sessionInit);
+		const handle = await openSession(store, "s1", defaultAppState);
 		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")]),
 			sessionHandle: handle,
+			instructions: testInstructions,
 		});
 
 		agent.updateAppState(() => ({ resolved: true }));
 		await agent.invoke("hello");
 
-		expect(agent.state.systemPrompt).toBe(sessionInit.systemPrompt);
+		expect(agent.state.systemPrompt).toBe(testInstructions);
 		const record = await store.load("s1");
 		expect(record?.snapshot.entries.map((entry) => entry.type)).toEqual(["message", "message", "app_state"]);
 		expect(record?.snapshot.appState).toEqual({ resolved: true });
@@ -27,14 +28,16 @@ describe("Agent", () => {
 		const first = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("first")]),
-			sessionHandle: await openSession(store, "s1", sessionInit),
+			sessionHandle: await openSession(store, "s1", defaultAppState),
+			instructions: testInstructions,
 		});
 		await first.invoke("hello");
 
 		const second = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("second")]),
-			sessionHandle: await openSession(store, "s1", sessionInit),
+			sessionHandle: await openSession(store, "s1", defaultAppState),
+			instructions: testInstructions,
 		});
 		await second.invoke("again");
 
@@ -44,17 +47,18 @@ describe("Agent", () => {
 		expect(record?.snapshot.entries.filter((entry) => entry.type === "message")).toHaveLength(4);
 	});
 
-	test("keeps the restored system prompt", async () => {
+	test("uses the provided instructions, not the snapshot", async () => {
 		const contexts: Context[] = [];
 		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")], contexts),
-			sessionHandle: await openSession(new InMemorySessionStore<AppState>(), "s1", sessionInit),
+			sessionHandle: await openSession(new InMemorySessionStore<AppState>(), "s1", defaultAppState),
+			instructions: testInstructions,
 		});
 
 		await agent.invoke("hello");
 
-		expect(contexts[0]?.systemPrompt).toBe(sessionInit.systemPrompt);
+		expect(contexts[0]?.systemPrompt).toBe(testInstructions);
 	});
 
 	test("persists an event before external listeners observe it", async () => {
@@ -62,7 +66,8 @@ describe("Agent", () => {
 		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")]),
-			sessionHandle: await openSession(store, "s1", sessionInit),
+			sessionHandle: await openSession(store, "s1", defaultAppState),
+			instructions: testInstructions,
 		});
 		const persistedWhenSeen: number[] = [];
 
@@ -78,11 +83,12 @@ describe("Agent", () => {
 
 	test("a failed write fails the run instead of silently losing history", async () => {
 		const store = new InMemorySessionStore<AppState>();
-		const handle = await openSession(store, "s1", sessionInit);
+		const handle = await openSession(store, "s1", defaultAppState);
 		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")]),
 			sessionHandle: handle,
+			instructions: testInstructions,
 		});
 
 		const published: AgentEvent["type"][] = [];
@@ -104,7 +110,7 @@ describe("Agent", () => {
 		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("first"), assistant("second")]),
-			instructions: sessionInit.systemPrompt,
+			instructions: testInstructions,
 		});
 		const observed: AgentEvent[] = [];
 		agent.subscribe((event) => {
@@ -127,7 +133,8 @@ describe("Agent", () => {
 		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")]),
-			sessionHandle: await openSession(store, "s1", sessionInit),
+			sessionHandle: await openSession(store, "s1", defaultAppState),
+			instructions: testInstructions,
 		});
 
 		await agent.invoke("hello");
@@ -139,7 +146,7 @@ describe("Agent", () => {
 	});
 
 	test("refuses a session handle alongside a second source of durable state", async () => {
-		const handle = await openSession(new InMemorySessionStore<AppState>(), "s1", sessionInit);
+		const handle = await openSession(new InMemorySessionStore<AppState>(), "s1", defaultAppState);
 
 		expect(
 			() =>
@@ -148,7 +155,7 @@ describe("Agent", () => {
 					provider: providerFor([]),
 					sessionHandle: handle,
 					// biome-ignore lint/suspicious/noExplicitAny: 模拟绕过类型约束的 JS 调用方
-					instructions: "Another prompt",
+					messages: [],
 				} as any),
 		).toThrow(/sessionHandle/);
 	});
@@ -157,7 +164,7 @@ describe("Agent", () => {
 		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")]),
-			instructions: sessionInit.systemPrompt,
+			instructions: testInstructions,
 		});
 		const events: AgentEvent[] = [];
 		agent.subscribe((event) => {
@@ -194,7 +201,7 @@ describe("Agent observers", () => {
 		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")]),
-			instructions: sessionInit.systemPrompt,
+			instructions: testInstructions,
 			onObserverError: ({ error }) => {
 				reported.push((error as Error).message);
 			},
@@ -215,7 +222,7 @@ describe("Agent observers", () => {
 		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")]),
-			instructions: sessionInit.systemPrompt,
+			instructions: testInstructions,
 		});
 		agent.subscribe(boom("dashboard is down"));
 
@@ -233,7 +240,7 @@ describe("Agent observers", () => {
 		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")]),
-			instructions: sessionInit.systemPrompt,
+			instructions: testInstructions,
 			hooks: {
 				onEvent: [
 					boom("hook is down"),
@@ -256,7 +263,7 @@ describe("Agent observers", () => {
 		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")]),
-			instructions: sessionInit.systemPrompt,
+			instructions: testInstructions,
 			onObserverError: boom("reporter is down"),
 		});
 		agent.subscribe(boom("dashboard is down"));

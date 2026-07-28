@@ -5,7 +5,6 @@ import type { AgentEventListener } from "./events";
 
 /**
  * 同一次 model call 里 beforeModelCall 可能跑不止一次：压缩会重排消息序列，
- * 上一轮基于旧序列的结果不能复用。phase 让 hook 知道自己处在哪一遍。
  */
 export type BeforeModelCallPhase = "initial" | "after_compaction" | "overflow_retry";
 
@@ -96,17 +95,18 @@ export interface AgentHookMap {
 export class HookHost {
 	private readonly beforeModelCall: readonly BeforeModelCallHook[];
 	private readonly shouldCompact: readonly ShouldCompactHook[];
-	private readonly compact: readonly CompactMiddleware[];
-	private readonly modelError: readonly ModelErrorHook[];
+	private readonly aroundCompact: readonly CompactMiddleware[];
+	private readonly onModelError: readonly ModelErrorHook[];
 	readonly aroundToolCall: ToolMiddleware[];
 	readonly onEvent: readonly AgentEventListener[];
 
-	// 构造时拷贝：运行中改动外部数组不会让同一次 run 的 hook 链中途变形。
+	// 字段与 AgentHookMap 的键一一同名；构造时拷贝，运行中改动外部数组不会让
+	// 同一次 run 的 hook 链中途变形。
 	constructor(hooks: AgentHookMap | undefined) {
 		this.beforeModelCall = [...(hooks?.beforeModelCall ?? [])];
 		this.shouldCompact = [...(hooks?.shouldCompact ?? [])];
-		this.compact = [...(hooks?.aroundCompact ?? [])];
-		this.modelError = [...(hooks?.onModelError ?? [])];
+		this.aroundCompact = [...(hooks?.aroundCompact ?? [])];
+		this.onModelError = [...(hooks?.onModelError ?? [])];
 		this.aroundToolCall = [...(hooks?.aroundToolCall ?? [])];
 		this.onEvent = [...(hooks?.onEvent ?? [])];
 	}
@@ -147,7 +147,7 @@ export class HookHost {
 	/** 洋葱：不调 next() 即完整接管默认实现。 */
 	runAroundCompact(input: CompactInput, base: CompactNext): Promise<CompactionResult> {
 		const dispatch = (index: number): Promise<CompactionResult> => {
-			const middleware = this.compact[index];
+			const middleware = this.aroundCompact[index];
 			if (!middleware) return base();
 
 			return middleware(input, () => dispatch(index + 1));
@@ -162,7 +162,7 @@ export class HookHost {
 		messages: readonly AgentMessage[],
 		signal?: AbortSignal,
 	): Promise<ModelErrorRecovery | undefined> {
-		for (const hook of this.modelError) {
+		for (const hook of this.onModelError) {
 			const recovery = await hook({ error, messages, signal });
 			if (recovery) return recovery;
 		}

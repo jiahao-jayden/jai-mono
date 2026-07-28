@@ -1,11 +1,10 @@
 import { cloneJson, type JsonObject } from "../../core/agent-state";
-import type { SessionEntry, SessionInit, SessionSnapshot } from "./types";
+import type { SessionEntry, SessionSnapshot } from "./types";
 
-export function emptySnapshot<T extends JsonObject>(init: SessionInit<T>, now: string): SessionSnapshot<T> {
+export function emptySnapshot<T extends JsonObject>(appState: T, now: string): SessionSnapshot<T> {
 	return {
-		systemPrompt: init.systemPrompt,
 		entries: [],
-		appState: cloneJson(init.appState),
+		appState: cloneJson(appState),
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -35,9 +34,9 @@ export function applyEntry<T extends JsonObject>(
 }
 
 export function replay<T extends JsonObject>(
-	init: SessionInit<T>,
+	appState: T,
 	entries: SessionEntry<T>[],
 	createdAt: string,
 ): SessionSnapshot<T> {
-	return entries.reduce<SessionSnapshot<T>>(applyEntry, emptySnapshot(init, createdAt));
+	return entries.reduce<SessionSnapshot<T>>(applyEntry, emptySnapshot(appState, createdAt));
 }

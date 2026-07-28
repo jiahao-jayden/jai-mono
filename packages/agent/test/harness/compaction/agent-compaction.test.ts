@@ -15,7 +15,7 @@ import {
 	type AgentMessage,
 	type CompactionEvent,
 } from "../../../src";
-import { model, sessionInit, type AppState } from "../../support/fixtures";
+import { defaultAppState, model, testInstructions, type AppState } from "../../support/fixtures";
 
 /** 小窗口 + 显式 settings：让"越过阈值"在测试里是一次确定的算术，而不是巧合。 */
 const smallModel = { ...model, contextWindow: 2_000, maxTokens: 200 };
@@ -240,7 +240,7 @@ describe("Agent compaction", () => {
 
 	test("persists the compaction entry alongside the untouched messages", async () => {
 		const store = new InMemorySessionStore<AppState>();
-		const seed = await openSession(store, "s1", sessionInit);
+		const seed = await openSession(store, "s1", defaultAppState);
 		for (const [index, message] of longHistory().entries()) {
 			await seed.append({ type: "message", id: `seed-${index}`, timestamp: "2026-01-01T00:00:00.000Z", message });
 		}
@@ -248,7 +248,8 @@ describe("Agent compaction", () => {
 		const agent = new Agent<AppState>({
 			model: smallModel,
 			provider: scripted([reply("SUMMARY"), reply("answer")]),
-			sessionHandle: await openSession(store, "s1", sessionInit),
+			sessionHandle: await openSession(store, "s1", defaultAppState),
+			instructions: testInstructions,
 			compaction: { settings },
 		});
 		const persistedWhenSeen: unknown[] = [];

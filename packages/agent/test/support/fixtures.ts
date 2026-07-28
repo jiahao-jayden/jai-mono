@@ -55,13 +55,14 @@ export function providerFor(responses: AssistantMessage[], contexts?: Context[])
 
 export type AppState = { resolved: boolean };
 
-export const sessionInit = { systemPrompt: "You are helpful.", appState: { resolved: false } };
+export const testInstructions = "You are helpful.";
+export const defaultAppState: AppState = { resolved: false };
 
 export function createAgent(responses = 1): Agent<AppState> {
 	return new Agent<AppState>({
 		model,
 		provider: providerFor(Array.from({ length: responses }, (_, index) => assistant(`done ${index}`))),
-		instructions: sessionInit.systemPrompt,
+		instructions: testInstructions,
 		appState: { resolved: false },
 	});
 }

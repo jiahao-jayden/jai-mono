@@ -12,7 +12,6 @@ export {
 	SessionConflictError,
 	type SessionEntry,
 	type SessionHandle,
-	type SessionInit,
 	SessionReadOnlyError,
 	type SessionSnapshot,
 	type SessionStore,

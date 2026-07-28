@@ -12,7 +12,6 @@ export function toSnapshot<TAppState extends JsonObject>(
 	now: string,
 ): SessionSnapshot<TAppState> {
 	return {
-		systemPrompt: state.systemPrompt,
 		entries: state.messages.map((message, index) => ({
 			type: "message",
 			id: `${sessionId}:${index}`,
@@ -31,9 +30,8 @@ export function toSnapshot<TAppState extends JsonObject>(
  */
 export function restoreFromSnapshot<TAppState extends JsonObject>(
 	snapshot: SessionSnapshot<TAppState>,
-): Pick<CoreAgentOptions<TAppState>, "instructions" | "messages" | "appState"> {
+): Pick<CoreAgentOptions<TAppState>, "messages" | "appState"> {
 	return {
-		instructions: snapshot.systemPrompt,
 		messages: snapshot.entries.flatMap((entry) => (entry.type === "message" ? [entry.message] : [])),
 		appState: cloneJson(snapshot.appState),
 	};

@@ -13,8 +13,8 @@ import {
 import {
 	appStateEntry,
 	compactionEntry,
+	defaultAppState as init,
 	messageEntry,
-	sessionInit as init,
 	type AppState,
 } from "../../support/fixtures";
 
@@ -74,7 +74,6 @@ for (const harness of harnesses) {
 
 			expect(record?.revision).toBe(revision);
 			expect(record?.readOnly).toBe(false);
-			expect(record?.snapshot.systemPrompt).toBe(init.systemPrompt);
 			expect(record?.snapshot.appState).toEqual({ resolved: false });
 			expect(record?.snapshot.entries).toEqual([]);
 		});

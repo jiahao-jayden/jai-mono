@@ -64,14 +64,15 @@ interface CompactionRuntime {
 }
 
 /**
- * 要么给一个已打开的 SessionHandle，由门面从它的 snapshot 恢复 durable 初值，
- * 要么自己传 durable 初值。两者同时给会出现两个事实来源，因此类型上直接禁止。
+ * 要么给一个已打开的 SessionHandle，由门面从它的 snapshot 恢复对话历史与 appState，
+ * 要么自己传这些初值。两者同时给会出现两个事实来源，因此类型上直接禁止。
+ * instructions 两种变体都接受：system prompt 是运行时产物，不从 snapshot 恢复。
  */
 export type AgentOptions<TAppState extends JsonObject = JsonObject> =
 	| (AgentCommonOptions<TAppState> & {
 			sessionHandle: SessionHandle<TAppState>;
+			instructions?: string;
 			session?: never;
-			instructions?: never;
 			messages?: never;
 			appState?: never;
 	  })
@@ -113,17 +114,13 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		// 构造期 handler 先入队，运行期 subscribe() 的观察者排在它们后面。
 		for (const listener of this.hooks.onEvent) this.listeners.add(listener);
 
-		const durable = options.sessionHandle
+		const restored = options.sessionHandle
 			? restoreFromSnapshot(options.sessionHandle.snapshot)
-			: {
-					instructions: options.instructions,
-					messages: options.messages,
-					appState: options.appState,
-				};
+			: { messages: options.messages, appState: options.appState };
 
 		this.ledger = new SessionLedger<TAppState>(
 			options.sessionHandle,
-			durable.messages ?? options.session?.messages ?? [],
+			restored.messages ?? options.session?.messages ?? [],
 		);
 
 		this.agent = new CoreAgent<TAppState>({
@@ -135,7 +132,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 			toolExecution: options.toolExecution,
 			toolMiddlewares: this.hooks.aroundToolCall,
 			session: options.session,
-			...durable,
+			instructions: options.instructions,
+			...restored,
 			prepareContext: (context) => this.prepareContext(context),
 			onModelError: (error, context) => this.onModelError(error, context),
 			// 走 commit seam 而不是 subscribe()：持久化必须在观察者之前完成，且它失败要让 run 失败。
@@ -440,7 +438,7 @@ function isSessionError(error: unknown): boolean {
 function assertSingleDurableSource(options: AgentOptions<JsonObject>): void {
 	if (!options.sessionHandle) return;
 
-	const conflicting = (["session", "instructions", "messages", "appState"] as const).filter(
+	const conflicting = (["session", "messages", "appState"] as const).filter(
 		(key) => options[key] !== undefined,
 	);
 

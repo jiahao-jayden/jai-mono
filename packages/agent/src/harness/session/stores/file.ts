@@ -7,7 +7,6 @@ import {
 	SessionBusyError,
 	SessionConflictError,
 	type SessionEntry,
-	type SessionInit,
 	SessionReadOnlyError,
 	type SessionStore,
 	type StoredSession,
@@ -21,7 +20,6 @@ interface SessionHeader {
 	version: number;
 	id: string;
 	revision: string;
-	systemPrompt: string;
 	appState: JsonObject;
 	createdAt: string;
 }
@@ -43,7 +41,7 @@ export class FileSessionStore<TAppState extends JsonObject = JsonObject> impleme
 
 		return {
 			snapshot: replay<TAppState>(
-				{ systemPrompt: parsed.header.systemPrompt, appState: parsed.header.appState as TAppState },
+				parsed.header.appState as TAppState,
 				parsed.entries,
 				parsed.header.createdAt,
 			),
@@ -52,7 +50,7 @@ export class FileSessionStore<TAppState extends JsonObject = JsonObject> impleme
 		};
 	}
 
-	async create(id: string, init: SessionInit<TAppState>): Promise<string> {
+	async create(id: string, appState: TAppState): Promise<string> {
 		await fs.mkdir(this.directory, { recursive: true });
 
 		return this.withExclusiveLock(id, async () => {
@@ -66,8 +64,7 @@ export class FileSessionStore<TAppState extends JsonObject = JsonObject> impleme
 				version: SCHEMA_VERSION,
 				id,
 				revision,
-				systemPrompt: init.systemPrompt,
-				appState: init.appState,
+				appState,
 				createdAt: new Date().toISOString(),
 			};
 
