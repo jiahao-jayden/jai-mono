@@ -1,4 +1,4 @@
-import type { AgentOptions } from "../../core/agent";
+import type { CoreAgentOptions } from "../../core/agent";
 import { type AgentState, cloneJson, type JsonObject } from "../../core/agent-state";
 import type { SessionSnapshot } from "./types";
 
@@ -27,11 +27,11 @@ export function toSnapshot<TAppState extends JsonObject>(
 
 /**
  * 恢复只带回 durable 部分；运行期字段一律从 idle 默认值开始。
- * 装配 Agent 是 AgentHarness 的职责，这个投影因此不进公开入口。
+ * 装配执行器是门面的职责，这个投影因此不进公开入口。
  */
 export function restoreFromSnapshot<TAppState extends JsonObject>(
 	snapshot: SessionSnapshot<TAppState>,
-): Pick<AgentOptions<TAppState>, "instructions" | "messages" | "appState"> {
+): Pick<CoreAgentOptions<TAppState>, "instructions" | "messages" | "appState"> {
 	return {
 		instructions: snapshot.systemPrompt,
 		messages: snapshot.entries.flatMap((entry) => (entry.type === "message" ? [entry.message] : [])),

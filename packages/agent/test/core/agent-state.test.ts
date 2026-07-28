@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Agent, type AgentEvent, cloneJson } from "../../src";
+import { cloneJson } from "../../src";
+import { CoreAgent, type CoreAgentEvent } from "../../src/core";
 import { assistant, model, providerFor } from "../support/fixtures";
 
 describe("cloneJson", () => {
@@ -27,9 +28,9 @@ describe("cloneJson", () => {
 	});
 });
 
-describe("Agent state", () => {
+describe("CoreAgent state", () => {
 	function createAgent() {
-		return new Agent<{ resolved: boolean; tags: string[] }>({
+		return new CoreAgent<{ resolved: boolean; tags: string[] }>({
 			model,
 			provider: providerFor([assistant("done")]),
 			instructions: "You are helpful.",
@@ -64,10 +65,10 @@ describe("Agent state", () => {
 	});
 });
 
-describe("Agent subscribe", () => {
+describe("CoreAgent subscribe", () => {
 	test("delivers the same events to invoke() and stream() subscribers", async () => {
-		const invoked: AgentEvent["type"][] = [];
-		const agent = new Agent({ model, provider: providerFor([assistant("done"), assistant("done again")]) });
+		const invoked: CoreAgentEvent["type"][] = [];
+		const agent = new CoreAgent({ model, provider: providerFor([assistant("done"), assistant("done again")]) });
 		const unsubscribe = agent.subscribe((event) => {
 			invoked.push(event.type);
 		});
@@ -76,7 +77,7 @@ describe("Agent subscribe", () => {
 		const first = [...invoked];
 		invoked.length = 0;
 
-		const streamed: AgentEvent["type"][] = [];
+		const streamed: CoreAgentEvent["type"][] = [];
 		for await (const event of agent.stream("hello again")) {
 			streamed.push(event.type);
 		}
@@ -87,8 +88,8 @@ describe("Agent subscribe", () => {
 	});
 
 	test("stops delivering after unsubscribe", async () => {
-		const seen: AgentEvent["type"][] = [];
-		const agent = new Agent({ model, provider: providerFor([assistant("done")]) });
+		const seen: CoreAgentEvent["type"][] = [];
+		const agent = new CoreAgent({ model, provider: providerFor([assistant("done")]) });
 
 		agent.subscribe((event) => {
 			seen.push(event.type);
@@ -98,13 +99,74 @@ describe("Agent subscribe", () => {
 		expect(seen).toEqual([]);
 	});
 
-	test("a failing listener fails the whole run", async () => {
-		const agent = new Agent({ model, provider: providerFor([assistant("done")]) });
+	test("a failing listener neither stops the run nor blocks the next listener", async () => {
+		const reported: string[] = [];
+		const seen: CoreAgentEvent["type"][] = [];
+		const agent = new CoreAgent({
+			model,
+			provider: providerFor([assistant("done")]),
+			onObserverError: ({ error }) => {
+				reported.push((error as Error).message);
+			},
+		});
+
+		agent.subscribe(() => {
+			throw new Error("dashboard is down");
+		});
 		agent.subscribe((event) => {
-			if (event.type === "message_end") throw new Error("persistence is down");
+			seen.push(event.type);
+		});
+
+		const messages = await agent.invoke("hello");
+
+		expect(messages).toHaveLength(2);
+		expect(seen).toContain("message_end");
+		expect(new Set(reported)).toEqual(new Set(["dashboard is down"]));
+	});
+
+	test("a failing onObserverError is swallowed too", async () => {
+		const agent = new CoreAgent({
+			model,
+			provider: providerFor([assistant("done")]),
+			onObserverError: () => {
+				throw new Error("reporter is down");
+			},
+		});
+		agent.subscribe(() => {
+			throw new Error("dashboard is down");
+		});
+
+		await expect(agent.invoke("hello")).resolves.toHaveLength(2);
+	});
+
+	test("commitEvent failure fails the run", async () => {
+		const agent = new CoreAgent({
+			model,
+			provider: providerFor([assistant("done")]),
+			commitEvent: (event) => {
+				if (event.type === "message_end") throw new Error("persistence is down");
+			},
 		});
 
 		await expect(agent.invoke("hello")).rejects.toThrow("persistence is down");
 		expect(agent.state.isRunning).toBe(false);
+	});
+
+	test("commitEvent runs before observers see the event", async () => {
+		const order: string[] = [];
+		const agent = new CoreAgent({
+			model,
+			provider: providerFor([assistant("done")]),
+			commitEvent: (event) => {
+				if (event.type === "message_end") order.push("commit");
+			},
+		});
+		agent.subscribe((event) => {
+			if (event.type === "message_end") order.push("observe");
+		});
+
+		await agent.invoke("hello");
+
+		expect(order).toEqual(["commit", "observe", "commit", "observe"]);
 	});
 });

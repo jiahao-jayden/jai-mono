@@ -9,7 +9,8 @@ import {
 	zeroUsage,
 } from "@jai/ai";
 import { Type } from "@sinclair/typebox";
-import { Agent, type AgentEvent, type AgentTool } from "../../src";
+import type { AgentTool } from "../../src";
+import { CoreAgent, type CoreAgentEvent } from "../../src/core";
 
 const model: Model = {
 	id: "test-model",
@@ -84,13 +85,13 @@ function providerFor(responses: AssistantMessage[], contexts: Context[] = []): P
 	};
 }
 
-function lastStopReason(agent: Agent): string | undefined {
+function lastStopReason(agent: CoreAgent): string | undefined {
 	const last = agent.state.messages.at(-1);
 	return last?.role === "assistant" ? last.stopReason : undefined;
 }
 
-function createAgent(provider: Provider, tools: AgentTool[] = []): Agent {
-	return new Agent({
+function createAgent(provider: Provider, tools: AgentTool[] = []): CoreAgent {
+	return new CoreAgent({
 		model,
 		provider,
 		instructions: "You are helpful.",
@@ -140,7 +141,7 @@ function finish(call: ControlledCall, message: AssistantMessage): void {
 	call.stream.push({ type: "done", reason: "stop", message });
 }
 
-describe("Agent", () => {
+describe("CoreAgent", () => {
 	test("keeps the run active through agent_end and finishes idle", async () => {
 		const agent = createAgent(providerFor([assistant("done")]));
 		let isRunningAtEnd: boolean | undefined;
@@ -339,7 +340,7 @@ describe("Agent", () => {
 			tools: [] as AgentTool[],
 		};
 		const reply = assistant("done");
-		const agent = new Agent({
+		const agent = new CoreAgent({
 			model,
 			provider: providerFor([reply]),
 			instructions: originalContext.systemPrompt,
@@ -368,7 +369,7 @@ describe("Agent", () => {
 
 	test("restores transcript from a Session without restoring transient run state", async () => {
 		const previous = user("previous");
-		const agent = new Agent({
+		const agent = new CoreAgent({
 			model,
 			provider: providerFor([assistant("done")]),
 			tools: [],
@@ -423,7 +424,7 @@ describe("Agent", () => {
 			stopReason: "toolUse",
 		};
 		const agent = createAgent(providerFor([toolReply, assistant("done")]), [tool]);
-		const events: AgentEvent[] = [];
+		const events: CoreAgentEvent[] = [];
 
 		const run = agent.stream(user("read"));
 		for await (const event of run) {
@@ -459,7 +460,7 @@ describe("Agent", () => {
 		};
 		const contexts: Context[] = [];
 		let calls = 0;
-		const agent = new Agent({
+		const agent = new CoreAgent({
 			model,
 			provider: providerFor([toolReply, assistant("done")], contexts),
 			instructions: "You are helpful.",
@@ -482,7 +483,7 @@ describe("Agent", () => {
 
 	test("prepareContext receives a copy it cannot use to rewrite the transcript", async () => {
 		const contexts: Context[] = [];
-		const agent = new Agent({
+		const agent = new CoreAgent({
 			model,
 			provider: providerFor([assistant("done")], contexts),
 			instructions: "You are helpful.",
@@ -506,9 +507,9 @@ describe("Agent", () => {
 			stopReason: "error",
 			error: { message: "prompt is too long", code: "context_length_exceeded" },
 		};
-		const events: AgentEvent[] = [];
+		const events: CoreAgentEvent[] = [];
 		let calls = 0;
-		const agent = new Agent({
+		const agent = new CoreAgent({
 			model,
 			provider: providerFor([failure, assistant("recovered")], contexts),
 			instructions: "You are helpful.",
@@ -540,7 +541,7 @@ describe("Agent", () => {
 			error: { message: "too long", code: "context_length_exceeded" },
 		};
 		let prepared = 0;
-		const agent = new Agent({
+		const agent = new CoreAgent({
 			model,
 			provider: providerFor([failure, assistant("recovered")], contexts),
 			instructions: "You are helpful.",
@@ -558,7 +559,7 @@ describe("Agent", () => {
 
 	test("declining to retry keeps the original failure", async () => {
 		const failure: AssistantMessage = { ...assistant(""), content: [], stopReason: "error" };
-		const agent = new Agent({
+		const agent = new CoreAgent({
 			model,
 			provider: providerFor([failure]),
 			instructions: "You are helpful.",
@@ -573,7 +574,7 @@ describe("Agent", () => {
 	test("a failed retry is not retried again", async () => {
 		const failure: AssistantMessage = { ...assistant(""), content: [], stopReason: "error" };
 		let calls = 0;
-		const agent = new Agent({
+		const agent = new CoreAgent({
 			model,
 			provider: providerFor([failure, failure]),
 			instructions: "You are helpful.",
@@ -609,8 +610,8 @@ describe("Agent", () => {
 			],
 			stopReason: "contextOverflow",
 		};
-		const events: AgentEvent[] = [];
-		const agent = new Agent({
+		const events: CoreAgentEvent[] = [];
+		const agent = new CoreAgent({
 			model,
 			provider: providerFor([truncated]),
 			instructions: "You are helpful.",
@@ -631,7 +632,7 @@ describe("Agent", () => {
 	test("rejects a model whose provider does not match the given provider", () => {
 		expect(
 			() =>
-				new Agent({
+				new CoreAgent({
 					model,
 					provider: { id: "other", stream: providerFor([]).stream },
 				}),
@@ -651,7 +652,7 @@ describe("Agent", () => {
 
 		expect(
 			() =>
-				new Agent({
+				new CoreAgent({
 					model,
 					provider: providerFor([]),
 					tools: [makeTool(), makeTool()],

@@ -1,22 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import type { Context } from "@jai/ai";
-import { AgentHarness, type HarnessEvent, InMemorySessionStore, openSession } from "../../src/harness";
+import { Agent, type AgentEvent, InMemorySessionStore, openSession } from "../../src";
 import { assistant, messageEntry, model, providerFor, sessionInit, type AppState } from "../support/fixtures";
 
-describe("AgentHarness", () => {
+describe("Agent", () => {
 	test("restores durable state from a session handle and persists the run", async () => {
 		const store = new InMemorySessionStore<AppState>();
 		const handle = await openSession(store, "s1", sessionInit);
-		const harness = new AgentHarness<AppState>({
+		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")]),
 			sessionHandle: handle,
 		});
 
-		harness.updateAppState(() => ({ resolved: true }));
-		await harness.invoke("hello");
+		agent.updateAppState(() => ({ resolved: true }));
+		await agent.invoke("hello");
 
-		expect(harness.state.systemPrompt).toBe(sessionInit.systemPrompt);
+		expect(agent.state.systemPrompt).toBe(sessionInit.systemPrompt);
 		const record = await store.load("s1");
 		expect(record?.snapshot.entries.map((entry) => entry.type)).toEqual(["message", "message", "app_state"]);
 		expect(record?.snapshot.appState).toEqual({ resolved: true });
@@ -24,14 +24,14 @@ describe("AgentHarness", () => {
 
 	test("a reopened session continues the same transcript", async () => {
 		const store = new InMemorySessionStore<AppState>();
-		const first = new AgentHarness<AppState>({
+		const first = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("first")]),
 			sessionHandle: await openSession(store, "s1", sessionInit),
 		});
 		await first.invoke("hello");
 
-		const second = new AgentHarness<AppState>({
+		const second = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("second")]),
 			sessionHandle: await openSession(store, "s1", sessionInit),
@@ -46,32 +46,32 @@ describe("AgentHarness", () => {
 
 	test("keeps the restored system prompt", async () => {
 		const contexts: Context[] = [];
-		const harness = new AgentHarness<AppState>({
+		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")], contexts),
 			sessionHandle: await openSession(new InMemorySessionStore<AppState>(), "s1", sessionInit),
 		});
 
-		await harness.invoke("hello");
+		await agent.invoke("hello");
 
 		expect(contexts[0]?.systemPrompt).toBe(sessionInit.systemPrompt);
 	});
 
 	test("persists an event before external listeners observe it", async () => {
 		const store = new InMemorySessionStore<AppState>();
-		const harness = new AgentHarness<AppState>({
+		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")]),
 			sessionHandle: await openSession(store, "s1", sessionInit),
 		});
 		const persistedWhenSeen: number[] = [];
 
-		harness.subscribe(async (event) => {
+		agent.subscribe(async (event) => {
 			if (event.type !== "message_end") return;
 			const record = await store.load("s1");
 			persistedWhenSeen.push(record?.snapshot.entries.length ?? 0);
 		});
-		await harness.invoke("hello");
+		await agent.invoke("hello");
 
 		expect(persistedWhenSeen).toEqual([1, 2]);
 	});
@@ -79,36 +79,43 @@ describe("AgentHarness", () => {
 	test("a failed write fails the run instead of silently losing history", async () => {
 		const store = new InMemorySessionStore<AppState>();
 		const handle = await openSession(store, "s1", sessionInit);
-		const harness = new AgentHarness<AppState>({
+		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")]),
 			sessionHandle: handle,
+		});
+
+		const published: AgentEvent["type"][] = [];
+		agent.subscribe((event) => {
+			published.push(event.type);
 		});
 
 		// 另一个写者抢先推进 revision，模拟违反单写者原则的客户端。
 		const record = await store.load("s1");
 		await store.append("s1", messageEntry("other", "x"), record?.revision ?? "");
 
-		await expect(harness.invoke("hello")).rejects.toThrow(/revision conflict/);
-		expect(harness.state.isRunning).toBe(false);
+		await expect(agent.invoke("hello")).rejects.toThrow(/revision conflict/);
+		expect(agent.state.isRunning).toBe(false);
+		// 写不进去的消息不能先被观察者看见。
+		expect(published).not.toContain("message_end");
 	});
 
 	test("stream carries only the events of its own run", async () => {
-		const harness = new AgentHarness<AppState>({
+		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("first"), assistant("second")]),
 			instructions: sessionInit.systemPrompt,
 		});
-		const observed: HarnessEvent[] = [];
-		harness.subscribe((event) => {
+		const observed: AgentEvent[] = [];
+		agent.subscribe((event) => {
 			observed.push(event);
 		});
 
-		const streamed: HarnessEvent[] = [];
-		for await (const event of harness.stream("hello")) {
+		const streamed: AgentEvent[] = [];
+		for await (const event of agent.stream("hello")) {
 			streamed.push(event);
 		}
-		await harness.invoke("again");
+		await agent.invoke("again");
 
 		expect(streamed[0]).toEqual({ type: "agent_start" });
 		expect(streamed.at(-1)?.type).toBe("agent_end");
@@ -117,16 +124,16 @@ describe("AgentHarness", () => {
 
 	test("reset clears the in-process transcript and leaves the durable log alone", async () => {
 		const store = new InMemorySessionStore<AppState>();
-		const harness = new AgentHarness<AppState>({
+		const agent = new Agent<AppState>({
 			model,
 			provider: providerFor([assistant("done")]),
 			sessionHandle: await openSession(store, "s1", sessionInit),
 		});
 
-		await harness.invoke("hello");
-		harness.reset();
+		await agent.invoke("hello");
+		agent.reset();
 
-		expect(harness.state.messages).toEqual([]);
+		expect(agent.state.messages).toEqual([]);
 		const record = await store.load("s1");
 		expect(record?.snapshot.entries).toHaveLength(3);
 	});
@@ -136,7 +143,7 @@ describe("AgentHarness", () => {
 
 		expect(
 			() =>
-				new AgentHarness<AppState>({
+				new Agent<AppState>({
 					model,
 					provider: providerFor([]),
 					sessionHandle: handle,
@@ -146,13 +153,114 @@ describe("AgentHarness", () => {
 		).toThrow(/sessionHandle/);
 	});
 
+	test("每个事件都能 JSON round-trip", async () => {
+		const agent = new Agent<AppState>({
+			model,
+			provider: providerFor([assistant("done")]),
+			instructions: sessionInit.systemPrompt,
+		});
+		const events: AgentEvent[] = [];
+		agent.subscribe((event) => {
+			events.push(event);
+		});
+
+		await agent.invoke("hello");
+
+		expect(events.length).toBeGreaterThan(0);
+		for (const event of events) {
+			expect(JSON.parse(JSON.stringify(event))).toEqual(event);
+		}
+	});
+
 	test("surfaces core construction errors synchronously", () => {
 		expect(
 			() =>
-				new AgentHarness({
+				new Agent({
 					model,
 					provider: { id: "other", stream: providerFor([]).stream },
 				}),
 		).toThrow('Model "test-model" belongs to provider "test", not "other"');
+	});
+});
+
+describe("Agent observers", () => {
+	const boom = (label: string) => () => {
+		throw new Error(label);
+	};
+
+	test("一个观察者出错不影响后续观察者，也不影响 invoke 的结果", async () => {
+		const reported: string[] = [];
+		const seen: AgentEvent["type"][] = [];
+		const agent = new Agent<AppState>({
+			model,
+			provider: providerFor([assistant("done")]),
+			instructions: sessionInit.systemPrompt,
+			onObserverError: ({ error }) => {
+				reported.push((error as Error).message);
+			},
+		});
+
+		agent.subscribe(boom("dashboard is down"));
+		agent.subscribe((event) => {
+			seen.push(event.type);
+		});
+
+		await expect(agent.invoke("hello")).resolves.toHaveLength(2);
+		expect(seen).toContain("message_end");
+		// 每个事件都上报一次，说明失败没有被吞在第一条之后。
+		expect(reported).toHaveLength(seen.length);
+	});
+
+	test("观察者出错不会让 stream 的 result 失败", async () => {
+		const agent = new Agent<AppState>({
+			model,
+			provider: providerFor([assistant("done")]),
+			instructions: sessionInit.systemPrompt,
+		});
+		agent.subscribe(boom("dashboard is down"));
+
+		const run = agent.stream("hello");
+		const streamed: AgentEvent["type"][] = [];
+		for await (const event of run) streamed.push(event.type);
+
+		expect(await run.result()).toHaveLength(2);
+		expect(streamed).toContain("agent_end");
+	});
+
+	test("onEvent hook 与运行期订阅走同一套隔离规则", async () => {
+		const reported: string[] = [];
+		const seen: AgentEvent["type"][] = [];
+		const agent = new Agent<AppState>({
+			model,
+			provider: providerFor([assistant("done")]),
+			instructions: sessionInit.systemPrompt,
+			hooks: {
+				onEvent: [
+					boom("hook is down"),
+					(event) => {
+						seen.push(event.type);
+					},
+				],
+			},
+			onObserverError: ({ error }) => {
+				reported.push((error as Error).message);
+			},
+		});
+
+		await expect(agent.invoke("hello")).resolves.toHaveLength(2);
+		expect(seen).toContain("message_end");
+		expect(new Set(reported)).toEqual(new Set(["hook is down"]));
+	});
+
+	test("onObserverError 自己抛错同样被隔离", async () => {
+		const agent = new Agent<AppState>({
+			model,
+			provider: providerFor([assistant("done")]),
+			instructions: sessionInit.systemPrompt,
+			onObserverError: boom("reporter is down"),
+		});
+		agent.subscribe(boom("dashboard is down"));
+
+		await expect(agent.invoke("hello")).resolves.toHaveLength(2);
 	});
 });

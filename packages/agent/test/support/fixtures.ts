@@ -6,8 +6,7 @@ import {
 	type Provider,
 	zeroUsage,
 } from "@jai/ai";
-import { Agent } from "../../src";
-import type { SessionEntry } from "../../src/harness";
+import { Agent, type SessionEntry } from "../../src";
 
 export const model: Model = {
 	id: "test-model",

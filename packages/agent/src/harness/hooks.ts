@@ -1,7 +1,7 @@
 import type { AssistantMessage } from "@jai/ai";
 import type { AgentMessage, ToolMiddleware } from "../core/types";
 import type { CompactInput, CompactionDecisionInput, CompactionResult } from "./compaction/types";
-import type { HarnessEventListener } from "./events";
+import type { AgentEventListener } from "./events";
 
 /**
  * 同一次 model call 里 beforeModelCall 可能跑不止一次：压缩会重排消息序列，
@@ -74,7 +74,7 @@ export type ModelErrorHook = (
  * 前缀就是组合规则：`before*` 是顺序变换链，`around*` 是洋葱 middleware，
  * `on*` 是观察或首个胜出。每类都是数组，按声明顺序串行执行。
  */
-export interface AgentHarnessHookMap {
+export interface AgentHookMap {
 	/** 每次构造 provider messages 时运行，例如裁剪旧工具输出。 */
 	beforeModelCall?: readonly BeforeModelCallHook[];
 	/** 修改默认的"要不要压"判断。 */
@@ -85,8 +85,8 @@ export interface AgentHarnessHookMap {
 	onModelError?: readonly ModelErrorHook[];
 	/** 包裹工具执行：权限、参数改写、结果包装、重试。 */
 	aroundToolCall?: readonly ToolMiddleware[];
-	/** 构造期注册的事件监听器，与 subscribe() 同一条队列。 */
-	onEvent?: readonly HarnessEventListener[];
+	/** 构造期注册的事件监听器，与 subscribe() 同一条队列、同样被隔离。 */
+	onEvent?: readonly AgentEventListener[];
 }
 
 /**
@@ -99,10 +99,10 @@ export class HookHost {
 	private readonly compact: readonly CompactMiddleware[];
 	private readonly modelError: readonly ModelErrorHook[];
 	readonly aroundToolCall: ToolMiddleware[];
-	readonly onEvent: readonly HarnessEventListener[];
+	readonly onEvent: readonly AgentEventListener[];
 
 	// 构造时拷贝：运行中改动外部数组不会让同一次 run 的 hook 链中途变形。
-	constructor(hooks: AgentHarnessHookMap | undefined) {
+	constructor(hooks: AgentHookMap | undefined) {
 		this.beforeModelCall = [...(hooks?.beforeModelCall ?? [])];
 		this.shouldCompact = [...(hooks?.shouldCompact ?? [])];
 		this.compact = [...(hooks?.aroundCompact ?? [])];

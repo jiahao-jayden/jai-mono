@@ -13,9 +13,9 @@ import { Type } from "@sinclair/typebox";
 import { agentLoop } from "../../src/core/agent-loop";
 import type {
 	AgentContext,
-	AgentEvent,
 	AgentMessage,
 	AgentTool,
+	CoreAgentEvent,
 } from "../../src/core/types";
 
 const model: Model = {
@@ -106,10 +106,10 @@ function context(tools: AgentTool[] = []): AgentContext {
 }
 
 async function collect(stream: ReturnType<typeof agentLoop>): Promise<{
-	events: AgentEvent[];
+	events: CoreAgentEvent[];
 	messages: AgentMessage[];
 }> {
-	const events: AgentEvent[] = [];
+	const events: CoreAgentEvent[] = [];
 	for await (const event of stream) {
 		events.push(event);
 	}

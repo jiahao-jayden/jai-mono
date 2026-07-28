@@ -1,19 +1,19 @@
 export {
-	AgentHarness,
-	type AgentHarnessCompactionOptions,
-	type AgentHarnessOptions,
+	Agent,
+	type AgentCompactionOptions,
+	type AgentOptions,
 	type DefaultCompactionOptions,
-} from "./agent-harness";
+} from "./agent";
 export * from "./compaction";
 export type {
+	AgentEvent,
+	AgentEventListener,
+	AgentRun,
 	CompactionEvent,
 	CompactionOutcome,
-	HarnessEvent,
-	HarnessEventListener,
-	HarnessRun,
 } from "./events";
 export type {
-	AgentHarnessHookMap,
+	AgentHookMap,
 	BeforeModelCallHook,
 	BeforeModelCallInput,
 	BeforeModelCallPhase,

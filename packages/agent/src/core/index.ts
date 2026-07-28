@@ -1,4 +1,10 @@
-export { Agent, type AgentEventListener, type AgentInput, type AgentOptions, type AgentRun } from "./agent";
+export {
+	type AgentInput,
+	CoreAgent,
+	type CoreAgentEventListener,
+	type CoreAgentOptions,
+	type CoreAgentRun,
+} from "./agent";
 export {
 	type AgentState,
 	cloneJson,
@@ -9,11 +15,11 @@ export {
 export type { Session, ToolInfo } from "./session";
 export type {
 	AgentContext,
-	AgentEvent,
 	AgentMessage,
 	AgentTool,
 	AgentToolResult,
-	CustomEvent,
+	CoreAgentEvent,
+	ObserverErrorInfo,
 	OnModelError,
 	PrepareContext,
 	RetryModelCall,

@@ -6,15 +6,15 @@ import {
 	type Context,
 	type Provider,
 } from "@jai/ai";
-import type { AgentMessage } from "../../../src";
 import {
-	AgentHarness,
+	Agent,
 	InMemorySessionStore,
 	openSession,
-	type AgentHarnessHookMap,
+	type AgentEvent,
+	type AgentHookMap,
+	type AgentMessage,
 	type CompactionEvent,
-	type HarnessEvent,
-} from "../../../src/harness";
+} from "../../../src";
 import { model, sessionInit, type AppState } from "../../support/fixtures";
 
 /** 小窗口 + 显式 settings：让"越过阈值"在测试里是一次确定的算术，而不是巧合。 */
@@ -46,10 +46,8 @@ const failure = (error: NonNullable<AssistantMessage["error"]>): AssistantMessag
 
 const overflowError = { message: "prompt is too long", code: "context_length_exceeded" };
 
-const compactionEvents = (events: HarnessEvent[]): CompactionEvent[] =>
-	events.filter(
-		(event): event is CompactionEvent => event.type === "custom" && event.name.startsWith("compaction_"),
-	);
+const compactionEvents = (events: AgentEvent[]): CompactionEvent[] =>
+	events.filter((event): event is CompactionEvent => event.type.startsWith("compaction_"));
 
 /** 一段已经超过阈值的历史：两个 user turn，第一个很长。 */
 const longHistory = (): AgentMessage[] => [
@@ -85,7 +83,7 @@ function scripted(responses: AssistantMessage[], contexts: Context[] = []): Prov
 const PRUNED = "[Old tool result content cleared]";
 
 /** 站在工具裁剪的位置：把最老那条长内容换成占位文字，只改本次请求。 */
-const prune: NonNullable<AgentHarnessHookMap["beforeModelCall"]>[number] = ({ messages }) => ({
+const prune: NonNullable<AgentHookMap["beforeModelCall"]>[number] = ({ messages }) => ({
 	messages: messages.map((message, index) =>
 		index === 0 && message.role === "user" ? { ...message, content: PRUNED } : message,
 	),
@@ -100,22 +98,22 @@ const shave = (message: AgentMessage): AgentMessage =>
 const summaryText = (messages: AgentMessage[]): string =>
 	typeof messages[0]?.content === "string" ? messages[0].content : JSON.stringify(messages[0]?.content);
 
-describe("AgentHarness compaction", () => {
+describe("Agent compaction", () => {
 	test("compacts before the model call once the context crosses the threshold", async () => {
 		const contexts: Context[] = [];
-		const events: HarnessEvent[] = [];
-		const harness = new AgentHarness({
+		const events: AgentEvent[] = [];
+		const agent = new Agent({
 			model: smallModel,
 			provider: scripted([reply("SUMMARY"), reply("answer")], contexts),
 			instructions: "identity",
 			messages: longHistory(),
 			compaction: { settings },
 		});
-		harness.subscribe((event) => {
+		agent.subscribe((event) => {
 			events.push(event);
 		});
 
-		await harness.invoke("next question");
+		await agent.invoke("next question");
 
 		// 第一次请求是内部摘要调用，第二次才是真正的对话请求。
 		expect(contexts).toHaveLength(2);
@@ -124,15 +122,15 @@ describe("AgentHarness compaction", () => {
 		// 压缩掉的是旧历史，最新那条问题必须还在。
 		expect(contexts[1]?.messages.at(-1)?.content).toBe("next question");
 
-		expect(compactionEvents(events).map((event) => event.name)).toEqual(["compaction_start", "compaction_end"]);
+		expect(compactionEvents(events).map((event) => event.type)).toEqual(["compaction_start", "compaction_end"]);
 		// transcript 保持完整：压缩只改变发给 provider 的投影。
-		expect(harness.getSession().messages).toHaveLength(6);
+		expect(agent.getSession().messages).toHaveLength(6);
 	});
 
 	test("pruning old tool output in a beforeModelCall hook can make compaction unnecessary", async () => {
 		const contexts: Context[] = [];
-		const events: HarnessEvent[] = [];
-		const harness = new AgentHarness({
+		const events: AgentEvent[] = [];
+		const agent = new Agent({
 			model: smallModel,
 			provider: scripted([reply("answer")], contexts),
 			instructions: "identity",
@@ -140,24 +138,24 @@ describe("AgentHarness compaction", () => {
 			compaction: { settings },
 			hooks: { beforeModelCall: [prune] },
 		});
-		harness.subscribe((event) => {
+		agent.subscribe((event) => {
 			events.push(event);
 		});
 
-		await harness.invoke("next question");
+		await agent.invoke("next question");
 
 		// 只有一次请求：裁剪后已经回到阈值以下，没有花掉一次摘要调用。
 		expect(contexts).toHaveLength(1);
 		expect(contexts[0]?.messages[0]?.content).toBe(PRUNED);
 		expect(compactionEvents(events)).toHaveLength(0);
 		// 裁剪只作用于本次请求，transcript 里仍是原文。
-		expect(harness.getSession().messages[0]?.content).toHaveLength(8_000);
+		expect(agent.getSession().messages[0]?.content).toHaveLength(8_000);
 	});
 
 	test("compaction still runs when pruning is not enough, and the hook replays afterwards", async () => {
 		const contexts: Context[] = [];
 		const phases: string[] = [];
-		const harness = new AgentHarness({
+		const agent = new Agent({
 			model: smallModel,
 			provider: scripted([reply("SUMMARY"), reply("answer")], contexts),
 			instructions: "identity",
@@ -173,7 +171,7 @@ describe("AgentHarness compaction", () => {
 			},
 		});
 
-		await harness.invoke("next question");
+		await agent.invoke("next question");
 
 		expect(phases).toEqual(["initial", "after_compaction"]);
 		expect(contexts).toHaveLength(2);
@@ -184,7 +182,7 @@ describe("AgentHarness compaction", () => {
 
 	test("the summary still reads the original tool output, not the pruned projection", async () => {
 		const contexts: Context[] = [];
-		const harness = new AgentHarness({
+		const agent = new Agent({
 			model: smallModel,
 			provider: scripted([reply("SUMMARY"), reply("answer")], contexts),
 			instructions: "identity",
@@ -194,7 +192,7 @@ describe("AgentHarness compaction", () => {
 			hooks: { beforeModelCall: [({ messages }) => ({ messages: messages.map(shave) })] },
 		});
 
-		await harness.invoke("next question");
+		await agent.invoke("next question");
 
 		expect(contexts).toHaveLength(2);
 		expect(summaryText(contexts[0]?.messages as AgentMessage[])).toContain("x".repeat(8_000));
@@ -202,8 +200,8 @@ describe("AgentHarness compaction", () => {
 
 	test("an onModelError hook recovers before the built-in overflow compaction", async () => {
 		const contexts: Context[] = [];
-		const events: HarnessEvent[] = [];
-		const harness = new AgentHarness({
+		const events: AgentEvent[] = [];
+		const agent = new Agent({
 			model: roomyModel,
 			provider: scripted([failure(overflowError), reply("answer")], contexts),
 			instructions: "identity",
@@ -213,11 +211,11 @@ describe("AgentHarness compaction", () => {
 				onModelError: [({ messages }) => ({ type: "retry", messages: messages.slice(-1) })],
 			},
 		});
-		harness.subscribe((event) => {
+		agent.subscribe((event) => {
 			events.push(event);
 		});
 
-		await harness.invoke("next question");
+		await agent.invoke("next question");
 
 		expect(contexts).toHaveLength(2);
 		expect(contexts[1]?.messages).toHaveLength(1);
@@ -226,7 +224,7 @@ describe("AgentHarness compaction", () => {
 
 	test("compaction: false leaves an oversized context alone", async () => {
 		const contexts: Context[] = [];
-		const harness = new AgentHarness({
+		const agent = new Agent({
 			model: smallModel,
 			provider: scripted([reply("answer")], contexts),
 			instructions: "identity",
@@ -234,7 +232,7 @@ describe("AgentHarness compaction", () => {
 			compaction: false,
 		});
 
-		await harness.invoke("next question");
+		await agent.invoke("next question");
 
 		expect(contexts).toHaveLength(1);
 		expect(contexts[0]?.messages).toHaveLength(5);
@@ -247,25 +245,33 @@ describe("AgentHarness compaction", () => {
 			await seed.append({ type: "message", id: `seed-${index}`, timestamp: "2026-01-01T00:00:00.000Z", message });
 		}
 
-		const harness = new AgentHarness<AppState>({
+		const agent = new Agent<AppState>({
 			model: smallModel,
 			provider: scripted([reply("SUMMARY"), reply("answer")]),
 			sessionHandle: await openSession(store, "s1", sessionInit),
 			compaction: { settings },
 		});
+		const persistedWhenSeen: unknown[] = [];
+		agent.subscribe(async (event) => {
+			if (event.type !== "compaction_end" || event.outcome.status !== "success") return;
+			const snapshot = await store.load("s1");
+			persistedWhenSeen.push(snapshot?.snapshot.entries.find((entry) => entry.type === "compaction"));
+		});
 
-		await harness.invoke("next question");
+		await agent.invoke("next question");
 
 		const entries = (await store.load("s1"))?.snapshot.entries ?? [];
 		const compaction = entries.find((entry) => entry.type === "compaction");
 		expect(compaction).toMatchObject({ summary: "SUMMARY" });
 		expect(entries.filter((entry) => entry.type === "message")).toHaveLength(6);
+		// 观察者看到成功事件时，entry 已经在 store 里。
+		expect(persistedWhenSeen).toEqual([compaction]);
 	});
 
 	test("a rejected request is compacted and retried once", async () => {
 		const contexts: Context[] = [];
-		const events: HarnessEvent[] = [];
-		const harness = new AgentHarness({
+		const events: AgentEvent[] = [];
+		const agent = new Agent({
 			// 窗口足够大，阈值不会主动触发：这次压缩只能由 provider 的拒绝驱动。
 			model: roomyModel,
 			provider: scripted([failure(overflowError), reply("SUMMARY"), reply("answer")], contexts),
@@ -273,21 +279,23 @@ describe("AgentHarness compaction", () => {
 			messages: longHistory(),
 			compaction: { settings },
 		});
-		harness.subscribe((event) => {
+		agent.subscribe((event) => {
 			events.push(event);
 		});
 
-		await harness.invoke("next question");
+		await agent.invoke("next question");
 
 		expect(contexts).toHaveLength(3);
 		expect(summaryText(contexts[2]?.messages as AgentMessage[])).toContain("<summary>");
-		expect(compactionEvents(events).filter((event) => event.name === "compaction_start")).toMatchObject([{ data: { trigger: "overflow" } }]);
-		expect(harness.state.error).toBeUndefined();
+		expect(compactionEvents(events).filter((event) => event.type === "compaction_start")).toMatchObject([
+			{ trigger: "overflow" },
+		]);
+		expect(agent.state.error).toBeUndefined();
 	});
 
 	test("without compaction an overflow error is not retried", async () => {
 		const contexts: Context[] = [];
-		const harness = new AgentHarness({
+		const agent = new Agent({
 			model: smallModel,
 			provider: scripted([failure(overflowError)], contexts),
 			instructions: "identity",
@@ -295,15 +303,15 @@ describe("AgentHarness compaction", () => {
 			compaction: false,
 		});
 
-		await harness.invoke("next question");
+		await agent.invoke("next question");
 
 		expect(contexts).toHaveLength(1);
-		expect(harness.state.error).toMatchObject({ code: "context_length_exceeded" });
+		expect(agent.state.error).toMatchObject({ code: "context_length_exceeded" });
 	});
 
 	test("a truncated response is compacted before the next request, and only once", async () => {
 		const contexts: Context[] = [];
-		const harness = new AgentHarness({
+		const agent = new Agent({
 			model: roomyModel,
 			provider: scripted(
 				[reply("partial", "contextOverflow"), reply("SUMMARY"), reply("answer"), reply("answer again")],
@@ -315,11 +323,11 @@ describe("AgentHarness compaction", () => {
 			compaction: { settings },
 		});
 
-		await harness.invoke("first");
+		await agent.invoke("first");
 		expect(contexts).toHaveLength(1);
 
-		await harness.invoke("second");
-		await harness.invoke("third");
+		await agent.invoke("second");
+		await agent.invoke("third");
 
 		// 摘要调用只发生一次：压缩记录之后那条截断响应不再重复触发。
 		expect(contexts).toHaveLength(4);
@@ -328,34 +336,35 @@ describe("AgentHarness compaction", () => {
 
 	test("a failed summarization reports the error and lets the original request through", async () => {
 		const contexts: Context[] = [];
-		const events: HarnessEvent[] = [];
-		const harness = new AgentHarness({
+		const events: AgentEvent[] = [];
+		const agent = new Agent({
 			model: smallModel,
 			provider: scripted([failure({ message: "summarizer down" }), reply("answer")], contexts),
 			instructions: "identity",
 			messages: longHistory(),
 			compaction: { settings },
 		});
-		harness.subscribe((event) => {
+		agent.subscribe((event) => {
 			events.push(event);
 		});
 
-		await harness.invoke("next question");
+		await agent.invoke("next question");
 
 		expect(events).toContainEqual({
-			type: "custom",
-			name: "compaction_end",
-			data: {
-				trigger: "threshold",
-				outcome: { status: "error", error: { code: "summarization_failed", message: expect.any(String) } },
-			},
+			type: "compaction_end",
+			trigger: "threshold",
+			outcome: { status: "error", error: { code: "summarization_failed", message: expect.any(String) } },
 		});
 		expect(contexts).toHaveLength(2);
 		expect(contexts[1]?.messages).toHaveLength(5);
+		// 失败信息也要能跨进程送出去：不能夹带 provider 的异常对象。
+		for (const event of compactionEvents(events)) {
+			expect(JSON.parse(JSON.stringify(event))).toEqual(event);
+		}
 	});
 
 	test("hooks can take over both the decision and the summary", async () => {
-		const hooks: AgentHarnessHookMap = {
+		const hooks: AgentHookMap = {
 			shouldCompact: [() => true],
 			aroundCompact: [
 				async (input) => ({
@@ -368,7 +377,7 @@ describe("AgentHarness compaction", () => {
 			],
 		};
 		const contexts: Context[] = [];
-		const harness = new AgentHarness({
+		const agent = new Agent({
 			model: smallModel,
 			provider: scripted([reply("answer")], contexts),
 			instructions: "identity",
@@ -377,16 +386,16 @@ describe("AgentHarness compaction", () => {
 			hooks,
 		});
 
-		await harness.invoke("next question");
+		await agent.invoke("next question");
 
 		expect(contexts).toHaveLength(1);
 		expect(summaryText(contexts[0]?.messages as AgentMessage[])).toContain("CUSTOM");
 	});
 
 	test("an aroundCompact hook pointing at an unknown entry is rejected without persisting", async () => {
-		const events: HarnessEvent[] = [];
+		const events: AgentEvent[] = [];
 		const contexts: Context[] = [];
-		const harness = new AgentHarness({
+		const agent = new Agent({
 			model: smallModel,
 			provider: scripted([reply("answer")], contexts),
 			instructions: "identity",
@@ -405,19 +414,16 @@ describe("AgentHarness compaction", () => {
 				],
 			},
 		});
-		harness.subscribe((event) => {
+		agent.subscribe((event) => {
 			events.push(event);
 		});
 
-		await harness.invoke("next question");
+		await agent.invoke("next question");
 
 		expect(events).toContainEqual({
-			type: "custom",
-			name: "compaction_end",
-			data: {
-				trigger: "threshold",
-				outcome: { status: "error", error: { code: "unknown", message: expect.any(String) } },
-			},
+			type: "compaction_end",
+			trigger: "threshold",
+			outcome: { status: "error", error: { code: "unknown", message: expect.any(String) } },
 		});
 		expect(contexts[0]?.messages).toHaveLength(5);
 	});

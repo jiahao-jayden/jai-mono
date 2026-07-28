@@ -1,9 +1,9 @@
 import { type AssistantMessage, EventStream, type Model, type Provider } from "@jai/ai";
 import { getErrorMessage } from "@jai/common";
-import { Agent, type AgentInput, type AgentOptions } from "../core/agent";
+import { type AgentInput, CoreAgent, type CoreAgentOptions } from "../core/agent";
 import { type AgentState, cloneJson, type JsonObject } from "../core/agent-state";
 import type { Session } from "../core/session";
-import type { AgentContext, AgentEvent, AgentMessage, RetryModelCall } from "../core/types";
+import type { AgentContext, AgentMessage, CoreAgentEvent, ObserverErrorInfo, RetryModelCall } from "../core/types";
 import { compact } from "./compaction/compact";
 import { estimateContextTokens, estimateTokens, resolveCompactionSettings, shouldCompact } from "./compaction/estimate";
 import { hasUncompactedTruncation, isContextOverflow } from "./compaction/overflow";
@@ -18,8 +18,8 @@ import {
 	type CompactionSettingsOverrides,
 	type CompactionTrigger,
 } from "./compaction/types";
-import type { HarnessEvent, HarnessEventListener, HarnessRun } from "./events";
-import { type AgentHarnessHookMap, type BeforeModelCallPhase, HookHost } from "./hooks";
+import type { AgentEvent, AgentEventListener, AgentRun } from "./events";
+import { type AgentHookMap, type BeforeModelCallPhase, HookHost } from "./hooks";
 import { restoreFromSnapshot } from "./session/agent-binding";
 import { SessionLedger } from "./session/ledger";
 import {
@@ -37,15 +37,25 @@ export interface DefaultCompactionOptions {
 }
 
 /** false 表示关闭主动压缩与 overflow 自动恢复；不用 { enabled: false } 是为了不出现"已关闭但仍带参数"。 */
-export type AgentHarnessCompactionOptions = false | DefaultCompactionOptions;
+export type AgentCompactionOptions = false | DefaultCompactionOptions;
 
-/** 门面表面只留 hooks 一个扩展入口，core 的 seam 不再从这里透出去。 */
-type AgentHarnessCommonOptions<TAppState extends JsonObject> = Omit<
-	AgentOptions<TAppState>,
-	"session" | "instructions" | "messages" | "appState" | "prepareContext" | "onModelError" | "toolMiddlewares"
+/** 表面只留 hooks 一个扩展入口，执行器的 seam 不再从这里透出去。 */
+type AgentCommonOptions<TAppState extends JsonObject> = Omit<
+	CoreAgentOptions<TAppState>,
+	| "session"
+	| "instructions"
+	| "messages"
+	| "appState"
+	| "prepareContext"
+	| "onModelError"
+	| "toolMiddlewares"
+	| "commitEvent"
+	| "onObserverError"
 > & {
-	compaction?: AgentHarnessCompactionOptions;
-	hooks?: AgentHarnessHookMap;
+	compaction?: AgentCompactionOptions;
+	hooks?: AgentHookMap;
+	/** 观察者失败的上报口；不提供则忽略。 */
+	onObserverError?: (info: ObserverErrorInfo<AgentEvent>) => void;
 };
 
 interface CompactionRuntime {
@@ -57,15 +67,15 @@ interface CompactionRuntime {
  * 要么给一个已打开的 SessionHandle，由门面从它的 snapshot 恢复 durable 初值，
  * 要么自己传 durable 初值。两者同时给会出现两个事实来源，因此类型上直接禁止。
  */
-export type AgentHarnessOptions<TAppState extends JsonObject = JsonObject> =
-	| (AgentHarnessCommonOptions<TAppState> & {
+export type AgentOptions<TAppState extends JsonObject = JsonObject> =
+	| (AgentCommonOptions<TAppState> & {
 			sessionHandle: SessionHandle<TAppState>;
 			session?: never;
 			instructions?: never;
 			messages?: never;
 			appState?: never;
 	  })
-	| (AgentHarnessCommonOptions<TAppState> & {
+	| (AgentCommonOptions<TAppState> & {
 			sessionHandle?: undefined;
 			session?: Session<TAppState>;
 			instructions?: string;
@@ -75,29 +85,31 @@ export type AgentHarnessOptions<TAppState extends JsonObject = JsonObject> =
 
 /**
  * 默认装配：恢复 session、注入动态 Prompt、把 durable 事件写回 store。
- * 内部只持有一个 Agent，执行语义（steering、abort、reducer）仍然只有 core 一份实现。
+ * 内部只持有一个 CoreAgent，执行语义（steering、abort、reducer）仍然只有那一份实现。
  */
-export class AgentHarness<TAppState extends JsonObject = JsonObject> {
-	private readonly agent: Agent<TAppState>;
-	private readonly listeners = new Set<HarnessEventListener>();
+export class Agent<TAppState extends JsonObject = JsonObject> {
+	private readonly agent: CoreAgent<TAppState>;
+	private readonly listeners = new Set<AgentEventListener>();
 	private readonly ledger: SessionLedger<TAppState>;
 	private readonly model: Model;
 	private readonly provider: Provider;
 	private readonly compaction?: CompactionRuntime;
 	private readonly hooks: HookHost;
+	private readonly onObserverError?: (info: ObserverErrorInfo<AgentEvent>) => void;
 	/**
 	 * 本次 model call 的完整 transcript。prepareContext → provider → onModelError
 	 * 是严格嵌套的，且 Agent 不允许并发 run，所以这一格暂存是安全的。
 	 */
 	private rawMessages: readonly AgentMessage[] = [];
 
-	constructor(options: AgentHarnessOptions<TAppState>) {
+	constructor(options: AgentOptions<TAppState>) {
 		assertSingleDurableSource(options);
 
 		this.model = options.model;
 		this.provider = options.provider;
 		this.compaction = resolveCompaction(options.model, options.compaction);
 		this.hooks = new HookHost(options.hooks);
+		this.onObserverError = options.onObserverError;
 		// 构造期 handler 先入队，运行期 subscribe() 的观察者排在它们后面。
 		for (const listener of this.hooks.onEvent) this.listeners.add(listener);
 
@@ -114,7 +126,7 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 			durable.messages ?? options.session?.messages ?? [],
 		);
 
-		this.agent = new Agent<TAppState>({
+		this.agent = new CoreAgent<TAppState>({
 			model: options.model,
 			provider: options.provider,
 			tools: options.tools,
@@ -126,9 +138,9 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 			...durable,
 			prepareContext: (context) => this.prepareContext(context),
 			onModelError: (error, context) => this.onModelError(error, context),
+			// 走 commit seam 而不是 subscribe()：持久化必须在观察者之前完成，且它失败要让 run 失败。
+			commitEvent: (event) => this.handleCoreEvent(event),
 		});
-
-		this.agent.subscribe((event) => this.handleCoreEvent(event));
 	}
 
 	get state(): AgentState<TAppState> {
@@ -151,8 +163,8 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 		this.agent.updateAppState(update);
 	}
 
-	/** 唯一的事件出口：core 事件与 harness 自身产生的事件都从这里出去。 */
-	subscribe(listener: HarnessEventListener): () => void {
+	/** 唯一的观察出口：执行器事件与本层自己产生的事件都从这里出去。 */
+	subscribe(listener: AgentEventListener): () => void {
 		this.listeners.add(listener);
 		return () => {
 			this.listeners.delete(listener);
@@ -164,11 +176,11 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 	}
 
 	/**
-	 * 走门面自己的 listeners，而不是直接返回 agent.stream()：
-	 * 否则 harness 自己产生的事件（Spec 16 的 compaction、Spec 18 的 skill）不会进入这条流。
+	 * 走本层自己的 listeners，而不是直接返回执行器的 stream()：
+	 * 否则本层产生的事件不会进入这条流。
 	 */
-	stream(input: AgentInput): HarnessRun {
-		const output = new EventStream<HarnessEvent, AgentMessage[]>(
+	stream(input: AgentInput): AgentRun {
+		const output = new EventStream<AgentEvent, AgentMessage[]>(
 			() => false,
 			() => [],
 		);
@@ -309,11 +321,7 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 		const compaction = this.compaction;
 		if (!compaction) return undefined;
 
-		await this.emit({
-			type: "custom",
-			name: "compaction_start",
-			data: { trigger, tokensBefore: estimateTokens(input.context) },
-		});
+		await this.publish({ type: "compaction_start", trigger, tokensBefore: estimateTokens(input.context) });
 
 		try {
 			// 摘要的事实来源始终是原始 entries：beforeModelCall 的临时裁剪不能让摘要模型看不到原文。
@@ -328,17 +336,13 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 			const result = await this.hooks.runAroundCompact(compactInput, () => compact(compactInput));
 
 			const entry = await this.ledger.appendCompaction(this.verify(result, input));
-			await this.emit({
-				type: "custom",
-				name: "compaction_end",
-				data: { trigger, outcome: { status: "success", entry } },
-			});
+			await this.publish({ type: "compaction_end", trigger, outcome: { status: "success", entry } });
 			return entry;
 		} catch (error) {
-			await this.emit({
-				type: "custom",
-				name: "compaction_end",
-				data: { trigger, outcome: { status: "error", error: toErrorInfo(error) } },
+			await this.publish({
+				type: "compaction_end",
+				trigger,
+				outcome: { status: "error", error: toErrorInfo(error) },
 			});
 			// 摘要失败只是放弃这次压缩；durable 写入失败必须让 run 失败，否则会静默丢历史。
 			if (isSessionError(error)) throw error;
@@ -369,20 +373,36 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 	}
 
 	/** 先落盘再对外发事件，UI 不会先显示一条最终没能写入的消息。 */
-	private async handleCoreEvent(event: AgentEvent): Promise<void> {
+	private async handleCoreEvent(event: CoreAgentEvent): Promise<void> {
 		await this.persist(event);
-		await this.emit(event);
+		await this.publish(event);
 	}
 
-	private async persist(event: AgentEvent): Promise<void> {
+	/** 关键写入：抛出即让整次 run 失败，对应的事件也不会对外发布。 */
+	private async persist(event: CoreAgentEvent): Promise<void> {
 		if (event.type === "message_end") await this.ledger.appendMessage(event.message);
 		if (event.type === "agent_end") await this.ledger.appendAppState(cloneJson(this.agent.state.appState));
 	}
 
-	/** 保留 core 的 listener 语义：按订阅顺序 await，任一失败让整次 run 失败。 */
-	private async emit(event: HarnessEvent): Promise<void> {
+	/**
+	 * 观察分发：按注册顺序串行，但逐个隔离。
+	 * 一个监听器出错不会中断 run，也不会挡住后面的监听器。
+	 */
+	private async publish(event: AgentEvent): Promise<void> {
 		for (const listener of [...this.listeners]) {
-			await listener(event);
+			try {
+				await listener(event);
+			} catch (error) {
+				this.reportObserverError(error, event);
+			}
+		}
+	}
+
+	private reportObserverError(error: unknown, event: AgentEvent): void {
+		try {
+			this.onObserverError?.({ error, event });
+		} catch {
+			// 上报本身失败没有更上层可以处理，只能停在这里，不能反过来影响 run。
 		}
 	}
 }
@@ -390,10 +410,7 @@ export class AgentHarness<TAppState extends JsonObject = JsonObject> {
 /** id 与 timestamp 由 ledger 补，策略不参与。 */
 type NewCompactionEntry = Omit<CompactionEntry, "type" | "id" | "timestamp">;
 
-function resolveCompaction(
-	model: Model,
-	options: AgentHarnessCompactionOptions | undefined,
-): CompactionRuntime | undefined {
+function resolveCompaction(model: Model, options: AgentCompactionOptions | undefined): CompactionRuntime | undefined {
 	if (options === false) return undefined;
 
 	return {
@@ -420,7 +437,7 @@ function isSessionError(error: unknown): boolean {
  * 类型已经排除了这种组合，但 JS 调用方仍可能传进来。
  * 静默采用其中一份会让恢复结果取决于实现细节，因此直接拒绝。
  */
-function assertSingleDurableSource(options: AgentHarnessOptions<JsonObject>): void {
+function assertSingleDurableSource(options: AgentOptions<JsonObject>): void {
 	if (!options.sessionHandle) return;
 
 	const conflicting = (["session", "instructions", "messages", "appState"] as const).filter(

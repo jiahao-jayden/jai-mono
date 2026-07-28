@@ -2,20 +2,25 @@ import { EventStream } from "@jai/ai";
 import { agentLoop } from "./agent-loop";
 import { type AgentState, cloneJson, freezeState, type JsonObject, type MutableAgentState } from "./agent-state";
 import { type Session, toToolInfo } from "./session";
-import type { AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentTool } from "./types";
+import type {
+	AgentContext,
+	AgentLoopConfig,
+	AgentMessage,
+	AgentTool,
+	CoreAgentEvent,
+	EventRun,
+	ObserverErrorInfo,
+} from "./types";
 
 export type AgentInput = string | AgentMessage | AgentMessage[];
 
-/** 事件监听器；返回 Promise 时 loop 会等待它，失败则整次 run 失败。 */
-export type AgentEventListener = (event: AgentEvent) => void | Promise<void>;
+/** 观察者：读事件，不影响 run。抛错会被隔离并交给 onObserverError。 */
+export type CoreAgentEventListener = (event: CoreAgentEvent) => void | Promise<void>;
 
-/** 一次流式调用：可迭代过程事件，也可等待最终消息。 */
-export interface AgentRun extends AsyncIterable<AgentEvent> {
-	result(): Promise<AgentMessage[]>;
-}
+export type CoreAgentRun = EventRun<CoreAgentEvent, AgentMessage[]>;
 
-/** Agent 负责执行；Session 只用于恢复它持有的对话状态。 */
-export interface AgentOptions<TAppState extends JsonObject = JsonObject>
+/** CoreAgent 负责执行；Session 只用于恢复它持有的对话状态。 */
+export interface CoreAgentOptions<TAppState extends JsonObject = JsonObject>
 	extends Omit<AgentLoopConfig, "getSteeringMessages" | "getFollowUpMessages"> {
 	instructions?: string;
 	messages?: AgentMessage[];
@@ -23,6 +28,13 @@ export interface AgentOptions<TAppState extends JsonObject = JsonObject>
 	appState?: TAppState;
 	tools?: AgentTool[];
 	session?: Session<TAppState>;
+	/**
+	 * 关键副作用出口（例如持久化）：状态归约之后、观察者之前调用。
+	 * 与 subscribe() 不同，它失败会让整次 run 失败。
+	 */
+	commitEvent?: (event: CoreAgentEvent) => void | Promise<void>;
+	/** 观察者失败的上报口；不提供则忽略。它自身抛错同样被吞掉。 */
+	onObserverError?: (info: ObserverErrorInfo<CoreAgentEvent>) => void;
 }
 
 interface ActiveRun {
@@ -49,17 +61,19 @@ class PendingMessageQueue {
 }
 
 /** 在进程内调用 LLM、执行工具，并维护一段对话状态。 */
-export class Agent<TAppState extends JsonObject = JsonObject> {
+export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 	private readonly config: Omit<AgentLoopConfig, "getSteeringMessages" | "getFollowUpMessages">;
 	private readonly steeringQueue = new PendingMessageQueue();
 	private readonly followUpQueue = new PendingMessageQueue();
-	private readonly listeners = new Set<AgentEventListener>();
+	private readonly listeners = new Set<CoreAgentEventListener>();
+	private readonly commitEvent?: (event: CoreAgentEvent) => void | Promise<void>;
+	private readonly onObserverError?: (info: ObserverErrorInfo<CoreAgentEvent>) => void;
 
 	private readonly internalState: MutableAgentState<TAppState>;
 	private tools: AgentTool[];
 	private activeRun?: ActiveRun;
 
-	constructor(options: AgentOptions<TAppState>) {
+	constructor(options: CoreAgentOptions<TAppState>) {
 		assertModelMatchesProvider(options.model, options.provider);
 
 		const appState = options.appState ?? options.session?.appState ?? ({} as TAppState);
@@ -71,6 +85,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 			pendingToolCallIds: new Set(),
 		};
 		this.tools = assertUniqueTools(options.tools ?? []);
+		this.commitEvent = options.commitEvent;
+		this.onObserverError = options.onObserverError;
 		this.config = {
 			model: options.model,
 			provider: options.provider,
@@ -111,8 +127,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		this.setAppState(update(cloneJson(this.internalState.appState)));
 	}
 
-	/** 唯一的事件出口：UI、持久化与日志都挂在这里。 */
-	subscribe(listener: AgentEventListener): () => void {
+	/** 观察入口：UI 与日志挂在这里。需要失败即终止 run 的副作用请用 commitEvent。 */
+	subscribe(listener: CoreAgentEventListener): () => void {
 		this.listeners.add(listener);
 		return () => {
 			this.listeners.delete(listener);
@@ -127,8 +143,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		return this.startRun(input);
 	}
 
-	stream(input: AgentInput): AgentRun {
-		const output = createAgentRun();
+	stream(input: AgentInput): CoreAgentRun {
+		const output = createRunStream();
 		const unsubscribe = this.subscribe((event) => {
 			output.push(event);
 		});
@@ -178,7 +194,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 
 			for await (const event of stream) {
 				this.reduce(event);
-				await this.notify(event);
+				await this.commitEvent?.(event);
+				await this.publish(event);
 			}
 
 			return await stream.result();
@@ -222,17 +239,32 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		this.followUpQueue.clear();
 	}
 
-	/** 状态先更新，再分发；监听器因此总能读到与事件一致的 state。 */
-	private async notify(event: AgentEvent): Promise<void> {
+	/**
+	 * 状态与关键副作用都完成后才分发，监听器因此总能读到与事件一致的 state。
+	 * 逐个隔离：一个观察者出错不影响其余观察者，也不影响 run 的结果。
+	 */
+	private async publish(event: CoreAgentEvent): Promise<void> {
 		for (const listener of [...this.listeners]) {
-			await listener(event);
+			try {
+				await listener(event);
+			} catch (error) {
+				this.reportObserverError(error, event);
+			}
+		}
+	}
+
+	private reportObserverError(error: unknown, event: CoreAgentEvent): void {
+		try {
+			this.onObserverError?.({ error, event });
+		} catch {
+			// 上报本身失败没有更上层可以处理，只能停在这里，不能反过来影响 run。
 		}
 	}
 
 	/**
 	 * 状态归约器（reducer）：把 agentLoop 发出的事件转换成会话当前状态。
 	 */
-	private reduce(event: AgentEvent): void {
+	private reduce(event: CoreAgentEvent): void {
 		const state = this.internalState;
 
 		switch (event.type) {
@@ -322,14 +354,14 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 	}
 }
 
-function createAgentRun(): EventStream<AgentEvent, AgentMessage[]> {
-	return new EventStream<AgentEvent, AgentMessage[]>(
+function createRunStream(): EventStream<CoreAgentEvent, AgentMessage[]> {
+	return new EventStream<CoreAgentEvent, AgentMessage[]>(
 		() => false,
 		() => [],
 	);
 }
 
-function assertModelMatchesProvider(model: AgentOptions["model"], provider: AgentOptions["provider"]): void {
+function assertModelMatchesProvider(model: CoreAgentOptions["model"], provider: CoreAgentOptions["provider"]): void {
 	if (model.provider !== provider.id) {
 		throw new Error(`Model "${model.id}" belongs to provider "${model.provider}", not "${provider.id}"`);
 	}

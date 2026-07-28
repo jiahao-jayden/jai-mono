@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type AssistantMessage, type Context, zeroUsage } from "@jai/ai";
 import { Type } from "@sinclair/typebox";
-import type { AgentMessage, AgentTool } from "../../src";
-import { AgentHarness, type HarnessEvent } from "../../src/harness";
+import { Agent, type AgentEvent, type AgentMessage, type AgentTool } from "../../src";
 import { HookHost } from "../../src/harness/hooks";
 import { assistant, model, providerFor } from "../support/fixtures";
 
@@ -202,10 +201,10 @@ describe("HookHost combination rules", () => {
 	});
 });
 
-describe("AgentHarness hooks", () => {
+describe("Agent hooks", () => {
 	test("a beforeModelCall hook rewrites the provider request without touching the transcript", async () => {
 		const contexts: Context[] = [];
-		const harness = new AgentHarness({
+		const agent = new Agent({
 			model,
 			provider: providerFor([assistant("done")], contexts),
 			instructions: "identity",
@@ -221,10 +220,10 @@ describe("AgentHarness hooks", () => {
 			},
 		});
 
-		await harness.invoke("hello");
+		await agent.invoke("hello");
 
 		expect(contexts[0]?.messages.map((message) => message.content)).toEqual(["[redacted]", "[redacted]"]);
-		expect(harness.state.messages.map((message) => message.content)).toEqual([
+		expect(agent.state.messages.map((message) => message.content)).toEqual([
 			"secret value",
 			"hello",
 			[{ type: "text", text: "done" }],
@@ -233,7 +232,7 @@ describe("AgentHarness hooks", () => {
 
 	test("the initial phase is reported when nothing is compacted", async () => {
 		const phases: string[] = [];
-		const harness = new AgentHarness({
+		const agent = new Agent({
 			model,
 			provider: providerFor([assistant("done")]),
 			instructions: "identity",
@@ -247,14 +246,14 @@ describe("AgentHarness hooks", () => {
 			},
 		});
 
-		await harness.invoke("hello");
+		await agent.invoke("hello");
 
 		expect(phases).toEqual(["initial"]);
 	});
 
 	test("a failing beforeModelCall hook ends the run with an error message", async () => {
 		const contexts: Context[] = [];
-		const harness = new AgentHarness({
+		const agent = new Agent({
 			model,
 			provider: providerFor([assistant("done")], contexts),
 			instructions: "identity",
@@ -267,32 +266,32 @@ describe("AgentHarness hooks", () => {
 			},
 		});
 
-		await harness.invoke("hello");
+		await agent.invoke("hello");
 
 		expect(contexts).toHaveLength(0);
-		expect(harness.state.error?.message).toContain("redaction unavailable");
-		expect(harness.state.isRunning).toBe(false);
+		expect(agent.state.error?.message).toContain("redaction unavailable");
+		expect(agent.state.isRunning).toBe(false);
 	});
 
 	test("onEvent hooks run before listeners subscribed later", async () => {
 		const order: string[] = [];
-		const harness = new AgentHarness({
+		const agent = new Agent({
 			model,
 			provider: providerFor([assistant("done")]),
 			instructions: "identity",
 			hooks: {
 				onEvent: [
-					(event: HarnessEvent) => {
+					(event: AgentEvent) => {
 						if (event.type === "agent_start") order.push("hook");
 					},
 				],
 			},
 		});
-		harness.subscribe((event) => {
+		agent.subscribe((event) => {
 			if (event.type === "agent_start") order.push("subscriber");
 		});
 
-		await harness.invoke("hello");
+		await agent.invoke("hello");
 
 		expect(order).toEqual(["hook", "subscriber"]);
 	});
@@ -319,7 +318,7 @@ describe("AgentHarness hooks", () => {
 			timestamp: 0,
 		};
 
-		const harness = new AgentHarness({
+		const agent = new Agent({
 			model,
 			provider: providerFor([toolUse, assistant("done")]),
 			instructions: "identity",
@@ -329,10 +328,10 @@ describe("AgentHarness hooks", () => {
 			},
 		});
 
-		await harness.invoke("run it");
+		await agent.invoke("run it");
 
 		expect(executed).toBe(false);
-		const result = harness.state.messages.find((message) => message.role === "toolResult");
+		const result = agent.state.messages.find((message) => message.role === "toolResult");
 		expect(result?.content).toEqual([{ type: "text", text: "denied" }]);
 	});
 });

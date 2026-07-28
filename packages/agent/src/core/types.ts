@@ -33,7 +33,7 @@ export interface AgentTool<T extends TSchema = TSchema, TDetails = unknown> exte
 	/** UI 展示用的人类可读标签，缺省用 name。 */
 	label?: string;
 	/**
-	 * 执行工具。参数已由 loop 用 Spec 06 校验并 coerce，这里直接拿干净的 Static<T>。
+	 * 执行工具。参数已由 loop 校验并转换为 Static<T>。
 	 * 失败请 throw，由 loop 捕获转成 isError 的 ToolResultMessage。
 	 */
 	execute(
@@ -70,24 +70,15 @@ export type ToolMiddleware = (ctx: ToolCallContext, next: () => Promise<AgentToo
 export type AgentMessage = Message;
 
 /**
- * 上层自定义事件的统一外壳。core 不认识 name 与 data，只把它原样送到订阅者手上。
- *
- * 有了它，harness、skills、产品层再加事件都不必改动 core 的 union；
- * 泛型参数让发出方收窄 name 与 data，消费者拿到的仍是有类型的 payload。
- */
-export interface CustomEvent<TName extends string = string, TData = unknown> {
-	type: "custom";
-	name: TName;
-	data: TData;
-}
-
-/**
  * 生命周期分三层，由外到内：
  * - run：一次 agentLoop 调用，可包含多个 turn（agent_start / agent_end）。
  * - turn：一次 LLM 响应 + 它触发的工具执行（turn_start / turn_end）。
  * - message / tool_execution：turn 内部的消息与工具粒度事件。
+ *
+ * 事件必须保持 wire-safe：payload 可 JSON round-trip，不携带 Error、函数、
+ * class 实例、stream 或 signal。跨进程传输时才不需要另一套投影。
  */
-export type AgentEvent =
+export type CoreAgentEvent =
 	// run 生命周期：一次 agentLoop 调用的最外层边界
 	| { type: "agent_start" }
 	| { type: "agent_end"; messages: AgentMessage[] }
@@ -102,9 +93,21 @@ export type AgentEvent =
 	// 工具执行生命周期
 	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown }
 	| { type: "tool_execution_update"; toolCallId: string; toolName: string; partial: AgentToolResult }
-	| { type: "tool_execution_end"; toolCallId: string; toolName: string; result: AgentToolResult; isError: boolean }
-	// 上层扩展发出的事件，core 只透传
-	| CustomEvent;
+	| { type: "tool_execution_end"; toolCallId: string; toolName: string; result: AgentToolResult; isError: boolean };
+
+/**
+ * 一次流式调用：既可迭代过程事件，也可等待最终结果。
+ * 各层只在事件联合上不同，结构因此只写一份。
+ */
+export interface EventRun<TEvent, TResult> extends AsyncIterable<TEvent> {
+	result(): Promise<TResult>;
+}
+
+/** observer 抛错时的上报载荷。它不是事件，不会再触发一轮分发。 */
+export interface ObserverErrorInfo<TEvent> {
+	error: unknown;
+	event: TEvent;
+}
 
 export interface AgentLoopConfig {
 	/** 目标模型元数据。 */

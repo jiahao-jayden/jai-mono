@@ -1,22 +1,16 @@
+// 跨层共享的消息、工具与状态类型。执行器本身只在 @jai/agent/core 暴露，
+// 显式列举是为了避免以后新增 core 类型时意外扩大默认 API。
 export {
-	Agent,
 	type AgentContext,
-	type AgentEvent,
-	type AgentEventListener,
 	type AgentInput,
 	type AgentMessage,
-	type AgentOptions,
-	type AgentRun,
 	type AgentState,
 	type AgentTool,
 	type AgentToolResult,
-	type CustomEvent,
 	cloneJson,
 	type JsonObject,
 	type JsonValue,
-	type OnModelError,
-	type PrepareContext,
-	type RetryModelCall,
+	type ObserverErrorInfo,
 	type Session,
 	type ToolCallContext,
 	type ToolExecutionMode,
@@ -24,5 +18,5 @@ export {
 	type ToolMiddleware,
 	type ToolUpdateCallback,
 } from "./core";
-// 上层包只依赖包根入口即可拿到 harness 的门面与各项能力。
+// 默认 Agent 与它自带的能力：durable session、compaction、hooks、prompt 组装。
 export * from "./harness";

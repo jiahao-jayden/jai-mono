@@ -11,17 +11,17 @@ import {
 import { getErrorMessage } from "@jai/common";
 import type {
 	AgentContext,
-	AgentEvent,
 	AgentLoopConfig,
 	AgentMessage,
 	AgentTool,
 	AgentToolResult,
+	CoreAgentEvent,
 	ToolCallContext,
 } from "./types";
 
-type Emit = (event: AgentEvent) => void;
+type Emit = (event: CoreAgentEvent) => void;
 
-export type AgentEventStream = EventStream<AgentEvent, AgentMessage[]>;
+export type AgentEventStream = EventStream<CoreAgentEvent, AgentMessage[]>;
 
 /**
  * 一次 run 内逐层共享、引用不变的运行时状态。
@@ -64,7 +64,7 @@ export function agentLoop(
 	config: AgentLoopConfig,
 	signal?: AbortSignal,
 ): AgentEventStream {
-	const stream = new EventStream<AgentEvent, AgentMessage[]>(
+	const stream = new EventStream<CoreAgentEvent, AgentMessage[]>(
 		(event) => event.type === "agent_end",
 		(event) => (event.type === "agent_end" ? event.messages : []),
 	);
