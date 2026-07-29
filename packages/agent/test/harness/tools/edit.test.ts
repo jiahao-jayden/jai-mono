@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createEditTool } from "../../src/tools/edit";
+import { createEditTool } from "../../../src";
+import { createNodeToolOptions } from "./support";
 
 const temporaryDirectories: string[] = [];
 
@@ -22,7 +23,7 @@ describe("edit tool", () => {
 	test("applies multiple replacements against the original file", async () => {
 		const cwd = await createWorkspace();
 		await writeFile(join(cwd, "file.txt"), "alpha\nmiddle\nomega");
-		const tool = createEditTool({ cwd });
+		const tool = createEditTool(createNodeToolOptions(cwd).workspace);
 
 		const result = await tool.execute("edit-1", {
 			path: "file.txt",
@@ -39,7 +40,7 @@ describe("edit tool", () => {
 	test("preserves UTF-8 BOM and CRLF line endings", async () => {
 		const cwd = await createWorkspace();
 		await writeFile(join(cwd, "file.txt"), "\uFEFFone\r\ntwo\r\n");
-		const tool = createEditTool({ cwd });
+		const tool = createEditTool(createNodeToolOptions(cwd).workspace);
 
 		await tool.execute("edit-1", {
 			path: "file.txt",
@@ -52,7 +53,7 @@ describe("edit tool", () => {
 	test("does not normalize untouched mixed line endings", async () => {
 		const cwd = await createWorkspace();
 		await writeFile(join(cwd, "file.txt"), "one\r\ntwo\nthree");
-		const tool = createEditTool({ cwd });
+		const tool = createEditTool(createNodeToolOptions(cwd).workspace);
 
 		await tool.execute("edit-1", {
 			path: "file.txt",
@@ -66,7 +67,7 @@ describe("edit tool", () => {
 		const cwd = await createWorkspace();
 		const path = join(cwd, "file.txt");
 		await writeFile(path, "same\nsame");
-		const tool = createEditTool({ cwd });
+		const tool = createEditTool(createNodeToolOptions(cwd).workspace);
 
 		await expect(
 			tool.execute("edit-1", {

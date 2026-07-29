@@ -5,6 +5,7 @@ export {
 	type DefaultCompactionOptions,
 } from "./agent";
 export * from "./compaction";
+export * from "./environment";
 export type {
 	AgentEvent,
 	AgentEventListener,
@@ -28,3 +29,4 @@ export type {
 } from "./hooks";
 export { promptTemplate } from "./prompt";
 export * from "./session";
+export * from "./tools";

@@ -3,13 +3,13 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
-	FileSessionStore,
 	InMemorySessionStore,
 	SessionConflictError,
 	SessionReadOnlyError,
 	serialized,
 	type SessionStore,
 } from "../../../src/harness";
+import { FileSessionStore } from "../../../src/node";
 import {
 	appStateEntry,
 	compactionEntry,

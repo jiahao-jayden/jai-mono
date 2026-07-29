@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createWriteTool } from "../../src/tools/write";
+import { createWriteTool } from "../../../src";
+import { createNodeToolOptions } from "./support";
 
 const temporaryDirectories: string[] = [];
 
@@ -21,7 +22,7 @@ afterEach(async () => {
 describe("write tool", () => {
 	test("creates parent directories and atomically overwrites files", async () => {
 		const cwd = await createWorkspace();
-		const tool = createWriteTool({ cwd });
+		const tool = createWriteTool(createNodeToolOptions(cwd).workspace);
 
 		const created = await tool.execute("write-1", {
 			path: "src/file.txt",
@@ -40,7 +41,7 @@ describe("write tool", () => {
 	test("does not modify a file when already aborted", async () => {
 		const cwd = await createWorkspace();
 		await writeFile(join(cwd, "file.txt"), "original");
-		const tool = createWriteTool({ cwd });
+		const tool = createWriteTool(createNodeToolOptions(cwd).workspace);
 		const controller = new AbortController();
 		controller.abort();
 

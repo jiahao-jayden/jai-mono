@@ -13,8 +13,7 @@
 		"test": "bun test"
 	},
 	"dependencies": {
-		"@jai/agent": "workspace:*",
-		"@sinclair/typebox": "catalog:"
+		"@jai/agent": "workspace:*"
 	},
 	"devDependencies": {
 		"typescript": "catalog:"

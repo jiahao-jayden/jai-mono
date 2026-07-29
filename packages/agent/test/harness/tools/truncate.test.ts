@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { truncateText } from "../../src/internal/truncate";
+import { truncateText } from "../../../src/harness/tools/truncate";
 
 describe("truncateText", () => {
 	test("returns unchanged text under the limits", () => {

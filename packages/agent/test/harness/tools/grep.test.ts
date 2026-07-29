@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createGrepTool } from "../../src/tools/grep";
+import { createGrepTool } from "../../../src";
+import { createNodeToolOptions } from "./support";
 
 const temporaryDirectories: string[] = [];
 
@@ -23,7 +24,7 @@ describe("grep tool", () => {
 		const cwd = await createWorkspace();
 		await writeFile(join(cwd, "a.ts"), "first\nconst value = 1;\nlast");
 		await writeFile(join(cwd, "a.txt"), "const ignored = true;");
-		const tool = createGrepTool({ cwd });
+		const tool = createGrepTool(createNodeToolOptions(cwd).search);
 
 		const result = await tool.execute("grep-1", {
 			pattern: "const",
@@ -40,7 +41,7 @@ describe("grep tool", () => {
 	test("treats leading dashes as a literal pattern when requested", async () => {
 		const cwd = await createWorkspace();
 		await writeFile(join(cwd, "file.txt"), "--help");
-		const tool = createGrepTool({ cwd });
+		const tool = createGrepTool(createNodeToolOptions(cwd).search);
 
 		const result = await tool.execute("grep-1", {
 			pattern: "--help",
@@ -56,7 +57,7 @@ describe("grep tool", () => {
 	test("keeps trailing context for the final limited match", async () => {
 		const cwd = await createWorkspace();
 		await writeFile(join(cwd, "file.txt"), "before\nneedle\nafter\nneedle");
-		const tool = createGrepTool({ cwd });
+		const tool = createGrepTool(createNodeToolOptions(cwd).search);
 
 		const result = await tool.execute("grep-1", {
 			pattern: "needle",
@@ -73,7 +74,7 @@ describe("grep tool", () => {
 	test("bounds matching lines before parsing ripgrep output", async () => {
 		const cwd = await createWorkspace();
 		await writeFile(join(cwd, "long.txt"), `needle${"x".repeat(1024 * 1024)}`);
-		const tool = createGrepTool({ cwd });
+		const tool = createGrepTool(createNodeToolOptions(cwd).search);
 
 		const result = await tool.execute("grep-1", { pattern: "needle" });
 

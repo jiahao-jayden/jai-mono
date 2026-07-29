@@ -1,4 +1,4 @@
-import type { TruncationDetails } from "../tools/types";
+import type { TruncationDetails } from "./types";
 
 export const DEFAULT_MAX_LINES = 2_000;
 export const DEFAULT_MAX_BYTES = 50 * 1024;
@@ -17,12 +17,12 @@ export interface TruncatedText {
 	linesTruncated: boolean;
 }
 
+const encoder = new TextEncoder();
+export const byteLength = (value: string): number => encoder.encode(value).byteLength;
+
 function truncateLine(line: string, maxLength: number): { text: string; truncated: boolean } {
 	if (line.length <= maxLength) return { text: line, truncated: false };
-	return {
-		text: `${line.slice(0, maxLength)}… [line truncated]`,
-		truncated: true,
-	};
+	return { text: `${line.slice(0, maxLength)}… [line truncated]`, truncated: true };
 }
 
 export function truncateText(text: string, options: TruncateOptions = {}): TruncatedText {
@@ -40,22 +40,17 @@ export function truncateText(text: string, options: TruncateOptions = {}): Trunc
 	const candidates = direction === "head" ? normalizedLines : [...normalizedLines].reverse();
 	const selected: string[] = [];
 	let outputBytes = 0;
-
 	for (const line of candidates) {
 		if (selected.length >= maxLines) break;
-		const lineBytes = Buffer.byteLength(line, "utf8");
+		const lineBytes = byteLength(line);
 		const separatorBytes = selected.length === 0 ? 0 : 1;
 		if (outputBytes + separatorBytes + lineBytes > maxBytes) break;
 		selected.push(line);
 		outputBytes += separatorBytes + lineBytes;
 	}
-
 	if (direction === "tail") selected.reverse();
-
 	const content = selected.join("\n");
-	const truncated = selected.length < normalizedLines.length || linesTruncated;
-	if (!truncated) return { content, linesTruncated };
-
+	if (selected.length === normalizedLines.length && !linesTruncated) return { content, linesTruncated };
 	return {
 		content,
 		linesTruncated,

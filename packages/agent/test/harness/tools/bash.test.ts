@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { access, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createBashTool } from "../../src/tools/bash";
+import { createBashTool } from "../../../src";
+import { createNodeToolOptions } from "./support";
 
 const temporaryDirectories: string[] = [];
 
@@ -21,7 +22,7 @@ afterEach(async () => {
 describe("bash tool", () => {
 	test("runs in the workspace and returns stdout", async () => {
 		const cwd = await createWorkspace();
-		const tool = createBashTool({ cwd });
+		const tool = createBashTool(createNodeToolOptions(cwd).bash);
 
 		const result = await tool.execute("bash-1", { command: "printf '%s' \"$PWD\"" });
 
@@ -31,7 +32,7 @@ describe("bash tool", () => {
 
 	test("includes output in non-zero exit errors", async () => {
 		const cwd = await createWorkspace();
-		const tool = createBashTool({ cwd });
+		const tool = createBashTool(createNodeToolOptions(cwd).bash);
 
 		await expect(tool.execute("bash-1", { command: "printf 'failure'; exit 3" })).rejects.toThrow(
 			"Command exited with code 3",
@@ -40,7 +41,7 @@ describe("bash tool", () => {
 
 	test("supports timeout and abort", async () => {
 		const cwd = await createWorkspace();
-		const tool = createBashTool({ cwd });
+		const tool = createBashTool(createNodeToolOptions(cwd).bash);
 
 		await expect(tool.execute("bash-1", { command: "sleep 2", timeoutMs: 20 })).rejects.toThrow("Command timed out");
 
@@ -59,7 +60,7 @@ describe("bash tool", () => {
 
 	test("keeps full output in a temporary file when truncated", async () => {
 		const cwd = await createWorkspace();
-		const tool = createBashTool({ cwd });
+		const tool = createBashTool(createNodeToolOptions(cwd).bash);
 
 		const result = await tool.execute("bash-1", {
 			command: "i=1; while [ $i -le 20000 ]; do echo $i; i=$((i + 1)); done",

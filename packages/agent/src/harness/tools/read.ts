@@ -1,10 +1,7 @@
-import { createReadStream } from "node:fs";
-import { open } from "node:fs/promises";
-import type { AgentTool } from "@jai/agent";
 import { type Static, Type } from "@sinclair/typebox";
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINE_LENGTH, DEFAULT_MAX_LINES } from "../internal/truncate";
-import { resolveWorkspacePath } from "../internal/workspace";
-import type { CodingToolOptions, TruncationDetails } from "./types";
+import type { AgentTool } from "../../core";
+import { byteLength, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINE_LENGTH, DEFAULT_MAX_LINES } from "./truncate";
+import type { TruncationDetails, WorkspaceToolOptions } from "./types";
 
 const readParameters = Type.Object(
 	{
@@ -16,7 +13,6 @@ const readParameters = Type.Object(
 );
 
 export type ReadToolInput = Static<typeof readParameters>;
-
 export interface ReadToolDetails {
 	path: string;
 	startLine: number;
@@ -27,27 +23,7 @@ export interface ReadToolDetails {
 	truncation?: TruncationDetails;
 }
 
-async function assertTextFile(path: string): Promise<void> {
-	const file = await open(path, "r");
-	try {
-		const sample = Buffer.alloc(4_096);
-		const { bytesRead } = await file.read(sample, 0, sample.length, 0);
-		const bytes = sample.subarray(0, bytesRead);
-		if (bytes.includes(0)) throw new Error(`Cannot read binary file: ${path}`);
-
-		let controlCharacters = 0;
-		for (const byte of bytes) {
-			if (byte < 9 || (byte > 13 && byte < 32)) controlCharacters++;
-		}
-		if (bytes.length > 0 && controlCharacters / bytes.length > 0.3) {
-			throw new Error(`Cannot read binary file: ${path}`);
-		}
-	} finally {
-		await file.close();
-	}
-}
-
-export function createReadTool(options: CodingToolOptions): AgentTool<typeof readParameters, ReadToolDetails> {
+export function createReadTool(options: WorkspaceToolOptions): AgentTool<typeof readParameters, ReadToolDetails> {
 	return {
 		name: "read",
 		label: "read",
@@ -55,14 +31,14 @@ export function createReadTool(options: CodingToolOptions): AgentTool<typeof rea
 		parameters: readParameters,
 		executionMode: "parallel",
 		async execute(_toolCallId, args, signal) {
-			const absolutePath = await resolveWorkspacePath(options.cwd, args.path, {
+			const resolved = await options.fileSystem.resolvePath(args.path, {
+				base: options.workspaceRoot,
+				boundary: options.workspaceRoot,
 				mustExist: true,
-				expectedType: "file",
-				allowOutsideWorkspace: options.allowOutsideWorkspace,
+				expectedKind: "file",
+				signal,
 			});
 			if (signal?.aborted) throw new Error("Operation aborted");
-			await assertTextFile(absolutePath);
-
 			const offset = args.offset ?? 1;
 			const limit = args.limit ?? DEFAULT_MAX_LINES;
 			const selected: string[] = [];
@@ -73,43 +49,37 @@ export function createReadTool(options: CodingToolOptions): AgentTool<typeof rea
 			let linesTruncated = false;
 			let lineBuffer = "";
 			let currentLineTruncated = false;
+			let sampled = 0;
+			let controlCharacters = 0;
 			const decoder = new TextDecoder("utf-8", { fatal: true });
-
 			const appendLineSegment = (segment: string): void => {
 				const remaining = DEFAULT_MAX_LINE_LENGTH - lineBuffer.length;
 				if (segment.length > remaining) {
 					if (remaining > 0) lineBuffer += segment.slice(0, remaining);
 					currentLineTruncated = true;
-					return;
+				} else {
+					lineBuffer += segment;
 				}
-				lineBuffer += segment;
 			};
-
 			const consumeLine = (): void => {
 				totalLines++;
-				if (totalLines < offset || selected.length >= limit || bytesCapped) {
-					lineBuffer = "";
-					currentLineTruncated = false;
-					return;
-				}
-
-				let display = lineBuffer.endsWith("\r") ? lineBuffer.slice(0, -1) : lineBuffer;
-				if (currentLineTruncated) {
-					display += "… [line truncated]";
-					linesTruncated = true;
-				}
-				const formatted = `${totalLines}|${display}`;
-				const bytes = Buffer.byteLength(formatted, "utf8") + (selected.length > 0 ? 1 : 0);
-				if (outputBytes + bytes > DEFAULT_MAX_BYTES) {
-					bytesCapped = true;
-				} else {
-					selected.push(formatted);
-					outputBytes += bytes;
+				if (totalLines >= offset && selected.length < limit && !bytesCapped) {
+					let display = lineBuffer.endsWith("\r") ? lineBuffer.slice(0, -1) : lineBuffer;
+					if (currentLineTruncated) {
+						display += "… [line truncated]";
+						linesTruncated = true;
+					}
+					const formatted = `${totalLines}|${display}`;
+					const bytes = byteLength(formatted) + (selected.length > 0 ? 1 : 0);
+					if (outputBytes + bytes > DEFAULT_MAX_BYTES) bytesCapped = true;
+					else {
+						selected.push(formatted);
+						outputBytes += bytes;
+					}
 				}
 				lineBuffer = "";
 				currentLineTruncated = false;
 			};
-
 			const consumeDecodedText = (text: string): void => {
 				const segments = text.split("\n");
 				for (let index = 0; index < segments.length - 1; index++) {
@@ -118,13 +88,22 @@ export function createReadTool(options: CodingToolOptions): AgentTool<typeof rea
 				}
 				appendLineSegment(segments.at(-1) ?? "");
 			};
-
 			try {
-				const stream = createReadStream(absolutePath, { signal });
-				for await (const chunk of stream) {
+				for await (const chunk of options.fileSystem.readFileChunks(resolved.path, { signal })) {
 					if (signal?.aborted) throw new Error("Operation aborted");
 					sawData = true;
-					consumeDecodedText(decoder.decode(chunk as Buffer, { stream: true }));
+					if (sampled < 4_096) {
+						const sample = chunk.subarray(0, 4_096 - sampled);
+						for (const value of sample) {
+							if (value === 0) throw new Error(`Cannot read binary file: ${resolved.path}`);
+							if (value < 9 || (value > 13 && value < 32)) controlCharacters++;
+						}
+						sampled += sample.byteLength;
+					}
+					consumeDecodedText(decoder.decode(chunk, { stream: true }));
+				}
+				if (sampled > 0 && controlCharacters / sampled > 0.3) {
+					throw new Error(`Cannot read binary file: ${resolved.path}`);
 				}
 				consumeDecodedText(decoder.decode());
 			} catch (error) {
@@ -132,12 +111,10 @@ export function createReadTool(options: CodingToolOptions): AgentTool<typeof rea
 				if (error instanceof TypeError) throw new Error(`File is not valid UTF-8 text: ${args.path}`);
 				throw error;
 			}
-
 			if (sawData || lineBuffer.length > 0) consumeLine();
 			if (offset > Math.max(1, totalLines)) {
 				throw new Error(`Offset ${offset} is beyond end of file (${totalLines} lines)`);
 			}
-
 			const hasMore = offset - 1 + selected.length < totalLines;
 			const truncated = hasMore || bytesCapped || linesTruncated;
 			const nextOffset = hasMore ? offset + selected.length : undefined;
@@ -148,7 +125,6 @@ export function createReadTool(options: CodingToolOptions): AgentTool<typeof rea
 				const continuation = nextOffset ? ` Use offset=${nextOffset} to continue.` : "";
 				text += `\n\n[Showing lines ${offset}-${Math.max(offset, endLine)} of ${totalLines}.${continuation}]`;
 			}
-
 			const truncation: TruncationDetails | undefined = truncated
 				? {
 						truncated: true,
@@ -160,11 +136,10 @@ export function createReadTool(options: CodingToolOptions): AgentTool<typeof rea
 						maxBytes: DEFAULT_MAX_BYTES,
 					}
 				: undefined;
-
 			return {
 				content: [{ type: "text", text }],
 				details: {
-					path: absolutePath,
+					path: resolved.path,
 					startLine: totalLines === 0 ? 0 : offset,
 					endLine: totalLines === 0 ? 0 : offset + selected.length - 1,
 					totalLines,

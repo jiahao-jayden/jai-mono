@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createGlobTool } from "../../src/tools/glob";
+import { createGlobTool } from "../../../src";
+import { createNodeToolOptions } from "./support";
 
 const temporaryDirectories: string[] = [];
 
@@ -28,7 +29,7 @@ describe("glob tool", () => {
 		await writeFile(join(cwd, "src", "b.ts"), "");
 		await writeFile(join(cwd, "src", "a.ts"), "");
 		await writeFile(join(cwd, "ignored", "hidden.ts"), "");
-		const tool = createGlobTool({ cwd });
+		const tool = createGlobTool(createNodeToolOptions(cwd).search);
 
 		const result = await tool.execute("glob-1", { pattern: "**/*.ts" });
 
@@ -41,7 +42,7 @@ describe("glob tool", () => {
 
 	test("returns a normal empty result", async () => {
 		const cwd = await createWorkspace();
-		const tool = createGlobTool({ cwd });
+		const tool = createGlobTool(createNodeToolOptions(cwd).search);
 
 		const result = await tool.execute("glob-1", { pattern: "*.missing" });
 

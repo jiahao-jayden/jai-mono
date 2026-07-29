@@ -4,6 +4,7 @@ import type { AgentEvent, AgentHookMap, AgentOptions, AgentRun } from "../src";
 import * as root from "../src";
 import type { CoreAgentEvent, CoreAgentOptions, CoreAgentRun } from "../src/core";
 import * as core from "../src/core";
+import * as node from "../src/node";
 import { assistant, model, providerFor } from "./support/fixtures";
 
 describe("public API", () => {
@@ -20,15 +21,18 @@ describe("public API", () => {
 	});
 
 	test("包根同时给出 session、compaction 与 prompt 能力", () => {
-		for (const name of ["openSession", "InMemorySessionStore", "FileSessionStore", "compact", "promptTemplate"]) {
+		for (const name of ["openSession", "InMemorySessionStore", "compact", "promptTemplate"]) {
 			expect(root).toHaveProperty(name);
 		}
+		expect(root).not.toHaveProperty("FileSessionStore");
+		expect(node).toHaveProperty("FileSessionStore");
 	});
 
-	test("exports 只有默认入口和 /core", () => {
+	test("exports 包含默认入口、/core 和 /node", () => {
 		expect(packageJson.exports).toEqual({
 			".": "./src/index.ts",
 			"./core": "./src/core/index.ts",
+			"./node": "./src/node.ts",
 		});
 	});
 

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveWorkspacePath } from "../../src/internal/workspace";
+import { NodeExecutionEnvironment } from "../../../src/node";
 
 const temporaryDirectories: string[] = [];
 
@@ -18,23 +18,32 @@ afterEach(async () => {
 	);
 });
 
-describe("resolveWorkspacePath", () => {
+describe("NodeExecutionEnvironment.resolvePath", () => {
 	test("resolves existing and new paths inside the workspace", async () => {
 		const workspace = await temporaryDirectory("jai-workspace-");
 		await mkdir(join(workspace, "src"));
 		await writeFile(join(workspace, "src", "index.ts"), "");
+		const environment = new NodeExecutionEnvironment({ cwd: workspace });
 
 		expect(
-			await resolveWorkspacePath(workspace, "src/index.ts", {
-				mustExist: true,
-				expectedType: "file",
-			}),
+			(
+				await environment.resolvePath("src/index.ts", {
+					base: workspace,
+					boundary: workspace,
+					mustExist: true,
+					expectedKind: "file",
+				})
+			).path,
 		).toBe(await realpath(join(workspace, "src", "index.ts")));
 		expect(
-			await resolveWorkspacePath(workspace, "new/file.ts", {
-				mustExist: false,
-				expectedType: "file",
-			}),
+			(
+				await environment.resolvePath("new/file.ts", {
+					base: workspace,
+					boundary: workspace,
+					mustExist: false,
+					expectedKind: "file",
+				})
+			).path,
 		).toBe(join(await realpath(workspace), "new", "file.ts"));
 	});
 
@@ -43,31 +52,38 @@ describe("resolveWorkspacePath", () => {
 		const outside = await temporaryDirectory("jai-outside-");
 		await writeFile(join(outside, "secret.txt"), "secret");
 		await symlink(outside, join(workspace, "link"));
+		const environment = new NodeExecutionEnvironment({ cwd: workspace });
 
 		await expect(
-			resolveWorkspacePath(workspace, "../outside.txt", {
+			environment.resolvePath("../outside.txt", {
+				base: workspace,
+				boundary: workspace,
 				mustExist: false,
 			}),
 		).rejects.toThrow("Path escapes workspace");
 		await expect(
-			resolveWorkspacePath(workspace, "link/secret.txt", {
+			environment.resolvePath("link/secret.txt", {
+				base: workspace,
+				boundary: workspace,
 				mustExist: true,
 			}),
 		).rejects.toThrow("Path escapes workspace");
 	});
 
-	test("supports an explicit outside-workspace escape hatch", async () => {
+	test("does not provide an outside-workspace escape hatch", async () => {
 		const workspace = await temporaryDirectory("jai-workspace-");
 		const outside = await temporaryDirectory("jai-outside-");
 		const file = join(outside, "file.txt");
 		await writeFile(file, "contents");
+		const environment = new NodeExecutionEnvironment({ cwd: workspace });
 
-		expect(
-			await resolveWorkspacePath(workspace, file, {
+		await expect(
+			environment.resolvePath(file, {
+				base: workspace,
+				boundary: workspace,
 				mustExist: true,
-				expectedType: "file",
-				allowOutsideWorkspace: true,
+				expectedKind: "file",
 			}),
-		).toBe(await realpath(file));
+		).rejects.toThrow("Path escapes workspace");
 	});
 });

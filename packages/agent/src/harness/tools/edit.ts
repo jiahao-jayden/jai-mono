@@ -1,41 +1,28 @@
-import { readFile } from "node:fs/promises";
-import type { AgentTool } from "@jai/agent";
 import { type Static, Type } from "@sinclair/typebox";
-import { atomicWrite } from "../internal/atomic-write";
-import { withFileMutationQueue } from "../internal/file-mutation-queue";
-import { resolveWorkspacePath } from "../internal/workspace";
-import type { CodingToolOptions } from "./types";
+import type { AgentTool } from "../../core";
+import { withFileMutationQueue } from "./file-mutation-queue";
+import type { WorkspaceToolOptions } from "./types";
 
 const replacementParameters = Type.Object(
-	{
-		oldText: Type.String(),
-		newText: Type.String(),
-	},
+	{ oldText: Type.String(), newText: Type.String() },
 	{ additionalProperties: false },
 );
-
 const editParameters = Type.Object(
-	{
-		path: Type.String(),
-		edits: Type.Array(replacementParameters, { minItems: 1 }),
-	},
+	{ path: Type.String(), edits: Type.Array(replacementParameters, { minItems: 1 }) },
 	{ additionalProperties: false },
 );
 
 export type EditToolInput = Static<typeof editParameters>;
-
 export interface EditToolDetails {
 	path: string;
 	replacements: number;
 	firstChangedLine?: number;
 }
-
 interface LocatedEdit {
 	start: number;
 	end: number;
 	newText: string;
 }
-
 interface NormalizedContent {
 	text: string;
 	rawOffsets: number[];
@@ -44,14 +31,11 @@ interface NormalizedContent {
 function normalizeWithOffsets(raw: string): NormalizedContent {
 	let text = "";
 	const rawOffsets = [0];
-
 	for (let index = 0; index < raw.length; index++) {
 		if (raw[index] === "\r" && raw[index + 1] === "\n") {
 			text += "\n";
 			index++;
-		} else {
-			text += raw[index];
-		}
+		} else text += raw[index];
 		rawOffsets.push(index + 1);
 	}
 	return { text, rawOffsets };
@@ -63,24 +47,16 @@ function locateEdits(content: string, edits: EditToolInput["edits"]): LocatedEdi
 		const newText = edit.newText.replaceAll("\r\n", "\n");
 		if (oldText.length === 0) throw new Error("oldText cannot be empty");
 		if (oldText === newText) throw new Error("No changes to apply: oldText and newText are identical");
-
 		const start = content.indexOf(oldText);
 		if (start === -1) throw new Error("Could not find oldText in the file");
 		if (content.indexOf(oldText, start + oldText.length) !== -1) {
 			throw new Error("Found multiple matches for oldText; provide more surrounding context");
 		}
-		return {
-			start,
-			end: start + oldText.length,
-			newText,
-		};
+		return { start, end: start + oldText.length, newText };
 	});
-
 	located.sort((a, b) => a.start - b.start);
 	for (let index = 1; index < located.length; index++) {
-		if (located[index]!.start < located[index - 1]!.end) {
-			throw new Error("Edits cannot overlap");
-		}
+		if (located[index]!.start < located[index - 1]!.end) throw new Error("Edits cannot overlap");
 	}
 	return located;
 }
@@ -106,16 +82,13 @@ function applyLocatedEdits(raw: string, normalized: NormalizedContent, edits: Lo
 	return result;
 }
 
-async function readFileWithAbort(path: string, signal?: AbortSignal): Promise<Buffer> {
-	try {
-		return await readFile(path, { signal });
-	} catch (error) {
-		if (signal?.aborted) throw new Error("Operation aborted");
-		throw error;
-	}
+function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
+	if (left.byteLength !== right.byteLength) return false;
+	for (let index = 0; index < left.byteLength; index++) if (left[index] !== right[index]) return false;
+	return true;
 }
 
-export function createEditTool(options: CodingToolOptions): AgentTool<typeof editParameters, EditToolDetails> {
+export function createEditTool(options: WorkspaceToolOptions): AgentTool<typeof editParameters, EditToolDetails> {
 	return {
 		name: "edit",
 		label: "edit",
@@ -124,17 +97,16 @@ export function createEditTool(options: CodingToolOptions): AgentTool<typeof edi
 		parameters: editParameters,
 		executionMode: "sequential",
 		async execute(_toolCallId, args, signal) {
-			const absolutePath = await resolveWorkspacePath(options.cwd, args.path, {
+			const resolved = await options.fileSystem.resolvePath(args.path, {
+				base: options.workspaceRoot,
+				boundary: options.workspaceRoot,
 				mustExist: true,
-				expectedType: "file",
-				allowOutsideWorkspace: options.allowOutsideWorkspace,
+				expectedKind: "file",
+				signal,
 			});
-
-			return withFileMutationQueue(absolutePath, async () => {
+			return withFileMutationQueue(options.fileSystem, resolved.canonicalPath, async () => {
 				if (signal?.aborted) throw new Error("Operation aborted");
-				const originalBytes = await readFileWithAbort(absolutePath, signal);
-				if (signal?.aborted) throw new Error("Operation aborted");
-
+				const originalBytes = await options.fileSystem.readFile(resolved.path, { signal });
 				const hasBom =
 					originalBytes.length >= 3 &&
 					originalBytes[0] === 0xef &&
@@ -148,19 +120,14 @@ export function createEditTool(options: CodingToolOptions): AgentTool<typeof edi
 				} catch {
 					throw new Error(`File is not valid UTF-8 text: ${args.path}`);
 				}
-
 				const normalized = normalizeWithOffsets(rawContent);
 				const located = locateEdits(normalized.text, args.edits);
 				const firstChangedLine = normalized.text.slice(0, located[0]!.start).split("\n").length;
 				const updated = applyLocatedEdits(rawContent, normalized, located);
-				const currentBytes = await readFileWithAbort(absolutePath, signal);
-				if (!currentBytes.equals(originalBytes)) {
-					throw new Error(`File changed while editing: ${args.path}`);
-				}
+				const currentBytes = await options.fileSystem.readFile(resolved.path, { signal });
+				if (!equalBytes(currentBytes, originalBytes)) throw new Error(`File changed while editing: ${args.path}`);
 				if (signal?.aborted) throw new Error("Operation aborted");
-
-				await atomicWrite(absolutePath, `${hasBom ? "\uFEFF" : ""}${updated}`, signal);
-
+				await options.fileSystem.writeFileAtomic(resolved.path, `${hasBom ? "\uFEFF" : ""}${updated}`, { signal });
 				return {
 					content: [
 						{
@@ -169,7 +136,7 @@ export function createEditTool(options: CodingToolOptions): AgentTool<typeof edi
 						},
 					],
 					details: {
-						path: absolutePath,
+						path: resolved.path,
 						replacements: located.length,
 						firstChangedLine,
 					},

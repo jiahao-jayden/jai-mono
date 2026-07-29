@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createReadTool } from "../../src/tools/read";
+import { createReadTool } from "../../../src";
+import { createNodeToolOptions } from "./support";
 
 const temporaryDirectories: string[] = [];
 
@@ -22,7 +23,7 @@ describe("read tool", () => {
 	test("reads numbered pages and reports the next offset", async () => {
 		const cwd = await createWorkspace();
 		await writeFile(join(cwd, "file.txt"), "one\ntwo\nthree");
-		const tool = createReadTool({ cwd });
+		const tool = createReadTool(createNodeToolOptions(cwd).workspace);
 
 		const result = await tool.execute("read-1", { path: "file.txt", offset: 2, limit: 1 });
 
@@ -36,7 +37,7 @@ describe("read tool", () => {
 	test("rejects binary files and aborted calls", async () => {
 		const cwd = await createWorkspace();
 		await writeFile(join(cwd, "binary"), Buffer.from([0, 1, 2]));
-		const tool = createReadTool({ cwd });
+		const tool = createReadTool(createNodeToolOptions(cwd).workspace);
 
 		await expect(tool.execute("read-1", { path: "binary" })).rejects.toThrow("binary file");
 
@@ -49,7 +50,7 @@ describe("read tool", () => {
 		const cwd = await createWorkspace();
 		await writeFile(join(cwd, "long.txt"), "x".repeat(1024 * 1024));
 		await writeFile(join(cwd, "empty.txt"), "");
-		const tool = createReadTool({ cwd });
+		const tool = createReadTool(createNodeToolOptions(cwd).workspace);
 
 		const result = await tool.execute("read-1", { path: "long.txt" });
 
