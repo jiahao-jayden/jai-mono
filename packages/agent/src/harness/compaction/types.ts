@@ -1,4 +1,5 @@
 import type { Model, Provider, Usage } from "@jai/ai";
+import { CodedError } from "@jai/common";
 import type { AgentContext } from "../../core/types";
 import type { CompactionEntry, SessionEntry } from "../session/types";
 
@@ -63,13 +64,14 @@ export interface CompactionErrorInfo {
 }
 
 /** 内部载体：让策略把稳定 code 传给门面，不必让门面猜测异常类型。 */
-export class CompactionFailure extends Error {
+export class CompactionFailure extends CodedError<`compaction.${CompactionErrorCode}`> {
 	override name = "CompactionFailure";
 
 	constructor(
-		readonly code: CompactionErrorCode,
+		readonly reason: CompactionErrorCode,
 		message: string,
+		options: { cause?: unknown } = {},
 	) {
-		super(message);
+		super({ code: `compaction.${reason}`, message, cause: options.cause });
 	}
 }

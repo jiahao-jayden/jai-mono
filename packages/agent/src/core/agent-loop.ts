@@ -8,7 +8,7 @@ import {
 	validateToolArguments,
 	zeroUsage,
 } from "@jai/ai";
-import { getErrorMessage } from "@jai/common";
+import { CodedError, getErrorMessage } from "@jai/common";
 import type {
 	AgentContext,
 	AgentLoopConfig,
@@ -344,19 +344,22 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 
 	try {
 		if (signal?.aborted) {
-			throw new Error("Tool execution aborted");
+			throw new CodedError({ code: "tool.aborted", message: "Tool execution aborted" });
 		}
 
 		const tool = context.tools.find((candidate) => candidate.name === toolCall.name);
 
 		if (!tool) {
-			throw new Error(`Tool ${toolCall.name} not found`);
+			throw new CodedError({ code: "tool.not_found", message: `Tool ${toolCall.name} not found` });
 		}
 
 		const validation = validateToolArguments(tool, toolCall);
 
 		if (!validation.success || validation.data === undefined) {
-			throw new Error(validation.error ?? `Invalid arguments for tool "${toolCall.name}"`);
+			throw new CodedError({
+				code: "tool.invalid_arguments",
+				message: validation.error ?? `Invalid arguments for tool "${toolCall.name}"`,
+			});
 		}
 
 		const ctx: ToolCallContext = {
@@ -422,7 +425,10 @@ function finalArguments(tool: AgentTool, toolCall: ToolCall, args: Record<string
 	const validation = validateToolArguments(tool, { ...toolCall, arguments: args });
 
 	if (!validation.success || validation.data === undefined) {
-		throw new Error(validation.error ?? `Invalid arguments for tool "${toolCall.name}"`);
+		throw new CodedError({
+			code: "tool.invalid_arguments",
+			message: validation.error ?? `Invalid arguments for tool "${toolCall.name}"`,
+		});
 	}
 
 	return validation.data as Record<string, unknown>;

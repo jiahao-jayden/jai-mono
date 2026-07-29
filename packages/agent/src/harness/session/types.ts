@@ -1,5 +1,6 @@
 import type { Usage } from "@jai/ai";
 import type { JsonObject } from "../../core/agent-state";
+import { CodedError } from "@jai/common";
 import type { AgentMessage } from "../../core/types";
 
 export interface MessageEntry {
@@ -73,14 +74,26 @@ export interface SessionHandle<TAppState extends JsonObject = JsonObject> {
 	append(entry: SessionEntry<TAppState>): Promise<void>;
 }
 
-export class SessionConflictError extends Error {
+export class SessionConflictError extends CodedError<"session.conflict"> {
 	override name = "SessionConflictError";
+
+	constructor(message: string, options: { cause?: unknown } = {}) {
+		super({ code: "session.conflict", message, cause: options.cause });
+	}
 }
 
-export class SessionBusyError extends Error {
+export class SessionBusyError extends CodedError<"session.busy"> {
 	override name = "SessionBusyError";
+
+	constructor(message: string, options: { cause?: unknown } = {}) {
+		super({ code: "session.busy", message, cause: options.cause });
+	}
 }
 
-export class SessionReadOnlyError extends Error {
+export class SessionReadOnlyError extends CodedError<"session.read_only"> {
 	override name = "SessionReadOnlyError";
+
+	constructor(message: string, options: { cause?: unknown } = {}) {
+		super({ code: "session.read_only", message, cause: options.cause });
+	}
 }

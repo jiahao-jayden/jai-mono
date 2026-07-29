@@ -1,3 +1,4 @@
+import { CodedError } from "@jai/common";
 import type { AssistantMessageEventStream } from "./event-stream";
 import type { Provider, StreamOptions } from "./provider";
 import type { Context, Model } from "./types";
@@ -34,11 +35,15 @@ export class ModelRegistry {
 	stream(ref: string, context: Context, options?: StreamOptions): AssistantMessageEventStream {
 		const model = this.models.get(ref);
 		if (!model) {
-			throw new Error(`Model "${ref}" not registered`);
+			throw new CodedError({ code: "model.not_registered", message: `Model "${ref}" not registered`, data: { ref } });
 		}
 		const provider = this.providers.get(model.provider);
 		if (!provider) {
-			throw new Error(`Provider "${model.provider}" not registered for model "${ref}"`);
+			throw new CodedError({
+				code: "provider.not_registered",
+				message: `Provider "${model.provider}" not registered for model "${ref}"`,
+				data: { provider: model.provider, ref },
+			});
 		}
 		return provider.stream(model, context, options);
 	}

@@ -1,4 +1,5 @@
 import { EventStream } from "@jai/ai";
+import { CodedError } from "@jai/common";
 import { agentLoop } from "./agent-loop";
 import { type AgentState, cloneJson, freezeState, type JsonObject, type MutableAgentState } from "./agent-state";
 import { type Session, toToolInfo } from "./session";
@@ -169,7 +170,7 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 
 	private startRun(input: AgentInput): Promise<AgentMessage[]> {
 		if (this.activeRun) {
-			throw new Error("Agent is already running. Use steer() or followUp().");
+			throw new CodedError({ code: "agent.already_running", message: "Agent is already running. Use steer() or followUp()." });
 		}
 
 		const prompts = toMessages(input);
@@ -228,7 +229,7 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 	 */
 	reset(): void {
 		if (this.activeRun) {
-			throw new Error("Cannot reset Agent while a run is active.");
+			throw new CodedError({ code: "agent.reset_while_running", message: "Cannot reset Agent while a run is active." });
 		}
 
 		this.internalState.messages = [];
@@ -322,7 +323,7 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 
 	private assertActiveRun(): void {
 		if (!this.activeRun) {
-			throw new Error("Agent is idle. Start an invocation instead.");
+			throw new CodedError({ code: "agent.idle", message: "Agent is idle. Start an invocation instead." });
 		}
 	}
 
@@ -363,7 +364,10 @@ function createRunStream(): EventStream<CoreAgentEvent, AgentMessage[]> {
 
 function assertModelMatchesProvider(model: CoreAgentOptions["model"], provider: CoreAgentOptions["provider"]): void {
 	if (model.provider !== provider.id) {
-		throw new Error(`Model "${model.id}" belongs to provider "${model.provider}", not "${provider.id}"`);
+		throw new CodedError({
+			code: "agent.model_provider_mismatch",
+			message: `Model "${model.id}" belongs to provider "${model.provider}", not "${provider.id}"`,
+		});
 	}
 }
 
@@ -372,7 +376,7 @@ function assertUniqueTools(tools: AgentTool[]): AgentTool[] {
 	const seen = new Set<string>();
 	for (const tool of tools) {
 		if (seen.has(tool.name)) {
-			throw new Error(`Duplicate tool name "${tool.name}"`);
+			throw new CodedError({ code: "agent.duplicate_tool", message: `Duplicate tool name "${tool.name}"` });
 		}
 		seen.add(tool.name);
 	}

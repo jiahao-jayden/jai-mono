@@ -1,5 +1,5 @@
 import { type AssistantMessage, EventStream, type Model, type Provider } from "@jai/ai";
-import { getErrorMessage } from "@jai/common";
+import { CodedError, getErrorMessage } from "@jai/common";
 import { type AgentInput, CoreAgent, type CoreAgentOptions } from "../core/agent";
 import { type AgentState, cloneJson, type JsonObject } from "../core/agent-state";
 import type { Session } from "../core/session";
@@ -419,7 +419,7 @@ function resolveCompaction(model: Model, options: AgentCompactionOptions | undef
 
 /** provider SDK 的异常先经过 ProviderErrorInfo，再在这里归到一个稳定 code 上。 */
 function toErrorInfo(error: unknown): CompactionErrorInfo {
-	if (error instanceof CompactionFailure) return { code: error.code, message: error.message };
+	if (error instanceof CompactionFailure) return { code: error.reason, message: error.message };
 	return { code: "unknown", message: getErrorMessage(error) };
 }
 
@@ -443,6 +443,9 @@ function assertSingleDurableSource(options: AgentOptions<JsonObject>): void {
 	);
 
 	if (conflicting.length > 0) {
-		throw new Error(`sessionHandle already provides durable state; remove ${conflicting.join(", ")}`);
+		throw new CodedError({
+			code: "agent.conflicting_durable_source",
+			message: `sessionHandle already provides durable state; remove ${conflicting.join(", ")}`,
+		});
 	}
 }

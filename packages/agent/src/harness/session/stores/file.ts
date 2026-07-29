@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
+import { CodedError, getErrorCode } from "@jai/common";
 import type { JsonObject } from "../../../core/agent-state";
 import { replay } from "../snapshot";
 import {
@@ -98,7 +99,7 @@ export class FileSessionStore<TAppState extends JsonObject = JsonObject> impleme
 
 	private filePath(id: string): string {
 		if (!VALID_ID.test(id) || id === "." || id === "..") {
-			throw new Error(`Invalid session id "${id}"`);
+			throw new CodedError({ code: "session.invalid_id", message: `Invalid session id "${id}"` });
 		}
 		return path.join(this.directory, `${id}.jsonl`);
 	}
@@ -137,7 +138,10 @@ export class FileSessionStore<TAppState extends JsonObject = JsonObject> impleme
 			if (!record) {
 				// 尾行可能是崩溃时写了一半；中间的坏行则说明文件真的损坏了。
 				if (index === lastLine) break;
-				throw new Error(`Corrupted session file "${id}" at line ${index + 1}`);
+				throw new CodedError({
+					code: "session.corrupted_file",
+					message: `Corrupted session file "${id}" at line ${index + 1}`,
+				});
 			}
 
 			if (record.type === "revision") {
@@ -199,7 +203,7 @@ export class FileSessionStore<TAppState extends JsonObject = JsonObject> impleme
 			await handle.close();
 			return;
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+			if (getErrorCode(error) !== "EEXIST") throw error;
 		}
 
 		if (reclaimed || !(await this.isStaleLock(lockPath))) {
@@ -222,7 +226,7 @@ export class FileSessionStore<TAppState extends JsonObject = JsonObject> impleme
 			process.kill(owner.pid, 0);
 			return false;
 		} catch (error) {
-			return (error as NodeJS.ErrnoException).code === "ESRCH";
+			return getErrorCode(error) === "ESRCH";
 		}
 	}
 }
@@ -230,10 +234,13 @@ export class FileSessionStore<TAppState extends JsonObject = JsonObject> impleme
 function parseHeader(line: string | undefined, id: string): SessionHeader {
 	const header = line ? tryParseLine(line) : undefined;
 	if (!header || header.type !== "session") {
-		throw new Error(`Session file "${id}" is missing its header`);
+		throw new CodedError({ code: "session.missing_header", message: `Session file "${id}" is missing its header` });
 	}
 	if (typeof header.version !== "number" || header.version > SCHEMA_VERSION) {
-		throw new Error(`Session file "${id}" uses unsupported schema version ${String(header.version)}`);
+		throw new CodedError({
+			code: "session.unsupported_schema",
+			message: `Session file "${id}" uses unsupported schema version ${String(header.version)}`,
+		});
 	}
 	return header as unknown as SessionHeader;
 }
@@ -249,6 +256,6 @@ function tryParseLine(line: string): Record<string, unknown> | undefined {
 
 /** 只有 ENOENT 才算"不存在"；权限等错误必须继续抛。 */
 function toUndefinedOnMissing(error: unknown): undefined {
-	if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+	if (getErrorCode(error) === "ENOENT") return undefined;
 	throw error;
 }

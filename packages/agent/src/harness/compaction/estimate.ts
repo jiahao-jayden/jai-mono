@@ -1,4 +1,5 @@
 import type { AssistantMessage, Model } from "@jai/ai";
+import { CodedError } from "@jai/common";
 import type { AgentContext, AgentMessage } from "../../core/types";
 import type { SessionEntry } from "../session/types";
 import { safeJson } from "./serialize";
@@ -138,19 +139,27 @@ export function resolveCompactionSettings(
 /** 配置错误在解析时就抛，而不是等第一次调用时伪装成 provider error。 */
 function validate(settings: CompactionSettings, model: Model): void {
 	for (const [key, value] of Object.entries(settings)) {
-		if (!Number.isFinite(value)) throw new Error(`compaction.${key} must be a finite number`);
-		if (value < 0) throw new Error(`compaction.${key} must not be negative`);
+		if (!Number.isFinite(value)) {
+			throw new CodedError({ code: "compaction.invalid_setting", message: `compaction.${key} must be a finite number` });
+		}
+		if (value < 0) {
+			throw new CodedError({ code: "compaction.invalid_setting", message: `compaction.${key} must not be negative` });
+		}
 	}
 	if (!Number.isInteger(settings.tailTurns)) {
-		throw new Error("compaction.tailTurns must be an integer");
+		throw new CodedError({ code: "compaction.invalid_setting", message: "compaction.tailTurns must be an integer" });
 	}
 	if (settings.reserveTokens >= model.contextWindow) {
-		throw new Error(
-			`compaction.reserveTokens (${settings.reserveTokens}) must be below the context window (${model.contextWindow})`,
-		);
+		throw new CodedError({
+			code: "compaction.invalid_setting",
+			message: `compaction.reserveTokens (${settings.reserveTokens}) must be below the context window (${model.contextWindow})`,
+		});
 	}
 	if (settings.preserveRecentTokens > model.contextWindow - settings.reserveTokens) {
-		throw new Error("compaction.preserveRecentTokens must fit in the context window left after reserveTokens");
+		throw new CodedError({
+			code: "compaction.invalid_setting",
+			message: "compaction.preserveRecentTokens must fit in the context window left after reserveTokens",
+		});
 	}
 }
 

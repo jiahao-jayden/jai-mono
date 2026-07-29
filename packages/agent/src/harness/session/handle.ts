@@ -1,3 +1,4 @@
+import { CodedError } from "@jai/common";
 import type { JsonObject } from "../../core/agent-state";
 import { applyEntry } from "./snapshot";
 import { type SessionHandle, SessionReadOnlyError, type SessionStore } from "./types";
@@ -12,7 +13,12 @@ export async function openSession<TAppState extends JsonObject>(
 	if (!record) {
 		await store.create(id, appState);
 		record = await store.load(id);
-		if (!record) throw new Error(`Session "${id}" disappeared right after creation`);
+		if (!record) {
+			throw new CodedError({
+				code: "session.disappeared",
+				message: `Session "${id}" disappeared right after creation`,
+			});
+		}
 	}
 
 	let snapshot = record.snapshot;

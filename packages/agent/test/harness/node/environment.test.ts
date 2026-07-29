@@ -50,14 +50,14 @@ describe("NodeExecutionEnvironment", () => {
 				boundary: workspace,
 				mustExist: true,
 			}),
-		).rejects.toMatchObject({ code: "outside_boundary" });
+		).rejects.toMatchObject({ code: "filesystem.outside_boundary" });
 		await expect(
 			environment.resolvePath("../outside.txt", {
 				base: workspace,
 				boundary: workspace,
 				mustExist: false,
 			}),
-		).rejects.toMatchObject({ code: "outside_boundary" });
+		).rejects.toMatchObject({ code: "filesystem.outside_boundary" });
 	});
 
 	test("atomic writes create, replace, preserve mode, and honor abort", async () => {
@@ -73,7 +73,7 @@ describe("NodeExecutionEnvironment", () => {
 		controller.abort();
 		await expect(
 			environment.writeFileAtomic(path, "changed", { signal: controller.signal }),
-		).rejects.toMatchObject({ code: "aborted" });
+		).rejects.toMatchObject({ code: "filesystem.aborted" });
 		expect(await readFile(path, "utf8")).toBe("second");
 	});
 
@@ -86,10 +86,10 @@ describe("NodeExecutionEnvironment", () => {
 		});
 		await expect(
 			environment.glob({ cwd: workspace, pattern: "*", limit: 10 }),
-		).rejects.toMatchObject({ code: "backend_unavailable" });
+		).rejects.toMatchObject({ code: "filesearch.backend_unavailable" });
 		await expect(
 			environment.execute("true", { cwd: workspace, timeoutMs: 100 }),
-		).rejects.toMatchObject({ code: "shell_unavailable" });
+		).rejects.toMatchObject({ code: "shell.shell_unavailable" });
 	});
 
 	test("maps invalid search patterns and pre-abort to stable codes", async () => {
@@ -103,7 +103,7 @@ describe("NodeExecutionEnvironment", () => {
 				pattern: "[",
 				limit: 10,
 			}),
-		).rejects.toMatchObject({ code: "invalid_pattern" });
+		).rejects.toMatchObject({ code: "filesearch.invalid_pattern" });
 		const controller = new AbortController();
 		controller.abort();
 		await expect(
@@ -113,7 +113,7 @@ describe("NodeExecutionEnvironment", () => {
 				limit: 10,
 				signal: controller.signal,
 			}),
-		).rejects.toMatchObject({ code: "aborted" });
+		).rejects.toMatchObject({ code: "filesearch.aborted" });
 	});
 
 	test("marks truncated ripgrep stderr", async () => {
@@ -165,7 +165,7 @@ describe("NodeExecutionEnvironment", () => {
 		expect(asyncOutput).toHaveLength(settledCallbacks);
 		await expect(
 			environment.execute("sleep 2", { cwd: workspace, timeoutMs: 20 }),
-		).rejects.toMatchObject({ code: "timeout" });
+		).rejects.toMatchObject({ code: "shell.timeout" });
 		await expect(
 			environment.execute("printf output; sleep 1", {
 				cwd: workspace,
@@ -174,6 +174,6 @@ describe("NodeExecutionEnvironment", () => {
 					throw new Error("callback");
 				},
 			}),
-		).rejects.toMatchObject({ code: "output_callback_failed" });
+		).rejects.toMatchObject({ code: "shell.output_callback_failed" });
 	});
 });

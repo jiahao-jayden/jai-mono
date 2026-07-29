@@ -1,4 +1,5 @@
 import type { ProviderErrorInfo } from "@jai/ai";
+import { CodedError } from "@jai/common";
 import type { AgentMessage } from "./types";
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
@@ -17,15 +18,24 @@ export function cloneJson<T extends JsonValue>(value: T): T {
 function assertJsonValue(value: unknown, ancestors: Set<object>): void {
 	if (value === null || typeof value === "string" || typeof value === "boolean") return;
 	if (typeof value === "number") {
-		if (!Number.isFinite(value)) throw new TypeError("appState must not contain NaN or Infinity");
+		if (!Number.isFinite(value)) {
+			throw new CodedError({ code: "state.non_finite_number", message: "appState must not contain NaN or Infinity" });
+		}
 		return;
 	}
-	if (typeof value !== "object") throw new TypeError(`appState must be JSON-serializable, got ${typeof value}`);
-	if (ancestors.has(value)) throw new TypeError("appState must not contain cycles");
+	if (typeof value !== "object") {
+		throw new CodedError({
+			code: "state.not_json_serializable",
+			message: `appState must be JSON-serializable, got ${typeof value}`,
+		});
+	}
+	if (ancestors.has(value)) {
+		throw new CodedError({ code: "state.circular_value", message: "appState must not contain cycles" });
+	}
 
 	const prototype = Object.getPrototypeOf(value);
 	if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
-		throw new TypeError("appState must contain only plain objects and arrays");
+		throw new CodedError({ code: "state.invalid_value", message: "appState must contain only plain objects and arrays" });
 	}
 
 	ancestors.add(value);

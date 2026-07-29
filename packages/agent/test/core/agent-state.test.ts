@@ -13,11 +13,11 @@ describe("cloneJson", () => {
 	});
 
 	test("rejects values that JSON cannot represent", () => {
-		expect(() => cloneJson({ when: new Date() } as never)).toThrow(TypeError);
-		expect(() => cloneJson({ seen: new Map() } as never)).toThrow(TypeError);
-		expect(() => cloneJson({ run: () => {} } as never)).toThrow(TypeError);
-		expect(() => cloneJson({ amount: Number.NaN } as never)).toThrow(TypeError);
-		expect(() => cloneJson({ value: undefined } as never)).toThrow(TypeError);
+		expect(() => cloneJson({ when: new Date() } as never)).toThrow("appState must contain only plain objects and arrays");
+		expect(() => cloneJson({ seen: new Map() } as never)).toThrow("appState must contain only plain objects and arrays");
+		expect(() => cloneJson({ run: () => {} } as never)).toThrow("appState must be JSON-serializable");
+		expect(() => cloneJson({ amount: Number.NaN } as never)).toThrow("appState must not contain NaN or Infinity");
+		expect(() => cloneJson({ value: undefined } as never)).toThrow("appState must be JSON-serializable");
 	});
 
 	test("rejects cycles", () => {
@@ -61,7 +61,9 @@ describe("CoreAgent state", () => {
 	test("rejects non-JSON business state at the write boundary", () => {
 		const agent = createAgent();
 
-		expect(() => agent.setAppState({ resolved: false, tags: [], when: new Date() } as never)).toThrow(TypeError);
+		expect(() => agent.setAppState({ resolved: false, tags: [], when: new Date() } as never)).toThrow(
+			"appState must contain only plain objects and arrays",
+		);
 	});
 });
 

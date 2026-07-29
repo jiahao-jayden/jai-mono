@@ -1,4 +1,5 @@
 import { type Static, Type } from "@sinclair/typebox";
+import { defineCodedError, getErrorMessage } from "@jai/common";
 import type { AgentTool } from "../../core";
 import { ShellError, type ShellResult } from "../environment";
 import { byteLength, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateText } from "./truncate";
@@ -18,6 +19,13 @@ const bashParameters = Type.Object(
 	},
 	{ additionalProperties: false },
 );
+const bashError = defineCodedError("tool.bash", [
+	"aborted",
+	"invalid_timeout",
+	"timeout",
+	"execution_failed",
+	"non_zero_exit",
+] as const);
 
 export type BashToolInput = Static<typeof bashParameters>;
 export interface BashToolDetails {
@@ -53,10 +61,10 @@ export function createBashTool(options: BashToolOptions): AgentTool<typeof bashP
 				expectedKind: "directory",
 				signal,
 			});
-			if (signal?.aborted) throw new Error("Operation aborted");
+			if (signal?.aborted) throw bashError("aborted", { message: "Operation aborted" });
 			const timeoutMs = args.timeoutMs ?? options.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS;
 			if (timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) {
-				throw new Error(`timeoutMs must be between 1 and ${MAX_TIMEOUT_MS}`);
+				throw bashError("invalid_timeout", { message: `timeoutMs must be between 1 and ${MAX_TIMEOUT_MS}` });
 			}
 			const temporaryFile = await options.fileSystem.createTempFile({
 				prefix: "bash-",
@@ -144,13 +152,19 @@ export function createBashTool(options: BashToolOptions): AgentTool<typeof bashP
 					const diagnostic = final.truncated
 						? appendStatus(final.text, `[Output truncated. Full output: ${temporaryFile.path}]`)
 						: final.text;
-					if (error instanceof ShellError && error.code === "aborted") {
-						throw new Error(appendStatus(diagnostic, "Command aborted"));
+					if (error instanceof ShellError && error.reason === "aborted") {
+						throw bashError("aborted", { message: appendStatus(diagnostic, "Command aborted"), cause: error });
 					}
-					if (error instanceof ShellError && error.code === "timeout") {
-						throw new Error(appendStatus(diagnostic, `Command timed out after ${timeoutMs}ms`));
+					if (error instanceof ShellError && error.reason === "timeout") {
+						throw bashError("timeout", {
+							message: appendStatus(diagnostic, `Command timed out after ${timeoutMs}ms`),
+							cause: error,
+						});
 					}
-					throw new Error(appendStatus(diagnostic, error instanceof Error ? error.message : "Command failed"));
+					throw bashError("execution_failed", {
+						message: appendStatus(diagnostic, getErrorMessage(error)),
+						cause: error,
+					});
 				}
 				const final = snapshot();
 				const text = final.text || "(no output)";
@@ -166,7 +180,9 @@ export function createBashTool(options: BashToolOptions): AgentTool<typeof bashP
 					? appendStatus(final.text, `[Output truncated. Full output: ${temporaryFile.path}]`)
 					: final.text;
 				if (shellResult.exitCode !== 0) {
-					throw new Error(appendStatus(diagnosticText, `Command exited with code ${shellResult.exitCode}`));
+					throw bashError("non_zero_exit", {
+						message: appendStatus(diagnosticText, `Command exited with code ${shellResult.exitCode}`),
+					});
 				}
 				return {
 					content: [

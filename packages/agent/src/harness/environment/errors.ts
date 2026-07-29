@@ -1,4 +1,6 @@
-export type FileSystemErrorCode =
+import { CodedError } from "@jai/common";
+
+export type FileSystemErrorReason =
 	| "aborted"
 	| "not_found"
 	| "permission_denied"
@@ -10,7 +12,7 @@ export type FileSystemErrorCode =
 	| "not_supported"
 	| "io_error";
 
-export type FileSearchErrorCode =
+export type FileSearchErrorReason =
 	| "aborted"
 	| "backend_unavailable"
 	| "invalid_pattern"
@@ -18,7 +20,7 @@ export type FileSearchErrorCode =
 	| "outside_boundary"
 	| "search_failed";
 
-export type ShellErrorCode =
+export type ShellErrorReason =
 	| "aborted"
 	| "timeout"
 	| "shell_unavailable"
@@ -26,42 +28,50 @@ export type ShellErrorCode =
 	| "output_callback_failed"
 	| "execution_failed";
 
-export class FileSystemError extends Error {
-	readonly code: FileSystemErrorCode;
-	readonly resource?: string;
-	override readonly cause?: unknown;
+export type FileSystemErrorCode = `filesystem.${FileSystemErrorReason}`;
+export type FileSearchErrorCode = `filesearch.${FileSearchErrorReason}`;
+export type ShellErrorCode = `shell.${ShellErrorReason}`;
 
-	constructor(code: FileSystemErrorCode, message: string, options: { resource?: string; cause?: unknown } = {}) {
-		super(message);
+export class FileSystemError extends CodedError<FileSystemErrorCode, { resource?: string }> {
+	readonly reason: FileSystemErrorReason;
+	readonly resource?: string;
+
+	constructor(reason: FileSystemErrorReason, message: string, options: { resource?: string; cause?: unknown } = {}) {
+		super({
+			code: `filesystem.${reason}`,
+			message,
+			data: { resource: options.resource },
+			cause: options.cause,
+		});
 		this.name = "FileSystemError";
-		this.code = code;
+		this.reason = reason;
 		this.resource = options.resource;
-		this.cause = options.cause;
 	}
 }
 
-export class FileSearchError extends Error {
-	readonly code: FileSearchErrorCode;
+export class FileSearchError extends CodedError<FileSearchErrorCode, { resource?: string }> {
+	readonly reason: FileSearchErrorReason;
 	readonly resource?: string;
-	override readonly cause?: unknown;
 
-	constructor(code: FileSearchErrorCode, message: string, options: { resource?: string; cause?: unknown } = {}) {
-		super(message);
+	constructor(reason: FileSearchErrorReason, message: string, options: { resource?: string; cause?: unknown } = {}) {
+		super({
+			code: `filesearch.${reason}`,
+			message,
+			data: { resource: options.resource },
+			cause: options.cause,
+		});
 		this.name = "FileSearchError";
-		this.code = code;
+		this.reason = reason;
 		this.resource = options.resource;
-		this.cause = options.cause;
 	}
 }
 
-export class ShellError extends Error {
-	readonly code: ShellErrorCode;
-	override readonly cause?: unknown;
+export class ShellError extends CodedError<ShellErrorCode> {
+	readonly reason: ShellErrorReason;
 
-	constructor(code: ShellErrorCode, message: string, options: { cause?: unknown } = {}) {
-		super(message);
+	constructor(reason: ShellErrorReason, message: string, options: { cause?: unknown } = {}) {
+		super({ code: `shell.${reason}`, message, cause: options.cause });
 		this.name = "ShellError";
-		this.code = code;
-		this.cause = options.cause;
+		this.reason = reason;
 	}
 }

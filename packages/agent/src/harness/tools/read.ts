@@ -1,4 +1,5 @@
 import { type Static, Type } from "@sinclair/typebox";
+import { defineCodedError } from "@jai/common";
 import type { AgentTool } from "../../core";
 import { byteLength, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINE_LENGTH, DEFAULT_MAX_LINES } from "./truncate";
 import type { TruncationDetails, WorkspaceToolOptions } from "./types";
@@ -11,6 +12,12 @@ const readParameters = Type.Object(
 	},
 	{ additionalProperties: false },
 );
+const readError = defineCodedError("tool.read", [
+	"aborted",
+	"binary_file",
+	"invalid_utf8",
+	"offset_out_of_range",
+] as const);
 
 export type ReadToolInput = Static<typeof readParameters>;
 export interface ReadToolDetails {
@@ -38,7 +45,7 @@ export function createReadTool(options: WorkspaceToolOptions): AgentTool<typeof 
 				expectedKind: "file",
 				signal,
 			});
-			if (signal?.aborted) throw new Error("Operation aborted");
+			if (signal?.aborted) throw readError("aborted", { message: "Operation aborted" });
 			const offset = args.offset ?? 1;
 			const limit = args.limit ?? DEFAULT_MAX_LINES;
 			const selected: string[] = [];
@@ -90,12 +97,14 @@ export function createReadTool(options: WorkspaceToolOptions): AgentTool<typeof 
 			};
 			try {
 				for await (const chunk of options.fileSystem.readFileChunks(resolved.path, { signal })) {
-					if (signal?.aborted) throw new Error("Operation aborted");
+					if (signal?.aborted) throw readError("aborted", { message: "Operation aborted" });
 					sawData = true;
 					if (sampled < 4_096) {
 						const sample = chunk.subarray(0, 4_096 - sampled);
 						for (const value of sample) {
-							if (value === 0) throw new Error(`Cannot read binary file: ${resolved.path}`);
+							if (value === 0) {
+								throw readError("binary_file", { message: `Cannot read binary file: ${resolved.path}` });
+							}
 							if (value < 9 || (value > 13 && value < 32)) controlCharacters++;
 						}
 						sampled += sample.byteLength;
@@ -103,17 +112,21 @@ export function createReadTool(options: WorkspaceToolOptions): AgentTool<typeof 
 					consumeDecodedText(decoder.decode(chunk, { stream: true }));
 				}
 				if (sampled > 0 && controlCharacters / sampled > 0.3) {
-					throw new Error(`Cannot read binary file: ${resolved.path}`);
+					throw readError("binary_file", { message: `Cannot read binary file: ${resolved.path}` });
 				}
 				consumeDecodedText(decoder.decode());
 			} catch (error) {
-				if (signal?.aborted) throw new Error("Operation aborted");
-				if (error instanceof TypeError) throw new Error(`File is not valid UTF-8 text: ${args.path}`);
+				if (signal?.aborted) throw readError("aborted", { message: "Operation aborted" });
+				if (error instanceof TypeError) {
+					throw readError("invalid_utf8", { message: `File is not valid UTF-8 text: ${args.path}`, cause: error });
+				}
 				throw error;
 			}
 			if (sawData || lineBuffer.length > 0) consumeLine();
 			if (offset > Math.max(1, totalLines)) {
-				throw new Error(`Offset ${offset} is beyond end of file (${totalLines} lines)`);
+				throw readError("offset_out_of_range", {
+					message: `Offset ${offset} is beyond end of file (${totalLines} lines)`,
+				});
 			}
 			const hasMore = offset - 1 + selected.length < totalLines;
 			const truncated = hasMore || bytesCapped || linesTruncated;

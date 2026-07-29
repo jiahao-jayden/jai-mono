@@ -173,7 +173,7 @@ describe("compact", () => {
 
 	test("refuses when there is nothing new to summarize", async () => {
 		expect(compact(inputFor(summarizer({}), { entries: [u("e0", "only")] }))).rejects.toMatchObject({
-			code: "nothing_to_compact",
+			code: "compaction.nothing_to_compact",
 		});
 	});
 
@@ -186,12 +186,16 @@ describe("compact", () => {
 		];
 
 		for (const reply of unusable) {
-			expect(compact(inputFor(summarizer(reply)))).rejects.toMatchObject({ code: "summarization_failed" });
+			expect(compact(inputFor(summarizer(reply)))).rejects.toMatchObject({
+				code: "compaction.summarization_failed",
+			});
 		}
 	});
 
 	test("reports an aborted summary as aborted", async () => {
-		expect(compact(inputFor(summarizer({ stopReason: "aborted" })))).rejects.toMatchObject({ code: "aborted" });
+		expect(compact(inputFor(summarizer({ stopReason: "aborted" })))).rejects.toMatchObject({
+			code: "compaction.aborted",
+		});
 	});
 });
 

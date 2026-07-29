@@ -1,4 +1,5 @@
 import { type Static, Type } from "@sinclair/typebox";
+import { defineCodedError } from "@jai/common";
 import type { AgentTool } from "../../core";
 import { withFileMutationQueue } from "./file-mutation-queue";
 import type { WorkspaceToolOptions } from "./types";
@@ -11,6 +12,16 @@ const editParameters = Type.Object(
 	{ path: Type.String(), edits: Type.Array(replacementParameters, { minItems: 1 }) },
 	{ additionalProperties: false },
 );
+const editError = defineCodedError("tool.edit", [
+	"empty_old_text",
+	"no_change",
+	"text_not_found",
+	"ambiguous_match",
+	"overlapping_edits",
+	"aborted",
+	"invalid_utf8",
+	"file_changed",
+] as const);
 
 export type EditToolInput = Static<typeof editParameters>;
 export interface EditToolDetails {
@@ -45,18 +56,22 @@ function locateEdits(content: string, edits: EditToolInput["edits"]): LocatedEdi
 	const located = edits.map((edit) => {
 		const oldText = edit.oldText.replaceAll("\r\n", "\n");
 		const newText = edit.newText.replaceAll("\r\n", "\n");
-		if (oldText.length === 0) throw new Error("oldText cannot be empty");
-		if (oldText === newText) throw new Error("No changes to apply: oldText and newText are identical");
+		if (oldText.length === 0) throw editError("empty_old_text", { message: "oldText cannot be empty" });
+		if (oldText === newText) {
+			throw editError("no_change", { message: "No changes to apply: oldText and newText are identical" });
+		}
 		const start = content.indexOf(oldText);
-		if (start === -1) throw new Error("Could not find oldText in the file");
+		if (start === -1) throw editError("text_not_found", { message: "Could not find oldText in the file" });
 		if (content.indexOf(oldText, start + oldText.length) !== -1) {
-			throw new Error("Found multiple matches for oldText; provide more surrounding context");
+			throw editError("ambiguous_match", { message: "Found multiple matches for oldText; provide more surrounding context" });
 		}
 		return { start, end: start + oldText.length, newText };
 	});
 	located.sort((a, b) => a.start - b.start);
 	for (let index = 1; index < located.length; index++) {
-		if (located[index]!.start < located[index - 1]!.end) throw new Error("Edits cannot overlap");
+		if (located[index]!.start < located[index - 1]!.end) {
+			throw editError("overlapping_edits", { message: "Edits cannot overlap" });
+		}
 	}
 	return located;
 }
@@ -105,7 +120,7 @@ export function createEditTool(options: WorkspaceToolOptions): AgentTool<typeof 
 				signal,
 			});
 			return withFileMutationQueue(options.fileSystem, resolved.canonicalPath, async () => {
-				if (signal?.aborted) throw new Error("Operation aborted");
+				if (signal?.aborted) throw editError("aborted", { message: "Operation aborted" });
 				const originalBytes = await options.fileSystem.readFile(resolved.path, { signal });
 				const hasBom =
 					originalBytes.length >= 3 &&
@@ -118,15 +133,17 @@ export function createEditTool(options: WorkspaceToolOptions): AgentTool<typeof 
 						hasBom ? originalBytes.subarray(3) : originalBytes,
 					);
 				} catch {
-					throw new Error(`File is not valid UTF-8 text: ${args.path}`);
+					throw editError("invalid_utf8", { message: `File is not valid UTF-8 text: ${args.path}` });
 				}
 				const normalized = normalizeWithOffsets(rawContent);
 				const located = locateEdits(normalized.text, args.edits);
 				const firstChangedLine = normalized.text.slice(0, located[0]!.start).split("\n").length;
 				const updated = applyLocatedEdits(rawContent, normalized, located);
 				const currentBytes = await options.fileSystem.readFile(resolved.path, { signal });
-				if (!equalBytes(currentBytes, originalBytes)) throw new Error(`File changed while editing: ${args.path}`);
-				if (signal?.aborted) throw new Error("Operation aborted");
+				if (!equalBytes(currentBytes, originalBytes)) {
+					throw editError("file_changed", { message: `File changed while editing: ${args.path}` });
+				}
+				if (signal?.aborted) throw editError("aborted", { message: "Operation aborted" });
 				await options.fileSystem.writeFileAtomic(resolved.path, `${hasBom ? "\uFEFF" : ""}${updated}`, { signal });
 				return {
 					content: [

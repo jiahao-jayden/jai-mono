@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { StringDecoder } from "node:string_decoder";
+import { CodedError, getErrorMessage } from "@jai/common";
 import { FileSearchError, FileSystemError, ShellError } from "../environment/errors";
 import type {
 	AbortOptions,
@@ -24,6 +25,7 @@ import type {
 	TempFileOptions,
 	TemporaryFile,
 } from "../environment/types";
+import { isNodeErrorCode, isNotFound, isPermissionDenied } from "./errors";
 
 const MAX_STDERR_BYTES = 50 * 1024;
 const MAX_MATCH_COLUMNS = 2_000;
@@ -33,10 +35,6 @@ export interface NodeExecutionEnvironmentOptions {
 	shellPath?: string;
 	shellEnv?: Record<string, string>;
 	ripgrepPath?: string;
-}
-
-function nodeCode(error: unknown): string | undefined {
-	return error instanceof Error && "code" in error ? String(error.code) : undefined;
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -58,7 +56,7 @@ async function canonicalizeMissing(target: string): Promise<string> {
 		try {
 			return join(await realpath(current), ...missing);
 		} catch (error) {
-			if (nodeCode(error) !== "ENOENT") throw error;
+			if (!isNotFound(error)) throw error;
 			const parent = dirname(current);
 			if (parent === current) throw error;
 			missing.unshift(basename(current));
@@ -67,7 +65,16 @@ async function canonicalizeMissing(target: string): Promise<string> {
 	}
 }
 
-async function resolveExecutable(command: string, environment: NodeJS.ProcessEnv = process.env): Promise<string> {
+async function realpathIfExists(target: string): Promise<string | undefined> {
+	try {
+		return await realpath(target);
+	} catch (error) {
+		if (isNotFound(error)) return undefined;
+		throw error;
+	}
+}
+
+async function resolveExecutable(command: string, environment: NodeJS.ProcessEnv = process.env): Promise<string | undefined> {
 	const candidates =
 		command.includes("/") || command.includes("\\")
 			? [command]
@@ -81,21 +88,20 @@ async function resolveExecutable(command: string, environment: NodeJS.ProcessEnv
 			return candidate;
 		} catch {}
 	}
-	const error = new Error(`Executable not found: ${command}`);
-	Object.assign(error, { code: "ENOENT" });
-	throw error;
+	return undefined;
 }
 
 function fileSystemFailure(error: unknown, resource: string): never {
-	if (error instanceof FileSystemError) throw error;
-	const code = nodeCode(error);
-	if (code === "ENOENT")
+	if (error instanceof CodedError) throw error;
+	if (isNotFound(error))
 		throw new FileSystemError("not_found", `Path not found: ${resource}`, { resource, cause: error });
-	if (code === "EACCES" || code === "EPERM") {
+	if (isPermissionDenied(error)) {
 		throw new FileSystemError("permission_denied", `Permission denied: ${resource}`, { resource, cause: error });
 	}
-	if (code === "ABORT_ERR") throw new FileSystemError("aborted", "Operation aborted", { resource, cause: error });
-	throw new FileSystemError("io_error", error instanceof Error ? error.message : `I/O failed: ${resource}`, {
+	if (isNodeErrorCode(error, "ABORT_ERR")) {
+		throw new FileSystemError("aborted", "Operation aborted", { resource, cause: error });
+	}
+	throw new FileSystemError("io_error", getErrorMessage(error) || `I/O failed: ${resource}`, {
 		resource,
 		cause: error,
 	});
@@ -130,16 +136,11 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 				});
 			}
 			const requested = isAbsolute(input) ? resolve(input) : resolve(base, input);
-			let canonicalPath: string;
-			try {
-				canonicalPath = await realpath(requested);
-			} catch (error) {
-				if (nodeCode(error) !== "ENOENT") throw error;
-				if (options.mustExist) {
-					throw new FileSystemError("not_found", `Path not found: ${input}`, { resource: input, cause: error });
-				}
-				canonicalPath = await canonicalizeMissing(requested);
+			const existingPath = await realpathIfExists(requested);
+			if (!existingPath && options.mustExist) {
+				throw new FileSystemError("not_found", `Path not found: ${input}`, { resource: input });
 			}
+			const canonicalPath = existingPath ?? (await canonicalizeMissing(requested));
 			if (!isWithin(boundary, canonicalPath)) {
 				throw new FileSystemError("outside_boundary", `Path escapes workspace: ${input}`, {
 					resource: canonicalPath,
@@ -156,8 +157,8 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 					});
 				}
 			} catch (error) {
-				if (error instanceof FileSystemError) throw error;
-				if (nodeCode(error) !== "ENOENT" || options.mustExist) throw error;
+				if (error instanceof CodedError) throw error;
+				if (!isNotFound(error) || options.mustExist) throw error;
 			}
 			throwIfAborted(options.signal);
 			return { path: canonicalPath, canonicalPath };
@@ -236,7 +237,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 			mode = current.mode;
 			created = false;
 		} catch (error) {
-			if (error instanceof FileSystemError || nodeCode(error) !== "ENOENT") fileSystemFailure(error, path);
+			if (error instanceof CodedError || !isNotFound(error)) fileSystemFailure(error, path);
 		}
 		const temporaryPath = join(directory, `.${basename(path)}.jai-${process.pid}-${randomUUID()}.tmp`);
 		try {
@@ -355,13 +356,10 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 		onLine?: (line: string) => boolean,
 	): Promise<{ lines: string[]; limitReached: boolean }> {
 		if (signal?.aborted) throw new FileSearchError("aborted", "Operation aborted", { resource: cwd });
-		let executable: string;
-		try {
-			executable = await resolveExecutable(this.#ripgrepPath);
-		} catch (error) {
+		const executable = await resolveExecutable(this.#ripgrepPath);
+		if (!executable) {
 			throw new FileSearchError("backend_unavailable", "ripgrep (rg) is required for glob and grep", {
 				resource: cwd,
-				cause: error,
 			});
 		}
 		const child = spawn(executable, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
@@ -405,10 +403,10 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 			const code = await completion;
 			if (signal?.aborted) throw new FileSearchError("aborted", "Operation aborted", { resource: cwd });
 			if (spawnError) {
-				const unavailable = nodeCode(spawnError) === "ENOENT";
+				const unavailable = isNotFound(spawnError);
 				throw new FileSearchError(
 					unavailable ? "backend_unavailable" : "search_failed",
-					unavailable ? "ripgrep (rg) is required for glob and grep" : (spawnError as Error).message,
+					unavailable ? "ripgrep (rg) is required for glob and grep" : getErrorMessage(spawnError),
 					{ resource: cwd, cause: spawnError },
 				);
 			}
@@ -430,14 +428,12 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 	async execute(command: string, options: ShellExecuteOptions): Promise<ShellResult> {
 		if (options.signal?.aborted) throw new ShellError("aborted", "Operation aborted");
 		const shellCommand = options.shell ?? this.#shellPath ?? process.env.SHELL ?? "/bin/sh";
-		let shell: string;
-		try {
-			shell = await resolveExecutable(
-				shellCommand,
-				this.#shellEnv ? { ...process.env, ...this.#shellEnv } : process.env,
-			);
-		} catch (error) {
-			throw new ShellError("shell_unavailable", `Shell not found: ${shellCommand}`, { cause: error });
+		const shell = await resolveExecutable(
+			shellCommand,
+			this.#shellEnv ? { ...process.env, ...this.#shellEnv } : process.env,
+		);
+		if (!shell) {
+			throw new ShellError("shell_unavailable", `Shell not found: ${shellCommand}`);
 		}
 		const startedAt = Date.now();
 		const child = spawn(shell, ["-lc", command], {
@@ -552,8 +548,8 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 			if (timedOut) throw new ShellError("timeout", `Command timed out after ${options.timeoutMs}ms`);
 			if (spawnError) {
 				throw new ShellError(
-					nodeCode(spawnError) === "ENOENT" ? "shell_unavailable" : "spawn_failed",
-					(spawnError as Error).message,
+					isNotFound(spawnError) ? "shell_unavailable" : "spawn_failed",
+					getErrorMessage(spawnError),
 					{ cause: spawnError },
 				);
 			}
