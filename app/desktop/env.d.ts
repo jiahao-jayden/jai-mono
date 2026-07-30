@@ -3,21 +3,11 @@
 declare module "*.css";
 declare module "electron-log/preload";
 
-import type { IpcRenderer, IpcRendererEvent } from "electron";
+import type { DesktopBridge } from "./electron/rpc/protocol";
 
 declare global {
 	interface Window {
-		ipc: {
-			invoke: IpcRenderer["invoke"];
-			on: (
-				channel: string,
-				handler: (event: IpcRendererEvent, ...args: any[]) => void,
-			) => () => void;
-			send: IpcRenderer["send"];
-		};
-		desktop: {
-			isMac: boolean;
-		};
+		desktopRpc: DesktopBridge;
 		__electronLog: {
 			sendToMain(message: Record<string, unknown>): void;
 			log(...data: unknown[]): void;

@@ -1,9 +1,7 @@
 import { app, BrowserWindow } from "electron";
-import { setupCorsProxy } from "./cors";
 import { mainLog } from "./logger";
-import { createHandlers } from "./rpc/handlers";
-import { restoreTheme } from "./rpc/handlers/theme";
-import { registerRpcHandlers } from "./rpc/register";
+import { restoreTheme } from "./rpc/router";
+import { registerDesktopRpc } from "./rpc/server";
 import { createMainWindow } from "./windows";
 
 const isMac = process.platform === "darwin";
@@ -21,8 +19,7 @@ process.on("unhandledRejection", (reason) => {
 
 app.whenReady().then(() => {
 	restoreTheme();
-	registerRpcHandlers(createHandlers());
-	setupCorsProxy();
+	registerDesktopRpc();
 	createMainWindow();
 
 	app.on("activate", () => {

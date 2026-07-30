@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { create } from "zustand";
-import { onEvent, rpc } from "@/lib/rpc";
-import type { Theme } from "../../electron/rpc/schema";
+import { desktop } from "@/lib/desktop";
+import type { Theme } from "../../electron/rpc/router";
 
 function getSystemDark(): boolean {
 	return window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -21,24 +21,19 @@ export const useThemeStore = create<ThemeState>((set) => ({
 	theme: "system",
 
 	setTheme(theme: Theme) {
-		rpc.theme.set(theme).catch(() => {});
+		desktop.theme.set(theme).catch(() => {});
 		applyToDOM(theme);
 		set({ theme });
 	},
 }));
 
 export async function initTheme(): Promise<void> {
-	const theme: Theme = (await rpc.theme.get().catch(() => "system" as const)) ?? "system";
+	const theme: Theme = (await desktop.theme.get().catch(() => "system" as const)) ?? "system";
 	useThemeStore.setState({ theme });
 	applyToDOM(theme);
 
 	window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
 		if (useThemeStore.getState().theme === "system") applyToDOM("system");
-	});
-
-	onEvent("theme:changed", (value) => {
-		useThemeStore.setState({ theme: value });
-		applyToDOM(value);
 	});
 }
 

@@ -9,4 +9,3 @@ log.transports.console.format = "{h}:{i}:{s}.{ms} [{level}] {scope} {text}";
 export default log;
 
 export const mainLog = log.scope("main");
-export const gatewayLog = log.scope("gateway");

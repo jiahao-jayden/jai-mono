@@ -1,17 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
 import "electron-log/preload";
+import { DESKTOP_RPC_CHANNEL, type DesktopBridge } from "./rpc/protocol";
 
-contextBridge.exposeInMainWorld("ipc", {
-	invoke: ipcRenderer.invoke.bind(ipcRenderer),
-	on(channel: string, handler: (event: Electron.IpcRendererEvent, ...args: any[]) => void) {
-		ipcRenderer.on(channel, handler);
-		return () => {
-			ipcRenderer.removeListener(channel, handler);
-		};
+const desktopBridge: DesktopBridge = {
+	platform: {
+		isMac: process.platform === "darwin",
 	},
-	send: ipcRenderer.send.bind(ipcRenderer),
-});
+	invoke(request) {
+		return ipcRenderer.invoke(DESKTOP_RPC_CHANNEL, request);
+	},
+};
 
-contextBridge.exposeInMainWorld("desktop", {
-	isMac: process.platform === "darwin",
-});
+contextBridge.exposeInMainWorld("desktopRpc", desktopBridge);
