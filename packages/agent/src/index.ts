@@ -18,5 +18,6 @@ export {
 	type ToolMiddleware,
 	type ToolUpdateCallback,
 } from "./core";
+export * from "./extensions";
 // 默认 Agent 与它自带的能力：durable session、compaction、hooks、prompt 组装。
 export * from "./harness";

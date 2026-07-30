@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@jai/ai";
-import type { AgentMessage, ToolMiddleware } from "../core/types";
+import type { AgentMessage, AgentToolResult, ToolCallContext, ToolMiddleware } from "../core/types";
 import type { CompactInput, CompactionDecisionInput, CompactionResult } from "./compaction/types";
 import type { AgentEventListener } from "./events";
 
@@ -93,12 +93,12 @@ export interface AgentHookMap {
  * token 估算、overflow 判定、session 写入、compaction 校验都不在这里。
  */
 export class HookHost {
-	private readonly beforeModelCall: readonly BeforeModelCallHook[];
-	private readonly shouldCompact: readonly ShouldCompactHook[];
-	private readonly aroundCompact: readonly CompactMiddleware[];
-	private readonly onModelError: readonly ModelErrorHook[];
+	private readonly beforeModelCall: BeforeModelCallHook[];
+	private readonly shouldCompact: ShouldCompactHook[];
+	private readonly aroundCompact: CompactMiddleware[];
+	private readonly onModelError: ModelErrorHook[];
 	readonly aroundToolCall: ToolMiddleware[];
-	readonly onEvent: readonly AgentEventListener[];
+	readonly onEvent: AgentEventListener[];
 
 	// 字段与 AgentHookMap 的键一一同名；构造时拷贝，运行中改动外部数组不会让
 	// 同一次 run 的 hook 链中途变形。
@@ -109,6 +109,16 @@ export class HookHost {
 		this.onModelError = [...(hooks?.onModelError ?? [])];
 		this.aroundToolCall = [...(hooks?.aroundToolCall ?? [])];
 		this.onEvent = [...(hooks?.onEvent ?? [])];
+	}
+
+	/** AgentExtension 初始化成功后一次性提交；调用方负责保证运行前冻结。 */
+	append(hooks: AgentHookMap): void {
+		this.beforeModelCall.push(...(hooks.beforeModelCall ?? []));
+		this.shouldCompact.push(...(hooks.shouldCompact ?? []));
+		this.aroundCompact.push(...(hooks.aroundCompact ?? []));
+		this.onModelError.push(...(hooks.onModelError ?? []));
+		this.aroundToolCall.push(...(hooks.aroundToolCall ?? []));
+		this.onEvent.push(...(hooks.onEvent ?? []));
 	}
 
 	/**
@@ -153,6 +163,15 @@ export class HookHost {
 			return middleware(input, () => dispatch(index + 1));
 		};
 
+		return dispatch(0);
+	}
+
+	/** 保持单个稳定 middleware seam，使 AgentExtension 可在 CoreAgent 构造后、首次 run 前提交链条。 */
+	runAroundToolCall(ctx: ToolCallContext, base: () => Promise<AgentToolResult>): Promise<AgentToolResult> {
+		const dispatch = (index: number): Promise<AgentToolResult> => {
+			const middleware = this.aroundToolCall[index];
+			return middleware ? middleware(ctx, () => dispatch(index + 1)) : base();
+		};
 		return dispatch(0);
 	}
 
