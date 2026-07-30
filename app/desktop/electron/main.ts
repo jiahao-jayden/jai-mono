@@ -1,6 +1,5 @@
 import { app, BrowserWindow } from "electron";
 import { setupCorsProxy } from "./cors";
-import { gatewayProcess } from "./gateway-process";
 import { mainLog } from "./logger";
 import { createHandlers } from "./rpc/handlers";
 import { restoreTheme } from "./rpc/handlers/theme";
@@ -26,17 +25,9 @@ app.whenReady().then(() => {
 	setupCorsProxy();
 	createMainWindow();
 
-	gatewayProcess.start().catch((err: unknown) => {
-		mainLog.error("failed to start gateway:", err);
-	});
-
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
 	});
-});
-
-app.on("before-quit", () => {
-	gatewayProcess.dispose();
 });
 
 app.on("window-all-closed", () => {

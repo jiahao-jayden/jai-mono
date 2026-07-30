@@ -6,6 +6,7 @@
 	"description": "Built-in coding tools for Jai: read/glob/grep/write/edit/bash with workspace boundaries.",
 	"exports": {
 		".": "./src/index.ts",
+		"./config": "./src/config/index.ts",
 		"./tools": "./src/tools/index.ts"
 	},
 	"scripts": {
@@ -13,7 +14,9 @@
 		"test": "bun test"
 	},
 	"dependencies": {
-		"@jai/agent": "workspace:*"
+		"@jai/agent": "workspace:*",
+		"@jai/common": "workspace:*",
+		"@sinclair/typebox": "catalog:"
 	},
 	"devDependencies": {
 		"typescript": "catalog:"

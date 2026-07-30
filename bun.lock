@@ -120,6 +120,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@jai/agent": "workspace:*",
+        "@jai/common": "workspace:*",
         "@sinclair/typebox": "catalog:",
       },
       "devDependencies": {
