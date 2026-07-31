@@ -22,8 +22,8 @@ export interface GlobToolDetails {
 
 export function createGlobTool(options: SearchToolOptions): AgentTool<typeof globParameters, GlobToolDetails> {
 	return {
-		name: "glob",
-		label: "glob",
+		name: "Glob",
+		label: "Glob",
 		description:
 			"Find files by glob pattern. Respects .gitignore and returns paths relative to the search directory.",
 		parameters: globParameters,

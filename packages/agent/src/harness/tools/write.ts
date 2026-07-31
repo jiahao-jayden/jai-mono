@@ -15,8 +15,8 @@ export interface WriteToolDetails {
 
 export function createWriteTool(options: WorkspaceToolOptions): AgentTool<typeof writeParameters, WriteToolDetails> {
 	return {
-		name: "write",
-		label: "write",
+		name: "Write",
+		label: "Write",
 		description: "Create or completely overwrite a UTF-8 text file. Parent directories are created automatically.",
 		parameters: writeParameters,
 		executionMode: "sequential",

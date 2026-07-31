@@ -5,7 +5,7 @@ describe("createCodingTools", () => {
 	test("returns the stable built-in tool set", () => {
 		const tools = sdk.createCodingTools({ cwd: process.cwd() });
 
-		expect(tools.map((tool) => tool.name)).toEqual(["read", "glob", "grep", "write", "edit", "bash"]);
+		expect(tools.map((tool) => tool.name)).toEqual(["Read", "Glob", "Grep", "Write", "Edit", "Bash"]);
 		expect(tools.map((tool) => tool.executionMode)).toEqual([
 			"parallel",
 			"parallel",

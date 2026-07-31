@@ -58,6 +58,7 @@ export class CodingConfigStore<TSchema extends TObject> {
 	private workspaceTrusted: boolean;
 	private lastValid?: ConfigSnapshot<TSchema>;
 	private reloadTimer?: ReturnType<typeof setTimeout>;
+	private watcherRefresh = Promise.resolve();
 
 	constructor(
 		definition: CodingConfigDefinition<TSchema>,
@@ -259,6 +260,12 @@ export class CodingConfigStore<TSchema extends TObject> {
 	}
 
 	private async refreshWatchers(): Promise<void> {
+		const refresh = this.watcherRefresh.then(() => this.replaceWatchers());
+		this.watcherRefresh = refresh.catch(() => {});
+		return refresh;
+	}
+
+	private async replaceWatchers(): Promise<void> {
 		this.closeWatchers();
 		const directories = new Set<string>();
 		try {

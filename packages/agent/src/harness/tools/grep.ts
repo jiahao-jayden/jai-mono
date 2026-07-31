@@ -27,8 +27,8 @@ export interface GrepToolDetails {
 
 export function createGrepTool(options: SearchToolOptions): AgentTool<typeof grepParameters, GrepToolDetails> {
 	return {
-		name: "grep",
-		label: "grep",
+		name: "Grep",
+		label: "Grep",
 		description:
 			"Search UTF-8 file contents with a regex. Supports include globs, literal matching, case folding, and context lines.",
 		parameters: grepParameters,
