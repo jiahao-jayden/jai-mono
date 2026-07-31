@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from "electron";
 import { mainLog } from "./logger";
-import { restoreTheme } from "./rpc/router";
+import { closeDesktopAgentHost, restoreTheme } from "./rpc/router";
 import { registerDesktopRpc } from "./rpc/server";
 import { createMainWindow } from "./windows";
 
@@ -29,4 +29,8 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
 	if (!isMac) app.quit();
+});
+
+app.on("before-quit", () => {
+	closeDesktopAgentHost();
 });
