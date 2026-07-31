@@ -9,6 +9,7 @@
 		"./config": "./src/config/index.ts",
 		"./permissions": "./src/permissions/index.ts",
 		"./permissions/approval": "./src/permissions/approval.ts",
+		"./runtime": "./src/runtime/index.ts",
 		"./tools": "./src/tools/index.ts"
 	},
 	"scripts": {
@@ -17,6 +18,7 @@
 	},
 	"dependencies": {
 		"@jai/agent": "workspace:*",
+		"@jai/ai": "workspace:*",
 		"@jai/common": "workspace:*",
 		"@sinclair/typebox": "catalog:"
 	},
