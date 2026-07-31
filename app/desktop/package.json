@@ -11,8 +11,9 @@
 	},
 	"dependencies": {
 		"@base-ui/react": "^1.4.0",
-		"@fontsource-variable/hanken-grotesk": "^5.2.8",
-		"@fontsource-variable/literata": "^5.2.8",
+		"@fontsource-variable/manrope": "^5.2.8",
+		"@fontsource-variable/source-serif-4": "^5.2.8",
+		"@ibm/plex": "^6.4.1",
 		"@hugeicons/core-free-icons": "^4.1.1",
 		"@hugeicons/react": "^1.1.6",
 		"@lobehub/icons": "^5.0.1",
