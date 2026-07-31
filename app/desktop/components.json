@@ -1,20 +1,23 @@
 {
-	"$schema": "https://ui.shadcn.com/schema.json",
-	"style": "base-mira",
-	"rsc": false,
-	"tsx": true,
-	"tailwind": {
-		"config": "",
-		"css": "src/styles/global.css",
-		"baseColor": "neutral",
-		"cssVariables": true
-	},
-	"aliases": {
-		"components": "@/components",
-		"utils": "@/lib/utils",
-		"ui": "@/components/ui",
-		"lib": "@/lib",
-		"hooks": "@/hooks"
-	},
-	"iconLibrary": "hugeicons"
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "base-mira",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/styles/global.css",
+    "baseColor": "neutral",
+    "cssVariables": true
+  },
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "iconLibrary": "hugeicons",
+  "registries": {
+    "@fluid": "https://www.fluidfunctionalism.com/r/base/{name}.json"
+  }
 }
