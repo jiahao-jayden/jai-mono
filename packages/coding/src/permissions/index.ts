@@ -1,4 +1,20 @@
 export {
+	type PermissionApprovalDecision,
+	type PermissionRequest,
+	type PermissionRequestSummary,
+	type PermissionResolution,
+	type PermissionRisk,
+	permissionApprovalDecisionSchema,
+	permissionRequestSchema,
+	permissionRequestSummarySchema,
+	permissionResolutionSchema,
+	permissionRiskSchema,
+} from "./approval";
+export {
+	type PendingPermissionApproval,
+	PermissionApprovalRegistry,
+} from "./approval-registry";
+export {
 	normalizePermissionSettings,
 	type PermissionSettingsDocument,
 	permissionConfigFields,
@@ -7,13 +23,13 @@ export {
 export { evaluatePermission } from "./evaluate";
 export {
 	createPermissionMiddleware,
-	type PermissionApprovalDecision,
 	type PermissionApprovalRequest,
 	type PermissionMiddlewareOptions,
 } from "./middleware";
 export { matchesPermissionRule, parsePermissionRule, splitBashCommand } from "./rules";
 export {
 	type CanonicalToolName,
+	canonicalToolNameSchema,
 	canonicalToolNames,
 	type ParsedPermissionRule,
 	type PermissionCall,

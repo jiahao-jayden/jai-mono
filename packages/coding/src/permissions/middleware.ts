@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import type { ToolMiddleware } from "@jai/agent";
+import type { PermissionApprovalDecision } from "./approval";
 import { permissionAbortedError, permissionApprovalUnavailableError, permissionDeniedError } from "./errors";
 import { evaluatePermission } from "./evaluate";
 import { type CanonicalToolName, canonicalToolNames, type PermissionSettings } from "./types";
-
-export type PermissionApprovalDecision = "deny" | "allowOnce" | "alwaysAllow";
 
 export interface PermissionApprovalRequest {
 	readonly requestId: string;

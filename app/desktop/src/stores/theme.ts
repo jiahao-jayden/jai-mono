@@ -1,26 +1,26 @@
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { desktop } from "@/lib/desktop";
-import type { Theme } from "../../electron/rpc/router";
+import type { DesktopTheme } from "../../shared/desktop-rpc";
 
 function getSystemDark(): boolean {
 	return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-function applyToDOM(theme: Theme): void {
+function applyToDOM(theme: DesktopTheme): void {
 	const dark = theme === "dark" || (theme === "system" && getSystemDark());
 	document.documentElement.classList.toggle("dark", dark);
 }
 
 interface ThemeState {
-	theme: Theme;
-	setTheme: (theme: Theme) => void;
+	theme: DesktopTheme;
+	setTheme: (theme: DesktopTheme) => void;
 }
 
 export const useThemeStore = create<ThemeState>((set) => ({
 	theme: "system",
 
-	setTheme(theme: Theme) {
+	setTheme(theme: DesktopTheme) {
 		desktop.theme.set(theme).catch(() => {});
 		applyToDOM(theme);
 		set({ theme });
@@ -28,7 +28,7 @@ export const useThemeStore = create<ThemeState>((set) => ({
 }));
 
 export async function initTheme(): Promise<void> {
-	const theme: Theme = (await desktop.theme.get().catch(() => "system" as const)) ?? "system";
+	const theme: DesktopTheme = (await desktop.theme.get().catch(() => "system" as const)) ?? "system";
 	useThemeStore.setState({ theme });
 	applyToDOM(theme);
 

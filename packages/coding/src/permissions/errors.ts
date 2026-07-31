@@ -6,6 +6,9 @@ const permissionError = defineCodedError("coding_permission", [
 	"denied",
 	"approval_unavailable",
 	"aborted",
+	"duplicate_request",
+	"request_not_found",
+	"registry_closed",
 ] as const);
 
 export function invalidPermissionRuleError(rule: string, message: string) {
@@ -40,5 +43,25 @@ export function permissionAbortedError(toolName: string) {
 	return permissionError("aborted", {
 		message: `Permission request aborted for ${toolName}`,
 		data: { toolName },
+	});
+}
+
+export function duplicatePermissionRequestError(requestId: string) {
+	return permissionError("duplicate_request", {
+		message: `Permission request already exists: ${requestId}`,
+		data: { requestId },
+	});
+}
+
+export function permissionRequestNotFoundError(requestId: string) {
+	return permissionError("request_not_found", {
+		message: `Permission request is missing or already resolved: ${requestId}`,
+		data: { requestId },
+	});
+}
+
+export function permissionRegistryClosedError() {
+	return permissionError("registry_closed", {
+		message: "Permission approval registry is closed",
 	});
 }

@@ -1,10 +1,15 @@
 import { defineCodedError } from "@jai/common";
 import { BrowserWindow, type IpcMainInvokeEvent, nativeTheme } from "electron";
 import Store from "electron-store";
+import type { DesktopApi, DesktopTheme } from "../../shared/desktop-rpc";
 
-export type Theme = "light" | "dark" | "system";
+type DesktopRouterImplementation<T> = {
+	[K in keyof T]: T[K] extends (...args: infer TArgs) => infer TResult
+		? (event: IpcMainInvokeEvent, ...args: TArgs) => TResult
+		: DesktopRouterImplementation<T[K]>;
+};
 
-const themeStore = new Store<{ theme: Theme }>({
+const themeStore = new Store<{ theme: DesktopTheme }>({
 	defaults: { theme: "system" },
 });
 
@@ -14,7 +19,7 @@ export function restoreTheme(): void {
 	nativeTheme.themeSource = themeStore.get("theme");
 }
 
-export const desktopRouter = {
+export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 	window: {
 		close(event: IpcMainInvokeEvent) {
 			BrowserWindow.fromWebContents(event.sender)?.close();
@@ -31,7 +36,7 @@ export const desktopRouter = {
 		get(_event: IpcMainInvokeEvent) {
 			return themeStore.get("theme");
 		},
-		set(_event: IpcMainInvokeEvent, theme: Theme) {
+		set(_event: IpcMainInvokeEvent, theme: DesktopTheme) {
 			if (!isTheme(theme)) {
 				throw themeError("invalid_value", {
 					message: "Theme must be light, dark, or system",
@@ -41,10 +46,8 @@ export const desktopRouter = {
 			nativeTheme.themeSource = theme;
 		},
 	},
-} as const;
+};
 
-export type DesktopRouter = typeof desktopRouter;
-
-function isTheme(value: unknown): value is Theme {
+function isTheme(value: unknown): value is DesktopTheme {
 	return value === "light" || value === "dark" || value === "system";
 }

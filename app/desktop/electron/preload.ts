@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import "electron-log/preload";
-import { DESKTOP_RPC_CHANNEL, type DesktopBridge } from "./rpc/protocol";
+import { DESKTOP_RPC_CHANNEL, type DesktopBridge } from "../shared/desktop-rpc";
 
 const desktopBridge: DesktopBridge = {
 	platform: {

@@ -3,7 +3,7 @@
 declare module "*.css";
 declare module "electron-log/preload";
 
-import type { DesktopBridge } from "./electron/rpc/protocol";
+import type { DesktopBridge } from "./shared/desktop-rpc";
 
 declare global {
 	interface Window {

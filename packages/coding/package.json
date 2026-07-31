@@ -8,6 +8,7 @@
 		".": "./src/index.ts",
 		"./config": "./src/config/index.ts",
 		"./permissions": "./src/permissions/index.ts",
+		"./permissions/approval": "./src/permissions/approval.ts",
 		"./tools": "./src/tools/index.ts"
 	},
 	"scripts": {

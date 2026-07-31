@@ -1,11 +1,14 @@
 import { CodedError } from "@jai/common";
-import type { DesktopRouter } from "../../electron/rpc/router";
+import { Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
+import {
+	type AsyncRpcClient,
+	type DesktopApi,
+	type DesktopRpcRequest,
+	jsonValueSchema,
+} from "../../shared/desktop-rpc";
 
-type DesktopClient<T> = {
-	[K in keyof T]: T[K] extends (event: infer _TEvent, ...args: infer TArgs) => infer TResult
-		? (...args: TArgs) => Promise<Awaited<TResult>>
-		: DesktopClient<T[K]>;
-};
+const rpcArgumentsSchema = Type.Array(jsonValueSchema);
 
 function createClientProxy(path: readonly string[]): unknown {
 	const callable = () => {};
@@ -16,9 +19,16 @@ function createClientProxy(path: readonly string[]): unknown {
 			return createClientProxy([...path, property]);
 		},
 		async apply(_target, _thisArg, args: unknown[]) {
+			if (!Value.Check(rpcArgumentsSchema, args)) {
+				throw new CodedError({
+					code: "desktop_rpc.invalid_arguments",
+					message: `Desktop method "${path.join(".")}" only accepts JSON arguments`,
+					data: { path: path.join(".") },
+				});
+			}
 			const response = await window.desktopRpc.invoke({
 				path: path.join("."),
-				args,
+				args: args as DesktopRpcRequest["args"],
 			});
 			if (!response.ok) {
 				throw new CodedError({
@@ -32,5 +42,5 @@ function createClientProxy(path: readonly string[]): unknown {
 	});
 }
 
-export const desktop = createClientProxy([]) as DesktopClient<DesktopRouter>;
+export const desktop = createClientProxy([]) as AsyncRpcClient<DesktopApi>;
 export const desktopPlatform = window.desktopRpc.platform;
