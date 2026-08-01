@@ -66,6 +66,7 @@ export class DesktopAgentHost {
 	readonly #approvals = new PermissionApprovalRegistry();
 	readonly #emit: DesktopAgentEventSink;
 	#factory?: DesktopAgentFactory;
+	#onSessionActivity?: (sessionId: string) => void;
 
 	constructor(emit: DesktopAgentEventSink, factory?: DesktopAgentFactory) {
 		this.#emit = emit;
@@ -74,6 +75,20 @@ export class DesktopAgentHost {
 
 	setFactory(factory: DesktopAgentFactory): void {
 		this.#factory = factory;
+	}
+
+	setSessionActivityListener(listener: (sessionId: string) => void): void {
+		this.#onSessionActivity = listener;
+	}
+
+	hasSession(sessionId: string): boolean {
+		return this.#sessions.has(sessionId);
+	}
+
+	runningSessionIds(): string[] {
+		return [...this.#sessions.values()]
+			.filter((runtime) => runtime.status === "running")
+			.map((runtime) => runtime.sessionId);
 	}
 
 	async send(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }> {
@@ -233,6 +248,7 @@ export class DesktopAgentHost {
 				const item = this.#projectMessage(runtime, event.message, "complete");
 				runtime.items.set(item.id, item);
 				this.#emitNow(runtime, { type: "transcript_upsert", item });
+				this.#onSessionActivity?.(runtime.sessionId);
 				if (event.message.role === "assistant") runtime.activeAssistantId = undefined;
 				if (event.message.role === "user") runtime.activeUserId = undefined;
 				return;

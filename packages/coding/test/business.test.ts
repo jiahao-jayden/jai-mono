@@ -2,6 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { openSession } from "@jai/agent";
+import { FileSessionStore } from "@jai/agent/node";
 import { getErrorCode } from "@jai/common";
 import { CodingBusinessService } from "../src/business/service";
 import type {
@@ -70,6 +72,31 @@ describe("CodingBusinessService", () => {
 		expect(await readFile(join(fixture.dataRoot, "_unassigned", "sessions", "session-1.jsonl"), "utf8")).toContain(
 			'"type":"session"',
 		);
+	});
+
+	test("从 durable JSONL 恢复 Session snapshot", async () => {
+		const fixture = await createFixture(["session-1"]);
+		const session = await fixture.service.createSession({
+			firstMessage: "Persist",
+			appState: { selected: true },
+		});
+		const store = new FileSessionStore(fixture.service.sessionDirectory(null));
+		const handle = await openSession(store, session.id, {});
+		await handle.append({
+			type: "message",
+			id: "message-1",
+			timestamp: "2026-08-01T00:00:00.000Z",
+			message: { role: "user", content: "Persist", timestamp: 1 },
+		});
+
+		const snapshot = await fixture.service.loadSessionSnapshot(session.id);
+
+		expect(snapshot.appState).toEqual({ selected: true });
+		expect(snapshot.entries).toHaveLength(1);
+		expect(snapshot.entries[0]).toMatchObject({
+			type: "message",
+			message: { role: "user", content: "Persist" },
+		});
 	});
 
 	test("移动 Session 会原子移动 JSONL 并记录 Workspace history", async () => {

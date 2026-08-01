@@ -1,4 +1,12 @@
 import { type Static, Type } from "@sinclair/typebox";
+import type {
+	CodingSession,
+	CreateWorkspaceInput,
+	MoveSessionInput,
+	SessionListCursor,
+	SessionListPage,
+	Workspace,
+} from "@jai/coding/business";
 import type { PermissionRequest, PermissionResolution } from "@jai/coding/permissions/approval";
 
 export const DESKTOP_RPC_CHANNEL = "desktop:rpc";
@@ -62,7 +70,18 @@ export interface DesktopPermissionItem {
 	readonly status: "pending" | "allowed" | "denied" | "cancelled";
 }
 
-export type DesktopTranscriptItem = DesktopMessageItem | DesktopToolItem | DesktopPermissionItem;
+export interface DesktopCompactionItem {
+	readonly kind: "compaction";
+	readonly id: string;
+	readonly summary: string;
+	readonly timestamp: number;
+}
+
+export type DesktopTranscriptItem =
+	| DesktopMessageItem
+	| DesktopToolItem
+	| DesktopPermissionItem
+	| DesktopCompactionItem;
 
 export interface DesktopAgentSnapshot {
 	readonly sessionId: string;
@@ -102,6 +121,20 @@ export interface DesktopAgentMessageInput extends DesktopAgentSessionInput {
 	readonly message: string;
 }
 
+export interface DesktopSessionCreateInput {
+	readonly workspaceId?: string | null;
+	readonly firstMessage: string;
+}
+
+export interface DesktopSessionRenameInput {
+	readonly sessionId: string;
+	readonly title: string;
+}
+
+export interface DesktopSessionListPage extends SessionListPage {
+	readonly runningSessionIds: readonly string[];
+}
+
 export interface DesktopApi {
 	readonly window: {
 		close(): void;
@@ -112,13 +145,28 @@ export interface DesktopApi {
 		get(): DesktopTheme;
 		set(theme: DesktopTheme): void;
 	};
+	readonly workspace: {
+		list(): Workspace[];
+		create(input: CreateWorkspaceInput): Promise<Workspace>;
+		relink(workspaceId: string, input: CreateWorkspaceInput): Promise<Workspace>;
+	};
+	readonly session: {
+		create(input: DesktopSessionCreateInput): Promise<CodingSession>;
+		get(sessionId: string): CodingSession;
+		list(input?: {
+			readonly limit?: number;
+			readonly cursor?: SessionListCursor;
+		}): DesktopSessionListPage;
+		rename(input: DesktopSessionRenameInput): CodingSession;
+		move(input: MoveSessionInput): Promise<CodingSession>;
+	};
 	readonly agent: {
 		send(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;
 		abort(sessionId: string): void;
 		steer(input: DesktopAgentMessageInput): void;
 		followUp(input: DesktopAgentMessageInput): void;
 		resolvePermission(resolution: PermissionResolution): void;
-		getSnapshot(sessionId: string): DesktopAgentSnapshot;
+		getSnapshot(sessionId: string): Promise<DesktopAgentSnapshot>;
 		close(sessionId: string): void;
 	};
 }

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import path from "node:path";
-import type { JsonObject } from "@jai/agent";
+import type { JsonObject, SessionSnapshot } from "@jai/agent";
 import { FileSessionStore } from "@jai/agent/node";
 import { getErrorCode } from "@jai/common";
 import {
@@ -134,6 +134,16 @@ export class CodingBusinessService {
 
 	listWorkspaceHistory(sessionId: string): SessionWorkspaceHistory[] {
 		return this.repository.listWorkspaceHistory(sessionId);
+	}
+
+	async loadSessionSnapshot<TAppState extends JsonObject = JsonObject>(
+		sessionId: string,
+	): Promise<SessionSnapshot<TAppState>> {
+		const session = await this.repairSessionLocation(sessionId);
+		const store = new FileSessionStore<TAppState>(this.sessionDirectory(session.workspaceId));
+		const stored = await store.load(sessionId);
+		if (!stored) throw sessionFileMissingError(sessionId);
+		return stored.snapshot;
 	}
 
 	async moveSession(input: MoveSessionInput): Promise<CodingSession> {
