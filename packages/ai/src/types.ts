@@ -90,6 +90,7 @@ export interface Context {
 /* -------------------------------------------------------------------------- */
 export type Api = "anthropic-messages" | "openai-chat-completions" | (string & {});
 export type ProviderId = "anthropic" | "openai-compatible" | (string & {});
+export type ProviderAdapter = "anthropic" | "openai-compatible";
 export type ModelInput = "text" | "image";
 
 export interface ModelCost {
@@ -114,10 +115,13 @@ export type ModelCompatibility = OpenAICompatibility | AnthropicCompatibility;
 
 export interface Model<TApi extends Api = Api> {
 	id: string;
+	/** Provider-facing model id. Defaults to id for legacy callers. */
+	remoteModelId?: string;
 	name: string;
 	api: TApi;
 	provider: ProviderId;
-	baseUrl: string;
+	/** @deprecated The provider connection owns its base URL. */
+	baseUrl?: string;
 	reasoning: boolean;
 	input: ModelInput[];
 	cost: ModelCost;

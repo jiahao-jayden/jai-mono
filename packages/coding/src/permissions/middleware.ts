@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
-import type { ToolMiddleware } from "@jai/agent";
+import type { PathCapability, PathCapabilityManager, ResolvePathOptions, ToolMiddleware } from "@jai/agent";
 import type { PermissionApprovalDecision } from "./approval";
 import { permissionAbortedError, permissionApprovalUnavailableError, permissionDeniedError } from "./errors";
 import { evaluatePermission } from "./evaluate";
@@ -24,6 +24,7 @@ export interface PermissionMiddlewareOptions {
 		signal?: AbortSignal,
 	) => PermissionApprovalDecision | Promise<PermissionApprovalDecision>;
 	readonly persistProjectLocalAllowRule?: (rule: string) => void | Promise<void>;
+	readonly pathCapabilities?: PathCapabilityManager;
 }
 
 export function createPermissionMiddleware(options: PermissionMiddlewareOptions): ToolMiddleware {
@@ -35,8 +36,25 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 		const effective = withSessionRules(settings, sessionAllowRules);
 		const call = { toolName, args: context.args, workspaceRoot };
 		const initial = evaluatePermission(call, effective);
-		if (initial.behavior === "allow") return next();
 		if (initial.behavior === "deny") throw permissionDeniedError(toolName, initial.reason);
+		const capability = await createPathCapability(
+			options.pathCapabilities,
+			toolName,
+			context.args,
+			workspaceRoot,
+			context.signal,
+		);
+		const canonicalDecision = capability
+			? evaluatePermission(canonicalCall(call, capability.canonicalPath), effective)
+			: initial;
+		if (canonicalDecision.behavior === "deny") {
+			throw permissionDeniedError(toolName, canonicalDecision.reason);
+		}
+		if (initial.behavior === "allow" && canonicalDecision.behavior === "allow") {
+			return capability && options.pathCapabilities
+				? options.pathCapabilities.withPathCapability(capability, next)
+				: next();
+		}
 		if (!options.requestApproval) throw permissionApprovalUnavailableError(toolName);
 		if (context.signal?.aborted) throw permissionAbortedError(toolName);
 
@@ -46,7 +64,7 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 			toolCallId: context.toolCall.id,
 			toolName,
 			args: structuredClone(context.args),
-			reason: initial.reason,
+			reason: initial.behavior === "ask" ? initial.reason : canonicalDecision.reason,
 			...(suggested ? { suggestedRule: suggested.rule, rememberScope: suggested.scope } : {}),
 		};
 		const approval = await options.requestApproval(request, context.signal);
@@ -59,15 +77,85 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 			{ toolName, args: context.args, workspaceRoot: currentRoot },
 			withSessionRules(current, sessionAllowRules),
 		);
-		if (currentRoot !== workspaceRoot || rechecked.behavior === "deny") {
+		const canonicalRechecked = capability
+			? evaluatePermission(
+					canonicalCall({ toolName, args: context.args, workspaceRoot: currentRoot }, capability.canonicalPath),
+					withSessionRules(current, sessionAllowRules),
+				)
+			: rechecked;
+		if (currentRoot !== workspaceRoot || rechecked.behavior === "deny" || canonicalRechecked.behavior === "deny") {
 			throw permissionDeniedError(toolName, "Permission context changed while awaiting approval");
 		}
 
 		if (approval === "alwaysAllow" && suggested) {
-			if (suggested.scope === "session") sessionAllowRules.add(suggested.rule);
-			else await options.persistProjectLocalAllowRule?.(suggested.rule);
+			if (suggested.scope === "session") {
+				sessionAllowRules.add(suggested.rule);
+				if (capability) {
+					const canonicalSuggested = suggestedRule(
+						toolName,
+						argsWithPath(toolName, context.args, capability.canonicalPath),
+						workspaceRoot,
+					);
+					if (canonicalSuggested) sessionAllowRules.add(canonicalSuggested.rule);
+				}
+			} else await options.persistProjectLocalAllowRule?.(suggested.rule);
 		}
-		return next();
+		return capability && options.pathCapabilities
+			? options.pathCapabilities.withPathCapability(capability, next)
+			: next();
+	};
+}
+
+function canonicalCall(
+	call: { toolName: CanonicalToolName; args: Readonly<Record<string, unknown>>; workspaceRoot: string },
+	canonicalPath: string,
+) {
+	return { ...call, args: argsWithPath(call.toolName, call.args, canonicalPath) };
+}
+
+function argsWithPath(
+	toolName: CanonicalToolName,
+	args: Readonly<Record<string, unknown>>,
+	path: string,
+): Readonly<Record<string, unknown>> {
+	return toolPath(toolName, args) === undefined ? args : { ...args, path };
+}
+
+async function createPathCapability(
+	manager: PathCapabilityManager | undefined,
+	toolName: CanonicalToolName,
+	args: Readonly<Record<string, unknown>>,
+	workspaceRoot: string,
+	signal?: AbortSignal,
+): Promise<PathCapability | undefined> {
+	if (!manager) return undefined;
+	const path = toolPath(toolName, args);
+	if (path === undefined) return undefined;
+	const options = pathResolveOptions(toolName, workspaceRoot, signal);
+	return manager.createPathCapability(path, options);
+}
+
+function toolPath(toolName: CanonicalToolName, args: Readonly<Record<string, unknown>>): string | undefined {
+	if (toolName === "Glob" || toolName === "Grep") return stringArg(args, "path") || ".";
+	if (toolName === "Read" || toolName === "Write" || toolName === "Edit") return stringArg(args, "path");
+	return undefined;
+}
+
+function pathResolveOptions(
+	toolName: CanonicalToolName,
+	workspaceRoot: string,
+	signal?: AbortSignal,
+): ResolvePathOptions {
+	return {
+		base: workspaceRoot,
+		boundary: workspaceRoot,
+		mustExist: toolName !== "Write",
+		...(toolName === "Read" || toolName === "Edit"
+			? { expectedKind: "file" as const }
+			: toolName === "Glob"
+				? { expectedKind: "directory" as const }
+				: {}),
+		signal,
 	};
 }
 

@@ -27,6 +27,7 @@ const desktopAgentError = defineCodedError("desktop_agent", [
 
 export interface HostedCodingAgent {
 	invoke(input: string): Promise<AgentMessage[]>;
+	generateTitle?(firstMessage: string, messages: readonly AgentMessage[]): Promise<string>;
 	subscribe(listener: AgentEventListener): () => void;
 	abort(): void;
 	steer(message: AgentMessage): void;
@@ -44,6 +45,12 @@ export interface DesktopAgentFactoryContext {
 
 export type DesktopAgentFactory = (context: DesktopAgentFactoryContext) => Promise<HostedCodingAgent>;
 export type DesktopAgentEventSink = (envelope: DesktopAgentEventEnvelope) => void;
+export interface DesktopRunCompletedContext {
+	readonly sessionId: string;
+	readonly firstMessage: string;
+	readonly messages: readonly AgentMessage[];
+	readonly agent: HostedCodingAgent;
+}
 
 interface SessionRuntime {
 	readonly sessionId: string;
@@ -67,6 +74,7 @@ export class DesktopAgentHost {
 	readonly #emit: DesktopAgentEventSink;
 	#factory?: DesktopAgentFactory;
 	#onSessionActivity?: (sessionId: string) => void;
+	#onRunCompleted?: (context: DesktopRunCompletedContext) => void | Promise<void>;
 
 	constructor(emit: DesktopAgentEventSink, factory?: DesktopAgentFactory) {
 		this.#emit = emit;
@@ -79,6 +87,10 @@ export class DesktopAgentHost {
 
 	setSessionActivityListener(listener: (sessionId: string) => void): void {
 		this.#onSessionActivity = listener;
+	}
+
+	setRunCompletedListener(listener: (context: DesktopRunCompletedContext) => void | Promise<void>): void {
+		this.#onRunCompleted = listener;
 	}
 
 	hasSession(sessionId: string): boolean {
@@ -102,7 +114,20 @@ export class DesktopAgentHost {
 		runtime.status = "running";
 		this.#emitNow(runtime, { type: "status", status: "running" });
 		void runtime.agent.invoke(input.message).then(
-			() => this.#finishRun(runtime),
+			(messages) => {
+				this.#finishRun(runtime);
+				const listener = this.#onRunCompleted;
+				if (listener) {
+					void Promise.resolve(
+						listener({
+							sessionId: runtime.sessionId,
+							firstMessage: input.message,
+							messages,
+							agent: runtime.agent,
+						}),
+					).catch(() => {});
+				}
+			},
 			(error) => {
 				this.#emitNow(runtime, { type: "runtime_error", error: toErrorEnvelope(error) });
 				this.#finishRun(runtime);

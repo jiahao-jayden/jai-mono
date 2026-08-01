@@ -1,6 +1,6 @@
 import { isFieldRule } from "./definition";
 import { resolvedConfigValidationError } from "./errors";
-import type { ConfigFieldRule, ConfigFieldTree, ConfigProvenance, ConfigSource } from "./types";
+import type { ConfigFieldRule, ConfigFieldTree, ConfigMergeCandidate, ConfigProvenance, ConfigSource } from "./types";
 
 export interface ConfigSourceValue {
 	readonly source: ConfigSource;
@@ -82,19 +82,13 @@ function mergeTree(
 	return output;
 }
 
-interface Candidate {
-	readonly source: ConfigSource;
-	readonly sourceFile?: string;
-	readonly value: unknown;
-}
-
 function candidatesFor(
 	key: string,
 	field: ConfigFieldRule,
 	sources: readonly ConfigSourceValue[],
 	workspaceTrusted: boolean,
-): Candidate[] {
-	const candidates: Candidate[] = [];
+): ConfigMergeCandidate[] {
+	const candidates: ConfigMergeCandidate[] = [];
 	if ("default" in field) candidates.push({ source: "default", value: field.default });
 	for (const source of sources) {
 		if (
@@ -112,8 +106,8 @@ function candidatesFor(
 
 function mergeField(
 	field: ConfigFieldRule,
-	candidates: readonly Candidate[],
-): { readonly present: boolean; readonly value?: unknown; readonly contributors: readonly Candidate[] } {
+	candidates: readonly ConfigMergeCandidate[],
+): { readonly present: boolean; readonly value?: unknown; readonly contributors: readonly ConfigMergeCandidate[] } {
 	if (candidates.length === 0) return { present: false, contributors: [] };
 	if (field.merge === "replace") {
 		const winner = candidates.at(-1)!;
@@ -139,6 +133,9 @@ function mergeField(
 			}
 		}
 		return { present: true, value: values, contributors: candidates };
+	}
+	if (field.merge === "custom") {
+		return { present: true, value: field.mergeValues!(candidates), contributors: candidates };
 	}
 
 	let value = candidates[0]!.value;

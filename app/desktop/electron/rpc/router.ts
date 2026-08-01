@@ -42,6 +42,19 @@ export function setDesktopAgentFactory(factory: DesktopAgentFactory): void {
 export function setCodingBusinessService(service: CodingBusinessService): void {
 	codingBusiness = service;
 	desktopAgentHost.setSessionActivityListener((sessionId) => service.touchSession(sessionId));
+	desktopAgentHost.setRunCompletedListener(async ({ sessionId, firstMessage, messages, agent }) => {
+		const session = service.getSession(sessionId);
+		if (session.titleSource !== "fallback" || session.titleGenerationAttemptedAt !== null || !agent.generateTitle) {
+			return;
+		}
+		service.markTitleGenerationAttempted(sessionId);
+		try {
+			const title = await agent.generateTitle(firstMessage, messages);
+			if (title.trim()) service.setGeneratedTitle(sessionId, title);
+		} catch {
+			// A failed title request is deliberately not retried.
+		}
+	});
 }
 
 export function closeDesktopRuntime(): void {

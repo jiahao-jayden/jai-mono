@@ -70,6 +70,9 @@ function validateFieldTree(schema: TObject, fields: ConfigFieldTree, parentPath:
 			if (field.merge === "restrictOnly" && !field.combineRestrictions) {
 				throw configDefinitionError(`restrictOnly requires combineRestrictions: ${path}`, path);
 			}
+			if (field.merge === "custom" && !field.mergeValues) {
+				throw configDefinitionError(`custom requires mergeValues: ${path}`, path);
+			}
 			if (field.environment && !field.environment.name.startsWith("JAI_")) {
 				throw configDefinitionError(`Environment binding must start with JAI_: ${path}`, path);
 			}

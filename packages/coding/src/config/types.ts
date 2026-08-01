@@ -2,7 +2,13 @@ import type { Static, TObject } from "@sinclair/typebox";
 
 export type ConfigFileScope = "user" | "project-shared" | "project-local";
 export type ConfigSource = "default" | ConfigFileScope | "environment";
-export type ConfigMergePolicy = "replace" | "deepMerge" | "appendUnique" | "restrictOnly" | "denyUnion";
+export type ConfigMergePolicy = "replace" | "deepMerge" | "appendUnique" | "restrictOnly" | "denyUnion" | "custom";
+
+export interface ConfigMergeCandidate {
+	readonly source: ConfigSource;
+	readonly sourceFile?: string;
+	readonly value: unknown;
+}
 
 export interface ConfigEnvironmentBinding {
 	readonly name: `JAI_${string}`;
@@ -18,6 +24,8 @@ export interface ConfigFieldRule {
 	readonly uniqueBy?: (value: unknown) => string;
 	/** Required by restrictOnly; combines values without weakening the lower-priority restriction. */
 	readonly combineRestrictions?: (lower: unknown, higher: unknown) => unknown;
+	/** Required by custom; candidates are ordered from lower to higher precedence. */
+	readonly mergeValues?: (candidates: readonly ConfigMergeCandidate[]) => unknown;
 }
 
 export interface ConfigFieldTree {

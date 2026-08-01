@@ -29,8 +29,10 @@ import type {
 import { zeroCost } from "../utils";
 
 export interface AnthropicProviderConfig {
+	id?: string;
 	apiKey: string;
 	baseURL?: string;
+	headers?: Readonly<Record<string, string>>;
 }
 
 const CACHE_CONTROL = { type: "ephemeral" as const };
@@ -45,13 +47,20 @@ interface BlockState {
 // 入口：Provider 类
 
 export class AnthropicProvider implements Provider {
-	readonly id = "anthropic";
+	readonly id: string;
+	readonly adapter = "anthropic" as const;
 	private readonly client: Anthropic;
+	private readonly baseURL?: string;
+	private readonly headers?: Readonly<Record<string, string>>;
 
 	constructor(config: AnthropicProviderConfig) {
+		this.id = config.id ?? this.adapter;
+		this.baseURL = config.baseURL;
+		this.headers = config.headers;
 		this.client = new Anthropic({
 			apiKey: config.apiKey,
 			baseURL: config.baseURL,
+			defaultHeaders: config.headers,
 		});
 	}
 
@@ -73,11 +82,11 @@ export class AnthropicProvider implements Provider {
 		await runAdapterStream(eventStream, output, options?.signal, {
 			request: async () => {
 				const client = options?.apiKey
-					? new Anthropic({ apiKey: options.apiKey, baseURL: model.baseUrl })
+					? new Anthropic({ apiKey: options.apiKey, baseURL: this.baseURL, defaultHeaders: this.headers })
 					: this.client;
 
 				const params = buildParams(model, context, options);
-				const providerOpts = options?.providerOptions?.anthropic;
+				const providerOpts = options?.providerOptions?.[this.id] ?? options?.providerOptions?.[this.adapter];
 				const body = providerOpts ? { ...params, ...providerOpts } : params;
 
 				return client.messages.create(
@@ -96,7 +105,7 @@ export class AnthropicProvider implements Provider {
 
 function buildParams(model: Model, context: Context, options?: StreamOptions): MessageCreateParamsStreaming {
 	const params: MessageCreateParamsStreaming = {
-		model: model.id,
+		model: model.remoteModelId ?? model.id,
 		max_tokens: options?.maxTokens ?? model.maxTokens,
 		stream: true,
 		messages: convertMessages(context.messages),

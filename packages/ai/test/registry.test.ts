@@ -85,17 +85,15 @@ describe("ModelRegistry", () => {
 		expect(calls[0]).toBe(model);
 	});
 
-	it("overwrites a provider re-registered under the same id", () => {
+	it("fails closed when a provider id is registered twice", () => {
 		const registry = new ModelRegistry();
 		const first = makeProvider("anthropic");
 		const second = makeProvider("anthropic");
 		const model = makeModel("anthropic", "claude-opus-4-8");
 
 		registry.register({ provider: first.provider, models: [model] });
-		registry.register({ provider: second.provider, models: [model] });
-
-		registry.stream("anthropic/claude-opus-4-8", emptyContext);
-		expect(first.calls).toHaveLength(0);
-		expect(second.calls).toHaveLength(1);
+		expect(() => registry.register({ provider: second.provider, models: [model] })).toThrow(
+			"already registered",
+		);
 	});
 });

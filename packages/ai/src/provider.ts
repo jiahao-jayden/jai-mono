@@ -1,5 +1,5 @@
 import type { AssistantMessageEventStream } from "./event-stream";
-import type { Context, Model } from "./types";
+import type { Context, Model, ProviderAdapter } from "./types";
 
 export interface StreamOptions {
 	/** 采样温度，不传则用 provider 默认值 */
@@ -20,5 +20,6 @@ export interface StreamOptions {
 
 export interface Provider {
 	readonly id: string;
+	readonly adapter?: ProviderAdapter | (string & {});
 	stream(model: Model, context: Context, options?: StreamOptions): AssistantMessageEventStream;
 }

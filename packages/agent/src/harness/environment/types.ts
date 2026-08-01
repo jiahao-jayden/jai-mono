@@ -14,6 +14,16 @@ export interface ResolvedPath {
 	canonicalPath: string;
 }
 
+export interface PathCapability {
+	readonly requestedPath: string;
+	readonly canonicalPath: string;
+}
+
+export interface PathCapabilityManager {
+	createPathCapability(input: string, options: ResolvePathOptions): Promise<PathCapability>;
+	withPathCapability<T>(capability: PathCapability, operation: () => Promise<T>): Promise<T>;
+}
+
 export interface FileStat {
 	kind: "file" | "directory" | "symlink";
 	size: number;

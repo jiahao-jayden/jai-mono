@@ -7,6 +7,7 @@ export type {
 	ConfigFieldRule,
 	ConfigFieldTree,
 	ConfigFileScope,
+	ConfigMergeCandidate,
 	ConfigMergePolicy,
 	ConfigMigration,
 	ConfigPaths,

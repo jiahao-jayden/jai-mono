@@ -24,8 +24,10 @@ import type {
 import { zeroCost } from "../utils";
 
 export interface OpenAIProviderConfig {
+	id?: string;
 	apiKey: string;
 	baseURL?: string;
+	headers?: Readonly<Record<string, string>>;
 }
 
 /** 单个 tool call 的流式累积状态（OpenAI 按 delta.tool_calls[].index 分片） */
@@ -46,13 +48,20 @@ interface StreamState {
 // 入口：Provider 类
 
 export class OpenAIProvider implements Provider {
-	readonly id = "openai-compatible";
+	readonly id: string;
+	readonly adapter = "openai-compatible" as const;
 	private readonly client: OpenAI;
+	private readonly baseURL?: string;
+	private readonly headers?: Readonly<Record<string, string>>;
 
 	constructor(config: OpenAIProviderConfig) {
+		this.id = config.id ?? this.adapter;
+		this.baseURL = config.baseURL;
+		this.headers = config.headers;
 		this.client = new OpenAI({
 			apiKey: config.apiKey,
 			baseURL: config.baseURL,
+			defaultHeaders: config.headers,
 		});
 	}
 
@@ -78,12 +87,12 @@ export class OpenAIProvider implements Provider {
 		await runAdapterStream(eventStream, output, options?.signal, {
 			request: async () => {
 				const client = options?.apiKey
-					? new OpenAI({ apiKey: options.apiKey, baseURL: model.baseUrl })
+					? new OpenAI({ apiKey: options.apiKey, baseURL: this.baseURL, defaultHeaders: this.headers })
 					: this.client;
 
 				const compat = (model.compatibility ?? {}) as OpenAICompatibility;
 				const params = buildParams(model, context, options, compat);
-				const providerOpts = options?.providerOptions?.["openai-compatible"];
+				const providerOpts = options?.providerOptions?.[this.id] ?? options?.providerOptions?.[this.adapter];
 				const body = providerOpts ? { ...params, ...providerOpts } : params;
 
 				return client.chat.completions.create(
@@ -107,7 +116,7 @@ function buildParams(
 	compat: OpenAICompatibility,
 ): ChatCompletionCreateParamsStreaming {
 	const params: ChatCompletionCreateParamsStreaming = {
-		model: model.id,
+		model: model.remoteModelId ?? model.id,
 		stream: true,
 		messages: convertMessages(context.messages, context.systemPrompt),
 	};

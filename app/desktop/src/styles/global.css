@@ -8,9 +8,13 @@
 @custom-variant dark (&:is(.dark *));
 
 *:focus-visible {
-	outline: none !important;
-	ring: 0 !important;
-	box-shadow: none !important;
+	outline: 2px solid color-mix(in oklch, var(--primary-2) 72%, transparent);
+	outline-offset: 2px;
+}
+
+textarea:focus-visible,
+input:focus-visible {
+	outline: none;
 }
 
 @theme inline {
@@ -348,6 +352,23 @@
 	}
 }
 
+@keyframes agent-thinking {
+	0%,
+	80%,
+	100% {
+		opacity: 0.25;
+		transform: translateY(0);
+	}
+	40% {
+		opacity: 1;
+		transform: translateY(-2px);
+	}
+}
+
+.agent-thinking-dot {
+	animation: agent-thinking 1.2s ease-in-out infinite;
+}
+
 .cursor-idle {
 	animation: cursor-breathe 2s ease-in-out infinite;
 }
@@ -538,6 +559,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+	.agent-thinking-dot {
+		animation: none;
+		opacity: 0.65;
+	}
+
 	.is-assistant :is(p, li, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, details, figure) {
 		transition: none;
 

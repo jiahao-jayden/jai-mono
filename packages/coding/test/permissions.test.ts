@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { ToolCallContext } from "@jai/agent";
+import { NodeExecutionEnvironment } from "@jai/agent/node";
 import { getErrorCode } from "@jai/common";
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
@@ -163,6 +164,54 @@ describe("permission middleware", () => {
 			middleware(context("Bash", { command: "git push origin main" }), async () => ({ content: [] })),
 		).rejects.toMatchObject({ code: "coding_permission.denied" });
 		expect(asked).toBe(false);
+	});
+
+	test("文件 Always allow 同时固定用户路径与 canonical target", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-permission-capability-"));
+		try {
+			const workspace = join(root, "workspace");
+			const first = join(root, "first");
+			const second = join(root, "second");
+			await Promise.all([mkdir(workspace), mkdir(first), mkdir(second)]);
+			await writeFile(join(first, "file.txt"), "first");
+			await writeFile(join(second, "file.txt"), "second");
+			const link = join(workspace, "outside");
+			await symlink(first, link);
+			const input = join(link, "file.txt");
+			const environment = new NodeExecutionEnvironment({ cwd: workspace });
+			let approvals = 0;
+			const middleware = createPermissionMiddleware({
+				workspaceRoot: workspace,
+				settings: {},
+				pathCapabilities: environment,
+				requestApproval: () => {
+					approvals++;
+					return "alwaysAllow";
+				},
+			});
+			const invoke = () =>
+				middleware(context("Read", { path: input }), async () => {
+					const resolved = await environment.resolvePath(input, {
+						base: workspace,
+						boundary: workspace,
+						mustExist: true,
+						expectedKind: "file",
+					});
+					await environment.readFile(resolved.path);
+					return { content: [] };
+				});
+
+			await invoke();
+			await invoke();
+			expect(approvals).toBe(1);
+
+			await unlink(link);
+			await symlink(second, link);
+			await invoke();
+			expect(approvals).toBe(2);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 });
 

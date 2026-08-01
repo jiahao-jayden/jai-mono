@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -112,6 +112,75 @@ describe("createCodingAgent", () => {
 			await codingAgent.invoke("hello");
 			expect(contexts[0]?.tools).toEqual([]);
 			expect(codingAgent.configSnapshot.settings.permissions.defaultMode).toBe("default");
+		} finally {
+			codingAgent.close();
+		}
+	});
+
+	test("边界外 Read 获批后通过单次 path capability 执行", async () => {
+		const fixture = await createFixture();
+		const outside = join(fixture.executionContext.cwd, "..", "outside.txt");
+		await writeFile(outside, "approved outside contents");
+		const contexts: Context[] = [];
+		const requests: string[] = [];
+		const codingAgent = await createCodingAgent({
+			...fixture,
+			resolveProvider: () => ({
+				provider: providerFor(
+					[
+						assistantToolCall("Read", { path: outside }),
+						assistant("done"),
+					],
+					contexts,
+				),
+				model,
+			}),
+			permissions: {
+				requestApproval(request) {
+					requests.push(request.args.path as string);
+					return "allowOnce";
+				},
+			},
+		});
+
+		try {
+			await codingAgent.invoke("read outside");
+			expect(requests).toEqual([outside]);
+			expect(JSON.stringify(contexts[1]?.messages)).toContain("approved outside contents");
+		} finally {
+			codingAgent.close();
+		}
+	});
+
+	test("边界外 Write 与 Edit 分别获批后执行", async () => {
+		const fixture = await createFixture();
+		const outside = join(fixture.executionContext.cwd, "..", "outside-write.txt");
+		let approvals = 0;
+		const codingAgent = await createCodingAgent({
+			...fixture,
+			resolveProvider: () => ({
+				provider: providerFor([
+					assistantToolCall("Write", { path: outside, content: "first" }),
+					assistantToolCall("Edit", {
+						path: outside,
+						edits: [{ oldText: "first", newText: "second" }],
+					}),
+					assistant("done"),
+				]),
+				model,
+			}),
+			permissions: {
+				requestApproval() {
+					approvals++;
+					return "allowOnce";
+				},
+			},
+		});
+
+		try {
+			await codingAgent.invoke("write and edit outside");
+			expect(approvals).toBe(2);
+			expect(await readFile(outside, "utf8")).toBe("second");
 		} finally {
 			codingAgent.close();
 		}

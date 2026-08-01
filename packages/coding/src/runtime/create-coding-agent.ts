@@ -12,7 +12,7 @@ import {
 	openSession,
 	type ToolExecutionMode,
 } from "@jai/agent";
-import { FileSessionStore } from "@jai/agent/node";
+import { FileSessionStore, NodeExecutionEnvironment } from "@jai/agent/node";
 import type { Model, Provider } from "@jai/ai";
 import type { TObject } from "@sinclair/typebox";
 import type { CodingExecutionContext } from "../business/types";
@@ -156,6 +156,13 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const selectPermissionSettings = options.permissions?.selectSettings ?? defaultPermissionSettings;
 	const hooks = options.agent?.hooks;
 	const aroundToolCall = [...(hooks?.aroundToolCall ?? [])];
+	const toolEnvironment = options.executionContext.localFileAccess
+		? new NodeExecutionEnvironment({
+				cwd: options.executionContext.cwd,
+				shellPath: options.tools?.shell,
+				ripgrepPath: options.tools?.ripgrepPath,
+			})
+		: undefined;
 	if (options.executionContext.localFileAccess) {
 		aroundToolCall.push(
 			createPermissionMiddleware({
@@ -163,6 +170,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				settings: () => selectPermissionSettings(runtime.snapshot),
 				requestApproval: options.permissions?.requestApproval,
 				persistProjectLocalAllowRule: options.permissions?.persistProjectLocalAllowRule,
+				pathCapabilities: toolEnvironment,
 			}),
 		);
 	}
@@ -170,7 +178,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		model,
 		provider,
 		tools: options.executionContext.localFileAccess
-			? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools })
+			? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
 			: [],
 		sessionHandle,
 		instructions: options.instructions,

@@ -95,6 +95,29 @@ describe("DesktopAgentHost", () => {
 		});
 		host.close();
 	});
+
+	test("首轮完成后把输入与结果交给标题生成边界", async () => {
+		const messages = [userMessage("build it"), assistantMessage("done")];
+		const agent = new FakeAgent(async () => messages);
+		const host = new DesktopAgentHost(() => {}, async () => agent);
+		let completed:
+			| { readonly sessionId: string; readonly firstMessage: string; readonly messages: readonly AgentMessage[] }
+			| undefined;
+		host.setRunCompletedListener((context) => {
+			completed = context;
+		});
+
+		await host.send(input("build it"));
+		await agent.finished;
+		await waitFor(() => completed !== undefined);
+
+		expect(completed).toMatchObject({
+			sessionId: "session-1",
+			firstMessage: "build it",
+			messages,
+		});
+		host.close();
+	});
 });
 
 class FakeAgent implements HostedCodingAgent {

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -18,6 +19,8 @@ import type {
 	GrepMatch,
 	GrepQuery,
 	GrepResult,
+	PathCapability,
+	PathCapabilityManager,
 	ResolvedPath,
 	ResolvePathOptions,
 	ShellExecuteOptions,
@@ -35,6 +38,16 @@ export interface NodeExecutionEnvironmentOptions {
 	shellPath?: string;
 	shellEnv?: Record<string, string>;
 	ripgrepPath?: string;
+}
+
+interface IssuedPathCapability extends PathCapability {
+	readonly boundary: string;
+}
+
+interface PathCandidate {
+	readonly requestedPath: string;
+	readonly canonicalPath: string;
+	readonly boundary: string;
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -74,7 +87,10 @@ async function realpathIfExists(target: string): Promise<string | undefined> {
 	}
 }
 
-async function resolveExecutable(command: string, environment: NodeJS.ProcessEnv = process.env): Promise<string | undefined> {
+async function resolveExecutable(
+	command: string,
+	environment: NodeJS.ProcessEnv = process.env,
+): Promise<string | undefined> {
 	const candidates =
 		command.includes("/") || command.includes("\\")
 			? [command]
@@ -107,11 +123,13 @@ function fileSystemFailure(error: unknown, resource: string): never {
 	});
 }
 
-export class NodeExecutionEnvironment implements ExecutionEnvironment {
+export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapabilityManager {
 	readonly #cwd: string;
 	readonly #shellPath?: string;
 	readonly #shellEnv?: Record<string, string>;
 	readonly #ripgrepPath: string;
+	readonly #issuedCapabilities = new WeakSet<PathCapability>();
+	readonly #activeCapability = new AsyncLocalStorage<IssuedPathCapability>();
 
 	constructor(options: NodeExecutionEnvironmentOptions) {
 		this.#cwd = options.cwd;
@@ -120,7 +138,46 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 		this.#ripgrepPath = options.ripgrepPath ?? "rg";
 	}
 
+	async createPathCapability(input: string, options: ResolvePathOptions): Promise<PathCapability> {
+		const candidate = await this.#resolveCandidate(input, options);
+		const capability = Object.freeze({
+			requestedPath: candidate.requestedPath,
+			canonicalPath: candidate.canonicalPath,
+			boundary: candidate.boundary,
+		});
+		this.#issuedCapabilities.add(capability);
+		return capability;
+	}
+
+	async withPathCapability<T>(capability: PathCapability, operation: () => Promise<T>): Promise<T> {
+		if (!this.#issuedCapabilities.has(capability)) {
+			throw new FileSystemError("outside_boundary", "Path capability was not issued by this environment");
+		}
+		this.#issuedCapabilities.delete(capability);
+		return this.#activeCapability.run(capability as IssuedPathCapability, operation);
+	}
+
 	async resolvePath(input: string, options: ResolvePathOptions): Promise<ResolvedPath> {
+		const candidate = await this.#resolveCandidate(input, options);
+		const lexicalAllowed = isWithin(candidate.boundary, candidate.requestedPath);
+		const canonicalAllowed = isWithin(candidate.boundary, candidate.canonicalPath);
+		if (!lexicalAllowed || !canonicalAllowed) {
+			const capability = this.#activeCapability.getStore();
+			if (
+				!capability ||
+				capability.boundary !== candidate.boundary ||
+				capability.requestedPath !== candidate.requestedPath ||
+				capability.canonicalPath !== candidate.canonicalPath
+			) {
+				throw new FileSystemError("outside_boundary", `Path escapes workspace: ${input}`, {
+					resource: candidate.canonicalPath,
+				});
+			}
+		}
+		return { path: candidate.canonicalPath, canonicalPath: candidate.canonicalPath };
+	}
+
+	async #resolveCandidate(input: string, options: ResolvePathOptions): Promise<PathCandidate> {
 		if (input.length === 0) throw new FileSystemError("invalid_path", "Path cannot be empty", { resource: input });
 		if (input.includes("\0")) {
 			throw new FileSystemError("invalid_path", "Path cannot contain NUL", { resource: input });
@@ -141,11 +198,6 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 				throw new FileSystemError("not_found", `Path not found: ${input}`, { resource: input });
 			}
 			const canonicalPath = existingPath ?? (await canonicalizeMissing(requested));
-			if (!isWithin(boundary, canonicalPath)) {
-				throw new FileSystemError("outside_boundary", `Path escapes workspace: ${input}`, {
-					resource: canonicalPath,
-				});
-			}
 			try {
 				const targetStat = await stat(canonicalPath);
 				if (options.expectedKind === "file" && !targetStat.isFile()) {
@@ -161,7 +213,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 				if (!isNotFound(error) || options.mustExist) throw error;
 			}
 			throwIfAborted(options.signal);
-			return { path: canonicalPath, canonicalPath };
+			return { requestedPath: requested, canonicalPath, boundary };
 		} catch (error) {
 			fileSystemFailure(error, input);
 		}
@@ -170,6 +222,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 	async stat(path: string, options: AbortOptions = {}): Promise<FileStat> {
 		throwIfAborted(options.signal);
 		try {
+			await this.#assertActivePath(path, true);
 			const value = await lstat(path);
 			return {
 				kind: value.isSymbolicLink() ? "symlink" : value.isDirectory() ? "directory" : "file",
@@ -202,6 +255,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 	async *readFileChunks(path: string, options: AbortOptions = {}): AsyncIterable<Uint8Array> {
 		throwIfAborted(options.signal);
 		try {
+			await this.#assertActivePath(path, true);
 			for await (const chunk of createReadStream(path, { signal: options.signal })) {
 				yield new Uint8Array(chunk as Buffer);
 			}
@@ -226,6 +280,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 		options: AtomicWriteOptions = {},
 	): Promise<{ created: boolean }> {
 		throwIfAborted(options.signal);
+		await this.#assertActivePath(path, false);
 		const directory = dirname(path);
 		await this.createDirectory(directory, { recursive: true, signal: options.signal });
 		let mode: number | undefined;
@@ -244,6 +299,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 			await writeFile(temporaryPath, content, { signal: options.signal });
 			if (mode !== undefined && options.preserveMode !== false) await chmod(temporaryPath, mode);
 			throwIfAborted(options.signal);
+			await this.#assertActivePath(path, false);
 			await rename(temporaryPath, path);
 			return { created };
 		} catch (error) {
@@ -285,6 +341,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 	}
 
 	async glob(query: GlobQuery): Promise<GlobResult> {
+		await this.#assertActivePath(query.cwd, true);
 		const rows = await this.#runRipgrep(
 			["--files", "--hidden", "--glob", query.pattern, "--", "."],
 			query.cwd,
@@ -298,6 +355,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 	}
 
 	async grep(query: GrepQuery): Promise<GrepResult> {
+		await this.#assertActivePath(query.target === "." ? query.cwd : resolve(query.cwd, query.target), true);
 		const args = [
 			"--json",
 			"--line-number",
@@ -346,6 +404,26 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment {
 			return true;
 		});
 		return { rows, matches, limitReached };
+	}
+
+	async #assertActivePath(path: string, mustExist: boolean): Promise<void> {
+		const capability = this.#activeCapability.getStore();
+		if (!capability) return;
+		let canonicalPath: string;
+		try {
+			const existing = await realpathIfExists(resolve(path));
+			if (!existing && mustExist) {
+				throw new FileSystemError("not_found", `Path not found: ${path}`, { resource: path });
+			}
+			canonicalPath = existing ?? (await canonicalizeMissing(resolve(path)));
+		} catch (error) {
+			fileSystemFailure(error, path);
+		}
+		if (canonicalPath !== capability.canonicalPath) {
+			throw new FileSystemError("outside_boundary", "Authorized path changed before execution", {
+				resource: canonicalPath,
+			});
+		}
 	}
 
 	async #runRipgrep(
