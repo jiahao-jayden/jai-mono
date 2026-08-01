@@ -11,6 +11,7 @@ import {
 	configMigrationError,
 	configParseError,
 	configReadError,
+	configScopeUnavailableError,
 	configUnsupportedVersionError,
 	configValidationError,
 	configWatchError,
@@ -38,13 +39,14 @@ interface LoadedScope {
 const scopes = ["user", "project-shared", "project-local"] as const;
 
 export function resolveCodingConfigPaths(
-	options: Pick<CodingConfigStoreOptions, "homeDir" | "workspaceRoot">,
+	options: Pick<CodingConfigStoreOptions, "homeDir" | "projectRoot" | "workspaceRoot">,
 ): ConfigPaths {
 	const home = options.homeDir ?? homedir();
+	const projectRoot = options.projectRoot ?? options.workspaceRoot;
 	return {
 		user: join(home, ".jai", "settings.json"),
-		"project-shared": join(options.workspaceRoot, ".jai", "settings.json"),
-		"project-local": join(options.workspaceRoot, ".jai", "settings.local.json"),
+		"project-shared": projectRoot ? join(projectRoot, ".jai", "settings.json") : undefined,
+		"project-local": projectRoot ? join(projectRoot, ".jai", "settings.local.json") : undefined,
 	};
 }
 
@@ -79,7 +81,8 @@ export class CodingConfigStore<TSchema extends TObject> {
 		const sources: ConfigSourceValue[] = [];
 		for (const scope of scopes) {
 			const item = loaded[scope];
-			if (item) sources.push({ source: scope, sourceFile: this.paths[scope], value: item.settings });
+			const sourceFile = this.paths[scope];
+			if (item && sourceFile) sources.push({ source: scope, sourceFile, value: item.settings });
 		}
 		const environmentSettings = buildEnvironmentSettings(this.definition.fields, this.environment);
 		if (Object.keys(environmentSettings).length > 0) {
@@ -125,6 +128,7 @@ export class CodingConfigStore<TSchema extends TObject> {
 		options: WriteScopeOptions,
 	): Promise<ConfigSnapshot<TSchema>> {
 		const path = this.paths[scope];
+		if (!path) throw configScopeUnavailableError(scope);
 		let actualRevision: string | null;
 		try {
 			actualRevision = await fileRevision(path);
@@ -175,6 +179,7 @@ export class CodingConfigStore<TSchema extends TObject> {
 
 	private async readScope(scope: ConfigFileScope): Promise<LoadedScope | undefined> {
 		const path = this.paths[scope];
+		if (!path) return undefined;
 		let raw: string;
 		try {
 			raw = await readFile(path, "utf8");
@@ -269,7 +274,7 @@ export class CodingConfigStore<TSchema extends TObject> {
 		this.closeWatchers();
 		const directories = new Set<string>();
 		try {
-			for (const path of Object.values(this.paths)) {
+			for (const path of Object.values(this.paths).filter((value): value is string => value !== undefined)) {
 				const configDirectory = dirname(path);
 				directories.add(await nearestExistingDirectory(configDirectory));
 			}

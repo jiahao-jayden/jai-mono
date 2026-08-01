@@ -42,8 +42,8 @@ export type ResolvedCodingSettings<TSchema extends TObject> = Static<TSchema>;
 
 export interface ConfigPaths {
 	readonly user: string;
-	readonly "project-shared": string;
-	readonly "project-local": string;
+	readonly "project-shared": string | undefined;
+	readonly "project-local": string | undefined;
 }
 
 export interface ConfigProvenance {
@@ -66,7 +66,9 @@ export type ConfigWatchEvent<TSchema extends TObject = TObject> =
 	| { readonly status: "invalid"; readonly error: unknown; readonly lastValid?: ConfigSnapshot<TSchema> };
 
 export interface CodingConfigStoreOptions {
-	readonly workspaceRoot: string;
+	readonly projectRoot?: string;
+	/** @deprecated Use projectRoot. */
+	readonly workspaceRoot?: string;
 	readonly homeDir?: string;
 	readonly environment?: Readonly<Record<string, string | undefined>>;
 	readonly workspaceTrusted?: boolean;

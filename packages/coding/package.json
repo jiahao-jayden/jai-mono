@@ -6,6 +6,8 @@
 	"description": "Built-in coding tools for Jai: read/glob/grep/write/edit/bash with workspace boundaries.",
 	"exports": {
 		".": "./src/index.ts",
+		"./business": "./src/business/index.ts",
+		"./business/sqlite": "./src/business/sqlite.ts",
 		"./config": "./src/config/index.ts",
 		"./permissions": "./src/permissions/index.ts",
 		"./permissions/approval": "./src/permissions/approval.ts",

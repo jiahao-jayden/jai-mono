@@ -127,7 +127,7 @@ class FakeAgent implements HostedCodingAgent {
 }
 
 function input(message: string) {
-	return { sessionId: "session-1", workspaceRoot: "/tmp/workspace", message };
+	return { sessionId: "session-1", message };
 }
 
 function userMessage(content: string): AgentMessage {

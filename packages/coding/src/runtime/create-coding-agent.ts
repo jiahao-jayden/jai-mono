@@ -1,5 +1,3 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
 import {
 	Agent,
 	type AgentCompactionOptions,
@@ -17,6 +15,7 @@ import {
 import { FileSessionStore } from "@jai/agent/node";
 import type { Model, Provider } from "@jai/ai";
 import type { TObject } from "@sinclair/typebox";
+import type { CodingExecutionContext } from "../business/types";
 import {
 	type CodingConfigDefinition,
 	CodingConfigStore,
@@ -55,13 +54,13 @@ export interface CodingAgentRuntimeOptions {
 }
 
 export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState extends JsonObject = JsonObject> {
-	readonly workspaceRoot: string;
+	readonly executionContext: CodingExecutionContext;
 	readonly sessionId: string;
-	readonly sessionDirectory?: string;
+	readonly sessionDirectory: string;
 	readonly appState?: TAppState;
 	readonly instructions?: string;
 	readonly configDefinition: CodingConfigDefinition<TSchema>;
-	readonly configOptions?: Omit<CodingConfigStoreOptions, "workspaceRoot">;
+	readonly configOptions?: Omit<CodingConfigStoreOptions, "projectRoot" | "workspaceRoot">;
 	readonly resolveProvider: (
 		snapshot: ConfigSnapshot<TSchema>,
 	) => ResolvedCodingProvider | Promise<ResolvedCodingProvider>;
@@ -147,27 +146,32 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 ): Promise<CodingAgent<TSchema, TAppState>> {
 	const configStore = new CodingConfigStore(options.configDefinition, {
 		...options.configOptions,
-		workspaceRoot: options.workspaceRoot,
+		projectRoot: options.executionContext.localFileAccess ? options.executionContext.configRoot : undefined,
 	});
 	const snapshot = await configStore.load();
 	const runtime: RuntimeState<TSchema> = { snapshot, closed: false };
 	const { provider, model } = await options.resolveProvider(snapshot);
-	const sessionStore = new FileSessionStore<TAppState>(
-		options.sessionDirectory ?? join(homedir(), "jai", "workspace", ".sessions"),
-	);
+	const sessionStore = new FileSessionStore<TAppState>(options.sessionDirectory);
 	const sessionHandle = await openSession(sessionStore, options.sessionId, options.appState ?? ({} as TAppState));
 	const selectPermissionSettings = options.permissions?.selectSettings ?? defaultPermissionSettings;
-	const permissionMiddleware = createPermissionMiddleware({
-		workspaceRoot: options.workspaceRoot,
-		settings: () => selectPermissionSettings(runtime.snapshot),
-		requestApproval: options.permissions?.requestApproval,
-		persistProjectLocalAllowRule: options.permissions?.persistProjectLocalAllowRule,
-	});
 	const hooks = options.agent?.hooks;
+	const aroundToolCall = [...(hooks?.aroundToolCall ?? [])];
+	if (options.executionContext.localFileAccess) {
+		aroundToolCall.push(
+			createPermissionMiddleware({
+				workspaceRoot: options.executionContext.cwd,
+				settings: () => selectPermissionSettings(runtime.snapshot),
+				requestApproval: options.permissions?.requestApproval,
+				persistProjectLocalAllowRule: options.permissions?.persistProjectLocalAllowRule,
+			}),
+		);
+	}
 	const agent = new Agent<TAppState>({
 		model,
 		provider,
-		tools: createCodingTools({ cwd: options.workspaceRoot, ...options.tools }),
+		tools: options.executionContext.localFileAccess
+			? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools })
+			: [],
 		sessionHandle,
 		instructions: options.instructions,
 		temperature: options.agent?.temperature,
@@ -176,7 +180,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		compaction: options.agent?.compaction,
 		hooks: {
 			...hooks,
-			aroundToolCall: [...(hooks?.aroundToolCall ?? []), permissionMiddleware],
+			aroundToolCall,
 		},
 		onObserverError: options.agent?.onObserverError,
 	});

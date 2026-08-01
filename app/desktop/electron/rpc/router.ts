@@ -105,7 +105,6 @@ function assertMessageInput(value: unknown): DesktopAgentMessageInput {
 		typeof value !== "object" ||
 		value === null ||
 		typeof (value as DesktopAgentMessageInput).sessionId !== "string" ||
-		typeof (value as DesktopAgentMessageInput).workspaceRoot !== "string" ||
 		typeof (value as DesktopAgentMessageInput).message !== "string" ||
 		(value as DesktopAgentMessageInput).message.length === 0
 	) {

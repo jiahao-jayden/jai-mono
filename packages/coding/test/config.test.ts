@@ -79,7 +79,7 @@ describe("CodingConfigStore", () => {
 			denies: ["read-secret"],
 			limit: 80,
 		});
-		await put(fixture.paths["project-shared"], {
+		await put(fixture.paths["project-shared"]!, {
 			name: "shared",
 			nested: { right: 20 },
 			metadata: { right: "shared" },
@@ -87,7 +87,7 @@ describe("CodingConfigStore", () => {
 			denies: ["run-rm"],
 			limit: 60,
 		});
-		await put(fixture.paths["project-local"], { name: "local", tags: ["local"], limit: 70 });
+		await put(fixture.paths["project-local"]!, { name: "local", tags: ["local"], limit: 70 });
 
 		const store = new CodingConfigStore(definition, {
 			...fixture.options,
@@ -118,7 +118,7 @@ describe("CodingConfigStore", () => {
 	test("未信任 workspace 忽略扩权字段，但保留限制字段", async () => {
 		const fixture = await createFixture();
 		await put(fixture.paths.user, { name: "user", denies: ["user-deny"], limit: 80 });
-		await put(fixture.paths["project-shared"], {
+		await put(fixture.paths["project-shared"]!, {
 			name: "project",
 			denies: ["project-deny"],
 			limit: 40,
@@ -208,7 +208,7 @@ describe("CodingConfigStore", () => {
 		await expect(
 			store.writeScope("project-local", { name: "stale" }, { expectedRevision: null }),
 		).rejects.toMatchObject({ code: "coding_config.write_conflict" });
-		const document = JSON.parse(await readFile(fixture.paths["project-local"], "utf8"));
+		const document = JSON.parse(await readFile(fixture.paths["project-local"]!, "utf8"));
 		expect(document).toEqual({ $schema: schemaUrl, schemaVersion: 1, name: "first" });
 		expect(initial.scopeRevisions["project-local"]).toBeNull();
 	});
@@ -246,6 +246,24 @@ describe("CodingConfigStore", () => {
 		});
 		expect(initial.settings.name).toBe("default");
 		stop();
+		store.close();
+	});
+
+	test("没有 project root 时只加载 user 配置并拒绝项目 scope 写入", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-config-user-only-"));
+		roots.push(root);
+		const store = new CodingConfigStore(definition, { homeDir: join(root, "home") });
+
+		const snapshot = await store.load();
+
+		expect(snapshot.settings.name).toBe("default");
+		expect(store.paths["project-shared"]).toBeUndefined();
+		try {
+			await store.writeScope("project-local", {}, { expectedRevision: null });
+			throw new Error("Expected project-local write to fail");
+		} catch (error) {
+			expect(getErrorCode(error)).toBe("coding_config.scope_unavailable");
+		}
 		store.close();
 	});
 });

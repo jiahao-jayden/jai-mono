@@ -257,7 +257,7 @@ describe("permission settings schema", () => {
 				workspaceRoot: join(root, "workspace"),
 				homeDir: join(root, "home"),
 			});
-			await writeConfig(store.paths["project-shared"], definition.schemaUrl, {
+			await writeConfig(store.paths["project-shared"]!, definition.schemaUrl, {
 				allow: ["Bash(npm test)"],
 				ask: ["Bash(git push *)"],
 				deny: ["Read(**/.env)"],

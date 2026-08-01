@@ -68,7 +68,7 @@ describe("createCodingAgent", () => {
 
 	test("在 aroundToolCall 切点请求权限并执行一次性授权", async () => {
 		const fixture = await createFixture();
-		const target = join(fixture.workspaceRoot, "approved.txt");
+		const target = join(fixture.executionContext.cwd, "approved.txt");
 		const requests: string[] = [];
 		const codingAgent = await createCodingAgent({
 			...fixture,
@@ -95,6 +95,27 @@ describe("createCodingAgent", () => {
 			codingAgent.close();
 		}
 	});
+
+	test("未归属 execution context 不向 Agent 暴露本地工具", async () => {
+		const fixture = await createFixture();
+		const contexts: Context[] = [];
+		const codingAgent = await createCodingAgent({
+			...fixture,
+			executionContext: { localFileAccess: false },
+			resolveProvider: () => ({
+				provider: providerFor([assistant("done")], contexts),
+				model,
+			}),
+		});
+
+		try {
+			await codingAgent.invoke("hello");
+			expect(contexts[0]?.tools).toEqual([]);
+			expect(codingAgent.configSnapshot.settings.permissions.defaultMode).toBe("default");
+		} finally {
+			codingAgent.close();
+		}
+	});
 });
 
 async function createFixture() {
@@ -103,7 +124,12 @@ async function createFixture() {
 	const workspaceRoot = join(root, "workspace");
 	await mkdir(workspaceRoot);
 	return {
-		workspaceRoot,
+		executionContext: {
+			localFileAccess: true as const,
+			cwd: workspaceRoot,
+			configRoot: workspaceRoot,
+			defaultAllowedDirectories: [workspaceRoot] as [string],
+		},
 		sessionId: "session-1",
 		sessionDirectory: join(root, "sessions"),
 		configDefinition: definition,

@@ -23,7 +23,6 @@ const desktopAgentError = defineCodedError("desktop_agent", [
 	"factory_unavailable",
 	"session_not_found",
 	"session_busy",
-	"workspace_mismatch",
 ] as const);
 
 export interface HostedCodingAgent {
@@ -37,7 +36,6 @@ export interface HostedCodingAgent {
 
 export interface DesktopAgentFactoryContext {
 	readonly sessionId: string;
-	readonly workspaceRoot: string;
 	readonly requestApproval: (
 		request: PermissionApprovalRequest,
 		signal?: AbortSignal,
@@ -49,7 +47,6 @@ export type DesktopAgentEventSink = (envelope: DesktopAgentEventEnvelope) => voi
 
 interface SessionRuntime {
 	readonly sessionId: string;
-	readonly workspaceRoot: string;
 	readonly agent: HostedCodingAgent;
 	readonly items: Map<string, DesktopTranscriptItem>;
 	unsubscribe: () => void;
@@ -146,15 +143,7 @@ export class DesktopAgentHost {
 
 	async #getOrCreate(input: DesktopAgentMessageInput): Promise<SessionRuntime> {
 		const existing = this.#sessions.get(input.sessionId);
-		if (existing) {
-			if (existing.workspaceRoot !== input.workspaceRoot) {
-				throw desktopAgentError("workspace_mismatch", {
-					message: `Session "${input.sessionId}" is already bound to another workspace`,
-					data: { sessionId: input.sessionId },
-				});
-			}
-			return existing;
-		}
+		if (existing) return existing;
 		const pending = this.#creating.get(input.sessionId);
 		if (pending) return pending;
 		if (!this.#factory) {
@@ -175,12 +164,10 @@ export class DesktopAgentHost {
 	async #createRuntime(input: DesktopAgentMessageInput): Promise<SessionRuntime> {
 		const agent = await this.#factory!({
 			sessionId: input.sessionId,
-			workspaceRoot: input.workspaceRoot,
 			requestApproval: (request, signal) => this.#requestApproval(input.sessionId, request, signal),
 		});
 		const runtime: SessionRuntime = {
 			sessionId: input.sessionId,
-			workspaceRoot: input.workspaceRoot,
 			agent,
 			items: new Map(),
 			unsubscribe: () => {},

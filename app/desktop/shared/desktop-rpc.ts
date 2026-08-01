@@ -96,7 +96,6 @@ export const desktopAgentEventEnvelopeSchema = Type.Object(
 
 export interface DesktopAgentSessionInput {
 	readonly sessionId: string;
-	readonly workspaceRoot: string;
 }
 
 export interface DesktopAgentMessageInput extends DesktopAgentSessionInput {

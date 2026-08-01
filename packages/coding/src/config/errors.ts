@@ -11,6 +11,7 @@ const configError = defineCodedError("coding_config", [
 	"write_conflict",
 	"write_failed",
 	"watch_failed",
+	"scope_unavailable",
 ] as const);
 
 interface FileErrorData {
@@ -111,5 +112,12 @@ export function configWatchError(paths: readonly string[], cause: unknown) {
 		message: "Failed to watch coding configuration",
 		data: { paths: [...paths] } satisfies JsonValue,
 		cause,
+	});
+}
+
+export function configScopeUnavailableError(scope: ConfigFileScope) {
+	return configError("scope_unavailable", {
+		message: `Configuration scope "${scope}" is unavailable without a project root`,
+		data: { scope },
 	});
 }
