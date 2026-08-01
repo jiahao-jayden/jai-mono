@@ -8,4 +8,5 @@
 - `cause` 仅用于进程内诊断；跨进程、事件或 UI 边界通过 `toErrorEnvelope()` 投影为 `{ code, message, data? }`，不得传递 stack、cause 或未筛选的 SDK 错误对象。
 
 # 组件规则
-组件优先考虑https://www.fluidfunctionalism.com/docs/
+
+组件优先考虑 https://www.fluidfunctionalism.com/docs/ ，如果没有需要的再调用 `/shadcn` 去查看用什么组件
