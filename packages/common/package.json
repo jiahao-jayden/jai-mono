@@ -11,6 +11,9 @@
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"test": "bun test"
 	},
+	"dependencies": {
+		"better-result": "^3.0.0"
+	},
 	"devDependencies": {
 		"typescript": "catalog:"
 	}

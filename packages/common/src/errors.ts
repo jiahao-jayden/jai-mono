@@ -1,3 +1,5 @@
+import { TaggedError } from "better-result";
+
 export type JsonPrimitive = null | boolean | number | string;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
@@ -34,7 +36,7 @@ export class CodedError<TCode extends string = string, TData extends JsonValue =
  */
 export function defineCodedError<const TNamespace extends string, const TReasons extends readonly string[]>(
 	namespace: TNamespace,
-	reasons: TReasons,
+	_reasons: TReasons,
 ) {
 	type Reason = TReasons[number];
 	type Code = `${TNamespace}.${Reason}`;
@@ -73,8 +75,23 @@ export function toErrorEnvelope(error: unknown): ErrorEnvelope {
 	if (isErrorEnvelope(error)) {
 		return "data" in error ? { code: error.code, message: error.message, data: error.data } : error;
 	}
+	if (TaggedError.is(error)) {
+		const data = "data" in error && isJsonValue(error.data) ? { data: error.data } : {};
+		return { code: error._tag, message: error.message, ...data };
+	}
 	return {
 		code: "error.unknown",
 		message: getErrorMessage(error),
 	};
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+	if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string")
+		return true;
+	if (Array.isArray(value)) return value.every(isJsonValue);
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		Object.values(value).every(isJsonValue)
+	);
 }
