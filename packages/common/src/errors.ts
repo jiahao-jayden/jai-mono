@@ -55,9 +55,9 @@ export function getErrorMessage(error: unknown): string {
 }
 
 export function getErrorCode(error: unknown): string | undefined {
-	return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
-		? error.code
-		: undefined;
+	if (typeof error !== "object" || error === null) return undefined;
+	if ("code" in error && typeof error.code === "string") return error.code;
+	return "_tag" in error && typeof error._tag === "string" ? error._tag : undefined;
 }
 
 export function isErrorEnvelope(value: unknown): value is ErrorEnvelope {

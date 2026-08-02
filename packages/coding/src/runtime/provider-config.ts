@@ -1,21 +1,50 @@
 import { AnthropicProvider, type Model, OpenAIProvider, type Provider } from "@jai/ai";
-import { defineCodedError } from "@jai/common";
 import { type Static, Type } from "@sinclair/typebox";
+import { TaggedError } from "better-result";
 import { type ConfigMergeCandidate, defineCodingConfig } from "../config";
 import { permissionConfigFields, permissionSettingsSchema } from "../permissions";
 import type { ResolvedCodingProvider } from "./create-coding-agent";
 
 const profileIdPattern = "^[a-z0-9][a-z0-9._-]{0,63}$";
 const sensitiveHeaderPattern = /^(authorization|proxy-authorization|x-api-key)$/i;
-const providerError = defineCodedError("provider", [
-	"invalid_model_ref",
-	"profile_not_found",
-	"profile_disabled",
-	"model_not_found",
-	"model_disabled",
-	"invalid_connection",
-	"missing_credentials",
-] as const);
+type ProviderErrorInit = { readonly data?: Record<string, unknown>; readonly message: string };
+
+class InvalidModelRef extends TaggedError("provider.invalid_model_ref")<ProviderErrorInit> {}
+class ProfileNotFound extends TaggedError("provider.profile_not_found")<ProviderErrorInit> {}
+class ProfileDisabled extends TaggedError("provider.profile_disabled")<ProviderErrorInit> {}
+class ModelNotFound extends TaggedError("provider.model_not_found")<ProviderErrorInit> {}
+class ModelDisabled extends TaggedError("provider.model_disabled")<ProviderErrorInit> {}
+class InvalidConnection extends TaggedError("provider.invalid_connection")<ProviderErrorInit> {}
+class MissingCredentials extends TaggedError("provider.missing_credentials")<ProviderErrorInit> {}
+
+function providerError(
+	reason:
+		| "invalid_model_ref"
+		| "profile_not_found"
+		| "profile_disabled"
+		| "model_not_found"
+		| "model_disabled"
+		| "invalid_connection"
+		| "missing_credentials",
+	init: ProviderErrorInit,
+) {
+	switch (reason) {
+		case "invalid_model_ref":
+			return new InvalidModelRef(init);
+		case "profile_not_found":
+			return new ProfileNotFound(init);
+		case "profile_disabled":
+			return new ProfileDisabled(init);
+		case "model_not_found":
+			return new ModelNotFound(init);
+		case "model_disabled":
+			return new ModelDisabled(init);
+		case "invalid_connection":
+			return new InvalidConnection(init);
+		case "missing_credentials":
+			return new MissingCredentials(init);
+	}
+}
 
 const modelOverlaySchema = Type.Object(
 	{

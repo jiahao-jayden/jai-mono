@@ -2,11 +2,24 @@ import { createHash } from "node:crypto";
 import { type FSWatcher, watch as watchFileSystem } from "node:fs";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import { defineCodedError, getErrorMessage } from "@jai/common";
+import { getErrorMessage } from "@jai/common";
+import { TaggedError } from "better-result";
 import { parse } from "yaml";
 
-const skillCatalogError = defineCodedError("coding_skills", ["catalog_load_failed"] as const);
-const skillFileError = defineCodedError("coding_skill_file", ["invalid_document", "path_escape"] as const);
+class SkillCatalogLoadFailed extends TaggedError("coding_skills.catalog_load_failed")<{
+	readonly cause?: unknown;
+	readonly message: string;
+}> {}
+
+class InvalidSkillDocument extends TaggedError("coding_skill_file.invalid_document")<{
+	readonly cause?: unknown;
+	readonly message: string;
+}> {}
+
+class SkillPathEscape extends TaggedError("coding_skill_file.path_escape")<{
+	readonly data?: Record<string, unknown>;
+	readonly message: string;
+}> {}
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export interface CodingSkillSource {
@@ -100,7 +113,7 @@ export class CodingSkillCatalog {
 			await this.#replaceWatchers();
 			return this.#snapshot;
 		} catch (error) {
-			throw skillCatalogError("catalog_load_failed", {
+			throw new SkillCatalogLoadFailed({
 				message: "Failed to load the Agent Skills catalog",
 				cause: error,
 			});
@@ -224,7 +237,7 @@ async function readSkill(
 		realpath(location),
 	]);
 	if (!isInside(canonicalDirectory, canonicalRoot) || !isInside(canonicalLocation, canonicalDirectory)) {
-		throw skillFileError("path_escape", {
+		throw new SkillPathEscape({
 			message: `Skill path escapes its catalog root: ${skillDirectory}`,
 			data: { path: skillDirectory },
 		});
@@ -342,5 +355,5 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function invalidSkillDocument(message: string, cause?: unknown) {
-	return skillFileError("invalid_document", { message, ...(cause === undefined ? {} : { cause }) });
+	return new InvalidSkillDocument({ message, ...(cause === undefined ? {} : { cause }) });
 }

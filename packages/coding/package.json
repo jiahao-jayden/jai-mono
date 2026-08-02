@@ -24,6 +24,7 @@
 		"@jai/ai": "workspace:*",
 		"@jai/common": "workspace:*",
 		"@sinclair/typebox": "catalog:",
+		"better-result": "^3.0.0",
 		"yaml": "^2.8.1"
 	},
 	"devDependencies": {

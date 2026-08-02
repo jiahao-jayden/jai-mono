@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { open, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import type { AgentEvent, AgentExtension, AgentInput, AgentTool } from "@jai/agent";
-import { defineCodedError } from "@jai/common";
 import { Type } from "@sinclair/typebox";
+import { TaggedError } from "better-result";
 import {
 	type CodingSkillCard,
 	CodingSkillCatalog,
@@ -12,11 +12,24 @@ import {
 	parseSkillDocument,
 } from "./catalog";
 
-const skillRuntimeError = defineCodedError("coding_skill", [
-	"not_available",
-	"path_outside_root",
-	"path_not_found",
-] as const);
+type SkillRuntimeErrorInit = { readonly data?: Record<string, unknown>; readonly message: string };
+class SkillNotAvailable extends TaggedError("coding_skill.not_available")<SkillRuntimeErrorInit> {}
+class SkillPathOutsideRoot extends TaggedError("coding_skill.path_outside_root")<SkillRuntimeErrorInit> {}
+class SkillPathNotFound extends TaggedError("coding_skill.path_not_found")<SkillRuntimeErrorInit> {}
+
+function skillRuntimeError(
+	reason: "not_available" | "path_outside_root" | "path_not_found",
+	init: SkillRuntimeErrorInit,
+) {
+	switch (reason) {
+		case "not_available":
+			return new SkillNotAvailable(init);
+		case "path_outside_root":
+			return new SkillPathOutsideRoot(init);
+		case "path_not_found":
+			return new SkillPathNotFound(init);
+	}
+}
 
 const skillInputSchema = Type.Object(
 	{

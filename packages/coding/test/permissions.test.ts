@@ -80,7 +80,7 @@ describe("PermissionApprovalRegistry", () => {
 		const pending = registry.register(permissionRequest("permission-1"), controller.signal);
 		expect(() => registry.register(permissionRequest("permission-1"))).toThrow("already exists");
 		controller.abort();
-		await expect(pending.result).rejects.toMatchObject({ code: "coding_permission.aborted" });
+		await expect(pending.result).rejects.toMatchObject({ _tag: "coding_permission.aborted" });
 		expect(registry.list()).toEqual([]);
 	});
 
@@ -89,10 +89,10 @@ describe("PermissionApprovalRegistry", () => {
 		const first = registry.register(permissionRequest("permission-1", "session-1"));
 		const second = registry.register(permissionRequest("permission-2", "session-2"));
 		expect(registry.cancelSession("session-1")).toBe(1);
-		await expect(first.result).rejects.toMatchObject({ code: "coding_permission.aborted" });
+		await expect(first.result).rejects.toMatchObject({ _tag: "coding_permission.aborted" });
 		expect(registry.list().map((request) => request.requestId)).toEqual(["permission-2"]);
 		registry.close();
-		await expect(second.result).rejects.toMatchObject({ code: "coding_permission.registry_closed" });
+		await expect(second.result).rejects.toMatchObject({ _tag: "coding_permission.registry_closed" });
 		expect(() => registry.register(permissionRequest("permission-3"))).toThrow("registry is closed");
 	});
 });
@@ -162,7 +162,7 @@ describe("permission middleware", () => {
 		});
 		await expect(
 			middleware(context("Bash", { command: "git push origin main" }), async () => ({ content: [] })),
-		).rejects.toMatchObject({ code: "coding_permission.denied" });
+		).rejects.toMatchObject({ _tag: "coding_permission.denied" });
 		expect(asked).toBe(false);
 	});
 
