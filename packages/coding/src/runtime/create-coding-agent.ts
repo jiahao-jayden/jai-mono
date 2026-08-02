@@ -1,8 +1,10 @@
+import { homedir } from "node:os";
 import {
 	Agent,
 	type AgentCompactionOptions,
 	type AgentEvent,
 	type AgentEventListener,
+	type AgentExtension,
 	type AgentHookMap,
 	type AgentInput,
 	type AgentMessage,
@@ -28,6 +30,7 @@ import {
 	type PermissionApprovalRequest,
 	type PermissionSettings,
 } from "../permissions";
+import { CodingSkillsRuntime, type CodingSkillsRuntimeOptions } from "../skills";
 import { type CodingToolOptions, createCodingTools } from "../tools";
 
 export interface ResolvedCodingProvider {
@@ -50,7 +53,14 @@ export interface CodingAgentRuntimeOptions {
 	readonly toolExecution?: ToolExecutionMode;
 	readonly compaction?: AgentCompactionOptions;
 	readonly hooks?: AgentHookMap;
+	readonly extensions?: readonly AgentExtension[];
 	readonly onObserverError?: (info: ObserverErrorInfo<AgentEvent>) => void;
+}
+
+export interface CodingAgentSkillsOptions
+	extends Partial<Pick<CodingSkillsRuntimeOptions, "homeDirectory" | "workspaceDirectory" | "workspaceTrusted">> {
+	readonly debounceMs?: number;
+	readonly commandNames?: readonly string[];
 }
 
 export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState extends JsonObject = JsonObject> {
@@ -65,6 +75,7 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 		snapshot: ConfigSnapshot<TSchema>,
 	) => ResolvedCodingProvider | Promise<ResolvedCodingProvider>;
 	readonly permissions?: CodingAgentPermissionOptions<TSchema>;
+	readonly skills?: false | CodingAgentSkillsOptions;
 	readonly tools?: Omit<CodingToolOptions, "cwd">;
 	readonly agent?: CodingAgentRuntimeOptions;
 }
@@ -79,17 +90,20 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	readonly #agent: Agent<TAppState>;
 	readonly #runtime: RuntimeState<TSchema>;
 	readonly #stopConfigWatch: () => void;
+	readonly #skills?: CodingSkillsRuntime;
 
 	constructor(
 		agent: Agent<TAppState>,
 		configStore: CodingConfigStore<TSchema>,
 		runtime: RuntimeState<TSchema>,
 		stopConfigWatch: () => void,
+		skills?: CodingSkillsRuntime,
 	) {
 		this.#agent = agent;
 		this.configStore = configStore;
 		this.#runtime = runtime;
 		this.#stopConfigWatch = stopConfigWatch;
+		this.#skills = skills;
 	}
 
 	get configSnapshot(): ConfigSnapshot<TSchema> {
@@ -105,11 +119,11 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	}
 
 	invoke(input: AgentInput): Promise<AgentMessage[]> {
-		return this.#agent.invoke(input);
+		return this.#agent.invoke(this.#skills?.prepareInput(input).input ?? input);
 	}
 
 	stream(input: AgentInput): AgentRun {
-		return this.#agent.stream(input);
+		return this.#agent.stream(this.#skills?.prepareInput(input).input ?? input);
 	}
 
 	subscribe(listener: AgentEventListener): () => void {
@@ -137,6 +151,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#runtime.closed = true;
 		this.#agent.abort();
 		this.#stopConfigWatch();
+		this.#skills?.close();
 		this.configStore.close();
 	}
 }
@@ -151,6 +166,21 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const snapshot = await configStore.load();
 	const runtime: RuntimeState<TSchema> = { snapshot, closed: false };
 	const { provider, model } = await options.resolveProvider(snapshot);
+	const skills =
+		options.skills === false
+			? undefined
+			: await CodingSkillsRuntime.create({
+					homeDirectory: options.skills?.homeDirectory ?? options.configOptions?.homeDir ?? homedir(),
+					workspaceDirectory:
+						options.skills?.workspaceDirectory ??
+						(options.executionContext.localFileAccess ? options.executionContext.configRoot : undefined),
+					workspaceTrusted:
+						options.skills?.workspaceTrusted ??
+						options.configOptions?.workspaceTrusted ??
+						options.executionContext.localFileAccess,
+					debounceMs: options.skills?.debounceMs,
+					commandNames: options.skills?.commandNames,
+				});
 	const sessionStore = new FileSessionStore<TAppState>(options.sessionDirectory);
 	const sessionHandle = await openSession(sessionStore, options.sessionId, options.appState ?? ({} as TAppState));
 	const selectPermissionSettings = options.permissions?.selectSettings ?? defaultPermissionSettings;
@@ -190,12 +220,13 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			...hooks,
 			aroundToolCall,
 		},
+		extensions: [...(skills ? [skills.extension] : []), ...(options.agent?.extensions ?? [])],
 		onObserverError: options.agent?.onObserverError,
 	});
 	const stopConfigWatch = configStore.watch((event) => {
 		if (!runtime.closed && event.status === "valid") runtime.snapshot = event.snapshot;
 	});
-	return new CodingAgent(agent, configStore, runtime, stopConfigWatch);
+	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, skills);
 }
 
 function defaultPermissionSettings<TSchema extends TObject>(snapshot: ConfigSnapshot<TSchema>): PermissionSettings {

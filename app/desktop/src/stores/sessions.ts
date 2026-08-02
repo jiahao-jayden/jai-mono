@@ -21,6 +21,7 @@ interface SessionListState {
 	error?: string;
 	refresh(): Promise<void>;
 	loadMore(): Promise<void>;
+	upsert(session: CodingSession): void;
 }
 
 export const useSessionListStore = create<SessionListState>((set, get) => ({
@@ -59,6 +60,12 @@ export const useSessionListStore = create<SessionListState>((set, get) => ({
 		} catch (error) {
 			set({ loading: false, error: getErrorMessage(error) });
 		}
+	},
+
+	upsert(session) {
+		set((state) => ({
+			sessions: orderSessions(mergeSessions(state.sessions, [session]), state.runningSessionIds),
+		}));
 	},
 }));
 

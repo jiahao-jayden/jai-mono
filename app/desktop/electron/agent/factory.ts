@@ -41,6 +41,7 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 		return {
 			invoke: (input) => codingAgent.invoke(input),
 			subscribe: (listener) => codingAgent.subscribe(listener),
+			waitForIdle: () => codingAgent.waitForIdle(),
 			abort: () => codingAgent.abort(),
 			steer: (message) => codingAgent.steer(message),
 			followUp: (message) => codingAgent.followUp(message),

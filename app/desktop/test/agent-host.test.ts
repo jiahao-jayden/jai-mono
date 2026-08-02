@@ -118,6 +118,55 @@ describe("DesktopAgentHost", () => {
 		});
 		host.close();
 	});
+
+	test("配置失效时立即关闭空闲 runtime，并在运行结束后关闭忙碌 runtime", async () => {
+		let finishRun = (_messages: AgentMessage[]) => {};
+		const pendingRun = new Promise<AgentMessage[]>((resolve) => {
+			finishRun = resolve;
+		});
+		const agent = new FakeAgent(async () => pendingRun);
+		const host = new DesktopAgentHost(() => {}, async () => agent);
+
+		await host.send(input("keep running"));
+		host.invalidateSessions();
+		expect(host.hasSession("session-1")).toBe(true);
+
+		finishRun([]);
+		await agent.finished;
+		await waitFor(() => !host.hasSession("session-1"));
+		expect(host.hasSession("session-1")).toBe(false);
+		host.close();
+	});
+
+	test("运行中移动等待工具结果落盘并重建 execution context", async () => {
+		const runningAgent = new RebindableFakeAgent();
+		const replacement = new FakeAgent(async () => []);
+		let factoryCalls = 0;
+		const host = new DesktopAgentHost(() => {}, async () => {
+			factoryCalls++;
+			return factoryCalls === 1 ? runningAgent : replacement;
+		});
+
+		await host.send(input("move while running"));
+		await runningAgent.toolStarted;
+		let moved = false;
+		const moving = host.rebindSession("session-1", async () => {
+			moved = true;
+			return "moved";
+		});
+		await Bun.sleep(1);
+		expect(moved).toBe(false);
+
+		runningAgent.finishTool();
+		await expect(moving).resolves.toBe("moved");
+
+		expect(runningAgent.aborted).toBe(true);
+		expect(runningAgent.toolResultPersisted).toBe(true);
+		expect(factoryCalls).toBe(2);
+		await expect(host.send(input("continue in new workspace"))).resolves.toEqual({ accepted: true });
+		await replacement.finished;
+		host.close();
+	});
 });
 
 class FakeAgent implements HostedCodingAgent {
@@ -146,7 +195,98 @@ class FakeAgent implements HostedCodingAgent {
 	abort(): void {}
 	steer(_message: AgentMessage): void {}
 	followUp(_message: AgentMessage): void {}
+	waitForIdle(): Promise<void> {
+		return this.finished.then(() => {});
+	}
 	close(): void {}
+}
+
+class RebindableFakeAgent implements HostedCodingAgent {
+	readonly #listeners = new Set<AgentEventListener>();
+	readonly toolStarted: Promise<void>;
+	readonly #resolveToolStarted: () => void;
+	readonly #toolFinished: Promise<void>;
+	readonly #resolveToolFinished: () => void;
+	readonly #aborted: Promise<void>;
+	readonly #resolveAborted: () => void;
+	finished: Promise<AgentMessage[]> = Promise.resolve([]);
+	aborted = false;
+	toolResultPersisted = false;
+
+	constructor() {
+		[this.toolStarted, this.#resolveToolStarted] = deferred();
+		[this.#toolFinished, this.#resolveToolFinished] = deferred();
+		[this.#aborted, this.#resolveAborted] = deferred();
+	}
+
+	invoke(): Promise<AgentMessage[]> {
+		this.finished = this.#run();
+		return this.finished;
+	}
+
+	subscribe(listener: AgentEventListener): () => void {
+		this.#listeners.add(listener);
+		return () => this.#listeners.delete(listener);
+	}
+
+	finishTool(): void {
+		this.#resolveToolFinished();
+	}
+
+	abort(): void {
+		this.aborted = true;
+		this.#resolveAborted();
+	}
+
+	waitForIdle(): Promise<void> {
+		return this.finished.then(() => {});
+	}
+
+	steer(_message: AgentMessage): void {}
+	followUp(_message: AgentMessage): void {}
+	close(): void {}
+
+	async #run(): Promise<AgentMessage[]> {
+		const assistant = {
+			...assistantMessage(""),
+			content: [{ type: "toolCall" as const, id: "call-1", name: "Read", arguments: { path: "README.md" } }],
+			stopReason: "toolUse" as const,
+		};
+		await this.#emit({ type: "message_end", message: assistant });
+		await this.#emit({
+			type: "tool_execution_start",
+			toolCallId: "call-1",
+			toolName: "Read",
+			args: { path: "README.md" },
+		});
+		this.#resolveToolStarted();
+		await this.#toolFinished;
+		await this.#emit({
+			type: "tool_execution_end",
+			toolCallId: "call-1",
+			toolName: "Read",
+			result: { content: [{ type: "text", text: "ok" }] },
+			isError: false,
+		});
+		await this.#emit({
+			type: "message_end",
+			message: {
+				role: "toolResult",
+				toolCallId: "call-1",
+				toolName: "Read",
+				content: [{ type: "text", text: "ok" }],
+				isError: false,
+				timestamp: 3,
+			},
+		});
+		this.toolResultPersisted = true;
+		await this.#aborted;
+		return [assistant];
+	}
+
+	async #emit(event: AgentEvent): Promise<void> {
+		for (const listener of this.#listeners) await listener(event);
+	}
 }
 
 function input(message: string) {
@@ -191,4 +331,12 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 		await Bun.sleep(1);
 	}
 	throw new Error("Timed out waiting for condition");
+}
+
+function deferred(): readonly [Promise<void>, () => void] {
+	let resolve = () => {};
+	const promise = new Promise<void>((done) => {
+		resolve = done;
+	});
+	return [promise, resolve] as const;
 }

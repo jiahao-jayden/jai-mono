@@ -74,6 +74,9 @@ export function evaluatePermission(
 			? decision("allow", "built-in", "Built-in read-only Bash command")
 			: decision("ask", "built-in", "Bash command requires confirmation");
 	}
+	if (call.toolName === "Skill") {
+		return decision("allow", "built-in", "Skill resources are constrained to the selected Skill root");
+	}
 	return decision("ask", "built-in", "Unknown permission behavior");
 }
 

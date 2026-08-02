@@ -1,30 +1,41 @@
-import type { CodingSession, Workspace } from "@jai/coding/business";
+import type { CodingSession } from "@jai/coding/business";
 import type { PermissionResolution } from "@jai/coding/permissions/approval";
-import {
-	ArrowUp,
-	Check,
-	ChevronDown,
-	CircleStop,
-	Folder,
-	PanelRight,
-	Plus,
-	ShieldAlert,
-	Sparkles,
-	TerminalSquare,
-	X,
-} from "lucide-react";
-import { type RefObject, useLayoutEffect, useRef, useState } from "react";
-import type { DesktopAgentStatus, DesktopPermissionItem, DesktopTranscriptItem } from "../../../shared/desktop-rpc";
+import { type CSSProperties, type RefObject, useLayoutEffect, useRef, useState } from "react";
+import { useIcons } from "@/lib/icon-context";
+import type {
+	DesktopAgentStatus,
+	DesktopPermissionItem,
+	DesktopProviderConfigSnapshot,
+	DesktopTranscriptItem,
+	DesktopWorkspace,
+} from "../../../shared/desktop-rpc";
+import { Button } from "../ui/button";
+import { SlashInvocationText } from "./slash-invocation";
+import { WorkspacePicker } from "./workspace-picker";
 
 interface ChatColumnProps {
 	session?: CodingSession;
-	workspace?: Workspace;
+	workspace?: DesktopWorkspace;
+	workspaces: readonly DesktopWorkspace[];
 	status: DesktopAgentStatus;
 	items: readonly DesktopTranscriptItem[];
 	loading: boolean;
 	error?: string;
+	providerConfig?: DesktopProviderConfigSnapshot;
+	providerLoading: boolean;
+	providerError: boolean;
+	workspaceBusy: boolean;
+	workspaceLoading: boolean;
+	workspaceLoadError: boolean;
+	workspaceError?: string;
+	sidebarOpen: boolean;
 	rightPanelOpen: boolean;
+	onToggleSidebar(): void;
 	onToggleRightPanel(): void;
+	onOpenProviderSettings(): void;
+	onChooseWorkspace(workspace: DesktopWorkspace): Promise<void>;
+	onAddWorkspace(): Promise<void>;
+	onRetryWorkspaces(): void;
 	onSend(message: string): Promise<void>;
 	onAbort(): Promise<void>;
 	onResolvePermission(resolution: PermissionResolution): Promise<void>;
@@ -33,16 +44,35 @@ interface ChatColumnProps {
 export function ChatColumn({
 	session,
 	workspace,
+	workspaces,
 	status,
 	items,
 	loading,
 	error,
+	providerConfig,
+	providerLoading,
+	providerError,
+	workspaceBusy,
+	workspaceLoading,
+	workspaceLoadError,
+	workspaceError,
+	sidebarOpen,
 	rightPanelOpen,
+	onToggleSidebar,
 	onToggleRightPanel,
+	onOpenProviderSettings,
+	onChooseWorkspace,
+	onAddWorkspace,
+	onRetryWorkspaces,
 	onSend,
 	onAbort,
 	onResolvePermission,
 }: ChatColumnProps) {
+	const icons = useIcons();
+	const FolderIcon = icons.folder;
+	const FolderOffIcon = icons["folder-off"];
+	const PanelLeftIcon = icons["panel-left-close"];
+	const PanelRightIcon = icons["panel-right"];
 	const [draft, setDraft] = useState("");
 	const [sending, setSending] = useState(false);
 	const [sendError, setSendError] = useState<string>();
@@ -66,33 +96,70 @@ export function ChatColumn({
 
 	const isNewChat = !session;
 
+	const workspaceLabel =
+		workspace?.displayName ??
+		(workspaceLoading ? "Loading workspace…" : workspaceLoadError ? "Workspaces unavailable" : null);
+
+	const drag = { WebkitAppRegion: "drag" } as CSSProperties;
+	const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
+
 	return (
 		<section className="flex min-w-0 flex-1 flex-col bg-background">
-			<header className="flex shrink-0 items-center justify-between px-5 pt-3.5 pb-3">
+			<header
+				className={`flex h-13 shrink-0 items-center justify-between pr-5 ${sidebarOpen ? "pl-5" : "pl-20"}`}
+				style={drag}
+			>
 				<div className="flex min-w-0 items-center gap-2.5 text-[15px]">
-					<Folder size={17} className="shrink-0 text-muted-foreground" />
-					<span className="max-w-40 truncate font-semibold">{workspace?.displayName ?? "Local"}</span>
+					{!sidebarOpen ? (
+						<div className="mr-1 shrink-0" style={noDrag}>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-sm"
+								onClick={onToggleSidebar}
+								aria-label="Show sidebar"
+								title="Show sidebar"
+								className="text-muted-foreground"
+							>
+								<PanelLeftIcon size={16} />
+							</Button>
+						</div>
+					) : null}
+					{workspaceLabel ? (
+						<>
+							{workspace && !workspace.available ? (
+								<FolderOffIcon size={16} className="shrink-0 text-destructive" />
+							) : (
+								<FolderIcon size={16} className="shrink-0 text-muted-foreground" />
+							)}
+							<span className="max-w-40 truncate font-semibold">{workspaceLabel}</span>
+						</>
+					) : null}
 					{session ? (
 						<>
-							<span className="text-muted-foreground/40">/</span>
+							{workspaceLabel ? <span className="text-muted-foreground/40">/</span> : null}
 							<span className="truncate font-semibold">{session.title}</span>
 						</>
 					) : null}
 				</div>
-				{session ? (
-					<button
-						type="button"
-						onClick={onToggleRightPanel}
-						aria-pressed={rightPanelOpen}
-						aria-label={rightPanelOpen ? "Hide task panel" : "Show task panel"}
-						title={rightPanelOpen ? "Hide task panel" : "Show task panel"}
-						className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-					>
-						<PanelRight size={16} />
-					</button>
-				) : (
-					<span className="size-8" aria-hidden="true" />
-				)}
+				<div style={noDrag}>
+					{session ? (
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-sm"
+							onClick={onToggleRightPanel}
+							aria-pressed={rightPanelOpen}
+							aria-label={rightPanelOpen ? "Hide task panel" : "Show task panel"}
+							title={rightPanelOpen ? "Hide task panel" : "Show task panel"}
+							className="shrink-0 text-muted-foreground"
+						>
+							<PanelRightIcon size={16} />
+						</Button>
+					) : (
+						<span className="size-8" aria-hidden="true" />
+					)}
+				</div>
 			</header>
 
 			{isNewChat ? (
@@ -112,11 +179,22 @@ export function ChatColumn({
 							onSubmit={submit}
 							onAbort={onAbort}
 							status={status}
-							disabled={sending || status === "running"}
+							disabled={sending || status === "running" || workspace?.available === false}
 							workspace={workspace}
+							workspaces={workspaces}
+							workspaceBusy={workspaceBusy}
+							workspaceLoading={workspaceLoading}
+							workspaceLoadError={workspaceLoadError}
+							onChooseWorkspace={onChooseWorkspace}
+							onAddWorkspace={onAddWorkspace}
+							onRetryWorkspaces={onRetryWorkspaces}
+							providerConfig={providerConfig}
+							providerLoading={providerLoading}
+							providerError={providerError}
+							onOpenProviderSettings={onOpenProviderSettings}
 							large
 						/>
-						<ComposerError message={sendError || error} />
+						<ComposerError message={sendError || workspaceError || error} />
 					</div>
 				</div>
 			) : (
@@ -155,10 +233,21 @@ export function ChatColumn({
 								onSubmit={submit}
 								onAbort={onAbort}
 								status={status}
-								disabled={sending || status === "running"}
+								disabled={sending || status === "running" || workspace?.available === false}
 								workspace={workspace}
+								workspaces={workspaces}
+								workspaceBusy={workspaceBusy}
+								workspaceLoading={workspaceLoading}
+								workspaceLoadError={workspaceLoadError}
+								onChooseWorkspace={onChooseWorkspace}
+								onAddWorkspace={onAddWorkspace}
+								onRetryWorkspaces={onRetryWorkspaces}
+								providerConfig={providerConfig}
+								providerLoading={providerLoading}
+								providerError={providerError}
+								onOpenProviderSettings={onOpenProviderSettings}
 							/>
-							<ComposerError message={sendError || error} />
+							<ComposerError message={sendError || workspaceError || error} />
 						</div>
 					</div>
 					<p className="shrink-0 py-2 pb-3 text-center text-[12.5px] text-muted-foreground">
@@ -178,6 +267,17 @@ function Composer({
 	status,
 	disabled,
 	workspace,
+	workspaces,
+	workspaceBusy,
+	workspaceLoading,
+	workspaceLoadError,
+	onChooseWorkspace,
+	onAddWorkspace,
+	onRetryWorkspaces,
+	providerConfig,
+	providerLoading,
+	providerError,
+	onOpenProviderSettings,
 	large = false,
 }: {
 	value: string;
@@ -186,88 +286,128 @@ function Composer({
 	onAbort(): Promise<void>;
 	status: DesktopAgentStatus;
 	disabled: boolean;
-	workspace?: Workspace;
+	workspace?: DesktopWorkspace;
+	workspaces: readonly DesktopWorkspace[];
+	workspaceBusy: boolean;
+	workspaceLoading: boolean;
+	workspaceLoadError: boolean;
+	onChooseWorkspace(workspace: DesktopWorkspace): Promise<void>;
+	onAddWorkspace(): Promise<void>;
+	onRetryWorkspaces(): void;
+	providerConfig?: DesktopProviderConfigSnapshot;
+	providerLoading: boolean;
+	providerError: boolean;
+	onOpenProviderSettings(): void;
 	large?: boolean;
 }) {
+	const icons = useIcons();
+	const PlusIcon = icons.plus;
+	const SettingsIcon = icons.settings;
+	const StopIcon = icons["stop-circle"];
+	const ArrowUpIcon = icons["arrow-up"];
+	const SparklesIcon = icons.sparkles;
 	const canSend = value.trim().length > 0 && !disabled;
 	const showStop = status === "running";
+	const modelStatus = resolveModelStatus(providerConfig, providerLoading, providerError);
 
 	return (
-		<div className="rounded-[18px] border border-border bg-card shadow-[0_2px_10px_rgba(31,36,33,0.05)]">
-			{!large ? (
-				<div className="flex h-[46px] items-center gap-[9px] rounded-t-[17px] border-b border-border/70 bg-primary-2/[0.035] px-[18px] text-[13.5px] font-medium tracking-[-0.005em] text-primary-2">
-					<Sparkles size={15} />
-					{status === "running"
-						? `Working in ${workspace?.displayName ?? "this session"}`
-						: "Waiting for your lead"}
-				</div>
-			) : null}
-			<div className="px-2 pt-1.5 pb-2">
-				<textarea
-					value={value}
-					onChange={(event) => onValueChange(event.target.value)}
-					onKeyDown={(event) => {
-						if (event.key === "Enter" && !event.shiftKey) {
-							event.preventDefault();
-							onSubmit();
+		<div>
+			<div className="rounded-[18px] border border-border bg-card shadow-surface-3">
+				{!large ? (
+					<div className="flex h-[46px] items-center gap-[9px] rounded-t-[17px] border-b border-border/70 bg-primary-2/[0.035] px-[18px] text-[13.5px] font-medium tracking-[-0.005em] text-primary-2">
+						<SparklesIcon size={15} />
+						{status === "running"
+							? `Working in ${workspace?.displayName ?? "this session"}`
+							: "Waiting for your lead"}
+					</div>
+				) : null}
+				<div className="px-2 pt-1.5 pb-2">
+					<textarea
+						value={value}
+						onChange={(event) => onValueChange(event.target.value)}
+						onKeyDown={(event) => {
+							if (event.key === "Enter" && !event.shiftKey) {
+								event.preventDefault();
+								onSubmit();
+							}
+						}}
+						disabled={disabled}
+						rows={large ? 2 : 1}
+						placeholder={
+							status === "running"
+								? "Agent is working…"
+								: large
+									? "What should the agent work on?"
+									: "Write a message…"
 						}
-					}}
-					disabled={disabled}
-					rows={large ? 2 : 1}
-					placeholder={
-						status === "running"
-							? "Agent is working…"
-							: large
-								? "What should the agent work on?"
-								: "Write a message…"
-					}
-					aria-label="Message"
-					className={`block w-full resize-none bg-transparent px-3 pt-3 pb-1 text-[16px] text-foreground placeholder:text-muted-foreground/80 disabled:opacity-60 ${
-						large ? "min-h-[60px]" : "min-h-[44px]"
-					}`}
-				/>
-				<div className="flex items-center justify-between px-1 pt-1">
-					<div className="flex min-w-0 items-center gap-1.5">
-						<button
+						aria-label="Message"
+						className={`block w-full resize-none bg-transparent px-3 pt-3 pb-1 text-[16px] text-foreground placeholder:text-muted-foreground/80 disabled:opacity-60 ${
+							large ? "min-h-[60px]" : "min-h-[44px]"
+						}`}
+					/>
+					<div className="flex items-center justify-between px-1 pt-1">
+						<Button
 							type="button"
+							variant="ghost"
+							size="icon-sm"
 							disabled
 							aria-label="Attach files"
 							title="File attachments are coming later"
-							className="flex size-8 shrink-0 cursor-not-allowed items-center justify-center rounded-[9px] border border-border text-foreground/70 opacity-55"
+							className="shrink-0"
 						>
-							<Plus size={14} strokeWidth={1.6} />
-						</button>
-						<button
-							type="button"
-							disabled
-							title="Folder selection is coming later"
-							className="flex min-w-0 cursor-not-allowed items-center gap-[7px] rounded-[9px] px-3 py-[7px] text-[13.5px] font-medium text-foreground/80 opacity-65"
-						>
-							{large ? <Folder size={14} /> : <ShieldAlert size={14} className="text-primary-2" />}
-							<span className="truncate">{large ? workspace?.displayName || "Working folder" : "Manual"}</span>
-							<ChevronDown size={11} className="shrink-0 opacity-60" />
-						</button>
-					</div>
-					<div className="flex shrink-0 items-center gap-2">
-						<span
-							title="Provider configuration is not available yet"
-							className="hidden items-center gap-2 rounded-[9px] px-3 py-[7px] text-[13.5px] font-medium text-foreground/80 min-[900px]:flex"
-						>
-							<span className="size-[7px] rounded-full bg-primary-2" />
-							Model not configured
-						</span>
-						<button
-							type="button"
-							onClick={() => (showStop ? void onAbort() : onSubmit())}
-							disabled={!showStop && !canSend}
-							aria-label={showStop ? "Stop agent" : "Send message"}
-							title={showStop ? "Stop agent" : "Send message"}
-							className="flex size-[34px] items-center justify-center rounded-[9px] bg-foreground text-background transition-colors hover:bg-foreground/85 disabled:cursor-not-allowed disabled:opacity-35"
-						>
-							{showStop ? <CircleStop size={15} /> : <ArrowUp size={15} strokeWidth={1.8} />}
-						</button>
+							<PlusIcon size={14} strokeWidth={1.5} />
+						</Button>
+						<div className="flex shrink-0 items-center gap-2">
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								trailingIcon={SettingsIcon}
+								onClick={onOpenProviderSettings}
+								disabled={status === "running"}
+								title={
+									status === "running"
+										? "Wait for the current run to finish before switching models"
+										: modelStatus.title
+								}
+								className="hidden max-w-56 text-[13.5px] font-medium text-foreground/80 min-[900px]:inline-flex"
+							>
+								<span className="flex min-w-0 items-center gap-2">
+									<span
+										className={`size-[7px] shrink-0 rounded-full ${
+											modelStatus.configured ? "bg-primary-2" : "bg-muted-foreground/35"
+										}`}
+									/>
+									<span className="truncate">{modelStatus.label}</span>
+								</span>
+							</Button>
+							<Button
+								type="button"
+								variant="primary"
+								size="icon-sm"
+								onClick={() => (showStop ? void onAbort() : onSubmit())}
+								disabled={!showStop && !canSend}
+								aria-label={showStop ? "Stop agent" : "Send message"}
+								title={showStop ? "Stop agent" : "Send message"}
+							>
+								{showStop ? <StopIcon size={15} /> : <ArrowUpIcon size={15} strokeWidth={1.8} />}
+							</Button>
+						</div>
 					</div>
 				</div>
+			</div>
+			<div className="mt-1.5 pl-2">
+				<WorkspacePicker
+					workspace={workspace}
+					workspaces={workspaces}
+					disabled={status === "running"}
+					busy={workspaceBusy}
+					loading={workspaceLoading}
+					loadError={workspaceLoadError}
+					onChoose={onChooseWorkspace}
+					onAdd={onAddWorkspace}
+					onRetry={onRetryWorkspaces}
+				/>
 			</div>
 		</div>
 	);
@@ -280,11 +420,16 @@ function TranscriptItem({
 	item: DesktopTranscriptItem;
 	onResolvePermission(resolution: PermissionResolution): Promise<void>;
 }) {
+	const TerminalIcon = useIcons().terminal;
 	if (item.kind === "message") {
 		if (item.role === "toolResult") {
 			return (
 				<div className="mx-1 rounded-lg bg-muted px-3 py-2 font-mono text-[11.5px] whitespace-pre-wrap text-muted-foreground">
-					{item.text}
+					{item.slashInvocation ? (
+						<SlashInvocationText text={item.text} invocation={item.slashInvocation} />
+					) : (
+						item.text
+					)}
 				</div>
 			);
 		}
@@ -310,7 +455,7 @@ function TranscriptItem({
 	if (item.kind === "tool") {
 		return (
 			<div className="flex items-center gap-2 rounded-lg px-1 py-1.5 text-[12px] text-muted-foreground">
-				<TerminalSquare size={13} />
+				<TerminalIcon size={13} />
 				<span className="font-medium text-foreground/75">{item.toolName}</span>
 				<span className="min-w-0 flex-1 truncate">{item.summary}</span>
 				<span>{item.status}</span>
@@ -338,13 +483,17 @@ function PermissionRequest({
 	item: DesktopPermissionItem;
 	onResolve(resolution: PermissionResolution): Promise<void>;
 }) {
+	const icons = useIcons();
+	const CheckIcon = icons.check;
+	const XIcon = icons.x;
+	const ShieldAlertIcon = icons["shield-alert"];
 	const [resolving, setResolving] = useState(false);
 	const [resolveError, setResolveError] = useState<string>();
 
 	if (item.status !== "pending") {
 		return (
 			<div className="flex items-center gap-2 rounded-[12px] border border-border px-3 py-2 text-[12px] text-muted-foreground">
-				{item.status === "allowed" ? <Check size={14} /> : <X size={14} />}
+				{item.status === "allowed" ? <CheckIcon size={14} /> : <XIcon size={14} />}
 				Permission {item.status}
 			</div>
 		);
@@ -366,7 +515,7 @@ function PermissionRequest({
 		<div className="rounded-[14px] border border-border bg-card p-4">
 			<div className="flex gap-3">
 				<span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-2/10 text-primary-2">
-					<ShieldAlert size={16} />
+					<ShieldAlertIcon size={16} />
 				</span>
 				<div className="min-w-0">
 					<p className="text-[13px] font-semibold">{item.request.summary.title}</p>
@@ -381,30 +530,34 @@ function PermissionRequest({
 				</div>
 			</div>
 			<div className="mt-3 flex justify-end gap-2">
-				<button
+				<Button
 					type="button"
+					variant="ghost"
+					size="sm"
 					onClick={() => void resolve("deny")}
 					disabled={resolving}
-					className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-45"
+					className="text-muted-foreground hover:text-foreground"
 				>
 					Deny
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
+					variant="tertiary"
+					size="sm"
 					onClick={() => void resolve("allowOnce")}
 					disabled={resolving}
-					className="rounded-lg border border-border px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-45"
 				>
 					{resolving ? "Submitting…" : "Allow once"}
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
+					variant="primary"
+					size="sm"
 					onClick={() => void resolve("alwaysAllow")}
 					disabled={resolving}
-					className="rounded-lg bg-foreground px-3 py-1.5 text-[12px] font-medium text-background transition-colors hover:bg-foreground/85 disabled:pointer-events-none disabled:opacity-45"
 				>
 					Always allow
-				</button>
+				</Button>
 			</div>
 			{resolveError ? <p className="mt-2 text-right text-[11.5px] text-destructive">{resolveError}</p> : null}
 		</div>
@@ -422,7 +575,11 @@ function TranscriptLoading() {
 }
 
 function ComposerError({ message }: { message?: string }) {
-	return message ? <p className="mt-2 px-2 text-[12px] text-destructive">{message}</p> : null;
+	return message ? (
+		<p className="mt-2 px-2 text-[12px] text-destructive" role="alert" aria-live="assertive">
+			{message}
+		</p>
+	) : null;
 }
 
 function useTranscriptAutoscroll(ref: RefObject<HTMLDivElement | null>, itemCount: number, status: DesktopAgentStatus) {
@@ -440,4 +597,28 @@ function greeting(): string {
 	if (hour < 12) return "Good morning";
 	if (hour < 18) return "Good afternoon";
 	return "Good evening";
+}
+
+function resolveModelStatus(
+	config: DesktopProviderConfigSnapshot | undefined,
+	loading: boolean,
+	error: boolean,
+): { readonly label: string; readonly title: string; readonly configured: boolean } {
+	if (loading) return { label: "Loading model…", title: "Loading Provider configuration", configured: false };
+	if (error) return { label: "Model unavailable", title: "Open Provider settings to retry", configured: false };
+	const modelRef = config?.activeModelRef;
+	if (!modelRef) return { label: "Choose model", title: "Configure a Provider and model", configured: false };
+	const separator = modelRef.indexOf("/");
+	const profileId = modelRef.slice(0, separator);
+	const modelId = modelRef.slice(separator + 1);
+	const profile = config.profiles.find((candidate) => candidate.id === profileId);
+	const model = profile?.models.find((candidate) => candidate.id === modelId);
+	const credentialReady = profile?.authentication === "none" || profile?.credentialConfigured === true;
+	return {
+		label: model?.name ?? modelRef,
+		title: credentialReady
+			? `${profile?.name ?? profileId} · ${model?.name ?? modelId}`
+			: "Provider credential required",
+		configured: credentialReady,
+	};
 }

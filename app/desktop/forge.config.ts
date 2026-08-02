@@ -1,6 +1,5 @@
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { MakerDeb } from "@electron-forge/maker-deb";
-import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
@@ -12,7 +11,7 @@ const config: ForgeConfig = {
 		asar: true,
 	},
 	rebuildConfig: {},
-	makers: [new MakerSquirrel({}), new MakerZIP({}, ["darwin"]), new MakerDMG({}), new MakerDeb({})],
+	makers: [new MakerSquirrel({}), new MakerZIP({}, ["darwin"]), new MakerDeb({})],
 	plugins: [
 		new VitePlugin({
 			build: [

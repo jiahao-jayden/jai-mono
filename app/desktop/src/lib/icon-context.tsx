@@ -2,6 +2,8 @@
 
 import {
 	Add01Icon,
+	Alert02Icon,
+	Archive01Icon,
 	ArrowDown01Icon,
 	ArrowLeft01Icon,
 	ArrowRight01Icon,
@@ -15,16 +17,24 @@ import {
 	Clock01Icon,
 	ColorsIcon,
 	ComputerIcon,
+	ComputerTerminal01Icon,
 	Copy01Icon,
+	Delete02Icon,
 	DropperIcon,
 	Edit01Icon,
 	FavouriteIcon,
+	FileCodeIcon,
+	Folder01Icon,
+	FolderOffIcon,
+	FolderOpenIcon,
 	Forward01Icon,
 	Globe02Icon,
 	Home01Icon,
 	Idea01Icon,
 	Image01Icon,
 	InboxIcon,
+	Key01Icon,
+	Layers01Icon,
 	LibrariesIcon,
 	Link01Icon,
 	Loading03Icon,
@@ -34,6 +44,8 @@ import {
 	MoreHorizontalIcon,
 	Notification01Icon,
 	PaintBrush01Icon,
+	PanelLeftCloseIcon,
+	PanelRightIcon,
 	PauseIcon,
 	PlayIcon,
 	RefreshIcon,
@@ -41,8 +53,10 @@ import {
 	Search01Icon,
 	Settings01Icon,
 	Shield01Icon,
+	SparklesIcon,
 	SquareLock01Icon,
 	StarIcon,
+	StopCircleIcon,
 	Sun01Icon,
 	Tick01Icon,
 	UserGroupIcon,
@@ -103,6 +117,20 @@ export type IconName =
 	| "pipette"
 	| "home"
 	| "message-circle"
+	| "archive"
+	| "folder"
+	| "folder-off"
+	| "folder-open"
+	| "panel-left-close"
+	| "panel-right"
+	| "sparkles"
+	| "terminal"
+	| "key"
+	| "trash"
+	| "file-code"
+	| "layers"
+	| "stop-circle"
+	| "shield-alert"
 	| "inbox"
 	| "pencil"
 	| "skip-forward"
@@ -158,6 +186,20 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	pause: createHugeicon(PauseIcon),
 	home: createHugeicon(Home01Icon),
 	"message-circle": createHugeicon(BubbleChatIcon),
+	archive: createHugeicon(Archive01Icon),
+	folder: createHugeicon(Folder01Icon),
+	"folder-off": createHugeicon(FolderOffIcon),
+	"folder-open": createHugeicon(FolderOpenIcon),
+	"panel-left-close": createHugeicon(PanelLeftCloseIcon),
+	"panel-right": createHugeicon(PanelRightIcon),
+	sparkles: createHugeicon(SparklesIcon),
+	terminal: createHugeicon(ComputerTerminal01Icon),
+	key: createHugeicon(Key01Icon),
+	trash: createHugeicon(Delete02Icon),
+	"file-code": createHugeicon(FileCodeIcon),
+	layers: createHugeicon(Layers01Icon),
+	"stop-circle": createHugeicon(StopCircleIcon),
+	"shield-alert": createHugeicon(Alert02Icon),
 	inbox: createHugeicon(InboxIcon),
 	pencil: createHugeicon(Edit01Icon),
 	"skip-forward": createHugeicon(Forward01Icon),

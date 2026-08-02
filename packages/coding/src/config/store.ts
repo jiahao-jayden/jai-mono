@@ -36,6 +36,11 @@ interface LoadedScope {
 	readonly revision: string;
 }
 
+export interface ConfigScopeSnapshot<TSchema extends TObject> {
+	readonly settings: Partial<ResolvedCodingSettings<TSchema>>;
+	readonly revision: string | null;
+}
+
 const scopes = ["user", "project-shared", "project-local"] as const;
 
 export function resolveCodingConfigPaths(
@@ -75,7 +80,7 @@ export class CodingConfigStore<TSchema extends TObject> {
 
 	async load(): Promise<ConfigSnapshot<TSchema>> {
 		const loadedEntries = await Promise.all(
-			scopes.map(async (scope) => [scope, await this.readScope(scope)] as const),
+			scopes.map(async (scope) => [scope, await this.readScopeFile(scope)] as const),
 		);
 		const loaded = Object.fromEntries(loadedEntries) as Record<ConfigFileScope, LoadedScope | undefined>;
 		const sources: ConfigSourceValue[] = [];
@@ -115,6 +120,14 @@ export class CodingConfigStore<TSchema extends TObject> {
 		this.lastValid = snapshot;
 		if (this.listeners.size > 0) await this.refreshWatchers();
 		return snapshot;
+	}
+
+	async readScope(scope: ConfigFileScope): Promise<ConfigScopeSnapshot<TSchema>> {
+		const loaded = await this.readScopeFile(scope);
+		return {
+			settings: structuredClone(loaded?.settings ?? {}) as Partial<ResolvedCodingSettings<TSchema>>,
+			revision: loaded?.revision ?? null,
+		};
 	}
 
 	async setWorkspaceTrusted(trusted: boolean): Promise<ConfigSnapshot<TSchema>> {
@@ -177,7 +190,7 @@ export class CodingConfigStore<TSchema extends TObject> {
 		this.closeWatchers();
 	}
 
-	private async readScope(scope: ConfigFileScope): Promise<LoadedScope | undefined> {
+	private async readScopeFile(scope: ConfigFileScope): Promise<LoadedScope | undefined> {
 		const path = this.paths[scope];
 		if (!path) return undefined;
 		let raw: string;

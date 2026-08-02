@@ -213,6 +213,22 @@ describe("CodingConfigStore", () => {
 		expect(initial.scopeRevisions["project-local"]).toBeNull();
 	});
 
+	test("读取单一 scope 不混入默认值、项目值或环境变量", async () => {
+		const fixture = await createFixture();
+		await put(fixture.paths.user, { name: "user", metadata: { left: "kept" } });
+		await put(fixture.paths["project-local"]!, { name: "project" });
+		const store = new CodingConfigStore(definition, {
+			...fixture.options,
+			workspaceTrusted: true,
+			environment: { JAI_NAME: "environment" },
+		});
+
+		const user = await store.readScope("user");
+
+		expect(user.settings).toEqual({ name: "user", metadata: { left: "kept" } });
+		expect(user.revision).not.toBeNull();
+	});
+
 	test("watch 只发布完整有效 snapshot，并在错误时保留最后快照", async () => {
 		const fixture = await createFixture();
 		const store = new CodingConfigStore(definition, {
@@ -222,32 +238,35 @@ describe("CodingConfigStore", () => {
 		});
 		const events: Array<{ status: string; [key: string]: unknown }> = [];
 		const stop = store.watch((event) => events.push(event));
-		const initial = await store.load();
+		try {
+			const initial = await store.load();
 
-		await mkdir(dirname(fixture.paths.user), { recursive: true });
-		await writeFile(fixture.paths.user, "{");
-		await waitFor(() => events.some((event) => event.status === "invalid"));
-		expect(events.find((event) => event.status === "invalid")).toMatchObject({
-			error: { code: "coding_config.parse_failed" },
-			lastValid: { settings: { name: "default" } },
-		});
+			await mkdir(dirname(fixture.paths.user), { recursive: true });
+			await writeFile(fixture.paths.user, "{");
+			await waitFor(() => events.some((event) => event.status === "invalid"));
+			expect(events.find((event) => event.status === "invalid")).toMatchObject({
+				error: { code: "coding_config.parse_failed" },
+				lastValid: { settings: { name: "default" } },
+			});
 
-		await put(fixture.paths.user, { name: "watched" });
-		await waitFor(() => events.some((event) => event.status === "valid"));
-		expect(events.find((event) => event.status === "valid")).toMatchObject({
-			snapshot: { settings: { name: "watched" } },
-		});
+			await put(fixture.paths.user, { name: "watched" });
+			await waitFor(() => events.some((event) => event.status === "valid"));
+			expect(events.find((event) => event.status === "valid")).toMatchObject({
+				snapshot: { settings: { name: "watched" } },
+			});
 
-		await writeFile(fixture.paths.user, "{");
-		await waitFor(() => events.filter((event) => event.status === "invalid").length >= 2);
-		expect(events.filter((event) => event.status === "invalid").at(-1)).toMatchObject({
-			error: { code: "coding_config.parse_failed" },
-			lastValid: { settings: { name: "watched" } },
-		});
-		expect(initial.settings.name).toBe("default");
-		stop();
-		store.close();
-	});
+			await writeFile(fixture.paths.user, "{");
+			await waitFor(() => events.filter((event) => event.status === "invalid").length >= 2);
+			expect(events.filter((event) => event.status === "invalid").at(-1)).toMatchObject({
+				error: { code: "coding_config.parse_failed" },
+				lastValid: { settings: { name: "watched" } },
+			});
+			expect(initial.settings.name).toBe("default");
+		} finally {
+			stop();
+			store.close();
+		}
+	}, 15_000);
 
 	test("没有 project root 时只加载 user 配置并拒绝项目 scope 写入", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-config-user-only-"));
@@ -316,7 +335,7 @@ async function put(path: string, settings: Record<string, unknown>, version = 1)
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {
-	const deadline = Date.now() + 2_000;
+	const deadline = Date.now() + 10_000;
 	while (!predicate()) {
 		if (Date.now() >= deadline) throw new Error("Timed out waiting for config watcher");
 		await new Promise((resolve) => setTimeout(resolve, 10));

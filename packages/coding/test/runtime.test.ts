@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -59,7 +59,15 @@ describe("createCodingAgent", () => {
 			const messages = await codingAgent.invoke("hello");
 			expect(messages.at(-1)?.role).toBe("assistant");
 			expect(resolvedMode).toBe("default");
-			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["Read", "Glob", "Grep", "Write", "Edit", "Bash"]);
+			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual([
+				"Read",
+				"Glob",
+				"Grep",
+				"Write",
+				"Edit",
+				"Bash",
+				"Skill",
+			]);
 			expect(await readFile(join(fixture.sessionDirectory, "session-1.jsonl"), "utf8")).toContain('"type":"message"');
 		} finally {
 			codingAgent.close();
@@ -96,7 +104,7 @@ describe("createCodingAgent", () => {
 		}
 	});
 
-	test("未归属 execution context 不向 Agent 暴露本地工具", async () => {
+	test("未归属 execution context 只暴露用户级 Skill，不暴露 Workspace 工具", async () => {
 		const fixture = await createFixture();
 		const contexts: Context[] = [];
 		const codingAgent = await createCodingAgent({
@@ -110,7 +118,7 @@ describe("createCodingAgent", () => {
 
 		try {
 			await codingAgent.invoke("hello");
-			expect(contexts[0]?.tools).toEqual([]);
+			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["Skill"]);
 			expect(codingAgent.configSnapshot.settings.permissions.defaultMode).toBe("default");
 		} finally {
 			codingAgent.close();
@@ -185,6 +193,102 @@ describe("createCodingAgent", () => {
 			codingAgent.close();
 		}
 	});
+
+	test("Skill 工具按需加载正文并把结果写入 durable transcript", async () => {
+		const fixture = await createFixture();
+		await writeSkill(join(fixture.configOptions.homeDir, ".agents", "skills"), "review", "Review changes");
+		const contexts: Context[] = [];
+		const codingAgent = await createCodingAgent({
+			...fixture,
+			resolveProvider: () => ({
+				provider: providerFor(
+					[
+						assistantToolCall("Skill", { skill: "review" }),
+						assistant("reviewed"),
+					],
+					contexts,
+				),
+				model,
+			}),
+		});
+
+		try {
+			await codingAgent.invoke("review this change");
+			expect(contexts[0]?.tools.map((tool) => tool.name)).toContain("Skill");
+			expect(JSON.stringify(contexts[1]?.messages)).toContain("# Review changes");
+			expect(await readFile(join(fixture.sessionDirectory, "session-1.jsonl"), "utf8")).toContain(
+				"# Review changes",
+			);
+		} finally {
+			codingAgent.close();
+		}
+	});
+
+	test("Skill 资源读取拒绝 lexical escape 与越界 symlink", async () => {
+		const fixture = await createFixture();
+		const skillsDirectory = join(fixture.configOptions.homeDir, ".agents", "skills");
+		await writeSkill(skillsDirectory, "review", "Review changes");
+		const outside = join(fixture.configOptions.homeDir, "secret.txt");
+		await writeFile(outside, "must-not-leak");
+		await symlink(outside, join(skillsDirectory, "review", "escape.txt"));
+		const contexts: Context[] = [];
+		const codingAgent = await createCodingAgent({
+			...fixture,
+			resolveProvider: () => ({
+				provider: providerFor(
+					[
+						assistantToolCall("Skill", { skill: "review", path: "escape.txt" }),
+						assistant("done"),
+					],
+					contexts,
+				),
+				model,
+			}),
+		});
+
+		try {
+			await codingAgent.invoke("read the skill resource");
+			expect(JSON.stringify(contexts[1]?.messages)).not.toContain("must-not-leak");
+			expect(JSON.stringify(contexts[1]?.messages)).toContain("escapes");
+		} finally {
+			codingAgent.close();
+		}
+	});
+
+	test("开头 /name 保留原消息并强制本次 run 先调用对应 Skill", async () => {
+		const fixture = await createFixture();
+		await writeSkill(join(fixture.configOptions.homeDir, ".agents", "skills"), "review", "Review changes");
+		const contexts: Context[] = [];
+		let skillDescription = "";
+		const provider = providerFor([assistant("done")], contexts);
+		const codingAgent = await createCodingAgent({
+			...fixture,
+			resolveProvider: () => ({
+				provider: {
+					id: provider.id,
+					stream(model, context, options) {
+						skillDescription = context.tools.find((tool) => tool.name === "Skill")?.description ?? "";
+						return provider.stream(model, context, options);
+					},
+				},
+				model,
+			}),
+		});
+
+		try {
+			await codingAgent.invoke("/review inspect this patch");
+			expect(contexts[0]?.messages[0]).toMatchObject({
+				role: "user",
+				content: "/review inspect this patch",
+			});
+			expect(skillDescription).toContain('explicitly invoked "/review"');
+			expect(await readFile(join(fixture.sessionDirectory, "session-1.jsonl"), "utf8")).toContain(
+				'"slashInvocation":{"name":"review","kind":"skill","displayName":"review"}',
+			);
+		} finally {
+			codingAgent.close();
+		}
+	});
 });
 
 async function createFixture() {
@@ -244,4 +348,13 @@ function providerFor(responses: AssistantMessage[], contexts: Context[] = []): P
 			return stream;
 		},
 	};
+}
+
+async function writeSkill(directory: string, name: string, description: string): Promise<void> {
+	const skillDirectory = join(directory, name);
+	await mkdir(skillDirectory, { recursive: true });
+	await writeFile(
+		join(skillDirectory, "SKILL.md"),
+		`---\nname: ${name}\ndescription: ${description}\n---\n\n# ${description}\n`,
+	);
 }

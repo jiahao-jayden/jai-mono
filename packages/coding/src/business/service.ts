@@ -106,6 +106,16 @@ export class CodingBusinessService {
 		return this.repository.listWorkspaces();
 	}
 
+	async isWorkspaceAvailable(workspaceId: string): Promise<boolean> {
+		const workspace = this.getWorkspace(workspaceId);
+		try {
+			const location = await resolveWorkspaceLocation(workspace.path, workspace.displayName);
+			return location.canonicalPath === workspace.canonicalPath;
+		} catch {
+			return false;
+		}
+	}
+
 	getSession(id: string): CodingSession {
 		const session = this.repository.getSession(id);
 		if (!session) throw sessionNotFoundError(id);
@@ -195,18 +205,13 @@ export class CodingBusinessService {
 		const session = this.getSession(sessionId);
 		if (session.workspaceId === null) return { localFileAccess: false };
 		const workspace = this.getWorkspace(session.workspaceId);
-		try {
-			const location = await resolveWorkspaceLocation(workspace.path, workspace.displayName);
-			if (location.canonicalPath !== workspace.canonicalPath) return { localFileAccess: false };
-			return {
-				localFileAccess: true,
-				cwd: workspace.canonicalPath,
-				configRoot: workspace.canonicalPath,
-				defaultAllowedDirectories: [workspace.canonicalPath],
-			};
-		} catch {
-			return { localFileAccess: false };
-		}
+		if (!(await this.isWorkspaceAvailable(workspace.id))) return { localFileAccess: false };
+		return {
+			localFileAccess: true,
+			cwd: workspace.canonicalPath,
+			configRoot: workspace.canonicalPath,
+			defaultAllowedDirectories: [workspace.canonicalPath],
+		};
 	}
 
 	sessionDirectory(workspaceId: string | null): string {

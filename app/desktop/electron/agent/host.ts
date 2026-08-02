@@ -18,6 +18,7 @@ import type {
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
+import { projectSlashInvocation } from "./projector";
 
 const desktopAgentError = defineCodedError("desktop_agent", [
 	"factory_unavailable",
@@ -29,6 +30,7 @@ export interface HostedCodingAgent {
 	invoke(input: string): Promise<AgentMessage[]>;
 	generateTitle?(firstMessage: string, messages: readonly AgentMessage[]): Promise<string>;
 	subscribe(listener: AgentEventListener): () => void;
+	waitForIdle(): Promise<void>;
 	abort(): void;
 	steer(message: AgentMessage): void;
 	followUp(message: AgentMessage): void;
@@ -54,13 +56,20 @@ export interface DesktopRunCompletedContext {
 
 interface SessionRuntime {
 	readonly sessionId: string;
-	readonly agent: HostedCodingAgent;
+	agent: HostedCodingAgent;
 	readonly items: Map<string, DesktopTranscriptItem>;
 	unsubscribe: () => void;
 	status: DesktopAgentStatus;
 	closed: boolean;
 	seq: number;
 	nextMessageId: number;
+	safeBoundary: number;
+	readonly activeToolCallIds: Set<string>;
+	readonly pendingToolResultIds: Set<string>;
+	readonly safeBoundaryWaiters: Set<{ readonly after: number; readonly resolve: () => void }>;
+	invalidateAfterRun: boolean;
+	runCompletion?: Promise<void>;
+	rebinding?: Promise<void>;
 	activeAssistantId?: string;
 	activeUserId?: string;
 	pendingDelta?: DesktopAgentEvent;
@@ -105,6 +114,7 @@ export class DesktopAgentHost {
 
 	async send(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }> {
 		const runtime = await this.#getOrCreate(input);
+		if (runtime.rebinding) await runtime.rebinding;
 		if (runtime.status === "running") {
 			throw desktopAgentError("session_busy", {
 				message: `Session "${input.sessionId}" is already running`,
@@ -113,7 +123,7 @@ export class DesktopAgentHost {
 		}
 		runtime.status = "running";
 		this.#emitNow(runtime, { type: "status", status: "running" });
-		void runtime.agent.invoke(input.message).then(
+		const run = runtime.agent.invoke(input.message).then(
 			(messages) => {
 				this.#finishRun(runtime);
 				const listener = this.#onRunCompleted;
@@ -125,15 +135,45 @@ export class DesktopAgentHost {
 							messages,
 							agent: runtime.agent,
 						}),
-					).catch(() => {});
-				}
+					)
+						.catch(() => {})
+						.finally(() => this.#closeIfInvalidated(runtime));
+				} else this.#closeIfInvalidated(runtime);
 			},
 			(error) => {
 				this.#emitNow(runtime, { type: "runtime_error", error: toErrorEnvelope(error) });
 				this.#finishRun(runtime);
+				this.#closeIfInvalidated(runtime);
 			},
 		);
+		const runCompletion = run.finally(() => {
+			if (runtime.runCompletion === runCompletion) runtime.runCompletion = undefined;
+		});
+		runtime.runCompletion = runCompletion;
 		return { accepted: true };
+	}
+
+	async rebindSession<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
+		const runtime = this.#sessions.get(sessionId);
+		if (!runtime) return operation();
+		if (runtime.rebinding) {
+			throw desktopAgentError("session_busy", {
+				message: `Session "${sessionId}" is already being rebound`,
+				data: { sessionId },
+			});
+		}
+
+		let result!: T;
+		const rebinding = this.#rebindRuntime(runtime, async () => {
+			result = await operation();
+		});
+		runtime.rebinding = rebinding;
+		try {
+			await rebinding;
+			return result;
+		} finally {
+			if (runtime.rebinding === rebinding) runtime.rebinding = undefined;
+		}
 	}
 
 	abort(sessionId: string): void {
@@ -169,11 +209,19 @@ export class DesktopAgentHost {
 		const runtime = this.#sessions.get(sessionId);
 		if (!runtime) return;
 		runtime.closed = true;
+		this.#markSafeBoundary(runtime);
 		this.#clearPendingDelta(runtime);
 		this.#approvals.cancelSession(sessionId);
 		runtime.agent.close();
 		runtime.unsubscribe();
 		this.#sessions.delete(sessionId);
+	}
+
+	invalidateSessions(): void {
+		for (const runtime of [...this.#sessions.values()]) {
+			if (runtime.status === "idle") this.closeSession(runtime.sessionId);
+			else runtime.invalidateAfterRun = true;
+		}
 	}
 
 	close(): void {
@@ -202,10 +250,7 @@ export class DesktopAgentHost {
 	}
 
 	async #createRuntime(input: DesktopAgentMessageInput): Promise<SessionRuntime> {
-		const agent = await this.#factory!({
-			sessionId: input.sessionId,
-			requestApproval: (request, signal) => this.#requestApproval(input.sessionId, request, signal),
-		});
+		const agent = await this.#createAgent(input.sessionId);
 		const runtime: SessionRuntime = {
 			sessionId: input.sessionId,
 			agent,
@@ -215,10 +260,56 @@ export class DesktopAgentHost {
 			closed: false,
 			seq: 0,
 			nextMessageId: 1,
+			safeBoundary: 0,
+			activeToolCallIds: new Set(),
+			pendingToolResultIds: new Set(),
+			safeBoundaryWaiters: new Set(),
+			invalidateAfterRun: false,
 		};
 		runtime.unsubscribe = agent.subscribe((event) => this.#onAgentEvent(runtime, event));
 		this.#sessions.set(input.sessionId, runtime);
 		return runtime;
+	}
+
+	#createAgent(sessionId: string): Promise<HostedCodingAgent> {
+		return this.#factory!({
+			sessionId,
+			requestApproval: (request, signal) => this.#requestApproval(sessionId, request, signal),
+		});
+	}
+
+	async #rebindRuntime(runtime: SessionRuntime, operation: () => Promise<void>): Promise<void> {
+		if (runtime.status === "running") {
+			await this.#waitForSafeBoundary(runtime);
+			if (runtime.status === "running") runtime.agent.abort();
+			await (runtime.runCompletion ?? runtime.agent.waitForIdle());
+		}
+
+		await operation();
+		let replacement: HostedCodingAgent;
+		try {
+			replacement = await this.#createAgent(runtime.sessionId);
+		} catch (error) {
+			this.closeSession(runtime.sessionId);
+			throw error;
+		}
+
+		const previous = runtime.agent;
+		runtime.unsubscribe();
+		runtime.agent = replacement;
+		runtime.unsubscribe = replacement.subscribe((event) => this.#onAgentEvent(runtime, event));
+		runtime.activeToolCallIds.clear();
+		runtime.pendingToolResultIds.clear();
+		this.#approvals.cancelSession(runtime.sessionId);
+		previous.close();
+	}
+
+	#waitForSafeBoundary(runtime: SessionRuntime): Promise<void> {
+		if (runtime.status !== "running") return Promise.resolve();
+		const after = runtime.safeBoundary;
+		return new Promise((resolve) => {
+			runtime.safeBoundaryWaiters.add({ after, resolve });
+		});
 	}
 
 	async #requestApproval(
@@ -276,9 +367,19 @@ export class DesktopAgentHost {
 				this.#onSessionActivity?.(runtime.sessionId);
 				if (event.message.role === "assistant") runtime.activeAssistantId = undefined;
 				if (event.message.role === "user") runtime.activeUserId = undefined;
+				if (event.message.role === "assistant" && isExecutableAssistantMessage(event.message)) {
+					for (const part of event.message.content) {
+						if (part.type === "toolCall") runtime.pendingToolResultIds.add(part.id);
+					}
+				}
+				if (event.message.role === "toolResult") {
+					runtime.pendingToolResultIds.delete(event.message.toolCallId);
+				}
+				if (event.message.role !== "user") this.#markSafeBoundaryIfReady(runtime);
 				return;
 			}
 			case "tool_execution_start": {
+				runtime.activeToolCallIds.add(event.toolCallId);
 				const item: DesktopToolItem = {
 					kind: "tool",
 					id: `tool:${event.toolCallId}`,
@@ -293,6 +394,7 @@ export class DesktopAgentHost {
 			}
 			case "tool_execution_update":
 			case "tool_execution_end": {
+				if (event.type === "tool_execution_end") runtime.activeToolCallIds.delete(event.toolCallId);
 				const previous = runtime.items.get(`tool:${event.toolCallId}`);
 				const item: DesktopToolItem = {
 					kind: "tool",
@@ -335,6 +437,7 @@ export class DesktopAgentHost {
 				id = `tool-result:${message.toolCallId}`;
 				break;
 		}
+		const slashInvocation = projectSlashInvocation(message);
 		return {
 			kind: "message",
 			id,
@@ -343,6 +446,7 @@ export class DesktopAgentHost {
 			status,
 			timestamp: message.timestamp,
 			...(message.role === "assistant" ? { stopReason: message.stopReason } : {}),
+			...(slashInvocation ? { slashInvocation } : {}),
 		};
 	}
 
@@ -381,7 +485,35 @@ export class DesktopAgentHost {
 	#finishRun(runtime: SessionRuntime): void {
 		if (runtime.closed) return;
 		runtime.status = "idle";
+		runtime.activeToolCallIds.clear();
+		runtime.pendingToolResultIds.clear();
+		this.#markSafeBoundary(runtime);
 		this.#emitNow(runtime, { type: "status", status: "idle" });
+	}
+
+	#closeIfInvalidated(runtime: SessionRuntime): void {
+		if (
+			runtime.invalidateAfterRun &&
+			runtime.status === "idle" &&
+			this.#sessions.get(runtime.sessionId) === runtime
+		) {
+			this.closeSession(runtime.sessionId);
+		}
+	}
+
+	#markSafeBoundaryIfReady(runtime: SessionRuntime): void {
+		if (runtime.activeToolCallIds.size === 0 && runtime.pendingToolResultIds.size === 0) {
+			this.#markSafeBoundary(runtime);
+		}
+	}
+
+	#markSafeBoundary(runtime: SessionRuntime): void {
+		runtime.safeBoundary++;
+		for (const waiter of [...runtime.safeBoundaryWaiters]) {
+			if (waiter.after >= runtime.safeBoundary) continue;
+			runtime.safeBoundaryWaiters.delete(waiter);
+			waiter.resolve();
+		}
 	}
 
 	#requireSession(sessionId: string): SessionRuntime {
@@ -396,6 +528,15 @@ export class DesktopAgentHost {
 
 function userMessage(content: string): AgentMessage {
 	return { role: "user", content, timestamp: Date.now() };
+}
+
+function isExecutableAssistantMessage(message: AgentMessage): message is Extract<AgentMessage, { role: "assistant" }> {
+	return (
+		message.role === "assistant" &&
+		message.stopReason !== "error" &&
+		message.stopReason !== "aborted" &&
+		message.stopReason !== "contextOverflow"
+	);
 }
 
 function projectPermissionRequest(sessionId: string, request: PermissionApprovalRequest): PermissionRequest {
@@ -426,8 +567,9 @@ function permissionSummary(request: PermissionApprovalRequest): PermissionReques
 function summarizeToolArguments(toolName: string, args: unknown): string | undefined {
 	if (!isRecord(args)) return undefined;
 	const command = toolName === "Bash" ? stringArgument(args, "command") : undefined;
+	const skill = toolName === "Skill" ? stringArgument(args, "skill") : undefined;
 	const path = stringArgument(args, "path");
-	return truncate(command ?? path ?? toolName, 240);
+	return truncate(command ?? (skill ? `/${skill}` : undefined) ?? path ?? toolName, 240);
 }
 
 function summarizeToolResult(result: { content: readonly unknown[] }): string | undefined {

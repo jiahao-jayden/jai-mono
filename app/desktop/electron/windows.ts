@@ -18,7 +18,7 @@ export function createMainWindow(): BrowserWindow {
 		show: false,
 		frame: !isMac,
 		titleBarStyle: isMac ? "hidden" : undefined,
-		trafficLightPosition: isMac ? { x: -100, y: -100 } : undefined,
+		trafficLightPosition: isMac ? { x: 18, y: 18 } : undefined,
 		webPreferences: baseWebPreferences(),
 	});
 

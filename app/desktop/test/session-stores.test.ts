@@ -11,7 +11,7 @@ Object.assign(globalThis, {
 	},
 });
 
-const { applyProjectionUpdate } = await import("../src/stores/sessions");
+const { applyProjectionUpdate, useSessionListStore } = await import("../src/stores/sessions");
 
 describe("active Session projection state", () => {
 	test("snapshot 替换本地状态，增量按 item id upsert", () => {
@@ -71,5 +71,24 @@ describe("active Session projection state", () => {
 			lastSeq: 5,
 			items: [{ id: "message-1", text: "complete", status: "complete" }],
 		});
+	});
+
+	test("move 返回后立即 upsert Session，不依赖后台 refresh", () => {
+		useSessionListStore.setState({ sessions: [], runningSessionIds: [], loading: false, error: undefined });
+
+		useSessionListStore.getState().upsert({
+			id: "session-1",
+			workspaceId: "workspace-2",
+			title: "Moved",
+			titleSource: "manual",
+			titleGenerationAttemptedAt: null,
+			createdAt: 1,
+			updatedAt: 2,
+			lastActivityAt: 2,
+		});
+
+		expect(useSessionListStore.getState().sessions).toEqual([
+			expect.objectContaining({ id: "session-1", workspaceId: "workspace-2" }),
+		]);
 	});
 });

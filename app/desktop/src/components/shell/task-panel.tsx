@@ -1,5 +1,5 @@
 import type { Workspace } from "@jai/coding/business";
-import { ChevronRight, FileCode2, FolderOpen, Layers3, TerminalSquare } from "lucide-react";
+import { useIcons } from "@/lib/icon-context";
 import type { DesktopAgentStatus, DesktopTranscriptItem } from "../../../shared/desktop-rpc";
 
 interface TaskPanelProps {
@@ -9,6 +9,12 @@ interface TaskPanelProps {
 }
 
 export function TaskPanel({ status, items, workspace }: TaskPanelProps) {
+	const icons = useIcons();
+	const ChevronRightIcon = icons["chevron-right"];
+	const FileCodeIcon = icons["file-code"];
+	const FolderOpenIcon = icons["folder-open"];
+	const LayersIcon = icons.layers;
+	const TerminalIcon = icons.terminal;
 	const tools = items.filter((item) => item.kind === "tool");
 	const completedTools = tools.filter((item) => item.status === "complete").length;
 	const outputCandidates = tools.filter(
@@ -30,14 +36,14 @@ export function TaskPanel({ status, items, workspace }: TaskPanelProps) {
 							) : (
 								`${completedTools} completed`
 							)}
-							<ChevronRight size={13} />
+							<ChevronRightIcon size={13} />
 						</span>
 					</div>
 					{tools.length > 0 ? (
 						<div className="mt-3 space-y-1.5 border-t border-border/70 pt-3">
 							{tools.slice(-4).map((tool) => (
 								<div key={tool.id} className="flex items-center gap-2 text-[12.5px]">
-									<TerminalSquare size={13} className="shrink-0 text-muted-foreground" />
+									<TerminalIcon size={13} className="shrink-0 text-muted-foreground" />
 									<span className="min-w-0 flex-1 truncate">{tool.summary || tool.toolName}</span>
 									<span className={tool.status === "error" ? "text-destructive" : "text-muted-foreground"}>
 										{tool.status}
@@ -54,7 +60,7 @@ export function TaskPanel({ status, items, workspace }: TaskPanelProps) {
 							<h2 className="text-[14px] font-semibold">Outputs</h2>
 							<span className="text-[12.5px] text-muted-foreground">{outputCandidates.length}</span>
 						</div>
-						<ChevronRight size={13} className="rotate-90 text-muted-foreground" />
+						<ChevronRightIcon size={13} className="rotate-90 text-muted-foreground" />
 					</div>
 					{outputCandidates.length > 0 ? (
 						<div>
@@ -64,7 +70,7 @@ export function TaskPanel({ status, items, workspace }: TaskPanelProps) {
 									className="flex items-center gap-2.5 rounded-lg px-1.5 py-2 transition-colors hover:bg-muted"
 								>
 									<span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground">
-										<FileCode2 size={14} />
+										<FileCodeIcon size={14} />
 									</span>
 									<span className="min-w-0 flex-1 truncate font-mono text-[11.5px]">
 										{tool.summary || `${tool.toolName} output`}
@@ -82,18 +88,18 @@ export function TaskPanel({ status, items, workspace }: TaskPanelProps) {
 				<section className="rounded-[14px] border border-border bg-card px-4 py-3.5">
 					<div className="flex items-center justify-between">
 						<h2 className="text-[14px] font-semibold">Context</h2>
-						<Layers3 size={14} className="text-muted-foreground" />
+						<LayersIcon size={14} className="text-muted-foreground" />
 					</div>
 					<div className="mt-4 flex justify-center">
 						<div className="relative h-12 w-32" aria-hidden="true">
 							<span className="absolute left-1 top-2 flex h-9 w-12 -rotate-6 items-center justify-center rounded-md border border-border bg-background">
-								<FileCode2 size={14} className="text-muted-foreground" />
+								<FileCodeIcon size={14} className="text-muted-foreground" />
 							</span>
 							<span className="absolute left-10 top-1 flex h-10 w-12 items-center justify-center rounded-md border border-border bg-background">
-								<TerminalSquare size={14} className="text-muted-foreground" />
+								<TerminalIcon size={14} className="text-muted-foreground" />
 							</span>
 							<span className="absolute right-1 top-0 flex h-11 w-14 rotate-6 items-center justify-center rounded-md border border-primary-2/25 bg-primary-2/8 text-primary-2">
-								<FolderOpen size={16} />
+								<FolderOpenIcon size={16} />
 							</span>
 						</div>
 					</div>

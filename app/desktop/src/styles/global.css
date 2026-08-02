@@ -17,6 +17,12 @@ input:focus-visible {
 	outline: none;
 }
 
+html.sidebar-resizing,
+html.sidebar-resizing * {
+	cursor: col-resize !important;
+	user-select: none !important;
+}
+
 @theme inline {
   --font-sans: var(--font-sans);
   --font-heading: var(--font-heading);
@@ -119,7 +125,7 @@ input:focus-visible {
 	}}
 
 :root {
-  --background: oklch(0.975 0.007 106.521);
+  --background: oklch(0.991 0.001 106.423);
   --foreground: oklch(0.281 0.001 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.281 0.001 0);
@@ -131,32 +137,32 @@ input:focus-visible {
   --primary-2-foreground: #f5faf8;
   --secondary: oklch(0.926 0.039 115.103);
   --secondary-foreground: oklch(0.382 0.051 113.064);
-  --muted: oklch(0.975 0.007 106.521);
-  --muted-foreground: oklch(0.281 0.001 0);
-  --accent: oklch(0.938 0.008 114.226);
+  --muted: oklch(0.967 0.004 91.447);
+  --muted-foreground: oklch(0.645 0.007 145.488);
+  --accent: oklch(0.937 0.008 91.486);
   --accent-foreground: oklch(0.281 0.001 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.872 0.004 106.484);
-  --input: oklch(0.872 0.004 106.484);
+  --border: oklch(0.913 0.008 91.488);
+  --input: oklch(0.913 0.008 91.488);
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.507 0.122 121.249);
   --chart-2: oklch(0.778 0.146 116.251);
   --chart-3: oklch(0.603 0.136 119.568);
   --chart-4: oklch(0.926 0.039 115.103);
   --chart-5: oklch(0.382 0.051 113.064);
-  --sidebar: oklch(0.959 0.008 106.548);
+  --sidebar: oklch(0.967 0.004 91.447);
   --sidebar-foreground: oklch(0.281 0.001 0);
   --sidebar-primary: oklch(0.281 0.001 0);
-  --sidebar-primary-foreground: oklch(0.99 0.005 106.495);
-  --sidebar-accent: oklch(0.938 0.008 114.226);
+  --sidebar-primary-foreground: oklch(0.991 0.001 106.423);
+  --sidebar-accent: oklch(0.937 0.008 91.486);
   --sidebar-accent-foreground: oklch(0.514 0.056 108.204);
-  --sidebar-border: oklch(0.872 0.004 106.484);
+  --sidebar-border: oklch(0.928 0.008 91.487);
   --sidebar-ring: oklch(0.924 0.019 119.764);
   --font-sans: "Manrope Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   --font-heading: var(--font-sans);
   --font-serif: "Source Serif 4 Variable", "Songti SC", "Noto Serif CJK SC", Georgia, Cambria, "Times New Roman", serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --radius: 1rem;
+  --radius: 0.5rem;
   font-optical-sizing: auto;
   --surface-1: #FAFAFA;
   --surface-2: #FCFCFC;
@@ -215,7 +221,7 @@ input:focus-visible {
   --font-heading: var(--font-sans);
   --font-serif: "Source Serif 4 Variable", "Songti SC", "Noto Serif CJK SC", Georgia, Cambria, "Times New Roman", serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --radius: 1rem;
+  --radius: 0.5rem;
   --surface-1: #171717;
   --surface-2: #1E1E1E;
   --surface-3: #252525;
@@ -659,6 +665,84 @@ input:focus-visible {
 	--trees-selected-bg-override: color-mix(in oklch, var(--foreground) 14%, transparent);
 	--trees-file-icon-color: color-mix(in oklch, var(--foreground) 58%, var(--background));
 }
+
+/* Adapted from syabro/neat-annotations (MIT). Kept local for the desktop bundle. */
+.slash-invocation {
+	--ann-color: var(--primary-2);
+	position: relative;
+	display: inline-block;
+	padding: 0;
+	border: 0;
+	border-radius: 3px;
+	background: transparent;
+	color: inherit;
+	font-family: var(--font-mono);
+	font-size: inherit;
+	line-height: 1.25;
+	cursor: help;
+	transition: background-color 120ms ease-out;
+}
+
+.slash-invocation::before,
+.slash-invocation::after {
+	position: absolute;
+	z-index: 4;
+	pointer-events: none;
+	opacity: 0;
+	transition:
+		opacity 120ms ease-out,
+		transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.slash-invocation::before {
+	content: "";
+	right: calc(100% + 4px);
+	top: calc(50% - 19px);
+	width: 46px;
+	height: 38px;
+	background: var(--ann-color);
+	-webkit-mask: url("data:image/svg+xml,%3Csvg width='46' height='38' viewBox='0 0 46 38' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 19 C15 18 31 18 43 19' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M36 13 L43 19 L36 25' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+	mask: url("data:image/svg+xml,%3Csvg width='46' height='38' viewBox='0 0 46 38' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 19 C15 18 31 18 43 19' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M36 13 L43 19 L36 25' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+	transform: translateX(4px);
+}
+
+.slash-invocation::after {
+	content: attr(data-note);
+	right: calc(100% + 54px);
+	top: 50%;
+	width: max-content;
+	max-width: 150px;
+	color: var(--ann-color);
+	font-family: var(--font-serif);
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1.15;
+	white-space: normal;
+	transform: translate(6px, -50%) rotate(-3deg);
+}
+
+.slash-invocation:hover {
+	background: color-mix(in oklch, var(--primary-2) 12%, transparent);
+}
+
+.slash-invocation:hover::before,
+.slash-invocation:hover::after {
+	opacity: 0.92;
+	transform: translate(0, -50%) rotate(-3deg);
+}
+
+.slash-invocation:hover::before {
+	transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.slash-invocation,
+	.slash-invocation::before,
+	.slash-invocation::after {
+		transition: none;
+	}
+}
+
   .shimmer-text {
     color: transparent;
     background: linear-gradient(90deg, #a3a3a3 0%, #a3a3a3 35%, #525252 50%, #a3a3a3 65%, #a3a3a3 100%);

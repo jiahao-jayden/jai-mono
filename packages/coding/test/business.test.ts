@@ -165,6 +165,7 @@ describe("CodingBusinessService", () => {
 			firstMessage: "Relink",
 		});
 		await rm(firstFolder, { recursive: true });
+		expect(await fixture.service.isWorkspaceAvailable(workspace.id)).toBe(false);
 		expect(await fixture.service.resolveExecutionContext(session.id)).toEqual({ localFileAccess: false });
 
 		const relinked = await fixture.service.relinkWorkspace(workspace.id, { path: secondFolder });
@@ -172,6 +173,7 @@ describe("CodingBusinessService", () => {
 
 		expect(relinked.id).toBe(workspace.id);
 		expect(relinked.canonicalPath).toBe(canonicalSecondFolder);
+		expect(await fixture.service.isWorkspaceAvailable(workspace.id)).toBe(true);
 		expect(await fixture.service.resolveExecutionContext(session.id)).toMatchObject({
 			localFileAccess: true,
 			cwd: canonicalSecondFolder,

@@ -12,6 +12,7 @@
 		"./permissions": "./src/permissions/index.ts",
 		"./permissions/approval": "./src/permissions/approval.ts",
 		"./runtime": "./src/runtime/index.ts",
+		"./skills": "./src/skills/index.ts",
 		"./tools": "./src/tools/index.ts"
 	},
 	"scripts": {
@@ -22,7 +23,8 @@
 		"@jai/agent": "workspace:*",
 		"@jai/ai": "workspace:*",
 		"@jai/common": "workspace:*",
-		"@sinclair/typebox": "catalog:"
+		"@sinclair/typebox": "catalog:",
+		"yaml": "^2.8.1"
 	},
 	"devDependencies": {
 		"typescript": "catalog:"

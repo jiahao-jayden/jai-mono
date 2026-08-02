@@ -1,3 +1,4 @@
+import type { JsonValue } from "@jai/common";
 import type { TSchema } from "@sinclair/typebox";
 
 /* -------------------------------------------------------------------------- */
@@ -37,6 +38,8 @@ export interface ToolCall {
 export interface UserMessage {
 	role: "user";
 	content: string | (TextContent | ImageContent)[];
+	/** Product-owned, wire-safe annotations. Providers must ignore this field. */
+	metadata?: Readonly<Record<string, JsonValue>>;
 	timestamp: number;
 }
 

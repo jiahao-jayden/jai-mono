@@ -2,18 +2,21 @@ import type { CodingBusinessService } from "@jai/coding/business";
 import { type PermissionResolution, permissionResolutionSchema } from "@jai/coding/permissions/approval";
 import { defineCodedError } from "@jai/common";
 import { Value } from "@sinclair/typebox/value";
-import { BrowserWindow, type IpcMainInvokeEvent, nativeTheme } from "electron";
+import { BrowserWindow, dialog, type IpcMainInvokeEvent, nativeTheme } from "electron";
 import Store from "electron-store";
 import {
 	DESKTOP_EVENTS_CHANNEL,
 	type DesktopAgentMessageInput,
 	type DesktopApi,
+	type DesktopProviderConfigInput,
 	type DesktopSessionCreateInput,
 	type DesktopSessionRenameInput,
 	type DesktopTheme,
+	type DesktopWorkspace,
 } from "../../shared/desktop-rpc";
 import { type DesktopAgentFactory, DesktopAgentHost } from "../agent/host";
 import { projectSessionSnapshot } from "../agent/projector";
+import { DesktopProviderConfigService } from "../provider-config";
 
 type DesktopRouterImplementation<T> = {
 	[K in keyof T]: T[K] extends (...args: infer TArgs) => infer TResult
@@ -27,8 +30,10 @@ const themeStore = new Store<{ theme: DesktopTheme }>({
 
 const themeError = defineCodedError("desktop_theme", ["invalid_value"] as const);
 const agentInputError = defineCodedError("desktop_agent_input", ["invalid_value"] as const);
-const desktopBusinessError = defineCodedError("desktop_business", ["unavailable", "session_running"] as const);
+const desktopBusinessError = defineCodedError("desktop_business", ["unavailable"] as const);
+const desktopWorkspaceError = defineCodedError("desktop_workspace", ["picker_failed"] as const);
 let codingBusiness: CodingBusinessService | undefined;
+const providerConfig = new DesktopProviderConfigService();
 const desktopAgentHost = new DesktopAgentHost((envelope) => {
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) window.webContents.send(DESKTOP_EVENTS_CHANNEL, envelope);
@@ -59,6 +64,7 @@ export function setCodingBusinessService(service: CodingBusinessService): void {
 
 export function closeDesktopRuntime(): void {
 	desktopAgentHost.close();
+	providerConfig.close();
 	codingBusiness?.close();
 	codingBusiness = undefined;
 }
@@ -94,15 +100,38 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 			nativeTheme.themeSource = theme;
 		},
 	},
+	provider: {
+		get() {
+			return providerConfig.get();
+		},
+		async save(_event, input) {
+			const snapshot = await providerConfig.save(input as DesktopProviderConfigInput);
+			desktopAgentHost.invalidateSessions();
+			return snapshot;
+		},
+	},
 	workspace: {
-		list(_event) {
-			return requireCodingBusiness().listWorkspaces();
+		async list() {
+			const service = requireCodingBusiness();
+			return Promise.all(
+				service.listWorkspaces().map(async (workspace) => ({
+					...workspace,
+					available: await service.isWorkspaceAvailable(workspace.id),
+				})),
+			);
 		},
-		create(_event, input) {
-			return requireCodingBusiness().createWorkspace(assertWorkspaceInput(input));
+		async choose(event) {
+			const path = await pickWorkspaceDirectory(event);
+			if (!path) return null;
+			const workspace = await requireCodingBusiness().createWorkspace({ path });
+			return { ...workspace, available: true } satisfies DesktopWorkspace;
 		},
-		relink(_event, workspaceId, input) {
-			return requireCodingBusiness().relinkWorkspace(assertSessionId(workspaceId), assertWorkspaceInput(input));
+		async relink(event, workspaceId) {
+			const path = await pickWorkspaceDirectory(event);
+			if (!path) return null;
+			const workspace = await requireCodingBusiness().relinkWorkspace(assertSessionId(workspaceId), { path });
+			desktopAgentHost.invalidateSessions();
+			return { ...workspace, available: true } satisfies DesktopWorkspace;
 		},
 	},
 	session: {
@@ -124,17 +153,7 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 		},
 		async move(_event, input) {
 			const parsed = assertSessionMoveInput(input);
-			if (desktopAgentHost.hasSession(parsed.sessionId)) {
-				const snapshot = desktopAgentHost.getSnapshot(parsed.sessionId);
-				if (snapshot.status === "running") {
-					throw desktopBusinessError("session_running", {
-						message: "A running Session cannot be moved until it reaches a safe execution boundary",
-						data: { sessionId: parsed.sessionId },
-					});
-				}
-				desktopAgentHost.closeSession(parsed.sessionId);
-			}
-			return requireCodingBusiness().moveSession(parsed);
+			return desktopAgentHost.rebindSession(parsed.sessionId, () => requireCodingBusiness().moveSession(parsed));
 		},
 	},
 	agent: {
@@ -199,21 +218,6 @@ function requireCodingBusiness(): CodingBusinessService {
 	throw desktopBusinessError("unavailable", {
 		message: "Coding business services are not initialized",
 	});
-}
-
-function assertWorkspaceInput(value: unknown): { path: string; displayName?: string } {
-	if (
-		!isRecord(value) ||
-		typeof value.path !== "string" ||
-		value.path.length === 0 ||
-		(value.displayName !== undefined && typeof value.displayName !== "string")
-	) {
-		throw agentInputError("invalid_value", { message: "Invalid Workspace input" });
-	}
-	return {
-		path: value.path,
-		...(typeof value.displayName === "string" ? { displayName: value.displayName } : {}),
-	};
 }
 
 function assertSessionCreateInput(value: unknown): DesktopSessionCreateInput {
@@ -282,4 +286,22 @@ function assertSessionListInput(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function pickWorkspaceDirectory(event: IpcMainInvokeEvent): Promise<string | undefined> {
+	try {
+		const options: Electron.OpenDialogOptions = {
+			title: "Choose a workspace folder",
+			buttonLabel: "Choose Workspace",
+			properties: ["openDirectory", "createDirectory", "promptToCreate"],
+		};
+		const window = BrowserWindow.fromWebContents(event.sender);
+		const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+		return result.canceled ? undefined : result.filePaths[0];
+	} catch (error) {
+		throw desktopWorkspaceError("picker_failed", {
+			message: "The workspace folder picker could not be opened",
+			cause: error,
+		});
+	}
 }

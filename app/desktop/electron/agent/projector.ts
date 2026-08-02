@@ -3,6 +3,7 @@ import type {
 	DesktopAgentSnapshot,
 	DesktopCompactionItem,
 	DesktopMessageItem,
+	DesktopSlashInvocation,
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
@@ -60,6 +61,7 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 }
 
 function projectMessage(entryId: string, message: AgentMessage): DesktopMessageItem {
+	const slashInvocation = projectSlashInvocation(message);
 	return {
 		kind: "message",
 		id: `message:${entryId}`,
@@ -68,7 +70,22 @@ function projectMessage(entryId: string, message: AgentMessage): DesktopMessageI
 		status: "complete",
 		timestamp: message.timestamp,
 		...(message.role === "assistant" ? { stopReason: message.stopReason } : {}),
+		...(slashInvocation ? { slashInvocation } : {}),
 	};
+}
+
+export function projectSlashInvocation(message: AgentMessage): DesktopSlashInvocation | undefined {
+	if (message.role !== "user") return undefined;
+	const value = message.metadata?.slashInvocation;
+	if (!isRecord(value)) return undefined;
+	if (
+		typeof value.name !== "string" ||
+		(value.kind !== "skill" && value.kind !== "command") ||
+		typeof value.displayName !== "string"
+	) {
+		return undefined;
+	}
+	return { name: value.name, kind: value.kind, displayName: value.displayName };
 }
 
 function messageText(message: AgentMessage): string {
@@ -83,9 +100,10 @@ function messageText(message: AgentMessage): string {
 }
 
 function summarizeToolArguments(toolName: string, args: Readonly<Record<string, unknown>>): string {
-	const key = toolName === "Bash" ? "command" : "path";
+	const key = toolName === "Bash" ? "command" : toolName === "Skill" ? "skill" : "path";
 	const value = args[key];
-	return truncate(typeof value === "string" && value ? value : toolName, 240);
+	const summary = typeof value === "string" && value ? value : toolName;
+	return truncate(toolName === "Skill" && summary !== toolName ? `/${summary}` : summary, 240);
 }
 
 function textContent(content: readonly unknown[], maxLength: number): string {
@@ -109,4 +127,8 @@ function truncate(value: string, maxLength: number): string {
 function parseTimestamp(value: string): number {
 	const parsed = Date.parse(value);
 	return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

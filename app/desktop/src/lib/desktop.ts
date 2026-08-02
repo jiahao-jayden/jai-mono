@@ -43,4 +43,3 @@ function createClientProxy(path: readonly string[]): unknown {
 }
 
 export const desktop = createClientProxy([]) as AsyncRpcClient<DesktopApi>;
-export const desktopPlatform = window.desktopRpc.platform;

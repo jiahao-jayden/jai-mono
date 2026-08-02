@@ -18,16 +18,16 @@ const buttonVariants = cva(
   [
     "group relative isolate inline-flex items-center justify-center outline-none cursor-pointer",
     "transition-colors duration-80",
-    "disabled:opacity-50 disabled:pointer-events-none",
-    "focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]",
+    "disabled:pointer-events-none",
   ],
   {
     variants: {
       variant: {
-        primary: "text-background",
-        secondary: "text-foreground",
-        tertiary: "text-foreground",
-        ghost: "text-muted-foreground hover:text-foreground",
+        primary: "text-background disabled:opacity-50",
+        secondary: "text-foreground disabled:opacity-50",
+        tertiary: "text-foreground disabled:opacity-50",
+        ghost: "text-muted-foreground hover:text-foreground disabled:opacity-50",
+        navigation: "text-foreground/75 hover:text-foreground",
       },
       size: {
         sm: "h-7 px-3 text-[12px] gap-1",
@@ -63,9 +63,10 @@ interface ButtonProps
   loading?: boolean;
   leadingIcon?: IconComponent;
   trailingIcon?: IconComponent;
-  /** Force the visual pressed/held state. Useful when the button drives an
+  /** Force the visual selected/engaged state. Useful when the button drives an
    *  external open piece of UI (a popover, dropdown, etc.) so it reads as
-   *  engaged while the menu is showing. */
+   *  engaged while the menu is showing, or for navigation items that are
+   *  currently active. */
   active?: boolean;
 }
 
@@ -74,6 +75,7 @@ const bgVariants: Record<string, string> = {
   secondary: "bg-accent group-hover:bg-accent/80 group-active:bg-accent",
   tertiary: "border border-border bg-transparent group-hover:bg-hover group-active:bg-active",
   ghost: "bg-transparent group-hover:bg-hover group-active:bg-active",
+  navigation: "bg-transparent group-hover:bg-sidebar-accent group-active:bg-sidebar-accent",
 };
 
 const activeBgVariants: Record<string, string> = {
@@ -81,6 +83,15 @@ const activeBgVariants: Record<string, string> = {
   secondary: "bg-accent",
   tertiary: "border border-border bg-active",
   ghost: "bg-active",
+  navigation: "bg-sidebar-accent",
+};
+
+const disabledBgVariants: Record<string, string> = {
+  primary: "bg-foreground",
+  secondary: "bg-accent",
+  tertiary: "border border-border bg-transparent",
+  ghost: "bg-transparent",
+  navigation: "bg-transparent",
 };
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -101,12 +112,6 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     },
     ref
   ) => {
-    // asChild: the user's element becomes the root while the button's internal
-    // structure (bg layer, content wrapper, spinner, icons) survives as its
-    // children — the element's own children become the label. We clone the
-    // element directly instead of routing through ButtonPrimitive's `render`:
-    // Base UI would bolt button semantics (role="button", Space activation)
-    // onto e.g. a link, where plain-link output is wanted.
     const asChildElement =
       asChild && isValidElement(children)
         ? (children as ReactElement<{
@@ -119,8 +124,6 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     const label = asChildElement ? asChildElement.props.children : children;
     const isIconOnly = size === "icon" || size === "icon-sm" || size === "icon-lg";
     const iconSize = size === "sm" ? 14 : size === "lg" ? 20 : 16;
-    // Spinner box tracks the button height (sm is h-7, lg/icon are h-9, …) so
-    // the loading glyph stays proportionate across sizes.
     const spinnerSizeClass =
       size === "sm"
         ? "h-7 w-7"
@@ -130,16 +133,23 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             ? "h-10 w-10"
             : "h-8 w-8";
     const shape = useShape();
-    const bgClass = active
-      ? activeBgVariants[variant ?? "primary"]
-      : bgVariants[variant ?? "primary"];
+    const v = variant ?? "primary";
+    const isDisabled = disabled || loading;
+
+    // State priority: disabled > active/selected > hover > rest
+    const bgClass = isDisabled
+      ? disabledBgVariants[v]
+      : active
+        ? activeBgVariants[v]
+        : bgVariants[v];
 
     const internals = (
       <>
         <span
           aria-hidden
           className={cn(
-            "absolute inset-0 rounded-[inherit] transition-[background-color,transform] duration-80 group-active:scale-[0.98]",
+            "absolute inset-0 rounded-[inherit] transition-[background-color,transform] duration-80",
+            !isDisabled && "group-active:scale-[0.98]",
             bgClass
           )}
         />
@@ -148,11 +158,11 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             <>
               <span className="flex items-center justify-center gap-[inherit] opacity-0">
                 {LeadingIcon && !isIconOnly && (
-                  <LeadingIcon size={iconSize} strokeWidth={2} />
+                  <LeadingIcon size={iconSize} strokeWidth={1.5} />
                 )}
                 {label}
                 {TrailingIcon && !isIconOnly && (
-                  <TrailingIcon size={iconSize} strokeWidth={2} />
+                  <TrailingIcon size={iconSize} strokeWidth={1.5} />
                 )}
               </span>
               <span className="absolute inset-0 flex items-center justify-center">
@@ -176,29 +186,17 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
               </span>
             </>
           ) : isIconOnly ? (
-            <span className="[&_svg]:stroke-[1.5] [&_svg]:transition-[stroke-width] [&_svg]:duration-80 group-hover:[&_svg]:stroke-[2]">
+            <span className="[&_svg]:stroke-[1.5]">
               {label}
             </span>
           ) : (
             <>
               {LeadingIcon && (
-                <LeadingIcon
-                  size={iconSize}
-                  strokeWidth={1.5}
-                  className="transition-[stroke-width] duration-80 group-hover:stroke-[2]"
-                />
+                <LeadingIcon size={iconSize} strokeWidth={1.5} />
               )}
-              {/* text-box only applies to block containers, so the trim lives
-                  on the label span (a blockified flex item), not the flex root.
-                  The button's height is fixed (h-*), so this doesn't change
-                  layout — it just centers the cap-to-baseline box optically. */}
               <span className="[text-box:trim-both_cap_alphabetic]">{label}</span>
               {TrailingIcon && (
-                <TrailingIcon
-                  size={iconSize}
-                  strokeWidth={1.5}
-                  className="transition-[stroke-width] duration-80 group-hover:stroke-[2]"
-                />
+                <TrailingIcon size={iconSize} strokeWidth={1.5} />
               )}
             </>
           )}
@@ -233,11 +231,9 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     return (
       <ButtonPrimitive
-        // Base UI's `ButtonPrimitive` forwards to an HTMLButtonElement;
-        // keep the public ref type narrow so consumers see the right type.
         ref={ref as React.Ref<HTMLButtonElement>}
         className={rootClassName}
-        disabled={disabled || loading}
+        disabled={isDisabled}
         style={style}
         {...props}
       >

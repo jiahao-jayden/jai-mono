@@ -79,6 +79,7 @@ interface MenuItemProps extends HTMLAttributes<HTMLDivElement> {
    *  reserved icon column. */
   icon?: IconComponent;
   label: string;
+  description?: string;
   index: number;
   /** When a boolean, the item is a radio-style option (role="menuitemradio"
    *  with aria-checked). When undefined, it is a plain action item
@@ -96,6 +97,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
     {
       icon: Icon,
       label,
+      description,
       index,
       checked,
       onSelect,
@@ -142,7 +144,8 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
       // text-box trim on the label doesn't shrink the row. shrink-0 because
       // menu popups are max-height flex columns — without it a long list
       // compresses rows to fit instead of scrolling.
-      `relative z-10 flex h-9 shrink-0 items-center gap-2 ${shape.item} px-2 cursor-pointer outline-none`,
+      `relative z-10 flex shrink-0 items-center gap-2 ${shape.item} px-2 cursor-pointer outline-none`,
+      description ? "min-h-14 py-2" : "h-9",
       disabled && "opacity-50 pointer-events-none",
       className
     );
@@ -168,29 +171,36 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
         )}
         {/* Both stacked spans carry the text-box trim so the invisible bold
             sizer and the visible label keep identical boxes. */}
-        <span className="inline-grid flex-1 text-[13px]">
-          <span
-            className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
-            style={{ fontVariationSettings: fontWeights.semibold }}
-            aria-hidden="true"
-          >
-            {label}
+        <span className="min-w-0 flex-1 text-[13px]">
+          <span className="inline-grid max-w-full">
+            <span
+              className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
+              style={{ fontVariationSettings: fontWeights.semibold }}
+              aria-hidden="true"
+            >
+              {label}
+            </span>
+            <span
+              className={cn(
+                "col-start-1 row-start-1 truncate transition-[color,font-variation-settings] duration-80 [text-box:trim-both_cap_alphabetic]",
+                isActive || checked
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              )}
+              style={{
+                fontVariationSettings: checked
+                  ? fontWeights.semibold
+                  : fontWeights.normal,
+              }}
+            >
+              {label}
+            </span>
           </span>
-          <span
-            className={cn(
-              "col-start-1 row-start-1 transition-[color,font-variation-settings] duration-80 [text-box:trim-both_cap_alphabetic]",
-              isActive || checked
-                ? "text-foreground"
-                : "text-muted-foreground"
-            )}
-            style={{
-              fontVariationSettings: checked
-                ? fontWeights.semibold
-                : fontWeights.normal,
-            }}
-          >
-            {label}
-          </span>
+          {description ? (
+            <span className="mt-1 block truncate text-[12px] leading-none text-muted-foreground/70">
+              {description}
+            </span>
+          ) : null}
         </span>
         <AnimatePresence>
           {checked && (

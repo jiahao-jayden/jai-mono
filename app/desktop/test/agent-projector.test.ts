@@ -89,4 +89,35 @@ describe("projectSessionSnapshot", () => {
 		]);
 		expect(JSON.stringify(projected)).not.toContain("secret");
 	});
+
+	test("从 durable user message 恢复 slash invocation metadata", () => {
+		const snapshot: SessionSnapshot = {
+			appState: {},
+			createdAt: "2026-08-01T00:00:00.000Z",
+			updatedAt: "2026-08-01T00:00:00.000Z",
+			entries: [
+				{
+					type: "message",
+					id: "user-1",
+					timestamp: "2026-08-01T00:00:00.000Z",
+					message: {
+						role: "user",
+						content: "/review inspect this patch",
+						metadata: {
+							slashInvocation: { name: "review", kind: "skill", displayName: "Review changes" },
+						},
+						timestamp: 1,
+					},
+				},
+			],
+		};
+
+		const projected = projectSessionSnapshot("session-1", snapshot);
+
+		expect(projected.items[0]).toMatchObject({
+			kind: "message",
+			text: "/review inspect this patch",
+			slashInvocation: { name: "review", kind: "skill", displayName: "Review changes" },
+		});
+	});
 });

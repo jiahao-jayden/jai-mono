@@ -1,7 +1,6 @@
 import { type Static, Type } from "@sinclair/typebox";
 import type {
 	CodingSession,
-	CreateWorkspaceInput,
 	MoveSessionInput,
 	SessionListCursor,
 	SessionListPage,
@@ -43,6 +42,58 @@ export const desktopRpcRequestSchema = Type.Object(
 export type DesktopTheme = "light" | "dark" | "system";
 
 export type DesktopAgentStatus = "idle" | "running";
+export interface DesktopWorkspace extends Workspace {
+	readonly available: boolean;
+}
+
+export type DesktopProviderAdapter = "anthropic" | "openai-compatible";
+export type DesktopProviderAuthentication = "api-key" | "none";
+
+export interface DesktopProviderModel {
+	readonly id: string;
+	readonly name: string;
+	readonly remoteModelId: string;
+}
+
+export interface DesktopProviderProfile {
+	readonly id: string;
+	readonly name: string;
+	readonly adapter: DesktopProviderAdapter;
+	readonly baseURL: string;
+	readonly authentication: DesktopProviderAuthentication;
+	readonly credentialConfigured: boolean;
+	readonly credentialMask?: string;
+	readonly models: readonly DesktopProviderModel[];
+}
+
+export interface DesktopProviderConfigSnapshot {
+	readonly revision: string | null;
+	readonly activeModelRef?: string;
+	readonly profiles: readonly DesktopProviderProfile[];
+}
+
+export interface DesktopProviderProfileInput {
+	readonly id: string;
+	readonly name: string;
+	readonly adapter: DesktopProviderAdapter;
+	readonly baseURL: string;
+	readonly authentication: DesktopProviderAuthentication;
+	readonly apiKey?: string;
+	readonly clearApiKey?: boolean;
+	readonly models: readonly DesktopProviderModel[];
+}
+
+export interface DesktopProviderConfigInput {
+	readonly revision: string | null;
+	readonly activeModelRef?: string;
+	readonly profiles: readonly DesktopProviderProfileInput[];
+}
+
+export interface DesktopSlashInvocation {
+	readonly name: string;
+	readonly kind: "skill" | "command";
+	readonly displayName: string;
+}
 
 export interface DesktopMessageItem {
 	readonly kind: "message";
@@ -52,6 +103,7 @@ export interface DesktopMessageItem {
 	readonly status: "streaming" | "complete";
 	readonly timestamp: number;
 	readonly stopReason?: string;
+	readonly slashInvocation?: DesktopSlashInvocation;
 }
 
 export interface DesktopToolItem {
@@ -145,10 +197,14 @@ export interface DesktopApi {
 		get(): DesktopTheme;
 		set(theme: DesktopTheme): void;
 	};
+	readonly provider: {
+		get(): Promise<DesktopProviderConfigSnapshot>;
+		save(input: DesktopProviderConfigInput): Promise<DesktopProviderConfigSnapshot>;
+	};
 	readonly workspace: {
-		list(): Workspace[];
-		create(input: CreateWorkspaceInput): Promise<Workspace>;
-		relink(workspaceId: string, input: CreateWorkspaceInput): Promise<Workspace>;
+		list(): Promise<DesktopWorkspace[]>;
+		choose(): Promise<DesktopWorkspace | null>;
+		relink(workspaceId: string): Promise<DesktopWorkspace | null>;
 	};
 	readonly session: {
 		create(input: DesktopSessionCreateInput): Promise<CodingSession>;
