@@ -18,16 +18,22 @@ export function registerDesktopRpc(): void {
 			const parsed = parseRequest(request);
 			const handler = resolveHandler(parsed.path);
 			const value = await handler(event, ...parsed.args);
-			if (value === undefined) return { ok: true };
+			if (value === undefined) return { status: "ok" };
 			if (!Value.Check(jsonValueSchema, value)) {
 				throw rpcError("invalid_response", {
 					message: `Desktop method "${parsed.path}" returned a non-JSON value`,
 					data: { path: parsed.path },
 				});
 			}
-			return { ok: true, value };
+			return { status: "ok", value };
 		} catch (error) {
-			return { ok: false, error: toErrorEnvelope(error) };
+			const envelope = toErrorEnvelope(error);
+			return {
+				status: "error",
+				error: "data" in envelope
+					? { _tag: envelope.code, message: envelope.message, data: envelope.data }
+					: { _tag: envelope.code, message: envelope.message },
+			};
 		}
 	});
 }

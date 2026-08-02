@@ -5,7 +5,7 @@ Object.assign(globalThis, {
 	window: {
 		desktopRpc: {
 			platform: { isMac: false },
-			invoke: async () => ({ ok: true }),
+			invoke: async () => ({ status: "ok" }),
 			onAgentEvent: () => () => {},
 		},
 	},

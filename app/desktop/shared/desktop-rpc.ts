@@ -24,7 +24,7 @@ export const jsonValueSchema = Type.Recursive((This) =>
 
 const errorEnvelopeSchema = Type.Object(
 	{
-		code: Type.String({ minLength: 1 }),
+		_tag: Type.String({ minLength: 1 }),
 		message: Type.String(),
 		data: Type.Optional(jsonValueSchema),
 	},
@@ -235,8 +235,8 @@ export type AsyncRpcClient<T> = {
 
 export type DesktopRpcRequest = Static<typeof desktopRpcRequestSchema>;
 export type DesktopRpcResponse =
-	| { readonly ok: true; readonly value?: Static<typeof jsonValueSchema> }
-	| { readonly ok: false; readonly error: Static<typeof errorEnvelopeSchema> };
+	| { readonly status: "ok"; readonly value?: Static<typeof jsonValueSchema> }
+	| { readonly status: "error"; readonly error: Static<typeof errorEnvelopeSchema> };
 
 export interface DesktopBridge {
 	readonly platform: {
