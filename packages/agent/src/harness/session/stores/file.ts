@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
-import { CodedError, getErrorCode } from "@jai/common";
+import { getErrorCode } from "@jai/common";
+import { TaggedError } from "better-result";
 import type { JsonObject } from "../../../core/agent-state";
 import { replay } from "../snapshot";
 import {
@@ -15,6 +16,10 @@ import {
 
 const SCHEMA_VERSION = 1;
 const VALID_ID = /^[A-Za-z0-9._-]+$/;
+class InvalidSessionId extends TaggedError("session.invalid_id")<{ readonly message: string }> {}
+class CorruptedSessionFile extends TaggedError("session.corrupted_file")<{ readonly message: string }> {}
+class MissingSessionHeader extends TaggedError("session.missing_header")<{ readonly message: string }> {}
+class UnsupportedSessionSchema extends TaggedError("session.unsupported_schema")<{ readonly message: string }> {}
 
 interface SessionHeader {
 	type: "session";
@@ -41,11 +46,7 @@ export class FileSessionStore<TAppState extends JsonObject = JsonObject> impleme
 		if (!parsed) return undefined;
 
 		return {
-			snapshot: replay<TAppState>(
-				parsed.header.appState as TAppState,
-				parsed.entries,
-				parsed.header.createdAt,
-			),
+			snapshot: replay<TAppState>(parsed.header.appState as TAppState, parsed.entries, parsed.header.createdAt),
 			revision: parsed.revision,
 			readOnly: parsed.readOnly,
 		};
@@ -99,7 +100,7 @@ export class FileSessionStore<TAppState extends JsonObject = JsonObject> impleme
 
 	private filePath(id: string): string {
 		if (!VALID_ID.test(id) || id === "." || id === "..") {
-			throw new CodedError({ code: "session.invalid_id", message: `Invalid session id "${id}"` });
+			throw new InvalidSessionId({ message: `Invalid session id "${id}"` });
 		}
 		return path.join(this.directory, `${id}.jsonl`);
 	}
@@ -138,8 +139,7 @@ export class FileSessionStore<TAppState extends JsonObject = JsonObject> impleme
 			if (!record) {
 				// 尾行可能是崩溃时写了一半；中间的坏行则说明文件真的损坏了。
 				if (index === lastLine) break;
-				throw new CodedError({
-					code: "session.corrupted_file",
+				throw new CorruptedSessionFile({
 					message: `Corrupted session file "${id}" at line ${index + 1}`,
 				});
 			}
@@ -234,11 +234,10 @@ export class FileSessionStore<TAppState extends JsonObject = JsonObject> impleme
 function parseHeader(line: string | undefined, id: string): SessionHeader {
 	const header = line ? tryParseLine(line) : undefined;
 	if (!header || header.type !== "session") {
-		throw new CodedError({ code: "session.missing_header", message: `Session file "${id}" is missing its header` });
+		throw new MissingSessionHeader({ message: `Session file "${id}" is missing its header` });
 	}
 	if (typeof header.version !== "number" || header.version > SCHEMA_VERSION) {
-		throw new CodedError({
-			code: "session.unsupported_schema",
+		throw new UnsupportedSessionSchema({
 			message: `Session file "${id}" uses unsupported schema version ${String(header.version)}`,
 		});
 	}

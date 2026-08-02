@@ -1,5 +1,5 @@
 import { type Static, Type } from "@sinclair/typebox";
-import { defineCodedError } from "@jai/common";
+import { TaggedError } from "better-result";
 import type { AgentTool } from "../../core";
 import { byteLength, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINE_LENGTH, DEFAULT_MAX_LINES } from "./truncate";
 import type { TruncationDetails, WorkspaceToolOptions } from "./types";
@@ -12,12 +12,24 @@ const readParameters = Type.Object(
 	},
 	{ additionalProperties: false },
 );
-const readError = defineCodedError("tool.read", [
-	"aborted",
-	"binary_file",
-	"invalid_utf8",
-	"offset_out_of_range",
-] as const);
+type ReadErrorInit = { readonly cause?: unknown; readonly message: string };
+class ReadAborted extends TaggedError("tool.read.aborted")<ReadErrorInit> {}
+class BinaryFile extends TaggedError("tool.read.binary_file")<ReadErrorInit> {}
+class InvalidUtf8 extends TaggedError("tool.read.invalid_utf8")<ReadErrorInit> {}
+class OffsetOutOfRange extends TaggedError("tool.read.offset_out_of_range")<ReadErrorInit> {}
+
+function readError(reason: "aborted" | "binary_file" | "invalid_utf8" | "offset_out_of_range", init: ReadErrorInit) {
+	switch (reason) {
+		case "aborted":
+			return new ReadAborted(init);
+		case "binary_file":
+			return new BinaryFile(init);
+		case "invalid_utf8":
+			return new InvalidUtf8(init);
+		case "offset_out_of_range":
+			return new OffsetOutOfRange(init);
+	}
+}
 
 export type ReadToolInput = Static<typeof readParameters>;
 export interface ReadToolDetails {

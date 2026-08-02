@@ -1,6 +1,6 @@
 import type { Usage } from "@jai/ai";
-import type { JsonObject } from "../../core/agent-state";
 import { TaggedError } from "better-result";
+import type { JsonObject } from "../../core/agent-state";
 import type { AgentMessage } from "../../core/types";
 
 export interface MessageEntry {

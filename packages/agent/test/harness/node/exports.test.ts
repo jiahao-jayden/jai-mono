@@ -33,9 +33,9 @@ async function collectStaticSourceGraph(entrypoint: string): Promise<Map<string,
 describe("environment exports", () => {
 	test("root exports environment contracts, errors, and harness factories", () => {
 		for (const name of [
-			"FileSystemError",
-			"FileSearchError",
-			"ShellError",
+			"fileSystemError",
+			"fileSearchError",
+			"shellError",
 			"createReadTool",
 			"createGlobTool",
 			"createGrepTool",

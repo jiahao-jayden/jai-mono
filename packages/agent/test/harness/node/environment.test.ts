@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getErrorCode } from "@jai/common";
 import { NodeExecutionEnvironment } from "../../../src/node";
 
 const temporaryDirectories: string[] = [];
@@ -15,6 +16,15 @@ afterEach(async () => {
 		temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
 	);
 });
+
+async function expectErrorCode(promise: Promise<unknown>, code: string): Promise<void> {
+	try {
+		await promise;
+		throw new Error(`Expected ${code}`);
+	} catch (error) {
+		expect(getErrorCode(error)).toBe(code);
+	}
+}
 
 describe("NodeExecutionEnvironment", () => {
 	test("canonicalizes existing and missing paths and rejects boundary escapes", async () => {
@@ -44,20 +54,22 @@ describe("NodeExecutionEnvironment", () => {
 				})
 			).canonicalPath,
 		).toBe(join(await realpath(workspace), "new", "file.txt"));
-		await expect(
+		await expectErrorCode(
 			environment.resolvePath("link/secret.txt", {
 				base: workspace,
 				boundary: workspace,
 				mustExist: true,
 			}),
-		).rejects.toMatchObject({ code: "filesystem.outside_boundary" });
-		await expect(
+			"filesystem.outside_boundary",
+		);
+		await expectErrorCode(
 			environment.resolvePath("../outside.txt", {
 				base: workspace,
 				boundary: workspace,
 				mustExist: false,
 			}),
-		).rejects.toMatchObject({ code: "filesystem.outside_boundary" });
+			"filesystem.outside_boundary",
+		);
 	});
 
 	test("atomic writes create, replace, preserve mode, and honor abort", async () => {
@@ -71,9 +83,10 @@ describe("NodeExecutionEnvironment", () => {
 		expect((await stat(path)).mode & 0o777).toBe(0o640);
 		const controller = new AbortController();
 		controller.abort();
-		await expect(
+		await expectErrorCode(
 			environment.writeFileAtomic(path, "changed", { signal: controller.signal }),
-		).rejects.toMatchObject({ code: "filesystem.aborted" });
+			"filesystem.aborted",
+		);
 		expect(await readFile(path, "utf8")).toBe("second");
 	});
 
@@ -84,36 +97,40 @@ describe("NodeExecutionEnvironment", () => {
 			ripgrepPath: join(workspace, "missing-rg"),
 			shellPath: join(workspace, "missing-shell"),
 		});
-		await expect(
+		await expectErrorCode(
 			environment.glob({ cwd: workspace, pattern: "*", limit: 10 }),
-		).rejects.toMatchObject({ code: "filesearch.backend_unavailable" });
-		await expect(
+			"filesearch.backend_unavailable",
+		);
+		await expectErrorCode(
 			environment.execute("true", { cwd: workspace, timeoutMs: 100 }),
-		).rejects.toMatchObject({ code: "shell.shell_unavailable" });
+			"shell.shell_unavailable",
+		);
 	});
 
 	test("maps invalid search patterns and pre-abort to stable codes", async () => {
 		const workspace = await temporaryDirectory("jai-search-errors-");
 		await writeFile(join(workspace, "file.txt"), "contents");
 		const environment = new NodeExecutionEnvironment({ cwd: workspace });
-		await expect(
+		await expectErrorCode(
 			environment.grep({
 				cwd: workspace,
 				target: ".",
 				pattern: "[",
 				limit: 10,
 			}),
-		).rejects.toMatchObject({ code: "filesearch.invalid_pattern" });
+			"filesearch.invalid_pattern",
+		);
 		const controller = new AbortController();
 		controller.abort();
-		await expect(
+		await expectErrorCode(
 			environment.glob({
 				cwd: workspace,
 				pattern: "*",
 				limit: 10,
 				signal: controller.signal,
 			}),
-		).rejects.toMatchObject({ code: "filesearch.aborted" });
+			"filesearch.aborted",
+		);
 	});
 
 	test("marks truncated ripgrep stderr", async () => {
@@ -163,10 +180,11 @@ describe("NodeExecutionEnvironment", () => {
 		const settledCallbacks = asyncOutput.length;
 		await Bun.sleep(20);
 		expect(asyncOutput).toHaveLength(settledCallbacks);
-		await expect(
+		await expectErrorCode(
 			environment.execute("sleep 2", { cwd: workspace, timeoutMs: 20 }),
-		).rejects.toMatchObject({ code: "shell.timeout" });
-		await expect(
+			"shell.timeout",
+		);
+		await expectErrorCode(
 			environment.execute("printf output; sleep 1", {
 				cwd: workspace,
 				timeoutMs: 2_000,
@@ -174,6 +192,7 @@ describe("NodeExecutionEnvironment", () => {
 					throw new Error("callback");
 				},
 			}),
-		).rejects.toMatchObject({ code: "shell.output_callback_failed" });
+			"shell.output_callback_failed",
+		);
 	});
 });

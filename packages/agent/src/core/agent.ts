@@ -1,5 +1,5 @@
 import { EventStream } from "@jai/ai";
-import { CodedError } from "@jai/common";
+import { TaggedError } from "better-result";
 import { agentLoop } from "./agent-loop";
 import { type AgentState, cloneJson, freezeState, type JsonObject, type MutableAgentState } from "./agent-state";
 import { type Session, toToolInfo } from "./session";
@@ -14,6 +14,31 @@ import type {
 } from "./types";
 
 export type AgentInput = string | AgentMessage | AgentMessage[];
+
+type AgentErrorInit = { readonly message: string };
+class AgentAlreadyRunning extends TaggedError("agent.already_running")<AgentErrorInit> {}
+class AgentResetWhileRunning extends TaggedError("agent.reset_while_running")<AgentErrorInit> {}
+class AgentIdle extends TaggedError("agent.idle")<AgentErrorInit> {}
+class AgentModelProviderMismatch extends TaggedError("agent.model_provider_mismatch")<AgentErrorInit> {}
+class AgentDuplicateTool extends TaggedError("agent.duplicate_tool")<AgentErrorInit> {}
+
+function agentError(
+	reason: "already_running" | "reset_while_running" | "idle" | "model_provider_mismatch" | "duplicate_tool",
+	init: AgentErrorInit,
+) {
+	switch (reason) {
+		case "already_running":
+			return new AgentAlreadyRunning(init);
+		case "reset_while_running":
+			return new AgentResetWhileRunning(init);
+		case "idle":
+			return new AgentIdle(init);
+		case "model_provider_mismatch":
+			return new AgentModelProviderMismatch(init);
+		case "duplicate_tool":
+			return new AgentDuplicateTool(init);
+	}
+}
 
 /** 观察者：读事件，不影响 run。抛错会被隔离并交给 onObserverError。 */
 export type CoreAgentEventListener = (event: CoreAgentEvent) => void | Promise<void>;
@@ -170,7 +195,7 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 
 	private startRun(input: AgentInput): Promise<AgentMessage[]> {
 		if (this.activeRun) {
-			throw new CodedError({ code: "agent.already_running", message: "Agent is already running. Use steer() or followUp()." });
+			throw agentError("already_running", { message: "Agent is already running. Use steer() or followUp()." });
 		}
 
 		const prompts = toMessages(input);
@@ -229,7 +254,7 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 	 */
 	reset(): void {
 		if (this.activeRun) {
-			throw new CodedError({ code: "agent.reset_while_running", message: "Cannot reset Agent while a run is active." });
+			throw agentError("reset_while_running", { message: "Cannot reset Agent while a run is active." });
 		}
 
 		this.internalState.messages = [];
@@ -323,7 +348,7 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 
 	private assertActiveRun(): void {
 		if (!this.activeRun) {
-			throw new CodedError({ code: "agent.idle", message: "Agent is idle. Start an invocation instead." });
+			throw agentError("idle", { message: "Agent is idle. Start an invocation instead." });
 		}
 	}
 
@@ -364,8 +389,7 @@ function createRunStream(): EventStream<CoreAgentEvent, AgentMessage[]> {
 
 function assertModelMatchesProvider(model: CoreAgentOptions["model"], provider: CoreAgentOptions["provider"]): void {
 	if (model.provider !== provider.id) {
-		throw new CodedError({
-			code: "agent.model_provider_mismatch",
+		throw agentError("model_provider_mismatch", {
 			message: `Model "${model.id}" belongs to provider "${model.provider}", not "${provider.id}"`,
 		});
 	}
@@ -376,7 +400,7 @@ function assertUniqueTools(tools: AgentTool[]): AgentTool[] {
 	const seen = new Set<string>();
 	for (const tool of tools) {
 		if (seen.has(tool.name)) {
-			throw new CodedError({ code: "agent.duplicate_tool", message: `Duplicate tool name "${tool.name}"` });
+			throw agentError("duplicate_tool", { message: `Duplicate tool name "${tool.name}"` });
 		}
 		seen.add(tool.name);
 	}

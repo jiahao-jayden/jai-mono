@@ -6,15 +6,28 @@ import {
 	type ResolvedCodingProvider,
 	resolveConfiguredProvider,
 } from "@jai/coding/runtime";
-import { defineCodedError } from "@jai/common";
+import { TaggedError } from "better-result";
 import type { DesktopAgentFactory, HostedCodingAgent } from "./host";
 
 const CODING_AGENT_INSTRUCTIONS =
 	"You are Jai, a coding agent. Inspect the workspace before editing, keep changes scoped, and explain the result clearly.";
-const desktopProviderError = defineCodedError("desktop_provider", [
-	"title_generation_failed",
-	"runtime_unavailable",
-] as const);
+type DesktopProviderErrorInit = { readonly message: string };
+class TitleGenerationFailed extends TaggedError("desktop_provider.title_generation_failed")<DesktopProviderErrorInit> {}
+class ProviderRuntimeUnavailable extends TaggedError(
+	"desktop_provider.runtime_unavailable",
+)<DesktopProviderErrorInit> {}
+
+function desktopProviderError(
+	reason: "title_generation_failed" | "runtime_unavailable",
+	init: DesktopProviderErrorInit,
+) {
+	switch (reason) {
+		case "title_generation_failed":
+			return new TitleGenerationFailed(init);
+		case "runtime_unavailable":
+			return new ProviderRuntimeUnavailable(init);
+	}
+}
 
 export function createDesktopAgentFactory(service: CodingBusinessService): DesktopAgentFactory {
 	return async ({ sessionId, requestApproval }) => {

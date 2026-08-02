@@ -1,7 +1,8 @@
+import { getErrorMessage } from "@jai/common";
 import { type Static, Type } from "@sinclair/typebox";
-import { defineCodedError, getErrorMessage } from "@jai/common";
+import { TaggedError } from "better-result";
 import type { AgentTool } from "../../core";
-import { ShellError, type ShellResult } from "../environment";
+import type { ShellResult } from "../environment";
 import { byteLength, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateText } from "./truncate";
 import type { BashToolOptions, TruncationDetails } from "./types";
 
@@ -19,13 +20,30 @@ const bashParameters = Type.Object(
 	},
 	{ additionalProperties: false },
 );
-const bashError = defineCodedError("tool.bash", [
-	"aborted",
-	"invalid_timeout",
-	"timeout",
-	"execution_failed",
-	"non_zero_exit",
-] as const);
+class BashAborted extends TaggedError("tool.bash.aborted")<BashErrorInit> {}
+class BashInvalidTimeout extends TaggedError("tool.bash.invalid_timeout")<BashErrorInit> {}
+class BashTimeout extends TaggedError("tool.bash.timeout")<BashErrorInit> {}
+class BashExecutionFailed extends TaggedError("tool.bash.execution_failed")<BashErrorInit> {}
+class BashNonZeroExit extends TaggedError("tool.bash.non_zero_exit")<BashErrorInit> {}
+type BashErrorInit = { readonly cause?: unknown; readonly message: string };
+
+function bashError(
+	reason: "aborted" | "invalid_timeout" | "timeout" | "execution_failed" | "non_zero_exit",
+	init: BashErrorInit,
+) {
+	switch (reason) {
+		case "aborted":
+			return new BashAborted(init);
+		case "invalid_timeout":
+			return new BashInvalidTimeout(init);
+		case "timeout":
+			return new BashTimeout(init);
+		case "execution_failed":
+			return new BashExecutionFailed(init);
+		case "non_zero_exit":
+			return new BashNonZeroExit(init);
+	}
+}
 
 export type BashToolInput = Static<typeof bashParameters>;
 export interface BashToolDetails {
@@ -152,10 +170,10 @@ export function createBashTool(options: BashToolOptions): AgentTool<typeof bashP
 					const diagnostic = final.truncated
 						? appendStatus(final.text, `[Output truncated. Full output: ${temporaryFile.path}]`)
 						: final.text;
-					if (error instanceof ShellError && error.reason === "aborted") {
+					if (TaggedError.is(error) && error._tag === "shell.aborted") {
 						throw bashError("aborted", { message: appendStatus(diagnostic, "Command aborted"), cause: error });
 					}
-					if (error instanceof ShellError && error.reason === "timeout") {
+					if (TaggedError.is(error) && error._tag === "shell.timeout") {
 						throw bashError("timeout", {
 							message: appendStatus(diagnostic, `Command timed out after ${timeoutMs}ms`),
 							cause: error,

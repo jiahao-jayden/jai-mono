@@ -7,9 +7,9 @@ import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { StringDecoder } from "node:string_decoder";
-import { CodedError, getErrorMessage } from "@jai/common";
+import { getErrorMessage } from "@jai/common";
 import { TaggedError } from "better-result";
-import { FileSearchError, FileSystemError, ShellError } from "../environment/errors";
+import { fileSearchError, fileSystemError, shellError } from "../environment/errors";
 import type {
 	AbortOptions,
 	AtomicWriteOptions,
@@ -52,7 +52,7 @@ interface PathCandidate {
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
-	if (signal?.aborted) throw new FileSystemError("aborted", "Operation aborted");
+	if (signal?.aborted) throw fileSystemError("aborted", "Operation aborted");
 }
 
 function isWithin(root: string, target: string): boolean {
@@ -109,16 +109,15 @@ async function resolveExecutable(
 }
 
 function fileSystemFailure(error: unknown, resource: string): never {
-	if (error instanceof CodedError || TaggedError.is(error)) throw error;
-	if (isNotFound(error))
-		throw new FileSystemError("not_found", `Path not found: ${resource}`, { resource, cause: error });
+	if (TaggedError.is(error)) throw error;
+	if (isNotFound(error)) throw fileSystemError("not_found", `Path not found: ${resource}`, { resource, cause: error });
 	if (isPermissionDenied(error)) {
-		throw new FileSystemError("permission_denied", `Permission denied: ${resource}`, { resource, cause: error });
+		throw fileSystemError("permission_denied", `Permission denied: ${resource}`, { resource, cause: error });
 	}
 	if (isNodeErrorCode(error, "ABORT_ERR")) {
-		throw new FileSystemError("aborted", "Operation aborted", { resource, cause: error });
+		throw fileSystemError("aborted", "Operation aborted", { resource, cause: error });
 	}
-	throw new FileSystemError("io_error", getErrorMessage(error) || `I/O failed: ${resource}`, {
+	throw fileSystemError("io_error", getErrorMessage(error) || `I/O failed: ${resource}`, {
 		resource,
 		cause: error,
 	});
@@ -152,7 +151,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 
 	async withPathCapability<T>(capability: PathCapability, operation: () => Promise<T>): Promise<T> {
 		if (!this.#issuedCapabilities.has(capability)) {
-			throw new FileSystemError("outside_boundary", "Path capability was not issued by this environment");
+			throw fileSystemError("outside_boundary", "Path capability was not issued by this environment");
 		}
 		this.#issuedCapabilities.delete(capability);
 		return this.#activeCapability.run(capability as IssuedPathCapability, operation);
@@ -170,7 +169,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 				capability.requestedPath !== candidate.requestedPath ||
 				capability.canonicalPath !== candidate.canonicalPath
 			) {
-				throw new FileSystemError("outside_boundary", `Path escapes workspace: ${input}`, {
+				throw fileSystemError("outside_boundary", `Path escapes workspace: ${input}`, {
 					resource: candidate.canonicalPath,
 				});
 			}
@@ -179,9 +178,9 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 	}
 
 	async #resolveCandidate(input: string, options: ResolvePathOptions): Promise<PathCandidate> {
-		if (input.length === 0) throw new FileSystemError("invalid_path", "Path cannot be empty", { resource: input });
+		if (input.length === 0) throw fileSystemError("invalid_path", "Path cannot be empty", { resource: input });
 		if (input.includes("\0")) {
-			throw new FileSystemError("invalid_path", "Path cannot contain NUL", { resource: input });
+			throw fileSystemError("invalid_path", "Path cannot contain NUL", { resource: input });
 		}
 		throwIfAborted(options.signal);
 		try {
@@ -189,28 +188,28 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 			const boundary = await realpath(resolve(options.boundary));
 			const boundaryStat = await stat(boundary);
 			if (!boundaryStat.isDirectory()) {
-				throw new FileSystemError("not_directory", `Workspace root is not a directory: ${options.boundary}`, {
+				throw fileSystemError("not_directory", `Workspace root is not a directory: ${options.boundary}`, {
 					resource: options.boundary,
 				});
 			}
 			const requested = isAbsolute(input) ? resolve(input) : resolve(base, input);
 			const existingPath = await realpathIfExists(requested);
 			if (!existingPath && options.mustExist) {
-				throw new FileSystemError("not_found", `Path not found: ${input}`, { resource: input });
+				throw fileSystemError("not_found", `Path not found: ${input}`, { resource: input });
 			}
 			const canonicalPath = existingPath ?? (await canonicalizeMissing(requested));
 			try {
 				const targetStat = await stat(canonicalPath);
 				if (options.expectedKind === "file" && !targetStat.isFile()) {
-					throw new FileSystemError("not_file", `Path is not a file: ${input}`, { resource: canonicalPath });
+					throw fileSystemError("not_file", `Path is not a file: ${input}`, { resource: canonicalPath });
 				}
 				if (options.expectedKind === "directory" && !targetStat.isDirectory()) {
-					throw new FileSystemError("not_directory", `Path is not a directory: ${input}`, {
+					throw fileSystemError("not_directory", `Path is not a directory: ${input}`, {
 						resource: canonicalPath,
 					});
 				}
 			} catch (error) {
-				if (error instanceof CodedError || TaggedError.is(error)) throw error;
+				if (TaggedError.is(error)) throw error;
 				if (!isNotFound(error) || options.mustExist) throw error;
 			}
 			throwIfAborted(options.signal);
@@ -288,12 +287,11 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 		let created = true;
 		try {
 			const current = await stat(path);
-			if (!current.isFile())
-				throw new FileSystemError("not_file", `Path is not a file: ${path}`, { resource: path });
+			if (!current.isFile()) throw fileSystemError("not_file", `Path is not a file: ${path}`, { resource: path });
 			mode = current.mode;
 			created = false;
 		} catch (error) {
-			if (error instanceof CodedError || TaggedError.is(error) || !isNotFound(error)) fileSystemFailure(error, path);
+			if (TaggedError.is(error) || !isNotFound(error)) fileSystemFailure(error, path);
 		}
 		const temporaryPath = join(directory, `.${basename(path)}.jai-${process.pid}-${randomUUID()}.tmp`);
 		try {
@@ -414,14 +412,14 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 		try {
 			const existing = await realpathIfExists(resolve(path));
 			if (!existing && mustExist) {
-				throw new FileSystemError("not_found", `Path not found: ${path}`, { resource: path });
+				throw fileSystemError("not_found", `Path not found: ${path}`, { resource: path });
 			}
 			canonicalPath = existing ?? (await canonicalizeMissing(resolve(path)));
 		} catch (error) {
 			fileSystemFailure(error, path);
 		}
 		if (canonicalPath !== capability.canonicalPath) {
-			throw new FileSystemError("outside_boundary", "Authorized path changed before execution", {
+			throw fileSystemError("outside_boundary", "Authorized path changed before execution", {
 				resource: canonicalPath,
 			});
 		}
@@ -434,10 +432,10 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 		limit?: number,
 		onLine?: (line: string) => boolean,
 	): Promise<{ lines: string[]; limitReached: boolean }> {
-		if (signal?.aborted) throw new FileSearchError("aborted", "Operation aborted", { resource: cwd });
+		if (signal?.aborted) throw fileSearchError("aborted", "Operation aborted", { resource: cwd });
 		const executable = await resolveExecutable(this.#ripgrepPath);
 		if (!executable) {
-			throw new FileSearchError("backend_unavailable", "ripgrep (rg) is required for glob and grep", {
+			throw fileSearchError("backend_unavailable", "ripgrep (rg) is required for glob and grep", {
 				resource: cwd,
 			});
 		}
@@ -480,10 +478,10 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 				if (!onLine) lines.push(line);
 			}
 			const code = await completion;
-			if (signal?.aborted) throw new FileSearchError("aborted", "Operation aborted", { resource: cwd });
+			if (signal?.aborted) throw fileSearchError("aborted", "Operation aborted", { resource: cwd });
 			if (spawnError) {
 				const unavailable = isNotFound(spawnError);
-				throw new FileSearchError(
+				throw fileSearchError(
 					unavailable ? "backend_unavailable" : "search_failed",
 					unavailable ? "ripgrep (rg) is required for glob and grep" : getErrorMessage(spawnError),
 					{ resource: cwd, cause: spawnError },
@@ -495,7 +493,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 					? `${stderrText}${stderrTruncated ? "\n[stderr truncated]" : ""}`
 					: `ripgrep exited with code ${code}`;
 				const invalid = code === 2 && message.toLowerCase().includes("regex");
-				throw new FileSearchError(invalid ? "invalid_pattern" : "search_failed", message, { resource: cwd });
+				throw fileSearchError(invalid ? "invalid_pattern" : "search_failed", message, { resource: cwd });
 			}
 			return { lines, limitReached };
 		} finally {
@@ -505,14 +503,14 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 	}
 
 	async execute(command: string, options: ShellExecuteOptions): Promise<ShellResult> {
-		if (options.signal?.aborted) throw new ShellError("aborted", "Operation aborted");
+		if (options.signal?.aborted) throw shellError("aborted", "Operation aborted");
 		const shellCommand = options.shell ?? this.#shellPath ?? process.env.SHELL ?? "/bin/sh";
 		const shell = await resolveExecutable(
 			shellCommand,
 			this.#shellEnv ? { ...process.env, ...this.#shellEnv } : process.env,
 		);
 		if (!shell) {
-			throw new ShellError("shell_unavailable", `Shell not found: ${shellCommand}`);
+			throw shellError("shell_unavailable", `Shell not found: ${shellCommand}`);
 		}
 		const startedAt = Date.now();
 		const child = spawn(shell, ["-lc", command], {
@@ -621,12 +619,12 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 			await outputQueue;
 			settled = true;
 			if (callbackError) {
-				throw new ShellError("output_callback_failed", "Shell output callback failed", { cause: callbackError });
+				throw shellError("output_callback_failed", "Shell output callback failed", { cause: callbackError });
 			}
-			if (aborted || options.signal?.aborted) throw new ShellError("aborted", "Operation aborted");
-			if (timedOut) throw new ShellError("timeout", `Command timed out after ${options.timeoutMs}ms`);
+			if (aborted || options.signal?.aborted) throw shellError("aborted", "Operation aborted");
+			if (timedOut) throw shellError("timeout", `Command timed out after ${options.timeoutMs}ms`);
 			if (spawnError) {
-				throw new ShellError(
+				throw shellError(
 					isNotFound(spawnError) ? "shell_unavailable" : "spawn_failed",
 					getErrorMessage(spawnError),
 					{ cause: spawnError },

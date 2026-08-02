@@ -3,7 +3,7 @@ import type { AgentMessage } from "../../core/types";
 import { estimateTokens } from "./estimate";
 import { buildCompactedMessages, findCompactionCut } from "./projection";
 import { serializeConversation } from "./serialize";
-import { type CompactInput, CompactionFailure, type CompactionResult } from "./types";
+import { type CompactInput, type CompactionResult, compactionFailure } from "./types";
 
 /**
  * 默认摘要 Prompt 只规定领域无关目标。coding-agent 的身份、文件系统规则、
@@ -34,7 +34,7 @@ const FOLD_PREVIOUS_SUMMARY =
 
 export async function compact(input: CompactInput): Promise<CompactionResult> {
 	const cut = findCompactionCut(input.entries, input.settings);
-	if (!cut) throw new CompactionFailure("nothing_to_compact", "No new history to summarize");
+	if (!cut) throw compactionFailure("nothing_to_compact", "No new history to summarize");
 
 	const stream = input.provider.stream(
 		input.model,
@@ -77,10 +77,10 @@ export async function compact(input: CompactInput): Promise<CompactionResult> {
 
 function extractSummary(message: AssistantMessage): string {
 	if (message.stopReason === "aborted") {
-		throw new CompactionFailure("aborted", "Summarization was aborted");
+		throw compactionFailure("aborted", "Summarization was aborted");
 	}
 	if (message.stopReason !== "stop" && message.stopReason !== "length") {
-		throw new CompactionFailure(
+		throw compactionFailure(
 			"summarization_failed",
 			`Summarization ended with stopReason "${message.stopReason}": ${message.error?.message ?? "no summary produced"}`,
 		);
@@ -92,7 +92,7 @@ function extractSummary(message: AssistantMessage): string {
 		.join("\n")
 		.trim();
 
-	if (summary.length === 0) throw new CompactionFailure("summarization_failed", "Summarization returned no text");
+	if (summary.length === 0) throw compactionFailure("summarization_failed", "Summarization returned no text");
 	return summary;
 }
 

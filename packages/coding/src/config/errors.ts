@@ -29,16 +29,26 @@ function configError(
 	init: ConfigErrorInit,
 ) {
 	switch (reason) {
-		case "definition_invalid": return new ConfigDefinitionInvalid(init);
-		case "read_failed": return new ConfigReadFailed(init);
-		case "parse_failed": return new ConfigParseFailed(init);
-		case "validation_failed": return new ConfigValidationFailed(init);
-		case "unsupported_version": return new ConfigUnsupportedVersion(init);
-		case "migration_failed": return new ConfigMigrationFailed(init);
-		case "write_conflict": return new ConfigWriteConflict(init);
-		case "write_failed": return new ConfigWriteFailed(init);
-		case "watch_failed": return new ConfigWatchFailed(init);
-		case "scope_unavailable": return new ConfigScopeUnavailable(init);
+		case "definition_invalid":
+			return new ConfigDefinitionInvalid(init);
+		case "read_failed":
+			return new ConfigReadFailed(init);
+		case "parse_failed":
+			return new ConfigParseFailed(init);
+		case "validation_failed":
+			return new ConfigValidationFailed(init);
+		case "unsupported_version":
+			return new ConfigUnsupportedVersion(init);
+		case "migration_failed":
+			return new ConfigMigrationFailed(init);
+		case "write_conflict":
+			return new ConfigWriteConflict(init);
+		case "write_failed":
+			return new ConfigWriteFailed(init);
+		case "watch_failed":
+			return new ConfigWatchFailed(init);
+		case "scope_unavailable":
+			return new ConfigScopeUnavailable(init);
 	}
 }
 

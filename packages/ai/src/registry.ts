@@ -1,4 +1,4 @@
-import { Result, TaggedError, type Result as ResultType } from "better-result";
+import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { AssistantMessageEventStream } from "./event-stream";
 import type { Provider, StreamOptions } from "./provider";
 import type { Context, Model } from "./types";
@@ -50,27 +50,33 @@ export class ModelRegistry {
 
 	register(entry: RegisteredProvider): ResultType<void, RegistryRegistrationError> {
 		if (this.providers.has(entry.provider.id)) {
-			return Result.err(new DuplicateProvider({
-				message: `Provider "${entry.provider.id}" is already registered`,
-				provider: entry.provider.id,
-			}));
+			return Result.err(
+				new DuplicateProvider({
+					message: `Provider "${entry.provider.id}" is already registered`,
+					provider: entry.provider.id,
+				}),
+			);
 		}
 		const refs = new Set<string>();
 		for (const model of entry.models) {
 			if (model.provider !== entry.provider.id) {
-				return Result.err(new ProviderMismatch({
-					message: `Model "${model.id}" references a different Provider profile`,
-					model: model.id,
-					expectedProvider: entry.provider.id,
-					actualProvider: model.provider,
-				}));
+				return Result.err(
+					new ProviderMismatch({
+						message: `Model "${model.id}" references a different Provider profile`,
+						model: model.id,
+						expectedProvider: entry.provider.id,
+						actualProvider: model.provider,
+					}),
+				);
 			}
 			const ref = refOf(model.provider, model.id);
 			if (refs.has(ref) || this.models.has(ref)) {
-				return Result.err(new DuplicateModel({
-					message: `Model "${ref}" is already registered`,
-					ref,
-				}));
+				return Result.err(
+					new DuplicateModel({
+						message: `Model "${ref}" is already registered`,
+						ref,
+					}),
+				);
 			}
 			refs.add(ref);
 		}
@@ -96,18 +102,22 @@ export class ModelRegistry {
 	): ResultType<AssistantMessageEventStream, RegistryStreamError> {
 		const model = this.models.get(ref);
 		if (!model) {
-			return Result.err(new ModelNotRegistered({
-				message: `Model "${ref}" not registered`,
-				ref,
-			}));
+			return Result.err(
+				new ModelNotRegistered({
+					message: `Model "${ref}" not registered`,
+					ref,
+				}),
+			);
 		}
 		const provider = this.providers.get(model.provider);
 		if (!provider) {
-			return Result.err(new ProviderNotRegistered({
-				message: `Provider "${model.provider}" not registered for model "${ref}"`,
-				provider: model.provider,
-				ref,
-			}));
+			return Result.err(
+				new ProviderNotRegistered({
+					message: `Provider "${model.provider}" not registered for model "${ref}"`,
+					provider: model.provider,
+					ref,
+				}),
+			);
 		}
 		return Result.ok(provider.stream(model, context, options));
 	}

@@ -1,11 +1,6 @@
 import type { JsonObject } from "../../../core/agent-state";
 import { applyEntry, emptySnapshot } from "../snapshot";
-import {
-	SessionConflictError,
-	type SessionEntry,
-	type SessionStore,
-	type StoredSession,
-} from "../types";
+import { SessionConflictError, type SessionEntry, type SessionStore, type StoredSession } from "../types";
 
 export class InMemorySessionStore<TAppState extends JsonObject = JsonObject> implements SessionStore<TAppState> {
 	private readonly records = new Map<string, StoredSession<TAppState>>();

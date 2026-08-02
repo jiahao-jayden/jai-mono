@@ -3,9 +3,9 @@ import { type FSWatcher, watch as watchFileSystem } from "node:fs";
 import { copyFile, mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { CodedError } from "@jai/common";
 import type { Static, TObject } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { TaggedError } from "better-result";
 import { createCodingConfigFileSchema, defineCodingConfig } from "./definition";
 import {
 	configMigrationError,
@@ -166,7 +166,7 @@ export class CodingConfigStore<TSchema extends TObject> {
 		try {
 			await atomicWrite(path, `${JSON.stringify(document, null, 2)}\n`);
 		} catch (error) {
-			if (error instanceof CodedError) throw error;
+			if (TaggedError.is(error)) throw error;
 			throw configWriteError({ scope, path }, error);
 		}
 		return this.load();

@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { TaggedError } from "better-result";
-import { CodedError, defineCodedError, getErrorCode, getErrorMessage, isErrorEnvelope, toErrorEnvelope } from "../src";
+import { getErrorCode, getErrorMessage, isErrorEnvelope, toErrorEnvelope } from "../src";
 
 class ProviderUnavailable extends TaggedError("provider.unavailable")<{
 	readonly data: { readonly providerId: string };
+	readonly message: string;
+}> {}
+class FileNotFound extends TaggedError("filesystem.not_found")<{
+	readonly cause?: unknown;
+	readonly data: { readonly resource: string };
 	readonly message: string;
 }> {}
 
@@ -17,9 +22,8 @@ describe("getErrorMessage", () => {
 		expect(getErrorMessage(42)).toBe("42");
 	});
 
-	test("projects coded errors to a JSON-safe envelope", () => {
-		const error = new CodedError({
-			code: "filesystem.not_found",
+	test("projects tagged errors to a JSON-safe envelope", () => {
+		const error = new FileNotFound({
 			message: "Path not found",
 			data: { resource: "/workspace/file.txt" },
 			cause: new Error("ENOENT"),
@@ -61,14 +65,13 @@ describe("getErrorMessage", () => {
 		expect(JSON.stringify(envelope)).not.toContain("cause");
 	});
 
-	test("creates codes from a locally typed reason set", () => {
-		const readError = defineCodedError("tool.read", ["aborted", "binary_file"] as const);
-		const error = readError("aborted", { message: "Operation aborted" });
+	test("uses the stable tagged-error code", () => {
+		const error = new ProviderUnavailable({
+			message: "Provider is unavailable",
+			data: { providerId: "openai" },
+		});
 
-		expect(error.code).toBe("tool.read.aborted");
-		if (false) {
-			// @ts-expect-error reason 必须属于本模块声明的集合
-			readError("abroted", { message: "Operation aborted" });
-		}
+		expect(error._tag).toBe("provider.unavailable");
+		expect(getErrorCode(error)).toBe("provider.unavailable");
 	});
 });

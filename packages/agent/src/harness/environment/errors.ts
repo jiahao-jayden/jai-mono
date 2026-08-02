@@ -1,4 +1,4 @@
-import { CodedError } from "@jai/common";
+import { TaggedError } from "better-result";
 
 export type FileSystemErrorReason =
 	| "aborted"
@@ -32,46 +32,36 @@ export type FileSystemErrorCode = `filesystem.${FileSystemErrorReason}`;
 export type FileSearchErrorCode = `filesearch.${FileSearchErrorReason}`;
 export type ShellErrorCode = `shell.${ShellErrorReason}`;
 
-export class FileSystemError extends CodedError<FileSystemErrorCode, { resource?: string }> {
-	readonly reason: FileSystemErrorReason;
-	readonly resource?: string;
-
-	constructor(reason: FileSystemErrorReason, message: string, options: { resource?: string; cause?: unknown } = {}) {
-		super({
-			code: `filesystem.${reason}`,
-			message,
-			data: { resource: options.resource },
-			cause: options.cause,
-		});
-		this.name = "FileSystemError";
-		this.reason = reason;
-		this.resource = options.resource;
-	}
+export function fileSystemError(
+	reason: FileSystemErrorReason,
+	message: string,
+	options: { resource?: string; cause?: unknown } = {},
+) {
+	const ErrorType = TaggedError(`filesystem.${reason}` as FileSystemErrorCode)<{
+		readonly cause?: unknown;
+		readonly data: { readonly resource?: string };
+		readonly message: string;
+	}>;
+	return new ErrorType({ message, data: { resource: options.resource }, cause: options.cause });
 }
 
-export class FileSearchError extends CodedError<FileSearchErrorCode, { resource?: string }> {
-	readonly reason: FileSearchErrorReason;
-	readonly resource?: string;
-
-	constructor(reason: FileSearchErrorReason, message: string, options: { resource?: string; cause?: unknown } = {}) {
-		super({
-			code: `filesearch.${reason}`,
-			message,
-			data: { resource: options.resource },
-			cause: options.cause,
-		});
-		this.name = "FileSearchError";
-		this.reason = reason;
-		this.resource = options.resource;
-	}
+export function fileSearchError(
+	reason: FileSearchErrorReason,
+	message: string,
+	options: { resource?: string; cause?: unknown } = {},
+) {
+	const ErrorType = TaggedError(`filesearch.${reason}` as FileSearchErrorCode)<{
+		readonly cause?: unknown;
+		readonly data: { readonly resource?: string };
+		readonly message: string;
+	}>;
+	return new ErrorType({ message, data: { resource: options.resource }, cause: options.cause });
 }
 
-export class ShellError extends CodedError<ShellErrorCode> {
-	readonly reason: ShellErrorReason;
-
-	constructor(reason: ShellErrorReason, message: string, options: { cause?: unknown } = {}) {
-		super({ code: `shell.${reason}`, message, cause: options.cause });
-		this.name = "ShellError";
-		this.reason = reason;
-	}
+export function shellError(reason: ShellErrorReason, message: string, options: { cause?: unknown } = {}) {
+	const ErrorType = TaggedError(`shell.${reason}` as ShellErrorCode)<{
+		readonly cause?: unknown;
+		readonly message: string;
+	}>;
+	return new ErrorType({ message, cause: options.cause });
 }

@@ -1,5 +1,5 @@
 import type { Model, Provider, Usage } from "@jai/ai";
-import { CodedError } from "@jai/common";
+import { TaggedError } from "better-result";
 import type { AgentContext } from "../../core/types";
 import type { CompactionEntry, SessionEntry } from "../session/types";
 
@@ -64,14 +64,32 @@ export interface CompactionErrorInfo {
 }
 
 /** 内部载体：让策略把稳定 code 传给门面，不必让门面猜测异常类型。 */
-export class CompactionFailure extends CodedError<`compaction.${CompactionErrorCode}`> {
-	override name = "CompactionFailure";
+type CompactionFailureInit = { readonly cause?: unknown; readonly message: string };
+class CompactionAborted extends TaggedError("compaction.aborted")<CompactionFailureInit> {}
+class NothingToCompact extends TaggedError("compaction.nothing_to_compact")<CompactionFailureInit> {}
+class SummarizationFailed extends TaggedError("compaction.summarization_failed")<CompactionFailureInit> {}
+class UnknownCompactionFailure extends TaggedError("compaction.unknown")<CompactionFailureInit> {}
 
-	constructor(
-		readonly reason: CompactionErrorCode,
-		message: string,
-		options: { cause?: unknown } = {},
-	) {
-		super({ code: `compaction.${reason}`, message, cause: options.cause });
+export function compactionFailure(reason: CompactionErrorCode, message: string, options: { cause?: unknown } = {}) {
+	const init = { message, ...options };
+	switch (reason) {
+		case "aborted":
+			return new CompactionAborted(init);
+		case "nothing_to_compact":
+			return new NothingToCompact(init);
+		case "summarization_failed":
+			return new SummarizationFailed(init);
+		case "unknown":
+			return new UnknownCompactionFailure(init);
 	}
+}
+
+export function isCompactionFailure(error: unknown): error is ReturnType<typeof compactionFailure> {
+	return (
+		TaggedError.is(error) &&
+		(error._tag === "compaction.aborted" ||
+			error._tag === "compaction.nothing_to_compact" ||
+			error._tag === "compaction.summarization_failed" ||
+			error._tag === "compaction.unknown")
+	);
 }

@@ -1,6 +1,10 @@
 import { TaggedError } from "better-result";
 
-type BusinessErrorInit = { readonly cause?: unknown; readonly data?: Record<string, unknown>; readonly message: string };
+type BusinessErrorInit = {
+	readonly cause?: unknown;
+	readonly data?: Record<string, unknown>;
+	readonly message: string;
+};
 class WorkspaceNotFound extends TaggedError("coding_business.workspace_not_found")<BusinessErrorInit> {}
 class WorkspacePathInvalid extends TaggedError("coding_business.workspace_path_invalid")<BusinessErrorInit> {}
 class WorkspacePathConflict extends TaggedError("coding_business.workspace_path_conflict")<BusinessErrorInit> {}
@@ -29,17 +33,28 @@ function businessError(
 	init: BusinessErrorInit,
 ) {
 	switch (reason) {
-		case "workspace_not_found": return new WorkspaceNotFound(init);
-		case "workspace_path_invalid": return new WorkspacePathInvalid(init);
-		case "workspace_path_conflict": return new WorkspacePathConflict(init);
-		case "workspace_unavailable": return new WorkspaceUnavailable(init);
-		case "session_not_found": return new SessionNotFound(init);
-		case "session_file_missing": return new SessionFileMissing(init);
-		case "session_file_conflict": return new SessionFileConflict(init);
-		case "session_busy": return new SessionBusy(init);
-		case "storage_inconsistent": return new StorageInconsistent(init);
-		case "database_invalid": return new DatabaseInvalid(init);
-		case "database_unsupported": return new DatabaseUnsupported(init);
+		case "workspace_not_found":
+			return new WorkspaceNotFound(init);
+		case "workspace_path_invalid":
+			return new WorkspacePathInvalid(init);
+		case "workspace_path_conflict":
+			return new WorkspacePathConflict(init);
+		case "workspace_unavailable":
+			return new WorkspaceUnavailable(init);
+		case "session_not_found":
+			return new SessionNotFound(init);
+		case "session_file_missing":
+			return new SessionFileMissing(init);
+		case "session_file_conflict":
+			return new SessionFileConflict(init);
+		case "session_busy":
+			return new SessionBusy(init);
+		case "storage_inconsistent":
+			return new StorageInconsistent(init);
+		case "database_invalid":
+			return new DatabaseInvalid(init);
+		case "database_unsupported":
+			return new DatabaseUnsupported(init);
 	}
 }
 

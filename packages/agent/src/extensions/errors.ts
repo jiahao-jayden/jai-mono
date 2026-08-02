@@ -1,4 +1,5 @@
-import { defineCodedError, type JsonValue } from "@jai/common";
+import type { JsonValue } from "@jai/common";
+import { TaggedError } from "better-result";
 
 export type AgentExtensionFailureReason =
 	| "duplicate_extension_name"
@@ -19,12 +20,29 @@ export interface AgentExtensionInitializationErrorData {
 	readonly failures: readonly AgentExtensionFailure[];
 }
 
-const extensionError = defineCodedError("agent_extension", [
-	"preflight_failed",
-	"initialization_failed",
-	"hooks_registration_closed",
-	"initialization_reentrancy",
-] as const);
+type ExtensionErrorInit = { readonly cause?: unknown; readonly data?: JsonValue; readonly message: string };
+class ExtensionPreflightFailed extends TaggedError("agent_extension.preflight_failed")<ExtensionErrorInit> {}
+class ExtensionInitializationFailed extends TaggedError("agent_extension.initialization_failed")<ExtensionErrorInit> {}
+class HooksRegistrationClosed extends TaggedError("agent_extension.hooks_registration_closed")<ExtensionErrorInit> {}
+class ExtensionInitializationReentrancy extends TaggedError(
+	"agent_extension.initialization_reentrancy",
+)<ExtensionErrorInit> {}
+
+function extensionError(
+	reason: "preflight_failed" | "initialization_failed" | "hooks_registration_closed" | "initialization_reentrancy",
+	init: ExtensionErrorInit,
+) {
+	switch (reason) {
+		case "preflight_failed":
+			return new ExtensionPreflightFailed(init);
+		case "initialization_failed":
+			return new ExtensionInitializationFailed(init);
+		case "hooks_registration_closed":
+			return new HooksRegistrationClosed(init);
+		case "initialization_reentrancy":
+			return new ExtensionInitializationReentrancy(init);
+	}
+}
 
 export function extensionPreflightError(failures: readonly AgentExtensionFailure[], causes: readonly unknown[]) {
 	return extensionError("preflight_failed", {

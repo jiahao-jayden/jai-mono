@@ -6,7 +6,8 @@ import {
 	type PermissionRequest,
 	type PermissionResolution,
 } from "@jai/coding/permissions";
-import { defineCodedError, toErrorEnvelope } from "@jai/common";
+import { toErrorEnvelope } from "@jai/common";
+import { TaggedError } from "better-result";
 import type {
 	DesktopAgentEvent,
 	DesktopAgentEventEnvelope,
@@ -20,11 +21,24 @@ import type {
 } from "../../shared/desktop-rpc";
 import { projectSlashInvocation } from "./projector";
 
-const desktopAgentError = defineCodedError("desktop_agent", [
-	"factory_unavailable",
-	"session_not_found",
-	"session_busy",
-] as const);
+type DesktopAgentErrorInit = { readonly data?: { readonly sessionId: string }; readonly message: string };
+class DesktopAgentFactoryUnavailable extends TaggedError("desktop_agent.factory_unavailable")<DesktopAgentErrorInit> {}
+class DesktopAgentSessionNotFound extends TaggedError("desktop_agent.session_not_found")<DesktopAgentErrorInit> {}
+class DesktopAgentSessionBusy extends TaggedError("desktop_agent.session_busy")<DesktopAgentErrorInit> {}
+
+function desktopAgentError(
+	reason: "factory_unavailable" | "session_not_found" | "session_busy",
+	init: DesktopAgentErrorInit,
+) {
+	switch (reason) {
+		case "factory_unavailable":
+			return new DesktopAgentFactoryUnavailable(init);
+		case "session_not_found":
+			return new DesktopAgentSessionNotFound(init);
+		case "session_busy":
+			return new DesktopAgentSessionBusy(init);
+	}
+}
 
 export interface HostedCodingAgent {
 	invoke(input: string): Promise<AgentMessage[]>;

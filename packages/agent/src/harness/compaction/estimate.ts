@@ -1,5 +1,5 @@
 import type { AssistantMessage, Model } from "@jai/ai";
-import { CodedError } from "@jai/common";
+import { TaggedError } from "better-result";
 import type { AgentContext, AgentMessage } from "../../core/types";
 import type { SessionEntry } from "../session/types";
 import { safeJson } from "./serialize";
@@ -8,6 +8,9 @@ import type { CompactionSettings, CompactionSettingsOverrides, ContextTokenEstim
 const CHARS_PER_TOKEN = 4;
 /** 图片按固定占位计价：base64 字符数与实际 token 数没有可用的换算关系。 */
 const IMAGE_CHARS = 4_800;
+class InvalidCompactionSetting extends TaggedError("compaction.invalid_setting")<{
+	readonly message: string;
+}> {}
 
 /**
  * 字符数除以 4 的启发式估算。不是账单数据，只用来决定"是否该压缩了"，
@@ -140,24 +143,22 @@ export function resolveCompactionSettings(
 function validate(settings: CompactionSettings, model: Model): void {
 	for (const [key, value] of Object.entries(settings)) {
 		if (!Number.isFinite(value)) {
-			throw new CodedError({ code: "compaction.invalid_setting", message: `compaction.${key} must be a finite number` });
+			throw new InvalidCompactionSetting({ message: `compaction.${key} must be a finite number` });
 		}
 		if (value < 0) {
-			throw new CodedError({ code: "compaction.invalid_setting", message: `compaction.${key} must not be negative` });
+			throw new InvalidCompactionSetting({ message: `compaction.${key} must not be negative` });
 		}
 	}
 	if (!Number.isInteger(settings.tailTurns)) {
-		throw new CodedError({ code: "compaction.invalid_setting", message: "compaction.tailTurns must be an integer" });
+		throw new InvalidCompactionSetting({ message: "compaction.tailTurns must be an integer" });
 	}
 	if (settings.reserveTokens >= model.contextWindow) {
-		throw new CodedError({
-			code: "compaction.invalid_setting",
+		throw new InvalidCompactionSetting({
 			message: `compaction.reserveTokens (${settings.reserveTokens}) must be below the context window (${model.contextWindow})`,
 		});
 	}
 	if (settings.preserveRecentTokens > model.contextWindow - settings.reserveTokens) {
-		throw new CodedError({
-			code: "compaction.invalid_setting",
+		throw new InvalidCompactionSetting({
 			message: "compaction.preserveRecentTokens must fit in the context window left after reserveTokens",
 		});
 	}

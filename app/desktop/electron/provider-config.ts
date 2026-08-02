@@ -1,6 +1,6 @@
 import { CodingConfigStore } from "@jai/coding/config";
 import { type CodingAgentSettings, codingAgentConfigDefinition } from "@jai/coding/runtime";
-import { defineCodedError } from "@jai/common";
+import { TaggedError } from "better-result";
 import type {
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
@@ -9,10 +9,22 @@ import type {
 } from "../shared/desktop-rpc";
 
 const profileIdPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-const providerConfigError = defineCodedError("desktop_provider_config", [
-	"invalid_input",
-	"credential_required",
-] as const);
+type ProviderConfigErrorInit = { readonly data?: { readonly profileId: string }; readonly message: string };
+class InvalidProviderConfigInput extends TaggedError(
+	"desktop_provider_config.invalid_input",
+)<ProviderConfigErrorInit> {}
+class ProviderCredentialRequired extends TaggedError(
+	"desktop_provider_config.credential_required",
+)<ProviderConfigErrorInit> {}
+
+function providerConfigError(reason: "invalid_input" | "credential_required", init: ProviderConfigErrorInit) {
+	switch (reason) {
+		case "invalid_input":
+			return new InvalidProviderConfigInput(init);
+		case "credential_required":
+			return new ProviderCredentialRequired(init);
+	}
+}
 
 export class DesktopProviderConfigService {
 	readonly #store: CodingConfigStore<typeof codingAgentConfigDefinition.schema>;

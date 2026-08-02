@@ -1,9 +1,31 @@
 import type { ProviderErrorInfo } from "@jai/ai";
-import { CodedError } from "@jai/common";
+import { TaggedError } from "better-result";
 import type { AgentMessage } from "./types";
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
 export type JsonObject = { [key: string]: JsonValue };
+
+type StateErrorInit = { readonly message: string };
+class StateNonFiniteNumber extends TaggedError("state.non_finite_number")<StateErrorInit> {}
+class StateNotJsonSerializable extends TaggedError("state.not_json_serializable")<StateErrorInit> {}
+class StateCircularValue extends TaggedError("state.circular_value")<StateErrorInit> {}
+class StateInvalidValue extends TaggedError("state.invalid_value")<StateErrorInit> {}
+
+function stateError(
+	reason: "non_finite_number" | "not_json_serializable" | "circular_value" | "invalid_value",
+	init: StateErrorInit,
+) {
+	switch (reason) {
+		case "non_finite_number":
+			return new StateNonFiniteNumber(init);
+		case "not_json_serializable":
+			return new StateNotJsonSerializable(init);
+		case "circular_value":
+			return new StateCircularValue(init);
+		case "invalid_value":
+			return new StateInvalidValue(init);
+	}
+}
 
 /** 校验后深拷贝，防止调用方通过引用绕过状态更新与持久化。 */
 export function cloneJson<T extends JsonValue>(value: T): T {
@@ -19,23 +41,22 @@ function assertJsonValue(value: unknown, ancestors: Set<object>): void {
 	if (value === null || typeof value === "string" || typeof value === "boolean") return;
 	if (typeof value === "number") {
 		if (!Number.isFinite(value)) {
-			throw new CodedError({ code: "state.non_finite_number", message: "appState must not contain NaN or Infinity" });
+			throw stateError("non_finite_number", { message: "appState must not contain NaN or Infinity" });
 		}
 		return;
 	}
 	if (typeof value !== "object") {
-		throw new CodedError({
-			code: "state.not_json_serializable",
+		throw stateError("not_json_serializable", {
 			message: `appState must be JSON-serializable, got ${typeof value}`,
 		});
 	}
 	if (ancestors.has(value)) {
-		throw new CodedError({ code: "state.circular_value", message: "appState must not contain cycles" });
+		throw stateError("circular_value", { message: "appState must not contain cycles" });
 	}
 
 	const prototype = Object.getPrototypeOf(value);
 	if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
-		throw new CodedError({ code: "state.invalid_value", message: "appState must contain only plain objects and arrays" });
+		throw stateError("invalid_value", { message: "appState must contain only plain objects and arrays" });
 	}
 
 	ancestors.add(value);

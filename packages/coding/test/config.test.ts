@@ -181,7 +181,7 @@ describe("CodingConfigStore", () => {
 		expect(backups).toHaveLength(1);
 	});
 
-	test("迁移结果无效时保留原文件并返回 migration CodedError", async () => {
+	test("迁移结果无效时保留原文件并返回 migration TaggedError", async () => {
 		const fixture = await createFixture();
 		const version2 = defineCodingConfig({
 			...definition,

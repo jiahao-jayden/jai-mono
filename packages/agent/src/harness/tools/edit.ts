@@ -1,5 +1,5 @@
 import { type Static, Type } from "@sinclair/typebox";
-import { defineCodedError } from "@jai/common";
+import { TaggedError } from "better-result";
 import type { AgentTool } from "../../core";
 import { withFileMutationQueue } from "./file-mutation-queue";
 import type { WorkspaceToolOptions } from "./types";
@@ -12,16 +12,47 @@ const editParameters = Type.Object(
 	{ path: Type.String(), edits: Type.Array(replacementParameters, { minItems: 1 }) },
 	{ additionalProperties: false },
 );
-const editError = defineCodedError("tool.edit", [
-	"empty_old_text",
-	"no_change",
-	"text_not_found",
-	"ambiguous_match",
-	"overlapping_edits",
-	"aborted",
-	"invalid_utf8",
-	"file_changed",
-] as const);
+type EditErrorInit = { readonly message: string };
+class EmptyOldText extends TaggedError("tool.edit.empty_old_text")<EditErrorInit> {}
+class NoChange extends TaggedError("tool.edit.no_change")<EditErrorInit> {}
+class TextNotFound extends TaggedError("tool.edit.text_not_found")<EditErrorInit> {}
+class AmbiguousMatch extends TaggedError("tool.edit.ambiguous_match")<EditErrorInit> {}
+class OverlappingEdits extends TaggedError("tool.edit.overlapping_edits")<EditErrorInit> {}
+class EditAborted extends TaggedError("tool.edit.aborted")<EditErrorInit> {}
+class InvalidUtf8 extends TaggedError("tool.edit.invalid_utf8")<EditErrorInit> {}
+class FileChanged extends TaggedError("tool.edit.file_changed")<EditErrorInit> {}
+
+function editError(
+	reason:
+		| "empty_old_text"
+		| "no_change"
+		| "text_not_found"
+		| "ambiguous_match"
+		| "overlapping_edits"
+		| "aborted"
+		| "invalid_utf8"
+		| "file_changed",
+	init: EditErrorInit,
+) {
+	switch (reason) {
+		case "empty_old_text":
+			return new EmptyOldText(init);
+		case "no_change":
+			return new NoChange(init);
+		case "text_not_found":
+			return new TextNotFound(init);
+		case "ambiguous_match":
+			return new AmbiguousMatch(init);
+		case "overlapping_edits":
+			return new OverlappingEdits(init);
+		case "aborted":
+			return new EditAborted(init);
+		case "invalid_utf8":
+			return new InvalidUtf8(init);
+		case "file_changed":
+			return new FileChanged(init);
+	}
+}
 
 export type EditToolInput = Static<typeof editParameters>;
 export interface EditToolDetails {
@@ -63,7 +94,9 @@ function locateEdits(content: string, edits: EditToolInput["edits"]): LocatedEdi
 		const start = content.indexOf(oldText);
 		if (start === -1) throw editError("text_not_found", { message: "Could not find oldText in the file" });
 		if (content.indexOf(oldText, start + oldText.length) !== -1) {
-			throw editError("ambiguous_match", { message: "Found multiple matches for oldText; provide more surrounding context" });
+			throw editError("ambiguous_match", {
+				message: "Found multiple matches for oldText; provide more surrounding context",
+			});
 		}
 		return { start, end: start + oldText.length, newText };
 	});

@@ -1,5 +1,6 @@
-import { defineCodedError, toErrorEnvelope } from "@jai/common";
+import { toErrorEnvelope } from "@jai/common";
 import { Value } from "@sinclair/typebox/value";
+import { TaggedError } from "better-result";
 import { type IpcMainInvokeEvent, ipcMain } from "electron";
 import {
 	DESKTOP_RPC_CHANNEL,
@@ -10,7 +11,21 @@ import {
 } from "../../shared/desktop-rpc";
 import { desktopRouter } from "./router";
 
-const rpcError = defineCodedError("desktop_rpc", ["invalid_request", "method_not_found", "invalid_response"] as const);
+type RpcErrorInit = { readonly data?: { readonly path: string }; readonly message: string };
+class InvalidRpcRequest extends TaggedError("desktop_rpc.invalid_request")<RpcErrorInit> {}
+class RpcMethodNotFound extends TaggedError("desktop_rpc.method_not_found")<RpcErrorInit> {}
+class InvalidRpcResponse extends TaggedError("desktop_rpc.invalid_response")<RpcErrorInit> {}
+
+function rpcError(reason: "invalid_request" | "method_not_found" | "invalid_response", init: RpcErrorInit) {
+	switch (reason) {
+		case "invalid_request":
+			return new InvalidRpcRequest(init);
+		case "method_not_found":
+			return new RpcMethodNotFound(init);
+		case "invalid_response":
+			return new InvalidRpcResponse(init);
+	}
+}
 
 export function registerDesktopRpc(): void {
 	ipcMain.handle(DESKTOP_RPC_CHANNEL, async (event, request: unknown): Promise<DesktopRpcResponse> => {
@@ -30,9 +45,10 @@ export function registerDesktopRpc(): void {
 			const envelope = toErrorEnvelope(error);
 			return {
 				status: "error",
-				error: "data" in envelope
-					? { _tag: envelope.code, message: envelope.message, data: envelope.data }
-					: { _tag: envelope.code, message: envelope.message },
+				error:
+					"data" in envelope
+						? { _tag: envelope.code, message: envelope.message, data: envelope.data }
+						: { _tag: envelope.code, message: envelope.message },
 			};
 		}
 	});

@@ -1,7 +1,7 @@
 import type { CodingBusinessService } from "@jai/coding/business";
 import { type PermissionResolution, permissionResolutionSchema } from "@jai/coding/permissions/approval";
-import { defineCodedError } from "@jai/common";
 import { Value } from "@sinclair/typebox/value";
+import { TaggedError } from "better-result";
 import { BrowserWindow, dialog, type IpcMainInvokeEvent, nativeTheme } from "electron";
 import Store from "electron-store";
 import {
@@ -28,10 +28,19 @@ const themeStore = new Store<{ theme: DesktopTheme }>({
 	defaults: { theme: "system" },
 });
 
-const themeError = defineCodedError("desktop_theme", ["invalid_value"] as const);
-const agentInputError = defineCodedError("desktop_agent_input", ["invalid_value"] as const);
-const desktopBusinessError = defineCodedError("desktop_business", ["unavailable"] as const);
-const desktopWorkspaceError = defineCodedError("desktop_workspace", ["picker_failed"] as const);
+class InvalidThemeValue extends TaggedError("desktop_theme.invalid_value")<{ readonly message: string }> {}
+class InvalidAgentInput extends TaggedError("desktop_agent_input.invalid_value")<{ readonly message: string }> {}
+class DesktopBusinessUnavailable extends TaggedError("desktop_business.unavailable")<{ readonly message: string }> {}
+class WorkspacePickerFailed extends TaggedError("desktop_workspace.picker_failed")<{
+	readonly cause?: unknown;
+	readonly message: string;
+}> {}
+
+const themeError = (init: { readonly message: string }) => new InvalidThemeValue(init);
+const agentInputError = (init: { readonly message: string }) => new InvalidAgentInput(init);
+const desktopBusinessError = (init: { readonly message: string }) => new DesktopBusinessUnavailable(init);
+const desktopWorkspaceError = (init: { readonly cause?: unknown; readonly message: string }) =>
+	new WorkspacePickerFailed(init);
 let codingBusiness: CodingBusinessService | undefined;
 const providerConfig = new DesktopProviderConfigService();
 const desktopAgentHost = new DesktopAgentHost((envelope) => {
@@ -92,7 +101,7 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 		},
 		set(_event: IpcMainInvokeEvent, theme: DesktopTheme) {
 			if (!isTheme(theme)) {
-				throw themeError("invalid_value", {
+				throw themeError({
 					message: "Theme must be light, dark, or system",
 				});
 			}
@@ -171,7 +180,7 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 		},
 		resolvePermission(_event, resolution) {
 			if (!Value.Check(permissionResolutionSchema, resolution)) {
-				throw agentInputError("invalid_value", { message: "Invalid permission resolution" });
+				throw agentInputError({ message: "Invalid permission resolution" });
 			}
 			desktopAgentHost.resolvePermission(resolution as PermissionResolution);
 		},
@@ -201,21 +210,21 @@ function assertMessageInput(value: unknown): DesktopAgentMessageInput {
 		typeof (value as DesktopAgentMessageInput).message !== "string" ||
 		(value as DesktopAgentMessageInput).message.length === 0
 	) {
-		throw agentInputError("invalid_value", { message: "Invalid agent message input" });
+		throw agentInputError({ message: "Invalid agent message input" });
 	}
 	return value as DesktopAgentMessageInput;
 }
 
 function assertSessionId(value: unknown): string {
 	if (typeof value !== "string" || value.length === 0) {
-		throw agentInputError("invalid_value", { message: "Invalid session id" });
+		throw agentInputError({ message: "Invalid session id" });
 	}
 	return value;
 }
 
 function requireCodingBusiness(): CodingBusinessService {
 	if (codingBusiness) return codingBusiness;
-	throw desktopBusinessError("unavailable", {
+	throw desktopBusinessError({
 		message: "Coding business services are not initialized",
 	});
 }
@@ -227,7 +236,7 @@ function assertSessionCreateInput(value: unknown): DesktopSessionCreateInput {
 		value.firstMessage.trim().length === 0 ||
 		(value.workspaceId !== undefined && value.workspaceId !== null && typeof value.workspaceId !== "string")
 	) {
-		throw agentInputError("invalid_value", { message: "Invalid Session create input" });
+		throw agentInputError({ message: "Invalid Session create input" });
 	}
 	return {
 		firstMessage: value.firstMessage,
@@ -244,7 +253,7 @@ function assertSessionRenameInput(value: unknown): DesktopSessionRenameInput {
 		typeof value.title !== "string" ||
 		value.title.trim().length === 0
 	) {
-		throw agentInputError("invalid_value", { message: "Invalid Session rename input" });
+		throw agentInputError({ message: "Invalid Session rename input" });
 	}
 	return { sessionId: value.sessionId, title: value.title };
 }
@@ -255,7 +264,7 @@ function assertSessionMoveInput(value: unknown): { sessionId: string; toWorkspac
 		typeof value.sessionId !== "string" ||
 		(value.toWorkspaceId !== null && typeof value.toWorkspaceId !== "string")
 	) {
-		throw agentInputError("invalid_value", { message: "Invalid Session move input" });
+		throw agentInputError({ message: "Invalid Session move input" });
 	}
 	return { sessionId: value.sessionId, toWorkspaceId: value.toWorkspaceId };
 }
@@ -264,17 +273,17 @@ function assertSessionListInput(
 	value: unknown,
 ): { limit?: number; cursor?: { lastActivityAt: number; id: string } } | undefined {
 	if (value === undefined) return undefined;
-	if (!isRecord(value)) throw agentInputError("invalid_value", { message: "Invalid Session list input" });
+	if (!isRecord(value)) throw agentInputError({ message: "Invalid Session list input" });
 	const limit = value.limit;
 	const cursor = value.cursor;
 	if (limit !== undefined && (!Number.isInteger(limit) || (limit as number) < 1 || (limit as number) > 100)) {
-		throw agentInputError("invalid_value", { message: "Invalid Session list limit" });
+		throw agentInputError({ message: "Invalid Session list limit" });
 	}
 	if (
 		cursor !== undefined &&
 		(!isRecord(cursor) || typeof cursor.lastActivityAt !== "number" || typeof cursor.id !== "string")
 	) {
-		throw agentInputError("invalid_value", { message: "Invalid Session list cursor" });
+		throw agentInputError({ message: "Invalid Session list cursor" });
 	}
 	return {
 		...(typeof limit === "number" ? { limit } : {}),
@@ -299,7 +308,7 @@ async function pickWorkspaceDirectory(event: IpcMainInvokeEvent): Promise<string
 		const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
 		return result.canceled ? undefined : result.filePaths[0];
 	} catch (error) {
-		throw desktopWorkspaceError("picker_failed", {
+		throw desktopWorkspaceError({
 			message: "The workspace folder picker could not be opened",
 			cause: error,
 		});

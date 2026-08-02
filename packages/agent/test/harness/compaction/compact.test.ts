@@ -7,10 +7,20 @@ import {
 	type Provider,
 	type StreamOptions,
 } from "@jai/ai";
+import { getErrorCode } from "@jai/common";
 import { compact, isContextOverflow, type CompactInput, type SessionEntry } from "../../../src/harness";
 import { model } from "../../support/fixtures";
 
 const settings = { reserveTokens: 1_000, tailTurns: 2, preserveRecentTokens: 200 };
+
+async function expectErrorCode(promise: Promise<unknown>, code: string): Promise<void> {
+	try {
+		await promise;
+		throw new Error(`Expected ${code}`);
+	} catch (error) {
+		expect(getErrorCode(error)).toBe(code);
+	}
+}
 
 function u(id: string, text: string): SessionEntry {
 	return { type: "message", id, timestamp: id, message: { role: "user", content: text, timestamp: 0 } };
@@ -172,9 +182,7 @@ describe("compact", () => {
 	});
 
 	test("refuses when there is nothing new to summarize", async () => {
-		expect(compact(inputFor(summarizer({}), { entries: [u("e0", "only")] }))).rejects.toMatchObject({
-			code: "compaction.nothing_to_compact",
-		});
+		await expectErrorCode(compact(inputFor(summarizer({}), { entries: [u("e0", "only")] })), "compaction.nothing_to_compact");
 	});
 
 	test("refuses an unusable summary response", async () => {
@@ -186,16 +194,12 @@ describe("compact", () => {
 		];
 
 		for (const reply of unusable) {
-			expect(compact(inputFor(summarizer(reply)))).rejects.toMatchObject({
-				code: "compaction.summarization_failed",
-			});
+			await expectErrorCode(compact(inputFor(summarizer(reply))), "compaction.summarization_failed");
 		}
 	});
 
 	test("reports an aborted summary as aborted", async () => {
-		expect(compact(inputFor(summarizer({ stopReason: "aborted" })))).rejects.toMatchObject({
-			code: "compaction.aborted",
-		});
+		await expectErrorCode(compact(inputFor(summarizer({ stopReason: "aborted" }))), "compaction.aborted");
 	});
 });
 

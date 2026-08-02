@@ -1,6 +1,7 @@
 import type { CodingSession, SessionListCursor } from "@jai/coding/business";
 import type { PermissionResolution } from "@jai/coding/permissions/approval";
-import { defineCodedError, getErrorMessage } from "@jai/common";
+import { getErrorMessage } from "@jai/common";
+import { TaggedError } from "better-result";
 import { create } from "zustand";
 import type {
 	DesktopAgentEvent,
@@ -11,7 +12,7 @@ import type {
 import { desktop } from "../lib/desktop";
 import { createDesktopAgentEventDispatcher, type DesktopAgentProjectionUpdate } from "../lib/desktop-agent";
 
-const sessionStoreError = defineCodedError("desktop_session_store", ["no_active_session"] as const);
+class NoActiveSession extends TaggedError("desktop_session_store.no_active_session")<{ readonly message: string }> {}
 
 interface SessionListState {
 	sessions: CodingSession[];
@@ -223,7 +224,7 @@ function getDispatcher() {
 
 function requireActiveSession(sessionId: string | null): string {
 	if (sessionId) return sessionId;
-	throw sessionStoreError("no_active_session", {
+	throw new NoActiveSession({
 		message: "No active Session",
 	});
 }

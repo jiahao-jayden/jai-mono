@@ -1,5 +1,6 @@
 import { type AssistantMessage, EventStream, type Model, type Provider } from "@jai/ai";
-import { CodedError, getErrorMessage } from "@jai/common";
+import { getErrorMessage } from "@jai/common";
+import { TaggedError } from "better-result";
 import { type AgentInput, CoreAgent, type CoreAgentOptions } from "../core/agent";
 import { type AgentState, cloneJson, type JsonObject } from "../core/agent-state";
 import type { Session } from "../core/session";
@@ -14,11 +15,12 @@ import {
 	type CompactInput,
 	type CompactionDecisionInput,
 	type CompactionErrorInfo,
-	CompactionFailure,
 	type CompactionResult,
 	type CompactionSettings,
 	type CompactionSettingsOverrides,
 	type CompactionTrigger,
+	compactionFailure,
+	isCompactionFailure,
 } from "./compaction/types";
 import type { AgentEvent, AgentEventListener, AgentRun } from "./events";
 import { type AgentHookMap, type BeforeModelCallPhase, HookHost } from "./hooks";
@@ -374,9 +376,9 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 	/** 不信任 strategy 报的 token 数：按真实投影重算，顺便挡住会产出无效上下文的切点。 */
 	private verify(result: CompactionResult, input: CompactionDecisionInput): NewCompactionEntry {
 		const summary = result.summary.trim();
-		if (summary.length === 0) throw new CompactionFailure("unknown", "Compaction strategy returned an empty summary");
+		if (summary.length === 0) throw compactionFailure("unknown", "Compaction strategy returned an empty summary");
 		if (!isSafeCutPoint(input.entries, result.firstKeptEntryId)) {
-			throw new CompactionFailure(
+			throw compactionFailure(
 				"unknown",
 				`Compaction strategy returned an unusable cut point "${result.firstKeptEntryId}"`,
 			);
@@ -430,6 +432,9 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 
 /** id 与 timestamp 由 ledger 补，策略不参与。 */
 type NewCompactionEntry = Omit<CompactionEntry, "type" | "id" | "timestamp">;
+class ConflictingDurableSource extends TaggedError("agent.conflicting_durable_source")<{
+	readonly message: string;
+}> {}
 
 function resolveCompaction(model: Model, options: AgentCompactionOptions | undefined): CompactionRuntime | undefined {
 	if (options === false) return undefined;
@@ -442,7 +447,8 @@ function resolveCompaction(model: Model, options: AgentCompactionOptions | undef
 
 /** provider SDK 的异常先经过 ProviderErrorInfo，再在这里归到一个稳定 code 上。 */
 function toErrorInfo(error: unknown): CompactionErrorInfo {
-	if (error instanceof CompactionFailure) return { code: error.reason, message: error.message };
+	if (isCompactionFailure(error))
+		return { code: error._tag.slice("compaction.".length) as CompactionErrorInfo["code"], message: error.message };
 	return { code: "unknown", message: getErrorMessage(error) };
 }
 
@@ -464,8 +470,7 @@ function assertSingleDurableSource(options: AgentOptions<JsonObject>): void {
 	const conflicting = (["session", "messages", "appState"] as const).filter((key) => options[key] !== undefined);
 
 	if (conflicting.length > 0) {
-		throw new CodedError({
-			code: "agent.conflicting_durable_source",
+		throw new ConflictingDurableSource({
 			message: `sessionHandle already provides durable state; remove ${conflicting.join(", ")}`,
 		});
 	}

@@ -1,7 +1,9 @@
-import { CodedError } from "@jai/common";
+import { TaggedError } from "better-result";
 import type { JsonObject } from "../../core/agent-state";
 import { applyEntry } from "./snapshot";
 import { type SessionHandle, SessionReadOnlyError, type SessionStore } from "./types";
+
+class SessionDisappeared extends TaggedError("session.disappeared")<{ readonly message: string }> {}
 
 /** 不存在则创建，存在则载入；revision 从此由 handle 内部维护。 */
 export async function openSession<TAppState extends JsonObject>(
@@ -14,8 +16,7 @@ export async function openSession<TAppState extends JsonObject>(
 		await store.create(id, appState);
 		record = await store.load(id);
 		if (!record) {
-			throw new CodedError({
-				code: "session.disappeared",
+			throw new SessionDisappeared({
 				message: `Session "${id}" disappeared right after creation`,
 			});
 		}
