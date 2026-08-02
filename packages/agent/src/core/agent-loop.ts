@@ -355,17 +355,17 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 
 		const validation = validateToolArguments(tool, toolCall);
 
-		if (!validation.success || validation.data === undefined) {
+		if (validation.status === "error") {
 			throw new CodedError({
 				code: "tool.invalid_arguments",
-				message: validation.error ?? `Invalid arguments for tool "${toolCall.name}"`,
+				message: validation.error.message,
 			});
 		}
 
 		const ctx: ToolCallContext = {
 			toolCall,
 			tool,
-			args: validation.data as Record<string, unknown>,
+			args: validation.value as Record<string, unknown>,
 			signal,
 		};
 
@@ -424,14 +424,14 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 function finalArguments(tool: AgentTool, toolCall: ToolCall, args: Record<string, unknown>): Record<string, unknown> {
 	const validation = validateToolArguments(tool, { ...toolCall, arguments: args });
 
-	if (!validation.success || validation.data === undefined) {
+	if (validation.status === "error") {
 		throw new CodedError({
 			code: "tool.invalid_arguments",
-			message: validation.error ?? `Invalid arguments for tool "${toolCall.name}"`,
+			message: validation.error.message,
 		});
 	}
 
-	return validation.data as Record<string, unknown>;
+	return validation.value as Record<string, unknown>;
 }
 
 function createUnexpectedErrorMessage(config: AgentLoopConfig, error: unknown): AssistantMessage {

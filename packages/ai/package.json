@@ -16,6 +16,7 @@
 		"@anthropic-ai/sdk": "^0.110.0",
 		"@jai/common": "workspace:*",
 		"@sinclair/typebox": "catalog:",
+		"better-result": "^3.0.0",
 		"openai": "^6.45.0"
 	},
 	"devDependencies": {

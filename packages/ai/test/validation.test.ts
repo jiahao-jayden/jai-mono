@@ -1,7 +1,12 @@
 import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "bun:test";
 import type { Tool, ToolCall } from "../src/types";
-import { validateToolArguments, validateToolCall } from "../src/validation";
+import {
+	InvalidToolArguments,
+	ToolNotFound,
+	validateToolArguments,
+	validateToolCall,
+} from "../src/validation";
 
 const readFileTool: Tool = {
 	name: "read_file",
@@ -19,14 +24,14 @@ function call(name: string, args: Record<string, unknown>): ToolCall {
 describe("validateToolArguments", () => {
 	it("passes valid arguments through", () => {
 		const result = validateToolArguments(readFileTool, call("read_file", { path: "/foo" }));
-		expect(result.success).toBe(true);
-		expect(result.data).toEqual({ path: "/foo" });
+		expect(result.status).toBe("ok");
+		if (result.status === "ok") expect(result.value).toEqual({ path: "/foo" });
 	});
 
 	it("coerces string to number", () => {
 		const result = validateToolArguments(readFileTool, call("read_file", { path: "/foo", offset: "42" as any }));
-		expect(result.success).toBe(true);
-		expect((result.data as any)?.offset).toBe(42);
+		expect(result.status).toBe("ok");
+		if (result.status === "ok") expect((result.value as any).offset).toBe(42);
 	});
 
 	it("coerces string to boolean", () => {
@@ -36,21 +41,27 @@ describe("validateToolArguments", () => {
 			parameters: Type.Object({ flag: Type.Boolean() }),
 		};
 		const result = validateToolArguments(tool, call("toggle", { flag: "true" as any }));
-		expect(result.success).toBe(true);
-		expect((result.data as any)?.flag).toBe(true);
+		expect(result.status).toBe("ok");
+		if (result.status === "ok") expect((result.value as any).flag).toBe(true);
 	});
 
 	it("removes extra properties", () => {
 		const result = validateToolArguments(readFileTool, call("read_file", { path: "/foo", extra: "bar" }));
-		expect(result.success).toBe(true);
-		expect(result.data).toEqual({ path: "/foo" });
-		expect((result.data as any)?.extra).toBeUndefined();
+		expect(result.status).toBe("ok");
+		if (result.status === "ok") {
+			expect(result.value).toEqual({ path: "/foo" });
+			expect((result.value as any).extra).toBeUndefined();
+		}
 	});
 
 	it("returns error for missing required property", () => {
 		const result = validateToolArguments(readFileTool, call("read_file", {}));
-		expect(result.success).toBe(false);
-		expect(result.error).toContain("required");
+		expect(result.status).toBe("error");
+		if (result.status === "error") {
+			expect(result.error._tag).toBe("ai_validation.invalid_arguments");
+			expect(InvalidToolArguments.is(result.error)).toBe(true);
+			expect(result.error.message).toContain("required");
+		}
 	});
 
 	it("returns error for wrong type that cannot be coerced", () => {
@@ -60,8 +71,8 @@ describe("validateToolArguments", () => {
 			parameters: Type.Object({ n: Type.Number() }),
 		};
 		const result = validateToolArguments(tool, call("count", { n: "not_a_number" as any }));
-		expect(result.success).toBe(false);
-		expect(result.error).toContain("Expected number");
+		expect(result.status).toBe("error");
+		if (result.status === "error") expect(result.error.message).toContain("Expected number");
 	});
 
 	it("does not mutate the original arguments", () => {
@@ -78,9 +89,11 @@ describe("validateToolArguments", () => {
 			parameters: Type.Object({ n: Type.Number() }),
 		};
 		const result = validateToolArguments(tool, call("count", { n: "not_a_number" as any }));
-		expect(result.success).toBe(false);
-		expect(result.error).toContain("Received:");
-		expect(result.error).toContain("not_a_number");
+		expect(result.status).toBe("error");
+		if (result.status === "error") {
+			expect(result.error.message).toContain("Received:");
+			expect(result.error.message).toContain("not_a_number");
+		}
 	});
 });
 
@@ -89,12 +102,16 @@ describe("validateToolCall", () => {
 
 	it("validates against matching tool", () => {
 		const result = validateToolCall(tools, call("read_file", { path: "/foo" }));
-		expect(result.success).toBe(true);
+		expect(result.status).toBe("ok");
 	});
 
 	it("returns error for unknown tool name", () => {
 		const result = validateToolCall(tools, call("unknown_tool", {}));
-		expect(result.success).toBe(false);
-		expect(result.error).toContain("not found");
+		expect(result.status).toBe("error");
+		if (result.status === "error") {
+			expect(result.error._tag).toBe("ai_validation.tool_not_found");
+			expect(ToolNotFound.is(result.error)).toBe(true);
+			expect(result.error.message).toContain("not found");
+		}
 	});
 });
