@@ -140,13 +140,13 @@ describe("CodingConfigStore", () => {
 
 		await mkdir(dirname(fixture.paths.user), { recursive: true });
 		await writeFile(fixture.paths.user, "{");
-		await expect(store.load()).rejects.toMatchObject({ code: "coding_config.parse_failed" });
+		await expect(store.load()).rejects.toMatchObject({ _tag: "coding_config.parse_failed" });
 
 		await put(fixture.paths.user, { unknown: true });
-		await expect(store.load()).rejects.toMatchObject({ code: "coding_config.validation_failed" });
+		await expect(store.load()).rejects.toMatchObject({ _tag: "coding_config.validation_failed" });
 
 		await put(fixture.paths.user, {}, 2);
-		await expect(store.load()).rejects.toMatchObject({ code: "coding_config.unsupported_version" });
+		await expect(store.load()).rejects.toMatchObject({ _tag: "coding_config.unsupported_version" });
 	});
 
 	test("显式迁移会原子写回并留下备份", async () => {
@@ -193,7 +193,7 @@ describe("CodingConfigStore", () => {
 		const original = await readFile(fixture.paths.user, "utf8");
 
 		await expect(new CodingConfigStore(version2, fixture.options).load()).rejects.toMatchObject({
-			code: "coding_config.migration_failed",
+			_tag: "coding_config.migration_failed",
 		});
 		expect(await readFile(fixture.paths.user, "utf8")).toBe(original);
 	});
@@ -207,7 +207,7 @@ describe("CodingConfigStore", () => {
 		expect(written.settings.name).toBe("first");
 		await expect(
 			store.writeScope("project-local", { name: "stale" }, { expectedRevision: null }),
-		).rejects.toMatchObject({ code: "coding_config.write_conflict" });
+		).rejects.toMatchObject({ _tag: "coding_config.write_conflict" });
 		const document = JSON.parse(await readFile(fixture.paths["project-local"]!, "utf8"));
 		expect(document).toEqual({ $schema: schemaUrl, schemaVersion: 1, name: "first" });
 		expect(initial.scopeRevisions["project-local"]).toBeNull();
@@ -245,7 +245,7 @@ describe("CodingConfigStore", () => {
 			await writeFile(fixture.paths.user, "{");
 			await waitFor(() => events.some((event) => event.status === "invalid"));
 			expect(events.find((event) => event.status === "invalid")).toMatchObject({
-				error: { code: "coding_config.parse_failed" },
+				error: { _tag: "coding_config.parse_failed" },
 				lastValid: { settings: { name: "default" } },
 			});
 
@@ -258,7 +258,7 @@ describe("CodingConfigStore", () => {
 			await writeFile(fixture.paths.user, "{");
 			await waitFor(() => events.filter((event) => event.status === "invalid").length >= 2);
 			expect(events.filter((event) => event.status === "invalid").at(-1)).toMatchObject({
-				error: { code: "coding_config.parse_failed" },
+				error: { _tag: "coding_config.parse_failed" },
 				lastValid: { settings: { name: "watched" } },
 			});
 			expect(initial.settings.name).toBe("default");

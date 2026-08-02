@@ -1,18 +1,46 @@
-import { defineCodedError, type JsonValue } from "@jai/common";
+import type { JsonValue } from "@jai/common";
+import { TaggedError } from "better-result";
 import type { ConfigFileScope } from "./types";
 
-const configError = defineCodedError("coding_config", [
-	"definition_invalid",
-	"read_failed",
-	"parse_failed",
-	"validation_failed",
-	"unsupported_version",
-	"migration_failed",
-	"write_conflict",
-	"write_failed",
-	"watch_failed",
-	"scope_unavailable",
-] as const);
+type ConfigErrorInit = { readonly cause?: unknown; readonly data?: JsonValue; readonly message: string };
+class ConfigDefinitionInvalid extends TaggedError("coding_config.definition_invalid")<ConfigErrorInit> {}
+class ConfigReadFailed extends TaggedError("coding_config.read_failed")<ConfigErrorInit> {}
+class ConfigParseFailed extends TaggedError("coding_config.parse_failed")<ConfigErrorInit> {}
+class ConfigValidationFailed extends TaggedError("coding_config.validation_failed")<ConfigErrorInit> {}
+class ConfigUnsupportedVersion extends TaggedError("coding_config.unsupported_version")<ConfigErrorInit> {}
+class ConfigMigrationFailed extends TaggedError("coding_config.migration_failed")<ConfigErrorInit> {}
+class ConfigWriteConflict extends TaggedError("coding_config.write_conflict")<ConfigErrorInit> {}
+class ConfigWriteFailed extends TaggedError("coding_config.write_failed")<ConfigErrorInit> {}
+class ConfigWatchFailed extends TaggedError("coding_config.watch_failed")<ConfigErrorInit> {}
+class ConfigScopeUnavailable extends TaggedError("coding_config.scope_unavailable")<ConfigErrorInit> {}
+
+function configError(
+	reason:
+		| "definition_invalid"
+		| "read_failed"
+		| "parse_failed"
+		| "validation_failed"
+		| "unsupported_version"
+		| "migration_failed"
+		| "write_conflict"
+		| "write_failed"
+		| "watch_failed"
+		| "scope_unavailable",
+	init: ConfigErrorInit,
+) {
+	switch (reason) {
+		case "definition_invalid": return new ConfigDefinitionInvalid(init);
+		case "read_failed": return new ConfigReadFailed(init);
+		case "parse_failed": return new ConfigParseFailed(init);
+		case "validation_failed": return new ConfigValidationFailed(init);
+		case "unsupported_version": return new ConfigUnsupportedVersion(init);
+		case "migration_failed": return new ConfigMigrationFailed(init);
+		case "write_conflict": return new ConfigWriteConflict(init);
+		case "write_failed": return new ConfigWriteFailed(init);
+		case "watch_failed": return new ConfigWatchFailed(init);
+		case "scope_unavailable": return new ConfigScopeUnavailable(init);
+	}
+}
 
 interface FileErrorData {
 	readonly scope: ConfigFileScope;
