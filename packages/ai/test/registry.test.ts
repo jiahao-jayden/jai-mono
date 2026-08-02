@@ -38,7 +38,7 @@ describe("ModelRegistry", () => {
 		const registry = new ModelRegistry();
 		const { provider } = makeProvider("anthropic");
 		const model = makeModel("anthropic", "claude-opus-4-8");
-		registry.register({ provider, models: [model] });
+		expect(registry.register({ provider, models: [model] }).status).toBe("ok");
 
 		expect(registry.getModel("anthropic/claude-opus-4-8")).toBe(model);
 	});
@@ -51,10 +51,10 @@ describe("ModelRegistry", () => {
 	it("lists all registered models", () => {
 		const registry = new ModelRegistry();
 		const { provider } = makeProvider("anthropic");
-		registry.register({
+		expect(registry.register({
 			provider,
 			models: [makeModel("anthropic", "a"), makeModel("anthropic", "b")],
-		});
+		}).status).toBe("ok");
 		expect(registry.listModels()).toHaveLength(2);
 	});
 
@@ -62,26 +62,28 @@ describe("ModelRegistry", () => {
 		const registry = new ModelRegistry();
 		const { provider, calls } = makeProvider("anthropic");
 		const model = makeModel("anthropic", "claude-opus-4-8");
-		registry.register({ provider, models: [model] });
+		expect(registry.register({ provider, models: [model] }).status).toBe("ok");
 
-		registry.stream("anthropic/claude-opus-4-8", emptyContext);
+		expect(registry.stream("anthropic/claude-opus-4-8", emptyContext).status).toBe("ok");
 		expect(calls).toHaveLength(1);
 		expect(calls[0]).toBe(model);
 	});
 
-	it("throws for an unregistered ref on stream", () => {
+	it("returns an error for an unregistered ref on stream", () => {
 		const registry = new ModelRegistry();
-		expect(() => registry.stream("anthropic/nope", emptyContext)).toThrow("not registered");
+		const result = registry.stream("anthropic/nope", emptyContext);
+		expect(result.status).toBe("error");
+		if (result.status === "error") expect(result.error._tag).toBe("model_registry.model_not_registered");
 	});
 
 	it("routes model ids that contain slashes (openrouter-style)", () => {
 		const registry = new ModelRegistry();
 		const { provider, calls } = makeProvider("openrouter");
 		const model = makeModel("openrouter", "anthropic/claude-opus");
-		registry.register({ provider, models: [model] });
+		expect(registry.register({ provider, models: [model] }).status).toBe("ok");
 
 		expect(registry.getModel("openrouter/anthropic/claude-opus")).toBe(model);
-		registry.stream("openrouter/anthropic/claude-opus", emptyContext);
+		expect(registry.stream("openrouter/anthropic/claude-opus", emptyContext).status).toBe("ok");
 		expect(calls[0]).toBe(model);
 	});
 
@@ -91,9 +93,9 @@ describe("ModelRegistry", () => {
 		const second = makeProvider("anthropic");
 		const model = makeModel("anthropic", "claude-opus-4-8");
 
-		registry.register({ provider: first.provider, models: [model] });
-		expect(() => registry.register({ provider: second.provider, models: [model] })).toThrow(
-			"already registered",
-		);
+		expect(registry.register({ provider: first.provider, models: [model] }).status).toBe("ok");
+		const result = registry.register({ provider: second.provider, models: [model] });
+		expect(result.status).toBe("error");
+		if (result.status === "error") expect(result.error._tag).toBe("model_registry.duplicate_provider");
 	});
 });

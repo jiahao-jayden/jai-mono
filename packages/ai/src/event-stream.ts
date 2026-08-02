@@ -1,4 +1,4 @@
-import { CodedError } from "@jai/common";
+import { panic } from "better-result";
 import type { AssistantMessage, AssistantMessageEvent } from "./types";
 
 export class EventStream<TEvent, TResult = TEvent> implements AsyncIterable<TEvent> {
@@ -91,7 +91,7 @@ export class AssistantMessageEventStream extends EventStream<AssistantMessageEve
 			(event) => {
 				if (event.type === "done") return event.message;
 				if (event.type === "error") return event.error;
-				throw new CodedError({ code: "stream.unexpected_event", message: "Unexpected event type for final result" });
+				return panic("Unexpected event type for final result");
 			},
 		);
 	}

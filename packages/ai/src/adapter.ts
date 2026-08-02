@@ -1,4 +1,5 @@
-import { CodedError, getErrorMessage } from "@jai/common";
+import { getErrorMessage } from "@jai/common";
+import { TaggedError } from "better-result";
 import type { AssistantMessageEventStream } from "./event-stream";
 import type { AssistantMessage, AssistantMessageEvent, ProviderErrorInfo, StopReason } from "./types";
 import { zeroUsage } from "./utils";
@@ -15,6 +16,10 @@ export interface AdapterSpec<TChunk> {
 	/** 流跑完后的收尾（如 OpenAI 关闭未结束的 block）；没有则返回 [] */
 	finalize(): AssistantMessageEvent[];
 }
+
+class RequestAborted extends TaggedError("request.aborted")<{
+	readonly message: string;
+}> {}
 
 export function createAssistantMessage(provider: string, model: string): AssistantMessage {
 	return {
@@ -50,7 +55,7 @@ export async function runAdapterStream<TChunk>(
 		}
 
 		if (signal?.aborted) {
-			throw new CodedError({ code: "request.aborted", message: "Request was aborted" });
+			throw new RequestAborted({ message: "Request was aborted" });
 		}
 
 		for (const e of spec.finalize()) {

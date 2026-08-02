@@ -1,4 +1,4 @@
-import { defineCodedError } from "@jai/common";
+import { Result, TaggedError, type Result as ResultType } from "better-result";
 import type { AssistantMessageEventStream } from "./event-stream";
 import type { Provider, StreamOptions } from "./provider";
 import type { Context, Model } from "./types";
@@ -8,13 +8,36 @@ export interface RegisteredProvider {
 	models: Model[];
 }
 
-const registryError = defineCodedError("model_registry", [
-	"duplicate_provider",
-	"duplicate_model",
-	"provider_mismatch",
-	"model_not_registered",
-	"provider_not_registered",
-] as const);
+export class DuplicateProvider extends TaggedError("model_registry.duplicate_provider")<{
+	readonly provider: string;
+	readonly message: string;
+}> {}
+
+export class DuplicateModel extends TaggedError("model_registry.duplicate_model")<{
+	readonly message: string;
+	readonly ref: string;
+}> {}
+
+export class ProviderMismatch extends TaggedError("model_registry.provider_mismatch")<{
+	readonly actualProvider: string;
+	readonly expectedProvider: string;
+	readonly message: string;
+	readonly model: string;
+}> {}
+
+export class ModelNotRegistered extends TaggedError("model_registry.model_not_registered")<{
+	readonly message: string;
+	readonly ref: string;
+}> {}
+
+export class ProviderNotRegistered extends TaggedError("model_registry.provider_not_registered")<{
+	readonly message: string;
+	readonly provider: string;
+	readonly ref: string;
+}> {}
+
+type RegistryRegistrationError = DuplicateProvider | DuplicateModel | ProviderMismatch;
+type RegistryStreamError = ModelNotRegistered | ProviderNotRegistered;
 
 /** model ref 形如 "anthropic/claude-opus-4-8"，只按第一个 "/" 拆分 */
 function refOf(providerId: string, modelId: string): string {
@@ -25,27 +48,29 @@ export class ModelRegistry {
 	private readonly providers = new Map<string, Provider>();
 	private readonly models = new Map<string, Model>();
 
-	register(entry: RegisteredProvider): void {
+	register(entry: RegisteredProvider): ResultType<void, RegistryRegistrationError> {
 		if (this.providers.has(entry.provider.id)) {
-			throw registryError("duplicate_provider", {
+			return Result.err(new DuplicateProvider({
 				message: `Provider "${entry.provider.id}" is already registered`,
-				data: { provider: entry.provider.id },
-			});
+				provider: entry.provider.id,
+			}));
 		}
 		const refs = new Set<string>();
 		for (const model of entry.models) {
 			if (model.provider !== entry.provider.id) {
-				throw registryError("provider_mismatch", {
+				return Result.err(new ProviderMismatch({
 					message: `Model "${model.id}" references a different Provider profile`,
-					data: { model: model.id, expectedProvider: entry.provider.id, actualProvider: model.provider },
-				});
+					model: model.id,
+					expectedProvider: entry.provider.id,
+					actualProvider: model.provider,
+				}));
 			}
 			const ref = refOf(model.provider, model.id);
 			if (refs.has(ref) || this.models.has(ref)) {
-				throw registryError("duplicate_model", {
+				return Result.err(new DuplicateModel({
 					message: `Model "${ref}" is already registered`,
-					data: { ref },
-				});
+					ref,
+				}));
 			}
 			refs.add(ref);
 		}
@@ -53,6 +78,7 @@ export class ModelRegistry {
 		for (const model of entry.models) {
 			this.models.set(refOf(model.provider, model.id), model);
 		}
+		return Result.ok(undefined);
 	}
 
 	getModel(ref: string): Model | undefined {
@@ -63,21 +89,26 @@ export class ModelRegistry {
 		return [...this.models.values()];
 	}
 
-	stream(ref: string, context: Context, options?: StreamOptions): AssistantMessageEventStream {
+	stream(
+		ref: string,
+		context: Context,
+		options?: StreamOptions,
+	): ResultType<AssistantMessageEventStream, RegistryStreamError> {
 		const model = this.models.get(ref);
 		if (!model) {
-			throw registryError("model_not_registered", {
+			return Result.err(new ModelNotRegistered({
 				message: `Model "${ref}" not registered`,
-				data: { ref },
-			});
+				ref,
+			}));
 		}
 		const provider = this.providers.get(model.provider);
 		if (!provider) {
-			throw registryError("provider_not_registered", {
+			return Result.err(new ProviderNotRegistered({
 				message: `Provider "${model.provider}" not registered for model "${ref}"`,
-				data: { provider: model.provider, ref },
-			});
+				provider: model.provider,
+				ref,
+			}));
 		}
-		return provider.stream(model, context, options);
+		return Result.ok(provider.stream(model, context, options));
 	}
 }
