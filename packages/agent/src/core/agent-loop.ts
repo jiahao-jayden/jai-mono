@@ -8,7 +8,8 @@ import {
 	validateToolArguments,
 	zeroUsage,
 } from "@jai/ai";
-import { CodedError, getErrorMessage } from "@jai/common";
+import { getErrorMessage } from "@jai/common";
+import { TaggedError } from "better-result";
 import type {
 	AgentContext,
 	AgentLoopConfig,
@@ -18,6 +19,10 @@ import type {
 	CoreAgentEvent,
 	ToolCallContext,
 } from "./types";
+
+class ToolAborted extends TaggedError("tool.aborted")<{ readonly message: string }> {}
+class ToolNotFound extends TaggedError("tool.not_found")<{ readonly message: string }> {}
+class ToolInvalidArguments extends TaggedError("tool.invalid_arguments")<{ readonly message: string }> {}
 
 type Emit = (event: CoreAgentEvent) => void;
 
@@ -344,20 +349,19 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 
 	try {
 		if (signal?.aborted) {
-			throw new CodedError({ code: "tool.aborted", message: "Tool execution aborted" });
+			throw new ToolAborted({ message: "Tool execution aborted" });
 		}
 
 		const tool = context.tools.find((candidate) => candidate.name === toolCall.name);
 
 		if (!tool) {
-			throw new CodedError({ code: "tool.not_found", message: `Tool ${toolCall.name} not found` });
+			throw new ToolNotFound({ message: `Tool ${toolCall.name} not found` });
 		}
 
 		const validation = validateToolArguments(tool, toolCall);
 
 		if (validation.status === "error") {
-			throw new CodedError({
-				code: "tool.invalid_arguments",
+			throw new ToolInvalidArguments({
 				message: validation.error.message,
 			});
 		}
@@ -425,8 +429,7 @@ function finalArguments(tool: AgentTool, toolCall: ToolCall, args: Record<string
 	const validation = validateToolArguments(tool, { ...toolCall, arguments: args });
 
 	if (validation.status === "error") {
-		throw new CodedError({
-			code: "tool.invalid_arguments",
+		throw new ToolInvalidArguments({
 			message: validation.error.message,
 		});
 	}

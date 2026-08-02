@@ -1,6 +1,6 @@
 import type { Usage } from "@jai/ai";
 import type { JsonObject } from "../../core/agent-state";
-import { CodedError } from "@jai/common";
+import { TaggedError } from "better-result";
 import type { AgentMessage } from "../../core/types";
 
 export interface MessageEntry {
@@ -74,26 +74,29 @@ export interface SessionHandle<TAppState extends JsonObject = JsonObject> {
 	append(entry: SessionEntry<TAppState>): Promise<void>;
 }
 
-export class SessionConflictError extends CodedError<"session.conflict"> {
-	override name = "SessionConflictError";
-
+export class SessionConflictError extends TaggedError("session.conflict")<{
+	readonly cause?: unknown;
+	readonly message: string;
+}> {
 	constructor(message: string, options: { cause?: unknown } = {}) {
-		super({ code: "session.conflict", message, cause: options.cause });
+		super({ message, ...options });
 	}
 }
 
-export class SessionBusyError extends CodedError<"session.busy"> {
-	override name = "SessionBusyError";
-
+export class SessionBusyError extends TaggedError("session.busy")<{
+	readonly cause?: unknown;
+	readonly message: string;
+}> {
 	constructor(message: string, options: { cause?: unknown } = {}) {
-		super({ code: "session.busy", message, cause: options.cause });
+		super({ message, ...options });
 	}
 }
 
-export class SessionReadOnlyError extends CodedError<"session.read_only"> {
-	override name = "SessionReadOnlyError";
-
+export class SessionReadOnlyError extends TaggedError("session.read_only")<{
+	readonly cause?: unknown;
+	readonly message: string;
+}> {
 	constructor(message: string, options: { cause?: unknown } = {}) {
-		super({ code: "session.read_only", message, cause: options.cause });
+		super({ message, ...options });
 	}
 }

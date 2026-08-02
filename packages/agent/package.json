@@ -16,7 +16,8 @@
 	"dependencies": {
 		"@jai/ai": "workspace:*",
 		"@jai/common": "workspace:*",
-		"@sinclair/typebox": "catalog:"
+		"@sinclair/typebox": "catalog:",
+		"better-result": "^3.0.0"
 	},
 	"devDependencies": {
 		"typescript": "catalog:"

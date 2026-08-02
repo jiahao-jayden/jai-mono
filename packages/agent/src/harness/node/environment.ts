@@ -8,6 +8,7 @@ import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep 
 import { createInterface } from "node:readline";
 import { StringDecoder } from "node:string_decoder";
 import { CodedError, getErrorMessage } from "@jai/common";
+import { TaggedError } from "better-result";
 import { FileSearchError, FileSystemError, ShellError } from "../environment/errors";
 import type {
 	AbortOptions,
@@ -108,7 +109,7 @@ async function resolveExecutable(
 }
 
 function fileSystemFailure(error: unknown, resource: string): never {
-	if (error instanceof CodedError) throw error;
+	if (error instanceof CodedError || TaggedError.is(error)) throw error;
 	if (isNotFound(error))
 		throw new FileSystemError("not_found", `Path not found: ${resource}`, { resource, cause: error });
 	if (isPermissionDenied(error)) {
@@ -209,7 +210,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 					});
 				}
 			} catch (error) {
-				if (error instanceof CodedError) throw error;
+				if (error instanceof CodedError || TaggedError.is(error)) throw error;
 				if (!isNotFound(error) || options.mustExist) throw error;
 			}
 			throwIfAborted(options.signal);
@@ -292,7 +293,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 			mode = current.mode;
 			created = false;
 		} catch (error) {
-			if (error instanceof CodedError || !isNotFound(error)) fileSystemFailure(error, path);
+			if (error instanceof CodedError || TaggedError.is(error) || !isNotFound(error)) fileSystemFailure(error, path);
 		}
 		const temporaryPath = join(directory, `.${basename(path)}.jai-${process.pid}-${randomUUID()}.tmp`);
 		try {
