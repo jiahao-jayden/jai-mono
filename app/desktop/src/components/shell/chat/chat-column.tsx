@@ -10,6 +10,7 @@ import type {
 	DesktopWorkspace,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
+import { InputMessage, type QueuedMessage } from "../../ui/input-message";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectSeparator, SelectTrigger } from "../../ui/select";
 import { SlashInvocationText } from "./slash-invocation";
 import { WorkspacePicker } from "./workspace-picker";
@@ -81,19 +82,20 @@ export function ChatColumn({
 	const PanelLeftIcon = icons["panel-left-close"];
 	const PanelRightIcon = icons["panel-right"];
 	const [draft, setDraft] = useState("");
+	const [queue, setQueue] = useState<QueuedMessage[]>([]);
 	const [sending, setSending] = useState(false);
 	const [sendError, setSendError] = useState<string>();
 	const scrollRef = useRef<HTMLDivElement>(null);
 	useTranscriptAutoscroll(scrollRef, items.length, status);
 
-	const submit = async () => {
-		const message = draft.trim();
+	const submit = async (value: string, meta?: { queuedId?: string }) => {
+		const message = value.trim();
 		if (!message || sending) return;
 		setSending(true);
 		setSendError(undefined);
 		try {
 			await onSend(message);
-			setDraft("");
+			if (!meta?.queuedId) setDraft("");
 		} catch {
 			setSendError("消息未发送。请检查模型配置后重试。");
 		} finally {
@@ -186,7 +188,9 @@ export function ChatColumn({
 							onSubmit={submit}
 							onAbort={onAbort}
 							status={status}
-							disabled={sending || status === "running" || workspace?.available === false}
+							disabled={sending || workspace?.available === false}
+							queue={queue}
+							onQueueChange={setQueue}
 							workspace={workspace}
 							workspaces={workspaces}
 							workspaceBusy={workspaceBusy}
@@ -242,7 +246,9 @@ export function ChatColumn({
 								onSubmit={submit}
 								onAbort={onAbort}
 								status={status}
-								disabled={sending || status === "running" || workspace?.available === false}
+								disabled={sending || workspace?.available === false}
+								queue={queue}
+								onQueueChange={setQueue}
 								workspace={workspace}
 								workspaces={workspaces}
 								workspaceBusy={workspaceBusy}
@@ -277,6 +283,8 @@ function Composer({
 	onAbort,
 	status,
 	disabled,
+	queue,
+	onQueueChange,
 	workspace,
 	workspaces,
 	workspaceBusy,
@@ -295,10 +303,12 @@ function Composer({
 }: {
 	value: string;
 	onValueChange(value: string): void;
-	onSubmit(): void;
+	onSubmit(value: string, meta?: { queuedId?: string }): void;
 	onAbort(): Promise<void>;
 	status: DesktopAgentStatus;
 	disabled: boolean;
+	queue: QueuedMessage[];
+	onQueueChange(queue: QueuedMessage[]): void;
 	workspace?: DesktopWorkspace;
 	workspaces: readonly DesktopWorkspace[];
 	workspaceBusy: boolean;
@@ -317,85 +327,48 @@ function Composer({
 }) {
 	const icons = useIcons();
 	const PlusIcon = icons.plus;
-	const StopIcon = icons["stop-circle"];
-	const ArrowUpIcon = icons["arrow-up"];
-	const SparklesIcon = icons.sparkles;
-	const canSend = value.trim().length > 0 && !disabled;
-	const showStop = status === "running";
 	const modelStatus = resolveModelStatus(providerConfig, providerLoading, providerError);
 
 	return (
 		<div>
-			<div className="rounded-[18px] border border-border bg-card shadow-surface-3">
-				{!large ? (
-					<div className="flex h-[46px] items-center gap-[9px] rounded-t-[17px] border-b border-border/70 bg-primary-2/[0.035] px-[18px] text-[13.5px] font-medium tracking-[-0.005em] text-primary-2">
-						<SparklesIcon size={15} />
-						{status === "running"
-							? `Working in ${workspace?.displayName ?? "this session"}`
-							: "Waiting for your lead"}
+			<InputMessage
+				value={value}
+				onValueChange={onValueChange}
+				onSend={(message, _files, meta) => onSubmit(message, meta)}
+				onStop={() => void onAbort()}
+				status={status === "running" ? "streaming" : "idle"}
+				queue={queue}
+				onQueueChange={onQueueChange}
+				disabled={disabled}
+				minRows={large ? 2 : 1}
+				maxRows={8}
+				placeholder={large ? "What should the agent work on?" : "Write a message…"}
+				sendLabel="Send message"
+				textareaProps={{ "aria-label": "Message" }}
+				leftSlot={
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-sm"
+						disabled
+						aria-label="Attach files"
+						title="File attachments are coming later"
+					>
+						<PlusIcon size={14} strokeWidth={1.5} />
+					</Button>
+				}
+				rightSlot={
+					<div className="hidden min-[900px]:block">
+						<ModelSelector
+							config={providerConfig}
+							status={modelStatus}
+							disabled={status === "running" || providerLoading || modelSwitching}
+							onSelect={onSelectProviderModel}
+							onManage={onOpenProviderSettings}
+						/>
 					</div>
-				) : null}
-				<div className="px-2 pt-1.5 pb-2">
-					<textarea
-						value={value}
-						onChange={(event) => onValueChange(event.target.value)}
-						onKeyDown={(event) => {
-							if (event.key === "Enter" && !event.shiftKey) {
-								event.preventDefault();
-								onSubmit();
-							}
-						}}
-						disabled={disabled}
-						rows={large ? 2 : 1}
-						placeholder={
-							status === "running"
-								? "Agent is working…"
-								: large
-									? "What should the agent work on?"
-									: "Write a message…"
-						}
-						aria-label="Message"
-						className={`block w-full resize-none bg-transparent px-3 pt-3 pb-1 text-[16px] text-foreground placeholder:text-muted-foreground/80 disabled:opacity-60 ${
-							large ? "min-h-[60px]" : "min-h-[44px]"
-						}`}
-					/>
-					<div className="flex items-center justify-between px-1 pt-1">
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon-sm"
-							disabled
-							aria-label="Attach files"
-							title="File attachments are coming later"
-							className="shrink-0"
-						>
-							<PlusIcon size={14} strokeWidth={1.5} />
-						</Button>
-						<div className="flex shrink-0 items-center gap-2">
-							<div className="hidden min-[900px]:block">
-								<ModelSelector
-									config={providerConfig}
-									status={modelStatus}
-									disabled={status === "running" || providerLoading || modelSwitching}
-									onSelect={onSelectProviderModel}
-									onManage={onOpenProviderSettings}
-								/>
-							</div>
-							<Button
-								type="button"
-								variant="primary"
-								size="icon-sm"
-								onClick={() => (showStop ? void onAbort() : onSubmit())}
-								disabled={!showStop && !canSend}
-								aria-label={showStop ? "Stop agent" : "Send message"}
-								title={showStop ? "Stop agent" : "Send message"}
-							>
-								{showStop ? <StopIcon size={15} /> : <ArrowUpIcon size={15} strokeWidth={1.8} />}
-							</Button>
-						</div>
-					</div>
-				</div>
-			</div>
+				}
+			/>
 			<div className="mt-1.5 pl-2">
 				<WorkspacePicker
 					workspace={workspace}

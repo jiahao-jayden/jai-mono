@@ -21,7 +21,6 @@ import { fontWeights } from "@/lib/font-weight";
 import { spring } from "@/lib/springs";
 import { useShape } from "@/lib/shape-context";
 import { useIcon } from "@/lib/icon-context";
-import { surfaceClasses } from "@/lib/surface-classes";
 import { SurfaceProvider } from "@/lib/surface-context";
 import { FileThumbnail } from "@/components/ui/file-thumbnail";
 import { Button } from "@/components/ui/button";
@@ -752,7 +751,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
           // than layering a second colored border beside it — so hover / focus
           // bump *contrast* without ever appearing to thicken the stroke.
           "flex flex-col gap-1 p-2 transition-[box-shadow,color] duration-80",
-          surfaceClasses(2, 2),
+          "bg-card shadow-surface-2",
           shape.container,
           clickToFocus && !disabled && "cursor-text",
           disabled && "opacity-50 pointer-events-none",

@@ -203,6 +203,7 @@ Desktop shell 是固定标题栏下的三栏模式：44px 标题栏；264px 左�
 ### Navigation
 - **Style:** 左栏使用暖 sidebar substrate、13–13.5px 标签和 8px item 圆角。选中与 hover 使用 quiet wash，活动任务额外显示 teal 状态点。
 - **Hierarchy:** 顶部 Home / Code switch、主导航、Recents、Design 和 profile 按稳定区域分组；disabled 项保持可辨认但显著降权。
+- **Consistency:** Shell 内所有导航入口（包括主侧栏与 Settings 分类导航）统一复用 `Button` 的 `navigation` variant。Hover 与 selected 使用同一套 `sidebar-accent` / quiet wash 背景，不在局部改用 `ghost` 或自定义另一种 hover 色。
 
 ### Desktop Shell Composer
 

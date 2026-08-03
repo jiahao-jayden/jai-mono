@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { Toaster } from "@/components/ui/toast";
 import { ShapeProvider } from "@/lib/shape-context";
 import { initTheme } from "./stores/theme";
 import "./styles/global.css";
@@ -23,6 +24,7 @@ initTheme().then(() => {
 			<QueryClientProvider client={queryClient}>
 				<ShapeProvider defaultShape="rounded">
 					<App />
+					<Toaster />
 				</ShapeProvider>
 			</QueryClientProvider>
 		</React.StrictMode>,

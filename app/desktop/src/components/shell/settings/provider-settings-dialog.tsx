@@ -9,6 +9,7 @@ import type {
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
+import { Input } from "../../ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "../../ui/select";
 
 interface ProviderSettingsDialogProps {
@@ -44,7 +45,7 @@ export function ProviderSettingsDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent
 				size="lg"
-				className="max-h-[min(720px,calc(100vh-48px))] max-w-190 overflow-hidden bg-background p-0"
+				className="h-[min(600px,calc(100vh-48px))] max-w-220 overflow-hidden bg-background p-0"
 			>
 				{snapshot ? (
 					<ProviderConfigForm key={formKey(snapshot)} snapshot={snapshot} onSave={onSave} />
@@ -77,8 +78,8 @@ function ProviderLoadState({
 	const SettingsIcon = useIcon("settings");
 
 	return (
-		<div className="flex min-h-80 flex-col">
-			<DialogHeader className="border-b border-border px-6 py-5">
+		<div className="flex h-full min-h-0 flex-col">
+			<DialogHeader className="px-6 py-5">
 				<DialogTitle>Settings</DialogTitle>
 			</DialogHeader>
 			<div className="flex flex-1 items-center justify-center px-6 text-center">
@@ -88,7 +89,7 @@ function ProviderLoadState({
 				</div>
 			</div>
 			{error ? (
-				<DialogFooter className="border-t border-border px-6 py-4">
+				<DialogFooter className="px-6 py-4">
 					<Button type="button" variant="tertiary" onClick={onRetry}>
 						Retry
 					</Button>
@@ -162,35 +163,35 @@ function ProviderConfigForm({
 
 	return (
 		<form
-			className="flex max-h-[min(720px,calc(100vh-48px))] min-h-140 flex-col"
+			className="flex h-full min-h-0 flex-col"
 			onSubmit={(event) => {
 				event.preventDefault();
 				void submit();
 			}}
 		>
-			<DialogHeader className="border-b border-border px-6 py-5">
+			<DialogHeader className="px-6 py-5 mb-0">
 				<DialogTitle>Settings</DialogTitle>
 			</DialogHeader>
 
 			<div className="flex min-h-0 flex-1">
 				{/* Category sidebar */}
-				<nav className="flex w-44 shrink-0 flex-col gap-0.5 border-r border-border p-3" aria-label="Settings">
+				<nav className="flex w-44 shrink-0 flex-col gap-0.5 bg-muted/25 p-3" aria-label="Settings">
 					{categories.map((cat) => {
 						const Icon = icons[cat.icon];
 						return (
 							<Button
 								type="button"
-								variant="ghost"
+								variant="navigation"
 								size="md"
+								leadingIcon={Icon}
 								key={cat.id}
 								onClick={() => setCategory(cat.id)}
 								active={category === cat.id}
 								aria-current={category === cat.id ? "page" : undefined}
-								className={`h-auto w-full justify-start gap-2.5 px-3 py-2 text-left text-[13.5px] ${
-									category === cat.id ? "font-semibold" : "text-muted-foreground"
+								className={`h-auto w-full justify-start gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px] ${
+									category === cat.id ? "font-semibold text-foreground" : "text-foreground/75"
 								}`}
 							>
-								<Icon className="size-4 shrink-0" />
 								{cat.label}
 							</Button>
 						);
@@ -221,7 +222,7 @@ function ProviderConfigForm({
 				</div>
 			</div>
 
-			<DialogFooter className="items-center border-t border-border px-6 py-4">
+			<DialogFooter className="items-center px-6 py-4">
 				{error ? (
 					<p className="mr-auto max-w-115 text-[12px] leading-relaxed text-destructive" role="alert">
 						{error}
@@ -260,24 +261,22 @@ function GeneralSettings({
 
 			<div className="mt-5 flex flex-col gap-5">
 				<SettingsRow label="Response language">
-					<input
+					<Input
 						value={language}
 						onChange={(event) => onLanguageChange(event.target.value)}
 						placeholder="zh-CN"
-						className={settingsInputClassName}
 						aria-label="Response language"
 						autoComplete="off"
 					/>
 				</SettingsRow>
 
 				<SettingsRow label="Max iterations">
-					<input
+					<Input
 						type="number"
 						min={1}
 						value={maxIterations}
 						onChange={(event) => onMaxIterationsChange(event.target.value)}
 						placeholder="Unlimited"
-						className={settingsInputClassName}
 						aria-label="Max iterations"
 					/>
 				</SettingsRow>
@@ -370,7 +369,7 @@ function ProvidersSettings({
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			{/* Provider tab bar */}
-			<div className="flex items-center gap-1 border-b border-border px-6 pt-3 pb-0">
+			<div className="flex items-center gap-1 px-6 pt-3 pb-0">
 				<div className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto">
 					{profiles.map((profile) => (
 						<Button
@@ -421,18 +420,17 @@ function ProvidersSettings({
 							</div>
 							<div className="grid grid-cols-2 gap-3">
 								<Field label="Profile name">
-									<input
+									<Input
 										value={selected.name}
 										onChange={(event) =>
 											updateSelected((profile) => ({ ...profile, name: event.target.value }))
 										}
-										className={inputClassName}
 										aria-label="Profile name"
 										autoComplete="off"
 									/>
 								</Field>
 								<Field label="Profile ID">
-									<input
+									<Input
 										value={selected.id}
 										onChange={(event) => {
 											const nextId = event.target.value;
@@ -443,7 +441,6 @@ function ProvidersSettings({
 												onActiveModelChange(`${nextId}/${activeModelRef.slice(previousPrefix.length)}`);
 											}
 										}}
-										className={inputClassName}
 										aria-label="Profile ID"
 										autoComplete="off"
 										spellCheck={false}
@@ -476,7 +473,7 @@ function ProvidersSettings({
 									</Select>
 								</Field>
 								<Field label="Models.dev provider">
-									<input
+									<Input
 										value={selected.catalogProvider ?? ""}
 										onChange={(event) =>
 											updateSelected((profile) => ({
@@ -485,7 +482,6 @@ function ProvidersSettings({
 											}))
 										}
 										placeholder="openai"
-										className={inputClassName}
 										aria-label="Models.dev provider"
 										autoComplete="off"
 										spellCheck={false}
@@ -493,14 +489,13 @@ function ProvidersSettings({
 								</Field>
 							</div>
 							<Field label="Endpoint">
-								<input
+								<Input
 									type="url"
 									value={selected.baseURL}
 									onChange={(event) =>
 										updateSelected((profile) => ({ ...profile, baseURL: event.target.value }))
 									}
 									placeholder="https://…"
-									className={inputClassName}
 									aria-label="Endpoint"
 									autoComplete="url"
 									spellCheck={false}
@@ -508,7 +503,7 @@ function ProvidersSettings({
 							</Field>
 						</section>
 
-						<section className="flex flex-col gap-3 border-t border-border pt-4">
+						<section className="flex flex-col gap-3 pt-2">
 							<h3 className="text-[14px] font-semibold">Credential</h3>
 							{selected.adapter === "openai-compatible" ? (
 								<label className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
@@ -531,7 +526,7 @@ function ProvidersSettings({
 								<Field label="API key">
 									<div className="relative">
 										<KeyIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-										<input
+										<Input
 											type="password"
 											value={selected.apiKey}
 											onChange={(event) =>
@@ -542,7 +537,7 @@ function ProvidersSettings({
 												}))
 											}
 											placeholder={selected.credentialMask ?? "Enter API key"}
-											className={`${inputClassName} pl-10`}
+											className="pl-10"
 											aria-label="API key"
 											autoComplete="new-password"
 										/>
@@ -614,7 +609,7 @@ function ModelEditor({
 		onActiveModelChange(`${profile.id}/${id}`);
 	};
 	return (
-		<section className="flex flex-col gap-3 border-t border-border pt-4">
+		<section className="flex flex-col gap-3 pt-2">
 			<div className="flex items-center justify-between gap-3">
 				<div>
 					<h3 className="text-[14px] font-semibold">Models</h3>
@@ -630,7 +625,7 @@ function ModelEditor({
 				const inputModalities = model.inputModalities ?? input;
 				const outputModalities = model.outputModalities ?? ["text"];
 				return (
-					<div key={model.id} className="rounded-lg border border-border/65 p-3">
+					<div key={model.id} className="rounded-lg bg-muted/30 p-3">
 						<div className="grid grid-cols-[28px_1fr_1fr_1fr_32px] items-end gap-2">
 							<label className="flex h-9 items-center justify-center" title="Use as current model">
 								<input
@@ -643,7 +638,8 @@ function ModelEditor({
 								/>
 							</label>
 							<CompactField label={readOnly ? "Catalog ID" : "Local ID"}>
-								<input
+								<Input
+									density="compact"
 									value={model.id}
 									disabled={readOnly}
 									onChange={(event) => {
@@ -655,13 +651,13 @@ function ModelEditor({
 										);
 										if (activeModelRef === ref) onActiveModelChange(`${profile.id}/${nextId}`);
 									}}
-									className={compactInputClassName}
 									aria-label={`${model.name} Local ID`}
 									spellCheck={false}
 								/>
 							</CompactField>
 							<CompactField label="Display name">
-								<input
+								<Input
+									density="compact"
 									value={model.name}
 									disabled={readOnly}
 									onChange={(event) =>
@@ -671,12 +667,12 @@ function ModelEditor({
 											),
 										)
 									}
-									className={compactInputClassName}
 									aria-label={`${model.name} display name`}
 								/>
 							</CompactField>
 							<CompactField label="Remote ID">
-								<input
+								<Input
+									density="compact"
 									value={model.remoteModelId}
 									disabled={readOnly}
 									onChange={(event) =>
@@ -686,7 +682,6 @@ function ModelEditor({
 											),
 										)
 									}
-									className={compactInputClassName}
 									aria-label={`${model.name} Remote ID`}
 									spellCheck={false}
 								/>
@@ -866,10 +861,3 @@ function uniqueModelId(models: readonly DesktopProviderModel[], base: string): s
 	while (ids.has(`${base}-${suffix}`)) suffix++;
 	return `${base}-${suffix}`;
 }
-
-const inputClassName =
-	"h-9 w-full rounded-lg border border-border bg-transparent px-3 text-[14px] outline-none transition-colors placeholder:text-muted-foreground focus:border-primary-2 focus-visible:ring-2 focus-visible:ring-primary-2/35";
-const settingsInputClassName =
-	"h-9 w-full rounded-lg border border-border bg-transparent px-3 text-[13.5px] outline-none transition-colors placeholder:text-muted-foreground focus:border-primary-2 focus-visible:ring-2 focus-visible:ring-primary-2/35";
-const compactInputClassName =
-	"h-8 min-w-0 w-full rounded-lg border border-border bg-transparent px-2.5 text-[12px] text-foreground outline-none focus:border-primary-2 focus-visible:ring-2 focus-visible:ring-primary-2/35";
