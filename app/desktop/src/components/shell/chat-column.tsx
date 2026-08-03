@@ -10,6 +10,7 @@ import type {
 	DesktopWorkspace,
 } from "../../../shared/desktop-rpc";
 import { Button } from "../ui/button";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectSeparator, SelectTrigger } from "../ui/select";
 import { SlashInvocationText } from "./slash-invocation";
 import { WorkspacePicker } from "./workspace-picker";
 
@@ -24,6 +25,8 @@ interface ChatColumnProps {
 	providerConfig?: DesktopProviderConfigSnapshot;
 	providerLoading: boolean;
 	providerError: boolean;
+	modelSwitching: boolean;
+	modelSwitchError?: string;
 	workspaceBusy: boolean;
 	workspaceLoading: boolean;
 	workspaceLoadError: boolean;
@@ -33,6 +36,7 @@ interface ChatColumnProps {
 	onToggleSidebar(): void;
 	onToggleRightPanel(): void;
 	onOpenProviderSettings(): void;
+	onSelectProviderModel(modelRef: string): Promise<void>;
 	onChooseWorkspace(workspace: DesktopWorkspace): Promise<void>;
 	onAddWorkspace(): Promise<void>;
 	onRetryWorkspaces(): void;
@@ -52,6 +56,8 @@ export function ChatColumn({
 	providerConfig,
 	providerLoading,
 	providerError,
+	modelSwitching,
+	modelSwitchError,
 	workspaceBusy,
 	workspaceLoading,
 	workspaceLoadError,
@@ -61,6 +67,7 @@ export function ChatColumn({
 	onToggleSidebar,
 	onToggleRightPanel,
 	onOpenProviderSettings,
+	onSelectProviderModel,
 	onChooseWorkspace,
 	onAddWorkspace,
 	onRetryWorkspaces,
@@ -191,10 +198,12 @@ export function ChatColumn({
 							providerConfig={providerConfig}
 							providerLoading={providerLoading}
 							providerError={providerError}
+							modelSwitching={modelSwitching}
 							onOpenProviderSettings={onOpenProviderSettings}
+							onSelectProviderModel={onSelectProviderModel}
 							large
 						/>
-						<ComposerError message={sendError || workspaceError || error} />
+						<ComposerError message={sendError || modelSwitchError || workspaceError || error} />
 					</div>
 				</div>
 			) : (
@@ -245,9 +254,11 @@ export function ChatColumn({
 								providerConfig={providerConfig}
 								providerLoading={providerLoading}
 								providerError={providerError}
+								modelSwitching={modelSwitching}
 								onOpenProviderSettings={onOpenProviderSettings}
+								onSelectProviderModel={onSelectProviderModel}
 							/>
-							<ComposerError message={sendError || workspaceError || error} />
+							<ComposerError message={sendError || modelSwitchError || workspaceError || error} />
 						</div>
 					</div>
 					<p className="shrink-0 py-2 pb-3 text-center text-[12.5px] text-muted-foreground">
@@ -277,7 +288,9 @@ function Composer({
 	providerConfig,
 	providerLoading,
 	providerError,
+	modelSwitching,
 	onOpenProviderSettings,
+	onSelectProviderModel,
 	large = false,
 }: {
 	value: string;
@@ -297,12 +310,13 @@ function Composer({
 	providerConfig?: DesktopProviderConfigSnapshot;
 	providerLoading: boolean;
 	providerError: boolean;
+	modelSwitching: boolean;
 	onOpenProviderSettings(): void;
+	onSelectProviderModel(modelRef: string): Promise<void>;
 	large?: boolean;
 }) {
 	const icons = useIcons();
 	const PlusIcon = icons.plus;
-	const SettingsIcon = icons.settings;
 	const StopIcon = icons["stop-circle"];
 	const ArrowUpIcon = icons["arrow-up"];
 	const SparklesIcon = icons.sparkles;
@@ -358,29 +372,15 @@ function Composer({
 							<PlusIcon size={14} strokeWidth={1.5} />
 						</Button>
 						<div className="flex shrink-0 items-center gap-2">
-							<Button
-								type="button"
-								variant="ghost"
-								size="sm"
-								trailingIcon={SettingsIcon}
-								onClick={onOpenProviderSettings}
-								disabled={status === "running"}
-								title={
-									status === "running"
-										? "Wait for the current run to finish before switching models"
-										: modelStatus.title
-								}
-								className="hidden max-w-56 text-[13.5px] font-medium text-foreground/80 min-[900px]:inline-flex"
-							>
-								<span className="flex min-w-0 items-center gap-2">
-									<span
-										className={`size-[7px] shrink-0 rounded-full ${
-											modelStatus.configured ? "bg-primary-2" : "bg-muted-foreground/35"
-										}`}
-									/>
-									<span className="truncate">{modelStatus.label}</span>
-								</span>
-							</Button>
+							<div className="hidden min-[900px]:block">
+								<ModelSelector
+									config={providerConfig}
+									status={modelStatus}
+									disabled={status === "running" || providerLoading || modelSwitching}
+									onSelect={onSelectProviderModel}
+									onManage={onOpenProviderSettings}
+								/>
+							</div>
 							<Button
 								type="button"
 								variant="primary"
@@ -597,6 +597,65 @@ function greeting(): string {
 	if (hour < 12) return "Good morning";
 	if (hour < 18) return "Good afternoon";
 	return "Good evening";
+}
+
+const MANAGE_MODELS_VALUE = "__manage-models__";
+
+function ModelSelector({
+	config,
+	status,
+	disabled,
+	onSelect,
+	onManage,
+}: {
+	config?: DesktopProviderConfigSnapshot;
+	status: { readonly label: string; readonly title: string };
+	disabled: boolean;
+	onSelect(modelRef: string): Promise<void>;
+	onManage(): void;
+}) {
+	const models =
+		config?.profiles.flatMap((profile) =>
+			profile.models.map((model) => ({
+				ref: `${profile.id}/${model.id}`,
+				label: `${profile.name} · ${model.name}`,
+			})),
+		) ?? [];
+
+	return (
+		<Select
+			value={config?.activeModelRef ?? ""}
+			disabled={disabled}
+			onValueChange={(value) => {
+				if (value === MANAGE_MODELS_VALUE) {
+					onManage();
+					return;
+				}
+				void onSelect(value);
+			}}
+		>
+			<SelectTrigger
+				variant="borderless"
+				placeholder={status.label}
+				title={status.title}
+				aria-label={`Model: ${status.label}`}
+				className="h-8 min-w-0 max-w-56 px-2 text-[13.5px] font-medium text-foreground/80"
+			/>
+			<SelectContent className="min-w-64">
+				<SelectGroup>
+					{models.map((model, index) => (
+						<SelectItem key={model.ref} index={index} value={model.ref}>
+							{model.label}
+						</SelectItem>
+					))}
+					{models.length > 0 ? <SelectSeparator /> : null}
+					<SelectItem index={models.length} value={MANAGE_MODELS_VALUE}>
+						Manage models &amp; Providers…
+					</SelectItem>
+				</SelectGroup>
+			</SelectContent>
+		</Select>
+	);
 }
 
 function resolveModelStatus(

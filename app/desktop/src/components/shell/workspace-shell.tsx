@@ -13,7 +13,11 @@ import {
 } from "react";
 import { desktop } from "@/lib/desktop";
 import { useActiveSessionStore, useSessionListStore } from "@/stores/sessions";
-import type { DesktopProviderConfigInput, DesktopWorkspace } from "../../../shared/desktop-rpc";
+import type {
+	DesktopProviderConfigInput,
+	DesktopProviderConfigSnapshot,
+	DesktopWorkspace,
+} from "../../../shared/desktop-rpc";
 import { ChatColumn } from "./chat-column";
 import { ProviderSettingsDialog } from "./provider-settings-dialog";
 import { Sidebar } from "./sidebar";
@@ -41,6 +45,8 @@ export function WorkspaceShell() {
 	const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
 	const [workspaceBusy, setWorkspaceBusy] = useState(false);
 	const [workspaceError, setWorkspaceError] = useState<string>();
+	const [modelSwitching, setModelSwitching] = useState(false);
+	const [modelSwitchError, setModelSwitchError] = useState<string>();
 	const queryClient = useQueryClient();
 	const sessionList = useSessionListStore();
 	const activeSession = useActiveSessionStore();
@@ -75,15 +81,43 @@ export function WorkspaceShell() {
 		}
 		await activeSession.createAndSend(workspaceId, message);
 	};
-	const saveProviderConfig = async (input: DesktopProviderConfigInput) => {
+	const updateProviderConfig = async (input: DesktopProviderConfigInput) => {
 		const snapshot = await desktop.provider.save(input);
 		queryClient.setQueryData(["provider-config"], snapshot);
+		return snapshot;
+	};
+	const saveProviderConfig = async (input: DesktopProviderConfigInput) => {
+		await updateProviderConfig(input);
 		setProviderSettingsOpen(false);
 	};
-	const openProviderSettings = () => {
+	const openProviderSettings = useCallback(() => {
+		if (activeSession.status === "running") return;
 		setProviderSettingsOpen(true);
 		if (providerQuery.isError) void providerQuery.refetch();
+	}, [activeSession.status, providerQuery.isError, providerQuery.refetch]);
+	const selectProviderModel = async (modelRef: string) => {
+		const snapshot = providerQuery.data;
+		if (!snapshot || snapshot.activeModelRef === modelRef || modelSwitching) return;
+		setModelSwitching(true);
+		setModelSwitchError(undefined);
+		try {
+			await updateProviderConfig(toProviderConfigInput(snapshot, modelRef));
+		} catch (error) {
+			setModelSwitchError(getErrorMessage(error));
+		} finally {
+			setModelSwitching(false);
+		}
 	};
+
+	useEffect(() => {
+		const openSettingsShortcut = (event: globalThis.KeyboardEvent) => {
+			if (event.key !== "," || (!event.metaKey && !event.ctrlKey)) return;
+			event.preventDefault();
+			openProviderSettings();
+		};
+		window.addEventListener("keydown", openSettingsShortcut);
+		return () => window.removeEventListener("keydown", openSettingsShortcut);
+	}, [openProviderSettings]);
 	const rememberWorkspace = (next: DesktopWorkspace) => {
 		queryClient.setQueryData<DesktopWorkspace[]>(["workspaces"], (current = []) => {
 			const index = current.findIndex((candidate) => candidate.id === next.id);
@@ -155,8 +189,10 @@ export function WorkspaceShell() {
 					loading={sessionList.loading}
 					error={sessionList.error}
 					width={sidebarResize.width}
+					settingsDisabled={activeSession.status === "running"}
 					onToggleSidebar={() => setSidebarOpen(false)}
 					onNewChat={activeSession.newChat}
+					onOpenSettings={openProviderSettings}
 					onSelectSession={activeSession.open}
 				/>
 			) : null}
@@ -173,6 +209,8 @@ export function WorkspaceShell() {
 				providerConfig={providerQuery.data}
 				providerLoading={providerQuery.isLoading}
 				providerError={providerQuery.isError}
+				modelSwitching={modelSwitching}
+				modelSwitchError={modelSwitchError}
 				workspaceBusy={workspaceBusy}
 				workspaceLoading={workspacesQuery.isLoading || workspacesQuery.isFetching}
 				workspaceLoadError={workspacesQuery.isError && workspacesQuery.data === undefined}
@@ -185,6 +223,7 @@ export function WorkspaceShell() {
 				onToggleSidebar={() => setSidebarOpen(true)}
 				onToggleRightPanel={() => setRightPanelOpen((open) => !open)}
 				onOpenProviderSettings={openProviderSettings}
+				onSelectProviderModel={selectProviderModel}
 				onChooseWorkspace={chooseWorkspace}
 				onAddWorkspace={addWorkspace}
 				onRetryWorkspaces={() => void workspacesQuery.refetch()}
@@ -206,6 +245,19 @@ export function WorkspaceShell() {
 			/>
 		</div>
 	);
+}
+
+function toProviderConfigInput(
+	snapshot: DesktopProviderConfigSnapshot,
+	activeModelRef: string,
+): DesktopProviderConfigInput {
+	return {
+		revision: snapshot.revision,
+		activeModelRef,
+		profiles: snapshot.profiles.map(
+			({ credentialConfigured: _configured, credentialMask: _mask, ...profile }) => profile,
+		),
+	};
 }
 
 function rubberBand(distance: number, dimension = DEFAULT_SIDEBAR_WIDTH, constant = 0.55): number {

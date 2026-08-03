@@ -20,8 +20,10 @@ describe("Sidebar", () => {
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
+				settingsDisabled={false}
 				onToggleSidebar={() => {}}
 				onNewChat={() => {}}
+				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 			/>,
 		);
@@ -38,8 +40,10 @@ describe("Sidebar", () => {
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
+				settingsDisabled={false}
 				onToggleSidebar={() => {}}
 				onNewChat={() => {}}
+				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 			/>,
 		);
@@ -60,8 +64,10 @@ describe("Sidebar", () => {
 				runningSessionIds={[]}
 				activeSessionId="s1"
 				loading={false}
+				settingsDisabled={false}
 				onToggleSidebar={() => {}}
 				onNewChat={() => {}}
+				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 			/>,
 		);
@@ -78,8 +84,10 @@ describe("Sidebar", () => {
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
+				settingsDisabled={false}
 				onToggleSidebar={() => {}}
 				onNewChat={() => {}}
+				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 			/>,
 		);
@@ -98,8 +106,10 @@ describe("Sidebar", () => {
 				runningSessionIds={["s1"]}
 				activeSessionId={null}
 				loading={false}
+				settingsDisabled={false}
 				onToggleSidebar={() => {}}
 				onNewChat={() => {}}
+				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 			/>,
 		);

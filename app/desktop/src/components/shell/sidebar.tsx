@@ -14,8 +14,10 @@ interface SidebarProps {
 	loading: boolean;
 	error?: string;
 	width?: MotionValue<number>;
+	settingsDisabled: boolean;
 	onToggleSidebar(): void;
 	onNewChat(): void;
+	onOpenSettings(): void;
 	onSelectSession(sessionId: string): void;
 }
 
@@ -34,8 +36,10 @@ export function Sidebar({
 	loading,
 	error,
 	width,
+	settingsDisabled,
 	onToggleSidebar,
 	onNewChat,
+	onOpenSettings,
 	onSelectSession,
 }: SidebarProps) {
 	const running = new Set(runningSessionIds);
@@ -105,9 +109,8 @@ export function Sidebar({
 				})}
 			</nav>
 
-			<div className="flex items-center justify-between px-5 pt-5 pb-1.5">
+			<div className="px-5 pt-5 pb-1.5">
 				<span className="text-[12px] font-semibold text-muted-foreground">Recents</span>
-				<SettingsIcon size={13} className="text-muted-foreground" />
 			</div>
 
 			<div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-2.5 pb-2">
@@ -159,6 +162,20 @@ export function Sidebar({
 						</Button>
 					);
 				})}
+			</div>
+			<div className="shrink-0 border-t border-sidebar-border px-2.5 py-2">
+				<Button
+					type="button"
+					variant="navigation"
+					size="md"
+					leadingIcon={SettingsIcon}
+					onClick={onOpenSettings}
+					disabled={settingsDisabled}
+					title={settingsDisabled ? "Wait for the current run to finish" : "Settings (⌘,)"}
+					className="w-full justify-start gap-3 rounded-lg px-3 py-2 text-left text-[13.5px] text-foreground/75"
+				>
+					Settings
+				</Button>
 			</div>
 		</motion.aside>
 	);
