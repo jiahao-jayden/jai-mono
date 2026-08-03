@@ -118,6 +118,10 @@ export interface AgentLoopConfig {
 	temperature?: number;
 	/** 输出 token 上限，透传给 provider。 */
 	maxTokens?: number;
+	/** Provider adapter 的受限请求选项，按 provider id 或 adapter 名分组。 */
+	providerOptions?: Record<string, Record<string, unknown>>;
+	/** 单次 invoke 中可发起的最大 model turn 数。 */
+	maxIterations?: number;
 	/** 工具执行模式，默认 "parallel"。 */
 	toolExecution?: ToolExecutionMode;
 	/**

@@ -2,6 +2,7 @@ import { CodingBusinessService } from "@jai/coding/business";
 import { app, BrowserWindow } from "electron";
 import { createDesktopAgentFactory } from "./agent/factory";
 import { mainLog } from "./logger";
+import { startDesktopModelCatalog } from "./model-catalog";
 import { closeDesktopRuntime, restoreTheme, setCodingBusinessService, setDesktopAgentFactory } from "./rpc/router";
 import { registerDesktopRpc } from "./rpc/server";
 import { createMainWindow } from "./windows";
@@ -27,6 +28,7 @@ void app
 		setDesktopAgentFactory(createDesktopAgentFactory(codingBusiness));
 		restoreTheme();
 		registerDesktopRpc();
+		void startDesktopModelCatalog();
 		createMainWindow();
 
 		app.on("activate", () => {

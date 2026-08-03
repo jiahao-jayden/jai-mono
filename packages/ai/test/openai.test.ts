@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
+import type { StreamOptions } from "../src/provider";
 import type { AssistantMessageEvent, Context, Model } from "../src/types";
 
 let streamChunks: unknown[] = [];
@@ -51,9 +52,13 @@ function model(over: Partial<Model> = {}): Model {
 	};
 }
 
-async function collect(context: Context, m: Model = model()): Promise<{ events: AssistantMessageEvent[]; message: any }> {
+async function collect(
+	context: Context,
+	m: Model = model(),
+	options?: StreamOptions,
+): Promise<{ events: AssistantMessageEvent[]; message: any }> {
 	const provider = new OpenAIProvider({ apiKey: "test" });
-	const stream = provider.stream(m, context);
+	const stream = provider.stream(m, context, options);
 	const events: AssistantMessageEvent[] = [];
 	for await (const e of stream) events.push(e);
 	const message = await stream.result();
@@ -185,5 +190,16 @@ describe("OpenAIProvider · 入向翻译", () => {
 
 		expect(capturedParams.max_tokens).toBe(4096);
 		expect(capturedParams.max_completion_tokens).toBeUndefined();
+	});
+
+	it("applies constrained provider options to the selected adapter", async () => {
+		streamChunks = [chunk({ content: "x" }), chunk({}, "stop", { prompt_tokens: 1, completion_tokens: 1 })];
+
+		await collect(ctx(), model(), {
+			providerOptions: { "openai-compatible": { reasoning_effort: "high" }, other: { ignored: true } },
+		});
+
+		expect(capturedParams.reasoning_effort).toBe("high");
+		expect(capturedParams.ignored).toBeUndefined();
 	});
 });

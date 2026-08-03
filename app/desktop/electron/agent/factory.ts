@@ -4,9 +4,11 @@ import {
 	codingAgentConfigDefinition,
 	createCodingAgent,
 	type ResolvedCodingProvider,
+	resolveConfiguredAgentRuntime,
 	resolveConfiguredProvider,
 } from "@jai/coding/runtime";
 import { TaggedError } from "better-result";
+import { desktopModelCatalog } from "../model-catalog";
 import type { DesktopAgentFactory, HostedCodingAgent } from "./host";
 
 const CODING_AGENT_INSTRUCTIONS =
@@ -39,14 +41,28 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 			sessionId,
 			sessionDirectory: service.sessionDirectory(session.workspaceId),
 			instructions: CODING_AGENT_INSTRUCTIONS,
+			resolveInstructions(snapshot) {
+				return withLanguageInstruction(CODING_AGENT_INSTRUCTIONS, snapshot.settings.agent?.language);
+			},
 			configDefinition: codingAgentConfigDefinition,
 			configOptions: {
 				workspaceTrusted: executionContext.localFileAccess,
 			},
 			resolveProvider(snapshot) {
-				const resolved = resolveConfiguredProvider(snapshot.settings);
+				const resolved = resolveConfiguredProvider(
+					snapshot.settings,
+					undefined,
+					desktopModelCatalog.cached?.catalog,
+				);
 				resolvedProvider = resolved;
 				return resolved;
+			},
+			resolveAgentOptions(snapshot, resolved) {
+				const runtime = resolveConfiguredAgentRuntime(snapshot.settings, resolved);
+				return {
+					maxIterations: runtime.maxIterations,
+					providerOptions: runtime.providerOptions,
+				};
 			},
 			permissions: { requestApproval },
 		});
@@ -63,6 +79,11 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 				generateSessionTitle(requireResolvedProvider(resolvedProvider), firstMessage, messages),
 		} satisfies HostedCodingAgent;
 	};
+}
+
+function withLanguageInstruction(instructions: string, language: string | undefined): string {
+	if (!language) return instructions;
+	return `${instructions}\n\nRespond in ${language} unless the user explicitly requests another language.`;
 }
 
 async function generateSessionTitle(

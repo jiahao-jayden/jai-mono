@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { DesktopWorkspace } from "../shared/desktop-rpc";
-import { WorkspacePicker } from "../src/components/shell/workspace-picker";
+import { WorkspacePicker } from "../src/components/shell/chat/workspace-picker";
 
 const workspace: DesktopWorkspace = {
 	id: "workspace-1",

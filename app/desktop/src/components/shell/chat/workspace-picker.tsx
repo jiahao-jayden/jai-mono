@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useIcons } from "@/lib/icon-context";
-import type { DesktopWorkspace } from "../../../shared/desktop-rpc";
-import { Button } from "../ui/button";
-import { DropdownContent, DropdownMenu, DropdownSeparator, DropdownTrigger } from "../ui/dropdown";
-import { MenuItem } from "../ui/menu-item";
+import type { DesktopWorkspace } from "../../../../shared/desktop-rpc";
+import { Button } from "../../ui/button";
+import { DropdownContent, DropdownMenu, DropdownSeparator, DropdownTrigger } from "../../ui/dropdown";
+import { MenuItem } from "../../ui/menu-item";
 
 interface WorkspacePickerProps {
 	readonly workspace?: DesktopWorkspace;

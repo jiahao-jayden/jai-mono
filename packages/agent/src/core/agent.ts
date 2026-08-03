@@ -118,6 +118,8 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 			provider: options.provider,
 			temperature: options.temperature,
 			maxTokens: options.maxTokens,
+			providerOptions: options.providerOptions,
+			maxIterations: options.maxIterations,
 			toolExecution: options.toolExecution,
 			toolMiddlewares: options.toolMiddlewares ? [...options.toolMiddlewares] : undefined,
 			prepareContext: options.prepareContext,

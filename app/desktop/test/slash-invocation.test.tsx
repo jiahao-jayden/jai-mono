@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SlashInvocationText } from "../src/components/shell/slash-invocation";
+import { SlashInvocationText } from "../src/components/shell/chat/slash-invocation";
 
 describe("SlashInvocationText", () => {
 	test("保留 /name 原文并为 hover 暴露 displayName", () => {

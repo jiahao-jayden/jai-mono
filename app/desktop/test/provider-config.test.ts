@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getErrorCode } from "@jai/common";
+import { ModelCatalogStore } from "@jai/coding/runtime";
 import { DesktopProviderConfigService } from "../electron/provider-config";
 
 const roots: string[] = [];
@@ -82,6 +83,69 @@ describe("DesktopProviderConfigService", () => {
 			expect(getErrorCode(error)).toBe("desktop_provider_config.credential_required");
 		}
 		service.close();
+	});
+
+	test("保存 catalog 模型引用和 agent defaults 时不把 catalog 固化进用户配置", async () => {
+		const homeDir = await fixture();
+		const catalog = new ModelCatalogStore({
+			cachePath: join(homeDir, "catalog.json"),
+			fetch: async () =>
+				new Response(
+					JSON.stringify({
+						providers: {
+							openai: {
+								models: {
+									"gpt-test": {
+										name: "GPT Test",
+										reasoning: true,
+										tool_call: true,
+										modalities: { input: ["text", "image"], output: ["text"] },
+										cost: { input: 1, output: 2 },
+										limit: { context: 128_000, output: 8_000 },
+									},
+								},
+							},
+						},
+					}),
+				),
+		});
+		await catalog.start();
+		const service = new DesktopProviderConfigService({ homeDir, environment: {}, catalog });
+
+		const snapshot = await service.save({
+			revision: null,
+			activeModelRef: "openai/gpt-test",
+			language: "zh-CN",
+			maxIterations: 8,
+			reasoningEffort: "medium",
+			profiles: [
+				{
+					id: "openai",
+					name: "OpenAI",
+					adapter: "openai-compatible",
+					catalogProvider: "openai",
+					baseURL: "https://api.openai.com/v1",
+					authentication: "api-key",
+					apiKey: "sk-secret-1234",
+					models: [{ id: "gpt-test", name: "GPT Test", remoteModelId: "gpt-test", source: "catalog" }],
+				},
+			],
+		});
+
+		expect(snapshot).toMatchObject({
+			activeModelRef: "openai/gpt-test",
+			language: "zh-CN",
+			maxIterations: 8,
+			reasoningEffort: "medium",
+			profiles: [{ catalogProvider: "openai", models: [{ source: "catalog", toolCall: true }] }],
+		});
+		const document = await readFile(join(homeDir, ".jai", "settings.json"), "utf8");
+		const persisted = JSON.parse(document);
+		expect(persisted.providers.openai.catalogProvider).toBe("openai");
+		expect(persisted.providers.openai.models).toEqual({});
+		expect(document).not.toContain('"name":"GPT Test"');
+		service.close();
+		catalog.close();
 	});
 });
 

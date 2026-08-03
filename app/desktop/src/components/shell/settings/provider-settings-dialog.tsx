@@ -1,15 +1,15 @@
 import { useState } from "react";
-import { useIcon } from "@/lib/icon-context";
+import { useIcon, useIcons } from "@/lib/icon-context";
 import type {
 	DesktopProviderAdapter,
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
 	DesktopProviderModel,
 	DesktopProviderProfile,
-} from "../../../shared/desktop-rpc";
-import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "../ui/select";
+} from "../../../../shared/desktop-rpc";
+import { Button } from "../../ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "../../ui/select";
 
 interface ProviderSettingsDialogProps {
 	readonly open: boolean;
@@ -26,6 +26,8 @@ interface ProfileDraft extends DesktopProviderProfile {
 	clearApiKey: boolean;
 	models: DesktopProviderModel[];
 }
+
+type SettingsCategory = "general" | "providers";
 
 const profileIdPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
@@ -45,13 +47,22 @@ export function ProviderSettingsDialog({
 				className="max-h-[min(720px,calc(100vh-48px))] max-w-190 overflow-hidden bg-background p-0"
 			>
 				{snapshot ? (
-					<ProviderConfigForm key={snapshot.revision ?? "new"} snapshot={snapshot} onSave={onSave} />
+					<ProviderConfigForm key={formKey(snapshot)} snapshot={snapshot} onSave={onSave} />
 				) : (
 					<ProviderLoadState loading={loading} error={loadError} onRetry={onRetry} />
 				)}
 			</DialogContent>
 		</Dialog>
 	);
+}
+
+function formKey(snapshot: DesktopProviderConfigSnapshot): string {
+	return `${snapshot.revision ?? "new"}:${snapshot.profiles
+		.map(
+			(profile) =>
+				`${profile.id}:${profile.models.map((model) => `${model.source ?? "local"}:${model.id}`).join(",")}`,
+		)
+		.join("|")}`;
 }
 
 function ProviderLoadState({
@@ -63,23 +74,17 @@ function ProviderLoadState({
 	readonly error: boolean;
 	readonly onRetry: () => void;
 }) {
-	const KeyIcon = useIcon("key");
+	const SettingsIcon = useIcon("settings");
 
 	return (
 		<div className="flex min-h-80 flex-col">
-			<DialogHeader className="border-b border-border px-6 pt-6 pb-5">
-				<DialogTitle>Provider & Model</DialogTitle>
-				<DialogDescription>配置 API 连接和当前模型。凭证只保存在本机 main 进程可读的设置文件中。</DialogDescription>
+			<DialogHeader className="border-b border-border px-6 py-5">
+				<DialogTitle>Settings</DialogTitle>
 			</DialogHeader>
 			<div className="flex flex-1 items-center justify-center px-6 text-center">
 				<div>
-					<KeyIcon className="mx-auto mb-3 size-5 text-muted-foreground" />
-					<p className="text-[14px] font-semibold">
-						{loading ? "Loading Provider settings…" : "Provider settings unavailable"}
-					</p>
-					<p className="mt-1 text-[12px] text-muted-foreground">
-						{loading ? "正在读取本机配置。" : "未能读取本机配置；现有设置没有被覆盖。"}
-					</p>
+					<SettingsIcon className="mx-auto mb-3 size-5 text-muted-foreground" />
+					<p className="text-[14px] font-semibold">{loading ? "Loading settings…" : "Settings unavailable"}</p>
 				</div>
 			</div>
 			{error ? (
@@ -93,6 +98,10 @@ function ProviderLoadState({
 	);
 }
 
+/* -------------------------------------------------------------------------- */
+/*                              Settings Shell                                */
+/* -------------------------------------------------------------------------- */
+
 function ProviderConfigForm({
 	snapshot,
 	onSave,
@@ -100,27 +109,236 @@ function ProviderConfigForm({
 	readonly snapshot: DesktopProviderConfigSnapshot;
 	readonly onSave: (input: DesktopProviderConfigInput) => Promise<void>;
 }) {
-	const KeyIcon = useIcon("key");
-	const PlusIcon = useIcon("plus");
-	const TrashIcon = useIcon("trash");
+	const icons = useIcons();
+	const [category, setCategory] = useState<SettingsCategory>("general");
 	const [profiles, setProfiles] = useState<ProfileDraft[]>(() => snapshot.profiles.map(toDraft));
 	const [selectedProfileId, setSelectedProfileId] = useState(snapshot.profiles[0]?.id ?? "");
 	const [activeModelRef, setActiveModelRef] = useState(snapshot.activeModelRef ?? "");
+	const [language, setLanguage] = useState(snapshot.language ?? "");
+	const [maxIterations, setMaxIterations] = useState(snapshot.maxIterations?.toString() ?? "");
+	const [reasoningEffort, setReasoningEffort] = useState(snapshot.reasoningEffort ?? "");
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string>();
+	const canSave = profiles.length > 0 || snapshot.profiles.length > 0;
+
+	const submit = async () => {
+		const validationError = validateDraft(profiles, activeModelRef, language, maxIterations);
+		if (validationError) {
+			setError(validationError);
+			return;
+		}
+		setSaving(true);
+		setError(undefined);
+		try {
+			await onSave({
+				revision: snapshot.revision,
+				...(activeModelRef ? { activeModelRef } : {}),
+				...(language ? { language } : {}),
+				...(maxIterations ? { maxIterations: Number(maxIterations) } : {}),
+				...(reasoningEffort ? { reasoningEffort: reasoningEffort as "low" | "medium" | "high" } : {}),
+				profiles: profiles.map(({ credentialConfigured: _configured, credentialMask: _mask, ...profile }) => ({
+					id: profile.id,
+					name: profile.name,
+					adapter: profile.adapter,
+					...(profile.catalogProvider ? { catalogProvider: profile.catalogProvider } : {}),
+					baseURL: profile.baseURL,
+					authentication: profile.authentication,
+					...(profile.apiKey ? { apiKey: profile.apiKey } : {}),
+					...(profile.clearApiKey ? { clearApiKey: true } : {}),
+					models: profile.models,
+				})),
+			});
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : "配置未保存，请重试。");
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const categories: { id: SettingsCategory; label: string; icon: keyof typeof icons }[] = [
+		{ id: "general", label: "General", icon: "settings" },
+		{ id: "providers", label: "Providers", icon: "key" },
+	];
+
+	return (
+		<form
+			className="flex max-h-[min(720px,calc(100vh-48px))] min-h-140 flex-col"
+			onSubmit={(event) => {
+				event.preventDefault();
+				void submit();
+			}}
+		>
+			<DialogHeader className="border-b border-border px-6 py-5">
+				<DialogTitle>Settings</DialogTitle>
+			</DialogHeader>
+
+			<div className="flex min-h-0 flex-1">
+				{/* Category sidebar */}
+				<nav className="flex w-44 shrink-0 flex-col gap-0.5 border-r border-border p-3" aria-label="Settings">
+					{categories.map((cat) => {
+						const Icon = icons[cat.icon];
+						return (
+							<Button
+								type="button"
+								variant="ghost"
+								size="md"
+								key={cat.id}
+								onClick={() => setCategory(cat.id)}
+								active={category === cat.id}
+								aria-current={category === cat.id ? "page" : undefined}
+								className={`h-auto w-full justify-start gap-2.5 px-3 py-2 text-left text-[13.5px] ${
+									category === cat.id ? "font-semibold" : "text-muted-foreground"
+								}`}
+							>
+								<Icon className="size-4 shrink-0" />
+								{cat.label}
+							</Button>
+						);
+					})}
+				</nav>
+
+				{/* Content area */}
+				<div className="min-w-0 flex-1 overflow-y-auto">
+					{category === "general" ? (
+						<GeneralSettings
+							language={language}
+							maxIterations={maxIterations}
+							reasoningEffort={reasoningEffort}
+							onLanguageChange={setLanguage}
+							onMaxIterationsChange={setMaxIterations}
+							onReasoningEffortChange={setReasoningEffort}
+						/>
+					) : (
+						<ProvidersSettings
+							profiles={profiles}
+							selectedProfileId={selectedProfileId}
+							activeModelRef={activeModelRef}
+							onProfilesChange={setProfiles}
+							onSelectedProfileChange={setSelectedProfileId}
+							onActiveModelChange={setActiveModelRef}
+						/>
+					)}
+				</div>
+			</div>
+
+			<DialogFooter className="items-center border-t border-border px-6 py-4">
+				{error ? (
+					<p className="mr-auto max-w-115 text-[12px] leading-relaxed text-destructive" role="alert">
+						{error}
+					</p>
+				) : null}
+				<Button type="submit" loading={saving} disabled={!canSave}>
+					Save
+				</Button>
+			</DialogFooter>
+		</form>
+	);
+}
+
+/* -------------------------------------------------------------------------- */
+/*                             General Settings                               */
+/* -------------------------------------------------------------------------- */
+
+function GeneralSettings({
+	language,
+	maxIterations,
+	reasoningEffort,
+	onLanguageChange,
+	onMaxIterationsChange,
+	onReasoningEffortChange,
+}: {
+	readonly language: string;
+	readonly maxIterations: string;
+	readonly reasoningEffort: string;
+	readonly onLanguageChange: (value: string) => void;
+	readonly onMaxIterationsChange: (value: string) => void;
+	readonly onReasoningEffortChange: (value: string) => void;
+}) {
+	return (
+		<div className="px-8 py-6">
+			<h2 className="text-[15px] font-semibold">Agent Defaults</h2>
+
+			<div className="mt-5 flex flex-col gap-5">
+				<SettingsRow label="Response language">
+					<input
+						value={language}
+						onChange={(event) => onLanguageChange(event.target.value)}
+						placeholder="zh-CN"
+						className={settingsInputClassName}
+						aria-label="Response language"
+						autoComplete="off"
+					/>
+				</SettingsRow>
+
+				<SettingsRow label="Max iterations">
+					<input
+						type="number"
+						min={1}
+						value={maxIterations}
+						onChange={(event) => onMaxIterationsChange(event.target.value)}
+						placeholder="Unlimited"
+						className={settingsInputClassName}
+						aria-label="Max iterations"
+					/>
+				</SettingsRow>
+
+				<SettingsRow label="Reasoning effort">
+					<Select
+						value={reasoningEffort || "none"}
+						onValueChange={(value) => onReasoningEffortChange(value === "none" ? "" : value)}
+					>
+						<SelectTrigger className="w-48" aria-label="Reasoning effort" />
+						<SelectContent>
+							<SelectGroup>
+								<SelectItem index={0} value="none">
+									Default
+								</SelectItem>
+								<SelectItem index={1} value="low">
+									Low
+								</SelectItem>
+								<SelectItem index={2} value="medium">
+									Medium
+								</SelectItem>
+								<SelectItem index={3} value="high">
+									High
+								</SelectItem>
+							</SelectGroup>
+						</SelectContent>
+					</Select>
+				</SettingsRow>
+			</div>
+		</div>
+	);
+}
+
+/* -------------------------------------------------------------------------- */
+/*                            Providers Settings                              */
+/* -------------------------------------------------------------------------- */
+
+function ProvidersSettings({
+	profiles,
+	selectedProfileId,
+	activeModelRef,
+	onProfilesChange,
+	onSelectedProfileChange,
+	onActiveModelChange,
+}: {
+	readonly profiles: ProfileDraft[];
+	readonly selectedProfileId: string;
+	readonly activeModelRef: string;
+	readonly onProfilesChange: (profiles: ProfileDraft[]) => void;
+	readonly onSelectedProfileChange: (id: string) => void;
+	readonly onActiveModelChange: (ref: string) => void;
+}) {
+	const KeyIcon = useIcon("key");
+	const PlusIcon = useIcon("plus");
+	const TrashIcon = useIcon("trash");
 	const selectedIndex = profiles.findIndex((profile) => profile.id === selectedProfileId);
 	const selected = profiles[selectedIndex];
-	const modelOptions = profiles.flatMap((profile) =>
-		profile.models.map((model) => ({
-			ref: `${profile.id}/${model.id}`,
-			label: `${profile.name} · ${model.name}`,
-		})),
-	);
-	const canSave = profiles.length > 0 || snapshot.profiles.length > 0;
 
 	const updateSelected = (update: (profile: ProfileDraft) => ProfileDraft) => {
 		if (selectedIndex < 0) return;
-		setProfiles((current) => current.map((profile, index) => (index === selectedIndex ? update(profile) : profile)));
+		onProfilesChange(profiles.map((profile, index) => (index === selectedIndex ? update(profile) : profile)));
 	};
 
 	const addProfile = () => {
@@ -136,149 +354,103 @@ function ProviderConfigForm({
 			apiKey: "",
 			clearApiKey: false,
 		};
-		setProfiles((current) => [...current, profile]);
-		setSelectedProfileId(id);
+		onProfilesChange([...profiles, profile]);
+		onSelectedProfileChange(id);
 	};
 
 	const removeSelected = () => {
 		if (!selected) return;
 		const removedPrefix = `${selected.id}/`;
 		const nextProfiles = profiles.filter((_, index) => index !== selectedIndex);
-		setProfiles(nextProfiles);
-		setSelectedProfileId(nextProfiles[Math.min(selectedIndex, nextProfiles.length - 1)]?.id ?? "");
-		if (activeModelRef.startsWith(removedPrefix)) setActiveModelRef("");
-	};
-
-	const submit = async () => {
-		const validationError = validateDraft(profiles, activeModelRef);
-		if (validationError) {
-			setError(validationError);
-			return;
-		}
-		setSaving(true);
-		setError(undefined);
-		try {
-			await onSave({
-				revision: snapshot.revision,
-				...(activeModelRef ? { activeModelRef } : {}),
-				profiles: profiles.map(({ credentialConfigured: _configured, credentialMask: _mask, ...profile }) => ({
-					id: profile.id,
-					name: profile.name,
-					adapter: profile.adapter,
-					baseURL: profile.baseURL,
-					authentication: profile.authentication,
-					...(profile.apiKey ? { apiKey: profile.apiKey } : {}),
-					...(profile.clearApiKey ? { clearApiKey: true } : {}),
-					models: profile.models,
-				})),
-			});
-		} catch (cause) {
-			setError(cause instanceof Error ? cause.message : "Provider 配置未保存，请重试。");
-		} finally {
-			setSaving(false);
-		}
+		onProfilesChange(nextProfiles);
+		onSelectedProfileChange(nextProfiles[Math.min(selectedIndex, nextProfiles.length - 1)]?.id ?? "");
+		if (activeModelRef.startsWith(removedPrefix)) onActiveModelChange("");
 	};
 
 	return (
-		<form
-			className="flex max-h-[min(720px,calc(100vh-48px))] min-h-140 flex-col"
-			onSubmit={(event) => {
-				event.preventDefault();
-				void submit();
-			}}
-		>
-			<DialogHeader className="border-b border-border px-6 pt-6 pb-5">
-				<DialogTitle>Provider & Model</DialogTitle>
-				<DialogDescription>配置 API 连接和当前模型。凭证只保存在本机 main 进程可读的设置文件中。</DialogDescription>
-			</DialogHeader>
-
-			<div className="flex min-h-0 flex-1">
-				<aside className="flex w-47.5 shrink-0 flex-col border-r border-border bg-muted/35 p-3">
-					<div className="min-h-0 flex-1 overflow-y-auto">
-						{profiles.length === 0 ? (
-							<p className="px-2 py-3 text-[12px] leading-relaxed text-muted-foreground">
-								添加一个 Provider 后即可连接模型。
-							</p>
-						) : null}
-						{profiles.map((profile) => (
-							<Button
-								type="button"
-								variant="ghost"
-								size="md"
-								key={profile.id}
-								onClick={() => setSelectedProfileId(profile.id)}
-								aria-current={profile.id === selectedProfileId ? "page" : undefined}
-								active={profile.id === selectedProfileId}
-								className={`h-auto w-full justify-start px-2.5 py-2 text-left text-[14px] ${
-									profile.id === selectedProfileId ? "font-semibold" : ""
+		<div className="flex min-h-0 flex-1 flex-col">
+			{/* Provider tab bar */}
+			<div className="flex items-center gap-1 border-b border-border px-6 pt-3 pb-0">
+				<div className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto">
+					{profiles.map((profile) => (
+						<Button
+							type="button"
+							variant="ghost"
+							size="md"
+							key={profile.id}
+							onClick={() => onSelectedProfileChange(profile.id)}
+							className={`relative flex shrink-0 items-center gap-1.5 rounded-t-lg px-3 pb-2.5 pt-2 text-[13px] transition-colors ${
+								profile.id === selectedProfileId
+									? "font-medium text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-foreground"
+									: "text-muted-foreground hover:text-foreground"
+							}`}
+						>
+							<span
+								className={`size-1.5 shrink-0 rounded-full ${
+									profile.authentication === "none" || profile.credentialConfigured || profile.apiKey
+										? "bg-primary-2"
+										: "bg-muted-foreground/30"
 								}`}
-							>
-								<span className="flex min-w-0 items-center gap-2">
-									<span
-										className={`size-2 shrink-0 rounded-full ${
-											profile.authentication === "none" || profile.credentialConfigured || profile.apiKey
-												? "bg-primary-2"
-												: "bg-muted-foreground/35"
-										}`}
-									/>
-									<span className="min-w-0 flex-1 truncate">{profile.name}</span>
-								</span>
-							</Button>
-						))}
-					</div>
-					<Button type="button" variant="tertiary" size="sm" onClick={addProfile} leadingIcon={PlusIcon}>
-						Add provider
-					</Button>
-				</aside>
+							/>
+							<span className="max-w-28 truncate">{profile.name}</span>
+						</Button>
+					))}
+				</div>
+				<Button type="button" variant="ghost" size="icon-sm" onClick={addProfile} title="Add provider">
+					<PlusIcon />
+				</Button>
+			</div>
 
-				<div className="min-w-0 flex-1 overflow-y-auto px-6 py-4">
-					{selected ? (
-						<div className="flex flex-col gap-4">
-							<section className="flex flex-col gap-3">
-								<div className="flex items-center justify-between gap-3">
-									<h2 className="text-[14px] font-semibold">Connection</h2>
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon-sm"
-										onClick={removeSelected}
-										aria-label={`Delete ${selected.name}`}
-										title="Delete provider"
-									>
-										<TrashIcon />
-									</Button>
-								</div>
-								<div className="grid grid-cols-2 gap-3">
-									<Field label="Profile name">
-										<input
-											value={selected.name}
-											onChange={(event) =>
-												updateSelected((profile) => ({ ...profile, name: event.target.value }))
+			{/* Provider content */}
+			<div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+				{selected ? (
+					<div className="flex flex-col gap-5">
+						<section className="flex flex-col gap-4">
+							<div className="flex items-center justify-between">
+								<h3 className="text-[14px] font-semibold">Connection</h3>
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-sm"
+									onClick={removeSelected}
+									aria-label={`Delete ${selected.name}`}
+									title="Delete provider"
+								>
+									<TrashIcon />
+								</Button>
+							</div>
+							<div className="grid grid-cols-2 gap-3">
+								<Field label="Profile name">
+									<input
+										value={selected.name}
+										onChange={(event) =>
+											updateSelected((profile) => ({ ...profile, name: event.target.value }))
+										}
+										className={inputClassName}
+										aria-label="Profile name"
+										autoComplete="off"
+									/>
+								</Field>
+								<Field label="Profile ID">
+									<input
+										value={selected.id}
+										onChange={(event) => {
+											const nextId = event.target.value;
+											const previousPrefix = `${selected.id}/`;
+											updateSelected((profile) => ({ ...profile, id: nextId }));
+											onSelectedProfileChange(nextId);
+											if (activeModelRef.startsWith(previousPrefix)) {
+												onActiveModelChange(`${nextId}/${activeModelRef.slice(previousPrefix.length)}`);
 											}
-											className={inputClassName}
-											aria-label="Profile name"
-											autoComplete="off"
-										/>
-									</Field>
-									<Field label="Profile ID" hint="小写字母、数字、点、短横线">
-										<input
-											value={selected.id}
-											onChange={(event) => {
-												const nextId = event.target.value;
-												const previousPrefix = `${selected.id}/`;
-												updateSelected((profile) => ({ ...profile, id: nextId }));
-												setSelectedProfileId(nextId);
-												if (activeModelRef.startsWith(previousPrefix)) {
-													setActiveModelRef(`${nextId}/${activeModelRef.slice(previousPrefix.length)}`);
-												}
-											}}
-											className={inputClassName}
-											aria-label="Profile ID"
-											autoComplete="off"
-											spellCheck={false}
-										/>
-									</Field>
-								</div>
+										}}
+										className={inputClassName}
+										aria-label="Profile ID"
+										autoComplete="off"
+										spellCheck={false}
+									/>
+								</Field>
+							</div>
+							<div className="grid grid-cols-2 gap-3">
 								<Field label="Adapter">
 									<Select
 										value={selected.adapter}
@@ -303,113 +475,108 @@ function ProviderConfigForm({
 										</SelectContent>
 									</Select>
 								</Field>
-								<Field label="Endpoint" hint="留空使用 adapter 默认 endpoint">
+								<Field label="Models.dev provider">
 									<input
-										type="url"
-										value={selected.baseURL}
+										value={selected.catalogProvider ?? ""}
 										onChange={(event) =>
-											updateSelected((profile) => ({ ...profile, baseURL: event.target.value }))
+											updateSelected((profile) => ({
+												...profile,
+												catalogProvider: event.target.value,
+											}))
 										}
-										placeholder="https://…"
+										placeholder="openai"
 										className={inputClassName}
-										aria-label="Endpoint"
-										autoComplete="url"
+										aria-label="Models.dev provider"
+										autoComplete="off"
 										spellCheck={false}
 									/>
 								</Field>
-							</section>
+							</div>
+							<Field label="Endpoint">
+								<input
+									type="url"
+									value={selected.baseURL}
+									onChange={(event) =>
+										updateSelected((profile) => ({ ...profile, baseURL: event.target.value }))
+									}
+									placeholder="https://…"
+									className={inputClassName}
+									aria-label="Endpoint"
+									autoComplete="url"
+									spellCheck={false}
+								/>
+							</Field>
+						</section>
 
-							<section className="flex flex-col gap-3 border-t border-border pt-4">
-								<h2 className="text-[14px] font-semibold">Credential</h2>
-								{selected.adapter === "openai-compatible" ? (
-									<label className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+						<section className="flex flex-col gap-3 border-t border-border pt-4">
+							<h3 className="text-[14px] font-semibold">Credential</h3>
+							{selected.adapter === "openai-compatible" ? (
+								<label className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+									<input
+										type="checkbox"
+										checked={selected.authentication === "none"}
+										onChange={(event) =>
+											updateSelected((profile) => ({
+												...profile,
+												authentication: event.target.checked ? "none" : "api-key",
+												clearApiKey: event.target.checked,
+											}))
+										}
+										className="accent-primary-2 focus-visible:ring-2 focus-visible:ring-primary-2/35 focus-visible:ring-offset-2"
+									/>
+									This endpoint does not require authentication
+								</label>
+							) : null}
+							{selected.authentication === "api-key" ? (
+								<Field label="API key">
+									<div className="relative">
+										<KeyIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
 										<input
-											type="checkbox"
-											checked={selected.authentication === "none"}
+											type="password"
+											value={selected.apiKey}
 											onChange={(event) =>
 												updateSelected((profile) => ({
 													...profile,
-													authentication: event.target.checked ? "none" : "api-key",
-													clearApiKey: event.target.checked,
+													apiKey: event.target.value,
+													clearApiKey: false,
 												}))
 											}
-											className="accent-primary-2 focus-visible:ring-2 focus-visible:ring-primary-2/35 focus-visible:ring-offset-2"
+											placeholder={selected.credentialMask ?? "Enter API key"}
+											className={`${inputClassName} pl-10`}
+											aria-label="API key"
+											autoComplete="new-password"
 										/>
-										This endpoint does not require authentication
-									</label>
-								) : null}
-								{selected.authentication === "api-key" ? (
-									<Field
-										label="API key"
-										hint={
-											selected.credentialConfigured && !selected.clearApiKey
-												? `${selected.credentialMask ?? "Configured"} · 留空保持不变`
-												: "尚未配置"
-										}
-									>
-										<div className="relative">
-											<KeyIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-											<input
-												type="password"
-												value={selected.apiKey}
-												onChange={(event) =>
-													updateSelected((profile) => ({
-														...profile,
-														apiKey: event.target.value,
-														clearApiKey: false,
-													}))
-												}
-												placeholder={selected.credentialMask ?? "Enter API key"}
-												className={`${inputClassName} pl-10`}
-												aria-label="API key"
-												autoComplete="new-password"
-											/>
-										</div>
-									</Field>
-								) : (
-									<p className="text-[12px] text-muted-foreground">此连接不会发送 Authorization header。</p>
-								)}
-							</section>
+									</div>
+								</Field>
+							) : null}
+						</section>
 
-							<ModelEditor
-								profile={selected}
-								activeModelRef={activeModelRef}
-								onActiveModelChange={setActiveModelRef}
-								onChange={(models) => updateSelected((profile) => ({ ...profile, models }))}
-							/>
+						<ModelEditor
+							profile={selected}
+							activeModelRef={activeModelRef}
+							onActiveModelChange={onActiveModelChange}
+							onChange={(models) => updateSelected((profile) => ({ ...profile, models }))}
+						/>
+					</div>
+				) : (
+					<div className="flex h-full min-h-72 items-center justify-center text-center">
+						<div>
+							<KeyIcon className="mx-auto mb-3 size-5 text-muted-foreground" />
+							<p className="text-[14px] font-semibold">No Provider yet</p>
+							<Button type="button" variant="secondary" size="sm" className="mt-4" onClick={addProfile}>
+								Add provider
+							</Button>
 						</div>
-					) : (
-						<div className="flex h-full min-h-72 items-center justify-center text-center">
-							<div>
-								<KeyIcon className="mx-auto mb-3 size-5 text-muted-foreground" />
-								<p className="text-[14px] font-semibold">No Provider yet</p>
-								<p className="mt-1 text-[12px] text-muted-foreground">添加连接后，在这里选择模型。</p>
-								<Button type="button" variant="secondary" size="sm" className="mt-4" onClick={addProfile}>
-									Add provider
-								</Button>
-							</div>
-						</div>
-					)}
-				</div>
+					</div>
+				)}
 			</div>
-
-			<DialogFooter className="items-center border-t border-border px-6 py-4">
-				{error ? (
-					<p className="mr-auto max-w-115 text-[12px] leading-relaxed text-destructive" role="alert">
-						{error}
-					</p>
-				) : modelOptions.length > 0 && activeModelRef ? (
-					<p className="mr-auto text-[12px] text-muted-foreground">
-						Current: {modelOptions.find((model) => model.ref === activeModelRef)?.label}
-					</p>
-				) : null}
-				<Button type="submit" loading={saving} disabled={!canSave}>
-					Save configuration
-				</Button>
-			</DialogFooter>
-		</form>
+		</div>
 	);
 }
+
+/* -------------------------------------------------------------------------- */
+/*                              Model Editor                                  */
+/* -------------------------------------------------------------------------- */
 
 function ModelEditor({
 	profile,
@@ -426,17 +593,31 @@ function ModelEditor({
 	const TrashIcon = useIcon("trash");
 	const addModel = () => {
 		const id = uniqueModelId(profile.models, "model");
-		onChange([...profile.models, { id, name: "New model", remoteModelId: id }]);
+		onChange([
+			...profile.models,
+			{
+				id,
+				name: "New model",
+				remoteModelId: id,
+				source: "local",
+				reasoning: false,
+				input: ["text"],
+				inputModalities: ["text"],
+				outputModalities: ["text"],
+				toolCall: false,
+				structuredOutput: false,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				contextWindow: 128_000,
+				maxTokens: 4_096,
+			},
+		]);
 		onActiveModelChange(`${profile.id}/${id}`);
 	};
 	return (
 		<section className="flex flex-col gap-3 border-t border-border pt-4">
 			<div className="flex items-center justify-between gap-3">
 				<div>
-					<h2 className="text-[14px] font-semibold">Models</h2>
-					<p className="mt-0.5 text-[12px] text-muted-foreground">
-						Local ID 用于配置引用，Remote ID 会发送给 API。
-					</p>
+					<h3 className="text-[14px] font-semibold">Models</h3>
 				</div>
 				<Button type="button" variant="ghost" size="sm" onClick={addModel} leadingIcon={PlusIcon}>
 					Add model
@@ -444,104 +625,168 @@ function ModelEditor({
 			</div>
 			{profile.models.map((model, index) => {
 				const ref = `${profile.id}/${model.id}`;
+				const readOnly = model.source === "catalog";
+				const input = model.input ?? ["text"];
+				const inputModalities = model.inputModalities ?? input;
+				const outputModalities = model.outputModalities ?? ["text"];
 				return (
-					<div key={model.id} className="grid grid-cols-[28px_1fr_1fr_1fr_32px] items-end gap-2">
-						<label className="flex h-9 items-center justify-center" title="Use as current model">
-							<input
-								type="radio"
-								name="active-provider-model"
-								checked={activeModelRef === ref}
-								onChange={() => onActiveModelChange(ref)}
-								aria-label={`Use ${model.name}`}
-								className="accent-primary-2 focus-visible:ring-2 focus-visible:ring-primary-2/35 focus-visible:ring-offset-2"
-							/>
-						</label>
-						<CompactField label="Local ID">
-							<input
-								value={model.id}
-								onChange={(event) => {
-									const nextId = event.target.value;
-									onChange(
-										profile.models.map((item, itemIndex) =>
-											itemIndex === index ? { ...item, id: nextId } : item,
-										),
-									);
-									if (activeModelRef === ref) onActiveModelChange(`${profile.id}/${nextId}`);
-								}}
-								className={compactInputClassName}
-								aria-label={`${model.name} Local ID`}
-								spellCheck={false}
-							/>
-						</CompactField>
-						<CompactField label="Display name">
-							<input
-								value={model.name}
-								onChange={(event) =>
-									onChange(
-										profile.models.map((item, itemIndex) =>
-											itemIndex === index ? { ...item, name: event.target.value } : item,
-										),
-									)
-								}
-								className={compactInputClassName}
-								aria-label={`${model.name} display name`}
-							/>
-						</CompactField>
-						<CompactField label="Remote ID">
-							<input
-								value={model.remoteModelId}
-								onChange={(event) =>
-									onChange(
-										profile.models.map((item, itemIndex) =>
-											itemIndex === index ? { ...item, remoteModelId: event.target.value } : item,
-										),
-									)
-								}
-								className={compactInputClassName}
-								aria-label={`${model.name} Remote ID`}
-								spellCheck={false}
-							/>
-						</CompactField>
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon-sm"
-							onClick={() => {
-								onChange(profile.models.filter((_, itemIndex) => itemIndex !== index));
-								if (activeModelRef === ref) onActiveModelChange("");
-							}}
-							aria-label={`Delete ${model.name}`}
-							title="Delete model"
-						>
-							<TrashIcon />
-						</Button>
+					<div key={model.id} className="rounded-lg border border-border/65 p-3">
+						<div className="grid grid-cols-[28px_1fr_1fr_1fr_32px] items-end gap-2">
+							<label className="flex h-9 items-center justify-center" title="Use as current model">
+								<input
+									type="radio"
+									name="active-provider-model"
+									checked={activeModelRef === ref}
+									onChange={() => onActiveModelChange(ref)}
+									aria-label={`Use ${model.name}`}
+									className="accent-primary-2 focus-visible:ring-2 focus-visible:ring-primary-2/35 focus-visible:ring-offset-2"
+								/>
+							</label>
+							<CompactField label={readOnly ? "Catalog ID" : "Local ID"}>
+								<input
+									value={model.id}
+									disabled={readOnly}
+									onChange={(event) => {
+										const nextId = event.target.value;
+										onChange(
+											profile.models.map((item, itemIndex) =>
+												itemIndex === index ? { ...item, id: nextId } : item,
+											),
+										);
+										if (activeModelRef === ref) onActiveModelChange(`${profile.id}/${nextId}`);
+									}}
+									className={compactInputClassName}
+									aria-label={`${model.name} Local ID`}
+									spellCheck={false}
+								/>
+							</CompactField>
+							<CompactField label="Display name">
+								<input
+									value={model.name}
+									disabled={readOnly}
+									onChange={(event) =>
+										onChange(
+											profile.models.map((item, itemIndex) =>
+												itemIndex === index ? { ...item, name: event.target.value } : item,
+											),
+										)
+									}
+									className={compactInputClassName}
+									aria-label={`${model.name} display name`}
+								/>
+							</CompactField>
+							<CompactField label="Remote ID">
+								<input
+									value={model.remoteModelId}
+									disabled={readOnly}
+									onChange={(event) =>
+										onChange(
+											profile.models.map((item, itemIndex) =>
+												itemIndex === index ? { ...item, remoteModelId: event.target.value } : item,
+											),
+										)
+									}
+									className={compactInputClassName}
+									aria-label={`${model.name} Remote ID`}
+									spellCheck={false}
+								/>
+							</CompactField>
+							{readOnly ? (
+								<span className="flex h-8 items-center justify-center text-[11px] text-muted-foreground">
+									Catalog
+								</span>
+							) : (
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-sm"
+									onClick={() => {
+										onChange(profile.models.filter((_, itemIndex) => itemIndex !== index));
+										if (activeModelRef === ref) onActiveModelChange("");
+									}}
+									aria-label={`Delete ${model.name}`}
+									title="Delete model"
+								>
+									<TrashIcon />
+								</Button>
+							)}
+						</div>
+						<div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+							<span>{model.contextWindow?.toLocaleString() ?? "128,000"} context</span>
+							<span>{model.maxTokens?.toLocaleString() ?? "4,096"} output</span>
+							<span>{inputModalities.join(" + ")} in</span>
+							<span>{outputModalities.join(" + ")} out</span>
+							<span>{model.toolCall ? "Tools" : "No tools"}</span>
+							<span>{model.structuredOutput ? "Structured" : "Freeform"}</span>
+							{!readOnly ? (
+								<>
+									<Button
+										type="button"
+										variant={model.reasoning ? "secondary" : "ghost"}
+										size="sm"
+										onClick={() =>
+											onChange(
+												profile.models.map((item, itemIndex) =>
+													itemIndex === index ? { ...item, reasoning: !item.reasoning } : item,
+												),
+											)
+										}
+									>
+										Reasoning {model.reasoning ? "on" : "off"}
+									</Button>
+									<Button
+										type="button"
+										variant={input.includes("image") ? "secondary" : "ghost"}
+										size="sm"
+										onClick={() => {
+											const nextInput: ("text" | "image")[] = input.includes("image")
+												? input.filter((value): value is "text" => value !== "image")
+												: [...input, "image"];
+											onChange(
+												profile.models.map((item, itemIndex) =>
+													itemIndex === index
+														? {
+																...item,
+																input: nextInput,
+																inputModalities: uniqueModalities([
+																	...(item.inputModalities ?? ["text"]),
+																	...(nextInput.includes("image") ? ["image" as const] : []),
+																]),
+															}
+														: item,
+												),
+											);
+										}}
+									>
+										Image input {input.includes("image") ? "on" : "off"}
+									</Button>
+								</>
+							) : null}
+						</div>
 					</div>
 				);
 			})}
-			{profile.models.length === 0 ? (
-				<p className="rounded-xl bg-muted/55 px-4 py-3 text-[12px] text-muted-foreground">
-					添加 API 暴露的模型 ID，然后将它设为 Current model。
-				</p>
-			) : null}
 		</section>
 	);
 }
 
-function Field({
-	label,
-	hint,
-	children,
-}: {
-	readonly label: string;
-	readonly hint?: string;
-	readonly children: React.ReactNode;
-}) {
+/* -------------------------------------------------------------------------- */
+/*                          Shared field components                           */
+/* -------------------------------------------------------------------------- */
+
+function SettingsRow({ label, children }: { readonly label: string; readonly children: React.ReactNode }) {
+	return (
+		<div className="flex items-center justify-between gap-6">
+			<span className="text-[13.5px] font-medium">{label}</span>
+			<div className="w-48 shrink-0">{children}</div>
+		</div>
+	);
+}
+
+function Field({ label, children }: { readonly label: string; readonly children: React.ReactNode }) {
 	return (
 		<div className="flex min-w-0 flex-col gap-1.5 text-[12px] font-medium">
-			<span className="flex items-baseline justify-between gap-2">
-				<span>{label}</span>
-				{hint ? <span className="font-normal text-muted-foreground">{hint}</span> : null}
-			</span>
+			<span>{label}</span>
 			{children}
 		</div>
 	);
@@ -556,26 +801,43 @@ function CompactField({ label, children }: { readonly label: string; readonly ch
 	);
 }
 
+/* -------------------------------------------------------------------------- */
+/*                             Utilities                                      */
+/* -------------------------------------------------------------------------- */
+
 function toDraft(profile: DesktopProviderProfile): ProfileDraft {
 	return { ...profile, models: [...profile.models], apiKey: "", clearApiKey: false };
 }
 
-function validateDraft(profiles: readonly ProfileDraft[], activeModelRef: string): string | undefined {
+function validateDraft(
+	profiles: readonly ProfileDraft[],
+	activeModelRef: string,
+	language: string,
+	maxIterations: string,
+): string | undefined {
+	if (language && !/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(language)) {
+		return "Response language 必须是有效的 BCP-47 标记，例如 zh-CN。";
+	}
+	if (maxIterations && (!Number.isInteger(Number(maxIterations)) || Number(maxIterations) < 1)) {
+		return "Max iterations 必须是正整数。";
+	}
 	const profileIds = new Set<string>();
 	const modelRefs = new Set<string>();
 	for (const profile of profiles) {
 		if (!profile.name.trim()) return "每个 Provider 都需要名称。";
-		if (!profileIdPattern.test(profile.id)) return `Profile ID “${profile.id}” 格式无效。`;
-		if (profileIds.has(profile.id)) return `Profile ID “${profile.id}” 重复。`;
+		if (!profileIdPattern.test(profile.id)) return `Profile ID "${profile.id}" 格式无效。`;
+		if (profileIds.has(profile.id)) return `Profile ID "${profile.id}" 重复。`;
 		profileIds.add(profile.id);
 		if (profile.authentication === "api-key" && !profile.credentialConfigured && !profile.apiKey.trim()) {
 			return `${profile.name} 需要 API key。`;
 		}
 		const modelIds = new Set<string>();
 		for (const model of profile.models) {
-			if (!model.id.trim() || model.id.includes("/")) return `${profile.name} 中的 Local model ID 格式无效。`;
+			if (!model.id.trim() || (model.source !== "catalog" && model.id.includes("/"))) {
+				return `${profile.name} 中的 Local model ID 格式无效。`;
+			}
 			if (!model.name.trim() || !model.remoteModelId.trim()) return `${profile.name} 中的模型信息不完整。`;
-			if (modelIds.has(model.id)) return `${profile.name} 中的模型 ID “${model.id}” 重复。`;
+			if (modelIds.has(model.id)) return `${profile.name} 中的模型 ID "${model.id}" 重复。`;
 			modelIds.add(model.id);
 			modelRefs.add(`${profile.id}/${model.id}`);
 		}
@@ -583,6 +845,10 @@ function validateDraft(profiles: readonly ProfileDraft[], activeModelRef: string
 	if (profiles.length > 0 && modelRefs.size === 0) return "至少添加一个模型。";
 	if (modelRefs.size > 0 && !modelRefs.has(activeModelRef)) return "请选择 Current model。";
 	return undefined;
+}
+
+function uniqueModalities<T extends string>(values: readonly T[]): T[] {
+	return [...new Set(values)];
 }
 
 function uniqueProfileId(profiles: readonly ProfileDraft[], base: string): string {
@@ -603,5 +869,7 @@ function uniqueModelId(models: readonly DesktopProviderModel[], base: string): s
 
 const inputClassName =
 	"h-9 w-full rounded-lg border border-border bg-transparent px-3 text-[14px] outline-none transition-colors placeholder:text-muted-foreground focus:border-primary-2 focus-visible:ring-2 focus-visible:ring-primary-2/35";
+const settingsInputClassName =
+	"h-9 w-full rounded-lg border border-border bg-transparent px-3 text-[13.5px] outline-none transition-colors placeholder:text-muted-foreground focus:border-primary-2 focus-visible:ring-2 focus-visible:ring-primary-2/35";
 const compactInputClassName =
 	"h-8 min-w-0 w-full rounded-lg border border-border bg-transparent px-2.5 text-[12px] text-foreground outline-none focus:border-primary-2 focus-visible:ring-2 focus-visible:ring-primary-2/35";

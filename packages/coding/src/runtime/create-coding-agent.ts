@@ -50,6 +50,8 @@ export interface CodingAgentPermissionOptions<TSchema extends TObject> {
 export interface CodingAgentRuntimeOptions {
 	readonly temperature?: number;
 	readonly maxTokens?: number;
+	readonly providerOptions?: Record<string, Record<string, unknown>>;
+	readonly maxIterations?: number;
 	readonly toolExecution?: ToolExecutionMode;
 	readonly compaction?: AgentCompactionOptions;
 	readonly hooks?: AgentHookMap;
@@ -69,6 +71,7 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 	readonly sessionDirectory: string;
 	readonly appState?: TAppState;
 	readonly instructions?: string;
+	readonly resolveInstructions?: (snapshot: ConfigSnapshot<TSchema>) => string | Promise<string>;
 	readonly configDefinition: CodingConfigDefinition<TSchema>;
 	readonly configOptions?: Omit<CodingConfigStoreOptions, "projectRoot" | "workspaceRoot">;
 	readonly resolveProvider: (
@@ -78,6 +81,10 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 	readonly skills?: false | CodingAgentSkillsOptions;
 	readonly tools?: Omit<CodingToolOptions, "cwd">;
 	readonly agent?: CodingAgentRuntimeOptions;
+	readonly resolveAgentOptions?: (
+		snapshot: ConfigSnapshot<TSchema>,
+		resolved: ResolvedCodingProvider,
+	) => CodingAgentRuntimeOptions | Promise<CodingAgentRuntimeOptions>;
 }
 
 interface RuntimeState<TSchema extends TObject> {
@@ -166,6 +173,13 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const snapshot = await configStore.load();
 	const runtime: RuntimeState<TSchema> = { snapshot, closed: false };
 	const { provider, model } = await options.resolveProvider(snapshot);
+	const resolvedInstructions = options.resolveInstructions
+		? await options.resolveInstructions(snapshot)
+		: options.instructions;
+	const resolvedAgentOptions = {
+		...options.agent,
+		...(options.resolveAgentOptions ? await options.resolveAgentOptions(snapshot, { provider, model }) : {}),
+	};
 	const skills =
 		options.skills === false
 			? undefined
@@ -184,7 +198,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const sessionStore = new FileSessionStore<TAppState>(options.sessionDirectory);
 	const sessionHandle = await openSession(sessionStore, options.sessionId, options.appState ?? ({} as TAppState));
 	const selectPermissionSettings = options.permissions?.selectSettings ?? defaultPermissionSettings;
-	const hooks = options.agent?.hooks;
+	const hooks = resolvedAgentOptions.hooks;
 	const aroundToolCall = [...(hooks?.aroundToolCall ?? [])];
 	const toolEnvironment = options.executionContext.localFileAccess
 		? new NodeExecutionEnvironment({
@@ -211,17 +225,19 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
 			: [],
 		sessionHandle,
-		instructions: options.instructions,
-		temperature: options.agent?.temperature,
-		maxTokens: options.agent?.maxTokens,
-		toolExecution: options.agent?.toolExecution,
-		compaction: options.agent?.compaction,
+		instructions: resolvedInstructions,
+		temperature: resolvedAgentOptions.temperature,
+		maxTokens: resolvedAgentOptions.maxTokens,
+		providerOptions: resolvedAgentOptions.providerOptions,
+		maxIterations: resolvedAgentOptions.maxIterations,
+		toolExecution: resolvedAgentOptions.toolExecution,
+		compaction: resolvedAgentOptions.compaction,
 		hooks: {
 			...hooks,
 			aroundToolCall,
 		},
-		extensions: [...(skills ? [skills.extension] : []), ...(options.agent?.extensions ?? [])],
-		onObserverError: options.agent?.onObserverError,
+		extensions: [...(skills ? [skills.extension] : []), ...(resolvedAgentOptions.extensions ?? [])],
+		onObserverError: resolvedAgentOptions.onObserverError,
 	});
 	const stopConfigWatch = configStore.watch((event) => {
 		if (!runtime.closed && event.status === "valid") runtime.snapshot = event.snapshot;

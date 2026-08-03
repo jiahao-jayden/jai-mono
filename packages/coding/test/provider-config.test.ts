@@ -6,6 +6,8 @@ import { CodingConfigStore } from "../src/config";
 import {
 	codingAgentConfigDefinition,
 	type CodingAgentSettings,
+	normalizeModelCatalog,
+	resolveConfiguredAgentRuntime,
 	resolveConfiguredProvider,
 } from "../src/runtime";
 
@@ -101,6 +103,91 @@ describe("Provider configuration", () => {
 		expect(snapshot.settings.providers.work?.baseURL).toBe("https://api.openai.com/v1");
 		expect(resolveConfiguredProvider(snapshot.settings).provider.id).toBe("work");
 		store.close();
+	});
+
+	test("uses a Models.dev baseline while keeping local connection secrets local", () => {
+		const settings = {
+			agent: { model: "work/gpt-main" },
+			providers: {
+				work: {
+					adapter: "openai-compatible",
+					auth: "bearer",
+					apiKey: "secret",
+					catalogProvider: "openai",
+				},
+			},
+			permissions: {},
+		} satisfies CodingAgentSettings;
+		const catalog = normalizeModelCatalog({
+			providers: {
+				openai: {
+					models: {
+						"gpt-main": {
+							name: "GPT Main",
+							reasoning: true,
+							tool_call: true,
+							structured_output: true,
+							modalities: { input: ["text", "image"], output: ["text"] },
+							cost: { input: 1, output: 2 },
+							limit: { context: 200_000, output: 8_000 },
+						},
+					},
+				},
+			},
+		});
+
+		const resolved = resolveConfiguredProvider(settings, undefined, catalog);
+
+		expect(resolved.model).toMatchObject({
+			name: "GPT Main",
+			reasoning: true,
+			input: ["text", "image"],
+			modalities: { input: ["text", "image"], output: ["text"] },
+			capabilities: { toolCall: true, structuredOutput: true },
+			contextWindow: 200_000,
+			maxTokens: 8_000,
+		});
+	});
+
+	test("maps supported reasoning effort and rejects unsupported adapters", () => {
+		const settings = {
+			agent: { model: "work/gpt-main", reasoningEffort: "high", maxIterations: 12, language: "zh-CN" },
+			providers: {
+				work: {
+					adapter: "openai-compatible",
+					auth: "bearer",
+					apiKey: "secret",
+					models: {
+						"gpt-main": {
+							reasoning: true,
+							compatibility: { reasoningFormat: "openai" },
+						},
+					},
+				},
+			},
+			permissions: {},
+		} satisfies CodingAgentSettings;
+		const resolved = resolveConfiguredProvider(settings);
+
+		expect(resolveConfiguredAgentRuntime(settings, resolved)).toEqual({
+			language: "zh-CN",
+			maxIterations: 12,
+			providerOptions: { work: { reasoning_effort: "high" } },
+		});
+
+		const unsupported = {
+			...settings,
+			agent: { ...settings.agent, reasoningEffort: "low" },
+			providers: {
+				work: {
+					...settings.providers.work,
+					models: { "gpt-main": { reasoning: true, compatibility: { reasoningFormat: "deepseek" } } },
+				},
+			},
+		} satisfies CodingAgentSettings;
+		expect(() => resolveConfiguredAgentRuntime(unsupported, resolveConfiguredProvider(unsupported))).toThrow(
+			/does not support reasoning effort/,
+		);
 	});
 });
 

@@ -1,4 +1,4 @@
-import type { DesktopSlashInvocation } from "../../../shared/desktop-rpc";
+import type { DesktopSlashInvocation } from "../../../../shared/desktop-rpc";
 
 interface SlashInvocationTextProps {
 	readonly text: string;

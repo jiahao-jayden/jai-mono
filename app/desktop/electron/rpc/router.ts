@@ -16,6 +16,7 @@ import {
 } from "../../shared/desktop-rpc";
 import { type DesktopAgentFactory, DesktopAgentHost } from "../agent/host";
 import { projectSessionSnapshot } from "../agent/projector";
+import { desktopModelCatalog } from "../model-catalog";
 import { DesktopProviderConfigService } from "../provider-config";
 
 type DesktopRouterImplementation<T> = {
@@ -42,7 +43,7 @@ const desktopBusinessError = (init: { readonly message: string }) => new Desktop
 const desktopWorkspaceError = (init: { readonly cause?: unknown; readonly message: string }) =>
 	new WorkspacePickerFailed(init);
 let codingBusiness: CodingBusinessService | undefined;
-const providerConfig = new DesktopProviderConfigService();
+const providerConfig = new DesktopProviderConfigService({ catalog: desktopModelCatalog });
 const desktopAgentHost = new DesktopAgentHost((envelope) => {
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) window.webContents.send(DESKTOP_EVENTS_CHANNEL, envelope);
@@ -74,6 +75,7 @@ export function setCodingBusinessService(service: CodingBusinessService): void {
 export function closeDesktopRuntime(): void {
 	desktopAgentHost.close();
 	providerConfig.close();
+	desktopModelCatalog.close();
 	codingBusiness?.close();
 	codingBusiness = undefined;
 }

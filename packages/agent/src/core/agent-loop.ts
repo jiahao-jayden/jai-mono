@@ -107,11 +107,21 @@ async function driveAgentLoop(prompts: AgentMessage[], run: AgentLoopRuntime): P
 	emit({ type: "agent_start" });
 
 	let pendingMessages = [...prompts, ...((await config.getSteeringMessages?.()) ?? [])];
+	let turnCount = 0;
 	while (true) {
 		let hasMoreToolCalls = true;
 
 		// 一个 task：连续的 turn，直到模型不再调用工具且没有 steering 消息。
 		while (hasMoreToolCalls || pendingMessages.length > 0) {
+			if (config.maxIterations !== undefined && turnCount >= config.maxIterations) {
+				const message = createIterationLimitMessage(config, turnCount);
+				run.context.messages.push(message);
+				newMessages.push(message);
+				emit({ type: "message_start", message });
+				emit({ type: "message_end", message });
+				emit({ type: "agent_end", messages: newMessages });
+				return;
+			}
 			let turn: TurnResult;
 			try {
 				turn = await runTurn(run, pendingMessages);
@@ -125,6 +135,7 @@ async function driveAgentLoop(prompts: AgentMessage[], run: AgentLoopRuntime): P
 				emit({ type: "agent_end", messages: newMessages });
 				return;
 			}
+			turnCount += 1;
 			pendingMessages = [];
 
 			if (turn.stopped || signal?.aborted) {
@@ -245,6 +256,7 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 	const response = config.provider.stream(config.model, llmContext, {
 		temperature: config.temperature,
 		maxTokens: config.maxTokens,
+		providerOptions: config.providerOptions,
 		signal,
 	});
 
@@ -280,6 +292,23 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 	}
 
 	return { message: await response.result(), started };
+}
+
+function createIterationLimitMessage(config: AgentLoopConfig, turnCount: number): AssistantMessage {
+	return {
+		role: "assistant",
+		content: [
+			{
+				type: "text",
+				text: `Stopped after reaching the configured ${turnCount}-turn iteration limit.`,
+			},
+		],
+		provider: config.provider.id,
+		model: config.model.id,
+		usage: zeroUsage(),
+		stopReason: "iterationLimit",
+		timestamp: Date.now(),
+	};
 }
 
 /**

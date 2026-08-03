@@ -586,6 +586,24 @@ describe("agentLoop", () => {
 		expect(contexts[2]?.messages).toContain(followUp);
 	});
 
+	test("stops with an explicit message after reaching maxIterations", async () => {
+		const { messages } = await collect(
+			agentLoop([user("first task")], context(), {
+				model,
+				provider: providerFor([assistant([{ type: "text", text: "first reply" }])]),
+				maxIterations: 1,
+				getFollowUpMessages: () => [user("second task")],
+			}),
+		);
+
+		expect(messages).toHaveLength(3);
+		expect(messages.at(-1)).toMatchObject({
+			role: "assistant",
+			stopReason: "iterationLimit",
+			content: [{ type: "text", text: expect.stringContaining("1-turn iteration limit") }],
+		});
+	});
+
 	test("closes normally with an aborted assistant message", async () => {
 		const aborted = {
 			...assistant([], "aborted"),

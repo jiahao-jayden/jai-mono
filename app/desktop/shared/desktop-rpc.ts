@@ -48,17 +48,46 @@ export interface DesktopWorkspace extends Workspace {
 
 export type DesktopProviderAdapter = "anthropic" | "openai-compatible";
 export type DesktopProviderAuthentication = "api-key" | "none";
+export type DesktopModelModality = "text" | "image" | "audio" | "video" | "pdf";
+
+export interface DesktopModelCost {
+	readonly input: number;
+	readonly output: number;
+	readonly cacheRead: number;
+	readonly cacheWrite: number;
+	readonly reasoning?: number;
+}
+
+export interface DesktopModelCompatibility {
+	readonly maxTokensField?: "max_tokens" | "max_completion_tokens";
+	readonly supportsUsageInStreaming?: boolean;
+	readonly supportsStrictTools?: boolean;
+	readonly reasoningFormat?: "openai" | "deepseek" | "none";
+	readonly supportsThinking?: boolean;
+}
 
 export interface DesktopProviderModel {
 	readonly id: string;
 	readonly name: string;
 	readonly remoteModelId: string;
+	readonly source?: "local" | "catalog";
+	readonly reasoning?: boolean;
+	readonly input?: readonly ("text" | "image")[];
+	readonly inputModalities?: readonly DesktopModelModality[];
+	readonly outputModalities?: readonly DesktopModelModality[];
+	readonly toolCall?: boolean;
+	readonly structuredOutput?: boolean;
+	readonly cost?: DesktopModelCost;
+	readonly contextWindow?: number;
+	readonly maxTokens?: number;
+	readonly compatibility?: DesktopModelCompatibility;
 }
 
 export interface DesktopProviderProfile {
 	readonly id: string;
 	readonly name: string;
 	readonly adapter: DesktopProviderAdapter;
+	readonly catalogProvider?: string;
 	readonly baseURL: string;
 	readonly authentication: DesktopProviderAuthentication;
 	readonly credentialConfigured: boolean;
@@ -69,6 +98,9 @@ export interface DesktopProviderProfile {
 export interface DesktopProviderConfigSnapshot {
 	readonly revision: string | null;
 	readonly activeModelRef?: string;
+	readonly language?: string;
+	readonly maxIterations?: number;
+	readonly reasoningEffort?: "low" | "medium" | "high";
 	readonly profiles: readonly DesktopProviderProfile[];
 }
 
@@ -76,6 +108,7 @@ export interface DesktopProviderProfileInput {
 	readonly id: string;
 	readonly name: string;
 	readonly adapter: DesktopProviderAdapter;
+	readonly catalogProvider?: string;
 	readonly baseURL: string;
 	readonly authentication: DesktopProviderAuthentication;
 	readonly apiKey?: string;
@@ -86,6 +119,9 @@ export interface DesktopProviderProfileInput {
 export interface DesktopProviderConfigInput {
 	readonly revision: string | null;
 	readonly activeModelRef?: string;
+	readonly language?: string;
+	readonly maxIterations?: number;
+	readonly reasoningEffort?: "low" | "medium" | "high";
 	readonly profiles: readonly DesktopProviderProfileInput[];
 }
 

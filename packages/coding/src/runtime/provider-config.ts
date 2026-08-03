@@ -1,12 +1,22 @@
-import { AnthropicProvider, type Model, OpenAIProvider, type Provider } from "@jai/ai";
+import {
+	AnthropicProvider,
+	type Model,
+	type ModelCompatibility,
+	type ModelCost,
+	type ModelModality,
+	OpenAIProvider,
+	type Provider,
+} from "@jai/ai";
 import { type Static, Type } from "@sinclair/typebox";
 import { TaggedError } from "better-result";
 import { type ConfigMergeCandidate, defineCodingConfig } from "../config";
 import { permissionConfigFields, permissionSettingsSchema } from "../permissions";
 import type { ResolvedCodingProvider } from "./create-coding-agent";
+import { findCatalogModel, type ModelCatalog, type ModelCatalogCost } from "./model-catalog";
 
 const profileIdPattern = "^[a-z0-9][a-z0-9._-]{0,63}$";
 const sensitiveHeaderPattern = /^(authorization|proxy-authorization|x-api-key)$/i;
+const languagePattern = "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$";
 type ProviderErrorInit = { readonly data?: Record<string, unknown>; readonly message: string };
 
 class InvalidModelRef extends TaggedError("provider.invalid_model_ref")<ProviderErrorInit> {}
@@ -16,6 +26,7 @@ class ModelNotFound extends TaggedError("provider.model_not_found")<ProviderErro
 class ModelDisabled extends TaggedError("provider.model_disabled")<ProviderErrorInit> {}
 class InvalidConnection extends TaggedError("provider.invalid_connection")<ProviderErrorInit> {}
 class MissingCredentials extends TaggedError("provider.missing_credentials")<ProviderErrorInit> {}
+class UnsupportedReasoningEffort extends TaggedError("provider.unsupported_reasoning_effort")<ProviderErrorInit> {}
 
 function providerError(
 	reason:
@@ -25,7 +36,8 @@ function providerError(
 		| "model_not_found"
 		| "model_disabled"
 		| "invalid_connection"
-		| "missing_credentials",
+		| "missing_credentials"
+		| "unsupported_reasoning_effort",
 	init: ProviderErrorInit,
 ) {
 	switch (reason) {
@@ -43,8 +55,50 @@ function providerError(
 			return new InvalidConnection(init);
 		case "missing_credentials":
 			return new MissingCredentials(init);
+		case "unsupported_reasoning_effort":
+			return new UnsupportedReasoningEffort(init);
 	}
 }
+
+const modelModalitySchema = Type.Union([
+	Type.Literal("text"),
+	Type.Literal("image"),
+	Type.Literal("audio"),
+	Type.Literal("video"),
+	Type.Literal("pdf"),
+]);
+
+const modelModalitiesSchema = Type.Object(
+	{
+		input: Type.Optional(Type.Array(modelModalitySchema, { minItems: 1 })),
+		output: Type.Optional(Type.Array(modelModalitySchema, { minItems: 1 })),
+	},
+	{ additionalProperties: false },
+);
+
+const modelCostSchema = Type.Object(
+	{
+		input: Type.Optional(Type.Number({ minimum: 0 })),
+		output: Type.Optional(Type.Number({ minimum: 0 })),
+		cacheRead: Type.Optional(Type.Number({ minimum: 0 })),
+		cacheWrite: Type.Optional(Type.Number({ minimum: 0 })),
+		reasoning: Type.Optional(Type.Number({ minimum: 0 })),
+	},
+	{ additionalProperties: false },
+);
+
+const modelCompatibilitySchema = Type.Object(
+	{
+		maxTokensField: Type.Optional(Type.Union([Type.Literal("max_tokens"), Type.Literal("max_completion_tokens")])),
+		supportsUsageInStreaming: Type.Optional(Type.Boolean()),
+		supportsStrictTools: Type.Optional(Type.Boolean()),
+		reasoningFormat: Type.Optional(
+			Type.Union([Type.Literal("openai"), Type.Literal("deepseek"), Type.Literal("none")]),
+		),
+		supportsThinking: Type.Optional(Type.Boolean()),
+	},
+	{ additionalProperties: false },
+);
 
 const modelOverlaySchema = Type.Object(
 	{
@@ -53,11 +107,17 @@ const modelOverlaySchema = Type.Object(
 		enabled: Type.Optional(Type.Boolean()),
 		reasoning: Type.Optional(Type.Boolean()),
 		input: Type.Optional(Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")]), { minItems: 1 })),
+		modalities: Type.Optional(modelModalitiesSchema),
+		toolCall: Type.Optional(Type.Boolean()),
+		structuredOutput: Type.Optional(Type.Boolean()),
+		cost: Type.Optional(modelCostSchema),
+		compatibility: Type.Optional(modelCompatibilitySchema),
 		contextWindow: Type.Optional(Type.Integer({ minimum: 1 })),
 		maxTokens: Type.Optional(Type.Integer({ minimum: 1 })),
 	},
 	{ additionalProperties: false },
 );
+type ModelOverlay = Static<typeof modelOverlaySchema>;
 
 const providerProfileSchema = Type.Object(
 	{
@@ -77,7 +137,17 @@ const providerProfileSchema = Type.Object(
 export const codingAgentSettingsSchema = Type.Object(
 	{
 		agent: Type.Optional(
-			Type.Object({ model: Type.Optional(Type.String({ minLength: 3 })) }, { additionalProperties: false }),
+			Type.Object(
+				{
+					model: Type.Optional(Type.String({ minLength: 3 })),
+					language: Type.Optional(Type.String({ pattern: languagePattern })),
+					maxIterations: Type.Optional(Type.Integer({ minimum: 1 })),
+					reasoningEffort: Type.Optional(
+						Type.Union([Type.Literal("low"), Type.Literal("medium"), Type.Literal("high")]),
+					),
+				},
+				{ additionalProperties: false },
+			),
 		),
 		providers: Type.Record(Type.RegExp(new RegExp(profileIdPattern)), providerProfileSchema),
 		permissions: permissionSettingsSchema,
@@ -86,6 +156,12 @@ export const codingAgentSettingsSchema = Type.Object(
 );
 
 export type CodingAgentSettings = Static<typeof codingAgentSettingsSchema>;
+
+export interface ResolvedCodingAgentRuntime {
+	readonly language?: string;
+	readonly maxIterations?: number;
+	readonly providerOptions?: Record<string, Record<string, unknown>>;
+}
 
 export const codingAgentConfigDefinition = defineCodingConfig({
 	schemaVersion: 1,
@@ -98,6 +174,9 @@ export const codingAgentConfigDefinition = defineCodingConfig({
 				project: "trusted",
 				environment: { name: "JAI_AGENT_MODEL" },
 			},
+			language: { merge: "replace", project: "trusted" },
+			maxIterations: { merge: "replace", project: "trusted" },
+			reasoningEffort: { merge: "replace", project: "trusted" },
 		},
 		providers: {
 			merge: "custom",
@@ -114,6 +193,7 @@ export const codingAgentConfigDefinition = defineCodingConfig({
 export function resolveConfiguredProvider(
 	settings: Readonly<CodingAgentSettings>,
 	modelRef = settings.agent?.model,
+	catalog?: ModelCatalog,
 ): ResolvedCodingProvider {
 	if (!modelRef) {
 		throw providerError("invalid_model_ref", { message: "No default Agent model is configured" });
@@ -141,13 +221,15 @@ export function resolveConfiguredProvider(
 		});
 	}
 	const modelConfig = profile.models?.[modelId];
-	if (!modelConfig) {
+	const remoteModelId = modelConfig?.remoteModelId ?? modelId;
+	const catalogModel = findCatalogModel(catalog, profile.catalogProvider, remoteModelId);
+	if (!modelConfig && !catalogModel) {
 		throw providerError("model_not_found", {
 			message: `Model "${modelRef}" is not configured`,
 			data: { modelRef },
 		});
 	}
-	if (modelConfig.enabled === false) {
+	if (modelConfig?.enabled === false) {
 		throw providerError("model_disabled", {
 			message: `Model "${modelRef}" is disabled`,
 			data: { modelRef },
@@ -156,19 +238,115 @@ export function resolveConfiguredProvider(
 
 	const connection = resolveConnection(profileId, profile);
 	const provider = createProvider(profileId, connection);
+	const modalities = resolveModalities(modelConfig?.modalities, catalogModel);
 	const model: Model = {
 		id: modelId,
-		remoteModelId: modelConfig.remoteModelId ?? modelId,
-		name: modelConfig.name ?? modelId,
+		remoteModelId,
+		name: modelConfig?.name ?? catalogModel?.name ?? modelId,
 		api: connection.adapter === "anthropic" ? "anthropic-messages" : "openai-chat-completions",
 		provider: profileId,
-		reasoning: modelConfig.reasoning ?? false,
-		input: modelConfig.input ? [...modelConfig.input] : ["text"],
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: modelConfig.contextWindow ?? 128_000,
-		maxTokens: modelConfig.maxTokens ?? 4_096,
+		reasoning: modelConfig?.reasoning ?? catalogModel?.reasoning ?? false,
+		input: modelConfig?.input ? [...modelConfig.input] : executableInput(modalities.input),
+		modalities,
+		capabilities: {
+			toolCall: modelConfig?.toolCall ?? catalogModel?.toolCall,
+			structuredOutput: modelConfig?.structuredOutput ?? catalogModel?.structuredOutput,
+		},
+		cost: resolveCost(modelConfig?.cost, catalogModel?.cost),
+		contextWindow: modelConfig?.contextWindow ?? catalogModel?.contextWindow ?? 128_000,
+		maxTokens: modelConfig?.maxTokens ?? catalogModel?.maxTokens ?? 4_096,
+		compatibility: resolveCompatibility(connection.adapter, modelConfig?.compatibility),
 	};
 	return { provider, model };
+}
+
+export function resolveConfiguredAgentRuntime(
+	settings: Readonly<CodingAgentSettings>,
+	resolved: ResolvedCodingProvider,
+): ResolvedCodingAgentRuntime {
+	const agent = settings.agent;
+	const reasoningEffort = agent?.reasoningEffort;
+	if (!reasoningEffort) {
+		return {
+			...(agent?.language ? { language: agent.language } : {}),
+			...(agent?.maxIterations ? { maxIterations: agent.maxIterations } : {}),
+		};
+	}
+	const compatibility = resolved.model.compatibility;
+	const supportsEffort =
+		resolved.provider.adapter === "openai-compatible" &&
+		resolved.model.reasoning &&
+		compatibility !== undefined &&
+		"reasoningFormat" in compatibility &&
+		compatibility.reasoningFormat === "openai";
+	if (!supportsEffort) {
+		throw providerError("unsupported_reasoning_effort", {
+			message: `Model "${resolved.model.id}" does not support reasoning effort`,
+			data: { modelRef: settings.agent?.model ?? resolved.model.id },
+		});
+	}
+	return {
+		...(agent?.language ? { language: agent.language } : {}),
+		...(agent?.maxIterations ? { maxIterations: agent.maxIterations } : {}),
+		providerOptions: { [resolved.provider.id]: { reasoning_effort: reasoningEffort } },
+	};
+}
+
+function resolveModalities(
+	overlay: ModelOverlay["modalities"] | undefined,
+	catalogModel: ReturnType<typeof findCatalogModel>,
+): { input: ModelModality[]; output: ModelModality[] } {
+	return {
+		input: overlay?.input ? [...overlay.input] : [...(catalogModel?.inputModalities ?? ["text"])],
+		output: overlay?.output ? [...overlay.output] : [...(catalogModel?.outputModalities ?? ["text"])],
+	};
+}
+
+function executableInput(modalities: readonly ModelModality[]): ("text" | "image")[] {
+	const input = modalities.filter(
+		(modality): modality is "text" | "image" => modality === "text" || modality === "image",
+	);
+	return input.length > 0 ? input : ["text"];
+}
+
+function resolveCost(overlay: ModelOverlay["cost"] | undefined, catalogCost: ModelCatalogCost | undefined): ModelCost {
+	return {
+		input: overlay?.input ?? catalogCost?.input ?? 0,
+		output: overlay?.output ?? catalogCost?.output ?? 0,
+		cacheRead: overlay?.cacheRead ?? catalogCost?.cacheRead ?? 0,
+		cacheWrite: overlay?.cacheWrite ?? catalogCost?.cacheWrite ?? 0,
+		...(overlay?.reasoning === undefined && catalogCost?.reasoning === undefined
+			? {}
+			: { reasoning: overlay?.reasoning ?? catalogCost?.reasoning }),
+	};
+}
+
+function resolveCompatibility(
+	adapter: ResolvedConnection["adapter"],
+	compatibility: ModelOverlay["compatibility"] | undefined,
+): ModelCompatibility | undefined {
+	if (!compatibility) return undefined;
+	if (adapter === "anthropic") {
+		const { supportsThinking } = compatibility;
+		if (
+			compatibility.maxTokensField !== undefined ||
+			compatibility.supportsUsageInStreaming !== undefined ||
+			compatibility.supportsStrictTools !== undefined ||
+			compatibility.reasoningFormat !== undefined
+		) {
+			throw providerError("invalid_connection", {
+				message: "Anthropic models may only define compatibility.supportsThinking",
+			});
+		}
+		return supportsThinking === undefined ? undefined : { supportsThinking };
+	}
+	if (compatibility.supportsThinking !== undefined) {
+		throw providerError("invalid_connection", {
+			message: "OpenAI-compatible models may not define compatibility.supportsThinking",
+		});
+	}
+	const { supportsThinking: _supportsThinking, ...openAICompatibility } = compatibility;
+	return openAICompatibility;
 }
 
 interface ResolvedConnection {

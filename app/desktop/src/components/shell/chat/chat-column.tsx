@@ -8,9 +8,9 @@ import type {
 	DesktopProviderConfigSnapshot,
 	DesktopTranscriptItem,
 	DesktopWorkspace,
-} from "../../../shared/desktop-rpc";
-import { Button } from "../ui/button";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectSeparator, SelectTrigger } from "../ui/select";
+} from "../../../../shared/desktop-rpc";
+import { Button } from "../../ui/button";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectSeparator, SelectTrigger } from "../../ui/select";
 import { SlashInvocationText } from "./slash-invocation";
 import { WorkspacePicker } from "./workspace-picker";
 

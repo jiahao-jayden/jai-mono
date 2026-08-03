@@ -18,8 +18,8 @@ import type {
 	DesktopProviderConfigSnapshot,
 	DesktopWorkspace,
 } from "../../../shared/desktop-rpc";
-import { ChatColumn } from "./chat-column";
-import { ProviderSettingsDialog } from "./provider-settings-dialog";
+import { ChatColumn } from "./chat/chat-column";
+import { ProviderSettingsDialog } from "./settings/provider-settings-dialog";
 import { Sidebar } from "./sidebar";
 import { TaskPanel } from "./task-panel";
 
@@ -93,8 +93,8 @@ export function WorkspaceShell() {
 	const openProviderSettings = useCallback(() => {
 		if (activeSession.status === "running") return;
 		setProviderSettingsOpen(true);
-		if (providerQuery.isError) void providerQuery.refetch();
-	}, [activeSession.status, providerQuery.isError, providerQuery.refetch]);
+		void providerQuery.refetch();
+	}, [activeSession.status, providerQuery.refetch]);
 	const selectProviderModel = async (modelRef: string) => {
 		const snapshot = providerQuery.data;
 		if (!snapshot || snapshot.activeModelRef === modelRef || modelSwitching) return;
@@ -254,6 +254,9 @@ function toProviderConfigInput(
 	return {
 		revision: snapshot.revision,
 		activeModelRef,
+		...(snapshot.language ? { language: snapshot.language } : {}),
+		...(snapshot.maxIterations ? { maxIterations: snapshot.maxIterations } : {}),
+		...(snapshot.reasoningEffort ? { reasoningEffort: snapshot.reasoningEffort } : {}),
 		profiles: snapshot.profiles.map(
 			({ credentialConfigured: _configured, credentialMask: _mask, ...profile }) => profile,
 		),

@@ -95,12 +95,25 @@ export type Api = "anthropic-messages" | "openai-chat-completions" | (string & {
 export type ProviderId = "anthropic" | "openai-compatible" | (string & {});
 export type ProviderAdapter = "anthropic" | "openai-compatible";
 export type ModelInput = "text" | "image";
+export type ModelModality = ModelInput | "audio" | "video" | "pdf";
 
 export interface ModelCost {
 	input: number;
 	output: number;
 	cacheRead: number;
 	cacheWrite: number;
+	reasoning?: number;
+}
+
+/** Catalog metadata. Only text/image are currently accepted by Context. */
+export interface ModelModalities {
+	input: ModelModality[];
+	output: ModelModality[];
+}
+
+export interface ModelCapabilities {
+	toolCall?: boolean;
+	structuredOutput?: boolean;
 }
 
 export interface OpenAICompatibility {
@@ -127,6 +140,8 @@ export interface Model<TApi extends Api = Api> {
 	baseUrl?: string;
 	reasoning: boolean;
 	input: ModelInput[];
+	modalities?: ModelModalities;
+	capabilities?: ModelCapabilities;
 	cost: ModelCost;
 	contextWindow: number;
 	maxTokens: number;
@@ -156,7 +171,7 @@ export interface Usage {
 	};
 }
 
-export type StopReason = "stop" | "length" | "toolUse" | "contextOverflow" | "error" | "aborted";
+export type StopReason = "stop" | "length" | "toolUse" | "contextOverflow" | "iterationLimit" | "error" | "aborted";
 
 /* -------------------------------------------------------------------------- */
 /*                                    Event                                   */
@@ -175,7 +190,7 @@ export type AssistantMessageEvent =
 	| { type: "toolcall_end"; contentIndex: number; toolCall: ToolCall; partial: AssistantMessage }
 	| {
 			type: "done";
-			reason: Extract<StopReason, "stop" | "length" | "toolUse" | "contextOverflow">;
+			reason: Extract<StopReason, "stop" | "length" | "toolUse" | "contextOverflow" | "iterationLimit">;
 			message: AssistantMessage;
 	  }
 	| { type: "error"; reason: Extract<StopReason, "error" | "aborted">; error: AssistantMessage };
