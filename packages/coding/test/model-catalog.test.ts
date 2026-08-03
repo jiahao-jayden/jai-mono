@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
 	MODEL_CATALOG_FRESHNESS_MS,
+	findCatalogModelMatch,
 	ModelCatalogStore,
 	normalizeModelCatalog,
 } from "../src/runtime";
@@ -22,15 +23,65 @@ describe("Models.dev catalog", () => {
 		expect(model).toEqual({
 			id: "gpt-test",
 			name: "GPT Test",
+			family: "gpt",
+			status: "active",
+			releaseDate: "2025-08-07",
+			lastUpdated: "2026-01-02",
+			knowledge: "2024-06",
+			openWeights: false,
+			attachment: true,
 			reasoning: true,
+			reasoningOptions: ["low", "high"],
+			temperature: false,
+			interleaved: { field: "reasoning_content" },
 			toolCall: true,
 			structuredOutput: true,
 			inputModalities: ["text", "image"],
 			outputModalities: ["text"],
 			cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.2, reasoning: 3 },
 			contextWindow: 200_000,
+			inputLimit: 150_000,
 			maxTokens: 16_000,
 		});
+	});
+
+	test("缺失能力、限制和价格时保留 unknown，不伪造默认值", () => {
+		const catalog = normalizeModelCatalog({
+			providers: { test: { models: { unknown: { name: "Unknown" } } } },
+		});
+
+		expect(catalog.providers.test?.models.unknown).toEqual({ id: "unknown", name: "Unknown" });
+	});
+
+	test("优先采用显式 provider，其次采用模型系列的官方厂商，最后回退唯一 ID", () => {
+		const catalog = normalizeModelCatalog({
+			providers: {
+				openai: { models: { "gpt-5": { name: "GPT 5" }, shared: { name: "OpenAI Shared" } } },
+				anthropic: {
+					models: { "claude-5": { name: "Claude 5" }, shared: { name: "Anthropic Shared" } },
+				},
+				gateway: {
+					models: {
+						"gpt-5": { name: "GPT 5 via gateway" },
+						"claude-5": { name: "Claude 5 via gateway" },
+					},
+				},
+			},
+		});
+
+		expect(findCatalogModelMatch(catalog, "openai", "gpt-5")).toMatchObject({
+			providerId: "openai",
+			model: { name: "GPT 5" },
+		});
+		expect(findCatalogModelMatch(catalog, undefined, "claude-5")).toMatchObject({
+			providerId: "anthropic",
+			model: { name: "Claude 5" },
+		});
+		expect(findCatalogModelMatch(catalog, undefined, "gpt-5")).toMatchObject({
+			providerId: "openai",
+			model: { name: "GPT 5" },
+		});
+		expect(findCatalogModelMatch(catalog, undefined, "shared")).toBeUndefined();
 	});
 
 	test("缓存新鲜时不请求网络", async () => {
@@ -128,12 +179,22 @@ function rawCatalog(): unknown {
 				models: {
 					"gpt-test": {
 						name: "GPT Test",
+						family: "gpt",
+						status: "active",
+						release_date: "2025-08-07",
+						last_updated: "2026-01-02",
+						knowledge: "2024-06",
+						open_weights: false,
+						attachment: true,
 						reasoning: true,
+						reasoning_options: ["low", "high", "low"],
+						temperature: false,
+						interleaved: { field: "reasoning_content" },
 						tool_call: true,
 						structured_output: true,
 						modalities: { input: ["text", "image", "unsupported"], output: ["text"] },
 						cost: { input: 1, output: 2, cache_read: 0.1, cache_write: 0.2, reasoning: 3 },
-						limit: { context: 200_000, output: 16_000 },
+						limit: { context: 200_000, input: 150_000, output: 16_000 },
 						credentials: "must not persist",
 					},
 				},

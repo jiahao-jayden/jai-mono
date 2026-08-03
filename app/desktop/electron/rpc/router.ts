@@ -43,7 +43,7 @@ const desktopBusinessError = (init: { readonly message: string }) => new Desktop
 const desktopWorkspaceError = (init: { readonly cause?: unknown; readonly message: string }) =>
 	new WorkspacePickerFailed(init);
 let codingBusiness: CodingBusinessService | undefined;
-const providerConfig = new DesktopProviderConfigService({ catalog: desktopModelCatalog });
+let providerConfig: DesktopProviderConfigService | undefined;
 const desktopAgentHost = new DesktopAgentHost((envelope) => {
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) window.webContents.send(DESKTOP_EVENTS_CHANNEL, envelope);
@@ -56,6 +56,8 @@ export function setDesktopAgentFactory(factory: DesktopAgentFactory): void {
 
 export function setCodingBusinessService(service: CodingBusinessService): void {
 	codingBusiness = service;
+	providerConfig?.close();
+	providerConfig = new DesktopProviderConfigService({ catalog: desktopModelCatalog, inventory: service });
 	desktopAgentHost.setSessionActivityListener((sessionId) => service.touchSession(sessionId));
 	desktopAgentHost.setRunCompletedListener(async ({ sessionId, firstMessage, messages, agent }) => {
 		const session = service.getSession(sessionId);
@@ -74,7 +76,8 @@ export function setCodingBusinessService(service: CodingBusinessService): void {
 
 export function closeDesktopRuntime(): void {
 	desktopAgentHost.close();
-	providerConfig.close();
+	providerConfig?.close();
+	providerConfig = undefined;
 	desktopModelCatalog.close();
 	codingBusiness?.close();
 	codingBusiness = undefined;
@@ -113,12 +116,20 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 	},
 	provider: {
 		get() {
-			return providerConfig.get();
+			return requireProviderConfig().get();
 		},
 		async save(_event, input) {
-			const snapshot = await providerConfig.save(input as DesktopProviderConfigInput);
+			const snapshot = await requireProviderConfig().save(input as DesktopProviderConfigInput);
 			desktopAgentHost.invalidateSessions();
 			return snapshot;
+		},
+		async fetchModels(_event, profileId) {
+			const result = await requireProviderConfig().fetchModels(profileId);
+			desktopAgentHost.invalidateSessions();
+			return result;
+		},
+		revealApiKey(_event, profileId) {
+			return requireProviderConfig().revealApiKey(profileId);
 		},
 	},
 	workspace: {
@@ -210,7 +221,9 @@ function assertMessageInput(value: unknown): DesktopAgentMessageInput {
 		value === null ||
 		typeof (value as DesktopAgentMessageInput).sessionId !== "string" ||
 		typeof (value as DesktopAgentMessageInput).message !== "string" ||
-		(value as DesktopAgentMessageInput).message.length === 0
+		(value as DesktopAgentMessageInput).message.length === 0 ||
+		typeof (value as DesktopAgentMessageInput).modelRef !== "string" ||
+		!(value as DesktopAgentMessageInput).modelRef.includes("/")
 	) {
 		throw agentInputError({ message: "Invalid agent message input" });
 	}
@@ -228,6 +241,13 @@ function requireCodingBusiness(): CodingBusinessService {
 	if (codingBusiness) return codingBusiness;
 	throw desktopBusinessError({
 		message: "Coding business services are not initialized",
+	});
+}
+
+function requireProviderConfig(): DesktopProviderConfigService {
+	if (providerConfig) return providerConfig;
+	throw desktopBusinessError({
+		message: "Provider configuration services are not initialized",
 	});
 }
 

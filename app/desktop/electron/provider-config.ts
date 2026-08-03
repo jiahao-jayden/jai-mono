@@ -1,48 +1,91 @@
+import type { CodingBusinessService, ProviderModelInventory } from "@jai/coding/business";
 import { CodingConfigStore } from "@jai/coding/config";
 import {
 	type CodingAgentSettings,
 	codingAgentConfigDefinition,
+	DEFAULT_PROVIDER_VENDORS,
+	discoverConfiguredModels,
 	findCatalogModel,
+	findCatalogModelMatch,
 	type ModelCatalog,
 	type ModelCatalogStore,
 } from "@jai/coding/runtime";
 import { TaggedError } from "better-result";
 import type {
+	DesktopProviderApiKeyRevealResult,
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
+	DesktopProviderFetchModelsResult,
 	DesktopProviderModel,
+	DesktopProviderPreset,
 	DesktopProviderProfile,
 	DesktopProviderProfileInput,
 } from "../shared/desktop-rpc";
 
 const profileIdPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const languagePattern = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
-type ProviderConfigErrorInit = { readonly data?: { readonly profileId: string }; readonly message: string };
+type ProviderConfigErrorInit = {
+	readonly cause?: unknown;
+	readonly data?: {
+		readonly adapter?: string;
+		readonly profileId: string;
+		readonly requestId?: string;
+		readonly status?: number;
+	};
+	readonly message: string;
+};
 class InvalidProviderConfigInput extends TaggedError(
 	"desktop_provider_config.invalid_input",
 )<ProviderConfigErrorInit> {}
 class ProviderCredentialRequired extends TaggedError(
 	"desktop_provider_config.credential_required",
 )<ProviderConfigErrorInit> {}
+class ProviderCredentialUnavailable extends TaggedError(
+	"desktop_provider_config.credential_unavailable",
+)<ProviderConfigErrorInit> {}
+class ProviderModelsFetchFailed extends TaggedError(
+	"desktop_provider_config.model_fetch_failed",
+)<ProviderConfigErrorInit> {}
 
-function providerConfigError(reason: "invalid_input" | "credential_required", init: ProviderConfigErrorInit) {
+function providerConfigError(
+	reason: "invalid_input" | "credential_required" | "credential_unavailable" | "model_fetch_failed",
+	init: ProviderConfigErrorInit,
+) {
 	switch (reason) {
 		case "invalid_input":
 			return new InvalidProviderConfigInput(init);
 		case "credential_required":
 			return new ProviderCredentialRequired(init);
+		case "credential_unavailable":
+			return new ProviderCredentialUnavailable(init);
+		case "model_fetch_failed":
+			return new ProviderModelsFetchFailed(init);
 	}
 }
 
 export class DesktopProviderConfigService {
 	readonly #store: CodingConfigStore<typeof codingAgentConfigDefinition.schema>;
 	readonly #catalog?: ModelCatalogStore;
+	readonly #inventory?: Pick<
+		CodingBusinessService,
+		| "deleteProviderModelInventory"
+		| "getProviderModelInventory"
+		| "renameProviderModelInventory"
+		| "replaceProviderModelInventory"
+	>;
 
 	constructor(
 		options: {
 			readonly homeDir?: string;
 			readonly environment?: Readonly<Record<string, string | undefined>>;
 			readonly catalog?: ModelCatalogStore;
+			readonly inventory?: Pick<
+				CodingBusinessService,
+				| "deleteProviderModelInventory"
+				| "getProviderModelInventory"
+				| "renameProviderModelInventory"
+				| "replaceProviderModelInventory"
+			>;
 		} = {},
 	) {
 		this.#store = new CodingConfigStore(codingAgentConfigDefinition, {
@@ -51,27 +94,40 @@ export class DesktopProviderConfigService {
 			workspaceTrusted: false,
 		});
 		this.#catalog = options.catalog;
+		this.#inventory = options.inventory;
 	}
 
 	async get(): Promise<DesktopProviderConfigSnapshot> {
 		const [snapshot, userScope] = await Promise.all([this.#store.load(), this.#store.readScope("user")]);
-		return projectProviderConfig(snapshot.settings, userScope.revision, this.#catalog?.cached?.catalog);
+		this.#seedLegacyInventories(snapshot.settings);
+		return projectProviderConfig(
+			snapshot.settings,
+			userScope.revision,
+			this.#catalog?.cached?.catalog,
+			this.#inventories(snapshot.settings),
+		);
 	}
 
 	async save(input: DesktopProviderConfigInput): Promise<DesktopProviderConfigSnapshot> {
 		validateInput(input, this.#catalog?.cached?.catalog);
 		const [userScope, effectiveSnapshot] = await Promise.all([this.#store.readScope("user"), this.#store.load()]);
+		this.#seedLegacyInventories(effectiveSnapshot.settings);
+		this.#seedInputInventories(input.profiles);
 		const currentProviders = userScope.settings.providers ?? {};
 		const providers = Object.fromEntries(
 			input.profiles.map((profile) => [
 				profile.id,
-				toStoredProfile(profile, currentProviders[profile.id], effectiveSnapshot.settings.providers[profile.id]),
+				toStoredProfile(
+					profile,
+					currentProviders[profile.id] ?? (profile.previousId ? currentProviders[profile.previousId] : undefined),
+					effectiveSnapshot.settings.providers[profile.id] ??
+						(profile.previousId ? effectiveSnapshot.settings.providers[profile.previousId] : undefined),
+				),
 			]),
 		);
 		const settings = structuredClone(userScope.settings);
 		settings.providers = providers;
 		const agent = {
-			...(input.activeModelRef ? { model: input.activeModelRef } : {}),
 			...(input.language ? { language: input.language } : {}),
 			...(input.maxIterations ? { maxIterations: input.maxIterations } : {}),
 			...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
@@ -82,11 +138,114 @@ export class DesktopProviderConfigService {
 		const snapshot = await this.#store.writeScope("user", settings, {
 			expectedRevision: input.revision,
 		});
-		return projectProviderConfig(snapshot.settings, snapshot.scopeRevisions.user, this.#catalog?.cached?.catalog);
+		this.#migrateRenamedInventories(input.profiles, currentProviders, providers);
+		this.#deleteRemovedInventories(currentProviders, providers);
+		return projectProviderConfig(
+			snapshot.settings,
+			snapshot.scopeRevisions.user,
+			this.#catalog?.cached?.catalog,
+			this.#inventories(snapshot.settings),
+		);
+	}
+
+	async fetchModels(profileId: string): Promise<DesktopProviderFetchModelsResult> {
+		if (!profileIdPattern.test(profileId)) throw invalidInput("Invalid Provider profile");
+		const snapshot = await this.#store.load();
+		let modelIds: readonly string[];
+		try {
+			modelIds = await discoverConfiguredModels(snapshot.settings, profileId);
+		} catch (cause) {
+			throw providerConfigError("model_fetch_failed", {
+				message: "Unable to fetch models from the configured Provider",
+				data: {
+					profileId,
+					...safeDiscoveryErrorData(cause, snapshot.settings.providers[profileId]?.adapter),
+				},
+				cause,
+			});
+		}
+		const inventory = this.#inventory?.replaceProviderModelInventory(profileId, modelIds);
+		if (!inventory) {
+			throw invalidInput("Provider model inventory is unavailable");
+		}
+		const projected = await this.get();
+		return {
+			profileId,
+			modelCount: inventory.modelIds.length,
+			fetchedAt: inventory.fetchedAt,
+			snapshot: projected,
+		};
+	}
+
+	async revealApiKey(profileId: string): Promise<DesktopProviderApiKeyRevealResult> {
+		if (!profileIdPattern.test(profileId)) throw invalidInput("Invalid Provider profile");
+		const userScope = await this.#store.readScope("user");
+		const apiKey = userScope.settings.providers?.[profileId]?.apiKey;
+		if (!apiKey) {
+			throw providerConfigError("credential_unavailable", {
+				message: `Provider "${profileId}" has no user-saved API key to reveal`,
+				data: { profileId },
+			});
+		}
+		return { profileId, apiKey };
 	}
 
 	close(): void {
 		this.#store.close();
+	}
+
+	#inventories(settings: Readonly<CodingAgentSettings>): ReadonlyMap<string, ProviderModelInventory> {
+		const inventories = new Map<string, ProviderModelInventory>();
+		for (const profileId of Object.keys(settings.providers)) {
+			const inventory = this.#inventory?.getProviderModelInventory(profileId);
+			if (inventory) inventories.set(profileId, inventory);
+		}
+		return inventories;
+	}
+
+	#seedLegacyInventories(settings: Readonly<CodingAgentSettings>): void {
+		if (!this.#inventory) return;
+		for (const [profileId, profile] of Object.entries(settings.providers)) {
+			if (this.#inventory.getProviderModelInventory(profileId)) continue;
+			const modelIds = Object.entries(profile.models ?? {})
+				.map(([modelId, model]) => model.remoteModelId ?? modelId)
+				.filter(Boolean);
+			if (modelIds.length > 0) this.#inventory.replaceProviderModelInventory(profileId, modelIds);
+		}
+	}
+
+	#seedInputInventories(profiles: readonly DesktopProviderProfileInput[]): void {
+		if (!this.#inventory) return;
+		for (const profile of profiles) {
+			if (this.#inventory.getProviderModelInventory(profile.id)) continue;
+			const modelIds = profile.models
+				.filter((model) => model.source === "unverified")
+				.map((model) => model.remoteModelId);
+			if (modelIds.length > 0) this.#inventory.replaceProviderModelInventory(profile.id, modelIds);
+		}
+	}
+
+	#deleteRemovedInventories(
+		current: Readonly<CodingAgentSettings["providers"]>,
+		next: Readonly<CodingAgentSettings["providers"]>,
+	): void {
+		if (!this.#inventory) return;
+		for (const profileId of Object.keys(current)) {
+			if (!next[profileId]) this.#inventory.deleteProviderModelInventory(profileId);
+		}
+	}
+
+	#migrateRenamedInventories(
+		profiles: readonly DesktopProviderProfileInput[],
+		current: Readonly<CodingAgentSettings["providers"]>,
+		next: Readonly<CodingAgentSettings["providers"]>,
+	): void {
+		if (!this.#inventory) return;
+		for (const profile of profiles) {
+			if (!profile.previousId || profile.previousId === profile.id) continue;
+			if (!current[profile.previousId] || next[profile.previousId]) continue;
+			this.#inventory.renameProviderModelInventory(profile.previousId, profile.id);
+		}
 	}
 }
 
@@ -94,81 +253,97 @@ function projectProviderConfig(
 	settings: Readonly<CodingAgentSettings>,
 	revision: string | null,
 	catalog?: ModelCatalog,
+	inventories: ReadonlyMap<string, ProviderModelInventory> = new Map(),
 ): DesktopProviderConfigSnapshot {
 	const profiles = Object.entries(settings.providers)
 		.map(([id, profile]): DesktopProviderProfile => {
 			const apiKey = profile.apiKey;
-			const catalogModels = profile.catalogProvider
-				? catalog?.providers[profile.catalogProvider]?.models
-				: undefined;
-			const localModels = Object.entries(profile.models ?? {}).map(([modelId, model]) =>
-				projectModel(
-					modelId,
-					model,
-					findCatalogModel(catalog, profile.catalogProvider, model.remoteModelId ?? modelId),
-					"local",
-				),
+			const inventory = inventories.get(id);
+			const localModelByRemoteId = new Map(
+				Object.entries(profile.models ?? {}).map(([modelId, model]) => [
+					model.remoteModelId ?? modelId,
+					{ id: modelId, enabled: model.enabled === true },
+				]),
 			);
-			const localRemoteIds = new Set(localModels.map((model) => model.remoteModelId));
-			const discoveredModels = Object.values(catalogModels ?? {})
-				.filter((model) => !localRemoteIds.has(model.id))
-				.map((model) => projectModel(model.id, undefined, model, "catalog"));
+			const discoveredModels = (inventory?.modelIds ?? []).map((remoteModelId) => {
+				const localModel = localModelByRemoteId.get(remoteModelId);
+				return projectModel(
+					localModel?.id ?? remoteModelId,
+					remoteModelId,
+					localModel?.enabled ?? false,
+					findCatalogModelMatch(catalog, undefined, remoteModelId),
+				);
+			});
 			return {
 				id,
 				name: profile.name ?? id,
 				adapter: profile.adapter ?? "openai-compatible",
-				...(profile.catalogProvider ? { catalogProvider: profile.catalogProvider } : {}),
 				baseURL: profile.baseURL ?? "",
 				authentication: profile.auth === "none" ? "none" : "api-key",
 				credentialConfigured: Boolean(apiKey),
 				...(apiKey ? { credentialMask: maskCredential(apiKey) } : {}),
-				models: [...localModels, ...discoveredModels]
-					.filter((model) => model.source === "catalog" || profile.models?.[model.id]?.enabled !== false)
-					.sort((left, right) => left.name.localeCompare(right.name)),
+				...(inventory ? { modelsFetchedAt: inventory.fetchedAt } : {}),
+				models: discoveredModels.sort((left, right) => left.name.localeCompare(right.name)),
 			};
 		})
 		.sort((left, right) => left.name.localeCompare(right.name));
 	return {
 		revision,
-		...(settings.agent?.model ? { activeModelRef: settings.agent.model } : {}),
 		...(settings.agent?.language ? { language: settings.agent.language } : {}),
 		...(settings.agent?.maxIterations ? { maxIterations: settings.agent.maxIterations } : {}),
 		...(settings.agent?.reasoningEffort ? { reasoningEffort: settings.agent.reasoningEffort } : {}),
+		providerPresets: projectProviderPresets(),
 		profiles,
 	};
 }
 
+function projectProviderPresets(): readonly DesktopProviderPreset[] {
+	return DEFAULT_PROVIDER_VENDORS.map((vendor) => ({
+		id: vendor.id,
+		name: vendor.name,
+		adapter: vendor.adapter,
+		catalogProvider: vendor.catalogProvider,
+		baseURL: vendor.baseURL ?? "",
+		authentication: "api-key",
+	}));
+}
+
 function projectModel(
 	id: string,
-	model: NonNullable<CodingAgentSettings["providers"][string]["models"]>[string] | undefined,
-	catalogModel: ReturnType<typeof findCatalogModel>,
-	source: DesktopProviderModel["source"],
+	remoteModelId: string,
+	enabled: boolean,
+	catalogMatch: ReturnType<typeof findCatalogModelMatch>,
 ): DesktopProviderModel {
-	const inputModalities = model?.modalities?.input ?? catalogModel?.inputModalities ?? model?.input ?? ["text"];
-	const outputModalities = model?.modalities?.output ?? catalogModel?.outputModalities ?? ["text"];
+	const catalogModel = catalogMatch?.model;
 	return {
 		id,
-		name: model?.name ?? catalogModel?.name ?? id,
-		remoteModelId: model?.remoteModelId ?? catalogModel?.id ?? id,
-		source,
-		reasoning: model?.reasoning ?? catalogModel?.reasoning ?? false,
-		input: model?.input ?? inputModalities.filter(isExecutableInput),
-		inputModalities,
-		outputModalities,
-		toolCall: model?.toolCall ?? catalogModel?.toolCall ?? false,
-		structuredOutput: model?.structuredOutput ?? catalogModel?.structuredOutput ?? false,
-		cost: {
-			input: model?.cost?.input ?? catalogModel?.cost.input ?? 0,
-			output: model?.cost?.output ?? catalogModel?.cost.output ?? 0,
-			cacheRead: model?.cost?.cacheRead ?? catalogModel?.cost.cacheRead ?? 0,
-			cacheWrite: model?.cost?.cacheWrite ?? catalogModel?.cost.cacheWrite ?? 0,
-			...(model?.cost?.reasoning === undefined && catalogModel?.cost.reasoning === undefined
-				? {}
-				: { reasoning: model?.cost?.reasoning ?? catalogModel?.cost.reasoning }),
-		},
-		contextWindow: model?.contextWindow ?? catalogModel?.contextWindow ?? 128_000,
-		maxTokens: model?.maxTokens ?? catalogModel?.maxTokens ?? 4_096,
-		...(model?.compatibility ? { compatibility: model.compatibility } : {}),
+		name: catalogModel?.name ?? remoteModelId,
+		remoteModelId,
+		source: catalogModel ? "catalog" : "unverified",
+		verified: Boolean(catalogModel),
+		enabled,
+		...(catalogMatch ? { metadataProvider: catalogMatch.providerId } : {}),
+		...(catalogModel?.description ? { description: catalogModel.description } : {}),
+		...(catalogModel?.family ? { family: catalogModel.family } : {}),
+		...(catalogModel?.status ? { status: catalogModel.status } : {}),
+		...(catalogModel?.releaseDate ? { releaseDate: catalogModel.releaseDate } : {}),
+		...(catalogModel?.lastUpdated ? { lastUpdated: catalogModel.lastUpdated } : {}),
+		...(catalogModel?.knowledge ? { knowledge: catalogModel.knowledge } : {}),
+		...(catalogModel?.openWeights === undefined ? {} : { openWeights: catalogModel.openWeights }),
+		...(catalogModel?.attachment === undefined ? {} : { attachment: catalogModel.attachment }),
+		...(catalogModel?.reasoning === undefined ? {} : { reasoning: catalogModel.reasoning }),
+		...(catalogModel?.reasoningOptions ? { reasoningOptions: catalogModel.reasoningOptions } : {}),
+		...(catalogModel?.temperature === undefined ? {} : { temperature: catalogModel.temperature }),
+		...(catalogModel?.interleaved === undefined ? {} : { interleaved: Boolean(catalogModel.interleaved) }),
+		...(catalogModel?.inputModalities ? { input: catalogModel.inputModalities.filter(isExecutableInput) } : {}),
+		...(catalogModel?.inputModalities ? { inputModalities: catalogModel.inputModalities } : {}),
+		...(catalogModel?.outputModalities ? { outputModalities: catalogModel.outputModalities } : {}),
+		...(catalogModel?.toolCall === undefined ? {} : { toolCall: catalogModel.toolCall }),
+		...(catalogModel?.structuredOutput === undefined ? {} : { structuredOutput: catalogModel.structuredOutput }),
+		...(catalogModel?.cost ? { cost: catalogModel.cost } : {}),
+		...(catalogModel?.contextWindow === undefined ? {} : { contextWindow: catalogModel.contextWindow }),
+		...(catalogModel?.inputLimit === undefined ? {} : { inputLimit: catalogModel.inputLimit }),
+		...(catalogModel?.maxTokens === undefined ? {} : { maxTokens: catalogModel.maxTokens }),
 	};
 }
 
@@ -194,36 +369,41 @@ function toStoredProfile(
 	return {
 		name: input.name.trim(),
 		adapter: input.adapter,
-		...(input.catalogProvider?.trim() ? { catalogProvider: input.catalogProvider.trim() } : {}),
 		...(baseURL ? { baseURL } : {}),
 		auth,
 		...(nextApiKey ? { apiKey: nextApiKey } : {}),
-		models: Object.fromEntries(
-			input.models
-				.filter((model) => model.source !== "catalog")
-				.map((model) => [
-					model.id.trim(),
-					{
-						name: model.name.trim(),
-						remoteModelId: model.remoteModelId.trim(),
-						enabled: true,
-						reasoning: model.reasoning ?? false,
-						input: [...(model.input ?? ["text"])],
-						modalities: {
-							input: [...(model.inputModalities ?? model.input ?? ["text"])],
-							output: [...(model.outputModalities ?? ["text"])],
-						},
-						toolCall: model.toolCall ?? false,
-						structuredOutput: model.structuredOutput ?? false,
-						cost: { ...(model.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }) },
-						contextWindow: model.contextWindow ?? 128_000,
-						maxTokens: model.maxTokens ?? 4_096,
-						...(model.compatibility ? { compatibility: { ...model.compatibility } } : {}),
-					},
-				]),
-		),
+		models: toStoredModelOverlays(input.models, current?.models),
 		enabled: true,
 	};
+}
+
+function toStoredModelOverlays(
+	models: readonly DesktopProviderModel[],
+	current: CodingAgentSettings["providers"][string]["models"] | undefined,
+): NonNullable<CodingAgentSettings["providers"][string]["models"]> {
+	const overlays = new Map(
+		Object.entries(current ?? {}).map(([modelId, model]) => [
+			modelId,
+			{
+				...(model.remoteModelId ? { remoteModelId: model.remoteModelId } : {}),
+				...(model.compatibility ? { compatibility: { ...model.compatibility } } : {}),
+				...(model.enabled === true ? { enabled: true } : {}),
+			},
+		]),
+	);
+	for (const model of models) {
+		const existing = overlays.get(model.id);
+		const overlay = {
+			...(existing?.remoteModelId || model.remoteModelId !== model.id
+				? { remoteModelId: existing?.remoteModelId ?? model.remoteModelId }
+				: {}),
+			...(existing?.compatibility ? { compatibility: existing.compatibility } : {}),
+			...(model.enabled ? { enabled: true } : {}),
+		};
+		if (Object.keys(overlay).length > 0) overlays.set(model.id, overlay);
+		else overlays.delete(model.id);
+	}
+	return Object.fromEntries(overlays);
 }
 
 function connectionChanged(
@@ -255,17 +435,16 @@ function validateInput(input: DesktopProviderConfigInput, catalog: ModelCatalog 
 		throw invalidInput("Invalid Provider configuration");
 	}
 	const profileIds = new Set<string>();
-	const modelRefs = new Set<string>();
 	for (const profile of input.profiles) {
 		if (
 			!isRecord(profile) ||
 			typeof profile.id !== "string" ||
 			!profileIdPattern.test(profile.id) ||
+			(profile.previousId !== undefined &&
+				(typeof profile.previousId !== "string" || !profileIdPattern.test(profile.previousId))) ||
 			typeof profile.name !== "string" ||
 			!profile.name.trim() ||
 			(profile.adapter !== "anthropic" && profile.adapter !== "openai-compatible") ||
-			(profile.catalogProvider !== undefined &&
-				(typeof profile.catalogProvider !== "string" || !profile.catalogProvider.trim())) ||
 			typeof profile.baseURL !== "string" ||
 			(profile.authentication !== "api-key" && profile.authentication !== "none") ||
 			(profile.apiKey !== undefined && typeof profile.apiKey !== "string") ||
@@ -282,41 +461,31 @@ function validateInput(input: DesktopProviderConfigInput, catalog: ModelCatalog 
 		const modelIds = new Set<string>();
 		for (const model of profile.models) {
 			if (!isRecord(model)) throw invalidInput(`Invalid model in Provider profile "${profile.id}"`);
-			const source = model.source ?? "local";
+			const source = model.source;
 			if (
 				typeof model.id !== "string" ||
 				!model.id.trim() ||
-				(source !== "catalog" && model.id.includes("/")) ||
 				typeof model.name !== "string" ||
 				!model.name.trim() ||
 				typeof model.remoteModelId !== "string" ||
 				!model.remoteModelId.trim() ||
-				(source !== "local" && source !== "catalog") ||
+				(source !== "unverified" && source !== "catalog") ||
 				!isModelMetadataValid(model as unknown as DesktopProviderModel, profile.adapter)
 			) {
 				throw invalidInput(`Invalid model in Provider profile "${profile.id}"`);
 			}
-			if (
-				source === "catalog" &&
-				(!profile.catalogProvider ||
-					!catalog ||
-					!findCatalogModel(catalog, profile.catalogProvider, model.remoteModelId))
-			) {
+			if (source === "catalog" && (!catalog || !findCatalogModel(catalog, undefined, model.remoteModelId))) {
 				throw invalidInput(`Catalog model "${profile.id}/${model.id}" is unavailable`);
 			}
 			if (modelIds.has(model.id)) throw invalidInput(`Duplicate model "${profile.id}/${model.id}"`);
 			modelIds.add(model.id);
-			modelRefs.add(`${profile.id}/${model.id}`);
-		}
-	}
-	if (input.activeModelRef !== undefined) {
-		if (typeof input.activeModelRef !== "string" || !modelRefs.has(input.activeModelRef)) {
-			throw invalidInput("The selected model is not configured");
 		}
 	}
 }
 
 function isModelMetadataValid(model: DesktopProviderModel, adapter: DesktopProviderProfileInput["adapter"]): boolean {
+	if (typeof model.verified !== "boolean" || model.verified !== (model.source === "catalog")) return false;
+	if (typeof model.enabled !== "boolean") return false;
 	if (model.reasoning !== undefined && typeof model.reasoning !== "boolean") return false;
 	if (model.toolCall !== undefined && typeof model.toolCall !== "boolean") return false;
 	if (model.structuredOutput !== undefined && typeof model.structuredOutput !== "boolean") return false;
@@ -328,6 +497,7 @@ function isModelMetadataValid(model: DesktopProviderModel, adapter: DesktopProvi
 		(model.outputModalities !== undefined &&
 			(!Array.isArray(model.outputModalities) || model.outputModalities.some((value) => !isModality(value)))) ||
 		(model.contextWindow !== undefined && (!Number.isInteger(model.contextWindow) || model.contextWindow < 1)) ||
+		(model.inputLimit !== undefined && (!Number.isInteger(model.inputLimit) || model.inputLimit < 1)) ||
 		(model.maxTokens !== undefined && (!Number.isInteger(model.maxTokens) || model.maxTokens < 1))
 	) {
 		return false;
@@ -370,6 +540,15 @@ function maskCredential(value: string): string {
 
 function invalidInput(message: string) {
 	return providerConfigError("invalid_input", { message });
+}
+
+function safeDiscoveryErrorData(cause: unknown, adapter: string | undefined) {
+	const data = isRecord(cause) && isRecord(cause.data) ? cause.data : {};
+	return {
+		...(adapter ? { adapter } : {}),
+		...(typeof data.status === "number" ? { status: data.status } : {}),
+		...(typeof data.requestId === "string" ? { requestId: data.requestId } : {}),
+	};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -3,6 +3,7 @@ import {
 	type Model,
 	type ModelCompatibility,
 	type ModelCost,
+	type ModelDiscoveryOptions,
 	type ModelModality,
 	OpenAIProvider,
 	type Provider,
@@ -27,6 +28,10 @@ class ModelDisabled extends TaggedError("provider.model_disabled")<ProviderError
 class InvalidConnection extends TaggedError("provider.invalid_connection")<ProviderErrorInit> {}
 class MissingCredentials extends TaggedError("provider.missing_credentials")<ProviderErrorInit> {}
 class UnsupportedReasoningEffort extends TaggedError("provider.unsupported_reasoning_effort")<ProviderErrorInit> {}
+class ModelDiscoveryUnsupported extends TaggedError("provider.model_discovery_unsupported")<ProviderErrorInit> {}
+class ModelInventoryMissing extends TaggedError("provider.model_inventory_missing")<ProviderErrorInit> {}
+class ModelNotVerified extends TaggedError("provider.model_not_verified")<ProviderErrorInit> {}
+class ModelCapabilityUnsupported extends TaggedError("provider.model_capability_unsupported")<ProviderErrorInit> {}
 
 function providerError(
 	reason:
@@ -37,7 +42,11 @@ function providerError(
 		| "model_disabled"
 		| "invalid_connection"
 		| "missing_credentials"
-		| "unsupported_reasoning_effort",
+		| "unsupported_reasoning_effort"
+		| "model_discovery_unsupported"
+		| "model_inventory_missing"
+		| "model_not_verified"
+		| "model_capability_unsupported",
 	init: ProviderErrorInit,
 ) {
 	switch (reason) {
@@ -57,6 +66,14 @@ function providerError(
 			return new MissingCredentials(init);
 		case "unsupported_reasoning_effort":
 			return new UnsupportedReasoningEffort(init);
+		case "model_discovery_unsupported":
+			return new ModelDiscoveryUnsupported(init);
+		case "model_inventory_missing":
+			return new ModelInventoryMissing(init);
+		case "model_not_verified":
+			return new ModelNotVerified(init);
+		case "model_capability_unsupported":
+			return new ModelCapabilityUnsupported(init);
 	}
 }
 
@@ -163,6 +180,13 @@ export interface ResolvedCodingAgentRuntime {
 	readonly providerOptions?: Record<string, Record<string, unknown>>;
 }
 
+export interface ResolveConfiguredProviderOptions {
+	/** Endpoint model IDs from the last explicit user fetch. */
+	readonly availableModelIds?: readonly string[];
+	/** Require an endpoint inventory and verified Models.dev execution metadata. */
+	readonly requireVerifiedCapabilities?: boolean;
+}
+
 export const codingAgentConfigDefinition = defineCodingConfig({
 	schemaVersion: 1,
 	schemaUrl: "https://jai.dev/schemas/coding-settings-v1.json",
@@ -190,10 +214,39 @@ export const codingAgentConfigDefinition = defineCodingConfig({
 	migrations: [],
 });
 
+export async function discoverConfiguredModels(
+	settings: Readonly<CodingAgentSettings>,
+	profileId: string,
+	options?: ModelDiscoveryOptions,
+): Promise<readonly string[]> {
+	const profile = settings.providers[profileId];
+	if (!profile) {
+		throw providerError("profile_not_found", {
+			message: `Provider profile "${profileId}" is not configured`,
+			data: { profileId },
+		});
+	}
+	if (profile.enabled === false) {
+		throw providerError("profile_disabled", {
+			message: `Provider profile "${profileId}" is disabled`,
+			data: { profileId },
+		});
+	}
+	const provider = createProvider(profileId, resolveConnection(profileId, profile));
+	if (!provider.listModels) {
+		throw providerError("model_discovery_unsupported", {
+			message: `Provider profile "${profileId}" does not support model discovery`,
+			data: { profileId, adapter: provider.adapter ?? "unknown" },
+		});
+	}
+	return provider.listModels(options);
+}
+
 export function resolveConfiguredProvider(
 	settings: Readonly<CodingAgentSettings>,
 	modelRef = settings.agent?.model,
 	catalog?: ModelCatalog,
+	options: ResolveConfiguredProviderOptions = {},
 ): ResolvedCodingProvider {
 	if (!modelRef) {
 		throw providerError("invalid_model_ref", { message: "No default Agent model is configured" });
@@ -222,6 +275,18 @@ export function resolveConfiguredProvider(
 	}
 	const modelConfig = profile.models?.[modelId];
 	const remoteModelId = modelConfig?.remoteModelId ?? modelId;
+	if (options.requireVerifiedCapabilities && options.availableModelIds === undefined) {
+		throw providerError("model_inventory_missing", {
+			message: `Fetch models for Provider "${profileId}" before starting a Coding Agent`,
+			data: { profileId },
+		});
+	}
+	if (options.availableModelIds && !options.availableModelIds.includes(remoteModelId)) {
+		throw providerError("model_not_found", {
+			message: `Model "${modelRef}" is not in the last fetched Provider inventory`,
+			data: { modelRef, profileId },
+		});
+	}
 	const catalogModel = findCatalogModel(catalog, profile.catalogProvider, remoteModelId);
 	if (!modelConfig && !catalogModel) {
 		throw providerError("model_not_found", {
@@ -229,32 +294,57 @@ export function resolveConfiguredProvider(
 			data: { modelRef },
 		});
 	}
-	if (modelConfig?.enabled === false) {
+	if (modelConfig?.enabled !== true) {
 		throw providerError("model_disabled", {
 			message: `Model "${modelRef}" is disabled`,
 			data: { modelRef },
 		});
 	}
+	if (options.requireVerifiedCapabilities) {
+		if (!catalogModel) {
+			throw providerError("model_not_verified", {
+				message: `Model "${modelRef}" is not verified by Models.dev`,
+				data: { modelRef, profileId },
+			});
+		}
+		if (
+			!catalogModel.inputModalities?.includes("text") ||
+			!catalogModel.outputModalities?.includes("text") ||
+			catalogModel.toolCall !== true ||
+			catalogModel.contextWindow === undefined ||
+			catalogModel.maxTokens === undefined
+		) {
+			throw providerError("model_capability_unsupported", {
+				message: `Model "${modelRef}" requires verified text input/output, tools, context, and output limits`,
+				data: { modelRef, profileId },
+			});
+		}
+	}
 
 	const connection = resolveConnection(profileId, profile);
 	const provider = createProvider(profileId, connection);
-	const modalities = resolveModalities(modelConfig?.modalities, catalogModel);
+	const metadataOverlay = options.requireVerifiedCapabilities ? undefined : modelConfig;
+	const modalities = resolveModalities(metadataOverlay?.modalities, catalogModel);
+	const contextWindow = metadataOverlay?.contextWindow ?? catalogModel?.contextWindow ?? 128_000;
+	const maxTokens = metadataOverlay?.maxTokens ?? catalogModel?.maxTokens ?? 4_096;
 	const model: Model = {
 		id: modelId,
 		remoteModelId,
 		name: modelConfig?.name ?? catalogModel?.name ?? modelId,
 		api: connection.adapter === "anthropic" ? "anthropic-messages" : "openai-chat-completions",
 		provider: profileId,
-		reasoning: modelConfig?.reasoning ?? catalogModel?.reasoning ?? false,
-		input: modelConfig?.input ? [...modelConfig.input] : executableInput(modalities.input),
+		...(metadataOverlay?.reasoning === undefined && catalogModel?.reasoning === undefined
+			? {}
+			: { reasoning: metadataOverlay?.reasoning ?? catalogModel?.reasoning }),
+		input: metadataOverlay?.input ? [...metadataOverlay.input] : executableInput(modalities.input),
 		modalities,
 		capabilities: {
-			toolCall: modelConfig?.toolCall ?? catalogModel?.toolCall,
-			structuredOutput: modelConfig?.structuredOutput ?? catalogModel?.structuredOutput,
+			toolCall: metadataOverlay?.toolCall ?? catalogModel?.toolCall,
+			structuredOutput: metadataOverlay?.structuredOutput ?? catalogModel?.structuredOutput,
 		},
-		cost: resolveCost(modelConfig?.cost, catalogModel?.cost),
-		contextWindow: modelConfig?.contextWindow ?? catalogModel?.contextWindow ?? 128_000,
-		maxTokens: modelConfig?.maxTokens ?? catalogModel?.maxTokens ?? 4_096,
+		cost: resolveCost(metadataOverlay?.cost, catalogModel?.cost),
+		contextWindow,
+		maxTokens,
 		compatibility: resolveCompatibility(connection.adapter, modelConfig?.compatibility),
 	};
 	return { provider, model };
@@ -297,8 +387,8 @@ function resolveModalities(
 	catalogModel: ReturnType<typeof findCatalogModel>,
 ): { input: ModelModality[]; output: ModelModality[] } {
 	return {
-		input: overlay?.input ? [...overlay.input] : [...(catalogModel?.inputModalities ?? ["text"])],
-		output: overlay?.output ? [...overlay.output] : [...(catalogModel?.outputModalities ?? ["text"])],
+		input: overlay?.input ? [...overlay.input] : [...(catalogModel?.inputModalities ?? [])],
+		output: overlay?.output ? [...overlay.output] : [...(catalogModel?.outputModalities ?? [])],
 	};
 }
 
@@ -306,15 +396,23 @@ function executableInput(modalities: readonly ModelModality[]): ("text" | "image
 	const input = modalities.filter(
 		(modality): modality is "text" | "image" => modality === "text" || modality === "image",
 	);
-	return input.length > 0 ? input : ["text"];
+	return input;
 }
 
 function resolveCost(overlay: ModelOverlay["cost"] | undefined, catalogCost: ModelCatalogCost | undefined): ModelCost {
 	return {
-		input: overlay?.input ?? catalogCost?.input ?? 0,
-		output: overlay?.output ?? catalogCost?.output ?? 0,
-		cacheRead: overlay?.cacheRead ?? catalogCost?.cacheRead ?? 0,
-		cacheWrite: overlay?.cacheWrite ?? catalogCost?.cacheWrite ?? 0,
+		...(overlay?.input === undefined && catalogCost?.input === undefined
+			? {}
+			: { input: overlay?.input ?? catalogCost?.input }),
+		...(overlay?.output === undefined && catalogCost?.output === undefined
+			? {}
+			: { output: overlay?.output ?? catalogCost?.output }),
+		...(overlay?.cacheRead === undefined && catalogCost?.cacheRead === undefined
+			? {}
+			: { cacheRead: overlay?.cacheRead ?? catalogCost?.cacheRead }),
+		...(overlay?.cacheWrite === undefined && catalogCost?.cacheWrite === undefined
+			? {}
+			: { cacheWrite: overlay?.cacheWrite ?? catalogCost?.cacheWrite }),
 		...(overlay?.reasoning === undefined && catalogCost?.reasoning === undefined
 			? {}
 			: { reasoning: overlay?.reasoning ?? catalogCost?.reasoning }),
@@ -406,12 +504,14 @@ function createProvider(profileId: string, connection: ResolvedConnection): Prov
 				apiKey,
 				baseURL: connection.baseURL,
 				headers: connection.headers,
+				authentication: connection.auth === "none" ? "none" : "x-api-key",
 			})
 		: new OpenAIProvider({
 				id: profileId,
 				apiKey,
 				baseURL: connection.baseURL,
 				headers: connection.headers,
+				authentication: connection.auth === "none" ? "none" : "bearer",
 			});
 }
 

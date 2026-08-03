@@ -2,12 +2,13 @@ import type { CodingSession } from "@jai/coding/business";
 import type { PermissionResolution } from "@jai/coding/permissions/approval";
 import { type CSSProperties, type RefObject, useLayoutEffect, useRef, useState } from "react";
 import { useIcons } from "@/lib/icon-context";
-import type {
-	DesktopAgentStatus,
-	DesktopPermissionItem,
-	DesktopProviderConfigSnapshot,
-	DesktopTranscriptItem,
-	DesktopWorkspace,
+import {
+	type DesktopAgentStatus,
+	type DesktopPermissionItem,
+	type DesktopProviderConfigSnapshot,
+	type DesktopTranscriptItem,
+	type DesktopWorkspace,
+	isDesktopProviderModelRunnable,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { InputMessage, type QueuedMessage } from "../../ui/input-message";
@@ -24,10 +25,9 @@ interface ChatColumnProps {
 	loading: boolean;
 	error?: string;
 	providerConfig?: DesktopProviderConfigSnapshot;
+	selectedModelRef: string;
 	providerLoading: boolean;
 	providerError: boolean;
-	modelSwitching: boolean;
-	modelSwitchError?: string;
 	workspaceBusy: boolean;
 	workspaceLoading: boolean;
 	workspaceLoadError: boolean;
@@ -37,7 +37,7 @@ interface ChatColumnProps {
 	onToggleSidebar(): void;
 	onToggleRightPanel(): void;
 	onOpenProviderSettings(): void;
-	onSelectProviderModel(modelRef: string): Promise<void>;
+	onSelectProviderModel(modelRef: string): void;
 	onChooseWorkspace(workspace: DesktopWorkspace): Promise<void>;
 	onAddWorkspace(): Promise<void>;
 	onRetryWorkspaces(): void;
@@ -55,10 +55,9 @@ export function ChatColumn({
 	loading,
 	error,
 	providerConfig,
+	selectedModelRef,
 	providerLoading,
 	providerError,
-	modelSwitching,
-	modelSwitchError,
 	workspaceBusy,
 	workspaceLoading,
 	workspaceLoadError,
@@ -200,14 +199,14 @@ export function ChatColumn({
 							onAddWorkspace={onAddWorkspace}
 							onRetryWorkspaces={onRetryWorkspaces}
 							providerConfig={providerConfig}
+							selectedModelRef={selectedModelRef}
 							providerLoading={providerLoading}
 							providerError={providerError}
-							modelSwitching={modelSwitching}
 							onOpenProviderSettings={onOpenProviderSettings}
 							onSelectProviderModel={onSelectProviderModel}
 							large
 						/>
-						<ComposerError message={sendError || modelSwitchError || workspaceError || error} />
+						<ComposerError message={sendError || workspaceError || error} />
 					</div>
 				</div>
 			) : (
@@ -258,13 +257,13 @@ export function ChatColumn({
 								onAddWorkspace={onAddWorkspace}
 								onRetryWorkspaces={onRetryWorkspaces}
 								providerConfig={providerConfig}
+								selectedModelRef={selectedModelRef}
 								providerLoading={providerLoading}
 								providerError={providerError}
-								modelSwitching={modelSwitching}
 								onOpenProviderSettings={onOpenProviderSettings}
 								onSelectProviderModel={onSelectProviderModel}
 							/>
-							<ComposerError message={sendError || modelSwitchError || workspaceError || error} />
+							<ComposerError message={sendError || workspaceError || error} />
 						</div>
 					</div>
 					<p className="shrink-0 py-2 pb-3 text-center text-[12.5px] text-muted-foreground">
@@ -294,9 +293,9 @@ function Composer({
 	onAddWorkspace,
 	onRetryWorkspaces,
 	providerConfig,
+	selectedModelRef,
 	providerLoading,
 	providerError,
-	modelSwitching,
 	onOpenProviderSettings,
 	onSelectProviderModel,
 	large = false,
@@ -318,16 +317,16 @@ function Composer({
 	onAddWorkspace(): Promise<void>;
 	onRetryWorkspaces(): void;
 	providerConfig?: DesktopProviderConfigSnapshot;
+	selectedModelRef: string;
 	providerLoading: boolean;
 	providerError: boolean;
-	modelSwitching: boolean;
 	onOpenProviderSettings(): void;
-	onSelectProviderModel(modelRef: string): Promise<void>;
+	onSelectProviderModel(modelRef: string): void;
 	large?: boolean;
 }) {
 	const icons = useIcons();
 	const PlusIcon = icons.plus;
-	const modelStatus = resolveModelStatus(providerConfig, providerLoading, providerError);
+	const modelStatus = resolveModelStatus(providerConfig, selectedModelRef, providerLoading, providerError);
 
 	return (
 		<div>
@@ -361,8 +360,9 @@ function Composer({
 					<div className="hidden min-[900px]:block">
 						<ModelSelector
 							config={providerConfig}
+							selectedModelRef={selectedModelRef}
 							status={modelStatus}
-							disabled={status === "running" || providerLoading || modelSwitching}
+							disabled={status === "running" || providerLoading}
 							onSelect={onSelectProviderModel}
 							onManage={onOpenProviderSettings}
 						/>
@@ -576,35 +576,39 @@ const MANAGE_MODELS_VALUE = "__manage-models__";
 
 function ModelSelector({
 	config,
+	selectedModelRef,
 	status,
 	disabled,
 	onSelect,
 	onManage,
 }: {
 	config?: DesktopProviderConfigSnapshot;
+	selectedModelRef: string;
 	status: { readonly label: string; readonly title: string };
 	disabled: boolean;
-	onSelect(modelRef: string): Promise<void>;
+	onSelect(modelRef: string): void;
 	onManage(): void;
 }) {
 	const models =
 		config?.profiles.flatMap((profile) =>
-			profile.models.map((model) => ({
-				ref: `${profile.id}/${model.id}`,
-				label: `${profile.name} · ${model.name}`,
-			})),
+			profile.models
+				.filter((model) => model.enabled && isDesktopProviderModelRunnable(model))
+				.map((model) => ({
+					ref: `${profile.id}/${model.id}`,
+					label: `${profile.name} · ${model.name}`,
+				})),
 		) ?? [];
 
 	return (
 		<Select
-			value={config?.activeModelRef ?? ""}
+			value={selectedModelRef}
 			disabled={disabled}
 			onValueChange={(value) => {
 				if (value === MANAGE_MODELS_VALUE) {
 					onManage();
 					return;
 				}
-				void onSelect(value);
+				onSelect(value);
 			}}
 		>
 			<SelectTrigger
@@ -633,17 +637,17 @@ function ModelSelector({
 
 function resolveModelStatus(
 	config: DesktopProviderConfigSnapshot | undefined,
+	modelRef: string,
 	loading: boolean,
 	error: boolean,
 ): { readonly label: string; readonly title: string; readonly configured: boolean } {
 	if (loading) return { label: "Loading model…", title: "Loading Provider configuration", configured: false };
 	if (error) return { label: "Model unavailable", title: "Open Provider settings to retry", configured: false };
-	const modelRef = config?.activeModelRef;
 	if (!modelRef) return { label: "Choose model", title: "Configure a Provider and model", configured: false };
 	const separator = modelRef.indexOf("/");
 	const profileId = modelRef.slice(0, separator);
 	const modelId = modelRef.slice(separator + 1);
-	const profile = config.profiles.find((candidate) => candidate.id === profileId);
+	const profile = config?.profiles.find((candidate) => candidate.id === profileId);
 	const model = profile?.models.find((candidate) => candidate.id === modelId);
 	const credentialReady = profile?.authentication === "none" || profile?.credentialConfigured === true;
 	return {

@@ -3,6 +3,7 @@ import type { StreamOptions } from "../src/provider";
 import type { AssistantMessageEvent, Context, Model } from "../src/types";
 
 let streamChunks: unknown[] = [];
+let listedModels: unknown[] = [];
 let capturedParams: any;
 let throwError: Error | undefined;
 
@@ -21,6 +22,12 @@ mock.module("openai", () => ({
 				},
 			},
 		};
+		models = {
+			list: async () => {
+				if (throwError) throw throwError;
+				return { data: listedModels };
+			},
+		};
 	},
 }));
 
@@ -32,6 +39,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
 	streamChunks = [];
+	listedModels = [];
 	capturedParams = undefined;
 	throwError = undefined;
 });
@@ -78,6 +86,24 @@ const chunk = (delta: unknown, finish: string | null = null, usage?: unknown) =>
 });
 
 describe("OpenAIProvider · 出向翻译", () => {
+	it("枚举 endpoint 模型 ID 并去重排序", async () => {
+		listedModels = [{ id: "gpt-5" }, { id: "gpt-4.1" }, { id: "gpt-5" }];
+
+		const provider = new OpenAIProvider({ apiKey: "test" });
+
+		expect(await provider.listModels()).toEqual(["gpt-4.1", "gpt-5"]);
+	});
+
+	it("将 endpoint 枚举错误投影为安全领域错误", async () => {
+		throwError = Object.assign(new Error("unauthorized"), { status: 401, requestID: "req-123" });
+		const provider = new OpenAIProvider({ apiKey: "test" });
+
+		await expect(provider.listModels()).rejects.toMatchObject({
+			_tag: "ai_provider.model_discovery_failed",
+			data: { adapter: "openai-compatible", status: 401, requestId: "req-123" },
+		});
+	});
+
 	it("translates a text + tool_call stream into unified events", async () => {
 		streamChunks = [
 			chunk({ content: "Hi" }),

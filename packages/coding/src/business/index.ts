@@ -13,6 +13,7 @@ export type {
 	CreateSessionInput,
 	CreateWorkspaceInput,
 	MoveSessionInput,
+	ProviderModelInventory,
 	SessionListCursor,
 	SessionListPage,
 	SessionTitleSource,

@@ -9,9 +9,16 @@ import {
 	workspacePathConflictError,
 } from "./errors";
 import type { CodingBusinessRepository, CreateSessionRecord, CreateWorkspaceRecord } from "./repository";
-import type { CodingSession, SessionListCursor, SessionListPage, SessionWorkspaceHistory, Workspace } from "./types";
+import type {
+	CodingSession,
+	ProviderModelInventory,
+	SessionListCursor,
+	SessionListPage,
+	SessionWorkspaceHistory,
+	Workspace,
+} from "./types";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 export class SqliteCodingBusinessRepository implements CodingBusinessRepository {
 	readonly #database: DatabaseSync;
@@ -217,6 +224,43 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 			.map((row) => mapWorkspaceHistory(row));
 	}
 
+	getProviderModelInventory(profileId: string): ProviderModelInventory | undefined {
+		return mapProviderModelInventory(
+			this.#database
+				.prepare(
+					`SELECT profile_id, model_ids_json, fetched_at
+					 FROM provider_model_inventory
+					 WHERE profile_id = ?`,
+				)
+				.get(profileId),
+		);
+	}
+
+	replaceProviderModelInventory(record: ProviderModelInventory): ProviderModelInventory {
+		const modelIds = uniqueModelIds(record.modelIds);
+		this.#database
+			.prepare(
+				`INSERT INTO provider_model_inventory (profile_id, model_ids_json, fetched_at)
+				 VALUES (?, ?, ?)
+				 ON CONFLICT(profile_id) DO UPDATE SET
+				 	model_ids_json = excluded.model_ids_json,
+				 	fetched_at = excluded.fetched_at`,
+			)
+			.run(record.profileId, JSON.stringify(modelIds), record.fetchedAt);
+		return this.getProviderModelInventory(record.profileId)!;
+	}
+
+	deleteProviderModelInventory(profileId: string): void {
+		this.#database.prepare("DELETE FROM provider_model_inventory WHERE profile_id = ?").run(profileId);
+	}
+
+	renameProviderModelInventory(fromProfileId: string, toProfileId: string): void {
+		if (fromProfileId === toProfileId) return;
+		this.#database
+			.prepare("UPDATE provider_model_inventory SET profile_id = ? WHERE profile_id = ?")
+			.run(toProfileId, fromProfileId);
+	}
+
 	close(): void {
 		this.#database.close();
 	}
@@ -234,7 +278,8 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 		if (version === SCHEMA_VERSION) return;
 
 		this.#transaction(() => {
-			this.#database.exec(`
+			if (version === 0) {
+				this.#database.exec(`
 				CREATE TABLE workspaces (
 					id TEXT PRIMARY KEY,
 					display_name TEXT NOT NULL,
@@ -268,8 +313,25 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 					ON sessions(last_activity_at DESC, id DESC);
 				CREATE INDEX sessions_workspace
 					ON sessions(workspace_id, last_activity_at DESC, id DESC);
+				CREATE TABLE provider_model_inventory (
+					profile_id TEXT PRIMARY KEY,
+					model_ids_json TEXT NOT NULL,
+					fetched_at INTEGER NOT NULL
+				);
 				PRAGMA user_version = ${SCHEMA_VERSION};
 			`);
+				return;
+			}
+			if (version === 1) {
+				this.#database.exec(`
+					CREATE TABLE provider_model_inventory (
+						profile_id TEXT PRIMARY KEY,
+						model_ids_json TEXT NOT NULL,
+						fetched_at INTEGER NOT NULL
+					);
+					PRAGMA user_version = ${SCHEMA_VERSION};
+				`);
+			}
 		});
 	}
 
@@ -351,6 +413,32 @@ function mapWorkspaceHistory(value: unknown): SessionWorkspaceHistory {
 		toWorkspaceId: nullableStringColumn(value, "to_workspace_id"),
 		movedAt: numberColumn(value, "moved_at"),
 	};
+}
+
+function mapProviderModelInventory(value: unknown): ProviderModelInventory | undefined {
+	if (value === undefined) return undefined;
+	if (!isRow(value)) throw databaseInvalidError("Invalid provider model inventory row");
+	const rawModelIds = stringColumn(value, "model_ids_json");
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(rawModelIds);
+	} catch {
+		throw databaseInvalidError("Invalid provider model inventory JSON");
+	}
+	if (!Array.isArray(parsed) || parsed.some((modelId) => typeof modelId !== "string")) {
+		throw databaseInvalidError("Invalid provider model inventory model IDs");
+	}
+	return {
+		profileId: stringColumn(value, "profile_id"),
+		modelIds: uniqueModelIds(parsed),
+		fetchedAt: numberColumn(value, "fetched_at"),
+	};
+}
+
+function uniqueModelIds(values: readonly string[]): string[] {
+	return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((left, right) =>
+		left.localeCompare(right),
+	);
 }
 
 function isRow(value: unknown): value is Record<string, unknown> {

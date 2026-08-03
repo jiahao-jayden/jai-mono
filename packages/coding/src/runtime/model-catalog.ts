@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { TaggedError } from "better-result";
+import { findDefaultProviderVendor } from "./default-provider-vendors";
 
 const CATALOG_URL = "https://models.dev/catalog.json";
 export const MODEL_CATALOG_FRESHNESS_MS = 48 * 60 * 60 * 1_000;
@@ -11,24 +12,36 @@ export const MODEL_CATALOG_FRESHNESS_MS = 48 * 60 * 60 * 1_000;
 export type ModelCatalogModality = "text" | "image" | "audio" | "video" | "pdf";
 
 export interface ModelCatalogCost {
-	readonly input: number;
-	readonly output: number;
-	readonly cacheRead: number;
-	readonly cacheWrite: number;
+	readonly input?: number;
+	readonly output?: number;
+	readonly cacheRead?: number;
+	readonly cacheWrite?: number;
 	readonly reasoning?: number;
 }
 
 export interface ModelCatalogModel {
 	readonly id: string;
 	readonly name: string;
-	readonly reasoning: boolean;
-	readonly toolCall: boolean;
-	readonly structuredOutput: boolean;
-	readonly inputModalities: readonly ModelCatalogModality[];
-	readonly outputModalities: readonly ModelCatalogModality[];
-	readonly cost: ModelCatalogCost;
-	readonly contextWindow: number;
-	readonly maxTokens: number;
+	readonly description?: string;
+	readonly family?: string;
+	readonly status?: string;
+	readonly releaseDate?: string;
+	readonly lastUpdated?: string;
+	readonly knowledge?: string;
+	readonly openWeights?: boolean;
+	readonly attachment?: boolean;
+	readonly reasoning?: boolean;
+	readonly reasoningOptions?: readonly string[];
+	readonly temperature?: boolean;
+	readonly interleaved?: true | { readonly field: "reasoning" | "reasoning_content" | "reasoning_details" };
+	readonly toolCall?: boolean;
+	readonly structuredOutput?: boolean;
+	readonly inputModalities?: readonly ModelCatalogModality[];
+	readonly outputModalities?: readonly ModelCatalogModality[];
+	readonly cost?: ModelCatalogCost;
+	readonly contextWindow?: number;
+	readonly inputLimit?: number;
+	readonly maxTokens?: number;
 }
 
 export interface ModelCatalogProvider {
@@ -39,6 +52,11 @@ export interface ModelCatalogProvider {
 
 export interface ModelCatalog {
 	readonly providers: Readonly<Record<string, ModelCatalogProvider>>;
+}
+
+export interface ModelCatalogMatch {
+	readonly providerId: string;
+	readonly model: ModelCatalogModel;
 }
 
 export interface CachedModelCatalog {
@@ -90,10 +108,10 @@ const modalitySchema = Type.Union([
 
 const modelCostSchema = Type.Object(
 	{
-		input: Type.Number(),
-		output: Type.Number(),
-		cacheRead: Type.Number(),
-		cacheWrite: Type.Number(),
+		input: Type.Optional(Type.Number()),
+		output: Type.Optional(Type.Number()),
+		cacheRead: Type.Optional(Type.Number()),
+		cacheWrite: Type.Optional(Type.Number()),
 		reasoning: Type.Optional(Type.Number()),
 	},
 	{ additionalProperties: false },
@@ -103,14 +121,40 @@ const catalogModelSchema = Type.Object(
 	{
 		id: Type.String({ minLength: 1 }),
 		name: Type.String({ minLength: 1 }),
-		reasoning: Type.Boolean(),
-		toolCall: Type.Boolean(),
-		structuredOutput: Type.Boolean(),
-		inputModalities: Type.Array(modalitySchema),
-		outputModalities: Type.Array(modalitySchema),
-		cost: modelCostSchema,
-		contextWindow: Type.Integer({ minimum: 1 }),
-		maxTokens: Type.Integer({ minimum: 1 }),
+		description: Type.Optional(Type.String({ minLength: 1 })),
+		family: Type.Optional(Type.String({ minLength: 1 })),
+		status: Type.Optional(Type.String({ minLength: 1 })),
+		releaseDate: Type.Optional(Type.String({ minLength: 1 })),
+		lastUpdated: Type.Optional(Type.String({ minLength: 1 })),
+		knowledge: Type.Optional(Type.String({ minLength: 1 })),
+		openWeights: Type.Optional(Type.Boolean()),
+		attachment: Type.Optional(Type.Boolean()),
+		reasoning: Type.Optional(Type.Boolean()),
+		reasoningOptions: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+		temperature: Type.Optional(Type.Boolean()),
+		interleaved: Type.Optional(
+			Type.Union([
+				Type.Literal(true),
+				Type.Object(
+					{
+						field: Type.Union([
+							Type.Literal("reasoning"),
+							Type.Literal("reasoning_content"),
+							Type.Literal("reasoning_details"),
+						]),
+					},
+					{ additionalProperties: false },
+				),
+			]),
+		),
+		toolCall: Type.Optional(Type.Boolean()),
+		structuredOutput: Type.Optional(Type.Boolean()),
+		inputModalities: Type.Optional(Type.Array(modalitySchema)),
+		outputModalities: Type.Optional(Type.Array(modalitySchema)),
+		cost: Type.Optional(modelCostSchema),
+		contextWindow: Type.Optional(Type.Integer({ minimum: 1 })),
+		inputLimit: Type.Optional(Type.Integer({ minimum: 1 })),
+		maxTokens: Type.Optional(Type.Integer({ minimum: 1 })),
 	},
 	{ additionalProperties: false },
 );
@@ -159,9 +203,34 @@ const externalCatalogEnvelopeSchema = Type.Object(
 const externalModelSchema = Type.Object(
 	{
 		name: Type.Optional(Type.String({ minLength: 1 })),
+		description: Type.Optional(Type.String({ minLength: 1 })),
+		family: Type.Optional(Type.String({ minLength: 1 })),
+		status: Type.Optional(Type.String({ minLength: 1 })),
+		release_date: Type.Optional(Type.String({ minLength: 1 })),
+		last_updated: Type.Optional(Type.String({ minLength: 1 })),
+		knowledge: Type.Optional(Type.String({ minLength: 1 })),
+		open_weights: Type.Optional(Type.Boolean()),
+		attachment: Type.Optional(Type.Boolean()),
 		reasoning: Type.Optional(Type.Boolean()),
+		reasoning_options: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+		temperature: Type.Optional(Type.Boolean()),
 		tool_call: Type.Optional(Type.Boolean()),
 		structured_output: Type.Optional(Type.Boolean()),
+		interleaved: Type.Optional(
+			Type.Union([
+				Type.Literal(true),
+				Type.Object(
+					{
+						field: Type.Union([
+							Type.Literal("reasoning"),
+							Type.Literal("reasoning_content"),
+							Type.Literal("reasoning_details"),
+						]),
+					},
+					{ additionalProperties: true },
+				),
+			]),
+		),
 		modalities: Type.Optional(
 			Type.Object(
 				{
@@ -187,6 +256,7 @@ const externalModelSchema = Type.Object(
 			Type.Object(
 				{
 					context: Type.Optional(Type.Integer({ minimum: 1 })),
+					input: Type.Optional(Type.Integer({ minimum: 1 })),
 					output: Type.Optional(Type.Integer({ minimum: 1 })),
 				},
 				{ additionalProperties: true },
@@ -356,31 +426,74 @@ export function findCatalogModel(
 	providerId: string | undefined,
 	modelId: string,
 ): ModelCatalogModel | undefined {
-	if (!catalog || !providerId) return undefined;
-	return catalog.providers[providerId]?.models[modelId];
+	return findCatalogModelMatch(catalog, providerId, modelId)?.model;
+}
+
+/**
+ * An explicit endpoint mapping wins. Well-known model families then resolve
+ * to their first-party Models.dev vendor; all other IDs need a unique catalog
+ * entry so proxy-gateway metadata is never selected arbitrarily.
+ */
+export function findCatalogModelMatch(
+	catalog: ModelCatalog | undefined,
+	preferredProviderId: string | undefined,
+	modelId: string,
+): ModelCatalogMatch | undefined {
+	if (!catalog) return undefined;
+	const preferredModel = preferredProviderId ? catalog.providers[preferredProviderId]?.models[modelId] : undefined;
+	if (preferredProviderId && preferredModel) return { providerId: preferredProviderId, model: preferredModel };
+
+	const defaultVendor = findDefaultProviderVendor(modelId);
+	const defaultModel = defaultVendor ? catalog.providers[defaultVendor.catalogProvider]?.models[modelId] : undefined;
+	if (defaultVendor && defaultModel) return { providerId: defaultVendor.catalogProvider, model: defaultModel };
+
+	const matches = Object.entries(catalog.providers).flatMap(([providerId, provider]) => {
+		const model = provider.models[modelId];
+		return model ? [{ providerId, model }] : [];
+	});
+	return matches.length === 1 ? matches[0] : undefined;
 }
 
 function normalizeModel(id: string, value: ExternalCatalogModel): ModelCatalogModel {
 	const inputModalities = normalizeModalities(value.modalities?.input);
 	const outputModalities = normalizeModalities(value.modalities?.output);
+	const cost = normalizeCost(value.cost);
 	return {
 		id,
 		name: value.name ?? id,
-		reasoning: value.reasoning ?? false,
-		toolCall: value.tool_call ?? false,
-		structuredOutput: value.structured_output ?? false,
-		inputModalities: inputModalities.length > 0 ? inputModalities : ["text"],
-		outputModalities: outputModalities.length > 0 ? outputModalities : ["text"],
-		cost: {
-			input: value.cost?.input ?? 0,
-			output: value.cost?.output ?? 0,
-			cacheRead: value.cost?.cache_read ?? 0,
-			cacheWrite: value.cost?.cache_write ?? 0,
-			...(value.cost?.reasoning === undefined ? {} : { reasoning: value.cost.reasoning }),
-		},
-		contextWindow: value.limit?.context ?? 128_000,
-		maxTokens: value.limit?.output ?? 4_096,
+		...(value.description ? { description: value.description } : {}),
+		...(value.family ? { family: value.family } : {}),
+		...(value.status ? { status: value.status } : {}),
+		...(value.release_date ? { releaseDate: value.release_date } : {}),
+		...(value.last_updated ? { lastUpdated: value.last_updated } : {}),
+		...(value.knowledge ? { knowledge: value.knowledge } : {}),
+		...(value.open_weights === undefined ? {} : { openWeights: value.open_weights }),
+		...(value.attachment === undefined ? {} : { attachment: value.attachment }),
+		...(value.reasoning === undefined ? {} : { reasoning: value.reasoning }),
+		...(value.reasoning_options ? { reasoningOptions: [...new Set(value.reasoning_options)] } : {}),
+		...(value.temperature === undefined ? {} : { temperature: value.temperature }),
+		...(value.interleaved === undefined ? {} : { interleaved: value.interleaved }),
+		...(value.tool_call === undefined ? {} : { toolCall: value.tool_call }),
+		...(value.structured_output === undefined ? {} : { structuredOutput: value.structured_output }),
+		...(inputModalities.length > 0 ? { inputModalities } : {}),
+		...(outputModalities.length > 0 ? { outputModalities } : {}),
+		...(cost ? { cost } : {}),
+		...(value.limit?.context === undefined ? {} : { contextWindow: value.limit.context }),
+		...(value.limit?.input === undefined ? {} : { inputLimit: value.limit.input }),
+		...(value.limit?.output === undefined ? {} : { maxTokens: value.limit.output }),
 	};
+}
+
+function normalizeCost(value: ExternalCatalogModel["cost"]): ModelCatalogCost | undefined {
+	if (!value) return undefined;
+	const cost = {
+		...(value.input === undefined ? {} : { input: value.input }),
+		...(value.output === undefined ? {} : { output: value.output }),
+		...(value.cache_read === undefined ? {} : { cacheRead: value.cache_read }),
+		...(value.cache_write === undefined ? {} : { cacheWrite: value.cache_write }),
+		...(value.reasoning === undefined ? {} : { reasoning: value.reasoning }),
+	};
+	return Object.keys(cost).length > 0 ? cost : undefined;
 }
 
 function normalizeModalities(values: readonly string[] | undefined): ModelCatalogModality[] {

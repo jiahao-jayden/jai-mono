@@ -119,6 +119,25 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
+	test("空闲会话切换运行时模型时重建 Agent", async () => {
+		const modelRefs: string[] = [];
+		const agents: FakeAgent[] = [];
+		const host = new DesktopAgentHost(() => {}, async ({ modelRef }) => {
+			modelRefs.push(modelRef);
+			const agent = new FakeAgent(async () => []);
+			agents.push(agent);
+			return agent;
+		});
+
+		await host.send(input("first", "provider/model-a"));
+		await agents[0]?.finished;
+		await host.send(input("second", "provider/model-b"));
+		await agents[1]?.finished;
+
+		expect(modelRefs).toEqual(["provider/model-a", "provider/model-b"]);
+		host.close();
+	});
+
 	test("配置失效时立即关闭空闲 runtime，并在运行结束后关闭忙碌 runtime", async () => {
 		let finishRun = (_messages: AgentMessage[]) => {};
 		const pendingRun = new Promise<AgentMessage[]>((resolve) => {
@@ -289,8 +308,8 @@ class RebindableFakeAgent implements HostedCodingAgent {
 	}
 }
 
-function input(message: string) {
-	return { sessionId: "session-1", message };
+function input(message: string, modelRef = "provider/model") {
+	return { sessionId: "session-1", message, modelRef };
 }
 
 function userMessage(content: string): AgentMessage {

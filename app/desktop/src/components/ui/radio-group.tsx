@@ -209,7 +209,7 @@ const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
         <AnimatePresence>
           {focusRect && (
             <motion.div
-              className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]`}
+              className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-(--focus-ring,#6B97FF)`}
               initial={false}
               animate={{
                 left: focusRect.left - 2,
@@ -280,10 +280,11 @@ interface RadioItemProps extends HTMLAttributes<HTMLDivElement> {
   selected?: boolean;
   onSelect?: () => void;
   value?: string;
+  disabled?: boolean;
 }
 
 const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
-  ({ label, index, selected, onSelect, value, className, ...props }, ref) => {
+  ({ label, index, selected, onSelect, value, disabled = false, className, children, ...props }, ref) => {
     const internalRef = useRef<HTMLDivElement>(null);
     const hasMounted = useRef(false);
     const {
@@ -312,7 +313,9 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
         ? selectedValue === value
         : selected ?? selectedIndex === index;
 
-    const handleSelect = () => {
+    const handleSelect = (target?: EventTarget | null) => {
+      if (disabled) return;
+      if (target instanceof Element && target.closest("details, summary")) return;
       if (value !== undefined) {
         onValueChange?.(value);
       }
@@ -327,13 +330,15 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
           else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
         }}
         data-proximity-index={index}
+        data-disabled={disabled || undefined}
         // Roving tabindex: selected item is the tab stop; with no selection the
         // first item takes it so the group stays keyboard-reachable.
-        tabIndex={isSelected ? 0 : !hasSelection && index === 0 ? 0 : -1}
+        tabIndex={disabled ? -1 : isSelected ? 0 : !hasSelection && index === 0 ? 0 : -1}
         role="radio"
         aria-checked={isSelected}
+        aria-disabled={disabled}
         aria-label={label}
-        onClick={handleSelect}
+        onClick={(event) => handleSelect(event.target)}
         onMouseDown={(e) => {
           // Clicking the 15px radio circle would natively focus the hidden
           // primitive (nearest focusable ancestor of the click target), after
@@ -342,16 +347,16 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
           // move (click still fires) and land focus on the row instead. Skip
           // genuinely interactive children so we don't hijack their focus.
           const interactive = (e.target as HTMLElement).closest(
-            'button:not([tabindex="-1"]), a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            'button:not([tabindex="-1"]), a[href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])'
           );
           if (interactive && interactive !== e.currentTarget) return;
           e.preventDefault();
           e.currentTarget.focus();
         }}
         onKeyDown={(e) => {
-          if (e.key === " " || e.key === "Enter") {
+          if (!disabled && (e.key === " " || e.key === "Enter")) {
             e.preventDefault();
-            handleSelect();
+            handleSelect(e.target);
           }
         }}
         className={cn(
@@ -363,7 +368,7 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
         {...props}
       >
         {/* Radio circle */}
-        <div className="relative w-[15px] h-[15px] shrink-0">
+        <div className="relative h-3.75 w-3.75 shrink-0">
           {/* Border */}
           <div
             className={cn(
@@ -388,7 +393,7 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
                 exit={{ opacity: 0, scale: 0.3, transition: { duration: 0.04 } }}
                 transition={spring.fast}
               >
-                <div className="w-[8px] h-[8px] rounded-full bg-foreground" />
+                <div className="h-2 w-2 rounded-full bg-foreground" />
               </motion.div>
             )}
           </AnimatePresence>
@@ -397,30 +402,32 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
         {/* Label */}
         {/* Both stacked spans carry the text-box trim so the invisible bold
             sizer and the visible label keep identical boxes. */}
-        <span className="inline-grid text-[13px]">
-          <span
-            className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
-            style={{ fontVariationSettings: fontWeights.semibold }}
-            aria-hidden="true"
-          >
-            {label}
+        {children ?? (
+          <span className="inline-grid text-[13px]">
+            <span
+              className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
+              style={{ fontVariationSettings: fontWeights.semibold }}
+              aria-hidden="true"
+            >
+              {label}
+            </span>
+            <span
+              className={cn(
+                "col-start-1 row-start-1 transition-[color,font-variation-settings] duration-80 [text-box:trim-both_cap_alphabetic]",
+                isSelected || isActive
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              )}
+              style={{
+                fontVariationSettings: isSelected
+                  ? fontWeights.semibold
+                  : fontWeights.normal,
+              }}
+            >
+              {label}
+            </span>
           </span>
-          <span
-            className={cn(
-              "col-start-1 row-start-1 transition-[color,font-variation-settings] duration-80 [text-box:trim-both_cap_alphabetic]",
-              isSelected || isActive
-                ? "text-foreground"
-                : "text-muted-foreground"
-            )}
-            style={{
-              fontVariationSettings: isSelected
-                ? fontWeights.semibold
-                : fontWeights.normal,
-            }}
-          >
-            {label}
-          </span>
-        </span>
+        )}
 
         {/* Hidden Base UI Radio input for accessibility */}
         {value !== undefined && (

@@ -98,10 +98,10 @@ export type ModelInput = "text" | "image";
 export type ModelModality = ModelInput | "audio" | "video" | "pdf";
 
 export interface ModelCost {
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
+	input?: number;
+	output?: number;
+	cacheRead?: number;
+	cacheWrite?: number;
 	reasoning?: number;
 }
 
@@ -138,7 +138,7 @@ export interface Model<TApi extends Api = Api> {
 	provider: ProviderId;
 	/** @deprecated The provider connection owns its base URL. */
 	baseUrl?: string;
-	reasoning: boolean;
+	reasoning?: boolean;
 	input: ModelInput[];
 	modalities?: ModelModalities;
 	capabilities?: ModelCapabilities;

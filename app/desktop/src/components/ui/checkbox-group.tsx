@@ -201,7 +201,7 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
           <AnimatePresence>
             {focusRect && (
               <motion.div
-                className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]`}
+                className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-(--focus-ring,#6B97FF)`}
                 initial={false}
                 animate={{
                   left: focusRect.left - 2,
@@ -231,11 +231,12 @@ interface CheckboxItemProps extends HTMLAttributes<HTMLDivElement> {
   label: string;
   index: number;
   checked: boolean;
+  disabled?: boolean;
   onToggle: () => void;
 }
 
 const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
-  ({ label, index, checked, onToggle, className, ...props }, ref) => {
+  ({ label, index, checked, disabled = false, onToggle, className, children, ...props }, ref) => {
     const internalRef = useRef<HTMLDivElement>(null);
     const hasMounted = useRef(false);
     const { registerItem, activeIndex } = useCheckboxGroup();
@@ -261,11 +262,15 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
           else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
         }}
         data-proximity-index={index}
-        tabIndex={0}
+        tabIndex={disabled ? -1 : 0}
         role="checkbox"
         aria-checked={checked}
+        aria-disabled={disabled}
         aria-label={label}
-        onClick={onToggle}
+        data-disabled={disabled || undefined}
+        onClick={() => {
+          if (!disabled) onToggle();
+        }}
         onMouseDown={(e) => {
           // Clicking the 15px checkbox square would natively focus the hidden
           // primitive (nearest focusable ancestor of the click target), after
@@ -283,13 +288,13 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
         onKeyDown={(e) => {
           if (e.key === " " || e.key === "Enter") {
             e.preventDefault();
-            onToggle();
+            if (!disabled) onToggle();
           }
         }}
         className={cn(
           // Fixed height (was py-1.5 around a 19.5px line box ≈ 31.5px) so the
           // text-box trim on the label doesn't shrink the row.
-          `relative z-10 flex h-8 items-center gap-2.5 ${shape.item} px-3 cursor-pointer outline-none`,
+          `relative z-10 flex h-8 items-center gap-2.5 ${shape.item} px-3 cursor-pointer outline-none data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-55`,
           className
         )}
         {...props}
@@ -297,10 +302,13 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
         {/* Checkbox — Base UI primitive for accessibility */}
         <CheckboxPrimitive.Root
           checked={checked}
-          onCheckedChange={() => onToggle()}
+          disabled={disabled}
+          onCheckedChange={() => {
+            if (!disabled) onToggle();
+          }}
           tabIndex={-1}
           aria-hidden
-          className="relative w-[15px] h-[15px] shrink-0 appearance-none bg-transparent p-0 border-0 outline-none cursor-pointer"
+          className="relative h-3.75 w-3.75 shrink-0 cursor-pointer appearance-none border-0 bg-transparent p-0 outline-none"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Border */}
@@ -366,33 +374,32 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
           </AnimatePresence>
         </CheckboxPrimitive.Root>
 
-        {/* Label */}
-        {/* Both stacked spans carry the text-box trim so the invisible bold
-            sizer and the visible label keep identical boxes. */}
-        <span className="inline-grid text-[13px]">
-          <span
-            className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
-            style={{ fontVariationSettings: fontWeights.semibold }}
-            aria-hidden="true"
-          >
-            {label}
+        {children ?? (
+          <span className="inline-grid text-[13px]">
+            <span
+              className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
+              style={{ fontVariationSettings: fontWeights.semibold }}
+              aria-hidden="true"
+            >
+              {label}
+            </span>
+            <span
+              className={cn(
+                "col-start-1 row-start-1 transition-[color,font-variation-settings] duration-80 [text-box:trim-both_cap_alphabetic]",
+                checked || isActive
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              )}
+              style={{
+                fontVariationSettings: checked
+                  ? fontWeights.semibold
+                  : fontWeights.normal,
+              }}
+            >
+              {label}
+            </span>
           </span>
-          <span
-            className={cn(
-              "col-start-1 row-start-1 transition-[color,font-variation-settings] duration-80 [text-box:trim-both_cap_alphabetic]",
-              checked || isActive
-                ? "text-foreground"
-                : "text-muted-foreground"
-            )}
-            style={{
-              fontVariationSettings: checked
-                ? fontWeights.semibold
-                : fontWeights.normal,
-            }}
-          >
-            {label}
-          </span>
-        </span>
+        )}
       </div>
     );
   }

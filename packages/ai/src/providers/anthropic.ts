@@ -12,7 +12,7 @@ import type {
 } from "@anthropic-ai/sdk/resources/messages.js";
 import { createAssistantMessage, runAdapterStream } from "../adapter";
 import { AssistantMessageEventStream } from "../event-stream";
-import type { Provider, StreamOptions } from "../provider";
+import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -33,6 +33,7 @@ export interface AnthropicProviderConfig {
 	apiKey: string;
 	baseURL?: string;
 	headers?: Readonly<Record<string, string>>;
+	authentication?: "x-api-key" | "none";
 }
 
 const CACHE_CONTROL = { type: "ephemeral" as const };
@@ -52,22 +53,32 @@ export class AnthropicProvider implements Provider {
 	private readonly client: Anthropic;
 	private readonly baseURL?: string;
 	private readonly headers?: Readonly<Record<string, string>>;
+	private readonly authentication: "x-api-key" | "none";
 
 	constructor(config: AnthropicProviderConfig) {
 		this.id = config.id ?? this.adapter;
 		this.baseURL = config.baseURL;
 		this.headers = config.headers;
-		this.client = new Anthropic({
-			apiKey: config.apiKey,
-			baseURL: config.baseURL,
-			defaultHeaders: config.headers,
-		});
+		this.authentication = config.authentication ?? "x-api-key";
+		this.client = this.createClient(config.apiKey);
 	}
 
 	stream(model: Model, context: Context, options?: StreamOptions): AssistantMessageEventStream {
 		const eventStream = new AssistantMessageEventStream();
 		this.run(eventStream, model, context, options);
 		return eventStream;
+	}
+
+	async listModels(options?: ModelDiscoveryOptions): Promise<readonly string[]> {
+		try {
+			const page = await this.client.models.list({}, options?.signal ? { signal: options.signal } : undefined);
+			return uniqueModelIds(
+				page.data.map((model) => model.id),
+				this.adapter,
+			);
+		} catch (cause) {
+			throw modelDiscoveryFailed(this.adapter, cause);
+		}
 	}
 
 	private async run(
@@ -81,9 +92,7 @@ export class AnthropicProvider implements Provider {
 
 		await runAdapterStream(eventStream, output, options?.signal, {
 			request: async () => {
-				const client = options?.apiKey
-					? new Anthropic({ apiKey: options.apiKey, baseURL: this.baseURL, defaultHeaders: this.headers })
-					: this.client;
+				const client = options?.apiKey ? this.createClient(options.apiKey) : this.client;
 
 				const params = buildParams(model, context, options);
 				const providerOpts = options?.providerOptions?.[this.id] ?? options?.providerOptions?.[this.adapter];
@@ -99,6 +108,31 @@ export class AnthropicProvider implements Provider {
 			finalize: () => [],
 		});
 	}
+
+	private createClient(apiKey: string): Anthropic {
+		return new Anthropic({
+			apiKey,
+			baseURL: this.baseURL,
+			defaultHeaders: this.headers,
+			...(this.authentication === "none" ? { fetch: withoutAuthentication } : {}),
+		});
+	}
+}
+
+function uniqueModelIds(values: readonly unknown[], adapter: string): string[] {
+	const modelIds = values.map((value) => {
+		if (typeof value !== "string" || !value.trim()) throw modelDiscoveryFailed(adapter, undefined);
+		return value;
+	});
+	return [...new Set(modelIds)].sort((left, right) => left.localeCompare(right));
+}
+
+async function withoutAuthentication(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+	const request = input instanceof Request ? new Request(input, init) : new Request(input.toString(), init);
+	const headers = new Headers(request.headers);
+	headers.delete("authorization");
+	headers.delete("x-api-key");
+	return fetch(new Request(request, { headers }));
 }
 
 // 入向翻译：Context → Anthropic SDK 请求体

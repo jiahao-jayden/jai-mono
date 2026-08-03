@@ -79,8 +79,8 @@ interface ActiveSessionState {
 	error?: string;
 	open(sessionId: string): void;
 	newChat(): void;
-	createAndSend(workspaceId: string | null, message: string): Promise<string>;
-	send(message: string): Promise<void>;
+	createAndSend(workspaceId: string | null, message: string, modelRef: string): Promise<string>;
+	send(message: string, modelRef: string): Promise<void>;
 	abort(): Promise<void>;
 	resolvePermission(resolution: PermissionResolution): Promise<void>;
 }
@@ -123,17 +123,17 @@ export const useActiveSessionStore = create<ActiveSessionState>((set, get) => ({
 		});
 	},
 
-	async createAndSend(workspaceId, message) {
+	async createAndSend(workspaceId, message, modelRef) {
 		const session = await desktop.session.create({ workspaceId, firstMessage: message });
 		get().open(session.id);
-		await desktop.agent.send({ sessionId: session.id, message });
+		await desktop.agent.send({ sessionId: session.id, message, modelRef });
 		void useSessionListStore.getState().refresh();
 		return session.id;
 	},
 
-	async send(message) {
+	async send(message, modelRef) {
 		const sessionId = requireActiveSession(get().sessionId);
-		await desktop.agent.send({ sessionId, message });
+		await desktop.agent.send({ sessionId, message, modelRef });
 	},
 
 	async abort() {

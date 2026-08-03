@@ -22,6 +22,7 @@ import {
 	Delete02Icon,
 	DropperIcon,
 	Edit01Icon,
+	EyeIcon,
 	FavouriteIcon,
 	FileCodeIcon,
 	Folder01Icon,
@@ -61,6 +62,7 @@ import {
 	Tick01Icon,
 	UserGroupIcon,
 	UserIcon,
+	ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { type ComponentType, createContext, type ReactNode, useContext, useMemo } from "react";
@@ -133,6 +135,8 @@ export type IconName =
 	| "shield-alert"
 	| "inbox"
 	| "pencil"
+	| "eye"
+	| "eye-off"
 	| "skip-forward"
 	| "corner-down-right";
 
@@ -202,6 +206,8 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	"shield-alert": createHugeicon(Alert02Icon),
 	inbox: createHugeicon(InboxIcon),
 	pencil: createHugeicon(Edit01Icon),
+	eye: createHugeicon(EyeIcon),
+	"eye-off": createHugeicon(ViewOffSlashIcon),
 	"skip-forward": createHugeicon(Forward01Icon),
 	"corner-down-right": createHugeicon(ArrowTurnForwardIcon),
 };

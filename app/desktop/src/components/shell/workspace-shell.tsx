@@ -13,10 +13,10 @@ import {
 } from "react";
 import { desktop } from "@/lib/desktop";
 import { useActiveSessionStore, useSessionListStore } from "@/stores/sessions";
-import type {
-	DesktopProviderConfigInput,
-	DesktopProviderConfigSnapshot,
-	DesktopWorkspace,
+import {
+	type DesktopProviderConfigInput,
+	type DesktopWorkspace,
+	isDesktopProviderModelRunnable,
 } from "../../../shared/desktop-rpc";
 import { ChatColumn } from "./chat/chat-column";
 import { ProviderSettingsDialog } from "./settings/provider-settings-dialog";
@@ -45,8 +45,7 @@ export function WorkspaceShell() {
 	const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
 	const [workspaceBusy, setWorkspaceBusy] = useState(false);
 	const [workspaceError, setWorkspaceError] = useState<string>();
-	const [modelSwitching, setModelSwitching] = useState(false);
-	const [modelSwitchError, setModelSwitchError] = useState<string>();
+	const [selectedModelRef, setSelectedModelRef] = useState("");
 	const queryClient = useQueryClient();
 	const sessionList = useSessionListStore();
 	const activeSession = useActiveSessionStore();
@@ -71,15 +70,23 @@ export function WorkspaceShell() {
 	const defaultWorkspace = workspaces.find((candidate) => candidate.available) ?? workspaces[0];
 	const workspaceId = session?.workspaceId ?? selectedWorkspace?.id ?? defaultWorkspace?.id ?? null;
 	const workspace = workspaces.find((candidate) => candidate.id === workspaceId);
+	const enabledModelRefs =
+		providerQuery.data?.profiles.flatMap((profile) =>
+			profile.models
+				.filter((model) => model.enabled && isDesktopProviderModelRunnable(model))
+				.map((model) => `${profile.id}/${model.id}`),
+		) ?? [];
+	const runtimeModelRef = enabledModelRefs.includes(selectedModelRef) ? selectedModelRef : (enabledModelRefs[0] ?? "");
 	const shellRef = useRef<HTMLDivElement>(null);
 	const sidebarResize = useSidebarResize(shellRef, rightPanelOpen && !!session);
 
 	const send = async (message: string) => {
+		if (!runtimeModelRef) return;
 		if (activeSession.sessionId) {
-			await activeSession.send(message);
+			await activeSession.send(message, runtimeModelRef);
 			return;
 		}
-		await activeSession.createAndSend(workspaceId, message);
+		await activeSession.createAndSend(workspaceId, message, runtimeModelRef);
 	};
 	const updateProviderConfig = async (input: DesktopProviderConfigInput) => {
 		const snapshot = await desktop.provider.save(input);
@@ -87,28 +94,22 @@ export function WorkspaceShell() {
 		return snapshot;
 	};
 	const saveProviderConfig = async (input: DesktopProviderConfigInput) => {
-		await updateProviderConfig(input);
-		setProviderSettingsOpen(false);
+		return updateProviderConfig(input);
+	};
+	const fetchProviderModels = async (profileId: string) => {
+		const result = await desktop.provider.fetchModels(profileId);
+		queryClient.setQueryData(["provider-config"], result.snapshot);
+		return result;
+	};
+	const revealProviderApiKey = async (profileId: string) => {
+		const result = await desktop.provider.revealApiKey(profileId);
+		return result.apiKey;
 	};
 	const openProviderSettings = useCallback(() => {
 		if (activeSession.status === "running") return;
 		setProviderSettingsOpen(true);
 		void providerQuery.refetch();
 	}, [activeSession.status, providerQuery.refetch]);
-	const selectProviderModel = async (modelRef: string) => {
-		const snapshot = providerQuery.data;
-		if (!snapshot || snapshot.activeModelRef === modelRef || modelSwitching) return;
-		setModelSwitching(true);
-		setModelSwitchError(undefined);
-		try {
-			await updateProviderConfig(toProviderConfigInput(snapshot, modelRef));
-		} catch (error) {
-			setModelSwitchError(getErrorMessage(error));
-		} finally {
-			setModelSwitching(false);
-		}
-	};
-
 	useEffect(() => {
 		const openSettingsShortcut = (event: globalThis.KeyboardEvent) => {
 			if (event.key !== "," || (!event.metaKey && !event.ctrlKey)) return;
@@ -207,10 +208,9 @@ export function WorkspaceShell() {
 				loading={activeSession.loading}
 				error={activeSession.error}
 				providerConfig={providerQuery.data}
+				selectedModelRef={runtimeModelRef}
 				providerLoading={providerQuery.isLoading}
 				providerError={providerQuery.isError}
-				modelSwitching={modelSwitching}
-				modelSwitchError={modelSwitchError}
 				workspaceBusy={workspaceBusy}
 				workspaceLoading={workspacesQuery.isLoading || workspacesQuery.isFetching}
 				workspaceLoadError={workspacesQuery.isError && workspacesQuery.data === undefined}
@@ -223,7 +223,7 @@ export function WorkspaceShell() {
 				onToggleSidebar={() => setSidebarOpen(true)}
 				onToggleRightPanel={() => setRightPanelOpen((open) => !open)}
 				onOpenProviderSettings={openProviderSettings}
-				onSelectProviderModel={selectProviderModel}
+				onSelectProviderModel={setSelectedModelRef}
 				onChooseWorkspace={chooseWorkspace}
 				onAddWorkspace={addWorkspace}
 				onRetryWorkspaces={() => void workspacesQuery.refetch()}
@@ -242,25 +242,11 @@ export function WorkspaceShell() {
 				onOpenChange={setProviderSettingsOpen}
 				onRetry={() => void providerQuery.refetch()}
 				onSave={saveProviderConfig}
+				onFetchModels={fetchProviderModels}
+				onRevealApiKey={revealProviderApiKey}
 			/>
 		</div>
 	);
-}
-
-function toProviderConfigInput(
-	snapshot: DesktopProviderConfigSnapshot,
-	activeModelRef: string,
-): DesktopProviderConfigInput {
-	return {
-		revision: snapshot.revision,
-		activeModelRef,
-		...(snapshot.language ? { language: snapshot.language } : {}),
-		...(snapshot.maxIterations ? { maxIterations: snapshot.maxIterations } : {}),
-		...(snapshot.reasoningEffort ? { reasoningEffort: snapshot.reasoningEffort } : {}),
-		profiles: snapshot.profiles.map(
-			({ credentialConfigured: _configured, credentialMask: _mask, ...profile }) => profile,
-		),
-	};
 }
 
 function rubberBand(distance: number, dimension = DEFAULT_SIDEBAR_WIDTH, constant = 0.55): number {

@@ -20,6 +20,7 @@ import type {
 	CreateSessionInput,
 	CreateWorkspaceInput,
 	MoveSessionInput,
+	ProviderModelInventory,
 	SessionListCursor,
 	SessionListPage,
 	SessionWorkspaceHistory,
@@ -70,6 +71,26 @@ export class CodingBusinessService {
 			...location,
 			now: this.#now(),
 		});
+	}
+
+	getProviderModelInventory(profileId: string): ProviderModelInventory | undefined {
+		return this.repository.getProviderModelInventory(profileId);
+	}
+
+	replaceProviderModelInventory(profileId: string, modelIds: readonly string[]): ProviderModelInventory {
+		return this.repository.replaceProviderModelInventory({
+			profileId,
+			modelIds,
+			fetchedAt: this.#now(),
+		});
+	}
+
+	deleteProviderModelInventory(profileId: string): void {
+		this.repository.deleteProviderModelInventory(profileId);
+	}
+
+	renameProviderModelInventory(fromProfileId: string, toProfileId: string): void {
+		this.repository.renameProviderModelInventory(fromProfileId, toProfileId);
 	}
 
 	async createSession<TAppState extends JsonObject = JsonObject>(

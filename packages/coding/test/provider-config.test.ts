@@ -26,13 +26,13 @@ describe("Provider configuration", () => {
 					adapter: "openai-compatible",
 					auth: "bearer",
 					apiKey: "work-key",
-					models: { "gpt-main": { remoteModelId: "gpt-remote" } },
+					models: { "gpt-main": { remoteModelId: "gpt-remote", enabled: true } },
 				},
 				personal: {
 					adapter: "openai-compatible",
 					auth: "bearer",
 					apiKey: "personal-key",
-					models: { "gpt-main": {} },
+					models: { "gpt-main": { enabled: true } },
 				},
 			},
 			permissions: {},
@@ -46,6 +46,23 @@ describe("Provider configuration", () => {
 		expect(personal.provider.id).toBe("personal");
 	});
 
+	test("treats an omitted model enabled flag as disabled", () => {
+		const settings = {
+			agent: { model: "work/gpt-main" },
+			providers: {
+				work: {
+					adapter: "openai-compatible",
+					auth: "bearer",
+					apiKey: "work-key",
+					models: { "gpt-main": {} },
+				},
+			},
+			permissions: {},
+		} satisfies CodingAgentSettings;
+
+		expect(() => resolveConfiguredProvider(settings)).toThrow("is disabled");
+	});
+
 	test("does not inherit a lower-scope key when a project changes the connection tuple", async () => {
 		const fixture = await createFixture();
 		await writeSettings(join(fixture.homeDir, ".jai", "settings.json"), {
@@ -56,7 +73,7 @@ describe("Provider configuration", () => {
 					baseURL: "https://api.openai.com/v1",
 					auth: "bearer",
 					apiKey: "user-secret",
-					models: { "gpt-main": {} },
+					models: { "gpt-main": { enabled: true } },
 				},
 			},
 		});
@@ -85,7 +102,7 @@ describe("Provider configuration", () => {
 					baseURL: "https://api.openai.com/v1",
 					auth: "bearer",
 					apiKey: "user-secret",
-					models: { "gpt-main": {} },
+					models: { "gpt-main": { enabled: true } },
 				},
 			},
 		});
@@ -114,6 +131,7 @@ describe("Provider configuration", () => {
 					auth: "bearer",
 					apiKey: "secret",
 					catalogProvider: "openai",
+					models: { "gpt-main": { enabled: true } },
 				},
 			},
 			permissions: {},
@@ -147,6 +165,72 @@ describe("Provider configuration", () => {
 			contextWindow: 200_000,
 			maxTokens: 8_000,
 		});
+		expect(
+			resolveConfiguredProvider(settings, undefined, catalog, {
+				availableModelIds: ["gpt-main"],
+				requireVerifiedCapabilities: true,
+			}).model,
+		).toMatchObject({ contextWindow: 200_000, maxTokens: 8_000 });
+	});
+
+	test("refuses an unfetched, unverified, or tool-incompatible Coding Agent model", () => {
+		const settings = {
+			agent: { model: "work/custom" },
+			providers: {
+				work: {
+					adapter: "openai-compatible",
+					auth: "bearer",
+					apiKey: "secret",
+					catalogProvider: "openai",
+					models: {
+						custom: { enabled: true, contextWindow: 128_000, maxTokens: 4_000, toolCall: true },
+					},
+				},
+			},
+			permissions: {},
+		} satisfies CodingAgentSettings;
+
+		expect(() =>
+			resolveConfiguredProvider(settings, undefined, undefined, {
+				availableModelIds: ["custom"],
+				requireVerifiedCapabilities: true,
+			}),
+		).toThrow(/not verified/);
+		expect(() =>
+			resolveConfiguredProvider(settings, undefined, normalizeModelCatalog({
+				providers: {
+					openai: {
+						models: {
+							custom: {
+								name: "Custom",
+								tool_call: false,
+								modalities: { input: ["text"], output: ["text"] },
+								limit: { context: 128_000, output: 4_000 },
+							},
+						},
+					},
+				},
+			}), {
+				availableModelIds: ["custom"],
+				requireVerifiedCapabilities: true,
+			}),
+		).toThrow(/requires verified text input\/output, tools, context, and output limits/);
+		expect(() =>
+			resolveConfiguredProvider(settings, undefined, normalizeModelCatalog({
+				providers: {
+					openai: {
+						models: {
+							custom: {
+								name: "Custom",
+								tool_call: true,
+								modalities: { input: ["text"], output: ["text"] },
+								limit: { context: 128_000, output: 4_000 },
+							},
+						},
+					},
+				},
+			}), { requireVerifiedCapabilities: true }),
+		).toThrow(/Fetch models/);
 	});
 
 	test("maps supported reasoning effort and rejects unsupported adapters", () => {
@@ -159,6 +243,7 @@ describe("Provider configuration", () => {
 					apiKey: "secret",
 					models: {
 						"gpt-main": {
+							enabled: true,
 							reasoning: true,
 							compatibility: { reasoningFormat: "openai" },
 						},
@@ -181,7 +266,13 @@ describe("Provider configuration", () => {
 			providers: {
 				work: {
 					...settings.providers.work,
-					models: { "gpt-main": { reasoning: true, compatibility: { reasoningFormat: "deepseek" } } },
+					models: {
+						"gpt-main": {
+							enabled: true,
+							reasoning: true,
+							compatibility: { reasoningFormat: "deepseek" },
+						},
+					},
 				},
 			},
 		} satisfies CodingAgentSettings;

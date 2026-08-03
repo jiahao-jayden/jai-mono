@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { openSession } from "@jai/agent";
 import { FileSessionStore } from "@jai/agent/node";
 import { getErrorCode } from "@jai/common";
@@ -13,6 +14,7 @@ import type {
 } from "../src/business/repository";
 import type {
 	CodingSession,
+	ProviderModelInventory,
 	SessionListCursor,
 	SessionListPage,
 	SessionWorkspaceHistory,
@@ -28,6 +30,64 @@ afterEach(async () => {
 });
 
 describe("CodingBusinessService", () => {
+	test("SQLite schema v1 upgrades inventory storage and preserves atomic replacements", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-sqlite-inventory-"));
+		roots.push(root);
+		const outputDirectory = join(root, "bundle");
+		const repositoryPath = join(import.meta.dir, "..", "src", "business", "sqlite-repository.ts");
+		const built = await Bun.build({
+			entrypoints: [repositoryPath],
+			outdir: outputDirectory,
+			target: "node",
+			format: "esm",
+			external: ["node:sqlite"],
+		});
+		expect(built.success).toBe(true);
+
+		const databasePath = join(root, "data.sqlite");
+		const moduleUrl = pathToFileURL(join(outputDirectory, "sqlite-repository.js")).href;
+		const program = `
+			import { DatabaseSync } from "node:sqlite";
+			import { SqliteCodingBusinessRepository } from ${JSON.stringify(moduleUrl)};
+			const path = ${JSON.stringify(databasePath)};
+			const initial = await SqliteCodingBusinessRepository.open(path);
+			initial.close();
+			const legacy = new DatabaseSync(path);
+			legacy.exec("DROP TABLE provider_model_inventory; PRAGMA user_version = 1;");
+			legacy.close();
+			const repository = await SqliteCodingBusinessRepository.open(path);
+			repository.replaceProviderModelInventory({ profileId: "openai", modelIds: ["z", "a", "z"], fetchedAt: 1 });
+			repository.replaceProviderModelInventory({ profileId: "openai", modelIds: [], fetchedAt: 2 });
+			console.log(JSON.stringify(repository.getProviderModelInventory("openai")));
+			repository.close();
+		`;
+		const process = Bun.spawn(["node", "--input-type=module", "--eval", program], {
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		expect(await process.exited).toBe(0);
+		expect(await new Response(process.stdout).text()).toContain(
+			JSON.stringify({ profileId: "openai", modelIds: [], fetchedAt: 2 }),
+		);
+	});
+
+	test("endpoint inventory atomically replaces and preserves an explicit empty result", async () => {
+		const fixture = await createFixture([]);
+		fixture.service.replaceProviderModelInventory("openai", ["gpt-z", "gpt-a", "gpt-z"]);
+		expect(fixture.service.getProviderModelInventory("openai")).toEqual({
+			profileId: "openai",
+			modelIds: ["gpt-a", "gpt-z"],
+			fetchedAt: 1000,
+		});
+
+		fixture.service.replaceProviderModelInventory("openai", []);
+		expect(fixture.service.getProviderModelInventory("openai")).toEqual({
+			profileId: "openai",
+			modelIds: [],
+			fetchedAt: 1001,
+		});
+	});
+
 	test("创建 Workspace 与扁平 Session，并解析 execution context", async () => {
 		const fixture = await createFixture(["workspace-1", "session-1"]);
 		const folder = join(fixture.root, "project");
@@ -256,6 +316,7 @@ class MemoryRepository implements CodingBusinessRepository {
 	readonly workspaces = new Map<string, Workspace>();
 	readonly sessions = new Map<string, CodingSession>();
 	readonly history: SessionWorkspaceHistory[] = [];
+	readonly modelInventories = new Map<string, ProviderModelInventory>();
 
 	createWorkspace(record: CreateWorkspaceRecord): Workspace {
 		const workspace: Workspace = {
@@ -380,6 +441,30 @@ class MemoryRepository implements CodingBusinessRepository {
 
 	listWorkspaceHistory(sessionId: string): SessionWorkspaceHistory[] {
 		return this.history.filter((entry) => entry.sessionId === sessionId);
+	}
+
+	getProviderModelInventory(profileId: string): ProviderModelInventory | undefined {
+		return this.modelInventories.get(profileId);
+	}
+
+	replaceProviderModelInventory(record: ProviderModelInventory): ProviderModelInventory {
+		const stored = {
+			...record,
+			modelIds: [...new Set(record.modelIds)].sort((left, right) => left.localeCompare(right)),
+		};
+		this.modelInventories.set(record.profileId, stored);
+		return stored;
+	}
+
+	deleteProviderModelInventory(profileId: string): void {
+		this.modelInventories.delete(profileId);
+	}
+
+	renameProviderModelInventory(fromProfileId: string, toProfileId: string): void {
+		const inventory = this.modelInventories.get(fromProfileId);
+		if (!inventory || fromProfileId === toProfileId) return;
+		this.modelInventories.delete(fromProfileId);
+		this.modelInventories.set(toProfileId, { ...inventory, profileId: toProfileId });
 	}
 
 	close(): void {}

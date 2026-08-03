@@ -8,11 +8,19 @@ export {
 	type ResolvedCodingProvider,
 } from "./create-coding-agent";
 export {
+	DEFAULT_PROVIDER_VENDORS,
+	type DefaultProviderAdapter,
+	type DefaultProviderVendor,
+	findDefaultProviderVendor,
+} from "./default-provider-vendors";
+export {
 	type CachedModelCatalog,
 	findCatalogModel,
+	findCatalogModelMatch,
 	MODEL_CATALOG_FRESHNESS_MS,
 	type ModelCatalog,
 	type ModelCatalogCost,
+	type ModelCatalogMatch,
 	type ModelCatalogModality,
 	type ModelCatalogModel,
 	type ModelCatalogOptions,
@@ -25,6 +33,8 @@ export {
 	type CodingAgentSettings,
 	codingAgentConfigDefinition,
 	codingAgentSettingsSchema,
+	discoverConfiguredModels,
+	type ResolveConfiguredProviderOptions,
 	type ResolvedCodingAgentRuntime,
 	resolveConfiguredAgentRuntime,
 	resolveConfiguredProvider,

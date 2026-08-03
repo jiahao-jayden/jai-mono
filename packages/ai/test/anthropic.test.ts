@@ -3,6 +3,7 @@ import type { AssistantMessageEvent, Context, Model } from "../src/types";
 
 // mock SDK 的可变状态：每个用例设置流事件 / 捕获请求体 / 触发异常
 let streamEvents: unknown[] = [];
+let listedModels: unknown[] = [];
 let capturedParams: any;
 let throwError: Error | undefined;
 
@@ -19,6 +20,12 @@ mock.module("@anthropic-ai/sdk", () => ({
 				return gen(streamEvents);
 			},
 		};
+		models = {
+			list: async () => {
+				if (throwError) throw throwError;
+				return { data: listedModels };
+			},
+		};
 	},
 }));
 
@@ -30,6 +37,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
 	streamEvents = [];
+	listedModels = [];
 	capturedParams = undefined;
 	throwError = undefined;
 });
@@ -66,6 +74,13 @@ const ctx = (over: Partial<Context> = {}): Context => ({
 });
 
 describe("AnthropicProvider · 出向翻译", () => {
+	it("枚举 endpoint 模型 ID 并去重排序", async () => {
+		listedModels = [{ id: "claude-sonnet-4" }, { id: "claude-opus-4" }, { id: "claude-sonnet-4" }];
+		const provider = new AnthropicProvider({ apiKey: "test" });
+
+		expect(await provider.listModels()).toEqual(["claude-opus-4", "claude-sonnet-4"]);
+	});
+
 	it("translates a text + tool_use stream into unified events", async () => {
 		streamEvents = [
 			{ type: "message_start", message: { usage: { input_tokens: 10, output_tokens: 0, cache_read_input_tokens: 5 } } },

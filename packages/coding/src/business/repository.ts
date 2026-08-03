@@ -1,4 +1,11 @@
-import type { CodingSession, SessionListCursor, SessionListPage, SessionWorkspaceHistory, Workspace } from "./types";
+import type {
+	CodingSession,
+	ProviderModelInventory,
+	SessionListCursor,
+	SessionListPage,
+	SessionWorkspaceHistory,
+	Workspace,
+} from "./types";
 
 export interface CreateWorkspaceRecord {
 	readonly id: string;
@@ -40,5 +47,10 @@ export interface CodingBusinessRepository {
 	touchSession(id: string, now: number): CodingSession;
 	moveSession(id: string, toWorkspaceId: string | null, now: number): CodingSession;
 	listWorkspaceHistory(sessionId: string): SessionWorkspaceHistory[];
+
+	getProviderModelInventory(profileId: string): ProviderModelInventory | undefined;
+	replaceProviderModelInventory(record: ProviderModelInventory): ProviderModelInventory;
+	deleteProviderModelInventory(profileId: string): void;
+	renameProviderModelInventory(fromProfileId: string, toProfileId: string): void;
 	close(): void;
 }

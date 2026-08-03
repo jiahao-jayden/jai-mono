@@ -6,7 +6,7 @@ import type {
 } from "openai/resources/chat/completions";
 import { createAssistantMessage, runAdapterStream } from "../adapter";
 import { AssistantMessageEventStream } from "../event-stream";
-import type { Provider, StreamOptions } from "../provider";
+import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -28,6 +28,7 @@ export interface OpenAIProviderConfig {
 	apiKey: string;
 	baseURL?: string;
 	headers?: Readonly<Record<string, string>>;
+	authentication?: "bearer" | "none";
 }
 
 /** 单个 tool call 的流式累积状态（OpenAI 按 delta.tool_calls[].index 分片） */
@@ -53,22 +54,32 @@ export class OpenAIProvider implements Provider {
 	private readonly client: OpenAI;
 	private readonly baseURL?: string;
 	private readonly headers?: Readonly<Record<string, string>>;
+	private readonly authentication: "bearer" | "none";
 
 	constructor(config: OpenAIProviderConfig) {
 		this.id = config.id ?? this.adapter;
 		this.baseURL = config.baseURL;
 		this.headers = config.headers;
-		this.client = new OpenAI({
-			apiKey: config.apiKey,
-			baseURL: config.baseURL,
-			defaultHeaders: config.headers,
-		});
+		this.authentication = config.authentication ?? "bearer";
+		this.client = this.createClient(config.apiKey);
 	}
 
 	stream(model: Model, context: Context, options?: StreamOptions): AssistantMessageEventStream {
 		const eventStream = new AssistantMessageEventStream();
 		this.run(eventStream, model, context, options);
 		return eventStream;
+	}
+
+	async listModels(options?: ModelDiscoveryOptions): Promise<readonly string[]> {
+		try {
+			const page = await this.client.models.list(options?.signal ? { signal: options.signal } : undefined);
+			return uniqueModelIds(
+				page.data.map((model) => model.id),
+				this.adapter,
+			);
+		} catch (cause) {
+			throw modelDiscoveryFailed(this.adapter, cause);
+		}
 	}
 
 	private async run(
@@ -86,9 +97,7 @@ export class OpenAIProvider implements Provider {
 
 		await runAdapterStream(eventStream, output, options?.signal, {
 			request: async () => {
-				const client = options?.apiKey
-					? new OpenAI({ apiKey: options.apiKey, baseURL: this.baseURL, defaultHeaders: this.headers })
-					: this.client;
+				const client = options?.apiKey ? this.createClient(options.apiKey) : this.client;
 
 				const compat = (model.compatibility ?? {}) as OpenAICompatibility;
 				const params = buildParams(model, context, options, compat);
@@ -100,11 +109,36 @@ export class OpenAIProvider implements Provider {
 					options?.signal ? { signal: options.signal } : undefined,
 				);
 			},
-			step: (chunk) => applyChunk(output, state, chunk, model.reasoning),
+			step: (chunk) => applyChunk(output, state, chunk, model.reasoning === true),
 			// OpenAI 没有 block stop 事件，流结束时关闭所有还开着的 block
 			finalize: () => finalizeBlocks(output, state),
 		});
 	}
+
+	private createClient(apiKey: string): OpenAI {
+		return new OpenAI({
+			apiKey,
+			baseURL: this.baseURL,
+			defaultHeaders: this.headers,
+			...(this.authentication === "none" ? { fetch: withoutAuthentication } : {}),
+		});
+	}
+}
+
+function uniqueModelIds(values: readonly unknown[], adapter: string): string[] {
+	const modelIds = values.map((value) => {
+		if (typeof value !== "string" || !value.trim()) throw modelDiscoveryFailed(adapter, undefined);
+		return value;
+	});
+	return [...new Set(modelIds)].sort((left, right) => left.localeCompare(right));
+}
+
+async function withoutAuthentication(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+	const request = input instanceof Request ? new Request(input, init) : new Request(input.toString(), init);
+	const headers = new Headers(request.headers);
+	headers.delete("authorization");
+	headers.delete("x-api-key");
+	return fetch(new Request(request, { headers }));
 }
 
 // 入向翻译：Context → OpenAI SDK 请求体

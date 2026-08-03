@@ -32,7 +32,7 @@ function desktopProviderError(
 }
 
 export function createDesktopAgentFactory(service: CodingBusinessService): DesktopAgentFactory {
-	return async ({ sessionId, requestApproval }) => {
+	return async ({ sessionId, modelRef, requestApproval }) => {
 		const session = service.getSession(sessionId);
 		const executionContext = await service.resolveExecutionContext(sessionId);
 		let resolvedProvider: ResolvedCodingProvider | undefined;
@@ -49,10 +49,16 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 				workspaceTrusted: executionContext.localFileAccess,
 			},
 			resolveProvider(snapshot) {
+				const profileId = modelRef.slice(0, modelRef.indexOf("/"));
+				const inventory = profileId ? service.getProviderModelInventory(profileId) : undefined;
 				const resolved = resolveConfiguredProvider(
 					snapshot.settings,
-					undefined,
+					modelRef,
 					desktopModelCatalog.cached?.catalog,
+					{
+						...(inventory ? { availableModelIds: inventory.modelIds } : {}),
+						requireVerifiedCapabilities: true,
+					},
 				);
 				resolvedProvider = resolved;
 				return resolved;

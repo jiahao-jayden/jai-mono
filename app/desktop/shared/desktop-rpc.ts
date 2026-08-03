@@ -49,12 +49,13 @@ export interface DesktopWorkspace extends Workspace {
 export type DesktopProviderAdapter = "anthropic" | "openai-compatible";
 export type DesktopProviderAuthentication = "api-key" | "none";
 export type DesktopModelModality = "text" | "image" | "audio" | "video" | "pdf";
+export type DesktopModelSource = "catalog" | "unverified";
 
 export interface DesktopModelCost {
-	readonly input: number;
-	readonly output: number;
-	readonly cacheRead: number;
-	readonly cacheWrite: number;
+	readonly input?: number;
+	readonly output?: number;
+	readonly cacheRead?: number;
+	readonly cacheWrite?: number;
 	readonly reasoning?: number;
 }
 
@@ -70,8 +71,22 @@ export interface DesktopProviderModel {
 	readonly id: string;
 	readonly name: string;
 	readonly remoteModelId: string;
-	readonly source?: "local" | "catalog";
+	readonly source: DesktopModelSource;
+	readonly verified: boolean;
+	readonly enabled: boolean;
+	readonly metadataProvider?: string;
+	readonly description?: string;
+	readonly family?: string;
+	readonly status?: string;
+	readonly releaseDate?: string;
+	readonly lastUpdated?: string;
+	readonly knowledge?: string;
+	readonly openWeights?: boolean;
 	readonly reasoning?: boolean;
+	readonly reasoningOptions?: readonly string[];
+	readonly temperature?: boolean;
+	readonly attachment?: boolean;
+	readonly interleaved?: boolean;
 	readonly input?: readonly ("text" | "image")[];
 	readonly inputModalities?: readonly DesktopModelModality[];
 	readonly outputModalities?: readonly DesktopModelModality[];
@@ -79,36 +94,58 @@ export interface DesktopProviderModel {
 	readonly structuredOutput?: boolean;
 	readonly cost?: DesktopModelCost;
 	readonly contextWindow?: number;
+	readonly inputLimit?: number;
 	readonly maxTokens?: number;
 	readonly compatibility?: DesktopModelCompatibility;
+}
+
+export function isDesktopProviderModelRunnable(model: DesktopProviderModel): boolean {
+	return Boolean(
+		model.verified &&
+			model.inputModalities?.includes("text") &&
+			model.outputModalities?.includes("text") &&
+			model.toolCall === true &&
+			model.contextWindow &&
+			model.maxTokens,
+	);
 }
 
 export interface DesktopProviderProfile {
 	readonly id: string;
 	readonly name: string;
 	readonly adapter: DesktopProviderAdapter;
-	readonly catalogProvider?: string;
 	readonly baseURL: string;
 	readonly authentication: DesktopProviderAuthentication;
 	readonly credentialConfigured: boolean;
 	readonly credentialMask?: string;
+	readonly modelsFetchedAt?: number;
 	readonly models: readonly DesktopProviderModel[];
+}
+
+export interface DesktopProviderPreset {
+	readonly id: string;
+	readonly name: string;
+	readonly adapter: DesktopProviderAdapter;
+	readonly catalogProvider: string;
+	readonly baseURL: string;
+	readonly authentication: "api-key";
 }
 
 export interface DesktopProviderConfigSnapshot {
 	readonly revision: string | null;
-	readonly activeModelRef?: string;
 	readonly language?: string;
 	readonly maxIterations?: number;
 	readonly reasoningEffort?: "low" | "medium" | "high";
+	readonly providerPresets: readonly DesktopProviderPreset[];
 	readonly profiles: readonly DesktopProviderProfile[];
 }
 
 export interface DesktopProviderProfileInput {
 	readonly id: string;
+	/** Original persisted profile ID when this save renames a profile. */
+	readonly previousId?: string;
 	readonly name: string;
 	readonly adapter: DesktopProviderAdapter;
-	readonly catalogProvider?: string;
 	readonly baseURL: string;
 	readonly authentication: DesktopProviderAuthentication;
 	readonly apiKey?: string;
@@ -118,11 +155,22 @@ export interface DesktopProviderProfileInput {
 
 export interface DesktopProviderConfigInput {
 	readonly revision: string | null;
-	readonly activeModelRef?: string;
 	readonly language?: string;
 	readonly maxIterations?: number;
 	readonly reasoningEffort?: "low" | "medium" | "high";
 	readonly profiles: readonly DesktopProviderProfileInput[];
+}
+
+export interface DesktopProviderFetchModelsResult {
+	readonly profileId: string;
+	readonly modelCount: number;
+	readonly fetchedAt: number;
+	readonly snapshot: DesktopProviderConfigSnapshot;
+}
+
+export interface DesktopProviderApiKeyRevealResult {
+	readonly profileId: string;
+	readonly apiKey: string;
 }
 
 export interface DesktopSlashInvocation {
@@ -207,6 +255,7 @@ export interface DesktopAgentSessionInput {
 
 export interface DesktopAgentMessageInput extends DesktopAgentSessionInput {
 	readonly message: string;
+	readonly modelRef: string;
 }
 
 export interface DesktopSessionCreateInput {
@@ -236,6 +285,8 @@ export interface DesktopApi {
 	readonly provider: {
 		get(): Promise<DesktopProviderConfigSnapshot>;
 		save(input: DesktopProviderConfigInput): Promise<DesktopProviderConfigSnapshot>;
+		fetchModels(profileId: string): Promise<DesktopProviderFetchModelsResult>;
+		revealApiKey(profileId: string): Promise<DesktopProviderApiKeyRevealResult>;
 	};
 	readonly workspace: {
 		list(): Promise<DesktopWorkspace[]>;
