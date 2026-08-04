@@ -103,7 +103,11 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
             )}
           >
             {!isUser && typeof children === "string" ? (
-              <Streamdown isAnimating={isStreaming} plugins={streamdownPlugins}>
+              <Streamdown
+                isAnimating={isStreaming}
+                mode={isStreaming ? "streaming" : "static"}
+                plugins={streamdownPlugins}
+              >
                 {children}
               </Streamdown>
             ) : (

@@ -66,7 +66,7 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
-	test("连续 assistant delta 在 main 侧合并后发送", async () => {
+	test("100ms 窗口内的连续 assistant delta 合并后发送", async () => {
 		const envelopes: DesktopAgentEventEnvelope[] = [];
 		const agent = new FakeAgent(async (self) => {
 			self.emit({ type: "message_start", message: assistantMessage("") });
@@ -93,6 +93,97 @@ describe("DesktopAgentHost", () => {
 			type: "transcript_upsert",
 			item: { text: "ab" },
 		});
+		host.close();
+	});
+
+	test("持续流按 100ms 窗口刷新，结束时立即冲刷尾部文本", async () => {
+		const envelopes: DesktopAgentEventEnvelope[] = [];
+		const agent = new FakeAgent(async (self) => {
+			self.emit({ type: "message_start", message: assistantMessage("") });
+			self.emit(messageUpdate("a"));
+			await Bun.sleep(110);
+			self.emit(messageUpdate("ab"));
+			await Bun.sleep(110);
+			self.emit(messageUpdate("abc"));
+			self.emit({ type: "message_end", message: assistantMessage("abc") });
+			return [];
+		});
+		const host = new DesktopAgentHost((event) => envelopes.push(event), async () => agent);
+
+		await host.send(input("stream"));
+		await agent.finished;
+
+		expect(streamingMessageTexts(envelopes)).toEqual(["a", "ab", "abc"]);
+		expect(envelopes.at(-2)?.event).toMatchObject({
+			type: "transcript_upsert",
+			item: { text: "abc", status: "complete" },
+		});
+		host.close();
+	});
+
+	test("同一节流窗口内保留 thinking 与 answer 的最新投影", async () => {
+		const envelopes: DesktopAgentEventEnvelope[] = [];
+		const agent = new FakeAgent(async (self) => {
+			const partial = {
+				...assistantMessage("answer"),
+				content: [
+					{ type: "text" as const, text: "answer" },
+					{ type: "thinking" as const, thinking: "reasoning" },
+				],
+			};
+			self.emit({ type: "message_start", message: assistantMessage("") });
+			self.emit({
+				type: "message_update",
+				message: partial,
+				assistantEvent: { type: "text_delta", contentIndex: 0, delta: "answer", partial },
+			});
+			self.emit({
+				type: "message_update",
+				message: partial,
+				assistantEvent: { type: "thinking_delta", contentIndex: 1, delta: "reasoning", partial },
+			});
+			await Bun.sleep(110);
+			self.emit({ type: "message_end", message: partial });
+			return [partial];
+		});
+		const host = new DesktopAgentHost((event) => envelopes.push(event), async () => agent);
+
+		await host.send(input("inspect"));
+		await agent.finished;
+
+		const streamingItems = envelopes
+			.filter((entry) => entry.event.type === "transcript_upsert" && entry.event.item.status === "streaming")
+			.map((entry) => (entry.event as Extract<DesktopAgentEventEnvelope["event"], { type: "transcript_upsert" }>).item);
+		expect(streamingItems).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ kind: "message", text: "answer" }),
+				expect.objectContaining({ kind: "thinking", text: "reasoning" }),
+			]),
+		);
+		host.close();
+	});
+
+	test("关闭 session 会取消尚未发送的流式刷新", async () => {
+		const envelopes: DesktopAgentEventEnvelope[] = [];
+		let finish = (_messages: AgentMessage[]) => {};
+		const pending = new Promise<AgentMessage[]>((resolve) => {
+			finish = resolve;
+		});
+		const agent = new FakeAgent(async (self) => {
+			self.emit({ type: "message_start", message: assistantMessage("") });
+			self.emit(messageUpdate("partial"));
+			return pending;
+		});
+		const host = new DesktopAgentHost((event) => envelopes.push(event), async () => agent);
+
+		await host.send(input("stream"));
+		await Bun.sleep(1);
+		host.closeSession("session-1");
+		await Bun.sleep(110);
+		finish([]);
+		await agent.finished;
+
+		expect(streamingMessageTexts(envelopes)).toEqual([]);
 		host.close();
 	});
 
@@ -457,6 +548,14 @@ function messageUpdate(text: string): AgentEvent {
 		message,
 		assistantEvent: { type: "text_delta", contentIndex: 0, delta: text.at(-1) ?? "", partial: message },
 	};
+}
+
+function streamingMessageTexts(envelopes: readonly DesktopAgentEventEnvelope[]): string[] {
+	return envelopes.flatMap((entry) => {
+		if (entry.event.type !== "transcript_upsert") return [];
+		const { item } = entry.event;
+		return item.kind === "message" && item.status === "streaming" && item.text ? [item.text] : [];
+	});
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

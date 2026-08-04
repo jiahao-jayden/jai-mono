@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DesktopAgentProjectionUpdate } from "../src/lib/desktop-agent";
+import type { DesktopTranscriptItem } from "../shared/desktop-rpc";
 import {
 	desktopQueryClient,
 	desktopQueryKeys,
@@ -78,6 +79,43 @@ describe("active Session projection state", () => {
 			lastSeq: 5,
 			items: [{ id: "message-1", text: "complete", status: "complete" }],
 		});
+	});
+
+	test("流式 upsert 只替换目标 item，保留历史 item 引用", () => {
+		const history: DesktopTranscriptItem = {
+			kind: "message",
+			id: "message-1",
+			role: "user",
+			text: "hello",
+			status: "complete",
+			timestamp: 1,
+		};
+		const streaming: DesktopTranscriptItem = {
+			kind: "message",
+			id: "message-2",
+			role: "assistant",
+			text: "partial",
+			status: "streaming",
+			timestamp: 2,
+		};
+		const next = applyProjectionUpdate(
+			{ sessionId: "session-1", status: "running", items: [history, streaming], lastSeq: 1, loading: false },
+			{
+				type: "event",
+				envelope: {
+					sessionId: "session-1",
+					seq: 2,
+					event: {
+						type: "transcript_upsert",
+						item: { ...streaming, text: "partial response" },
+					},
+				},
+			},
+		);
+
+		expect(next.items?.[0]).toBe(history);
+		expect(next.items?.[1]).toMatchObject({ id: "message-2", text: "partial response" });
+		expect(next.items?.[1]).not.toBe(streaming);
 	});
 
 	test("move 返回后立即更新 session infinite cache，并保持 running 排序", () => {

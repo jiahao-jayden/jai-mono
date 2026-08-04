@@ -91,7 +91,7 @@ interface SessionRuntime {
 	rebinding?: Promise<void>;
 	activeAssistantId?: string;
 	activeUserId?: string;
-	pendingDelta?: DesktopAgentEvent;
+	readonly pendingTranscriptUpdates: Map<string, Extract<DesktopAgentEvent, { readonly type: "transcript_upsert" }>>;
 	flushTimer?: ReturnType<typeof setTimeout>;
 }
 
@@ -229,7 +229,7 @@ export class DesktopAgentHost {
 		if (!runtime) return;
 		runtime.closed = true;
 		this.#markSafeBoundary(runtime);
-		this.#clearPendingDelta(runtime);
+		this.#clearPendingTranscriptUpdates(runtime);
 		this.#approvals.cancelSession(sessionId);
 		runtime.agent.close();
 		runtime.unsubscribe();
@@ -298,6 +298,7 @@ export class DesktopAgentHost {
 			activeToolCallIds: new Set(),
 			pendingToolResultIds: new Set(),
 			safeBoundaryWaiters: new Set(),
+			pendingTranscriptUpdates: new Map(),
 			invalidateAfterRun: false,
 		};
 		runtime.unsubscribe = agent.subscribe((event) => this.#onAgentEvent(runtime, event));
@@ -401,7 +402,7 @@ export class DesktopAgentHost {
 				if (!item) return;
 				if (item.kind === "tool" || item.kind === "progress") return;
 				runtime.items.set(item.id, item);
-				this.#queueDelta(runtime, { type: "transcript_upsert", item });
+				this.#queueTranscriptUpdate(runtime, { type: "transcript_upsert", item });
 				return;
 			}
 			case "message_end": {
@@ -562,29 +563,32 @@ export class DesktopAgentHost {
 		return id;
 	}
 
-	#queueDelta(runtime: SessionRuntime, event: DesktopAgentEvent): void {
-		runtime.pendingDelta = event;
+	#queueTranscriptUpdate(
+		runtime: SessionRuntime,
+		event: Extract<DesktopAgentEvent, { readonly type: "transcript_upsert" }>,
+	): void {
+		runtime.pendingTranscriptUpdates.set(event.item.id, event);
 		if (runtime.flushTimer) return;
-		runtime.flushTimer = setTimeout(() => this.#flushPendingDelta(runtime), 16);
+		runtime.flushTimer = setTimeout(() => this.#flushPendingTranscriptUpdates(runtime), 100);
 		runtime.flushTimer.unref?.();
 	}
 
-	#flushPendingDelta(runtime: SessionRuntime): void {
+	#flushPendingTranscriptUpdates(runtime: SessionRuntime): void {
 		if (runtime.flushTimer) clearTimeout(runtime.flushTimer);
 		runtime.flushTimer = undefined;
-		const event = runtime.pendingDelta;
-		runtime.pendingDelta = undefined;
-		if (event) this.#emitEnvelope(runtime, event);
+		const events = [...runtime.pendingTranscriptUpdates.values()];
+		runtime.pendingTranscriptUpdates.clear();
+		for (const event of events) this.#emitEnvelope(runtime, event);
 	}
 
-	#clearPendingDelta(runtime: SessionRuntime): void {
+	#clearPendingTranscriptUpdates(runtime: SessionRuntime): void {
 		if (runtime.flushTimer) clearTimeout(runtime.flushTimer);
 		runtime.flushTimer = undefined;
-		runtime.pendingDelta = undefined;
+		runtime.pendingTranscriptUpdates.clear();
 	}
 
 	#emitNow(runtime: SessionRuntime, event: DesktopAgentEvent): void {
-		this.#flushPendingDelta(runtime);
+		this.#flushPendingTranscriptUpdates(runtime);
 		this.#emitEnvelope(runtime, event);
 	}
 

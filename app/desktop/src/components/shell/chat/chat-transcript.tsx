@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { IconName } from "@/lib/icon-context";
 import type {
 	DesktopMessageItem,
@@ -17,6 +18,9 @@ interface WorkGroup {
 	readonly id: string;
 	readonly items: readonly WorkItem[];
 }
+
+const MemoizedTranscriptItem = memo(TranscriptItem);
+const MemoizedWorkProcess = memo(WorkProcess, sameWorkGroup);
 
 export function TranscriptItems({ items }: { items: readonly DesktopTranscriptItem[] }) {
 	const rows: (DesktopTranscriptItem | WorkGroup)[] = [];
@@ -56,7 +60,11 @@ export function TranscriptItems({ items }: { items: readonly DesktopTranscriptIt
 	commitGroup();
 
 	return rows.map((row) =>
-		"kind" in row ? <TranscriptItem key={row.id} item={row} /> : <WorkProcess key={row.id} group={row} />,
+		"kind" in row ? (
+			<MemoizedTranscriptItem key={row.id} item={row} />
+		) : (
+			<MemoizedWorkProcess key={row.id} group={row} />
+		),
 	);
 }
 
@@ -117,7 +125,7 @@ function WorkProcess({ group }: { readonly group: WorkGroup }) {
 	);
 
 	return (
-		<ThinkingSteps className="w-full py-1" defaultOpen={progress !== undefined || running}>
+		<ThinkingSteps className="w-full py-1" defaultOpen={running}>
 			<ThinkingStepsHeader>
 				{progress?.title ??
 					(running ? "Working…" : `${group.items.length} ${group.items.length === 1 ? "step" : "steps"}`)}
@@ -132,6 +140,11 @@ function WorkProcess({ group }: { readonly group: WorkGroup }) {
 			</ThinkingStepsContent>
 		</ThinkingSteps>
 	);
+}
+
+function sameWorkGroup(previous: { readonly group: WorkGroup }, next: { readonly group: WorkGroup }): boolean {
+	if (previous.group.id !== next.group.id || previous.group.items.length !== next.group.items.length) return false;
+	return previous.group.items.every((item, index) => item === next.group.items[index]);
 }
 
 function WorkProcessStep({ item }: { readonly item: WorkItem }) {

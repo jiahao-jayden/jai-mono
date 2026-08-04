@@ -1,7 +1,7 @@
 import type { CodingSession } from "@jai/coding/business";
 import type { PermissionResolution } from "@jai/coding/permissions/approval";
 import { AnimatePresence } from "framer-motion";
-import { type CSSProperties, type RefObject, useLayoutEffect, useRef, useState } from "react";
+import { type CSSProperties, type RefObject, type UIEvent, useLayoutEffect, useRef, useState } from "react";
 import pandaLogo from "@/assets/icons/chat-area/panda-3.svg";
 import { useIcons } from "@/lib/icon-context";
 import type {
@@ -86,7 +86,8 @@ export function ChatColumn({
 	const [sending, setSending] = useState(false);
 	const [sendError, setSendError] = useState<string>();
 	const scrollRef = useRef<HTMLDivElement>(null);
-	useTranscriptAutoscroll(scrollRef, items.length, status);
+	const followsTranscriptRef = useRef(true);
+	useTranscriptAutoscroll(scrollRef, items, followsTranscriptRef);
 
 	const submit = async (value: string, meta?: { queuedId?: string }) => {
 		const message = value.trim();
@@ -118,6 +119,10 @@ export function ChatColumn({
 
 	const drag = { WebkitAppRegion: "drag" } as CSSProperties;
 	const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
+	const updateTranscriptFollowState = (event: UIEvent<HTMLDivElement>) => {
+		const element = event.currentTarget;
+		followsTranscriptRef.current = element.scrollHeight - element.scrollTop - element.clientHeight <= 48;
+	};
 
 	return (
 		<section className="flex min-w-0 flex-1 flex-col bg-background">
@@ -226,7 +231,7 @@ export function ChatColumn({
 				</div>
 			) : (
 				<>
-					<div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+					<div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" onScroll={updateTranscriptFollowState}>
 						<div className="mx-auto flex w-full max-w-[760px] flex-col gap-2 px-8 py-5">
 							{loading ? <TranscriptLoading /> : null}
 							{!loading && items.length === 0 ? (
@@ -293,14 +298,16 @@ function ComposerError({ message }: { message?: string }) {
 	) : null;
 }
 
-function useTranscriptAutoscroll(ref: RefObject<HTMLDivElement | null>, itemCount: number, status: DesktopAgentStatus) {
+function useTranscriptAutoscroll(
+	ref: RefObject<HTMLDivElement | null>,
+	items: readonly DesktopTranscriptItem[],
+	followsTranscriptRef: RefObject<boolean>,
+) {
 	useLayoutEffect(() => {
-		void itemCount;
-		void status;
 		const element = ref.current;
-		if (!element) return;
+		if (!element || items.length === 0 || !followsTranscriptRef.current) return;
 		element.scrollTop = element.scrollHeight;
-	}, [itemCount, status, ref]);
+	}, [items, ref, followsTranscriptRef]);
 }
 
 function greeting(): string {
