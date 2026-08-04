@@ -78,6 +78,30 @@ describe("projectSessionSnapshot", () => {
 					},
 				},
 				{
+					type: "message",
+					id: "assistant-2",
+					timestamp: "2026-08-01T00:00:02.500Z",
+					message: {
+						role: "assistant",
+						content: [
+							{ type: "thinking", thinking: "Summarizing the completed work." },
+							{ type: "text", text: "Done" },
+						],
+						provider: "test",
+						model: "test",
+						usage: {
+							input: 0,
+							output: 0,
+							cacheRead: 0,
+							cacheWrite: 0,
+							totalTokens: 0,
+							cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+						},
+						stopReason: "stop",
+						timestamp: 3.5,
+					},
+				},
+				{
 					type: "compaction",
 					id: "compact-1",
 					timestamp: "2026-08-01T00:00:03.000Z",
@@ -106,6 +130,7 @@ describe("projectSessionSnapshot", () => {
 				kind: "thinking",
 				text: "I should update the requested file.",
 				status: "complete",
+				turnId: "progress:progress-1",
 			}),
 			expect.objectContaining({
 				kind: "progress",
@@ -120,6 +145,12 @@ describe("projectSessionSnapshot", () => {
 				summary: "a.txt",
 				details: "Created a.txt",
 			}),
+			expect.objectContaining({
+				kind: "thinking",
+				text: "Summarizing the completed work.",
+				turnId: "progress:progress-1",
+			}),
+			expect.objectContaining({ kind: "message", role: "assistant", text: "Done" }),
 			expect.objectContaining({ kind: "compaction", summary: "Earlier context" }),
 		]);
 		expect(JSON.stringify(projected)).not.toContain("secret");

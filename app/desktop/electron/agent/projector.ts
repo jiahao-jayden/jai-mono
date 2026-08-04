@@ -13,6 +13,7 @@ import type {
 
 export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnapshot): DesktopAgentSnapshot {
 	const items = new Map<string, DesktopTranscriptItem>();
+	let currentTurnId: string | undefined;
 	for (const entry of snapshot.entries) {
 		if (entry.type === "compaction") {
 			const item: DesktopCompactionItem = {
@@ -26,7 +27,11 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 		}
 		if (entry.type !== "message") continue;
 		if (entry.message.role === "assistant") {
-			for (const item of projectAssistantItems(entry.id, entry.message)) {
+			const progress = entry.message.content.find(
+				(part) => part.type === "toolCall" && part.name === REPORT_PROGRESS_TOOL_NAME,
+			);
+			if (progress?.type === "toolCall") currentTurnId = `progress:${progress.id}`;
+			for (const item of projectAssistantItems(entry.id, entry.message, currentTurnId)) {
 				items.set(item.id, item);
 			}
 			continue;
@@ -39,6 +44,7 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 			const toolItem: DesktopToolItem = {
 				kind: "tool",
 				id: `tool:${entry.message.toolCallId}`,
+				turnId: existingTool?.turnId ?? `tool:${entry.message.toolCallId}`,
 				toolCallId: entry.message.toolCallId,
 				toolName: entry.message.toolName,
 				status: entry.message.isError ? "error" : "complete",
@@ -50,6 +56,7 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 		}
 		const messageItem = projectMessage(entry.id, entry.message);
 		items.set(messageItem.id, messageItem);
+		if (entry.message.role === "user") currentTurnId = messageItem.id;
 	}
 	return {
 		sessionId,
@@ -62,8 +69,10 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 function projectAssistantItems(
 	entryId: string,
 	message: Extract<AgentMessage, { role: "assistant" }>,
+	currentTurnId: string | undefined,
 ): (DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem)[] {
 	const result: (DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem)[] = [];
+	const turnId = currentTurnId ?? `message:${entryId}`;
 	const text = messageText(message);
 	let textProjected = false;
 
@@ -73,6 +82,7 @@ function projectAssistantItems(
 			result.push({
 				kind: "thinking",
 				id: `thinking:${entryId}:${contentIndex}`,
+				turnId,
 				text: part.thinking,
 				status: "complete",
 				timestamp: message.timestamp,
@@ -87,6 +97,7 @@ function projectAssistantItems(
 					result.push({
 						kind: "progress",
 						id: `progress:${part.id}`,
+						turnId,
 						title,
 						detail,
 						timestamp: message.timestamp,
@@ -97,6 +108,7 @@ function projectAssistantItems(
 			result.push({
 				kind: "tool",
 				id: `tool:${part.id}`,
+				turnId,
 				toolCallId: part.id,
 				toolName: part.name,
 				status: "running",

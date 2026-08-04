@@ -89,6 +89,7 @@ interface SessionRuntime {
 	invalidateAfterRun: boolean;
 	runCompletion?: Promise<void>;
 	rebinding?: Promise<void>;
+	currentTurnId?: string;
 	activeAssistantId?: string;
 	activeUserId?: string;
 	readonly pendingTranscriptUpdates: Map<string, Extract<DesktopAgentEvent, { readonly type: "transcript_upsert" }>>;
@@ -427,9 +428,12 @@ export class DesktopAgentHost {
 			case "tool_execution_start": {
 				if (event.toolName === REPORT_PROGRESS_TOOL_NAME) return;
 				runtime.activeToolCallIds.add(event.toolCallId);
+				const previous = runtime.items.get(`tool:${event.toolCallId}`);
+				const previousTool = previous?.kind === "tool" ? previous : undefined;
 				const item: DesktopToolItem = {
 					kind: "tool",
 					id: `tool:${event.toolCallId}`,
+					turnId: previousTool?.turnId ?? `tool:${event.toolCallId}`,
 					toolCallId: event.toolCallId,
 					toolName: event.toolName,
 					status: "running",
@@ -450,6 +454,7 @@ export class DesktopAgentHost {
 				const item: DesktopToolItem = {
 					kind: "tool",
 					id: `tool:${event.toolCallId}`,
+					turnId: previousTool?.turnId ?? `tool:${event.toolCallId}`,
 					toolCallId: event.toolCallId,
 					toolName: event.toolName,
 					status: event.type === "tool_execution_update" ? "running" : event.isError ? "error" : "complete",
@@ -473,6 +478,10 @@ export class DesktopAgentHost {
 		if (message.role === "toolResult") return [];
 		if (message.role === "assistant") {
 			this.#ensureMessageId(runtime, "assistant");
+			const progress = message.content.find(
+				(part) => part.type === "toolCall" && part.name === REPORT_PROGRESS_TOOL_NAME,
+			);
+			if (progress?.type === "toolCall") runtime.currentTurnId = `progress:${progress.id}`;
 			let textProjected = false;
 			return message.content.flatMap((_, contentIndex) => {
 				const item = this.#projectAssistantPart(runtime, message, contentIndex, status);
@@ -484,6 +493,7 @@ export class DesktopAgentHost {
 			});
 		}
 		const id = this.#ensureMessageId(runtime, "user");
+		runtime.currentTurnId = id;
 		const slashInvocation = projectSlashInvocation(message);
 		return [
 			{
@@ -505,6 +515,7 @@ export class DesktopAgentHost {
 		status: DesktopMessageItem["status"],
 	): DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem | undefined {
 		const id = this.#ensureMessageId(runtime, "assistant");
+		const turnId = runtime.currentTurnId ?? id;
 		const part = message.content[contentIndex];
 		if (!part) return undefined;
 		if (part.type === "thinking") {
@@ -512,6 +523,7 @@ export class DesktopAgentHost {
 			return {
 				kind: "thinking",
 				id: `thinking:${id}:${contentIndex}`,
+				turnId,
 				text: part.thinking,
 				status,
 				timestamp: message.timestamp,
@@ -525,6 +537,7 @@ export class DesktopAgentHost {
 				return {
 					kind: "progress",
 					id: `progress:${part.id}`,
+					turnId,
 					title,
 					detail,
 					timestamp: message.timestamp,
@@ -533,6 +546,7 @@ export class DesktopAgentHost {
 			return {
 				kind: "tool",
 				id: `tool:${part.id}`,
+				turnId,
 				toolCallId: part.id,
 				toolName: part.name,
 				status: "running",

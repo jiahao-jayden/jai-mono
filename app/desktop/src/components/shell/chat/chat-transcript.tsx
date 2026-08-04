@@ -25,41 +25,7 @@ const MemoizedWorkProcess = memo(WorkProcess, sameWorkGroup);
 
 export function TranscriptItems({ items, loading }: { items: readonly DesktopTranscriptItem[]; loading: boolean }) {
 	const animatedItemIds = useTranscriptItemAnimations(items, loading);
-	const rows: (DesktopTranscriptItem | WorkGroup)[] = [];
-	let activeGroup: WorkItem[] = [];
-
-	const commitGroup = () => {
-		if (activeGroup.length === 0) return;
-		rows.push({ id: `work:${activeGroup[0].id}`, items: activeGroup });
-		activeGroup = [];
-	};
-
-	for (const item of items) {
-		if (item.kind === "message" && item.role === "toolResult") continue;
-		if (item.kind === "permission") continue;
-		if (item.kind === "progress") {
-			while (
-				activeGroup.at(-1)?.kind === "thinking" ||
-				(activeGroup.at(-1)?.kind === "message" && isConnectorItem(activeGroup.at(-1)!))
-			) {
-				activeGroup.pop();
-			}
-			commitGroup();
-			activeGroup.push(item);
-			continue;
-		}
-		if (item.kind === "thinking" || item.kind === "tool") {
-			activeGroup.push(item);
-			continue;
-		}
-		if (isConnectorItem(item)) {
-			if (!activeGroup.some((entry) => entry.kind === "thinking")) activeGroup.push(item);
-			continue;
-		}
-		commitGroup();
-		rows.push(item);
-	}
-	commitGroup();
+	const rows = groupTranscriptItems(items);
 
 	return rows.map((row) =>
 		"kind" in row ? (
@@ -68,6 +34,35 @@ export function TranscriptItems({ items, loading }: { items: readonly DesktopTra
 			<MemoizedWorkProcess key={row.id} group={row} />
 		),
 	);
+}
+
+export function groupTranscriptItems(items: readonly DesktopTranscriptItem[]): (DesktopTranscriptItem | WorkGroup)[] {
+	const rows: (DesktopTranscriptItem | WorkGroup)[] = [];
+	const workByTurn = new Map<string, WorkItem[]>();
+	const emittedTurns = new Set<string>();
+
+	for (const item of items) {
+		if (!isWorkItem(item)) continue;
+		const turnId = workItemTurnId(item);
+		const workItems = workByTurn.get(turnId) ?? [];
+		workItems.push(item);
+		workByTurn.set(turnId, workItems);
+	}
+
+	for (const item of items) {
+		if (item.kind === "message" && item.role === "toolResult") continue;
+		if (item.kind === "permission") continue;
+		if (isWorkItem(item)) {
+			const turnId = workItemTurnId(item);
+			if (!emittedTurns.has(turnId)) {
+				rows.push({ id: `work:${turnId}`, items: workByTurn.get(turnId) ?? [item] });
+				emittedTurns.add(turnId);
+			}
+			continue;
+		}
+		rows.push(item);
+	}
+	return rows;
 }
 
 export function TranscriptItem({ item, animate = false }: { item: DesktopTranscriptItem; animate?: boolean }) {
@@ -89,12 +84,7 @@ export function TranscriptItem({ item, animate = false }: { item: DesktopTranscr
 		const isStreaming = item.status === "streaming";
 		return (
 			<div className={messageAlignment} data-transcript-item-id={item.id}>
-				<ChatMessage
-					animate={animate}
-					className={messageClassName}
-					from={from}
-					isStreaming={isStreaming}
-				>
+				<ChatMessage animate={animate} className={messageClassName} from={from} isStreaming={isStreaming}>
 					{item.text}
 				</ChatMessage>
 			</div>
@@ -159,13 +149,11 @@ function WorkProcess({ group }: { readonly group: WorkGroup }) {
 			(item.kind === "message" && item.status === "streaming") ||
 			(item.kind === "tool" && item.status === "running"),
 	);
+	const title = workGroupTitle(group.items, running);
 
 	return (
 		<ThinkingSteps className="w-full py-1" defaultOpen={running}>
-			<ThinkingStepsHeader>
-				{progress?.title ??
-					(running ? "Working…" : `${group.items.length} ${group.items.length === 1 ? "step" : "steps"}`)}
-			</ThinkingStepsHeader>
+			<ThinkingStepsHeader>{title}</ThinkingStepsHeader>
 			<ThinkingStepsContent>
 				{progress ? (
 					<p className="px-2 pb-2 text-[13px] leading-relaxed text-muted-foreground">{progress.detail}</p>
@@ -176,6 +164,20 @@ function WorkProcess({ group }: { readonly group: WorkGroup }) {
 			</ThinkingStepsContent>
 		</ThinkingSteps>
 	);
+}
+
+export function workGroupTitle(items: readonly WorkItem[], running: boolean): string {
+	const progress = items.find((item): item is DesktopProgressItem => item.kind === "progress");
+	if (progress) return progress.title;
+
+	const tool = items.find((item): item is DesktopToolItem => item.kind === "tool");
+	if (tool?.toolName === "Skill") {
+		const skill = tool.summary?.replace(/^\//, "");
+		if (skill) return running ? `Loading ${skill}…` : `Loaded ${skill}`;
+	}
+	if (tool) return toolPresentation(tool).label;
+	if (items.some((item) => item.kind === "thinking")) return running ? "Reasoning…" : "Reasoning";
+	return running ? "Planning…" : "Planning";
 }
 
 function sameWorkGroup(previous: { readonly group: WorkGroup }, next: { readonly group: WorkGroup }): boolean {
@@ -244,6 +246,14 @@ function toolPresentation(item: DesktopToolItem): { icon: IconName; label: strin
 
 function isConnectorItem(item: DesktopTranscriptItem): item is ConnectorItem {
 	return item.kind === "message" && item.role === "assistant" && item.stopReason === "toolUse";
+}
+
+function isWorkItem(item: DesktopTranscriptItem): item is WorkItem {
+	return item.kind === "thinking" || item.kind === "progress" || item.kind === "tool" || isConnectorItem(item);
+}
+
+function workItemTurnId(item: WorkItem): string {
+	return item.kind === "message" ? item.id : item.turnId;
 }
 
 export function TranscriptLoading() {

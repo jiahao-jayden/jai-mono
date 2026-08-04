@@ -193,6 +193,7 @@ export interface DesktopMessageItem {
 export interface DesktopThinkingItem {
 	readonly kind: "thinking";
 	readonly id: string;
+	readonly turnId: string;
 	readonly text: string;
 	readonly status: "streaming" | "complete";
 	readonly timestamp: number;
@@ -201,6 +202,7 @@ export interface DesktopThinkingItem {
 export interface DesktopProgressItem {
 	readonly kind: "progress";
 	readonly id: string;
+	readonly turnId: string;
 	readonly title: string;
 	readonly detail: string;
 	readonly timestamp: number;
@@ -209,6 +211,7 @@ export interface DesktopProgressItem {
 export interface DesktopToolItem {
 	readonly kind: "tool";
 	readonly id: string;
+	readonly turnId: string;
 	readonly toolCallId: string;
 	readonly toolName: string;
 	readonly status: "running" | "complete" | "error";
