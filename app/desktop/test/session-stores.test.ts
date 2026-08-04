@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { DesktopAgentProjectionUpdate } from "../src/lib/desktop-agent";
+import {
+	desktopQueryClient,
+	desktopQueryKeys,
+	getRecentSessions,
+	getRunningSessionIds,
+	upsertRecentSession,
+} from "../src/lib/desktop-query";
 
 Object.assign(globalThis, {
 	window: {
@@ -11,7 +18,7 @@ Object.assign(globalThis, {
 	},
 });
 
-const { applyProjectionUpdate, useSessionListStore } = await import("../src/stores/sessions");
+const { applyProjectionUpdate } = await import("../src/stores/sessions");
 
 describe("active Session projection state", () => {
 	test("snapshot 替换本地状态，增量按 item id upsert", () => {
@@ -73,10 +80,29 @@ describe("active Session projection state", () => {
 		});
 	});
 
-	test("move 返回后立即 upsert Session，不依赖后台 refresh", () => {
-		useSessionListStore.setState({ sessions: [], runningSessionIds: [], loading: false, error: undefined });
+	test("move 返回后立即更新 session infinite cache，并保持 running 排序", () => {
+		desktopQueryClient.setQueryData(desktopQueryKeys.sessions.recents, {
+			pages: [
+				{
+					sessions: [
+						{
+							id: "session-2",
+							workspaceId: "workspace-1",
+							title: "Running",
+							titleSource: "manual",
+							titleGenerationAttemptedAt: null,
+							createdAt: 1,
+							updatedAt: 3,
+							lastActivityAt: 3,
+						},
+					],
+					runningSessionIds: ["session-2"],
+				},
+			],
+			pageParams: [undefined],
+		});
 
-		useSessionListStore.getState().upsert({
+		upsertRecentSession({
 			id: "session-1",
 			workspaceId: "workspace-2",
 			title: "Moved",
@@ -87,8 +113,11 @@ describe("active Session projection state", () => {
 			lastActivityAt: 2,
 		});
 
-		expect(useSessionListStore.getState().sessions).toEqual([
+		const data = desktopQueryClient.getQueryData(desktopQueryKeys.sessions.recents);
+		expect(getRecentSessions(data)).toEqual([
+			expect.objectContaining({ id: "session-2" }),
 			expect.objectContaining({ id: "session-1", workspaceId: "workspace-2" }),
 		]);
+		expect(getRunningSessionIds(data)).toEqual(["session-2"]);
 	});
 });

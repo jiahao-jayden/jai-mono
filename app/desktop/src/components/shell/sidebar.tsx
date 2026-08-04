@@ -14,12 +14,15 @@ interface SidebarProps {
 	activeSessionId: string | null;
 	loading: boolean;
 	error?: string;
+	hasNextPage?: boolean;
+	loadingMore?: boolean;
 	width?: MotionValue<number>;
 	settingsDisabled: boolean;
 	onToggleSidebar(): void;
 	onNewChat(): void;
 	onOpenSettings(): void;
 	onSelectSession(sessionId: string): void;
+	onLoadMore?(): void;
 }
 
 const navigation = [
@@ -35,12 +38,15 @@ export function Sidebar({
 	activeSessionId,
 	loading,
 	error,
+	hasNextPage = false,
+	loadingMore = false,
 	width,
 	settingsDisabled,
 	onToggleSidebar,
 	onNewChat,
 	onOpenSettings,
 	onSelectSession,
+	onLoadMore,
 }: SidebarProps) {
 	const icons = useIcons();
 	const SearchIcon = icons.search;
@@ -168,6 +174,18 @@ export function Sidebar({
 						</div>
 					);
 				})}
+				{hasNextPage ? (
+					<Button
+						type="button"
+						variant="navigation"
+						size="sm"
+						disabled={loadingMore}
+						onClick={onLoadMore}
+						className="mt-1 w-full justify-center rounded-lg text-[12px] text-muted-foreground"
+					>
+						{loadingMore ? "Loading more…" : "Load more"}
+					</Button>
+				) : null}
 			</div>
 			<div className="shrink-0 border-t border-sidebar-border px-2.5 py-2">
 				<Button

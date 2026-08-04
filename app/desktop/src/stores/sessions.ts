@@ -1,6 +1,4 @@
-import type { CodingSession, SessionListCursor } from "@jai/coding/business";
 import type { PermissionResolution } from "@jai/coding/permissions/approval";
-import { getErrorMessage } from "@jai/common";
 import { TaggedError } from "better-result";
 import { create } from "zustand";
 import type {
@@ -11,64 +9,9 @@ import type {
 } from "../../shared/desktop-rpc";
 import { desktop } from "../lib/desktop";
 import { createDesktopAgentEventDispatcher, type DesktopAgentProjectionUpdate } from "../lib/desktop-agent";
+import { invalidateRecentSessions, upsertRecentSession } from "../lib/desktop-query";
 
 class NoActiveSession extends TaggedError("desktop_session_store.no_active_session")<{ readonly message: string }> {}
-
-interface SessionListState {
-	sessions: CodingSession[];
-	runningSessionIds: string[];
-	nextCursor?: SessionListCursor;
-	loading: boolean;
-	error?: string;
-	refresh(): Promise<void>;
-	loadMore(): Promise<void>;
-	upsert(session: CodingSession): void;
-}
-
-export const useSessionListStore = create<SessionListState>((set, get) => ({
-	sessions: [],
-	runningSessionIds: [],
-	loading: false,
-
-	async refresh() {
-		set({ loading: true, error: undefined });
-		try {
-			const page = await desktop.session.list({ limit: 50 });
-			set({
-				sessions: orderSessions(page.sessions, page.runningSessionIds),
-				runningSessionIds: [...page.runningSessionIds],
-				nextCursor: page.nextCursor,
-				loading: false,
-			});
-		} catch (error) {
-			set({ loading: false, error: getErrorMessage(error) });
-		}
-	},
-
-	async loadMore() {
-		const cursor = get().nextCursor;
-		if (!cursor || get().loading) return;
-		set({ loading: true, error: undefined });
-		try {
-			const page = await desktop.session.list({ limit: 50, cursor });
-			const sessions = mergeSessions(get().sessions, page.sessions);
-			set({
-				sessions: orderSessions(sessions, page.runningSessionIds),
-				runningSessionIds: [...page.runningSessionIds],
-				nextCursor: page.nextCursor,
-				loading: false,
-			});
-		} catch (error) {
-			set({ loading: false, error: getErrorMessage(error) });
-		}
-	},
-
-	upsert(session) {
-		set((state) => ({
-			sessions: orderSessions(mergeSessions(state.sessions, [session]), state.runningSessionIds),
-		}));
-	},
-}));
 
 interface ActiveSessionState {
 	sessionId: string | null;
@@ -125,9 +68,10 @@ export const useActiveSessionStore = create<ActiveSessionState>((set, get) => ({
 
 	async createAndSend(workspaceId, message, modelRef) {
 		const session = await desktop.session.create({ workspaceId, firstMessage: message });
+		upsertRecentSession(session);
 		get().open(session.id);
 		await desktop.agent.send({ sessionId: session.id, message, modelRef });
-		void useSessionListStore.getState().refresh();
+		void invalidateRecentSessions();
 		return session.id;
 	},
 
@@ -163,7 +107,6 @@ function applyAgentEvent(
 ): Partial<ActiveSessionState> {
 	switch (event.type) {
 		case "status":
-			void useSessionListStore.getState().refresh();
 			return { status: event.status, lastSeq: seq, loading: false };
 		case "transcript_upsert":
 			return {
@@ -201,20 +144,6 @@ function upsertTranscriptItem(
 	const next = [...items];
 	next[index] = item;
 	return next;
-}
-
-function orderSessions(sessions: readonly CodingSession[], runningSessionIds: readonly string[]): CodingSession[] {
-	const running = new Set(runningSessionIds);
-	return [...sessions].sort((left, right) => {
-		const runningDifference = Number(running.has(right.id)) - Number(running.has(left.id));
-		return runningDifference || right.lastActivityAt - left.lastActivityAt || right.id.localeCompare(left.id);
-	});
-}
-
-function mergeSessions(current: readonly CodingSession[], incoming: readonly CodingSession[]): CodingSession[] {
-	const byId = new Map(current.map((session) => [session.id, session]));
-	for (const session of incoming) byId.set(session.id, session);
-	return [...byId.values()];
 }
 
 function getDispatcher() {

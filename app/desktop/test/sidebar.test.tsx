@@ -120,4 +120,25 @@ describe("Sidebar", () => {
 		expect(markup).not.toContain("bg-primary-2");
 		expect(markup).not.toContain("Running");
 	});
+
+	test("有下一页时提供可访问的加载更多操作", () => {
+		const markup = renderToStaticMarkup(
+			<Sidebar
+				sessions={baseSessions}
+				runningSessionIds={[]}
+				activeSessionId={null}
+				loading={false}
+				hasNextPage
+				loadingMore={false}
+				settingsDisabled={false}
+				onToggleSidebar={() => {}}
+				onNewChat={() => {}}
+				onOpenSettings={() => {}}
+				onSelectSession={() => {}}
+				onLoadMore={() => {}}
+			/>,
+		);
+
+		expect(markup).toContain("Load more");
+	});
 });

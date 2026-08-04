@@ -1,8 +1,7 @@
 import { getErrorMessage } from "@jai/common";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { animate, motion, useMotionValue, useReducedMotion } from "motion/react";
 import {
-	type EffectCallback,
 	type KeyboardEvent as ReactKeyboardEvent,
 	type PointerEvent as ReactPointerEvent,
 	type RefObject,
@@ -12,7 +11,16 @@ import {
 	useState,
 } from "react";
 import { desktop } from "@/lib/desktop";
-import { useActiveSessionStore, useSessionListStore } from "@/stores/sessions";
+import {
+	desktopQueryClient,
+	desktopQueryKeys,
+	getRecentSessions,
+	getRunningSessionIds,
+	sessionRecentsQueryOptions,
+	upsertRecentSession,
+	upsertWorkspace,
+} from "@/lib/desktop-query";
+import { useActiveSessionStore } from "@/stores/sessions";
 import {
 	type DesktopProviderConfigInput,
 	type DesktopWorkspace,
@@ -43,28 +51,20 @@ export function WorkspaceShell() {
 	const [rightPanelOpen, setRightPanelOpen] = useState(true);
 	const [providerSettingsOpen, setProviderSettingsOpen] = useState(false);
 	const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
-	const [workspaceBusy, setWorkspaceBusy] = useState(false);
-	const [workspaceError, setWorkspaceError] = useState<string>();
 	const [selectedModelRef, setSelectedModelRef] = useState("");
-	const queryClient = useQueryClient();
-	const sessionList = useSessionListStore();
 	const activeSession = useActiveSessionStore();
 	const workspacesQuery = useQuery({
-		queryKey: ["workspaces"],
+		queryKey: desktopQueryKeys.workspaces,
 		queryFn: () => desktop.workspace.list(),
-		staleTime: 30_000,
 	});
 	const providerQuery = useQuery({
-		queryKey: ["provider-config"],
+		queryKey: desktopQueryKeys.providerConfig,
 		queryFn: () => desktop.provider.get(),
-		staleTime: 30_000,
 	});
-
-	useMountEffect(() => {
-		void useSessionListStore.getState().refresh();
-	});
-
-	const session = sessionList.sessions.find((candidate) => candidate.id === activeSession.sessionId);
+	const sessionRecentsQuery = useInfiniteQuery(sessionRecentsQueryOptions());
+	const sessions = getRecentSessions(sessionRecentsQuery.data);
+	const runningSessionIds = getRunningSessionIds(sessionRecentsQuery.data);
+	const session = sessions.find((candidate) => candidate.id === activeSession.sessionId);
 	const workspaces = workspacesQuery.data ?? [];
 	const selectedWorkspace = workspaces.find((candidate) => candidate.id === selectedWorkspaceId);
 	const defaultWorkspace = workspaces.find((candidate) => candidate.available) ?? workspaces[0];
@@ -90,17 +90,19 @@ export function WorkspaceShell() {
 	};
 	const updateProviderConfig = async (input: DesktopProviderConfigInput) => {
 		const snapshot = await desktop.provider.save(input);
-		queryClient.setQueryData(["provider-config"], snapshot);
+		desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, snapshot);
 		return snapshot;
 	};
 	const saveProviderConfig = async (input: DesktopProviderConfigInput) => {
 		return updateProviderConfig(input);
 	};
-	const fetchProviderModels = async (profileId: string) => {
-		const result = await desktop.provider.fetchModels(profileId);
-		queryClient.setQueryData(["provider-config"], result.snapshot);
-		return result;
-	};
+	const fetchProviderModelsMutation = useMutation({
+		mutationFn: (profileId: string) => desktop.provider.fetchModels(profileId),
+		onSuccess: (result) => {
+			desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, result.snapshot);
+		},
+	});
+	const fetchProviderModels = (profileId: string) => fetchProviderModelsMutation.mutateAsync(profileId);
 	const revealProviderApiKey = async (profileId: string) => {
 		const result = await desktop.provider.revealApiKey(profileId);
 		return result.apiKey;
@@ -119,61 +121,45 @@ export function WorkspaceShell() {
 		window.addEventListener("keydown", openSettingsShortcut);
 		return () => window.removeEventListener("keydown", openSettingsShortcut);
 	}, [openProviderSettings]);
-	const rememberWorkspace = (next: DesktopWorkspace) => {
-		queryClient.setQueryData<DesktopWorkspace[]>(["workspaces"], (current = []) => {
-			const index = current.findIndex((candidate) => candidate.id === next.id);
-			if (index < 0) return [...current, next];
-			const updated = [...current];
-			updated[index] = next;
-			return updated;
-		});
-	};
-	const bindWorkspace = async (next: DesktopWorkspace) => {
-		if (!session) {
+	const workspaceSelectionMutation = useMutation({
+		mutationFn: async (candidate?: DesktopWorkspace) => {
+			const next = candidate
+				? candidate.available
+					? candidate
+					: await desktop.workspace.relink(candidate.id)
+				: await desktop.workspace.choose();
+			if (!next || !session || session.workspaceId === next.id) return { workspace: next };
+			const moved = await desktop.session.move({ sessionId: session.id, toWorkspaceId: next.id });
+			return { workspace: next, moved };
+		},
+		onSuccess: ({ workspace: next, moved }) => {
+			if (!next) return;
+			upsertWorkspace(next);
+			if (moved) {
+				upsertRecentSession(moved);
+				void desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.recents });
+			}
 			setSelectedWorkspaceId(next.id);
-			return;
-		}
-		if (session.workspaceId === next.id) {
-			setSelectedWorkspaceId(next.id);
-			return;
-		}
-		const moved = await desktop.session.move({ sessionId: session.id, toWorkspaceId: next.id });
-		sessionList.upsert(moved);
-		setSelectedWorkspaceId(next.id);
-		void sessionList.refresh();
-	};
+		},
+	});
+	const workspaceBusy = workspaceSelectionMutation.isPending;
+	const workspaceError = workspaceSelectionMutation.isError
+		? getErrorMessage(workspaceSelectionMutation.error)
+		: undefined;
 	const chooseWorkspace = async (candidate: DesktopWorkspace) => {
 		if (workspaceBusy) return;
-		setWorkspaceBusy(true);
-		setWorkspaceError(undefined);
 		try {
-			let next = candidate;
-			if (!candidate.available) {
-				const relinked = await desktop.workspace.relink(candidate.id);
-				if (!relinked) return;
-				next = relinked;
-				rememberWorkspace(relinked);
-			}
-			await bindWorkspace(next);
-		} catch (error) {
-			setWorkspaceError(getErrorMessage(error));
-		} finally {
-			setWorkspaceBusy(false);
+			await workspaceSelectionMutation.mutateAsync(candidate);
+		} catch {
+			// Mutation state drives the recoverable workspace error UI.
 		}
 	};
 	const addWorkspace = async () => {
 		if (workspaceBusy) return;
-		setWorkspaceBusy(true);
-		setWorkspaceError(undefined);
 		try {
-			const created = await desktop.workspace.choose();
-			if (!created) return;
-			rememberWorkspace(created);
-			await bindWorkspace(created);
-		} catch (error) {
-			setWorkspaceError(getErrorMessage(error));
-		} finally {
-			setWorkspaceBusy(false);
+			await workspaceSelectionMutation.mutateAsync(undefined);
+		} catch {
+			// Mutation state drives the recoverable workspace error UI.
 		}
 	};
 
@@ -184,17 +170,20 @@ export function WorkspaceShell() {
 		>
 			{sidebarOpen ? (
 				<Sidebar
-					sessions={sessionList.sessions}
-					runningSessionIds={sessionList.runningSessionIds}
+					sessions={sessions}
+					runningSessionIds={runningSessionIds}
 					activeSessionId={activeSession.sessionId}
-					loading={sessionList.loading}
-					error={sessionList.error}
+					loading={sessionRecentsQuery.isLoading}
+					error={sessionRecentsQuery.isError ? getErrorMessage(sessionRecentsQuery.error) : undefined}
+					hasNextPage={sessionRecentsQuery.hasNextPage}
+					loadingMore={sessionRecentsQuery.isFetchingNextPage}
 					width={sidebarResize.width}
 					settingsDisabled={activeSession.status === "running"}
 					onToggleSidebar={() => setSidebarOpen(false)}
 					onNewChat={activeSession.newChat}
 					onOpenSettings={openProviderSettings}
 					onSelectSession={activeSession.open}
+					onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
 				/>
 			) : null}
 			{sidebarOpen ? <SidebarResizeHandle {...sidebarResize} /> : null}
@@ -398,10 +387,4 @@ function SidebarResizeHandle({
 			/>
 		</motion.div>
 	);
-}
-
-function useMountEffect(effect: EffectCallback) {
-	// Session list hydration is an external store integration and only runs once.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: named mount-only integration
-	useEffect(effect, []);
 }

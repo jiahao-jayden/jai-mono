@@ -1,4 +1,5 @@
 import type { DesktopAgentEventEnvelope, DesktopAgentSnapshot } from "../../shared/desktop-rpc";
+import { invalidateRecentSessions } from "./desktop-query";
 
 export type DesktopAgentProjectionUpdate =
 	| { readonly type: "snapshot"; readonly snapshot: DesktopAgentSnapshot }
@@ -62,6 +63,7 @@ export class DesktopAgentEventDispatcher {
 	}
 
 	#dispatch(envelope: DesktopAgentEventEnvelope): void {
+		if (envelope.event.type === "status") void invalidateRecentSessions();
 		if (!this.#listeners.has(envelope.sessionId)) return;
 		if (this.#refreshes.has(envelope.sessionId)) {
 			const pending = this.#pending.get(envelope.sessionId);
