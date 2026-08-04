@@ -24,10 +24,16 @@ import type {
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import type { QueuedMessage } from "../../ui/input-message";
+import { MessageScroller } from "../../ui/message-scroller";
 import { PermissionRequests } from "../../ui/permission-requests";
 import { ChatComposer } from "./chat-composer";
 import { TranscriptItems, TranscriptLoading } from "./chat-transcript";
-import { comfortableScrollTop, isTranscriptScrollKey, promptAnchorScrollTop } from "./transcript-scroll";
+import {
+	comfortableScrollTop,
+	isTranscriptAwayFromBottom,
+	isTranscriptScrollKey,
+	promptAnchorScrollTop,
+} from "./transcript-scroll";
 
 interface ChatColumnProps {
 	session?: CodingSession;
@@ -245,25 +251,32 @@ export function ChatColumn({
 				</div>
 			) : (
 				<>
-					<div
-						ref={scrollRef}
-						className="min-h-0 flex-1 overflow-y-auto"
-						onKeyDownCapture={transcriptScroll.onKeyDownCapture}
-						onPointerDown={transcriptScroll.onPointerDown}
-						onPointerMove={transcriptScroll.onPointerMove}
-						onTouchMove={transcriptScroll.onTouchMove}
-						onWheel={transcriptScroll.onWheel}
-					>
-						<div className="mx-auto flex w-full max-w-[760px] flex-col gap-2 px-8 py-5">
-							{loading ? <TranscriptLoading /> : null}
-							{!loading && items.length === 0 ? (
-								<p className="py-16 text-center text-[13px] text-muted-foreground">这个会话还没有消息。</p>
-							) : null}
-							<TranscriptItems items={transcriptItems} loading={loading} />
-							{transcriptScroll.reservesTailSpace ? (
-								<div aria-hidden="true" className="h-[45vh] min-h-48 shrink-0" />
-							) : null}
+					<div className="relative min-h-0 flex-1">
+						<div
+							ref={scrollRef}
+							className="h-full overflow-y-auto"
+							onKeyDownCapture={transcriptScroll.onKeyDownCapture}
+							onPointerDown={transcriptScroll.onPointerDown}
+							onPointerMove={transcriptScroll.onPointerMove}
+							onScroll={transcriptScroll.onScroll}
+							onTouchMove={transcriptScroll.onTouchMove}
+							onWheel={transcriptScroll.onWheel}
+						>
+							<div className="mx-auto flex w-full max-w-[760px] flex-col gap-2 px-8 py-5">
+								{loading ? <TranscriptLoading /> : null}
+								{!loading && items.length === 0 ? (
+									<p className="py-16 text-center text-[13px] text-muted-foreground">这个会话还没有消息。</p>
+								) : null}
+								<TranscriptItems items={transcriptItems} loading={loading} />
+								{transcriptScroll.reservesTailSpace ? (
+									<div aria-hidden="true" className="h-[45vh] min-h-48 shrink-0" />
+								) : null}
+							</div>
 						</div>
+						<MessageScroller
+							onScrollToBottom={transcriptScroll.scrollToBottom}
+							visible={transcriptScroll.showMessageScroller}
+						/>
 					</div>
 					<div className="shrink-0 px-8 pb-3">
 						<div className="mx-auto flex w-full max-w-[760px] flex-col gap-2">
@@ -339,13 +352,37 @@ function useTranscriptScroll({ ref, sessionId, items, loading, reducedMotion }: 
 		lastUserMessageId: undefined as string | undefined,
 	});
 	const [reservesTailSpace, setReservesTailSpace] = useState(false);
+	const [showMessageScroller, setShowMessageScroller] = useState(false);
 	const pointerStartRef = useRef<{ x: number; y: number } | undefined>(undefined);
+
+	const syncMessageScroller = useCallback(() => {
+		const element = ref.current;
+		if (!element) return;
+		const isAwayFromBottom = isTranscriptAwayFromBottom(
+			element.scrollTop,
+			element.clientHeight,
+			element.scrollHeight,
+		);
+		const shouldShow = isAwayFromBottom && !stateRef.current.followsNewResponse;
+		setShowMessageScroller((current) => (current === shouldShow ? current : shouldShow));
+	}, [ref]);
 
 	const stopFollowing = useCallback(() => {
 		stateRef.current.followsNewResponse = false;
 		const element = ref.current;
 		if (element) element.scrollTo({ top: element.scrollTop, behavior: "auto" });
 	}, [ref]);
+
+	const scrollToBottom = useCallback(() => {
+		const element = ref.current;
+		if (!element) return;
+		stateRef.current.followsNewResponse = true;
+		setShowMessageScroller(false);
+		element.scrollTo({
+			top: element.scrollHeight,
+			behavior: reducedMotion ? "auto" : "smooth",
+		});
+	}, [reducedMotion, ref]);
 
 	useLayoutEffect(() => {
 		if (stateRef.current.sessionId !== sessionId) {
@@ -356,12 +393,14 @@ function useTranscriptScroll({ ref, sessionId, items, loading, reducedMotion }: 
 				lastUserMessageId: undefined,
 			};
 			setReservesTailSpace(false);
+			setShowMessageScroller(false);
 		}
 		if (loading) {
 			stateRef.current.awaitingSnapshot = true;
 			stateRef.current.followsNewResponse = false;
 			stateRef.current.lastUserMessageId = undefined;
 			setReservesTailSpace(false);
+			setShowMessageScroller(false);
 			return;
 		}
 		const element = ref.current;
@@ -373,6 +412,7 @@ function useTranscriptScroll({ ref, sessionId, items, loading, reducedMotion }: 
 			stateRef.current.lastUserMessageId = latestUser?.id;
 			setReservesTailSpace(false);
 			element.scrollTop = element.scrollHeight;
+			setShowMessageScroller(false);
 			return;
 		}
 
@@ -380,14 +420,21 @@ function useTranscriptScroll({ ref, sessionId, items, loading, reducedMotion }: 
 			stateRef.current.lastUserMessageId = latestUser.id;
 			stateRef.current.followsNewResponse = true;
 			setReservesTailSpace(true);
+			setShowMessageScroller(false);
 			scrollPromptIntoReadingPosition(element, latestUser.id, reducedMotion);
 			return;
 		}
 
 		const latestAssistant = lastMessageForRole(items, "assistant");
-		if (!stateRef.current.followsNewResponse || latestAssistant?.status !== "streaming") return;
-		keepStreamingResponseInComfortZone(element, latestAssistant.id);
-	}, [items, loading, reducedMotion, ref, sessionId]);
+		if (stateRef.current.followsNewResponse && latestAssistant?.status === "streaming") {
+			keepStreamingResponseInComfortZone(element, latestAssistant.id);
+		}
+		syncMessageScroller();
+	}, [items, loading, reducedMotion, ref, sessionId, syncMessageScroller]);
+
+	const onScroll = useCallback(() => {
+		syncMessageScroller();
+	}, [syncMessageScroller]);
 
 	const onWheel = useCallback(
 		(_event: WheelEvent<HTMLDivElement>) => {
@@ -420,7 +467,17 @@ function useTranscriptScroll({ ref, sessionId, items, loading, reducedMotion }: 
 		[stopFollowing],
 	);
 
-	return { onKeyDownCapture, onPointerDown, onPointerMove, onTouchMove, onWheel, reservesTailSpace };
+	return {
+		onKeyDownCapture,
+		onPointerDown,
+		onPointerMove,
+		onScroll,
+		onTouchMove,
+		onWheel,
+		reservesTailSpace,
+		scrollToBottom,
+		showMessageScroller,
+	};
 }
 
 function lastMessageForRole(

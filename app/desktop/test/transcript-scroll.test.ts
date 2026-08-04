@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
 	comfortableScrollTop,
+	isTranscriptAwayFromBottom,
 	isTranscriptScrollKey,
 	promptAnchorScrollTop,
+	transcriptBottomThreshold,
 	transcriptComfortLine,
 	transcriptPromptInset,
 } from "../src/components/shell/chat/transcript-scroll";
@@ -26,5 +28,13 @@ describe("transcript scroll policy", () => {
 		expect(isTranscriptScrollKey("PageDown")).toBe(true);
 		expect(isTranscriptScrollKey("ArrowUp")).toBe(true);
 		expect(isTranscriptScrollKey("Enter")).toBe(false);
+	});
+
+	test("仅在用户明显离开底部时显示跳转控件", () => {
+		const viewportHeight = 600;
+		const scrollHeight = 2_000;
+
+		expect(isTranscriptAwayFromBottom(1_400, viewportHeight, scrollHeight)).toBe(false);
+		expect(isTranscriptAwayFromBottom(1_400 - transcriptBottomThreshold - 1, viewportHeight, scrollHeight)).toBe(true);
 	});
 });
