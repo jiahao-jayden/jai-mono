@@ -148,6 +148,23 @@ export class CodingBusinessService {
 		return this.repository.listSessions(input);
 	}
 
+	async deleteSession(id: string): Promise<void> {
+		const session = this.getSession(id);
+		const source = await this.locateSessionFile(session);
+		const tombstone = `${source}.deleting`;
+
+		await withSessionLock(source, id, async () => {
+			await fs.rename(source, tombstone);
+			try {
+				this.repository.deleteSession(id);
+			} catch (error) {
+				await fs.rename(tombstone, source);
+				throw error;
+			}
+			await fs.rm(tombstone, { force: true });
+		});
+	}
+
 	renameSession(id: string, title: string): CodingSession {
 		return this.repository.renameSession(id, normalizeManualTitle(title), this.#now());
 	}

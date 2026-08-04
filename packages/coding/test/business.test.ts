@@ -134,6 +134,17 @@ describe("CodingBusinessService", () => {
 		);
 	});
 
+	test("删除 Session 会同时移除 catalog 记录和 durable JSONL", async () => {
+		const fixture = await createFixture(["session-1"]);
+		const session = await fixture.service.createSession({ firstMessage: "Delete me" });
+		const sessionFile = fixture.service.sessionFilePath(session.id, null);
+
+		await fixture.service.deleteSession(session.id);
+
+		expect(fixture.service.listSessions().sessions).toEqual([]);
+		expect(await fileExists(sessionFile)).toBe(false);
+	});
+
 	test("从 durable JSONL 恢复 Session snapshot", async () => {
 		const fixture = await createFixture(["session-1"]);
 		const session = await fixture.service.createSession({

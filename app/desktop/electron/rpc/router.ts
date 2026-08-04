@@ -10,6 +10,7 @@ import {
 	type DesktopApi,
 	type DesktopProviderConfigInput,
 	type DesktopSessionCreateInput,
+	type DesktopSessionDeleteInput,
 	type DesktopSessionRenameInput,
 	type DesktopTheme,
 	type DesktopWorkspace,
@@ -177,6 +178,11 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 			const parsed = assertSessionMoveInput(input);
 			return desktopAgentHost.rebindSession(parsed.sessionId, () => requireCodingBusiness().moveSession(parsed));
 		},
+		async delete(_event, input) {
+			const parsed = assertSessionDeleteInput(input);
+			desktopAgentHost.closeSession(parsed.sessionId);
+			await requireCodingBusiness().deleteSession(parsed.sessionId);
+		},
 	},
 	agent: {
 		send(_event, input) {
@@ -278,6 +284,13 @@ function assertSessionRenameInput(value: unknown): DesktopSessionRenameInput {
 		throw agentInputError({ message: "Invalid Session rename input" });
 	}
 	return { sessionId: value.sessionId, title: value.title };
+}
+
+function assertSessionDeleteInput(value: unknown): DesktopSessionDeleteInput {
+	if (!isRecord(value) || typeof value.sessionId !== "string" || value.sessionId.length === 0) {
+		throw agentInputError({ message: "Invalid Session delete input" });
+	}
+	return { sessionId: value.sessionId };
 }
 
 function assertSessionMoveInput(value: unknown): { sessionId: string; toWorkspaceId: string | null } {

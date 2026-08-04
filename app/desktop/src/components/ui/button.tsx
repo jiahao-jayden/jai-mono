@@ -16,7 +16,7 @@ import { useShape } from "@/lib/shape-context";
 
 const buttonVariants = cva(
   [
-    "group relative isolate inline-flex items-center justify-center outline-none cursor-pointer",
+    "group group/button relative isolate inline-flex items-center justify-center outline-none cursor-pointer",
     "transition-colors duration-80",
     "disabled:pointer-events-none",
   ],
@@ -74,11 +74,11 @@ interface ButtonProps
 }
 
 const bgVariants: Record<string, string> = {
-  primary: "bg-foreground group-hover:bg-foreground/90 group-active:bg-foreground/80",
-  secondary: "bg-accent group-hover:bg-accent/80 group-active:bg-accent",
-  tertiary: "border border-border bg-transparent group-hover:bg-hover group-active:bg-active",
-  ghost: "bg-transparent group-hover:bg-hover group-active:bg-active",
-  navigation: "bg-transparent group-hover:bg-sidebar-accent group-active:bg-sidebar-accent",
+  primary: "bg-foreground group-hover/button:bg-foreground/90 group-active/button:bg-foreground/80",
+  secondary: "bg-accent group-hover/button:bg-accent/80 group-active/button:bg-accent",
+  tertiary: "border border-border bg-transparent group-hover/button:bg-hover group-active/button:bg-active",
+  ghost: "bg-transparent group-hover/button:bg-hover group-active/button:bg-active",
+  navigation: "bg-transparent group-hover/button:bg-sidebar-accent group-active/button:bg-sidebar-accent",
 };
 
 const activeBgVariants: Record<string, string> = {
@@ -154,7 +154,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           aria-hidden
           className={cn(
             "absolute inset-0 rounded-[inherit] transition-[background-color,transform] duration-80",
-            !isDisabled && "group-active:scale-[0.98]",
+            !isDisabled && "group-active/button:scale-[0.98]",
             bgClass
           )}
         />

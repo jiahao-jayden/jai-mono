@@ -268,6 +268,10 @@ export interface DesktopSessionRenameInput {
 	readonly title: string;
 }
 
+export interface DesktopSessionDeleteInput {
+	readonly sessionId: string;
+}
+
 export interface DesktopSessionListPage extends SessionListPage {
 	readonly runningSessionIds: readonly string[];
 }
@@ -302,6 +306,7 @@ export interface DesktopApi {
 		}): DesktopSessionListPage;
 		rename(input: DesktopSessionRenameInput): CodingSession;
 		move(input: MoveSessionInput): Promise<CodingSession>;
+		delete(input: DesktopSessionDeleteInput): Promise<void>;
 	};
 	readonly agent: {
 		send(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;

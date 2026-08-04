@@ -335,6 +335,7 @@ type MenuPositionerProps = ComponentProps<typeof Menu.Positioner>;
 interface DropdownContentProps {
   children: ReactNode;
   className?: string;
+  hoverVariant?: "default" | "navigation";
   /** Index of the checked item. Drives the animated selected background and
    *  the radio-group value announced to assistive tech. */
   checkedIndex?: number;
@@ -349,6 +350,7 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
       className,
       children,
       checkedIndex,
+      hoverVariant = "default",
       side = "bottom",
       align = "start",
       sideOffset = 6,
@@ -415,10 +417,22 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
         disabled,
         label,
         closeOnClick,
+      submenu,
         element,
         children,
       }: MenuItemRenderOptions) =>
-        radio ? (
+        submenu ? (
+          <Menu.SubmenuTrigger
+            disabled={disabled}
+            label={label}
+            openOnHover
+            delay={80}
+            closeDelay={120}
+            render={element}
+          >
+            {children}
+          </Menu.SubmenuTrigger>
+        ) : radio ? (
           <Menu.RadioItem
             value={value}
             disabled={disabled}
@@ -553,7 +567,12 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
                   {activeRect && (
                     <motion.div
                       key={sessionRef.current}
-                      className={`absolute ${shape.bg} bg-hover pointer-events-none`}
+                      className={cn(
+                        `absolute ${shape.bg} pointer-events-none`,
+                        hoverVariant === "navigation"
+                          ? "bg-sidebar-accent"
+                          : "bg-hover"
+                      )}
                       initial={{
                         opacity: 0,
                         top: checkedRect?.top ?? activeRect.top,
@@ -618,6 +637,79 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
 
 DropdownContent.displayName = "DropdownContent";
 
+interface DropdownSubmenuContentProps {
+  children: ReactNode;
+  className?: string;
+  sideOffset?: number;
+  hoverVariant?: "default" | "navigation";
+}
+
+function DropdownSubmenuContent({
+  children,
+  className,
+  sideOffset = 6,
+  hoverVariant = "default",
+}: DropdownSubmenuContentProps) {
+  const renderMenuItem = useCallback(
+    ({
+      disabled,
+      label,
+      closeOnClick,
+      element,
+      children: itemChildren,
+    }: MenuItemRenderOptions) => (
+      <Menu.Item
+        disabled={disabled}
+        label={label}
+        closeOnClick={closeOnClick}
+        render={element}
+      >
+        {itemChildren}
+      </Menu.Item>
+    ),
+    []
+  );
+  const context = useMemo(
+    () => ({
+      registerItem: () => {},
+      activeIndex: null,
+      inMenu: true,
+      directHighlight: true,
+      navigationHighlight: hoverVariant === "navigation",
+      renderMenuItem,
+    }),
+    [hoverVariant, renderMenuItem]
+  );
+
+  return (
+    <Menu.Portal>
+      <Menu.Positioner
+        side="right"
+        align="start"
+        sideOffset={sideOffset}
+        alignOffset={-6}
+        className="z-50 outline-none"
+      >
+        <Menu.Popup
+          render={<Elevated offset={2} shadowLevel={3} />}
+          className={cn(
+            `relative flex w-48 max-w-(--available-width) flex-col gap-0.5 overflow-y-auto ${shape.container} p-1 select-none outline-none`,
+            "origin-left transition-[opacity,transform] duration-100 data-starting-style:translate-x-1 data-starting-style:scale-[0.98] data-starting-style:opacity-0 data-ending-style:translate-x-1 data-ending-style:scale-[0.98] data-ending-style:opacity-0",
+            className
+          )}
+        >
+          <DropdownContext.Provider value={context}>
+            {children}
+          </DropdownContext.Provider>
+        </Menu.Popup>
+      </Menu.Positioner>
+    </Menu.Portal>
+  );
+}
+
+DropdownSubmenuContent.displayName = "DropdownSubmenuContent";
+const DropdownSubmenu = Menu.SubmenuRoot;
+
 // ---------------------------------------------------------------------------
 // DropdownLabel
 // ---------------------------------------------------------------------------
@@ -662,6 +754,8 @@ export {
   DropdownMenu,
   DropdownTrigger,
   DropdownContent,
+  DropdownSubmenu,
+  DropdownSubmenuContent,
 };
 // DropdownContextValue and MenuItemRenderOptions are already re-exported
 // above next to their import — repeating them here is a duplicate-export
@@ -671,5 +765,6 @@ export type {
   DropdownMenuProps,
   DropdownTriggerProps,
   DropdownContentProps,
+  DropdownSubmenuContentProps,
 };
 export default Dropdown;

@@ -95,6 +95,20 @@ export function upsertRecentSession(session: CodingSession): void {
 	});
 }
 
+export function removeRecentSession(sessionId: string): void {
+	desktopQueryClient.setQueryData<SessionRecentsData>(desktopQueryKeys.sessions.recents, (current) => {
+		if (!current) return current;
+		return {
+			...current,
+			pages: current.pages.map((page) => ({
+				...page,
+				sessions: page.sessions.filter((session) => session.id !== sessionId),
+				runningSessionIds: page.runningSessionIds.filter((id) => id !== sessionId),
+			})),
+		};
+	});
+}
+
 export function invalidateRecentSessions(): Promise<void> {
 	return desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.recents });
 }

@@ -17,6 +17,7 @@ describe("Sidebar", () => {
 		const markup = renderToStaticMarkup(
 			<Sidebar
 				sessions={[]}
+				workspaces={[]}
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
@@ -25,6 +26,9 @@ describe("Sidebar", () => {
 				onNewChat={() => {}}
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
+				onRenameSession={async () => {}}
+				onMoveSession={async () => {}}
+				onDeleteSession={async () => {}}
 			/>,
 		);
 
@@ -37,6 +41,7 @@ describe("Sidebar", () => {
 		const markup = renderToStaticMarkup(
 			<Sidebar
 				sessions={[]}
+				workspaces={[]}
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
@@ -45,6 +50,9 @@ describe("Sidebar", () => {
 				onNewChat={() => {}}
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
+				onRenameSession={async () => {}}
+				onMoveSession={async () => {}}
+				onDeleteSession={async () => {}}
 			/>,
 		);
 
@@ -52,7 +60,7 @@ describe("Sidebar", () => {
 		expect(markup).toContain('aria-disabled="true"');
 		expect(markup).toContain('tabindex="-1"');
 		// Should have hover class
-		expect(markup).toContain("hover:bg-sidebar-accent");
+		expect(markup).toContain("group-hover/button:bg-sidebar-accent");
 		// Should show "coming later" title
 		expect(markup).toContain("is coming later");
 	});
@@ -61,6 +69,7 @@ describe("Sidebar", () => {
 		const markup = renderToStaticMarkup(
 			<Sidebar
 				sessions={baseSessions}
+				workspaces={[]}
 				runningSessionIds={[]}
 				activeSessionId="s1"
 				loading={false}
@@ -69,6 +78,9 @@ describe("Sidebar", () => {
 				onNewChat={() => {}}
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
+				onRenameSession={async () => {}}
+				onMoveSession={async () => {}}
+				onDeleteSession={async () => {}}
 			/>,
 		);
 
@@ -81,6 +93,7 @@ describe("Sidebar", () => {
 		const markup = renderToStaticMarkup(
 			<Sidebar
 				sessions={baseSessions}
+				workspaces={[]}
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
@@ -89,6 +102,9 @@ describe("Sidebar", () => {
 				onNewChat={() => {}}
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
+				onRenameSession={async () => {}}
+				onMoveSession={async () => {}}
+				onDeleteSession={async () => {}}
 			/>,
 		);
 
@@ -103,6 +119,7 @@ describe("Sidebar", () => {
 		const markup = renderToStaticMarkup(
 			<Sidebar
 				sessions={baseSessions}
+				workspaces={[]}
 				runningSessionIds={["s1"]}
 				activeSessionId={null}
 				loading={false}
@@ -111,11 +128,14 @@ describe("Sidebar", () => {
 				onNewChat={() => {}}
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
+				onRenameSession={async () => {}}
+				onMoveSession={async () => {}}
+				onDeleteSession={async () => {}}
 			/>,
 		);
 
 		expect(markup).toContain("Fix CI pipeline");
-		expect(markup).toContain('aria-label="Session actions (coming later)"');
+		expect(markup).toContain('aria-label="Actions for Fix CI pipeline"');
 		expect(markup).toContain("group-hover:visible");
 		expect(markup).toContain("[text-box:normal]");
 		expect(markup).not.toContain("bg-primary-2");
@@ -126,6 +146,7 @@ describe("Sidebar", () => {
 		const markup = renderToStaticMarkup(
 			<Sidebar
 				sessions={baseSessions}
+				workspaces={[]}
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
@@ -136,6 +157,9 @@ describe("Sidebar", () => {
 				onNewChat={() => {}}
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
+				onRenameSession={async () => {}}
+				onMoveSession={async () => {}}
+				onDeleteSession={async () => {}}
 				onLoadMore={() => {}}
 			/>,
 		);

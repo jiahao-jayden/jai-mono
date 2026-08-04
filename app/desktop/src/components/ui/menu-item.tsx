@@ -43,6 +43,7 @@ export interface MenuItemRenderOptions {
   disabled?: boolean;
   label: string;
   closeOnClick: boolean;
+  submenu?: boolean;
   element: ReactElement;
   children: ReactNode;
 }
@@ -59,6 +60,8 @@ export interface DropdownContextValue {
    *  primitive. Absent in the inline Dropdown panel, where MenuItem renders
    *  its own ARIA menuitem div. */
   renderMenuItem?: (opts: MenuItemRenderOptions) => ReactElement;
+  directHighlight?: boolean;
+  navigationHighlight?: boolean;
 }
 
 export const DropdownContext = createContext<DropdownContextValue | null>(null);
@@ -78,6 +81,7 @@ interface MenuItemProps extends HTMLAttributes<HTMLDivElement> {
   /** Optional leading icon. When omitted, the row renders text-only with no
    *  reserved icon column. */
   icon?: IconComponent;
+  trailingIcon?: IconComponent;
   label: string;
   description?: string;
   index: number;
@@ -87,6 +91,8 @@ interface MenuItemProps extends HTMLAttributes<HTMLDivElement> {
   checked?: boolean;
   onSelect?: () => void;
   disabled?: boolean;
+  variant?: "default" | "destructive";
+  submenu?: boolean;
   /** Popup-only (inside DropdownContent): whether activating the item closes
    *  the menu. Ignored in the inline Dropdown panel. @default true */
   closeOnClick?: boolean;
@@ -96,12 +102,15 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
   (
     {
       icon: Icon,
+      trailingIcon: TrailingIcon,
       label,
       description,
       index,
       checked,
       onSelect,
       disabled,
+      variant = "default",
+      submenu,
       closeOnClick,
       className,
       onClick,
@@ -111,7 +120,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
   ) => {
     const internalRef = useRef<HTMLDivElement>(null);
     const hasMounted = useRef(false);
-    const { registerItem, activeIndex, checkedIndex, renderMenuItem } =
+    const { registerItem, activeIndex, checkedIndex, renderMenuItem, directHighlight, navigationHighlight } =
       useDropdown();
 
     useEffect(() => {
@@ -147,6 +156,10 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
       `relative z-10 flex shrink-0 items-center gap-2 ${shape.item} px-2 cursor-pointer outline-none`,
       description ? "min-h-14 py-2" : "h-9",
       disabled && "opacity-50 pointer-events-none",
+      directHighlight &&
+        (navigationHighlight
+          ? "data-[highlighted]:bg-sidebar-accent"
+          : "data-[highlighted]:bg-hover"),
       className
     );
 
@@ -162,19 +175,21 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
               strokeWidth={isActive || checked ? 2 : 1.5}
               className={cn(
                 "col-start-1 row-start-1 transition-[color,stroke-width] duration-80",
-                isActive || checked
-                  ? "text-foreground"
-                  : "text-muted-foreground"
+                variant === "destructive"
+                  ? "text-destructive"
+                  : isActive || checked
+                    ? "text-foreground"
+                    : "text-muted-foreground"
               )}
             />
           </span>
         )}
-        {/* Both stacked spans carry the text-box trim so the invisible bold
-            sizer and the visible label keep identical boxes. */}
+        {/* Keep the full line box. `text-box: trim-both cap alphabetic`
+            clips CJK glyphs and makes menu labels look vertically crushed. */}
         <span className="min-w-0 flex-1 text-[13px]">
           <span className="inline-grid max-w-full">
             <span
-              className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
+              className="col-start-1 row-start-1 invisible"
               style={{ fontVariationSettings: fontWeights.semibold }}
               aria-hidden="true"
             >
@@ -182,10 +197,10 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
             </span>
             <span
               className={cn(
-                "col-start-1 row-start-1 truncate transition-[color,font-variation-settings] duration-80 [text-box:trim-both_cap_alphabetic]",
-                isActive || checked
-                  ? "text-foreground"
-                  : "text-muted-foreground"
+                "col-start-1 row-start-1 truncate transition-[font-variation-settings] duration-80",
+                variant === "destructive"
+                  ? "text-destructive"
+                  : "text-foreground"
               )}
               style={{
                 fontVariationSettings: checked
@@ -202,6 +217,13 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
             </span>
           ) : null}
         </span>
+        {TrailingIcon ? (
+          <TrailingIcon
+            size={15}
+            strokeWidth={1.5}
+            className="shrink-0 text-muted-foreground"
+          />
+        ) : null}
         <AnimatePresence>
           {checked && (
             <motion.svg
@@ -251,6 +273,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
         disabled,
         label,
         closeOnClick: closeOnClick ?? true,
+        submenu,
         element: (
           <div
             ref={mergeRef}

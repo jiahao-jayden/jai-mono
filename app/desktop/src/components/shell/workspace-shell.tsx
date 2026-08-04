@@ -16,6 +16,7 @@ import {
 	desktopQueryKeys,
 	getRecentSessions,
 	getRunningSessionIds,
+	removeRecentSession,
 	sessionRecentsQueryOptions,
 	upsertRecentSession,
 	upsertWorkspace,
@@ -162,6 +163,20 @@ export function WorkspaceShell() {
 			// Mutation state drives the recoverable workspace error UI.
 		}
 	};
+	const renameSession = async (sessionId: string, title: string) => {
+		const renamed = await desktop.session.rename({ sessionId, title });
+		upsertRecentSession(renamed);
+	};
+	const moveSession = async (sessionId: string, toWorkspaceId: string | null) => {
+		const moved = await desktop.session.move({ sessionId, toWorkspaceId });
+		upsertRecentSession(moved);
+	};
+	const deleteSession = async (sessionId: string) => {
+		await desktop.session.delete({ sessionId });
+		removeRecentSession(sessionId);
+		if (activeSession.sessionId === sessionId) activeSession.newChat();
+		void desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.recents });
+	};
 
 	return (
 		<div
@@ -171,6 +186,7 @@ export function WorkspaceShell() {
 			{sidebarOpen ? (
 				<Sidebar
 					sessions={sessions}
+					workspaces={workspaces}
 					runningSessionIds={runningSessionIds}
 					activeSessionId={activeSession.sessionId}
 					loading={sessionRecentsQuery.isLoading}
@@ -183,6 +199,9 @@ export function WorkspaceShell() {
 					onNewChat={activeSession.newChat}
 					onOpenSettings={openProviderSettings}
 					onSelectSession={activeSession.open}
+					onRenameSession={renameSession}
+					onMoveSession={moveSession}
+					onDeleteSession={deleteSession}
 					onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
 				/>
 			) : null}
