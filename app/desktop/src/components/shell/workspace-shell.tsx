@@ -28,7 +28,7 @@ import {
 } from "../../../shared/desktop-rpc";
 import { ChatColumn } from "./chat/chat-column";
 import { ProviderSettingsDialog } from "./settings/provider-settings-dialog";
-import { Sidebar } from "./sidebar";
+import { Sidebar } from "./sidebar/sidebar";
 import { TaskPanel } from "./task-panel";
 
 const MIN_SIDEBAR_WIDTH = 200;

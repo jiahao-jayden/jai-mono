@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Sidebar } from "../src/components/shell/sidebar";
+import { Sidebar } from "../src/components/shell/sidebar/sidebar";
 
 const baseSessions = [
 	{
