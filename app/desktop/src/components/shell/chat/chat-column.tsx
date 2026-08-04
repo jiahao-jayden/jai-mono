@@ -1,6 +1,7 @@
 import type { CodingSession } from "@jai/coding/business";
 import type { PermissionResolution } from "@jai/coding/permissions/approval";
 import { type CSSProperties, type RefObject, useLayoutEffect, useRef, useState } from "react";
+import pandaLogo from "@/assets/icons/chat-area/panda-3.svg";
 import { useIcons } from "@/lib/icon-context";
 import type {
 	DesktopAgentStatus,
@@ -171,6 +172,13 @@ export function ChatColumn({
 				<div className="flex min-h-0 flex-1 items-center justify-center px-8 pb-[8vh]">
 					<div className="w-full max-w-[720px]">
 						<div className="mb-7 text-center">
+							<img
+								src={pandaLogo}
+								alt=""
+								aria-hidden="true"
+								className="mx-auto mb-5 h-20 w-auto select-none"
+								draggable={false}
+							/>
 							<h1 className="font-serif text-[34px] tracking-[-0.025em] text-foreground">
 								{greeting()}, Jiahao
 							</h1>
@@ -263,9 +271,6 @@ export function ChatColumn({
 							<ComposerError message={sendError || workspaceError || error} />
 						</div>
 					</div>
-					<p className="shrink-0 py-2 pb-3 text-center text-[12.5px] text-muted-foreground">
-						PandaWork runs on your machine. Agents can make mistakes — double-check outputs.
-					</p>
 				</>
 			)}
 		</section>

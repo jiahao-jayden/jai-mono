@@ -117,6 +117,7 @@ describe("Sidebar", () => {
 		expect(markup).toContain("Fix CI pipeline");
 		expect(markup).toContain('aria-label="Session actions (coming later)"');
 		expect(markup).toContain("group-hover:visible");
+		expect(markup).toContain("[text-box:normal]");
 		expect(markup).not.toContain("bg-primary-2");
 		expect(markup).not.toContain("Running");
 	});

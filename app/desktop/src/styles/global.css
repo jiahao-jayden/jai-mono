@@ -8,12 +8,6 @@
 @custom-variant dark (&:is(.dark *));
 
 *:focus-visible {
-	outline: 2px solid color-mix(in oklch, var(--primary-2) 72%, transparent);
-	outline-offset: 2px;
-}
-
-textarea:focus-visible,
-input:focus-visible {
 	outline: none;
 }
 

@@ -2,6 +2,7 @@ import { Popover } from "@base-ui/react/popover";
 import { useState } from "react";
 import { Elevated } from "@/lib/elevated";
 import { type IconComponent, resolveProviderBrandIcon, useIcons } from "@/lib/icon-context";
+import { cn } from "@/lib/utils";
 import { type DesktopProviderConfigSnapshot, isDesktopProviderModelRunnable } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -185,7 +186,12 @@ export function ModelSelector({
 															role="option"
 															aria-selected={selected}
 															onClick={() => chooseModel(model.ref)}
-															className={`flex min-h-13 w-full cursor-pointer items-center gap-2 rounded-[10px] px-3 py-2.5 text-left outline-none transition-colors duration-75 ${selected ? "bg-accent text-foreground shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)]" : "hover:bg-accent/55 active:bg-accent"} focus-visible:ring-2 focus-visible:ring-primary-2/45 focus-visible:ring-inset`}
+															className={cn(
+																"flex min-h-13 w-full cursor-pointer items-center gap-2 rounded-[10px] px-3 py-2.5 text-left outline-none transition-colors duration-75 focus-visible:ring-2 focus-visible:ring-primary-2/45 focus-visible:ring-inset",
+																selected
+																	? "bg-primary-2/4 text-foreground dark:bg-primary-2/7"
+																	: "hover:bg-accent/55 active:bg-accent",
+															)}
 														>
 															<ModelIcon size={20} className="shrink-0 pointer-events-none" />
 															<span className="min-w-0 flex-1 pointer-events-none">
@@ -204,7 +210,12 @@ export function ModelSelector({
 																</span>
 															</span>
 															<ModelCapabilities model={model} />
-															<span className="grid size-4 shrink-0 place-items-center text-foreground pointer-events-none">
+															<span
+																className={cn(
+																	"pointer-events-none grid size-4 shrink-0 place-items-center",
+																	selected ? "text-primary-2/75" : "text-foreground",
+																)}
+															>
 																{selected ? <CheckIcon size={15} strokeWidth={2} /> : null}
 															</span>
 														</button>
@@ -257,7 +268,12 @@ function ProviderFilterButton({
 			aria-label={label}
 			title={label}
 			onClick={onClick}
-			className={`flex size-9 shrink-0 items-center justify-center rounded-lg outline-none cursor-pointer transition-colors duration-75 ${active ? "bg-accent text-foreground shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)]" : "text-muted-foreground hover:bg-accent/55 hover:text-foreground/80 active:bg-accent"} focus-visible:ring-2 focus-visible:ring-primary-2/45`}
+			className={cn(
+				"flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg outline-none transition-colors duration-75 focus-visible:ring-2 focus-visible:ring-primary-2/45",
+				active
+					? "bg-primary-2/5 text-primary-2/75 dark:bg-primary-2/8"
+					: "text-muted-foreground hover:bg-accent/55 hover:text-foreground/80 active:bg-accent",
+			)}
 		>
 			<Icon size={18} strokeWidth={active ? 2 : 1.5} />
 		</button>

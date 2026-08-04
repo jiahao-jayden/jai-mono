@@ -51,7 +51,7 @@ describe("Button", () => {
 		expect(markup).not.toContain("group-hover:stroke");
 	});
 
-	test("不包含自身 focus ring（依赖全局 focus-visible）", () => {
+	test("不额外注入 focus ring", () => {
 		const markup = renderToStaticMarkup(
 			<Button variant="primary">Save</Button>,
 		);

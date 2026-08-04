@@ -146,7 +146,7 @@ export function Sidebar({
 								aria-current={selected ? "page" : undefined}
 								active={selected}
 								contentClassName="w-full min-w-0"
-								labelClassName="min-w-0 flex-1"
+								labelClassName="min-w-0 flex-1 [text-box:normal]"
 								className={cn(
 									"h-8 w-full justify-start rounded-lg pr-9 pl-2.5 text-left text-[13px] font-normal",
 									selected ? "text-foreground" : "text-foreground/80",
