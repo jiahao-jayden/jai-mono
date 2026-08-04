@@ -1,5 +1,6 @@
-import { memo } from "react";
+import { memo, useLayoutEffect, useRef } from "react";
 import type { IconName } from "@/lib/icon-context";
+import { cn } from "@/lib/utils";
 import type {
 	DesktopMessageItem,
 	DesktopProgressItem,
@@ -22,7 +23,8 @@ interface WorkGroup {
 const MemoizedTranscriptItem = memo(TranscriptItem);
 const MemoizedWorkProcess = memo(WorkProcess, sameWorkGroup);
 
-export function TranscriptItems({ items }: { items: readonly DesktopTranscriptItem[] }) {
+export function TranscriptItems({ items, loading }: { items: readonly DesktopTranscriptItem[]; loading: boolean }) {
+	const animatedItemIds = useTranscriptItemAnimations(items, loading);
 	const rows: (DesktopTranscriptItem | WorkGroup)[] = [];
 	let activeGroup: WorkItem[] = [];
 
@@ -61,26 +63,37 @@ export function TranscriptItems({ items }: { items: readonly DesktopTranscriptIt
 
 	return rows.map((row) =>
 		"kind" in row ? (
-			<MemoizedTranscriptItem key={row.id} item={row} />
+			<MemoizedTranscriptItem key={row.id} animate={animatedItemIds.has(row.id)} item={row} />
 		) : (
 			<MemoizedWorkProcess key={row.id} group={row} />
 		),
 	);
 }
 
-export function TranscriptItem({ item }: { item: DesktopTranscriptItem }) {
+export function TranscriptItem({ item, animate = false }: { item: DesktopTranscriptItem; animate?: boolean }) {
 	if (item.kind === "thinking" || item.kind === "progress") {
 		return <WorkProcess group={{ id: `work:${item.id}`, items: [item] }} />;
 	}
 	if (item.kind === "message") {
 		if (item.role === "toolResult") return null;
 		const user = item.role === "user";
+		const messageAlignment = cn("flex py-1", {
+			"justify-end": user,
+			"justify-start": !user,
+		});
+		const messageClassName = cn("max-w-full", {
+			"max-w-[78%]": user,
+			"pl-1": !user,
+		});
+		const from = user ? "user" : "assistant";
+		const isStreaming = item.status === "streaming";
 		return (
-			<div className={`flex py-1 ${user ? "justify-end" : "justify-start"}`}>
+			<div className={messageAlignment} data-transcript-item-id={item.id}>
 				<ChatMessage
-					className={user ? "max-w-[78%]" : "max-w-full"}
-					from={user ? "user" : "assistant"}
-					isStreaming={item.status === "streaming"}
+					animate={animate}
+					className={messageClassName}
+					from={from}
+					isStreaming={isStreaming}
 				>
 					{item.text}
 				</ChatMessage>
@@ -112,6 +125,29 @@ export function TranscriptItem({ item }: { item: DesktopTranscriptItem }) {
 			<span className="h-px flex-1 bg-border" />
 		</div>
 	);
+}
+
+function useTranscriptItemAnimations(items: readonly DesktopTranscriptItem[], loading: boolean): ReadonlySet<string> {
+	const seenItemIds = useRef(new Set<string>());
+	const awaitingSnapshot = useRef(true);
+
+	if (loading) {
+		seenItemIds.current.clear();
+		awaitingSnapshot.current = true;
+	}
+
+	if (awaitingSnapshot.current && !loading) {
+		for (const item of items) seenItemIds.current.add(item.id);
+		awaitingSnapshot.current = false;
+	}
+
+	const animatedItemIds = new Set(items.filter((item) => !seenItemIds.current.has(item.id)).map((item) => item.id));
+
+	useLayoutEffect(() => {
+		for (const item of items) seenItemIds.current.add(item.id);
+	}, [items]);
+
+	return animatedItemIds;
 }
 
 function WorkProcess({ group }: { readonly group: WorkGroup }) {

@@ -1,9 +1,17 @@
 "use client";
 
+import {
+	Cancel01Icon,
+	Copy01Icon,
+	Download04Icon,
+	SquareArrowExpand01Icon,
+	Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
-import { forwardRef, type ReactNode } from "react";
-import { motion, type HTMLMotionProps } from "framer-motion";
+import { forwardRef, memo, type ReactNode, type SVGProps } from "react";
+import { motion, type HTMLMotionProps, useReducedMotion } from "framer-motion";
 import { Streamdown } from "streamdown";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
@@ -12,6 +20,48 @@ import { useTouchPrimary } from "@/hooks/use-touch-primary";
 import { FileThumbnail } from "@/components/ui/file-thumbnail";
 
 const streamdownPlugins = { cjk, code };
+const streamdownControls = {
+	code: { copy: true, download: true },
+	table: { copy: true, download: true, fullscreen: true },
+};
+
+type StreamdownIconProps = SVGProps<SVGSVGElement> & { size?: number };
+
+function makeStreamdownIcon(icon: Parameters<typeof HugeiconsIcon>[0]["icon"]) {
+	return function StreamdownIcon({ size = 16, strokeWidth: _strokeWidth, ...props }: StreamdownIconProps) {
+		return <HugeiconsIcon icon={icon} size={size} strokeWidth={1.6} {...props} />;
+	};
+}
+
+const streamdownIcons = {
+	CheckIcon: makeStreamdownIcon(Tick02Icon),
+	CopyIcon: makeStreamdownIcon(Copy01Icon),
+	DownloadIcon: makeStreamdownIcon(Download04Icon),
+	Maximize2Icon: makeStreamdownIcon(SquareArrowExpand01Icon),
+	XIcon: makeStreamdownIcon(Cancel01Icon),
+};
+
+const AssistantMarkdown = memo(function AssistantMarkdown({
+	content,
+	isStreaming,
+}: {
+	content: string;
+	isStreaming: boolean;
+}) {
+	return (
+		<Streamdown
+			aria-live="off"
+			className="chat-markdown"
+			controls={streamdownControls}
+			icons={streamdownIcons}
+			isAnimating={isStreaming}
+			mode={isStreaming ? "streaming" : "static"}
+			plugins={streamdownPlugins}
+		>
+			{content}
+		</Streamdown>
+	);
+});
 
 interface ChatMessageProps
   extends Omit<HTMLMotionProps<"div">, "children"> {
@@ -31,6 +81,8 @@ interface ChatMessageProps
   actions?: ReactNode;
   /** Enables partial Markdown handling while an assistant response streams. */
   isStreaming?: boolean;
+  /** Plays the entrance transition for messages appended after the initial transcript snapshot. */
+  animate?: boolean;
   /** Message body. When omitted the text bubble is dropped (attachment-only message). */
   children?: ReactNode;
 }
@@ -41,11 +93,24 @@ interface ChatMessageProps
 // lets earlier messages slide up smoothly when a new one is appended.
 const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
   (
-    { from, files, thumbnailSize = 64, time, actions, isStreaming = false, children, className, ...props },
+    {
+      from,
+      files,
+      thumbnailSize = 64,
+      time,
+      actions,
+      isStreaming = false,
+      animate = true,
+      children,
+      className,
+      ...props
+    },
     ref
   ) => {
     const shape = useShape();
     const isUser = from === "user";
+    const reducedMotion = useReducedMotion();
+    const shouldAnimate = animate && !reducedMotion;
     // Hover-reveal is unreachable on touch — keep the meta row visible there.
     const isTouch = useTouchPrimary();
     // Timestamps are a user-message affordance; assistant replies show actions only.
@@ -54,14 +119,16 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
     return (
       <motion.div
         ref={ref}
-        layout="position"
-        initial={{ opacity: 0, y: 8, scale: 0.96 }}
+        role="article"
+        aria-label={isUser ? "Your message" : "Assistant response"}
+        layout={shouldAnimate ? "position" : false}
+        initial={shouldAnimate ? { opacity: 0, y: 8, scale: 0.96 } : false}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={spring.moderate}
+        transition={shouldAnimate ? spring.moderate : { duration: 0 }}
         style={{ transformOrigin: isUser ? "bottom right" : "bottom left" }}
         className={cn(
           "group flex max-w-[80%] flex-col gap-1.5",
-          isUser ? "items-end self-end" : "is-assistant items-start self-start",
+          isUser ? "items-end self-end" : "items-start self-start",
           className
         )}
         {...props}
@@ -103,18 +170,17 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
             )}
           >
             {!isUser && typeof children === "string" ? (
-              <Streamdown
-                isAnimating={isStreaming}
-                mode={isStreaming ? "streaming" : "static"}
-                plugins={streamdownPlugins}
-              >
-                {children}
-              </Streamdown>
+              <AssistantMarkdown content={children} isStreaming={isStreaming} />
             ) : (
               children
             )}
           </div>
         )}
+        {!isUser ? (
+          <span className="sr-only" role="status">
+            {isStreaming ? "Assistant is responding" : "Assistant response complete"}
+          </span>
+        ) : null}
         {(showTime || actions != null) && (
           // Meta row: timestamp + icon-only actions. Always rendered (so it
           // reserves its height and the gap between bubbles never shifts) but

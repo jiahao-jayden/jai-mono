@@ -1,7 +1,18 @@
 import type { CodingSession } from "@jai/coding/business";
 import type { PermissionResolution } from "@jai/coding/permissions/approval";
-import { AnimatePresence } from "framer-motion";
-import { type CSSProperties, type RefObject, type UIEvent, useLayoutEffect, useRef, useState } from "react";
+import { AnimatePresence, useReducedMotion } from "framer-motion";
+import {
+	type CSSProperties,
+	type KeyboardEvent,
+	type PointerEvent,
+	type RefObject,
+	type TouchEvent,
+	useCallback,
+	useLayoutEffect,
+	useRef,
+	useState,
+	type WheelEvent,
+} from "react";
 import pandaLogo from "@/assets/icons/chat-area/panda-3.svg";
 import { useIcons } from "@/lib/icon-context";
 import type {
@@ -16,6 +27,7 @@ import type { QueuedMessage } from "../../ui/input-message";
 import { PermissionRequests } from "../../ui/permission-requests";
 import { ChatComposer } from "./chat-composer";
 import { TranscriptItems, TranscriptLoading } from "./chat-transcript";
+import { comfortableScrollTop, isTranscriptScrollKey, promptAnchorScrollTop } from "./transcript-scroll";
 
 interface ChatColumnProps {
 	session?: CodingSession;
@@ -86,8 +98,7 @@ export function ChatColumn({
 	const [sending, setSending] = useState(false);
 	const [sendError, setSendError] = useState<string>();
 	const scrollRef = useRef<HTMLDivElement>(null);
-	const followsTranscriptRef = useRef(true);
-	useTranscriptAutoscroll(scrollRef, items, followsTranscriptRef);
+	const reducedMotion = useReducedMotion();
 
 	const submit = async (value: string, meta?: { queuedId?: string }) => {
 		const message = value.trim();
@@ -112,6 +123,13 @@ export function ChatColumn({
 		pendingPermissions.length > 0
 			? items.filter((item) => item.kind !== "permission" || item.status !== "pending")
 			: items;
+	const transcriptScroll = useTranscriptScroll({
+		ref: scrollRef,
+		sessionId: session?.id,
+		items: transcriptItems,
+		loading,
+		reducedMotion,
+	});
 
 	const workspaceLabel =
 		workspace?.displayName ??
@@ -119,10 +137,6 @@ export function ChatColumn({
 
 	const drag = { WebkitAppRegion: "drag" } as CSSProperties;
 	const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
-	const updateTranscriptFollowState = (event: UIEvent<HTMLDivElement>) => {
-		const element = event.currentTarget;
-		followsTranscriptRef.current = element.scrollHeight - element.scrollTop - element.clientHeight <= 48;
-	};
 
 	return (
 		<section className="flex min-w-0 flex-1 flex-col bg-background">
@@ -231,13 +245,24 @@ export function ChatColumn({
 				</div>
 			) : (
 				<>
-					<div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" onScroll={updateTranscriptFollowState}>
+					<div
+						ref={scrollRef}
+						className="min-h-0 flex-1 overflow-y-auto"
+						onKeyDownCapture={transcriptScroll.onKeyDownCapture}
+						onPointerDown={transcriptScroll.onPointerDown}
+						onPointerMove={transcriptScroll.onPointerMove}
+						onTouchMove={transcriptScroll.onTouchMove}
+						onWheel={transcriptScroll.onWheel}
+					>
 						<div className="mx-auto flex w-full max-w-[760px] flex-col gap-2 px-8 py-5">
 							{loading ? <TranscriptLoading /> : null}
 							{!loading && items.length === 0 ? (
 								<p className="py-16 text-center text-[13px] text-muted-foreground">这个会话还没有消息。</p>
 							) : null}
-							<TranscriptItems items={transcriptItems} />
+							<TranscriptItems items={transcriptItems} loading={loading} />
+							{transcriptScroll.reservesTailSpace ? (
+								<div aria-hidden="true" className="h-[45vh] min-h-48 shrink-0" />
+							) : null}
 						</div>
 					</div>
 					<div className="shrink-0 px-8 pb-3">
@@ -298,16 +323,142 @@ function ComposerError({ message }: { message?: string }) {
 	) : null;
 }
 
-function useTranscriptAutoscroll(
-	ref: RefObject<HTMLDivElement | null>,
-	items: readonly DesktopTranscriptItem[],
-	followsTranscriptRef: RefObject<boolean>,
-) {
-	useLayoutEffect(() => {
+interface TranscriptScrollOptions {
+	ref: RefObject<HTMLDivElement | null>;
+	sessionId?: string;
+	items: readonly DesktopTranscriptItem[];
+	loading: boolean;
+	reducedMotion: boolean | null;
+}
+
+function useTranscriptScroll({ ref, sessionId, items, loading, reducedMotion }: TranscriptScrollOptions) {
+	const stateRef = useRef({
+		sessionId,
+		awaitingSnapshot: true,
+		followsNewResponse: false,
+		lastUserMessageId: undefined as string | undefined,
+	});
+	const [reservesTailSpace, setReservesTailSpace] = useState(false);
+	const pointerStartRef = useRef<{ x: number; y: number } | undefined>(undefined);
+
+	const stopFollowing = useCallback(() => {
+		stateRef.current.followsNewResponse = false;
 		const element = ref.current;
-		if (!element || items.length === 0 || !followsTranscriptRef.current) return;
-		element.scrollTop = element.scrollHeight;
-	}, [items, ref, followsTranscriptRef]);
+		if (element) element.scrollTo({ top: element.scrollTop, behavior: "auto" });
+	}, [ref]);
+
+	useLayoutEffect(() => {
+		if (stateRef.current.sessionId !== sessionId) {
+			stateRef.current = {
+				sessionId,
+				awaitingSnapshot: true,
+				followsNewResponse: false,
+				lastUserMessageId: undefined,
+			};
+			setReservesTailSpace(false);
+		}
+		if (loading) {
+			stateRef.current.awaitingSnapshot = true;
+			stateRef.current.followsNewResponse = false;
+			stateRef.current.lastUserMessageId = undefined;
+			setReservesTailSpace(false);
+			return;
+		}
+		const element = ref.current;
+		if (!element) return;
+
+		const latestUser = lastMessageForRole(items, "user");
+		if (stateRef.current.awaitingSnapshot) {
+			stateRef.current.awaitingSnapshot = false;
+			stateRef.current.lastUserMessageId = latestUser?.id;
+			setReservesTailSpace(false);
+			element.scrollTop = element.scrollHeight;
+			return;
+		}
+
+		if (latestUser && latestUser.id !== stateRef.current.lastUserMessageId) {
+			stateRef.current.lastUserMessageId = latestUser.id;
+			stateRef.current.followsNewResponse = true;
+			setReservesTailSpace(true);
+			scrollPromptIntoReadingPosition(element, latestUser.id, reducedMotion);
+			return;
+		}
+
+		const latestAssistant = lastMessageForRole(items, "assistant");
+		if (!stateRef.current.followsNewResponse || latestAssistant?.status !== "streaming") return;
+		keepStreamingResponseInComfortZone(element, latestAssistant.id);
+	}, [items, loading, reducedMotion, ref, sessionId]);
+
+	const onWheel = useCallback(
+		(_event: WheelEvent<HTMLDivElement>) => {
+			stopFollowing();
+		},
+		[stopFollowing],
+	);
+	const onTouchMove = useCallback(
+		(_event: TouchEvent<HTMLDivElement>) => {
+			stopFollowing();
+		},
+		[stopFollowing],
+	);
+	const onPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
+		pointerStartRef.current = { x: event.clientX, y: event.clientY };
+	}, []);
+	const onPointerMove = useCallback(
+		(event: PointerEvent<HTMLDivElement>) => {
+			const start = pointerStartRef.current;
+			if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) < 4) return;
+			pointerStartRef.current = undefined;
+			stopFollowing();
+		},
+		[stopFollowing],
+	);
+	const onKeyDownCapture = useCallback(
+		(event: KeyboardEvent<HTMLDivElement>) => {
+			if (isTranscriptScrollKey(event.key)) stopFollowing();
+		},
+		[stopFollowing],
+	);
+
+	return { onKeyDownCapture, onPointerDown, onPointerMove, onTouchMove, onWheel, reservesTailSpace };
+}
+
+function lastMessageForRole(
+	items: readonly DesktopTranscriptItem[],
+	role: "user" | "assistant",
+): Extract<DesktopTranscriptItem, { readonly kind: "message" }> | undefined {
+	for (let index = items.length - 1; index >= 0; index--) {
+		const item = items[index];
+		if (item?.kind === "message" && item.role === role) return item;
+	}
+	return undefined;
+}
+
+function scrollPromptIntoReadingPosition(
+	element: HTMLDivElement,
+	messageId: string,
+	reducedMotion: boolean | null,
+): void {
+	const prompt = [...element.querySelectorAll<HTMLElement>("[data-transcript-item-id]")].find(
+		(item) => item.dataset.transcriptItemId === messageId,
+	);
+	if (!prompt) return;
+	const promptTop = element.scrollTop + prompt.getBoundingClientRect().top - element.getBoundingClientRect().top;
+	element.scrollTo({
+		top: promptAnchorScrollTop(promptTop),
+		behavior: reducedMotion ? "auto" : "smooth",
+	});
+}
+
+function keepStreamingResponseInComfortZone(element: HTMLDivElement, messageId: string): void {
+	const response = [...element.querySelectorAll<HTMLElement>("[data-transcript-item-id]")].find(
+		(item) => item.dataset.transcriptItemId === messageId,
+	);
+	if (!response) return;
+	const responseBottom =
+		element.scrollTop + response.getBoundingClientRect().bottom - element.getBoundingClientRect().top;
+	const nextScrollTop = comfortableScrollTop(element.scrollTop, element.clientHeight, responseBottom);
+	if (nextScrollTop > element.scrollTop) element.scrollTop = nextScrollTop;
 }
 
 function greeting(): string {
