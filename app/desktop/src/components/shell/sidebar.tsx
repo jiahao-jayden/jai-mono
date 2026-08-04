@@ -2,6 +2,7 @@ import type { CodingSession } from "@jai/coding/business";
 import { type MotionValue, motion } from "motion/react";
 import type { CSSProperties, ReactNode } from "react";
 import { useIcons } from "@/lib/icon-context";
+import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
 
 const drag = { WebkitAppRegion: "drag" } as CSSProperties;
@@ -31,7 +32,6 @@ const navigation = [
 
 export function Sidebar({
 	sessions,
-	runningSessionIds,
 	activeSessionId,
 	loading,
 	error,
@@ -42,13 +42,12 @@ export function Sidebar({
 	onOpenSettings,
 	onSelectSession,
 }: SidebarProps) {
-	const running = new Set(runningSessionIds);
 	const icons = useIcons();
 	const SearchIcon = icons.search;
 	const PanelLeftCloseIcon = icons["panel-left-close"];
 	const PlusIcon = icons.plus;
 	const SettingsIcon = icons.settings;
-	const MessageIcon = icons["message-circle"];
+	const MoreVerticalIcon = icons["more-vertical"];
 
 	return (
 		<motion.aside
@@ -113,7 +112,7 @@ export function Sidebar({
 				<span className="text-[12px] font-semibold text-muted-foreground">Recents</span>
 			</div>
 
-			<div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-2.5 pb-2">
+			<div className="scrollbar-hidden min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2.5 pb-2">
 				{loading && sessions.length === 0 ? (
 					<div className="space-y-2 px-2.5 py-2" role="status" aria-label="Loading recent sessions">
 						{[0, 1, 2].map((item) => (
@@ -132,34 +131,41 @@ export function Sidebar({
 				{sessions.map((session) => {
 					const selected = session.id === activeSessionId;
 					return (
-						<Button
-							type="button"
-							variant="navigation"
-							size="md"
-							key={session.id}
-							onClick={() => onSelectSession(session.id)}
-							aria-current={selected ? "page" : undefined}
-							active={selected}
-							className={`h-auto w-full justify-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] ${
-								selected ? "font-semibold" : "text-foreground/80"
-							}`}
-						>
-							<span className="flex min-w-0 w-full items-center gap-2.5">
-								<span className="relative shrink-0">
-									<MessageIcon size={15} strokeWidth={1.5} />
-									{running.has(session.id) ? (
-										<>
-											<span className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-primary-2 ring-2 ring-sidebar" />
-											<span className="sr-only">Running</span>
-										</>
-									) : null}
-								</span>
-								<span className="min-w-0 flex-1 truncate">{session.title}</span>
-								<span className="shrink-0 text-[10.5px] font-normal text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-									{relativeTime(session.lastActivityAt)}
-								</span>
-							</span>
-						</Button>
+						<div className="group relative" key={session.id}>
+							<Button
+								type="button"
+								variant="navigation"
+								size="md"
+								onClick={() => onSelectSession(session.id)}
+								aria-current={selected ? "page" : undefined}
+								active={selected}
+								contentClassName="w-full min-w-0"
+								labelClassName="min-w-0 flex-1"
+								className={cn(
+									"h-8 w-full justify-start rounded-lg pr-9 pl-2.5 text-left text-[13px] font-normal",
+									selected ? "text-foreground" : "text-foreground/80",
+								)}
+							>
+								<span className="block truncate">{session.title}</span>
+							</Button>
+							<Button
+								type="button"
+								variant="navigation"
+								size="icon-sm"
+								aria-disabled="true"
+								tabIndex={-1}
+								aria-label="Session actions (coming later)"
+								title="Session actions (coming later)"
+								className={cn(
+									"absolute top-1/2 right-1 size-7 -translate-y-1/2 rounded-lg text-foreground/50 transition-opacity hover:text-foreground/80",
+									selected
+										? "visible opacity-100"
+										: "invisible opacity-0 group-hover:visible group-hover:opacity-100",
+								)}
+							>
+								<MoreVerticalIcon size={16} strokeWidth={1.5} />
+							</Button>
+						</div>
 					);
 				})}
 			</div>
@@ -196,13 +202,4 @@ function IconButton({ label, children }: { label: string; children: ReactNode })
 			{children}
 		</Button>
 	);
-}
-
-function relativeTime(timestamp: number): string {
-	const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
-	if (minutes < 1) return "now";
-	if (minutes < 60) return `${minutes}m`;
-	const hours = Math.floor(minutes / 60);
-	if (hours < 24) return `${hours}h`;
-	return `${Math.floor(hours / 24)}d`;
 }

@@ -99,7 +99,7 @@ describe("Sidebar", () => {
 		expect(markup).not.toContain("rounded-2xl");
 	});
 
-	test("运行中 session 显示脉冲指示器", () => {
+	test("session 仅显示标题，hover 时显示操作菜单", () => {
 		const markup = renderToStaticMarkup(
 			<Sidebar
 				sessions={baseSessions}
@@ -114,7 +114,10 @@ describe("Sidebar", () => {
 			/>,
 		);
 
-		expect(markup).toContain("bg-primary-2");
-		expect(markup).toContain("Running");
+		expect(markup).toContain("Fix CI pipeline");
+		expect(markup).toContain('aria-label="Session actions (coming later)"');
+		expect(markup).toContain("group-hover:visible");
+		expect(markup).not.toContain("bg-primary-2");
+		expect(markup).not.toContain("Running");
 	});
 });

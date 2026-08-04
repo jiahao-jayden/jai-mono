@@ -44,6 +44,7 @@ import {
 	Menu01Icon,
 	Moon02Icon,
 	MoreHorizontalIcon,
+	MoreVerticalIcon,
 	Notification01Icon,
 	PaintBrush01Icon,
 	PanelLeftCloseIcon,
@@ -89,6 +90,7 @@ export type IconName =
 	| "copy"
 	| "menu"
 	| "dot"
+	| "more-vertical"
 	| "monitor"
 	| "sun"
 	| "moon"
@@ -168,6 +170,7 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	copy: createHugeicon(Copy01Icon),
 	menu: createHugeicon(Menu01Icon),
 	dot: createHugeicon(MoreHorizontalIcon),
+	"more-vertical": createHugeicon(MoreVerticalIcon),
 	monitor: createHugeicon(ComputerIcon),
 	sun: createHugeicon(Sun01Icon),
 	moon: createHugeicon(Moon02Icon),
