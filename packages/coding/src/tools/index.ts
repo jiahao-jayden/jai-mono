@@ -2,6 +2,7 @@ import { type AgentTool, createHarnessTools } from "@jai/agent";
 import { NodeExecutionEnvironment } from "@jai/agent/node";
 import type { CodingToolOptions } from "./types";
 
+export { createReportProgressTool, REPORT_PROGRESS_TOOL_NAME } from "./report-progress";
 export type { CodingToolOptions } from "./types";
 
 export function createCodingTools(

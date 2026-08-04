@@ -1,12 +1,17 @@
 "use client";
 
+import { cjk } from "@streamdown/cjk";
+import { code } from "@streamdown/code";
 import { forwardRef, type ReactNode } from "react";
 import { motion, type HTMLMotionProps } from "framer-motion";
+import { Streamdown } from "streamdown";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
 import { useShape } from "@/lib/shape-context";
 import { useTouchPrimary } from "@/hooks/use-touch-primary";
 import { FileThumbnail } from "@/components/ui/file-thumbnail";
+
+const streamdownPlugins = { cjk, code };
 
 interface ChatMessageProps
   extends Omit<HTMLMotionProps<"div">, "children"> {
@@ -24,6 +29,8 @@ interface ChatMessageProps
   /** Icon-only action buttons shown in the hover-revealed meta row (e.g. copy,
    *  edit, regenerate). Rendered next to the timestamp. */
   actions?: ReactNode;
+  /** Enables partial Markdown handling while an assistant response streams. */
+  isStreaming?: boolean;
   /** Message body. When omitted the text bubble is dropped (attachment-only message). */
   children?: ReactNode;
 }
@@ -34,7 +41,7 @@ interface ChatMessageProps
 // lets earlier messages slide up smoothly when a new one is appended.
 const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
   (
-    { from, files, thumbnailSize = 64, time, actions, children, className, ...props },
+    { from, files, thumbnailSize = 64, time, actions, isStreaming = false, children, className, ...props },
     ref
   ) => {
     const shape = useShape();
@@ -54,7 +61,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
         style={{ transformOrigin: isUser ? "bottom right" : "bottom left" }}
         className={cn(
           "group flex max-w-[80%] flex-col gap-1.5",
-          isUser ? "items-end self-end" : "items-start self-start",
+          isUser ? "items-end self-end" : "is-assistant items-start self-start",
           className
         )}
         {...props}
@@ -78,7 +85,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
         {children != null && children !== "" && (
           <div
             className={cn(
-              "py-2 text-[14px] whitespace-pre-wrap break-words",
+              "py-2 text-[14px] wrap-break-word",
               // User keeps the bubble chrome (rounded fill + horizontal padding);
               // the assistant reply is flush-left plain text with no background.
               isUser
@@ -90,12 +97,18 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
                     // word-by-word stream visibly reflows earlier words to new
                     // lines. Default (normal) wrapping appends left-to-right and
                     // stays put as the text grows.
-                    "px-3.5 text-pretty bg-[color-mix(in_oklab,var(--accent),var(--background)_45%)] text-accent-foreground"
+                    "px-3.5 text-pretty whitespace-pre-wrap bg-[color-mix(in_oklab,var(--accent),var(--background)_45%)] text-accent-foreground"
                   )
-                : "text-foreground"
+                : "text-foreground/95 leading-[1.7]"
             )}
           >
-            {children}
+            {!isUser && typeof children === "string" ? (
+              <Streamdown isAnimating={isStreaming} plugins={streamdownPlugins}>
+                {children}
+              </Streamdown>
+            ) : (
+              children
+            )}
           </div>
         )}
         {(showTime || actions != null) && (

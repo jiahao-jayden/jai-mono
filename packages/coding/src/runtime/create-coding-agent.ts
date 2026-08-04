@@ -31,7 +31,7 @@ import {
 	type PermissionSettings,
 } from "../permissions";
 import { CodingSkillsRuntime, type CodingSkillsRuntimeOptions } from "../skills";
-import { type CodingToolOptions, createCodingTools } from "../tools";
+import { type CodingToolOptions, createCodingTools, createReportProgressTool } from "../tools";
 
 export interface ResolvedCodingProvider {
 	readonly provider: Provider;
@@ -221,9 +221,12 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const agent = new Agent<TAppState>({
 		model,
 		provider,
-		tools: options.executionContext.localFileAccess
-			? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
-			: [],
+		tools: [
+			createReportProgressTool(),
+			...(options.executionContext.localFileAccess
+				? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
+				: []),
+		],
 		sessionHandle,
 		instructions: resolvedInstructions,
 		temperature: resolvedAgentOptions.temperature,

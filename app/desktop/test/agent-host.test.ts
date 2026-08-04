@@ -96,6 +96,121 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
+	test("将 thinking delta 投影为独立步骤而不混入回答文本", async () => {
+		const envelopes: DesktopAgentEventEnvelope[] = [];
+		const agent = new FakeAgent(async (self) => {
+			const partial = {
+				...assistantMessage(""),
+				content: [{ type: "thinking" as const, thinking: "Inspecting the project" }],
+			};
+			self.emit({ type: "message_start", message: assistantMessage("") });
+			self.emit({
+				type: "message_update",
+				message: partial,
+				assistantEvent: {
+					type: "thinking_delta",
+					contentIndex: 0,
+					delta: "Inspecting the project",
+					partial,
+				},
+			});
+			self.emit({ type: "message_end", message: partial });
+			return [partial];
+		});
+		const host = new DesktopAgentHost((event) => envelopes.push(event), async () => agent);
+
+		await host.send(input("inspect"));
+		await agent.finished;
+
+		const snapshot = host.getSnapshot("session-1");
+		expect(snapshot.items).toEqual([
+			expect.objectContaining({
+				kind: "thinking",
+				text: "Inspecting the project",
+				status: "complete",
+			}),
+		]);
+		host.close();
+	});
+
+	test("将 ReportProgress 投影为进度项且不显示为普通工具", async () => {
+		const agent = new FakeAgent(async (self) => {
+			const assistant = {
+				...assistantMessage(""),
+				content: [
+					{
+						type: "toolCall" as const,
+						id: "progress-1",
+						name: "ReportProgress",
+						arguments: { title: "Inspecting storage", detail: "Reading the session persistence implementation." },
+					},
+				],
+				stopReason: "toolUse" as const,
+			};
+			self.emit({ type: "message_end", message: assistant });
+			self.emit({
+				type: "tool_execution_start",
+				toolCallId: "progress-1",
+				toolName: "ReportProgress",
+				args: { title: "Inspecting storage", detail: "Reading the session persistence implementation." },
+			});
+			self.emit({
+				type: "tool_execution_end",
+				toolCallId: "progress-1",
+				toolName: "ReportProgress",
+				result: { content: [{ type: "text", text: "Progress reported." }] },
+				isError: false,
+			});
+			return [assistant];
+		});
+		const host = new DesktopAgentHost(() => {}, async () => agent);
+
+		await host.send(input("inspect"));
+		await agent.finished;
+
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({
+				kind: "progress",
+				title: "Inspecting storage",
+				detail: "Reading the session persistence implementation.",
+			}),
+		]);
+		host.close();
+	});
+
+	test("工具结果附着到工具项并保留调用摘要", async () => {
+		const agent = new FakeAgent(async (self) => {
+			self.emit({
+				type: "tool_execution_start",
+				toolCallId: "call-1",
+				toolName: "Read",
+				args: { path: "README.md" },
+			});
+			self.emit({
+				type: "tool_execution_end",
+				toolCallId: "call-1",
+				toolName: "Read",
+				result: { content: [{ type: "text", text: "Project documentation" }] },
+				isError: false,
+			});
+			return [];
+		});
+		const host = new DesktopAgentHost(() => {}, async () => agent);
+
+		await host.send(input("read"));
+		await agent.finished;
+
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({
+				kind: "tool",
+				summary: "README.md",
+				details: "Project documentation",
+				status: "complete",
+			}),
+		]);
+		host.close();
+	});
+
 	test("首轮完成后把输入与结果交给标题生成边界", async () => {
 		const messages = [userMessage("build it"), assistantMessage("done")];
 		const agent = new FakeAgent(async () => messages);

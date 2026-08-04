@@ -60,6 +60,7 @@ describe("createCodingAgent", () => {
 			expect(messages.at(-1)?.role).toBe("assistant");
 			expect(resolvedMode).toBe("default");
 			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual([
+				"ReportProgress",
 				"Read",
 				"Glob",
 				"Grep",
@@ -118,7 +119,7 @@ describe("createCodingAgent", () => {
 
 		try {
 			await codingAgent.invoke("hello");
-			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["Skill"]);
+			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["ReportProgress", "Skill"]);
 			expect(codingAgent.configSnapshot.settings.permissions.defaultMode).toBe("default");
 		} finally {
 			codingAgent.close();

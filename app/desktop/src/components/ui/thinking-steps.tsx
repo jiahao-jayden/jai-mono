@@ -12,7 +12,7 @@ import {
   type ReactNode,
   type HTMLAttributes,
 } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Collapsible } from "@base-ui/react/collapsible";
 
 // SSR-safe layout effect (client components still server-render in Next).
@@ -29,8 +29,7 @@ import type { BadgeColor } from "@/components/ui/badge";
 
 // ─── Shared collapsible parts ───────────────────────────────────────────────
 //
-// ThinkingSteps and ThinkingStepDetails are both single collapsible sections,
-// built directly on Base UI's Collapsible (Root/Trigger/Panel) with the
+// ThinkingSteps is built directly on Base UI's Collapsible with the
 // library's framer-motion springs layered on top.
 
 /** Open state of the nearest ThinkingSteps root, for the header trigger/panel. */
@@ -50,72 +49,35 @@ const TriggerRow = forwardRef<HTMLButtonElement, TriggerRowProps>(
   ({ open, children, className, ...props }, ref) => {
     const ChevronRight = useIcon("chevron-right");
     const shape = useShape();
-    const [isHovered, setIsHovered] = useState(false);
-    const highlighted = open || isHovered;
 
     return (
-      <div
-        className="relative w-fit"
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-      >
-        <AnimatePresence>
-          {isHovered && (
-            <motion.div
-              className={`absolute inset-0 ${shape.bg} bg-hover pointer-events-none`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0, transition: spring.fast.exit }}
-              transition={{ duration: 0.08 }}
-            />
-          )}
-        </AnimatePresence>
+      <div className="relative w-fit">
         <Collapsible.Trigger
           ref={ref}
           className={cn(
-            `relative z-10 flex items-center gap-2.5 ${shape.item} px-3 py-2 cursor-pointer outline-none select-none`,
+            `group relative z-10 flex cursor-pointer select-none items-center gap-1.5 px-1 py-1.5 outline-none ${shape.item}`,
+            "text-muted-foreground transition-colors duration-80 hover:bg-hover hover:text-foreground",
             "focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] focus-visible:ring-offset-0",
             className
           )}
           {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}
         >
-          {/* Label with dual-layer text (invisible bold layer reserves width) */}
-          <span className="inline-grid text-[13px] text-left">
-            <span
-              className="col-start-1 row-start-1 invisible"
-              style={{ fontVariationSettings: fontWeights.semibold }}
-              aria-hidden="true"
-            >
-              {children}
-            </span>
-            <span
-              className={cn(
-                "col-start-1 row-start-1 transition-[color,font-variation-settings] duration-80",
-                highlighted ? "text-foreground" : "text-muted-foreground"
-              )}
-              style={{
-                fontVariationSettings: open
-                  ? fontWeights.semibold
-                  : fontWeights.normal,
-              }}
-            >
-              {children}
-            </span>
+          <span
+            className="text-left text-[12.5px] transition-[font-variation-settings] duration-80"
+            style={{ fontVariationSettings: open ? fontWeights.medium : fontWeights.normal }}
+          >
+            {children}
           </span>
 
-          {/* Chevron — right when collapsed, rotates 90° down when expanded */}
           <motion.span
             className="shrink-0 inline-flex items-center justify-center"
             animate={{ rotate: open ? 90 : 0 }}
             transition={spring.fast}
           >
             <ChevronRight
-              size={16}
-              strokeWidth={highlighted ? 2 : 1.5}
-              className={cn(
-                "transition-[color,stroke-width] duration-80",
-                highlighted ? "text-foreground" : "text-muted-foreground"
-              )}
+              size={13}
+              strokeWidth={1.5}
+              className="opacity-70 transition-opacity duration-80 group-hover:opacity-100"
             />
           </motion.span>
         </Collapsible.Trigger>
@@ -222,7 +184,7 @@ function CollapsePanel({ open, children }: CollapsePanelProps) {
             >
               <div
                 ref={measureRef}
-                className="px-3 pb-3 pt-1 text-[13px] text-muted-foreground"
+                className="px-1 pb-2 pt-1 text-[13px] text-muted-foreground"
               >
                 {children}
               </div>
@@ -324,8 +286,6 @@ interface ThinkingStepProps {
   label: string;
   description?: string;
   status?: StepStatus;
-  delay?: number;
-  isLast?: boolean;
   children?: ReactNode;
   className?: string;
 }
@@ -336,123 +296,81 @@ function ThinkingStep({
   label,
   description,
   status = "complete",
-  delay = 0.08,
-  isLast = false,
   children,
   className,
 }: ThinkingStepProps) {
     const Icon = useIcon(icon);
+    const ChevronRight = useIcon("chevron-right");
     const shape = useShape();
+    const isActive = status === "active";
+    const expandable = Boolean(children);
+    const [open, setOpen] = useState(isActive);
 
     if (status === "pending") return null;
 
-    const isActive = status === "active";
+    const row = (
+      <>
+        <div className="flex w-3.25 shrink-0 items-start justify-center pt-px">
+          {showIcon ? (
+            <Icon size={13} strokeWidth={1.5} className="text-muted-foreground/75" />
+          ) : (
+            <div className="flex size-3.25 items-center justify-center">
+              <div className="size-1 rounded-full bg-muted-foreground/50" />
+            </div>
+          )}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <span
+            className={cn(
+              "text-[12.5px] leading-tight",
+              isActive ? "shimmer-text text-foreground" : "text-foreground/80"
+            )}
+            style={{ fontVariationSettings: fontWeights.medium }}
+          >
+            {label}
+            {isActive && "…"}
+          </span>
+          {description && (
+            <span className="text-[12px] leading-snug text-muted-foreground">
+              {description}
+            </span>
+          )}
+        </div>
+        {expandable && (
+          <span
+            className={cn(
+              "ml-auto mt-px inline-flex size-3.25 shrink-0 items-center justify-center text-muted-foreground/70 transition-transform duration-150 motion-reduce:transition-none",
+              open && "rotate-90"
+            )}
+          >
+            <ChevronRight size={13} strokeWidth={1.5} />
+          </span>
+        )}
+      </>
+    );
 
     return (
-      /* Outer: animates height to create space smoothly */
-      <motion.div
-        className={cn("relative z-10 overflow-hidden", className)}
-        initial={{ height: 0 }}
-        animate={{ height: "auto" }}
-        transition={spring.slow}
-      >
-        {/* Inner: fades content in after space starts opening */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.24, delay, ease: "easeOut" }}
-        >
-          {/* Content row — this is the proximity hover target */}
-          <div className={cn("flex gap-2.5 px-2 py-1.5", shape.item)}>
-            {/* Icon column with continuous connector line */}
-            <div className="flex flex-col items-center shrink-0 w-[14px]">
-              <div className="pt-0.5">
-                {showIcon ? (
-                  <Icon
-                    size={14}
-                    strokeWidth={1.5}
-                    className="text-muted-foreground"
-                  />
-                ) : (
-                  <div className="w-[14px] h-[14px] flex items-center justify-center">
-                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60" />
-                  </div>
-                )}
-              </div>
-              {/* Line stretches from icon to bottom of this step */}
-              {!isLast && (
-                <div className="flex-1 w-px bg-border/60 mt-1" />
+      <div className={cn("relative z-10 min-w-0 w-full", className)}>
+        {expandable ? (
+          <Collapsible.Root open={open} onOpenChange={setOpen} className="min-w-0 w-full">
+            <Collapsible.Trigger
+              className={cn(
+                "flex min-w-0 w-full gap-2 px-1 py-1.5 text-left outline-none transition-colors duration-80 hover:bg-hover",
+                "focus-visible:ring-1 focus-visible:ring-(--focus-ring,#6B97FF)",
+                shape.item
               )}
-            </div>
-
-            {/* Text content */}
-            <div className="flex-1 flex flex-col gap-1 min-w-0">
-              <span
-                className={cn(
-                  "text-[13px] leading-tight text-foreground",
-                  isActive && "shimmer-text"
-                )}
-                style={{ fontVariationSettings: fontWeights.medium }}
-              >
-                {label}
-                {isActive && "…"}
-              </span>
-              {description && (
-                <span className="text-[13px] text-muted-foreground leading-snug">
-                  {description}
-                </span>
-              )}
-              {children}
-            </div>
-          </div>
-        </motion.div>
-      </motion.div>
-    );
-}
-
-// ─── ThinkingStepDetails (nested collapsible) ───────────────────────────────
-
-interface ThinkingStepDetailsProps {
-  summary: string;
-  details?: string[];
-  defaultOpen?: boolean;
-  children?: ReactNode;
-  className?: string;
-}
-
-function ThinkingStepDetails({
-  summary,
-  details,
-  defaultOpen = false,
-  children,
-  className,
-}: ThinkingStepDetailsProps) {
-  const [open, setOpen] = useState(defaultOpen);
-
-  return (
-    <Collapsible.Root
-      open={open}
-      onOpenChange={setOpen}
-      className={cn("mt-1 -ml-3", className)}
-    >
-      <TriggerRow open={open} className="py-1 px-3 gap-1.5">
-        {summary}
-      </TriggerRow>
-      <CollapsePanel open={open}>
-        <div className="flex flex-col gap-0.5 pt-0.5">
-          {details?.map((item, i) => (
-            <span
-              key={i}
-              className="text-[12px] text-muted-foreground leading-snug"
             >
-              {item}
-            </span>
-          ))}
-          {children}
-        </div>
-      </CollapsePanel>
-    </Collapsible.Root>
-  );
+              {row}
+            </Collapsible.Trigger>
+            <Collapsible.Panel className="min-w-0 w-full pl-6 pr-1">
+              {children}
+            </Collapsible.Panel>
+          </Collapsible.Root>
+        ) : (
+          <div className={cn("flex gap-2 px-1 py-1.5", shape.item)}>{row}</div>
+        )}
+      </div>
+    );
 }
 
 // ─── ThinkingStepSources ────────────────────────────────────────────────────
@@ -551,7 +469,6 @@ export {
   ThinkingStepsHeader,
   ThinkingStepsContent,
   ThinkingStep,
-  ThinkingStepDetails,
   ThinkingStepSources,
   ThinkingStepSource,
   ThinkingStepImage,
@@ -562,7 +479,6 @@ export type {
   ThinkingStepsHeaderProps,
   ThinkingStepsContentProps,
   ThinkingStepProps,
-  ThinkingStepDetailsProps,
   ThinkingStepSourcesProps,
   ThinkingStepSourceProps,
   ThinkingStepImageProps,

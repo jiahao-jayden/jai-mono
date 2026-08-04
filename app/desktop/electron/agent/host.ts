@@ -6,6 +6,7 @@ import {
 	type PermissionRequest,
 	type PermissionResolution,
 } from "@jai/coding/permissions";
+import { REPORT_PROGRESS_TOOL_NAME } from "@jai/coding/tools";
 import { toErrorEnvelope } from "@jai/common";
 import { TaggedError } from "better-result";
 import type {
@@ -16,6 +17,8 @@ import type {
 	DesktopAgentStatus,
 	DesktopMessageItem,
 	DesktopPermissionItem,
+	DesktopProgressItem,
+	DesktopThinkingItem,
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
@@ -381,21 +384,31 @@ export class DesktopAgentHost {
 	#onAgentEvent(runtime: SessionRuntime, event: AgentEvent): void {
 		switch (event.type) {
 			case "message_start": {
-				const item = this.#projectMessage(runtime, event.message, "streaming");
-				runtime.items.set(item.id, item);
-				this.#emitNow(runtime, { type: "transcript_upsert", item });
+				for (const item of this.#projectMessageItems(runtime, event.message, "streaming")) {
+					runtime.items.set(item.id, item);
+					this.#emitNow(runtime, { type: "transcript_upsert", item });
+				}
 				return;
 			}
 			case "message_update": {
-				const item = this.#projectMessage(runtime, event.message, "streaming");
+				if (!("contentIndex" in event.assistantEvent)) return;
+				const item = this.#projectAssistantPart(
+					runtime,
+					event.message,
+					event.assistantEvent.contentIndex,
+					"streaming",
+				);
+				if (!item) return;
+				if (item.kind === "tool" || item.kind === "progress") return;
 				runtime.items.set(item.id, item);
 				this.#queueDelta(runtime, { type: "transcript_upsert", item });
 				return;
 			}
 			case "message_end": {
-				const item = this.#projectMessage(runtime, event.message, "complete");
-				runtime.items.set(item.id, item);
-				this.#emitNow(runtime, { type: "transcript_upsert", item });
+				for (const item of this.#projectMessageItems(runtime, event.message, "complete")) {
+					runtime.items.set(item.id, item);
+					this.#emitNow(runtime, { type: "transcript_upsert", item });
+				}
 				this.#onSessionActivity?.(runtime.sessionId);
 				if (event.message.role === "assistant") runtime.activeAssistantId = undefined;
 				if (event.message.role === "user") runtime.activeUserId = undefined;
@@ -411,6 +424,7 @@ export class DesktopAgentHost {
 				return;
 			}
 			case "tool_execution_start": {
+				if (event.toolName === REPORT_PROGRESS_TOOL_NAME) return;
 				runtime.activeToolCallIds.add(event.toolCallId);
 				const item: DesktopToolItem = {
 					kind: "tool",
@@ -426,20 +440,20 @@ export class DesktopAgentHost {
 			}
 			case "tool_execution_update":
 			case "tool_execution_end": {
+				if (event.toolName === REPORT_PROGRESS_TOOL_NAME) return;
 				if (event.type === "tool_execution_end") runtime.activeToolCallIds.delete(event.toolCallId);
 				const previous = runtime.items.get(`tool:${event.toolCallId}`);
+				const previousTool = previous?.kind === "tool" ? previous : undefined;
+				const result = event.type === "tool_execution_update" ? event.partial : event.result;
+				const details = toolResultText(result, 20_000);
 				const item: DesktopToolItem = {
 					kind: "tool",
 					id: `tool:${event.toolCallId}`,
 					toolCallId: event.toolCallId,
 					toolName: event.toolName,
 					status: event.type === "tool_execution_update" ? "running" : event.isError ? "error" : "complete",
-					summary: summarizeToolResult(event.type === "tool_execution_update" ? event.partial : event.result),
-					...(previous?.kind === "tool" &&
-					previous.summary &&
-					!summarizeToolResult(event.type === "tool_execution_update" ? event.partial : event.result)
-						? { summary: previous.summary }
-						: {}),
+					summary: previousTool?.summary ?? (details ? truncate(details, 500) : undefined),
+					...(details ? { details } : previousTool?.details ? { details: previousTool.details } : {}),
 				};
 				runtime.items.set(item.id, item);
 				this.#emitNow(runtime, { type: "transcript_upsert", item });
@@ -450,36 +464,102 @@ export class DesktopAgentHost {
 		}
 	}
 
-	#projectMessage(
+	#projectMessageItems(
 		runtime: SessionRuntime,
 		message: AgentMessage,
 		status: DesktopMessageItem["status"],
-	): DesktopMessageItem {
-		let id: string;
-		switch (message.role) {
-			case "assistant":
-				id = runtime.activeAssistantId ?? `message:${runtime.nextMessageId++}`;
-				runtime.activeAssistantId = id;
-				break;
-			case "user":
-				id = runtime.activeUserId ?? `message:${runtime.nextMessageId++}`;
-				runtime.activeUserId = id;
-				break;
-			case "toolResult":
-				id = `tool-result:${message.toolCallId}`;
-				break;
+	): (DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem)[] {
+		if (message.role === "toolResult") return [];
+		if (message.role === "assistant") {
+			this.#ensureMessageId(runtime, "assistant");
+			let textProjected = false;
+			return message.content.flatMap((_, contentIndex) => {
+				const item = this.#projectAssistantPart(runtime, message, contentIndex, status);
+				if (item?.kind === "message") {
+					if (textProjected) return [];
+					textProjected = true;
+				}
+				return item ? [item] : [];
+			});
 		}
+		const id = this.#ensureMessageId(runtime, "user");
 		const slashInvocation = projectSlashInvocation(message);
+		return [
+			{
+				kind: "message",
+				id,
+				role: message.role,
+				text: messageText(message),
+				status,
+				timestamp: message.timestamp,
+				...(slashInvocation ? { slashInvocation } : {}),
+			},
+		];
+	}
+
+	#projectAssistantPart(
+		runtime: SessionRuntime,
+		message: Extract<AgentMessage, { role: "assistant" }>,
+		contentIndex: number,
+		status: DesktopMessageItem["status"],
+	): DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem | undefined {
+		const id = this.#ensureMessageId(runtime, "assistant");
+		const part = message.content[contentIndex];
+		if (!part) return undefined;
+		if (part.type === "thinking") {
+			if (!part.thinking) return undefined;
+			return {
+				kind: "thinking",
+				id: `thinking:${id}:${contentIndex}`,
+				text: part.thinking,
+				status,
+				timestamp: message.timestamp,
+			};
+		}
+		if (part.type === "toolCall") {
+			if (part.name === REPORT_PROGRESS_TOOL_NAME) {
+				const title = stringArgument(part.arguments, "title");
+				const detail = stringArgument(part.arguments, "detail");
+				if (!title || !detail) return undefined;
+				return {
+					kind: "progress",
+					id: `progress:${part.id}`,
+					title,
+					detail,
+					timestamp: message.timestamp,
+				};
+			}
+			return {
+				kind: "tool",
+				id: `tool:${part.id}`,
+				toolCallId: part.id,
+				toolName: part.name,
+				status: "running",
+				summary: summarizeToolArguments(part.name, part.arguments),
+			};
+		}
+		const text = messageText(message);
+		if (!text) return undefined;
 		return {
 			kind: "message",
 			id,
-			role: message.role,
-			text: messageText(message),
+			role: "assistant",
+			text,
 			status,
 			timestamp: message.timestamp,
-			...(message.role === "assistant" ? { stopReason: message.stopReason } : {}),
-			...(slashInvocation ? { slashInvocation } : {}),
+			stopReason: message.stopReason,
 		};
+	}
+
+	#ensureMessageId(runtime: SessionRuntime, role: "assistant" | "user"): string {
+		if (role === "assistant") {
+			const id = runtime.activeAssistantId ?? `message:${runtime.nextMessageId++}`;
+			runtime.activeAssistantId = id;
+			return id;
+		}
+		const id = runtime.activeUserId ?? `message:${runtime.nextMessageId++}`;
+		runtime.activeUserId = id;
+		return id;
 	}
 
 	#queueDelta(runtime: SessionRuntime, event: DesktopAgentEvent): void {
@@ -604,7 +684,7 @@ function summarizeToolArguments(toolName: string, args: unknown): string | undef
 	return truncate(command ?? (skill ? `/${skill}` : undefined) ?? path ?? toolName, 240);
 }
 
-function summarizeToolResult(result: { content: readonly unknown[] }): string | undefined {
+function toolResultText(result: { content: readonly unknown[] }, maxLength: number): string | undefined {
 	const text = result.content
 		.filter(
 			(part): part is { type: "text"; text: string } =>
@@ -612,7 +692,7 @@ function summarizeToolResult(result: { content: readonly unknown[] }): string | 
 		)
 		.map((part) => part.text)
 		.join("\n");
-	return text ? truncate(text, 500) : undefined;
+	return text ? truncate(text, maxLength) : undefined;
 }
 
 function messageText(message: AgentMessage): string {
@@ -620,8 +700,6 @@ function messageText(message: AgentMessage): string {
 	return message.content
 		.flatMap((part) => {
 			if (part.type === "text") return [part.text];
-			if (part.type === "thinking") return [part.thinking];
-			if (part.type === "toolCall") return [`${part.name}(…)`];
 			return [];
 		})
 		.join("");

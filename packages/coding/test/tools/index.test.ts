@@ -16,6 +16,15 @@ describe("createCodingTools", () => {
 		]);
 	});
 
+	test("ReportProgress is a side-effect-free structured narration tool", async () => {
+		const tool = sdk.createReportProgressTool();
+
+		expect(tool).toMatchObject({ name: "ReportProgress", executionMode: "parallel" });
+		expect(await tool.execute("progress-1", { title: "Inspecting storage", detail: "Reading session files." })).toEqual({
+			content: [{ type: "text", text: "Progress reported." }],
+		});
+	});
+
 	test("does not expose internal infrastructure", () => {
 		expect("resolveWorkspacePath" in sdk).toBe(false);
 		expect("truncateText" in sdk).toBe(false);

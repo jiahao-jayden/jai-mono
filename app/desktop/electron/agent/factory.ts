@@ -11,8 +11,9 @@ import { TaggedError } from "better-result";
 import { desktopModelCatalog } from "../model-catalog";
 import type { DesktopAgentFactory, HostedCodingAgent } from "./host";
 
-const CODING_AGENT_INSTRUCTIONS =
-	"You are Jai, a coding agent. Inspect the workspace before editing, keep changes scoped, and explain the result clearly.";
+const CODING_AGENT_INSTRUCTIONS = `You are Jai, a coding agent. Inspect the workspace before editing, keep changes scoped, and explain the result clearly.
+
+Before every batch of work tools, you MUST call ReportProgress exactly once, then call the required work tools in the SAME response. Never call a work tool without ReportProgress immediately before it. ReportProgress is user-visible work narration, not reasoning. Keep its title under six words and its detail to one concise sentence in the user's language. This requirement is mandatory. Do not call ReportProgress when answering without tools.`;
 type DesktopProviderErrorInit = { readonly message: string };
 class TitleGenerationFailed extends TaggedError("desktop_provider.title_generation_failed")<DesktopProviderErrorInit> {}
 class ProviderRuntimeUnavailable extends TaggedError(

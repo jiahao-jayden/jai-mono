@@ -216,6 +216,15 @@ describe("permission middleware", () => {
 });
 
 describe("permission evaluation", () => {
+	test("ReportProgress 在所有权限模式下直接允许", () => {
+		expect(
+			evaluatePermission(call("ReportProgress", { title: "Inspecting", detail: "Reading files." }), {
+				defaultMode: "dontAsk",
+				deny: ["ReportProgress"],
+			}),
+		).toMatchObject({ behavior: "allow", source: "built-in" });
+	});
+
 	test("规则固定按 Deny、Ask、Allow 求值，不按具体程度反转", () => {
 		const request = call("Bash", { command: "git push origin main" });
 		expect(

@@ -1,18 +1,21 @@
 import type { CodingSession } from "@jai/coding/business";
 import type { PermissionResolution } from "@jai/coding/permissions/approval";
+import { AnimatePresence } from "framer-motion";
 import { type CSSProperties, type RefObject, useLayoutEffect, useRef, useState } from "react";
 import pandaLogo from "@/assets/icons/chat-area/panda-3.svg";
 import { useIcons } from "@/lib/icon-context";
 import type {
 	DesktopAgentStatus,
+	DesktopPermissionItem,
 	DesktopProviderConfigSnapshot,
 	DesktopTranscriptItem,
 	DesktopWorkspace,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import type { QueuedMessage } from "../../ui/input-message";
+import { PermissionRequests } from "../../ui/permission-requests";
 import { ChatComposer } from "./chat-composer";
-import { TranscriptItem, TranscriptLoading } from "./chat-transcript";
+import { TranscriptItems, TranscriptLoading } from "./chat-transcript";
 
 interface ChatColumnProps {
 	session?: CodingSession;
@@ -93,7 +96,7 @@ export function ChatColumn({
 		try {
 			await onSend(message);
 			if (!meta?.queuedId) setDraft("");
-		} catch (error) {
+		} catch {
 			setSendError("消息未发送。请检查模型配置后重试。");
 		} finally {
 			setSending(false);
@@ -101,6 +104,13 @@ export function ChatColumn({
 	};
 
 	const isNewChat = !session;
+	const pendingPermissions = items.filter(
+		(item): item is DesktopPermissionItem => item.kind === "permission" && item.status === "pending",
+	);
+	const transcriptItems =
+		pendingPermissions.length > 0
+			? items.filter((item) => item.kind !== "permission" || item.status !== "pending")
+			: items;
 
 	const workspaceLabel =
 		workspace?.displayName ??
@@ -217,33 +227,31 @@ export function ChatColumn({
 			) : (
 				<>
 					<div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-						<div className="mx-auto flex w-full max-w-[760px] flex-col gap-3 px-8 py-5">
+						<div className="mx-auto flex w-full max-w-[760px] flex-col gap-2 px-8 py-5">
 							{loading ? <TranscriptLoading /> : null}
 							{!loading && items.length === 0 ? (
 								<p className="py-16 text-center text-[13px] text-muted-foreground">这个会话还没有消息。</p>
 							) : null}
-							{items.map((item) => (
-								<TranscriptItem key={item.id} item={item} onResolvePermission={onResolvePermission} />
-							))}
-							{status === "running" ? (
-								<div
-									className="flex items-center gap-1.5 px-1 py-2"
-									role="status"
-									aria-label="Agent is working"
-								>
-									{[0, 1, 2].map((dot) => (
-										<span
-											key={dot}
-											className="agent-thinking-dot size-1.5 rounded-full bg-primary-2"
-											style={{ animationDelay: `${dot * 160}ms` }}
-										/>
-									))}
-								</div>
-							) : null}
+							<TranscriptItems items={transcriptItems} />
 						</div>
 					</div>
 					<div className="shrink-0 px-8 pb-3">
-						<div className="mx-auto w-full max-w-[760px]">
+						<div className="mx-auto flex w-full max-w-[760px] flex-col gap-2">
+							<AnimatePresence initial={false}>
+								{pendingPermissions.length > 0 ? (
+									<PermissionRequests
+										key="permission-requests"
+										requests={pendingPermissions.map((item) => ({
+											id: item.request.requestId,
+											title: item.request.summary.title,
+											description: item.request.summary.description || item.request.reason,
+											command: item.request.summary.command,
+											path: item.request.summary.path,
+										}))}
+										onResolve={(requestId, decision) => onResolvePermission({ requestId, decision })}
+									/>
+								) : null}
+							</AnimatePresence>
 							<ChatComposer
 								value={draft}
 								onValueChange={setDraft}

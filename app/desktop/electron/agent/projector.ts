@@ -1,9 +1,12 @@
 import type { AgentMessage, SessionSnapshot } from "@jai/agent";
+import { REPORT_PROGRESS_TOOL_NAME } from "@jai/coding/tools";
 import type {
 	DesktopAgentSnapshot,
 	DesktopCompactionItem,
 	DesktopMessageItem,
+	DesktopProgressItem,
 	DesktopSlashInvocation,
+	DesktopThinkingItem,
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
@@ -22,35 +25,31 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 			continue;
 		}
 		if (entry.type !== "message") continue;
-		const messageItem = projectMessage(entry.id, entry.message);
-		items.set(messageItem.id, messageItem);
 		if (entry.message.role === "assistant") {
-			for (const part of entry.message.content) {
-				if (part.type !== "toolCall") continue;
-				const toolItem: DesktopToolItem = {
-					kind: "tool",
-					id: `tool:${part.id}`,
-					toolCallId: part.id,
-					toolName: part.name,
-					status: "running",
-					summary: summarizeToolArguments(part.name, part.arguments),
-				};
-				items.set(toolItem.id, toolItem);
+			for (const item of projectAssistantItems(entry.id, entry.message)) {
+				items.set(item.id, item);
 			}
+			continue;
 		}
 		if (entry.message.role === "toolResult") {
+			if (entry.message.toolName === REPORT_PROGRESS_TOOL_NAME) continue;
 			const existing = items.get(`tool:${entry.message.toolCallId}`);
+			const existingTool = existing?.kind === "tool" ? existing : undefined;
+			const details = textContent(entry.message.content, 20_000);
 			const toolItem: DesktopToolItem = {
 				kind: "tool",
 				id: `tool:${entry.message.toolCallId}`,
 				toolCallId: entry.message.toolCallId,
 				toolName: entry.message.toolName,
 				status: entry.message.isError ? "error" : "complete",
-				summary:
-					textContent(entry.message.content, 500) || (existing?.kind === "tool" ? existing.summary : undefined),
+				summary: existingTool?.summary ?? (details ? truncate(details, 500) : undefined),
+				...(details ? { details } : {}),
 			};
 			items.set(toolItem.id, toolItem);
+			continue;
 		}
+		const messageItem = projectMessage(entry.id, entry.message);
+		items.set(messageItem.id, messageItem);
 	}
 	return {
 		sessionId,
@@ -58,6 +57,60 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 		items: [...items.values()],
 		lastSeq: 0,
 	};
+}
+
+function projectAssistantItems(
+	entryId: string,
+	message: Extract<AgentMessage, { role: "assistant" }>,
+): (DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem)[] {
+	const result: (DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem)[] = [];
+	const text = messageText(message);
+	let textProjected = false;
+
+	for (const [contentIndex, part] of message.content.entries()) {
+		if (part.type === "thinking") {
+			if (!part.thinking) continue;
+			result.push({
+				kind: "thinking",
+				id: `thinking:${entryId}:${contentIndex}`,
+				text: part.thinking,
+				status: "complete",
+				timestamp: message.timestamp,
+			});
+			continue;
+		}
+		if (part.type === "toolCall") {
+			if (part.name === REPORT_PROGRESS_TOOL_NAME) {
+				const title = stringValue(part.arguments, "title");
+				const detail = stringValue(part.arguments, "detail");
+				if (title && detail) {
+					result.push({
+						kind: "progress",
+						id: `progress:${part.id}`,
+						title,
+						detail,
+						timestamp: message.timestamp,
+					});
+				}
+				continue;
+			}
+			result.push({
+				kind: "tool",
+				id: `tool:${part.id}`,
+				toolCallId: part.id,
+				toolName: part.name,
+				status: "running",
+				summary: summarizeToolArguments(part.name, part.arguments),
+			});
+			continue;
+		}
+		if (!textProjected && text) {
+			result.push(projectMessage(entryId, message));
+			textProjected = true;
+		}
+	}
+
+	return result;
 }
 
 function projectMessage(entryId: string, message: AgentMessage): DesktopMessageItem {
@@ -93,7 +146,6 @@ function messageText(message: AgentMessage): string {
 	return message.content
 		.flatMap((part) => {
 			if (part.type === "text") return [part.text];
-			if (part.type === "thinking") return [part.thinking];
 			return [];
 		})
 		.join("");
@@ -122,6 +174,11 @@ function textContent(content: readonly unknown[], maxLength: number): string {
 
 function truncate(value: string, maxLength: number): string {
 	return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
+}
+
+function stringValue(value: Readonly<Record<string, unknown>>, key: string): string | undefined {
+	const candidate = value[key];
+	return typeof candidate === "string" && candidate ? candidate : undefined;
 }
 
 function parseTimestamp(value: string): number {

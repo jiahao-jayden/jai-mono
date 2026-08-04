@@ -22,6 +22,13 @@ describe("projectSessionSnapshot", () => {
 					message: {
 						role: "assistant",
 						content: [
+							{ type: "thinking", thinking: "I should update the requested file." },
+							{
+								type: "toolCall",
+								id: "progress-1",
+								name: "ReportProgress",
+								arguments: { title: "Updating configuration", detail: "Inspecting the target file before editing." },
+							},
 							{ type: "text", text: "Writing" },
 							{
 								type: "toolCall",
@@ -42,6 +49,19 @@ describe("projectSessionSnapshot", () => {
 						},
 						stopReason: "toolUse",
 						timestamp: 2,
+					},
+				},
+				{
+					type: "message",
+					id: "progress-result-1",
+					timestamp: "2026-08-01T00:00:01.500Z",
+					message: {
+						role: "toolResult",
+						toolCallId: "progress-1",
+						toolName: "ReportProgress",
+						content: [{ type: "text", text: "Progress reported." }],
+						isError: false,
+						timestamp: 2.5,
 					},
 				},
 				{
@@ -82,9 +102,24 @@ describe("projectSessionSnapshot", () => {
 		expect(projected).toMatchObject({ sessionId: "session-1", status: "idle", lastSeq: 0 });
 		expect(projected.items).toEqual([
 			expect.objectContaining({ kind: "message", role: "user", text: "write" }),
+			expect.objectContaining({
+				kind: "thinking",
+				text: "I should update the requested file.",
+				status: "complete",
+			}),
+			expect.objectContaining({
+				kind: "progress",
+				title: "Updating configuration",
+				detail: "Inspecting the target file before editing.",
+			}),
 			expect.objectContaining({ kind: "message", role: "assistant", text: "Writing" }),
-			expect.objectContaining({ kind: "tool", toolCallId: "call-1", status: "complete", summary: "Created a.txt" }),
-			expect.objectContaining({ kind: "message", role: "toolResult", text: "Created a.txt" }),
+			expect.objectContaining({
+				kind: "tool",
+				toolCallId: "call-1",
+				status: "complete",
+				summary: "a.txt",
+				details: "Created a.txt",
+			}),
 			expect.objectContaining({ kind: "compaction", summary: "Earlier context" }),
 		]);
 		expect(JSON.stringify(projected)).not.toContain("secret");

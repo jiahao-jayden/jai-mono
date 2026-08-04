@@ -190,6 +190,22 @@ export interface DesktopMessageItem {
 	readonly slashInvocation?: DesktopSlashInvocation;
 }
 
+export interface DesktopThinkingItem {
+	readonly kind: "thinking";
+	readonly id: string;
+	readonly text: string;
+	readonly status: "streaming" | "complete";
+	readonly timestamp: number;
+}
+
+export interface DesktopProgressItem {
+	readonly kind: "progress";
+	readonly id: string;
+	readonly title: string;
+	readonly detail: string;
+	readonly timestamp: number;
+}
+
 export interface DesktopToolItem {
 	readonly kind: "tool";
 	readonly id: string;
@@ -197,6 +213,7 @@ export interface DesktopToolItem {
 	readonly toolName: string;
 	readonly status: "running" | "complete" | "error";
 	readonly summary?: string;
+	readonly details?: string;
 }
 
 export interface DesktopPermissionItem {
@@ -215,6 +232,8 @@ export interface DesktopCompactionItem {
 
 export type DesktopTranscriptItem =
 	| DesktopMessageItem
+	| DesktopThinkingItem
+	| DesktopProgressItem
 	| DesktopToolItem
 	| DesktopPermissionItem
 	| DesktopCompactionItem;

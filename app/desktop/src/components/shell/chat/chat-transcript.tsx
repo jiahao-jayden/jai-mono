@@ -1,62 +1,100 @@
-import type { PermissionResolution } from "@jai/coding/permissions/approval";
-import { useState } from "react";
-import { useIcons } from "@/lib/icon-context";
-import type { DesktopPermissionItem, DesktopTranscriptItem } from "../../../../shared/desktop-rpc";
-import { Button } from "../../ui/button";
-import { SlashInvocationText } from "./slash-invocation";
+import type { IconName } from "@/lib/icon-context";
+import type {
+	DesktopMessageItem,
+	DesktopProgressItem,
+	DesktopThinkingItem,
+	DesktopToolItem,
+	DesktopTranscriptItem,
+} from "../../../../shared/desktop-rpc";
+import { ChatMessage } from "../../ui/chat-message";
+import { ThinkingStep, ThinkingSteps, ThinkingStepsContent, ThinkingStepsHeader } from "../../ui/thinking-steps";
+import { ToolCall } from "../../ui/tool-call";
 
-export function TranscriptItem({
-	item,
-	onResolvePermission,
-}: {
-	item: DesktopTranscriptItem;
-	onResolvePermission(resolution: PermissionResolution): Promise<void>;
-}) {
-	const TerminalIcon = useIcons().terminal;
-	if (item.kind === "message") {
-		if (item.role === "toolResult") {
-			return (
-				<div className="mx-1 rounded-lg bg-muted px-3 py-2 font-mono text-[11.5px] whitespace-pre-wrap text-muted-foreground">
-					{item.slashInvocation ? (
-						<SlashInvocationText text={item.text} invocation={item.slashInvocation} />
-					) : (
-						item.text
-					)}
-				</div>
-			);
+type ConnectorItem = DesktopMessageItem & { readonly role: "assistant"; readonly stopReason: "toolUse" };
+type WorkItem = DesktopThinkingItem | DesktopProgressItem | DesktopToolItem | ConnectorItem;
+
+interface WorkGroup {
+	readonly id: string;
+	readonly items: readonly WorkItem[];
+}
+
+export function TranscriptItems({ items }: { items: readonly DesktopTranscriptItem[] }) {
+	const rows: (DesktopTranscriptItem | WorkGroup)[] = [];
+	let activeGroup: WorkItem[] = [];
+
+	const commitGroup = () => {
+		if (activeGroup.length === 0) return;
+		rows.push({ id: `work:${activeGroup[0].id}`, items: activeGroup });
+		activeGroup = [];
+	};
+
+	for (const item of items) {
+		if (item.kind === "message" && item.role === "toolResult") continue;
+		if (item.kind === "permission") continue;
+		if (item.kind === "progress") {
+			while (
+				activeGroup.at(-1)?.kind === "thinking" ||
+				(activeGroup.at(-1)?.kind === "message" && isConnectorItem(activeGroup.at(-1)!))
+			) {
+				activeGroup.pop();
+			}
+			commitGroup();
+			activeGroup.push(item);
+			continue;
 		}
+		if (item.kind === "thinking" || item.kind === "tool") {
+			activeGroup.push(item);
+			continue;
+		}
+		if (isConnectorItem(item)) {
+			if (!activeGroup.some((entry) => entry.kind === "thinking")) activeGroup.push(item);
+			continue;
+		}
+		commitGroup();
+		rows.push(item);
+	}
+	commitGroup();
+
+	return rows.map((row) =>
+		"kind" in row ? <TranscriptItem key={row.id} item={row} /> : <WorkProcess key={row.id} group={row} />,
+	);
+}
+
+export function TranscriptItem({ item }: { item: DesktopTranscriptItem }) {
+	if (item.kind === "thinking" || item.kind === "progress") {
+		return <WorkProcess group={{ id: `work:${item.id}`, items: [item] }} />;
+	}
+	if (item.kind === "message") {
+		if (item.role === "toolResult") return null;
 		const user = item.role === "user";
 		return (
 			<div className={`flex py-1 ${user ? "justify-end" : "justify-start"}`}>
-				<div
-					className={
-						user
-							? "max-w-[78%] rounded-[14px] border border-primary-2/10 bg-primary-2/8 px-4 py-2.5 text-[14px] leading-relaxed whitespace-pre-wrap"
-							: "max-w-full text-[14px] leading-[1.7] whitespace-pre-wrap text-foreground/95"
-					}
+				<ChatMessage
+					className={user ? "max-w-[78%]" : "max-w-full"}
+					from={user ? "user" : "assistant"}
+					isStreaming={item.status === "streaming"}
 				>
 					{item.text}
-					{item.status === "streaming" ? (
-						<span className="ml-1 inline-block h-3.75 w-1.5 animate-pulse rounded-sm bg-primary-2 align-[-2px]" />
-					) : null}
-				</div>
+				</ChatMessage>
 			</div>
 		);
 	}
 
 	if (item.kind === "tool") {
+		const presentation = toolPresentation(item);
 		return (
-			<div className="flex items-center gap-2 rounded-lg px-1 py-1.5 text-[12px] text-muted-foreground">
-				<TerminalIcon size={13} />
-				<span className="font-medium text-foreground/75">{item.toolName}</span>
-				<span className="min-w-0 flex-1 truncate">{item.summary}</span>
-				<span>{item.status}</span>
-			</div>
+			<ToolCall
+				icon={presentation.icon}
+				label={presentation.label}
+				summary={item.summary}
+				details={item.details}
+				status={item.status}
+			/>
 		);
 	}
 
 	if (item.kind === "permission") {
-		return <PermissionRequest item={item} onResolve={onResolvePermission} />;
+		return null;
 	}
 
 	return (
@@ -68,92 +106,95 @@ export function TranscriptItem({
 	);
 }
 
-function PermissionRequest({
-	item,
-	onResolve,
-}: {
-	item: DesktopPermissionItem;
-	onResolve(resolution: PermissionResolution): Promise<void>;
-}) {
-	const icons = useIcons();
-	const CheckIcon = icons.check;
-	const XIcon = icons.x;
-	const ShieldAlertIcon = icons["shield-alert"];
-	const [resolving, setResolving] = useState(false);
-	const [resolveError, setResolveError] = useState<string>();
-
-	if (item.status !== "pending") {
-		return (
-			<div className="flex items-center gap-2 rounded-[12px] border border-border px-3 py-2 text-[12px] text-muted-foreground">
-				{item.status === "allowed" ? <CheckIcon size={14} /> : <XIcon size={14} />}
-				Permission {item.status}
-			</div>
-		);
-	}
-
-	const resolve = async (decision: PermissionResolution["decision"]) => {
-		if (resolving) return;
-		setResolving(true);
-		setResolveError(undefined);
-		try {
-			await onResolve({ requestId: item.request.requestId, decision });
-		} catch {
-			setResolveError("授权结果未提交，请重试。");
-			setResolving(false);
-		}
-	};
+function WorkProcess({ group }: { readonly group: WorkGroup }) {
+	const progress = group.items.find((item): item is DesktopProgressItem => item.kind === "progress");
+	const visibleItems = progress ? group.items.filter((item) => item.kind === "tool") : group.items;
+	const running = group.items.some(
+		(item) =>
+			(item.kind === "thinking" && item.status === "streaming") ||
+			(item.kind === "message" && item.status === "streaming") ||
+			(item.kind === "tool" && item.status === "running"),
+	);
 
 	return (
-		<div className="rounded-[14px] border border-border bg-card p-4">
-			<div className="flex gap-3">
-				<span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-2/10 text-primary-2">
-					<ShieldAlertIcon size={16} />
-				</span>
-				<div className="min-w-0">
-					<p className="text-[13px] font-semibold">{item.request.summary.title}</p>
-					<p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-						{item.request.summary.description || item.request.reason}
-					</p>
-					{item.request.summary.command || item.request.summary.path ? (
-						<code className="mt-2 block overflow-x-auto rounded-lg bg-muted px-3 py-2 font-mono text-[11.5px]">
-							{item.request.summary.command || item.request.summary.path}
-						</code>
-					) : null}
-				</div>
-			</div>
-			<div className="mt-3 flex justify-end gap-2">
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					onClick={() => void resolve("deny")}
-					disabled={resolving}
-					className="text-muted-foreground hover:text-foreground"
-				>
-					Deny
-				</Button>
-				<Button
-					type="button"
-					variant="tertiary"
-					size="sm"
-					onClick={() => void resolve("allowOnce")}
-					disabled={resolving}
-				>
-					{resolving ? "Submitting…" : "Allow once"}
-				</Button>
-				<Button
-					type="button"
-					variant="primary"
-					size="sm"
-					onClick={() => void resolve("alwaysAllow")}
-					disabled={resolving}
-				>
-					Always allow
-				</Button>
-			</div>
-			{resolveError ? <p className="mt-2 text-right text-[11.5px] text-destructive">{resolveError}</p> : null}
-		</div>
+		<ThinkingSteps className="w-full py-1" defaultOpen={progress !== undefined || running}>
+			<ThinkingStepsHeader>
+				{progress?.title ??
+					(running ? "Working…" : `${group.items.length} ${group.items.length === 1 ? "step" : "steps"}`)}
+			</ThinkingStepsHeader>
+			<ThinkingStepsContent>
+				{progress ? (
+					<p className="px-2 pb-2 text-[13px] leading-relaxed text-muted-foreground">{progress.detail}</p>
+				) : null}
+				{visibleItems.map((item) => (
+					<WorkProcessStep key={item.id} item={item} />
+				))}
+			</ThinkingStepsContent>
+		</ThinkingSteps>
 	);
+}
+
+function WorkProcessStep({ item }: { readonly item: WorkItem }) {
+	if (item.kind === "progress") return null;
+	if (item.kind === "tool") return <ToolStep item={item} />;
+	if (item.kind === "thinking") {
+		return (
+			<ThinkingStep icon="clock" label="Reasoning" status={item.status === "streaming" ? "active" : "complete"}>
+				<p className="max-h-48 overflow-y-auto pt-1 text-[12px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+					{item.text}
+				</p>
+			</ThinkingStep>
+		);
+	}
+	return (
+		<ThinkingStep
+			icon="clock"
+			label="Planning"
+			description={item.text}
+			status={item.status === "streaming" ? "active" : "complete"}
+		/>
+	);
+}
+
+function ToolStep({ item }: { readonly item: DesktopToolItem }) {
+	const presentation = toolPresentation(item);
+	return (
+		<ToolCall
+			icon={presentation.icon}
+			label={presentation.label}
+			summary={item.summary}
+			details={item.details}
+			status={item.status}
+		/>
+	);
+}
+
+function toolPresentation(item: DesktopToolItem): { icon: IconName; label: string } {
+	const normalizedName = item.toolName.toLowerCase();
+	const failed = item.status === "error";
+	if (normalizedName.includes("search") || normalizedName === "grep" || normalizedName === "glob") {
+		return {
+			icon: "search",
+			label: failed ? "Search failed" : item.status === "running" ? "Searching" : "Searched",
+		};
+	}
+	if (normalizedName.includes("read")) {
+		return { icon: "file-code", label: failed ? "Read failed" : item.status === "running" ? "Reading" : "Read" };
+	}
+	if (normalizedName.includes("write") || normalizedName.includes("edit")) {
+		return {
+			icon: "file-code",
+			label: failed ? "Update failed" : item.status === "running" ? "Updating" : "Updated",
+		};
+	}
+	return {
+		icon: "terminal",
+		label: failed ? `${item.toolName} failed` : item.toolName,
+	};
+}
+
+function isConnectorItem(item: DesktopTranscriptItem): item is ConnectorItem {
+	return item.kind === "message" && item.role === "assistant" && item.stopReason === "toolUse";
 }
 
 export function TranscriptLoading() {
