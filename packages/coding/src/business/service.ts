@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import path from "node:path";
@@ -45,7 +46,7 @@ export class CodingBusinessService {
 		this.repository = repository;
 		this.dataRoot = path.resolve(options.dataRoot ?? path.join(homedir(), "jai", "workspace"));
 		this.#now = options.now ?? Date.now;
-		this.#createId = options.createId ?? crypto.randomUUID;
+		this.#createId = options.createId ?? randomUUID;
 	}
 
 	static async open(options: CodingBusinessServiceOptions = {}): Promise<CodingBusinessService> {
