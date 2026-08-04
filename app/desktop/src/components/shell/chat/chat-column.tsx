@@ -2,19 +2,16 @@ import type { CodingSession } from "@jai/coding/business";
 import type { PermissionResolution } from "@jai/coding/permissions/approval";
 import { type CSSProperties, type RefObject, useLayoutEffect, useRef, useState } from "react";
 import { useIcons } from "@/lib/icon-context";
-import {
-	type DesktopAgentStatus,
-	type DesktopPermissionItem,
-	type DesktopProviderConfigSnapshot,
-	type DesktopTranscriptItem,
-	type DesktopWorkspace,
-	isDesktopProviderModelRunnable,
+import type {
+	DesktopAgentStatus,
+	DesktopProviderConfigSnapshot,
+	DesktopTranscriptItem,
+	DesktopWorkspace,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
-import { InputMessage, type QueuedMessage } from "../../ui/input-message";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectSeparator, SelectTrigger } from "../../ui/select";
-import { SlashInvocationText } from "./slash-invocation";
-import { WorkspacePicker } from "./workspace-picker";
+import type { QueuedMessage } from "../../ui/input-message";
+import { ChatComposer } from "./chat-composer";
+import { TranscriptItem, TranscriptLoading } from "./chat-transcript";
 
 interface ChatColumnProps {
 	session?: CodingSession;
@@ -95,7 +92,7 @@ export function ChatColumn({
 		try {
 			await onSend(message);
 			if (!meta?.queuedId) setDraft("");
-		} catch {
+		} catch (error) {
 			setSendError("消息未发送。请检查模型配置后重试。");
 		} finally {
 			setSending(false);
@@ -181,7 +178,7 @@ export function ChatColumn({
 								Start a chat or hand a task to a local agent.
 							</p>
 						</div>
-						<Composer
+						<ChatComposer
 							value={draft}
 							onValueChange={setDraft}
 							onSubmit={submit}
@@ -239,7 +236,7 @@ export function ChatColumn({
 					</div>
 					<div className="shrink-0 px-8 pb-3">
 						<div className="mx-auto w-full max-w-[760px]">
-							<Composer
+							<ChatComposer
 								value={draft}
 								onValueChange={setDraft}
 								onSubmit={submit}
@@ -275,278 +272,6 @@ export function ChatColumn({
 	);
 }
 
-function Composer({
-	value,
-	onValueChange,
-	onSubmit,
-	onAbort,
-	status,
-	disabled,
-	queue,
-	onQueueChange,
-	workspace,
-	workspaces,
-	workspaceBusy,
-	workspaceLoading,
-	workspaceLoadError,
-	onChooseWorkspace,
-	onAddWorkspace,
-	onRetryWorkspaces,
-	providerConfig,
-	selectedModelRef,
-	providerLoading,
-	providerError,
-	onOpenProviderSettings,
-	onSelectProviderModel,
-	large = false,
-}: {
-	value: string;
-	onValueChange(value: string): void;
-	onSubmit(value: string, meta?: { queuedId?: string }): void;
-	onAbort(): Promise<void>;
-	status: DesktopAgentStatus;
-	disabled: boolean;
-	queue: QueuedMessage[];
-	onQueueChange(queue: QueuedMessage[]): void;
-	workspace?: DesktopWorkspace;
-	workspaces: readonly DesktopWorkspace[];
-	workspaceBusy: boolean;
-	workspaceLoading: boolean;
-	workspaceLoadError: boolean;
-	onChooseWorkspace(workspace: DesktopWorkspace): Promise<void>;
-	onAddWorkspace(): Promise<void>;
-	onRetryWorkspaces(): void;
-	providerConfig?: DesktopProviderConfigSnapshot;
-	selectedModelRef: string;
-	providerLoading: boolean;
-	providerError: boolean;
-	onOpenProviderSettings(): void;
-	onSelectProviderModel(modelRef: string): void;
-	large?: boolean;
-}) {
-	const icons = useIcons();
-	const PlusIcon = icons.plus;
-	const modelStatus = resolveModelStatus(providerConfig, selectedModelRef, providerLoading, providerError);
-
-	return (
-		<div>
-			<InputMessage
-				value={value}
-				onValueChange={onValueChange}
-				onSend={(message, _files, meta) => onSubmit(message, meta)}
-				onStop={() => void onAbort()}
-				status={status === "running" ? "streaming" : "idle"}
-				queue={queue}
-				onQueueChange={onQueueChange}
-				disabled={disabled}
-				minRows={large ? 2 : 1}
-				maxRows={8}
-				placeholder={large ? "What should the agent work on?" : "Write a message…"}
-				sendLabel="Send message"
-				textareaProps={{ "aria-label": "Message" }}
-				leftSlot={
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon-sm"
-						disabled
-						aria-label="Attach files"
-						title="File attachments are coming later"
-					>
-						<PlusIcon size={14} strokeWidth={1.5} />
-					</Button>
-				}
-				rightSlot={
-					<div className="hidden min-[900px]:block">
-						<ModelSelector
-							config={providerConfig}
-							selectedModelRef={selectedModelRef}
-							status={modelStatus}
-							disabled={status === "running" || providerLoading}
-							onSelect={onSelectProviderModel}
-							onManage={onOpenProviderSettings}
-						/>
-					</div>
-				}
-			/>
-			<div className="mt-1.5 pl-2">
-				<WorkspacePicker
-					workspace={workspace}
-					workspaces={workspaces}
-					disabled={status === "running"}
-					busy={workspaceBusy}
-					loading={workspaceLoading}
-					loadError={workspaceLoadError}
-					onChoose={onChooseWorkspace}
-					onAdd={onAddWorkspace}
-					onRetry={onRetryWorkspaces}
-				/>
-			</div>
-		</div>
-	);
-}
-
-function TranscriptItem({
-	item,
-	onResolvePermission,
-}: {
-	item: DesktopTranscriptItem;
-	onResolvePermission(resolution: PermissionResolution): Promise<void>;
-}) {
-	const TerminalIcon = useIcons().terminal;
-	if (item.kind === "message") {
-		if (item.role === "toolResult") {
-			return (
-				<div className="mx-1 rounded-lg bg-muted px-3 py-2 font-mono text-[11.5px] whitespace-pre-wrap text-muted-foreground">
-					{item.slashInvocation ? (
-						<SlashInvocationText text={item.text} invocation={item.slashInvocation} />
-					) : (
-						item.text
-					)}
-				</div>
-			);
-		}
-		const user = item.role === "user";
-		return (
-			<div className={`flex py-1 ${user ? "justify-end" : "justify-start"}`}>
-				<div
-					className={
-						user
-							? "max-w-[78%] rounded-[14px] border border-primary-2/10 bg-primary-2/8 px-4 py-2.5 text-[14px] leading-relaxed whitespace-pre-wrap"
-							: "max-w-full text-[14px] leading-[1.7] whitespace-pre-wrap text-foreground/95"
-					}
-				>
-					{item.text}
-					{item.status === "streaming" ? (
-						<span className="ml-1 inline-block h-[15px] w-1.5 animate-pulse rounded-sm bg-primary-2 align-[-2px]" />
-					) : null}
-				</div>
-			</div>
-		);
-	}
-
-	if (item.kind === "tool") {
-		return (
-			<div className="flex items-center gap-2 rounded-lg px-1 py-1.5 text-[12px] text-muted-foreground">
-				<TerminalIcon size={13} />
-				<span className="font-medium text-foreground/75">{item.toolName}</span>
-				<span className="min-w-0 flex-1 truncate">{item.summary}</span>
-				<span>{item.status}</span>
-			</div>
-		);
-	}
-
-	if (item.kind === "permission") {
-		return <PermissionRequest item={item} onResolve={onResolvePermission} />;
-	}
-
-	return (
-		<div className="flex items-center gap-3 py-2 text-[11.5px] text-muted-foreground">
-			<span className="h-px flex-1 bg-border" />
-			Context compacted
-			<span className="h-px flex-1 bg-border" />
-		</div>
-	);
-}
-
-function PermissionRequest({
-	item,
-	onResolve,
-}: {
-	item: DesktopPermissionItem;
-	onResolve(resolution: PermissionResolution): Promise<void>;
-}) {
-	const icons = useIcons();
-	const CheckIcon = icons.check;
-	const XIcon = icons.x;
-	const ShieldAlertIcon = icons["shield-alert"];
-	const [resolving, setResolving] = useState(false);
-	const [resolveError, setResolveError] = useState<string>();
-
-	if (item.status !== "pending") {
-		return (
-			<div className="flex items-center gap-2 rounded-[12px] border border-border px-3 py-2 text-[12px] text-muted-foreground">
-				{item.status === "allowed" ? <CheckIcon size={14} /> : <XIcon size={14} />}
-				Permission {item.status}
-			</div>
-		);
-	}
-
-	const resolve = async (decision: PermissionResolution["decision"]) => {
-		if (resolving) return;
-		setResolving(true);
-		setResolveError(undefined);
-		try {
-			await onResolve({ requestId: item.request.requestId, decision });
-		} catch {
-			setResolveError("授权结果未提交，请重试。");
-			setResolving(false);
-		}
-	};
-
-	return (
-		<div className="rounded-[14px] border border-border bg-card p-4">
-			<div className="flex gap-3">
-				<span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-2/10 text-primary-2">
-					<ShieldAlertIcon size={16} />
-				</span>
-				<div className="min-w-0">
-					<p className="text-[13px] font-semibold">{item.request.summary.title}</p>
-					<p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-						{item.request.summary.description || item.request.reason}
-					</p>
-					{item.request.summary.command || item.request.summary.path ? (
-						<code className="mt-2 block overflow-x-auto rounded-lg bg-muted px-3 py-2 font-mono text-[11.5px]">
-							{item.request.summary.command || item.request.summary.path}
-						</code>
-					) : null}
-				</div>
-			</div>
-			<div className="mt-3 flex justify-end gap-2">
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					onClick={() => void resolve("deny")}
-					disabled={resolving}
-					className="text-muted-foreground hover:text-foreground"
-				>
-					Deny
-				</Button>
-				<Button
-					type="button"
-					variant="tertiary"
-					size="sm"
-					onClick={() => void resolve("allowOnce")}
-					disabled={resolving}
-				>
-					{resolving ? "Submitting…" : "Allow once"}
-				</Button>
-				<Button
-					type="button"
-					variant="primary"
-					size="sm"
-					onClick={() => void resolve("alwaysAllow")}
-					disabled={resolving}
-				>
-					Always allow
-				</Button>
-			</div>
-			{resolveError ? <p className="mt-2 text-right text-[11.5px] text-destructive">{resolveError}</p> : null}
-		</div>
-	);
-}
-
-function TranscriptLoading() {
-	return (
-		<div className="space-y-4 py-6" role="status" aria-label="Loading conversation">
-			<div className="ml-auto h-12 w-56 animate-pulse rounded-[14px] bg-primary-2/8" />
-			<div className="h-4 w-[72%] animate-pulse rounded bg-foreground/[0.06]" />
-			<div className="h-4 w-[58%] animate-pulse rounded bg-foreground/[0.05]" />
-		</div>
-	);
-}
-
 function ComposerError({ message }: { message?: string }) {
 	return message ? (
 		<p className="mt-2 px-2 text-[12px] text-destructive" role="alert" aria-live="assertive">
@@ -570,91 +295,4 @@ function greeting(): string {
 	if (hour < 12) return "Good morning";
 	if (hour < 18) return "Good afternoon";
 	return "Good evening";
-}
-
-const MANAGE_MODELS_VALUE = "__manage-models__";
-
-function ModelSelector({
-	config,
-	selectedModelRef,
-	status,
-	disabled,
-	onSelect,
-	onManage,
-}: {
-	config?: DesktopProviderConfigSnapshot;
-	selectedModelRef: string;
-	status: { readonly label: string; readonly title: string };
-	disabled: boolean;
-	onSelect(modelRef: string): void;
-	onManage(): void;
-}) {
-	const models =
-		config?.profiles.flatMap((profile) =>
-			profile.models
-				.filter((model) => model.enabled && isDesktopProviderModelRunnable(model))
-				.map((model) => ({
-					ref: `${profile.id}/${model.id}`,
-					label: `${profile.name} · ${model.name}`,
-				})),
-		) ?? [];
-
-	return (
-		<Select
-			value={selectedModelRef}
-			disabled={disabled}
-			onValueChange={(value) => {
-				if (value === MANAGE_MODELS_VALUE) {
-					onManage();
-					return;
-				}
-				onSelect(value);
-			}}
-		>
-			<SelectTrigger
-				variant="borderless"
-				placeholder={status.label}
-				title={status.title}
-				aria-label={`Model: ${status.label}`}
-				className="h-8 min-w-0 max-w-56 px-2 text-[13.5px] font-medium text-foreground/80"
-			/>
-			<SelectContent className="min-w-64">
-				<SelectGroup>
-					{models.map((model, index) => (
-						<SelectItem key={model.ref} index={index} value={model.ref}>
-							{model.label}
-						</SelectItem>
-					))}
-					{models.length > 0 ? <SelectSeparator /> : null}
-					<SelectItem index={models.length} value={MANAGE_MODELS_VALUE}>
-						Manage models &amp; Providers…
-					</SelectItem>
-				</SelectGroup>
-			</SelectContent>
-		</Select>
-	);
-}
-
-function resolveModelStatus(
-	config: DesktopProviderConfigSnapshot | undefined,
-	modelRef: string,
-	loading: boolean,
-	error: boolean,
-): { readonly label: string; readonly title: string; readonly configured: boolean } {
-	if (loading) return { label: "Loading model…", title: "Loading Provider configuration", configured: false };
-	if (error) return { label: "Model unavailable", title: "Open Provider settings to retry", configured: false };
-	if (!modelRef) return { label: "Choose model", title: "Configure a Provider and model", configured: false };
-	const separator = modelRef.indexOf("/");
-	const profileId = modelRef.slice(0, separator);
-	const modelId = modelRef.slice(separator + 1);
-	const profile = config?.profiles.find((candidate) => candidate.id === profileId);
-	const model = profile?.models.find((candidate) => candidate.id === modelId);
-	const credentialReady = profile?.authentication === "none" || profile?.credentialConfigured === true;
-	return {
-		label: model?.name ?? modelRef,
-		title: credentialReady
-			? `${profile?.name ?? profileId} · ${model?.name ?? modelId}`
-			: "Provider credential required",
-		configured: credentialReady,
-	};
 }

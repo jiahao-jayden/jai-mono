@@ -9,6 +9,7 @@ import {
 	ArrowRight01Icon,
 	ArrowTurnForwardIcon,
 	ArrowUp01Icon,
+	ArrowUp02Icon,
 	BrainIcon,
 	BrowserIcon,
 	BubbleChatIcon,
@@ -65,6 +66,12 @@ import {
 	ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import type { IconType } from "@lobehub/icons";
+import Anthropic from "@lobehub/icons/es/Anthropic";
+import DeepSeek from "@lobehub/icons/es/DeepSeek";
+import Kimi from "@lobehub/icons/es/Kimi";
+import Minimax from "@lobehub/icons/es/Minimax";
+import OpenAI from "@lobehub/icons/es/OpenAI";
 import { type ComponentType, createContext, type ReactNode, useContext, useMemo } from "react";
 
 export interface IconComponentProps {
@@ -95,6 +102,7 @@ export type IconName =
 	| "arrow-left"
 	| "arrow-right"
 	| "arrow-up"
+	| "send"
 	| "search"
 	| "loader"
 	| "users"
@@ -146,6 +154,12 @@ function createHugeicon(icon: IconSvgElement): IconComponent {
 	};
 }
 
+function createBrandIcon(Brand: IconType): IconComponent {
+	return function BrandIcon({ size = 16, className }: IconComponentProps) {
+		return <Brand aria-hidden="true" className={className} size={size} />;
+	};
+}
+
 export const defaultIcons: Record<IconName, IconComponent> = {
 	"chevron-right": createHugeicon(ArrowRight01Icon),
 	"chevron-down": createHugeicon(ArrowDown01Icon),
@@ -167,6 +181,7 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	"arrow-left": createHugeicon(ArrowLeft01Icon),
 	"arrow-right": createHugeicon(ArrowRight01Icon),
 	"arrow-up": createHugeicon(ArrowUp01Icon),
+	send: createHugeicon(ArrowUp02Icon),
 	search: createHugeicon(Search01Icon),
 	loader: createHugeicon(Loading03Icon),
 	users: createHugeicon(UserGroupIcon),
@@ -212,6 +227,31 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	"corner-down-right": createHugeicon(ArrowTurnForwardIcon),
 };
 
+const providerBrandIcons: Readonly<Record<string, IconComponent>> = {
+	anthropic: createBrandIcon(Anthropic),
+	deepseek: createBrandIcon(DeepSeek),
+	minimax: createBrandIcon(Minimax),
+	moonshot: createBrandIcon(Kimi),
+	moonshotai: createBrandIcon(Kimi),
+	openai: createBrandIcon(OpenAI),
+};
+
+function resolveProviderBrandIcon(providerId?: string, modelId?: string): IconComponent {
+	const normalizedProviderId = providerId?.toLocaleLowerCase() ?? "";
+	const explicit = providerBrandIcons[normalizedProviderId];
+	if (explicit) return explicit;
+
+	const normalizedModelId = modelId?.toLocaleLowerCase() ?? "";
+	if (normalizedModelId.startsWith("claude-")) return providerBrandIcons.anthropic;
+	if (/^(gpt-|chatgpt-|o[1-9]|codex-)/.test(normalizedModelId)) return providerBrandIcons.openai;
+	if (normalizedModelId.startsWith("deepseek-")) return providerBrandIcons.deepseek;
+	if (normalizedModelId.startsWith("minimax-")) return providerBrandIcons.minimax;
+	if (normalizedModelId.startsWith("kimi-") || normalizedModelId.startsWith("moonshot-")) {
+		return providerBrandIcons.moonshotai;
+	}
+	return defaultIcons.sparkles;
+}
+
 const IconContext = createContext<Record<IconName, IconComponent> | null>(null);
 
 /**
@@ -241,4 +281,4 @@ function IconProvider({ children, icons }: { children: ReactNode; icons?: Partia
 	return <IconContext.Provider value={value}>{children}</IconContext.Provider>;
 }
 
-export { IconProvider, useIcon, useIcons };
+export { IconProvider, resolveProviderBrandIcon, useIcon, useIcons };

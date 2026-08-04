@@ -68,6 +68,9 @@ interface ButtonProps
    *  engaged while the menu is showing, or for navigation items that are
    *  currently active. */
   active?: boolean;
+  /** Layout hooks for buttons whose label is structured content rather than text. */
+  contentClassName?: string;
+  labelClassName?: string;
 }
 
 const bgVariants: Record<string, string> = {
@@ -105,6 +108,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       leadingIcon: LeadingIcon,
       trailingIcon: TrailingIcon,
       active = false,
+      contentClassName,
+      labelClassName,
       disabled,
       children,
       style,
@@ -153,7 +158,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             bgClass
           )}
         />
-        <span className="relative inline-flex items-center justify-center gap-[inherit]">
+        <span className={cn("relative inline-flex items-center justify-center gap-[inherit]", contentClassName)}>
           {loading ? (
             <>
               <span className="flex items-center justify-center gap-[inherit] opacity-0">
@@ -194,7 +199,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
               {LeadingIcon && (
                 <LeadingIcon size={iconSize} strokeWidth={1.5} />
               )}
-              <span className="[text-box:trim-both_cap_alphabetic]">{label}</span>
+              <span className={cn("[text-box:trim-both_cap_alphabetic]", labelClassName)}>{label}</span>
               {TrailingIcon && (
                 <TrailingIcon size={iconSize} strokeWidth={1.5} />
               )}

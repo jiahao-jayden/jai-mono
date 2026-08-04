@@ -336,7 +336,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
     ref
   ) => {
     const shape = useShape();
-    const ArrowUpIcon = useIcon("arrow-up");
+    const SendIcon = useIcon("send");
     const reduceMotion = useReducedMotion() ?? false;
     const isTouch = useIsTouch();
 
@@ -520,8 +520,8 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
     );
 
     // Send button morph: Stop (streaming + empty draft) → Queue (streaming +
-    // draft) → Send (idle). Send and Queue share the arrow-up glyph; only the
-    // Stop⇄arrow swap animates.
+    // draft) → Send (idle). Send and Queue share the send glyph; only the
+    // Stop⇄send swap animates.
     const buttonMode: "send" | "queue" | "stop" = !streaming
       ? "send"
       : canSend && supportsQueue
@@ -925,7 +925,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
                       // Override icon-sm's small 14px svg — the send glyph reads
                       // better a touch larger. `size` matches the attribute to
                       // the CSS so the svg box stays centered.
-                      <ArrowUpIcon
+                      <SendIcon
                         size={19}
                         className="block !h-[19px] !w-[19px]"
                       />
