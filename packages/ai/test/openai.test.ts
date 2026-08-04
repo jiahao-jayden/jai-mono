@@ -3,8 +3,10 @@ import type { StreamOptions } from "../src/provider";
 import type { AssistantMessageEvent, Context, Model } from "../src/types";
 
 let streamChunks: unknown[] = [];
+let responseEvents: unknown[] = [];
 let listedModels: unknown[] = [];
 let capturedParams: any;
+let capturedResponseParams: any;
 let throwError: Error | undefined;
 
 async function* gen(chunks: unknown[]): AsyncGenerator<unknown> {
@@ -22,6 +24,13 @@ mock.module("openai", () => ({
 				},
 			},
 		};
+		responses = {
+			create: async (params: unknown) => {
+				capturedResponseParams = params;
+				if (throwError) throw throwError;
+				return gen(responseEvents);
+			},
+		};
 		models = {
 			list: async () => {
 				if (throwError) throw throwError;
@@ -32,15 +41,19 @@ mock.module("openai", () => ({
 }));
 
 let OpenAIProvider: typeof import("../src/providers/openai").OpenAIProvider;
+let OpenAIResponsesProvider: typeof import("../src/providers/openai-responses").OpenAIResponsesProvider;
 
 beforeAll(async () => {
 	({ OpenAIProvider } = await import("../src/providers/openai"));
+	({ OpenAIResponsesProvider } = await import("../src/providers/openai-responses"));
 });
 
 beforeEach(() => {
 	streamChunks = [];
+	responseEvents = [];
 	listedModels = [];
 	capturedParams = undefined;
+	capturedResponseParams = undefined;
 	throwError = undefined;
 });
 
@@ -60,6 +73,15 @@ function model(over: Partial<Model> = {}): Model {
 	};
 }
 
+function responsesModel(over: Partial<Model> = {}): Model {
+	return model({
+		api: "openai-responses",
+		provider: "openai-responses",
+		reasoning: true,
+		...over,
+	});
+}
+
 async function collect(
 	context: Context,
 	m: Model = model(),
@@ -69,6 +91,19 @@ async function collect(
 	const stream = provider.stream(m, context, options);
 	const events: AssistantMessageEvent[] = [];
 	for await (const e of stream) events.push(e);
+	const message = await stream.result();
+	return { events, message };
+}
+
+async function collectResponses(
+	context: Context,
+	m: Model = responsesModel(),
+	options?: StreamOptions,
+): Promise<{ events: AssistantMessageEvent[]; message: any }> {
+	const provider = new OpenAIResponsesProvider({ apiKey: "test" });
+	const stream = provider.stream(m, context, options);
+	const events: AssistantMessageEvent[] = [];
+	for await (const event of stream) events.push(event);
 	const message = await stream.result();
 	return { events, message };
 }
@@ -227,5 +262,211 @@ describe("OpenAIProvider · 入向翻译", () => {
 
 		expect(capturedParams.reasoning_effort).toBe("high");
 		expect(capturedParams.ignored).toBeUndefined();
+	});
+});
+
+const responseUsage = {
+	input_tokens: 12,
+	output_tokens: 8,
+	total_tokens: 20,
+	input_tokens_details: { cached_tokens: 3 },
+	output_tokens_details: { reasoning_tokens: 5 },
+};
+
+describe("OpenAIResponsesProvider", () => {
+	it("streams reasoning summaries, function calls, and usage into unified events", async () => {
+		responseEvents = [
+			{
+				type: "response.reasoning_summary_text.delta",
+				item_id: "rs_1",
+				output_index: 0,
+				summary_index: 0,
+				sequence_number: 1,
+				delta: "Inspecting files",
+			},
+			{
+				type: "response.output_item.done",
+				output_index: 0,
+				sequence_number: 2,
+				item: {
+					type: "reasoning",
+					id: "rs_1",
+					summary: [{ type: "summary_text", text: "Inspecting files" }],
+					encrypted_content: "encrypted-reasoning",
+					status: "completed",
+				},
+			},
+			{
+				type: "response.output_item.added",
+				output_index: 1,
+				sequence_number: 3,
+				item: {
+					type: "function_call",
+					id: "fc_1",
+					call_id: "call_1",
+					name: "read_file",
+					arguments: "",
+					status: "in_progress",
+				},
+			},
+			{
+				type: "response.function_call_arguments.delta",
+				item_id: "fc_1",
+				output_index: 1,
+				sequence_number: 4,
+				delta: '{"path":"/x"}',
+			},
+			{
+				type: "response.output_item.done",
+				output_index: 1,
+				sequence_number: 5,
+				item: {
+					type: "function_call",
+					id: "fc_1",
+					call_id: "call_1",
+					name: "read_file",
+					arguments: '{"path":"/x"}',
+					status: "completed",
+				},
+			},
+			{
+				type: "response.completed",
+				sequence_number: 6,
+				response: { usage: responseUsage },
+			},
+		];
+
+		const { events, message } = await collectResponses(ctx());
+
+		expect(events.map((event) => event.type)).toEqual([
+			"start",
+			"thinking_start",
+			"thinking_delta",
+			"thinking_end",
+			"toolcall_start",
+			"toolcall_delta",
+			"toolcall_end",
+			"done",
+		]);
+		expect(message.content[0]).toMatchObject({
+			type: "thinking",
+			thinking: "Inspecting files",
+		});
+		expect(message.content[0].thinkingSignature).toStartWith("openai-responses:");
+		expect(message.content[1]).toEqual({
+			type: "toolCall",
+			id: "call_1",
+			name: "read_file",
+			arguments: { path: "/x" },
+		});
+		expect(message.stopReason).toBe("toolUse");
+		expect(message.usage).toMatchObject({ input: 12, output: 8, cacheRead: 3, reasoning: 5, totalTokens: 20 });
+	});
+
+	it("builds stateless Responses input and restores encrypted reasoning items", async () => {
+		responseEvents = [
+			{
+				type: "response.output_text.delta",
+				item_id: "msg_1",
+				output_index: 0,
+				content_index: 0,
+				sequence_number: 1,
+				logprobs: [],
+				delta: "done",
+			},
+			{
+				type: "response.output_item.done",
+				output_index: 0,
+				sequence_number: 2,
+				item: {
+					type: "message",
+					id: "msg_1",
+					role: "assistant",
+					status: "completed",
+					content: [{ type: "output_text", text: "done", annotations: [], logprobs: [] }],
+				},
+			},
+			{
+				type: "response.completed",
+				sequence_number: 3,
+				response: { usage: responseUsage },
+			},
+		];
+		const signature = `openai-responses:${JSON.stringify({
+			id: "rs_previous",
+			encryptedContent: "encrypted-previous",
+		})}`;
+
+		const { events, message } = await collectResponses(
+			ctx({
+				systemPrompt: "system",
+				messages: [
+					{ role: "user", content: "inspect", timestamp: 0 },
+					{
+						role: "assistant",
+						provider: "openai-responses",
+						model: "gpt-5",
+						content: [
+							{ type: "thinking", thinking: "Checked the file", thinkingSignature: signature },
+							{ type: "toolCall", id: "call_1", name: "read_file", arguments: { path: "/x" } },
+						],
+						usage: {
+							input: 0,
+							output: 0,
+							cacheRead: 0,
+							cacheWrite: 0,
+							totalTokens: 0,
+							cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+						},
+						stopReason: "toolUse",
+						timestamp: 0,
+					},
+					{
+						role: "toolResult",
+						toolCallId: "call_1",
+						toolName: "read_file",
+						content: [{ type: "text", text: "contents" }],
+						isError: false,
+						timestamp: 0,
+					},
+				],
+			}),
+			responsesModel(),
+			{ providerOptions: { "openai-responses": { reasoning: { effort: "high", summary: "auto" } } } },
+		);
+
+		expect(capturedResponseParams).toMatchObject({
+			model: "gpt-5",
+			stream: true,
+			store: false,
+			include: ["reasoning.encrypted_content"],
+			instructions: "system",
+			max_output_tokens: 4096,
+			reasoning: { effort: "high", summary: "auto" },
+		});
+		expect(capturedResponseParams.input).toEqual([
+			{ type: "message", role: "user", content: "inspect" },
+			{
+				type: "reasoning",
+				id: "rs_previous",
+				summary: [{ type: "summary_text", text: "Checked the file" }],
+				encrypted_content: "encrypted-previous",
+			},
+			{
+				type: "function_call",
+				call_id: "call_1",
+				name: "read_file",
+				arguments: '{"path":"/x"}',
+			},
+			{ type: "function_call_output", call_id: "call_1", output: "contents" },
+		]);
+		expect(events.map((event) => event.type)).toEqual([
+			"start",
+			"text_start",
+			"text_delta",
+			"text_end",
+			"done",
+		]);
+		expect(message.content).toEqual([{ type: "text", text: "done" }]);
 	});
 });

@@ -279,6 +279,23 @@ describe("Provider configuration", () => {
 		expect(() => resolveConfiguredAgentRuntime(unsupported, resolveConfiguredProvider(unsupported))).toThrow(
 			/does not support reasoning effort/,
 		);
+
+		const responses = {
+			...settings,
+			providers: {
+				work: {
+					...settings.providers.work,
+					adapter: "openai-responses",
+					models: { "gpt-main": { enabled: true, reasoning: true } },
+				},
+			},
+		} satisfies CodingAgentSettings;
+		const resolvedResponses = resolveConfiguredProvider(responses);
+		expect(resolvedResponses.provider.adapter).toBe("openai-responses");
+		expect(resolvedResponses.model.api).toBe("openai-responses");
+		expect(resolveConfiguredAgentRuntime(responses, resolvedResponses).providerOptions).toEqual({
+			work: { reasoning: { effort: "high", summary: "auto" } },
+		});
 	});
 });
 

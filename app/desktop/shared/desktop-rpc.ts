@@ -46,7 +46,7 @@ export interface DesktopWorkspace extends Workspace {
 	readonly available: boolean;
 }
 
-export type DesktopProviderAdapter = "anthropic" | "openai-compatible";
+export type DesktopProviderAdapter = "anthropic" | "openai-compatible" | "openai-responses";
 export type DesktopProviderAuthentication = "api-key" | "none";
 export type DesktopModelModality = "text" | "image" | "audio" | "video" | "pdf";
 export type DesktopModelSource = "catalog" | "unverified";

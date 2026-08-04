@@ -6,6 +6,7 @@ import {
 	type ModelDiscoveryOptions,
 	type ModelModality,
 	OpenAIProvider,
+	OpenAIResponsesProvider,
 	type Provider,
 } from "@jai/ai";
 import { type Static, Type } from "@sinclair/typebox";
@@ -139,7 +140,9 @@ type ModelOverlay = Static<typeof modelOverlaySchema>;
 const providerProfileSchema = Type.Object(
 	{
 		name: Type.Optional(Type.String({ minLength: 1 })),
-		adapter: Type.Optional(Type.Union([Type.Literal("anthropic"), Type.Literal("openai-compatible")])),
+		adapter: Type.Optional(
+			Type.Union([Type.Literal("anthropic"), Type.Literal("openai-compatible"), Type.Literal("openai-responses")]),
+		),
 		catalogProvider: Type.Optional(Type.String({ minLength: 1 })),
 		baseURL: Type.Optional(Type.String({ minLength: 1 })),
 		auth: Type.Optional(Type.Union([Type.Literal("bearer"), Type.Literal("x-api-key"), Type.Literal("none")])),
@@ -331,7 +334,12 @@ export function resolveConfiguredProvider(
 		id: modelId,
 		remoteModelId,
 		name: modelConfig?.name ?? catalogModel?.name ?? modelId,
-		api: connection.adapter === "anthropic" ? "anthropic-messages" : "openai-chat-completions",
+		api:
+			connection.adapter === "anthropic"
+				? "anthropic-messages"
+				: connection.adapter === "openai-responses"
+					? "openai-responses"
+					: "openai-chat-completions",
 		provider: profileId,
 		...(metadataOverlay?.reasoning === undefined && catalogModel?.reasoning === undefined
 			? {}
@@ -364,11 +372,12 @@ export function resolveConfiguredAgentRuntime(
 	}
 	const compatibility = resolved.model.compatibility;
 	const supportsEffort =
-		resolved.provider.adapter === "openai-compatible" &&
+		(resolved.provider.adapter === "openai-compatible" || resolved.provider.adapter === "openai-responses") &&
 		resolved.model.reasoning &&
-		compatibility !== undefined &&
-		"reasoningFormat" in compatibility &&
-		compatibility.reasoningFormat === "openai";
+		(resolved.provider.adapter === "openai-responses" ||
+			(compatibility !== undefined &&
+				"reasoningFormat" in compatibility &&
+				compatibility.reasoningFormat === "openai"));
 	if (!supportsEffort) {
 		throw providerError("unsupported_reasoning_effort", {
 			message: `Model "${resolved.model.id}" does not support reasoning effort`,
@@ -378,7 +387,12 @@ export function resolveConfiguredAgentRuntime(
 	return {
 		...(agent?.language ? { language: agent.language } : {}),
 		...(agent?.maxIterations ? { maxIterations: agent.maxIterations } : {}),
-		providerOptions: { [resolved.provider.id]: { reasoning_effort: reasoningEffort } },
+		providerOptions: {
+			[resolved.provider.id]:
+				resolved.provider.adapter === "openai-responses"
+					? { reasoning: { effort: reasoningEffort, summary: "auto" } }
+					: { reasoning_effort: reasoningEffort },
+		},
 	};
 }
 
@@ -448,7 +462,7 @@ function resolveCompatibility(
 }
 
 interface ResolvedConnection {
-	readonly adapter: "anthropic" | "openai-compatible";
+	readonly adapter: "anthropic" | "openai-compatible" | "openai-responses";
 	readonly baseURL?: string;
 	readonly auth: "bearer" | "x-api-key" | "none";
 	readonly apiKey?: string;
@@ -468,7 +482,7 @@ function resolveConnection(profileId: string, profile: CodingAgentSettings["prov
 	if (
 		auth !== "none" &&
 		((profile.adapter === "anthropic" && auth !== "x-api-key") ||
-			(profile.adapter === "openai-compatible" && auth !== "bearer"))
+			((profile.adapter === "openai-compatible" || profile.adapter === "openai-responses") && auth !== "bearer"))
 	) {
 		throw providerError("invalid_connection", {
 			message: `Provider profile "${profileId}" uses an auth mode unsupported by its adapter`,
@@ -498,21 +512,23 @@ function resolveConnection(profileId: string, profile: CodingAgentSettings["prov
 
 function createProvider(profileId: string, connection: ResolvedConnection): Provider {
 	const apiKey = connection.apiKey ?? "not-required";
-	return connection.adapter === "anthropic"
-		? new AnthropicProvider({
-				id: profileId,
-				apiKey,
-				baseURL: connection.baseURL,
-				headers: connection.headers,
-				authentication: connection.auth === "none" ? "none" : "x-api-key",
-			})
-		: new OpenAIProvider({
-				id: profileId,
-				apiKey,
-				baseURL: connection.baseURL,
-				headers: connection.headers,
-				authentication: connection.auth === "none" ? "none" : "bearer",
-			});
+	if (connection.adapter === "anthropic") {
+		return new AnthropicProvider({
+			id: profileId,
+			apiKey,
+			baseURL: connection.baseURL,
+			headers: connection.headers,
+			authentication: connection.auth === "none" ? "none" : "x-api-key",
+		});
+	}
+	const config = {
+		id: profileId,
+		apiKey,
+		baseURL: connection.baseURL,
+		headers: connection.headers,
+		authentication: connection.auth === "none" ? ("none" as const) : ("bearer" as const),
+	};
+	return connection.adapter === "openai-responses" ? new OpenAIResponsesProvider(config) : new OpenAIProvider(config);
 }
 
 function validateBaseURL(profileId: string, raw: string | undefined): void {

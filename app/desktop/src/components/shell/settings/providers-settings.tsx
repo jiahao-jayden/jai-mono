@@ -143,10 +143,13 @@ export function ProvidersSettings({
 										<SelectTrigger className="w-full" aria-label="Adapter" />
 										<SelectContent>
 											<SelectGroup>
-												<SelectItem index={0} value="openai-compatible">
+												<SelectItem index={0} value="openai-responses">
+													OpenAI Responses
+												</SelectItem>
+												<SelectItem index={1} value="openai-compatible">
 													OpenAI compatible
 												</SelectItem>
-												<SelectItem index={1} value="anthropic">
+												<SelectItem index={2} value="anthropic">
 													Anthropic Messages
 												</SelectItem>
 											</SelectGroup>

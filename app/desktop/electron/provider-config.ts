@@ -444,7 +444,9 @@ function validateInput(input: DesktopProviderConfigInput, catalog: ModelCatalog 
 				(typeof profile.previousId !== "string" || !profileIdPattern.test(profile.previousId))) ||
 			typeof profile.name !== "string" ||
 			!profile.name.trim() ||
-			(profile.adapter !== "anthropic" && profile.adapter !== "openai-compatible") ||
+			(profile.adapter !== "anthropic" &&
+				profile.adapter !== "openai-compatible" &&
+				profile.adapter !== "openai-responses") ||
 			typeof profile.baseURL !== "string" ||
 			(profile.authentication !== "api-key" && profile.authentication !== "none") ||
 			(profile.apiKey !== undefined && typeof profile.apiKey !== "string") ||

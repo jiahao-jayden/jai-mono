@@ -62,7 +62,7 @@ describe("DesktopProviderConfigService", () => {
 			})),
 		).toEqual([
 			{ id: "anthropic", catalogProvider: "anthropic", adapter: "anthropic", baseURL: "" },
-			{ id: "openai", catalogProvider: "openai", adapter: "openai-compatible", baseURL: "" },
+			{ id: "openai", catalogProvider: "openai", adapter: "openai-responses", baseURL: "" },
 			{
 				id: "deepseek",
 				catalogProvider: "deepseek",

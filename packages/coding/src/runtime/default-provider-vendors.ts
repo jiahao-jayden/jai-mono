@@ -1,4 +1,4 @@
-export type DefaultProviderAdapter = "anthropic" | "openai-compatible";
+export type DefaultProviderAdapter = "anthropic" | "openai-compatible" | "openai-responses";
 
 /**
  * First-party model vendors. Besides powering Desktop presets, this registry
@@ -26,7 +26,7 @@ export const DEFAULT_PROVIDER_VENDORS: readonly DefaultProviderVendor[] = [
 		id: "openai",
 		name: "OpenAI",
 		catalogProvider: "openai",
-		adapter: "openai-compatible",
+		adapter: "openai-responses",
 		modelIdPrefixes: ["gpt-", "chatgpt-", "o1", "o3", "o4", "o5", "codex-"],
 	},
 	{

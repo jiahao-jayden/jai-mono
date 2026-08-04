@@ -91,9 +91,9 @@ export interface Context {
 /* -------------------------------------------------------------------------- */
 /*                                    Model                                   */
 /* -------------------------------------------------------------------------- */
-export type Api = "anthropic-messages" | "openai-chat-completions" | (string & {});
-export type ProviderId = "anthropic" | "openai-compatible" | (string & {});
-export type ProviderAdapter = "anthropic" | "openai-compatible";
+export type Api = "anthropic-messages" | "openai-chat-completions" | "openai-responses" | (string & {});
+export type ProviderId = "anthropic" | "openai-compatible" | "openai-responses" | (string & {});
+export type ProviderAdapter = "anthropic" | "openai-compatible" | "openai-responses";
 export type ModelInput = "text" | "image";
 export type ModelModality = ModelInput | "audio" | "video" | "pdf";
 
@@ -147,9 +147,11 @@ export interface Model<TApi extends Api = Api> {
 	maxTokens: number;
 	compatibility?: TApi extends "openai-chat-completions"
 		? OpenAICompatibility
-		: TApi extends "anthropic-messages"
-			? AnthropicCompatibility
-			: ModelCompatibility;
+		: TApi extends "openai-responses"
+			? OpenAICompatibility
+			: TApi extends "anthropic-messages"
+				? AnthropicCompatibility
+				: ModelCompatibility;
 }
 
 /* -------------------------------------------------------------------------- */
