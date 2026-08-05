@@ -30,7 +30,6 @@ export function ModelSelector({
 }: ModelSelectorProps) {
 	const icons = useIcons();
 	const AllProvidersIcon = icons.layers;
-	const CheckIcon = icons.check;
 	const ChevronDownIcon = icons["chevron-down"];
 	const SearchIcon = icons.search;
 	const SettingsIcon = icons.settings;
@@ -81,8 +80,7 @@ export function ModelSelector({
 	);
 	const selectedModel = models.find((model) => model.ref === selectedModelRef);
 	const status = resolveModelStatus(config, selectedModelRef, loading, error);
-	const TriggerIcon = selectedModel?.icon ?? resolveProviderBrandIcon(undefined, selectedModelRef);
-	const triggerLabel = selectedModel ? `${selectedModel.providerName} · ${selectedModel.name}` : status.label;
+	const triggerLabel = selectedModel ? selectedModel.name : status.label;
 
 	const chooseModel = (modelRef: string) => {
 		onSelect(modelRef);
@@ -121,7 +119,6 @@ export function ModelSelector({
 				}
 				title={status.title}
 			>
-				<TriggerIcon size={16} className="shrink-0" />
 				<span className="min-w-0 truncate">{triggerLabel}</span>
 				<ChevronDownIcon size={14} className="shrink-0 text-muted-foreground" />
 			</Popover.Trigger>
@@ -130,9 +127,9 @@ export function ModelSelector({
 				<Popover.Positioner side="top" align="end" sideOffset={8} className="z-50 outline-none">
 					<Popover.Popup
 						render={<Elevated offset={2} shadowLevel={5} />}
-						className="flex max-h-[min(440px,calc(100vh-120px))] w-[min(460px,calc(100vw-32px))] flex-col overflow-hidden rounded-[14px] outline-none transition-opacity duration-150 data-starting-style:opacity-0 data-ending-style:opacity-0"
+						className="flex max-h-[min(440px,calc(100vh-120px))] w-[min(400px,calc(100vw-32px))] flex-col overflow-hidden rounded-[14px] outline-none transition-opacity duration-150 data-starting-style:opacity-0 data-ending-style:opacity-0"
 					>
-						<div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 px-3">
+						<div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/50 px-3">
 							<SearchIcon size={17} strokeWidth={1.5} className="shrink-0 text-muted-foreground" />
 							<Input
 								key={open ? "open" : "closed"}
@@ -148,7 +145,7 @@ export function ModelSelector({
 						<div className="flex min-h-0">
 							<nav
 								aria-label="Model providers"
-								className="flex w-14 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border/70 py-2"
+								className="flex w-14 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border/50 py-2"
 							>
 								<ProviderFilterButton
 									icon={AllProvidersIcon}
@@ -165,6 +162,13 @@ export function ModelSelector({
 										onClick={() => setActiveProviderId(provider.id)}
 									/>
 								))}
+								<ProviderFilterButton
+									icon={SettingsIcon}
+									label="Manage models & Providers"
+									active={false}
+									onClick={manageModels}
+									className="mt-auto"
+								/>
 							</nav>
 
 							<div className="flex min-w-0 flex-1 flex-col">
@@ -204,19 +208,13 @@ export function ModelSelector({
 																			{formatContextWindow(model.contextWindow)}
 																		</span>
 																	) : null}
+																	<span className="ml-auto shrink-0 pointer-events-auto">
+																		<ModelCapabilities model={model} />
+																	</span>
 																</span>
 																<span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
 																	{model.description ?? model.providerName}
 																</span>
-															</span>
-															<ModelCapabilities model={model} />
-															<span
-																className={cn(
-																	"pointer-events-none grid size-4 shrink-0 place-items-center",
-																	selected ? "text-primary-2/75" : "text-foreground",
-																)}
-															>
-																{selected ? <CheckIcon size={15} strokeWidth={2} /> : null}
 															</span>
 														</button>
 													);
@@ -231,17 +229,6 @@ export function ModelSelector({
 										)}
 									</div>
 								</TooltipProvider>
-
-								<div className="shrink-0 border-t border-border/70 p-2">
-									<button
-										type="button"
-										onClick={manageModels}
-										className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-[12.5px] text-muted-foreground outline-none cursor-pointer transition-colors duration-75 hover:bg-accent/55 hover:text-foreground active:bg-accent focus-visible:ring-2 focus-visible:ring-primary-2/45"
-									>
-										<SettingsIcon size={14} strokeWidth={1.5} className="shrink-0" />
-										Manage models &amp; Providers…
-									</button>
-								</div>
 							</div>
 						</div>
 					</Popover.Popup>
@@ -255,11 +242,13 @@ function ProviderFilterButton({
 	icon: Icon,
 	label,
 	active,
+	className,
 	onClick,
 }: {
 	icon: IconComponent;
 	label: string;
 	active: boolean;
+	className?: string;
 	onClick(): void;
 }) {
 	return (
@@ -273,6 +262,7 @@ function ProviderFilterButton({
 				active
 					? "bg-primary-2/5 text-primary-2/75 dark:bg-primary-2/8"
 					: "text-muted-foreground hover:bg-accent/55 hover:text-foreground/80 active:bg-accent",
+				className,
 			)}
 		>
 			<Icon size={18} strokeWidth={active ? 2 : 1.5} />
