@@ -45,6 +45,27 @@ describe("Models.dev catalog", () => {
 		});
 	});
 
+	test("兼容 models.dev 对象形式的 reasoning options", () => {
+		const catalog = normalizeModelCatalog({
+			providers: {
+				deepseek: {
+					models: {
+						"deepseek-v4-flash": {
+							name: "DeepSeek V4 Flash",
+							reasoning_options: [{ type: "toggle" }, { type: "effort", values: ["low", "high", "max"] }],
+						},
+					},
+				},
+			},
+		});
+
+		expect(catalog.providers.deepseek?.models["deepseek-v4-flash"]?.reasoningOptions).toEqual([
+			"low",
+			"high",
+			"max",
+		]);
+	});
+
 	test("缺失能力、限制和价格时保留 unknown，不伪造默认值", () => {
 		const catalog = normalizeModelCatalog({
 			providers: { test: { models: { unknown: { name: "Unknown" } } } },

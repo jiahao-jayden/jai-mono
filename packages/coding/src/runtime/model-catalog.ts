@@ -212,7 +212,20 @@ const externalModelSchema = Type.Object(
 		open_weights: Type.Optional(Type.Boolean()),
 		attachment: Type.Optional(Type.Boolean()),
 		reasoning: Type.Optional(Type.Boolean()),
-		reasoning_options: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+		reasoning_options: Type.Optional(
+			Type.Array(
+				Type.Union([
+					Type.String({ minLength: 1 }),
+					Type.Object(
+						{
+							type: Type.String({ minLength: 1 }),
+							values: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+						},
+						{ additionalProperties: true },
+					),
+				]),
+			),
+		),
 		temperature: Type.Optional(Type.Boolean()),
 		tool_call: Type.Optional(Type.Boolean()),
 		structured_output: Type.Optional(Type.Boolean()),
@@ -474,7 +487,7 @@ function normalizeModel(id: string, value: ExternalCatalogModel): ModelCatalogMo
 		...(value.open_weights === undefined ? {} : { openWeights: value.open_weights }),
 		...(value.attachment === undefined ? {} : { attachment: value.attachment }),
 		...(value.reasoning === undefined ? {} : { reasoning: value.reasoning }),
-		...(value.reasoning_options ? { reasoningOptions: [...new Set(value.reasoning_options)] } : {}),
+		...(value.reasoning_options ? { reasoningOptions: normalizeReasoningOptions(value.reasoning_options) } : {}),
 		...(value.temperature === undefined ? {} : { temperature: value.temperature }),
 		...(value.interleaved === undefined ? {} : { interleaved: value.interleaved }),
 		...(value.tool_call === undefined ? {} : { toolCall: value.tool_call }),
@@ -486,6 +499,10 @@ function normalizeModel(id: string, value: ExternalCatalogModel): ModelCatalogMo
 		...(value.limit?.input === undefined ? {} : { inputLimit: value.limit.input }),
 		...(value.limit?.output === undefined ? {} : { maxTokens: value.limit.output }),
 	};
+}
+
+function normalizeReasoningOptions(value: NonNullable<ExternalCatalogModel["reasoning_options"]>): string[] {
+	return [...new Set(value.flatMap((option) => (typeof option === "string" ? [option] : (option.values ?? []))))];
 }
 
 function normalizeCost(value: ExternalCatalogModel["cost"]): ModelCatalogCost | undefined {
