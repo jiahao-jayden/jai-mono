@@ -62,6 +62,11 @@ export function WorkspaceShell() {
 		queryKey: desktopQueryKeys.providerConfig,
 		queryFn: () => desktop.provider.get(),
 	});
+	useEffect(() => {
+		return window.desktopRpc.onAgentEvent((envelope) => {
+			if (envelope.event.type === "model_catalog_updated") void providerQuery.refetch();
+		});
+	}, [providerQuery.refetch]);
 	const sessionRecentsQuery = useInfiniteQuery(sessionRecentsQueryOptions());
 	const sessions = getRecentSessions(sessionRecentsQuery.data);
 	const runningSessionIds = getRunningSessionIds(sessionRecentsQuery.data);

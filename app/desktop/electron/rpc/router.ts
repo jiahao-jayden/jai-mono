@@ -17,7 +17,7 @@ import {
 } from "../../shared/desktop-rpc";
 import { type DesktopAgentFactory, DesktopAgentHost } from "../agent/host";
 import { projectSessionSnapshot } from "../agent/projector";
-import { desktopModelCatalog } from "../model-catalog";
+import { desktopModelCatalog, setDesktopModelCatalogUpdateListener } from "../model-catalog";
 import { DesktopProviderConfigService } from "../provider-config";
 
 type DesktopRouterImplementation<T> = {
@@ -48,6 +48,18 @@ let providerConfig: DesktopProviderConfigService | undefined;
 const desktopAgentHost = new DesktopAgentHost((envelope) => {
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) window.webContents.send(DESKTOP_EVENTS_CHANNEL, envelope);
+	}
+});
+setDesktopModelCatalogUpdateListener(() => {
+	desktopAgentHost.invalidateSessions();
+	for (const window of BrowserWindow.getAllWindows()) {
+		if (!window.isDestroyed()) {
+			window.webContents.send(DESKTOP_EVENTS_CHANNEL, {
+				sessionId: "desktop",
+				seq: 1,
+				event: { type: "model_catalog_updated" },
+			});
+		}
 	}
 });
 

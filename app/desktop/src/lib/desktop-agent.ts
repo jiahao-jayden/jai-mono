@@ -64,6 +64,10 @@ export class DesktopAgentEventDispatcher {
 
 	#dispatch(envelope: DesktopAgentEventEnvelope): void {
 		if (envelope.event.type === "status") void invalidateRecentSessions();
+		if (envelope.event.type === "model_catalog_updated") {
+			for (const sessionId of this.#listeners.keys()) void this.refresh(sessionId);
+			return;
+		}
 		if (!this.#listeners.has(envelope.sessionId)) return;
 		if (this.#refreshes.has(envelope.sessionId)) {
 			const pending = this.#pending.get(envelope.sessionId);

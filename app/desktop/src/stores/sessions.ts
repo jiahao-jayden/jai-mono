@@ -108,6 +108,8 @@ function applyAgentEvent(
 	switch (event.type) {
 		case "status":
 			return { status: event.status, lastSeq: seq, loading: false };
+		case "model_catalog_updated":
+			return { lastSeq: seq };
 		case "transcript_upsert":
 			return {
 				items: upsertTranscriptItem(state.items, event.item),

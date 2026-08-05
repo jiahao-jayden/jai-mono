@@ -1,11 +1,18 @@
 import { ModelCatalogStore } from "@jai/coding/runtime";
 import { mainLog } from "./logger";
 
+let onCatalogUpdated: (() => void) | undefined;
+
 export const desktopModelCatalog = new ModelCatalogStore({
 	onUpdate() {
 		mainLog.info("Models.dev catalog cache updated");
+		onCatalogUpdated?.();
 	},
 });
+
+export function setDesktopModelCatalogUpdateListener(listener: () => void): void {
+	onCatalogUpdated = listener;
+}
 
 export async function hydrateDesktopModelCatalog(): Promise<void> {
 	await desktopModelCatalog.hydrate();

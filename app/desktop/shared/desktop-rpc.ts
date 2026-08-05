@@ -251,6 +251,7 @@ export interface DesktopAgentSnapshot {
 export type DesktopAgentEvent =
 	| { readonly type: "status"; readonly status: DesktopAgentStatus }
 	| { readonly type: "transcript_upsert"; readonly item: DesktopTranscriptItem }
+	| { readonly type: "model_catalog_updated" }
 	| {
 			readonly type: "runtime_error";
 			readonly error: { readonly code: string; readonly message: string; readonly data?: Static<typeof jsonValueSchema> };
