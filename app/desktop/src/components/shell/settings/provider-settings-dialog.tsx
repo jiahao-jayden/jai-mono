@@ -196,7 +196,7 @@ function ProviderConfigForm({
 			</DialogHeader>
 
 			<div className="flex min-h-0 flex-1">
-				<nav className="flex w-44 shrink-0 flex-col gap-0.5 bg-muted/25 p-3" aria-label="Settings">
+				<nav className="flex w-48 shrink-0 flex-col gap-0.5 bg-muted/25 px-2 py-3" aria-label="Settings">
 					{categories.map((item) => {
 						const Icon = icons[item.icon];
 						return (

@@ -1,4 +1,5 @@
 import { useIcon } from "@/lib/icon-context";
+import { cn } from "@/lib/utils";
 import type { DesktopProviderModel } from "../../../shared/desktop-rpc";
 import { Tooltip } from "../ui/tooltip";
 
@@ -31,17 +32,14 @@ function CapabilityIcon({
 	return (
 		<Tooltip content={`${label} · ${text}`} side="top" sideOffset={6}>
 			<span
-				className={`flex size-6 items-center justify-center rounded-md transition-colors ${
-					value === true
-						? "text-foreground hover:bg-accent"
-						: value === false
-							? "text-muted-foreground/45 hover:bg-muted/50"
-							: "text-muted-foreground hover:bg-muted/50"
-				}`}
+				className={cn(
+					"flex size-5 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted/50 hover:text-foreground",
+					value === false && "text-muted-foreground/45",
+				)}
 				aria-label={`${label}: ${text}`}
 				role="img"
 			>
-				<Icon size={14} strokeWidth={1.6} />
+				<Icon size={13} strokeWidth={1.5} />
 			</span>
 		</Tooltip>
 	);

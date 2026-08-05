@@ -89,7 +89,7 @@ export function ProviderModelEditor({
 						<>
 							<CheckboxGroup
 								checkedIndices={checkedIndices}
-								className="max-h-80 w-full gap-0.5 overflow-y-auto rounded-xl border border-border/70 bg-card p-1"
+								className="max-h-80 w-full divide-y divide-border/45 overflow-y-auto rounded-lg border border-border/45 bg-transparent py-0.5"
 								aria-label={`${profile.name} models`}
 							>
 								{visibleModels.map((model, index) => {
@@ -110,7 +110,7 @@ export function ProviderModelEditor({
 													),
 												)
 											}
-											className="h-auto min-h-13 items-center rounded-lg px-2.5 py-2 data-[disabled=true]:cursor-not-allowed"
+											className="h-auto min-h-13 items-start rounded-md px-2.5 py-2 data-[disabled=true]:cursor-not-allowed"
 										>
 											<ModelCard model={model} availability={availability} />
 										</CheckboxItem>
@@ -141,12 +141,12 @@ function ModelCard({
 	const BrandIcon = resolveProviderBrandIcon(model.metadataProvider, model.remoteModelId);
 	return (
 		<TooltipProvider delayDuration={250}>
-			<div className="flex min-w-0 flex-1 flex-col gap-1">
+			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<div className="flex min-w-0 items-center gap-2">
-					{BrandIcon ? <BrandIcon size={17} className="shrink-0 text-foreground" /> : null}
+					{BrandIcon ? <BrandIcon size={17} className="shrink-0 text-muted-foreground/75" /> : null}
 					<div className="min-w-0 flex-1">
 						<Tooltip content={model.remoteModelId} side="top" sideOffset={6}>
-							<span className="block w-fit max-w-full truncate text-[13px] font-semibold text-foreground">
+							<span className="block w-fit max-w-full truncate text-[13px] font-medium text-foreground">
 								{model.name}
 							</span>
 						</Tooltip>
@@ -158,38 +158,32 @@ function ModelCard({
 						</Badge>
 					)}
 				</div>
-				<div className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px]">
+				<div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
 					<div
 						className="flex min-w-0 items-center gap-1.5"
 						title={`Input: ${formatModalities(model.inputModalities)} → Output: ${formatModalities(model.outputModalities)}`}
 					>
-						<span className="text-muted-foreground">Modalities</span>
-						<span className="truncate font-medium text-foreground">
-							{formatModalities(model.inputModalities)}
-						</span>
+						<span className="truncate text-muted-foreground/80">{formatModalities(model.inputModalities)}</span>
 						<ArrowIcon size={11} className="shrink-0 text-muted-foreground" />
-						<span className="truncate font-medium text-foreground">
-							{formatModalities(model.outputModalities)}
-						</span>
+						<span className="truncate text-muted-foreground/80">{formatModalities(model.outputModalities)}</span>
 					</div>
+					<span className="text-muted-foreground/45" aria-hidden="true">
+						·
+					</span>
 					<div
 						className="flex items-center gap-1.5"
 						title={`Context: ${formatLimit(model.contextWindow)} · Input: ${formatLimit(model.inputLimit)} · Output: ${formatLimit(model.maxTokens)}`}
 					>
-						<span className="text-muted-foreground">Limits</span>
 						<span>
-							<span className="text-muted-foreground">Context </span>
-							<span className="font-medium text-foreground">{formatCompactLimit(model.contextWindow)}</span>
+							<span className="text-muted-foreground/80">{formatCompactLimit(model.contextWindow)} context</span>
 						</span>
 						<span className="text-muted-foreground/50">·</span>
 						<span>
-							<span className="text-muted-foreground">Input </span>
-							<span className="font-medium text-foreground">{formatCompactLimit(model.inputLimit)}</span>
+							<span className="text-muted-foreground/80">{formatCompactLimit(model.inputLimit)} input</span>
 						</span>
 						<span className="text-muted-foreground/50">·</span>
 						<span>
-							<span className="text-muted-foreground">Output </span>
-							<span className="font-medium text-foreground">{formatCompactLimit(model.maxTokens)}</span>
+							<span className="text-muted-foreground/80">{formatCompactLimit(model.maxTokens)} output</span>
 						</span>
 					</div>
 				</div>
