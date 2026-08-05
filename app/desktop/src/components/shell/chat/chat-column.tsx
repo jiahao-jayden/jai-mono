@@ -1,5 +1,4 @@
 import type { CodingSession } from "@jai/coding/business";
-import type { PermissionResolution } from "@jai/coding/permissions/approval";
 import { AnimatePresence, useReducedMotion } from "framer-motion";
 import {
 	type CSSProperties,
@@ -14,16 +13,16 @@ import {
 	type WheelEvent,
 } from "react";
 import pandaLogo from "@/assets/icons/chat-area/panda-3.svg";
+import type { Chat } from "@/hooks/use-chat";
 import { useIcons } from "@/lib/icon-context";
+import type { QueuedMessage } from "@/stores/chat";
 import type {
-	DesktopAgentStatus,
 	DesktopPermissionItem,
 	DesktopProviderConfigSnapshot,
 	DesktopTranscriptItem,
 	DesktopWorkspace,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
-import type { QueuedMessage } from "../../ui/input-message";
 import { MessageScroller } from "../../ui/message-scroller";
 import { PermissionRequests } from "../../ui/permission-requests";
 import { ChatComposer } from "./chat-composer";
@@ -39,10 +38,13 @@ interface ChatColumnProps {
 	session?: CodingSession;
 	workspace?: DesktopWorkspace;
 	workspaces: readonly DesktopWorkspace[];
-	status: DesktopAgentStatus;
-	items: readonly DesktopTranscriptItem[];
-	loading: boolean;
-	error?: string;
+	chat: Chat;
+	draft: string;
+	queue: readonly QueuedMessage[];
+	onDraftChange(value: string): void;
+	onEditQueuedMessage(messageId: string): void;
+	onRemoveQueuedMessage(messageId: string): void;
+	onReorderQueuedMessages(orderedIds: readonly string[]): void;
 	providerConfig?: DesktopProviderConfigSnapshot;
 	selectedModelRef: string;
 	providerLoading: boolean;
@@ -60,19 +62,19 @@ interface ChatColumnProps {
 	onChooseWorkspace(workspace: DesktopWorkspace): Promise<void>;
 	onAddWorkspace(): Promise<void>;
 	onRetryWorkspaces(): void;
-	onSend(message: string): Promise<void>;
-	onAbort(): Promise<void>;
-	onResolvePermission(resolution: PermissionResolution): Promise<void>;
 }
 
 export function ChatColumn({
 	session,
 	workspace,
 	workspaces,
-	status,
-	items,
-	loading,
-	error,
+	chat,
+	draft,
+	queue,
+	onDraftChange,
+	onEditQueuedMessage,
+	onRemoveQueuedMessage,
+	onReorderQueuedMessages,
 	providerConfig,
 	selectedModelRef,
 	providerLoading,
@@ -90,50 +92,28 @@ export function ChatColumn({
 	onChooseWorkspace,
 	onAddWorkspace,
 	onRetryWorkspaces,
-	onSend,
-	onAbort,
-	onResolvePermission,
 }: ChatColumnProps) {
 	const icons = useIcons();
 	const FolderIcon = icons.folder;
 	const FolderOffIcon = icons["folder-off"];
 	const PanelLeftIcon = icons["panel-left-close"];
 	const PanelRightIcon = icons["panel-right"];
-	const [draft, setDraft] = useState("");
-	const [queue, setQueue] = useState<QueuedMessage[]>([]);
-	const [sending, setSending] = useState(false);
-	const [sendError, setSendError] = useState<string>();
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const reducedMotion = useReducedMotion();
 
-	const submit = async (value: string, meta?: { queuedId?: string }) => {
-		const message = value.trim();
-		if (!message || sending) return;
-		setSending(true);
-		setSendError(undefined);
-		try {
-			await onSend(message);
-			if (!meta?.queuedId) setDraft("");
-		} catch {
-			setSendError("消息未发送。请检查模型配置后重试。");
-		} finally {
-			setSending(false);
-		}
-	};
-
 	const isNewChat = !session;
-	const pendingPermissions = items.filter(
+	const pendingPermissions = chat.messages.filter(
 		(item): item is DesktopPermissionItem => item.kind === "permission" && item.status === "pending",
 	);
 	const transcriptItems =
 		pendingPermissions.length > 0
-			? items.filter((item) => item.kind !== "permission" || item.status !== "pending")
-			: items;
+			? chat.messages.filter((item) => item.kind !== "permission" || item.status !== "pending")
+			: chat.messages;
 	const transcriptScroll = useTranscriptScroll({
 		ref: scrollRef,
 		sessionId: session?.id,
 		items: transcriptItems,
-		loading,
+		loading: chat.isLoading,
 		reducedMotion,
 	});
 
@@ -205,7 +185,7 @@ export function ChatColumn({
 
 			{isNewChat ? (
 				<div className="flex min-h-0 flex-1 items-center justify-center px-8 pb-[8vh]">
-					<div className="w-full max-w-[720px]">
+					<div className="w-full max-w-180">
 						<div className="mb-7 text-center">
 							<img
 								src={pandaLogo}
@@ -223,13 +203,15 @@ export function ChatColumn({
 						</div>
 						<ChatComposer
 							value={draft}
-							onValueChange={setDraft}
-							onSubmit={submit}
-							onAbort={onAbort}
-							status={status}
-							disabled={sending || workspace?.available === false}
+							onValueChange={onDraftChange}
+							onSend={chat.sendMessage}
+							onStop={chat.stop}
+							status={chat.status}
+							disabled={workspace?.available === false}
 							queue={queue}
-							onQueueChange={setQueue}
+							onEditQueuedMessage={onEditQueuedMessage}
+							onRemoveQueuedMessage={onRemoveQueuedMessage}
+							onReorderQueuedMessages={onReorderQueuedMessages}
 							workspace={workspace}
 							workspaces={workspaces}
 							workspaceBusy={workspaceBusy}
@@ -246,7 +228,7 @@ export function ChatColumn({
 							onSelectProviderModel={onSelectProviderModel}
 							large
 						/>
-						<ComposerError message={sendError || workspaceError || error} />
+						<ComposerError message={chat.error || workspaceError} />
 					</div>
 				</div>
 			) : (
@@ -262,12 +244,12 @@ export function ChatColumn({
 							onTouchMove={transcriptScroll.onTouchMove}
 							onWheel={transcriptScroll.onWheel}
 						>
-							<div className="mx-auto flex w-full max-w-[760px] flex-col gap-2 px-8 py-5">
-								{loading ? <TranscriptLoading /> : null}
-								{!loading && items.length === 0 ? (
+							<div className="mx-auto flex w-full max-w-190 flex-col gap-2 px-8 py-5">
+								{chat.isLoading ? <TranscriptLoading /> : null}
+								{!chat.isLoading && chat.messages.length === 0 ? (
 									<p className="py-16 text-center text-[13px] text-muted-foreground">这个会话还没有消息。</p>
 								) : null}
-								<TranscriptItems items={transcriptItems} loading={loading} />
+								<TranscriptItems items={transcriptItems} loading={chat.isLoading} />
 								{transcriptScroll.reservesTailSpace ? (
 									<div aria-hidden="true" className="h-[45vh] min-h-48 shrink-0" />
 								) : null}
@@ -279,7 +261,7 @@ export function ChatColumn({
 						/>
 					</div>
 					<div className="shrink-0 px-8 pb-3">
-						<div className="mx-auto flex w-full max-w-[760px] flex-col gap-2">
+						<div className="mx-auto flex w-full max-w-190 flex-col gap-2">
 							<AnimatePresence initial={false}>
 								{pendingPermissions.length > 0 ? (
 									<PermissionRequests
@@ -291,19 +273,21 @@ export function ChatColumn({
 											command: item.request.summary.command,
 											path: item.request.summary.path,
 										}))}
-										onResolve={(requestId, decision) => onResolvePermission({ requestId, decision })}
+										onResolve={(requestId, decision) => chat.resolvePermission({ requestId, decision })}
 									/>
 								) : null}
 							</AnimatePresence>
 							<ChatComposer
 								value={draft}
-								onValueChange={setDraft}
-								onSubmit={submit}
-								onAbort={onAbort}
-								status={status}
-								disabled={sending || workspace?.available === false}
+								onValueChange={onDraftChange}
+								onSend={chat.sendMessage}
+								onStop={chat.stop}
+								status={chat.status}
+								disabled={workspace?.available === false}
 								queue={queue}
-								onQueueChange={setQueue}
+								onEditQueuedMessage={onEditQueuedMessage}
+								onRemoveQueuedMessage={onRemoveQueuedMessage}
+								onReorderQueuedMessages={onReorderQueuedMessages}
 								workspace={workspace}
 								workspaces={workspaces}
 								workspaceBusy={workspaceBusy}
@@ -319,7 +303,7 @@ export function ChatColumn({
 								onOpenProviderSettings={onOpenProviderSettings}
 								onSelectProviderModel={onSelectProviderModel}
 							/>
-							<ComposerError message={sendError || workspaceError || error} />
+							<ComposerError message={chat.error || workspaceError} />
 						</div>
 					</div>
 				</>

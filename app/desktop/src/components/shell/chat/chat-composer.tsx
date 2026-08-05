@@ -1,23 +1,24 @@
+import type { ChatMessageInput, ChatStatus } from "@/hooks/use-chat";
 import { useIcons } from "@/lib/icon-context";
-import type {
-	DesktopAgentStatus,
-	DesktopProviderConfigSnapshot,
-	DesktopWorkspace,
-} from "../../../../shared/desktop-rpc";
+import type { QueuedMessage } from "@/stores/chat";
+import type { DesktopProviderConfigSnapshot, DesktopWorkspace } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
-import { InputMessage, type QueuedMessage } from "../../ui/input-message";
+import { InputMessage } from "../../ui/input-message";
+import { ChatMessageQueue } from "./chat-message-queue";
 import { ModelSelector } from "./model-selector";
 import { WorkspacePicker } from "./workspace-picker";
 
 interface ChatComposerProps {
 	value: string;
 	onValueChange(value: string): void;
-	onSubmit(value: string, meta?: { queuedId?: string }): void;
-	onAbort(): Promise<void>;
-	status: DesktopAgentStatus;
+	onSend(message: ChatMessageInput): Promise<void>;
+	onStop(): Promise<void>;
+	status: ChatStatus;
 	disabled: boolean;
-	queue: QueuedMessage[];
-	onQueueChange(queue: QueuedMessage[]): void;
+	queue: readonly QueuedMessage[];
+	onEditQueuedMessage(messageId: string): void;
+	onRemoveQueuedMessage(messageId: string): void;
+	onReorderQueuedMessages(messageIds: readonly string[]): void;
 	workspace?: DesktopWorkspace;
 	workspaces: readonly DesktopWorkspace[];
 	workspaceBusy: boolean;
@@ -38,12 +39,14 @@ interface ChatComposerProps {
 export function ChatComposer({
 	value,
 	onValueChange,
-	onSubmit,
-	onAbort,
+	onSend,
+	onStop,
 	status,
 	disabled,
 	queue,
-	onQueueChange,
+	onEditQueuedMessage,
+	onRemoveQueuedMessage,
+	onReorderQueuedMessages,
 	workspace,
 	workspaces,
 	workspaceBusy,
@@ -60,24 +63,55 @@ export function ChatComposer({
 	onSelectProviderModel,
 	large = false,
 }: ChatComposerProps) {
-	const PlusIcon = useIcons().plus;
+	const icons = useIcons();
+	const PlusIcon = icons.plus;
+	const SendIcon = icons.send;
+	const StopIcon = icons["stop-circle"];
+	const hasDraft = value.trim().length > 0;
+	const isStreaming = status === "streaming";
+	const isSubmitting = status === "submitted";
+	const stopAction = isStreaming && !hasDraft;
+	const submitLabel = stopAction ? "Stop response" : isStreaming ? "Queue message" : "Send message";
+	const composerDisabled = disabled || isSubmitting;
+	const submitDisabled = composerDisabled || (!stopAction && !hasDraft);
+	const onSubmit = () => {
+		if (stopAction) {
+			void onStop();
+			return;
+		}
+		void onSend({ text: value });
+	};
 
 	return (
 		<div>
+			<ChatMessageQueue
+				messages={queue}
+				onEdit={onEditQueuedMessage}
+				onRemove={onRemoveQueuedMessage}
+				onReorder={onReorderQueuedMessages}
+			/>
 			<InputMessage
 				value={value}
 				onValueChange={onValueChange}
-				onSend={(message, _files, meta) => onSubmit(message, meta)}
-				onStop={() => void onAbort()}
-				status={status === "running" ? "streaming" : "idle"}
-				queue={queue}
-				onQueueChange={onQueueChange}
-				disabled={disabled}
+				onSend={(message) => void onSend({ text: message })}
+				disabled={composerDisabled}
 				minRows={large ? 2 : 1}
 				maxRows={8}
 				placeholder={large ? "What should the agent work on?" : "Write a message…"}
-				sendLabel="Send message"
+				sendLabel={submitLabel}
 				textareaProps={{ "aria-label": "Message" }}
+				submitSlot={
+					<Button
+						type="button"
+						variant="accent"
+						size="icon-sm"
+						onClick={onSubmit}
+						disabled={submitDisabled}
+						aria-label={submitLabel}
+					>
+						{stopAction ? <StopIcon size={18} /> : <SendIcon size={19} />}
+					</Button>
+				}
 				leftSlot={
 					<Button
 						type="button"
@@ -97,7 +131,7 @@ export function ChatComposer({
 							selectedModelRef={selectedModelRef}
 							loading={providerLoading}
 							error={providerError}
-							disabled={status === "running" || providerLoading}
+							disabled={isStreaming || isSubmitting || providerLoading}
 							onSelect={onSelectProviderModel}
 							onManage={onOpenProviderSettings}
 						/>
@@ -108,7 +142,7 @@ export function ChatComposer({
 				<WorkspacePicker
 					workspace={workspace}
 					workspaces={workspaces}
-					disabled={status === "running"}
+					disabled={isStreaming || isSubmitting}
 					busy={workspaceBusy}
 					loading={workspaceLoading}
 					loadError={workspaceLoadError}

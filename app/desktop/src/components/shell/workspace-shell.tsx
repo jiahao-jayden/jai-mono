@@ -10,6 +10,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { useChat } from "@/hooks/use-chat";
 import { desktop } from "@/lib/desktop";
 import {
 	desktopQueryClient,
@@ -21,7 +22,7 @@ import {
 	upsertRecentSession,
 	upsertWorkspace,
 } from "@/lib/desktop-query";
-import { useActiveSessionStore } from "@/stores/sessions";
+import { selectDraft, useDesktopChatStore } from "@/stores/chat";
 import {
 	type DesktopProviderConfigInput,
 	type DesktopWorkspace,
@@ -51,9 +52,23 @@ export function WorkspaceShell() {
 	const [sidebarOpen, setSidebarOpen] = useState(true);
 	const [rightPanelOpen, setRightPanelOpen] = useState(true);
 	const [providerSettingsOpen, setProviderSettingsOpen] = useState(false);
-	const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
-	const [selectedModelRef, setSelectedModelRef] = useState("");
-	const activeSession = useActiveSessionStore();
+	const activeSessionId = useDesktopChatStore((state) => state.activeSessionId);
+	const draft = useDesktopChatStore(selectDraft);
+	const queue = useDesktopChatStore((state) => state.queue);
+	const selectedWorkspaceId = useDesktopChatStore((state) => state.selectedWorkspaceId);
+	const selectedModelRef = useDesktopChatStore((state) => state.selectedModelRef);
+	const openSession = useDesktopChatStore((state) => state.openSession);
+	const newChat = useDesktopChatStore((state) => state.newChat);
+	const setDraft = useDesktopChatStore((state) => state.setDraft);
+	const sessionCreated = useDesktopChatStore((state) => state.sessionCreated);
+	const acceptDraft = useDesktopChatStore((state) => state.acceptDraft);
+	const enqueueMessage = useDesktopChatStore((state) => state.enqueueMessage);
+	const acceptQueuedMessage = useDesktopChatStore((state) => state.acceptQueuedMessage);
+	const editQueuedMessage = useDesktopChatStore((state) => state.editQueuedMessage);
+	const removeQueuedMessage = useDesktopChatStore((state) => state.removeQueuedMessage);
+	const reorderQueuedMessages = useDesktopChatStore((state) => state.reorderQueuedMessages);
+	const setSelectedWorkspaceId = useDesktopChatStore((state) => state.setSelectedWorkspaceId);
+	const setSelectedModelRef = useDesktopChatStore((state) => state.setSelectedModelRef);
 	const workspacesQuery = useQuery({
 		queryKey: desktopQueryKeys.workspaces,
 		queryFn: () => desktop.workspace.list(),
@@ -70,7 +85,7 @@ export function WorkspaceShell() {
 	const sessionRecentsQuery = useInfiniteQuery(sessionRecentsQueryOptions());
 	const sessions = getRecentSessions(sessionRecentsQuery.data);
 	const runningSessionIds = getRunningSessionIds(sessionRecentsQuery.data);
-	const session = sessions.find((candidate) => candidate.id === activeSession.sessionId);
+	const session = sessions.find((candidate) => candidate.id === activeSessionId);
 	const workspaces = workspacesQuery.data ?? [];
 	const selectedWorkspace = workspaces.find((candidate) => candidate.id === selectedWorkspaceId);
 	const defaultWorkspace = workspaces.find((candidate) => candidate.available) ?? workspaces[0];
@@ -83,17 +98,19 @@ export function WorkspaceShell() {
 				.map((model) => `${profile.id}/${model.id}`),
 		) ?? [];
 	const runtimeModelRef = enabledModelRefs.includes(selectedModelRef) ? selectedModelRef : (enabledModelRefs[0] ?? "");
+	const chat = useChat({
+		id: activeSessionId,
+		newSessionWorkspaceId: workspaceId,
+		modelRef: runtimeModelRef,
+		queue,
+		onSessionCreated: sessionCreated,
+		onDraftAccepted: acceptDraft,
+		onMessageQueued: enqueueMessage,
+		onQueuedMessageAccepted: acceptQueuedMessage,
+	});
 	const shellRef = useRef<HTMLDivElement>(null);
 	const sidebarResize = useSidebarResize(shellRef, rightPanelOpen && !!session);
 
-	const send = async (message: string) => {
-		if (!runtimeModelRef) return;
-		if (activeSession.sessionId) {
-			await activeSession.send(message, runtimeModelRef);
-			return;
-		}
-		await activeSession.createAndSend(workspaceId, message, runtimeModelRef);
-	};
 	const updateProviderConfig = async (input: DesktopProviderConfigInput) => {
 		const snapshot = await desktop.provider.save(input);
 		desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, snapshot);
@@ -114,10 +131,10 @@ export function WorkspaceShell() {
 		return result.apiKey;
 	};
 	const openProviderSettings = useCallback(() => {
-		if (activeSession.status === "running") return;
+		if (chat.status === "streaming" || chat.status === "submitted") return;
 		setProviderSettingsOpen(true);
 		void providerQuery.refetch();
-	}, [activeSession.status, providerQuery.refetch]);
+	}, [chat.status, providerQuery.refetch]);
 	useEffect(() => {
 		const openSettingsShortcut = (event: globalThis.KeyboardEvent) => {
 			if (event.key !== "," || (!event.metaKey && !event.ctrlKey)) return;
@@ -179,7 +196,7 @@ export function WorkspaceShell() {
 	const deleteSession = async (sessionId: string) => {
 		await desktop.session.delete({ sessionId });
 		removeRecentSession(sessionId);
-		if (activeSession.sessionId === sessionId) activeSession.newChat();
+		if (activeSessionId === sessionId) newChat();
 		void desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.recents });
 	};
 
@@ -193,17 +210,17 @@ export function WorkspaceShell() {
 					sessions={sessions}
 					workspaces={workspaces}
 					runningSessionIds={runningSessionIds}
-					activeSessionId={activeSession.sessionId}
+					activeSessionId={activeSessionId}
 					loading={sessionRecentsQuery.isLoading}
 					error={sessionRecentsQuery.isError ? getErrorMessage(sessionRecentsQuery.error) : undefined}
 					hasNextPage={sessionRecentsQuery.hasNextPage}
 					loadingMore={sessionRecentsQuery.isFetchingNextPage}
 					width={sidebarResize.width}
-					settingsDisabled={activeSession.status === "running"}
+					settingsDisabled={chat.status === "streaming" || chat.status === "submitted"}
 					onToggleSidebar={() => setSidebarOpen(false)}
-					onNewChat={activeSession.newChat}
+					onNewChat={newChat}
 					onOpenSettings={openProviderSettings}
-					onSelectSession={activeSession.open}
+					onSelectSession={openSession}
 					onRenameSession={renameSession}
 					onMoveSession={moveSession}
 					onDeleteSession={deleteSession}
@@ -212,14 +229,17 @@ export function WorkspaceShell() {
 			) : null}
 			{sidebarOpen ? <SidebarResizeHandle {...sidebarResize} /> : null}
 			<ChatColumn
-				key={activeSession.sessionId ?? "new"}
+				key={activeSessionId ?? "new"}
 				session={session}
 				workspace={workspace}
 				workspaces={workspaces}
-				status={activeSession.status}
-				items={activeSession.items}
-				loading={activeSession.loading}
-				error={activeSession.error}
+				chat={chat}
+				draft={draft}
+				queue={queue}
+				onDraftChange={setDraft}
+				onEditQueuedMessage={editQueuedMessage}
+				onRemoveQueuedMessage={removeQueuedMessage}
+				onReorderQueuedMessages={reorderQueuedMessages}
 				providerConfig={providerQuery.data}
 				selectedModelRef={runtimeModelRef}
 				providerLoading={providerQuery.isLoading}
@@ -240,12 +260,13 @@ export function WorkspaceShell() {
 				onChooseWorkspace={chooseWorkspace}
 				onAddWorkspace={addWorkspace}
 				onRetryWorkspaces={() => void workspacesQuery.refetch()}
-				onSend={send}
-				onAbort={activeSession.abort}
-				onResolvePermission={activeSession.resolvePermission}
 			/>
 			{rightPanelOpen && session ? (
-				<TaskPanel status={activeSession.status} items={activeSession.items} workspace={workspace} />
+				<TaskPanel
+					status={chat.status === "streaming" ? "running" : "idle"}
+					items={chat.messages}
+					workspace={workspace}
+				/>
 			) : null}
 			<ProviderSettingsDialog
 				open={providerSettingsOpen}
