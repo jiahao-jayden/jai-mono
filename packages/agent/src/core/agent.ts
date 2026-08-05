@@ -172,7 +172,10 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 	}
 
 	stream(input: AgentInput): CoreAgentRun {
-		const output = createRunStream();
+		const output = new EventStream<CoreAgentEvent, AgentMessage[]>(
+			() => false,
+			() => [],
+		);
 		const unsubscribe = this.subscribe((event) => {
 			output.push(event);
 		});
@@ -380,13 +383,6 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 		}
 		activeRun.resolveDone();
 	}
-}
-
-function createRunStream(): EventStream<CoreAgentEvent, AgentMessage[]> {
-	return new EventStream<CoreAgentEvent, AgentMessage[]>(
-		() => false,
-		() => [],
-	);
 }
 
 function assertModelMatchesProvider(model: CoreAgentOptions["model"], provider: CoreAgentOptions["provider"]): void {

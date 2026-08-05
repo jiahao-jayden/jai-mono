@@ -95,7 +95,8 @@ export function useChat(options: UseChatOptions): Chat {
 			submitting: false,
 			messages: [],
 		});
-		return getDispatcher().subscribe(sessionId, (update) => {
+		dispatcher ??= createDesktopAgentEventDispatcher();
+		return dispatcher.subscribe(sessionId, (update) => {
 			setState((current) => applyChatProjectionUpdate(current, update));
 		});
 	}, [options.id]);
@@ -295,9 +296,4 @@ function upsertMessage(
 	const next = [...messages];
 	next[index] = message;
 	return next;
-}
-
-function getDispatcher() {
-	dispatcher ??= createDesktopAgentEventDispatcher();
-	return dispatcher;
 }

@@ -116,9 +116,6 @@ export function WorkspaceShell() {
 		desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, snapshot);
 		return snapshot;
 	};
-	const saveProviderConfig = async (input: DesktopProviderConfigInput) => {
-		return updateProviderConfig(input);
-	};
 	const fetchProviderModelsMutation = useMutation({
 		mutationFn: (profileId: string) => desktop.provider.fetchModels(profileId),
 		onSuccess: (result) => {
@@ -275,7 +272,7 @@ export function WorkspaceShell() {
 				loadError={providerQuery.isError && !providerQuery.isFetching}
 				onOpenChange={setProviderSettingsOpen}
 				onRetry={() => void providerQuery.refetch()}
-				onSave={saveProviderConfig}
+				onSave={updateProviderConfig}
 				onFetchModels={fetchProviderModels}
 				onRevealApiKey={revealProviderApiKey}
 			/>
