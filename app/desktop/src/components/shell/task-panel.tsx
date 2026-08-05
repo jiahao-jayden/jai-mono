@@ -22,9 +22,9 @@ export function TaskPanel({ status, items, workspace }: TaskPanelProps) {
 	);
 
 	return (
-		<aside className="h-full w-[336px] shrink-0 overflow-y-auto border-l border-border/60 bg-background px-3 py-3">
-			<div className="space-y-3">
-				<section className="rounded-[14px] border border-border bg-card px-4 py-3.5">
+		<aside className="h-full w-84 shrink-0 overflow-y-auto bg-background px-3 py-3">
+			<div className="overflow-hidden rounded-[14px] border border-border bg-card">
+				<section className="px-4 pt-3.5 pb-2.5">
 					<div className="flex items-center justify-between">
 						<h2 className="text-[14px] font-semibold">Progress</h2>
 						<span className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
@@ -40,7 +40,7 @@ export function TaskPanel({ status, items, workspace }: TaskPanelProps) {
 						</span>
 					</div>
 					{tools.length > 0 ? (
-						<div className="mt-3 space-y-1.5 border-t border-border/70 pt-3">
+						<div className="mt-3 space-y-1.5">
 							{tools.slice(-4).map((tool) => (
 								<div key={tool.id} className="flex items-center gap-2 text-[12.5px]">
 									<TerminalIcon size={13} className="shrink-0 text-muted-foreground" />
@@ -54,8 +54,10 @@ export function TaskPanel({ status, items, workspace }: TaskPanelProps) {
 					) : null}
 				</section>
 
-				<section className="rounded-[14px] border border-border bg-card px-2.5 py-3.5">
-					<div className="flex items-center justify-between px-1.5 pb-2">
+				<div aria-hidden="true" className="mx-4 border-t border-border/45" />
+
+				<section className="px-4 py-2.5">
+					<div className="flex items-center justify-between pb-2">
 						<div className="flex items-baseline gap-2">
 							<h2 className="text-[14px] font-semibold">Outputs</h2>
 							<span className="text-[12.5px] text-muted-foreground">{outputCandidates.length}</span>
@@ -79,13 +81,15 @@ export function TaskPanel({ status, items, workspace }: TaskPanelProps) {
 							))}
 						</div>
 					) : (
-						<p className="px-1.5 py-2 text-[12.5px] leading-relaxed text-muted-foreground">
+						<p className="py-2 text-[12.5px] leading-relaxed text-muted-foreground">
 							Agent 生成或修改的文件会出现在这里。
 						</p>
 					)}
 				</section>
 
-				<section className="rounded-[14px] border border-border bg-card px-4 py-3.5">
+				<div aria-hidden="true" className="mx-4 border-t border-border/45" />
+
+				<section className="px-4 pt-2.5 pb-3.5">
 					<div className="flex items-center justify-between">
 						<h2 className="text-[14px] font-semibold">Context</h2>
 						<LayersIcon size={14} className="text-muted-foreground" />

@@ -1,6 +1,6 @@
 import type { CodingSession } from "@jai/coding/business";
 import { getErrorMessage } from "@jai/common";
-import { type FormEvent, useState } from "react";
+import { useRef, useState } from "react";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type { DesktopWorkspace } from "../../../../shared/desktop-rpc";
@@ -47,6 +47,42 @@ export function SidebarRecents({
 	onDeleteSession,
 	onLoadMore,
 }: SidebarRecentsProps) {
+	const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+	const [editingTitle, setEditingTitle] = useState("");
+	const cancelEditRef = useRef(false);
+
+	const startEditing = (session: CodingSession) => {
+		cancelEditRef.current = false;
+		setEditingTitle(session.title);
+		setEditingSessionId(session.id);
+	};
+
+	const cancelEditing = () => {
+		cancelEditRef.current = true;
+		setEditingSessionId(null);
+	};
+
+	const saveEditing = async (session: CodingSession) => {
+		if (cancelEditRef.current) {
+			cancelEditRef.current = false;
+			return;
+		}
+
+		setEditingSessionId(null);
+		const title = editingTitle.trim();
+		if (!title || title === session.title) return;
+
+		try {
+			await onRenameSession(session.id, title);
+		} catch (reason) {
+			toast.add({
+				title: "无法重命名会话",
+				description: getErrorMessage(reason),
+				type: "error",
+			});
+		}
+	};
+
 	return (
 		<>
 			<div className="px-5 pt-5 pb-1.5">
@@ -71,32 +107,64 @@ export function SidebarRecents({
 				) : null}
 				{sessions.map((session) => {
 					const selected = session.id === activeSessionId;
+					const editing = session.id === editingSessionId;
 					return (
 						<div className="group relative" key={session.id}>
-							<Button
-								type="button"
-								variant="navigation"
-								size="md"
-								onClick={() => onSelectSession(session.id)}
-								aria-current={selected ? "page" : undefined}
-								active={selected}
-								contentClassName="w-full min-w-0"
-								labelClassName="min-w-0 flex-1 [text-box:normal]"
-								className={cn(
-									"h-8 w-full justify-start rounded-lg pr-9 pl-2.5 text-left text-[13px] font-normal",
-									selected ? "text-foreground" : "text-foreground/80",
-								)}
-							>
-								<span className="block truncate">{session.title}</span>
-							</Button>
-							<SessionActions
-								session={session}
-								workspaces={workspaces}
-								visible={selected}
-								onRename={onRenameSession}
-								onMove={onMoveSession}
-								onDelete={onDeleteSession}
-							/>
+							{editing ? (
+								<Input
+									autoFocus
+									density="compact"
+									value={editingTitle}
+									onChange={(event) => setEditingTitle(event.target.value)}
+									onBlur={() => void saveEditing(session)}
+									onKeyDown={(event) => {
+										if (event.key === "Enter") {
+											event.preventDefault();
+											event.currentTarget.blur();
+										} else if (event.key === "Escape") {
+											event.preventDefault();
+											cancelEditing();
+										}
+									}}
+									aria-label="Session title"
+									maxLength={80}
+									className="h-8 rounded-lg border-border bg-sidebar px-2.5 text-[13px] font-normal focus-visible:ring-0"
+								/>
+							) : (
+								<>
+									<Button
+										type="button"
+										variant="navigation"
+										size="md"
+										onClick={() => onSelectSession(session.id)}
+										onDoubleClick={() => selected && startEditing(session)}
+										onKeyDown={(event) => {
+											if (selected && event.key === "F2") {
+												event.preventDefault();
+												startEditing(session);
+											}
+										}}
+										aria-current={selected ? "page" : undefined}
+										active={selected}
+										contentClassName="w-full min-w-0"
+										labelClassName="min-w-0 flex-1 [text-box:normal]"
+										className={cn(
+											"h-8 w-full justify-start rounded-lg pr-9 pl-2.5 text-left text-[13px] font-normal",
+											selected ? "text-foreground" : "text-foreground/80",
+										)}
+									>
+										<span className="block truncate">{session.title}</span>
+									</Button>
+									<SessionActions
+										session={session}
+										workspaces={workspaces}
+										visible={selected}
+										onStartRename={() => startEditing(session)}
+										onMove={onMoveSession}
+										onDelete={onDeleteSession}
+									/>
+								</>
+							)}
 						</div>
 					);
 				})}
@@ -117,58 +185,40 @@ export function SidebarRecents({
 	);
 }
 
-type SessionActionDialog = "rename" | "delete" | null;
+type SessionActionDialog = "delete" | null;
 
 function SessionActions({
 	session,
 	workspaces,
 	visible,
-	onRename,
+	onStartRename,
 	onMove,
 	onDelete,
 }: {
 	readonly session: CodingSession;
 	readonly workspaces: readonly DesktopWorkspace[];
 	readonly visible: boolean;
-	readonly onRename: (sessionId: string, title: string) => Promise<void>;
+	readonly onStartRename: () => void;
 	readonly onMove: (sessionId: string, workspaceId: string | null) => Promise<void>;
 	readonly onDelete: (sessionId: string) => Promise<void>;
 }) {
 	const icons = useIcons();
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [dialog, setDialog] = useState<SessionActionDialog>(null);
-	const [title, setTitle] = useState(session.title);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string>();
 	const MoreVerticalIcon = icons["more-vertical"];
 	const destinationWorkspaces = workspaces.filter((workspace) => workspace.id !== session.workspaceId);
 
-	const openDialog = (next: Exclude<SessionActionDialog, null>) => {
+	const openDialog = () => {
 		setError(undefined);
-		if (next === "rename") setTitle(session.title);
-		setDialog(next);
+		setDialog("delete");
 	};
 
 	const closeDialog = () => {
 		if (pending) return;
 		setDialog(null);
 		setError(undefined);
-	};
-
-	const rename = async (event: FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		const nextTitle = title.trim();
-		if (!nextTitle || pending) return;
-		setPending(true);
-		setError(undefined);
-		try {
-			await onRename(session.id, nextTitle);
-			setDialog(null);
-		} catch (reason) {
-			setError(getErrorMessage(reason));
-		} finally {
-			setPending(false);
-		}
 	};
 
 	const move = async (workspaceId: string | null) => {
@@ -247,13 +297,7 @@ function SessionActions({
 					hoverVariant="navigation"
 					className="w-48 gap-0.5 p-1"
 				>
-					<MenuItem
-						index={0}
-						icon={icons.pencil}
-						label="Rename"
-						className="h-8 px-2"
-						onSelect={() => openDialog("rename")}
-					/>
+					<MenuItem index={0} icon={icons.pencil} label="Rename" className="h-8 px-2" onSelect={onStartRename} />
 					<DropdownSubmenu>
 						<MenuItem
 							index={1}
@@ -273,7 +317,7 @@ function SessionActions({
 										label={workspace.displayName}
 										description={workspace.path}
 										disabled={pending || !workspace.available}
-									className="min-h-10 py-1.5"
+										className="min-h-10 py-1.5"
 										onSelect={() => void move(workspace.id)}
 									/>
 								))
@@ -298,37 +342,10 @@ function SessionActions({
 						label="Delete"
 						variant="destructive"
 						className="h-8 px-2"
-						onSelect={() => openDialog("delete")}
+						onSelect={openDialog}
 					/>
 				</DropdownContent>
 			</DropdownMenu>
-
-			<Dialog open={dialog === "rename"} onOpenChange={(open) => !open && closeDialog()}>
-				<DialogContent>
-					<form onSubmit={rename}>
-						<DialogHeader>
-							<DialogTitle>Rename session</DialogTitle>
-							<DialogDescription>Give this conversation a name that is easy to find later.</DialogDescription>
-						</DialogHeader>
-						<Input
-							autoFocus
-							value={title}
-							onChange={(event) => setTitle(event.target.value)}
-							aria-label="Session name"
-							maxLength={80}
-						/>
-						<ActionError message={error} />
-						<DialogFooter>
-							<Button type="button" variant="ghost" disabled={pending} onClick={closeDialog}>
-								Cancel
-							</Button>
-							<Button type="submit" loading={pending} disabled={!title.trim()}>
-								Save
-							</Button>
-						</DialogFooter>
-					</form>
-				</DialogContent>
-			</Dialog>
 
 			<Dialog open={dialog === "delete"} onOpenChange={(open) => !open && closeDialog()}>
 				<DialogContent>

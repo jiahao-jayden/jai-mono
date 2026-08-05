@@ -257,6 +257,7 @@ export function WorkspaceShell() {
 				onChooseWorkspace={chooseWorkspace}
 				onAddWorkspace={addWorkspace}
 				onRetryWorkspaces={() => void workspacesQuery.refetch()}
+				onRenameSession={renameSession}
 			/>
 			{rightPanelOpen && session ? (
 				<TaskPanel

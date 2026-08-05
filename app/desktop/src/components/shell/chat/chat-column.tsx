@@ -1,4 +1,5 @@
 import type { CodingSession } from "@jai/coding/business";
+import { getErrorMessage } from "@jai/common";
 import { AnimatePresence, useReducedMotion } from "framer-motion";
 import {
 	type CSSProperties,
@@ -15,6 +16,7 @@ import {
 import pandaLogo from "@/assets/icons/chat-area/panda-3.svg";
 import type { Chat } from "@/hooks/use-chat";
 import { useIcons } from "@/lib/icon-context";
+import { cn } from "@/lib/utils";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
 	DesktopPermissionItem,
@@ -23,8 +25,10 @@ import type {
 	DesktopWorkspace,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
+import { Input } from "../../ui/input";
 import { MessageScroller } from "../../ui/message-scroller";
 import { PermissionRequests } from "../../ui/permission-requests";
+import { toast } from "../../ui/toast";
 import { ChatComposer } from "./chat-composer";
 import { TranscriptItems, TranscriptLoading } from "./chat-transcript";
 import {
@@ -62,6 +66,7 @@ interface ChatColumnProps {
 	onChooseWorkspace(workspace: DesktopWorkspace): Promise<void>;
 	onAddWorkspace(): Promise<void>;
 	onRetryWorkspaces(): void;
+	onRenameSession(sessionId: string, title: string): Promise<void>;
 }
 
 export function ChatColumn({
@@ -92,6 +97,7 @@ export function ChatColumn({
 	onChooseWorkspace,
 	onAddWorkspace,
 	onRetryWorkspaces,
+	onRenameSession,
 }: ChatColumnProps) {
 	const icons = useIcons();
 	const FolderIcon = icons.folder;
@@ -99,7 +105,10 @@ export function ChatColumn({
 	const PanelLeftIcon = icons["panel-left-close"];
 	const PanelRightIcon = icons["panel-right"];
 	const scrollRef = useRef<HTMLDivElement>(null);
+	const cancelTitleEditRef = useRef(false);
 	const reducedMotion = useReducedMotion();
+	const [editingTitle, setEditingTitle] = useState(false);
+	const [titleDraft, setTitleDraft] = useState("");
 
 	const isNewChat = !session;
 	const pendingPermissions = chat.messages.filter(
@@ -123,11 +132,41 @@ export function ChatColumn({
 
 	const drag = { WebkitAppRegion: "drag" } as CSSProperties;
 	const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
+	const startTitleEditing = () => {
+		if (!session) return;
+		cancelTitleEditRef.current = false;
+		setTitleDraft(session.title);
+		setEditingTitle(true);
+	};
+	const cancelTitleEditing = () => {
+		cancelTitleEditRef.current = true;
+		setEditingTitle(false);
+	};
+	const saveTitle = async () => {
+		if (cancelTitleEditRef.current) {
+			cancelTitleEditRef.current = false;
+			return;
+		}
+
+		setEditingTitle(false);
+		const title = titleDraft.trim();
+		if (!session || !title || title === session.title) return;
+
+		try {
+			await onRenameSession(session.id, title);
+		} catch (reason) {
+			toast.add({
+				title: "无法重命名会话",
+				description: getErrorMessage(reason),
+				type: "error",
+			});
+		}
+	};
 
 	return (
 		<section className="flex min-w-0 flex-1 flex-col bg-background">
 			<header
-				className={`flex h-13 shrink-0 items-center justify-between pr-5 ${sidebarOpen ? "pl-5" : "pl-20"}`}
+				className={cn("flex h-13 shrink-0 items-center justify-between pr-5", sidebarOpen ? "pl-5" : "pl-20")}
 				style={drag}
 			>
 				<div className="flex min-w-0 items-center gap-2.5 text-[15px]">
@@ -159,7 +198,47 @@ export function ChatColumn({
 					{session ? (
 						<>
 							{workspaceLabel ? <span className="text-muted-foreground/40">/</span> : null}
-							<span className="truncate font-semibold">{session.title}</span>
+							{editingTitle ? (
+								<Input
+									autoFocus
+									density="compact"
+									value={titleDraft}
+									onChange={(event) => setTitleDraft(event.target.value)}
+									onBlur={() => void saveTitle()}
+									onKeyDown={(event) => {
+										if (event.key === "Enter") {
+											event.preventDefault();
+											event.currentTarget.blur();
+										} else if (event.key === "Escape") {
+											event.preventDefault();
+											cancelTitleEditing();
+										}
+									}}
+									aria-label="Session title"
+									maxLength={80}
+									className="h-7 min-w-36 max-w-96 border-transparent bg-hover px-2 text-[15px] font-semibold"
+									style={noDrag}
+								/>
+							) : (
+								<Button
+									type="button"
+									variant="ghost"
+									size="md"
+									onDoubleClick={startTitleEditing}
+									onKeyDown={(event) => {
+										if (event.key === "F2") {
+											event.preventDefault();
+											startTitleEditing();
+										}
+									}}
+									aria-label={`Edit session title: ${session.title}`}
+									title="Double-click to rename"
+									className="h-7 max-w-96 justify-start px-1 text-[15px] font-semibold text-foreground"
+									style={noDrag}
+								>
+									<span className="truncate">{session.title}</span>
+								</Button>
+							)}
 						</>
 					) : null}
 				</div>
