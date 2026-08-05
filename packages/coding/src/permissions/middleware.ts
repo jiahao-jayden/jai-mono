@@ -25,10 +25,11 @@ export interface PermissionMiddlewareOptions {
 	) => PermissionApprovalDecision | Promise<PermissionApprovalDecision>;
 	readonly persistProjectLocalAllowRule?: (rule: string) => void | Promise<void>;
 	readonly pathCapabilities?: PathCapabilityManager;
+	readonly sessionAllowRules?: Set<string>;
 }
 
 export function createPermissionMiddleware(options: PermissionMiddlewareOptions): ToolMiddleware {
-	const sessionAllowRules = new Set<string>();
+	const sessionAllowRules = options.sessionAllowRules ?? new Set<string>();
 	return async (context, next) => {
 		const toolName = canonicalToolName(context.tool.name);
 		const workspaceRoot = currentWorkspaceRoot(options.workspaceRoot);

@@ -136,6 +136,27 @@ describe("permission middleware", () => {
 		expect(approvals).toBe(1);
 	});
 
+	test("显式共享 Session allow rules 时父子 middleware 复用授权", async () => {
+		let approvals = 0;
+		const sessionAllowRules = new Set<string>();
+		const options = {
+			workspaceRoot,
+			settings: {},
+			sessionAllowRules,
+			requestApproval: () => {
+				approvals++;
+				return "alwaysAllow" as const;
+			},
+		};
+		const parent = createPermissionMiddleware(options);
+		const child = createPermissionMiddleware(options);
+
+		await parent(context("Edit", { path: "src/app.ts" }), async () => ({ content: [] }));
+		await child(context("Write", { path: "src/app.ts" }), async () => ({ content: [] }));
+
+		expect(approvals).toBe(1);
+	});
+
 	test("Bash Always allow 请求 project-local 持久化", async () => {
 		const persisted: string[] = [];
 		const middleware = createPermissionMiddleware({
@@ -216,11 +237,17 @@ describe("permission middleware", () => {
 });
 
 describe("permission evaluation", () => {
-	test("ReportProgress 在所有权限模式下直接允许", () => {
+	test("内部协调工具在所有权限模式下直接允许", () => {
 		expect(
 			evaluatePermission(call("ReportProgress", { title: "Inspecting", detail: "Reading files." }), {
 				defaultMode: "dontAsk",
 				deny: ["ReportProgress"],
+			}),
+		).toMatchObject({ behavior: "allow", source: "built-in" });
+		expect(
+			evaluatePermission(call("SpawnAgent", { title: "Inspect", task: "Inspect the repository." }), {
+				defaultMode: "dontAsk",
+				deny: ["SpawnAgent"],
 			}),
 		).toMatchObject({ behavior: "allow", source: "built-in" });
 	});

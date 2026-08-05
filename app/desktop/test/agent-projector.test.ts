@@ -36,6 +36,12 @@ describe("projectSessionSnapshot", () => {
 								name: "Write",
 								arguments: { path: "a.txt", content: "secret" },
 							},
+							{
+								type: "toolCall",
+								id: "subagent-1",
+								name: "SpawnAgent",
+								arguments: { title: "Inspect repository", task: "secret delegated task" },
+							},
 						],
 						provider: "test",
 						model: "test",
@@ -80,6 +86,19 @@ describe("projectSessionSnapshot", () => {
 				{
 					type: "message",
 					id: "assistant-2",
+					timestamp: "2026-08-01T00:00:02.250Z",
+					message: {
+						role: "toolResult",
+						toolCallId: "subagent-1",
+						toolName: "SpawnAgent",
+						content: [{ type: "text", text: "Inspection complete." }],
+						isError: false,
+						timestamp: 3.25,
+					},
+				},
+				{
+					type: "message",
+					id: "assistant-3",
 					timestamp: "2026-08-01T00:00:02.500Z",
 					message: {
 						role: "assistant",
@@ -144,6 +163,12 @@ describe("projectSessionSnapshot", () => {
 				status: "complete",
 				summary: "a.txt",
 				details: "Created a.txt",
+			}),
+			expect.objectContaining({
+				kind: "subagent",
+				toolCallId: "subagent-1",
+				title: "Inspect repository",
+				status: "complete",
 			}),
 			expect.objectContaining({
 				kind: "thinking",

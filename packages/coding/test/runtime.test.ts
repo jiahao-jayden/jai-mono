@@ -61,6 +61,7 @@ describe("createCodingAgent", () => {
 			expect(resolvedMode).toBe("default");
 			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual([
 				"ReportProgress",
+				"SpawnAgent",
 				"Read",
 				"Glob",
 				"Grep",
@@ -119,7 +120,7 @@ describe("createCodingAgent", () => {
 
 		try {
 			await codingAgent.invoke("hello");
-			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["ReportProgress", "Skill"]);
+			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["ReportProgress", "SpawnAgent", "Skill"]);
 			expect(codingAgent.configSnapshot.settings.permissions.defaultMode).toBe("default");
 		} finally {
 			codingAgent.close();
@@ -286,6 +287,43 @@ describe("createCodingAgent", () => {
 			expect(await readFile(join(fixture.sessionDirectory, "session-1.jsonl"), "utf8")).toContain(
 				'"slashInvocation":{"name":"review","kind":"skill","displayName":"review"}',
 			);
+		} finally {
+			codingAgent.close();
+		}
+	});
+
+	test("SpawnAgent 使用隔离上下文并把最终文本返回父 Agent", async () => {
+		const fixture = await createFixture();
+		const contexts: Context[] = [];
+		const codingAgent = await createCodingAgent({
+			...fixture,
+			resolveProvider: () => ({
+				provider: providerFor(
+					[
+						assistantToolCall("SpawnAgent", {
+							title: "Inspect repository",
+							task: "Read the workspace and report the result.",
+						}),
+						assistant("Child inspection result."),
+						assistant("Parent received the result."),
+					],
+					contexts,
+				),
+				model,
+			}),
+		});
+
+		try {
+			await codingAgent.invoke("Parent-only conversation context.");
+
+			expect(contexts[0]?.tools.map((tool) => tool.name)).toContain("SpawnAgent");
+			expect(contexts[1]?.tools.map((tool) => tool.name)).not.toContain("SpawnAgent");
+			expect(contexts[1]?.messages[0]).toMatchObject({
+				role: "user",
+				content: "Read the workspace and report the result.",
+			});
+			expect(JSON.stringify(contexts[1]?.messages)).not.toContain("Parent-only conversation context.");
+			expect(JSON.stringify(contexts[2]?.messages)).toContain("Child inspection result.");
 		} finally {
 			codingAgent.close();
 		}

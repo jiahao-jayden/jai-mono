@@ -31,7 +31,10 @@ import {
 	type PermissionSettings,
 } from "../permissions";
 import { CodingSkillsRuntime, type CodingSkillsRuntimeOptions } from "../skills";
-import { type CodingToolOptions, createCodingTools, createReportProgressTool } from "../tools";
+import { type CodingToolOptions, createCodingTools, createReportProgressTool, createSpawnAgentTool } from "../tools";
+
+const SUBAGENT_INSTRUCTIONS =
+	"You are an internal subagent. Complete only the delegated task using the available tools, then return a concise final result to the parent agent. You cannot see the parent conversation, so rely only on the task and workspace.";
 
 export interface ResolvedCodingProvider {
 	readonly provider: Provider;
@@ -180,24 +183,11 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		...options.agent,
 		...(options.resolveAgentOptions ? await options.resolveAgentOptions(snapshot, { provider, model }) : {}),
 	};
-	const skills =
-		options.skills === false
-			? undefined
-			: await CodingSkillsRuntime.create({
-					homeDirectory: options.skills?.homeDirectory ?? options.configOptions?.homeDir ?? homedir(),
-					workspaceDirectory:
-						options.skills?.workspaceDirectory ??
-						(options.executionContext.localFileAccess ? options.executionContext.configRoot : undefined),
-					workspaceTrusted:
-						options.skills?.workspaceTrusted ??
-						options.configOptions?.workspaceTrusted ??
-						options.executionContext.localFileAccess,
-					debounceMs: options.skills?.debounceMs,
-					commandNames: options.skills?.commandNames,
-				});
+	const skills = await createSkillsRuntime(options);
 	const sessionStore = new FileSessionStore<TAppState>(options.sessionDirectory);
 	const sessionHandle = await openSession(sessionStore, options.sessionId, options.appState ?? ({} as TAppState));
 	const selectPermissionSettings = options.permissions?.selectSettings ?? defaultPermissionSettings;
+	const sessionAllowRules = new Set<string>();
 	const hooks = resolvedAgentOptions.hooks;
 	const aroundToolCall = [...(hooks?.aroundToolCall ?? [])];
 	const toolEnvironment = options.executionContext.localFileAccess
@@ -215,14 +205,76 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				requestApproval: options.permissions?.requestApproval,
 				persistProjectLocalAllowRule: options.permissions?.persistProjectLocalAllowRule,
 				pathCapabilities: toolEnvironment,
+				sessionAllowRules,
 			}),
 		);
 	}
+	const spawnAgentTool = createSpawnAgentTool(async ({ task, signal, onActivity }) => {
+		signal?.throwIfAborted();
+		const childSkills = await createSkillsRuntime(options);
+		const childAroundToolCall = options.executionContext.localFileAccess
+			? [
+					createPermissionMiddleware({
+						workspaceRoot: options.executionContext.cwd,
+						settings: () => selectPermissionSettings(runtime.snapshot),
+						requestApproval: options.permissions?.requestApproval,
+						persistProjectLocalAllowRule: options.permissions?.persistProjectLocalAllowRule,
+						pathCapabilities: toolEnvironment,
+						sessionAllowRules,
+					}),
+				]
+			: [];
+		let child: Agent;
+		try {
+			child = new Agent({
+				model,
+				provider,
+				tools: [
+					createReportProgressTool(),
+					...(options.executionContext.localFileAccess
+						? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
+						: []),
+				],
+				instructions: [resolvedInstructions, SUBAGENT_INSTRUCTIONS].filter(Boolean).join("\n\n"),
+				temperature: resolvedAgentOptions.temperature,
+				maxTokens: resolvedAgentOptions.maxTokens,
+				providerOptions: resolvedAgentOptions.providerOptions,
+				maxIterations: resolvedAgentOptions.maxIterations,
+				toolExecution: resolvedAgentOptions.toolExecution,
+				compaction: resolvedAgentOptions.compaction,
+				hooks: { aroundToolCall: childAroundToolCall },
+				extensions: childSkills ? [childSkills.extension] : [],
+				onObserverError: resolvedAgentOptions.onObserverError,
+			});
+		} catch (error) {
+			childSkills?.close();
+			throw error;
+		}
+		const unsubscribe = child.subscribe((event) => {
+			const activity = subagentActivity(event);
+			if (activity) onActivity(activity);
+		});
+		const abortChild = () => child.abort();
+		signal?.addEventListener("abort", abortChild, { once: true });
+
+		try {
+			signal?.throwIfAborted();
+			const input = childSkills?.prepareInput(task).input ?? task;
+			return finalAssistantText(await child.invoke(input));
+		} finally {
+			signal?.removeEventListener("abort", abortChild);
+			unsubscribe();
+			child.abort();
+			await child.waitForIdle().catch(() => {});
+			childSkills?.close();
+		}
+	});
 	const agent = new Agent<TAppState>({
 		model,
 		provider,
 		tools: [
 			createReportProgressTool(),
+			spawnAgentTool,
 			...(options.executionContext.localFileAccess
 				? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
 				: []),
@@ -246,6 +298,41 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		if (!runtime.closed && event.status === "valid") runtime.snapshot = event.snapshot;
 	});
 	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, skills);
+}
+
+function createSkillsRuntime<TSchema extends TObject, TAppState extends JsonObject>(
+	options: CreateCodingAgentOptions<TSchema, TAppState>,
+): Promise<CodingSkillsRuntime | undefined> {
+	if (options.skills === false) return Promise.resolve(undefined);
+	return CodingSkillsRuntime.create({
+		homeDirectory: options.skills?.homeDirectory ?? options.configOptions?.homeDir ?? homedir(),
+		workspaceDirectory:
+			options.skills?.workspaceDirectory ??
+			(options.executionContext.localFileAccess ? options.executionContext.configRoot : undefined),
+		workspaceTrusted:
+			options.skills?.workspaceTrusted ??
+			options.configOptions?.workspaceTrusted ??
+			options.executionContext.localFileAccess,
+		debounceMs: options.skills?.debounceMs,
+		commandNames: options.skills?.commandNames,
+	});
+}
+
+function subagentActivity(event: AgentEvent) {
+	return event.type === "tool_execution_start" ? event.title : undefined;
+}
+
+function finalAssistantText(messages: readonly AgentMessage[]): string {
+	for (let index = messages.length - 1; index >= 0; index--) {
+		const message = messages[index];
+		if (message?.role !== "assistant") continue;
+		const text = message.content
+			.flatMap((part) => (part.type === "text" ? [part.text] : []))
+			.join("")
+			.trim();
+		if (text) return text;
+	}
+	return "";
 }
 
 function defaultPermissionSettings<TSchema extends TObject>(snapshot: ConfigSnapshot<TSchema>): PermissionSettings {

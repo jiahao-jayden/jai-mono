@@ -35,8 +35,8 @@ export function evaluatePermission(
 ): PermissionDecision {
 	const resolved = normalizePermissionSettings(settings);
 	validateCall(call);
-	if (call.toolName === "ReportProgress") {
-		return decision("allow", "built-in", "Progress reporting has no external side effects");
+	if (call.toolName === "ReportProgress" || call.toolName === "SpawnAgent") {
+		return decision("allow", "built-in", "Internal agent coordination has no direct external side effects");
 	}
 	for (const effect of ["deny", "ask", "allow"] as const) {
 		const rule = matchingRule(effect, resolved[effect], call);

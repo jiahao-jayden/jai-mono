@@ -243,6 +243,7 @@ describe("DesktopAgentHost", () => {
 				type: "tool_execution_start",
 				toolCallId: "progress-1",
 				toolName: "ReportProgress",
+				title: "Inspecting storage",
 				args: { title: "Inspecting storage", detail: "Reading the session persistence implementation." },
 			});
 			self.emit({
@@ -269,12 +270,80 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
+	test("将 SpawnAgent 活动投影为单个 Subagent 项", async () => {
+		const agent = new FakeAgent(async (self) => {
+			const assistant = {
+				...assistantMessage(""),
+				content: [
+					{
+						type: "toolCall" as const,
+						id: "subagent-1",
+						name: "SpawnAgent",
+						arguments: { title: "Inspect repository", task: "Inspect the repository." },
+					},
+				],
+				stopReason: "toolUse" as const,
+			};
+			self.emit({ type: "message_end", message: assistant });
+			self.emit({
+				type: "tool_execution_start",
+				toolCallId: "subagent-1",
+				toolName: "SpawnAgent",
+				title: "Inspect repository",
+				args: { title: "Inspect repository", task: "Inspect the repository." },
+			});
+			self.emit({
+				type: "tool_execution_update",
+				toolCallId: "subagent-1",
+				toolName: "SpawnAgent",
+				partial: {
+					content: [],
+					details: {
+						title: "Inspect repository",
+						status: "running",
+						activityTitle: "Reading repository files",
+					},
+				},
+			});
+			self.emit({
+				type: "tool_execution_end",
+				toolCallId: "subagent-1",
+				toolName: "SpawnAgent",
+				result: {
+					content: [{ type: "text", text: "Inspection complete." }],
+					details: {
+						title: "Inspect repository",
+						status: "complete",
+						activityTitle: "Reading repository files",
+					},
+				},
+				isError: false,
+			});
+			return [assistant];
+		});
+		const host = new DesktopAgentHost(() => {}, async () => agent);
+
+		await host.send(input("inspect"));
+		await agent.finished;
+
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({
+				kind: "subagent",
+				title: "Inspect repository",
+				status: "complete",
+				activityTitle: "Reading repository files",
+			}),
+		]);
+		host.close();
+	});
+
 	test("工具结果附着到工具项并保留调用摘要", async () => {
 		const agent = new FakeAgent(async (self) => {
 			self.emit({
 				type: "tool_execution_start",
 				toolCallId: "call-1",
 				toolName: "Read",
+				title: "Read README.md",
 				args: { path: "README.md" },
 			});
 			self.emit({
@@ -482,6 +551,7 @@ class RebindableFakeAgent implements HostedCodingAgent {
 			type: "tool_execution_start",
 			toolCallId: "call-1",
 			toolName: "Read",
+			title: "Read README.md",
 			args: { path: "README.md" },
 		});
 		this.#resolveToolStarted();

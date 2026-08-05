@@ -139,7 +139,7 @@ function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
 export function createEditTool(options: WorkspaceToolOptions): AgentTool<typeof editParameters, EditToolDetails> {
 	return {
 		name: "Edit",
-		label: "Edit",
+		title: (args) => `Edit ${args.path}`,
 		description:
 			"Edit one UTF-8 text file using exact, unique, non-overlapping replacements. Re-read the file if matching fails.",
 		parameters: editParameters,

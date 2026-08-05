@@ -123,6 +123,7 @@ export function ChatColumn({
 		sessionId: session?.id,
 		items: transcriptItems,
 		loading: chat.isLoading,
+		responding: chat.status === "submitted" || chat.status === "streaming",
 		reducedMotion,
 	});
 
@@ -169,7 +170,7 @@ export function ChatColumn({
 				className={cn("flex h-13 shrink-0 items-center justify-between pr-5", sidebarOpen ? "pl-5" : "pl-20")}
 				style={drag}
 			>
-				<div className="flex min-w-0 items-center gap-2.5 text-[15px]">
+				<div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden text-[15px]">
 					{!sidebarOpen ? (
 						<div className="mr-1 shrink-0" style={noDrag}>
 							<Button
@@ -216,7 +217,7 @@ export function ChatColumn({
 									}}
 									aria-label="Session title"
 									maxLength={80}
-									className="h-7 min-w-36 max-w-96 border-transparent bg-hover px-2 text-[15px] font-semibold"
+									className="h-7 min-w-0 max-w-64 flex-1 border-transparent bg-hover px-2 text-[15px] font-semibold"
 									style={noDrag}
 								/>
 							) : (
@@ -233,16 +234,18 @@ export function ChatColumn({
 									}}
 									aria-label={`Edit session title: ${session.title}`}
 									title="Double-click to rename"
-									className="h-7 max-w-96 justify-start px-1 text-[15px] font-semibold text-foreground"
+									contentClassName="min-w-0 max-w-full"
+									labelClassName="min-w-0 truncate text-left leading-6 ![text-box:normal]"
+									className="h-7 min-w-0 max-w-64 flex-1 justify-start px-1 text-[15px] font-semibold text-foreground"
 									style={noDrag}
 								>
-									<span className="truncate">{session.title}</span>
+									{session.title}
 								</Button>
 							)}
 						</>
 					) : null}
 				</div>
-				<div style={noDrag}>
+				<div className="shrink-0" style={noDrag}>
 					{session ? (
 						<Button
 							type="button"
@@ -404,10 +407,11 @@ interface TranscriptScrollOptions {
 	sessionId?: string;
 	items: readonly DesktopTranscriptItem[];
 	loading: boolean;
+	responding: boolean;
 	reducedMotion: boolean | null;
 }
 
-function useTranscriptScroll({ ref, sessionId, items, loading, reducedMotion }: TranscriptScrollOptions) {
+function useTranscriptScroll({ ref, sessionId, items, loading, responding, reducedMotion }: TranscriptScrollOptions) {
 	const stateRef = useRef({
 		sessionId,
 		awaitingSnapshot: true,
@@ -488,12 +492,22 @@ function useTranscriptScroll({ ref, sessionId, items, loading, reducedMotion }: 
 			return;
 		}
 
+		// The tail space only exists to let the just-sent prompt reach the top
+		// reading position while its reply streams in. Once the run finishes,
+		// reclaim it so the transcript doesn't keep a viewport-tall gap below.
+		if (!responding) {
+			stateRef.current.followsNewResponse = false;
+			setReservesTailSpace(false);
+			syncMessageScroller();
+			return;
+		}
+
 		const latestAssistant = lastMessageForRole(items, "assistant");
 		if (stateRef.current.followsNewResponse && latestAssistant?.status === "streaming") {
 			keepStreamingResponseInComfortZone(element, latestAssistant.id);
 		}
 		syncMessageScroller();
-	}, [items, loading, reducedMotion, ref, sessionId, syncMessageScroller]);
+	}, [items, loading, responding, reducedMotion, ref, sessionId, syncMessageScroller]);
 
 	const onScroll = useCallback(() => {
 		syncMessageScroller();

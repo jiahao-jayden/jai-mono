@@ -10,6 +10,7 @@ import {
 } from "@jai/ai";
 import { getErrorMessage } from "@jai/common";
 import { TaggedError } from "better-result";
+import { projectToolCallProtocol } from "./tool-protocol";
 import type {
 	AgentContext,
 	AgentLoopConfig,
@@ -248,7 +249,7 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 
 	const llmContext: Context = {
 		systemPrompt: request.systemPrompt,
-		messages: request.messages,
+		messages: projectToolCallProtocol(request.messages),
 		tools: request.tools,
 	};
 
@@ -365,10 +366,12 @@ async function executeToolCallBatch(run: AgentLoopRuntime, toolCalls: ToolCall[]
 
 async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promise<ExecutedToolCall> {
 	const { context, config, signal, emit } = run;
+	const tool = context.tools.find((candidate) => candidate.name === toolCall.name);
 	emit({
 		type: "tool_execution_start",
 		toolCallId: toolCall.id,
 		toolName: toolCall.name,
+		title: resolveToolTitle(tool, toolCall.arguments),
 		args: toolCall.arguments,
 	});
 
@@ -380,8 +383,6 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 		if (signal?.aborted) {
 			throw new ToolAborted({ message: "Tool execution aborted" });
 		}
-
-		const tool = context.tools.find((candidate) => candidate.name === toolCall.name);
 
 		if (!tool) {
 			throw new ToolNotFound({ message: `Tool ${toolCall.name} not found` });
@@ -452,6 +453,17 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 	});
 
 	return outcome;
+}
+
+function resolveToolTitle(tool: AgentTool | undefined, args: unknown): string {
+	const fallback = tool?.name || "Tool";
+	if (!tool?.title) return fallback;
+	try {
+		const title = tool.title(args as never).trim() || fallback;
+		return title.length > 80 ? `${title.slice(0, 79)}…` : title;
+	} catch {
+		return fallback;
+	}
 }
 
 function finalArguments(tool: AgentTool, toolCall: ToolCall, args: Record<string, unknown>): Record<string, unknown> {

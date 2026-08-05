@@ -11,6 +11,7 @@ import type {
 import { ChatMessage } from "../../ui/chat-message";
 import { ThinkingStep, ThinkingSteps, ThinkingStepsContent, ThinkingStepsHeader } from "../../ui/thinking-steps";
 import { ToolCall } from "../../ui/tool-call";
+import { SubagentCard } from "./subagent-card";
 
 type ConnectorItem = DesktopMessageItem & { readonly role: "assistant"; readonly stopReason: "toolUse" };
 type WorkItem = DesktopThinkingItem | DesktopProgressItem | DesktopToolItem | ConnectorItem;
@@ -101,6 +102,14 @@ export function TranscriptItem({ item, animate = false }: { item: DesktopTranscr
 				details={item.details}
 				status={item.status}
 			/>
+		);
+	}
+
+	if (item.kind === "subagent") {
+		return (
+			<div className="py-1" data-transcript-item-id={item.id}>
+				<SubagentCard item={item} />
+			</div>
 		);
 	}
 

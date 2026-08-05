@@ -408,7 +408,6 @@ describe("CoreAgent", () => {
 		const parameters = Type.Object({});
 		const tool: AgentTool<typeof parameters> = {
 			name: "read",
-			label: "Read File",
 			description: "Read a file",
 			parameters,
 			async execute() {
@@ -438,9 +437,7 @@ describe("CoreAgent", () => {
 
 		const session = agent.getSession();
 		expect(JSON.parse(JSON.stringify(session))).toEqual(session);
-		expect(session.tools).toEqual([
-			{ name: "read", label: "Read File", description: "Read a file" },
-		]);
+		expect(session.tools).toEqual([{ name: "read", description: "Read a file" }]);
 	});
 
 	test("prepareContext rewrites the context of every model call", async () => {

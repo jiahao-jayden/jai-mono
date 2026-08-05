@@ -30,8 +30,8 @@ export type ToolUpdateCallback<TDetails = unknown> = (partial: AgentToolResult<T
 export type ToolExecutionMode = "sequential" | "parallel";
 
 export interface AgentTool<T extends TSchema = TSchema, TDetails = unknown> extends Tool<T> {
-	/** UI 展示用的人类可读标签，缺省用 name。 */
-	label?: string;
+	/** 单次调用的用户可见标题；缺省使用 name。 */
+	title?(args: Static<T>): string;
 	/**
 	 * 执行工具。参数已由 loop 校验并转换为 Static<T>。
 	 * 失败请 throw，由 loop 捕获转成 isError 的 ToolResultMessage。
@@ -91,7 +91,7 @@ export type CoreAgentEvent =
 	| { type: "message_update"; message: AssistantMessage; assistantEvent: AssistantMessageEvent }
 	| { type: "message_end"; message: AgentMessage }
 	// 工具执行生命周期
-	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown }
+	| { type: "tool_execution_start"; toolCallId: string; toolName: string; title: string; args: unknown }
 	| { type: "tool_execution_update"; toolCallId: string; toolName: string; partial: AgentToolResult }
 	| { type: "tool_execution_end"; toolCallId: string; toolName: string; result: AgentToolResult; isError: boolean };
 

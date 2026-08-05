@@ -6,7 +6,7 @@ import {
 	type PermissionRequest,
 	type PermissionResolution,
 } from "@jai/coding/permissions";
-import { REPORT_PROGRESS_TOOL_NAME } from "@jai/coding/tools";
+import { REPORT_PROGRESS_TOOL_NAME, SPAWN_AGENT_TOOL_NAME, type SpawnAgentToolDetails } from "@jai/coding/tools";
 import { toErrorEnvelope } from "@jai/common";
 import { TaggedError } from "better-result";
 import type {
@@ -18,6 +18,7 @@ import type {
 	DesktopMessageItem,
 	DesktopPermissionItem,
 	DesktopProgressItem,
+	DesktopSubagentItem,
 	DesktopThinkingItem,
 	DesktopToolItem,
 	DesktopTranscriptItem,
@@ -427,6 +428,25 @@ export class DesktopAgentHost {
 			}
 			case "tool_execution_start": {
 				if (event.toolName === REPORT_PROGRESS_TOOL_NAME) return;
+				if (event.toolName === SPAWN_AGENT_TOOL_NAME) {
+					const previous = runtime.items.get(`subagent:${event.toolCallId}`);
+					const previousSubagent = previous?.kind === "subagent" ? previous : undefined;
+					const title =
+						(isRecord(event.args) ? stringArgument(event.args, "title") : undefined) ?? previousSubagent?.title;
+					if (!title) return;
+					const item: DesktopSubagentItem = {
+						kind: "subagent",
+						id: `subagent:${event.toolCallId}`,
+						turnId: previousSubagent?.turnId ?? `subagent:${event.toolCallId}`,
+						toolCallId: event.toolCallId,
+						title,
+						status: "running",
+						...(previousSubagent?.activityTitle ? { activityTitle: previousSubagent.activityTitle } : {}),
+					};
+					runtime.items.set(item.id, item);
+					this.#emitNow(runtime, { type: "transcript_upsert", item });
+					return;
+				}
 				runtime.activeToolCallIds.add(event.toolCallId);
 				const previous = runtime.items.get(`tool:${event.toolCallId}`);
 				const previousTool = previous?.kind === "tool" ? previous : undefined;
@@ -446,6 +466,33 @@ export class DesktopAgentHost {
 			case "tool_execution_update":
 			case "tool_execution_end": {
 				if (event.toolName === REPORT_PROGRESS_TOOL_NAME) return;
+				if (event.toolName === SPAWN_AGENT_TOOL_NAME) {
+					const previous = runtime.items.get(`subagent:${event.toolCallId}`);
+					const previousSubagent = previous?.kind === "subagent" ? previous : undefined;
+					const result = event.type === "tool_execution_update" ? event.partial : event.result;
+					const details = projectSpawnAgentDetails(result.details);
+					const title = details?.title ?? previousSubagent?.title;
+					if (!title) return;
+					const status =
+						event.type === "tool_execution_update"
+							? (details?.status ?? "running")
+							: event.isError
+								? "error"
+								: "complete";
+					const activityTitle = details?.activityTitle ?? previousSubagent?.activityTitle;
+					const item: DesktopSubagentItem = {
+						kind: "subagent",
+						id: `subagent:${event.toolCallId}`,
+						turnId: previousSubagent?.turnId ?? `subagent:${event.toolCallId}`,
+						toolCallId: event.toolCallId,
+						title,
+						status,
+						...(activityTitle ? { activityTitle } : {}),
+					};
+					runtime.items.set(item.id, item);
+					this.#emitNow(runtime, { type: "transcript_upsert", item });
+					return;
+				}
 				if (event.type === "tool_execution_end") runtime.activeToolCallIds.delete(event.toolCallId);
 				const previous = runtime.items.get(`tool:${event.toolCallId}`);
 				const previousTool = previous?.kind === "tool" ? previous : undefined;
@@ -474,7 +521,7 @@ export class DesktopAgentHost {
 		runtime: SessionRuntime,
 		message: AgentMessage,
 		status: DesktopMessageItem["status"],
-	): (DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem)[] {
+	): (DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem | DesktopSubagentItem)[] {
 		if (message.role === "toolResult") return [];
 		if (message.role === "assistant") {
 			this.#ensureMessageId(runtime, "assistant");
@@ -513,7 +560,13 @@ export class DesktopAgentHost {
 		message: Extract<AgentMessage, { role: "assistant" }>,
 		contentIndex: number,
 		status: DesktopMessageItem["status"],
-	): DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem | undefined {
+	):
+		| DesktopMessageItem
+		| DesktopThinkingItem
+		| DesktopProgressItem
+		| DesktopToolItem
+		| DesktopSubagentItem
+		| undefined {
 		const id = this.#ensureMessageId(runtime, "assistant");
 		const turnId = runtime.currentTurnId ?? id;
 		const part = message.content[contentIndex];
@@ -541,6 +594,18 @@ export class DesktopAgentHost {
 					title,
 					detail,
 					timestamp: message.timestamp,
+				};
+			}
+			if (part.name === SPAWN_AGENT_TOOL_NAME) {
+				const title = stringArgument(part.arguments, "title");
+				if (!title) return undefined;
+				return {
+					kind: "subagent",
+					id: `subagent:${part.id}`,
+					turnId,
+					toolCallId: part.id,
+					title,
+					status: "running",
 				};
 			}
 			return {
@@ -711,6 +776,15 @@ function toolResultText(result: { content: readonly unknown[] }, maxLength: numb
 		.map((part) => part.text)
 		.join("\n");
 	return text ? truncate(text, maxLength) : undefined;
+}
+
+function projectSpawnAgentDetails(value: unknown): SpawnAgentToolDetails | undefined {
+	if (!isRecord(value)) return undefined;
+	const title = stringArgument(value, "title");
+	const status = value.status;
+	if (!title || (status !== "running" && status !== "complete" && status !== "error")) return undefined;
+	const activityTitle = stringArgument(value, "activityTitle");
+	return { title, status, ...(activityTitle ? { activityTitle } : {}) };
 }
 
 function messageText(message: AgentMessage): string {

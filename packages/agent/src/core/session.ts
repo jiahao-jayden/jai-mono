@@ -8,7 +8,6 @@ import type { AgentMessage, AgentTool } from "./types";
  */
 export interface ToolInfo {
 	name: string;
-	label?: string;
 	description: string;
 }
 
@@ -28,7 +27,6 @@ export interface Session<TAppState extends JsonObject = JsonObject> {
 export function toToolInfo(tool: AgentTool): ToolInfo {
 	return {
 		name: tool.name,
-		label: tool.label,
 		description: tool.description,
 	};
 }

@@ -1,11 +1,12 @@
 import type { AgentMessage, SessionSnapshot } from "@jai/agent";
-import { REPORT_PROGRESS_TOOL_NAME } from "@jai/coding/tools";
+import { REPORT_PROGRESS_TOOL_NAME, SPAWN_AGENT_TOOL_NAME } from "@jai/coding/tools";
 import type {
 	DesktopAgentSnapshot,
 	DesktopCompactionItem,
 	DesktopMessageItem,
 	DesktopProgressItem,
 	DesktopSlashInvocation,
+	DesktopSubagentItem,
 	DesktopThinkingItem,
 	DesktopToolItem,
 	DesktopTranscriptItem,
@@ -38,6 +39,16 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 		}
 		if (entry.message.role === "toolResult") {
 			if (entry.message.toolName === REPORT_PROGRESS_TOOL_NAME) continue;
+			if (entry.message.toolName === SPAWN_AGENT_TOOL_NAME) {
+				const existing = items.get(`subagent:${entry.message.toolCallId}`);
+				if (existing?.kind !== "subagent") continue;
+				const item: DesktopSubagentItem = {
+					...existing,
+					status: entry.message.isError ? "error" : "complete",
+				};
+				items.set(item.id, item);
+				continue;
+			}
 			const existing = items.get(`tool:${entry.message.toolCallId}`);
 			const existingTool = existing?.kind === "tool" ? existing : undefined;
 			const details = textContent(entry.message.content, 20_000);
@@ -58,10 +69,18 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 		items.set(messageItem.id, messageItem);
 		if (entry.message.role === "user") currentTurnId = messageItem.id;
 	}
+	const projectedItems = [...items.values()].map((item): DesktopTranscriptItem => {
+		if (item.kind !== "subagent" || item.status !== "running") return item;
+		return {
+			...item,
+			status: "error",
+			activityTitle: "Interrupted",
+		};
+	});
 	return {
 		sessionId,
 		status: "idle",
-		items: [...items.values()],
+		items: projectedItems,
 		lastSeq: 0,
 	};
 }
@@ -70,8 +89,14 @@ function projectAssistantItems(
 	entryId: string,
 	message: Extract<AgentMessage, { role: "assistant" }>,
 	currentTurnId: string | undefined,
-): (DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem)[] {
-	const result: (DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem)[] = [];
+): (DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem | DesktopSubagentItem)[] {
+	const result: (
+		| DesktopMessageItem
+		| DesktopThinkingItem
+		| DesktopProgressItem
+		| DesktopToolItem
+		| DesktopSubagentItem
+	)[] = [];
 	const turnId = currentTurnId ?? `message:${entryId}`;
 	const text = messageText(message);
 	let textProjected = false;
@@ -101,6 +126,20 @@ function projectAssistantItems(
 						title,
 						detail,
 						timestamp: message.timestamp,
+					});
+				}
+				continue;
+			}
+			if (part.name === SPAWN_AGENT_TOOL_NAME) {
+				const title = stringValue(part.arguments, "title");
+				if (title) {
+					result.push({
+						kind: "subagent",
+						id: `subagent:${part.id}`,
+						turnId,
+						toolCallId: part.id,
+						title,
+						status: "running",
 					});
 				}
 				continue;

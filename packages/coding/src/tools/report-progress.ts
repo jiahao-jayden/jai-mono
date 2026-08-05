@@ -22,7 +22,7 @@ const reportProgressParameters = Type.Object(
 export function createReportProgressTool(): AgentTool<typeof reportProgressParameters> {
 	return {
 		name: REPORT_PROGRESS_TOOL_NAME,
-		label: "Progress",
+		title: (args) => args.title,
 		description:
 			"MANDATORY before any other work tool. Report a concise user-visible description of the next work step.",
 		parameters: reportProgressParameters,

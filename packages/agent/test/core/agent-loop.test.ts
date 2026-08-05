@@ -161,6 +161,7 @@ describe("agentLoop", () => {
 		const readParameters = Type.Object({ path: Type.String() });
 		const readTool: AgentTool<typeof readParameters> = {
 			name: "read",
+			title: (args) => `Read ${args.path}`,
 			description: "Read a file",
 			parameters: readParameters,
 			async execute(_id, args) {
@@ -194,9 +195,41 @@ describe("agentLoop", () => {
 		expect(events.map((event) => event.type)).toContain(
 			"tool_execution_start",
 		);
+		expect(events.find((event) => event.type === "tool_execution_start")).toMatchObject({
+			title: "Read a.txt",
+		});
 		expect(events.map((event) => event.type)).toContain(
 			"tool_execution_end",
 		);
+	});
+
+	test("projects an interrupted tool call into a provider-safe context", async () => {
+		const interrupted = assistant(
+			[{ type: "toolCall", id: "call-interrupted", name: "read", arguments: { path: "a.txt" } }],
+			"toolUse",
+		);
+		const contexts: Context[] = [];
+		const initial = context();
+		initial.messages = [interrupted, user("sent after interruption"), assistant([], "error")];
+
+		await collect(
+			agentLoop([user("continue")], initial, {
+				model,
+				provider: providerFor([assistant([{ type: "text", text: "recovered" }])], contexts),
+			}),
+		);
+
+		expect(contexts[0]?.messages).toEqual([
+			interrupted,
+			expect.objectContaining({
+				role: "toolResult",
+				toolCallId: "call-interrupted",
+				toolName: "read",
+				isError: true,
+			}),
+			expect.objectContaining({ role: "user", content: "sent after interruption" }),
+			expect.objectContaining({ role: "user", content: "continue" }),
+		]);
 	});
 
 	test("turns a missing tool into an error result and continues", async () => {

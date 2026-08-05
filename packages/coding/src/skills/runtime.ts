@@ -99,7 +99,7 @@ export class CodingSkillsRuntime {
 		const runtime = this;
 		return {
 			name: "Skill",
-			label: "Skill",
+			title: (args) => `Load /${args.skill}`,
 			get description() {
 				return runtime.#description();
 			},

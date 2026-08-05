@@ -219,6 +219,16 @@ export interface DesktopToolItem {
 	readonly details?: string;
 }
 
+export interface DesktopSubagentItem {
+	readonly kind: "subagent";
+	readonly id: string;
+	readonly turnId: string;
+	readonly toolCallId: string;
+	readonly title: string;
+	readonly status: "running" | "complete" | "error";
+	readonly activityTitle?: string;
+}
+
 export interface DesktopPermissionItem {
 	readonly kind: "permission";
 	readonly id: string;
@@ -238,6 +248,7 @@ export type DesktopTranscriptItem =
 	| DesktopThinkingItem
 	| DesktopProgressItem
 	| DesktopToolItem
+	| DesktopSubagentItem
 	| DesktopPermissionItem
 	| DesktopCompactionItem;
 
