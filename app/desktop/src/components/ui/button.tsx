@@ -24,6 +24,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary: "text-background disabled:opacity-50",
+        accent: "text-primary-2-foreground disabled:opacity-50",
         secondary: "text-foreground disabled:opacity-50",
         tertiary: "text-foreground disabled:opacity-50",
         ghost: "text-muted-foreground hover:text-foreground disabled:opacity-50",
@@ -75,6 +76,7 @@ interface ButtonProps
 
 const bgVariants: Record<string, string> = {
   primary: "bg-foreground group-hover/button:bg-foreground/90 group-active/button:bg-foreground/80",
+  accent: "bg-primary-2 group-hover/button:bg-primary-2/90 group-active/button:bg-primary-2/80",
   secondary: "bg-accent group-hover/button:bg-accent/80 group-active/button:bg-accent",
   tertiary: "border border-border bg-transparent group-hover/button:bg-hover group-active/button:bg-active",
   ghost: "bg-transparent group-hover/button:bg-hover group-active/button:bg-active",
@@ -83,6 +85,7 @@ const bgVariants: Record<string, string> = {
 
 const activeBgVariants: Record<string, string> = {
   primary: "bg-foreground/80",
+  accent: "bg-primary-2/80",
   secondary: "bg-accent",
   tertiary: "border border-border bg-active",
   ghost: "bg-active",
@@ -91,6 +94,7 @@ const activeBgVariants: Record<string, string> = {
 
 const disabledBgVariants: Record<string, string> = {
   primary: "bg-foreground",
+  accent: "bg-primary-2",
   secondary: "bg-accent",
   tertiary: "border border-border bg-transparent",
   ghost: "bg-transparent",

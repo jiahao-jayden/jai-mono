@@ -107,6 +107,25 @@ describe("Models.dev catalog", () => {
 		expect(result.catalog?.providers.openai?.models["gpt-test"]?.name).toBe("GPT Test");
 	});
 
+	test("hydrate 只读取本地缓存，不请求网络", async () => {
+		const fixture = await createFixture();
+		await writeCache(fixture.cachePath, 1_000_000, rawCatalog());
+		let calls = 0;
+		const store = new ModelCatalogStore({
+			cachePath: fixture.cachePath,
+			fetch: async () => {
+				calls += 1;
+				return new Response();
+			},
+		});
+
+		await store.hydrate();
+		store.close();
+
+		expect(calls).toBe(0);
+		expect(store.cached?.catalog.providers.openai?.models["gpt-test"]?.name).toBe("GPT Test");
+	});
+
 	test("过期缓存携带 ETag 刷新并以 0600 原子写回", async () => {
 		const fixture = await createFixture();
 		const now = MODEL_CATALOG_FRESHNESS_MS + 1;

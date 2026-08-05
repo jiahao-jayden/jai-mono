@@ -152,7 +152,7 @@ function WorkProcess({ group }: { readonly group: WorkGroup }) {
 	const title = workGroupTitle(group.items, running);
 
 	return (
-		<ThinkingSteps className="w-full py-1" defaultOpen={running}>
+		<ThinkingSteps className="w-full" defaultOpen={running}>
 			<ThinkingStepsHeader>{title}</ThinkingStepsHeader>
 			<ThinkingStepsContent>
 				{progress ? (

@@ -355,7 +355,7 @@ function ThinkingStep({
           <Collapsible.Root open={open} onOpenChange={setOpen} className="min-w-0 w-full">
             <Collapsible.Trigger
               className={cn(
-                "flex min-w-0 w-full gap-2 px-1 py-1.5 text-left outline-none transition-colors duration-80 hover:bg-hover",
+                "flex min-w-0 w-full gap-2 px-1 py-0.5 text-left outline-none transition-colors duration-80 hover:bg-hover",
                 "focus-visible:ring-1 focus-visible:ring-(--focus-ring,#6B97FF)",
                 shape.item
               )}
@@ -367,7 +367,7 @@ function ThinkingStep({
             </Collapsible.Panel>
           </Collapsible.Root>
         ) : (
-          <div className={cn("flex gap-2 px-1 py-1.5", shape.item)}>{row}</div>
+          <div className={cn("flex gap-2 px-1 py-0.5", shape.item)}>{row}</div>
         )}
       </div>
     );

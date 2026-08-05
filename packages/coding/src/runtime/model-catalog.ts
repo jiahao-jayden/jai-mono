@@ -296,8 +296,12 @@ export class ModelCatalogStore {
 		return this.#cached;
 	}
 
-	async start(): Promise<ModelCatalogRefreshResult> {
+	async hydrate(): Promise<void> {
 		this.#cached ??= await this.#readCache();
+	}
+
+	async start(): Promise<ModelCatalogRefreshResult> {
+		await this.hydrate();
 		const cached = this.#cached;
 		const stale = !cached || !isFresh(cached, this.#now());
 		const result = stale ? await this.refresh() : toCachedResult(cached, false, this.#now());

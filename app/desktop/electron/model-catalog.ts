@@ -7,6 +7,10 @@ export const desktopModelCatalog = new ModelCatalogStore({
 	},
 });
 
+export async function hydrateDesktopModelCatalog(): Promise<void> {
+	await desktopModelCatalog.hydrate();
+}
+
 export async function startDesktopModelCatalog(): Promise<void> {
 	try {
 		await desktopModelCatalog.start();

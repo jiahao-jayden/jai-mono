@@ -55,10 +55,19 @@
 }
 
 .chat-markdown [data-streamdown="link"] {
+	cursor: pointer;
 	color: var(--primary-2);
 	text-decoration-line: underline;
 	text-decoration-color: color-mix(in oklch, var(--primary-2) 58%, transparent);
 	text-underline-offset: 0.18em;
+	transition:
+		color 80ms ease,
+		text-decoration-color 80ms ease;
+}
+
+.chat-markdown [data-streamdown="link"]:hover {
+	color: color-mix(in oklch, var(--primary-2) 72%, var(--foreground));
+	text-decoration-color: currentColor;
 }
 
 .chat-markdown [data-streamdown="unordered-list"],

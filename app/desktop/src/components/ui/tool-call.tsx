@@ -84,7 +84,7 @@ export function ToolCall({
 				{expandable ? (
 					<Collapsible.Trigger
 						className={cn(
-							"relative z-10 flex min-w-0 w-full gap-2 px-1 py-1.5 text-left outline-none transition-colors duration-80 hover:bg-hover",
+							"relative z-10 flex min-w-0 w-full gap-2 px-1 py-0.5 text-left outline-none transition-colors duration-80 hover:bg-hover",
 							"focus-visible:ring-1 focus-visible:ring-(--focus-ring,#6B97FF)",
 							shape.item,
 						)}
@@ -92,7 +92,7 @@ export function ToolCall({
 						{row}
 					</Collapsible.Trigger>
 				) : (
-					<div className={cn("relative z-10 flex w-full gap-2 px-1 py-1.5", shape.item)}>{row}</div>
+					<div className={cn("relative z-10 flex w-full gap-2 px-1 py-0.5", shape.item)}>{row}</div>
 				)}
 				{expandable ? (
 					<Collapsible.Panel className="box-border min-w-0 w-full overflow-hidden pl-5">

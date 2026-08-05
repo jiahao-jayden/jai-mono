@@ -16,10 +16,12 @@ import { Streamdown } from "streamdown";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
 import { useShape } from "@/lib/shape-context";
+import { remarkDisableSetextH2 } from "@/lib/remark-disable-setext-h2";
 import { useTouchPrimary } from "@/hooks/use-touch-primary";
 import { FileThumbnail } from "@/components/ui/file-thumbnail";
 
 const streamdownPlugins = { cjk, code };
+const streamdownRemarkPlugins = [remarkDisableSetextH2];
 const streamdownControls = {
 	code: { copy: true, download: true },
 	table: { copy: true, download: true, fullscreen: true },
@@ -57,6 +59,7 @@ const AssistantMarkdown = memo(function AssistantMarkdown({
 			isAnimating={isStreaming}
 			mode={isStreaming ? "streaming" : "static"}
 			plugins={streamdownPlugins}
+			remarkPlugins={streamdownRemarkPlugins}
 		>
 			{content}
 		</Streamdown>

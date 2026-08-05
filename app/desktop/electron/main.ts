@@ -2,7 +2,7 @@ import { CodingBusinessService } from "@jai/coding/business";
 import { app, BrowserWindow } from "electron";
 import { createDesktopAgentFactory } from "./agent/factory";
 import { mainLog } from "./logger";
-import { startDesktopModelCatalog } from "./model-catalog";
+import { hydrateDesktopModelCatalog, startDesktopModelCatalog } from "./model-catalog";
 import { closeDesktopRuntime, restoreTheme, setCodingBusinessService, setDesktopAgentFactory } from "./rpc/router";
 import { registerDesktopRpc } from "./rpc/server";
 import { createMainWindow } from "./windows";
@@ -23,7 +23,7 @@ process.on("unhandledRejection", (reason) => {
 void app
 	.whenReady()
 	.then(async () => {
-		const codingBusiness = await CodingBusinessService.open();
+		const [codingBusiness] = await Promise.all([CodingBusinessService.open(), hydrateDesktopModelCatalog()]);
 		setCodingBusinessService(codingBusiness);
 		setDesktopAgentFactory(createDesktopAgentFactory(codingBusiness));
 		restoreTheme();

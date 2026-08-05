@@ -896,7 +896,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
               {rightContent}
               <Button
                 type="button"
-                variant="primary"
+                variant="accent"
                 size="icon-sm"
                 onClick={buttonMode === "stop" ? handleStop : handleSend}
                 disabled={buttonMode === "stop" ? disabled : !canSend}
