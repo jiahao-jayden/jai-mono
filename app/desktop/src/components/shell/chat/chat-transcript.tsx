@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { IconName } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type {
@@ -9,7 +9,12 @@ import type {
 	DesktopTranscriptItem,
 } from "../../../../shared/desktop-rpc";
 import { ChatMessage } from "../../ui/chat-message";
-import { ThinkingStep } from "../../ui/thinking-steps";
+import {
+	ThinkingStep,
+	ThinkingSteps,
+	ThinkingStepsContent,
+	ThinkingStepsHeader,
+} from "../../ui/thinking-steps";
 import { ToolCall } from "../../ui/tool-call";
 import { SubagentCard } from "./subagent-card";
 
@@ -157,6 +162,18 @@ function useTranscriptItemAnimations(items: readonly DesktopTranscriptItem[], lo
 function WorkProcess({ group }: { readonly group: WorkGroup }) {
 	const progress = group.items.find((item): item is DesktopProgressItem => item.kind === "progress");
 	const tools = group.items.filter((item): item is DesktopToolItem => item.kind === "tool");
+	const running = group.items.some(
+		(item) =>
+			(item.kind === "thinking" && item.status === "streaming") ||
+			(item.kind === "message" && item.status === "streaming") ||
+			(item.kind === "tool" && item.status === "running"),
+	);
+	const [open, setOpen] = useState(running);
+
+	useEffect(() => {
+		setOpen(running);
+	}, [running]);
+
 	if (!progress && tools.length === 0) {
 		return (
 			<div className="flex flex-col px-1 py-1">
@@ -166,19 +183,13 @@ function WorkProcess({ group }: { readonly group: WorkGroup }) {
 			</div>
 		);
 	}
-	const running = group.items.some(
-		(item) =>
-			(item.kind === "thinking" && item.status === "streaming") ||
-			(item.kind === "message" && item.status === "streaming") ||
-			(item.kind === "tool" && item.status === "running"),
-	);
 	const title = workGroupTitle(group.items, running);
 	const rows = workProcessRows(tools);
 
 	return (
-		<div className="w-full">
-			<div className="px-1 py-1.5 text-[13px] font-medium text-muted-foreground">{title}</div>
-			<div className="flex flex-col gap-1 px-1 pb-2 pt-1">
+		<ThinkingSteps open={open} onOpenChange={setOpen} className="w-full">
+			<ThinkingStepsHeader>{title}</ThinkingStepsHeader>
+			<ThinkingStepsContent className="gap-1 px-1 pb-2 pt-1">
 				{rows.map((row) =>
 					row.kind === "exploration" ? (
 						<ExplorationStep key={row.id} items={row.items} />
@@ -186,8 +197,8 @@ function WorkProcess({ group }: { readonly group: WorkGroup }) {
 						<WorkProcessStep key={row.item.id} item={row.item} />
 					),
 				)}
-			</div>
-		</div>
+			</ThinkingStepsContent>
+		</ThinkingSteps>
 	);
 }
 
@@ -299,7 +310,6 @@ function ToolStep({ item }: { readonly item: DesktopToolItem }) {
 			summary={item.summary}
 			details={item.details}
 			status={item.status}
-			variant={toolCategory(item.toolName) === "command" ? "card" : "plain"}
 		/>
 	);
 }

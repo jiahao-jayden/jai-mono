@@ -377,7 +377,10 @@ export function ChatColumn({
 							</AnimatePresence>
 							<div className="relative">
 								{isAgentWorking ? (
-									<div className="pointer-events-none absolute bottom-full left-0 z-10 mb-2 flex items-center gap-2 px-1" role="status">
+									<div
+										className="pointer-events-none absolute bottom-full left-0 z-20 mb-2 flex items-center gap-2 rounded-full bg-background px-2.5 py-1 shadow-surface-2"
+										role="status"
+									>
 										<ThinkingOrb aria-hidden size={20} state="solving" />
 										<span className="shimmer-text text-[12px] font-medium">Agent 正在处理…</span>
 									</div>

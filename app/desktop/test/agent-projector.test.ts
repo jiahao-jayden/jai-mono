@@ -3,6 +3,36 @@ import type { SessionSnapshot } from "@jai/agent";
 import { projectSessionSnapshot } from "../electron/agent/projector";
 
 describe("projectSessionSnapshot", () => {
+	test("从 appState 白名单投影 Todo，不解析 transcript", () => {
+		const snapshot: SessionSnapshot = {
+			appState: {
+				todos: {
+					version: 1,
+					updatedAt: 1_786_017_600_000,
+					items: [
+						{ id: "inspect", content: "Inspect storage", status: "completed", secret: "drop" },
+						{ id: "render", content: "Render progress", status: "in_progress" },
+					],
+				},
+			},
+			createdAt: "2026-08-01T00:00:00.000Z",
+			updatedAt: "2026-08-01T00:00:00.000Z",
+			entries: [],
+		};
+
+		const projected = projectSessionSnapshot("session-1", snapshot);
+
+		expect(projected.todos).toEqual({
+			version: 1,
+			updatedAt: 1_786_017_600_000,
+			items: [
+				{ id: "inspect", content: "Inspect storage", status: "completed" },
+				{ id: "render", content: "Render progress", status: "in_progress" },
+			],
+		});
+		expect(JSON.stringify(projected.todos)).not.toContain("secret");
+	});
+
 	test("将 durable messages、tools 与 compaction 投影为 renderer-safe transcript", () => {
 		const snapshot: SessionSnapshot = {
 			appState: {},

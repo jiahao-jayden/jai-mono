@@ -28,6 +28,77 @@ describe("createCodingTools", () => {
 		});
 	});
 
+	test("UpdateTodos replaces the complete session checklist", async () => {
+		const replaced: sdk.SessionTodoItem[][] = [];
+		const tool = sdk.createUpdateTodosTool(async (items) => {
+			replaced.push([...items]);
+			return { version: 1, updatedAt: 1_786_017_600_000, items };
+		});
+		const todos = [
+			{ id: "inspect", content: "Inspect session storage", status: "completed" as const },
+			{ id: "render", content: "Render Todo progress", status: "in_progress" as const },
+		];
+
+		const result = await tool.execute("todos-1", { todos });
+
+		expect(tool).toMatchObject({ name: "UpdateTodos", executionMode: "sequential" });
+		expect(replaced).toEqual([todos]);
+		expect(result).toEqual({
+			content: [{ type: "text", text: "Todo list updated." }],
+			details: { todos: { version: 1, updatedAt: 1_786_017_600_000, items: todos } },
+		});
+	});
+
+	test("UpdateTodos rejects duplicate IDs before replacing state", async () => {
+		let replacements = 0;
+		const tool = sdk.createUpdateTodosTool(async (items) => {
+			replacements++;
+			return { version: 1, updatedAt: 0, items };
+		});
+
+		await expect(
+			tool.execute("todos-duplicate", {
+				todos: [
+					{ id: "same", content: "First", status: "completed" },
+					{ id: "same", content: "Second", status: "pending" },
+				],
+			}),
+		).rejects.toMatchObject({ _tag: "coding_todo.duplicate_id", data: { id: "same" } });
+		expect(replacements).toBe(0);
+	});
+
+	test("UpdateTodos rejects more than one in-progress item", async () => {
+		const tool = sdk.createUpdateTodosTool(async (items) => ({ version: 1, updatedAt: 0, items }));
+
+		await expect(
+			tool.execute("todos-concurrent", {
+				todos: [
+					{ id: "first", content: "First", status: "in_progress" },
+					{ id: "second", content: "Second", status: "in_progress" },
+				],
+			}),
+		).rejects.toMatchObject({ _tag: "coding_todo.too_many_in_progress" });
+	});
+
+	test("UpdateTodos trims content and rejects whitespace-only items", async () => {
+		const replaced: sdk.SessionTodoItem[][] = [];
+		const tool = sdk.createUpdateTodosTool(async (items) => {
+			replaced.push([...items]);
+			return { version: 1, updatedAt: 0, items };
+		});
+
+		await tool.execute("todos-trim", {
+			todos: [{ id: "inspect", content: "  Inspect storage  ", status: "in_progress" }],
+		});
+		expect(replaced[0]?.[0]?.content).toBe("Inspect storage");
+		await expect(
+			tool.execute("todos-empty", {
+				todos: [{ id: "empty", content: "   ", status: "pending" }],
+			}),
+		).rejects.toMatchObject({ _tag: "coding_todo.invalid_content", data: { id: "empty" } });
+		expect(replaced).toHaveLength(1);
+	});
+
 	test("SpawnAgent returns only the final text and streams the latest activity", async () => {
 		const updates: unknown[] = [];
 		const tool = sdk.createSpawnAgentTool(async ({ task, onActivity }) => {

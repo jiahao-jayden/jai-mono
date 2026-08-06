@@ -29,6 +29,25 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
+	test("创建 runtime 时从 Coding Agent appState 恢复 Todo", async () => {
+		const agent = new FakeAgent(async () => [], {
+			todos: {
+				version: 1,
+				updatedAt: 1,
+				items: [{ id: "resume", content: "Resume implementation", status: "in_progress" }],
+			},
+		});
+		const host = new DesktopAgentHost(() => {}, async () => agent);
+
+		await host.send(input("continue"));
+		await agent.finished;
+
+		expect(host.getSnapshot("session-1").todos).toMatchObject({
+			items: [{ id: "resume", status: "in_progress" }],
+		});
+		host.close();
+	});
+
 	test("权限事件不暴露原始参数，resolution 只能消费一次", async () => {
 		const envelopes: DesktopAgentEventEnvelope[] = [];
 		let factoryContext: DesktopAgentFactoryContext | undefined;
@@ -312,6 +331,62 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
+	test("将 UpdateTodos 结果投影为状态事件且不显示为普通工具", async () => {
+		const events: DesktopAgentEventEnvelope[] = [];
+		const agent = new FakeAgent(async (self) => {
+			const assistant = {
+				...assistantMessage(""),
+				content: [
+					{
+						type: "toolCall" as const,
+						id: "todos-1",
+						name: "UpdateTodos",
+						arguments: {
+							todos: [{ id: "render", content: "Render progress", status: "in_progress" }],
+						},
+					},
+				],
+				stopReason: "toolUse" as const,
+			};
+			self.emit({ type: "message_end", message: assistant });
+			self.emit({
+				type: "tool_execution_start",
+				toolCallId: "todos-1",
+				toolName: "UpdateTodos",
+				title: "Updating progress",
+				args: { todos: [{ id: "render", content: "Render progress", status: "in_progress" }] },
+			});
+			self.emit({
+				type: "tool_execution_end",
+				toolCallId: "todos-1",
+				toolName: "UpdateTodos",
+				result: {
+					content: [{ type: "text", text: "Todo list updated." }],
+					details: {
+						todos: {
+							version: 1,
+							updatedAt: 1_786_017_600_000,
+							items: [{ id: "render", content: "Render progress", status: "in_progress" }],
+						},
+					},
+				},
+				isError: false,
+			});
+			return [assistant];
+		});
+		const host = new DesktopAgentHost((event) => events.push(event), async () => agent);
+
+		await host.send(input("implement"));
+		await agent.finished;
+
+		expect(host.getSnapshot("session-1")).toMatchObject({
+			todos: { items: [{ id: "render", status: "in_progress" }] },
+			items: [],
+		});
+		expect(events.some((envelope) => envelope.event.type === "todos_replace")).toBe(true);
+		host.close();
+	});
+
 	test("将 SpawnAgent 活动投影为单个 Subagent 项", async () => {
 		const agent = new FakeAgent(async (self) => {
 			const assistant = {
@@ -528,9 +603,15 @@ class FakeAgent implements HostedCodingAgent {
 	readonly #listeners = new Set<AgentEventListener>();
 	readonly #invoke: (agent: FakeAgent, input: string) => Promise<AgentMessage[]>;
 	finished: Promise<AgentMessage[]> = Promise.resolve([]);
+	readonly #appState: unknown;
 
-	constructor(invoke: (agent: FakeAgent, input: string) => Promise<AgentMessage[]>) {
+	constructor(invoke: (agent: FakeAgent, input: string) => Promise<AgentMessage[]>, appState: unknown = {}) {
 		this.#invoke = invoke;
+		this.#appState = appState;
+	}
+
+	getAppState(): unknown {
+		return this.#appState;
 	}
 
 	invoke(input: string): Promise<AgentMessage[]> {

@@ -9,6 +9,7 @@ import type {
 	DesktopAgentMode,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
+	DesktopTodos,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
 
@@ -34,6 +35,7 @@ export interface UseChatOptions {
 export interface Chat {
 	readonly id: string | null;
 	readonly messages: readonly DesktopTranscriptItem[];
+	readonly todos: DesktopTodos | undefined;
 	readonly status: ChatStatus;
 	readonly isLoading: boolean;
 	readonly error: string | undefined;
@@ -51,6 +53,7 @@ export interface ChatRuntimeState {
 	readonly sessionId: string | null;
 	readonly submitting: boolean;
 	readonly messages: readonly DesktopTranscriptItem[];
+	readonly todos: DesktopTodos | undefined;
 }
 
 const EMPTY_STATE: ChatRuntimeState = {
@@ -61,6 +64,7 @@ const EMPTY_STATE: ChatRuntimeState = {
 	sessionId: null,
 	submitting: false,
 	messages: [],
+	todos: undefined,
 };
 
 let dispatcher: ReturnType<typeof createDesktopAgentEventDispatcher> | undefined;
@@ -97,6 +101,7 @@ export function useChat(options: UseChatOptions): Chat {
 			sessionId,
 			submitting: false,
 			messages: [],
+			todos: undefined,
 		});
 		dispatcher ??= createDesktopAgentEventDispatcher();
 		return dispatcher.subscribe(sessionId, (update) => {
@@ -224,6 +229,7 @@ export function useChat(options: UseChatOptions): Chat {
 	return {
 		id: options.id,
 		messages: state.messages,
+		todos: state.todos,
 		status: getChatStatus(state),
 		isLoading: state.isLoading,
 		error: state.error,
@@ -262,6 +268,8 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 				lastSeq: seq,
 				messages: upsertMessage(state.messages, event.item),
 			};
+		case "todos_replace":
+			return { ...state, isLoading: false, lastSeq: seq, todos: event.todos };
 		case "runtime_error":
 			return {
 				...state,
@@ -283,6 +291,7 @@ function snapshotState(snapshot: DesktopAgentSnapshot): ChatRuntimeState {
 		sessionId: snapshot.sessionId,
 		submitting: false,
 		messages: [...snapshot.items],
+		todos: snapshot.todos,
 	};
 }
 

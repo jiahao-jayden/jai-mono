@@ -15,7 +15,6 @@ interface ToolCallProps extends HTMLAttributes<HTMLDivElement> {
 	readonly summary?: string;
 	readonly details?: string;
 	readonly status?: ToolCallStatus;
-	readonly variant?: "plain" | "card";
 }
 
 export function ToolCall({
@@ -24,7 +23,6 @@ export function ToolCall({
 	summary,
 	details,
 	status = "complete",
-	variant = "plain",
 	className,
 	...props
 }: ToolCallProps) {
@@ -35,15 +33,7 @@ export function ToolCall({
 	const ChevronIcon = useIcon("chevron-right");
 	const shape = useShape();
 	const expandable = Boolean(details);
-	const card = variant === "card";
-	const rowClassName = cn(
-		"relative z-10 flex min-w-0 w-full gap-2 text-left",
-		{
-			"px-1 py-0.5": !card,
-			"px-3 py-2.5": card,
-		},
-		shape.item,
-	);
+	const rowClassName = cn("relative z-10 flex min-w-0 w-full gap-2 px-1 py-0.5 text-left", shape.item);
 
 	const row = (
 		<>
@@ -90,16 +80,7 @@ export function ToolCall({
 	);
 
 	return (
-		<div
-			className={cn(
-				"relative min-w-0 w-full",
-				{
-					"rounded-xl border border-border/70 bg-muted/20": card,
-				},
-				className,
-			)}
-			{...props}
-		>
+		<div className={cn("relative min-w-0 w-full", className)} {...props}>
 			<Collapsible.Root open={open} onOpenChange={setOpen} className="min-w-0 w-full">
 				{expandable ? (
 					<Collapsible.Trigger
@@ -115,12 +96,7 @@ export function ToolCall({
 					<div className={rowClassName}>{row}</div>
 				)}
 				{expandable ? (
-					<Collapsible.Panel
-						className={cn("box-border min-w-0 w-full overflow-hidden", {
-							"pl-5": !card,
-							"px-3 pb-3": card,
-						})}
-					>
+					<Collapsible.Panel className="box-border min-w-0 w-full overflow-hidden pl-5">
 						<pre className="mt-1 box-border max-h-64 min-w-0 w-full max-w-full overflow-auto rounded-lg bg-muted/60 px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
 							{details}
 						</pre>

@@ -169,6 +169,13 @@
 	font-size: 1em !important;
 }
 
+/* Streamdown omits its line wrapper's `block` utility when lineNumbers=false.
+   Its direct code spans still represent logical source lines, so restore that
+   layout explicitly without touching nested syntax-highlight token spans. */
+.chat-markdown [data-streamdown="code-block-body"] code > span {
+	display: block;
+}
+
 .chat-markdown [data-streamdown="code-block-actions"] {
 	border: none !important;
 	background: transparent !important;

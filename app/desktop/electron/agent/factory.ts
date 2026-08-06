@@ -107,6 +107,7 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 		});
 
 		return {
+			getAppState: () => codingAgent.state.appState,
 			invoke: (input) => codingAgent.invoke(input),
 			subscribe: (listener) => codingAgent.subscribe(listener),
 			waitForIdle: () => codingAgent.waitForIdle(),

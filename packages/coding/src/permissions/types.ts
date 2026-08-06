@@ -9,6 +9,7 @@ export const canonicalToolNames = [
 	"Bash",
 	"Skill",
 	"ReportProgress",
+	"UpdateTodos",
 	"SpawnAgent",
 ] as const;
 export const canonicalToolNameSchema = Type.Union(canonicalToolNames.map((name) => Type.Literal(name)));

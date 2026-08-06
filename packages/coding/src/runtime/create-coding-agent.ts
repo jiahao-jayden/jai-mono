@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import {
 	Agent,
@@ -31,7 +32,15 @@ import {
 	type PermissionSettings,
 } from "../permissions";
 import { CodingSkillsRuntime, type CodingSkillsRuntimeOptions } from "../skills";
-import { type CodingToolOptions, createCodingTools, createReportProgressTool, createSpawnAgentTool } from "../tools";
+import {
+	type CodingToolOptions,
+	createCodingTools,
+	createReportProgressTool,
+	createSpawnAgentTool,
+	createUpdateTodosTool,
+	type SessionTodoItem,
+	type SessionTodos,
+} from "../tools";
 
 const SUBAGENT_INSTRUCTIONS =
 	"You are an internal subagent. Complete only the delegated task using the available tools, then return a concise final result to the parent agent. You cannot see the parent conversation, so rely only on the task and workspace.";
@@ -188,7 +197,45 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const sessionHandle = await openSession(sessionStore, options.sessionId, options.appState ?? ({} as TAppState));
 	const selectPermissionSettings = options.permissions?.selectSettings ?? defaultPermissionSettings;
 	const sessionAllowRules = new Set<string>();
+	let agent!: Agent<TAppState>;
+	const updateTodosTool = createUpdateTodosTool(async (items) => {
+		const todos: SessionTodos = {
+			version: 1,
+			updatedAt: Date.now(),
+			items: items.map((item) => ({ ...item })),
+		};
+		const next = { ...agent.state.appState, todos } as TAppState;
+		await sessionHandle.append({
+			type: "app_state",
+			id: `${options.sessionId}:todos:${randomUUID()}`,
+			timestamp: new Date(todos.updatedAt).toISOString(),
+			value: next,
+		});
+		agent.setAppState(next);
+		return todos;
+	});
 	const hooks = resolvedAgentOptions.hooks;
+	const beforeModelCall = [...(hooks?.beforeModelCall ?? [])];
+	beforeModelCall.push(({ messages }) => {
+		const todos = sessionTodosFromAppState(agent.state.appState);
+		if (!todos) return;
+		return {
+			messages: [
+				...messages,
+				{
+					role: "user",
+					content: [
+						{
+							type: "text",
+							text: `Current session Todo state (internal state data, not a new user request):\n${JSON.stringify(todos.items)}`,
+							synthetic: true,
+						},
+					],
+					timestamp: todos.updatedAt,
+				},
+			],
+		};
+	});
 	const aroundToolCall = [...(hooks?.aroundToolCall ?? [])];
 	const toolEnvironment = options.executionContext.localFileAccess
 		? new NodeExecutionEnvironment({
@@ -269,11 +316,12 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			childSkills?.close();
 		}
 	});
-	const agent = new Agent<TAppState>({
+	agent = new Agent<TAppState>({
 		model,
 		provider,
 		tools: [
 			createReportProgressTool(),
+			updateTodosTool,
 			spawnAgentTool,
 			...(options.executionContext.localFileAccess
 				? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
@@ -289,6 +337,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		compaction: resolvedAgentOptions.compaction,
 		hooks: {
 			...hooks,
+			beforeModelCall,
 			aroundToolCall,
 		},
 		extensions: [...(skills ? [skills.extension] : []), ...(resolvedAgentOptions.extensions ?? [])],
@@ -339,6 +388,42 @@ function defaultPermissionSettings<TSchema extends TObject>(snapshot: ConfigSnap
 	const settings = snapshot.settings as Readonly<Record<string, unknown>>;
 	const permissions = settings.permissions;
 	return isRecord(permissions) ? (permissions as PermissionSettings) : {};
+}
+
+function sessionTodosFromAppState(appState: JsonObject): SessionTodos | undefined {
+	const value = appState.todos;
+	if (
+		!isRecord(value) ||
+		value.version !== 1 ||
+		typeof value.updatedAt !== "number" ||
+		!Number.isFinite(value.updatedAt)
+	) {
+		return undefined;
+	}
+	if (!Array.isArray(value.items) || value.items.length > 20) return undefined;
+	const ids = new Set<string>();
+	let inProgressCount = 0;
+	const items = value.items.flatMap((candidate) => {
+		if (!isRecord(candidate)) return [];
+		const { id, content, status } = candidate;
+		if (
+			typeof id !== "string" ||
+			!/^[A-Za-z0-9._-]{1,64}$/.test(id) ||
+			ids.has(id) ||
+			typeof content !== "string" ||
+			content.length === 0 ||
+			content.length > 200 ||
+			(status !== "pending" && status !== "in_progress" && status !== "completed" && status !== "cancelled")
+		) {
+			return [];
+		}
+		ids.add(id);
+		if (status === "in_progress") inProgressCount++;
+		const item: SessionTodoItem = { id, content, status };
+		return [item];
+	});
+	if (items.length !== value.items.length || inProgressCount > 1) return undefined;
+	return { version: 1, updatedAt: value.updatedAt, items };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -12,7 +12,7 @@ import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
 import { forwardRef, memo, type ReactNode, type SVGProps } from "react";
 import { motion, type HTMLMotionProps, useReducedMotion } from "framer-motion";
-import { Streamdown } from "streamdown";
+import { defaultRemarkPlugins, Streamdown } from "streamdown";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
 import { useShape } from "@/lib/shape-context";
@@ -21,7 +21,13 @@ import { useTouchPrimary } from "@/hooks/use-touch-primary";
 import { FileThumbnail } from "@/components/ui/file-thumbnail";
 
 const streamdownPlugins = { cjk, code };
-const streamdownRemarkPlugins = [remarkDisableSetextH2];
+// Passing remarkPlugins replaces Streamdown's defaults. Keep GFM (tables,
+// task lists, strikethrough) and code metadata before our post-parse fix.
+const streamdownRemarkPlugins = [
+	defaultRemarkPlugins.gfm,
+	defaultRemarkPlugins.codeMeta,
+	remarkDisableSetextH2,
+];
 const streamdownControls = {
 	code: { copy: true, download: false },
 	table: { copy: true, download: true, fullscreen: true },
@@ -57,6 +63,7 @@ const AssistantMarkdown = memo(function AssistantMarkdown({
 			controls={streamdownControls}
 			icons={streamdownIcons}
 			isAnimating={isStreaming}
+			lineNumbers={false}
 			mode={isStreaming ? "streaming" : "static"}
 			plugins={streamdownPlugins}
 			remarkPlugins={streamdownRemarkPlugins}

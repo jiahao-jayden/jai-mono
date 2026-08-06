@@ -432,11 +432,7 @@ export function AppShell() {
 				<Route path="*" element={<Navigate to="/chat/new" replace />} />
 			</Routes>
 			{rightPanelVisible ? (
-				<TaskPanel
-					status={chat.status === "streaming" ? "running" : "idle"}
-					items={chat.messages}
-					project={project}
-				/>
+				<TaskPanel status={chat.status === "streaming" ? "running" : "idle"} todos={chat.todos} project={project} />
 			) : null}
 			<ProviderSettingsDialog
 				open={providerSettingsOpen}

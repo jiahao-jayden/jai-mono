@@ -61,6 +61,7 @@ describe("createCodingAgent", () => {
 			expect(resolvedMode).toBe("default");
 			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual([
 				"ReportProgress",
+				"UpdateTodos",
 				"SpawnAgent",
 				"Read",
 				"Glob",
@@ -120,7 +121,12 @@ describe("createCodingAgent", () => {
 
 		try {
 			await codingAgent.invoke("hello");
-			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["ReportProgress", "SpawnAgent", "Skill"]);
+			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual([
+				"ReportProgress",
+				"UpdateTodos",
+				"SpawnAgent",
+				"Skill",
+			]);
 			expect(codingAgent.configSnapshot.settings.permissions.defaultMode).toBe("default");
 		} finally {
 			codingAgent.close();
@@ -324,6 +330,93 @@ describe("createCodingAgent", () => {
 			});
 			expect(JSON.stringify(contexts[1]?.messages)).not.toContain("Parent-only conversation context.");
 			expect(JSON.stringify(contexts[2]?.messages)).toContain("Child inspection result.");
+		} finally {
+			codingAgent.close();
+		}
+	});
+
+	test("UpdateTodos 在成功事件发布前持久化 Coding Session 状态", async () => {
+		const fixture = await createFixture();
+		const contexts: Context[] = [];
+		const sessionFile = join(fixture.sessionDirectory, "session-1.jsonl");
+		const persistedWhenObserved: string[] = [];
+		const observedResults: Array<{ readonly isError: boolean; readonly result: unknown }> = [];
+		const codingAgent = await createCodingAgent({
+			...fixture,
+			resolveProvider: () => ({
+				provider: providerFor(
+					[
+						assistantToolCall("UpdateTodos", {
+							todos: [
+								{ id: "inspect", content: "Inspect storage", status: "completed" },
+								{ id: "render", content: "Render progress", status: "in_progress" },
+							],
+						}),
+						assistant("Working through the plan."),
+					],
+					contexts,
+				),
+				model,
+			}),
+		});
+		codingAgent.subscribe(async (event) => {
+			if (event.type !== "tool_execution_end" || event.toolName !== "UpdateTodos") return;
+			observedResults.push({ isError: event.isError, result: event.result });
+			if (event.isError) return;
+			persistedWhenObserved.push(await readFile(sessionFile, "utf8"));
+		});
+
+		try {
+			await codingAgent.invoke("Implement the Todo feature.");
+
+			expect(contexts[0]?.tools.map((tool) => tool.name)).toContain("UpdateTodos");
+			expect(observedResults).toEqual([{ isError: false, result: expect.anything() }]);
+			expect(persistedWhenObserved).toHaveLength(1);
+			expect(persistedWhenObserved[0]).toContain('"type":"app_state"');
+			expect(persistedWhenObserved[0]).toContain('"id":"render"');
+			expect(codingAgent.state.appState.todos).toMatchObject({ version: 1 });
+			expect(JSON.stringify(contexts[1]?.messages)).toContain("Current session Todo state");
+			expect(JSON.stringify(contexts[1]?.messages)).toContain('"id":"render"');
+		} finally {
+			codingAgent.close();
+		}
+	});
+
+	test("跨轮次保留 Todo，下一轮更新时整体替换上一轮列表", async () => {
+		const fixture = await createFixture();
+		const codingAgent = await createCodingAgent({
+			...fixture,
+			resolveProvider: () => ({
+				provider: providerFor([
+					assistantToolCall("UpdateTodos", {
+						todos: [{ id: "old", content: "Finish the previous round", status: "completed" }],
+					}),
+					assistant("First round complete."),
+					assistant("Second round without Todo updates."),
+					assistantToolCall("UpdateTodos", {
+						todos: [{ id: "new", content: "Start the new round", status: "in_progress" }],
+					}),
+					assistant("Third round started."),
+				]),
+				model,
+			}),
+		});
+
+		try {
+			await codingAgent.invoke("Complete the first round.");
+			expect(codingAgent.state.appState.todos).toMatchObject({
+				items: [{ id: "old", status: "completed" }],
+			});
+
+			await codingAgent.invoke("Continue without a new plan.");
+			expect(codingAgent.state.appState.todos).toMatchObject({
+				items: [{ id: "old", status: "completed" }],
+			});
+
+			await codingAgent.invoke("Start a new plan.");
+			expect(codingAgent.state.appState.todos).toMatchObject({
+				items: [{ id: "new", status: "in_progress" }],
+			});
 		} finally {
 			codingAgent.close();
 		}

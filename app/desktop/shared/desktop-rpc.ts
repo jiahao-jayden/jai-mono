@@ -252,16 +252,32 @@ export type DesktopTranscriptItem =
 	| DesktopPermissionItem
 	| DesktopCompactionItem;
 
+export type DesktopTodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
+
+export interface DesktopTodoItem {
+	readonly id: string;
+	readonly content: string;
+	readonly status: DesktopTodoStatus;
+}
+
+export interface DesktopTodos {
+	readonly version: 1;
+	readonly updatedAt: number;
+	readonly items: readonly DesktopTodoItem[];
+}
+
 export interface DesktopAgentSnapshot {
 	readonly sessionId: string;
 	readonly status: DesktopAgentStatus;
 	readonly items: readonly DesktopTranscriptItem[];
+	readonly todos?: DesktopTodos;
 	readonly lastSeq: number;
 }
 
 export type DesktopAgentEvent =
 	| { readonly type: "status"; readonly status: DesktopAgentStatus }
 	| { readonly type: "transcript_upsert"; readonly item: DesktopTranscriptItem }
+	| { readonly type: "todos_replace"; readonly todos: DesktopTodos }
 	| { readonly type: "model_catalog_updated" }
 	| {
 			readonly type: "runtime_error";

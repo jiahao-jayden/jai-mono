@@ -1,5 +1,5 @@
 import type { AgentMessage, SessionSnapshot } from "@jai/agent";
-import { REPORT_PROGRESS_TOOL_NAME, SPAWN_AGENT_TOOL_NAME } from "@jai/coding/tools";
+import { REPORT_PROGRESS_TOOL_NAME, SPAWN_AGENT_TOOL_NAME, UPDATE_TODOS_TOOL_NAME } from "@jai/coding/tools";
 import type {
 	DesktopAgentSnapshot,
 	DesktopCompactionItem,
@@ -8,6 +8,7 @@ import type {
 	DesktopSlashInvocation,
 	DesktopSubagentItem,
 	DesktopThinkingItem,
+	DesktopTodos,
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
@@ -38,7 +39,12 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 			continue;
 		}
 		if (entry.message.role === "toolResult") {
-			if (entry.message.toolName === REPORT_PROGRESS_TOOL_NAME) continue;
+			if (
+				entry.message.toolName === REPORT_PROGRESS_TOOL_NAME ||
+				entry.message.toolName === UPDATE_TODOS_TOOL_NAME
+			) {
+				continue;
+			}
 			if (entry.message.toolName === SPAWN_AGENT_TOOL_NAME) {
 				const existing = items.get(`subagent:${entry.message.toolCallId}`);
 				if (existing?.kind !== "subagent") continue;
@@ -78,10 +84,12 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 			activityTitle: "Interrupted",
 		};
 	});
+	const todos = projectSessionTodos(snapshot.appState.todos);
 	return {
 		sessionId,
 		status: "idle",
 		items: projectedItems,
+		...(todos ? { todos } : {}),
 		lastSeq: 0,
 	};
 }
@@ -131,6 +139,7 @@ function projectAssistantItems(
 				}
 				continue;
 			}
+			if (part.name === UPDATE_TODOS_TOOL_NAME) continue;
 			if (part.name === SPAWN_AGENT_TOOL_NAME) {
 				const title = stringValue(part.arguments, "title");
 				if (title) {
@@ -163,6 +172,24 @@ function projectAssistantItems(
 	}
 
 	return result;
+}
+
+export function projectSessionTodos(value: unknown): DesktopTodos | undefined {
+	if (!isRecord(value) || value.version !== 1 || typeof value.updatedAt !== "number" || !Array.isArray(value.items)) {
+		return undefined;
+	}
+	const items = value.items.flatMap((candidate) => {
+		if (!isRecord(candidate)) return [];
+		if (typeof candidate.id !== "string" || typeof candidate.content !== "string") return [];
+		if (!isTodoStatus(candidate.status)) return [];
+		return [{ id: candidate.id, content: candidate.content, status: candidate.status }];
+	});
+	if (items.length !== value.items.length) return undefined;
+	return { version: 1, updatedAt: value.updatedAt, items };
+}
+
+function isTodoStatus(value: unknown): value is DesktopTodos["items"][number]["status"] {
+	return value === "pending" || value === "in_progress" || value === "completed" || value === "cancelled";
 }
 
 function projectMessage(entryId: string, message: AgentMessage): DesktopMessageItem {

@@ -6,7 +6,12 @@ import {
 	type PermissionRequest,
 	type PermissionResolution,
 } from "@jai/coding/permissions";
-import { REPORT_PROGRESS_TOOL_NAME, SPAWN_AGENT_TOOL_NAME, type SpawnAgentToolDetails } from "@jai/coding/tools";
+import {
+	REPORT_PROGRESS_TOOL_NAME,
+	SPAWN_AGENT_TOOL_NAME,
+	type SpawnAgentToolDetails,
+	UPDATE_TODOS_TOOL_NAME,
+} from "@jai/coding/tools";
 import { toErrorEnvelope } from "@jai/common";
 import { TaggedError } from "better-result";
 import type {
@@ -21,10 +26,11 @@ import type {
 	DesktopProgressItem,
 	DesktopSubagentItem,
 	DesktopThinkingItem,
+	DesktopTodos,
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
-import { projectSlashInvocation } from "./projector";
+import { projectSessionTodos, projectSlashInvocation } from "./projector";
 
 type DesktopAgentErrorInit = { readonly data?: { readonly sessionId: string }; readonly message: string };
 class DesktopAgentFactoryUnavailable extends TaggedError("desktop_agent.factory_unavailable")<DesktopAgentErrorInit> {}
@@ -46,6 +52,7 @@ function desktopAgentError(
 }
 
 export interface HostedCodingAgent {
+	getAppState?(): unknown;
 	invoke(input: string): Promise<AgentMessage[]>;
 	generateTitle?(firstMessage: string, messages: readonly AgentMessage[]): Promise<string>;
 	subscribe(listener: AgentEventListener): () => void;
@@ -83,6 +90,7 @@ interface SessionRuntime {
 	readonly items: Map<string, DesktopTranscriptItem>;
 	unsubscribe: () => void;
 	status: DesktopAgentStatus;
+	todos?: DesktopTodos;
 	closed: boolean;
 	seq: number;
 	nextMessageId: number;
@@ -225,6 +233,7 @@ export class DesktopAgentHost {
 			sessionId,
 			status: runtime.status,
 			items: [...runtime.items.values()].map((item) => structuredClone(item)),
+			...(runtime.todos ? { todos: structuredClone(runtime.todos) } : {}),
 			lastSeq: runtime.seq,
 		};
 	}
@@ -292,6 +301,8 @@ export class DesktopAgentHost {
 
 	async #createRuntime(input: DesktopAgentMessageInput): Promise<SessionRuntime> {
 		const agent = await this.#createAgent(input.sessionId, input.modelRef, input.mode);
+		const appState = agent.getAppState?.();
+		const todos = projectSessionTodos(isRecord(appState) ? appState.todos : undefined);
 		const runtime: SessionRuntime = {
 			sessionId: input.sessionId,
 			modelRef: input.modelRef,
@@ -300,6 +311,7 @@ export class DesktopAgentHost {
 			items: new Map(),
 			unsubscribe: () => {},
 			status: "idle",
+			...(todos ? { todos } : {}),
 			closed: false,
 			seq: 0,
 			nextMessageId: 1,
@@ -440,7 +452,7 @@ export class DesktopAgentHost {
 				return;
 			}
 			case "tool_execution_start": {
-				if (event.toolName === REPORT_PROGRESS_TOOL_NAME) return;
+				if (event.toolName === REPORT_PROGRESS_TOOL_NAME || event.toolName === UPDATE_TODOS_TOOL_NAME) return;
 				if (event.toolName === SPAWN_AGENT_TOOL_NAME) {
 					const previous = runtime.items.get(`subagent:${event.toolCallId}`);
 					const previousSubagent = previous?.kind === "subagent" ? previous : undefined;
@@ -479,6 +491,17 @@ export class DesktopAgentHost {
 			case "tool_execution_update":
 			case "tool_execution_end": {
 				if (event.toolName === REPORT_PROGRESS_TOOL_NAME) return;
+				if (event.toolName === UPDATE_TODOS_TOOL_NAME) {
+					if (event.type === "tool_execution_end" && !event.isError) {
+						const details = isRecord(event.result.details) ? event.result.details : undefined;
+						const todos = projectSessionTodos(details?.todos);
+						if (todos) {
+							runtime.todos = todos;
+							this.#emitNow(runtime, { type: "todos_replace", todos });
+						}
+					}
+					return;
+				}
 				if (event.toolName === SPAWN_AGENT_TOOL_NAME) {
 					const previous = runtime.items.get(`subagent:${event.toolCallId}`);
 					const previousSubagent = previous?.kind === "subagent" ? previous : undefined;
@@ -609,6 +632,7 @@ export class DesktopAgentHost {
 					timestamp: message.timestamp,
 				};
 			}
+			if (part.name === UPDATE_TODOS_TOOL_NAME) return undefined;
 			if (part.name === SPAWN_AGENT_TOOL_NAME) {
 				const title = stringArgument(part.arguments, "title");
 				if (!title) return undefined;

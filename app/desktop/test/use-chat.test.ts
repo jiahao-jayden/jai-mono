@@ -93,6 +93,41 @@ describe("useChat projection", () => {
 		expect(next.messages[1]).toMatchObject({ id: "message-2", text: "partial response" });
 		expect(next.messages[1]).not.toBe(streaming);
 	});
+
+	test("Todo 快照与增量事件直接替换本地状态", () => {
+		const snapshotState = applyChatProjectionUpdate(emptyChatState(), {
+			type: "snapshot",
+			snapshot: {
+				sessionId: "session-1",
+				status: "idle",
+				items: [],
+				lastSeq: 2,
+				todos: {
+					version: 1,
+					updatedAt: 1,
+					items: [{ id: "inspect", content: "Inspect", status: "completed" }],
+				},
+			},
+		});
+		const next = applyChatProjectionUpdate(snapshotState, {
+			type: "event",
+			envelope: {
+				sessionId: "session-1",
+				seq: 3,
+				event: {
+					type: "todos_replace",
+					todos: {
+						version: 1,
+						updatedAt: 2,
+						items: [{ id: "render", content: "Render", status: "in_progress" }],
+					},
+				},
+			},
+		});
+
+		expect(snapshotState.todos?.items[0]?.id).toBe("inspect");
+		expect(next).toMatchObject({ lastSeq: 3, todos: { items: [{ id: "render", status: "in_progress" }] } });
+	});
 });
 
 function emptyChatState(): ChatRuntimeState {
@@ -104,5 +139,6 @@ function emptyChatState(): ChatRuntimeState {
 		sessionId: null,
 		submitting: false,
 		messages: [],
+		todos: undefined,
 	};
 }

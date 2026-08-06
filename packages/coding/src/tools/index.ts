@@ -12,6 +12,15 @@ export {
 	type SpawnAgentToolDetails,
 } from "./spawn-agent";
 export type { CodingToolOptions } from "./types";
+export {
+	createUpdateTodosTool,
+	type ReplaceSessionTodos,
+	type SessionTodoItem,
+	type SessionTodos,
+	type TodoStatus,
+	UPDATE_TODOS_TOOL_NAME,
+	type UpdateTodosToolDetails,
+} from "./update-todos";
 
 export function createCodingTools(
 	options: CodingToolOptions,
