@@ -403,16 +403,21 @@ export class DesktopAgentHost {
 			}
 			case "message_update": {
 				if (!("contentIndex" in event.assistantEvent)) return;
+				const thinkingComplete = event.assistantEvent.type === "thinking_end";
 				const item = this.#projectAssistantPart(
 					runtime,
 					event.message,
 					event.assistantEvent.contentIndex,
-					"streaming",
+					thinkingComplete ? "complete" : "streaming",
 				);
 				if (!item) return;
 				if (item.kind === "tool" || item.kind === "progress") return;
 				runtime.items.set(item.id, item);
-				this.#queueTranscriptUpdate(runtime, { type: "transcript_upsert", item });
+				if (thinkingComplete) {
+					this.#emitNow(runtime, { type: "transcript_upsert", item });
+				} else {
+					this.#queueTranscriptUpdate(runtime, { type: "transcript_upsert", item });
+				}
 				return;
 			}
 			case "message_end": {

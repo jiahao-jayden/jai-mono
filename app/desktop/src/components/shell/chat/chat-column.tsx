@@ -14,6 +14,7 @@ import {
 	useState,
 	type WheelEvent,
 } from "react";
+import { ThinkingOrb } from "thinking-orbs";
 import pandaLogo from "@/assets/icons/chat-area/panda-3.svg";
 import type { Chat } from "@/hooks/use-chat";
 import { useIcons } from "@/lib/icon-context";
@@ -118,6 +119,7 @@ export function ChatColumn({
 	const [titleDraft, setTitleDraft] = useState("");
 
 	const isNewChat = !session;
+	const isAgentWorking = chat.status === "submitted" || chat.status === "streaming";
 	const pendingPermissions = chat.messages.filter(
 		(item): item is DesktopPermissionItem => item.kind === "permission" && item.status === "pending",
 	);
@@ -130,7 +132,7 @@ export function ChatColumn({
 		sessionId: session?.id,
 		items: transcriptItems,
 		loading: chat.isLoading,
-		responding: chat.status === "submitted" || chat.status === "streaming",
+		responding: isAgentWorking,
 		reducedMotion,
 	});
 
@@ -334,19 +336,21 @@ export function ChatColumn({
 							onTouchMove={transcriptScroll.onTouchMove}
 							onWheel={transcriptScroll.onWheel}
 						>
-							<div className="mx-auto flex w-full max-w-190 flex-col gap-2 px-8 py-5">
-								{chat.isLoading ? <TranscriptLoading /> : null}
-								{!chat.isLoading && chat.messages.length === 0 ? (
-									<p className="py-16 text-center text-[13px] text-muted-foreground">这个会话还没有消息。</p>
-								) : null}
-								<TranscriptItems items={transcriptItems} loading={chat.isLoading} />
-								{transcriptScroll.tailSpace > 0 ? (
-									<div
-										aria-hidden="true"
-										className="shrink-0"
-										style={{ height: transcriptScroll.tailSpace }}
-									/>
-								) : null}
+							<div className="px-5">
+								<div className="mx-auto flex w-full max-w-190 flex-col gap-2 py-5">
+									{chat.isLoading ? <TranscriptLoading /> : null}
+									{!chat.isLoading && chat.messages.length === 0 ? (
+										<p className="py-16 text-center text-[13px] text-muted-foreground">这个会话还没有消息。</p>
+									) : null}
+									<TranscriptItems items={transcriptItems} loading={chat.isLoading} />
+									{transcriptScroll.tailSpace > 0 ? (
+										<div
+											aria-hidden="true"
+											className="shrink-0"
+											style={{ height: transcriptScroll.tailSpace }}
+										/>
+									) : null}
+								</div>
 							</div>
 						</div>
 						<MessageScroller
@@ -354,7 +358,7 @@ export function ChatColumn({
 							visible={transcriptScroll.showMessageScroller}
 						/>
 					</div>
-					<div className="shrink-0 px-8 pb-3">
+					<div className="shrink-0 px-5 pb-3">
 						<div className="mx-auto flex w-full max-w-190 flex-col gap-2">
 							<AnimatePresence initial={false}>
 								{pendingPermissions.length > 0 ? (
@@ -371,34 +375,42 @@ export function ChatColumn({
 									/>
 								) : null}
 							</AnimatePresence>
-							<ChatComposer
-								value={draft}
-								onValueChange={onDraftChange}
-								onSend={chat.sendMessage}
-								onStop={chat.stop}
-								status={chat.status}
-								disabled={project?.available === false}
-								queue={queue}
-								onEditQueuedMessage={onEditQueuedMessage}
-								onRemoveQueuedMessage={onRemoveQueuedMessage}
-								onReorderQueuedMessages={onReorderQueuedMessages}
-								project={project}
-								projects={projects}
-								projectBusy={projectBusy}
-								projectLoading={projectLoading}
-								projectLoadError={projectLoadError}
-								onChooseProject={onChooseProject}
-								onAddProject={onAddProject}
-								onRetryProjects={onRetryProjects}
-								providerConfig={providerConfig}
-								selectedModelRef={selectedModelRef}
-								selectedAgentMode={selectedAgentMode}
-								providerLoading={providerLoading}
-								providerError={providerError}
-								onOpenProviderSettings={onOpenProviderSettings}
-								onSelectProviderModel={onSelectProviderModel}
-								onSelectAgentMode={onSelectAgentMode}
-							/>
+							<div className="relative">
+								{isAgentWorking ? (
+									<div className="pointer-events-none absolute bottom-full left-0 z-10 mb-2 flex items-center gap-2 px-1" role="status">
+										<ThinkingOrb aria-hidden size={20} state="solving" />
+										<span className="shimmer-text text-[12px] font-medium">Agent 正在处理…</span>
+									</div>
+								) : null}
+								<ChatComposer
+									value={draft}
+									onValueChange={onDraftChange}
+									onSend={chat.sendMessage}
+									onStop={chat.stop}
+									status={chat.status}
+									disabled={project?.available === false}
+									queue={queue}
+									onEditQueuedMessage={onEditQueuedMessage}
+									onRemoveQueuedMessage={onRemoveQueuedMessage}
+									onReorderQueuedMessages={onReorderQueuedMessages}
+									project={project}
+									projects={projects}
+									projectBusy={projectBusy}
+									projectLoading={projectLoading}
+									projectLoadError={projectLoadError}
+									onChooseProject={onChooseProject}
+									onAddProject={onAddProject}
+									onRetryProjects={onRetryProjects}
+									providerConfig={providerConfig}
+									selectedModelRef={selectedModelRef}
+									selectedAgentMode={selectedAgentMode}
+									providerLoading={providerLoading}
+									providerError={providerError}
+									onOpenProviderSettings={onOpenProviderSettings}
+									onSelectProviderModel={onSelectProviderModel}
+									onSelectAgentMode={onSelectAgentMode}
+								/>
+							</div>
 							<ComposerError message={chat.error || projectError} />
 						</div>
 					</div>

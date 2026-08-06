@@ -15,6 +15,17 @@ import type { DesktopAgentFactory, HostedCodingAgent } from "./host";
 import codingAgentInstructions from "./prompt/system-prompt.md?raw";
 
 const CODING_AGENT_INSTRUCTIONS = codingAgentInstructions.trim();
+const NO_WORKSPACE_MESSAGE: AgentMessage = {
+	role: "user",
+	content: [
+		{
+			type: "text",
+			text: 'No workspace is open, so local file tools are unavailable. Do not read, list, search, edit, run file-related commands, or delegate such work. If the request needs local project access, briefly ask the user to open a folder using "Work in a project or folder", then stop. General conversation is still available.',
+			synthetic: true,
+		},
+	],
+	timestamp: 0,
+};
 type DesktopProviderErrorInit = { readonly message: string };
 class TitleGenerationFailed extends TaggedError("desktop_provider.title_generation_failed")<DesktopProviderErrorInit> {}
 class ProviderRuntimeUnavailable extends TaggedError(
@@ -75,6 +86,17 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 					providerOptions: runtime.providerOptions,
 				};
 			},
+			agent: executionContext.localFileAccess
+				? undefined
+				: {
+						hooks: {
+							beforeModelCall: [
+								({ messages }) => ({
+									messages: [NO_WORKSPACE_MESSAGE, ...messages],
+								}),
+							],
+						},
+					},
 			permissions: {
 				requestApproval,
 				selectSettings: (snapshot) => ({

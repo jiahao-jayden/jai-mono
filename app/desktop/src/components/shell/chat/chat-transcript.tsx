@@ -85,7 +85,6 @@ export function TranscriptItem({ item, animate = false }: { item: DesktopTranscr
 		});
 		const messageClassName = cn("max-w-full", {
 			"max-w-[78%]": user,
-			"pl-1": !user,
 		});
 		const from = user ? "user" : "assistant";
 		const isStreaming = item.status === "streaming";

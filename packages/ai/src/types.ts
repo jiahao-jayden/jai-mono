@@ -7,6 +7,8 @@ import type { TSchema } from "@sinclair/typebox";
 export interface TextContent {
 	type: "text";
 	text: string;
+	/** Product-injected context visible to providers but omitted from user-facing projections. */
+	synthetic?: boolean;
 }
 
 export interface ThinkingContent {

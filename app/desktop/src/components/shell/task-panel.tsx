@@ -23,7 +23,7 @@ export function TaskPanel({ status, items, project }: TaskPanelProps) {
 	);
 
 	return (
-		<aside className="h-full w-84 shrink-0 overflow-y-auto bg-background px-3 py-3">
+		<aside className="h-full w-84 shrink-0 overflow-y-auto bg-background py-3 pr-3">
 			<div className="overflow-hidden rounded-[14px] border border-border bg-card">
 				<section className="px-4 pt-3.5 pb-2.5">
 					<div className="flex items-center justify-between">

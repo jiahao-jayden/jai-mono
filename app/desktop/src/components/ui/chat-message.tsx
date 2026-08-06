@@ -23,7 +23,7 @@ import { FileThumbnail } from "@/components/ui/file-thumbnail";
 const streamdownPlugins = { cjk, code };
 const streamdownRemarkPlugins = [remarkDisableSetextH2];
 const streamdownControls = {
-	code: { copy: true, download: true },
+	code: { copy: true, download: false },
 	table: { copy: true, download: true, fullscreen: true },
 };
 
@@ -131,6 +131,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
         className={cn(
           "group flex max-w-[80%] flex-col gap-1.5",
           isUser ? "items-end self-end" : "items-start self-start",
+          !isUser && "w-full min-w-0",
           className
         )}
         {...props}
@@ -154,7 +155,8 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
         {children != null && children !== "" && (
           <div
             className={cn(
-              "py-2 text-[14px] wrap-break-word",
+              "min-w-0 py-2 text-[14px] wrap-break-word",
+              !isUser && "w-full",
               // User keeps the bubble chrome (rounded fill + horizontal padding);
               // the assistant reply is flush-left plain text with no background.
               isUser

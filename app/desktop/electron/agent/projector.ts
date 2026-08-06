@@ -65,6 +65,7 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 			items.set(toolItem.id, toolItem);
 			continue;
 		}
+		if (isSyntheticOnlyMessage(entry.message)) continue;
 		const messageItem = projectMessage(entry.id, entry.message);
 		items.set(messageItem.id, messageItem);
 		if (entry.message.role === "user") currentTurnId = messageItem.id;
@@ -196,10 +197,19 @@ function messageText(message: AgentMessage): string {
 	if (typeof message.content === "string") return message.content;
 	return message.content
 		.flatMap((part) => {
-			if (part.type === "text") return [part.text];
+			if (part.type === "text" && !part.synthetic) return [part.text];
 			return [];
 		})
 		.join("");
+}
+
+function isSyntheticOnlyMessage(message: AgentMessage): boolean {
+	return (
+		message.role === "user" &&
+		Array.isArray(message.content) &&
+		message.content.length > 0 &&
+		message.content.every((part) => part.type === "text" && part.synthetic)
+	);
 }
 
 function summarizeToolArguments(toolName: string, args: Readonly<Record<string, unknown>>): string {

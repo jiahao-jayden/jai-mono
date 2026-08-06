@@ -224,6 +224,48 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
+	test("thinking_end 立即完成思考步骤，不等待回答结束", async () => {
+		let host: DesktopAgentHost;
+		let thinkingStatus: "streaming" | "complete" | undefined;
+		const agent = new FakeAgent(async (self) => {
+			const partial = {
+				...assistantMessage(""),
+				content: [{ type: "thinking" as const, thinking: "Inspecting the project" }],
+			};
+			self.emit({ type: "message_start", message: assistantMessage("") });
+			self.emit({
+				type: "message_update",
+				message: partial,
+				assistantEvent: {
+					type: "thinking_delta",
+					contentIndex: 0,
+					delta: "Inspecting the project",
+					partial,
+				},
+			});
+			self.emit({
+				type: "message_update",
+				message: partial,
+				assistantEvent: {
+					type: "thinking_end",
+					contentIndex: 0,
+					content: "Inspecting the project",
+					partial,
+				},
+			});
+			thinkingStatus = host.getSnapshot("session-1").items.find((item) => item.kind === "thinking")?.status;
+			self.emit({ type: "message_end", message: partial });
+			return [partial];
+		});
+		host = new DesktopAgentHost(() => {}, async () => agent);
+
+		await host.send(input("inspect"));
+		await agent.finished;
+
+		expect(thinkingStatus).toBe("complete");
+		host.close();
+	});
+
 	test("将 ReportProgress 投影为进度项且不显示为普通工具", async () => {
 		const agent = new FakeAgent(async (self) => {
 			const assistant = {

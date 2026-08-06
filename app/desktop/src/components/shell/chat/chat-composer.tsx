@@ -4,7 +4,7 @@ import type { QueuedMessage } from "@/stores/chat";
 import type { DesktopAgentMode, DesktopProject, DesktopProviderConfigSnapshot } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { InputMessage } from "../../ui/input-message";
-import { AgentModeControl, ComposerDitherBanner } from "./agent-mode-control";
+import { AgentModeControl } from "./agent-mode-control";
 import { ChatMessageQueue } from "./chat-message-queue";
 import { ModelSelector } from "./model-selector";
 import { ProjectPicker } from "./project-picker";
@@ -107,13 +107,6 @@ export function ChatComposer({
 				placeholder={large ? "What should the agent work on?" : "Write a message…"}
 				sendLabel={submitLabel}
 				textareaProps={{ "aria-label": "Message" }}
-				headerSlot={
-					<ComposerDitherBanner
-						mode={selectedAgentMode}
-						streaming={isStreaming}
-						workspaceLabel={project?.displayName}
-					/>
-				}
 				submitSlot={
 					<Button
 						type="button"

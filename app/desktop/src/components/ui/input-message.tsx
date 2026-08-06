@@ -57,8 +57,6 @@ interface InputMessageProps
   /** Content rendered in the bottom-left action area. Can be a function that
    *  receives `{ openFilePicker, files }` to wire an attach button. */
   leftSlot?: InputMessageSlot;
-  /** Content rendered above attachments and the textarea, inside the composer surface. */
-  headerSlot?: ReactNode;
   /** Content rendered in the bottom-right action area, before the built-in
    *  send button. Same render-fn shape as leftSlot. */
   rightSlot?: InputMessageSlot;
@@ -156,7 +154,6 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
       onSend,
       placeholder = "Ask me anything…",
       leftSlot,
-      headerSlot,
       rightSlot,
       submitSlot,
       disabled,
@@ -483,7 +480,6 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
         {...props}
       >
         <SurfaceProvider value={2}>
-          {headerSlot ? <div className="-mx-2 -mt-2 shrink-0 border-b border-border/60">{headerSlot}</div> : null}
           {supportsFiles && (
             <input
               ref={fileInputRef}

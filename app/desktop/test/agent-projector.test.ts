@@ -211,4 +211,35 @@ describe("projectSessionSnapshot", () => {
 			slashInvocation: { name: "review", kind: "skill", displayName: "Review changes" },
 		});
 	});
+
+	test("不把 synthetic user message 投影到 transcript", () => {
+		const snapshot: SessionSnapshot = {
+			appState: {},
+			createdAt: "2026-08-01T00:00:00.000Z",
+			updatedAt: "2026-08-01T00:00:00.000Z",
+			entries: [
+				{
+					type: "message",
+					id: "synthetic-1",
+					timestamp: "2026-08-01T00:00:00.000Z",
+					message: {
+						role: "user",
+						content: [{ type: "text", text: "Internal context", synthetic: true }],
+						timestamp: 1,
+					},
+				},
+				{
+					type: "message",
+					id: "user-1",
+					timestamp: "2026-08-01T00:00:01.000Z",
+					message: { role: "user", content: "Visible message", timestamp: 2 },
+				},
+			],
+		};
+
+		const projected = projectSessionSnapshot("session-1", snapshot);
+
+		expect(projected.items).toHaveLength(1);
+		expect(projected.items[0]).toMatchObject({ kind: "message", text: "Visible message" });
+	});
 });
