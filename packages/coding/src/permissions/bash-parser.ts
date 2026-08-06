@@ -1,5 +1,7 @@
-import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
+import bashLanguageWasm from "tree-sitter-bash/tree-sitter-bash.wasm?url";
+import treeSitterWasm from "web-tree-sitter/tree-sitter.wasm?url";
 import { Language, type Node, Parser } from "web-tree-sitter";
 import { bashAlwaysPattern, isDestructiveBashCommand } from "./rules";
 
@@ -67,16 +69,23 @@ function commandSource(node: Node): string {
 
 async function getParser(): Promise<Parser> {
 	parserPromise ??= (async () => {
-		const treeSitterWasm = fileURLToPath(import.meta.resolve("web-tree-sitter/tree-sitter.wasm"));
-		await Parser.init({ locateFile: () => treeSitterWasm });
-		const language = await Language.load(
-			fileURLToPath(import.meta.resolve("tree-sitter-bash/tree-sitter-bash.wasm")),
-		);
+		const [parserWasm, languageWasm] = await Promise.all([
+			loadWasmBytes(treeSitterWasm),
+			loadWasmBytes(bashLanguageWasm),
+		]);
+		await Parser.init({ wasmBinary: parserWasm });
+		const language = await Language.load(languageWasm);
 		const parser = new Parser();
 		parser.setLanguage(language);
 		return parser;
 	})();
 	return parserPromise;
+}
+
+async function loadWasmBytes(source: string): Promise<Uint8Array> {
+	const dataUrlPrefix = "data:application/wasm;base64,";
+	if (source.startsWith(dataUrlPrefix)) return Buffer.from(source.slice(dataUrlPrefix.length), "base64");
+	return readFile(source.startsWith("file:") ? new URL(source) : source);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
