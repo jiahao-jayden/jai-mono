@@ -60,7 +60,6 @@ describe("createCodingAgent", () => {
 			expect(messages.at(-1)?.role).toBe("assistant");
 			expect(resolvedMode).toBe("default");
 			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual([
-				"ReportProgress",
 				"UpdateTodos",
 				"SpawnAgent",
 				"Read",
@@ -122,7 +121,6 @@ describe("createCodingAgent", () => {
 		try {
 			await codingAgent.invoke("hello");
 			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual([
-				"ReportProgress",
 				"UpdateTodos",
 				"SpawnAgent",
 				"Skill",

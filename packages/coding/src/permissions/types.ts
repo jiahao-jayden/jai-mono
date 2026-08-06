@@ -8,7 +8,6 @@ export const canonicalToolNames = [
 	"Grep",
 	"Bash",
 	"Skill",
-	"ReportProgress",
 	"UpdateTodos",
 	"SpawnAgent",
 ] as const;

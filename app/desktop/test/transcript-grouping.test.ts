@@ -1,14 +1,39 @@
 import { describe, expect, test } from "bun:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { DesktopTranscriptItem } from "../shared/desktop-rpc";
 import {
 	explorationSummary,
 	groupTranscriptItems,
+	TranscriptItem,
 	workGroupTitle,
 	workProcessRows,
 } from "../src/components/shell/chat/chat-transcript";
 
 describe("groupTranscriptItems", () => {
-	test("按 turnId 合并乱序到达的进度、思考与工具", () => {
+	test("只将明确的 compaction item 渲染为上下文压缩", () => {
+		const compaction: DesktopTranscriptItem = {
+			kind: "compaction",
+			id: "compaction:1",
+			summary: "Earlier context",
+			timestamp: 1,
+		};
+		const staleProgress = {
+			kind: "progress",
+			id: "progress:1",
+			title: "Working",
+			detail: "From an older main process",
+		};
+
+		expect(renderToStaticMarkup(createElement(TranscriptItem, { item: compaction }))).toContain("Context compacted");
+		expect(
+			renderToStaticMarkup(
+				createElement(TranscriptItem, { item: staleProgress as unknown as DesktopTranscriptItem }),
+			),
+		).toBe("");
+	});
+
+	test("按 turnId 合并乱序到达的思考与工具", () => {
 		const items: DesktopTranscriptItem[] = [
 			{
 				kind: "thinking",
@@ -25,14 +50,6 @@ describe("groupTranscriptItems", () => {
 				toolCallId: "skill-1",
 				toolName: "Skill",
 				status: "complete",
-			},
-			{
-				kind: "progress",
-				id: "progress:progress-1",
-				turnId: "turn-1",
-				title: "检查运行环境",
-				detail: "读取技能并确认下一步。",
-				timestamp: 1,
 			},
 			{
 				kind: "thinking",
@@ -52,10 +69,10 @@ describe("groupTranscriptItems", () => {
 		]);
 		const [row] = groupTranscriptItems(items);
 		if (!row || "kind" in row) throw new Error("Expected a work group");
-		expect(workGroupTitle(row.items, false)).toBe("检查运行环境");
+		expect(workGroupTitle(row.items, false)).toBe("Loading skill");
 	});
 
-	test("缺少 ReportProgress 时用实际工具生成语义标题", () => {
+	test("用实际工具生成语义标题", () => {
 		const items: DesktopTranscriptItem[] = [
 			{
 				kind: "thinking",
@@ -121,7 +138,7 @@ describe("groupTranscriptItems", () => {
 			id: "tool:grep-1",
 			toolCallId: "grep-1",
 			toolName: "Grep",
-			summary: "ReportProgress",
+			summary: "src",
 		};
 
 		const rows = workProcessRows([read, grep]);

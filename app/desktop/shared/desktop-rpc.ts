@@ -199,15 +199,6 @@ export interface DesktopThinkingItem {
 	readonly timestamp: number;
 }
 
-export interface DesktopProgressItem {
-	readonly kind: "progress";
-	readonly id: string;
-	readonly turnId: string;
-	readonly title: string;
-	readonly detail: string;
-	readonly timestamp: number;
-}
-
 export interface DesktopToolItem {
 	readonly kind: "tool";
 	readonly id: string;
@@ -246,7 +237,6 @@ export interface DesktopCompactionItem {
 export type DesktopTranscriptItem =
 	| DesktopMessageItem
 	| DesktopThinkingItem
-	| DesktopProgressItem
 	| DesktopToolItem
 	| DesktopSubagentItem
 	| DesktopPermissionItem

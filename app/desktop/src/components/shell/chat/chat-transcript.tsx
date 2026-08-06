@@ -2,8 +2,6 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { IconName } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type {
-	DesktopMessageItem,
-	DesktopProgressItem,
 	DesktopThinkingItem,
 	DesktopToolItem,
 	DesktopTranscriptItem,
@@ -18,8 +16,7 @@ import {
 import { ToolCall } from "../../ui/tool-call";
 import { SubagentCard } from "./subagent-card";
 
-type ConnectorItem = DesktopMessageItem & { readonly role: "assistant"; readonly stopReason: "toolUse" };
-type WorkItem = DesktopThinkingItem | DesktopProgressItem | DesktopToolItem | ConnectorItem;
+type WorkItem = DesktopThinkingItem | DesktopToolItem;
 
 interface WorkGroup {
 	readonly id: string;
@@ -78,7 +75,7 @@ export function groupTranscriptItems(items: readonly DesktopTranscriptItem[]): (
 }
 
 export function TranscriptItem({ item, animate = false }: { item: DesktopTranscriptItem; animate?: boolean }) {
-	if (item.kind === "thinking" || item.kind === "progress") {
+	if (item.kind === "thinking") {
 		return <WorkProcess group={{ id: `work:${item.id}`, items: [item] }} />;
 	}
 	if (item.kind === "message") {
@@ -127,13 +124,17 @@ export function TranscriptItem({ item, animate = false }: { item: DesktopTranscr
 		return null;
 	}
 
-	return (
-		<div className="flex items-center gap-3 py-2 text-[11.5px] text-muted-foreground">
-			<span className="h-px flex-1 bg-border" />
-			Context compacted
-			<span className="h-px flex-1 bg-border" />
-		</div>
-	);
+	if (item.kind === "compaction") {
+		return (
+			<div className="flex items-center gap-3 py-2 text-[11.5px] text-muted-foreground">
+				<span className="h-px flex-1 bg-border" />
+				Context compacted
+				<span className="h-px flex-1 bg-border" />
+			</div>
+		);
+	}
+
+	return null;
 }
 
 function useTranscriptItemAnimations(items: readonly DesktopTranscriptItem[], loading: boolean): ReadonlySet<string> {
@@ -160,12 +161,10 @@ function useTranscriptItemAnimations(items: readonly DesktopTranscriptItem[], lo
 }
 
 function WorkProcess({ group }: { readonly group: WorkGroup }) {
-	const progress = group.items.find((item): item is DesktopProgressItem => item.kind === "progress");
 	const tools = group.items.filter((item): item is DesktopToolItem => item.kind === "tool");
 	const running = group.items.some(
 		(item) =>
 			(item.kind === "thinking" && item.status === "streaming") ||
-			(item.kind === "message" && item.status === "streaming") ||
 			(item.kind === "tool" && item.status === "running"),
 	);
 	const [open, setOpen] = useState(running);
@@ -174,7 +173,7 @@ function WorkProcess({ group }: { readonly group: WorkGroup }) {
 		setOpen(running);
 	}, [running]);
 
-	if (!progress && tools.length === 0) {
+	if (tools.length === 0) {
 		return (
 			<div className="flex flex-col px-1 py-1">
 				{group.items.map((item) => (
@@ -203,9 +202,6 @@ function WorkProcess({ group }: { readonly group: WorkGroup }) {
 }
 
 export function workGroupTitle(items: readonly WorkItem[], running: boolean): string {
-	const progress = items.find((item): item is DesktopProgressItem => item.kind === "progress");
-	if (progress) return progress.title;
-
 	const tool = items.find((item): item is DesktopToolItem => item.kind === "tool");
 	if (tool?.toolName === "Skill") {
 		const skill = tool.summary?.replace(/^\//, "");
@@ -227,7 +223,7 @@ export function workGroupTitle(items: readonly WorkItem[], running: boolean): st
 		}
 	}
 	if (items.some((item) => item.kind === "thinking")) return running ? "Reasoning…" : "Reasoning";
-	return running ? "Planning…" : "Planning";
+	return running ? "Working…" : "Working";
 }
 
 export function workProcessRows(items: readonly WorkItem[]): readonly WorkProcessRow[] {
@@ -253,7 +249,6 @@ function sameWorkGroup(previous: { readonly group: WorkGroup }, next: { readonly
 }
 
 function WorkProcessStep({ item }: { readonly item: WorkItem }) {
-	if (item.kind === "progress") return null;
 	if (item.kind === "tool") return <ToolStep item={item} />;
 	if (item.kind === "thinking") {
 		return (
@@ -264,14 +259,7 @@ function WorkProcessStep({ item }: { readonly item: WorkItem }) {
 			</ThinkingStep>
 		);
 	}
-	return (
-		<ThinkingStep
-			icon="clock"
-			label="Planning"
-			description={item.text}
-			status={item.status === "streaming" ? "active" : "complete"}
-		/>
-	);
+	return null;
 }
 
 function ExplorationStep({ items }: { readonly items: readonly DesktopToolItem[] }) {
@@ -364,16 +352,12 @@ function isExplorationTool(item: DesktopToolItem): boolean {
 	return category === "search" || category === "read";
 }
 
-function isConnectorItem(item: DesktopTranscriptItem): item is ConnectorItem {
-	return item.kind === "message" && item.role === "assistant" && item.stopReason === "toolUse";
-}
-
 function isWorkItem(item: DesktopTranscriptItem): item is WorkItem {
-	return item.kind === "thinking" || item.kind === "progress" || item.kind === "tool" || isConnectorItem(item);
+	return item.kind === "thinking" || item.kind === "tool";
 }
 
 function workItemTurnId(item: WorkItem): string {
-	return item.kind === "message" ? item.id : item.turnId;
+	return item.turnId;
 }
 
 export function TranscriptLoading() {

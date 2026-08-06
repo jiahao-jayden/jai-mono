@@ -285,52 +285,6 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
-	test("将 ReportProgress 投影为进度项且不显示为普通工具", async () => {
-		const agent = new FakeAgent(async (self) => {
-			const assistant = {
-				...assistantMessage(""),
-				content: [
-					{
-						type: "toolCall" as const,
-						id: "progress-1",
-						name: "ReportProgress",
-						arguments: { title: "Inspecting storage", detail: "Reading the session persistence implementation." },
-					},
-				],
-				stopReason: "toolUse" as const,
-			};
-			self.emit({ type: "message_end", message: assistant });
-			self.emit({
-				type: "tool_execution_start",
-				toolCallId: "progress-1",
-				toolName: "ReportProgress",
-				title: "Inspecting storage",
-				args: { title: "Inspecting storage", detail: "Reading the session persistence implementation." },
-			});
-			self.emit({
-				type: "tool_execution_end",
-				toolCallId: "progress-1",
-				toolName: "ReportProgress",
-				result: { content: [{ type: "text", text: "Progress reported." }] },
-				isError: false,
-			});
-			return [assistant];
-		});
-		const host = new DesktopAgentHost(() => {}, async () => agent);
-
-		await host.send(input("inspect"));
-		await agent.finished;
-
-		expect(host.getSnapshot("session-1").items).toEqual([
-			expect.objectContaining({
-				kind: "progress",
-				title: "Inspecting storage",
-				detail: "Reading the session persistence implementation.",
-			}),
-		]);
-		host.close();
-	});
-
 	test("将 UpdateTodos 结果投影为状态事件且不显示为普通工具", async () => {
 		const events: DesktopAgentEventEnvelope[] = [];
 		const agent = new FakeAgent(async (self) => {

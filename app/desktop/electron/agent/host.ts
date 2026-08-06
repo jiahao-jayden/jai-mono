@@ -7,7 +7,6 @@ import {
 	type PermissionResolution,
 } from "@jai/coding/permissions";
 import {
-	REPORT_PROGRESS_TOOL_NAME,
 	SPAWN_AGENT_TOOL_NAME,
 	type SpawnAgentToolDetails,
 	UPDATE_TODOS_TOOL_NAME,
@@ -23,7 +22,6 @@ import type {
 	DesktopAgentStatus,
 	DesktopMessageItem,
 	DesktopPermissionItem,
-	DesktopProgressItem,
 	DesktopSubagentItem,
 	DesktopThinkingItem,
 	DesktopTodos,
@@ -423,7 +421,7 @@ export class DesktopAgentHost {
 					thinkingComplete ? "complete" : "streaming",
 				);
 				if (!item) return;
-				if (item.kind === "tool" || item.kind === "progress") return;
+				if (item.kind === "tool") return;
 				runtime.items.set(item.id, item);
 				if (thinkingComplete) {
 					this.#emitNow(runtime, { type: "transcript_upsert", item });
@@ -452,7 +450,7 @@ export class DesktopAgentHost {
 				return;
 			}
 			case "tool_execution_start": {
-				if (event.toolName === REPORT_PROGRESS_TOOL_NAME || event.toolName === UPDATE_TODOS_TOOL_NAME) return;
+				if (event.toolName === UPDATE_TODOS_TOOL_NAME) return;
 				if (event.toolName === SPAWN_AGENT_TOOL_NAME) {
 					const previous = runtime.items.get(`subagent:${event.toolCallId}`);
 					const previousSubagent = previous?.kind === "subagent" ? previous : undefined;
@@ -490,7 +488,6 @@ export class DesktopAgentHost {
 			}
 			case "tool_execution_update":
 			case "tool_execution_end": {
-				if (event.toolName === REPORT_PROGRESS_TOOL_NAME) return;
 				if (event.toolName === UPDATE_TODOS_TOOL_NAME) {
 					if (event.type === "tool_execution_end" && !event.isError) {
 						const details = isRecord(event.result.details) ? event.result.details : undefined;
@@ -557,14 +554,10 @@ export class DesktopAgentHost {
 		runtime: SessionRuntime,
 		message: AgentMessage,
 		status: DesktopMessageItem["status"],
-	): (DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem | DesktopSubagentItem)[] {
+	): (DesktopMessageItem | DesktopThinkingItem | DesktopToolItem | DesktopSubagentItem)[] {
 		if (message.role === "toolResult") return [];
 		if (message.role === "assistant") {
 			this.#ensureMessageId(runtime, "assistant");
-			const progress = message.content.find(
-				(part) => part.type === "toolCall" && part.name === REPORT_PROGRESS_TOOL_NAME,
-			);
-			if (progress?.type === "toolCall") runtime.currentTurnId = `progress:${progress.id}`;
 			let textProjected = false;
 			return message.content.flatMap((_, contentIndex) => {
 				const item = this.#projectAssistantPart(runtime, message, contentIndex, status);
@@ -599,7 +592,6 @@ export class DesktopAgentHost {
 	):
 		| DesktopMessageItem
 		| DesktopThinkingItem
-		| DesktopProgressItem
 		| DesktopToolItem
 		| DesktopSubagentItem
 		| undefined {
@@ -619,19 +611,6 @@ export class DesktopAgentHost {
 			};
 		}
 		if (part.type === "toolCall") {
-			if (part.name === REPORT_PROGRESS_TOOL_NAME) {
-				const title = stringArgument(part.arguments, "title");
-				const detail = stringArgument(part.arguments, "detail");
-				if (!title || !detail) return undefined;
-				return {
-					kind: "progress",
-					id: `progress:${part.id}`,
-					turnId,
-					title,
-					detail,
-					timestamp: message.timestamp,
-				};
-			}
 			if (part.name === UPDATE_TODOS_TOOL_NAME) return undefined;
 			if (part.name === SPAWN_AGENT_TOOL_NAME) {
 				const title = stringArgument(part.arguments, "title");
@@ -655,6 +634,7 @@ export class DesktopAgentHost {
 				summary: summarizeToolArguments(part.name, part.arguments),
 			};
 		}
+		if (message.content.some((candidate) => candidate.type === "toolCall")) return undefined;
 		const text = messageText(message);
 		if (!text) return undefined;
 		return {

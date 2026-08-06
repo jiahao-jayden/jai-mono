@@ -35,7 +35,6 @@ import { CodingSkillsRuntime, type CodingSkillsRuntimeOptions } from "../skills"
 import {
 	type CodingToolOptions,
 	createCodingTools,
-	createReportProgressTool,
 	createSpawnAgentTool,
 	createUpdateTodosTool,
 	type SessionTodoItem,
@@ -277,7 +276,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				model,
 				provider,
 				tools: [
-					createReportProgressTool(),
 					...(options.executionContext.localFileAccess
 						? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
 						: []),
@@ -320,7 +318,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		model,
 		provider,
 		tools: [
-			createReportProgressTool(),
 			updateTodosTool,
 			spawnAgentTool,
 			...(options.executionContext.localFileAccess

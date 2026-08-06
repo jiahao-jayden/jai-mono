@@ -1,10 +1,9 @@
 import type { AgentMessage, SessionSnapshot } from "@jai/agent";
-import { REPORT_PROGRESS_TOOL_NAME, SPAWN_AGENT_TOOL_NAME, UPDATE_TODOS_TOOL_NAME } from "@jai/coding/tools";
+import { SPAWN_AGENT_TOOL_NAME, UPDATE_TODOS_TOOL_NAME } from "@jai/coding/tools";
 import type {
 	DesktopAgentSnapshot,
 	DesktopCompactionItem,
 	DesktopMessageItem,
-	DesktopProgressItem,
 	DesktopSlashInvocation,
 	DesktopSubagentItem,
 	DesktopThinkingItem,
@@ -29,20 +28,13 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 		}
 		if (entry.type !== "message") continue;
 		if (entry.message.role === "assistant") {
-			const progress = entry.message.content.find(
-				(part) => part.type === "toolCall" && part.name === REPORT_PROGRESS_TOOL_NAME,
-			);
-			if (progress?.type === "toolCall") currentTurnId = `progress:${progress.id}`;
 			for (const item of projectAssistantItems(entry.id, entry.message, currentTurnId)) {
 				items.set(item.id, item);
 			}
 			continue;
 		}
 		if (entry.message.role === "toolResult") {
-			if (
-				entry.message.toolName === REPORT_PROGRESS_TOOL_NAME ||
-				entry.message.toolName === UPDATE_TODOS_TOOL_NAME
-			) {
+			if (entry.message.toolName === UPDATE_TODOS_TOOL_NAME) {
 				continue;
 			}
 			if (entry.message.toolName === SPAWN_AGENT_TOOL_NAME) {
@@ -98,16 +90,16 @@ function projectAssistantItems(
 	entryId: string,
 	message: Extract<AgentMessage, { role: "assistant" }>,
 	currentTurnId: string | undefined,
-): (DesktopMessageItem | DesktopThinkingItem | DesktopProgressItem | DesktopToolItem | DesktopSubagentItem)[] {
+): (DesktopMessageItem | DesktopThinkingItem | DesktopToolItem | DesktopSubagentItem)[] {
 	const result: (
 		| DesktopMessageItem
 		| DesktopThinkingItem
-		| DesktopProgressItem
 		| DesktopToolItem
 		| DesktopSubagentItem
 	)[] = [];
 	const turnId = currentTurnId ?? `message:${entryId}`;
 	const text = messageText(message);
+	const hasToolCall = message.content.some((part) => part.type === "toolCall");
 	let textProjected = false;
 
 	for (const [contentIndex, part] of message.content.entries()) {
@@ -124,21 +116,6 @@ function projectAssistantItems(
 			continue;
 		}
 		if (part.type === "toolCall") {
-			if (part.name === REPORT_PROGRESS_TOOL_NAME) {
-				const title = stringValue(part.arguments, "title");
-				const detail = stringValue(part.arguments, "detail");
-				if (title && detail) {
-					result.push({
-						kind: "progress",
-						id: `progress:${part.id}`,
-						turnId,
-						title,
-						detail,
-						timestamp: message.timestamp,
-					});
-				}
-				continue;
-			}
 			if (part.name === UPDATE_TODOS_TOOL_NAME) continue;
 			if (part.name === SPAWN_AGENT_TOOL_NAME) {
 				const title = stringValue(part.arguments, "title");
@@ -165,7 +142,7 @@ function projectAssistantItems(
 			});
 			continue;
 		}
-		if (!textProjected && text) {
+		if (!hasToolCall && !textProjected && text) {
 			result.push(projectMessage(entryId, message));
 			textProjected = true;
 		}

@@ -35,7 +35,7 @@ export function evaluatePermission(
 ): PermissionDecision {
 	const resolved = normalizePermissionSettings(settings);
 	validateCall(call);
-	if (call.toolName === "ReportProgress" || call.toolName === "UpdateTodos" || call.toolName === "SpawnAgent") {
+	if (call.toolName === "UpdateTodos" || call.toolName === "SpawnAgent") {
 		return decision("allow", "built-in", "Internal agent coordination has no direct external side effects");
 	}
 	if (

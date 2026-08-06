@@ -239,12 +239,6 @@ describe("permission middleware", () => {
 describe("permission evaluation", () => {
 	test("内部协调工具在所有权限模式下直接允许", () => {
 		expect(
-			evaluatePermission(call("ReportProgress", { title: "Inspecting", detail: "Reading files." }), {
-				defaultMode: "dontAsk",
-				deny: ["ReportProgress"],
-			}),
-		).toMatchObject({ behavior: "allow", source: "built-in" });
-		expect(
 			evaluatePermission(call("SpawnAgent", { title: "Inspect", task: "Inspect the repository." }), {
 				defaultMode: "dontAsk",
 				deny: ["SpawnAgent"],

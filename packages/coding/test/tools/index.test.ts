@@ -16,18 +16,6 @@ describe("createCodingTools", () => {
 		]);
 	});
 
-	test("ReportProgress is a side-effect-free structured narration tool", async () => {
-		const tool = sdk.createReportProgressTool();
-
-		expect(tool).toMatchObject({ name: "ReportProgress", executionMode: "parallel" });
-		expect(tool.title?.({ title: "Inspecting storage", detail: "Reading session files." })).toBe(
-			"Inspecting storage",
-		);
-		expect(await tool.execute("progress-1", { title: "Inspecting storage", detail: "Reading session files." })).toEqual({
-			content: [{ type: "text", text: "Progress reported." }],
-		});
-	});
-
 	test("UpdateTodos replaces the complete session checklist", async () => {
 		const replaced: sdk.SessionTodoItem[][] = [];
 		const tool = sdk.createUpdateTodosTool(async (items) => {
