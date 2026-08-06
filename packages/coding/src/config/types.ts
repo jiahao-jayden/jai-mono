@@ -75,8 +75,6 @@ export type ConfigWatchEvent<TSchema extends TObject = TObject> =
 
 export interface CodingConfigStoreOptions {
 	readonly projectRoot?: string;
-	/** @deprecated Use projectRoot. */
-	readonly workspaceRoot?: string;
 	readonly homeDir?: string;
 	readonly environment?: Readonly<Record<string, string | undefined>>;
 	readonly workspaceTrusted?: boolean;

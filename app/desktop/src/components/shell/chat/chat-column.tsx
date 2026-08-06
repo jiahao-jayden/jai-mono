@@ -8,6 +8,7 @@ import {
 	type RefObject,
 	type TouchEvent,
 	useCallback,
+	useEffect,
 	useLayoutEffect,
 	useRef,
 	useState,
@@ -19,10 +20,11 @@ import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
+	DesktopAgentMode,
 	DesktopPermissionItem,
+	DesktopProject,
 	DesktopProviderConfigSnapshot,
 	DesktopTranscriptItem,
-	DesktopWorkspace,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -36,12 +38,13 @@ import {
 	isTranscriptAwayFromBottom,
 	isTranscriptScrollKey,
 	promptAnchorScrollTop,
+	transcriptPromptAnchorRatio,
 } from "./transcript-scroll";
 
 interface ChatColumnProps {
 	session?: CodingSession;
-	workspace?: DesktopWorkspace;
-	workspaces: readonly DesktopWorkspace[];
+	project?: DesktopProject;
+	projects: readonly DesktopProject[];
 	chat: Chat;
 	draft: string;
 	queue: readonly QueuedMessage[];
@@ -51,28 +54,30 @@ interface ChatColumnProps {
 	onReorderQueuedMessages(orderedIds: readonly string[]): void;
 	providerConfig?: DesktopProviderConfigSnapshot;
 	selectedModelRef: string;
+	selectedAgentMode: DesktopAgentMode;
 	providerLoading: boolean;
 	providerError: boolean;
-	workspaceBusy: boolean;
-	workspaceLoading: boolean;
-	workspaceLoadError: boolean;
-	workspaceError?: string;
+	projectBusy: boolean;
+	projectLoading: boolean;
+	projectLoadError: boolean;
+	projectError?: string;
 	sidebarOpen: boolean;
 	rightPanelOpen: boolean;
 	onToggleSidebar(): void;
 	onToggleRightPanel(): void;
 	onOpenProviderSettings(): void;
 	onSelectProviderModel(modelRef: string): void;
-	onChooseWorkspace(workspace: DesktopWorkspace): Promise<void>;
-	onAddWorkspace(): Promise<void>;
-	onRetryWorkspaces(): void;
+	onSelectAgentMode(mode: DesktopAgentMode): void;
+	onChooseProject(project: DesktopProject): Promise<void>;
+	onAddProject(): Promise<void>;
+	onRetryProjects(): void;
 	onRenameSession(sessionId: string, title: string): Promise<void>;
 }
 
 export function ChatColumn({
 	session,
-	workspace,
-	workspaces,
+	project,
+	projects,
 	chat,
 	draft,
 	queue,
@@ -82,21 +87,23 @@ export function ChatColumn({
 	onReorderQueuedMessages,
 	providerConfig,
 	selectedModelRef,
+	selectedAgentMode,
 	providerLoading,
 	providerError,
-	workspaceBusy,
-	workspaceLoading,
-	workspaceLoadError,
-	workspaceError,
+	projectBusy,
+	projectLoading,
+	projectLoadError,
+	projectError,
 	sidebarOpen,
 	rightPanelOpen,
 	onToggleSidebar,
 	onToggleRightPanel,
 	onOpenProviderSettings,
 	onSelectProviderModel,
-	onChooseWorkspace,
-	onAddWorkspace,
-	onRetryWorkspaces,
+	onSelectAgentMode,
+	onChooseProject,
+	onAddProject,
+	onRetryProjects,
 	onRenameSession,
 }: ChatColumnProps) {
 	const icons = useIcons();
@@ -127,9 +134,8 @@ export function ChatColumn({
 		reducedMotion,
 	});
 
-	const workspaceLabel =
-		workspace?.displayName ??
-		(workspaceLoading ? "Loading workspace…" : workspaceLoadError ? "Workspaces unavailable" : null);
+	const projectLabel =
+		project?.displayName ?? (projectLoading ? "Loading project…" : projectLoadError ? "Projects unavailable" : null);
 
 	const drag = { WebkitAppRegion: "drag" } as CSSProperties;
 	const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
@@ -186,19 +192,19 @@ export function ChatColumn({
 							</Button>
 						</div>
 					) : null}
-					{workspaceLabel ? (
+					{projectLabel ? (
 						<>
-							{workspace && !workspace.available ? (
+							{project && !project.available ? (
 								<FolderOffIcon size={16} className="shrink-0 text-destructive" />
 							) : (
 								<FolderIcon size={16} className="shrink-0 text-muted-foreground" />
 							)}
-							<span className="max-w-40 truncate font-semibold">{workspaceLabel}</span>
+							<span className="max-w-40 truncate font-semibold">{projectLabel}</span>
 						</>
 					) : null}
 					{session ? (
 						<>
-							{workspaceLabel ? <span className="text-muted-foreground/40">/</span> : null}
+							{projectLabel ? <span className="text-muted-foreground/40">/</span> : null}
 							{editingTitle ? (
 								<Input
 									autoFocus
@@ -289,28 +295,30 @@ export function ChatColumn({
 							onSend={chat.sendMessage}
 							onStop={chat.stop}
 							status={chat.status}
-							disabled={workspace?.available === false}
+							disabled={project?.available === false}
 							queue={queue}
 							onEditQueuedMessage={onEditQueuedMessage}
 							onRemoveQueuedMessage={onRemoveQueuedMessage}
 							onReorderQueuedMessages={onReorderQueuedMessages}
-							workspace={workspace}
-							workspaces={workspaces}
-							workspaceBusy={workspaceBusy}
-							workspaceLoading={workspaceLoading}
-							workspaceLoadError={workspaceLoadError}
-							onChooseWorkspace={onChooseWorkspace}
-							onAddWorkspace={onAddWorkspace}
-							onRetryWorkspaces={onRetryWorkspaces}
+							project={project}
+							projects={projects}
+							projectBusy={projectBusy}
+							projectLoading={projectLoading}
+							projectLoadError={projectLoadError}
+							onChooseProject={onChooseProject}
+							onAddProject={onAddProject}
+							onRetryProjects={onRetryProjects}
 							providerConfig={providerConfig}
 							selectedModelRef={selectedModelRef}
+							selectedAgentMode={selectedAgentMode}
 							providerLoading={providerLoading}
 							providerError={providerError}
 							onOpenProviderSettings={onOpenProviderSettings}
 							onSelectProviderModel={onSelectProviderModel}
+							onSelectAgentMode={onSelectAgentMode}
 							large
 						/>
-						<ComposerError message={chat.error || workspaceError} />
+						<ComposerError message={chat.error || projectError} />
 					</div>
 				</div>
 			) : (
@@ -332,8 +340,12 @@ export function ChatColumn({
 									<p className="py-16 text-center text-[13px] text-muted-foreground">这个会话还没有消息。</p>
 								) : null}
 								<TranscriptItems items={transcriptItems} loading={chat.isLoading} />
-								{transcriptScroll.reservesTailSpace ? (
-									<div aria-hidden="true" className="h-[45vh] min-h-48 shrink-0" />
+								{transcriptScroll.tailSpace > 0 ? (
+									<div
+										aria-hidden="true"
+										className="shrink-0"
+										style={{ height: transcriptScroll.tailSpace }}
+									/>
 								) : null}
 							</div>
 						</div>
@@ -365,27 +377,29 @@ export function ChatColumn({
 								onSend={chat.sendMessage}
 								onStop={chat.stop}
 								status={chat.status}
-								disabled={workspace?.available === false}
+								disabled={project?.available === false}
 								queue={queue}
 								onEditQueuedMessage={onEditQueuedMessage}
 								onRemoveQueuedMessage={onRemoveQueuedMessage}
 								onReorderQueuedMessages={onReorderQueuedMessages}
-								workspace={workspace}
-								workspaces={workspaces}
-								workspaceBusy={workspaceBusy}
-								workspaceLoading={workspaceLoading}
-								workspaceLoadError={workspaceLoadError}
-								onChooseWorkspace={onChooseWorkspace}
-								onAddWorkspace={onAddWorkspace}
-								onRetryWorkspaces={onRetryWorkspaces}
+								project={project}
+								projects={projects}
+								projectBusy={projectBusy}
+								projectLoading={projectLoading}
+								projectLoadError={projectLoadError}
+								onChooseProject={onChooseProject}
+								onAddProject={onAddProject}
+								onRetryProjects={onRetryProjects}
 								providerConfig={providerConfig}
 								selectedModelRef={selectedModelRef}
+								selectedAgentMode={selectedAgentMode}
 								providerLoading={providerLoading}
 								providerError={providerError}
 								onOpenProviderSettings={onOpenProviderSettings}
 								onSelectProviderModel={onSelectProviderModel}
+								onSelectAgentMode={onSelectAgentMode}
 							/>
-							<ComposerError message={chat.error || workspaceError} />
+							<ComposerError message={chat.error || projectError} />
 						</div>
 					</div>
 				</>
@@ -417,10 +431,95 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 		awaitingSnapshot: true,
 		followsNewResponse: false,
 		lastUserMessageId: undefined as string | undefined,
+		expectedScrollTop: 0,
 	});
-	const [reservesTailSpace, setReservesTailSpace] = useState(false);
+	const [tailSpace, setTailSpace] = useState(0);
+	const tailSpaceRef = useRef(0);
+	const promptScrollFrameRef = useRef<number | undefined>(undefined);
+	const streamingScrollFrameRef = useRef<number | undefined>(undefined);
+	const streamingScrollTargetRef = useRef(0);
+	const streamingScrollTimestampRef = useRef<number | undefined>(undefined);
+	const anchoringRef = useRef(false);
+	const anchorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	const [showMessageScroller, setShowMessageScroller] = useState(false);
 	const pointerStartRef = useRef<{ x: number; y: number } | undefined>(undefined);
+
+	// Marks a stretch of programmatic smooth scrolling (prompt anchoring, jump
+	// to bottom) so onScroll's user-scroll detector doesn't mistake the
+	// in-flight animation frames for a manual scroll and detach mid-glide.
+	const beginAnchoredScroll = useCallback(() => {
+		anchoringRef.current = true;
+		if (anchorTimerRef.current) clearTimeout(anchorTimerRef.current);
+		anchorTimerRef.current = setTimeout(() => {
+			anchoringRef.current = false;
+			anchorTimerRef.current = undefined;
+			const element = ref.current;
+			if (element) stateRef.current.expectedScrollTop = element.scrollTop;
+		}, 600);
+	}, [ref]);
+
+	const applyTailSpace = useCallback((next: number) => {
+		tailSpaceRef.current = next;
+		setTailSpace((current) => (Math.abs(current - next) < 1 ? current : next));
+	}, []);
+
+	const cancelStreamingScroll = useCallback(() => {
+		if (streamingScrollFrameRef.current !== undefined) {
+			cancelAnimationFrame(streamingScrollFrameRef.current);
+			streamingScrollFrameRef.current = undefined;
+		}
+		streamingScrollTimestampRef.current = undefined;
+		const element = ref.current;
+		if (element) streamingScrollTargetRef.current = element.scrollTop;
+	}, [ref]);
+
+	const followStreamingResponse = useCallback(
+		(element: HTMLDivElement, messageId: string) => {
+			const response = findTranscriptItemElement(element, messageId);
+			if (!response) return;
+			const responseBottom =
+				element.scrollTop + response.getBoundingClientRect().bottom - element.getBoundingClientRect().top;
+			const target = Math.min(
+				comfortableScrollTop(element.scrollTop, element.clientHeight, responseBottom),
+				element.scrollHeight - element.clientHeight,
+			);
+			streamingScrollTargetRef.current = target;
+			if (target <= element.scrollTop + 0.5) return;
+
+			if (reducedMotion) {
+				element.scrollTop = target;
+				stateRef.current.expectedScrollTop = element.scrollTop;
+				return;
+			}
+			if (streamingScrollFrameRef.current !== undefined) return;
+
+			const step = (timestamp: number) => {
+				const current = ref.current;
+				if (!current || !stateRef.current.followsNewResponse) {
+					streamingScrollFrameRef.current = undefined;
+					streamingScrollTimestampRef.current = undefined;
+					return;
+				}
+				const previousTimestamp = streamingScrollTimestampRef.current ?? timestamp;
+				const elapsed = Math.min(timestamp - previousTimestamp, 32);
+				streamingScrollTimestampRef.current = timestamp;
+				const distance = streamingScrollTargetRef.current - current.scrollTop;
+				if (distance <= 0.5) {
+					current.scrollTop = streamingScrollTargetRef.current;
+					stateRef.current.expectedScrollTop = current.scrollTop;
+					streamingScrollFrameRef.current = undefined;
+					streamingScrollTimestampRef.current = undefined;
+					return;
+				}
+				const progress = 1 - Math.exp(-elapsed / 72);
+				current.scrollTop += distance * progress;
+				stateRef.current.expectedScrollTop = current.scrollTop;
+				streamingScrollFrameRef.current = requestAnimationFrame(step);
+			};
+			streamingScrollFrameRef.current = requestAnimationFrame(step);
+		},
+		[reducedMotion, ref],
+	);
 
 	const syncMessageScroller = useCallback(() => {
 		const element = ref.current;
@@ -436,37 +535,44 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 
 	const stopFollowing = useCallback(() => {
 		stateRef.current.followsNewResponse = false;
+		cancelStreamingScroll();
 		const element = ref.current;
 		if (element) element.scrollTo({ top: element.scrollTop, behavior: "auto" });
-	}, [ref]);
+	}, [cancelStreamingScroll, ref]);
 
 	const scrollToBottom = useCallback(() => {
 		const element = ref.current;
 		if (!element) return;
+		cancelStreamingScroll();
 		stateRef.current.followsNewResponse = true;
 		setShowMessageScroller(false);
+		beginAnchoredScroll();
 		element.scrollTo({
 			top: element.scrollHeight,
 			behavior: reducedMotion ? "auto" : "smooth",
 		});
-	}, [reducedMotion, ref]);
+	}, [beginAnchoredScroll, cancelStreamingScroll, reducedMotion, ref]);
 
 	useLayoutEffect(() => {
 		if (stateRef.current.sessionId !== sessionId) {
+			cancelStreamingScroll();
 			stateRef.current = {
 				sessionId,
 				awaitingSnapshot: true,
 				followsNewResponse: false,
 				lastUserMessageId: undefined,
+				expectedScrollTop: 0,
 			};
-			setReservesTailSpace(false);
+			anchoringRef.current = false;
+			applyTailSpace(0);
 			setShowMessageScroller(false);
 		}
 		if (loading) {
+			cancelStreamingScroll();
 			stateRef.current.awaitingSnapshot = true;
 			stateRef.current.followsNewResponse = false;
 			stateRef.current.lastUserMessageId = undefined;
-			setReservesTailSpace(false);
+			applyTailSpace(0);
 			setShowMessageScroller(false);
 			return;
 		}
@@ -477,41 +583,82 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 		if (stateRef.current.awaitingSnapshot) {
 			stateRef.current.awaitingSnapshot = false;
 			stateRef.current.lastUserMessageId = latestUser?.id;
-			setReservesTailSpace(false);
+			applyTailSpace(0);
 			element.scrollTop = element.scrollHeight;
+			stateRef.current.expectedScrollTop = element.scrollTop;
 			setShowMessageScroller(false);
 			return;
 		}
 
 		if (latestUser && latestUser.id !== stateRef.current.lastUserMessageId) {
-			stateRef.current.lastUserMessageId = latestUser.id;
+			cancelStreamingScroll();
+			const promptId = latestUser.id;
+			stateRef.current.lastUserMessageId = promptId;
 			stateRef.current.followsNewResponse = true;
-			setReservesTailSpace(true);
+			applyTailSpace(measureTailSpace(element, promptId, tailSpaceRef.current));
 			setShowMessageScroller(false);
-			scrollPromptIntoReadingPosition(element, latestUser.id, reducedMotion);
+			// Anchor the prompt to the top only after the spacer's height commits:
+			// scrolling now would clamp against the stale, spacer-less scrollHeight.
+			if (promptScrollFrameRef.current !== undefined) cancelAnimationFrame(promptScrollFrameRef.current);
+			promptScrollFrameRef.current = requestAnimationFrame(() => {
+				promptScrollFrameRef.current = undefined;
+				const current = ref.current;
+				if (!current) return;
+				beginAnchoredScroll();
+				scrollPromptIntoReadingPosition(current, promptId, reducedMotion);
+			});
 			return;
 		}
 
-		// The tail space only exists to let the just-sent prompt reach the top
-		// reading position while its reply streams in. Once the run finishes,
-		// reclaim it so the transcript doesn't keep a viewport-tall gap below.
-		if (!responding) {
-			stateRef.current.followsNewResponse = false;
-			setReservesTailSpace(false);
-			syncMessageScroller();
-			return;
-		}
+		// Keep the spacer sized to exactly what the latest prompt needs to sit at
+		// the top: it shrinks to zero as a long reply fills the viewport, and
+		// holds just enough for a short reply so the prompt never drops back down.
+		const promptId = stateRef.current.lastUserMessageId;
+		if (promptId) applyTailSpace(measureTailSpace(element, promptId, tailSpaceRef.current));
 
 		const latestAssistant = lastMessageForRole(items, "assistant");
-		if (stateRef.current.followsNewResponse && latestAssistant?.status === "streaming") {
-			keepStreamingResponseInComfortZone(element, latestAssistant.id);
+		if (responding && stateRef.current.followsNewResponse && latestAssistant?.status === "streaming") {
+			followStreamingResponse(element, latestAssistant.id);
 		}
 		syncMessageScroller();
-	}, [items, loading, responding, reducedMotion, ref, sessionId, syncMessageScroller]);
+	}, [
+		applyTailSpace,
+		beginAnchoredScroll,
+		cancelStreamingScroll,
+		followStreamingResponse,
+		items,
+		loading,
+		responding,
+		reducedMotion,
+		ref,
+		sessionId,
+		syncMessageScroller,
+	]);
+
+	useEffect(() => {
+		return () => {
+			if (promptScrollFrameRef.current !== undefined) cancelAnimationFrame(promptScrollFrameRef.current);
+			if (streamingScrollFrameRef.current !== undefined) cancelAnimationFrame(streamingScrollFrameRef.current);
+			if (anchorTimerRef.current) clearTimeout(anchorTimerRef.current);
+		};
+	}, []);
 
 	const onScroll = useCallback(() => {
+		const element = ref.current;
+		// A scrollTop that drifts from the last programmatic value while we're
+		// following a streaming reply means the user grabbed the scrollbar (or
+		// flung it) — release the follow so we stop fighting their scroll. The
+		// anchoring window suppresses this during our own smooth scrolls.
+		if (
+			element &&
+			stateRef.current.followsNewResponse &&
+			!anchoringRef.current &&
+			Math.abs(element.scrollTop - stateRef.current.expectedScrollTop) > 12
+		) {
+			stopFollowing();
+		}
 		syncMessageScroller();
-	}, [syncMessageScroller]);
+	}, [ref, stopFollowing, syncMessageScroller]);
 
 	const onWheel = useCallback(
 		(_event: WheelEvent<HTMLDivElement>) => {
@@ -551,7 +698,7 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 		onScroll,
 		onTouchMove,
 		onWheel,
-		reservesTailSpace,
+		tailSpace,
 		scrollToBottom,
 		showMessageScroller,
 	};
@@ -568,31 +715,39 @@ function lastMessageForRole(
 	return undefined;
 }
 
+function findTranscriptItemElement(element: HTMLDivElement, messageId: string): HTMLElement | undefined {
+	return [...element.querySelectorAll<HTMLElement>("[data-transcript-item-id]")].find(
+		(item) => item.dataset.transcriptItemId === messageId,
+	);
+}
+
+/**
+ * Height of the bottom spacer needed for `promptId` to rest at the top reading
+ * position. Content coordinates are transform-immune, so this stays stable
+ * regardless of the current scrollTop, and returns 0 once the reply below the
+ * prompt already fills the viewport.
+ */
+function measureTailSpace(element: HTMLDivElement, promptId: string, currentTail: number): number {
+	const prompt = findTranscriptItemElement(element, promptId);
+	if (!prompt) return currentTail;
+	const promptTop = element.scrollTop + prompt.getBoundingClientRect().top - element.getBoundingClientRect().top;
+	const contentBelowPrompt = element.scrollHeight - currentTail - promptTop;
+	const anchorOffset = element.clientHeight * transcriptPromptAnchorRatio;
+	return Math.max(0, element.clientHeight - anchorOffset - contentBelowPrompt);
+}
+
 function scrollPromptIntoReadingPosition(
 	element: HTMLDivElement,
 	messageId: string,
 	reducedMotion: boolean | null,
 ): void {
-	const prompt = [...element.querySelectorAll<HTMLElement>("[data-transcript-item-id]")].find(
-		(item) => item.dataset.transcriptItemId === messageId,
-	);
+	const prompt = findTranscriptItemElement(element, messageId);
 	if (!prompt) return;
 	const promptTop = element.scrollTop + prompt.getBoundingClientRect().top - element.getBoundingClientRect().top;
 	element.scrollTo({
-		top: promptAnchorScrollTop(promptTop),
+		top: promptAnchorScrollTop(promptTop, element.clientHeight),
 		behavior: reducedMotion ? "auto" : "smooth",
 	});
-}
-
-function keepStreamingResponseInComfortZone(element: HTMLDivElement, messageId: string): void {
-	const response = [...element.querySelectorAll<HTMLElement>("[data-transcript-item-id]")].find(
-		(item) => item.dataset.transcriptItemId === messageId,
-	);
-	if (!response) return;
-	const responseBottom =
-		element.scrollTop + response.getBoundingClientRect().bottom - element.getBoundingClientRect().top;
-	const nextScrollTop = comfortableScrollTop(element.scrollTop, element.clientHeight, responseBottom);
-	if (nextScrollTop > element.scrollTop) element.scrollTop = nextScrollTop;
 }
 
 function greeting(): string {

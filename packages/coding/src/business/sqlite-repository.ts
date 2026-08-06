@@ -4,21 +4,21 @@ import { DatabaseSync } from "node:sqlite";
 import {
 	databaseInvalidError,
 	databaseUnsupportedError,
+	projectNotFoundError,
+	projectPathConflictError,
 	sessionNotFoundError,
-	workspaceNotFoundError,
-	workspacePathConflictError,
 } from "./errors";
-import type { CodingBusinessRepository, CreateSessionRecord, CreateWorkspaceRecord } from "./repository";
+import type { CodingBusinessRepository, CreateProjectRecord, CreateSessionRecord } from "./repository";
 import type {
 	CodingSession,
+	Project,
 	ProviderModelInventory,
 	SessionListCursor,
 	SessionListPage,
-	SessionWorkspaceHistory,
-	Workspace,
+	SessionProjectHistory,
 } from "./types";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 export class SqliteCodingBusinessRepository implements CodingBusinessRepository {
 	readonly #database: DatabaseSync;
@@ -33,57 +33,57 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 		return new SqliteCodingBusinessRepository(new DatabaseSync(path));
 	}
 
-	createWorkspace(record: CreateWorkspaceRecord): Workspace {
+	createProject(record: CreateProjectRecord): Project {
 		try {
 			this.#database
 				.prepare(
-					`INSERT INTO workspaces
+					`INSERT INTO projects
 						(id, display_name, path, canonical_path, created_at, updated_at)
 					 VALUES (?, ?, ?, ?, ?, ?)`,
 				)
 				.run(record.id, record.displayName, record.path, record.canonicalPath, record.now, record.now);
 		} catch (error) {
-			if (this.findWorkspaceByCanonicalPath(record.canonicalPath)) {
-				throw workspacePathConflictError(record.canonicalPath, error);
+			if (this.findProjectByCanonicalPath(record.canonicalPath)) {
+				throw projectPathConflictError(record.canonicalPath, error);
 			}
 			throw error;
 		}
-		return this.#requireWorkspace(record.id);
+		return this.#requireProject(record.id);
 	}
 
-	getWorkspace(id: string): Workspace | undefined {
-		return mapWorkspace(
+	getProject(id: string): Project | undefined {
+		return mapProject(
 			this.#database
 				.prepare(
 					`SELECT id, display_name, path, canonical_path, created_at, updated_at
-					 FROM workspaces WHERE id = ?`,
+					 FROM projects WHERE id = ?`,
 				)
 				.get(id),
 		);
 	}
 
-	findWorkspaceByCanonicalPath(canonicalPath: string): Workspace | undefined {
-		return mapWorkspace(
+	findProjectByCanonicalPath(canonicalPath: string): Project | undefined {
+		return mapProject(
 			this.#database
 				.prepare(
 					`SELECT id, display_name, path, canonical_path, created_at, updated_at
-					 FROM workspaces WHERE canonical_path = ?`,
+					 FROM projects WHERE canonical_path = ?`,
 				)
 				.get(canonicalPath),
 		);
 	}
 
-	listWorkspaces(): Workspace[] {
+	listProjects(): Project[] {
 		return this.#database
 			.prepare(
 				`SELECT id, display_name, path, canonical_path, created_at, updated_at
-				 FROM workspaces ORDER BY created_at ASC, id ASC`,
+				 FROM projects ORDER BY created_at ASC, id ASC`,
 			)
 			.all()
-			.map((row) => mapWorkspace(row)!);
+			.map((row) => mapProject(row)!);
 	}
 
-	relinkWorkspace(
+	relinkProject(
 		id: string,
 		location: {
 			readonly displayName: string;
@@ -91,33 +91,33 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 			readonly canonicalPath: string;
 			readonly now: number;
 		},
-	): Workspace {
+	): Project {
 		try {
 			const result = this.#database
 				.prepare(
-					`UPDATE workspaces
+					`UPDATE projects
 					 SET display_name = ?, path = ?, canonical_path = ?, updated_at = ?
 					 WHERE id = ?`,
 				)
 				.run(location.displayName, location.path, location.canonicalPath, location.now, id);
-			if (result.changes === 0) throw workspaceNotFoundError(id);
+			if (result.changes === 0) throw projectNotFoundError(id);
 		} catch (error) {
-			const conflict = this.findWorkspaceByCanonicalPath(location.canonicalPath);
-			if (conflict && conflict.id !== id) throw workspacePathConflictError(location.canonicalPath, error);
+			const conflict = this.findProjectByCanonicalPath(location.canonicalPath);
+			if (conflict && conflict.id !== id) throw projectPathConflictError(location.canonicalPath, error);
 			throw error;
 		}
-		return this.#requireWorkspace(id);
+		return this.#requireProject(id);
 	}
 
 	createSession(record: CreateSessionRecord): CodingSession {
 		this.#database
 			.prepare(
 				`INSERT INTO sessions
-					(id, workspace_id, title, title_source, title_generation_attempted_at,
+					(id, project_id, title, title_source, title_generation_attempted_at,
 					 created_at, updated_at, last_activity_at)
 				 VALUES (?, ?, ?, 'fallback', NULL, ?, ?, ?)`,
 			)
-			.run(record.id, record.workspaceId, record.title, record.now, record.now, record.now);
+			.run(record.id, record.projectId, record.title, record.now, record.now, record.now);
 		return this.#requireSession(record.id);
 	}
 
@@ -191,37 +191,37 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 		return this.#requireSession(id);
 	}
 
-	moveSession(id: string, toWorkspaceId: string | null, now: number): CodingSession {
+	moveSession(id: string, toProjectId: string | null, now: number): CodingSession {
 		const current = this.#requireSession(id);
-		if (toWorkspaceId !== null) this.#requireWorkspace(toWorkspaceId);
-		if (current.workspaceId === toWorkspaceId) return current;
+		if (toProjectId !== null) this.#requireProject(toProjectId);
+		if (current.projectId === toProjectId) return current;
 
 		this.#transaction(() => {
 			this.#database
-				.prepare("UPDATE sessions SET workspace_id = ?, updated_at = ? WHERE id = ?")
-				.run(toWorkspaceId, now, id);
+				.prepare("UPDATE sessions SET project_id = ?, updated_at = ? WHERE id = ?")
+				.run(toProjectId, now, id);
 			this.#database
 				.prepare(
-					`INSERT INTO session_workspace_history
-						(session_id, from_workspace_id, to_workspace_id, moved_at)
+					`INSERT INTO session_project_history
+						(session_id, from_project_id, to_project_id, moved_at)
 					 VALUES (?, ?, ?, ?)`,
 				)
-				.run(id, current.workspaceId, toWorkspaceId, now);
+				.run(id, current.projectId, toProjectId, now);
 		});
 		return this.#requireSession(id);
 	}
 
-	listWorkspaceHistory(sessionId: string): SessionWorkspaceHistory[] {
+	listProjectHistory(sessionId: string): SessionProjectHistory[] {
 		this.#requireSession(sessionId);
 		return this.#database
 			.prepare(
-				`SELECT id, session_id, from_workspace_id, to_workspace_id, moved_at
-				 FROM session_workspace_history
+				`SELECT id, session_id, from_project_id, to_project_id, moved_at
+				 FROM session_project_history
 				 WHERE session_id = ?
 				 ORDER BY id ASC`,
 			)
 			.all(sessionId)
-			.map((row) => mapWorkspaceHistory(row));
+			.map((row) => mapProjectHistory(row));
 	}
 
 	getProviderModelInventory(profileId: string): ProviderModelInventory | undefined {
@@ -272,7 +272,7 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 		this.#database.exec("PRAGMA busy_timeout = 5000");
 		const current = this.#database.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined;
 		const version = current?.user_version ?? 0;
-		if (version > SCHEMA_VERSION) {
+		if (version !== 0 && version !== SCHEMA_VERSION) {
 			throw databaseUnsupportedError(version);
 		}
 		if (version === SCHEMA_VERSION) return;
@@ -280,7 +280,7 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 		this.#transaction(() => {
 			if (version === 0) {
 				this.#database.exec(`
-				CREATE TABLE workspaces (
+				CREATE TABLE projects (
 					id TEXT PRIMARY KEY,
 					display_name TEXT NOT NULL,
 					path TEXT NOT NULL,
@@ -291,7 +291,7 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 
 				CREATE TABLE sessions (
 					id TEXT PRIMARY KEY,
-					workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL,
+					project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
 					title TEXT NOT NULL,
 					title_source TEXT NOT NULL
 						CHECK (title_source IN ('fallback', 'generated', 'manual')),
@@ -301,18 +301,18 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 					last_activity_at INTEGER NOT NULL
 				);
 
-				CREATE TABLE session_workspace_history (
+				CREATE TABLE session_project_history (
 					id INTEGER PRIMARY KEY,
 					session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-					from_workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL,
-					to_workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL,
+					from_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+					to_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
 					moved_at INTEGER NOT NULL
 				);
 
 				CREATE INDEX sessions_recents
 					ON sessions(last_activity_at DESC, id DESC);
-				CREATE INDEX sessions_workspace
-					ON sessions(workspace_id, last_activity_at DESC, id DESC);
+				CREATE INDEX sessions_project
+					ON sessions(project_id, last_activity_at DESC, id DESC);
 				CREATE TABLE provider_model_inventory (
 					profile_id TEXT PRIMARY KEY,
 					model_ids_json TEXT NOT NULL,
@@ -322,16 +322,6 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 			`);
 				return;
 			}
-			if (version === 1) {
-				this.#database.exec(`
-					CREATE TABLE provider_model_inventory (
-						profile_id TEXT PRIMARY KEY,
-						model_ids_json TEXT NOT NULL,
-						fetched_at INTEGER NOT NULL
-					);
-					PRAGMA user_version = ${SCHEMA_VERSION};
-				`);
-			}
 		});
 	}
 
@@ -339,10 +329,10 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 		return this.#database.prepare(`${sessionSelect()} WHERE id = ?`);
 	}
 
-	#requireWorkspace(id: string): Workspace {
-		const workspace = this.getWorkspace(id);
-		if (!workspace) throw workspaceNotFoundError(id);
-		return workspace;
+	#requireProject(id: string): Project {
+		const project = this.getProject(id);
+		if (!project) throw projectNotFoundError(id);
+		return project;
 	}
 
 	#requireSession(id: string): CodingSession {
@@ -370,12 +360,12 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 }
 
 function sessionSelect(): string {
-	return `SELECT id, workspace_id, title, title_source, title_generation_attempted_at,
+	return `SELECT id, project_id, title, title_source, title_generation_attempted_at,
 		created_at, updated_at, last_activity_at
 		FROM sessions`;
 }
 
-function mapWorkspace(value: unknown): Workspace | undefined {
+function mapProject(value: unknown): Project | undefined {
 	if (!isRow(value)) return undefined;
 	return {
 		id: stringColumn(value, "id"),
@@ -389,11 +379,11 @@ function mapWorkspace(value: unknown): Workspace | undefined {
 
 function mapSession(value: unknown): CodingSession | undefined {
 	if (!isRow(value)) return undefined;
-	const workspaceId = value.workspace_id;
+	const projectId = value.project_id;
 	const titleGenerationAttemptedAt = value.title_generation_attempted_at;
 	return {
 		id: stringColumn(value, "id"),
-		workspaceId: workspaceId === null ? null : stringColumn(value, "workspace_id"),
+		projectId: projectId === null ? null : stringColumn(value, "project_id"),
 		title: stringColumn(value, "title"),
 		titleSource: stringColumn(value, "title_source") as CodingSession["titleSource"],
 		titleGenerationAttemptedAt:
@@ -404,13 +394,13 @@ function mapSession(value: unknown): CodingSession | undefined {
 	};
 }
 
-function mapWorkspaceHistory(value: unknown): SessionWorkspaceHistory {
-	if (!isRow(value)) throw databaseInvalidError("Invalid session workspace history row");
+function mapProjectHistory(value: unknown): SessionProjectHistory {
+	if (!isRow(value)) throw databaseInvalidError("Invalid session project history row");
 	return {
 		id: numberColumn(value, "id"),
 		sessionId: stringColumn(value, "session_id"),
-		fromWorkspaceId: nullableStringColumn(value, "from_workspace_id"),
-		toWorkspaceId: nullableStringColumn(value, "to_workspace_id"),
+		fromProjectId: nullableStringColumn(value, "from_project_id"),
+		toProjectId: nullableStringColumn(value, "to_project_id"),
 		movedAt: numberColumn(value, "moved_at"),
 	};
 }

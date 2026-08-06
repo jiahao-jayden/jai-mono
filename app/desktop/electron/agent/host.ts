@@ -13,6 +13,7 @@ import type {
 	DesktopAgentEvent,
 	DesktopAgentEventEnvelope,
 	DesktopAgentMessageInput,
+	DesktopAgentMode,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
 	DesktopMessageItem,
@@ -58,6 +59,7 @@ export interface HostedCodingAgent {
 export interface DesktopAgentFactoryContext {
 	readonly sessionId: string;
 	readonly modelRef: string;
+	readonly mode: DesktopAgentMode;
 	readonly requestApproval: (
 		request: PermissionApprovalRequest,
 		signal?: AbortSignal,
@@ -76,6 +78,7 @@ export interface DesktopRunCompletedContext {
 interface SessionRuntime {
 	readonly sessionId: string;
 	modelRef: string;
+	mode: DesktopAgentMode;
 	agent: HostedCodingAgent;
 	readonly items: Map<string, DesktopTranscriptItem>;
 	unsubscribe: () => void;
@@ -253,11 +256,14 @@ export class DesktopAgentHost {
 	async #getOrCreate(input: DesktopAgentMessageInput): Promise<SessionRuntime> {
 		const existing = this.#sessions.get(input.sessionId);
 		if (existing) {
-			if (existing.status === "running" || existing.modelRef === input.modelRef) return existing;
+			if (existing.status === "running" || (existing.modelRef === input.modelRef && existing.mode === input.mode)) {
+				return existing;
+			}
 			if (existing.rebinding) await existing.rebinding;
-			if (existing.modelRef === input.modelRef) return existing;
+			if (existing.modelRef === input.modelRef && existing.mode === input.mode) return existing;
 			const rebinding = this.#rebindRuntime(existing, async () => {
 				existing.modelRef = input.modelRef;
+				existing.mode = input.mode;
 			});
 			existing.rebinding = rebinding;
 			try {
@@ -285,10 +291,11 @@ export class DesktopAgentHost {
 	}
 
 	async #createRuntime(input: DesktopAgentMessageInput): Promise<SessionRuntime> {
-		const agent = await this.#createAgent(input.sessionId, input.modelRef);
+		const agent = await this.#createAgent(input.sessionId, input.modelRef, input.mode);
 		const runtime: SessionRuntime = {
 			sessionId: input.sessionId,
 			modelRef: input.modelRef,
+			mode: input.mode,
 			agent,
 			items: new Map(),
 			unsubscribe: () => {},
@@ -308,10 +315,11 @@ export class DesktopAgentHost {
 		return runtime;
 	}
 
-	#createAgent(sessionId: string, modelRef: string): Promise<HostedCodingAgent> {
+	#createAgent(sessionId: string, modelRef: string, mode: DesktopAgentMode): Promise<HostedCodingAgent> {
 		return this.#factory!({
 			sessionId,
 			modelRef,
+			mode,
 			requestApproval: (request, signal) => this.#requestApproval(sessionId, request, signal),
 		});
 	}
@@ -326,7 +334,7 @@ export class DesktopAgentHost {
 		await operation();
 		let replacement: HostedCodingAgent;
 		try {
-			replacement = await this.#createAgent(runtime.sessionId, runtime.modelRef);
+			replacement = await this.#createAgent(runtime.sessionId, runtime.modelRef, runtime.mode);
 		} catch (error) {
 			this.closeSession(runtime.sessionId);
 			throw error;

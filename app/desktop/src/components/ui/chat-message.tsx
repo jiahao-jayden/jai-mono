@@ -125,10 +125,9 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
         role="article"
         aria-label={isUser ? "Your message" : "Assistant response"}
         layout={shouldAnimate ? "position" : false}
-        initial={shouldAnimate ? { opacity: 0, y: 8, scale: 0.96 } : false}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
+        initial={shouldAnimate ? { opacity: 0, y: 8 } : false}
+        animate={{ opacity: 1, y: 0 }}
         transition={shouldAnimate ? spring.moderate : { duration: 0 }}
-        style={{ transformOrigin: isUser ? "bottom right" : "bottom left" }}
         className={cn(
           "group flex max-w-[80%] flex-col gap-1.5",
           isUser ? "items-end self-end" : "items-start self-start",

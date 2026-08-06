@@ -44,10 +44,10 @@ export interface ConfigScopeSnapshot<TSchema extends TObject> {
 const scopes = ["user", "project-shared", "project-local"] as const;
 
 export function resolveCodingConfigPaths(
-	options: Pick<CodingConfigStoreOptions, "homeDir" | "projectRoot" | "workspaceRoot">,
+	options: Pick<CodingConfigStoreOptions, "homeDir" | "projectRoot">,
 ): ConfigPaths {
 	const home = options.homeDir ?? homedir();
-	const projectRoot = options.projectRoot ?? options.workspaceRoot;
+	const projectRoot = options.projectRoot;
 	return {
 		user: join(home, ".jai", "settings.json"),
 		"project-shared": projectRoot ? join(projectRoot, ".jai", "settings.json") : undefined,

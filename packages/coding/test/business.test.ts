@@ -9,16 +9,16 @@ import { getErrorCode } from "@jai/common";
 import { CodingBusinessService } from "../src/business/service";
 import type {
 	CodingBusinessRepository,
+	CreateProjectRecord,
 	CreateSessionRecord,
-	CreateWorkspaceRecord,
 } from "../src/business/repository";
 import type {
 	CodingSession,
 	ProviderModelInventory,
 	SessionListCursor,
 	SessionListPage,
-	SessionWorkspaceHistory,
-	Workspace,
+	SessionProjectHistory,
+	Project,
 } from "../src/business/types";
 
 const roots: string[] = [];
@@ -30,7 +30,7 @@ afterEach(async () => {
 });
 
 describe("CodingBusinessService", () => {
-	test("SQLite schema v1 upgrades inventory storage and preserves atomic replacements", async () => {
+	test("SQLite 使用 Project schema 并保留 inventory 原子替换", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-sqlite-inventory-"));
 		roots.push(root);
 		const outputDirectory = join(root, "bundle");
@@ -50,15 +50,15 @@ describe("CodingBusinessService", () => {
 			import { DatabaseSync } from "node:sqlite";
 			import { SqliteCodingBusinessRepository } from ${JSON.stringify(moduleUrl)};
 			const path = ${JSON.stringify(databasePath)};
-			const initial = await SqliteCodingBusinessRepository.open(path);
-			initial.close();
-			const legacy = new DatabaseSync(path);
-			legacy.exec("DROP TABLE provider_model_inventory; PRAGMA user_version = 1;");
-			legacy.close();
 			const repository = await SqliteCodingBusinessRepository.open(path);
+			const database = new DatabaseSync(path);
+			const schema = database.prepare(
+				"SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+			).all().map(({ name }) => name);
+			database.close();
 			repository.replaceProviderModelInventory({ profileId: "openai", modelIds: ["z", "a", "z"], fetchedAt: 1 });
 			repository.replaceProviderModelInventory({ profileId: "openai", modelIds: [], fetchedAt: 2 });
-			console.log(JSON.stringify(repository.getProviderModelInventory("openai")));
+			console.log(JSON.stringify({ schema, inventory: repository.getProviderModelInventory("openai") }));
 			repository.close();
 		`;
 		const process = Bun.spawn(["node", "--input-type=module", "--eval", program], {
@@ -67,7 +67,10 @@ describe("CodingBusinessService", () => {
 		});
 		expect(await process.exited).toBe(0);
 		expect(await new Response(process.stdout).text()).toContain(
-			JSON.stringify({ profileId: "openai", modelIds: [], fetchedAt: 2 }),
+			JSON.stringify({
+				schema: ["projects", "provider_model_inventory", "session_project_history", "sessions"],
+				inventory: { profileId: "openai", modelIds: [], fetchedAt: 2 },
+			}),
 		);
 	});
 
@@ -88,27 +91,27 @@ describe("CodingBusinessService", () => {
 		});
 	});
 
-	test("创建 Workspace 与扁平 Session，并解析 execution context", async () => {
-		const fixture = await createFixture(["workspace-1", "session-1"]);
+	test("创建 Project 与扁平 Session，并解析 execution context", async () => {
+		const fixture = await createFixture(["project-1", "session-1"]);
 		const folder = join(fixture.root, "project");
 		await mkdir(folder);
 
-		const workspace = await fixture.service.createWorkspace({ path: folder, displayName: "Project" });
+		const project = await fixture.service.createProject({ path: folder, displayName: "Project" });
 		const canonicalFolder = await realpath(folder);
 		const session = await fixture.service.createSession({
-			workspaceId: workspace.id,
+			projectId: project.id,
 			firstMessage: "  Implement   the feature  ",
 			appState: { selected: true },
 		});
 
-		expect(workspace.id).toBe("workspace-1");
+		expect(project.id).toBe("project-1");
 		expect(session).toMatchObject({
 			id: "session-1",
-			workspaceId: "workspace-1",
+			projectId: "project-1",
 			title: "Implement the feature",
 			titleSource: "fallback",
 		});
-		const sessionFile = join(fixture.dataRoot, "workspace-1", "sessions", "session-1.jsonl");
+		const sessionFile = join(fixture.dataRoot, "project", "sessions", "session-1.jsonl");
 		expect(await readFile(sessionFile, "utf8")).toContain('"type":"session"');
 		expect(await fixture.service.resolveExecutionContext(session.id)).toEqual({
 			localFileAccess: true,
@@ -125,7 +128,7 @@ describe("CodingBusinessService", () => {
 		});
 
 		expect(session.title).toBe("New session");
-		expect(session.workspaceId).toBeNull();
+		expect(session.projectId).toBeNull();
 		expect(await fixture.service.resolveExecutionContext(session.id)).toEqual({
 			localFileAccess: false,
 		});
@@ -170,85 +173,102 @@ describe("CodingBusinessService", () => {
 		});
 	});
 
-	test("移动 Session 会原子移动 JSONL 并记录 Workspace history", async () => {
-		const fixture = await createFixture(["workspace-1", "workspace-2", "session-1"]);
+	test("移动 Session 会原子移动 JSONL 并记录 Project history", async () => {
+		const fixture = await createFixture(["project-1", "project-2", "session-1"]);
 		const firstFolder = join(fixture.root, "first");
 		const secondFolder = join(fixture.root, "second");
 		await Promise.all([mkdir(firstFolder), mkdir(secondFolder)]);
-		const first = await fixture.service.createWorkspace({ path: firstFolder });
-		const second = await fixture.service.createWorkspace({ path: secondFolder });
+		const first = await fixture.service.createProject({ path: firstFolder });
+		const second = await fixture.service.createProject({ path: secondFolder });
 		const session = await fixture.service.createSession({
-			workspaceId: first.id,
+			projectId: first.id,
 			firstMessage: "Move me",
 		});
 		const source = fixture.service.sessionFilePath(session.id, first.id);
 
 		const moved = await fixture.service.moveSession({
 			sessionId: session.id,
-			toWorkspaceId: second.id,
+			toProjectId: second.id,
 		});
 
 		const destination = fixture.service.sessionFilePath(session.id, second.id);
-		expect(moved.workspaceId).toBe(second.id);
+		expect(moved.projectId).toBe(second.id);
 		expect(await fileExists(source)).toBe(false);
 		expect(await fileExists(destination)).toBe(true);
-		expect(fixture.service.listWorkspaceHistory(session.id)).toEqual([
+		expect(fixture.service.listProjectHistory(session.id)).toEqual([
 			{
 				id: 1,
 				sessionId: session.id,
-				fromWorkspaceId: first.id,
-				toWorkspaceId: second.id,
+				fromProjectId: first.id,
+				toProjectId: second.id,
 				movedAt: 1003,
 			},
 		]);
 	});
 
 	test("按实际文件位置修复 SQLite 归属", async () => {
-		const fixture = await createFixture(["workspace-1", "workspace-2", "session-1"]);
+		const fixture = await createFixture(["project-1", "project-2", "session-1"]);
 		const firstFolder = join(fixture.root, "first");
 		const secondFolder = join(fixture.root, "second");
 		await Promise.all([mkdir(firstFolder), mkdir(secondFolder)]);
-		const first = await fixture.service.createWorkspace({ path: firstFolder });
-		const second = await fixture.service.createWorkspace({ path: secondFolder });
+		const first = await fixture.service.createProject({ path: firstFolder });
+		const second = await fixture.service.createProject({ path: secondFolder });
 		const session = await fixture.service.createSession({
-			workspaceId: first.id,
+			projectId: first.id,
 			firstMessage: "Repair me",
 		});
 		const source = fixture.service.sessionFilePath(session.id, first.id);
 		const destination = fixture.service.sessionFilePath(session.id, second.id);
-		await mkdir(join(fixture.dataRoot, second.id, "sessions"), { recursive: true });
+		await mkdir(join(fixture.dataRoot, "second", "sessions"), { recursive: true });
 		await rename(source, destination);
 
 		const repaired = await fixture.service.repairSessionLocation(session.id);
 
-		expect(repaired.workspaceId).toBe(second.id);
-		expect(fixture.service.listWorkspaceHistory(session.id)).toHaveLength(1);
+		expect(repaired.projectId).toBe(second.id);
+		expect(fixture.service.listProjectHistory(session.id)).toHaveLength(1);
 	});
 
-	test("Relink 保留 Workspace identity，Folder 不可用时 fail closed", async () => {
-		const fixture = await createFixture(["workspace-1", "session-1"]);
+	test("Relink 保留 Project identity，Folder 不可用时 fail closed", async () => {
+		const fixture = await createFixture(["project-1", "session-1"]);
 		const firstFolder = join(fixture.root, "first");
 		const secondFolder = join(fixture.root, "second");
 		await Promise.all([mkdir(firstFolder), mkdir(secondFolder)]);
-		const workspace = await fixture.service.createWorkspace({ path: firstFolder });
+		const project = await fixture.service.createProject({ path: firstFolder });
 		const session = await fixture.service.createSession({
-			workspaceId: workspace.id,
+			projectId: project.id,
 			firstMessage: "Relink",
 		});
 		await rm(firstFolder, { recursive: true });
-		expect(await fixture.service.isWorkspaceAvailable(workspace.id)).toBe(false);
+		expect(await fixture.service.isProjectAvailable(project.id)).toBe(false);
 		expect(await fixture.service.resolveExecutionContext(session.id)).toEqual({ localFileAccess: false });
 
-		const relinked = await fixture.service.relinkWorkspace(workspace.id, { path: secondFolder });
+		const relinked = await fixture.service.relinkProject(project.id, { path: secondFolder });
 		const canonicalSecondFolder = await realpath(secondFolder);
 
-		expect(relinked.id).toBe(workspace.id);
+		expect(relinked.id).toBe(project.id);
 		expect(relinked.canonicalPath).toBe(canonicalSecondFolder);
-		expect(await fixture.service.isWorkspaceAvailable(workspace.id)).toBe(true);
+		expect(await fileExists(join(fixture.dataRoot, "first", "sessions", `${session.id}.jsonl`))).toBe(false);
+		expect(await fileExists(join(fixture.dataRoot, "second", "sessions", `${session.id}.jsonl`))).toBe(true);
+		expect(await fixture.service.isProjectAvailable(project.id)).toBe(true);
 		expect(await fixture.service.resolveExecutionContext(session.id)).toMatchObject({
 			localFileAccess: true,
 			cwd: canonicalSecondFolder,
 		});
+	});
+
+	test("Project 文件夹名必须全局唯一", async () => {
+		const fixture = await createFixture(["project-1"]);
+		const firstFolder = join(fixture.root, "first", "project");
+		const secondFolder = join(fixture.root, "second", "project");
+		await Promise.all([mkdir(firstFolder, { recursive: true }), mkdir(secondFolder, { recursive: true })]);
+		await fixture.service.createProject({ path: firstFolder });
+
+		try {
+			await fixture.service.createProject({ path: secondFolder });
+			throw new Error("Expected duplicate Project folder name to fail");
+		} catch (error) {
+			expect(getErrorCode(error)).toBe("coding_business.project_directory_conflict");
+		}
 	});
 
 	test("手动标题不会被迟到的自动标题覆盖", async () => {
@@ -277,22 +297,22 @@ describe("CodingBusinessService", () => {
 	});
 
 	test("Session lock 被占用时拒绝移动", async () => {
-		const fixture = await createFixture(["workspace-1", "session-1"]);
+		const fixture = await createFixture(["project-1", "session-1"]);
 		const folder = join(fixture.root, "project");
 		await mkdir(folder);
-		const workspace = await fixture.service.createWorkspace({ path: folder });
+		const project = await fixture.service.createProject({ path: folder });
 		const session = await fixture.service.createSession({
-			workspaceId: workspace.id,
+			projectId: project.id,
 			firstMessage: "Busy",
 		});
-		const sessionFile = fixture.service.sessionFilePath(session.id, workspace.id);
+		const sessionFile = fixture.service.sessionFilePath(session.id, project.id);
 		await writeFile(
 			`${sessionFile}.lock`,
 			JSON.stringify({ pid: process.pid, host: (await import("node:os")).hostname(), createdAt: Date.now() }),
 		);
 
 		try {
-			await fixture.service.moveSession({ sessionId: session.id, toWorkspaceId: null });
+			await fixture.service.moveSession({ sessionId: session.id, toProjectId: null });
 			throw new Error("Expected moveSession to fail");
 		} catch (error) {
 			expect(getErrorCode(error)).toBe("coding_business.session_busy");
@@ -324,13 +344,13 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 class MemoryRepository implements CodingBusinessRepository {
-	readonly workspaces = new Map<string, Workspace>();
+	readonly projects = new Map<string, Project>();
 	readonly sessions = new Map<string, CodingSession>();
-	readonly history: SessionWorkspaceHistory[] = [];
+	readonly history: SessionProjectHistory[] = [];
 	readonly modelInventories = new Map<string, ProviderModelInventory>();
 
-	createWorkspace(record: CreateWorkspaceRecord): Workspace {
-		const workspace: Workspace = {
+	createProject(record: CreateProjectRecord): Project {
+		const project: Project = {
 			id: record.id,
 			displayName: record.displayName,
 			path: record.path,
@@ -338,42 +358,42 @@ class MemoryRepository implements CodingBusinessRepository {
 			createdAt: record.now,
 			updatedAt: record.now,
 		};
-		this.workspaces.set(workspace.id, workspace);
-		return workspace;
+		this.projects.set(project.id, project);
+		return project;
 	}
 
-	getWorkspace(id: string): Workspace | undefined {
-		return this.workspaces.get(id);
+	getProject(id: string): Project | undefined {
+		return this.projects.get(id);
 	}
 
-	findWorkspaceByCanonicalPath(canonicalPath: string): Workspace | undefined {
-		return [...this.workspaces.values()].find((workspace) => workspace.canonicalPath === canonicalPath);
+	findProjectByCanonicalPath(canonicalPath: string): Project | undefined {
+		return [...this.projects.values()].find((project) => project.canonicalPath === canonicalPath);
 	}
 
-	listWorkspaces(): Workspace[] {
-		return [...this.workspaces.values()];
+	listProjects(): Project[] {
+		return [...this.projects.values()];
 	}
 
-	relinkWorkspace(
+	relinkProject(
 		id: string,
 		location: { displayName: string; path: string; canonicalPath: string; now: number },
-	): Workspace {
-		const current = this.requireWorkspace(id);
-		const workspace = {
+	): Project {
+		const current = this.requireProject(id);
+		const project = {
 			...current,
 			displayName: location.displayName,
 			path: location.path,
 			canonicalPath: location.canonicalPath,
 			updatedAt: location.now,
 		};
-		this.workspaces.set(id, workspace);
-		return workspace;
+		this.projects.set(id, project);
+		return project;
 	}
 
 	createSession(record: CreateSessionRecord): CodingSession {
 		const session: CodingSession = {
 			id: record.id,
-			workspaceId: record.workspaceId,
+			projectId: record.projectId,
 			title: record.title,
 			titleSource: "fallback",
 			titleGenerationAttemptedAt: null,
@@ -436,21 +456,21 @@ class MemoryRepository implements CodingBusinessRepository {
 		return this.updateSession(id, { updatedAt: now, lastActivityAt: now });
 	}
 
-	moveSession(id: string, toWorkspaceId: string | null, now: number): CodingSession {
+	moveSession(id: string, toProjectId: string | null, now: number): CodingSession {
 		const current = this.requireSession(id);
-		if (current.workspaceId === toWorkspaceId) return current;
-		const moved = this.updateSession(id, { workspaceId: toWorkspaceId, updatedAt: now });
+		if (current.projectId === toProjectId) return current;
+		const moved = this.updateSession(id, { projectId: toProjectId, updatedAt: now });
 		this.history.push({
 			id: this.history.length + 1,
 			sessionId: id,
-			fromWorkspaceId: current.workspaceId,
-			toWorkspaceId,
+			fromProjectId: current.projectId,
+			toProjectId,
 			movedAt: now,
 		});
 		return moved;
 	}
 
-	listWorkspaceHistory(sessionId: string): SessionWorkspaceHistory[] {
+	listProjectHistory(sessionId: string): SessionProjectHistory[] {
 		return this.history.filter((entry) => entry.sessionId === sessionId);
 	}
 
@@ -480,10 +500,10 @@ class MemoryRepository implements CodingBusinessRepository {
 
 	close(): void {}
 
-	private requireWorkspace(id: string): Workspace {
-		const workspace = this.workspaces.get(id);
-		if (!workspace) throw new Error(`Missing workspace ${id}`);
-		return workspace;
+	private requireProject(id: string): Project {
+		const project = this.projects.get(id);
+		if (!project) throw new Error(`Missing project ${id}`);
+		return project;
 	}
 
 	private requireSession(id: string): CodingSession {

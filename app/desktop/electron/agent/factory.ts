@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@jai/agent";
 import type { CodingBusinessService } from "@jai/coding/business";
+import type { PermissionMode } from "@jai/coding/permissions";
 import {
 	codingAgentConfigDefinition,
 	createCodingAgent,
@@ -8,6 +9,7 @@ import {
 	resolveConfiguredProvider,
 } from "@jai/coding/runtime";
 import { TaggedError } from "better-result";
+import type { DesktopAgentMode } from "../../shared/desktop-rpc";
 import { desktopModelCatalog } from "../model-catalog";
 import type { DesktopAgentFactory, HostedCodingAgent } from "./host";
 import codingAgentInstructions from "./prompt/system-prompt.md?raw";
@@ -32,17 +34,20 @@ function desktopProviderError(
 }
 
 export function createDesktopAgentFactory(service: CodingBusinessService): DesktopAgentFactory {
-	return async ({ sessionId, modelRef, requestApproval }) => {
+	return async ({ sessionId, modelRef, mode, requestApproval }) => {
 		const session = service.getSession(sessionId);
 		const executionContext = await service.resolveExecutionContext(sessionId);
 		let resolvedProvider: ResolvedCodingProvider | undefined;
 		const codingAgent = await createCodingAgent({
 			executionContext,
 			sessionId,
-			sessionDirectory: service.sessionDirectory(session.workspaceId),
+			sessionDirectory: service.sessionDirectory(session.projectId),
 			instructions: CODING_AGENT_INSTRUCTIONS,
 			resolveInstructions(snapshot) {
-				return withLanguageInstruction(CODING_AGENT_INSTRUCTIONS, snapshot.settings.agent?.language);
+				return withModeInstruction(
+					withLanguageInstruction(CODING_AGENT_INSTRUCTIONS, snapshot.settings.agent?.language),
+					mode,
+				);
 			},
 			configDefinition: codingAgentConfigDefinition,
 			configOptions: {
@@ -70,7 +75,13 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 					providerOptions: runtime.providerOptions,
 				};
 			},
-			permissions: { requestApproval },
+			permissions: {
+				requestApproval,
+				selectSettings: (snapshot) => ({
+					...snapshot.settings.permissions,
+					defaultMode: permissionModeForAgentMode(mode),
+				}),
+			},
 		});
 
 		return {
@@ -87,9 +98,25 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 	};
 }
 
+export function permissionModeForAgentMode(mode: DesktopAgentMode): PermissionMode {
+	switch (mode) {
+		case "manual":
+			return "default";
+		case "automate":
+			return "bypassPermissions";
+		case "plan":
+			return "plan";
+	}
+}
+
 function withLanguageInstruction(instructions: string, language: string | undefined): string {
 	if (!language) return instructions;
 	return `${instructions}\n\nRespond in ${language} unless the user explicitly requests another language.`;
+}
+
+function withModeInstruction(instructions: string, mode: DesktopAgentMode): string {
+	if (mode !== "plan") return instructions;
+	return `${instructions}\n\nYou are in Plan mode. Inspect and analyze with read-only tools, then provide a concrete implementation plan. Do not attempt to modify files or run commands that change the workspace.`;
 }
 
 async function generateSessionTitle(

@@ -76,7 +76,7 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 	readonly instructions?: string;
 	readonly resolveInstructions?: (snapshot: ConfigSnapshot<TSchema>) => string | Promise<string>;
 	readonly configDefinition: CodingConfigDefinition<TSchema>;
-	readonly configOptions?: Omit<CodingConfigStoreOptions, "projectRoot" | "workspaceRoot">;
+	readonly configOptions?: Omit<CodingConfigStoreOptions, "projectRoot">;
 	readonly resolveProvider: (
 		snapshot: ConfigSnapshot<TSchema>,
 	) => ResolvedCodingProvider | Promise<ResolvedCodingProvider>;

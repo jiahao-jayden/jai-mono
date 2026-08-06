@@ -2,7 +2,7 @@ import type { JsonObject } from "@jai/agent";
 
 export type SessionTitleSource = "fallback" | "generated" | "manual";
 
-export interface Workspace {
+export interface Project {
 	readonly id: string;
 	readonly displayName: string;
 	readonly path: string;
@@ -13,7 +13,7 @@ export interface Workspace {
 
 export interface CodingSession {
 	readonly id: string;
-	readonly workspaceId: string | null;
+	readonly projectId: string | null;
 	readonly title: string;
 	readonly titleSource: SessionTitleSource;
 	readonly titleGenerationAttemptedAt: number | null;
@@ -22,11 +22,11 @@ export interface CodingSession {
 	readonly lastActivityAt: number;
 }
 
-export interface SessionWorkspaceHistory {
+export interface SessionProjectHistory {
 	readonly id: number;
 	readonly sessionId: string;
-	readonly fromWorkspaceId: string | null;
-	readonly toWorkspaceId: string | null;
+	readonly fromProjectId: string | null;
+	readonly toProjectId: string | null;
 	readonly movedAt: number;
 }
 
@@ -57,18 +57,18 @@ export type CodingExecutionContext =
 			readonly localFileAccess: false;
 	  };
 
-export interface CreateWorkspaceInput {
+export interface CreateProjectInput {
 	readonly path: string;
 	readonly displayName?: string;
 }
 
 export interface CreateSessionInput<TAppState extends JsonObject = JsonObject> {
-	readonly workspaceId?: string | null;
+	readonly projectId?: string | null;
 	readonly firstMessage: string;
 	readonly appState?: TAppState;
 }
 
 export interface MoveSessionInput {
 	readonly sessionId: string;
-	readonly toWorkspaceId: string | null;
+	readonly toProjectId: string | null;
 }

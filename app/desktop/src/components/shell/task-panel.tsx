@@ -1,14 +1,15 @@
-import type { Workspace } from "@jai/coding/business";
+import type { Project } from "@jai/coding/business";
 import { useIcons } from "@/lib/icon-context";
+import { cn } from "@/lib/utils";
 import type { DesktopAgentStatus, DesktopTranscriptItem } from "../../../shared/desktop-rpc";
 
 interface TaskPanelProps {
 	status: DesktopAgentStatus;
 	items: readonly DesktopTranscriptItem[];
-	workspace?: Workspace;
+	project?: Project;
 }
 
-export function TaskPanel({ status, items, workspace }: TaskPanelProps) {
+export function TaskPanel({ status, items, project }: TaskPanelProps) {
 	const icons = useIcons();
 	const ChevronRightIcon = icons["chevron-right"];
 	const FileCodeIcon = icons["file-code"];
@@ -45,7 +46,12 @@ export function TaskPanel({ status, items, workspace }: TaskPanelProps) {
 								<div key={tool.id} className="flex items-center gap-2 text-[12.5px]">
 									<TerminalIcon size={13} className="shrink-0 text-muted-foreground" />
 									<span className="min-w-0 flex-1 truncate">{tool.summary || tool.toolName}</span>
-									<span className={tool.status === "error" ? "text-destructive" : "text-muted-foreground"}>
+									<span
+										className={cn({
+											"text-destructive": tool.status === "error",
+											"text-muted-foreground": tool.status !== "error",
+										})}
+									>
 										{tool.status}
 									</span>
 								</div>
@@ -91,7 +97,7 @@ export function TaskPanel({ status, items, workspace }: TaskPanelProps) {
 
 				<section className="px-4 pt-2.5 pb-3.5">
 					<div className="flex items-center justify-between">
-						<h2 className="text-[14px] font-semibold">Context</h2>
+						<h2 className="text-[14px] font-semibold">Project</h2>
 						<LayersIcon size={14} className="text-muted-foreground" />
 					</div>
 					<div className="mt-4 flex justify-center">
@@ -108,9 +114,9 @@ export function TaskPanel({ status, items, workspace }: TaskPanelProps) {
 						</div>
 					</div>
 					<div className="mt-2 text-center">
-						<p className="truncate text-[12.5px] font-medium">{workspace?.displayName ?? "No workspace"}</p>
+						<p className="truncate text-[12.5px] font-medium">{project?.displayName ?? "No project"}</p>
 						<p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">
-							{workspace ? workspace.path : "此会话没有本地文件访问上下文。"}
+							{project ? project.path : "此会话没有本地文件访问上下文。"}
 						</p>
 					</div>
 				</section>

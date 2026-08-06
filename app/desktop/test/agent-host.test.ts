@@ -413,6 +413,25 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
+	test("空闲会话切换 Agent 模式时重建 Agent", async () => {
+		const modes: string[] = [];
+		const agents: FakeAgent[] = [];
+		const host = new DesktopAgentHost(() => {}, async ({ mode }) => {
+			modes.push(mode);
+			const agent = new FakeAgent(async () => []);
+			agents.push(agent);
+			return agent;
+		});
+
+		await host.send(input("first", "provider/model", "manual"));
+		await agents[0]?.finished;
+		await host.send(input("second", "provider/model", "plan"));
+		await agents[1]?.finished;
+
+		expect(modes).toEqual(["manual", "plan"]);
+		host.close();
+	});
+
 	test("配置失效时立即关闭空闲 runtime，并在运行结束后关闭忙碌 runtime", async () => {
 		let finishRun = (_messages: AgentMessage[]) => {};
 		const pendingRun = new Promise<AgentMessage[]>((resolve) => {
@@ -457,7 +476,7 @@ describe("DesktopAgentHost", () => {
 		expect(runningAgent.aborted).toBe(true);
 		expect(runningAgent.toolResultPersisted).toBe(true);
 		expect(factoryCalls).toBe(2);
-		await expect(host.send(input("continue in new workspace"))).resolves.toEqual({ accepted: true });
+		await expect(host.send(input("continue in new project"))).resolves.toEqual({ accepted: true });
 		await replacement.finished;
 		host.close();
 	});
@@ -584,8 +603,8 @@ class RebindableFakeAgent implements HostedCodingAgent {
 	}
 }
 
-function input(message: string, modelRef = "provider/model") {
-	return { sessionId: "session-1", message, modelRef };
+function input(message: string, modelRef = "provider/model", mode: "manual" | "automate" | "plan" = "manual") {
+	return { sessionId: "session-1", message, modelRef, mode };
 }
 
 function userMessage(content: string): AgentMessage {

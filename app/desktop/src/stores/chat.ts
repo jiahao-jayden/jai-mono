@@ -1,28 +1,32 @@
 import { create } from "zustand";
+import type { DesktopAgentMode } from "../../shared/desktop-rpc";
 
 export interface QueuedMessage {
 	readonly id: string;
 	readonly text: string;
+	readonly mode: DesktopAgentMode;
 }
 
 interface DesktopChatStore {
 	activeSessionId: string | null;
 	drafts: Record<string, string>;
 	queue: QueuedMessage[];
-	selectedWorkspaceId: string | null;
+	selectedProjectId: string | null;
 	selectedModelRef: string;
+	selectedAgentMode: DesktopAgentMode;
 	openSession(sessionId: string): void;
 	newChat(): void;
 	setDraft(value: string): void;
 	sessionCreated(sessionId: string): void;
 	acceptDraft(): void;
-	enqueueMessage(text: string): void;
+	enqueueMessage(text: string, mode: DesktopAgentMode): void;
 	acceptQueuedMessage(messageId: string): void;
 	editQueuedMessage(messageId: string): void;
 	removeQueuedMessage(messageId: string): void;
 	reorderQueuedMessages(orderedIds: readonly string[]): void;
-	setSelectedWorkspaceId(workspaceId: string | null): void;
+	setSelectedProjectId(projectId: string | null): void;
 	setSelectedModelRef(modelRef: string): void;
+	setSelectedAgentMode(mode: DesktopAgentMode): void;
 }
 
 const NEW_CHAT_DRAFT_KEY = "__new_chat__";
@@ -31,8 +35,9 @@ export const useDesktopChatStore = create<DesktopChatStore>((set, get) => ({
 	activeSessionId: null,
 	drafts: {},
 	queue: [],
-	selectedWorkspaceId: null,
+	selectedProjectId: null,
 	selectedModelRef: "",
+	selectedAgentMode: "manual",
 
 	openSession(sessionId) {
 		if (get().activeSessionId === sessionId) return;
@@ -68,11 +73,11 @@ export const useDesktopChatStore = create<DesktopChatStore>((set, get) => ({
 		set((state) => ({ drafts: { ...state.drafts, [key]: "" } }));
 	},
 
-	enqueueMessage(text) {
+	enqueueMessage(text, mode) {
 		const key = draftKey(get().activeSessionId);
 		set((state) => ({
 			drafts: { ...state.drafts, [key]: "" },
-			queue: [...state.queue, { id: crypto.randomUUID(), text }],
+			queue: [...state.queue, { id: crypto.randomUUID(), text, mode }],
 		}));
 	},
 
@@ -90,6 +95,7 @@ export const useDesktopChatStore = create<DesktopChatStore>((set, get) => ({
 		set({
 			drafts: { ...state.drafts, [key]: message.text },
 			queue: state.queue.filter((candidate) => candidate.id !== messageId),
+			selectedAgentMode: message.mode,
 		});
 	},
 
@@ -111,12 +117,16 @@ export const useDesktopChatStore = create<DesktopChatStore>((set, get) => ({
 		});
 	},
 
-	setSelectedWorkspaceId(selectedWorkspaceId) {
-		set({ selectedWorkspaceId });
+	setSelectedProjectId(selectedProjectId) {
+		set({ selectedProjectId });
 	},
 
 	setSelectedModelRef(selectedModelRef) {
 		set({ selectedModelRef });
+	},
+
+	setSelectedAgentMode(selectedAgentMode) {
+		set({ selectedAgentMode });
 	},
 }));
 

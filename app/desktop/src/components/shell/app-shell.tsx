@@ -10,6 +10,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { matchPath, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
 import { useChat } from "@/hooks/use-chat";
 import { desktop } from "@/lib/desktop";
 import {
@@ -19,16 +20,20 @@ import {
 	getRunningSessionIds,
 	removeRecentSession,
 	sessionRecentsQueryOptions,
+	upsertProject,
 	upsertRecentSession,
-	upsertWorkspace,
 } from "@/lib/desktop-query";
+import { cn } from "@/lib/utils";
 import { selectDraft, useDesktopChatStore } from "@/stores/chat";
 import {
+	type DesktopProject,
 	type DesktopProviderConfigInput,
-	type DesktopWorkspace,
 	isDesktopProviderModelRunnable,
 } from "../../../shared/desktop-rpc";
 import { ChatColumn } from "./chat/chat-column";
+import { ChatComposer } from "./chat/chat-composer";
+import { ChatsPage } from "./chats-page";
+import { ProjectPage, ProjectsPage } from "./projects-page";
 import { ProviderSettingsDialog } from "./settings/provider-settings-dialog";
 import { Sidebar } from "./sidebar/sidebar";
 import { TaskPanel } from "./task-panel";
@@ -48,16 +53,19 @@ const SIDEBAR_SPRING = {
 	restSpeed: 0.2,
 };
 
-export function WorkspaceShell() {
+export function AppShell() {
+	const location = useLocation();
+	const navigate = useNavigate();
 	const [sidebarOpen, setSidebarOpen] = useState(true);
 	const [rightPanelOpen, setRightPanelOpen] = useState(true);
 	const [providerSettingsOpen, setProviderSettingsOpen] = useState(false);
-	const activeSessionId = useDesktopChatStore((state) => state.activeSessionId);
+	const storedSessionId = useDesktopChatStore((state) => state.activeSessionId);
 	const draft = useDesktopChatStore(selectDraft);
 	const queue = useDesktopChatStore((state) => state.queue);
-	const selectedWorkspaceId = useDesktopChatStore((state) => state.selectedWorkspaceId);
+	const selectedProjectId = useDesktopChatStore((state) => state.selectedProjectId);
 	const selectedModelRef = useDesktopChatStore((state) => state.selectedModelRef);
-	const openSession = useDesktopChatStore((state) => state.openSession);
+	const selectedAgentMode = useDesktopChatStore((state) => state.selectedAgentMode);
+	const openSessionInStore = useDesktopChatStore((state) => state.openSession);
 	const newChat = useDesktopChatStore((state) => state.newChat);
 	const setDraft = useDesktopChatStore((state) => state.setDraft);
 	const sessionCreated = useDesktopChatStore((state) => state.sessionCreated);
@@ -67,11 +75,35 @@ export function WorkspaceShell() {
 	const editQueuedMessage = useDesktopChatStore((state) => state.editQueuedMessage);
 	const removeQueuedMessage = useDesktopChatStore((state) => state.removeQueuedMessage);
 	const reorderQueuedMessages = useDesktopChatStore((state) => state.reorderQueuedMessages);
-	const setSelectedWorkspaceId = useDesktopChatStore((state) => state.setSelectedWorkspaceId);
+	const setSelectedProjectId = useDesktopChatStore((state) => state.setSelectedProjectId);
 	const setSelectedModelRef = useDesktopChatStore((state) => state.setSelectedModelRef);
-	const workspacesQuery = useQuery({
-		queryKey: desktopQueryKeys.workspaces,
-		queryFn: () => desktop.workspace.list(),
+	const setSelectedAgentMode = useDesktopChatStore((state) => state.setSelectedAgentMode);
+	const chatRoute = matchPath("/chat/:sessionId", location.pathname);
+	const projectRoute = matchPath("/projects/:projectId", location.pathname);
+	const routeSessionId = chatRoute?.params.sessionId;
+	const activeSessionId = routeSessionId && routeSessionId !== "new" ? routeSessionId : null;
+	const routeProjectId = projectRoute?.params.projectId;
+	const activeView =
+		location.pathname === "/chats"
+			? "chats"
+			: location.pathname === "/projects"
+				? "projects"
+				: routeProjectId
+					? "project"
+					: "chat";
+	useEffect(() => {
+		if (activeSessionId) {
+			if (storedSessionId !== activeSessionId) openSessionInStore(activeSessionId);
+			return;
+		}
+		if (storedSessionId !== null) newChat();
+	}, [activeSessionId, newChat, openSessionInStore, storedSessionId]);
+	useEffect(() => {
+		if (routeProjectId) setSelectedProjectId(routeProjectId);
+	}, [routeProjectId, setSelectedProjectId]);
+	const projectsQuery = useQuery({
+		queryKey: desktopQueryKeys.projects,
+		queryFn: () => desktop.project.list(),
 	});
 	const providerQuery = useQuery({
 		queryKey: desktopQueryKeys.providerConfig,
@@ -86,11 +118,12 @@ export function WorkspaceShell() {
 	const sessions = getRecentSessions(sessionRecentsQuery.data);
 	const runningSessionIds = getRunningSessionIds(sessionRecentsQuery.data);
 	const session = sessions.find((candidate) => candidate.id === activeSessionId);
-	const workspaces = workspacesQuery.data ?? [];
-	const selectedWorkspace = workspaces.find((candidate) => candidate.id === selectedWorkspaceId);
-	const defaultWorkspace = workspaces.find((candidate) => candidate.available) ?? workspaces[0];
-	const workspaceId = session?.workspaceId ?? selectedWorkspace?.id ?? defaultWorkspace?.id ?? null;
-	const workspace = workspaces.find((candidate) => candidate.id === workspaceId);
+	const projects = projectsQuery.data ?? [];
+	const selectedProject = projects.find((candidate) => candidate.id === selectedProjectId);
+	const defaultProject = projects.find((candidate) => candidate.available) ?? projects[0];
+	const projectId = session?.projectId ?? selectedProject?.id ?? defaultProject?.id ?? null;
+	const newSessionProjectId = routeProjectId ?? projectId;
+	const project = projects.find((candidate) => candidate.id === projectId);
 	const enabledModelRefs =
 		providerQuery.data?.profiles.flatMap((profile) =>
 			profile.models
@@ -100,16 +133,22 @@ export function WorkspaceShell() {
 	const runtimeModelRef = enabledModelRefs.includes(selectedModelRef) ? selectedModelRef : (enabledModelRefs[0] ?? "");
 	const chat = useChat({
 		id: activeSessionId,
-		newSessionWorkspaceId: workspaceId,
+		newSessionProjectId,
 		modelRef: runtimeModelRef,
+		mode: selectedAgentMode,
 		queue,
-		onSessionCreated: sessionCreated,
+		onSessionCreated: (sessionId) => {
+			sessionCreated(sessionId);
+			navigate(`/chat/${sessionId}`, { replace: true });
+		},
 		onDraftAccepted: acceptDraft,
 		onMessageQueued: enqueueMessage,
 		onQueuedMessageAccepted: acceptQueuedMessage,
 	});
 	const shellRef = useRef<HTMLDivElement>(null);
-	const sidebarResize = useSidebarResize(shellRef, rightPanelOpen && !!session);
+	const chatVisible = activeView === "chat";
+	const rightPanelVisible = chatVisible && rightPanelOpen && !!session;
+	const sidebarResize = useSidebarResize(shellRef, rightPanelVisible);
 
 	const updateProviderConfig = async (input: DesktopProviderConfigInput) => {
 		const snapshot = await desktop.provider.save(input);
@@ -141,61 +180,99 @@ export function WorkspaceShell() {
 		window.addEventListener("keydown", openSettingsShortcut);
 		return () => window.removeEventListener("keydown", openSettingsShortcut);
 	}, [openProviderSettings]);
-	const workspaceSelectionMutation = useMutation({
-		mutationFn: async (candidate?: DesktopWorkspace) => {
+	const projectSelectionMutation = useMutation({
+		mutationFn: async (candidate?: DesktopProject) => {
 			const next = candidate
 				? candidate.available
 					? candidate
-					: await desktop.workspace.relink(candidate.id)
-				: await desktop.workspace.choose();
-			if (!next || !session || session.workspaceId === next.id) return { workspace: next };
-			const moved = await desktop.session.move({ sessionId: session.id, toWorkspaceId: next.id });
-			return { workspace: next, moved };
+					: await desktop.project.relink(candidate.id)
+				: await desktop.project.choose();
+			if (!next || !session || session.projectId === next.id) return { project: next };
+			const moved = await desktop.session.move({ sessionId: session.id, toProjectId: next.id });
+			return { project: next, moved };
 		},
-		onSuccess: ({ workspace: next, moved }) => {
+		onSuccess: ({ project: next, moved }) => {
 			if (!next) return;
-			upsertWorkspace(next);
+			upsertProject(next);
 			if (moved) {
 				upsertRecentSession(moved);
 				void desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.recents });
 			}
-			setSelectedWorkspaceId(next.id);
+			setSelectedProjectId(next.id);
 		},
 	});
-	const workspaceBusy = workspaceSelectionMutation.isPending;
-	const workspaceError = workspaceSelectionMutation.isError
-		? getErrorMessage(workspaceSelectionMutation.error)
-		: undefined;
-	const chooseWorkspace = async (candidate: DesktopWorkspace) => {
-		if (workspaceBusy) return;
+	const projectCreationMutation = useMutation({
+		mutationFn: () => desktop.project.choose(),
+		onSuccess: (next) => {
+			if (!next) return;
+			upsertProject(next);
+			setSelectedProjectId(next.id);
+		},
+	});
+	const projectBusy = projectSelectionMutation.isPending;
+	const projectError = projectSelectionMutation.isError ? getErrorMessage(projectSelectionMutation.error) : undefined;
+	const chooseProject = async (candidate: DesktopProject) => {
+		if (projectBusy) return;
 		try {
-			await workspaceSelectionMutation.mutateAsync(candidate);
+			await projectSelectionMutation.mutateAsync(candidate);
 		} catch {
-			// Mutation state drives the recoverable workspace error UI.
+			// Mutation state drives the recoverable project error UI.
 		}
 	};
-	const addWorkspace = async () => {
-		if (workspaceBusy) return;
+	const addProject = async () => {
+		if (projectBusy) return;
 		try {
-			await workspaceSelectionMutation.mutateAsync(undefined);
+			await projectSelectionMutation.mutateAsync(undefined);
 		} catch {
-			// Mutation state drives the recoverable workspace error UI.
+			// Mutation state drives the recoverable project error UI.
 		}
+	};
+	const createProject = async () => {
+		if (projectCreationMutation.isPending) return;
+		try {
+			const next = await projectCreationMutation.mutateAsync();
+			if (next) navigate(`/projects/${next.id}`);
+		} catch {
+			// Mutation state drives the recoverable project error UI.
+		}
+	};
+	const openNewChat = () => {
+		newChat();
+		navigate("/chat/new");
+	};
+	const openSession = (sessionId: string) => {
+		openSessionInStore(sessionId);
+		navigate(`/chat/${sessionId}`);
+	};
+	const openProject = (nextProject: DesktopProject) => {
+		newChat();
+		setSelectedProjectId(nextProject.id);
+		navigate(`/projects/${nextProject.id}`);
 	};
 	const renameSession = async (sessionId: string, title: string) => {
 		const renamed = await desktop.session.rename({ sessionId, title });
 		upsertRecentSession(renamed);
 	};
-	const moveSession = async (sessionId: string, toWorkspaceId: string | null) => {
-		const moved = await desktop.session.move({ sessionId, toWorkspaceId });
+	const moveSession = async (sessionId: string, toProjectId: string | null) => {
+		const moved = await desktop.session.move({ sessionId, toProjectId });
 		upsertRecentSession(moved);
 	};
 	const deleteSession = async (sessionId: string) => {
 		await desktop.session.delete({ sessionId });
 		removeRecentSession(sessionId);
-		if (activeSessionId === sessionId) newChat();
+		if (activeSessionId === sessionId) openNewChat();
 		void desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.recents });
 	};
+	const projectLoadErrorMessage = projectsQuery.isError ? getErrorMessage(projectsQuery.error) : undefined;
+	const projectPageError = projectCreationMutation.isError
+		? getErrorMessage(projectCreationMutation.error)
+		: projectLoadErrorMessage;
+	const sessionLoadErrorMessage = sessionRecentsQuery.isError ? getErrorMessage(sessionRecentsQuery.error) : undefined;
+	const pageProject = routeProjectId ? projects.find((candidate) => candidate.id === routeProjectId) : undefined;
+	const projectLoading = projectsQuery.isLoading || projectsQuery.isFetching;
+	const projectLoadError = projectsQuery.isError && projectsQuery.data === undefined;
+	const chatProjectError =
+		projectError || (projectsQuery.isError ? "Projects could not be loaded. Open the menu to retry." : undefined);
 
 	return (
 		<div
@@ -204,18 +281,21 @@ export function WorkspaceShell() {
 		>
 			{sidebarOpen ? (
 				<Sidebar
+					activeView={activeView}
 					sessions={sessions}
-					workspaces={workspaces}
+					projects={projects}
 					runningSessionIds={runningSessionIds}
-					activeSessionId={activeSessionId}
+					activeSessionId={chatVisible ? activeSessionId : null}
 					loading={sessionRecentsQuery.isLoading}
-					error={sessionRecentsQuery.isError ? getErrorMessage(sessionRecentsQuery.error) : undefined}
+					error={sessionLoadErrorMessage}
 					hasNextPage={sessionRecentsQuery.hasNextPage}
 					loadingMore={sessionRecentsQuery.isFetchingNextPage}
 					width={sidebarResize.width}
 					settingsDisabled={chat.status === "streaming" || chat.status === "submitted"}
 					onToggleSidebar={() => setSidebarOpen(false)}
-					onNewChat={newChat}
+					onNewChat={openNewChat}
+					onOpenChats={() => navigate("/chats")}
+					onOpenProjects={() => navigate("/projects")}
 					onOpenSettings={openProviderSettings}
 					onSelectSession={openSession}
 					onRenameSession={renameSession}
@@ -225,45 +305,137 @@ export function WorkspaceShell() {
 				/>
 			) : null}
 			{sidebarOpen ? <SidebarResizeHandle {...sidebarResize} /> : null}
-			<ChatColumn
-				key={activeSessionId ?? "new"}
-				session={session}
-				workspace={workspace}
-				workspaces={workspaces}
-				chat={chat}
-				draft={draft}
-				queue={queue}
-				onDraftChange={setDraft}
-				onEditQueuedMessage={editQueuedMessage}
-				onRemoveQueuedMessage={removeQueuedMessage}
-				onReorderQueuedMessages={reorderQueuedMessages}
-				providerConfig={providerQuery.data}
-				selectedModelRef={runtimeModelRef}
-				providerLoading={providerQuery.isLoading}
-				providerError={providerQuery.isError}
-				workspaceBusy={workspaceBusy}
-				workspaceLoading={workspacesQuery.isLoading || workspacesQuery.isFetching}
-				workspaceLoadError={workspacesQuery.isError && workspacesQuery.data === undefined}
-				workspaceError={
-					workspaceError ||
-					(workspacesQuery.isError ? "Workspaces could not be loaded. Open the menu to retry." : undefined)
-				}
-				sidebarOpen={sidebarOpen}
-				rightPanelOpen={rightPanelOpen && !!session}
-				onToggleSidebar={() => setSidebarOpen(true)}
-				onToggleRightPanel={() => setRightPanelOpen((open) => !open)}
-				onOpenProviderSettings={openProviderSettings}
-				onSelectProviderModel={setSelectedModelRef}
-				onChooseWorkspace={chooseWorkspace}
-				onAddWorkspace={addWorkspace}
-				onRetryWorkspaces={() => void workspacesQuery.refetch()}
-				onRenameSession={renameSession}
-			/>
-			{rightPanelOpen && session ? (
+			<Routes>
+				<Route
+					path="/chats"
+					element={
+						<ChatsPage
+							sessions={sessions}
+							projects={projects}
+							loading={sessionRecentsQuery.isLoading}
+							error={sessionLoadErrorMessage}
+							hasNextPage={sessionRecentsQuery.hasNextPage}
+							loadingMore={sessionRecentsQuery.isFetchingNextPage}
+							onNewChat={openNewChat}
+							onSelectSession={openSession}
+							onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
+						/>
+					}
+				/>
+				<Route
+					path="/projects"
+					element={
+						<ProjectsPage
+							projects={projects}
+							sessions={sessions}
+							loading={projectLoading}
+							error={projectPageError}
+							adding={projectCreationMutation.isPending}
+							onAddProject={() => void createProject()}
+							onOpenProject={openProject}
+						/>
+					}
+				/>
+				<Route
+					path="/projects/:projectId"
+					element={
+						pageProject ? (
+							<ProjectPage
+								project={pageProject}
+								sessions={sessions}
+								onBack={() => navigate("/projects")}
+								onSelectSession={openSession}
+								composer={
+									<ChatComposer
+										value={draft}
+										onValueChange={setDraft}
+										onSend={chat.sendMessage}
+										onStop={chat.stop}
+										status={chat.status}
+										disabled={!pageProject.available}
+										queue={queue}
+										onEditQueuedMessage={editQueuedMessage}
+										onRemoveQueuedMessage={removeQueuedMessage}
+										onReorderQueuedMessages={reorderQueuedMessages}
+										project={pageProject}
+										projects={projects}
+										projectBusy={projectBusy}
+										projectLoading={projectLoading}
+										projectLoadError={projectLoadError}
+										onChooseProject={chooseProject}
+										onAddProject={addProject}
+										onRetryProjects={() => void projectsQuery.refetch()}
+										providerConfig={providerQuery.data}
+										selectedModelRef={runtimeModelRef}
+										selectedAgentMode={selectedAgentMode}
+										providerLoading={providerQuery.isLoading}
+										providerError={providerQuery.isError}
+										onOpenProviderSettings={openProviderSettings}
+										onSelectProviderModel={setSelectedModelRef}
+										onSelectAgentMode={setSelectedAgentMode}
+										showProjectPicker={false}
+										large
+									/>
+								}
+							/>
+						) : (
+							<ProjectsPage
+								projects={projects}
+								sessions={sessions}
+								loading={projectLoading}
+								error={projectPageError}
+								adding={projectCreationMutation.isPending}
+								onAddProject={() => void createProject()}
+								onOpenProject={openProject}
+							/>
+						)
+					}
+				/>
+				<Route
+					path="/chat/:sessionId"
+					element={
+						<ChatColumn
+							key={activeSessionId ?? "new"}
+							session={session}
+							project={project}
+							projects={projects}
+							chat={chat}
+							draft={draft}
+							queue={queue}
+							onDraftChange={setDraft}
+							onEditQueuedMessage={editQueuedMessage}
+							onRemoveQueuedMessage={removeQueuedMessage}
+							onReorderQueuedMessages={reorderQueuedMessages}
+							providerConfig={providerQuery.data}
+							selectedModelRef={runtimeModelRef}
+							selectedAgentMode={selectedAgentMode}
+							providerLoading={providerQuery.isLoading}
+							providerError={providerQuery.isError}
+							projectBusy={projectBusy}
+							projectLoading={projectLoading}
+							projectLoadError={projectLoadError}
+							projectError={chatProjectError}
+							sidebarOpen={sidebarOpen}
+							rightPanelOpen={rightPanelVisible}
+							onToggleSidebar={() => setSidebarOpen(true)}
+							onToggleRightPanel={() => setRightPanelOpen((open) => !open)}
+							onOpenProviderSettings={openProviderSettings}
+							onSelectProviderModel={setSelectedModelRef}
+							onSelectAgentMode={setSelectedAgentMode}
+							onChooseProject={chooseProject}
+							onAddProject={addProject}
+							onRetryProjects={() => void projectsQuery.refetch()}
+							onRenameSession={renameSession}
+						/>
+					}
+				/>
+				<Route path="*" element={<Navigate to="/chat/new" replace />} />
+			</Routes>
+			{rightPanelVisible ? (
 				<TaskPanel
 					status={chat.status === "streaming" ? "running" : "idle"}
 					items={chat.messages}
-					workspace={workspace}
+					project={project}
 				/>
 			) : null}
 			<ProviderSettingsDialog
@@ -424,9 +596,13 @@ function SidebarResizeHandle({
 		>
 			<span
 				aria-hidden="true"
-				className={`pointer-events-none absolute top-1/2 left-1/2 h-6 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full transition-[opacity,transform,background-color] duration-150 group-hover:scale-y-100 group-hover:bg-muted-foreground/35 group-hover:opacity-100 group-focus-visible:scale-y-100 group-focus-visible:bg-primary-2 group-focus-visible:opacity-100 ${
-					isDragging ? "scale-y-100 bg-primary-2/70 opacity-100" : "scale-y-75 bg-transparent opacity-0"
-				}`}
+				className={cn(
+					"pointer-events-none absolute top-1/2 left-1/2 h-6 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full transition-[opacity,transform,background-color] duration-150 group-hover:scale-y-100 group-hover:bg-muted-foreground/35 group-hover:opacity-100 group-focus-visible:scale-y-100 group-focus-visible:bg-primary-2 group-focus-visible:opacity-100",
+					{
+						"scale-y-100 bg-primary-2/70 opacity-100": isDragging,
+						"scale-y-75 bg-transparent opacity-0": !isDragging,
+					},
+				)}
 			/>
 		</motion.div>
 	);

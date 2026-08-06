@@ -3,7 +3,7 @@ import { getErrorMessage } from "@jai/common";
 import { useRef, useState } from "react";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
-import type { DesktopWorkspace } from "../../../../shared/desktop-rpc";
+import type { DesktopProject } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
 import {
@@ -20,7 +20,7 @@ import { toast } from "../../ui/toast";
 
 interface SidebarRecentsProps {
 	sessions: readonly CodingSession[];
-	workspaces: readonly DesktopWorkspace[];
+	projects: readonly DesktopProject[];
 	activeSessionId: string | null;
 	loading: boolean;
 	error?: string;
@@ -28,14 +28,14 @@ interface SidebarRecentsProps {
 	loadingMore?: boolean;
 	onSelectSession(sessionId: string): void;
 	onRenameSession(sessionId: string, title: string): Promise<void>;
-	onMoveSession(sessionId: string, workspaceId: string | null): Promise<void>;
+	onMoveSession(sessionId: string, projectId: string | null): Promise<void>;
 	onDeleteSession(sessionId: string): Promise<void>;
 	onLoadMore?(): void;
 }
 
 export function SidebarRecents({
 	sessions,
-	workspaces,
+	projects,
 	activeSessionId,
 	loading,
 	error,
@@ -157,7 +157,7 @@ export function SidebarRecents({
 									</Button>
 									<SessionActions
 										session={session}
-										workspaces={workspaces}
+										projects={projects}
 										visible={selected}
 										onStartRename={() => startEditing(session)}
 										onMove={onMoveSession}
@@ -189,17 +189,17 @@ type SessionActionDialog = "delete" | null;
 
 function SessionActions({
 	session,
-	workspaces,
+	projects,
 	visible,
 	onStartRename,
 	onMove,
 	onDelete,
 }: {
 	readonly session: CodingSession;
-	readonly workspaces: readonly DesktopWorkspace[];
+	readonly projects: readonly DesktopProject[];
 	readonly visible: boolean;
 	readonly onStartRename: () => void;
-	readonly onMove: (sessionId: string, workspaceId: string | null) => Promise<void>;
+	readonly onMove: (sessionId: string, projectId: string | null) => Promise<void>;
 	readonly onDelete: (sessionId: string) => Promise<void>;
 }) {
 	const icons = useIcons();
@@ -208,7 +208,7 @@ function SessionActions({
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string>();
 	const MoreVerticalIcon = icons["more-vertical"];
-	const destinationWorkspaces = workspaces.filter((workspace) => workspace.id !== session.workspaceId);
+	const destinationProjects = projects.filter((project) => project.id !== session.projectId);
 
 	const openDialog = () => {
 		setError(undefined);
@@ -221,11 +221,11 @@ function SessionActions({
 		setError(undefined);
 	};
 
-	const move = async (workspaceId: string | null) => {
-		if (pending || workspaceId === session.workspaceId) return;
+	const move = async (projectId: string | null) => {
+		if (pending || projectId === session.projectId) return;
 		setPending(true);
 		try {
-			await onMove(session.id, workspaceId);
+			await onMove(session.id, projectId);
 		} catch (reason) {
 			toast.add({
 				title: "无法移动会话",
@@ -251,7 +251,7 @@ function SessionActions({
 	};
 
 	const removeFromProject = async () => {
-		if (pending || session.workspaceId === null) return;
+		if (pending || session.projectId === null) return;
 		setPending(true);
 		try {
 			await onMove(session.id, null);
@@ -308,17 +308,17 @@ function SessionActions({
 							className="h-8 px-2"
 						/>
 						<DropdownSubmenuContent hoverVariant="navigation">
-							{destinationWorkspaces.length > 0 ? (
-								destinationWorkspaces.map((workspace, index) => (
+							{destinationProjects.length > 0 ? (
+								destinationProjects.map((project, index) => (
 									<MenuItem
-										key={workspace.id}
+										key={project.id}
 										index={index}
-										icon={workspace.available ? icons.folder : icons["folder-off"]}
-										label={workspace.displayName}
-										description={workspace.path}
-										disabled={pending || !workspace.available}
+										icon={project.available ? icons.folder : icons["folder-off"]}
+										label={project.displayName}
+										description={project.path}
+										disabled={pending || !project.available}
 										className="min-h-10 py-1.5"
-										onSelect={() => void move(workspace.id)}
+										onSelect={() => void move(project.id)}
 									/>
 								))
 							) : (
@@ -326,7 +326,7 @@ function SessionActions({
 							)}
 						</DropdownSubmenuContent>
 					</DropdownSubmenu>
-					{session.workspaceId !== null ? (
+					{session.projectId !== null ? (
 						<MenuItem
 							index={2}
 							icon={icons["folder-off"]}
@@ -337,7 +337,7 @@ function SessionActions({
 					) : null}
 					<DropdownSeparator />
 					<MenuItem
-						index={session.workspaceId === null ? 2 : 3}
+						index={session.projectId === null ? 2 : 3}
 						icon={icons.trash}
 						label="Delete"
 						variant="destructive"

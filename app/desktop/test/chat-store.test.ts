@@ -8,7 +8,8 @@ describe("desktop chat store", () => {
 			drafts: {},
 			queue: [],
 			selectedModelRef: "",
-			selectedWorkspaceId: null,
+			selectedProjectId: null,
+			selectedAgentMode: "manual",
 		});
 	});
 
@@ -29,9 +30,9 @@ describe("desktop chat store", () => {
 	test("入队和接受队首均通过 message id 精确更新", () => {
 		const store = useDesktopChatStore.getState();
 		store.setDraft("first");
-		store.enqueueMessage("first");
+		store.enqueueMessage("first", "manual");
 		store.setDraft("second");
-		store.enqueueMessage("second");
+		store.enqueueMessage("second", "plan");
 		const [first, second] = useDesktopChatStore.getState().queue;
 		if (!first || !second) throw new Error("expected queued messages");
 
@@ -42,7 +43,7 @@ describe("desktop chat store", () => {
 
 	test("编辑队列项将内容恢复到当前 draft 并移除该项", () => {
 		const store = useDesktopChatStore.getState();
-		store.enqueueMessage("queued");
+		store.enqueueMessage("queued", "plan");
 		const queued = useDesktopChatStore.getState().queue[0];
 		if (!queued) throw new Error("expected queued message");
 
@@ -50,5 +51,15 @@ describe("desktop chat store", () => {
 
 		expect(selectDraft(useDesktopChatStore.getState())).toBe("queued");
 		expect(useDesktopChatStore.getState().queue).toEqual([]);
+		expect(useDesktopChatStore.getState().selectedAgentMode).toBe("plan");
+	});
+
+	test("模式是应用级选择，不随会话切换而重置", () => {
+		const store = useDesktopChatStore.getState();
+		store.setSelectedAgentMode("automate");
+		store.openSession("session-1");
+		store.newChat();
+
+		expect(useDesktopChatStore.getState().selectedAgentMode).toBe("automate");
 	});
 });

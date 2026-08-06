@@ -24,7 +24,7 @@ export function createReportProgressTool(): AgentTool<typeof reportProgressParam
 		name: REPORT_PROGRESS_TOOL_NAME,
 		title: (args) => args.title,
 		description:
-			"MANDATORY before any other work tool. Report a concise user-visible description of the next work step.",
+			"Report the current major work phase. Required in the first work-tool batch, then only when the major phase changes.",
 		parameters: reportProgressParameters,
 		executionMode: "parallel",
 		async execute() {

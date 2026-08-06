@@ -1,25 +1,26 @@
 import { useState } from "react";
 import { useIcons } from "@/lib/icon-context";
-import type { DesktopWorkspace } from "../../../../shared/desktop-rpc";
+import { cn } from "@/lib/utils";
+import type { DesktopProject } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { DropdownContent, DropdownMenu, DropdownSeparator, DropdownTrigger } from "../../ui/dropdown";
 import { MenuItem } from "../../ui/menu-item";
 
-interface WorkspacePickerProps {
-	readonly workspace?: DesktopWorkspace;
-	readonly workspaces: readonly DesktopWorkspace[];
+interface ProjectPickerProps {
+	readonly project?: DesktopProject;
+	readonly projects: readonly DesktopProject[];
 	readonly disabled: boolean;
 	readonly busy: boolean;
 	readonly loading: boolean;
 	readonly loadError: boolean;
-	readonly onChoose: (workspace: DesktopWorkspace) => Promise<void>;
+	readonly onChoose: (project: DesktopProject) => Promise<void>;
 	readonly onAdd: () => Promise<void>;
 	readonly onRetry: () => void;
 }
 
-export function WorkspacePicker({
-	workspace,
-	workspaces,
+export function ProjectPicker({
+	project,
+	projects,
 	disabled,
 	busy,
 	loading,
@@ -27,7 +28,7 @@ export function WorkspacePicker({
 	onChoose,
 	onAdd,
 	onRetry,
-}: WorkspacePickerProps) {
+}: ProjectPickerProps) {
 	const icons = useIcons();
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -35,28 +36,28 @@ export function WorkspacePicker({
 	const FolderOffIcon = icons["folder-off"];
 	const SearchIcon = icons.search;
 	const ChevronDownIcon = icons["chevron-down"];
-	const WorkspaceIcon = workspace && !workspace.available ? FolderOffIcon : FolderIcon;
+	const ProjectIcon = project && !project.available ? FolderOffIcon : FolderIcon;
 	const label = busy
-		? "Updating workspace…"
-		: loading && workspaces.length === 0
-			? "Loading workspaces…"
+		? "Updating project…"
+		: loading && projects.length === 0
+			? "Loading projects…"
 			: loadError
-				? "Workspaces unavailable"
-				: workspace
-					? workspace.available
-						? workspace.displayName
-						: `${workspace.displayName} (Relink)`
+				? "Projects unavailable"
+				: project
+					? project.available
+						? project.displayName
+						: `${project.displayName} (Relink)`
 					: "Work in a project or folder";
-	const triggerDisabled = disabled || busy || (loading && workspaces.length === 0);
+	const triggerDisabled = disabled || busy || (loading && projects.length === 0);
 	const normalizedQuery = query.trim().toLocaleLowerCase();
-	const filteredWorkspaces = normalizedQuery
-		? workspaces.filter(
+	const filteredProjects = normalizedQuery
+		? projects.filter(
 				(candidate) =>
 					candidate.displayName.toLocaleLowerCase().includes(normalizedQuery) ||
 					candidate.path.toLocaleLowerCase().includes(normalizedQuery),
 			)
-		: workspaces;
-	const checkedIndex = filteredWorkspaces.findIndex((candidate) => candidate.id === workspace?.id);
+		: projects;
+	const checkedIndex = filteredProjects.findIndex((candidate) => candidate.id === project?.id);
 
 	return (
 		<>
@@ -77,24 +78,23 @@ export function WorkspacePicker({
 							disabled={triggerDisabled}
 							active={open}
 							className="min-w-0 max-w-72 gap-1.5 px-2.5 text-[13px] text-muted-foreground"
-							aria-label={`Workspace: ${label}`}
-							title={
-								workspace && !workspace.available ? "This folder is unavailable. Choose it to relink." : label
-							}
+							aria-label={`Project: ${label}`}
+							title={project && !project.available ? "This folder is unavailable. Choose it to relink." : label}
 						>
 							<span className="flex min-w-0 items-center gap-1.5">
-								<WorkspaceIcon
+								<ProjectIcon
 									size={14}
-									className={
-										workspace && !workspace.available ? "text-destructive" : "text-muted-foreground/70"
-									}
+									className={cn({
+										"text-destructive": project && !project.available,
+										"text-muted-foreground/70": !project || project.available,
+									})}
 								/>
 								<span className="truncate">{label}</span>
 								<ChevronDownIcon
 									size={10}
-									className={`shrink-0 opacity-50 transition-transform duration-150 ${
-										open ? "rotate-180" : ""
-									}`}
+									className={cn("shrink-0 opacity-50 transition-transform duration-150", {
+										"rotate-180": open,
+									})}
 								/>
 							</span>
 						</Button>
@@ -119,10 +119,10 @@ export function WorkspacePicker({
 						/>
 					</div>
 					{loadError ? (
-						<MenuItem index={0} icon={icons["rotate-ccw"]} label="Retry loading workspaces" onSelect={onRetry} />
+						<MenuItem index={0} icon={icons["rotate-ccw"]} label="Retry loading projects" onSelect={onRetry} />
 					) : (
 						<>
-							{filteredWorkspaces.map((candidate, index) => (
+							{filteredProjects.map((candidate, index) => (
 								<MenuItem
 									key={candidate.id}
 									index={index}
@@ -130,13 +130,13 @@ export function WorkspacePicker({
 									label={`${candidate.displayName}${candidate.available ? "" : " (Relink)"}`}
 									description={candidate.path}
 									title={candidate.path}
-									checked={candidate.id === workspace?.id}
+									checked={candidate.id === project?.id}
 									onSelect={() => void onChoose(candidate)}
 								/>
 							))}
-							{filteredWorkspaces.length === 0 ? (
+							{filteredProjects.length === 0 ? (
 								<p className="px-2 py-2.5 text-[12px] text-muted-foreground">
-									{workspaces.length === 0 ? "No workspace yet" : "No matching projects"}
+									{projects.length === 0 ? "No project yet" : "No matching projects"}
 								</p>
 							) : null}
 						</>
@@ -145,7 +145,7 @@ export function WorkspacePicker({
 						<>
 							<DropdownSeparator />
 							<MenuItem
-								index={filteredWorkspaces.length}
+								index={filteredProjects.length}
 								icon={icons.plus}
 								label="Add a folder"
 								onSelect={() => void onAdd()}
@@ -155,7 +155,7 @@ export function WorkspacePicker({
 				</DropdownContent>
 			</DropdownMenu>
 			<span className="sr-only" role="status" aria-live="polite">
-				{busy ? "Updating workspace" : ""}
+				{busy ? "Updating project" : ""}
 			</span>
 		</>
 	);

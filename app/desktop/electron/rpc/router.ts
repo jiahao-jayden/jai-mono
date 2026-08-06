@@ -8,12 +8,12 @@ import {
 	DESKTOP_EVENTS_CHANNEL,
 	type DesktopAgentMessageInput,
 	type DesktopApi,
+	type DesktopProject,
 	type DesktopProviderConfigInput,
 	type DesktopSessionCreateInput,
 	type DesktopSessionDeleteInput,
 	type DesktopSessionRenameInput,
 	type DesktopTheme,
-	type DesktopWorkspace,
 } from "../../shared/desktop-rpc";
 import { type DesktopAgentFactory, DesktopAgentHost } from "../agent/host";
 import { projectSessionSnapshot } from "../agent/projector";
@@ -33,7 +33,7 @@ const themeStore = new Store<{ theme: DesktopTheme }>({
 class InvalidThemeValue extends TaggedError("desktop_theme.invalid_value")<{ readonly message: string }> {}
 class InvalidAgentInput extends TaggedError("desktop_agent_input.invalid_value")<{ readonly message: string }> {}
 class DesktopBusinessUnavailable extends TaggedError("desktop_business.unavailable")<{ readonly message: string }> {}
-class WorkspacePickerFailed extends TaggedError("desktop_workspace.picker_failed")<{
+class ProjectPickerFailed extends TaggedError("desktop_project.picker_failed")<{
 	readonly cause?: unknown;
 	readonly message: string;
 }> {}
@@ -41,8 +41,8 @@ class WorkspacePickerFailed extends TaggedError("desktop_workspace.picker_failed
 const themeError = (init: { readonly message: string }) => new InvalidThemeValue(init);
 const agentInputError = (init: { readonly message: string }) => new InvalidAgentInput(init);
 const desktopBusinessError = (init: { readonly message: string }) => new DesktopBusinessUnavailable(init);
-const desktopWorkspaceError = (init: { readonly cause?: unknown; readonly message: string }) =>
-	new WorkspacePickerFailed(init);
+const desktopProjectError = (init: { readonly cause?: unknown; readonly message: string }) =>
+	new ProjectPickerFailed(init);
 let codingBusiness: CodingBusinessService | undefined;
 let providerConfig: DesktopProviderConfigService | undefined;
 const desktopAgentHost = new DesktopAgentHost((envelope) => {
@@ -145,28 +145,28 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 			return requireProviderConfig().revealApiKey(profileId);
 		},
 	},
-	workspace: {
+	project: {
 		async list() {
 			const service = requireCodingBusiness();
 			return Promise.all(
-				service.listWorkspaces().map(async (workspace) => ({
-					...workspace,
-					available: await service.isWorkspaceAvailable(workspace.id),
+				service.listProjects().map(async (project) => ({
+					...project,
+					available: await service.isProjectAvailable(project.id),
 				})),
 			);
 		},
 		async choose(event) {
-			const path = await pickWorkspaceDirectory(event);
+			const path = await pickProjectDirectory(event);
 			if (!path) return null;
-			const workspace = await requireCodingBusiness().createWorkspace({ path });
-			return { ...workspace, available: true } satisfies DesktopWorkspace;
+			const project = await requireCodingBusiness().createProject({ path });
+			return { ...project, available: true } satisfies DesktopProject;
 		},
-		async relink(event, workspaceId) {
-			const path = await pickWorkspaceDirectory(event);
+		async relink(event, projectId) {
+			const path = await pickProjectDirectory(event);
 			if (!path) return null;
-			const workspace = await requireCodingBusiness().relinkWorkspace(assertSessionId(workspaceId), { path });
+			const project = await requireCodingBusiness().relinkProject(assertSessionId(projectId), { path });
 			desktopAgentHost.invalidateSessions();
-			return { ...workspace, available: true } satisfies DesktopWorkspace;
+			return { ...project, available: true } satisfies DesktopProject;
 		},
 	},
 	session: {
@@ -241,7 +241,10 @@ function assertMessageInput(value: unknown): DesktopAgentMessageInput {
 		typeof (value as DesktopAgentMessageInput).message !== "string" ||
 		(value as DesktopAgentMessageInput).message.length === 0 ||
 		typeof (value as DesktopAgentMessageInput).modelRef !== "string" ||
-		!(value as DesktopAgentMessageInput).modelRef.includes("/")
+		!(value as DesktopAgentMessageInput).modelRef.includes("/") ||
+		((value as DesktopAgentMessageInput).mode !== "manual" &&
+			(value as DesktopAgentMessageInput).mode !== "automate" &&
+			(value as DesktopAgentMessageInput).mode !== "plan")
 	) {
 		throw agentInputError({ message: "Invalid agent message input" });
 	}
@@ -274,15 +277,13 @@ function assertSessionCreateInput(value: unknown): DesktopSessionCreateInput {
 		!isRecord(value) ||
 		typeof value.firstMessage !== "string" ||
 		value.firstMessage.trim().length === 0 ||
-		(value.workspaceId !== undefined && value.workspaceId !== null && typeof value.workspaceId !== "string")
+		(value.projectId !== undefined && value.projectId !== null && typeof value.projectId !== "string")
 	) {
 		throw agentInputError({ message: "Invalid Session create input" });
 	}
 	return {
 		firstMessage: value.firstMessage,
-		...(value.workspaceId === null || typeof value.workspaceId === "string"
-			? { workspaceId: value.workspaceId }
-			: {}),
+		...(value.projectId === null || typeof value.projectId === "string" ? { projectId: value.projectId } : {}),
 	};
 }
 
@@ -305,15 +306,15 @@ function assertSessionDeleteInput(value: unknown): DesktopSessionDeleteInput {
 	return { sessionId: value.sessionId };
 }
 
-function assertSessionMoveInput(value: unknown): { sessionId: string; toWorkspaceId: string | null } {
+function assertSessionMoveInput(value: unknown): { sessionId: string; toProjectId: string | null } {
 	if (
 		!isRecord(value) ||
 		typeof value.sessionId !== "string" ||
-		(value.toWorkspaceId !== null && typeof value.toWorkspaceId !== "string")
+		(value.toProjectId !== null && typeof value.toProjectId !== "string")
 	) {
 		throw agentInputError({ message: "Invalid Session move input" });
 	}
-	return { sessionId: value.sessionId, toWorkspaceId: value.toWorkspaceId };
+	return { sessionId: value.sessionId, toProjectId: value.toProjectId };
 }
 
 function assertSessionListInput(
@@ -344,19 +345,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function pickWorkspaceDirectory(event: IpcMainInvokeEvent): Promise<string | undefined> {
+async function pickProjectDirectory(event: IpcMainInvokeEvent): Promise<string | undefined> {
 	try {
 		const options: Electron.OpenDialogOptions = {
-			title: "Choose a workspace folder",
-			buttonLabel: "Choose Workspace",
+			title: "Choose a project folder",
+			buttonLabel: "Choose Project",
 			properties: ["openDirectory", "createDirectory", "promptToCreate"],
 		};
 		const window = BrowserWindow.fromWebContents(event.sender);
 		const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
 		return result.canceled ? undefined : result.filePaths[0];
 	} catch (error) {
-		throw desktopWorkspaceError({
-			message: "The workspace folder picker could not be opened",
+		throw desktopProjectError({
+			message: "The project folder picker could not be opened",
 			cause: error,
 		});
 	}

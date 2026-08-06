@@ -5,10 +5,11 @@ type BusinessErrorInit = {
 	readonly data?: Record<string, unknown>;
 	readonly message: string;
 };
-class WorkspaceNotFound extends TaggedError("coding_business.workspace_not_found")<BusinessErrorInit> {}
-class WorkspacePathInvalid extends TaggedError("coding_business.workspace_path_invalid")<BusinessErrorInit> {}
-class WorkspacePathConflict extends TaggedError("coding_business.workspace_path_conflict")<BusinessErrorInit> {}
-class WorkspaceUnavailable extends TaggedError("coding_business.workspace_unavailable")<BusinessErrorInit> {}
+class ProjectNotFound extends TaggedError("coding_business.project_not_found")<BusinessErrorInit> {}
+class ProjectPathInvalid extends TaggedError("coding_business.project_path_invalid")<BusinessErrorInit> {}
+class ProjectPathConflict extends TaggedError("coding_business.project_path_conflict")<BusinessErrorInit> {}
+class ProjectDirectoryConflict extends TaggedError("coding_business.project_directory_conflict")<BusinessErrorInit> {}
+class ProjectUnavailable extends TaggedError("coding_business.project_unavailable")<BusinessErrorInit> {}
 class SessionNotFound extends TaggedError("coding_business.session_not_found")<BusinessErrorInit> {}
 class SessionFileMissing extends TaggedError("coding_business.session_file_missing")<BusinessErrorInit> {}
 class SessionFileConflict extends TaggedError("coding_business.session_file_conflict")<BusinessErrorInit> {}
@@ -19,10 +20,11 @@ class DatabaseUnsupported extends TaggedError("coding_business.database_unsuppor
 
 function businessError(
 	reason:
-		| "workspace_not_found"
-		| "workspace_path_invalid"
-		| "workspace_path_conflict"
-		| "workspace_unavailable"
+		| "project_not_found"
+		| "project_path_invalid"
+		| "project_path_conflict"
+		| "project_directory_conflict"
+		| "project_unavailable"
 		| "session_not_found"
 		| "session_file_missing"
 		| "session_file_conflict"
@@ -33,14 +35,16 @@ function businessError(
 	init: BusinessErrorInit,
 ) {
 	switch (reason) {
-		case "workspace_not_found":
-			return new WorkspaceNotFound(init);
-		case "workspace_path_invalid":
-			return new WorkspacePathInvalid(init);
-		case "workspace_path_conflict":
-			return new WorkspacePathConflict(init);
-		case "workspace_unavailable":
-			return new WorkspaceUnavailable(init);
+		case "project_not_found":
+			return new ProjectNotFound(init);
+		case "project_path_invalid":
+			return new ProjectPathInvalid(init);
+		case "project_path_conflict":
+			return new ProjectPathConflict(init);
+		case "project_directory_conflict":
+			return new ProjectDirectoryConflict(init);
+		case "project_unavailable":
+			return new ProjectUnavailable(init);
 		case "session_not_found":
 			return new SessionNotFound(init);
 		case "session_file_missing":
@@ -58,30 +62,36 @@ function businessError(
 	}
 }
 
-export const workspaceNotFoundError = (workspaceId: string) =>
-	businessError("workspace_not_found", {
-		message: `Workspace "${workspaceId}" does not exist`,
-		data: { workspaceId },
+export const projectNotFoundError = (projectId: string) =>
+	businessError("project_not_found", {
+		message: `Project "${projectId}" does not exist`,
+		data: { projectId },
 	});
 
-export const workspacePathInvalidError = (path: string, cause?: unknown) =>
-	businessError("workspace_path_invalid", {
-		message: `Workspace path is not an accessible directory: ${path}`,
+export const projectPathInvalidError = (path: string, cause?: unknown) =>
+	businessError("project_path_invalid", {
+		message: `Project path is not an accessible directory: ${path}`,
 		data: { path },
 		cause,
 	});
 
-export const workspacePathConflictError = (canonicalPath: string, cause?: unknown) =>
-	businessError("workspace_path_conflict", {
-		message: `A Workspace already uses "${canonicalPath}"`,
+export const projectPathConflictError = (canonicalPath: string, cause?: unknown) =>
+	businessError("project_path_conflict", {
+		message: `A Project already uses "${canonicalPath}"`,
 		data: { canonicalPath },
 		cause,
 	});
 
-export const workspaceUnavailableError = (workspaceId: string, cause?: unknown) =>
-	businessError("workspace_unavailable", {
-		message: `Workspace "${workspaceId}" must be relinked before local tools can run`,
-		data: { workspaceId },
+export const projectDirectoryConflictError = (directory: string) =>
+	businessError("project_directory_conflict", {
+		message: `A Project session directory already uses "${directory}"`,
+		data: { directory },
+	});
+
+export const projectUnavailableError = (projectId: string, cause?: unknown) =>
+	businessError("project_unavailable", {
+		message: `Project "${projectId}" must be relinked before local tools can run`,
+		data: { projectId },
 		cause,
 	});
 

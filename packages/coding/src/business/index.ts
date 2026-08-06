@@ -1,7 +1,7 @@
 export type {
 	CodingBusinessRepository,
+	CreateProjectRecord,
 	CreateSessionRecord,
-	CreateWorkspaceRecord,
 } from "./repository";
 export {
 	CodingBusinessService,
@@ -10,13 +10,13 @@ export {
 export type {
 	CodingExecutionContext,
 	CodingSession,
+	CreateProjectInput,
 	CreateSessionInput,
-	CreateWorkspaceInput,
 	MoveSessionInput,
+	Project,
 	ProviderModelInventory,
 	SessionListCursor,
 	SessionListPage,
+	SessionProjectHistory,
 	SessionTitleSource,
-	SessionWorkspaceHistory,
-	Workspace,
 } from "./types";

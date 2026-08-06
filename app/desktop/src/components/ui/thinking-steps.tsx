@@ -306,6 +306,10 @@ function ThinkingStep({
     const expandable = Boolean(children);
     const [open, setOpen] = useState(isActive);
 
+    useEffect(() => {
+      if (!isActive) setOpen(false);
+    }, [isActive]);
+
     if (status === "pending") return null;
 
     const row = (

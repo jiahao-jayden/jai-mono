@@ -6,26 +6,27 @@ import type { JsonObject, SessionSnapshot } from "@jai/agent";
 import { FileSessionStore } from "@jai/agent/node";
 import { getErrorCode } from "@jai/common";
 import {
+	projectDirectoryConflictError,
+	projectNotFoundError,
+	projectPathInvalidError,
 	sessionBusyError,
 	sessionFileConflictError,
 	sessionFileMissingError,
 	sessionNotFoundError,
 	storageInconsistentError,
-	workspaceNotFoundError,
-	workspacePathInvalidError,
 } from "./errors";
 import type { CodingBusinessRepository } from "./repository";
 import type {
 	CodingExecutionContext,
 	CodingSession,
+	CreateProjectInput,
 	CreateSessionInput,
-	CreateWorkspaceInput,
 	MoveSessionInput,
+	Project,
 	ProviderModelInventory,
 	SessionListCursor,
 	SessionListPage,
-	SessionWorkspaceHistory,
-	Workspace,
+	SessionProjectHistory,
 } from "./types";
 
 const UNASSIGNED_DIRECTORY = "_unassigned";
@@ -44,34 +45,58 @@ export class CodingBusinessService {
 
 	constructor(repository: CodingBusinessRepository, options: CodingBusinessServiceOptions = {}) {
 		this.repository = repository;
-		this.dataRoot = path.resolve(options.dataRoot ?? path.join(homedir(), "jai", "workspace"));
+		this.dataRoot = path.resolve(options.dataRoot ?? path.join(homedir(), "jai", "projects"));
 		this.#now = options.now ?? Date.now;
 		this.#createId = options.createId ?? randomUUID;
 	}
 
 	static async open(options: CodingBusinessServiceOptions = {}): Promise<CodingBusinessService> {
-		const dataRoot = path.resolve(options.dataRoot ?? path.join(homedir(), "jai", "workspace"));
+		const dataRoot = path.resolve(options.dataRoot ?? path.join(homedir(), "jai", "projects"));
 		const { SqliteCodingBusinessRepository } = await import("./sqlite-repository");
 		const repository = await SqliteCodingBusinessRepository.open(path.join(dataRoot, "data.sqlite"));
 		return new CodingBusinessService(repository, { ...options, dataRoot });
 	}
 
-	async createWorkspace(input: CreateWorkspaceInput): Promise<Workspace> {
-		const location = await resolveWorkspaceLocation(input.path, input.displayName);
-		return this.repository.createWorkspace({
+	async createProject(input: CreateProjectInput): Promise<Project> {
+		const location = await resolveProjectLocation(input.path, input.displayName);
+		this.assertProjectDirectoryAvailable(location.canonicalPath);
+		return this.repository.createProject({
 			id: this.#createId(),
 			...location,
 			now: this.#now(),
 		});
 	}
 
-	async relinkWorkspace(workspaceId: string, input: CreateWorkspaceInput): Promise<Workspace> {
-		if (!this.repository.getWorkspace(workspaceId)) throw workspaceNotFoundError(workspaceId);
-		const location = await resolveWorkspaceLocation(input.path, input.displayName);
-		return this.repository.relinkWorkspace(workspaceId, {
-			...location,
-			now: this.#now(),
-		});
+	async relinkProject(projectId: string, input: CreateProjectInput): Promise<Project> {
+		this.getProject(projectId);
+		const location = await resolveProjectLocation(input.path, input.displayName);
+		this.assertProjectDirectoryAvailable(location.canonicalPath, projectId);
+
+		const sourceDirectory = this.sessionDirectory(projectId);
+		const destinationDirectory = path.join(this.dataRoot, projectDirectoryName(location.canonicalPath), "sessions");
+		const sourceRoot = path.dirname(sourceDirectory);
+		const destinationRoot = path.dirname(destinationDirectory);
+		if (sourceDirectory === destinationDirectory || !(await exists(sourceDirectory))) {
+			return this.repository.relinkProject(projectId, {
+				...location,
+				now: this.#now(),
+			});
+		}
+		if (await exists(destinationRoot)) {
+			throw projectDirectoryConflictError(path.basename(destinationRoot));
+		}
+
+		await fs.mkdir(this.dataRoot, { recursive: true });
+		await fs.rename(sourceRoot, destinationRoot);
+		try {
+			return this.repository.relinkProject(projectId, {
+				...location,
+				now: this.#now(),
+			});
+		} catch (error) {
+			await fs.rename(destinationRoot, sourceRoot);
+			throw error;
+		}
 	}
 
 	getProviderModelInventory(profileId: string): ProviderModelInventory | undefined {
@@ -97,18 +122,18 @@ export class CodingBusinessService {
 	async createSession<TAppState extends JsonObject = JsonObject>(
 		input: CreateSessionInput<TAppState>,
 	): Promise<CodingSession> {
-		const workspaceId = input.workspaceId ?? null;
-		if (workspaceId !== null && !this.repository.getWorkspace(workspaceId)) {
-			throw workspaceNotFoundError(workspaceId);
+		const projectId = input.projectId ?? null;
+		if (projectId !== null && !this.repository.getProject(projectId)) {
+			throw projectNotFoundError(projectId);
 		}
 		const id = this.#createId();
-		const directory = this.sessionDirectory(workspaceId);
+		const directory = this.sessionDirectory(projectId);
 		const store = new FileSessionStore<TAppState>(directory);
 		await store.create(id, input.appState ?? ({} as TAppState));
 		try {
 			return this.repository.createSession({
 				id,
-				workspaceId,
+				projectId,
 				title: fallbackTitle(input.firstMessage),
 				now: this.#now(),
 			});
@@ -118,21 +143,21 @@ export class CodingBusinessService {
 		}
 	}
 
-	getWorkspace(id: string): Workspace {
-		const workspace = this.repository.getWorkspace(id);
-		if (!workspace) throw workspaceNotFoundError(id);
-		return workspace;
+	getProject(id: string): Project {
+		const project = this.repository.getProject(id);
+		if (!project) throw projectNotFoundError(id);
+		return project;
 	}
 
-	listWorkspaces(): Workspace[] {
-		return this.repository.listWorkspaces();
+	listProjects(): Project[] {
+		return this.repository.listProjects();
 	}
 
-	async isWorkspaceAvailable(workspaceId: string): Promise<boolean> {
-		const workspace = this.getWorkspace(workspaceId);
+	async isProjectAvailable(projectId: string): Promise<boolean> {
+		const project = this.getProject(projectId);
 		try {
-			const location = await resolveWorkspaceLocation(workspace.path, workspace.displayName);
-			return location.canonicalPath === workspace.canonicalPath;
+			const location = await resolveProjectLocation(project.path, project.displayName);
+			return location.canonicalPath === project.canonicalPath;
 		} catch {
 			return false;
 		}
@@ -181,15 +206,15 @@ export class CodingBusinessService {
 		return this.repository.touchSession(id, this.#now());
 	}
 
-	listWorkspaceHistory(sessionId: string): SessionWorkspaceHistory[] {
-		return this.repository.listWorkspaceHistory(sessionId);
+	listProjectHistory(sessionId: string): SessionProjectHistory[] {
+		return this.repository.listProjectHistory(sessionId);
 	}
 
 	async loadSessionSnapshot<TAppState extends JsonObject = JsonObject>(
 		sessionId: string,
 	): Promise<SessionSnapshot<TAppState>> {
 		const session = await this.repairSessionLocation(sessionId);
-		const store = new FileSessionStore<TAppState>(this.sessionDirectory(session.workspaceId));
+		const store = new FileSessionStore<TAppState>(this.sessionDirectory(session.projectId));
 		const stored = await store.load(sessionId);
 		if (!stored) throw sessionFileMissingError(sessionId);
 		return stored.snapshot;
@@ -197,20 +222,20 @@ export class CodingBusinessService {
 
 	async moveSession(input: MoveSessionInput): Promise<CodingSession> {
 		const session = this.getSession(input.sessionId);
-		if (input.toWorkspaceId !== null && !this.repository.getWorkspace(input.toWorkspaceId)) {
-			throw workspaceNotFoundError(input.toWorkspaceId);
+		if (input.toProjectId !== null && !this.repository.getProject(input.toProjectId)) {
+			throw projectNotFoundError(input.toProjectId);
 		}
-		if (session.workspaceId === input.toWorkspaceId) return session;
+		if (session.projectId === input.toProjectId) return session;
 
 		const source = await this.locateSessionFile(session);
-		const destination = this.sessionFilePath(input.sessionId, input.toWorkspaceId);
+		const destination = this.sessionFilePath(input.sessionId, input.toProjectId);
 		await fs.mkdir(path.dirname(destination), { recursive: true });
 		if (await exists(destination)) throw sessionFileConflictError(input.sessionId);
 
 		return withSessionLock(source, input.sessionId, async () => {
 			await fs.rename(source, destination);
 			try {
-				return this.repository.moveSession(input.sessionId, input.toWorkspaceId, this.#now());
+				return this.repository.moveSession(input.sessionId, input.toProjectId, this.#now());
 			} catch (error) {
 				try {
 					await fs.rename(destination, source);
@@ -227,38 +252,40 @@ export class CodingBusinessService {
 
 	async repairSessionLocation(sessionId: string): Promise<CodingSession> {
 		const session = this.getSession(sessionId);
-		const expected = this.sessionFilePath(session.id, session.workspaceId);
+		const expected = this.sessionFilePath(session.id, session.projectId);
 		if (await exists(expected)) return session;
 
 		const matches = await this.#findSessionFiles(sessionId);
 		if (matches.length === 0) throw sessionFileMissingError(sessionId);
 		if (matches.length > 1) throw storageInconsistentError(sessionId);
-		const actualWorkspaceId = workspaceIdFromSessionPath(this.dataRoot, matches[0]!);
-		if (actualWorkspaceId !== null && !this.repository.getWorkspace(actualWorkspaceId)) {
+		const actualProjectId = this.projectIdFromSessionPath(matches[0]!);
+		if (actualProjectId !== null && !this.repository.getProject(actualProjectId)) {
 			throw storageInconsistentError(sessionId);
 		}
-		return this.repository.moveSession(sessionId, actualWorkspaceId, this.#now());
+		return this.repository.moveSession(sessionId, actualProjectId, this.#now());
 	}
 
 	async resolveExecutionContext(sessionId: string): Promise<CodingExecutionContext> {
 		const session = this.getSession(sessionId);
-		if (session.workspaceId === null) return { localFileAccess: false };
-		const workspace = this.getWorkspace(session.workspaceId);
-		if (!(await this.isWorkspaceAvailable(workspace.id))) return { localFileAccess: false };
+		if (session.projectId === null) return { localFileAccess: false };
+		const project = this.getProject(session.projectId);
+		if (!(await this.isProjectAvailable(project.id))) return { localFileAccess: false };
 		return {
 			localFileAccess: true,
-			cwd: workspace.canonicalPath,
-			configRoot: workspace.canonicalPath,
-			defaultAllowedDirectories: [workspace.canonicalPath],
+			cwd: project.canonicalPath,
+			configRoot: project.canonicalPath,
+			defaultAllowedDirectories: [project.canonicalPath],
 		};
 	}
 
-	sessionDirectory(workspaceId: string | null): string {
-		return path.join(this.dataRoot, workspaceId ?? UNASSIGNED_DIRECTORY, "sessions");
+	sessionDirectory(projectId: string | null): string {
+		const directory =
+			projectId === null ? UNASSIGNED_DIRECTORY : projectDirectoryName(this.getProject(projectId).canonicalPath);
+		return path.join(this.dataRoot, directory, "sessions");
 	}
 
-	sessionFilePath(sessionId: string, workspaceId: string | null): string {
-		return path.join(this.sessionDirectory(workspaceId), `${sessionId}.jsonl`);
+	sessionFilePath(sessionId: string, projectId: string | null): string {
+		return path.join(this.sessionDirectory(projectId), `${sessionId}.jsonl`);
 	}
 
 	close(): void {
@@ -266,7 +293,7 @@ export class CodingBusinessService {
 	}
 
 	async locateSessionFile(session: CodingSession): Promise<string> {
-		const expected = this.sessionFilePath(session.id, session.workspaceId);
+		const expected = this.sessionFilePath(session.id, session.projectId);
 		if (await exists(expected)) return expected;
 		const matches = await this.#findSessionFiles(session.id);
 		if (matches.length === 0) throw sessionFileMissingError(session.id);
@@ -287,24 +314,52 @@ export class CodingBusinessService {
 		);
 		return matches.filter((candidate): candidate is string => candidate !== undefined);
 	}
+
+	private assertProjectDirectoryAvailable(canonicalPath: string, exceptProjectId?: string): void {
+		const directory = projectDirectoryName(canonicalPath);
+		if (
+			directory === UNASSIGNED_DIRECTORY ||
+			this.repository
+				.listProjects()
+				.some(
+					(project) => project.id !== exceptProjectId && projectDirectoryName(project.canonicalPath) === directory,
+				)
+		) {
+			throw projectDirectoryConflictError(directory);
+		}
+	}
+
+	private projectIdFromSessionPath(sessionFile: string): string | null {
+		const relative = path.relative(this.dataRoot, sessionFile);
+		const [directory] = relative.split(path.sep);
+		if (!directory || directory === ".." || path.isAbsolute(relative)) {
+			throw storageInconsistentError(path.basename(sessionFile, ".jsonl"));
+		}
+		if (directory === UNASSIGNED_DIRECTORY) return null;
+		const matches = this.repository
+			.listProjects()
+			.filter((project) => projectDirectoryName(project.canonicalPath) === directory);
+		if (matches.length !== 1) throw storageInconsistentError(path.basename(sessionFile, ".jsonl"));
+		return matches[0]!.id;
+	}
 }
 
-async function resolveWorkspaceLocation(
+async function resolveProjectLocation(
 	inputPath: string,
 	displayName?: string,
 ): Promise<{ readonly displayName: string; readonly path: string; readonly canonicalPath: string }> {
 	const absolutePath = path.resolve(inputPath);
 	try {
 		const [canonicalPath, stat] = await Promise.all([fs.realpath(absolutePath), fs.stat(absolutePath)]);
-		if (!stat.isDirectory()) throw workspacePathInvalidError(absolutePath);
+		if (!stat.isDirectory()) throw projectPathInvalidError(absolutePath);
 		return {
 			displayName: displayName?.trim() || path.basename(absolutePath),
 			path: absolutePath,
 			canonicalPath,
 		};
 	} catch (error) {
-		if (getErrorCode(error) === "coding_business.workspace_path_invalid") throw error;
-		throw workspacePathInvalidError(absolutePath, error);
+		if (getErrorCode(error) === "coding_business.project_path_invalid") throw error;
+		throw projectPathInvalidError(absolutePath, error);
 	}
 }
 
@@ -388,11 +443,10 @@ async function exists(target: string): Promise<boolean> {
 		});
 }
 
-function workspaceIdFromSessionPath(dataRoot: string, sessionFile: string): string | null {
-	const relative = path.relative(dataRoot, sessionFile);
-	const [directory] = relative.split(path.sep);
-	if (!directory || directory === ".." || path.isAbsolute(relative)) {
-		throw storageInconsistentError(path.basename(sessionFile, ".jsonl"));
+function projectDirectoryName(canonicalPath: string): string {
+	const directory = path.basename(canonicalPath);
+	if (!directory || directory === "." || directory === "..") {
+		throw projectPathInvalidError(canonicalPath);
 	}
-	return directory === UNASSIGNED_DIRECTORY ? null : directory;
+	return directory;
 }

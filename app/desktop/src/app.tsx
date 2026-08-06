@@ -1,5 +1,10 @@
-import { WorkspaceShell } from "@/components/shell/workspace-shell";
+import { HashRouter } from "react-router";
+import { AppShell } from "@/components/shell/app-shell";
 
 export default function App() {
-	return <WorkspaceShell />;
+	return (
+		<HashRouter>
+			<AppShell />
+		</HashRouter>
+	);
 }

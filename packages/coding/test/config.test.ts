@@ -322,7 +322,7 @@ describe("defineCodingConfig", () => {
 async function createFixture() {
 	const root = await mkdtemp(join(tmpdir(), "jai-config-"));
 	roots.push(root);
-	const options = { homeDir: join(root, "home"), workspaceRoot: join(root, "workspace") };
+	const options = { homeDir: join(root, "home"), projectRoot: join(root, "project") };
 	return { options, paths: resolveCodingConfigPaths(options) };
 }
 

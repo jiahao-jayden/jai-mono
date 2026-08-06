@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { DesktopTranscriptItem } from "../shared/desktop-rpc";
-import { groupTranscriptItems, workGroupTitle } from "../src/components/shell/chat/chat-transcript";
+import {
+	explorationSummary,
+	groupTranscriptItems,
+	workGroupTitle,
+	workProcessRows,
+} from "../src/components/shell/chat/chat-transcript";
 
 describe("groupTranscriptItems", () => {
 	test("按 turnId 合并乱序到达的进度、思考与工具", () => {
@@ -45,6 +50,9 @@ describe("groupTranscriptItems", () => {
 				items,
 			},
 		]);
+		const [row] = groupTranscriptItems(items);
+		if (!row || "kind" in row) throw new Error("Expected a work group");
+		expect(workGroupTitle(row.items, false)).toBe("检查运行环境");
 	});
 
 	test("缺少 ReportProgress 时用实际工具生成语义标题", () => {
@@ -72,5 +80,54 @@ describe("groupTranscriptItems", () => {
 		expect(row).not.toHaveProperty("kind");
 		if (!row || "kind" in row) throw new Error("Expected a work group");
 		expect(workGroupTitle(row.items, false)).toBe("Loaded last30days");
+	});
+
+	test("命令工具与未知工具使用稳定的阶段标题", () => {
+		const bash: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:bash-1",
+			turnId: "turn-1",
+			toolCallId: "bash-1",
+			toolName: "Bash",
+			status: "running",
+			summary: "date",
+		};
+		const unknown: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			...bash,
+			id: "tool:custom-1",
+			toolCallId: "custom-1",
+			toolName: "InternalCustomTool",
+			status: "complete",
+		};
+
+		expect(workGroupTitle([bash], true)).toBe("Executing");
+		expect(workGroupTitle([{ ...bash, status: "complete" }], false)).toBe("Executing");
+		expect(workGroupTitle([{ ...bash, status: "error" }], false)).toBe("Executing");
+		expect(workGroupTitle([unknown], false)).toBe("Working");
+	});
+
+	test("连续读取和搜索聚合为一个探索步骤", () => {
+		const read: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:read-1",
+			turnId: "turn-1",
+			toolCallId: "read-1",
+			toolName: "Read",
+			status: "complete",
+			summary: "README.md",
+		};
+		const grep: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			...read,
+			id: "tool:grep-1",
+			toolCallId: "grep-1",
+			toolName: "Grep",
+			summary: "ReportProgress",
+		};
+
+		const rows = workProcessRows([read, grep]);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ kind: "exploration", items: [read, grep] });
+		expect(explorationSummary([read, grep], false, false)).toBe("Explored 1 file, 1 search");
+		expect(workGroupTitle([read, grep], false)).toBe("Exploring");
 	});
 });

@@ -38,6 +38,12 @@ export function evaluatePermission(
 	if (call.toolName === "ReportProgress" || call.toolName === "SpawnAgent") {
 		return decision("allow", "built-in", "Internal agent coordination has no direct external side effects");
 	}
+	if (
+		resolved.defaultMode === "plan" &&
+		(isEditCall(call) || (call.toolName === "Bash" && !isReadOnlyBash(stringArg(call, "command"))))
+	) {
+		return decision("deny", "mode", "Plan mode only allows read-only work");
+	}
 	for (const effect of ["deny", "ask", "allow"] as const) {
 		const rule = matchingRule(effect, resolved[effect], call);
 		if (rule) return decision(effect, "rule", `Matched ${effect} rule`, rule);
@@ -62,7 +68,6 @@ export function evaluatePermission(
 			: decision("ask", "built-in", "Read is outside the workspace boundary");
 	}
 	if (isEditCall(call)) {
-		if (resolved.defaultMode === "plan") return decision("ask", "mode", "Plan mode requires confirmation for edits");
 		if (resolved.defaultMode === "acceptEdits" && isInsideReadableBoundary(call, resolved.additionalDirectories)) {
 			return decision("allow", "mode", "Accept Edits allows changes inside the workspace boundary");
 		}

@@ -9,7 +9,7 @@ import type {
 	DesktopTranscriptItem,
 } from "../../../../shared/desktop-rpc";
 import { ChatMessage } from "../../ui/chat-message";
-import { ThinkingStep, ThinkingSteps, ThinkingStepsContent, ThinkingStepsHeader } from "../../ui/thinking-steps";
+import { ThinkingStep } from "../../ui/thinking-steps";
 import { ToolCall } from "../../ui/tool-call";
 import { SubagentCard } from "./subagent-card";
 
@@ -20,6 +20,12 @@ interface WorkGroup {
 	readonly id: string;
 	readonly items: readonly WorkItem[];
 }
+
+type WorkProcessRow =
+	| { readonly kind: "exploration"; readonly id: string; readonly items: readonly DesktopToolItem[] }
+	| { readonly kind: "item"; readonly item: WorkItem };
+
+type ToolCategory = "search" | "read" | "update" | "command" | "skill" | "other";
 
 const MemoizedTranscriptItem = memo(TranscriptItem);
 const MemoizedWorkProcess = memo(WorkProcess, sameWorkGroup);
@@ -151,7 +157,16 @@ function useTranscriptItemAnimations(items: readonly DesktopTranscriptItem[], lo
 
 function WorkProcess({ group }: { readonly group: WorkGroup }) {
 	const progress = group.items.find((item): item is DesktopProgressItem => item.kind === "progress");
-	const visibleItems = progress ? group.items.filter((item) => item.kind === "tool") : group.items;
+	const tools = group.items.filter((item): item is DesktopToolItem => item.kind === "tool");
+	if (!progress && tools.length === 0) {
+		return (
+			<div className="flex flex-col px-1 py-1">
+				{group.items.map((item) => (
+					<WorkProcessStep key={item.id} item={item} />
+				))}
+			</div>
+		);
+	}
 	const running = group.items.some(
 		(item) =>
 			(item.kind === "thinking" && item.status === "streaming") ||
@@ -159,19 +174,21 @@ function WorkProcess({ group }: { readonly group: WorkGroup }) {
 			(item.kind === "tool" && item.status === "running"),
 	);
 	const title = workGroupTitle(group.items, running);
+	const rows = workProcessRows(tools);
 
 	return (
-		<ThinkingSteps className="w-full" defaultOpen={running}>
-			<ThinkingStepsHeader>{title}</ThinkingStepsHeader>
-			<ThinkingStepsContent>
-				{progress ? (
-					<p className="px-2 pb-2 text-[13px] leading-relaxed text-muted-foreground">{progress.detail}</p>
-				) : null}
-				{visibleItems.map((item) => (
-					<WorkProcessStep key={item.id} item={item} />
-				))}
-			</ThinkingStepsContent>
-		</ThinkingSteps>
+		<div className="w-full">
+			<div className="px-1 py-1.5 text-[13px] font-medium text-muted-foreground">{title}</div>
+			<div className="flex flex-col gap-1 px-1 pb-2 pt-1">
+				{rows.map((row) =>
+					row.kind === "exploration" ? (
+						<ExplorationStep key={row.id} items={row.items} />
+					) : (
+						<WorkProcessStep key={row.item.id} item={row.item} />
+					),
+				)}
+			</div>
+		</div>
 	);
 }
 
@@ -184,9 +201,40 @@ export function workGroupTitle(items: readonly WorkItem[], running: boolean): st
 		const skill = tool.summary?.replace(/^\//, "");
 		if (skill) return running ? `Loading ${skill}…` : `Loaded ${skill}`;
 	}
-	if (tool) return toolPresentation(tool).label;
+	if (tool) {
+		switch (toolCategory(tool.toolName)) {
+			case "search":
+			case "read":
+				return "Exploring";
+			case "update":
+				return "Implementing";
+			case "command":
+				return "Executing";
+			case "skill":
+				return "Loading skill";
+			case "other":
+				return "Working";
+		}
+	}
 	if (items.some((item) => item.kind === "thinking")) return running ? "Reasoning…" : "Reasoning";
 	return running ? "Planning…" : "Planning";
+}
+
+export function workProcessRows(items: readonly WorkItem[]): readonly WorkProcessRow[] {
+	const rows: WorkProcessRow[] = [];
+	for (const item of items) {
+		if (item.kind === "tool" && isExplorationTool(item)) {
+			const previous = rows.at(-1);
+			if (previous?.kind === "exploration") {
+				rows[rows.length - 1] = { ...previous, items: [...previous.items, item] };
+			} else {
+				rows.push({ kind: "exploration", id: `exploration:${item.id}`, items: [item] });
+			}
+			continue;
+		}
+		rows.push({ kind: "item", item });
+	}
+	return rows;
 }
 
 function sameWorkGroup(previous: { readonly group: WorkGroup }, next: { readonly group: WorkGroup }): boolean {
@@ -216,6 +264,33 @@ function WorkProcessStep({ item }: { readonly item: WorkItem }) {
 	);
 }
 
+function ExplorationStep({ items }: { readonly items: readonly DesktopToolItem[] }) {
+	const running = items.some((item) => item.status === "running");
+	const failed = items.some((item) => item.status === "error");
+	const label = explorationSummary(items, running, failed);
+	return (
+		<ThinkingStep icon="search" label={label} status={running ? "active" : "complete"}>
+			<div className="flex flex-col gap-1 py-1">
+				{items.map((item) => (
+					<ToolStep key={item.id} item={item} />
+				))}
+			</div>
+		</ThinkingStep>
+	);
+}
+
+export function explorationSummary(items: readonly DesktopToolItem[], running: boolean, failed: boolean): string {
+	if (running) return "Exploring";
+	if (failed) return "Exploration failed";
+	const files = items.filter((item) => toolCategory(item.toolName) === "read").length;
+	const searches = items.length - files;
+	const parts = [
+		files > 0 ? `${files} ${files === 1 ? "file" : "files"}` : undefined,
+		searches > 0 ? `${searches} ${searches === 1 ? "search" : "searches"}` : undefined,
+	].filter((part): part is string => Boolean(part));
+	return `Explored ${parts.join(", ")}`;
+}
+
 function ToolStep({ item }: { readonly item: DesktopToolItem }) {
 	const presentation = toolPresentation(item);
 	return (
@@ -225,32 +300,59 @@ function ToolStep({ item }: { readonly item: DesktopToolItem }) {
 			summary={item.summary}
 			details={item.details}
 			status={item.status}
+			variant={toolCategory(item.toolName) === "command" ? "card" : "plain"}
 		/>
 	);
 }
 
 function toolPresentation(item: DesktopToolItem): { icon: IconName; label: string } {
-	const normalizedName = item.toolName.toLowerCase();
 	const failed = item.status === "error";
-	if (normalizedName.includes("search") || normalizedName === "grep" || normalizedName === "glob") {
+	const category = toolCategory(item.toolName);
+	if (category === "search") {
 		return {
 			icon: "search",
-			label: failed ? "Search failed" : item.status === "running" ? "Searching" : "Searched",
+			label: failed ? "Search failed" : item.status === "running" ? "Searching code" : "Searched code",
 		};
 	}
-	if (normalizedName.includes("read")) {
-		return { icon: "file-code", label: failed ? "Read failed" : item.status === "running" ? "Reading" : "Read" };
-	}
-	if (normalizedName.includes("write") || normalizedName.includes("edit")) {
+	if (category === "read") {
 		return {
 			icon: "file-code",
-			label: failed ? "Update failed" : item.status === "running" ? "Updating" : "Updated",
+			label: failed ? "Read failed" : item.status === "running" ? "Reading files" : "Read files",
+		};
+	}
+	if (category === "update") {
+		return {
+			icon: "file-code",
+			label: failed ? "Update failed" : item.status === "running" ? "Updating files" : "Updated files",
+		};
+	}
+	if (category === "command") {
+		return {
+			icon: "terminal",
+			label: failed ? "Command failed" : item.status === "running" ? "Running command" : "Ran command",
 		};
 	}
 	return {
 		icon: "terminal",
-		label: failed ? `${item.toolName} failed` : item.toolName,
+		label: failed ? "Work failed" : item.status === "running" ? "Working" : "Completed work",
 	};
+}
+
+function toolCategory(toolName: string): ToolCategory {
+	const normalizedName = toolName.toLowerCase();
+	if (normalizedName.includes("search") || normalizedName === "grep" || normalizedName === "glob") return "search";
+	if (normalizedName.includes("read")) return "read";
+	if (normalizedName.includes("write") || normalizedName.includes("edit")) return "update";
+	if (normalizedName === "bash" || normalizedName.includes("shell") || normalizedName.includes("terminal")) {
+		return "command";
+	}
+	if (normalizedName === "skill") return "skill";
+	return "other";
+}
+
+function isExplorationTool(item: DesktopToolItem): boolean {
+	const category = toolCategory(item.toolName);
+	return category === "search" || category === "read";
 }
 
 function isConnectorItem(item: DesktopTranscriptItem): item is ConnectorItem {

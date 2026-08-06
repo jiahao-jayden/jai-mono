@@ -6,6 +6,7 @@ import { invalidateRecentSessions, upsertRecentSession } from "@/lib/desktop-que
 import type { QueuedMessage } from "@/stores/chat";
 import type {
 	DesktopAgentEvent,
+	DesktopAgentMode,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
 	DesktopTranscriptItem,
@@ -15,16 +16,18 @@ export type ChatStatus = "ready" | "submitted" | "streaming" | "error";
 
 export interface ChatMessageInput {
 	readonly text: string;
+	readonly mode: DesktopAgentMode;
 }
 
 export interface UseChatOptions {
 	readonly id: string | null;
-	readonly newSessionWorkspaceId: string | null;
+	readonly newSessionProjectId: string | null;
 	readonly modelRef: string;
+	readonly mode: DesktopAgentMode;
 	readonly queue: readonly QueuedMessage[];
 	onSessionCreated(sessionId: string): void;
 	onDraftAccepted(): void;
-	onMessageQueued(text: string): void;
+	onMessageQueued(text: string, mode: DesktopAgentMode): void;
 	onQueuedMessageAccepted(messageId: string): void;
 }
 
@@ -119,6 +122,7 @@ export function useChat(options: UseChatOptions): Chat {
 				sessionId: current.sessionId,
 				message: head.text,
 				modelRef: latest.modelRef,
+				mode: head.mode,
 			});
 			latest.onQueuedMessageAccepted(head.id);
 		} catch {
@@ -140,14 +144,14 @@ export function useChat(options: UseChatOptions): Chat {
 		}
 	}, [dispatchQueueHead, state.agentStatus]);
 
-	const sendMessage = useCallback(async ({ text: rawText }: ChatMessageInput) => {
+	const sendMessage = useCallback(async ({ text: rawText, mode }: ChatMessageInput) => {
 		const text = rawText.trim();
 		const current = stateRef.current;
 		const latest = latestOptions.current;
 		if (!text || current.submitting) return;
 
 		if (current.agentStatus === "running") {
-			latest.onMessageQueued(text);
+			latest.onMessageQueued(text, mode);
 			return;
 		}
 		if (latest.queue.length > 0) {
@@ -166,13 +170,14 @@ export function useChat(options: UseChatOptions): Chat {
 					sessionId: current.sessionId,
 					message: text,
 					modelRef: latest.modelRef,
+					mode,
 				});
 				latest.onDraftAccepted();
 				return;
 			}
 
 			const session = await desktop.session.create({
-				workspaceId: latest.newSessionWorkspaceId,
+				projectId: latest.newSessionProjectId,
 				firstMessage: text,
 			});
 			upsertRecentSession(session);
@@ -181,6 +186,7 @@ export function useChat(options: UseChatOptions): Chat {
 				sessionId: session.id,
 				message: text,
 				modelRef: latest.modelRef,
+				mode,
 			});
 			latest.onDraftAccepted();
 			void invalidateRecentSessions();

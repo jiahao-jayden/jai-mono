@@ -1,12 +1,13 @@
 import type { ChatMessageInput, ChatStatus } from "@/hooks/use-chat";
 import { useIcons } from "@/lib/icon-context";
 import type { QueuedMessage } from "@/stores/chat";
-import type { DesktopProviderConfigSnapshot, DesktopWorkspace } from "../../../../shared/desktop-rpc";
+import type { DesktopAgentMode, DesktopProject, DesktopProviderConfigSnapshot } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { InputMessage } from "../../ui/input-message";
+import { AgentModeControl, ComposerDitherBanner } from "./agent-mode-control";
 import { ChatMessageQueue } from "./chat-message-queue";
 import { ModelSelector } from "./model-selector";
-import { WorkspacePicker } from "./workspace-picker";
+import { ProjectPicker } from "./project-picker";
 
 interface ChatComposerProps {
 	value: string;
@@ -19,21 +20,24 @@ interface ChatComposerProps {
 	onEditQueuedMessage(messageId: string): void;
 	onRemoveQueuedMessage(messageId: string): void;
 	onReorderQueuedMessages(messageIds: readonly string[]): void;
-	workspace?: DesktopWorkspace;
-	workspaces: readonly DesktopWorkspace[];
-	workspaceBusy: boolean;
-	workspaceLoading: boolean;
-	workspaceLoadError: boolean;
-	onChooseWorkspace(workspace: DesktopWorkspace): Promise<void>;
-	onAddWorkspace(): Promise<void>;
-	onRetryWorkspaces(): void;
+	project?: DesktopProject;
+	projects: readonly DesktopProject[];
+	projectBusy: boolean;
+	projectLoading: boolean;
+	projectLoadError: boolean;
+	onChooseProject(project: DesktopProject): Promise<void>;
+	onAddProject(): Promise<void>;
+	onRetryProjects(): void;
 	providerConfig?: DesktopProviderConfigSnapshot;
 	selectedModelRef: string;
+	selectedAgentMode: DesktopAgentMode;
 	providerLoading: boolean;
 	providerError: boolean;
 	onOpenProviderSettings(): void;
 	onSelectProviderModel(modelRef: string): void;
+	onSelectAgentMode(mode: DesktopAgentMode): void;
 	large?: boolean;
+	showProjectPicker?: boolean;
 }
 
 export function ChatComposer({
@@ -47,21 +51,24 @@ export function ChatComposer({
 	onEditQueuedMessage,
 	onRemoveQueuedMessage,
 	onReorderQueuedMessages,
-	workspace,
-	workspaces,
-	workspaceBusy,
-	workspaceLoading,
-	workspaceLoadError,
-	onChooseWorkspace,
-	onAddWorkspace,
-	onRetryWorkspaces,
+	project,
+	projects,
+	projectBusy,
+	projectLoading,
+	projectLoadError,
+	onChooseProject,
+	onAddProject,
+	onRetryProjects,
 	providerConfig,
 	selectedModelRef,
+	selectedAgentMode,
 	providerLoading,
 	providerError,
 	onOpenProviderSettings,
 	onSelectProviderModel,
+	onSelectAgentMode,
 	large = false,
+	showProjectPicker = true,
 }: ChatComposerProps) {
 	const icons = useIcons();
 	const PlusIcon = icons.plus;
@@ -79,7 +86,7 @@ export function ChatComposer({
 			void onStop();
 			return;
 		}
-		void onSend({ text: value });
+		void onSend({ text: value, mode: selectedAgentMode });
 	};
 
 	return (
@@ -93,13 +100,20 @@ export function ChatComposer({
 			<InputMessage
 				value={value}
 				onValueChange={onValueChange}
-				onSend={(message) => void onSend({ text: message })}
+				onSend={(message) => void onSend({ text: message, mode: selectedAgentMode })}
 				disabled={composerDisabled}
 				minRows={large ? 2 : 1}
 				maxRows={8}
 				placeholder={large ? "What should the agent work on?" : "Write a message…"}
 				sendLabel={submitLabel}
 				textareaProps={{ "aria-label": "Message" }}
+				headerSlot={
+					<ComposerDitherBanner
+						mode={selectedAgentMode}
+						streaming={isStreaming}
+						workspaceLabel={project?.displayName}
+					/>
+				}
 				submitSlot={
 					<Button
 						type="button"
@@ -113,16 +127,23 @@ export function ChatComposer({
 					</Button>
 				}
 				leftSlot={
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon-sm"
-						disabled
-						aria-label="Attach files"
-						title="File attachments are coming later"
-					>
-						<PlusIcon size={14} strokeWidth={1.5} />
-					</Button>
+					<>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-sm"
+							disabled
+							aria-label="Attach files"
+							title="File attachments are coming later"
+						>
+							<PlusIcon size={14} strokeWidth={1.5} />
+						</Button>
+						<AgentModeControl
+							mode={selectedAgentMode}
+							disabled={isStreaming || isSubmitting}
+							onSelect={onSelectAgentMode}
+						/>
+					</>
 				}
 				rightSlot={
 					<div className="hidden min-[900px]:block">
@@ -138,19 +159,21 @@ export function ChatComposer({
 					</div>
 				}
 			/>
-			<div className="mt-1.5 pl-2">
-				<WorkspacePicker
-					workspace={workspace}
-					workspaces={workspaces}
-					disabled={isStreaming || isSubmitting}
-					busy={workspaceBusy}
-					loading={workspaceLoading}
-					loadError={workspaceLoadError}
-					onChoose={onChooseWorkspace}
-					onAdd={onAddWorkspace}
-					onRetry={onRetryWorkspaces}
-				/>
-			</div>
+			{showProjectPicker ? (
+				<div className="mt-1.5 pl-2">
+					<ProjectPicker
+						project={project}
+						projects={projects}
+						disabled={isStreaming || isSubmitting}
+						busy={projectBusy}
+						loading={projectLoading}
+						loadError={projectLoadError}
+						onChoose={onChooseProject}
+						onAdd={onAddProject}
+						onRetry={onRetryProjects}
+					/>
+				</div>
+			) : null}
 		</div>
 	);
 }

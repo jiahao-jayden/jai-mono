@@ -4,7 +4,7 @@ import type {
 	MoveSessionInput,
 	SessionListCursor,
 	SessionListPage,
-	Workspace,
+	Project,
 } from "@jai/coding/business";
 import type { PermissionRequest, PermissionResolution } from "@jai/coding/permissions/approval";
 
@@ -42,7 +42,7 @@ export const desktopRpcRequestSchema = Type.Object(
 export type DesktopTheme = "light" | "dark" | "system";
 
 export type DesktopAgentStatus = "idle" | "running";
-export interface DesktopWorkspace extends Workspace {
+export interface DesktopProject extends Project {
 	readonly available: boolean;
 }
 
@@ -287,13 +287,16 @@ export interface DesktopAgentSessionInput {
 	readonly sessionId: string;
 }
 
+export type DesktopAgentMode = "manual" | "automate" | "plan";
+
 export interface DesktopAgentMessageInput extends DesktopAgentSessionInput {
 	readonly message: string;
 	readonly modelRef: string;
+	readonly mode: DesktopAgentMode;
 }
 
 export interface DesktopSessionCreateInput {
-	readonly workspaceId?: string | null;
+	readonly projectId?: string | null;
 	readonly firstMessage: string;
 }
 
@@ -326,10 +329,10 @@ export interface DesktopApi {
 		fetchModels(profileId: string): Promise<DesktopProviderFetchModelsResult>;
 		revealApiKey(profileId: string): Promise<DesktopProviderApiKeyRevealResult>;
 	};
-	readonly workspace: {
-		list(): Promise<DesktopWorkspace[]>;
-		choose(): Promise<DesktopWorkspace | null>;
-		relink(workspaceId: string): Promise<DesktopWorkspace | null>;
+	readonly project: {
+		list(): Promise<DesktopProject[]>;
+		choose(): Promise<DesktopProject | null>;
+		relink(projectId: string): Promise<DesktopProject | null>;
 	};
 	readonly session: {
 		create(input: DesktopSessionCreateInput): Promise<CodingSession>;

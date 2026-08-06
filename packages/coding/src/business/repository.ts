@@ -1,13 +1,13 @@
 import type {
 	CodingSession,
+	Project,
 	ProviderModelInventory,
 	SessionListCursor,
 	SessionListPage,
-	SessionWorkspaceHistory,
-	Workspace,
+	SessionProjectHistory,
 } from "./types";
 
-export interface CreateWorkspaceRecord {
+export interface CreateProjectRecord {
 	readonly id: string;
 	readonly displayName: string;
 	readonly path: string;
@@ -17,17 +17,17 @@ export interface CreateWorkspaceRecord {
 
 export interface CreateSessionRecord {
 	readonly id: string;
-	readonly workspaceId: string | null;
+	readonly projectId: string | null;
 	readonly title: string;
 	readonly now: number;
 }
 
 export interface CodingBusinessRepository {
-	createWorkspace(record: CreateWorkspaceRecord): Workspace;
-	getWorkspace(id: string): Workspace | undefined;
-	findWorkspaceByCanonicalPath(canonicalPath: string): Workspace | undefined;
-	listWorkspaces(): Workspace[];
-	relinkWorkspace(
+	createProject(record: CreateProjectRecord): Project;
+	getProject(id: string): Project | undefined;
+	findProjectByCanonicalPath(canonicalPath: string): Project | undefined;
+	listProjects(): Project[];
+	relinkProject(
 		id: string,
 		location: {
 			readonly displayName: string;
@@ -35,7 +35,7 @@ export interface CodingBusinessRepository {
 			readonly canonicalPath: string;
 			readonly now: number;
 		},
-	): Workspace;
+	): Project;
 
 	createSession(record: CreateSessionRecord): CodingSession;
 	deleteSession(id: string): void;
@@ -45,8 +45,8 @@ export interface CodingBusinessRepository {
 	markTitleGenerationAttempted(id: string, now: number): CodingSession;
 	setGeneratedTitle(id: string, title: string, now: number): CodingSession;
 	touchSession(id: string, now: number): CodingSession;
-	moveSession(id: string, toWorkspaceId: string | null, now: number): CodingSession;
-	listWorkspaceHistory(sessionId: string): SessionWorkspaceHistory[];
+	moveSession(id: string, toProjectId: string | null, now: number): CodingSession;
+	listProjectHistory(sessionId: string): SessionProjectHistory[];
 
 	getProviderModelInventory(profileId: string): ProviderModelInventory | undefined;
 	replaceProviderModelInventory(record: ProviderModelInventory): ProviderModelInventory;

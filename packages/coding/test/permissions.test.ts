@@ -290,6 +290,27 @@ describe("permission evaluation", () => {
 		).toBe("ask");
 	});
 
+	test("Plan 模式只允许只读操作，显式 Allow 不能绕过", () => {
+		expect(evaluatePermission(call("Read", { path: "src/app.ts" }), { defaultMode: "plan" }).behavior).toBe(
+			"allow",
+		);
+		expect(evaluatePermission(call("Bash", { command: "git status" }), { defaultMode: "plan" }).behavior).toBe(
+			"allow",
+		);
+		expect(
+			evaluatePermission(call("Write", { path: "src/app.ts" }), {
+				defaultMode: "plan",
+				allow: ["Write(src/app.ts)"],
+			}),
+		).toMatchObject({ behavior: "deny", source: "mode" });
+		expect(
+			evaluatePermission(call("Bash", { command: "bun test" }), {
+				defaultMode: "plan",
+				allow: ["Bash(bun test)"],
+			}),
+		).toMatchObject({ behavior: "deny", source: "mode" });
+	});
+
 	test("只读 Bash 默认允许，危险或可写形式询问", () => {
 		expect(evaluatePermission(call("Bash", { command: "git status && ls -la" })).behavior).toBe("allow");
 		expect(evaluatePermission(call("Bash", { command: "echo value > output.txt" })).behavior).toBe("ask");
@@ -339,7 +360,7 @@ describe("permission settings schema", () => {
 				migrations: [],
 			});
 			const store = new CodingConfigStore(definition, {
-				workspaceRoot: join(root, "workspace"),
+				projectRoot: join(root, "project"),
 				homeDir: join(root, "home"),
 			});
 			await writeConfig(store.paths["project-shared"]!, definition.schemaUrl, {

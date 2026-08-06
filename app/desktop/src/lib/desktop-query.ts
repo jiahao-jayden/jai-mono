@@ -1,12 +1,12 @@
 import type { CodingSession, SessionListCursor } from "@jai/coding/business";
 import { type InfiniteData, infiniteQueryOptions, QueryClient } from "@tanstack/react-query";
-import type { DesktopSessionListPage, DesktopWorkspace } from "../../shared/desktop-rpc";
+import type { DesktopProject, DesktopSessionListPage } from "../../shared/desktop-rpc";
 import { desktop } from "./desktop";
 
 export const SESSION_PAGE_SIZE = 50;
 
 export const desktopQueryKeys = {
-	workspaces: ["desktop", "workspaces"] as const,
+	projects: ["desktop", "projects"] as const,
 	providerConfig: ["desktop", "provider-config"] as const,
 	sessions: {
 		recents: ["desktop", "sessions", "recents"] as const,
@@ -67,12 +67,12 @@ export function getRunningSessionIds(data: SessionRecentsData | undefined): stri
 	return [...new Set(data.pages.flatMap((page) => page.runningSessionIds))];
 }
 
-export function upsertWorkspace(workspace: DesktopWorkspace): void {
-	desktopQueryClient.setQueryData<DesktopWorkspace[]>(desktopQueryKeys.workspaces, (current = []) => {
-		const index = current.findIndex((candidate) => candidate.id === workspace.id);
-		if (index < 0) return [...current, workspace];
+export function upsertProject(project: DesktopProject): void {
+	desktopQueryClient.setQueryData<DesktopProject[]>(desktopQueryKeys.projects, (current = []) => {
+		const index = current.findIndex((candidate) => candidate.id === project.id);
+		if (index < 0) return [...current, project];
 		const next = [...current];
-		next[index] = workspace;
+		next[index] = project;
 		return next;
 	});
 }

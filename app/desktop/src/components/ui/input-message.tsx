@@ -57,6 +57,8 @@ interface InputMessageProps
   /** Content rendered in the bottom-left action area. Can be a function that
    *  receives `{ openFilePicker, files }` to wire an attach button. */
   leftSlot?: InputMessageSlot;
+  /** Content rendered above attachments and the textarea, inside the composer surface. */
+  headerSlot?: ReactNode;
   /** Content rendered in the bottom-right action area, before the built-in
    *  send button. Same render-fn shape as leftSlot. */
   rightSlot?: InputMessageSlot;
@@ -154,6 +156,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
       onSend,
       placeholder = "Ask me anything…",
       leftSlot,
+      headerSlot,
       rightSlot,
       submitSlot,
       disabled,
@@ -467,7 +470,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
           // border. State changes recolor that same 1px ring in place rather
           // than layering a second colored border beside it — so hover / focus
           // bump *contrast* without ever appearing to thicken the stroke.
-          "flex flex-col gap-1 p-2 transition-[box-shadow,color] duration-80",
+          "flex flex-col gap-1 overflow-hidden p-2 transition-[box-shadow,color] duration-80",
           "bg-card shadow-surface-2",
           shape.container,
           clickToFocus && !disabled && "cursor-text",
@@ -480,6 +483,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
         {...props}
       >
         <SurfaceProvider value={2}>
+          {headerSlot ? <div className="-mx-2 -mt-2 shrink-0 border-b border-border/60">{headerSlot}</div> : null}
           {supportsFiles && (
             <input
               ref={fileInputRef}

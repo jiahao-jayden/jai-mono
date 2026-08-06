@@ -16,14 +16,17 @@ describe("Sidebar", () => {
 	test("New 左对齐，展开态按钮明确表示收起侧栏", () => {
 		const markup = renderToStaticMarkup(
 			<Sidebar
+				activeView="chat"
 				sessions={[]}
-				workspaces={[]}
+				projects={[]}
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
 				settingsDisabled={false}
 				onToggleSidebar={() => {}}
 				onNewChat={() => {}}
+				onOpenChats={() => {}}
+				onOpenProjects={() => {}}
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 				onRenameSession={async () => {}}
@@ -40,14 +43,17 @@ describe("Sidebar", () => {
 	test("未开放导航使用 aria-disabled 且无 onClick，hover 保留", () => {
 		const markup = renderToStaticMarkup(
 			<Sidebar
+				activeView="chat"
 				sessions={[]}
-				workspaces={[]}
+				projects={[]}
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
 				settingsDisabled={false}
 				onToggleSidebar={() => {}}
 				onNewChat={() => {}}
+				onOpenChats={() => {}}
+				onOpenProjects={() => {}}
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 				onRenameSession={async () => {}}
@@ -65,17 +71,49 @@ describe("Sidebar", () => {
 		expect(markup).toContain("is coming later");
 	});
 
+	test("Chats 与 Projects 是可用路由入口并显示当前页面", () => {
+		const markup = renderToStaticMarkup(
+			<Sidebar
+				activeView="projects"
+				sessions={[]}
+				projects={[]}
+				runningSessionIds={[]}
+				activeSessionId={null}
+				loading={false}
+				settingsDisabled={false}
+				onToggleSidebar={() => {}}
+				onNewChat={() => {}}
+				onOpenChats={() => {}}
+				onOpenProjects={() => {}}
+				onOpenSettings={() => {}}
+				onSelectSession={() => {}}
+				onRenameSession={async () => {}}
+				onMoveSession={async () => {}}
+				onDeleteSession={async () => {}}
+			/>,
+		);
+
+		expect(markup).toContain(">Chats<");
+		expect(markup).toContain(">Projects<");
+		expect(markup).toContain('aria-current="page"');
+		expect(markup).not.toContain("Chats is coming later");
+		expect(markup).not.toContain("Projects is coming later");
+	});
+
 	test("选中 session 标记 aria-current=page 且有 selected 背景", () => {
 		const markup = renderToStaticMarkup(
 			<Sidebar
+				activeView="chat"
 				sessions={baseSessions}
-				workspaces={[]}
+				projects={[]}
 				runningSessionIds={[]}
 				activeSessionId="s1"
 				loading={false}
 				settingsDisabled={false}
 				onToggleSidebar={() => {}}
 				onNewChat={() => {}}
+				onOpenChats={() => {}}
+				onOpenProjects={() => {}}
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 				onRenameSession={async () => {}}
@@ -92,14 +130,17 @@ describe("Sidebar", () => {
 	test("全部行项目使用 8px 圆角", () => {
 		const markup = renderToStaticMarkup(
 			<Sidebar
+				activeView="chat"
 				sessions={baseSessions}
-				workspaces={[]}
+				projects={[]}
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
 				settingsDisabled={false}
 				onToggleSidebar={() => {}}
 				onNewChat={() => {}}
+				onOpenChats={() => {}}
+				onOpenProjects={() => {}}
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 				onRenameSession={async () => {}}
@@ -118,14 +159,17 @@ describe("Sidebar", () => {
 	test("session 仅显示标题，hover 时显示操作菜单", () => {
 		const markup = renderToStaticMarkup(
 			<Sidebar
+				activeView="chat"
 				sessions={baseSessions}
-				workspaces={[]}
+				projects={[]}
 				runningSessionIds={["s1"]}
 				activeSessionId={null}
 				loading={false}
 				settingsDisabled={false}
 				onToggleSidebar={() => {}}
 				onNewChat={() => {}}
+				onOpenChats={() => {}}
+				onOpenProjects={() => {}}
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 				onRenameSession={async () => {}}
@@ -145,8 +189,9 @@ describe("Sidebar", () => {
 	test("有下一页时提供可访问的加载更多操作", () => {
 		const markup = renderToStaticMarkup(
 			<Sidebar
+				activeView="chat"
 				sessions={baseSessions}
-				workspaces={[]}
+				projects={[]}
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
@@ -155,6 +200,8 @@ describe("Sidebar", () => {
 				settingsDisabled={false}
 				onToggleSidebar={() => {}}
 				onNewChat={() => {}}
+				onOpenChats={() => {}}
+				onOpenProjects={() => {}}
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 				onRenameSession={async () => {}}
