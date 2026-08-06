@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SessionSnapshot } from "@jai/agent";
+import type { AgentMessage, SessionSnapshot } from "@jai/agent";
 import { projectSessionSnapshot } from "../electron/agent/projector";
 
 describe("projectSessionSnapshot", () => {
@@ -162,7 +162,11 @@ describe("projectSessionSnapshot", () => {
 				status: "complete",
 				turnId: "message:user-1",
 			}),
-			expect.objectContaining({ kind: "message", role: "assistant", text: "Writing" }),
+			expect.objectContaining({
+				kind: "narration",
+				text: "Writing",
+				turnId: "message:user-1",
+			}),
 			expect.objectContaining({
 				kind: "tool",
 				toolCallId: "call-1",
@@ -185,6 +189,49 @@ describe("projectSessionSnapshot", () => {
 			expect.objectContaining({ kind: "compaction", summary: "Earlier context" }),
 		]);
 		expect(JSON.stringify(projected)).not.toContain("secret");
+	});
+
+	test("只将 toolUse 文本投影为工作叙述，最终回答仍是普通消息", () => {
+		const snapshot: SessionSnapshot = {
+			appState: {},
+			createdAt: "2026-08-01T00:00:00.000Z",
+			updatedAt: "2026-08-01T00:00:02.000Z",
+			entries: [
+				{
+					type: "message",
+					id: "user-1",
+					timestamp: "2026-08-01T00:00:00.000Z",
+					message: { role: "user", content: "implement", timestamp: 1 },
+				},
+				{
+					type: "message",
+					id: "assistant-1",
+					timestamp: "2026-08-01T00:00:01.000Z",
+					message: {
+						...assistantMessage("Inspecting before the edit", "toolUse"),
+						content: [
+							{ type: "text", text: "Inspecting before the edit" },
+							{ type: "toolCall", id: "read-1", name: "Read", arguments: { path: "a.ts" } },
+						],
+					},
+				},
+				{
+					type: "message",
+					id: "assistant-2",
+					timestamp: "2026-08-01T00:00:02.000Z",
+					message: assistantMessage("Implemented and verified", "stop"),
+				},
+			],
+		};
+
+		const projected = projectSessionSnapshot("session-1", snapshot);
+
+		expect(projected.items).toEqual([
+			expect.objectContaining({ kind: "message", role: "user", text: "implement" }),
+			expect.objectContaining({ kind: "narration", text: "Inspecting before the edit" }),
+			expect.objectContaining({ kind: "tool", toolCallId: "read-1" }),
+			expect.objectContaining({ kind: "message", role: "assistant", text: "Implemented and verified" }),
+		]);
 	});
 
 	test("从 durable user message 恢复 slash invocation metadata", () => {
@@ -249,3 +296,25 @@ describe("projectSessionSnapshot", () => {
 		expect(projected.items[0]).toMatchObject({ kind: "message", text: "Visible message" });
 	});
 });
+
+function assistantMessage(
+	text: string,
+	stopReason: Extract<AgentMessage, { role: "assistant" }>["stopReason"],
+): Extract<AgentMessage, { role: "assistant" }> {
+	return {
+		role: "assistant",
+		content: [{ type: "text", text }],
+		provider: "test",
+		model: "test",
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		stopReason,
+		timestamp: 1,
+	};
+}

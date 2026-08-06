@@ -199,6 +199,15 @@ export interface DesktopThinkingItem {
 	readonly timestamp: number;
 }
 
+export interface DesktopNarrationItem {
+	readonly kind: "narration";
+	readonly id: string;
+	readonly turnId: string;
+	readonly text: string;
+	readonly status: "streaming" | "complete";
+	readonly timestamp: number;
+}
+
 export interface DesktopToolItem {
 	readonly kind: "tool";
 	readonly id: string;
@@ -237,6 +246,7 @@ export interface DesktopCompactionItem {
 export type DesktopTranscriptItem =
 	| DesktopMessageItem
 	| DesktopThinkingItem
+	| DesktopNarrationItem
 	| DesktopToolItem
 	| DesktopSubagentItem
 	| DesktopPermissionItem

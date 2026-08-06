@@ -2,21 +2,17 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { IconName } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type {
+	DesktopNarrationItem,
 	DesktopThinkingItem,
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../../../shared/desktop-rpc";
 import { ChatMessage } from "../../ui/chat-message";
-import {
-	ThinkingStep,
-	ThinkingSteps,
-	ThinkingStepsContent,
-	ThinkingStepsHeader,
-} from "../../ui/thinking-steps";
+import { ThinkingStep, ThinkingSteps, ThinkingStepsContent, ThinkingStepsHeader } from "../../ui/thinking-steps";
 import { ToolCall } from "../../ui/tool-call";
 import { SubagentCard } from "./subagent-card";
 
-type WorkItem = DesktopThinkingItem | DesktopToolItem;
+type WorkItem = DesktopThinkingItem | DesktopNarrationItem | DesktopToolItem;
 
 interface WorkGroup {
 	readonly id: string;
@@ -67,7 +63,7 @@ export function groupTranscriptItems(items: readonly DesktopTranscriptItem[]): (
 }
 
 export function TranscriptItem({ item, animate = false }: { item: DesktopTranscriptItem; animate?: boolean }) {
-	if (item.kind === "thinking") {
+	if (item.kind === "thinking" || item.kind === "narration") {
 		return <WorkProcess group={{ id: `work:${item.id}`, items: [item] }} />;
 	}
 	if (item.kind === "message") {
@@ -153,10 +149,10 @@ function useTranscriptItemAnimations(items: readonly DesktopTranscriptItem[], lo
 }
 
 function WorkProcess({ group }: { readonly group: WorkGroup }) {
-	const tools = group.items.filter((item): item is DesktopToolItem => item.kind === "tool");
 	const running = group.items.some(
 		(item) =>
 			(item.kind === "thinking" && item.status === "streaming") ||
+			(item.kind === "narration" && item.status === "streaming") ||
 			(item.kind === "tool" && item.status === "running"),
 	);
 	const [open, setOpen] = useState(running);
@@ -165,17 +161,8 @@ function WorkProcess({ group }: { readonly group: WorkGroup }) {
 		setOpen(running);
 	}, [running]);
 
-	if (tools.length === 0) {
-		return (
-			<div className="flex flex-col px-1 py-1">
-				{group.items.map((item) => (
-					<WorkProcessStep key={item.id} item={item} />
-				))}
-			</div>
-		);
-	}
 	const title = workGroupTitle(group.items, running);
-	const rows = workProcessRows(tools);
+	const rows = workProcessRows(group.items);
 
 	return (
 		<ThinkingSteps open={open} onOpenChange={setOpen} className="w-full">
@@ -242,6 +229,15 @@ function sameWorkGroup(previous: { readonly group: WorkGroup }, next: { readonly
 
 function WorkProcessStep({ item }: { readonly item: WorkItem }) {
 	if (item.kind === "tool") return <ToolStep item={item} />;
+	if (item.kind === "narration") {
+		return (
+			<ThinkingStep
+				showIcon={false}
+				label={item.text}
+				status={item.status === "streaming" ? "active" : "complete"}
+			/>
+		);
+	}
 	if (item.kind === "thinking") {
 		return (
 			<ThinkingStep icon="clock" label="Reasoning" status={item.status === "streaming" ? "active" : "complete"}>
@@ -345,7 +341,7 @@ function isExplorationTool(item: DesktopToolItem): boolean {
 }
 
 function isWorkItem(item: DesktopTranscriptItem): item is WorkItem {
-	return item.kind === "thinking" || item.kind === "tool";
+	return item.kind === "thinking" || item.kind === "narration" || item.kind === "tool";
 }
 
 function workItemTurnId(item: WorkItem): string {

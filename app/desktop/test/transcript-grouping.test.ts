@@ -111,6 +111,47 @@ describe("groupTranscriptItems", () => {
 		]);
 	});
 
+	test("将工具前叙述留在相邻 Work Process，最终回答仍是顺序屏障", () => {
+		const thinking: DesktopTranscriptItem = {
+			kind: "thinking",
+			id: "thinking:1",
+			turnId: "turn-1",
+			text: "Inspecting",
+			status: "complete",
+			timestamp: 1,
+		};
+		const narration: DesktopTranscriptItem = {
+			kind: "narration",
+			id: "narration:1",
+			turnId: "turn-1",
+			text: "先检查投影逻辑。",
+			status: "complete",
+			timestamp: 2,
+		};
+		const tool: DesktopTranscriptItem = {
+			kind: "tool",
+			id: "tool:1",
+			turnId: "turn-1",
+			toolCallId: "read-1",
+			toolName: "Read",
+			status: "complete",
+		};
+		const reply: DesktopTranscriptItem = {
+			kind: "message",
+			id: "message:reply",
+			role: "assistant",
+			text: "检查完成。",
+			status: "complete",
+			timestamp: 3,
+			stopReason: "stop",
+		};
+
+		expect(groupTranscriptItems([thinking, narration, tool, reply])).toEqual([
+			{ id: "work:turn-1:thinking:1", items: [thinking, narration, tool] },
+			reply,
+		]);
+	});
+
 	test("用实际工具生成语义标题", () => {
 		const items: DesktopTranscriptItem[] = [
 			{
@@ -185,5 +226,38 @@ describe("groupTranscriptItems", () => {
 		expect(rows[0]).toMatchObject({ kind: "exploration", items: [read, grep] });
 		expect(explorationSummary([read, grep], false, false)).toBe("Explored 1 file, 1 search");
 		expect(workGroupTitle([read, grep], false)).toBe("Exploring");
+	});
+
+	test("Work Process 行保留 thinking、narration 与工具的原始顺序", () => {
+		const thinking: DesktopTranscriptItem = {
+			kind: "thinking",
+			id: "thinking:1",
+			turnId: "turn-1",
+			text: "Inspecting",
+			status: "complete",
+			timestamp: 1,
+		};
+		const narration: DesktopTranscriptItem = {
+			kind: "narration",
+			id: "narration:1",
+			turnId: "turn-1",
+			text: "检查文件后运行验证。",
+			status: "complete",
+			timestamp: 2,
+		};
+		const tool: DesktopTranscriptItem = {
+			kind: "tool",
+			id: "tool:bash-1",
+			turnId: "turn-1",
+			toolCallId: "bash-1",
+			toolName: "Bash",
+			status: "complete",
+		};
+
+		expect(workProcessRows([thinking, narration, tool])).toEqual([
+			{ kind: "item", item: thinking },
+			{ kind: "item", item: narration },
+			{ kind: "item", item: tool },
+		]);
 	});
 });

@@ -6,11 +6,7 @@ import {
 	type PermissionRequest,
 	type PermissionResolution,
 } from "@jai/coding/permissions";
-import {
-	SPAWN_AGENT_TOOL_NAME,
-	type SpawnAgentToolDetails,
-	UPDATE_TODOS_TOOL_NAME,
-} from "@jai/coding/tools";
+import { SPAWN_AGENT_TOOL_NAME, type SpawnAgentToolDetails, UPDATE_TODOS_TOOL_NAME } from "@jai/coding/tools";
 import { toErrorEnvelope } from "@jai/common";
 import { TaggedError } from "better-result";
 import type {
@@ -21,6 +17,7 @@ import type {
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
 	DesktopMessageItem,
+	DesktopNarrationItem,
 	DesktopPermissionItem,
 	DesktopSubagentItem,
 	DesktopThinkingItem,
@@ -28,6 +25,7 @@ import type {
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
+import { projectAssistantPart } from "./assistant-projector";
 import { projectSessionTodos, projectSlashInvocation } from "./projector";
 
 type DesktopAgentErrorInit = { readonly data?: { readonly sessionId: string }; readonly message: string };
@@ -414,12 +412,14 @@ export class DesktopAgentHost {
 			case "message_update": {
 				if (!("contentIndex" in event.assistantEvent)) return;
 				const thinkingComplete = event.assistantEvent.type === "thinking_end";
-				const item = this.#projectAssistantPart(
-					runtime,
-					event.message,
-					event.assistantEvent.contentIndex,
-					thinkingComplete ? "complete" : "streaming",
-				);
+				const messageId = this.#ensureMessageId(runtime, "assistant");
+				const item = projectAssistantPart({
+					message: event.message,
+					messageId,
+					turnId: runtime.currentTurnId ?? messageId,
+					contentIndex: event.assistantEvent.contentIndex,
+					status: thinkingComplete ? "complete" : "streaming",
+				});
 				if (!item) return;
 				if (item.kind === "tool") return;
 				runtime.items.set(item.id, item);
@@ -431,10 +431,20 @@ export class DesktopAgentHost {
 				return;
 			}
 			case "message_end": {
-				for (const item of this.#projectMessageItems(runtime, event.message, "complete")) {
+				const completeItems = this.#projectMessageItems(runtime, event.message, "complete");
+				const narrationIds = new Set(
+					completeItems.filter((item) => item.kind === "narration").map((item) => item.id),
+				);
+				for (const id of narrationIds) runtime.pendingTranscriptUpdates.delete(id);
+				for (const item of completeItems) {
 					runtime.items.set(item.id, item);
-					this.#emitNow(runtime, { type: "transcript_upsert", item });
+					if (narrationIds.size > 0) {
+						this.#emitEnvelope(runtime, { type: "transcript_upsert", item });
+					} else {
+						this.#emitNow(runtime, { type: "transcript_upsert", item });
+					}
 				}
+				if (narrationIds.size > 0) this.#flushPendingTranscriptUpdates(runtime);
 				this.#onSessionActivity?.(runtime.sessionId);
 				if (event.message.role === "assistant") runtime.activeAssistantId = undefined;
 				if (event.message.role === "user") runtime.activeUserId = undefined;
@@ -554,12 +564,13 @@ export class DesktopAgentHost {
 		runtime: SessionRuntime,
 		message: AgentMessage,
 		status: DesktopMessageItem["status"],
-	): (DesktopMessageItem | DesktopThinkingItem | DesktopToolItem | DesktopSubagentItem)[] {
+	): (DesktopMessageItem | DesktopNarrationItem | DesktopThinkingItem | DesktopToolItem | DesktopSubagentItem)[] {
 		if (message.role === "toolResult") return [];
 		if (message.role === "assistant") {
-			this.#ensureMessageId(runtime, "assistant");
+			const messageId = this.#ensureMessageId(runtime, "assistant");
+			const turnId = runtime.currentTurnId ?? messageId;
 			return message.content.flatMap((_, contentIndex) => {
-				const item = this.#projectAssistantPart(runtime, message, contentIndex, status);
+				const item = projectAssistantPart({ message, messageId, turnId, contentIndex, status });
 				return item ? [item] : [];
 			});
 		}
@@ -577,68 +588,6 @@ export class DesktopAgentHost {
 				...(slashInvocation ? { slashInvocation } : {}),
 			},
 		];
-	}
-
-	#projectAssistantPart(
-		runtime: SessionRuntime,
-		message: Extract<AgentMessage, { role: "assistant" }>,
-		contentIndex: number,
-		status: DesktopMessageItem["status"],
-	):
-		| DesktopMessageItem
-		| DesktopThinkingItem
-		| DesktopToolItem
-		| DesktopSubagentItem
-		| undefined {
-		const id = this.#ensureMessageId(runtime, "assistant");
-		const turnId = runtime.currentTurnId ?? id;
-		const part = message.content[contentIndex];
-		if (!part) return undefined;
-		if (part.type === "thinking") {
-			if (!part.thinking) return undefined;
-			return {
-				kind: "thinking",
-				id: `thinking:${id}:${contentIndex}`,
-				turnId,
-				text: part.thinking,
-				status,
-				timestamp: message.timestamp,
-			};
-		}
-		if (part.type === "toolCall") {
-			if (part.name === UPDATE_TODOS_TOOL_NAME) return undefined;
-			if (part.name === SPAWN_AGENT_TOOL_NAME) {
-				const title = stringArgument(part.arguments, "title");
-				if (!title) return undefined;
-				return {
-					kind: "subagent",
-					id: `subagent:${part.id}`,
-					turnId,
-					toolCallId: part.id,
-					title,
-					status: "running",
-				};
-			}
-			return {
-				kind: "tool",
-				id: `tool:${part.id}`,
-				turnId,
-				toolCallId: part.id,
-				toolName: part.name,
-				status: "running",
-				summary: summarizeToolArguments(part.name, part.arguments),
-			};
-		}
-		if (part.type !== "text" || part.synthetic || !part.text) return undefined;
-		return {
-			kind: "message",
-			id: `${id}:${contentIndex}`,
-			role: "assistant",
-			text: part.text,
-			status,
-			timestamp: message.timestamp,
-			stopReason: message.stopReason,
-		};
 	}
 
 	#ensureMessageId(runtime: SessionRuntime, role: "assistant" | "user"): string {

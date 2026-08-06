@@ -219,9 +219,14 @@ describe("DesktopAgentHost", () => {
 		await agent.finished;
 
 		expect(host.getSnapshot("session-1").items).toEqual([
-			expect.objectContaining({ kind: "message", text: "先分析当前版本，再动手。" }),
+			expect.objectContaining({ kind: "narration", text: "先分析当前版本，再动手。" }),
 			expect.objectContaining({ kind: "tool", toolCallId: "bash-1" }),
 		]);
+		expect(
+			envelopes
+				.filter((entry) => entry.event.type === "transcript_upsert" && entry.event.item.id === "message:1:0")
+				.map((entry) => (entry.event.type === "transcript_upsert" ? entry.event.item.kind : undefined)),
+		).toEqual(["narration"]);
 		host.close();
 	});
 

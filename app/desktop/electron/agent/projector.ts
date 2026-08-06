@@ -4,6 +4,7 @@ import type {
 	DesktopAgentSnapshot,
 	DesktopCompactionItem,
 	DesktopMessageItem,
+	DesktopNarrationItem,
 	DesktopSlashInvocation,
 	DesktopSubagentItem,
 	DesktopThinkingItem,
@@ -11,6 +12,7 @@ import type {
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
+import { projectAssistantPart } from "./assistant-projector";
 
 export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnapshot): DesktopAgentSnapshot {
 	const items = new Map<string, DesktopTranscriptItem>();
@@ -90,66 +92,25 @@ function projectAssistantItems(
 	entryId: string,
 	message: Extract<AgentMessage, { role: "assistant" }>,
 	currentTurnId: string | undefined,
-): (DesktopMessageItem | DesktopThinkingItem | DesktopToolItem | DesktopSubagentItem)[] {
+): (DesktopMessageItem | DesktopNarrationItem | DesktopThinkingItem | DesktopToolItem | DesktopSubagentItem)[] {
 	const result: (
 		| DesktopMessageItem
+		| DesktopNarrationItem
 		| DesktopThinkingItem
 		| DesktopToolItem
 		| DesktopSubagentItem
 	)[] = [];
 	const turnId = currentTurnId ?? `message:${entryId}`;
 
-	for (const [contentIndex, part] of message.content.entries()) {
-		if (part.type === "thinking") {
-			if (!part.thinking) continue;
-			result.push({
-				kind: "thinking",
-				id: `thinking:${entryId}:${contentIndex}`,
-				turnId,
-				text: part.thinking,
-				status: "complete",
-				timestamp: message.timestamp,
-			});
-			continue;
-		}
-		if (part.type === "toolCall") {
-			if (part.name === UPDATE_TODOS_TOOL_NAME) continue;
-			if (part.name === SPAWN_AGENT_TOOL_NAME) {
-				const title = stringValue(part.arguments, "title");
-				if (title) {
-					result.push({
-						kind: "subagent",
-						id: `subagent:${part.id}`,
-						turnId,
-						toolCallId: part.id,
-						title,
-						status: "running",
-					});
-				}
-				continue;
-			}
-			result.push({
-				kind: "tool",
-				id: `tool:${part.id}`,
-				turnId,
-				toolCallId: part.id,
-				toolName: part.name,
-				status: "running",
-				summary: summarizeToolArguments(part.name, part.arguments),
-			});
-			continue;
-		}
-		if (part.type === "text" && !part.synthetic && part.text) {
-			result.push({
-				kind: "message",
-				id: `message:${entryId}:${contentIndex}`,
-				role: "assistant",
-				text: part.text,
-				status: "complete",
-				timestamp: message.timestamp,
-				stopReason: message.stopReason,
-			});
-		}
+	for (const [contentIndex] of message.content.entries()) {
+		const item = projectAssistantPart({
+			message,
+			messageId: `message:${entryId}`,
+			turnId,
+			contentIndex,
+			status: "complete",
+		});
+		if (item) result.push(item);
 	}
 
 	return result;
@@ -220,13 +181,6 @@ function isSyntheticOnlyMessage(message: AgentMessage): boolean {
 	);
 }
 
-function summarizeToolArguments(toolName: string, args: Readonly<Record<string, unknown>>): string {
-	const key = toolName === "Bash" ? "command" : toolName === "Skill" ? "skill" : "path";
-	const value = args[key];
-	const summary = typeof value === "string" && value ? value : toolName;
-	return truncate(toolName === "Skill" && summary !== toolName ? `/${summary}` : summary, 240);
-}
-
 function textContent(content: readonly unknown[], maxLength: number): string {
 	const text = content
 		.filter(
@@ -243,11 +197,6 @@ function textContent(content: readonly unknown[], maxLength: number): string {
 
 function truncate(value: string, maxLength: number): string {
 	return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
-}
-
-function stringValue(value: Readonly<Record<string, unknown>>, key: string): string | undefined {
-	const candidate = value[key];
-	return typeof candidate === "string" && candidate ? candidate : undefined;
 }
 
 function parseTimestamp(value: string): number {
