@@ -31,6 +31,7 @@ const readOnlyCommands = new Set([
 	"head",
 	"ls",
 	"pwd",
+	"sleep",
 	"stat",
 	"tail",
 	"wc",
@@ -48,6 +49,8 @@ export function evaluatePermission(
 	if (call.toolName === "UpdateTodos" || call.toolName === "SpawnAgent") {
 		return decision("allow", "built-in", "Internal agent coordination has no direct external side effects");
 	}
+	const bashRisk = bashRiskDecision(call);
+	if (bashRisk) return bashRisk;
 	if (resolved.permission && Object.keys(resolved.permission).length > 0)
 		return evaluateConfiguredPermission(call, resolved);
 	if (
@@ -86,13 +89,7 @@ export function evaluatePermission(
 		return decision("ask", "built-in", "File modifications require confirmation");
 	}
 	if (call.toolName === "Bash") {
-		const command = stringArg(call, "command");
-		if (isCircuitBreakerCommand(command)) {
-			return decision("ask", "built-in", "Destructive root or home removal requires confirmation");
-		}
-		return isReadOnlyBash(command)
-			? decision("allow", "built-in", "Built-in read-only Bash command")
-			: decision("ask", "built-in", "Bash command requires confirmation");
+		return evaluateDefaultBash(call);
 	}
 	if (call.toolName === "Skill") {
 		return decision("allow", "built-in", "Skill resources are constrained to the selected Skill root");
@@ -100,28 +97,34 @@ export function evaluatePermission(
 	return decision("ask", "built-in", "Unknown permission behavior");
 }
 
+function evaluateDefaultBash(call: PermissionCall): PermissionDecision {
+	const command = stringArg(call, "command");
+	const scan = bashScanFromArgs(call.args);
+	const subcommands = scan?.patterns ?? splitBashCommand(command);
+	if (!subcommands || subcommands.length === 0) {
+		return decision("ask", "danger-layer", "Bash command could not be parsed safely", undefined, {
+			permission: "bash",
+			risk: "opaque",
+		});
+	}
+	const asked = subcommands.filter((subcommand) => !isReadOnlySubcommand(subcommand));
+	if (asked.length === 0) {
+		return decision("allow", "built-in", "Built-in safe Bash command", undefined, {
+			permission: "bash",
+			patterns: subcommands,
+		});
+	}
+	return decision("ask", "built-in", `No bash permission rule matched for: ${asked[0]}`, undefined, {
+		permission: "bash",
+		patterns: asked,
+		alwaysPatterns: unique(asked.map((subcommand) => bashAlwaysPattern(subcommand) ?? `${subcommand} *`)),
+	});
+}
+
 function evaluateConfiguredPermission(call: PermissionCall, settings: ResolvedPermissionSettings): PermissionDecision {
 	if (call.toolName === "Bash") {
 		const command = stringArg(call, "command");
 		const scan = bashScanFromArgs(call.args);
-		if (scan?.destructive || isDestructiveBashCommand(command)) {
-			return decision(
-				"ask",
-				"danger-layer",
-				"Destructive or opaque Bash operation always requires confirmation",
-				undefined,
-				{
-					permission: "bash",
-					risk: "destructive",
-				},
-			);
-		}
-		if (scan?.opaque) {
-			return decision("ask", "danger-layer", "Bash command could not be parsed safely", undefined, {
-				permission: "bash",
-				risk: "opaque",
-			});
-		}
 		const subcommands = scan?.patterns ?? splitBashCommand(command);
 		if (!subcommands || subcommands.length === 0) {
 			return decision("ask", "danger-layer", "Bash command could not be parsed safely", undefined, {
@@ -129,22 +132,67 @@ function evaluateConfiguredPermission(call: PermissionCall, settings: ResolvedPe
 				risk: "opaque",
 			});
 		}
-		const decisions = subcommands.map((subcommand) => configuredRuleDecision(call, settings, subcommand));
-		if (decisions.some((item) => item.behavior === "deny"))
-			return decisions.find((item) => item.behavior === "deny")!;
-		if (decisions.every((item) => item.behavior === "allow")) {
-			return decision("allow", "rule", "All Bash command nodes matched Allow rules", undefined, {
+		const decisions = subcommands.map((subcommand) => configuredBashDecision(call, settings, subcommand));
+		const denied = decisions.find((item) => item.behavior === "deny");
+		if (denied) return denied;
+		const asked = decisions.filter((item) => item.behavior === "ask");
+		if (asked.length > 0) {
+			const first = asked[0]!;
+			return decision("ask", first.source, first.reason, first.rule, {
 				permission: "bash",
-				patterns: subcommands,
-				alwaysPatterns: unique(scan?.alwaysPatterns ?? decisions.flatMap((item) => item.alwaysPatterns ?? [])),
+				patterns: asked.flatMap((item) => item.patterns ?? []),
+				alwaysPatterns: unique(asked.flatMap((item) => item.alwaysPatterns ?? [])),
 			});
 		}
-		return (
-			decisions.find((item) => item.behavior === "ask") ??
-			decision("ask", "rule", "Bash command requires confirmation")
-		);
+		return decision("allow", "rule", "All Bash command nodes are allowed", undefined, {
+			permission: "bash",
+			patterns: subcommands,
+		});
 	}
 	return configuredRuleDecision(call, settings);
+}
+
+function configuredBashDecision(
+	call: PermissionCall,
+	settings: ResolvedPermissionSettings,
+	command: string,
+): PermissionDecision {
+	const matched = flattenPermissionConfig(settings.permission).findLast((rule) =>
+		matchesPermissionConfigRule(rule, call, command),
+	);
+	if (matched) return configuredRuleDecision(call, settings, command);
+	if (isReadOnlySubcommand(command)) {
+		return decision("allow", "built-in", "Built-in safe Bash command", undefined, {
+			permission: "bash",
+			patterns: [command],
+		});
+	}
+	return decision("ask", "built-in", `No bash permission rule matched for: ${command}`, undefined, {
+		permission: "bash",
+		patterns: [command],
+		alwaysPatterns: [bashAlwaysPattern(command) ?? `${command} *`],
+	});
+}
+
+function bashRiskDecision(call: PermissionCall): PermissionDecision | undefined {
+	if (call.toolName !== "Bash") return undefined;
+	const command = stringArg(call, "command");
+	const scan = bashScanFromArgs(call.args);
+	if (scan?.destructive || isDestructiveBashCommand(command)) {
+		return decision(
+			"ask",
+			"danger-layer",
+			"Destructive Bash operation always requires confirmation",
+			undefined,
+			{ permission: "bash", risk: "destructive" },
+		);
+	}
+	if (scan?.opaque) {
+		return decision("ask", "danger-layer", "Bash command could not be parsed safely", undefined, {
+			permission: "bash",
+			risk: "opaque",
+		});
+	}
 }
 
 function configuredRuleDecision(

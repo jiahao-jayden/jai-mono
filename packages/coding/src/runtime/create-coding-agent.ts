@@ -58,6 +58,7 @@ export interface CodingAgentPermissionOptions<TSchema extends TObject> {
 		request: PermissionApprovalRequest,
 		signal?: AbortSignal,
 	) => PermissionApprovalDecision | Promise<PermissionApprovalDecision>;
+	readonly persistProjectLocalAllowRules?: (rules: readonly string[]) => void | Promise<void>;
 	readonly persistProjectLocalAllowRule?: (rule: string) => void | Promise<void>;
 }
 
@@ -199,10 +200,16 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const sessionHandle = await openSession(sessionStore, options.sessionId, options.appState ?? ({} as TAppState));
 	const selectPermissionSettings = options.permissions?.selectSettings ?? defaultPermissionSettings;
 	const sessionAllowRules = new Set<string>();
-	const persistProjectLocalAllowRule =
-		options.permissions?.persistProjectLocalAllowRule ??
-		(async (rule: string) => {
-			const next = await persistBashAllowRule(configStore, rule);
+	const persistSingleProjectLocalAllowRule = options.permissions?.persistProjectLocalAllowRule;
+	const persistProjectLocalAllowRules =
+		options.permissions?.persistProjectLocalAllowRules ??
+		(persistSingleProjectLocalAllowRule
+			? async (rules: readonly string[]) => {
+					for (const rule of rules) await persistSingleProjectLocalAllowRule(rule);
+				}
+			: undefined) ??
+		(async (rules: readonly string[]) => {
+			const next = await persistBashAllowRules(configStore, rules);
 			if (next) runtime.snapshot = next;
 		});
 	let agent!: Agent<TAppState>;
@@ -258,7 +265,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				workspaceRoot: options.executionContext.cwd,
 				settings: () => selectPermissionSettings(runtime.snapshot),
 				requestApproval: options.permissions?.requestApproval,
-				persistProjectLocalAllowRule,
+				persistProjectLocalAllowRules,
 				pathCapabilities: toolEnvironment,
 				sessionAllowRules,
 			}),
@@ -273,7 +280,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 						workspaceRoot: options.executionContext.cwd,
 						settings: () => selectPermissionSettings(runtime.snapshot),
 						requestApproval: options.permissions?.requestApproval,
-						persistProjectLocalAllowRule,
+						persistProjectLocalAllowRules,
 						pathCapabilities: toolEnvironment,
 						sessionAllowRules,
 					}),
@@ -397,12 +404,14 @@ function defaultPermissionSettings<TSchema extends TObject>(snapshot: ConfigSnap
 	return isRecord(settings.permission) ? { ...legacy, permission: settings.permission as PermissionConfig } : legacy;
 }
 
-async function persistBashAllowRule<TSchema extends TObject>(
+async function persistBashAllowRules<TSchema extends TObject>(
 	store: CodingConfigStore<TSchema>,
-	rule: string,
+	rules: readonly string[],
 ): Promise<ConfigSnapshot<TSchema> | undefined> {
-	const pattern = rule.startsWith("bash:") ? rule.slice("bash:".length) : undefined;
-	if (!pattern) return;
+	const patterns = [
+		...new Set(rules.flatMap((rule) => (rule.startsWith("bash:") ? [rule.slice("bash:".length)] : []))),
+	];
+	if (patterns.length === 0) return;
 	for (let attempt = 0; attempt < 2; attempt++) {
 		const scope = await store.readScope("project-local");
 		const settings = structuredClone(scope.settings) as Record<string, unknown>;
@@ -419,8 +428,10 @@ async function persistBashAllowRule<TSchema extends TObject>(
 							),
 						)
 					: {};
-		delete bash[pattern];
-		bash[pattern] = "allow";
+		for (const pattern of patterns) {
+			delete bash[pattern];
+			bash[pattern] = "allow";
+		}
 		permission.bash = bash;
 		settings.permission = permission;
 		try {

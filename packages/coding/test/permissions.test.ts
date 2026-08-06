@@ -183,37 +183,56 @@ describe("permission middleware", () => {
 	});
 
 	test("Bash Always allow 请求 project-local 持久化", async () => {
-		const persisted: string[] = [];
+		const persisted: string[][] = [];
 		const middleware = createPermissionMiddleware({
 			workspaceRoot,
 			settings: {},
 			requestApproval: () => "alwaysAllow",
-			persistProjectLocalAllowRule: (rule) => {
-				persisted.push(rule);
+			persistProjectLocalAllowRules: (rules) => {
+				persisted.push([...rules]);
 			},
 		});
 		await middleware(context("Bash", { command: "npm test" }), async () => ({ content: [] }));
-		expect(persisted).toEqual(["bash:npm test *"]);
+		expect(persisted).toEqual([["bash:npm test *"]]);
 	});
 
-	test("fd 复制的 Bash 请求仍提供 Always allow", async () => {
-		let canAlwaysAllow: boolean | undefined;
+	test("已授权命令与内置安全命令组成的 Bash compound 直接允许", async () => {
+		let approvals = 0;
 		const middleware = createPermissionMiddleware({
 			workspaceRoot,
 			settings: { permission: { bash: { "agent-browser *": "allow" } } },
-			requestApproval(request) {
-				canAlwaysAllow = request.canAlwaysAllow;
+			requestApproval() {
+				approvals++;
 				return "allowOnce";
 			},
 		});
 		await middleware(
 			context("Bash", {
 				command:
-					"agent-browser screenshot /tmp/snake_start.png 2>&1 | tail -1 && agent-browser click @e11 2>&1 | tail -1",
+					'agent-browser click @e11 2>&1 | tail -1 && sleep 2 && agent-browser get text "#score" 2>&1 | tail -1 && agent-browser snapshot -i 2>&1 | grep -E "游戏结束|再来一局" | head -3',
 			}),
 			async () => ({ content: [] }),
 		);
-		expect(canAlwaysAllow).toBe(true);
+		expect(approvals).toBe(0);
+	});
+
+	test("Bash compound 的 Always allow 一次持久化全部待授权规则", async () => {
+		let suggestedRules: readonly string[] | undefined;
+		let persisted: readonly string[] | undefined;
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: { permission: { bash: {} } },
+			requestApproval(request) {
+				suggestedRules = request.suggestedRules;
+				return "alwaysAllow";
+			},
+			persistProjectLocalAllowRules(rules) {
+				persisted = rules;
+			},
+		});
+		await middleware(context("Bash", { command: "npm test && cargo check" }), async () => ({ content: [] }));
+		expect(suggestedRules).toEqual(["bash:npm test *", "bash:cargo check *"]);
+		expect(persisted).toEqual(suggestedRules);
 	});
 
 	test("显式 Deny 不进入授权回调", async () => {
@@ -245,6 +264,20 @@ describe("permission middleware", () => {
 		await expect(
 			middleware(context("Bash", { command: "rm -rf build" }), async () => ({ content: [] })),
 		).rejects.toMatchObject({ _tag: "coding_permission.denied" });
+		expect(canAlwaysAllow).toBe(false);
+	});
+
+	test("空配置下的危险 Bash 同样不提供 Always allow", async () => {
+		let canAlwaysAllow: boolean | undefined;
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: {},
+			requestApproval(request) {
+				canAlwaysAllow = request.canAlwaysAllow;
+				return "allowOnce";
+			},
+		});
+		await middleware(context("Bash", { command: "rm -rf build" }), async () => ({ content: [] }));
 		expect(canAlwaysAllow).toBe(false);
 	});
 
@@ -330,8 +363,9 @@ describe("permission evaluation", () => {
 				},
 			}),
 		).toMatchObject({ behavior: "allow", source: "rule", permission: "bash" });
-		expect(evaluatePermission(call("Bash", { command: "npm test" }), { permission: { bash: {} } }).behavior).toBe(
-			"ask",
+		expect(evaluatePermission(call("Bash", { command: "npm test" }), { permission: { bash: {} } }).behavior).toBe("ask");
+		expect(evaluatePermission(call("Bash", { command: "tail -1" }), { permission: { bash: {} } }).behavior).toBe(
+			"allow",
 		);
 	});
 
@@ -345,6 +379,12 @@ describe("permission evaluation", () => {
 				permission: { bash: { "*": "ask", "git status": "allow", "bun test": "allow" } },
 			}),
 		).toMatchObject({ behavior: "allow", patterns: ["git status", "bun test"] });
+	});
+
+	test("显式 Ask 与 Deny 优先于 Bash 内置安全规则", () => {
+		const request = call("Bash", { command: "tail -1" });
+		expect(evaluatePermission(request, { permission: { bash: { "tail *": "ask" } } }).behavior).toBe("ask");
+		expect(evaluatePermission(request, { permission: { bash: { "tail *": "deny" } } }).behavior).toBe("deny");
 	});
 
 	test("不可覆盖风险层让删除命令始终 Ask", () => {

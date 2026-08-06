@@ -16,6 +16,7 @@ export interface PermissionApprovalRequest {
 	readonly reason: string;
 	readonly canAlwaysAllow: boolean;
 	readonly suggestedRule?: string;
+	readonly suggestedRules?: readonly string[];
 	readonly rememberScope?: "session" | "project-local";
 }
 
@@ -26,6 +27,7 @@ export interface PermissionMiddlewareOptions {
 		request: PermissionApprovalRequest,
 		signal?: AbortSignal,
 	) => PermissionApprovalDecision | Promise<PermissionApprovalDecision>;
+	readonly persistProjectLocalAllowRules?: (rules: readonly string[]) => void | Promise<void>;
 	readonly persistProjectLocalAllowRule?: (rule: string) => void | Promise<void>;
 	readonly pathCapabilities?: PathCapabilityManager;
 	readonly sessionAllowRules?: Set<string>;
@@ -63,7 +65,7 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 		if (!options.requestApproval) throw permissionApprovalUnavailableError(toolName);
 		if (context.signal?.aborted) throw permissionAbortedError(toolName);
 
-		const suggested = suggestedRule(toolName, context.args, workspaceRoot, initial);
+		const suggested = suggestedRules(toolName, context.args, workspaceRoot, initial);
 		const request: PermissionApprovalRequest = {
 			requestId: randomUUID(),
 			toolCallId: context.toolCall.id,
@@ -71,7 +73,13 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 			args: structuredClone(context.args),
 			reason: initial.behavior === "ask" ? initial.reason : canonicalDecision.reason,
 			canAlwaysAllow: Boolean(suggested),
-			...(suggested ? { suggestedRule: suggested.rule, rememberScope: suggested.scope } : {}),
+			...(suggested
+				? {
+						suggestedRule: suggested.rules[0],
+						suggestedRules: suggested.rules,
+						rememberScope: suggested.scope,
+					}
+				: {}),
 		};
 		const approval = await options.requestApproval(request, context.signal);
 		if (context.signal?.aborted) throw permissionAbortedError(toolName);
@@ -98,17 +106,23 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 
 		if (approval === "alwaysAllow" && suggested) {
 			if (suggested.scope === "session") {
-				sessionAllowRules.add(suggested.rule);
+				for (const rule of suggested.rules) sessionAllowRules.add(rule);
 				if (capability) {
-					const canonicalSuggested = suggestedRule(
+					const canonicalSuggested = suggestedRules(
 						toolName,
 						argsWithPath(toolName, context.args, capability.canonicalPath),
 						workspaceRoot,
 						canonicalDecision,
 					);
-					if (canonicalSuggested) sessionAllowRules.add(canonicalSuggested.rule);
+					if (canonicalSuggested) {
+						for (const rule of canonicalSuggested.rules) sessionAllowRules.add(rule);
+					}
 				}
-			} else await options.persistProjectLocalAllowRule?.(suggested.rule);
+			} else if (options.persistProjectLocalAllowRules) {
+				await options.persistProjectLocalAllowRules(suggested.rules);
+			} else if (options.persistProjectLocalAllowRule) {
+				for (const rule of suggested.rules) await options.persistProjectLocalAllowRule(rule);
+			}
 		}
 		return capability && options.pathCapabilities
 			? options.pathCapabilities.withPathCapability(capability, next)
@@ -202,25 +216,26 @@ function withSessionRules(settings: PermissionSettings, sessionRules: ReadonlySe
 	return sessionRules.size === 0 ? settings : { ...settings, allow: [...(settings.allow ?? []), ...sessionRules] };
 }
 
-function suggestedRule(
+function suggestedRules(
 	toolName: CanonicalToolName,
 	args: Readonly<Record<string, unknown>>,
 	workspaceRoot: string,
 	decision: { readonly source: string; readonly alwaysPatterns?: readonly string[] },
-): { readonly rule: string; readonly scope: "session" | "project-local" } | undefined {
+): { readonly rules: readonly string[]; readonly scope: "session" | "project-local" } | undefined {
 	if (decision.source === "danger-layer") return undefined;
 	if (toolName === "Bash") {
 		const command = stringArg(args, "command");
-		const pattern = decision.alwaysPatterns?.[0] ?? bashAlwaysPattern(command);
-		return command && pattern ? { rule: `bash:${pattern}`, scope: "project-local" } : undefined;
+		const patterns = decision.alwaysPatterns ?? (command ? [bashAlwaysPattern(command)].filter(Boolean) : []);
+		const rules = unique(patterns.map((pattern) => `bash:${pattern}`));
+		return rules.length > 0 ? { rules, scope: "project-local" } : undefined;
 	}
 	if (toolName === "Write" || toolName === "Edit") {
 		const path = absolutePath(args, workspaceRoot);
-		return path ? { rule: `Edit(${rootPath(path)})`, scope: "session" } : undefined;
+		return path ? { rules: [`Edit(${rootPath(path)})`], scope: "session" } : undefined;
 	}
 	if (toolName === "Read" || toolName === "Glob" || toolName === "Grep") {
 		const path = absolutePath(args, workspaceRoot, toolName === "Glob" || toolName === "Grep");
-		return path ? { rule: `Read(${rootPath(path)})`, scope: "session" } : undefined;
+		return path ? { rules: [`Read(${rootPath(path)})`], scope: "session" } : undefined;
 	}
 	return undefined;
 }
@@ -247,4 +262,8 @@ function escapePattern(path: string): string {
 function stringArg(args: Readonly<Record<string, unknown>>, key: string): string {
 	const value = args[key];
 	return typeof value === "string" ? value : "";
+}
+
+function unique(values: readonly string[]): string[] {
+	return [...new Set(values)];
 }

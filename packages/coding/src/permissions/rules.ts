@@ -17,6 +17,7 @@ export interface PermissionConfigRule {
 }
 
 const bashArity: Readonly<Record<string, number>> = {
+	"agent-browser": 2,
 	aws: 3,
 	bun: 2,
 	"bun run": 3,

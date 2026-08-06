@@ -120,21 +120,21 @@ describe("createCodingAgent", () => {
 	test("Bash Always allow 原子写入 project-local permission", async () => {
 		const fixture = await createFixture();
 		const settingsPath = join(fixture.executionContext.configRoot, ".jai", "settings.local.json");
-		let approvals = 0;
+		const approvals: (readonly string[])[] = [];
 		const codingAgent = await createCodingAgent({
 			...fixture,
 			configOptions: { ...fixture.configOptions, workspaceTrusted: true },
 			resolveProvider: () => ({
 				provider: providerFor([
-					assistantToolCall("Bash", { command: "printf hello" }),
-					assistantToolCall("Bash", { command: "printf world" }),
+					assistantToolCall("Bash", { command: "printf hello && date +%s" }),
+					assistantToolCall("Bash", { command: "printf world && date +%s" }),
 					assistant("done"),
 				]),
 				model,
 			}),
 			permissions: {
-				requestApproval: () => {
-					approvals++;
+				requestApproval: (request) => {
+					approvals.push(request.suggestedRules ?? []);
 					return "alwaysAllow";
 				},
 			},
@@ -143,8 +143,8 @@ describe("createCodingAgent", () => {
 		try {
 			await codingAgent.invoke("run printf");
 			const document = JSON.parse(await readFile(settingsPath, "utf8"));
-			expect(document.permission.bash).toEqual({ "printf *": "allow" });
-			expect(approvals).toBe(1);
+			expect(document.permission.bash).toEqual({ "printf *": "allow", "date *": "allow" });
+			expect(approvals).toEqual([["bash:printf *", "bash:date *"]]);
 		} finally {
 			codingAgent.close();
 		}
