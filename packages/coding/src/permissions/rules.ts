@@ -129,7 +129,7 @@ export function bashAlwaysPattern(command: string): string | undefined {
 }
 
 export function isDestructiveBashCommand(command: string): boolean {
-	if (/(^|[^<])(?:>|>>|<>|>\|)/.test(command) || /\b(?:truncate|dd)\b[^\n]*\bof=/.test(command)) return true;
+	if (hasDestructiveRedirection(command) || /\b(?:truncate|dd)\b[^\n]*\bof=/.test(command)) return true;
 	const subcommands = splitBashCommand(command);
 	if (!subcommands) return true;
 	return subcommands.some((subcommand) => {
@@ -147,6 +147,62 @@ export function isDestructiveBashCommand(command: string): boolean {
 		}
 		return false;
 	});
+}
+
+function hasDestructiveRedirection(command: string): boolean {
+	let quote: "'" | '"' | undefined;
+	let escaped = false;
+	for (let index = 0; index < command.length; index++) {
+		const character = command[index]!;
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (character === "\\" && quote !== "'") {
+			escaped = true;
+			continue;
+		}
+		if (quote) {
+			if (character === quote) quote = undefined;
+			continue;
+		}
+		if (character === "'" || character === '"') {
+			quote = character;
+			continue;
+		}
+		if (character === "<" && command[index + 1] === ">") return true;
+		if (character !== ">") continue;
+
+		if (command[index + 1] === "&") {
+			let destination = index + 2;
+			if (command[destination] === "-") {
+				index = destination;
+				continue;
+			}
+			const start = destination;
+			while (/\d/.test(command[destination] ?? "")) destination++;
+			if (destination > start && isShellBoundary(command[destination])) {
+				index = destination - 1;
+				continue;
+			}
+			return true;
+		}
+
+		let target = index + 1;
+		if (command[target] === ">" || command[target] === "|") target++;
+		while (/\s/.test(command[target] ?? "")) target++;
+		const nullTarget = /^(?:\/dev\/null|"\/dev\/null"|'\/dev\/null')(?=$|[\s;|&)])/.exec(command.slice(target));
+		if (nullTarget) {
+			index = target + nullTarget[0].length - 1;
+			continue;
+		}
+		return true;
+	}
+	return false;
+}
+
+function isShellBoundary(character: string | undefined): boolean {
+	return character === undefined || /[\s;|&)]/.test(character);
 }
 
 function stringArg(args: Readonly<Record<string, unknown>>, key: string): string {
@@ -216,6 +272,13 @@ export function splitBashCommand(command: string): string[] | undefined {
 		}
 		if (character === "'" || character === '"') {
 			quote = character;
+			current += character;
+			continue;
+		}
+		if (
+			character === "&" &&
+			(command[index - 1] === ">" || command[index - 1] === "<" || command[index + 1] === ">")
+		) {
 			current += character;
 			continue;
 		}

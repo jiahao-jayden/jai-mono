@@ -64,6 +64,21 @@ describe("permission rules", () => {
 		expect(result.value.patterns).toContain("pwd");
 		expect(result.value.destructive).toBe(true);
 	});
+
+	test("fd 复制与 /dev/null 不作为破坏性文件重定向", async () => {
+		const command =
+			"agent-browser screenshot /tmp/snake_start.png 2>&1 | tail -1 && agent-browser click @e11 2>&1 | tail -1";
+		for (const input of [command, "echo ok 1>&2", "echo ok 2>/dev/null", `echo ">"`]) {
+			const result = await scanBashCommand(input);
+			expect(result.isOk()).toBe(true);
+			if (result.isOk()) expect(result.value).toMatchObject({ destructive: false, opaque: false });
+		}
+		for (const input of ["echo ok > output.txt", "echo ok >| output.txt", "echo ok >> output.txt"]) {
+			const result = await scanBashCommand(input);
+			expect(result.isOk()).toBe(true);
+			if (result.isOk()) expect(result.value.destructive).toBe(true);
+		}
+	});
 });
 
 describe("PermissionApprovalRegistry", () => {
@@ -179,6 +194,26 @@ describe("permission middleware", () => {
 		});
 		await middleware(context("Bash", { command: "npm test" }), async () => ({ content: [] }));
 		expect(persisted).toEqual(["bash:npm test *"]);
+	});
+
+	test("fd 复制的 Bash 请求仍提供 Always allow", async () => {
+		let canAlwaysAllow: boolean | undefined;
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: { permission: { bash: { "agent-browser *": "allow" } } },
+			requestApproval(request) {
+				canAlwaysAllow = request.canAlwaysAllow;
+				return "allowOnce";
+			},
+		});
+		await middleware(
+			context("Bash", {
+				command:
+					"agent-browser screenshot /tmp/snake_start.png 2>&1 | tail -1 && agent-browser click @e11 2>&1 | tail -1",
+			}),
+			async () => ({ content: [] }),
+		);
+		expect(canAlwaysAllow).toBe(true);
 	});
 
 	test("显式 Deny 不进入授权回调", async () => {
