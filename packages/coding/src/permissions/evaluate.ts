@@ -1,7 +1,17 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { bashScanFromArgs } from "./bash-parser";
 import { normalizePermissionSettings } from "./definition";
 import { invalidPermissionCallError } from "./errors";
-import { matchesPermissionRule, parsePermissionRule, splitBashCommand } from "./rules";
+import {
+	bashAlwaysPattern,
+	flattenPermissionConfig,
+	isDestructiveBashCommand,
+	matchesPermissionConfigRule,
+	matchesPermissionRule,
+	parsePermissionRule,
+	permissionName,
+	splitBashCommand,
+} from "./rules";
 import type {
 	PermissionCall,
 	PermissionDecision,
@@ -38,6 +48,8 @@ export function evaluatePermission(
 	if (call.toolName === "UpdateTodos" || call.toolName === "SpawnAgent") {
 		return decision("allow", "built-in", "Internal agent coordination has no direct external side effects");
 	}
+	if (resolved.permission && Object.keys(resolved.permission).length > 0)
+		return evaluateConfiguredPermission(call, resolved);
 	if (
 		resolved.defaultMode === "plan" &&
 		(isEditCall(call) || (call.toolName === "Bash" && !isReadOnlyBash(stringArg(call, "command"))))
@@ -86,6 +98,77 @@ export function evaluatePermission(
 		return decision("allow", "built-in", "Skill resources are constrained to the selected Skill root");
 	}
 	return decision("ask", "built-in", "Unknown permission behavior");
+}
+
+function evaluateConfiguredPermission(call: PermissionCall, settings: ResolvedPermissionSettings): PermissionDecision {
+	if (call.toolName === "Bash") {
+		const command = stringArg(call, "command");
+		const scan = bashScanFromArgs(call.args);
+		if (scan?.destructive || isDestructiveBashCommand(command)) {
+			return decision(
+				"ask",
+				"danger-layer",
+				"Destructive or opaque Bash operation always requires confirmation",
+				undefined,
+				{
+					permission: "bash",
+					risk: "destructive",
+				},
+			);
+		}
+		if (scan?.opaque) {
+			return decision("ask", "danger-layer", "Bash command could not be parsed safely", undefined, {
+				permission: "bash",
+				risk: "opaque",
+			});
+		}
+		const subcommands = scan?.patterns ?? splitBashCommand(command);
+		if (!subcommands || subcommands.length === 0) {
+			return decision("ask", "danger-layer", "Bash command could not be parsed safely", undefined, {
+				permission: "bash",
+				risk: "opaque",
+			});
+		}
+		const decisions = subcommands.map((subcommand) => configuredRuleDecision(call, settings, subcommand));
+		if (decisions.some((item) => item.behavior === "deny"))
+			return decisions.find((item) => item.behavior === "deny")!;
+		if (decisions.every((item) => item.behavior === "allow")) {
+			return decision("allow", "rule", "All Bash command nodes matched Allow rules", undefined, {
+				permission: "bash",
+				patterns: subcommands,
+				alwaysPatterns: unique(scan?.alwaysPatterns ?? decisions.flatMap((item) => item.alwaysPatterns ?? [])),
+			});
+		}
+		return (
+			decisions.find((item) => item.behavior === "ask") ??
+			decision("ask", "rule", "Bash command requires confirmation")
+		);
+	}
+	return configuredRuleDecision(call, settings);
+}
+
+function configuredRuleDecision(
+	call: PermissionCall,
+	settings: ResolvedPermissionSettings,
+	command?: string,
+): PermissionDecision {
+	const permission = permissionName(call.toolName);
+	const matched = flattenPermissionConfig(settings.permission).findLast((rule) =>
+		matchesPermissionConfigRule(rule, call, command),
+	);
+	if (!matched)
+		return decision("ask", "built-in", `No ${permission} permission rule matched`, undefined, { permission });
+	return decision(
+		matched.action,
+		"rule",
+		`Matched ${matched.action} permission rule`,
+		`${permission}:${matched.pattern}`,
+		{
+			permission,
+			patterns: command ? [command] : undefined,
+			alwaysPatterns: command ? [bashAlwaysPattern(command) ?? `${command} *`] : undefined,
+		},
+	);
 }
 
 function matchingRule(effect: PermissionEffect, rawRules: readonly string[], call: PermissionCall): string | undefined {
@@ -232,11 +315,22 @@ function isCircuitBreakerCommand(command: string): boolean {
 	);
 }
 
+function unique(values: readonly string[]): string[] {
+	return [...new Set(values)];
+}
+
 function decision(
 	behavior: PermissionEffect,
 	source: PermissionDecision["source"],
 	reason: string,
 	rule?: string,
+	extra?: Pick<PermissionDecision, "permission" | "patterns" | "alwaysPatterns" | "risk">,
 ): PermissionDecision {
-	return rule === undefined ? { behavior, source, reason } : { behavior, source, reason, rule };
+	return {
+		behavior,
+		source,
+		reason,
+		...(rule === undefined ? {} : { rule }),
+		...extra,
+	};
 }

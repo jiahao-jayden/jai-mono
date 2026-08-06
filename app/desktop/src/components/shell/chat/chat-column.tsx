@@ -370,6 +370,7 @@ export function ChatColumn({
 											description: item.request.summary.description || item.request.reason,
 											command: item.request.summary.command,
 											path: item.request.summary.path,
+											canAlwaysAllow: item.request.canAlwaysAllow ?? Boolean(item.request.suggestedRule),
 										}))}
 										onResolve={(requestId, decision) => chat.resolvePermission({ requestId, decision })}
 									/>

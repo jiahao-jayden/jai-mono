@@ -162,6 +162,7 @@ describe("projectSessionSnapshot", () => {
 				status: "complete",
 				turnId: "message:user-1",
 			}),
+			expect.objectContaining({ kind: "message", role: "assistant", text: "Writing" }),
 			expect.objectContaining({
 				kind: "tool",
 				toolCallId: "call-1",

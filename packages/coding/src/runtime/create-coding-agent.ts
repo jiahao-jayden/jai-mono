@@ -24,11 +24,14 @@ import {
 	CodingConfigStore,
 	type CodingConfigStoreOptions,
 	type ConfigSnapshot,
+	type ResolvedCodingSettings,
 } from "../config";
 import {
 	createPermissionMiddleware,
+	type PermissionAction,
 	type PermissionApprovalDecision,
 	type PermissionApprovalRequest,
+	type PermissionConfig,
 	type PermissionSettings,
 } from "../permissions";
 import { CodingSkillsRuntime, type CodingSkillsRuntimeOptions } from "../skills";
@@ -196,6 +199,12 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const sessionHandle = await openSession(sessionStore, options.sessionId, options.appState ?? ({} as TAppState));
 	const selectPermissionSettings = options.permissions?.selectSettings ?? defaultPermissionSettings;
 	const sessionAllowRules = new Set<string>();
+	const persistProjectLocalAllowRule =
+		options.permissions?.persistProjectLocalAllowRule ??
+		(async (rule: string) => {
+			const next = await persistBashAllowRule(configStore, rule);
+			if (next) runtime.snapshot = next;
+		});
 	let agent!: Agent<TAppState>;
 	const updateTodosTool = createUpdateTodosTool(async (items) => {
 		const todos: SessionTodos = {
@@ -249,7 +258,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				workspaceRoot: options.executionContext.cwd,
 				settings: () => selectPermissionSettings(runtime.snapshot),
 				requestApproval: options.permissions?.requestApproval,
-				persistProjectLocalAllowRule: options.permissions?.persistProjectLocalAllowRule,
+				persistProjectLocalAllowRule,
 				pathCapabilities: toolEnvironment,
 				sessionAllowRules,
 			}),
@@ -264,7 +273,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 						workspaceRoot: options.executionContext.cwd,
 						settings: () => selectPermissionSettings(runtime.snapshot),
 						requestApproval: options.permissions?.requestApproval,
-						persistProjectLocalAllowRule: options.permissions?.persistProjectLocalAllowRule,
+						persistProjectLocalAllowRule,
 						pathCapabilities: toolEnvironment,
 						sessionAllowRules,
 					}),
@@ -384,7 +393,44 @@ function finalAssistantText(messages: readonly AgentMessage[]): string {
 function defaultPermissionSettings<TSchema extends TObject>(snapshot: ConfigSnapshot<TSchema>): PermissionSettings {
 	const settings = snapshot.settings as Readonly<Record<string, unknown>>;
 	const permissions = settings.permissions;
-	return isRecord(permissions) ? (permissions as PermissionSettings) : {};
+	const legacy = isRecord(permissions) ? (permissions as PermissionSettings) : {};
+	return isRecord(settings.permission) ? { ...legacy, permission: settings.permission as PermissionConfig } : legacy;
+}
+
+async function persistBashAllowRule<TSchema extends TObject>(
+	store: CodingConfigStore<TSchema>,
+	rule: string,
+): Promise<ConfigSnapshot<TSchema> | undefined> {
+	const pattern = rule.startsWith("bash:") ? rule.slice("bash:".length) : undefined;
+	if (!pattern) return;
+	for (let attempt = 0; attempt < 2; attempt++) {
+		const scope = await store.readScope("project-local");
+		const settings = structuredClone(scope.settings) as Record<string, unknown>;
+		const permission = isRecord(settings.permission) ? { ...settings.permission } : {};
+		const currentBash = permission.bash;
+		const bash: Record<string, PermissionAction> =
+			currentBash === "allow" || currentBash === "ask" || currentBash === "deny"
+				? { "*": currentBash }
+				: isRecord(currentBash)
+					? Object.fromEntries(
+							Object.entries(currentBash).filter(
+								(entry): entry is [string, PermissionAction] =>
+									entry[1] === "allow" || entry[1] === "ask" || entry[1] === "deny",
+							),
+						)
+					: {};
+		delete bash[pattern];
+		bash[pattern] = "allow";
+		permission.bash = bash;
+		settings.permission = permission;
+		try {
+			return await store.writeScope("project-local", settings as Partial<ResolvedCodingSettings<TSchema>>, {
+				expectedRevision: scope.revision,
+			});
+		} catch (error) {
+			if (!isRecord(error) || error._tag !== "coding_config.write_conflict" || attempt === 1) throw error;
+		}
+	}
 }
 
 function sessionTodosFromAppState(appState: JsonObject): SessionTodos | undefined {

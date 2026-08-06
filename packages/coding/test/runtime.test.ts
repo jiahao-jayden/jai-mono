@@ -12,7 +12,12 @@ import {
 } from "@jai/ai";
 import { Type } from "@sinclair/typebox";
 import { defineCodingConfig } from "../src/config";
-import { permissionConfigFields, permissionSettingsSchema } from "../src/permissions";
+import {
+	mergePermissionConfigs,
+	permissionConfigFields,
+	permissionConfigSchema,
+	permissionSettingsSchema,
+} from "../src/permissions";
 import { createCodingAgent } from "../src/runtime";
 
 const roots: string[] = [];
@@ -20,8 +25,14 @@ const roots: string[] = [];
 const definition = defineCodingConfig({
 	schemaVersion: 1,
 	schemaUrl: "https://jai.test/coding-agent-settings-v1.json",
-	schema: Type.Object({ permissions: permissionSettingsSchema }, { additionalProperties: false }),
-	fields: { permissions: permissionConfigFields },
+	schema: Type.Object(
+		{ permission: Type.Optional(permissionConfigSchema), permissions: permissionSettingsSchema },
+		{ additionalProperties: false },
+	),
+	fields: {
+		permission: { merge: "custom", project: "trusted", mergeValues: mergePermissionConfigs },
+		permissions: permissionConfigFields,
+	},
 	migrations: [],
 });
 
@@ -101,6 +112,39 @@ describe("createCodingAgent", () => {
 			await codingAgent.invoke("write the file");
 			expect(requests).toEqual([`Edit(//${target.replace(/^\/+/, "")})`]);
 			expect(await readFile(target, "utf8")).toBe("approved");
+		} finally {
+			codingAgent.close();
+		}
+	});
+
+	test("Bash Always allow 原子写入 project-local permission", async () => {
+		const fixture = await createFixture();
+		const settingsPath = join(fixture.executionContext.configRoot, ".jai", "settings.local.json");
+		let approvals = 0;
+		const codingAgent = await createCodingAgent({
+			...fixture,
+			configOptions: { ...fixture.configOptions, workspaceTrusted: true },
+			resolveProvider: () => ({
+				provider: providerFor([
+					assistantToolCall("Bash", { command: "printf hello" }),
+					assistantToolCall("Bash", { command: "printf world" }),
+					assistant("done"),
+				]),
+				model,
+			}),
+			permissions: {
+				requestApproval: () => {
+					approvals++;
+					return "alwaysAllow";
+				},
+			},
+		});
+
+		try {
+			await codingAgent.invoke("run printf");
+			const document = JSON.parse(await readFile(settingsPath, "utf8"));
+			expect(document.permission.bash).toEqual({ "printf *": "allow" });
+			expect(approvals).toBe(1);
 		} finally {
 			codingAgent.close();
 		}

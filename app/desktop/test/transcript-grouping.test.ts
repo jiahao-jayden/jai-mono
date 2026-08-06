@@ -33,7 +33,7 @@ describe("groupTranscriptItems", () => {
 		).toBe("");
 	});
 
-	test("按 turnId 合并乱序到达的思考与工具", () => {
+	test("按 turnId 合并相邻的思考与工具", () => {
 		const items: DesktopTranscriptItem[] = [
 			{
 				kind: "thinking",
@@ -63,13 +63,52 @@ describe("groupTranscriptItems", () => {
 
 		expect(groupTranscriptItems(items)).toEqual([
 			{
-				id: "work:turn-1",
+				id: "work:turn-1:thinking:turn-1:0",
 				items,
 			},
 		]);
 		const [row] = groupTranscriptItems(items);
 		if (!row || "kind" in row) throw new Error("Expected a work group");
 		expect(workGroupTitle(row.items, false)).toBe("Loading skill");
+	});
+
+	test("正文分隔工作阶段且不允许后续工具越过正文", () => {
+		const thinking: Extract<DesktopTranscriptItem, { kind: "thinking" }> = {
+			kind: "thinking",
+			id: "thinking:1",
+			turnId: "turn-1",
+			text: "Analyze first",
+			status: "complete",
+			timestamp: 1,
+		};
+		const text: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:1:1",
+			role: "assistant",
+			text: "先说说当前版本的分析，再动手。",
+			status: "complete",
+			timestamp: 1,
+		};
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:1",
+			turnId: "turn-1",
+			toolCallId: "call-1",
+			toolName: "Bash",
+			status: "complete",
+		};
+		const nextThinking: Extract<DesktopTranscriptItem, { kind: "thinking" }> = {
+			...thinking,
+			id: "thinking:2",
+			text: "Continue after the tool",
+			timestamp: 2,
+		};
+
+		expect(groupTranscriptItems([thinking, text, tool, nextThinking])).toEqual([
+			{ id: "work:turn-1:thinking:1", items: [thinking] },
+			text,
+			{ id: "work:turn-1:tool:1", items: [tool, nextThinking] },
+		]);
 	});
 
 	test("用实际工具生成语义标题", () => {

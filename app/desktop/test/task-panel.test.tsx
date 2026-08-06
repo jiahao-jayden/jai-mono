@@ -51,6 +51,10 @@ describe("TaskPanel", () => {
 		expect(emptyMarkup).not.toContain("pwd &amp;&amp; ls -la");
 		expect(emptyMarkup).toContain("No active Todo");
 		expect(emptyMarkup).toContain("Outputs");
+
+		const runningWithoutTodosMarkup = renderToStaticMarkup(<TaskPanel status="running" />);
+		expect(runningWithoutTodosMarkup).toContain("No active Todo");
+		expect(runningWithoutTodosMarkup).not.toContain("Agent is working");
 	});
 
 	test("在 Progress 中渲染持久化 Todo 状态", () => {

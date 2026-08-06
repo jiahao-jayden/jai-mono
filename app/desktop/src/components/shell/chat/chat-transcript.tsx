@@ -47,25 +47,17 @@ export function TranscriptItems({ items, loading }: { items: readonly DesktopTra
 
 export function groupTranscriptItems(items: readonly DesktopTranscriptItem[]): (DesktopTranscriptItem | WorkGroup)[] {
 	const rows: (DesktopTranscriptItem | WorkGroup)[] = [];
-	const workByTurn = new Map<string, WorkItem[]>();
-	const emittedTurns = new Set<string>();
-
-	for (const item of items) {
-		if (!isWorkItem(item)) continue;
-		const turnId = workItemTurnId(item);
-		const workItems = workByTurn.get(turnId) ?? [];
-		workItems.push(item);
-		workByTurn.set(turnId, workItems);
-	}
 
 	for (const item of items) {
 		if (item.kind === "message" && item.role === "toolResult") continue;
 		if (item.kind === "permission") continue;
 		if (isWorkItem(item)) {
 			const turnId = workItemTurnId(item);
-			if (!emittedTurns.has(turnId)) {
-				rows.push({ id: `work:${turnId}`, items: workByTurn.get(turnId) ?? [item] });
-				emittedTurns.add(turnId);
+			const previous = rows.at(-1);
+			if (previous && !("kind" in previous) && workItemTurnId(previous.items[0]!) === turnId) {
+				rows[rows.length - 1] = { ...previous, items: [...previous.items, item] };
+			} else {
+				rows.push({ id: `work:${turnId}:${item.id}`, items: [item] });
 			}
 			continue;
 		}

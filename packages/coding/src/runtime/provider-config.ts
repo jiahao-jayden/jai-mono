@@ -12,7 +12,12 @@ import {
 import { type Static, Type } from "@sinclair/typebox";
 import { TaggedError } from "better-result";
 import { type ConfigMergeCandidate, defineCodingConfig } from "../config";
-import { permissionConfigFields, permissionSettingsSchema } from "../permissions";
+import {
+	mergePermissionConfigs,
+	permissionConfigFields,
+	permissionConfigSchema,
+	permissionSettingsSchema,
+} from "../permissions";
 import type { ResolvedCodingProvider } from "./create-coding-agent";
 import { findCatalogModel, type ModelCatalog, type ModelCatalogCost } from "./model-catalog";
 
@@ -170,6 +175,7 @@ export const codingAgentSettingsSchema = Type.Object(
 			),
 		),
 		providers: Type.Record(Type.RegExp(new RegExp(profileIdPattern)), providerProfileSchema),
+		permission: Type.Optional(permissionConfigSchema),
 		permissions: permissionSettingsSchema,
 	},
 	{ additionalProperties: false },
@@ -211,6 +217,12 @@ export const codingAgentConfigDefinition = defineCodingConfig({
 			default: {},
 			environment: { name: "JAI_PROVIDERS", parse: parseProvidersEnvironment },
 			mergeValues: mergeProviderProfiles,
+		},
+		permission: {
+			merge: "custom",
+			project: "trusted",
+			default: {},
+			mergeValues: mergePermissionConfigs,
 		},
 		permissions: permissionConfigFields,
 	},

@@ -182,6 +182,49 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
+	test("完整消息出现 tool call 时保留正文与工具的 content 顺序", async () => {
+		const envelopes: DesktopAgentEventEnvelope[] = [];
+		const agent = new FakeAgent(async (self) => {
+			const streaming = assistantMessage("先分析当前版本，再动手。");
+			const complete = {
+				...streaming,
+				content: [
+					...streaming.content,
+					{
+						type: "toolCall" as const,
+						id: "bash-1",
+						name: "Bash",
+						arguments: { command: "pwd" },
+					},
+				],
+				stopReason: "toolUse" as const,
+			};
+			self.emit({ type: "message_start", message: assistantMessage("") });
+			self.emit({
+				type: "message_update",
+				message: streaming,
+				assistantEvent: {
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "先分析当前版本，再动手。",
+					partial: streaming,
+				},
+			});
+			self.emit({ type: "message_end", message: complete });
+			return [complete];
+		});
+		const host = new DesktopAgentHost((event) => envelopes.push(event), async () => agent);
+
+		await host.send(input("implement"));
+		await agent.finished;
+
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({ kind: "message", text: "先分析当前版本，再动手。" }),
+			expect.objectContaining({ kind: "tool", toolCallId: "bash-1" }),
+		]);
+		host.close();
+	});
+
 	test("关闭 session 会取消尚未发送的流式刷新", async () => {
 		const envelopes: DesktopAgentEventEnvelope[] = [];
 		let finish = (_messages: AgentMessage[]) => {};

@@ -27,6 +27,7 @@ export const permissionRequestSchema = Type.Object(
 		toolCallId: Type.String({ minLength: 1 }),
 		toolName: canonicalToolNameSchema,
 		reason: Type.String({ minLength: 1 }),
+		canAlwaysAllow: Type.Optional(Type.Boolean()),
 		summary: permissionRequestSummarySchema,
 		suggestedRule: Type.Optional(Type.String({ minLength: 1 })),
 		rememberScope: Type.Optional(Type.Union([Type.Literal("session"), Type.Literal("project-local")])),

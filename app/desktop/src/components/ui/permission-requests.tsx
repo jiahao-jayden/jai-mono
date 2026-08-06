@@ -17,6 +17,7 @@ export interface PermissionRequestView {
 	readonly description: string;
 	readonly command?: string;
 	readonly path?: string;
+	readonly canAlwaysAllow: boolean;
 }
 
 interface PermissionRequestsProps {
@@ -123,7 +124,7 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 				</p>
 			) : null}
 			<div className="flex flex-wrap justify-end gap-1.5 px-3 pt-1 pb-3">
-				{decisions.map((decision) => (
+				{decisions.filter((decision) => decision.id !== "alwaysAllow" || request.canAlwaysAllow).map((decision) => (
 					<Button
 						key={decision.id}
 						type="button"

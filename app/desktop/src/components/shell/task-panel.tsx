@@ -31,16 +31,12 @@ export function TaskPanel({ status, todos, project }: TaskPanelProps) {
 		cancelledTodos > 0 ? `${completedTodos} completed · ${cancelledTodos} cancelled` : "Complete";
 	const progressLabel =
 		todoItems.length === 0
-			? status === "running"
-				? "Agent is working"
-				: "No active Todo"
+			? "No active Todo"
 			: status === "idle" && hasInProgressTodo
 				? `Interrupted · ${progressSummary}`
 				: allTodosResolved
 					? terminalSummary
 					: progressSummary;
-	const runningIndicator =
-		status === "running" ? <span className="size-1.5 animate-pulse rounded-full bg-primary-2" /> : null;
 	const summaryInitial = reduceMotion ? { opacity: 0 } : { opacity: 0, transform: "translateY(18%)" };
 
 	return (
@@ -50,7 +46,6 @@ export function TaskPanel({ status, todos, project }: TaskPanelProps) {
 					<div className="flex items-center justify-between">
 						<h2 className="text-[14px] font-semibold">Progress</h2>
 						<span aria-live="polite" className="flex items-center gap-2 text-[12.5px] text-foreground/70">
-							{runningIndicator}
 							<AnimatePresence mode="popLayout" initial={false}>
 								<motion.span
 									key={progressLabel}

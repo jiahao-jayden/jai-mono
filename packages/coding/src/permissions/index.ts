@@ -15,9 +15,19 @@ export {
 	PermissionApprovalRegistry,
 } from "./approval-registry";
 export {
+	type BashPermissionScan,
+	bashPermissionScanArgument,
+	bashScanFromArgs,
+	scanBashCommand,
+} from "./bash-parser";
+export {
+	mergePermissionConfigs,
 	normalizePermissionSettings,
 	type PermissionSettingsDocument,
+	permissionActionSchema,
 	permissionConfigFields,
+	permissionConfigSchema,
+	permissionRuleValueSchema,
 	permissionSettingsSchema,
 } from "./definition";
 export { evaluatePermission } from "./evaluate";
@@ -26,17 +36,29 @@ export {
 	type PermissionApprovalRequest,
 	type PermissionMiddlewareOptions,
 } from "./middleware";
-export { matchesPermissionRule, parsePermissionRule, splitBashCommand } from "./rules";
+export {
+	bashAlwaysPattern,
+	flattenPermissionConfig,
+	isDestructiveBashCommand,
+	matchesPermissionConfigRule,
+	matchesPermissionRule,
+	parsePermissionRule,
+	permissionName,
+	splitBashCommand,
+} from "./rules";
 export {
 	type CanonicalToolName,
 	canonicalToolNameSchema,
 	canonicalToolNames,
 	type ParsedPermissionRule,
+	type PermissionAction,
 	type PermissionCall,
+	type PermissionConfig,
 	type PermissionDecision,
 	type PermissionDecisionSource,
 	type PermissionEffect,
 	type PermissionMode,
+	type PermissionRuleValue,
 	type PermissionSettings,
 	type ResolvedPermissionSettings,
 } from "./types";

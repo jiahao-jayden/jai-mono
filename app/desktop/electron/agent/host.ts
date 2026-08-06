@@ -558,13 +558,8 @@ export class DesktopAgentHost {
 		if (message.role === "toolResult") return [];
 		if (message.role === "assistant") {
 			this.#ensureMessageId(runtime, "assistant");
-			let textProjected = false;
 			return message.content.flatMap((_, contentIndex) => {
 				const item = this.#projectAssistantPart(runtime, message, contentIndex, status);
-				if (item?.kind === "message") {
-					if (textProjected) return [];
-					textProjected = true;
-				}
 				return item ? [item] : [];
 			});
 		}
@@ -634,14 +629,12 @@ export class DesktopAgentHost {
 				summary: summarizeToolArguments(part.name, part.arguments),
 			};
 		}
-		if (message.content.some((candidate) => candidate.type === "toolCall")) return undefined;
-		const text = messageText(message);
-		if (!text) return undefined;
+		if (part.type !== "text" || part.synthetic || !part.text) return undefined;
 		return {
 			kind: "message",
-			id,
+			id: `${id}:${contentIndex}`,
 			role: "assistant",
-			text,
+			text: part.text,
 			status,
 			timestamp: message.timestamp,
 			stopReason: message.stopReason,
@@ -758,6 +751,7 @@ function projectPermissionRequest(sessionId: string, request: PermissionApproval
 		toolCallId: request.toolCallId,
 		toolName: request.toolName,
 		reason: request.reason,
+		canAlwaysAllow: request.canAlwaysAllow,
 		summary: permissionSummary(request),
 		...(request.suggestedRule ? { suggestedRule: request.suggestedRule } : {}),
 		...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),

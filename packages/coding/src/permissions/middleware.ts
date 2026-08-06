@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import type { PathCapability, PathCapabilityManager, ResolvePathOptions, ToolMiddleware } from "@jai/agent";
 import type { PermissionApprovalDecision } from "./approval";
+import { bashPermissionScanArgument, scanBashCommand } from "./bash-parser";
 import { permissionAbortedError, permissionApprovalUnavailableError, permissionDeniedError } from "./errors";
 import { evaluatePermission } from "./evaluate";
+import { bashAlwaysPattern } from "./rules";
 import { type CanonicalToolName, canonicalToolNames, type PermissionSettings } from "./types";
 
 export interface PermissionApprovalRequest {
@@ -12,6 +14,7 @@ export interface PermissionApprovalRequest {
 	readonly toolName: CanonicalToolName;
 	readonly args: Readonly<Record<string, unknown>>;
 	readonly reason: string;
+	readonly canAlwaysAllow: boolean;
 	readonly suggestedRule?: string;
 	readonly rememberScope?: "session" | "project-local";
 }
@@ -35,7 +38,8 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 		const workspaceRoot = currentWorkspaceRoot(options.workspaceRoot);
 		const settings = await currentSettings(options.settings);
 		const effective = withSessionRules(settings, sessionAllowRules);
-		const call = { toolName, args: context.args, workspaceRoot };
+		const permissionArgs = await argsForPermission(toolName, context.args);
+		const call = { toolName, args: permissionArgs, workspaceRoot };
 		const initial = evaluatePermission(call, effective);
 		if (initial.behavior === "deny") throw permissionDeniedError(toolName, initial.reason);
 		const capability = await createPathCapability(
@@ -59,28 +63,32 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 		if (!options.requestApproval) throw permissionApprovalUnavailableError(toolName);
 		if (context.signal?.aborted) throw permissionAbortedError(toolName);
 
-		const suggested = suggestedRule(toolName, context.args, workspaceRoot);
+		const suggested = suggestedRule(toolName, context.args, workspaceRoot, initial);
 		const request: PermissionApprovalRequest = {
 			requestId: randomUUID(),
 			toolCallId: context.toolCall.id,
 			toolName,
 			args: structuredClone(context.args),
 			reason: initial.behavior === "ask" ? initial.reason : canonicalDecision.reason,
+			canAlwaysAllow: Boolean(suggested),
 			...(suggested ? { suggestedRule: suggested.rule, rememberScope: suggested.scope } : {}),
 		};
 		const approval = await options.requestApproval(request, context.signal);
 		if (context.signal?.aborted) throw permissionAbortedError(toolName);
 		if (approval === "deny") throw permissionDeniedError(toolName, "User denied the permission request");
+		if (approval === "alwaysAllow" && !suggested) {
+			throw permissionDeniedError(toolName, "Always allow is unavailable for this permission request");
+		}
 
 		const currentRoot = currentWorkspaceRoot(options.workspaceRoot);
 		const current = await currentSettings(options.settings);
 		const rechecked = evaluatePermission(
-			{ toolName, args: context.args, workspaceRoot: currentRoot },
+			{ toolName, args: permissionArgs, workspaceRoot: currentRoot },
 			withSessionRules(current, sessionAllowRules),
 		);
 		const canonicalRechecked = capability
 			? evaluatePermission(
-					canonicalCall({ toolName, args: context.args, workspaceRoot: currentRoot }, capability.canonicalPath),
+					canonicalCall({ toolName, args: permissionArgs, workspaceRoot: currentRoot }, capability.canonicalPath),
 					withSessionRules(current, sessionAllowRules),
 				)
 			: rechecked;
@@ -96,6 +104,7 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 						toolName,
 						argsWithPath(toolName, context.args, capability.canonicalPath),
 						workspaceRoot,
+						canonicalDecision,
 					);
 					if (canonicalSuggested) sessionAllowRules.add(canonicalSuggested.rule);
 				}
@@ -104,6 +113,20 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 		return capability && options.pathCapabilities
 			? options.pathCapabilities.withPathCapability(capability, next)
 			: next();
+	};
+}
+
+async function argsForPermission(
+	toolName: CanonicalToolName,
+	args: Readonly<Record<string, unknown>>,
+): Promise<Readonly<Record<string, unknown>>> {
+	if (toolName !== "Bash") return args;
+	const scan = await scanBashCommand(stringArg(args, "command"));
+	return {
+		...args,
+		[bashPermissionScanArgument]: scan.isOk()
+			? scan.value
+			: { patterns: [], alwaysPatterns: [], destructive: false, opaque: true },
 	};
 }
 
@@ -183,10 +206,13 @@ function suggestedRule(
 	toolName: CanonicalToolName,
 	args: Readonly<Record<string, unknown>>,
 	workspaceRoot: string,
+	decision: { readonly source: string; readonly alwaysPatterns?: readonly string[] },
 ): { readonly rule: string; readonly scope: "session" | "project-local" } | undefined {
+	if (decision.source === "danger-layer") return undefined;
 	if (toolName === "Bash") {
 		const command = stringArg(args, "command");
-		return command ? { rule: `Bash(${command})`, scope: "project-local" } : undefined;
+		const pattern = decision.alwaysPatterns?.[0] ?? bashAlwaysPattern(command);
+		return command && pattern ? { rule: `bash:${pattern}`, scope: "project-local" } : undefined;
 	}
 	if (toolName === "Write" || toolName === "Edit") {
 		const path = absolutePath(args, workspaceRoot);

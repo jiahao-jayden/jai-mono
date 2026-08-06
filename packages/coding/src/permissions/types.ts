@@ -16,8 +16,12 @@ export const canonicalToolNameSchema = Type.Union(canonicalToolNames.map((name) 
 export type CanonicalToolName = (typeof canonicalToolNames)[number];
 export type PermissionEffect = "allow" | "ask" | "deny";
 export type PermissionMode = "default" | "acceptEdits" | "plan" | "dontAsk" | "bypassPermissions";
+export type PermissionAction = PermissionEffect;
+export type PermissionRuleValue = PermissionAction | Readonly<Record<string, PermissionAction>>;
+export type PermissionConfig = Readonly<Record<string, PermissionRuleValue>>;
 
 export interface PermissionSettings {
+	readonly permission?: PermissionConfig;
 	readonly defaultMode?: PermissionMode;
 	readonly allow?: readonly string[];
 	readonly ask?: readonly string[];
@@ -28,6 +32,7 @@ export interface PermissionSettings {
 
 export interface ResolvedPermissionSettings {
 	readonly defaultMode: PermissionMode;
+	readonly permission?: PermissionConfig;
 	readonly allow: readonly string[];
 	readonly ask: readonly string[];
 	readonly deny: readonly string[];
@@ -47,11 +52,15 @@ export interface PermissionCall {
 	readonly workspaceRoot: string;
 }
 
-export type PermissionDecisionSource = "rule" | "mode" | "built-in";
+export type PermissionDecisionSource = "rule" | "mode" | "built-in" | "danger-layer";
 
 export interface PermissionDecision {
 	readonly behavior: PermissionEffect;
 	readonly source: PermissionDecisionSource;
 	readonly rule?: string;
 	readonly reason: string;
+	readonly permission?: string;
+	readonly patterns?: readonly string[];
+	readonly alwaysPatterns?: readonly string[];
+	readonly risk?: "normal" | "destructive" | "opaque";
 }

@@ -101,6 +101,7 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 				requestApproval,
 				selectSettings: (snapshot) => ({
 					...snapshot.settings.permissions,
+					permission: snapshot.settings.permission,
 					defaultMode: permissionModeForAgentMode(mode),
 				}),
 			},

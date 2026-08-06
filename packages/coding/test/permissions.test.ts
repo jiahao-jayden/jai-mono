@@ -19,6 +19,7 @@ import {
 	permissionRequestSchema,
 	parsePermissionRule,
 	permissionSettingsSchema,
+	scanBashCommand,
 	splitBashCommand,
 	type PermissionCall,
 } from "../src/permissions";
@@ -53,6 +54,15 @@ describe("permission rules", () => {
 		expect(splitBashCommand("git status && npm test | tail -n 2")).toEqual(["git status", "npm test", "tail -n 2"]);
 		expect(splitBashCommand(`echo "a && b"`)).toEqual([`echo "a && b"`]);
 		expect(splitBashCommand(`echo "unterminated`)).toBeUndefined();
+	});
+
+	test("tree-sitter 扫描复合命令、命令替换和重定向", async () => {
+		const result = await scanBashCommand("git status && echo $(pwd) > output.txt");
+		expect(result.isOk()).toBe(true);
+		if (result.isErr()) return;
+		expect(result.value.patterns).toContain("git status");
+		expect(result.value.patterns).toContain("pwd");
+		expect(result.value.destructive).toBe(true);
 	});
 });
 
@@ -168,7 +178,7 @@ describe("permission middleware", () => {
 			},
 		});
 		await middleware(context("Bash", { command: "npm test" }), async () => ({ content: [] }));
-		expect(persisted).toEqual(["Bash(npm test)"]);
+		expect(persisted).toEqual(["bash:npm test *"]);
 	});
 
 	test("显式 Deny 不进入授权回调", async () => {
@@ -185,6 +195,22 @@ describe("permission middleware", () => {
 			middleware(context("Bash", { command: "git push origin main" }), async () => ({ content: [] })),
 		).rejects.toMatchObject({ _tag: "coding_permission.denied" });
 		expect(asked).toBe(false);
+	});
+
+	test("危险 Bash 不提供 Always allow 且拒绝伪造响应", async () => {
+		let canAlwaysAllow: boolean | undefined;
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: { permission: { bash: "allow" } },
+			requestApproval(request) {
+				canAlwaysAllow = request.canAlwaysAllow;
+				return "alwaysAllow";
+			},
+		});
+		await expect(
+			middleware(context("Bash", { command: "rm -rf build" }), async () => ({ content: [] })),
+		).rejects.toMatchObject({ _tag: "coding_permission.denied" });
+		expect(canAlwaysAllow).toBe(false);
 	});
 
 	test("文件 Always allow 同时固定用户路径与 canonical target", async () => {
@@ -255,6 +281,45 @@ describe("permission evaluation", () => {
 				deny: ["Bash(git *)"],
 			}),
 		).toMatchObject({ behavior: "deny", source: "rule", rule: "Bash(git *)" });
+	});
+
+	test("有序 permission 使用最后匹配规则并默认 Ask", () => {
+		const request = call("Bash", { command: "git status --short" });
+		expect(
+			evaluatePermission(request, {
+				permission: {
+					bash: {
+						"git *": "deny",
+						"git status *": "allow",
+					},
+				},
+			}),
+		).toMatchObject({ behavior: "allow", source: "rule", permission: "bash" });
+		expect(evaluatePermission(call("Bash", { command: "npm test" }), { permission: { bash: {} } }).behavior).toBe(
+			"ask",
+		);
+	});
+
+	test("有序 permission 对 compound Bash 的每个子命令分别求权", () => {
+		const request = call("Bash", { command: "git status && bun test" });
+		expect(
+			evaluatePermission(request, { permission: { bash: { "git status": "allow", "*": "ask" } } }).behavior,
+		).toBe("ask");
+		expect(
+			evaluatePermission(request, {
+				permission: { bash: { "*": "ask", "git status": "allow", "bun test": "allow" } },
+			}),
+		).toMatchObject({ behavior: "allow", patterns: ["git status", "bun test"] });
+	});
+
+	test("不可覆盖风险层让删除命令始终 Ask", () => {
+		for (const command of ["rm -rf build", "find . -delete", "git clean -fd", "echo value > output.txt"]) {
+			expect(evaluatePermission(call("Bash", { command }), { permission: { bash: "allow" } })).toMatchObject({
+				behavior: "ask",
+				source: "danger-layer",
+				risk: "destructive",
+			});
+		}
 	});
 
 	test("Allow compound Bash 要求每个子命令分别匹配", () => {

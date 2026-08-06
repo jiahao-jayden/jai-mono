@@ -1,7 +1,43 @@
 import { homedir } from "node:os";
 import { isAbsolute, resolve, sep } from "node:path";
 import { invalidPermissionRuleError } from "./errors";
-import { type CanonicalToolName, canonicalToolNames, type ParsedPermissionRule, type PermissionCall } from "./types";
+import {
+	type CanonicalToolName,
+	canonicalToolNames,
+	type ParsedPermissionRule,
+	type PermissionCall,
+	type PermissionConfig,
+	type PermissionEffect,
+} from "./types";
+
+export interface PermissionConfigRule {
+	readonly permission: string;
+	readonly pattern: string;
+	readonly action: PermissionEffect;
+}
+
+const bashArity: Readonly<Record<string, number>> = {
+	aws: 3,
+	bun: 2,
+	"bun run": 3,
+	cargo: 2,
+	docker: 2,
+	git: 2,
+	"git config": 3,
+	"git remote": 3,
+	"git stash": 3,
+	gh: 3,
+	go: 2,
+	make: 2,
+	npm: 2,
+	"npm exec": 3,
+	"npm run": 3,
+	pnpm: 2,
+	"pnpm exec": 3,
+	"pnpm run": 3,
+	yarn: 2,
+	"yarn run": 3,
+};
 
 const rulePattern = /^([A-Za-z][A-Za-z0-9]*)(?:\(([\s\S]*)\))?$/;
 
@@ -27,6 +63,133 @@ export function matchesPermissionRule(rule: ParsedPermissionRule, call: Permissi
 		return matchPath(rule.specifier, requiredPath(call), call.workspaceRoot);
 	}
 	return false;
+}
+
+export function flattenPermissionConfig(config: PermissionConfig | undefined): PermissionConfigRule[] {
+	if (!config) return [];
+	const rules: PermissionConfigRule[] = [];
+	for (const [permission, value] of Object.entries(config)) {
+		if (typeof value === "string") {
+			rules.push({ permission, pattern: "*", action: value });
+			continue;
+		}
+		for (const [pattern, action] of Object.entries(value)) rules.push({ permission, pattern, action });
+	}
+	return rules;
+}
+
+export function permissionName(toolName: CanonicalToolName): string {
+	switch (toolName) {
+		case "Read":
+			return "read";
+		case "Write":
+		case "Edit":
+			return "edit";
+		case "Glob":
+			return "glob";
+		case "Grep":
+			return "grep";
+		case "Bash":
+			return "bash";
+		case "Skill":
+			return "skill";
+		case "SpawnAgent":
+			return "task";
+		case "UpdateTodos":
+			return "todowrite";
+	}
+}
+
+export function matchesPermissionConfigRule(
+	rule: PermissionConfigRule,
+	call: PermissionCall,
+	command?: string,
+): boolean {
+	if (!wildcardExpression(rule.permission, false).test(permissionName(call.toolName))) return false;
+	const value = command ?? stringArg(call.args, call.toolName === "Bash" ? "command" : "path");
+	return call.toolName === "Bash"
+		? matchBash(rule.pattern, value)
+		: rule.pattern === "*" || wildcardExpression(rule.pattern, true).test(value);
+}
+
+export function bashAlwaysPattern(command: string): string | undefined {
+	const tokens = shellWords(command);
+	if (!tokens || tokens.length === 0) return undefined;
+	let best: string | undefined;
+	let arity = 0;
+	for (const [prefix, count] of Object.entries(bashArity)) {
+		const prefixTokens = prefix.split(" ");
+		if (prefixTokens.every((token, index) => tokens[index] === token) && prefixTokens.length > arity) {
+			best = prefix;
+			arity = prefixTokens.length;
+			if (count > arity) best = tokens.slice(0, count).join(" ");
+		}
+	}
+	return `${best ?? tokens[0]} *`;
+}
+
+export function isDestructiveBashCommand(command: string): boolean {
+	if (/(^|[^<])(?:>|>>|<>|>\|)/.test(command) || /\b(?:truncate|dd)\b[^\n]*\bof=/.test(command)) return true;
+	const subcommands = splitBashCommand(command);
+	if (!subcommands) return true;
+	return subcommands.some((subcommand) => {
+		const tokens = shellWords(subcommand);
+		if (!tokens || tokens.length === 0) return true;
+		const executable = tokens.find((token) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token));
+		if (!executable) return true;
+		if (["rm", "rmdir", "unlink", "trash"].includes(executable)) return true;
+		if (executable === "find" && tokens.some((token) => token === "-delete" || token === "-exec")) return true;
+		if (executable === "git" && tokens.includes("clean")) return true;
+		if (executable === "git" && tokens.includes("reset") && tokens.includes("--hard")) return true;
+		if (executable === "git" && tokens.includes("checkout") && tokens.includes("--")) return true;
+		if (["sh", "bash", "zsh", "node", "python", "python3", "perl", "ruby"].includes(executable)) {
+			return tokens.some((token) => token === "-c" || token.includes("$()") || token.includes("`"));
+		}
+		return false;
+	});
+}
+
+function stringArg(args: Readonly<Record<string, unknown>>, key: string): string {
+	const value = args[key];
+	return typeof value === "string" ? value : "";
+}
+
+function shellWords(command: string): string[] | undefined {
+	const words: string[] = [];
+	let current = "";
+	let quote: "'" | '"' | undefined;
+	let escaped = false;
+	for (const character of command) {
+		if (escaped) {
+			current += character;
+			escaped = false;
+			continue;
+		}
+		if (character === "\\" && quote !== "'") {
+			escaped = true;
+			continue;
+		}
+		if (quote) {
+			if (character === quote) quote = undefined;
+			else current += character;
+			continue;
+		}
+		if (character === "'" || character === '"') {
+			quote = character;
+			continue;
+		}
+		if (/\s/.test(character)) {
+			if (current) {
+				words.push(current);
+				current = "";
+			}
+			continue;
+		}
+		current += character;
+	}
+	if (quote || escaped) return undefined;
+	if (current) words.push(current);
+	return words;
 }
 
 export function splitBashCommand(command: string): string[] | undefined {

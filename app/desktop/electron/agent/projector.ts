@@ -98,9 +98,6 @@ function projectAssistantItems(
 		| DesktopSubagentItem
 	)[] = [];
 	const turnId = currentTurnId ?? `message:${entryId}`;
-	const text = messageText(message);
-	const hasToolCall = message.content.some((part) => part.type === "toolCall");
-	let textProjected = false;
 
 	for (const [contentIndex, part] of message.content.entries()) {
 		if (part.type === "thinking") {
@@ -142,9 +139,16 @@ function projectAssistantItems(
 			});
 			continue;
 		}
-		if (!hasToolCall && !textProjected && text) {
-			result.push(projectMessage(entryId, message));
-			textProjected = true;
+		if (part.type === "text" && !part.synthetic && part.text) {
+			result.push({
+				kind: "message",
+				id: `message:${entryId}:${contentIndex}`,
+				role: "assistant",
+				text: part.text,
+				status: "complete",
+				timestamp: message.timestamp,
+				stopReason: message.stopReason,
+			});
 		}
 	}
 
