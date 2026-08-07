@@ -1,4 +1,5 @@
 export * from "./config";
+export * from "./mcp";
 export * from "./permissions";
 export * from "./runtime";
 export * from "./skills";

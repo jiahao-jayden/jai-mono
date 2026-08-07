@@ -12,7 +12,9 @@
 		"./permissions": "./src/permissions/index.ts",
 		"./permissions/approval": "./src/permissions/approval.ts",
 		"./runtime": "./src/runtime/index.ts",
+		"./mcp": "./src/mcp/index.ts",
 		"./skills": "./src/skills/index.ts",
+		"./agent-plugins": "./src/agent-plugins/index.ts",
 		"./tools": "./src/tools/index.ts"
 	},
 	"scripts": {
@@ -23,6 +25,7 @@
 		"@jai/agent": "workspace:*",
 		"@jai/ai": "workspace:*",
 		"@jai/common": "workspace:*",
+		"@modelcontextprotocol/sdk": "1.29.0",
 		"@sinclair/typebox": "catalog:",
 		"better-result": "^3.0.0",
 		"tree-sitter-bash": "0.25.0",

@@ -8,7 +8,11 @@ dist/
 .jai/
 .trellis/
 out/
-docs/
+docs/*
+!docs/build-coding-agent/
+docs/build-coding-agent/*
+!docs/build-coding-agent/10-agent-plugins-v1-adapter.md
+!docs/build-coding-agent/11-agent-plugins-v1-plugin-validation.md
 # packages/*/node_modules/
 packages/*/dist/
 packages/*/dist-chrome/

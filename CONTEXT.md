@@ -48,6 +48,50 @@ _Avoid_: Todo, subagent run
 
 ## External product terminology
 
+**Agent Plugins package**:
+遵循 Agent Plugins v1 的目录包，包含可移植 manifest，以及零个或多个可移植 Skills 和 MCP server 配置；它是互操作包，不是完整的 PandaWork 运行时。
+_Avoid_: plugin runtime, marketplace package
+
+**Agent Plugins package loader**:
+校验一个 Plugin root，并返回受路径约束的 manifest、Skills、MCP server 描述对象和安全诊断的只读 PandaWork 模块；它不安装、不连接，也不执行包内容。
+_Avoid_: plugin runtime, plugin manager, importer
+
+**可移植组件**:
+Agent Plugins 为多个客户端规定发现方式和基础行为的组件，即一个 Agent Skill 或一个 MCP server entry。
+_Avoid_: plugin feature, extension
+
+**客户端扩展**:
+使用反向域名 namespace 标识、只由对应客户端解释的包区域，用于携带不可移植的 commands、agents、hooks、UI 或其他客户端专有行为。
+_Avoid_: portable plugin, shared component
+
+**Plugin root**:
+包含 Agent Plugins package 的 `plugin.json`、`skills/` 和可选 `mcp.json`，并经过文件系统解析的只读目录。
+_Avoid_: package root, install directory
+
+**Plugin data**:
+客户端为一次插件安装管理、跨包更新保留的可写数据目录；它与只读 Plugin root 不同。
+_Avoid_: plugin state, workspace data
+
+**Agent Plugins v1 符合性**:
+证明 PandaWork 实现 Agent Plugins v1 对可移植 package、Skills、MCP、扩展忽略、路径约束和失败隔离要求的自动化证据；它不包含 PandaWork 专有安装与扩展行为。
+_Avoid_: example compatibility, plugin acceptance
+
+**插件规范校验**:
+对一个已经存在的 Agent Plugins package 目录执行只读 manifest、固定位置、Skills、MCP、路径和版本检查，并输出可供客户端加载器消费的结构化报告。
+_Avoid_: plugin installation, MCP connection, conformance claim
+
+**Coding MCP Runtime**:
+`@jai/coding` 中 MCP clients 及其稳定 Agent tool、resource、prompt、诊断、取消和清理投影的所有者；它消费已校验的 package 描述对象，不重新解释 Plugin root，也不修改运行中 Agent 的能力。
+_Avoid_: MCP server, AgentExtension, plugin runtime
+
+**插件 Skill 候选**:
+已安装并启用的 Agent Plugins package 提供给共享 Coding Skill catalog 的有效 Skill 描述对象；它按正常目录优先级竞争，不形成插件专用目录。
+_Avoid_: trusted Skill, imported Skill copy
+
+**Skill 来源信息**:
+附在 Skill 候选上的安全来源身份，足以解释 scope、包修订、优先级和 shadowing，但不授予文件系统访问权。
+_Avoid_: Skill identity, raw package manifest
+
 **Claude Code Artifact**:
 Claude Code 中从 session 产出 HTML/Markdown 单页并发布到 `claude.ai` 的可交互、可版本化页面。它不是普通项目文件，也不是所有 tool output 的统称。
 _Avoid_: file output, session transcript

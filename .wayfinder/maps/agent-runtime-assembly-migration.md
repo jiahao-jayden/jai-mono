@@ -16,18 +16,19 @@ Labels: `wayfinder:map`
 
 ## Decisions so far
 
-- `@jai/agent` removes the runtime `AgentExtension` API. `AgentOptions` directly accepts `tools` and `hooks`; construction is synchronous and capabilities are frozen for the Agent lifetime.
-- `Agent` owns the current App State. `setAppState`/`updateAppState` serialize mutations through `SessionLedger`; Coding Agent owns Todo semantics and Desktop only projects state.
-- `CodingSkillsRuntime` exposes `tool` and `onEvent`. `createCodingAgent()` explicitly assembles them into parent and subagent `Agent` instances; no replacement generic Extension abstraction is introduced.
-- Agent Runtime State remains in-memory execution state and is not persisted as App State.
-- This migration does not include the agent-plugins.org importer, MCP runtime, package installation, marketplace, signing, provenance, or dynamic runtime capability mutation.
+- [Define Agent Core Interface After Extension Removal](../tickets/define-agent-core-after-extension-removal.md) — `@jai/agent` removes the runtime `AgentExtension` API; `AgentOptions` directly accepts `tools` and `hooks`, with synchronous construction and frozen capabilities.
+- [Define Session App State Ownership And Persistence](../tickets/define-session-app-state-ownership.md) — `Agent` owns the current App State, `SessionLedger` is the single writer, Coding Agent owns Todo semantics, and Desktop only projects state.
+- [Define Coding Skills Direct Assembly](../tickets/define-coding-skills-direct-assembly.md) — `CodingSkillsRuntime` exposes `tool` and `onEvent`; coding explicitly assembles them without a replacement generic Extension layer.
+- [Define Coding Agent And Subagent Assembly](../tickets/define-coding-agent-subagent-assembly.md) — parent and child Agents use explicit, isolated tools/hooks/Skills assembly and deterministic cleanup.
+- [Define Runtime Migration Contract And Verification](../tickets/define-runtime-migration-contract.md) — package exports, tests, typechecks, documentation, and migration boundaries are verified.
 
 ## Not yet specified
 
-- 未来 agent-plugins.org package adapter 如何把 portable Skill/MCP 映射到 coding 层的 catalog、tool factory 和 Permission seam。
+无。当前地图范围内没有剩余决策。
 
 ## Out of scope
 
 - Agent Plugins 的 manifest importer、MCP 运行时、安装/升级、registry、marketplace、签名和 provenance。
 - 运行中动态增删 Agent tools/hooks。
 - 新建一个与 `AgentExtension` 等价的通用插件抽象。
+- [Define Agent Plugins Runtime Seam](../tickets/define-agent-plugins-runtime-seam.md) — 未来 `agent-plugins.org` adapter 的 package loader、portable Skill/MCP 映射和审批 seam，另建地图处理，不属于本次迁移。

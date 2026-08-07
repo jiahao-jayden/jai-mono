@@ -20,11 +20,30 @@ class SkillPathEscape extends TaggedError("coding_skill_file.path_escape")<{
 	readonly data?: Record<string, unknown>;
 	readonly message: string;
 }> {}
-const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SKILL_NAME = /^(?!.*--)[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*$/u;
+const MAX_SKILL_NAME_LENGTH = 64;
+const MAX_DESCRIPTION_LENGTH = 1_024;
+const MAX_COMPATIBILITY_LENGTH = 500;
+const SKILL_FRONTMATTER_FIELDS = new Set([
+	"name",
+	"description",
+	"license",
+	"compatibility",
+	"metadata",
+	"allowed-tools",
+]);
 
 export interface CodingSkillSource {
 	readonly scope: "user" | "project";
 	readonly directory: ".agents" | ".jai";
+}
+
+export interface CodingSkillPluginSource {
+	readonly scope: "user" | "project";
+	readonly directory: "plugin";
+	readonly pluginName: string;
+	readonly pluginVersion?: string;
+	readonly pluginRoot: string;
 }
 
 export interface CodingSkillCard {
@@ -35,7 +54,16 @@ export interface CodingSkillCard {
 	readonly location: string;
 	readonly directory: string;
 	readonly canonicalDirectory: string;
-	readonly source: CodingSkillSource;
+	readonly source: CodingSkillSource | CodingSkillPluginSource;
+	readonly license?: string;
+	readonly compatibility?: string;
+	readonly allowedTools: readonly string[];
+	readonly metadata: Readonly<Record<string, string>>;
+}
+
+export interface ParsedSkillFrontmatter {
+	readonly name: string;
+	readonly description: string;
 	readonly license?: string;
 	readonly compatibility?: string;
 	readonly allowedTools: readonly string[];
@@ -60,6 +88,8 @@ export interface CodingSkillCatalogOptions {
 	readonly homeDirectory: string;
 	readonly workspaceDirectory?: string;
 	readonly workspaceTrusted: boolean;
+	/** Immutable plugin candidates are merged into the same catalog and precedence rules. */
+	readonly pluginSkills?: readonly CodingSkillCard[];
 	readonly debounceMs?: number;
 }
 
@@ -88,21 +118,19 @@ export class CodingSkillCatalog {
 		try {
 			const diagnostics: CodingSkillDiagnostic[] = [];
 			const selected = new Map<string, CodingSkillCard>();
-			for (const root of this.#roots()) {
-				for (const card of await scanRoot(root, diagnostics)) {
-					const winner = selected.get(card.name);
-					if (winner) {
-						diagnostics.push({
-							code: "shadowed",
-							path: card.location,
-							skillName: card.name,
-							shadowedBy: winner.location,
-							message: `Skill "${card.name}" is shadowed by ${winner.location}`,
-						});
-						continue;
-					}
-					selected.set(card.name, card);
+			for (const card of await this.#cards(diagnostics)) {
+				const winner = selected.get(card.name);
+				if (winner) {
+					diagnostics.push({
+						code: "shadowed",
+						path: card.location,
+						skillName: card.name,
+						shadowedBy: winner.location,
+						message: `Skill "${card.name}" is shadowed by ${winner.location}`,
+					});
+					continue;
 				}
+				selected.set(card.name, card);
 			}
 			const skills = [...selected.values()].sort((left, right) => left.name.localeCompare(right.name));
 			this.#snapshot = {
@@ -159,6 +187,18 @@ export class CodingSkillCatalog {
 			},
 		);
 		return roots;
+	}
+
+	async #cards(diagnostics: CodingSkillDiagnostic[]): Promise<CodingSkillCard[]> {
+		const roots = this.#roots();
+		const projectRoots = roots.filter((root) => root.source.scope === "project");
+		const userRoots = roots.filter((root) => root.source.scope === "user");
+		const cards: CodingSkillCard[] = [];
+		for (const root of projectRoots) cards.push(...(await scanRoot(root, diagnostics)));
+		cards.push(...(this.#options.pluginSkills ?? []).filter((skill) => skill.source.scope === "project"));
+		for (const root of userRoots) cards.push(...(await scanRoot(root, diagnostics)));
+		cards.push(...(this.#options.pluginSkills ?? []).filter((skill) => skill.source.scope === "user"));
+		return cards;
 	}
 
 	async #replaceWatchers(): Promise<void> {
@@ -231,41 +271,32 @@ async function readSkill(
 	directoryName: string,
 ): Promise<CodingSkillCard> {
 	const location = path.join(skillDirectory, "SKILL.md");
-	const [content, canonicalDirectory, canonicalLocation] = await Promise.all([
-		readFile(location, "utf8"),
-		realpath(skillDirectory),
-		realpath(location),
-	]);
+	const canonicalDirectory = await realpath(skillDirectory);
+	const canonicalLocation = await realpath(location);
 	if (!isInside(canonicalDirectory, canonicalRoot) || !isInside(canonicalLocation, canonicalDirectory)) {
 		throw new SkillPathEscape({
 			message: `Skill path escapes its catalog root: ${skillDirectory}`,
 			data: { path: skillDirectory },
 		});
 	}
+	const documentInfo = await stat(canonicalLocation);
+	if (!documentInfo.isFile()) throw invalidSkillDocument(`Skill document is not a regular file: ${location}`);
+	const content = await readFile(canonicalLocation, "utf8");
 	const { frontmatter } = parseSkillDocument(content);
-	const name = requiredString(frontmatter, "name");
-	const description = requiredString(frontmatter, "description");
-	if (name.length > 64 || !SKILL_NAME.test(name)) throw invalidSkillDocument(`Invalid Skill name "${name}"`);
-	if (description.length > 1_024) throw invalidSkillDocument(`Skill "${name}" description exceeds 1024 characters`);
-	if (name !== directoryName) {
-		throw invalidSkillDocument(`Skill directory "${directoryName}" declares name "${name}"`);
-	}
-	const metadata = stringRecord(frontmatter.metadata);
-	const license = optionalString(frontmatter, "license");
-	const compatibility = optionalString(frontmatter, "compatibility");
+	const parsed = validateSkillFrontmatter(frontmatter, directoryName);
 	return {
-		name,
-		displayName: metadata.displayName ?? name,
-		description,
+		name: parsed.name,
+		displayName: parsed.metadata.displayName ?? parsed.name,
+		description: parsed.description,
 		contentRevision: createHash("sha256").update(content).digest("hex"),
-		location,
+		location: canonicalLocation,
 		directory: skillDirectory,
 		canonicalDirectory,
 		source: root.source,
-		...(license ? { license } : {}),
-		...(compatibility ? { compatibility } : {}),
-		allowedTools: allowedTools(frontmatter["allowed-tools"]),
-		metadata,
+		...(parsed.license === undefined ? {} : { license: parsed.license }),
+		...(parsed.compatibility === undefined ? {} : { compatibility: parsed.compatibility }),
+		allowedTools: parsed.allowedTools,
+		metadata: parsed.metadata,
 	};
 }
 
@@ -286,32 +317,75 @@ export function parseSkillDocument(content: string): {
 	return { frontmatter: parsed, body: normalized.slice(match[0].length) };
 }
 
-function requiredString(value: Readonly<Record<string, unknown>>, key: string): string {
-	const result = optionalString(value, key);
-	if (!result) throw invalidSkillDocument(`SKILL.md frontmatter requires "${key}"`);
-	return result;
+export function validateSkillFrontmatter(
+	value: Readonly<Record<string, unknown>>,
+	directoryName?: string,
+): ParsedSkillFrontmatter {
+	for (const key of Object.keys(value)) {
+		if (!SKILL_FRONTMATTER_FIELDS.has(key))
+			throw invalidSkillDocument(`SKILL.md frontmatter contains unknown field "${key}"`);
+	}
+	const rawName = value.name;
+	if (typeof rawName !== "string" || !rawName.trim())
+		throw invalidSkillDocument('SKILL.md frontmatter requires "name"');
+	const name = rawName.trim().normalize("NFKC");
+	if (Array.from(name).length > MAX_SKILL_NAME_LENGTH || name !== name.toLowerCase() || !SKILL_NAME.test(name)) {
+		throw invalidSkillDocument(`Invalid Skill name "${name}"`);
+	}
+	if (directoryName !== undefined && directoryName.normalize("NFKC") !== name) {
+		throw invalidSkillDocument(`Skill directory "${directoryName}" declares name "${name}"`);
+	}
+	const rawDescription = value.description;
+	if (typeof rawDescription !== "string" || !rawDescription.trim())
+		throw invalidSkillDocument('SKILL.md frontmatter requires "description"');
+	const description = rawDescription.trim();
+	if (Array.from(description).length > MAX_DESCRIPTION_LENGTH) {
+		throw invalidSkillDocument(`Skill "${name}" description exceeds ${MAX_DESCRIPTION_LENGTH} characters`);
+	}
+	const license = optionalSkillString(value, "license");
+	const compatibility = optionalSkillString(value, "compatibility");
+	if (
+		compatibility !== undefined &&
+		(compatibility.length === 0 || Array.from(compatibility).length > MAX_COMPATIBILITY_LENGTH)
+	) {
+		throw invalidSkillDocument(
+			`Skill "${name}" compatibility exceeds ${MAX_COMPATIBILITY_LENGTH} characters or is empty`,
+		);
+	}
+	const metadata = skillMetadata(value.metadata);
+	const allowedTools = skillAllowedTools(value["allowed-tools"]);
+	return {
+		name,
+		description,
+		...(license === undefined ? {} : { license }),
+		...(compatibility === undefined ? {} : { compatibility }),
+		allowedTools,
+		metadata,
+	};
 }
 
-function optionalString(value: Readonly<Record<string, unknown>>, key: string): string | undefined {
-	const candidate = value[key];
-	return typeof candidate === "string" && candidate.trim() ? candidate.trim() : undefined;
+function optionalSkillString(
+	value: Readonly<Record<string, unknown>>,
+	key: "license" | "compatibility",
+): string | undefined {
+	if (!(key in value)) return undefined;
+	if (typeof value[key] !== "string") throw invalidSkillDocument(`SKILL.md "${key}" must be a string`);
+	return (value[key] as string).trim();
 }
 
-function stringRecord(value: unknown): Record<string, string> {
-	if (value === undefined || value === null) return {};
-	if (!isRecord(value)) throw invalidSkillDocument('SKILL.md "metadata" must be a mapping');
-	return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, String(item)]));
+function skillMetadata(value: unknown): Record<string, string> {
+	if (value === undefined) return {};
+	if (!isRecord(value) || !Object.values(value).every((item) => typeof item === "string")) {
+		throw invalidSkillDocument('SKILL.md "metadata" must be a mapping of string values');
+	}
+	return value as Record<string, string>;
 }
 
-function allowedTools(value: unknown): string[] {
-	if (value === undefined || value === null) return [];
-	if (typeof value === "string") return value.split(/\s+/).filter(Boolean);
-	if (Array.isArray(value))
-		return value
-			.map(String)
-			.map((item) => item.trim())
-			.filter(Boolean);
-	throw invalidSkillDocument('SKILL.md "allowed-tools" must be a string or list');
+function skillAllowedTools(value: unknown): string[] {
+	if (value === undefined) return [];
+	if (typeof value !== "string")
+		throw invalidSkillDocument('SKILL.md "allowed-tools" must be a space-separated string');
+	return value.split(/\s+/).filter(Boolean);
 }
 
 function revisionOf(skills: readonly CodingSkillCard[], diagnostics: readonly CodingSkillDiagnostic[]): string {
@@ -347,7 +421,17 @@ async function childDirectories(directory: string): Promise<string[]> {
 		if (isNodeError(error, "ENOENT")) return [];
 		throw error;
 	});
-	return entries.filter((entry) => entry.isDirectory()).map((entry) => path.join(directory, entry.name));
+	if (entries.length === 0) return [];
+	const canonicalDirectory = await realpath(directory);
+	const directories: string[] = [];
+	for (const entry of entries) {
+		const candidate = path.join(directory, entry.name);
+		const info = await stat(candidate).catch(() => undefined);
+		if (!info?.isDirectory()) continue;
+		const canonicalCandidate = await realpath(candidate).catch(() => undefined);
+		if (canonicalCandidate && isInside(canonicalCandidate, canonicalDirectory)) directories.push(candidate);
+	}
+	return directories;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -136,6 +136,7 @@
         "@jai/agent": "workspace:*",
         "@jai/ai": "workspace:*",
         "@jai/common": "workspace:*",
+        "@modelcontextprotocol/sdk": "1.29.0",
         "@sinclair/typebox": "catalog:",
         "better-result": "^3.0.0",
         "tree-sitter-bash": "0.25.0",

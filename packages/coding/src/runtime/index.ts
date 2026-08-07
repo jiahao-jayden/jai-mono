@@ -1,6 +1,7 @@
 export {
 	CodingAgent,
 	type CodingAgentPermissionOptions,
+	type CodingAgentPluginsOptions,
 	type CodingAgentRuntimeOptions,
 	type CodingAgentSkillsOptions,
 	type CreateCodingAgentOptions,

@@ -1,0 +1,1157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="OpenCode Bash permission implementation visual guide: AST parsing, rules, patterns, always approval and path boundaries.">
+  <title>OpenCode Bash Permission · 一次命令，三层判断</title>
+  <style>
+    :root {
+      --paper: #f4f1e8;
+      --paper-2: #ebe7dc;
+      --ink: #17201d;
+      --muted: #5f675f;
+      --line: #d4d0c5;
+      --teal: #286b5a;
+      --teal-soft: #d8e8df;
+      --teal-deep: #173b35;
+      --blue: #477f8c;
+      --blue-soft: #dce9eb;
+      --amber: #b97822;
+      --amber-soft: #f3e2c3;
+      --red: #b94a3e;
+      --red-soft: #f3d9d2;
+      --night: #17231f;
+      --night-2: #20332d;
+      --night-line: #355047;
+      --white: #fffdf8;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+      --sans: "Manrope", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+      --serif: "Source Serif 4", "Songti SC", Georgia, serif;
+      --shadow: 0 16px 40px rgba(39, 46, 36, .09);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+    a { color: inherit; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    code, pre, .mono { font-family: var(--mono); }
+    ::selection { background: #a8d5c3; color: var(--ink); }
+
+    .page-shell {
+      display: grid;
+      grid-template-columns: 226px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+    .rail {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 28px 20px;
+      border-right: 1px solid var(--line);
+      background: #eeebe2;
+      display: flex;
+      flex-direction: column;
+      gap: 30px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      font-family: var(--serif);
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .brand-mark {
+      width: 27px;
+      height: 27px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      background: var(--teal-deep);
+      color: #d8efe5;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0;
+    }
+    .rail-copy {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .rail-nav {
+      display: grid;
+      gap: 3px;
+    }
+    .rail-nav a {
+      display: block;
+      padding: 7px 9px;
+      border-radius: 7px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .rail-nav a:hover, .rail-nav a:focus-visible {
+      background: var(--teal-soft);
+      color: var(--teal-deep);
+      outline: none;
+    }
+    .rail-nav a.active {
+      background: var(--teal-deep);
+      color: #eef8f1;
+    }
+    .rail-note {
+      margin-top: auto;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1.65;
+    }
+    .content { min-width: 0; }
+    .content-inner {
+      width: min(1120px, calc(100% - 64px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      min-height: 720px;
+      padding: 72px 0 68px;
+      background: var(--night);
+      color: #e9f0e9;
+      overflow: hidden;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, .88fr) minmax(480px, 1.12fr);
+      gap: 54px;
+      align-items: center;
+    }
+    .hero h1 {
+      max-width: 560px;
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(46px, 6vw, 82px);
+      font-weight: 400;
+      letter-spacing: -.035em;
+      line-height: .99;
+    }
+    .hero h1 em { color: #89c9b0; font-style: normal; }
+    .hero-lead {
+      max-width: 500px;
+      margin: 28px 0 0;
+      color: #b7c7bd;
+      font-size: 17px;
+      line-height: 1.65;
+    }
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 30px;
+    }
+    .meta-chip {
+      padding: 5px 9px;
+      border: 1px solid #486259;
+      border-radius: 5px;
+      color: #b9d7c8;
+      font-family: var(--mono);
+      font-size: 10px;
+    }
+    .hero-visual {
+      position: relative;
+      min-height: 500px;
+      display: grid;
+      place-items: center;
+    }
+    .hero-visual::before {
+      content: "";
+      position: absolute;
+      width: 420px;
+      height: 420px;
+      border: 1px solid #315147;
+      border-radius: 50%;
+      opacity: .7;
+    }
+    .hero-visual::after {
+      content: "AST / POLICY / AUTHORITY";
+      position: absolute;
+      right: 3%;
+      bottom: 9%;
+      color: #6d8b7e;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .08em;
+    }
+    .hero-svg { position: relative; width: 100%; max-width: 610px; z-index: 1; }
+    .hero-svg .source-line { fill: #89c9b0; font: 14px var(--mono); }
+    .hero-svg .tree-line { stroke: #48685c; stroke-width: 1.5; }
+    .hero-svg .node { fill: #243a32; stroke: #5d8c78; stroke-width: 1.2; }
+    .hero-svg .node-soft { fill: #20312b; stroke: #48685c; stroke-width: 1.2; }
+    .hero-svg .node-text { fill: #dcebe0; font: 12px var(--mono); }
+    .hero-svg .node-note { fill: #8ca99a; font: 10px var(--mono); }
+
+    .section { padding: 112px 0; border-bottom: 1px solid var(--line); }
+    .section.narrow .content-inner { max-width: 840px; }
+    .section h2 {
+      max-width: 780px;
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(34px, 4vw, 52px);
+      font-weight: 400;
+      letter-spacing: -.028em;
+      line-height: 1.08;
+    }
+    .section-intro {
+      max-width: 700px;
+      margin: 20px 0 0;
+      color: var(--muted);
+      font-size: 17px;
+    }
+    .section-kicker {
+      margin: 0 0 14px;
+      color: var(--teal);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .command-strip {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 42px;
+      padding: 18px 20px;
+      border: 1px solid #2f4e44;
+      border-radius: 10px;
+      background: var(--night);
+      color: #bde0ca;
+      overflow-x: auto;
+    }
+    .prompt { color: #e2af61; font-family: var(--mono); }
+    .command-strip code { white-space: nowrap; font-size: 14px; }
+    .ast-lab {
+      margin-top: 30px;
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #faf8f1;
+    }
+    .lab-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .lab-toolbar label { color: var(--muted); font-size: 12px; }
+    .lab-input {
+      flex: 1 1 420px;
+      min-width: 200px;
+      height: 38px;
+      padding: 0 12px;
+      border: 1px solid #bfc5ba;
+      border-radius: 6px;
+      background: white;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+    .lab-input:focus { outline: 2px solid #71b198; outline-offset: 2px; }
+    .example-btn, .tab-btn {
+      min-height: 34px;
+      padding: 6px 10px;
+      border: 1px solid #bec9c0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--teal-deep);
+      font-size: 12px;
+    }
+    .example-btn:hover, .example-btn:focus-visible, .tab-btn:hover, .tab-btn:focus-visible {
+      border-color: var(--teal);
+      background: var(--teal-soft);
+      outline: none;
+    }
+    .ast-output {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 18px;
+    }
+    .ast-pane { min-width: 0; }
+    .pane-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+    .tree {
+      min-height: 210px;
+      padding: 18px;
+      border-radius: 8px;
+      background: var(--night);
+      color: #dcebe0;
+      font-family: var(--mono);
+      font-size: 12px;
+      overflow: auto;
+    }
+    .tree-line { display: block; white-space: pre; }
+    .tree-root { color: #e7b76a; }
+    .tree-command { color: #8ed0b3; }
+    .tree-operator { color: #9bb7c2; }
+    .tree-arg { color: #d3d6c9; }
+    .node-list {
+      min-height: 210px;
+      display: grid;
+      align-content: start;
+      gap: 8px;
+    }
+    .node-row {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 8px;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: white;
+      font-size: 12px;
+    }
+    .node-row strong { display: block; color: var(--teal-deep); font-family: var(--mono); font-size: 11px; }
+    .node-row small { display: block; color: var(--muted); font-family: var(--mono); font-size: 10px; }
+    .node-dot { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--teal); }
+    .node-dot.operator { background: var(--blue); }
+    .node-dot.argument { background: var(--amber); }
+
+    .beginner-steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 38px;
+    }
+    .beginner-step {
+      min-height: 164px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      background: var(--white);
+    }
+    .beginner-step-number {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--teal-soft);
+      color: var(--teal-deep);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+    .beginner-step h3 { margin: 14px 0 6px; font-size: 16px; }
+    .beginner-step p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+
+    .case-lab {
+      margin-top: 34px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      background: #faf8f1;
+    }
+    .case-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 22px; }
+    .case-tabs .tab-btn[aria-selected="true"] { background: var(--teal-deep); border-color: var(--teal-deep); color: #eff8f1; }
+    .case-grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 18px; align-items: start; }
+    .case-source {
+      min-height: 206px;
+      padding: 18px;
+      border-radius: 8px;
+      background: var(--night);
+      color: #dcebe0;
+    }
+    .case-label { color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
+    .case-source .case-label { color: #8ca99a; }
+    .case-command { margin-top: 20px; color: #bde0ca; font-family: var(--mono); font-size: 14px; overflow-wrap: anywhere; }
+    .case-command .operator { color: #9bb7c2; }
+    .case-command .argument { color: #e7b76a; }
+    .case-process { margin-top: 22px; color: #aec2b7; font-size: 12px; line-height: 1.55; }
+    .case-breakdown { display: grid; gap: 9px; }
+    .case-part {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      background: var(--white);
+    }
+    .case-part .part-mark { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--teal); }
+    .case-part.operator .part-mark { background: var(--blue); }
+    .case-part.argument .part-mark { background: var(--amber); }
+    .case-part strong { display: block; color: var(--teal-deep); font-family: var(--mono); font-size: 11px; }
+    .case-part span { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .case-answer {
+      margin-top: 18px;
+      padding: 15px 16px;
+      border-left: 2px solid var(--teal);
+      background: var(--teal-soft);
+      color: var(--teal-deep);
+      font-size: 13px;
+    }
+    .case-answer code { font-size: 11px; }
+    .case-tree {
+      margin: 12px 0 0;
+      padding: 11px 12px;
+      background: #edf2eb;
+      color: var(--teal-deep);
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-x: auto;
+    }
+    .beginner-note {
+      margin-top: 18px;
+      padding: 15px 16px;
+      border: 1px solid #dec89e;
+      background: var(--amber-soft);
+      color: #704b1b;
+      font-size: 13px;
+    }
+    .scan-summary {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border: 1px solid #c7d8cc;
+      background: #edf5ee;
+      color: var(--teal-deep);
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.7;
+      overflow-wrap: anywhere;
+    }
+
+    .concept-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 42px;
+    }
+    .concept {
+      min-height: 206px;
+      padding: 20px;
+      border-top: 2px solid var(--teal);
+      background: var(--white);
+    }
+    .concept:nth-child(2) { border-top-color: var(--blue); }
+    .concept:nth-child(3) { border-top-color: var(--amber); }
+    .concept h3 { margin: 12px 0 8px; font-size: 18px; font-weight: 650; }
+    .concept p { margin: 0; color: var(--muted); font-size: 13px; }
+    .concept-term { color: var(--teal); font-family: var(--mono); font-size: 11px; }
+
+    .pipeline {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0;
+      margin-top: 52px;
+    }
+    .pipeline::before {
+      content: "";
+      position: absolute;
+      top: 33px;
+      left: 9%;
+      right: 9%;
+      border-top: 1px solid #a4bcb0;
+    }
+    .pipe-step { position: relative; padding: 0 12px; text-align: center; }
+    .pipe-number {
+      position: relative;
+      z-index: 1;
+      width: 66px;
+      height: 66px;
+      margin: 0 auto 16px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--teal);
+      border-radius: 50%;
+      background: var(--paper);
+      color: var(--teal-deep);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+    .pipe-step h3 { margin: 0; font-size: 15px; }
+    .pipe-step p { margin: 8px auto 0; max-width: 155px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+    .split-band {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 48px;
+    }
+    .band-panel {
+      padding: 26px;
+      border: 1px solid var(--line);
+      background: var(--white);
+    }
+    .band-panel.dark { border-color: var(--night-line); background: var(--night); color: #e9f0e9; }
+    .band-panel h3 { margin: 0; font-size: 20px; }
+    .band-panel p { margin: 12px 0 0; color: var(--muted); font-size: 13px; }
+    .dark p { color: #aec2b7; }
+    .token-line { margin-top: 22px; padding: 14px; background: #edf0e8; color: var(--teal-deep); font-family: var(--mono); font-size: 12px; overflow-x: auto; }
+    .dark .token-line { background: #233930; color: #cce4d4; }
+    .token-line .hot { color: #8a5416; }
+    .dark .token-line .hot { color: #e7b55e; }
+
+    .rule-lab {
+      margin-top: 44px;
+      padding: 30px;
+      background: var(--night);
+      color: #edf5ed;
+    }
+    .rule-lab h3 { margin: 0; font-size: 20px; font-weight: 550; }
+    .rule-lab-intro { margin: 8px 0 24px; color: #afc2b6; font-size: 13px; }
+    .scenario-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 20px; }
+    .scenario-tabs .tab-btn { border-color: #547267; color: #c7ded0; }
+    .scenario-tabs .tab-btn[aria-selected="true"] { background: #cbe6d7; border-color: #cbe6d7; color: var(--teal-deep); }
+    .rule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+    .rule-command { padding: 15px; border: 1px solid #466158; color: #a9d5bc; font-family: var(--mono); font-size: 13px; }
+    .rule-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; }
+    .rule-table th, .rule-table td { padding: 9px 8px; border-bottom: 1px solid #365047; text-align: left; }
+    .rule-table th { color: #89a99a; font-weight: 400; }
+    .rule-table td { color: #d5e5d8; }
+    .rule-table tr.match td { color: #f0d195; }
+    .rule-table tr.winner td { color: #9fe1bd; font-weight: 650; }
+    .decision {
+      margin-top: 22px;
+      padding: 14px 16px;
+      border-left: 2px solid #85cbaa;
+      background: #243a32;
+      color: #e0f0e4;
+      font-size: 13px;
+    }
+    .decision strong { font-family: var(--mono); color: #a9e0bc; }
+
+    .authority-flow { display: grid; grid-template-columns: 1fr 70px 1fr; gap: 12px; align-items: center; margin-top: 48px; }
+    .authority-card { min-height: 190px; padding: 24px; border: 1px solid var(--line); background: var(--white); }
+    .authority-card h3 { margin: 0; font-size: 19px; }
+    .authority-card p { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+    .authority-card .path { margin-top: 20px; color: var(--teal-deep); font-family: var(--mono); font-size: 11px; word-break: break-all; }
+    .authority-card.external { border-color: #dab680; background: #fff8eb; }
+    .authority-arrow { text-align: center; color: var(--teal); font-family: var(--mono); font-size: 22px; }
+
+    .warning {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 18px;
+      align-items: start;
+      margin-top: 44px;
+      padding: 24px;
+      border: 1px solid #deb9a9;
+      background: var(--red-soft);
+    }
+    .warning-mark { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--red); border-radius: 50%; color: var(--red); font-family: var(--mono); font-size: 18px; }
+    .warning h3 { margin: 0; color: #7e3029; font-size: 19px; }
+    .warning p { margin: 8px 0 0; color: #794940; font-size: 14px; }
+    .jai-model { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 26px; }
+    .jai-step { padding: 14px; border: 1px solid #d5b1a3; background: rgba(255, 253, 248, .55); }
+    .jai-step strong { display: block; color: #7e3029; font-family: var(--mono); font-size: 11px; }
+    .jai-step span { display: block; margin-top: 5px; color: #794940; font-size: 12px; line-height: 1.45; }
+
+    .glossary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; margin-top: 42px; border: 1px solid var(--line); background: var(--line); }
+    .glossary-item { padding: 18px; background: var(--white); }
+    .glossary-item dt { color: var(--teal-deep); font-family: var(--mono); font-size: 12px; }
+    .glossary-item dd { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .sources { display: grid; gap: 10px; margin-top: 34px; }
+    .source { padding: 14px 16px; border-left: 2px solid var(--teal); background: #e9eee7; font-size: 12px; }
+    .source a { color: var(--teal-deep); }
+    .source code { color: var(--teal); font-size: 11px; }
+    .footer { padding: 58px 0 84px; color: var(--muted); font-size: 12px; }
+    .footer strong { color: var(--ink); }
+
+    @media (max-width: 980px) {
+      .page-shell { display: block; }
+      .rail { position: relative; height: auto; padding: 17px 20px; border-right: 0; border-bottom: 1px solid var(--line); display: block; }
+      .rail-copy, .rail-note { display: none; }
+      .rail-nav { display: flex; gap: 3px; overflow-x: auto; margin-top: 14px; padding-bottom: 2px; }
+      .rail-nav a { white-space: nowrap; }
+      .hero { padding-top: 54px; }
+      .hero-grid { grid-template-columns: 1fr; gap: 25px; }
+      .hero-visual { min-height: 390px; }
+      .hero-visual::before { width: 320px; height: 320px; }
+      .pipeline { grid-template-columns: repeat(5, minmax(120px, 1fr)); overflow-x: auto; padding-bottom: 12px; }
+      .pipeline::before { left: 7%; right: 7%; min-width: 580px; }
+      .pipe-step { min-width: 120px; }
+    }
+    @media (max-width: 700px) {
+      .content-inner { width: min(100% - 34px, 560px); }
+      .hero { min-height: auto; padding: 32px 0 28px; }
+      .hero h1 { font-size: 52px; }
+      .hero-lead { font-size: 15px; }
+      .hero-visual { min-height: 255px; margin-top: 0; }
+      .hero-visual::before { width: 228px; height: 228px; }
+      .hero-visual::after { right: 0; bottom: 0; font-size: 8px; }
+      .hero-svg .source-line { font-size: 15px; }
+      .hero-svg .node-text { font-size: 15px; }
+      .hero-svg .node-note { font-size: 11px; }
+      .rail-nav { flex-wrap: wrap; overflow: visible; }
+      .section { padding: 74px 0; }
+      .section h2 { font-size: 38px; }
+      .section-intro { font-size: 15px; }
+      .ast-lab { padding: 17px; }
+      .ast-output, .split-band, .rule-grid, .authority-flow { grid-template-columns: 1fr; }
+      .authority-arrow { transform: rotate(90deg); }
+      .beginner-steps, .case-grid { grid-template-columns: 1fr; }
+      .concept-grid { grid-template-columns: 1fr; }
+      .concept { min-height: 0; }
+      .pipeline { margin-right: -17px; }
+      .warning { grid-template-columns: 1fr; }
+      .jai-model, .glossary { grid-template-columns: 1fr 1fr; }
+      .glossary { gap: 1px; }
+    }
+    @media (max-width: 440px) {
+      .jai-model, .glossary { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 45px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <!--
+    THESIS: 把“权限系统”从一团配置变成一条可追踪的命令生命线；拒绝把 AST 降格成装饰插图。
+    OWN-WORLD: 暖纸张、深绿终端、teal 结构线、蓝色操作符与琥珀参数；图解像一张可阅读的工程图。
+    STORY: 读者先看到命令如何长成 AST，再理解节点如何生成规则，最后知道哪些边界 OpenCode 没有证明。
+    FIRST VIEWPORT: 左侧阅读索引，右侧首屏同时放标题、真实 Bash 命令与 AST 树；主要动作是向下阅读并在示意解析器中输入命令。
+    FORM: Read mode, assigned surface structure 3, seed 4d826eca; mechanism atlas with interactive command and rule labs.
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+  -->
+  <div class="page-shell">
+    <aside class="rail" aria-label="页面目录">
+      <a class="brand" href="#top"><span class="brand-mark">OP</span><span>Permission Atlas</span></a>
+      <p class="rail-copy">一份把 OpenCode Bash 权限实现拆开来看懂的视觉笔记。</p>
+      <nav class="rail-nav">
+        <a href="#command">一条命令</a>
+        <a href="#beginner">小白案例</a>
+        <a href="#ast">AST 是什么</a>
+        <a href="#pipeline">完整链路</a>
+        <a href="#rules">规则如何胜出</a>
+        <a href="#boundary">路径边界</a>
+        <a href="#limits">没有保护什么</a>
+        <a href="#sources">来源</a>
+      </nav>
+      <p class="rail-note">SOURCE SNAPSHOT<br>anomalyco/opencode<br>61eabfc6 · 2025/06</p>
+    </aside>
+
+    <main class="content" id="top">
+      <header class="hero">
+        <div class="content-inner hero-grid">
+          <div>
+            <h1>一次命令，<br><em>三层判断。</em></h1>
+            <p class="hero-lead">OpenCode 不会把 Bash 当成一条黑盒字符串。它先把命令解析成树，再从树里提取命令节点，最后把每个节点交给规则与路径边界分别裁决。</p>
+            <div class="hero-meta">
+              <span class="meta-chip">tree-sitter-bash</span>
+              <span class="meta-chip">findLast</span>
+              <span class="meta-chip">patterns / always</span>
+              <span class="meta-chip">external_directory</span>
+            </div>
+          </div>
+          <div class="hero-visual">
+            <svg class="hero-svg" viewBox="0 0 620 470" role="img" aria-labelledby="hero-svg-title hero-svg-desc">
+              <title id="hero-svg-title">git status and cat notes piped to head 的 AST 结构草图</title>
+              <desc id="hero-svg-desc">这是帮助理解命令节点与操作符关系的 schematic，不是 tree-sitter 的逐节点输出。</desc>
+              <text class="source-line" x="28" y="31">$ git status &amp;&amp; cat ../notes.md | head -20</text>
+              <line class="tree-line" x1="310" y1="53" x2="310" y2="86" />
+              <rect class="node" x="230" y="86" width="160" height="40" rx="5" />
+              <text class="node-text" x="310" y="111" text-anchor="middle">program</text>
+              <line class="tree-line" x1="310" y1="126" x2="170" y2="165" />
+              <line class="tree-line" x1="310" y1="126" x2="450" y2="165" />
+              <rect class="node-soft" x="58" y="165" width="224" height="46" rx="5" />
+              <text class="node-text" x="170" y="192" text-anchor="middle">command + command_name</text>
+              <rect class="node-soft" x="338" y="165" width="224" height="46" rx="5" />
+              <text class="node-text" x="450" y="192" text-anchor="middle">pipeline / command</text>
+              <line class="tree-line" x1="170" y1="211" x2="92" y2="251" />
+              <line class="tree-line" x1="170" y1="211" x2="242" y2="251" />
+              <rect class="node" x="44" y="251" width="96" height="39" rx="5" />
+              <text class="node-text" x="92" y="275" text-anchor="middle">git</text>
+              <text class="node-note" x="92" y="311" text-anchor="middle">command_name</text>
+              <rect class="node-soft" x="194" y="251" width="96" height="39" rx="5" />
+              <text class="node-text" x="242" y="275" text-anchor="middle">status</text>
+              <text class="node-note" x="242" y="311" text-anchor="middle">word</text>
+              <line class="tree-line" x1="450" y1="211" x2="390" y2="251" />
+              <line class="tree-line" x1="450" y1="211" x2="510" y2="251" />
+              <rect class="node-soft" x="348" y="251" width="84" height="39" rx="5" />
+              <text class="node-text" x="390" y="275" text-anchor="middle">cat</text>
+              <text class="node-note" x="390" y="311" text-anchor="middle">command_name</text>
+              <rect class="node-soft" x="468" y="251" width="84" height="39" rx="5" />
+              <text class="node-text" x="510" y="275" text-anchor="middle">head</text>
+              <text class="node-note" x="510" y="311" text-anchor="middle">command_name</text>
+              <rect class="node" x="272" y="355" width="76" height="36" rx="5" />
+              <text class="node-text" x="310" y="378" text-anchor="middle">&amp;&amp; |</text>
+              <text class="node-note" x="310" y="417" text-anchor="middle">schematic: operator joins sibling commands</text>
+            </svg>
+          </div>
+        </div>
+      </header>
+
+      <section class="section" id="command">
+        <div class="content-inner">
+          <p class="section-kicker">The first cut</p>
+          <h2>先不要看配置。<br>先看一条命令如何被拆开。</h2>
+          <p class="section-intro">下面这条命令表面上只有一行文字，实际上包含两个执行阶段、一个管道和多个参数。权限系统如果只看整行，就无法回答“到底是哪一个动作需要批准”。</p>
+          <div class="command-strip" tabindex="0" role="region" aria-label="Bash 示例命令"><span class="prompt">$</span><code>git status &amp;&amp; cat ../notes.md | head -20</code></div>
+          <div class="ast-lab">
+            <div class="lab-toolbar">
+              <label for="command-input">输入一个简单的 shell 命令</label>
+              <input class="lab-input" id="command-input" value="git status &amp;&amp; cat ../notes.md | head -20" spellcheck="false" autocomplete="off">
+              <button class="example-btn" type="button" data-command="npm run test && git diff -- src/app.ts">换一个例子</button>
+            </div>
+            <div class="ast-output">
+              <div class="ast-pane">
+                <div class="pane-title"><span>结构草图</span><span>教学 tokenizer · 非完整 parser</span></div>
+                <div class="tree" id="tree-output" aria-live="polite"></div>
+              </div>
+              <div class="ast-pane">
+                <div class="pane-title"><span>会被扫描的节点</span><span id="node-count">0 nodes</span></div>
+                <div class="node-list" id="node-list" aria-live="polite"></div>
+                <div class="scan-summary" id="scan-summary" aria-live="polite"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section narrow" id="beginner">
+        <div class="content-inner">
+          <p class="section-kicker">Start here</p>
+          <h2>一条命令，按三步处理。</h2>
+          <p class="section-intro">Jai 不直接把整行字符串交给权限规则，而是按“解析、提取、裁决”三步处理。分类（只读、普通、危险）发生在最后一步里。</p>
+          <div class="beginner-steps">
+            <article class="beginner-step">
+              <span class="beginner-step-number">01</span>
+              <h3>解析</h3>
+              <p>tree-sitter 把文字变成树，识别 <code>command</code>、<code>pipeline</code> 和连接符。</p>
+            </article>
+            <article class="beginner-step">
+              <span class="beginner-step-number">02</span>
+              <h3>提取</h3>
+              <p>遍历树里的每个 <code>command</code>，取出它对应的原文，形成 <code>patterns</code>。</p>
+            </article>
+            <article class="beginner-step">
+              <span class="beginner-step-number">03</span>
+              <h3>裁决</h3>
+              <p>先识别只读或危险操作，再匹配规则；所有子命令通过后，整条调用才会执行。</p>
+            </article>
+          </div>
+          <div class="case-lab">
+            <div class="pane-title"><span>案例：完整分析</span><span>输入 → 结果</span></div>
+            <div class="case-tabs" role="tablist" aria-label="Bash 初学者案例">
+              <button class="tab-btn" type="button" role="tab" aria-selected="true" data-beginner-case="single">一条简单命令</button>
+              <button class="tab-btn" type="button" role="tab" aria-selected="false" data-beginner-case="pipe">管道</button>
+              <button class="tab-btn" type="button" role="tab" aria-selected="false" data-beginner-case="and">并列执行</button>
+              <button class="tab-btn" type="button" role="tab" aria-selected="false" data-beginner-case="danger">危险命令</button>
+            </div>
+            <div class="case-grid">
+              <div class="case-source">
+                <div class="case-label">输入命令</div>
+                <div class="case-command" id="beginner-command" aria-live="polite"></div>
+                <p class="case-process" id="beginner-process"></p>
+              </div>
+              <div class="case-breakdown" id="beginner-breakdown" aria-live="polite"></div>
+            </div>
+            <div class="case-answer" id="beginner-answer" aria-live="polite"></div>
+          </div>
+          <div class="beginner-note"><strong>核心结论：</strong>AST 只负责说明“命令由什么结构组成”；权限系统再把 command 节点转换成 <code>patterns</code>，经过危险层和规则匹配，最后得到 allow、ask 或 deny。</div>
+        </div>
+      </section>
+
+      <section class="section narrow" id="ast">
+        <div class="content-inner">
+          <p class="section-kicker">A small vocabulary</p>
+          <h2>AST 不是“更漂亮的字符串”。<br>它是一种结构。</h2>
+          <p class="section-intro">Abstract Syntax Tree，抽象语法树。它把源文本里有意义的语法关系保存下来：谁是命令、谁是参数、谁连接了两个命令、谁包住了谁。</p>
+          <div class="concept-grid">
+            <article class="concept">
+              <span class="concept-term">node</span>
+              <h3>节点</h3>
+              <p>树上的一个语法单位。<code>command</code>、<code>word</code>、<code>pipeline</code> 都是节点类型，而不是权限动作本身。</p>
+            </article>
+            <article class="concept">
+              <span class="concept-term">parent / child</span>
+              <h3>父子关系</h3>
+              <p><code>command</code> 节点可以拥有 <code>command_name</code> 与参数子节点。父节点说明组合关系，子节点保存具体片段。</p>
+            </article>
+            <article class="concept">
+              <span class="concept-term">span</span>
+              <h3>原文范围</h3>
+              <p>每个节点都能指回原始字符串的一段范围。OpenCode 用 command 节点的原文生成当前调用的 <code>pattern</code>。</p>
+            </article>
+          </div>
+          <div class="split-band">
+            <div class="band-panel">
+              <h3>字符串视角</h3>
+              <p>“这是一条命令。”信息足够少，无法区分 <code>git status</code> 与 <code>rm -rf</code> 是否同时存在。</p>
+              <div class="token-line">git status <span class="hot">&amp;&amp;</span> cat ../notes.md <span class="hot">|</span> head -20</div>
+            </div>
+            <div class="band-panel dark">
+              <h3>树视角</h3>
+              <p>“这里有两个 command 节点，它们被 operator 连接；每个节点都可以单独进入权限判断。”</p>
+              <div class="token-line">program → command → command_name + word…</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="pipeline">
+        <div class="content-inner">
+          <p class="section-kicker">The permission pipeline</p>
+          <h2>一条 Bash 调用经过五个转折点。</h2>
+          <p class="section-intro">这里最重要的分离是：AST 负责理解“命令里有什么”，规则负责决定“是否允许”，路径 authority 负责决定“它能碰到哪里”。三者不是同一层。</p>
+          <div class="pipeline" tabindex="0" role="region" aria-label="Bash 权限处理流程">
+            <div class="pipe-step"><div class="pipe-number">01</div><h3>原始输入</h3><p>工具收到未经信任的 Bash 字符串。</p></div>
+            <div class="pipe-step"><div class="pipe-number">02</div><h3>解析 AST</h3><p>tree-sitter 识别 command、pipeline、operator。</p></div>
+            <div class="pipe-step"><div class="pipe-number">03</div><h3>提取节点</h3><p>遍历所有 command 节点，生成多个请求候选。</p></div>
+            <div class="pipe-step"><div class="pipe-number">04</div><h3>规则匹配</h3><p>permission 与 pattern 同时匹配，最后一条胜出。</p></div>
+            <div class="pipe-step"><div class="pipe-number">05</div><h3>执行或询问</h3><p>全部为 allow 才放行；deny 立即失败，ask 才建立待处理请求。</p></div>
+          </div>
+          <div class="command-strip" tabindex="0" role="region" aria-label="权限系统的三层边界" style="margin-top: 54px"><span class="prompt">read this as</span><code>parse ≠ authorize ≠ sandbox</code></div>
+        </div>
+      </section>
+
+      <section class="section" id="rules">
+        <div class="content-inner">
+          <p class="section-kicker">The rule engine</p>
+          <h2>规则不是“越具体越优先”。<br>是最后匹配的那条赢。</h2>
+          <p class="section-intro">OpenCode 会把规则扁平化，然后从后往前找同时匹配权限名与 pattern 的规则。没有匹配时默认 <code>ask</code>。这就是 <code>findLast</code> 的实际含义。</p>
+          <div class="rule-lab">
+            <h3>点击一个场景，观察最后匹配</h3>
+            <p class="rule-lab-intro">示例规则按从上到下的顺序加载。黄色表示“匹配过”，绿色表示“最后胜出”。这是 OpenCode 普通规则的实验；Jai 的不可覆盖危险层见后文。</p>
+            <div class="scenario-tabs" role="tablist" aria-label="规则场景">
+              <button class="tab-btn" type="button" role="tab" aria-selected="true" data-scenario="git">git status</button>
+              <button class="tab-btn" type="button" role="tab" aria-selected="false" data-scenario="npm">npm run test</button>
+              <button class="tab-btn" type="button" role="tab" aria-selected="false" data-scenario="rm">rm -rf build</button>
+            </div>
+            <div class="rule-grid">
+              <div>
+                <div class="pane-title"><span style="color:#89a99a">incoming command</span></div>
+                <div class="rule-command" id="rule-command">permission = bash<br>pattern = git status</div>
+                <div class="decision" id="rule-decision">result → <strong>allow</strong><br>最后命中的规则是第 3 条。</div>
+              </div>
+              <div>
+                <div class="pane-title"><span style="color:#89a99a">flattened rules</span></div>
+                <table class="rule-table">
+                  <thead><tr><th>#</th><th>pattern</th><th>action</th></tr></thead>
+                  <tbody id="rule-rows"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="split-band">
+            <div class="band-panel">
+              <h3>为什么要保留顺序？</h3>
+              <p>用户可以先写一个宽泛默认值，再在后面用更窄的 pattern 改写。顺序就是配置作者表达“例外”的方式。</p>
+              <div class="token-line">&quot;*&quot; → ask<br>&quot;git status&quot; → allow</div>
+            </div>
+            <div class="band-panel">
+              <h3>一个常见误解</h3>
+              <p>“deny 一定比 allow 优先”不是 OpenCode 这条实现的算法。优先级来自列表位置，而不是 action 名字的重量。</p>
+              <div class="token-line">findLast(match(rule)) → action</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section narrow" id="patterns">
+        <div class="content-inner">
+          <p class="section-kicker">Two different memories</p>
+          <h2><code>patterns</code> 和 <code>always</code>，不是一回事。</h2>
+          <p class="section-intro">一次权限请求会同时携带“这次到底执行了什么”和“如果用户选择 always，未来应该记住哪一个稳定命令族”。前者忠实，后者故意抽象。</p>
+          <div class="split-band">
+            <div class="band-panel dark">
+              <h3>patterns · 当前事实</h3>
+              <p>取 command AST 节点的原文，描述当前这一次调用。它可以包含完整参数。</p>
+              <div class="token-line">patterns: [<span class="hot">"git status"</span>]</div>
+            </div>
+            <div class="band-panel">
+              <h3>always · 稳定前缀</h3>
+              <p>通过 <code>BashArity</code> 词典确定命令前缀，再补上 <code>*</code>。不是把一条偶然参数永久放行。</p>
+              <div class="token-line">always: [<span class="hot">"git status *"</span>]</div>
+            </div>
+          </div>
+          <div class="ast-lab" style="margin-top:18px">
+            <div class="pane-title"><span>arity dictionary 的直觉</span><span>longest prefix wins</span></div>
+            <div class="node-list" style="grid-template-columns:repeat(3,1fr);display:grid">
+              <div class="node-row"><span class="node-dot"></span><div><strong>git</strong><small>默认：git *</small></div></div>
+              <div class="node-row"><span class="node-dot operator"></span><div><strong>git remote</strong><small>更长：git remote *</small></div></div>
+              <div class="node-row"><span class="node-dot argument"></span><div><strong>npm run</strong><small>稳定：npm run *</small></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="boundary">
+        <div class="content-inner">
+          <p class="section-kicker">A separate boundary</p>
+          <h2>命令能不能执行，和它能碰到哪里，分开问。</h2>
+          <p class="section-intro">OpenCode 对 Bash 命令做一套权限判断，同时对可解析的文件路径做另一套 <code>external_directory</code> 请求。命令 allow 不等于文件系统 sandbox。</p>
+          <div class="authority-flow">
+            <div class="authority-card">
+              <h3>Bash policy</h3>
+              <p>判断命令模式是否匹配 allow / ask / deny。</p>
+              <div class="path">bash: cat ../notes.md</div>
+            </div>
+            <div class="authority-arrow" aria-hidden="true">+</div>
+            <div class="authority-card external">
+              <h3>Path authority</h3>
+              <p>判断路径是否越过 workspace。可解析的父目录会单独发起询问。</p>
+              <div class="path">external_directory: ../notes.md</div>
+            </div>
+          </div>
+          <div class="command-strip" tabindex="0" role="region" aria-label="Bash 权限与路径权限的区别" style="margin-top:24px"><span class="prompt">important</span><code>allow("cat *") ≠ allow(read outside workspace)</code></div>
+          <div class="warning" id="limits">
+            <div class="warning-mark" aria-hidden="true">!</div>
+            <div>
+              <h3>OpenCode 的 AST 很强，但它不是安全证明。</h3>
+              <p>AST 告诉系统“这里出现了哪些语法节点”，不告诉系统脚本内部一定不会删除文件。固定源码快照中也没有看到把 <code>rm</code>、危险重定向、<code>git clean</code> 强制锁成 ask/deny 的不可覆盖风险层。</p>
+              <div class="jai-model">
+                <div class="jai-step"><strong>01 · parse</strong><span>AST 拆结构</span></div>
+                <div class="jai-step"><strong>02 · classify</strong><span>Jai 先做危险层</span></div>
+                <div class="jai-step"><strong>03 · policy</strong><span>再做普通规则</span></div>
+                <div class="jai-step"><strong>04 · authority</strong><span>最后检查资源边界</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section narrow" id="glossary">
+        <div class="content-inner">
+          <p class="section-kicker">Keep these words apart</p>
+          <h2>读完以后，至少不要再混淆这六个词。</h2>
+          <dl class="glossary">
+            <div class="glossary-item"><dt>AST</dt><dd>语法结构树，保存节点与父子关系。</dd></div>
+            <div class="glossary-item"><dt>command node</dt><dd>AST 中代表一次命令调用的节点，OpenCode 会遍历它。</dd></div>
+            <div class="glossary-item"><dt>pattern</dt><dd>描述本次调用的原文模式。</dd></div>
+            <div class="glossary-item"><dt>always</dt><dd>用户批准未来命令族时要持久化的稳定前缀。</dd></div>
+            <div class="glossary-item"><dt>findLast</dt><dd>从规则列表尾部寻找最后一个匹配项。</dd></div>
+            <div class="glossary-item"><dt>external_directory</dt><dd>工作区外路径的独立权限请求，不是 Bash 规则本身。</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="section" id="sources">
+        <div class="content-inner">
+          <p class="section-kicker">Read the source</p>
+          <h2>图解是入口，源码才是证据。</h2>
+          <p class="section-intro">本页根据仓库中的 OpenCode 调研报告制作。报告固定了官方仓库源码快照，下面保留关键入口，方便从概念回到实现。</p>
+          <div class="sources">
+            <div class="source"><strong>本地调研报告</strong><br><a href=".wayfinder/research/opencode-bash-permissions.md">.wayfinder/research/opencode-bash-permissions.md</a></div>
+            <div class="source"><strong>规则 schema</strong><br><a href="https://github.com/anomalyco/opencode/blob/61eabfc60c1005d1b2b11849d70696a3dcef293e/packages/opencode/src/config/permission.ts" target="_blank" rel="noreferrer">packages/opencode/src/config/permission.ts</a></div>
+            <div class="source"><strong>规则求值</strong><br><a href="https://github.com/anomalyco/opencode/blob/61eabfc60c1005d1b2b11849d70696a3dcef293e/packages/opencode/src/permission/evaluate.ts" target="_blank" rel="noreferrer">packages/opencode/src/permission/evaluate.ts</a></div>
+            <div class="source"><strong>Bash AST 扫描与路径解析</strong><br><a href="https://github.com/anomalyco/opencode/blob/61eabfc60c1005d1b2b11849d70696a3dcef293e/packages/opencode/src/tool/bash.ts" target="_blank" rel="noreferrer">packages/opencode/src/tool/bash.ts</a></div>
+            <div class="source"><strong>稳定命令前缀</strong><br><a href="https://github.com/anomalyco/opencode/blob/61eabfc60c1005d1b2b11849d70696a3dcef293e/packages/opencode/src/permission/arity.ts" target="_blank" rel="noreferrer">packages/opencode/src/permission/arity.ts</a></div>
+            <div class="source"><strong>Jai 当前实现</strong><br><a href="packages/coding/src/permissions/bash-parser.ts">packages/coding/src/permissions/bash-parser.ts</a> · <a href="packages/coding/src/permissions/evaluate.ts">evaluate.ts</a></div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div class="content-inner"><strong>OpenCode Bash Permission · Visual Guide</strong><br>研究快照：<span class="mono">61eabfc60c1005d1b2b11849d70696a3dcef293e</span> · 页面中的解析器是教学示意，不替代 tree-sitter。</div>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const commandInput = document.querySelector("#command-input");
+      const treeOutput = document.querySelector("#tree-output");
+      const nodeList = document.querySelector("#node-list");
+      const nodeCount = document.querySelector("#node-count");
+      const scanSummary = document.querySelector("#scan-summary");
+      const exampleButton = document.querySelector("[data-command]");
+
+      const escapeHtml = (value) => value.replace(/[&<>\"']/g, (character) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+      })[character]);
+
+      const splitCommand = (value) => value.split(/(\&\&|\|\||\||;)/).map((part) => part.trim()).filter(Boolean);
+      const tokens = (value) => value.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
+      const teachingReadOnly = (value) => {
+        const commandTokens = tokens(value);
+        const executable = commandTokens[0];
+        if (["cat", "cd", "diff", "du", "echo", "find", "grep", "head", "ls", "pwd", "sleep", "stat", "tail", "wc", "which"].includes(executable)) return true;
+        return executable === "git" && ["branch", "diff", "log", "show", "status"].includes(commandTokens[1]);
+      };
+
+      const renderTree = () => {
+        const source = commandInput.value || "";
+        const unsupportedSyntax = /["'`$<>()[\]]/.test(source);
+        if (unsupportedSyntax) {
+          treeOutput.innerHTML = '<span class="tree-line tree-root">program</span><span class="tree-line">└─ (complex syntax omitted)</span><span class="tree-line tree-arg">   └─ use tree-sitter for quotes, redirects, subshells and substitutions</span>';
+          nodeList.innerHTML = '<div class="node-row"><span class="node-dot argument"></span><div><strong>complex syntax detected</strong><small>本实验只画简单命令的结构草图，不猜测完整 AST</small></div></div>';
+          nodeCount.textContent = "schematic only";
+          scanSummary.innerHTML = '<strong>真实 Jai 流程：</strong>复杂语法交给 tree-sitter-bash；如果解析结果带 error，权限层会把它标成 <code>opaque</code>，先 ask，不猜。';
+          return;
+        }
+        const parts = splitCommand(source);
+        const commands = parts.filter((part) => !/^(\&\&|\|\||\||;)$/.test(part));
+        if (!commands.length) {
+          treeOutput.innerHTML = '<span class="tree-line tree-root">program</span><span class="tree-line">└─ (waiting for a command)</span>';
+          nodeList.innerHTML = '<div class="node-row"><span class="node-dot"></span><div><strong>no command nodes</strong><small>请输入一条命令</small></div></div>';
+          nodeCount.textContent = "0 nodes";
+          scanSummary.innerHTML = '<strong>patterns：</strong>[]<br>没有可供权限层判断的 command 节点。';
+          return;
+        }
+        const treeLines = ['<span class="tree-line tree-root">program</span>'];
+        const rows = [];
+        commands.forEach((command, index) => {
+          const commandTokens = tokens(command);
+          const name = commandTokens[0] || "(empty)";
+          const args = commandTokens.slice(1);
+          const branch = index === commands.length - 1 ? "└─" : "├─";
+          treeLines.push(`<span class="tree-line">${branch} <span class="tree-command">command</span></span>`);
+          treeLines.push(`<span class="tree-line">${index === commands.length - 1 ? "   " : "│  "}└─ <span class="tree-command">command_name</span>: ${escapeHtml(name)}</span>`);
+          args.forEach((argument, argumentIndex) => {
+            treeLines.push(`<span class="tree-line">${index === commands.length - 1 ? "   " : "│  "}   ${argumentIndex === args.length - 1 ? "└─" : "├─"} <span class="tree-arg">word</span>: ${escapeHtml(argument)}</span>`);
+          });
+          rows.push(`<div class="node-row"><span class="node-dot"></span><div><strong>command · ${escapeHtml(name)}</strong><small>source span: ${escapeHtml(command)}</small></div></div>`);
+        });
+        const operators = parts.filter((part) => /^(\&\&|\|\||\||;)$/.test(part));
+        operators.forEach((operator) => rows.push(`<div class="node-row"><span class="node-dot operator"></span><div><strong>operator · ${escapeHtml(operator)}</strong><small>连接结构，不是独立命令</small></div></div>`));
+        treeOutput.innerHTML = treeLines.join("");
+        nodeList.innerHTML = rows.join("");
+        nodeCount.textContent = `${commands.length} commands · ${operators.length} operators`;
+        const patterns = commands.map((command) => `"${command}"`);
+        const asked = commands.filter((command) => !teachingReadOnly(command));
+        const decision = asked.length > 0 ? `ask · ${asked[0]}` : "allow · all commands look read-only";
+        scanSummary.innerHTML = `<strong>Jai 接下来拿到：</strong><br>patterns = [${patterns.map(escapeHtml).join(", ")}]<br>destructive / opaque = false / false<br><strong>教学版初步结果：</strong>${escapeHtml(decision)}<br><span>真实实现还会执行独立的危险层和规则匹配。</span>`;
+      };
+
+      commandInput.addEventListener("input", renderTree);
+      exampleButton.addEventListener("click", () => {
+        commandInput.value = exampleButton.dataset.command;
+        renderTree();
+        commandInput.focus();
+      });
+      renderTree();
+
+      const beginnerCases = {
+        single: {
+          segments: [
+            ["cat", "command", "命令名：要执行的程序"],
+            ["foo.txt", "argument", "参数：程序要读取的文件"],
+          ],
+          process: "解析：1 个 command。提取：command_name = cat，word = foo.txt。分类：cat 是只读命令。",
+          answer: '<strong>结构示意：</strong> <code>program → command → command_name + word</code><br><strong>扫描结果：</strong> <code>patterns = ["cat foo.txt"]</code><br><strong>权限结果：</strong> <code>cat</code> 属于内置只读命令，默认可以 <strong>allow</strong>。',
+        },
+        pipe: {
+          segments: [
+            ["cat", "command", "第一个 command：读取内容"],
+            ["foo.txt", "argument", "它读取的文件"],
+            ["|", "operator", "管道：把左边输出交给右边"],
+            ["grep", "command", "第二个 command：筛选内容"],
+            ["bar", "argument", "要筛选的文字"],
+          ],
+          process: "解析：pipeline 里有 2 个 command。提取：分别保留两段 command 原文。分类：cat、grep 都是只读命令。",
+          answer: '<strong>结构示意：</strong> <code>program → pipeline → command + command</code><pre class="case-tree">program [0, 0] - [1, 0]\n└─ pipeline\n   ├─ command [0, 0] - [0, 11]  cat foo.txt\n   └─ command [0, 14] - [0, 22] grep bar</pre><span>范围是从 0 开始的 [行, 列]，它只是告诉我们节点对应哪段原文。</span><br><strong>扫描结果：</strong> <code>patterns = ["cat foo.txt", "grep bar"]</code><br><strong>权限结果：</strong> 两个子命令都要分别检查；都只读时，整条 pipeline 才能 <strong>allow</strong>。',
+        },
+        and: {
+          segments: [
+            ["npm", "command", "第一个 command：启动 npm"],
+            ["test", "argument", "npm 的子命令"],
+            ["&&", "operator", "只有左边成功，右边才继续执行"],
+            ["git", "command", "第二个 command：调用 git"],
+            ["status", "argument", "查看工作区状态"],
+          ],
+          process: "解析：两个 command 由 && 连接。提取：npm test 和 git status。分类：git status 只读，npm test 需要进一步询问。",
+          answer: '<strong>扫描结果：</strong> <code>patterns = ["npm test", "git status"]</code><br><strong>权限结果：</strong> <code>git status</code> 可内置放行，但 <code>npm test</code> 通常会 <strong>ask</strong>。一个子命令 ask，整条调用就不能直接执行。<br><strong>always 建议：</strong> <code>npm test *</code>。',
+        },
+        danger: {
+          segments: [
+            ["rm", "command", "命令名：删除工具"],
+            ["-rf", "argument", "强制、递归选项"],
+            ["build", "argument", "要删除的目标"],
+          ],
+          process: "解析：1 个 command。提取：rm -rf build。分类：危险层识别到递归删除，直接进入 ask。",
+          answer: '<strong>结构示意：</strong> <code>program → command → command_name + word…</code><br><strong>扫描结果：</strong> <code>patterns = ["rm -rf build"]</code><br><strong>权限结果：</strong> Jai 的危险层识别到删除操作，固定为 <strong>ask</strong>，不能通过 <code>always</code> 绕过。',
+        },
+      };
+
+      const renderBeginnerCase = (key) => {
+        const scenario = beginnerCases[key];
+        const commandMarkup = scenario.segments.map(([text, type]) => `<span class="${type}">${escapeHtml(text)}</span>`).join(" ");
+        document.querySelector("#beginner-command").innerHTML = `$ ${commandMarkup}`;
+        document.querySelector("#beginner-process").textContent = scenario.process;
+        document.querySelector("#beginner-breakdown").innerHTML = scenario.segments.map(([text, type, detail]) => `<div class="case-part ${type}"><span class="part-mark"></span><div><strong>${escapeHtml(text)} · ${type === "command" ? "command" : type === "operator" ? "operator" : "word"}</strong><span>${escapeHtml(detail)}</span></div></div>`).join("");
+        document.querySelector("#beginner-answer").innerHTML = scenario.answer;
+      };
+
+      document.querySelectorAll("[data-beginner-case]").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll("[data-beginner-case]").forEach((candidate) => candidate.setAttribute("aria-selected", String(candidate === button)));
+          renderBeginnerCase(button.dataset.beginnerCase);
+        });
+      });
+      renderBeginnerCase("single");
+
+      const scenarios = {
+        git: {
+          command: "permission = bash\npattern = git status",
+          decision: '<strong>allow</strong><br>最后命中的规则是第 3 条。',
+          rules: [["bash", "*", "ask"], ["bash", "git *", "deny"], ["bash", "git status", "allow"]]
+        },
+        npm: {
+          command: "permission = bash\npattern = npm run test",
+          decision: '<strong>allow</strong><br>最后命中的是 npm *，所以 npm run test 被放行。',
+          rules: [["bash", "*", "ask"], ["bash", "npm *", "allow"], ["bash", "npm run build", "deny"]]
+        },
+        rm: {
+          command: "permission = bash\npattern = rm -rf build",
+          decision: '<strong>allow</strong><br>在 OpenCode 这份快照里，普通规则可以覆盖宽泛 allow。',
+          rules: [["bash", "*", "ask"], ["bash", "rm *", "deny"], ["bash", "rm -rf build", "allow"]]
+        }
+      };
+
+      const wildcardMatch = (value, pattern) => {
+        const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+        return new RegExp(`^${escaped}$`).test(value);
+      };
+      const renderRules = (key) => {
+        const scenario = scenarios[key];
+        document.querySelector("#rule-command").innerHTML = escapeHtml(scenario.command).replace(/\n/g, "<br>");
+        document.querySelector("#rule-decision").innerHTML = `result → ${scenario.decision}`;
+        const matches = scenario.rules.map(([permission, pattern, action]) => ({ permission, pattern, action, matches: permission === "bash" && wildcardMatch(scenario.command.split("\n")[1].replace("pattern = ", ""), pattern) }));
+        const lastMatch = matches.reduce((winner, current, index) => current.matches ? index : winner, -1);
+        document.querySelector("#rule-rows").innerHTML = matches.map((rule, index) => `<tr class="${rule.matches ? "match" : ""} ${index === lastMatch ? "winner" : ""}"><td>${index + 1}</td><td>${escapeHtml(rule.pattern)}</td><td>${rule.action}${index === lastMatch ? " · winner" : ""}</td></tr>`).join("");
+      };
+      document.querySelectorAll("[data-scenario]").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll("[data-scenario]").forEach((candidate) => candidate.setAttribute("aria-selected", String(candidate === button)));
+          renderRules(button.dataset.scenario);
+        });
+      });
+      renderRules("git");
+
+      const sections = [...document.querySelectorAll("main section[id]")];
+      const links = [...document.querySelectorAll(".rail-nav a")];
+      const observer = new IntersectionObserver((entries) => {
+        const visible = entries.filter((entry) => entry.isIntersecting).sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+        if (!visible) return;
+        links.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === `#${visible.target.id}`));
+      }, { rootMargin: "-20% 0px -65% 0px", threshold: [0, .2, .5] });
+      sections.forEach((section) => observer.observe(section));
+    })();
+  </script>
+</body>
+</html>

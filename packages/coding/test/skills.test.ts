@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CodingSkillCatalog, resolveSlashInvocation } from "../src/skills";
+import { CodingSkillCatalog, resolveSlashInvocation, validateSkillFrontmatter } from "../src/skills";
 
 const roots: string[] = [];
 
@@ -141,6 +141,19 @@ describe("CodingSkillCatalog", () => {
 
 		expect(updated.revision).not.toBe(initial.revision);
 		catalog.close();
+	});
+
+	test("Skill frontmatter 复用规范约束并保留 Unicode 名称", () => {
+		expect(validateSkillFrontmatter({ name: "技能-分析", description: "分析任务", compatibility: "需要 Python", metadata: { author: "团队" }, "allowed-tools": "Read Grep" }, "技能-分析")).toMatchObject({
+			name: "技能-分析",
+			description: "分析任务",
+			compatibility: "需要 Python",
+			allowedTools: ["Read", "Grep"],
+		});
+		expect(() => validateSkillFrontmatter({ name: "review", description: "Review", compatibility: "x".repeat(501) }, "review")).toThrow();
+		expect(() => validateSkillFrontmatter({ name: "review", description: "Review", metadata: { version: 1 } }, "review")).toThrow();
+		expect(() => validateSkillFrontmatter({ name: "review", description: "Review", "allowed-tools": ["Read"] }, "review")).toThrow();
+		expect(() => validateSkillFrontmatter({ name: "review", description: "Review", custom: true }, "review")).toThrow();
 	});
 });
 

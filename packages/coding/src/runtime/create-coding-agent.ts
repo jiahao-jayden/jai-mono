@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import path from "node:path";
 import {
 	Agent,
 	type AgentCompactionOptions,
@@ -16,6 +17,7 @@ import {
 import { FileSessionStore, NodeExecutionEnvironment } from "@jai/agent/node";
 import type { Model, Provider } from "@jai/ai";
 import type { TObject } from "@sinclair/typebox";
+import { type AgentPluginDiagnostic, type AgentPluginRuntime, createAgentPluginRuntime } from "../agent-plugins";
 import type { CodingExecutionContext } from "../business/types";
 import {
 	type CodingConfigDefinition,
@@ -77,6 +79,12 @@ export interface CodingAgentSkillsOptions
 	readonly commandNames?: readonly string[];
 }
 
+export interface CodingAgentPluginsOptions {
+	readonly directories: readonly string[];
+	readonly dataDirectory?: string;
+	readonly scope?: "user" | "project";
+}
+
 export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState extends JsonObject = JsonObject> {
 	readonly executionContext: CodingExecutionContext;
 	readonly sessionId: string;
@@ -91,6 +99,7 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 	) => ResolvedCodingProvider | Promise<ResolvedCodingProvider>;
 	readonly permissions?: CodingAgentPermissionOptions<TSchema>;
 	readonly skills?: false | CodingAgentSkillsOptions;
+	readonly agentPlugins?: false | CodingAgentPluginsOptions;
 	readonly tools?: Omit<CodingToolOptions, "cwd">;
 	readonly agent?: CodingAgentRuntimeOptions;
 	readonly resolveAgentOptions?: (
@@ -110,6 +119,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	readonly #runtime: RuntimeState<TSchema>;
 	readonly #stopConfigWatch: () => void;
 	readonly #skills?: CodingSkillsRuntime;
+	readonly #plugins?: AgentPluginRuntime;
 
 	constructor(
 		agent: Agent<TAppState>,
@@ -117,12 +127,14 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		runtime: RuntimeState<TSchema>,
 		stopConfigWatch: () => void,
 		skills?: CodingSkillsRuntime,
+		plugins?: AgentPluginRuntime,
 	) {
 		this.#agent = agent;
 		this.configStore = configStore;
 		this.#runtime = runtime;
 		this.#stopConfigWatch = stopConfigWatch;
 		this.#skills = skills;
+		this.#plugins = plugins;
 	}
 
 	get configSnapshot(): ConfigSnapshot<TSchema> {
@@ -131,6 +143,10 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 
 	get state() {
 		return this.#agent.state;
+	}
+
+	get pluginDiagnostics(): readonly AgentPluginDiagnostic[] {
+		return this.#plugins?.diagnostics ?? [];
 	}
 
 	invoke(input: AgentInput): Promise<AgentMessage[]> {
@@ -167,6 +183,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#agent.abort();
 		this.#stopConfigWatch();
 		this.#skills?.close();
+		void this.#plugins?.close();
 		this.configStore.close();
 	}
 }
@@ -188,7 +205,14 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		...options.agent,
 		...(options.resolveAgentOptions ? await options.resolveAgentOptions(snapshot, { provider, model }) : {}),
 	};
-	const skills = await createSkillsRuntime(options);
+	const plugins = await createPluginRuntime(options);
+	let skills: CodingSkillsRuntime | undefined;
+	try {
+		skills = await createSkillsRuntime(options, plugins?.skills);
+	} catch (error) {
+		await plugins?.close();
+		throw error;
+	}
 	const sessionStore = new FileSessionStore<TAppState>(options.sessionDirectory);
 	const sessionHandle = await openSession(sessionStore, options.sessionId, options.appState ?? ({} as TAppState));
 	const selectPermissionSettings = options.permissions?.selectSettings ?? defaultPermissionSettings;
@@ -260,7 +284,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	}
 	const spawnAgentTool = createSpawnAgentTool(async ({ task, signal, onActivity }) => {
 		signal?.throwIfAborted();
-		const childSkills = await createSkillsRuntime(options);
+		const childSkills = await createSkillsRuntime(options, plugins?.skills);
 		const childAroundToolCall = options.executionContext.localFileAccess
 			? [
 					createPermissionMiddleware({
@@ -283,6 +307,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 						? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
 						: []),
 					...(childSkills ? [childSkills.tool] : []),
+					...(plugins?.tools ?? []),
 				],
 				instructions: [resolvedInstructions, SUBAGENT_INSTRUCTIONS].filter(Boolean).join("\n\n"),
 				temperature: resolvedAgentOptions.temperature,
@@ -330,6 +355,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
 				: []),
 			...(skills ? [skills.tool] : []),
+			...(plugins?.tools ?? []),
 		],
 		sessionHandle,
 		instructions: resolvedInstructions,
@@ -350,11 +376,25 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const stopConfigWatch = configStore.watch((event) => {
 		if (!runtime.closed && event.status === "valid") runtime.snapshot = event.snapshot;
 	});
-	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, skills);
+	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, skills, plugins);
+}
+
+async function createPluginRuntime<TSchema extends TObject, TAppState extends JsonObject>(
+	options: CreateCodingAgentOptions<TSchema, TAppState>,
+): Promise<AgentPluginRuntime | undefined> {
+	if (options.agentPlugins === undefined || options.agentPlugins === false) return undefined;
+	return createAgentPluginRuntime({
+		directories: options.agentPlugins.directories,
+		dataDirectory:
+			options.agentPlugins.dataDirectory ??
+			path.join(options.configOptions?.homeDir ?? homedir(), ".jai", "agent-plugin-data"),
+		scope: options.agentPlugins.scope,
+	});
 }
 
 function createSkillsRuntime<TSchema extends TObject, TAppState extends JsonObject>(
 	options: CreateCodingAgentOptions<TSchema, TAppState>,
+	pluginSkills: CodingSkillsRuntimeOptions["pluginSkills"] = [],
 ): Promise<CodingSkillsRuntime | undefined> {
 	if (options.skills === false) return Promise.resolve(undefined);
 	return CodingSkillsRuntime.create({
@@ -368,6 +408,7 @@ function createSkillsRuntime<TSchema extends TObject, TAppState extends JsonObje
 			options.executionContext.localFileAccess,
 		debounceMs: options.skills?.debounceMs,
 		commandNames: options.skills?.commandNames,
+		pluginSkills,
 	});
 }
 

@@ -10,6 +10,7 @@ import {
 	type CodingSkillCatalogOptions,
 	type CodingSkillCatalogSnapshot,
 	parseSkillDocument,
+	validateSkillFrontmatter,
 } from "./catalog";
 
 type SkillRuntimeErrorInit = { readonly data?: Record<string, unknown>; readonly message: string };
@@ -168,7 +169,7 @@ export function resolveSlashInvocation(
 	const message = Array.isArray(input) ? input[0] : input;
 	const content = typeof message === "string" ? message : message?.role === "user" ? message.content : undefined;
 	if (typeof content !== "string") return undefined;
-	const match = /^\/([a-z0-9]+(?:-[a-z0-9]+)*)(?=\s|$)/.exec(content);
+	const match = /^\/([\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*)(?=\s|$)/u.exec(content);
 	if (!match) return undefined;
 	const name = match[1]!;
 	if (commandNames.has(name)) return { name, kind: "command", displayName: name };
@@ -209,10 +210,12 @@ async function readSkillBody(skill: CodingSkillCard): Promise<string> {
 			});
 		}
 		const document = parseSkillDocument(content);
-		if (document.frontmatter.name !== skill.name) {
+		try {
+			validateSkillFrontmatter(document.frontmatter, path.basename(skill.directory));
+		} catch (error) {
 			throw skillRuntimeError("not_available", {
-				message: `Skill "${skill.name}" changed identity after catalog loading`,
-				data: { skill: skill.name },
+				message: `Skill "${skill.name}" changed validity after catalog loading`,
+				data: { skill: skill.name, cause: error instanceof Error ? error.message : "invalid frontmatter" },
 			});
 		}
 		return document.body;
