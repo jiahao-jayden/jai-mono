@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { CodingSkillCatalog } from "../src/skills";
-import { connectAgentPluginMcp, loadAgentPluginDirectory } from "../src/agent-plugins";
+import { connectAgentPluginMcp, createAgentPluginRuntime, loadAgentPluginDirectory } from "../src/agent-plugins";
 
 const roots: string[] = [];
 
@@ -31,6 +31,7 @@ describe("Agent Plugins 组件适配器", () => {
 		const root = await createPlugin({
 			mcpServers: {
 				good: { type: "streamable-http", url: "http://localhost:43121/mcp" },
+				legacy: { type: "sse", url: "http://localhost:43121/sse" },
 				bad: { type: "stdio", command: "node --version" },
 			},
 		});
@@ -43,9 +44,27 @@ describe("Agent Plugins 组件适配器", () => {
 		expect(result.isOk()).toBe(true);
 		if (result.isErr()) return;
 		expect(result.value.skills.map((skill) => skill.name)).toEqual(["healthy"]);
-		expect(result.value.mcpServers.map((server) => server.name)).toEqual(["good"]);
+		expect(result.value.mcpServers.map((server) => server.name)).toEqual(["good", "legacy"]);
 		expect(result.value.diagnostics.map((diagnostic) => diagnostic.componentName)).toContain("broken");
 		expect(result.value.diagnostics.map((diagnostic) => diagnostic.componentName)).toContain("bad");
+	});
+
+	test("运行时保留每个插件目录的作用域", async () => {
+		const root = await createPlugin({});
+		await mkdir(path.join(root, "skills", "scoped"), { recursive: true });
+		await writeFile(
+			path.join(root, "skills", "scoped", "SKILL.md"),
+			"---\nname: scoped\ndescription: Scoped Skill\n---\n\nInstructions\n",
+		);
+		const runtime = await createAgentPluginRuntime({
+			directories: [{ path: root, scope: "project" }],
+			dataDirectory: path.join(root, "data"),
+		});
+
+		expect(runtime.skills).toHaveLength(1);
+		expect(runtime.skills[0]?.source.scope).toBe("project");
+		expect(runtime.diagnostics).toHaveLength(0);
+		await runtime.close();
 	});
 
 	test("stdio MCP 通过同一个 AgentTool 接缝完成 initialize、tools/list 和 tools/call", async () => {

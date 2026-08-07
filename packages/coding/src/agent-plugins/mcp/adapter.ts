@@ -12,6 +12,7 @@ import {
 	AGENT_PLUGINS_MCP_SCHEMA,
 	type AgentPluginHttpServer,
 	type AgentPluginMcpServer,
+	type AgentPluginSseServer,
 	type AgentPluginStdioServer,
 } from "./types";
 
@@ -101,9 +102,9 @@ async function discoverPluginMcp(
 function parseServer(root: string, name: string, value: unknown): AgentPluginMcpServer | undefined {
 	if (!isRecord(value) || typeof value.type !== "string")
 		throw new InvalidPluginMcpServer({ message: "MCP server must be an object with a type" });
-	if (value.type === "sse") return undefined;
 	if (value.type === "stdio") return { name, ...parseStdio(root, value) };
 	if (value.type === "streamable-http") return { name, ...parseHttp(value) };
+	if (value.type === "sse") return { name, ...parseSse(value) };
 	throw new InvalidPluginMcpServer({ message: `Unsupported MCP transport "${value.type}"` });
 }
 
@@ -163,6 +164,11 @@ function parseHttp(value: Record<string, unknown>): Omit<AgentPluginHttpServer, 
 	if (new Set(lower).size !== lower.length)
 		throw new InvalidPluginMcpServer({ message: "MCP headers contain duplicate names" });
 	return { type: "streamable-http", url: value.url, headers: headers as Record<string, string> };
+}
+
+function parseSse(value: Record<string, unknown>): Omit<AgentPluginSseServer, "name"> {
+	const parsed = parseHttp(value);
+	return { type: "sse", url: parsed.url, headers: parsed.headers };
 }
 
 function assertKeys(value: Record<string, unknown>, allowed: Set<string>): void {

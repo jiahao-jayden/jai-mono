@@ -12,6 +12,7 @@ import {
 import { type Static, Type } from "@sinclair/typebox";
 import { TaggedError } from "better-result";
 import { type ConfigMergeCandidate, defineCodingConfig } from "../config";
+import type { McpServer } from "../mcp";
 import {
 	mergePermissionConfigs,
 	permissionConfigFields,
@@ -159,6 +160,45 @@ const providerProfileSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
+const mcpStdioServerSchema = Type.Object(
+	{
+		type: Type.Literal("stdio"),
+		command: Type.String({ minLength: 1 }),
+		args: Type.Optional(Type.Array(Type.String())),
+		env: Type.Optional(Type.Record(Type.String({ minLength: 1 }), Type.String())),
+		cwd: Type.Optional(Type.String({ minLength: 1 })),
+	},
+	{ additionalProperties: false },
+);
+
+const mcpHttpServerSchema = Type.Object(
+	{
+		type: Type.Literal("streamable-http"),
+		url: Type.String({ minLength: 1 }),
+		headers: Type.Optional(Type.Record(Type.String({ minLength: 1 }), Type.String())),
+	},
+	{ additionalProperties: false },
+);
+
+const mcpSseServerSchema = Type.Object(
+	{
+		type: Type.Literal("sse"),
+		url: Type.String({ minLength: 1 }),
+		headers: Type.Optional(Type.Record(Type.String({ minLength: 1 }), Type.String())),
+	},
+	{ additionalProperties: false },
+);
+
+const mcpSettingsSchema = Type.Object(
+	{
+		servers: Type.Record(
+			Type.String({ minLength: 1 }),
+			Type.Union([mcpStdioServerSchema, mcpHttpServerSchema, mcpSseServerSchema]),
+		),
+	},
+	{ additionalProperties: false },
+);
+
 export const codingAgentSettingsSchema = Type.Object(
 	{
 		agent: Type.Optional(
@@ -175,6 +215,7 @@ export const codingAgentSettingsSchema = Type.Object(
 			),
 		),
 		providers: Type.Record(Type.RegExp(new RegExp(profileIdPattern)), providerProfileSchema),
+		mcp: Type.Optional(mcpSettingsSchema),
 		permission: Type.Optional(permissionConfigSchema),
 		permissions: permissionSettingsSchema,
 	},
@@ -182,6 +223,33 @@ export const codingAgentSettingsSchema = Type.Object(
 );
 
 export type CodingAgentSettings = Static<typeof codingAgentSettingsSchema>;
+
+export function resolveConfiguredMcpServers(settings: Readonly<CodingAgentSettings>): readonly McpServer[] {
+	return Object.entries(settings.mcp?.servers ?? {}).map(([name, server]) =>
+		server.type === "stdio"
+			? {
+					name,
+					type: "stdio",
+					command: server.command,
+					args: server.args ?? [],
+					env: server.env ?? {},
+					...(server.cwd === undefined ? {} : { cwd: server.cwd }),
+				}
+			: server.type === "streamable-http"
+				? {
+						name,
+						type: "streamable-http",
+						url: server.url,
+						headers: server.headers ?? {},
+					}
+				: {
+						name,
+						type: "sse",
+						url: server.url,
+						headers: server.headers ?? {},
+					},
+	);
+}
 
 export interface ResolvedCodingAgentRuntime {
 	readonly language?: string;
@@ -217,6 +285,11 @@ export const codingAgentConfigDefinition = defineCodingConfig({
 			default: {},
 			environment: { name: "JAI_PROVIDERS", parse: parseProvidersEnvironment },
 			mergeValues: mergeProviderProfiles,
+		},
+		mcp: {
+			merge: "deepMerge",
+			project: "trusted",
+			default: { servers: {} },
 		},
 		permission: {
 			merge: "custom",

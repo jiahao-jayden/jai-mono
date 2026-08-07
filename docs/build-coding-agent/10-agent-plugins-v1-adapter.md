@@ -20,8 +20,7 @@ Agent Plugins v1 对兼容客户端的最低要求是支持 Skills 或 MCP serve
 - Skills
 - MCP `stdio`
 - MCP `streamable-http`
-
-旧版 MCP `sse` 在 v1 中是可选能力，本规格不要求实现。遇到 `sse` entry 时只跳过该 server 并报告“不支持的 transport”，不能影响其他组件。
+- MCP `sse`（兼容旧版服务端）
 
 这份规格不定义插件安装器、Git/归档来源、marketplace、启用和更新体验、缓存、回滚、权限提示、信任策略、沙箱、OAuth 存储或 Desktop 管理页面。官方明确将这些归为 client-owned behavior。
 
@@ -305,10 +304,7 @@ PandaWork 支持：
 
 - `stdio`
 - `streamable-http`
-
-PandaWork 不要求支持：
-
-- `sse`
+- `sse`（兼容传输，优先使用 `streamable-http`）
 
 连接时必须使用 entry 声明的 transport。初次连接失败后不得由 Agent Plugins adapter 自动切换到另一种 transport。
 
@@ -500,7 +496,7 @@ export interface AgentPluginDiagnostic {
 
 ### 14.3 MCP
 
-- [ ] 支持 `stdio` 和 `streamable-http`。
+- [ ] 支持 `stdio`、`streamable-http` 和 `sse`。
 - [ ] 初次连接使用 entry 声明的 transport。
 - [ ] 顶层 `mcp.json` 和每个 server entry 分层校验。
 - [ ] stdio command 按单 executable token 解析。
@@ -529,7 +525,7 @@ export interface AgentPluginDiagnostic {
 8. `mcp.json` 顶层无效和单 entry 无效。
 9. `stdio` command、cwd、env 和 placeholder 规则。
 10. `streamable-http` URL、header 和 redirect 规则。
-11. `sse` entry 被独立跳过。
+11. `sse` entry 使用独立的兼容 transport 连接。
 12. 单 server 启动、连接、认证和 handshake 失败。
 13. 未实现 client extension 被忽略。
 14. 安全诊断 DTO 不泄漏内部对象和敏感值。
@@ -583,8 +579,8 @@ commit 5f3f5084a821aefa792e79500dd8f0462ab83473
 
 1. `loadAgentPluginDirectory()` 通过官方 client conformance checklist。
 2. Skills 和 MCP 两种组件都按固定位置发现。
-3. `stdio` 和 `streamable-http` 配置能映射到官方 MCP SDK。
-4. `sse` 作为可选未实现 transport 被独立跳过。
+3. `stdio`、`streamable-http` 和 `sse` 配置能映射到官方 MCP SDK。
+4. 旧版 `sse` 不影响首选的 `streamable-http` 路径。
 5. 所有 path escape 在对应最窄边界阻止。
 6. manifest 致命错误没有任何组件或运行时副作用。
 7. 单 Skill、单 MCP entry 和单 server failure 不影响独立组件。

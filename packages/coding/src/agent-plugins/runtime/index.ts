@@ -12,14 +12,15 @@ export async function createAgentPluginRuntime(options: AgentPluginRuntimeOption
 	const tools: AgentTool[] = [];
 	const diagnostics: AgentPluginDiagnostic[] = [];
 	const mcpRuntimes: AgentPluginMcpRuntime[] = [];
-	for (const directory of options.directories) {
-		const loaded = await loadAgentPluginDirectory(directory, { scope: options.scope ?? "user" });
+	for (const entry of options.directories) {
+		const directory = typeof entry === "string" ? { path: entry, scope: options.scope ?? "user" } : entry;
+		const loaded = await loadAgentPluginDirectory(directory.path, { scope: directory.scope });
 		if (loaded.isErr()) {
 			diagnostics.push({
 				code: "plugin_load_failed",
 				severity: "error",
 				scope: "package",
-				relativePath: path.basename(directory),
+				relativePath: path.basename(directory.path),
 				message: loaded.error.message,
 			});
 			continue;
@@ -53,4 +54,4 @@ export async function createAgentPluginRuntime(options: AgentPluginRuntimeOption
 	};
 }
 
-export type { AgentPluginRuntime, AgentPluginRuntimeOptions } from "./types";
+export type { AgentPluginDirectory, AgentPluginRuntime, AgentPluginRuntimeOptions } from "./types";

@@ -76,7 +76,7 @@ async function resolveServer(
 	server: AgentPluginMcpServer,
 	pluginData: string,
 ): Promise<AgentPluginMcpServer> {
-	if (server.type === "streamable-http") return server;
+	if (server.type !== "stdio") return server;
 	return {
 		...server,
 		command: await resolveCommand(plugin.root, server.command),

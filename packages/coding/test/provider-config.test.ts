@@ -8,6 +8,7 @@ import {
 	type CodingAgentSettings,
 	normalizeModelCatalog,
 	resolveConfiguredAgentRuntime,
+	resolveConfiguredMcpServers,
 	resolveConfiguredProvider,
 } from "../src/runtime";
 
@@ -18,6 +19,52 @@ afterEach(async () => {
 });
 
 describe("Provider configuration", () => {
+	test("从 Settings 解析 MCP server，并补齐运行时默认字段", () => {
+		const settings = {
+			providers: {},
+			mcp: {
+				servers: {
+					stdio: {
+						type: "stdio",
+						command: "npx",
+						args: ["-y", "@modelcontextprotocol/server-everything@2026.7.4"],
+					},
+					streamable: {
+						type: "streamable-http",
+						url: "http://127.0.0.1:43121/mcp",
+					},
+					legacySse: {
+						type: "sse",
+						url: "http://127.0.0.1:43121/sse",
+					},
+				},
+			},
+			permissions: {},
+		} satisfies CodingAgentSettings;
+
+		expect(resolveConfiguredMcpServers(settings)).toEqual([
+			{
+				name: "stdio",
+				type: "stdio",
+				command: "npx",
+				args: ["-y", "@modelcontextprotocol/server-everything@2026.7.4"],
+				env: {},
+			},
+			{
+				name: "streamable",
+				type: "streamable-http",
+				url: "http://127.0.0.1:43121/mcp",
+				headers: {},
+			},
+			{
+				name: "legacySse",
+				type: "sse",
+				url: "http://127.0.0.1:43121/sse",
+				headers: {},
+			},
+		]);
+	});
+
 	test("resolves multiple named profiles using the same adapter", () => {
 		const settings = {
 			agent: { model: "work/gpt-main" },

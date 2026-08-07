@@ -16,7 +16,14 @@ export interface McpHttpServer {
 	readonly headers: Readonly<Record<string, string>>;
 }
 
-export type McpServer = McpStdioServer | McpHttpServer;
+export interface McpSseServer {
+	readonly name: string;
+	readonly type: "sse";
+	readonly url: string;
+	readonly headers: Readonly<Record<string, string>>;
+}
+
+export type McpServer = McpStdioServer | McpHttpServer | McpSseServer;
 
 export interface McpDiagnostic {
 	readonly serverName: string;

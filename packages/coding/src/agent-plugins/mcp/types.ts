@@ -19,7 +19,14 @@ export interface AgentPluginHttpServer {
 	readonly headers: Readonly<Record<string, string>>;
 }
 
-export type AgentPluginMcpServer = AgentPluginStdioServer | AgentPluginHttpServer;
+export interface AgentPluginSseServer {
+	readonly name: string;
+	readonly type: "sse";
+	readonly url: string;
+	readonly headers: Readonly<Record<string, string>>;
+}
+
+export type AgentPluginMcpServer = AgentPluginStdioServer | AgentPluginHttpServer | AgentPluginSseServer;
 
 export interface AgentPluginMcpRuntime {
 	readonly tools: readonly AgentTool[];

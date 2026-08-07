@@ -145,6 +145,20 @@ describe("permission middleware", () => {
 		expect({ approvals, executions }).toEqual({ approvals: 1, executions: 2 });
 	});
 
+	test("显式装配的外部工具绕过内置权限名称解析", async () => {
+		let executions = 0;
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: { defaultMode: "dontAsk" },
+			externalToolNames: new Set(["mcp__plugin__server__tool"]),
+		});
+		await middleware(context("mcp__plugin__server__tool", {}), async () => {
+			executions++;
+			return { content: [] };
+		});
+		expect(executions).toBe(1);
+	});
+
 	test("Edit/Write Always allow 只记入当前 middleware session", async () => {
 		let approvals = 0;
 		const middleware = createPermissionMiddleware({
@@ -527,7 +541,7 @@ function call(toolName: PermissionCall["toolName"], args: Record<string, unknown
 	return { toolName, args, workspaceRoot };
 }
 
-function context(toolName: PermissionCall["toolName"], args: Record<string, unknown>): ToolCallContext {
+function context(toolName: string, args: Record<string, unknown>): ToolCallContext {
 	const parameters = Type.Object({}, { additionalProperties: true });
 	return {
 		toolCall: { type: "toolCall", id: "tool-call", name: toolName, arguments: args },

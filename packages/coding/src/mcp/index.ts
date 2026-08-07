@@ -6,5 +6,6 @@ export type {
 	McpHttpServer,
 	McpRuntime,
 	McpServer,
+	McpSseServer,
 	McpStdioServer,
 } from "./types";

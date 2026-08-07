@@ -23,6 +23,8 @@ export interface PermissionApprovalRequest {
 export interface PermissionMiddlewareOptions {
 	readonly workspaceRoot: string | (() => string);
 	readonly settings: PermissionSettings | (() => PermissionSettings | Promise<PermissionSettings>);
+	/** 显式装配的外部工具，例如 Agent Plugin MCP 工具。 */
+	readonly externalToolNames?: ReadonlySet<string>;
 	readonly requestApproval?: (
 		request: PermissionApprovalRequest,
 		signal?: AbortSignal,
@@ -36,6 +38,7 @@ export interface PermissionMiddlewareOptions {
 export function createPermissionMiddleware(options: PermissionMiddlewareOptions): ToolMiddleware {
 	const sessionAllowRules = options.sessionAllowRules ?? new Set<string>();
 	return async (context, next) => {
+		if (options.externalToolNames?.has(context.tool.name)) return next();
 		const toolName = canonicalToolName(context.tool.name);
 		const workspaceRoot = currentWorkspaceRoot(options.workspaceRoot);
 		const settings = await currentSettings(options.settings);

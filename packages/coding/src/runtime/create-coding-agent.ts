@@ -17,7 +17,12 @@ import {
 import { FileSessionStore, NodeExecutionEnvironment } from "@jai/agent/node";
 import type { Model, Provider } from "@jai/ai";
 import type { TObject } from "@sinclair/typebox";
-import { type AgentPluginDiagnostic, type AgentPluginRuntime, createAgentPluginRuntime } from "../agent-plugins";
+import {
+	type AgentPluginDiagnostic,
+	type AgentPluginDirectory,
+	type AgentPluginRuntime,
+	createAgentPluginRuntime,
+} from "../agent-plugins";
 import type { CodingExecutionContext } from "../business/types";
 import {
 	type CodingConfigDefinition,
@@ -26,6 +31,7 @@ import {
 	type ConfigSnapshot,
 	type ResolvedCodingSettings,
 } from "../config";
+import { connectMcpServers, type McpRuntime, type McpServer } from "../mcp";
 import {
 	createPermissionMiddleware,
 	type PermissionAction,
@@ -80,7 +86,7 @@ export interface CodingAgentSkillsOptions
 }
 
 export interface CodingAgentPluginsOptions {
-	readonly directories: readonly string[];
+	readonly directories: readonly (string | AgentPluginDirectory)[];
 	readonly dataDirectory?: string;
 	readonly scope?: "user" | "project";
 }
@@ -97,6 +103,9 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 	readonly resolveProvider: (
 		snapshot: ConfigSnapshot<TSchema>,
 	) => ResolvedCodingProvider | Promise<ResolvedCodingProvider>;
+	readonly resolveMcpServers?: (
+		snapshot: ConfigSnapshot<TSchema>,
+	) => readonly McpServer[] | Promise<readonly McpServer[]>;
 	readonly permissions?: CodingAgentPermissionOptions<TSchema>;
 	readonly skills?: false | CodingAgentSkillsOptions;
 	readonly agentPlugins?: false | CodingAgentPluginsOptions;
@@ -120,6 +129,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	readonly #stopConfigWatch: () => void;
 	readonly #skills?: CodingSkillsRuntime;
 	readonly #plugins?: AgentPluginRuntime;
+	readonly #mcp?: McpRuntime;
 
 	constructor(
 		agent: Agent<TAppState>,
@@ -128,6 +138,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		stopConfigWatch: () => void,
 		skills?: CodingSkillsRuntime,
 		plugins?: AgentPluginRuntime,
+		mcp?: McpRuntime,
 	) {
 		this.#agent = agent;
 		this.configStore = configStore;
@@ -135,6 +146,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#stopConfigWatch = stopConfigWatch;
 		this.#skills = skills;
 		this.#plugins = plugins;
+		this.#mcp = mcp;
 	}
 
 	get configSnapshot(): ConfigSnapshot<TSchema> {
@@ -147,6 +159,10 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 
 	get pluginDiagnostics(): readonly AgentPluginDiagnostic[] {
 		return this.#plugins?.diagnostics ?? [];
+	}
+
+	get mcpDiagnostics() {
+		return this.#mcp?.diagnostics ?? [];
 	}
 
 	invoke(input: AgentInput): Promise<AgentMessage[]> {
@@ -184,6 +200,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#stopConfigWatch();
 		this.#skills?.close();
 		void this.#plugins?.close();
+		void this.#mcp?.close();
 		this.configStore.close();
 	}
 }
@@ -206,11 +223,13 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		...(options.resolveAgentOptions ? await options.resolveAgentOptions(snapshot, { provider, model }) : {}),
 	};
 	const plugins = await createPluginRuntime(options);
+	const mcp = await createMcpRuntime(options.resolveMcpServers ? await options.resolveMcpServers(snapshot) : []);
 	let skills: CodingSkillsRuntime | undefined;
 	try {
 		skills = await createSkillsRuntime(options, plugins?.skills);
 	} catch (error) {
 		await plugins?.close();
+		await mcp?.close();
 		throw error;
 	}
 	const sessionStore = new FileSessionStore<TAppState>(options.sessionDirectory);
@@ -263,6 +282,10 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		};
 	});
 	const aroundToolCall = [...(hooks?.aroundToolCall ?? [])];
+	const externalToolNames = new Set([
+		...(plugins?.tools.map((tool) => tool.name) ?? []),
+		...(mcp?.tools.map((tool) => tool.name) ?? []),
+	]);
 	const toolEnvironment = options.executionContext.localFileAccess
 		? new NodeExecutionEnvironment({
 				cwd: options.executionContext.cwd,
@@ -275,6 +298,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			createPermissionMiddleware({
 				workspaceRoot: options.executionContext.cwd,
 				settings: () => selectPermissionSettings(runtime.snapshot),
+				externalToolNames,
 				requestApproval: options.permissions?.requestApproval,
 				persistProjectLocalAllowRules,
 				pathCapabilities: toolEnvironment,
@@ -290,6 +314,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 					createPermissionMiddleware({
 						workspaceRoot: options.executionContext.cwd,
 						settings: () => selectPermissionSettings(runtime.snapshot),
+						externalToolNames,
 						requestApproval: options.permissions?.requestApproval,
 						persistProjectLocalAllowRules,
 						pathCapabilities: toolEnvironment,
@@ -308,6 +333,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 						: []),
 					...(childSkills ? [childSkills.tool] : []),
 					...(plugins?.tools ?? []),
+					...(mcp?.tools ?? []),
 				],
 				instructions: [resolvedInstructions, SUBAGENT_INSTRUCTIONS].filter(Boolean).join("\n\n"),
 				temperature: resolvedAgentOptions.temperature,
@@ -356,6 +382,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				: []),
 			...(skills ? [skills.tool] : []),
 			...(plugins?.tools ?? []),
+			...(mcp?.tools ?? []),
 		],
 		sessionHandle,
 		instructions: resolvedInstructions,
@@ -376,7 +403,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const stopConfigWatch = configStore.watch((event) => {
 		if (!runtime.closed && event.status === "valid") runtime.snapshot = event.snapshot;
 	});
-	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, skills, plugins);
+	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, skills, plugins, mcp);
 }
 
 async function createPluginRuntime<TSchema extends TObject, TAppState extends JsonObject>(
@@ -390,6 +417,17 @@ async function createPluginRuntime<TSchema extends TObject, TAppState extends Js
 			path.join(options.configOptions?.homeDir ?? homedir(), ".jai", "agent-plugin-data"),
 		scope: options.agentPlugins.scope,
 	});
+}
+
+async function createMcpRuntime(servers: readonly McpServer[]): Promise<McpRuntime | undefined> {
+	if (servers.length === 0) return undefined;
+	const result = await connectMcpServers({ namespace: "settings", servers });
+	if (result.isOk()) return result.value;
+	return {
+		tools: [],
+		diagnostics: [{ serverName: result.error.serverName, message: result.error.message }],
+		close: async () => {},
+	};
 }
 
 function createSkillsRuntime<TSchema extends TObject, TAppState extends JsonObject>(

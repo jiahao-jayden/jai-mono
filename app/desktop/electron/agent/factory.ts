@@ -6,12 +6,15 @@ import {
 	createCodingAgent,
 	type ResolvedCodingProvider,
 	resolveConfiguredAgentRuntime,
+	resolveConfiguredMcpServers,
 	resolveConfiguredProvider,
 } from "@jai/coding/runtime";
 import { TaggedError } from "better-result";
 import type { DesktopAgentMode } from "../../shared/desktop-rpc";
+import { mainLog } from "../logger";
 import { desktopModelCatalog } from "../model-catalog";
 import type { DesktopAgentFactory, HostedCodingAgent } from "./host";
+import { discoverDesktopAgentPluginDirectories } from "./plugin-directories";
 import codingAgentInstructions from "./prompt/system-prompt.md?raw";
 
 const CODING_AGENT_INSTRUCTIONS = codingAgentInstructions.trim();
@@ -48,6 +51,10 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 	return async ({ sessionId, modelRef, mode, requestApproval }) => {
 		const session = service.getSession(sessionId);
 		const executionContext = await service.resolveExecutionContext(sessionId);
+		const agentPluginDirectories = await discoverDesktopAgentPluginDirectories({
+			workspaceDirectory: executionContext.localFileAccess ? executionContext.configRoot : undefined,
+			workspaceTrusted: executionContext.localFileAccess,
+		});
 		let resolvedProvider: ResolvedCodingProvider | undefined;
 		const codingAgent = await createCodingAgent({
 			executionContext,
@@ -64,6 +71,9 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 			configOptions: {
 				workspaceTrusted: executionContext.localFileAccess,
 			},
+			agentPlugins: {
+				directories: agentPluginDirectories,
+			},
 			resolveProvider(snapshot) {
 				const profileId = modelRef.slice(0, modelRef.indexOf("/"));
 				const inventory = profileId ? service.getProviderModelInventory(profileId) : undefined;
@@ -78,6 +88,9 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 				);
 				resolvedProvider = resolved;
 				return resolved;
+			},
+			resolveMcpServers(snapshot) {
+				return resolveConfiguredMcpServers(snapshot.settings);
 			},
 			resolveAgentOptions(snapshot, resolved) {
 				const runtime = resolveConfiguredAgentRuntime(snapshot.settings, resolved);
@@ -106,6 +119,15 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 				}),
 			},
 		});
+		for (const diagnostic of codingAgent.pluginDiagnostics) {
+			if (diagnostic.severity !== "info") {
+				// 插件诊断不影响其他插件，记录在主进程日志中供排查。
+				mainLog.warn("Agent Plugin 诊断:", diagnostic);
+			}
+		}
+		for (const diagnostic of codingAgent.mcpDiagnostics) {
+			mainLog.warn("Settings MCP 诊断:", diagnostic);
+		}
 
 		return {
 			getAppState: () => codingAgent.state.appState,

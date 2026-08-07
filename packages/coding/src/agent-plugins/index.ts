@@ -6,6 +6,7 @@ export type {
 	AgentPluginHttpServer,
 	AgentPluginMcpRuntime,
 	AgentPluginMcpServer,
+	AgentPluginSseServer,
 	AgentPluginStdioServer,
 } from "./mcp/types";
 export { AgentPluginLoadFailed, AgentPluginMcpConnectionFailed } from "./package/errors";
@@ -16,6 +17,7 @@ export type {
 	LoadedAgentPlugin,
 } from "./package/types";
 export {
+	type AgentPluginDirectory,
 	type AgentPluginRuntime,
 	type AgentPluginRuntimeOptions,
 	createAgentPluginRuntime,

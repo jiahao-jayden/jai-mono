@@ -38,5 +38,6 @@ export {
 	type ResolveConfiguredProviderOptions,
 	type ResolvedCodingAgentRuntime,
 	resolveConfiguredAgentRuntime,
+	resolveConfiguredMcpServers,
 	resolveConfiguredProvider,
 } from "./provider-config";

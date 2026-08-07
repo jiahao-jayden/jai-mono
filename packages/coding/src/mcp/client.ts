@@ -1,5 +1,6 @@
 import type { AgentTool, AgentToolResult } from "@jai/agent";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { type TSchema, Type } from "@sinclair/typebox";
@@ -64,7 +65,7 @@ async function connectServer(namespace: string, server: McpServer, signal?: Abor
 	}
 }
 
-function createTransport(server: McpServer): StdioClientTransport | StreamableHTTPClientTransport {
+function createTransport(server: McpServer): StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport {
 	if (server.type === "stdio") {
 		return new StdioClientTransport({
 			command: server.command,
@@ -74,6 +75,12 @@ function createTransport(server: McpServer): StdioClientTransport | StreamableHT
 		});
 	}
 	const headers = filterGeneratedHeaders(server.headers);
+	if (server.type === "sse") {
+		return new SSEClientTransport(new URL(server.url), {
+			requestInit: { headers },
+			fetch: createRestrictedFetch(headers),
+		});
+	}
 	return new StreamableHTTPClientTransport(new URL(server.url), {
 		requestInit: { headers },
 		fetch: createRestrictedFetch(headers),

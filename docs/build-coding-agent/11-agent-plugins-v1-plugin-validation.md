@@ -247,7 +247,7 @@ Skill frontmatter 和目录约束使用固定 Agent Skills 规范，不由 Agent
 - 混入另一 variant 字段
 - unknown field
 - 字段类型错误
-- 声明了 PandaWork 不支持的 `sse`（记录 warning 并标记为 `ignored`，不把“客户端未实现可选 transport”当成 package error）
+- `sse` 使用与远端 HTTP 相同的 URL/header 静态规则；连接阶段由通用 MCP 客户端使用 SSE transport
 
 ## 11. MCP `stdio` 静态校验
 
@@ -384,7 +384,7 @@ manifest fatal 必须阻止 loader 继续；单 Skill、单 MCP entry 和单 ser
 4. Skills 和 MCP 顶层/entry 错误按不同边界隔离。
 5. 所有 package path escape 都被检测，且不会被字符串前缀绕过。
 6. `mcp.json` 版本必须与 `plugin.json` 一致。
-7. `stdio` 和 `streamable-http` 的静态及运行时规则均有测试。
+7. `stdio`、`streamable-http` 和 `sse` 的静态及运行时规则均有测试。
 8. 官方示例 validation 和实际 Skill activation 通过。
 9. 验证器没有网络 schema 依赖，没有执行包内容。
 10. 规范校验报告与 MCP 连接结果、权限结果和安装结果彼此分离。
