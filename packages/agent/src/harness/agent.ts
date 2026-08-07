@@ -5,8 +5,6 @@ import { type AgentInput, CoreAgent, type CoreAgentOptions } from "../core/agent
 import { type AgentState, cloneJson, type JsonObject } from "../core/agent-state";
 import type { Session } from "../core/session";
 import type { AgentContext, AgentMessage, CoreAgentEvent, ObserverErrorInfo, RetryModelCall } from "../core/types";
-import { AgentExtensionRegistry } from "../extensions/registry";
-import type { AgentExtension } from "../extensions/types";
 import { compact } from "./compaction/compact";
 import { estimateContextTokens, estimateTokens, resolveCompactionSettings, shouldCompact } from "./compaction/estimate";
 import { hasUncompactedTruncation, isContextOverflow } from "./compaction/overflow";
@@ -58,7 +56,6 @@ type AgentCommonOptions<TAppState extends JsonObject> = Omit<
 > & {
 	compaction?: AgentCompactionOptions;
 	hooks?: AgentHookMap;
-	extensions?: readonly AgentExtension[];
 	/** 观察者失败的上报口；不提供则忽略。 */
 	onObserverError?: (info: ObserverErrorInfo<AgentEvent>) => void;
 };
@@ -101,8 +98,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 	private readonly provider: Provider;
 	private readonly compaction?: CompactionRuntime;
 	private readonly hooks: HookHost;
-	private readonly extensions: AgentExtensionRegistry;
 	private readonly onObserverError?: (info: ObserverErrorInfo<AgentEvent>) => void;
+	private appStateWrites: Promise<void> = Promise.resolve();
 	/**
 	 * 本次 model call 的完整 transcript。prepareContext → provider → onModelError
 	 * 是严格嵌套的，且 Agent 不允许并发 run，所以这一格暂存是安全的。
@@ -116,7 +113,6 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		this.provider = options.provider;
 		this.compaction = resolveCompaction(options.model, options.compaction);
 		this.hooks = new HookHost(options.hooks);
-		this.extensions = new AgentExtensionRegistry(options.extensions, options.tools ?? []);
 		this.onObserverError = options.onObserverError;
 		// 构造期 handler 先入队，运行期 subscribe() 的观察者排在它们后面。
 		for (const listener of this.hooks.onEvent) this.listeners.add(listener);
@@ -133,7 +129,7 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		this.agent = new CoreAgent<TAppState>({
 			model: options.model,
 			provider: options.provider,
-			tools: this.extensions.tools,
+			tools: options.tools,
 			temperature: options.temperature,
 			maxTokens: options.maxTokens,
 			toolExecution: options.toolExecution,
@@ -146,7 +142,6 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 			// 走 commit seam 而不是 subscribe()：持久化必须在观察者之前完成，且它失败要让 run 失败。
 			commitEvent: (event) => this.handleCoreEvent(event),
 		});
-		this.extensions.claimOwnership();
 	}
 
 	get state(): AgentState<TAppState> {
@@ -161,12 +156,17 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		return this.agent.getSession();
 	}
 
-	setAppState(next: TAppState): void {
-		this.agent.setAppState(next);
+	setAppState(next: TAppState): Promise<void> {
+		try {
+			const snapshot = cloneJson(next);
+			return this.enqueueAppStateWrite(() => snapshot);
+		} catch (error) {
+			return Promise.reject(error);
+		}
 	}
 
-	updateAppState(update: (current: TAppState) => TAppState): void {
-		this.agent.updateAppState(update);
+	updateAppState(update: (current: TAppState) => TAppState): Promise<void> {
+		return this.enqueueAppStateWrite((current) => update(current));
 	}
 
 	/** 唯一的观察出口：执行器事件与本层自己产生的事件都从这里出去。 */
@@ -177,18 +177,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		};
 	}
 
-	/** 显式初始化与首次 run 共用 AgentExtensionRegistry 的 single-flight Promise。 */
-	initialize(): Promise<void> {
-		return this.ensureInitialized();
-	}
-
-	/** AgentExtension 初始化期间唯一开放的 hook mutator。 */
-	registerHooks(extension: AgentExtension, hooks: AgentHookMap): void {
-		this.extensions.registerHooks(extension, hooks);
-	}
-
 	invoke(input: AgentInput): Promise<AgentMessage[]> {
-		return this.ensureInitialized().then(() => this.agent.invoke(input));
+		return this.agent.invoke(input);
 	}
 
 	/**
@@ -238,11 +228,14 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		return this.agent.waitForIdle();
 	}
 
-	private ensureInitialized(): Promise<void> {
-		return this.extensions.initialize(this, (hooks) => {
-			this.hooks.append(hooks);
-			for (const listener of hooks.onEvent ?? []) this.listeners.add(listener);
+	private enqueueAppStateWrite(resolveNext: (current: TAppState) => TAppState): Promise<void> {
+		const write = this.appStateWrites.then(async () => {
+			const next = cloneJson(resolveNext(this.agent.state.appState));
+			await this.ledger.appendAppState(next);
+			this.agent.setAppState(next);
 		});
+		this.appStateWrites = write.catch(() => {});
+		return write;
 	}
 
 	/**
@@ -404,7 +397,6 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 	/** 关键写入：抛出即让整次 run 失败，对应的事件也不会对外发布。 */
 	private async persist(event: CoreAgentEvent): Promise<void> {
 		if (event.type === "message_end") await this.ledger.appendMessage(event.message);
-		if (event.type === "agent_end") await this.ledger.appendAppState(cloneJson(this.agent.state.appState));
 	}
 
 	/**

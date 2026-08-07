@@ -22,7 +22,7 @@ Jai Mono 是 PandaWork 的 TypeScript monorepo。它同时包含底层的 provid
 - 持久化 session、Todo 进度、输出文件和 context compaction
 - Anthropic、OpenAI Responses 以及 OpenAI-compatible provider 适配层
 - 可配置 API provider 和模型，也可连接兼容 OpenAI API 的本地或远程服务
-- 可扩展的 Agent hooks、extensions、skills 和 subagent delegation
+- 构造期显式装配的 Agent hooks、skills 和 subagent delegation
 - 明暗主题，以及对 `prefers-reduced-motion` 的支持
 
 ## Architecture
@@ -120,7 +120,7 @@ Defines common messages, content blocks, tool schemas, model metadata, usage and
 
 ### `@jai/agent`
 
-Provides the `Agent` facade and lower-level `CoreAgent`, including invocation, streaming, steering, follow-ups and abort. The harness adds Node execution environments, six general-purpose workspace tools, hooks, extensions, session stores and context compaction. `FileSessionStore` is available from `@jai/agent/node`.
+Provides the `Agent` facade and lower-level `CoreAgent`, including invocation, streaming, steering, follow-ups and abort. The harness adds Node execution environments, six general-purpose workspace tools, hooks, session stores and context compaction. Tools and hooks are assembled explicitly when an Agent is constructed; the package has no runtime Extension registry. `FileSessionStore` is available from `@jai/agent/node`.
 
 ### `@jai/coding`
 

@@ -17,7 +17,7 @@ describe("toSnapshot", () => {
 	test("carries durable state only", async () => {
 		const agent = createAgent();
 		await agent.invoke("hello");
-		agent.updateAppState(() => ({ resolved: true }));
+		await agent.updateAppState(() => ({ resolved: true }));
 
 		const snapshot = toSnapshot("s1", agent.state, "2026-01-01T00:00:00.000Z");
 

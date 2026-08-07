@@ -16,6 +16,14 @@ _Avoid_: Task, work item
 A single parent Agent run triggered by one user message, from execution start until the Agent becomes idle. A queued message starts a new round.
 _Avoid_: Todo, work item
 
+**Session App State**:
+JSON business state that is restored and persisted with a Session. Agent owns its current authoritative value, while Coding Agent defines its business meaning.
+_Avoid_: Extension state, UI state, transcript
+
+**Agent Runtime State**:
+Execution-only state such as running status, streaming messages, and pending tool calls. It is distinct from Session App State and is not persisted as business state.
+_Avoid_: app state, session data
+
 ## Permission System
 
 **Permission rule**:

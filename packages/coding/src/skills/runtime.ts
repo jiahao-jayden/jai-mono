@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { open, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import type { AgentEvent, AgentExtension, AgentInput, AgentTool } from "@jai/agent";
+import type { AgentEvent, AgentEventListener, AgentInput, AgentTool } from "@jai/agent";
 import { Type } from "@sinclair/typebox";
 import { TaggedError } from "better-result";
 import {
@@ -51,7 +51,8 @@ export interface SlashInvocation {
 
 export class CodingSkillsRuntime {
 	readonly catalog: CodingSkillCatalog;
-	readonly extension: AgentExtension;
+	readonly tool: AgentTool;
+	readonly onEvent: AgentEventListener;
 	readonly #commandNames: ReadonlySet<string>;
 	#nextSnapshot?: CodingSkillCatalogSnapshot;
 	#activeSnapshot?: CodingSkillCatalogSnapshot;
@@ -60,17 +61,8 @@ export class CodingSkillsRuntime {
 	private constructor(catalog: CodingSkillCatalog, commandNames: readonly string[]) {
 		this.catalog = catalog;
 		this.#commandNames = new Set(commandNames);
-		const tool = this.#createTool();
-		const extension: AgentExtension = {
-			name: "coding-skills",
-			tools: [tool],
-			initialize: (agent) => {
-				agent.registerHooks(extension, {
-					onEvent: [(event) => this.#onEvent(event)],
-				});
-			},
-		};
-		this.extension = extension;
+		this.tool = this.#createTool();
+		this.onEvent = (event) => this.#onEvent(event);
 	}
 
 	static async create(options: CodingSkillsRuntimeOptions): Promise<CodingSkillsRuntime> {

@@ -1,11 +1,9 @@
-import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import {
 	Agent,
 	type AgentCompactionOptions,
 	type AgentEvent,
 	type AgentEventListener,
-	type AgentExtension,
 	type AgentHookMap,
 	type AgentInput,
 	type AgentMessage,
@@ -70,7 +68,6 @@ export interface CodingAgentRuntimeOptions {
 	readonly toolExecution?: ToolExecutionMode;
 	readonly compaction?: AgentCompactionOptions;
 	readonly hooks?: AgentHookMap;
-	readonly extensions?: readonly AgentExtension[];
 	readonly onObserverError?: (info: ObserverErrorInfo<AgentEvent>) => void;
 }
 
@@ -134,10 +131,6 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 
 	get state() {
 		return this.#agent.state;
-	}
-
-	initialize(): Promise<void> {
-		return this.#agent.initialize();
 	}
 
 	invoke(input: AgentInput): Promise<AgentMessage[]> {
@@ -220,13 +213,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			items: items.map((item) => ({ ...item })),
 		};
 		const next = { ...agent.state.appState, todos } as TAppState;
-		await sessionHandle.append({
-			type: "app_state",
-			id: `${options.sessionId}:todos:${randomUUID()}`,
-			timestamp: new Date(todos.updatedAt).toISOString(),
-			value: next,
-		});
-		agent.setAppState(next);
+		await agent.setAppState(next);
 		return todos;
 	});
 	const hooks = resolvedAgentOptions.hooks;
@@ -295,6 +282,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 					...(options.executionContext.localFileAccess
 						? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
 						: []),
+					...(childSkills ? [childSkills.tool] : []),
 				],
 				instructions: [resolvedInstructions, SUBAGENT_INSTRUCTIONS].filter(Boolean).join("\n\n"),
 				temperature: resolvedAgentOptions.temperature,
@@ -303,8 +291,10 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				maxIterations: resolvedAgentOptions.maxIterations,
 				toolExecution: resolvedAgentOptions.toolExecution,
 				compaction: resolvedAgentOptions.compaction,
-				hooks: { aroundToolCall: childAroundToolCall },
-				extensions: childSkills ? [childSkills.extension] : [],
+				hooks: {
+					aroundToolCall: childAroundToolCall,
+					onEvent: childSkills ? [childSkills.onEvent] : [],
+				},
 				onObserverError: resolvedAgentOptions.onObserverError,
 			});
 		} catch (error) {
@@ -339,6 +329,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			...(options.executionContext.localFileAccess
 				? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
 				: []),
+			...(skills ? [skills.tool] : []),
 		],
 		sessionHandle,
 		instructions: resolvedInstructions,
@@ -352,8 +343,8 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			...hooks,
 			beforeModelCall,
 			aroundToolCall,
+			onEvent: [...(hooks?.onEvent ?? []), ...(skills ? [skills.onEvent] : [])],
 		},
-		extensions: [...(skills ? [skills.extension] : []), ...(resolvedAgentOptions.extensions ?? [])],
 		onObserverError: resolvedAgentOptions.onObserverError,
 	});
 	const stopConfigWatch = configStore.watch((event) => {

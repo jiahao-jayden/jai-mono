@@ -342,6 +342,7 @@ describe("createCodingAgent", () => {
 
 	test("SpawnAgent 使用隔离上下文并把最终文本返回父 Agent", async () => {
 		const fixture = await createFixture();
+		await writeSkill(join(fixture.configOptions.homeDir, ".agents", "skills"), "review", "Review changes");
 		const contexts: Context[] = [];
 		const codingAgent = await createCodingAgent({
 			...fixture,
@@ -352,6 +353,7 @@ describe("createCodingAgent", () => {
 							title: "Inspect repository",
 							task: "Read the workspace and report the result.",
 						}),
+						assistantToolCall("Skill", { skill: "review" }),
 						assistant("Child inspection result."),
 						assistant("Parent received the result."),
 					],
@@ -365,13 +367,15 @@ describe("createCodingAgent", () => {
 			await codingAgent.invoke("Parent-only conversation context.");
 
 			expect(contexts[0]?.tools.map((tool) => tool.name)).toContain("SpawnAgent");
+			expect(contexts[1]?.tools.map((tool) => tool.name)).toContain("Skill");
 			expect(contexts[1]?.tools.map((tool) => tool.name)).not.toContain("SpawnAgent");
 			expect(contexts[1]?.messages[0]).toMatchObject({
 				role: "user",
 				content: "Read the workspace and report the result.",
 			});
 			expect(JSON.stringify(contexts[1]?.messages)).not.toContain("Parent-only conversation context.");
-			expect(JSON.stringify(contexts[2]?.messages)).toContain("Child inspection result.");
+			expect(JSON.stringify(contexts[2]?.messages)).toContain("# Review changes");
+			expect(JSON.stringify(contexts[3]?.messages)).toContain("Child inspection result.");
 		} finally {
 			codingAgent.close();
 		}

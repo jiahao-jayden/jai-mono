@@ -111,16 +111,6 @@ export class HookHost {
 		this.onEvent = [...(hooks?.onEvent ?? [])];
 	}
 
-	/** AgentExtension 初始化成功后一次性提交；调用方负责保证运行前冻结。 */
-	append(hooks: AgentHookMap): void {
-		this.beforeModelCall.push(...(hooks.beforeModelCall ?? []));
-		this.shouldCompact.push(...(hooks.shouldCompact ?? []));
-		this.aroundCompact.push(...(hooks.aroundCompact ?? []));
-		this.onModelError.push(...(hooks.onModelError ?? []));
-		this.aroundToolCall.push(...(hooks.aroundToolCall ?? []));
-		this.onEvent.push(...(hooks.onEvent ?? []));
-	}
-
 	/**
 	 * transform chain：后一位 handler 看到前一位的产出。
 	 *
@@ -166,7 +156,7 @@ export class HookHost {
 		return dispatch(0);
 	}
 
-	/** 保持单个稳定 middleware seam，使 AgentExtension 可在 CoreAgent 构造后、首次 run 前提交链条。 */
+	/** 保持单个稳定 middleware seam，使 Agent 在构造期装配的 middleware 共享一条执行链。 */
 	runAroundToolCall(ctx: ToolCallContext, base: () => Promise<AgentToolResult>): Promise<AgentToolResult> {
 		const dispatch = (index: number): Promise<AgentToolResult> => {
 			const middleware = this.aroundToolCall[index];

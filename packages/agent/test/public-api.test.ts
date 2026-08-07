@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import packageJson from "../package.json";
-import type { AgentEvent, AgentExtension, AgentHookMap, AgentOptions, AgentRun } from "../src";
+import type { AgentEvent, AgentHookMap, AgentOptions, AgentRun } from "../src";
 import * as root from "../src";
 import type { CoreAgentEvent, CoreAgentOptions, CoreAgentRun } from "../src/core";
 import * as core from "../src/core";
@@ -40,14 +40,12 @@ describe("public API", () => {
 		const options: AgentOptions = { model, provider: providerFor([]) };
 		const coreOptions: CoreAgentOptions = { model, provider: providerFor([]) };
 		const hooks: AgentHookMap = { beforeModelCall: [] };
-		const extension: AgentExtension = { name: "example", initialize: () => {} };
 		const event: AgentEvent = { type: "compaction_start", trigger: "threshold", tokensBefore: 1 };
 		const coreEvent: CoreAgentEvent = { type: "agent_start" };
 
 		expect(new root.Agent(options)).toBeInstanceOf(root.Agent);
 		expect(new core.CoreAgent(coreOptions)).toBeInstanceOf(core.CoreAgent);
 		expect(hooks.beforeModelCall).toEqual([]);
-		expect(extension.name).toBe("example");
 		expect([event.type, coreEvent.type]).toEqual(["compaction_start", "agent_start"]);
 	});
 

@@ -14,12 +14,12 @@ describe("Agent", () => {
 			instructions: testInstructions,
 		});
 
-		agent.updateAppState(() => ({ resolved: true }));
+		await agent.updateAppState(() => ({ resolved: true }));
 		await agent.invoke("hello");
 
 		expect(agent.state.systemPrompt).toBe(testInstructions);
 		const record = await store.load("s1");
-		expect(record?.snapshot.entries.map((entry) => entry.type)).toEqual(["message", "message", "app_state"]);
+		expect(record?.snapshot.entries.map((entry) => entry.type)).toEqual(["app_state", "message", "message"]);
 		expect(record?.snapshot.appState).toEqual({ resolved: true });
 	});
 
@@ -45,6 +45,52 @@ describe("Agent", () => {
 		expect(second.state.isRunning).toBe(false);
 		const record = await store.load("s1");
 		expect(record?.snapshot.entries.filter((entry) => entry.type === "message")).toHaveLength(4);
+	});
+
+	test("serializes concurrent App State mutations and persists each committed value", async () => {
+		const store = new InMemorySessionStore<AppState>();
+		const agent = new Agent<AppState>({
+			model,
+			provider: providerFor([]),
+			sessionHandle: await openSession(store, "s1", defaultAppState),
+		});
+
+		await Promise.all([
+			agent.updateAppState((current) => ({ ...current, resolved: true })),
+			agent.updateAppState((current) => ({ ...current, resolved: false })),
+		]);
+
+		const record = await store.load("s1");
+		expect(agent.state.appState).toEqual({ resolved: false });
+		expect(record?.snapshot.entries.filter((entry) => entry.type === "app_state")).toHaveLength(2);
+		expect(record?.snapshot.appState).toEqual({ resolved: false });
+	});
+
+	test("copies setAppState input before the write is queued", async () => {
+		const store = new InMemorySessionStore<AppState>();
+		const agent = new Agent<AppState>({
+			model,
+			provider: providerFor([]),
+			sessionHandle: await openSession(store, "s1", defaultAppState),
+		});
+		const next = { resolved: true };
+
+		const write = agent.setAppState(next);
+		next.resolved = false;
+		await write;
+
+		expect(agent.state.appState).toEqual({ resolved: true });
+	});
+
+	test("failed App State persistence leaves the in-memory value unchanged", async () => {
+		const store = new InMemorySessionStore<AppState>();
+		const handle = await openSession(store, "s1", defaultAppState);
+		const agent = new Agent<AppState>({ model, provider: providerFor([]), sessionHandle: handle });
+		const record = await store.load("s1");
+		await store.append("s1", messageEntry("other", "x"), record?.revision ?? "");
+
+		await expect(agent.updateAppState(() => ({ resolved: true }))).rejects.toThrow(/revision conflict/);
+		expect(agent.state.appState).toEqual(defaultAppState);
 	});
 
 	test("uses the provided instructions, not the snapshot", async () => {
@@ -142,7 +188,7 @@ describe("Agent", () => {
 
 		expect(agent.state.messages).toEqual([]);
 		const record = await store.load("s1");
-		expect(record?.snapshot.entries).toHaveLength(3);
+		expect(record?.snapshot.entries).toHaveLength(2);
 	});
 
 	test("refuses a session handle alongside a second source of durable state", async () => {
