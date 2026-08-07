@@ -41,7 +41,7 @@ interface TriggerRowProps extends HTMLAttributes<HTMLButtonElement> {
 }
 
 /**
- * Trigger row: hover background, dual-layer variable-weight label, and a
+ * Trigger row: hover background, stable-weight label, and a
  * chevron that rotates from right (closed) to down (open). Mirrors the
  * library's accordion trigger styling.
  */
@@ -55,7 +55,8 @@ const TriggerRow = forwardRef<HTMLButtonElement, TriggerRowProps>(
         <Collapsible.Trigger
           ref={ref}
           className={cn(
-            `group relative z-10 flex cursor-pointer select-none items-center gap-1.5 px-1 py-1.5 outline-none ${shape.item}`,
+            "group relative z-10 flex cursor-pointer select-none items-center gap-1.5 px-1 py-1.5 outline-none",
+            shape.item,
             "text-muted-foreground transition-colors duration-80 hover:bg-hover hover:text-foreground",
             "focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] focus-visible:ring-offset-0",
             className
@@ -63,8 +64,8 @@ const TriggerRow = forwardRef<HTMLButtonElement, TriggerRowProps>(
           {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}
         >
           <span
-            className="text-left text-[12.5px] transition-[font-variation-settings] duration-80"
-            style={{ fontVariationSettings: open ? fontWeights.medium : fontWeights.normal }}
+            className="text-left text-[12.5px]"
+            style={{ fontVariationSettings: fontWeights.medium }}
           >
             {children}
           </span>

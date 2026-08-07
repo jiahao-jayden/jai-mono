@@ -1,5 +1,6 @@
 import type { ChatMessageInput, ChatStatus } from "@/hooks/use-chat";
 import { useIcons } from "@/lib/icon-context";
+import { cn } from "@/lib/utils";
 import type { QueuedMessage } from "@/stores/chat";
 import type { DesktopAgentMode, DesktopProject, DesktopProviderConfigSnapshot } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
@@ -73,7 +74,7 @@ export function ChatComposer({
 	const icons = useIcons();
 	const PlusIcon = icons.plus;
 	const SendIcon = icons.send;
-	const StopIcon = icons["stop-circle"];
+	const StopIcon = icons.stop;
 	const hasDraft = value.trim().length > 0;
 	const isStreaming = status === "streaming";
 	const isSubmitting = status === "submitted";
@@ -81,6 +82,8 @@ export function ChatComposer({
 	const submitLabel = stopAction ? "Stop response" : isStreaming ? "Queue message" : "Send message";
 	const composerDisabled = disabled || isSubmitting;
 	const submitDisabled = composerDisabled || (!stopAction && !hasDraft);
+	const submitVariant = stopAction ? "secondary" : "accent";
+	const submitClassName = cn(stopAction && "text-primary-2");
 	const onSubmit = () => {
 		if (stopAction) {
 			void onStop();
@@ -110,13 +113,18 @@ export function ChatComposer({
 				submitSlot={
 					<Button
 						type="button"
-						variant="accent"
+						variant={submitVariant}
 						size="icon-sm"
+						className={submitClassName}
 						onClick={onSubmit}
 						disabled={submitDisabled}
 						aria-label={submitLabel}
 					>
-						{stopAction ? <StopIcon size={18} /> : <SendIcon size={19} />}
+						{stopAction ? (
+							<StopIcon className="block !size-[11px] [&_path]:fill-current [&_path]:stroke-none" />
+						) : (
+							<SendIcon size={19} />
+						)}
 					</Button>
 				}
 				leftSlot={

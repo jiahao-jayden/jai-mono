@@ -60,6 +60,7 @@ import {
 	SquareLock01Icon,
 	StarIcon,
 	StopCircleIcon,
+	StopIcon,
 	Sun01Icon,
 	Tick01Icon,
 	UserGroupIcon,
@@ -141,6 +142,7 @@ export type IconName =
 	| "trash"
 	| "file-code"
 	| "layers"
+	| "stop"
 	| "stop-circle"
 	| "shield-alert"
 	| "inbox"
@@ -220,6 +222,7 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	trash: createHugeicon(Delete02Icon),
 	"file-code": createHugeicon(FileCodeIcon),
 	layers: createHugeicon(Layers01Icon),
+	stop: createHugeicon(StopIcon),
 	"stop-circle": createHugeicon(StopCircleIcon),
 	"shield-alert": createHugeicon(Alert02Icon),
 	inbox: createHugeicon(InboxIcon),

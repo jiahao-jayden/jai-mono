@@ -26,17 +26,17 @@ type WorkProcessRow =
 type ToolCategory = "search" | "read" | "update" | "command" | "skill" | "other";
 
 const MemoizedTranscriptItem = memo(TranscriptItem);
-const MemoizedWorkProcess = memo(WorkProcess, sameWorkGroup);
+const MemoizedWorkProcess = memo(WorkProcess, sameWorkProcess);
 
 export function TranscriptItems({ items, loading }: { items: readonly DesktopTranscriptItem[]; loading: boolean }) {
 	const animatedItemIds = useTranscriptItemAnimations(items, loading);
 	const rows = groupTranscriptItems(items);
 
-	return rows.map((row) =>
+	return rows.map((row, index) =>
 		"kind" in row ? (
 			<MemoizedTranscriptItem key={row.id} animate={animatedItemIds.has(row.id)} item={row} />
 		) : (
-			<MemoizedWorkProcess key={row.id} group={row} />
+			<MemoizedWorkProcess key={row.id} group={row} settled={index < rows.length - 1} />
 		),
 	);
 }
@@ -64,7 +64,7 @@ export function groupTranscriptItems(items: readonly DesktopTranscriptItem[]): (
 
 export function TranscriptItem({ item, animate = false }: { item: DesktopTranscriptItem; animate?: boolean }) {
 	if (item.kind === "thinking" || item.kind === "narration") {
-		return <WorkProcess group={{ id: `work:${item.id}`, items: [item] }} />;
+		return <WorkProcess group={{ id: `work:${item.id}`, items: [item] }} settled={false} />;
 	}
 	if (item.kind === "message") {
 		if (item.role === "toolResult") return null;
@@ -148,7 +148,7 @@ function useTranscriptItemAnimations(items: readonly DesktopTranscriptItem[], lo
 	return animatedItemIds;
 }
 
-function WorkProcess({ group }: { readonly group: WorkGroup }) {
+function WorkProcess({ group, settled }: { readonly group: WorkGroup; readonly settled: boolean }) {
 	const running = group.items.some(
 		(item) =>
 			(item.kind === "thinking" && item.status === "streaming") ||
@@ -158,8 +158,12 @@ function WorkProcess({ group }: { readonly group: WorkGroup }) {
 	const [open, setOpen] = useState(running);
 
 	useEffect(() => {
-		setOpen(running);
-	}, [running]);
+		if (running) {
+			setOpen(true);
+		} else if (settled) {
+			setOpen(false);
+		}
+	}, [running, settled]);
 
 	const title = workGroupTitle(group.items, running);
 	const rows = workProcessRows(group.items);
@@ -222,7 +226,11 @@ export function workProcessRows(items: readonly WorkItem[]): readonly WorkProces
 	return rows;
 }
 
-function sameWorkGroup(previous: { readonly group: WorkGroup }, next: { readonly group: WorkGroup }): boolean {
+function sameWorkProcess(
+	previous: { readonly group: WorkGroup; readonly settled: boolean },
+	next: { readonly group: WorkGroup; readonly settled: boolean },
+): boolean {
+	if (previous.settled !== next.settled) return false;
 	if (previous.group.id !== next.group.id || previous.group.items.length !== next.group.items.length) return false;
 	return previous.group.items.every((item, index) => item === next.group.items[index]);
 }

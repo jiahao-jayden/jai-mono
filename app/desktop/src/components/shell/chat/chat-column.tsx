@@ -340,9 +340,17 @@ export function ChatColumn({
 								<div className="mx-auto flex w-full max-w-190 flex-col gap-2 py-5">
 									{chat.isLoading ? <TranscriptLoading /> : null}
 									{!chat.isLoading && chat.messages.length === 0 ? (
-										<p className="py-16 text-center text-[13px] text-muted-foreground">这个会话还没有消息。</p>
+										<p className="py-16 text-center text-[13px] text-muted-foreground">
+											这个会话还没有消息。
+										</p>
 									) : null}
 									<TranscriptItems items={transcriptItems} loading={chat.isLoading} />
+									{isAgentWorking ? (
+										<div className="flex items-center gap-2 px-1 py-1 text-muted-foreground" role="status">
+											<ThinkingOrb aria-hidden size={20} state="solving" />
+											<span className="shimmer-text text-[12px] font-medium">Agent 正在处理…</span>
+										</div>
+									) : null}
 									{transcriptScroll.tailSpace > 0 ? (
 										<div
 											aria-hidden="true"
@@ -376,45 +384,34 @@ export function ChatColumn({
 									/>
 								) : null}
 							</AnimatePresence>
-							<div className="relative">
-								{isAgentWorking ? (
-									<div
-										className="pointer-events-none absolute bottom-full left-0 z-20 mb-2 flex items-center gap-2 rounded-full bg-background px-2.5 py-1 shadow-surface-2"
-										role="status"
-									>
-										<ThinkingOrb aria-hidden size={20} state="solving" />
-										<span className="shimmer-text text-[12px] font-medium">Agent 正在处理…</span>
-									</div>
-								) : null}
-								<ChatComposer
-									value={draft}
-									onValueChange={onDraftChange}
-									onSend={chat.sendMessage}
-									onStop={chat.stop}
-									status={chat.status}
-									disabled={project?.available === false}
-									queue={queue}
-									onEditQueuedMessage={onEditQueuedMessage}
-									onRemoveQueuedMessage={onRemoveQueuedMessage}
-									onReorderQueuedMessages={onReorderQueuedMessages}
-									project={project}
-									projects={projects}
-									projectBusy={projectBusy}
-									projectLoading={projectLoading}
-									projectLoadError={projectLoadError}
-									onChooseProject={onChooseProject}
-									onAddProject={onAddProject}
-									onRetryProjects={onRetryProjects}
-									providerConfig={providerConfig}
-									selectedModelRef={selectedModelRef}
-									selectedAgentMode={selectedAgentMode}
-									providerLoading={providerLoading}
-									providerError={providerError}
-									onOpenProviderSettings={onOpenProviderSettings}
-									onSelectProviderModel={onSelectProviderModel}
-									onSelectAgentMode={onSelectAgentMode}
-								/>
-							</div>
+							<ChatComposer
+								value={draft}
+								onValueChange={onDraftChange}
+								onSend={chat.sendMessage}
+								onStop={chat.stop}
+								status={chat.status}
+								disabled={project?.available === false}
+								queue={queue}
+								onEditQueuedMessage={onEditQueuedMessage}
+								onRemoveQueuedMessage={onRemoveQueuedMessage}
+								onReorderQueuedMessages={onReorderQueuedMessages}
+								project={project}
+								projects={projects}
+								projectBusy={projectBusy}
+								projectLoading={projectLoading}
+								projectLoadError={projectLoadError}
+								onChooseProject={onChooseProject}
+								onAddProject={onAddProject}
+								onRetryProjects={onRetryProjects}
+								providerConfig={providerConfig}
+								selectedModelRef={selectedModelRef}
+								selectedAgentMode={selectedAgentMode}
+								providerLoading={providerLoading}
+								providerError={providerError}
+								onOpenProviderSettings={onOpenProviderSettings}
+								onSelectProviderModel={onSelectProviderModel}
+								onSelectAgentMode={onSelectAgentMode}
+							/>
 							<ComposerError message={chat.error || projectError} />
 						</div>
 					</div>
