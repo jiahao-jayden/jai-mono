@@ -1,6 +1,6 @@
 import { getErrorMessage } from "@jai/common";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
-import { animate, motion, useMotionValue, useReducedMotion } from "motion/react";
+import { AnimatePresence, animate, type MotionValue, motion, useMotionValue, useReducedMotion } from "motion/react";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
 	type PointerEvent as ReactPointerEvent,
@@ -37,14 +37,17 @@ import { ProjectPage, ProjectsPage } from "./projects-page";
 import { ProviderSettingsDialog } from "./settings/provider-settings-dialog";
 import { Sidebar } from "./sidebar/sidebar";
 import { TaskPanel } from "./task-panel";
+import { WorkspacePanel } from "./workspace-panel";
 
 const MIN_SIDEBAR_WIDTH = 200;
 const DEFAULT_SIDEBAR_WIDTH = 264;
 const MAX_SIDEBAR_WIDTH = 420;
 const MIN_CHAT_WIDTH = 420;
-const TASK_PANEL_WIDTH = 336;
+const MIN_RIGHT_PANEL_WIDTH = 280;
+const DEFAULT_RIGHT_PANEL_WIDTH = 336;
+const MAX_RIGHT_PANEL_WIDTH = 420;
 const KEYBOARD_RESIZE_STEP = 16;
-const SIDEBAR_SPRING = {
+const COLUMN_RESIZE_SPRING = {
 	type: "spring" as const,
 	stiffness: 520,
 	damping: 34,
@@ -57,7 +60,7 @@ export function AppShell() {
 	const location = useLocation();
 	const navigate = useNavigate();
 	const [sidebarOpen, setSidebarOpen] = useState(true);
-	const [rightPanelOpen, setRightPanelOpen] = useState(true);
+	const [workspacePanelOpen, setWorkspacePanelOpen] = useState(false);
 	const [providerSettingsOpen, setProviderSettingsOpen] = useState(false);
 	const storedSessionId = useDesktopChatStore((state) => state.activeSessionId);
 	const draft = useDesktopChatStore(selectDraft);
@@ -147,8 +150,33 @@ export function AppShell() {
 	});
 	const shellRef = useRef<HTMLDivElement>(null);
 	const chatVisible = activeView === "chat";
-	const rightPanelVisible = chatVisible && rightPanelOpen && !!session;
-	const sidebarResize = useSidebarResize(shellRef, rightPanelVisible);
+	const rightPanelVisible = chatVisible && !!session;
+	const sidebarWidth = useMotionValue(DEFAULT_SIDEBAR_WIDTH);
+	const rightPanelWidth = useMotionValue(DEFAULT_RIGHT_PANEL_WIDTH);
+	const fixedTaskPanelWidth = useMotionValue(DEFAULT_RIGHT_PANEL_WIDTH);
+	const activeRightPanelWidth = workspacePanelOpen ? rightPanelWidth : fixedTaskPanelWidth;
+	const sidebarResize = useColumnResize(shellRef, sidebarWidth, {
+		defaultWidth: DEFAULT_SIDEBAR_WIDTH,
+		minWidth: MIN_SIDEBAR_WIDTH,
+		maxWidth: MAX_SIDEBAR_WIDTH,
+		direction: 1,
+		oppositeWidth: activeRightPanelWidth,
+		oppositeVisible: rightPanelVisible,
+		resizingClassName: "sidebar-resizing",
+	});
+	const rightPanelResize = useColumnResize(shellRef, rightPanelWidth, {
+		defaultWidth: DEFAULT_RIGHT_PANEL_WIDTH,
+		minWidth: MIN_RIGHT_PANEL_WIDTH,
+		maxWidth: MAX_RIGHT_PANEL_WIDTH,
+		direction: -1,
+		oppositeWidth: sidebarWidth,
+		oppositeVisible: sidebarOpen,
+		resizingClassName: "right-panel-resizing",
+	});
+	const reduceMotion = useReducedMotion() ?? false;
+	const panelMotionInitial = reduceMotion ? { opacity: 1 } : { opacity: 0, transform: "translateX(10px)" };
+	const panelMotionExit = reduceMotion ? { opacity: 0 } : { opacity: 0, transform: "translateX(-6px)" };
+	const panelMotionTransition = { duration: reduceMotion ? 0 : 0.18, ease: [0.23, 1, 0.32, 1] as const };
 
 	const updateProviderConfig = async (input: DesktopProviderConfigInput) => {
 		const snapshot = await desktop.provider.save(input);
@@ -304,7 +332,7 @@ export function AppShell() {
 					onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
 				/>
 			) : null}
-			{sidebarOpen ? <SidebarResizeHandle {...sidebarResize} /> : null}
+			{sidebarOpen ? <ColumnResizeHandle resize={sidebarResize} side="left" /> : null}
 			<Routes>
 				<Route
 					path="/chats"
@@ -416,9 +444,9 @@ export function AppShell() {
 							projectLoadError={projectLoadError}
 							projectError={chatProjectError}
 							sidebarOpen={sidebarOpen}
-							rightPanelOpen={rightPanelVisible}
+							workspacePanelOpen={workspacePanelOpen}
 							onToggleSidebar={() => setSidebarOpen(true)}
-							onToggleRightPanel={() => setRightPanelOpen((open) => !open)}
+							onToggleWorkspacePanel={() => setWorkspacePanelOpen((open) => !open)}
 							onOpenProviderSettings={openProviderSettings}
 							onSelectProviderModel={setSelectedModelRef}
 							onSelectAgentMode={setSelectedAgentMode}
@@ -431,8 +459,44 @@ export function AppShell() {
 				/>
 				<Route path="*" element={<Navigate to="/chat/new" replace />} />
 			</Routes>
+			{rightPanelVisible && workspacePanelOpen ? (
+				<ColumnResizeHandle resize={rightPanelResize} side="right" />
+			) : null}
 			{rightPanelVisible ? (
-				<TaskPanel status={chat.status === "streaming" ? "running" : "idle"} todos={chat.todos} project={project} />
+				<AnimatePresence initial={false} mode="wait">
+					{workspacePanelOpen ? (
+						<motion.div
+							key="workspace-panel"
+							className="min-w-0 shrink-0"
+							style={{ width: rightPanelResize.width }}
+							initial={panelMotionInitial}
+							animate={{ opacity: 1, transform: "translateX(0%)" }}
+							exit={panelMotionExit}
+							transition={panelMotionTransition}
+						>
+							<WorkspacePanel
+								status={chat.status === "streaming" ? "running" : "idle"}
+								todos={chat.todos}
+								project={project}
+							/>
+						</motion.div>
+					) : (
+						<motion.div
+							key="task-panel"
+							className="w-84 shrink-0"
+							initial={panelMotionInitial}
+							animate={{ opacity: 1, transform: "translateX(0%)" }}
+							exit={panelMotionExit}
+							transition={panelMotionTransition}
+						>
+							<TaskPanel
+								status={chat.status === "streaming" ? "running" : "idle"}
+								todos={chat.todos}
+								project={project}
+							/>
+						</motion.div>
+					)}
+				</AnimatePresence>
 			) : null}
 			<ProviderSettingsDialog
 				open={providerSettingsOpen}
@@ -449,51 +513,86 @@ export function AppShell() {
 	);
 }
 
-function rubberBand(distance: number, dimension = DEFAULT_SIDEBAR_WIDTH, constant = 0.55): number {
+function rubberBand(distance: number, dimension: number, constant = 0.55): number {
 	return (distance * dimension * constant) / (dimension + constant * distance);
 }
 
-function applyResizeResistance(value: number, min: number, max: number): number {
-	if (value < min) return min - rubberBand(min - value);
-	if (value > max) return max + rubberBand(value - max);
+function applyResizeResistance(value: number, min: number, max: number, dimension: number): number {
+	if (value < min) return min - rubberBand(min - value, dimension);
+	if (value > max) return max + rubberBand(value - max, dimension);
 	return value;
 }
 
-function useSidebarResize(stageRef: RefObject<HTMLDivElement | null>, rightPanelVisible: boolean) {
-	const width = useMotionValue(DEFAULT_SIDEBAR_WIDTH);
+interface ColumnResizeOptions {
+	readonly defaultWidth: number;
+	readonly minWidth: number;
+	readonly maxWidth: number;
+	readonly direction: 1 | -1;
+	readonly oppositeWidth: MotionValue<number>;
+	readonly oppositeVisible: boolean;
+	readonly resizingClassName: string;
+}
+
+interface ColumnResizeLimits {
+	readonly min: number;
+	readonly max: number;
+}
+
+function useColumnResize(
+	stageRef: RefObject<HTMLDivElement | null>,
+	width: MotionValue<number>,
+	{
+		defaultWidth,
+		minWidth,
+		maxWidth,
+		direction,
+		oppositeWidth,
+		oppositeVisible,
+		resizingClassName,
+	}: ColumnResizeOptions,
+) {
 	const reduceMotion = useReducedMotion() ?? false;
-	const dragRef = useRef({ pointerId: -1, startX: 0, startWidth: DEFAULT_SIDEBAR_WIDTH });
-	const [limits, setLimits] = useState({ min: MIN_SIDEBAR_WIDTH, max: MAX_SIDEBAR_WIDTH });
-	const [announcedWidth, setAnnouncedWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+	const dragRef = useRef({
+		pointerId: -1,
+		startX: 0,
+		startWidth: defaultWidth,
+		limits: { min: minWidth, max: maxWidth },
+	});
+	const [limits, setLimits] = useState<ColumnResizeLimits>({ min: minWidth, max: maxWidth });
+	const [announcedWidth, setAnnouncedWidth] = useState(defaultWidth);
 	const [isDragging, setIsDragging] = useState(false);
 
+	const calculateLimits = useCallback((): ColumnResizeLimits => {
+		const stage = stageRef.current;
+		if (!stage) return { min: minWidth, max: maxWidth };
+		const reservedWidth = oppositeVisible ? oppositeWidth.get() : 0;
+		const available = stage.getBoundingClientRect().width - MIN_CHAT_WIDTH - reservedWidth;
+		return { min: minWidth, max: Math.max(minWidth, Math.min(maxWidth, available)) };
+	}, [maxWidth, minWidth, oppositeVisible, oppositeWidth, stageRef]);
+
 	const settle = useCallback(
-		(target: number) => {
-			const bounded = Math.min(limits.max, Math.max(limits.min, target));
+		(target: number, bounds: ColumnResizeLimits) => {
+			const bounded = Math.min(bounds.max, Math.max(bounds.min, target));
 			if (reduceMotion) {
 				width.set(bounded);
 			} else {
-				animate(width, bounded, SIDEBAR_SPRING);
+				animate(width, bounded, COLUMN_RESIZE_SPRING);
 			}
 			setAnnouncedWidth(Math.round(bounded));
 		},
-		[limits.max, limits.min, reduceMotion, width],
+		[reduceMotion, width],
 	);
 
-	// ResizeObserver is the external integration that keeps the elastic boundary
-	// aligned with the actual window and the optional task panel.
 	useEffect(() => {
 		const stage = stageRef.current;
 		if (!stage) return;
 
 		const updateLimits = () => {
-			const reservedWidth = rightPanelVisible ? TASK_PANEL_WIDTH : 0;
-			const available = stage.getBoundingClientRect().width - MIN_CHAT_WIDTH - reservedWidth;
-			const max = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, available));
-			setLimits({ min: MIN_SIDEBAR_WIDTH, max });
-			if (width.get() > max) {
-				width.set(max);
-				setAnnouncedWidth(Math.round(max));
+			const nextLimits = calculateLimits();
+			setLimits(nextLimits);
+			if (width.get() > nextLimits.max) {
+				width.set(nextLimits.max);
+				setAnnouncedWidth(Math.round(nextLimits.max));
 			}
 		};
 
@@ -502,46 +601,53 @@ function useSidebarResize(stageRef: RefObject<HTMLDivElement | null>, rightPanel
 		observer.observe(stage);
 		return () => {
 			observer.disconnect();
-			document.documentElement.classList.remove("sidebar-resizing");
+			document.documentElement.classList.remove(resizingClassName);
 		};
-	}, [rightPanelVisible, stageRef, width]);
+	}, [calculateLimits, resizingClassName, stageRef, width]);
 
 	const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
 		if (event.button !== 0) return;
+		const nextLimits = calculateLimits();
 		event.currentTarget.setPointerCapture(event.pointerId);
 		dragRef.current = {
 			pointerId: event.pointerId,
 			startX: event.clientX,
 			startWidth: width.get(),
+			limits: nextLimits,
 		};
+		setLimits(nextLimits);
 		setIsDragging(true);
-		document.documentElement.classList.add("sidebar-resizing");
+		document.documentElement.classList.add(resizingClassName);
 	};
 
 	const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
 		if (dragRef.current.pointerId !== event.pointerId) return;
-		const nextWidth = dragRef.current.startWidth + event.clientX - dragRef.current.startX;
-		width.set(applyResizeResistance(nextWidth, limits.min, limits.max));
+		const delta = (event.clientX - dragRef.current.startX) * direction;
+		const nextWidth = dragRef.current.startWidth + delta;
+		const dragLimits = dragRef.current.limits;
+		width.set(applyResizeResistance(nextWidth, dragLimits.min, dragLimits.max, defaultWidth));
 	};
 
 	const finishPointerResize = (event: ReactPointerEvent<HTMLDivElement>) => {
 		if (dragRef.current.pointerId !== event.pointerId) return;
 		dragRef.current.pointerId = -1;
 		setIsDragging(false);
-		document.documentElement.classList.remove("sidebar-resizing");
-		settle(width.get());
+		document.documentElement.classList.remove(resizingClassName);
+		settle(width.get(), dragRef.current.limits);
 	};
 
 	const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+		const nextLimits = calculateLimits();
+		setLimits(nextLimits);
 		let nextWidth = width.get();
-		if (event.key === "ArrowLeft") nextWidth -= KEYBOARD_RESIZE_STEP;
-		else if (event.key === "ArrowRight") nextWidth += KEYBOARD_RESIZE_STEP;
-		else if (event.key === "Home") nextWidth = limits.min;
-		else if (event.key === "End") nextWidth = limits.max;
+		if (event.key === "ArrowLeft") nextWidth -= KEYBOARD_RESIZE_STEP * direction;
+		else if (event.key === "ArrowRight") nextWidth += KEYBOARD_RESIZE_STEP * direction;
+		else if (event.key === "Home") nextWidth = nextLimits.min;
+		else if (event.key === "End") nextWidth = nextLimits.max;
 		else return;
 
 		event.preventDefault();
-		settle(nextWidth);
+		settle(nextWidth, nextLimits);
 	};
 
 	return {
@@ -558,22 +664,36 @@ function useSidebarResize(stageRef: RefObject<HTMLDivElement | null>, rightPanel
 	};
 }
 
-function SidebarResizeHandle({
-	width,
-	limits,
-	announcedWidth,
-	isDragging,
-	onPointerDown,
-	onPointerMove,
-	onPointerUp,
-	onPointerCancel,
-	onLostPointerCapture,
-	onKeyDown,
-}: ReturnType<typeof useSidebarResize>) {
+function ColumnResizeHandle({
+	resize,
+	side,
+}: {
+	readonly resize: ReturnType<typeof useColumnResize>;
+	readonly side: "left" | "right";
+}) {
+	const {
+		width,
+		limits,
+		announcedWidth,
+		isDragging,
+		onPointerDown,
+		onPointerMove,
+		onPointerUp,
+		onPointerCancel,
+		onLostPointerCapture,
+		onKeyDown,
+	} = resize;
+	const label = side === "left" ? "调整侧边栏宽度" : "调整右侧面板宽度";
+	const handleClassName = cn("group absolute top-0 bottom-0 z-20 w-6 cursor-col-resize touch-none outline-none", {
+		"left-0 -ml-3": side === "left",
+		"right-0 -mr-3": side === "right",
+	});
+	const handleStyle = side === "left" ? { x: width, outline: "none" } : { right: width, outline: "none" };
+
 	return (
 		<motion.div
 			role="separator"
-			aria-label="调整侧边栏宽度"
+			aria-label={label}
 			aria-orientation="vertical"
 			aria-valuemin={Math.round(limits.min)}
 			aria-valuemax={Math.round(limits.max)}
@@ -581,8 +701,8 @@ function SidebarResizeHandle({
 			aria-valuetext={`${announcedWidth} 像素`}
 			tabIndex={0}
 			data-dragging={isDragging}
-			className="group absolute top-0 bottom-0 left-0 z-20 -ml-3 w-6 cursor-col-resize touch-none outline-none"
-			style={{ x: width, outline: "none" }}
+			className={handleClassName}
+			style={handleStyle}
 			onPointerDown={onPointerDown}
 			onPointerMove={onPointerMove}
 			onPointerUp={onPointerUp}

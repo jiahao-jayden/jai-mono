@@ -12,7 +12,9 @@
 }
 
 html.sidebar-resizing,
-html.sidebar-resizing * {
+html.sidebar-resizing *,
+html.right-panel-resizing,
+html.right-panel-resizing * {
 	cursor: col-resize !important;
 	user-select: none !important;
 }

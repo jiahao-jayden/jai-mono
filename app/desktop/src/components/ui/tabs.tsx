@@ -150,10 +150,12 @@ Tabs.displayName = "Tabs";
 
 /* ─────────────────────── TabsList ─────────────────────── */
 
-type TabsListProps = ComponentPropsWithoutRef<typeof TabsPrimitive.List>;
+interface TabsListProps extends ComponentPropsWithoutRef<typeof TabsPrimitive.List> {
+  indicatorClassName?: string;
+}
 
 const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
-  ({ children, className, ...props }, ref) => {
+  ({ children, className, indicatorClassName, ...props }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const isMouseInside = useRef(false);
     const shape = useShape();
@@ -287,7 +289,8 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
               className={cn(
                 "absolute pointer-events-none",
                 surfaceClasses(indicatorLevel),
-                shape.bg
+                shape.bg,
+                indicatorClassName
               )}
               initial={false}
               animate={{

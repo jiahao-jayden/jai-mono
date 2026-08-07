@@ -63,9 +63,9 @@ interface ChatColumnProps {
 	projectLoadError: boolean;
 	projectError?: string;
 	sidebarOpen: boolean;
-	rightPanelOpen: boolean;
+	workspacePanelOpen: boolean;
 	onToggleSidebar(): void;
-	onToggleRightPanel(): void;
+	onToggleWorkspacePanel(): void;
 	onOpenProviderSettings(): void;
 	onSelectProviderModel(modelRef: string): void;
 	onSelectAgentMode(mode: DesktopAgentMode): void;
@@ -96,9 +96,9 @@ export function ChatColumn({
 	projectLoadError,
 	projectError,
 	sidebarOpen,
-	rightPanelOpen,
+	workspacePanelOpen,
 	onToggleSidebar,
-	onToggleRightPanel,
+	onToggleWorkspacePanel,
 	onOpenProviderSettings,
 	onSelectProviderModel,
 	onSelectAgentMode,
@@ -259,10 +259,11 @@ export function ChatColumn({
 							type="button"
 							variant="ghost"
 							size="icon-sm"
-							onClick={onToggleRightPanel}
-							aria-pressed={rightPanelOpen}
-							aria-label={rightPanelOpen ? "Hide task panel" : "Show task panel"}
-							title={rightPanelOpen ? "Hide task panel" : "Show task panel"}
+							onClick={onToggleWorkspacePanel}
+							aria-expanded={workspacePanelOpen}
+							aria-controls="workspace-panel"
+							aria-label={workspacePanelOpen ? "Close workspace panel" : "Open workspace panel"}
+							title={workspacePanelOpen ? "Close workspace panel" : "Open workspace panel"}
 							className="shrink-0 text-muted-foreground"
 						>
 							<PanelRightIcon size={16} />

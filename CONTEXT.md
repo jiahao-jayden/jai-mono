@@ -38,6 +38,12 @@ _Avoid_: legacy Jai permission rules, compatibility mode
 A persistent, assignable coordination record with an independent lifecycle, such as ownership or dependencies, across Sessions or Agents. It is not part of the current PandaWork scope.
 _Avoid_: Todo, subagent run
 
+## External product terminology
+
+**Claude Code Artifact**:
+Claude Code 中从 session 产出 HTML/Markdown 单页并发布到 `claude.ai` 的可交互、可版本化页面。它不是普通项目文件，也不是所有 tool output 的统称。
+_Avoid_: file output, session transcript
+
 **Plan**:
 A user-reviewable proposal for how work should be carried out before execution begins.
 _Avoid_: Todo, work item

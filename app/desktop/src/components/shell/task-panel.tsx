@@ -40,7 +40,7 @@ export function TaskPanel({ status, todos, project }: TaskPanelProps) {
 	const summaryInitial = reduceMotion ? { opacity: 0 } : { opacity: 0, transform: "translateY(18%)" };
 
 	return (
-		<aside className="h-full w-84 shrink-0 overflow-y-auto bg-background py-3 pr-3">
+		<aside className="h-full w-full min-w-0 overflow-y-auto bg-background py-3 pr-3">
 			<div className="overflow-hidden rounded-[14px] border border-border bg-card">
 				<section className="px-4 pt-3.5 pb-2.5">
 					<div className="flex items-center justify-between">

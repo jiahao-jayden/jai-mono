@@ -11,4 +11,4 @@ Jai 的 Bash 权限系统要兼容 OpenCode 的哪一层：仅采用 AST 拆分�
 
 ## Resolution
 
-Jai 完整兼容 OpenCode 的权限配置格式与语义，包括配置结构、权限命名、pattern 表达和最后匹配胜出的优先级。现有 Jai 规则不保留兼容层，直接切换到新格式；这是明确接受的 breaking change，旧配置需要迁移。
+Jai 的顶层 `permission` 配置兼容 OpenCode 的权限命名、pattern 表达和最后匹配胜出语义。现有 v1 的 `permissions` 配置继续保留，按旧的 `Deny > Ask > Allow` 规则路径求值；当 `permission` 非空时，新路径接管普通求值，两者不做规则合并。schema 保持 v1，不自动迁移旧规则。
