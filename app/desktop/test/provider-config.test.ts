@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { getErrorCode } from "@jai/common";
 import type { ProviderModelInventory } from "@jai/coding/business";
 import { ModelCatalogStore } from "@jai/coding/runtime";
-import { DesktopProviderConfigService } from "../electron/provider-config";
+import { DesktopConfigService } from "../electron/config";
 
 const roots: string[] = [];
 
@@ -13,10 +13,10 @@ afterEach(async () => {
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe("DesktopProviderConfigService", () => {
+describe("DesktopConfigService", () => {
 	test("原子保存 profile，但不向 renderer 投影 API key", async () => {
 		const homeDir = await fixture();
-		const service = new DesktopProviderConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
+		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
 
 		const snapshot = await service.save({
 			revision: null,
@@ -95,7 +95,7 @@ describe("DesktopProviderConfigService", () => {
 
 	test("未修改连接时保留 main-only credential，修改 endpoint 时要求重新输入", async () => {
 		const homeDir = await fixture();
-		const service = new DesktopProviderConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
+		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
 		const first = await service.save({
 			revision: null,
 			profiles: [
@@ -166,7 +166,7 @@ describe("DesktopProviderConfigService", () => {
 				),
 		});
 		await catalog.start();
-		const service = new DesktopProviderConfigService({
+		const service = new DesktopConfigService({
 			homeDir,
 			environment: {},
 			catalog,
@@ -222,7 +222,7 @@ describe("DesktopProviderConfigService", () => {
 
 	test("重命名 profile 时迁移 inventory 并保留已保存凭证", async () => {
 		const homeDir = await fixture();
-		const service = new DesktopProviderConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
+		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
 		const initial = await service.save({
 			revision: null,
 			profiles: [
@@ -262,7 +262,7 @@ describe("DesktopProviderConfigService", () => {
 
 	test("在 Settings 保存非 OAuth Connector credentials，但不投影明文", async () => {
 		const homeDir = await fixture();
-		const service = new DesktopProviderConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
+		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
 		const first = await service.save({
 			revision: null,
 			profiles: [],
