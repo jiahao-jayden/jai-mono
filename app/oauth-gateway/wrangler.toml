@@ -1,0 +1,6 @@
+name = "jai-oauth-gateway"
+main = "src/cloudflare.ts"
+compatibility_date = "2026-08-08"
+
+# Provider metadata is configured as OAUTH_GATEWAY_PROVIDERS.
+# Client IDs and secrets should be added with `wrangler secret put`.

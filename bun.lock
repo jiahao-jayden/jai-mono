@@ -113,6 +113,17 @@
         "vite": "^7.3.6",
       },
     },
+    "app/oauth-gateway": {
+      "name": "@jai/oauth-gateway",
+      "version": "0.0.0",
+      "dependencies": {
+        "better-result": "^3.0.0",
+        "hono": "^4.12.11",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
+      },
+    },
     "packages/agent": {
       "name": "@jai/agent",
       "version": "0.0.0",
@@ -534,6 +545,8 @@
     "@jai/common": ["@jai/common@workspace:packages/common"],
 
     "@jai/connector": ["@jai/connector@workspace:app/connector"],
+
+    "@jai/oauth-gateway": ["@jai/oauth-gateway@workspace:app/oauth-gateway"],
 
     "@jayden/jai-desktop": ["@jayden/jai-desktop@workspace:app/desktop"],
 

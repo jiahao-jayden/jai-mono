@@ -1,0 +1,23 @@
+{
+	"name": "@jai/oauth-gateway",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Stateless OAuth Gateway for Jai Connector.",
+	"exports": {
+		".": "./src/index.ts",
+		"./cloudflare": "./src/cloudflare.ts",
+		"./bun": "./src/bun.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"better-result": "^3.0.0",
+		"hono": "^4.12.11"
+	},
+	"devDependencies": {
+		"typescript": "catalog:"
+	}
+}
