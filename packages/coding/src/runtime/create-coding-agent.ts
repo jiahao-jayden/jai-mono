@@ -16,6 +16,7 @@ import {
 } from "@jai/agent";
 import { FileSessionStore, NodeExecutionEnvironment } from "@jai/agent/node";
 import type { Model, Provider } from "@jai/ai";
+import type { ConnectorService } from "@jai/connector";
 import type { TObject } from "@sinclair/typebox";
 import {
 	type AgentPluginDiagnostic,
@@ -31,6 +32,7 @@ import {
 	type ConfigSnapshot,
 	type ResolvedCodingSettings,
 } from "../config";
+import { ConnectorAgentConfigurationInvalid, type ConnectorAgentToolOptions, createConnectorTools } from "../connector";
 import { connectMcpServers, type McpRuntime, type McpServer } from "../mcp";
 import {
 	createPermissionMiddleware,
@@ -66,6 +68,24 @@ export interface CodingAgentPermissionOptions<TSchema extends TObject> {
 	) => PermissionApprovalDecision | Promise<PermissionApprovalDecision>;
 	readonly persistProjectLocalAllowRules?: (rules: readonly string[]) => void | Promise<void>;
 	readonly persistProjectLocalAllowRule?: (rule: string) => void | Promise<void>;
+}
+
+export interface CodingAgentConnectorOptions<TSchema extends TObject> {
+	readonly enabled?: boolean | ((snapshot: ConfigSnapshot<TSchema>) => boolean | Promise<boolean>);
+	readonly client?: ConnectorService & { readonly close?: () => void | Promise<void> };
+	readonly resolveClient?: (
+		snapshot: ConfigSnapshot<TSchema>,
+	) =>
+		| ConnectorService
+		| ConnectorClientHandle
+		| undefined
+		| Promise<ConnectorService | ConnectorClientHandle | undefined>;
+	readonly requestApproval?: ConnectorAgentToolOptions["requestApproval"];
+}
+
+export interface ConnectorClientHandle {
+	readonly client: ConnectorService;
+	readonly close?: () => void | Promise<void>;
 }
 
 export interface CodingAgentRuntimeOptions {
@@ -107,6 +127,7 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 		snapshot: ConfigSnapshot<TSchema>,
 	) => readonly McpServer[] | Promise<readonly McpServer[]>;
 	readonly permissions?: CodingAgentPermissionOptions<TSchema>;
+	readonly connector?: false | CodingAgentConnectorOptions<TSchema>;
 	readonly skills?: false | CodingAgentSkillsOptions;
 	readonly agentPlugins?: false | CodingAgentPluginsOptions;
 	readonly tools?: Omit<CodingToolOptions, "cwd">;
@@ -130,6 +151,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	readonly #skills?: CodingSkillsRuntime;
 	readonly #plugins?: AgentPluginRuntime;
 	readonly #mcp?: McpRuntime;
+	readonly #connector?: ConnectorRuntime;
 
 	constructor(
 		agent: Agent<TAppState>,
@@ -139,6 +161,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		skills?: CodingSkillsRuntime,
 		plugins?: AgentPluginRuntime,
 		mcp?: McpRuntime,
+		connector?: ConnectorRuntime,
 	) {
 		this.#agent = agent;
 		this.configStore = configStore;
@@ -147,6 +170,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#skills = skills;
 		this.#plugins = plugins;
 		this.#mcp = mcp;
+		this.#connector = connector;
 	}
 
 	get configSnapshot(): ConfigSnapshot<TSchema> {
@@ -201,6 +225,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#skills?.close();
 		void this.#plugins?.close();
 		void this.#mcp?.close();
+		void this.#connector?.close();
 		this.configStore.close();
 	}
 }
@@ -224,10 +249,13 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	};
 	const plugins = await createPluginRuntime(options);
 	const mcp = await createMcpRuntime(options.resolveMcpServers ? await options.resolveMcpServers(snapshot) : []);
+	let connector: ConnectorRuntime | undefined;
 	let skills: CodingSkillsRuntime | undefined;
 	try {
+		connector = await createConnectorRuntime(options, snapshot);
 		skills = await createSkillsRuntime(options, plugins?.skills);
 	} catch (error) {
+		await connector?.close();
 		await plugins?.close();
 		await mcp?.close();
 		throw error;
@@ -285,6 +313,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const externalToolNames = new Set([
 		...(plugins?.tools.map((tool) => tool.name) ?? []),
 		...(mcp?.tools.map((tool) => tool.name) ?? []),
+		...(connector?.tools.map((tool) => tool.name) ?? []),
 	]);
 	const toolEnvironment = options.executionContext.localFileAccess
 		? new NodeExecutionEnvironment({
@@ -334,6 +363,13 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 					...(childSkills ? [childSkills.tool] : []),
 					...(plugins?.tools ?? []),
 					...(mcp?.tools ?? []),
+					...(connector
+						? createConnectorTools({
+								client: connector.client,
+								sessionId: `${options.sessionId}:subagent`,
+								requestApproval: connector.requestApproval,
+							})
+						: []),
 				],
 				instructions: [resolvedInstructions, SUBAGENT_INSTRUCTIONS].filter(Boolean).join("\n\n"),
 				temperature: resolvedAgentOptions.temperature,
@@ -383,6 +419,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			...(skills ? [skills.tool] : []),
 			...(plugins?.tools ?? []),
 			...(mcp?.tools ?? []),
+			...(connector?.tools ?? []),
 		],
 		sessionHandle,
 		instructions: resolvedInstructions,
@@ -403,7 +440,59 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const stopConfigWatch = configStore.watch((event) => {
 		if (!runtime.closed && event.status === "valid") runtime.snapshot = event.snapshot;
 	});
-	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, skills, plugins, mcp);
+	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, skills, plugins, mcp, connector);
+}
+
+interface ConnectorRuntime {
+	readonly client: ConnectorService;
+	readonly tools: ReturnType<typeof createConnectorTools>;
+	readonly requestApproval: ConnectorAgentToolOptions["requestApproval"];
+	readonly close: () => Promise<void>;
+}
+
+async function createConnectorRuntime<TSchema extends TObject, TAppState extends JsonObject>(
+	options: CreateCodingAgentOptions<TSchema, TAppState>,
+	snapshot: ConfigSnapshot<TSchema>,
+): Promise<ConnectorRuntime | undefined> {
+	const connectorOptions = options.connector;
+	if (!connectorOptions) return undefined;
+	const enabled =
+		connectorOptions.enabled === undefined
+			? true
+			: typeof connectorOptions.enabled === "function"
+				? await connectorOptions.enabled(snapshot)
+				: connectorOptions.enabled;
+	if (!enabled) return undefined;
+	const resolved =
+		connectorOptions.client ??
+		(connectorOptions.resolveClient ? await connectorOptions.resolveClient(snapshot) : undefined);
+	if (!resolved) {
+		throw new ConnectorAgentConfigurationInvalid({
+			message: "Connector is enabled but no Connector client resolver is configured",
+			data: { reason: "client_missing" },
+		});
+	}
+	const handle: ConnectorClientHandle = isConnectorClientHandle(resolved)
+		? resolved
+		: { client: resolved, close: connectorClientClose(resolved) };
+	const requestApproval = connectorOptions.requestApproval;
+	return {
+		client: handle.client,
+		requestApproval,
+		tools: createConnectorTools({ client: handle.client, sessionId: options.sessionId, requestApproval }),
+		close: async () => {
+			await handle.close?.();
+		},
+	};
+}
+
+function isConnectorClientHandle(value: ConnectorService | ConnectorClientHandle): value is ConnectorClientHandle {
+	return "client" in value;
+}
+
+function connectorClientClose(client: ConnectorService): (() => void | Promise<void>) | undefined {
+	if (!("close" in client) || typeof client.close !== "function") return undefined;
+	return client.close.bind(client);
 }
 
 async function createPluginRuntime<TSchema extends TObject, TAppState extends JsonObject>(

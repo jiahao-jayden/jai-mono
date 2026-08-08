@@ -11,6 +11,7 @@ import {
 	zeroUsage,
 } from "@jai/ai";
 import { Type } from "@sinclair/typebox";
+import { MemoryConnectorService } from "@jai/connector";
 import { defineCodingConfig } from "../src/config";
 import {
 	mergePermissionConfigs,
@@ -115,6 +116,45 @@ describe("createCodingAgent", () => {
 		} finally {
 			codingAgent.close();
 		}
+	});
+
+	test("Connector 只向 Agent 暴露五个固定工具，并在 Agent 关闭时释放 client", async () => {
+		const fixture = await createFixture();
+		const contexts: Context[] = [];
+		const service = new MemoryConnectorService({ adapters: [], connections: [] });
+		let closed = 0;
+		const client = Object.assign(service, { close: async () => { closed += 1; } });
+		const codingAgent = await createCodingAgent({
+			...fixture,
+			connector: { client },
+			resolveProvider: () => ({
+				provider: providerFor([
+					assistantToolCall("connector__list_apps", {}),
+					assistant("connector-ready"),
+				], contexts),
+				model,
+			}),
+		});
+
+		await codingAgent.invoke("list connector apps");
+		expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual([
+			"UpdateTodos",
+			"SpawnAgent",
+			"Read",
+			"Glob",
+			"Grep",
+			"Write",
+			"Edit",
+			"Bash",
+			"Skill",
+			"connector__list_apps",
+			"connector__list_connections",
+			"connector__search_actions",
+			"connector__get_action_guide",
+			"connector__execute_action",
+		]);
+		codingAgent.close();
+		expect(closed).toBe(1);
 	});
 
 	test("Bash Always allow 原子写入 project-local permission", async () => {

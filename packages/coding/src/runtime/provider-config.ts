@@ -199,6 +199,47 @@ const mcpSettingsSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
+const connectorServiceSchema = Type.Object(
+	{
+		mode: Type.Optional(Type.Union([Type.Literal("managed"), Type.Literal("external")])),
+		endpoint: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+		startup: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("manual")])),
+		healthTimeoutMs: Type.Optional(Type.Integer({ minimum: 250, maximum: 30_000 })),
+	},
+	{ additionalProperties: false },
+);
+
+const connectorPolicySchema = Type.Object(
+	{
+		default: Type.Optional(
+			Type.Union([Type.Literal("query"), Type.Literal("confirm"), Type.Literal("hidden"), Type.Literal("blocked")]),
+		),
+		confirm: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+		hidden: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+		blocked: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+	},
+	{ additionalProperties: false },
+);
+
+const connectorProviderSchema = Type.Object(
+	{
+		enabled: Type.Optional(Type.Boolean()),
+		defaultConnection: Type.Optional(Type.String({ minLength: 1 })),
+		credentials: Type.Optional(Type.Record(Type.String({ minLength: 1 }), Type.String())),
+	},
+	{ additionalProperties: false },
+);
+
+export const connectorSettingsSchema = Type.Object(
+	{
+		enabled: Type.Optional(Type.Boolean()),
+		service: Type.Optional(connectorServiceSchema),
+		policy: Type.Optional(connectorPolicySchema),
+		providers: Type.Optional(Type.Record(Type.String({ minLength: 1 }), connectorProviderSchema)),
+	},
+	{ additionalProperties: false },
+);
+
 export const codingAgentSettingsSchema = Type.Object(
 	{
 		agent: Type.Optional(
@@ -216,6 +257,7 @@ export const codingAgentSettingsSchema = Type.Object(
 		),
 		providers: Type.Record(Type.RegExp(new RegExp(profileIdPattern)), providerProfileSchema),
 		mcp: Type.Optional(mcpSettingsSchema),
+		connector: Type.Optional(connectorSettingsSchema),
 		permission: Type.Optional(permissionConfigSchema),
 		permissions: permissionSettingsSchema,
 	},
@@ -223,6 +265,7 @@ export const codingAgentSettingsSchema = Type.Object(
 );
 
 export type CodingAgentSettings = Static<typeof codingAgentSettingsSchema>;
+export type ConnectorSettings = Static<typeof connectorSettingsSchema>;
 
 export function resolveConfiguredMcpServers(settings: Readonly<CodingAgentSettings>): readonly McpServer[] {
 	return Object.entries(settings.mcp?.servers ?? {}).map(([name, server]) =>
@@ -291,6 +334,17 @@ export const codingAgentConfigDefinition = defineCodingConfig({
 			project: "trusted",
 			default: { servers: {} },
 		},
+		connector: {
+			merge: "custom",
+			project: "trusted",
+			default: {
+				enabled: true,
+				service: { mode: "managed", endpoint: null, startup: "auto", healthTimeoutMs: 1500 },
+				policy: { default: "query", confirm: [], hidden: [], blocked: [] },
+				providers: {},
+			},
+			mergeValues: mergeConnectorSettings,
+		},
 		permission: {
 			merge: "custom",
 			project: "trusted",
@@ -301,6 +355,15 @@ export const codingAgentConfigDefinition = defineCodingConfig({
 	},
 	migrations: [],
 });
+
+function mergeConnectorSettings(candidates: readonly ConfigMergeCandidate[]): unknown {
+	let value: Record<string, unknown> = {};
+	for (const candidate of candidates) {
+		if (candidate.source === "project-shared" || candidate.source === "project-local") continue;
+		if (isRecord(candidate.value)) value = deepMerge(value, candidate.value);
+	}
+	return value;
+}
 
 export async function discoverConfiguredModels(
 	settings: Readonly<CodingAgentSettings>,

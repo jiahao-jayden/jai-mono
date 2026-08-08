@@ -1,5 +1,6 @@
 export {
 	CodingAgent,
+	type CodingAgentConnectorOptions,
 	type CodingAgentPermissionOptions,
 	type CodingAgentPluginsOptions,
 	type CodingAgentRuntimeOptions,
@@ -32,9 +33,11 @@ export {
 } from "./model-catalog";
 export {
 	type CodingAgentSettings,
+	connectorSettingsSchema,
 	codingAgentConfigDefinition,
 	codingAgentSettingsSchema,
 	discoverConfiguredModels,
+	type ConnectorSettings,
 	type ResolveConfiguredProviderOptions,
 	type ResolvedCodingAgentRuntime,
 	resolveConfiguredAgentRuntime,

@@ -13,6 +13,8 @@
 		"./permissions/approval": "./src/permissions/approval.ts",
 		"./runtime": "./src/runtime/index.ts",
 		"./mcp": "./src/mcp/index.ts",
+		"./connector": "./src/connector/index.ts",
+		"./connector/service-main": "./src/connector/service-main.ts",
 		"./skills": "./src/skills/index.ts",
 		"./agent-plugins": "./src/agent-plugins/index.ts",
 		"./tools": "./src/tools/index.ts"
@@ -24,6 +26,7 @@
 	"dependencies": {
 		"@jai/agent": "workspace:*",
 		"@jai/ai": "workspace:*",
+		"@jai/connector": "workspace:*",
 		"@jai/common": "workspace:*",
 		"@modelcontextprotocol/sdk": "1.29.0",
 		"@sinclair/typebox": "catalog:",

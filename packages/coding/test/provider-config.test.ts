@@ -65,6 +65,35 @@ describe("Provider configuration", () => {
 		]);
 	});
 
+	test("Connector 配置只读取 user-global，项目配置不能扩大能力", async () => {
+		const fixture = await createFixture();
+		await writeSettings(join(fixture.homeDir, ".jai", "settings.json"), {
+			connector: {
+				enabled: false,
+				policy: { default: "confirm", blocked: ["context7.get_documentation_context"] },
+				providers: { context7: { enabled: false, defaultConnection: "personal" } },
+			},
+		});
+		await writeSettings(join(fixture.projectRoot, ".jai", "settings.json"), {
+			connector: {
+				enabled: true,
+				policy: { default: "query", blocked: [] },
+				providers: { context7: { enabled: true, defaultConnection: "project" } },
+			},
+		});
+
+		const store = new CodingConfigStore(codingAgentConfigDefinition, {
+			...fixture,
+			workspaceTrusted: true,
+		});
+		const snapshot = await store.load();
+		expect(snapshot.settings.connector?.enabled).toBe(false);
+		expect(snapshot.settings.connector?.policy?.default).toBe("confirm");
+		expect(snapshot.settings.connector?.policy?.blocked).toEqual(["context7.get_documentation_context"]);
+		expect(snapshot.settings.connector?.providers?.context7).toEqual({ enabled: false, defaultConnection: "personal" });
+		store.close();
+	});
+
 	test("resolves multiple named profiles using the same adapter", () => {
 		const settings = {
 			agent: { model: "work/gpt-main" },
