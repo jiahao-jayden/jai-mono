@@ -333,6 +333,8 @@ export function ChatColumn({
 							onKeyDownCapture={transcriptScroll.onKeyDownCapture}
 							onPointerDown={transcriptScroll.onPointerDown}
 							onPointerMove={transcriptScroll.onPointerMove}
+							onPointerUp={transcriptScroll.onPointerUp}
+							onPointerCancel={transcriptScroll.onPointerUp}
 							onScroll={transcriptScroll.onScroll}
 							onTouchMove={transcriptScroll.onTouchMove}
 							onWheel={transcriptScroll.onWheel}
@@ -449,12 +451,21 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 	});
 	const [tailSpace, setTailSpace] = useState(0);
 	const tailSpaceRef = useRef(0);
+	const committedTailSpaceRef = useRef(0);
 	const promptScrollFrameRef = useRef<number | undefined>(undefined);
 	const streamingScrollFrameRef = useRef<number | undefined>(undefined);
 	const streamingScrollTargetRef = useRef(0);
 	const streamingScrollTimestampRef = useRef<number | undefined>(undefined);
 	const anchoringRef = useRef(false);
 	const anchorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	const nativeScrollActiveRef = useRef(false);
+	const scrollEpochRef = useRef(0);
+	const itemsRef = useRef(items);
+	const respondingRef = useRef(responding);
+	const previousRespondingRef = useRef(responding);
+	itemsRef.current = items;
+	respondingRef.current = responding;
+	const responseJustFinished = previousRespondingRef.current && !responding;
 	const [showMessageScroller, setShowMessageScroller] = useState(false);
 	const pointerStartRef = useRef<{ x: number; y: number } | undefined>(undefined);
 
@@ -463,9 +474,11 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 	// in-flight animation frames for a manual scroll and detach mid-glide.
 	const beginAnchoredScroll = useCallback(() => {
 		anchoringRef.current = true;
+		nativeScrollActiveRef.current = true;
 		if (anchorTimerRef.current) clearTimeout(anchorTimerRef.current);
 		anchorTimerRef.current = setTimeout(() => {
 			anchoringRef.current = false;
+			nativeScrollActiveRef.current = false;
 			anchorTimerRef.current = undefined;
 			const element = ref.current;
 			if (element) stateRef.current.expectedScrollTop = element.scrollTop;
@@ -476,6 +489,30 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 		tailSpaceRef.current = next;
 		setTailSpace((current) => (Math.abs(current - next) < 1 ? current : next));
 	}, []);
+
+	const cancelAnchoredScroll = useCallback(() => {
+		scrollEpochRef.current += 1;
+		anchoringRef.current = false;
+		nativeScrollActiveRef.current = false;
+		if (anchorTimerRef.current) {
+			clearTimeout(anchorTimerRef.current);
+			anchorTimerRef.current = undefined;
+		}
+		const element = ref.current;
+		if (element) {
+			element.scrollTo({ top: element.scrollTop, behavior: "auto" });
+			stateRef.current.expectedScrollTop = element.scrollTop;
+		}
+	}, [ref]);
+
+	const cancelScheduledScroll = useCallback(() => {
+		scrollEpochRef.current += 1;
+		if (promptScrollFrameRef.current !== undefined) {
+			cancelAnimationFrame(promptScrollFrameRef.current);
+			promptScrollFrameRef.current = undefined;
+		}
+		if (nativeScrollActiveRef.current) cancelAnchoredScroll();
+	}, [cancelAnchoredScroll]);
 
 	const cancelStreamingScroll = useCallback(() => {
 		if (streamingScrollFrameRef.current !== undefined) {
@@ -488,8 +525,8 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 	}, [ref]);
 
 	const followStreamingResponse = useCallback(
-		(element: HTMLDivElement, messageId: string) => {
-			const response = findTranscriptItemElement(element, messageId);
+		(element: HTMLDivElement, itemId: string) => {
+			const response = findTranscriptItemElement(element, itemId);
 			if (!response) return;
 			const responseBottom =
 				element.scrollTop + response.getBoundingClientRect().bottom - element.getBoundingClientRect().top;
@@ -497,6 +534,7 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 				comfortableScrollTop(element.scrollTop, element.clientHeight, responseBottom),
 				element.scrollHeight - element.clientHeight,
 			);
+			if (nativeScrollActiveRef.current) cancelAnchoredScroll();
 			streamingScrollTargetRef.current = target;
 			if (target <= element.scrollTop + 0.5) return;
 
@@ -532,7 +570,7 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 			};
 			streamingScrollFrameRef.current = requestAnimationFrame(step);
 		},
-		[reducedMotion, ref],
+		[cancelAnchoredScroll, reducedMotion, ref],
 	);
 
 	const syncMessageScroller = useCallback(() => {
@@ -548,15 +586,16 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 	}, [ref]);
 
 	const stopFollowing = useCallback(() => {
+		const wasFollowing = stateRef.current.followsNewResponse;
 		stateRef.current.followsNewResponse = false;
 		cancelStreamingScroll();
-		const element = ref.current;
-		if (element) element.scrollTo({ top: element.scrollTop, behavior: "auto" });
-	}, [cancelStreamingScroll, ref]);
+		if (wasFollowing || nativeScrollActiveRef.current) cancelScheduledScroll();
+	}, [cancelScheduledScroll, cancelStreamingScroll]);
 
 	const scrollToBottom = useCallback(() => {
 		const element = ref.current;
 		if (!element) return;
+		cancelScheduledScroll();
 		cancelStreamingScroll();
 		stateRef.current.followsNewResponse = true;
 		setShowMessageScroller(false);
@@ -565,10 +604,11 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 			top: element.scrollHeight,
 			behavior: reducedMotion ? "auto" : "smooth",
 		});
-	}, [beginAnchoredScroll, cancelStreamingScroll, reducedMotion, ref]);
+	}, [beginAnchoredScroll, cancelScheduledScroll, cancelStreamingScroll, reducedMotion, ref]);
 
 	useLayoutEffect(() => {
 		if (stateRef.current.sessionId !== sessionId) {
+			cancelScheduledScroll();
 			cancelStreamingScroll();
 			stateRef.current = {
 				sessionId,
@@ -582,6 +622,7 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 			setShowMessageScroller(false);
 		}
 		if (loading) {
+			cancelScheduledScroll();
 			cancelStreamingScroll();
 			stateRef.current.awaitingSnapshot = true;
 			stateRef.current.followsNewResponse = false;
@@ -592,6 +633,7 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 		}
 		const element = ref.current;
 		if (!element) return;
+		if (stateRef.current.followsNewResponse) stateRef.current.expectedScrollTop = element.scrollTop;
 
 		const latestUser = lastMessageForRole(items, "user");
 		if (stateRef.current.awaitingSnapshot) {
@@ -605,6 +647,7 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 		}
 
 		if (latestUser && latestUser.id !== stateRef.current.lastUserMessageId) {
+			cancelScheduledScroll();
 			cancelStreamingScroll();
 			const promptId = latestUser.id;
 			stateRef.current.lastUserMessageId = promptId;
@@ -614,10 +657,11 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 			// Anchor the prompt to the top only after the spacer's height commits:
 			// scrolling now would clamp against the stale, spacer-less scrollHeight.
 			if (promptScrollFrameRef.current !== undefined) cancelAnimationFrame(promptScrollFrameRef.current);
+			const scrollEpoch = scrollEpochRef.current;
 			promptScrollFrameRef.current = requestAnimationFrame(() => {
 				promptScrollFrameRef.current = undefined;
 				const current = ref.current;
-				if (!current) return;
+				if (!current || scrollEpoch !== scrollEpochRef.current || stateRef.current.sessionId !== sessionId) return;
 				beginAnchoredScroll();
 				scrollPromptIntoReadingPosition(current, promptId, reducedMotion);
 			});
@@ -630,30 +674,68 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 		const promptId = stateRef.current.lastUserMessageId;
 		if (promptId) applyTailSpace(measureTailSpace(element, promptId, tailSpaceRef.current));
 
-		const latestAssistant = lastMessageForRole(items, "assistant");
-		if (responding && stateRef.current.followsNewResponse && latestAssistant?.status === "streaming") {
-			followStreamingResponse(element, latestAssistant.id);
+		const latestScrollableItem = lastScrollableTranscriptItem(items);
+		if (stateRef.current.followsNewResponse && latestScrollableItem && (responding || responseJustFinished)) {
+			followStreamingResponse(element, latestScrollableItem.id);
 		}
 		syncMessageScroller();
 	}, [
 		applyTailSpace,
 		beginAnchoredScroll,
+		cancelScheduledScroll,
 		cancelStreamingScroll,
 		followStreamingResponse,
 		items,
 		loading,
 		responding,
+		responseJustFinished,
 		reducedMotion,
 		ref,
 		sessionId,
 		syncMessageScroller,
 	]);
 
+	useLayoutEffect(() => {
+		const tailSpaceChanged = committedTailSpaceRef.current !== tailSpace;
+		committedTailSpaceRef.current = tailSpace;
+		const element = ref.current;
+		if (tailSpaceChanged && element && stateRef.current.followsNewResponse) {
+			stateRef.current.expectedScrollTop = element.scrollTop;
+		}
+	}, [ref, tailSpace]);
+
+	useLayoutEffect(() => {
+		previousRespondingRef.current = responding;
+	}, [responding]);
+
+	useEffect(() => {
+		const element = ref.current;
+		if (!element || typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(() => {
+			const current = ref.current;
+			if (!current) return;
+			if (stateRef.current.followsNewResponse) stateRef.current.expectedScrollTop = current.scrollTop;
+			const promptId = stateRef.current.lastUserMessageId;
+			if (promptId) applyTailSpace(measureTailSpace(current, promptId, tailSpaceRef.current));
+			const latestScrollableItem = lastScrollableTranscriptItem(itemsRef.current);
+			if (respondingRef.current && stateRef.current.followsNewResponse && latestScrollableItem) {
+				followStreamingResponse(current, latestScrollableItem.id);
+			}
+			syncMessageScroller();
+		});
+		observer.observe(element);
+		if (element.firstElementChild) observer.observe(element.firstElementChild);
+		return () => observer.disconnect();
+	}, [applyTailSpace, followStreamingResponse, ref, syncMessageScroller]);
+
 	useEffect(() => {
 		return () => {
+			scrollEpochRef.current += 1;
 			if (promptScrollFrameRef.current !== undefined) cancelAnimationFrame(promptScrollFrameRef.current);
 			if (streamingScrollFrameRef.current !== undefined) cancelAnimationFrame(streamingScrollFrameRef.current);
 			if (anchorTimerRef.current) clearTimeout(anchorTimerRef.current);
+			anchoringRef.current = false;
+			nativeScrollActiveRef.current = false;
 		};
 	}, []);
 
@@ -675,8 +757,8 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 	}, [ref, stopFollowing, syncMessageScroller]);
 
 	const onWheel = useCallback(
-		(_event: WheelEvent<HTMLDivElement>) => {
-			stopFollowing();
+		(event: WheelEvent<HTMLDivElement>) => {
+			if (event.deltaY !== 0) stopFollowing();
 		},
 		[stopFollowing],
 	);
@@ -687,11 +769,18 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 		[stopFollowing],
 	);
 	const onPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
-		pointerStartRef.current = { x: event.clientX, y: event.clientY };
+		if (event.button === 0) pointerStartRef.current = { x: event.clientX, y: event.clientY };
+	}, []);
+	const onPointerUp = useCallback(() => {
+		pointerStartRef.current = undefined;
 	}, []);
 	const onPointerMove = useCallback(
 		(event: PointerEvent<HTMLDivElement>) => {
 			const start = pointerStartRef.current;
+			if (event.buttons === 0) {
+				pointerStartRef.current = undefined;
+				return;
+			}
 			if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) < 4) return;
 			pointerStartRef.current = undefined;
 			stopFollowing();
@@ -708,6 +797,7 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 	return {
 		onKeyDownCapture,
 		onPointerDown,
+		onPointerUp,
 		onPointerMove,
 		onScroll,
 		onTouchMove,
@@ -725,6 +815,18 @@ function lastMessageForRole(
 	for (let index = items.length - 1; index >= 0; index--) {
 		const item = items[index];
 		if (item?.kind === "message" && item.role === role) return item;
+	}
+	return undefined;
+}
+
+function lastScrollableTranscriptItem(items: readonly DesktopTranscriptItem[]): DesktopTranscriptItem | undefined {
+	for (let index = items.length - 1; index >= 0; index--) {
+		const item = items[index];
+		if (!item) continue;
+		if (item.kind === "message" && item.role === "assistant") return item;
+		if (item.kind === "thinking" || item.kind === "narration" || item.kind === "tool" || item.kind === "subagent") {
+			return item;
+		}
 	}
 	return undefined;
 }

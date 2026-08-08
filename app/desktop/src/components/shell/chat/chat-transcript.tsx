@@ -167,9 +167,10 @@ function WorkProcess({ group, settled }: { readonly group: WorkGroup; readonly s
 
 	const title = workGroupTitle(group.items, running);
 	const rows = workProcessRows(group.items);
+	const anchorItem = group.items.at(-1);
 
 	return (
-		<ThinkingSteps open={open} onOpenChange={setOpen} className="w-full">
+		<ThinkingSteps open={open} onOpenChange={setOpen} className="w-full" data-transcript-item-id={anchorItem?.id}>
 			<ThinkingStepsHeader>{title}</ThinkingStepsHeader>
 			<ThinkingStepsContent className="gap-1 px-1 pb-2 pt-1">
 				{rows.map((row) =>
@@ -236,6 +237,15 @@ function sameWorkProcess(
 }
 
 function WorkProcessStep({ item }: { readonly item: WorkItem }) {
+	const thinkingRef = useRef<HTMLParagraphElement>(null);
+	const followsThinkingRef = useRef(true);
+
+	useLayoutEffect(() => {
+		if (item.kind !== "thinking" || item.status !== "streaming" || !followsThinkingRef.current) return;
+		const element = thinkingRef.current;
+		if (element) element.scrollTop = element.scrollHeight;
+	}, [item]);
+
 	if (item.kind === "tool") return <ToolStep item={item} />;
 	if (item.kind === "narration") {
 		return (
@@ -249,7 +259,14 @@ function WorkProcessStep({ item }: { readonly item: WorkItem }) {
 	if (item.kind === "thinking") {
 		return (
 			<ThinkingStep icon="clock" label="Reasoning" status={item.status === "streaming" ? "active" : "complete"}>
-				<p className="max-h-48 overflow-y-auto pt-1 text-[12px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+				<p
+					ref={thinkingRef}
+					className="max-h-48 overflow-y-auto pt-1 text-[12px] leading-relaxed whitespace-pre-wrap text-muted-foreground"
+					onScroll={(event) => {
+						const element = event.currentTarget;
+						followsThinkingRef.current = element.scrollHeight - element.scrollTop - element.clientHeight <= 24;
+					}}
+				>
 					{item.text}
 				</p>
 			</ThinkingStep>
