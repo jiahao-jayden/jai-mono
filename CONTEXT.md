@@ -48,6 +48,30 @@ _Avoid_: Todo, subagent run
 
 ## External product terminology
 
+**User**:
+登录 Jai 的人类身份，可以属于一个或多个 Tenant，并拥有或使用租户授权的 Connector Connections。
+_Avoid_: account, connection owner
+
+**Tenant**:
+连接、权限、运行记录和其他外部服务资源的隔离范围；可以包含多个 User。
+_Avoid_: runtime instance, connection alias
+
+**Connector Provider**:
+外部服务的产品定义，例如 Gmail、GitHub 或 Slack；它描述可用的认证方式和 Actions，不代表某个用户账号。
+_Avoid_: Connector Connection, integration account
+
+**Connector Connection**:
+Tenant 对某个 Connector Provider 完成授权后形成的外部账号授权记录；它是可执行 Action 的凭据归属单位。
+_Avoid_: connector, provider, runtime token
+
+**Connection Alias**:
+Tenant 内用于选择某个 Connector Connection 的稳定名称，例如 `default` 或 `work`；它不是安全隔离边界。
+_Avoid_: user id, tenant id, connection owner
+
+**Runtime Token**:
+允许客户端调用 Connector Runtime 的访问凭证；它可以携带 Action 权限，但本身不等于 User，也不自动拥有某个 Connector Connection。
+_Avoid_: user token, connection credential
+
 **Agent Plugins package**:
 遵循 Agent Plugins v1 的目录包，包含可移植 manifest，以及零个或多个可移植 Skills 和 MCP server 配置；它是互操作包，不是完整的 PandaWork 运行时。
 _Avoid_: plugin runtime, marketplace package
