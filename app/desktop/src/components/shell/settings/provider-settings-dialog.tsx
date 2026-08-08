@@ -1,12 +1,16 @@
 import { useState } from "react";
 import { useIcon, useIcons } from "@/lib/icon-context";
+import { cn } from "@/lib/utils";
 import type {
+	DesktopConnectorConfigInput,
+	DesktopConnectorConfigSnapshot,
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
 	DesktopProviderFetchModelsResult,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
+import { ConnectorSettings } from "./connector-settings";
 import { GeneralSettings } from "./general-settings";
 import { type ProfileDraft, toProfileDraft, validateProviderDraft } from "./provider-settings-types";
 import { ProvidersSettings } from "./providers-settings";
@@ -23,7 +27,7 @@ interface ProviderSettingsDialogProps {
 	readonly onRevealApiKey: (profileId: string) => Promise<string>;
 }
 
-type SettingsCategory = "general" | "providers";
+type SettingsCategory = "general" | "providers" | "connector";
 
 export function ProviderSettingsDialog({
 	open,
@@ -77,6 +81,18 @@ export function ProviderSettingsDialog({
 			</DialogContent>
 		</Dialog>
 	);
+}
+
+function toConnectorInput(snapshot: DesktopConnectorConfigSnapshot): DesktopConnectorConfigInput {
+	return {
+		enabled: snapshot.enabled,
+		providers: snapshot.providers.map((provider) => ({
+			id: provider.id,
+			enabled: provider.enabled,
+			defaultConnection: provider.defaultConnection,
+			credentials: {},
+		})),
+	};
 }
 
 function ProviderLoadState({
@@ -136,10 +152,11 @@ function ProviderConfigForm({
 	const [language, setLanguage] = useState(snapshot.language ?? "");
 	const [maxIterations, setMaxIterations] = useState(snapshot.maxIterations?.toString() ?? "");
 	const [reasoningEffort, setReasoningEffort] = useState(snapshot.reasoningEffort ?? "");
+	const [connector, setConnector] = useState<DesktopConnectorConfigInput>(() => toConnectorInput(snapshot.connector));
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string>();
 	const [dirty, setDirty] = useState(false);
-	const canSave = profiles.length > 0 || snapshot.profiles.length > 0;
+	const canSave = profiles.length > 0 || snapshot.profiles.length > 0 || connector.providers.length > 0;
 
 	const submit = async () => {
 		const validationError = validateProviderDraft(profiles, language, maxIterations);
@@ -155,6 +172,7 @@ function ProviderConfigForm({
 				...(language ? { language } : {}),
 				...(maxIterations ? { maxIterations: Number(maxIterations) } : {}),
 				...(reasoningEffort ? { reasoningEffort: reasoningEffort as "low" | "medium" | "high" } : {}),
+				connector,
 				profiles: profiles.map(
 					({ credentialConfigured: _configured, credentialMask: _mask, persistedId, ...profile }) => ({
 						id: profile.id,
@@ -181,16 +199,18 @@ function ProviderConfigForm({
 	const categories: { id: SettingsCategory; label: string; icon: keyof typeof icons }[] = [
 		{ id: "general", label: "General", icon: "settings" },
 		{ id: "providers", label: "Providers", icon: "key" },
+		{ id: "connector", label: "Connector", icon: "link" },
 	];
 
 	return (
 		<form
-			className="flex h-full min-h-0 flex-col"
+			className="relative flex h-full min-h-0 flex-col"
 			onSubmit={(event) => {
 				event.preventDefault();
 				void submit();
 			}}
 		>
+			<span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-48 z-10 w-px bg-border/45" />
 			<DialogHeader className="px-6 pt-5 mb-0">
 				<DialogTitle>Settings</DialogTitle>
 			</DialogHeader>
@@ -209,9 +229,10 @@ function ProviderConfigForm({
 								onClick={() => setCategory(item.id)}
 								active={category === item.id}
 								aria-current={category === item.id ? "page" : undefined}
-								className={`h-auto w-full justify-start gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px] ${
-									category === item.id ? "font-semibold text-foreground" : "text-foreground/75"
-								}`}
+								className={cn(
+									"h-auto w-full justify-start gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px]",
+									category === item.id ? "font-semibold text-foreground" : "text-foreground/75",
+								)}
 							>
 								{item.label}
 							</Button>
@@ -238,7 +259,7 @@ function ProviderConfigForm({
 								setDirty(true);
 							}}
 						/>
-					) : (
+					) : category === "providers" ? (
 						<ProvidersSettings
 							providerPresets={snapshot.providerPresets ?? []}
 							profiles={profiles}
@@ -280,6 +301,15 @@ function ProviderConfigForm({
 							onRevealApiKey={onRevealApiKey}
 							fetchingProfileId={fetchingProfileId}
 							lastFetch={lastFetch}
+						/>
+					) : (
+						<ConnectorSettings
+							snapshot={snapshot.connector}
+							value={connector}
+							onChange={(value) => {
+								setConnector(value);
+								setDirty(true);
+							}}
 						/>
 					)}
 				</div>

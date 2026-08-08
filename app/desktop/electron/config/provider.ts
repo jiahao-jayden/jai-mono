@@ -1,29 +1,22 @@
-import type { CodingBusinessService, ProviderModelInventory } from "@jai/coding/business";
-import { CodingConfigStore } from "@jai/coding/config";
+import type { ProviderModelInventory } from "@jai/coding/business";
 import {
 	type CodingAgentSettings,
-	codingAgentConfigDefinition,
 	DEFAULT_PROVIDER_VENDORS,
-	discoverConfiguredModels,
 	findCatalogModel,
 	findCatalogModelMatch,
 	type ModelCatalog,
-	type ModelCatalogStore,
 } from "@jai/coding/runtime";
 import { TaggedError } from "better-result";
 import type {
-	DesktopProviderApiKeyRevealResult,
-	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
-	DesktopProviderFetchModelsResult,
 	DesktopProviderModel,
 	DesktopProviderPreset,
 	DesktopProviderProfile,
 	DesktopProviderProfileInput,
-} from "../shared/desktop-rpc";
+} from "../../shared/desktop-rpc";
 
 const profileIdPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-const languagePattern = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+
 type ProviderConfigErrorInit = {
 	readonly cause?: unknown;
 	readonly data?: {
@@ -34,6 +27,7 @@ type ProviderConfigErrorInit = {
 	};
 	readonly message: string;
 };
+
 class InvalidProviderConfigInput extends TaggedError(
 	"desktop_provider_config.invalid_input",
 )<ProviderConfigErrorInit> {}
@@ -47,7 +41,9 @@ class ProviderModelsFetchFailed extends TaggedError(
 	"desktop_provider_config.model_fetch_failed",
 )<ProviderConfigErrorInit> {}
 
-function providerConfigError(
+export type ProviderConfigProjection = Pick<DesktopProviderConfigSnapshot, "revision" | "providerPresets" | "profiles">;
+
+export function providerConfigError(
 	reason: "invalid_input" | "credential_required" | "credential_unavailable" | "model_fetch_failed",
 	init: ProviderConfigErrorInit,
 ) {
@@ -63,198 +59,12 @@ function providerConfigError(
 	}
 }
 
-export class DesktopProviderConfigService {
-	readonly #store: CodingConfigStore<typeof codingAgentConfigDefinition.schema>;
-	readonly #catalog?: ModelCatalogStore;
-	readonly #inventory?: Pick<
-		CodingBusinessService,
-		| "deleteProviderModelInventory"
-		| "getProviderModelInventory"
-		| "renameProviderModelInventory"
-		| "replaceProviderModelInventory"
-	>;
-
-	constructor(
-		options: {
-			readonly homeDir?: string;
-			readonly environment?: Readonly<Record<string, string | undefined>>;
-			readonly catalog?: ModelCatalogStore;
-			readonly inventory?: Pick<
-				CodingBusinessService,
-				| "deleteProviderModelInventory"
-				| "getProviderModelInventory"
-				| "renameProviderModelInventory"
-				| "replaceProviderModelInventory"
-			>;
-		} = {},
-	) {
-		this.#store = new CodingConfigStore(codingAgentConfigDefinition, {
-			homeDir: options.homeDir,
-			environment: options.environment,
-			workspaceTrusted: false,
-		});
-		this.#catalog = options.catalog;
-		this.#inventory = options.inventory;
-	}
-
-	async get(): Promise<DesktopProviderConfigSnapshot> {
-		const [snapshot, userScope] = await Promise.all([this.#store.load(), this.#store.readScope("user")]);
-		this.#seedLegacyInventories(snapshot.settings);
-		return projectProviderConfig(
-			snapshot.settings,
-			userScope.revision,
-			this.#catalog?.cached?.catalog,
-			this.#inventories(snapshot.settings),
-		);
-	}
-
-	async save(input: DesktopProviderConfigInput): Promise<DesktopProviderConfigSnapshot> {
-		validateInput(input, this.#catalog?.cached?.catalog);
-		const [userScope, effectiveSnapshot] = await Promise.all([this.#store.readScope("user"), this.#store.load()]);
-		this.#seedLegacyInventories(effectiveSnapshot.settings);
-		this.#seedInputInventories(input.profiles);
-		const currentProviders = userScope.settings.providers ?? {};
-		const providers = Object.fromEntries(
-			input.profiles.map((profile) => [
-				profile.id,
-				toStoredProfile(
-					profile,
-					currentProviders[profile.id] ?? (profile.previousId ? currentProviders[profile.previousId] : undefined),
-					effectiveSnapshot.settings.providers[profile.id] ??
-						(profile.previousId ? effectiveSnapshot.settings.providers[profile.previousId] : undefined),
-				),
-			]),
-		);
-		const settings = structuredClone(userScope.settings);
-		settings.providers = providers;
-		const agent = {
-			...(input.language ? { language: input.language } : {}),
-			...(input.maxIterations ? { maxIterations: input.maxIterations } : {}),
-			...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
-		};
-		if (Object.keys(agent).length > 0) settings.agent = agent;
-		else delete settings.agent;
-
-		const snapshot = await this.#store.writeScope("user", settings, {
-			expectedRevision: input.revision,
-		});
-		this.#migrateRenamedInventories(input.profiles, currentProviders, providers);
-		this.#deleteRemovedInventories(currentProviders, providers);
-		return projectProviderConfig(
-			snapshot.settings,
-			snapshot.scopeRevisions.user,
-			this.#catalog?.cached?.catalog,
-			this.#inventories(snapshot.settings),
-		);
-	}
-
-	async fetchModels(profileId: string): Promise<DesktopProviderFetchModelsResult> {
-		if (!profileIdPattern.test(profileId)) throw invalidInput("Invalid Provider profile");
-		const snapshot = await this.#store.load();
-		let modelIds: readonly string[];
-		try {
-			modelIds = await discoverConfiguredModels(snapshot.settings, profileId);
-		} catch (cause) {
-			throw providerConfigError("model_fetch_failed", {
-				message: "Unable to fetch models from the configured Provider",
-				data: {
-					profileId,
-					...safeDiscoveryErrorData(cause, snapshot.settings.providers[profileId]?.adapter),
-				},
-				cause,
-			});
-		}
-		const inventory = this.#inventory?.replaceProviderModelInventory(profileId, modelIds);
-		if (!inventory) {
-			throw invalidInput("Provider model inventory is unavailable");
-		}
-		const projected = await this.get();
-		return {
-			profileId,
-			modelCount: inventory.modelIds.length,
-			fetchedAt: inventory.fetchedAt,
-			snapshot: projected,
-		};
-	}
-
-	async revealApiKey(profileId: string): Promise<DesktopProviderApiKeyRevealResult> {
-		if (!profileIdPattern.test(profileId)) throw invalidInput("Invalid Provider profile");
-		const userScope = await this.#store.readScope("user");
-		const apiKey = userScope.settings.providers?.[profileId]?.apiKey;
-		if (!apiKey) {
-			throw providerConfigError("credential_unavailable", {
-				message: `Provider "${profileId}" has no user-saved API key to reveal`,
-				data: { profileId },
-			});
-		}
-		return { profileId, apiKey };
-	}
-
-	close(): void {
-		this.#store.close();
-	}
-
-	#inventories(settings: Readonly<CodingAgentSettings>): ReadonlyMap<string, ProviderModelInventory> {
-		const inventories = new Map<string, ProviderModelInventory>();
-		for (const profileId of Object.keys(settings.providers)) {
-			const inventory = this.#inventory?.getProviderModelInventory(profileId);
-			if (inventory) inventories.set(profileId, inventory);
-		}
-		return inventories;
-	}
-
-	#seedLegacyInventories(settings: Readonly<CodingAgentSettings>): void {
-		if (!this.#inventory) return;
-		for (const [profileId, profile] of Object.entries(settings.providers)) {
-			if (this.#inventory.getProviderModelInventory(profileId)) continue;
-			const modelIds = Object.entries(profile.models ?? {})
-				.map(([modelId, model]) => model.remoteModelId ?? modelId)
-				.filter(Boolean);
-			if (modelIds.length > 0) this.#inventory.replaceProviderModelInventory(profileId, modelIds);
-		}
-	}
-
-	#seedInputInventories(profiles: readonly DesktopProviderProfileInput[]): void {
-		if (!this.#inventory) return;
-		for (const profile of profiles) {
-			if (this.#inventory.getProviderModelInventory(profile.id)) continue;
-			const modelIds = profile.models
-				.filter((model) => model.source === "unverified")
-				.map((model) => model.remoteModelId);
-			if (modelIds.length > 0) this.#inventory.replaceProviderModelInventory(profile.id, modelIds);
-		}
-	}
-
-	#deleteRemovedInventories(
-		current: Readonly<CodingAgentSettings["providers"]>,
-		next: Readonly<CodingAgentSettings["providers"]>,
-	): void {
-		if (!this.#inventory) return;
-		for (const profileId of Object.keys(current)) {
-			if (!next[profileId]) this.#inventory.deleteProviderModelInventory(profileId);
-		}
-	}
-
-	#migrateRenamedInventories(
-		profiles: readonly DesktopProviderProfileInput[],
-		current: Readonly<CodingAgentSettings["providers"]>,
-		next: Readonly<CodingAgentSettings["providers"]>,
-	): void {
-		if (!this.#inventory) return;
-		for (const profile of profiles) {
-			if (!profile.previousId || profile.previousId === profile.id) continue;
-			if (!current[profile.previousId] || next[profile.previousId]) continue;
-			this.#inventory.renameProviderModelInventory(profile.previousId, profile.id);
-		}
-	}
-}
-
-function projectProviderConfig(
+export function projectProviderConfig(
 	settings: Readonly<CodingAgentSettings>,
 	revision: string | null,
 	catalog?: ModelCatalog,
 	inventories: ReadonlyMap<string, ProviderModelInventory> = new Map(),
-): DesktopProviderConfigSnapshot {
+): ProviderConfigProjection {
 	const profiles = Object.entries(settings.providers)
 		.map(([id, profile]): DesktopProviderProfile => {
 			const apiKey = profile.apiKey;
@@ -289,15 +99,12 @@ function projectProviderConfig(
 		.sort((left, right) => left.name.localeCompare(right.name));
 	return {
 		revision,
-		...(settings.agent?.language ? { language: settings.agent.language } : {}),
-		...(settings.agent?.maxIterations ? { maxIterations: settings.agent.maxIterations } : {}),
-		...(settings.agent?.reasoningEffort ? { reasoningEffort: settings.agent.reasoningEffort } : {}),
 		providerPresets: projectProviderPresets(),
 		profiles,
 	};
 }
 
-function projectProviderPresets(): readonly DesktopProviderPreset[] {
+export function projectProviderPresets(): readonly DesktopProviderPreset[] {
 	return DEFAULT_PROVIDER_VENDORS.map((vendor) => ({
 		id: vendor.id,
 		name: vendor.name,
@@ -308,7 +115,7 @@ function projectProviderPresets(): readonly DesktopProviderPreset[] {
 	}));
 }
 
-function projectModel(
+export function projectModel(
 	id: string,
 	remoteModelId: string,
 	enabled: boolean,
@@ -347,7 +154,7 @@ function projectModel(
 	};
 }
 
-function toStoredProfile(
+export function toStoredProfile(
 	input: DesktopProviderProfileInput,
 	current: CodingAgentSettings["providers"][string] | undefined,
 	effective: CodingAgentSettings["providers"][string] | undefined,
@@ -420,22 +227,13 @@ function connectionChanged(
 	);
 }
 
-function validateInput(input: DesktopProviderConfigInput, catalog: ModelCatalog | undefined): void {
-	if (
-		!isRecord(input) ||
-		(input.revision !== null && typeof input.revision !== "string") ||
-		(input.language !== undefined && (typeof input.language !== "string" || !languagePattern.test(input.language))) ||
-		(input.maxIterations !== undefined && (!Number.isInteger(input.maxIterations) || input.maxIterations < 1)) ||
-		(input.reasoningEffort !== undefined &&
-			input.reasoningEffort !== "low" &&
-			input.reasoningEffort !== "medium" &&
-			input.reasoningEffort !== "high") ||
-		!Array.isArray(input.profiles)
-	) {
-		throw invalidInput("Invalid Provider configuration");
-	}
+export function validateProviderProfiles(
+	profiles: unknown,
+	catalog: ModelCatalog | undefined,
+): asserts profiles is readonly DesktopProviderProfileInput[] {
+	if (!Array.isArray(profiles)) throw invalidInput("Invalid Provider configuration");
 	const profileIds = new Set<string>();
-	for (const profile of input.profiles) {
+	for (const profile of profiles) {
 		if (
 			!isRecord(profile) ||
 			typeof profile.id !== "string" ||
@@ -544,7 +342,7 @@ function invalidInput(message: string) {
 	return providerConfigError("invalid_input", { message });
 }
 
-function safeDiscoveryErrorData(cause: unknown, adapter: string | undefined) {
+export function safeDiscoveryErrorData(cause: unknown, adapter: string | undefined) {
 	const data = isRecord(cause) && isRecord(cause.data) ? cause.data : {};
 	return {
 		...(adapter ? { adapter } : {}),

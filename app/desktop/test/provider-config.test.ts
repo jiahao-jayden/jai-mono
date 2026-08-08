@@ -259,6 +259,44 @@ describe("DesktopProviderConfigService", () => {
 		expect(renamed.profiles).toMatchObject([{ id: "new", credentialConfigured: true, models: [{ id: "gpt" }] }]);
 		service.close();
 	});
+
+	test("在 Settings 保存非 OAuth Connector credentials，但不投影明文", async () => {
+		const homeDir = await fixture();
+		const service = new DesktopProviderConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
+		const first = await service.save({
+			revision: null,
+			profiles: [],
+			connector: {
+				enabled: true,
+				providers: [
+					{
+						id: "context7",
+						enabled: true,
+						defaultConnection: "docs",
+						credentials: { apiKey: "ctx-secret-1234" },
+					},
+				],
+			},
+		});
+		expect(first.connector.providers.find((provider) => provider.id === "context7")).toMatchObject({
+			defaultConnection: "docs",
+			credentials: [{ key: "apiKey", configured: true, mask: "•••• 1234" }],
+		});
+		expect(JSON.stringify(first)).not.toContain("ctx-secret-1234");
+
+		const preserved = await service.save({
+			revision: first.revision,
+			profiles: [],
+			connector: {
+				enabled: true,
+				providers: [{ id: "context7", enabled: true, defaultConnection: "docs", credentials: {} }],
+			},
+		});
+		expect(preserved.connector.providers.find((provider) => provider.id === "context7")?.credentials[0]?.configured).toBe(true);
+		const document = await readFile(join(homeDir, ".jai", "settings.json"), "utf8");
+		expect(document).toContain("ctx-secret-1234");
+		service.close();
+	});
 });
 
 async function fixture(): Promise<string> {

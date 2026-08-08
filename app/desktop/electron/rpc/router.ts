@@ -17,8 +17,8 @@ import {
 } from "../../shared/desktop-rpc";
 import { type DesktopAgentFactory, DesktopAgentHost } from "../agent/host";
 import { projectSessionSnapshot } from "../agent/projector";
+import { DesktopConfigService } from "../config";
 import { desktopModelCatalog, setDesktopModelCatalogUpdateListener } from "../model-catalog";
-import { DesktopProviderConfigService } from "../provider-config";
 
 type DesktopRouterImplementation<T> = {
 	[K in keyof T]: T[K] extends (...args: infer TArgs) => infer TResult
@@ -44,7 +44,7 @@ const desktopBusinessError = (init: { readonly message: string }) => new Desktop
 const desktopProjectError = (init: { readonly cause?: unknown; readonly message: string }) =>
 	new ProjectPickerFailed(init);
 let codingBusiness: CodingBusinessService | undefined;
-let providerConfig: DesktopProviderConfigService | undefined;
+let providerConfig: DesktopConfigService | undefined;
 const desktopAgentHost = new DesktopAgentHost((envelope) => {
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) window.webContents.send(DESKTOP_EVENTS_CHANNEL, envelope);
@@ -70,7 +70,7 @@ export function setDesktopAgentFactory(factory: DesktopAgentFactory): void {
 export function setCodingBusinessService(service: CodingBusinessService): void {
 	codingBusiness = service;
 	providerConfig?.close();
-	providerConfig = new DesktopProviderConfigService({ catalog: desktopModelCatalog, inventory: service });
+	providerConfig = new DesktopConfigService({ catalog: desktopModelCatalog, inventory: service });
 	desktopAgentHost.setSessionActivityListener((sessionId) => service.touchSession(sessionId));
 	desktopAgentHost.setRunCompletedListener(async ({ sessionId, firstMessage, messages, agent }) => {
 		const session = service.getSession(sessionId);
@@ -265,7 +265,7 @@ function requireCodingBusiness(): CodingBusinessService {
 	});
 }
 
-function requireProviderConfig(): DesktopProviderConfigService {
+function requireProviderConfig(): DesktopConfigService {
 	if (providerConfig) return providerConfig;
 	throw desktopBusinessError({
 		message: "Provider configuration services are not initialized",

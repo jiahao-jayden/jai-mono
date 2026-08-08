@@ -138,6 +138,39 @@ export interface DesktopProviderConfigSnapshot {
 	readonly reasoningEffort?: "low" | "medium" | "high";
 	readonly providerPresets: readonly DesktopProviderPreset[];
 	readonly profiles: readonly DesktopProviderProfile[];
+	readonly connector: DesktopConnectorConfigSnapshot;
+}
+
+export interface DesktopConnectorCredential {
+	readonly key: string;
+	readonly configured: boolean;
+	readonly mask?: string;
+}
+
+export interface DesktopConnectorProvider {
+	readonly id: string;
+	readonly name: string;
+	readonly authTypes: readonly string[];
+	readonly enabled: boolean;
+	readonly defaultConnection: string;
+	readonly credentials: readonly DesktopConnectorCredential[];
+}
+
+export interface DesktopConnectorConfigSnapshot {
+	readonly enabled: boolean;
+	readonly providers: readonly DesktopConnectorProvider[];
+}
+
+export interface DesktopConnectorProviderInput {
+	readonly id: string;
+	readonly enabled: boolean;
+	readonly defaultConnection: string;
+	readonly credentials: Readonly<Record<string, string>>;
+}
+
+export interface DesktopConnectorConfigInput {
+	readonly enabled: boolean;
+	readonly providers: readonly DesktopConnectorProviderInput[];
 }
 
 export interface DesktopProviderProfileInput {
@@ -159,6 +192,7 @@ export interface DesktopProviderConfigInput {
 	readonly maxIterations?: number;
 	readonly reasoningEffort?: "low" | "medium" | "high";
 	readonly profiles: readonly DesktopProviderProfileInput[];
+	readonly connector?: DesktopConnectorConfigInput;
 }
 
 export interface DesktopProviderFetchModelsResult {
