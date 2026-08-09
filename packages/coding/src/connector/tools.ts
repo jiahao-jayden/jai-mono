@@ -17,7 +17,6 @@ export interface ConnectorApprovalRequest {
 	readonly toolName: "connector__execute_action";
 	readonly approvalId: string;
 	readonly actionId: string;
-	readonly connectionAlias: string;
 	readonly reason: string;
 	readonly sideEffect: "read" | "write" | "destructive";
 	readonly dataSensitivity: "normal" | "sensitive" | "secret";
@@ -41,20 +40,15 @@ const searchParameters = Type.Object(
 	{
 		query: Type.Optional(Type.String()),
 		providerId: Type.Optional(Type.String()),
-		connectionAlias: Type.Optional(Type.String()),
 		sideEffect: Type.Optional(Type.Union([Type.Literal("read"), Type.Literal("write"), Type.Literal("destructive")])),
 		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
 	},
 	{ additionalProperties: false },
 );
-const guideParameters = Type.Object(
-	{ actionId: Type.String({ minLength: 1 }), connectionAlias: Type.Optional(Type.String({ minLength: 1 })) },
-	{ additionalProperties: false },
-);
+const guideParameters = Type.Object({ actionId: Type.String({ minLength: 1 }) }, { additionalProperties: false });
 const executeParameters = Type.Object(
 	{
 		actionId: Type.String({ minLength: 1 }),
-		connectionAlias: Type.Optional(Type.String({ minLength: 1 })),
 		input: Type.Record(Type.String(), Type.Unknown()),
 	},
 	{ additionalProperties: false },
@@ -70,7 +64,7 @@ export function createConnectorTools(options: ConnectorAgentToolOptions): AgentT
 		),
 		createSimpleTool(
 			"connector__list_connections",
-			"List Connector Connections, aliases, health and scope summaries.",
+			"List Connector account connections, health and scope summaries.",
 			emptyParameters,
 			(toolCallId, _input, signal) => options.client.listConnections(context(options.sessionId, toolCallId, signal)),
 		),
@@ -130,7 +124,6 @@ export function createConnectorTools(options: ConnectorAgentToolOptions): AgentT
 						toolName: "connector__execute_action",
 						approvalId: first.value.approvalId,
 						actionId: first.value.approval.actionId,
-						connectionAlias: first.value.approval.connectionAlias,
 						reason: first.value.approval.description,
 						sideEffect: first.value.approval.sideEffect,
 						dataSensitivity: first.value.approval.dataSensitivity,

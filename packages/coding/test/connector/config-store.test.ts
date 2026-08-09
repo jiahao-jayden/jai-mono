@@ -23,10 +23,8 @@ describe("Coding Connector config store", () => {
 
 		const saved = await store.save(
 			{
-				enabled: true,
 				providers: {
 					context7: {
-						defaultConnection: "docs",
 						credentials: { apiKey: "context7-secret" },
 					},
 				},
@@ -48,9 +46,9 @@ describe("Coding Connector config store", () => {
 
 		const initial = await store.load();
 		if (initial.isErr()) return;
-		const first = await store.save({ enabled: false }, { expectedRevision: initial.value.revision });
+		const first = await store.save({ policy: { default: "confirm" } }, { expectedRevision: initial.value.revision });
 		if (first.isErr()) return;
-		const stale = await store.save({ enabled: true }, { expectedRevision: initial.value.revision });
+		const stale = await store.save({}, { expectedRevision: initial.value.revision });
 
 		expect(stale.isErr()).toBe(true);
 		expect(stale.isErr() && stale.error instanceof ConnectorConfigConflict).toBe(true);

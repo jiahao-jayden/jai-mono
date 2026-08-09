@@ -18,9 +18,6 @@ export function createConfiguredConnectorResolver<TSchema extends TObject>(
 	options: ConfiguredConnectorResolverOptions,
 ): (snapshot: ConfigSnapshot<TSchema>) => Promise<ConnectorClientHandle | undefined> {
 	return async (snapshot) => {
-		const settings = snapshot.settings as Readonly<Record<string, unknown>>;
-		const connector = isRecord(settings.connector) ? settings.connector : undefined;
-		if (connector?.enabled === false) return undefined;
 		const supervisor = options.createSupervisor
 			? await options.createSupervisor(snapshot as ConfigSnapshot<TObject>)
 			: options.supervisor;

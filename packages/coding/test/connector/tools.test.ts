@@ -22,7 +22,6 @@ function createFakeClient(): ConnectorService & { calls: ExecuteActionInput[] } 
 		approvalId: "approval-1",
 		approval: {
 			actionId: "demo.create",
-			connectionAlias: "default",
 			description: "Create a demo record.",
 			sideEffect: "write",
 			dataSensitivity: "normal",
@@ -85,7 +84,6 @@ describe("Connector Agent tools", () => {
 
 		const result = await execute.execute("tool-call-1", {
 			actionId: "demo.create",
-			connectionAlias: "default",
 			input: { name: "record" },
 		});
 		expect(result.content[0]).toEqual({ type: "text", text: '{"status":"completed","actionId":"demo.create","output":{"ok":true}}' });

@@ -224,7 +224,6 @@ const connectorPolicySchema = Type.Object(
 const connectorProviderSchema = Type.Object(
 	{
 		enabled: Type.Optional(Type.Boolean()),
-		defaultConnection: Type.Optional(Type.String({ minLength: 1 })),
 		credentials: Type.Optional(Type.Record(Type.String({ minLength: 1 }), Type.String())),
 	},
 	{ additionalProperties: false },
@@ -232,7 +231,6 @@ const connectorProviderSchema = Type.Object(
 
 export const connectorSettingsSchema = Type.Object(
 	{
-		enabled: Type.Optional(Type.Boolean()),
 		service: Type.Optional(connectorServiceSchema),
 		policy: Type.Optional(connectorPolicySchema),
 		providers: Type.Optional(Type.Record(Type.String({ minLength: 1 }), connectorProviderSchema)),
@@ -338,7 +336,6 @@ export const codingAgentConfigDefinition = defineCodingConfig({
 			merge: "custom",
 			project: "trusted",
 			default: {
-				enabled: true,
 				service: { mode: "managed", endpoint: null, startup: "auto", healthTimeoutMs: 1500 },
 				policy: { default: "query", confirm: [], hidden: [], blocked: [] },
 				providers: {},

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { CodingConfigStore } from "../src/config";
@@ -69,16 +69,14 @@ describe("Provider configuration", () => {
 		const fixture = await createFixture();
 		await writeSettings(join(fixture.homeDir, ".jai", "settings.json"), {
 			connector: {
-				enabled: false,
 				policy: { default: "confirm", blocked: ["context7.get_documentation_context"] },
-				providers: { context7: { enabled: false, defaultConnection: "personal" } },
+				providers: { context7: { enabled: false } },
 			},
 		});
 		await writeSettings(join(fixture.projectRoot, ".jai", "settings.json"), {
 			connector: {
-				enabled: true,
 				policy: { default: "query", blocked: [] },
-				providers: { context7: { enabled: true, defaultConnection: "project" } },
+				providers: { context7: { enabled: true } },
 			},
 		});
 
@@ -87,10 +85,29 @@ describe("Provider configuration", () => {
 			workspaceTrusted: true,
 		});
 		const snapshot = await store.load();
-		expect(snapshot.settings.connector?.enabled).toBe(false);
 		expect(snapshot.settings.connector?.policy?.default).toBe("confirm");
 		expect(snapshot.settings.connector?.policy?.blocked).toEqual(["context7.get_documentation_context"]);
-		expect(snapshot.settings.connector?.providers?.context7).toEqual({ enabled: false, defaultConnection: "personal" });
+		expect(snapshot.settings.connector?.providers?.context7).toEqual({ enabled: false });
+		store.close();
+	});
+
+	test("keeps the current Connector config schema at v1", () => {
+		expect(codingAgentConfigDefinition.schemaVersion).toBe(1);
+	});
+
+	test("rejects removed Connector fields without a compatibility layer", async () => {
+		const fixture = await createFixture();
+		await writeSettings(join(fixture.homeDir, ".jai", "settings.json"), {
+			connector: {
+				enabled: false,
+				providers: { context7: { defaultConnection: "docs" } },
+			},
+		});
+		const store = new CodingConfigStore(codingAgentConfigDefinition, {
+			...fixture,
+			workspaceTrusted: true,
+		});
+		await expect(store.load()).rejects.toMatchObject({ _tag: "coding_config.validation_failed" });
 		store.close();
 	});
 
