@@ -62,6 +62,9 @@ interface InputMessageProps
   rightSlot?: InputMessageSlot;
   /** Replaces the built-in send action. Use for product-specific submit UI. */
   submitSlot?: ReactNode;
+  /** Product-owned attachment previews shown above the editor. Use this when
+   * file data lives outside the renderer and cannot be represented as `File`. */
+  previewSlot?: ReactNode;
   /** Disables the textarea, send button, and drag-and-drop. */
   disabled?: boolean;
   /** Minimum visible rows before the textarea grows. */
@@ -156,6 +159,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
       leftSlot,
       rightSlot,
       submitSlot,
+      previewSlot,
       disabled,
       minRows = 1,
       maxRows = 8,
@@ -224,7 +228,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
     }, [value, minRows, maxRows]);
 
     const trimmed = value.trim();
-    const canSend = !disabled && (trimmed.length > 0 || filesArr.length > 0);
+    const canSend = !disabled && (trimmed.length > 0 || filesArr.length > 0 || previewSlot != null);
 
     // Edge = the box-shadow's 1px ring, recoloured in place per state so the
     // stroke gains contrast without ever appearing to thicken (no second
@@ -502,7 +506,18 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
               (no index) so removing the first file doesn't re-key — and
               remount — every surviving sibling. */}
           <AnimatePresence initial={false}>
-            {filesArr.length > 0 && (
+            {previewSlot != null ? (
+              <motion.div
+                key="custom-preview-row"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ ...spring.moderate, bounce: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="pb-1">{previewSlot}</div>
+              </motion.div>
+            ) : filesArr.length > 0 && (
               <motion.div
                 key="preview-row"
                 initial={{ height: 0, opacity: 0 }}

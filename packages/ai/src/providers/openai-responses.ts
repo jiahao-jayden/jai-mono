@@ -10,6 +10,7 @@ import type {
 import { createAssistantMessage, runAdapterStream } from "../adapter";
 import { AssistantMessageEventStream } from "../event-stream";
 import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
+import { transformMessagesForModel } from "../transform-messages";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -137,7 +138,7 @@ function buildParams(model: Model, context: Context, options?: StreamOptions): R
 		store: false,
 		include: ["reasoning.encrypted_content"],
 		instructions: context.systemPrompt || undefined,
-		input: convertMessages(context.messages),
+		input: convertMessages(transformMessagesForModel(context.messages, model)),
 		max_output_tokens: options?.maxTokens ?? model.maxTokens,
 		...(options?.temperature === undefined ? {} : { temperature: options.temperature }),
 		...(context.tools.length === 0 ? {} : { tools: convertTools(context.tools) }),

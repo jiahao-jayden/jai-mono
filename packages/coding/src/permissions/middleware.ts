@@ -50,7 +50,7 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 		const capability = await createPathCapability(
 			options.pathCapabilities,
 			toolName,
-			context.args,
+			permissionArgs,
 			workspaceRoot,
 			context.signal,
 		);

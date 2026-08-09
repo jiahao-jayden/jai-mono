@@ -13,6 +13,7 @@ import type {
 import { createAssistantMessage, runAdapterStream } from "../adapter";
 import { AssistantMessageEventStream } from "../event-stream";
 import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
+import { transformMessagesForModel } from "../transform-messages";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -142,7 +143,7 @@ function buildParams(model: Model, context: Context, options?: StreamOptions): M
 		model: model.remoteModelId ?? model.id,
 		max_tokens: options?.maxTokens ?? model.maxTokens,
 		stream: true,
-		messages: convertMessages(context.messages),
+		messages: convertMessages(transformMessagesForModel(context.messages, model)),
 	};
 
 	// breakpoint 1: system prompt

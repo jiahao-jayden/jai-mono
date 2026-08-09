@@ -8,6 +8,7 @@ import type {
 	DesktopAgentMode,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
+	DesktopMessageAttachment,
 	DesktopPermissionResolution,
 	DesktopTodos,
 	DesktopTranscriptItem,
@@ -18,6 +19,7 @@ export type ChatStatus = "ready" | "submitted" | "streaming" | "error";
 export interface ChatMessageInput {
 	readonly text: string;
 	readonly mode: DesktopAgentMode;
+	readonly attachments?: readonly DesktopMessageAttachment[];
 }
 
 export interface UseChatOptions {
@@ -39,7 +41,7 @@ export interface Chat {
 	readonly status: ChatStatus;
 	readonly isLoading: boolean;
 	readonly error: string | undefined;
-	sendMessage(message: ChatMessageInput): Promise<void>;
+	sendMessage(message: ChatMessageInput): Promise<boolean>;
 	stop(): Promise<void>;
 	clearError(): void;
 	resolvePermission(resolution: DesktopPermissionResolution): Promise<void>;
@@ -149,60 +151,76 @@ export function useChat(options: UseChatOptions): Chat {
 		}
 	}, [dispatchQueueHead, state.agentStatus]);
 
-	const sendMessage = useCallback(async ({ text: rawText, mode }: ChatMessageInput) => {
-		const text = rawText.trim();
-		const current = stateRef.current;
-		const latest = latestOptions.current;
-		if (!text || current.submitting) return;
+	const sendMessage = useCallback(
+		async ({ text: rawText, mode, attachments = [] }: ChatMessageInput): Promise<boolean> => {
+			const text = rawText.trim();
+			const fallbackFirstMessage =
+				text || `Attached ${attachments.length} file${attachments.length === 1 ? "" : "s"}`;
+			const current = stateRef.current;
+			const latest = latestOptions.current;
+			if ((!text && attachments.length === 0) || current.submitting) return false;
 
-		if (current.agentStatus === "running") {
-			latest.onMessageQueued(text, mode);
-			return;
-		}
-		if (latest.queue.length > 0) {
-			setState((previous) => ({ ...previous, error: "请先处理队列中的消息。" }));
-			return;
-		}
-		if (!latest.modelRef) {
-			setState((previous) => ({ ...previous, error: "请先选择可用模型。" }));
-			return;
-		}
+			if (current.agentStatus === "running") {
+				if (attachments.length > 0) {
+					setState((previous) => ({
+						...previous,
+						error: "请等待当前响应结束后再发送附件。",
+					}));
+					return false;
+				}
+				latest.onMessageQueued(text, mode);
+				return true;
+			}
+			if (latest.queue.length > 0) {
+				setState((previous) => ({ ...previous, error: "请先处理队列中的消息。" }));
+				return false;
+			}
+			if (!latest.modelRef) {
+				setState((previous) => ({ ...previous, error: "请先选择可用模型。" }));
+				return false;
+			}
 
-		setState((previous) => ({ ...previous, error: undefined, submitting: true }));
-		try {
-			if (current.sessionId) {
+			setState((previous) => ({ ...previous, error: undefined, submitting: true }));
+			try {
+				if (current.sessionId) {
+					await desktop.agent.send({
+						sessionId: current.sessionId,
+						message: text,
+						modelRef: latest.modelRef,
+						mode,
+						...(attachments.length > 0 ? { attachments } : {}),
+					});
+					latest.onDraftAccepted();
+					return true;
+				}
+
+				const session = await desktop.session.create({
+					projectId: latest.newSessionProjectId,
+					firstMessage: fallbackFirstMessage,
+				});
+				upsertRecentSession(session);
+				latest.onSessionCreated(session.id);
 				await desktop.agent.send({
-					sessionId: current.sessionId,
+					sessionId: session.id,
 					message: text,
 					modelRef: latest.modelRef,
 					mode,
+					...(attachments.length > 0 ? { attachments } : {}),
 				});
 				latest.onDraftAccepted();
-				return;
+				void invalidateRecentSessions();
+				return true;
+			} catch {
+				setState((previous) => ({
+					...previous,
+					error: "消息未发送。请检查模型配置后重试。",
+					submitting: false,
+				}));
+				return false;
 			}
-
-			const session = await desktop.session.create({
-				projectId: latest.newSessionProjectId,
-				firstMessage: text,
-			});
-			upsertRecentSession(session);
-			latest.onSessionCreated(session.id);
-			await desktop.agent.send({
-				sessionId: session.id,
-				message: text,
-				modelRef: latest.modelRef,
-				mode,
-			});
-			latest.onDraftAccepted();
-			void invalidateRecentSessions();
-		} catch {
-			setState((previous) => ({
-				...previous,
-				error: "消息未发送。请检查模型配置后重试。",
-				submitting: false,
-			}));
-		}
-	}, []);
+		},
+		[],
+	);
 
 	const stop = useCallback(async () => {
 		const current = stateRef.current;

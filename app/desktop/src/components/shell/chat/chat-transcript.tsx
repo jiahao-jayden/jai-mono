@@ -80,7 +80,13 @@ export function TranscriptItem({ item, animate = false }: { item: DesktopTranscr
 		const isStreaming = item.status === "streaming";
 		return (
 			<div className={messageAlignment} data-transcript-item-id={item.id}>
-				<ChatMessage animate={animate} className={messageClassName} from={from} isStreaming={isStreaming}>
+				<ChatMessage
+					animate={animate}
+					attachments={item.attachments}
+					className={messageClassName}
+					from={from}
+					isStreaming={isStreaming}
+				>
 					{item.text}
 				</ChatMessage>
 			</div>

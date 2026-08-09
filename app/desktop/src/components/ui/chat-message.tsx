@@ -18,6 +18,7 @@ import { spring } from "@/lib/springs";
 import { useShape } from "@/lib/shape-context";
 import { remarkDisableSetextH2 } from "@/lib/remark-disable-setext-h2";
 import { useTouchPrimary } from "@/hooks/use-touch-primary";
+import { useIcon } from "@/lib/icon-context";
 import { FileThumbnail } from "@/components/ui/file-thumbnail";
 
 const streamdownPlugins = { cjk, code };
@@ -34,6 +35,13 @@ const streamdownControls = {
 };
 
 type StreamdownIconProps = SVGProps<SVGSVGElement> & { size?: number };
+
+interface ChatMessageAttachment {
+  readonly id: string;
+  readonly filename: string;
+  readonly mimeType: string;
+  readonly size: number;
+}
 
 function makeStreamdownIcon(icon: Parameters<typeof HugeiconsIcon>[0]["icon"]) {
 	return function StreamdownIcon({ size = 16, strokeWidth: _strokeWidth, ...props }: StreamdownIconProps) {
@@ -80,6 +88,8 @@ interface ChatMessageProps
   from: "user" | "assistant";
   /** Optional attachments rendered as square thumbnails above the bubble. */
   files?: File[];
+  /** Safe metadata for files that were supplied only for the execution round. */
+  attachments?: readonly ChatMessageAttachment[];
   /** Side length of each attachment thumbnail in pixels. Defaults to 64. */
   thumbnailSize?: number;
   /** Timestamp shown in the hover-revealed meta row, before the actions.
@@ -106,6 +116,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
     {
       from,
       files,
+      attachments,
       thumbnailSize = 64,
       time,
       actions,
@@ -118,6 +129,8 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
     ref
   ) => {
     const shape = useShape();
+		const FileIcon = useIcon("file-code");
+		const ImageIcon = useIcon("image");
     const isUser = from === "user";
     const reducedMotion = useReducedMotion();
     const shouldAnimate = animate && !reducedMotion;
@@ -157,6 +170,30 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
                 size={thumbnailSize}
               />
             ))}
+          </div>
+        )}
+        {attachments && attachments.length > 0 && (
+          <div
+            className={cn(
+              "flex flex-wrap gap-1.5",
+              isUser ? "justify-end" : "justify-start"
+            )}
+          >
+            {attachments.map((attachment) => {
+              const AttachmentIcon = attachment.mimeType.startsWith("image/") ? ImageIcon : FileIcon;
+              const attachmentLabel = `${attachment.filename} · ${formatAttachmentSize(attachment.size)}`;
+              return (
+                <span
+                  key={attachment.id}
+                  className="inline-flex max-w-72 items-center gap-1.5 rounded-md bg-accent px-2 py-1 text-[12px] text-foreground shadow-surface-1"
+                  title={attachmentLabel}
+                >
+                  <AttachmentIcon size={13} strokeWidth={1.6} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span className="truncate">{attachment.filename}</span>
+                  <span className="shrink-0 text-muted-foreground">{formatAttachmentSize(attachment.size)}</span>
+                </span>
+              );
+            })}
           </div>
         )}
         {children != null && children !== "" && (
@@ -218,6 +255,11 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
     );
   }
 );
+
+function formatAttachmentSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 ChatMessage.displayName = "ChatMessage";
 

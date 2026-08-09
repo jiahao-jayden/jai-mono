@@ -8,6 +8,7 @@ export {
 	type OpenAIResponsesProviderConfig,
 } from "./providers/openai-responses";
 export { ModelRegistry, type RegisteredProvider } from "./registry";
+export { transformMessagesForModel } from "./transform-messages";
 export * from "./types";
 export { zeroCost, zeroUsage } from "./utils";
 export * from "./validation";

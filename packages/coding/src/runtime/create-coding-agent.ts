@@ -24,6 +24,7 @@ import {
 	type AgentPluginRuntime,
 	createAgentPluginRuntime,
 } from "../agent-plugins";
+import { attachmentUserMessage, CodingAttachmentRun, type CodingMessageAttachment } from "../attachments";
 import type { CodingExecutionContext } from "../business/types";
 import {
 	type CodingConfigDefinition,
@@ -152,6 +153,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	readonly #plugins?: AgentPluginRuntime;
 	readonly #mcp?: McpRuntime;
 	readonly #connector?: ConnectorRuntime;
+	readonly #attachments: CodingAttachmentRun;
 
 	constructor(
 		agent: Agent<TAppState>,
@@ -162,6 +164,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		plugins?: AgentPluginRuntime,
 		mcp?: McpRuntime,
 		connector?: ConnectorRuntime,
+		attachments: CodingAttachmentRun = new CodingAttachmentRun(),
 	) {
 		this.#agent = agent;
 		this.configStore = configStore;
@@ -171,6 +174,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#plugins = plugins;
 		this.#mcp = mcp;
 		this.#connector = connector;
+		this.#attachments = attachments;
 	}
 
 	get configSnapshot(): ConfigSnapshot<TSchema> {
@@ -191,6 +195,15 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 
 	invoke(input: AgentInput): Promise<AgentMessage[]> {
 		return this.#agent.invoke(this.#skills?.prepareInput(input).input ?? input);
+	}
+
+	invokeWithAttachments(input: {
+		readonly text: string;
+		readonly attachments: readonly CodingMessageAttachment[];
+	}): Promise<AgentMessage[]> {
+		const message = attachmentUserMessage({ text: input.text, attachments: input.attachments });
+		const prepared = this.#skills?.prepareInput(message).input ?? message;
+		return this.#attachments.invoke(input.attachments, () => this.#agent.invoke(prepared));
 	}
 
 	stream(input: AgentInput): AgentRun {
@@ -277,6 +290,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			if (next) runtime.snapshot = next;
 		});
 	let agent!: Agent<TAppState>;
+	const attachments = new CodingAttachmentRun();
 	const updateTodosTool = createUpdateTodosTool(async (items) => {
 		const todos: SessionTodos = {
 			version: 1,
@@ -289,6 +303,10 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	});
 	const hooks = resolvedAgentOptions.hooks;
 	const beforeModelCall = [...(hooks?.beforeModelCall ?? [])];
+	beforeModelCall.unshift(async ({ messages }) => {
+		const projected = await attachments.project(messages);
+		return projected ? { messages: projected } : undefined;
+	});
 	beforeModelCall.push(({ messages }) => {
 		const todos = sessionTodosFromAppState(agent.state.appState);
 		if (!todos) return;
@@ -324,6 +342,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		: undefined;
 	if (options.executionContext.localFileAccess) {
 		aroundToolCall.push(
+			attachments.aroundToolCall,
 			createPermissionMiddleware({
 				workspaceRoot: options.executionContext.cwd,
 				settings: () => selectPermissionSettings(runtime.snapshot),
@@ -440,7 +459,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const stopConfigWatch = configStore.watch((event) => {
 		if (!runtime.closed && event.status === "valid") runtime.snapshot = event.snapshot;
 	});
-	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, skills, plugins, mcp, connector);
+	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, skills, plugins, mcp, connector, attachments);
 }
 
 interface ConnectorRuntime {

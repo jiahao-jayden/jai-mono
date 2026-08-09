@@ -1,3 +1,4 @@
+export * from "./attachments";
 export * from "./config";
 export * from "./connector";
 export * from "./mcp";

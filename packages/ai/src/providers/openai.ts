@@ -7,6 +7,7 @@ import type {
 import { createAssistantMessage, runAdapterStream } from "../adapter";
 import { AssistantMessageEventStream } from "../event-stream";
 import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
+import { transformMessagesForModel } from "../transform-messages";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -152,7 +153,7 @@ function buildParams(
 	const params: ChatCompletionCreateParamsStreaming = {
 		model: model.remoteModelId ?? model.id,
 		stream: true,
-		messages: convertMessages(context.messages, context.systemPrompt),
+		messages: convertMessages(transformMessagesForModel(context.messages, model), context.systemPrompt),
 	};
 
 	if (compat.supportsUsageInStreaming !== false) {
