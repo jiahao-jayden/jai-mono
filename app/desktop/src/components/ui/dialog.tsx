@@ -188,7 +188,7 @@ function DialogHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
 function DialogFooter({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("flex justify-end gap-2 mt-6", className)}
+      className={cn("flex justify-end gap-2 mt-2", className)}
       {...props}
     />
   );

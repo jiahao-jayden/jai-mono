@@ -6,6 +6,7 @@ import type { DesktopConfigService } from "./config/index";
 import { DesktopOAuthCallbackServer, isDesktopOAuthCallbackUrl } from "./oauth-callback";
 
 const oauthGatewayEndpoint = "https://jai-connector.jayden0.com";
+const oauthFlowTtlMs = 2 * 60_000;
 
 class DesktopOAuthCallbackInvalid extends TaggedError("desktop_oauth.callback_invalid")<{
 	readonly cause?: unknown;
@@ -30,7 +31,10 @@ export interface DesktopOAuthCallbackResult {
 
 export class DesktopOAuthManager {
 	readonly #config: DesktopConfigService;
-	readonly #flow = new OAuthFlowManager({ client: new OAuthGatewayClient({ endpoint: oauthGatewayEndpoint }) });
+	readonly #flow = new OAuthFlowManager({
+		client: new OAuthGatewayClient({ endpoint: oauthGatewayEndpoint }),
+		ttlMs: oauthFlowTtlMs,
+	});
 	readonly #openExternal: (url: string) => Promise<void>;
 	readonly #callbackServer: DesktopOAuthCallbackServer;
 
