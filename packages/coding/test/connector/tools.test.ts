@@ -36,7 +36,7 @@ function createFakeClient(): ConnectorService & { calls: ExecuteActionInput[] } 
 		searchActions: async (_input: SearchActionsInput, _context: RequestContext) => Result.ok<SearchActionsResponse>({ actions: [], nextCursor: null }),
 		getActionGuide: async (_input: { actionId: string }, _context: RequestContext) => Result.ok<ActionGuideResponse>({
 			action: {
-				providerId: "demo",
+				connectorId: "demo",
 				actionId: "create",
 				description: "Create a demo record.",
 				inputSchema: { type: "object" },
@@ -51,7 +51,8 @@ function createFakeClient(): ConnectorService & { calls: ExecuteActionInput[] } 
 			calls.push(input);
 			return Result.ok<ExecuteActionResponse>(input.approvalId ? { status: "completed", actionId: input.actionId, output: { ok: true } } : response);
 		},
-		health: async (_context: RequestContext) => Result.ok<HealthResponse>({ status: "ready", protocolVersion: 1, providerCount: 1, actionCount: 1 }),
+		health: async (_context: RequestContext) =>
+			Result.ok<HealthResponse>({ status: "ready", protocolVersion: 1, connectorCount: 1, actionCount: 1 }),
 	};
 }
 

@@ -88,6 +88,12 @@
       "sourceType": "github",
       "computedHash": "6b5fd49587616ca1e594e9c6b11bc1cef5eb0b2d137c307de54a8a650770f4ce"
     },
+    "logo-generator": {
+      "source": "op7418/logo-generator-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "d949329c11df3efa25bc1cc387c92fc8b86077883fcd737803675e42e2da75eb"
+    },
     "mintlify": {
       "source": "mintlify.com",
       "sourceType": "well-known",

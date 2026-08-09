@@ -4,15 +4,15 @@
  * Service-owned credentials and Jai Connector error DTOs.
  */
 import { Result, type Result as ResultType } from "better-result";
-import { ConnectorProviderFailed, ConnectorProviderRateLimited, ConnectorProviderUnavailable } from "../errors";
+import { ConnectorUpstreamFailed, ConnectorUpstreamRateLimited, ConnectorUpstreamUnavailable } from "../errors";
 import type {
 	ActionDefinition,
 	ActionExecutionContext,
+	ConnectorAdapter,
 	ConnectorFailure,
 	JsonObject,
 	JsonSchema,
 	JsonValue,
-	ProviderAdapter,
 } from "../types";
 
 export interface AMapAdapterOptions {
@@ -209,7 +209,7 @@ const actionSpecs: readonly AMapActionSpec[] = [
 	},
 ];
 
-export function createAMapAdapter(options: AMapAdapterOptions = {}): ProviderAdapter {
+export function createAMapAdapter(options: AMapAdapterOptions = {}): ConnectorAdapter {
 	const fetcher: AMapFetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
 	const baseUrl = (options.baseUrl ?? "https://restapi.amap.com").replace(/\/$/u, "");
 	const actions = actionSpecs.map(toActionDefinition);
@@ -229,7 +229,7 @@ export function createAMapAdapter(options: AMapAdapterOptions = {}): ProviderAda
 
 function toActionDefinition(spec: AMapActionSpec): ActionDefinition {
 	return {
-		providerId: "amap",
+		connectorId: "amap",
 		actionId: spec.actionId,
 		description: spec.description,
 		inputSchema: {
@@ -256,9 +256,9 @@ async function executeAMap(
 	const key = context.credentials.apiKey;
 	if (!key)
 		return Result.err(
-			new ConnectorProviderUnavailable({
+			new ConnectorUpstreamUnavailable({
 				message: "AMap Web Service key is not configured",
-				data: { providerId: "amap", actionId: action.actionId },
+				data: { connectorId: "amap", actionId: action.actionId },
 			}),
 		);
 	const params = new URLSearchParams({ key, output: "JSON" });
@@ -275,10 +275,10 @@ async function executeAMap(
 		const retryAfter = retryAfterMs(response);
 		if (response.status === 429)
 			return Result.err(
-				new ConnectorProviderRateLimited({
+				new ConnectorUpstreamRateLimited({
 					message: "AMap rate limit exceeded",
 					data: {
-						providerId: "amap",
+						connectorId: "amap",
 						actionId: action.actionId,
 						...(retryAfter === undefined ? {} : { retryAfterMs: retryAfter }),
 					},
@@ -286,38 +286,38 @@ async function executeAMap(
 			);
 		if (response.status >= 500)
 			return Result.err(
-				new ConnectorProviderUnavailable({
+				new ConnectorUpstreamUnavailable({
 					message: "AMap is temporarily unavailable",
-					data: { providerId: "amap", actionId: action.actionId, status: response.status },
+					data: { connectorId: "amap", actionId: action.actionId, status: response.status },
 				}),
 			);
 		if (!response.ok)
 			return Result.err(
-				new ConnectorProviderFailed({
+				new ConnectorUpstreamFailed({
 					message: "AMap rejected the request",
-					data: { providerId: "amap", actionId: action.actionId, status: response.status },
+					data: { connectorId: "amap", actionId: action.actionId, status: response.status },
 				}),
 			);
 		if (!isJsonValue(payload))
 			return Result.err(
-				new ConnectorProviderFailed({
+				new ConnectorUpstreamFailed({
 					message: "AMap returned an invalid JSON response",
-					data: { providerId: "amap", actionId: action.actionId, status: response.status },
+					data: { connectorId: "amap", actionId: action.actionId, status: response.status },
 				}),
 			);
 		if (isAMapFailure(payload))
 			return Result.err(
-				new ConnectorProviderFailed({
+				new ConnectorUpstreamFailed({
 					message: `AMap request failed: ${payload.info ?? "unknown error"}`,
-					data: { providerId: "amap", actionId: action.actionId, status: response.status },
+					data: { connectorId: "amap", actionId: action.actionId, status: response.status },
 				}),
 			);
 		return Result.ok(payload);
 	} catch (cause) {
 		return Result.err(
-			new ConnectorProviderUnavailable({
+			new ConnectorUpstreamUnavailable({
 				message: "AMap request failed",
-				data: { providerId: "amap", actionId: action.actionId },
+				data: { connectorId: "amap", actionId: action.actionId },
 				cause,
 			}),
 		);

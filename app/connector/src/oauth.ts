@@ -12,7 +12,7 @@ export type OAuthGatewayFetcher = (
 ) => Promise<Response>;
 
 export interface OAuthAuthorizationUrlInput {
-	readonly providerId: string;
+	readonly oauthServiceId: string;
 	readonly state: string;
 	readonly codeChallenge: string;
 	readonly scopes?: readonly string[];
@@ -40,14 +40,14 @@ export interface OAuthFlowManagerOptions {
 }
 
 export interface OAuthFlowStart {
-	readonly providerId: string;
+	readonly oauthServiceId: string;
 	readonly authorizationUrl: string;
 	readonly state: string;
 	readonly expiresAt: number;
 }
 
 interface PendingOAuthFlow {
-	readonly providerId: string;
+	readonly oauthServiceId: string;
 	readonly codeVerifier: string;
 	readonly expiresAt: number;
 }
@@ -71,7 +71,7 @@ export class OAuthFlowManager {
 	}
 
 	async begin(
-		providerId: string,
+		oauthServiceId: string,
 		scopes?: readonly string[],
 	): Promise<ResultType<OAuthFlowStart, ConnectorProtocolInvalid>> {
 		this.#removeExpired();
@@ -79,11 +79,16 @@ export class OAuthFlowManager {
 		const codeVerifier = randomSecret();
 		const codeChallenge = await sha256Base64Url(codeVerifier);
 		const expiresAt = this.#now() + this.#ttlMs;
-		this.#pending.set(state, { providerId, codeVerifier, expiresAt });
+		this.#pending.set(state, { oauthServiceId, codeVerifier, expiresAt });
 		return Result.ok({
-			providerId,
+			oauthServiceId,
 			authorizationUrl: this.#client
-				.buildAuthorizationUrl({ providerId, state, codeChallenge, ...(scopes === undefined ? {} : { scopes }) })
+				.buildAuthorizationUrl({
+					oauthServiceId,
+					state,
+					codeChallenge,
+					...(scopes === undefined ? {} : { scopes }),
+				})
 				.toString(),
 			state,
 			expiresAt,
@@ -91,7 +96,7 @@ export class OAuthFlowManager {
 	}
 
 	async complete(
-		providerId: string,
+		oauthServiceId: string,
 		state: string,
 		code: string,
 	): Promise<ResultType<OAuthTokenResponse, OAuthGatewayClientFailure | ConnectorOAuthFlowInvalid>> {
@@ -101,7 +106,7 @@ export class OAuthFlowManager {
 			return Result.err(
 				new ConnectorOAuthFlowInvalid({
 					message: "OAuth flow was not found or has already been consumed",
-					data: { providerId, reason: "missing" },
+					data: { oauthServiceId, reason: "missing" },
 				}),
 			);
 		}
@@ -110,20 +115,20 @@ export class OAuthFlowManager {
 			return Result.err(
 				new ConnectorOAuthFlowInvalid({
 					message: "OAuth flow has expired",
-					data: { providerId, reason: "expired" },
+					data: { oauthServiceId, reason: "expired" },
 				}),
 			);
 		}
-		if (pending.providerId !== providerId) {
+		if (pending.oauthServiceId !== oauthServiceId) {
 			return Result.err(
 				new ConnectorOAuthFlowInvalid({
-					message: "OAuth callback Provider does not match the flow",
-					data: { providerId, reason: "mismatch" },
+					message: "OAuth callback service does not match the flow",
+					data: { oauthServiceId, reason: "mismatch" },
 				}),
 			);
 		}
 		this.#pending.delete(state);
-		return this.#client.exchange(providerId, { code, codeVerifier: pending.codeVerifier });
+		return this.#client.exchange(oauthServiceId, { code, codeVerifier: pending.codeVerifier });
 	}
 
 	cancel(state: string): void {
@@ -164,7 +169,7 @@ export class OAuthGatewayClient {
 	}
 
 	buildAuthorizationUrl(input: OAuthAuthorizationUrlInput): URL {
-		const url = this.#route(input.providerId, "authorize");
+		const url = this.#route(input.oauthServiceId, "authorize");
 		url.searchParams.set("state", input.state);
 		url.searchParams.set("code_challenge", input.codeChallenge);
 		url.searchParams.set("code_challenge_method", "S256");
@@ -173,24 +178,24 @@ export class OAuthGatewayClient {
 	}
 
 	exchange(
-		providerId: string,
+		oauthServiceId: string,
 		input: { readonly code: string; readonly codeVerifier: string },
 	): Promise<ResultType<OAuthTokenResponse, OAuthGatewayClientFailure>> {
-		return this.#requestToken(providerId, "token", input);
+		return this.#requestToken(oauthServiceId, "token", input);
 	}
 
 	refresh(
-		providerId: string,
+		oauthServiceId: string,
 		refreshToken: string,
 	): Promise<ResultType<OAuthTokenResponse, OAuthGatewayClientFailure>> {
-		return this.#requestToken(providerId, "refresh", { refreshToken });
+		return this.#requestToken(oauthServiceId, "refresh", { refreshToken });
 	}
 
 	async revoke(
-		providerId: string,
+		oauthServiceId: string,
 		token: string,
 	): Promise<ResultType<OAuthRevokeResponse, OAuthGatewayClientFailure>> {
-		const result = await this.#request(providerId, "revoke", { token });
+		const result = await this.#request(oauthServiceId, "revoke", { token });
 		if (result.isErr()) return result;
 		if (
 			!isRecord(result.value) ||
@@ -208,11 +213,11 @@ export class OAuthGatewayClient {
 	}
 
 	async #requestToken(
-		providerId: string,
+		oauthServiceId: string,
 		operation: "token" | "refresh",
 		input: Readonly<Record<string, string>>,
 	): Promise<ResultType<OAuthTokenResponse, OAuthGatewayClientFailure>> {
-		const result = await this.#request(providerId, operation, input);
+		const result = await this.#request(oauthServiceId, operation, input);
 		if (result.isErr()) return result;
 		const token = normalizeTokenResponse(result.value);
 		if (token.isOk()) return Result.ok(token.value);
@@ -225,13 +230,13 @@ export class OAuthGatewayClient {
 	}
 
 	async #request(
-		providerId: string,
+		oauthServiceId: string,
 		operation: "token" | "refresh" | "revoke",
 		input: Readonly<Record<string, string>>,
 	): Promise<ResultType<unknown, OAuthGatewayClientFailure>> {
 		let response: Response;
 		try {
-			response = await this.#fetcher(this.#route(providerId, operation), {
+			response = await this.#fetcher(this.#route(oauthServiceId, operation), {
 				method: "POST",
 				headers: { "content-type": "application/json", accept: "application/json" },
 				body: JSON.stringify(input),
@@ -240,7 +245,7 @@ export class OAuthGatewayClient {
 			return Result.err(
 				new ConnectorOAuthGatewayFailed({
 					message: "OAuth Gateway request failed",
-					data: { providerId, operation },
+					data: { oauthServiceId, operation },
 					cause,
 				}),
 			);
@@ -252,7 +257,7 @@ export class OAuthGatewayClient {
 				new ConnectorOAuthGatewayFailed({
 					message: "OAuth Gateway rejected the request",
 					data: {
-						providerId,
+						oauthServiceId,
 						operation,
 						status: response.status,
 						...(typeof remote?.code === "string" ? { code: remote.code } : {}),
@@ -271,10 +276,10 @@ export class OAuthGatewayClient {
 		return Result.ok(body);
 	}
 
-	#route(providerId: string, operation: "authorize" | "token" | "refresh" | "revoke"): URL {
+	#route(oauthServiceId: string, operation: "authorize" | "token" | "refresh" | "revoke"): URL {
 		const url = new URL(this.#baseUrl);
 		const basePath = url.pathname.replace(/\/+$/, "").replace(/\/v1$/, "");
-		url.pathname = `${basePath}/v1/oauth/${encodeURIComponent(providerId)}/${operation}`;
+		url.pathname = `${basePath}/v1/oauth/${encodeURIComponent(oauthServiceId)}/${operation}`;
 		url.search = "";
 		return url;
 	}

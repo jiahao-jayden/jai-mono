@@ -1,7 +1,7 @@
 import { OAuthFlowManager, OAuthGatewayClient } from "@jai/connector";
 import { TaggedError } from "better-result";
 import { shell } from "electron";
-import { findDesktopConnectorOAuthProvider } from "./config/connector";
+import { findDesktopConnectorOAuthApplication } from "./config/connector";
 import type { DesktopConfigService } from "./config/index";
 import { DesktopOAuthCallbackServer, isDesktopOAuthCallbackUrl } from "./oauth-callback";
 
@@ -10,23 +10,23 @@ const oauthFlowTtlMs = 2 * 60_000;
 
 class DesktopOAuthCallbackInvalid extends TaggedError("desktop_oauth.callback_invalid")<{
 	readonly cause?: unknown;
-	readonly data: { readonly reason: string; readonly providerId?: string };
+	readonly data: { readonly reason: string; readonly connectorId?: string; readonly oauthServiceId?: string };
 	readonly message: string;
 }> {}
 
 class DesktopOAuthAuthorizationFailed extends TaggedError("desktop_oauth.authorization_failed")<{
 	readonly cause?: unknown;
-	readonly data: { readonly providerId: string };
+	readonly data: { readonly connectorId: string };
 	readonly message: string;
 }> {}
 
 export interface DesktopOAuthStartResult {
-	readonly providerId: string;
+	readonly connectorId: string;
 	readonly expiresAt: number;
 }
 
 export interface DesktopOAuthCallbackResult {
-	readonly providerId: string;
+	readonly connectorId: string;
 }
 
 export class DesktopOAuthManager {
@@ -37,6 +37,7 @@ export class DesktopOAuthManager {
 	});
 	readonly #openExternal: (url: string) => Promise<void>;
 	readonly #callbackServer: DesktopOAuthCallbackServer;
+	readonly #connectorsByState = new Map<string, { readonly connectorId: string; readonly expiresAt: number }>();
 
 	constructor(options: {
 		readonly config: DesktopConfigService;
@@ -48,73 +49,97 @@ export class DesktopOAuthManager {
 		this.#callbackServer = new DesktopOAuthCallbackServer({ onCallback: options.onCallback });
 	}
 
-	async start(providerId: string): Promise<DesktopOAuthStartResult> {
-		const provider = findDesktopConnectorOAuthProvider(providerId);
-		if (!provider) {
+	async start(connectorId: string): Promise<DesktopOAuthStartResult> {
+		this.#removeExpiredConnectors();
+		const application = findDesktopConnectorOAuthApplication(connectorId);
+		if (!application) {
 			throw new DesktopOAuthCallbackInvalid({
 				message: "This Connector does not support OAuth authorization",
-				data: { reason: "provider_not_found", providerId },
+				data: { reason: "connector_not_found", connectorId },
 			});
 		}
 		await this.#callbackServer.start();
-		const started = await this.#flow.begin(provider.id, provider.scopes);
+		const started = await this.#flow.begin(application.oauthServiceId, application.scopes);
 		if (started.isErr()) throw started.error;
+		this.#connectorsByState.set(started.value.state, {
+			connectorId: application.id,
+			expiresAt: started.value.expiresAt,
+		});
 		try {
 			await this.#openExternal(started.value.authorizationUrl);
 		} catch (cause) {
 			this.#flow.cancel(started.value.state);
+			this.#connectorsByState.delete(started.value.state);
 			throw new DesktopOAuthAuthorizationFailed({
 				message: "The browser could not be opened for OAuth authorization",
-				data: { providerId: provider.id },
+				data: { connectorId: application.id },
 				cause,
 			});
 		}
 		return {
-			providerId: started.value.providerId,
+			connectorId: application.id,
 			expiresAt: started.value.expiresAt,
 		};
 	}
 
 	async handleCallback(rawUrl: string): Promise<DesktopOAuthCallbackResult> {
 		const callback = parseOAuthCallback(rawUrl);
-		const provider = findDesktopConnectorOAuthProvider(callback.providerId);
-		if (!provider) {
+		this.#removeExpiredConnectors(callback.state);
+		const pending = this.#connectorsByState.get(callback.state);
+		const application = pending ? findDesktopConnectorOAuthApplication(pending.connectorId) : undefined;
+		if (!application || application.oauthServiceId !== callback.oauthServiceId) {
 			throw new DesktopOAuthCallbackInvalid({
-				message: "OAuth callback references an unknown Connector provider",
-				data: { reason: "provider_not_found", providerId: callback.providerId },
+				message: "OAuth callback does not match a pending Connector authorization",
+				data: { reason: "connector_not_found", oauthServiceId: callback.oauthServiceId },
 			});
 		}
 		if (callback.error) {
 			this.#flow.cancel(callback.state);
+			this.#connectorsByState.delete(callback.state);
 			throw new DesktopOAuthAuthorizationFailed({
 				message: callback.errorDescription ?? "OAuth authorization was not completed",
-				data: { providerId: provider.id },
+				data: { connectorId: application.id },
 			});
 		}
-		const completed = await this.#flow.complete(provider.id, callback.state, callback.code!);
-		if (completed.isErr()) throw completed.error;
-		await this.#config.saveConnectorOAuth(provider.id, completed.value);
-		return { providerId: provider.id };
+		const completed = await this.#flow.complete(application.oauthServiceId, callback.state, callback.code!);
+		this.#connectorsByState.delete(callback.state);
+		if (completed.isErr()) {
+			throw new DesktopOAuthAuthorizationFailed({
+				message: completed.error.message,
+				data: { connectorId: application.id },
+				cause: completed.error,
+			});
+		}
+		await this.#config.saveConnectorOAuth(application.id, completed.value);
+		return { connectorId: application.id };
 	}
 
-	async disconnect(providerId: string) {
-		const provider = findDesktopConnectorOAuthProvider(providerId);
-		if (!provider) {
+	async disconnect(connectorId: string) {
+		const application = findDesktopConnectorOAuthApplication(connectorId);
+		if (!application) {
 			throw new DesktopOAuthCallbackInvalid({
 				message: "This Connector does not support OAuth authorization",
-				data: { reason: "provider_not_found", providerId },
+				data: { reason: "connector_not_found", connectorId },
 			});
 		}
-		return this.#config.disconnectConnectorOAuth(provider.id);
+		return this.#config.disconnectConnectorOAuth(application.id);
 	}
 
 	close(): Promise<void> {
+		this.#connectorsByState.clear();
 		return this.#callbackServer.close();
+	}
+
+	#removeExpiredConnectors(exceptState?: string): void {
+		const now = Date.now();
+		for (const [state, pending] of this.#connectorsByState) {
+			if (state !== exceptState && pending.expiresAt <= now) this.#connectorsByState.delete(state);
+		}
 	}
 }
 
 function parseOAuthCallback(rawUrl: string): {
-	readonly providerId: string;
+	readonly oauthServiceId: string;
 	readonly state: string;
 	readonly code?: string;
 	readonly error?: string;
@@ -139,19 +164,19 @@ function parseOAuthCallback(rawUrl: string): {
 			data: { reason: "route_invalid" },
 		});
 	}
-	const providerId = url.searchParams.get("provider");
+	const oauthServiceId = url.searchParams.get("provider");
 	const state = url.searchParams.get("state");
 	const code = url.searchParams.get("code");
 	const error = url.searchParams.get("error");
 	const errorDescription = url.searchParams.get("error_description");
-	if (!providerId || !state || (!code && !error)) {
+	if (!oauthServiceId || !state || (!code && !error)) {
 		throw new DesktopOAuthCallbackInvalid({
 			message: "OAuth callback parameters are incomplete",
-			data: { reason: "parameters_invalid", ...(providerId ? { providerId } : {}) },
+			data: { reason: "parameters_invalid", ...(oauthServiceId ? { oauthServiceId } : {}) },
 		});
 	}
 	return {
-		providerId,
+		oauthServiceId,
 		state,
 		...(code ? { code } : {}),
 		...(error ? { error } : {}),

@@ -38,7 +38,7 @@ const emptyParameters = Type.Object({}, { additionalProperties: false });
 const searchParameters = Type.Object(
 	{
 		query: Type.Optional(Type.String()),
-		providerId: Type.Optional(Type.String()),
+		connectorId: Type.Optional(Type.String()),
 		sideEffect: Type.Optional(Type.Union([Type.Literal("read"), Type.Literal("write"), Type.Literal("destructive")])),
 		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
 	},
@@ -57,7 +57,7 @@ export function createConnectorTools(options: ConnectorAgentToolOptions): AgentT
 	return [
 		createSimpleTool(
 			"connector__list_apps",
-			"List enabled Connector Providers and safe connection summaries.",
+			"List enabled Connectors and safe connection summaries.",
 			emptyParameters,
 			(toolCallId, _input, signal) => options.client.listApps(context(options.sessionId, toolCallId, signal)),
 		),
@@ -69,7 +69,7 @@ export function createConnectorTools(options: ConnectorAgentToolOptions): AgentT
 		),
 		createSimpleTool(
 			"connector__search_actions",
-			"Search available Connector Actions without exposing Provider-specific tools.",
+			"Search available Connector Actions without exposing Connector-specific tools.",
 			searchParameters,
 			(toolCallId, input, signal) =>
 				options.client.searchActions(

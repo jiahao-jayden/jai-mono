@@ -6,6 +6,7 @@ import {
 	discoverConfiguredModels,
 	type ModelCatalogStore,
 } from "@jai/coding/runtime";
+import type { OAuthTokenResponse } from "@jai/connector";
 import type {
 	DesktopProviderApiKeyRevealResult,
 	DesktopProviderConfigInput,
@@ -14,7 +15,7 @@ import type {
 	DesktopProviderProfileInput,
 } from "../../shared/desktop-rpc";
 import {
-	findDesktopConnectorOAuthProvider,
+	findDesktopConnectorOAuthApplication,
 	projectConnectorConfig,
 	removeConnectorOAuthToken,
 	storeConnectorOAuthToken,
@@ -22,7 +23,6 @@ import {
 	toStoredConnectorOAuthToken,
 	validateConnectorConfigInput,
 } from "./connector";
-import type { OAuthTokenResponse } from "@jai/connector";
 import {
 	projectProviderConfig,
 	providerConfigError,
@@ -160,15 +160,15 @@ export class DesktopConfigService {
 		return { profileId, apiKey };
 	}
 
-	async saveConnectorOAuth(providerId: string, token: OAuthTokenResponse): Promise<DesktopProviderConfigSnapshot> {
-		const provider = findDesktopConnectorOAuthProvider(providerId);
-		if (!provider) throw invalidInput("Unknown OAuth Connector provider");
+	async saveConnectorOAuth(connectorId: string, token: OAuthTokenResponse): Promise<DesktopProviderConfigSnapshot> {
+		const application = findDesktopConnectorOAuthApplication(connectorId);
+		if (!application) throw invalidInput("Unknown OAuth Connector application");
 		const userScope = await this.#store.readScope("user");
 		const settings = structuredClone(userScope.settings);
 		settings.connector = storeConnectorOAuthToken(
 			settings.connector,
-			provider.id,
-			toStoredConnectorOAuthToken(provider.id, token),
+			application.id,
+			toStoredConnectorOAuthToken(application.id, token),
 		);
 		const snapshot = await this.#store.writeScope("user", settings, { expectedRevision: userScope.revision });
 		return projectDesktopConfig(
@@ -179,12 +179,12 @@ export class DesktopConfigService {
 		);
 	}
 
-	async disconnectConnectorOAuth(providerId: string): Promise<DesktopProviderConfigSnapshot> {
-		const provider = findDesktopConnectorOAuthProvider(providerId);
-		if (!provider) throw invalidInput("Unknown OAuth Connector provider");
+	async disconnectConnectorOAuth(connectorId: string): Promise<DesktopProviderConfigSnapshot> {
+		const application = findDesktopConnectorOAuthApplication(connectorId);
+		if (!application) throw invalidInput("Unknown OAuth Connector application");
 		const userScope = await this.#store.readScope("user");
 		const settings = structuredClone(userScope.settings);
-		settings.connector = removeConnectorOAuthToken(settings.connector, provider.id);
+		settings.connector = removeConnectorOAuthToken(settings.connector, application.id);
 		const snapshot = await this.#store.writeScope("user", settings, { expectedRevision: userScope.revision });
 		return projectDesktopConfig(
 			snapshot.settings,

@@ -35,7 +35,7 @@ export type ActionSideEffect = "read" | "write" | "destructive";
 export type ActionDataSensitivity = "normal" | "sensitive" | "secret";
 export type ConnectorActionPermission = "allow" | "ask" | "deny";
 
-export interface ProviderDefinition {
+export interface ConnectorDefinition {
 	readonly id: string;
 	readonly displayName: string;
 	readonly description?: string;
@@ -44,7 +44,7 @@ export interface ProviderDefinition {
 }
 
 export interface ActionDefinition {
-	readonly providerId: string;
+	readonly connectorId: string;
 	readonly actionId: string;
 	readonly description: string;
 	readonly inputSchema: JsonSchema;
@@ -55,7 +55,7 @@ export interface ActionDefinition {
 }
 
 export interface ConnectionRecord {
-	readonly providerId: string;
+	readonly connectorId: string;
 	readonly displayName: string;
 	readonly status: "connected" | "expired" | "missing_scope" | "disconnected";
 	readonly scopes: readonly string[];
@@ -70,8 +70,8 @@ export interface ActionExecutionContext {
 	readonly signal?: AbortSignal;
 }
 
-export interface ProviderAdapter {
-	readonly definition: ProviderDefinition;
+export interface ConnectorAdapter {
+	readonly definition: ConnectorDefinition;
 	readonly actions: readonly ActionDefinition[];
 	execute(
 		action: ActionDefinition,
@@ -83,18 +83,18 @@ export interface ProviderAdapter {
 export interface ConnectorPolicy {
 	readonly default?: ConnectorActionPermission;
 	readonly actions?: Readonly<Record<string, ConnectorActionPermission>>;
-	readonly disabledProviders?: readonly string[];
+	readonly disabledConnectors?: readonly string[];
 }
 
-export interface ConnectorProviderSettings {
+export interface ConnectorConfiguration {
 	readonly enabled?: boolean;
-	/** Provider API keys, OAuth tokens and custom credentials are intentionally persisted as settings values. */
+	/** Connector API keys, OAuth tokens and custom credentials are intentionally persisted as settings values. */
 	readonly credentials?: Readonly<Record<string, string>>;
 }
 
 export interface ConnectorSettings {
 	readonly policy?: ConnectorPolicy;
-	readonly providers?: Readonly<Record<string, ConnectorProviderSettings>>;
+	readonly connectors?: Readonly<Record<string, ConnectorConfiguration>>;
 }
 
 export interface ConnectorConfigSnapshot {
@@ -137,7 +137,7 @@ export interface ListAppsResponse {
 }
 
 export interface AppSummary {
-	readonly providerId: string;
+	readonly connectorId: string;
 	readonly displayName: string;
 	readonly description?: string;
 	readonly categories: readonly string[];
@@ -152,7 +152,7 @@ export interface ListConnectionsResponse {
 }
 
 export interface ConnectionSummary {
-	readonly providerId: string;
+	readonly connectorId: string;
 	readonly displayName: string;
 	readonly status: ConnectionRecord["status"];
 	readonly scopes: readonly string[];
@@ -160,7 +160,7 @@ export interface ConnectionSummary {
 
 export interface SearchActionsInput {
 	readonly query?: string;
-	readonly providerId?: string;
+	readonly connectorId?: string;
 	readonly sideEffect?: ActionSideEffect;
 	readonly limit?: number;
 	readonly cursor?: string;
@@ -173,7 +173,7 @@ export interface SearchActionsResponse {
 
 export interface ActionSummary {
 	readonly actionId: string;
-	readonly providerId: string;
+	readonly connectorId: string;
 	readonly description: string;
 	readonly policy: ConnectorActionPermission;
 	readonly sideEffect: ActionSideEffect;
@@ -222,7 +222,7 @@ export type ExecuteActionResponse =
 export interface HealthResponse {
 	readonly status: "ready";
 	readonly protocolVersion: 1;
-	readonly providerCount: number;
+	readonly connectorCount: number;
 	readonly actionCount: number;
 }
 
@@ -252,8 +252,8 @@ export type ConnectorFailure =
 	| import("./errors").ConnectorPolicyDenied
 	| import("./errors").ConnectorApprovalInvalid
 	| import("./errors").ConnectorSessionRequired
-	| import("./errors").ConnectorProviderFailed
-	| import("./errors").ConnectorProviderRateLimited
-	| import("./errors").ConnectorProviderUnavailable
+	| import("./errors").ConnectorUpstreamFailed
+	| import("./errors").ConnectorUpstreamRateLimited
+	| import("./errors").ConnectorUpstreamUnavailable
 	| import("./errors").ConnectorRequestCancelled
 	| import("./errors").ConnectorProtocolInvalid;

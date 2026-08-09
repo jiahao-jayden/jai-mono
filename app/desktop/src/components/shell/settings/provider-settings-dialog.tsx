@@ -26,8 +26,8 @@ interface ProviderSettingsDialogProps {
 	readonly onSave: (input: DesktopProviderConfigInput) => Promise<DesktopProviderConfigSnapshot>;
 	readonly onFetchModels: (profileId: string) => Promise<DesktopProviderFetchModelsResult>;
 	readonly onRevealApiKey: (profileId: string) => Promise<string>;
-	readonly onStartConnectorOAuth: (providerId: string) => Promise<DesktopConnectorOAuthStartResult>;
-	readonly onDisconnectConnectorOAuth: (providerId: string) => Promise<DesktopProviderConfigSnapshot>;
+	readonly onStartConnectorOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
+	readonly onDisconnectConnectorOAuth: (connectorId: string) => Promise<DesktopProviderConfigSnapshot>;
 }
 
 type SettingsCategory = "general" | "providers" | "connector";
@@ -92,9 +92,9 @@ export function ProviderSettingsDialog({
 
 function toConnectorInput(snapshot: DesktopConnectorConfigSnapshot): DesktopConnectorConfigInput {
 	return {
-		providers: snapshot.providers.map((provider) => ({
-			id: provider.id,
-			enabled: provider.enabled,
+		connectors: snapshot.connectors.map((connector) => ({
+			id: connector.id,
+			enabled: connector.enabled,
 			credentials: {},
 		})),
 		policy: {
@@ -142,8 +142,8 @@ interface ProviderConfigFormProps {
 	readonly onSave: (input: DesktopProviderConfigInput) => Promise<DesktopProviderConfigSnapshot>;
 	readonly onFetchModels: (profileId: string) => Promise<DesktopProviderFetchModelsResult>;
 	readonly onRevealApiKey: (profileId: string) => Promise<string>;
-	readonly onStartConnectorOAuth: (providerId: string) => Promise<DesktopConnectorOAuthStartResult>;
-	readonly onDisconnectConnectorOAuth: (providerId: string) => Promise<DesktopProviderConfigSnapshot>;
+	readonly onStartConnectorOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
+	readonly onDisconnectConnectorOAuth: (connectorId: string) => Promise<DesktopProviderConfigSnapshot>;
 	readonly fetchingProfileId?: string;
 	readonly lastFetch?: DesktopProviderFetchModelsResult;
 }
@@ -168,7 +168,7 @@ function ProviderConfigForm({
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string>();
 	const [dirty, setDirty] = useState(false);
-	const canSave = profiles.length > 0 || snapshot.profiles.length > 0 || connector.providers.length > 0;
+	const canSave = profiles.length > 0 || snapshot.profiles.length > 0 || connector.connectors.length > 0;
 
 	const submit = async () => {
 		const validationError = validateProviderDraft(profiles, language, maxIterations);

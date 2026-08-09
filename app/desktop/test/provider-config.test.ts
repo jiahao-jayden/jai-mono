@@ -268,7 +268,7 @@ describe("DesktopConfigService", () => {
 			profiles: [],
 			connector: {
 				policy: { default: "ask", actions: { "context7.search_libraries": "allow" } },
-				providers: [
+				connectors: [
 					{
 						id: "context7",
 						enabled: true,
@@ -277,7 +277,7 @@ describe("DesktopConfigService", () => {
 				],
 			},
 		});
-		expect(first.connector.providers.find((provider) => provider.id === "context7")).toMatchObject({
+		expect(first.connector.connectors.find((connector) => connector.id === "context7")).toMatchObject({
 			credentials: [{ key: "apiKey", configured: true, mask: "•••• 1234" }],
 		});
 		expect(JSON.stringify(first)).not.toContain("ctx-secret-1234");
@@ -287,10 +287,12 @@ describe("DesktopConfigService", () => {
 			profiles: [],
 			connector: {
 				policy: { default: "ask", actions: { "context7.search_libraries": "allow" } },
-				providers: [{ id: "context7", enabled: true, credentials: {} }],
+				connectors: [{ id: "context7", enabled: true, credentials: {} }],
 			},
 		});
-		expect(preserved.connector.providers.find((provider) => provider.id === "context7")?.credentials[0]?.configured).toBe(true);
+		expect(preserved.connector.connectors.find((connector) => connector.id === "context7")?.credentials[0]?.configured).toBe(
+			true,
+		);
 		expect(preserved.connector.policy).toEqual({
 			default: "ask",
 			actions: { "context7.search_libraries": "allow" },
@@ -303,35 +305,37 @@ describe("DesktopConfigService", () => {
 	test("OAuth Connector token 保存到 settings.json，但只向 renderer 投影连接状态", async () => {
 		const homeDir = await fixture();
 		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
-		const snapshot = await service.saveConnectorOAuth("google", {
-			accessToken: "google-access-secret",
+		const snapshot = await service.saveConnectorOAuth("google_drive", {
+			accessToken: "drive-access-secret",
 			tokenType: "Bearer",
-			refreshToken: "google-refresh-secret",
+			refreshToken: "drive-refresh-secret",
 			expiresIn: 3_600,
-			scope: "https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/gmail.readonly",
+			scope: "https://www.googleapis.com/auth/drive.metadata.readonly",
 		});
-		const google = snapshot.connector.providers.find((provider) => provider.id === "google");
-		expect(google?.oauth).toMatchObject({
+		const drive = snapshot.connector.connectors.find((connector) => connector.id === "google_drive");
+		expect(drive?.oauth).toMatchObject({
 			connected: true,
-			scopes: [
-				"https://www.googleapis.com/auth/drive.metadata.readonly",
-				"https://www.googleapis.com/auth/gmail.readonly",
-			],
+			scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly"],
 		});
-		expect(JSON.stringify(snapshot)).not.toContain("google-access-secret");
-		expect(JSON.stringify(snapshot)).not.toContain("google-refresh-secret");
+		expect(snapshot.connector.connectors.find((connector) => connector.id === "google_gmail")?.oauth?.connected).toBe(
+			false,
+		);
+		expect(JSON.stringify(snapshot)).not.toContain("drive-access-secret");
+		expect(JSON.stringify(snapshot)).not.toContain("drive-refresh-secret");
 
 		const document = JSON.parse(await readFile(join(homeDir, ".jai", "settings.json"), "utf8"));
-		expect(document.connector.providers.google.credentials).toMatchObject({
-			accessToken: "google-access-secret",
-			refreshToken: "google-refresh-secret",
+		expect(document.connector.connectors.google_drive.credentials).toMatchObject({
+			accessToken: "drive-access-secret",
+			refreshToken: "drive-refresh-secret",
 			tokenType: "Bearer",
 		});
 
-		const disconnected = await service.disconnectConnectorOAuth("google");
-		expect(disconnected.connector.providers.find((provider) => provider.id === "google")?.oauth?.connected).toBe(false);
+		const disconnected = await service.disconnectConnectorOAuth("google_drive");
+		expect(disconnected.connector.connectors.find((connector) => connector.id === "google_drive")?.oauth?.connected).toBe(
+			false,
+		);
 		const afterDisconnect = JSON.parse(await readFile(join(homeDir, ".jai", "settings.json"), "utf8"));
-		expect(afterDisconnect.connector.providers.google.credentials).toBeUndefined();
+		expect(afterDisconnect.connector.connectors.google_drive.credentials).toBeUndefined();
 		service.close();
 	});
 });

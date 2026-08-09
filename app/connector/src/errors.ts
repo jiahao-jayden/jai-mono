@@ -6,12 +6,12 @@ export class ConnectorActionNotFound extends TaggedError("connector.action_not_f
 }> {}
 
 export class ConnectorConnectionNotFound extends TaggedError("connector.connection_not_found")<{
-	readonly data: { readonly providerId: string };
+	readonly data: { readonly connectorId: string };
 	readonly message: string;
 }> {}
 
 export class ConnectorConnectionUnavailable extends TaggedError("connector.connection_unavailable")<{
-	readonly data: { readonly providerId: string; readonly status: string };
+	readonly data: { readonly connectorId: string; readonly status: string };
 	readonly message: string;
 }> {}
 
@@ -35,10 +35,10 @@ export class ConnectorSessionRequired extends TaggedError("connector.session_req
 	readonly message: string;
 }> {}
 
-export class ConnectorProviderFailed extends TaggedError("connector.provider_failed")<{
+export class ConnectorUpstreamFailed extends TaggedError("connector.upstream_failed")<{
 	readonly cause?: unknown;
 	readonly data: {
-		readonly providerId: string;
+		readonly connectorId: string;
 		readonly actionId: string;
 		readonly status?: number;
 		readonly retryAfterMs?: number;
@@ -46,14 +46,14 @@ export class ConnectorProviderFailed extends TaggedError("connector.provider_fai
 	readonly message: string;
 }> {}
 
-export class ConnectorProviderRateLimited extends TaggedError("connector.provider_rate_limited")<{
-	readonly data: { readonly providerId: string; readonly actionId: string; readonly retryAfterMs?: number };
+export class ConnectorUpstreamRateLimited extends TaggedError("connector.upstream_rate_limited")<{
+	readonly data: { readonly connectorId: string; readonly actionId: string; readonly retryAfterMs?: number };
 	readonly message: string;
 }> {}
 
-export class ConnectorProviderUnavailable extends TaggedError("connector.provider_unavailable")<{
+export class ConnectorUpstreamUnavailable extends TaggedError("connector.upstream_unavailable")<{
 	readonly cause?: unknown;
-	readonly data: { readonly providerId: string; readonly actionId: string; readonly status?: number };
+	readonly data: { readonly connectorId: string; readonly actionId: string; readonly status?: number };
 	readonly message: string;
 }> {}
 
@@ -71,7 +71,7 @@ export class ConnectorProtocolInvalid extends TaggedError("connector.protocol_in
 export class ConnectorOAuthGatewayFailed extends TaggedError("connector.oauth_gateway_failed")<{
 	readonly cause?: unknown;
 	readonly data: {
-		readonly providerId: string;
+		readonly oauthServiceId: string;
 		readonly operation: "token" | "refresh" | "revoke";
 		readonly status?: number;
 		readonly code?: string;
@@ -80,7 +80,7 @@ export class ConnectorOAuthGatewayFailed extends TaggedError("connector.oauth_ga
 }> {}
 
 export class ConnectorOAuthFlowInvalid extends TaggedError("connector.oauth_flow_invalid")<{
-	readonly data: { readonly providerId: string; readonly reason: "expired" | "missing" | "mismatch" };
+	readonly data: { readonly oauthServiceId: string; readonly reason: "expired" | "missing" | "mismatch" };
 	readonly message: string;
 }> {}
 

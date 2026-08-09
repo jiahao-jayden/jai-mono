@@ -177,7 +177,7 @@ export interface DesktopConnectorAction {
 	readonly permission: DesktopConnectorPermission;
 }
 
-export interface DesktopConnectorProvider {
+export interface DesktopConnector {
 	readonly id: string;
 	readonly name: string;
 	readonly iconUrl?: string;
@@ -195,23 +195,23 @@ export interface DesktopConnectorPolicy {
 }
 
 export interface DesktopConnectorConfigSnapshot {
-	readonly providers: readonly DesktopConnectorProvider[];
+	readonly connectors: readonly DesktopConnector[];
 	readonly policy: DesktopConnectorPolicy;
 }
 
-export interface DesktopConnectorProviderInput {
+export interface DesktopConnectorInput {
 	readonly id: string;
 	readonly enabled: boolean;
 	readonly credentials: Readonly<Record<string, string>>;
 }
 
 export interface DesktopConnectorConfigInput {
-	readonly providers: readonly DesktopConnectorProviderInput[];
+	readonly connectors: readonly DesktopConnectorInput[];
 	readonly policy: DesktopConnectorPolicy;
 }
 
 export interface DesktopConnectorOAuthStartResult {
-	readonly providerId: string;
+	readonly connectorId: string;
 	readonly expiresAt: number;
 }
 
@@ -386,8 +386,8 @@ export type DesktopAgentEvent =
 	| { readonly type: "transcript_upsert"; readonly item: DesktopTranscriptItem }
 	| { readonly type: "todos_replace"; readonly todos: DesktopTodos }
 	| { readonly type: "model_catalog_updated" }
-	| { readonly type: "connector_oauth_completed"; readonly providerId: string }
-	| { readonly type: "connector_oauth_failed"; readonly providerId: string; readonly message: string }
+	| { readonly type: "connector_oauth_completed"; readonly connectorId: string }
+	| { readonly type: "connector_oauth_failed"; readonly connectorId: string; readonly message: string }
 	| {
 			readonly type: "runtime_error";
 			readonly error: { readonly code: string; readonly message: string; readonly data?: Static<typeof jsonValueSchema> };
@@ -455,8 +455,8 @@ export interface DesktopApi {
 		revealApiKey(profileId: string): Promise<DesktopProviderApiKeyRevealResult>;
 	};
 	readonly connector: {
-		startOAuth(providerId: string): Promise<DesktopConnectorOAuthStartResult>;
-		disconnectOAuth(providerId: string): Promise<DesktopProviderConfigSnapshot>;
+		startOAuth(connectorId: string): Promise<DesktopConnectorOAuthStartResult>;
+		disconnectOAuth(connectorId: string): Promise<DesktopProviderConfigSnapshot>;
 	};
 	readonly project: {
 		list(): Promise<DesktopProject[]>;

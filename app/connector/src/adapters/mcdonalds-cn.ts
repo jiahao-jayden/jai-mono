@@ -5,15 +5,15 @@
  */
 import { createHash } from "node:crypto";
 import { Result, type Result as ResultType } from "better-result";
-import { ConnectorProviderFailed, ConnectorProviderRateLimited, ConnectorProviderUnavailable } from "../errors";
+import { ConnectorUpstreamFailed, ConnectorUpstreamRateLimited, ConnectorUpstreamUnavailable } from "../errors";
 import type {
 	ActionDefinition,
 	ActionExecutionContext,
+	ConnectorAdapter,
 	ConnectorFailure,
 	JsonObject,
 	JsonSchema,
 	JsonValue,
-	ProviderAdapter,
 } from "../types";
 
 export interface McDonaldsCnAdapterOptions {
@@ -137,7 +137,7 @@ const actionSpecs: readonly {
 	},
 ];
 
-export function createMcDonaldsCnAdapter(options: McDonaldsCnAdapterOptions = {}): ProviderAdapter {
+export function createMcDonaldsCnAdapter(options: McDonaldsCnAdapterOptions = {}): ConnectorAdapter {
 	const fetcher: McDonaldsCnFetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
 	const now = options.now ?? Date.now;
 	const actions = actionSpecs.map((spec) => toActionDefinition(spec));
@@ -164,7 +164,7 @@ export function createMcDonaldsCnAdapter(options: McDonaldsCnAdapterOptions = {}
 
 function toActionDefinition(spec: (typeof actionSpecs)[number]): ActionDefinition {
 	return {
-		providerId: "mcdonalds_cn",
+		connectorId: "mcdonalds_cn",
 		actionId: spec.actionId,
 		description: spec.description,
 		inputSchema: {
@@ -173,7 +173,7 @@ function toActionDefinition(spec: (typeof actionSpecs)[number]): ActionDefinitio
 			required: spec.required,
 			additionalProperties: false,
 		},
-		outputSchema: { type: "object", description: "McDonald's China provider response envelope." },
+		outputSchema: { type: "object", description: "McDonald's China upstream response envelope." },
 		requiredScopes: ["mcdonalds_cn.read"],
 		sideEffect: "read",
 		dataSensitivity: "normal",
@@ -193,9 +193,9 @@ async function executeMcDonaldsCn(
 	const signingKey = context.credentials.signingKey;
 	if (!appId || !merchantId || !signingKey) {
 		return Result.err(
-			new ConnectorProviderUnavailable({
+			new ConnectorUpstreamUnavailable({
 				message: "McDonald's China credential is not configured",
-				data: { providerId: "mcdonalds_cn", actionId: action.actionId },
+				data: { connectorId: "mcdonalds_cn", actionId: action.actionId },
 			}),
 		);
 	}
@@ -204,9 +204,9 @@ async function executeMcDonaldsCn(
 	const spec = actionSpecs.find((candidate) => candidate.actionId === action.actionId);
 	if (!spec)
 		return Result.err(
-			new ConnectorProviderFailed({
+			new ConnectorUpstreamFailed({
 				message: "McDonald's China Action is not implemented",
-				data: { providerId: "mcdonalds_cn", actionId: action.actionId },
+				data: { connectorId: "mcdonalds_cn", actionId: action.actionId },
 			}),
 		);
 	const request = buildRequest(spec, input);
@@ -243,10 +243,10 @@ async function executeMcDonaldsCn(
 		const retryAfter = retryAfterMs(response);
 		if (response.status === 429)
 			return Result.err(
-				new ConnectorProviderRateLimited({
+				new ConnectorUpstreamRateLimited({
 					message: "McDonald's China rate limit exceeded",
 					data: {
-						providerId: "mcdonalds_cn",
+						connectorId: "mcdonalds_cn",
 						actionId: action.actionId,
 						...(retryAfter === undefined ? {} : { retryAfterMs: retryAfter }),
 					},
@@ -254,38 +254,38 @@ async function executeMcDonaldsCn(
 			);
 		if (response.status >= 500)
 			return Result.err(
-				new ConnectorProviderUnavailable({
+				new ConnectorUpstreamUnavailable({
 					message: "McDonald's China is temporarily unavailable",
-					data: { providerId: "mcdonalds_cn", actionId: action.actionId, status: response.status },
+					data: { connectorId: "mcdonalds_cn", actionId: action.actionId, status: response.status },
 				}),
 			);
 		if (!response.ok)
 			return Result.err(
-				new ConnectorProviderFailed({
+				new ConnectorUpstreamFailed({
 					message: "McDonald's China rejected the request",
-					data: { providerId: "mcdonalds_cn", actionId: action.actionId, status: response.status },
+					data: { connectorId: "mcdonalds_cn", actionId: action.actionId, status: response.status },
 				}),
 			);
 		if (!isJsonValue(payload))
 			return Result.err(
-				new ConnectorProviderFailed({
+				new ConnectorUpstreamFailed({
 					message: "McDonald's China returned an invalid JSON response",
-					data: { providerId: "mcdonalds_cn", actionId: action.actionId, status: response.status },
+					data: { connectorId: "mcdonalds_cn", actionId: action.actionId, status: response.status },
 				}),
 			);
-		if (isProviderFailure(payload))
+		if (isUpstreamFailure(payload))
 			return Result.err(
-				new ConnectorProviderFailed({
-					message: providerErrorMessage(payload),
-					data: { providerId: "mcdonalds_cn", actionId: action.actionId, status: response.status },
+				new ConnectorUpstreamFailed({
+					message: upstreamErrorMessage(payload),
+					data: { connectorId: "mcdonalds_cn", actionId: action.actionId, status: response.status },
 				}),
 			);
 		return Result.ok(payload);
 	} catch (cause) {
 		return Result.err(
-			new ConnectorProviderUnavailable({
+			new ConnectorUpstreamUnavailable({
 				message: "McDonald's China request failed",
-				data: { providerId: "mcdonalds_cn", actionId: action.actionId },
+				data: { connectorId: "mcdonalds_cn", actionId: action.actionId },
 				cause,
 			}),
 		);
@@ -360,11 +360,11 @@ function stringInput(input: JsonObject, key: string): string {
 	return typeof value === "string" ? value : "";
 }
 
-function isProviderFailure(value: JsonValue): value is JsonObject & { readonly success: false } {
+function isUpstreamFailure(value: JsonValue): value is JsonObject & { readonly success: false } {
 	return typeof value === "object" && value !== null && !Array.isArray(value) && value.success === false;
 }
 
-function providerErrorMessage(value: JsonObject): string {
+function upstreamErrorMessage(value: JsonObject): string {
 	return typeof value.message === "string"
 		? value.message
 		: typeof value.msg === "string"

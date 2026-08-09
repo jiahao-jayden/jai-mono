@@ -1,8 +1,8 @@
 import { Result, type Result as ResultType } from "better-result";
 import { OAuthGatewayConfigurationInvalid } from "./errors";
-import type { OAuthGatewayProvider } from "./types";
+import type { OAuthGatewayService } from "./types";
 
-interface ProviderEnvironmentDefinition {
+interface OAuthServiceEnvironmentDefinition {
 	readonly id: string;
 	readonly authorizationEndpoint: string;
 	readonly tokenEndpoint: string;
@@ -17,15 +17,15 @@ interface ProviderEnvironmentDefinition {
 
 export type OAuthGatewayEnvironment = Readonly<Record<string, unknown>>;
 
-export function loadProvidersFromEnvironment(
+export function loadOAuthServicesFromEnvironment(
 	env: OAuthGatewayEnvironment,
-): ResultType<readonly OAuthGatewayProvider[], OAuthGatewayConfigurationInvalid> {
-	const raw = env.OAUTH_GATEWAY_PROVIDERS;
+): ResultType<readonly OAuthGatewayService[], OAuthGatewayConfigurationInvalid> {
+	const raw = env.OAUTH_GATEWAY_SERVICES;
 	if (typeof raw !== "string" || raw.trim().length === 0) {
 		return Result.err(
 			new OAuthGatewayConfigurationInvalid({
-				message: "OAuth Gateway provider configuration is missing",
-				data: { reason: "providers_missing" },
+				message: "OAuth Gateway service configuration is missing",
+				data: { reason: "services_missing" },
 			}),
 		);
 	}
@@ -35,33 +35,33 @@ export function loadProvidersFromEnvironment(
 	} catch (cause) {
 		return Result.err(
 			new OAuthGatewayConfigurationInvalid({
-				message: "OAuth Gateway provider configuration is not valid JSON",
-				data: { reason: "providers_json_invalid" },
+				message: "OAuth Gateway service configuration is not valid JSON",
+				data: { reason: "services_json_invalid" },
 				cause,
 			}),
 		);
 	}
-	if (!Array.isArray(parsed)) return invalidConfiguration("providers_not_array");
-	const providers: OAuthGatewayProvider[] = [];
+	if (!Array.isArray(parsed)) return invalidConfiguration("services_not_array");
+	const services: OAuthGatewayService[] = [];
 	const ids = new Set<string>();
 	for (const item of parsed) {
 		const definition = parseDefinition(item);
-		if (!definition) return invalidConfiguration("provider_definition_invalid");
-		if (ids.has(definition.id)) return invalidConfiguration("provider_id_duplicate", definition.id);
+		if (!definition) return invalidConfiguration("service_definition_invalid");
+		if (ids.has(definition.id)) return invalidConfiguration("service_id_duplicate", definition.id);
 		const clientId = stringEnv(env, definition.clientIdEnv);
 		const clientSecret = stringEnv(env, definition.clientSecretEnv);
-		if (!clientId || !clientSecret) return invalidConfiguration("provider_secret_missing", definition.id);
+		if (!clientId || !clientSecret) return invalidConfiguration("service_secret_missing", definition.id);
 		if (!isHttpsUrl(definition.authorizationEndpoint) || !isHttpsUrl(definition.tokenEndpoint)) {
-			return invalidConfiguration("provider_endpoint_invalid", definition.id);
+			return invalidConfiguration("service_endpoint_invalid", definition.id);
 		}
 		if (definition.revokeEndpoint !== undefined && !isHttpsUrl(definition.revokeEndpoint)) {
-			return invalidConfiguration("provider_revoke_endpoint_invalid", definition.id);
+			return invalidConfiguration("service_revoke_endpoint_invalid", definition.id);
 		}
 		if (!isHttpsUrl(definition.gatewayCallbackUrl) || !isApplicationCallbackUrl(definition.applicationCallbackUrl)) {
 			return invalidConfiguration("callback_url_invalid", definition.id);
 		}
 		ids.add(definition.id);
-		providers.push({
+		services.push({
 			id: definition.id,
 			authorizationEndpoint: definition.authorizationEndpoint,
 			tokenEndpoint: definition.tokenEndpoint,
@@ -74,19 +74,19 @@ export function loadProvidersFromEnvironment(
 			...(definition.authorizationParams ? { authorizationParams: definition.authorizationParams } : {}),
 		});
 	}
-	return Result.ok(providers);
+	return Result.ok(services);
 
-	function invalidConfiguration(reason: string, providerId?: string) {
+	function invalidConfiguration(reason: string, oauthServiceId?: string) {
 		return Result.err(
 			new OAuthGatewayConfigurationInvalid({
-				message: "OAuth Gateway provider configuration is invalid",
-				data: { reason, ...(providerId === undefined ? {} : { providerId }) },
+				message: "OAuth Gateway service configuration is invalid",
+				data: { reason, ...(oauthServiceId === undefined ? {} : { oauthServiceId }) },
 			}),
 		);
 	}
 }
 
-function parseDefinition(value: unknown): ProviderEnvironmentDefinition | undefined {
+function parseDefinition(value: unknown): OAuthServiceEnvironmentDefinition | undefined {
 	if (!isRecord(value)) return undefined;
 	const id = readString(value.id);
 	const authorizationEndpoint = readString(value.authorizationEndpoint);

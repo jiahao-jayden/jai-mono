@@ -1,16 +1,16 @@
 export { createOAuthGatewayApp } from "./app";
-export { loadProvidersFromEnvironment, type OAuthGatewayEnvironment } from "./config";
+export { loadOAuthServicesFromEnvironment, type OAuthGatewayEnvironment } from "./config";
 export {
 	OAuthGatewayConfigurationInvalid,
-	OAuthGatewayProviderFailed,
-	OAuthGatewayProviderNotFound,
 	OAuthGatewayRequestInvalid,
+	OAuthGatewayServiceNotFound,
 	OAuthGatewayTokenInvalid,
+	OAuthGatewayUpstreamFailed,
 } from "./errors";
 export type {
 	OAuthGatewayErrorDto,
 	OAuthGatewayFetcher,
 	OAuthGatewayOptions,
-	OAuthGatewayProvider,
+	OAuthGatewayService,
 	OAuthTokenResponse,
 } from "./types";

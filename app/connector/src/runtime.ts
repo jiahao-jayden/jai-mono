@@ -7,9 +7,9 @@ import {
 	ConnectorConnectionUnavailable,
 	ConnectorInputInvalid,
 	ConnectorPolicyDenied,
-	ConnectorProviderFailed,
 	ConnectorRequestCancelled,
 	ConnectorSessionRequired,
+	ConnectorUpstreamFailed,
 } from "./errors";
 import type {
 	ActionDefinition,
@@ -20,6 +20,7 @@ import type {
 	ConnectionRecord,
 	ConnectionSummary,
 	ConnectorActionPermission,
+	ConnectorAdapter,
 	ConnectorPolicy,
 	ConnectorService,
 	ExecuteActionInput,
@@ -30,7 +31,6 @@ import type {
 	JsonSchema,
 	ListAppsResponse,
 	ListConnectionsResponse,
-	ProviderAdapter,
 	RequestContext,
 	SearchActionsInput,
 	SearchActionsResponse,
@@ -44,7 +44,7 @@ interface PendingApproval {
 }
 
 export interface MemoryConnectorServiceOptions {
-	readonly adapters: readonly ProviderAdapter[];
+	readonly adapters: readonly ConnectorAdapter[];
 	readonly connections: readonly ConnectionRecord[];
 	readonly credentials?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 	readonly policy?: ConnectorPolicy;
@@ -52,7 +52,7 @@ export interface MemoryConnectorServiceOptions {
 }
 
 export class MemoryConnectorService implements ConnectorService {
-	readonly #adapters: readonly ProviderAdapter[];
+	readonly #adapters: readonly ConnectorAdapter[];
 	readonly #actions: ReadonlyMap<string, ActionDefinition>;
 	#connections: readonly ConnectionRecord[];
 	#credentials: Readonly<Record<string, Readonly<Record<string, string>>>>;
@@ -77,7 +77,7 @@ export class MemoryConnectorService implements ConnectorService {
 		this.#actions = actions;
 	}
 
-	/** Refreshes policy, connections and credentials without replacing the Provider registry. */
+	/** Refreshes policy, connections and credentials without replacing the Connector registry. */
 	applyConfiguration(source: MemoryConnectorService): void {
 		this.#connections = source.#connections;
 		this.#credentials = source.#credentials;
@@ -86,14 +86,14 @@ export class MemoryConnectorService implements ConnectorService {
 
 	async listApps(_context: RequestContext): Promise<ResultType<ListAppsResponse, never>> {
 		const apps: AppSummary[] = this.#adapters.map((adapter) => ({
-			providerId: adapter.definition.id,
+			connectorId: adapter.definition.id,
 			displayName: adapter.definition.displayName,
 			description: adapter.definition.description,
 			categories: adapter.definition.categories ?? [],
 			authTypes: adapter.definition.authTypes,
-			enabled: !this.#isProviderDisabled(adapter.definition.id),
+			enabled: !this.#isConnectorDisabled(adapter.definition.id),
 			actionCount: adapter.actions.length,
-			connectionCount: this.#connections.filter((connection) => connection.providerId === adapter.definition.id)
+			connectionCount: this.#connections.filter((connection) => connection.connectorId === adapter.definition.id)
 				.length,
 		}));
 		return Result.ok({ apps });
@@ -112,15 +112,15 @@ export class MemoryConnectorService implements ConnectorService {
 		const limit = Math.min(Math.max(input.limit ?? 50, 1), 100);
 		const actions: ActionSummary[] = [];
 		for (const action of this.#actions.values()) {
-			if (this.#isProviderDisabled(action.providerId)) continue;
+			if (this.#isConnectorDisabled(action.connectorId)) continue;
 			const policy = this.#policyFor(action);
 			if (this.#isActionHidden(action)) continue;
-			if (input.providerId && input.providerId !== action.providerId) continue;
+			if (input.connectorId && input.connectorId !== action.connectorId) continue;
 			if (input.sideEffect && input.sideEffect !== action.sideEffect) continue;
 			if (query && !`${fullActionId(action)} ${action.description}`.toLowerCase().includes(query)) continue;
 			actions.push({
 				actionId: fullActionId(action),
-				providerId: action.providerId,
+				connectorId: action.connectorId,
 				description: action.description,
 				policy,
 				sideEffect: action.sideEffect,
@@ -195,13 +195,13 @@ export class MemoryConnectorService implements ConnectorService {
 				}),
 			);
 		}
-		const connection = this.#resolveConnection(action.providerId);
+		const connection = this.#resolveConnection(action.connectorId);
 		if (connection.isErr()) return connection;
 		if (connection.value.status !== "connected") {
 			return Result.err(
 				new ConnectorConnectionUnavailable({
 					message: "Connector Connection is not available",
-					data: { providerId: connection.value.providerId, status: connection.value.status },
+					data: { connectorId: connection.value.connectorId, status: connection.value.status },
 				}),
 			);
 		}
@@ -210,7 +210,7 @@ export class MemoryConnectorService implements ConnectorService {
 				return Result.err(
 					new ConnectorConnectionUnavailable({
 						message: `Connector Connection is missing scope ${requiredScope}`,
-						data: { providerId: connection.value.providerId, status: "missing_scope" },
+						data: { connectorId: connection.value.connectorId, status: "missing_scope" },
 					}),
 				);
 			}
@@ -262,11 +262,11 @@ export class MemoryConnectorService implements ConnectorService {
 			}
 		}
 
-		const adapter = this.#adapters.find((candidate) => candidate.definition.id === action.providerId);
+		const adapter = this.#adapters.find((candidate) => candidate.definition.id === action.connectorId);
 		if (!adapter)
 			return Result.err(
 				new ConnectorActionNotFound({
-					message: "Provider Adapter was not found",
+					message: "Connector Adapter was not found",
 					data: { actionId: input.actionId },
 				}),
 			);
@@ -282,9 +282,9 @@ export class MemoryConnectorService implements ConnectorService {
 			return Result.ok({ status: "completed", actionId: input.actionId, output: output.value });
 		} catch (cause) {
 			return Result.err(
-				new ConnectorProviderFailed({
-					message: "Provider Action execution failed",
-					data: { providerId: action.providerId, actionId: action.actionId },
+				new ConnectorUpstreamFailed({
+					message: "Connector Action execution failed",
+					data: { connectorId: action.connectorId, actionId: action.actionId },
 					cause,
 				}),
 			);
@@ -295,18 +295,18 @@ export class MemoryConnectorService implements ConnectorService {
 		return Result.ok({
 			status: "ready",
 			protocolVersion: 1,
-			providerCount: this.#adapters.length,
+			connectorCount: this.#adapters.length,
 			actionCount: this.#actions.size,
 		});
 	}
 
-	#resolveConnection(providerId: string): ResultType<ConnectionRecord, ConnectorConnectionNotFound> {
-		const connection = this.#connections.find((candidate) => candidate.providerId === providerId);
+	#resolveConnection(connectorId: string): ResultType<ConnectionRecord, ConnectorConnectionNotFound> {
+		const connection = this.#connections.find((candidate) => candidate.connectorId === connectorId);
 		if (!connection)
 			return Result.err(
 				new ConnectorConnectionNotFound({
 					message: "Connector Connection was not found",
-					data: { providerId },
+					data: { connectorId },
 				}),
 			);
 		return Result.ok(connection);
@@ -355,17 +355,17 @@ export class MemoryConnectorService implements ConnectorService {
 		return this.#policy.actions?.[fullActionId(action)] ?? this.#policy.default ?? "ask";
 	}
 
-	#isProviderDisabled(providerId: string): boolean {
-		return this.#policy.disabledProviders?.includes(providerId) ?? false;
+	#isConnectorDisabled(connectorId: string): boolean {
+		return this.#policy.disabledConnectors?.includes(connectorId) ?? false;
 	}
 
 	#isActionHidden(action: ActionDefinition): boolean {
-		return this.#isProviderDisabled(action.providerId) || action.dataSensitivity === "secret";
+		return this.#isConnectorDisabled(action.connectorId) || action.dataSensitivity === "secret";
 	}
 }
 
-export function fullActionId(action: Pick<ActionDefinition, "providerId" | "actionId">): string {
-	return `${action.providerId}.${action.actionId}`;
+export function fullActionId(action: Pick<ActionDefinition, "connectorId" | "actionId">): string {
+	return `${action.connectorId}.${action.actionId}`;
 }
 
 function hashInput(input: JsonObject): string {
@@ -384,7 +384,7 @@ function stableJson(value: unknown): string {
 }
 
 function credentialKey(connection: ConnectionRecord): string {
-	return connection.providerId;
+	return connection.connectorId;
 }
 
 function validateJsonSchema(schema: JsonSchema, value: unknown, path: string): string | undefined {

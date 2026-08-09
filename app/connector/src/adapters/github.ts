@@ -2,15 +2,15 @@ import { Result, type Result as ResultType } from "better-result";
 import type {
 	ActionDefinition,
 	ActionExecutionContext,
+	ConnectorAdapter,
 	ConnectorFailure,
 	JsonObject,
 	JsonSchema,
 	JsonValue,
-	ProviderAdapter,
 } from "../types";
 import {
 	integerInput,
-	type OAuthProviderFetcher,
+	type OAuthServiceFetcher,
 	oauthAccessToken,
 	oauthJsonRequest,
 	stringArrayInput,
@@ -19,7 +19,7 @@ import {
 
 export interface GitHubAdapterOptions {
 	readonly baseUrl?: string;
-	readonly fetcher?: OAuthProviderFetcher;
+	readonly fetcher?: OAuthServiceFetcher;
 	readonly userAgent?: string;
 }
 
@@ -28,7 +28,7 @@ const integerSchema: JsonSchema = { type: "integer" };
 
 const actions: readonly ActionDefinition[] = [
 	{
-		providerId: "github",
+		connectorId: "github",
 		actionId: "get_authenticated_user",
 		description: "Get the profile of the connected GitHub account.",
 		inputSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -38,7 +38,7 @@ const actions: readonly ActionDefinition[] = [
 		dataSensitivity: "normal",
 	},
 	{
-		providerId: "github",
+		connectorId: "github",
 		actionId: "list_repositories",
 		description: "List repositories accessible to the connected GitHub account.",
 		inputSchema: {
@@ -56,7 +56,7 @@ const actions: readonly ActionDefinition[] = [
 		dataSensitivity: "normal",
 	},
 	{
-		providerId: "github",
+		connectorId: "github",
 		actionId: "get_repository",
 		description: "Get metadata for one GitHub repository.",
 		inputSchema: {
@@ -71,7 +71,7 @@ const actions: readonly ActionDefinition[] = [
 		dataSensitivity: "normal",
 	},
 	{
-		providerId: "github",
+		connectorId: "github",
 		actionId: "list_issues",
 		description: "List issues for a GitHub repository.",
 		inputSchema: {
@@ -91,7 +91,7 @@ const actions: readonly ActionDefinition[] = [
 		dataSensitivity: "normal",
 	},
 	{
-		providerId: "github",
+		connectorId: "github",
 		actionId: "create_issue",
 		description: "Create an issue in a GitHub repository.",
 		inputSchema: {
@@ -112,7 +112,7 @@ const actions: readonly ActionDefinition[] = [
 		dataSensitivity: "normal",
 	},
 	{
-		providerId: "github",
+		connectorId: "github",
 		actionId: "trigger_workflow",
 		description: "Dispatch a GitHub Actions workflow on a ref.",
 		inputSchema: {
@@ -134,7 +134,7 @@ const actions: readonly ActionDefinition[] = [
 	},
 ];
 
-export function createGitHubAdapter(options: GitHubAdapterOptions = {}): ProviderAdapter {
+export function createGitHubAdapter(options: GitHubAdapterOptions = {}): ConnectorAdapter {
 	const baseUrl = (options.baseUrl ?? "https://api.github.com").replace(/\/$/u, "");
 	const fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
 	const userAgent = options.userAgent ?? "jai-connector-github/0.1";
@@ -156,7 +156,7 @@ async function executeGitHub(
 	input: JsonObject,
 	context: ActionExecutionContext,
 	baseUrl: string,
-	fetcher: OAuthProviderFetcher,
+	fetcher: OAuthServiceFetcher,
 	userAgent: string,
 ): Promise<ResultType<JsonValue, ConnectorFailure>> {
 	const token = oauthAccessToken("github", action.actionId, context);

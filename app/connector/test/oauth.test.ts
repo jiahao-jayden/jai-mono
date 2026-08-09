@@ -1,11 +1,30 @@
 import { describe, expect, test } from "bun:test";
-import { ConnectorOAuthFlowInvalid, ConnectorOAuthGatewayFailed, OAuthFlowManager, OAuthGatewayClient } from "../src";
+import {
+	connectorOAuthApplicationDefinitions,
+	ConnectorOAuthFlowInvalid,
+	ConnectorOAuthGatewayFailed,
+	OAuthFlowManager,
+	OAuthGatewayClient,
+} from "../src";
 
 describe("OAuth Gateway SDK", () => {
-	test("builds an authorization URL without exposing provider credentials", () => {
+	test("defines Google applications with independent least-privilege scope sets", () => {
+		const googleApplications = connectorOAuthApplicationDefinitions.filter(
+			(application) => application.oauthServiceId === "google",
+		);
+		expect(googleApplications.map((application) => application.id)).toEqual([
+			"google_drive",
+			"google_gmail",
+			"google_calendar",
+		]);
+		expect(googleApplications.map((application) => application.scopes.length)).toEqual([2, 2, 2]);
+		expect(googleApplications[1]?.scopes).not.toContain("https://www.googleapis.com/auth/drive");
+	});
+
+	test("builds an authorization URL without exposing connector credentials", () => {
 		const client = new OAuthGatewayClient({ endpoint: "https://oauth.jai.dev" });
 		const url = client.buildAuthorizationUrl({
-			providerId: "github",
+			oauthServiceId: "github",
 			state: "state-1",
 			codeChallenge: "challenge-1",
 			scopes: ["repo"],

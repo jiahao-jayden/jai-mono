@@ -212,7 +212,7 @@ const connectorPolicySchema = Type.Object(
 	{ additionalProperties: false },
 );
 
-const connectorProviderSchema = Type.Object(
+const connectorConfigurationSchema = Type.Object(
 	{
 		enabled: Type.Optional(Type.Boolean()),
 		credentials: Type.Optional(Type.Record(Type.String({ minLength: 1 }), Type.String())),
@@ -223,7 +223,7 @@ const connectorProviderSchema = Type.Object(
 export const connectorSettingsSchema = Type.Object(
 	{
 		policy: Type.Optional(connectorPolicySchema),
-		providers: Type.Optional(Type.Record(Type.String({ minLength: 1 }), connectorProviderSchema)),
+		connectors: Type.Optional(Type.Record(Type.String({ minLength: 1 }), connectorConfigurationSchema)),
 	},
 	{ additionalProperties: false },
 );
@@ -327,7 +327,7 @@ export const codingAgentConfigDefinition = defineCodingConfig({
 			project: "trusted",
 			default: {
 				policy: { default: "ask", actions: {} },
-				providers: {},
+				connectors: {},
 			},
 			mergeValues: mergeConnectorSettings,
 		},

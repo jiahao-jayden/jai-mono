@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { createOAuthGatewayApp } from "../src/app";
-import type { OAuthGatewayProvider } from "../src/types";
+import type { OAuthGatewayService } from "../src/types";
 
-const provider: OAuthGatewayProvider = {
+const service: OAuthGatewayService = {
 	id: "example",
-	authorizationEndpoint: "https://provider.example/authorize",
-	tokenEndpoint: "https://provider.example/token",
-	revokeEndpoint: "https://provider.example/revoke",
+	authorizationEndpoint: "https://service.example/authorize",
+	tokenEndpoint: "https://service.example/token",
+	revokeEndpoint: "https://service.example/revoke",
 	clientId: "client-id",
 	clientSecret: "client-secret",
 	gatewayCallbackUrl: "https://gateway.example/v1/oauth/example/callback",
@@ -16,16 +16,16 @@ const provider: OAuthGatewayProvider = {
 };
 
 describe("OAuth Gateway", () => {
-	test("builds a provider authorization redirect with PKCE and an allow-listed scope", async () => {
-		const app = createOAuthGatewayApp({ providers: [provider] });
+	test("builds a service authorization redirect with PKCE and an allow-listed scope", async () => {
+		const app = createOAuthGatewayApp({ services: [service] });
 		const response = await app.request(
 			"/v1/oauth/example/authorize?state=state-1&code_challenge=challenge-1&code_challenge_method=S256&scope=profile",
 		);
 		expect(response.status).toBe(302);
 		const location = new URL(response.headers.get("location") ?? "");
-		expect(location.origin).toBe("https://provider.example");
+		expect(location.origin).toBe("https://service.example");
 		expect(location.searchParams.get("client_id")).toBe("client-id");
-		expect(location.searchParams.get("redirect_uri")).toBe(provider.gatewayCallbackUrl);
+		expect(location.searchParams.get("redirect_uri")).toBe(service.gatewayCallbackUrl);
 		expect(location.searchParams.get("code_challenge")).toBe("challenge-1");
 		expect(location.searchParams.get("scope")).toBe("profile");
 		expect(location.searchParams.get("access_type")).toBe("offline");
@@ -33,7 +33,7 @@ describe("OAuth Gateway", () => {
 	});
 
 	test("forwards the callback code to the fixed application URI without exchanging it", async () => {
-		const app = createOAuthGatewayApp({ providers: [provider] });
+		const app = createOAuthGatewayApp({ services: [service] });
 		const response = await app.request(
 			"/v1/oauth/example/callback?code=one-time-code&state=state-1",
 		);
@@ -44,10 +44,10 @@ describe("OAuth Gateway", () => {
 		expect(location.searchParams.get("state")).toBe("state-1");
 	});
 
-	test("exchanges a code and normalizes the Provider token response", async () => {
+	test("exchanges a code and normalizes the Service token response", async () => {
 		const requests: { url: string; init?: RequestInit }[] = [];
 		const app = createOAuthGatewayApp({
-			providers: [provider],
+			services: [service],
 			fetcher: async (input, init) => {
 				requests.push({ url: String(input), init });
 				return new Response(
@@ -69,7 +69,7 @@ describe("OAuth Gateway", () => {
 			expiresIn: 3600,
 			scope: "profile",
 		});
-		expect(requests[0]?.url).toBe(provider.tokenEndpoint);
+		expect(requests[0]?.url).toBe(service.tokenEndpoint);
 		expect(String(requests[0]?.init?.body)).toContain("client_id=client-id");
 		expect(String(requests[0]?.init?.body)).toContain("client_secret=client-secret");
 		expect(String(requests[0]?.init?.body)).toContain("code_verifier=verifier-1");
@@ -78,7 +78,7 @@ describe("OAuth Gateway", () => {
 	test("refreshes and revokes without keeping token state", async () => {
 		const operations: string[] = [];
 		const app = createOAuthGatewayApp({
-			providers: [provider],
+			services: [service],
 			fetcher: async (input) => {
 				operations.push(String(input));
 				return new Response(JSON.stringify({ access_token: "new-access", token_type: "Bearer" }), { status: 200 });
@@ -97,11 +97,11 @@ describe("OAuth Gateway", () => {
 		});
 		expect(revoke.status).toBe(200);
 		expect(await revoke.json()).toEqual({ revoked: true, supported: true });
-		expect(operations).toEqual([provider.tokenEndpoint, provider.revokeEndpoint!]);
+		expect(operations).toEqual([service.tokenEndpoint, service.revokeEndpoint!]);
 	});
 
-	test("does not accept an unknown provider or an unconfigured scope", async () => {
-		const app = createOAuthGatewayApp({ providers: [provider] });
+	test("does not accept an unknown service or an unconfigured scope", async () => {
+		const app = createOAuthGatewayApp({ services: [service] });
 		const unknown = await app.request("/v1/oauth/missing/authorize?state=s&code_challenge=c");
 		expect(unknown.status).toBe(404);
 		const scope = await app.request("/v1/oauth/example/authorize?state=s&code_challenge=c&scope=admin");

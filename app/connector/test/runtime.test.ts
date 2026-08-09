@@ -4,19 +4,19 @@ import {
 	MemoryConnectorService,
 	type ActionDefinition,
 	type JsonValue,
-	type ProviderAdapter,
-	type ProviderDefinition,
+	type ConnectorAdapter,
+	type ConnectorDefinition,
 	type ConnectionRecord,
 } from "../src";
 
-const provider: ProviderDefinition = {
+const connector: ConnectorDefinition = {
 	id: "demo",
 	displayName: "Demo",
 	authTypes: ["api_key"],
 };
 
 const queryAction: ActionDefinition = {
-	providerId: "demo",
+	connectorId: "demo",
 	actionId: "search",
 	description: "Search demo records.",
 	inputSchema: {
@@ -32,7 +32,7 @@ const queryAction: ActionDefinition = {
 };
 
 const writeAction: ActionDefinition = {
-	providerId: "demo",
+	connectorId: "demo",
 	actionId: "create",
 	description: "Create a demo record.",
 	inputSchema: {
@@ -60,15 +60,15 @@ const secretAction: ActionDefinition = {
 };
 
 const connection: ConnectionRecord = {
-	providerId: "demo",
+	connectorId: "demo",
 	displayName: "Demo account",
 	status: "connected",
 	scopes: ["demo.write"],
 };
 
 function createService(): MemoryConnectorService {
-	const adapter: ProviderAdapter = {
-		definition: provider,
+	const adapter: ConnectorAdapter = {
+		definition: connector,
 		actions: [queryAction, writeAction, hiddenAction],
 		execute: async (action, input) =>
 			Result.ok<JsonValue>({ actionId: action.actionId, input }),
@@ -124,8 +124,8 @@ describe("MemoryConnectorService", () => {
 	});
 
 	test("keeps the default ask policy and hides secret actions", async () => {
-		const adapter: ProviderAdapter = {
-			definition: provider,
+		const adapter: ConnectorAdapter = {
+			definition: connector,
 			actions: [writeAction, secretAction],
 			execute: async (action, input) => Result.ok<JsonValue>({ actionId: action.actionId, input }),
 		};

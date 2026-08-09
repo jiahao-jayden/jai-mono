@@ -1,6 +1,7 @@
 import { createCodingConnectorConfigStore } from "@jai/coding/connector";
 import {
 	type ConnectorSettings,
+	connectorOAuthApplicationDefinitions,
 	createDefaultConnectorService,
 	type MemoryConnectorService,
 	OAuthGatewayClient,
@@ -33,16 +34,16 @@ export async function openDesktopConnectorRuntime(): Promise<DesktopConnectorRun
 	const refreshOAuthTokens = async () => {
 		const current = await configStore.load();
 		if (current.isErr()) return;
-		const providers = current.value.settings.providers ?? {};
+		const connectors = current.value.settings.connectors ?? {};
 		let changed = false;
-		const nextProviders = { ...providers };
-		for (const providerId of ["google", "github"] as const) {
-			const provider = providers[providerId];
-			const credentials = provider?.credentials;
+		const nextConnectors = { ...connectors };
+		for (const application of connectorOAuthApplicationDefinitions) {
+			const applicationSettings = connectors[application.id];
+			const credentials = applicationSettings?.credentials;
 			const refreshToken = credentials?.refreshToken;
 			const expiresAt = Number(credentials?.expiresAt);
 			if (
-				!provider ||
+				!applicationSettings ||
 				!credentials ||
 				!refreshToken ||
 				!Number.isFinite(expiresAt) ||
@@ -50,12 +51,12 @@ export async function openDesktopConnectorRuntime(): Promise<DesktopConnectorRun
 			) {
 				continue;
 			}
-			const refreshed = await oauthGateway.refresh(providerId, refreshToken);
+			const refreshed = await oauthGateway.refresh(application.oauthServiceId, refreshToken);
 			if (refreshed.isErr()) continue;
 			const { expiresAt: _previousExpiry, ...credentialsWithoutExpiry } = credentials;
 			const returnedScopes = parseConnectorOAuthScopes(refreshed.value.scope);
-			nextProviders[providerId] = {
-				...provider,
+			nextConnectors[application.id] = {
+				...applicationSettings,
 				credentials: {
 					...credentialsWithoutExpiry,
 					accessToken: refreshed.value.accessToken,
@@ -73,7 +74,7 @@ export async function openDesktopConnectorRuntime(): Promise<DesktopConnectorRun
 			changed = true;
 		}
 		if (!changed) return;
-		const nextSettings: ConnectorSettings = { ...current.value.settings, providers: nextProviders };
+		const nextSettings: ConnectorSettings = { ...current.value.settings, connectors: nextConnectors };
 		const saved = await configStore.save(nextSettings, { expectedRevision: current.value.revision });
 		if (saved.isOk()) service.applyConfiguration(createDefaultConnectorService(saved.value.settings));
 	};

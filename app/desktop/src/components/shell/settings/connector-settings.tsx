@@ -5,12 +5,12 @@ import { desktopQueryKeys } from "@/lib/desktop-query";
 import { useIcon } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type {
+	DesktopConnector,
 	DesktopConnectorConfigInput,
 	DesktopConnectorConfigSnapshot,
 	DesktopConnectorCredential,
 	DesktopConnectorOAuthStartResult,
 	DesktopConnectorPermission,
-	DesktopConnectorProvider,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -25,8 +25,8 @@ interface ConnectorSettingsProps {
 	readonly snapshot: DesktopConnectorConfigSnapshot;
 	readonly value: DesktopConnectorConfigInput;
 	readonly onChange: (value: DesktopConnectorConfigInput) => void;
-	readonly onStartOAuth: (providerId: string) => Promise<DesktopConnectorOAuthStartResult>;
-	readonly onDisconnectOAuth: (providerId: string) => Promise<unknown>;
+	readonly onStartOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
+	readonly onDisconnectOAuth: (connectorId: string) => Promise<unknown>;
 }
 
 export function ConnectorSettings({
@@ -36,14 +36,14 @@ export function ConnectorSettings({
 	onStartOAuth,
 	onDisconnectOAuth,
 }: ConnectorSettingsProps) {
-	const [selectedProviderId, setSelectedProviderId] = useState<string>();
+	const [selectedConnectorId, setSelectedConnectorId] = useState<string>();
 
-	const updateProvider = (next: DesktopConnectorConfigInput["providers"][number]) => {
+	const updateConnector = (next: DesktopConnectorConfigInput["connectors"][number]) => {
 		onChange({
 			...value,
-			providers: value.providers.some((candidate) => candidate.id === next.id)
-				? value.providers.map((candidate) => (candidate.id === next.id ? next : candidate))
-				: [...value.providers, next],
+			connectors: value.connectors.some((candidate) => candidate.id === next.id)
+				? value.connectors.map((candidate) => (candidate.id === next.id ? next : candidate))
+				: [...value.connectors, next],
 		});
 	};
 
@@ -51,18 +51,18 @@ export function ConnectorSettings({
 		onChange({ ...value, policy });
 	};
 
-	const selectedProvider = snapshot.providers.find((provider) => provider.id === selectedProviderId);
-	if (selectedProvider) {
+	const selectedConnector = snapshot.connectors.find((connector) => connector.id === selectedConnectorId);
+	if (selectedConnector) {
 		return (
 			<ConnectorDetailPage
-				provider={selectedProvider}
-				value={resolveProviderValue(value, selectedProvider)}
-				onChange={updateProvider}
+				connector={selectedConnector}
+				value={resolveConnectorValue(value, selectedConnector)}
+				onChange={updateConnector}
 				policy={value.policy}
 				onPolicyChange={updatePolicy}
 				onStartOAuth={onStartOAuth}
 				onDisconnectOAuth={onDisconnectOAuth}
-				onBack={() => setSelectedProviderId(undefined)}
+				onBack={() => setSelectedConnectorId(undefined)}
 			/>
 		);
 	}
@@ -71,7 +71,7 @@ export function ConnectorSettings({
 		<ConnectorCatalogPage
 			snapshot={snapshot}
 			value={value}
-			onSelect={setSelectedProviderId}
+			onSelect={setSelectedConnectorId}
 			onStartOAuth={onStartOAuth}
 		/>
 	);
@@ -85,12 +85,12 @@ function ConnectorCatalogPage({
 }: {
 	readonly snapshot: DesktopConnectorConfigSnapshot;
 	readonly value: DesktopConnectorConfigInput;
-	readonly onSelect: (providerId: string) => void;
-	readonly onStartOAuth: (providerId: string) => Promise<DesktopConnectorOAuthStartResult>;
+	readonly onSelect: (connectorId: string) => void;
+	readonly onStartOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
 }) {
 	const [filter, setFilter] = useState<ConnectorFilter>("all");
-	const visibleProviders = snapshot.providers.filter((provider) => {
-		const connected = isProviderConnected(provider, resolveProviderValue(value, provider));
+	const visibleConnectors = snapshot.connectors.filter((connector) => {
+		const connected = isConnectorConnected(connector, resolveConnectorValue(value, connector));
 		return filter === "all" || (filter === "connected" ? connected : !connected);
 	});
 	const emptyStateCopy = filter === "connected" ? "No connectors are connected yet." : "Every connector is set up.";
@@ -128,12 +128,12 @@ function ConnectorCatalogPage({
 			</nav>
 
 			<div className="px-6 pb-8">
-				{visibleProviders.length > 0 ? (
-					<table className="w-full table-fixed border-collapse" aria-label="Available connectors">
+				{visibleConnectors.length > 0 ? (
+					<table className="w-full table-fixed border-collapse" aria-label="Available connector apps">
 						<thead>
 							<tr className="border-b border-border/55">
 								<th scope="col" className="w-[58%] py-4 text-left text-xs font-semibold text-foreground">
-									Connector
+									App
 								</th>
 								<th scope="col" className="w-[22%] py-4 text-left text-xs font-semibold text-foreground">
 									Type
@@ -144,14 +144,14 @@ function ConnectorCatalogPage({
 							</tr>
 						</thead>
 						<tbody>
-							{visibleProviders.map((provider) => {
-								const current = resolveProviderValue(value, provider);
+							{visibleConnectors.map((connector) => {
+								const current = resolveConnectorValue(value, connector);
 								return (
 									<ConnectorTableRow
-										key={provider.id}
-										provider={provider}
-										connected={isProviderConnected(provider, current)}
-										onSelect={() => onSelect(provider.id)}
+										key={connector.id}
+										connector={connector}
+										connected={isConnectorConnected(connector, current)}
+										onSelect={() => onSelect(connector.id)}
 										onStartOAuth={onStartOAuth}
 									/>
 								);
@@ -167,19 +167,19 @@ function ConnectorCatalogPage({
 }
 
 function ConnectorTableRow({
-	provider,
+	connector,
 	connected,
 	onSelect,
 	onStartOAuth,
 }: {
-	readonly provider: DesktopConnectorProvider;
+	readonly connector: DesktopConnector;
 	readonly connected: boolean;
 	readonly onSelect: () => void;
-	readonly onStartOAuth: (providerId: string) => Promise<DesktopConnectorOAuthStartResult>;
+	readonly onStartOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
 }) {
 	const CheckIcon = useIcon("check");
-	const authLabel = getAuthLabel(provider.authTypes);
-	const isOAuth = provider.authTypes.includes("oauth");
+	const authLabel = getAuthLabel(connector.authTypes);
+	const isOAuth = connector.authTypes.includes("oauth");
 	const [authorizing, setAuthorizing] = useState(false);
 	const [authorizationExpiresAt, setAuthorizationExpiresAt] = useState<number>();
 	const [oauthError, setOAuthError] = useState<string>();
@@ -189,12 +189,12 @@ function ConnectorTableRow({
 		return window.desktopRpc.onAgentEvent((envelope) => {
 			const event = envelope.event;
 			if (event.type !== "connector_oauth_completed" && event.type !== "connector_oauth_failed") return;
-			if (event.providerId !== provider.id) return;
+			if (event.connectorId !== connector.id) return;
 			setAuthorizing(false);
 			setAuthorizationExpiresAt(undefined);
 			if (event.type === "connector_oauth_failed") setOAuthError(event.message);
 		});
-	}, [authorizing, provider.id]);
+	}, [authorizing, connector.id]);
 
 	useEffect(() => {
 		if (!authorizing || authorizationExpiresAt === undefined) return;
@@ -214,7 +214,7 @@ function ConnectorTableRow({
 		setAuthorizationExpiresAt(undefined);
 		setOAuthError(undefined);
 		try {
-			const result = await onStartOAuth(provider.id);
+			const result = await onStartOAuth(connector.id);
 			setAuthorizationExpiresAt(result.expiresAt);
 		} catch (cause) {
 			setAuthorizing(false);
@@ -235,12 +235,14 @@ function ConnectorTableRow({
 				onSelect();
 			}}
 		>
-			<td className="py-2 pr-4">
+			<td className="py-2.5 pr-4">
 				<div className="flex min-w-0 items-center gap-3">
-					<span className="flex size-6 shrink-0 items-center justify-center rounded-sm border border-border/60 bg-white p-1">
-						<ConnectorBrandLogo provider={provider} size={23} />
+					<span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-white p-1.5">
+						<ConnectorBrandLogo connector={connector} size={20} />
 					</span>
-					<p className="truncate text-[14px] font-semibold tracking-[-0.015em] text-foreground">{provider.name}</p>
+					<p className="truncate text-[14px] font-semibold tracking-[-0.015em] text-foreground">
+						{connector.name}
+					</p>
 				</div>
 			</td>
 			<td className="py-2 pr-4 text-[13px] text-muted-foreground">{authLabel}</td>
@@ -283,7 +285,7 @@ function ConnectorTableRow({
 }
 
 function ConnectorDetailPage({
-	provider,
+	connector,
 	value,
 	onChange,
 	policy,
@@ -292,18 +294,18 @@ function ConnectorDetailPage({
 	onStartOAuth,
 	onDisconnectOAuth,
 }: {
-	readonly provider: DesktopConnectorProvider;
-	readonly value: DesktopConnectorConfigInput["providers"][number];
-	readonly onChange: (value: DesktopConnectorConfigInput["providers"][number]) => void;
+	readonly connector: DesktopConnector;
+	readonly value: DesktopConnectorConfigInput["connectors"][number];
+	readonly onChange: (value: DesktopConnectorConfigInput["connectors"][number]) => void;
 	readonly policy: DesktopConnectorConfigInput["policy"];
 	readonly onPolicyChange: (value: DesktopConnectorConfigInput["policy"]) => void;
 	readonly onBack: () => void;
-	readonly onStartOAuth: (providerId: string) => Promise<DesktopConnectorOAuthStartResult>;
-	readonly onDisconnectOAuth: (providerId: string) => Promise<unknown>;
+	readonly onStartOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
+	readonly onDisconnectOAuth: (connectorId: string) => Promise<unknown>;
 }) {
 	const ArrowLeftIcon = useIcon("arrow-left");
-	const isOAuth = provider.authTypes.includes("oauth");
-	const connected = isOAuth ? provider.oauth?.connected === true : isProviderConnected(provider, value);
+	const isOAuth = connector.authTypes.includes("oauth");
+	const connected = isOAuth ? connector.oauth?.connected === true : isConnectorConnected(connector, value);
 	const [authorizing, setAuthorizing] = useState(false);
 	const [authorizationExpiresAt, setAuthorizationExpiresAt] = useState<number>();
 	const [disconnecting, setDisconnecting] = useState(false);
@@ -320,12 +322,12 @@ function ConnectorDetailPage({
 		return window.desktopRpc.onAgentEvent((envelope) => {
 			if (envelope.event.type !== "connector_oauth_completed" && envelope.event.type !== "connector_oauth_failed")
 				return;
-			if (envelope.event.providerId !== provider.id) return;
+			if (envelope.event.connectorId !== connector.id) return;
 			setAuthorizing(false);
 			setAuthorizationExpiresAt(undefined);
 			setOAuthError(envelope.event.type === "connector_oauth_failed" ? envelope.event.message : undefined);
 		});
-	}, [provider.id]);
+	}, [connector.id]);
 
 	useEffect(() => {
 		if (!authorizing || authorizationExpiresAt === undefined) return;
@@ -354,7 +356,7 @@ function ConnectorDetailPage({
 		setAuthorizationExpiresAt(undefined);
 		setOAuthError(undefined);
 		try {
-			const result = await onStartOAuth(provider.id);
+			const result = await onStartOAuth(connector.id);
 			setAuthorizationExpiresAt(result.expiresAt);
 		} catch (cause) {
 			setAuthorizing(false);
@@ -367,7 +369,7 @@ function ConnectorDetailPage({
 		setDisconnecting(true);
 		setOAuthError(undefined);
 		try {
-			await onDisconnectOAuth(provider.id);
+			await onDisconnectOAuth(connector.id);
 		} catch (cause) {
 			setOAuthError(cause instanceof Error ? cause.message : "Unable to disconnect this account.");
 		} finally {
@@ -395,9 +397,11 @@ function ConnectorDetailPage({
 					<div className="min-w-0">
 						<div className="flex min-w-0 items-center gap-4">
 							<span className="flex size-6 shrink-0 items-center justify-center rounded-sm border border-border/60 bg-white p-1">
-								<ConnectorBrandLogo provider={provider} size={25} />
+								<ConnectorBrandLogo connector={connector} size={25} />
 							</span>
-							<h2 className="min-w-0 truncate text-[18px] font-semibold tracking-[-0.025em]">{provider.name}</h2>
+							<h2 className="min-w-0 truncate text-[18px] font-semibold tracking-[-0.025em]">
+								{connector.name}
+							</h2>
 						</div>
 					</div>
 					<div className="flex shrink-0 items-center gap-3">
@@ -416,17 +420,17 @@ function ConnectorDetailPage({
 				</div>
 
 				<p className="mt-3 max-w-3xl text-[14px] leading-relaxed text-muted-foreground">
-					{provider.description ?? "Configure this connector so your agent can use its tools."}
+					{connector.description ?? "Configure this connector so your agent can use its tools."}
 				</p>
 
 				{isOAuth ? (
 					<section className="mt-5 border-t border-border/55 pt-6">
 						<h3 className="text-[14px] font-semibold">Account access</h3>
 						<p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted-foreground">
-							Connect your account in the browser. Your provider permissions stay attached to this connection.
+							Connect this app in your browser. Only the permissions required by this app are requested.
 						</p>
 						{connected ? (
-							<p className="mt-5 text-[13px] text-primary">Connected to your {provider.name} account.</p>
+							<p className="mt-5 text-[13px] text-primary">Connected to your {connector.name} account.</p>
 						) : (
 							<>
 								<Button
@@ -454,20 +458,20 @@ function ConnectorDetailPage({
 						) : null}
 					</section>
 				) : (
-					<CredentialSettings provider={provider} value={value} onChange={onChange} />
+					<CredentialSettings connector={connector} value={value} onChange={onChange} />
 				)}
-				<ToolPermissionSettings provider={provider} policy={policy} onChange={onPolicyChange} />
+				<ToolPermissionSettings connector={connector} policy={policy} onChange={onPolicyChange} />
 			</main>
 		</div>
 	);
 }
 
 function ToolPermissionSettings({
-	provider,
+	connector,
 	policy,
 	onChange,
 }: {
-	readonly provider: DesktopConnectorProvider;
+	readonly connector: DesktopConnector;
 	readonly policy: DesktopConnectorConfigInput["policy"];
 	readonly onChange: (value: DesktopConnectorConfigInput["policy"]) => void;
 }) {
@@ -481,16 +485,16 @@ function ToolPermissionSettings({
 		});
 	};
 	const updateGroup = (
-		sideEffect: DesktopConnectorProvider["actions"][number]["sideEffect"],
+		sideEffect: DesktopConnector["actions"][number]["sideEffect"],
 		permission: DesktopConnectorPermission,
 	) => {
 		const actions = { ...policy.actions };
-		for (const action of provider.actions) {
+		for (const action of connector.actions) {
 			if (action.sideEffect === sideEffect) actions[action.actionId] = permission;
 		}
 		onChange({ ...policy, actions });
 	};
-	const actions = provider.actions.map((action) => ({
+	const actions = connector.actions.map((action) => ({
 		...action,
 		permission: policy.actions[action.actionId] ?? policy.default,
 	}));
@@ -703,20 +707,20 @@ function getConnectorActionTitle(actionId: string): string {
 }
 
 function groupPermission(
-	actions: readonly DesktopConnectorProvider["actions"][number][],
+	actions: readonly DesktopConnector["actions"][number][],
 ): DesktopConnectorPermission | "mixed" {
 	const permissions = new Set(actions.map((action) => action.permission));
 	return permissions.size === 1 ? [...permissions][0]! : "mixed";
 }
 
 function CredentialSettings({
-	provider,
+	connector,
 	value,
 	onChange,
 }: {
-	readonly provider: DesktopConnectorProvider;
-	readonly value: DesktopConnectorConfigInput["providers"][number];
-	readonly onChange: (value: DesktopConnectorConfigInput["providers"][number]) => void;
+	readonly connector: DesktopConnector;
+	readonly value: DesktopConnectorConfigInput["connectors"][number];
+	readonly onChange: (value: DesktopConnectorConfigInput["connectors"][number]) => void;
 }) {
 	return (
 		<div className="mt-5 border-t border-border/55 pt-6">
@@ -726,7 +730,7 @@ function CredentialSettings({
 					Values are stored in your local settings and are only sent to this connector.
 				</p>
 				<div className="mt-5 grid max-w-3xl grid-cols-2 gap-x-5 gap-y-5">
-					{provider.credentials.map((credential) => (
+					{connector.credentials.map((credential) => (
 						<CredentialField
 							key={credential.key}
 							credential={credential}
@@ -792,54 +796,48 @@ function DetailField({
 	);
 }
 
-function resolveProviderValue(
+function resolveConnectorValue(
 	value: DesktopConnectorConfigInput,
-	provider: DesktopConnectorProvider,
-): DesktopConnectorConfigInput["providers"][number] {
+	connector: DesktopConnector,
+): DesktopConnectorConfigInput["connectors"][number] {
 	return (
-		value.providers.find((candidate) => candidate.id === provider.id) ?? {
-			id: provider.id,
-			enabled: provider.enabled,
+		value.connectors.find((candidate) => candidate.id === connector.id) ?? {
+			id: connector.id,
+			enabled: connector.enabled,
 			credentials: {},
 		}
 	);
 }
 
-function isProviderConnected(
-	provider: DesktopConnectorProvider,
-	value: DesktopConnectorConfigInput["providers"][number],
+function isConnectorConnected(
+	connector: DesktopConnector,
+	value: DesktopConnectorConfigInput["connectors"][number],
 ): boolean {
-	if (provider.oauth) return provider.oauth.connected;
-	if (provider.credentials.length === 0) return false;
-	return provider.credentials.every((credential) => {
+	if (connector.oauth) return connector.oauth.connected;
+	if (connector.credentials.length === 0) return false;
+	return connector.credentials.every((credential) => {
 		return credential.configured || Boolean(value.credentials[credential.key]?.trim());
 	});
 }
 
-function useProviderIcon(provider: DesktopConnectorProvider) {
+function useConnectorIcon(connector: DesktopConnector) {
 	const apiKeyIcon = useIcon("key");
 	const oauthIcon = useIcon("globe");
 	const customIcon = useIcon("link");
-	return provider.authTypes.includes("oauth")
+	return connector.authTypes.includes("oauth")
 		? oauthIcon
-		: provider.authTypes.includes("api_key")
+		: connector.authTypes.includes("api_key")
 			? apiKeyIcon
 			: customIcon;
 }
 
-function ConnectorBrandLogo({
-	provider,
-	size,
-}: {
-	readonly provider: DesktopConnectorProvider;
-	readonly size: number;
-}) {
-	const ProviderIcon = useProviderIcon(provider);
+function ConnectorBrandLogo({ connector, size }: { readonly connector: DesktopConnector; readonly size: number }) {
+	const ConnectorIcon = useConnectorIcon(connector);
 	const [imageFailed, setImageFailed] = useState(false);
-	if (!provider.iconUrl || imageFailed) return <ProviderIcon size={size} strokeWidth={1.7} />;
+	if (!connector.iconUrl || imageFailed) return <ConnectorIcon size={size} strokeWidth={1.7} />;
 	return (
 		<img
-			src={provider.iconUrl}
+			src={connector.iconUrl}
 			alt=""
 			width={size}
 			height={size}
@@ -852,7 +850,7 @@ function ConnectorBrandLogo({
 
 function getAuthLabel(authTypes: readonly string[]): string {
 	const authLabels: Record<string, string> = {
-		oauth: "OAuth",
+		oauth: "Web",
 		api_key: "API key",
 		custom_credential: "Custom credentials",
 	};

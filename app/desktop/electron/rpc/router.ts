@@ -101,13 +101,13 @@ export async function handleDesktopOAuthCallback(url: string): Promise<void> {
 	try {
 		const result = await requireDesktopOAuth().handleCallback(url);
 		desktopAgentHost.invalidateSessions();
-		publishDesktopEvent({ type: "connector_oauth_completed", providerId: result.providerId });
+		publishDesktopEvent({ type: "connector_oauth_completed", connectorId: result.connectorId });
 	} catch (error) {
-		const providerId = oauthProviderIdFromError(error);
-		if (providerId) {
+		const connectorId = connectorIdFromOAuthError(error);
+		if (connectorId) {
 			publishDesktopEvent({
 				type: "connector_oauth_failed",
-				providerId,
+				connectorId,
 				message: error instanceof Error ? error.message : "OAuth authorization could not be completed",
 			});
 		}
@@ -165,11 +165,11 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 		},
 	},
 	connector: {
-		startOAuth(_event, providerId) {
-			return requireDesktopOAuth().start(assertConnectorOAuthProviderId(providerId));
+		startOAuth(_event, connectorId) {
+			return requireDesktopOAuth().start(assertConnectorOAuthApplicationId(connectorId));
 		},
-		async disconnectOAuth(_event, providerId) {
-			const snapshot = await requireDesktopOAuth().disconnect(assertConnectorOAuthProviderId(providerId));
+		async disconnectOAuth(_event, connectorId) {
+			const snapshot = await requireDesktopOAuth().disconnect(assertConnectorOAuthApplicationId(connectorId));
 			desktopAgentHost.invalidateSessions();
 			return snapshot;
 		},
@@ -313,9 +313,9 @@ function requireDesktopOAuth(): DesktopOAuthManager {
 	});
 }
 
-function assertConnectorOAuthProviderId(value: unknown): string {
-	if (value !== "google" && value !== "github") {
-		throw agentInputError({ message: "Invalid OAuth Connector provider" });
+function assertConnectorOAuthApplicationId(value: unknown): string {
+	if (value !== "google_drive" && value !== "google_gmail" && value !== "google_calendar" && value !== "github") {
+		throw agentInputError({ message: "Invalid OAuth Connector application" });
 	}
 	return value;
 }
@@ -332,10 +332,15 @@ function publishDesktopEvent(event: DesktopAgentEvent): void {
 	}
 }
 
-function oauthProviderIdFromError(error: unknown): string | undefined {
+function connectorIdFromOAuthError(error: unknown): string | undefined {
 	if (!isRecord(error) || !isRecord(error.data)) return undefined;
-	const providerId = error.data.providerId;
-	return providerId === "google" || providerId === "github" ? providerId : undefined;
+	const connectorId = error.data.connectorId;
+	return connectorId === "google_drive" ||
+		connectorId === "google_gmail" ||
+		connectorId === "google_calendar" ||
+		connectorId === "github"
+		? connectorId
+		: undefined;
 }
 
 function assertSessionCreateInput(value: unknown): DesktopSessionCreateInput {

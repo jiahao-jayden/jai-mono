@@ -6,14 +6,14 @@ import {
 	createContext7Adapter,
 	createDefaultConnectorService,
 	createGitHubAdapter,
-	createGoogleAdapter,
+	createGoogleAdapters,
 	createMcDonaldsCnAdapter,
-} from "../src/providers";
+} from "../src/adapters";
 import type { RequestContext } from "../src/types";
 
 	const context = { requestId: "context7-1", sessionId: "session-1" } satisfies RequestContext;
 
-describe("Context7 Provider Adapter", () => {
+describe("Context7 Connector Adapter", () => {
 	test("uses the v2 library and context endpoints with a service-owned bearer credential", async () => {
 		const requests: { url: string; headers: Headers }[] = [];
 		const adapter = createContext7Adapter({
@@ -25,7 +25,7 @@ describe("Context7 Provider Adapter", () => {
 		});
 		const result = await adapter.execute(adapter.actions[0]!, { libraryName: "next", query: "routing" }, {
 			...context,
-			connection: { providerId: "context7", displayName: "Context7", status: "connected", scopes: [] },
+			connection: { connectorId: "context7", displayName: "Context7", status: "connected", scopes: [] },
 			credentials: { apiKey: "secret-not-for-agent" },
 		});
 		expect(result.isOk()).toBe(true);
@@ -35,7 +35,7 @@ describe("Context7 Provider Adapter", () => {
 
 		const docs = await adapter.execute(adapter.actions[1]!, { libraryId: "/vercel/next.js", query: "routing", type: "json" }, {
 			...context,
-			connection: { providerId: "context7", displayName: "Context7", status: "connected", scopes: [] },
+			connection: { connectorId: "context7", displayName: "Context7", status: "connected", scopes: [] },
 			credentials: { apiKey: "secret-not-for-agent" },
 		});
 		expect(docs.isOk()).toBe(true);
@@ -43,30 +43,30 @@ describe("Context7 Provider Adapter", () => {
 		expect(requests[1]?.url).toContain("libraryId=%2Fvercel%2Fnext.js");
 	});
 
-	test("returns a rate-limit failure without exposing provider credentials", async () => {
+	test("returns a rate-limit failure without exposing connector credentials", async () => {
 		const adapter = createContext7Adapter({
 			fetcher: async () => new Response(JSON.stringify({ error: "slow down" }), { status: 429, headers: { "retry-after": "2" } }),
 		});
 		const result = await adapter.execute(adapter.actions[0]!, { libraryName: "next", query: "routing" }, {
 			...context,
-			connection: { providerId: "context7", displayName: "Context7", status: "connected", scopes: [] },
+			connection: { connectorId: "context7", displayName: "Context7", status: "connected", scopes: [] },
 			credentials: { apiKey: "secret" },
 		});
 		expect(result.isErr()).toBe(true);
-		expect(result.isErr() ? result.error._tag : "").toBe("connector.provider_rate_limited");
-		expect(result.isErr() ? result.error.data : {}).toEqual({ providerId: "context7", actionId: "search_libraries", retryAfterMs: 2000 });
+		expect(result.isErr() ? result.error._tag : "").toBe("connector.upstream_rate_limited");
+		expect(result.isErr() ? result.error.data : {}).toEqual({ connectorId: "context7", actionId: "search_libraries", retryAfterMs: 2000 });
 	});
 
 	test("default service keeps Context7 disconnected when no service credential is configured", async () => {
 		const service = createDefaultConnectorService({ context7ApiKey: undefined });
 		const apps = await service.listApps(context);
 		const connections = await service.listConnections(context);
-		expect(Result.isOk(apps) && apps.value.apps[0]?.providerId).toBe("context7");
+		expect(Result.isOk(apps) && apps.value.apps[0]?.connectorId).toBe("context7");
 		expect(Result.isOk(connections) && connections.value.connections[0]?.status).toBe("disconnected");
 	});
 });
 
-describe("AMap Provider Adapter", () => {
+describe("AMap Connector Adapter", () => {
 	test("registers the planned read-only Web Service action set and keeps the key service-owned", async () => {
 		const requests: { url: string; headers: Headers }[] = [];
 		const adapter = createAMapAdapter({
@@ -79,7 +79,7 @@ describe("AMap Provider Adapter", () => {
 		expect(adapter.actions).toHaveLength(15);
 		const result = await adapter.execute(adapter.actions[0]!, { address: "上海市" }, {
 			...context,
-			connection: { providerId: "amap", displayName: "AMap", status: "connected", scopes: [] },
+			connection: { connectorId: "amap", displayName: "AMap", status: "connected", scopes: [] },
 			credentials: { apiKey: "service-secret" },
 		});
 		expect(result.isOk()).toBe(true);
@@ -89,13 +89,13 @@ describe("AMap Provider Adapter", () => {
 		expect(requests[0]?.headers.get("authorization")).toBeNull();
 	});
 
-	test("projects an AMap provider error without returning the API key", async () => {
+	test("projects an AMap upstream error without returning the API key", async () => {
 		const adapter = createAMapAdapter({
 			fetcher: async () => new Response(JSON.stringify({ status: "0", info: "INVALID_USER_KEY" }), { status: 200 }),
 		});
 		const result = await adapter.execute(adapter.actions[0]!, { address: "上海市" }, {
 			...context,
-			connection: { providerId: "amap", displayName: "AMap", status: "connected", scopes: [] },
+			connection: { connectorId: "amap", displayName: "AMap", status: "connected", scopes: [] },
 			credentials: { apiKey: "service-secret" },
 		});
 		expect(result.isErr()).toBe(true);
@@ -104,7 +104,7 @@ describe("AMap Provider Adapter", () => {
 	});
 });
 
-describe("McDonald's China Provider Adapter", () => {
+describe("McDonald's China Connector Adapter", () => {
 	test("registers seven actions and signs requests inside the Connector Service", async () => {
 		const requests: { url: string; init?: RequestInit }[] = [];
 		const adapter = createMcDonaldsCnAdapter({
@@ -122,7 +122,7 @@ describe("McDonald's China Provider Adapter", () => {
 			dayPartCode: 2,
 		}, {
 			...context,
-			connection: { providerId: "mcdonalds_cn", displayName: "McDonald's China", status: "connected", scopes: [] },
+			connection: { connectorId: "mcdonalds_cn", displayName: "McDonald's China", status: "connected", scopes: [] },
 			credentials: { appId: "app-1", merchantId: "merchant-1", signingKey: "signing-secret", environment: "prod" },
 		});
 		expect(result.isOk()).toBe(true);
@@ -141,7 +141,7 @@ describe("McDonald's China Provider Adapter", () => {
 	});
 });
 
-describe("GitHub OAuth Provider Adapter", () => {
+describe("GitHub OAuth Connector Adapter", () => {
 	test("uses the service-owned OAuth bearer token for read and confirmed write actions", async () => {
 		const requests: { url: string; init?: RequestInit }[] = [];
 		const adapter = createGitHubAdapter({
@@ -161,7 +161,7 @@ describe("GitHub OAuth Provider Adapter", () => {
 		]);
 		const result = await adapter.execute(adapter.actions[0]!, {}, {
 			...context,
-			connection: { providerId: "github", displayName: "GitHub", status: "connected", scopes: ["read:user"] },
+			connection: { connectorId: "github", displayName: "GitHub", status: "connected", scopes: ["read:user"] },
 			credentials: { accessToken: "github-oauth-secret" },
 		});
 		expect(result.isOk()).toBe(true);
@@ -171,10 +171,10 @@ describe("GitHub OAuth Provider Adapter", () => {
 	});
 });
 
-describe("Google OAuth Provider Adapter", () => {
-	test("shares one service-owned OAuth token across Drive, Gmail, and Calendar", async () => {
+describe("Google OAuth Connector Adapter", () => {
+	test("keeps Drive, Gmail, and Calendar behind independent adapters and credentials", async () => {
 		const requests: { url: string; init?: RequestInit }[] = [];
-		const adapter = createGoogleAdapter({
+		const adapters = createGoogleAdapters({
 			driveBaseUrl: "https://google.test/drive/v3",
 			gmailBaseUrl: "https://google.test/gmail/v1/users/me",
 			calendarBaseUrl: "https://google.test/calendar/v3",
@@ -183,21 +183,26 @@ describe("Google OAuth Provider Adapter", () => {
 				return new Response(JSON.stringify({ items: [] }), { status: 200 });
 			},
 		});
-		expect(adapter.actions).toHaveLength(8);
-		const drive = await adapter.execute(adapter.actions[0]!, { query: "name contains 'plans'" }, {
+		expect(adapters.map((adapter) => [adapter.definition.id, adapter.actions.length])).toEqual([
+			["google_drive", 3],
+			["google_gmail", 3],
+			["google_calendar", 2],
+		]);
+		const [driveAdapter, gmailAdapter, calendarAdapter] = adapters;
+		const drive = await driveAdapter!.execute(driveAdapter!.actions[0]!, { query: "name contains 'plans'" }, {
 			...context,
-			connection: { providerId: "google", displayName: "Google", status: "connected", scopes: [] },
-			credentials: { accessToken: "google-oauth-secret" },
+			connection: { connectorId: "google_drive", displayName: "Google Drive", status: "connected", scopes: [] },
+			credentials: { accessToken: "drive-oauth-secret" },
 		});
-		const gmail = await adapter.execute(adapter.actions[3]!, { query: "is:unread" }, {
+		const gmail = await gmailAdapter!.execute(gmailAdapter!.actions[0]!, { query: "is:unread" }, {
 			...context,
-			connection: { providerId: "google", displayName: "Google", status: "connected", scopes: [] },
-			credentials: { accessToken: "google-oauth-secret" },
+			connection: { connectorId: "google_gmail", displayName: "Gmail", status: "connected", scopes: [] },
+			credentials: { accessToken: "gmail-oauth-secret" },
 		});
-		const calendar = await adapter.execute(adapter.actions[6]!, {}, {
+		const calendar = await calendarAdapter!.execute(calendarAdapter!.actions[0]!, {}, {
 			...context,
-			connection: { providerId: "google", displayName: "Google", status: "connected", scopes: [] },
-			credentials: { accessToken: "google-oauth-secret" },
+			connection: { connectorId: "google_calendar", displayName: "Google Calendar", status: "connected", scopes: [] },
+			credentials: { accessToken: "calendar-oauth-secret" },
 		});
 		expect(drive.isOk() && gmail.isOk() && calendar.isOk()).toBe(true);
 		expect(requests.map((request) => request.url)).toEqual([
@@ -205,29 +210,38 @@ describe("Google OAuth Provider Adapter", () => {
 			"https://google.test/gmail/v1/users/me/messages?q=is%3Aunread",
 			"https://google.test/calendar/v3/calendars/primary/events",
 		]);
-		for (const request of requests) {
-			expect(new Headers(request.init?.headers).get("authorization")).toBe("Bearer google-oauth-secret");
-		}
-		expect(JSON.stringify({ drive, gmail, calendar })).not.toContain("google-oauth-secret");
+		expect(requests.map((request) => new Headers(request.init?.headers).get("authorization"))).toEqual([
+			"Bearer drive-oauth-secret",
+			"Bearer gmail-oauth-secret",
+			"Bearer calendar-oauth-secret",
+		]);
+		expect(JSON.stringify({ drive, gmail, calendar })).not.toContain("oauth-secret");
 	});
 
-	test("default service exposes an OAuth connection without exposing its token", async () => {
+	test("default service exposes independent Google application connections without exposing tokens", async () => {
 		const service = createDefaultConnectorService({
-			providers: {
-				google: {
+			connectors: {
+				google_drive: {
 					credentials: {
-						accessToken: "google-oauth-secret",
+						accessToken: "drive-oauth-secret",
 						scopes: "https://www.googleapis.com/auth/drive.metadata.readonly",
 					},
 				},
 			},
 		});
 		const connections = await service.listConnections(context);
-		expect(Result.isOk(connections) && connections.value.connections.find((connection) => connection.providerId === "google")).toMatchObject({
-			providerId: "google",
+		expect(
+			Result.isOk(connections) &&
+				connections.value.connections.find((connection) => connection.connectorId === "google_drive"),
+		).toMatchObject({
+			connectorId: "google_drive",
 			status: "connected",
 			scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly"],
 		});
-		expect(JSON.stringify(connections)).not.toContain("google-oauth-secret");
+		expect(
+			Result.isOk(connections) &&
+				connections.value.connections.find((connection) => connection.connectorId === "google_gmail"),
+		).toMatchObject({ connectorId: "google_gmail", status: "disconnected" });
+		expect(JSON.stringify(connections)).not.toContain("drive-oauth-secret");
 	});
 });

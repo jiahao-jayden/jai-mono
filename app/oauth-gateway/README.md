@@ -2,7 +2,7 @@
 
 Stateless Hono OAuth Gateway for the Connector. The Gateway never stores OAuth sessions, authorization codes, access tokens, refresh tokens, or user records.
 
-The Connector owns `state`, PKCE `code_verifier`, and persistence in `settings.json`. The Gateway owns Provider client credentials and performs token exchange, refresh, and revoke.
+The Connector owns `state`, PKCE `code_verifier`, and persistence in `settings.json`. The Gateway owns Service client credentials and performs token exchange, refresh, and revoke.
 
 ## Runtime adapters
 
@@ -13,15 +13,15 @@ The core only uses the Web `Request`/`Response` API, Hono, and `fetch`; it does 
 
 ## Environment
 
-`OAUTH_GATEWAY_PROVIDERS` is a JSON array. Client IDs and secrets are referenced by environment variable name so Cloudflare Secrets can hold them separately:
+`OAUTH_GATEWAY_SERVICES` is a JSON array. Client IDs and secrets are referenced by environment variable name so Cloudflare Secrets can hold them separately:
 
 ```json
 [
 	{
 		"id": "example",
-		"authorizationEndpoint": "https://provider.example/oauth/authorize",
-		"tokenEndpoint": "https://provider.example/oauth/token",
-		"revokeEndpoint": "https://provider.example/oauth/revoke",
+		"authorizationEndpoint": "https://service.example/oauth/authorize",
+		"tokenEndpoint": "https://service.example/oauth/token",
+		"revokeEndpoint": "https://service.example/oauth/revoke",
 		"clientIdEnv": "OAUTH_EXAMPLE_CLIENT_ID",
 		"clientSecretEnv": "OAUTH_EXAMPLE_CLIENT_SECRET",
 		"gatewayCallbackUrl": "https://oauth.example.com/v1/oauth/example/callback",
@@ -32,21 +32,21 @@ The core only uses the Web `Request`/`Response` API, Hono, and `fetch`; it does 
 ]
 ```
 
-The Gateway only accepts HTTPS Provider endpoints and a fixed application callback: `jai:` or the loopback callback `http://127.0.0.1:43821/v1/oauth/callback`. Requested scopes must be a subset of the configured Provider scopes.
+The Gateway only accepts HTTPS Service endpoints and a fixed application callback: `jai:` or the loopback callback `http://127.0.0.1:43821/v1/oauth/callback`. Requested scopes must be a subset of the configured Service scopes.
 
 For Google, set `authorizationParams` to `{ "access_type": "offline", "prompt": "consent" }` so the first grant returns a refresh token for the Connector service.
 
-For Cloudflare Workers, deploy with the included `wrangler.toml`; set `OAUTH_GATEWAY_PROVIDERS` as a Worker variable and the referenced client IDs/secrets as Worker Secrets. The configuration is loaded per Worker request and is never persisted by the Gateway.
+For Cloudflare Workers, deploy with the included `wrangler.toml`; set `OAUTH_GATEWAY_SERVICES` as a Worker variable and the referenced client IDs/secrets as Worker Secrets. The configuration is loaded per Worker request and is never persisted by the Gateway.
 
 ## Routes
 
 ```text
 GET  /health
-GET  /v1/oauth/:provider/authorize
-GET  /v1/oauth/:provider/callback
-POST /v1/oauth/:provider/token
-POST /v1/oauth/:provider/refresh
-POST /v1/oauth/:provider/revoke
+GET  /v1/oauth/:service/authorize
+GET  /v1/oauth/:service/callback
+POST /v1/oauth/:service/token
+POST /v1/oauth/:service/refresh
+POST /v1/oauth/:service/revoke
 ```
 
 The callback forwards the short-lived authorization code and state to the application. The Connector then calls `/token` with its PKCE verifier. This keeps the Gateway stateless without putting a verifier in server-side session storage.

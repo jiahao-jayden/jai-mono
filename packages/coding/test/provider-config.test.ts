@@ -70,13 +70,13 @@ describe("Provider configuration", () => {
 		await writeSettings(join(fixture.homeDir, ".jai", "settings.json"), {
 			connector: {
 				policy: { default: "ask", actions: { "context7.get_documentation_context": "deny" } },
-				providers: { context7: { enabled: false } },
+				connectors: { context7: { enabled: false } },
 			},
 		});
 		await writeSettings(join(fixture.projectRoot, ".jai", "settings.json"), {
 			connector: {
 				policy: { default: "allow", actions: {} },
-				providers: { context7: { enabled: true } },
+				connectors: { context7: { enabled: true } },
 			},
 		});
 
@@ -89,7 +89,7 @@ describe("Provider configuration", () => {
 		expect(snapshot.settings.connector?.policy?.actions).toEqual({
 			"context7.get_documentation_context": "deny",
 		});
-		expect(snapshot.settings.connector?.providers?.context7).toEqual({ enabled: false });
+		expect(snapshot.settings.connector?.connectors?.context7).toEqual({ enabled: false });
 		store.close();
 	});
 

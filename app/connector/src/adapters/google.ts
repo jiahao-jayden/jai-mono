@@ -2,15 +2,15 @@ import type { Result as ResultType } from "better-result";
 import type {
 	ActionDefinition,
 	ActionExecutionContext,
+	ConnectorAdapter,
 	ConnectorFailure,
 	JsonObject,
 	JsonSchema,
 	JsonValue,
-	ProviderAdapter,
 } from "../types";
 import {
 	integerInput,
-	type OAuthProviderFetcher,
+	type OAuthServiceFetcher,
 	oauthAccessToken,
 	oauthJsonRequest,
 	stringArrayInput,
@@ -21,7 +21,7 @@ export interface GoogleAdapterOptions {
 	readonly driveBaseUrl?: string;
 	readonly gmailBaseUrl?: string;
 	readonly calendarBaseUrl?: string;
-	readonly fetcher?: OAuthProviderFetcher;
+	readonly fetcher?: OAuthServiceFetcher;
 }
 
 const stringSchema: JsonSchema = { type: "string", minLength: 1 };
@@ -35,8 +35,8 @@ const calendarEventsScope = "https://www.googleapis.com/auth/calendar.events";
 
 const actions: readonly ActionDefinition[] = [
 	{
-		providerId: "google",
-		actionId: "drive_list_files",
+		connectorId: "google_drive",
+		actionId: "list_files",
 		description: "List files in the connected Google Drive.",
 		inputSchema: {
 			type: "object",
@@ -49,8 +49,8 @@ const actions: readonly ActionDefinition[] = [
 		dataSensitivity: "normal",
 	},
 	{
-		providerId: "google",
-		actionId: "drive_get_file",
+		connectorId: "google_drive",
+		actionId: "get_file",
 		description: "Get metadata for one Google Drive file.",
 		inputSchema: {
 			type: "object",
@@ -64,8 +64,8 @@ const actions: readonly ActionDefinition[] = [
 		dataSensitivity: "normal",
 	},
 	{
-		providerId: "google",
-		actionId: "drive_create_file",
+		connectorId: "google_drive",
+		actionId: "create_file",
 		description: "Create an empty file in Google Drive.",
 		inputSchema: {
 			type: "object",
@@ -84,8 +84,8 @@ const actions: readonly ActionDefinition[] = [
 		dataSensitivity: "normal",
 	},
 	{
-		providerId: "google",
-		actionId: "gmail_list_messages",
+		connectorId: "google_gmail",
+		actionId: "list_messages",
 		description: "List messages in the connected Gmail account.",
 		inputSchema: {
 			type: "object",
@@ -102,8 +102,8 @@ const actions: readonly ActionDefinition[] = [
 		dataSensitivity: "sensitive",
 	},
 	{
-		providerId: "google",
-		actionId: "gmail_get_message",
+		connectorId: "google_gmail",
+		actionId: "get_message",
 		description: "Get one Gmail message, including its headers and body structure.",
 		inputSchema: {
 			type: "object",
@@ -120,8 +120,8 @@ const actions: readonly ActionDefinition[] = [
 		dataSensitivity: "sensitive",
 	},
 	{
-		providerId: "google",
-		actionId: "gmail_send_message",
+		connectorId: "google_gmail",
+		actionId: "send_message",
 		description: "Send a base64url-encoded RFC 2822 email message through Gmail.",
 		inputSchema: {
 			type: "object",
@@ -135,8 +135,8 @@ const actions: readonly ActionDefinition[] = [
 		dataSensitivity: "sensitive",
 	},
 	{
-		providerId: "google",
-		actionId: "calendar_list_events",
+		connectorId: "google_calendar",
+		actionId: "list_events",
 		description: "List events from a Google Calendar.",
 		inputSchema: {
 			type: "object",
@@ -154,8 +154,8 @@ const actions: readonly ActionDefinition[] = [
 		dataSensitivity: "sensitive",
 	},
 	{
-		providerId: "google",
-		actionId: "calendar_create_event",
+		connectorId: "google_calendar",
+		actionId: "create_event",
 		description: "Create an event in a Google Calendar.",
 		inputSchema: {
 			type: "object",
@@ -177,23 +177,37 @@ const actions: readonly ActionDefinition[] = [
 	},
 ];
 
-export function createGoogleAdapter(options: GoogleAdapterOptions = {}): ProviderAdapter {
+export function createGoogleAdapters(options: GoogleAdapterOptions = {}): readonly ConnectorAdapter[] {
 	const fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
 	const driveBaseUrl = (options.driveBaseUrl ?? "https://www.googleapis.com/drive/v3").replace(/\/$/u, "");
 	const gmailBaseUrl = (options.gmailBaseUrl ?? "https://gmail.googleapis.com/gmail/v1/users/me").replace(/\/$/u, "");
 	const calendarBaseUrl = (options.calendarBaseUrl ?? "https://www.googleapis.com/calendar/v3").replace(/\/$/u, "");
-	return {
-		definition: {
-			id: "google",
-			displayName: "Google",
-			description: "A shared Google connection for Drive, Gmail, and Calendar.",
-			categories: ["productivity", "email", "calendar", "storage"],
-			authTypes: ["oauth"],
+	const definitions = [
+		{
+			id: "google_drive",
+			displayName: "Google Drive",
+			description: "Files and folders in Google Drive.",
+			categories: ["productivity", "storage"],
 		},
-		actions,
+		{
+			id: "google_gmail",
+			displayName: "Gmail",
+			description: "Messages in Gmail.",
+			categories: ["productivity", "email"],
+		},
+		{
+			id: "google_calendar",
+			displayName: "Google Calendar",
+			description: "Events in Google Calendar.",
+			categories: ["productivity", "calendar"],
+		},
+	] as const;
+	return definitions.map((definition) => ({
+		definition: { ...definition, authTypes: ["oauth"] },
+		actions: actions.filter((action) => action.connectorId === definition.id),
 		execute: (action, input, context) =>
 			executeGoogle(action, input, context, { driveBaseUrl, gmailBaseUrl, calendarBaseUrl, fetcher }),
-	};
+	}));
 }
 
 async function executeGoogle(
@@ -204,13 +218,13 @@ async function executeGoogle(
 		readonly driveBaseUrl: string;
 		readonly gmailBaseUrl: string;
 		readonly calendarBaseUrl: string;
-		readonly fetcher: OAuthProviderFetcher;
+		readonly fetcher: OAuthServiceFetcher;
 	},
 ): Promise<ResultType<JsonValue, ConnectorFailure>> {
-	const token = oauthAccessToken("google", action.actionId, context);
+	const token = oauthAccessToken(action.connectorId, action.actionId, context);
 	if (token.isErr()) return token;
-	if (action.actionId.startsWith("drive_")) return executeDrive(action, input, context, token.value, options);
-	if (action.actionId.startsWith("gmail_")) return executeGmail(action, input, context, token.value, options);
+	if (action.connectorId === "google_drive") return executeDrive(action, input, context, token.value, options);
+	if (action.connectorId === "google_gmail") return executeGmail(action, input, context, token.value, options);
 	return executeCalendar(action, input, context, token.value, options);
 }
 
@@ -219,10 +233,10 @@ function executeDrive(
 	input: JsonObject,
 	context: ActionExecutionContext,
 	accessToken: string,
-	options: { readonly driveBaseUrl: string; readonly fetcher: OAuthProviderFetcher },
+	options: { readonly driveBaseUrl: string; readonly fetcher: OAuthServiceFetcher },
 ): Promise<ResultType<JsonValue, ConnectorFailure>> {
 	const baseUrl = new URL(options.driveBaseUrl);
-	if (action.actionId === "drive_list_files") {
+	if (action.actionId === "list_files") {
 		const url = new URL("/drive/v3/files", baseUrl);
 		url.searchParams.set("fields", "files(id,name,mimeType,modifiedTime,webViewLink),nextPageToken");
 		const query = stringInput(input, "query");
@@ -232,7 +246,7 @@ function executeDrive(
 		if (orderBy) url.searchParams.set("orderBy", orderBy);
 		if (pageSize !== undefined) url.searchParams.set("pageSize", String(pageSize));
 		return oauthJsonRequest(
-			"google",
+			"google_drive",
 			action.actionId,
 			url.toString(),
 			accessToken,
@@ -241,12 +255,12 @@ function executeDrive(
 			context,
 		);
 	}
-	if (action.actionId === "drive_get_file") {
+	if (action.actionId === "get_file") {
 		const fileId = encodeURIComponent(stringInput(input, "fileId"));
 		const url = new URL(`/drive/v3/files/${fileId}`, baseUrl);
 		url.searchParams.set("fields", "id,name,mimeType,description,createdTime,modifiedTime,size,webViewLink,parents");
 		return oauthJsonRequest(
-			"google",
+			"google_drive",
 			action.actionId,
 			url.toString(),
 			accessToken,
@@ -262,7 +276,7 @@ function executeDrive(
 		...(stringArrayInput(input, "parents").length > 0 ? { parents: stringArrayInput(input, "parents") } : {}),
 	};
 	return oauthJsonRequest(
-		"google",
+		"google_drive",
 		action.actionId,
 		new URL("/drive/v3/files", baseUrl).toString(),
 		accessToken,
@@ -277,10 +291,10 @@ function executeGmail(
 	input: JsonObject,
 	context: ActionExecutionContext,
 	accessToken: string,
-	options: { readonly gmailBaseUrl: string; readonly fetcher: OAuthProviderFetcher },
+	options: { readonly gmailBaseUrl: string; readonly fetcher: OAuthServiceFetcher },
 ): Promise<ResultType<JsonValue, ConnectorFailure>> {
 	const baseUrl = new URL(options.gmailBaseUrl);
-	if (action.actionId === "gmail_list_messages") {
+	if (action.actionId === "list_messages") {
 		const url = new URL("/gmail/v1/users/me/messages", baseUrl);
 		const query = stringInput(input, "query");
 		const maxResults = integerInput(input, "maxResults");
@@ -288,7 +302,7 @@ function executeGmail(
 		if (maxResults !== undefined) url.searchParams.set("maxResults", String(maxResults));
 		for (const labelId of stringArrayInput(input, "labelIds")) url.searchParams.append("labelIds", labelId);
 		return oauthJsonRequest(
-			"google",
+			"google_gmail",
 			action.actionId,
 			url.toString(),
 			accessToken,
@@ -297,13 +311,13 @@ function executeGmail(
 			context,
 		);
 	}
-	if (action.actionId === "gmail_get_message") {
+	if (action.actionId === "get_message") {
 		const messageId = encodeURIComponent(stringInput(input, "messageId"));
 		const url = new URL(`/gmail/v1/users/me/messages/${messageId}`, baseUrl);
 		const format = stringInput(input, "format");
 		if (format) url.searchParams.set("format", format);
 		return oauthJsonRequest(
-			"google",
+			"google_gmail",
 			action.actionId,
 			url.toString(),
 			accessToken,
@@ -317,7 +331,7 @@ function executeGmail(
 		...(typeof input.threadId === "string" ? { threadId: input.threadId } : {}),
 	};
 	return oauthJsonRequest(
-		"google",
+		"google_gmail",
 		action.actionId,
 		new URL("/gmail/v1/users/me/messages/send", baseUrl).toString(),
 		accessToken,
@@ -332,11 +346,11 @@ function executeCalendar(
 	input: JsonObject,
 	context: ActionExecutionContext,
 	accessToken: string,
-	options: { readonly calendarBaseUrl: string; readonly fetcher: OAuthProviderFetcher },
+	options: { readonly calendarBaseUrl: string; readonly fetcher: OAuthServiceFetcher },
 ): Promise<ResultType<JsonValue, ConnectorFailure>> {
 	const baseUrl = new URL(options.calendarBaseUrl);
 	const calendarId = encodeURIComponent(stringInput(input, "calendarId") || "primary");
-	if (action.actionId === "calendar_list_events") {
+	if (action.actionId === "list_events") {
 		const url = new URL(`/calendar/v3/calendars/${calendarId}/events`, baseUrl);
 		const timeMin = stringInput(input, "timeMin");
 		const timeMax = stringInput(input, "timeMax");
@@ -345,7 +359,7 @@ function executeCalendar(
 		if (timeMax) url.searchParams.set("timeMax", timeMax);
 		if (maxResults !== undefined) url.searchParams.set("maxResults", String(maxResults));
 		return oauthJsonRequest(
-			"google",
+			"google_calendar",
 			action.actionId,
 			url.toString(),
 			accessToken,
@@ -362,7 +376,7 @@ function executeCalendar(
 		...(typeof input.location === "string" ? { location: input.location } : {}),
 	};
 	return oauthJsonRequest(
-		"google",
+		"google_calendar",
 		action.actionId,
 		new URL(`/calendar/v3/calendars/${calendarId}/events`, baseUrl).toString(),
 		accessToken,

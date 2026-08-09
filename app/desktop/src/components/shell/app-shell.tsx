@@ -200,9 +200,9 @@ export function AppShell() {
 		const result = await desktop.provider.revealApiKey(profileId);
 		return result.apiKey;
 	};
-	const startConnectorOAuth = (providerId: string) => desktop.connector.startOAuth(providerId);
-	const disconnectConnectorOAuth = async (providerId: string) => {
-		const snapshot = await desktop.connector.disconnectOAuth(providerId);
+	const startConnectorOAuth = (connectorId: string) => desktop.connector.startOAuth(connectorId);
+	const disconnectConnectorOAuth = async (connectorId: string) => {
+		const snapshot = await desktop.connector.disconnectOAuth(connectorId);
 		desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, snapshot);
 		return snapshot;
 	};

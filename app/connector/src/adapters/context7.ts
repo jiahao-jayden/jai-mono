@@ -4,14 +4,14 @@
  * boundary, fetcher injection, cancellation and wire error projection.
  */
 import { Result, type Result as ResultType } from "better-result";
-import { ConnectorProviderFailed, ConnectorProviderRateLimited, ConnectorProviderUnavailable } from "../errors";
+import { ConnectorUpstreamFailed, ConnectorUpstreamRateLimited, ConnectorUpstreamUnavailable } from "../errors";
 import type {
 	ActionDefinition,
 	ActionExecutionContext,
+	ConnectorAdapter,
 	ConnectorFailure,
 	JsonObject,
 	JsonValue,
-	ProviderAdapter,
 } from "../types";
 
 export interface Context7AdapterOptions {
@@ -23,7 +23,7 @@ export interface Context7AdapterOptions {
 export type Context7Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 const resolveLibraryAction: ActionDefinition = {
-	providerId: "context7",
+	connectorId: "context7",
 	actionId: "search_libraries",
 	description: "Find the best Context7 library ID for a library name and coding question.",
 	inputSchema: {
@@ -42,7 +42,7 @@ const resolveLibraryAction: ActionDefinition = {
 };
 
 const getLibraryDocsAction: ActionDefinition = {
-	providerId: "context7",
+	connectorId: "context7",
 	actionId: "get_documentation_context",
 	description: "Retrieve current documentation and code context for a Context7 library ID.",
 	inputSchema: {
@@ -68,7 +68,7 @@ const getLibraryDocsAction: ActionDefinition = {
 	dataSensitivity: "normal",
 };
 
-export function createContext7Adapter(options: Context7AdapterOptions = {}): ProviderAdapter {
+export function createContext7Adapter(options: Context7AdapterOptions = {}): ConnectorAdapter {
 	const fetcher: Context7Fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
 	const baseUrl = (options.baseUrl ?? "https://context7.com").replace(/\/$/u, "");
 	const userAgent = options.userAgent ?? "jai-connector-context7/0.1";
@@ -96,9 +96,9 @@ async function executeContext7(
 	const apiKey = context.credentials.apiKey;
 	if (!apiKey) {
 		return Result.err(
-			new ConnectorProviderUnavailable({
+			new ConnectorUpstreamUnavailable({
 				message: "Context7 API key is not configured",
-				data: { providerId: "context7", actionId: action.actionId },
+				data: { connectorId: "context7", actionId: action.actionId },
 			}),
 		);
 	}
@@ -131,10 +131,10 @@ async function executeContext7(
 		const retryAfter = retryAfterMs(response);
 		if (response.status === 429) {
 			return Result.err(
-				new ConnectorProviderRateLimited({
+				new ConnectorUpstreamRateLimited({
 					message: "Context7 rate limit exceeded",
 					data: {
-						providerId: "context7",
+						connectorId: "context7",
 						actionId: action.actionId,
 						...(retryAfter === undefined ? {} : { retryAfterMs: retryAfter }),
 					},
@@ -143,34 +143,34 @@ async function executeContext7(
 		}
 		if (response.status >= 500) {
 			return Result.err(
-				new ConnectorProviderUnavailable({
+				new ConnectorUpstreamUnavailable({
 					message: "Context7 is temporarily unavailable",
-					data: { providerId: "context7", actionId: action.actionId, status: response.status },
+					data: { connectorId: "context7", actionId: action.actionId, status: response.status },
 				}),
 			);
 		}
 		if (!response.ok) {
 			return Result.err(
-				new ConnectorProviderFailed({
+				new ConnectorUpstreamFailed({
 					message: "Context7 rejected the request",
-					data: { providerId: "context7", actionId: action.actionId, status: response.status },
+					data: { connectorId: "context7", actionId: action.actionId, status: response.status },
 				}),
 			);
 		}
 		if (!isJsonValue(payload)) {
 			return Result.err(
-				new ConnectorProviderFailed({
+				new ConnectorUpstreamFailed({
 					message: "Context7 returned an invalid JSON response",
-					data: { providerId: "context7", actionId: action.actionId, status: response.status },
+					data: { connectorId: "context7", actionId: action.actionId, status: response.status },
 				}),
 			);
 		}
 		return Result.ok(payload);
 	} catch (cause) {
 		return Result.err(
-			new ConnectorProviderUnavailable({
+			new ConnectorUpstreamUnavailable({
 				message: "Context7 request failed",
-				data: { providerId: "context7", actionId: action.actionId },
+				data: { connectorId: "context7", actionId: action.actionId },
 				cause,
 			}),
 		);

@@ -3,7 +3,7 @@
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
-	"description": "Jai Connector runtime and provider adapters.",
+	"description": "Jai Connector runtime and adapters.",
 	"exports": {
 		".": "./src/index.ts",
 		"./oauth": "./src/oauth.ts"

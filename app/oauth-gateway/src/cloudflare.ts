@@ -1,8 +1,8 @@
 import { createOAuthGatewayApp } from "./app";
-import { loadProvidersFromEnvironment, type OAuthGatewayEnvironment } from "./config";
+import { loadOAuthServicesFromEnvironment, type OAuthGatewayEnvironment } from "./config";
 
 export interface OAuthGatewayWorkerEnv extends OAuthGatewayEnvironment {
-	readonly OAUTH_GATEWAY_PROVIDERS: string;
+	readonly OAUTH_GATEWAY_SERVICES: string;
 }
 
 export interface OAuthGatewayExecutionContext {
@@ -17,12 +17,12 @@ export default {
 		env: OAuthGatewayWorkerEnv,
 		executionContext: OAuthGatewayExecutionContext,
 	): Response | Promise<Response> {
-		const providers = loadProvidersFromEnvironment(env);
-		if (providers.isErr()) {
+		const services = loadOAuthServicesFromEnvironment(env);
+		if (services.isErr()) {
 			return new Response(
 				JSON.stringify({
 					error: {
-						code: providers.error._tag,
+						code: services.error._tag,
 						message: "OAuth Gateway is not configured",
 						retryable: false,
 					},
@@ -30,6 +30,6 @@ export default {
 				{ status: 503, headers: { "content-type": "application/json", "cache-control": "no-store" } },
 			);
 		}
-		return createOAuthGatewayApp({ providers: providers.value }).fetch(request, env, executionContext);
+		return createOAuthGatewayApp({ services: services.value }).fetch(request, env, executionContext);
 	},
 };

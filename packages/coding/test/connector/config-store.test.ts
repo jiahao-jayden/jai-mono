@@ -12,7 +12,7 @@ afterEach(async () => {
 });
 
 describe("Coding Connector config store", () => {
-	test("persists Connector config and raw provider credentials in user settings", async () => {
+	test("persists Connector config and raw credentials in user settings", async () => {
 		const homeDir = await mkdtemp(join(tmpdir(), "jai-coding-connector-config-"));
 		roots.push(homeDir);
 		const store = createCodingConnectorConfigStore({ homeDir, workspaceTrusted: true });
@@ -23,7 +23,7 @@ describe("Coding Connector config store", () => {
 
 		const saved = await store.save(
 			{
-				providers: {
+				connectors: {
 					context7: {
 						credentials: { apiKey: "context7-secret" },
 					},
@@ -34,7 +34,7 @@ describe("Coding Connector config store", () => {
 		expect(saved.isOk()).toBe(true);
 
 		const document = JSON.parse(await readFile(join(homeDir, ".jai", "settings.json"), "utf8")) as Record<string, any>;
-		expect(document.connector.providers.context7.credentials.apiKey).toBe("context7-secret");
+		expect(document.connector.connectors.context7.credentials.apiKey).toBe("context7-secret");
 		expect(document.providers).toBeUndefined();
 		store.close();
 	});

@@ -1,31 +1,31 @@
 import { Result, type Result as ResultType } from "better-result";
-import { ConnectorProviderFailed, ConnectorProviderRateLimited, ConnectorProviderUnavailable } from "../errors";
+import { ConnectorUpstreamFailed, ConnectorUpstreamRateLimited, ConnectorUpstreamUnavailable } from "../errors";
 import type { ActionExecutionContext, ConnectorFailure, JsonValue } from "../types";
 
-export type OAuthProviderFetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+export type OAuthServiceFetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export function oauthAccessToken(
-	providerId: string,
+	connectorId: string,
 	actionId: string,
 	context: ActionExecutionContext,
-): ResultType<string, ConnectorProviderUnavailable> {
+): ResultType<string, ConnectorUpstreamUnavailable> {
 	const accessToken = context.credentials.accessToken;
 	return accessToken
 		? Result.ok(accessToken)
 		: Result.err(
-				new ConnectorProviderUnavailable({
-					message: `${providerId} OAuth access token is not configured`,
-					data: { providerId, actionId },
+				new ConnectorUpstreamUnavailable({
+					message: `${connectorId} OAuth access token is not configured`,
+					data: { connectorId, actionId },
 				}),
 			);
 }
 
 export async function oauthJsonRequest(
-	providerId: string,
+	connectorId: string,
 	actionId: string,
 	url: string,
 	accessToken: string,
-	fetcher: OAuthProviderFetcher,
+	fetcher: OAuthServiceFetcher,
 	init: Omit<RequestInit, "headers" | "signal"> & { readonly headers?: RequestInit["headers"] },
 	context: ActionExecutionContext,
 ): Promise<ResultType<JsonValue, ConnectorFailure>> {
@@ -42,10 +42,10 @@ export async function oauthJsonRequest(
 		const payload = await readJson(response);
 		if (response.status === 429) {
 			return Result.err(
-				new ConnectorProviderRateLimited({
-					message: `${providerId} rate limit exceeded`,
+				new ConnectorUpstreamRateLimited({
+					message: `${connectorId} rate limit exceeded`,
 					data: {
-						providerId,
+						connectorId,
 						actionId,
 						...(retryAfterMs(response) === undefined ? {} : { retryAfterMs: retryAfterMs(response) }),
 					},
@@ -54,35 +54,35 @@ export async function oauthJsonRequest(
 		}
 		if (response.status >= 500) {
 			return Result.err(
-				new ConnectorProviderUnavailable({
-					message: `${providerId} is temporarily unavailable`,
-					data: { providerId, actionId, status: response.status },
+				new ConnectorUpstreamUnavailable({
+					message: `${connectorId} is temporarily unavailable`,
+					data: { connectorId, actionId, status: response.status },
 				}),
 			);
 		}
 		if (!response.ok) {
 			return Result.err(
-				new ConnectorProviderFailed({
-					message: `${providerId} rejected the request`,
-					data: { providerId, actionId, status: response.status },
+				new ConnectorUpstreamFailed({
+					message: `${connectorId} rejected the request`,
+					data: { connectorId, actionId, status: response.status },
 				}),
 			);
 		}
 		if (response.status === 204) return Result.ok({});
 		if (!isJsonValue(payload)) {
 			return Result.err(
-				new ConnectorProviderFailed({
-					message: `${providerId} returned an invalid JSON response`,
-					data: { providerId, actionId, status: response.status },
+				new ConnectorUpstreamFailed({
+					message: `${connectorId} returned an invalid JSON response`,
+					data: { connectorId, actionId, status: response.status },
 				}),
 			);
 		}
 		return Result.ok(payload);
 	} catch (cause) {
 		return Result.err(
-			new ConnectorProviderUnavailable({
-				message: `${providerId} request failed`,
-				data: { providerId, actionId },
+			new ConnectorUpstreamUnavailable({
+				message: `${connectorId} request failed`,
+				data: { connectorId, actionId },
 				cause,
 			}),
 		);
