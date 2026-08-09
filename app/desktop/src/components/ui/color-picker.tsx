@@ -863,7 +863,7 @@ function FormatDropdown({
                 render={
                   <Elevated
                     offset={2}
-                    shadowLevel={3}
+                    shadowLevel={4}
                     ref={(node: HTMLDivElement | null) => {
                       (
                         containerRef as React.MutableRefObject<HTMLDivElement | null>

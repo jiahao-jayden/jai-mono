@@ -12,28 +12,32 @@ import { DropdownContent, DropdownMenu, DropdownTrigger } from "../../ui/dropdow
 import { MenuItem } from "../../ui/menu-item";
 
 interface AgentModeMeta {
-	readonly color: string;
+	readonly iconClassName: string;
 	readonly icon: IconName;
 	readonly label: string;
+	readonly surfaceClassName: string;
 }
 
 const agentModes: readonly DesktopAgentMode[] = ["manual", "automate", "plan"];
 
 const agentModeMeta: Readonly<Record<DesktopAgentMode, AgentModeMeta>> = {
 	manual: {
-		color: "#8a6b3f",
+		iconClassName: "text-agent-mode-manual",
 		icon: "shield",
 		label: "Manual",
+		surfaceClassName: "bg-transparent",
 	},
 	automate: {
-		color: "#2f7767",
+		iconClassName: "text-agent-mode-automate",
 		icon: "rocket",
 		label: "Automate",
+		surfaceClassName: "bg-agent-mode-automate-surface",
 	},
 	plan: {
-		color: "#4c6f9f",
+		iconClassName: "text-agent-mode-plan",
 		icon: "brain",
 		label: "Plan",
+		surfaceClassName: "bg-agent-mode-plan-surface",
 	},
 };
 
@@ -62,9 +66,8 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 						active={open}
 						disabled={disabled}
 						aria-label={`Agent mode: ${meta.label}`}
-						className="px-2.5 text-[13px]"
+						className={cn("px-2.5 text-[13px] text-foreground", meta.surfaceClassName)}
 						labelClassName="flex items-center [text-box:normal]"
-						style={{ color: meta.color, backgroundColor: `${meta.color}14` }}
 					>
 						<span className="inline-flex items-center gap-1.5">
 							{/* Quiet Swap: the icon+label cross-swap in place on mode change
@@ -79,7 +82,7 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 									exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
 									transition={spring.moderate}
 								>
-									<Icon size={14} strokeWidth={1.7} />
+									<Icon size={14} strokeWidth={1.7} className={meta.iconClassName} />
 									<span className="font-medium">{meta.label}</span>
 								</motion.span>
 							</AnimatePresence>
@@ -91,7 +94,7 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 					</Button>
 				}
 			/>
-			<DropdownContent checkedIndex={agentModes.indexOf(mode)} sideOffset={6} className="w-56">
+			<DropdownContent checkedIndex={agentModes.indexOf(mode)} sideOffset={6} className="w-44">
 				{agentModes.map((candidate, index) => {
 					const option = agentModeMeta[candidate];
 					return (
@@ -100,6 +103,7 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 							index={index}
 							icon={icons[option.icon]}
 							label={option.label}
+							className="h-8 px-2"
 							checked={candidate === mode}
 							onSelect={() => onSelect(candidate)}
 						/>

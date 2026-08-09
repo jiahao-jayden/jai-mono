@@ -494,7 +494,7 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
                 render={
                   <Elevated
                     offset={2}
-                    shadowLevel={3}
+                    shadowLevel={4}
                     ref={(node: HTMLDivElement | null) => {
                       (
                         containerRef as React.MutableRefObject<HTMLDivElement | null>
@@ -691,7 +691,7 @@ function DropdownSubmenuContent({
         className="z-50 outline-none"
       >
         <Menu.Popup
-          render={<Elevated offset={2} shadowLevel={3} />}
+          render={<Elevated offset={2} shadowLevel={4} />}
           className={cn(
             `relative flex w-48 max-w-(--available-width) flex-col gap-0.5 overflow-y-auto ${shape.container} p-1 select-none outline-none`,
             "origin-left transition-[opacity,transform] duration-100 data-starting-style:translate-x-1 data-starting-style:scale-[0.98] data-starting-style:opacity-0 data-ending-style:translate-x-1 data-ending-style:scale-[0.98] data-ending-style:opacity-0",

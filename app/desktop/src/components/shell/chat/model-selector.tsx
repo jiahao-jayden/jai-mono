@@ -58,26 +58,31 @@ export function ModelSelector({
 						remoteModelId: model.remoteModelId,
 						providerId: profile.id,
 						providerName: profile.name,
-						description: model.description,
 						contextWindow: model.contextWindow,
 						toolCall: model.toolCall,
 						structuredOutput: model.structuredOutput,
 						reasoning: model.reasoning,
-						icon: resolveProviderBrandIcon(model.metadataProvider ?? catalogProvider, model.remoteModelId),
 					})),
 				},
 			];
 		}) ?? [];
 	const models = providers.flatMap((provider) => provider.models);
 	const normalizedQuery = query.trim().toLocaleLowerCase();
-	const visibleModels = models.filter(
-		(model) =>
-			(!activeProviderId || model.providerId === activeProviderId) &&
-			(!normalizedQuery ||
-				`${model.providerName} ${model.name} ${model.remoteModelId} ${model.description ?? ""}`
-					.toLocaleLowerCase()
-					.includes(normalizedQuery)),
-	);
+	const modelGroups = providers
+		.filter((provider) => !activeProviderId || provider.id === activeProviderId)
+		.map((provider) => ({
+			...provider,
+			models: provider.models.filter(
+				(model) =>
+					!normalizedQuery ||
+					[model.providerName, model.name, model.remoteModelId]
+						.join(" ")
+						.toLocaleLowerCase()
+						.includes(normalizedQuery),
+			),
+		}))
+		.filter((provider) => provider.models.length > 0);
+	const visibleModels = modelGroups.flatMap((provider) => provider.models);
 	const selectedModel = models.find((model) => model.ref === selectedModelRef);
 	const status = resolveModelStatus(config, selectedModelRef, loading, error);
 	const triggerLabel = selectedModel ? selectedModel.name : status.label;
@@ -127,7 +132,7 @@ export function ModelSelector({
 				<Popover.Positioner side="top" align="end" sideOffset={8} className="z-50 outline-none">
 					<Popover.Popup
 						render={<Elevated offset={2} shadowLevel={5} />}
-						className="flex max-h-[min(440px,calc(100vh-120px))] w-[min(400px,calc(100vw-32px))] flex-col overflow-hidden rounded-[14px] outline-none transition-opacity duration-150 data-starting-style:opacity-0 data-ending-style:opacity-0"
+						className="flex max-h-[min(440px,calc(100vh-120px))] w-[min(360px,calc(100vw-32px))] flex-col overflow-hidden rounded-[14px] outline-none transition-opacity duration-150 data-starting-style:opacity-0 data-ending-style:opacity-0"
 					>
 						<div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/50 px-3">
 							<SearchIcon size={17} strokeWidth={1.5} className="shrink-0 text-muted-foreground" />
@@ -179,44 +184,50 @@ export function ModelSelector({
 										className="min-h-0 max-h-[min(347px,calc(100vh-213px))] overflow-y-auto p-2"
 									>
 										{visibleModels.length > 0 ? (
-											<div>
-												{visibleModels.map((model) => {
-													const selected = model.ref === selectedModelRef;
-													const ModelIcon = model.icon;
+											<div className="space-y-2">
+												{modelGroups.map((provider) => {
+													const ProviderIcon = provider.icon;
 													return (
-														<button
-															key={model.ref}
-															type="button"
-															role="option"
-															aria-selected={selected}
-															onClick={() => chooseModel(model.ref)}
-															className={cn(
-																"flex min-h-13 w-full cursor-pointer items-center gap-2 rounded-[10px] px-3 py-2.5 text-left outline-none transition-colors duration-75 focus-visible:ring-2 focus-visible:ring-primary-2/45 focus-visible:ring-inset",
-																selected
-																	? "bg-primary-2/4 text-foreground dark:bg-primary-2/7"
-																	: "hover:bg-accent/55 active:bg-accent",
-															)}
-														>
-															<ModelIcon size={20} className="shrink-0 pointer-events-none" />
-															<span className="min-w-0 flex-1 pointer-events-none">
-																<span className="flex items-center gap-2">
-																	<span className="min-w-0 truncate text-[13.5px] font-medium text-foreground">
-																		{model.name}
-																	</span>
-																	{model.contextWindow ? (
-																		<span className="shrink-0 text-[10.5px] font-medium text-muted-foreground">
-																			{formatContextWindow(model.contextWindow)}
+														<div key={provider.id}>
+															{!activeProviderId ? (
+																<div className="flex h-7 items-center gap-1.5 px-2 text-[11.5px] font-medium text-muted-foreground">
+																	<ProviderIcon size={15} strokeWidth={1.7} />
+																	<span className="truncate">{provider.name}</span>
+																</div>
+															) : null}
+															{provider.models.map((model) => {
+																const selected = model.ref === selectedModelRef;
+																return (
+																	<button
+																		key={model.ref}
+																		type="button"
+																		role="option"
+																		aria-selected={selected}
+																		onClick={() => chooseModel(model.ref)}
+																		className={cn(
+																			"flex h-11 w-full cursor-pointer items-center gap-2 rounded-[10px] px-3 text-left outline-none transition-colors duration-75 focus-visible:ring-2 focus-visible:ring-primary-2/45 focus-visible:ring-inset",
+																			selected
+																				? "bg-accent text-foreground"
+																				: "hover:bg-accent/55 active:bg-accent",
+																		)}
+																	>
+																		<span className="flex min-w-0 flex-1 items-center gap-2 pointer-events-none">
+																			<span className="min-w-0 truncate text-[13.5px] font-medium text-foreground">
+																				{model.name}
+																			</span>
+																			{model.contextWindow ? (
+																				<span className="shrink-0 text-[10.5px] font-medium text-muted-foreground">
+																					{formatContextWindow(model.contextWindow)}
+																				</span>
+																			) : null}
+																			<span className="ml-auto shrink-0 pointer-events-auto">
+																				<ModelCapabilities model={model} />
+																			</span>
 																		</span>
-																	) : null}
-																	<span className="ml-auto shrink-0 pointer-events-auto">
-																		<ModelCapabilities model={model} />
-																	</span>
-																</span>
-																<span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
-																	{model.description ?? model.providerName}
-																</span>
-															</span>
-														</button>
+																	</button>
+																);
+															})}
+														</div>
 													);
 												})}
 											</div>
@@ -260,7 +271,7 @@ function ProviderFilterButton({
 			className={cn(
 				"flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg outline-none transition-colors duration-75 focus-visible:ring-2 focus-visible:ring-primary-2/45",
 				active
-					? "bg-primary-2/5 text-primary-2/75 dark:bg-primary-2/8"
+					? "bg-accent text-foreground"
 					: "text-muted-foreground hover:bg-accent/55 hover:text-foreground/80 active:bg-accent",
 				className,
 			)}
