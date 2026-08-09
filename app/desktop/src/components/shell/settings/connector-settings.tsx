@@ -8,10 +8,14 @@ import type {
 	DesktopConnectorConfigInput,
 	DesktopConnectorConfigSnapshot,
 	DesktopConnectorCredential,
+	DesktopConnectorOAuthStartResult,
+	DesktopConnectorPermission,
 	DesktopConnectorProvider,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "../../ui/select";
+import { Tooltip } from "../../ui/tooltip";
 
 type ConnectorFilter = "all" | "connected" | "not-connected";
 
@@ -21,7 +25,7 @@ interface ConnectorSettingsProps {
 	readonly snapshot: DesktopConnectorConfigSnapshot;
 	readonly value: DesktopConnectorConfigInput;
 	readonly onChange: (value: DesktopConnectorConfigInput) => void;
-	readonly onStartOAuth: (providerId: string) => Promise<unknown>;
+	readonly onStartOAuth: (providerId: string) => Promise<DesktopConnectorOAuthStartResult>;
 	readonly onDisconnectOAuth: (providerId: string) => Promise<unknown>;
 }
 
@@ -43,6 +47,10 @@ export function ConnectorSettings({
 		});
 	};
 
+	const updatePolicy = (policy: DesktopConnectorConfigInput["policy"]) => {
+		onChange({ ...value, policy });
+	};
+
 	const selectedProvider = snapshot.providers.find((provider) => provider.id === selectedProviderId);
 	if (selectedProvider) {
 		return (
@@ -50,6 +58,8 @@ export function ConnectorSettings({
 				provider={selectedProvider}
 				value={resolveProviderValue(value, selectedProvider)}
 				onChange={updateProvider}
+				policy={value.policy}
+				onPolicyChange={updatePolicy}
 				onStartOAuth={onStartOAuth}
 				onDisconnectOAuth={onDisconnectOAuth}
 				onBack={() => setSelectedProviderId(undefined)}
@@ -76,7 +86,7 @@ function ConnectorCatalogPage({
 	readonly snapshot: DesktopConnectorConfigSnapshot;
 	readonly value: DesktopConnectorConfigInput;
 	readonly onSelect: (providerId: string) => void;
-	readonly onStartOAuth: (providerId: string) => Promise<unknown>;
+	readonly onStartOAuth: (providerId: string) => Promise<DesktopConnectorOAuthStartResult>;
 }) {
 	const [filter, setFilter] = useState<ConnectorFilter>("all");
 	const visibleProviders = snapshot.providers.filter((provider) => {
@@ -165,12 +175,13 @@ function ConnectorTableRow({
 	readonly provider: DesktopConnectorProvider;
 	readonly connected: boolean;
 	readonly onSelect: () => void;
-	readonly onStartOAuth: (providerId: string) => Promise<unknown>;
+	readonly onStartOAuth: (providerId: string) => Promise<DesktopConnectorOAuthStartResult>;
 }) {
 	const CheckIcon = useIcon("check");
 	const authLabel = getAuthLabel(provider.authTypes);
 	const isOAuth = provider.authTypes.includes("oauth");
 	const [authorizing, setAuthorizing] = useState(false);
+	const [authorizationExpiresAt, setAuthorizationExpiresAt] = useState<number>();
 	const [oauthError, setOAuthError] = useState<string>();
 
 	useEffect(() => {
@@ -180,17 +191,34 @@ function ConnectorTableRow({
 			if (event.type !== "connector_oauth_completed" && event.type !== "connector_oauth_failed") return;
 			if (event.providerId !== provider.id) return;
 			setAuthorizing(false);
+			setAuthorizationExpiresAt(undefined);
 			if (event.type === "connector_oauth_failed") setOAuthError(event.message);
 		});
 	}, [authorizing, provider.id]);
 
+	useEffect(() => {
+		if (!authorizing || authorizationExpiresAt === undefined) return;
+		const timeout = window.setTimeout(
+			() => {
+				setAuthorizing(false);
+				setAuthorizationExpiresAt(undefined);
+				setOAuthError("Authorization expired. Try again.");
+			},
+			Math.max(0, authorizationExpiresAt - Date.now()),
+		);
+		return () => window.clearTimeout(timeout);
+	}, [authorizationExpiresAt, authorizing]);
+
 	const startOAuth = async () => {
 		setAuthorizing(true);
+		setAuthorizationExpiresAt(undefined);
 		setOAuthError(undefined);
 		try {
-			await onStartOAuth(provider.id);
+			const result = await onStartOAuth(provider.id);
+			setAuthorizationExpiresAt(result.expiresAt);
 		} catch (cause) {
 			setAuthorizing(false);
+			setAuthorizationExpiresAt(undefined);
 			setOAuthError(cause instanceof Error ? cause.message : "Unable to start OAuth authorization.");
 		}
 	};
@@ -258,6 +286,8 @@ function ConnectorDetailPage({
 	provider,
 	value,
 	onChange,
+	policy,
+	onPolicyChange,
 	onBack,
 	onStartOAuth,
 	onDisconnectOAuth,
@@ -265,21 +295,25 @@ function ConnectorDetailPage({
 	readonly provider: DesktopConnectorProvider;
 	readonly value: DesktopConnectorConfigInput["providers"][number];
 	readonly onChange: (value: DesktopConnectorConfigInput["providers"][number]) => void;
+	readonly policy: DesktopConnectorConfigInput["policy"];
+	readonly onPolicyChange: (value: DesktopConnectorConfigInput["policy"]) => void;
 	readonly onBack: () => void;
-	readonly onStartOAuth: (providerId: string) => Promise<unknown>;
+	readonly onStartOAuth: (providerId: string) => Promise<DesktopConnectorOAuthStartResult>;
 	readonly onDisconnectOAuth: (providerId: string) => Promise<unknown>;
 }) {
 	const ArrowLeftIcon = useIcon("arrow-left");
 	const isOAuth = provider.authTypes.includes("oauth");
 	const connected = isOAuth ? provider.oauth?.connected === true : isProviderConnected(provider, value);
-	const authLabel = getAuthLabel(provider.authTypes);
-	const showAuthLabel = !provider.authTypes.includes("api_key");
 	const [authorizing, setAuthorizing] = useState(false);
+	const [authorizationExpiresAt, setAuthorizationExpiresAt] = useState<number>();
 	const [disconnecting, setDisconnecting] = useState(false);
 	const [oauthError, setOAuthError] = useState<string>();
 
 	useEffect(() => {
-		if (connected) setAuthorizing(false);
+		if (connected) {
+			setAuthorizing(false);
+			setAuthorizationExpiresAt(undefined);
+		}
 	}, [connected]);
 
 	useEffect(() => {
@@ -288,9 +322,23 @@ function ConnectorDetailPage({
 				return;
 			if (envelope.event.providerId !== provider.id) return;
 			setAuthorizing(false);
+			setAuthorizationExpiresAt(undefined);
 			setOAuthError(envelope.event.type === "connector_oauth_failed" ? envelope.event.message : undefined);
 		});
 	}, [provider.id]);
+
+	useEffect(() => {
+		if (!authorizing || authorizationExpiresAt === undefined) return;
+		const timeout = window.setTimeout(
+			() => {
+				setAuthorizing(false);
+				setAuthorizationExpiresAt(undefined);
+				setOAuthError("Authorization expired. Try again.");
+			},
+			Math.max(0, authorizationExpiresAt - Date.now()),
+		);
+		return () => window.clearTimeout(timeout);
+	}, [authorizationExpiresAt, authorizing]);
 
 	useQuery({
 		queryKey: desktopQueryKeys.providerConfig,
@@ -303,11 +351,14 @@ function ConnectorDetailPage({
 
 	const startOAuth = async () => {
 		setAuthorizing(true);
+		setAuthorizationExpiresAt(undefined);
 		setOAuthError(undefined);
 		try {
-			await onStartOAuth(provider.id);
+			const result = await onStartOAuth(provider.id);
+			setAuthorizationExpiresAt(result.expiresAt);
 		} catch (cause) {
 			setAuthorizing(false);
+			setAuthorizationExpiresAt(undefined);
 			setOAuthError(cause instanceof Error ? cause.message : "Unable to start OAuth authorization.");
 		}
 	};
@@ -325,8 +376,8 @@ function ConnectorDetailPage({
 	};
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-			<header className="flex items-center gap-2 px-6 pt-4">
+		<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+			<header className="flex shrink-0 items-center gap-2 px-6 pt-4">
 				<Button
 					type="button"
 					variant="ghost"
@@ -339,7 +390,7 @@ function ConnectorDetailPage({
 				</Button>
 			</header>
 
-			<main className="px-6 pb-10 pt-2">
+			<main className="min-h-0 flex-1 overflow-y-auto px-6 pb-10 pt-2">
 				<div className="flex items-start justify-between gap-6">
 					<div className="min-w-0">
 						<div className="flex min-w-0 items-center gap-4">
@@ -348,7 +399,6 @@ function ConnectorDetailPage({
 							</span>
 							<h2 className="min-w-0 truncate text-[18px] font-semibold tracking-[-0.025em]">{provider.name}</h2>
 						</div>
-						{showAuthLabel ? <p className="mt-1 pl-10 text-[13px] text-muted-foreground">{authLabel}</p> : null}
 					</div>
 					<div className="flex shrink-0 items-center gap-3">
 						{connected && isOAuth ? (
@@ -388,7 +438,7 @@ function ConnectorDetailPage({
 									disabled={authorizing}
 									onClick={() => void startOAuth()}
 								>
-									{authorizing ? "Finish in browser" : "Connect"}
+									{authorizing ? "Finish in browser" : oauthError ? "Retry" : "Connect"}
 								</Button>
 								{authorizing ? (
 									<p className="mt-3 text-[12px] text-muted-foreground" role="status" aria-live="polite">
@@ -406,9 +456,257 @@ function ConnectorDetailPage({
 				) : (
 					<CredentialSettings provider={provider} value={value} onChange={onChange} />
 				)}
+				<ToolPermissionSettings provider={provider} policy={policy} onChange={onPolicyChange} />
 			</main>
 		</div>
 	);
+}
+
+function ToolPermissionSettings({
+	provider,
+	policy,
+	onChange,
+}: {
+	readonly provider: DesktopConnectorProvider;
+	readonly policy: DesktopConnectorConfigInput["policy"];
+	readonly onChange: (value: DesktopConnectorConfigInput["policy"]) => void;
+}) {
+	const [openGroupIds, setOpenGroupIds] = useState<ReadonlySet<string>>(
+		() => new Set(["read", "write", "destructive"]),
+	);
+	const updateAction = (actionId: string, permission: DesktopConnectorPermission) => {
+		onChange({
+			...policy,
+			actions: { ...policy.actions, [actionId]: permission },
+		});
+	};
+	const updateGroup = (
+		sideEffect: DesktopConnectorProvider["actions"][number]["sideEffect"],
+		permission: DesktopConnectorPermission,
+	) => {
+		const actions = { ...policy.actions };
+		for (const action of provider.actions) {
+			if (action.sideEffect === sideEffect) actions[action.actionId] = permission;
+		}
+		onChange({ ...policy, actions });
+	};
+	const actions = provider.actions.map((action) => ({
+		...action,
+		permission: policy.actions[action.actionId] ?? policy.default,
+	}));
+	const groups = [
+		{ id: "read", label: "Read-only tools", actions: actions.filter((action) => action.sideEffect === "read") },
+		{ id: "write", label: "Write tools", actions: actions.filter((action) => action.sideEffect === "write") },
+		{
+			id: "destructive",
+			label: "Destructive tools",
+			actions: actions.filter((action) => action.sideEffect === "destructive"),
+		},
+	].filter((group) => group.actions.length > 0);
+
+	return (
+		<section className="mt-6 border-t border-border/55 pt-6">
+			<div className="flex items-start justify-between gap-4">
+				<div>
+					<h3 className="text-[14px] font-semibold">Tool permissions</h3>
+					<p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted-foreground">
+						Choose when the Agent is allowed to use these tools.
+					</p>
+				</div>
+			</div>
+			<div className="mt-5">
+				{groups.map((group) => (
+					<div key={group.id} className="border-b border-border/55 last:border-b-0">
+						<div className="flex h-12 items-center justify-between gap-4">
+							<GroupDisclosure
+								open={openGroupIds.has(group.id)}
+								label={group.label}
+								count={group.actions.length}
+								onToggle={() => {
+									setOpenGroupIds((current) => {
+										const next = new Set(current);
+										if (next.has(group.id)) next.delete(group.id);
+										else next.add(group.id);
+										return next;
+									});
+								}}
+							/>
+							<div className="shrink-0">
+								<PermissionSelect
+									value={groupPermission(group.actions)}
+									ariaLabel={`${group.label} permission`}
+									onChange={(permission) => updateGroup(group.actions[0]!.sideEffect, permission)}
+								/>
+							</div>
+						</div>
+						{openGroupIds.has(group.id) ? (
+							<div className="divide-y divide-border/55 border-t border-border/55">
+								{group.actions.map((action) => (
+									<div key={action.actionId} className="flex min-h-14 items-center justify-between gap-4 pl-7">
+										<p className="min-w-0 truncate text-[13px] text-foreground" title={action.description}>
+											{getConnectorActionTitle(action.actionId)}
+										</p>
+										<PermissionTabs
+											value={action.permission}
+											ariaLabel={`${action.actionId} permission`}
+											onChange={(permission) => updateAction(action.actionId, permission)}
+										/>
+									</div>
+								))}
+							</div>
+						) : null}
+					</div>
+				))}
+			</div>
+		</section>
+	);
+}
+
+function GroupDisclosure({
+	open,
+	label,
+	count,
+	onToggle,
+}: {
+	readonly open: boolean;
+	readonly label: string;
+	readonly count: number;
+	readonly onToggle: () => void;
+}) {
+	const ChevronIcon = useIcon("chevron-right");
+
+	return (
+		<Button
+			type="button"
+			variant="ghost"
+			size="md"
+			className="h-10 min-w-0 flex-1 justify-start px-0"
+			contentClassName="min-w-0 justify-start"
+			labelClassName="flex min-w-0 items-center gap-2 whitespace-nowrap"
+			aria-expanded={open}
+			onClick={onToggle}
+		>
+			<ChevronIcon
+				size={16}
+				strokeWidth={1.7}
+				className={cn("shrink-0 transition-transform duration-80", open && "rotate-90")}
+			/>
+			<span className="truncate text-[13px] text-foreground">{label}</span>
+			<span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{count}</span>
+		</Button>
+	);
+}
+
+function PermissionTabs({
+	value,
+	ariaLabel,
+	onChange,
+}: {
+	readonly value: DesktopConnectorPermission | "mixed";
+	readonly ariaLabel: string;
+	readonly onChange: (value: DesktopConnectorPermission) => void;
+}) {
+	const CheckIcon = useIcon("permission-allow");
+	const AskIcon = useIcon("permission-ask");
+	const DenyIcon = useIcon("permission-deny");
+	const icons = { allow: CheckIcon, ask: AskIcon, deny: DenyIcon };
+	const labels = { allow: "Always allow", ask: "Needs approval", deny: "Blocked" } satisfies Record<
+		DesktopConnectorPermission,
+		string
+	>;
+
+	return (
+		<fieldset className="flex items-center gap-0.5 rounded-lg border border-border/55 bg-muted/55 p-0.5">
+			<legend className="sr-only">{ariaLabel}</legend>
+			{(["allow", "ask", "deny"] as const).map((permission) => {
+				const Icon = icons[permission];
+				return (
+					<Tooltip key={permission} content={labels[permission]}>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-sm"
+							className={cn(
+								"rounded-md text-muted-foreground",
+								value === permission && "bg-card text-foreground shadow-sm",
+							)}
+							aria-label={labels[permission]}
+							aria-pressed={value === permission}
+							onClick={() => onChange(permission)}
+						>
+							<Icon size={15} strokeWidth={1.8} />
+						</Button>
+					</Tooltip>
+				);
+			})}
+		</fieldset>
+	);
+}
+
+function PermissionSelect({
+	value,
+	ariaLabel,
+	onChange,
+}: {
+	readonly value: DesktopConnectorPermission | "mixed";
+	readonly ariaLabel: string;
+	readonly onChange: (value: DesktopConnectorPermission) => void;
+}) {
+	const CheckIcon = useIcon("permission-allow");
+	const AskIcon = useIcon("permission-ask");
+	const DenyIcon = useIcon("permission-deny");
+	const CustomIcon = useIcon("dot");
+	const icons = { allow: CheckIcon, ask: AskIcon, deny: DenyIcon };
+	const selectValue = value === "mixed" ? "custom" : value;
+	const TriggerIcon = value === "mixed" ? CustomIcon : icons[value];
+
+	return (
+		<Select
+			value={selectValue}
+			onValueChange={(nextValue) => {
+				if (nextValue === "allow" || nextValue === "ask" || nextValue === "deny") onChange(nextValue);
+			}}
+		>
+			<SelectTrigger aria-label={ariaLabel} icon={TriggerIcon} className="w-44 min-w-0" />
+			<SelectContent>
+				<SelectGroup>
+					<SelectItem index={0} value="allow" icon={CheckIcon}>
+						Always allow
+					</SelectItem>
+					<SelectItem index={1} value="ask" icon={AskIcon}>
+						Needs approval
+					</SelectItem>
+					<SelectItem index={2} value="deny" icon={DenyIcon}>
+						Blocked
+					</SelectItem>
+					<SelectItem index={3} value="custom" icon={CustomIcon}>
+						Custom
+					</SelectItem>
+				</SelectGroup>
+			</SelectContent>
+		</Select>
+	);
+}
+
+function getConnectorActionTitle(actionId: string): string {
+	const shortTitles: Record<string, string> = {
+		"context7.search_libraries": "Resolve library",
+		"context7.get_documentation_context": "Query docs",
+	};
+	const knownTitle = shortTitles[actionId];
+	if (knownTitle) return knownTitle;
+	const name = actionId.slice(actionId.indexOf(".") + 1);
+	return name
+		.split("_")
+		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+		.join(" ");
+}
+
+function groupPermission(
+	actions: readonly DesktopConnectorProvider["actions"][number][],
+): DesktopConnectorPermission | "mixed" {
+	const permissions = new Set(actions.map((action) => action.permission));
+	return permissions.size === 1 ? [...permissions][0]! : "mixed";
 }
 
 function CredentialSettings({

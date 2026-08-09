@@ -45,7 +45,7 @@ function createFakeClient(): ConnectorService & { calls: ExecuteActionInput[] } 
 				sideEffect: "write",
 				dataSensitivity: "normal",
 			},
-			policy: "confirm",
+			policy: "ask",
 		}),
 		executeAction: async (input: ExecuteActionInput, _context: RequestContext) => {
 			calls.push(input);

@@ -1,7 +1,6 @@
 import type { AgentTool, AgentToolResult } from "@jai/agent";
 import {
 	type ConnectorFailure,
-	ConnectorRemoteFailure,
 	type ConnectorService,
 	type ExecuteActionInput,
 	isJsonObject,
@@ -183,7 +182,7 @@ function context(sessionId: string, requestId: string, signal?: AbortSignal): Re
 }
 
 function connectorErrorCode(error: ConnectorFailure): string {
-	return error instanceof ConnectorRemoteFailure ? error.data.code : error._tag;
+	return error._tag;
 }
 
 function projectResponse(value: unknown): AgentToolResult {

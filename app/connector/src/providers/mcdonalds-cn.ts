@@ -177,7 +177,6 @@ function toActionDefinition(spec: (typeof actionSpecs)[number]): ActionDefinitio
 		requiredScopes: ["mcdonalds_cn.read"],
 		sideEffect: "read",
 		dataSensitivity: "normal",
-		defaultPolicy: "query",
 	};
 }
 

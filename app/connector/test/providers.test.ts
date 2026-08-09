@@ -167,7 +167,7 @@ describe("GitHub OAuth Provider Adapter", () => {
 		expect(result.isOk()).toBe(true);
 		expect(requests[0]?.url).toBe("https://github.test/user");
 		expect(new Headers(requests[0]?.init?.headers).get("authorization")).toBe("Bearer github-oauth-secret");
-		expect(adapter.actions.find((action) => action.actionId === "create_issue")?.defaultPolicy).toBe("confirm");
+		expect(adapter.actions.find((action) => action.actionId === "create_issue")?.sideEffect).toBe("write");
 	});
 });
 

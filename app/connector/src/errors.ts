@@ -21,7 +21,7 @@ export class ConnectorInputInvalid extends TaggedError("connector.input_invalid"
 }> {}
 
 export class ConnectorPolicyDenied extends TaggedError("connector.policy_denied")<{
-	readonly data: { readonly actionId: string; readonly policy: "hidden" | "blocked" };
+	readonly data: { readonly actionId: string; readonly policy: "hidden" | "deny" };
 	readonly message: string;
 }> {}
 
@@ -62,25 +62,9 @@ export class ConnectorRequestCancelled extends TaggedError("connector.request_ca
 	readonly message: string;
 }> {}
 
-export class ConnectorUnauthorized extends TaggedError("connector.unauthorized")<{
-	readonly data: { readonly requestId: string };
-	readonly message: string;
-}> {}
-
 export class ConnectorProtocolInvalid extends TaggedError("connector.protocol_invalid")<{
 	readonly cause?: unknown;
 	readonly data: { readonly reason: string };
-	readonly message: string;
-}> {}
-
-export class ConnectorServiceUnavailable extends TaggedError("connector.service_unavailable")<{
-	readonly cause?: unknown;
-	readonly data: { readonly endpoint: string };
-	readonly message: string;
-}> {}
-
-export class ConnectorRemoteFailure extends TaggedError("connector.remote_failure")<{
-	readonly data: { readonly code: string; readonly remoteMessage: string };
 	readonly message: string;
 }> {}
 
@@ -97,29 +81,6 @@ export class ConnectorOAuthGatewayFailed extends TaggedError("connector.oauth_ga
 
 export class ConnectorOAuthFlowInvalid extends TaggedError("connector.oauth_flow_invalid")<{
 	readonly data: { readonly providerId: string; readonly reason: "expired" | "missing" | "mismatch" };
-	readonly message: string;
-}> {}
-
-export class ConnectorRuntimeConfigInvalid extends TaggedError("connector.runtime_config_invalid")<{
-	readonly cause?: unknown;
-	readonly data: { readonly reason: string; readonly path?: string };
-	readonly message: string;
-}> {}
-
-export class ConnectorRuntimeLockUnavailable extends TaggedError("connector.runtime_lock_unavailable")<{
-	readonly data: { readonly lockFile: string };
-	readonly message: string;
-}> {}
-
-export class ConnectorRuntimeDiscoveryInvalid extends TaggedError("connector.runtime_discovery_invalid")<{
-	readonly cause?: unknown;
-	readonly data: { readonly discoveryFile: string; readonly reason: string };
-	readonly message: string;
-}> {}
-
-export class ConnectorRuntimeUnavailable extends TaggedError("connector.runtime_unavailable")<{
-	readonly cause?: unknown;
-	readonly data: { readonly reason: string };
 	readonly message: string;
 }> {}
 

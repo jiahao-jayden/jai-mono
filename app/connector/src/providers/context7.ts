@@ -39,7 +39,6 @@ const resolveLibraryAction: ActionDefinition = {
 	requiredScopes: ["context7.library.search"],
 	sideEffect: "read",
 	dataSensitivity: "normal",
-	defaultPolicy: "query",
 };
 
 const getLibraryDocsAction: ActionDefinition = {
@@ -67,7 +66,6 @@ const getLibraryDocsAction: ActionDefinition = {
 	requiredScopes: ["context7.context.read"],
 	sideEffect: "read",
 	dataSensitivity: "normal",
-	defaultPolicy: "query",
 };
 
 export function createContext7Adapter(options: Context7AdapterOptions = {}): ProviderAdapter {

@@ -33,7 +33,7 @@ export type JsonSchema = {
 
 export type ActionSideEffect = "read" | "write" | "destructive";
 export type ActionDataSensitivity = "normal" | "sensitive" | "secret";
-export type AgentActionPolicy = "query" | "confirm" | "hidden" | "blocked";
+export type ConnectorActionPermission = "allow" | "ask" | "deny";
 
 export interface ProviderDefinition {
 	readonly id: string;
@@ -52,7 +52,6 @@ export interface ActionDefinition {
 	readonly requiredScopes: readonly string[];
 	readonly sideEffect: ActionSideEffect;
 	readonly dataSensitivity: ActionDataSensitivity;
-	readonly defaultPolicy?: AgentActionPolicy;
 }
 
 export interface ConnectionRecord {
@@ -82,18 +81,9 @@ export interface ProviderAdapter {
 }
 
 export interface ConnectorPolicy {
-	readonly default?: AgentActionPolicy;
-	readonly confirm?: readonly string[];
-	readonly hidden?: readonly string[];
-	readonly blocked?: readonly string[];
+	readonly default?: ConnectorActionPermission;
+	readonly actions?: Readonly<Record<string, ConnectorActionPermission>>;
 	readonly disabledProviders?: readonly string[];
-}
-
-export interface ConnectorServiceSettings {
-	readonly mode?: "managed" | "external";
-	readonly endpoint?: string | null;
-	readonly startup?: "auto" | "manual";
-	readonly healthTimeoutMs?: number;
 }
 
 export interface ConnectorProviderSettings {
@@ -103,7 +93,6 @@ export interface ConnectorProviderSettings {
 }
 
 export interface ConnectorSettings {
-	readonly service?: ConnectorServiceSettings;
 	readonly policy?: ConnectorPolicy;
 	readonly providers?: Readonly<Record<string, ConnectorProviderSettings>>;
 }
@@ -186,7 +175,7 @@ export interface ActionSummary {
 	readonly actionId: string;
 	readonly providerId: string;
 	readonly description: string;
-	readonly policy: AgentActionPolicy;
+	readonly policy: ConnectorActionPermission;
 	readonly sideEffect: ActionSideEffect;
 	readonly dataSensitivity: ActionDataSensitivity;
 	readonly requiredScopes: readonly string[];
@@ -199,7 +188,7 @@ export interface GetActionGuideInput {
 
 export interface ActionGuideResponse {
 	readonly action: ActionDefinition;
-	readonly policy: AgentActionPolicy;
+	readonly policy: ConnectorActionPermission;
 }
 
 export interface ExecuteActionInput {
@@ -267,7 +256,4 @@ export type ConnectorFailure =
 	| import("./errors").ConnectorProviderRateLimited
 	| import("./errors").ConnectorProviderUnavailable
 	| import("./errors").ConnectorRequestCancelled
-	| import("./errors").ConnectorUnauthorized
-	| import("./errors").ConnectorProtocolInvalid
-	| import("./errors").ConnectorServiceUnavailable
-	| import("./errors").ConnectorRemoteFailure;
+	| import("./errors").ConnectorProtocolInvalid;

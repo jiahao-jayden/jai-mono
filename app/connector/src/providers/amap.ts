@@ -242,7 +242,6 @@ function toActionDefinition(spec: AMapActionSpec): ActionDefinition {
 		requiredScopes: ["amap.webservice.read"],
 		sideEffect: "read",
 		dataSensitivity: "normal",
-		defaultPolicy: "query",
 	};
 }
 

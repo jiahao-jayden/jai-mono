@@ -1,15 +1,17 @@
 import type { CodingAgentSettings } from "@jai/coding/runtime";
 import {
-	findConnectorOAuthProvider,
-	parseConnectorOAuthScopes,
 	type ConnectorOAuthProviderDefinition,
 	type ConnectorOAuthProviderId,
+	findConnectorOAuthProvider,
+	listConnectorActionCatalog,
 	type OAuthTokenResponse,
+	parseConnectorOAuthScopes,
 } from "@jai/connector";
 import type {
 	DesktopConnectorConfigInput,
 	DesktopConnectorConfigSnapshot,
 	DesktopConnectorCredential,
+	DesktopConnectorPermission,
 	DesktopConnectorProvider,
 } from "../../shared/desktop-rpc";
 
@@ -90,9 +92,7 @@ export type ConnectorOAuthToken = OAuthTokenResponse & {
 	readonly scopes: readonly string[];
 };
 
-export function findDesktopConnectorOAuthProvider(
-	providerId: string,
-): ConnectorOAuthProviderDefinition | undefined {
+export function findDesktopConnectorOAuthProvider(providerId: string): ConnectorOAuthProviderDefinition | undefined {
 	return findConnectorOAuthProvider(providerId);
 }
 
@@ -100,6 +100,10 @@ export function projectConnectorConfig(
 	settings: CodingAgentSettings["connector"] | undefined,
 ): DesktopConnectorConfigSnapshot {
 	const providers = settings?.providers ?? {};
+	const policy = settings?.policy;
+	const defaultPermission: DesktopConnectorPermission = policy?.default ?? "ask";
+	const actionPermissions = policy?.actions ?? {};
+	const actionCatalog = listConnectorActionCatalog();
 	return {
 		providers: connectorProviderDefinitions.map((definition): DesktopConnectorProvider => {
 			const provider = providers[definition.id];
@@ -123,13 +127,26 @@ export function projectConnectorConfig(
 							: {}),
 					}),
 				),
+				actions: actionCatalog
+					.filter((action) => action.providerId === definition.id)
+					.map((action) => ({
+						actionId: `${action.providerId}.${action.actionId}`,
+						description: action.description,
+						sideEffect: action.sideEffect,
+						dataSensitivity: action.dataSensitivity,
+						permission: actionPermissions[`${action.providerId}.${action.actionId}`] ?? defaultPermission,
+					})),
 				...(oauth
 					? {
-						 oauth: projectOAuthConnection(credentials, oauth.scopes),
-					  }
+							oauth: projectOAuthConnection(credentials, oauth.scopes),
+						}
 					: {}),
 			};
 		}),
+		policy: {
+			default: defaultPermission,
+			actions: { ...actionPermissions },
+		},
 	};
 }
 
@@ -220,6 +237,11 @@ export function toStoredConnector(
 	}
 	return {
 		...(current ?? {}),
+		policy: {
+			...(current?.policy ?? {}),
+			default: input.policy.default,
+			actions: { ...input.policy.actions },
+		},
 		providers: nextProviders,
 	};
 }
@@ -227,6 +249,7 @@ export function toStoredConnector(
 export function validateConnectorConfigInput(value: DesktopConnectorConfigInput | undefined): boolean {
 	if (value === undefined) return true;
 	if (!isRecord(value) || !Array.isArray(value.providers)) return false;
+	if (!isValidConnectorPolicy(value.policy)) return false;
 	const ids = new Set<string>();
 	for (const provider of value.providers) {
 		const definition = isRecord(provider)
@@ -248,6 +271,18 @@ export function validateConnectorConfigInput(value: DesktopConnectorConfigInput 
 		ids.add(provider.id);
 	}
 	return true;
+}
+
+function isValidConnectorPolicy(value: unknown): value is DesktopConnectorConfigInput["policy"] {
+	if (!isRecord(value) || !isConnectorPermission(value.default) || !isRecord(value.actions)) return false;
+	const actionIds = new Set(listConnectorActionCatalog().map((action) => `${action.providerId}.${action.actionId}`));
+	return Object.entries(value.actions).every(
+		([actionId, permission]) => actionIds.has(actionId) && isConnectorPermission(permission),
+	);
+}
+
+function isConnectorPermission(value: unknown): value is DesktopConnectorPermission {
+	return value === "allow" || value === "ask" || value === "deny";
 }
 
 function maskCredential(value: string): string {

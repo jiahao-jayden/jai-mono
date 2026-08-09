@@ -76,7 +76,13 @@ function createService(): MemoryConnectorService {
 	return new MemoryConnectorService({
 		adapters: [adapter],
 		connections: [connection],
-		policy: { hidden: ["demo.internal_check"] },
+		policy: {
+			default: "ask",
+			actions: {
+				"demo.search": "allow",
+				"demo.internal_check": "deny",
+			},
+		},
 	});
 }
 
@@ -117,7 +123,7 @@ describe("MemoryConnectorService", () => {
 		}
 	});
 
-	test("does not let a query default downgrade writes or expose secret actions", async () => {
+	test("keeps the default ask policy and hides secret actions", async () => {
 		const adapter: ProviderAdapter = {
 			definition: provider,
 			actions: [writeAction, secretAction],
@@ -126,7 +132,7 @@ describe("MemoryConnectorService", () => {
 		const service = new MemoryConnectorService({
 			adapters: [adapter],
 			connections: [connection],
-			policy: { default: "query" },
+			policy: { default: "ask" },
 		});
 
 		const write = await service.executeAction(
@@ -170,11 +176,17 @@ describe("MemoryConnectorService", () => {
 		 expect(replay.isErr()).toBe(true);
 	});
 
-	test("does not expose or execute hidden actions", async () => {
+	test("exposes denied actions but does not execute them", async () => {
 		const service = createService();
 		const actions = await service.searchActions({ query: "internal" }, { requestId: "request-1", sessionId: "session-1" });
 		expect(actions.isOk()).toBe(true);
-		if (actions.isOk()) expect(actions.value.actions).toHaveLength(0);
+		if (actions.isOk()) {
+			expect(actions.value.actions).toHaveLength(1);
+			expect(actions.value.actions[0]?.policy).toBe("deny");
+		}
+		const guide = await service.getActionGuide({ actionId: "demo.internal_check" }, { requestId: "request-1" });
+		expect(guide.isOk()).toBe(true);
+		if (guide.isOk()) expect(guide.value.policy).toBe("deny");
 
 		const result = await service.executeAction(
 			{ actionId: "demo.internal_check", input: {} },

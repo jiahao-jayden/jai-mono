@@ -7,6 +7,7 @@ import type {
 	Project,
 } from "@jai/coding/business";
 import type { PermissionRequest, PermissionResolution } from "@jai/coding/permissions/approval";
+import type { ConnectorActionPermission } from "@jai/connector";
 
 export const DESKTOP_RPC_CHANNEL = "desktop:rpc";
 export const DESKTOP_EVENTS_CHANNEL = "desktop:events";
@@ -35,6 +36,15 @@ export const desktopRpcRequestSchema = Type.Object(
 	{
 		path: Type.String({ minLength: 1 }),
 		args: Type.Array(jsonValueSchema),
+	},
+	{ additionalProperties: false },
+);
+
+export const desktopConnectorPermissionResolutionSchema = Type.Object(
+	{
+		kind: Type.Literal("connector"),
+		requestId: Type.String({ minLength: 1 }),
+		decision: Type.Union([Type.Literal("deny"), Type.Literal("allowOnce")]),
 	},
 	{ additionalProperties: false },
 );
@@ -157,6 +167,16 @@ export interface DesktopConnectorOAuthConnection {
 	readonly expiresAt?: number;
 }
 
+export type DesktopConnectorPermission = ConnectorActionPermission;
+
+export interface DesktopConnectorAction {
+	readonly actionId: string;
+	readonly description: string;
+	readonly sideEffect: "read" | "write" | "destructive";
+	readonly dataSensitivity: "normal" | "sensitive" | "secret";
+	readonly permission: DesktopConnectorPermission;
+}
+
 export interface DesktopConnectorProvider {
 	readonly id: string;
 	readonly name: string;
@@ -165,11 +185,18 @@ export interface DesktopConnectorProvider {
 	readonly authTypes: readonly string[];
 	readonly enabled: boolean;
 	readonly credentials: readonly DesktopConnectorCredential[];
+	readonly actions: readonly DesktopConnectorAction[];
 	readonly oauth?: DesktopConnectorOAuthConnection;
+}
+
+export interface DesktopConnectorPolicy {
+	readonly default: DesktopConnectorPermission;
+	readonly actions: Readonly<Record<string, DesktopConnectorPermission>>;
 }
 
 export interface DesktopConnectorConfigSnapshot {
 	readonly providers: readonly DesktopConnectorProvider[];
+	readonly policy: DesktopConnectorPolicy;
 }
 
 export interface DesktopConnectorProviderInput {
@@ -180,6 +207,7 @@ export interface DesktopConnectorProviderInput {
 
 export interface DesktopConnectorConfigInput {
 	readonly providers: readonly DesktopConnectorProviderInput[];
+	readonly policy: DesktopConnectorPolicy;
 }
 
 export interface DesktopConnectorOAuthStartResult {
@@ -284,6 +312,36 @@ export interface DesktopPermissionItem {
 	readonly status: "pending" | "allowed" | "denied" | "cancelled";
 }
 
+export interface DesktopConnectorApprovalRequest {
+	readonly requestId: string;
+	readonly sessionId: string;
+	readonly toolCallId: string;
+	readonly toolName: "connector__execute_action";
+	readonly actionId: string;
+	readonly reason: string;
+	readonly sideEffect: "read" | "write" | "destructive";
+	readonly dataSensitivity: "normal" | "sensitive" | "secret";
+	readonly inputKeys: readonly string[];
+	readonly expiresAt: number;
+}
+
+export type DesktopConnectorPermissionDecision = "deny" | "allowOnce";
+
+export interface DesktopConnectorPermissionResolution {
+	readonly kind: "connector";
+	readonly requestId: string;
+	readonly decision: DesktopConnectorPermissionDecision;
+}
+
+export type DesktopPermissionResolution = PermissionResolution | DesktopConnectorPermissionResolution;
+
+export interface DesktopConnectorPermissionItem {
+	readonly kind: "connector_permission";
+	readonly id: string;
+	readonly request: DesktopConnectorApprovalRequest;
+	readonly status: "pending" | "allowed" | "denied" | "cancelled";
+}
+
 export interface DesktopCompactionItem {
 	readonly kind: "compaction";
 	readonly id: string;
@@ -298,6 +356,7 @@ export type DesktopTranscriptItem =
 	| DesktopToolItem
 	| DesktopSubagentItem
 	| DesktopPermissionItem
+	| DesktopConnectorPermissionItem
 	| DesktopCompactionItem;
 
 export type DesktopTodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
@@ -420,7 +479,7 @@ export interface DesktopApi {
 		abort(sessionId: string): void;
 		steer(input: DesktopAgentMessageInput): void;
 		followUp(input: DesktopAgentMessageInput): void;
-		resolvePermission(resolution: PermissionResolution): void;
+		resolvePermission(resolution: DesktopPermissionResolution): void;
 		getSnapshot(sessionId: string): Promise<DesktopAgentSnapshot>;
 		close(sessionId: string): void;
 	};

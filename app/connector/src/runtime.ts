@@ -14,13 +14,12 @@ import {
 import type {
 	ActionDefinition,
 	ActionGuideResponse,
-	ActionSideEffect,
 	ActionSummary,
-	AgentActionPolicy,
 	ApprovalPreview,
 	AppSummary,
 	ConnectionRecord,
 	ConnectionSummary,
+	ConnectorActionPermission,
 	ConnectorPolicy,
 	ConnectorService,
 	ExecuteActionInput,
@@ -115,7 +114,7 @@ export class MemoryConnectorService implements ConnectorService {
 		for (const action of this.#actions.values()) {
 			if (this.#isProviderDisabled(action.providerId)) continue;
 			const policy = this.#policyFor(action);
-			if (policy === "hidden" || policy === "blocked") continue;
+			if (this.#isActionHidden(action)) continue;
 			if (input.providerId && input.providerId !== action.providerId) continue;
 			if (input.sideEffect && input.sideEffect !== action.sideEffect) continue;
 			if (query && !`${fullActionId(action)} ${action.description}`.toLowerCase().includes(query)) continue;
@@ -146,11 +145,11 @@ export class MemoryConnectorService implements ConnectorService {
 				}),
 			);
 		const policy = this.#policyFor(action);
-		if (policy === "hidden" || policy === "blocked") {
+		if (this.#isActionHidden(action)) {
 			return Result.err(
 				new ConnectorPolicyDenied({
 					message: "Connector Action is not available to Agent discovery",
-					data: { actionId: input.actionId, policy },
+					data: { actionId: input.actionId, policy: "hidden" },
 				}),
 			);
 		}
@@ -180,11 +179,19 @@ export class MemoryConnectorService implements ConnectorService {
 				}),
 			);
 		const policy = this.#policyFor(action);
-		if (policy === "hidden" || policy === "blocked") {
+		if (this.#isActionHidden(action)) {
 			return Result.err(
 				new ConnectorPolicyDenied({
 					message: "Connector Action is not executable",
-					data: { actionId: input.actionId, policy },
+					data: { actionId: input.actionId, policy: "hidden" },
+				}),
+			);
+		}
+		if (policy === "deny") {
+			return Result.err(
+				new ConnectorPolicyDenied({
+					message: "Connector Action is denied by Connector permissions",
+					data: { actionId: input.actionId, policy: "deny" },
 				}),
 			);
 		}
@@ -217,7 +224,7 @@ export class MemoryConnectorService implements ConnectorService {
 				}),
 			);
 
-		if (policy === "confirm") {
+		if (policy === "ask") {
 			if (!context.sessionId)
 				return Result.err(
 					new ConnectorSessionRequired({
@@ -225,7 +232,7 @@ export class MemoryConnectorService implements ConnectorService {
 						data: { actionId: input.actionId },
 					}),
 				);
-			const approval = this.#consumeApproval(input, context, connection.value);
+			const approval = this.#consumeApproval(input, context);
 			if (approval.isErr()) {
 				if (!input.approvalId) {
 					const approvalId = randomUUID();
@@ -305,11 +312,7 @@ export class MemoryConnectorService implements ConnectorService {
 		return Result.ok(connection);
 	}
 
-	#consumeApproval(
-		input: ExecuteActionInput,
-		context: RequestContext,
-		connection: ConnectionRecord,
-	): ResultType<true, ConnectorApprovalInvalid> {
+	#consumeApproval(input: ExecuteActionInput, context: RequestContext): ResultType<true, ConnectorApprovalInvalid> {
 		if (!input.approvalId)
 			return Result.err(
 				new ConnectorApprovalInvalid({
@@ -348,38 +351,21 @@ export class MemoryConnectorService implements ConnectorService {
 		return Result.ok(true);
 	}
 
-	#policyFor(action: ActionDefinition): AgentActionPolicy {
-		const actionId = fullActionId(action);
-		if (this.#isProviderDisabled(action.providerId)) return "hidden";
-		if (action.dataSensitivity === "secret") return "hidden";
-		if (matchesPattern(this.#policy.blocked, actionId)) return "blocked";
-		if (matchesPattern(this.#policy.hidden, actionId)) return "hidden";
-		if (matchesPattern(this.#policy.confirm, actionId)) return "confirm";
-		if (action.defaultPolicy) return enforcePolicyFloor(action.sideEffect, action.defaultPolicy);
-		if (this.#policy.default) return enforcePolicyFloor(action.sideEffect, this.#policy.default);
-		return action.sideEffect === "read" ? "query" : "confirm";
+	#policyFor(action: ActionDefinition): ConnectorActionPermission {
+		return this.#policy.actions?.[fullActionId(action)] ?? this.#policy.default ?? "ask";
 	}
 
 	#isProviderDisabled(providerId: string): boolean {
 		return this.#policy.disabledProviders?.includes(providerId) ?? false;
 	}
-}
 
-function enforcePolicyFloor(sideEffect: ActionSideEffect, policy: AgentActionPolicy): AgentActionPolicy {
-	if (policy === "query" && sideEffect !== "read") return "confirm";
-	return policy;
+	#isActionHidden(action: ActionDefinition): boolean {
+		return this.#isProviderDisabled(action.providerId) || action.dataSensitivity === "secret";
+	}
 }
 
 export function fullActionId(action: Pick<ActionDefinition, "providerId" | "actionId">): string {
 	return `${action.providerId}.${action.actionId}`;
-}
-
-function matchesPattern(patterns: readonly string[] | undefined, actionId: string): boolean {
-	return (
-		patterns?.some((pattern) =>
-			pattern.endsWith("*") ? actionId.startsWith(pattern.slice(0, -1)) : pattern === actionId,
-		) ?? false
-	);
 }
 
 function hashInput(input: JsonObject): string {

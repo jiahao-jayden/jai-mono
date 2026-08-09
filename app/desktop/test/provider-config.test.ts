@@ -267,6 +267,7 @@ describe("DesktopConfigService", () => {
 			revision: null,
 			profiles: [],
 			connector: {
+				policy: { default: "ask", actions: { "context7.search_libraries": "allow" } },
 				providers: [
 					{
 						id: "context7",
@@ -285,10 +286,15 @@ describe("DesktopConfigService", () => {
 			revision: first.revision,
 			profiles: [],
 			connector: {
+				policy: { default: "ask", actions: { "context7.search_libraries": "allow" } },
 				providers: [{ id: "context7", enabled: true, credentials: {} }],
 			},
 		});
 		expect(preserved.connector.providers.find((provider) => provider.id === "context7")?.credentials[0]?.configured).toBe(true);
+		expect(preserved.connector.policy).toEqual({
+			default: "ask",
+			actions: { "context7.search_libraries": "allow" },
+		});
 		const document = await readFile(join(homeDir, ".jai", "settings.json"), "utf8");
 		expect(document).toContain("ctx-secret-1234");
 		service.close();

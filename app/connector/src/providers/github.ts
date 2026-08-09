@@ -10,11 +10,11 @@ import type {
 } from "../types";
 import {
 	integerInput,
+	type OAuthProviderFetcher,
 	oauthAccessToken,
 	oauthJsonRequest,
 	stringArrayInput,
 	stringInput,
-	type OAuthProviderFetcher,
 } from "./oauth-request";
 
 export interface GitHubAdapterOptions {
@@ -36,7 +36,6 @@ const actions: readonly ActionDefinition[] = [
 		requiredScopes: ["read:user"],
 		sideEffect: "read",
 		dataSensitivity: "normal",
-		defaultPolicy: "query",
 	},
 	{
 		providerId: "github",
@@ -55,7 +54,6 @@ const actions: readonly ActionDefinition[] = [
 		requiredScopes: ["repo"],
 		sideEffect: "read",
 		dataSensitivity: "normal",
-		defaultPolicy: "query",
 	},
 	{
 		providerId: "github",
@@ -71,7 +69,6 @@ const actions: readonly ActionDefinition[] = [
 		requiredScopes: ["repo"],
 		sideEffect: "read",
 		dataSensitivity: "normal",
-		defaultPolicy: "query",
 	},
 	{
 		providerId: "github",
@@ -92,7 +89,6 @@ const actions: readonly ActionDefinition[] = [
 		requiredScopes: ["repo"],
 		sideEffect: "read",
 		dataSensitivity: "normal",
-		defaultPolicy: "query",
 	},
 	{
 		providerId: "github",
@@ -114,7 +110,6 @@ const actions: readonly ActionDefinition[] = [
 		requiredScopes: ["repo"],
 		sideEffect: "write",
 		dataSensitivity: "normal",
-		defaultPolicy: "confirm",
 	},
 	{
 		providerId: "github",
@@ -136,7 +131,6 @@ const actions: readonly ActionDefinition[] = [
 		requiredScopes: ["workflow"],
 		sideEffect: "write",
 		dataSensitivity: "normal",
-		defaultPolicy: "confirm",
 	},
 ];
 
@@ -173,7 +167,15 @@ async function executeGitHub(
 		"user-agent": userAgent,
 	};
 	if (action.actionId === "get_authenticated_user") {
-		return oauthJsonRequest("github", action.actionId, new URL("/user", endpoint).toString(), token.value, fetcher, { method: "GET", headers }, context);
+		return oauthJsonRequest(
+			"github",
+			action.actionId,
+			new URL("/user", endpoint).toString(),
+			token.value,
+			fetcher,
+			{ method: "GET", headers },
+			context,
+		);
 	}
 	if (action.actionId === "list_repositories") {
 		const url = new URL("/user/repos", endpoint);
@@ -183,12 +185,28 @@ async function executeGitHub(
 		if (affiliation) url.searchParams.set("affiliation", affiliation);
 		if (visibility) url.searchParams.set("visibility", visibility);
 		if (perPage !== undefined) url.searchParams.set("per_page", String(perPage));
-		return oauthJsonRequest("github", action.actionId, url.toString(), token.value, fetcher, { method: "GET", headers }, context);
+		return oauthJsonRequest(
+			"github",
+			action.actionId,
+			url.toString(),
+			token.value,
+			fetcher,
+			{ method: "GET", headers },
+			context,
+		);
 	}
 	const owner = encodeURIComponent(stringInput(input, "owner"));
 	const repo = encodeURIComponent(stringInput(input, "repo"));
 	if (action.actionId === "get_repository") {
-		return oauthJsonRequest("github", action.actionId, new URL(`/repos/${owner}/${repo}`, endpoint).toString(), token.value, fetcher, { method: "GET", headers }, context);
+		return oauthJsonRequest(
+			"github",
+			action.actionId,
+			new URL(`/repos/${owner}/${repo}`, endpoint).toString(),
+			token.value,
+			fetcher,
+			{ method: "GET", headers },
+			context,
+		);
 	}
 	if (action.actionId === "list_issues") {
 		const url = new URL(`/repos/${owner}/${repo}/issues`, endpoint);
@@ -196,7 +214,15 @@ async function executeGitHub(
 		const perPage = integerInput(input, "perPage");
 		if (state) url.searchParams.set("state", state);
 		if (perPage !== undefined) url.searchParams.set("per_page", String(perPage));
-		return oauthJsonRequest("github", action.actionId, url.toString(), token.value, fetcher, { method: "GET", headers }, context);
+		return oauthJsonRequest(
+			"github",
+			action.actionId,
+			url.toString(),
+			token.value,
+			fetcher,
+			{ method: "GET", headers },
+			context,
+		);
 	}
 	if (action.actionId === "create_issue") {
 		const body = {

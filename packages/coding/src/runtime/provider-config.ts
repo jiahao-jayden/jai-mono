@@ -199,24 +199,15 @@ const mcpSettingsSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
-const connectorServiceSchema = Type.Object(
-	{
-		mode: Type.Optional(Type.Union([Type.Literal("managed"), Type.Literal("external")])),
-		endpoint: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
-		startup: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("manual")])),
-		healthTimeoutMs: Type.Optional(Type.Integer({ minimum: 250, maximum: 30_000 })),
-	},
-	{ additionalProperties: false },
-);
-
 const connectorPolicySchema = Type.Object(
 	{
-		default: Type.Optional(
-			Type.Union([Type.Literal("query"), Type.Literal("confirm"), Type.Literal("hidden"), Type.Literal("blocked")]),
+		default: Type.Optional(Type.Union([Type.Literal("allow"), Type.Literal("ask"), Type.Literal("deny")])),
+		actions: Type.Optional(
+			Type.Record(
+				Type.String({ minLength: 1 }),
+				Type.Union([Type.Literal("allow"), Type.Literal("ask"), Type.Literal("deny")]),
+			),
 		),
-		confirm: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-		hidden: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-		blocked: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
 	},
 	{ additionalProperties: false },
 );
@@ -231,7 +222,6 @@ const connectorProviderSchema = Type.Object(
 
 export const connectorSettingsSchema = Type.Object(
 	{
-		service: Type.Optional(connectorServiceSchema),
 		policy: Type.Optional(connectorPolicySchema),
 		providers: Type.Optional(Type.Record(Type.String({ minLength: 1 }), connectorProviderSchema)),
 	},
@@ -336,8 +326,7 @@ export const codingAgentConfigDefinition = defineCodingConfig({
 			merge: "custom",
 			project: "trusted",
 			default: {
-				service: { mode: "managed", endpoint: null, startup: "auto", healthTimeoutMs: 1500 },
-				policy: { default: "query", confirm: [], hidden: [], blocked: [] },
+				policy: { default: "ask", actions: {} },
 				providers: {},
 			},
 			mergeValues: mergeConnectorSettings,

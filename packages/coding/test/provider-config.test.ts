@@ -69,13 +69,13 @@ describe("Provider configuration", () => {
 		const fixture = await createFixture();
 		await writeSettings(join(fixture.homeDir, ".jai", "settings.json"), {
 			connector: {
-				policy: { default: "confirm", blocked: ["context7.get_documentation_context"] },
+				policy: { default: "ask", actions: { "context7.get_documentation_context": "deny" } },
 				providers: { context7: { enabled: false } },
 			},
 		});
 		await writeSettings(join(fixture.projectRoot, ".jai", "settings.json"), {
 			connector: {
-				policy: { default: "query", blocked: [] },
+				policy: { default: "allow", actions: {} },
 				providers: { context7: { enabled: true } },
 			},
 		});
@@ -85,8 +85,10 @@ describe("Provider configuration", () => {
 			workspaceTrusted: true,
 		});
 		const snapshot = await store.load();
-		expect(snapshot.settings.connector?.policy?.default).toBe("confirm");
-		expect(snapshot.settings.connector?.policy?.blocked).toEqual(["context7.get_documentation_context"]);
+		expect(snapshot.settings.connector?.policy?.default).toBe("ask");
+		expect(snapshot.settings.connector?.policy?.actions).toEqual({
+			"context7.get_documentation_context": "deny",
+		});
 		expect(snapshot.settings.connector?.providers?.context7).toEqual({ enabled: false });
 		store.close();
 	});
@@ -101,6 +103,21 @@ describe("Provider configuration", () => {
 			connector: {
 				enabled: false,
 				providers: { context7: { defaultConnection: "docs" } },
+			},
+		});
+		const store = new CodingConfigStore(codingAgentConfigDefinition, {
+			...fixture,
+			workspaceTrusted: true,
+		});
+		await expect(store.load()).rejects.toMatchObject({ _tag: "coding_config.validation_failed" });
+		store.close();
+	});
+
+	test("rejects the removed Connector service process configuration", async () => {
+		const fixture = await createFixture();
+		await writeSettings(join(fixture.homeDir, ".jai", "settings.json"), {
+			connector: {
+				service: { mode: "managed", startup: "auto" },
 			},
 		});
 		const store = new CodingConfigStore(codingAgentConfigDefinition, {

@@ -1,6 +1,6 @@
-import { MemoryConnectorService, type MemoryConnectorServiceOptions } from "../runtime";
 import { findConnectorOAuthProvider, parseConnectorOAuthScopes } from "../oauth-providers";
-import type { ConnectionRecord, ConnectorPolicy, ConnectorProviderSettings } from "../types";
+import { MemoryConnectorService, type MemoryConnectorServiceOptions } from "../runtime";
+import type { ActionDefinition, ConnectionRecord, ConnectorPolicy, ConnectorProviderSettings } from "../types";
 import { type AMapAdapterOptions, createAMapAdapter } from "./amap";
 import { type Context7AdapterOptions, createContext7Adapter } from "./context7";
 import { createGitHubAdapter, type GitHubAdapterOptions } from "./github";
@@ -12,6 +12,29 @@ export { type Context7AdapterOptions, createContext7Adapter } from "./context7";
 export { createGitHubAdapter, type GitHubAdapterOptions } from "./github";
 export { createGoogleAdapter, type GoogleAdapterOptions } from "./google";
 export { createMcDonaldsCnAdapter, type McDonaldsCnAdapterOptions } from "./mcdonalds-cn";
+
+export type ConnectorActionCatalogEntry = Pick<
+	ActionDefinition,
+	"providerId" | "actionId" | "description" | "sideEffect" | "dataSensitivity"
+>;
+
+export function listConnectorActionCatalog(): readonly ConnectorActionCatalogEntry[] {
+	return [
+		createContext7Adapter(),
+		createAMapAdapter(),
+		createMcDonaldsCnAdapter(),
+		createGoogleAdapter(),
+		createGitHubAdapter(),
+	].flatMap((adapter) =>
+		adapter.actions.map(({ providerId, actionId, description, sideEffect, dataSensitivity }) => ({
+			providerId,
+			actionId,
+			description,
+			sideEffect,
+			dataSensitivity,
+		})),
+	);
+}
 
 export interface DefaultConnectorServiceOptions
 	extends Context7AdapterOptions,
@@ -51,9 +74,7 @@ export function createDefaultConnectorService(options: DefaultConnectorServiceOp
 	const credentials = {
 		...(context7ApiKey ? { context7: { apiKey: context7ApiKey } } : {}),
 		...(amapApiKey ? { amap: { apiKey: amapApiKey } } : {}),
-		...(mcdonaldsCnCredential && mcdonaldsCnConnected
-			? { mcdonalds_cn: mcdonaldsCnCredential }
-			: {}),
+		...(mcdonaldsCnCredential && mcdonaldsCnConnected ? { mcdonalds_cn: mcdonaldsCnCredential } : {}),
 		...(googleConnection.credentials ? { google: googleConnection.credentials } : {}),
 		...(githubConnection.credentials ? { github: githubConnection.credentials } : {}),
 	};

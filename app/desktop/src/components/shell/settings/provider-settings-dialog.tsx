@@ -4,10 +4,10 @@ import { cn } from "@/lib/utils";
 import type {
 	DesktopConnectorConfigInput,
 	DesktopConnectorConfigSnapshot,
+	DesktopConnectorOAuthStartResult,
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
 	DesktopProviderFetchModelsResult,
-	DesktopConnectorOAuthStartResult,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
@@ -97,6 +97,10 @@ function toConnectorInput(snapshot: DesktopConnectorConfigSnapshot): DesktopConn
 			enabled: provider.enabled,
 			credentials: {},
 		})),
+		policy: {
+			default: snapshot.policy.default,
+			actions: { ...snapshot.policy.actions },
+		},
 	};
 }
 
@@ -215,7 +219,9 @@ function ProviderConfigForm({
 			<SettingsSidebar category={category} onCategoryChange={(nextCategory) => setCategory(nextCategory)} />
 
 			<div className="flex min-w-0 flex-1 flex-col">
-				<div className="min-h-0 flex-1 overflow-y-auto">
+				<div
+					className={cn("min-h-0 flex-1", category === "connector" ? "flex overflow-hidden" : "overflow-y-auto")}
+				>
 					{category === "general" ? (
 						<GeneralSettings
 							language={language}
@@ -291,7 +297,7 @@ function ProviderConfigForm({
 					)}
 				</div>
 
-				<DialogFooter className="items-center px-6 py-4">
+				<DialogFooter className="items-center px-6 pb-4">
 					{error ? (
 						<p className="mr-auto max-w-115 text-[12px] leading-relaxed text-destructive" role="alert">
 							{error}

@@ -1,4 +1,4 @@
-import { type Result as ResultType } from "better-result";
+import type { Result as ResultType } from "better-result";
 import type {
 	ActionDefinition,
 	ActionExecutionContext,
@@ -10,11 +10,11 @@ import type {
 } from "../types";
 import {
 	integerInput,
+	type OAuthProviderFetcher,
 	oauthAccessToken,
 	oauthJsonRequest,
 	stringArrayInput,
 	stringInput,
-	type OAuthProviderFetcher,
 } from "./oauth-request";
 
 export interface GoogleAdapterOptions {
@@ -47,7 +47,6 @@ const actions: readonly ActionDefinition[] = [
 		requiredScopes: [driveMetadataReadonlyScope],
 		sideEffect: "read",
 		dataSensitivity: "normal",
-		defaultPolicy: "query",
 	},
 	{
 		providerId: "google",
@@ -63,7 +62,6 @@ const actions: readonly ActionDefinition[] = [
 		requiredScopes: [driveMetadataReadonlyScope],
 		sideEffect: "read",
 		dataSensitivity: "normal",
-		defaultPolicy: "query",
 	},
 	{
 		providerId: "google",
@@ -84,7 +82,6 @@ const actions: readonly ActionDefinition[] = [
 		requiredScopes: [driveFullScope],
 		sideEffect: "write",
 		dataSensitivity: "normal",
-		defaultPolicy: "confirm",
 	},
 	{
 		providerId: "google",
@@ -92,14 +89,17 @@ const actions: readonly ActionDefinition[] = [
 		description: "List messages in the connected Gmail account.",
 		inputSchema: {
 			type: "object",
-			properties: { query: { type: "string" }, labelIds: { type: "array", items: stringSchema }, maxResults: integerSchema },
+			properties: {
+				query: { type: "string" },
+				labelIds: { type: "array", items: stringSchema },
+				maxResults: integerSchema,
+			},
 			additionalProperties: false,
 		},
 		outputSchema: { type: "object", description: "Gmail message list." },
 		requiredScopes: [gmailReadonlyScope],
 		sideEffect: "read",
 		dataSensitivity: "sensitive",
-		defaultPolicy: "query",
 	},
 	{
 		providerId: "google",
@@ -107,7 +107,10 @@ const actions: readonly ActionDefinition[] = [
 		description: "Get one Gmail message, including its headers and body structure.",
 		inputSchema: {
 			type: "object",
-			properties: { messageId: stringSchema, format: { type: "string", enum: ["minimal", "full", "metadata", "raw"] } },
+			properties: {
+				messageId: stringSchema,
+				format: { type: "string", enum: ["minimal", "full", "metadata", "raw"] },
+			},
 			required: ["messageId"],
 			additionalProperties: false,
 		},
@@ -115,7 +118,6 @@ const actions: readonly ActionDefinition[] = [
 		requiredScopes: [gmailReadonlyScope],
 		sideEffect: "read",
 		dataSensitivity: "sensitive",
-		defaultPolicy: "query",
 	},
 	{
 		providerId: "google",
@@ -131,7 +133,6 @@ const actions: readonly ActionDefinition[] = [
 		requiredScopes: [gmailSendScope],
 		sideEffect: "write",
 		dataSensitivity: "sensitive",
-		defaultPolicy: "confirm",
 	},
 	{
 		providerId: "google",
@@ -151,7 +152,6 @@ const actions: readonly ActionDefinition[] = [
 		requiredScopes: [calendarReadonlyScope],
 		sideEffect: "read",
 		dataSensitivity: "sensitive",
-		defaultPolicy: "query",
 	},
 	{
 		providerId: "google",
@@ -174,7 +174,6 @@ const actions: readonly ActionDefinition[] = [
 		requiredScopes: [calendarEventsScope],
 		sideEffect: "write",
 		dataSensitivity: "sensitive",
-		defaultPolicy: "confirm",
 	},
 ];
 
@@ -232,13 +231,29 @@ function executeDrive(
 		if (query) url.searchParams.set("q", query);
 		if (orderBy) url.searchParams.set("orderBy", orderBy);
 		if (pageSize !== undefined) url.searchParams.set("pageSize", String(pageSize));
-		return oauthJsonRequest("google", action.actionId, url.toString(), accessToken, options.fetcher, { method: "GET" }, context);
+		return oauthJsonRequest(
+			"google",
+			action.actionId,
+			url.toString(),
+			accessToken,
+			options.fetcher,
+			{ method: "GET" },
+			context,
+		);
 	}
 	if (action.actionId === "drive_get_file") {
 		const fileId = encodeURIComponent(stringInput(input, "fileId"));
 		const url = new URL(`/drive/v3/files/${fileId}`, baseUrl);
 		url.searchParams.set("fields", "id,name,mimeType,description,createdTime,modifiedTime,size,webViewLink,parents");
-		return oauthJsonRequest("google", action.actionId, url.toString(), accessToken, options.fetcher, { method: "GET" }, context);
+		return oauthJsonRequest(
+			"google",
+			action.actionId,
+			url.toString(),
+			accessToken,
+			options.fetcher,
+			{ method: "GET" },
+			context,
+		);
 	}
 	const body = {
 		name: stringInput(input, "name"),
@@ -272,14 +287,30 @@ function executeGmail(
 		if (query) url.searchParams.set("q", query);
 		if (maxResults !== undefined) url.searchParams.set("maxResults", String(maxResults));
 		for (const labelId of stringArrayInput(input, "labelIds")) url.searchParams.append("labelIds", labelId);
-		return oauthJsonRequest("google", action.actionId, url.toString(), accessToken, options.fetcher, { method: "GET" }, context);
+		return oauthJsonRequest(
+			"google",
+			action.actionId,
+			url.toString(),
+			accessToken,
+			options.fetcher,
+			{ method: "GET" },
+			context,
+		);
 	}
 	if (action.actionId === "gmail_get_message") {
 		const messageId = encodeURIComponent(stringInput(input, "messageId"));
 		const url = new URL(`/gmail/v1/users/me/messages/${messageId}`, baseUrl);
 		const format = stringInput(input, "format");
 		if (format) url.searchParams.set("format", format);
-		return oauthJsonRequest("google", action.actionId, url.toString(), accessToken, options.fetcher, { method: "GET" }, context);
+		return oauthJsonRequest(
+			"google",
+			action.actionId,
+			url.toString(),
+			accessToken,
+			options.fetcher,
+			{ method: "GET" },
+			context,
+		);
 	}
 	const body = {
 		raw: stringInput(input, "raw"),
@@ -313,7 +344,15 @@ function executeCalendar(
 		if (timeMin) url.searchParams.set("timeMin", timeMin);
 		if (timeMax) url.searchParams.set("timeMax", timeMax);
 		if (maxResults !== undefined) url.searchParams.set("maxResults", String(maxResults));
-		return oauthJsonRequest("google", action.actionId, url.toString(), accessToken, options.fetcher, { method: "GET" }, context);
+		return oauthJsonRequest(
+			"google",
+			action.actionId,
+			url.toString(),
+			accessToken,
+			options.fetcher,
+			{ method: "GET" },
+			context,
+		);
 	}
 	const body = {
 		summary: stringInput(input, "summary"),

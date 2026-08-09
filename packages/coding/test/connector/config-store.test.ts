@@ -46,7 +46,7 @@ describe("Coding Connector config store", () => {
 
 		const initial = await store.load();
 		if (initial.isErr()) return;
-		const first = await store.save({ policy: { default: "confirm" } }, { expectedRevision: initial.value.revision });
+		const first = await store.save({ policy: { default: "ask" } }, { expectedRevision: initial.value.revision });
 		if (first.isErr()) return;
 		const stale = await store.save({}, { expectedRevision: initial.value.revision });
 

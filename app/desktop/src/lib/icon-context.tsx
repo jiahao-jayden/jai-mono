@@ -74,6 +74,7 @@ import DeepSeek from "@lobehub/icons/es/DeepSeek";
 import Kimi from "@lobehub/icons/es/Kimi";
 import Minimax from "@lobehub/icons/es/Minimax";
 import OpenAI from "@lobehub/icons/es/OpenAI";
+import { BanIcon, CircleCheckIcon, HandIcon } from "lucide-react";
 import { type ComponentType, createContext, type ReactNode, useContext, useMemo } from "react";
 
 export interface IconComponentProps {
@@ -145,6 +146,9 @@ export type IconName =
 	| "stop"
 	| "stop-circle"
 	| "shield-alert"
+	| "permission-allow"
+	| "permission-ask"
+	| "permission-deny"
 	| "inbox"
 	| "pencil"
 	| "eye"
@@ -225,6 +229,9 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	stop: createHugeicon(StopIcon),
 	"stop-circle": createHugeicon(StopCircleIcon),
 	"shield-alert": createHugeicon(Alert02Icon),
+	"permission-allow": CircleCheckIcon,
+	"permission-ask": HandIcon,
+	"permission-deny": BanIcon,
 	inbox: createHugeicon(InboxIcon),
 	pencil: createHugeicon(Edit01Icon),
 	eye: createHugeicon(EyeIcon),
