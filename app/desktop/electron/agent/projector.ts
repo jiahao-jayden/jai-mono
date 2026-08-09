@@ -3,6 +3,7 @@ import { SPAWN_AGENT_TOOL_NAME, UPDATE_TODOS_TOOL_NAME } from "@jai/coding/tools
 import type {
 	DesktopAgentSnapshot,
 	DesktopCompactionItem,
+	DesktopMessageAttachment,
 	DesktopMessageItem,
 	DesktopNarrationItem,
 	DesktopSlashInvocation,
@@ -136,6 +137,7 @@ function isTodoStatus(value: unknown): value is DesktopTodos["items"][number]["s
 
 function projectMessage(entryId: string, message: AgentMessage): DesktopMessageItem {
 	const slashInvocation = projectSlashInvocation(message);
+	const attachments = projectMessageAttachments(message);
 	return {
 		kind: "message",
 		id: `message:${entryId}`,
@@ -145,7 +147,36 @@ function projectMessage(entryId: string, message: AgentMessage): DesktopMessageI
 		timestamp: message.timestamp,
 		...(message.role === "assistant" ? { stopReason: message.stopReason } : {}),
 		...(slashInvocation ? { slashInvocation } : {}),
+		...(attachments ? { attachments } : {}),
 	};
+}
+
+export function projectMessageAttachments(message: AgentMessage): readonly DesktopMessageAttachment[] | undefined {
+	if (message.role !== "user") return undefined;
+	const value = message.metadata?.messageAttachments;
+	if (!Array.isArray(value)) return undefined;
+	const attachments = value.flatMap((candidate) => {
+		if (!isRecord(candidate)) return [];
+		if (
+			typeof candidate.id !== "string" ||
+			typeof candidate.filename !== "string" ||
+			typeof candidate.mimeType !== "string" ||
+			typeof candidate.size !== "number" ||
+			!Number.isInteger(candidate.size) ||
+			candidate.size < 0
+		) {
+			return [];
+		}
+		return [
+			{
+				id: candidate.id,
+				filename: candidate.filename,
+				mimeType: candidate.mimeType,
+				size: candidate.size,
+			} satisfies DesktopMessageAttachment,
+		];
+	});
+	return attachments.length === value.length ? attachments : undefined;
 }
 
 export function projectSlashInvocation(message: AgentMessage): DesktopSlashInvocation | undefined {

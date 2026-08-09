@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { stat } from "node:fs/promises";
+import type { CodingMessageAttachment } from "@jai/coding";
 import type { CodingBusinessService } from "@jai/coding/business";
 import { type PermissionResolution, permissionResolutionSchema } from "@jai/coding/permissions/approval";
 import { Value } from "@sinclair/typebox/value";
@@ -9,7 +12,9 @@ import {
 	type DesktopAgentEvent,
 	type DesktopAgentMessageInput,
 	type DesktopApi,
+	type DesktopAttachmentRegistrationInput,
 	type DesktopConnectorPermissionResolution,
+	type DesktopMessageAttachment,
 	type DesktopProject,
 	type DesktopProviderConfigInput,
 	type DesktopSessionCreateInput,
@@ -41,15 +46,22 @@ class ProjectPickerFailed extends TaggedError("desktop_project.picker_failed")<{
 	readonly cause?: unknown;
 	readonly message: string;
 }> {}
+class AttachmentRegistrationFailed extends TaggedError("desktop_attachment.registration_failed")<{
+	readonly cause?: unknown;
+	readonly message: string;
+}> {}
 
 const themeError = (init: { readonly message: string }) => new InvalidThemeValue(init);
 const agentInputError = (init: { readonly message: string }) => new InvalidAgentInput(init);
 const desktopBusinessError = (init: { readonly message: string }) => new DesktopBusinessUnavailable(init);
 const desktopProjectError = (init: { readonly cause?: unknown; readonly message: string }) =>
 	new ProjectPickerFailed(init);
+const desktopAttachmentError = (init: { readonly cause?: unknown; readonly message: string }) =>
+	new AttachmentRegistrationFailed(init);
 let codingBusiness: CodingBusinessService | undefined;
 let providerConfig: DesktopConfigService | undefined;
 let desktopOAuth: DesktopOAuthManager | undefined;
+const attachmentRecords = new Map<string, CodingMessageAttachment>();
 const desktopAgentHost = new DesktopAgentHost((envelope) => {
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) window.webContents.send(DESKTOP_EVENTS_CHANNEL, envelope);
@@ -95,6 +107,7 @@ export function closeDesktopRuntime(): void {
 	desktopModelCatalog.close();
 	codingBusiness?.close();
 	codingBusiness = undefined;
+	attachmentRecords.clear();
 }
 
 export async function handleDesktopOAuthCallback(url: string): Promise<void> {
@@ -225,9 +238,49 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 			await requireCodingBusiness().deleteSession(parsed.sessionId);
 		},
 	},
+	attachment: {
+		async register(_event, input) {
+			const parsed = assertAttachmentRegistrationInput(input);
+			try {
+				const fileStats = await stat(parsed.sourcePath);
+				if (!fileStats.isFile()) throw new Error("Attachment path is not a file");
+				if (fileStats.size !== parsed.size) throw new Error("Attachment size changed before it was sent");
+				const id = `attachment-${randomUUID()}`;
+				const attachment: CodingMessageAttachment = {
+					id,
+					filename: parsed.filename,
+					mimeType: parsed.mimeType,
+					size: parsed.size,
+					sourcePath: parsed.sourcePath,
+				};
+				attachmentRecords.set(id, attachment);
+				return {
+					id,
+					filename: parsed.filename,
+					mimeType: parsed.mimeType,
+					size: parsed.size,
+				} satisfies DesktopMessageAttachment;
+			} catch (cause) {
+				throw desktopAttachmentError({
+					cause,
+					message: "The attachment could not be prepared. Check that the file is still available.",
+				});
+			}
+		},
+		release(_event, ids) {
+			if (!Array.isArray(ids)) throw desktopAttachmentError({ message: "Attachment ids must be an array" });
+			for (const id of ids) if (typeof id === "string") attachmentRecords.delete(id);
+		},
+	},
 	agent: {
 		send(_event, input) {
-			return desktopAgentHost.send(assertMessageInput(input));
+			const parsed = assertMessageInput(input);
+			return desktopAgentHost.send({
+				...parsed,
+				...(parsed.attachments
+					? { resolvedAttachments: parsed.attachments.map((attachment) => resolveAttachment(attachment.id)) }
+					: {}),
+			});
 		},
 		abort(_event, sessionId) {
 			desktopAgentHost.abort(assertSessionId(sessionId));
@@ -278,11 +331,57 @@ function assertMessageInput(value: unknown): DesktopAgentMessageInput {
 		!(value as DesktopAgentMessageInput).modelRef.includes("/") ||
 		((value as DesktopAgentMessageInput).mode !== "manual" &&
 			(value as DesktopAgentMessageInput).mode !== "automate" &&
-			(value as DesktopAgentMessageInput).mode !== "plan")
+			(value as DesktopAgentMessageInput).mode !== "plan") ||
+		!validAttachments((value as DesktopAgentMessageInput).attachments)
 	) {
 		throw agentInputError({ message: "Invalid agent message input" });
 	}
 	return value as DesktopAgentMessageInput;
+}
+
+function assertAttachmentRegistrationInput(value: unknown): DesktopAttachmentRegistrationInput {
+	if (
+		!isRecord(value) ||
+		typeof value.sourcePath !== "string" ||
+		value.sourcePath.length === 0 ||
+		typeof value.filename !== "string" ||
+		value.filename.length === 0 ||
+		typeof value.mimeType !== "string" ||
+		typeof value.size !== "number" ||
+		!Number.isInteger(value.size) ||
+		value.size < 0
+	) {
+		throw agentInputError({ message: "Invalid attachment registration input" });
+	}
+	return {
+		sourcePath: value.sourcePath,
+		filename: value.filename,
+		mimeType: value.mimeType,
+		size: value.size,
+	};
+}
+
+function validAttachments(value: unknown): value is readonly DesktopMessageAttachment[] | undefined {
+	if (value === undefined) return true;
+	return (
+		Array.isArray(value) &&
+		value.every(
+			(attachment) =>
+				isRecord(attachment) &&
+				typeof attachment.id === "string" &&
+				typeof attachment.filename === "string" &&
+				typeof attachment.mimeType === "string" &&
+				typeof attachment.size === "number" &&
+				Number.isInteger(attachment.size) &&
+				attachment.size >= 0,
+		)
+	);
+}
+
+function resolveAttachment(id: string): CodingMessageAttachment {
+	const attachment = attachmentRecords.get(id);
+	if (attachment) return attachment;
+	throw desktopAttachmentError({ message: `Attachment is no longer available: ${id}` });
 }
 
 function assertSessionId(value: unknown): string {

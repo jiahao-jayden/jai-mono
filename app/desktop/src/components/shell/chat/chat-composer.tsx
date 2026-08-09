@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessageInput, ChatStatus } from "@/hooks/use-chat";
-import { desktop } from "@/lib/desktop";
+import { rememberAttachmentFiles } from "@/lib/attachment-files";
+import { desktop, desktopFilePath } from "@/lib/desktop";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type { QueuedMessage } from "@/stores/chat";
@@ -14,7 +15,7 @@ import { Button } from "../../ui/button";
 import { InputMessage } from "../../ui/input-message";
 import { AgentModeControl } from "./agent-mode-control";
 import { ChatMessageQueue } from "./chat-message-queue";
-import { MessageAttachmentPicker, MessageAttachmentPreview } from "./message-attachment-picker";
+import { MessageAttachmentPicker } from "./message-attachment-picker";
 import { ModelSelector } from "./model-selector";
 import { ProjectPicker } from "./project-picker";
 
@@ -49,6 +50,10 @@ interface ChatComposerProps {
 	showProjectPicker?: boolean;
 }
 
+const MAX_MESSAGE_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+const ALL_FILES_ACCEPT = "*/*";
+const COMPOSER_FILE_PREVIEW_SIZE = 120;
+
 export function ChatComposer({
 	value,
 	onValueChange,
@@ -82,17 +87,19 @@ export function ChatComposer({
 	const icons = useIcons();
 	const SendIcon = icons.send;
 	const StopIcon = icons.stop;
+	const [files, setFiles] = useState<File[]>([]);
 	const [attachments, setAttachments] = useState<readonly DesktopMessageAttachment[]>([]);
 	const [attachmentError, setAttachmentError] = useState<string | undefined>(undefined);
+	const [registeringAttachments, setRegisteringAttachments] = useState(false);
 	const attachmentRef = useRef(attachments);
 	const hasDraft = value.trim().length > 0;
-	const hasAttachments = attachments.length > 0;
+	const hasAttachments = files.length > 0;
 	const hasMessageContent = hasDraft || hasAttachments;
 	const isStreaming = status === "streaming";
 	const isSubmitting = status === "submitted";
 	const stopAction = isStreaming && !hasMessageContent;
 	const submitLabel = stopAction ? "Stop response" : isStreaming ? "Queue message" : "Send message";
-	const composerDisabled = disabled || isSubmitting;
+	const composerDisabled = disabled || isSubmitting || registeringAttachments;
 	const submitDisabled = composerDisabled || (!stopAction && !hasMessageContent);
 	const submitVariant = stopAction ? "secondary" : "accent";
 	const submitClassName = cn(stopAction && "text-primary-2");
@@ -108,13 +115,61 @@ export function ChatComposer({
 		};
 	}, []);
 
-	const removeAttachment = (attachment: DesktopMessageAttachment) => {
-		setAttachments((current) => current.filter((candidate) => candidate.id !== attachment.id));
-		void desktop.attachment.release([attachment.id]);
-	};
-	const addAttachments = (next: readonly DesktopMessageAttachment[]) => {
-		setAttachments((current) => [...current, ...next]);
+	const fileKey = (file: File): string => `${file.name}-${file.size}-${file.lastModified}`;
+	const handleFilesChange = async (nextFiles: File[]) => {
+		const total = nextFiles.reduce((sum, file) => sum + file.size, 0);
+		if (total > MAX_MESSAGE_ATTACHMENT_BYTES) {
+			setAttachmentError("Attachments must be 20 MB or less in total.");
+			return;
+		}
+
+		const previousFiles = files;
+		const previousAttachments = attachments;
+		const previousByKey = new Map(previousFiles.map((file, index) => [fileKey(file), previousAttachments[index]]));
+		const nextExisting = nextFiles.flatMap((file) => {
+			const attachment = previousByKey.get(fileKey(file));
+			return attachment ? [attachment] : [];
+		});
+		const nextKeys = new Set(nextFiles.map(fileKey));
+		const removedIds = previousFiles.flatMap((file, index) =>
+			nextKeys.has(fileKey(file)) || !previousAttachments[index] ? [] : [previousAttachments[index]!.id],
+		);
+		if (removedIds.length > 0) void desktop.attachment.release(removedIds);
+
+		setFiles(nextFiles);
+		setAttachments(nextExisting);
 		setAttachmentError(undefined);
+		const newFiles = nextFiles.filter((file) => !previousByKey.has(fileKey(file)));
+		if (newFiles.length === 0) return;
+
+		setRegisteringAttachments(true);
+		try {
+			const registered = await Promise.all(
+				newFiles.map((file) =>
+					desktop.attachment.register({
+						sourcePath: desktopFilePath(file),
+						filename: file.name,
+						mimeType: file.type || "application/octet-stream",
+						size: file.size,
+					}),
+				),
+			);
+			rememberAttachmentFiles(registered, newFiles);
+			const registeredByKey = new Map(
+				registered.map((attachment, index) => [fileKey(newFiles[index]!), attachment]),
+			);
+			const nextAttachments = nextFiles.flatMap((file) => {
+				const attachment = previousByKey.get(fileKey(file)) ?? registeredByKey.get(fileKey(file));
+				return attachment ? [attachment] : [];
+			});
+			setAttachments(nextAttachments);
+		} catch (error) {
+			setFiles(previousFiles);
+			setAttachments(previousAttachments);
+			setAttachmentError(error instanceof Error ? error.message : "Could not add those files.");
+		} finally {
+			setRegisteringAttachments(false);
+		}
 	};
 	const submitMessage = async () => {
 		if (stopAction) {
@@ -123,14 +178,14 @@ export function ChatComposer({
 		}
 		const accepted = await onSend({ text: value, mode: selectedAgentMode, attachments });
 		if (accepted) {
+			const ids = attachments.map((attachment) => attachment.id);
+			if (ids.length > 0) void desktop.attachment.release(ids);
+			setFiles([]);
 			setAttachments([]);
 			setAttachmentError(undefined);
 		}
 	};
 	const onSubmit = () => void submitMessage();
-	const attachmentPreview = hasAttachments ? (
-		<MessageAttachmentPreview attachments={attachments} onRemove={removeAttachment} />
-	) : undefined;
 	const pickerDisabled = composerDisabled || isStreaming;
 
 	return (
@@ -150,7 +205,10 @@ export function ChatComposer({
 				maxRows={8}
 				placeholder={large ? "What should the agent work on?" : "Write a message…"}
 				sendLabel={submitLabel}
-				previewSlot={attachmentPreview}
+				files={files}
+				onFilesChange={(nextFiles) => void handleFilesChange(nextFiles)}
+				accept={ALL_FILES_ACCEPT}
+				filePreviewSize={COMPOSER_FILE_PREVIEW_SIZE}
 				textareaProps={{ "aria-label": "Message" }}
 				submitSlot={
 					<Button
@@ -169,21 +227,16 @@ export function ChatComposer({
 						)}
 					</Button>
 				}
-				leftSlot={
+				leftSlot={({ openFilePicker }) => (
 					<>
-						<MessageAttachmentPicker
-							attachments={attachments}
-							disabled={pickerDisabled}
-							onAdd={addAttachments}
-							onError={setAttachmentError}
-						/>
+						<MessageAttachmentPicker disabled={pickerDisabled} onOpen={() => openFilePicker()} />
 						<AgentModeControl
 							mode={selectedAgentMode}
 							disabled={isStreaming || isSubmitting}
 							onSelect={onSelectAgentMode}
 						/>
 					</>
-				}
+				)}
 				rightSlot={
 					<div className="hidden min-[900px]:block">
 						<ModelSelector

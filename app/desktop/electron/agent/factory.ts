@@ -140,6 +140,7 @@ export function createDesktopAgentFactory(
 		return {
 			getAppState: () => codingAgent.state.appState,
 			invoke: (input) => codingAgent.invoke(input),
+			invokeWithAttachments: (input) => codingAgent.invokeWithAttachments(input),
 			subscribe: (listener) => codingAgent.subscribe(listener),
 			waitForIdle: () => codingAgent.waitForIdle(),
 			abort: () => codingAgent.abort(),

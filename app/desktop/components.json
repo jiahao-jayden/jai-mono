@@ -18,6 +18,6 @@
   },
   "iconLibrary": "hugeicons",
   "registries": {
-    "@fluid": "https://www.fluidfunctionalism.com/r/base/{name}.json"
+    "@fluid": "https://www.fluidfunctionalism.com/r/{name}.json"
   }
 }

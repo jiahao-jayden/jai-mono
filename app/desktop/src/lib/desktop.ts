@@ -52,3 +52,7 @@ function createClientProxy(path: readonly string[]): unknown {
 }
 
 export const desktop = createClientProxy([]) as AsyncRpcClient<DesktopApi>;
+
+export function desktopFilePath(file: File): string {
+	return window.desktopRpc.getFilePath(file);
+}

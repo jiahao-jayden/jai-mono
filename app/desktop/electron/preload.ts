@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import "electron-log/preload";
 import { Value } from "@sinclair/typebox/value";
 import {
@@ -12,6 +12,9 @@ import {
 const desktopBridge: DesktopBridge = {
 	platform: {
 		isMac: process.platform === "darwin",
+	},
+	getFilePath(file) {
+		return webUtils.getPathForFile(file);
 	},
 	invoke(request) {
 		return ipcRenderer.invoke(DESKTOP_RPC_CHANNEL, request);

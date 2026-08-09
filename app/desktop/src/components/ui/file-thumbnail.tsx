@@ -54,6 +54,7 @@ function FileThumbnail({ file, size, className }: FileThumbnailProps) {
   const shape = useShape();
   const isImage = file.type.startsWith("image/");
   const isPdf = file.type === "application/pdf";
+  const fileType = fileTypeLabel(file);
 
   // Create blob URL inside an effect (NOT useMemo) so the cleanup-revoke
   // and the URL-creation stay in sync. In React 18 StrictMode dev, a
@@ -109,7 +110,8 @@ function FileThumbnail({ file, size, className }: FileThumbnailProps) {
   return (
     <div
       className={cn(
-        "relative shrink-0 overflow-hidden bg-accent border border-border",
+        "relative shrink-0 overflow-hidden border border-border",
+        isImage || isPdf ? "bg-accent" : "bg-card shadow-surface-1",
         shape.bg,
         className
       )}
@@ -136,32 +138,39 @@ function FileThumbnail({ file, size, className }: FileThumbnailProps) {
           />
         </div>
       ) : (
-        // Generic document glyph for files with no renderable preview.
-        // Inline SVG (not the icon system) so the thumbnail stays
-        // self-contained for registry consumers.
-        <div
-          className="absolute inset-0 flex items-center justify-center text-muted-foreground"
-          role="img"
-          aria-label={file.name}
-        >
-          <svg
-            width={Math.max(16, size * 0.35)}
-            height={Math.max(16, size * 0.35)}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-            <path d="M14 3v5h5" />
-          </svg>
-        </div>
+        <DocumentThumbnail fileName={file.name} fileType={fileType} size={size} />
       )}
     </div>
   );
+}
+
+function DocumentThumbnail({ fileName, fileType, size }: { fileName: string; fileType: string; size: number }) {
+  const compact = size < 112;
+  const labelClassName = cn(
+    "min-w-0 break-words font-medium text-foreground",
+    compact ? "line-clamp-2 text-[11px] leading-4" : "line-clamp-4 text-[13px] leading-4"
+  );
+  const cardClassName = cn("flex h-full flex-col justify-between", compact ? "p-2" : "p-2.5");
+
+  return (
+    <div className={cardClassName} role="img" aria-label={`${fileName}, ${fileType} file`}>
+      <span className={labelClassName} title={fileName}>
+        {fileName}
+      </span>
+      <span className="w-fit rounded-md border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium tracking-[0.06em] text-muted-foreground">
+        {fileType}
+      </span>
+    </div>
+  );
+}
+
+function fileTypeLabel(file: File): string {
+  const extensionStart = file.name.lastIndexOf(".");
+  if (extensionStart >= 0 && extensionStart < file.name.length - 1) {
+    return file.name.slice(extensionStart + 1).slice(0, 8).toUpperCase();
+  }
+  if (file.type.startsWith("text/")) return "TEXT";
+  return "FILE";
 }
 
 export { FileThumbnail, loadPdfjs, renderPdfFirstPage };

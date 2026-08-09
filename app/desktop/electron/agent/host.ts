@@ -1,4 +1,5 @@
 import type { AgentEvent, AgentEventListener, AgentMessage } from "@jai/agent";
+import type { CodingMessageAttachment } from "@jai/coding";
 import type { ConnectorApprovalDecision, ConnectorApprovalRequest } from "@jai/coding/connector";
 import {
 	type PermissionApprovalDecision,
@@ -30,7 +31,7 @@ import type {
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
 import { projectAssistantPart } from "./assistant-projector";
-import { projectSessionTodos, projectSlashInvocation } from "./projector";
+import { projectMessageAttachments, projectSessionTodos, projectSlashInvocation } from "./projector";
 
 type DesktopAgentErrorInit = { readonly data?: { readonly sessionId: string }; readonly message: string };
 class DesktopAgentFactoryUnavailable extends TaggedError("desktop_agent.factory_unavailable")<DesktopAgentErrorInit> {}
@@ -54,6 +55,10 @@ function desktopAgentError(
 export interface HostedCodingAgent {
 	getAppState?(): unknown;
 	invoke(input: string): Promise<AgentMessage[]>;
+	invokeWithAttachments?(input: {
+		readonly text: string;
+		readonly attachments: readonly CodingMessageAttachment[];
+	}): Promise<AgentMessage[]>;
 	generateTitle?(firstMessage: string, messages: readonly AgentMessage[]): Promise<string>;
 	subscribe(listener: AgentEventListener): () => void;
 	waitForIdle(): Promise<void>;
@@ -61,6 +66,10 @@ export interface HostedCodingAgent {
 	steer(message: AgentMessage): void;
 	followUp(message: AgentMessage): void;
 	close(): void;
+}
+
+export interface DesktopAgentSendInput extends DesktopAgentMessageInput {
+	readonly resolvedAttachments?: readonly CodingMessageAttachment[];
 }
 
 export interface DesktopAgentFactoryContext {
@@ -152,7 +161,7 @@ export class DesktopAgentHost {
 			.map((runtime) => runtime.sessionId);
 	}
 
-	async send(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }> {
+	async send(input: DesktopAgentSendInput): Promise<{ readonly accepted: true }> {
 		const runtime = await this.#getOrCreate(input);
 		if (runtime.rebinding) await runtime.rebinding;
 		if (runtime.status === "running") {
@@ -163,7 +172,11 @@ export class DesktopAgentHost {
 		}
 		runtime.status = "running";
 		this.#emitNow(runtime, { type: "status", status: "running" });
-		const run = runtime.agent.invoke(input.message).then(
+		const run =
+			input.resolvedAttachments && input.resolvedAttachments.length > 0 && runtime.agent.invokeWithAttachments
+				? runtime.agent.invokeWithAttachments({ text: input.message, attachments: input.resolvedAttachments })
+				: runtime.agent.invoke(input.message);
+		const completed = run.then(
 			(messages) => {
 				this.#finishRun(runtime);
 				const listener = this.#onRunCompleted;
@@ -186,7 +199,7 @@ export class DesktopAgentHost {
 				this.#closeIfInvalidated(runtime);
 			},
 		);
-		const runCompletion = run.finally(() => {
+		const runCompletion = completed.finally(() => {
 			if (runtime.runCompletion === runCompletion) runtime.runCompletion = undefined;
 		});
 		runtime.runCompletion = runCompletion;
@@ -646,6 +659,7 @@ export class DesktopAgentHost {
 		const id = this.#ensureMessageId(runtime, "user");
 		runtime.currentTurnId = id;
 		const slashInvocation = projectSlashInvocation(message);
+		const attachments = projectMessageAttachments(message);
 		return [
 			{
 				kind: "message",
@@ -655,6 +669,7 @@ export class DesktopAgentHost {
 				status,
 				timestamp: message.timestamp,
 				...(slashInvocation ? { slashInvocation } : {}),
+				...(attachments ? { attachments } : {}),
 			},
 		];
 	}

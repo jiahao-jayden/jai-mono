@@ -255,6 +255,20 @@ export interface DesktopSlashInvocation {
 	readonly displayName: string;
 }
 
+export interface DesktopMessageAttachment {
+	readonly id: string;
+	readonly filename: string;
+	readonly mimeType: string;
+	readonly size: number;
+}
+
+export interface DesktopAttachmentRegistrationInput {
+	readonly sourcePath: string;
+	readonly filename: string;
+	readonly mimeType: string;
+	readonly size: number;
+}
+
 export interface DesktopMessageItem {
 	readonly kind: "message";
 	readonly id: string;
@@ -264,6 +278,7 @@ export interface DesktopMessageItem {
 	readonly timestamp: number;
 	readonly stopReason?: string;
 	readonly slashInvocation?: DesktopSlashInvocation;
+	readonly attachments?: readonly DesktopMessageAttachment[];
 }
 
 export interface DesktopThinkingItem {
@@ -418,6 +433,7 @@ export interface DesktopAgentMessageInput extends DesktopAgentSessionInput {
 	readonly message: string;
 	readonly modelRef: string;
 	readonly mode: DesktopAgentMode;
+	readonly attachments?: readonly DesktopMessageAttachment[];
 }
 
 export interface DesktopSessionCreateInput {
@@ -474,6 +490,10 @@ export interface DesktopApi {
 		move(input: MoveSessionInput): Promise<CodingSession>;
 		delete(input: DesktopSessionDeleteInput): Promise<void>;
 	};
+	readonly attachment: {
+		register(input: DesktopAttachmentRegistrationInput): Promise<DesktopMessageAttachment>;
+		release(ids: readonly string[]): void;
+	};
 	readonly agent: {
 		send(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;
 		abort(sessionId: string): void;
@@ -500,6 +520,7 @@ export interface DesktopBridge {
 	readonly platform: {
 		readonly isMac: boolean;
 	};
+	getFilePath(file: File): string;
 	invoke(request: DesktopRpcRequest): Promise<DesktopRpcResponse>;
 	onAgentEvent(listener: (event: DesktopAgentEventEnvelope) => void): () => void;
 }

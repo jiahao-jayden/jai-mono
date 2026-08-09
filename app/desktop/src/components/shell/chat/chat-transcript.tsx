@@ -1,4 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { filesForAttachments } from "@/lib/attachment-files";
 import type { IconName } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type {
@@ -78,13 +79,16 @@ export function TranscriptItem({ item, animate = false }: { item: DesktopTranscr
 		});
 		const from = user ? "user" : "assistant";
 		const isStreaming = item.status === "streaming";
+		const attachmentFiles = item.attachments ? filesForAttachments(item.attachments) : [];
+		const messageAttachments = attachmentFiles.length > 0 ? undefined : item.attachments;
 		return (
 			<div className={messageAlignment} data-transcript-item-id={item.id}>
 				<ChatMessage
 					animate={animate}
-					attachments={item.attachments}
+					attachments={messageAttachments}
 					className={messageClassName}
 					from={from}
+					files={attachmentFiles}
 					isStreaming={isStreaming}
 				>
 					{item.text}
