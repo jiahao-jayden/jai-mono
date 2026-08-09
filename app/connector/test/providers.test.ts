@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import { Result } from "better-result";
-import { createAMapAdapter, createContext7Adapter, createDefaultConnectorService, createMcDonaldsCnAdapter } from "../src/providers";
+import {
+	createAMapAdapter,
+	createContext7Adapter,
+	createDefaultConnectorService,
+	createGitHubAdapter,
+	createGoogleAdapter,
+	createMcDonaldsCnAdapter,
+} from "../src/providers";
 import type { RequestContext } from "../src/types";
 
 	const context = { requestId: "context7-1", sessionId: "session-1" } satisfies RequestContext;
@@ -18,7 +25,7 @@ describe("Context7 Provider Adapter", () => {
 		});
 		const result = await adapter.execute(adapter.actions[0]!, { libraryName: "next", query: "routing" }, {
 			...context,
-			connection: { alias: "default", providerId: "context7", displayName: "Context7", status: "connected", scopes: [] },
+			connection: { providerId: "context7", displayName: "Context7", status: "connected", scopes: [] },
 			credentials: { apiKey: "secret-not-for-agent" },
 		});
 		expect(result.isOk()).toBe(true);
@@ -28,7 +35,7 @@ describe("Context7 Provider Adapter", () => {
 
 		const docs = await adapter.execute(adapter.actions[1]!, { libraryId: "/vercel/next.js", query: "routing", type: "json" }, {
 			...context,
-			connection: { alias: "default", providerId: "context7", displayName: "Context7", status: "connected", scopes: [] },
+			connection: { providerId: "context7", displayName: "Context7", status: "connected", scopes: [] },
 			credentials: { apiKey: "secret-not-for-agent" },
 		});
 		expect(docs.isOk()).toBe(true);
@@ -42,7 +49,7 @@ describe("Context7 Provider Adapter", () => {
 		});
 		const result = await adapter.execute(adapter.actions[0]!, { libraryName: "next", query: "routing" }, {
 			...context,
-			connection: { alias: "default", providerId: "context7", displayName: "Context7", status: "connected", scopes: [] },
+			connection: { providerId: "context7", displayName: "Context7", status: "connected", scopes: [] },
 			credentials: { apiKey: "secret" },
 		});
 		expect(result.isErr()).toBe(true);
@@ -72,7 +79,7 @@ describe("AMap Provider Adapter", () => {
 		expect(adapter.actions).toHaveLength(15);
 		const result = await adapter.execute(adapter.actions[0]!, { address: "上海市" }, {
 			...context,
-			connection: { alias: "default", providerId: "amap", displayName: "AMap", status: "connected", scopes: [] },
+			connection: { providerId: "amap", displayName: "AMap", status: "connected", scopes: [] },
 			credentials: { apiKey: "service-secret" },
 		});
 		expect(result.isOk()).toBe(true);
@@ -88,7 +95,7 @@ describe("AMap Provider Adapter", () => {
 		});
 		const result = await adapter.execute(adapter.actions[0]!, { address: "上海市" }, {
 			...context,
-			connection: { alias: "default", providerId: "amap", displayName: "AMap", status: "connected", scopes: [] },
+			connection: { providerId: "amap", displayName: "AMap", status: "connected", scopes: [] },
 			credentials: { apiKey: "service-secret" },
 		});
 		expect(result.isErr()).toBe(true);
@@ -115,7 +122,7 @@ describe("McDonald's China Provider Adapter", () => {
 			dayPartCode: 2,
 		}, {
 			...context,
-			connection: { alias: "default", providerId: "mcdonalds_cn", displayName: "McDonald's China", status: "connected", scopes: [] },
+			connection: { providerId: "mcdonalds_cn", displayName: "McDonald's China", status: "connected", scopes: [] },
 			credentials: { appId: "app-1", merchantId: "merchant-1", signingKey: "signing-secret", environment: "prod" },
 		});
 		expect(result.isOk()).toBe(true);
@@ -131,5 +138,96 @@ describe("McDonald's China Provider Adapter", () => {
 			createHash("md5").update('AppId=app-1&Body={"orderType":1,"dayPartCode":2,"channelCode":"APP","storeCode":"S1"}&MerchantId=merchant-1&Timestamp=1700000000000&key=signing-secret').digest("hex").toUpperCase(),
 		);
 		expect(JSON.stringify(result)).not.toContain("signing-secret");
+	});
+});
+
+describe("GitHub OAuth Provider Adapter", () => {
+	test("uses the service-owned OAuth bearer token for read and confirmed write actions", async () => {
+		const requests: { url: string; init?: RequestInit }[] = [];
+		const adapter = createGitHubAdapter({
+			baseUrl: "https://github.test",
+			fetcher: async (input, init) => {
+				requests.push({ url: String(input), init });
+				return new Response(JSON.stringify({ login: "jayden" }), { status: 200 });
+			},
+		});
+		expect(adapter.actions.map((action) => action.actionId)).toEqual([
+			"get_authenticated_user",
+			"list_repositories",
+			"get_repository",
+			"list_issues",
+			"create_issue",
+			"trigger_workflow",
+		]);
+		const result = await adapter.execute(adapter.actions[0]!, {}, {
+			...context,
+			connection: { providerId: "github", displayName: "GitHub", status: "connected", scopes: ["read:user"] },
+			credentials: { accessToken: "github-oauth-secret" },
+		});
+		expect(result.isOk()).toBe(true);
+		expect(requests[0]?.url).toBe("https://github.test/user");
+		expect(new Headers(requests[0]?.init?.headers).get("authorization")).toBe("Bearer github-oauth-secret");
+		expect(adapter.actions.find((action) => action.actionId === "create_issue")?.defaultPolicy).toBe("confirm");
+	});
+});
+
+describe("Google OAuth Provider Adapter", () => {
+	test("shares one service-owned OAuth token across Drive, Gmail, and Calendar", async () => {
+		const requests: { url: string; init?: RequestInit }[] = [];
+		const adapter = createGoogleAdapter({
+			driveBaseUrl: "https://google.test/drive/v3",
+			gmailBaseUrl: "https://google.test/gmail/v1/users/me",
+			calendarBaseUrl: "https://google.test/calendar/v3",
+			fetcher: async (input, init) => {
+				requests.push({ url: String(input), init });
+				return new Response(JSON.stringify({ items: [] }), { status: 200 });
+			},
+		});
+		expect(adapter.actions).toHaveLength(8);
+		const drive = await adapter.execute(adapter.actions[0]!, { query: "name contains 'plans'" }, {
+			...context,
+			connection: { providerId: "google", displayName: "Google", status: "connected", scopes: [] },
+			credentials: { accessToken: "google-oauth-secret" },
+		});
+		const gmail = await adapter.execute(adapter.actions[3]!, { query: "is:unread" }, {
+			...context,
+			connection: { providerId: "google", displayName: "Google", status: "connected", scopes: [] },
+			credentials: { accessToken: "google-oauth-secret" },
+		});
+		const calendar = await adapter.execute(adapter.actions[6]!, {}, {
+			...context,
+			connection: { providerId: "google", displayName: "Google", status: "connected", scopes: [] },
+			credentials: { accessToken: "google-oauth-secret" },
+		});
+		expect(drive.isOk() && gmail.isOk() && calendar.isOk()).toBe(true);
+		expect(requests.map((request) => request.url)).toEqual([
+			"https://google.test/drive/v3/files?fields=files%28id%2Cname%2CmimeType%2CmodifiedTime%2CwebViewLink%29%2CnextPageToken&q=name+contains+%27plans%27",
+			"https://google.test/gmail/v1/users/me/messages?q=is%3Aunread",
+			"https://google.test/calendar/v3/calendars/primary/events",
+		]);
+		for (const request of requests) {
+			expect(new Headers(request.init?.headers).get("authorization")).toBe("Bearer google-oauth-secret");
+		}
+		expect(JSON.stringify({ drive, gmail, calendar })).not.toContain("google-oauth-secret");
+	});
+
+	test("default service exposes an OAuth connection without exposing its token", async () => {
+		const service = createDefaultConnectorService({
+			providers: {
+				google: {
+					credentials: {
+						accessToken: "google-oauth-secret",
+						scopes: "https://www.googleapis.com/auth/drive.metadata.readonly",
+					},
+				},
+			},
+		});
+		const connections = await service.listConnections(context);
+		expect(Result.isOk(connections) && connections.value.connections.find((connection) => connection.providerId === "google")).toMatchObject({
+			providerId: "google",
+			status: "connected",
+			scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly"],
+		});
+		expect(JSON.stringify(connections)).not.toContain("google-oauth-secret");
 	});
 });

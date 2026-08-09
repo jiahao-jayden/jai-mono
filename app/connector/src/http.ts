@@ -183,7 +183,7 @@ async function readJson(request: IncomingMessage, maxBodyBytes: number): Promise
 }
 
 function parseSearchInput(body: Record<string, unknown>): SearchActionsInput {
-	assertKeys(body, ["sessionId", "query", "providerId", "connectionAlias", "sideEffect", "limit", "cursor"]);
+	assertKeys(body, ["sessionId", "query", "providerId", "sideEffect", "limit", "cursor"]);
 	const sideEffect = optionalString(body, "sideEffect");
 	if (sideEffect !== undefined && sideEffect !== "read" && sideEffect !== "write" && sideEffect !== "destructive")
 		throw invalidRequest("side_effect_invalid");
@@ -193,7 +193,6 @@ function parseSearchInput(body: Record<string, unknown>): SearchActionsInput {
 	return {
 		...(body.query === undefined ? {} : { query: requiredString(body, "query") }),
 		...(body.providerId === undefined ? {} : { providerId: requiredString(body, "providerId") }),
-		...(body.connectionAlias === undefined ? {} : { connectionAlias: requiredString(body, "connectionAlias") }),
 		...(sideEffect === undefined ? {} : { sideEffect }),
 		...(limit === undefined ? {} : { limit }),
 		...(body.cursor === undefined ? {} : { cursor: requiredString(body, "cursor") }),
@@ -201,20 +200,18 @@ function parseSearchInput(body: Record<string, unknown>): SearchActionsInput {
 }
 
 function parseGuideInput(body: Record<string, unknown>): GetActionGuideInput {
-	assertKeys(body, ["sessionId", "actionId", "connectionAlias"]);
+	assertKeys(body, ["sessionId", "actionId"]);
 	return {
 		actionId: requiredString(body, "actionId"),
-		...(body.connectionAlias === undefined ? {} : { connectionAlias: requiredString(body, "connectionAlias") }),
 	};
 }
 
 function parseExecuteInput(body: Record<string, unknown>): ExecuteActionInput {
-	assertKeys(body, ["sessionId", "actionId", "connectionAlias", "input", "approvalId"]);
+	assertKeys(body, ["sessionId", "actionId", "input", "approvalId"]);
 	const input = body.input;
 	if (!isJsonObject(input)) throw invalidRequest("input_invalid");
 	return {
 		actionId: requiredString(body, "actionId"),
-		...(body.connectionAlias === undefined ? {} : { connectionAlias: requiredString(body, "connectionAlias") }),
 		input,
 		...(body.approvalId === undefined ? {} : { approvalId: requiredString(body, "approvalId") }),
 	};

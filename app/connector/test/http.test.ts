@@ -26,7 +26,6 @@ const action: ActionDefinition = {
 	dataSensitivity: "normal",
 };
 const connection: ConnectionRecord = {
-	alias: "default",
 	providerId: "demo",
 	displayName: "Demo account",
 	status: "connected",
@@ -56,7 +55,7 @@ describe("Connector HTTP protocol", () => {
 			if (actions.isOk()) expect(actions.value.actions[0]?.actionId).toBe("demo.search");
 
 			const result = await client.executeAction(
-				{ actionId: "demo.search", connectionAlias: "default", input: { query: "jai" } },
+				{ actionId: "demo.search", input: { query: "jai" } },
 				{ requestId: "execute", sessionId: "session-1" },
 			);
 			expect(result.isOk()).toBe(true);
@@ -138,12 +137,12 @@ describe("Connector HTTP protocol", () => {
 			const response = await fetch(`${server.url}/actions/search`, {
 				method: "POST",
 				headers: { authorization: "Bearer runtime-secret", "content-type": "application/json" },
-				body: JSON.stringify({ query: "demo", unexpected: true }),
+				body: JSON.stringify({ query: "demo", connectionAlias: "default" }),
 			});
 			const payload = (await response.json()) as { readonly ok: boolean; readonly error?: { readonly code: string; readonly details?: unknown } };
 			expect(payload.ok).toBe(false);
 			expect(payload.error?.code).toBe("connector.input_invalid");
-			expect(payload.error?.details).toEqual({ actionId: "<request>", reason: "unknown_field:unexpected" });
+			expect(payload.error?.details).toEqual({ actionId: "<request>", reason: "unknown_field:connectionAlias" });
 		} finally {
 			await server.close();
 		}

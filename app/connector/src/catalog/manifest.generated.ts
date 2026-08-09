@@ -8,6 +8,8 @@ export const connectorProviderManifest = {
 		context7: { status: "adapter-specific", actionCount: 2 },
 		amap: { status: "adapter-specific", actionCount: 15 },
 		mcdonalds_cn: { status: "adapter-specific", actionCount: 7 },
+		google: { status: "adapter-specific", actionCount: 8 },
+		github: { status: "adapter-specific", actionCount: 6 },
 	},
-	totalActionCount: 24,
+	totalActionCount: 38,
 } as const;

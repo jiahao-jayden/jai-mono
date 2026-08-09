@@ -56,7 +56,6 @@ export interface ActionDefinition {
 }
 
 export interface ConnectionRecord {
-	readonly alias: string;
 	readonly providerId: string;
 	readonly displayName: string;
 	readonly status: "connected" | "expired" | "missing_scope" | "disconnected";
@@ -99,13 +98,11 @@ export interface ConnectorServiceSettings {
 
 export interface ConnectorProviderSettings {
 	readonly enabled?: boolean;
-	readonly defaultConnection?: string;
 	/** Provider API keys, OAuth tokens and custom credentials are intentionally persisted as settings values. */
 	readonly credentials?: Readonly<Record<string, string>>;
 }
 
 export interface ConnectorSettings {
-	readonly enabled?: boolean;
 	readonly service?: ConnectorServiceSettings;
 	readonly policy?: ConnectorPolicy;
 	readonly providers?: Readonly<Record<string, ConnectorProviderSettings>>;
@@ -166,7 +163,6 @@ export interface ListConnectionsResponse {
 }
 
 export interface ConnectionSummary {
-	readonly alias: string;
 	readonly providerId: string;
 	readonly displayName: string;
 	readonly status: ConnectionRecord["status"];
@@ -176,7 +172,6 @@ export interface ConnectionSummary {
 export interface SearchActionsInput {
 	readonly query?: string;
 	readonly providerId?: string;
-	readonly connectionAlias?: string;
 	readonly sideEffect?: ActionSideEffect;
 	readonly limit?: number;
 	readonly cursor?: string;
@@ -200,25 +195,21 @@ export interface ActionSummary {
 
 export interface GetActionGuideInput {
 	readonly actionId: string;
-	readonly connectionAlias?: string;
 }
 
 export interface ActionGuideResponse {
 	readonly action: ActionDefinition;
 	readonly policy: AgentActionPolicy;
-	readonly connectionAlias?: string;
 }
 
 export interface ExecuteActionInput {
 	readonly actionId: string;
-	readonly connectionAlias?: string;
 	readonly input: JsonObject;
 	readonly approvalId?: string;
 }
 
 export interface ApprovalPreview {
 	readonly actionId: string;
-	readonly connectionAlias: string;
 	readonly description: string;
 	readonly sideEffect: ActionSideEffect;
 	readonly dataSensitivity: ActionDataSensitivity;

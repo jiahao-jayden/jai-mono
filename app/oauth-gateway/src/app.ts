@@ -51,6 +51,9 @@ export function createOAuthGatewayApp(options: OAuthGatewayOptions): Hono {
 		const requestedScopes = parseScopes(context.req.query("scope"), provider.value.scopes);
 		if (requestedScopes.isErr()) return errorResponse(context, requestedScopes.error, 400);
 		const authorization = new URL(provider.value.authorizationEndpoint);
+		for (const [key, value] of Object.entries(provider.value.authorizationParams ?? {})) {
+			authorization.searchParams.set(key, value);
+		}
 		authorization.searchParams.set("response_type", "code");
 		authorization.searchParams.set("client_id", provider.value.clientId);
 		authorization.searchParams.set("redirect_uri", provider.value.gatewayCallbackUrl);

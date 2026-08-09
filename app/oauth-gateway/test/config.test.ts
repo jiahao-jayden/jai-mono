@@ -9,7 +9,8 @@ const definition = {
 	clientSecretEnv: "EXAMPLE_CLIENT_SECRET",
 	gatewayCallbackUrl: "https://oauth.example/v1/oauth/example/callback",
 	applicationCallbackUrl: "jai://connector/oauth/callback",
-	scopes: ["profile"],
+		scopes: ["profile"],
+		authorizationParams: { prompt: "consent" },
 };
 
 describe("OAuth Gateway environment configuration", () => {
@@ -23,6 +24,7 @@ describe("OAuth Gateway environment configuration", () => {
 		if (result.isOk()) {
 			expect(result.value[0]?.clientId).toBe("client-id");
 			expect(result.value[0]?.clientSecret).toBe("client-secret");
+			expect(result.value[0]?.authorizationParams).toEqual({ prompt: "consent" });
 		}
 	});
 
@@ -38,5 +40,25 @@ describe("OAuth Gateway environment configuration", () => {
 			EXAMPLE_CLIENT_ID: "client-id",
 		});
 		expect(missingSecret.isErr()).toBe(true);
+	});
+
+	test("accepts the fixed desktop loopback callback but rejects other HTTP callbacks", () => {
+		const loopback = loadProvidersFromEnvironment({
+			OAUTH_GATEWAY_PROVIDERS: JSON.stringify([
+				{ ...definition, applicationCallbackUrl: "http://127.0.0.1:43821/v1/oauth/callback" },
+			]),
+			EXAMPLE_CLIENT_ID: "client-id",
+			EXAMPLE_CLIENT_SECRET: "client-secret",
+		});
+		expect(loopback.isOk()).toBe(true);
+
+		const remote = loadProvidersFromEnvironment({
+			OAUTH_GATEWAY_PROVIDERS: JSON.stringify([
+				{ ...definition, applicationCallbackUrl: "http://localhost:43821/v1/oauth/callback" },
+			]),
+			EXAMPLE_CLIENT_ID: "client-id",
+			EXAMPLE_CLIENT_SECRET: "client-secret",
+		});
+		expect(remote.isErr()).toBe(true);
 	});
 });

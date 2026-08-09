@@ -39,7 +39,6 @@ import type {
 
 interface PendingApproval {
 	readonly actionId: string;
-	readonly connectionAlias: string;
 	readonly sessionId: string;
 	readonly inputHash: string;
 	readonly expiresAt: number;
@@ -79,7 +78,7 @@ export class MemoryConnectorService implements ConnectorService {
 		this.#actions = actions;
 	}
 
-	/** Refreshes policy, connection aliases and credentials without replacing the Provider registry. */
+	/** Refreshes policy, connections and credentials without replacing the Provider registry. */
 	applyConfiguration(source: MemoryConnectorService): void {
 		this.#connections = source.#connections;
 		this.#credentials = source.#credentials;
@@ -158,7 +157,6 @@ export class MemoryConnectorService implements ConnectorService {
 		return Result.ok({
 			action,
 			policy,
-			...(input.connectionAlias ? { connectionAlias: input.connectionAlias } : {}),
 		});
 	}
 
@@ -190,13 +188,13 @@ export class MemoryConnectorService implements ConnectorService {
 				}),
 			);
 		}
-		const connection = this.#resolveConnection(action.providerId, input.connectionAlias);
+		const connection = this.#resolveConnection(action.providerId);
 		if (connection.isErr()) return connection;
 		if (connection.value.status !== "connected") {
 			return Result.err(
 				new ConnectorConnectionUnavailable({
 					message: "Connector Connection is not available",
-					data: { alias: connection.value.alias, status: connection.value.status },
+					data: { providerId: connection.value.providerId, status: connection.value.status },
 				}),
 			);
 		}
@@ -205,7 +203,7 @@ export class MemoryConnectorService implements ConnectorService {
 				return Result.err(
 					new ConnectorConnectionUnavailable({
 						message: `Connector Connection is missing scope ${requiredScope}`,
-						data: { alias: connection.value.alias, status: "missing_scope" },
+						data: { providerId: connection.value.providerId, status: "missing_scope" },
 					}),
 				);
 			}
@@ -234,14 +232,12 @@ export class MemoryConnectorService implements ConnectorService {
 					const expiresAt = this.#now() + 5 * 60_000;
 					this.#approvals.set(approvalId, {
 						actionId: input.actionId,
-						connectionAlias: connection.value.alias,
 						sessionId: context.sessionId,
 						inputHash: hashInput(input.input),
 						expiresAt,
 					});
 					const preview: ApprovalPreview = {
 						actionId: input.actionId,
-						connectionAlias: connection.value.alias,
 						description: action.description,
 						sideEffect: action.sideEffect,
 						dataSensitivity: action.dataSensitivity,
@@ -297,15 +293,13 @@ export class MemoryConnectorService implements ConnectorService {
 		});
 	}
 
-	#resolveConnection(providerId: string, alias?: string): ResultType<ConnectionRecord, ConnectorConnectionNotFound> {
-		const connection = this.#connections.find(
-			(candidate) => candidate.providerId === providerId && (alias === undefined ? true : candidate.alias === alias),
-		);
+	#resolveConnection(providerId: string): ResultType<ConnectionRecord, ConnectorConnectionNotFound> {
+		const connection = this.#connections.find((candidate) => candidate.providerId === providerId);
 		if (!connection)
 			return Result.err(
 				new ConnectorConnectionNotFound({
 					message: "Connector Connection was not found",
-					data: { providerId, ...(alias ? { alias } : {}) },
+					data: { providerId },
 				}),
 			);
 		return Result.ok(connection);
@@ -341,7 +335,6 @@ export class MemoryConnectorService implements ConnectorService {
 			);
 		if (
 			approval.actionId !== input.actionId ||
-			approval.connectionAlias !== connection.alias ||
 			approval.sessionId !== context.sessionId ||
 			approval.inputHash !== hashInput(input.input)
 		) {
@@ -405,7 +398,7 @@ function stableJson(value: unknown): string {
 }
 
 function credentialKey(connection: ConnectionRecord): string {
-	return `${connection.providerId}:${connection.alias}`;
+	return connection.providerId;
 }
 
 function validateJsonSchema(schema: JsonSchema, value: unknown, path: string): string | undefined {

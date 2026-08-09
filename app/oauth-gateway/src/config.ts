@@ -12,6 +12,7 @@ interface ProviderEnvironmentDefinition {
 	readonly gatewayCallbackUrl: string;
 	readonly applicationCallbackUrl: string;
 	readonly scopes: readonly string[];
+	readonly authorizationParams?: Readonly<Record<string, string>>;
 }
 
 export type OAuthGatewayEnvironment = Readonly<Record<string, unknown>>;
@@ -70,6 +71,7 @@ export function loadProvidersFromEnvironment(
 			gatewayCallbackUrl: definition.gatewayCallbackUrl,
 			applicationCallbackUrl: definition.applicationCallbackUrl,
 			scopes: definition.scopes,
+			...(definition.authorizationParams ? { authorizationParams: definition.authorizationParams } : {}),
 		});
 	}
 	return Result.ok(providers);
@@ -94,6 +96,7 @@ function parseDefinition(value: unknown): ProviderEnvironmentDefinition | undefi
 	const gatewayCallbackUrl = readString(value.gatewayCallbackUrl);
 	const applicationCallbackUrl = readString(value.applicationCallbackUrl);
 	const scopes = value.scopes;
+	const authorizationParams = value.authorizationParams;
 	if (
 		!id ||
 		!authorizationEndpoint ||
@@ -109,6 +112,7 @@ function parseDefinition(value: unknown): ProviderEnvironmentDefinition | undefi
 	}
 	const revokeEndpoint = value.revokeEndpoint === undefined ? undefined : readString(value.revokeEndpoint);
 	if (value.revokeEndpoint !== undefined && !revokeEndpoint) return undefined;
+	if (authorizationParams !== undefined && !isStringRecord(authorizationParams)) return undefined;
 	return {
 		id,
 		authorizationEndpoint,
@@ -119,6 +123,7 @@ function parseDefinition(value: unknown): ProviderEnvironmentDefinition | undefi
 		gatewayCallbackUrl,
 		applicationCallbackUrl,
 		scopes,
+		...(authorizationParams === undefined ? {} : { authorizationParams }),
 	};
 }
 
@@ -142,7 +147,15 @@ function isHttpsUrl(value: string): boolean {
 function isApplicationCallbackUrl(value: string): boolean {
 	try {
 		const url = new URL(value);
-		return url.protocol === "jai:";
+		if (url.protocol === "jai:") return true;
+		return (
+			url.protocol === "http:" &&
+			url.hostname === "127.0.0.1" &&
+			url.port === "43821" &&
+			url.pathname === "/v1/oauth/callback" &&
+			url.search.length === 0 &&
+			url.hash.length === 0
+		);
 	} catch {
 		return false;
 	}
@@ -150,4 +163,8 @@ function isApplicationCallbackUrl(value: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStringRecord(value: unknown): value is Readonly<Record<string, string>> {
+	return isRecord(value) && Object.values(value).every((item) => typeof item === "string" && item.length > 0);
 }

@@ -2,6 +2,8 @@ export { connectorProviderManifest } from "./catalog/manifest.generated";
 export * from "./client";
 export * from "./errors";
 export * from "./http";
+export * from "./oauth";
+export * from "./oauth-providers";
 export * from "./protocol";
 export * from "./providers";
 export * from "./runtime";

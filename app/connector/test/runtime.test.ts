@@ -60,7 +60,6 @@ const secretAction: ActionDefinition = {
 };
 
 const connection: ConnectionRecord = {
-	alias: "default",
 	providerId: "demo",
 	displayName: "Demo account",
 	status: "connected",
@@ -85,7 +84,7 @@ describe("MemoryConnectorService", () => {
 	test("executes a query action without approval", async () => {
 		const service = createService();
 		const result = await service.executeAction(
-			{ actionId: "demo.search", connectionAlias: "default", input: { query: "jai" } },
+			{ actionId: "demo.search", input: { query: "jai" } },
 			{ sessionId: "session-1", requestId: "request-1" },
 		);
 
@@ -96,7 +95,7 @@ describe("MemoryConnectorService", () => {
 	test("requires approval for a write action and executes after approval", async () => {
 		const service = createService();
 		const pending = await service.executeAction(
-			{ actionId: "demo.create", connectionAlias: "default", input: { name: "record" } },
+			{ actionId: "demo.create", input: { name: "record" } },
 			{ sessionId: "session-1", requestId: "request-1" },
 		);
 
@@ -107,7 +106,6 @@ describe("MemoryConnectorService", () => {
 			const completed = await service.executeAction(
 				{
 					actionId: "demo.create",
-					connectionAlias: "default",
 					input: { name: "record" },
 					approvalId: pending.value.approvalId,
 				},
@@ -132,7 +130,7 @@ describe("MemoryConnectorService", () => {
 		});
 
 		const write = await service.executeAction(
-			{ actionId: "demo.create", connectionAlias: "default", input: { name: "record" } },
+			{ actionId: "demo.create", input: { name: "record" } },
 			{ sessionId: "session-1", requestId: "request-1" },
 		);
 		expect(write.isOk() && write.value.status).toBe("approval_required");
@@ -145,7 +143,7 @@ describe("MemoryConnectorService", () => {
 	test("rejects approval replay and input changes", async () => {
 		const service = createService();
 		const pending = await service.executeAction(
-			{ actionId: "demo.create", connectionAlias: "default", input: { name: "record" } },
+			{ actionId: "demo.create", input: { name: "record" } },
 			{ sessionId: "session-1", requestId: "request-1" },
 		);
 		expect(pending.isOk()).toBe(true);
@@ -154,7 +152,6 @@ describe("MemoryConnectorService", () => {
 		const changed = await service.executeAction(
 			{
 				actionId: "demo.create",
-				connectionAlias: "default",
 				input: { name: "different" },
 				approvalId: pending.value.approvalId,
 			},
@@ -165,7 +162,6 @@ describe("MemoryConnectorService", () => {
 		const replay = await service.executeAction(
 			{
 				actionId: "demo.create",
-				connectionAlias: "default",
 				input: { name: "record" },
 				approvalId: pending.value.approvalId,
 			},
@@ -181,7 +177,7 @@ describe("MemoryConnectorService", () => {
 		if (actions.isOk()) expect(actions.value.actions).toHaveLength(0);
 
 		const result = await service.executeAction(
-			{ actionId: "demo.internal_check", connectionAlias: "default", input: {} },
+			{ actionId: "demo.internal_check", input: {} },
 			{ sessionId: "session-1", requestId: "request-1" },
 		);
 		expect(result.isErr()).toBe(true);
@@ -190,7 +186,7 @@ describe("MemoryConnectorService", () => {
 	test("rejects invalid input before the adapter executes", async () => {
 		const service = createService();
 		const result = await service.executeAction(
-			{ actionId: "demo.search", connectionAlias: "default", input: {} },
+			{ actionId: "demo.search", input: {} },
 			{ sessionId: "session-1", requestId: "request-1" },
 		);
 		expect(result.isErr()).toBe(true);

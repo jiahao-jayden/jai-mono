@@ -25,13 +25,16 @@ The core only uses the Web `Request`/`Response` API, Hono, and `fetch`; it does 
 		"clientIdEnv": "OAUTH_EXAMPLE_CLIENT_ID",
 		"clientSecretEnv": "OAUTH_EXAMPLE_CLIENT_SECRET",
 		"gatewayCallbackUrl": "https://oauth.example.com/v1/oauth/example/callback",
-		"applicationCallbackUrl": "jai://connector/oauth/callback",
-		"scopes": ["profile", "email"]
+		"applicationCallbackUrl": "http://127.0.0.1:43821/v1/oauth/callback",
+		"scopes": ["profile", "email"],
+		"authorizationParams": { "access_type": "offline", "prompt": "consent" }
 	}
 ]
 ```
 
-The Gateway only accepts HTTPS Provider endpoints and the fixed `jai:` application callback. Requested scopes must be a subset of the configured Provider scopes.
+The Gateway only accepts HTTPS Provider endpoints and a fixed application callback: `jai:` or the loopback callback `http://127.0.0.1:43821/v1/oauth/callback`. Requested scopes must be a subset of the configured Provider scopes.
+
+For Google, set `authorizationParams` to `{ "access_type": "offline", "prompt": "consent" }` so the first grant returns a refresh token for the Connector service.
 
 For Cloudflare Workers, deploy with the included `wrangler.toml`; set `OAUTH_GATEWAY_PROVIDERS` as a Worker variable and the referenced client IDs/secrets as Worker Secrets. The configuration is loaded per Worker request and is never persisted by the Gateway.
 

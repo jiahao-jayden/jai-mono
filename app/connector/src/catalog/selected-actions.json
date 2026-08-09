@@ -43,6 +43,32 @@
         "mcdonalds_cn.get_product_detail",
         "mcdonalds_cn.search_products"
       ]
+    },
+    {
+      "providerId": "google",
+      "status": "adapter-specific",
+      "actions": [
+        "google.drive_list_files",
+        "google.drive_get_file",
+        "google.drive_create_file",
+        "google.gmail_list_messages",
+        "google.gmail_get_message",
+        "google.gmail_send_message",
+        "google.calendar_list_events",
+        "google.calendar_create_event"
+      ]
+    },
+    {
+      "providerId": "github",
+      "status": "adapter-specific",
+      "actions": [
+        "github.get_authenticated_user",
+        "github.list_repositories",
+        "github.get_repository",
+        "github.list_issues",
+        "github.create_issue",
+        "github.trigger_workflow"
+      ]
     }
   ]
 }

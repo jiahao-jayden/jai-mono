@@ -12,6 +12,7 @@ const provider: OAuthGatewayProvider = {
 	gatewayCallbackUrl: "https://gateway.example/v1/oauth/example/callback",
 	applicationCallbackUrl: "jai://connector/oauth/callback",
 	scopes: ["profile", "email"],
+	authorizationParams: { access_type: "offline", prompt: "consent" },
 };
 
 describe("OAuth Gateway", () => {
@@ -27,6 +28,8 @@ describe("OAuth Gateway", () => {
 		expect(location.searchParams.get("redirect_uri")).toBe(provider.gatewayCallbackUrl);
 		expect(location.searchParams.get("code_challenge")).toBe("challenge-1");
 		expect(location.searchParams.get("scope")).toBe("profile");
+		expect(location.searchParams.get("access_type")).toBe("offline");
+		expect(location.searchParams.get("prompt")).toBe("consent");
 	});
 
 	test("forwards the callback code to the fixed application URI without exchanging it", async () => {

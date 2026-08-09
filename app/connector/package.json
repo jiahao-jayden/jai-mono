@@ -6,6 +6,7 @@
 	"description": "Jai Global Connector Service and SDK.",
 	"exports": {
 		".": "./src/index.ts",
+		"./oauth": "./src/oauth.ts",
 		"./protocol": "./src/protocol/index.ts",
 		"./service": "./src/service/index.ts",
 		"./service/main": "./src/service/main.ts"

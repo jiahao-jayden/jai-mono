@@ -10,6 +10,8 @@ export interface OAuthGatewayProvider {
 	/** The fixed callback registered by the Jai desktop application. */
 	readonly applicationCallbackUrl: string;
 	readonly scopes: readonly string[];
+	/** Provider-specific authorization parameters, for example Google's offline-access request. */
+	readonly authorizationParams?: Readonly<Record<string, string>>;
 }
 
 export interface OAuthGatewayOptions {

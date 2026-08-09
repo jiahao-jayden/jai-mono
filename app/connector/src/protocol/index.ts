@@ -115,9 +115,9 @@ function projectDetails(code: string, record: Record<string, unknown> | undefine
 			case "connector.session_required":
 				return ["actionId", "reason", "policy"];
 			case "connector.connection_not_found":
-				return ["providerId", "alias"];
+				return ["providerId"];
 			case "connector.connection_unavailable":
-				return ["alias", "status"];
+				return ["providerId", "status"];
 			case "connector.provider_failed":
 			case "connector.provider_rate_limited":
 			case "connector.provider_unavailable":
