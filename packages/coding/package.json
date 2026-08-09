@@ -14,7 +14,6 @@
 		"./runtime": "./src/runtime/index.ts",
 		"./mcp": "./src/mcp/index.ts",
 		"./connector": "./src/connector/index.ts",
-		"./connector/service-main": "./src/connector/service-main.ts",
 		"./skills": "./src/skills/index.ts",
 		"./agent-plugins": "./src/agent-plugins/index.ts",
 		"./tools": "./src/tools/index.ts"

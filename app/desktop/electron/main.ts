@@ -1,7 +1,8 @@
+import { resolve } from "node:path";
 import { CodingBusinessService } from "@jai/coding/business";
 import { app, BrowserWindow } from "electron";
-import { resolve } from "node:path";
 import { createDesktopAgentFactory } from "./agent/factory";
+import { type DesktopConnectorRuntime, openDesktopConnectorRuntime } from "./connector-runtime";
 import { mainLog } from "./logger";
 import { hydrateDesktopModelCatalog, startDesktopModelCatalog } from "./model-catalog";
 import {
@@ -18,6 +19,7 @@ const isMac = process.platform === "darwin";
 const customProtocol = "jai";
 const pendingOAuthCallbacks: string[] = [];
 let desktopRuntimeReady = false;
+let connectorRuntime: DesktopConnectorRuntime | undefined;
 
 if (!app.isPackaged) {
 	app.commandLine.appendSwitch("remote-debugging-port", "9229");
@@ -49,9 +51,14 @@ if (!app.requestSingleInstanceLock()) {
 	void app
 		.whenReady()
 		.then(async () => {
-			const [codingBusiness] = await Promise.all([CodingBusinessService.open(), hydrateDesktopModelCatalog()]);
+			const [codingBusiness, openedConnectorRuntime] = await Promise.all([
+				CodingBusinessService.open(),
+				openDesktopConnectorRuntime(),
+				hydrateDesktopModelCatalog(),
+			]);
+			connectorRuntime = openedConnectorRuntime;
 			setCodingBusinessService(codingBusiness);
-			setDesktopAgentFactory(createDesktopAgentFactory(codingBusiness));
+			setDesktopAgentFactory(createDesktopAgentFactory(codingBusiness, openedConnectorRuntime.service));
 			restoreTheme();
 			registerDesktopRpc();
 			void startDesktopModelCatalog();
@@ -74,6 +81,8 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+	connectorRuntime?.close();
+	connectorRuntime = undefined;
 	closeDesktopRuntime();
 });
 

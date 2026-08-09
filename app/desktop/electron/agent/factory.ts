@@ -9,6 +9,7 @@ import {
 	resolveConfiguredMcpServers,
 	resolveConfiguredProvider,
 } from "@jai/coding/runtime";
+import type { ConnectorService } from "@jai/connector";
 import { TaggedError } from "better-result";
 import type { DesktopAgentMode } from "../../shared/desktop-rpc";
 import { mainLog } from "../logger";
@@ -47,7 +48,10 @@ function desktopProviderError(
 	}
 }
 
-export function createDesktopAgentFactory(service: CodingBusinessService): DesktopAgentFactory {
+export function createDesktopAgentFactory(
+	service: CodingBusinessService,
+	connectorService: ConnectorService,
+): DesktopAgentFactory {
 	return async ({ sessionId, modelRef, mode, requestApproval }) => {
 		const session = service.getSession(sessionId);
 		const executionContext = await service.resolveExecutionContext(sessionId);
@@ -117,6 +121,9 @@ export function createDesktopAgentFactory(service: CodingBusinessService): Deskt
 					permission: snapshot.settings.permission,
 					defaultMode: permissionModeForAgentMode(mode),
 				}),
+			},
+			connector: {
+				client: connectorService,
 			},
 		});
 		for (const diagnostic of codingAgent.pluginDiagnostics) {

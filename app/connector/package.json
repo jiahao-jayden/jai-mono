@@ -3,13 +3,10 @@
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
-	"description": "Jai Global Connector Service and SDK.",
+	"description": "Jai Connector runtime and provider adapters.",
 	"exports": {
 		".": "./src/index.ts",
-		"./oauth": "./src/oauth.ts",
-		"./protocol": "./src/protocol/index.ts",
-		"./service": "./src/service/index.ts",
-		"./service/main": "./src/service/main.ts"
+		"./oauth": "./src/oauth.ts"
 	},
 	"scripts": {
 		"typecheck": "tsc -p tsconfig.json --noEmit",

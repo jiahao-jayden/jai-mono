@@ -5,11 +5,6 @@ export {
 	ConnectorAgentToolFailed,
 } from "./errors";
 export {
-	type ConfiguredConnectorResolverOptions,
-	createConfiguredConnectorResolver,
-	createConnectorSupervisorOptions,
-} from "./supervisor";
-export {
 	type ConnectorAgentToolOptions,
 	type ConnectorApprovalDecision,
 	type ConnectorApprovalRequest,
