@@ -2,11 +2,10 @@ import { useIcons } from "@/lib/icon-context";
 import { Button } from "../../ui/button";
 
 interface SidebarFooterProps {
-	settingsDisabled: boolean;
 	onOpenSettings(): void;
 }
 
-export function SidebarFooter({ settingsDisabled, onOpenSettings }: SidebarFooterProps) {
+export function SidebarFooter({ onOpenSettings }: SidebarFooterProps) {
 	const icons = useIcons();
 	const SettingsIcon = icons.settings;
 
@@ -18,8 +17,7 @@ export function SidebarFooter({ settingsDisabled, onOpenSettings }: SidebarFoote
 				size="md"
 				leadingIcon={SettingsIcon}
 				onClick={onOpenSettings}
-				disabled={settingsDisabled}
-				title={settingsDisabled ? "Wait for the current run to finish" : "Settings (⌘,)"}
+				title="Settings (⌘,)"
 				className="w-full justify-start gap-3 rounded-lg px-3 py-2 text-left text-[13.5px] text-foreground/75"
 			>
 				Settings

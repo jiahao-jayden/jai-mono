@@ -17,7 +17,6 @@ interface SidebarProps {
 	hasNextPage?: boolean;
 	loadingMore?: boolean;
 	width?: MotionValue<number>;
-	settingsDisabled: boolean;
 	onToggleSidebar(): void;
 	onNewChat(): void;
 	onOpenChats(): void;
@@ -40,7 +39,6 @@ export function Sidebar({
 	hasNextPage = false,
 	loadingMore = false,
 	width,
-	settingsDisabled,
 	onToggleSidebar,
 	onNewChat,
 	onOpenChats,
@@ -78,7 +76,7 @@ export function Sidebar({
 				onDeleteSession={onDeleteSession}
 				onLoadMore={onLoadMore}
 			/>
-			<SidebarFooter settingsDisabled={settingsDisabled} onOpenSettings={onOpenSettings} />
+			<SidebarFooter onOpenSettings={onOpenSettings} />
 		</motion.aside>
 	);
 }

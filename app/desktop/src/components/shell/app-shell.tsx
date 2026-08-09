@@ -207,10 +207,9 @@ export function AppShell() {
 		return snapshot;
 	};
 	const openProviderSettings = useCallback(() => {
-		if (chat.status === "streaming" || chat.status === "submitted") return;
 		setProviderSettingsOpen(true);
 		void providerQuery.refetch();
-	}, [chat.status, providerQuery.refetch]);
+	}, [providerQuery.refetch]);
 	useEffect(() => {
 		const openSettingsShortcut = (event: globalThis.KeyboardEvent) => {
 			if (event.key !== "," || (!event.metaKey && !event.ctrlKey)) return;
@@ -331,7 +330,6 @@ export function AppShell() {
 					hasNextPage={sessionRecentsQuery.hasNextPage}
 					loadingMore={sessionRecentsQuery.isFetchingNextPage}
 					width={sidebarResize.width}
-					settingsDisabled={chat.status === "streaming" || chat.status === "submitted"}
 					onToggleSidebar={() => setSidebarOpen(false)}
 					onNewChat={openNewChat}
 					onOpenChats={() => navigate("/chats")}
