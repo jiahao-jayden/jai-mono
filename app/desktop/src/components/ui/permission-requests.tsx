@@ -13,10 +13,13 @@ export type PermissionDecision = "deny" | "allowOnce" | "alwaysAllow";
 
 export interface PermissionRequestView {
 	readonly id: string;
+	readonly kind?: "permission" | "connector";
 	readonly title: string;
 	readonly description: string;
 	readonly command?: string;
 	readonly path?: string;
+	readonly actionId?: string;
+	readonly inputKeys?: readonly string[];
 	readonly canAlwaysAllow: boolean;
 }
 
@@ -109,11 +112,11 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 				) : null}
 			</header>
 
-			{request.command || request.path ? (
+			{request.command || request.path || request.actionId ? (
 				<div className="mx-3 mb-1.5 flex items-start gap-2 rounded-lg bg-muted/70 px-2.5 py-1.5">
 					<TerminalIcon size={12} className="mt-0.5 shrink-0 text-muted-foreground" />
 					<code className="line-clamp-2 min-w-0 font-mono text-[11px] leading-relaxed text-muted-foreground">
-						{request.command || request.path}
+						{request.command || request.path || request.actionId}
 					</code>
 				</div>
 			) : null}

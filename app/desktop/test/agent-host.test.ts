@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentEvent, AgentEventListener, AgentMessage } from "@jai/agent";
 import { getErrorCode } from "@jai/common";
+import type { ConnectorApprovalRequest } from "@jai/coding/connector";
 import { DesktopAgentHost, type DesktopAgentFactoryContext, type HostedCodingAgent } from "../electron/agent/host";
 import type { DesktopAgentEventEnvelope } from "../shared/desktop-rpc";
 
@@ -79,6 +80,62 @@ describe("DesktopAgentHost", () => {
 		try {
 			host.resolvePermission({ requestId: "permission-1", decision: "deny" });
 			throw new Error("Expected duplicate permission resolution to fail");
+		} catch (error) {
+			expect(getErrorCode(error)).toBe("coding_permission.request_not_found");
+		}
+		host.close();
+	});
+
+	test("Connector approval 使用独立 DTO，并支持 allow once 生命周期", async () => {
+		const envelopes: DesktopAgentEventEnvelope[] = [];
+		let factoryContext: DesktopAgentFactoryContext | undefined;
+		const agent = new FakeAgent(async () => {
+			const decision = await factoryContext!.requestConnectorApproval({
+				requestId: "connector-approval-1",
+				sessionId: "session-1",
+				toolCallId: "call-connector-1",
+				toolName: "connector__execute_action",
+				approvalId: "approval-token-1",
+				actionId: "github.create_issue",
+				reason: "Create a GitHub issue.",
+				sideEffect: "write",
+				dataSensitivity: "normal",
+				inputKeys: ["body", "owner", "repo", "title"],
+				expiresAt: Date.now() + 300_000,
+			} satisfies ConnectorApprovalRequest);
+			expect(decision).toBe("allowOnce");
+			return [];
+		});
+		const host = new DesktopAgentHost((event) => envelopes.push(event), async (context) => {
+			factoryContext = context;
+			return agent;
+		});
+
+		await host.send(input("create issue"));
+		await waitFor(() =>
+			envelopes.some(
+				(entry) =>
+					entry.event.type === "transcript_upsert" &&
+					entry.event.item.kind === "connector_permission" &&
+					entry.event.item.status === "pending",
+			),
+		);
+		expect(JSON.stringify(envelopes)).not.toContain("approval-token-1");
+		expect(JSON.stringify(envelopes)).toContain("github.create_issue");
+		host.resolveConnectorPermission({
+			kind: "connector",
+			requestId: "connector-approval-1",
+			decision: "allowOnce",
+		});
+		await agent.finished;
+
+		try {
+			host.resolveConnectorPermission({
+				kind: "connector",
+				requestId: "connector-approval-1",
+				decision: "deny",
+			});
+			throw new Error("Expected duplicate Connector resolution to fail");
 		} catch (error) {
 			expect(getErrorCode(error)).toBe("coding_permission.request_not_found");
 		}

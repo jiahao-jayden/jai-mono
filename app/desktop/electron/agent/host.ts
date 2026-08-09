@@ -1,4 +1,5 @@
 import type { AgentEvent, AgentEventListener, AgentMessage } from "@jai/agent";
+import type { ConnectorApprovalDecision, ConnectorApprovalRequest } from "@jai/coding/connector";
 import {
 	type PermissionApprovalDecision,
 	PermissionApprovalRegistry,
@@ -16,6 +17,9 @@ import type {
 	DesktopAgentMode,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
+	DesktopConnectorApprovalRequest,
+	DesktopConnectorPermissionItem,
+	DesktopConnectorPermissionResolution,
 	DesktopMessageItem,
 	DesktopNarrationItem,
 	DesktopPermissionItem,
@@ -67,6 +71,10 @@ export interface DesktopAgentFactoryContext {
 		request: PermissionApprovalRequest,
 		signal?: AbortSignal,
 	) => Promise<PermissionApprovalDecision>;
+	readonly requestConnectorApproval: (
+		request: ConnectorApprovalRequest,
+		signal?: AbortSignal,
+	) => Promise<ConnectorApprovalDecision>;
 }
 
 export type DesktopAgentFactory = (context: DesktopAgentFactoryContext) => Promise<HostedCodingAgent>;
@@ -108,6 +116,10 @@ export class DesktopAgentHost {
 	readonly #sessions = new Map<string, SessionRuntime>();
 	readonly #creating = new Map<string, Promise<SessionRuntime>>();
 	readonly #approvals = new PermissionApprovalRegistry();
+	readonly #connectorApprovals = new PermissionApprovalRegistry<
+		DesktopConnectorApprovalRequest,
+		ConnectorApprovalDecision
+	>();
 	readonly #emit: DesktopAgentEventSink;
 	#factory?: DesktopAgentFactory;
 	#onSessionActivity?: (sessionId: string) => void;
@@ -208,6 +220,7 @@ export class DesktopAgentHost {
 		const runtime = this.#requireSession(sessionId);
 		runtime.agent.abort();
 		this.#approvals.cancelSession(sessionId);
+		this.#connectorApprovals.cancelSession(sessionId);
 	}
 
 	steer(input: DesktopAgentMessageInput): void {
@@ -220,6 +233,13 @@ export class DesktopAgentHost {
 
 	resolvePermission(resolution: PermissionResolution): void {
 		this.#approvals.resolve(resolution);
+	}
+
+	resolveConnectorPermission(resolution: DesktopConnectorPermissionResolution): void {
+		this.#connectorApprovals.resolve({
+			requestId: resolution.requestId,
+			decision: resolution.decision,
+		});
 	}
 
 	getSnapshot(sessionId: string): DesktopAgentSnapshot {
@@ -241,6 +261,7 @@ export class DesktopAgentHost {
 		this.#markSafeBoundary(runtime);
 		this.#clearPendingTranscriptUpdates(runtime);
 		this.#approvals.cancelSession(sessionId);
+		this.#connectorApprovals.cancelSession(sessionId);
 		runtime.agent.close();
 		runtime.unsubscribe();
 		this.#sessions.delete(sessionId);
@@ -256,6 +277,7 @@ export class DesktopAgentHost {
 	close(): void {
 		for (const sessionId of [...this.#sessions.keys()]) this.closeSession(sessionId);
 		this.#approvals.close();
+		this.#connectorApprovals.close();
 	}
 
 	async #getOrCreate(input: DesktopAgentMessageInput): Promise<SessionRuntime> {
@@ -329,6 +351,7 @@ export class DesktopAgentHost {
 			modelRef,
 			mode,
 			requestApproval: (request, signal) => this.#requestApproval(sessionId, request, signal),
+			requestConnectorApproval: (request, signal) => this.#requestConnectorApproval(sessionId, request, signal),
 		});
 	}
 
@@ -355,6 +378,7 @@ export class DesktopAgentHost {
 		runtime.activeToolCallIds.clear();
 		runtime.pendingToolResultIds.clear();
 		this.#approvals.cancelSession(runtime.sessionId);
+		this.#connectorApprovals.cancelSession(runtime.sessionId);
 		previous.close();
 	}
 
@@ -394,6 +418,51 @@ export class DesktopAgentHost {
 		} catch (error) {
 			if (runtime.closed) throw error;
 			const cancelled: DesktopPermissionItem = { ...item, status: "cancelled" };
+			runtime.items.set(item.id, cancelled);
+			this.#emitNow(runtime, { type: "transcript_upsert", item: cancelled });
+			throw error;
+		}
+	}
+
+	async #requestConnectorApproval(
+		sessionId: string,
+		request: ConnectorApprovalRequest,
+		signal?: AbortSignal,
+	): Promise<ConnectorApprovalDecision> {
+		const runtime = this.#requireSession(sessionId);
+		const safeRequest: DesktopConnectorApprovalRequest = {
+			requestId: request.requestId,
+			sessionId,
+			toolCallId: request.toolCallId,
+			toolName: request.toolName,
+			actionId: request.actionId,
+			reason: request.reason,
+			sideEffect: request.sideEffect,
+			dataSensitivity: request.dataSensitivity,
+			inputKeys: [...request.inputKeys],
+			expiresAt: request.expiresAt,
+		};
+		const pending = this.#connectorApprovals.register(safeRequest, signal);
+		const item: DesktopConnectorPermissionItem = {
+			kind: "connector_permission",
+			id: `connector-permission:${request.requestId}`,
+			request: safeRequest,
+			status: "pending",
+		};
+		runtime.items.set(item.id, item);
+		this.#emitNow(runtime, { type: "transcript_upsert", item });
+		try {
+			const decision = await pending.result;
+			const resolved: DesktopConnectorPermissionItem = {
+				...item,
+				status: decision === "deny" ? "denied" : "allowed",
+			};
+			runtime.items.set(item.id, resolved);
+			this.#emitNow(runtime, { type: "transcript_upsert", item: resolved });
+			return decision;
+		} catch (error) {
+			if (runtime.closed) throw error;
+			const cancelled: DesktopConnectorPermissionItem = { ...item, status: "cancelled" };
 			runtime.items.set(item.id, cancelled);
 			this.#emitNow(runtime, { type: "transcript_upsert", item: cancelled });
 			throw error;

@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
 	DesktopAgentMode,
+	DesktopConnectorPermissionItem,
 	DesktopPermissionItem,
 	DesktopProject,
 	DesktopProviderConfigSnapshot,
@@ -123,9 +124,17 @@ export function ChatColumn({
 	const pendingPermissions = chat.messages.filter(
 		(item): item is DesktopPermissionItem => item.kind === "permission" && item.status === "pending",
 	);
+	const pendingConnectorPermissions = chat.messages.filter(
+		(item): item is DesktopConnectorPermissionItem =>
+			item.kind === "connector_permission" && item.status === "pending",
+	);
+	const pendingApprovals = [...pendingPermissions, ...pendingConnectorPermissions];
 	const transcriptItems =
-		pendingPermissions.length > 0
-			? chat.messages.filter((item) => item.kind !== "permission" || item.status !== "pending")
+		pendingApprovals.length > 0
+			? chat.messages.filter(
+					(item) =>
+						(item.kind !== "permission" && item.kind !== "connector_permission") || item.status !== "pending",
+				)
 			: chat.messages;
 	const transcriptScroll = useTranscriptScroll({
 		ref: scrollRef,
@@ -372,18 +381,42 @@ export function ChatColumn({
 					<div className="shrink-0 px-5 pb-3">
 						<div className="mx-auto flex w-full max-w-190 flex-col gap-2">
 							<AnimatePresence initial={false}>
-								{pendingPermissions.length > 0 ? (
+								{pendingApprovals.length > 0 ? (
 									<PermissionRequests
 										key="permission-requests"
-										requests={pendingPermissions.map((item) => ({
-											id: item.request.requestId,
-											title: item.request.summary.title,
-											description: item.request.summary.description || item.request.reason,
-											command: item.request.summary.command,
-											path: item.request.summary.path,
-											canAlwaysAllow: item.request.canAlwaysAllow ?? Boolean(item.request.suggestedRule),
-										}))}
-										onResolve={(requestId, decision) => chat.resolvePermission({ requestId, decision })}
+										requests={pendingApprovals.map((item) =>
+											item.kind === "permission"
+												? {
+														id: item.request.requestId,
+														kind: "permission" as const,
+														title: item.request.summary.title,
+														description: item.request.summary.description || item.request.reason,
+														command: item.request.summary.command,
+														path: item.request.summary.path,
+														canAlwaysAllow:
+															item.request.canAlwaysAllow ?? Boolean(item.request.suggestedRule),
+													}
+												: {
+														id: item.request.requestId,
+														kind: "connector" as const,
+														title: "Connector action requests permission",
+														description: item.request.reason,
+														actionId: item.request.actionId,
+														inputKeys: item.request.inputKeys,
+														canAlwaysAllow: false,
+													},
+										)}
+										onResolve={(requestId, decision) => {
+											const request = pendingApprovals.find((item) => item.request.requestId === requestId);
+											if (request?.kind === "connector_permission") {
+												return chat.resolvePermission({
+													kind: "connector",
+													requestId,
+													decision: decision === "deny" ? "deny" : "allowOnce",
+												});
+											}
+											return chat.resolvePermission({ requestId, decision });
+										}}
 									/>
 								) : null}
 							</AnimatePresence>

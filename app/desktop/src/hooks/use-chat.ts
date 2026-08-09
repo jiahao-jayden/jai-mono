@@ -1,4 +1,3 @@
-import type { PermissionResolution } from "@jai/coding/permissions/approval";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { desktop } from "@/lib/desktop";
 import { createDesktopAgentEventDispatcher, type DesktopAgentProjectionUpdate } from "@/lib/desktop-agent";
@@ -9,6 +8,7 @@ import type {
 	DesktopAgentMode,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
+	DesktopPermissionResolution,
 	DesktopTodos,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
@@ -42,7 +42,7 @@ export interface Chat {
 	sendMessage(message: ChatMessageInput): Promise<void>;
 	stop(): Promise<void>;
 	clearError(): void;
-	resolvePermission(resolution: PermissionResolution): Promise<void>;
+	resolvePermission(resolution: DesktopPermissionResolution): Promise<void>;
 }
 
 export interface ChatRuntimeState {
@@ -218,7 +218,7 @@ export function useChat(options: UseChatOptions): Chat {
 		setState((current) => (current.error ? { ...current, error: undefined } : current));
 	}, []);
 
-	const resolvePermission = useCallback(async (resolution: PermissionResolution) => {
+	const resolvePermission = useCallback(async (resolution: DesktopPermissionResolution) => {
 		try {
 			await desktop.agent.resolvePermission(resolution);
 		} catch {

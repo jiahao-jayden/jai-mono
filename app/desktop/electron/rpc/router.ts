@@ -9,12 +9,14 @@ import {
 	type DesktopAgentEvent,
 	type DesktopAgentMessageInput,
 	type DesktopApi,
+	type DesktopConnectorPermissionResolution,
 	type DesktopProject,
 	type DesktopProviderConfigInput,
 	type DesktopSessionCreateInput,
 	type DesktopSessionDeleteInput,
 	type DesktopSessionRenameInput,
 	type DesktopTheme,
+	desktopConnectorPermissionResolutionSchema,
 } from "../../shared/desktop-rpc";
 import { type DesktopAgentFactory, DesktopAgentHost } from "../agent/host";
 import { projectSessionSnapshot } from "../agent/projector";
@@ -237,10 +239,15 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 			desktopAgentHost.followUp(assertMessageInput(input));
 		},
 		resolvePermission(_event, resolution) {
-			if (!Value.Check(permissionResolutionSchema, resolution)) {
-				throw agentInputError({ message: "Invalid permission resolution" });
+			if (Value.Check(permissionResolutionSchema, resolution)) {
+				desktopAgentHost.resolvePermission(resolution as PermissionResolution);
+				return;
 			}
-			desktopAgentHost.resolvePermission(resolution as PermissionResolution);
+			if (Value.Check(desktopConnectorPermissionResolutionSchema, resolution)) {
+				desktopAgentHost.resolveConnectorPermission(resolution as DesktopConnectorPermissionResolution);
+				return;
+			}
+			throw agentInputError({ message: "Invalid permission resolution" });
 		},
 		async getSnapshot(_event, sessionId) {
 			const parsedSessionId = assertSessionId(sessionId);

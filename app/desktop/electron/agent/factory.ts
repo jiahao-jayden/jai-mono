@@ -52,7 +52,7 @@ export function createDesktopAgentFactory(
 	service: CodingBusinessService,
 	connectorService: ConnectorService,
 ): DesktopAgentFactory {
-	return async ({ sessionId, modelRef, mode, requestApproval }) => {
+	return async ({ sessionId, modelRef, mode, requestApproval, requestConnectorApproval }) => {
 		const session = service.getSession(sessionId);
 		const executionContext = await service.resolveExecutionContext(sessionId);
 		const agentPluginDirectories = await discoverDesktopAgentPluginDirectories({
@@ -124,6 +124,7 @@ export function createDesktopAgentFactory(
 			},
 			connector: {
 				client: connectorService,
+				requestApproval: requestConnectorApproval,
 			},
 		});
 		for (const diagnostic of codingAgent.pluginDiagnostics) {
