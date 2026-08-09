@@ -143,34 +143,48 @@ export interface DesktopProviderConfigSnapshot {
 
 export interface DesktopConnectorCredential {
 	readonly key: string;
+	readonly label: string;
+	readonly kind: "text" | "secret" | "url";
+	readonly description?: string;
+	readonly placeholder?: string;
 	readonly configured: boolean;
 	readonly mask?: string;
+}
+
+export interface DesktopConnectorOAuthConnection {
+	readonly connected: boolean;
+	readonly scopes: readonly string[];
+	readonly expiresAt?: number;
 }
 
 export interface DesktopConnectorProvider {
 	readonly id: string;
 	readonly name: string;
+	readonly iconUrl?: string;
+	readonly description?: string;
 	readonly authTypes: readonly string[];
 	readonly enabled: boolean;
-	readonly defaultConnection: string;
 	readonly credentials: readonly DesktopConnectorCredential[];
+	readonly oauth?: DesktopConnectorOAuthConnection;
 }
 
 export interface DesktopConnectorConfigSnapshot {
-	readonly enabled: boolean;
 	readonly providers: readonly DesktopConnectorProvider[];
 }
 
 export interface DesktopConnectorProviderInput {
 	readonly id: string;
 	readonly enabled: boolean;
-	readonly defaultConnection: string;
 	readonly credentials: Readonly<Record<string, string>>;
 }
 
 export interface DesktopConnectorConfigInput {
-	readonly enabled: boolean;
 	readonly providers: readonly DesktopConnectorProviderInput[];
+}
+
+export interface DesktopConnectorOAuthStartResult {
+	readonly providerId: string;
+	readonly expiresAt: number;
 }
 
 export interface DesktopProviderProfileInput {
@@ -313,6 +327,8 @@ export type DesktopAgentEvent =
 	| { readonly type: "transcript_upsert"; readonly item: DesktopTranscriptItem }
 	| { readonly type: "todos_replace"; readonly todos: DesktopTodos }
 	| { readonly type: "model_catalog_updated" }
+	| { readonly type: "connector_oauth_completed"; readonly providerId: string }
+	| { readonly type: "connector_oauth_failed"; readonly providerId: string; readonly message: string }
 	| {
 			readonly type: "runtime_error";
 			readonly error: { readonly code: string; readonly message: string; readonly data?: Static<typeof jsonValueSchema> };
@@ -378,6 +394,10 @@ export interface DesktopApi {
 		save(input: DesktopProviderConfigInput): Promise<DesktopProviderConfigSnapshot>;
 		fetchModels(profileId: string): Promise<DesktopProviderFetchModelsResult>;
 		revealApiKey(profileId: string): Promise<DesktopProviderApiKeyRevealResult>;
+	};
+	readonly connector: {
+		startOAuth(providerId: string): Promise<DesktopConnectorOAuthStartResult>;
+		disconnectOAuth(providerId: string): Promise<DesktopProviderConfigSnapshot>;
 	};
 	readonly project: {
 		list(): Promise<DesktopProject[]>;

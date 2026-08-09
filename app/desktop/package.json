@@ -19,6 +19,7 @@
 		"@jai/agent": "workspace:*",
 		"@jai/coding": "workspace:*",
 		"@jai/common": "workspace:*",
+		"@jai/connector": "workspace:*",
 		"@lobehub/icons": "^5.15.0",
 		"@monaco-editor/react": "^4.7.0",
 		"@pierre/trees": "^1.0.0-beta.3",

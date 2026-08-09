@@ -261,6 +261,9 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 			};
 		case "model_catalog_updated":
 			return { ...state, lastSeq: seq };
+		case "connector_oauth_completed":
+		case "connector_oauth_failed":
+			return { ...state, lastSeq: seq };
 		case "transcript_upsert":
 			return {
 				...state,

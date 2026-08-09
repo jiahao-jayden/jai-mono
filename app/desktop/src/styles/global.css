@@ -7,6 +7,22 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@keyframes spinner-move {
+	to {
+		stroke-dashoffset: -100;
+	}
+}
+
+@keyframes spinner-dash {
+	0%,
+	100% {
+		stroke-dasharray: 15 85;
+	}
+	50% {
+		stroke-dasharray: 40 60;
+	}
+}
+
 *:focus-visible {
 	outline: none;
 }
@@ -64,19 +80,6 @@ html.right-panel-resizing * {
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-  @keyframes spinner-move {
-  to {
-    stroke-dashoffset: -100;
-		}
-	}
-  @keyframes spinner-dash {
-  0%, 100% {
-    stroke-dasharray: 15 85;
-		}
-  50% {
-    stroke-dasharray: 40 60;
-		}
-	}
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);

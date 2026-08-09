@@ -72,7 +72,10 @@ export function ProvidersSettings({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="flex items-center gap-1 px-6 pt-3 pb-0">
+			<div className="px-8 pt-6">
+				<h2 className="text-base font-semibold">Providers</h2>
+			</div>
+			<div className="flex items-center gap-1 px-8 pb-0 pt-3">
 				<div className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto">
 					{profiles.map((profile) => (
 						<Button
@@ -101,7 +104,7 @@ export function ProvidersSettings({
 				<AddProviderMenu providerPresets={providerPresets} onAdd={addProfile} compact />
 			</div>
 
-			<div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+			<div className="min-h-0 flex-1 overflow-y-auto px-8 py-5">
 				{selected ? (
 					<div className="flex flex-col gap-5">
 						<section className="flex flex-col gap-4">

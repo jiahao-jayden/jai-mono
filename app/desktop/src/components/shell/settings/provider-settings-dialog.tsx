@@ -7,6 +7,7 @@ import type {
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
 	DesktopProviderFetchModelsResult,
+	DesktopConnectorOAuthStartResult,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
@@ -25,6 +26,8 @@ interface ProviderSettingsDialogProps {
 	readonly onSave: (input: DesktopProviderConfigInput) => Promise<DesktopProviderConfigSnapshot>;
 	readonly onFetchModels: (profileId: string) => Promise<DesktopProviderFetchModelsResult>;
 	readonly onRevealApiKey: (profileId: string) => Promise<string>;
+	readonly onStartConnectorOAuth: (providerId: string) => Promise<DesktopConnectorOAuthStartResult>;
+	readonly onDisconnectConnectorOAuth: (providerId: string) => Promise<DesktopProviderConfigSnapshot>;
 }
 
 type SettingsCategory = "general" | "providers" | "connector";
@@ -39,6 +42,8 @@ export function ProviderSettingsDialog({
 	onSave,
 	onFetchModels,
 	onRevealApiKey,
+	onStartConnectorOAuth,
+	onDisconnectConnectorOAuth,
 }: ProviderSettingsDialogProps) {
 	const [fetchingProfileId, setFetchingProfileId] = useState<string>();
 	const [lastFetch, setLastFetch] = useState<DesktopProviderFetchModelsResult>();
@@ -72,6 +77,8 @@ export function ProviderSettingsDialog({
 						onSave={onSave}
 						onFetchModels={fetchModels}
 						onRevealApiKey={onRevealApiKey}
+						onStartConnectorOAuth={onStartConnectorOAuth}
+						onDisconnectConnectorOAuth={onDisconnectConnectorOAuth}
 						fetchingProfileId={fetchingProfileId}
 						lastFetch={lastFetch}
 					/>
@@ -85,11 +92,9 @@ export function ProviderSettingsDialog({
 
 function toConnectorInput(snapshot: DesktopConnectorConfigSnapshot): DesktopConnectorConfigInput {
 	return {
-		enabled: snapshot.enabled,
 		providers: snapshot.providers.map((provider) => ({
 			id: provider.id,
 			enabled: provider.enabled,
-			defaultConnection: provider.defaultConnection,
 			credentials: {},
 		})),
 	};
@@ -133,6 +138,8 @@ interface ProviderConfigFormProps {
 	readonly onSave: (input: DesktopProviderConfigInput) => Promise<DesktopProviderConfigSnapshot>;
 	readonly onFetchModels: (profileId: string) => Promise<DesktopProviderFetchModelsResult>;
 	readonly onRevealApiKey: (profileId: string) => Promise<string>;
+	readonly onStartConnectorOAuth: (providerId: string) => Promise<DesktopConnectorOAuthStartResult>;
+	readonly onDisconnectConnectorOAuth: (providerId: string) => Promise<DesktopProviderConfigSnapshot>;
 	readonly fetchingProfileId?: string;
 	readonly lastFetch?: DesktopProviderFetchModelsResult;
 }
@@ -142,10 +149,11 @@ function ProviderConfigForm({
 	onSave,
 	onFetchModels,
 	onRevealApiKey,
+	onStartConnectorOAuth,
+	onDisconnectConnectorOAuth,
 	fetchingProfileId,
 	lastFetch,
 }: ProviderConfigFormProps) {
-	const icons = useIcons();
 	const [category, setCategory] = useState<SettingsCategory>("general");
 	const [profiles, setProfiles] = useState<ProfileDraft[]>(() => snapshot.profiles.map(toProfileDraft));
 	const [selectedProfileId, setSelectedProfileId] = useState(snapshot.profiles[0]?.id ?? "");
@@ -196,51 +204,18 @@ function ProviderConfigForm({
 		}
 	};
 
-	const categories: { id: SettingsCategory; label: string; icon: keyof typeof icons }[] = [
-		{ id: "general", label: "General", icon: "settings" },
-		{ id: "providers", label: "Providers", icon: "key" },
-		{ id: "connector", label: "Connector", icon: "link" },
-	];
-
 	return (
 		<form
-			className="relative flex h-full min-h-0 flex-col"
+			className="flex h-full min-h-0"
 			onSubmit={(event) => {
 				event.preventDefault();
 				void submit();
 			}}
 		>
-			<span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-48 z-10 w-px bg-border/45" />
-			<DialogHeader className="px-6 pt-5 mb-0">
-				<DialogTitle>Settings</DialogTitle>
-			</DialogHeader>
+			<SettingsSidebar category={category} onCategoryChange={(nextCategory) => setCategory(nextCategory)} />
 
-			<div className="flex min-h-0 flex-1">
-				<nav className="flex w-48 shrink-0 flex-col gap-0.5 bg-muted/25 px-2 py-3" aria-label="Settings">
-					{categories.map((item) => {
-						const Icon = icons[item.icon];
-						return (
-							<Button
-								type="button"
-								variant="navigation"
-								size="md"
-								leadingIcon={Icon}
-								key={item.id}
-								onClick={() => setCategory(item.id)}
-								active={category === item.id}
-								aria-current={category === item.id ? "page" : undefined}
-								className={cn(
-									"h-auto w-full justify-start gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px]",
-									category === item.id ? "font-semibold text-foreground" : "text-foreground/75",
-								)}
-							>
-								{item.label}
-							</Button>
-						);
-					})}
-				</nav>
-
-				<div className="min-w-0 flex-1 overflow-y-auto">
+			<div className="flex min-w-0 flex-1 flex-col">
+				<div className="min-h-0 flex-1 overflow-y-auto">
 					{category === "general" ? (
 						<GeneralSettings
 							language={language}
@@ -306,6 +281,8 @@ function ProviderConfigForm({
 						<ConnectorSettings
 							snapshot={snapshot.connector}
 							value={connector}
+							onStartOAuth={onStartConnectorOAuth}
+							onDisconnectOAuth={onDisconnectConnectorOAuth}
 							onChange={(value) => {
 								setConnector(value);
 								setDirty(true);
@@ -313,23 +290,71 @@ function ProviderConfigForm({
 						/>
 					)}
 				</div>
-			</div>
 
-			<DialogFooter className="items-center px-6 py-4">
-				{error ? (
-					<p className="mr-auto max-w-115 text-[12px] leading-relaxed text-destructive" role="alert">
-						{error}
-					</p>
-				) : dirty ? (
-					<p className="mr-auto flex items-center gap-1.5 text-[12px] text-muted-foreground" role="status">
-						<span className="size-1.5 rounded-full bg-amber-500" aria-hidden="true" />
-						Unsaved changes
-					</p>
-				) : null}
-				<Button type="submit" loading={saving} disabled={!canSave}>
-					Save
-				</Button>
-			</DialogFooter>
+				<DialogFooter className="items-center px-6 py-4">
+					{error ? (
+						<p className="mr-auto max-w-115 text-[12px] leading-relaxed text-destructive" role="alert">
+							{error}
+						</p>
+					) : dirty ? (
+						<p className="mr-auto flex items-center gap-1.5 text-[12px] text-muted-foreground" role="status">
+							<span className="size-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+							Unsaved changes
+						</p>
+					) : null}
+					<Button type="submit" loading={saving} disabled={!canSave}>
+						Save
+					</Button>
+				</DialogFooter>
+			</div>
 		</form>
+	);
+}
+
+function SettingsSidebar({
+	category,
+	onCategoryChange,
+}: {
+	readonly category: SettingsCategory;
+	readonly onCategoryChange: (category: SettingsCategory) => void;
+}) {
+	const icons = useIcons();
+	const categories: { id: SettingsCategory; label: string; icon: keyof typeof icons }[] = [
+		{ id: "general", label: "General", icon: "settings" },
+		{ id: "providers", label: "Providers", icon: "key" },
+		{ id: "connector", label: "Connector", icon: "link" },
+	];
+
+	return (
+		<aside className="flex w-48 shrink-0 flex-col border-r border-border/45">
+			<DialogHeader className="mb-0 px-6 pt-5">
+				<DialogTitle>Settings</DialogTitle>
+			</DialogHeader>
+			<nav className="flex min-h-0 flex-1 flex-col gap-0.5 bg-muted/25 px-2 py-3" aria-label="Settings">
+				{categories.map((item) => {
+					const Icon = icons[item.icon];
+					const isActive = category === item.id;
+					const itemClassName = cn(
+						"h-auto w-full justify-start gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px]",
+						isActive ? "font-semibold text-foreground" : "text-foreground/75",
+					);
+					return (
+						<Button
+							type="button"
+							variant="navigation"
+							size="md"
+							leadingIcon={Icon}
+							key={item.id}
+							onClick={() => onCategoryChange(item.id)}
+							active={isActive}
+							aria-current={isActive ? "page" : undefined}
+							className={itemClassName}
+						>
+							{item.label}
+						</Button>
+					);
+				})}
+			</nav>
+		</aside>
 	);
 }

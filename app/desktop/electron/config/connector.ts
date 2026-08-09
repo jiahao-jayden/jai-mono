@@ -1,43 +1,201 @@
 import type { CodingAgentSettings } from "@jai/coding/runtime";
+import {
+	findConnectorOAuthProvider,
+	parseConnectorOAuthScopes,
+	type ConnectorOAuthProviderDefinition,
+	type ConnectorOAuthProviderId,
+	type OAuthTokenResponse,
+} from "@jai/connector";
 import type {
 	DesktopConnectorConfigInput,
 	DesktopConnectorConfigSnapshot,
+	DesktopConnectorCredential,
 	DesktopConnectorProvider,
 } from "../../shared/desktop-rpc";
 
 export const connectorProviderDefinitions = [
-	{ id: "context7", name: "Context7", authTypes: ["api_key"], credentialKeys: ["apiKey"] },
-	{ id: "amap", name: "AMap", authTypes: ["api_key"], credentialKeys: ["apiKey"] },
+	{
+		id: "context7",
+		name: "Context7",
+		iconUrl: "https://context7.com/favicon.ico",
+		description: "Up-to-date library documentation and code context for your agent.",
+		authTypes: ["api_key"],
+		credentials: [
+			{
+				key: "apiKey",
+				label: "API key",
+				kind: "secret",
+				description: "Create an API key in your Context7 account.",
+				placeholder: "Paste your Context7 API key",
+			},
+		],
+	},
+	{
+		id: "amap",
+		name: "AMap",
+		iconUrl: "https://www.amap.com/favicon.ico",
+		description: "Geocoding, places, weather, routing and geographic data.",
+		authTypes: ["api_key"],
+		credentials: [
+			{
+				key: "apiKey",
+				label: "API key",
+				kind: "secret",
+				description: "Create a Web Service key in the AMap console.",
+				placeholder: "Paste your AMap Web Service key",
+			},
+		],
+	},
 	{
 		id: "mcdonalds_cn",
 		name: "McDonald's China",
+		iconUrl: "https://www.mcdonalds.com.cn/favicon.ico",
+		description: "Store, menu and product lookup through the Open Platform APIs.",
 		authTypes: ["custom_credential"],
-		credentialKeys: ["appId", "merchantId", "signingKey", "environment"],
+		credentials: [
+			{ key: "appId", label: "App ID", kind: "text", placeholder: "Your application ID" },
+			{ key: "merchantId", label: "Merchant ID", kind: "text", placeholder: "Your merchant ID" },
+			{ key: "signingKey", label: "Signing key", kind: "secret", placeholder: "Paste your signing key" },
+			{
+				key: "environment",
+				label: "Environment",
+				kind: "text",
+				description: "Use prod for live data or uat for testing.",
+				placeholder: "prod",
+			},
+		],
+	},
+	{
+		id: "google",
+		name: "Google",
+		iconUrl: "https://www.google.com/favicon.ico",
+		description: "One connection for Google Drive, Gmail, and Google Calendar.",
+		authTypes: ["oauth"],
+		credentials: [],
+	},
+	{
+		id: "github",
+		name: "GitHub",
+		iconUrl: "https://github.com/favicon.ico",
+		description: "Repositories, issues, pull requests, workflows, and your GitHub profile.",
+		authTypes: ["oauth"],
+		credentials: [],
 	},
 ] as const;
+
+const oauthCredentialKeys = ["accessToken", "refreshToken", "tokenType", "expiresAt", "scopes"] as const;
+
+export type ConnectorOAuthToken = OAuthTokenResponse & {
+	readonly expiresAt?: number;
+	readonly scopes: readonly string[];
+};
+
+export function findDesktopConnectorOAuthProvider(
+	providerId: string,
+): ConnectorOAuthProviderDefinition | undefined {
+	return findConnectorOAuthProvider(providerId);
+}
 
 export function projectConnectorConfig(
 	settings: CodingAgentSettings["connector"] | undefined,
 ): DesktopConnectorConfigSnapshot {
 	const providers = settings?.providers ?? {};
 	return {
-		enabled: settings?.enabled !== false,
 		providers: connectorProviderDefinitions.map((definition): DesktopConnectorProvider => {
 			const provider = providers[definition.id];
 			const credentials = provider?.credentials ?? {};
+			const oauth = findConnectorOAuthProvider(definition.id);
 			return {
 				id: definition.id,
 				name: definition.name,
+				iconUrl: definition.iconUrl,
+				description: definition.description,
 				authTypes: definition.authTypes,
 				enabled: provider?.enabled !== false,
-				defaultConnection: provider?.defaultConnection ?? "default",
-				credentials: definition.credentialKeys.map((key) => ({
-					key,
-					configured: typeof credentials[key] === "string" && credentials[key]!.length > 0,
-					...(credentials[key] ? { mask: maskCredential(credentials[key]!) } : {}),
-				})),
+				credentials: definition.credentials.map(
+					(definitionCredential): DesktopConnectorCredential => ({
+						...definitionCredential,
+						configured:
+							typeof credentials[definitionCredential.key] === "string" &&
+							credentials[definitionCredential.key]!.length > 0,
+						...(credentials[definitionCredential.key]
+							? { mask: maskCredential(credentials[definitionCredential.key]!) }
+							: {}),
+					}),
+				),
+				...(oauth
+					? {
+						 oauth: projectOAuthConnection(credentials, oauth.scopes),
+					  }
+					: {}),
 			};
 		}),
+	};
+}
+
+export function toStoredConnectorOAuthToken(
+	providerId: ConnectorOAuthProviderId,
+	token: OAuthTokenResponse,
+	now = Date.now(),
+): ConnectorOAuthToken {
+	const provider = findConnectorOAuthProvider(providerId)!;
+	const scopes = parseConnectorOAuthScopes(token.scope);
+	return {
+		accessToken: token.accessToken,
+		tokenType: token.tokenType,
+		...(token.refreshToken ? { refreshToken: token.refreshToken } : {}),
+		...(token.expiresIn === undefined ? {} : { expiresAt: now + token.expiresIn * 1_000 }),
+		scopes: scopes.length > 0 ? scopes : provider.scopes,
+	};
+}
+
+export function storeConnectorOAuthToken(
+	connector: CodingAgentSettings["connector"] | undefined,
+	providerId: ConnectorOAuthProviderId,
+	token: ConnectorOAuthToken,
+): NonNullable<CodingAgentSettings["connector"]> {
+	const providers = connector?.providers ?? {};
+	const current = providers[providerId];
+	const credentials = {
+		...(current?.credentials ?? {}),
+		accessToken: token.accessToken,
+		tokenType: token.tokenType,
+		scopes: token.scopes.join(" "),
+		...(token.refreshToken ? { refreshToken: token.refreshToken } : {}),
+		...(token.expiresAt === undefined ? {} : { expiresAt: String(token.expiresAt) }),
+	};
+	return {
+		...(connector ?? {}),
+		providers: {
+			...providers,
+			[providerId]: {
+				...(current ?? {}),
+				enabled: current?.enabled ?? true,
+				credentials,
+			},
+		},
+	};
+}
+
+export function removeConnectorOAuthToken(
+	connector: CodingAgentSettings["connector"] | undefined,
+	providerId: ConnectorOAuthProviderId,
+): NonNullable<CodingAgentSettings["connector"]> {
+	const providers = connector?.providers ?? {};
+	const current = providers[providerId];
+	const { credentials: _currentCredentials, ...currentWithoutCredentials } = current ?? {};
+	const credentials = { ...(current?.credentials ?? {}) };
+	for (const key of oauthCredentialKeys) delete credentials[key];
+	return {
+		...(connector ?? {}),
+		providers: {
+			...providers,
+			[providerId]: {
+				...currentWithoutCredentials,
+				enabled: current?.enabled ?? true,
+				...(Object.keys(credentials).length > 0 ? { credentials } : {}),
+			},
+		},
 	};
 }
 
@@ -57,20 +215,18 @@ export function toStoredConnector(
 		nextProviders[provider.id] = {
 			...(currentProviders[provider.id] ?? {}),
 			enabled: provider.enabled,
-			defaultConnection: provider.defaultConnection.trim() || "default",
 			...(Object.keys(credentials).length > 0 ? { credentials } : {}),
 		};
 	}
 	return {
 		...(current ?? {}),
-		enabled: input.enabled,
 		providers: nextProviders,
 	};
 }
 
 export function validateConnectorConfigInput(value: DesktopConnectorConfigInput | undefined): boolean {
 	if (value === undefined) return true;
-	if (!isRecord(value) || typeof value.enabled !== "boolean" || !Array.isArray(value.providers)) return false;
+	if (!isRecord(value) || !Array.isArray(value.providers)) return false;
 	const ids = new Set<string>();
 	for (const provider of value.providers) {
 		const definition = isRecord(provider)
@@ -81,12 +237,10 @@ export function validateConnectorConfigInput(value: DesktopConnectorConfigInput 
 			typeof provider.id !== "string" ||
 			!definition ||
 			typeof provider.enabled !== "boolean" ||
-			typeof provider.defaultConnection !== "string" ||
-			!provider.defaultConnection.trim() ||
 			!isRecord(provider.credentials) ||
 			Object.values(provider.credentials).some((credential) => typeof credential !== "string") ||
 			Object.keys(provider.credentials).some(
-				(key) => !definition.credentialKeys.some((candidate) => candidate === key),
+				(key) => !definition.credentials.some((candidate) => candidate.key === key),
 			)
 		)
 			return false;
@@ -98,6 +252,20 @@ export function validateConnectorConfigInput(value: DesktopConnectorConfigInput 
 
 function maskCredential(value: string): string {
 	return `•••• ${value.slice(-4)}`;
+}
+
+function projectOAuthConnection(
+	credentials: Readonly<Record<string, string>>,
+	defaultScopes: readonly string[],
+): NonNullable<DesktopConnectorProvider["oauth"]> {
+	const accessToken = credentials.accessToken;
+	const expiresAt = Number(credentials.expiresAt);
+	const scopes = parseConnectorOAuthScopes(credentials.scopes);
+	return {
+		connected: Boolean(accessToken),
+		scopes: scopes.length > 0 ? scopes : accessToken ? defaultScopes : [],
+		...(Number.isFinite(expiresAt) && expiresAt > 0 ? { expiresAt } : {}),
+	};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

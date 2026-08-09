@@ -114,7 +114,13 @@ export function AppShell() {
 	});
 	useEffect(() => {
 		return window.desktopRpc.onAgentEvent((envelope) => {
-			if (envelope.event.type === "model_catalog_updated") void providerQuery.refetch();
+			if (
+				envelope.event.type === "model_catalog_updated" ||
+				envelope.event.type === "connector_oauth_completed" ||
+				envelope.event.type === "connector_oauth_failed"
+			) {
+				void providerQuery.refetch();
+			}
 		});
 	}, [providerQuery.refetch]);
 	const sessionRecentsQuery = useInfiniteQuery(sessionRecentsQueryOptions());
@@ -193,6 +199,12 @@ export function AppShell() {
 	const revealProviderApiKey = async (profileId: string) => {
 		const result = await desktop.provider.revealApiKey(profileId);
 		return result.apiKey;
+	};
+	const startConnectorOAuth = (providerId: string) => desktop.connector.startOAuth(providerId);
+	const disconnectConnectorOAuth = async (providerId: string) => {
+		const snapshot = await desktop.connector.disconnectOAuth(providerId);
+		desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, snapshot);
+		return snapshot;
 	};
 	const openProviderSettings = useCallback(() => {
 		if (chat.status === "streaming" || chat.status === "submitted") return;
@@ -508,6 +520,8 @@ export function AppShell() {
 				onSave={updateProviderConfig}
 				onFetchModels={fetchProviderModels}
 				onRevealApiKey={revealProviderApiKey}
+				onStartConnectorOAuth={startConnectorOAuth}
+				onDisconnectConnectorOAuth={disconnectConnectorOAuth}
 			/>
 		</div>
 	);

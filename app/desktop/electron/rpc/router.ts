@@ -6,6 +6,7 @@ import { BrowserWindow, dialog, type IpcMainInvokeEvent, nativeTheme } from "ele
 import Store from "electron-store";
 import {
 	DESKTOP_EVENTS_CHANNEL,
+	type DesktopAgentEvent,
 	type DesktopAgentMessageInput,
 	type DesktopApi,
 	type DesktopProject,
@@ -19,6 +20,7 @@ import { type DesktopAgentFactory, DesktopAgentHost } from "../agent/host";
 import { projectSessionSnapshot } from "../agent/projector";
 import { DesktopConfigService } from "../config";
 import { desktopModelCatalog, setDesktopModelCatalogUpdateListener } from "../model-catalog";
+import { DesktopOAuthManager } from "../oauth";
 
 type DesktopRouterImplementation<T> = {
 	[K in keyof T]: T[K] extends (...args: infer TArgs) => infer TResult
@@ -45,6 +47,7 @@ const desktopProjectError = (init: { readonly cause?: unknown; readonly message:
 	new ProjectPickerFailed(init);
 let codingBusiness: CodingBusinessService | undefined;
 let providerConfig: DesktopConfigService | undefined;
+let desktopOAuth: DesktopOAuthManager | undefined;
 const desktopAgentHost = new DesktopAgentHost((envelope) => {
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) window.webContents.send(DESKTOP_EVENTS_CHANNEL, envelope);
@@ -52,15 +55,7 @@ const desktopAgentHost = new DesktopAgentHost((envelope) => {
 });
 setDesktopModelCatalogUpdateListener(() => {
 	desktopAgentHost.invalidateSessions();
-	for (const window of BrowserWindow.getAllWindows()) {
-		if (!window.isDestroyed()) {
-			window.webContents.send(DESKTOP_EVENTS_CHANNEL, {
-				sessionId: "desktop",
-				seq: 1,
-				event: { type: "model_catalog_updated" },
-			});
-		}
-	}
+	publishDesktopEvent({ type: "model_catalog_updated" });
 });
 
 export function setDesktopAgentFactory(factory: DesktopAgentFactory): void {
@@ -69,8 +64,10 @@ export function setDesktopAgentFactory(factory: DesktopAgentFactory): void {
 
 export function setCodingBusinessService(service: CodingBusinessService): void {
 	codingBusiness = service;
+	void desktopOAuth?.close();
 	providerConfig?.close();
 	providerConfig = new DesktopConfigService({ catalog: desktopModelCatalog, inventory: service });
+	desktopOAuth = new DesktopOAuthManager({ config: providerConfig, onCallback: handleDesktopOAuthCallback });
 	desktopAgentHost.setSessionActivityListener((sessionId) => service.touchSession(sessionId));
 	desktopAgentHost.setRunCompletedListener(async ({ sessionId, firstMessage, messages, agent }) => {
 		const session = service.getSession(sessionId);
@@ -89,11 +86,31 @@ export function setCodingBusinessService(service: CodingBusinessService): void {
 
 export function closeDesktopRuntime(): void {
 	desktopAgentHost.close();
+	void desktopOAuth?.close();
 	providerConfig?.close();
 	providerConfig = undefined;
+	desktopOAuth = undefined;
 	desktopModelCatalog.close();
 	codingBusiness?.close();
 	codingBusiness = undefined;
+}
+
+export async function handleDesktopOAuthCallback(url: string): Promise<void> {
+	try {
+		const result = await requireDesktopOAuth().handleCallback(url);
+		desktopAgentHost.invalidateSessions();
+		publishDesktopEvent({ type: "connector_oauth_completed", providerId: result.providerId });
+	} catch (error) {
+		const providerId = oauthProviderIdFromError(error);
+		if (providerId) {
+			publishDesktopEvent({
+				type: "connector_oauth_failed",
+				providerId,
+				message: error instanceof Error ? error.message : "OAuth authorization could not be completed",
+			});
+		}
+		throw error;
+	}
 }
 
 export function restoreTheme(): void {
@@ -143,6 +160,16 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 		},
 		revealApiKey(_event, profileId) {
 			return requireProviderConfig().revealApiKey(profileId);
+		},
+	},
+	connector: {
+		startOAuth(_event, providerId) {
+			return requireDesktopOAuth().start(assertConnectorOAuthProviderId(providerId));
+		},
+		async disconnectOAuth(_event, providerId) {
+			const snapshot = await requireDesktopOAuth().disconnect(assertConnectorOAuthProviderId(providerId));
+			desktopAgentHost.invalidateSessions();
+			return snapshot;
 		},
 	},
 	project: {
@@ -270,6 +297,38 @@ function requireProviderConfig(): DesktopConfigService {
 	throw desktopBusinessError({
 		message: "Provider configuration services are not initialized",
 	});
+}
+
+function requireDesktopOAuth(): DesktopOAuthManager {
+	if (desktopOAuth) return desktopOAuth;
+	throw desktopBusinessError({
+		message: "OAuth authorization is not initialized",
+	});
+}
+
+function assertConnectorOAuthProviderId(value: unknown): string {
+	if (value !== "google" && value !== "github") {
+		throw agentInputError({ message: "Invalid OAuth Connector provider" });
+	}
+	return value;
+}
+
+function publishDesktopEvent(event: DesktopAgentEvent): void {
+	for (const window of BrowserWindow.getAllWindows()) {
+		if (!window.isDestroyed()) {
+			window.webContents.send(DESKTOP_EVENTS_CHANNEL, {
+				sessionId: "desktop",
+				seq: 1,
+				event,
+			});
+		}
+	}
+}
+
+function oauthProviderIdFromError(error: unknown): string | undefined {
+	if (!isRecord(error) || !isRecord(error.data)) return undefined;
+	const providerId = error.data.providerId;
+	return providerId === "google" || providerId === "github" ? providerId : undefined;
 }
 
 function assertSessionCreateInput(value: unknown): DesktopSessionCreateInput {

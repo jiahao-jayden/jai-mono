@@ -8,7 +8,15 @@ import type { ForgeConfig } from "@electron-forge/shared-types";
 
 const config: ForgeConfig = {
 	packagerConfig: {
+		appBundleId: "com.jayden.jai",
 		asar: true,
+		executableName: "JAI",
+		protocols: [
+			{
+				name: "JAI Connector",
+				schemes: ["jai"],
+			},
+		],
 	},
 	rebuildConfig: {},
 	makers: [new MakerSquirrel({}), new MakerZIP({}, ["darwin"]), new MakerDeb({})],

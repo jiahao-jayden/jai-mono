@@ -267,19 +267,16 @@ describe("DesktopConfigService", () => {
 			revision: null,
 			profiles: [],
 			connector: {
-				enabled: true,
 				providers: [
 					{
 						id: "context7",
 						enabled: true,
-						defaultConnection: "docs",
 						credentials: { apiKey: "ctx-secret-1234" },
 					},
 				],
 			},
 		});
 		expect(first.connector.providers.find((provider) => provider.id === "context7")).toMatchObject({
-			defaultConnection: "docs",
 			credentials: [{ key: "apiKey", configured: true, mask: "•••• 1234" }],
 		});
 		expect(JSON.stringify(first)).not.toContain("ctx-secret-1234");
@@ -288,13 +285,47 @@ describe("DesktopConfigService", () => {
 			revision: first.revision,
 			profiles: [],
 			connector: {
-				enabled: true,
-				providers: [{ id: "context7", enabled: true, defaultConnection: "docs", credentials: {} }],
+				providers: [{ id: "context7", enabled: true, credentials: {} }],
 			},
 		});
 		expect(preserved.connector.providers.find((provider) => provider.id === "context7")?.credentials[0]?.configured).toBe(true);
 		const document = await readFile(join(homeDir, ".jai", "settings.json"), "utf8");
 		expect(document).toContain("ctx-secret-1234");
+		service.close();
+	});
+
+	test("OAuth Connector token 保存到 settings.json，但只向 renderer 投影连接状态", async () => {
+		const homeDir = await fixture();
+		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
+		const snapshot = await service.saveConnectorOAuth("google", {
+			accessToken: "google-access-secret",
+			tokenType: "Bearer",
+			refreshToken: "google-refresh-secret",
+			expiresIn: 3_600,
+			scope: "https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/gmail.readonly",
+		});
+		const google = snapshot.connector.providers.find((provider) => provider.id === "google");
+		expect(google?.oauth).toMatchObject({
+			connected: true,
+			scopes: [
+				"https://www.googleapis.com/auth/drive.metadata.readonly",
+				"https://www.googleapis.com/auth/gmail.readonly",
+			],
+		});
+		expect(JSON.stringify(snapshot)).not.toContain("google-access-secret");
+		expect(JSON.stringify(snapshot)).not.toContain("google-refresh-secret");
+
+		const document = JSON.parse(await readFile(join(homeDir, ".jai", "settings.json"), "utf8"));
+		expect(document.connector.providers.google.credentials).toMatchObject({
+			accessToken: "google-access-secret",
+			refreshToken: "google-refresh-secret",
+			tokenType: "Bearer",
+		});
+
+		const disconnected = await service.disconnectConnectorOAuth("google");
+		expect(disconnected.connector.providers.find((provider) => provider.id === "google")?.oauth?.connected).toBe(false);
+		const afterDisconnect = JSON.parse(await readFile(join(homeDir, ".jai", "settings.json"), "utf8"));
+		expect(afterDisconnect.connector.providers.google.credentials).toBeUndefined();
 		service.close();
 	});
 });

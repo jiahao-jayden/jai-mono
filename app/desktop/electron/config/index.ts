@@ -13,7 +13,16 @@ import type {
 	DesktopProviderFetchModelsResult,
 	DesktopProviderProfileInput,
 } from "../../shared/desktop-rpc";
-import { projectConnectorConfig, toStoredConnector, validateConnectorConfigInput } from "./connector";
+import {
+	findDesktopConnectorOAuthProvider,
+	projectConnectorConfig,
+	removeConnectorOAuthToken,
+	storeConnectorOAuthToken,
+	toStoredConnector,
+	toStoredConnectorOAuthToken,
+	validateConnectorConfigInput,
+} from "./connector";
+import type { OAuthTokenResponse } from "@jai/connector";
 import {
 	projectProviderConfig,
 	providerConfigError,
@@ -149,6 +158,40 @@ export class DesktopConfigService {
 			});
 		}
 		return { profileId, apiKey };
+	}
+
+	async saveConnectorOAuth(providerId: string, token: OAuthTokenResponse): Promise<DesktopProviderConfigSnapshot> {
+		const provider = findDesktopConnectorOAuthProvider(providerId);
+		if (!provider) throw invalidInput("Unknown OAuth Connector provider");
+		const userScope = await this.#store.readScope("user");
+		const settings = structuredClone(userScope.settings);
+		settings.connector = storeConnectorOAuthToken(
+			settings.connector,
+			provider.id,
+			toStoredConnectorOAuthToken(provider.id, token),
+		);
+		const snapshot = await this.#store.writeScope("user", settings, { expectedRevision: userScope.revision });
+		return projectDesktopConfig(
+			snapshot.settings,
+			snapshot.scopeRevisions.user,
+			this.#catalog?.cached?.catalog,
+			this.#inventories(snapshot.settings),
+		);
+	}
+
+	async disconnectConnectorOAuth(providerId: string): Promise<DesktopProviderConfigSnapshot> {
+		const provider = findDesktopConnectorOAuthProvider(providerId);
+		if (!provider) throw invalidInput("Unknown OAuth Connector provider");
+		const userScope = await this.#store.readScope("user");
+		const settings = structuredClone(userScope.settings);
+		settings.connector = removeConnectorOAuthToken(settings.connector, provider.id);
+		const snapshot = await this.#store.writeScope("user", settings, { expectedRevision: userScope.revision });
+		return projectDesktopConfig(
+			snapshot.settings,
+			snapshot.scopeRevisions.user,
+			this.#catalog?.cached?.catalog,
+			this.#inventories(snapshot.settings),
+		);
 	}
 
 	close(): void {
