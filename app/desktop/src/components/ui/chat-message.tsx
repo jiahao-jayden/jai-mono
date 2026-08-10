@@ -57,17 +57,19 @@ const streamdownIcons = {
 	XIcon: makeStreamdownIcon(Cancel01Icon),
 };
 
-const AssistantMarkdown = memo(function AssistantMarkdown({
+export const MarkdownContent = memo(function MarkdownContent({
 	content,
-	isStreaming,
+	isStreaming = false,
+	className,
 }: {
 	content: string;
-	isStreaming: boolean;
+	isStreaming?: boolean;
+	className?: string;
 }) {
 	return (
 		<Streamdown
 			aria-live="off"
-			className="chat-markdown"
+			className={cn("chat-markdown", className)}
 			controls={streamdownControls}
 			icons={streamdownIcons}
 			isAnimating={isStreaming}
@@ -218,7 +220,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
             )}
           >
             {!isUser && typeof children === "string" ? (
-              <AssistantMarkdown content={children} isStreaming={isStreaming} />
+							<MarkdownContent content={children} isStreaming={isStreaming} />
             ) : (
               children
             )}

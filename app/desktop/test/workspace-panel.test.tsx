@@ -1,60 +1,47 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { ArtifactPanel } from "../src/components/shell/workspace-panel";
 
-mock.module("../src/components/ui/tabs", () => {
-	const Tab = ({
-		children,
-		indicatorClassName: _indicatorClassName,
-		...props
-	}: {
-		children: React.ReactNode;
-		indicatorClassName?: string;
-		[key: string]: unknown;
-	}) => <div {...props}>{children}</div>;
-	const TabPanel = ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
-		<div {...props}>{children}</div>
-	);
-
-	return {
-		Tabs: Tab,
-		TabsList: Tab,
-		TabItem: ({ label, icon: _icon, ...props }: { label: string; icon?: unknown; [key: string]: unknown }) => (
-			<button {...props}>{label}</button>
-		),
-		TabPanel,
-	};
-});
-
-const { WorkspacePanel } = await import("../src/components/shell/workspace-panel");
-
-describe("WorkspacePanel", () => {
-	test("提供编辑器式 Open file 和 Context tabs，并保持文件预览的诚实空状态", () => {
+describe("ArtifactPanel", () => {
+	test("在没有生成文件时显示诚实的空状态", () => {
 		const markup = renderToStaticMarkup(
-			<WorkspacePanel
-				status="idle"
-				project={{
-					id: "project-1",
-					displayName: "Panda Work",
-					path: "/tmp/panda-work",
-					canonicalPath: "/tmp/panda-work",
-					createdAt: 1,
-					updatedAt: 1,
-				}}
-				todos={{
-					version: 1,
-					updatedAt: 1,
-					items: [{ id: "inspect", content: "Inspect files", status: "completed" }],
-				}}
+			<ArtifactPanel sessionId="session-1" artifacts={[]} selectedArtifactId={null} onSelectArtifact={() => {}} />,
+		);
+
+		expect(markup).toContain('id="artifact-panel"');
+		expect(markup).toContain("Artifacts");
+		expect(markup).toContain("No artifacts yet");
+		expect(markup).toContain("生成的 Markdown 和 HTML 会显示在这里。");
+	});
+
+	test("列出会话的 Markdown 与 HTML Artifact", () => {
+		const markup = renderToStaticMarkup(
+			<ArtifactPanel
+				sessionId="session-1"
+				selectedArtifactId="artifact:report.md"
+				onSelectArtifact={() => {}}
+				artifacts={[
+					{
+						id: "artifact:report.md",
+						toolCallId: "call-1",
+						path: "docs/report.md",
+						format: "markdown",
+						updatedAt: 1,
+					},
+					{
+						id: "artifact:preview.html",
+						toolCallId: "call-2",
+						path: "preview.html",
+						format: "html",
+						updatedAt: 2,
+					},
+				]}
 			/>,
 		);
 
-		expect(markup).toContain('aria-label="Workspace views"');
-		expect(markup).toContain("Open file");
-		expect(markup).toContain("Context");
-		expect(markup).toContain('aria-label="Open file tab"');
-		expect(markup).toContain("Open a file");
-		expect(markup).toContain("Select a file to preview it here.");
-		expect(markup).toContain("Panda Work");
-		expect(markup).toContain("/tmp/panda-work");
+		expect(markup).toContain('aria-label="Session artifacts"');
+		expect(markup).toContain("report.md");
+		expect(markup).toContain("preview.html");
+		expect(markup).toContain("Loading preview");
 	});
 });

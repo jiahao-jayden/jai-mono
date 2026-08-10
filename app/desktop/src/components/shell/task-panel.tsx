@@ -1,25 +1,26 @@
-import type { Project } from "@jai/coding/business";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
 import spinners from "unicode-animations/braille";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
-import type { DesktopAgentStatus, DesktopTodoItem, DesktopTodos } from "../../../shared/desktop-rpc";
+import type { DesktopAgentStatus, DesktopArtifact, DesktopTodoItem, DesktopTodos } from "../../../shared/desktop-rpc";
+import { Button } from "../ui/button";
 
 interface TaskPanelProps {
 	status: DesktopAgentStatus;
 	todos?: DesktopTodos;
-	project?: Project;
+	artifacts: readonly DesktopArtifact[];
+	selectedArtifactId: string | null;
+	onOpenArtifact(artifact: DesktopArtifact): void;
 }
 
-export function TaskPanel({ status, todos, project }: TaskPanelProps) {
+export function TaskPanel({ status, todos, artifacts, selectedArtifactId, onOpenArtifact }: TaskPanelProps) {
 	const icons = useIcons();
 	const reduceMotion = useReducedMotion();
 	const ChevronRightIcon = icons["chevron-right"];
+	const ArchiveIcon = icons.archive;
 	const FileCodeIcon = icons["file-code"];
-	const FolderOpenIcon = icons["folder-open"];
-	const LayersIcon = icons.layers;
-	const TerminalIcon = icons.terminal;
+	const HtmlIcon = icons["rectangle-horizontal"];
 	const todoItems = todos?.items ?? [];
 	const completedTodos = todoItems.filter((item) => item.status === "completed").length;
 	const cancelledTodos = todoItems.filter((item) => item.status === "cancelled").length;
@@ -87,32 +88,55 @@ export function TaskPanel({ status, todos, project }: TaskPanelProps) {
 
 				<section className="px-4 pt-2.5 pb-3.5">
 					<div className="flex items-center justify-between">
-						<h2 className="text-[14px] font-semibold">Project</h2>
-						<LayersIcon size={14} className="text-muted-foreground" />
+						<h2 className="text-[14px] font-semibold">Artifacts</h2>
+						<span className="flex items-center gap-1.5 text-[12px] tabular-nums text-muted-foreground">
+							{artifacts.length}
+							<ArchiveIcon size={14} />
+						</span>
 					</div>
-					<div className="mt-4 flex justify-center">
-						<div className="relative h-12 w-32" aria-hidden="true">
-							<span className="absolute left-1 top-2 flex h-9 w-12 -rotate-6 items-center justify-center rounded-md border border-border bg-background">
-								<FileCodeIcon size={14} className="text-muted-foreground" />
-							</span>
-							<span className="absolute left-10 top-1 flex h-10 w-12 items-center justify-center rounded-md border border-border bg-background">
-								<TerminalIcon size={14} className="text-muted-foreground" />
-							</span>
-							<span className="absolute right-1 top-0 flex h-11 w-14 rotate-6 items-center justify-center rounded-md border border-primary-2/25 bg-primary-2/8 text-primary-2">
-								<FolderOpenIcon size={16} />
-							</span>
-						</div>
-					</div>
-					<div className="mt-2 text-center">
-						<p className="truncate text-[12.5px] font-medium">{project?.displayName ?? "No project"}</p>
-						<p className="mt-1 text-[11.5px] leading-relaxed text-foreground/70">
-							{project ? project.path : "此会话没有本地文件访问上下文。"}
+					{artifacts.length === 0 ? (
+						<p className="py-3 text-[12.5px] leading-relaxed text-foreground/70">
+							生成的 Markdown 和 HTML 会显示在这里。
 						</p>
-					</div>
+					) : (
+						<ul className="mt-2 max-h-44 space-y-1 overflow-y-auto" aria-label="Session artifacts">
+							{artifacts.map((artifact) => {
+								const isSelected = artifact.id === selectedArtifactId;
+								const ArtifactIcon = artifact.format === "html" ? HtmlIcon : FileCodeIcon;
+								return (
+									<li key={artifact.id}>
+										<Button
+											type="button"
+											variant="ghost"
+											size="sm"
+											active={isSelected}
+											onClick={() => onOpenArtifact(artifact)}
+											aria-current={isSelected ? "true" : undefined}
+											className="h-auto w-full justify-start rounded-[8px] px-2 py-1.5"
+											contentClassName="w-full min-w-0 justify-start"
+											labelClassName="flex min-w-0 flex-1 items-center gap-2"
+										>
+											<ArtifactIcon size={14} className="shrink-0 text-muted-foreground" />
+											<span className="min-w-0 flex-1 truncate text-left text-[12px]" title={artifact.path}>
+												{artifactName(artifact.path)}
+											</span>
+											<span className="shrink-0 text-[10px] font-medium uppercase text-muted-foreground">
+												{artifact.format}
+											</span>
+										</Button>
+									</li>
+								);
+							})}
+						</ul>
+					)}
 				</section>
 			</div>
 		</aside>
 	);
+}
+
+function artifactName(path: string): string {
+	return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 }
 
 function TodoRow({ todo, agentStatus }: { readonly todo: DesktopTodoItem; readonly agentStatus: DesktopAgentStatus }) {

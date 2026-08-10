@@ -64,9 +64,9 @@ interface ChatColumnProps {
 	projectLoadError: boolean;
 	projectError?: string;
 	sidebarOpen: boolean;
-	workspacePanelOpen: boolean;
+	artifactPanelOpen: boolean;
 	onToggleSidebar(): void;
-	onToggleWorkspacePanel(): void;
+	onToggleArtifactPanel(): void;
 	onOpenProviderSettings(): void;
 	onSelectProviderModel(modelRef: string): void;
 	onSelectAgentMode(mode: DesktopAgentMode): void;
@@ -97,9 +97,9 @@ export function ChatColumn({
 	projectLoadError,
 	projectError,
 	sidebarOpen,
-	workspacePanelOpen,
+	artifactPanelOpen,
 	onToggleSidebar,
-	onToggleWorkspacePanel,
+	onToggleArtifactPanel,
 	onOpenProviderSettings,
 	onSelectProviderModel,
 	onSelectAgentMode,
@@ -268,11 +268,11 @@ export function ChatColumn({
 							type="button"
 							variant="ghost"
 							size="icon-sm"
-							onClick={onToggleWorkspacePanel}
-							aria-expanded={workspacePanelOpen}
-							aria-controls="workspace-panel"
-							aria-label={workspacePanelOpen ? "Close workspace panel" : "Open workspace panel"}
-							title={workspacePanelOpen ? "Close workspace panel" : "Open workspace panel"}
+							onClick={onToggleArtifactPanel}
+							aria-expanded={artifactPanelOpen}
+							aria-controls="artifact-panel"
+							aria-label={artifactPanelOpen ? "Close artifact preview" : "Open artifact preview"}
+							title={artifactPanelOpen ? "Close artifact preview" : "Open artifact preview"}
 							className="shrink-0 text-muted-foreground"
 						>
 							<PanelRightIcon size={16} />

@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 import { selectDraft, useDesktopChatStore } from "@/stores/chat";
 import {
+	type DesktopArtifact,
 	type DesktopProject,
 	type DesktopProviderConfigInput,
 	isDesktopProviderModelRunnable,
@@ -37,7 +38,7 @@ import { ProjectPage, ProjectsPage } from "./projects-page";
 import { ProviderSettingsDialog } from "./settings/provider-settings-dialog";
 import { Sidebar } from "./sidebar/sidebar";
 import { TaskPanel } from "./task-panel";
-import { WorkspacePanel } from "./workspace-panel";
+import { ArtifactPanel } from "./workspace-panel";
 
 const MIN_SIDEBAR_WIDTH = 200;
 const DEFAULT_SIDEBAR_WIDTH = 264;
@@ -60,7 +61,8 @@ export function AppShell() {
 	const location = useLocation();
 	const navigate = useNavigate();
 	const [sidebarOpen, setSidebarOpen] = useState(true);
-	const [workspacePanelOpen, setWorkspacePanelOpen] = useState(false);
+	const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
+	const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
 	const [providerSettingsOpen, setProviderSettingsOpen] = useState(false);
 	const storedSessionId = useDesktopChatStore((state) => state.activeSessionId);
 	const draft = useDesktopChatStore(selectDraft);
@@ -160,7 +162,7 @@ export function AppShell() {
 	const sidebarWidth = useMotionValue(DEFAULT_SIDEBAR_WIDTH);
 	const rightPanelWidth = useMotionValue(DEFAULT_RIGHT_PANEL_WIDTH);
 	const fixedTaskPanelWidth = useMotionValue(DEFAULT_RIGHT_PANEL_WIDTH);
-	const activeRightPanelWidth = workspacePanelOpen ? rightPanelWidth : fixedTaskPanelWidth;
+	const activeRightPanelWidth = artifactPanelOpen ? rightPanelWidth : fixedTaskPanelWidth;
 	const sidebarResize = useColumnResize(shellRef, sidebarWidth, {
 		defaultWidth: DEFAULT_SIDEBAR_WIDTH,
 		minWidth: MIN_SIDEBAR_WIDTH,
@@ -183,6 +185,12 @@ export function AppShell() {
 	const panelMotionInitial = reduceMotion ? { opacity: 1 } : { opacity: 0, transform: "translateX(10px)" };
 	const panelMotionExit = reduceMotion ? { opacity: 0 } : { opacity: 0, transform: "translateX(-6px)" };
 	const panelMotionTransition = { duration: reduceMotion ? 0 : 0.18, ease: [0.23, 1, 0.32, 1] as const };
+	useEffect(() => {
+		setSelectedArtifactId((current) => {
+			if (current && chat.artifacts.some((artifact) => artifact.id === current)) return current;
+			return chat.artifacts[0]?.id ?? null;
+		});
+	}, [chat.artifacts]);
 
 	const updateProviderConfig = async (input: DesktopProviderConfigInput) => {
 		const snapshot = await desktop.provider.save(input);
@@ -287,6 +295,10 @@ export function AppShell() {
 		newChat();
 		setSelectedProjectId(nextProject.id);
 		navigate(`/projects/${nextProject.id}`);
+	};
+	const openArtifact = (artifact: DesktopArtifact) => {
+		setSelectedArtifactId(artifact.id);
+		setArtifactPanelOpen(true);
 	};
 	const renameSession = async (sessionId: string, title: string) => {
 		const renamed = await desktop.session.rename({ sessionId, title });
@@ -454,9 +466,9 @@ export function AppShell() {
 							projectLoadError={projectLoadError}
 							projectError={chatProjectError}
 							sidebarOpen={sidebarOpen}
-							workspacePanelOpen={workspacePanelOpen}
+							artifactPanelOpen={artifactPanelOpen}
 							onToggleSidebar={() => setSidebarOpen(true)}
-							onToggleWorkspacePanel={() => setWorkspacePanelOpen((open) => !open)}
+							onToggleArtifactPanel={() => setArtifactPanelOpen((open) => !open)}
 							onOpenProviderSettings={openProviderSettings}
 							onSelectProviderModel={setSelectedModelRef}
 							onSelectAgentMode={setSelectedAgentMode}
@@ -469,14 +481,14 @@ export function AppShell() {
 				/>
 				<Route path="*" element={<Navigate to="/chat/new" replace />} />
 			</Routes>
-			{rightPanelVisible && workspacePanelOpen ? (
+			{rightPanelVisible && artifactPanelOpen ? (
 				<ColumnResizeHandle resize={rightPanelResize} side="right" />
 			) : null}
 			{rightPanelVisible ? (
 				<AnimatePresence initial={false} mode="wait">
-					{workspacePanelOpen ? (
+					{artifactPanelOpen ? (
 						<motion.div
-							key="workspace-panel"
+							key="artifact-panel"
 							className="min-w-0 shrink-0"
 							style={{ width: rightPanelResize.width }}
 							initial={panelMotionInitial}
@@ -484,10 +496,11 @@ export function AppShell() {
 							exit={panelMotionExit}
 							transition={panelMotionTransition}
 						>
-							<WorkspacePanel
-								status={chat.status === "streaming" ? "running" : "idle"}
-								todos={chat.todos}
-								project={project}
+							<ArtifactPanel
+								sessionId={session.id}
+								artifacts={chat.artifacts}
+								selectedArtifactId={selectedArtifactId}
+								onSelectArtifact={(artifact) => setSelectedArtifactId(artifact.id)}
 							/>
 						</motion.div>
 					) : (
@@ -502,7 +515,9 @@ export function AppShell() {
 							<TaskPanel
 								status={chat.status === "streaming" ? "running" : "idle"}
 								todos={chat.todos}
-								project={project}
+								artifacts={chat.artifacts}
+								selectedArtifactId={selectedArtifactId}
+								onOpenArtifact={openArtifact}
 							/>
 						</motion.div>
 					)}

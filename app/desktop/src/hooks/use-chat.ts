@@ -8,6 +8,7 @@ import type {
 	DesktopAgentMode,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
+	DesktopArtifact,
 	DesktopMessageAttachment,
 	DesktopPermissionResolution,
 	DesktopTodos,
@@ -38,6 +39,7 @@ export interface Chat {
 	readonly id: string | null;
 	readonly messages: readonly DesktopTranscriptItem[];
 	readonly todos: DesktopTodos | undefined;
+	readonly artifacts: readonly DesktopArtifact[];
 	readonly status: ChatStatus;
 	readonly isLoading: boolean;
 	readonly error: string | undefined;
@@ -56,6 +58,7 @@ export interface ChatRuntimeState {
 	readonly submitting: boolean;
 	readonly messages: readonly DesktopTranscriptItem[];
 	readonly todos: DesktopTodos | undefined;
+	readonly artifacts: readonly DesktopArtifact[];
 }
 
 const EMPTY_STATE: ChatRuntimeState = {
@@ -67,6 +70,7 @@ const EMPTY_STATE: ChatRuntimeState = {
 	submitting: false,
 	messages: [],
 	todos: undefined,
+	artifacts: [],
 };
 
 let dispatcher: ReturnType<typeof createDesktopAgentEventDispatcher> | undefined;
@@ -104,6 +108,7 @@ export function useChat(options: UseChatOptions): Chat {
 			submitting: false,
 			messages: [],
 			todos: undefined,
+			artifacts: [],
 		});
 		dispatcher ??= createDesktopAgentEventDispatcher();
 		return dispatcher.subscribe(sessionId, (update) => {
@@ -248,6 +253,7 @@ export function useChat(options: UseChatOptions): Chat {
 		id: options.id,
 		messages: state.messages,
 		todos: state.todos,
+		artifacts: state.artifacts,
 		status: getChatStatus(state),
 		isLoading: state.isLoading,
 		error: state.error,
@@ -291,6 +297,13 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 			};
 		case "todos_replace":
 			return { ...state, isLoading: false, lastSeq: seq, todos: event.todos };
+		case "artifact_upsert":
+			return {
+				...state,
+				isLoading: false,
+				lastSeq: seq,
+				artifacts: upsertArtifact(state.artifacts, event.artifact),
+			};
 		case "runtime_error":
 			return {
 				...state,
@@ -313,6 +326,7 @@ function snapshotState(snapshot: DesktopAgentSnapshot): ChatRuntimeState {
 		submitting: false,
 		messages: [...snapshot.items],
 		todos: snapshot.todos,
+		artifacts: [...snapshot.artifacts],
 	};
 }
 
@@ -332,4 +346,12 @@ function upsertMessage(
 	const next = [...messages];
 	next[index] = message;
 	return next;
+}
+
+function upsertArtifact(
+	artifacts: readonly DesktopArtifact[],
+	artifact: DesktopArtifact,
+): readonly DesktopArtifact[] {
+	const current = artifacts.filter((candidate) => candidate.id !== artifact.id);
+	return [...current, artifact].toSorted((left, right) => right.updatedAt - left.updatedAt);
 }

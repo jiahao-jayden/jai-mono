@@ -2,22 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TaskPanel } from "../src/components/shell/task-panel";
 
+const noArtifacts = [];
+const noop = () => {};
+
 describe("TaskPanel", () => {
-	test("Progress 只渲染 Todo，不回退到普通工具，也不渲染 Outputs", () => {
+	test("Progress 只渲染 Todo，Artifacts 显示受支持的输出文件", () => {
 		const markup = renderToStaticMarkup(
 			<TaskPanel
 				status="idle"
-				items={[
-					{
-						kind: "tool",
-						id: "tool-1",
-						turnId: "turn-1",
-						toolCallId: "call-1",
-						toolName: "Bash",
-						status: "complete",
-						summary: "pwd && ls -la",
-					},
-				]}
+				artifacts={noArtifacts}
+				selectedArtifactId={null}
+				onOpenArtifact={noop}
 				todos={{
 					version: 1,
 					updatedAt: 1,
@@ -27,40 +22,39 @@ describe("TaskPanel", () => {
 		);
 
 		expect(markup).toContain("Inspect storage");
-		expect(markup).not.toContain("pwd &amp;&amp; ls -la");
 		expect(markup).toContain("Outputs");
-		expect(markup).toContain("Agent 生成或修改的文件会出现在这里。");
+		expect(markup).toContain("Artifacts");
+		expect(markup).toContain("生成的 Markdown 和 HTML 会显示在这里。");
 
-		const emptyMarkup = renderToStaticMarkup(
+		const artifactMarkup = renderToStaticMarkup(
 			<TaskPanel
 				status="idle"
-				items={[
+				selectedArtifactId="artifact:report.md"
+				onOpenArtifact={noop}
+				artifacts={[
 					{
-						kind: "tool",
-						id: "tool-1",
-						turnId: "turn-1",
+						id: "artifact:report.md",
 						toolCallId: "call-1",
-						toolName: "Bash",
-						status: "complete",
-						summary: "pwd && ls -la",
+						path: "docs/report.md",
+						format: "markdown",
+						updatedAt: 1,
 					},
 				]}
 			/>,
 		);
 
-		expect(emptyMarkup).not.toContain("pwd &amp;&amp; ls -la");
-		expect(emptyMarkup).toContain("No active Todo");
-		expect(emptyMarkup).toContain("Outputs");
-
-		const runningWithoutTodosMarkup = renderToStaticMarkup(<TaskPanel status="running" />);
-		expect(runningWithoutTodosMarkup).toContain("No active Todo");
-		expect(runningWithoutTodosMarkup).not.toContain("Agent is working");
+		expect(artifactMarkup).toContain('aria-label="Session artifacts"');
+		expect(artifactMarkup).toContain("report.md");
+		expect(artifactMarkup).toContain('aria-current="true"');
 	});
 
 	test("在 Progress 中渲染持久化 Todo 状态", () => {
 		const markup = renderToStaticMarkup(
 			<TaskPanel
 				status="running"
+				artifacts={noArtifacts}
+				selectedArtifactId={null}
+				onOpenArtifact={noop}
 				todos={{
 					version: 1,
 					updatedAt: 1,
@@ -87,6 +81,9 @@ describe("TaskPanel", () => {
 		const markup = renderToStaticMarkup(
 			<TaskPanel
 				status="idle"
+				artifacts={noArtifacts}
+				selectedArtifactId={null}
+				onOpenArtifact={noop}
 				todos={{
 					version: 1,
 					updatedAt: 1,

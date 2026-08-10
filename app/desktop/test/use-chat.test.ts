@@ -14,6 +14,7 @@ describe("useChat projection", () => {
 				sessionId: "session-1",
 				status: "idle",
 				lastSeq: 4,
+				artifacts: [],
 				items: [
 					{
 						kind: "message",
@@ -101,6 +102,7 @@ describe("useChat projection", () => {
 				sessionId: "session-1",
 				status: "idle",
 				items: [],
+				artifacts: [],
 				lastSeq: 2,
 				todos: {
 					version: 1,
@@ -128,6 +130,65 @@ describe("useChat projection", () => {
 		expect(snapshotState.todos?.items[0]?.id).toBe("inspect");
 		expect(next).toMatchObject({ lastSeq: 3, todos: { items: [{ id: "render", status: "in_progress" }] } });
 	});
+
+	test("Artifact 增量按 id 覆盖，并按更新时间倒序排列", () => {
+		const first = applyChatProjectionUpdate(emptyChatState(), {
+			type: "event",
+			envelope: {
+				sessionId: "session-1",
+				seq: 1,
+				event: {
+					type: "artifact_upsert",
+					artifact: {
+						id: "artifact:report.md",
+						toolCallId: "call-1",
+						path: "report.md",
+						format: "markdown",
+						updatedAt: 1,
+					},
+				},
+			},
+		});
+		const next = applyChatProjectionUpdate(first, {
+			type: "event",
+			envelope: {
+				sessionId: "session-1",
+				seq: 2,
+				event: {
+					type: "artifact_upsert",
+					artifact: {
+						id: "artifact:preview.html",
+						toolCallId: "call-2",
+						path: "preview.html",
+						format: "html",
+						updatedAt: 3,
+					},
+				},
+			},
+		});
+		const updated = applyChatProjectionUpdate(next, {
+			type: "event",
+			envelope: {
+				sessionId: "session-1",
+				seq: 3,
+				event: {
+					type: "artifact_upsert",
+					artifact: {
+						id: "artifact:report.md",
+						toolCallId: "call-3",
+						path: "report.md",
+						format: "markdown",
+						updatedAt: 4,
+					},
+				},
+			},
+		});
+
+		expect(updated.artifacts).toEqual([
+			expect.objectContaining({ id: "artifact:report.md", toolCallId: "call-3" }),
+			expect.objectContaining({ id: "artifact:preview.html" }),
+		]);
+	});
 });
 
 function emptyChatState(): ChatRuntimeState {
@@ -140,5 +201,6 @@ function emptyChatState(): ChatRuntimeState {
 		submitting: false,
 		messages: [],
 		todos: undefined,
+		artifacts: [],
 	};
 }
