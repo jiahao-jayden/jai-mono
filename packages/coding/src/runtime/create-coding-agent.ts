@@ -185,6 +185,10 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		return this.#agent.state;
 	}
 
+	updateAppState(update: (current: TAppState) => TAppState): Promise<void> {
+		return this.#agent.updateAppState(update);
+	}
+
 	get pluginDiagnostics(): readonly AgentPluginDiagnostic[] {
 		return this.#plugins?.diagnostics ?? [];
 	}
@@ -302,6 +306,11 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		return todos;
 	});
 	const hooks = resolvedAgentOptions.hooks;
+	const pluginHooks = plugins?.createHooks({
+		sessionId: options.sessionId,
+		agentKind: "primary",
+		...(options.executionContext.localFileAccess ? { workspaceDirectory: options.executionContext.cwd } : {}),
+	});
 	const beforeModelCall = [...(hooks?.beforeModelCall ?? [])];
 	beforeModelCall.unshift(async ({ messages }) => {
 		const projected = await attachments.project(messages);
@@ -327,7 +336,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			],
 		};
 	});
-	const aroundToolCall = [...(hooks?.aroundToolCall ?? [])];
+	const aroundToolCall = [...(hooks?.aroundToolCall ?? []), ...(pluginHooks?.aroundToolCall ?? [])];
 	const externalToolNames = new Set([
 		...(plugins?.tools.map((tool) => tool.name) ?? []),
 		...(mcp?.tools.map((tool) => tool.name) ?? []),
@@ -357,8 +366,14 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const spawnAgentTool = createSpawnAgentTool(async ({ task, signal, onActivity }) => {
 		signal?.throwIfAborted();
 		const childSkills = await createSkillsRuntime(options, plugins?.skills);
+		const childPluginHooks = plugins?.createHooks({
+			sessionId: `${options.sessionId}:subagent`,
+			agentKind: "subagent",
+			...(options.executionContext.localFileAccess ? { workspaceDirectory: options.executionContext.cwd } : {}),
+		});
 		const childAroundToolCall = options.executionContext.localFileAccess
 			? [
+					...(childPluginHooks?.aroundToolCall ?? []),
 					createPermissionMiddleware({
 						workspaceRoot: options.executionContext.cwd,
 						settings: () => selectPermissionSettings(runtime.snapshot),
@@ -399,7 +414,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				compaction: resolvedAgentOptions.compaction,
 				hooks: {
 					aroundToolCall: childAroundToolCall,
-					onEvent: childSkills ? [childSkills.onEvent] : [],
+					onEvent: [...(childPluginHooks?.onEvent ?? []), ...(childSkills ? [childSkills.onEvent] : [])],
 				},
 				onObserverError: resolvedAgentOptions.onObserverError,
 			});
@@ -452,7 +467,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			...hooks,
 			beforeModelCall,
 			aroundToolCall,
-			onEvent: [...(hooks?.onEvent ?? []), ...(skills ? [skills.onEvent] : [])],
+			onEvent: [...(hooks?.onEvent ?? []), ...(pluginHooks?.onEvent ?? []), ...(skills ? [skills.onEvent] : [])],
 		},
 		onObserverError: resolvedAgentOptions.onObserverError,
 	});

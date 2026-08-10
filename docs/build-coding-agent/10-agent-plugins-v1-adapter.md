@@ -22,6 +22,9 @@ Agent Plugins v1 对兼容客户端的最低要求是支持 Skills 或 MCP serve
 - MCP `streamable-http`
 - MCP `sse`（兼容旧版服务端）
 
+JAI 在 portable core 之外另有 `hooks/hooks.json` 的 client convention。它不属于 Agent Plugins v1
+符合性，加载、执行与安全语义由 [JAI Agent Plugin Hooks v1](./12-agent-plugin-hooks-v1.md) 单独规定。
+
 这份规格不定义插件安装器、Git/归档来源、marketplace、启用和更新体验、缓存、回滚、权限提示、信任策略、沙箱、OAuth 存储或 Desktop 管理页面。官方明确将这些归为 client-owned behavior。
 
 ## 2. 固定依据
@@ -57,6 +60,10 @@ packages/coding/src/agent-plugins/
 ├── skills/
 │   └── adapter.ts
 ├── mcp/
+│   ├── adapter.ts
+│   ├── runtime.ts
+│   └── types.ts
+├── hooks/                     # JAI client convention; not portable Agent Plugins v1
 │   ├── adapter.ts
 │   ├── runtime.ts
 │   └── types.ts
@@ -98,6 +105,7 @@ export interface LoadedAgentPlugin {
   readonly manifest: AgentPluginManifestV1
   readonly skills: readonly AgentPluginSkillDescriptor[]
   readonly mcpServers: readonly AgentPluginMcpServerDescriptor[]
+  readonly hooks: readonly AgentPluginHooksDescriptor[] // JAI convention
   readonly diagnostics: readonly AgentPluginDiagnostic[]
 }
 ```
@@ -568,7 +576,7 @@ commit 5f3f5084a821aefa792e79500dd8f0462ab83473
 - subprocess sandbox
 - OAuth credential storage
 - Skill 展示和优先级策略
-- PandaWork 私有 client extension
+- JAI plugin hooks（见 [JAI Agent Plugin Hooks v1](./12-agent-plugin-hooks-v1.md)）
 - MCP tools/resources/prompts 的通用 Agent 投影
 
 这些能力以后只能基于独立产品需求另写规格，不能作为 Agent Plugins v1 符合性的组成部分。
@@ -587,7 +595,7 @@ commit 5f3f5084a821aefa792e79500dd8f0462ab83473
 8. 官方示例无需 patch 运行。
 9. loader 不依赖网络获取 schema。
 10. `@jai/agent` 不依赖 Agent Plugins 领域类型。
-11. 没有实现或设计任何协议外插件平台能力。
+11. 协议外的 JAI plugin hooks 仅按独立的 hooks v1 规格实现，不计入 Agent Plugins v1 符合性。
 
 ## 18. 官方资料
 

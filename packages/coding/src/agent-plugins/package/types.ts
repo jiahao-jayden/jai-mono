@@ -1,4 +1,5 @@
 import type { CodingSkillCard } from "../../skills/catalog";
+import type { AgentPluginHooksDescriptor } from "../hooks/types";
 import type { AgentPluginMcpServer } from "../mcp/types";
 import type { AgentPluginDiagnostic } from "../shared/diagnostics";
 
@@ -27,8 +28,10 @@ export interface LoadedAgentPlugin {
 	readonly manifest: AgentPluginManifestV1;
 	readonly skills: readonly AgentPluginSkillDescriptor[];
 	readonly mcpServers: readonly AgentPluginMcpServer[];
+	readonly hooks: readonly AgentPluginHooksDescriptor[];
 	readonly diagnostics: readonly AgentPluginDiagnostic[];
 }
 
+export type { AgentPluginHooksDescriptor } from "../hooks/types";
 export type { AgentPluginMcpServer } from "../mcp/types";
 export type { AgentPluginDiagnostic } from "../shared/diagnostics";

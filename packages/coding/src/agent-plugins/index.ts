@@ -1,4 +1,16 @@
 export {
+	type AgentPluginHooksConnectOptions,
+	connectAgentPluginHooks,
+	HookCommandFailed,
+} from "./hooks/runtime";
+export type {
+	AgentPluginCommandHookHandler,
+	AgentPluginHookEntry,
+	AgentPluginHookEvent,
+	AgentPluginHookRuntimeOptions,
+	AgentPluginHooksDescriptor,
+} from "./hooks/types";
+export {
 	type AgentPluginMcpConnectOptions,
 	connectAgentPluginMcp,
 } from "./mcp/runtime";

@@ -1,4 +1,5 @@
-import type { AgentTool } from "@jai/agent";
+import type { AgentHookMap, AgentTool } from "@jai/agent";
+import type { AgentPluginHookRuntimeOptions } from "../hooks/types";
 import type { AgentPluginSkillDescriptor } from "../package/types";
 import type { AgentPluginDiagnostic } from "../shared/diagnostics";
 
@@ -18,5 +19,6 @@ export interface AgentPluginRuntime {
 	readonly skills: readonly AgentPluginSkillDescriptor[];
 	readonly tools: readonly AgentTool[];
 	readonly diagnostics: readonly AgentPluginDiagnostic[];
+	createHooks(options: AgentPluginHookRuntimeOptions): AgentHookMap;
 	close(): Promise<void>;
 }

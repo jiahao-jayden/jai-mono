@@ -15,6 +15,6 @@ export interface AgentPluginComponentResult<T> {
  * 组件适配器是策略接口：Skill 与 MCP 共享包加载骨架，但各自保留协议专属校验与描述。
  */
 export interface AgentPluginComponentAdapter<T> {
-	readonly kind: "skills" | "mcp";
+	readonly kind: "skills" | "mcp" | "hooks";
 	load(context: AgentPluginComponentContext): Promise<AgentPluginComponentResult<T>>;
 }

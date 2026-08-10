@@ -49,6 +49,37 @@ describe("Agent Plugins 组件适配器", () => {
 		expect(result.value.diagnostics.map((diagnostic) => diagnostic.componentName)).toContain("bad");
 	});
 
+	test("从 hooks/hooks.json 发现 JAI hooks，坏 lifecycle matcher 只禁用该 entry", async () => {
+		const root = await createPlugin({
+			hooks: {
+				version: 1,
+				hooks: {
+					PreToolUse: [
+						{
+							matcher: "Read|Write",
+							hooks: [{ type: "command", command: "node", args: ["-e", "process.exit(0)"] }],
+						},
+					],
+					SessionStart: [
+						{
+							matcher: "Read",
+							hooks: [{ type: "command", command: "node", args: ["-e", "process.exit(0)"] }],
+						},
+					],
+				},
+			},
+		});
+
+		const result = await loadAgentPluginDirectory(root);
+		expect(result.isOk()).toBe(true);
+		if (result.isErr()) return;
+		expect(result.value.hooks).toHaveLength(1);
+		expect(result.value.hooks[0]?.entries).toMatchObject([{ event: "PreToolUse", matcher: ["Read", "Write"] }]);
+		expect(result.value.diagnostics).toContainEqual(
+			expect.objectContaining({ code: "plugin_hook_invalid_event", componentName: "SessionStart" }),
+		);
+	});
+
 	test("运行时保留每个插件目录的作用域", async () => {
 		const root = await createPlugin({});
 		await mkdir(path.join(root, "skills", "scoped"), { recursive: true });
@@ -121,12 +152,19 @@ describe("Agent Plugins 组件适配器", () => {
 	});
 });
 
-async function createPlugin(options: { readonly mcpServers?: Record<string, Record<string, unknown>> }): Promise<string> {
+async function createPlugin(options: {
+	readonly mcpServers?: Record<string, Record<string, unknown>>;
+	readonly hooks?: Record<string, unknown>;
+}): Promise<string> {
 	const root = await tempPath("plugin");
 	roots.push(root);
 	await writeFile(path.join(root, "plugin.json"), JSON.stringify({ $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "agent-plugins-test", version: "1.0.0" }));
 	if (options.mcpServers) {
 		await writeFile(path.join(root, "mcp.json"), JSON.stringify({ $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json", mcpServers: options.mcpServers }));
+	}
+	if (options.hooks) {
+		await mkdir(path.join(root, "hooks"), { recursive: true });
+		await writeFile(path.join(root, "hooks", "hooks.json"), JSON.stringify(options.hooks));
 	}
 	return root;
 }
