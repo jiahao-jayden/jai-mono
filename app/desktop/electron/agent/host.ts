@@ -18,6 +18,7 @@ import type {
 	DesktopAgentMode,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
+	DesktopArtifact,
 	DesktopConnectorApprovalRequest,
 	DesktopConnectorPermissionItem,
 	DesktopConnectorPermissionResolution,
@@ -30,6 +31,7 @@ import type {
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
+import { artifactCatalog, projectArtifact, projectArtifactCatalog, sortArtifacts } from "./artifacts";
 import { projectAssistantPart } from "./assistant-projector";
 import { projectMessageAttachments, projectSessionTodos, projectSlashInvocation } from "./projector";
 
@@ -54,6 +56,7 @@ function desktopAgentError(
 
 export interface HostedCodingAgent {
 	getAppState?(): unknown;
+	updateAppState?(update: (current: Record<string, unknown>) => Record<string, unknown>): Promise<void>;
 	invoke(input: string): Promise<AgentMessage[]>;
 	invokeWithAttachments?(input: {
 		readonly text: string;
@@ -101,6 +104,9 @@ interface SessionRuntime {
 	mode: DesktopAgentMode;
 	agent: HostedCodingAgent;
 	readonly items: Map<string, DesktopTranscriptItem>;
+	readonly artifacts: Map<string, DesktopArtifact>;
+	readonly pendingArtifacts: Map<string, DesktopArtifact>;
+	appStateWrites?: Promise<void>;
 	unsubscribe: () => void;
 	status: DesktopAgentStatus;
 	todos?: DesktopTodos;
@@ -178,20 +184,27 @@ export class DesktopAgentHost {
 				: runtime.agent.invoke(input.message);
 		const completed = run.then(
 			(messages) => {
-				this.#finishRun(runtime);
-				const listener = this.#onRunCompleted;
-				if (listener) {
-					void Promise.resolve(
-						listener({
-							sessionId: runtime.sessionId,
-							firstMessage: input.message,
-							messages,
-							agent: runtime.agent,
-						}),
-					)
-						.catch(() => {})
-						.finally(() => this.#closeIfInvalidated(runtime));
-				} else this.#closeIfInvalidated(runtime);
+				const finish = () => {
+					this.#finishRun(runtime);
+					const listener = this.#onRunCompleted;
+					if (listener) {
+						void Promise.resolve(
+							listener({
+								sessionId: runtime.sessionId,
+								firstMessage: input.message,
+								messages,
+								agent: runtime.agent,
+							}),
+						)
+							.catch(() => {})
+							.finally(() => this.#closeIfInvalidated(runtime));
+					} else this.#closeIfInvalidated(runtime);
+				};
+				const pendingAppStateWrite = runtime.appStateWrites;
+				if (pendingAppStateWrite) {
+					return pendingAppStateWrite.then(finish, finish);
+				}
+				finish();
 			},
 			(error) => {
 				this.#emitNow(runtime, { type: "runtime_error", error: toErrorEnvelope(error) });
@@ -257,14 +270,20 @@ export class DesktopAgentHost {
 
 	getSnapshot(sessionId: string): DesktopAgentSnapshot {
 		const runtime = this.#sessions.get(sessionId);
-		if (!runtime) return { sessionId, status: "idle", items: [], lastSeq: 0 };
+		if (!runtime) return { sessionId, status: "idle", items: [], artifacts: [], lastSeq: 0 };
 		return {
 			sessionId,
 			status: runtime.status,
 			items: [...runtime.items.values()].map((item) => structuredClone(item)),
 			...(runtime.todos ? { todos: structuredClone(runtime.todos) } : {}),
+			artifacts: sortArtifacts(runtime.artifacts.values()).map((artifact) => structuredClone(artifact)),
 			lastSeq: runtime.seq,
 		};
+	}
+
+	getArtifact(sessionId: string, artifactId: string): DesktopArtifact | undefined {
+		const artifact = this.#sessions.get(sessionId)?.artifacts.get(artifactId);
+		return artifact ? structuredClone(artifact) : undefined;
 	}
 
 	closeSession(sessionId: string): void {
@@ -333,13 +352,16 @@ export class DesktopAgentHost {
 	async #createRuntime(input: DesktopAgentMessageInput): Promise<SessionRuntime> {
 		const agent = await this.#createAgent(input.sessionId, input.modelRef, input.mode);
 		const appState = agent.getAppState?.();
-		const todos = projectSessionTodos(isRecord(appState) ? appState.todos : undefined);
+		const appStateRecord = isRecord(appState) ? appState : undefined;
+		const todos = projectSessionTodos(appStateRecord?.todos);
 		const runtime: SessionRuntime = {
 			sessionId: input.sessionId,
 			modelRef: input.modelRef,
 			mode: input.mode,
 			agent,
 			items: new Map(),
+			artifacts: new Map(),
+			pendingArtifacts: new Map(),
 			unsubscribe: () => {},
 			status: "idle",
 			...(todos ? { todos } : {}),
@@ -354,6 +376,8 @@ export class DesktopAgentHost {
 			invalidateAfterRun: false,
 		};
 		runtime.unsubscribe = agent.subscribe((event) => this.#onAgentEvent(runtime, event));
+		for (const artifact of projectArtifactCatalog(appStateRecord?.artifacts))
+			runtime.artifacts.set(artifact.id, artifact);
 		this.#sessions.set(input.sessionId, runtime);
 		return runtime;
 	}
@@ -542,6 +566,8 @@ export class DesktopAgentHost {
 				return;
 			}
 			case "tool_execution_start": {
+				const artifact = projectArtifact(event.toolName, event.args, event.toolCallId, Date.now());
+				if (artifact) runtime.pendingArtifacts.set(event.toolCallId, artifact);
 				if (event.toolName === UPDATE_TODOS_TOOL_NAME) return;
 				if (event.toolName === SPAWN_AGENT_TOOL_NAME) {
 					const previous = runtime.items.get(`subagent:${event.toolCallId}`);
@@ -580,6 +606,13 @@ export class DesktopAgentHost {
 			}
 			case "tool_execution_update":
 			case "tool_execution_end": {
+				if (event.type === "tool_execution_end") {
+					const artifact = runtime.pendingArtifacts.get(event.toolCallId);
+					runtime.pendingArtifacts.delete(event.toolCallId);
+					if (artifact && !event.isError) {
+						this.#upsertArtifact(runtime, artifact);
+					}
+				}
 				if (event.toolName === UPDATE_TODOS_TOOL_NAME) {
 					if (event.type === "tool_execution_end" && !event.isError) {
 						const details = isRecord(event.result.details) ? event.result.details : undefined;
@@ -727,6 +760,23 @@ export class DesktopAgentHost {
 		runtime.pendingToolResultIds.clear();
 		this.#markSafeBoundary(runtime);
 		this.#emitNow(runtime, { type: "status", status: "idle" });
+	}
+
+	#upsertArtifact(runtime: SessionRuntime, artifact: DesktopArtifact): void {
+		const current = runtime.artifacts.get(artifact.id);
+		if (current && current.updatedAt > artifact.updatedAt) return;
+		runtime.artifacts.set(artifact.id, artifact);
+		this.#emitNow(runtime, { type: "artifact_upsert", artifact });
+		if (!runtime.agent.updateAppState) return;
+		const write = (runtime.appStateWrites ?? Promise.resolve()).then(() =>
+			runtime.agent.updateAppState!((currentState) => {
+				const items = new Map(projectArtifactCatalog(currentState.artifacts).map((item) => [item.id, item]));
+				const previous = items.get(artifact.id);
+				if (!previous || artifact.updatedAt >= previous.updatedAt) items.set(artifact.id, artifact);
+				return { ...currentState, artifacts: artifactCatalog(items.values()) };
+			}),
+		);
+		runtime.appStateWrites = write.catch(() => {});
 	}
 
 	#closeIfInvalidated(runtime: SessionRuntime): void {

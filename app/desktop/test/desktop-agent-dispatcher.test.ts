@@ -12,6 +12,7 @@ describe("DesktopAgentEventDispatcher", () => {
 			sessionId: "session-1",
 			status: "running",
 			items: [],
+			artifacts: [],
 			lastSeq: 1,
 		};
 		const updates: DesktopAgentProjectionUpdate[] = [];

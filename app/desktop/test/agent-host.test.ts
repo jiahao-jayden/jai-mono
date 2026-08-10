@@ -547,6 +547,76 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
+	test("成功的 Markdown 与 HTML 写入即时发布为 Artifact", async () => {
+		const events: DesktopAgentEventEnvelope[] = [];
+		const agent = new FakeAgent(async (self) => {
+			self.emit({
+				type: "tool_execution_start",
+				toolCallId: "markdown-1",
+				toolName: "Write",
+				title: "Write report.md",
+				args: { path: "reports/report.md" },
+			});
+			self.emit({
+				type: "tool_execution_end",
+				toolCallId: "markdown-1",
+				toolName: "Write",
+				result: { content: [] },
+				isError: false,
+			});
+			self.emit({
+				type: "tool_execution_start",
+				toolCallId: "failed-html-1",
+				toolName: "Edit",
+				title: "Edit preview.html",
+				args: { path: "preview.html" },
+			});
+			self.emit({
+				type: "tool_execution_end",
+				toolCallId: "failed-html-1",
+				toolName: "Edit",
+				result: { content: [] },
+				isError: true,
+			});
+			self.emit({
+				type: "tool_execution_start",
+				toolCallId: "text-1",
+				toolName: "Write",
+				title: "Write notes.txt",
+				args: { path: "notes.txt" },
+			});
+			self.emit({
+				type: "tool_execution_end",
+				toolCallId: "text-1",
+				toolName: "Write",
+				result: { content: [] },
+				isError: false,
+			});
+			return [];
+		});
+		const host = new DesktopAgentHost((event) => events.push(event), async () => agent);
+
+		await host.send(input("write artifacts"));
+		await agent.finished;
+		await waitFor(() => events.some((event) => event.event.type === "artifact_upsert"));
+
+		expect(host.getSnapshot("session-1").artifacts).toEqual([
+			expect.objectContaining({
+				id: "artifact:reports/report.md",
+				path: "reports/report.md",
+				format: "markdown",
+			}),
+		]);
+		expect(events.filter((event) => event.event.type === "artifact_upsert")).toHaveLength(1);
+		expect(agent.getAppState()).toMatchObject({
+			artifacts: {
+				version: 1,
+				items: [expect.objectContaining({ id: "artifact:reports/report.md" })],
+			},
+		});
+		host.close();
+	});
+
 	test("首轮完成后把输入与结果交给标题生成边界", async () => {
 		const messages = [userMessage("build it"), assistantMessage("done")];
 		const agent = new FakeAgent(async () => messages);
@@ -662,15 +732,23 @@ class FakeAgent implements HostedCodingAgent {
 	readonly #listeners = new Set<AgentEventListener>();
 	readonly #invoke: (agent: FakeAgent, input: string) => Promise<AgentMessage[]>;
 	finished: Promise<AgentMessage[]> = Promise.resolve([]);
-	readonly #appState: unknown;
+	#appState: Record<string, unknown>;
 
 	constructor(invoke: (agent: FakeAgent, input: string) => Promise<AgentMessage[]>, appState: unknown = {}) {
 		this.#invoke = invoke;
-		this.#appState = appState;
+		this.#appState =
+			typeof appState === "object" && appState !== null && !Array.isArray(appState)
+				? structuredClone(appState) as Record<string, unknown>
+				: {};
 	}
 
 	getAppState(): unknown {
 		return this.#appState;
+	}
+
+	updateAppState(update: (current: Record<string, unknown>) => Record<string, unknown>): Promise<void> {
+		this.#appState = update(structuredClone(this.#appState));
+		return Promise.resolve();
 	}
 
 	invoke(input: string): Promise<AgentMessage[]> {

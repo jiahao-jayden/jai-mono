@@ -19,6 +19,8 @@ import { discoverDesktopAgentPluginDirectories } from "./plugin-directories";
 import codingAgentInstructions from "./prompt/system-prompt.md?raw";
 
 const CODING_AGENT_INSTRUCTIONS = codingAgentInstructions.trim();
+const ARTIFACT_COMPACTION_INSTRUCTIONS =
+	"When the session creates or modifies a Markdown or HTML Artifact, preserve its exact path, format, and whether the write succeeded. Failed writes are not Artifacts.";
 const NO_WORKSPACE_MESSAGE: AgentMessage = {
 	role: "user",
 	content: [
@@ -101,6 +103,7 @@ export function createDesktopAgentFactory(
 				return {
 					maxIterations: runtime.maxIterations,
 					providerOptions: runtime.providerOptions,
+					compaction: { summaryInstructions: ARTIFACT_COMPACTION_INSTRUCTIONS },
 				};
 			},
 			agent: executionContext.localFileAccess
@@ -139,6 +142,8 @@ export function createDesktopAgentFactory(
 
 		return {
 			getAppState: () => codingAgent.state.appState,
+			updateAppState: (update) =>
+				codingAgent.updateAppState((current) => update(current as Record<string, unknown>) as typeof current),
 			invoke: (input) => codingAgent.invoke(input),
 			invokeWithAttachments: (input) => codingAgent.invokeWithAttachments(input),
 			subscribe: (listener) => codingAgent.subscribe(listener),

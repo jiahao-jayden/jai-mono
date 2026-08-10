@@ -33,6 +33,135 @@ describe("projectSessionSnapshot", () => {
 		expect(JSON.stringify(projected.todos)).not.toContain("secret");
 	});
 
+	test("只将成功的 Markdown 与 HTML 写入投影为 Artifact", () => {
+		const snapshot: SessionSnapshot = {
+			appState: {},
+			createdAt: "2026-08-01T00:00:00.000Z",
+			updatedAt: "2026-08-01T00:00:04.000Z",
+			entries: [
+				{
+					type: "message",
+					id: "assistant-1",
+					timestamp: "2026-08-01T00:00:01.000Z",
+					message: {
+						...assistantMessage("", "toolUse"),
+						content: [
+							{ type: "toolCall", id: "markdown-1", name: "Write", arguments: { path: "docs/report.md" } },
+							{ type: "toolCall", id: "text-1", name: "Write", arguments: { path: "notes.txt" } },
+							{ type: "toolCall", id: "html-1", name: "Edit", arguments: { path: "preview.html" } },
+							{ type: "toolCall", id: "failed-1", name: "Write", arguments: { path: "failed.html" } },
+						],
+					},
+				},
+				{
+					type: "message",
+					id: "tool-1",
+					timestamp: "2026-08-01T00:00:02.000Z",
+					message: {
+						role: "toolResult",
+						toolCallId: "markdown-1",
+						toolName: "Write",
+						content: [],
+						isError: false,
+						timestamp: 2,
+					},
+				},
+				{
+					type: "message",
+					id: "tool-2",
+					timestamp: "2026-08-01T00:00:03.000Z",
+					message: {
+						role: "toolResult",
+						toolCallId: "text-1",
+						toolName: "Write",
+						content: [],
+						isError: false,
+						timestamp: 3,
+					},
+				},
+				{
+					type: "message",
+					id: "tool-3",
+					timestamp: "2026-08-01T00:00:03.100Z",
+					message: {
+						role: "toolResult",
+						toolCallId: "html-1",
+						toolName: "Edit",
+						content: [],
+						isError: false,
+						timestamp: 3.1,
+					},
+				},
+				{
+					type: "message",
+					id: "tool-4",
+					timestamp: "2026-08-01T00:00:04.000Z",
+					message: {
+						role: "toolResult",
+						toolCallId: "failed-1",
+						toolName: "Write",
+						content: [],
+						isError: true,
+						timestamp: 4,
+					},
+				},
+			],
+		};
+
+		expect(projectSessionSnapshot("session-1", snapshot).artifacts).toEqual([
+			expect.objectContaining({
+				id: "artifact:docs/report.md",
+				path: "docs/report.md",
+				format: "markdown",
+			}),
+			expect.objectContaining({ id: "artifact:preview.html", path: "preview.html", format: "html" }),
+		]);
+	});
+
+	test("compaction 后从 appState Artifact catalog 恢复元数据", () => {
+		const snapshot: SessionSnapshot = {
+			appState: {
+				artifacts: {
+					version: 1,
+					items: [
+						{
+							id: "artifact:docs/report.md",
+							toolCallId: "old-call",
+							path: "docs/report.md",
+							format: "markdown",
+							updatedAt: 1_786_017_601_000,
+						},
+					],
+				},
+			},
+			createdAt: "2026-08-01T00:00:00.000Z",
+			updatedAt: "2026-08-01T00:00:04.000Z",
+			entries: [
+				{
+					type: "compaction",
+					id: "compact-1",
+					timestamp: "2026-08-01T00:00:04.000Z",
+					summary: "Earlier context",
+					firstKeptEntryId: "message-2",
+					tokensBefore: 100,
+					tokensAfter: 20,
+					usage: {
+						input: 0,
+						output: 0,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 0,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
+				},
+			],
+		};
+
+		expect(projectSessionSnapshot("session-1", snapshot).artifacts).toEqual([
+			expect.objectContaining({ id: "artifact:docs/report.md", path: "docs/report.md", format: "markdown" }),
+		]);
+	});
+
 	test("将 durable messages、tools 与 compaction 投影为 renderer-safe transcript", () => {
 		const snapshot: SessionSnapshot = {
 			appState: {},

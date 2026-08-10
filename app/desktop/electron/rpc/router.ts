@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
+import path from "node:path";
 import type { CodingMessageAttachment } from "@jai/coding";
 import type { CodingBusinessService } from "@jai/coding/business";
 import { type PermissionResolution, permissionResolutionSchema } from "@jai/coding/permissions/approval";
@@ -12,6 +13,8 @@ import {
 	type DesktopAgentEvent,
 	type DesktopAgentMessageInput,
 	type DesktopApi,
+	type DesktopArtifact,
+	type DesktopArtifactReadInput,
 	type DesktopAttachmentRegistrationInput,
 	type DesktopConnectorPermissionResolution,
 	type DesktopMessageAttachment,
@@ -24,6 +27,7 @@ import {
 	desktopConnectorPermissionResolutionSchema,
 } from "../../shared/desktop-rpc";
 import { type DesktopAgentFactory, DesktopAgentHost } from "../agent/host";
+import { sortArtifacts } from "../agent/artifacts";
 import { projectSessionSnapshot } from "../agent/projector";
 import { DesktopConfigService } from "../config";
 import { desktopModelCatalog, setDesktopModelCatalogUpdateListener } from "../model-catalog";
@@ -50,6 +54,10 @@ class AttachmentRegistrationFailed extends TaggedError("desktop_attachment.regis
 	readonly cause?: unknown;
 	readonly message: string;
 }> {}
+class ArtifactPreviewUnavailable extends TaggedError("desktop_artifact.preview_unavailable")<{
+	readonly cause?: unknown;
+	readonly message: string;
+}> {}
 
 const themeError = (init: { readonly message: string }) => new InvalidThemeValue(init);
 const agentInputError = (init: { readonly message: string }) => new InvalidAgentInput(init);
@@ -58,10 +66,13 @@ const desktopProjectError = (init: { readonly cause?: unknown; readonly message:
 	new ProjectPickerFailed(init);
 const desktopAttachmentError = (init: { readonly cause?: unknown; readonly message: string }) =>
 	new AttachmentRegistrationFailed(init);
+const artifactPreviewError = (init: { readonly cause?: unknown; readonly message: string }) =>
+	new ArtifactPreviewUnavailable(init);
 let codingBusiness: CodingBusinessService | undefined;
 let providerConfig: DesktopConfigService | undefined;
 let desktopOAuth: DesktopOAuthManager | undefined;
 const attachmentRecords = new Map<string, CodingMessageAttachment>();
+const MAX_ARTIFACT_PREVIEW_BYTES = 1_000_000;
 const desktopAgentHost = new DesktopAgentHost((envelope) => {
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) window.webContents.send(DESKTOP_EVENTS_CHANNEL, envelope);
@@ -272,6 +283,26 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 			for (const id of ids) if (typeof id === "string") attachmentRecords.delete(id);
 		},
 	},
+	artifact: {
+		async read(_event, input) {
+			const parsed = assertArtifactReadInput(input);
+			const service = requireCodingBusiness();
+			const artifact = await artifactForSession(parsed.sessionId, parsed.artifactId, service);
+			const session = service.getSession(parsed.sessionId);
+			if (session.projectId === null || !(await service.isProjectAvailable(session.projectId))) {
+				throw artifactPreviewError({
+					message: "Artifact preview is unavailable because this session has no accessible project.",
+				});
+			}
+			const project = service.getProject(session.projectId);
+			const artifactPath = await resolveArtifactPath(project.canonicalPath, artifact.path);
+			try {
+				return { artifact, content: await readFile(artifactPath, "utf8") };
+			} catch (cause) {
+				throw artifactPreviewError({ message: "Artifact preview could not be read.", cause });
+			}
+		},
+	},
 	agent: {
 		send(_event, input) {
 			const parsed = assertMessageInput(input);
@@ -304,11 +335,15 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 		},
 		async getSnapshot(_event, sessionId) {
 			const parsedSessionId = assertSessionId(sessionId);
-			if (desktopAgentHost.hasSession(parsedSessionId)) {
-				return desktopAgentHost.getSnapshot(parsedSessionId);
-			}
-			const snapshot = await requireCodingBusiness().loadSessionSnapshot(parsedSessionId);
-			return projectSessionSnapshot(parsedSessionId, snapshot);
+			const durableSnapshot = projectSessionSnapshot(
+				parsedSessionId,
+				await requireCodingBusiness().loadSessionSnapshot(parsedSessionId),
+			);
+			if (!desktopAgentHost.hasSession(parsedSessionId)) return durableSnapshot;
+			const runtimeSnapshot = desktopAgentHost.getSnapshot(parsedSessionId);
+			const artifacts = new Map(durableSnapshot.artifacts.map((artifact) => [artifact.id, artifact]));
+			for (const artifact of runtimeSnapshot.artifacts) artifacts.set(artifact.id, artifact);
+			return { ...runtimeSnapshot, artifacts: sortArtifacts(artifacts.values()) };
 		},
 		close(_event, sessionId) {
 			desktopAgentHost.closeSession(assertSessionId(sessionId));
@@ -389,6 +424,55 @@ function assertSessionId(value: unknown): string {
 		throw agentInputError({ message: "Invalid session id" });
 	}
 	return value;
+}
+
+function assertArtifactReadInput(value: unknown): DesktopArtifactReadInput {
+	if (
+		!isRecord(value) ||
+		typeof value.sessionId !== "string" ||
+		value.sessionId.length === 0 ||
+		typeof value.artifactId !== "string" ||
+		value.artifactId.length === 0
+	) {
+		throw artifactPreviewError({ message: "Artifact preview request is invalid." });
+	}
+	return { sessionId: value.sessionId, artifactId: value.artifactId };
+}
+
+async function artifactForSession(
+	sessionId: string,
+	artifactId: string,
+	service: CodingBusinessService,
+): Promise<DesktopArtifact> {
+	const activeArtifact = desktopAgentHost.getArtifact(sessionId, artifactId);
+	if (activeArtifact) return activeArtifact;
+	const snapshot = await service.loadSessionSnapshot(sessionId);
+	const artifact = projectSessionSnapshot(sessionId, snapshot).artifacts.find((candidate) => candidate.id === artifactId);
+	if (artifact) return artifact;
+	throw artifactPreviewError({ message: "This artifact is no longer available in the session." });
+}
+
+async function resolveArtifactPath(projectRoot: string, artifactPath: string): Promise<string> {
+	try {
+		const candidate = path.resolve(projectRoot, artifactPath);
+		const canonical = await realpath(candidate);
+		if (!isInside(canonical, projectRoot)) {
+			throw artifactPreviewError({ message: "Artifact preview is only available for files inside the project." });
+		}
+		const info = await stat(canonical);
+		if (!info.isFile() || info.size > MAX_ARTIFACT_PREVIEW_BYTES) {
+			throw artifactPreviewError({ message: "Artifact preview is unavailable for this file." });
+		}
+		return canonical;
+	} catch (cause) {
+		if (cause instanceof ArtifactPreviewUnavailable) throw cause;
+		throw artifactPreviewError({ message: "Artifact preview is unavailable for this file.", cause });
+	}
+}
+
+function isInside(candidate: string, root: string): boolean {
+	const relative = path.relative(root, candidate);
+	return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }
 
 function requireCodingBusiness(): CodingBusinessService {

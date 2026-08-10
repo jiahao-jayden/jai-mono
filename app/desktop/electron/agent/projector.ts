@@ -2,6 +2,7 @@ import type { AgentMessage, SessionSnapshot } from "@jai/agent";
 import { SPAWN_AGENT_TOOL_NAME, UPDATE_TODOS_TOOL_NAME } from "@jai/coding/tools";
 import type {
 	DesktopAgentSnapshot,
+	DesktopArtifact,
 	DesktopCompactionItem,
 	DesktopMessageAttachment,
 	DesktopMessageItem,
@@ -13,10 +14,15 @@ import type {
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
+import { projectArtifact, projectArtifactCatalog, sortArtifacts } from "./artifacts";
 import { projectAssistantPart } from "./assistant-projector";
 
 export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnapshot): DesktopAgentSnapshot {
 	const items = new Map<string, DesktopTranscriptItem>();
+	const artifacts = new Map<string, DesktopArtifact>(
+		projectArtifactCatalog(snapshot.appState.artifacts).map((artifact) => [artifact.id, artifact]),
+	);
+	const pendingArtifacts = new Map<string, DesktopArtifact>();
 	let currentTurnId: string | undefined;
 	for (const entry of snapshot.entries) {
 		if (entry.type === "compaction") {
@@ -31,12 +37,23 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 		}
 		if (entry.type !== "message") continue;
 		if (entry.message.role === "assistant") {
+			for (const part of entry.message.content) {
+				if (part.type !== "toolCall") continue;
+				const artifact = projectArtifact(part.name, part.arguments, part.id, parseTimestamp(entry.timestamp));
+				if (artifact) pendingArtifacts.set(part.id, artifact);
+			}
 			for (const item of projectAssistantItems(entry.id, entry.message, currentTurnId)) {
 				items.set(item.id, item);
 			}
 			continue;
 		}
 		if (entry.message.role === "toolResult") {
+			const artifact = pendingArtifacts.get(entry.message.toolCallId);
+			pendingArtifacts.delete(entry.message.toolCallId);
+			if (artifact && !entry.message.isError) {
+				const current = artifacts.get(artifact.id);
+				if (!current || artifact.updatedAt >= current.updatedAt) artifacts.set(artifact.id, artifact);
+			}
 			if (entry.message.toolName === UPDATE_TODOS_TOOL_NAME) {
 				continue;
 			}
@@ -85,6 +102,7 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 		status: "idle",
 		items: projectedItems,
 		...(todos ? { todos } : {}),
+		artifacts: sortArtifacts(artifacts.values()),
 		lastSeq: 0,
 	};
 }

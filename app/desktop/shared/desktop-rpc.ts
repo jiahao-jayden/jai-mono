@@ -56,6 +56,26 @@ export interface DesktopProject extends Project {
 	readonly available: boolean;
 }
 
+export type DesktopArtifactFormat = "markdown" | "html";
+
+export interface DesktopArtifact {
+	readonly id: string;
+	readonly toolCallId: string;
+	readonly path: string;
+	readonly format: DesktopArtifactFormat;
+	readonly updatedAt: number;
+}
+
+export interface DesktopArtifactReadInput {
+	readonly sessionId: string;
+	readonly artifactId: string;
+}
+
+export interface DesktopArtifactPreview {
+	readonly artifact: DesktopArtifact;
+	readonly content: string;
+}
+
 export type DesktopProviderAdapter = "anthropic" | "openai-compatible" | "openai-responses";
 export type DesktopProviderAuthentication = "api-key" | "none";
 export type DesktopModelModality = "text" | "image" | "audio" | "video" | "pdf";
@@ -393,6 +413,7 @@ export interface DesktopAgentSnapshot {
 	readonly status: DesktopAgentStatus;
 	readonly items: readonly DesktopTranscriptItem[];
 	readonly todos?: DesktopTodos;
+	readonly artifacts: readonly DesktopArtifact[];
 	readonly lastSeq: number;
 }
 
@@ -400,6 +421,7 @@ export type DesktopAgentEvent =
 	| { readonly type: "status"; readonly status: DesktopAgentStatus }
 	| { readonly type: "transcript_upsert"; readonly item: DesktopTranscriptItem }
 	| { readonly type: "todos_replace"; readonly todos: DesktopTodos }
+	| { readonly type: "artifact_upsert"; readonly artifact: DesktopArtifact }
 	| { readonly type: "model_catalog_updated" }
 	| { readonly type: "connector_oauth_completed"; readonly connectorId: string }
 	| { readonly type: "connector_oauth_failed"; readonly connectorId: string; readonly message: string }
@@ -493,6 +515,9 @@ export interface DesktopApi {
 	readonly attachment: {
 		register(input: DesktopAttachmentRegistrationInput): Promise<DesktopMessageAttachment>;
 		release(ids: readonly string[]): void;
+	};
+	readonly artifact: {
+		read(input: DesktopArtifactReadInput): Promise<DesktopArtifactPreview>;
 	};
 	readonly agent: {
 		send(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;
