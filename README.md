@@ -10,6 +10,13 @@
 
 Jai Mono 是 PandaWork 的 TypeScript monorepo。它同时包含底层的 provider、agent 和 coding 能力，以及基于 Electron 的桌面应用。PandaWork 直接理解并操作用户选择的项目目录，但它不是 IDE：agent 负责执行工作，用户仍可使用自己习惯的编辑器查看和修改产出。
 
+## 应用展示
+
+<p align="center">
+  <img src="img/overview.png" alt="PandaWork 工作区概览" width="49%" />
+  <img src="img/artifact.png" alt="PandaWork 产出展示" width="49%" />
+</p>
+
 > [!NOTE]
 > 项目仍处于早期开发阶段。当前 workspace 中的包均为 private、`0.0.0` 版本，尚未作为稳定 npm 包发布。
 

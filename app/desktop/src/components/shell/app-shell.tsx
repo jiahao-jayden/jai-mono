@@ -46,7 +46,7 @@ const MAX_SIDEBAR_WIDTH = 420;
 const MIN_CHAT_WIDTH = 420;
 const MIN_RIGHT_PANEL_WIDTH = 280;
 const DEFAULT_RIGHT_PANEL_WIDTH = 336;
-const MAX_RIGHT_PANEL_WIDTH = 420;
+const MAX_ARTIFACT_PANEL_WIDTH = 720;
 const KEYBOARD_RESIZE_STEP = 16;
 const COLUMN_RESIZE_SPRING = {
 	type: "spring" as const,
@@ -175,7 +175,7 @@ export function AppShell() {
 	const rightPanelResize = useColumnResize(shellRef, rightPanelWidth, {
 		defaultWidth: DEFAULT_RIGHT_PANEL_WIDTH,
 		minWidth: MIN_RIGHT_PANEL_WIDTH,
-		maxWidth: MAX_RIGHT_PANEL_WIDTH,
+		maxWidth: MAX_ARTIFACT_PANEL_WIDTH,
 		direction: -1,
 		oppositeWidth: sidebarWidth,
 		oppositeVisible: sidebarOpen,
@@ -481,9 +481,7 @@ export function AppShell() {
 				/>
 				<Route path="*" element={<Navigate to="/chat/new" replace />} />
 			</Routes>
-			{rightPanelVisible && artifactPanelOpen ? (
-				<ColumnResizeHandle resize={rightPanelResize} side="right" />
-			) : null}
+			{rightPanelVisible && artifactPanelOpen ? <ColumnResizeHandle resize={rightPanelResize} side="right" /> : null}
 			{rightPanelVisible ? (
 				<AnimatePresence initial={false} mode="wait">
 					{artifactPanelOpen ? (
