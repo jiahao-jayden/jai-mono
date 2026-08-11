@@ -136,6 +136,7 @@ export function isDestructiveBashCommand(command: string): boolean {
 	return subcommands.some((subcommand) => {
 		const tokens = shellWords(subcommand);
 		if (!tokens || tokens.length === 0) return true;
+		if (tokens.includes("sudo") || tokens.includes("doas")) return true;
 		const executable = tokens.find((token) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token));
 		if (!executable) return true;
 		if (["rm", "rmdir", "unlink", "trash"].includes(executable)) return true;

@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { bashScanFromArgs } from "./bash-parser";
 import { normalizePermissionSettings } from "./definition";
@@ -49,6 +50,18 @@ export function evaluatePermission(
 	if (call.toolName === "UpdateTodos" || call.toolName === "SpawnAgent") {
 		return decision("allow", "built-in", "Internal agent coordination has no direct external side effects");
 	}
+	if (call.toolName === "Bash" && isCircuitBreakerCommand(stringArg(call, "command"))) {
+		return decision(
+			"deny",
+			"danger-layer",
+			"Deleting the filesystem root or home directory is not allowed",
+			undefined,
+			{
+				permission: "bash",
+				risk: "destructive",
+			},
+		);
+	}
 	const bashRisk = bashRiskDecision(call);
 	if (bashRisk) return bashRisk;
 	if (resolved.permission && Object.keys(resolved.permission).length > 0)
@@ -70,9 +83,6 @@ export function evaluatePermission(
 	if (resolved.defaultMode === "bypassPermissions") {
 		if (resolved.disableBypassPermissionsMode === "disable") {
 			return decision("deny", "mode", "Bypass Permissions is disabled by configuration");
-		}
-		if (call.toolName === "Bash" && isCircuitBreakerCommand(stringArg(call, "command"))) {
-			return decision("ask", "built-in", "Destructive root or home removal always requires confirmation");
 		}
 		return decision("allow", "mode", "Bypass Permissions mode");
 	}
@@ -179,13 +189,10 @@ function bashRiskDecision(call: PermissionCall): PermissionDecision | undefined 
 	const command = stringArg(call, "command");
 	const scan = bashScanFromArgs(call.args);
 	if (scan?.destructive || isDestructiveBashCommand(command)) {
-		return decision(
-			"ask",
-			"danger-layer",
-			"Destructive Bash operation always requires confirmation",
-			undefined,
-			{ permission: "bash", risk: "destructive" },
-		);
+		return decision("ask", "danger-layer", "Destructive Bash operation requires approval", undefined, {
+			permission: "bash",
+			risk: "destructive",
+		});
 	}
 	if (scan?.opaque) {
 		return decision("ask", "danger-layer", "Bash command could not be parsed safely", undefined, {
@@ -358,9 +365,42 @@ function shellWords(command: string): string[] | undefined {
 }
 
 function isCircuitBreakerCommand(command: string): boolean {
-	return /(?:^|[;&|]\s*)rm\s+(?:-[A-Za-z]*r[A-Za-z]*f[A-Za-z]*|-[A-Za-z]*f[A-Za-z]*r[A-Za-z]*)\s+(?:\/|~)(?:\s|$)/.test(
-		command,
-	);
+	const subcommands = splitBashCommand(command);
+	if (!subcommands) return false;
+	return subcommands.some((subcommand) => {
+		const tokens = shellWords(subcommand);
+		if (!tokens) return false;
+		const rmIndex = tokens.lastIndexOf("rm");
+		if (rmIndex < 0) return false;
+
+		let recursive = false;
+		let force = false;
+		let optionsEnded = false;
+		const targets: string[] = [];
+		for (const token of tokens.slice(rmIndex + 1)) {
+			if (!optionsEnded && token === "--") {
+				optionsEnded = true;
+				continue;
+			}
+			if (!optionsEnded && token.startsWith("-")) {
+				const flags = token.replace(/^-+/, "");
+				recursive ||= flags.includes("r") || flags.includes("R");
+				force ||= flags.includes("f");
+				continue;
+			}
+			targets.push(token);
+		}
+		return recursive && force && targets.some(isRootOrHomeTarget);
+	});
+}
+
+function isRootOrHomeTarget(target: string): boolean {
+	if (target === "/" || target === "//" || target === "~") return true;
+	if (/^(?:\$HOME|\$\{HOME\})(?:\/\.)?$/.test(target)) return true;
+	if (target.startsWith("~/")) return resolve(homedir(), target.slice(2)) === resolve(homedir());
+	if (target.startsWith("$HOME/") || target.startsWith("$" + "{HOME}/"))
+		return resolve(homedir(), target.replace(/^\$\{?HOME\}?\//, "")) === resolve(homedir());
+	return resolve(target) === resolve("/") || resolve(target) === resolve(homedir());
 }
 
 function unique(values: readonly string[]): string[] {

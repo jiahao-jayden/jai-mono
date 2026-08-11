@@ -80,7 +80,7 @@ describe("edit tool", () => {
 				path: "file.txt",
 				edits: [{ oldText: "missing", newText: "changed" }],
 			}),
-		).rejects.toThrow("Could not find");
+		).rejects.toThrow("Re-read the file and retry with text copied exactly from its current contents.");
 		expect(await readFile(path, "utf8")).toBe("same\nsame");
 	});
 });

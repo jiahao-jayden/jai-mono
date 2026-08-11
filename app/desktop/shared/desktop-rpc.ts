@@ -325,7 +325,7 @@ export interface DesktopToolItem {
 	readonly turnId: string;
 	readonly toolCallId: string;
 	readonly toolName: string;
-	readonly status: "running" | "complete" | "error";
+	readonly status: "running" | "complete";
 	readonly summary?: string;
 	readonly details?: string;
 }
@@ -345,6 +345,7 @@ export interface DesktopPermissionItem {
 	readonly id: string;
 	readonly request: PermissionRequest;
 	readonly status: "pending" | "allowed" | "denied" | "cancelled";
+	readonly approvalOrigin?: "automatic" | "manual";
 }
 
 export interface DesktopConnectorApprovalRequest {

@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@jai/agent";
-import type { CodingBusinessService } from "@jai/coding/business";
+import type { CodingBusinessService, CodingExecutionContext } from "@jai/coding/business";
 import type { PermissionMode } from "@jai/coding/permissions";
 import {
 	codingAgentConfigDefinition,
@@ -69,7 +69,10 @@ export function createDesktopAgentFactory(
 			instructions: CODING_AGENT_INSTRUCTIONS,
 			resolveInstructions(snapshot) {
 				return withModeInstruction(
-					withLanguageInstruction(CODING_AGENT_INSTRUCTIONS, snapshot.settings.agent?.language),
+					withLanguageInstruction(
+						withExecutionEnvironmentInstruction(CODING_AGENT_INSTRUCTIONS, executionContext),
+						snapshot.settings.agent?.language,
+					),
 					mode,
 				);
 			},
@@ -163,7 +166,7 @@ export function permissionModeForAgentMode(mode: DesktopAgentMode): PermissionMo
 		case "manual":
 			return "default";
 		case "automate":
-			return "bypassPermissions";
+			return "default";
 		case "plan":
 			return "plan";
 	}
@@ -172,6 +175,16 @@ export function permissionModeForAgentMode(mode: DesktopAgentMode): PermissionMo
 function withLanguageInstruction(instructions: string, language: string | undefined): string {
 	if (!language) return instructions;
 	return `${instructions}\n\nRespond in ${language} unless the user explicitly requests another language.`;
+}
+
+function withExecutionEnvironmentInstruction(instructions: string, executionContext: CodingExecutionContext): string {
+	if (!executionContext.localFileAccess) return instructions;
+	return `${instructions}\n\n<execution_environment>
+- Workspace root: ${executionContext.cwd}
+- Read, Glob, Grep, Write, Edit, and Bash resolve relative paths from this workspace. Paths outside it require permission.
+- Bash runs a POSIX shell process with this workspace as its current directory. It is not a browser runtime: it does not provide a DOM, Canvas rendering context, Web Audio, layout engine, or browser globals such as window and innerWidth.
+- Browser interaction is available only when a browser-specific tool appears in the available tool list. A DOM, Canvas, or Audio mock validates that mock, not the rendered artifact.
+</execution_environment>`;
 }
 
 function withModeInstruction(instructions: string, mode: DesktopAgentMode): string {

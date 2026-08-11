@@ -199,7 +199,6 @@ describe("groupTranscriptItems", () => {
 
 		expect(workGroupTitle([bash], true)).toBe("Executing");
 		expect(workGroupTitle([{ ...bash, status: "complete" }], false)).toBe("Executing");
-		expect(workGroupTitle([{ ...bash, status: "error" }], false)).toBe("Executing");
 		expect(workGroupTitle([unknown], false)).toBe("Working");
 	});
 
@@ -224,7 +223,7 @@ describe("groupTranscriptItems", () => {
 		const rows = workProcessRows([read, grep]);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]).toMatchObject({ kind: "exploration", items: [read, grep] });
-		expect(explorationSummary([read, grep], false, false)).toBe("Explored 1 file, 1 search");
+		expect(explorationSummary([read, grep], false)).toBe("Explored 1 file, 1 search");
 		expect(workGroupTitle([read, grep], false)).toBe("Exploring");
 	});
 

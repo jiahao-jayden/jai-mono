@@ -76,7 +76,7 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 				turnId: existingTool?.turnId ?? `tool:${entry.message.toolCallId}`,
 				toolCallId: entry.message.toolCallId,
 				toolName: entry.message.toolName,
-				status: entry.message.isError ? "error" : "complete",
+				status: "complete",
 				summary: existingTool?.summary ?? (details ? truncate(details, 500) : undefined),
 				...(details ? { details } : {}),
 			};

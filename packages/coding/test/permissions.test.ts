@@ -354,6 +354,15 @@ describe("permission evaluation", () => {
 		).toMatchObject({ behavior: "allow", source: "built-in" });
 	});
 
+	test("root/home rm -rf circuit breaker 固定拒绝", () => {
+		for (const command of ["rm -rf /", "rm -r -f ~", "rm --recursive --force $HOME", "rm -rf ${HOME}"]) {
+			expect(evaluatePermission(call("Bash", { command }), { defaultMode: "bypassPermissions" })).toMatchObject({
+				behavior: "deny",
+				source: "danger-layer",
+			});
+		}
+	});
+
 	test("规则固定按 Deny、Ask、Allow 求值，不按具体程度反转", () => {
 		const request = call("Bash", { command: "git push origin main" });
 		expect(
@@ -459,12 +468,12 @@ describe("permission evaluation", () => {
 		).toMatchObject({ behavior: "deny", source: "mode" });
 	});
 
-	test("只读 Bash 默认允许，危险或可写形式询问", () => {
+	test("只读 Bash 默认允许，危险或可写形式询问，root/home 删除拒绝", () => {
 		expect(evaluatePermission(call("Bash", { command: "git status && ls -la" })).behavior).toBe("allow");
 		expect(evaluatePermission(call("Bash", { command: "echo value > output.txt" })).behavior).toBe("ask");
 		expect(
 			evaluatePermission(call("Bash", { command: "rm -rf /" }), { defaultMode: "bypassPermissions" }).behavior,
-		).toBe("ask");
+		).toBe("deny");
 	});
 
 	test("Don't Ask 拒绝未预授权调用，显式 Allow 仍生效", () => {

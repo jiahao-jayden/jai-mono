@@ -287,8 +287,7 @@ function WorkProcessStep({ item }: { readonly item: WorkItem }) {
 
 function ExplorationStep({ items }: { readonly items: readonly DesktopToolItem[] }) {
 	const running = items.some((item) => item.status === "running");
-	const failed = items.some((item) => item.status === "error");
-	const label = explorationSummary(items, running, failed);
+	const label = explorationSummary(items, running);
 	return (
 		<ThinkingStep icon="search" label={label} status={running ? "active" : "complete"}>
 			<div className="flex flex-col gap-1 py-1">
@@ -300,9 +299,8 @@ function ExplorationStep({ items }: { readonly items: readonly DesktopToolItem[]
 	);
 }
 
-export function explorationSummary(items: readonly DesktopToolItem[], running: boolean, failed: boolean): string {
+export function explorationSummary(items: readonly DesktopToolItem[], running: boolean): string {
 	if (running) return "Exploring";
-	if (failed) return "Exploration failed";
 	const files = items.filter((item) => toolCategory(item.toolName) === "read").length;
 	const searches = items.length - files;
 	const parts = [
@@ -326,35 +324,34 @@ function ToolStep({ item }: { readonly item: DesktopToolItem }) {
 }
 
 function toolPresentation(item: DesktopToolItem): { icon: IconName; label: string } {
-	const failed = item.status === "error";
 	const category = toolCategory(item.toolName);
 	if (category === "search") {
 		return {
 			icon: "search",
-			label: failed ? "Search failed" : item.status === "running" ? "Searching code" : "Searched code",
+			label: item.status === "running" ? "Searching code" : "Searched code",
 		};
 	}
 	if (category === "read") {
 		return {
 			icon: "file-code",
-			label: failed ? "Read failed" : item.status === "running" ? "Reading files" : "Read files",
+			label: item.status === "running" ? "Reading files" : "Read files",
 		};
 	}
 	if (category === "update") {
 		return {
 			icon: "file-code",
-			label: failed ? "Update failed" : item.status === "running" ? "Updating files" : "Updated files",
+			label: item.status === "running" ? "Updating files" : "Updated files",
 		};
 	}
 	if (category === "command") {
 		return {
 			icon: "terminal",
-			label: failed ? "Command failed" : item.status === "running" ? "Running command" : "Ran command",
+			label: item.status === "running" ? "Running command" : "Ran command",
 		};
 	}
 	return {
 		icon: "terminal",
-		label: failed ? "Work failed" : item.status === "running" ? "Working" : "Completed work",
+		label: item.status === "running" ? "Working" : "Completed work",
 	};
 }
 

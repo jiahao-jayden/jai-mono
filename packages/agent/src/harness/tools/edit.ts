@@ -92,7 +92,12 @@ function locateEdits(content: string, edits: EditToolInput["edits"]): LocatedEdi
 			throw editError("no_change", { message: "No changes to apply: oldText and newText are identical" });
 		}
 		const start = content.indexOf(oldText);
-		if (start === -1) throw editError("text_not_found", { message: "Could not find oldText in the file" });
+		if (start === -1) {
+			throw editError("text_not_found", {
+				message:
+					"Could not find oldText in the file. Re-read the file and retry with text copied exactly from its current contents.",
+			});
+		}
 		if (content.indexOf(oldText, start + oldText.length) !== -1) {
 			throw editError("ambiguous_match", {
 				message: "Found multiple matches for oldText; provide more surrounding context",

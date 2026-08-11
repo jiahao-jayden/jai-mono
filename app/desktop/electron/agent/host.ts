@@ -435,22 +435,30 @@ export class DesktopAgentHost {
 		const runtime = this.#requireSession(sessionId);
 		const safeRequest = projectPermissionRequest(sessionId, request);
 		const pending = this.#approvals.register(safeRequest, signal);
+		const automaticallyApproved = runtime.mode === "automate";
 		const item: DesktopPermissionItem = {
 			kind: "permission",
 			id: `permission:${request.requestId}`,
 			request: safeRequest,
-			status: "pending",
+			status: automaticallyApproved ? "allowed" : "pending",
+			...(automaticallyApproved ? { approvalOrigin: "automatic" as const } : {}),
 		};
 		runtime.items.set(item.id, item);
 		this.#emitNow(runtime, { type: "transcript_upsert", item });
 		try {
+			if (automaticallyApproved) {
+				this.#approvals.resolve({ requestId: request.requestId, decision: "allowOnce" });
+			}
 			const decision = await pending.result;
 			const resolved: DesktopPermissionItem = {
 				...item,
 				status: decision === "deny" ? "denied" : "allowed",
+				...(automaticallyApproved ? {} : { approvalOrigin: "manual" as const }),
 			};
-			runtime.items.set(item.id, resolved);
-			this.#emitNow(runtime, { type: "transcript_upsert", item: resolved });
+			if (!automaticallyApproved) {
+				runtime.items.set(item.id, resolved);
+				this.#emitNow(runtime, { type: "transcript_upsert", item: resolved });
+			}
 			return decision;
 		} catch (error) {
 			if (runtime.closed) throw error;
@@ -662,7 +670,7 @@ export class DesktopAgentHost {
 					turnId: previousTool?.turnId ?? `tool:${event.toolCallId}`,
 					toolCallId: event.toolCallId,
 					toolName: event.toolName,
-					status: event.type === "tool_execution_update" ? "running" : event.isError ? "error" : "complete",
+					status: event.type === "tool_execution_update" ? "running" : "complete",
 					summary: previousTool?.summary ?? (details ? truncate(details, 500) : undefined),
 					...(details ? { details } : previousTool?.details ? { details: previousTool.details } : {}),
 				};

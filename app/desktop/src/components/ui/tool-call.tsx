@@ -7,7 +7,7 @@ import { fontWeights } from "@/lib/font-weight";
 import { useShape } from "@/lib/shape-context";
 import { cn } from "@/lib/utils";
 
-export type ToolCallStatus = "running" | "complete" | "error";
+export type ToolCallStatus = "running" | "complete";
 
 interface ToolCallProps extends HTMLAttributes<HTMLDivElement> {
 	readonly icon?: IconName;
@@ -29,7 +29,6 @@ export function ToolCall({
 	const [open, setOpen] = useState(false);
 	const ToolIcon = useIcon(icon);
 	const CheckIcon = useIcon("check");
-	const ErrorIcon = useIcon("x");
 	const ChevronIcon = useIcon("chevron-right");
 	const shape = useShape();
 	const expandable = Boolean(details);
@@ -41,7 +40,7 @@ export function ToolCall({
 				<ToolIcon
 					size={13}
 					strokeWidth={1.5}
-					className={status === "error" ? "text-destructive/90" : "text-muted-foreground/75"}
+					className="text-muted-foreground/75"
 				/>
 			</div>
 			<div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -51,16 +50,14 @@ export function ToolCall({
 							"min-w-0 truncate text-[12.5px] leading-tight",
 							status === "running"
 								? "shimmer-text text-foreground"
-								: status === "error"
-									? "text-destructive"
-									: "text-foreground/80",
+								: "text-foreground/80",
 						)}
 						style={{ fontVariationSettings: fontWeights.medium }}
 					>
 						{label}
 						{status === "running" ? "…" : null}
 					</span>
-					<ToolCallState status={status} CheckIcon={CheckIcon} ErrorIcon={ErrorIcon} />
+					<ToolCallState status={status} CheckIcon={CheckIcon} />
 				</div>
 				{summary ? (
 					<span className="truncate text-[12px] leading-snug text-muted-foreground">{summary}</span>
@@ -110,11 +107,9 @@ export function ToolCall({
 function ToolCallState({
 	status,
 	CheckIcon,
-	ErrorIcon,
 }: {
 	readonly status: ToolCallStatus;
 	readonly CheckIcon: IconComponent;
-	readonly ErrorIcon: IconComponent;
 }) {
 	if (status === "running") {
 		return (
@@ -123,9 +118,6 @@ function ToolCallState({
 				aria-label="Running"
 			/>
 		);
-	}
-	if (status === "error") {
-		return <ErrorIcon size={13} strokeWidth={2} className="shrink-0 text-destructive" aria-label="Failed" />;
 	}
 	return <CheckIcon size={13} strokeWidth={1.75} className="shrink-0 text-muted-foreground" aria-label="Complete" />;
 }

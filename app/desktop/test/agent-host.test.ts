@@ -86,6 +86,93 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
+	test("Automate 对普通权限请求复用 registry 并自动 allow once", async () => {
+		const envelopes: DesktopAgentEventEnvelope[] = [];
+		let factoryContext: DesktopAgentFactoryContext | undefined;
+		const agent = new FakeAgent(async () => {
+			const decision = await factoryContext!.requestApproval({
+				requestId: "permission-auto-1",
+				toolCallId: "call-auto-1",
+				toolName: "Write",
+				args: { path: "src/app.ts" },
+				reason: "Write requires approval",
+				canAlwaysAllow: true,
+			});
+			expect(decision).toBe("allowOnce");
+			return [];
+		});
+		const host = new DesktopAgentHost((event) => envelopes.push(event), async (context) => {
+			factoryContext = context;
+			return agent;
+		});
+
+		await host.send(input("automate", "provider/model", "automate"));
+		await agent.finished;
+
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({
+				kind: "permission",
+				status: "allowed",
+				approvalOrigin: "automatic",
+			}),
+		]);
+		expect(
+			envelopes.some(
+				(entry) =>
+					entry.event.type === "transcript_upsert" &&
+					entry.event.item.kind === "permission" &&
+					entry.event.item.status === "pending",
+			),
+		).toBe(false);
+		try {
+			host.resolvePermission({ requestId: "permission-auto-1", decision: "deny" });
+			throw new Error("Expected automatic permission resolution to be consumed");
+		} catch (error) {
+			expect(getErrorCode(error)).toBe("coding_permission.request_not_found");
+		}
+		host.close();
+	});
+
+	test("Automate 对危险权限同样复用 registry 并自动 allow once", async () => {
+		const envelopes: DesktopAgentEventEnvelope[] = [];
+		let factoryContext: DesktopAgentFactoryContext | undefined;
+		const agent = new FakeAgent(async () => {
+			const decision = await factoryContext!.requestApproval({
+				requestId: "permission-danger-1",
+				toolCallId: "call-danger-1",
+				toolName: "Bash",
+				args: { command: "rm -rf build" },
+				reason: "Destructive Bash operation requires approval",
+				canAlwaysAllow: false,
+			});
+			expect(decision).toBe("allowOnce");
+			return [];
+		});
+		const host = new DesktopAgentHost((event) => envelopes.push(event), async (context) => {
+			factoryContext = context;
+			return agent;
+		});
+
+		await host.send(input("danger", "provider/model", "automate"));
+		await agent.finished;
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({
+				kind: "permission",
+				status: "allowed",
+				approvalOrigin: "automatic",
+			}),
+		]);
+		expect(
+			envelopes.some(
+				(entry) =>
+					entry.event.type === "transcript_upsert" &&
+					entry.event.item.kind === "permission" &&
+					entry.event.item.status === "pending",
+			),
+		).toBe(false);
+		host.close();
+	});
+
 	test("Connector approval 使用独立 DTO，并支持 allow once 生命周期", async () => {
 		const envelopes: DesktopAgentEventEnvelope[] = [];
 		let factoryContext: DesktopAgentFactoryContext | undefined;
@@ -608,6 +695,13 @@ describe("DesktopAgentHost", () => {
 			}),
 		]);
 		expect(events.filter((event) => event.event.type === "artifact_upsert")).toHaveLength(1);
+		expect(host.getSnapshot("session-1").items).toContainEqual(
+			expect.objectContaining({
+				kind: "tool",
+				toolCallId: "failed-html-1",
+				status: "complete",
+			}),
+		);
 		expect(agent.getAppState()).toMatchObject({
 			artifacts: {
 				version: 1,
