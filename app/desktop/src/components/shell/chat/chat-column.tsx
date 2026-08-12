@@ -270,9 +270,9 @@ export function ChatColumn({
 							size="icon-sm"
 							onClick={onToggleArtifactPanel}
 							aria-expanded={artifactPanelOpen}
-							aria-controls="artifact-panel"
-							aria-label={artifactPanelOpen ? "Close artifact preview" : "Open artifact preview"}
-							title={artifactPanelOpen ? "Close artifact preview" : "Open artifact preview"}
+							aria-controls="workspace-panel"
+							aria-label={artifactPanelOpen ? "Close workspace" : "Open workspace"}
+							title={artifactPanelOpen ? "Close workspace" : "Open workspace"}
 							className="shrink-0 text-muted-foreground"
 						>
 							<PanelRightIcon size={16} />

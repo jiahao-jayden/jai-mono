@@ -76,6 +76,34 @@ export interface DesktopArtifactPreview {
 	readonly content: string;
 }
 
+export type DesktopWorkspaceEntryKind = "directory" | "file";
+
+export interface DesktopWorkspaceEntry {
+	readonly name: string;
+	readonly path: string;
+	readonly kind: DesktopWorkspaceEntryKind;
+}
+
+export interface DesktopWorkspaceListInput {
+	readonly sessionId: string;
+	readonly path: string;
+}
+
+export interface DesktopWorkspaceListResult {
+	readonly path: string;
+	readonly entries: readonly DesktopWorkspaceEntry[];
+}
+
+export interface DesktopWorkspaceReadInput {
+	readonly sessionId: string;
+	readonly path: string;
+}
+
+export interface DesktopWorkspaceFile {
+	readonly path: string;
+	readonly content: string;
+}
+
 export type DesktopProviderAdapter = "anthropic" | "openai-compatible" | "openai-responses";
 export type DesktopProviderAuthentication = "api-key" | "none";
 export type DesktopModelModality = "text" | "image" | "audio" | "video" | "pdf";
@@ -519,6 +547,10 @@ export interface DesktopApi {
 	};
 	readonly artifact: {
 		read(input: DesktopArtifactReadInput): Promise<DesktopArtifactPreview>;
+	};
+	readonly workspace: {
+		list(input: DesktopWorkspaceListInput): Promise<DesktopWorkspaceListResult>;
+		read(input: DesktopWorkspaceReadInput): Promise<DesktopWorkspaceFile>;
 	};
 	readonly agent: {
 		send(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;

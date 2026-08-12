@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFile, realpath, stat } from "node:fs/promises";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import type { CodingMessageAttachment } from "@jai/coding";
 import type { CodingBusinessService } from "@jai/coding/business";
@@ -24,10 +24,14 @@ import {
 	type DesktopSessionDeleteInput,
 	type DesktopSessionRenameInput,
 	type DesktopTheme,
+	type DesktopWorkspaceFile,
+	type DesktopWorkspaceListInput,
+	type DesktopWorkspaceListResult,
+	type DesktopWorkspaceReadInput,
 	desktopConnectorPermissionResolutionSchema,
 } from "../../shared/desktop-rpc";
-import { type DesktopAgentFactory, DesktopAgentHost } from "../agent/host";
 import { sortArtifacts } from "../agent/artifacts";
+import { type DesktopAgentFactory, DesktopAgentHost } from "../agent/host";
 import { projectSessionSnapshot } from "../agent/projector";
 import { DesktopConfigService } from "../config";
 import { desktopModelCatalog, setDesktopModelCatalogUpdateListener } from "../model-catalog";
@@ -58,6 +62,10 @@ class ArtifactPreviewUnavailable extends TaggedError("desktop_artifact.preview_u
 	readonly cause?: unknown;
 	readonly message: string;
 }> {}
+class WorkspaceFileUnavailable extends TaggedError("desktop_workspace.file_unavailable")<{
+	readonly cause?: unknown;
+	readonly message: string;
+}> {}
 
 const themeError = (init: { readonly message: string }) => new InvalidThemeValue(init);
 const agentInputError = (init: { readonly message: string }) => new InvalidAgentInput(init);
@@ -68,11 +76,14 @@ const desktopAttachmentError = (init: { readonly cause?: unknown; readonly messa
 	new AttachmentRegistrationFailed(init);
 const artifactPreviewError = (init: { readonly cause?: unknown; readonly message: string }) =>
 	new ArtifactPreviewUnavailable(init);
+const workspaceFileError = (init: { readonly cause?: unknown; readonly message: string }) =>
+	new WorkspaceFileUnavailable(init);
 let codingBusiness: CodingBusinessService | undefined;
 let providerConfig: DesktopConfigService | undefined;
 let desktopOAuth: DesktopOAuthManager | undefined;
 const attachmentRecords = new Map<string, CodingMessageAttachment>();
 const MAX_ARTIFACT_PREVIEW_BYTES = 1_000_000;
+const MAX_WORKSPACE_FILE_BYTES = 1_000_000;
 const desktopAgentHost = new DesktopAgentHost((envelope) => {
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) window.webContents.send(DESKTOP_EVENTS_CHANNEL, envelope);
@@ -303,6 +314,44 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 			}
 		},
 	},
+	workspace: {
+		async list(_event, input) {
+			const parsed = assertWorkspaceListInput(input);
+			const projectRoot = await workspaceRootForSession(parsed.sessionId);
+			const directoryPath = await resolveWorkspacePath(projectRoot, parsed.path, "directory");
+			try {
+				const entries = await readdir(directoryPath, { withFileTypes: true });
+				return {
+					path: parsed.path,
+					entries: entries
+						.map((entry) => ({
+							name: entry.name,
+							path: parsed.path ? path.posix.join(parsed.path, entry.name) : entry.name,
+							kind: entry.isDirectory() ? ("directory" as const) : ("file" as const),
+						}))
+						.toSorted((left, right) => {
+							if (left.kind !== right.kind) return left.kind === "directory" ? -1 : 1;
+							return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" });
+						}),
+				} satisfies DesktopWorkspaceListResult;
+			} catch (cause) {
+				throw workspaceFileError({ message: "Workspace directory could not be listed.", cause });
+			}
+		},
+		async read(_event, input) {
+			const parsed = assertWorkspaceReadInput(input);
+			const projectRoot = await workspaceRootForSession(parsed.sessionId);
+			const filePath = await resolveWorkspacePath(projectRoot, parsed.path, "file");
+			try {
+				if ((await stat(filePath)).size > MAX_WORKSPACE_FILE_BYTES) {
+					throw workspaceFileError({ message: "Workspace file is too large to preview." });
+				}
+				return { path: parsed.path, content: await readFile(filePath, "utf8") } satisfies DesktopWorkspaceFile;
+			} catch (cause) {
+				throw workspaceFileError({ message: "Workspace file could not be read.", cause });
+			}
+		},
+	},
 	agent: {
 		send(_event, input) {
 			const parsed = assertMessageInput(input);
@@ -439,6 +488,59 @@ function assertArtifactReadInput(value: unknown): DesktopArtifactReadInput {
 	return { sessionId: value.sessionId, artifactId: value.artifactId };
 }
 
+function assertWorkspaceListInput(value: unknown): DesktopWorkspaceListInput {
+	if (!isRecord(value) || typeof value.sessionId !== "string" || typeof value.path !== "string") {
+		throw workspaceFileError({ message: "Workspace directory request is invalid." });
+	}
+	return { sessionId: assertSessionId(value.sessionId), path: assertWorkspaceRelativePath(value.path) };
+}
+
+function assertWorkspaceReadInput(value: unknown): DesktopWorkspaceReadInput {
+	if (!isRecord(value) || typeof value.sessionId !== "string" || typeof value.path !== "string") {
+		throw workspaceFileError({ message: "Workspace file request is invalid." });
+	}
+	return { sessionId: assertSessionId(value.sessionId), path: assertWorkspaceRelativePath(value.path) };
+}
+
+function assertWorkspaceRelativePath(value: string): string {
+	const normalized = value.replaceAll("\\", "/").replace(/^\/+|\/+$/g, "");
+	if (normalized === "") return "";
+	if (path.posix.isAbsolute(normalized) || normalized.split("/").some((part) => part === ".." || part === "")) {
+		throw workspaceFileError({ message: "Workspace path must stay inside the project." });
+	}
+	return normalized;
+}
+
+async function workspaceRootForSession(sessionId: string): Promise<string> {
+	const service = requireCodingBusiness();
+	const session = service.getSession(sessionId);
+	if (session.projectId === null || !(await service.isProjectAvailable(session.projectId))) {
+		throw workspaceFileError({ message: "This session has no accessible workspace." });
+	}
+	return realpath(service.getProject(session.projectId).canonicalPath);
+}
+
+async function resolveWorkspacePath(
+	projectRoot: string,
+	relativePath: string,
+	expectedKind: "directory" | "file",
+): Promise<string> {
+	try {
+		const candidate = path.resolve(projectRoot, relativePath);
+		const canonical = await realpath(candidate);
+		if (!isInside(canonical, projectRoot))
+			throw workspaceFileError({ message: "Workspace path is outside the project." });
+		const info = await stat(canonical);
+		if ((expectedKind === "directory" && !info.isDirectory()) || (expectedKind === "file" && !info.isFile())) {
+			throw workspaceFileError({ message: "Workspace path has the wrong type." });
+		}
+		return canonical;
+	} catch (cause) {
+		if (cause instanceof WorkspaceFileUnavailable) throw cause;
+		throw workspaceFileError({ message: "Workspace path is unavailable.", cause });
+	}
+}
+
 async function artifactForSession(
 	sessionId: string,
 	artifactId: string,
@@ -447,7 +549,9 @@ async function artifactForSession(
 	const activeArtifact = desktopAgentHost.getArtifact(sessionId, artifactId);
 	if (activeArtifact) return activeArtifact;
 	const snapshot = await service.loadSessionSnapshot(sessionId);
-	const artifact = projectSessionSnapshot(sessionId, snapshot).artifacts.find((candidate) => candidate.id === artifactId);
+	const artifact = projectSessionSnapshot(sessionId, snapshot).artifacts.find(
+		(candidate) => candidate.id === artifactId,
+	);
 	if (artifact) return artifact;
 	throw artifactPreviewError({ message: "This artifact is no longer available in the session." });
 }
