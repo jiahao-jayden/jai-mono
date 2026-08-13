@@ -1,3 +1,4 @@
+import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
@@ -6,7 +7,7 @@ import type { CodingBusinessService } from "@jai/coding/business";
 import { type PermissionResolution, permissionResolutionSchema } from "@jai/coding/permissions/approval";
 import { Value } from "@sinclair/typebox/value";
 import { TaggedError } from "better-result";
-import { BrowserWindow, dialog, type IpcMainInvokeEvent, nativeTheme } from "electron";
+import { app, BrowserWindow, dialog, type IpcMainInvokeEvent, nativeTheme, shell } from "electron";
 import Store from "electron-store";
 import {
 	DESKTOP_EVENTS_CHANNEL,
@@ -27,6 +28,9 @@ import {
 	type DesktopWorkspaceFile,
 	type DesktopWorkspaceListInput,
 	type DesktopWorkspaceListResult,
+	type DesktopWorkspaceOpenApplication,
+	type DesktopWorkspaceOpenApplications,
+	type DesktopWorkspaceOpenInput,
 	type DesktopWorkspaceReadInput,
 	desktopConnectorPermissionResolutionSchema,
 } from "../../shared/desktop-rpc";
@@ -84,6 +88,21 @@ let desktopOAuth: DesktopOAuthManager | undefined;
 const attachmentRecords = new Map<string, CodingMessageAttachment>();
 const MAX_ARTIFACT_PREVIEW_BYTES = 1_000_000;
 const MAX_WORKSPACE_FILE_BYTES = 1_000_000;
+const MAX_OPEN_APPLICATIONS = 12;
+const MACOS_APPLICATION_QUERY_MAX_BYTES = 1_500_000;
+const macOSApplicationsByExtension = new Map<string, Promise<MacOSOpenApplications>>();
+const macOSApplicationRoots = ["/Applications", "/System/Applications", `${process.env.HOME ?? ""}/Applications`];
+
+interface MacOSOpenApplication {
+	readonly id: string;
+	readonly name: string;
+	readonly path: string;
+	readonly isDefault: boolean;
+}
+
+interface MacOSOpenApplications {
+	readonly applications: readonly MacOSOpenApplication[];
+}
 const desktopAgentHost = new DesktopAgentHost((envelope) => {
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) window.webContents.send(DESKTOP_EVENTS_CHANNEL, envelope);
@@ -351,6 +370,43 @@ export const desktopRouter: DesktopRouterImplementation<DesktopApi> = {
 				throw workspaceFileError({ message: "Workspace file could not be read.", cause });
 			}
 		},
+		async openApplications(_event, input) {
+			const parsed = assertWorkspaceReadInput(input);
+			const projectRoot = await workspaceRootForSession(parsed.sessionId);
+			const filePath = await resolveWorkspacePath(projectRoot, parsed.path, "file");
+			return workspaceOpenApplicationDtos(filePath);
+		},
+		async open(_event, input) {
+			const parsed = assertWorkspaceOpenInput(input);
+			const projectRoot = await workspaceRootForSession(parsed.sessionId);
+			const filePath = await resolveWorkspacePath(projectRoot, parsed.path, "file");
+			try {
+				if (parsed.target === "default") {
+					const failure = await shell.openPath(filePath);
+					if (failure) throw workspaceFileError({ message: failure });
+					return;
+				}
+				if (parsed.target === "application") {
+					const application = (await workspaceOpenApplications(filePath)).applications.find(
+						(candidate) => candidate.id === parsed.applicationId,
+					);
+					if (!application)
+						throw workspaceFileError({ message: "The selected application cannot open this file." });
+					await openWithMacOSApplication(application, filePath);
+					return;
+				}
+				await openInCursor(filePath);
+			} catch (cause) {
+				if (cause instanceof WorkspaceFileUnavailable) throw cause;
+				throw workspaceFileError({
+					message:
+						parsed.target === "cursor"
+							? "Cursor could not open this file."
+							: "Workspace file could not be opened.",
+					cause,
+				});
+			}
+		},
 	},
 	agent: {
 		send(_event, input) {
@@ -502,6 +558,30 @@ function assertWorkspaceReadInput(value: unknown): DesktopWorkspaceReadInput {
 	return { sessionId: assertSessionId(value.sessionId), path: assertWorkspaceRelativePath(value.path) };
 }
 
+function assertWorkspaceOpenInput(value: unknown): DesktopWorkspaceOpenInput {
+	if (
+		!isRecord(value) ||
+		typeof value.sessionId !== "string" ||
+		typeof value.path !== "string" ||
+		(value.target !== "application" && value.target !== "cursor" && value.target !== "default")
+	) {
+		throw workspaceFileError({ message: "Workspace file open request is invalid." });
+	}
+	const sessionId = assertSessionId(value.sessionId);
+	const path = assertWorkspaceRelativePath(value.path);
+	if (value.target === "application") {
+		if (typeof value.applicationId !== "string" || value.applicationId.length === 0) {
+			throw workspaceFileError({ message: "Workspace application open request is invalid." });
+		}
+		return { sessionId, path, target: "application", applicationId: value.applicationId };
+	}
+	return {
+		sessionId,
+		path,
+		target: value.target,
+	};
+}
+
 function assertWorkspaceRelativePath(value: string): string {
 	const normalized = value.replaceAll("\\", "/").replace(/^\/+|\/+$/g, "");
 	if (normalized === "") return "";
@@ -540,6 +620,237 @@ async function resolveWorkspacePath(
 		throw workspaceFileError({ message: "Workspace path is unavailable.", cause });
 	}
 }
+
+async function openInCursor(filePath: string): Promise<void> {
+	if (process.platform === "darwin") {
+		await runCommand("open", ["-a", "Cursor", filePath]);
+		return;
+	}
+	await startDetached(process.platform === "win32" ? "Cursor.exe" : "cursor", [filePath]);
+}
+
+async function workspaceOpenApplications(filePath: string): Promise<MacOSOpenApplications> {
+	if (process.platform !== "darwin") return { applications: [] };
+	const extension = path.extname(filePath).toLowerCase();
+	const cached = macOSApplicationsByExtension.get(extension);
+	if (cached) return cached;
+
+	const applications = queryMacOSApplications(filePath);
+	macOSApplicationsByExtension.set(extension, applications);
+	try {
+		return await applications;
+	} catch (cause) {
+		if (macOSApplicationsByExtension.get(extension) === applications) macOSApplicationsByExtension.delete(extension);
+		throw cause;
+	}
+}
+
+async function workspaceOpenApplicationDtos(filePath: string): Promise<DesktopWorkspaceOpenApplications> {
+	const applications = await workspaceOpenApplications(filePath);
+	const applicationDtos = await Promise.all(
+		applications.applications.map(async (application): Promise<DesktopWorkspaceOpenApplication> => {
+			let iconDataUrl: string | undefined;
+			try {
+				const icon = await app.getFileIcon(application.path, { size: "small" });
+				if (!icon.isEmpty()) iconDataUrl = icon.toDataURL();
+			} catch {
+				// The open action stays available even when the OS cannot provide an icon.
+			}
+			return {
+				id: application.id,
+				name: application.name,
+				isDefault: application.isDefault,
+				...(iconDataUrl ? { iconDataUrl } : {}),
+			};
+		}),
+	);
+	const defaultApplication = applicationDtos.find((application) => application.isDefault);
+	return { applications: applicationDtos, ...(defaultApplication ? { defaultApplication } : {}) };
+}
+
+async function queryMacOSApplications(filePath: string): Promise<MacOSOpenApplications> {
+	try {
+		const output = await runCommandOutput("/usr/bin/osascript", [
+			"-l",
+			"JavaScript",
+			"-e",
+			macOSApplicationQuery,
+			"--",
+			filePath,
+		]);
+		return assertMacOSApplicationQueryResult(JSON.parse(output));
+	} catch (cause) {
+		throw workspaceFileError({ message: "Available applications could not be loaded.", cause });
+	}
+}
+
+function assertMacOSApplicationQueryResult(value: unknown): MacOSOpenApplications {
+	if (!isRecord(value) || !Array.isArray(value.applications)) {
+		throw workspaceFileError({ message: "Available applications returned an invalid response." });
+	}
+	const applications: MacOSOpenApplication[] = [];
+	for (const candidate of value.applications) {
+		if (
+			!isRecord(candidate) ||
+			typeof candidate.id !== "string" ||
+			candidate.id.length === 0 ||
+			typeof candidate.name !== "string" ||
+			candidate.name.length === 0 ||
+			typeof candidate.isDefault !== "boolean" ||
+			typeof candidate.path !== "string" ||
+			!isMacOSApplicationPath(candidate.path)
+		) {
+			throw workspaceFileError({ message: "Available applications returned an invalid application." });
+		}
+		applications.push({
+			id: candidate.id,
+			name: candidate.name,
+			path: candidate.path,
+			isDefault: candidate.isDefault,
+		});
+	}
+	return { applications };
+}
+
+function isMacOSApplicationPath(applicationPath: string): boolean {
+	return (
+		path.isAbsolute(applicationPath) &&
+		applicationPath.endsWith(".app") &&
+		macOSApplicationRoots.some((root) => root && isInside(applicationPath, root))
+	);
+}
+
+async function openWithMacOSApplication(application: MacOSOpenApplication, filePath: string): Promise<void> {
+	if (process.platform !== "darwin") {
+		throw workspaceFileError({ message: "Opening with a selected application is only available on macOS." });
+	}
+	await runCommand("open", ["-b", application.id, filePath]);
+}
+
+function runCommand(command: string, args: readonly string[]): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const process = spawn(command, args, { stdio: "ignore", windowsHide: true });
+		process.once("error", reject);
+		process.once("close", (code) => {
+			if (code === 0) resolve();
+			else reject(new Error(`Command exited with status ${code ?? "unknown"}`));
+		});
+	});
+}
+
+function runCommandOutput(command: string, args: readonly string[]): Promise<string> {
+	return new Promise((resolve, reject) => {
+		execFile(command, args, { encoding: "utf8", maxBuffer: MACOS_APPLICATION_QUERY_MAX_BYTES }, (error, stdout) => {
+			if (error) reject(error);
+			else resolve(stdout);
+		});
+	});
+}
+
+function startDetached(command: string, args: readonly string[]): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const process = spawn(command, args, { detached: true, stdio: "ignore", windowsHide: true });
+		process.once("error", reject);
+		process.once("spawn", () => {
+			process.unref();
+			resolve();
+		});
+	});
+}
+
+const macOSApplicationQuery = String.raw`
+ObjC.import("AppKit");
+ObjC.import("Foundation");
+
+const arguments = $.NSProcessInfo.processInfo.arguments;
+const filePath = ObjC.unwrap(arguments.objectAtIndex(arguments.count - 1));
+const extension = filePath.split(".").at(-1).toLowerCase();
+const contentTypesByExtension = {
+	htm: ["public.html"],
+	html: ["public.html"],
+	jpeg: ["public.jpeg"],
+	jpg: ["public.jpeg"],
+	md: ["net.daringfireball.markdown", "public.plain-text"],
+	markdown: ["net.daringfireball.markdown", "public.plain-text"],
+	pdf: ["com.adobe.pdf"],
+	png: ["public.png"],
+	text: ["public.plain-text", "public.text"],
+	txt: ["public.plain-text", "public.text"],
+	svg: ["public.svg-image"],
+};
+const workspace = $.NSWorkspace.sharedWorkspace;
+const fileUrl = $.NSURL.fileURLWithPath($(filePath));
+const defaultUrl = workspace.URLForApplicationToOpenURL(fileUrl);
+const defaultPath = defaultUrl ? ObjC.unwrap(defaultUrl.path) : null;
+const applications = [];
+const applicationIds = new Set();
+
+function unwrapString(value) {
+	return value ? ObjC.unwrap(value) : null;
+}
+
+function arrayContainsString(values, value) {
+	if (!values) return false;
+	for (let index = 0; index < values.count; index += 1) {
+		if (unwrapString(values.objectAtIndex(index)) === value) return true;
+	}
+	return false;
+}
+
+function documentTypesHandleExtension(documentTypes) {
+	if (!documentTypes) return false;
+	for (let index = 0; index < documentTypes.count; index += 1) {
+		const documentType = documentTypes.objectAtIndex(index);
+		const extensions = documentType.objectForKey($("CFBundleTypeExtensions"));
+		for (let extensionIndex = 0; extensions && extensionIndex < extensions.count; extensionIndex += 1) {
+			if (unwrapString(extensions.objectAtIndex(extensionIndex)).toLowerCase() === extension) return true;
+		}
+		const contentTypes = documentType.objectForKey($("LSItemContentTypes"));
+		const knownContentTypes = contentTypesByExtension[extension] || [];
+		for (const contentType of knownContentTypes) {
+			if (arrayContainsString(contentTypes, contentType)) return true;
+		}
+	}
+	return false;
+}
+
+function addApplication(applicationPath, isDefault, requireDocumentMatch) {
+	const bundle = $.NSBundle.bundleWithPath($(applicationPath));
+	if (!bundle) return;
+	const id = unwrapString(bundle.bundleIdentifier);
+	if (!id || applicationIds.has(id)) return;
+	const documentTypes = bundle.objectForInfoDictionaryKey($("CFBundleDocumentTypes"));
+	if (requireDocumentMatch && !documentTypesHandleExtension(documentTypes)) return;
+	const name =
+		unwrapString(bundle.objectForInfoDictionaryKey($("CFBundleDisplayName"))) ||
+		unwrapString(bundle.objectForInfoDictionaryKey($("CFBundleName"))) ||
+		applicationPath.split("/").at(-1).replace(/\\.app$/, "");
+	applicationIds.add(id);
+	applications.push({ id, name, path: applicationPath, isDefault });
+}
+
+const registeredApplications = workspace.URLsForApplicationsToOpenURL(fileUrl);
+for (let index = 0; registeredApplications && index < registeredApplications.count; index += 1) {
+	const applicationPath = ObjC.unwrap(registeredApplications.objectAtIndex(index).path);
+	addApplication(applicationPath, applicationPath === defaultPath, false);
+}
+
+for (const root of ["/Applications", "/System/Applications", ObjC.unwrap($.NSHomeDirectory()) + "/Applications"]) {
+	const entries = $.NSFileManager.defaultManager.contentsOfDirectoryAtPathError($(root), null);
+	for (let index = 0; entries && index < entries.count; index += 1) {
+		const entry = unwrapString(entries.objectAtIndex(index));
+		if (!entry.endsWith(".app")) continue;
+		const applicationPath = root + "/" + entry;
+		addApplication(applicationPath, applicationPath === defaultPath, true);
+	}
+}
+
+applications.sort((left, right) => {
+	if (left.isDefault !== right.isDefault) return left.isDefault ? -1 : 1;
+	return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+});
+JSON.stringify({ applications: applications.slice(0, ${MAX_OPEN_APPLICATIONS}) });
+`;
 
 async function artifactForSession(
 	sessionId: string,

@@ -3,13 +3,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ArtifactPanel, WorkspacePanel } from "../src/components/shell/workspace-panel";
 
 describe("WorkspacePanel", () => {
-	test("提供文件标签栏、打开文件空状态与工作区文件树入口", () => {
+	test("提供文件标签栏、打开文件空状态、打开操作与工作区文件树入口", () => {
 		const markup = renderToStaticMarkup(<WorkspacePanel sessionId="session-1" />);
 
 		expect(markup).toContain('id="workspace-panel"');
 		expect(markup).toContain("新建文件标签");
 		expect(markup).toContain("打开文件");
-		expect(markup).toContain("文件树");
+		expect(markup).toContain("使用默认应用打开");
+		expect(markup).toContain("筛选文件");
 		expect(markup).toContain("收起文件树");
 	});
 });

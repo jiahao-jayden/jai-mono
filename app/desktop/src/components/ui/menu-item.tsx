@@ -81,6 +81,7 @@ interface MenuItemProps extends HTMLAttributes<HTMLDivElement> {
   /** Optional leading icon. When omitted, the row renders text-only with no
    *  reserved icon column. */
   icon?: IconComponent;
+  leadingVisual?: ReactNode;
   trailingIcon?: IconComponent;
   label: string;
   description?: string;
@@ -102,6 +103,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
   (
     {
       icon: Icon,
+      leadingVisual,
       trailingIcon: TrailingIcon,
       label,
       description,
@@ -165,7 +167,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
 
     const content = (
       <>
-        {Icon && (
+        {leadingVisual ?? (Icon && (
           <span className="inline-grid">
             <span className="col-start-1 row-start-1 invisible">
               <Icon size={16} strokeWidth={2} />
@@ -183,7 +185,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
               )}
             />
           </span>
-        )}
+        ))}
         {/* Keep the full line box. `text-box: trim-both cap alphabetic`
             clips CJK glyphs and makes menu labels look vertically crushed. */}
         <span className="min-w-0 flex-1 text-[13px]">

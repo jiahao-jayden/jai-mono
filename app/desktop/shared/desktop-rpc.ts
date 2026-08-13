@@ -104,6 +104,27 @@ export interface DesktopWorkspaceFile {
 	readonly content: string;
 }
 
+export type DesktopWorkspaceOpenTarget = "application" | "cursor" | "default";
+
+export interface DesktopWorkspaceOpenInput {
+	readonly sessionId: string;
+	readonly path: string;
+	readonly target: DesktopWorkspaceOpenTarget;
+	readonly applicationId?: string;
+}
+
+export interface DesktopWorkspaceOpenApplication {
+	readonly id: string;
+	readonly name: string;
+	readonly iconDataUrl?: string;
+	readonly isDefault: boolean;
+}
+
+export interface DesktopWorkspaceOpenApplications {
+	readonly applications: readonly DesktopWorkspaceOpenApplication[];
+	readonly defaultApplication?: DesktopWorkspaceOpenApplication;
+}
+
 export type DesktopProviderAdapter = "anthropic" | "openai-compatible" | "openai-responses";
 export type DesktopProviderAuthentication = "api-key" | "none";
 export type DesktopModelModality = "text" | "image" | "audio" | "video" | "pdf";
@@ -551,6 +572,8 @@ export interface DesktopApi {
 	readonly workspace: {
 		list(input: DesktopWorkspaceListInput): Promise<DesktopWorkspaceListResult>;
 		read(input: DesktopWorkspaceReadInput): Promise<DesktopWorkspaceFile>;
+		openApplications(input: DesktopWorkspaceReadInput): Promise<DesktopWorkspaceOpenApplications>;
+		open(input: DesktopWorkspaceOpenInput): Promise<void>;
 	};
 	readonly agent: {
 		send(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;

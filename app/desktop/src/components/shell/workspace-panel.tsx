@@ -1,10 +1,14 @@
+import { getErrorMessage } from "@jai/common";
 import type { FileTree, FileTreeDirectoryHandle, FileTreeItemHandle } from "@pierre/trees";
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { MarkdownContent } from "@/components/ui/chat-message";
+import { DropdownContent, DropdownMenu, DropdownTrigger } from "@/components/ui/dropdown";
 import { Input } from "@/components/ui/input";
+import { MenuItem } from "@/components/ui/menu-item";
+import { toast } from "@/components/ui/toast";
 import { desktop } from "@/lib/desktop";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
@@ -13,6 +17,8 @@ import type {
 	DesktopArtifactPreview,
 	DesktopWorkspaceEntry,
 	DesktopWorkspaceFile,
+	DesktopWorkspaceOpenApplication,
+	DesktopWorkspaceOpenApplications,
 } from "../../../shared/desktop-rpc";
 
 interface WorkspacePanelProps {
@@ -34,6 +40,61 @@ function asDirectoryHandle(item: FileTreeItemHandle | null): FileTreeDirectoryHa
 	return item?.isDirectory() ? (item as FileTreeDirectoryHandle) : null;
 }
 
+function canOpenInCursor(filePath: string): boolean {
+	const extension = filePath.split(".").at(-1)?.toLowerCase();
+	return new Set([
+		"astro",
+		"bash",
+		"c",
+		"cc",
+		"cjs",
+		"cpp",
+		"cs",
+		"css",
+		"cts",
+		"cxx",
+		"env",
+		"go",
+		"gql",
+		"graphql",
+		"h",
+		"hpp",
+		"htm",
+		"html",
+		"java",
+		"js",
+		"json",
+		"jsonc",
+		"jsx",
+		"kt",
+		"kts",
+		"less",
+		"mjs",
+		"md",
+		"markdown",
+		"mts",
+		"php",
+		"py",
+		"rb",
+		"rs",
+		"sass",
+		"scss",
+		"sh",
+		"sql",
+		"svelte",
+		"svg",
+		"swift",
+		"toml",
+		"ts",
+		"tsx",
+		"vue",
+		"xml",
+		"yaml",
+		"yml",
+		"zsh",
+	]).has(extension ?? "");
+}
+
 interface WorkspaceTab extends DesktopWorkspaceFile {
 	readonly name: string;
 	readonly state: "empty" | "loading" | "ready" | "error";
@@ -49,8 +110,9 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 	const XIcon = icons.x;
 	const LoadingIcon = icons.loader;
 	const PanelRightIcon = icons["panel-right"];
+	const ChevronDownIcon = icons["chevron-down"];
+	const TerminalIcon = icons.terminal;
 	const reducedMotion = useReducedMotion();
-	const [entriesByPath, setEntriesByPath] = useState<Record<string, readonly DesktopWorkspaceEntry[]>>({});
 	const [loadingPaths, setLoadingPaths] = useState<ReadonlySet<string>>(new Set());
 	const [rootLoaded, setRootLoaded] = useState(false);
 	const [treeCollapsed, setTreeCollapsed] = useState(false);
@@ -61,6 +123,9 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 	const [activePath, setActivePath] = useState<string | null>(NEW_WORKSPACE_TAB_PATH);
 	const [query, setQuery] = useState("");
 	const [error, setError] = useState<string | null>(null);
+	const [openingTarget, setOpeningTarget] = useState<"default" | "cursor" | null>(null);
+	const [openingApplicationId, setOpeningApplicationId] = useState<string | null>(null);
+	const [openApplications, setOpenApplications] = useState<DesktopWorkspaceOpenApplications | null>(null);
 	const treeModelRef = useRef<FileTree | null>(null);
 	const treePathsRef = useRef(new Set<string>());
 	const directoryPathsRef = useRef(new Set<string>());
@@ -80,9 +145,13 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 				try {
 					const result = await desktop.workspace.list({ sessionId, path: directoryPath });
 					loadedDirectoriesRef.current.add(directoryPath);
-					setEntriesByPath((current) => ({ ...current, [directoryPath]: result.entries }));
 					if (directoryPath === "") setRootLoaded(true);
 					for (const entry of result.entries) {
+						const treePath = treePathForEntry(entry);
+						if (!treePathsRef.current.has(treePath)) {
+							treePathsRef.current.add(treePath);
+							treeModelRef.current?.add(treePath);
+						}
 						if (entry.kind === "directory") directoryPathsRef.current.add(entry.path);
 					}
 					setError(null);
@@ -161,6 +230,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 					selectionSyncRef.current = true;
 					selectedItem.select();
 				}
+				treeModelRef.current?.scrollToPath(filePath, { focus: false, offset: "nearest" });
 				setError(null);
 			} catch {
 				setTabs((current) => current.map((tab) => (tab.path === filePath ? { ...tab, state: "error" } : tab)));
@@ -174,6 +244,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 	const { model: treeModel } = useFileTree({
 		paths: [],
 		initialExpansion: "closed",
+		flattenEmptyDirectories: true,
 		fileTreeSearchMode: "hide-non-matches",
 		search: false,
 		density: "compact",
@@ -188,17 +259,6 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 		},
 	});
 	treeModelRef.current = treeModel;
-
-	useEffect(() => {
-		for (const entries of Object.values(entriesByPath)) {
-			for (const entry of entries) {
-				const treePath = treePathForEntry(entry);
-				if (treePathsRef.current.has(treePath)) continue;
-				treePathsRef.current.add(treePath);
-				treeModel.add(treePath);
-			}
-		}
-	}, [entriesByPath, treeModel]);
 
 	useEffect(() => {
 		void loadDirectory("");
@@ -224,6 +284,26 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 		if (openFilePath) void openFile(openFilePath);
 	}, [openFile, openFilePath]);
 
+	useEffect(() => {
+		let cancelled = false;
+		if (!activePath || activePath === NEW_WORKSPACE_TAB_PATH) {
+			setOpenApplications(null);
+			return;
+		}
+		setOpenApplications(null);
+		void desktop.workspace
+			.openApplications({ sessionId, path: activePath })
+			.then((result) => {
+				if (!cancelled) setOpenApplications(result);
+			})
+			.catch(() => {
+				if (!cancelled) setOpenApplications({ applications: [] });
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [activePath, sessionId]);
+
 	const closeTab = (filePath: string) => {
 		setTabs((current) => {
 			const index = current.findIndex((tab) => tab.path === filePath);
@@ -241,6 +321,16 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 
 	const activeTab = tabs.find((tab) => tab.path === activePath) ?? null;
 	const activeContent = activeTab?.state === "ready" ? activeTab.content : null;
+	const activeWorkspaceFilePath = activeTab?.path === NEW_WORKSPACE_TAB_PATH ? null : (activeTab?.path ?? null);
+	const activeWorkspaceFileName = activeWorkspaceFilePath ? (activeTab?.name ?? activeWorkspaceFilePath) : null;
+	const cursorOpenAvailable = activeWorkspaceFilePath ? canOpenInCursor(activeWorkspaceFilePath) : false;
+	const defaultOpenApplication = openApplications?.defaultApplication;
+	const openControlsDisabled = !activeWorkspaceFilePath || openingTarget !== null || openingApplicationId !== null;
+	const isOpeningDefault = openingTarget === "default";
+	const cursorOpenDisabled = openingTarget !== null || openingApplicationId !== null;
+	const defaultOpenLabel = activeWorkspaceFileName
+		? `使用默认应用打开 ${activeWorkspaceFileName}`
+		: "使用默认应用打开";
 	const newTabExists = tabs.some((tab) => tab.path === NEW_WORKSPACE_TAB_PATH);
 	const previewInitial = reducedMotion ? { opacity: 0 } : { opacity: 0, transform: "translateY(4px)" };
 	const treeLoading = loadingPaths.size > 0;
@@ -250,6 +340,68 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 		"--trees-selected-bg-override":
 			"color-mix(in oklch, var(--foreground) 11%, color-mix(in oklch, var(--muted) 14%, var(--background)))",
 	} as CSSProperties;
+	const openActiveFile = useCallback(
+		async (target: "default" | "cursor" | "application", applicationId?: string) => {
+			if (!activeWorkspaceFilePath) return;
+			if (target === "application") setOpeningApplicationId(applicationId ?? null);
+			else setOpeningTarget(target);
+			try {
+				await desktop.workspace.open({
+					sessionId,
+					path: activeWorkspaceFilePath,
+					target,
+					...(target === "application" && applicationId ? { applicationId } : {}),
+				});
+			} catch (reason) {
+				toast.add({
+					title: target === "cursor" ? "无法使用 Cursor 打开" : "无法打开文件",
+					description: getErrorMessage(reason),
+					type: "error",
+				});
+			} finally {
+				if (target === "application") setOpeningApplicationId(null);
+				else setOpeningTarget(null);
+			}
+		},
+		[activeWorkspaceFilePath, sessionId],
+	);
+	const defaultOpenIcon = defaultOpenApplication?.iconDataUrl ? (
+		<img src={defaultOpenApplication.iconDataUrl} alt="" className="size-4 shrink-0" />
+	) : (
+		<FolderOpenIcon size={14} />
+	);
+	const applicationMenuItems = (openApplications?.applications ?? []).map((application, index) => (
+		<ApplicationMenuItem
+			key={application.id}
+			application={application}
+			index={index}
+			opening={openingApplicationId === application.id}
+			disabled={openingTarget !== null || (openingApplicationId !== null && openingApplicationId !== application.id)}
+			onSelect={() => void openActiveFile("application", application.id)}
+		/>
+	));
+	const cursorOpenMenuItem = cursorOpenAvailable ? (
+		<MenuItem
+			index={1}
+			icon={TerminalIcon}
+			label="用 Cursor 打开"
+			disabled={cursorOpenDisabled}
+			onSelect={() => void openActiveFile("cursor")}
+		/>
+	) : null;
+	const fallbackOpenMenuItems = applicationMenuItems.length
+		? applicationMenuItems
+		: [
+				<MenuItem
+					key="default"
+					index={0}
+					icon={FolderOpenIcon}
+					label="使用默认应用打开"
+					disabled={openControlsDisabled}
+					onSelect={() => void openActiveFile("default")}
+				/>,
+				cursorOpenMenuItem,
+			];
 	return (
 		<aside
 			id="workspace-panel"
@@ -263,12 +415,12 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 			>
 				{tabs.map((tab) => {
 					const isActive = tab.path === activePath;
-					const tabClassName = cn(
-						"h-8 min-w-0 max-w-44 shrink-0 rounded-[9px] px-2.5 text-[12.5px]",
+					const tabGroupClassName = cn(
+						"group flex h-7 min-w-0 max-w-44 shrink-0 items-center rounded-[8px] text-[12.5px] transition-colors duration-80",
 						isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-hover hover:text-foreground",
 					);
 					return (
-						<div key={tab.path} className="flex shrink-0 items-center rounded-[9px]">
+						<div key={tab.path} className={tabGroupClassName}>
 							<Button
 								type="button"
 								variant="ghost"
@@ -276,7 +428,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 								role="tab"
 								aria-selected={isActive}
 								onClick={() => setActivePath(tab.path)}
-								className={tabClassName}
+								className="h-7 min-w-0 flex-1 rounded-none px-2.5 text-inherit hover:text-inherit"
 								contentClassName="min-w-0"
 								labelClassName="flex min-w-0 items-center gap-1.5"
 							>
@@ -290,7 +442,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 								aria-label={`关闭 ${tab.name}`}
 								title={`关闭 ${tab.name}`}
 								onClick={() => closeTab(tab.path)}
-								className="-ml-1 size-6 shrink-0 text-muted-foreground hover:text-foreground"
+								className="size-6 shrink-0 rounded-[5px] text-muted-foreground hover:text-foreground"
 							>
 								<XIcon size={12} />
 							</Button>
@@ -331,7 +483,49 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 					</Button>
 				</div>
 			</div>
-
+			<div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/45 px-3">
+				<FolderOpenIcon size={14} className="shrink-0 text-muted-foreground" />
+				<span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground" title={activePreviewPath}>
+					{activePreviewPath}
+				</span>
+				<div className="flex shrink-0 overflow-hidden rounded-[8px]">
+					<Button
+						type="button"
+						variant="secondary"
+						size="sm"
+						loading={isOpeningDefault}
+						disabled={openControlsDisabled}
+						onClick={() => void openActiveFile("default")}
+						aria-label={defaultOpenLabel}
+						title={defaultOpenLabel}
+						className="h-7 rounded-r-none px-2.5"
+						contentClassName="gap-1.5"
+					>
+						{defaultOpenIcon}
+						打开
+					</Button>
+					<DropdownMenu disabled={openControlsDisabled}>
+						<DropdownTrigger
+							render={
+								<Button
+									type="button"
+									variant="secondary"
+									size="icon-sm"
+									disabled={openControlsDisabled}
+									aria-label="选择打开方式"
+									title="选择打开方式"
+									className="h-7 w-7 rounded-l-none border-l border-foreground/10"
+								>
+									<ChevronDownIcon size={14} />
+								</Button>
+							}
+						/>
+						<DropdownContent align="end" className="w-52">
+							{fallbackOpenMenuItems}
+						</DropdownContent>
+					</DropdownMenu>
+				</div>
+			</div>
 			<div
 				className={cn(
 					"grid min-h-0 flex-1 transition-[grid-template-columns] duration-200 ease-out",
@@ -339,10 +533,6 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 				)}
 			>
 				<section className="flex min-h-0 min-w-0 flex-col">
-					<div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/45 px-3 text-[12px] text-muted-foreground">
-						<FolderOpenIcon size={14} className="shrink-0" />
-						<span className="truncate">{activePreviewPath}</span>
-					</div>
 					{activeTab ? (
 						<AnimatePresence mode="wait" initial={false}>
 							<motion.div
@@ -393,15 +583,8 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 					aria-hidden={treeCollapsed}
 					inert={treeCollapsed}
 				>
-					<div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/45 px-3">
-						<FolderOpenIcon size={14} className="shrink-0 text-muted-foreground" />
-						<span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground/80">文件树</span>
-						{treeLoading ? (
-							<LoadingIcon size={13} className="shrink-0 animate-spin text-muted-foreground" />
-						) : null}
-					</div>
-					<div className="shrink-0 p-2.5 pb-2">
-						<div className="relative">
+					<div className="relative shrink-0 p-2.5 pb-2">
+						<div className="relative min-w-0 flex-1">
 							<SearchIcon
 								size={15}
 								className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground"
@@ -412,9 +595,15 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 								placeholder="筛选文件…"
 								aria-label="筛选工作区文件"
 								density="compact"
-								className="h-8 pl-8"
+								className="h-8 pl-8 pr-8"
 							/>
 						</div>
+						{treeLoading ? (
+							<LoadingIcon
+								size={13}
+								className="pointer-events-none absolute top-1/2 right-5 -translate-y-1/2 animate-spin text-muted-foreground"
+							/>
+						) : null}
 					</div>
 					<div className="min-h-0 min-w-0 flex-1 overflow-hidden px-1.5 pb-2.5">
 						{rootLoaded ? (
@@ -434,6 +623,35 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 				</section>
 			</div>
 		</aside>
+	);
+}
+
+function ApplicationMenuItem({
+	application,
+	disabled,
+	index,
+	onSelect,
+	opening,
+}: {
+	readonly application: DesktopWorkspaceOpenApplication;
+	readonly disabled: boolean;
+	readonly index: number;
+	readonly opening: boolean;
+	onSelect(): void;
+}) {
+	const applicationIcon = application.iconDataUrl ? (
+		<img src={application.iconDataUrl} alt="" className="size-4 shrink-0" />
+	) : null;
+	const label = application.isDefault ? `使用 ${application.name} 打开` : `用 ${application.name} 打开`;
+	return (
+		<MenuItem
+			index={index}
+			label={label}
+			leadingVisual={applicationIcon}
+			disabled={disabled}
+			onSelect={onSelect}
+			className={cn(opening && "opacity-50")}
+		/>
 	);
 }
 
