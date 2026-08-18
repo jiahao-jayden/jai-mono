@@ -641,11 +641,6 @@ export interface DesktopSessionListPage extends SessionListPage {
 }
 
 export interface DesktopApi {
-	readonly window: {
-		close(): void;
-		minimize(): void;
-		fullscreen(): void;
-	};
 	readonly theme: {
 		get(): DesktopTheme;
 		set(theme: DesktopTheme): void;
@@ -667,7 +662,6 @@ export interface DesktopApi {
 	};
 	readonly session: {
 		create(input: DesktopSessionCreateInput): Promise<CodingSession>;
-		get(sessionId: string): CodingSession;
 		list(input?: {
 			readonly limit?: number;
 			readonly cursor?: SessionListCursor;

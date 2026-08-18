@@ -27,11 +27,6 @@ export interface DesktopRuntime {
 	readonly openWith: OpenWithService;
 	/** Broadcasts an app-wide event to every renderer window. */
 	publish(event: DesktopAgentEvent): void;
-	/**
-	 * Window controls for the renderer that sent the request. Kept on the runtime
-	 * so the router never reaches for Electron itself.
-	 */
-	windowControls(sender: WindowSender): DesktopWindowControls;
 	/** Asks the user for a project folder. Returns undefined when they cancel. */
 	pickProjectDirectory(sender: WindowSender): Promise<string | undefined>;
 	/** Completes a Connector OAuth flow and tells the renderer how it went. */
@@ -41,12 +36,6 @@ export interface DesktopRuntime {
 
 /** The `sender` of an IPC invocation, narrowed to what window lookup needs. */
 export type WindowSender = Electron.WebContents;
-
-export interface DesktopWindowControls {
-	close(): void;
-	minimize(): void;
-	toggleFullscreen(): void;
-}
 
 export function createDesktopRuntime(dependencies: {
 	readonly business: CodingBusinessService;
@@ -122,14 +111,6 @@ export function createDesktopRuntime(dependencies: {
 		theme,
 		openWith,
 		publish,
-		windowControls(sender) {
-			const window = BrowserWindow.fromWebContents(sender);
-			return {
-				close: () => window?.close(),
-				minimize: () => window?.minimize(),
-				toggleFullscreen: () => window?.setFullScreen(!window.isFullScreen()),
-			};
-		},
 		pickProjectDirectory: (sender) => pickProjectDirectory(BrowserWindow.fromWebContents(sender)),
 		receiveOAuthCallback: (url) => receiveOAuthCallback(url),
 		async close() {

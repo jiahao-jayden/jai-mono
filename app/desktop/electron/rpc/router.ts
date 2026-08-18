@@ -87,17 +87,6 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 	}
 
 	return {
-		window: {
-			close(event: IpcMainInvokeEvent) {
-				rt.windowControls(event.sender).close();
-			},
-			minimize(event: IpcMainInvokeEvent) {
-				rt.windowControls(event.sender).minimize();
-			},
-			fullscreen(event: IpcMainInvokeEvent) {
-				rt.windowControls(event.sender).toggleFullscreen();
-			},
-		},
 		theme: {
 			get() {
 				return rt.theme.get();
@@ -169,9 +158,6 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				return rt.business.createSession(
 					parse(desktopSessionCreateInputSchema, input, "Invalid Session create input"),
 				);
-			},
-			get(_event, sessionId) {
-				return rt.business.getSession(parse(desktopSessionIdSchema, sessionId, "Invalid session id"));
 			},
 			list(_event, input) {
 				return {
