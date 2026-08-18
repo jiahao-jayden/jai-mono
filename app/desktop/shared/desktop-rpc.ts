@@ -66,10 +66,15 @@ export interface DesktopArtifact {
 	readonly updatedAt: number;
 }
 
-export interface DesktopArtifactReadInput {
-	readonly sessionId: string;
-	readonly artifactId: string;
-}
+export const desktopArtifactReadInputSchema = Type.Object(
+	{
+		sessionId: Type.String({ minLength: 1 }),
+		artifactId: Type.String({ minLength: 1 }),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopArtifactReadInput = Static<typeof desktopArtifactReadInputSchema>;
 
 export interface DesktopArtifactPreview {
 	readonly artifact: DesktopArtifact;
@@ -84,20 +89,24 @@ export interface DesktopWorkspaceEntry {
 	readonly kind: DesktopWorkspaceEntryKind;
 }
 
-export interface DesktopWorkspaceListInput {
-	readonly sessionId: string;
-	readonly path: string;
-}
+export const desktopWorkspaceListInputSchema = Type.Object(
+	{
+		sessionId: Type.String({ minLength: 1 }),
+		path: Type.String(),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopWorkspaceListInput = Static<typeof desktopWorkspaceListInputSchema>;
 
 export interface DesktopWorkspaceListResult {
 	readonly path: string;
 	readonly entries: readonly DesktopWorkspaceEntry[];
 }
 
-export interface DesktopWorkspaceReadInput {
-	readonly sessionId: string;
-	readonly path: string;
-}
+export const desktopWorkspaceReadInputSchema = desktopWorkspaceListInputSchema;
+
+export type DesktopWorkspaceReadInput = Static<typeof desktopWorkspaceReadInputSchema>;
 
 export interface DesktopWorkspaceFile {
 	readonly path: string;
@@ -105,6 +114,32 @@ export interface DesktopWorkspaceFile {
 }
 
 export type DesktopWorkspaceOpenTarget = "application" | "cursor" | "default";
+
+/**
+ * `applicationId` is required only when opening with a chosen application.
+ *
+ * The type stays a single optional-field shape so callers can build it without
+ * narrowing first; the schema is what enforces the pairing at the seam.
+ */
+export const desktopWorkspaceOpenInputSchema = Type.Union([
+	Type.Object(
+		{
+			sessionId: Type.String({ minLength: 1 }),
+			path: Type.String(),
+			target: Type.Literal("application"),
+			applicationId: Type.String({ minLength: 1 }),
+		},
+		{ additionalProperties: false },
+	),
+	Type.Object(
+		{
+			sessionId: Type.String({ minLength: 1 }),
+			path: Type.String(),
+			target: Type.Union([Type.Literal("cursor"), Type.Literal("default")]),
+		},
+		{ additionalProperties: false },
+	),
+]);
 
 export interface DesktopWorkspaceOpenInput {
 	readonly sessionId: string;
@@ -331,12 +366,27 @@ export interface DesktopMessageAttachment {
 	readonly size: number;
 }
 
-export interface DesktopAttachmentRegistrationInput {
-	readonly sourcePath: string;
-	readonly filename: string;
-	readonly mimeType: string;
-	readonly size: number;
-}
+export const desktopMessageAttachmentSchema = Type.Object(
+	{
+		id: Type.String({ minLength: 1 }),
+		filename: Type.String(),
+		mimeType: Type.String(),
+		size: Type.Integer({ minimum: 0 }),
+	},
+	{ additionalProperties: false },
+);
+
+export const desktopAttachmentRegistrationInputSchema = Type.Object(
+	{
+		sourcePath: Type.String({ minLength: 1 }),
+		filename: Type.String({ minLength: 1 }),
+		mimeType: Type.String(),
+		size: Type.Integer({ minimum: 0 }),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopAttachmentRegistrationInput = Static<typeof desktopAttachmentRegistrationInputSchema>;
 
 export interface DesktopMessageItem {
 	readonly kind: "message";
@@ -501,6 +551,24 @@ export interface DesktopAgentSessionInput {
 
 export type DesktopAgentMode = "manual" | "automate" | "plan";
 
+/**
+ * `modelRef` is `<profileId>/<modelId>`, so it must carry a separator.
+ *
+ * The type stays hand-written because callers pass `readonly` arrays and
+ * TypeBox's `Static` always produces a mutable one; the schema is what the
+ * router validates against.
+ */
+export const desktopAgentMessageInputSchema = Type.Object(
+	{
+		sessionId: Type.String({ minLength: 1 }),
+		message: Type.String({ minLength: 1 }),
+		modelRef: Type.String({ pattern: "/" }),
+		mode: Type.Union([Type.Literal("manual"), Type.Literal("automate"), Type.Literal("plan")]),
+		attachments: Type.Optional(Type.Array(desktopMessageAttachmentSchema)),
+	},
+	{ additionalProperties: false },
+);
+
 export interface DesktopAgentMessageInput extends DesktopAgentSessionInput {
 	readonly message: string;
 	readonly modelRef: string;
@@ -508,19 +576,65 @@ export interface DesktopAgentMessageInput extends DesktopAgentSessionInput {
 	readonly attachments?: readonly DesktopMessageAttachment[];
 }
 
-export interface DesktopSessionCreateInput {
-	readonly projectId?: string | null;
-	readonly firstMessage: string;
-}
+export const desktopSessionCreateInputSchema = Type.Object(
+	{
+		projectId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+		firstMessage: Type.String({ minLength: 1, pattern: "\\S" }),
+	},
+	{ additionalProperties: false },
+);
 
-export interface DesktopSessionRenameInput {
-	readonly sessionId: string;
-	readonly title: string;
-}
+export type DesktopSessionCreateInput = Static<typeof desktopSessionCreateInputSchema>;
 
-export interface DesktopSessionDeleteInput {
-	readonly sessionId: string;
-}
+export const desktopSessionRenameInputSchema = Type.Object(
+	{
+		sessionId: Type.String({ minLength: 1 }),
+		title: Type.String({ minLength: 1, pattern: "\\S" }),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopSessionRenameInput = Static<typeof desktopSessionRenameInputSchema>;
+
+export const desktopSessionDeleteInputSchema = Type.Object(
+	{ sessionId: Type.String({ minLength: 1 }) },
+	{ additionalProperties: false },
+);
+
+export type DesktopSessionDeleteInput = Static<typeof desktopSessionDeleteInputSchema>;
+
+export const desktopSessionMoveInputSchema = Type.Object(
+	{
+		sessionId: Type.String({ minLength: 1 }),
+		toProjectId: Type.Union([Type.String(), Type.Null()]),
+	},
+	{ additionalProperties: false },
+);
+
+export const desktopSessionListInputSchema = Type.Union([
+	Type.Undefined(),
+	Type.Object(
+		{
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+			cursor: Type.Optional(
+				Type.Object(
+					{ lastActivityAt: Type.Number(), id: Type.String() },
+					{ additionalProperties: false },
+				),
+			),
+		},
+		{ additionalProperties: false },
+	),
+]);
+
+export const desktopSessionIdSchema = Type.String({ minLength: 1 });
+
+export const desktopConnectorOAuthApplicationIdSchema = Type.Union([
+	Type.Literal("google_drive"),
+	Type.Literal("google_gmail"),
+	Type.Literal("google_calendar"),
+	Type.Literal("github"),
+]);
 
 export interface DesktopSessionListPage extends SessionListPage {
 	readonly runningSessionIds: readonly string[];

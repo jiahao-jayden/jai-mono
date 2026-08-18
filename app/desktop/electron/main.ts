@@ -3,24 +3,18 @@ import { join, resolve } from "node:path";
 import { CodingBusinessService } from "@jai/coding-agent/business";
 import { setBashParserWasmSources } from "@jai/coding-agent/permissions";
 import { app, BrowserWindow } from "electron";
-import { createDesktopAgentFactory } from "./agent/factory";
 import { type DesktopConnectorRuntime, openDesktopConnectorRuntime } from "./connector-runtime";
 import { mainLog } from "./logger";
 import { hydrateDesktopModelCatalog, startDesktopModelCatalog } from "./model-catalog";
-import {
-	closeDesktopRuntime,
-	handleDesktopOAuthCallback,
-	restoreTheme,
-	setCodingBusinessService,
-	setDesktopAgentFactory,
-} from "./rpc/router";
+import { createDesktopRouter } from "./rpc/router";
 import { registerDesktopRpc } from "./rpc/server";
+import { createDesktopRuntime, type DesktopRuntime } from "./runtime";
 import { createMainWindow } from "./windows";
 
 const isMac = process.platform === "darwin";
 const customProtocol = "jai";
 const pendingOAuthCallbacks: string[] = [];
-let desktopRuntimeReady = false;
+let desktopRuntime: DesktopRuntime | undefined;
 let connectorRuntime: DesktopConnectorRuntime | undefined;
 
 if (!app.isPackaged) {
@@ -61,13 +55,15 @@ if (!app.requestSingleInstanceLock()) {
 				hydrateDesktopModelCatalog(),
 			]);
 			connectorRuntime = openedConnectorRuntime;
-			setCodingBusinessService(codingBusiness);
-			setDesktopAgentFactory(createDesktopAgentFactory(codingBusiness, openedConnectorRuntime.service));
-			restoreTheme();
-			registerDesktopRpc();
+			const runtime = createDesktopRuntime({
+				business: codingBusiness,
+				connector: openedConnectorRuntime.service,
+			});
+			desktopRuntime = runtime;
+			runtime.theme.restore();
+			registerDesktopRpc(createDesktopRouter(runtime));
 			void startDesktopModelCatalog();
 			createMainWindow();
-			desktopRuntimeReady = true;
 			for (const callback of pendingOAuthCallbacks.splice(0)) receiveOAuthCallback(callback);
 
 			app.on("activate", () => {
@@ -87,16 +83,20 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
 	connectorRuntime?.close();
 	connectorRuntime = undefined;
-	closeDesktopRuntime();
+	const runtime = desktopRuntime;
+	desktopRuntime = undefined;
+	void runtime?.close().catch((error) => mainLog.warn("Desktop runtime could not be closed cleanly:", error));
 });
 
 function receiveOAuthCallback(url: string): void {
 	if (!isConnectorOAuthCallback(url)) return;
-	if (!desktopRuntimeReady) {
+	const runtime = desktopRuntime;
+	if (!runtime) {
 		pendingOAuthCallbacks.push(url);
 		return;
 	}
-	void handleDesktopOAuthCallback(url)
+	void runtime
+		.receiveOAuthCallback(url)
 		.then(focusMainWindow)
 		.catch((error) => mainLog.warn("OAuth callback could not be completed:", error));
 }

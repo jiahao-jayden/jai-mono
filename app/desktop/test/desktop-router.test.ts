@@ -1,0 +1,136 @@
+import { describe, expect, test } from "bun:test";
+import type { DesktopRuntime } from "../electron/runtime";
+import { createDesktopRouter } from "../electron/rpc/router";
+
+/** The router only ever reaches the runtime, so a partial stand-in is enough. */
+function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) {
+	const calls: { name: string; args: readonly unknown[] }[] = [];
+	const record =
+		(name: string, result?: unknown) =>
+		(...args: unknown[]) => {
+			calls.push({ name, args });
+			return result;
+		};
+
+	const runtime = {
+		business: {
+			createSession: record("createSession", { id: "session-1" }),
+			getSession: record("getSession", { id: "session-1", projectId: null }),
+			listSessions: record("listSessions", { sessions: [], nextCursor: null }),
+			renameSession: record("renameSession", { id: "session-1" }),
+			deleteSession: record("deleteSession"),
+			listProjects: record("listProjects", []),
+			...(overrides.business as object),
+		},
+		agentHost: {
+			runningSessionIds: record("runningSessionIds", []),
+			closeSession: record("closeSession"),
+			abort: record("abort"),
+			invalidateSessions: record("invalidateSessions"),
+			send: record("send", { accepted: true as const }),
+			...(overrides.agentHost as object),
+		},
+		attachments: {
+			register: record("register", { id: "attachment-1" }),
+			release: record("release"),
+			resolve: record("resolve", { id: "attachment-1" }),
+		},
+		theme: { get: record("theme.get", "system"), set: record("theme.set"), restore: record("theme.restore") },
+		config: { ...(overrides.config as object) },
+		oauth: { ...(overrides.oauth as object) },
+		openWith: { ...(overrides.openWith as object) },
+		publish: record("publish"),
+		receiveOAuthCallback: record("receiveOAuthCallback"),
+		close: record("close"),
+	} as unknown as DesktopRuntime;
+
+	return { router: createDesktopRouter(runtime), calls };
+}
+
+const event = {} as Electron.IpcMainInvokeEvent;
+
+describe("createDesktopRouter — 输入校验", () => {
+	test("session.create 拒绝空白 firstMessage 与未知字段", () => {
+		const { router: r, calls } = router();
+		expect(() => r.session.create(event, { firstMessage: "   " })).toThrow();
+		expect(() => r.session.create(event, { firstMessage: "hi", extra: 1 })).toThrow();
+		expect(() => r.session.create(event, {})).toThrow();
+		expect(calls).toEqual([]);
+
+		r.session.create(event, { firstMessage: "hi", projectId: null });
+		expect(calls.map((call) => call.name)).toEqual(["createSession"]);
+	});
+
+	test("agent.send 要求 modelRef 带 profile 分隔符", () => {
+		const { router: r, calls } = router();
+		const base = { sessionId: "s1", message: "hello", mode: "manual" as const };
+		expect(() => r.agent.send(event, { ...base, modelRef: "no-separator" })).toThrow();
+		expect(calls).toEqual([]);
+
+		r.agent.send(event, { ...base, modelRef: "profile/model" });
+		expect(calls.map((call) => call.name)).toEqual(["send"]);
+	});
+
+	test("agent.send 拒绝空消息与非法 mode", () => {
+		const { router: r } = router();
+		const base = { sessionId: "s1", modelRef: "p/m" };
+		expect(() => r.agent.send(event, { ...base, message: "", mode: "manual" })).toThrow();
+		expect(() => r.agent.send(event, { ...base, message: "hi", mode: "yolo" })).toThrow();
+	});
+
+	test("workspace.open 只在 application 目标下接受 applicationId", () => {
+		const { router: r } = router();
+		expect(() =>
+			r.workspace.open(event, { sessionId: "s1", path: "a.md", target: "application" }),
+		).toThrow();
+		expect(() =>
+			r.workspace.open(event, { sessionId: "s1", path: "a.md", target: "cursor", applicationId: "x" }),
+		).toThrow();
+	});
+
+	test("session id 必须非空字符串", () => {
+		const { router: r } = router();
+		expect(() => r.agent.abort(event, "")).toThrow();
+		expect(() => r.agent.abort(event, 42)).toThrow();
+	});
+
+	test("connector.startOAuth 只接受已知 application id", () => {
+		const { router: r } = router();
+		expect(() => r.connector.startOAuth(event, "evil_connector")).toThrow();
+	});
+
+	test("session.list 校验分页参数范围", () => {
+		const { router: r } = router();
+		expect(() => r.session.list(event, { limit: 0 })).toThrow();
+		expect(() => r.session.list(event, { limit: 101 })).toThrow();
+		expect(() => r.session.list(event, { cursor: { id: "a" } })).toThrow();
+		expect(r.session.list(event, undefined)).toBeDefined();
+		expect(r.session.list(event, { limit: 20 })).toBeDefined();
+	});
+});
+
+describe("createDesktopRouter — 行为", () => {
+	test("session.list 合并 Agent 的运行中会话", () => {
+		const { router: r } = router({ agentHost: { runningSessionIds: () => ["session-9"] } });
+		expect(r.session.list(event, undefined).runningSessionIds).toEqual(["session-9"]);
+	});
+
+	test("provider.save 之后失效已打开的 Agent 会话", async () => {
+		const { router: r, calls } = router({ config: { save: async () => ({ profiles: [] }) } });
+		await r.provider.save(event, { profiles: [] } as never);
+		expect(calls.map((call) => call.name)).toContain("invalidateSessions");
+	});
+
+	test("session.delete 先关闭运行中的 Agent，再删除持久化 Session", async () => {
+		const { router: r, calls } = router();
+		await r.session.delete(event, { sessionId: "session-1" });
+		expect(calls.map((call) => call.name)).toEqual(["closeSession", "deleteSession"]);
+	});
+
+	test("theme 读写委托给 theme 服务", () => {
+		const { router: r, calls } = router();
+		expect(r.theme.get(event)).toBe("system");
+		r.theme.set(event, "dark");
+		expect(calls.map((call) => call.name)).toEqual(["theme.get", "theme.set"]);
+	});
+});

@@ -9,7 +9,7 @@ import {
 	desktopRpcRequestSchema,
 	jsonValueSchema,
 } from "../../shared/desktop-rpc";
-import { desktopRouter } from "./router";
+import type { DesktopRouter } from "./router";
 
 type RpcErrorInit = { readonly data?: { readonly path: string }; readonly message: string };
 class InvalidRpcRequest extends TaggedError("desktop_rpc.invalid_request")<RpcErrorInit> {}
@@ -27,11 +27,11 @@ function rpcError(reason: "invalid_request" | "method_not_found" | "invalid_resp
 	}
 }
 
-export function registerDesktopRpc(): void {
+export function registerDesktopRpc(router: DesktopRouter): void {
 	ipcMain.handle(DESKTOP_RPC_CHANNEL, async (event, request: unknown): Promise<DesktopRpcResponse> => {
 		try {
 			const parsed = parseRequest(request);
-			const handler = resolveHandler(parsed.path);
+			const handler = resolveHandler(router, parsed.path);
 			const value = await handler(event, ...parsed.args);
 			if (value === undefined) return { status: "ok" };
 			if (!Value.Check(jsonValueSchema, value)) {
@@ -65,9 +65,9 @@ function parseRequest(value: unknown): DesktopRpcRequest {
 
 type DesktopHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
 
-function resolveHandler(path: string): DesktopHandler {
+function resolveHandler(router: DesktopRouter, path: string): DesktopHandler {
 	const segments = path.split(".");
-	let node: unknown = desktopRouter;
+	let node: unknown = router;
 	for (const segment of segments) {
 		if (!isRecord(node) || !Object.hasOwn(node, segment)) {
 			throw rpcError("method_not_found", {
