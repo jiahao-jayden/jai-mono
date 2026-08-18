@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CodingAgentMessage } from "@jai/coding-agent";
-import type { CodingSessionSnapshot } from "@jai/coding/business";
+import type { CodingSessionSnapshot } from "@jai/coding-agent/business";
 import { projectSessionSnapshot } from "../electron/agent/projector";
 
 describe("projectSessionSnapshot", () => {

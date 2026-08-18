@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { CodingSession } from "@jai/coding/business";
+import type { CodingSession } from "@jai/coding-agent/business";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { DesktopProject } from "../shared/desktop-rpc";
 import { ChatsPage } from "../src/components/shell/chats-page";

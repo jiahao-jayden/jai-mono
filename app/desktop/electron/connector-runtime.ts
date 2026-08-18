@@ -1,4 +1,4 @@
-import { createCodingConnectorConfigStore } from "@jai/coding/connector";
+import { createCodingConnectorConfigStore } from "@jai/coding-agent/connector";
 import {
 	type ConnectorSettings,
 	connectorOAuthApplicationDefinitions,

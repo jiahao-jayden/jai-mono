@@ -47,7 +47,6 @@
         "@hugeicons/core-free-icons": "^4.1.1",
         "@hugeicons/react": "^1.1.6",
         "@ibm/plex": "^6.4.1",
-        "@jai/coding": "workspace:*",
         "@jai/coding-agent": "workspace:*",
         "@jai/common": "workspace:*",
         "@jai/connector": "workspace:*",
@@ -175,8 +174,8 @@
         "typescript": "catalog:",
       },
     },
-    "packages/coding": {
-      "name": "@jai/coding",
+    "packages/coding-agent": {
+      "name": "@jai/coding-agent",
       "version": "0.0.0",
       "dependencies": {
         "@jai/agent": "workspace:*",
@@ -189,19 +188,6 @@
         "tree-sitter-bash": "0.25.0",
         "web-tree-sitter": "0.25.10",
         "yaml": "^2.8.1",
-      },
-      "devDependencies": {
-        "typescript": "catalog:",
-      },
-    },
-    "packages/coding-agent": {
-      "name": "@jai/coding-agent",
-      "version": "0.0.0",
-      "dependencies": {
-        "@jai/ai": "workspace:*",
-        "@jai/coding": "workspace:*",
-        "@jai/connector": "workspace:*",
-        "better-result": "^3.0.0",
       },
       "devDependencies": {
         "typescript": "catalog:",
@@ -732,8 +718,6 @@
     "@jai/agent": ["@jai/agent@workspace:packages/agent"],
 
     "@jai/ai": ["@jai/ai@workspace:packages/ai"],
-
-    "@jai/coding": ["@jai/coding@workspace:packages/coding"],
 
     "@jai/coding-agent": ["@jai/coding-agent@workspace:packages/coding-agent"],
 

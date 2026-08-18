@@ -1,11 +1,11 @@
-import type { ProviderModelInventory } from "@jai/coding/business";
+import type { ProviderModelInventory } from "@jai/coding-agent/business";
 import {
 	type CodingAgentSettings,
 	DEFAULT_PROVIDER_VENDORS,
 	findCatalogModel,
 	findCatalogModelMatch,
 	type ModelCatalog,
-} from "@jai/coding/runtime";
+} from "@jai/coding-agent/runtime";
 import { TaggedError } from "better-result";
 import type {
 	DesktopProviderConfigSnapshot,

@@ -1,4 +1,4 @@
-import type { CodingSession } from "@jai/coding/business";
+import type { CodingSession } from "@jai/coding-agent/business";
 import { format, formatDistanceToNow } from "date-fns";
 import { useMemo, useState } from "react";
 import { useIcons } from "@/lib/icon-context";

@@ -3,7 +3,7 @@ import { AssistantMessageEventStream, type AssistantMessage, type Model, type Pr
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createCodingAgent, type CodingAgentHost } from "../src";
+import { createCodingAgent, type CodingAgentHost } from "../src/sdk";
 
 const roots: string[] = [];
 

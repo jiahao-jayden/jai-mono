@@ -1,5 +1,5 @@
-import type { CodingSessionSnapshot } from "@jai/coding/business";
 import { type CodingAgentMessage, codingAgentToolNames, codingArtifactsFromAppState } from "@jai/coding-agent";
+import type { CodingSessionSnapshot } from "@jai/coding-agent/business";
 import type {
 	DesktopAgentSnapshot,
 	DesktopArtifact,

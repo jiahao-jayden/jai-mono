@@ -39,11 +39,9 @@ PandaWork Desktop (Electron + React) ──┐
 jai CLI (TTY / subprocess)             ├── Host adapter
 WorkBuddy harness                      ┘        |
                                                 v
-@jai/coding-agent   Public Coding Agent SDK: Agent lifecycle, tools, permissions,
-                    session facts, state and canonical events
-                                                |
-                                                v
-@jai/coding         Product assembly: config, skills, connectors and business facts
+@jai/coding-agent   Public Coding Agent SDK plus the coding product assembly it
+                    is built on: Agent lifecycle, tools, permissions, config,
+                    skills, connectors, session facts, state and canonical events
                                                 |
                                                 v
 @jai/agent          Agent loop, harness, hooks, compaction and durable sessions
@@ -152,9 +150,9 @@ Defines common messages, content blocks, tool schemas, model metadata, usage and
 
 Provides the `Agent` facade and lower-level `CoreAgent`, including invocation, streaming, steering, follow-ups and abort. The harness adds Node execution environments, six general-purpose workspace tools, hooks, session stores and context compaction. Tools and hooks are assembled explicitly when an Agent is constructed; the package has no runtime Extension registry. `FileSessionStore` is available from `@jai/agent/node`.
 
-### `@jai/coding`
+### `@jai/coding-agent`
 
-Assembles a product-level coding agent from the lower layers. It adds project-scoped configuration, provider/model resolution, permission middleware, skills, Todo state, subagent delegation and the default coding tool set.
+The public SDK surface consumed by hosts, together with the product-level coding agent it assembles from the lower layers: project-scoped configuration, provider/model resolution, permission middleware, skills, Todo state, subagent delegation and the default coding tool set. The root export is the host-facing SDK Interface; implementation modules are reached through named subpath exports such as `@jai/coding-agent/permissions` and `@jai/coding-agent/business`.
 
 ## Safety and Data Boundaries
 

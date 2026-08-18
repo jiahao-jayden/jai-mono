@@ -1,7 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import type { AgentPluginDirectory } from "@jai/coding/agent-plugins";
+import type { AgentPluginDirectory } from "./agent-plugins";
 
 export interface CodingAgentPluginDirectoryDiscoveryOptions {
 	readonly homeDirectory?: string;

@@ -27,7 +27,7 @@ _Avoid_: app state, session data
 ## Coding Agent SDK and hosts
 
 **Coding Agent SDK**:
-The public `@jai/coding-agent` product runtime consumed by Desktop, CLI, and other hosts. Its root surface is the small SDK Interface, while `@jai/agent` and coding implementation modules remain internal unless explicitly re-exported.
+The public `@jai/coding-agent` product runtime consumed by Desktop, CLI, and other hosts. The package holds both the SDK Interface and the coding implementation it is built on: the root export (`src/sdk.ts`) is the small public surface, while implementation modules are reachable only through the named subpath exports (`./permissions`, `./runtime`, `./business`, `./internal`, …) that hosts use for host-adapter wiring. `@jai/agent` and anything not named in `exports` stays internal.
 _Avoid_: Desktop Agent, coding-agent implementation
 
 **Coding Agent Documentation Site**:

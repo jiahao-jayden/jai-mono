@@ -1,10 +1,10 @@
-import type { CodingBusinessService, CodingExecutionContext } from "@jai/coding/business";
 import {
 	type CodingPermissionMode,
 	createConfiguredModelAuthority,
 	createCodingAgent as createPublicCodingAgent,
 	discoverCodingAgentPluginDirectories,
 } from "@jai/coding-agent";
+import type { CodingBusinessService, CodingExecutionContext } from "@jai/coding-agent/business";
 import type { ConnectorService } from "@jai/connector";
 import { TaggedError } from "better-result";
 import type { DesktopAgentMode } from "../../shared/desktop-rpc";

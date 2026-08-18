@@ -1,4 +1,4 @@
-import type { CodingSession } from "@jai/coding/business";
+import type { CodingSession } from "@jai/coding-agent/business";
 import { type MotionValue, motion } from "motion/react";
 import type { DesktopProject } from "../../../../shared/desktop-rpc";
 import { SidebarFooter } from "./sidebar-footer";

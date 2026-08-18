@@ -5,8 +5,8 @@ import type {
 	SessionListCursor,
 	SessionListPage,
 	Project,
-} from "@jai/coding/business";
-import type { PermissionRequest, PermissionResolution } from "@jai/coding/permissions/approval";
+} from "@jai/coding-agent/business";
+import type { PermissionRequest, PermissionResolution } from "@jai/coding-agent/permissions/approval";
 import type { ConnectorActionPermission } from "@jai/connector";
 
 export const DESKTOP_RPC_CHANNEL = "desktop:rpc";

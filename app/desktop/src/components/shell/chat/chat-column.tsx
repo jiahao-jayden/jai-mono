@@ -1,4 +1,4 @@
-import type { CodingSession } from "@jai/coding/business";
+import type { CodingSession } from "@jai/coding-agent/business";
 import { getErrorMessage } from "@jai/common";
 import { AnimatePresence, useReducedMotion } from "framer-motion";
 import {

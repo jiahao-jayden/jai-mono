@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
-import { CodingBusinessService } from "@jai/coding/business";
-import { setBashParserWasmSources } from "@jai/coding/permissions";
+import { CodingBusinessService } from "@jai/coding-agent/business";
+import { setBashParserWasmSources } from "@jai/coding-agent/permissions";
 import { app, BrowserWindow } from "electron";
 import { createDesktopAgentFactory } from "./agent/factory";
 import { type DesktopConnectorRuntime, openDesktopConnectorRuntime } from "./connector-runtime";

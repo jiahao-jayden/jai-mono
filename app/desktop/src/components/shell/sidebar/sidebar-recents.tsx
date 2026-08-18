@@ -1,4 +1,4 @@
-import type { CodingSession } from "@jai/coding/business";
+import type { CodingSession } from "@jai/coding-agent/business";
 import { getErrorMessage } from "@jai/common";
 import { useRef, useState } from "react";
 import { useIcons } from "@/lib/icon-context";

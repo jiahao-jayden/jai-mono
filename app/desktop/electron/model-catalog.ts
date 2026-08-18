@@ -1,4 +1,4 @@
-import { ModelCatalogStore } from "@jai/coding/runtime";
+import { ModelCatalogStore } from "@jai/coding-agent/runtime";
 import { mainLog } from "./logger";
 
 let onCatalogUpdated: (() => void) | undefined;

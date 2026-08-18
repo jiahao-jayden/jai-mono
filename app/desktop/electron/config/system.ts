@@ -1,4 +1,4 @@
-import type { CodingAgentSettings } from "@jai/coding/runtime";
+import type { CodingAgentSettings } from "@jai/coding-agent/runtime";
 import type { DesktopProviderConfigInput, DesktopProviderConfigSnapshot } from "../../shared/desktop-rpc";
 
 export type SystemConfigProjection = Pick<

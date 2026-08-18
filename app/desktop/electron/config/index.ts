@@ -1,11 +1,11 @@
-import type { CodingBusinessService, ProviderModelInventory } from "@jai/coding/business";
-import { CodingConfigStore } from "@jai/coding/config";
+import type { CodingBusinessService, ProviderModelInventory } from "@jai/coding-agent/business";
+import { CodingConfigStore } from "@jai/coding-agent/config";
 import {
 	type CodingAgentSettings,
 	codingAgentConfigDefinition,
 	discoverConfiguredModels,
 	type ModelCatalogStore,
-} from "@jai/coding/runtime";
+} from "@jai/coding-agent/runtime";
 import type { OAuthTokenResponse } from "@jai/connector";
 import type {
 	DesktopProviderApiKeyRevealResult,

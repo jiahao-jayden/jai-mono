@@ -1,4 +1,3 @@
-import { PermissionApprovalRegistry } from "@jai/coding/permissions";
 import type {
 	CodingAgent,
 	CodingAgentEvent,
@@ -10,6 +9,7 @@ import type {
 	CodingPermissionRequest,
 } from "@jai/coding-agent";
 import { codingAgentToolNames } from "@jai/coding-agent";
+import { PermissionApprovalRegistry } from "@jai/coding-agent/permissions";
 import { toErrorEnvelope } from "@jai/common";
 import { TaggedError } from "better-result";
 import type {
