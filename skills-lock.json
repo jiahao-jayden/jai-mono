@@ -83,6 +83,12 @@
       "sourceType": "github",
       "computedHash": "a26b3dd377c4572b1c34c68f82ab9a1cb806f21c7157060327fe60e9b6d2e277"
     },
+    "improve-codebase-architecture": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
+      "computedHash": "4a02bd01030d5ed6a5040c0382b9f56fbf02c7c8b8fd68aa1bcc55628963f760"
+    },
     "layout": {
       "source": "pbakaus/impeccable",
       "sourceType": "github",
