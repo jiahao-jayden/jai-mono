@@ -1,0 +1,26 @@
+{
+	"name": "@jayden/jai-cli",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Jai coding agent CLI",
+	"files": ["dist/main.js", "dist/main.js.map"],
+	"bin": {
+		"jai": "./dist/main.js"
+	},
+	"scripts": {
+		"build": "bun build src/main.ts --target=node --format=esm --external tree-sitter-bash --external web-tree-sitter --outfile dist/main.js",
+		"prepack": "bun run build",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "bun test",
+		"test:e2e": "CLI_E2E=1 bun test test/provider-e2e.test.ts"
+	},
+	"dependencies": {
+		"tree-sitter-bash": "0.25.0",
+		"web-tree-sitter": "0.25.10"
+	},
+	"devDependencies": {
+		"@types/node": "^25.5.0",
+		"typescript": "catalog:"
+	}
+}

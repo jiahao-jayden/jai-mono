@@ -19,6 +19,7 @@ packages/*/dist/
 packages/*/dist-chrome/
 packages/*/dist-firefox/
 *.cpuprofile
+app/cli/*.tgz
 
 # Environment
 .env

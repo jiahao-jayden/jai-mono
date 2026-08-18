@@ -14,6 +14,9 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"format": "biome format --write .",
+		"cli": "bun app/cli/src/main.ts",
+		"cli:build": "cd app/cli && bun run build",
+		"cli:pack": "cd app/cli && npm pack",
 		"desktop:dev": "cd app/desktop && bun dev"
 	},
 	"devDependencies": {
