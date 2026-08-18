@@ -35,21 +35,12 @@ export function createDesktopAgentFactory(
 			...(inventory ? { availableModelIds: inventory.modelIds } : {}),
 			requireVerifiedCapabilities: true,
 		});
-		const hostModel = {
-			resolve(input: { readonly model?: string; readonly settings: unknown; readonly signal?: AbortSignal }) {
-				return modelAuthority.resolve({ ...input, model: modelRef });
-			},
-		};
-		const instructions = [
-			executionContext.localFileAccess
-				? withExecutionEnvironmentInstruction("", executionContext)
-				: NO_WORKSPACE_INSTRUCTIONS,
-		]
-			.filter(Boolean)
-			.join("\n\n");
+		const instructions = executionContext.localFileAccess
+			? executionEnvironmentInstruction(executionContext)
+			: NO_WORKSPACE_INSTRUCTIONS;
 		const created = await createPublicCodingAgent({
 			host: {
-				model: hostModel,
+				model: modelAuthority,
 				workspace: {
 					cwd: executionContext.localFileAccess ? executionContext.cwd : process.cwd(),
 					configRoot: executionContext.localFileAccess ? executionContext.configRoot : process.cwd(),
@@ -60,7 +51,6 @@ export function createDesktopAgentFactory(
 					trusted: executionContext.localFileAccess,
 				},
 				session: { directory: service.sessionDirectory(session.projectId) },
-				configuration: { workspaceTrusted: executionContext.localFileAccess },
 				approval: { request: requestApproval },
 				capabilitySources: { plugins: { directories: agentPluginDirectories } },
 				connector: {
@@ -72,7 +62,7 @@ export function createDesktopAgentFactory(
 			execution: {
 				model: modelRef,
 				permissionMode: permissionModeForAgentMode(mode),
-				...(instructions ? { instructions } : {}),
+				instructions,
 				compactionSummaryInstructions: ARTIFACT_COMPACTION_INSTRUCTIONS,
 			},
 		});
@@ -92,9 +82,10 @@ export function permissionModeForAgentMode(mode: DesktopAgentMode): CodingPermis
 	}
 }
 
-function withExecutionEnvironmentInstruction(instructions: string, executionContext: CodingExecutionContext): string {
-	if (!executionContext.localFileAccess) return instructions;
-	return `${instructions ? `${instructions}\n\n` : ""}<execution_environment>
+function executionEnvironmentInstruction(
+	executionContext: Extract<CodingExecutionContext, { readonly localFileAccess: true }>,
+): string {
+	return `<execution_environment>
 - Workspace root: ${executionContext.cwd}
 - Read, Glob, Grep, Write, Edit, and Bash resolve relative paths from this workspace. Paths outside it require permission.
 - Bash runs a POSIX shell process with this workspace as its current directory. It is not a browser runtime: it does not provide a DOM, Canvas rendering context, Web Audio, layout engine, or browser globals such as window and innerWidth.

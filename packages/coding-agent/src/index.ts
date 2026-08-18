@@ -5,10 +5,19 @@ import path from "node:path";
 import type { AgentEvent, AgentMessage } from "@jai/agent";
 import { FileSessionStore } from "@jai/agent/node";
 import type { AssistantMessage, AssistantMessageEvent, Message, Model, Provider, ToolResultMessage } from "@jai/ai";
-import type { CodingMessageAttachment as InternalCodingAttachment } from "@jai/coding";
+import {
+	type CodingMessageAttachment as InternalCodingAttachment,
+	SPAWN_AGENT_TOOL_NAME,
+	UPDATE_TODOS_TOOL_NAME,
+} from "@jai/coding";
 import type { AgentPluginDirectory } from "@jai/coding/agent-plugins";
 import type { ConnectorApprovalRequest as InternalConnectorApprovalRequest } from "@jai/coding/connector";
-import type { PermissionMode, PermissionSettings } from "@jai/coding/permissions";
+import type {
+	CanonicalToolName,
+	PermissionApprovalRequest,
+	PermissionMode,
+	PermissionSettings,
+} from "@jai/coding/permissions";
 import {
 	type CodingAgentSettings,
 	codingAgentConfigDefinition,
@@ -21,11 +30,10 @@ import {
 } from "@jai/coding/runtime";
 import type { ConnectorService } from "@jai/connector";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
-import type { CodingPluginDirectory } from "./plugin-directories";
 
+export { codingSessionDirectory, defaultCodingDataRoot } from "@jai/coding/business";
 export {
 	type CodingAgentPluginDirectoryDiscoveryOptions,
-	type CodingPluginDirectory,
 	discoverCodingAgentPluginDirectories,
 } from "./plugin-directories";
 
@@ -36,20 +44,11 @@ export type CodingAssistantMessage = AssistantMessage;
 export type CodingToolResult = ToolResultMessage;
 
 export type CodingPermissionMode = PermissionMode;
-export type CodingToolName =
-	| "Bash"
-	| "Edit"
-	| "Glob"
-	| "Grep"
-	| "Read"
-	| "Skill"
-	| "SpawnAgent"
-	| "UpdateTodos"
-	| "Write";
+export type CodingToolName = CanonicalToolName;
 
 export const codingAgentToolNames = {
-	spawnAgent: "SpawnAgent",
-	updateTodos: "UpdateTodos",
+	spawnAgent: SPAWN_AGENT_TOOL_NAME,
+	updateTodos: UPDATE_TODOS_TOOL_NAME,
 } as const;
 
 export type CodingSdkErrorPhase =
@@ -151,7 +150,7 @@ export interface CodingAttachment {
 
 export interface CodingCapabilitySources {
 	readonly plugins?: {
-		readonly directories: readonly (string | CodingPluginDirectory)[];
+		readonly directories: readonly (string | AgentPluginDirectory)[];
 		readonly dataDirectory?: string;
 		readonly scope?: "user" | "project";
 	};
@@ -196,14 +195,6 @@ export type CodingConnectorApprovalDecision = "deny" | "allowOnce" | "alwaysAllo
 
 export interface CodingConnectorAuthority {
 	readonly client?: unknown;
-	readonly resolve?: (input: {
-		readonly settings: unknown;
-		readonly signal?: AbortSignal;
-	}) =>
-		| unknown
-		| { readonly client: unknown; readonly close?: () => void | Promise<void> }
-		| undefined
-		| Promise<unknown | { readonly client: unknown; readonly close?: () => void | Promise<void> } | undefined>;
 	readonly requestApproval?: (
 		request: CodingConnectorApprovalRequest,
 		signal?: AbortSignal,
@@ -212,7 +203,6 @@ export interface CodingConnectorAuthority {
 
 export interface CodingConfigurationAuthority {
 	readonly homeDirectory?: string;
-	readonly workspaceTrusted?: boolean;
 }
 
 export interface CodingAgentHost {
@@ -223,13 +213,6 @@ export interface CodingAgentHost {
 	readonly configuration?: CodingConfigurationAuthority;
 	readonly capabilitySources?: CodingCapabilitySources;
 	readonly connector?: CodingConnectorAuthority;
-	readonly diagnostics?: (diagnostic: CodingSdkDiagnostic) => void;
-}
-
-export interface CodingSdkDiagnostic {
-	readonly code: string;
-	readonly message: string;
-	readonly source: "host" | "sdk";
 }
 
 export interface CodingAgentCreateInput {
@@ -334,43 +317,38 @@ export interface CodingAgent<TAppState extends JsonObject = JsonObject> {
 export async function createCodingAgent<TAppState extends JsonObject = JsonObject>(
 	input: CodingAgentCreateInput,
 ): Promise<ResultType<CodingAgent<TAppState>, CodingSdkError>> {
-	if (input.execution?.permissionMode === "plan") {
-		return Result.err({
-			code: "coding_sdk.permission_mode_unsupported",
-			message: "The plan permission mode is declared but not implemented in this milestone",
-			retryable: false,
-			phase: "runtime_creation",
-		});
-	}
 	let ephemeralDirectory: string | undefined;
 	let modelRuntime: { readonly model: Model; readonly provider: Provider } | undefined;
 	try {
 		const execution = input.execution ?? {};
 		const sessionId = resolveSessionId(input.session);
-		const sessionDirectory = await resolveSessionDirectory(input, sessionId, (value) => {
-			ephemeralDirectory = value;
-		});
+		const { approval, capabilitySources, configuration, connector, model: modelAuthority, workspace } = input.host;
+		if (input.session.kind === "ephemeral") {
+			ephemeralDirectory = await mkdtemp(path.join(tmpdir(), "jai-coding-agent-"));
+		}
+		const sessionDirectory = ephemeralDirectory ?? input.host.session.directory;
 		const store = new FileSessionStore<TAppState>(sessionDirectory);
 		await validateSessionSelection(input.session, store, sessionId);
-		const internal = await createInternalCodingAgent<TSchema, TAppState>({
+		const internal = await createInternalCodingAgent<CodingSchema, TAppState>({
 			executionContext: {
-				localFileAccess: input.host.workspace.localFileAccess ?? true,
-				cwd: input.host.workspace.cwd,
-				configRoot: input.host.workspace.configRoot ?? input.host.workspace.cwd,
-				defaultAllowedDirectories: (input.host.workspace.defaultAllowedDirectories ?? [
-					input.host.workspace.cwd,
-				]) as readonly [string, ...string[]],
+				localFileAccess: workspace.localFileAccess ?? true,
+				cwd: workspace.cwd,
+				configRoot: workspace.configRoot ?? workspace.cwd,
+				defaultAllowedDirectories: (workspace.defaultAllowedDirectories ?? [workspace.cwd]) as readonly [
+					string,
+					...string[],
+				],
 			},
 			sessionId,
 			sessionDirectory,
 			instructions: [DEFAULT_CODING_AGENT_INSTRUCTIONS, execution.instructions].filter(Boolean).join("\n\n"),
 			configDefinition: codingAgentConfigDefinition,
 			configOptions: {
-				homeDir: input.host.configuration?.homeDirectory ?? homedir(),
-				workspaceTrusted: input.host.configuration?.workspaceTrusted ?? input.host.workspace.trusted ?? false,
+				homeDir: configuration?.homeDirectory ?? homedir(),
+				workspaceTrusted: workspace.trusted ?? false,
 			},
 			resolveProvider: (snapshot) =>
-				Promise.resolve(input.host.model.resolve({ model: execution.model, settings: snapshot.settings })).then(
+				Promise.resolve(modelAuthority.resolve({ model: execution.model, settings: snapshot.settings })).then(
 					(resolved) => {
 						const runtime = { model: resolved.model as Model, provider: resolved.provider as Provider };
 						modelRuntime = runtime;
@@ -386,57 +364,28 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				};
 			},
 			permissions: {
-				requestApproval: input.host.approval
-					? (request, signal) => input.host.approval!.request(projectPermissionRequest(sessionId, request), signal)
+				requestApproval: approval
+					? (request, signal) => approval.request(projectPermissionRequest(sessionId, request), signal)
 					: undefined,
 				selectSettings: (snapshot) =>
 					selectPermissionSettings(snapshot.settings.permissions, execution.permissionMode),
 			},
-			agentPlugins: input.host.capabilitySources?.plugins
-				? {
-						directories: input.host.capabilitySources.plugins.directories as readonly (
-							| string
-							| AgentPluginDirectory
-						)[],
-						...(input.host.capabilitySources.plugins.dataDirectory
-							? { dataDirectory: input.host.capabilitySources.plugins.dataDirectory }
-							: {}),
-						...(input.host.capabilitySources.plugins.scope
-							? { scope: input.host.capabilitySources.plugins.scope }
-							: {}),
-					}
-				: false,
-			connector: input.host.connector
+			agentPlugins: capabilitySources?.plugins ?? false,
+			connector: connector
 				? {
 						enabled: true,
-						resolveClient: async (snapshot) => {
-							const authority = input.host.connector!;
-							const resolved = authority.resolve
-								? await authority.resolve({ settings: snapshot.settings })
-								: authority.client;
-							if (!resolved) return undefined;
-							if (isConnectorClientHandle(resolved)) {
-								return {
-									client: resolved.client as ConnectorService,
-									...(resolved.close ? { close: resolved.close } : {}),
-								};
-							}
-							return resolved as ConnectorService;
-						},
-						...(input.host.connector.requestApproval
+						resolveClient: () => connector.client as ConnectorService | undefined,
+						...(connector.requestApproval
 							? {
 									requestApproval: (request: InternalConnectorApprovalRequest, signal?: AbortSignal) =>
-										input.host.connector!.requestApproval!(projectConnectorApprovalRequest(request), signal),
+										connector.requestApproval!(projectConnectorApprovalRequest(request), signal),
 								}
 							: {}),
 					}
 				: false,
-			agent: {
-				maxIterations: execution.maxTurns,
-				...(execution.compactionSummaryInstructions
-					? { compaction: { summaryInstructions: execution.compactionSummaryInstructions } }
-					: {}),
-			},
+			agent: execution.compactionSummaryInstructions
+				? { compaction: { summaryInstructions: execution.compactionSummaryInstructions } }
+				: {},
 		});
 		if (!modelRuntime) {
 			throw new CodingSdkFailure({
@@ -455,7 +404,6 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 }
 
 type CodingSchema = typeof codingAgentConfigDefinition.schema;
-type TSchema = CodingSchema;
 
 class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAppState> {
 	readonly #internal: InternalCodingAgent<CodingSchema, TAppState>;
@@ -466,6 +414,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 	readonly #ephemeralDirectory?: string;
 	readonly #artifacts = new Map<string, CodingAgentArtifact>();
 	readonly #pendingArtifacts = new Map<string, CodingAgentArtifact>();
+	readonly #listeners = new Set<(event: CodingAgentEvent) => void>();
 	readonly #stopArtifactProjection: () => void;
 	#closed = false;
 	#running = false;
@@ -486,7 +435,16 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		this.#provider = modelRuntime.provider;
 		this.#ephemeralDirectory = ephemeralDirectory;
 		for (const artifact of artifactsFromAppState(internal.state.appState)) this.#artifacts.set(artifact.id, artifact);
-		this.#stopArtifactProjection = this.#internal.subscribe((event) => this.#observeArtifact(projectEvent(event)));
+		this.#stopArtifactProjection = this.#internal.subscribe((event) => {
+			// Artifact tracking reads the raw event: projecting every streaming delta would deep-copy
+			// the whole partial message on each token.
+			if (event.type === "tool_execution_start" || event.type === "tool_execution_end") {
+				this.#observeArtifact(event);
+			}
+			if (this.#listeners.size === 0) return;
+			const projected = projectEvent(event);
+			for (const listener of this.#listeners) listener(projected);
+		});
 	}
 
 	get sessionId(): string {
@@ -512,12 +470,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 
 	prompt(input: CodingPrompt): Promise<ResultType<CodingRunResult<TAppState>, CodingSdkError>> {
 		const run = this.#tail.then(async () => {
-			if (this.#closed)
-				throw new CodingSdkFailure({
-					phase: "lifecycle",
-					code: "coding_sdk.agent_closed",
-					message: "Agent is closed",
-				});
+			if (this.#closed) throw agentClosedFailure();
 			this.#running = true;
 			try {
 				const messages = input.attachments?.length
@@ -559,18 +512,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 	}
 
 	async generateTitle(input: CodingSessionTitleInput): Promise<ResultType<string, CodingSdkError>> {
-		if (this.#closed) {
-			return Result.err(
-				projectError(
-					new CodingSdkFailure({
-						phase: "lifecycle",
-						code: "coding_sdk.agent_closed",
-						message: "Agent is closed",
-					}),
-					"lifecycle",
-				),
-			);
-		}
+		if (this.#closed) return Result.err(closedError());
 		try {
 			const assistantText = this.state.messages
 				.filter((message) => message.role === "assistant")
@@ -613,30 +555,21 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		}
 	}
 
-	abort(): Promise<ResultType<void, CodingSdkError>> {
+	async abort(): Promise<ResultType<void, CodingSdkError>> {
+		if (this.#closed) return Result.err(closedError());
 		try {
-			if (this.#closed)
-				return Promise.resolve(
-					Result.err(
-						projectError(
-							new CodingSdkFailure({
-								phase: "lifecycle",
-								code: "coding_sdk.agent_closed",
-								message: "Agent is closed",
-							}),
-							"lifecycle",
-						),
-					),
-				);
 			this.#internal.abort();
-			return Promise.resolve(Result.ok(undefined));
+			return Result.ok(undefined);
 		} catch (error) {
-			return Promise.resolve(Result.err(projectError(error, "lifecycle")));
+			return Result.err(projectError(error, "lifecycle"));
 		}
 	}
 
 	subscribe(listener: (event: CodingAgentEvent) => void): () => void {
-		return this.#internal.subscribe((event) => listener(projectEvent(event)));
+		this.#listeners.add(listener);
+		return () => {
+			this.#listeners.delete(listener);
+		};
 	}
 
 	async close(): Promise<ResultType<void, CodingSdkError>> {
@@ -656,13 +589,12 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		}
 	}
 
-	#observeArtifact(event: CodingAgentEvent): void {
+	#observeArtifact(event: Extract<AgentEvent, { type: "tool_execution_start" | "tool_execution_end" }>): void {
 		if (event.type === "tool_execution_start") {
 			const artifact = projectArtifact(event.toolName, event.args, event.toolCallId, Date.now());
 			if (artifact) this.#pendingArtifacts.set(event.toolCallId, artifact);
 			return;
 		}
-		if (event.type !== "tool_execution_end") return;
 		const artifact = this.#pendingArtifacts.get(event.toolCallId);
 		this.#pendingArtifacts.delete(event.toolCallId);
 		if (!artifact || event.isError) return;
@@ -683,12 +615,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 
 	#admit(input: CodingPrompt, action: (message: AgentMessage) => void): Promise<ResultType<void, CodingSdkError>> {
 		try {
-			if (this.#closed)
-				throw new CodingSdkFailure({
-					phase: "lifecycle",
-					code: "coding_sdk.agent_closed",
-					message: "Agent is closed",
-				});
+			if (this.#closed) throw agentClosedFailure();
 			if (!input.prompt.trim())
 				throw new CodingSdkFailure({
 					phase: "admission",
@@ -709,21 +636,18 @@ class CodingSdkFailure extends TaggedError("coding_sdk.failure")<{
 	readonly message: string;
 }> {}
 
+function agentClosedFailure(): CodingSdkFailure {
+	return new CodingSdkFailure({ phase: "lifecycle", code: "coding_sdk.agent_closed", message: "Agent is closed" });
+}
+
+function closedError(): CodingSdkError {
+	return projectError(agentClosedFailure(), "lifecycle");
+}
+
 function resolveSessionId(selection: SessionSelection): string {
 	if (selection.kind === "resume") return selection.id;
 	if (selection.kind === "new" && selection.id) return selection.id;
 	return `coding-${randomUUID()}`;
-}
-
-async function resolveSessionDirectory(
-	input: CodingAgentCreateInput,
-	_sessionId: string,
-	setEphemeralDirectory: (directory: string) => void,
-): Promise<string> {
-	if (input.session.kind !== "ephemeral") return input.host.session.directory;
-	const root = await mkdtemp(path.join(tmpdir(), "jai-coding-agent-"));
-	setEphemeralDirectory(root);
-	return root;
 }
 
 async function validateSessionSelection<TAppState extends JsonObject>(
@@ -755,12 +679,6 @@ function selectPermissionSettings(
 	return { ...(settings ?? {}), ...(mode ? { defaultMode: mode } : {}) };
 }
 
-function isConnectorClientHandle(
-	value: unknown,
-): value is { readonly client: unknown; readonly close?: () => void | Promise<void> } {
-	return isRecord(value) && "client" in value;
-}
-
 function projectConnectorApprovalRequest(request: InternalConnectorApprovalRequest): CodingConnectorApprovalRequest {
 	return {
 		requestId: request.requestId,
@@ -778,7 +696,7 @@ function projectConnectorApprovalRequest(request: InternalConnectorApprovalReque
 
 function projectArtifact(
 	toolName: string,
-	args: JsonValue,
+	args: unknown,
 	toolCallId: string,
 	updatedAt: number,
 ): CodingAgentArtifact | undefined {
@@ -793,6 +711,11 @@ function projectArtifact(
 				: undefined;
 	if (!format) return undefined;
 	return { id: `artifact:${args.path}`, toolCallId, path: args.path, format, updatedAt };
+}
+
+/** Reads the persisted Artifact catalog out of an appState snapshot, newest first. */
+export function codingArtifactsFromAppState(appState: JsonObject): readonly CodingAgentArtifact[] {
+	return artifactsFromAppState(appState).toSorted((left, right) => right.updatedAt - left.updatedAt);
 }
 
 function artifactsFromAppState(appState: JsonObject): readonly CodingAgentArtifact[] {
@@ -821,20 +744,7 @@ function artifactsFromAppState(appState: JsonObject): readonly CodingAgentArtifa
 	});
 }
 
-function projectPermissionRequest(
-	sessionId: string,
-	request: {
-		readonly requestId: string;
-		readonly toolCallId: string;
-		readonly toolName: CodingToolName;
-		readonly args: Readonly<Record<string, unknown>>;
-		readonly reason: string;
-		readonly canAlwaysAllow: boolean;
-		readonly suggestedRule?: string;
-		readonly suggestedRules?: readonly string[];
-		readonly rememberScope?: "session" | "project-local";
-	},
-): CodingPermissionRequest {
+function projectPermissionRequest(sessionId: string, request: PermissionApprovalRequest): CodingPermissionRequest {
 	return {
 		requestId: request.requestId,
 		sessionId,

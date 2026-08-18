@@ -13,8 +13,10 @@ import {
 	type CodingPermissionMode,
 	type CodingPermissionRequest,
 	type CodingSdkError,
+	codingSessionDirectory,
 	configuredModelAuthority,
 	createCodingAgent,
+	defaultCodingDataRoot,
 	discoverCodingAgentPluginDirectories,
 	type JsonObject,
 	type JsonValue,
@@ -217,9 +219,9 @@ async function createCliAgent(options: CliOptions, homeDirectory: string): Promi
 	const host: CodingAgentHost = {
 		model: configuredModelAuthority,
 		workspace: { cwd: options.cwd, configRoot: options.cwd, trusted: options.trustWorkspace },
-		session: { directory: path.join(homeDirectory, ".jai", "sessions") },
+		session: { directory: codingSessionDirectory(options.cwd, defaultCodingDataRoot(homeDirectory)) },
 		approval: { request: requestCliApproval },
-		configuration: { homeDirectory, workspaceTrusted: options.trustWorkspace },
+		configuration: { homeDirectory },
 		capabilitySources: { plugins: { directories: pluginDirectories } },
 	};
 	const session = options.noSessionPersistence
@@ -353,6 +355,10 @@ export function projectStreamEvent(sessionId: string, event: CodingAgentEvent): 
 	switch (event.type) {
 		case "agent_start":
 			return { type: "system", subtype: "init", session_id: sessionId };
+		// Streaming deltas carry the whole partial message; emitting one line per token would
+		// amplify stdout by orders of magnitude. The completed message arrives at message_end.
+		case "message_update":
+			return undefined;
 		case "message_end":
 			if (event.message.role === "assistant") {
 				return {
@@ -454,29 +460,17 @@ function projectWireValue(value: unknown): JsonValue {
 	return String(value);
 }
 
-function finalAssistantText(messages: readonly { readonly role: string; readonly content: unknown }[]): string {
+function finalAssistantText(messages: readonly CodingAgentMessage[]): string {
 	for (let index = messages.length - 1; index >= 0; index--) {
 		const message = messages[index];
 		if (message?.role !== "assistant") continue;
-		if (!Array.isArray(message.content)) continue;
 		const text = message.content
-			.flatMap((part) => (isTextContent(part) ? [part.text] : []))
+			.flatMap((part) => (part.type === "text" ? [part.text] : []))
 			.join("")
 			.trim();
 		if (text) return text;
 	}
 	return "";
-}
-
-function isTextContent(value: unknown): value is { readonly type: "text"; readonly text: string } {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		"type" in value &&
-		"text" in value &&
-		value.type === "text" &&
-		typeof value.text === "string"
-	);
 }
 
 function errorMessage(error: unknown): string {

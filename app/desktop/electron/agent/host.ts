@@ -1,7 +1,6 @@
 import { PermissionApprovalRegistry } from "@jai/coding/permissions";
 import type {
 	CodingAgent,
-	CodingAgentArtifact,
 	CodingAgentEvent,
 	CodingAgentMessage,
 	CodingAttachment,
@@ -556,7 +555,7 @@ export class DesktopAgentHost {
 					const artifact = runtime.agent.state.artifacts.find(
 						(candidate) => candidate.toolCallId === event.toolCallId,
 					);
-					if (artifact && !event.isError) this.#upsertArtifact(runtime, toDesktopArtifact(artifact));
+					if (artifact && !event.isError) this.#upsertArtifact(runtime, artifact);
 				}
 				if (event.toolName === codingAgentToolNames.updateTodos) {
 					if (event.type === "tool_execution_end" && !event.isError) {
@@ -742,16 +741,6 @@ function projectPermissionRequest(request: CodingPermissionRequest): DesktopPerm
 		summary: permissionSummary(request),
 		...(request.suggestedRule ? { suggestedRule: request.suggestedRule } : {}),
 		...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),
-	};
-}
-
-function toDesktopArtifact(artifact: CodingAgentArtifact): DesktopArtifact {
-	return {
-		id: artifact.id,
-		toolCallId: artifact.toolCallId,
-		path: artifact.path,
-		format: artifact.format,
-		updatedAt: artifact.updatedAt,
 	};
 }
 

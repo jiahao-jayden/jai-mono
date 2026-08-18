@@ -1,11 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-
-export interface CodingPluginDirectory {
-	readonly path: string;
-	readonly scope?: "user" | "project";
-}
+import type { AgentPluginDirectory } from "@jai/coding/agent-plugins";
 
 export interface CodingAgentPluginDirectoryDiscoveryOptions {
 	readonly homeDirectory?: string;
@@ -19,7 +15,7 @@ export interface CodingAgentPluginDirectoryDiscoveryOptions {
  */
 export async function discoverCodingAgentPluginDirectories(
 	options: CodingAgentPluginDirectoryDiscoveryOptions,
-): Promise<readonly CodingPluginDirectory[]> {
+): Promise<readonly AgentPluginDirectory[]> {
 	const homeDirectory = path.resolve(options.homeDirectory ?? homedir());
 	const roots: Array<{ readonly directory: string; readonly scope: "user" | "project" }> = [];
 	if (options.workspaceTrusted && options.workspaceDirectory) {
@@ -34,26 +30,28 @@ export async function discoverCodingAgentPluginDirectories(
 		{ directory: path.join(homeDirectory, ".agents", "plugins"), scope: "user" },
 	);
 
-	const directories: CodingPluginDirectory[] = [];
-	for (const root of roots) {
-		for (const directory of await discoverPluginChildren(root.directory)) {
-			directories.push({ path: directory, scope: root.scope });
-		}
-	}
-	return directories;
+	const perRoot = await Promise.all(roots.map((root) => discoverPluginChildren(root.directory)));
+	return perRoot.flatMap((children, index) =>
+		children.map((directory) => ({ path: directory, scope: roots[index]!.scope })),
+	);
 }
 
 async function discoverPluginChildren(directory: string): Promise<readonly string[]> {
 	const entries = (await readdir(directory, { withFileTypes: true }).catch(() => [])).toSorted((left, right) =>
 		left.name.localeCompare(right.name),
 	);
-	const candidates: string[] = [];
-	for (const entry of entries) {
-		const candidate = path.join(directory, entry.name);
-		const candidateInfo = await stat(candidate).catch(() => undefined);
-		if (!candidateInfo?.isDirectory()) continue;
-		const manifestInfo = await stat(path.join(candidate, "plugin.json")).catch(() => undefined);
-		if (manifestInfo?.isFile()) candidates.push(candidate);
-	}
-	return candidates;
+	const candidates = await Promise.all(
+		entries.map(async (entry) => {
+			const candidate = path.join(directory, entry.name);
+			if (!entry.isDirectory() && !(entry.isSymbolicLink() && (await isDirectory(candidate)))) return undefined;
+			const manifestInfo = await stat(path.join(candidate, "plugin.json")).catch(() => undefined);
+			return manifestInfo?.isFile() ? candidate : undefined;
+		}),
+	);
+	return candidates.filter((candidate) => candidate !== undefined);
+}
+
+async function isDirectory(candidate: string): Promise<boolean> {
+	const info = await stat(candidate).catch(() => undefined);
+	return info?.isDirectory() ?? false;
 }

@@ -1,5 +1,5 @@
 import type { CodingSessionSnapshot } from "@jai/coding/business";
-import { type CodingAgentMessage, codingAgentToolNames } from "@jai/coding-agent";
+import { type CodingAgentMessage, codingAgentToolNames, codingArtifactsFromAppState } from "@jai/coding-agent";
 import type {
 	DesktopAgentSnapshot,
 	DesktopArtifact,
@@ -14,13 +14,13 @@ import type {
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
-import { projectArtifactCatalog, sortArtifacts } from "./artifacts";
+import { sortArtifacts } from "./artifacts";
 import { projectAssistantPart } from "./assistant-projector";
 
 export function projectSessionSnapshot(sessionId: string, snapshot: CodingSessionSnapshot): DesktopAgentSnapshot {
 	const items = new Map<string, DesktopTranscriptItem>();
 	const artifacts = new Map<string, DesktopArtifact>(
-		projectArtifactCatalog(snapshot.appState.artifacts).map((artifact) => [artifact.id, artifact]),
+		codingArtifactsFromAppState(snapshot.appState).map((artifact) => [artifact.id, artifact]),
 	);
 	let currentTurnId: string | undefined;
 	for (const entry of snapshot.entries) {

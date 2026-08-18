@@ -56,7 +56,7 @@ describe("public Coding Agent SDK", () => {
 		});
 	});
 
-	test("returns a typed outcome for the reserved plan mode", async () => {
+	test("accepts plan mode and defers read-only enforcement to the permission layer", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
 		roots.push(root);
 		const result = await createCodingAgent({
@@ -65,10 +65,8 @@ describe("public Coding Agent SDK", () => {
 			execution: { permissionMode: "plan" },
 		});
 
-		expect(result).toMatchObject({
-			status: "error",
-			error: { code: "coding_sdk.permission_mode_unsupported", phase: "runtime_creation" },
-		});
+		expect(result.status).toBe("ok");
+		if (result.status === "ok") await result.value.close();
 	});
 
 	test("owns Artifact state and persists it without a Desktop projection subscriber", async () => {
