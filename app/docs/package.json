@@ -1,0 +1,17 @@
+{
+	"name": "@jai/docs",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "blume dev",
+		"build": "blume build",
+		"check": "blume check",
+		"validate": "blume validate --strict",
+		"audit": "blume audit --fail-on error"
+	},
+	"devDependencies": {
+		"blume": "^1.5.1",
+		"typescript": "^6.0.3"
+	}
+}

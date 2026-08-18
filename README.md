@@ -35,22 +35,27 @@ Jai Mono 是 PandaWork 的 TypeScript monorepo。它同时包含底层的 provid
 ## Architecture
 
 ```text
-PandaWork Desktop (Electron + React)
-              |
-              v
-@jai/coding   Product assembly: tools, permissions, config, skills, sessions
-              |
-              v
-@jai/agent    Agent loop, harness, tools, hooks, compaction, durable sessions
-              |
-              v
-@jai/ai       Provider-neutral messages, streaming events, model registry
-              |
-              v
-Anthropic / OpenAI Responses / OpenAI-compatible APIs
+PandaWork Desktop (Electron + React) ──┐
+jai CLI (TTY / subprocess)             ├── Host adapter
+WorkBuddy harness                      ┘        |
+                                                v
+@jai/coding-agent   Public Coding Agent SDK: Agent lifecycle, tools, permissions,
+                    session facts, state and canonical events
+                                                |
+                                                v
+@jai/coding         Product assembly: config, skills, connectors and business facts
+                                                |
+                                                v
+@jai/agent          Agent loop, harness, hooks, compaction and durable sessions
+                                                |
+                                                v
+@jai/ai             Provider-neutral messages, streaming events and model registry
+                                                |
+                                                v
+                  Anthropic / OpenAI / OpenAI-compatible APIs
 ```
 
-底层包保持与 UI 和传输层解耦。`@jai/agent` 的 session 和 event 类型可以作为 wire-safe 的边界使用；桌面端通过 Electron IPC 将运行时事件投影到 React UI。
+Desktop、CLI 和 WorkBuddy 都只通过 Host adapter 消费 `@jai/coding-agent`；它们分别负责 UI/IPC、TTY/subprocess 和 benchmark 环境，不复制 Agent loop、工具装配或 session 事实。SDK 负责 Agent 的执行与状态，宿主只提供模型、workspace、session、approval 等 authority，并把 canonical events 投影成自己的传输格式。
 
 ## Getting Started
 
@@ -75,6 +80,21 @@ bun run desktop:dev
 3. 获取并启用要使用的模型。
 4. 新建会话，选择项目、模型和 agent mode，然后发送消息。
 
+### Run the headless CLI
+
+```bash
+bun run cli -- --help
+cat task.md | bun run cli -- -p --output-format stream-json --permission-mode bypassPermissions --no-session-persistence
+```
+
+发布后的包提供同名 `jai` binary；WorkBuddy、CI 和其他 subprocess host 只需要调用这个普通 CLI，不需要导入 Desktop 或 SDK。
+
+需要为隔离容器准备固定安装包时，可运行：
+
+```bash
+bun run cli:pack
+```
+
 桌面端内置 Anthropic、OpenAI、DeepSeek、MiniMax 和 Kimi provider preset，也可以添加自定义 OpenAI-compatible provider。配置、会话和项目索引保存在本地应用数据目录中。
 
 ## Repository Layout
@@ -82,9 +102,12 @@ bun run desktop:dev
 | Path | Purpose |
 | --- | --- |
 | `app/desktop` | Electron desktop application and React UI |
+| `app/cli` | Headless `jai` CLI for interactive and automation hosts |
+| `app/docs` | Blume-powered public SDK, CLI and WorkBuddy documentation site |
 | `packages/ai` | Provider-neutral model types, streaming protocol and provider adapters |
 | `packages/agent` | Core agent loop, harness, tools, hooks, sessions and compaction |
 | `packages/coding` | Coding-agent assembly, project config, permissions, skills and business services |
+| `packages/coding-agent` | Public Coding Agent SDK facade used by Desktop, CLI and external hosts |
 | `packages/common` | Shared JSON types and wire-safe error utilities |
 | `docs/build-agent` | Agent framework design notes and implementation specifications |
 | `docs/build-coding-agent` | Coding-agent configuration and product-layer specifications |
@@ -141,6 +164,6 @@ The `bash` tool runs commands as the current user. Workspace path checks, permis
 
 ## Project Status
 
-The provider and agent foundations are implemented, and the desktop application is under active development. The current focus is the coding-agent product layer, including permissions, durable sessions, skills, progress presentation and desktop workflows. CLI/TUI and other distribution surfaces remain future work.
+The provider and agent foundations are implemented. `@jai/coding-agent` is the shared SDK for the Desktop and headless `jai` CLI, and the CLI has a stable print/JSON contract for subprocess hosts such as WorkBuddy-Bench. The next implementation phase is provider-backed smoke testing and the four WorkBuddy harness suites; browser capability packaging and richer TTY workflows remain incremental work on top of the same SDK boundary.
 
 More detailed decisions and implementation history live in [`docs/build-agent/overview.md`](docs/build-agent/overview.md).
