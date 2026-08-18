@@ -8,7 +8,6 @@ import type {
 	CodingPermissionDecision,
 	CodingPermissionRequest,
 } from "@jai/coding-agent";
-import { codingAgentToolNames } from "@jai/coding-agent";
 import { PermissionApprovalRegistry } from "@jai/coding-agent/permissions";
 import { toErrorEnvelope } from "@jai/common";
 import { TaggedError } from "better-result";
@@ -24,17 +23,20 @@ import type {
 	DesktopConnectorPermissionItem,
 	DesktopConnectorPermissionResolution,
 	DesktopMessageItem,
-	DesktopNarrationItem,
 	DesktopPermissionItem,
-	DesktopSubagentItem,
-	DesktopThinkingItem,
 	DesktopTodos,
-	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
 import { sortArtifacts } from "./artifacts";
-import { projectAssistantPart } from "./assistant-projector";
-import { projectMessageAttachments, projectSessionTodos, projectSlashInvocation } from "./projector";
+import { projectSessionTodos } from "./projection/durable";
+import { assistantPartItem, type DesktopAssistantItem, userMessageItem } from "./projection/items";
+import {
+	type LiveProjection,
+	type LiveProjectionContext,
+	projectMessageUpdate,
+	projectToolProgress,
+	projectToolStart,
+} from "./projection/live";
 
 type DesktopAgentErrorInit = { readonly data?: { readonly sessionId: string }; readonly message: string };
 class DesktopAgentFactoryUnavailable extends TaggedError("desktop_agent.factory_unavailable")<DesktopAgentErrorInit> {}
@@ -473,24 +475,7 @@ export class DesktopAgentHost {
 				return;
 			}
 			case "message_update": {
-				if (!("contentIndex" in event.assistantEvent)) return;
-				const thinkingComplete = event.assistantEvent.type === "thinking_end";
-				const messageId = this.#ensureMessageId(runtime, "assistant");
-				const item = projectAssistantPart({
-					message: event.message,
-					messageId,
-					turnId: runtime.currentTurnId ?? messageId,
-					contentIndex: event.assistantEvent.contentIndex,
-					status: thinkingComplete ? "complete" : "streaming",
-				});
-				if (!item) return;
-				if (item.kind === "tool") return;
-				runtime.items.set(item.id, item);
-				if (thinkingComplete) {
-					this.#emitNow(runtime, { type: "transcript_upsert", item });
-				} else {
-					this.#queueTranscriptUpdate(runtime, { type: "transcript_upsert", item });
-				}
+				this.#applyProjection(runtime, projectMessageUpdate(event, this.#projectionContext(runtime)));
 				return;
 			}
 			case "message_end": {
@@ -514,39 +499,7 @@ export class DesktopAgentHost {
 				return;
 			}
 			case "tool_execution_start": {
-				if (event.toolName === codingAgentToolNames.updateTodos) return;
-				if (event.toolName === codingAgentToolNames.spawnAgent) {
-					const previous = runtime.items.get(`subagent:${event.toolCallId}`);
-					const previousSubagent = previous?.kind === "subagent" ? previous : undefined;
-					const title =
-						(isRecord(event.args) ? stringArgument(event.args, "title") : undefined) ?? previousSubagent?.title;
-					if (!title) return;
-					const item: DesktopSubagentItem = {
-						kind: "subagent",
-						id: `subagent:${event.toolCallId}`,
-						turnId: previousSubagent?.turnId ?? `subagent:${event.toolCallId}`,
-						toolCallId: event.toolCallId,
-						title,
-						status: "running",
-						...(previousSubagent?.activityTitle ? { activityTitle: previousSubagent.activityTitle } : {}),
-					};
-					runtime.items.set(item.id, item);
-					this.#emitNow(runtime, { type: "transcript_upsert", item });
-					return;
-				}
-				const previous = runtime.items.get(`tool:${event.toolCallId}`);
-				const previousTool = previous?.kind === "tool" ? previous : undefined;
-				const item: DesktopToolItem = {
-					kind: "tool",
-					id: `tool:${event.toolCallId}`,
-					turnId: previousTool?.turnId ?? `tool:${event.toolCallId}`,
-					toolCallId: event.toolCallId,
-					toolName: event.toolName,
-					status: "running",
-					summary: summarizeToolArguments(event.toolName, event.args),
-				};
-				runtime.items.set(item.id, item);
-				this.#emitNow(runtime, { type: "transcript_upsert", item });
+				this.#applyProjection(runtime, projectToolStart(event, this.#projectionContext(runtime)));
 				return;
 			}
 			case "tool_execution_update":
@@ -557,59 +510,7 @@ export class DesktopAgentHost {
 					);
 					if (artifact && !event.isError) this.#upsertArtifact(runtime, artifact);
 				}
-				if (event.toolName === codingAgentToolNames.updateTodos) {
-					if (event.type === "tool_execution_end" && !event.isError) {
-						const todos = projectSessionTodos(runtime.agent.state.appState.todos);
-						if (todos) {
-							runtime.todos = todos;
-							this.#emitNow(runtime, { type: "todos_replace", todos });
-						}
-					}
-					return;
-				}
-				if (event.toolName === codingAgentToolNames.spawnAgent) {
-					const previous = runtime.items.get(`subagent:${event.toolCallId}`);
-					const previousSubagent = previous?.kind === "subagent" ? previous : undefined;
-					const result = event.type === "tool_execution_update" ? event.partial : event.result;
-					const details = projectSpawnAgentDetails(isRecord(result) ? result.details : undefined);
-					const title = details?.title ?? previousSubagent?.title;
-					if (!title) return;
-					const status =
-						event.type === "tool_execution_update"
-							? (details?.status ?? "running")
-							: event.isError
-								? "error"
-								: "complete";
-					const activityTitle = details?.activityTitle ?? previousSubagent?.activityTitle;
-					const item: DesktopSubagentItem = {
-						kind: "subagent",
-						id: `subagent:${event.toolCallId}`,
-						turnId: previousSubagent?.turnId ?? `subagent:${event.toolCallId}`,
-						toolCallId: event.toolCallId,
-						title,
-						status,
-						...(activityTitle ? { activityTitle } : {}),
-					};
-					runtime.items.set(item.id, item);
-					this.#emitNow(runtime, { type: "transcript_upsert", item });
-					return;
-				}
-				const previous = runtime.items.get(`tool:${event.toolCallId}`);
-				const previousTool = previous?.kind === "tool" ? previous : undefined;
-				const result = event.type === "tool_execution_update" ? event.partial : event.result;
-				const details = toolResultText(result, 20_000);
-				const item: DesktopToolItem = {
-					kind: "tool",
-					id: `tool:${event.toolCallId}`,
-					turnId: previousTool?.turnId ?? `tool:${event.toolCallId}`,
-					toolCallId: event.toolCallId,
-					toolName: event.toolName,
-					status: event.type === "tool_execution_update" ? "running" : "complete",
-					summary: previousTool?.summary ?? (details ? truncate(details, 500) : undefined),
-					...(details ? { details } : previousTool?.details ? { details: previousTool.details } : {}),
-				};
-				runtime.items.set(item.id, item);
-				this.#emitNow(runtime, { type: "transcript_upsert", item });
+				this.#applyProjection(runtime, projectToolProgress(event, this.#projectionContext(runtime)));
 				return;
 			}
 			default:
@@ -617,36 +518,58 @@ export class DesktopAgentHost {
 		}
 	}
 
+	#projectionContext(runtime: SessionRuntime): LiveProjectionContext {
+		return {
+			...(runtime.currentTurnId ? { turnId: runtime.currentTurnId } : {}),
+			messageId: (role) => this.#ensureMessageId(runtime, role),
+			existing: (id) => runtime.items.get(id),
+		};
+	}
+
+	/** Stores what the projection decided and emits it on the matching channel. */
+	#applyProjection(runtime: SessionRuntime, projection: LiveProjection): void {
+		switch (projection.kind) {
+			case "none":
+				return;
+			case "items": {
+				for (const item of projection.items) {
+					runtime.items.set(item.id, item);
+					this.#emitNow(runtime, { type: "transcript_upsert", item });
+				}
+				return;
+			}
+			case "streaming": {
+				runtime.items.set(projection.item.id, projection.item);
+				this.#queueTranscriptUpdate(runtime, { type: "transcript_upsert", item: projection.item });
+				return;
+			}
+			case "todos": {
+				const todos = projectSessionTodos(runtime.agent.state.appState.todos);
+				if (!todos) return;
+				runtime.todos = todos;
+				this.#emitNow(runtime, { type: "todos_replace", todos });
+				return;
+			}
+		}
+	}
+
 	#projectMessageItems(
 		runtime: SessionRuntime,
 		message: CodingAgentMessage,
 		status: DesktopMessageItem["status"],
-	): (DesktopMessageItem | DesktopNarrationItem | DesktopThinkingItem | DesktopToolItem | DesktopSubagentItem)[] {
+	): DesktopAssistantItem[] {
 		if (message.role === "toolResult") return [];
 		if (message.role === "assistant") {
 			const messageId = this.#ensureMessageId(runtime, "assistant");
 			const turnId = runtime.currentTurnId ?? messageId;
 			return message.content.flatMap((_, contentIndex) => {
-				const item = projectAssistantPart({ message, messageId, turnId, contentIndex, status });
+				const item = assistantPartItem({ message, messageId, turnId, contentIndex, status });
 				return item ? [item] : [];
 			});
 		}
 		const id = this.#ensureMessageId(runtime, "user");
 		runtime.currentTurnId = id;
-		const slashInvocation = projectSlashInvocation(message);
-		const attachments = projectMessageAttachments(message);
-		return [
-			{
-				kind: "message",
-				id,
-				role: message.role,
-				text: messageText(message),
-				status,
-				timestamp: message.timestamp,
-				...(slashInvocation ? { slashInvocation } : {}),
-				...(attachments ? { attachments } : {}),
-			},
-		];
+		return [userMessageItem({ id, message, status })];
 	}
 
 	#ensureMessageId(runtime: SessionRuntime, role: "assistant" | "user"): string {
@@ -730,6 +653,10 @@ export class DesktopAgentHost {
 	}
 }
 
+/**
+ * Drops the raw tool arguments; the SDK already decided what is safe to show,
+ * including the risk its Danger Layer classified.
+ */
 function projectPermissionRequest(request: CodingPermissionRequest): DesktopPermissionItem["request"] {
 	return {
 		requestId: request.requestId,
@@ -738,76 +665,8 @@ function projectPermissionRequest(request: CodingPermissionRequest): DesktopPerm
 		toolName: request.toolName,
 		reason: request.reason,
 		canAlwaysAllow: request.canAlwaysAllow,
-		summary: permissionSummary(request),
+		summary: request.summary,
 		...(request.suggestedRule ? { suggestedRule: request.suggestedRule } : {}),
 		...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),
 	};
-}
-
-function permissionSummary(request: CodingPermissionRequest): DesktopPermissionItem["request"]["summary"] {
-	const path = stringArgument(request.args, "path");
-	const command = request.toolName === "Bash" ? stringArgument(request.args, "command") : undefined;
-	return {
-		title: `${request.toolName} requests permission`,
-		...(path ? { path } : {}),
-		...(command ? { command } : {}),
-		risk:
-			request.toolName === "Bash" || request.toolName === "Write" || request.toolName === "Edit" ? "high" : "medium",
-	};
-}
-
-function summarizeToolArguments(toolName: string, args: unknown): string | undefined {
-	if (!isRecord(args)) return undefined;
-	const command = toolName === "Bash" ? stringArgument(args, "command") : undefined;
-	const skill = toolName === "Skill" ? stringArgument(args, "skill") : undefined;
-	const path = stringArgument(args, "path");
-	return truncate(command ?? (skill ? `/${skill}` : undefined) ?? path ?? toolName, 240);
-}
-
-function toolResultText(result: unknown, maxLength: number): string | undefined {
-	if (!isRecord(result) || !Array.isArray(result.content)) return undefined;
-	const text = result.content
-		.filter(
-			(part): part is { type: "text"; text: string } =>
-				isRecord(part) && part.type === "text" && typeof part.text === "string",
-		)
-		.map((part) => part.text)
-		.join("\n");
-	return text ? truncate(text, maxLength) : undefined;
-}
-
-function projectSpawnAgentDetails(
-	value: unknown,
-):
-	| { readonly title: string; readonly status: "running" | "complete" | "error"; readonly activityTitle?: string }
-	| undefined {
-	if (!isRecord(value)) return undefined;
-	const title = stringArgument(value, "title");
-	const status = value.status;
-	if (!title || (status !== "running" && status !== "complete" && status !== "error")) return undefined;
-	const activityTitle = stringArgument(value, "activityTitle");
-	return { title, status, ...(activityTitle ? { activityTitle } : {}) };
-}
-
-function messageText(message: CodingAgentMessage): string {
-	if (typeof message.content === "string") return message.content;
-	return message.content
-		.flatMap((part) => {
-			if (part.type === "text") return [part.text];
-			return [];
-		})
-		.join("");
-}
-
-function stringArgument(args: Readonly<Record<string, unknown>>, key: string): string | undefined {
-	const value = args[key];
-	return typeof value === "string" && value ? value : undefined;
-}
-
-function truncate(value: string, maxLength: number): string {
-	return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

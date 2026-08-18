@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import type { PathCapability, PathCapabilityManager, ResolvePathOptions, ToolMiddleware } from "@jai/agent";
-import type { PermissionApprovalDecision } from "./approval";
+import type { PermissionApprovalDecision, PermissionRequestSummary, PermissionRisk } from "./approval";
 import { bashPermissionScanArgument, scanBashCommand } from "./bash-parser";
 import { permissionAbortedError, permissionApprovalUnavailableError, permissionDeniedError } from "./errors";
 import { evaluatePermission } from "./evaluate";
 import { bashAlwaysPattern } from "./rules";
-import { type CanonicalToolName, canonicalToolNames, type PermissionSettings } from "./types";
+import { type CanonicalToolName, canonicalToolNames, type PermissionDecision, type PermissionSettings } from "./types";
 
 export interface PermissionApprovalRequest {
 	readonly requestId: string;
@@ -15,6 +15,11 @@ export interface PermissionApprovalRequest {
 	readonly args: Readonly<Record<string, unknown>>;
 	readonly reason: string;
 	readonly canAlwaysAllow: boolean;
+	/**
+	 * Safe, host-renderable description of what is being asked for. Built here
+	 * because this is where the decision and the arguments are both in hand.
+	 */
+	readonly summary: PermissionRequestSummary;
 	readonly suggestedRule?: string;
 	readonly suggestedRules?: readonly string[];
 	readonly rememberScope?: "session" | "project-local";
@@ -69,6 +74,7 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 		if (context.signal?.aborted) throw permissionAbortedError(toolName);
 
 		const suggested = suggestedRules(toolName, context.args, workspaceRoot, initial);
+		const decided = canonicalDecision.behavior === "ask" ? canonicalDecision : initial;
 		const request: PermissionApprovalRequest = {
 			requestId: randomUUID(),
 			toolCallId: context.toolCall.id,
@@ -76,6 +82,7 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 			args: structuredClone(context.args),
 			reason: initial.behavior === "ask" ? initial.reason : canonicalDecision.reason,
 			canAlwaysAllow: Boolean(suggested),
+			summary: approvalSummary(toolName, permissionArgs, decided),
 			...(suggested
 				? {
 						suggestedRule: suggested.rules[0],
@@ -203,6 +210,43 @@ function pathResolveOptions(
 function canonicalToolName(value: string): CanonicalToolName {
 	if ((canonicalToolNames as readonly string[]).includes(value)) return value as CanonicalToolName;
 	throw permissionDeniedError(value, "Tool has no registered permission policy");
+}
+
+/**
+ * Projects the decision and the call into the approval summary a host renders.
+ * The risk comes from the evaluator's own classification — the Danger Layer
+ * marks destructive and opaque operations — rather than from the tool name.
+ */
+function approvalSummary(
+	toolName: CanonicalToolName,
+	args: Readonly<Record<string, unknown>>,
+	decision: PermissionDecision,
+): PermissionRequestSummary {
+	const path = stringArgument(args, "path");
+	const command = toolName === "Bash" ? stringArgument(args, "command") : undefined;
+	return {
+		title: `${toolName} requests permission`,
+		...(command ? { command } : {}),
+		...(path ? { path } : {}),
+		risk: riskOf(decision),
+	};
+}
+
+function riskOf(decision: PermissionDecision): PermissionRisk {
+	switch (decision.risk) {
+		case "destructive":
+		case "opaque":
+			return "high";
+		case "normal":
+			return "medium";
+		default:
+			return decision.source === "danger-layer" ? "high" : "medium";
+	}
+}
+
+function stringArgument(args: Readonly<Record<string, unknown>>, key: string): string | undefined {
+	const value = args[key];
+	return typeof value === "string" && value ? value : undefined;
 }
 
 function currentWorkspaceRoot(value: string | (() => string)): string {

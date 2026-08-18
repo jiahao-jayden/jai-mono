@@ -546,6 +546,61 @@ describe("permission settings schema", () => {
 	});
 });
 
+describe("approval request summary", () => {
+	test("summary 由 SDK 填充，risk 来自 evaluator 而不是工具名", async () => {
+		const requests: PermissionRequest[] = [];
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: {},
+			requestApproval: (request) => {
+				requests.push(request as unknown as PermissionRequest);
+				return "allowOnce";
+			},
+		});
+
+		await middleware(context("Write", { path: "src/app.ts", content: "secret" }), async () => ({ content: [] }));
+		const write = requests.at(-1)!;
+		expect(write.summary).toEqual({
+			title: "Write requests permission",
+			path: "src/app.ts",
+			risk: "medium",
+		});
+
+		// The Danger Layer classifies this as destructive, so the summary says high
+		// without anyone inspecting the tool name.
+		await middleware(context("Bash", { command: "rm -rf /tmp/x" }), async () => ({ content: [] })).catch(() => {});
+		const bash = requests.at(-1)!;
+		expect(bash.summary.command).toBe("rm -rf /tmp/x");
+		expect(bash.summary.risk).toBe("high");
+	});
+
+	test("summary 通过 schema 校验，且不含原始参数", async () => {
+		const requests: unknown[] = [];
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: {},
+			requestApproval: (request) => {
+				requests.push({
+					requestId: request.requestId,
+					sessionId: "session-1",
+					toolCallId: request.toolCallId,
+					toolName: request.toolName,
+					reason: request.reason,
+					canAlwaysAllow: request.canAlwaysAllow,
+					summary: request.summary,
+					...(request.suggestedRule ? { suggestedRule: request.suggestedRule } : {}),
+					...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),
+				});
+				return "allowOnce";
+			},
+		});
+
+		await middleware(context("Write", { path: "src/app.ts", content: "secret" }), async () => ({ content: [] }));
+		expect(Value.Check(permissionRequestSchema, requests[0])).toBe(true);
+		expect(JSON.stringify(requests[0])).not.toContain("secret");
+	});
+});
+
 function call(toolName: PermissionCall["toolName"], args: Record<string, unknown>): PermissionCall {
 	return { toolName, args, workspaceRoot };
 }

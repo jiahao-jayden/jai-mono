@@ -89,6 +89,9 @@ describe("DesktopAgentHost", () => {
 				toolName: "Write",
 				args: { path: "/tmp/file.txt", content: "secret contents" },
 				reason: "Write requires approval",
+				canAlwaysAllow: true,
+				// The SDK builds the summary; Desktop forwards it without reading args.
+				summary: { title: "Write requests permission", path: "/tmp/file.txt", risk: "high" },
 				suggestedRule: "Edit(//tmp/**)",
 				rememberScope: "session",
 			});

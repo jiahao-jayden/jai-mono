@@ -28,7 +28,7 @@ import {
 	desktopWorkspaceReadInputSchema,
 } from "../../shared/desktop-rpc";
 import { sortArtifacts } from "../agent/artifacts";
-import { projectSessionSnapshot } from "../agent/projector";
+import { projectSessionSnapshot } from "../agent/projection/durable";
 import type { DesktopRuntime } from "../runtime";
 import {
 	artifactPreviewError,

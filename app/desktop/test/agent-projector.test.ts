@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CodingAgentMessage } from "@jai/coding-agent";
 import type { CodingSessionSnapshot } from "@jai/coding-agent/business";
-import { projectSessionSnapshot } from "../electron/agent/projector";
+import { projectSessionSnapshot } from "../electron/agent/projection/durable";
 
 describe("projectSessionSnapshot", () => {
 	test("从 appState 白名单投影 Todo，不解析 transcript", () => {

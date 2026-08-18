@@ -10,7 +10,13 @@ import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { AgentPluginDirectory } from "./agent-plugins";
 import type { CodingMessageAttachment as InternalCodingAttachment } from "./attachments";
 import type { ConnectorApprovalRequest as InternalConnectorApprovalRequest } from "./connector";
-import type { CanonicalToolName, PermissionApprovalRequest, PermissionMode, PermissionSettings } from "./permissions";
+import type {
+	CanonicalToolName,
+	PermissionApprovalRequest,
+	PermissionMode,
+	PermissionRequestSummary,
+	PermissionSettings,
+} from "./permissions";
 import {
 	type CodingAgentSettings,
 	codingAgentConfigDefinition,
@@ -23,7 +29,10 @@ import {
 } from "./runtime";
 import { SPAWN_AGENT_TOOL_NAME, UPDATE_TODOS_TOOL_NAME } from "./tools";
 
-export { codingSessionDirectory, defaultCodingDataRoot } from "./business";
+// Keep the public SDK root free of the Desktop persistence barrel. The business
+// barrel also exports the SQLite-backed repository/service, which would make
+// importing the CLI require Node's `node:sqlite` builtin at startup.
+export { codingSessionDirectory, defaultCodingDataRoot } from "./business/layout";
 export {
 	type CodingAgentPluginDirectoryDiscoveryOptions,
 	discoverCodingAgentPluginDirectories,
@@ -156,6 +165,8 @@ export interface CodingPermissionRequest {
 	readonly args: Readonly<Record<string, JsonValue>>;
 	readonly reason: string;
 	readonly canAlwaysAllow: boolean;
+	/** Safe, renderable description of the request, including its evaluated risk. */
+	readonly summary: PermissionRequestSummary;
 	readonly suggestedRule?: string;
 	readonly suggestedRules?: readonly string[];
 	readonly rememberScope?: "session" | "project-local";
@@ -745,6 +756,7 @@ function projectPermissionRequest(sessionId: string, request: PermissionApproval
 		args: projectJson(request.args) as Readonly<Record<string, JsonValue>>,
 		reason: request.reason,
 		canAlwaysAllow: request.canAlwaysAllow,
+		summary: request.summary,
 		...(request.suggestedRule ? { suggestedRule: request.suggestedRule } : {}),
 		...(request.suggestedRules ? { suggestedRules: request.suggestedRules } : {}),
 		...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),
