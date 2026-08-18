@@ -1,43 +1,7 @@
-import path from "node:path";
-import type { DesktopArtifact, DesktopArtifactFormat } from "../../shared/desktop-rpc";
-
-const artifactExtensions: Readonly<Record<string, DesktopArtifactFormat>> = {
-	".html": "html",
-	".htm": "html",
-	".markdown": "markdown",
-	".md": "markdown",
-	".mdown": "markdown",
-	".mkd": "markdown",
-};
-
-export function projectArtifact(
-	toolName: string,
-	args: unknown,
-	toolCallId: string,
-	updatedAt: number,
-): DesktopArtifact | undefined {
-	if ((toolName !== "Write" && toolName !== "Edit") || !isRecord(args) || typeof args.path !== "string")
-		return undefined;
-	const pathValue = args.path.trim();
-	if (!pathValue) return undefined;
-	const format = artifactExtensions[path.extname(pathValue).toLowerCase()];
-	if (!format) return undefined;
-	return {
-		id: `artifact:${pathValue}`,
-		toolCallId,
-		path: pathValue,
-		format,
-		updatedAt,
-	};
-}
+import type { DesktopArtifact } from "../../shared/desktop-rpc";
 
 export function sortArtifacts(artifacts: Iterable<DesktopArtifact>): DesktopArtifact[] {
 	return [...artifacts].sort((left, right) => right.updatedAt - left.updatedAt);
-}
-
-export interface DesktopArtifactCatalog {
-	readonly version: 1;
-	readonly items: readonly DesktopArtifact[];
 }
 
 /**
@@ -69,10 +33,6 @@ export function projectArtifactCatalog(value: unknown): DesktopArtifact[] {
 		return [artifact];
 	});
 	return items.length === value.items.length ? sortArtifacts(items) : [];
-}
-
-export function artifactCatalog(items: Iterable<DesktopArtifact>): DesktopArtifactCatalog {
-	return { version: 1, items: sortArtifacts(items) };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

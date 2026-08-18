@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentMessage, SessionSnapshot } from "@jai/agent";
+import type { CodingAgentMessage } from "@jai/coding-agent";
+import type { CodingSessionSnapshot } from "@jai/coding/business";
 import { projectSessionSnapshot } from "../electron/agent/projector";
 
 describe("projectSessionSnapshot", () => {
 	test("从 appState 白名单投影 Todo，不解析 transcript", () => {
-		const snapshot: SessionSnapshot = {
+		const snapshot: CodingSessionSnapshot = {
 			appState: {
 				todos: {
 					version: 1,
@@ -33,9 +34,29 @@ describe("projectSessionSnapshot", () => {
 		expect(JSON.stringify(projected.todos)).not.toContain("secret");
 	});
 
-	test("只将成功的 Markdown 与 HTML 写入投影为 Artifact", () => {
-		const snapshot: SessionSnapshot = {
-			appState: {},
+	test("只投影 SDK 已确认成功的 Markdown 与 HTML Artifact facts", () => {
+		const snapshot: CodingSessionSnapshot = {
+			appState: {
+				artifacts: {
+					version: 1,
+					items: [
+						{
+							id: "artifact:docs/report.md",
+							toolCallId: "markdown-1",
+							path: "docs/report.md",
+							format: "markdown",
+							updatedAt: 2,
+						},
+						{
+							id: "artifact:preview.html",
+							toolCallId: "html-1",
+							path: "preview.html",
+							format: "html",
+							updatedAt: 1,
+						},
+					],
+				},
+			},
 			createdAt: "2026-08-01T00:00:00.000Z",
 			updatedAt: "2026-08-01T00:00:04.000Z",
 			entries: [
@@ -119,7 +140,7 @@ describe("projectSessionSnapshot", () => {
 	});
 
 	test("compaction 后从 appState Artifact catalog 恢复元数据", () => {
-		const snapshot: SessionSnapshot = {
+		const snapshot: CodingSessionSnapshot = {
 			appState: {
 				artifacts: {
 					version: 1,
@@ -163,7 +184,7 @@ describe("projectSessionSnapshot", () => {
 	});
 
 	test("将 durable messages、tools 与 compaction 投影为 renderer-safe transcript", () => {
-		const snapshot: SessionSnapshot = {
+		const snapshot: CodingSessionSnapshot = {
 			appState: {},
 			createdAt: "2026-08-01T00:00:00.000Z",
 			updatedAt: "2026-08-01T00:00:03.000Z",
@@ -321,7 +342,7 @@ describe("projectSessionSnapshot", () => {
 	});
 
 	test("只将 toolUse 文本投影为工作叙述，最终回答仍是普通消息", () => {
-		const snapshot: SessionSnapshot = {
+		const snapshot: CodingSessionSnapshot = {
 			appState: {},
 			createdAt: "2026-08-01T00:00:00.000Z",
 			updatedAt: "2026-08-01T00:00:02.000Z",
@@ -364,7 +385,7 @@ describe("projectSessionSnapshot", () => {
 	});
 
 	test("从 durable user message 恢复 slash invocation metadata", () => {
-		const snapshot: SessionSnapshot = {
+		const snapshot: CodingSessionSnapshot = {
 			appState: {},
 			createdAt: "2026-08-01T00:00:00.000Z",
 			updatedAt: "2026-08-01T00:00:00.000Z",
@@ -395,7 +416,7 @@ describe("projectSessionSnapshot", () => {
 	});
 
 	test("不把 synthetic user message 投影到 transcript", () => {
-		const snapshot: SessionSnapshot = {
+		const snapshot: CodingSessionSnapshot = {
 			appState: {},
 			createdAt: "2026-08-01T00:00:00.000Z",
 			updatedAt: "2026-08-01T00:00:00.000Z",
@@ -428,8 +449,8 @@ describe("projectSessionSnapshot", () => {
 
 function assistantMessage(
 	text: string,
-	stopReason: Extract<AgentMessage, { role: "assistant" }>["stopReason"],
-): Extract<AgentMessage, { role: "assistant" }> {
+	stopReason: Extract<CodingAgentMessage, { role: "assistant" }>["stopReason"],
+): Extract<CodingAgentMessage, { role: "assistant" }> {
 	return {
 		role: "assistant",
 		content: [{ type: "text", text }],

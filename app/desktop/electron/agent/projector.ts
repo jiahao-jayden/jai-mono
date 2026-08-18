@@ -1,5 +1,5 @@
-import type { AgentMessage, SessionSnapshot } from "@jai/agent";
-import { SPAWN_AGENT_TOOL_NAME, UPDATE_TODOS_TOOL_NAME } from "@jai/coding/tools";
+import type { CodingSessionSnapshot } from "@jai/coding/business";
+import { type CodingAgentMessage, codingAgentToolNames } from "@jai/coding-agent";
 import type {
 	DesktopAgentSnapshot,
 	DesktopArtifact,
@@ -14,15 +14,14 @@ import type {
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
-import { projectArtifact, projectArtifactCatalog, sortArtifacts } from "./artifacts";
+import { projectArtifactCatalog, sortArtifacts } from "./artifacts";
 import { projectAssistantPart } from "./assistant-projector";
 
-export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnapshot): DesktopAgentSnapshot {
+export function projectSessionSnapshot(sessionId: string, snapshot: CodingSessionSnapshot): DesktopAgentSnapshot {
 	const items = new Map<string, DesktopTranscriptItem>();
 	const artifacts = new Map<string, DesktopArtifact>(
 		projectArtifactCatalog(snapshot.appState.artifacts).map((artifact) => [artifact.id, artifact]),
 	);
-	const pendingArtifacts = new Map<string, DesktopArtifact>();
 	let currentTurnId: string | undefined;
 	for (const entry of snapshot.entries) {
 		if (entry.type === "compaction") {
@@ -37,27 +36,16 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 		}
 		if (entry.type !== "message") continue;
 		if (entry.message.role === "assistant") {
-			for (const part of entry.message.content) {
-				if (part.type !== "toolCall") continue;
-				const artifact = projectArtifact(part.name, part.arguments, part.id, parseTimestamp(entry.timestamp));
-				if (artifact) pendingArtifacts.set(part.id, artifact);
-			}
 			for (const item of projectAssistantItems(entry.id, entry.message, currentTurnId)) {
 				items.set(item.id, item);
 			}
 			continue;
 		}
 		if (entry.message.role === "toolResult") {
-			const artifact = pendingArtifacts.get(entry.message.toolCallId);
-			pendingArtifacts.delete(entry.message.toolCallId);
-			if (artifact && !entry.message.isError) {
-				const current = artifacts.get(artifact.id);
-				if (!current || artifact.updatedAt >= current.updatedAt) artifacts.set(artifact.id, artifact);
-			}
-			if (entry.message.toolName === UPDATE_TODOS_TOOL_NAME) {
+			if (entry.message.toolName === codingAgentToolNames.updateTodos) {
 				continue;
 			}
-			if (entry.message.toolName === SPAWN_AGENT_TOOL_NAME) {
+			if (entry.message.toolName === codingAgentToolNames.spawnAgent) {
 				const existing = items.get(`subagent:${entry.message.toolCallId}`);
 				if (existing?.kind !== "subagent") continue;
 				const item: DesktopSubagentItem = {
@@ -109,7 +97,7 @@ export function projectSessionSnapshot(sessionId: string, snapshot: SessionSnaps
 
 function projectAssistantItems(
 	entryId: string,
-	message: Extract<AgentMessage, { role: "assistant" }>,
+	message: Extract<CodingAgentMessage, { role: "assistant" }>,
 	currentTurnId: string | undefined,
 ): (DesktopMessageItem | DesktopNarrationItem | DesktopThinkingItem | DesktopToolItem | DesktopSubagentItem)[] {
 	const result: (
@@ -153,7 +141,7 @@ function isTodoStatus(value: unknown): value is DesktopTodos["items"][number]["s
 	return value === "pending" || value === "in_progress" || value === "completed" || value === "cancelled";
 }
 
-function projectMessage(entryId: string, message: AgentMessage): DesktopMessageItem {
+function projectMessage(entryId: string, message: CodingAgentMessage): DesktopMessageItem {
 	const slashInvocation = projectSlashInvocation(message);
 	const attachments = projectMessageAttachments(message);
 	return {
@@ -169,7 +157,9 @@ function projectMessage(entryId: string, message: AgentMessage): DesktopMessageI
 	};
 }
 
-export function projectMessageAttachments(message: AgentMessage): readonly DesktopMessageAttachment[] | undefined {
+export function projectMessageAttachments(
+	message: CodingAgentMessage,
+): readonly DesktopMessageAttachment[] | undefined {
 	if (message.role !== "user") return undefined;
 	const value = message.metadata?.messageAttachments;
 	if (!Array.isArray(value)) return undefined;
@@ -197,7 +187,7 @@ export function projectMessageAttachments(message: AgentMessage): readonly Deskt
 	return attachments.length === value.length ? attachments : undefined;
 }
 
-export function projectSlashInvocation(message: AgentMessage): DesktopSlashInvocation | undefined {
+export function projectSlashInvocation(message: CodingAgentMessage): DesktopSlashInvocation | undefined {
 	if (message.role !== "user") return undefined;
 	const value = message.metadata?.slashInvocation;
 	if (!isRecord(value)) return undefined;
@@ -211,7 +201,7 @@ export function projectSlashInvocation(message: AgentMessage): DesktopSlashInvoc
 	return { name: value.name, kind: value.kind, displayName: value.displayName };
 }
 
-function messageText(message: AgentMessage): string {
+function messageText(message: CodingAgentMessage): string {
 	if (typeof message.content === "string") return message.content;
 	return message.content
 		.flatMap((part) => {
@@ -221,7 +211,7 @@ function messageText(message: AgentMessage): string {
 		.join("");
 }
 
-function isSyntheticOnlyMessage(message: AgentMessage): boolean {
+function isSyntheticOnlyMessage(message: CodingAgentMessage): boolean {
 	return (
 		message.role === "user" &&
 		Array.isArray(message.content) &&

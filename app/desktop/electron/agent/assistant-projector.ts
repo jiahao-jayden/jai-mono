@@ -1,5 +1,4 @@
-import type { AgentMessage } from "@jai/agent";
-import { SPAWN_AGENT_TOOL_NAME, UPDATE_TODOS_TOOL_NAME } from "@jai/coding/tools";
+import { type CodingAgentMessage, codingAgentToolNames } from "@jai/coding-agent";
 import type {
 	DesktopMessageItem,
 	DesktopNarrationItem,
@@ -9,7 +8,7 @@ import type {
 } from "../../shared/desktop-rpc";
 
 interface ProjectAssistantPartInput {
-	readonly message: Extract<AgentMessage, { role: "assistant" }>;
+	readonly message: Extract<CodingAgentMessage, { role: "assistant" }>;
 	readonly messageId: string;
 	readonly turnId: string;
 	readonly contentIndex: number;
@@ -43,8 +42,8 @@ export function projectAssistantPart({
 		};
 	}
 	if (part.type === "toolCall") {
-		if (part.name === UPDATE_TODOS_TOOL_NAME) return undefined;
-		if (part.name === SPAWN_AGENT_TOOL_NAME) {
+		if (part.name === codingAgentToolNames.updateTodos) return undefined;
+		if (part.name === codingAgentToolNames.spawnAgent) {
 			const title = stringValue(part.arguments, "title");
 			if (!title) return undefined;
 			return {

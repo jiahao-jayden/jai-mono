@@ -1,8 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentEvent, AgentEventListener, AgentMessage } from "@jai/agent";
+import type {
+	CodingAgentEvent,
+	CodingAgentMessage,
+	CodingAgentState,
+	CodingAgent,
+	CodingConnectorApprovalRequest,
+	CodingPrompt,
+	CodingRunResult,
+	CodingSdkError,
+	type JsonObject,
+} from "@jai/coding-agent";
 import { getErrorCode } from "@jai/common";
-import type { ConnectorApprovalRequest } from "@jai/coding/connector";
-import { DesktopAgentHost, type DesktopAgentFactoryContext, type HostedCodingAgent } from "../electron/agent/host";
+import { Result } from "better-result";
+import { DesktopAgentHost, type DesktopAgentFactoryContext } from "../electron/agent/host";
 import type { DesktopAgentEventEnvelope } from "../shared/desktop-rpc";
 
 describe("DesktopAgentHost", () => {
@@ -27,6 +37,25 @@ describe("DesktopAgentHost", () => {
 		expect(snapshot.status).toBe("idle");
 		expect(snapshot.items.filter((item) => item.kind === "message")).toHaveLength(2);
 		expect(snapshot.lastSeq).toBe(envelopes.length);
+		host.close();
+	});
+
+	test("并发 send 由 CodingAgent admission 排队，Desktop 只投影 pending 状态", async () => {
+		const calls: string[] = [];
+		const agent = new FakeAgent(async (_self, message) => {
+			calls.push(message);
+			await Bun.sleep(5);
+			return [];
+		});
+		const envelopes: DesktopAgentEventEnvelope[] = [];
+		const host = new DesktopAgentHost((event) => envelopes.push(event), async () => agent);
+
+		await Promise.all([host.send(input("first")), host.send(input("second"))]);
+		await Bun.sleep(20);
+
+		expect(calls).toEqual(["first", "second"]);
+		expect(host.getSnapshot("session-1").status).toBe("idle");
+		expect(envelopes.filter((entry) => entry.event.type === "status" && entry.event.status === "idle")).toHaveLength(1);
 		host.close();
 	});
 
@@ -55,6 +84,7 @@ describe("DesktopAgentHost", () => {
 		const agent = new FakeAgent(async () => {
 			const decision = await factoryContext!.requestApproval({
 				requestId: "permission-1",
+				sessionId: "session-1",
 				toolCallId: "call-1",
 				toolName: "Write",
 				args: { path: "/tmp/file.txt", content: "secret contents" },
@@ -86,19 +116,20 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
-	test("Automate 对普通权限请求复用 registry 并自动 allow once", async () => {
+	test("Automate 不会在 Desktop approval broker 中隐式放宽权限", async () => {
 		const envelopes: DesktopAgentEventEnvelope[] = [];
 		let factoryContext: DesktopAgentFactoryContext | undefined;
 		const agent = new FakeAgent(async () => {
 			const decision = await factoryContext!.requestApproval({
 				requestId: "permission-auto-1",
+				sessionId: "session-1",
 				toolCallId: "call-auto-1",
 				toolName: "Write",
 				args: { path: "src/app.ts" },
 				reason: "Write requires approval",
 				canAlwaysAllow: true,
 			});
-			expect(decision).toBe("allowOnce");
+			expect(decision).toBe("deny");
 			return [];
 		});
 		const host = new DesktopAgentHost((event) => envelopes.push(event), async (context) => {
@@ -107,13 +138,15 @@ describe("DesktopAgentHost", () => {
 		});
 
 		await host.send(input("automate", "provider/model", "automate"));
+		await waitFor(() => envelopes.some((entry) => entry.event.type === "transcript_upsert" && entry.event.item.kind === "permission"));
+		host.resolvePermission({ requestId: "permission-auto-1", decision: "deny" });
 		await agent.finished;
 
 		expect(host.getSnapshot("session-1").items).toEqual([
 			expect.objectContaining({
 				kind: "permission",
-				status: "allowed",
-				approvalOrigin: "automatic",
+				status: "denied",
+				approvalOrigin: "manual",
 			}),
 		]);
 		expect(
@@ -123,29 +156,24 @@ describe("DesktopAgentHost", () => {
 					entry.event.item.kind === "permission" &&
 					entry.event.item.status === "pending",
 			),
-		).toBe(false);
-		try {
-			host.resolvePermission({ requestId: "permission-auto-1", decision: "deny" });
-			throw new Error("Expected automatic permission resolution to be consumed");
-		} catch (error) {
-			expect(getErrorCode(error)).toBe("coding_permission.request_not_found");
-		}
+		).toBe(true);
 		host.close();
 	});
 
-	test("Automate 对危险权限同样复用 registry 并自动 allow once", async () => {
+	test("Automate 的 bypass policy 不改变 Connector 以外的 Desktop approval 交互语义", async () => {
 		const envelopes: DesktopAgentEventEnvelope[] = [];
 		let factoryContext: DesktopAgentFactoryContext | undefined;
 		const agent = new FakeAgent(async () => {
 			const decision = await factoryContext!.requestApproval({
 				requestId: "permission-danger-1",
+				sessionId: "session-1",
 				toolCallId: "call-danger-1",
 				toolName: "Bash",
 				args: { command: "rm -rf build" },
 				reason: "Destructive Bash operation requires approval",
 				canAlwaysAllow: false,
 			});
-			expect(decision).toBe("allowOnce");
+			expect(decision).toBe("deny");
 			return [];
 		});
 		const host = new DesktopAgentHost((event) => envelopes.push(event), async (context) => {
@@ -154,12 +182,14 @@ describe("DesktopAgentHost", () => {
 		});
 
 		await host.send(input("danger", "provider/model", "automate"));
+		await waitFor(() => envelopes.some((entry) => entry.event.type === "transcript_upsert" && entry.event.item.kind === "permission"));
+		host.resolvePermission({ requestId: "permission-danger-1", decision: "deny" });
 		await agent.finished;
 		expect(host.getSnapshot("session-1").items).toEqual([
 			expect.objectContaining({
 				kind: "permission",
-				status: "allowed",
-				approvalOrigin: "automatic",
+				status: "denied",
+				approvalOrigin: "manual",
 			}),
 		]);
 		expect(
@@ -169,7 +199,7 @@ describe("DesktopAgentHost", () => {
 					entry.event.item.kind === "permission" &&
 					entry.event.item.status === "pending",
 			),
-		).toBe(false);
+		).toBe(true);
 		host.close();
 	});
 
@@ -182,14 +212,13 @@ describe("DesktopAgentHost", () => {
 				sessionId: "session-1",
 				toolCallId: "call-connector-1",
 				toolName: "connector__execute_action",
-				approvalId: "approval-token-1",
 				actionId: "github.create_issue",
 				reason: "Create a GitHub issue.",
 				sideEffect: "write",
 				dataSensitivity: "normal",
 				inputKeys: ["body", "owner", "repo", "title"],
 				expiresAt: Date.now() + 300_000,
-			} satisfies ConnectorApprovalRequest);
+			} satisfies CodingConnectorApprovalRequest);
 			expect(decision).toBe("allowOnce");
 			return [];
 		});
@@ -231,14 +260,16 @@ describe("DesktopAgentHost", () => {
 
 	test("100ms 窗口内的连续 assistant delta 合并后发送", async () => {
 		const envelopes: DesktopAgentEventEnvelope[] = [];
-		const agent = new FakeAgent(async (self) => {
-			self.emit({ type: "message_start", message: assistantMessage("") });
-			self.emit(messageUpdate("a"));
-			self.emit(messageUpdate("ab"));
-			await Bun.sleep(25);
-			self.emit({ type: "message_end", message: assistantMessage("ab") });
-			return [];
-		});
+		const agent = new FakeAgent(
+			async (self) => {
+				self.emit({ type: "message_start", message: assistantMessage("") });
+				self.emit(messageUpdate("a"));
+				self.emit(messageUpdate("ab"));
+				await Bun.sleep(25);
+				self.emit({ type: "message_end", message: assistantMessage("ab") });
+				return [];
+			},
+		);
 		const host = new DesktopAgentHost((event) => envelopes.push(event), async () => agent);
 
 		await host.send(input("stream"));
@@ -261,20 +292,23 @@ describe("DesktopAgentHost", () => {
 
 	test("持续流按 100ms 窗口刷新，结束时立即冲刷尾部文本", async () => {
 		const envelopes: DesktopAgentEventEnvelope[] = [];
-		const agent = new FakeAgent(async (self) => {
-			self.emit({ type: "message_start", message: assistantMessage("") });
-			self.emit(messageUpdate("a"));
-			await Bun.sleep(110);
-			self.emit(messageUpdate("ab"));
-			await Bun.sleep(110);
-			self.emit(messageUpdate("abc"));
-			self.emit({ type: "message_end", message: assistantMessage("abc") });
-			return [];
-		});
+		const agent = new FakeAgent(
+			async (self) => {
+				self.emit({ type: "message_start", message: assistantMessage("") });
+				self.emit(messageUpdate("a"));
+				await Bun.sleep(110);
+				self.emit(messageUpdate("ab"));
+				await Bun.sleep(110);
+				self.emit(messageUpdate("abc"));
+				self.emit({ type: "message_end", message: assistantMessage("abc") });
+				return [];
+			},
+		);
 		const host = new DesktopAgentHost((event) => envelopes.push(event), async () => agent);
 
 		await host.send(input("stream"));
 		await agent.finished;
+		await waitFor(() => envelopes.at(-1)?.event.type === "status" && envelopes.at(-1)?.event.status === "idle");
 
 		expect(streamingMessageTexts(envelopes)).toEqual(["a", "ab", "abc"]);
 		expect(envelopes.at(-2)?.event).toMatchObject({
@@ -286,29 +320,31 @@ describe("DesktopAgentHost", () => {
 
 	test("同一节流窗口内保留 thinking 与 answer 的最新投影", async () => {
 		const envelopes: DesktopAgentEventEnvelope[] = [];
-		const agent = new FakeAgent(async (self) => {
-			const partial = {
-				...assistantMessage("answer"),
-				content: [
-					{ type: "text" as const, text: "answer" },
-					{ type: "thinking" as const, thinking: "reasoning" },
-				],
-			};
-			self.emit({ type: "message_start", message: assistantMessage("") });
-			self.emit({
-				type: "message_update",
-				message: partial,
-				assistantEvent: { type: "text_delta", contentIndex: 0, delta: "answer", partial },
-			});
-			self.emit({
-				type: "message_update",
-				message: partial,
-				assistantEvent: { type: "thinking_delta", contentIndex: 1, delta: "reasoning", partial },
-			});
-			await Bun.sleep(110);
-			self.emit({ type: "message_end", message: partial });
-			return [partial];
-		});
+		const agent = new FakeAgent(
+			async (self) => {
+				const partial = {
+					...assistantMessage("answer"),
+					content: [
+						{ type: "text" as const, text: "answer" },
+						{ type: "thinking" as const, thinking: "reasoning" },
+					],
+				};
+				self.emit({ type: "message_start", message: assistantMessage("") });
+				self.emit({
+					type: "message_update",
+					message: partial,
+					assistantEvent: { type: "text_delta", contentIndex: 0, delta: "answer", partial },
+				});
+				self.emit({
+					type: "message_update",
+					message: partial,
+					assistantEvent: { type: "thinking_delta", contentIndex: 1, delta: "reasoning", partial },
+				});
+				await Bun.sleep(110);
+				self.emit({ type: "message_end", message: partial });
+				return [partial];
+			},
+		);
 		const host = new DesktopAgentHost((event) => envelopes.push(event), async () => agent);
 
 		await host.send(input("inspect"));
@@ -376,8 +412,8 @@ describe("DesktopAgentHost", () => {
 
 	test("关闭 session 会取消尚未发送的流式刷新", async () => {
 		const envelopes: DesktopAgentEventEnvelope[] = [];
-		let finish = (_messages: AgentMessage[]) => {};
-		const pending = new Promise<AgentMessage[]>((resolve) => {
+		let finish = (_messages: CodingAgentMessage[]) => {};
+		const pending = new Promise<CodingAgentMessage[]>((resolve) => {
 			finish = resolve;
 		});
 		const agent = new FakeAgent(async (self) => {
@@ -518,8 +554,16 @@ describe("DesktopAgentHost", () => {
 				},
 				isError: false,
 			});
-			return [assistant];
-		});
+				return [assistant];
+			},
+			{
+				todos: {
+					version: 1,
+					updatedAt: 1_786_017_600_000,
+					items: [{ id: "render", content: "Render progress", status: "in_progress" }],
+				},
+			},
+		);
 		const host = new DesktopAgentHost((event) => events.push(event), async () => agent);
 
 		await host.send(input("implement"));
@@ -634,53 +678,69 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
-	test("成功的 Markdown 与 HTML 写入即时发布为 Artifact", async () => {
-		const events: DesktopAgentEventEnvelope[] = [];
-		const agent = new FakeAgent(async (self) => {
-			self.emit({
-				type: "tool_execution_start",
-				toolCallId: "markdown-1",
-				toolName: "Write",
-				title: "Write report.md",
-				args: { path: "reports/report.md" },
-			});
-			self.emit({
-				type: "tool_execution_end",
-				toolCallId: "markdown-1",
-				toolName: "Write",
-				result: { content: [] },
-				isError: false,
-			});
-			self.emit({
-				type: "tool_execution_start",
-				toolCallId: "failed-html-1",
-				toolName: "Edit",
-				title: "Edit preview.html",
-				args: { path: "preview.html" },
-			});
-			self.emit({
-				type: "tool_execution_end",
-				toolCallId: "failed-html-1",
-				toolName: "Edit",
-				result: { content: [] },
-				isError: true,
-			});
-			self.emit({
-				type: "tool_execution_start",
-				toolCallId: "text-1",
-				toolName: "Write",
-				title: "Write notes.txt",
-				args: { path: "notes.txt" },
-			});
-			self.emit({
-				type: "tool_execution_end",
-				toolCallId: "text-1",
-				toolName: "Write",
-				result: { content: [] },
-				isError: false,
-			});
-			return [];
-		});
+		test("成功的 Markdown 与 HTML 写入即时发布为 Artifact", async () => {
+			const events: DesktopAgentEventEnvelope[] = [];
+			const agent = new FakeAgent(
+				async (self) => {
+					self.emit({
+						type: "tool_execution_start",
+						toolCallId: "markdown-1",
+						toolName: "Write",
+						title: "Write report.md",
+						args: { path: "reports/report.md" },
+					});
+					self.emit({
+						type: "tool_execution_end",
+						toolCallId: "markdown-1",
+						toolName: "Write",
+						result: { content: [] },
+						isError: false,
+					});
+					self.emit({
+						type: "tool_execution_start",
+						toolCallId: "failed-html-1",
+						toolName: "Edit",
+						title: "Edit preview.html",
+						args: { path: "preview.html" },
+					});
+					self.emit({
+						type: "tool_execution_end",
+						toolCallId: "failed-html-1",
+						toolName: "Edit",
+						result: { content: [] },
+						isError: true,
+					});
+					self.emit({
+						type: "tool_execution_start",
+						toolCallId: "text-1",
+						toolName: "Write",
+						title: "Write notes.txt",
+						args: { path: "notes.txt" },
+					});
+					self.emit({
+						type: "tool_execution_end",
+						toolCallId: "text-1",
+						toolName: "Write",
+						result: { content: [] },
+						isError: false,
+					});
+					return [];
+				},
+				{
+					artifacts: {
+						version: 1,
+						items: [
+							{
+								id: "artifact:reports/report.md",
+								toolCallId: "markdown-1",
+								path: "reports/report.md",
+								format: "markdown",
+								updatedAt: 1,
+							},
+						],
+					},
+				},
+			);
 		const host = new DesktopAgentHost((event) => events.push(event), async () => agent);
 
 		await host.send(input("write artifacts"));
@@ -702,12 +762,7 @@ describe("DesktopAgentHost", () => {
 				status: "complete",
 			}),
 		);
-		expect(agent.getAppState()).toMatchObject({
-			artifacts: {
-				version: 1,
-				items: [expect.objectContaining({ id: "artifact:reports/report.md" })],
-			},
-		});
+		expect(agent.state.appState).toMatchObject({ artifacts: { version: 1 } });
 		host.close();
 	});
 
@@ -716,7 +771,7 @@ describe("DesktopAgentHost", () => {
 		const agent = new FakeAgent(async () => messages);
 		const host = new DesktopAgentHost(() => {}, async () => agent);
 		let completed:
-			| { readonly sessionId: string; readonly firstMessage: string; readonly messages: readonly AgentMessage[] }
+			| { readonly sessionId: string; readonly firstMessage: string; readonly messages: readonly CodingAgentMessage[] }
 			| undefined;
 		host.setRunCompletedListener((context) => {
 			completed = context;
@@ -773,8 +828,8 @@ describe("DesktopAgentHost", () => {
 	});
 
 	test("配置失效时立即关闭空闲 runtime，并在运行结束后关闭忙碌 runtime", async () => {
-		let finishRun = (_messages: AgentMessage[]) => {};
-		const pendingRun = new Promise<AgentMessage[]>((resolve) => {
+		let finishRun = (_messages: CodingAgentMessage[]) => {};
+		const pendingRun = new Promise<CodingAgentMessage[]>((resolve) => {
 			finishRun = resolve;
 		});
 		const agent = new FakeAgent(async () => pendingRun);
@@ -822,63 +877,93 @@ describe("DesktopAgentHost", () => {
 	});
 });
 
-class FakeAgent implements HostedCodingAgent {
-	readonly #listeners = new Set<AgentEventListener>();
-	readonly #invoke: (agent: FakeAgent, input: string) => Promise<AgentMessage[]>;
-	finished: Promise<AgentMessage[]> = Promise.resolve([]);
+class FakeAgent implements CodingAgent {
+	readonly sessionId = "session-1";
+	readonly execution = {};
+	readonly #listeners = new Set<(event: CodingAgentEvent) => void>();
+	readonly #invoke: (agent: FakeAgent, input: string) => Promise<CodingAgentMessage[]>;
+	finished: Promise<CodingAgentMessage[]> = Promise.resolve([]);
 	#appState: Record<string, unknown>;
+	#artifacts: CodingAgentState["artifacts"];
 
-	constructor(invoke: (agent: FakeAgent, input: string) => Promise<AgentMessage[]>, appState: unknown = {}) {
+	constructor(invoke: (agent: FakeAgent, input: string) => Promise<CodingAgentMessage[]>, appState: unknown = {}) {
 		this.#invoke = invoke;
 		this.#appState =
 			typeof appState === "object" && appState !== null && !Array.isArray(appState)
 				? structuredClone(appState) as Record<string, unknown>
 				: {};
+		this.#artifacts = projectArtifacts(this.#appState);
 	}
 
-	getAppState(): unknown {
-		return this.#appState;
+	get state(): CodingAgentState {
+		return {
+			sessionId: "session-1",
+			status: "idle",
+			messages: [],
+			todos: [],
+			artifacts: this.#artifacts,
+			appState: structuredClone(this.#appState) as JsonObject,
+		};
 	}
 
-	updateAppState(update: (current: Record<string, unknown>) => Record<string, unknown>): Promise<void> {
-		this.#appState = update(structuredClone(this.#appState));
-		return Promise.resolve();
+	prompt(input: CodingPrompt): Promise<Result<CodingRunResult, CodingSdkError>> {
+		this.finished = this.#invoke(this, input.prompt);
+		return this.finished.then((messages) => Result.ok({ sessionId: this.sessionId, messages, state: this.state }));
 	}
 
-	invoke(input: string): Promise<AgentMessage[]> {
-		this.finished = this.#invoke(this, input);
-		return this.finished;
-	}
-
-	subscribe(listener: AgentEventListener): () => void {
+	subscribe(listener: (event: CodingAgentEvent) => void): () => void {
 		this.#listeners.add(listener);
 		return () => this.#listeners.delete(listener);
 	}
 
-	emit(event: AgentEvent): void {
+	emit(event: CodingAgentEvent): void {
 		for (const listener of this.#listeners) void listener(event);
 	}
 
-	abort(): void {}
-	steer(_message: AgentMessage): void {}
-	followUp(_message: AgentMessage): void {}
-	waitForIdle(): Promise<void> {
-		return this.finished.then(() => {});
+	abort(): Promise<Result<void, CodingSdkError>> {
+		return Promise.resolve(Result.ok(undefined));
 	}
-	close(): void {}
+	steer(_input: CodingPrompt): Promise<Result<void, CodingSdkError>> {
+		return Promise.resolve(Result.ok(undefined));
+	}
+	followUp(_input: CodingPrompt): Promise<Result<void, CodingSdkError>> {
+		return Promise.resolve(Result.ok(undefined));
+	}
+	waitForIdle(): Promise<Result<void, CodingSdkError>> {
+		return this.finished.then(() => Result.ok(undefined));
+	}
+	generateTitle(): Promise<Result<string, CodingSdkError>> {
+		return Promise.resolve(Result.ok("Test title"));
+	}
+	close(): Promise<Result<void, CodingSdkError>> {
+		return Promise.resolve(Result.ok(undefined));
+	}
 }
 
-class RebindableFakeAgent implements HostedCodingAgent {
-	readonly #listeners = new Set<AgentEventListener>();
+class RebindableFakeAgent implements CodingAgent {
+	readonly sessionId = "session-1";
+	readonly execution = {};
+	readonly #listeners = new Set<(event: CodingAgentEvent) => void>();
 	readonly toolStarted: Promise<void>;
 	readonly #resolveToolStarted: () => void;
 	readonly #toolFinished: Promise<void>;
 	readonly #resolveToolFinished: () => void;
 	readonly #aborted: Promise<void>;
 	readonly #resolveAborted: () => void;
-	finished: Promise<AgentMessage[]> = Promise.resolve([]);
+	finished: Promise<CodingAgentMessage[]> = Promise.resolve([]);
 	aborted = false;
 	toolResultPersisted = false;
+
+	get state(): CodingAgentState {
+		return {
+			sessionId: "session-1",
+			status: "idle",
+			messages: [],
+			todos: [],
+			artifacts: [],
+			appState: {},
+		};
+	}
 
 	constructor() {
 		[this.toolStarted, this.#resolveToolStarted] = deferred();
@@ -886,12 +971,12 @@ class RebindableFakeAgent implements HostedCodingAgent {
 		[this.#aborted, this.#resolveAborted] = deferred();
 	}
 
-	invoke(): Promise<AgentMessage[]> {
+	prompt(): Promise<Result<CodingRunResult, CodingSdkError>> {
 		this.finished = this.#run();
-		return this.finished;
+		return this.finished.then((messages) => Result.ok({ sessionId: this.sessionId, messages, state: this.state }));
 	}
 
-	subscribe(listener: AgentEventListener): () => void {
+	subscribe(listener: (event: CodingAgentEvent) => void): () => void {
 		this.#listeners.add(listener);
 		return () => this.#listeners.delete(listener);
 	}
@@ -900,20 +985,30 @@ class RebindableFakeAgent implements HostedCodingAgent {
 		this.#resolveToolFinished();
 	}
 
-	abort(): void {
+	abort(): Promise<Result<void, CodingSdkError>> {
 		this.aborted = true;
 		this.#resolveAborted();
+		return Promise.resolve(Result.ok(undefined));
 	}
 
-	waitForIdle(): Promise<void> {
-		return this.finished.then(() => {});
+	waitForIdle(): Promise<Result<void, CodingSdkError>> {
+		return this.finished.then(() => Result.ok(undefined));
 	}
 
-	steer(_message: AgentMessage): void {}
-	followUp(_message: AgentMessage): void {}
-	close(): void {}
+	steer(_input: CodingPrompt): Promise<Result<void, CodingSdkError>> {
+		return Promise.resolve(Result.ok(undefined));
+	}
+	followUp(_input: CodingPrompt): Promise<Result<void, CodingSdkError>> {
+		return Promise.resolve(Result.ok(undefined));
+	}
+	generateTitle(): Promise<Result<string, CodingSdkError>> {
+		return Promise.resolve(Result.ok("Test title"));
+	}
+	close(): Promise<Result<void, CodingSdkError>> {
+		return Promise.resolve(Result.ok(undefined));
+	}
 
-	async #run(): Promise<AgentMessage[]> {
+	async #run(): Promise<CodingAgentMessage[]> {
 		const assistant = {
 			...assistantMessage(""),
 			content: [{ type: "toolCall" as const, id: "call-1", name: "Read", arguments: { path: "README.md" } }],
@@ -952,20 +1047,48 @@ class RebindableFakeAgent implements HostedCodingAgent {
 		return [assistant];
 	}
 
-	async #emit(event: AgentEvent): Promise<void> {
+	async #emit(event: CodingAgentEvent): Promise<void> {
 		for (const listener of this.#listeners) await listener(event);
 	}
+}
+
+function projectArtifacts(appState: Record<string, unknown>): CodingAgentState["artifacts"] {
+	const value = appState.artifacts;
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
+	const items = (value as { readonly items?: unknown }).items;
+	if (!Array.isArray(items)) return [];
+	return items.flatMap((item) => {
+		if (typeof item !== "object" || item === null || Array.isArray(item)) return [];
+		const candidate = item as Record<string, unknown>;
+		if (
+			typeof candidate.id !== "string" ||
+			typeof candidate.toolCallId !== "string" ||
+			typeof candidate.path !== "string" ||
+			(candidate.format !== "markdown" && candidate.format !== "html") ||
+			typeof candidate.updatedAt !== "number"
+		)
+			return [];
+		return [
+			{
+				id: candidate.id,
+				toolCallId: candidate.toolCallId,
+				path: candidate.path,
+				format: candidate.format,
+				updatedAt: candidate.updatedAt,
+			},
+		];
+	});
 }
 
 function input(message: string, modelRef = "provider/model", mode: "manual" | "automate" | "plan" = "manual") {
 	return { sessionId: "session-1", message, modelRef, mode };
 }
 
-function userMessage(content: string): AgentMessage {
+function userMessage(content: string): CodingAgentMessage {
 	return { role: "user", content, timestamp: 1 };
 }
 
-function assistantMessage(text: string): Extract<AgentMessage, { role: "assistant" }> {
+function assistantMessage(text: string): Extract<CodingAgentMessage, { role: "assistant" }> {
 	return {
 		role: "assistant",
 		content: [{ type: "text", text }],
@@ -984,7 +1107,7 @@ function assistantMessage(text: string): Extract<AgentMessage, { role: "assistan
 	};
 }
 
-function messageUpdate(text: string): AgentEvent {
+function messageUpdate(text: string): CodingAgentEvent {
 	const message = assistantMessage(text);
 	return {
 		type: "message_update",
