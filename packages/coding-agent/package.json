@@ -1,0 +1,23 @@
+{
+	"name": "@jai/coding-agent",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Public Coding Agent SDK for Jai hosts.",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@jai/ai": "workspace:*",
+		"@jai/coding": "workspace:*",
+		"@jai/connector": "workspace:*",
+		"better-result": "^3.0.0"
+	},
+	"devDependencies": {
+		"typescript": "catalog:"
+	}
+}

@@ -1,0 +1,59 @@
+import { readdir, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import path from "node:path";
+
+export interface CodingPluginDirectory {
+	readonly path: string;
+	readonly scope?: "user" | "project";
+}
+
+export interface CodingAgentPluginDirectoryDiscoveryOptions {
+	readonly homeDirectory?: string;
+	readonly workspaceDirectory?: string;
+	readonly workspaceTrusted: boolean;
+}
+
+/**
+ * Discovers direct child Agent Plugin packages from the standard user and trusted-project roots.
+ * Package validation and capability assembly remain inside the Coding Agent runtime.
+ */
+export async function discoverCodingAgentPluginDirectories(
+	options: CodingAgentPluginDirectoryDiscoveryOptions,
+): Promise<readonly CodingPluginDirectory[]> {
+	const homeDirectory = path.resolve(options.homeDirectory ?? homedir());
+	const roots: Array<{ readonly directory: string; readonly scope: "user" | "project" }> = [];
+	if (options.workspaceTrusted && options.workspaceDirectory) {
+		const workspaceDirectory = path.resolve(options.workspaceDirectory);
+		roots.push(
+			{ directory: path.join(workspaceDirectory, ".jai", "plugins"), scope: "project" },
+			{ directory: path.join(workspaceDirectory, ".agents", "plugins"), scope: "project" },
+		);
+	}
+	roots.push(
+		{ directory: path.join(homeDirectory, ".jai", "plugins"), scope: "user" },
+		{ directory: path.join(homeDirectory, ".agents", "plugins"), scope: "user" },
+	);
+
+	const directories: CodingPluginDirectory[] = [];
+	for (const root of roots) {
+		for (const directory of await discoverPluginChildren(root.directory)) {
+			directories.push({ path: directory, scope: root.scope });
+		}
+	}
+	return directories;
+}
+
+async function discoverPluginChildren(directory: string): Promise<readonly string[]> {
+	const entries = (await readdir(directory, { withFileTypes: true }).catch(() => [])).toSorted((left, right) =>
+		left.name.localeCompare(right.name),
+	);
+	const candidates: string[] = [];
+	for (const entry of entries) {
+		const candidate = path.join(directory, entry.name);
+		const candidateInfo = await stat(candidate).catch(() => undefined);
+		if (!candidateInfo?.isDirectory()) continue;
+		const manifestInfo = await stat(path.join(candidate, "plugin.json")).catch(() => undefined);
+		if (manifestInfo?.isFile()) candidates.push(candidate);
+	}
+	return candidates;
+}
