@@ -16,6 +16,8 @@ docs/build-coding-agent/*
 !docs/build-coding-agent/11-agent-plugins-v1-plugin-validation.md
 !docs/cli/
 !docs/cli/*.md
+!docs/bench/
+!docs/bench/*.md
 app/docs/.blume/
 # packages/*/node_modules/
 packages/*/dist/
