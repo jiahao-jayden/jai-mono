@@ -1,3 +1,9 @@
+export {
+	codingSessionDirectory,
+	defaultCodingDataRoot,
+	projectDirectoryName,
+	UNASSIGNED_DIRECTORY,
+} from "./layout";
 export type {
 	CodingBusinessRepository,
 	CreateProjectRecord,

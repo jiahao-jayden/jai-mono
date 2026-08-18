@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
-import { homedir, hostname } from "node:os";
+import { hostname } from "node:os";
 import path from "node:path";
 import type { JsonObject } from "@jai/agent";
 import { FileSessionStore } from "@jai/agent/node";
@@ -15,6 +15,7 @@ import {
 	sessionNotFoundError,
 	storageInconsistentError,
 } from "./errors";
+import { codingSessionDirectory, defaultCodingDataRoot, projectDirectoryName, UNASSIGNED_DIRECTORY } from "./layout";
 import type { CodingBusinessRepository } from "./repository";
 import type {
 	CodingExecutionContext,
@@ -30,8 +31,6 @@ import type {
 	SessionProjectHistory,
 } from "./types";
 
-const UNASSIGNED_DIRECTORY = "_unassigned";
-
 export interface CodingBusinessServiceOptions {
 	readonly dataRoot?: string;
 	readonly now?: () => number;
@@ -46,13 +45,13 @@ export class CodingBusinessService {
 
 	constructor(repository: CodingBusinessRepository, options: CodingBusinessServiceOptions = {}) {
 		this.repository = repository;
-		this.dataRoot = path.resolve(options.dataRoot ?? path.join(homedir(), "jai", "projects"));
+		this.dataRoot = path.resolve(options.dataRoot ?? defaultCodingDataRoot());
 		this.#now = options.now ?? Date.now;
 		this.#createId = options.createId ?? randomUUID;
 	}
 
 	static async open(options: CodingBusinessServiceOptions = {}): Promise<CodingBusinessService> {
-		const dataRoot = path.resolve(options.dataRoot ?? path.join(homedir(), "jai", "projects"));
+		const dataRoot = path.resolve(options.dataRoot ?? defaultCodingDataRoot());
 		const { SqliteCodingBusinessRepository } = await import("./sqlite-repository");
 		const repository = await SqliteCodingBusinessRepository.open(path.join(dataRoot, "data.sqlite"));
 		return new CodingBusinessService(repository, { ...options, dataRoot });
@@ -280,9 +279,8 @@ export class CodingBusinessService {
 	}
 
 	sessionDirectory(projectId: string | null): string {
-		const directory =
-			projectId === null ? UNASSIGNED_DIRECTORY : projectDirectoryName(this.getProject(projectId).canonicalPath);
-		return path.join(this.dataRoot, directory, "sessions");
+		const canonicalPath = projectId === null ? null : this.getProject(projectId).canonicalPath;
+		return codingSessionDirectory(canonicalPath, this.dataRoot);
 	}
 
 	sessionFilePath(sessionId: string, projectId: string | null): string {
@@ -442,12 +440,4 @@ async function exists(target: string): Promise<boolean> {
 			if (getErrorCode(error) === "ENOENT") return false;
 			throw error;
 		});
-}
-
-function projectDirectoryName(canonicalPath: string): string {
-	const directory = path.basename(canonicalPath);
-	if (!directory || directory === "." || directory === "..") {
-		throw projectPathInvalidError(canonicalPath);
-	}
-	return directory;
 }
