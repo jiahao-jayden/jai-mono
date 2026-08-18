@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import path from "node:path";
-import type { JsonObject, SessionSnapshot } from "@jai/agent";
+import type { JsonObject } from "@jai/agent";
 import { FileSessionStore } from "@jai/agent/node";
 import { getErrorCode } from "@jai/common";
 import {
@@ -19,6 +19,7 @@ import type { CodingBusinessRepository } from "./repository";
 import type {
 	CodingExecutionContext,
 	CodingSession,
+	CodingSessionSnapshot,
 	CreateProjectInput,
 	CreateSessionInput,
 	MoveSessionInput,
@@ -212,7 +213,7 @@ export class CodingBusinessService {
 
 	async loadSessionSnapshot<TAppState extends JsonObject = JsonObject>(
 		sessionId: string,
-	): Promise<SessionSnapshot<TAppState>> {
+	): Promise<CodingSessionSnapshot<TAppState>> {
 		const session = await this.repairSessionLocation(sessionId);
 		const store = new FileSessionStore<TAppState>(this.sessionDirectory(session.projectId));
 		const stored = await store.load(sessionId);

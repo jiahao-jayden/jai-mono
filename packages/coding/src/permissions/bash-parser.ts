@@ -1,9 +1,12 @@
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
-import bashLanguageWasm from "tree-sitter-bash/tree-sitter-bash.wasm?url";
-import treeSitterWasm from "web-tree-sitter/tree-sitter.wasm?url";
 import { Language, type Node, Parser } from "web-tree-sitter";
 import { bashAlwaysPattern, isDestructiveBashCommand } from "./rules";
+
+const require = createRequire(import.meta.url);
+const bashLanguageWasm = require.resolve("tree-sitter-bash/tree-sitter-bash.wasm");
+const treeSitterWasm = require.resolve("web-tree-sitter/tree-sitter.wasm");
 
 export const bashPermissionScanArgument = "__jaiPermissionBashScan";
 

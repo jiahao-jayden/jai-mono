@@ -1,4 +1,4 @@
-import type { JsonObject } from "@jai/agent";
+import type { AgentMessage, JsonObject } from "@jai/agent";
 
 export type SessionTitleSource = "fallback" | "generated" | "manual";
 
@@ -20,6 +20,38 @@ export interface CodingSession {
 	readonly createdAt: number;
 	readonly updatedAt: number;
 	readonly lastActivityAt: number;
+}
+
+/** Host-facing durable session view consumed by host adapters. */
+export type CodingSessionEntry<TAppState extends JsonObject = JsonObject> =
+	| {
+			type: "message";
+			id: string;
+			timestamp: string;
+			message: AgentMessage;
+	  }
+	| {
+			type: "app_state";
+			id: string;
+			timestamp: string;
+			value: TAppState;
+	  }
+	| {
+			type: "compaction";
+			id: string;
+			timestamp: string;
+			summary: string;
+			firstKeptEntryId: string;
+			tokensBefore: number;
+			tokensAfter: number;
+			usage: unknown;
+	  };
+
+export interface CodingSessionSnapshot<TAppState extends JsonObject = JsonObject> {
+	readonly entries: readonly CodingSessionEntry<TAppState>[];
+	readonly appState: TAppState;
+	readonly createdAt: string;
+	readonly updatedAt: string;
 }
 
 export interface SessionProjectHistory {

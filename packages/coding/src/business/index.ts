@@ -10,6 +10,8 @@ export {
 export type {
 	CodingExecutionContext,
 	CodingSession,
+	CodingSessionEntry,
+	CodingSessionSnapshot,
 	CreateProjectInput,
 	CreateSessionInput,
 	MoveSessionInput,

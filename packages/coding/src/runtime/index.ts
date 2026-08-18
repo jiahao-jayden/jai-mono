@@ -9,6 +9,7 @@ export {
 	createCodingAgent,
 	type ResolvedCodingProvider,
 } from "./create-coding-agent";
+export { DEFAULT_CODING_AGENT_INSTRUCTIONS } from "./default-instructions";
 export {
 	DEFAULT_PROVIDER_VENDORS,
 	type DefaultProviderAdapter,
@@ -33,11 +34,11 @@ export {
 } from "./model-catalog";
 export {
 	type CodingAgentSettings,
-	connectorSettingsSchema,
+	type ConnectorSettings,
 	codingAgentConfigDefinition,
 	codingAgentSettingsSchema,
+	connectorSettingsSchema,
 	discoverConfiguredModels,
-	type ConnectorSettings,
 	type ResolveConfiguredProviderOptions,
 	type ResolvedCodingAgentRuntime,
 	resolveConfiguredAgentRuntime,
