@@ -4,10 +4,6 @@ import { Result, type Result as ResultType, TaggedError } from "better-result";
 import { Language, type Node, Parser } from "web-tree-sitter";
 import { bashAlwaysPattern, isDestructiveBashCommand } from "./rules";
 
-const require = createRequire(import.meta.url);
-const bashLanguageWasm = require.resolve("tree-sitter-bash/tree-sitter-bash.wasm");
-const treeSitterWasm = require.resolve("web-tree-sitter/tree-sitter.wasm");
-
 export const bashPermissionScanArgument = "__jaiPermissionBashScan";
 
 export interface BashPermissionScan {
@@ -70,11 +66,32 @@ function commandSource(node: Node): string {
 	return (node.parent?.type === "redirected_statement" ? node.parent.text : node.text).trim();
 }
 
+/**
+ * Locations of the tree-sitter wasm assets. Bundled hosts (Electron main, packaged CLI) cannot
+ * resolve these from node_modules at runtime, so they register absolute paths during startup.
+ */
+let wasmSources: { readonly parser: string; readonly bashLanguage: string } | undefined;
+
+export function setBashParserWasmSources(sources: { readonly parser: string; readonly bashLanguage: string }): void {
+	wasmSources = sources;
+}
+
+function resolveWasmSources(): { readonly parser: string; readonly bashLanguage: string } {
+	if (wasmSources) return wasmSources;
+	const require = createRequire(import.meta.url);
+	wasmSources = {
+		parser: require.resolve("web-tree-sitter/tree-sitter.wasm"),
+		bashLanguage: require.resolve("tree-sitter-bash/tree-sitter-bash.wasm"),
+	};
+	return wasmSources;
+}
+
 async function getParser(): Promise<Parser> {
 	parserPromise ??= (async () => {
+		const sources = resolveWasmSources();
 		const [parserWasm, languageWasm] = await Promise.all([
-			loadWasmBytes(treeSitterWasm),
-			loadWasmBytes(bashLanguageWasm),
+			loadWasmBytes(sources.parser),
+			loadWasmBytes(sources.bashLanguage),
 		]);
 		await Parser.init({ wasmBinary: parserWasm });
 		const language = await Language.load(languageWasm);

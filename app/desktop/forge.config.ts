@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { MakerDeb } from "@electron-forge/maker-deb";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
@@ -6,11 +7,20 @@ import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 
+const require = createRequire(import.meta.url);
+
+/** tree-sitter wasm cannot be resolved from inside asar, so it ships alongside it in Resources. */
+const wasmResources = [
+	require.resolve("web-tree-sitter/tree-sitter.wasm"),
+	require.resolve("tree-sitter-bash/tree-sitter-bash.wasm"),
+];
+
 const config: ForgeConfig = {
 	packagerConfig: {
 		appBundleId: "com.jayden.jai",
 		asar: true,
 		executableName: "JAI",
+		extraResource: wasmResources,
 		protocols: [
 			{
 				name: "JAI Connector",

@@ -1,5 +1,7 @@
-import { resolve } from "node:path";
+import { createRequire } from "node:module";
+import { join, resolve } from "node:path";
 import { CodingBusinessService } from "@jai/coding/business";
+import { setBashParserWasmSources } from "@jai/coding/permissions";
 import { app, BrowserWindow } from "electron";
 import { createDesktopAgentFactory } from "./agent/factory";
 import { type DesktopConnectorRuntime, openDesktopConnectorRuntime } from "./connector-runtime";
@@ -24,6 +26,8 @@ let connectorRuntime: DesktopConnectorRuntime | undefined;
 if (!app.isPackaged) {
 	app.commandLine.appendSwitch("remote-debugging-port", "9229");
 }
+
+registerBashParserWasm();
 
 process.on("uncaughtException", (err) => {
 	mainLog.error("uncaughtException:", err);
@@ -95,6 +99,21 @@ function receiveOAuthCallback(url: string): void {
 	void handleDesktopOAuthCallback(url)
 		.then(focusMainWindow)
 		.catch((error) => mainLog.warn("OAuth callback could not be completed:", error));
+}
+
+function registerBashParserWasm(): void {
+	if (app.isPackaged) {
+		setBashParserWasmSources({
+			parser: join(process.resourcesPath, "tree-sitter.wasm"),
+			bashLanguage: join(process.resourcesPath, "tree-sitter-bash.wasm"),
+		});
+		return;
+	}
+	const require = createRequire(import.meta.url);
+	setBashParserWasmSources({
+		parser: require.resolve("web-tree-sitter/tree-sitter.wasm"),
+		bashLanguage: require.resolve("tree-sitter-bash/tree-sitter-bash.wasm"),
+	});
 }
 
 function registerCustomProtocol(): void {
