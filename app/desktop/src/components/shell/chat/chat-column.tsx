@@ -1,4 +1,3 @@
-import type { CodingSession } from "@jai/coding-agent/business";
 import { getErrorMessage } from "@jai/common";
 import { AnimatePresence, useReducedMotion } from "framer-motion";
 import {
@@ -21,6 +20,7 @@ import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
+	CodingSession,
 	DesktopAgentMode,
 	DesktopConnectorPermissionItem,
 	DesktopPermissionItem,

@@ -152,7 +152,7 @@ Provides the `Agent` facade and lower-level `CoreAgent`, including invocation, s
 
 ### `@jai/coding-agent`
 
-The public SDK surface consumed by hosts, together with the product-level coding agent it assembles from the lower layers: project-scoped configuration, provider/model resolution, permission middleware, skills, Todo state, subagent delegation and the default coding tool set. The root export is the host-facing SDK Interface; implementation modules are reached through named subpath exports such as `@jai/coding-agent/permissions` and `@jai/coding-agent/business`.
+The public SDK surface consumed by hosts: Agent creation, Host authorities, session execution, and JSON-safe event/state/error DTOs. Jai product defaults — user/project configuration, provider catalog, model authority, plugin discovery, and data-directory conventions — live on `@jai/coding-agent/jai-host`. Desktop project/session persistence stays in the Desktop app.
 
 ## Safety and Data Boundaries
 

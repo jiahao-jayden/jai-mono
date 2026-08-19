@@ -1,4 +1,3 @@
-import type { CodingBusinessService } from "@jai/coding-agent/business";
 import type { ConnectorService } from "@jai/connector";
 import { TaggedError } from "better-result";
 import { app, BrowserWindow, dialog, shell } from "electron";
@@ -8,6 +7,7 @@ import { DesktopAgentHost } from "./agent/host";
 import { type AttachmentRegistry, createAttachmentRegistry } from "./attachments";
 import { createBroadcaster } from "./broadcast";
 import { DesktopConfigService } from "./config";
+import type { CodingBusinessService } from "./data";
 import { desktopModelCatalog, setDesktopModelCatalogUpdateListener } from "./model-catalog";
 import { DesktopOAuthManager } from "./oauth";
 import { createDesktopThemeService, type DesktopThemeService } from "./theme";

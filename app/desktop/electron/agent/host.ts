@@ -8,7 +8,7 @@ import type {
 	CodingPermissionDecision,
 	CodingPermissionRequest,
 } from "@jai/coding-agent";
-import { PermissionApprovalRegistry } from "@jai/coding-agent/permissions";
+import { PermissionApprovalRegistry } from "@jai/coding-agent/jai-host";
 import { toErrorEnvelope } from "@jai/common";
 import { TaggedError } from "better-result";
 import type {

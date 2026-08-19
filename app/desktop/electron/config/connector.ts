@@ -1,4 +1,4 @@
-import type { CodingAgentSettings } from "@jai/coding-agent/runtime";
+import type { CodingAgentSettings } from "@jai/coding-agent/jai-host";
 import {
 	type ConnectorOAuthApplicationDefinition,
 	type ConnectorOAuthApplicationId,

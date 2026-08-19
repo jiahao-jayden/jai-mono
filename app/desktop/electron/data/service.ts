@@ -4,6 +4,12 @@ import { hostname } from "node:os";
 import path from "node:path";
 import type { JsonObject } from "@jai/agent";
 import { FileSessionStore } from "@jai/agent/node";
+import {
+	codingSessionDirectory,
+	defaultCodingDataRoot,
+	projectDirectoryName,
+	UNASSIGNED_DIRECTORY,
+} from "@jai/coding-agent/jai-host";
 import { getErrorCode } from "@jai/common";
 import {
 	projectDirectoryConflictError,
@@ -15,7 +21,6 @@ import {
 	sessionNotFoundError,
 	storageInconsistentError,
 } from "./errors";
-import { codingSessionDirectory, defaultCodingDataRoot, projectDirectoryName, UNASSIGNED_DIRECTORY } from "./layout";
 import type { CodingBusinessRepository } from "./repository";
 import type {
 	CodingExecutionContext,

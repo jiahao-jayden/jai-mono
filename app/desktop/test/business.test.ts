@@ -6,20 +6,20 @@ import { pathToFileURL } from "node:url";
 import { openSession } from "@jai/agent";
 import { FileSessionStore } from "@jai/agent/node";
 import { getErrorCode } from "@jai/common";
-import { CodingBusinessService } from "../src/business/service";
+import { CodingBusinessService } from "../electron/data/service";
 import type {
 	CodingBusinessRepository,
 	CreateProjectRecord,
 	CreateSessionRecord,
-} from "../src/business/repository";
+} from "../electron/data/repository";
 import type {
 	CodingSession,
+	Project,
 	ProviderModelInventory,
 	SessionListCursor,
 	SessionListPage,
 	SessionProjectHistory,
-	Project,
-} from "../src/business/types";
+} from "../electron/data/types";
 
 const roots: string[] = [];
 const services: CodingBusinessService[] = [];
@@ -34,7 +34,7 @@ describe("CodingBusinessService", () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-sqlite-inventory-"));
 		roots.push(root);
 		const outputDirectory = join(root, "bundle");
-		const repositoryPath = join(import.meta.dir, "..", "src", "business", "sqlite-repository.ts");
+		const repositoryPath = join(import.meta.dir, "..", "electron", "data", "sqlite-repository.ts");
 		const built = await Bun.build({
 			entrypoints: [repositoryPath],
 			outdir: outputDirectory,

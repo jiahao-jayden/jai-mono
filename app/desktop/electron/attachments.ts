@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
-import type { CodingMessageAttachment } from "@jai/coding-agent/internal";
+import type { CodingAttachment } from "@jai/coding-agent";
 import { TaggedError } from "better-result";
 import type { DesktopAttachmentRegistrationInput, DesktopMessageAttachment } from "../shared/desktop-rpc";
 
@@ -19,12 +19,12 @@ const attachmentError = (init: { readonly cause?: unknown; readonly message: str
 export interface AttachmentRegistry {
 	register(input: DesktopAttachmentRegistrationInput): Promise<DesktopMessageAttachment>;
 	release(ids: readonly string[]): void;
-	resolve(id: string): CodingMessageAttachment;
+	resolve(id: string): CodingAttachment;
 	clear(): void;
 }
 
 export function createAttachmentRegistry(): AttachmentRegistry {
-	const records = new Map<string, CodingMessageAttachment>();
+	const records = new Map<string, CodingAttachment>();
 	return {
 		async register(input) {
 			try {

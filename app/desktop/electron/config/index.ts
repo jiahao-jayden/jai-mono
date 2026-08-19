@@ -1,11 +1,10 @@
-import type { CodingBusinessService, ProviderModelInventory } from "@jai/coding-agent/business";
-import { CodingConfigStore } from "@jai/coding-agent/config";
 import {
 	type CodingAgentSettings,
+	CodingConfigStore,
 	codingAgentConfigDefinition,
 	discoverConfiguredModels,
 	type ModelCatalogStore,
-} from "@jai/coding-agent/runtime";
+} from "@jai/coding-agent/jai-host";
 import type { OAuthTokenResponse } from "@jai/connector";
 import type {
 	DesktopProviderApiKeyRevealResult,
@@ -14,6 +13,7 @@ import type {
 	DesktopProviderFetchModelsResult,
 	DesktopProviderProfileInput,
 } from "../../shared/desktop-rpc";
+import type { CodingBusinessService, ProviderModelInventory } from "../data";
 import {
 	findDesktopConnectorOAuthApplication,
 	projectConnectorConfig,

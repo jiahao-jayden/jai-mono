@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { discoverCodingAgentPluginDirectories } from "../src/sdk";
+import { discoverCodingAgentPluginDirectories } from "../src/jai-host";
 
 const roots: string[] = [];
 

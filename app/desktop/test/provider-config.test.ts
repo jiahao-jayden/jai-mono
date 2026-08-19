@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getErrorCode } from "@jai/common";
-import type { ProviderModelInventory } from "@jai/coding-agent/business";
-import { ModelCatalogStore } from "@jai/coding-agent/runtime";
+import { ModelCatalogStore } from "@jai/coding-agent/jai-host";
+import type { ProviderModelInventory } from "../electron/data";
 import { DesktopConfigService } from "../electron/config";
 
 const roots: string[] = [];

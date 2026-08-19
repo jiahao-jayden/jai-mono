@@ -1,13 +1,9 @@
-import {
-	type CodingPermissionMode,
-	createConfiguredModelAuthority,
-	createCodingAgent as createPublicCodingAgent,
-	discoverCodingAgentPluginDirectories,
-} from "@jai/coding-agent";
-import type { CodingBusinessService, CodingExecutionContext } from "@jai/coding-agent/business";
+import { type CodingPermissionMode, createCodingAgent as createPublicCodingAgent } from "@jai/coding-agent";
+import { createConfiguredModelAuthority, discoverCodingAgentPluginDirectories } from "@jai/coding-agent/jai-host";
 import type { ConnectorService } from "@jai/connector";
 import { TaggedError } from "better-result";
 import type { DesktopAgentMode } from "../../shared/desktop-rpc";
+import type { CodingBusinessService, CodingExecutionContext } from "../data";
 import { desktopModelCatalog } from "../model-catalog";
 import type { DesktopAgentFactory } from "./host";
 

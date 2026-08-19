@@ -1,8 +1,7 @@
-import type { CodingSession } from "@jai/coding-agent/business";
 import { format, formatDistanceToNow } from "date-fns";
 import { useMemo, useState } from "react";
 import { useIcons } from "@/lib/icon-context";
-import type { DesktopProject } from "../../../shared/desktop-rpc";
+import type { CodingSession, DesktopProject } from "../../../shared/desktop-rpc";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 

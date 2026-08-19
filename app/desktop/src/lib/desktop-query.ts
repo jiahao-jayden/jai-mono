@@ -1,6 +1,10 @@
-import type { CodingSession, SessionListCursor } from "@jai/coding-agent/business";
 import { type InfiniteData, infiniteQueryOptions, QueryClient } from "@tanstack/react-query";
-import type { DesktopProject, DesktopSessionListPage } from "../../shared/desktop-rpc";
+import type {
+	CodingSession,
+	DesktopProject,
+	DesktopSessionListPage,
+	SessionListCursor,
+} from "../../shared/desktop-rpc";
 import { desktop } from "./desktop";
 
 export const SESSION_PAGE_SIZE = 50;

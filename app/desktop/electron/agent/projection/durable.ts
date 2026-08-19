@@ -1,5 +1,4 @@
 import { type CodingAgentMessage, codingAgentToolNames, codingArtifactsFromAppState } from "@jai/coding-agent";
-import type { CodingSessionSnapshot } from "@jai/coding-agent/business";
 import type {
 	DesktopAgentSnapshot,
 	DesktopArtifact,
@@ -7,6 +6,7 @@ import type {
 	DesktopTodos,
 	DesktopTranscriptItem,
 } from "../../../shared/desktop-rpc";
+import type { CodingSessionSnapshot } from "../../data";
 import { sortArtifacts } from "../artifacts";
 import {
 	assistantPartItem,

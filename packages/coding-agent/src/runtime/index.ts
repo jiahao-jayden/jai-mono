@@ -16,6 +16,7 @@ export {
 	type DefaultProviderVendor,
 	findDefaultProviderVendor,
 } from "./default-provider-vendors";
+export type { CodingExecutionContext } from "./execution-context";
 export {
 	type CachedModelCatalog,
 	findCatalogModel,

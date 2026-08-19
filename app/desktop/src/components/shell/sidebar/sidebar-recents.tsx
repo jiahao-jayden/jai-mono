@@ -1,9 +1,8 @@
-import type { CodingSession } from "@jai/coding-agent/business";
 import { getErrorMessage } from "@jai/common";
 import { useRef, useState } from "react";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
-import type { DesktopProject } from "../../../../shared/desktop-rpc";
+import type { CodingSession, DesktopProject } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
 import {

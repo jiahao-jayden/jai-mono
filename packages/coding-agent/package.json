@@ -3,21 +3,10 @@
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
-	"description": "Public Coding Agent SDK for Jai hosts, with the coding runtime it is built on.",
+	"description": "Host SDK for Jai coding agents, plus Jai product defaults on the jai-host export.",
 	"exports": {
 		".": "./src/sdk.ts",
-		"./internal": "./src/index.ts",
-		"./business": "./src/business/index.ts",
-		"./business/sqlite": "./src/business/sqlite.ts",
-		"./config": "./src/config/index.ts",
-		"./permissions": "./src/permissions/index.ts",
-		"./permissions/approval": "./src/permissions/approval.ts",
-		"./runtime": "./src/runtime/index.ts",
-		"./mcp": "./src/mcp/index.ts",
-		"./connector": "./src/connector/index.ts",
-		"./skills": "./src/skills/index.ts",
-		"./agent-plugins": "./src/agent-plugins/index.ts",
-		"./tools": "./src/tools/index.ts"
+		"./jai-host": "./src/jai-host/index.ts"
 	},
 	"scripts": {
 		"typecheck": "tsc -p tsconfig.json --noEmit",

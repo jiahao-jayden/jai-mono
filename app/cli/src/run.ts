@@ -13,14 +13,16 @@ import {
 	type CodingPermissionMode,
 	type CodingPermissionRequest,
 	type CodingSdkError,
-	codingSessionDirectory,
-	configuredModelAuthority,
 	createCodingAgent,
-	defaultCodingDataRoot,
-	discoverCodingAgentPluginDirectories,
 	type JsonObject,
 	type JsonValue,
 } from "@jai/coding-agent";
+import {
+	codingSessionDirectory,
+	configuredModelAuthority,
+	defaultCodingDataRoot,
+	discoverCodingAgentPluginDirectories,
+} from "@jai/coding-agent/jai-host";
 import { TaggedError } from "better-result";
 
 type OutputFormat = "text" | "json" | "stream-json";

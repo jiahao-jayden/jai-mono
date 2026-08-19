@@ -1,6 +1,5 @@
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import { type PermissionResolution, permissionResolutionSchema } from "@jai/coding-agent/permissions/approval";
 import { Value } from "@sinclair/typebox/value";
 import { TaggedError } from "better-result";
 import type { IpcMainInvokeEvent } from "electron";
@@ -10,6 +9,7 @@ import {
 	type DesktopConnectorPermissionResolution,
 	type DesktopProject,
 	type DesktopProviderConfigInput,
+	type DesktopToolPermissionResolution,
 	type DesktopWorkspaceFile,
 	type DesktopWorkspaceListResult,
 	desktopAgentMessageInputSchema,
@@ -17,6 +17,7 @@ import {
 	desktopAttachmentRegistrationInputSchema,
 	desktopConnectorOAuthApplicationIdSchema,
 	desktopConnectorPermissionResolutionSchema,
+	desktopPermissionResolutionSchema,
 	desktopSessionCreateInputSchema,
 	desktopSessionDeleteInputSchema,
 	desktopSessionIdSchema,
@@ -300,8 +301,8 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				rt.agentHost.followUp(parse(desktopAgentMessageInputSchema, input, "Invalid agent message input"));
 			},
 			resolvePermission(_event, resolution) {
-				if (Value.Check(permissionResolutionSchema, resolution)) {
-					rt.agentHost.resolvePermission(resolution as PermissionResolution);
+				if (Value.Check(desktopPermissionResolutionSchema, resolution)) {
+					rt.agentHost.resolvePermission(resolution as DesktopToolPermissionResolution);
 					return;
 				}
 				if (Value.Check(desktopConnectorPermissionResolutionSchema, resolution)) {

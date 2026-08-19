@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import * as sdk from "../../src";
+import * as sdk from "../../src/tools";
 
 describe("createCodingTools", () => {
 	test("returns the stable built-in tool set", () => {

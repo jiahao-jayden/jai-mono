@@ -1,13 +1,36 @@
 import { type Static, Type } from "@sinclair/typebox";
-import type {
-	CodingSession,
-	MoveSessionInput,
-	SessionListCursor,
-	SessionListPage,
-	Project,
-} from "@jai/coding-agent/business";
-import type { PermissionRequest, PermissionResolution } from "@jai/coding-agent/permissions/approval";
 import type { ConnectorActionPermission } from "@jai/connector";
+import type { CodingSession, MoveSessionInput, Project, SessionListCursor, SessionListPage } from "./session";
+
+export type { CodingSession, MoveSessionInput, Project, SessionListCursor, SessionListPage } from "./session";
+
+export interface DesktopPermissionRequest {
+	readonly requestId: string;
+	readonly sessionId: string;
+	readonly toolCallId: string;
+	readonly toolName: string;
+	readonly reason: string;
+	readonly canAlwaysAllow?: boolean;
+	readonly summary: {
+		readonly title: string;
+		readonly description?: string;
+		readonly command?: string;
+		readonly path?: string;
+		readonly risk?: "low" | "medium" | "high";
+	};
+	readonly suggestedRule?: string;
+	readonly rememberScope?: "session" | "project-local";
+}
+
+export const desktopPermissionResolutionSchema = Type.Object(
+	{
+		requestId: Type.String({ minLength: 1 }),
+		decision: Type.Union([Type.Literal("deny"), Type.Literal("allowOnce"), Type.Literal("alwaysAllow")]),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopToolPermissionResolution = Static<typeof desktopPermissionResolutionSchema>;
 
 export const DESKTOP_RPC_CHANNEL = "desktop:rpc";
 export const DESKTOP_EVENTS_CHANNEL = "desktop:events";
@@ -442,7 +465,7 @@ export interface DesktopSubagentItem {
 export interface DesktopPermissionItem {
 	readonly kind: "permission";
 	readonly id: string;
-	readonly request: PermissionRequest;
+	readonly request: DesktopPermissionRequest;
 	readonly status: "pending" | "allowed" | "denied" | "cancelled";
 	readonly approvalOrigin?: "automatic" | "manual";
 }
@@ -468,7 +491,7 @@ export interface DesktopConnectorPermissionResolution {
 	readonly decision: DesktopConnectorPermissionDecision;
 }
 
-export type DesktopPermissionResolution = PermissionResolution | DesktopConnectorPermissionResolution;
+export type DesktopPermissionResolution = DesktopToolPermissionResolution | DesktopConnectorPermissionResolution;
 
 export interface DesktopConnectorPermissionItem {
 	readonly kind: "connector_permission";

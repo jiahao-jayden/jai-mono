@@ -1,18 +1,10 @@
-export {
-	codingSessionDirectory,
-	defaultCodingDataRoot,
-	projectDirectoryName,
-	UNASSIGNED_DIRECTORY,
-} from "./layout";
 export type {
 	CodingBusinessRepository,
 	CreateProjectRecord,
 	CreateSessionRecord,
 } from "./repository";
-export {
-	CodingBusinessService,
-	type CodingBusinessServiceOptions,
-} from "./service";
+export { CodingBusinessService, type CodingBusinessServiceOptions } from "./service";
+export { SqliteCodingBusinessRepository } from "./sqlite-repository";
 export type {
 	CodingExecutionContext,
 	CodingSession,

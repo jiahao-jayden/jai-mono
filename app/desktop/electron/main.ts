@@ -1,9 +1,9 @@
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
-import { CodingBusinessService } from "@jai/coding-agent/business";
-import { setBashParserWasmSources } from "@jai/coding-agent/permissions";
+import { setBashParserWasmSources } from "@jai/coding-agent/jai-host";
 import { app, BrowserWindow } from "electron";
 import { type DesktopConnectorRuntime, openDesktopConnectorRuntime } from "./connector-runtime";
+import { CodingBusinessService } from "./data";
 import { mainLog } from "./logger";
 import { hydrateDesktopModelCatalog, startDesktopModelCatalog } from "./model-catalog";
 import { createDesktopRouter } from "./rpc/router";

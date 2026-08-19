@@ -25,7 +25,6 @@ import {
 	createAgentPluginRuntime,
 } from "../agent-plugins";
 import { attachmentUserMessage, CodingAttachmentRun, type CodingMessageAttachment } from "../attachments";
-import type { CodingExecutionContext } from "../business/types";
 import {
 	type CodingConfigDefinition,
 	CodingConfigStore,
@@ -46,12 +45,13 @@ import {
 import { CodingSkillsRuntime, type CodingSkillsRuntimeOptions } from "../skills";
 import {
 	type CodingToolOptions,
-	createCodingTools,
 	createSpawnAgentTool,
 	createUpdateTodosTool,
 	type SessionTodoItem,
 	type SessionTodos,
 } from "../tools";
+import { assembleAgentCapabilities, type ConnectorRuntime } from "./assemble";
+import type { CodingExecutionContext } from "./execution-context";
 
 const SUBAGENT_INSTRUCTIONS =
 	"You are an internal subagent. Complete only the delegated task using the available tools, then return a concise final result to the parent agent. You cannot see the parent conversation, so rely only on the task and workspace.";
@@ -336,7 +336,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			],
 		};
 	});
-	const aroundToolCall = [...(hooks?.aroundToolCall ?? []), ...(pluginHooks?.aroundToolCall ?? [])];
 	const externalToolNames = new Set([
 		...(plugins?.tools.map((tool) => tool.name) ?? []),
 		...(mcp?.tools.map((tool) => tool.name) ?? []),
@@ -349,10 +348,8 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				ripgrepPath: options.tools?.ripgrepPath,
 			})
 		: undefined;
-	if (options.executionContext.localFileAccess) {
-		aroundToolCall.push(
-			attachments.aroundToolCall,
-			createPermissionMiddleware({
+	const permissionMiddleware = options.executionContext.localFileAccess
+		? createPermissionMiddleware({
 				workspaceRoot: options.executionContext.cwd,
 				settings: () => selectPermissionSettings(runtime.snapshot),
 				externalToolNames,
@@ -360,9 +357,8 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				persistProjectLocalAllowRules,
 				pathCapabilities: toolEnvironment,
 				sessionAllowRules,
-			}),
-		);
-	}
+			})
+		: undefined;
 	const spawnAgentTool = createSpawnAgentTool(async ({ task, signal, onActivity }) => {
 		signal?.throwIfAborted();
 		const childSkills = await createSkillsRuntime(options, plugins?.skills);
@@ -371,40 +367,25 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			agentKind: "subagent",
 			...(options.executionContext.localFileAccess ? { workspaceDirectory: options.executionContext.cwd } : {}),
 		});
-		const childAroundToolCall = options.executionContext.localFileAccess
-			? [
-					...(childPluginHooks?.aroundToolCall ?? []),
-					createPermissionMiddleware({
-						workspaceRoot: options.executionContext.cwd,
-						settings: () => selectPermissionSettings(runtime.snapshot),
-						externalToolNames,
-						requestApproval: options.permissions?.requestApproval,
-						persistProjectLocalAllowRules,
-						pathCapabilities: toolEnvironment,
-						sessionAllowRules,
-					}),
-				]
-			: [];
+		const childCapabilities = assembleAgentCapabilities({
+			kind: "subagent",
+			sessionId: `${options.sessionId}:subagent`,
+			executionContext: options.executionContext,
+			toolOptions: options.tools,
+			toolEnvironment,
+			skills: childSkills,
+			plugins,
+			pluginHooks: childPluginHooks,
+			mcp,
+			connector,
+			permissionMiddleware,
+		});
 		let child: Agent;
 		try {
 			child = new Agent({
 				model,
 				provider,
-				tools: [
-					...(options.executionContext.localFileAccess
-						? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
-						: []),
-					...(childSkills ? [childSkills.tool] : []),
-					...(plugins?.tools ?? []),
-					...(mcp?.tools ?? []),
-					...(connector
-						? createConnectorTools({
-								client: connector.client,
-								sessionId: `${options.sessionId}:subagent`,
-								requestApproval: connector.requestApproval,
-							})
-						: []),
-				],
+				tools: childCapabilities.tools,
 				instructions: [resolvedInstructions, SUBAGENT_INSTRUCTIONS].filter(Boolean).join("\n\n"),
 				temperature: resolvedAgentOptions.temperature,
 				maxTokens: resolvedAgentOptions.maxTokens,
@@ -413,8 +394,8 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				toolExecution: resolvedAgentOptions.toolExecution,
 				compaction: resolvedAgentOptions.compaction,
 				hooks: {
-					aroundToolCall: childAroundToolCall,
-					onEvent: [...(childPluginHooks?.onEvent ?? []), ...(childSkills ? [childSkills.onEvent] : [])],
+					aroundToolCall: childCapabilities.aroundToolCall,
+					onEvent: childCapabilities.onEvent,
 				},
 				onObserverError: resolvedAgentOptions.onObserverError,
 			});
@@ -441,20 +422,27 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			childSkills?.close();
 		}
 	});
+	const capabilities = assembleAgentCapabilities({
+		kind: "primary",
+		sessionId: options.sessionId,
+		executionContext: options.executionContext,
+		toolOptions: options.tools,
+		toolEnvironment,
+		skills,
+		plugins,
+		pluginHooks,
+		mcp,
+		connector,
+		attachments: options.executionContext.localFileAccess ? attachments : undefined,
+		permissionMiddleware,
+		extraTools: [updateTodosTool, spawnAgentTool],
+		extraAroundToolCall: hooks?.aroundToolCall,
+		extraOnEvent: hooks?.onEvent,
+	});
 	agent = new Agent<TAppState>({
 		model,
 		provider,
-		tools: [
-			updateTodosTool,
-			spawnAgentTool,
-			...(options.executionContext.localFileAccess
-				? createCodingTools({ cwd: options.executionContext.cwd, ...options.tools }, toolEnvironment)
-				: []),
-			...(skills ? [skills.tool] : []),
-			...(plugins?.tools ?? []),
-			...(mcp?.tools ?? []),
-			...(connector?.tools ?? []),
-		],
+		tools: capabilities.tools,
 		sessionHandle,
 		instructions: resolvedInstructions,
 		temperature: resolvedAgentOptions.temperature,
@@ -466,8 +454,8 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		hooks: {
 			...hooks,
 			beforeModelCall,
-			aroundToolCall,
-			onEvent: [...(hooks?.onEvent ?? []), ...(pluginHooks?.onEvent ?? []), ...(skills ? [skills.onEvent] : [])],
+			aroundToolCall: capabilities.aroundToolCall,
+			onEvent: capabilities.onEvent,
 		},
 		onObserverError: resolvedAgentOptions.onObserverError,
 	});
@@ -475,13 +463,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		if (!runtime.closed && event.status === "valid") runtime.snapshot = event.snapshot;
 	});
 	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, skills, plugins, mcp, connector, attachments);
-}
-
-interface ConnectorRuntime {
-	readonly client: ConnectorService;
-	readonly tools: ReturnType<typeof createConnectorTools>;
-	readonly requestApproval: ConnectorAgentToolOptions["requestApproval"];
-	readonly close: () => Promise<void>;
 }
 
 async function createConnectorRuntime<TSchema extends TObject, TAppState extends JsonObject>(
