@@ -18,7 +18,7 @@ export function SidebarFooter({ onOpenSettings }: SidebarFooterProps) {
 				leadingIcon={SettingsIcon}
 				onClick={onOpenSettings}
 				title="Settings (⌘,)"
-				className="w-full justify-start gap-3 rounded-lg px-3 py-2 text-left text-[13.5px] text-foreground/75"
+				className="w-full justify-start gap-3 rounded-lg px-3 py-2 text-left text-[13.5px] text-foreground/85"
 			>
 				Settings
 			</Button>

@@ -28,7 +28,7 @@ const buttonVariants = cva(
         secondary: "text-foreground disabled:opacity-50",
         tertiary: "text-foreground disabled:opacity-50",
         ghost: "text-muted-foreground hover:text-foreground disabled:opacity-50",
-        navigation: "text-foreground/75 hover:text-foreground",
+        navigation: "text-foreground/85 hover:text-foreground",
       },
       size: {
         sm: "h-7 px-3 text-[12px] gap-1",

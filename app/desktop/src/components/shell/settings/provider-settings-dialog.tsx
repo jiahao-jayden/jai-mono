@@ -342,7 +342,7 @@ function SettingsSidebar({
 					const isActive = category === item.id;
 					const itemClassName = cn(
 						"h-auto w-full justify-start gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px]",
-						isActive ? "font-semibold text-foreground" : "text-foreground/75",
+						isActive ? "font-semibold text-foreground" : "text-foreground/85",
 					);
 					return (
 						<Button

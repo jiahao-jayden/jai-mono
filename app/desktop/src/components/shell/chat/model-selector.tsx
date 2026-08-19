@@ -117,7 +117,7 @@ export function ModelSelector({
 						disabled={disabled}
 						active={open}
 						aria-label={`Model: ${triggerLabel}`}
-						className="min-w-0 max-w-60 justify-start px-2 text-[13px] font-medium text-foreground/80"
+						className="min-w-0 max-w-60 justify-start px-2 text-[13.5px] font-medium text-foreground/85"
 						contentClassName="min-w-0"
 						labelClassName="flex min-w-0 items-center gap-1.5 whitespace-nowrap"
 					/>

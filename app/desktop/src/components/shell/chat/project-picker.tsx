@@ -77,7 +77,7 @@ export function ProjectPicker({
 							size="sm"
 							disabled={triggerDisabled}
 							active={open}
-							className="min-w-0 max-w-72 gap-1.5 px-2.5 text-[13px] text-muted-foreground"
+							className="min-w-0 max-w-72 gap-1.5 px-2.5 text-[13.5px] text-foreground/75"
 							aria-label={`Project: ${label}`}
 							title={project && !project.available ? "This folder is unavailable. Choose it to relink." : label}
 						>
