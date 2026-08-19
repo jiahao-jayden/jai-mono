@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type AssistantMessage, zeroUsage } from "@jai/ai";
-import { parseCliOptions, projectCliResult, projectStreamEvent, runCli } from "../src/run";
+import type { CodingAgentMessage } from "@jai/coding-agent";
+import { createCliApproval, parseCliOptions, projectCliResult, projectStreamEvent, runCli } from "../src/run";
 
 describe("jai CLI options", () => {
 	test("parses print mode, execution policy, and machine output", () => {
@@ -97,5 +98,62 @@ describe("jai CLI options", () => {
 			usage: { input_tokens: 10, output_tokens: 4, total_tokens: 14 },
 			total_cost_usd: 0.03,
 		});
+	});
+});
+
+// 无人值守调用方只能读到 result；模型的自我报告与真实完成度并不一致，
+// 因此这些事实必须出现在结构化输出里，而不是留给调用方扫描自然语言。
+describe("run diagnostics", () => {
+	const assistant = (stopReason: AssistantMessage["stopReason"]): AssistantMessage => ({
+		role: "assistant",
+		content: [{ type: "text", text: "done" }],
+		provider: "bench",
+		model: "model",
+		usage: zeroUsage(),
+		stopReason,
+		timestamp: 0,
+	});
+	const toolResult = (isError: boolean): CodingAgentMessage => ({
+		role: "toolResult",
+		toolCallId: isError ? "t-err" : "t-ok",
+		toolName: "Bash",
+		content: [{ type: "text", text: "output" }],
+		isError,
+		timestamp: 0,
+	});
+
+	test("统计工具调用与失败数，并投影停止原因", () => {
+		const result = projectCliResult("session-1", [
+			assistant("toolUse"),
+			toolResult(false),
+			toolResult(true),
+			assistant("stop"),
+		]);
+
+		expect(result.diagnostics).toEqual({
+			stop_reason: "stop",
+			tool_calls: 2,
+			tool_errors: 1,
+		});
+	});
+
+	test("turn 上限终止能被区分出来", () => {
+		expect(projectCliResult("session-1", [assistant("iterationLimit")]).diagnostics.stop_reason).toBe(
+			"iteration_limit",
+		);
+	});
+});
+
+// 测试进程本身没有 TTY，因此这里走的就是无人值守路径。
+describe("headless 审批", () => {
+	const request = { toolName: "Bash", args: { command: "echo value > output.txt" } } as never;
+
+	test("bypassPermissions 下自动放行，不再抛 permission 错误", async () => {
+		await expect(createCliApproval("bypassPermissions")(request)).resolves.toBe("allowOnce");
+	});
+
+	test("未选择 bypassPermissions 时仍然报错", async () => {
+		await expect(createCliApproval(undefined)(request)).rejects.toThrow(/Permission required for Bash/);
+		await expect(createCliApproval("default")(request)).rejects.toThrow(/Permission required for Bash/);
 	});
 });

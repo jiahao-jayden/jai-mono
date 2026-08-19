@@ -34,6 +34,18 @@ export interface CliUsage {
 	readonly total_tokens: number;
 }
 
+/**
+ * 一次 run 的可聚合诊断。无人值守调用方只能看到 final text，而模型的自我报告
+ * 与真实完成度并不一致，因此停止原因与工具失败数必须由 runtime 给出，
+ * 而不是让调用方去扫自然语言。
+ */
+export interface CliDiagnostics {
+	/** 末条 assistant 消息的停止原因：stop / iteration_limit / max_tokens / error 等。 */
+	readonly stop_reason: string;
+	readonly tool_calls: number;
+	readonly tool_errors: number;
+}
+
 export interface CliResult {
 	readonly type: "result";
 	readonly sessionId: string;
@@ -41,6 +53,7 @@ export interface CliResult {
 	readonly messages: readonly CodingAgentMessage[];
 	readonly usage: CliUsage;
 	readonly total_cost_usd: number;
+	readonly diagnostics: CliDiagnostics;
 }
 
 interface CliOptions {
@@ -220,7 +233,7 @@ async function createCliAgent(options: CliOptions, homeDirectory: string): Promi
 		model: configuredModelAuthority,
 		workspace: { cwd: options.cwd, configRoot: options.cwd, trusted: options.trustWorkspace },
 		session: { directory: codingSessionDirectory(options.cwd, defaultCodingDataRoot(homeDirectory)) },
-		approval: { request: requestCliApproval },
+		approval: { request: createCliApproval(options.permissionMode) },
 		configuration: { homeDirectory },
 		capabilitySources: { plugins: { directories: pluginDirectories } },
 	};
@@ -285,28 +298,39 @@ async function runOne(
 	if (outputFormat === "text") process.stdout.write("\n");
 }
 
-async function requestCliApproval(
-	request: CodingPermissionRequest,
-	signal?: AbortSignal,
-): Promise<CodingPermissionDecision> {
-	if (!input.isTTY || !output.isTTY) {
-		throw new CliPermissionError({ message: `Permission required for ${request.toolName}; use --permission-mode` });
-	}
-	if (signal?.aborted) return "deny";
-	const command = request.args.command;
-	const question =
-		typeof command === "string"
-			? `${request.toolName}: ${String(request.args.command)}\nAllow? [y]es/[n]o/[a]lways `
-			: `${request.toolName} requests permission. Allow? [y]es/[n]o/[a]lways `;
-	const reader = createInterface({ input, output, terminal: true });
-	try {
-		const answer = (await reader.question(question)).trim().toLowerCase();
-		if (answer === "a" || answer === "always") return "alwaysAllow";
-		if (answer === "y" || answer === "yes") return "allowOnce";
-		return "deny";
-	} finally {
-		reader.close();
-	}
+/**
+ * 无人值守（无 TTY）时没有人能回答审批。此时唯一合理的行为取决于调用方是否
+ * 已经显式选择了 bypassPermissions：选了就按该模式的语义自动放行，没选就报错。
+ *
+ * 这里放行的只是被风险层判为 `ask` 的命令。root/home 删除等硬熔断在
+ * evaluatePermission 内部直接 deny，根本不会创建审批请求，因此不受影响。
+ */
+export function createCliApproval(
+	permissionMode: CliOptions["permissionMode"],
+): (request: CodingPermissionRequest, signal?: AbortSignal) => Promise<CodingPermissionDecision> {
+	return async function requestCliApproval(request, signal) {
+		if (!input.isTTY || !output.isTTY) {
+			if (permissionMode === "bypassPermissions") return "allowOnce";
+			throw new CliPermissionError({
+				message: `Permission required for ${request.toolName}; use --permission-mode`,
+			});
+		}
+		if (signal?.aborted) return "deny";
+		const command = request.args.command;
+		const question =
+			typeof command === "string"
+				? `${request.toolName}: ${String(request.args.command)}\nAllow? [y]es/[n]o/[a]lways `
+				: `${request.toolName} requests permission. Allow? [y]es/[n]o/[a]lways `;
+		const reader = createInterface({ input, output, terminal: true });
+		try {
+			const answer = (await reader.question(question)).trim().toLowerCase();
+			if (answer === "a" || answer === "always") return "alwaysAllow";
+			if (answer === "y" || answer === "yes") return "allowOnce";
+			return "deny";
+		} finally {
+			reader.close();
+		}
+	};
 }
 
 function writeEvent(event: unknown): void {
@@ -314,6 +338,8 @@ function writeEvent(event: unknown): void {
 }
 
 export function projectCliResult(sessionId: string, messages: readonly CodingAgentMessage[]): CliResult {
+	const toolResults = messages.filter((message) => message.role === "toolResult");
+	const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
 	return {
 		type: "result",
 		sessionId,
@@ -324,6 +350,11 @@ export function projectCliResult(sessionId: string, messages: readonly CodingAge
 			(total, message) => (message.role === "assistant" ? total + finiteNumber(message.usage.cost.total) : total),
 			0,
 		),
+		diagnostics: {
+			stop_reason: lastAssistant ? projectStopReason(lastAssistant.stopReason) : "none",
+			tool_calls: toolResults.length,
+			tool_errors: toolResults.filter((message) => message.isError).length,
+		},
 	};
 }
 

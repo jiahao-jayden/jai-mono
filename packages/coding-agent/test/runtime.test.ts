@@ -682,6 +682,7 @@ describe("createCodingAgent", () => {
 			codingAgent.close();
 		}
 	});
+
 });
 
 async function createFixture() {

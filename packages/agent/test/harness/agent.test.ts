@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { AssistantMessage, Context } from "@jai/ai";
-import { Agent, type AgentEvent, InMemorySessionStore, openSession } from "../../src";
+import { AssistantMessageEventStream, type AssistantMessage, type Context, type Provider, zeroUsage } from "@jai/ai";
+import { Type } from "@sinclair/typebox";
+import { Agent, type AgentEvent, type AgentTool, InMemorySessionStore, openSession } from "../../src";
 import { assistant, defaultAppState, messageEntry, model, providerFor, testInstructions, type AppState } from "../support/fixtures";
 
 describe("Agent", () => {
@@ -22,6 +23,7 @@ describe("Agent", () => {
 		expect(record?.snapshot.entries.map((entry) => entry.type)).toEqual(["app_state", "message", "message"]);
 		expect(record?.snapshot.appState).toEqual({ resolved: true });
 	});
+
 	test("keeps protocol repair attempts out of the durable session transcript", async () => {
 		const store = new InMemorySessionStore<AppState>();
 		const invalid: AssistantMessage = {
@@ -47,7 +49,6 @@ describe("Agent", () => {
 		expect(record?.snapshot.entries.map((entry) => entry.type)).toEqual(["message", "message"]);
 		expect(JSON.stringify(record?.snapshot)).not.toContain("<invoke");
 	});
-
 
 	test("a reopened session continues the same transcript", async () => {
 		const store = new InMemorySessionStore<AppState>();
@@ -341,5 +342,78 @@ describe("Agent observers", () => {
 		agent.subscribe(boom("dashboard is down"));
 
 		await expect(agent.invoke("hello")).resolves.toHaveLength(2);
+	});
+
+	// 这两项曾经在门面构造 CoreAgent 时被静默丢弃：类型上是 CoreAgentOptions 的合法字段，
+	// 但没有出现在转发列表里，因此 --max-turns 与 provider 级参数一路传到门面后失效。
+	test("maxIterations 传到 loop，工具循环达到上限时以 iterationLimit 停止", async () => {
+		const echo: AgentTool = {
+			name: "echo",
+			description: "echo",
+			parameters: Type.Object({}),
+			async execute() {
+				return { content: [{ type: "text", text: "ok" }] };
+			},
+		};
+		const toolUse = (id: string): AssistantMessage => ({
+			role: "assistant",
+			content: [{ type: "toolCall", id, name: "echo", arguments: {} }],
+			provider: "test",
+			model: model.id,
+			usage: zeroUsage(),
+			stopReason: "toolUse",
+			timestamp: 0,
+		});
+
+		const agent = new Agent<AppState>({
+			model,
+			// 模型始终要求继续调用工具；只有 maxIterations 能让循环停下来。
+			// 上限失效时会取用第三个响应并抛 "Unexpected provider call"。
+			provider: providerFor([toolUse("c1"), toolUse("c2"), toolUse("c3")]),
+			instructions: testInstructions,
+			tools: [echo],
+			maxIterations: 2,
+		});
+
+		const messages = await agent.invoke("keep going");
+
+		expect(messages.at(-1)).toMatchObject({
+			role: "assistant",
+			stopReason: "iterationLimit",
+		});
+	});
+
+	test("providerOptions 透传到 provider.stream", async () => {
+		const seen: (Record<string, Record<string, unknown>> | undefined)[] = [];
+		const provider: Provider = {
+			id: "test",
+			stream(_model, _context: Context, options) {
+				seen.push(options?.providerOptions);
+				const stream = new AssistantMessageEventStream();
+				const message = {
+					role: "assistant" as const,
+					content: [{ type: "text" as const, text: "done" }],
+					provider: "test",
+					model: model.id,
+					usage: zeroUsage(),
+					stopReason: "stop" as const,
+					timestamp: Date.now(),
+				};
+				stream.push({ type: "start", partial: message });
+				stream.push({ type: "done", reason: "stop", message });
+				return stream;
+			},
+		};
+
+		const agent = new Agent<AppState>({
+			model,
+			provider,
+			instructions: testInstructions,
+			providerOptions: { test: { reasoning: true } },
+		});
+
+		await agent.invoke("hello");
+
+		expect(seen).toEqual([{ test: { reasoning: true } }]);
 	});
 });

@@ -15,7 +15,7 @@ import {
 	type WheelEvent,
 } from "react";
 import { ThinkingOrb } from "thinking-orbs";
-import pandaLogo from "@/assets/icons/chat-area/panda-3.svg";
+import pandaLogo from "@/assets/icons/chat-area/logo.svg";
 import type { Chat } from "@/hooks/use-chat";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";

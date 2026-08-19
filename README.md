@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app/desktop/src/assets/icons/chat-area/panda-3.svg" alt="PandaWork panda" width="120" />
+  <img src="app/desktop/src/assets/icons/chat-area/logo.svg" alt="PandaWork panda" width="120" />
 </p>
 
 <h1 align="center">PandaWork</h1>

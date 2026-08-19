@@ -132,6 +132,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 			tools: options.tools,
 			temperature: options.temperature,
 			maxTokens: options.maxTokens,
+			providerOptions: options.providerOptions,
+			maxIterations: options.maxIterations,
 			toolExecution: options.toolExecution,
 			toolMiddlewares: [(context, next) => this.hooks.runAroundToolCall(context, next)],
 			session: options.session,
