@@ -17,7 +17,8 @@
 		"cli": "bun app/cli/src/main.ts",
 		"cli:build": "cd app/cli && bun run build",
 		"cli:pack": "cd app/cli && npm pack",
-		"desktop:dev": "cd app/desktop && bun dev"
+		"desktop:dev": "cd app/desktop && bun dev",
+    "docs:dev": "cd app/docs && bun dev"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.9",
