@@ -50,6 +50,18 @@ function assistant(text: string): AssistantMessage {
 	};
 }
 
+function protocolError(): AssistantMessage {
+	return {
+		...assistant('<invoke name="read"><parameter name="path">a.txt</parameter></invoke>'),
+		stopReason: "error",
+		error: {
+			message: "Model emitted a text-based tool call instead of a native tool call.",
+			code: "ai.protocol_violation",
+			type: "model_output_protocol",
+		},
+	};
+}
+
 function providerFor(responses: AssistantMessage[], contexts: Context[] = []): Provider {
 	let index = 0;
 
@@ -162,6 +174,17 @@ describe("CoreAgent", () => {
 		expect(agent.getSession().isRunning).toBe(false);
 		expect(agent.signal).toBeUndefined();
 		expect(agent.getSession().pendingToolCallIds.length).toBe(0);
+	});
+
+	test("stays usable after protocol repair is exhausted", async () => {
+		const agent = createAgent(providerFor([protocolError(), protocolError(), assistant("recovered")]));
+
+		await agent.invoke("first");
+		await agent.invoke("second");
+
+		expect(agent.getSession().messages.map((message) => message.role)).toEqual(["user", "user", "assistant"]);
+		expect(agent.getSession().messages.at(-1)).toMatchObject({ content: [{ type: "text", text: "recovered" }] });
+		expect(agent.getSession().error).toBeUndefined();
 	});
 
 	test("reduces each event before yielding it from stream", async () => {

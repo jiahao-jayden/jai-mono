@@ -1,7 +1,10 @@
 import {
 	type AssistantMessage,
+	type AssistantMessageEvent,
 	type Context,
+	discardProtocolViolationContent,
 	EventStream,
+	isModelOutputProtocolViolation,
 	normalizeProviderError,
 	type ToolCall,
 	type ToolResultMessage,
@@ -179,10 +182,18 @@ async function runTurn(run: AgentLoopRuntime, pendingMessages: AgentMessage[]): 
 	}
 
 	const message = await streamAssistantResponse(run);
-	newMessages.push(message);
 
 	// contextOverflow 是"成功但被截断"：partial 保留下来，但其中的 tool calls 不再执行。
 	// core 认识的只是 provider-neutral 的 StopReason，压缩由上层在下次请求前处理。
+	if (isModelOutputProtocolViolation(message)) {
+		const failure = createProtocolRepairFailureMessage(message);
+		emit({ type: "message_start", message: failure });
+		emit({ type: "message_end", message: failure });
+		emit({ type: "turn_end", message: failure, toolResults: [] });
+		return { hasMoreToolCalls: false, stopped: true };
+	}
+
+	newMessages.push(message);
 	if (message.stopReason === "error" || message.stopReason === "aborted" || message.stopReason === "contextOverflow") {
 		emit({ type: "turn_end", message, toolResults: [] });
 		return { hasMoreToolCalls: false, stopped: true };
@@ -215,7 +226,10 @@ async function runTurn(run: AgentLoopRuntime, pendingMessages: AgentMessage[]): 
 interface ModelCallAttempt {
 	message: AssistantMessage;
 	started: boolean;
+	events: BufferedAssistantEvent[];
 }
+
+type BufferedAssistantEvent = Exclude<AssistantMessageEvent, { type: "done" | "error" }>;
 
 async function streamAssistantResponse(run: AgentLoopRuntime): Promise<AssistantMessage> {
 	const { context, config, emit } = run;
@@ -227,17 +241,37 @@ async function streamAssistantResponse(run: AgentLoopRuntime): Promise<Assistant
 	};
 	const prepared = config.prepareContext ? await config.prepareContext(input) : input;
 
-	let attempt = await attemptModelCall(run, prepared);
+	let attemptContext = prepared;
+	let attempt = await attemptModelCall(run, attemptContext);
 
-	// 只有 provider 还没发出 start 的失败才可恢复：外界已经看过 partial 时，
-	// 透明重试需要一套撤回事件的协议，这里不引入。每个 model call 只给一次机会。
-	if (!attempt.started && attempt.message.stopReason === "error" && config.onModelError) {
-		const directive = await config.onModelError(attempt.message, prepared);
-		if (directive) attempt = await attemptModelCall(run, directive.context);
+	// 文本工具调用是模型输出协议错误，不是 provider 故障。attempt 的事件还没有发布，
+	// 所以可以丢弃它，附加一次临时纠正消息后重新请求。
+	if (isModelOutputProtocolViolation(attempt.message)) {
+		const directive = config.onModelError ? await config.onModelError(attempt.message, prepared) : undefined;
+		attemptContext = appendProtocolRepairMessage(directive?.context ?? prepared);
+		attempt = await attemptModelCall(run, attemptContext);
 	}
 
-	// 只有最终采纳的那次尝试才进入 transcript 与 message 事件。
-	if (!attempt.started) emit({ type: "message_start", message: attempt.message });
+	// provider 尚未发出 start 的失败仍沿用原有 recovery seam；协议修复只允许一次。
+	if (
+		!attempt.started &&
+		attempt.message.stopReason === "error" &&
+		!isModelOutputProtocolViolation(attempt.message) &&
+		config.onModelError
+	) {
+		const directive = await config.onModelError(attempt.message, attemptContext);
+		if (directive) {
+			attemptContext = directive.context;
+			attempt = await attemptModelCall(run, attemptContext);
+		}
+	}
+
+	// 最终协议错误不进入 transcript，也不把模型输出展示成普通 assistant 文本。
+	if (isModelOutputProtocolViolation(attempt.message)) return discardProtocolViolationContent(attempt.message);
+
+	// 只有最终采纳的那次尝试才进入 transcript 与 message 事件。attempt 的事件在
+	// provider stream 完成前都保持在内存中，保证修复重试不会留下半条消息。
+	publishAttempt(run, attempt);
 	context.messages.push(attempt.message);
 	emit({ type: "message_end", message: attempt.message });
 
@@ -245,7 +279,7 @@ async function streamAssistantResponse(run: AgentLoopRuntime): Promise<Assistant
 }
 
 async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): Promise<ModelCallAttempt> {
-	const { config, signal, emit } = run;
+	const { config, signal } = run;
 
 	const llmContext: Context = {
 		systemPrompt: request.systemPrompt,
@@ -262,12 +296,13 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 	});
 
 	let started = false;
+	const events: BufferedAssistantEvent[] = [];
 
 	for await (const event of response) {
 		switch (event.type) {
 			case "start":
 				started = true;
-				emit({ type: "message_start", message: event.partial });
+				events.push(structuredClone(event));
 				break;
 
 			case "text_start":
@@ -279,20 +314,64 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 			case "toolcall_start":
 			case "toolcall_delta":
 			case "toolcall_end":
-				emit({
-					type: "message_update",
-					message: event.partial,
-					assistantEvent: event,
-				});
+				events.push(structuredClone(event));
 				break;
 
 			case "done":
 			case "error":
-				return { message: await response.result(), started };
+				return { message: await response.result(), started, events };
 		}
 	}
 
-	return { message: await response.result(), started };
+	return { message: await response.result(), started, events };
+}
+
+function publishAttempt(run: AgentLoopRuntime, attempt: ModelCallAttempt): void {
+	const { emit } = run;
+	if (!attempt.started) {
+		emit({ type: "message_start", message: attempt.message });
+		return;
+	}
+
+	for (const event of attempt.events) {
+		if (event.type === "start") {
+			emit({ type: "message_start", message: event.partial });
+			continue;
+		}
+
+		emit({
+			type: "message_update",
+			message: event.partial,
+			assistantEvent: event,
+		});
+	}
+}
+
+function appendProtocolRepairMessage(context: AgentContext): AgentContext {
+	return {
+		...context,
+		messages: [
+			...context.messages,
+			{
+				role: "user",
+				content: [
+					{
+						type: "text",
+						text: "The previous response used an unsupported text-based tool-call format. Use the native tool-calling interface for the provided tools and do not emit markup-based tool calls.",
+						synthetic: true,
+					},
+				],
+				timestamp: Date.now(),
+			},
+		],
+	};
+}
+
+function createProtocolRepairFailureMessage(message: AssistantMessage): AssistantMessage {
+	return {
+		...discardProtocolViolationContent(message),
+		content: [{ type: "text", text: "The model did not use the native tool-calling protocol. Please retry." }],
+	};
 }
 
 function createIterationLimitMessage(config: AgentLoopConfig, turnCount: number): AssistantMessage {

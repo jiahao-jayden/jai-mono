@@ -1,4 +1,4 @@
-import { EventStream } from "@jai/ai";
+import { EventStream, isModelOutputProtocolViolation } from "@jai/ai";
 import { TaggedError } from "better-result";
 import { agentLoop } from "./agent-loop";
 import { type AgentState, cloneJson, freezeState, type JsonObject, type MutableAgentState } from "./agent-state";
@@ -306,7 +306,9 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 
 			case "message_end":
 				state.streamingMessage = undefined;
-				state.messages.push(event.message);
+				if (event.message.role !== "assistant" || !isModelOutputProtocolViolation(event.message)) {
+					state.messages.push(event.message);
+				}
 				break;
 
 			case "tool_execution_start": {

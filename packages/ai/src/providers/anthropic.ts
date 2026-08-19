@@ -13,6 +13,7 @@ import type {
 import { createAssistantMessage, runAdapterStream } from "../adapter";
 import { AssistantMessageEventStream } from "../event-stream";
 import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
+import { assertNativeToolCallProtocol } from "../tool-protocol";
 import { transformMessagesForModel } from "../transform-messages";
 import type {
 	AssistantMessage,
@@ -107,6 +108,7 @@ export class AnthropicProvider implements Provider {
 			step: (event) => translateEvent(output, blockStates, event),
 			// Anthropic 每个 block 都有显式 stop 事件，不需要收尾
 			finalize: () => [],
+			validate: () => assertNativeToolCallProtocol(output, context.tools),
 		});
 	}
 

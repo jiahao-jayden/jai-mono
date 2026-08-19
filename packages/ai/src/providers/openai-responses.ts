@@ -10,6 +10,7 @@ import type {
 import { createAssistantMessage, runAdapterStream } from "../adapter";
 import { AssistantMessageEventStream } from "../event-stream";
 import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
+import { assertNativeToolCallProtocol } from "../tool-protocol";
 import { transformMessagesForModel } from "../transform-messages";
 import type {
 	AssistantMessage,
@@ -118,6 +119,7 @@ export class OpenAIResponsesProvider implements Provider {
 			},
 			step: (event) => applyEvent(output, state, event),
 			finalize: () => finalizeBlocks(output, state),
+			validate: () => assertNativeToolCallProtocol(output, context.tools),
 		});
 	}
 

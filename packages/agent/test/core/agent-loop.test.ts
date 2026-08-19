@@ -59,6 +59,20 @@ function assistant(
 	};
 }
 
+function protocolError(): AssistantMessage {
+	return {
+		...assistant(
+			[{ type: "text", text: '<invoke name="read"><parameter name="path">a.txt</parameter></invoke>' }],
+			"error",
+		),
+		error: {
+			message: "Model emitted a text-based tool call instead of a native tool call.",
+			code: "ai.protocol_violation",
+			type: "model_output_protocol",
+		},
+	};
+}
+
 function providerFor(
 	responses: AssistantMessage[],
 	contexts: Context[] = [],
@@ -145,6 +159,80 @@ describe("agentLoop", () => {
 		]);
 		expect(messages).toEqual([prompt, reply]);
 		expect(originalContext.messages).toEqual([]);
+	});
+
+	test("repairs a protocol-invalid response without persisting the invalid attempt", async () => {
+		const toolParameters = Type.Object({ path: Type.String() });
+		const calls: string[] = [];
+		const readTool: AgentTool<typeof toolParameters> = {
+			name: "read",
+			title: (args) => `Read ${args.path}`,
+			description: "Read a file",
+			parameters: toolParameters,
+			async execute(_id, args) {
+				calls.push(args.path);
+				return { content: [{ type: "text", text: "contents" }] };
+			},
+		};
+		const toolCall = assistant(
+			[{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "a.txt" } }],
+			"toolUse",
+		);
+		const final = assistant([{ type: "text", text: "done" }]);
+		const contexts: Context[] = [];
+
+		const { messages } = await collect(
+			agentLoop([user("read a.txt")], context([readTool]), {
+				model,
+				provider: providerFor([protocolError(), toolCall, final], contexts),
+			}),
+		);
+
+		expect(calls).toEqual(["a.txt"]);
+		expect(messages.map((message) => message.role)).toEqual([
+			"user",
+			"assistant",
+			"toolResult",
+			"assistant",
+		]);
+		expect(contexts[1]?.messages.at(-1)).toMatchObject({
+			role: "user",
+			content: [{ type: "text", synthetic: true }],
+		});
+		expect(messages.some((message) => JSON.stringify(message).includes("<invoke"))).toBe(false);
+	});
+
+	test("keeps the agent turn recoverable when protocol repair also fails", async () => {
+		const contexts: Context[] = [];
+		const { events, messages } = await collect(
+			agentLoop([user("read a.txt")], context(), {
+				model,
+				provider: providerFor([protocolError(), protocolError()], contexts),
+			}),
+		);
+
+		expect(messages).toEqual([expect.objectContaining({ role: "user", content: "read a.txt" })]);
+		expect(events.map((event) => event.type)).toEqual([
+			"agent_start",
+			"turn_start",
+			"message_start",
+			"message_end",
+			"message_start",
+			"message_end",
+			"turn_end",
+			"agent_end",
+		]);
+		expect(events.find((event) => event.type === "turn_end")).toMatchObject({
+			message: {
+				stopReason: "error",
+				error: { code: "ai.protocol_violation" },
+				content: [{ type: "text", text: expect.stringContaining("native tool-calling") }],
+			},
+		});
+		expect(contexts[1]?.messages.at(-1)).toMatchObject({
+			role: "user",
+			content: [{ type: "text", synthetic: true }],
+		});
 	});
 
 	test("feeds tool results back to the provider in the next turn", async () => {

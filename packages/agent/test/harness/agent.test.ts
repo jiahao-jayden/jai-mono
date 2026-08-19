@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Context } from "@jai/ai";
+import type { AssistantMessage, Context } from "@jai/ai";
 import { Agent, type AgentEvent, InMemorySessionStore, openSession } from "../../src";
 import { assistant, defaultAppState, messageEntry, model, providerFor, testInstructions, type AppState } from "../support/fixtures";
 
@@ -22,6 +22,32 @@ describe("Agent", () => {
 		expect(record?.snapshot.entries.map((entry) => entry.type)).toEqual(["app_state", "message", "message"]);
 		expect(record?.snapshot.appState).toEqual({ resolved: true });
 	});
+	test("keeps protocol repair attempts out of the durable session transcript", async () => {
+		const store = new InMemorySessionStore<AppState>();
+		const invalid: AssistantMessage = {
+			...assistant('<invoke name="read_file"><parameter name="path">/x</parameter></invoke>'),
+			stopReason: "error",
+			error: {
+				message: "Model emitted a text-based tool call instead of a native tool call.",
+				code: "ai.protocol_violation",
+				type: "model_output_protocol",
+			},
+		};
+		const agent = new Agent<AppState>({
+			model,
+			provider: providerFor([invalid, assistant("repaired")]),
+			sessionHandle: await openSession(store, "s1", defaultAppState),
+			instructions: testInstructions,
+		});
+
+		await agent.invoke("hello");
+
+		expect(agent.state.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+		const record = await store.load("s1");
+		expect(record?.snapshot.entries.map((entry) => entry.type)).toEqual(["message", "message"]);
+		expect(JSON.stringify(record?.snapshot)).not.toContain("<invoke");
+	});
+
 
 	test("a reopened session continues the same transcript", async () => {
 		const store = new InMemorySessionStore<AppState>();

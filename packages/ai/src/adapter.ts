@@ -1,6 +1,7 @@
 import { getErrorMessage } from "@jai/common";
 import { TaggedError } from "better-result";
 import type { AssistantMessageEventStream } from "./event-stream";
+import { ModelOutputProtocolViolation } from "./tool-protocol";
 import type { AssistantMessage, AssistantMessageEvent, ProviderErrorInfo, StopReason } from "./types";
 import { zeroUsage } from "./utils";
 
@@ -15,6 +16,8 @@ export interface AdapterSpec<TChunk> {
 	step(chunk: TChunk): AssistantMessageEvent[];
 	/** 流跑完后的收尾（如 OpenAI 关闭未结束的 block）；没有则返回 [] */
 	finalize(): AssistantMessageEvent[];
+	/** 收尾后、发布 done 前校验 provider 输出协议。 */
+	validate?(): void;
 }
 
 class RequestAborted extends TaggedError("request.aborted")<{
@@ -61,6 +64,7 @@ export async function runAdapterStream<TChunk>(
 		for (const e of spec.finalize()) {
 			eventStream.push(e);
 		}
+		spec.validate?.();
 
 		eventStream.push({
 			type: "done",
@@ -80,6 +84,14 @@ export async function runAdapterStream<TChunk>(
 
 /** 只保留 SDK Error 上稳定、可序列化的诊断字段。 */
 export function normalizeProviderError(error: unknown): ProviderErrorInfo {
+	if (error instanceof ModelOutputProtocolViolation) {
+		return {
+			message: error.message,
+			code: "ai.protocol_violation",
+			type: "model_output_protocol",
+		};
+	}
+
 	const source =
 		typeof error === "object" && error !== null
 			? (error as {

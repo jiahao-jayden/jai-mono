@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
+import { Type } from "@sinclair/typebox";
 import type { StreamOptions } from "../src/provider";
-import type { AssistantMessageEvent, Context, Model } from "../src/types";
+import type { AssistantMessage, AssistantMessageEvent, Context, Model, Tool } from "../src/types";
 
 let streamChunks: unknown[] = [];
 let responseEvents: unknown[] = [];
@@ -120,6 +121,12 @@ const chunk = (delta: unknown, finish: string | null = null, usage?: unknown) =>
 	...(usage ? { usage } : {}),
 });
 
+const readTool: Tool = {
+	name: "read_file",
+	description: "Read a file",
+	parameters: Type.Object({ path: Type.String() }),
+};
+
 describe("OpenAIProvider · 出向翻译", () => {
 	it("枚举 endpoint 模型 ID 并去重排序", async () => {
 		listedModels = [{ id: "gpt-5" }, { id: "gpt-4.1" }, { id: "gpt-5" }];
@@ -171,6 +178,77 @@ describe("OpenAIProvider · 出向翻译", () => {
 		expect(message.stopReason).toBe("toolUse");
 		expect(message.usage.input).toBe(10);
 		expect(message.usage.output).toBe(5);
+	});
+
+	it("rejects a complete XML text tool call when native tools are missing", async () => {
+		streamChunks = [
+			chunk({ content: '<invoke name="read_file"><parameter name="path">/x</parameter></invoke>' }),
+			chunk({}, "stop"),
+		];
+
+		const { events, message } = await collect(ctx({ tools: [readTool] }));
+
+		expect(events.map((event) => event.type)).toEqual(["start", "text_start", "text_delta", "text_end", "error"]);
+		expect(events.some((event) => event.type.startsWith("toolcall_"))).toBe(false);
+		expect(message.stopReason).toBe("error");
+		expect(message.error).toMatchObject({
+			code: "ai.protocol_violation",
+			type: "model_output_protocol",
+		});
+	});
+
+	it("keeps XML examples and unknown tool names as ordinary text", async () => {
+		streamChunks = [
+			chunk({ content: '```xml\n<invoke name="read_file"><parameter name="path">/x</parameter></invoke>\n```' }),
+			chunk({}, "stop"),
+		];
+
+		const fenced = await collect(ctx({ tools: [readTool] }));
+		expect(fenced.message.stopReason).toBe("stop");
+
+		streamChunks = [
+			chunk({ content: '<invoke name="write_file"><parameter name="path">/x</parameter></invoke>' }),
+			chunk({}, "stop"),
+		];
+
+		const unknown = await collect(ctx({ tools: [readTool] }));
+		expect(unknown.message.stopReason).toBe("stop");
+
+		streamChunks = [
+			chunk({ content: 'Here is an XML example: <invoke name="read_file"><parameter name="path">/x</parameter></invoke>' }),
+			chunk({}, "stop"),
+		];
+
+		const prose = await collect(ctx({ tools: [readTool] }));
+		expect(prose.message.stopReason).toBe("stop");
+	});
+
+	it("prefers native tool calls when XML text is also present", async () => {
+		streamChunks = [
+			chunk({
+				content: '<invoke name="read_file"><parameter name="path">/x</parameter></invoke>',
+				tool_calls: [{ index: 0, id: "call_1", function: { name: "read_file", arguments: '{"path":"/x"}' } }],
+			}),
+			chunk({}, "tool_calls"),
+		];
+
+		const { message } = await collect(ctx({ tools: [readTool] }));
+		expect(message.stopReason).toBe("toolUse");
+		expect(message.content.some((part: AssistantMessage["content"][number]) => part.type === "toolCall")).toBe(true);
+	});
+
+	it("recognizes the DSML function-call envelope without parsing its arguments", async () => {
+		streamChunks = [
+			chunk({
+				content:
+					'<｜DSML｜function_calls><｜DSML｜invoke name="read_file"><｜DSML｜parameter name="path">/x</｜DSML｜parameter></｜DSML｜invoke></｜DSML｜function_calls>',
+			}),
+			chunk({}, "stop"),
+		];
+
+		const { message } = await collect(ctx({ tools: [readTool] }));
+		expect(message.stopReason).toBe("error");
+		expect(message.error?.code).toBe("ai.protocol_violation");
 	});
 
 	it("sniffs reasoning_content into a thinking block when model.reasoning is true", async () => {

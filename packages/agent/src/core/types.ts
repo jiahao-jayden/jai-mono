@@ -146,9 +146,9 @@ export interface AgentLoopConfig {
 	 */
 	prepareContext?: PrepareContext;
 	/**
-	 * model 请求失败时调用，返回 directive 则重试一次。
-	 * 只在 provider 还没发出 start 时调用：UI 已经看见 partial 时透明重试需要撤回事件协议。
-	 * 每次 model call 最多接受一次 directive，且 core 不判断失败原因。默认无（沿用原错误）。
+	 * model 请求失败或输出协议错误时调用，返回 directive 则重试一次。
+	 * provider 尚未发出 start 的请求失败可以直接重试；输出协议错误由 core 在 attempt
+	 * 事务中重试，因此不会留下已发布的 partial。每次 model call 最多接受一次 directive。
 	 */
 	onModelError?: OnModelError;
 }

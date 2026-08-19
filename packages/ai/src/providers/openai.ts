@@ -7,6 +7,7 @@ import type {
 import { createAssistantMessage, runAdapterStream } from "../adapter";
 import { AssistantMessageEventStream } from "../event-stream";
 import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
+import { assertNativeToolCallProtocol } from "../tool-protocol";
 import { transformMessagesForModel } from "../transform-messages";
 import type {
 	AssistantMessage,
@@ -113,6 +114,7 @@ export class OpenAIProvider implements Provider {
 			step: (chunk) => applyChunk(output, state, chunk, model.reasoning === true),
 			// OpenAI 没有 block stop 事件，流结束时关闭所有还开着的 block
 			finalize: () => finalizeBlocks(output, state),
+			validate: () => assertNativeToolCallProtocol(output, context.tools),
 		});
 	}
 

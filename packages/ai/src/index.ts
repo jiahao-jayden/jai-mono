@@ -8,6 +8,12 @@ export {
 	type OpenAIResponsesProviderConfig,
 } from "./providers/openai-responses";
 export { ModelRegistry, type RegisteredProvider } from "./registry";
+export {
+	assertNativeToolCallProtocol,
+	discardProtocolViolationContent,
+	isModelOutputProtocolViolation,
+	ModelOutputProtocolViolation,
+} from "./tool-protocol";
 export { transformMessagesForModel } from "./transform-messages";
 export * from "./types";
 export { zeroCost, zeroUsage } from "./utils";

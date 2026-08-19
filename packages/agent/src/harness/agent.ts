@@ -1,4 +1,4 @@
-import { type AssistantMessage, EventStream, type Model, type Provider } from "@jai/ai";
+import { type AssistantMessage, EventStream, isModelOutputProtocolViolation, type Model, type Provider } from "@jai/ai";
 import { getErrorMessage } from "@jai/common";
 import { TaggedError } from "better-result";
 import { type AgentInput, CoreAgent, type CoreAgentOptions } from "../core/agent";
@@ -396,7 +396,12 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 
 	/** 关键写入：抛出即让整次 run 失败，对应的事件也不会对外发布。 */
 	private async persist(event: CoreAgentEvent): Promise<void> {
-		if (event.type === "message_end") await this.ledger.appendMessage(event.message);
+		if (
+			event.type === "message_end" &&
+			(event.message.role !== "assistant" || !isModelOutputProtocolViolation(event.message))
+		) {
+			await this.ledger.appendMessage(event.message);
+		}
 	}
 
 	/**
