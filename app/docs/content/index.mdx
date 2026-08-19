@@ -1,18 +1,43 @@
 ---
 title: Jai Coding Agent
-description: 使用统一的 Coding Agent SDK 构建 Desktop、CLI 和 WorkBuddy 的开发者工作流与自动化能力，并让每个宿主共享相同的会话、权限、工具和生命周期语义。
+description: 面向 TypeScript 应用嵌入可持久化、可授权、可观察的 Coding Agent，并在五分钟内完成第一次真实模型调用。
 ---
 
-## Jai Coding Agent
+`@jai/coding-agent` 是用于把 Coding Agent 嵌入 CLI、桌面应用、服务端任务和开发者工具的 TypeScript SDK。它负责模型工具循环、会话状态和事件；你的应用提供模型连接、工作目录、会话目录及用户授权。
 
-`@jai/coding-agent` 是 Jai 的公开 Coding Agent SDK。Desktop、CLI 与 WorkBuddy 使用同一套 Agent、Session、权限与工具语义；宿主只提供模型、workspace、session 存储与人工授权等外部 authority。
+如果你是第一次接触 Jai，从 [安装](/docs/quickstart/installation) 开始。五分钟内，你会运行一个真实的 OpenAI 请求，让 Agent 以只读 `plan` 模式读取当前项目的 `README` 并输出总结，同时正确处理 `Result` 和关闭资源。
 
-## 从这里开始
+适合以下场景：
 
-- [SDK](/sdk)：在自己的宿主中创建并使用 Coding Agent。
-- [CLI](/cli)：在终端交互，或用 `jai -p` 自动化运行。
-- [WorkBuddy Benchmark](/workbuddy-bench)：用普通 CLI 跑 WorkBuddy 的所有测试集。
+- 在 TypeScript 产品中加入代码库问答、分析或修改能力。
+- 创建可恢复的长任务，并把进度、工具调用和产物投影到产品 UI。
+- 由宿主统一控制模型凭据、文件边界、权限审批和 session 存储。
 
-:::tip
-首版文档只覆盖已经实现或已经稳定的公开契约。Desktop 内部迁移资料和架构草案不会作为公开 API 承诺发布。
-:::
+## 学习路径
+
+<Steps>
+  <Step title="跑通最小集成">
+    安装 npm packages，设置 `OPENAI_API_KEY`，运行第一个 ephemeral Agent。
+  </Step>
+  <Step title="理解宿主边界">
+    阅读 [Host Authorities](/docs/concepts/host-authorities) 与 [会话和生命周期](/docs/concepts/sessions-and-lifecycle)。
+  </Step>
+  <Step title="接入产品能力">
+    按需实现 [权限](/docs/guides/permissions)、[附件](/docs/guides/attachments) 和 [事件观察](/docs/examples/observe-events)。
+  </Step>
+  <Step title="核对公开契约">
+    在 [API Reference](/docs/api-reference/create-coding-agent) 中检查签名、DTO 和当前限制。
+  </Step>
+</Steps>
+
+## SDK 边界
+
+- root import：`@jai/coding-agent`
+- 宿主装配：`CodingAgentHost`
+- 正常可恢复失败：`Result<T, CodingSdkError>`
+- 会话：`new`、`resume`、`ephemeral`
+- 内置工具：`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`Skill`、`UpdateTodos`、`SpawnAgent`
+
+日常集成从 root import `@jai/coding-agent`。`@jai/coding-agent/jai-host` 是同一 package 提供的可选高层宿主配置能力，适合需要 Jai 标准配置、模型目录和 session 布局的 Advanced/Integration 场景。
+
+深入集成时，请继续阅读 [Prompt 与运行控制](/docs/concepts/prompts-and-control)、[State 与 Events](/docs/concepts/state-and-events)、[CodingAgent API](/docs/api-reference/coding-agent)、[Errors 与 Tools](/docs/api-reference/errors-and-tools) 和 [公开 API 与当前限制](/docs/api-reference/public-api-and-limitations)。

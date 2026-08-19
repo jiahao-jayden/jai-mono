@@ -1,0 +1,42 @@
+---
+title: Errors 与 Tools
+description: 查阅 CodingSdkError、permission 与 connector approval DTO、公开工具名、CodingAttachment、Todo 和 Artifact 类型。
+---
+
+## `CodingSdkError`
+
+```ts
+interface CodingSdkError {
+  code: string;
+  message: string;
+  retryable: boolean;
+  phase: CodingSdkErrorPhase;
+  requestId?: string;
+  toolCallId?: string;
+  details?: JsonValue;
+}
+```
+
+phase：`runtime_creation | session | admission | model | tool | permission | compaction | lifecycle`。
+
+## 权限 DTO
+
+`CodingPermissionRequest` 包含 `requestId`、`sessionId`、`toolCallId`、`toolName`、JSON args、reason、`canAlwaysAllow`、安全 `summary`、建议规则与 remember scope。决定值为：
+
+```ts
+type CodingPermissionDecision = "deny" | "allowOnce" | "alwaysAllow";
+```
+
+Connector approval 使用独立 DTO 与同名三态 decision，额外描述 `actionId`、side effect、data sensitivity、input keys 与 expiry。
+
+## 工具与状态项
+
+`CodingToolName`：`Read | Write | Edit | Glob | Grep | Bash | Skill | UpdateTodos | SpawnAgent`。
+
+`CodingAgentTodo`：`id`、`content`、四态 status。
+
+`CodingAgentArtifact`：`id`、`toolCallId`、`path`、`format: "markdown" | "html"`、`updatedAt`。
+
+`CodingAttachment`：`id`、`filename`、`mimeType`、`size`、`sourcePath` 与可选 async `image()`。
+
+行为语义见 [权限](/docs/guides/permissions)、[附件](/docs/guides/attachments) 和 [Todos 与 Artifacts](/docs/guides/todos-and-artifacts)。

@@ -1,0 +1,38 @@
+---
+title: Prompt 与运行控制
+description: 掌握 prompt queue 的串行语义，以及 steer、followUp、waitForIdle、abort 和 close 的准确控制边界与失败处理方式。
+---
+
+## `prompt()`
+
+`prompt()` 启动一次完整执行并返回 `CodingRunResult`。同一实例上的并发调用会串行进入内部 queue，不会并行修改 session。
+
+在 Quickstart 已创建 `agent` 的 `try` 块中，可以这样提交两个只读任务：
+
+```ts
+const first = agent.prompt({ prompt: "检查类型错误" });
+const second = agent.prompt({ prompt: "再运行测试" });
+const idle = agent.waitForIdle();
+const [a, b, drained] = await Promise.all([first, second, idle]);
+
+for (const result of [a, b, drained]) {
+  if (result.isErr()) console.error(result.error);
+}
+```
+
+`waitForIdle()` 等待 SDK 已接纳的 prompt queue 和当前执行变为空闲。它不返回某次 run 的消息；请保留对应的 `prompt()` Result。
+
+## 运行中的输入
+
+- `steer(input)`：向当前运行注入即时引导。
+- `followUp(input)`：排入当前运行之后的后续用户消息。
+- `abort()`：请求中止当前执行，不关闭 Agent。
+- `close()`：终止生命周期并释放资源。
+
+`steer()` 与 `followUp()` 拒绝空白 prompt，并返回 `coding_sdk.empty_prompt`。它们当前只传递文本消息；`CodingPrompt.attachments` 只由 `prompt()` 的附件路径消费。
+
+:::warning
+`CodingPrompt.delivery` 虽已公开为 `"steer" | "queue"`，当前实现没有读取它。请显式调用 `steer()` 或 `followUp()`，不要依赖 `delivery`。
+:::
+
+所有控制方法都返回 `Promise<Result<..., CodingSdkError>>`。`abort()` 成功表示中止请求已提交，不代表每个底层外部系统都已同步停止。

@@ -1,0 +1,46 @@
+---
+title: Ephemeral Agent
+description: 为一次性只读分析创建 ephemeral Agent，并通过 plan mode、Result 分支与 finally 关闭实现清晰可靠的执行和清理边界。
+---
+
+先完成 [Quickstart](/docs/quickstart/create-your-first-agent) 并保留其中的 `host`。将创建与执行部分替换为：
+
+```ts
+const created = await createCodingAgent({
+  host,
+  session: { kind: "ephemeral" },
+  execution: {
+    permissionMode: "plan",
+    instructions: "只分析并给出计划，不修改文件。",
+  },
+});
+if (created.isErr()) {
+  console.error(`[${created.error.phase}] ${created.error.code}: ${created.error.message}`);
+  process.exitCode = 1;
+} else {
+  const agent = created.value;
+  try {
+    const run = await agent.prompt({ prompt: "评估当前项目主要模块的重构风险" });
+    if (run.isErr()) {
+      console.error(`[${run.error.phase}] ${run.error.code}: ${run.error.message}`);
+      process.exitCode = 1;
+    } else {
+      console.dir(run.value.messages, { depth: null });
+    }
+  } finally {
+    const closed = await agent.close();
+    if (closed.isErr()) {
+      console.error(`[${closed.error.phase}] ${closed.error.code}: ${closed.error.message}`);
+      process.exitCode = 1;
+    }
+  }
+}
+```
+
+ephemeral session 仍有 `sessionId`，执行期间也拥有完整 state；区别是存储位于 SDK 创建的临时目录，并在成功 `close()` 时删除。
+
+:::warning
+进程崩溃或宿主没有调用 `close()` 时，不能承诺临时目录已经清理。宿主必须把关闭动作放入自身资源生命周期。
+:::
+
+`plan` 是已实现的只读模式，适合分析、审查和方案生成。

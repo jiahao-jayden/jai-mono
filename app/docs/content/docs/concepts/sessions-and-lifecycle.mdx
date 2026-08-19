@@ -1,0 +1,51 @@
+---
+title: 会话与生命周期
+description: 比较 new、resume 与 ephemeral 三种 session selection，理解状态迁移、持久化边界、错误语义与正确关闭 Agent 的方式。
+---
+
+`SessionSelection` 决定状态是否持久化及创建语义。
+
+```ts
+{ kind: "new", persistence: "durable", id?: string }
+{ kind: "resume", id: string }
+{ kind: "ephemeral" }
+```
+
+## 三种选择
+
+- `new`：创建 durable session。省略 `id` 时生成 `coding-<uuid>`；指定已存在 ID 会返回 `coding_sdk.session_exists`。
+- `resume`：只恢复现有 session。缺失时返回 `coding_sdk.session_not_found`，绝不静默新建。
+- `ephemeral`：在系统临时目录创建 session；`close()` 时递归删除。
+
+## 状态迁移
+
+Agent 创建后通常为 `idle`；执行 prompt 时为 `running`；内部 error 可投影为 `aborted`；调用 `close()` 后为 `closed`。状态通过 `agent.state` 获取快照。
+
+以下片段假设你已完成 Quickstart 并保留其中的 `host`，输入 session ID 来自命令行：
+
+```ts
+const sessionId = process.argv[2];
+if (!sessionId) throw new Error("请提供要恢复的 session ID");
+
+const created = await createCodingAgent({
+  host,
+  session: { kind: "resume", id: sessionId },
+});
+if (created.isErr()) {
+  console.error(created.error);
+  process.exitCode = 1;
+} else {
+  const agent = created.value;
+  try {
+    const result = await agent.prompt({ prompt: "继续上次任务" });
+    if (result.isErr()) console.error(result.error);
+  } finally {
+    const closed = await agent.close();
+    if (closed.isErr()) console.error(closed.error);
+  }
+}
+```
+
+`close()` 幂等：它先标记 closed、abort 当前工作、等待已接纳队列与 artifact 写入，然后释放 runtime。关闭后再调用 prompt、steer、followUp 或 title generation 会得到 lifecycle error。
+
+参见 [durable session](/docs/examples/durable-session)、[resume](/docs/examples/resume-session) 和 [ephemeral](/docs/examples/ephemeral-agent)。

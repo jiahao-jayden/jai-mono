@@ -1,0 +1,57 @@
+---
+title: 错误处理
+description: 使用 better-result 的 Result 处理 SDK 可恢复失败，判断 retryable 与 phase，并安全地向 UI 或 RPC 投影错误 DTO。
+---
+
+创建与所有异步操作都把正常可恢复失败放在 `Result` 中：
+
+```ts
+import { createCodingAgent, type CodingAgentHost } from "@jai/coding-agent";
+
+async function runOnce(host: CodingAgentHost): Promise<boolean> {
+  const created = await createCodingAgent({
+    host,
+    session: { kind: "ephemeral" },
+    execution: { permissionMode: "plan" },
+  });
+  if (created.isErr()) {
+    console.error(created.error);
+    return false;
+  }
+
+  const agent = created.value;
+  try {
+    const run = await agent.prompt({ prompt: "分析当前测试失败，不要修改文件" });
+    if (run.isErr()) {
+      console.error(run.error.retryable ? "可考虑重试：" : "需要人工处理：", run.error);
+      return false;
+    }
+    return true;
+  } finally {
+    const closed = await agent.close();
+    if (closed.isErr()) console.error("关闭失败：", closed.error);
+  }
+}
+```
+
+`CodingSdkError` 字段：
+
+- `code`：机器可判定的稳定错误码。
+- `message`：面向开发者的说明。
+- `retryable`：SDK 对重试的建议；当前 model/tool phase 为 true。
+- `phase`：`runtime_creation`、`session`、`admission`、`model`、`tool`、`permission`、`compaction` 或 `lifecycle`。
+- 可选关联：`requestId`、`toolCallId`、`details`。
+
+常见错误包括：
+
+- `coding_sdk.session_not_found`
+- `coding_sdk.session_exists`
+- `coding_sdk.model_unavailable`
+- `coding_sdk.empty_prompt`
+- `coding_sdk.agent_closed`
+
+:::warning
+`retryable` 不是自动重试命令。重试前应检查副作用、用户意图和当前 state。尤其不要自动重放可能已部分执行的写操作。
+:::
+
+公开错误是 JSON-safe DTO，不暴露 stack 或 cause。跨 RPC/UI 边界仍应创建显式白名单 DTO，例如只转发 `code`、`message`、`retryable`、`phase` 与必要的关联 ID。

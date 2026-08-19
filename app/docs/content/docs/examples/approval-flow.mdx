@@ -1,0 +1,69 @@
+---
+title: Approval Flow
+description: 使用 Node.js readline、请求关联字段与 AbortSignal 实现可运行、可取消且会正确释放资源的 CLI 权限审批。
+---
+
+先完成 [创建第一个 Agent](/docs/quickstart/create-your-first-agent)，保留其中的 `model`、`provider` 与 `cwd`。把以下 import 加到文件顶部，并用这段代码替换 Quickstart 中的 `host` 声明：
+
+```ts
+import { createInterface } from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
+import {
+  type CodingApprovalAuthority,
+  type CodingPermissionDecision,
+} from "@jai/coding-agent";
+
+const approval: CodingApprovalAuthority = {
+  async request(request, signal): Promise<CodingPermissionDecision> {
+    if (signal?.aborted) return "deny";
+
+    const readline = createInterface({ input, output });
+    try {
+      output.write(
+        [
+          `\n权限请求 ${request.requestId}`,
+          `工具：${request.toolName}`,
+          `原因：${request.reason}`,
+          `摘要：${request.summary.title}`,
+          `风险：${request.summary.risk}`,
+        ].join("\n") + "\n",
+      );
+
+      const choices = request.canAlwaysAllow ? "[y] 单次允许 / [a] 始终允许 / [N] 拒绝：" : "[y] 单次允许 / [N] 拒绝：";
+      const answer = await readline.question(choices, { signal });
+      const normalized = answer.trim().toLowerCase();
+
+      if (normalized === "y") return "allowOnce";
+      if (normalized === "a" && request.canAlwaysAllow) return "alwaysAllow";
+      return "deny";
+    } catch (error) {
+      if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) {
+        return "deny";
+      }
+      console.error("读取审批输入失败：", error);
+      return "deny";
+    } finally {
+      readline.close();
+    }
+  },
+};
+
+const host: CodingAgentHost = {
+  model: { resolve: () => ({ model, provider }) },
+  workspace: { cwd, configRoot: cwd },
+  session: { directory: join(cwd, ".jai", "sessions") },
+  approval,
+};
+```
+
+`readline.question()` 只产生一次 fulfillment 或 rejection，因此每个请求只返回一个决定。AbortSignal 若已取消或在等待输入时取消，代码都返回 `"deny"`；`finally` 在允许、拒绝、取消和读取异常时都会关闭 readline。
+
+产品审批流程也应保持以下约束：
+
+1. 以 `requestId` 作为 pending UI 主键，以 `toolCallId` 关联工具行。
+2. 展示 SDK 生成的 `summary` 与 `reason`，仅在必要时展示筛选后的 args。
+3. `canAlwaysAllow === false` 时隐藏持久授权选项。
+4. 收到 abort signal 时立即关闭 UI；不要让过期决定应用到新请求。
+5. 返回 `"deny"`、`"allowOnce"` 或 `"alwaysAllow"`。
+
+危险 Bash 即使普通规则允许也可能进入 danger layer；root/home 强制删除始终硬拒绝，不会因 `bypassPermissions` 或 UI 决定而放行。

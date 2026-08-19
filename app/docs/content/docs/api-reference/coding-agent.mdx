@@ -1,0 +1,33 @@
+---
+title: CodingAgent
+description: 查阅 CodingAgent 实例的 session、execution 与 state 属性，以及 prompt、控制、订阅、标题生成和关闭方法与 Result 语义。
+---
+
+## 属性
+
+- `sessionId: string`
+- `execution: CodingAgentExecutionConfiguration`
+- `state: CodingAgentState<TAppState>`
+
+## 方法
+
+```ts
+prompt(input: CodingPrompt): Promise<Result<CodingRunResult<TAppState>, CodingSdkError>>
+steer(input: CodingPrompt): Promise<Result<void, CodingSdkError>>
+followUp(input: CodingPrompt): Promise<Result<void, CodingSdkError>>
+waitForIdle(): Promise<Result<void, CodingSdkError>>
+generateTitle(input: { firstMessage: string }): Promise<Result<string, CodingSdkError>>
+abort(): Promise<Result<void, CodingSdkError>>
+subscribe(listener: (event: CodingAgentEvent) => void): () => void
+close(): Promise<Result<void, CodingSdkError>>
+```
+
+`prompt()` 返回 `{ sessionId, messages, state }`。多个调用串行执行。`steer()` 和 `followUp()` 只接纳非空文本，分别用于当前运行引导和后续消息。`waitForIdle()` drain 已接纳队列。
+
+`generateTitle()` 使用创建时解析到的同一 Model/Provider，根据 first message 与已有 assistant 文本生成不超过八个词的标题。它不会持久化标题。
+
+`abort()` 保留实例供后续 prompt；`close()` 终止实例并幂等释放资源。关闭后的控制操作返回 `coding_sdk.agent_closed`。
+
+:::note
+`subscribe()` 本身不返回 Result，也不会重放历史事件。listener 抛出的异常不属于 SDK 的可恢复错误契约，宿主应保持 listener 轻量且自行隔离。
+:::

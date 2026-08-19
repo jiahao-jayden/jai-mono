@@ -1,0 +1,42 @@
+---
+title: State 与 Events
+description: 从 CodingAgent 读取不可变状态快照，订阅 streaming、工具执行与 compaction 事件，并理解 JSON-safe 投影的安全边界。
+---
+
+`agent.state` 是当前快照，包含 `sessionId`、`status`、`messages`、`todos`、`artifacts`、`appState` 与可选 `error`。读取时会对 `appState` 做 structured clone，调用方不能借引用修改内部状态。
+
+`subscribe(listener)` 观察后续事件，并返回 unsubscribe。以下片段用于替换 Quickstart `try` 块中的 prompt 调用：
+
+```ts
+const unsubscribe = agent.subscribe((event) => {
+  if (event.type === "tool_execution_start") {
+    console.log("工具开始", event.toolCallId, event.toolName, event.args);
+  }
+  if (event.type === "message_update") {
+    process.stdout.write(".");
+  }
+});
+
+try {
+  const result = await agent.prompt({ prompt: "解释这个仓库" });
+  if (result.isErr()) console.error(result.error);
+} finally {
+  unsubscribe();
+}
+```
+
+事件覆盖 Agent、turn、message、tool execution 与 compaction：
+
+- `agent_start` / `agent_end`
+- `turn_start` / `turn_end`
+- `message_start` / `message_update` / `message_end`
+- `tool_execution_start` / `tool_execution_update` / `tool_execution_end`
+- `compaction_start` / `compaction_end`
+
+公开投影经 JSON 序列化清洗；工具参数、结果、compaction outcome 与 state error 都是 JSON-safe 值。若值不可序列化，投影会退化为描述对象。
+
+:::note
+JSON-safe 不等于业务数据已授权展示。跨进程或 UI 边界仍应按用途做白名单 DTO，避免显示 prompt、路径、命令或模型输出中的敏感内容。
+:::
+
+完整字段见 [State 与 Events API](/docs/api-reference/state-and-events)，可运行模式见 [观察事件](/docs/examples/observe-events)。

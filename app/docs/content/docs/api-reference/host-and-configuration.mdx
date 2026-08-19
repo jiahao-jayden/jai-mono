@@ -1,0 +1,47 @@
+---
+title: Host 与 Configuration
+description: 查阅 CodingAgentHost authorities、SessionSelection union 与 CodingAgentExecutionConfiguration 的完整公开字段和默认行为。
+---
+
+## `CodingAgentHost`
+
+```ts
+interface CodingAgentHost {
+  model: CodingModelAuthority;
+  workspace: CodingWorkspaceAuthority;
+  session: CodingSessionStorageAuthority;
+  approval?: CodingApprovalAuthority;
+  configuration?: CodingConfigurationAuthority;
+  capabilitySources?: CodingCapabilitySources;
+  connector?: CodingConnectorAuthority;
+}
+```
+
+`workspace` 字段：`cwd` 必需；可选 `configRoot`、`defaultAllowedDirectories`、`localFileAccess`、`trusted`。`shellPath` 与 `ripgrepPath` 虽公开但当前未接线。
+
+`session.directory` 是 durable session 的文件目录。`configuration.homeDirectory` 控制用户级配置根，默认使用 OS home。
+
+`model.resolve({ model, settings, signal? })` 返回 `{ model, provider }`。当前实现传递 execution model 与配置 settings，但没有传 signal。
+
+## `CodingAgentExecutionConfiguration`
+
+```ts
+interface CodingAgentExecutionConfiguration {
+  model?: string;
+  permissionMode?: "default" | "acceptEdits" | "plan" | "dontAsk" | "bypassPermissions";
+  maxTurns?: number;
+  instructions?: string;
+  compactionSummaryInstructions?: string;
+}
+```
+
+## `SessionSelection`
+
+```ts
+type SessionSelection =
+  | { kind: "new"; id?: string; persistence: "durable" }
+  | { kind: "resume"; id: string }
+  | { kind: "ephemeral" };
+```
+
+Plugin 与 connector 字段详见 [工具与动态能力](/docs/guides/tools-and-capabilities)。

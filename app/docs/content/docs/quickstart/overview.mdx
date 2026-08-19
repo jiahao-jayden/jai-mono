@@ -1,0 +1,31 @@
+---
+title: SDK 概览
+description: 了解 Coding Agent SDK 如何划分宿主与 runtime 的职责，以及从创建 Agent、执行内置工具到正确关闭资源的推荐集成顺序。
+---
+
+Coding Agent SDK 把 Agent runtime 封装为一个宿主可控的 TypeScript API。你提供环境能力，SDK 负责执行循环、内置工具、会话状态和事件投影。
+
+## 一次调用经过什么
+
+1. 宿主通过 `createCodingAgent` 提供 `CodingAgentHost` 与 `SessionSelection`。
+2. SDK 解析模型、配置与动态能力，创建或恢复会话。
+3. 宿主调用 `prompt()`；并发 prompt 按进入顺序串行执行。
+4. 工具调用经过权限层，必要时进入 `approval.request()`。
+5. 宿主从 `Result`、`state` 和 `subscribe()` 接收结果。
+6. 宿主调用 `close()` 终止资源；ephemeral 会话的临时目录同时删除。
+
+## 宿主与 SDK 的分工
+
+| 宿主提供 | SDK 提供 |
+| --- | --- |
+| Model / Provider 解析 | Agent 执行循环 |
+| workspace 与信任状态 | 内置工具与权限求值 |
+| session 存储目录 | durable session 持久化 |
+| 授权 UI 或策略 | JSON-safe state / event DTO |
+| 可选 plugins / connector | prompt queue、abort、close |
+
+:::note
+宿主 authority 是依赖倒置边界，不是远程协议。跨进程传输时，仍应显式投影 DTO，尤其不要传递 provider、stack、cause 或 SDK 原始错误对象。
+:::
+
+下一步：[安装](/docs/quickstart/installation) → [创建第一个 Agent](/docs/quickstart/create-your-first-agent)。

@@ -1,0 +1,49 @@
+---
+title: 工具与动态能力
+description: 了解 root SDK 的内置工具名、plugin 动态能力来源、connector approval、安全行为，以及不能直接导入的内部实现边界。
+---
+
+root SDK 的内置工具名由 `CodingToolName` 定义：
+
+`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`Skill`、`UpdateTodos`、`SpawnAgent`。
+
+`codingAgentToolNames` 只公开两个协调工具常量：
+
+```ts
+import { codingAgentToolNames } from "@jai/coding-agent";
+
+codingAgentToolNames.spawnAgent; // "SpawnAgent"
+codingAgentToolNames.updateTodos; // "UpdateTodos"
+```
+
+文件与 Bash 工具受 workspace boundary、local file access 和权限策略约束。`UpdateTodos` 与 `SpawnAgent` 由 SDK 协调，在权限求值中直接允许；这不意味着调用方能从 root SDK 直接实例化工具。
+
+## Plugin 能力
+
+宿主可通过 `capabilitySources.plugins.directories` 提供目录：
+
+```ts
+import { join } from "node:path";
+import { type CodingCapabilitySources } from "@jai/coding-agent";
+
+const cwd = process.cwd();
+const capabilitySources: CodingCapabilitySources = {
+  plugins: {
+    directories: [
+      { path: join(cwd, ".jai", "plugins"), scope: "project" },
+    ],
+    dataDirectory: join(cwd, ".jai", "plugin-data"),
+    scope: "project",
+  },
+};
+```
+
+目录也可写成字符串。每个 `AgentPluginDirectory.scope` 标记该目录来自 user 或 project；`plugins.scope` 则是 plugin capability source 的默认作用域，两者是独立字段。动态能力在创建 runtime 时发现，不是 root SDK 的静态 export。
+
+## Connector
+
+`host.connector` 可注入 client，并通过独立的 `requestApproval` 处理 `connector__execute_action`。请求只暴露 action ID、side effect、数据敏感度、输入 key 和过期时间，不应把 connector SDK 原始对象跨进程发送。
+
+:::warning
+不要从内部 `runtime`、`tools` 或 `permissions` 模块导入构造器。公开可配置边界只有 `CodingAgentHost`。
+:::

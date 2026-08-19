@@ -1,0 +1,47 @@
+---
+title: createCodingAgent
+description: 查阅 createCodingAgent 的泛型签名、CodingAgentCreateInput、Result 输出，以及创建阶段的 session 与 runtime 行为约束。
+---
+
+```ts
+function createCodingAgent<TAppState extends JsonObject = JsonObject>(
+  input: CodingAgentCreateInput,
+): Promise<Result<CodingAgent<TAppState>, CodingSdkError>>;
+```
+
+## 输入
+
+`CodingAgentCreateInput`：
+
+- `host: CodingAgentHost`：必需 authority 集合。
+- `session: SessionSelection`：`new`、`resume` 或 `ephemeral`。
+- `execution?: CodingAgentExecutionConfiguration`：model、permission mode、turn 数与 instructions。
+
+创建阶段会解析 session、配置、模型、MCP/plugin 能力与 runtime。任何可恢复失败都返回 `Err<CodingSdkError>`；不要用 try/catch 代替 Result 分支。
+
+```ts
+import { createCodingAgent, type CodingAgentHost, type JsonObject } from "@jai/coding-agent";
+
+type MyAppState = JsonObject & { readonly activeView?: string };
+
+async function openDurableAgent(host: CodingAgentHost) {
+  const created = await createCodingAgent<MyAppState>({
+    host,
+    session: { kind: "new", persistence: "durable" },
+    execution: { maxTurns: 30, permissionMode: "default" },
+  });
+
+  if (created.isErr()) console.error(created.error);
+  return created;
+}
+```
+
+## 创建约束
+
+- `new` 若 ID 已存在则失败。
+- `resume` 若 ID 不存在则失败。
+- `ephemeral` 创建临时存储，并由 `close()` 删除。
+- `execution.instructions` 追加到 SDK 默认 coding instructions。
+- `compactionSummaryInstructions` 只配置 compaction summary。
+
+参见 [Host 与配置](/docs/api-reference/host-and-configuration)。

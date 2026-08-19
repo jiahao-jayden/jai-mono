@@ -1,0 +1,41 @@
+---
+title: State 与 Events API
+description: 查阅 CodingAgentState、CodingRunResult、CodingAgentEvent union 与 JSON-safe message、工具事件载荷和状态投影边界。
+---
+
+## `CodingAgentState<TAppState>`
+
+```ts
+interface CodingAgentState<TAppState extends JsonObject = JsonObject> {
+  sessionId: string;
+  status: "idle" | "running" | "aborted" | "closed";
+  messages: readonly CodingAgentMessage[];
+  todos: readonly CodingAgentTodo[];
+  artifacts: readonly CodingAgentArtifact[];
+  appState: TAppState;
+  error?: JsonObject;
+}
+```
+
+`CodingRunResult` 复用同一 state 类型，并额外返回本次 run 的 `messages` 与 `sessionId`。
+
+## `CodingAgentEvent`
+
+事件 union 及关键载荷：
+
+- Agent：`agent_start`；`agent_end { messages }`
+- Turn：`turn_start`；`turn_end { message, toolResults }`
+- Message：start/end 带 message；update 额外带 `assistantEvent`
+- Tool：start 带 `toolCallId/toolName/title/args`；update 带 `partial`；end 带 `result/isError`
+- Compaction：start 带 `trigger/tokensBefore`；end 带 `outcome`
+
+`CodingAgentMessage`、`CodingAssistantMessage` 与 `CodingToolResult` 分别是 `@jai/ai` message 类型别名，但公开数据会先经过 JSON-safe projection。
+
+## JSON 类型
+
+```ts
+type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
+type JsonObject = { readonly [key: string]: JsonValue };
+```
+
+`state.error` 与工具事件载荷只承诺该 JSON 边界，不承诺内部 TaggedError 或工具 details 的原型。

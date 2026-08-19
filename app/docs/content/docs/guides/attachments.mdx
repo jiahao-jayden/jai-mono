@@ -1,0 +1,63 @@
+---
+title: 附件
+description: 向 prompt 提交本地文件或图片，并理解 run-scoped locator、Bash 环境变量、真实路径脱敏、图片投影与附件失效语义。
+---
+
+附件只在一次 `prompt()` run 内有效。先完成 [Quickstart](/docs/quickstart/create-your-first-agent) 并保留其中已创建的 `agent`。把以下 imports 加到文件顶部，再用这段代码替换 Quickstart `try` 块中的 prompt 调用：
+
+```ts
+import { readFile, stat } from "node:fs/promises";
+import { basename, resolve } from "node:path";
+
+const inputPath = process.argv[2];
+if (!inputPath) {
+  throw new Error("请提供 PNG 路径，例如：npx tsx agent.ts ./error.png");
+}
+
+const imagePath = resolve(inputPath);
+const [imageBytes, imageStat] = await Promise.all([
+  readFile(imagePath),
+  stat(imagePath),
+]);
+
+const result = await agent.prompt({
+  prompt: "分析这张截图中的错误信息，并给出排查步骤。",
+  attachments: [
+    {
+      id: "shot-1",
+      filename: basename(imagePath),
+      mimeType: "image/png",
+      size: imageStat.size,
+      sourcePath: imagePath,
+      image: async () => ({
+        type: "image",
+        image: imageBytes.toString("base64"),
+        mimeType: "image/png",
+      }),
+    },
+  ],
+});
+
+if (result.isErr()) {
+  console.error(`[${result.error.phase}] ${result.error.code}: ${result.error.message}`);
+  process.exitCode = 1;
+} else {
+  console.dir(result.value.messages, { depth: null });
+}
+```
+
+运行 `npx tsx agent.ts ./error.png`。示例输入是本地 PNG 路径，输出是完整消息数组；外层 Quickstart 的 `finally` 仍负责关闭 Agent。若要支持 JPEG 或 WebP，应根据实际文件校验并设置对应 `mimeType`，不要只改扩展名。
+
+`id` 在本次 run 内必须唯一。`sourcePath` 是宿主已准备好的真实本地文件路径；`image()` 把已读取的图片投影为模型可消费的 base64 image content。
+
+## Agent 看到的句柄
+
+SDK 为每个附件生成 `attachment://att_1`、`attachment://att_2` 等 locator，并向 Bash 注入 `JAI_ATTACHMENT_1`、`JAI_ATTACHMENT_2` 等环境变量。工具执行前 locator 会解析为真实 `sourcePath`；run 结束后 locator 失效。
+
+工具输出中的真实附件路径会替换为 `$JAI_ATTACHMENT_N`。命令展示中的真实路径会改写为附件 filename，降低临时路径泄漏。
+
+:::warning
+附件 locator 不是持久 ID，也不是授权令牌。不要缓存到下一次 prompt。`steer()` 与 `followUp()` 当前不会消费 attachments。
+:::
+
+当 `workspace.localFileAccess` 为 false 时，不应期待文件工具读取附件。附件错误通过 prompt 的 `CodingSdkError` 返回。

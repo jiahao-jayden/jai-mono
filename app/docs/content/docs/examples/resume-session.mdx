@@ -1,0 +1,53 @@
+---
+title: 恢复 Session
+description: 恢复已有 durable session，重新渲染消息、Todos 与 Artifacts，并显式处理 session not found，避免意外静默创建新会话。
+---
+
+先运行 [创建 Durable Session](/docs/examples/durable-session)，并保留 Quickstart 中的 `host`。将创建与执行部分替换为：
+
+```ts
+const sessionId = process.argv[2] ?? "issue-482";
+const resumed = await createCodingAgent({
+  host,
+  session: { kind: "resume", id: sessionId },
+});
+
+if (resumed.isErr()) {
+  if (resumed.error.code === "coding_sdk.session_not_found") {
+    console.error(`找不到 Session：${sessionId}`);
+  } else {
+    console.error(`[${resumed.error.phase}] ${resumed.error.code}: ${resumed.error.message}`);
+  }
+  process.exitCode = 1;
+} else {
+  const agent = resumed.value;
+  try {
+    console.dir(
+      {
+        messages: agent.state.messages,
+        todos: agent.state.todos,
+        artifacts: agent.state.artifacts,
+      },
+      { depth: null },
+    );
+
+    const continued = await agent.prompt({ prompt: "继续上次分析，并列出下一步。" });
+    if (continued.isErr()) {
+      console.error(
+        `[${continued.error.phase}] ${continued.error.code}: ${continued.error.message}`,
+      );
+      process.exitCode = 1;
+    }
+  } finally {
+    const closed = await agent.close();
+    if (closed.isErr()) {
+      console.error(`[${closed.error.phase}] ${closed.error.code}: ${closed.error.message}`);
+      process.exitCode = 1;
+    }
+  }
+}
+```
+
+`resume` 不会创建缺失 session。恢复后，messages、appState、Todos 与已持久化 Artifact catalog 都可从 `state` 读取。
+
+运行 `npx tsx agent.ts issue-482`。输入是 durable session ID，输出先显示恢复的 state，再继续同一上下文。找不到时应让用户明确选择新的 ID，再单独调用 `new`；SDK 不提供隐式创建语义。

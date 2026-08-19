@@ -1,0 +1,53 @@
+---
+title: 观察事件
+description: 把 Agent streaming message、工具执行与 compaction 事件接入宿主 UI，并使用 toolCallId 准确关联和安全处理增量状态。
+---
+
+先完成 [Quickstart](/docs/quickstart/create-your-first-agent)，保留其中已创建的 `agent` 和外层 `finally`。用以下代码替换 prompt 调用：
+
+```ts
+const unsubscribe = agent.subscribe((event) => {
+  switch (event.type) {
+    case "message_update":
+      process.stdout.write(".");
+      break;
+    case "tool_execution_start":
+      console.log("\n工具开始", {
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        title: event.title,
+        args: event.args,
+      });
+      break;
+    case "tool_execution_update":
+      console.log("工具更新", event.toolCallId, event.partial);
+      break;
+    case "tool_execution_end":
+      console.log("工具结束", {
+        toolCallId: event.toolCallId,
+        result: event.result,
+        isError: event.isError,
+      });
+      break;
+    case "compaction_start":
+      console.log("开始压缩上下文，压缩前 token：", event.tokensBefore);
+      break;
+  }
+});
+
+try {
+  const result = await agent.prompt({ prompt: "运行检查并总结" });
+  if (result.isErr()) {
+    console.error(`[${result.error.phase}] ${result.error.code}: ${result.error.message}`);
+    process.exitCode = 1;
+  }
+} finally {
+  unsubscribe();
+}
+```
+
+运行方式仍是 `npx tsx agent.ts`；输出会在模型文本增量时打印点，并记录工具与 compaction 事件。Quickstart 外层的 `finally` 继续负责关闭 Agent。
+
+订阅只接收注册之后的事件；初始内容应从 `agent.state` 建模。listener 是同步回调，不应在其中执行阻塞任务；需要持久化时把事件投递到宿主自己的 queue。
+
+工具事件的 `toolCallId` 是 start/update/end 的关联键。`agent_end.messages` 是该次 Agent 结束时的消息快照。

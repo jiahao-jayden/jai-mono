@@ -1,0 +1,97 @@
+---
+title: 创建第一个 Agent
+description: 使用 OpenAIProvider 发起真实模型请求，让 ephemeral Agent 以 plan 模式读取 README，并正确处理 Result 与资源关闭。
+---
+
+在项目根目录新建 `agent.ts`。下面的文件可直接复制；它只读取当前目录，不修改文件。
+
+```ts
+import { join } from "node:path";
+import { OpenAIProvider, type Model } from "@jai/ai";
+import { createCodingAgent, type CodingAgentHost } from "@jai/coding-agent";
+
+const apiKey = process.env.OPENAI_API_KEY;
+if (!apiKey) {
+  throw new Error(
+    "缺少 OPENAI_API_KEY。请先运行：export OPENAI_API_KEY='sk-...'",
+  );
+}
+
+const modelId = process.env.OPENAI_MODEL ?? "gpt-4.1-mini";
+const model: Model = {
+  id: modelId,
+  name: modelId,
+  api: "openai-chat-completions",
+  provider: "openai-compatible",
+  input: ["text", "image"],
+  cost: {},
+  contextWindow: 128_000,
+  maxTokens: 16_384,
+};
+
+const provider = new OpenAIProvider({ apiKey });
+
+const cwd = process.cwd();
+const host: CodingAgentHost = {
+  model: { resolve: () => ({ model, provider }) },
+  workspace: { cwd, configRoot: cwd },
+  session: { directory: join(cwd, ".jai", "sessions") },
+};
+
+const created = await createCodingAgent({
+  host,
+  session: { kind: "ephemeral" },
+  execution: {
+    permissionMode: "plan",
+    instructions: "只读取和分析文件，不修改 workspace。",
+  },
+});
+if (created.isErr()) {
+  console.error(
+    `[${created.error.phase}] ${created.error.code}: ${created.error.message}`,
+  );
+  process.exit(1);
+}
+
+const agent = created.value;
+try {
+  const run = await agent.prompt({
+    prompt: "读取当前项目的 README 文件，用中文总结项目用途和主要使用方法。",
+  });
+
+  if (run.isErr()) {
+    console.error(`[${run.error.phase}] ${run.error.code}: ${run.error.message}`);
+    process.exitCode = 1;
+  } else {
+    const text = run.value.messages
+      .filter((message) => message.role === "assistant")
+      .flatMap((message) =>
+        message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])),
+      )
+      .join("\n");
+    console.log(text);
+  }
+} finally {
+  const closed = await agent.close();
+  if (closed.isErr()) {
+    console.error(
+      `[${closed.error.phase}] ${closed.error.code}: ${closed.error.message}`,
+    );
+    process.exitCode = 1;
+  }
+}
+```
+
+运行：
+
+```bash
+npx tsx agent.ts
+```
+
+输入是代码中的 prompt；输出是模型读取 `README` 后返回的真实文本。首次运行会产生 OpenAI API 请求并计费。若目录没有 README，Agent 会在输出或 `CodingSdkError` 中说明失败。
+
+示例里的 model metadata 是当前示例值，不是模型目录服务。更换 `OPENAI_MODEL` 时，应使用账户可访问的模型，并按供应商资料同步更新 `input`、`contextWindow`、`maxTokens` 与需要的 cost metadata。
+
+缺少 API key 属于启动前配置错误，因此示例直接抛出 `Error`。Agent 创建、prompt 和 close 的正常可恢复失败都保留为 `Result` 分支；不要把这些 `Err` 改成 throw。`finally` 确保成功、失败或意外异常时都尝试关闭 Agent。
+
+接下来阅读 [Host Authorities](/docs/concepts/host-authorities) 和 [错误处理](/docs/guides/errors)。

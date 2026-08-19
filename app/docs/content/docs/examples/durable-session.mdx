@@ -1,0 +1,52 @@
+---
+title: 创建 Durable Session
+description: 创建具名 durable session，处理重复 ID 的 Result 错误，读取完整运行状态，并在宿主资源边界退出前安全关闭 Agent。
+---
+
+先完成 [Quickstart](/docs/quickstart/create-your-first-agent) 并保留其中的 `model` 与 `host`。将 Quickstart 的 `createCodingAgent` 到 `finally` 代码替换为：
+
+```ts
+const created = await createCodingAgent({
+  host,
+  session: {
+    kind: "new",
+    id: "issue-482",
+    persistence: "durable",
+  },
+  execution: {
+    model: model.id,
+    permissionMode: "plan",
+    maxTurns: 20,
+  },
+});
+
+if (created.isErr()) {
+  if (created.error.code === "coding_sdk.session_exists") {
+    console.error('Session "issue-482" 已存在；请改用 resume 或选择新 ID。');
+  } else {
+    console.error(`[${created.error.phase}] ${created.error.code}: ${created.error.message}`);
+  }
+  process.exitCode = 1;
+} else {
+  const agent = created.value;
+  try {
+    const run = await agent.prompt({ prompt: "分析 issue 482 的可能原因并给出修复计划" });
+    if (run.isErr()) {
+      console.error(`[${run.error.phase}] ${run.error.code}: ${run.error.message}`);
+      process.exitCode = 1;
+    } else {
+      console.dir(run.value.state, { depth: null });
+    }
+  } finally {
+    const closed = await agent.close();
+    if (closed.isErr()) {
+      console.error(`[${closed.error.phase}] ${closed.error.code}: ${closed.error.message}`);
+      process.exitCode = 1;
+    }
+  }
+}
+```
+
+运行 `npx tsx agent.ts`。第一次创建并输出 state；同一目录再次运行会得到 `coding_sdk.session_exists`。durable state 写入 `host.session.directory`。会话 ID 由宿主负责命名与索引；SDK 不提供列举会话的 root API。
+
+接着看 [恢复会话](/docs/examples/resume-session)。
