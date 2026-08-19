@@ -1,24 +1,24 @@
 ---
-title: Host Authorities
-description: 理解宿主如何通过 CodingAgentHost authority 注入模型、workspace、session 存储、授权策略与动态能力来源和配置边界。
+title: 创建参数与可替换行为
+description: 理解调用方如何配置 workspace、session、模型解析、授权策略与动态能力。
 ---
 
-`CodingAgentHost` 是 SDK 与 TypeScript 应用之间的装配边界。即使使用 ephemeral session，三个必填 authority 也都要提供。
+`createCodingAgent()` 直接接收运行配置和两个可替换行为，不需要先构造统一 Host：
 
-- `model`（必需）：根据 `execution.model` 和配置快照返回真实的 `@jai/ai` Model 与 Provider。
+- `resolveModel`（必需）：根据 `execution.model` 和配置快照返回真实的 `@jai/ai` Model 与 Provider。
 - `workspace`（必需）：定义工具运行的 `cwd`、配置根、允许访问的目录、本地文件访问和 workspace 信任状态。
-- `session`（必需）：指定 durable session 文件目录；ephemeral session 仍需要这个结构字段，但实际使用临时目录。
-- `approval`（可选）：在权限规则要求询问时返回拒绝、单次允许或持久允许。
-- `configuration`（可选）：覆盖读取用户级 Jai 配置时使用的 home directory。
-- `capabilitySources`（可选）：从明确的 plugin 目录发现动态能力。
+- `session`（必需）：选择 new、resume 或 ephemeral；持久会话同时携带存储目录。
+- `requestApproval`（可选）：在权限规则要求询问时返回拒绝、单次允许或持久允许。
+- `homeDirectory`（可选）：覆盖读取用户级 Jai 配置时使用的 home directory。
+- `plugins`（可选）：从明确的 plugin 目录发现动态能力。
 - `connector`（可选）：提供 connector client，并独立审批有副作用的 connector action。
 
-下面是一个可运行的单模型 Host。环境变量和 model metadata 约束与 [Quickstart](/docs/quickstart/create-your-first-agent) 相同：
+下面是一个可运行的单模型创建配置。环境变量和 model metadata 约束与 [Quickstart](/docs/quickstart/create-your-first-agent) 相同：
 
 ```ts
 import { join } from "node:path";
 import { OpenAIProvider, type Model } from "@jai/ai";
-import { type CodingAgentHost } from "@jai/coding-agent";
+import { createCodingAgent } from "@jai/coding-agent";
 
 const apiKey = process.env.OPENAI_API_KEY;
 if (!apiKey) throw new Error("缺少 OPENAI_API_KEY");
@@ -37,14 +37,12 @@ const model: Model = {
 const provider = new OpenAIProvider({ apiKey });
 const cwd = process.cwd();
 
-const host: CodingAgentHost = {
-  model: {
-    resolve({ model: requestedModel }) {
-      if (requestedModel && requestedModel !== model.id) {
-        throw new Error(`Host 未配置模型：${requestedModel}`);
-      }
-      return { model, provider };
-    },
+const created = await createCodingAgent({
+  resolveModel({ model: requestedModel }) {
+    if (requestedModel && requestedModel !== model.id) {
+      throw new Error(`未配置模型：${requestedModel}`);
+    }
+    return { model, provider };
   },
   workspace: {
     cwd,
@@ -53,14 +51,13 @@ const host: CodingAgentHost = {
     localFileAccess: true,
     trusted: false,
   },
-  session: { directory: join(cwd, ".jai", "sessions") },
-};
+  session: {
+    kind: "new",
+    directory: join(cwd, ".jai", "sessions"),
+  },
+});
 ```
 
-`model.resolve()` 返回的对象是进程内 authority 值，`model` 与 `provider` 故意声明为 `unknown`，避免把 `@jai/ai` 实现类型纳入 SDK 契约。宿主仍必须返回 runtime 可用的对象。
+`resolveModel()` 返回的对象是进程内值，`model` 与 `provider` 故意声明为 `unknown`，避免把 `@jai/ai` 实现类型纳入 SDK 契约。调用方仍必须返回 runtime 可用的对象。
 
 示例只配置一个模型。传入其他 `execution.model` 时，resolver 抛出的配置错误会由 `createCodingAgent()` 投影为 `Err<CodingSdkError>`，调用方仍按 Result 处理。多模型应用应维护真实的模型目录与 Provider 连接，并在 resolver 中按请求 ID 查找。
-
-:::warning
-公开类型包含 `resolve(...).signal`、`workspace.shellPath` 与 `workspace.ripgrepPath`，但当前创建路径没有把它们接到实现。不要依赖这些字段；参见 [公开 API 与当前限制](/docs/api-reference/public-api-and-limitations)。
-:::

@@ -27,7 +27,7 @@ export function projectDirectoryName(canonicalPath: string): string {
 }
 
 /**
- * Session storage layout shared by every host, so sessions created by one are visible to the others.
+ * Session storage layout shared by Jai callers, so sessions created by one are visible to the others.
  * `canonicalPath` is null for workspaces without a registered project.
  */
 export function codingSessionDirectory(

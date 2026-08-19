@@ -3,13 +3,18 @@ title: 恢复 Session
 description: 恢复已有 durable session，重新渲染消息、Todos 与 Artifacts，并显式处理 session not found，避免意外静默创建新会话。
 ---
 
-先运行 [创建 Durable Session](/docs/examples/durable-session)，并保留 Quickstart 中的 `host`。将创建与执行部分替换为：
+先运行 [创建 Durable Session](/docs/examples/durable-session)，并保留 Quickstart 中的 `model`、`provider` 与 `cwd`。将创建与执行部分替换为：
 
 ```ts
 const sessionId = process.argv[2] ?? "issue-482";
 const resumed = await createCodingAgent({
-  host,
-  session: { kind: "resume", id: sessionId },
+  workspace: { cwd, configRoot: cwd },
+  session: {
+    kind: "resume",
+    id: sessionId,
+    directory: `${cwd}/.jai/sessions`,
+  },
+  resolveModel: () => ({ model, provider }),
 });
 
 if (resumed.isErr()) {

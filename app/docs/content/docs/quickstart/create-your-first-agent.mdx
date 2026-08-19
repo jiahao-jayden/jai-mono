@@ -6,9 +6,8 @@ description: 使用 OpenAIProvider 发起真实模型请求，让 ephemeral Agen
 在项目根目录新建 `agent.ts`。下面的文件可直接复制；它只读取当前目录，不修改文件。
 
 ```ts
-import { join } from "node:path";
 import { OpenAIProvider, type Model } from "@jai/ai";
-import { createCodingAgent, type CodingAgentHost } from "@jai/coding-agent";
+import { createCodingAgent } from "@jai/coding-agent";
 
 const apiKey = process.env.OPENAI_API_KEY;
 if (!apiKey) {
@@ -32,15 +31,11 @@ const model: Model = {
 const provider = new OpenAIProvider({ apiKey });
 
 const cwd = process.cwd();
-const host: CodingAgentHost = {
-  model: { resolve: () => ({ model, provider }) },
-  workspace: { cwd, configRoot: cwd },
-  session: { directory: join(cwd, ".jai", "sessions") },
-};
 
 const created = await createCodingAgent({
-  host,
+  workspace: { cwd, configRoot: cwd },
   session: { kind: "ephemeral" },
+  resolveModel: () => ({ model, provider }),
   execution: {
     permissionMode: "plan",
     instructions: "只读取和分析文件，不修改 workspace。",
@@ -94,4 +89,4 @@ npx tsx agent.ts
 
 缺少 API key 属于启动前配置错误，因此示例直接抛出 `Error`。Agent 创建、prompt 和 close 的正常可恢复失败都保留为 `Result` 分支；不要把这些 `Err` 改成 throw。`finally` 确保成功、失败或意外异常时都尝试关闭 Agent。
 
-接下来阅读 [Host Authorities](/docs/concepts/host-authorities) 和 [错误处理](/docs/guides/errors)。
+接下来阅读 [创建参数与可替换行为](/docs/concepts/host-authorities) 和 [错误处理](/docs/guides/errors)。

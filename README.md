@@ -53,7 +53,7 @@ WorkBuddy harness                      ┘        |
                   Anthropic / OpenAI / OpenAI-compatible APIs
 ```
 
-Desktop、CLI 和 WorkBuddy 都只通过 Host adapter 消费 `@jai/coding-agent`；它们分别负责 UI/IPC、TTY/subprocess 和 benchmark 环境，不复制 Agent loop、工具装配或 session 事实。SDK 负责 Agent 的执行与状态，宿主只提供模型、workspace、session、approval 等 authority，并把 canonical events 投影成自己的传输格式。
+Desktop、CLI 和 WorkBuddy 都通过 `@jai/coding-agent` 的公开创建接口运行 Agent；它们分别负责 UI/IPC、TTY/subprocess 和 benchmark 环境，不复制 Agent loop、工具装配或 session 事实。SDK 负责 Agent 的执行与状态，调用方直接提供 workspace、session、模型 resolver 和审批 handler，并把 canonical events 投影成自己的传输格式。
 
 ## Getting Started
 
@@ -152,7 +152,7 @@ Provides the `Agent` facade and lower-level `CoreAgent`, including invocation, s
 
 ### `@jai/coding-agent`
 
-The public SDK surface consumed by hosts: Agent creation, Host authorities, session execution, and JSON-safe event/state/error DTOs. Jai product defaults — user/project configuration, provider catalog, model authority, plugin discovery, and data-directory conventions — live on `@jai/coding-agent/jai-host`. Desktop project/session persistence stays in the Desktop app.
+The public SDK surface covers Agent creation, session execution, replaceable model and approval behavior, and JSON-safe event/state/error DTOs. Jai product defaults — user/project configuration, provider catalog, model resolution, plugin discovery, and data-directory conventions — live on `@jai/coding-agent/jai-host`. Desktop project/session persistence stays in the Desktop app.
 
 ## Safety and Data Boundaries
 

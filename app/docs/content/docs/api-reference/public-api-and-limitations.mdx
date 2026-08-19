@@ -5,8 +5,8 @@ description: 核对稳定 root exports、可选 jai-host subpath、禁止的 dee
 
 `@jai/coding-agent` 提供两个正式入口：
 
-- `@jai/coding-agent`：所有应用的稳定 root SDK，包括创建 Agent、Host 契约、会话、状态、事件、权限和错误 DTO。
-- `@jai/coding-agent/jai-host`：同一 package 的可选高层配置宿主能力，包括标准配置 store、模型目录解析、plugin 目录发现与 session 路径布局。只有需要这些集成能力时才使用。
+- `@jai/coding-agent`：所有应用的稳定 root SDK，包括创建 Agent、会话、状态、事件、权限和错误 DTO。
+- `@jai/coding-agent/jai-host`：同一 package 的可选 Jai 产品集成，包括标准配置 store、模型目录解析、plugin 目录发现与 session 路径布局。只有需要这些集成能力时才使用。
 
 ## Root value exports
 
@@ -14,7 +14,7 @@ description: 核对稳定 root exports、可选 jai-host subpath、禁止的 dee
 - `codingArtifactsFromAppState`
 - `codingAgentToolNames`
 
-Root 还稳定导出以下类别的 TypeScript 类型：`CodingAgent`、`CodingAgentHost` 及其 authorities、`SessionSelection`、execution、prompt、state/event、permission、connector、attachment、Todo/Artifact、JSON 与 error DTO。准确名称见各 API Reference 页面。
+Root 还稳定导出以下类别的 TypeScript 类型：`CodingAgent`、`CodingAgentCreateInput`、`CodingWorkspace`、`CodingModelResolver`、`SessionSelection`、execution、prompt、state/event、permission、connector、attachment、Todo/Artifact、JSON 与 error DTO。准确名称见各 API Reference 页面。
 
 ## Import 边界
 
@@ -25,9 +25,6 @@ Root 还稳定导出以下类别的 TypeScript 类型：`CodingAgent`、`CodingA
 以下字段已存在于公开类型，但当前执行路径尚未生效或未完整传递：
 
 - `CodingPrompt.delivery`：`prompt()` 不读取；请明确调用 `steer()` 或 `followUp()`。
-- `CodingWorkspaceAuthority.shellPath`：尚未接入 shell 执行环境。
-- `CodingWorkspaceAuthority.ripgrepPath`：尚未接入搜索工具解析。
-- `CodingModelAuthority.resolve(...).signal`：创建路径目前不传递 signal。
 - `CodingPrompt.attachments`：仅由 `prompt()` 消费；`steer()` 与 `followUp()` 仅发送文本。
 
 :::warning

@@ -3,58 +3,54 @@ title: Approval Flow
 description: 使用 Node.js readline、请求关联字段与 AbortSignal 实现可运行、可取消且会正确释放资源的 CLI 权限审批。
 ---
 
-先完成 [创建第一个 Agent](/docs/quickstart/create-your-first-agent)，保留其中的 `model`、`provider` 与 `cwd`。把以下 import 加到文件顶部，并用这段代码替换 Quickstart 中的 `host` 声明：
+先完成 [创建第一个 Agent](/docs/quickstart/create-your-first-agent)，保留其中的 `model`、`provider` 与 `cwd`。把以下 import 和 handler 加到文件顶部：
 
 ```ts
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import {
-  type CodingApprovalAuthority,
+  type CodingApprovalHandler,
   type CodingPermissionDecision,
 } from "@jai/coding-agent";
 
-const approval: CodingApprovalAuthority = {
-  async request(request, signal): Promise<CodingPermissionDecision> {
-    if (signal?.aborted) return "deny";
+const requestApproval: CodingApprovalHandler = async (
+  request,
+  signal,
+): Promise<CodingPermissionDecision> => {
+  if (signal?.aborted) return "deny";
 
-    const readline = createInterface({ input, output });
-    try {
-      output.write(
-        [
-          `\n权限请求 ${request.requestId}`,
-          `工具：${request.toolName}`,
-          `原因：${request.reason}`,
-          `摘要：${request.summary.title}`,
-          `风险：${request.summary.risk}`,
-        ].join("\n") + "\n",
-      );
+  const readline = createInterface({ input, output });
+  try {
+    output.write(
+      [
+        `\n权限请求 ${request.requestId}`,
+        `工具：${request.toolName}`,
+        `原因：${request.reason}`,
+        `摘要：${request.summary.title}`,
+        `风险：${request.summary.risk}`,
+      ].join("\n") + "\n",
+    );
 
-      const choices = request.canAlwaysAllow ? "[y] 单次允许 / [a] 始终允许 / [N] 拒绝：" : "[y] 单次允许 / [N] 拒绝：";
-      const answer = await readline.question(choices, { signal });
-      const normalized = answer.trim().toLowerCase();
+    const choices = request.canAlwaysAllow ? "[y] 单次允许 / [a] 始终允许 / [N] 拒绝：" : "[y] 单次允许 / [N] 拒绝：";
+    const answer = await readline.question(choices, { signal });
+    const normalized = answer.trim().toLowerCase();
 
-      if (normalized === "y") return "allowOnce";
-      if (normalized === "a" && request.canAlwaysAllow) return "alwaysAllow";
+    if (normalized === "y") return "allowOnce";
+    if (normalized === "a" && request.canAlwaysAllow) return "alwaysAllow";
+    return "deny";
+  } catch (error) {
+    if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) {
       return "deny";
-    } catch (error) {
-      if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) {
-        return "deny";
-      }
-      console.error("读取审批输入失败：", error);
-      return "deny";
-    } finally {
-      readline.close();
     }
-  },
-};
-
-const host: CodingAgentHost = {
-  model: { resolve: () => ({ model, provider }) },
-  workspace: { cwd, configRoot: cwd },
-  session: { directory: join(cwd, ".jai", "sessions") },
-  approval,
+    console.error("读取审批输入失败：", error);
+    return "deny";
+  } finally {
+    readline.close();
+  }
 };
 ```
+
+然后在 Quickstart 的 `createCodingAgent()` 参数中加入 `requestApproval`。由于 plan 模式不会请求写权限，如需实际观察审批流程，请把 `permissionMode` 改为 `"default"` 并发送需要写入或执行命令的 prompt。
 
 `readline.question()` 只产生一次 fulfillment 或 rejection，因此每个请求只返回一个决定。AbortSignal 若已取消或在等待输入时取消，代码都返回 `"deny"`；`finally` 在允许、拒绝、取消和读取异常时都会关闭 readline。
 

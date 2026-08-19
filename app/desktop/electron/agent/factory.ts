@@ -1,5 +1,5 @@
 import { type CodingPermissionMode, createCodingAgent as createPublicCodingAgent } from "@jai/coding-agent";
-import { createConfiguredModelAuthority, discoverCodingAgentPluginDirectories } from "@jai/coding-agent/jai-host";
+import { createConfiguredModelResolver, discoverCodingAgentPluginDirectories } from "@jai/coding-agent/jai-host";
 import type { ConnectorService } from "@jai/connector";
 import { TaggedError } from "better-result";
 import type { DesktopAgentMode } from "../../shared/desktop-rpc";
@@ -26,7 +26,7 @@ export function createDesktopAgentFactory(
 		});
 		const profileId = modelRef.slice(0, modelRef.indexOf("/"));
 		const inventory = profileId ? service.getProviderModelInventory(profileId) : undefined;
-		const modelAuthority = createConfiguredModelAuthority({
+		const resolveModel = createConfiguredModelResolver({
 			catalog: desktopModelCatalog.cached?.catalog,
 			...(inventory ? { availableModelIds: inventory.modelIds } : {}),
 			requireVerifiedCapabilities: true,
@@ -35,26 +35,23 @@ export function createDesktopAgentFactory(
 			? executionEnvironmentInstruction(executionContext)
 			: NO_WORKSPACE_INSTRUCTIONS;
 		const created = await createPublicCodingAgent({
-			host: {
-				model: modelAuthority,
-				workspace: {
-					cwd: executionContext.localFileAccess ? executionContext.cwd : process.cwd(),
-					configRoot: executionContext.localFileAccess ? executionContext.configRoot : process.cwd(),
-					localFileAccess: executionContext.localFileAccess,
-					...(executionContext.localFileAccess
-						? { defaultAllowedDirectories: executionContext.defaultAllowedDirectories }
-						: {}),
-					trusted: executionContext.localFileAccess,
-				},
-				session: { directory: service.sessionDirectory(session.projectId) },
-				approval: { request: requestApproval },
-				capabilitySources: { plugins: { directories: agentPluginDirectories } },
-				connector: {
-					client: connectorService,
-					requestApproval: requestConnectorApproval,
-				},
+			workspace: {
+				cwd: executionContext.localFileAccess ? executionContext.cwd : process.cwd(),
+				configRoot: executionContext.localFileAccess ? executionContext.configRoot : process.cwd(),
+				localFileAccess: executionContext.localFileAccess,
+				...(executionContext.localFileAccess
+					? { defaultAllowedDirectories: executionContext.defaultAllowedDirectories }
+					: {}),
+				trusted: executionContext.localFileAccess,
 			},
-			session: { kind: "resume", id: sessionId },
+			session: { kind: "resume", id: sessionId, directory: service.sessionDirectory(session.projectId) },
+			resolveModel,
+			requestApproval,
+			plugins: { directories: agentPluginDirectories },
+			connector: {
+				client: connectorService,
+				requestApproval: requestConnectorApproval,
+			},
 			execution: {
 				model: modelRef,
 				permissionMode: permissionModeForAgentMode(mode),

@@ -49,10 +49,10 @@ export {
 	UNASSIGNED_DIRECTORY,
 } from "./layout";
 export {
-	type ConfiguredModelAuthorityOptions,
-	configuredModelAuthority,
-	createConfiguredModelAuthority,
-} from "./model-authority";
+	type ConfiguredModelResolverOptions,
+	configuredModelResolver,
+	createConfiguredModelResolver,
+} from "./model-resolver";
 export {
 	type CodingAgentPluginDirectoryDiscoveryOptions,
 	discoverCodingAgentPluginDirectories,

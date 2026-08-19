@@ -6,11 +6,16 @@ description: 使用 better-result 的 Result 处理 SDK 可恢复失败，判断
 创建与所有异步操作都把正常可恢复失败放在 `Result` 中：
 
 ```ts
-import { createCodingAgent, type CodingAgentHost } from "@jai/coding-agent";
+import {
+  createCodingAgent,
+  type CodingAgentCreateInput,
+} from "@jai/coding-agent";
 
-async function runOnce(host: CodingAgentHost): Promise<boolean> {
+async function runOnce(
+  input: Omit<CodingAgentCreateInput, "session">,
+): Promise<boolean> {
   const created = await createCodingAgent({
-    host,
+    ...input,
     session: { kind: "ephemeral" },
     execution: { permissionMode: "plan" },
   });

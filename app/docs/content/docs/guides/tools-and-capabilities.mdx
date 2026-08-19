@@ -20,30 +20,28 @@ codingAgentToolNames.updateTodos; // "UpdateTodos"
 
 ## Plugin 能力
 
-宿主可通过 `capabilitySources.plugins.directories` 提供目录：
+调用方可通过 `plugins.directories` 提供目录：
 
 ```ts
 import { join } from "node:path";
-import { type CodingCapabilitySources } from "@jai/coding-agent";
+import { type CodingPluginOptions } from "@jai/coding-agent";
 
 const cwd = process.cwd();
-const capabilitySources: CodingCapabilitySources = {
-  plugins: {
-    directories: [
-      { path: join(cwd, ".jai", "plugins"), scope: "project" },
-    ],
-    dataDirectory: join(cwd, ".jai", "plugin-data"),
-    scope: "project",
-  },
+const plugins: CodingPluginOptions = {
+  directories: [
+    { path: join(cwd, ".jai", "plugins"), scope: "project" },
+  ],
+  dataDirectory: join(cwd, ".jai", "plugin-data"),
+  scope: "project",
 };
 ```
 
-目录也可写成字符串。每个 `AgentPluginDirectory.scope` 标记该目录来自 user 或 project；`plugins.scope` 则是 plugin capability source 的默认作用域，两者是独立字段。动态能力在创建 runtime 时发现，不是 root SDK 的静态 export。
+目录也可写成字符串。每个 `AgentPluginDirectory.scope` 标记该目录来自 user 或 project；`plugins.scope` 是默认作用域，两者是独立字段。动态能力在创建 runtime 时发现，不是 root SDK 的静态 export。
 
 ## Connector
 
-`host.connector` 可注入 client，并通过独立的 `requestApproval` 处理 `connector__execute_action`。请求只暴露 action ID、side effect、数据敏感度、输入 key 和过期时间，不应把 connector SDK 原始对象跨进程发送。
+`connector` 可注入 client，并通过独立的 `requestApproval` 处理 `connector__execute_action`。请求只暴露 action ID、side effect、数据敏感度、输入 key 和过期时间，不应把 connector SDK 原始对象跨进程发送。
 
 :::warning
-不要从内部 `runtime`、`tools` 或 `permissions` 模块导入构造器。公开可配置边界只有 `CodingAgentHost`。
+不要从内部 `runtime`、`tools` 或 `permissions` 模块导入构造器。只使用 package root 公开的创建参数。
 :::

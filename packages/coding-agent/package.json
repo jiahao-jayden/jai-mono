@@ -3,7 +3,7 @@
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
-	"description": "Host SDK for Jai coding agents, plus Jai product defaults on the jai-host export.",
+	"description": "Public SDK for Jai coding agents, plus Jai product defaults on the jai-host export.",
 	"exports": {
 		".": "./src/sdk.ts",
 		"./jai-host": "./src/jai-host/index.ts"

@@ -3,16 +3,17 @@ title: 创建 Durable Session
 description: 创建具名 durable session，处理重复 ID 的 Result 错误，读取完整运行状态，并在宿主资源边界退出前安全关闭 Agent。
 ---
 
-先完成 [Quickstart](/docs/quickstart/create-your-first-agent) 并保留其中的 `model` 与 `host`。将 Quickstart 的 `createCodingAgent` 到 `finally` 代码替换为：
+先完成 [Quickstart](/docs/quickstart/create-your-first-agent) 并保留其中的 `model`、`provider` 与 `cwd`。将 Quickstart 的 `createCodingAgent` 到 `finally` 代码替换为：
 
 ```ts
 const created = await createCodingAgent({
-  host,
+  workspace: { cwd, configRoot: cwd },
   session: {
     kind: "new",
     id: "issue-482",
-    persistence: "durable",
+    directory: `${cwd}/.jai/sessions`,
   },
+  resolveModel: () => ({ model, provider }),
   execution: {
     model: model.id,
     permissionMode: "plan",
@@ -47,6 +48,6 @@ if (created.isErr()) {
 }
 ```
 
-运行 `npx tsx agent.ts`。第一次创建并输出 state；同一目录再次运行会得到 `coding_sdk.session_exists`。durable state 写入 `host.session.directory`。会话 ID 由宿主负责命名与索引；SDK 不提供列举会话的 root API。
+运行 `npx tsx agent.ts`。第一次创建并输出 state；同一目录再次运行会得到 `coding_sdk.session_exists`。durable state 写入 `session.directory`。会话 ID 由调用方负责命名与索引；SDK 不提供列举会话的 root API。
 
 接着看 [恢复会话](/docs/examples/resume-session)。

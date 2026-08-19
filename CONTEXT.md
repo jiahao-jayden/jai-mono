@@ -27,7 +27,7 @@ _Avoid_: app state, session data
 ## Coding Agent SDK and hosts
 
 **Coding Agent SDK**:
-The public `@jai/coding-agent` product runtime consumed by Desktop, CLI, and other hosts. The package holds both the SDK Interface and the coding implementation it is built on: the root export (`src/sdk.ts`) is the small public surface, while implementation modules are reachable only through the named subpath exports (`./permissions`, `./runtime`, `./business`, `./internal`, …) that hosts use for host-adapter wiring. `@jai/agent` and anything not named in `exports` stays internal.
+The public `@jai/coding-agent` product runtime consumed by Desktop, CLI, and other callers. The package holds both the SDK Interface and the coding implementation it is built on: the root export (`src/sdk.ts`) is the small public surface, while Jai product defaults are available through `./jai-host`. `@jai/agent` and anything not named in `exports` stays internal.
 _Avoid_: Desktop Agent, coding-agent implementation
 
 **Coding Agent Documentation Site**:
@@ -55,7 +55,7 @@ The cancellation of a Coding Agent's current Execution Drain without deleting it
 _Avoid_: session deletion, queue discard
 
 **Coding Agent Execution Configuration**:
-The immutable model, workspace, permission policy, and capability snapshot with which one Coding Agent is created. Changing it requires closing that Agent and creating another Agent for the same Coding Agent Session.
+The immutable model choice, permission policy, turn limit, and instruction overrides with which one Coding Agent is created. Changing it requires closing that Agent and creating another Agent for the same Coding Agent Session.
 _Avoid_: agent rebind, mutable agent settings
 
 **Execution Drain**:
@@ -71,43 +71,31 @@ The SDK-owned rule for delivering an admitted input: `steer` promotes it at the 
 _Avoid_: Desktop input mode, host queue policy
 
 **Host Adapter**:
-A host-specific adapter that supplies I/O, external authorities, workspace/provider dependencies, approval decisions, and UI or process projections to the Coding Agent SDK. It does not define Coding Agent product semantics.
+A caller-specific module that supplies I/O, model resolution, approval decisions, and UI or process projections around the Coding Agent SDK. It is not represented by one aggregate SDK interface and does not define Coding Agent product semantics.
 _Avoid_: host runtime, frontend wrapper
 
-**Authority Port**:
-A deep Host Adapter interface through which the Coding Agent SDK asks for one category of host-owned external fact or operation right, without allowing the host to redefine Coding Agent Product Semantics. The SDK consumes the answer; it does not recreate the authority.
-_Avoid_: options callback, runtime override
+**Model Resolver**:
+The required creation function that maps a requested model and SDK settings snapshot to the process-local Model and Provider used by one Coding Agent. The SDK owns when resolution occurs and all Coding Agent-facing provider semantics.
+_Avoid_: model authority, provider registry
 
-**Authority**:
-An external fact or operation right owned by the host, such as model credentials, workspace access, user approval, session storage, or a connector connection. It is not an Agent capability itself; it is what lets the SDK safely obtain or use that capability.
-_Avoid_: permission mode, Agent tool, capability implementation
+**Coding Workspace**:
+The immutable creation data describing a Coding Agent's working directory, configuration root, trust, local file access, and allowed locations. The SDK uses it to assemble tools; it is not an adapter.
+_Avoid_: workspace authority, tool factory
 
-**Model Authority**:
-The Host Adapter authority for credentials, endpoints, model catalog access, and provider transport. The Coding Agent SDK owns model selection, capability requirements, and all Coding Agent-facing provider semantics.
-_Avoid_: resolved coding provider, Desktop model runtime
+**Approval Handler**:
+The optional creation function that presents an SDK permission request and returns an explicit decision. The SDK owns policy evaluation, request lifecycle, cancellation, and canonical decision meaning.
+_Avoid_: approval authority, permission evaluator
 
-**Workspace Authority**:
-The Host Adapter authority that describes a Coding Agent's workspace root, trust, allowed locations, and external execution availability. It does not create or define Coding Agent tools.
-_Avoid_: Desktop execution context, tool factory
-
-**Session Storage Authority**:
-The Host Adapter authority for the physical persistence, locking, and cleanup of a Coding Agent Session. The SDK owns ledger, transcript, Session App State, replay, and projection meaning.
-_Avoid_: CodingBusinessService, session database service
-
-**Approval Authority**:
-The Host Adapter authority that presents SDK permission requests and returns explicit decisions. The SDK owns policy evaluation, request lifecycle, cancellation, and canonical decision meaning.
-_Avoid_: permission UI, approval callback
+**Connector Integration**:
+The optional process-local Connector client and action approval handler supplied when creating a Coding Agent. The SDK owns Agent-facing connector tools, request projection, and permission semantics.
+_Avoid_: connector authority, raw connector tool
 
 **Coding Connector Capability**:
-The optional SDK-owned Agent-facing capability for discovering allowed Connector Provider actions, invoking them, projecting results, applying permission policy, and cleaning up connector runtime resources. If no Connector Connection Authority is available, the capability is absent from the Coding Agent's Capability Snapshot.
+The optional SDK-owned Agent-facing capability for discovering allowed Connector Provider actions, invoking them, projecting results, applying permission policy, and cleaning up connector runtime resources. If no Connector Integration is supplied, the capability is absent from the Coding Agent's Capability Snapshot.
 _Avoid_: connector settings page, raw connector client
 
-**Connector Connection Authority**:
-The Host Adapter authority that resolves which Connector Connection or Runtime Token the SDK may use, and may provide user-facing OAuth/connect/revoke flows. It does not implement Agent-facing connector actions.
-_Avoid_: connector tool implementation, provider action registry
-
 **Capability Source**:
-A host-provided, immutable description of where a Coding Agent may discover Skills, MCP servers, plugins, browser connections, or other external capability authorities. The SDK validates and assembles the capability; the host does not provide final Agent tools.
+A caller-provided, immutable description of where a Coding Agent may discover Skills, MCP servers, plugins, browser connections, or other external capabilities. The SDK validates and assembles the capability; the caller does not provide final Agent tools.
 _Avoid_: imported AgentTool, host tool registry
 
 **Capability Snapshot**:
@@ -135,7 +123,7 @@ A typed SDK creation outcome for a canonical mode that is part of the public voc
 _Avoid_: mode fallback, unavailable approval
 
 **Canonical Permission Contract**:
-The SDK-owned evaluation of a tool call across call validity, workspace/path authority, the non-overridable Danger Layer, explicit deny rules, explicit allow rules, project authorization, session allow rules, Canonical Permission Mode, and Host approval. The order is deterministic: hard context failures and Danger Layer first; deny rules before allows; same-scope rules use last-match precedence; approval is consulted only for a final `ask`. Every Host Adapter consumes the SDK decision and DTOs; none re-evaluates them.
+The SDK-owned evaluation of a tool call across call validity, workspace/path boundaries, the non-overridable Danger Layer, explicit deny rules, explicit allow rules, project authorization, session allow rules, Canonical Permission Mode, and the Approval Handler. The order is deterministic: hard context failures and Danger Layer first; deny rules before allows; same-scope rules use last-match precedence; approval is consulted only for a final `ask`. Callers consume the SDK decision and DTOs; none re-evaluates them.
 _Avoid_: permission UI behavior, host approval callback
 
 **Danger Layer**:
@@ -147,23 +135,23 @@ An MCP, Connector, Plugin, or other externally sourced Agent tool that is evalua
 _Avoid_: trusted external tool, host-approved tool
 
 **Session Allow Rule**:
-An ephemeral allow rule created from an SDK-suggested approval scope and valid only for the lifetime of one Coding Agent. It can satisfy an `ask`, but cannot override an explicit deny, workspace authority, or the Danger Layer.
+An ephemeral allow rule created from an SDK-suggested approval scope and valid only for the lifetime of one Coding Agent. It can satisfy an `ask`, but cannot override an explicit deny, workspace boundary, or the Danger Layer.
 _Avoid_: session permission override, temporary bypass
 
 **Project Authorization**:
-A project-local persisted allow rule created only through an SDK-suggested approval scope and reusable by later Coding Agent Sessions in that project. It is not global user authorization and cannot override an explicit deny, workspace authority, or the Danger Layer.
+A project-local persisted allow rule created only through an SDK-suggested approval scope and reusable by later Coding Agent Sessions in that project. It is not global user authorization and cannot override an explicit deny, workspace boundary, or the Danger Layer.
 _Avoid_: global authorization, permanent bypass
 
 **Permission Approval DTO**:
-The explicit, whitelist-based request and decision projection exchanged between the Coding Agent SDK and an Approval Authority. It contains safe tool/action/target summaries and suggested remember scopes, but never raw evaluator state, stack, cause, or unsanitized SDK errors.
+The explicit, whitelist-based request and decision projection exchanged between the Coding Agent SDK and an Approval Handler. It contains safe tool/action/target summaries and suggested remember scopes, but never raw evaluator state, stack, cause, or unsanitized SDK errors.
 _Avoid_: raw permission request, approval callback payload
 
 **Permission Approval Unavailability**:
-A typed SDK outcome when a permission request cannot be presented or resolved because no Approval Authority exists, the host is headless, the request expires, or the request is cancelled. It never implicitly grants the tool call.
+A typed SDK outcome when a permission request cannot be presented or resolved because no Approval Handler exists, the caller is headless, the request expires, or the request is cancelled. It never implicitly grants the tool call.
 _Avoid_: silent deny, approval hang
 
 **SDK Agent Event Projection**:
-A JSON-safe public projection of the Coding Agent's canonical Agent event stream. It preserves Agent-centric lifecycle, turn, message, tool-execution, and compaction semantics without introducing Desktop or product-business event names. Permission approval remains an Authority interaction; Session App State, Todo, and Artifact are read-model facts rather than a second business-event vocabulary.
+A JSON-safe public projection of the Coding Agent's canonical Agent event stream. It preserves Agent-centric lifecycle, turn, message, tool-execution, and compaction semantics without introducing Desktop or product-business event names. Permission approval remains a handler interaction; Session App State, Todo, and Artifact are read-model facts rather than a second business-event vocabulary.
 _Avoid_: UI event, Desktop event, business event, raw provider event
 
 **Desktop Event Envelope**:

@@ -38,12 +38,18 @@ WorkBuddy harness
 
 ## 实现基线
 
-`@jai/coding-agent` 已提供 `createCodingAgent({ host, session, execution })` public facade；`app/cli` 和 Desktop factory 都只通过该接口创建并驱动 Agent。它也是 WorkBuddy subprocess smoke 的唯一入口。
+`@jai/coding-agent` 已提供扁平的 `createCodingAgent()` public facade；`app/cli` 和 Desktop factory 都只通过该接口创建并驱动 Agent。它也是 WorkBuddy subprocess smoke 的唯一入口。
 
 Session 只是创建或恢复对话事实的选项，真正执行 prompt、排队、取消、订阅事件和关闭生命周期的是 `CodingAgent` handle。
 
 ```ts
-const created = await createCodingAgent({ host, session, execution });
+const created = await createCodingAgent({
+  workspace,
+  session,
+  resolveModel,
+  requestApproval,
+  execution,
+});
 if (created.isErr()) return created.error;
 
 const agent = created.value;

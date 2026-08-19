@@ -6,7 +6,6 @@ import { parseArgs } from "node:util";
 import {
 	type CodingAgent,
 	type CodingAgentEvent,
-	type CodingAgentHost,
 	type CodingAgentMessage,
 	type CodingAssistantMessage,
 	type CodingPermissionDecision,
@@ -19,7 +18,7 @@ import {
 } from "@jai/coding-agent";
 import {
 	codingSessionDirectory,
-	configuredModelAuthority,
+	configuredModelResolver,
 	defaultCodingDataRoot,
 	discoverCodingAgentPluginDirectories,
 } from "@jai/coding-agent/jai-host";
@@ -231,22 +230,19 @@ async function createCliAgent(options: CliOptions, homeDirectory: string): Promi
 		workspaceDirectory: options.cwd,
 		workspaceTrusted: options.trustWorkspace,
 	});
-	const host: CodingAgentHost = {
-		model: configuredModelAuthority,
-		workspace: { cwd: options.cwd, configRoot: options.cwd, trusted: options.trustWorkspace },
-		session: { directory: codingSessionDirectory(options.cwd, defaultCodingDataRoot(homeDirectory)) },
-		approval: { request: createCliApproval(options.permissionMode) },
-		configuration: { homeDirectory },
-		capabilitySources: { plugins: { directories: pluginDirectories } },
-	};
+	const sessionDirectory = codingSessionDirectory(options.cwd, defaultCodingDataRoot(homeDirectory));
 	const session = options.noSessionPersistence
 		? { kind: "ephemeral" as const }
 		: options.sessionId
-			? { kind: "resume" as const, id: options.sessionId }
-			: { kind: "new" as const, persistence: "durable" as const };
+			? { kind: "resume" as const, id: options.sessionId, directory: sessionDirectory }
+			: { kind: "new" as const, directory: sessionDirectory };
 	const created = await createCodingAgent({
-		host,
+		workspace: { cwd: options.cwd, configRoot: options.cwd, trusted: options.trustWorkspace },
 		session,
+		resolveModel: configuredModelResolver,
+		requestApproval: createCliApproval(options.permissionMode),
+		homeDirectory,
+		plugins: { directories: pluginDirectories },
 		execution: {
 			...(options.model ? { model: options.model } : {}),
 			...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),

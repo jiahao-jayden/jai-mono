@@ -7,10 +7,10 @@ Coding Agent SDK 把 Agent runtime 封装为一个宿主可控的 TypeScript API
 
 ## 一次调用经过什么
 
-1. 宿主通过 `createCodingAgent` 提供 `CodingAgentHost` 与 `SessionSelection`。
+1. 调用方通过 `createCodingAgent` 提供 workspace、session 与模型 resolver。
 2. SDK 解析模型、配置与动态能力，创建或恢复会话。
 3. 宿主调用 `prompt()`；并发 prompt 按进入顺序串行执行。
-4. 工具调用经过权限层，必要时进入 `approval.request()`。
+4. 工具调用经过权限层，必要时调用 `requestApproval()`。
 5. 宿主从 `Result`、`state` 和 `subscribe()` 接收结果。
 6. 宿主调用 `close()` 终止资源；ephemeral 会话的临时目录同时删除。
 
@@ -25,7 +25,7 @@ Coding Agent SDK 把 Agent runtime 封装为一个宿主可控的 TypeScript API
 | 可选 plugins / connector | prompt queue、abort、close |
 
 :::note
-宿主 authority 是依赖倒置边界，不是远程协议。跨进程传输时，仍应显式投影 DTO，尤其不要传递 provider、stack、cause 或 SDK 原始错误对象。
+模型 resolver 和审批 handler 是进程内函数，不是远程协议。跨进程传输时，仍应显式投影 DTO，尤其不要传递 provider、stack、cause 或 SDK 原始错误对象。
 :::
 
 下一步：[安装](/docs/quickstart/installation) → [创建第一个 Agent](/docs/quickstart/create-your-first-agent)。

@@ -3,7 +3,7 @@ import { AssistantMessageEventStream, type AssistantMessage, type Model, type Pr
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createCodingAgent, type CodingAgentHost } from "../src/sdk";
+import { createCodingAgent, type CodingAgentCreateInput } from "../src/sdk";
 
 const roots: string[] = [];
 
@@ -12,14 +12,14 @@ afterEach(async () => {
 });
 
 describe("public Coding Agent SDK", () => {
-	test("creates a runnable Agent through Host Authorities and persists a session", async () => {
+	test("creates a runnable Agent and persists a session", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
 		roots.push(root);
-		const host = createHost(root, [assistant("done")]);
+		const input = createInput(root, [assistant("done")]);
 
 		const created = await createCodingAgent({
-			host,
-			session: { kind: "new", id: "public-session", persistence: "durable" },
+			...input,
+			session: { kind: "new", id: "public-session", directory: join(root, "sessions") },
 			execution: { permissionMode: "default" },
 		});
 		expect(created.isOk()).toBe(true);
@@ -37,7 +37,10 @@ describe("public Coding Agent SDK", () => {
 		const closed = await created.value.close();
 		expect(closed.isOk()).toBe(true);
 
-		const resumed = await createCodingAgent({ host, session: { kind: "resume", id: "public-session" } });
+		const resumed = await createCodingAgent({
+			...input,
+			session: { kind: "resume", id: "public-session", directory: join(root, "sessions") },
+		});
 		expect(resumed.isOk()).toBe(true);
 		if (resumed.isOk()) await resumed.value.close();
 	});
@@ -46,8 +49,8 @@ describe("public Coding Agent SDK", () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
 		roots.push(root);
 		const result = await createCodingAgent({
-			host: createHost(root, [assistant("unused")]),
-			session: { kind: "resume", id: "missing" },
+			...createInput(root, [assistant("unused")]),
+			session: { kind: "resume", id: "missing", directory: join(root, "sessions") },
 		});
 
 		expect(result).toMatchObject({
@@ -60,7 +63,7 @@ describe("public Coding Agent SDK", () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
 		roots.push(root);
 		const result = await createCodingAgent({
-			host: createHost(root, [assistant("unused")]),
+			...createInput(root, [assistant("unused")]),
 			session: { kind: "ephemeral" },
 			execution: { permissionMode: "plan" },
 		});
@@ -72,13 +75,13 @@ describe("public Coding Agent SDK", () => {
 	test("owns Artifact state and persists it without a Desktop projection subscriber", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
 		roots.push(root);
-		const host = createHost(root, [
+		const input = createInput(root, [
 			assistantToolCall("Write", "write-1", { path: "report.md", content: "# Report" }),
 			assistant("done"),
 		]);
 		const created = await createCodingAgent({
-			host,
-			session: { kind: "new", id: "artifact-session", persistence: "durable" },
+			...input,
+			session: { kind: "new", id: "artifact-session", directory: join(root, "sessions") },
 			execution: { permissionMode: "bypassPermissions" },
 		});
 		expect(created.isOk()).toBe(true);
@@ -91,7 +94,10 @@ describe("public Coding Agent SDK", () => {
 		]);
 		await created.value.close();
 
-		const resumed = await createCodingAgent({ host, session: { kind: "resume", id: "artifact-session" } });
+		const resumed = await createCodingAgent({
+			...input,
+			session: { kind: "resume", id: "artifact-session", directory: join(root, "sessions") },
+		});
 		expect(resumed.isOk()).toBe(true);
 		if (resumed.isErr()) return;
 		expect(resumed.value.state.artifacts).toEqual([
@@ -105,12 +111,12 @@ describe("public Coding Agent SDK", () => {
 		roots.push(root);
 		const responses = [assistant("first"), assistant("second")];
 		let calls = 0;
-		const host = createHost(root, responses, () => {
+		const input = createInput(root, responses, () => {
 			calls += 1;
 			return calls === 1 ? 20 : 0;
 		});
 		const created = await createCodingAgent({
-			host,
+			...input,
 			session: { kind: "ephemeral" },
 			execution: { permissionMode: "bypassPermissions" },
 		});
@@ -133,9 +139,9 @@ describe("public Coding Agent SDK", () => {
 	test("projects public events, state, and failures as JSON-safe DTOs", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
 		roots.push(root);
-		const host = createHost(root, [assistant("done")]);
+		const input = createInput(root, [assistant("done")]);
 		const created = await createCodingAgent({
-			host,
+			...input,
 			session: { kind: "ephemeral" },
 			execution: { permissionMode: "bypassPermissions" },
 		});
@@ -151,13 +157,9 @@ describe("public Coding Agent SDK", () => {
 		await created.value.close();
 
 		const failed = await createCodingAgent({
-			host: {
-				...host,
-				model: {
-					resolve() {
-						throw new Error("provider transport failed");
-					},
-				},
+			...input,
+			resolveModel() {
+				throw new Error("provider transport failed");
 			},
 			session: { kind: "ephemeral" },
 		});
@@ -166,7 +168,11 @@ describe("public Coding Agent SDK", () => {
 	});
 });
 
-function createHost(root: string, responses: AssistantMessage[], delay?: () => number): CodingAgentHost {
+function createInput(
+	root: string,
+	responses: AssistantMessage[],
+	delay?: () => number,
+): Omit<CodingAgentCreateInput, "session"> {
 	const model: Model = {
 		id: "test-model",
 		name: "Test Model",
@@ -196,10 +202,9 @@ function createHost(root: string, responses: AssistantMessage[], delay?: () => n
 		},
 	};
 	return {
-		model: { resolve: () => ({ model, provider }) },
 		workspace: { cwd: root, configRoot: root },
-		session: { directory: join(root, "sessions") },
-		configuration: { homeDirectory: join(root, "home") },
+		resolveModel: () => ({ model, provider }),
+		homeDirectory: join(root, "home"),
 	};
 }
 

@@ -13,21 +13,25 @@ function createCodingAgent<TAppState extends JsonObject = JsonObject>(
 
 `CodingAgentCreateInput`：
 
-- `host: CodingAgentHost`：必需 authority 集合。
+- `workspace: CodingWorkspace`：工作目录与本地文件访问配置。
 - `session: SessionSelection`：`new`、`resume` 或 `ephemeral`。
+- `resolveModel: CodingModelResolver`：将模型请求解析为 runtime Model 与 Provider。
+- `requestApproval?`、`homeDirectory?`、`plugins?`、`connector?`：可选集成配置。
 - `execution?: CodingAgentExecutionConfiguration`：model、permission mode、turn 数与 instructions。
 
 创建阶段会解析 session、配置、模型、MCP/plugin 能力与 runtime。任何可恢复失败都返回 `Err<CodingSdkError>`；不要用 try/catch 代替 Result 分支。
 
 ```ts
-import { createCodingAgent, type CodingAgentHost, type JsonObject } from "@jai/coding-agent";
+import { createCodingAgent, type CodingModelResolver, type JsonObject } from "@jai/coding-agent";
 
 type MyAppState = JsonObject & { readonly activeView?: string };
 
-async function openDurableAgent(host: CodingAgentHost) {
+async function openDurableAgent(resolveModel: CodingModelResolver) {
+  const cwd = process.cwd();
   const created = await createCodingAgent<MyAppState>({
-    host,
-    session: { kind: "new", persistence: "durable" },
+    workspace: { cwd, configRoot: cwd },
+    session: { kind: "new", directory: `${cwd}/.jai/sessions` },
+    resolveModel,
     execution: { maxTurns: 30, permissionMode: "default" },
   });
 
@@ -44,4 +48,4 @@ async function openDurableAgent(host: CodingAgentHost) {
 - `execution.instructions` 追加到 SDK 默认 coding instructions。
 - `compactionSummaryInstructions` 只配置 compaction summary。
 
-参见 [Host 与配置](/docs/api-reference/host-and-configuration)。
+参见 [创建配置](/docs/api-reference/host-and-configuration)。

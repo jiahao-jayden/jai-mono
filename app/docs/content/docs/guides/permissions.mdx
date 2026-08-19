@@ -3,7 +3,7 @@ title: 权限
 description: 配置五种 permission mode，实现可取消且可关联工具调用的宿主授权回调，并理解 danger layer 中不可绕过的安全硬拒绝。
 ---
 
-通过 `execution.permissionMode` 选择默认策略，通过 `host.approval.request` 处理需要用户决定的调用。
+通过 `execution.permissionMode` 选择默认策略，通过 `requestApproval` 处理需要用户决定的调用。
 
 - `default`：安全读取自动允许，其余按规则或询问处理。
 - `acceptEdits`：自动允许 workspace 边界内的 Edit/Write。
@@ -11,7 +11,7 @@ description: 配置五种 permission mode，实现可取消且可关联工具调
 - `dontAsk`：未预授权调用直接拒绝，不弹出询问。
 - `bypassPermissions`：跳过普通询问，但不能绕过 danger layer 的硬拒绝。
 
-可运行的 Node.js CLI 实现见 [Approval Flow](/docs/examples/approval-flow)。它直接构造完整 Host，不依赖预设对象，并处理取消、输入失败和 readline 关闭。
+可运行的 Node.js CLI 实现见 [Approval Flow](/docs/examples/approval-flow)。它直接提供 handler，并处理取消、输入失败和 readline 关闭。
 
 权限请求含稳定关联字段 `requestId`、`sessionId`、`toolCallId`，并包含工具名、JSON-safe args、reason、安全摘要与建议规则。UI 应优先渲染 `summary`；不要把原始 args 当作无条件安全的展示内容。
 

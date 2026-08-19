@@ -1,4 +1,5 @@
 import type { AssistantMessage, AssistantMessageEvent, Message, ToolResultMessage } from "@jai/ai";
+import type { ConnectorService } from "@jai/connector";
 import type { Result } from "better-result";
 import type { PermissionRequestSummary } from "../permissions";
 
@@ -47,8 +48,8 @@ export interface CodingSdkError {
 }
 
 export type SessionSelection =
-	| { readonly kind: "new"; readonly id?: string; readonly persistence: "durable" }
-	| { readonly kind: "resume"; readonly id: string }
+	| { readonly kind: "new"; readonly id?: string; readonly directory: string }
+	| { readonly kind: "resume"; readonly id: string; readonly directory: string }
 	| { readonly kind: "ephemeral" };
 
 export interface CodingAgentExecutionConfiguration {
@@ -60,32 +61,23 @@ export interface CodingAgentExecutionConfiguration {
 }
 
 export interface CodingModelResolution {
-	/** The host returns the @jai/ai Model object without making it part of the SDK contract. */
+	/** The resolver returns the @jai/ai Model object without making it part of the SDK contract. */
 	readonly model: unknown;
-	/** The host returns the @jai/ai Provider object without making it part of the SDK contract. */
+	/** The resolver returns the @jai/ai Provider object without making it part of the SDK contract. */
 	readonly provider: unknown;
 }
 
-export interface CodingModelAuthority {
-	resolve(input: {
-		readonly model?: string;
-		readonly settings: unknown;
-		readonly signal?: AbortSignal;
-	}): Promise<CodingModelResolution> | CodingModelResolution;
-}
+export type CodingModelResolver = (input: {
+	readonly model?: string;
+	readonly settings: unknown;
+}) => Promise<CodingModelResolution> | CodingModelResolution;
 
-export interface CodingWorkspaceAuthority {
+export interface CodingWorkspace {
 	readonly cwd: string;
 	readonly configRoot?: string;
 	readonly defaultAllowedDirectories?: readonly string[];
 	readonly localFileAccess?: boolean;
-	readonly shellPath?: string;
-	readonly ripgrepPath?: string;
 	readonly trusted?: boolean;
-}
-
-export interface CodingSessionStorageAuthority {
-	readonly directory: string;
 }
 
 export interface CodingAttachment {
@@ -102,12 +94,10 @@ export interface AgentPluginDirectory {
 	readonly scope: "user" | "project";
 }
 
-export interface CodingCapabilitySources {
-	readonly plugins?: {
-		readonly directories: readonly (string | AgentPluginDirectory)[];
-		readonly dataDirectory?: string;
-		readonly scope?: "user" | "project";
-	};
+export interface CodingPluginOptions {
+	readonly directories: readonly (string | AgentPluginDirectory)[];
+	readonly dataDirectory?: string;
+	readonly scope?: "user" | "project";
 }
 
 export interface CodingPermissionRequest {
@@ -127,12 +117,10 @@ export interface CodingPermissionRequest {
 
 export type CodingPermissionDecision = "deny" | "allowOnce" | "alwaysAllow";
 
-export interface CodingApprovalAuthority {
-	request(
-		request: CodingPermissionRequest,
-		signal?: AbortSignal,
-	): CodingPermissionDecision | Promise<CodingPermissionDecision>;
-}
+export type CodingApprovalHandler = (
+	request: CodingPermissionRequest,
+	signal?: AbortSignal,
+) => CodingPermissionDecision | Promise<CodingPermissionDecision>;
 
 export interface CodingConnectorApprovalRequest {
 	readonly requestId: string;
@@ -149,31 +137,22 @@ export interface CodingConnectorApprovalRequest {
 
 export type CodingConnectorApprovalDecision = "deny" | "allowOnce" | "alwaysAllow";
 
-export interface CodingConnectorAuthority {
-	readonly client?: unknown;
+export interface CodingConnectorIntegration {
+	readonly client: ConnectorService;
 	readonly requestApproval?: (
 		request: CodingConnectorApprovalRequest,
 		signal?: AbortSignal,
 	) => CodingConnectorApprovalDecision | Promise<CodingConnectorApprovalDecision>;
 }
 
-export interface CodingConfigurationAuthority {
-	readonly homeDirectory?: string;
-}
-
-export interface CodingAgentHost {
-	readonly model: CodingModelAuthority;
-	readonly workspace: CodingWorkspaceAuthority;
-	readonly session: CodingSessionStorageAuthority;
-	readonly approval?: CodingApprovalAuthority;
-	readonly configuration?: CodingConfigurationAuthority;
-	readonly capabilitySources?: CodingCapabilitySources;
-	readonly connector?: CodingConnectorAuthority;
-}
-
 export interface CodingAgentCreateInput {
-	readonly host: CodingAgentHost;
+	readonly workspace: CodingWorkspace;
 	readonly session: SessionSelection;
+	readonly resolveModel: CodingModelResolver;
+	readonly requestApproval?: CodingApprovalHandler;
+	readonly homeDirectory?: string;
+	readonly plugins?: CodingPluginOptions;
+	readonly connector?: CodingConnectorIntegration;
 	readonly execution?: CodingAgentExecutionConfiguration;
 }
 

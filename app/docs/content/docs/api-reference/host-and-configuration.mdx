@@ -1,27 +1,28 @@
 ---
-title: Host 与 Configuration
-description: 查阅 CodingAgentHost authorities、SessionSelection union 与 CodingAgentExecutionConfiguration 的完整公开字段和默认行为。
+title: 创建配置
+description: 查阅 CodingAgentCreateInput、SessionSelection union 与 CodingAgentExecutionConfiguration 的完整公开字段和默认行为。
 ---
 
-## `CodingAgentHost`
+## `CodingAgentCreateInput`
 
 ```ts
-interface CodingAgentHost {
-  model: CodingModelAuthority;
-  workspace: CodingWorkspaceAuthority;
-  session: CodingSessionStorageAuthority;
-  approval?: CodingApprovalAuthority;
-  configuration?: CodingConfigurationAuthority;
-  capabilitySources?: CodingCapabilitySources;
-  connector?: CodingConnectorAuthority;
+interface CodingAgentCreateInput {
+  workspace: CodingWorkspace;
+  session: SessionSelection;
+  resolveModel: CodingModelResolver;
+  requestApproval?: CodingApprovalHandler;
+  homeDirectory?: string;
+  plugins?: CodingPluginOptions;
+  connector?: CodingConnectorIntegration;
+  execution?: CodingAgentExecutionConfiguration;
 }
 ```
 
-`workspace` 字段：`cwd` 必需；可选 `configRoot`、`defaultAllowedDirectories`、`localFileAccess`、`trusted`。`shellPath` 与 `ripgrepPath` 虽公开但当前未接线。
+`workspace` 字段中 `cwd` 必需，可选 `configRoot`、`defaultAllowedDirectories`、`localFileAccess` 与 `trusted`。
 
-`session.directory` 是 durable session 的文件目录。`configuration.homeDirectory` 控制用户级配置根，默认使用 OS home。
+`homeDirectory` 控制用户级配置根，默认使用 OS home。
 
-`model.resolve({ model, settings, signal? })` 返回 `{ model, provider }`。当前实现传递 execution model 与配置 settings，但没有传 signal。
+`resolveModel({ model, settings })` 返回 `{ model, provider }`。`requestApproval(request, signal?)` 在权限规则要求询问时返回拒绝、单次允许或持久允许。
 
 ## `CodingAgentExecutionConfiguration`
 
@@ -39,9 +40,11 @@ interface CodingAgentExecutionConfiguration {
 
 ```ts
 type SessionSelection =
-  | { kind: "new"; id?: string; persistence: "durable" }
-  | { kind: "resume"; id: string }
+  | { kind: "new"; id?: string; directory: string }
+  | { kind: "resume"; id: string; directory: string }
   | { kind: "ephemeral" };
 ```
 
-Plugin 与 connector 字段详见 [工具与动态能力](/docs/guides/tools-and-capabilities)。
+`new` 与 `resume` 将 `directory` 作为持久会话目录；`ephemeral` 使用 SDK 创建并在 `close()` 时删除的临时目录。
+
+Plugin 与 connector 配置详见 [工具与动态能力](/docs/guides/tools-and-capabilities)。

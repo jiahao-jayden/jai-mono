@@ -54,11 +54,11 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 	try {
 		const execution = input.execution ?? {};
 		const sessionId = resolveSessionId(input.session);
-		const { approval, capabilitySources, configuration, connector, model: modelAuthority, workspace } = input.host;
+		const { connector, plugins, requestApproval, resolveModel, workspace } = input;
 		if (input.session.kind === "ephemeral") {
 			ephemeralDirectory = await mkdtemp(path.join(tmpdir(), "jai-coding-agent-"));
 		}
-		const sessionDirectory = ephemeralDirectory ?? input.host.session.directory;
+		const sessionDirectory = input.session.kind === "ephemeral" ? ephemeralDirectory! : input.session.directory;
 		const store = new FileSessionStore<TAppState>(sessionDirectory);
 		await validateSessionSelection(input.session, store, sessionId);
 		const internal = await createInternalCodingAgent<CodingSchema, TAppState>({
@@ -76,17 +76,15 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			instructions: [DEFAULT_CODING_AGENT_INSTRUCTIONS, execution.instructions].filter(Boolean).join("\n\n"),
 			configDefinition: codingAgentConfigDefinition,
 			configOptions: {
-				homeDir: configuration?.homeDirectory ?? homedir(),
+				homeDir: input.homeDirectory ?? homedir(),
 				workspaceTrusted: workspace.trusted ?? false,
 			},
 			resolveProvider: (snapshot) =>
-				Promise.resolve(modelAuthority.resolve({ model: execution.model, settings: snapshot.settings })).then(
-					(resolved) => {
-						const runtime = { model: resolved.model as Model, provider: resolved.provider as Provider };
-						modelRuntime = runtime;
-						return runtime;
-					},
-				),
+				Promise.resolve(resolveModel({ model: execution.model, settings: snapshot.settings })).then((resolved) => {
+					const runtime = { model: resolved.model as Model, provider: resolved.provider as Provider };
+					modelRuntime = runtime;
+					return runtime;
+				}),
 			resolveMcpServers: (snapshot) => resolveConfiguredMcpServers(snapshot.settings as CodingAgentSettings),
 			resolveAgentOptions: (snapshot, resolved) => {
 				const runtime = resolveConfiguredAgentRuntime(snapshot.settings as CodingAgentSettings, resolved);
@@ -96,13 +94,13 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				};
 			},
 			permissions: {
-				requestApproval: approval
-					? (request, signal) => approval.request(projectPermissionRequest(sessionId, request), signal)
+				requestApproval: requestApproval
+					? (request, signal) => requestApproval(projectPermissionRequest(sessionId, request), signal)
 					: undefined,
 				selectSettings: (snapshot) =>
 					selectPermissionSettings(snapshot.settings.permissions, execution.permissionMode),
 			},
-			agentPlugins: capabilitySources?.plugins ?? false,
+			agentPlugins: plugins ?? false,
 			connector: connector
 				? {
 						enabled: true,

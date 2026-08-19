@@ -3,12 +3,13 @@ title: Ephemeral Agent
 description: 为一次性只读分析创建 ephemeral Agent，并通过 plan mode、Result 分支与 finally 关闭实现清晰可靠的执行和清理边界。
 ---
 
-先完成 [Quickstart](/docs/quickstart/create-your-first-agent) 并保留其中的 `host`。将创建与执行部分替换为：
+先完成 [Quickstart](/docs/quickstart/create-your-first-agent) 并保留其中的 `model`、`provider` 与 `cwd`。将创建与执行部分替换为：
 
 ```ts
 const created = await createCodingAgent({
-  host,
+  workspace: { cwd, configRoot: cwd },
   session: { kind: "ephemeral" },
+  resolveModel: () => ({ model, provider }),
   execution: {
     permissionMode: "plan",
     instructions: "只分析并给出计划，不修改文件。",
