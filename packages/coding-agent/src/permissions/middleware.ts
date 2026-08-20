@@ -7,8 +7,8 @@ import type {
 	ResolvePathOptions,
 	ToolMiddleware,
 } from "@jai/agent";
-import type { CodingExtensionToolCall, CodingToolPermission } from "../sdk/extensions";
-import type { JsonObject } from "../sdk/types";
+import type { CodingExtensionToolCall, CodingToolPermission } from "./tool-permission";
+import type { JsonObject } from "../core/json";
 import type { PermissionApprovalDecision, PermissionRequestSummary, PermissionRisk } from "./approval";
 import { bashPermissionScanArgument, scanBashCommand } from "./bash-parser";
 import { permissionAbortedError, permissionApprovalUnavailableError, permissionDeniedError } from "./errors";
@@ -37,6 +37,12 @@ export interface PermissionMiddlewareOptions {
 	readonly workspaceRoot: string | (() => string);
 	readonly settings: PermissionSettings | (() => PermissionSettings | Promise<PermissionSettings>);
 	readonly extensionToolPermissions?: ReadonlyMap<string, ExtensionToolPermissionResolver>;
+	/**
+	 * Permission resolvers owned by the runtime itself rather than by an Extension. Kept separate from
+	 * `extensionToolPermissions` because that map is rebuilt (cleared and refilled) during Extension
+	 * activation, which would otherwise drop entries the runtime registered before activation ran.
+	 */
+	readonly coreToolPermissions?: ReadonlyMap<string, ExtensionToolPermissionResolver>;
 	/** Extension tools which explicitly own their authorization transaction. */
 	readonly extensionAuthorizedToolNames?: ReadonlySet<string>;
 	readonly requestApproval?: (
@@ -44,7 +50,6 @@ export interface PermissionMiddlewareOptions {
 		signal?: AbortSignal,
 	) => PermissionApprovalDecision | Promise<PermissionApprovalDecision>;
 	readonly persistProjectLocalAllowRules?: (rules: readonly string[]) => void | Promise<void>;
-	readonly persistProjectLocalAllowRule?: (rule: string) => void | Promise<void>;
 	readonly pathCapabilities?: PathCapabilityManager;
 	readonly sessionAllowRules?: Set<string>;
 }
@@ -53,7 +58,9 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 	const sessionAllowRules = options.sessionAllowRules ?? new Set<string>();
 	return async (context, next) => {
 		if (options.extensionAuthorizedToolNames?.has(context.tool.name)) return next();
-		const extensionPermission = options.extensionToolPermissions?.get(context.tool.name);
+		const extensionPermission =
+			options.coreToolPermissions?.get(context.tool.name) ??
+			options.extensionToolPermissions?.get(context.tool.name);
 		if (extensionPermission) {
 			return evaluateExtensionPermission(
 				context.tool.name,
@@ -152,8 +159,6 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 				}
 			} else if (options.persistProjectLocalAllowRules) {
 				await options.persistProjectLocalAllowRules(suggested.rules);
-			} else if (options.persistProjectLocalAllowRule) {
-				for (const rule of suggested.rules) await options.persistProjectLocalAllowRule(rule);
 			}
 		}
 		return capability && options.pathCapabilities

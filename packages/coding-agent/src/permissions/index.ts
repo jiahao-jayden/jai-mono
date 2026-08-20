@@ -33,6 +33,7 @@ export {
 export { evaluatePermission } from "./evaluate";
 export {
 	createPermissionMiddleware,
+	type ExtensionToolPermissionResolver,
 	type PermissionApprovalRequest,
 	type PermissionMiddlewareOptions,
 } from "./middleware";
@@ -62,3 +63,4 @@ export {
 	type PermissionSettings,
 	type ResolvedPermissionSettings,
 } from "./types";
+export type { CodingExtensionToolCall, CodingToolPermission } from "./tool-permission";

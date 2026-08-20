@@ -38,7 +38,7 @@ import {
 	extensionHostOperationFailed,
 } from "./extension-errors";
 import { resolveSdkModel } from "./model";
-import { ToolCatalog } from "./tool-catalog";
+import { ToolCatalog } from "../runtime/tool-catalog";
 import {
 	agentClosedFailure,
 	artifactsFromAppState,
@@ -52,6 +52,12 @@ import {
 	projectPermissionRequest,
 	todosFromAppState,
 } from "./project";
+import {
+	type CodingSchema,
+	createExtensionSessionStateAdapter,
+	emptyPersistedCodingSessionState,
+	type PersistedCodingSessionState,
+} from "./session-state";
 import { resolveCodingToolSelection } from "./tool-selection";
 import type {
 	CodingAgent,
@@ -165,84 +171,6 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 	}
 }
 
-type CodingSchema = typeof sdkConfigDefinition.schema;
-
-function createExtensionSessionStateAdapter<TAppState extends JsonObject>(
-	agent: InternalCodingAgent<CodingSchema, PersistedCodingSessionState<TAppState>>,
-) {
-	return {
-		read: async (extensionId: string) => Result.ok(extensionStateFromAppState(agent.state.appState, extensionId)),
-		update: async (
-			extensionId: string,
-			update: (current: JsonObject | undefined) => ResultType<JsonObject, CodingExtensionError>,
-		) => {
-			let persisted: JsonObject | undefined;
-			let failure: CodingExtensionError | undefined;
-			try {
-				await agent.updateAppState((current) => {
-					const extensions = extensionStatesFromAppState(current);
-					const next = update(extensions[extensionId]);
-					if (next.isErr()) {
-						failure = next.error;
-						// updateAppState cannot return Result, so this is the adapter seam that aborts its write.
-						throw next.error;
-					}
-					const value = structuredClone(next.value);
-					persisted = value;
-					return { ...current, extensions: { ...extensions, [extensionId]: value } };
-				});
-			} catch (cause) {
-				if (failure) return Result.err(failure);
-				return Result.err(
-					extensionHostOperationFailed(
-						"session_state_write",
-						`Extension "${extensionId}" session state could not be persisted`,
-						cause,
-					),
-				);
-			}
-			if (!persisted) {
-				return Result.err(
-					extensionHostOperationFailed(
-						"session_state_write",
-						`Extension "${extensionId}" session state could not be persisted`,
-					),
-				);
-			}
-			return Result.ok(structuredClone(persisted));
-		},
-	};
-}
-
-interface PersistedCodingSessionState<TAppState extends JsonObject> extends JsonObject {
-	readonly version: 1;
-	readonly appState: TAppState;
-	readonly extensions: Readonly<Record<string, JsonObject>>;
-}
-
-function emptyPersistedCodingSessionState<TAppState extends JsonObject>(): PersistedCodingSessionState<TAppState> {
-	return { version: 1, appState: {} as TAppState, extensions: {} };
-}
-
-function extensionStateFromAppState(
-	appState: PersistedCodingSessionState<JsonObject>,
-	extensionId: string,
-): JsonObject | undefined {
-	const value = extensionStatesFromAppState(appState)[extensionId];
-	return value ? structuredClone(value) : undefined;
-}
-
-function extensionStatesFromAppState(
-	appState: PersistedCodingSessionState<JsonObject>,
-): Readonly<Record<string, JsonObject>> {
-	const value = appState.extensions;
-	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-	return Object.fromEntries(
-		Object.entries(value).flatMap(([id, state]) =>
-			state && typeof state === "object" && !Array.isArray(state) ? [[id, state as JsonObject]] : [],
-		),
-	);
-}
 
 class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAppState> {
 	readonly #internal: InternalCodingAgent<CodingSchema, PersistedCodingSessionState<TAppState>>;
@@ -313,6 +241,9 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		prompt: string,
 		options?: CodingPromptOptions,
 	): Promise<ResultType<CodingRunResult<TAppState>, CodingSdkError>> {
+		// Captured outside the run so a rejected execution can still be settled. Stays undefined when
+		// the prompt never passed admission, where there is no run to settle.
+		let admittedEpoch: number | undefined;
 		const run = this.#tail.then(async () => {
 			if (this.#closed) throw agentClosedFailure();
 			if (!prompt.trim()) {
@@ -332,6 +263,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 				});
 			}
 			const admissionEpoch = ++this.#admissionEpoch;
+			admittedEpoch = admissionEpoch;
 			this.#running = true;
 			try {
 				const messages = options?.attachments?.length
@@ -354,7 +286,13 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 			() => undefined,
 		);
 		const settlement = this.#settlementTail.then(() =>
-			run.then(({ outcome, admissionEpoch }) => this.#notifySettledAfterIdle(admissionEpoch, outcome)),
+			run.then(
+				({ outcome, admissionEpoch }) => this.#notifySettledAfterIdle(admissionEpoch, outcome),
+				// A rejected run still settles: Extensions that release locks or flush telemetry in
+				// `agentSettled` need the signal most when the run failed. A prompt rejected before
+				// admission never started a run, so there is nothing to settle.
+				() => (admittedEpoch === undefined ? undefined : this.#notifySettledAfterIdle(admittedEpoch, "failed")),
+			),
 		);
 		this.#settlementTail = settlement
 			.then(
@@ -363,7 +301,12 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 			);
 		return run.then(
 			(value) => Result.ok<CodingRunResult<TAppState>, CodingSdkError>(value.result),
-			(error) => Result.err<CodingRunResult<TAppState>, CodingSdkError>(projectError(error, "admission")),
+			// Failures after admission come from the model/tool loop, not from admission itself, and must
+			// keep their retryable classification (a provider 429 is retryable; an empty prompt is not).
+			(error) =>
+				Result.err<CodingRunResult<TAppState>, CodingSdkError>(
+					projectError(error, admittedEpoch === undefined ? "admission" : "model"),
+				),
 		);
 	}
 
@@ -477,6 +420,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		if (!artifact || event.isError) return;
 		const current = this.#artifacts.get(artifact.id);
 		if (current && current.updatedAt > artifact.updatedAt) return;
+		const previous = this.#artifacts.get(artifact.id);
 		this.#artifacts.set(artifact.id, artifact);
 		const write = this.#artifactWriteTail.then(() =>
 			this.#internal.updateAppState(
@@ -490,7 +434,13 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 					}),
 			),
 		);
-		this.#artifactWriteTail = write.catch(() => {});
+		// Roll the in-memory entry back when the write fails, so `state.artifacts` never advertises an
+		// artifact that a resumed session would not find.
+		this.#artifactWriteTail = write.catch(() => {
+			if (this.#artifacts.get(artifact.id) !== artifact) return;
+			if (previous) this.#artifacts.set(artifact.id, previous);
+			else this.#artifacts.delete(artifact.id);
+		});
 	}
 
 	async #notifySettledAfterIdle(admissionEpoch: number, outcome: CodingTurnEndInput["outcome"]): Promise<void> {

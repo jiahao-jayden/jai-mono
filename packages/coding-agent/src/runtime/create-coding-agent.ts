@@ -29,16 +29,16 @@ import {
 import { connectMcpServers, type McpRuntime, type McpServer } from "../mcp";
 import {
 	createPermissionMiddleware,
+	type ExtensionToolPermissionResolver,
 	type PermissionAction,
 	type PermissionApprovalDecision,
 	type PermissionApprovalRequest,
 	type PermissionConfig,
 	type PermissionSettings,
 } from "../permissions";
-import type { CodingExtensionSkill } from "../sdk/extensions";
-import type { ToolCatalog } from "../sdk/tool-catalog";
-import type { CodingToolName } from "../sdk/types";
-import { CodingSkillsRuntime, type CodingSkillsRuntimeOptions } from "../skills";
+import type { ToolCatalog } from "./tool-catalog";
+import type { CodingToolName } from "../tools/names";
+import { type CodingPluginSkillCard, CodingSkillsRuntime, type CodingSkillsRuntimeOptions } from "../skills";
 import {
 	type CodingToolOptions,
 	createSpawnAgentTool,
@@ -64,7 +64,6 @@ export interface CodingAgentPermissionOptions<TSchema extends TObject> {
 		signal?: AbortSignal,
 	) => PermissionApprovalDecision | Promise<PermissionApprovalDecision>;
 	readonly persistProjectLocalAllowRules?: (rules: readonly string[]) => void | Promise<void>;
-	readonly persistProjectLocalAllowRule?: (rule: string) => void | Promise<void>;
 }
 
 export interface CodingAgentRuntimeOptions {
@@ -103,15 +102,10 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 	readonly skills?: false | CodingAgentSkillsOptions;
 	readonly tools?: Omit<CodingToolOptions, "cwd">;
 	readonly enabledTools?: ReadonlySet<CodingToolName>;
-	readonly extensionSkills?: readonly CodingExtensionSkill[];
+	readonly extensionSkills?: readonly CodingPluginSkillCard[];
 	readonly extensionTools?: readonly AgentTool[];
 	readonly extensionToolMiddleware?: ToolMiddleware;
-	readonly extensionToolPermissions?: ReadonlyMap<
-		string,
-		(
-			call: import("../sdk/extensions").CodingExtensionToolCall<import("../sdk/types").JsonObject>,
-		) => import("../sdk/extensions").CodingToolPermission | Promise<import("../sdk/extensions").CodingToolPermission>
-	>;
+	readonly extensionToolPermissions?: ReadonlyMap<string, ExtensionToolPermissionResolver>;
 	readonly extensionAuthorizedToolNames?: ReadonlySet<string>;
 	extensionToolCatalog?: ToolCatalog;
 	readonly extensionBeforeModelCall?: (messages: readonly AgentMessage[]) => Promise<AgentMessage[]>;
@@ -140,12 +134,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	readonly #mcp?: McpRuntime;
 	readonly #attachments: CodingAttachmentRun;
 	readonly #extensionToolCatalog: ExtensionToolCatalogSlot;
-	readonly #extensionToolPermissions: Map<
-		string,
-		(
-			call: import("../sdk/extensions").CodingExtensionToolCall<import("../sdk/types").JsonObject>,
-		) => import("../sdk/extensions").CodingToolPermission | Promise<import("../sdk/extensions").CodingToolPermission>
-	>;
+	readonly #coreToolPermissions: Map<string, ExtensionToolPermissionResolver>;
 
 	constructor(
 		agent: Agent<TAppState>,
@@ -156,12 +145,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		mcp?: McpRuntime,
 		attachments: CodingAttachmentRun = new CodingAttachmentRun(),
 		extensionToolCatalog: ExtensionToolCatalogSlot = {},
-		extensionToolPermissions = new Map<
-			string,
-			(
-				call: import("../sdk/extensions").CodingExtensionToolCall<import("../sdk/types").JsonObject>,
-			) => import("../sdk/extensions").CodingToolPermission | Promise<import("../sdk/extensions").CodingToolPermission>
-		>(),
+		coreToolPermissions: Map<string, ExtensionToolPermissionResolver> = new Map(),
 	) {
 		this.#agent = agent;
 		this.configStore = configStore;
@@ -171,7 +155,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#mcp = mcp;
 		this.#attachments = attachments;
 		this.#extensionToolCatalog = extensionToolCatalog;
-		this.#extensionToolPermissions = extensionToolPermissions;
+		this.#coreToolPermissions = coreToolPermissions;
 	}
 
 	get configSnapshot(): ConfigSnapshot<TSchema> {
@@ -192,7 +176,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 
 	setExtensionToolCatalog(catalog: ToolCatalog): void {
 		this.#extensionToolCatalog.current = catalog;
-		this.#extensionToolPermissions.set("SearchTools", () => catalog.permission);
+		this.#coreToolPermissions.set("SearchTools", () => catalog.permission);
 		this.#agent.setToolResolver((staticTools) => catalog.toolsForRequest(staticTools));
 		this.#agent.addTools([catalog.searchTool]);
 	}
@@ -274,14 +258,8 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const sessionHandle = await openSession(sessionStore, options.sessionId, options.appState ?? ({} as TAppState));
 	const selectPermissionSettings = options.permissions?.selectSettings ?? defaultPermissionSettings;
 	const sessionAllowRules = new Set<string>();
-	const persistSingleProjectLocalAllowRule = options.permissions?.persistProjectLocalAllowRule;
 	const persistProjectLocalAllowRules =
 		options.permissions?.persistProjectLocalAllowRules ??
-		(persistSingleProjectLocalAllowRule
-			? async (rules: readonly string[]) => {
-					for (const rule of rules) await persistSingleProjectLocalAllowRule(rule);
-				}
-			: undefined) ??
 		(async (rules: readonly string[]) => {
 			const next = await persistBashAllowRules(configStore, rules);
 			if (next) runtime.snapshot = next;
@@ -337,14 +315,15 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			})
 		: undefined;
 	const extensionToolCatalog: ExtensionToolCatalogSlot = { current: options.extensionToolCatalog };
-	const extensionToolPermissions = new Map(options.extensionToolPermissions ?? []);
+	const coreToolPermissions = new Map<string, ExtensionToolPermissionResolver>();
 	if (extensionToolCatalog.current) {
-		extensionToolPermissions.set("SearchTools", () => extensionToolCatalog.current!.permission);
+		coreToolPermissions.set("SearchTools", () => extensionToolCatalog.current!.permission);
 	}
 	const permissionMiddleware = createPermissionMiddleware({
 		workspaceRoot: options.executionContext.localFileAccess ? options.executionContext.cwd : process.cwd(),
 		settings: () => selectPermissionSettings(runtime.snapshot),
-		extensionToolPermissions,
+		extensionToolPermissions: options.extensionToolPermissions,
+		coreToolPermissions,
 		extensionAuthorizedToolNames: options.extensionAuthorizedToolNames,
 		requestApproval: options.permissions?.requestApproval,
 		persistProjectLocalAllowRules,
@@ -464,7 +443,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		mcp,
 		attachments,
 		extensionToolCatalog,
-		extensionToolPermissions,
+		coreToolPermissions,
 	);
 }
 
@@ -518,9 +497,12 @@ function finalAssistantText(messages: readonly AgentMessage[]): string {
 
 function defaultPermissionSettings<TSchema extends TObject>(snapshot: ConfigSnapshot<TSchema>): PermissionSettings {
 	const settings = snapshot.settings as Readonly<Record<string, unknown>>;
-	const permissions = settings.permissions;
-	const legacy = isRecord(permissions) ? (permissions as PermissionSettings) : {};
-	return isRecord(settings.permission) ? { ...legacy, permission: settings.permission as PermissionConfig } : legacy;
+	// Two complementary shapes, not two generations: `permissions` carries the mode and the
+	// allow/ask/deny lists, `permission` carries the per-tool config tree. Both feed one settings object.
+	const modeAndRules = isRecord(settings.permissions) ? (settings.permissions as PermissionSettings) : {};
+	return isRecord(settings.permission)
+		? { ...modeAndRules, permission: settings.permission as PermissionConfig }
+		: modeAndRules;
 }
 
 async function persistBashAllowRules<TSchema extends TObject>(
