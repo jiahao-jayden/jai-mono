@@ -1,10 +1,9 @@
-import {
-	type CodingAgentSettings,
-	CodingConfigStore,
-	codingAgentConfigDefinition,
-	discoverConfiguredModels,
-	type ModelCatalogStore,
-} from "@jai/coding-agent/jai-host";
+import type {
+	CodingExtensionApprovalDecision,
+	CodingExtensionApprovalRequest,
+	CodingExtensionRuntimeAdapter,
+	JsonObject,
+} from "@jai/coding-agent";
 import type { OAuthTokenResponse } from "@jai/connector";
 import type {
 	DesktopProviderApiKeyRevealResult,
@@ -15,6 +14,13 @@ import type {
 } from "../../shared/desktop-rpc";
 import type { CodingBusinessService, ProviderModelInventory } from "../data";
 import {
+	type CodingAgentSettings,
+	desktopCodingConfigDefinition,
+	discoverConfiguredModels,
+	type ResolvedDesktopSdkAgentInput,
+	resolveDesktopSdkAgentInput,
+} from "./coding-settings";
+import {
 	findDesktopConnectorOAuthApplication,
 	projectConnectorConfig,
 	removeConnectorOAuthToken,
@@ -23,6 +29,7 @@ import {
 	toStoredConnectorOAuthToken,
 	validateConnectorConfigInput,
 } from "./connector";
+import type { ModelCatalogStore } from "./model-catalog";
 import {
 	projectProviderConfig,
 	providerConfigError,
@@ -30,12 +37,13 @@ import {
 	toStoredProfile,
 	validateProviderProfiles,
 } from "./provider";
+import { CodingConfigStore } from "./store";
 import { isSystemConfigInput, projectSystemConfig, toStoredSystemConfig } from "./system";
 
 const profileIdPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 export class DesktopConfigService {
-	readonly #store: CodingConfigStore<typeof codingAgentConfigDefinition.schema>;
+	readonly #store: CodingConfigStore<typeof desktopCodingConfigDefinition.schema>;
 	readonly #catalog?: ModelCatalogStore;
 	readonly #inventory?: Pick<
 		CodingBusinessService,
@@ -59,7 +67,7 @@ export class DesktopConfigService {
 			>;
 		} = {},
 	) {
-		this.#store = new CodingConfigStore(codingAgentConfigDefinition, {
+		this.#store = new CodingConfigStore(desktopCodingConfigDefinition, {
 			homeDir: options.homeDir,
 			environment: options.environment,
 			workspaceTrusted: false,
@@ -147,6 +155,54 @@ export class DesktopConfigService {
 		};
 	}
 
+	async resolveAgentInput(modelRef: string): Promise<ResolvedDesktopSdkAgentInput> {
+		const separator = modelRef.indexOf("/");
+		const profileId = separator > 0 ? modelRef.slice(0, separator) : "";
+		const inventory = profileId ? this.#inventory?.getProviderModelInventory(profileId) : undefined;
+		const snapshot = await this.#store.load();
+		return resolveDesktopSdkAgentInput(snapshot.settings, modelRef, this.#catalog?.cached?.catalog, {
+			...(inventory ? { availableModelIds: inventory.modelIds } : {}),
+			requireVerifiedCapabilities: true,
+		});
+	}
+
+	createExtensionRuntimeAdapter(options: {
+		readonly requestApproval: (
+			request: CodingExtensionApprovalRequest,
+			signal?: AbortSignal,
+		) => Promise<CodingExtensionApprovalDecision>;
+		readonly onConfigurationWritten?: (input: {
+			readonly extensionId: string;
+			readonly scope: "user" | "project";
+			readonly value: JsonObject;
+		}) => void | Promise<void>;
+	}): CodingExtensionRuntimeAdapter {
+		return {
+			readConfiguration: async ({ extensionId, scope }) => {
+				const { settings } = await this.#readExtensionConfigurationScope(scope);
+				const value = extensionId === "connector" ? settings.connector : settings.extensions?.[extensionId];
+				return value === undefined ? undefined : (structuredClone(value) as JsonObject);
+			},
+			writeConfiguration: async ({ extensionId, scope, value }) => {
+				const current = await this.#readExtensionConfigurationScope(scope);
+				const settings = structuredClone(current.settings);
+				if (extensionId === "connector") settings.connector = value as CodingAgentSettings["connector"];
+				else settings.extensions = { ...(settings.extensions ?? {}), [extensionId]: structuredClone(value) };
+				const snapshot = await this.#store.writeScope("user", settings, {
+					expectedRevision: current.revision,
+				});
+				const persisted =
+					extensionId === "connector" ? snapshot.settings.connector : snapshot.settings.extensions?.[extensionId];
+				if (persisted === undefined)
+					throw invalidInput(`Extension "${extensionId}" configuration was not persisted`);
+				const projected = structuredClone(persisted) as JsonObject;
+				await options.onConfigurationWritten?.({ extensionId, scope, value: projected });
+				return projected;
+			},
+			requestApproval: options.requestApproval,
+		};
+	}
+
 	async revealApiKey(profileId: string): Promise<DesktopProviderApiKeyRevealResult> {
 		if (!profileIdPattern.test(profileId)) throw invalidInput("Invalid Provider profile");
 		const userScope = await this.#store.readScope("user");
@@ -196,6 +252,11 @@ export class DesktopConfigService {
 
 	close(): void {
 		this.#store.close();
+	}
+
+	async #readExtensionConfigurationScope(scope: "user" | "project") {
+		if (scope === "project") throw invalidInput("Project-scoped Extension configuration is unavailable in Desktop");
+		return this.#store.readScope("user");
 	}
 
 	#inventories(settings: Readonly<CodingAgentSettings>): ReadonlyMap<string, ProviderModelInventory> {

@@ -1,5 +1,5 @@
-import { ModelCatalogStore } from "@jai/coding-agent/jai-host";
 import { mainLog } from "./logger";
+import { ModelCatalogStore } from "./config/model-catalog";
 
 let onCatalogUpdated: (() => void) | undefined;
 

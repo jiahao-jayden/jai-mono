@@ -4,8 +4,6 @@ import type {
 	CodingAgentMessage,
 	CodingAgentState,
 	CodingAgent,
-	CodingConnectorApprovalRequest,
-	CodingPrompt,
 	CodingRunResult,
 	CodingSdkError,
 	type JsonObject,
@@ -114,8 +112,72 @@ describe("DesktopAgentHost", () => {
 			host.resolvePermission({ requestId: "permission-1", decision: "deny" });
 			throw new Error("Expected duplicate permission resolution to fail");
 		} catch (error) {
-			expect(getErrorCode(error)).toBe("coding_permission.request_not_found");
+			expect(getErrorCode(error)).toBe("desktop_agent.approval_request_not_found");
 		}
+		host.close();
+	});
+
+	test("Extension approval 只投影安全摘要，allow 可一次性消费", async () => {
+		const envelopes: DesktopAgentEventEnvelope[] = [];
+		let factoryContext: DesktopAgentFactoryContext | undefined;
+		const agent = new FakeAgent(async () => {
+			const decision = await factoryContext!.requestExtensionApproval({
+				requestId: "connector-approval-1",
+				extensionId: "connector",
+				operationId: "github.create_issue",
+				sessionId: "session-1",
+				toolCallId: "call-1",
+				reason: "Create issue",
+				sideEffect: "write",
+				dataSensitivity: "sensitive",
+				presentation: {
+					title: "Connector action requests permission",
+					attributes: [
+						{ label: "Action", value: "github.create_issue" },
+						{ label: "Input fields", value: "title" },
+					],
+				},
+			});
+			expect(decision).toBe("allow");
+			return [];
+		});
+		const host = new DesktopAgentHost((event) => envelopes.push(event), async (context) => {
+			factoryContext = context;
+			return agent;
+		});
+
+		await host.send(input("create issue"));
+		await waitFor(() =>
+			envelopes.some(
+				(entry) => entry.event.type === "transcript_upsert" && entry.event.item.kind === "extension_permission",
+			),
+		);
+		expect(JSON.stringify(envelopes)).not.toContain("prepared-token");
+		const pending = host.getSnapshot("session-1").items.find((item) => item.kind === "extension_permission");
+		expect(pending).toMatchObject({
+			kind: "extension_permission",
+			status: "pending",
+			request: {
+				extensionId: "connector",
+				operationId: "github.create_issue",
+				presentation: {
+					attributes: [
+						{ label: "Action", value: "github.create_issue" },
+						{ label: "Input fields", value: "title" },
+					],
+				},
+			},
+		});
+
+		host.resolveExtensionPermission({ kind: "extension", requestId: "connector-approval-1", decision: "allow" });
+		await agent.finished;
+		expect(host.getSnapshot("session-1").items).toContainEqual(
+			expect.objectContaining({ kind: "extension_permission", status: "allowed" }),
+		);
+
+		expect(() =>
+			host.resolveExtensionPermission({ kind: "extension", requestId: "connector-approval-1", decision: "deny" }),
+		).toThrow();
 		host.close();
 	});
 
@@ -203,61 +265,6 @@ describe("DesktopAgentHost", () => {
 					entry.event.item.status === "pending",
 			),
 		).toBe(true);
-		host.close();
-	});
-
-	test("Connector approval 使用独立 DTO，并支持 allow once 生命周期", async () => {
-		const envelopes: DesktopAgentEventEnvelope[] = [];
-		let factoryContext: DesktopAgentFactoryContext | undefined;
-		const agent = new FakeAgent(async () => {
-			const decision = await factoryContext!.requestConnectorApproval({
-				requestId: "connector-approval-1",
-				sessionId: "session-1",
-				toolCallId: "call-connector-1",
-				toolName: "connector__execute_action",
-				actionId: "github.create_issue",
-				reason: "Create a GitHub issue.",
-				sideEffect: "write",
-				dataSensitivity: "normal",
-				inputKeys: ["body", "owner", "repo", "title"],
-				expiresAt: Date.now() + 300_000,
-			} satisfies CodingConnectorApprovalRequest);
-			expect(decision).toBe("allowOnce");
-			return [];
-		});
-		const host = new DesktopAgentHost((event) => envelopes.push(event), async (context) => {
-			factoryContext = context;
-			return agent;
-		});
-
-		await host.send(input("create issue"));
-		await waitFor(() =>
-			envelopes.some(
-				(entry) =>
-					entry.event.type === "transcript_upsert" &&
-					entry.event.item.kind === "connector_permission" &&
-					entry.event.item.status === "pending",
-			),
-		);
-		expect(JSON.stringify(envelopes)).not.toContain("approval-token-1");
-		expect(JSON.stringify(envelopes)).toContain("github.create_issue");
-		host.resolveConnectorPermission({
-			kind: "connector",
-			requestId: "connector-approval-1",
-			decision: "allowOnce",
-		});
-		await agent.finished;
-
-		try {
-			host.resolveConnectorPermission({
-				kind: "connector",
-				requestId: "connector-approval-1",
-				decision: "deny",
-			});
-			throw new Error("Expected duplicate Connector resolution to fail");
-		} catch (error) {
-			expect(getErrorCode(error)).toBe("coding_permission.request_not_found");
-		}
 		host.close();
 	});
 
@@ -882,7 +889,6 @@ describe("DesktopAgentHost", () => {
 
 class FakeAgent implements CodingAgent {
 	readonly sessionId = "session-1";
-	readonly execution = {};
 	readonly #listeners = new Set<(event: CodingAgentEvent) => void>();
 	readonly #invoke: (agent: FakeAgent, input: string) => Promise<CodingAgentMessage[]>;
 	finished: Promise<CodingAgentMessage[]> = Promise.resolve([]);
@@ -909,8 +915,8 @@ class FakeAgent implements CodingAgent {
 		};
 	}
 
-	prompt(input: CodingPrompt): Promise<Result<CodingRunResult, CodingSdkError>> {
-		this.finished = this.#invoke(this, input.prompt);
+	prompt(input: string): Promise<Result<CodingRunResult, CodingSdkError>> {
+		this.finished = this.#invoke(this, input);
 		return this.finished.then((messages) => Result.ok({ sessionId: this.sessionId, messages, state: this.state }));
 	}
 
@@ -926,16 +932,16 @@ class FakeAgent implements CodingAgent {
 	abort(): Promise<Result<void, CodingSdkError>> {
 		return Promise.resolve(Result.ok(undefined));
 	}
-	steer(_input: CodingPrompt): Promise<Result<void, CodingSdkError>> {
+	steer(_input: string): Promise<Result<void, CodingSdkError>> {
 		return Promise.resolve(Result.ok(undefined));
 	}
-	followUp(_input: CodingPrompt): Promise<Result<void, CodingSdkError>> {
+	followUp(_input: string): Promise<Result<void, CodingSdkError>> {
 		return Promise.resolve(Result.ok(undefined));
 	}
 	waitForIdle(): Promise<Result<void, CodingSdkError>> {
 		return this.finished.then(() => Result.ok(undefined));
 	}
-	generateTitle(): Promise<Result<string, CodingSdkError>> {
+	generateTitle(_firstMessage: string): Promise<Result<string, CodingSdkError>> {
 		return Promise.resolve(Result.ok("Test title"));
 	}
 	close(): Promise<Result<void, CodingSdkError>> {
@@ -945,7 +951,6 @@ class FakeAgent implements CodingAgent {
 
 class RebindableFakeAgent implements CodingAgent {
 	readonly sessionId = "session-1";
-	readonly execution = {};
 	readonly #listeners = new Set<(event: CodingAgentEvent) => void>();
 	readonly toolStarted: Promise<void>;
 	readonly #resolveToolStarted: () => void;
@@ -974,7 +979,7 @@ class RebindableFakeAgent implements CodingAgent {
 		[this.#aborted, this.#resolveAborted] = deferred();
 	}
 
-	prompt(): Promise<Result<CodingRunResult, CodingSdkError>> {
+	prompt(_input: string): Promise<Result<CodingRunResult, CodingSdkError>> {
 		this.finished = this.#run();
 		return this.finished.then((messages) => Result.ok({ sessionId: this.sessionId, messages, state: this.state }));
 	}
@@ -998,13 +1003,13 @@ class RebindableFakeAgent implements CodingAgent {
 		return this.finished.then(() => Result.ok(undefined));
 	}
 
-	steer(_input: CodingPrompt): Promise<Result<void, CodingSdkError>> {
+	steer(_input: string): Promise<Result<void, CodingSdkError>> {
 		return Promise.resolve(Result.ok(undefined));
 	}
-	followUp(_input: CodingPrompt): Promise<Result<void, CodingSdkError>> {
+	followUp(_input: string): Promise<Result<void, CodingSdkError>> {
 		return Promise.resolve(Result.ok(undefined));
 	}
-	generateTitle(): Promise<Result<string, CodingSdkError>> {
+	generateTitle(_firstMessage: string): Promise<Result<string, CodingSdkError>> {
 		return Promise.resolve(Result.ok("Test title"));
 	}
 	close(): Promise<Result<void, CodingSdkError>> {

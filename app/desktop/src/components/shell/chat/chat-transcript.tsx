@@ -47,7 +47,7 @@ export function groupTranscriptItems(items: readonly DesktopTranscriptItem[]): (
 
 	for (const item of items) {
 		if (item.kind === "message" && item.role === "toolResult") continue;
-		if (item.kind === "permission" || item.kind === "connector_permission") continue;
+		if (item.kind === "permission" || item.kind === "extension_permission") continue;
 		if (isWorkItem(item)) {
 			const turnId = workItemTurnId(item);
 			const previous = rows.at(-1);
@@ -118,7 +118,7 @@ export function TranscriptItem({ item, animate = false }: { item: DesktopTranscr
 		);
 	}
 
-	if (item.kind === "permission" || item.kind === "connector_permission") {
+	if (item.kind === "permission" || item.kind === "extension_permission") {
 		return null;
 	}
 

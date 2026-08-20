@@ -610,11 +610,11 @@ function PermissionTabs({
 	readonly ariaLabel: string;
 	readonly onChange: (value: DesktopConnectorPermission) => void;
 }) {
-	const CheckIcon = useIcon("permission-allow");
 	const AskIcon = useIcon("permission-ask");
+	const CheckIcon = useIcon("permission-allow");
 	const DenyIcon = useIcon("permission-deny");
-	const icons = { allow: CheckIcon, ask: AskIcon, deny: DenyIcon };
-	const labels = { allow: "Always allow", ask: "Needs approval", deny: "Blocked" } satisfies Record<
+	const icons = { ask: AskIcon, allow: CheckIcon, deny: DenyIcon };
+	const labels = { ask: "Ask every time", allow: "Always allow", deny: "Blocked" } satisfies Record<
 		DesktopConnectorPermission,
 		string
 	>;
@@ -622,7 +622,7 @@ function PermissionTabs({
 	return (
 		<fieldset className="flex items-center gap-0.5 rounded-lg border border-border/55 bg-muted/55 p-0.5">
 			<legend className="sr-only">{ariaLabel}</legend>
-			{(["allow", "ask", "deny"] as const).map((permission) => {
+			{(["ask", "allow", "deny"] as const).map((permission) => {
 				const Icon = icons[permission];
 				return (
 					<Tooltip key={permission} content={labels[permission]}>
@@ -656,11 +656,11 @@ function PermissionSelect({
 	readonly ariaLabel: string;
 	readonly onChange: (value: DesktopConnectorPermission) => void;
 }) {
-	const CheckIcon = useIcon("permission-allow");
 	const AskIcon = useIcon("permission-ask");
+	const CheckIcon = useIcon("permission-allow");
 	const DenyIcon = useIcon("permission-deny");
 	const CustomIcon = useIcon("dot");
-	const icons = { allow: CheckIcon, ask: AskIcon, deny: DenyIcon };
+	const icons = { ask: AskIcon, allow: CheckIcon, deny: DenyIcon };
 	const selectValue = value === "mixed" ? "custom" : value;
 	const TriggerIcon = value === "mixed" ? CustomIcon : icons[value];
 
@@ -668,17 +668,17 @@ function PermissionSelect({
 		<Select
 			value={selectValue}
 			onValueChange={(nextValue) => {
-				if (nextValue === "allow" || nextValue === "ask" || nextValue === "deny") onChange(nextValue);
+				if (nextValue === "ask" || nextValue === "allow" || nextValue === "deny") onChange(nextValue);
 			}}
 		>
 			<SelectTrigger aria-label={ariaLabel} icon={TriggerIcon} className="w-44 min-w-0" />
 			<SelectContent>
 				<SelectGroup>
-					<SelectItem index={0} value="allow" icon={CheckIcon}>
-						Always allow
+					<SelectItem index={0} value="ask" icon={AskIcon}>
+						Ask every time
 					</SelectItem>
-					<SelectItem index={1} value="ask" icon={AskIcon}>
-						Needs approval
+					<SelectItem index={1} value="allow" icon={CheckIcon}>
+						Always allow
 					</SelectItem>
 					<SelectItem index={2} value="deny" icon={DenyIcon}>
 						Blocked

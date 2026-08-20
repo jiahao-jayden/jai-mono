@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { desktop } from "@/lib/desktop";
+import { desktop, getDesktopRemoteRpcFailure } from "@/lib/desktop";
 import { createDesktopAgentEventDispatcher, type DesktopAgentProjectionUpdate } from "@/lib/desktop-agent";
 import { invalidateRecentSessions, upsertRecentSession } from "@/lib/desktop-query";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
+	DesktopAgentCreationFailureReason,
 	DesktopAgentEvent,
 	DesktopAgentMode,
 	DesktopAgentSnapshot,
@@ -137,10 +138,11 @@ export function useChat(options: UseChatOptions): Chat {
 				mode: head.mode,
 			});
 			latest.onQueuedMessageAccepted(head.id);
-		} catch {
+		} catch (error) {
+			const failure = getDesktopRemoteRpcFailure(error);
 			setState((previous) => ({
 				...previous,
-				error: "队列消息未发送。请检查模型配置后重试。",
+				error: chatFailureMessage({ operation: "queue", code: failure?.tag, reason: failure?.reason }),
 				submitting: false,
 			}));
 		} finally {
@@ -215,10 +217,11 @@ export function useChat(options: UseChatOptions): Chat {
 				latest.onDraftAccepted();
 				void invalidateRecentSessions();
 				return true;
-			} catch {
+			} catch (error) {
+				const failure = getDesktopRemoteRpcFailure(error);
 				setState((previous) => ({
 					...previous,
-					error: "消息未发送。请检查模型配置后重试。",
+					error: chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
 					submitting: false,
 				}));
 				return false;
@@ -308,11 +311,70 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 			return {
 				...state,
 				agentStatus: "idle",
-				error: event.error.message,
+				error: chatFailureMessage({ operation: "runtime", code: event.error.code }),
 				isLoading: false,
 				lastSeq: seq,
 				submitting: false,
 			};
+	}
+}
+
+export function chatFailureMessage(input: {
+	readonly code?: string;
+	readonly operation: "message" | "queue" | "runtime";
+	readonly reason?: DesktopAgentCreationFailureReason;
+}): string {
+	switch (input.code) {
+		case "desktop_provider.missing_credentials":
+		case "coding_sdk.missing_credentials":
+			return "当前模型尚未配置凭证。请前往 Settings > Providers 完成配置。";
+		case "desktop_provider.model_inventory_missing":
+			return "此 Provider 尚未获取模型清单。请前往 Settings > Providers 获取模型后重试。";
+		case "desktop_provider.model_not_verified":
+			return "所选模型尚未完成能力验证。请在 Settings > Providers 选择可用模型。";
+		case "desktop_provider.model_capability_unsupported":
+			return "所选模型不支持 Agent 所需的工具调用能力。请更换模型。";
+		case "desktop_provider.model_not_found":
+			return "所选模型已不在 Provider 的最新清单中。请重新获取模型并选择可用模型。";
+		case "desktop_provider.model_disabled":
+			return "所选模型已被禁用。请在 Settings > Providers 启用后重试。";
+		case "desktop_provider.profile_not_found":
+			return "当前模型所属的 Provider 已不存在。请重新选择模型。";
+		case "desktop_provider.profile_disabled":
+			return "当前 Provider 已被禁用。请启用后重试。";
+		case "desktop_provider.invalid_model_ref":
+		case "coding_sdk.invalid_model_ref":
+			return "所选模型无效。请重新选择模型。";
+		case "coding_sdk.unsupported_provider":
+		case "coding_sdk.invalid_provider_configuration":
+			return "当前 Provider 配置无效。请前往 Settings > Providers 检查后重试。";
+		case "desktop_agent.creation_failed":
+			return agentCreationFailureMessage(input.reason);
+		default:
+			return defaultChatFailureMessage(input.operation);
+	}
+}
+
+function agentCreationFailureMessage(reason: DesktopAgentCreationFailureReason | undefined): string {
+	switch (reason) {
+		case "model_unavailable":
+			return "模型运行时未初始化。请重新选择模型后重试。";
+		case "provider_configuration_invalid":
+			return "当前 Provider 配置无效。请前往 Settings > Providers 检查后重试。";
+		case "agent_initialization_failed":
+		case undefined:
+			return "Agent 未能启动。请重试；如果仍然失败，请重启应用。";
+	}
+}
+
+function defaultChatFailureMessage(operation: "message" | "queue" | "runtime"): string {
+	switch (operation) {
+		case "queue":
+			return "队列消息未发送。请稍后重试。";
+		case "runtime":
+			return "当前响应未完成。请重试。";
+		case "message":
+			return "消息未发送。请稍后重试。";
 	}
 }
 
@@ -348,10 +410,7 @@ function upsertMessage(
 	return next;
 }
 
-function upsertArtifact(
-	artifacts: readonly DesktopArtifact[],
-	artifact: DesktopArtifact,
-): readonly DesktopArtifact[] {
+function upsertArtifact(artifacts: readonly DesktopArtifact[], artifact: DesktopArtifact): readonly DesktopArtifact[] {
 	const current = artifacts.filter((candidate) => candidate.id !== artifact.id);
 	return [...current, artifact].toSorted((left, right) => right.updatedAt - left.updatedAt);
 }

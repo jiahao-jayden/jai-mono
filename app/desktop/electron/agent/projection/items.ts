@@ -1,4 +1,4 @@
-import { type CodingAgentMessage, codingAgentToolNames } from "@jai/coding-agent";
+import type { CodingAgentMessage } from "@jai/coding-agent";
 import type {
 	DesktopMessageAttachment,
 	DesktopMessageItem,
@@ -125,8 +125,8 @@ export function assistantPartItem({
 		};
 	}
 	if (part.type === "toolCall") {
-		if (part.name === codingAgentToolNames.updateTodos) return undefined;
-		if (part.name === codingAgentToolNames.spawnAgent) {
+		if (part.name === "UpdateTodos") return undefined;
+		if (part.name === "SpawnAgent") {
 			const title = stringArgument(part.arguments, "title");
 			if (!title) return undefined;
 			return subagentItem({ toolCallId: part.id, turnId, title, status: "running" });

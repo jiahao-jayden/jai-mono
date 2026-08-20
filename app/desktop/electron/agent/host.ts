@@ -3,12 +3,11 @@ import type {
 	CodingAgentEvent,
 	CodingAgentMessage,
 	CodingAttachment,
-	CodingConnectorApprovalDecision,
-	CodingConnectorApprovalRequest,
+	CodingExtensionApprovalDecision,
+	CodingExtensionApprovalRequest,
 	CodingPermissionDecision,
 	CodingPermissionRequest,
 } from "@jai/coding-agent";
-import { PermissionApprovalRegistry } from "@jai/coding-agent/jai-host";
 import { toErrorEnvelope } from "@jai/common";
 import { TaggedError } from "better-result";
 import type {
@@ -19,14 +18,15 @@ import type {
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
 	DesktopArtifact,
-	DesktopConnectorApprovalRequest,
-	DesktopConnectorPermissionItem,
-	DesktopConnectorPermissionResolution,
+	DesktopExtensionApprovalRequest,
+	DesktopExtensionPermissionItem,
+	DesktopExtensionPermissionResolution,
 	DesktopMessageItem,
 	DesktopPermissionItem,
 	DesktopTodos,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
+import { DesktopApprovalRegistry } from "./approval-registry";
 import { sortArtifacts } from "./artifacts";
 import { projectSessionTodos } from "./projection/durable";
 import { assistantPartItem, type DesktopAssistantItem, userMessageItem } from "./projection/items";
@@ -69,10 +69,10 @@ export interface DesktopAgentFactoryContext {
 		request: CodingPermissionRequest,
 		signal?: AbortSignal,
 	) => Promise<CodingPermissionDecision>;
-	readonly requestConnectorApproval: (
-		request: CodingConnectorApprovalRequest,
+	readonly requestExtensionApproval: (
+		request: CodingExtensionApprovalRequest,
 		signal?: AbortSignal,
-	) => Promise<CodingConnectorApprovalDecision>;
+	) => Promise<CodingExtensionApprovalDecision>;
 }
 
 export type DesktopAgentFactory = (context: DesktopAgentFactoryContext) => Promise<CodingAgent>;
@@ -110,10 +110,10 @@ interface SessionRuntime {
 export class DesktopAgentHost {
 	readonly #sessions = new Map<string, SessionRuntime>();
 	readonly #creating = new Map<string, Promise<SessionRuntime>>();
-	readonly #approvals = new PermissionApprovalRegistry<CodingPermissionRequest, CodingPermissionDecision>();
-	readonly #connectorApprovals = new PermissionApprovalRegistry<
-		CodingConnectorApprovalRequest,
-		CodingConnectorApprovalDecision
+	readonly #approvals = new DesktopApprovalRegistry<CodingPermissionRequest, CodingPermissionDecision>();
+	readonly #extensionApprovals = new DesktopApprovalRegistry<
+		DesktopExtensionApprovalRequest,
+		CodingExtensionApprovalDecision
 	>();
 	readonly #emit: DesktopAgentEventSink;
 	#factory?: DesktopAgentFactory;
@@ -153,8 +153,7 @@ export class DesktopAgentHost {
 		runtime.pendingRuns += 1;
 		runtime.status = "running";
 		this.#emitNow(runtime, { type: "status", status: "running" });
-		const run = runtime.agent.prompt({
-			prompt: input.message,
+		const run = runtime.agent.prompt(input.message, {
 			...(input.resolvedAttachments?.length ? { attachments: input.resolvedAttachments } : {}),
 		});
 		void run.then(
@@ -162,7 +161,7 @@ export class DesktopAgentHost {
 				if (result.isErr()) {
 					this.#emitNow(runtime, {
 						type: "runtime_error",
-						error: { code: result.error.code, message: result.error.message },
+						error: { code: result.error.code },
 					});
 					this.#finishRun(runtime);
 					this.#closeIfInvalidated(runtime);
@@ -188,7 +187,7 @@ export class DesktopAgentHost {
 				finish();
 			},
 			(error) => {
-				this.#emitNow(runtime, { type: "runtime_error", error: toErrorEnvelope(error) });
+				this.#emitNow(runtime, { type: "runtime_error", error: { code: toErrorEnvelope(error).code } });
 				this.#finishRun(runtime);
 				this.#closeIfInvalidated(runtime);
 			},
@@ -223,26 +222,23 @@ export class DesktopAgentHost {
 		const runtime = this.#requireSession(sessionId);
 		void runtime.agent.abort();
 		this.#approvals.cancelSession(sessionId);
-		this.#connectorApprovals.cancelSession(sessionId);
+		this.#extensionApprovals.cancelSession(sessionId);
 	}
 
 	steer(input: DesktopAgentMessageInput): void {
-		void this.#requireSession(input.sessionId).agent.steer({ prompt: input.message });
+		void this.#requireSession(input.sessionId).agent.steer(input.message);
 	}
 
 	followUp(input: DesktopAgentMessageInput): void {
-		void this.#requireSession(input.sessionId).agent.followUp({ prompt: input.message });
+		void this.#requireSession(input.sessionId).agent.followUp(input.message);
 	}
 
 	resolvePermission(resolution: { readonly requestId: string; readonly decision: CodingPermissionDecision }): void {
 		this.#approvals.resolve(resolution);
 	}
 
-	resolveConnectorPermission(resolution: DesktopConnectorPermissionResolution): void {
-		this.#connectorApprovals.resolve({
-			requestId: resolution.requestId,
-			decision: resolution.decision,
-		});
+	resolveExtensionPermission(resolution: DesktopExtensionPermissionResolution): void {
+		this.#extensionApprovals.resolve(resolution);
 	}
 
 	getSnapshot(sessionId: string): DesktopAgentSnapshot {
@@ -269,7 +265,7 @@ export class DesktopAgentHost {
 		runtime.closed = true;
 		this.#clearPendingTranscriptUpdates(runtime);
 		this.#approvals.cancelSession(sessionId);
-		this.#connectorApprovals.cancelSession(sessionId);
+		this.#extensionApprovals.cancelSession(sessionId);
 		void runtime.agent.close();
 		runtime.unsubscribe();
 		this.#sessions.delete(sessionId);
@@ -285,7 +281,7 @@ export class DesktopAgentHost {
 	close(): void {
 		for (const sessionId of [...this.#sessions.keys()]) this.closeSession(sessionId);
 		this.#approvals.close();
-		this.#connectorApprovals.close();
+		this.#extensionApprovals.close();
 	}
 
 	async #getOrCreate(input: DesktopAgentMessageInput): Promise<SessionRuntime> {
@@ -357,7 +353,7 @@ export class DesktopAgentHost {
 			modelRef,
 			mode,
 			requestApproval: (request, signal) => this.#requestApproval(sessionId, request, signal),
-			requestConnectorApproval: (request, signal) => this.#requestConnectorApproval(sessionId, request, signal),
+			requestExtensionApproval: (request, signal) => this.#requestExtensionApproval(sessionId, request, signal),
 		});
 	}
 
@@ -381,7 +377,7 @@ export class DesktopAgentHost {
 		runtime.agent = replacement;
 		runtime.unsubscribe = replacement.subscribe((event) => this.#onAgentEvent(runtime, event));
 		this.#approvals.cancelSession(runtime.sessionId);
-		this.#connectorApprovals.cancelSession(runtime.sessionId);
+		this.#extensionApprovals.cancelSession(runtime.sessionId);
 		void previous.close();
 	}
 
@@ -420,28 +416,23 @@ export class DesktopAgentHost {
 		}
 	}
 
-	async #requestConnectorApproval(
+	async #requestExtensionApproval(
 		sessionId: string,
-		request: CodingConnectorApprovalRequest,
+		request: CodingExtensionApprovalRequest,
 		signal?: AbortSignal,
-	): Promise<CodingConnectorApprovalDecision> {
+	): Promise<CodingExtensionApprovalDecision> {
 		const runtime = this.#requireSession(sessionId);
-		const safeRequest: DesktopConnectorApprovalRequest = {
-			requestId: request.requestId,
-			sessionId,
-			toolCallId: request.toolCallId,
-			toolName: request.toolName,
-			actionId: request.actionId,
-			reason: request.reason,
-			sideEffect: request.sideEffect,
-			dataSensitivity: request.dataSensitivity,
-			inputKeys: [...request.inputKeys],
-			expiresAt: request.expiresAt,
-		};
-		const pending = this.#connectorApprovals.register(safeRequest, signal);
-		const item: DesktopConnectorPermissionItem = {
-			kind: "connector_permission",
-			id: `connector-permission:${request.requestId}`,
+		if (request.sessionId !== sessionId) {
+			throw new DesktopAgentSessionNotFound({
+				message: `Extension approval session "${request.sessionId}" does not match active session`,
+				data: { sessionId: request.sessionId },
+			});
+		}
+		const safeRequest = projectExtensionApprovalRequest(request);
+		const pending = this.#extensionApprovals.register(safeRequest, signal);
+		const item: DesktopExtensionPermissionItem = {
+			kind: "extension_permission",
+			id: `extension-permission:${request.requestId}`,
 			request: safeRequest,
 			status: "pending",
 		};
@@ -449,7 +440,7 @@ export class DesktopAgentHost {
 		this.#emitNow(runtime, { type: "transcript_upsert", item });
 		try {
 			const decision = await pending.result;
-			const resolved: DesktopConnectorPermissionItem = {
+			const resolved: DesktopExtensionPermissionItem = {
 				...item,
 				status: decision === "deny" ? "denied" : "allowed",
 			};
@@ -458,7 +449,7 @@ export class DesktopAgentHost {
 			return decision;
 		} catch (error) {
 			if (runtime.closed) throw error;
-			const cancelled: DesktopConnectorPermissionItem = { ...item, status: "cancelled" };
+			const cancelled: DesktopExtensionPermissionItem = { ...item, status: "cancelled" };
 			runtime.items.set(item.id, cancelled);
 			this.#emitNow(runtime, { type: "transcript_upsert", item: cancelled });
 			throw error;
@@ -668,5 +659,31 @@ function projectPermissionRequest(request: CodingPermissionRequest): DesktopPerm
 		summary: request.summary,
 		...(request.suggestedRule ? { suggestedRule: request.suggestedRule } : {}),
 		...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),
+	};
+}
+
+function projectExtensionApprovalRequest(request: CodingExtensionApprovalRequest): DesktopExtensionApprovalRequest {
+	return {
+		requestId: request.requestId,
+		extensionId: request.extensionId,
+		operationId: request.operationId,
+		sessionId: request.sessionId,
+		toolCallId: request.toolCallId,
+		reason: request.reason,
+		sideEffect: request.sideEffect,
+		dataSensitivity: request.dataSensitivity,
+		presentation: {
+			title: request.presentation.title,
+			...(request.presentation.description ? { description: request.presentation.description } : {}),
+			...(request.presentation.attributes
+				? {
+						attributes: request.presentation.attributes.map((attribute) => ({
+							label: attribute.label,
+							value: attribute.value,
+						})),
+					}
+				: {}),
+		},
+		...(request.expiresAt === undefined ? {} : { expiresAt: request.expiresAt }),
 	};
 }

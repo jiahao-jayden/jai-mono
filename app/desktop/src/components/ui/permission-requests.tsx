@@ -9,18 +9,18 @@ import { spring } from "@/lib/springs";
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
 
-export type PermissionDecision = "deny" | "allowOnce" | "alwaysAllow";
+export type PermissionDecision = "deny" | "allowOnce" | "alwaysAllow" | "allow";
 
 export interface PermissionRequestView {
 	readonly id: string;
-	readonly kind?: "permission" | "connector";
 	readonly title: string;
 	readonly description: string;
 	readonly command?: string;
 	readonly path?: string;
-	readonly actionId?: string;
-	readonly inputKeys?: readonly string[];
+	readonly operationId?: string;
+	readonly attributes?: readonly { readonly label: string; readonly value: string }[];
 	readonly canAlwaysAllow: boolean;
+	readonly persistentDecision?: "alwaysAllow" | "allow";
 }
 
 interface PermissionRequestsProps {
@@ -28,13 +28,12 @@ interface PermissionRequestsProps {
 	readonly onResolve: (requestId: string, decision: PermissionDecision) => Promise<void>;
 }
 
-const decisions: readonly {
+const baseDecisions: readonly {
 	readonly id: PermissionDecision;
 	readonly title: string;
 	readonly variant: "ghost" | "tertiary" | "primary";
 }[] = [
 	{ id: "deny", title: "Deny", variant: "ghost" },
-	{ id: "alwaysAllow", title: "Always allow", variant: "tertiary" },
 	{ id: "allowOnce", title: "Allow once", variant: "primary" },
 ];
 
@@ -48,6 +47,14 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 	const TerminalIcon = useIcon("terminal");
 	const safeIndex = Math.min(index, Math.max(0, requests.length - 1));
 	const request = requests[safeIndex];
+	const persistentDecision = request?.persistentDecision ?? "alwaysAllow";
+	const decisions = request?.canAlwaysAllow
+		? [
+				baseDecisions[0]!,
+				{ id: persistentDecision, title: "Always allow", variant: "tertiary" as const },
+				baseDecisions[1]!,
+			]
+		: baseDecisions;
 
 	if (!request) return null;
 
@@ -112,12 +119,22 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 				) : null}
 			</header>
 
-			{request.command || request.path || request.actionId ? (
+			{request.command || request.path || request.operationId || request.attributes?.length ? (
 				<div className="mx-3 mb-1.5 flex items-start gap-2 rounded-lg bg-muted/70 px-2.5 py-1.5">
 					<TerminalIcon size={12} className="mt-0.5 shrink-0 text-muted-foreground" />
-					<code className="line-clamp-2 min-w-0 font-mono text-[11px] leading-relaxed text-muted-foreground">
-						{request.command || request.path || request.actionId}
-					</code>
+					<div className="min-w-0">
+						{request.command || request.path || request.operationId ? (
+							<code className="line-clamp-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+								{request.command || request.path || request.operationId}
+							</code>
+						) : null}
+						{request.attributes?.map((attribute) => (
+							<p key={attribute.label} className="line-clamp-1 text-[11px] leading-relaxed text-muted-foreground">
+								<span className="font-medium text-foreground">{attribute.label}: </span>
+								{attribute.value}
+							</p>
+						))}
+					</div>
 				</div>
 			) : null}
 
@@ -127,7 +144,7 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 				</p>
 			) : null}
 			<div className="flex flex-wrap justify-end gap-1.5 px-3 pt-1 pb-3">
-				{decisions.filter((decision) => decision.id !== "alwaysAllow" || request.canAlwaysAllow).map((decision) => (
+				{decisions.map((decision) => (
 					<Button
 						key={decision.id}
 						type="button"

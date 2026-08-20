@@ -1,4 +1,3 @@
-import { createCodingConnectorConfigStore } from "@jai/coding-agent/jai-host";
 import {
 	type ConnectorSettings,
 	connectorOAuthApplicationDefinitions,
@@ -7,6 +6,7 @@ import {
 	OAuthGatewayClient,
 	parseConnectorOAuthScopes,
 } from "@jai/connector";
+import { createDesktopConnectorConfigStore } from "./config/connector-store";
 
 const oauthGatewayEndpoint = "https://jai-connector.jayden0.com";
 const oauthRefreshLeadMs = 5 * 60_000;
@@ -18,7 +18,7 @@ export interface DesktopConnectorRuntime {
 }
 
 export async function openDesktopConnectorRuntime(): Promise<DesktopConnectorRuntime> {
-	const configStore = createCodingConnectorConfigStore();
+	const configStore = createDesktopConnectorConfigStore();
 	const loaded = await configStore.load();
 	if (loaded.isErr()) {
 		configStore.close();

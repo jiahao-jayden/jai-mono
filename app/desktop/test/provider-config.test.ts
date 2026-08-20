@@ -3,9 +3,9 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getErrorCode } from "@jai/common";
-import { ModelCatalogStore } from "@jai/coding-agent/jai-host";
 import type { ProviderModelInventory } from "../electron/data";
 import { DesktopConfigService } from "../electron/config";
+import { ModelCatalogStore } from "../electron/config/model-catalog";
 
 const roots: string[] = [];
 
@@ -220,6 +220,75 @@ describe("DesktopConfigService", () => {
 		catalog.close();
 	});
 
+	test("将已验证的 Desktop profile 投影为公开 SDK model/provider 输入", async () => {
+		const homeDir = await fixture();
+		const inventory = new TestInventory();
+		const catalog = new ModelCatalogStore({
+			cachePath: join(homeDir, "catalog.json"),
+			fetch: async () =>
+				new Response(
+					JSON.stringify({
+						providers: {
+							openai: {
+								models: {
+									"gpt-test": {
+										name: "GPT Test",
+										tool_call: true,
+										modalities: { input: ["text"], output: ["text"] },
+										limit: { context: 128_000, output: 8_000 },
+									},
+								},
+							},
+						},
+					}),
+				),
+		});
+		await catalog.start();
+		const service = new DesktopConfigService({ homeDir, environment: {}, catalog, inventory });
+		await service.save({
+			revision: null,
+			maxIterations: 9,
+			profiles: [
+				{
+					id: "gateway",
+					name: "Gateway",
+					adapter: "openai-compatible",
+					baseURL: "https://gateway.example.com/v1",
+					authentication: "api-key",
+					apiKey: "gateway-secret",
+					models: [
+						{
+							id: "gpt-test",
+							name: "GPT Test",
+							remoteModelId: "gpt-test",
+							source: "catalog",
+							verified: true,
+							enabled: true,
+							inputModalities: ["text"],
+							outputModalities: ["text"],
+							toolCall: true,
+							contextWindow: 128_000,
+							maxTokens: 8_000,
+						},
+					],
+				},
+			],
+		});
+		inventory.replaceProviderModelInventory("gateway", ["gpt-test"]);
+
+		expect(await service.resolveAgentInput("gateway/gpt-test")).toEqual({
+			model: "openai-compatible/gpt-test",
+			provider: {
+				apiKey: "gateway-secret",
+				baseUrl: "https://gateway.example.com/v1",
+				authentication: "bearer",
+			},
+			maxTurns: 9,
+		});
+		service.close();
+		catalog.close();
+	});
+
 	test("重命名 profile 时迁移 inventory 并保留已保存凭证", async () => {
 		const homeDir = await fixture();
 		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
@@ -267,7 +336,7 @@ describe("DesktopConfigService", () => {
 			revision: null,
 			profiles: [],
 			connector: {
-				policy: { default: "ask", actions: { "context7.search_libraries": "allow" } },
+				policy: { default: "allow", actions: { "context7.search_libraries": "allow" } },
 				connectors: [
 					{
 						id: "context7",
@@ -286,7 +355,7 @@ describe("DesktopConfigService", () => {
 			revision: first.revision,
 			profiles: [],
 			connector: {
-				policy: { default: "ask", actions: { "context7.search_libraries": "allow" } },
+				policy: { default: "allow", actions: { "context7.search_libraries": "allow" } },
 				connectors: [{ id: "context7", enabled: true, credentials: {} }],
 			},
 		});
@@ -294,11 +363,53 @@ describe("DesktopConfigService", () => {
 			true,
 		);
 		expect(preserved.connector.policy).toEqual({
-			default: "ask",
+			default: "allow",
 			actions: { "context7.search_libraries": "allow" },
 		});
 		const document = await readFile(join(homeDir, ".jai", "settings.json"), "utf8");
 		expect(document).toContain("ctx-secret-1234");
+		service.close();
+	});
+
+	test("Extension Runtime adapter 为 Connector 与其他 Extension 分别持久化 user 配置", async () => {
+		const homeDir = await fixture();
+		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
+		const writes: unknown[] = [];
+		const adapter = service.createExtensionRuntimeAdapter({
+			requestApproval: async () => "deny",
+			onConfigurationWritten: (input) => writes.push(input),
+		});
+		if (!adapter.writeConfiguration || !adapter.readConfiguration) throw new Error("Extension Runtime adapter is incomplete");
+
+		const connector = await adapter.writeConfiguration({
+			extensionId: "connector",
+			scope: "user",
+			value: {
+				policy: { default: "ask", actions: { "github.create_issue": "allow" } },
+				connectors: { github: { enabled: true, credentials: { token: "github-secret" } } },
+			},
+		});
+		const other = await adapter.writeConfiguration({
+			extensionId: "example-extension",
+			scope: "user",
+			value: { enabled: true, nested: { retries: 2 } },
+		});
+
+		expect(connector).toEqual({
+			policy: { default: "ask", actions: { "github.create_issue": "allow" } },
+			connectors: { github: { enabled: true, credentials: { token: "github-secret" } } },
+		});
+		expect(other).toEqual({ enabled: true, nested: { retries: 2 } });
+		expect(await adapter.readConfiguration({ extensionId: "connector", scope: "user" })).toEqual(connector);
+		expect(await adapter.readConfiguration({ extensionId: "example-extension", scope: "user" })).toEqual(other);
+		expect(writes).toEqual([
+			{ extensionId: "connector", scope: "user", value: connector },
+			{ extensionId: "example-extension", scope: "user", value: other },
+		]);
+
+		await expect(adapter.readConfiguration({ extensionId: "example-extension", scope: "project" })).rejects.toThrow(
+			"Project-scoped Extension configuration is unavailable in Desktop",
+		);
 		service.close();
 	});
 

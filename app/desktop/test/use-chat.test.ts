@@ -1,12 +1,35 @@
 import { describe, expect, test } from "bun:test";
 import {
 	applyChatProjectionUpdate,
+	chatFailureMessage,
 	type ChatRuntimeState,
 } from "../src/hooks/use-chat";
 import type { DesktopAgentProjectionUpdate } from "../src/lib/desktop-agent";
 import type { DesktopTranscriptItem } from "../shared/desktop-rpc";
 
 describe("useChat projection", () => {
+	test("将可恢复的 Provider 失败映射为可操作提示", () => {
+		expect(
+			chatFailureMessage({ operation: "message", code: "desktop_provider.model_inventory_missing" }),
+		).toBe("此 Provider 尚未获取模型清单。请前往 Settings > Providers 获取模型后重试。");
+		expect(
+			chatFailureMessage({ operation: "message", code: "desktop_provider.model_not_verified" }),
+		).toBe("所选模型尚未完成能力验证。请在 Settings > Providers 选择可用模型。");
+		expect(
+			chatFailureMessage({
+				operation: "message",
+				code: "desktop_agent.creation_failed",
+				reason: "provider_configuration_invalid",
+			}),
+		).toBe("当前 Provider 配置无效。请前往 Settings > Providers 检查后重试。");
+	});
+
+	test("未知失败不将原始错误内容带入用户提示", () => {
+		const message = chatFailureMessage({ operation: "message", code: "provider.request_failed" });
+		expect(message).toBe("消息未发送。请稍后重试。");
+		expect(message).not.toContain("api-key");
+	});
+
 	test("snapshot 替换本地消息，增量按 item id upsert", () => {
 		const snapshotUpdate: DesktopAgentProjectionUpdate = {
 			type: "snapshot",

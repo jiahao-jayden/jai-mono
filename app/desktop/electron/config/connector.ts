@@ -1,4 +1,4 @@
-import type { CodingAgentSettings } from "@jai/coding-agent/jai-host";
+import type { CodingAgentSettings } from "./coding-settings";
 import {
 	type ConnectorOAuthApplicationDefinition,
 	type ConnectorOAuthApplicationId,
@@ -300,7 +300,7 @@ function isValidConnectorPolicy(value: unknown): value is DesktopConnectorConfig
 }
 
 function isConnectorPermission(value: unknown): value is DesktopConnectorPermission {
-	return value === "allow" || value === "ask" || value === "deny";
+	return value === "allow" || value === "deny";
 }
 
 function maskCredential(value: string): string {

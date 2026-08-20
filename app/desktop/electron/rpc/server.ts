@@ -1,4 +1,3 @@
-import { toErrorEnvelope } from "@jai/common";
 import { Value } from "@sinclair/typebox/value";
 import { TaggedError } from "better-result";
 import { type IpcMainInvokeEvent, ipcMain } from "electron";
@@ -9,6 +8,7 @@ import {
 	desktopRpcRequestSchema,
 	jsonValueSchema,
 } from "../../shared/desktop-rpc";
+import { projectDesktopRpcError } from "./error";
 import type { DesktopRouter } from "./router";
 
 type RpcErrorInit = { readonly data?: { readonly path: string }; readonly message: string };
@@ -42,14 +42,7 @@ export function registerDesktopRpc(router: DesktopRouter): void {
 			}
 			return { status: "ok", value };
 		} catch (error) {
-			const envelope = toErrorEnvelope(error);
-			return {
-				status: "error",
-				error:
-					"data" in envelope
-						? { _tag: envelope.code, message: envelope.message, data: envelope.data }
-						: { _tag: envelope.code, message: envelope.message },
-			};
+			return projectDesktopRpcError(error);
 		}
 	});
 }

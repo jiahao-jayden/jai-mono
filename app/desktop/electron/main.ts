@@ -1,6 +1,5 @@
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
-import { setBashParserWasmSources } from "@jai/coding-agent/jai-host";
 import { app, BrowserWindow } from "electron";
 import { type DesktopConnectorRuntime, openDesktopConnectorRuntime } from "./connector-runtime";
 import { CodingBusinessService } from "./data";
@@ -13,6 +12,7 @@ import { createMainWindow } from "./windows";
 
 const isMac = process.platform === "darwin";
 const customProtocol = "jai";
+const bashParserWasmSourcesKey = "__jaiCodingAgentBashParserWasmSources";
 const pendingOAuthCallbacks: string[] = [];
 let desktopRuntime: DesktopRuntime | undefined;
 let connectorRuntime: DesktopConnectorRuntime | undefined;
@@ -103,16 +103,20 @@ function receiveOAuthCallback(url: string): void {
 
 function registerBashParserWasm(): void {
 	if (app.isPackaged) {
-		setBashParserWasmSources({
+		Object.assign(globalThis, {
+			[bashParserWasmSourcesKey]: {
 			parser: join(process.resourcesPath, "tree-sitter.wasm"),
 			bashLanguage: join(process.resourcesPath, "tree-sitter-bash.wasm"),
+			},
 		});
 		return;
 	}
 	const require = createRequire(import.meta.url);
-	setBashParserWasmSources({
-		parser: require.resolve("web-tree-sitter/tree-sitter.wasm"),
-		bashLanguage: require.resolve("tree-sitter-bash/tree-sitter-bash.wasm"),
+	Object.assign(globalThis, {
+		[bashParserWasmSourcesKey]: {
+			parser: require.resolve("web-tree-sitter/tree-sitter.wasm"),
+			bashLanguage: require.resolve("tree-sitter-bash/tree-sitter-bash.wasm"),
+		},
 	});
 }
 

@@ -32,6 +32,17 @@ export const desktopPermissionResolutionSchema = Type.Object(
 
 export type DesktopToolPermissionResolution = Static<typeof desktopPermissionResolutionSchema>;
 
+export const desktopExtensionPermissionResolutionSchema = Type.Object(
+	{
+		kind: Type.Literal("extension"),
+		requestId: Type.String({ minLength: 1 }),
+		decision: Type.Union([Type.Literal("deny"), Type.Literal("allowOnce"), Type.Literal("allow")]),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopExtensionPermissionResolution = Static<typeof desktopExtensionPermissionResolutionSchema>;
+
 export const DESKTOP_RPC_CHANNEL = "desktop:rpc";
 export const DESKTOP_EVENTS_CHANNEL = "desktop:events";
 
@@ -46,11 +57,19 @@ export const jsonValueSchema = Type.Recursive((This) =>
 	]),
 );
 
+const desktopAgentCreationFailureReasonSchema = Type.Union([
+	Type.Literal("model_unavailable"),
+	Type.Literal("provider_configuration_invalid"),
+	Type.Literal("agent_initialization_failed"),
+]);
+
+export type DesktopAgentCreationFailureReason = Static<typeof desktopAgentCreationFailureReasonSchema>;
+
 const errorEnvelopeSchema = Type.Object(
 	{
 		_tag: Type.String({ minLength: 1 }),
 		message: Type.String(),
-		data: Type.Optional(jsonValueSchema),
+		reason: Type.Optional(desktopAgentCreationFailureReasonSchema),
 	},
 	{ additionalProperties: false },
 );
@@ -59,15 +78,6 @@ export const desktopRpcRequestSchema = Type.Object(
 	{
 		path: Type.String({ minLength: 1 }),
 		args: Type.Array(jsonValueSchema),
-	},
-	{ additionalProperties: false },
-);
-
-export const desktopConnectorPermissionResolutionSchema = Type.Object(
-	{
-		kind: Type.Literal("connector"),
-		requestId: Type.String({ minLength: 1 }),
-		decision: Type.Union([Type.Literal("deny"), Type.Literal("allowOnce")]),
 	},
 	{ additionalProperties: false },
 );
@@ -470,35 +480,31 @@ export interface DesktopPermissionItem {
 	readonly approvalOrigin?: "automatic" | "manual";
 }
 
-export interface DesktopConnectorApprovalRequest {
+export interface DesktopExtensionApprovalRequest {
 	readonly requestId: string;
+	readonly extensionId: string;
+	readonly operationId: string;
 	readonly sessionId: string;
 	readonly toolCallId: string;
-	readonly toolName: "connector__execute_action";
-	readonly actionId: string;
 	readonly reason: string;
 	readonly sideEffect: "read" | "write" | "destructive";
 	readonly dataSensitivity: "normal" | "sensitive" | "secret";
-	readonly inputKeys: readonly string[];
-	readonly expiresAt: number;
+	readonly presentation: {
+		readonly title: string;
+		readonly description?: string;
+		readonly attributes?: readonly { readonly label: string; readonly value: string }[];
+	};
+	readonly expiresAt?: number;
 }
 
-export type DesktopConnectorPermissionDecision = "deny" | "allowOnce";
-
-export interface DesktopConnectorPermissionResolution {
-	readonly kind: "connector";
-	readonly requestId: string;
-	readonly decision: DesktopConnectorPermissionDecision;
-}
-
-export type DesktopPermissionResolution = DesktopToolPermissionResolution | DesktopConnectorPermissionResolution;
-
-export interface DesktopConnectorPermissionItem {
-	readonly kind: "connector_permission";
+export interface DesktopExtensionPermissionItem {
+	readonly kind: "extension_permission";
 	readonly id: string;
-	readonly request: DesktopConnectorApprovalRequest;
+	readonly request: DesktopExtensionApprovalRequest;
 	readonly status: "pending" | "allowed" | "denied" | "cancelled";
 }
+
+export type DesktopPermissionResolution = DesktopToolPermissionResolution | DesktopExtensionPermissionResolution;
 
 export interface DesktopCompactionItem {
 	readonly kind: "compaction";
@@ -514,7 +520,7 @@ export type DesktopTranscriptItem =
 	| DesktopToolItem
 	| DesktopSubagentItem
 	| DesktopPermissionItem
-	| DesktopConnectorPermissionItem
+	| DesktopExtensionPermissionItem
 	| DesktopCompactionItem;
 
 export type DesktopTodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
@@ -550,7 +556,7 @@ export type DesktopAgentEvent =
 	| { readonly type: "connector_oauth_failed"; readonly connectorId: string; readonly message: string }
 	| {
 			readonly type: "runtime_error";
-			readonly error: { readonly code: string; readonly message: string; readonly data?: Static<typeof jsonValueSchema> };
+			readonly error: { readonly code: string };
 	  };
 
 export interface DesktopAgentEventEnvelope {

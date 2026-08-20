@@ -1,4 +1,4 @@
-import type { ConnectorService } from "@jai/connector";
+import type { MemoryConnectorService } from "@jai/connector";
 import { TaggedError } from "better-result";
 import { app, BrowserWindow, dialog, shell } from "electron";
 import type { DesktopAgentEvent } from "../shared/desktop-rpc";
@@ -39,12 +39,12 @@ export type WindowSender = Electron.WebContents;
 
 export function createDesktopRuntime(dependencies: {
 	readonly business: CodingBusinessService;
-	readonly connector: ConnectorService;
+	readonly connector: MemoryConnectorService;
 }): DesktopRuntime {
 	const { business, connector } = dependencies;
 	const broadcast = createBroadcaster();
-	const agentHost = new DesktopAgentHost(broadcast, createDesktopAgentFactory(business, connector));
 	const config = new DesktopConfigService({ catalog: desktopModelCatalog, inventory: business });
+	const agentHost = new DesktopAgentHost(broadcast, createDesktopAgentFactory(business, connector, config));
 	const attachments = createAttachmentRegistry();
 	const theme = createDesktopThemeService();
 	const openWith = createOpenWithService({
@@ -93,7 +93,7 @@ export function createDesktopRuntime(dependencies: {
 		const session = business.getSession(sessionId);
 		if (session.titleSource !== "fallback" || session.titleGenerationAttemptedAt !== null) return;
 		business.markTitleGenerationAttempted(sessionId);
-		const title = await agent.generateTitle({ firstMessage });
+		const title = await agent.generateTitle(firstMessage);
 		if (title.isOk() && title.value.trim()) business.setGeneratedTitle(sessionId, title.value);
 	});
 

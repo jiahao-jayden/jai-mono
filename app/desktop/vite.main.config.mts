@@ -1,6 +1,8 @@
 import path from "node:path";
 import { defineConfig } from "vite";
 
+const workspaceRoot = path.resolve(import.meta.dirname, "../..");
+
 export default defineConfig({
 	build: {
 		rollupOptions: {
@@ -8,8 +10,17 @@ export default defineConfig({
 		},
 	},
 	resolve: {
-		alias: {
-			"@": path.resolve(import.meta.dirname, "./src"),
-		},
+		alias: [
+			{ find: /^@jai\/coding-agent$/, replacement: path.join(workspaceRoot, "packages/coding-agent/src/sdk.ts") },
+			{
+				find: /^@jai\/extension\/connector$/,
+				replacement: path.join(workspaceRoot, "packages/extension/src/connector.ts"),
+			},
+			{
+				find: /^@jai\/extension\/jai-plugins$/,
+				replacement: path.join(workspaceRoot, "packages/extension/src/jai-plugins.ts"),
+			},
+			{ find: "@", replacement: path.resolve(import.meta.dirname, "./src") },
+		],
 	},
 });

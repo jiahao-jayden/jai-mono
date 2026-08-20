@@ -67,8 +67,8 @@ describe("Sidebar", () => {
 		expect(markup).toContain('tabindex="-1"');
 		// Should have hover class
 		expect(markup).toContain("group-hover/button:bg-sidebar-accent");
-		// Should show "coming later" title
-		expect(markup).toContain("is coming later");
+		// Should expose the unavailable state in its accessible title.
+		expect(markup).toContain("Search (coming later)");
 	});
 
 	test("Chats 与 Projects 是可用路由入口并显示当前页面", () => {

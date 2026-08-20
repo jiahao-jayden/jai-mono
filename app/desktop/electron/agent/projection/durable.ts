@@ -1,4 +1,5 @@
-import { type CodingAgentMessage, codingAgentToolNames, codingArtifactsFromAppState } from "@jai/coding-agent";
+import { type CodingAgentMessage, codingArtifactsFromAppState } from "@jai/coding-agent";
+import type { AssistantMessage } from "@jai/ai";
 import type {
 	DesktopAgentSnapshot,
 	DesktopArtifact,
@@ -45,13 +46,15 @@ export function projectSessionSnapshot(sessionId: string, snapshot: CodingSessio
 		if (entry.type !== "message") continue;
 
 		if (entry.message.role === "assistant") {
-			for (const item of assistantItems(entry.id, entry.message, currentTurnId)) items.set(item.id, item);
+			for (const item of assistantItems(entry.id, projectAssistantMessage(entry.message), currentTurnId)) {
+				items.set(item.id, item);
+			}
 			continue;
 		}
 
 		if (entry.message.role === "toolResult") {
-			if (entry.message.toolName === codingAgentToolNames.updateTodos) continue;
-			if (entry.message.toolName === codingAgentToolNames.spawnAgent) {
+			if (entry.message.toolName === "UpdateTodos") continue;
+			if (entry.message.toolName === "SpawnAgent") {
 				const existing = items.get(subagentItemId(entry.message.toolCallId));
 				if (existing?.kind !== "subagent") continue;
 				items.set(existing.id, { ...existing, status: entry.message.isError ? "error" : "complete" });
@@ -98,6 +101,53 @@ export function projectSessionSnapshot(sessionId: string, snapshot: CodingSessio
 		...(todos ? { todos } : {}),
 		artifacts: sortArtifacts(artifacts.values()),
 		lastSeq: 0,
+	};
+}
+
+function projectAssistantMessage(
+	message: AssistantMessage,
+): Extract<CodingAgentMessage, { readonly role: "assistant" }> {
+	return {
+		role: "assistant",
+		content: message.content.map((content) => {
+			switch (content.type) {
+				case "text":
+					return {
+						type: "text" as const,
+						text: content.text,
+						...(content.synthetic ? { synthetic: true } : {}),
+					};
+				case "thinking":
+					return { type: "thinking" as const, thinking: content.thinking };
+				case "toolCall":
+					return {
+						type: "toolCall" as const,
+						id: content.id,
+						name: content.name,
+						arguments: JSON.parse(JSON.stringify(content.arguments)),
+					};
+			}
+			return content;
+		}),
+		provider: message.provider,
+		model: message.model,
+		usage: {
+			input: message.usage.input,
+			output: message.usage.output,
+			cacheRead: message.usage.cacheRead,
+			cacheWrite: message.usage.cacheWrite,
+			...(message.usage.reasoning === undefined ? {} : { reasoning: message.usage.reasoning }),
+			totalTokens: message.usage.totalTokens,
+			cost: {
+				input: message.usage.cost.input,
+				output: message.usage.cost.output,
+				cacheRead: message.usage.cost.cacheRead,
+				cacheWrite: message.usage.cost.cacheWrite,
+				total: message.usage.cost.total,
+			},
+		},
+		stopReason: message.stopReason,
+		timestamp: message.timestamp,
 	};
 }
 

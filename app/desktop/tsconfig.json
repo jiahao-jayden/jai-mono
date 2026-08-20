@@ -9,8 +9,12 @@
 		"declaration": false,
 		"declarationMap": false,
 		"sourceMap": true,
+		"rootDir": "../..",
 		"paths": {
-			"@/*": ["./src/*"]
+			"@/*": ["./src/*"],
+			"@jai/coding-agent": ["../../packages/coding-agent/src/sdk.ts"],
+			"@jai/extension/connector": ["../../packages/extension/src/connector.ts"],
+			"@jai/extension/jai-plugins": ["../../packages/extension/src/jai-plugins.ts"]
 		},
 		"outDir": "dist"
 	},

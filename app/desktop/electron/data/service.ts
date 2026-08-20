@@ -4,12 +4,6 @@ import { hostname } from "node:os";
 import path from "node:path";
 import type { JsonObject } from "@jai/agent";
 import { FileSessionStore } from "@jai/agent/node";
-import {
-	codingSessionDirectory,
-	defaultCodingDataRoot,
-	projectDirectoryName,
-	UNASSIGNED_DIRECTORY,
-} from "@jai/coding-agent/jai-host";
 import { getErrorCode } from "@jai/common";
 import {
 	projectDirectoryConflictError,
@@ -35,6 +29,12 @@ import type {
 	SessionListPage,
 	SessionProjectHistory,
 } from "./types";
+import {
+	defaultDesktopDataRoot,
+	desktopSessionDirectory,
+	projectDirectoryName,
+	UNASSIGNED_DIRECTORY,
+} from "./layout";
 
 export interface CodingBusinessServiceOptions {
 	readonly dataRoot?: string;
@@ -50,13 +50,13 @@ export class CodingBusinessService {
 
 	constructor(repository: CodingBusinessRepository, options: CodingBusinessServiceOptions = {}) {
 		this.repository = repository;
-		this.dataRoot = path.resolve(options.dataRoot ?? defaultCodingDataRoot());
+		this.dataRoot = path.resolve(options.dataRoot ?? defaultDesktopDataRoot());
 		this.#now = options.now ?? Date.now;
 		this.#createId = options.createId ?? randomUUID;
 	}
 
 	static async open(options: CodingBusinessServiceOptions = {}): Promise<CodingBusinessService> {
-		const dataRoot = path.resolve(options.dataRoot ?? defaultCodingDataRoot());
+		const dataRoot = path.resolve(options.dataRoot ?? defaultDesktopDataRoot());
 		const { SqliteCodingBusinessRepository } = await import("./sqlite-repository");
 		const repository = await SqliteCodingBusinessRepository.open(path.join(dataRoot, "data.sqlite"));
 		return new CodingBusinessService(repository, { ...options, dataRoot });
@@ -285,7 +285,7 @@ export class CodingBusinessService {
 
 	sessionDirectory(projectId: string | null): string {
 		const canonicalPath = projectId === null ? null : this.getProject(projectId).canonicalPath;
-		return codingSessionDirectory(canonicalPath, this.dataRoot);
+		return desktopSessionDirectory(canonicalPath, this.dataRoot);
 	}
 
 	sessionFilePath(sessionId: string, projectId: string | null): string {

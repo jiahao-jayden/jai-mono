@@ -6,7 +6,7 @@ import type { IpcMainInvokeEvent } from "electron";
 import {
 	type DesktopApi,
 	type DesktopArtifact,
-	type DesktopConnectorPermissionResolution,
+	type DesktopExtensionPermissionResolution,
 	type DesktopProject,
 	type DesktopProviderConfigInput,
 	type DesktopToolPermissionResolution,
@@ -16,7 +16,7 @@ import {
 	desktopArtifactReadInputSchema,
 	desktopAttachmentRegistrationInputSchema,
 	desktopConnectorOAuthApplicationIdSchema,
-	desktopConnectorPermissionResolutionSchema,
+	desktopExtensionPermissionResolutionSchema,
 	desktopPermissionResolutionSchema,
 	desktopSessionCreateInputSchema,
 	desktopSessionDeleteInputSchema,
@@ -305,8 +305,8 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 					rt.agentHost.resolvePermission(resolution as DesktopToolPermissionResolution);
 					return;
 				}
-				if (Value.Check(desktopConnectorPermissionResolutionSchema, resolution)) {
-					rt.agentHost.resolveConnectorPermission(resolution as DesktopConnectorPermissionResolution);
+				if (Value.Check(desktopExtensionPermissionResolutionSchema, resolution)) {
+					rt.agentHost.resolveExtensionPermission(resolution as DesktopExtensionPermissionResolution);
 					return;
 				}
 				throw agentInputError({ message: "Invalid permission resolution" });

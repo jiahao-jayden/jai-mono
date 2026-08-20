@@ -1,4 +1,4 @@
-import { type CodingAgentEvent, codingAgentToolNames } from "@jai/coding-agent";
+import type { CodingAgentEvent } from "@jai/coding-agent";
 import type { DesktopToolItem, DesktopTranscriptItem } from "../../../shared/desktop-rpc";
 import {
 	assistantPartItem,
@@ -62,9 +62,9 @@ export function projectToolStart(
 	event: Extract<CodingAgentEvent, { type: "tool_execution_start" }>,
 	context: LiveProjectionContext,
 ): LiveProjection {
-	if (event.toolName === codingAgentToolNames.updateTodos) return { kind: "none" };
+	if (event.toolName === "UpdateTodos") return { kind: "none" };
 
-	if (event.toolName === codingAgentToolNames.spawnAgent) {
+	if (event.toolName === "SpawnAgent") {
 		const previous = subagentOf(context, event.toolCallId);
 		const title = (isRecord(event.args) ? stringArgument(event.args, "title") : undefined) ?? previous?.title;
 		if (!title) return { kind: "none" };
@@ -101,13 +101,13 @@ export function projectToolProgress(
 	event: Extract<CodingAgentEvent, { type: "tool_execution_update" | "tool_execution_end" }>,
 	context: LiveProjectionContext,
 ): LiveProjection {
-	if (event.toolName === codingAgentToolNames.updateTodos) {
+	if (event.toolName === "UpdateTodos") {
 		return event.type === "tool_execution_end" && !event.isError ? { kind: "todos" } : { kind: "none" };
 	}
 
 	const result = event.type === "tool_execution_update" ? event.partial : event.result;
 
-	if (event.toolName === codingAgentToolNames.spawnAgent) {
+	if (event.toolName === "SpawnAgent") {
 		const previous = subagentOf(context, event.toolCallId);
 		const details = spawnAgentDetails(isRecord(result) ? result.details : undefined);
 		const title = details?.title ?? previous?.title;

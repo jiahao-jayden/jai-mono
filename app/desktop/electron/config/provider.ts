@@ -1,10 +1,3 @@
-import {
-	type CodingAgentSettings,
-	DEFAULT_PROVIDER_VENDORS,
-	findCatalogModel,
-	findCatalogModelMatch,
-	type ModelCatalog,
-} from "@jai/coding-agent/jai-host";
 import { TaggedError } from "better-result";
 import type {
 	DesktopProviderConfigSnapshot,
@@ -14,6 +7,9 @@ import type {
 	DesktopProviderProfileInput,
 } from "../../shared/desktop-rpc";
 import type { ProviderModelInventory } from "../data";
+import type { CodingAgentSettings } from "./coding-settings";
+import { findCatalogModel, findCatalogModelMatch, type ModelCatalog } from "./model-catalog";
+import { DEFAULT_PROVIDER_VENDORS } from "./provider-vendors";
 
 const profileIdPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
