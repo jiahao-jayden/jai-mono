@@ -1,17 +1,12 @@
 import type { AgentMessage, AgentTool, ToolMiddleware } from "@jai/agent";
 import { validateToolArguments } from "@jai/ai";
-import type { TObject, TSchema } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
-import { Result, type Result as ResultType, panic } from "better-result";
+import { panic, Result, type Result as ResultType } from "better-result";
+import type { JsonObject } from "../core/json";
 import {
-	CodingExtensionApprovalAborted,
-	CodingExtensionConfigurationUnavailable,
 	CodingExtensionDeactivationFailed,
-	CodingExtensionError,
-	CodingExtensionOperationFailed,
-	CodingExtensionPersistentApprovalUnavailable,
+	type CodingExtensionError,
+	type CodingExtensionOperationFailed,
 	CodingExtensionPolicyBlocked,
-	CodingExtensionSessionStateUnavailable,
 	extensionActivationFailed,
 	extensionCapabilityConflict,
 	extensionCatalogDiscoveryFailed,
@@ -19,27 +14,18 @@ import {
 	extensionHookFailed,
 	extensionOperationFailed,
 } from "./extension-errors";
-import type { JsonObject, JsonValue } from "../core/json";
-import type { CodingPermissionMode } from "./types";
-import { extensionContext } from "./extensions/host-adapters";
 import type {
-	CodingAgentExtension,
 	CodingAfterToolCallInput,
+	CodingAgentExtension,
 	CodingAgentSettledInput,
 	CodingBeforeAgentStartResult,
 	CodingBeforeModelCallResult,
 	CodingBeforeToolCallResult,
-	CodingExtensionApprovalDecision,
-	CodingExtensionApprovalRequest,
-	CodingExtensionConfiguration,
-	CodingExtensionConfigurationStore,
 	CodingExtensionContext,
 	CodingExtensionDiagnostic,
 	CodingExtensionRuntime,
 	CodingExtensionRuntimeAdapter,
-	CodingExtensionSessionState,
 	CodingExtensionSessionStateAdapter,
-	CodingExtensionSessionStateStore,
 	CodingExtensionSkill,
 	CodingExtensionTool,
 	CodingExtensionToolCall,
@@ -48,6 +34,8 @@ import type {
 	CodingToolPermission,
 	CodingTurnEndInput,
 } from "./extensions/contract";
+import { extensionContext } from "./extensions/host-adapters";
+
 export type {
 	CodingAfterToolCallInput,
 	CodingAgentExtension,
@@ -108,7 +96,7 @@ export async function initializeExtensions(
 	context: Omit<CodingExtensionContext, "configuration" | "sessionState" | "requestApproval">,
 	runtime?: CodingExtensionRuntimeAdapter,
 	sessionState?: CodingExtensionSessionStateAdapter,
-	): Promise<ResultType<readonly InitializedExtension[], CodingExtensionError>> {
+): Promise<ResultType<readonly InitializedExtension[], CodingExtensionError>> {
 	const initialized = prepareExtensions(extensions);
 	if (initialized.isErr()) return initialized;
 	const activation = await activateExtensions(initialized.value, context, runtime, sessionState);
@@ -356,7 +344,9 @@ export async function extensionBeforeModelCall(
 
 export async function notifyExtensionTurnStart(extensions: readonly InitializedExtension[]): Promise<void> {
 	for (const extension of extensions) {
-		await notifyObserver(extension, "turn_start", () => extension.extension.hooks?.turnStart?.(extensionRuntime(extension)));
+		await notifyObserver(extension, "turn_start", () =>
+			extension.extension.hooks?.turnStart?.(extensionRuntime(extension)),
+		);
 	}
 }
 
@@ -365,7 +355,9 @@ export async function notifyExtensionTurnEnd(
 	input: CodingTurnEndInput,
 ): Promise<void> {
 	for (const extension of extensions) {
-		await notifyObserver(extension, "turn_end", () => extension.extension.hooks?.turnEnd?.(extensionRuntime(extension), input));
+		await notifyObserver(extension, "turn_end", () =>
+			extension.extension.hooks?.turnEnd?.(extensionRuntime(extension), input),
+		);
 		await notifyObserver(extension, "after_model_call", () =>
 			extension.extension.hooks?.afterModelCall?.(extensionRuntime(extension), input),
 		);
@@ -431,14 +423,17 @@ export function assertExtensionCapabilityNames(
 	const extensionIds = new Set<string>();
 	for (const extension of extensions) {
 		const extensionId = extension.id;
-		if (!extensionId || extensionIds.has(extensionId)) return Result.err(extensionCapabilityConflict("id", extensionId));
+		if (!extensionId || extensionIds.has(extensionId))
+			return Result.err(extensionCapabilityConflict("id", extensionId));
 		extensionIds.add(extensionId);
 		for (const tool of extension.tools ?? []) {
-			if (!tool.name.trim() || toolNames.has(tool.name)) return Result.err(extensionCapabilityConflict("tool", tool.name));
+			if (!tool.name.trim() || toolNames.has(tool.name))
+				return Result.err(extensionCapabilityConflict("tool", tool.name));
 			toolNames.add(tool.name);
 		}
 		for (const skill of extension.skills ?? []) {
-			if (!skill.name.trim() || skillNames.has(skill.name)) return Result.err(extensionCapabilityConflict("skill", skill.name));
+			if (!skill.name.trim() || skillNames.has(skill.name))
+				return Result.err(extensionCapabilityConflict("skill", skill.name));
 			skillNames.add(skill.name);
 		}
 	}
@@ -452,13 +447,15 @@ function assertCatalogCapabilityNames(
 	const toolNames = reservedToolNames();
 	for (const extension of extensions) {
 		for (const tool of extension.tools ?? []) {
-			if (!tool.name.trim() || toolNames.has(tool.name)) return Result.err(extensionCapabilityConflict("tool", tool.name));
+			if (!tool.name.trim() || toolNames.has(tool.name))
+				return Result.err(extensionCapabilityConflict("tool", tool.name));
 			toolNames.add(tool.name);
 		}
 	}
 	for (const extension of initialized) {
 		for (const tool of extension.catalogTools) {
-			if (!tool.name.trim() || toolNames.has(tool.name)) return Result.err(extensionCapabilityConflict("tool", tool.name));
+			if (!tool.name.trim() || toolNames.has(tool.name))
+				return Result.err(extensionCapabilityConflict("tool", tool.name));
 			toolNames.add(tool.name);
 		}
 	}
@@ -466,12 +463,21 @@ function assertCatalogCapabilityNames(
 }
 
 function reservedToolNames(): Set<string> {
-	return new Set(["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill", "UpdateTodos", "SpawnAgent", "SearchTools"]);
+	return new Set([
+		"Read",
+		"Write",
+		"Edit",
+		"Glob",
+		"Grep",
+		"Bash",
+		"Skill",
+		"UpdateTodos",
+		"SpawnAgent",
+		"SearchTools",
+	]);
 }
 
-function createInitializedExtension(
-	extension: CodingAgentExtension<any, any, any>,
-): InitializedExtension {
+function createInitializedExtension(extension: CodingAgentExtension<any, any, any>): InitializedExtension {
 	const permissions = new Map<string, ResolvedExtensionToolPermission>();
 	const extensionAuthorizedToolNames: string[] = [];
 	const initialized: InitializedExtension = {

@@ -183,6 +183,15 @@ export class CodingConfigStore<TSchema extends TObject> {
 		};
 	}
 
+	/**
+	 * Resolves once the filesystem watchers requested by `watch()` are actually installed.
+	 * Registering a listener starts that work without awaiting it, so a change made immediately
+	 * afterwards can land before anything is watching and go unnoticed.
+	 */
+	async watching(): Promise<void> {
+		await this.watcherRefresh;
+	}
+
 	close(): void {
 		if (this.reloadTimer) clearTimeout(this.reloadTimer);
 		this.reloadTimer = undefined;
@@ -326,7 +335,6 @@ export class CodingConfigStore<TSchema extends TObject> {
 			this.emitInvalid(error);
 		}
 	}
-
 	private emitInvalid(error: unknown): void {
 		for (const listener of this.listeners) {
 			listener({ status: "invalid", error, lastValid: this.lastValid });

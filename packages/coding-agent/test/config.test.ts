@@ -240,6 +240,8 @@ describe("CodingConfigStore", () => {
 		const stop = store.watch((event) => events.push(event));
 		try {
 			const initial = await store.load();
+			// Watchers are installed asynchronously; writing before they exist loses the change.
+			await store.watching();
 
 			await mkdir(dirname(fixture.paths.user), { recursive: true });
 			await writeFile(fixture.paths.user, "{");

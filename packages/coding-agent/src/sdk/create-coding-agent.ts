@@ -13,32 +13,28 @@ import {
 	DEFAULT_CODING_AGENT_INSTRUCTIONS,
 	type CodingAgent as InternalCodingAgent,
 } from "../runtime";
+import { ToolCatalog } from "../runtime/tool-catalog";
 import { sdkConfigDefinition } from "./config";
+import { CodingExtensionPolicyBlocked } from "./extension-errors";
 import {
-	disposeExtensions,
 	activateExtensions,
+	type CodingTurnEndInput,
+	disposeExtensions,
+	extensionAuthorizedToolNames,
 	extensionBeforeAgentStart,
 	extensionBeforeModelCall,
-	extensionAuthorizedToolNames,
 	extensionCatalogTools,
 	extensionMiddleware,
 	extensionPermissions,
 	extensionSkills,
 	extensionTools,
+	type InitializedExtension,
 	notifyExtensionSettled,
 	notifyExtensionTurnEnd,
 	notifyExtensionTurnStart,
 	prepareExtensions,
-	type InitializedExtension,
-	type CodingTurnEndInput,
 } from "./extensions";
-import {
-	type CodingExtensionError,
-	CodingExtensionPolicyBlocked,
-	extensionHostOperationFailed,
-} from "./extension-errors";
 import { resolveSdkModel } from "./model";
-import { ToolCatalog } from "../runtime/tool-catalog";
 import {
 	agentClosedFailure,
 	artifactsFromAppState,
@@ -171,7 +167,6 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 	}
 }
 
-
 class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAppState> {
 	readonly #internal: InternalCodingAgent<CodingSchema, PersistedCodingSessionState<TAppState>>;
 	readonly #sessionId: string;
@@ -294,11 +289,10 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 				() => (admittedEpoch === undefined ? undefined : this.#notifySettledAfterIdle(admittedEpoch, "failed")),
 			),
 		);
-		this.#settlementTail = settlement
-			.then(
-				() => undefined,
-				() => undefined,
-			);
+		this.#settlementTail = settlement.then(
+			() => undefined,
+			() => undefined,
+		);
 		return run.then(
 			(value) => Result.ok<CodingRunResult<TAppState>, CodingSdkError>(value.result),
 			// Failures after admission come from the model/tool loop, not from admission itself, and must
@@ -423,16 +417,13 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		const previous = this.#artifacts.get(artifact.id);
 		this.#artifacts.set(artifact.id, artifact);
 		const write = this.#artifactWriteTail.then(() =>
-			this.#internal.updateAppState(
-				(currentState) =>
-					({
-						...currentState,
-						artifacts: {
-							version: 1,
-							items: [...this.#artifacts.values()].map((artifact) => ({ ...artifact })) as JsonValue,
-						},
-					}),
-			),
+			this.#internal.updateAppState((currentState) => ({
+				...currentState,
+				artifacts: {
+					version: 1,
+					items: [...this.#artifacts.values()].map((artifact) => ({ ...artifact })) as JsonValue,
+				},
+			})),
 		);
 		// Roll the in-memory entry back when the write fails, so `state.artifacts` never advertises an
 		// artifact that a resumed session would not find.

@@ -7,13 +7,13 @@ import type {
 	ResolvePathOptions,
 	ToolMiddleware,
 } from "@jai/agent";
-import type { CodingExtensionToolCall, CodingToolPermission } from "./tool-permission";
 import type { JsonObject } from "../core/json";
 import type { PermissionApprovalDecision, PermissionRequestSummary, PermissionRisk } from "./approval";
 import { bashPermissionScanArgument, scanBashCommand } from "./bash-parser";
 import { permissionAbortedError, permissionApprovalUnavailableError, permissionDeniedError } from "./errors";
 import { evaluatePermission } from "./evaluate";
 import { bashAlwaysPattern } from "./rules";
+import type { CodingExtensionToolCall, CodingToolPermission } from "./tool-permission";
 import { type CanonicalToolName, canonicalToolNames, type PermissionDecision, type PermissionSettings } from "./types";
 
 export interface PermissionApprovalRequest {

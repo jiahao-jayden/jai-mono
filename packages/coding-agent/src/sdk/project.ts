@@ -278,10 +278,9 @@ export function projectMessage(message: AgentMessage): CodingAgentMessage {
 	}
 }
 
-function projectAssistantEvent(event: import("@jai/ai").AssistantMessageEvent): Extract<
-	CodingAgentEvent,
-	{ readonly type: "message_update" }
->["assistantEvent"] {
+function projectAssistantEvent(
+	event: import("@jai/ai").AssistantMessageEvent,
+): Extract<CodingAgentEvent, { readonly type: "message_update" }>["assistantEvent"] {
 	switch (event.type) {
 		case "start":
 			return { type: "start" };
@@ -313,7 +312,11 @@ function projectAssistantEvent(event: import("@jai/ai").AssistantMessageEvent): 
 				},
 			};
 		case "done":
-			return { type: "done", reason: event.reason, message: projectMessage(event.message) as CodingAssistantMessage };
+			return {
+				type: "done",
+				reason: event.reason,
+				message: projectMessage(event.message) as CodingAssistantMessage,
+			};
 		case "error":
 			return { type: "error", reason: event.reason, error: projectMessage(event.error) as CodingAssistantMessage };
 	}

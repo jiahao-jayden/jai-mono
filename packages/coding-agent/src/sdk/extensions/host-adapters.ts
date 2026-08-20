@@ -1,6 +1,6 @@
 import { Value } from "@sinclair/typebox/value";
 import { Result, type Result as ResultType } from "better-result";
-import type { JsonObject, JsonValue } from "../../core/json";
+import type { JsonObject } from "../../core/json";
 import {
 	CodingExtensionApprovalAborted,
 	CodingExtensionConfigurationUnavailable,
@@ -13,11 +13,9 @@ import type {
 	CodingAgentExtension,
 	CodingExtensionApprovalDecision,
 	CodingExtensionApprovalRequest,
-	CodingExtensionConfiguration,
 	CodingExtensionConfigurationStore,
 	CodingExtensionContext,
 	CodingExtensionRuntimeAdapter,
-	CodingExtensionSessionState,
 	CodingExtensionSessionStateAdapter,
 	CodingExtensionSessionStateStore,
 } from "./contract";

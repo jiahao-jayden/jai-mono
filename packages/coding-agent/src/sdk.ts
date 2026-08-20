@@ -1,15 +1,30 @@
 export { createCodingAgent } from "./sdk/create-coding-agent";
+export type { CodingExtensionError } from "./sdk/extension-errors";
+export {
+	CodingExtensionActivationFailed,
+	CodingExtensionApprovalAborted,
+	CodingExtensionCapabilityConflict,
+	CodingExtensionCatalogDiscoveryFailed,
+	CodingExtensionConfigurationUnavailable,
+	CodingExtensionContractViolation,
+	CodingExtensionDeactivationFailed,
+	CodingExtensionHookFailed,
+	CodingExtensionHostOperationFailed,
+	CodingExtensionOperationFailed,
+	CodingExtensionPersistentApprovalUnavailable,
+	CodingExtensionPolicyBlocked,
+	CodingExtensionSessionStateUnavailable,
+} from "./sdk/extension-errors";
 export type {
 	CodingAfterToolCallInput,
 	CodingAgentExtension,
-	CodingBeforeToolCallInput,
-	CodingBeforeToolCallResult,
+	CodingAgentSettledInput,
 	CodingBeforeAgentStartInput,
 	CodingBeforeAgentStartResult,
 	CodingBeforeModelCallInput,
 	CodingBeforeModelCallResult,
-	CodingTurnEndInput,
-	CodingAgentSettledInput,
+	CodingBeforeToolCallInput,
+	CodingBeforeToolCallResult,
 	CodingExtensionApprovalDecision,
 	CodingExtensionApprovalPresentation,
 	CodingExtensionApprovalRequest,
@@ -25,30 +40,15 @@ export type {
 	CodingExtensionSessionStateStore,
 	CodingExtensionSkill,
 	CodingExtensionTool,
-	CodingExtensionToolCatalog,
 	CodingExtensionToolCall,
+	CodingExtensionToolCatalog,
 	CodingExtensionToolPermissionResolver,
 	CodingExtensionToolResult,
 	CodingToolCatalogDiscovery,
 	CodingToolPermission,
+	CodingTurnEndInput,
 } from "./sdk/extensions";
 export { defineExtension } from "./sdk/extensions";
-export {
-	CodingExtensionActivationFailed,
-	CodingExtensionApprovalAborted,
-	CodingExtensionCapabilityConflict,
-	CodingExtensionCatalogDiscoveryFailed,
-	CodingExtensionConfigurationUnavailable,
-	CodingExtensionContractViolation,
-	CodingExtensionDeactivationFailed,
-	CodingExtensionHostOperationFailed,
-	CodingExtensionHookFailed,
-	CodingExtensionOperationFailed,
-	CodingExtensionPersistentApprovalUnavailable,
-	CodingExtensionPolicyBlocked,
-	CodingExtensionSessionStateUnavailable,
-} from "./sdk/extension-errors";
-export type { CodingExtensionError } from "./sdk/extension-errors";
 export type { CodingProviderOptions } from "./sdk/model";
 export { codingArtifactsFromAppState } from "./sdk/project";
 export type {

@@ -36,8 +36,6 @@ import {
 	type PermissionConfig,
 	type PermissionSettings,
 } from "../permissions";
-import type { ToolCatalog } from "./tool-catalog";
-import type { CodingToolName } from "../tools/names";
 import { type CodingPluginSkillCard, CodingSkillsRuntime, type CodingSkillsRuntimeOptions } from "../skills";
 import {
 	type CodingToolOptions,
@@ -46,8 +44,10 @@ import {
 	type SessionTodoItem,
 	type SessionTodos,
 } from "../tools";
+import type { CodingToolName } from "../tools/names";
 import { assembleAgentCapabilities } from "./assemble";
 import type { CodingExecutionContext } from "./execution-context";
+import type { ToolCatalog } from "./tool-catalog";
 
 const SUBAGENT_INSTRUCTIONS =
 	"You are an internal subagent. Complete only the delegated task using the available tools, then return a concise final result to the parent agent. You cannot see the parent conversation, so rely only on the task and workspace.";
@@ -249,7 +249,10 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const mcp = await createMcpRuntime(options.resolveMcpServers ? await options.resolveMcpServers(snapshot) : []);
 	let skills: CodingSkillsRuntime | undefined;
 	try {
-		skills = options.enabledTools?.has("Skill") === false ? undefined : await createSkillsRuntime(options, options.extensionSkills);
+		skills =
+			options.enabledTools?.has("Skill") === false
+				? undefined
+				: await createSkillsRuntime(options, options.extensionSkills);
 	} catch (error) {
 		await mcp?.close();
 		throw error;
@@ -334,7 +337,9 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		signal?.throwIfAborted();
 		const childToolCatalog = extensionToolCatalog.current?.createScope();
 		const childSkills =
-			options.enabledTools?.has("Skill") === false ? undefined : await createSkillsRuntime(options, options.extensionSkills);
+			options.enabledTools?.has("Skill") === false
+				? undefined
+				: await createSkillsRuntime(options, options.extensionSkills);
 		const childCapabilities = assembleAgentCapabilities({
 			kind: "subagent",
 			executionContext: options.executionContext,
@@ -361,7 +366,9 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				maxIterations: resolvedAgentOptions.maxIterations,
 				toolExecution: resolvedAgentOptions.toolExecution,
 				compaction: resolvedAgentOptions.compaction,
-				...(childToolCatalog ? { resolveTools: (staticTools) => childToolCatalog.toolsForRequest(staticTools) } : {}),
+				...(childToolCatalog
+					? { resolveTools: (staticTools) => childToolCatalog.toolsForRequest(staticTools) }
+					: {}),
 				hooks: {
 					aroundToolCall: childCapabilities.aroundToolCall,
 					onEvent: childCapabilities.onEvent,
