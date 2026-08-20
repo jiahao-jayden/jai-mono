@@ -51,9 +51,7 @@ type CodingSessionSelection =
 
 ## Extensions
 
-`CodingAgentExtension` 必须声明稳定 `id`；初始化 context 提供 `sessionId`、`cwd`、
-`permissionMode`，以及该 Extension 声明的 configuration store。它可返回 `tools`、`skills`、
-`hooks` 和 `dispose()`。更多字段与约束见 [工具与动态能力](/docs/guides/tools-and-capabilities)。
+`CodingAgentExtension` 必须声明稳定 `id`；tools、skills、hooks 与 catalogs 在 definition 顶层声明。activation context 提供 `sessionId`、`cwd`、`permissionMode`，以及该 Extension 声明的 configuration 与 session state store；它只返回 session 私有 instance。更多字段与约束见 [工具与动态能力](/docs/guides/tools-and-capabilities)。
 
 `extensionRuntime` 是宿主为 Extension configuration 与 Extension-owned approval 提供的 adapter。
 普通嵌入只需使用 core-owned tools，不需要传它；需要持久化 Extension configuration 或由

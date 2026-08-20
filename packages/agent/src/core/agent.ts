@@ -97,6 +97,7 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 
 	private readonly internalState: MutableAgentState<TAppState>;
 	private tools: AgentTool[];
+	private toolResolver?: (staticTools: readonly AgentTool[]) => readonly AgentTool[];
 	private activeRun?: ActiveRun;
 
 	constructor(options: CoreAgentOptions<TAppState>) {
@@ -110,7 +111,7 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 			isRunning: false,
 			pendingToolCallIds: new Set(),
 		};
-		this.tools = assertUniqueTools(options.tools ?? []);
+	this.tools = assertUniqueTools(options.tools ?? []);
 		this.commitEvent = options.commitEvent;
 		this.onObserverError = options.onObserverError;
 		this.config = {
@@ -145,6 +146,14 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 			pendingToolCallIds: [...state.pendingToolCallIds],
 			error: state.error ? structuredClone(state.error) : undefined,
 		};
+	}
+
+	addTools(tools: readonly AgentTool[]): void {
+		this.tools = assertUniqueTools([...this.tools, ...tools]);
+	}
+
+	setToolResolver(resolveTools: (staticTools: readonly AgentTool[]) => readonly AgentTool[]): void {
+		this.toolResolver = resolveTools;
 	}
 
 	setAppState(next: TAppState): void {
@@ -340,7 +349,7 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 		return {
 			systemPrompt: this.internalState.systemPrompt,
 			messages: [...this.internalState.messages],
-			tools: [...this.tools],
+			tools: [...(this.toolResolver ? this.toolResolver(this.tools) : this.tools)],
 		};
 	}
 

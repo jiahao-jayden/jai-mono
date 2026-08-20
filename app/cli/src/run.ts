@@ -241,6 +241,10 @@ async function createCliAgent(options: CliOptions, homeDirectory: string): Promi
 			retryable: false,
 		});
 	}
+	const agentPluginsExtension = await createAgentPluginsExtension({
+		directories: pluginDirectories,
+		dataDirectory: path.join(homeDirectory, ".jai", "agent-plugin-data"),
+	});
 	const created = await createCodingAgent({
 		model,
 		cwd: options.cwd,
@@ -249,10 +253,7 @@ async function createCliAgent(options: CliOptions, homeDirectory: string): Promi
 		...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
 		...(options.maxTurns ? { maxTurns: options.maxTurns } : {}),
 		extensions: [
-			createAgentPluginsExtension({
-				directories: pluginDirectories,
-				dataDirectory: path.join(homeDirectory, ".jai", "agent-plugin-data"),
-			}),
+			agentPluginsExtension,
 		],
 	});
 	if (created.isErr()) throw new CliAgentError(created.error);

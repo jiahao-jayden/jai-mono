@@ -3,15 +3,13 @@ import type { AgentTool } from "@jai/agent";
 import { connectAgentPluginMcp } from "../mcp/runtime";
 import type { AgentPluginMcpRuntime } from "../mcp/types";
 import { loadAgentPluginDirectory } from "../package/loader";
-import type { AgentPluginSkillDescriptor } from "../package/types";
 import type { AgentPluginDiagnostic } from "../shared/diagnostics";
-import type { AgentPluginRuntime, AgentPluginRuntimeOptions } from "./types";
+import type { AgentPluginDiscovery, AgentPluginRuntime, AgentPluginRuntimeOptions } from "./types";
 
-export async function createAgentPluginRuntime(options: AgentPluginRuntimeOptions): Promise<AgentPluginRuntime> {
-	const skills: AgentPluginSkillDescriptor[] = [];
-	const tools: AgentTool[] = [];
+export async function discoverAgentPlugins(options: AgentPluginRuntimeOptions): Promise<AgentPluginDiscovery> {
+	const skills: AgentPluginDiscovery["skills"][number][] = [];
+	const plugins: AgentPluginDiscovery["plugins"][number][] = [];
 	const diagnostics: AgentPluginDiagnostic[] = [];
-	const mcpRuntimes: AgentPluginMcpRuntime[] = [];
 	for (const entry of options.directories) {
 		const directory = typeof entry === "string" ? { path: entry, scope: options.scope ?? "user" } : entry;
 		const loaded = await loadAgentPluginDirectory(directory.path, { scope: directory.scope });
@@ -26,9 +24,22 @@ export async function createAgentPluginRuntime(options: AgentPluginRuntimeOption
 			continue;
 		}
 		const plugin = loaded.value;
+		plugins.push(plugin);
 		skills.push(...plugin.skills);
 		diagnostics.push(...plugin.diagnostics);
-		const pluginDataDirectory = path.join(options.dataDirectory, plugin.manifest.name);
+	}
+	return { skills, plugins, diagnostics };
+}
+
+export async function activateAgentPlugins(
+	discovery: AgentPluginDiscovery,
+	dataDirectory: string,
+): Promise<AgentPluginRuntime> {
+	const tools: AgentTool[] = [];
+	const diagnostics: AgentPluginDiagnostic[] = [...discovery.diagnostics];
+	const mcpRuntimes: AgentPluginMcpRuntime[] = [];
+	for (const plugin of discovery.plugins) {
+		const pluginDataDirectory = path.join(dataDirectory, plugin.manifest.name);
 		const mcp = await connectAgentPluginMcp(plugin, {
 			pluginDataDirectory,
 		});
@@ -46,7 +57,7 @@ export async function createAgentPluginRuntime(options: AgentPluginRuntimeOption
 		}
 	}
 	return {
-		skills,
+		skills: discovery.skills,
 		tools,
 		diagnostics,
 		close: async () => {
@@ -55,4 +66,4 @@ export async function createAgentPluginRuntime(options: AgentPluginRuntimeOption
 	};
 }
 
-export type { AgentPluginDirectory, AgentPluginRuntime, AgentPluginRuntimeOptions } from "./types";
+export type { AgentPluginDirectory, AgentPluginDiscovery, AgentPluginRuntime, AgentPluginRuntimeOptions } from "./types";

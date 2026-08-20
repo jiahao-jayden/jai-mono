@@ -4,7 +4,7 @@ import { TaggedError } from "better-result";
 import { type AgentInput, CoreAgent, type CoreAgentOptions } from "../core/agent";
 import { type AgentState, cloneJson, type JsonObject } from "../core/agent-state";
 import type { Session } from "../core/session";
-import type { AgentContext, AgentMessage, CoreAgentEvent, ObserverErrorInfo, RetryModelCall } from "../core/types";
+import type { AgentContext, AgentMessage, AgentTool, CoreAgentEvent, ObserverErrorInfo, RetryModelCall } from "../core/types";
 import { compact } from "./compaction/compact";
 import { estimateContextTokens, estimateTokens, resolveCompactionSettings, shouldCompact } from "./compaction/estimate";
 import { hasUncompactedTruncation, isContextOverflow } from "./compaction/overflow";
@@ -56,6 +56,8 @@ type AgentCommonOptions<TAppState extends JsonObject> = Omit<
 > & {
 	compaction?: AgentCompactionOptions;
 	hooks?: AgentHookMap;
+	/** Produces the immutable tool snapshot for each model request. */
+	resolveTools?: (staticTools: readonly AgentTool[]) => readonly AgentTool[];
 	/** 观察者失败的上报口；不提供则忽略。 */
 	onObserverError?: (info: ObserverErrorInfo<AgentEvent>) => void;
 };
@@ -98,6 +100,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 	private readonly provider: Provider;
 	private readonly compaction?: CompactionRuntime;
 	private readonly hooks: HookHost;
+	private staticTools: readonly AgentTool[];
+	private resolveTools?: (staticTools: readonly AgentTool[]) => readonly AgentTool[];
 	private readonly onObserverError?: (info: ObserverErrorInfo<AgentEvent>) => void;
 	private appStateWrites: Promise<void> = Promise.resolve();
 	/**
@@ -113,6 +117,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		this.provider = options.provider;
 		this.compaction = resolveCompaction(options.model, options.compaction);
 		this.hooks = new HookHost(options.hooks);
+		this.staticTools = [...(options.tools ?? [])];
+		this.resolveTools = options.resolveTools;
 		this.onObserverError = options.onObserverError;
 		// 构造期 handler 先入队，运行期 subscribe() 的观察者排在它们后面。
 		for (const listener of this.hooks.onEvent) this.listeners.add(listener);
@@ -156,6 +162,15 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 
 	getSession(): Session<TAppState> {
 		return this.agent.getSession();
+	}
+
+	setToolResolver(resolveTools: (staticTools: readonly AgentTool[]) => readonly AgentTool[]): void {
+		this.resolveTools = resolveTools;
+	}
+
+	addTools(tools: readonly AgentTool[]): void {
+		this.staticTools = [...this.staticTools, ...tools];
+		this.agent.addTools(tools);
 	}
 
 	setAppState(next: TAppState): Promise<void> {
@@ -315,7 +330,11 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 	 */
 	private async projectContext(context: AgentContext, phase: BeforeModelCallPhase): Promise<AgentContext> {
 		const projected = this.ledger.project(this.rawMessages);
-		return { ...context, messages: await this.hooks.runBeforeModelCall(phase, projected, this.agent.signal) };
+		return {
+			...context,
+			tools: this.resolveTools ? [...this.resolveTools(this.staticTools)] : context.tools,
+			messages: await this.hooks.runBeforeModelCall(phase, projected, this.agent.signal),
+		};
 	}
 
 	/** 默认算法先给结论，hooks 再在它上面依次修改。 */

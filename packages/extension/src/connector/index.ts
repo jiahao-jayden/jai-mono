@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
 	type CodingAgentExtension,
-	type CodingExtensionContext,
+	type CodingExtensionRuntime,
 	type CodingExtensionTool,
 	type CodingExtensionToolResult,
 	defineExtension,
@@ -83,101 +83,96 @@ const connectorDefaultConfiguration: ConnectorExtensionConfiguration = {
 export function createConnectorExtension(
 	options: ConnectorExtensionOptions,
 ): CodingAgentExtension<ConnectorExtensionConfiguration> {
-	return defineExtension<ConnectorExtensionConfiguration>({
+	return defineExtension({
 		id: "connector",
 		configuration: {
 			scope: "user",
 			schema: connectorConfigurationSchema,
 			defaultValue: connectorDefaultConfiguration,
 		},
-		initialize: (context) => {
-			const tools: readonly CodingExtensionTool[] = [
-				{
-					name: "connector__list_apps",
-					description: "List enabled Connectors and safe connection summaries.",
-					parameters: emptyParameters,
-					authorization: {
-						owner: "core",
-						permission: { sideEffect: "read", reason: "Lists available Connector applications." },
-					},
-					executionMode: "parallel",
-					execute: async ({ toolCallId, signal }) => {
-						const result = await options.client.listApps(requestContext(context.sessionId, toolCallId, signal));
-						if (result.isErr()) throw result.error;
-						return textResult(result.value);
-					},
+		tools: [
+			{
+				name: "connector__list_apps",
+				description: "List enabled Connectors and safe connection summaries.",
+				parameters: emptyParameters,
+				authorization: {
+					owner: "core",
+					permission: { sideEffect: "read", reason: "Lists available Connector applications." },
 				},
-				{
-					name: "connector__list_connections",
-					description: "List Connector account connections, health and scope summaries.",
-					parameters: emptyParameters,
-					authorization: {
-						owner: "core",
-						permission: { sideEffect: "read", reason: "Lists Connector connection summaries." },
-					},
-					executionMode: "parallel",
-					execute: async ({ toolCallId, signal }) => {
-						const result = await options.client.listConnections(
-							requestContext(context.sessionId, toolCallId, signal),
-						);
-						if (result.isErr()) throw result.error;
-						return textResult(result.value);
-					},
+				executionMode: "parallel",
+				execute: async (runtime, { toolCallId, signal }) => {
+					const result = await options.client.listApps(requestContext(runtime.sessionId, toolCallId, signal));
+					if (result.isErr()) throw result.error;
+					return textResult(result.value);
 				},
-				{
-					name: "connector__search_actions",
-					description: "Search available Connector Actions without exposing Connector-specific tools.",
-					parameters: searchParameters,
-					authorization: {
-						owner: "core",
-						permission: { sideEffect: "read", reason: "Searches available Connector Actions." },
-					},
-					executionMode: "parallel",
-					execute: async ({ toolCallId, args, signal }) => {
-						const result = await options.client.searchActions(
-							args as Static<typeof searchParameters>,
-							requestContext(context.sessionId, toolCallId, signal),
-						);
-						if (result.isErr()) throw result.error;
-						return textResult(result.value);
-					},
+			},
+			{
+				name: "connector__list_connections",
+				description: "List Connector account connections, health and scope summaries.",
+				parameters: emptyParameters,
+				authorization: {
+					owner: "core",
+					permission: { sideEffect: "read", reason: "Lists Connector connection summaries." },
 				},
-				{
-					name: "connector__get_action_guide",
-					description: "Get the input/output schema and usage guide for one Connector Action.",
-					parameters: guideParameters,
-					authorization: {
-						owner: "core",
-						permission: { sideEffect: "read", reason: "Reads a Connector Action guide." },
-					},
-					executionMode: "parallel",
-					execute: async ({ toolCallId, args, signal }) => {
-						const result = await options.client.getActionGuide(
-							args as Static<typeof guideParameters>,
-							requestContext(context.sessionId, toolCallId, signal),
-						);
-						if (result.isErr()) throw result.error;
-						return textResult(result.value);
-					},
+				executionMode: "parallel",
+				execute: async (runtime, { toolCallId, signal }) => {
+					const result = await options.client.listConnections(requestContext(runtime.sessionId, toolCallId, signal));
+					if (result.isErr()) throw result.error;
+					return textResult(result.value);
 				},
-				{
-					name: "connector__execute_action",
-					description: "Execute one Connector Action after discovering its guide.",
-					parameters: executeParameters,
-					executionMode: "sequential",
-					authorization: { owner: "extension" },
-					execute: async ({ toolCallId, args, signal }) =>
-						executeConnectorAction(options.client, context, toolCallId, executeInput(args), signal),
+			},
+			{
+				name: "connector__search_actions",
+				description: "Search available Connector Actions without exposing Connector-specific tools.",
+				parameters: searchParameters,
+				authorization: {
+					owner: "core",
+					permission: { sideEffect: "read", reason: "Searches available Connector Actions." },
 				},
-			];
-			return { tools };
-		},
+				executionMode: "parallel",
+				execute: async (runtime, { toolCallId, args, signal }) => {
+					const result = await options.client.searchActions(
+						args as Static<typeof searchParameters>,
+						requestContext(runtime.sessionId, toolCallId, signal),
+					);
+					if (result.isErr()) throw result.error;
+					return textResult(result.value);
+				},
+			},
+			{
+				name: "connector__get_action_guide",
+				description: "Get the input/output schema and usage guide for one Connector Action.",
+				parameters: guideParameters,
+				authorization: {
+					owner: "core",
+					permission: { sideEffect: "read", reason: "Reads a Connector Action guide." },
+				},
+				executionMode: "parallel",
+				execute: async (runtime, { toolCallId, args, signal }) => {
+					const result = await options.client.getActionGuide(
+						args as Static<typeof guideParameters>,
+						requestContext(runtime.sessionId, toolCallId, signal),
+					);
+					if (result.isErr()) throw result.error;
+					return textResult(result.value);
+				},
+			},
+			{
+				name: "connector__execute_action",
+				description: "Execute one Connector Action after discovering its guide.",
+				parameters: executeParameters,
+				executionMode: "sequential",
+				authorization: { owner: "extension" },
+				execute: async (runtime, { toolCallId, args, signal }) =>
+					executeConnectorAction(options.client, runtime, toolCallId, executeInput(args), signal),
+			},
+		] satisfies readonly CodingExtensionTool<ConnectorExtensionConfiguration>[],
 	});
 }
 
 async function executeConnectorAction(
 	client: ConnectorService,
-	context: CodingExtensionContext<ConnectorExtensionConfiguration>,
+	context: CodingExtensionRuntime<ConnectorExtensionConfiguration>,
 	toolCallId: string,
 	input: PrepareActionInput,
 	signal?: AbortSignal,
@@ -201,7 +196,7 @@ async function executeConnectorAction(
 					data: { actionId: prepared.actionId, reason: "dont_ask" },
 				});
 			}
-			const decision = await context.requestApproval(
+			const approval = await context.requestApproval(
 				{
 					requestId: randomUUID(),
 					extensionId: "connector",
@@ -223,6 +218,8 @@ async function executeConnectorAction(
 				},
 				signal,
 			);
+			if (approval.isErr()) throw approval.error;
+			const decision = approval.value;
 			if (decision === "deny") {
 				throw new ConnectorExtensionPermissionDenied({
 					message: "User denied the Connector Action",
@@ -241,17 +238,18 @@ async function executeConnectorAction(
 }
 
 async function persistActionAllow(
-	configuration: CodingExtensionContext<ConnectorExtensionConfiguration>["configuration"],
+	configuration: CodingExtensionRuntime<ConnectorExtensionConfiguration>["configuration"],
 	actionId: string,
 ): Promise<void> {
 	const current = configuration.value;
-	await configuration.update({
+	const persisted = await configuration.update({
 		...current,
 		policy: {
 			...(current.policy ?? {}),
 			actions: { ...(current.policy?.actions ?? {}), [actionId]: "allow" },
 		},
 	});
+	if (persisted.isErr()) throw persisted.error;
 }
 
 function executeInput(args: JsonObject): PrepareActionInput {

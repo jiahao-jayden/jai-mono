@@ -158,7 +158,7 @@ export type CodingApprovalHandler = (
 export interface CodingAgentCreateOptions {
 	readonly model: string;
 	readonly provider?: CodingProviderOptions;
-	readonly extensions?: readonly CodingAgentExtension[];
+	readonly extensions?: readonly CodingAgentExtension<any, any, any>[];
 	/** Host adapter for extension-owned configuration and approval workflows. */
 	readonly extensionRuntime?: CodingExtensionRuntimeAdapter;
 	readonly cwd?: string;

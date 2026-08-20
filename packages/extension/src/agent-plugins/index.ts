@@ -1,11 +1,13 @@
-import type { AgentTool } from "@jai/agent";
 import {
 	type CodingAgentExtension,
+	type CodingExtensionToolCatalog,
 	type CodingExtensionTool,
 	type CodingExtensionToolResult,
+	CodingExtensionOperationFailed,
 	defineExtension,
 } from "@jai/coding-agent";
-import { createAgentPluginRuntime } from "./runtime";
+import { Result } from "better-result";
+import { activateAgentPlugins, discoverAgentPlugins, type AgentPluginRuntime } from "./runtime";
 
 export interface AgentPluginsDirectory {
 	readonly path: string;
@@ -22,22 +24,38 @@ export interface AgentPluginsExtensionOptions {
  * Loads portable Agent Plugins v1 Skills and MCP servers through the public
  * Coding Agent Extension contract.
  */
-export function createAgentPluginsExtension(options: AgentPluginsExtensionOptions): CodingAgentExtension {
+export async function createAgentPluginsExtension(
+	options: AgentPluginsExtensionOptions,
+): Promise<CodingAgentExtension<any, any, AgentPluginRuntime>> {
+	const discovery = await discoverAgentPlugins(options);
 	return defineExtension({
 		id: "agent-plugins",
-		initialize: async () => {
-			const runtime = await createAgentPluginRuntime(options);
-			const tools = runtime.tools.map(toExtensionTool);
-			return {
-				tools,
-				skills: runtime.skills,
-				dispose: () => runtime.close(),
-			};
+		skills: discovery.skills,
+		lifecycle: {
+			activate: async () => {
+				try {
+					return Result.ok(await activateAgentPlugins(discovery, options.dataDirectory));
+				} catch (error) {
+					return Result.err(
+						new CodingExtensionOperationFailed({
+							message: error instanceof Error ? error.message : "Agent Plugins activation failed",
+							cause: error,
+						}),
+					);
+				}
+			},
+			deactivate: async (runtime) => runtime.instance.close(),
 		},
+		catalogs: [
+			{
+				id: "mcp",
+				discover: async (runtime) => Result.ok({ tools: runtime.instance.tools.map(toExtensionTool) }),
+			} satisfies CodingExtensionToolCatalog<any, any, AgentPluginRuntime>,
+		],
 	});
 }
 
-function toExtensionTool(tool: AgentTool): CodingExtensionTool {
+function toExtensionTool(tool: AgentPluginRuntime["tools"][number]): CodingExtensionTool<any, any, AgentPluginRuntime> {
 	return {
 		name: tool.name,
 		description: tool.description,
@@ -50,9 +68,9 @@ function toExtensionTool(tool: AgentTool): CodingExtensionTool {
 				reason: `Runs external MCP tool "${tool.name}" from an Agent Plugins package.`,
 			},
 		},
-		...(tool.title ? { title: (args) => tool.title!(args) } : {}),
+		...(tool.title ? { title: (_runtime, args) => tool.title!(args) } : {}),
 		...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
-		execute: async ({ toolCallId, args, signal }): Promise<CodingExtensionToolResult> => {
+		execute: async (_runtime, { toolCallId, args, signal }): Promise<CodingExtensionToolResult> => {
 			const result = await tool.execute(toolCallId, args, signal);
 			return {
 				content: result.content,

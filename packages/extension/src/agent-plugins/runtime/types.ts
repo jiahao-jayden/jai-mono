@@ -1,5 +1,5 @@
 import type { AgentTool } from "@jai/agent";
-import type { AgentPluginSkillDescriptor } from "../package/types";
+import type { AgentPluginSkillDescriptor, LoadedAgentPlugin } from "../package/types";
 import type { AgentPluginDiagnostic } from "../shared/diagnostics";
 
 export interface AgentPluginDirectory {
@@ -11,6 +11,12 @@ export interface AgentPluginRuntimeOptions {
 	readonly directories: readonly (string | AgentPluginDirectory)[];
 	readonly dataDirectory: string;
 	readonly scope?: "user" | "project";
+}
+
+export interface AgentPluginDiscovery {
+	readonly skills: readonly AgentPluginSkillDescriptor[];
+	readonly plugins: readonly LoadedAgentPlugin[];
+	readonly diagnostics: readonly AgentPluginDiagnostic[];
 }
 
 export interface AgentPluginRuntime {

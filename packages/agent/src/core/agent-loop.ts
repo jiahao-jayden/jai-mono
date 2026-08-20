@@ -240,6 +240,9 @@ async function streamAssistantResponse(run: AgentLoopRuntime): Promise<Assistant
 		tools: [...context.tools],
 	};
 	const prepared = config.prepareContext ? await config.prepareContext(input) : input;
+	// Tool definitions are a per-request snapshot. The model response must be
+	// executed against the same snapshot it was allowed to call.
+	context.tools = [...prepared.tools];
 
 	let attemptContext = prepared;
 	let attempt = await attemptModelCall(run, attemptContext);
@@ -267,6 +270,7 @@ async function streamAssistantResponse(run: AgentLoopRuntime): Promise<Assistant
 	}
 
 	// 最终协议错误不进入 transcript，也不把模型输出展示成普通 assistant 文本。
+	context.tools = [...attemptContext.tools];
 	if (isModelOutputProtocolViolation(attempt.message)) return discardProtocolViolationContent(attempt.message);
 
 	// 只有最终采纳的那次尝试才进入 transcript 与 message 事件。attempt 的事件在

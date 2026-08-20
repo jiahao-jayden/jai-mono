@@ -1,0 +1,250 @@
+---
+title: Extension 架构提案
+description: 将 Extension 从 initialize 返回 capability 的模型迁移为可审查的声明式定义。
+---
+
+> **状态：Implemented.** 本文记录当前公开 SDK 合约；后续扩展必须遵守其中的 capability、生命周期和 session 约束。
+
+## 决策
+
+`CodingAgentExtension` 改为声明式定义：tools、skills、hooks、configuration、session state 与 tool catalog 都必须在 `defineExtension()` 的顶层可见。删除 `initialize()`，不保留兼容入口。
+
+一个 Extension 的每-session 资源仍可异步创建，但它只能产生私有 instance，不能在运行时返回或注册 capability。这样 host 能在 per-session activation、连接 MCP 或分配外部资源之前，检查大部分名称冲突、schema、授权归属和 host policy；它不试图把同进程 extension module 的加载误称为安全隔离。
+
+这个设计保持三层分离：
+
+- `@jai/coding-agent`：宿主显式传入的受控 Extension 协议。
+- `@jai/extension/agent-plugins`：只把 Agent Plugins v1 的 skills 和 MCP 转换为该协议。
+- Desktop/CLI：发现目录、信任、持久化、UI 和安装策略。
+
+Agent Plugins v1 不加载任意 TypeScript extension。也不引入 Pi 的通用事件总线、TUI API、provider payload/header 修改或内置工具覆盖。
+
+## 现状与问题
+
+当前 `defineExtension()` 接收 `initialize(context)`，后者异步返回 tools、skills、hooks 与 `dispose()`。这让一个方法同时承担四种职责：
+
+1. 声明 capability。
+2. 绑定 `sessionId`、configuration 和 approval 等运行时数据。
+3. 建立外部连接并发现动态工具。
+4. 持有并释放每-session 资源。
+
+结果是 host 必须先执行 initialization，才能知道 extension 有哪些工具和 hooks；静态 capability 冲突也在可能连接 MCP 之后才发现。Connector 的五个固定工具目前也因获取运行时 context 而被藏在 `initialize()` 中，尽管它们完全可以提前声明。
+
+不能简单把 context 捕获在 Extension 对象的 closure 中。一个定义可能同时用于多个 `CodingAgent`，closure 会让不同 session 的资源、configuration 或 cleanup 相互污染。因此目标设计保留 per-session instance，只把它和 capability 声明分开。
+
+## 目标接口
+
+下面是目标形态的接口草案。确切命名可以在实现时微调，但下面的分层和约束是本决策的一部分。
+
+```ts
+interface CodingAgentExtension<
+  TConfig extends JsonObject = JsonObject,
+  TState extends JsonObject = JsonObject,
+  TInstance = undefined,
+> {
+  readonly id: string;
+
+  readonly configuration?: CodingExtensionConfiguration<TConfig>;
+  readonly sessionState?: CodingExtensionSessionState<TState>;
+
+  // 创建 agent 前即可枚举和验证。
+  readonly tools?: readonly CodingExtensionTool<TConfig, TState, TInstance>[];
+  readonly skills?: readonly CodingExtensionSkill[];
+  readonly hooks?: CodingExtensionHooks<TConfig, TState, TInstance>;
+  readonly catalogs?: readonly CodingExtensionToolCatalog<TConfig, TState, TInstance>[];
+
+  // 只创建和释放本 session 的私有资源；绝不返回 capability。
+  readonly lifecycle?: {
+    readonly activate?: (
+      context: CodingExtensionContext<TConfig, TState>,
+    ) => Result<TInstance, CodingExtensionOperationFailed> | Promise<Result<TInstance, CodingExtensionOperationFailed>>;
+    readonly deactivate?: (
+      runtime: CodingExtensionRuntime<TConfig, TState, TInstance>,
+    ) => void | Promise<void>;
+  };
+}
+
+function defineExtension<const T extends CodingAgentExtension>(definition: T): T;
+```
+
+`defineExtension()` 只负责类型推导与定义校验，返回传入的同一个定义。它不启动资源、不注册全局能力，也没有隐式运行时。
+
+`CodingExtensionContext` 是 activate 期间可用的受限 host 数据：`sessionId`、`cwd`、`permissionMode`、configuration、session state 和 extension-owned approval。activation 成功后，core 将 instance 与 context 绑定为 `CodingExtensionRuntime`，交给工具、catalog 和 hook 调用：
+
+```ts
+interface CodingExtensionRuntime<TConfig, TState, TInstance>
+  extends CodingExtensionContext<TConfig, TState> {
+  readonly instance: TInstance;
+}
+
+interface CodingExtensionTool<TConfig, TState, TInstance> {
+  readonly name: string;
+  readonly description: string;
+  readonly parameters: TSchema;
+  readonly authorization: CodingToolAuthorization;
+  readonly executionMode?: "sequential" | "parallel";
+
+  execute(
+    runtime: CodingExtensionRuntime<TConfig, TState, TInstance>,
+    call: CodingExtensionToolCall,
+  ): Promise<CodingExtensionToolResult>;
+}
+```
+
+因此 tool handler 不需要借由 initialization closure 获得 session 数据。需要连接、client 或缓存的 Extension 在 `activate()` 中创建它，并从 `runtime.instance` 取得对应 session 的私有资源。`deactivate()` 总是在已成功 activate 的同一 instance 上运行，且按 Extension 反序释放。
+
+可恢复 activation 或 catalog 失败由 Extension 返回 `Result` 和 `_tag` 为 `coding_extension.operation_failed` 的 `CodingExtensionOperationFailed`。core、host adapter 与 hook 会把它们归类为更精确的 `coding_extension.<reason>` 错误；抛出的原生异常仅表示 invariant、程序错误或未知基础设施失败。在 UI、RPC 和 event 边界只投影白名单 diagnostic DTO，绝不透传 `cause`、stack 或 SDK 原始错误对象。
+
+## 声明与运行时的分工
+
+| 内容 | 所在位置 | 何时可见 | 是否允许改变 capability 集 |
+| --- | --- | --- | --- |
+| id、configuration schema、session state schema | Extension 顶层 | 创建 agent 前 | 否 |
+| 固定 tools、skills、hooks | Extension 顶层 | 创建 agent 前 | 否 |
+| MCP 等动态工具来源 | `catalogs` 顶层 | 创建 agent 前 | 只可发现 catalog descriptor |
+| session 专属连接、client、缓存 | `lifecycle.activate()` 返回的 instance | activation 后 | 否 |
+| resource cleanup | `lifecycle.deactivate()` | 关闭或 rollback | 否 |
+
+固定 capability 的名称冲突、空 ID、schema 声明错误和授权归属错误必须在任何 activation 前失败。catalog 发现在 activation 后发生，因为它可能需要外部连接；发现出来的工具仍由 core 校验名称、schema 与执行路由，且默认 inactive。
+
+`hooks.sessionStart` 属于 readiness 生命周期：它在所有 instance activation 和 catalog discovery 成功后执行，失败则创建 agent 失败并触发 rollback。它不能注册新工具或替换 hook。
+
+## Connector 与 MCP
+
+Connector 是第一类静态声明的例子。它当前对模型暴露的不是所有外部 Action，而是五个固定工具：
+
+- `connector__list_apps`
+- `connector__list_connections`
+- `connector__search_actions`
+- `connector__get_action_guide`
+- `connector__execute_action`
+
+目标实现把这五个工具直接放入 `tools`。它们的 `execute(runtime, call)` 从 runtime 取 session ID、configuration 和 approval；不需要 `activate()`。Connector 的外部 Action 继续遵循 `search -> guide -> execute(actionId, input)`，不迁移为大量 model tools。
+
+Agent Plugins MCP 是不同场景：MCP 的 `tools/list` 只有连接 server 后才可取得。目前 adapter 把所有条目变成普通 `AgentTool`，再由 runtime 全量加入每次模型请求。这是 schema/context 爆炸的来源。它应该改为静态声明一个 `CodingExtensionToolCatalog`：
+
+```ts
+interface CodingExtensionToolCatalog<TConfig, TState, TInstance> {
+  readonly id: string;
+  discover(
+    runtime: CodingExtensionRuntime<TConfig, TState, TInstance>,
+    signal?: AbortSignal,
+  ): Promise<Result<CodingToolCatalogDiscovery<TConfig, TState, TInstance>, CodingExtensionOperationFailed>>;
+}
+
+interface CodingToolCatalogDiscovery<TConfig, TState, TInstance> {
+  readonly tools: readonly CodingExtensionTool<TConfig, TState, TInstance>[];
+  readonly diagnostics: readonly CodingExtensionDiagnostic[];
+}
+```
+
+catalog adapter 可将 MCP client 放进 per-session instance，`discover()` 用它取得 descriptor，工具执行再用同一 client 调用 MCP。单个 MCP server 的可恢复失败可以产出受控 diagnostic 并只缺少该 server 的条目；整个 adapter 无法建立时才返回 `Err`，使 agent 创建失败。
+
+## ToolCatalog
+
+`ToolCatalog` 是 core-owned 深模块，不作为 extension 的命令式注册 API。它的接口只需要接受 catalog discovery、搜索、激活与每个模型请求的不可变 snapshot；ranking、上限、删除旧 active 工具、schema 校验、权限路由和执行映射留在 implementation 内，以获得 locality。
+
+模型初始只看到静态工具与 core 提供的 `SearchTools`：
+
+```text
+请求 N
+  static tools + SearchTools
+
+SearchTools({ query: "manage GitHub pull request comments", limit: 8 })
+
+请求 N + 1
+  static tools + 至多 8 个已激活的真实 catalog tools
+```
+
+`SearchTools` 激活真实、带独立 TypeBox schema 的工具，而不是返回泛型的 `execute(name, args)`。后者会丢失参数校验、标准 permission path、`beforeToolCall` middleware 和工具 UI。激活只在当前并行 tool batch 结束后生效，绝不改变正在执行的 batch；每次模型请求都绑定一个 tool snapshot。
+
+每次新搜索替换 catalog active set，并有硬上限，避免长 session 再次积累到全量 schema。resume 默认不恢复 active set，只保留 `SearchTools`；模型按需重新搜索。以后可以在 `ToolCatalog` 内部采用 provider-native deferred loading，但不能因此改变 Extension interface。
+
+## 生命周期 hooks
+
+不采用 Pi 式任意事件字符串。每个 hook 是命名、带输入输出和失败语义的接口，按 extension 声明顺序执行：
+
+| Hook | 时机 | 类别 | 失败行为 |
+| --- | --- | --- | --- |
+| `sessionStart` | 所有 activation 与 catalog discovery 后 | readiness | agent 创建失败并 rollback |
+| `beforeAgentStart` | 一个公开 `prompt()` 被调度器接纳后 | policy | fail-closed，阻断该 run |
+| `turnStart` / `turnEnd` | 一次模型响应及关联工具批次前后 | observer | 记录 diagnostic，不改变 run |
+| `beforeModelCall` | 每次模型请求前 | policy | fail-closed，只能贡献受限上下文，不可修改 provider headers/payload |
+| `afterModelCall` | 模型结果或错误已确定后 | observer | 记录 diagnostic |
+| `beforeToolCall` | 每个工具执行前 | policy | 保持 clone -> transform/block -> TypeBox 重校验 |
+| `afterToolCall` | 工具结果已确定后 | observer | 记录 diagnostic，不修改已完成结果 |
+| `agentSettled` | 已接纳 prompt 队列、内部 continuation 均耗尽且 agent 进入 idle | observer | 记录 diagnostic |
+
+不增加 `beforeAgentEnd`。它无法回答“最后一次模型响应前”“最后一个 tool result 后”或“调度队列清空前”的问题，也会给 extension 一个在结束路径继续驱动 agent 的不稳定通道。要影响下一次模型请求，使用 `beforeModelCall`；要阻断行动，使用 `beforeToolCall`。
+
+`agentSettled` 也不是低层 `agent_end` 的别名。一次 run 结束后可能仍有 steer/follow-up，或已有第二个公开 prompt 在串行队列中等待。只有 `waitForIdle()` 会完成的时刻才发出 settled。事件携带 `idleEpoch` 与 `completed | aborted | iteration_limit | failed` outcome，不能阻塞 completion、注入新 turn 或延迟下一次 prompt。它服务于 Desktop loading 收尾、最终 usage 结算、checkpoint/telemetry 收尾等“一个逻辑工作批次”的场景。
+
+## Extension session state
+
+configuration 是 user/project 级设置；session state 是一个 extension 在特定 session 中的可恢复工作状态。二者不能互相代替。
+
+```ts
+interface CodingExtensionSessionState<TState extends JsonObject> {
+  readonly schema: TObject;
+  readonly defaultValue: TState;
+}
+
+interface CodingExtensionSessionStateStore<TState extends JsonObject> {
+  readonly value: TState;
+  update(
+    update: (current: TState) => TState,
+  ): Promise<Result<TState, CodingExtensionError>>;
+}
+```
+
+实现复用现有 append-only session ledger 与 revision/写入串行化，不创建第二份 extension state 文件。为避免占用调用方 `TAppState` 的根键，ledger 内部 app-state payload 改为 envelope：
+
+```ts
+interface PersistedCodingSessionState<TAppState extends JsonObject> {
+  readonly appState: TAppState;
+  readonly extensions: Readonly<Record<string, JsonObject>>;
+}
+```
+
+公开的 `CodingAgent.state.appState` 仍只投影 `appState`。extension state 只能通过自己的 schema-validated store 读取和更新，不能读取其他 extension 的 namespace 或整个 envelope。一次 update 与宿主 app-state 写入共用同一 session 写入队列，成功时返回已持久化且重新校验的 snapshot。
+
+新 session 使用 `defaultValue`；resume 恢复 namespace；compaction 与当前 `reset()` 一样保留状态；`deactivate()` 不删除状态。未来提供 fork 时，fork 从当时的 extension state snapshot 复制，而不共享引用。
+
+这是 session 格式的明确变更：schema version 必须递增，旧格式不能静默猜测或 fallback。若需要导入旧 session，应由独立的显式导入工具处理，不写入 SDK 正常创建/恢复路径。
+
+预期消费者包括 Git checkpoint/base SHA、远端 CI/deploy/review job handle、已处理的 review comment ID，以及不应该放进 LLM context 的 session-local triage 缓存。Connector 的凭据与长期 policy 仍属于 user configuration；一次 `prepareAction` 得到的 action/approval token 有意保持短暂，不写入 session state。
+
+## 启动、关闭与失败顺序
+
+```text
+验证顶层定义、固定 capability 与 schema
+  -> 创建 context，读取 configuration 和 session state
+  -> 按声明顺序 activate extension instance
+  -> discover catalog，并注册为 inactive
+  -> 按声明顺序调用 sessionStart
+  -> agent 可用
+
+任一步失败
+  -> 停止后续步骤
+  -> 逆序 deactivate 已 activation 的 instance
+  -> createCodingAgent 返回 Err
+```
+
+close 时先阻止新 prompt、取消当前工作并等待已接纳队列完成，再使 runtime 失效并逆序 `deactivate()`。失效 runtime 上的 state 写入、approval 或 catalog 操作返回明确的 extension lifecycle failure。这个失效机制也为未来 reload/session replacement 保留了正确的 seam；在实际支持 reload 前，不暴露 reload API。
+
+## 实施顺序与验收
+
+1. 声明式 Extension definition、Connector 迁移与 per-session lifecycle 已完成。
+2. Core `ToolCatalog` 与 Agent Plugins MCP catalog adapter 已完成；真实工具在搜索后的下一请求激活，并继承权限、中间件与 subagent 路径。
+3. Typed lifecycle dispatcher 已完成，包含 policy fail-closed、observer diagnostics 与 `agentSettled` 队列语义。
+4. Extension state envelope 与 schema-validated store 已完成，覆盖并发 update 与 resume；后续若增加 compaction/reset/fork 的新 session 语义，必须保留该 envelope 与 namespace 隔离。
+
+每一步的接口测试必须只跨公开 seam：definition、runtime、catalog 和 session state store。不要通过检查 private registry 或手动构造内部 agent 状态来测试实现细节。
+
+## 非目标
+
+- 不把 Agent Plugins v1 变为任意可执行 TypeScript plugin loader。
+- 不把 provider、HTTP headers、原始 message history 或模型选择权交给 extension。
+- 不提供跨 Desktop/CLI 的 UI、命令、快捷键或 TUI renderer；需要 host UI 时另建 JSON-safe host contribution protocol。
+- 不允许 extension 覆盖 SDK 内置工具，或在 hook 中原地修改已验证参数/已完成 tool result。
+- 不把同进程 extension 错当作 OS capability sandbox；第三方可执行 extension 若要安装，需要独立的信任、版本锁定、撤销和进程隔离设计。

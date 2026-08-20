@@ -36,6 +36,7 @@ import {
 	type PermissionSettings,
 } from "../permissions";
 import type { CodingExtensionSkill } from "../sdk/extensions";
+import type { ToolCatalog } from "../sdk/tool-catalog";
 import type { CodingToolName } from "../sdk/types";
 import { CodingSkillsRuntime, type CodingSkillsRuntimeOptions } from "../skills";
 import {
@@ -112,11 +113,17 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 		) => import("../sdk/extensions").CodingToolPermission | Promise<import("../sdk/extensions").CodingToolPermission>
 	>;
 	readonly extensionAuthorizedToolNames?: ReadonlySet<string>;
+	extensionToolCatalog?: ToolCatalog;
+	readonly extensionBeforeModelCall?: (messages: readonly AgentMessage[]) => Promise<AgentMessage[]>;
 	readonly agent?: CodingAgentRuntimeOptions;
 	readonly resolveAgentOptions?: (
 		snapshot: ConfigSnapshot<TSchema>,
 		resolved: ResolvedCodingProvider,
 	) => CodingAgentRuntimeOptions | Promise<CodingAgentRuntimeOptions>;
+}
+
+interface ExtensionToolCatalogSlot {
+	current?: ToolCatalog;
 }
 
 interface RuntimeState<TSchema extends TObject> {
@@ -132,6 +139,13 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	readonly #skills?: CodingSkillsRuntime;
 	readonly #mcp?: McpRuntime;
 	readonly #attachments: CodingAttachmentRun;
+	readonly #extensionToolCatalog: ExtensionToolCatalogSlot;
+	readonly #extensionToolPermissions: Map<
+		string,
+		(
+			call: import("../sdk/extensions").CodingExtensionToolCall<import("../sdk/types").JsonObject>,
+		) => import("../sdk/extensions").CodingToolPermission | Promise<import("../sdk/extensions").CodingToolPermission>
+	>;
 
 	constructor(
 		agent: Agent<TAppState>,
@@ -141,6 +155,13 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		skills?: CodingSkillsRuntime,
 		mcp?: McpRuntime,
 		attachments: CodingAttachmentRun = new CodingAttachmentRun(),
+		extensionToolCatalog: ExtensionToolCatalogSlot = {},
+		extensionToolPermissions = new Map<
+			string,
+			(
+				call: import("../sdk/extensions").CodingExtensionToolCall<import("../sdk/types").JsonObject>,
+			) => import("../sdk/extensions").CodingToolPermission | Promise<import("../sdk/extensions").CodingToolPermission>
+		>(),
 	) {
 		this.#agent = agent;
 		this.configStore = configStore;
@@ -149,6 +170,8 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#skills = skills;
 		this.#mcp = mcp;
 		this.#attachments = attachments;
+		this.#extensionToolCatalog = extensionToolCatalog;
+		this.#extensionToolPermissions = extensionToolPermissions;
 	}
 
 	get configSnapshot(): ConfigSnapshot<TSchema> {
@@ -165,6 +188,13 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 
 	get mcpDiagnostics() {
 		return this.#mcp?.diagnostics ?? [];
+	}
+
+	setExtensionToolCatalog(catalog: ToolCatalog): void {
+		this.#extensionToolCatalog.current = catalog;
+		this.#extensionToolPermissions.set("SearchTools", () => catalog.permission);
+		this.#agent.setToolResolver((staticTools) => catalog.toolsForRequest(staticTools));
+		this.#agent.addTools([catalog.searchTool]);
 	}
 
 	invoke(input: AgentInput): Promise<AgentMessage[]> {
@@ -294,6 +324,11 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			],
 		};
 	});
+	if (options.extensionBeforeModelCall) {
+		beforeModelCall.push(async ({ messages }) => ({
+			messages: await options.extensionBeforeModelCall!(messages),
+		}));
+	}
 	const toolEnvironment = options.executionContext.localFileAccess
 		? new NodeExecutionEnvironment({
 				cwd: options.executionContext.cwd,
@@ -301,10 +336,15 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				ripgrepPath: options.tools?.ripgrepPath,
 			})
 		: undefined;
+	const extensionToolCatalog: ExtensionToolCatalogSlot = { current: options.extensionToolCatalog };
+	const extensionToolPermissions = new Map(options.extensionToolPermissions ?? []);
+	if (extensionToolCatalog.current) {
+		extensionToolPermissions.set("SearchTools", () => extensionToolCatalog.current!.permission);
+	}
 	const permissionMiddleware = createPermissionMiddleware({
 		workspaceRoot: options.executionContext.localFileAccess ? options.executionContext.cwd : process.cwd(),
 		settings: () => selectPermissionSettings(runtime.snapshot),
-		extensionToolPermissions: options.extensionToolPermissions,
+		extensionToolPermissions,
 		extensionAuthorizedToolNames: options.extensionAuthorizedToolNames,
 		requestApproval: options.permissions?.requestApproval,
 		persistProjectLocalAllowRules,
@@ -313,6 +353,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	});
 	const spawnAgentTool = createSpawnAgentTool(async ({ task, signal, onActivity }) => {
 		signal?.throwIfAborted();
+		const childToolCatalog = extensionToolCatalog.current?.createScope();
 		const childSkills =
 			options.enabledTools?.has("Skill") === false ? undefined : await createSkillsRuntime(options, options.extensionSkills);
 		const childCapabilities = assembleAgentCapabilities({
@@ -326,6 +367,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			permissionMiddleware,
 			extensionTools: options.extensionTools,
 			extensionToolMiddleware: options.extensionToolMiddleware,
+			extraTools: childToolCatalog ? [childToolCatalog.searchTool] : [],
 		});
 		let child: Agent;
 		try {
@@ -340,6 +382,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				maxIterations: resolvedAgentOptions.maxIterations,
 				toolExecution: resolvedAgentOptions.toolExecution,
 				compaction: resolvedAgentOptions.compaction,
+				...(childToolCatalog ? { resolveTools: (staticTools) => childToolCatalog.toolsForRequest(staticTools) } : {}),
 				hooks: {
 					aroundToolCall: childCapabilities.aroundToolCall,
 					onEvent: childCapabilities.onEvent,
@@ -412,7 +455,17 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const stopConfigWatch = configStore.watch((event) => {
 		if (!runtime.closed && event.status === "valid") runtime.snapshot = event.snapshot;
 	});
-	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, skills, mcp, attachments);
+	return new CodingAgent(
+		agent,
+		configStore,
+		runtime,
+		stopConfigWatch,
+		skills,
+		mcp,
+		attachments,
+		extensionToolCatalog,
+		extensionToolPermissions,
+	);
 }
 
 async function createMcpRuntime(servers: readonly McpServer[]): Promise<McpRuntime | undefined> {

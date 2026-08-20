@@ -381,7 +381,7 @@ describe("DesktopConfigService", () => {
 		});
 		if (!adapter.writeConfiguration || !adapter.readConfiguration) throw new Error("Extension Runtime adapter is incomplete");
 
-		const connector = await adapter.writeConfiguration({
+		const connectorResult = await adapter.writeConfiguration({
 			extensionId: "connector",
 			scope: "user",
 			value: {
@@ -389,27 +389,35 @@ describe("DesktopConfigService", () => {
 				connectors: { github: { enabled: true, credentials: { token: "github-secret" } } },
 			},
 		});
-		const other = await adapter.writeConfiguration({
+		const otherResult = await adapter.writeConfiguration({
 			extensionId: "example-extension",
 			scope: "user",
 			value: { enabled: true, nested: { retries: 2 } },
 		});
 
+		expect(connectorResult.isOk()).toBe(true);
+		expect(otherResult.isOk()).toBe(true);
+		if (connectorResult.isErr() || otherResult.isErr()) return;
+		const connector = connectorResult.value;
+		const other = otherResult.value;
 		expect(connector).toEqual({
 			policy: { default: "ask", actions: { "github.create_issue": "allow" } },
 			connectors: { github: { enabled: true, credentials: { token: "github-secret" } } },
 		});
 		expect(other).toEqual({ enabled: true, nested: { retries: 2 } });
-		expect(await adapter.readConfiguration({ extensionId: "connector", scope: "user" })).toEqual(connector);
-		expect(await adapter.readConfiguration({ extensionId: "example-extension", scope: "user" })).toEqual(other);
+		const readConnector = await adapter.readConfiguration({ extensionId: "connector", scope: "user" });
+		const readOther = await adapter.readConfiguration({ extensionId: "example-extension", scope: "user" });
+		expect(readConnector).toMatchObject({ status: "ok", value: connector });
+		expect(readOther).toMatchObject({ status: "ok", value: other });
 		expect(writes).toEqual([
 			{ extensionId: "connector", scope: "user", value: connector },
 			{ extensionId: "example-extension", scope: "user", value: other },
 		]);
 
-		await expect(adapter.readConfiguration({ extensionId: "example-extension", scope: "project" })).rejects.toThrow(
-			"Project-scoped Extension configuration is unavailable in Desktop",
-		);
+		expect(await adapter.readConfiguration({ extensionId: "example-extension", scope: "project" })).toMatchObject({
+			status: "error",
+			error: { _tag: "coding_extension.host_operation_failed" },
+		});
 		service.close();
 	});
 

@@ -35,6 +35,10 @@ export function createDesktopAgentFactory(
 			? executionEnvironmentInstruction(executionContext)
 			: NO_WORKSPACE_INSTRUCTIONS;
 		const resolvedModel = await config.resolveAgentInput(modelRef);
+		const agentPluginsExtension = await createAgentPluginsExtension({
+			directories: pluginDirectories,
+			dataDirectory: path.join(service.dataRoot, "agent-plugin-data"),
+		});
 		const created = await createPublicCodingAgent({
 			model: resolvedModel.model,
 			provider: resolvedModel.provider,
@@ -54,10 +58,7 @@ export function createDesktopAgentFactory(
 			compactionSummaryInstructions: ARTIFACT_COMPACTION_INSTRUCTIONS,
 			extensions: [
 				createConnectorExtension({ client: connectorService }),
-				createAgentPluginsExtension({
-					directories: pluginDirectories,
-					dataDirectory: path.join(service.dataRoot, "agent-plugin-data"),
-				}),
+				agentPluginsExtension,
 			],
 		});
 		if (created.isErr()) {

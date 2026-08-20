@@ -4,6 +4,8 @@ import type {
 	CodingExtensionRuntimeAdapter,
 	JsonObject,
 } from "@jai/coding-agent";
+import { CodingExtensionHostOperationFailed } from "@jai/coding-agent";
+import { Result } from "better-result";
 import type { OAuthTokenResponse } from "@jai/connector";
 import type {
 	DesktopProviderApiKeyRevealResult,
@@ -179,27 +181,59 @@ export class DesktopConfigService {
 	}): CodingExtensionRuntimeAdapter {
 		return {
 			readConfiguration: async ({ extensionId, scope }) => {
-				const { settings } = await this.#readExtensionConfigurationScope(scope);
-				const value = extensionId === "connector" ? settings.connector : settings.extensions?.[extensionId];
-				return value === undefined ? undefined : (structuredClone(value) as JsonObject);
+				try {
+					const { settings } = await this.#readExtensionConfigurationScope(scope);
+					const value = extensionId === "connector" ? settings.connector : settings.extensions?.[extensionId];
+					return Result.ok(value === undefined ? undefined : (structuredClone(value) as JsonObject));
+				} catch (cause) {
+					return Result.err(
+						new CodingExtensionHostOperationFailed({
+							operation: "configuration_read",
+							message: "Desktop could not read Extension configuration",
+							cause,
+						}),
+					);
+				}
 			},
 			writeConfiguration: async ({ extensionId, scope, value }) => {
-				const current = await this.#readExtensionConfigurationScope(scope);
-				const settings = structuredClone(current.settings);
-				if (extensionId === "connector") settings.connector = value as CodingAgentSettings["connector"];
-				else settings.extensions = { ...(settings.extensions ?? {}), [extensionId]: structuredClone(value) };
-				const snapshot = await this.#store.writeScope("user", settings, {
-					expectedRevision: current.revision,
-				});
-				const persisted =
-					extensionId === "connector" ? snapshot.settings.connector : snapshot.settings.extensions?.[extensionId];
-				if (persisted === undefined)
-					throw invalidInput(`Extension "${extensionId}" configuration was not persisted`);
-				const projected = structuredClone(persisted) as JsonObject;
-				await options.onConfigurationWritten?.({ extensionId, scope, value: projected });
-				return projected;
+				try {
+					const current = await this.#readExtensionConfigurationScope(scope);
+					const settings = structuredClone(current.settings);
+					if (extensionId === "connector") settings.connector = value as CodingAgentSettings["connector"];
+					else settings.extensions = { ...(settings.extensions ?? {}), [extensionId]: structuredClone(value) };
+					const snapshot = await this.#store.writeScope("user", settings, {
+						expectedRevision: current.revision,
+					});
+					const persisted =
+						extensionId === "connector" ? snapshot.settings.connector : snapshot.settings.extensions?.[extensionId];
+					if (persisted === undefined)
+						throw invalidInput(`Extension "${extensionId}" configuration was not persisted`);
+					const projected = structuredClone(persisted) as JsonObject;
+					await options.onConfigurationWritten?.({ extensionId, scope, value: projected });
+					return Result.ok(projected);
+				} catch (cause) {
+					return Result.err(
+						new CodingExtensionHostOperationFailed({
+							operation: "configuration_write",
+							message: "Desktop could not write Extension configuration",
+							cause,
+						}),
+					);
+				}
 			},
-			requestApproval: options.requestApproval,
+			requestApproval: async (request, signal) => {
+				try {
+					return Result.ok(await options.requestApproval(request, signal));
+				} catch (cause) {
+					return Result.err(
+						new CodingExtensionHostOperationFailed({
+							operation: "approval",
+							message: "Desktop could not request Extension approval",
+							cause,
+						}),
+					);
+				}
+			},
 		};
 	}
 

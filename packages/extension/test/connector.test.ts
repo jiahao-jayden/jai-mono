@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Result } from "better-result";
+import type { CodingExtensionRuntime } from "@jai/coding-agent";
 import { createConnectorExtension } from "../src/connector/index";
 import type {
 	ActionGuideResponse,
@@ -14,15 +15,21 @@ import type {
 	SearchActionsResponse,
 } from "@jai/connector";
 
-type ConnectorContext = Parameters<ReturnType<typeof createConnectorExtension>["initialize"]>[0];
+type ConnectorContext = CodingExtensionRuntime<{
+	readonly policy?: {
+		readonly default?: "allow" | "ask" | "deny";
+		readonly actions?: Readonly<Record<string, "allow" | "ask" | "deny">>;
+	};
+	readonly connectors?: Readonly<Record<string, { readonly enabled?: boolean; readonly credentials?: Readonly<Record<string, string>> }>>;
+}>;
 
 describe("Connector Extension", () => {
 	test("asks before executing an action whose Connector policy is ask", async () => {
 		const calls: string[] = [];
-		const context = extensionContext({
+	const context = extensionContext({
 			requestApproval: async () => {
 				calls.push("approve");
-				return "allowOnce";
+				return Result.ok("allowOnce");
 			},
 		});
 		const client = clientFor({
@@ -42,7 +49,7 @@ describe("Connector Extension", () => {
 	test("persists allow for the exact Connector action before executing", async () => {
 		const updates: unknown[] = [];
 		const context = extensionContext({
-			requestApproval: async () => "allow",
+		requestApproval: async () => Result.ok("allow"),
 			onConfigurationUpdate: (value) => updates.push(value),
 		});
 		const executed: PreparedConnectorAction[] = [];
@@ -71,7 +78,7 @@ describe("Connector Extension", () => {
 			onExecute: (prepared) => executed.push(prepared),
 		});
 
-		await expect(executeAction(client, extensionContext({ requestApproval: async () => "deny" }))).rejects.toMatchObject({
+		await expect(executeAction(client, extensionContext({ requestApproval: async () => Result.ok("deny") }))).rejects.toMatchObject({
 			_tag: "connector_extension.permission_denied",
 		});
 
@@ -89,7 +96,7 @@ describe("Connector Extension", () => {
 		});
 
 		await expect(
-			executeAction(client, extensionContext({ permissionMode: "plan", requestApproval: async () => "allowOnce" })),
+			executeAction(client, extensionContext({ permissionMode: "plan", requestApproval: async () => Result.ok("allowOnce") })),
 		).rejects.toMatchObject({ _tag: "connector_extension.permission_denied" });
 
 		expect(discarded).toEqual([preparedAction("allow")]);
@@ -98,10 +105,10 @@ describe("Connector Extension", () => {
 });
 
 async function executeAction(client: ConnectorService, context: ConnectorContext) {
-	const capabilities = await createConnectorExtension({ client }).initialize(context);
-	const tool = capabilities.tools?.find((candidate) => candidate.name === "connector__execute_action");
+	const extension = createConnectorExtension({ client });
+	const tool = extension.tools?.find((candidate) => candidate.name === "connector__execute_action");
 	if (!tool) throw new Error("Connector execute tool is unavailable");
-	return tool.execute({
+	return tool.execute(context, {
 		toolCallId: "tool-call-1",
 		args: { actionId: "demo.create", input: { name: "record" } },
 	});
@@ -128,10 +135,15 @@ function extensionContext(input: {
 			update: async (next) => {
 				value = structuredClone(next);
 				input.onConfigurationUpdate?.(value);
-				return structuredClone(value);
+				return Result.ok(structuredClone(value));
 			},
 		},
+		sessionState: {
+			value: {},
+			update: async () => Result.ok({}),
+		},
 		requestApproval: input.requestApproval,
+		instance: undefined,
 	};
 }
 

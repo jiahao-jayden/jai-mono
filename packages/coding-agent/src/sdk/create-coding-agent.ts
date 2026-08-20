@@ -16,14 +16,29 @@ import {
 import { sdkConfigDefinition } from "./config";
 import {
 	disposeExtensions,
+	activateExtensions,
+	extensionBeforeAgentStart,
+	extensionBeforeModelCall,
 	extensionAuthorizedToolNames,
+	extensionCatalogTools,
 	extensionMiddleware,
 	extensionPermissions,
 	extensionSkills,
 	extensionTools,
-	initializeExtensions,
+	notifyExtensionSettled,
+	notifyExtensionTurnEnd,
+	notifyExtensionTurnStart,
+	prepareExtensions,
+	type InitializedExtension,
+	type CodingTurnEndInput,
 } from "./extensions";
+import {
+	type CodingExtensionError,
+	CodingExtensionPolicyBlocked,
+	extensionHostOperationFailed,
+} from "./extension-errors";
 import { resolveSdkModel } from "./model";
+import { ToolCatalog } from "./tool-catalog";
 import {
 	agentClosedFailure,
 	artifactsFromAppState,
@@ -50,6 +65,7 @@ import type {
 	CodingSdkError,
 	CodingSessionSelection,
 	JsonObject,
+	JsonValue,
 } from "./types";
 
 export async function createCodingAgent<TAppState extends JsonObject = JsonObject>(
@@ -57,7 +73,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 ): Promise<ResultType<CodingAgent<TAppState>, CodingSdkError>> {
 	let ephemeralDirectory: string | undefined;
 	let modelRuntime: { readonly model: Model; readonly provider: Provider } | undefined;
-	let extensions: Awaited<ReturnType<typeof initializeExtensions>> = [];
+	let extensions: readonly InitializedExtension[] = [];
 	try {
 		const session = input.session ?? { kind: "ephemeral" as const };
 		const sessionId = resolveSessionId(session);
@@ -67,14 +83,14 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			ephemeralDirectory = await mkdtemp(path.join(tmpdir(), "jai-coding-agent-"));
 		}
 		const sessionDirectory = session.kind === "ephemeral" ? ephemeralDirectory! : session.directory;
-		const store = new FileSessionStore<TAppState>(sessionDirectory);
+		const store = new FileSessionStore<PersistedCodingSessionState<TAppState>>(sessionDirectory);
 		await validateSessionSelection(session, store, sessionId);
-		extensions = await initializeExtensions(
-			input.extensions ?? [],
-			{ sessionId, cwd, permissionMode: input.permissionMode ?? "default" },
-			input.extensionRuntime,
-		);
-		const internal = await createInternalCodingAgent<CodingSchema, TAppState>({
+		const preparedExtensions = prepareExtensions(input.extensions ?? []);
+		if (preparedExtensions.isErr()) throw preparedExtensions.error;
+		extensions = preparedExtensions.value;
+		const extensionToolPermissions = extensionPermissions(extensions);
+		const extensionAuthorizedToolNameSet = extensionAuthorizedToolNames(extensions);
+		const internal = await createInternalCodingAgent<CodingSchema, PersistedCodingSessionState<TAppState>>({
 			executionContext: {
 				localFileAccess: true,
 				cwd,
@@ -83,6 +99,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			},
 			sessionId,
 			sessionDirectory,
+			appState: emptyPersistedCodingSessionState<TAppState>(),
 			instructions: [DEFAULT_CODING_AGENT_INSTRUCTIONS, input.instructions].filter(Boolean).join("\n\n"),
 			configDefinition: sdkConfigDefinition,
 			configOptions: {
@@ -105,15 +122,32 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				selectSettings: (snapshot) => selectPermissionSettings(snapshot.settings.permissions, input.permissionMode),
 			},
 			extensionTools: extensionTools(extensions),
+			extensionBeforeModelCall: async (messages) => {
+				await notifyExtensionTurnStart(extensions);
+				const transformed = await extensionBeforeModelCall(extensions, messages);
+				// The internal Agent hook cannot return Result, so this is the adapter seam that rethrows it.
+				if (transformed.isErr()) throw transformed.error;
+				return transformed.value;
+			},
 			extensionToolMiddleware: extensionMiddleware(extensions),
-			extensionToolPermissions: extensionPermissions(extensions),
-			extensionAuthorizedToolNames: extensionAuthorizedToolNames(extensions),
+			extensionToolPermissions,
+			extensionAuthorizedToolNames: extensionAuthorizedToolNameSet,
 			extensionSkills: extensionSkills(extensions),
 			enabledTools,
 			agent: input.compactionSummaryInstructions
 				? { compaction: { summaryInstructions: input.compactionSummaryInstructions } }
 				: {},
 		});
+		const activatedExtensions = await activateExtensions(
+			extensions,
+			{ sessionId, cwd, permissionMode: input.permissionMode ?? "default" },
+			input.extensionRuntime,
+			createExtensionSessionStateAdapter(internal),
+			{ permissions: extensionToolPermissions, authorizedToolNames: extensionAuthorizedToolNameSet },
+		);
+		if (activatedExtensions.isErr()) throw activatedExtensions.error;
+		const catalogTools = extensionCatalogTools(extensions);
+		if (catalogTools.length > 0) internal.setExtensionToolCatalog(new ToolCatalog(catalogTools));
 		if (!modelRuntime) {
 			throw new CodingSdkFailure({
 				phase: "runtime_creation",
@@ -133,13 +167,90 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 
 type CodingSchema = typeof sdkConfigDefinition.schema;
 
+function createExtensionSessionStateAdapter<TAppState extends JsonObject>(
+	agent: InternalCodingAgent<CodingSchema, PersistedCodingSessionState<TAppState>>,
+) {
+	return {
+		read: async (extensionId: string) => Result.ok(extensionStateFromAppState(agent.state.appState, extensionId)),
+		update: async (
+			extensionId: string,
+			update: (current: JsonObject | undefined) => ResultType<JsonObject, CodingExtensionError>,
+		) => {
+			let persisted: JsonObject | undefined;
+			let failure: CodingExtensionError | undefined;
+			try {
+				await agent.updateAppState((current) => {
+					const extensions = extensionStatesFromAppState(current);
+					const next = update(extensions[extensionId]);
+					if (next.isErr()) {
+						failure = next.error;
+						// updateAppState cannot return Result, so this is the adapter seam that aborts its write.
+						throw next.error;
+					}
+					const value = structuredClone(next.value);
+					persisted = value;
+					return { ...current, extensions: { ...extensions, [extensionId]: value } };
+				});
+			} catch (cause) {
+				if (failure) return Result.err(failure);
+				return Result.err(
+					extensionHostOperationFailed(
+						"session_state_write",
+						`Extension "${extensionId}" session state could not be persisted`,
+						cause,
+					),
+				);
+			}
+			if (!persisted) {
+				return Result.err(
+					extensionHostOperationFailed(
+						"session_state_write",
+						`Extension "${extensionId}" session state could not be persisted`,
+					),
+				);
+			}
+			return Result.ok(structuredClone(persisted));
+		},
+	};
+}
+
+interface PersistedCodingSessionState<TAppState extends JsonObject> extends JsonObject {
+	readonly version: 1;
+	readonly appState: TAppState;
+	readonly extensions: Readonly<Record<string, JsonObject>>;
+}
+
+function emptyPersistedCodingSessionState<TAppState extends JsonObject>(): PersistedCodingSessionState<TAppState> {
+	return { version: 1, appState: {} as TAppState, extensions: {} };
+}
+
+function extensionStateFromAppState(
+	appState: PersistedCodingSessionState<JsonObject>,
+	extensionId: string,
+): JsonObject | undefined {
+	const value = extensionStatesFromAppState(appState)[extensionId];
+	return value ? structuredClone(value) : undefined;
+}
+
+function extensionStatesFromAppState(
+	appState: PersistedCodingSessionState<JsonObject>,
+): Readonly<Record<string, JsonObject>> {
+	const value = appState.extensions;
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	return Object.fromEntries(
+		Object.entries(value).flatMap(([id, state]) =>
+			state && typeof state === "object" && !Array.isArray(state) ? [[id, state as JsonObject]] : [],
+		),
+	);
+}
+
 class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAppState> {
-	readonly #internal: InternalCodingAgent<CodingSchema, TAppState>;
+	readonly #internal: InternalCodingAgent<CodingSchema, PersistedCodingSessionState<TAppState>>;
 	readonly #sessionId: string;
 	readonly #model: Model;
 	readonly #provider: Provider;
 	readonly #ephemeralDirectory?: string;
-	readonly #extensions: Awaited<ReturnType<typeof initializeExtensions>>;
+	readonly #extensions: readonly InitializedExtension[];
 	readonly #artifacts = new Map<string, CodingAgentArtifact>();
 	readonly #pendingArtifacts = new Map<string, CodingAgentArtifact>();
 	readonly #listeners = new Set<(event: CodingAgentEvent) => void>();
@@ -147,14 +258,16 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 	#closed = false;
 	#running = false;
 	#tail: Promise<void> = Promise.resolve();
+	#settlementTail: Promise<void> = Promise.resolve();
+	#admissionEpoch = 0;
 	#artifactWriteTail: Promise<void> = Promise.resolve();
 
 	constructor(
-		internal: InternalCodingAgent<CodingSchema, TAppState>,
+		internal: InternalCodingAgent<CodingSchema, PersistedCodingSessionState<TAppState>>,
 		sessionId: string,
 		modelRuntime: { readonly model: Model; readonly provider: Provider },
 		ephemeralDirectory?: string,
-		extensions: Awaited<ReturnType<typeof initializeExtensions>> = [],
+		extensions: readonly InitializedExtension[] = [],
 	) {
 		this.#internal = internal;
 		this.#sessionId = sessionId;
@@ -162,10 +275,16 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		this.#provider = modelRuntime.provider;
 		this.#ephemeralDirectory = ephemeralDirectory;
 		this.#extensions = extensions;
-		for (const artifact of artifactsFromAppState(internal.state.appState)) this.#artifacts.set(artifact.id, artifact);
-		this.#stopArtifactProjection = this.#internal.subscribe((event) => {
+		for (const artifact of artifactsFromAppState(internal.state.appState)) {
+			this.#artifacts.set(artifact.id, artifact);
+		}
+		this.#stopArtifactProjection = this.#internal.subscribe(async (event) => {
 			if (event.type === "tool_execution_start" || event.type === "tool_execution_end") {
 				this.#observeArtifact(event);
+			}
+			if (event.type === "turn_end") {
+				const outcome = extensionOutcome(event.message.stopReason);
+				await notifyExtensionTurnEnd(this.#extensions, { outcome });
 			}
 			if (this.#listeners.size === 0) return;
 			const projected = projectEvent(event);
@@ -185,7 +304,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 			messages: projectMessages(state.messages),
 			todos: todosFromAppState(state.appState),
 			artifacts: [...this.#artifacts.values()].sort((left, right) => right.updatedAt - left.updatedAt),
-			appState: structuredClone(state.appState) as TAppState,
+			appState: structuredClone(state.appState.appState) as TAppState,
 			...(state.error ? { error: projectJson(state.error) as JsonObject } : {}),
 		};
 	}
@@ -196,6 +315,23 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 	): Promise<ResultType<CodingRunResult<TAppState>, CodingSdkError>> {
 		const run = this.#tail.then(async () => {
 			if (this.#closed) throw agentClosedFailure();
+			if (!prompt.trim()) {
+				throw new CodingSdkFailure({
+					phase: "admission",
+					code: "coding_sdk.empty_prompt",
+					message: "Prompt must not be empty",
+				});
+			}
+			const admission = await extensionBeforeAgentStart(this.#extensions, prompt);
+			if (admission.isErr()) throw admission.error;
+			if (admission.value) {
+				throw new CodingExtensionPolicyBlocked({
+					extensionId: admission.value.extensionId,
+					reason: admission.value.reason,
+					message: admission.value.reason,
+				});
+			}
+			const admissionEpoch = ++this.#admissionEpoch;
 			this.#running = true;
 			try {
 				const messages = options?.attachments?.length
@@ -204,7 +340,11 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 							attachments: options.attachments as readonly InternalCodingAttachment[],
 						})
 					: await this.#internal.stream(prompt).result();
-				return { sessionId: this.#sessionId, messages: projectMessages(messages), state: this.state };
+				return {
+					result: { sessionId: this.#sessionId, messages: projectMessages(messages), state: this.state },
+					outcome: extensionOutcomeFromMessages(messages),
+					admissionEpoch,
+				};
 			} finally {
 				this.#running = false;
 			}
@@ -213,8 +353,16 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 			() => undefined,
 			() => undefined,
 		);
+		const settlement = this.#settlementTail.then(() =>
+			run.then(({ outcome, admissionEpoch }) => this.#notifySettledAfterIdle(admissionEpoch, outcome)),
+		);
+		this.#settlementTail = settlement
+			.then(
+				() => undefined,
+				() => undefined,
+			);
 		return run.then(
-			(value) => Result.ok<CodingRunResult<TAppState>, CodingSdkError>(value),
+			(value) => Result.ok<CodingRunResult<TAppState>, CodingSdkError>(value.result),
 			(error) => Result.err<CodingRunResult<TAppState>, CodingSdkError>(projectError(error, "admission")),
 		);
 	}
@@ -305,6 +453,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 			this.#internal.abort();
 			await this.#tail;
 			await this.#internal.waitForIdle();
+			await this.#settlementTail;
 			await this.#artifactWriteTail;
 			this.#stopArtifactProjection();
 			this.#internal.close();
@@ -312,11 +461,8 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		} catch (error) {
 			failure = error;
 		}
-		try {
-			await disposeExtensions(this.#extensions);
-		} catch (error) {
-			failure ??= error;
-		}
+		const disposal = await disposeExtensions(this.#extensions);
+		if (disposal.isErr()) failure ??= disposal.error;
 		return failure ? Result.err(projectError(failure, "lifecycle")) : Result.ok(undefined);
 	}
 
@@ -337,11 +483,21 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 				(currentState) =>
 					({
 						...currentState,
-						artifacts: { version: 1, items: [...this.#artifacts.values()] },
-					}) as TAppState,
+						artifacts: {
+							version: 1,
+							items: [...this.#artifacts.values()].map((artifact) => ({ ...artifact })) as JsonValue,
+						},
+					}),
 			),
 		);
 		this.#artifactWriteTail = write.catch(() => {});
+	}
+
+	async #notifySettledAfterIdle(admissionEpoch: number, outcome: CodingTurnEndInput["outcome"]): Promise<void> {
+		await this.#tail;
+		await this.#internal.waitForIdle();
+		if (this.#admissionEpoch !== admissionEpoch) return;
+		await notifyExtensionSettled(this.#extensions, { idleEpoch: admissionEpoch, outcome });
 	}
 
 	#admit(prompt: string, action: (message: AgentMessage) => void): Promise<ResultType<void, CodingSdkError>> {
@@ -367,9 +523,21 @@ function resolveSessionId(selection: CodingSessionSelection): string {
 	return `coding-${randomUUID()}`;
 }
 
+function extensionOutcome(stopReason: string): CodingTurnEndInput["outcome"] {
+	if (stopReason === "aborted") return "aborted";
+	if (stopReason === "iterationLimit") return "iteration_limit";
+	if (stopReason === "error" || stopReason === "contextOverflow") return "failed";
+	return "completed";
+}
+
+function extensionOutcomeFromMessages(messages: readonly AgentMessage[]): CodingTurnEndInput["outcome"] {
+	const lastAssistant = messages.findLast((message) => message.role === "assistant");
+	return lastAssistant ? extensionOutcome(lastAssistant.stopReason) : "failed";
+}
+
 async function validateSessionSelection<TAppState extends JsonObject>(
 	selection: CodingSessionSelection,
-	store: FileSessionStore<TAppState>,
+	store: FileSessionStore<PersistedCodingSessionState<TAppState>>,
 	sessionId: string,
 ): Promise<void> {
 	const existing = await store.load(sessionId);
@@ -387,6 +555,26 @@ async function validateSessionSelection<TAppState extends JsonObject>(
 			message: `Session "${sessionId}" already exists`,
 		});
 	}
+	if (existing && !isPersistedCodingSessionState(existing.snapshot.appState)) {
+		throw new CodingSdkFailure({
+			phase: "session",
+			code: "coding_sdk.session_format_invalid",
+			message: `Session "${sessionId}" does not use the current Coding Agent session format`,
+		});
+	}
+}
+
+function isPersistedCodingSessionState(value: JsonObject): value is PersistedCodingSessionState<JsonObject> {
+	return (
+		value.version === 1 &&
+		isJsonObject(value.appState) &&
+		isJsonObject(value.extensions) &&
+		Object.values(value.extensions).every(isJsonObject)
+	);
+}
+
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function selectPermissionSettings(

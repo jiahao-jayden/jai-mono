@@ -9,7 +9,7 @@ function createCodingAgent<TAppState extends JsonObject = JsonObject>(
 ): Promise<Result<CodingAgent<TAppState>, CodingSdkError>>;
 ```
 
-创建阶段会校验 session 和工具选择，初始化 extensions，并建立模型与 runtime。可恢复失败返回 `Err<CodingSdkError>`；处理 `Result`，不要用 try/catch 替代正常错误分支。
+创建阶段会校验 session 和工具选择，验证静态 Extension capability、activate 每-session instance 并建立模型与 runtime。可恢复失败返回 `Err<CodingSdkError>`；处理 `Result`，不要用 try/catch 替代正常错误分支。
 
 ```ts
 import { createCodingAgent, type JsonObject } from "@jai/coding-agent";

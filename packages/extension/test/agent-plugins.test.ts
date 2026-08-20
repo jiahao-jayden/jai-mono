@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { connectAgentPluginMcp } from "../src/agent-plugins/mcp/runtime";
 import { loadAgentPluginDirectory } from "../src/agent-plugins/package/loader";
-import { createAgentPluginRuntime } from "../src/agent-plugins/runtime";
+import { discoverAgentPlugins } from "../src/agent-plugins/runtime";
 import { createAgentPluginsExtension } from "../src/agent-plugins/index";
 
 const roots: string[] = [];
@@ -23,26 +23,12 @@ describe("Agent Plugins 组件适配器", () => {
 		);
 		await mkdir(path.join(root, "hooks"), { recursive: true });
 		await writeFile(path.join(root, "hooks", "hooks.json"), '{"not":"a portable component"}');
-		const extension = createAgentPluginsExtension({
+		const extension = await createAgentPluginsExtension({
 			directories: [root],
 			dataDirectory: path.join(root, "data"),
 		});
-		const capabilities = await extension.initialize({
-			sessionId: "session-1",
-			cwd: root,
-			permissionMode: "default",
-			configuration: {
-				value: {},
-				persistent: false,
-				update: async () => {
-					throw new Error("Agent Plugins does not declare configuration");
-				},
-			},
-			requestApproval: async () => "deny",
-		});
-		expect(capabilities.skills?.map((skill) => skill.name)).toEqual(["plugin-skill"]);
-		expect(capabilities.hooks).toBeUndefined();
-		await capabilities.dispose?.();
+		expect(extension.skills?.map((skill) => skill.name)).toEqual(["plugin-skill"]);
+		expect(extension.hooks).toBeUndefined();
 	});
 
 	test("发现 Plugin Skill，并保留其目录作为资源根", async () => {
@@ -92,7 +78,7 @@ describe("Agent Plugins 组件适配器", () => {
 			path.join(root, "skills", "scoped", "SKILL.md"),
 			"---\nname: scoped\ndescription: Scoped Skill\n---\n\nInstructions\n",
 		);
-		const runtime = await createAgentPluginRuntime({
+		const runtime = await discoverAgentPlugins({
 			directories: [{ path: root, scope: "project" }],
 			dataDirectory: path.join(root, "data"),
 		});
@@ -100,7 +86,6 @@ describe("Agent Plugins 组件适配器", () => {
 		expect(runtime.skills).toHaveLength(1);
 		expect(runtime.skills[0]?.source.scope).toBe("project");
 		expect(runtime.diagnostics).toHaveLength(0);
-		await runtime.close();
 	});
 
 	test("stdio MCP 通过同一个 AgentTool 接缝完成 initialize、tools/list、tools/call，并默认以 Plugin root 为 cwd", async () => {

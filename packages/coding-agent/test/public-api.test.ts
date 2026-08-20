@@ -1,10 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { type AssistantMessage, zeroUsage } from "@jai/ai";
 import { Type } from "@sinclair/typebox";
+import { Result } from "better-result";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createCodingAgent, defineExtension, type CodingAgentCreateOptions } from "../src/sdk";
+import {
+	CodingExtensionOperationFailed,
+	createCodingAgent,
+	defineExtension,
+	type CodingAgentCreateOptions,
+} from "../src/sdk";
 
 const roots: string[] = [];
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
@@ -134,6 +140,170 @@ describe("public Coding Agent SDK", () => {
 		await created.value.close();
 	});
 
+	test("runs typed Extension lifecycle hooks and settles only after the admitted queue drains", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const calls: string[] = [];
+		let settled!: () => void;
+		const settledPromise = new Promise<void>((resolve) => {
+			settled = resolve;
+		});
+		const created = await createCodingAgent({
+			...createInput(root, [assistant("first"), assistant("second")]),
+			extensions: [
+				defineExtension({
+					id: "lifecycle-hooks",
+					hooks: {
+						beforeAgentStart: (_runtime, { prompt }) => {
+							calls.push(`before-agent:${prompt}`);
+							return { kind: "continue" };
+						},
+						turnStart: () => {
+							calls.push("turn-start");
+						},
+						beforeModelCall: () => {
+							calls.push("before-model");
+							return { context: "Extension request context" };
+						},
+						turnEnd: (_runtime, { outcome }) => {
+							calls.push(`turn-end:${outcome}`);
+						},
+						afterModelCall: (_runtime, { outcome }) => {
+							calls.push(`after-model:${outcome}`);
+						},
+						agentSettled: (_runtime, { idleEpoch, outcome }) => {
+							calls.push(`settled:${idleEpoch}:${outcome}`);
+							settled();
+						},
+					},
+				}),
+			],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+
+		const [first, second] = await Promise.all([created.value.prompt("first"), created.value.prompt("second")]);
+		expect(first.isOk()).toBe(true);
+		expect(second.isOk()).toBe(true);
+		await settledPromise;
+		expect(calls).toEqual([
+			"before-agent:first",
+			"turn-start",
+			"before-model",
+			"turn-end:completed",
+			"after-model:completed",
+			"before-agent:second",
+			"turn-start",
+			"before-model",
+			"turn-end:completed",
+			"after-model:completed",
+			"settled:2:completed",
+		]);
+		await created.value.close();
+	});
+
+	test("fails closed when beforeAgentStart blocks a public prompt", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const created = await createCodingAgent({
+			...createInput(root, [assistant("unused")]),
+			extensions: [
+				defineExtension({
+					id: "prompt-policy",
+					hooks: {
+						beforeAgentStart: () => ({ kind: "block", reason: "Prompt violates host policy" }),
+					},
+				}),
+			],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+		const result = await created.value.prompt("blocked");
+		expect(result).toMatchObject({
+			status: "error",
+			error: { code: "coding_extension.policy_blocked", phase: "admission" },
+		});
+		await created.value.close();
+	});
+
+	test("projects observer hook failures as diagnostics without failing the run", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const diagnostics: unknown[] = [];
+		const created = await createCodingAgent({
+			...createInput(root, [assistant("done")]),
+			extensionRuntime: {
+				reportDiagnostic: (diagnostic) => {
+					diagnostics.push(diagnostic);
+				},
+			},
+			extensions: [
+				defineExtension({
+					id: "failing-observer",
+					hooks: {
+						turnEnd: () => {
+							throw new Error("telemetry unavailable");
+						},
+					},
+				}),
+			],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+		expect((await created.value.prompt("run")).isOk()).toBe(true);
+		expect(diagnostics).toEqual([
+			{
+				code: "coding_extension.hook_failed",
+				message: "Extension \"failing-observer\" turn_end hook failed",
+				extensionId: "failing-observer",
+			},
+		]);
+		await created.value.close();
+	});
+
+	test("persists isolated Extension session state across resume and concurrent updates", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const observed: number[] = [];
+		const updated: number[] = [];
+		const extension = defineExtension({
+			id: "counter-state",
+			sessionState: {
+				schema: Type.Object({ count: Type.Integer({ minimum: 0 }) }),
+				defaultValue: { count: 0 },
+			},
+			lifecycle: {
+				activate: async (context) => {
+					observed.push(context.sessionState.value.count);
+					const persisted = await Promise.all([
+						context.sessionState.update((current) => ({ count: current.count + 1 })),
+						context.sessionState.update((current) => ({ count: current.count + 1 })),
+					]);
+					for (const result of persisted) if (result.isErr()) throw result.error;
+					updated.push(context.sessionState.value.count);
+					return Result.ok(undefined);
+				},
+			},
+		});
+		const session = { kind: "new" as const, id: "extension-state", directory: join(root, "sessions") };
+		const first = await createCodingAgent({ ...createInput(root, [assistant("unused")]), session, extensions: [extension] });
+		expect(first.isOk()).toBe(true);
+		if (first.isErr()) return;
+		expect(first.value.state.appState).toEqual({});
+		await first.value.close();
+
+		const resumed = await createCodingAgent({
+			...createInput(root, [assistant("unused")]),
+			session: { kind: "resume", id: "extension-state", directory: join(root, "sessions") },
+			extensions: [extension],
+		});
+		expect(resumed.isOk()).toBe(true);
+		if (resumed.isErr()) return;
+		await resumed.value.close();
+		expect(observed).toEqual([0, 2]);
+		expect(updated).toEqual([2, 4]);
+	});
+
 	test("projects public events, state, and failures as JSON-safe DTOs", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
 		roots.push(root);
@@ -170,13 +340,14 @@ describe("public Coding Agent SDK", () => {
 		const extension = (name: string) =>
 			defineExtension({
 				id: `lifecycle-${name}`,
-				initialize: async () => {
-					calls.push(`init:${name}`);
-					return {
-						dispose: async () => {
-							calls.push(`dispose:${name}`);
-						},
-					};
+				lifecycle: {
+					activate: async () => {
+						calls.push(`activate:${name}`);
+						return Result.ok(undefined);
+					},
+					deactivate: async () => {
+						calls.push(`dispose:${name}`);
+					},
 				},
 			});
 		const created = await createCodingAgent({
@@ -186,7 +357,7 @@ describe("public Coding Agent SDK", () => {
 		expect(created.isOk()).toBe(true);
 		if (created.isErr()) return;
 		await created.value.close();
-		expect(calls).toEqual(["init:first", "init:second", "dispose:second", "dispose:first"]);
+		expect(calls).toEqual(["activate:first", "activate:second", "dispose:second", "dispose:first"]);
 	});
 
 	test("rolls back initialized extensions for initialization and capability conflicts", async () => {
@@ -196,29 +367,30 @@ describe("public Coding Agent SDK", () => {
 		const disposable = (name: string, toolName?: string) =>
 			defineExtension({
 				id: `disposable-${name}`,
-				initialize: async () => {
-					calls.push(`init:${name}`);
-					return {
-						...(toolName
-							? {
-									tools: [
-										{
-											name: toolName,
-											description: toolName,
-											parameters: Type.Object({}),
-											authorization: {
-												owner: "core" as const,
-												permission: { sideEffect: "read" as const, reason: "Read test data" },
-											},
-											execute: async () => ({ content: [{ type: "text" as const, text: "ok" }] }),
-										},
-									],
-								}
-							: {}),
-						dispose: async () => {
-							calls.push(`dispose:${name}`);
-						},
-					};
+				...(toolName
+					? {
+						tools: [
+							{
+								name: toolName,
+								description: toolName,
+								parameters: Type.Object({}),
+								authorization: {
+									owner: "core" as const,
+									permission: { sideEffect: "read" as const, reason: "Read test data" },
+								},
+								execute: async () => ({ content: [{ type: "text" as const, text: "ok" }] }),
+							},
+						],
+					}
+					: {}),
+				lifecycle: {
+					activate: async () => {
+						calls.push(`activate:${name}`);
+						return Result.ok(undefined);
+					},
+					deactivate: async () => {
+						calls.push(`dispose:${name}`);
+					},
 				},
 			});
 		const initializationFailed = await createCodingAgent({
@@ -227,25 +399,29 @@ describe("public Coding Agent SDK", () => {
 				disposable("first"),
 				defineExtension({
 					id: "broken-extension",
-					initialize: async () => {
-						throw new Error("broken extension");
+					lifecycle: {
+						activate: async () => Result.err(new CodingExtensionOperationFailed({ message: "broken extension" })),
 					},
 				}),
 			],
 		});
 		expect(initializationFailed.isErr()).toBe(true);
-		expect(calls).toEqual(["init:first", "dispose:first"]);
+		expect(initializationFailed).toMatchObject({
+			status: "error",
+			error: { code: "coding_extension.activation_failed", phase: "runtime_creation" },
+		});
+		expect(calls).toEqual(["activate:first", "dispose:first"]);
 
 		calls.length = 0;
 		const conflicted = await createCodingAgent({
 			...createInput(root, [assistant("unused")]),
 			extensions: [disposable("first", "ExtensionRead"), disposable("second", "ExtensionRead")],
 		});
-		expect(conflicted).toMatchObject({
-			status: "error",
-			error: { code: "coding_sdk.extension_capability_conflict" },
-		});
-		expect(calls).toEqual(["init:first", "init:second", "dispose:second", "dispose:first"]);
+			expect(conflicted).toMatchObject({
+				status: "error",
+				error: { code: "coding_extension.capability_conflict" },
+			});
+		expect(calls).toEqual([]);
 	});
 
 	test("runs extension hooks in declaration order, validates transformed arguments, then asks permission", async () => {
@@ -267,8 +443,7 @@ describe("public Coding Agent SDK", () => {
 			extensions: [
 				defineExtension({
 					id: "extension-hooks-first",
-					initialize: async () => ({
-						tools: [
+					tools: [
 							{
 								name: "ExtensionWrite",
 								description: "Writes extension state",
@@ -277,7 +452,7 @@ describe("public Coding Agent SDK", () => {
 									owner: "core",
 									permission: { sideEffect: "write", reason: "Writes extension state" },
 								},
-								execute: async ({ args }) => {
+								execute: async (_runtime, { args }) => {
 									executed.push(String(args.value));
 									order.push("execute");
 									return { content: [{ type: "text", text: "written" }] };
@@ -285,7 +460,7 @@ describe("public Coding Agent SDK", () => {
 							},
 						],
 						hooks: {
-						beforeToolCall: ({ args }) => {
+						beforeToolCall: (_runtime, { args }) => {
 							order.push(`before:first:${args.value}`);
 							return { kind: "continue", args: { value: "first" } };
 						},
@@ -293,13 +468,11 @@ describe("public Coding Agent SDK", () => {
 							order.push("after:first");
 						},
 						},
-					}),
 				}),
 				defineExtension({
 					id: "extension-hooks-second",
-					initialize: async () => ({
-						hooks: {
-						beforeToolCall: ({ args }) => {
+					hooks: {
+						beforeToolCall: (_runtime, { args }) => {
 							order.push(`before:second:${args.value}`);
 							return { kind: "continue", args: { value: "second" } };
 						},
@@ -307,7 +480,6 @@ describe("public Coding Agent SDK", () => {
 							order.push("after:second");
 						},
 						},
-					}),
 				}),
 			],
 		});
@@ -345,15 +517,14 @@ describe("public Coding Agent SDK", () => {
 			extensions: [
 				defineExtension({
 					id: "dynamic-extension-write",
-					initialize: async () => ({
-						tools: [
+					tools: [
 						{
 							name: "DynamicExtensionWrite",
 							description: "Writes dynamic extension state",
 							parameters: Type.Object({ value: Type.String() }),
 							authorization: {
 								owner: "core",
-								permission: async ({ toolCallId, args }) => {
+								permission: async (_runtime, { toolCallId, args }) => {
 								observed.push(`${toolCallId}:${args.value}`);
 								return {
 									sideEffect: "write",
@@ -364,7 +535,6 @@ describe("public Coding Agent SDK", () => {
 							execute: async () => ({ content: [{ type: "text", text: "written" }] }),
 						},
 					],
-					}),
 				}),
 			],
 		});
@@ -385,8 +555,7 @@ describe("public Coding Agent SDK", () => {
 		let executions = 0;
 		const invalid = defineExtension({
 			id: "invalid-extension-write",
-			initialize: async () => ({
-				tools: [
+			tools: [
 				{
 					name: "ExtensionWrite",
 					description: "Writes extension state",
@@ -400,11 +569,10 @@ describe("public Coding Agent SDK", () => {
 						return { content: [{ type: "text", text: "written" }] };
 					},
 				},
-				],
-				hooks: {
+			],
+			hooks: {
 				beforeToolCall: () => ({ kind: "continue", args: {} }),
 			},
-			}),
 		});
 		const invalidCreated = await createCodingAgent({
 			...createInput(root, [
@@ -425,8 +593,7 @@ describe("public Coding Agent SDK", () => {
 
 		const destructive = defineExtension({
 			id: "destructive-extension",
-			initialize: async () => ({
-				tools: [
+			tools: [
 				{
 					name: "ExtensionDestroy",
 					description: "Destroys extension state",
@@ -440,8 +607,7 @@ describe("public Coding Agent SDK", () => {
 						return { content: [{ type: "text", text: "destroyed" }] };
 					},
 				},
-				],
-			}),
+			],
 		});
 		const destructiveCreated = await createCodingAgent({
 			...createInput(root, [assistantToolCall("ExtensionDestroy", "destroy", {}), assistant("done")]),
@@ -465,8 +631,7 @@ describe("public Coding Agent SDK", () => {
 			extensions: [
 				defineExtension({
 					id: "plan-extension-write",
-					initialize: async () => ({
-						tools: [
+					tools: [
 						{
 							name: "ExtensionPlanWrite",
 							description: "Writes extension state",
@@ -480,8 +645,7 @@ describe("public Coding Agent SDK", () => {
 								return { content: [{ type: "text", text: "written" }] };
 							},
 						},
-						],
-					}),
+					],
 				}),
 			],
 		});
