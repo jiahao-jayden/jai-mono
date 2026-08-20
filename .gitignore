@@ -25,6 +25,7 @@ packages/*/dist-chrome/
 packages/*/dist-firefox/
 *.cpuprofile
 app/cli/*.tgz
+packages/*/*.tgz
 .npmrc
 
 # Environment

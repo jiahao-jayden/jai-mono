@@ -1,14 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { AssistantMessageEventStream, type AssistantMessage, type Model, type Provider, zeroUsage } from "@jai/ai";
+import { type AssistantMessage, zeroUsage } from "@jai/ai";
+import { Type } from "@sinclair/typebox";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createCodingAgent, type CodingAgentCreateInput } from "../src/sdk";
+import { createCodingAgent, defineExtension, type CodingAgentCreateOptions } from "../src/sdk";
 
 const roots: string[] = [];
+const servers: Array<ReturnType<typeof Bun.serve>> = [];
 
 afterEach(async () => {
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+	for (const server of servers.splice(0)) server.stop(true);
 });
 
 describe("public Coding Agent SDK", () => {
@@ -20,14 +23,14 @@ describe("public Coding Agent SDK", () => {
 		const created = await createCodingAgent({
 			...input,
 			session: { kind: "new", id: "public-session", directory: join(root, "sessions") },
-			execution: { permissionMode: "default" },
+			permissionMode: "default",
 		});
 		expect(created.isOk()).toBe(true);
 		if (created.isErr()) return;
 
 		const events: string[] = [];
 		const unsubscribe = created.value.subscribe((event) => events.push(event.type));
-		const result = await created.value.prompt({ prompt: "hello" });
+		const result = await created.value.prompt("hello");
 		unsubscribe();
 
 		expect(result.isOk()).toBe(true);
@@ -65,7 +68,7 @@ describe("public Coding Agent SDK", () => {
 		const result = await createCodingAgent({
 			...createInput(root, [assistant("unused")]),
 			session: { kind: "ephemeral" },
-			execution: { permissionMode: "plan" },
+			permissionMode: "plan",
 		});
 
 		expect(result.status).toBe("ok");
@@ -82,12 +85,12 @@ describe("public Coding Agent SDK", () => {
 		const created = await createCodingAgent({
 			...input,
 			session: { kind: "new", id: "artifact-session", directory: join(root, "sessions") },
-			execution: { permissionMode: "bypassPermissions" },
+			permissionMode: "bypassPermissions",
 		});
 		expect(created.isOk()).toBe(true);
 		if (created.isErr()) return;
 
-		const run = await created.value.prompt({ prompt: "Write the report" });
+		const run = await created.value.prompt("Write the report");
 		expect(run.isOk()).toBe(true);
 		expect(created.value.state.artifacts).toEqual([
 			expect.objectContaining({ id: "artifact:report.md", path: "report.md", format: "markdown" }),
@@ -110,28 +113,23 @@ describe("public Coding Agent SDK", () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
 		roots.push(root);
 		const responses = [assistant("first"), assistant("second")];
-		let calls = 0;
-		const input = createInput(root, responses, () => {
-			calls += 1;
-			return calls === 1 ? 20 : 0;
-		});
+		const input = createInput(root, responses);
 		const created = await createCodingAgent({
 			...input,
 			session: { kind: "ephemeral" },
-			execution: { permissionMode: "bypassPermissions" },
+			permissionMode: "bypassPermissions",
 		});
 		expect(created.isOk()).toBe(true);
 		if (created.isErr()) return;
 
-		const first = created.value.prompt({ prompt: "first request" });
-		const second = created.value.prompt({ prompt: "second request" });
+		const first = created.value.prompt("first request");
+		const second = created.value.prompt("second request");
 		const idle = created.value.waitForIdle();
 		const [firstResult, secondResult, idleResult] = await Promise.all([first, second, idle]);
 
 		expect(firstResult.isOk()).toBe(true);
 		expect(secondResult.isOk()).toBe(true);
 		expect(idleResult.isOk()).toBe(true);
-		expect(calls).toBe(2);
 		expect(created.value.state.messages.filter((message) => message.role === "user")).toHaveLength(2);
 		await created.value.close();
 	});
@@ -143,14 +141,14 @@ describe("public Coding Agent SDK", () => {
 		const created = await createCodingAgent({
 			...input,
 			session: { kind: "ephemeral" },
-			execution: { permissionMode: "bypassPermissions" },
+			permissionMode: "bypassPermissions",
 		});
 		expect(created.isOk()).toBe(true);
 		if (created.isErr()) return;
 
 		const events: unknown[] = [];
 		const unsubscribe = created.value.subscribe((event) => events.push(event));
-		const run = await created.value.prompt({ prompt: "hello" });
+		const run = await created.value.prompt("hello");
 		unsubscribe();
 		expect(run.isOk()).toBe(true);
 		assertJsonSafe(JSON.parse(JSON.stringify({ events, state: created.value.state, run })));
@@ -158,54 +156,427 @@ describe("public Coding Agent SDK", () => {
 
 		const failed = await createCodingAgent({
 			...input,
-			resolveModel() {
-				throw new Error("provider transport failed");
-			},
+			model: "unsupported/test",
 			session: { kind: "ephemeral" },
 		});
 		expect(failed.isErr()).toBe(true);
 		assertJsonSafe(JSON.parse(JSON.stringify(failed)));
+	});
+
+	test("initializes extensions in order and closes them in reverse order", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const calls: string[] = [];
+		const extension = (name: string) =>
+			defineExtension({
+				id: `lifecycle-${name}`,
+				initialize: async () => {
+					calls.push(`init:${name}`);
+					return {
+						dispose: async () => {
+							calls.push(`dispose:${name}`);
+						},
+					};
+				},
+			});
+		const created = await createCodingAgent({
+			...createInput(root, [assistant("done")]),
+			extensions: [extension("first"), extension("second")],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+		await created.value.close();
+		expect(calls).toEqual(["init:first", "init:second", "dispose:second", "dispose:first"]);
+	});
+
+	test("rolls back initialized extensions for initialization and capability conflicts", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const calls: string[] = [];
+		const disposable = (name: string, toolName?: string) =>
+			defineExtension({
+				id: `disposable-${name}`,
+				initialize: async () => {
+					calls.push(`init:${name}`);
+					return {
+						...(toolName
+							? {
+									tools: [
+										{
+											name: toolName,
+											description: toolName,
+											parameters: Type.Object({}),
+											authorization: {
+												owner: "core" as const,
+												permission: { sideEffect: "read" as const, reason: "Read test data" },
+											},
+											execute: async () => ({ content: [{ type: "text" as const, text: "ok" }] }),
+										},
+									],
+								}
+							: {}),
+						dispose: async () => {
+							calls.push(`dispose:${name}`);
+						},
+					};
+				},
+			});
+		const initializationFailed = await createCodingAgent({
+			...createInput(root, [assistant("unused")]),
+			extensions: [
+				disposable("first"),
+				defineExtension({
+					id: "broken-extension",
+					initialize: async () => {
+						throw new Error("broken extension");
+					},
+				}),
+			],
+		});
+		expect(initializationFailed.isErr()).toBe(true);
+		expect(calls).toEqual(["init:first", "dispose:first"]);
+
+		calls.length = 0;
+		const conflicted = await createCodingAgent({
+			...createInput(root, [assistant("unused")]),
+			extensions: [disposable("first", "ExtensionRead"), disposable("second", "ExtensionRead")],
+		});
+		expect(conflicted).toMatchObject({
+			status: "error",
+			error: { code: "coding_sdk.extension_capability_conflict" },
+		});
+		expect(calls).toEqual(["init:first", "init:second", "dispose:second", "dispose:first"]);
+	});
+
+	test("runs extension hooks in declaration order, validates transformed arguments, then asks permission", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const order: string[] = [];
+		const executed: string[] = [];
+		let approvals = 0;
+		const created = await createCodingAgent({
+			...createInput(root, [
+				assistantToolCall("ExtensionWrite", "extension-write", { value: "original" }),
+				assistant("done"),
+			]),
+			permissionMode: "acceptEdits",
+			requestApproval: () => {
+				approvals++;
+				return "allowOnce";
+			},
+			extensions: [
+				defineExtension({
+					id: "extension-hooks-first",
+					initialize: async () => ({
+						tools: [
+							{
+								name: "ExtensionWrite",
+								description: "Writes extension state",
+								parameters: Type.Object({ value: Type.String() }),
+								authorization: {
+									owner: "core",
+									permission: { sideEffect: "write", reason: "Writes extension state" },
+								},
+								execute: async ({ args }) => {
+									executed.push(String(args.value));
+									order.push("execute");
+									return { content: [{ type: "text", text: "written" }] };
+								},
+							},
+						],
+						hooks: {
+						beforeToolCall: ({ args }) => {
+							order.push(`before:first:${args.value}`);
+							return { kind: "continue", args: { value: "first" } };
+						},
+						afterToolCall: () => {
+							order.push("after:first");
+						},
+						},
+					}),
+				}),
+				defineExtension({
+					id: "extension-hooks-second",
+					initialize: async () => ({
+						hooks: {
+						beforeToolCall: ({ args }) => {
+							order.push(`before:second:${args.value}`);
+							return { kind: "continue", args: { value: "second" } };
+						},
+						afterToolCall: () => {
+							order.push("after:second");
+						},
+						},
+					}),
+				}),
+			],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+		const run = await created.value.prompt("write state");
+		expect(run.isOk()).toBe(true);
+		if (run.isErr()) throw new Error(`${run.error.code}: ${run.error.message}`);
+		await created.value.close();
+		expect(approvals).toBe(1);
+		expect(executed).toEqual(["second"]);
+		expect(order).toEqual([
+			"before:first:original",
+			"before:second:first",
+			"execute",
+			"after:first",
+			"after:second",
+		]);
+	});
+
+	test("uses asynchronous Extension permission metadata in the core approval path", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const observed: string[] = [];
+		const approvals: string[] = [];
+		const created = await createCodingAgent({
+			...createInput(root, [
+				assistantToolCall("DynamicExtensionWrite", "dynamic-write", { value: "record" }),
+				assistant("done"),
+			]),
+			requestApproval: (request) => {
+				approvals.push(request.reason);
+				return "allowOnce";
+			},
+			extensions: [
+				defineExtension({
+					id: "dynamic-extension-write",
+					initialize: async () => ({
+						tools: [
+						{
+							name: "DynamicExtensionWrite",
+							description: "Writes dynamic extension state",
+							parameters: Type.Object({ value: Type.String() }),
+							authorization: {
+								owner: "core",
+								permission: async ({ toolCallId, args }) => {
+								observed.push(`${toolCallId}:${args.value}`);
+								return {
+									sideEffect: "write",
+									reason: `Writes ${args.value}`,
+								};
+								},
+							},
+							execute: async () => ({ content: [{ type: "text", text: "written" }] }),
+						},
+					],
+					}),
+				}),
+			],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+		const run = await created.value.prompt("write dynamic state");
+		expect(run.isOk()).toBe(true);
+		if (run.isErr()) throw new Error(`${run.error.code}: ${run.error.message}`);
+		await created.value.close();
+		expect(observed).toEqual(["dynamic-write:record"]);
+		expect(approvals).toEqual(["Writes record"]);
+	});
+
+	test("rejects invalid transformed arguments before permission and never bypasses extension permissions", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		let approvals = 0;
+		let executions = 0;
+		const invalid = defineExtension({
+			id: "invalid-extension-write",
+			initialize: async () => ({
+				tools: [
+				{
+					name: "ExtensionWrite",
+					description: "Writes extension state",
+					parameters: Type.Object({ value: Type.String() }),
+					authorization: {
+						owner: "core",
+						permission: { sideEffect: "write", reason: "Writes extension state" },
+					},
+					execute: async () => {
+						executions++;
+						return { content: [{ type: "text", text: "written" }] };
+					},
+				},
+				],
+				hooks: {
+				beforeToolCall: () => ({ kind: "continue", args: {} }),
+			},
+			}),
+		});
+		const invalidCreated = await createCodingAgent({
+			...createInput(root, [
+				assistantToolCall("ExtensionWrite", "invalid-arguments", { value: "original" }),
+				assistant("done"),
+			]),
+			requestApproval: () => {
+				approvals++;
+				return "allowOnce";
+			},
+			extensions: [invalid],
+		});
+		expect(invalidCreated.isOk()).toBe(true);
+		if (invalidCreated.isErr()) return;
+		await invalidCreated.value.prompt("write state");
+		await invalidCreated.value.close();
+		expect({ approvals, executions }).toEqual({ approvals: 0, executions: 0 });
+
+		const destructive = defineExtension({
+			id: "destructive-extension",
+			initialize: async () => ({
+				tools: [
+				{
+					name: "ExtensionDestroy",
+					description: "Destroys extension state",
+					parameters: Type.Object({}),
+					authorization: {
+						owner: "core",
+						permission: { sideEffect: "destructive", reason: "Destroys extension state" },
+					},
+					execute: async () => {
+						executions++;
+						return { content: [{ type: "text", text: "destroyed" }] };
+					},
+				},
+				],
+			}),
+		});
+		const destructiveCreated = await createCodingAgent({
+			...createInput(root, [assistantToolCall("ExtensionDestroy", "destroy", {}), assistant("done")]),
+			permissionMode: "bypassPermissions",
+			extensions: [destructive],
+		});
+		expect(destructiveCreated.isOk()).toBe(true);
+		if (destructiveCreated.isErr()) return;
+		await destructiveCreated.value.prompt("destroy state");
+		await destructiveCreated.value.close();
+		expect(executions).toBe(0);
+
+		let planApprovals = 0;
+		const planCreated = await createCodingAgent({
+			...createInput(root, [assistantToolCall("ExtensionPlanWrite", "plan-write", {}), assistant("done")]),
+			permissionMode: "plan",
+			requestApproval: () => {
+				planApprovals++;
+				return "allowOnce";
+			},
+			extensions: [
+				defineExtension({
+					id: "plan-extension-write",
+					initialize: async () => ({
+						tools: [
+						{
+							name: "ExtensionPlanWrite",
+							description: "Writes extension state",
+							parameters: Type.Object({}),
+							authorization: {
+								owner: "core",
+								permission: { sideEffect: "write", reason: "Writes extension state" },
+							},
+							execute: async () => {
+								executions++;
+								return { content: [{ type: "text", text: "written" }] };
+							},
+						},
+						],
+					}),
+				}),
+			],
+		});
+		expect(planCreated.isOk()).toBe(true);
+		if (planCreated.isErr()) return;
+		await planCreated.value.prompt("write state");
+		await planCreated.value.close();
+		expect({ planApprovals, executions }).toEqual({ planApprovals: 0, executions: 0 });
 	});
 });
 
 function createInput(
 	root: string,
 	responses: AssistantMessage[],
-	delay?: () => number,
-): Omit<CodingAgentCreateInput, "session"> {
-	const model: Model = {
-		id: "test-model",
-		name: "Test Model",
-		api: "test",
-		provider: "test",
-		baseUrl: "http://localhost",
-		reasoning: false,
-		input: ["text"],
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: 10_000,
-		maxTokens: 1_000,
-	};
-	const provider: Provider = {
-		id: "test",
-		stream(_model, _context) {
-			const stream = new AssistantMessageEventStream();
+): Omit<CodingAgentCreateOptions, "session"> {
+	const server = Bun.serve({
+		port: 0,
+		fetch() {
 			const response = responses.shift();
-			if (!response) throw new Error("No fake provider response left");
-			const emit = () => {
-				stream.push({ type: "start", partial: response });
-				stream.push({ type: "done", reason: "stop", message: response });
-			};
-			const wait = delay?.() ?? 0;
-			if (wait > 0) setTimeout(emit, wait);
-			else emit();
-			return stream;
+			if (!response) return new Response("No fake provider response left", { status: 500 });
+			return new Response(anthropicEvents(response), {
+				headers: { "content-type": "text/event-stream" },
+			});
 		},
-	};
+	});
+	servers.push(server);
 	return {
-		workspace: { cwd: root, configRoot: root },
-		resolveModel: () => ({ model, provider }),
-		homeDirectory: join(root, "home"),
+		model: "anthropic/test-model",
+		cwd: root,
+		provider: { apiKey: "test", baseUrl: server.url.toString() },
 	};
+}
+
+function anthropicEvents(message: AssistantMessage): string {
+	const events = [
+		sse("message_start", {
+			type: "message_start",
+			message: {
+				id: "message-id",
+				type: "message",
+				role: "assistant",
+				model: message.model,
+				content: [],
+				stop_reason: null,
+				stop_sequence: null,
+				usage: { input_tokens: 1, output_tokens: 0 },
+			},
+		}),
+	];
+	for (const [index, content] of message.content.entries()) {
+		if (content.type === "text") {
+			events.push(
+				sse("content_block_start", {
+					type: "content_block_start",
+					index,
+					content_block: { type: "text", text: "" },
+				}),
+				sse("content_block_delta", {
+					type: "content_block_delta",
+					index,
+					delta: { type: "text_delta", text: content.text },
+				}),
+			);
+		} else if (content.type === "toolCall") {
+			events.push(
+				sse("content_block_start", {
+					type: "content_block_start",
+					index,
+					content_block: { type: "tool_use", id: content.id, name: content.name, input: {} },
+				}),
+				sse("content_block_delta", {
+					type: "content_block_delta",
+					index,
+					delta: { type: "input_json_delta", partial_json: JSON.stringify(content.arguments) },
+				}),
+			);
+		}
+		events.push(sse("content_block_stop", { type: "content_block_stop", index }));
+	}
+	events.push(
+		sse("message_delta", {
+			type: "message_delta",
+			delta: {
+				stop_reason: message.stopReason === "toolUse" ? "tool_use" : "end_turn",
+				stop_sequence: null,
+			},
+			usage: { output_tokens: 1 },
+		}),
+		sse("message_stop", { type: "message_stop" }),
+	);
+	return events.join("");
+}
+
+function sse(event: string, data: unknown): string {
+	return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
 function assistant(text: string): AssistantMessage {

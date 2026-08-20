@@ -19,7 +19,6 @@ export {
 	bashPermissionScanArgument,
 	bashScanFromArgs,
 	scanBashCommand,
-	setBashParserWasmSources,
 } from "./bash-parser";
 export {
 	mergePermissionConfigs,

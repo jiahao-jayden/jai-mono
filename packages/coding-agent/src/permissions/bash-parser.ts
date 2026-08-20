@@ -70,20 +70,17 @@ function commandSource(node: Node): string {
  * Locations of the tree-sitter wasm assets. Bundled hosts (Electron main, packaged CLI) cannot
  * resolve these from node_modules at runtime, so they register absolute paths during startup.
  */
-let wasmSources: { readonly parser: string; readonly bashLanguage: string } | undefined;
+type BashParserWasmSources = { readonly parser: string; readonly bashLanguage: string };
+const bashParserWasmSourcesKey = "__jaiCodingAgentBashParserWasmSources";
 
-export function setBashParserWasmSources(sources: { readonly parser: string; readonly bashLanguage: string }): void {
-	wasmSources = sources;
-}
-
-function resolveWasmSources(): { readonly parser: string; readonly bashLanguage: string } {
-	if (wasmSources) return wasmSources;
+function resolveWasmSources(): BashParserWasmSources {
+	const configured = globalThis[bashParserWasmSourcesKey as keyof typeof globalThis];
+	if (isBashParserWasmSources(configured)) return configured;
 	const require = createRequire(import.meta.url);
-	wasmSources = {
+	return {
 		parser: require.resolve("web-tree-sitter/tree-sitter.wasm"),
 		bashLanguage: require.resolve("tree-sitter-bash/tree-sitter-bash.wasm"),
 	};
-	return wasmSources;
 }
 
 async function getParser(): Promise<Parser> {
@@ -110,4 +107,8 @@ async function loadWasmBytes(source: string): Promise<Uint8Array> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isBashParserWasmSources(value: unknown): value is BashParserWasmSources {
+	return isRecord(value) && typeof value.parser === "string" && typeof value.bashLanguage === "string";
 }

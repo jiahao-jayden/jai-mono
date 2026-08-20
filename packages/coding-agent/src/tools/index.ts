@@ -1,5 +1,6 @@
 import { type AgentTool, createHarnessTools } from "@jai/agent";
 import { NodeExecutionEnvironment } from "@jai/agent/node";
+import type { CodingToolName } from "../sdk/types";
 import type { CodingToolOptions } from "./types";
 
 export {
@@ -28,10 +29,12 @@ export function createCodingTools(
 		shellPath: options.shell,
 		ripgrepPath: options.ripgrepPath,
 	}),
+	enabledTools?: ReadonlySet<CodingToolName>,
 ): AgentTool[] {
-	return createHarnessTools({
+	const tools = createHarnessTools({
 		environment,
 		workspaceRoot: options.cwd,
 		bash: { defaultTimeoutMs: options.timeoutMs },
 	});
+	return enabledTools ? tools.filter((tool) => enabledTools.has(tool.name as CodingToolName)) : tools;
 }

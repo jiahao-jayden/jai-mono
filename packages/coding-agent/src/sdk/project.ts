@@ -1,8 +1,6 @@
 import path from "node:path";
 import type { AgentEvent, AgentMessage } from "@jai/agent";
-import type { AssistantMessageEvent } from "@jai/ai";
 import { TaggedError } from "better-result";
-import type { ConnectorApprovalRequest as InternalConnectorApprovalRequest } from "../connector";
 import type { PermissionApprovalRequest } from "../permissions";
 import type {
 	CodingAgentArtifact,
@@ -10,7 +8,6 @@ import type {
 	CodingAgentMessage,
 	CodingAgentTodo,
 	CodingAssistantMessage,
-	CodingConnectorApprovalRequest,
 	CodingPermissionRequest,
 	CodingSdkError,
 	CodingSdkErrorPhase,
@@ -31,23 +28,6 @@ export function agentClosedFailure(): CodingSdkFailure {
 
 export function closedError(): CodingSdkError {
 	return projectError(agentClosedFailure(), "lifecycle");
-}
-
-export function projectConnectorApprovalRequest(
-	request: InternalConnectorApprovalRequest,
-): CodingConnectorApprovalRequest {
-	return {
-		requestId: request.requestId,
-		sessionId: request.sessionId,
-		toolCallId: request.toolCallId,
-		toolName: "connector__execute_action",
-		actionId: request.actionId,
-		reason: request.reason,
-		sideEffect: request.sideEffect,
-		dataSensitivity: request.dataSensitivity,
-		inputKeys: [...request.inputKeys],
-		expiresAt: request.expiresAt,
-	};
 }
 
 export function projectArtifact(
@@ -131,7 +111,7 @@ export function projectEvent(event: AgentEvent): CodingAgentEvent {
 			return {
 				type: "turn_end",
 				message: projectMessage(event.message) as CodingAssistantMessage,
-				toolResults: projectJson(event.toolResults) as unknown as readonly CodingToolResult[],
+				toolResults: event.toolResults.map((message) => projectMessage(message) as CodingToolResult),
 			};
 		case "message_start":
 			return { type: "message_start", message: projectMessage(event.message) };
@@ -139,7 +119,7 @@ export function projectEvent(event: AgentEvent): CodingAgentEvent {
 			return {
 				type: "message_update",
 				message: projectMessage(event.message) as CodingAssistantMessage,
-				assistantEvent: projectJson(event.assistantEvent) as unknown as AssistantMessageEvent,
+				assistantEvent: projectAssistantEvent(event.assistantEvent),
 			};
 		case "message_end":
 			return { type: "message_end", message: projectMessage(event.message) };
@@ -219,10 +199,133 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function projectMessages(messages: readonly AgentMessage[]): readonly CodingAgentMessage[] {
+export function projectMessages(messages: readonly AgentMessage[]): readonly CodingAgentMessage[] {
 	return messages.map(projectMessage);
 }
 
-function projectMessage(message: AgentMessage): CodingAgentMessage {
-	return projectJson(message) as unknown as CodingAgentMessage;
+export function projectMessage(message: AgentMessage): CodingAgentMessage {
+	switch (message.role) {
+		case "user":
+			return {
+				role: "user",
+				content:
+					typeof message.content === "string"
+						? message.content
+						: message.content.map((content) =>
+								content.type === "text"
+									? {
+											type: "text",
+											text: content.text,
+											...(content.synthetic ? { synthetic: true } : {}),
+										}
+									: { type: "image", image: content.image, mimeType: content.mimeType },
+							),
+				...(message.metadata ? { metadata: projectJson(message.metadata) as JsonObject } : {}),
+				timestamp: message.timestamp,
+			};
+		case "assistant":
+			return {
+				role: "assistant",
+				content: message.content.map((content) => {
+					switch (content.type) {
+						case "text":
+							return {
+								type: "text" as const,
+								text: content.text,
+								...(content.synthetic ? { synthetic: true } : {}),
+							};
+						case "thinking":
+							return { type: "thinking" as const, thinking: content.thinking };
+						case "toolCall":
+							return {
+								type: "toolCall" as const,
+								id: content.id,
+								name: content.name,
+								arguments: projectJson(content.arguments) as JsonObject,
+							};
+					}
+				}),
+				provider: message.provider,
+				model: message.model,
+				usage: projectUsage(message.usage),
+				stopReason: message.stopReason,
+				timestamp: message.timestamp,
+			};
+		case "toolResult":
+			return {
+				role: "toolResult",
+				toolCallId: message.toolCallId,
+				toolName: message.toolName,
+				content: message.content.map((content) =>
+					content.type === "text"
+						? {
+								type: "text",
+								text: content.text,
+								...(content.synthetic ? { synthetic: true } : {}),
+							}
+						: { type: "image", image: content.image, mimeType: content.mimeType },
+				),
+				isError: message.isError,
+				timestamp: message.timestamp,
+			};
+	}
+}
+
+function projectAssistantEvent(event: import("@jai/ai").AssistantMessageEvent): Extract<
+	CodingAgentEvent,
+	{ readonly type: "message_update" }
+>["assistantEvent"] {
+	switch (event.type) {
+		case "start":
+			return { type: "start" };
+		case "text_start":
+			return { type: "text_start", contentIndex: event.contentIndex };
+		case "text_delta":
+			return { type: "text_delta", contentIndex: event.contentIndex, delta: event.delta };
+		case "text_end":
+			return { type: "text_end", contentIndex: event.contentIndex, content: event.content };
+		case "thinking_start":
+			return { type: "thinking_start", contentIndex: event.contentIndex };
+		case "thinking_delta":
+			return { type: "thinking_delta", contentIndex: event.contentIndex, delta: event.delta };
+		case "thinking_end":
+			return { type: "thinking_end", contentIndex: event.contentIndex, content: event.content };
+		case "toolcall_start":
+			return { type: "toolcall_start", contentIndex: event.contentIndex };
+		case "toolcall_delta":
+			return { type: "toolcall_delta", contentIndex: event.contentIndex, delta: event.delta };
+		case "toolcall_end":
+			return {
+				type: "toolcall_end",
+				contentIndex: event.contentIndex,
+				toolCall: {
+					type: "toolCall",
+					id: event.toolCall.id,
+					name: event.toolCall.name,
+					arguments: projectJson(event.toolCall.arguments) as JsonObject,
+				},
+			};
+		case "done":
+			return { type: "done", reason: event.reason, message: projectMessage(event.message) as CodingAssistantMessage };
+		case "error":
+			return { type: "error", reason: event.reason, error: projectMessage(event.error) as CodingAssistantMessage };
+	}
+}
+
+function projectUsage(usage: import("@jai/ai").Usage): CodingAssistantMessage["usage"] {
+	return {
+		input: usage.input,
+		output: usage.output,
+		cacheRead: usage.cacheRead,
+		cacheWrite: usage.cacheWrite,
+		...(usage.reasoning === undefined ? {} : { reasoning: usage.reasoning }),
+		totalTokens: usage.totalTokens,
+		cost: {
+			input: usage.cost.input,
+			output: usage.cost.output,
+			cacheRead: usage.cost.cacheRead,
+			cacheWrite: usage.cost.cacheWrite,
+			total: usage.cost.total,
+		},
+	};
 }

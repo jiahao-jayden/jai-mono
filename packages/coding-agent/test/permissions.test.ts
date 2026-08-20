@@ -123,6 +123,67 @@ describe("PermissionApprovalRegistry", () => {
 });
 
 describe("permission middleware", () => {
+	test("Extension-owned authorization bypasses core permission evaluation", async () => {
+		let corePermissionLookups = 0;
+		let coreApprovals = 0;
+		let executions = 0;
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: {},
+			extensionAuthorizedToolNames: new Set(["connector__execute_action"]),
+			extensionToolPermissions: new Map([
+				[
+					"connector__execute_action",
+					async () => {
+						corePermissionLookups++;
+						return { sideEffect: "write" as const, reason: "Core should not inspect this action" };
+					},
+				],
+			]),
+			requestApproval: () => {
+				coreApprovals++;
+				return "allowOnce";
+			},
+		});
+
+		await middleware(context("connector__execute_action", { actionId: "github.create_issue" }), async () => {
+			executions++;
+			return { content: [] };
+		});
+
+		expect({ corePermissionLookups, coreApprovals, executions }).toEqual({
+			corePermissionLookups: 0,
+			coreApprovals: 0,
+			executions: 1,
+		});
+	});
+
+	test("core-owned Extension authorization remains in the core approval path", async () => {
+		let coreApprovals = 0;
+		let executions = 0;
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: {},
+			extensionToolPermissions: new Map([
+				[
+					"extension__write",
+					async () => ({ sideEffect: "write" as const, reason: "Writes Extension state" }),
+				],
+			]),
+			requestApproval: () => {
+				coreApprovals++;
+				return "allowOnce";
+			},
+		});
+
+		await middleware(context("extension__write", { value: "record" }), async () => {
+			executions++;
+			return { content: [] };
+		});
+
+		expect({ coreApprovals, executions }).toEqual({ coreApprovals: 1, executions: 1 });
+	});
+
 	test("自动允许安全调用，询问并放行一次性授权", async () => {
 		let approvals = 0;
 		let executions = 0;
@@ -145,18 +206,19 @@ describe("permission middleware", () => {
 		expect({ approvals, executions }).toEqual({ approvals: 1, executions: 2 });
 	});
 
-	test("显式装配的外部工具绕过内置权限名称解析", async () => {
+	test("没有注册 permission policy 的外部工具拒绝执行", async () => {
 		let executions = 0;
 		const middleware = createPermissionMiddleware({
 			workspaceRoot,
 			settings: { defaultMode: "dontAsk" },
-			externalToolNames: new Set(["mcp__plugin__server__tool"]),
 		});
-		await middleware(context("mcp__plugin__server__tool", {}), async () => {
-			executions++;
-			return { content: [] };
-		});
-		expect(executions).toBe(1);
+		await expect(
+			middleware(context("mcp__plugin__server__tool", {}), async () => {
+				executions++;
+				return { content: [] };
+			}),
+		).rejects.toMatchObject({ _tag: "coding_permission.denied" });
+		expect(executions).toBe(0);
 	});
 
 	test("Edit/Write Always allow 只记入当前 middleware session", async () => {

@@ -1,30 +1,47 @@
 {
 	"name": "@jai/coding-agent",
-	"version": "0.0.0",
-	"private": true,
+	"version": "0.1.0",
 	"type": "module",
-	"description": "Public SDK for Jai coding agents, plus Jai product defaults on the jai-host export.",
+	"description": "Public SDK for building coding agents.",
+	"engines": {
+		"node": ">=20"
+	},
+	"files": ["dist"],
+	"main": "./dist/sdk.js",
+	"types": "./dist/sdk.d.ts",
 	"exports": {
-		".": "./src/sdk.ts",
-		"./jai-host": "./src/jai-host/index.ts"
+		".": {
+			"types": "./dist/sdk.d.ts",
+			"import": "./dist/sdk.js"
+		}
+	},
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org/"
 	},
 	"scripts": {
+		"build": "node ./scripts/tsup.cjs",
+		"prepack": "node ./scripts/tsup.cjs",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
-		"test": "bun test"
+		"test": "bun test",
+		"test:consumer": "node ./scripts/test-consumer.mjs"
 	},
 	"dependencies": {
-		"@jai/agent": "workspace:*",
-		"@jai/ai": "workspace:*",
-		"@jai/common": "workspace:*",
-		"@jai/connector": "workspace:*",
+		"@anthropic-ai/sdk": "^0.110.0",
 		"@modelcontextprotocol/sdk": "1.29.0",
-		"@sinclair/typebox": "catalog:",
+		"@sinclair/typebox": "^0.34.49",
 		"better-result": "^3.0.0",
+		"openai": "^6.45.0",
 		"tree-sitter-bash": "0.25.0",
 		"web-tree-sitter": "0.25.10",
 		"yaml": "^2.8.1"
 	},
 	"devDependencies": {
-		"typescript": "catalog:"
+		"@jai/agent": "workspace:*",
+		"@jai/ai": "workspace:*",
+		"@jai/common": "workspace:*",
+		"@jai/connector": "workspace:*",
+		"tsup": "^8.5.1",
+		"typescript": "~5.8.3"
 	}
 }

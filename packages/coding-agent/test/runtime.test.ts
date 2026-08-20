@@ -11,7 +11,6 @@ import {
 	zeroUsage,
 } from "@jai/ai";
 import { Type } from "@sinclair/typebox";
-import { MemoryConnectorService } from "@jai/connector";
 import { defineCodingConfig } from "../src/config";
 import {
 	mergePermissionConfigs,
@@ -88,181 +87,6 @@ describe("createCodingAgent", () => {
 		}
 	});
 
-	test("Plugin PreToolUse 改写参数后仍由 permission middleware 审批", async () => {
-		const fixture = await createFixture();
-		const originalTarget = join(fixture.executionContext.cwd, "original.txt");
-		const modifiedTarget = join(fixture.executionContext.cwd, "..", "hook-modified.txt");
-		const pluginRoot = join(fixture.executionContext.cwd, "hook-plugin");
-		const dataDirectory = join(fixture.executionContext.cwd, "plugin-data");
-		const hookScript = [
-			"const fs=require('node:fs');",
-			"const path=require('node:path');",
-			"let raw='';",
-			"process.stdin.on('data',chunk=>raw+=chunk);",
-			"process.stdin.on('end',()=>{",
-			"const invocation=JSON.parse(raw);",
-			"fs.writeFileSync(path.join(process.env.JAI_PLUGIN_DATA,'pre.json'),JSON.stringify({invocation,environment:{root:process.env.JAI_PLUGIN_ROOT,data:process.env.JAI_PLUGIN_DATA,project:process.env.JAI_PROJECT_DIR,kind:process.env.JAI_AGENT_KIND}}));",
-			`process.stdout.write(JSON.stringify({decision:'updateInput',input:{...invocation.tool.input,path:${JSON.stringify(modifiedTarget)}}}));`,
-			"});",
-		].join("");
-		await writeAgentPlugin(pluginRoot, {
-			PreToolUse: [{ matcher: "Write", hooks: [{ type: "command", command: "node", args: ["-e", hookScript] }] }],
-		});
-		const requests: string[] = [];
-		const codingAgent = await createCodingAgent({
-			...fixture,
-			agentPlugins: { directories: [pluginRoot], dataDirectory },
-			resolveProvider: () => ({
-				provider: providerFor([assistantToolCall("Write", { path: originalTarget, content: "modified by hook" }), assistant("done")]),
-				model,
-			}),
-			permissions: {
-				requestApproval(request) {
-					requests.push(request.suggestedRule ?? "");
-					return "allowOnce";
-				},
-			},
-		});
-
-		try {
-			await codingAgent.invoke("write a file");
-			expect(await readFile(modifiedTarget, "utf8")).toBe("modified by hook");
-			expect(requests).toEqual([`Edit(//${modifiedTarget.replace(/^\/+/, "")})`]);
-			const invocation = JSON.parse(await readFile(join(dataDirectory, "agent-plugin-hooks-test", "pre.json"), "utf8"));
-			const canonicalPluginRoot = await realpath(pluginRoot);
-			const canonicalDataDirectory = await realpath(join(dataDirectory, "agent-plugin-hooks-test"));
-			expect(invocation).toMatchObject({
-				invocation: {
-					protocolVersion: "1.0.0",
-					event: "PreToolUse",
-					agent: { kind: "primary" },
-					session: { id: "session-1" },
-					project: { directory: fixture.executionContext.cwd },
-				},
-				environment: {
-					root: canonicalPluginRoot,
-					data: canonicalDataDirectory,
-					project: fixture.executionContext.cwd,
-					kind: "primary",
-				},
-			});
-		} finally {
-			codingAgent.close();
-		}
-	});
-
-	test("Plugin PreToolUse command 失败可按 deny policy 阻止工具执行", async () => {
-		const fixture = await createFixture();
-		const target = join(fixture.executionContext.cwd, "denied.txt");
-		const pluginRoot = join(fixture.executionContext.cwd, "hook-plugin");
-		await writeAgentPlugin(pluginRoot, {
-			PreToolUse: [
-				{
-					matcher: "Write",
-					hooks: [{ type: "command", command: "node", args: ["-e", "process.exit(1)"], onFailure: "deny" }],
-				},
-			],
-		});
-		const codingAgent = await createCodingAgent({
-			...fixture,
-			agentPlugins: { directories: [pluginRoot], dataDirectory: join(fixture.executionContext.cwd, "plugin-data") },
-			resolveProvider: () => ({
-				provider: providerFor([assistantToolCall("Write", { path: target, content: "must not exist" }), assistant("done")]),
-				model,
-			}),
-		});
-
-		try {
-			await codingAgent.invoke("write a file");
-			await expect(readFile(target, "utf8")).rejects.toThrow();
-			expect(codingAgent.pluginDiagnostics).toContainEqual(
-				expect.objectContaining({ code: "plugin_hook_command_failed", componentName: "PreToolUse" }),
-			);
-		} finally {
-			codingAgent.close();
-		}
-	});
-
-	test("Plugin PostToolUseFailure 只观察失败结果", async () => {
-		const fixture = await createFixture();
-		const pluginRoot = join(fixture.executionContext.cwd, "hook-plugin");
-		const dataDirectory = join(fixture.executionContext.cwd, "plugin-data");
-		const hookScript = [
-			"const fs=require('node:fs');",
-			"const path=require('node:path');",
-			"let raw='';",
-			"process.stdin.on('data',chunk=>raw+=chunk);",
-			"process.stdin.on('end',()=>fs.writeFileSync(path.join(process.env.JAI_PLUGIN_DATA,'failure.json'),raw));",
-		].join("");
-		await writeAgentPlugin(pluginRoot, {
-			PostToolUseFailure: [{ matcher: "Read", hooks: [{ type: "command", command: "node", args: ["-e", hookScript] }] }],
-		});
-		const codingAgent = await createCodingAgent({
-			...fixture,
-			agentPlugins: { directories: [pluginRoot], dataDirectory },
-			resolveProvider: () => ({
-				provider: providerFor([
-					assistantToolCall("Read", { path: join(fixture.executionContext.cwd, "missing.txt") }),
-					assistant("done"),
-				]),
-				model,
-			}),
-		});
-
-		try {
-			await codingAgent.invoke("read the missing file");
-			const invocation = JSON.parse(await readFile(join(dataDirectory, "agent-plugin-hooks-test", "failure.json"), "utf8"));
-			expect(invocation).toMatchObject({
-				event: "PostToolUseFailure",
-				tool: { name: "Read", result: { isError: true } },
-			});
-		} finally {
-			codingAgent.close();
-		}
-	});
-
-	test("Plugin hooks 也在 SpawnAgent 创建的 subagent 中执行", async () => {
-		const fixture = await createFixture();
-		const target = join(fixture.executionContext.cwd, "child.txt");
-		await writeFile(target, "child contents");
-		const pluginRoot = join(fixture.executionContext.cwd, "hook-plugin");
-		const dataDirectory = join(fixture.executionContext.cwd, "plugin-data");
-		const hookScript = [
-			"const fs=require('node:fs');",
-			"const path=require('node:path');",
-			"let raw='';",
-			"process.stdin.on('data',chunk=>raw+=chunk);",
-			"process.stdin.on('end',()=>{const invocation=JSON.parse(raw);fs.appendFileSync(path.join(process.env.JAI_PLUGIN_DATA,'kinds.jsonl'),JSON.stringify(invocation.agent)+'\\n');});",
-		].join("");
-		await writeAgentPlugin(pluginRoot, {
-			PreToolUse: [{ matcher: "Read", hooks: [{ type: "command", command: "node", args: ["-e", hookScript] }] }],
-		});
-		const codingAgent = await createCodingAgent({
-			...fixture,
-			agentPlugins: { directories: [pluginRoot], dataDirectory },
-			resolveProvider: () => ({
-				provider: providerFor([
-					assistantToolCall("SpawnAgent", { title: "Read child file", task: "Read the requested file and report its contents." }),
-					assistantToolCall("Read", { path: target }),
-					assistant("child done"),
-					assistant("parent done"),
-				]),
-				model,
-			}),
-		});
-
-		try {
-			await codingAgent.invoke("delegate the read");
-			const kinds = (await readFile(join(dataDirectory, "agent-plugin-hooks-test", "kinds.jsonl"), "utf8"))
-				.trim()
-				.split("\n")
-				.map((line) => JSON.parse(line));
-			expect(kinds).toEqual([{ kind: "subagent" }]);
-		} finally {
-			codingAgent.close();
-		}
-	});
-
 	test("在 aroundToolCall 切点请求权限并执行一次性授权", async () => {
 		const fixture = await createFixture();
 		const target = join(fixture.executionContext.cwd, "approved.txt");
@@ -291,45 +115,6 @@ describe("createCodingAgent", () => {
 		} finally {
 			codingAgent.close();
 		}
-	});
-
-	test("Connector 只向 Agent 暴露五个固定工具，并在 Agent 关闭时释放 client", async () => {
-		const fixture = await createFixture();
-		const contexts: Context[] = [];
-		const service = new MemoryConnectorService({ adapters: [], connections: [] });
-		let closed = 0;
-		const client = Object.assign(service, { close: async () => { closed += 1; } });
-		const codingAgent = await createCodingAgent({
-			...fixture,
-			connector: { client },
-			resolveProvider: () => ({
-				provider: providerFor([
-					assistantToolCall("connector__list_apps", {}),
-					assistant("connector-ready"),
-				], contexts),
-				model,
-			}),
-		});
-
-		await codingAgent.invoke("list connector apps");
-		expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual([
-			"UpdateTodos",
-			"SpawnAgent",
-			"Read",
-			"Glob",
-			"Grep",
-			"Write",
-			"Edit",
-			"Bash",
-			"Skill",
-			"connector__list_apps",
-			"connector__list_connections",
-			"connector__search_actions",
-			"connector__get_action_guide",
-			"connector__execute_action",
-		]);
-		codingAgent.close();
-		expect(closed).toBe(1);
 	});
 
 	test("Bash Always allow 原子写入 project-local permission", async () => {
@@ -385,6 +170,23 @@ describe("createCodingAgent", () => {
 				"Skill",
 			]);
 			expect(codingAgent.configSnapshot.settings.permissions.defaultMode).toBe("default");
+		} finally {
+			codingAgent.close();
+		}
+	});
+
+	test("内置 tool selection 只注册选择后的工具，exclude 可进一步收紧", async () => {
+		const fixture = await createFixture();
+		const contexts: Context[] = [];
+		const codingAgent = await createCodingAgent({
+			...fixture,
+			enabledTools: new Set(["Read", "Grep", "UpdateTodos"]),
+			resolveProvider: () => ({ provider: providerFor([assistant("done")], contexts), model }),
+		});
+
+		try {
+			await codingAgent.invoke("inspect the project");
+			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["UpdateTodos", "Read", "Grep"]);
 		} finally {
 			codingAgent.close();
 		}
@@ -751,17 +553,4 @@ async function writeSkill(directory: string, name: string, description: string):
 		join(skillDirectory, "SKILL.md"),
 		`---\nname: ${name}\ndescription: ${description}\n---\n\n# ${description}\n`,
 	);
-}
-
-async function writeAgentPlugin(root: string, hooks: Record<string, unknown>): Promise<void> {
-	await mkdir(join(root, "hooks"), { recursive: true });
-	await writeFile(
-		join(root, "plugin.json"),
-		JSON.stringify({
-			$schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-			name: "agent-plugin-hooks-test",
-			version: "1.0.0",
-		}),
-	);
-	await writeFile(join(root, "hooks", "hooks.json"), JSON.stringify({ version: 1, hooks }));
 }

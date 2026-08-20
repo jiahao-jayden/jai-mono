@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
-import type { PathCapability, PathCapabilityManager, ResolvePathOptions, ToolMiddleware } from "@jai/agent";
+import type {
+	AgentToolResult,
+	PathCapability,
+	PathCapabilityManager,
+	ResolvePathOptions,
+	ToolMiddleware,
+} from "@jai/agent";
+import type { CodingExtensionToolCall, CodingToolPermission } from "../sdk/extensions";
+import type { JsonObject } from "../sdk/types";
 import type { PermissionApprovalDecision, PermissionRequestSummary, PermissionRisk } from "./approval";
 import { bashPermissionScanArgument, scanBashCommand } from "./bash-parser";
 import { permissionAbortedError, permissionApprovalUnavailableError, permissionDeniedError } from "./errors";
@@ -11,7 +19,7 @@ import { type CanonicalToolName, canonicalToolNames, type PermissionDecision, ty
 export interface PermissionApprovalRequest {
 	readonly requestId: string;
 	readonly toolCallId: string;
-	readonly toolName: CanonicalToolName;
+	readonly toolName: string;
 	readonly args: Readonly<Record<string, unknown>>;
 	readonly reason: string;
 	readonly canAlwaysAllow: boolean;
@@ -28,8 +36,9 @@ export interface PermissionApprovalRequest {
 export interface PermissionMiddlewareOptions {
 	readonly workspaceRoot: string | (() => string);
 	readonly settings: PermissionSettings | (() => PermissionSettings | Promise<PermissionSettings>);
-	/** 显式装配的外部工具，例如 Agent Plugin MCP 工具。 */
-	readonly externalToolNames?: ReadonlySet<string>;
+	readonly extensionToolPermissions?: ReadonlyMap<string, ExtensionToolPermissionResolver>;
+	/** Extension tools which explicitly own their authorization transaction. */
+	readonly extensionAuthorizedToolNames?: ReadonlySet<string>;
 	readonly requestApproval?: (
 		request: PermissionApprovalRequest,
 		signal?: AbortSignal,
@@ -43,7 +52,20 @@ export interface PermissionMiddlewareOptions {
 export function createPermissionMiddleware(options: PermissionMiddlewareOptions): ToolMiddleware {
 	const sessionAllowRules = options.sessionAllowRules ?? new Set<string>();
 	return async (context, next) => {
-		if (options.externalToolNames?.has(context.tool.name)) return next();
+		if (options.extensionAuthorizedToolNames?.has(context.tool.name)) return next();
+		const extensionPermission = options.extensionToolPermissions?.get(context.tool.name);
+		if (extensionPermission) {
+			return evaluateExtensionPermission(
+				context.tool.name,
+				context.args,
+				extensionPermission,
+				await currentSettings(options.settings),
+				options.requestApproval,
+				context.toolCall.id,
+				context.signal,
+				next,
+			);
+		}
 		const toolName = canonicalToolName(context.tool.name);
 		const workspaceRoot = currentWorkspaceRoot(options.workspaceRoot);
 		const settings = await currentSettings(options.settings);
@@ -138,6 +160,75 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 			? options.pathCapabilities.withPathCapability(capability, next)
 			: next();
 	};
+}
+
+export type ExtensionToolPermissionResolver = (
+	call: CodingExtensionToolCall<JsonObject>,
+) => CodingToolPermission | Promise<CodingToolPermission>;
+
+async function evaluateExtensionPermission(
+	toolName: string,
+	args: Record<string, unknown>,
+	resolvePermission: ExtensionToolPermissionResolver,
+	settings: PermissionSettings,
+	requestApproval: PermissionMiddlewareOptions["requestApproval"],
+	toolCallId: string,
+	signal: AbortSignal | undefined,
+	next: () => Promise<AgentToolResult>,
+): Promise<AgentToolResult> {
+	const permission = await resolvePermission({
+		toolCallId,
+		args: structuredClone(args) as JsonObject,
+		...(signal ? { signal } : {}),
+	});
+	if (
+		(permission.sideEffect !== "read" &&
+			permission.sideEffect !== "write" &&
+			permission.sideEffect !== "destructive") ||
+		(permission.dataSensitivity !== undefined &&
+			permission.dataSensitivity !== "normal" &&
+			permission.dataSensitivity !== "sensitive" &&
+			permission.dataSensitivity !== "secret") ||
+		!permission.reason.trim()
+	) {
+		throw permissionDeniedError(toolName, "Extension supplied an invalid permission description");
+	}
+	const mode = settings.defaultMode ?? "default";
+	if (mode === "plan" && permission.sideEffect !== "read") {
+		throw permissionDeniedError(toolName, "Plan mode only allows read-only work");
+	}
+	if (mode === "dontAsk") {
+		throw permissionDeniedError(toolName, "Don't Ask denies Extension tools without an Allow rule");
+	}
+	const needsApproval =
+		permission.sideEffect === "destructive" ||
+		(mode !== "bypassPermissions" &&
+			(permission.sideEffect === "write" ||
+				permission.dataSensitivity === "sensitive" ||
+				permission.dataSensitivity === "secret"));
+	if (!needsApproval) return next();
+	if (!requestApproval)
+		throw permissionDeniedError(toolName, "No approval handler is configured for this Extension tool");
+	if (signal?.aborted) throw permissionAbortedError(toolName);
+	const approval = await requestApproval(
+		{
+			requestId: randomUUID(),
+			toolCallId,
+			toolName,
+			args: structuredClone(args),
+			reason: permission.reason,
+			canAlwaysAllow: false,
+			summary: {
+				title: `${toolName} requests permission`,
+				description: permission.reason,
+				risk: permission.sideEffect === "destructive" ? "high" : "medium",
+			},
+		},
+		signal,
+	);
+	if (signal?.aborted) throw permissionAbortedError(toolName);
+	if (approval !== "allowOnce") throw permissionDeniedError(toolName, "User denied the permission request");
+	return next();
 }
 
 async function argsForPermission(
