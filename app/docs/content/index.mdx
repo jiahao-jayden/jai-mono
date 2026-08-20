@@ -1,43 +1,29 @@
 ---
-title: Jai Coding Agent
-description: 面向 TypeScript 应用嵌入可持久化、可授权、可观察的 Coding Agent，并在五分钟内完成第一次真实模型调用。
+title: Jai Coding Agent SDK
+description: 用一个稳定的 TypeScript API 创建、运行和管理 coding agent。
 ---
 
-`@jai/coding-agent` 是用于把 Coding Agent 嵌入 CLI、桌面应用、服务端任务和开发者工具的 TypeScript SDK。它负责模型工具循环、会话状态和事件；你的应用提供模型连接、工作目录、会话目录及用户授权。
+`@jai/coding-agent` 是面向 Node.js 宿主的公开 SDK。它负责 Agent 执行循环、内置 coding tools、会话、权限求值、状态和事件投影；Desktop、CLI 等产品自己的配置、模型目录、插件发现与 UI 留在各自宿主中。
 
-如果你是第一次接触 Jai，从 [安装](/docs/quickstart/installation) 开始。五分钟内，你会运行一个真实的 OpenAI 请求，让 Agent 以只读 `plan` 模式读取当前项目的 `README` 并输出总结，同时正确处理 `Result` 和关闭资源。
+## 从这里开始
 
-适合以下场景：
+- [SDK 概览](/docs/quickstart/overview)：理解 SDK 与宿主的职责边界。
+- [安装](/docs/quickstart/installation)：准备 Node.js 项目和模型凭据。
+- [创建第一个 Agent](/docs/quickstart/create-your-first-agent)：以只读方式运行一次 prompt。
 
-- 在 TypeScript 产品中加入代码库问答、分析或修改能力。
-- 创建可恢复的长任务，并把进度、工具调用和产物投影到产品 UI。
-- 由宿主统一控制模型凭据、文件边界、权限审批和 session 存储。
+## 核心 API
 
-## 学习路径
+```ts
+import { createCodingAgent } from "@jai/coding-agent";
 
-<Steps>
-  <Step title="跑通最小集成">
-    安装 npm packages，设置 `OPENAI_API_KEY`，运行第一个 ephemeral Agent。
-  </Step>
-  <Step title="理解创建边界">
-    阅读 [创建参数与可替换行为](/docs/concepts/host-authorities) 与 [会话和生命周期](/docs/concepts/sessions-and-lifecycle)。
-  </Step>
-  <Step title="接入产品能力">
-    按需实现 [权限](/docs/guides/permissions)、[附件](/docs/guides/attachments) 和 [事件观察](/docs/examples/observe-events)。
-  </Step>
-  <Step title="核对公开契约">
-    在 [API Reference](/docs/api-reference/create-coding-agent) 中检查签名、DTO 和当前限制。
-  </Step>
-</Steps>
+const created = await createCodingAgent({
+  model: "openai/gpt-4.1-mini",
+  cwd: process.cwd(),
+  session: { kind: "ephemeral" },
+  permissionMode: "plan",
+});
+```
 
-## SDK 边界
+创建、运行和关闭都返回 `better-result` 的 `Result`。先处理 `isErr()`，再读取 `value`；不要把预期的 SDK 失败改为异常控制流。
 
-- root import：`@jai/coding-agent`
-- 创建参数：`CodingAgentCreateInput`
-- 正常可恢复失败：`Result<T, CodingSdkError>`
-- 会话：`new`、`resume`、`ephemeral`
-- 内置工具：`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`Skill`、`UpdateTodos`、`SpawnAgent`
-
-日常集成从 root import `@jai/coding-agent`。`@jai/coding-agent/jai-host` 是同一 package 提供的可选 Jai 产品配置能力，适合需要标准配置、模型目录和 session 布局的 Advanced/Integration 场景。
-
-深入集成时，请继续阅读 [Prompt 与运行控制](/docs/concepts/prompts-and-control)、[State 与 Events](/docs/concepts/state-and-events)、[CodingAgent API](/docs/api-reference/coding-agent)、[Errors 与 Tools](/docs/api-reference/errors-and-tools) 和 [公开 API 与当前限制](/docs/api-reference/public-api-and-limitations)。
+模型字符串使用 `<provider>/<model>` 格式。内置 provider 是 `anthropic`、`openai` 和 `openai-compatible`；默认分别读取 `ANTHROPIC_API_KEY` 或 `OPENAI_API_KEY`。自定义 endpoint 与认证方式通过 `provider` 配置。

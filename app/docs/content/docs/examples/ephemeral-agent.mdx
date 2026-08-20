@@ -1,47 +1,35 @@
 ---
 title: Ephemeral Agent
-description: 为一次性只读分析创建 ephemeral Agent，并通过 plan mode、Result 分支与 finally 关闭实现清晰可靠的执行和清理边界。
+description: 为一次性只读分析创建 ephemeral Agent，并在完成后关闭资源。
 ---
 
-先完成 [Quickstart](/docs/quickstart/create-your-first-agent) 并保留其中的 `model`、`provider` 与 `cwd`。将创建与执行部分替换为：
+ephemeral session 适合不需要恢复的单次任务。SDK 在临时目录保存运行所需 session 数据，并在 `close()` 时删除。
 
 ```ts
+// @docs-compile
+import { createCodingAgent } from "@jai/coding-agent";
+
 const created = await createCodingAgent({
-  workspace: { cwd, configRoot: cwd },
+  model: "openai/gpt-4.1-mini",
+  cwd: ".",
   session: { kind: "ephemeral" },
-  resolveModel: () => ({ model, provider }),
-  execution: {
-    permissionMode: "plan",
-    instructions: "只分析并给出计划，不修改文件。",
-  },
+  permissionMode: "plan",
+  instructions: "只分析并给出计划，不修改文件。",
 });
+
 if (created.isErr()) {
-  console.error(`[${created.error.phase}] ${created.error.code}: ${created.error.message}`);
-  process.exitCode = 1;
+  console.error(created.error);
 } else {
   const agent = created.value;
   try {
-    const run = await agent.prompt({ prompt: "评估当前项目主要模块的重构风险" });
-    if (run.isErr()) {
-      console.error(`[${run.error.phase}] ${run.error.code}: ${run.error.message}`);
-      process.exitCode = 1;
-    } else {
-      console.dir(run.value.messages, { depth: null });
-    }
+    const run = await agent.prompt("评估当前项目主要模块的重构风险。");
+    if (run.isErr()) console.error(run.error);
+    else console.dir(run.value.messages, { depth: null });
   } finally {
     const closed = await agent.close();
-    if (closed.isErr()) {
-      console.error(`[${closed.error.phase}] ${closed.error.code}: ${closed.error.message}`);
-      process.exitCode = 1;
-    }
+    if (closed.isErr()) console.error(closed.error);
   }
 }
 ```
 
-ephemeral session 仍有 `sessionId`，执行期间也拥有完整 state；区别是存储位于 SDK 创建的临时目录，并在成功 `close()` 时删除。
-
-:::warning
-进程崩溃或宿主没有调用 `close()` 时，不能承诺临时目录已经清理。宿主必须把关闭动作放入自身资源生命周期。
-:::
-
-`plan` 是已实现的只读模式，适合分析、审查和方案生成。
+`plan` 固定拒绝写入和可写 Bash，因此适合分析、审查和方案生成。进程崩溃或宿主没有调用 `close()` 时，不能承诺临时目录已经清理；把关闭动作纳入宿主自身的资源生命周期。

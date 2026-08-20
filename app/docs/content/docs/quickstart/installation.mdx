@@ -1,13 +1,13 @@
 ---
 title: 安装
-description: 准备 Node.js、TypeScript 与 OpenAI 凭据，安装正式发布的 Jai packages，并创建可直接运行的项目。
+description: 准备 Node.js、TypeScript 与模型凭据，并安装公开 SDK。
 ---
 
 ## 前置条件
 
 - Node.js 20 或更新版本。
-- 一个空目录或现有 TypeScript 项目。
-- OpenAI API key，以及该账户可访问的模型 ID。
+- 一个 TypeScript 项目。
+- OpenAI 或 Anthropic 的 API key，以及账户可访问的模型 ID。
 
 <Steps>
   <Step title="初始化项目">
@@ -19,17 +19,16 @@ npm init -y
 npm pkg set type=module
 ```
   </Step>
-  <Step title="安装 packages">
+  <Step title="安装 SDK">
 
 ```bash
-npm install @jai/coding-agent @jai/ai
+npm install @jai/coding-agent
 npm install --save-dev typescript tsx @types/node
 ```
 
-    也可以使用 `pnpm add`、`bun add` 或 `yarn add` 安装相同 packages。
+    也可以使用 `pnpm add`、`bun add` 或 `yarn add`。
   </Step>
   <Step title="配置 TypeScript">
-    新建 `tsconfig.json`：
 
 ```json
 {
@@ -38,7 +37,6 @@ npm install --save-dev typescript tsx @types/node
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,
-    "esModuleInterop": true,
     "skipLibCheck": true
   }
 }
@@ -48,18 +46,16 @@ npm install --save-dev typescript tsx @types/node
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-export OPENAI_MODEL="gpt-4.1-mini"
 ```
 
-    `OPENAI_MODEL` 可省略；Quickstart 当前以 `gpt-4.1-mini` 为示例默认值。模型供应会变化，请替换为你的 OpenAI 账户实际可用的模型，并同步核对示例中的 context window 与最大输出 token 元数据。
+    使用 Anthropic 时改为 `ANTHROPIC_API_KEY`。模型 ID 在创建 Agent 时直接写入 `model`，例如 `openai/gpt-4.1-mini` 或 `anthropic/claude-sonnet-4-20250514`。
   </Step>
 </Steps>
 
-应用代码从正式入口导入：
+应用只需要从正式 root 入口导入：
 
 ```ts
-import { createCodingAgent, type CodingModelResolver } from "@jai/coding-agent";
-import { OpenAIProvider, type Model } from "@jai/ai";
+import { createCodingAgent, type CodingAgentCreateOptions } from "@jai/coding-agent";
 ```
 
-继续：[创建第一个 Agent](/docs/quickstart/create-your-first-agent)。
+不要安装或导入 `@jai/ai` 来构造模型对象，也不要 deep import SDK 内部模块。继续：[创建第一个 Agent](/docs/quickstart/create-your-first-agent)。

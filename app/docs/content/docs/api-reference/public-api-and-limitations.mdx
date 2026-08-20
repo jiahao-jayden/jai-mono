@@ -1,32 +1,26 @@
 ---
-title: 公开 API 与当前限制
-description: 核对稳定 root exports、可选 jai-host subpath、禁止的 deep import，以及当前尚未生效的运行字段。
+title: 公开 API 与限制
+description: 核对稳定 root exports、禁止的 deep import 与公开 SDK 的产品边界。
 ---
 
-`@jai/coding-agent` 提供两个正式入口：
+`@jai/coding-agent` 只提供一个正式入口：
 
-- `@jai/coding-agent`：所有应用的稳定 root SDK，包括创建 Agent、会话、状态、事件、权限和错误 DTO。
-- `@jai/coding-agent/jai-host`：同一 package 的可选 Jai 产品集成，包括标准配置 store、模型目录解析、plugin 目录发现与 session 路径布局。只有需要这些集成能力时才使用。
+- `@jai/coding-agent`：创建 Agent、读取 artifact、定义 Extension，以及所有公开类型。
 
 ## Root value exports
 
 - `createCodingAgent`
 - `codingArtifactsFromAppState`
-- `codingAgentToolNames`
+- `defineExtension`
 
-Root 还稳定导出以下类别的 TypeScript 类型：`CodingAgent`、`CodingAgentCreateInput`、`CodingWorkspace`、`CodingModelResolver`、`SessionSelection`、execution、prompt、state/event、permission、connector、attachment、Todo/Artifact、JSON 与 error DTO。准确名称见各 API Reference 页面。
+Root 还稳定导出 `CodingAgentCreateOptions`、`CodingProviderOptions`、session、prompt、state/event、permission、attachment、Todo/Artifact、extension、JSON 与 error DTO 类型。准确字段见本节的 API Reference 页面。
 
 ## Import 边界
 
-只从 package root 或已记录的 `/jai-host` subpath 导入。不要 deep import package 中未记录的目录或文件；这些实现路径不属于公开契约，升级时可能直接变化。
+只从 package root 导入。不要 deep import `dist`、`src` 或其他未记录路径；这些实现不属于公开契约，升级时可能变化。
 
-## 当前运行限制
+## 产品边界
 
-以下字段已存在于公开类型，但当前执行路径尚未生效或未完整传递：
+公开 SDK 不包含 Jai config、模型 catalog、插件目录发现、Connector client、Desktop UI 或 CLI session 列表。Desktop 与 CLI 分别持有这些产品业务，并把最终的模型、扩展和审批策略传给 SDK。
 
-- `CodingPrompt.delivery`：`prompt()` 不读取；请明确调用 `steer()` 或 `followUp()`。
-- `CodingPrompt.attachments`：仅由 `prompt()` 消费；`steer()` 与 `followUp()` 仅发送文本。
-
-:::warning
-这些是运行行为限制，不是发布或安装限制。集成代码在实现与测试明确覆盖前不应依赖这些字段。
-:::
+SDK 的 Extension 公开能力是 tools、skills、hooks 和释放逻辑；没有公开的 `mcpServers` capability。Jai Agent Plugin 的发现与其 MCP 描述的适配发生在 `@jai/extension` 和具体宿主中，再以普通 Extension tools 传入 SDK。

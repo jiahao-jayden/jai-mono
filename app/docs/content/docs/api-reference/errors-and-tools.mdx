@@ -1,6 +1,6 @@
 ---
 title: Errors 与 Tools
-description: 查阅 CodingSdkError、permission 与 connector approval DTO、公开工具名、CodingAttachment、Todo 和 Artifact 类型。
+description: 查阅 CodingSdkError、权限 DTO、内置工具、附件、Todo 与 Artifact 类型。
 ---
 
 ## `CodingSdkError`
@@ -11,29 +11,26 @@ interface CodingSdkError {
   message: string;
   retryable: boolean;
   phase: CodingSdkErrorPhase;
-  requestId?: string;
-  toolCallId?: string;
-  details?: JsonValue;
 }
 ```
 
-phase：`runtime_creation | session | admission | model | tool | permission | compaction | lifecycle`。
+`phase` 是 `runtime_creation | session | admission | model | tool | permission | compaction | lifecycle`。错误 DTO 只包含安全、稳定的跨边界字段；不会携带 stack、cause、底层 SDK error、request ID、tool call ID 或未筛选 details。
 
 ## 权限 DTO
 
-`CodingPermissionRequest` 包含 `requestId`、`sessionId`、`toolCallId`、`toolName`、JSON args、reason、`canAlwaysAllow`、安全 `summary`、建议规则与 remember scope。决定值为：
+`CodingPermissionRequest` 包含 `requestId`、`sessionId`、`toolCallId`、`toolName`、JSON-safe `args`、`reason`、`canAlwaysAllow`、安全 `summary`、可选建议规则与 remember scope。决定值为：
 
 ```ts
 type CodingPermissionDecision = "deny" | "allowOnce" | "alwaysAllow";
 ```
 
-Connector approval 使用独立 DTO 与同名三态 decision，额外描述 `actionId`、side effect、data sensitivity、input keys 与 expiry。
+这里的关联 ID 只属于审批请求，不是 `CodingSdkError` 字段。跨进程时应再投影为 UI 所需的最小 DTO。
 
 ## 工具与状态项
 
 `CodingToolName`：`Read | Write | Edit | Glob | Grep | Bash | Skill | UpdateTodos | SpawnAgent`。
 
-`CodingAgentTodo`：`id`、`content`、四态 status。
+`CodingAgentTodo`：`id`、`content`、四态 `status`。
 
 `CodingAgentArtifact`：`id`、`toolCallId`、`path`、`format: "markdown" | "html"`、`updatedAt`。
 

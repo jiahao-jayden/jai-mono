@@ -1,53 +1,48 @@
 ---
 title: 观察事件
-description: 把 Agent streaming message、工具执行与 compaction 事件接入宿主 UI，并使用 toolCallId 准确关联和安全处理增量状态。
+description: 把 Agent streaming message、工具执行与 compaction 事件接入宿主 UI。
 ---
 
-先完成 [Quickstart](/docs/quickstart/create-your-first-agent)，保留其中已创建的 `agent` 和外层 `finally`。用以下代码替换 prompt 调用：
+订阅应在运行前建立，并在宿主不再需要更新时取消。工具事件的 `toolCallId` 可用于关联 start、update 与 end；它不是错误 DTO 的字段。
 
 ```ts
-const unsubscribe = agent.subscribe((event) => {
-  switch (event.type) {
-    case "message_update":
-      process.stdout.write(".");
-      break;
-    case "tool_execution_start":
-      console.log("\n工具开始", {
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        title: event.title,
-        args: event.args,
-      });
-      break;
-    case "tool_execution_update":
-      console.log("工具更新", event.toolCallId, event.partial);
-      break;
-    case "tool_execution_end":
-      console.log("工具结束", {
-        toolCallId: event.toolCallId,
-        result: event.result,
-        isError: event.isError,
-      });
-      break;
-    case "compaction_start":
-      console.log("开始压缩上下文，压缩前 token：", event.tokensBefore);
-      break;
-  }
+// @docs-compile
+import { createCodingAgent } from "@jai/coding-agent";
+
+const created = await createCodingAgent({
+  model: "openai/gpt-4.1-mini",
+  cwd: ".",
+  session: { kind: "ephemeral" },
 });
 
-try {
-  const result = await agent.prompt({ prompt: "运行检查并总结" });
-  if (result.isErr()) {
-    console.error(`[${result.error.phase}] ${result.error.code}: ${result.error.message}`);
-    process.exitCode = 1;
+if (created.isErr()) {
+  console.error(created.error);
+} else {
+  const agent = created.value;
+  const unsubscribe = agent.subscribe((event) => {
+    switch (event.type) {
+      case "message_update":
+        if (event.assistantEvent.type === "text_delta") {
+          console.log(event.assistantEvent.delta);
+        }
+        break;
+      case "tool_execution_start":
+        console.log("工具开始", event.toolCallId, event.toolName, event.title);
+        break;
+      case "tool_execution_end":
+        console.log("工具结束", event.toolCallId, event.isError);
+        break;
+    }
+  });
+  try {
+    const run = await agent.prompt("解释当前目录的架构，并报告你调用的工具。");
+    if (run.isErr()) console.error(run.error);
+  } finally {
+    unsubscribe();
+    const closed = await agent.close();
+    if (closed.isErr()) console.error(closed.error);
   }
-} finally {
-  unsubscribe();
 }
 ```
 
-运行方式仍是 `npx tsx agent.ts`；输出会在模型文本增量时打印点，并记录工具与 compaction 事件。Quickstart 外层的 `finally` 继续负责关闭 Agent。
-
-订阅只接收注册之后的事件；初始内容应从 `agent.state` 建模。listener 是同步回调，不应在其中执行阻塞任务；需要持久化时把事件投递到宿主自己的 queue。
-
-工具事件的 `toolCallId` 是 start/update/end 的关联键。`agent_end.messages` 是该次 Agent 结束时的消息快照。
+事件和 state 是 JSON-safe 投影，但内容仍可能包含路径、命令与模型输出。UI 层应继续根据当前用户和视图的权限投影最小字段。

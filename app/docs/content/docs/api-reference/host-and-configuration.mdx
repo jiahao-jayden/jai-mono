@@ -1,50 +1,61 @@
 ---
 title: 创建配置
-description: 查阅 CodingAgentCreateInput、SessionSelection union 与 CodingAgentExecutionConfiguration 的完整公开字段和默认行为。
+description: 查阅 CodingAgentCreateOptions、Provider、Session、权限、内置工具选择和 Extension 配置。
 ---
 
-## `CodingAgentCreateInput`
+## `CodingAgentCreateOptions`
 
 ```ts
-interface CodingAgentCreateInput {
-  workspace: CodingWorkspace;
-  session: SessionSelection;
-  resolveModel: CodingModelResolver;
-  requestApproval?: CodingApprovalHandler;
-  homeDirectory?: string;
-  plugins?: CodingPluginOptions;
-  connector?: CodingConnectorIntegration;
-  execution?: CodingAgentExecutionConfiguration;
-}
-```
-
-`workspace` 字段中 `cwd` 必需，可选 `configRoot`、`defaultAllowedDirectories`、`localFileAccess` 与 `trusted`。
-
-`homeDirectory` 控制用户级配置根，默认使用 OS home。
-
-`resolveModel({ model, settings })` 返回 `{ model, provider }`。`requestApproval(request, signal?)` 在权限规则要求询问时返回拒绝、单次允许或持久允许。
-
-## `CodingAgentExecutionConfiguration`
-
-```ts
-interface CodingAgentExecutionConfiguration {
-  model?: string;
-  permissionMode?: "default" | "acceptEdits" | "plan" | "dontAsk" | "bypassPermissions";
+interface CodingAgentCreateOptions {
+  model: string;
+  provider?: CodingProviderOptions;
+  extensions?: readonly CodingAgentExtension[];
+  extensionRuntime?: CodingExtensionRuntimeAdapter;
+  cwd?: string;
+  session?: CodingSessionSelection;
+  permissionMode?: CodingPermissionMode;
   maxTurns?: number;
   instructions?: string;
   compactionSummaryInstructions?: string;
+  requestApproval?: CodingApprovalHandler;
+  tools?: readonly CodingToolName[];
+  excludeTools?: readonly CodingToolName[];
 }
 ```
 
-## `SessionSelection`
+`model` 是 `<provider>/<model>`，其中 provider 只能是 `anthropic`、`openai` 或 `openai-compatible`。`cwd` 默认是 `process.cwd()`；省略 `session` 时默认 ephemeral。
+
+## Provider
 
 ```ts
-type SessionSelection =
+interface CodingProviderOptions {
+  apiKey?: string;
+  baseUrl?: string;
+  headers?: Readonly<Record<string, string>>;
+  authentication?: "bearer" | "x-api-key" | "none";
+}
+```
+
+未传 `apiKey` 时，Anthropic 读取 `ANTHROPIC_API_KEY`，OpenAI 与 OpenAI-compatible 读取 `OPENAI_API_KEY`。Anthropic 仅支持 `x-api-key`；另外两种 provider 支持 `bearer` 和 `none`。`baseUrl` 仅允许 HTTPS 或无 userinfo 的 loopback HTTP。
+
+## Session
+
+```ts
+type CodingSessionSelection =
   | { kind: "new"; id?: string; directory: string }
   | { kind: "resume"; id: string; directory: string }
   | { kind: "ephemeral" };
 ```
 
-`new` 与 `resume` 将 `directory` 作为持久会话目录；`ephemeral` 使用 SDK 创建并在 `close()` 时删除的临时目录。
+`new` 与 `resume` 要求调用方提供 durable session 的目录。session 的目录布局和列表策略属于宿主，不是 SDK public API。
 
-Plugin 与 connector 配置详见 [工具与动态能力](/docs/guides/tools-and-capabilities)。
+## Extensions
+
+`CodingAgentExtension` 必须声明稳定 `id`；初始化 context 提供 `sessionId`、`cwd`、
+`permissionMode`，以及该 Extension 声明的 configuration store。它可返回 `tools`、`skills`、
+`hooks` 和 `dispose()`。更多字段与约束见 [工具与动态能力](/docs/guides/tools-and-capabilities)。
+
+`extensionRuntime` 是宿主为 Extension configuration 与 Extension-owned approval 提供的 adapter。
+普通嵌入只需使用 core-owned tools，不需要传它；需要持久化 Extension configuration 或由
+Extension 自己处理授权时，宿主必须显式提供对应读写与审批能力。`allow` 类型的永久决策在
+没有持久化 adapter 时会 fail closed。

@@ -1,9 +1,9 @@
 ---
-title: 会话与生命周期
-description: 比较 new、resume 与 ephemeral 三种 session selection，理解状态迁移、持久化边界、错误语义与正确关闭 Agent 的方式。
+title: Sessions 与生命周期
+description: 选择 durable 或 ephemeral session，并在宿主生命周期结束时安全关闭 Agent。
 ---
 
-`SessionSelection` 决定状态是否持久化及创建语义。
+`CodingSessionSelection` 有三种形式：
 
 ```ts
 { kind: "new", directory: string, id?: string }
@@ -13,44 +13,28 @@ description: 比较 new、resume 与 ephemeral 三种 session selection，理解
 
 ## 三种选择
 
-- `new`：创建 durable session。省略 `id` 时生成 `coding-<uuid>`；指定已存在 ID 会返回 `coding_sdk.session_exists`。
-- `resume`：只恢复现有 session。缺失时返回 `coding_sdk.session_not_found`，绝不静默新建。
-- `ephemeral`：在系统临时目录创建 session；`close()` 时递归删除。
+- `new`：创建 durable session。省略 `id` 时 SDK 生成 ID；指定已存在 ID 会返回 `coding_sdk.session_exists`。
+- `resume`：只恢复已有 session。不存在时返回 `coding_sdk.session_not_found`，不会静默新建。
+- `ephemeral`：在系统临时目录创建 session；成功 `close()` 后删除该目录。
+
+```ts
+const created = await createCodingAgent({
+  model: "openai/gpt-4.1-mini",
+  cwd: process.cwd(),
+  session: {
+    kind: "new",
+    id: "issue-482",
+    directory: `${process.cwd()}/.jai/sessions`,
+  },
+});
+```
+
+SDK 持久化 Agent 消息和 app state，但不提供“列出所有 session”的 root API。会话 ID 的索引、列表、名称和清理策略属于宿主产品。
 
 ## 状态迁移
 
-Agent 创建后通常为 `idle`；执行 prompt 时为 `running`；内部 error 可投影为 `aborted`；调用 `close()` 后为 `closed`。状态通过 `agent.state` 获取快照。
+创建后通常为 `idle`；执行 prompt 时为 `running`；运行错误会投影为 `aborted`；调用 `close()` 后为 `closed`。通过 `agent.state` 读取快照。
 
-以下片段假设你已完成 Quickstart 并保留其中的 `model`、`provider` 与 `cwd`，输入 session ID 来自命令行：
+`close()` 是宿主资源边界的一部分：它会中止当前工作、等待已接纳的队列和 artifact 写入，然后释放 runtime。无论 prompt 成功或失败，都应在 `finally` 中调用它。进程崩溃或没有调用 `close()` 时，SDK 不保证 ephemeral 临时目录已清理。
 
-```ts
-const sessionId = process.argv[2];
-if (!sessionId) throw new Error("请提供要恢复的 session ID");
-
-const created = await createCodingAgent({
-  workspace: { cwd, configRoot: cwd },
-  session: {
-    kind: "resume",
-    id: sessionId,
-    directory: `${cwd}/.jai/sessions`,
-  },
-  resolveModel: () => ({ model, provider }),
-});
-if (created.isErr()) {
-  console.error(created.error);
-  process.exitCode = 1;
-} else {
-  const agent = created.value;
-  try {
-    const result = await agent.prompt({ prompt: "继续上次任务" });
-    if (result.isErr()) console.error(result.error);
-  } finally {
-    const closed = await agent.close();
-    if (closed.isErr()) console.error(closed.error);
-  }
-}
-```
-
-`close()` 幂等：它先标记 closed、abort 当前工作、等待已接纳队列与 artifact 写入，然后释放 runtime。关闭后再调用 prompt、steer、followUp 或 title generation 会得到 lifecycle error。
-
-参见 [durable session](/docs/examples/durable-session)、[resume](/docs/examples/resume-session) 和 [ephemeral](/docs/examples/ephemeral-agent)。
+参见 [创建 Durable Session](/docs/examples/durable-session)、[恢复 Session](/docs/examples/resume-session) 和 [Ephemeral Agent](/docs/examples/ephemeral-agent)。

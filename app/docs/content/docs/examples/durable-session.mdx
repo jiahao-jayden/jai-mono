@@ -1,53 +1,45 @@
 ---
 title: 创建 Durable Session
-description: 创建具名 durable session，处理重复 ID 的 Result 错误，读取完整运行状态，并在宿主资源边界退出前安全关闭 Agent。
+description: 创建具名 durable session，处理重复 ID，并在运行结束后安全关闭 Agent。
 ---
 
-先完成 [Quickstart](/docs/quickstart/create-your-first-agent) 并保留其中的 `model`、`provider` 与 `cwd`。将 Quickstart 的 `createCodingAgent` 到 `finally` 代码替换为：
+`new` 创建一个可恢复的 session。ID 与目录由宿主决定；同一目录中重复 ID 会返回 `coding_sdk.session_exists`。
 
 ```ts
+// @docs-compile
+import { createCodingAgent } from "@jai/coding-agent";
+
 const created = await createCodingAgent({
-  workspace: { cwd, configRoot: cwd },
+  model: "openai/gpt-4.1-mini",
+  cwd: ".",
   session: {
     kind: "new",
     id: "issue-482",
-    directory: `${cwd}/.jai/sessions`,
+    directory: ".jai/sessions",
   },
-  resolveModel: () => ({ model, provider }),
-  execution: {
-    model: model.id,
-    permissionMode: "plan",
-    maxTurns: 20,
-  },
+  permissionMode: "plan",
+  maxTurns: 20,
 });
 
 if (created.isErr()) {
   if (created.error.code === "coding_sdk.session_exists") {
     console.error('Session "issue-482" 已存在；请改用 resume 或选择新 ID。');
   } else {
-    console.error(`[${created.error.phase}] ${created.error.code}: ${created.error.message}`);
+    console.error(created.error);
   }
-  process.exitCode = 1;
 } else {
   const agent = created.value;
   try {
-    const run = await agent.prompt({ prompt: "分析 issue 482 的可能原因并给出修复计划" });
-    if (run.isErr()) {
-      console.error(`[${run.error.phase}] ${run.error.code}: ${run.error.message}`);
-      process.exitCode = 1;
-    } else {
-      console.dir(run.value.state, { depth: null });
-    }
+    const run = await agent.prompt("分析 issue 482 的可能原因并给出修复计划。");
+    if (run.isErr()) console.error(run.error);
+    else console.dir(run.value.state, { depth: null });
   } finally {
     const closed = await agent.close();
-    if (closed.isErr()) {
-      console.error(`[${closed.error.phase}] ${closed.error.code}: ${closed.error.message}`);
-      process.exitCode = 1;
-    }
+    if (closed.isErr()) console.error(closed.error);
   }
 }
 ```
 
-运行 `npx tsx agent.ts`。第一次创建并输出 state；同一目录再次运行会得到 `coding_sdk.session_exists`。durable state 写入 `session.directory`。会话 ID 由调用方负责命名与索引；SDK 不提供列举会话的 root API。
+durable state 写入 `session.directory`。SDK 不提供 session 列表或命名 API；产品负责索引、展示和清理，再在需要时传入 `resume`。
 
-接着看 [恢复会话](/docs/examples/resume-session)。
+接着看 [恢复 Session](/docs/examples/resume-session)。

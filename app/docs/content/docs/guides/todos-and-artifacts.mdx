@@ -1,11 +1,7 @@
 ---
 title: Todos 与 Artifacts
-description: 从 CodingAgentState 读取完整任务进度与 Markdown/HTML 产物目录，并理解两类 appState 投影、更新规则与持久化约束。
+description: 从公开状态读取 Agent 维护的 Todo 列表和 Markdown/HTML artifact 目录。
 ---
-
-两类数据都由 SDK state 投影，不需要宿主接触实现层。
-
-## Todos
 
 `UpdateTodos` 每次替换完整列表。公开项包含：
 
@@ -17,13 +13,11 @@ type CodingAgentTodo = {
 };
 ```
 
-列表最多 20 项；content 会 trim；同一时刻最多一个 `in_progress`。宿主只读取 `agent.state.todos`，不要直接修改 `appState.todos`。
+宿主只读取 `agent.state.todos`，不要直接修改 `appState.todos`。
 
 ## Artifacts
 
-成功的 `Write` 或 `Edit` 只有目标扩展名为 Markdown 或 HTML 时才登记 artifact。公开项包含 `id`、`toolCallId`、`path`、`format` 与 `updatedAt`。
-
-在已创建 Agent 的代码中直接读取：
+成功的 `Write` 或 `Edit` 在目标文件为 Markdown 或 HTML 时会登记 artifact。公开项包含 `id`、`toolCallId`、`path`、`format` 与 `updatedAt`：
 
 ```ts
 for (const artifact of agent.state.artifacts) {
@@ -31,15 +25,12 @@ for (const artifact of agent.state.artifacts) {
 }
 ```
 
-Artifact ID 是 `artifact:<path>`；同路径更新会覆盖目录项。列表按更新时间由新到旧排列，并写入 durable session 的 `appState.artifacts`。
+Artifact ID 是 `artifact:<path>`；同一路径的更新会替换目录项，列表按更新时间由新到旧排列，并可持久化到 durable session 的 app state。
 
-`codingArtifactsFromAppState(appState)` 是 root SDK 唯一公开的 project helper，用于从已持久化的 JSON app state 恢复并排序 artifact catalog：
+`codingArtifactsFromAppState(appState)` 是从已持久化 JSON app state 恢复并排序 artifact catalog 的公开 helper：
 
 ```ts
-import {
-  codingArtifactsFromAppState,
-  type JsonObject,
-} from "@jai/coding-agent";
+import { codingArtifactsFromAppState, type JsonObject } from "@jai/coding-agent";
 
 function restoreArtifacts(appState: JsonObject) {
   return codingArtifactsFromAppState(appState);
@@ -47,5 +38,5 @@ function restoreArtifacts(appState: JsonObject) {
 ```
 
 :::note
-Artifact 是目录元数据，不包含文件内容，也不证明文件仍存在。读取或展示文件仍须遵守 workspace 与权限边界。
+Artifact 是目录元数据，不包含文件内容，也不证明文件仍存在。读取、打开或展示文件仍须经过宿主的路径和权限决策。
 :::

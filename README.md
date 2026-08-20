@@ -36,12 +36,12 @@ Jai Mono 是 PandaWork 的 TypeScript monorepo。它同时包含底层的 provid
 
 ```text
 PandaWork Desktop (Electron + React) ──┐
-jai CLI (TTY / subprocess)             ├── Host adapter
-WorkBuddy harness                      ┘        |
+jai CLI (TTY / subprocess)             ├── Product hosts: config, model catalog,
+WorkBuddy harness                      ┘   session layout, plugin discovery and UI
+                                                |
                                                 v
-@jai/coding-agent   Public Coding Agent SDK plus the coding product assembly it
-                    is built on: Agent lifecycle, tools, permissions, config,
-                    skills, connectors, session facts, state and canonical events
+@jai/coding-agent   Public Coding Agent SDK: Agent lifecycle, built-in tools,
+                    permissions, sessions, extensions, state and canonical events
                                                 |
                                                 v
 @jai/agent          Agent loop, harness, hooks, compaction and durable sessions
@@ -53,7 +53,7 @@ WorkBuddy harness                      ┘        |
                   Anthropic / OpenAI / OpenAI-compatible APIs
 ```
 
-Desktop、CLI 和 WorkBuddy 都通过 `@jai/coding-agent` 的公开创建接口运行 Agent；它们分别负责 UI/IPC、TTY/subprocess 和 benchmark 环境，不复制 Agent loop、工具装配或 session 事实。SDK 负责 Agent 的执行与状态，调用方直接提供 workspace、session、模型 resolver 和审批 handler，并把 canonical events 投影成自己的传输格式。
+Desktop、CLI 和 WorkBuddy 都通过 `@jai/coding-agent` 的公开创建接口运行 Agent；它们分别负责 UI/IPC、TTY/subprocess 和 benchmark 环境，不复制 Agent loop、内置工具、权限或 session runtime。SDK 接收模型引用、可选 provider 配置、`cwd`、session、审批回调和 extensions，并把 canonical events 投影为自己的公开 DTO。Jai config、模型目录、插件发现和数据目录约定留在各产品宿主，不形成额外的共享产品 package。
 
 ## Getting Started
 
@@ -105,7 +105,8 @@ bun run cli:pack
 | `packages/ai` | Provider-neutral model types, streaming protocol and provider adapters |
 | `packages/agent` | Core agent loop, harness, tools, hooks, sessions and compaction |
 | `packages/coding` | Coding-agent assembly, project config, permissions, skills and business services |
-| `packages/coding-agent` | Public Coding Agent SDK facade used by Desktop, CLI and external hosts |
+| `packages/coding-agent` | Public Coding Agent SDK used by Desktop, CLI and external hosts |
+| `packages/extension` | Official Connector and Jai Plugin extensions for the public SDK |
 | `packages/common` | Shared JSON types and wire-safe error utilities |
 | `docs/build-agent` | Agent framework design notes and implementation specifications |
 | `docs/build-coding-agent` | Coding-agent configuration and product-layer specifications |
@@ -152,7 +153,7 @@ Provides the `Agent` facade and lower-level `CoreAgent`, including invocation, s
 
 ### `@jai/coding-agent`
 
-The public SDK surface covers Agent creation, session execution, replaceable model and approval behavior, and JSON-safe event/state/error DTOs. Jai product defaults — user/project configuration, provider catalog, model resolution, plugin discovery, and data-directory conventions — live on `@jai/coding-agent/jai-host`. Desktop project/session persistence stays in the Desktop app.
+The public SDK covers Agent creation, model-string/provider configuration, session execution, permissions, tool selection, extensions and JSON-safe event/state/error DTOs. Jai product defaults — user/project configuration, provider catalog, plugin discovery and data-directory conventions — live in Desktop, CLI and other product hosts. There is no `@jai/coding-agent/jai-host` or shared product package.
 
 ## Safety and Data Boundaries
 

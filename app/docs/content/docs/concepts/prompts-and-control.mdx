@@ -1,38 +1,33 @@
 ---
-title: Prompt 与运行控制
-description: 掌握 prompt queue 的串行语义，以及 steer、followUp、waitForIdle、abort 和 close 的准确控制边界与失败处理方式。
+title: Prompts 与控制
+description: 使用 prompt、steer、followUp、abort、waitForIdle 和 generateTitle 控制一个运行中的 Agent。
 ---
 
-## `prompt()`
-
-`prompt()` 启动一次完整执行并返回 `CodingRunResult`。同一实例上的并发调用会串行进入内部 queue，不会并行修改 session。
-
-在 Quickstart 已创建 `agent` 的 `try` 块中，可以这样提交两个只读任务：
+`prompt()` 提交一次完整运行；返回的 `Result` 包含本次运行的消息和结束后的状态。多个 prompt 会按照调用顺序串行执行。
 
 ```ts
-const first = agent.prompt({ prompt: "检查类型错误" });
-const second = agent.prompt({ prompt: "再运行测试" });
-const idle = agent.waitForIdle();
-const [a, b, drained] = await Promise.all([first, second, idle]);
-
-for (const result of [a, b, drained]) {
-  if (result.isErr()) console.error(result.error);
+const run = await agent.prompt("检查当前目录的测试失败原因，并给出修复计划。");
+if (run.isErr()) {
+  console.error(run.error);
+} else {
+  console.log(run.value.state.status);
 }
 ```
 
-`waitForIdle()` 等待 SDK 已接纳的 prompt queue 和当前执行变为空闲。它不返回某次 run 的消息；请保留对应的 `prompt()` Result。
+在运行期间，`steer()` 发送一条优先处理的文字指令，`followUp()` 则把文字加入后续队列：
 
-## 运行中的输入
+```ts
+const steered = await agent.steer("先停止修改，只总结已经发现的问题。");
+const queued = await agent.followUp("接着列出三个最小修复方案。");
+```
 
-- `steer(input)`：向当前运行注入即时引导。
-- `followUp(input)`：排入当前运行之后的后续用户消息。
-- `abort()`：请求中止当前执行，不关闭 Agent。
-- `close()`：终止生命周期并释放资源。
+两者都只接受非空字符串，并返回 `Result<void, CodingSdkError>`。附件只由 `prompt(text, { attachments })` 消费；不要向 `steer()` 或 `followUp()` 传对象。
 
-`steer()` 与 `followUp()` 拒绝空白 prompt，并返回 `coding_sdk.empty_prompt`。它们当前只传递文本消息；`CodingPrompt.attachments` 只由 `prompt()` 的附件路径消费。
+## 生命周期控制
 
-:::warning
-`CodingPrompt.delivery` 虽已公开为 `"steer" | "queue"`，当前实现没有读取它。请显式调用 `steer()` 或 `followUp()`，不要依赖 `delivery`。
-:::
+- `abort()`：请求取消当前运行；仍应等待调用的 Result，并根据事件更新 UI。
+- `waitForIdle()`：等待已接纳的工作结束，适合在切换视图或关闭前同步状态。
+- `generateTitle(firstMessage)`：基于首条用户消息生成短标题，返回 `Result<string, CodingSdkError>`。
+- `close()`：取消当前工作、等待队列收尾并释放资源。关闭后不再提交 prompt 或控制指令。
 
-所有控制方法都返回 `Promise<Result<..., CodingSdkError>>`。`abort()` 成功表示中止请求已提交，不代表每个底层外部系统都已同步停止。
+不要用 `state.status === "running"` 自己实现队列控制。状态是显示快照；调用方法与它们的 `Result` 才是并发和生命周期边界。

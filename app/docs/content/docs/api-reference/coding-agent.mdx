@@ -1,33 +1,36 @@
 ---
 title: CodingAgent
-description: 查阅 CodingAgent 实例的 session、execution 与 state 属性，以及 prompt、控制、订阅、标题生成和关闭方法与 Result 语义。
+description: 查阅 CodingAgent 的状态、消息、控制、订阅和关闭方法。
 ---
 
-## 属性
-
-- `sessionId: string`
-- `execution: CodingAgentExecutionConfiguration`
-- `state: CodingAgentState<TAppState>`
-
-## 方法
-
 ```ts
-prompt(input: CodingPrompt): Promise<Result<CodingRunResult<TAppState>, CodingSdkError>>
-steer(input: CodingPrompt): Promise<Result<void, CodingSdkError>>
-followUp(input: CodingPrompt): Promise<Result<void, CodingSdkError>>
-waitForIdle(): Promise<Result<void, CodingSdkError>>
-generateTitle(input: { firstMessage: string }): Promise<Result<string, CodingSdkError>>
-abort(): Promise<Result<void, CodingSdkError>>
-subscribe(listener: (event: CodingAgentEvent) => void): () => void
-close(): Promise<Result<void, CodingSdkError>>
+interface CodingAgent<TAppState extends JsonObject = JsonObject> {
+  readonly sessionId: string;
+  readonly state: CodingAgentState<TAppState>;
+  prompt(prompt: string, options?: CodingPromptOptions): Promise<Result<CodingRunResult<TAppState>, CodingSdkError>>;
+  steer(prompt: string): Promise<Result<void, CodingSdkError>>;
+  followUp(prompt: string): Promise<Result<void, CodingSdkError>>;
+  waitForIdle(): Promise<Result<void, CodingSdkError>>;
+  generateTitle(firstMessage: string): Promise<Result<string, CodingSdkError>>;
+  abort(): Promise<Result<void, CodingSdkError>>;
+  subscribe(listener: (event: CodingAgentEvent) => void): () => void;
+  close(): Promise<Result<void, CodingSdkError>>;
+}
 ```
 
-`prompt()` 返回 `{ sessionId, messages, state }`。多个调用串行执行。`steer()` 和 `followUp()` 只接纳非空文本，分别用于当前运行引导和后续消息。`waitForIdle()` drain 已接纳队列。
+## 运行与控制
 
-`generateTitle()` 使用创建时解析到的同一 Model/Provider，根据 first message 与已有 assistant 文本生成不超过八个词的标题。它不会持久化标题。
+- `prompt(text, options?)`：提交一次完整运行；附件通过 `options.attachments` 提供。
+- `steer(text)`：在当前运行中发送优先处理的文字指令。
+- `followUp(text)`：把文字加入当前运行后的队列。
+- `abort()`：请求取消当前运行。
+- `waitForIdle()`：等待已经接纳的工作结束。
+- `generateTitle(firstMessage)`：生成短标题。
 
-`abort()` 保留实例供后续 prompt；`close()` 终止实例并幂等释放资源。关闭后的控制操作返回 `coding_sdk.agent_closed`。
+`prompt`、`steer` 与 `followUp` 都拒绝空白字符串。多个 prompt 由 SDK 串行化；不要在宿主侧基于 state 手工管理队列。
 
-:::note
-`subscribe()` 本身不返回 Result，也不会重放历史事件。listener 抛出的异常不属于 SDK 的可恢复错误契约，宿主应保持 listener 轻量且自行隔离。
-:::
+## 状态与释放
+
+`sessionId` 在 Agent 生命周期内稳定。`state` 是快照；`appState` 经过 clone，不能通过引用修改 SDK 状态。`subscribe()` 返回取消订阅函数；`close()` 关闭 Agent 并释放 session/runtime 资源。关闭后再调用运行或控制方法会返回 lifecycle error。
+
+参见 [Prompts 与控制](/docs/concepts/prompts-and-control) 与 [State 与 Events API](/docs/api-reference/state-and-events)。

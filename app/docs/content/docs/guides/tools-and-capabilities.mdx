@@ -1,47 +1,63 @@
 ---
 title: 工具与动态能力
-description: 了解 root SDK 的内置工具名、plugin 动态能力来源、connector approval、安全行为，以及不能直接导入的内部实现边界。
+description: 选择内置工具，并通过公开 Extension API 增加工具、skills 与 hooks。
 ---
 
-root SDK 的内置工具名由 `CodingToolName` 定义：
+SDK 的内置工具名由 `CodingToolName` 定义：
 
 `Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`Skill`、`UpdateTodos`、`SpawnAgent`。
 
-`codingAgentToolNames` 只公开两个协调工具常量：
+默认启用全部内置工具。`tools` 用于建立白名单，`excludeTools` 在最后移除工具；两个列表重叠时排除优先：
 
 ```ts
-import { codingAgentToolNames } from "@jai/coding-agent";
-
-codingAgentToolNames.spawnAgent; // "SpawnAgent"
-codingAgentToolNames.updateTodos; // "UpdateTodos"
+const created = await createCodingAgent({
+  model: "openai/gpt-4.1-mini",
+  cwd: process.cwd(),
+  tools: ["Read", "Glob", "Grep", "Bash"],
+  excludeTools: ["Bash"],
+});
 ```
 
-文件与 Bash 工具受 workspace boundary、local file access 和权限策略约束。`UpdateTodos` 与 `SpawnAgent` 由 SDK 协调，在权限求值中直接允许；这不意味着调用方能从 root SDK 直接实例化工具。
+这会只保留 `Read`、`Glob` 和 `Grep`。非法工具名会让创建返回 `coding_sdk.invalid_tool_selection`。工具选择只影响 SDK 内置工具，不会删除 Extension 自己提供的工具。
 
-## Plugin 能力
+## Extension 能力
 
-调用方可通过 `plugins.directories` 提供目录：
+通过 `defineExtension()` 提供工具、skills、hooks 和释放函数。工具名不能与内置工具或其他 extension 重名。
 
 ```ts
-import { join } from "node:path";
-import { type CodingPluginOptions } from "@jai/coding-agent";
+import { Type } from "@sinclair/typebox";
+import { createCodingAgent, defineExtension } from "@jai/coding-agent";
 
-const cwd = process.cwd();
-const plugins: CodingPluginOptions = {
-  directories: [
-    { path: join(cwd, ".jai", "plugins"), scope: "project" },
-  ],
-  dataDirectory: join(cwd, ".jai", "plugin-data"),
-  scope: "project",
-};
+const branchExtension = defineExtension({
+  id: "current-branch",
+  initialize: async () => ({
+    tools: [
+      {
+        name: "CurrentBranch",
+        description: "Return the branch selected by the host.",
+        parameters: Type.Object({}),
+        authorization: {
+          owner: "core",
+          permission: { sideEffect: "read", reason: "Reads host-provided branch metadata." },
+        },
+        execute: async () => ({
+          content: [{ type: "text", text: "main" }],
+        }),
+      },
+    ],
+  }),
+});
+
+const created = await createCodingAgent({
+  model: "openai/gpt-4.1-mini",
+  extensions: [branchExtension],
+});
 ```
 
-目录也可写成字符串。每个 `AgentPluginDirectory.scope` 标记该目录来自 user 或 project；`plugins.scope` 是默认作用域，两者是独立字段。动态能力在创建 runtime 时发现，不是 root SDK 的静态 export。
+每个 Extension 会以 `{ sessionId, cwd, permissionMode, configuration }` 初始化。`beforeToolCall` 可以继续、改写参数或 block；`afterToolCall` 观察成功与失败；`sessionStart` 处理初始化后的异步工作；`dispose()` 在创建失败或 `agent.close()` 时调用。
 
-## Connector
+普通 Extension tool 使用 `authorization.owner: "core"`，所以仍由 SDK 的 permission mode、
+rules 与 approval handler 管理。只有已实现完整授权事务的 Extension 才能声明
+`authorization: { owner: "extension" }`；这会让 core 不再对同一次 tool call 额外审批。
 
-`connector` 可注入 client，并通过独立的 `requestApproval` 处理 `connector__execute_action`。请求只暴露 action ID、side effect、数据敏感度、输入 key 和过期时间，不应把 connector SDK 原始对象跨进程发送。
-
-:::warning
-不要从内部 `runtime`、`tools` 或 `permissions` 模块导入构造器。只使用 package root 公开的创建参数。
-:::
+Extension capability 不公开 `mcpServers`。Jai Agent Plugin 的发现与 MCP descriptor 适配属于 `@jai/extension` 和 Desktop/CLI 宿主；最终传给 SDK 的是普通 Extension tools、skills 和 hooks。
