@@ -106,7 +106,7 @@ bun run cli:pack
 | `packages/agent` | Core agent loop, harness, tools, hooks, sessions and compaction |
 | `packages/coding` | Coding-agent assembly, project config, permissions, skills and business services |
 | `packages/coding-agent` | Public Coding Agent SDK used by Desktop, CLI and external hosts |
-| `packages/extension` | Official Connector and Jai Plugin extensions for the public SDK |
+| `packages/extension` | Official Connector and Agent Plugins extensions for the public SDK |
 | `packages/common` | Shared JSON types and wire-safe error utilities |
 | `docs/build-agent` | Agent framework design notes and implementation specifications |
 | `docs/build-coding-agent` | Coding-agent configuration and product-layer specifications |

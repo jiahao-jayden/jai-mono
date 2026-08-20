@@ -22,9 +22,6 @@ Agent Plugins v1 对兼容客户端的最低要求是支持 Skills 或 MCP serve
 - MCP `streamable-http`
 - MCP `sse`（兼容旧版服务端）
 
-JAI 在 portable core 之外另有 `hooks/hooks.json` 的 client convention。它不属于 Agent Plugins v1
-符合性，加载、执行与安全语义由 [JAI Agent Plugin Hooks v1](./12-agent-plugin-hooks-v1.md) 单独规定。
-
 这份规格不定义插件安装器、Git/归档来源、marketplace、启用和更新体验、缓存、回滚、权限提示、信任策略、沙箱、OAuth 存储或 Desktop 管理页面。官方明确将这些归为 client-owned behavior。
 
 ## 2. 固定依据
@@ -48,7 +45,7 @@ JAI 在 portable core 之外另有 `hooks/hooks.json` 的 client convention。�
 适配模块位于：
 
 ```text
-packages/coding/src/agent-plugins/
+packages/extension/src/agent-plugins/
 ├── index.ts
 ├── package/
 │   ├── component.ts
@@ -63,28 +60,19 @@ packages/coding/src/agent-plugins/
 │   ├── adapter.ts
 │   ├── runtime.ts
 │   └── types.ts
-├── hooks/                     # JAI client convention; not portable Agent Plugins v1
-│   ├── adapter.ts
-│   ├── runtime.ts
-│   └── types.ts
 └── runtime/
     ├── index.ts
     └── types.ts
 
-packages/coding/src/mcp/
-├── index.ts
-├── client.ts
-├── errors.ts
-└── types.ts
 ```
 
-通过 `@jai/coding/agent-plugins` 导出。
+通过 `@jai/extension/agent-plugins` 导出。
 
-通用 MCP 客户端通过 `@jai/coding/mcp` 导出。Agent Plugins 的 `mcp/adapter.ts` 只负责把插件根目录中的 `mcp.json` 投影为通用 MCP 描述；`mcp/client.ts` 负责 SDK transport、initialize、tools/list、tools/call、工具结果映射和连接生命周期。两者不互相复制 MCP 客户端实现。
+Agent Plugins 的 `mcp/adapter.ts` 只负责把插件根目录中的 `mcp.json` 投影为原生 MCP 描述；`mcp/client.ts` 负责 SDK transport、initialize、tools/list、tools/call、工具结果映射和连接生命周期。
 
 插件包本身的规范校验见 [Agent Plugins v1 Plugin Validation](./11-agent-plugins-v1-plugin-validation.md)。本文件定义客户端如何消费校验后的描述对象；校验报告不等于 MCP 连接结果。
 
-`@jai/agent` 不读取 `plugin.json`，也不新增 Agent Plugins 领域类型。适配模块把 Skills 交给现有 `CodingSkillCatalog`，把解析后的 MCP 描述交给 `@jai/coding/mcp`，最终仍通过构造期 tools 接入 Agent。
+`@jai/agent` 不读取 `plugin.json`，也不新增 Agent Plugins 领域类型。适配模块把 Skills 与解析后的 MCP tools 通过 Extension capabilities 接入 Agent。
 
 ## 4. 公开接口
 
@@ -105,8 +93,7 @@ export interface LoadedAgentPlugin {
   readonly manifest: AgentPluginManifestV1
   readonly skills: readonly AgentPluginSkillDescriptor[]
   readonly mcpServers: readonly AgentPluginMcpServerDescriptor[]
-  readonly hooks: readonly AgentPluginHooksDescriptor[] // JAI convention
-  readonly diagnostics: readonly AgentPluginDiagnostic[]
+	readonly diagnostics: readonly AgentPluginDiagnostic[]
 }
 ```
 
@@ -576,7 +563,6 @@ commit 5f3f5084a821aefa792e79500dd8f0462ab83473
 - subprocess sandbox
 - OAuth credential storage
 - Skill 展示和优先级策略
-- JAI plugin hooks（见 [JAI Agent Plugin Hooks v1](./12-agent-plugin-hooks-v1.md)）
 - MCP tools/resources/prompts 的通用 Agent 投影
 
 这些能力以后只能基于独立产品需求另写规格，不能作为 Agent Plugins v1 符合性的组成部分。
@@ -595,7 +581,6 @@ commit 5f3f5084a821aefa792e79500dd8f0462ab83473
 8. 官方示例无需 patch 运行。
 9. loader 不依赖网络获取 schema。
 10. `@jai/agent` 不依赖 Agent Plugins 领域类型。
-11. 协议外的 JAI plugin hooks 仅按独立的 hooks v1 规格实现，不计入 Agent Plugins v1 符合性。
 
 ## 18. 官方资料
 

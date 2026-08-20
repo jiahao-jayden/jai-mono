@@ -6,12 +6,12 @@
 	"files": ["dist"],
 	"exports": {
 		"./connector": {
-			"types": "./dist/connector.d.ts",
+			"types": "./dist/connector/index.d.ts",
 			"import": "./dist/connector.js"
 		},
-		"./jai-plugins": {
-			"types": "./dist/jai-plugins.d.ts",
-			"import": "./dist/jai-plugins.js"
+		"./agent-plugins": {
+			"types": "./dist/agent-plugins/index.d.ts",
+			"import": "./dist/agent-plugins.js"
 		}
 	},
 	"scripts": {

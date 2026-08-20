@@ -14,7 +14,7 @@ export interface DesktopAgentPluginDirectoryDiscoveryOptions {
 }
 
 /**
- * Desktop host policy for selecting plugin package roots. The Jai Plugins
+ * Desktop host policy for selecting plugin package roots. The Agent Plugins
  * Extension validates and loads these candidates; this module only discovers
  * them for the current trusted workspace.
  */

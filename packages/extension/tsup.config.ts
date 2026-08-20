@@ -3,7 +3,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
 	entry: {
 		connector: "src/connector/index.ts",
-		"jai-plugins": "src/jai-plugins/index.ts",
+		"agent-plugins": "src/agent-plugins/index.ts",
 	},
 	format: ["esm"],
 	platform: "node",

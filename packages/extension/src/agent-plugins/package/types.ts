@@ -1,5 +1,4 @@
 import type { CodingExtensionSkill } from "@jai/coding-agent";
-import type { AgentPluginHooksDescriptor } from "../hooks/types";
 import type { AgentPluginMcpServer } from "../mcp/types";
 import type { AgentPluginDiagnostic } from "../shared/diagnostics";
 
@@ -15,7 +14,7 @@ export interface AgentPluginManifestV1 {
 	readonly repository?: string;
 	readonly license?: string;
 	readonly keywords?: readonly string[];
-	readonly extensions?: Readonly<Record<string, unknown>>;
+	readonly extensions?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
 }
 
 export interface AgentPluginSkillDescriptor extends CodingExtensionSkill {
@@ -28,10 +27,8 @@ export interface LoadedAgentPlugin {
 	readonly manifest: AgentPluginManifestV1;
 	readonly skills: readonly AgentPluginSkillDescriptor[];
 	readonly mcpServers: readonly AgentPluginMcpServer[];
-	readonly hooks: readonly AgentPluginHooksDescriptor[];
 	readonly diagnostics: readonly AgentPluginDiagnostic[];
 }
 
-export type { AgentPluginHooksDescriptor } from "../hooks/types";
 export type { AgentPluginMcpServer } from "../mcp/types";
 export type { AgentPluginDiagnostic } from "../shared/diagnostics";

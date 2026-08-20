@@ -16,7 +16,7 @@ import {
 	type JsonObject,
 	type JsonValue,
 } from "@jai/coding-agent";
-import { createJaiPluginsExtension } from "@jai/extension/jai-plugins";
+import { createAgentPluginsExtension } from "@jai/extension/agent-plugins";
 import { TaggedError } from "better-result";
 import { discoverCliAgentPluginDirectories } from "./plugin-directories";
 
@@ -249,7 +249,7 @@ async function createCliAgent(options: CliOptions, homeDirectory: string): Promi
 		...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
 		...(options.maxTurns ? { maxTurns: options.maxTurns } : {}),
 		extensions: [
-			createJaiPluginsExtension({
+			createAgentPluginsExtension({
 				directories: pluginDirectories,
 				dataDirectory: path.join(homeDirectory, ".jai", "agent-plugin-data"),
 			}),

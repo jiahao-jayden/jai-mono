@@ -17,8 +17,8 @@ export default defineConfig({
 				replacement: path.join(workspaceRoot, "packages/extension/src/connector/index.ts"),
 			},
 			{
-				find: /^@jai\/extension\/jai-plugins$/,
-				replacement: path.join(workspaceRoot, "packages/extension/src/jai-plugins/index.ts"),
+				find: /^@jai\/extension\/agent-plugins$/,
+				replacement: path.join(workspaceRoot, "packages/extension/src/agent-plugins/index.ts"),
 			},
 			{ find: "@", replacement: path.resolve(import.meta.dirname, "./src") },
 		],

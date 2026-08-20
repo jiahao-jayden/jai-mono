@@ -14,7 +14,7 @@
 			"@/*": ["./src/*"],
 			"@jai/coding-agent": ["../../packages/coding-agent/src/sdk.ts"],
 			"@jai/extension/connector": ["../../packages/extension/src/connector/index.ts"],
-			"@jai/extension/jai-plugins": ["../../packages/extension/src/jai-plugins/index.ts"]
+			"@jai/extension/agent-plugins": ["../../packages/extension/src/agent-plugins/index.ts"]
 		},
 		"outDir": "dist"
 	},

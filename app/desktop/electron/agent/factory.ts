@@ -2,7 +2,7 @@ import path from "node:path";
 import { type CodingPermissionMode, createCodingAgent as createPublicCodingAgent } from "@jai/coding-agent";
 import { type ConnectorSettings, createDefaultConnectorService, type MemoryConnectorService } from "@jai/connector";
 import { createConnectorExtension } from "@jai/extension/connector";
-import { createJaiPluginsExtension } from "@jai/extension/jai-plugins";
+import { createAgentPluginsExtension } from "@jai/extension/agent-plugins";
 import { TaggedError } from "better-result";
 import type { DesktopAgentCreationFailureReason, DesktopAgentMode } from "../../shared/desktop-rpc";
 import type { DesktopConfigService } from "../config";
@@ -54,7 +54,7 @@ export function createDesktopAgentFactory(
 			compactionSummaryInstructions: ARTIFACT_COMPACTION_INSTRUCTIONS,
 			extensions: [
 				createConnectorExtension({ client: connectorService }),
-				createJaiPluginsExtension({
+				createAgentPluginsExtension({
 					directories: pluginDirectories,
 					dataDirectory: path.join(service.dataRoot, "agent-plugin-data"),
 				}),

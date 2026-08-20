@@ -2,10 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { connectAgentPluginMcp } from "../src/jai-plugins/mcp/runtime";
-import { loadAgentPluginDirectory } from "../src/jai-plugins/package/loader";
-import { createAgentPluginRuntime } from "../src/jai-plugins/runtime";
-import { createJaiPluginsExtension } from "../src/jai-plugins/index";
+import { connectAgentPluginMcp } from "../src/agent-plugins/mcp/runtime";
+import { loadAgentPluginDirectory } from "../src/agent-plugins/package/loader";
+import { createAgentPluginRuntime } from "../src/agent-plugins/runtime";
+import { createAgentPluginsExtension } from "../src/agent-plugins/index";
 
 const roots: string[] = [];
 
@@ -14,32 +14,16 @@ afterEach(async () => {
 });
 
 describe("Agent Plugins 组件适配器", () => {
-	test("通过通用 Extension contract 公开 Plugin Skills、MCP tools 与 hooks", async () => {
-		const root = await createPlugin({
-			hooks: {
-				version: 1,
-				hooks: {
-					PreToolUse: [
-						{
-							matcher: "Write",
-							hooks: [
-								{
-									type: "command",
-									command: "node",
-									args: ["-e", "let raw='';process.stdin.on('data',chunk=>raw+=chunk);process.stdin.on('end',()=>{const call=JSON.parse(raw);process.stdout.write(JSON.stringify({decision:'updateInput',input:{...call.tool.input,content:'rewritten'}}));});"],
-								},
-							],
-						},
-					],
-				},
-			},
-		});
+	test("通过通用 Extension contract 公开 portable Skills，不注入私有 hooks", async () => {
+		const root = await createPlugin({});
 		await mkdir(path.join(root, "skills", "plugin-skill"), { recursive: true });
 		await writeFile(
 			path.join(root, "skills", "plugin-skill", "SKILL.md"),
 			"---\nname: plugin-skill\ndescription: Plugin Skill\n---\n\nInstructions\n",
 		);
-		const extension = createJaiPluginsExtension({
+		await mkdir(path.join(root, "hooks"), { recursive: true });
+		await writeFile(path.join(root, "hooks", "hooks.json"), '{"not":"a portable component"}');
+		const extension = createAgentPluginsExtension({
 			directories: [root],
 			dataDirectory: path.join(root, "data"),
 		});
@@ -51,18 +35,13 @@ describe("Agent Plugins 组件适配器", () => {
 				value: {},
 				persistent: false,
 				update: async () => {
-					throw new Error("Jai Plugins does not declare configuration");
+					throw new Error("Agent Plugins does not declare configuration");
 				},
 			},
 			requestApproval: async () => "deny",
 		});
 		expect(capabilities.skills?.map((skill) => skill.name)).toEqual(["plugin-skill"]);
-		const result = await capabilities.hooks?.beforeToolCall?.({
-			toolCallId: "call-1",
-			toolName: "Write",
-			args: { path: "report.md", content: "original" },
-		});
-		expect(result).toEqual({ kind: "continue", args: { path: "report.md", content: "rewritten" } });
+		expect(capabilities.hooks).toBeUndefined();
 		await capabilities.dispose?.();
 	});
 
@@ -106,37 +85,6 @@ describe("Agent Plugins 组件适配器", () => {
 		expect(result.value.diagnostics.map((diagnostic) => diagnostic.componentName)).toContain("bad");
 	});
 
-	test("从 hooks/hooks.json 发现 JAI hooks，坏 lifecycle matcher 只禁用该 entry", async () => {
-		const root = await createPlugin({
-			hooks: {
-				version: 1,
-				hooks: {
-					PreToolUse: [
-						{
-							matcher: "Read|Write",
-							hooks: [{ type: "command", command: "node", args: ["-e", "process.exit(0)"] }],
-						},
-					],
-					SessionStart: [
-						{
-							matcher: "Read",
-							hooks: [{ type: "command", command: "node", args: ["-e", "process.exit(0)"] }],
-						},
-					],
-				},
-			},
-		});
-
-		const result = await loadAgentPluginDirectory(root);
-		expect(result.isOk()).toBe(true);
-		if (result.isErr()) return;
-		expect(result.value.hooks).toHaveLength(1);
-		expect(result.value.hooks[0]?.entries).toMatchObject([{ event: "PreToolUse", matcher: ["Read", "Write"] }]);
-		expect(result.value.diagnostics).toContainEqual(
-			expect.objectContaining({ code: "plugin_hook_invalid_event", componentName: "SessionStart" }),
-		);
-	});
-
 	test("运行时保留每个插件目录的作用域", async () => {
 		const root = await createPlugin({});
 		await mkdir(path.join(root, "skills", "scoped"), { recursive: true });
@@ -155,11 +103,11 @@ describe("Agent Plugins 组件适配器", () => {
 		await runtime.close();
 	});
 
-	test("stdio MCP 通过同一个 AgentTool 接缝完成 initialize、tools/list 和 tools/call", async () => {
+	test("stdio MCP 通过同一个 AgentTool 接缝完成 initialize、tools/list、tools/call，并默认以 Plugin root 为 cwd", async () => {
 		const probe = [
 			"const readline=require('node:readline');",
 			"const rl=readline.createInterface({input:process.stdin});",
-			"rl.on('line',line=>{const r=JSON.parse(line);if(r.method==='notifications/initialized')return;let result;if(r.method==='initialize')result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'probe',version:'1'}};else if(r.method==='tools/list')result={tools:[{name:'echo',description:'Echo input',inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false}}]};else if(r.method==='tools/call')result={content:[{type:'text',text:String(r.params.arguments.text)}]};else result={};if(r.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:r.id,result})+'\\n');});",
+			"rl.on('line',line=>{const r=JSON.parse(line);if(r.method==='notifications/initialized')return;let result;if(r.method==='initialize')result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'probe',version:'1'}};else if(r.method==='tools/list')result={tools:[{name:'echo',description:'Echo input',inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false}}]};else if(r.method==='tools/call')result={content:[{type:'text',text:JSON.stringify({text:String(r.params.arguments.text),cwd:process.cwd()})}]};else result={};if(r.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:r.id,result})+'\\n');});",
 		].join("");
 		const root = await createPlugin({ mcpServers: { probe: { type: "stdio", command: "node", args: ["-e", probe] } } });
 		const loaded = await loadAgentPluginDirectory(root);
@@ -170,7 +118,9 @@ describe("Agent Plugins 组件适配器", () => {
 		if (runtime.isErr()) return;
 		expect(runtime.value.tools.map((tool) => tool.name)).toEqual(["mcp__agent-plugins-test__probe__echo"]);
 		const result = await runtime.value.tools[0]!.execute("call-1", { text: "hello" });
-		expect(result.content).toEqual([{ type: "text", text: "hello" }]);
+		expect(result.content).toEqual([
+			{ type: "text", text: JSON.stringify({ text: "hello", cwd: await realpath(root) }) },
+		]);
 		await runtime.value.close();
 	});
 
@@ -211,17 +161,12 @@ describe("Agent Plugins 组件适配器", () => {
 
 async function createPlugin(options: {
 	readonly mcpServers?: Record<string, Record<string, unknown>>;
-	readonly hooks?: Record<string, unknown>;
 }): Promise<string> {
 	const root = await tempPath("plugin");
 	roots.push(root);
 	await writeFile(path.join(root, "plugin.json"), JSON.stringify({ $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "agent-plugins-test", version: "1.0.0" }));
 	if (options.mcpServers) {
 		await writeFile(path.join(root, "mcp.json"), JSON.stringify({ $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json", mcpServers: options.mcpServers }));
-	}
-	if (options.hooks) {
-		await mkdir(path.join(root, "hooks"), { recursive: true });
-		await writeFile(path.join(root, "hooks", "hooks.json"), JSON.stringify(options.hooks));
 	}
 	return root;
 }

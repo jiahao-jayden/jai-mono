@@ -108,8 +108,8 @@ async function resolveCommand(root: string, command: string): Promise<string> {
 	return canonical;
 }
 
-async function resolveCwd(root: string, data: string, cwd: string | undefined): Promise<string | undefined> {
-	if (!cwd) return undefined;
+async function resolveCwd(root: string, data: string, cwd: string | undefined): Promise<string> {
+	if (!cwd) return root;
 	const expanded = expandPlaceholders(cwd, root, data);
 	const base = cwd.startsWith(PLUGIN_DATA_PLACEHOLDER) ? data : root;
 	const candidate = path.isAbsolute(expanded) ? path.resolve(expanded) : path.resolve(root, expanded);

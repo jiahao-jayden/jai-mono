@@ -109,6 +109,9 @@ function validateManifest(
 			message: "Non-object extensions were ignored",
 		});
 	}
+	if (extensions && !isExtensionMap(extensions)) {
+		throw invalidManifest("plugin.json extensions entries must be objects", location);
+	}
 	const manifest = {
 		$schema: AGENT_PLUGINS_SCHEMA,
 		name: value.name,
@@ -135,4 +138,8 @@ function invalidManifest(message: string, location: string, cause?: unknown): Ag
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isExtensionMap(value: Record<string, unknown>): value is Record<string, Record<string, unknown>> {
+	return Object.values(value).every(isRecord);
 }
