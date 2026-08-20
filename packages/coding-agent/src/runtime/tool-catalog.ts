@@ -1,6 +1,7 @@
 import type { AgentTool, AgentToolResult } from "@jai/agent";
 import { Type } from "@sinclair/typebox";
-import type { CodingToolPermission } from "./extensions";
+import { panic } from "better-result";
+import type { CodingToolPermission } from "../permissions/tool-permission";
 
 const searchParameters = Type.Object(
 	{
@@ -33,11 +34,11 @@ export class ToolCatalog {
 
 	constructor(tools: readonly AgentTool[], limit = 8) {
 		if (!Number.isInteger(limit) || limit < 1 || limit > 8) {
-			throw new Error("Tool catalog limit must be between 1 and 8");
+			panic(`Tool catalog limit must be between 1 and 8, received ${limit}`);
 		}
 		const names = new Set<string>();
 		for (const tool of tools) {
-			if (!tool.name.trim() || names.has(tool.name)) throw new Error(`Duplicate catalog tool "${tool.name}"`);
+			if (!tool.name.trim() || names.has(tool.name)) panic(`Duplicate catalog tool "${tool.name}"`);
 			names.add(tool.name);
 		}
 		this.#tools = [...tools];
@@ -82,6 +83,9 @@ export class ToolCatalog {
 			.sort((left, right) => right.score - left.score || left.tool.name.localeCompare(right.tool.name))
 			.slice(0, limit)
 			.map((entry) => entry.tool);
+		// Replaces the previous active set so each search refocuses the tool surface rather than growing
+		// it without bound. `executionMode: "parallel"` means concurrent searches race here and the last
+		// writer wins; that is acceptable for refocusing, but callers must not assume both survive.
 		this.#activeNames = matches.map((tool) => tool.name);
 		return matches.map((tool) => ({ name: tool.name, description: tool.description }));
 	}

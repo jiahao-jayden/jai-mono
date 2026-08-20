@@ -1,9 +1,10 @@
 import type { Result } from "better-result";
+import type { JsonObject, JsonValue } from "../core/json";
+import type { CodingToolName } from "../tools/names";
 import type { CodingAgentExtension, CodingExtensionRuntimeAdapter } from "./extensions";
 import type { CodingProviderOptions } from "./model";
 
-export type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
-export type JsonObject = { readonly [key: string]: JsonValue };
+export type { JsonObject, JsonValue } from "../core/json";
 
 export interface CodingTextContent {
 	readonly type: "text";
@@ -83,16 +84,7 @@ export type CodingAssistantMessage = Extract<CodingAgentMessage, { readonly role
 export type CodingToolResult = Extract<CodingAgentMessage, { readonly role: "toolResult" }>;
 
 export type CodingPermissionMode = "default" | "acceptEdits" | "plan" | "dontAsk" | "bypassPermissions";
-export type CodingToolName =
-	| "Read"
-	| "Write"
-	| "Edit"
-	| "Glob"
-	| "Grep"
-	| "Bash"
-	| "Skill"
-	| "UpdateTodos"
-	| "SpawnAgent";
+export type { CodingToolName } from "../tools/names";
 
 export type CodingSdkErrorPhase =
 	| "runtime_creation"

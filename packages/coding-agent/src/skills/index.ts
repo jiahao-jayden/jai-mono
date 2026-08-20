@@ -1,4 +1,5 @@
 export {
+	type CodingPluginSkillCard,
 	type CodingSkillCard,
 	CodingSkillCatalog,
 	type CodingSkillCatalogOptions,

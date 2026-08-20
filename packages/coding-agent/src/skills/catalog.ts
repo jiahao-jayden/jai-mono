@@ -61,6 +61,9 @@ export interface CodingSkillCard {
 	readonly metadata: Readonly<Record<string, string>>;
 }
 
+/** A Skill contributed by a plugin: a catalog card whose source is always a plugin. */
+export type CodingPluginSkillCard = Omit<CodingSkillCard, "source"> & { readonly source: CodingSkillPluginSource };
+
 export interface ParsedSkillFrontmatter {
 	readonly name: string;
 	readonly description: string;

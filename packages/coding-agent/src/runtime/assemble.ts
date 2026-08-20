@@ -3,7 +3,7 @@ import { NodeExecutionEnvironment } from "@jai/agent/node";
 import type { CodingAttachmentRun } from "../attachments";
 import type { McpRuntime } from "../mcp";
 import type { CodingSkillsRuntime } from "../skills";
-import type { CodingToolName } from "../sdk/types";
+import type { CodingToolName } from "../tools/names";
 import { type CodingToolOptions, createCodingTools } from "../tools";
 import type { CodingExecutionContext } from "./execution-context";
 

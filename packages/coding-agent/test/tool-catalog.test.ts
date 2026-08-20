@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "@sinclair/typebox";
 import type { AgentTool } from "@jai/agent";
-import { ToolCatalog } from "../src/sdk/tool-catalog";
+import { ToolCatalog } from "../src/runtime/tool-catalog";
 
 function catalogTool(name: string, description: string): AgentTool {
 	return {

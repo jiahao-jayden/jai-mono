@@ -1,17 +1,7 @@
-import type { CodingToolName } from "./types";
+import { type CodingToolName, codingToolNames } from "../tools/names";
 import { CodingSdkFailure } from "./project";
 
-export const codingToolNames = [
-	"Read",
-	"Write",
-	"Edit",
-	"Glob",
-	"Grep",
-	"Bash",
-	"Skill",
-	"UpdateTodos",
-	"SpawnAgent",
-] as const satisfies readonly CodingToolName[];
+export { codingToolNames };
 
 export function resolveCodingToolSelection(
 	tools: readonly CodingToolName[] | undefined,
