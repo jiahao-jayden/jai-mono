@@ -25,13 +25,8 @@ export class ConnectorPolicyDenied extends TaggedError("connector.policy_denied"
 	readonly message: string;
 }> {}
 
-export class ConnectorApprovalInvalid extends TaggedError("connector.approval_invalid")<{
-	readonly data: { readonly actionId: string; readonly reason: "missing" | "expired" | "replayed" | "mismatch" };
-	readonly message: string;
-}> {}
-
-export class ConnectorSessionRequired extends TaggedError("connector.session_required")<{
-	readonly data: { readonly actionId: string };
+export class ConnectorPreparationInvalid extends TaggedError("connector.preparation_invalid")<{
+	readonly data: { readonly preparationId: string; readonly reason: "missing" | "mismatch" | "expired" };
 	readonly message: string;
 }> {}
 

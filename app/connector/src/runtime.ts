@@ -1,21 +1,19 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { Result, type Result as ResultType } from "better-result";
 import {
 	ConnectorActionNotFound,
-	ConnectorApprovalInvalid,
 	ConnectorConnectionNotFound,
 	ConnectorConnectionUnavailable,
 	ConnectorInputInvalid,
 	ConnectorPolicyDenied,
+	ConnectorPreparationInvalid,
 	ConnectorRequestCancelled,
-	ConnectorSessionRequired,
 	ConnectorUpstreamFailed,
 } from "./errors";
 import type {
 	ActionDefinition,
 	ActionGuideResponse,
 	ActionSummary,
-	ApprovalPreview,
 	AppSummary,
 	ConnectionRecord,
 	ConnectionSummary,
@@ -23,7 +21,6 @@ import type {
 	ConnectorAdapter,
 	ConnectorPolicy,
 	ConnectorService,
-	ExecuteActionInput,
 	ExecuteActionResponse,
 	GetActionGuideInput,
 	HealthResponse,
@@ -31,24 +28,32 @@ import type {
 	JsonSchema,
 	ListAppsResponse,
 	ListConnectionsResponse,
+	PrepareActionInput,
+	PreparedConnectorAction,
 	RequestContext,
 	SearchActionsInput,
 	SearchActionsResponse,
 } from "./types";
 
-interface PendingApproval {
+interface PreparedAction {
+	readonly adapter: ConnectorAdapter;
+	readonly action: ActionDefinition;
+	readonly connection: ConnectionRecord;
+	readonly credentials: Readonly<Record<string, string>>;
+	readonly input: JsonObject;
+	readonly requestId: string;
 	readonly actionId: string;
-	readonly sessionId: string;
-	readonly inputHash: string;
+	readonly approvalMode: Exclude<ConnectorActionPermission, "deny">;
 	readonly expiresAt: number;
 }
+
+const preparedActionLifetimeMs = 5 * 60_000;
 
 export interface MemoryConnectorServiceOptions {
 	readonly adapters: readonly ConnectorAdapter[];
 	readonly connections: readonly ConnectionRecord[];
 	readonly credentials?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 	readonly policy?: ConnectorPolicy;
-	readonly now?: () => number;
 }
 
 export class MemoryConnectorService implements ConnectorService {
@@ -57,15 +62,13 @@ export class MemoryConnectorService implements ConnectorService {
 	#connections: readonly ConnectionRecord[];
 	#credentials: Readonly<Record<string, Readonly<Record<string, string>>>>;
 	#policy: ConnectorPolicy;
-	readonly #now: () => number;
-	readonly #approvals = new Map<string, PendingApproval>();
+	readonly #preparedActions = new Map<string, PreparedAction>();
 
 	constructor(options: MemoryConnectorServiceOptions) {
 		this.#adapters = [...options.adapters];
 		this.#connections = [...options.connections];
 		this.#credentials = options.credentials ?? {};
 		this.#policy = options.policy ?? {};
-		this.#now = options.now ?? Date.now;
 		const actions = new Map<string, ActionDefinition>();
 		for (const adapter of this.#adapters) {
 			for (const action of adapter.actions) {
@@ -159,10 +162,10 @@ export class MemoryConnectorService implements ConnectorService {
 		});
 	}
 
-	async executeAction(
-		input: ExecuteActionInput,
+	async prepareAction(
+		input: PrepareActionInput,
 		context: RequestContext,
-	): Promise<ResultType<ExecuteActionResponse, import("./types").ConnectorFailure>> {
+	): Promise<ResultType<PreparedConnectorAction, import("./types").ConnectorFailure>> {
 		if (context.signal?.aborted)
 			return Result.err(
 				new ConnectorRequestCancelled({
@@ -224,44 +227,6 @@ export class MemoryConnectorService implements ConnectorService {
 				}),
 			);
 
-		if (policy === "ask") {
-			if (!context.sessionId)
-				return Result.err(
-					new ConnectorSessionRequired({
-						message: "A session is required for approval-gated Actions",
-						data: { actionId: input.actionId },
-					}),
-				);
-			const approval = this.#consumeApproval(input, context);
-			if (approval.isErr()) {
-				if (!input.approvalId) {
-					const approvalId = randomUUID();
-					const expiresAt = this.#now() + 5 * 60_000;
-					this.#approvals.set(approvalId, {
-						actionId: input.actionId,
-						sessionId: context.sessionId,
-						inputHash: hashInput(input.input),
-						expiresAt,
-					});
-					const preview: ApprovalPreview = {
-						actionId: input.actionId,
-						description: action.description,
-						sideEffect: action.sideEffect,
-						dataSensitivity: action.dataSensitivity,
-						inputKeys: Object.keys(input.input).sort(),
-						expiresAt,
-					};
-					return Result.ok({
-						status: "approval_required",
-						actionId: input.actionId,
-						approvalId,
-						approval: preview,
-					});
-				}
-				return approval;
-			}
-		}
-
 		const adapter = this.#adapters.find((candidate) => candidate.definition.id === action.connectorId);
 		if (!adapter)
 			return Result.err(
@@ -270,25 +235,117 @@ export class MemoryConnectorService implements ConnectorService {
 					data: { actionId: input.actionId },
 				}),
 			);
+		const preparationId = randomUUID();
+		const expiresAt = Date.now() + preparedActionLifetimeMs;
+		this.#preparedActions.set(preparationId, {
+			adapter,
+			action,
+			connection: connection.value,
+			credentials: this.#credentials[credentialKey(connection.value)] ?? {},
+			input: structuredClone(input.input),
+			requestId: context.requestId,
+			actionId: input.actionId,
+			approvalMode: policy,
+			expiresAt,
+		});
+		return Result.ok({
+			preparationId,
+			actionId: input.actionId,
+			description: action.description,
+			sideEffect: action.sideEffect,
+			dataSensitivity: action.dataSensitivity,
+			approvalMode: policy,
+			expiresAt,
+		});
+	}
+
+	async executePreparedAction(
+		prepared: PreparedConnectorAction,
+		context: RequestContext,
+	): Promise<ResultType<ExecuteActionResponse, import("./types").ConnectorFailure>> {
+		if (context.signal?.aborted)
+			return Result.err(
+				new ConnectorRequestCancelled({
+					message: "Connector request was cancelled",
+					data: { requestId: context.requestId },
+				}),
+			);
+		const pending = this.#preparedActions.get(prepared.preparationId);
+		if (!pending)
+			return Result.err(
+				new ConnectorPreparationInvalid({
+					message: "Connector Action preparation was not found",
+					data: { preparationId: prepared.preparationId, reason: "missing" },
+				}),
+			);
+		if (
+			pending.requestId !== context.requestId ||
+			pending.actionId !== prepared.actionId ||
+			pending.action.description !== prepared.description ||
+			pending.action.sideEffect !== prepared.sideEffect ||
+			pending.action.dataSensitivity !== prepared.dataSensitivity ||
+			pending.approvalMode !== prepared.approvalMode ||
+			pending.expiresAt !== prepared.expiresAt
+		) {
+			return Result.err(
+				new ConnectorPreparationInvalid({
+					message: "Connector Action preparation does not match this execution",
+					data: { preparationId: prepared.preparationId, reason: "mismatch" },
+				}),
+			);
+		}
+		this.#preparedActions.delete(prepared.preparationId);
+		if (pending.expiresAt <= Date.now()) {
+			return Result.err(
+				new ConnectorPreparationInvalid({
+					message: "Connector Action preparation expired",
+					data: { preparationId: prepared.preparationId, reason: "expired" },
+				}),
+			);
+		}
 		try {
-			const output = await adapter.execute(action, input.input, {
+			const output = await pending.adapter.execute(pending.action, pending.input, {
 				requestId: context.requestId,
 				sessionId: context.sessionId ?? "anonymous",
-				connection: connection.value,
-				credentials: this.#credentials[credentialKey(connection.value)] ?? {},
+				connection: pending.connection,
+				credentials: pending.credentials,
 				signal: context.signal,
 			});
 			if (output.isErr()) return output;
-			return Result.ok({ status: "completed", actionId: input.actionId, output: output.value });
+			return Result.ok({ status: "completed", actionId: pending.actionId, output: output.value });
 		} catch (cause) {
 			return Result.err(
 				new ConnectorUpstreamFailed({
 					message: "Connector Action execution failed",
-					data: { connectorId: action.connectorId, actionId: action.actionId },
+					data: { connectorId: pending.action.connectorId, actionId: pending.action.actionId },
 					cause,
 				}),
 			);
 		}
+	}
+
+	async discardPreparedAction(
+		prepared: PreparedConnectorAction,
+		context: RequestContext,
+	): Promise<ResultType<void, import("./types").ConnectorFailure>> {
+		const pending = this.#preparedActions.get(prepared.preparationId);
+		if (!pending)
+			return Result.err(
+				new ConnectorPreparationInvalid({
+					message: "Connector Action preparation was not found",
+					data: { preparationId: prepared.preparationId, reason: "missing" },
+				}),
+			);
+		if (pending.requestId !== context.requestId || pending.actionId !== prepared.actionId) {
+			return Result.err(
+				new ConnectorPreparationInvalid({
+					message: "Connector Action preparation does not match this request",
+					data: { preparationId: prepared.preparationId, reason: "mismatch" },
+				}),
+			);
+		}
+		this.#preparedActions.delete(prepared.preparationId);
+		return Result.ok(undefined);
 	}
 
 	async health(_context: RequestContext): Promise<ResultType<HealthResponse, never>> {
@@ -312,45 +369,6 @@ export class MemoryConnectorService implements ConnectorService {
 		return Result.ok(connection);
 	}
 
-	#consumeApproval(input: ExecuteActionInput, context: RequestContext): ResultType<true, ConnectorApprovalInvalid> {
-		if (!input.approvalId)
-			return Result.err(
-				new ConnectorApprovalInvalid({
-					message: "Approval is required",
-					data: { actionId: input.actionId, reason: "missing" },
-				}),
-			);
-		const approval = this.#approvals.get(input.approvalId);
-		if (!approval)
-			return Result.err(
-				new ConnectorApprovalInvalid({
-					message: "Approval was already consumed or not found",
-					data: { actionId: input.actionId, reason: "replayed" },
-				}),
-			);
-		this.#approvals.delete(input.approvalId);
-		if (approval.expiresAt <= this.#now())
-			return Result.err(
-				new ConnectorApprovalInvalid({
-					message: "Approval has expired",
-					data: { actionId: input.actionId, reason: "expired" },
-				}),
-			);
-		if (
-			approval.actionId !== input.actionId ||
-			approval.sessionId !== context.sessionId ||
-			approval.inputHash !== hashInput(input.input)
-		) {
-			return Result.err(
-				new ConnectorApprovalInvalid({
-					message: "Approval does not match this execution",
-					data: { actionId: input.actionId, reason: "mismatch" },
-				}),
-			);
-		}
-		return Result.ok(true);
-	}
-
 	#policyFor(action: ActionDefinition): ConnectorActionPermission {
 		return this.#policy.actions?.[fullActionId(action)] ?? this.#policy.default ?? "ask";
 	}
@@ -366,10 +384,6 @@ export class MemoryConnectorService implements ConnectorService {
 
 export function fullActionId(action: Pick<ActionDefinition, "connectorId" | "actionId">): string {
 	return `${action.connectorId}.${action.actionId}`;
-}
-
-function hashInput(input: JsonObject): string {
-	return createHash("sha256").update(stableJson(input)).digest("hex");
 }
 
 function stableJson(value: unknown): string {

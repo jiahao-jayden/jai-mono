@@ -33,7 +33,8 @@ export type JsonSchema = {
 
 export type ActionSideEffect = "read" | "write" | "destructive";
 export type ActionDataSensitivity = "normal" | "sensitive" | "secret";
-export type ConnectorActionPermission = "allow" | "ask" | "deny";
+export type ConnectorActionPermission = "ask" | "allow" | "deny";
+export type ConnectorActionApprovalMode = Exclude<ConnectorActionPermission, "deny">;
 
 export interface ConnectorDefinition {
 	readonly id: string;
@@ -191,33 +192,26 @@ export interface ActionGuideResponse {
 	readonly policy: ConnectorActionPermission;
 }
 
-export interface ExecuteActionInput {
+export interface PrepareActionInput {
 	readonly actionId: string;
 	readonly input: JsonObject;
-	readonly approvalId?: string;
 }
 
-export interface ApprovalPreview {
+export interface PreparedConnectorAction {
+	readonly preparationId: string;
 	readonly actionId: string;
 	readonly description: string;
 	readonly sideEffect: ActionSideEffect;
 	readonly dataSensitivity: ActionDataSensitivity;
-	readonly inputKeys: readonly string[];
+	readonly approvalMode: ConnectorActionApprovalMode;
 	readonly expiresAt: number;
 }
 
-export type ExecuteActionResponse =
-	| {
-			readonly status: "completed";
-			readonly actionId: string;
-			readonly output: JsonValue;
-	  }
-	| {
-			readonly status: "approval_required";
-			readonly actionId: string;
-			readonly approvalId: string;
-			readonly approval: ApprovalPreview;
-	  };
+export interface ExecuteActionResponse {
+	readonly status: "completed";
+	readonly actionId: string;
+	readonly output: JsonValue;
+}
 
 export interface HealthResponse {
 	readonly status: "ready";
@@ -237,10 +231,18 @@ export interface ConnectorService {
 		input: GetActionGuideInput,
 		context: RequestContext,
 	): Promise<ResultType<ActionGuideResponse, ConnectorFailure>>;
-	executeAction(
-		input: ExecuteActionInput,
+	prepareAction(
+		input: PrepareActionInput,
+		context: RequestContext,
+	): Promise<ResultType<PreparedConnectorAction, ConnectorFailure>>;
+	executePreparedAction(
+		action: PreparedConnectorAction,
 		context: RequestContext,
 	): Promise<ResultType<ExecuteActionResponse, ConnectorFailure>>;
+	discardPreparedAction(
+		action: PreparedConnectorAction,
+		context: RequestContext,
+	): Promise<ResultType<void, ConnectorFailure>>;
 	health(context: RequestContext): Promise<ResultType<HealthResponse, ConnectorFailure>>;
 }
 
@@ -250,8 +252,7 @@ export type ConnectorFailure =
 	| import("./errors").ConnectorConnectionUnavailable
 	| import("./errors").ConnectorInputInvalid
 	| import("./errors").ConnectorPolicyDenied
-	| import("./errors").ConnectorApprovalInvalid
-	| import("./errors").ConnectorSessionRequired
+	| import("./errors").ConnectorPreparationInvalid
 	| import("./errors").ConnectorUpstreamFailed
 	| import("./errors").ConnectorUpstreamRateLimited
 	| import("./errors").ConnectorUpstreamUnavailable
