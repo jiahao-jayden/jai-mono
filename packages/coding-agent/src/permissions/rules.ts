@@ -114,8 +114,13 @@ export function matchesPermissionConfigRule(
 }
 
 export function bashAlwaysPattern(command: string): string | undefined {
-	const tokens = shellWords(command);
-	if (!tokens || tokens.length === 0) return undefined;
+	const rawTokens = shellWords(command);
+	if (!rawTokens || rawTokens.length === 0) return undefined;
+	// Skip `VAR=value` assignments so a rule is suggested for the command itself. Attachment
+	// projection prefixes `JAI_ATTACHMENT_n=/tmp/...` onto Bash commands, which would otherwise be
+	// persisted as an "always allow" rule bound to a temp path — one that never matches again.
+	const tokens = rawTokens.slice(rawTokens.findIndex((token) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)));
+	if (tokens.length === 0) return undefined;
 	let best: string | undefined;
 	let arity = 0;
 	for (const [prefix, count] of Object.entries(bashArity)) {
@@ -137,10 +142,12 @@ export function isDestructiveBashCommand(command: string): boolean {
 		const tokens = shellWords(subcommand);
 		if (!tokens || tokens.length === 0) return true;
 		if (tokens.includes("sudo") || tokens.includes("doas")) return true;
-		const executable = tokens.find((token) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token));
-		if (!executable) return true;
+		const invoked = tokens.find((token) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token));
+		if (!invoked) return true;
+		// Compared by basename so an absolute path (`/bin/rm`) cannot slip past the name checks below.
+		const executable = commandBasename(invoked);
 		if (["rm", "rmdir", "unlink", "trash"].includes(executable)) return true;
-		if (executable === "find" && tokens.some((token) => token === "-delete" || token === "-exec")) return true;
+		if (executable === "find" && tokens.some((token) => findExecutesCommands(token))) return true;
 		if (executable === "git" && tokens.includes("clean")) return true;
 		if (executable === "git" && tokens.includes("reset") && tokens.includes("--hard")) return true;
 		if (executable === "git" && tokens.includes("checkout") && tokens.includes("--")) return true;
@@ -149,6 +156,20 @@ export function isDestructiveBashCommand(command: string): boolean {
 		}
 		return false;
 	});
+}
+
+/**
+ * Name a command is matched by, ignoring how it was addressed: `/bin/rm`, `./rm` and `rm` all yield
+ * `rm`. Command classification compares names, so an absolute path must not read as a different tool.
+ */
+export function commandBasename(token: string): string {
+	const separator = token.lastIndexOf("/");
+	return separator === -1 ? token : token.slice(separator + 1);
+}
+
+/** `find` predicates that run another command; `-execdir`/`-okdir` are as powerful as `-exec`. */
+export function findExecutesCommands(token: string): boolean {
+	return token === "-delete" || token === "-exec" || token === "-execdir" || token === "-ok" || token === "-okdir";
 }
 
 function hasDestructiveRedirection(command: string): boolean {

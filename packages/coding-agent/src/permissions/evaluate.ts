@@ -5,6 +5,8 @@ import { normalizePermissionSettings } from "./definition";
 import { invalidPermissionCallError } from "./errors";
 import {
 	bashAlwaysPattern,
+	commandBasename,
+	findExecutesCommands,
 	flattenPermissionConfig,
 	isDestructiveBashCommand,
 	matchesPermissionConfigRule,
@@ -64,14 +66,22 @@ export function evaluatePermission(
 	}
 	const bashRisk = bashRiskDecision(call);
 	if (bashRisk) return bashRisk;
-	if (resolved.permission && Object.keys(resolved.permission).length > 0)
-		return evaluateConfiguredPermission(call, resolved);
+	// Deny rules and mode boundaries outrank the `permission` config tree. Without this, a single
+	// "always allow" (which persists into project-local `permission.bash`) would silently disable the
+	// whole deny list, Plan mode, and an administrator's `disableBypassPermissionsMode`.
+	const denyRule = matchingRule("deny", resolved.deny, call);
+	if (denyRule) return decision("deny", "rule", "Matched deny rule", denyRule);
 	if (
 		resolved.defaultMode === "plan" &&
 		(isEditCall(call) || (call.toolName === "Bash" && !isReadOnlyBash(stringArg(call, "command"))))
 	) {
 		return decision("deny", "mode", "Plan mode only allows read-only work");
 	}
+	if (resolved.defaultMode === "bypassPermissions" && resolved.disableBypassPermissionsMode === "disable") {
+		return decision("deny", "mode", "Bypass Permissions is disabled by configuration");
+	}
+	if (resolved.permission && Object.keys(resolved.permission).length > 0)
+		return evaluateConfiguredPermission(call, resolved);
 	for (const effect of ["deny", "ask", "allow"] as const) {
 		const rule = matchingRule(effect, resolved[effect], call);
 		if (rule) return decision(effect, "rule", `Matched ${effect} rule`, rule);
@@ -81,9 +91,6 @@ export function evaluatePermission(
 		return decision("deny", "mode", "Don't Ask denies calls without a matching Allow rule");
 	}
 	if (resolved.defaultMode === "bypassPermissions") {
-		if (resolved.disableBypassPermissionsMode === "disable") {
-			return decision("deny", "mode", "Bypass Permissions is disabled by configuration");
-		}
 		return decision("allow", "mode", "Bypass Permissions mode");
 	}
 
@@ -312,10 +319,12 @@ function isReadOnlySubcommand(command: string): boolean {
 		if (wrapper === "timeout" && tokens[index] && /^(\d+|\d+(?:ms|s|m|h|d))$/.test(tokens[index]!)) index++;
 		if (wrapper === "nice" && tokens[index] === "-n") index += 2;
 	}
-	const executable = tokens[index];
-	if (!executable) return false;
+	const invoked = tokens[index];
+	if (!invoked) return false;
+	// Basename so `/usr/bin/git` classifies like `git` instead of falling through as unknown.
+	const executable = commandBasename(invoked);
 	if (executable === "git") return readOnlyGitCommand(tokens.slice(index + 1));
-	if (executable === "find" && tokens.slice(index + 1).some((token) => token === "-delete" || token === "-exec")) {
+	if (executable === "find" && tokens.slice(index + 1).some(findExecutesCommands)) {
 		return false;
 	}
 	return readOnlyCommands.has(executable);
@@ -323,7 +332,10 @@ function isReadOnlySubcommand(command: string): boolean {
 
 function readOnlyGitCommand(args: readonly string[]): boolean {
 	const subcommand = args.find((arg) => !arg.startsWith("-"));
-	return subcommand !== undefined && readOnlyGitCommands.has(subcommand);
+	if (subcommand === undefined || !readOnlyGitCommands.has(subcommand)) return false;
+	// `git branch` only reads while it lists; -d/-D/-m/-M mutate refs.
+	if (subcommand === "branch") return !args.some((arg) => /^-[dDmMc]$|^--(delete|move|copy|force)$/.test(arg));
+	return true;
 }
 
 function shellWords(command: string): string[] | undefined {
@@ -370,7 +382,8 @@ function isCircuitBreakerCommand(command: string): boolean {
 	return subcommands.some((subcommand) => {
 		const tokens = shellWords(subcommand);
 		if (!tokens) return false;
-		const rmIndex = tokens.lastIndexOf("rm");
+		// Matched by basename so `/bin/rm -rf /` trips the breaker like a bare `rm` does.
+		const rmIndex = tokens.findLastIndex((token) => commandBasename(token) === "rm");
 		if (rmIndex < 0) return false;
 
 		let recursive = false;

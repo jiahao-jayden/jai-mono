@@ -11,6 +11,7 @@ import { CodingConfigStore, defineCodingConfig } from "../src/config";
 import {
 	createPermissionMiddleware,
 	evaluatePermission,
+	isDestructiveBashCommand,
 	matchesPermissionRule,
 	normalizePermissionSettings,
 	permissionConfigFields,
@@ -122,6 +123,74 @@ describe("PermissionApprovalRegistry", () => {
 	});
 });
 
+describe("permission 配置不得削弱安全边界", () => {
+	const call = (toolName: string, args: Record<string, unknown>): PermissionCall =>
+		({ toolName, workspaceRoot, args }) as PermissionCall;
+
+	test("deny 规则在 permission 配置存在时仍然生效", () => {
+		const deny = ["Read(**/.env)"];
+		// A single "always allow" persists into project-local `permission.bash`; that must not
+		// disable the deny list.
+		expect(evaluatePermission(call("Read", { path: `${workspaceRoot}/.env` }), { defaultMode: "default", deny })).toMatchObject(
+			{ behavior: "deny" },
+		);
+		expect(
+			evaluatePermission(call("Read", { path: `${workspaceRoot}/.env` }), {
+				defaultMode: "default",
+				deny,
+				permission: { bash: { "ls *": "allow" } },
+			}),
+		).toMatchObject({ behavior: "deny" });
+	});
+
+	test("disableBypassPermissionsMode 在 permission 配置存在时仍然生效", () => {
+		expect(
+			evaluatePermission(call("Bash", { command: "npm test" }), {
+				defaultMode: "bypassPermissions",
+				disableBypassPermissionsMode: "disable",
+				permission: { bash: { "npm *": "allow" } },
+			}),
+		).toMatchObject({ behavior: "deny", source: "mode" });
+	});
+
+	test("plan 模式在 permission 配置存在时仍然拒绝写操作", () => {
+		expect(
+			evaluatePermission(call("Write", { path: `${workspaceRoot}/app.ts` }), {
+				defaultMode: "plan",
+				permission: { edit: "allow" },
+			}),
+		).toMatchObject({ behavior: "deny", source: "mode" });
+	});
+
+	test("按 basename 分类命令，绝对路径不能绕过熔断与危险判定", () => {
+		for (const command of ["rm -rf /", "/bin/rm -rf /", "/usr/bin/rm -rf ~"]) {
+			expect(isDestructiveBashCommand(command)).toBe(true);
+			expect(evaluatePermission(call("Bash", { command }), { defaultMode: "bypassPermissions" })).toMatchObject({
+				behavior: "deny",
+			});
+		}
+	});
+
+	test("find 的 -execdir/-okdir 与 -exec 同样不算只读", () => {
+		for (const command of ["find . -exec ls {} +", "find . -execdir rm -rf {} +", "find . -okdir rm {} ;"]) {
+			expect(evaluatePermission(call("Bash", { command }), { defaultMode: "default" })).toMatchObject({
+				behavior: "ask",
+			});
+		}
+	});
+
+	test("git branch 删除/改名不算只读", () => {
+		expect(evaluatePermission(call("Bash", { command: "git branch" }), { defaultMode: "default" })).toMatchObject({
+			behavior: "allow",
+		});
+		for (const command of ["git branch -D main", "git branch -m old new"]) {
+			expect(evaluatePermission(call("Bash", { command }), { defaultMode: "default" })).toMatchObject({
+				behavior: "ask",
+			});
+		}
+	});
+});
+
 describe("permission middleware", () => {
 	test("Extension-owned authorization bypasses core permission evaluation", async () => {
 		let corePermissionLookups = 0;
@@ -182,6 +251,69 @@ describe("permission middleware", () => {
 		});
 
 		expect({ coreApprovals, executions }).toEqual({ coreApprovals: 1, executions: 1 });
+	});
+
+	test("Extension 激活期间重填权限表后，catalog 工具仍可解析", async () => {
+		let coreApprovals = 0;
+		let executions = 0;
+		// The SDK hands this map to the middleware before Extensions activate, then refills it
+		// (clear + set) once catalog discovery finishes. The middleware must observe the refill.
+		const extensionToolPermissions = new Map<string, () => { sideEffect: "write"; reason: string }>();
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: {},
+			extensionToolPermissions,
+			requestApproval: () => {
+				coreApprovals++;
+				return "allowOnce";
+			},
+		});
+
+		extensionToolPermissions.clear();
+		extensionToolPermissions.set("catalog__deploy", () => ({
+			sideEffect: "write" as const,
+			reason: "Discovered during catalog activation",
+		}));
+
+		await middleware(context("catalog__deploy", { target: "staging" }), async () => {
+			executions++;
+			return { content: [] };
+		});
+
+		expect({ coreApprovals, executions }).toEqual({ coreApprovals: 1, executions: 1 });
+	});
+
+	test("runtime 拥有的 SearchTools 权限不会被 Extension 权限表重填清除", async () => {
+		let searchToolsResolved = 0;
+		let executions = 0;
+		const extensionToolPermissions = new Map<string, () => { sideEffect: "write"; reason: string }>();
+		const coreToolPermissions = new Map([
+			[
+				"SearchTools",
+				() => {
+					searchToolsResolved++;
+					return { sideEffect: "read" as const, reason: "Catalog search is read-only" };
+				},
+			],
+		]);
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: {},
+			extensionToolPermissions,
+			coreToolPermissions,
+			requestApproval: () => "allowOnce",
+		});
+
+		// Extension activation rebuilds the extension map; the runtime-owned entry must survive.
+		extensionToolPermissions.clear();
+		extensionToolPermissions.set("other__tool", () => ({ sideEffect: "write" as const, reason: "unrelated" }));
+
+		await middleware(context("SearchTools", { query: "deploy" }), async () => {
+			executions++;
+			return { content: [] };
+		});
+
+		expect({ searchToolsResolved, executions }).toEqual({ searchToolsResolved: 1, executions: 1 });
 	});
 
 	test("自动允许安全调用，询问并放行一次性授权", async () => {

@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { AgentEvent, AgentMessage } from "@jai/agent";
-import { TaggedError } from "better-result";
+import { panic, TaggedError } from "better-result";
 import type { PermissionApprovalRequest } from "../permissions";
 import type {
 	CodingAgentArtifact,
@@ -163,11 +163,14 @@ export function projectError(error: unknown, phase: CodingSdkErrorPhase): Coding
 				: "coding_sdk.unknown";
 	const message =
 		error instanceof Error ? error.message : typeof record.message === "string" ? record.message : String(error);
+	// Derived from the phase that is actually reported, not the caller's fallback: a failure carrying
+	// its own phase must not be described as `phase: "model", retryable: false`.
+	const reportedPhase = error instanceof CodingSdkFailure ? error.phase : phase;
 	return {
 		code,
 		message,
-		retryable: phase === "model" || phase === "tool",
-		phase: error instanceof CodingSdkFailure ? error.phase : phase,
+		retryable: reportedPhase === "model" || reportedPhase === "tool",
+		phase: reportedPhase,
 	};
 }
 
@@ -243,6 +246,10 @@ export function projectMessage(message: AgentMessage): CodingAgentMessage {
 								name: content.name,
 								arguments: projectJson(content.arguments) as JsonObject,
 							};
+						default:
+							// A new assistant content kind must gain a projection here rather than silently
+							// becoming `undefined` inside the projected message.
+							return panic(`Unhandled assistant content type "${(content as { type: string }).type}"`);
 					}
 				}),
 				provider: message.provider,
