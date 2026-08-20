@@ -1,6 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { filesForAttachments } from "@/lib/attachment-files";
-import type { IconName } from "@/lib/icon-context";
+import { type IconName, useIcon } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type {
 	DesktopNarrationItem,
@@ -123,16 +123,43 @@ export function TranscriptItem({ item, animate = false }: { item: DesktopTranscr
 	}
 
 	if (item.kind === "compaction") {
-		return (
-			<div className="flex items-center gap-3 py-2 text-[11.5px] text-muted-foreground">
-				<span className="h-px flex-1 bg-border" />
-				Context compacted
-				<span className="h-px flex-1 bg-border" />
-			</div>
-		);
+		return <CompactionDivider item={item} />;
 	}
 
 	return null;
+}
+
+function CompactionDivider({
+	item,
+}: {
+	readonly item: Extract<DesktopTranscriptItem, { readonly kind: "compaction" }>;
+}) {
+	const LoaderIcon = useIcon("loader");
+	const compacting = item.status === "compacting";
+	const label = compacting ? "Compacting context" : "Context compacted";
+	const live = compacting ? "polite" : "off";
+	const indicator = compacting ? (
+		<LoaderIcon
+			size={13}
+			strokeWidth={1.75}
+			className="shrink-0 animate-spin motion-reduce:animate-none"
+			aria-hidden="true"
+		/>
+	) : undefined;
+	const className = cn("flex items-center gap-3 py-2 text-[11.5px] text-muted-foreground", {
+		"text-primary-2/90": compacting,
+	});
+
+	return (
+		<div className={className} aria-live={live} data-transcript-item-id={item.id}>
+			<span className="h-px flex-1 bg-border" />
+			<span className="inline-flex items-center gap-1.5">
+				{indicator}
+				{label}
+			</span>
+			<span className="h-px flex-1 bg-border" />
+		</div>
+	);
 }
 
 function useTranscriptItemAnimations(items: readonly DesktopTranscriptItem[], loading: boolean): ReadonlySet<string> {

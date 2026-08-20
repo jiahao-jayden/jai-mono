@@ -38,6 +38,65 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
+	test("上下文压缩投影为瞬态状态，并在结束时替换或清理", async () => {
+		const envelopes: DesktopAgentEventEnvelope[] = [];
+		const agent = new FakeAgent(async (self) => {
+			self.emit({ type: "compaction_start", trigger: "threshold", tokensBefore: 12_000 });
+			self.emit({
+				type: "compaction_end",
+				outcome: {
+					status: "success",
+					entry: {
+						id: "summary-1",
+						type: "compaction",
+						timestamp: "2026-08-20T12:00:00.000Z",
+						summary: "Earlier context summarized.",
+						compactedBeforeId: "entry-8",
+						internalDetails: "must not reach the Desktop transcript",
+					},
+				},
+			});
+			self.emit({ type: "compaction_start", trigger: "threshold", tokensBefore: 12_500 });
+			self.emit({
+				type: "compaction_end",
+				outcome: { status: "error", error: { code: "compaction.model_failure" } },
+			});
+			return [];
+		});
+		const host = new DesktopAgentHost((event) => envelopes.push(event), async () => agent);
+
+		await host.send(input("continue"));
+		await agent.finished;
+
+		const transcriptEvents = envelopes.flatMap((envelope) => {
+			const event = envelope.event;
+			if (event.type === "transcript_upsert" && event.item.kind === "compaction") {
+				return [{ type: "upsert", item: event.item }];
+			}
+			if (event.type === "transcript_remove") return [{ type: "remove", id: event.id }];
+			return [];
+		});
+		expect(transcriptEvents).toEqual([
+			{ type: "upsert", item: expect.objectContaining({ id: "compaction:pending:1", status: "compacting" }) },
+			{ type: "remove", id: "compaction:pending:1" },
+			{
+				type: "upsert",
+				item: expect.objectContaining({
+					id: "compaction:summary-1",
+					status: "complete",
+					summary: "Earlier context summarized.",
+				}),
+			},
+			{ type: "upsert", item: expect.objectContaining({ id: "compaction:pending:2", status: "compacting" }) },
+			{ type: "remove", id: "compaction:pending:2" },
+		]);
+		expect(JSON.stringify(envelopes)).not.toContain("must not reach the Desktop transcript");
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({ id: "compaction:summary-1", kind: "compaction", status: "complete" }),
+		]);
+		host.close();
+	});
+
 	test("并发 send 由 CodingAgent admission 排队，Desktop 只投影 pending 状态", async () => {
 		const calls: string[] = [];
 		const agent = new FakeAgent(async (_self, message) => {

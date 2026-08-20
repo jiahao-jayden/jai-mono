@@ -298,6 +298,12 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 				lastSeq: seq,
 				messages: upsertMessage(state.messages, event.item),
 			};
+		case "transcript_remove":
+			return {
+				...state,
+				lastSeq: seq,
+				messages: state.messages.filter((item) => item.id !== event.id),
+			};
 		case "todos_replace":
 			return { ...state, isLoading: false, lastSeq: seq, todos: event.todos };
 		case "artifact_upsert":

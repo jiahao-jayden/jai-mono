@@ -118,6 +118,27 @@ describe("useChat projection", () => {
 		expect(next.messages[1]).not.toBe(streaming);
 	});
 
+	test("移除瞬态 transcript 项", () => {
+		const compaction: DesktopTranscriptItem = {
+			kind: "compaction",
+			id: "compaction:pending:1",
+			summary: "",
+			timestamp: 1,
+			status: "compacting",
+		};
+		const state = { ...emptyChatState(), messages: [compaction], lastSeq: 1 };
+		const next = applyChatProjectionUpdate(state, {
+			type: "event",
+			envelope: {
+				sessionId: "session-1",
+				seq: 2,
+				event: { type: "transcript_remove", id: compaction.id },
+			},
+		});
+
+		expect(next).toMatchObject({ lastSeq: 2, messages: [] });
+	});
+
 	test("Todo 快照与增量事件直接替换本地状态", () => {
 		const snapshotState = applyChatProjectionUpdate(emptyChatState(), {
 			type: "snapshot",

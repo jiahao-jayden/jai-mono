@@ -511,6 +511,7 @@ export interface DesktopCompactionItem {
 	readonly id: string;
 	readonly summary: string;
 	readonly timestamp: number;
+	readonly status: "compacting" | "complete";
 }
 
 export type DesktopTranscriptItem =
@@ -549,6 +550,7 @@ export interface DesktopAgentSnapshot {
 export type DesktopAgentEvent =
 	| { readonly type: "status"; readonly status: DesktopAgentStatus }
 	| { readonly type: "transcript_upsert"; readonly item: DesktopTranscriptItem }
+	| { readonly type: "transcript_remove"; readonly id: string }
 	| { readonly type: "todos_replace"; readonly todos: DesktopTodos }
 	| { readonly type: "artifact_upsert"; readonly artifact: DesktopArtifact }
 	| { readonly type: "model_catalog_updated" }

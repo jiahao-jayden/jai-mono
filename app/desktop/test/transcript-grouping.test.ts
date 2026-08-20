@@ -17,6 +17,7 @@ describe("groupTranscriptItems", () => {
 			id: "compaction:1",
 			summary: "Earlier context",
 			timestamp: 1,
+			status: "complete",
 		};
 		const staleProgress = {
 			kind: "progress",
@@ -31,6 +32,18 @@ describe("groupTranscriptItems", () => {
 				createElement(TranscriptItem, { item: staleProgress as unknown as DesktopTranscriptItem }),
 			),
 		).toBe("");
+	});
+
+	test("压缩时显示轻量的运行状态", () => {
+		const compaction: DesktopTranscriptItem = {
+			kind: "compaction",
+			id: "compaction:pending:1",
+			summary: "",
+			timestamp: 1,
+			status: "compacting",
+		};
+
+		expect(renderToStaticMarkup(createElement(TranscriptItem, { item: compaction }))).toContain("Compacting context");
 	});
 
 	test("按 turnId 合并相邻的思考与工具", () => {

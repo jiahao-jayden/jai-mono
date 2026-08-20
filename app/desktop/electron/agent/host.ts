@@ -18,6 +18,7 @@ import type {
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
 	DesktopArtifact,
+	DesktopCompactionItem,
 	DesktopExtensionApprovalRequest,
 	DesktopExtensionPermissionItem,
 	DesktopExtensionPermissionResolution,
@@ -29,7 +30,14 @@ import type {
 import { DesktopApprovalRegistry } from "./approval-registry";
 import { sortArtifacts } from "./artifacts";
 import { projectSessionTodos } from "./projection/durable";
-import { assistantPartItem, type DesktopAssistantItem, userMessageItem } from "./projection/items";
+import {
+	assistantPartItem,
+	COMPACTION_SUMMARY_MAX,
+	type DesktopAssistantItem,
+	isRecord,
+	truncate,
+	userMessageItem,
+} from "./projection/items";
 import {
 	type LiveProjection,
 	type LiveProjectionContext,
@@ -55,6 +63,26 @@ function desktopAgentError(
 		case "session_busy":
 			return new DesktopAgentSessionBusy(init);
 	}
+}
+
+function completedCompactionItem(outcome: unknown): DesktopCompactionItem | undefined {
+	if (!isRecord(outcome) || outcome.status !== "success" || !isRecord(outcome.entry)) return undefined;
+
+	const entry = outcome.entry;
+	if (typeof entry.id !== "string" || typeof entry.summary !== "string" || typeof entry.timestamp !== "string") {
+		return undefined;
+	}
+
+	const timestamp = Date.parse(entry.timestamp);
+	if (!Number.isFinite(timestamp)) return undefined;
+
+	return {
+		kind: "compaction",
+		id: `compaction:${entry.id}`,
+		summary: truncate(entry.summary, COMPACTION_SUMMARY_MAX),
+		timestamp,
+		status: "complete",
+	};
 }
 
 export interface DesktopAgentSendInput extends DesktopAgentMessageInput {
@@ -97,8 +125,10 @@ interface SessionRuntime {
 	closed: boolean;
 	seq: number;
 	nextMessageId: number;
+	nextCompactionId: number;
 	invalidateAfterRun: boolean;
 	pendingRuns: number;
+	pendingCompactionId?: string;
 	rebinding?: Promise<void>;
 	currentTurnId?: string;
 	activeAssistantId?: string;
@@ -337,6 +367,7 @@ export class DesktopAgentHost {
 			closed: false,
 			seq: 0,
 			nextMessageId: 1,
+			nextCompactionId: 1,
 			pendingTranscriptUpdates: new Map(),
 			invalidateAfterRun: false,
 			pendingRuns: 0,
@@ -504,9 +535,46 @@ export class DesktopAgentHost {
 				this.#applyProjection(runtime, projectToolProgress(event, this.#projectionContext(runtime)));
 				return;
 			}
+			case "compaction_start": {
+				this.#startCompaction(runtime);
+				return;
+			}
+			case "compaction_end": {
+				this.#finishCompaction(runtime, event.outcome);
+				return;
+			}
 			default:
 				return;
 		}
+	}
+
+	#startCompaction(runtime: SessionRuntime): void {
+		if (runtime.pendingCompactionId) return;
+
+		const item: DesktopCompactionItem = {
+			kind: "compaction",
+			id: `compaction:pending:${runtime.nextCompactionId++}`,
+			summary: "",
+			timestamp: Date.now(),
+			status: "compacting",
+		};
+		runtime.pendingCompactionId = item.id;
+		runtime.items.set(item.id, item);
+		this.#emitNow(runtime, { type: "transcript_upsert", item });
+	}
+
+	#finishCompaction(runtime: SessionRuntime, outcome: unknown): void {
+		const pendingId = runtime.pendingCompactionId;
+		runtime.pendingCompactionId = undefined;
+		if (pendingId) {
+			runtime.items.delete(pendingId);
+			this.#emitNow(runtime, { type: "transcript_remove", id: pendingId });
+		}
+
+		const item = completedCompactionItem(outcome);
+		if (!item) return;
+		runtime.items.set(item.id, item);
+		this.#emitNow(runtime, { type: "transcript_upsert", item });
 	}
 
 	#projectionContext(runtime: SessionRuntime): LiveProjectionContext {

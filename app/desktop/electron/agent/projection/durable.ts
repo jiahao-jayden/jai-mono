@@ -1,5 +1,5 @@
-import { type CodingAgentMessage, codingArtifactsFromAppState } from "@jai/coding-agent";
 import type { AssistantMessage } from "@jai/ai";
+import { type CodingAgentMessage, codingArtifactsFromAppState } from "@jai/coding-agent";
 import type {
 	DesktopAgentSnapshot,
 	DesktopArtifact,
@@ -39,6 +39,7 @@ export function projectSessionSnapshot(sessionId: string, snapshot: CodingSessio
 				id: `compaction:${entry.id}`,
 				summary: truncate(entry.summary, COMPACTION_SUMMARY_MAX),
 				timestamp: parseTimestamp(entry.timestamp),
+				status: "complete",
 			};
 			items.set(item.id, item);
 			continue;
