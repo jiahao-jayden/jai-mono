@@ -2,8 +2,8 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
 	entry: {
-		connector: "src/connector.ts",
-		"jai-plugins": "src/jai-plugins.ts",
+		connector: "src/connector/index.ts",
+		"jai-plugins": "src/jai-plugins/index.ts",
 	},
 	format: ["esm"],
 	platform: "node",

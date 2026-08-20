@@ -14,11 +14,11 @@ export default defineConfig({
 			{ find: /^@jai\/coding-agent$/, replacement: path.join(workspaceRoot, "packages/coding-agent/src/sdk.ts") },
 			{
 				find: /^@jai\/extension\/connector$/,
-				replacement: path.join(workspaceRoot, "packages/extension/src/connector.ts"),
+				replacement: path.join(workspaceRoot, "packages/extension/src/connector/index.ts"),
 			},
 			{
 				find: /^@jai\/extension\/jai-plugins$/,
-				replacement: path.join(workspaceRoot, "packages/extension/src/jai-plugins.ts"),
+				replacement: path.join(workspaceRoot, "packages/extension/src/jai-plugins/index.ts"),
 			},
 			{ find: "@", replacement: path.resolve(import.meta.dirname, "./src") },
 		],

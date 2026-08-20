@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Result } from "better-result";
-import { createConnectorExtension } from "../src/connector";
+import { createConnectorExtension } from "../src/connector/index";
 import type {
 	ActionGuideResponse,
 	ConnectorService,

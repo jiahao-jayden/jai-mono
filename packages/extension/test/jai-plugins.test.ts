@@ -5,7 +5,7 @@ import path from "node:path";
 import { connectAgentPluginMcp } from "../src/jai-plugins/mcp/runtime";
 import { loadAgentPluginDirectory } from "../src/jai-plugins/package/loader";
 import { createAgentPluginRuntime } from "../src/jai-plugins/runtime";
-import { createJaiPluginsExtension } from "../src/jai-plugins";
+import { createJaiPluginsExtension } from "../src/jai-plugins/index";
 
 const roots: string[] = [];
 

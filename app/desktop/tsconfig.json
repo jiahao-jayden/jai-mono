@@ -13,8 +13,8 @@
 		"paths": {
 			"@/*": ["./src/*"],
 			"@jai/coding-agent": ["../../packages/coding-agent/src/sdk.ts"],
-			"@jai/extension/connector": ["../../packages/extension/src/connector.ts"],
-			"@jai/extension/jai-plugins": ["../../packages/extension/src/jai-plugins.ts"]
+			"@jai/extension/connector": ["../../packages/extension/src/connector/index.ts"],
+			"@jai/extension/jai-plugins": ["../../packages/extension/src/jai-plugins/index.ts"]
 		},
 		"outDir": "dist"
 	},
