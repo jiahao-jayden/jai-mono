@@ -1,0 +1,195 @@
+import { describe, expect, test } from "bun:test";
+import { Result } from "better-result";
+import { createConnectorExtension } from "../src/connector";
+import type {
+	ActionGuideResponse,
+	ConnectorService,
+	ExecuteActionResponse,
+	HealthResponse,
+	ListAppsResponse,
+	ListConnectionsResponse,
+	PreparedConnectorAction,
+	RequestContext,
+	SearchActionsInput,
+	SearchActionsResponse,
+} from "@jai/connector";
+
+type ConnectorContext = Parameters<ReturnType<typeof createConnectorExtension>["initialize"]>[0];
+
+describe("Connector Extension", () => {
+	test("asks before executing an action whose Connector policy is ask", async () => {
+		const calls: string[] = [];
+		const context = extensionContext({
+			requestApproval: async () => {
+				calls.push("approve");
+				return "allowOnce";
+			},
+		});
+		const client = clientFor({
+			prepared: preparedAction("ask"),
+			onPrepare: () => calls.push("prepare"),
+			onExecute: () => calls.push("execute"),
+		});
+
+		const result = await executeAction(client, context);
+
+		expect(calls).toEqual(["prepare", "approve", "execute"]);
+		expect(result.content).toEqual([
+			{ type: "text", text: '{"status":"completed","actionId":"demo.create","output":{"ok":true}}' },
+		]);
+	});
+
+	test("persists allow for the exact Connector action before executing", async () => {
+		const updates: unknown[] = [];
+		const context = extensionContext({
+			requestApproval: async () => "allow",
+			onConfigurationUpdate: (value) => updates.push(value),
+		});
+		const executed: PreparedConnectorAction[] = [];
+		const client = clientFor({
+			prepared: preparedAction("ask"),
+			onExecute: (prepared) => executed.push(prepared),
+		});
+
+		await executeAction(client, context);
+
+		expect(updates).toEqual([
+			{
+				policy: { default: "ask", actions: { "demo.create": "allow" } },
+				connectors: {},
+			},
+		]);
+		expect(executed).toEqual([preparedAction("ask")]);
+	});
+
+	test("denial discards the prepared action and does not execute it", async () => {
+		const discarded: PreparedConnectorAction[] = [];
+		const executed: PreparedConnectorAction[] = [];
+		const client = clientFor({
+			prepared: preparedAction("ask"),
+			onDiscard: (prepared) => discarded.push(prepared),
+			onExecute: (prepared) => executed.push(prepared),
+		});
+
+		await expect(executeAction(client, extensionContext({ requestApproval: async () => "deny" }))).rejects.toMatchObject({
+			_tag: "connector_extension.permission_denied",
+		});
+
+		expect(discarded).toEqual([preparedAction("ask")]);
+		expect(executed).toEqual([]);
+	});
+
+	test("plan mode blocks write actions before execution and releases the preparation", async () => {
+		const discarded: PreparedConnectorAction[] = [];
+		const executed: PreparedConnectorAction[] = [];
+		const client = clientFor({
+			prepared: preparedAction("allow"),
+			onDiscard: (prepared) => discarded.push(prepared),
+			onExecute: (prepared) => executed.push(prepared),
+		});
+
+		await expect(
+			executeAction(client, extensionContext({ permissionMode: "plan", requestApproval: async () => "allowOnce" })),
+		).rejects.toMatchObject({ _tag: "connector_extension.permission_denied" });
+
+		expect(discarded).toEqual([preparedAction("allow")]);
+		expect(executed).toEqual([]);
+	});
+});
+
+async function executeAction(client: ConnectorService, context: ConnectorContext) {
+	const capabilities = await createConnectorExtension({ client }).initialize(context);
+	const tool = capabilities.tools?.find((candidate) => candidate.name === "connector__execute_action");
+	if (!tool) throw new Error("Connector execute tool is unavailable");
+	return tool.execute({
+		toolCallId: "tool-call-1",
+		args: { actionId: "demo.create", input: { name: "record" } },
+	});
+}
+
+function extensionContext(input: {
+	readonly permissionMode?: ConnectorContext["permissionMode"];
+	readonly requestApproval: ConnectorContext["requestApproval"];
+	readonly onConfigurationUpdate?: (value: unknown) => void;
+}): ConnectorContext {
+	let value: ConnectorContext["configuration"]["value"] = {
+		policy: { default: "ask" as const, actions: {} as Record<string, "allow" | "ask" | "deny"> },
+		connectors: {},
+	};
+	return {
+		sessionId: "session-1",
+		cwd: "/workspace",
+		permissionMode: input.permissionMode ?? "default",
+		configuration: {
+			get value() {
+				return structuredClone(value);
+			},
+			persistent: true,
+			update: async (next) => {
+				value = structuredClone(next);
+				input.onConfigurationUpdate?.(value);
+				return structuredClone(value);
+			},
+		},
+		requestApproval: input.requestApproval,
+	};
+}
+
+function preparedAction(approvalMode: PreparedConnectorAction["approvalMode"]): PreparedConnectorAction {
+	return {
+		preparationId: "prepared-1",
+		actionId: "demo.create",
+		description: "Create a demo record.",
+		sideEffect: "write",
+		dataSensitivity: "sensitive",
+		approvalMode,
+		expiresAt: 1_000_000_000_000,
+	};
+}
+
+function clientFor(input: {
+	readonly prepared: PreparedConnectorAction;
+	readonly onPrepare?: (context: RequestContext) => void;
+	readonly onExecute?: (prepared: PreparedConnectorAction) => void;
+	readonly onDiscard?: (prepared: PreparedConnectorAction) => void;
+}): ConnectorService {
+	return {
+		listApps: async () => Result.ok<ListAppsResponse>({ apps: [] }),
+		listConnections: async () => Result.ok<ListConnectionsResponse>({ connections: [] }),
+		searchActions: async (_input: SearchActionsInput) => Result.ok<SearchActionsResponse>({ actions: [], nextCursor: null }),
+		getActionGuide: async () => Result.ok<ActionGuideResponse>(actionGuide()),
+		prepareAction: async (_input, context) => {
+			input.onPrepare?.(context);
+			return Result.ok(input.prepared);
+		},
+		executePreparedAction: async (prepared) => {
+			input.onExecute?.(prepared);
+			return Result.ok<ExecuteActionResponse>({
+				status: "completed",
+				actionId: prepared.actionId,
+				output: { ok: true },
+			});
+		},
+		discardPreparedAction: async (prepared) => {
+			input.onDiscard?.(prepared);
+			return Result.ok(undefined);
+		},
+		health: async () => Result.ok<HealthResponse>({ status: "ready", protocolVersion: 1, connectorCount: 1, actionCount: 1 }),
+	};
+}
+
+function actionGuide(): ActionGuideResponse {
+	return {
+		action: {
+			connectorId: "demo",
+			actionId: "create",
+			description: "Create a demo record.",
+			inputSchema: { type: "object" },
+			outputSchema: { type: "object" },
+			requiredScopes: [],
+			sideEffect: "write",
+			dataSensitivity: "sensitive",
+		},
+		policy: "ask",
+	};
+}

@@ -1,0 +1,36 @@
+{
+	"name": "@jai/extension",
+	"version": "0.1.0",
+	"type": "module",
+	"description": "Official extensions for Jai Coding Agent.",
+	"files": ["dist"],
+	"exports": {
+		"./connector": {
+			"types": "./dist/connector.d.ts",
+			"import": "./dist/connector.js"
+		},
+		"./jai-plugins": {
+			"types": "./dist/jai-plugins.d.ts",
+			"import": "./dist/jai-plugins.js"
+		}
+	},
+	"scripts": {
+		"build": "tsup && tsc -p tsconfig.build.json",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@jai/coding-agent": "workspace:*",
+		"@jai/connector": "workspace:*",
+		"@modelcontextprotocol/sdk": "1.29.0",
+		"@sinclair/typebox": "^0.34.49",
+		"better-result": "^3.0.0",
+		"yaml": "^2.8.1"
+	},
+	"devDependencies": {
+		"@jai/agent": "workspace:*",
+		"@jai/ai": "workspace:*",
+		"tsup": "^8.5.1",
+		"typescript": "~5.8.3"
+	}
+}

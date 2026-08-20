@@ -16,13 +16,9 @@ import {
 	type JsonObject,
 	type JsonValue,
 } from "@jai/coding-agent";
-import {
-	codingSessionDirectory,
-	configuredModelResolver,
-	defaultCodingDataRoot,
-	discoverCodingAgentPluginDirectories,
-} from "@jai/coding-agent/jai-host";
+import { createJaiPluginsExtension } from "@jai/extension/jai-plugins";
 import { TaggedError } from "better-result";
+import { discoverCliAgentPluginDirectories } from "./plugin-directories";
 
 type OutputFormat = "text" | "json" | "stream-json";
 
@@ -225,29 +221,39 @@ async function resolvePrompt(options: CliOptions): Promise<string | undefined> {
 }
 
 async function createCliAgent(options: CliOptions, homeDirectory: string): Promise<CodingAgent> {
-	const pluginDirectories = await discoverCodingAgentPluginDirectories({
+	const pluginDirectories = await discoverCliAgentPluginDirectories({
 		homeDirectory,
 		workspaceDirectory: options.cwd,
 		workspaceTrusted: options.trustWorkspace,
 	});
-	const sessionDirectory = codingSessionDirectory(options.cwd, defaultCodingDataRoot(homeDirectory));
+	const sessionDirectory = path.join(homeDirectory, "jai", "projects", path.basename(options.cwd), "sessions");
 	const session = options.noSessionPersistence
 		? { kind: "ephemeral" as const }
 		: options.sessionId
 			? { kind: "resume" as const, id: options.sessionId, directory: sessionDirectory }
 			: { kind: "new" as const, directory: sessionDirectory };
+	const model = options.model ?? process.env.JAI_MODEL;
+	if (!model) {
+		throw new CliAgentError({
+			code: "coding_sdk.model_unavailable",
+			message: "No model selected; pass --model <provider/model> or set JAI_MODEL",
+			phase: "model",
+			retryable: false,
+		});
+	}
 	const created = await createCodingAgent({
-		workspace: { cwd: options.cwd, configRoot: options.cwd, trusted: options.trustWorkspace },
+		model,
+		cwd: options.cwd,
 		session,
-		resolveModel: configuredModelResolver,
 		requestApproval: createCliApproval(options.permissionMode),
-		homeDirectory,
-		plugins: { directories: pluginDirectories },
-		execution: {
-			...(options.model ? { model: options.model } : {}),
-			...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
-			...(options.maxTurns ? { maxTurns: options.maxTurns } : {}),
-		},
+		...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
+		...(options.maxTurns ? { maxTurns: options.maxTurns } : {}),
+		extensions: [
+			createJaiPluginsExtension({
+				directories: pluginDirectories,
+				dataDirectory: path.join(homeDirectory, ".jai", "agent-plugin-data"),
+			}),
+		],
 	});
 	if (created.isErr()) throw new CliAgentError(created.error);
 	return created.value;
@@ -286,7 +292,7 @@ async function runOne(
 			process.stdout.write(event.assistantEvent.delta);
 		}
 	});
-	const run = await agent.prompt({ prompt });
+	const run = await agent.prompt(prompt);
 	unsubscribe();
 	if (run.isErr()) throw new CliAgentError(run.error);
 	const messages = run.value.messages;
