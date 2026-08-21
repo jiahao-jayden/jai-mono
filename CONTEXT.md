@@ -42,6 +42,10 @@ _Avoid_: Desktop Agent host, session agent, public runtime facade
 A persisted conversation and Session App State record selected when a Coding Agent is created or restored. It is input to a runnable Coding Agent, not the object that executes work.
 _Avoid_: session agent, execution handle
 
+**Session Store**:
+The durable owner of Coding Agent Sessions and their append-only entries. Local JSONL, SQLite, and network database implementations share the same create, append, revision-conflict, and replay semantics.
+_Avoid_: filesystem repository, session directory, transcript cache
+
 **Session Selection**:
 The explicit choice of a `new`, `resume`, or `ephemeral` Coding Agent Session when creating a Coding Agent. It never silently creates a durable Session while attempting to resume one.
 _Avoid_: open-or-create, session fallback
@@ -78,9 +82,45 @@ _Avoid_: host runtime, frontend wrapper
 The required creation function that maps a requested model and SDK settings snapshot to the process-local Model and Provider used by one Coding Agent. The SDK owns when resolution occurs and all Coding Agent-facing provider semantics.
 _Avoid_: model authority, provider registry
 
-**Coding Workspace**:
-The immutable creation data describing a Coding Agent's working directory, configuration root, trust, local file access, and allowed locations. The SDK uses it to assemble tools; it is not an adapter.
-_Avoid_: workspace authority, tool factory
+**Workspace**:
+A product-visible project or collaboration scope. It may select filesystems, sessions, and execution policies, but is neither a filesystem nor a sandbox.
+_Avoid_: working directory, filesystem, sandbox
+
+**Execution Filesystem Context**:
+The immutable creation data describing the filesystem available to a Coding Agent, its root, configuration root, trust, allowed locations, and execution host. The SDK uses it to assemble tools; it is not an adapter.
+_Avoid_: Workspace, tool factory
+
+**Filesystem Repository**:
+The durable owner of a named filesystem and its revisions. It retains file content independently from any active execution environment.
+_Avoid_: object store, workspace, sandbox filesystem
+
+**Filesystem Revision**:
+An immutable, complete file-tree state in a Filesystem Repository. A Session may refer to one revision without owning its bytes.
+_Avoid_: current folder, session snapshot
+
+**Materialized Filesystem**:
+A writable POSIX file tree derived from a Filesystem Revision or an attached local directory for a bounded execution period.
+_Avoid_: persistent filesystem, object prefix
+
+**Filesystem Lease**:
+The exclusive, time-bounded authority to change a repository-backed Materialized Filesystem and commit a successor Filesystem Revision. It does not apply to an externally attached local directory.
+_Avoid_: session lock, sandbox id
+
+**Execution Environment**:
+The process environment, resource policy, network policy, and filesystem view used by Agent tools during an execution. It may run in the same process, on a user device, or in cloud infrastructure.
+_Avoid_: workspace, filesystem repository, session
+
+**Local Execution Host**:
+An authenticated user-device process that owns local filesystem authority and exposes a selected Execution Environment to a Coding Agent. It executes operations authorized by the Agent and validates only the calling channel, registered environment, and execution lease.
+_Avoid_: permission authority, cloud filesystem mount, remote shell
+
+**Web Coding Agent**:
+A cloud-hosted Coding Agent used through the web product. Each execution selects either a Local Execution Host or a cloud Execution Environment.
+_Avoid_: Desktop Coding Agent, browser-local agent
+
+**Desktop Coding Agent**:
+A Coding Agent used through the Desktop product. The current product assembles a local Agent and local Execution Environment, while its creation contract permits a future cloud-hosted Agent without changing Desktop Session or Workspace semantics.
+_Avoid_: Web Coding Agent, permanently local agent
 
 **Approval Handler**:
 The optional creation function that presents an SDK permission request and returns an explicit decision. The SDK owns policy evaluation, request lifecycle, cancellation, and canonical decision meaning.
