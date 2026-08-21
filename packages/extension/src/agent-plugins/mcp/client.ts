@@ -1,4 +1,5 @@
 import type { AgentTool, AgentToolResult } from "@jai/agent";
+import { type McpToolMetadata, mcpToolActivityKind, mcpToolTitle } from "@jai/coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -80,10 +81,12 @@ function createTool(
 	namespace: string,
 	serverName: string,
 	client: Client,
-	tool: { readonly name: string; readonly description?: string; readonly inputSchema?: unknown },
+	tool: McpToolMetadata & { readonly description?: string; readonly inputSchema?: unknown },
 ): AgentTool {
 	return {
 		name: `mcp__${sanitize(namespace)}__${sanitize(serverName)}__${sanitize(tool.name)}`,
+		activityKind: mcpToolActivityKind(tool),
+		title: () => mcpToolTitle(tool),
 		description: tool.description?.trim() || `MCP tool ${tool.name} from ${serverName}`,
 		parameters: jsonSchemaToTypeBox(tool.inputSchema),
 		executionMode: "parallel",

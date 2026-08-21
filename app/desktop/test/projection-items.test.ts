@@ -40,6 +40,9 @@ describe("summarizeToolArguments", () => {
 		expect(summarizeToolArguments("Bash", { command: "ls -la" })).toBe("ls -la");
 		expect(summarizeToolArguments("Skill", { skill: "tdd" })).toBe("/tdd");
 		expect(summarizeToolArguments("Read", { path: "src/app.ts" })).toBe("src/app.ts");
+		expect(summarizeToolArguments("any_tool_name", { actionId: "google_gmail.list_messages" })).toBe(
+			"google_gmail.list_messages",
+		);
 		expect(summarizeToolArguments("Glob", {})).toBe("Glob");
 	});
 
@@ -80,7 +83,7 @@ describe("assistantPartItem", () => {
 			{ type: "toolCall", id: "call-1", name: "Read", arguments: { path: "a.ts" } },
 		]);
 		expect(assistantPartItem({ message: withTool, messageId: "m1", turnId: "t1", contentIndex: 0, status: "complete" }))
-			.toMatchObject({ kind: "narration", text: "let me look" });
+			.toMatchObject({ kind: "narration", activityId: "m1", text: "let me look" });
 
 		const answer = assistantMessage([{ type: "text", text: "done" }], "endTurn");
 		expect(assistantPartItem({ message: answer, messageId: "m1", turnId: "t1", contentIndex: 0, status: "complete" }))
@@ -122,7 +125,7 @@ describe("assistantPartItem", () => {
 		]);
 		expect(
 			assistantPartItem({ message, messageId: "m1", turnId: "t1", contentIndex: 0, status: "streaming" }),
-		).toMatchObject({ kind: "thinking", turnId: "t1", text: "hmm", status: "streaming" });
+		).toMatchObject({ kind: "thinking", turnId: "t1", activityId: "m1", text: "hmm", status: "streaming" });
 		expect(
 			assistantPartItem({ message, messageId: "m1", turnId: "t1", contentIndex: 1, status: "streaming" }),
 		).toBeUndefined();

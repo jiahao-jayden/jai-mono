@@ -7,9 +7,13 @@ import type {
 	Provider,
 	TextContent,
 	Tool,
+	ToolActivityKind,
 	ToolCall,
 	ToolResultMessage,
 } from "@jai/ai";
+
+export type { ToolActivityKind } from "@jai/ai";
+
 import type { Static, TSchema } from "@sinclair/typebox";
 
 export interface AgentToolResult<TDetails = unknown> {
@@ -32,6 +36,12 @@ export type ToolExecutionMode = "sequential" | "parallel";
 export interface AgentTool<T extends TSchema = TSchema, TDetails = unknown> extends Tool<T> {
 	/** 单次调用的用户可见标题；缺省使用 name。 */
 	title?(args: Static<T>): string;
+	/**
+	 * 单次调用的展示类别，覆盖静态的 `activityKind`。用于同一个工具按参数呈现
+	 * 不同能力（如 Connector 的 execute_action 按 Action 的 sideEffect 变化）。
+	 * 必须同步解析：`tool_execution_start` 在 execute 之前就要带上类别。
+	 */
+	resolveActivityKind?(args: Static<T>): ToolActivityKind | undefined;
 	/**
 	 * 执行工具。参数已由 loop 校验并转换为 Static<T>。
 	 * 失败请 throw，由 loop 捕获转成 isError 的 ToolResultMessage。
@@ -90,10 +100,36 @@ export type CoreAgentEvent =
 	// 仅 assistant 流式期间发出，透传底层 provider 的细粒度事件
 	| { type: "message_update"; message: AssistantMessage; assistantEvent: AssistantMessageEvent }
 	| { type: "message_end"; message: AgentMessage }
+	/**
+	 * 一次已经流式发布出去的 assistant 尝试被丢弃了（协议违规重试、或 provider
+	 * 在 start 之后失败）。消费者必须撤掉为它渲染的内容：后续重试会以新的
+	 * `message_start` 重新开始，而不是接着写。
+	 */
+	| { type: "message_discard" }
 	// 工具执行生命周期
-	| { type: "tool_execution_start"; toolCallId: string; toolName: string; title: string; args: unknown }
-	| { type: "tool_execution_update"; toolCallId: string; toolName: string; partial: AgentToolResult }
-	| { type: "tool_execution_end"; toolCallId: string; toolName: string; result: AgentToolResult; isError: boolean };
+	| {
+			type: "tool_execution_start";
+			toolCallId: string;
+			toolName: string;
+			activityKind: ToolActivityKind;
+			title: string;
+			args: unknown;
+	  }
+	| {
+			type: "tool_execution_update";
+			toolCallId: string;
+			toolName: string;
+			activityKind: ToolActivityKind;
+			partial: AgentToolResult;
+	  }
+	| {
+			type: "tool_execution_end";
+			toolCallId: string;
+			toolName: string;
+			activityKind: ToolActivityKind;
+			result: AgentToolResult;
+			isError: boolean;
+	  };
 
 /**
  * 一次流式调用：既可迭代过程事件，也可等待最终结果。

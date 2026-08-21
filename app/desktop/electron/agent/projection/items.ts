@@ -6,8 +6,10 @@ import type {
 	DesktopSlashInvocation,
 	DesktopSubagentItem,
 	DesktopThinkingItem,
+	DesktopToolActivityKind,
 	DesktopToolItem,
 } from "../../../shared/desktop-rpc";
+import { replayActivityKind } from "./activity-kind";
 
 /**
  * Builds the Desktop transcript items. Both the live Agent event stream and the
@@ -35,7 +37,9 @@ export interface ToolItemInput {
 	readonly toolCallId: string;
 	readonly toolName: string;
 	readonly status: DesktopToolItem["status"];
+	readonly activityId: string;
 	readonly turnId?: string;
+	readonly activityKind: DesktopToolActivityKind;
 	readonly summary?: string;
 	readonly details?: string;
 }
@@ -45,8 +49,10 @@ export function toolItem(input: ToolItemInput): DesktopToolItem {
 		kind: "tool",
 		id: toolItemId(input.toolCallId),
 		turnId: input.turnId ?? toolItemId(input.toolCallId),
+		activityId: input.activityId,
 		toolCallId: input.toolCallId,
 		toolName: input.toolName,
+		activityKind: input.activityKind,
 		status: input.status,
 		summary: input.summary,
 		...(input.details ? { details: input.details } : {}),
@@ -119,6 +125,7 @@ export function assistantPartItem({
 			kind: "thinking",
 			id: `thinking:${messageId}:${contentIndex}`,
 			turnId,
+			activityId: messageId,
 			text: part.thinking,
 			status,
 			timestamp: message.timestamp,
@@ -134,7 +141,9 @@ export function assistantPartItem({
 		return toolItem({
 			toolCallId: part.id,
 			turnId,
+			activityId: messageId,
 			toolName: part.name,
+			activityKind: replayActivityKind(part.name),
 			status: "running",
 			summary: summarizeToolArguments(part.name, part.arguments),
 		});
@@ -147,7 +156,7 @@ export function assistantPartItem({
 		timestamp: message.timestamp,
 	};
 	if (message.stopReason === "toolUse" || message.content.some((candidate) => candidate.type === "toolCall")) {
-		return { kind: "narration", turnId, ...base };
+		return { kind: "narration", turnId, activityId: messageId, ...base };
 	}
 	return { kind: "message", role: "assistant", stopReason: message.stopReason, ...base };
 }
@@ -172,8 +181,13 @@ export function summarizeToolArguments(toolName: string, args: unknown): string 
 	if (!isRecord(args)) return undefined;
 	const command = toolName === "Bash" ? stringArgument(args, "command") : undefined;
 	const skill = toolName === "Skill" ? stringArgument(args, "skill") : undefined;
+	const action = stringArgument(args, "actionId");
+	const query = stringArgument(args, "query");
 	const path = stringArgument(args, "path");
-	return truncate(command ?? (skill ? `/${skill}` : undefined) ?? path ?? toolName, TOOL_ARGUMENT_SUMMARY_MAX);
+	return truncate(
+		command ?? (skill ? `/${skill}` : undefined) ?? action ?? query ?? path ?? toolName,
+		TOOL_ARGUMENT_SUMMARY_MAX,
+	);
 }
 
 /** Extracts the readable text of a tool result, whether live (`{content}`) or durable (an array). */

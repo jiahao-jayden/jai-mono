@@ -123,11 +123,14 @@ export function projectEvent(event: AgentEvent): CodingAgentEvent {
 			};
 		case "message_end":
 			return { type: "message_end", message: projectMessage(event.message) };
+		case "message_discard":
+			return { type: "message_discard" };
 		case "tool_execution_start":
 			return {
 				type: "tool_execution_start",
 				toolCallId: event.toolCallId,
 				toolName: event.toolName,
+				activityKind: event.activityKind,
 				title: event.title,
 				args: projectJson(event.args),
 			};
@@ -136,6 +139,7 @@ export function projectEvent(event: AgentEvent): CodingAgentEvent {
 				type: "tool_execution_update",
 				toolCallId: event.toolCallId,
 				toolName: event.toolName,
+				activityKind: event.activityKind,
 				partial: projectJson(event.partial),
 			};
 		case "tool_execution_end":
@@ -143,6 +147,7 @@ export function projectEvent(event: AgentEvent): CodingAgentEvent {
 				type: "tool_execution_end",
 				toolCallId: event.toolCallId,
 				toolName: event.toolName,
+				activityKind: event.activityKind,
 				result: projectJson(event.result),
 				isError: event.isError,
 			};

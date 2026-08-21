@@ -92,7 +92,7 @@ describe("Agent Plugins 组件适配器", () => {
 		const probe = [
 			"const readline=require('node:readline');",
 			"const rl=readline.createInterface({input:process.stdin});",
-			"rl.on('line',line=>{const r=JSON.parse(line);if(r.method==='notifications/initialized')return;let result;if(r.method==='initialize')result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'probe',version:'1'}};else if(r.method==='tools/list')result={tools:[{name:'echo',description:'Echo input',inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false}}]};else if(r.method==='tools/call')result={content:[{type:'text',text:JSON.stringify({text:String(r.params.arguments.text),cwd:process.cwd()})}]};else result={};if(r.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:r.id,result})+'\\n');});",
+			"rl.on('line',line=>{const r=JSON.parse(line);if(r.method==='notifications/initialized')return;let result;if(r.method==='initialize')result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'probe',version:'1'}};else if(r.method==='tools/list')result={tools:[{name:'echo',description:'Echo input',annotations:{readOnlyHint:true},inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false}}]};else if(r.method==='tools/call')result={content:[{type:'text',text:JSON.stringify({text:String(r.params.arguments.text),cwd:process.cwd()})}]};else result={};if(r.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:r.id,result})+'\\n');});",
 		].join("");
 		const root = await createPlugin({ mcpServers: { probe: { type: "stdio", command: "node", args: ["-e", probe] } } });
 		const loaded = await loadAgentPluginDirectory(root);
@@ -102,6 +102,7 @@ describe("Agent Plugins 组件适配器", () => {
 		expect(runtime.isOk()).toBe(true);
 		if (runtime.isErr()) return;
 		expect(runtime.value.tools.map((tool) => tool.name)).toEqual(["mcp__agent-plugins-test__probe__echo"]);
+		expect(runtime.value.tools[0]?.activityKind).toBe("read");
 		const result = await runtime.value.tools[0]!.execute("call-1", { text: "hello" });
 		expect(result.content).toEqual([
 			{ type: "text", text: JSON.stringify({ text: "hello", cwd: await realpath(root) }) },

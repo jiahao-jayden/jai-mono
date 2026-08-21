@@ -1,3 +1,4 @@
+import type { ToolActivityKind } from "@jai/agent";
 import type { Result } from "better-result";
 import type { JsonObject, JsonValue } from "../core/json";
 import type { CodingToolName } from "../tools/names";
@@ -204,10 +205,12 @@ export type CodingAgentEvent =
 				| { readonly type: "error"; readonly reason: "error" | "aborted"; readonly error: CodingAssistantMessage };
 	  }
 	| { readonly type: "message_end"; readonly message: CodingAgentMessage }
+	| { readonly type: "message_discard" }
 	| {
 			readonly type: "tool_execution_start";
 			readonly toolCallId: string;
 			readonly toolName: string;
+			readonly activityKind: ToolActivityKind;
 			readonly title: string;
 			readonly args: JsonValue;
 	  }
@@ -215,12 +218,14 @@ export type CodingAgentEvent =
 			readonly type: "tool_execution_update";
 			readonly toolCallId: string;
 			readonly toolName: string;
+			readonly activityKind: ToolActivityKind;
 			readonly partial: JsonValue;
 	  }
 	| {
 			readonly type: "tool_execution_end";
 			readonly toolCallId: string;
 			readonly toolName: string;
+			readonly activityKind: ToolActivityKind;
 			readonly result: JsonValue;
 			readonly isError: boolean;
 	  }

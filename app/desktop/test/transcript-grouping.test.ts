@@ -3,14 +3,13 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { DesktopTranscriptItem } from "../shared/desktop-rpc";
 import {
-	explorationSummary,
 	groupTranscriptItems,
 	TranscriptItem,
-	workGroupTitle,
-	workProcessRows,
+	TranscriptItems,
+	workTimelineSteps,
 } from "../src/components/shell/chat/chat-transcript";
 
-describe("groupTranscriptItems", () => {
+describe("transcript grouping", () => {
 	test("只将明确的 compaction item 渲染为上下文压缩", () => {
 		const compaction: DesktopTranscriptItem = {
 			kind: "compaction",
@@ -34,242 +33,239 @@ describe("groupTranscriptItems", () => {
 		).toBe("");
 	});
 
-	test("压缩时显示轻量的运行状态", () => {
-		const compaction: DesktopTranscriptItem = {
-			kind: "compaction",
-			id: "compaction:pending:1",
-			summary: "",
-			timestamp: 1,
-			status: "compacting",
+	test("单个工具使用 ToolTimeline 渲染", () => {
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:search-1",
+			turnId: "turn-1",
+			activityId: "assistant:1",
+			toolCallId: "search-1",
+			toolName: "Grep",
+			activityKind: "search",
+			status: "complete",
+			summary: "chat-transcript.tsx",
 		};
 
-		expect(renderToStaticMarkup(createElement(TranscriptItem, { item: compaction }))).toContain("Compacting context");
+		const markup = renderToStaticMarkup(createElement(TranscriptItem, { item: tool }));
+		expect(markup).toContain('data-slot="tool-timeline"');
+		expect(markup).toContain("1 step · 1 action");
 	});
 
-	test("按 turnId 合并相邻的思考与工具", () => {
+	test("context compaction 不会切断同一 turn 的工作日志", () => {
+		const firstTool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:1",
+			turnId: "turn-1",
+			activityId: "assistant:1",
+			toolCallId: "call-1",
+			toolName: "Read",
+			activityKind: "read",
+			status: "complete",
+		};
+		const compaction: Extract<DesktopTranscriptItem, { kind: "compaction" }> = {
+			kind: "compaction",
+			id: "compaction:1",
+			summary: "Earlier context",
+			timestamp: 1,
+			status: "complete",
+		};
+		const nextTool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			...firstTool,
+			id: "tool:2",
+			activityId: "assistant:2",
+			toolCallId: "call-2",
+			toolName: "Bash",
+			activityKind: "execute",
+		};
+
+		expect(groupTranscriptItems([firstTool, compaction, nextTool])).toEqual([
+			{ id: "work:turn-1:tool:1", items: [firstTool, nextTool] },
+		]);
+		expect(groupTranscriptItems([firstTool, compaction])).toEqual([
+			{ id: "work:turn-1:tool:1", items: [firstTool] },
+		]);
+	});
+
+	test("未知 MCP 即使命名为 search 或 list 也只聚合为通用操作", () => {
 		const items: DesktopTranscriptItem[] = [
 			{
-				kind: "thinking",
-				id: "thinking:turn-1:0",
-				turnId: "turn-1",
-				text: "Inspecting the request",
+				kind: "message",
+				id: "message:user-1",
+				role: "user",
+				text: "查询外部服务的数据",
 				status: "complete",
 				timestamp: 1,
 			},
 			{
-				kind: "tool",
-				id: "tool:skill-1",
-				turnId: "turn-1",
-				toolCallId: "skill-1",
-				toolName: "Skill",
-				status: "complete",
-			},
-			{
-				kind: "thinking",
-				id: "thinking:assistant-2:0",
-				turnId: "turn-1",
-				text: "Summarizing the tool result",
+				kind: "narration",
+				id: "message:assistant-1:0",
+				turnId: "message:user-1",
+				activityId: "message:assistant-1",
+				text: "我先确认有哪些可用操作。",
 				status: "complete",
 				timestamp: 2,
 			},
+			{
+				kind: "tool",
+				id: "tool:list-apps",
+				turnId: "message:user-1",
+				activityId: "message:assistant-1",
+				toolCallId: "list-apps",
+				toolName: "mcp__ext__srv__list_apps",
+				activityKind: "operation",
+				status: "complete",
+			},
+			{
+				kind: "tool",
+				id: "tool:list-connections",
+				turnId: "message:user-1",
+				activityId: "message:assistant-1",
+				toolCallId: "list-connections",
+				toolName: "mcp__ext__srv__list_connections",
+				activityKind: "operation",
+				status: "complete",
+			},
+			{
+				kind: "narration",
+				id: "message:assistant-2:0",
+				turnId: "message:user-1",
+				activityId: "message:assistant-2",
+				text: "连接已就绪，继续执行。",
+				status: "complete",
+				timestamp: 3,
+			},
+			{
+				kind: "tool",
+				id: "tool:search-actions",
+				turnId: "message:user-1",
+				activityId: "message:assistant-2",
+				toolCallId: "search-actions",
+				toolName: "mcp__ext__srv__search_things",
+				activityKind: "operation",
+				status: "complete",
+				summary: "pending records",
+			},
+			{
+				kind: "tool",
+				id: "tool:search-messages",
+				turnId: "message:user-1",
+				activityId: "message:assistant-3",
+				toolCallId: "search-messages",
+				toolName: "mcp__ext__srv__search_things",
+				activityKind: "operation",
+				status: "complete",
+				summary: "messages",
+			},
+			{
+				kind: "tool",
+				id: "tool:search-list",
+				turnId: "message:user-1",
+				activityId: "message:assistant-3",
+				toolCallId: "search-list",
+				toolName: "mcp__ext__srv__search_things",
+				activityKind: "operation",
+				status: "complete",
+				summary: "list",
+			},
+			{
+				kind: "message",
+				id: "message:assistant-final",
+				role: "assistant",
+				text: "查询完成。",
+				status: "complete",
+				timestamp: 4,
+				stopReason: "stop",
+			},
 		];
 
-		expect(groupTranscriptItems(items)).toEqual([
-			{
-				id: "work:turn-1:thinking:turn-1:0",
-				items,
-			},
+		const rows = groupTranscriptItems(items);
+		expect(rows).toHaveLength(3);
+		expect(rows[1]).toMatchObject({ id: "work:message:user-1:message:assistant-1:0" });
+
+		const markup = renderToStaticMarkup(createElement(TranscriptItems, { items, loading: false }));
+		expect(markup).toContain("3 steps · 5 actions");
+		const tools = items.filter(
+			(item): item is Extract<DesktopTranscriptItem, { kind: "tool" }> => item.kind === "tool",
+		);
+		expect(workTimelineSteps(tools)).toMatchObject([
+			{ verb: "Ran", chip: "2 actions" },
+			{ verb: "Ran", chip: "pending records" },
+			{ verb: "Ran", chip: "2 actions" },
 		]);
-		const [row] = groupTranscriptItems(items);
-		if (!row || "kind" in row) throw new Error("Expected a work group");
-		expect(workGroupTitle(row.items, false)).toBe("Loading skill");
+		expect((markup.match(/data-slot="tool-timeline"/g) ?? []).length).toBe(1);
 	});
 
-	test("正文分隔工作阶段且不允许后续工具越过正文", () => {
+	test("Connector 工具按投影下来的类别分层显示动词", () => {
+		const tool = (
+			id: string,
+			toolName: string,
+			activityKind: Extract<DesktopTranscriptItem, { kind: "tool" }>["activityKind"],
+			summary?: string,
+		): Extract<DesktopTranscriptItem, { kind: "tool" }> => ({
+			kind: "tool",
+			id: `tool:${id}`,
+			turnId: "message:user-1",
+			activityId: "message:assistant-1",
+			toolCallId: id,
+			toolName,
+			activityKind,
+			status: "complete",
+			...(summary ? { summary } : {}),
+		});
+
+		const tools = [
+			tool("list-apps", "connector__list_apps", "read", "apps"),
+			tool("search-actions", "connector__search_actions", "search", "pending records"),
+			// A read-only Action and a write Action split into separate steps even
+			// though both are execute_action on the same activity.
+			tool("read-mail", "connector__execute_action", "read", "google_gmail.list_messages"),
+			tool("send-mail", "connector__execute_action", "write", "google_gmail.send_message"),
+			// destructive has no dedicated verb yet and stays a generic operation.
+			tool("purge", "connector__execute_action", "operation", "google_gmail.purge"),
+		];
+
+		expect(workTimelineSteps(tools)).toMatchObject([
+			{ verb: "Read", chip: "apps" },
+			{ verb: "Searched", chip: "pending records" },
+			{ verb: "Read", chip: "google_gmail.list_messages" },
+			{ verb: "Edited", chip: "google_gmail.send_message" },
+			{ verb: "Ran", chip: "google_gmail.purge" },
+		]);
+	});
+
+	test("回复文本仍然是工作阶段的顺序屏障", () => {
 		const thinking: Extract<DesktopTranscriptItem, { kind: "thinking" }> = {
 			kind: "thinking",
 			id: "thinking:1",
 			turnId: "turn-1",
+			activityId: "message:assistant-1",
 			text: "Analyze first",
 			status: "complete",
 			timestamp: 1,
 		};
-		const text: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+		const reply: Extract<DesktopTranscriptItem, { kind: "message" }> = {
 			kind: "message",
-			id: "message:1:1",
+			id: "message:reply",
 			role: "assistant",
 			text: "先说说当前版本的分析，再动手。",
 			status: "complete",
-			timestamp: 1,
+			timestamp: 2,
 		};
 		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
 			kind: "tool",
 			id: "tool:1",
 			turnId: "turn-1",
+			activityId: "message:assistant-2",
 			toolCallId: "call-1",
 			toolName: "Bash",
+			activityKind: "execute",
 			status: "complete",
 		};
-		const nextThinking: Extract<DesktopTranscriptItem, { kind: "thinking" }> = {
-			...thinking,
-			id: "thinking:2",
-			text: "Continue after the tool",
-			timestamp: 2,
-		};
 
-		expect(groupTranscriptItems([thinking, text, tool, nextThinking])).toEqual([
+		expect(groupTranscriptItems([thinking, reply, tool])).toEqual([
 			{ id: "work:turn-1:thinking:1", items: [thinking] },
-			text,
-			{ id: "work:turn-1:tool:1", items: [tool, nextThinking] },
-		]);
-	});
-
-	test("将工具前叙述留在相邻 Work Process，最终回答仍是顺序屏障", () => {
-		const thinking: DesktopTranscriptItem = {
-			kind: "thinking",
-			id: "thinking:1",
-			turnId: "turn-1",
-			text: "Inspecting",
-			status: "complete",
-			timestamp: 1,
-		};
-		const narration: DesktopTranscriptItem = {
-			kind: "narration",
-			id: "narration:1",
-			turnId: "turn-1",
-			text: "先检查投影逻辑。",
-			status: "complete",
-			timestamp: 2,
-		};
-		const tool: DesktopTranscriptItem = {
-			kind: "tool",
-			id: "tool:1",
-			turnId: "turn-1",
-			toolCallId: "read-1",
-			toolName: "Read",
-			status: "complete",
-		};
-		const reply: DesktopTranscriptItem = {
-			kind: "message",
-			id: "message:reply",
-			role: "assistant",
-			text: "检查完成。",
-			status: "complete",
-			timestamp: 3,
-			stopReason: "stop",
-		};
-
-		expect(groupTranscriptItems([thinking, narration, tool, reply])).toEqual([
-			{ id: "work:turn-1:thinking:1", items: [thinking, narration, tool] },
 			reply,
-		]);
-	});
-
-	test("用实际工具生成语义标题", () => {
-		const items: DesktopTranscriptItem[] = [
-			{
-				kind: "thinking",
-				id: "thinking:turn-1:0",
-				turnId: "turn-1",
-				text: "Loading the research skill",
-				status: "complete",
-				timestamp: 1,
-			},
-			{
-				kind: "tool",
-				id: "tool:skill-1",
-				turnId: "turn-1",
-				toolCallId: "skill-1",
-				toolName: "Skill",
-				status: "complete",
-				summary: "/last30days",
-			},
-		];
-
-		const [row] = groupTranscriptItems(items);
-		expect(row).not.toHaveProperty("kind");
-		if (!row || "kind" in row) throw new Error("Expected a work group");
-		expect(workGroupTitle(row.items, false)).toBe("Loaded last30days");
-	});
-
-	test("命令工具与未知工具使用稳定的阶段标题", () => {
-		const bash: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
-			kind: "tool",
-			id: "tool:bash-1",
-			turnId: "turn-1",
-			toolCallId: "bash-1",
-			toolName: "Bash",
-			status: "running",
-			summary: "date",
-		};
-		const unknown: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
-			...bash,
-			id: "tool:custom-1",
-			toolCallId: "custom-1",
-			toolName: "InternalCustomTool",
-			status: "complete",
-		};
-
-		expect(workGroupTitle([bash], true)).toBe("Executing");
-		expect(workGroupTitle([{ ...bash, status: "complete" }], false)).toBe("Executing");
-		expect(workGroupTitle([unknown], false)).toBe("Working");
-	});
-
-	test("连续读取和搜索聚合为一个探索步骤", () => {
-		const read: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
-			kind: "tool",
-			id: "tool:read-1",
-			turnId: "turn-1",
-			toolCallId: "read-1",
-			toolName: "Read",
-			status: "complete",
-			summary: "README.md",
-		};
-		const grep: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
-			...read,
-			id: "tool:grep-1",
-			toolCallId: "grep-1",
-			toolName: "Grep",
-			summary: "src",
-		};
-
-		const rows = workProcessRows([read, grep]);
-		expect(rows).toHaveLength(1);
-		expect(rows[0]).toMatchObject({ kind: "exploration", items: [read, grep] });
-		expect(explorationSummary([read, grep], false)).toBe("Explored 1 file, 1 search");
-		expect(workGroupTitle([read, grep], false)).toBe("Exploring");
-	});
-
-	test("Work Process 行保留 thinking、narration 与工具的原始顺序", () => {
-		const thinking: DesktopTranscriptItem = {
-			kind: "thinking",
-			id: "thinking:1",
-			turnId: "turn-1",
-			text: "Inspecting",
-			status: "complete",
-			timestamp: 1,
-		};
-		const narration: DesktopTranscriptItem = {
-			kind: "narration",
-			id: "narration:1",
-			turnId: "turn-1",
-			text: "检查文件后运行验证。",
-			status: "complete",
-			timestamp: 2,
-		};
-		const tool: DesktopTranscriptItem = {
-			kind: "tool",
-			id: "tool:bash-1",
-			turnId: "turn-1",
-			toolCallId: "bash-1",
-			toolName: "Bash",
-			status: "complete",
-		};
-
-		expect(workProcessRows([thinking, narration, tool])).toEqual([
-			{ kind: "item", item: thinking },
-			{ kind: "item", item: narration },
-			{ kind: "item", item: tool },
+			{ id: "work:turn-1:tool:1", items: [tool] },
 		]);
 	});
 });

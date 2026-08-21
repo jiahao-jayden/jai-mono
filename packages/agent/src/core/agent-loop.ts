@@ -1,6 +1,5 @@
 import {
 	type AssistantMessage,
-	type AssistantMessageEvent,
 	type Context,
 	discardProtocolViolationContent,
 	EventStream,
@@ -21,6 +20,7 @@ import type {
 	AgentTool,
 	AgentToolResult,
 	CoreAgentEvent,
+	ToolActivityKind,
 	ToolCallContext,
 } from "./types";
 
@@ -221,15 +221,15 @@ async function runTurn(run: AgentLoopRuntime, pendingMessages: AgentMessage[]): 
 
 /**
  * 一次 model call 的产出。started 记录 provider 是否已经发出 start——
- * 它决定这次失败还能不能重试，也决定 publish 时是否需要补一条 message_start。
+ * 它决定这次失败还能不能重试，也决定是否需要补一条 message_start。
+ *
+ * 事件是边流边发的，所以一次被丢弃的 attempt 已经在 UI 上留下了内容；调用方
+ * 必须为它发一条 `message_discard`，而不是指望它从未出现过。
  */
 interface ModelCallAttempt {
 	message: AssistantMessage;
 	started: boolean;
-	events: BufferedAssistantEvent[];
 }
-
-type BufferedAssistantEvent = Exclude<AssistantMessageEvent, { type: "done" | "error" }>;
 
 async function streamAssistantResponse(run: AgentLoopRuntime): Promise<AssistantMessage> {
 	const { context, config, emit } = run;
@@ -247,9 +247,10 @@ async function streamAssistantResponse(run: AgentLoopRuntime): Promise<Assistant
 	let attemptContext = prepared;
 	let attempt = await attemptModelCall(run, attemptContext);
 
-	// 文本工具调用是模型输出协议错误，不是 provider 故障。attempt 的事件还没有发布，
-	// 所以可以丢弃它，附加一次临时纠正消息后重新请求。
+	// 文本工具调用是模型输出协议错误，不是 provider 故障。丢弃这次尝试，附加一次
+	// 临时纠正消息后重新请求；它的内容已经流式发布出去了，所以要先撤回。
 	if (isModelOutputProtocolViolation(attempt.message)) {
+		discardAttempt(run, attempt);
 		const directive = config.onModelError ? await config.onModelError(attempt.message, prepared) : undefined;
 		attemptContext = appendProtocolRepairMessage(directive?.context ?? prepared);
 		attempt = await attemptModelCall(run, attemptContext);
@@ -264,6 +265,7 @@ async function streamAssistantResponse(run: AgentLoopRuntime): Promise<Assistant
 	) {
 		const directive = await config.onModelError(attempt.message, attemptContext);
 		if (directive) {
+			discardAttempt(run, attempt);
 			attemptContext = directive.context;
 			attempt = await attemptModelCall(run, attemptContext);
 		}
@@ -271,19 +273,27 @@ async function streamAssistantResponse(run: AgentLoopRuntime): Promise<Assistant
 
 	// 最终协议错误不进入 transcript，也不把模型输出展示成普通 assistant 文本。
 	context.tools = [...attemptContext.tools];
-	if (isModelOutputProtocolViolation(attempt.message)) return discardProtocolViolationContent(attempt.message);
+	if (isModelOutputProtocolViolation(attempt.message)) {
+		discardAttempt(run, attempt);
+		return discardProtocolViolationContent(attempt.message);
+	}
 
-	// 只有最终采纳的那次尝试才进入 transcript 与 message 事件。attempt 的事件在
-	// provider stream 完成前都保持在内存中，保证修复重试不会留下半条消息。
-	publishAttempt(run, attempt);
+	// provider 从未发出 start 时没有流式内容，补一条 message_start 让消费者拿到
+	// 完整的 start/end 配对。
+	if (!attempt.started) emit({ type: "message_start", message: attempt.message });
 	context.messages.push(attempt.message);
 	emit({ type: "message_end", message: attempt.message });
 
 	return attempt.message;
 }
 
+/** 撤回一次已经流式发布、但不会进入 transcript 的 assistant 尝试。 */
+function discardAttempt(run: AgentLoopRuntime, attempt: ModelCallAttempt): void {
+	if (attempt.started) run.emit({ type: "message_discard" });
+}
+
 async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): Promise<ModelCallAttempt> {
-	const { config, signal } = run;
+	const { config, signal, emit } = run;
 
 	const llmContext: Context = {
 		systemPrompt: request.systemPrompt,
@@ -300,13 +310,12 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 	});
 
 	let started = false;
-	const events: BufferedAssistantEvent[] = [];
 
 	for await (const event of response) {
 		switch (event.type) {
 			case "start":
 				started = true;
-				events.push(structuredClone(event));
+				emit({ type: "message_start", message: event.partial });
 				break;
 
 			case "text_start":
@@ -318,37 +327,16 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 			case "toolcall_start":
 			case "toolcall_delta":
 			case "toolcall_end":
-				events.push(structuredClone(event));
+				emit({ type: "message_update", message: event.partial, assistantEvent: event });
 				break;
 
 			case "done":
 			case "error":
-				return { message: await response.result(), started, events };
+				return { message: await response.result(), started };
 		}
 	}
 
-	return { message: await response.result(), started, events };
-}
-
-function publishAttempt(run: AgentLoopRuntime, attempt: ModelCallAttempt): void {
-	const { emit } = run;
-	if (!attempt.started) {
-		emit({ type: "message_start", message: attempt.message });
-		return;
-	}
-
-	for (const event of attempt.events) {
-		if (event.type === "start") {
-			emit({ type: "message_start", message: event.partial });
-			continue;
-		}
-
-		emit({
-			type: "message_update",
-			message: event.partial,
-			assistantEvent: event,
-		});
-	}
+	return { message: await response.result(), started };
 }
 
 function appendProtocolRepairMessage(context: AgentContext): AgentContext {
@@ -450,10 +438,12 @@ async function executeToolCallBatch(run: AgentLoopRuntime, toolCalls: ToolCall[]
 async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promise<ExecutedToolCall> {
 	const { context, config, signal, emit } = run;
 	const tool = context.tools.find((candidate) => candidate.name === toolCall.name);
+	const activityKind = resolveToolActivityKind(tool, toolCall.arguments);
 	emit({
 		type: "tool_execution_start",
 		toolCallId: toolCall.id,
 		toolName: toolCall.name,
+		activityKind,
 		title: resolveToolTitle(tool, toolCall.arguments),
 		args: toolCall.arguments,
 	});
@@ -496,6 +486,7 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 					type: "tool_execution_update",
 					toolCallId: toolCall.id,
 					toolName: toolCall.name,
+					activityKind,
 					partial,
 				});
 			});
@@ -531,6 +522,7 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 		type: "tool_execution_end",
 		toolCallId: toolCall.id,
 		toolName: toolCall.name,
+		activityKind,
 		result,
 		isError,
 	});
@@ -544,6 +536,21 @@ function resolveToolTitle(tool: AgentTool | undefined, args: unknown): string {
 	try {
 		const title = tool.title(args as never).trim() || fallback;
 		return title.length > 80 ? `${title.slice(0, 79)}…` : title;
+	} catch {
+		return fallback;
+	}
+}
+
+/**
+ * 展示类别的解析入口。优先按本次参数解析（`resolveActivityKind`），因为同一个
+ * 工具可以按 Action 呈现不同能力；解析失败或没有声明时退回静态字段，最终退回
+ * `operation`——绝不按工具名猜。
+ */
+function resolveToolActivityKind(tool: AgentTool | undefined, args: unknown): ToolActivityKind {
+	const fallback = tool?.activityKind ?? "operation";
+	if (!tool?.resolveActivityKind) return fallback;
+	try {
+		return tool.resolveActivityKind(args as never) ?? fallback;
 	} catch {
 		return fallback;
 	}

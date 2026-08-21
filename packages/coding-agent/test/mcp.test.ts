@@ -7,7 +7,7 @@ describe("通用 MCP 客户端", () => {
 		const probe = [
 			"const readline=require('node:readline');",
 			"const rl=readline.createInterface({input:process.stdin});",
-			"rl.on('line',line=>{const r=JSON.parse(line);if(r.method==='notifications/initialized')return;let result;if(r.method==='initialize')result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'probe',version:'1'}};else if(r.method==='tools/list')result={tools:[{name:'echo',description:'Echo input',inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false}}]};else if(r.method==='tools/call')result={content:[{type:'text',text:String(r.params.arguments.text)}]};else result={};if(r.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:r.id,result})+'\\n');});",
+			"rl.on('line',line=>{const r=JSON.parse(line);if(r.method==='notifications/initialized')return;let result;if(r.method==='initialize')result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'probe',version:'1'}};else if(r.method==='tools/list')result={tools:[{name:'echo',description:'Echo input',annotations:{title:'Fetch value',readOnlyHint:true},inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false}}]};else if(r.method==='tools/call')result={content:[{type:'text',text:String(r.params.arguments.text)}]};else result={};if(r.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:r.id,result})+'\\n');});",
 		].join("");
 		const runtime = await connectMcpServers({
 			namespace: "settings",
@@ -17,6 +17,8 @@ describe("通用 MCP 客户端", () => {
 		expect(runtime.isOk()).toBe(true);
 		if (runtime.isErr()) return;
 		expect(runtime.value.tools.map((tool) => tool.name)).toEqual(["mcp__settings__probe__echo"]);
+		expect(runtime.value.tools[0]?.activityKind).toBe("read");
+		expect(runtime.value.tools[0]?.title?.({ text: "hello" })).toBe("Fetch value");
 		const result = await runtime.value.tools[0]!.execute("call-1", { text: "hello" });
 		expect(result.content).toEqual([{ type: "text", text: "hello" }]);
 		await runtime.value.close();
@@ -38,6 +40,7 @@ describe("通用 MCP 客户端", () => {
 				expect(runtime.value.tools.map((tool) => tool.name)).toEqual([
 					`mcp__settings__${type}__echo`,
 				]);
+				expect(runtime.value.tools[0]?.activityKind).toBe("operation");
 				const result = await runtime.value.tools[0]!.execute("call-1", { text: type });
 				expect(result.content).toEqual([{ type: "text", text: type }]);
 				await runtime.value.close();

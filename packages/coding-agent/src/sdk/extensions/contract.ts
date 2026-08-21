@@ -1,3 +1,4 @@
+import type { ToolActivityKind } from "@jai/agent";
 import type { TObject, TSchema } from "@sinclair/typebox";
 import type { Result as ResultType } from "better-result";
 import type { JsonObject, JsonValue } from "../../core/json";
@@ -124,6 +125,18 @@ export interface CodingExtensionTool<
 		call: CodingExtensionToolCall<JsonObject>,
 	) => CodingExtensionToolResult | Promise<CodingExtensionToolResult>;
 	readonly title?: (runtime: CodingExtensionRuntime<TConfig, TState, TInstance>, args: JsonObject) => string;
+	/** Presentation capability. Omit only when this should appear as a generic operation. */
+	readonly activityKind?: ToolActivityKind;
+	/**
+	 * Per-call presentation capability, overriding `activityKind`. Must resolve
+	 * synchronously from already-loaded metadata: the start event carries the
+	 * category before `execute` runs. Return undefined when the call has no
+	 * authoritative category rather than guessing one.
+	 */
+	readonly resolveActivityKind?: (
+		runtime: CodingExtensionRuntime<TConfig, TState, TInstance>,
+		args: JsonObject,
+	) => ToolActivityKind | undefined;
 	readonly executionMode?: "sequential" | "parallel";
 }
 

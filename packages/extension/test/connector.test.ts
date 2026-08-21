@@ -4,6 +4,7 @@ import type { CodingExtensionRuntime } from "@jai/coding-agent";
 import { createConnectorExtension } from "../src/connector/index";
 import type {
 	ActionGuideResponse,
+	ActionSideEffect,
 	ConnectorService,
 	ExecuteActionResponse,
 	HealthResponse,
@@ -102,6 +103,40 @@ describe("Connector Extension", () => {
 		expect(discarded).toEqual([preparedAction("allow")]);
 		expect(executed).toEqual([]);
 	});
+
+	test("declares a presentation category on every registered tool", () => {
+		const extension = createConnectorExtension({ client: clientFor({ prepared: preparedAction("allow") }) });
+		const kinds = Object.fromEntries(
+			(extension.tools ?? []).map((tool) => [tool.name, tool.activityKind]),
+		);
+
+		expect(kinds).toEqual({
+			connector__list_apps: "read",
+			connector__list_connections: "read",
+			connector__search_actions: "search",
+			connector__get_action_guide: "read",
+			connector__execute_action: undefined,
+		});
+	});
+
+	test("resolves execute_action's category from the Action's declared side effect", () => {
+		const client = clientFor({
+			prepared: preparedAction("allow"),
+			sideEffects: { "demo.read": "read", "demo.create": "write", "demo.purge": "destructive" },
+		});
+		const extension = createConnectorExtension({ client });
+		const tool = extension.tools?.find((candidate) => candidate.name === "connector__execute_action");
+		const resolve = (actionId: unknown) =>
+			tool?.resolveActivityKind?.(undefined as never, { actionId, input: {} } as never);
+
+		expect(resolve("demo.read")).toBe("read");
+		expect(resolve("demo.create")).toBe("write");
+		// destructive has no dedicated verb; it must not borrow the write verb.
+		expect(resolve("demo.purge")).toBeUndefined();
+		// An Action the catalog does not define is never guessed from its ID.
+		expect(resolve("demo.search_messages")).toBeUndefined();
+		expect(resolve(undefined)).toBeUndefined();
+	});
 });
 
 async function executeAction(client: ConnectorService, context: ConnectorContext) {
@@ -161,11 +196,13 @@ function preparedAction(approvalMode: PreparedConnectorAction["approvalMode"]): 
 
 function clientFor(input: {
 	readonly prepared: PreparedConnectorAction;
+	readonly sideEffects?: Readonly<Record<string, ActionSideEffect>>;
 	readonly onPrepare?: (context: RequestContext) => void;
 	readonly onExecute?: (prepared: PreparedConnectorAction) => void;
 	readonly onDiscard?: (prepared: PreparedConnectorAction) => void;
 }): ConnectorService {
 	return {
+		actionSideEffect: (actionId: string) => input.sideEffects?.[actionId],
 		listApps: async () => Result.ok<ListAppsResponse>({ apps: [] }),
 		listConnections: async () => Result.ok<ListConnectionsResponse>({ connections: [] }),
 		searchActions: async (_input: SearchActionsInput) => Result.ok<SearchActionsResponse>({ actions: [], nextCursor: null }),

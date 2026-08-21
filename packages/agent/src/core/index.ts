@@ -23,6 +23,7 @@ export type {
 	OnModelError,
 	PrepareContext,
 	RetryModelCall,
+	ToolActivityKind,
 	ToolCallContext,
 	ToolExecutionMode,
 	ToolMiddleware,

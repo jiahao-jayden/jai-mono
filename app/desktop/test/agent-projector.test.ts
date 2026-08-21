@@ -4,6 +4,55 @@ import type { CodingSessionSnapshot } from "../electron/data";
 import { projectSessionSnapshot } from "../electron/agent/projection/durable";
 
 describe("projectSessionSnapshot", () => {
+	test("持久化重放保留工具结果里已解析的展示类别", () => {
+		const assistant: CodingAgentMessage = {
+			role: "assistant",
+			content: [
+				{
+					type: "toolCall",
+					id: "call-1",
+					name: "connector__execute_action",
+					arguments: { actionId: "google_gmail.list_messages", input: {} },
+				},
+			],
+			stopReason: "toolUse",
+			timestamp: 1,
+			provider: "test",
+			model: "test-model",
+			usage: {
+				input: 0,
+				output: 0,
+				totalTokens: 0,
+				cost: { input: 0, output: 0, total: 0 },
+			},
+		} as CodingAgentMessage;
+		const toolResult: CodingAgentMessage = {
+			role: "toolResult",
+			toolCallId: "call-1",
+			toolName: "Read",
+			content: [{ type: "text", text: "3 unread" }],
+			isError: false,
+			timestamp: 2,
+		} as CodingAgentMessage;
+		const snapshot: CodingSessionSnapshot = {
+			appState: {},
+			createdAt: "2026-08-01T00:00:00.000Z",
+			updatedAt: "2026-08-01T00:00:00.000Z",
+			entries: [
+				{ id: "1", type: "message", timestamp: "2026-08-01T00:00:00.000Z", message: assistant },
+				{ id: "2", type: "message", timestamp: "2026-08-01T00:00:01.000Z", message: toolResult },
+			] as CodingSessionSnapshot["entries"],
+		};
+
+		const projected = projectSessionSnapshot("session-1", snapshot);
+		const tools = projected.items.filter((item) => item.kind === "tool");
+
+		// A cold reload resolves the category from the tool name, not from the transcript.
+		expect(tools).toEqual([
+			expect.objectContaining({ kind: "tool", activityKind: "read", status: "complete" }),
+		]);
+	});
+
 	test("从 appState 白名单投影 Todo，不解析 transcript", () => {
 		const snapshot: CodingSessionSnapshot = {
 			appState: {
@@ -320,6 +369,7 @@ describe("projectSessionSnapshot", () => {
 			expect.objectContaining({
 				kind: "tool",
 				toolCallId: "call-1",
+				activityKind: "write",
 				status: "complete",
 				summary: "a.txt",
 				details: "Could not find oldText in the file.",

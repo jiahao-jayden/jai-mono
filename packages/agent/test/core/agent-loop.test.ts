@@ -285,10 +285,159 @@ describe("agentLoop", () => {
 		);
 		expect(events.find((event) => event.type === "tool_execution_start")).toMatchObject({
 			title: "Read a.txt",
+			activityKind: "operation",
 		});
 		expect(events.map((event) => event.type)).toContain(
 			"tool_execution_end",
 		);
+	});
+
+	test("carries the per-call activity kind on the start and end events", async () => {
+		const toolCall: ToolCall = {
+			type: "toolCall",
+			id: "call-1",
+			name: "act",
+			arguments: { actionId: "demo.read" },
+		};
+		const actParameters = Type.Object({ actionId: Type.String() });
+		const actTool: AgentTool<typeof actParameters> = {
+			name: "act",
+			description: "Run one action",
+			parameters: actParameters,
+			activityKind: "operation",
+			resolveActivityKind: (args) => (args.actionId === "demo.read" ? "read" : undefined),
+			async execute() {
+				return { content: [{ type: "text", text: "ok" }] };
+			},
+		};
+
+		const { events, messages } = await collect(
+			agentLoop([user("act")], context([actTool]), {
+				model,
+				provider: providerFor([assistant([toolCall], "toolUse"), assistant([{ type: "text", text: "done" }])], []),
+			}),
+		);
+
+		// Resolved before execute, so a live Running label can already read Reading.
+		expect(events.find((event) => event.type === "tool_execution_start")).toMatchObject({
+			activityKind: "read",
+		});
+		expect(events.find((event) => event.type === "tool_execution_end")).toMatchObject({
+			activityKind: "read",
+		});
+		// activityKind is presentation-only and never written into the persisted message.
+		expect(messages.find((message) => message.role === "toolResult")).not.toMatchObject({
+			activityKind: expect.anything(),
+		});
+	});
+
+	test("falls back to the static activity kind when a call has no authoritative category", async () => {
+		const actParameters = Type.Object({ actionId: Type.String() });
+		const actTool: AgentTool<typeof actParameters> = {
+			name: "act",
+			description: "Run one action",
+			parameters: actParameters,
+			activityKind: "operation",
+			resolveActivityKind: (args) => (args.actionId === "demo.read" ? "read" : undefined),
+			async execute() {
+				return { content: [{ type: "text", text: "ok" }] };
+			},
+		};
+		const toolCall: ToolCall = {
+			type: "toolCall",
+			id: "call-1",
+			name: "act",
+			// Named like a search, but the catalog defines no such action.
+			arguments: { actionId: "demo.search_messages" },
+		};
+
+		const { events } = await collect(
+			agentLoop([user("act")], context([actTool]), {
+				model,
+				provider: providerFor([assistant([toolCall], "toolUse"), assistant([{ type: "text", text: "done" }])], []),
+			}),
+		);
+
+		expect(events.find((event) => event.type === "tool_execution_start")).toMatchObject({
+			activityKind: "operation",
+		});
+	});
+
+	test("发布流式增量时不等待整个响应结束", async () => {
+		const message = assistant([{ type: "text", text: "hello world" }]);
+		// The provider holds the stream open until the test releases it, so any
+		// event observed before that release proves the loop is not buffering.
+		let release!: () => void;
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const seen: string[] = [];
+		const provider: Provider = {
+			id: "test",
+			stream() {
+				const stream = new AssistantMessageEventStream();
+				stream.push({ type: "start", partial: message });
+				stream.push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "hello",
+					partial: message,
+				});
+				void held.then(() => {
+					stream.push({ type: "done", reason: "stop", message });
+				});
+				return stream;
+			},
+		};
+
+		const run = agentLoop([user("hi")], context(), { model, provider });
+		for await (const event of run) {
+			seen.push(event.type);
+			if (event.type === "message_update") {
+				// Arrived while the provider stream is still open.
+				expect(seen).toContain("message_start");
+				release();
+			}
+		}
+
+		expect(seen).toContain("message_update");
+	});
+
+	test("丢弃已经流式发布过内容的尝试时发出撤回", async () => {
+		// A provider that opens the stream, emits text, then fails the protocol
+		// check — the case where the abandoned attempt is already on screen.
+		const violation = protocolError();
+		const recovered = assistant([{ type: "text", text: "done" }]);
+		let call = 0;
+		const provider: Provider = {
+			id: "test",
+			stream() {
+				const stream = new AssistantMessageEventStream();
+				if (call++ === 0) {
+					stream.push({ type: "start", partial: violation });
+					stream.push({
+						type: "text_delta",
+						contentIndex: 0,
+						delta: "<invoke",
+						partial: violation,
+					});
+					stream.push({ type: "error", reason: "error", error: violation });
+				} else {
+					stream.push({ type: "start", partial: recovered });
+					stream.push({ type: "done", reason: "stop", message: recovered });
+				}
+				return stream;
+			},
+		};
+
+		const { events } = await collect(
+			agentLoop([user("read a.txt")], context(), { model, provider }),
+		);
+
+		const discardIndex = events.findIndex((event) => event.type === "message_discard");
+		expect(discardIndex).toBeGreaterThan(-1);
+		// Everything the abandoned attempt streamed comes before the discard.
+		expect(events.slice(0, discardIndex).some((event) => event.type === "message_update")).toBe(true);
 	});
 
 	test("projects an interrupted tool call into a provider-safe context", async () => {

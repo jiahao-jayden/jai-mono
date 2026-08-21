@@ -45,6 +45,7 @@ export class ToolCatalog {
 		this.#limit = limit;
 		this.searchTool = {
 			name: "SearchTools",
+			activityKind: "search",
 			description: "Search available tools and activate matching tools for the next model request.",
 			parameters: searchParameters,
 			executionMode: "parallel",

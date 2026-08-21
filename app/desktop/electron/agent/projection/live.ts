@@ -82,13 +82,16 @@ export function projectToolStart(
 		};
 	}
 
+	const previous = toolOf(context, event.toolCallId);
 	return {
 		kind: "items",
 		items: [
 			toolItem({
 				toolCallId: event.toolCallId,
-				turnId: toolOf(context, event.toolCallId)?.turnId,
+				turnId: previous?.turnId,
+				activityId: previous?.activityId ?? toolItemId(event.toolCallId),
 				toolName: event.toolName,
+				activityKind: event.activityKind,
 				status: "running",
 				summary: summarizeToolArguments(event.toolName, event.args),
 			}),
@@ -137,7 +140,9 @@ export function projectToolProgress(
 			toolItem({
 				toolCallId: event.toolCallId,
 				turnId: previous?.turnId,
+				activityId: previous?.activityId ?? toolItemId(event.toolCallId),
 				toolName: event.toolName,
+				activityKind: event.activityKind,
 				status: event.type === "tool_execution_update" ? "running" : "complete",
 				summary: previous?.summary ?? (details ? truncate(details, TOOL_SUMMARY_MAX) : undefined),
 				...(details ? { details } : previous?.details ? { details: previous.details } : {}),

@@ -221,6 +221,13 @@ export interface HealthResponse {
 }
 
 export interface ConnectorService {
+	/**
+	 * The declared side effect of one Action, read synchronously from the loaded
+	 * catalog. Callers that must know an Action's nature before dispatching it —
+	 * such as transcript presentation — use this instead of parsing the action ID.
+	 * Returns undefined when no such Action is defined.
+	 */
+	actionSideEffect(actionId: string): ActionSideEffect | undefined;
 	listApps(context: RequestContext): Promise<ResultType<ListAppsResponse, ConnectorFailure>>;
 	listConnections(context: RequestContext): Promise<ResultType<ListConnectionsResponse, ConnectorFailure>>;
 	searchActions(

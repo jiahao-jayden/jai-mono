@@ -45,6 +45,7 @@ export interface ReadToolDetails {
 export function createReadTool(options: WorkspaceToolOptions): AgentTool<typeof readParameters, ReadToolDetails> {
 	return {
 		name: "Read",
+		activityKind: "read",
 		title: (args) => `Read ${args.path}`,
 		description: "Read a UTF-8 text file with line numbers. Use offset and limit to continue through large files.",
 		parameters: readParameters,

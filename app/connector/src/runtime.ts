@@ -13,6 +13,7 @@ import {
 import type {
 	ActionDefinition,
 	ActionGuideResponse,
+	ActionSideEffect,
 	ActionSummary,
 	AppSummary,
 	ConnectionRecord,
@@ -85,6 +86,10 @@ export class MemoryConnectorService implements ConnectorService {
 		this.#connections = source.#connections;
 		this.#credentials = source.#credentials;
 		this.#policy = source.#policy;
+	}
+
+	actionSideEffect(actionId: string): ActionSideEffect | undefined {
+		return this.#actions.get(actionId)?.sideEffect;
 	}
 
 	async listApps(_context: RequestContext): Promise<ResultType<ListAppsResponse, never>> {

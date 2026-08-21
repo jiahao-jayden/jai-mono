@@ -522,9 +522,16 @@ function mapExtensionTools(
 		}
 		return {
 			name: tool.name,
+			activityKind: tool.activityKind ?? "operation",
 			description: tool.description,
 			parameters: tool.parameters,
 			...(tool.title ? { title: (args: JsonObject) => tool.title!(extensionRuntime(extension), args) } : {}),
+			...(tool.resolveActivityKind
+				? {
+						resolveActivityKind: (args: JsonObject) =>
+							tool.resolveActivityKind!(extensionRuntime(extension), args),
+					}
+				: {}),
 			...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
 			execute: async (toolCallId, args, signal) => {
 				const result = await tool.execute(extensionRuntime(extension), {

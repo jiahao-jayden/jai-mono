@@ -9,6 +9,7 @@ import type {
 } from "../../../shared/desktop-rpc";
 import type { CodingSessionSnapshot } from "../../data";
 import { sortArtifacts } from "../artifacts";
+import { replayActivityKind } from "./activity-kind";
 import {
 	assistantPartItem,
 	COMPACTION_SUMMARY_MAX,
@@ -67,7 +68,9 @@ export function projectSessionSnapshot(sessionId: string, snapshot: CodingSessio
 			const item = toolItem({
 				toolCallId: entry.message.toolCallId,
 				turnId: existingTool?.turnId,
+				activityId: existingTool?.activityId ?? toolItemId(entry.message.toolCallId),
 				toolName: entry.message.toolName,
+				activityKind: replayActivityKind(entry.message.toolName),
 				status: "complete",
 				summary: existingTool?.summary ?? (details ? truncate(details, TOOL_SUMMARY_MAX) : undefined),
 				...(details ? { details } : {}),

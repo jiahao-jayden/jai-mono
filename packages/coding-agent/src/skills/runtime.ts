@@ -92,6 +92,7 @@ export class CodingSkillsRuntime {
 		const runtime = this;
 		return {
 			name: "Skill",
+			activityKind: "read",
 			title: (args) => `Load /${args.skill}`,
 			get description() {
 				return runtime.#description();

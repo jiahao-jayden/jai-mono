@@ -6,6 +6,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { type TSchema, Type } from "@sinclair/typebox";
 import { Result, type Result as ResultType } from "better-result";
 import { McpConnectionFailed } from "./errors";
+import { mcpToolActivityKind, mcpToolTitle } from "./tool-metadata";
 import type { McpConnectOptions, McpDiagnostic, McpRuntime, McpServer } from "./types";
 
 interface ConnectedServer {
@@ -91,12 +92,19 @@ function createMcpTool(
 	namespace: string,
 	serverName: string,
 	client: Client,
-	tool: { name: string; description?: string; inputSchema?: unknown },
+	tool: {
+		name: string;
+		description?: string;
+		inputSchema?: unknown;
+		annotations?: { title?: string; readOnlyHint?: boolean };
+	},
 ): AgentTool {
 	const name = `mcp__${sanitize(namespace)}__${sanitize(serverName)}__${sanitize(tool.name)}`;
 	const parameters = jsonSchemaToTypeBox(tool.inputSchema);
 	return {
 		name,
+		activityKind: mcpToolActivityKind(tool),
+		title: () => mcpToolTitle(tool),
 		description: tool.description?.trim() || `MCP tool ${tool.name} from ${serverName}`,
 		parameters,
 		executionMode: "parallel",

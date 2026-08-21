@@ -437,6 +437,7 @@ export interface DesktopThinkingItem {
 	readonly kind: "thinking";
 	readonly id: string;
 	readonly turnId: string;
+	readonly activityId: string;
 	readonly text: string;
 	readonly status: "streaming" | "complete";
 	readonly timestamp: number;
@@ -446,17 +447,23 @@ export interface DesktopNarrationItem {
 	readonly kind: "narration";
 	readonly id: string;
 	readonly turnId: string;
+	readonly activityId: string;
 	readonly text: string;
 	readonly status: "streaming" | "complete";
 	readonly timestamp: number;
 }
 
+export type DesktopToolActivityKind = "search" | "read" | "write" | "execute" | "operation";
+
 export interface DesktopToolItem {
 	readonly kind: "tool";
 	readonly id: string;
 	readonly turnId: string;
+	readonly activityId: string;
 	readonly toolCallId: string;
 	readonly toolName: string;
+	/** Captured at tool registration and execution, never inferred from the name in the renderer. */
+	readonly activityKind: DesktopToolActivityKind;
 	readonly status: "running" | "complete";
 	readonly summary?: string;
 	readonly details?: string;

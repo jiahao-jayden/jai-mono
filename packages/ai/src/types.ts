@@ -34,6 +34,12 @@ export interface ToolCall {
 	arguments: Record<string, unknown>;
 }
 
+/**
+ * A tool's user-visible capability. This metadata is only for presentation;
+ * callers must not use it to authorize tool calls or make security decisions.
+ */
+export type ToolActivityKind = "search" | "read" | "write" | "execute" | "operation";
+
 /* -------------------------------------------------------------------------- */
 /*                                 消息 Message                                 */
 /* -------------------------------------------------------------------------- */
@@ -83,6 +89,8 @@ export interface Tool<T extends TSchema = TSchema> {
 	name: string;
 	description: string;
 	parameters: T;
+	/** Optional presentation capability; consumers use `operation` when it is absent. */
+	activityKind?: ToolActivityKind;
 }
 
 export interface Context {
