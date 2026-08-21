@@ -4,7 +4,14 @@
 		"noEmit": false,
 		"emitDeclarationOnly": true,
 		"rootDir": "./src",
-		"outDir": "./dist"
+		"outDir": "./dist",
+		"paths": {
+			"@jai/coding-agent": [
+				"../coding-agent/dist/sdk.d.ts"
+			]
+		}
 	},
-	"include": ["src/**/*"]
+	"include": [
+		"src/**/*"
+	]
 }

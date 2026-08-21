@@ -6,7 +6,9 @@
 	"engines": {
 		"node": ">=20"
 	},
-	"files": ["dist"],
+	"files": [
+		"dist"
+	],
 	"main": "./dist/sdk.js",
 	"types": "./dist/sdk.d.ts",
 	"exports": {
@@ -20,7 +22,7 @@
 		"registry": "https://registry.npmjs.org/"
 	},
 	"scripts": {
-		"build": "node ./scripts/tsup.cjs",
+		"build": "node ./scripts/tsup.cjs && tsc -p tsconfig.build.json",
 		"prepack": "node ./scripts/tsup.cjs",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"test": "bun test",

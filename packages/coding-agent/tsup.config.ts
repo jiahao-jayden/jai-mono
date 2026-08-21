@@ -7,7 +7,6 @@ export default defineConfig({
 	format: ["esm"],
 	platform: "node",
 	target: "node20",
-	dts: true,
 	tsconfig: "tsconfig.build.json",
 	sourcemap: true,
 	clean: true,
