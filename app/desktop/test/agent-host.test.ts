@@ -604,6 +604,7 @@ describe("DesktopAgentHost", () => {
 				type: "tool_execution_start",
 				toolCallId: "todos-1",
 				toolName: "UpdateTodos",
+				activityKind: "write",
 				title: "Updating progress",
 				args: { todos: [{ id: "render", content: "Render progress", status: "in_progress" }] },
 			});
@@ -611,6 +612,7 @@ describe("DesktopAgentHost", () => {
 				type: "tool_execution_end",
 				toolCallId: "todos-1",
 				toolName: "UpdateTodos",
+				activityKind: "write",
 				result: {
 					content: [{ type: "text", text: "Todo list updated." }],
 					details: {
@@ -665,6 +667,7 @@ describe("DesktopAgentHost", () => {
 				type: "tool_execution_start",
 				toolCallId: "subagent-1",
 				toolName: "SpawnAgent",
+				activityKind: "operation",
 				title: "Inspect repository",
 				args: { title: "Inspect repository", task: "Inspect the repository." },
 			});
@@ -672,6 +675,7 @@ describe("DesktopAgentHost", () => {
 				type: "tool_execution_update",
 				toolCallId: "subagent-1",
 				toolName: "SpawnAgent",
+				activityKind: "operation",
 				partial: {
 					content: [],
 					details: {
@@ -685,6 +689,7 @@ describe("DesktopAgentHost", () => {
 				type: "tool_execution_end",
 				toolCallId: "subagent-1",
 				toolName: "SpawnAgent",
+				activityKind: "operation",
 				result: {
 					content: [{ type: "text", text: "Inspection complete." }],
 					details: {
@@ -719,6 +724,7 @@ describe("DesktopAgentHost", () => {
 				type: "tool_execution_start",
 				toolCallId: "call-1",
 				toolName: "Read",
+				activityKind: "read",
 				title: "Read README.md",
 				args: { path: "README.md" },
 			});
@@ -726,6 +732,7 @@ describe("DesktopAgentHost", () => {
 				type: "tool_execution_end",
 				toolCallId: "call-1",
 				toolName: "Read",
+				activityKind: "read",
 				result: { content: [{ type: "text", text: "Project documentation" }] },
 				isError: false,
 			});
@@ -739,6 +746,7 @@ describe("DesktopAgentHost", () => {
 		expect(host.getSnapshot("session-1").items).toEqual([
 			expect.objectContaining({
 				kind: "tool",
+				activityKind: "read",
 				summary: "README.md",
 				details: "Project documentation",
 				status: "complete",
@@ -747,7 +755,54 @@ describe("DesktopAgentHost", () => {
 		host.close();
 	});
 
-		test("成功的 Markdown 与 HTML 写入即时发布为 Artifact", async () => {
+		test("助手消息重放不会把已解析的展示类别打回通用操作", async () => {
+		const toolCall = {
+			type: "toolCall" as const,
+			id: "call-1",
+			name: "connector__execute_action",
+			arguments: { actionId: "google_gmail.list_messages", input: {} },
+		};
+		const agent = new FakeAgent(async (self) => {
+			self.emit({
+				type: "tool_execution_start",
+				toolCallId: "call-1",
+				toolName: "connector__execute_action",
+				activityKind: "read",
+				title: "List messages",
+				args: toolCall.arguments,
+			});
+			self.emit({
+				type: "tool_execution_end",
+				toolCallId: "call-1",
+				toolName: "connector__execute_action",
+				activityKind: "read",
+				result: { content: [{ type: "text", text: "3 unread" }] },
+				isError: false,
+			});
+			// The assistant message carrying the same toolCall lands after execution;
+			// re-projecting it must not overwrite the resolved category.
+			self.emit({
+				type: "message_end",
+				message: {
+					role: "assistant" as const,
+					content: [toolCall],
+					stopReason: "toolUse" as const,
+					timestamp: 1,
+				} as never,
+			});
+			return [];
+		});
+		const host = new DesktopAgentHost(() => {}, async () => agent);
+
+		await host.send(input("有几封未读"));
+		await agent.finished;
+
+		const tools = host.getSnapshot("session-1").items.filter((item) => item.kind === "tool");
+		expect(tools).toEqual([expect.objectContaining({ kind: "tool", activityKind: "read" })]);
+		host.close();
+	});
+
+	test("成功的 Markdown 与 HTML 写入即时发布为 Artifact", async () => {
 			const events: DesktopAgentEventEnvelope[] = [];
 			const agent = new FakeAgent(
 				async (self) => {
@@ -755,6 +810,7 @@ describe("DesktopAgentHost", () => {
 						type: "tool_execution_start",
 						toolCallId: "markdown-1",
 						toolName: "Write",
+						activityKind: "write",
 						title: "Write report.md",
 						args: { path: "reports/report.md" },
 					});
@@ -762,6 +818,7 @@ describe("DesktopAgentHost", () => {
 						type: "tool_execution_end",
 						toolCallId: "markdown-1",
 						toolName: "Write",
+						activityKind: "write",
 						result: { content: [] },
 						isError: false,
 					});
@@ -769,6 +826,7 @@ describe("DesktopAgentHost", () => {
 						type: "tool_execution_start",
 						toolCallId: "failed-html-1",
 						toolName: "Edit",
+						activityKind: "write",
 						title: "Edit preview.html",
 						args: { path: "preview.html" },
 					});
@@ -776,6 +834,7 @@ describe("DesktopAgentHost", () => {
 						type: "tool_execution_end",
 						toolCallId: "failed-html-1",
 						toolName: "Edit",
+						activityKind: "write",
 						result: { content: [] },
 						isError: true,
 					});
@@ -783,6 +842,7 @@ describe("DesktopAgentHost", () => {
 						type: "tool_execution_start",
 						toolCallId: "text-1",
 						toolName: "Write",
+						activityKind: "write",
 						title: "Write notes.txt",
 						args: { path: "notes.txt" },
 					});
@@ -790,6 +850,7 @@ describe("DesktopAgentHost", () => {
 						type: "tool_execution_end",
 						toolCallId: "text-1",
 						toolName: "Write",
+						activityKind: "write",
 						result: { content: [] },
 						isError: false,
 					});
@@ -1086,6 +1147,7 @@ class RebindableFakeAgent implements CodingAgent {
 			type: "tool_execution_start",
 			toolCallId: "call-1",
 			toolName: "Read",
+			activityKind: "read",
 			title: "Read README.md",
 			args: { path: "README.md" },
 		});
@@ -1095,6 +1157,7 @@ class RebindableFakeAgent implements CodingAgent {
 			type: "tool_execution_end",
 			toolCallId: "call-1",
 			toolName: "Read",
+			activityKind: "read",
 			result: { content: [{ type: "text", text: "ok" }] },
 			isError: false,
 		});
@@ -1104,6 +1167,7 @@ class RebindableFakeAgent implements CodingAgent {
 				role: "toolResult",
 				toolCallId: "call-1",
 				toolName: "Read",
+				activityKind: "read",
 				content: [{ type: "text", text: "ok" }],
 				isError: false,
 				timestamp: 3,

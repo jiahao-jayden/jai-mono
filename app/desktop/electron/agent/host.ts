@@ -520,6 +520,10 @@ export class DesktopAgentHost {
 				if (event.message.role === "user") runtime.activeUserId = undefined;
 				return;
 			}
+			case "message_discard": {
+				this.#discardActiveAssistant(runtime);
+				return;
+			}
 			case "tool_execution_start": {
 				this.#applyProjection(runtime, projectToolStart(event, this.#projectionContext(runtime)));
 				return;
@@ -623,7 +627,12 @@ export class DesktopAgentHost {
 			const turnId = runtime.currentTurnId ?? messageId;
 			return message.content.flatMap((_, contentIndex) => {
 				const item = assistantPartItem({ message, messageId, turnId, contentIndex, status });
-				return item ? [item] : [];
+				if (!item) return [];
+				// A tool call re-projected from its assistant message carries only the
+				// placeholder category and a running status. The tool_execution_* events
+				// are the authority, so an already-projected tool keeps what they resolved.
+				if (item.kind === "tool" && runtime.items.get(item.id)?.kind === "tool") return [];
+				return [item];
 			});
 		}
 		const id = this.#ensureMessageId(runtime, "user");
@@ -640,6 +649,25 @@ export class DesktopAgentHost {
 		const id = runtime.activeUserId ?? `message:${runtime.nextMessageId++}`;
 		runtime.activeUserId = id;
 		return id;
+	}
+
+	/**
+	 * Drops everything an abandoned assistant attempt streamed. The retry opens a
+	 * new message rather than continuing this one, so its items must leave the
+	 * transcript instead of lingering above the replacement.
+	 */
+	#discardActiveAssistant(runtime: SessionRuntime): void {
+		const messageId = runtime.activeAssistantId;
+		if (!messageId) return;
+		const discarded = [...runtime.items.values()].filter(
+			(item) => item.id === messageId || item.id.startsWith(`${messageId}:`),
+		);
+		for (const item of discarded) {
+			runtime.pendingTranscriptUpdates.delete(item.id);
+			runtime.items.delete(item.id);
+		}
+		runtime.activeAssistantId = undefined;
+		for (const item of discarded) this.#emitNow(runtime, { type: "transcript_remove", id: item.id });
 	}
 
 	#queueTranscriptUpdate(

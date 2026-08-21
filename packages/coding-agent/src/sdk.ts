@@ -1,4 +1,9 @@
+export { type McpToolMetadata, mcpToolActivityKind, mcpToolTitle } from "./mcp";
 export { createCodingAgent } from "./sdk/create-coding-agent";
+export {
+	emptyPersistedCodingSessionState,
+	type PersistedCodingSessionState,
+} from "./sdk/session-state";
 export type { CodingExtensionError } from "./sdk/extension-errors";
 export {
 	CodingExtensionActivationFailed,

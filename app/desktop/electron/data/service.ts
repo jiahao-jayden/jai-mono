@@ -5,6 +5,7 @@ import path from "node:path";
 import type { JsonObject } from "@jai/agent";
 import { FileSessionStore } from "@jai/agent/node";
 import { getErrorCode } from "@jai/common";
+import { emptyPersistedCodingSessionState } from "@jai/coding-agent";
 import {
 	projectDirectoryConflictError,
 	projectNotFoundError,
@@ -134,7 +135,9 @@ export class CodingBusinessService {
 		const id = this.#createId();
 		const directory = this.sessionDirectory(projectId);
 		const store = new FileSessionStore<TAppState>(directory);
-		await store.create(id, input.appState ?? ({} as TAppState));
+		// The Coding Agent resumes sessions only in its own persisted shape, so a
+		// session this app creates must be written in that shape from the start.
+		await store.create(id, (input.appState ?? emptyPersistedCodingSessionState()) as TAppState);
 		try {
 			return this.repository.createSession({
 				id,
