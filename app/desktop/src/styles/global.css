@@ -2,6 +2,7 @@
 @import "@fontsource-variable/source-serif-4/opsz.css";
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "tw-shimmer";
 @import "shadcn/tailwind.css";
 @import "./streamdown.css";
 

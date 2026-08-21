@@ -295,10 +295,44 @@
 	outline-offset: 1px;
 }
 
+/* Streaming caret. Streamdown's own caret is the text glyph U+258B, which scales
+   with the font and lands as a heavy block next to 14px body copy. We blank the
+   glyph and draw the mark ourselves: a 1.5px rule at cap height, in brand teal,
+   so it reads as a text cursor rather than a character the model emitted. It
+   breathes rather than blinks — a hard blink at this size pulls the eye off the
+   text it accompanies. */
+.chat-markdown[style*="--streamdown-caret"] > :last-child::after {
+	content: "";
+	display: inline-block;
+	width: 1.5px;
+	height: 0.95em;
+	margin-left: 0.12em;
+	border-radius: 1px;
+	background: var(--primary-2);
+	vertical-align: -0.12em;
+	animation: chat-caret-breathe 1.4s ease-in-out infinite;
+}
+
+@keyframes chat-caret-breathe {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.35;
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.chat-markdown * {
 		scroll-behavior: auto !important;
 		transition-duration: 0ms !important;
 		animation-duration: 0ms !important;
+	}
+
+	/* The caret still marks the live end of the stream, it just holds steady. */
+	.chat-markdown[style*="--streamdown-caret"] > :last-child::after {
+		animation: none;
+		opacity: 1;
 	}
 }

@@ -18,6 +18,7 @@
   },
   "iconLibrary": "hugeicons",
   "registries": {
-    "@fluid": "https://www.fluidfunctionalism.com/r/{name}.json"
+    "@fluid": "https://www.fluidfunctionalism.com/r/{name}.json",
+    "@assistant-ui": "https://r.assistant-ui.com/styles/{style}/{name}.json"
   }
 }

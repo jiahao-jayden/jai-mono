@@ -5,12 +5,12 @@ import { cn } from "@/lib/utils";
 import type {
 	DesktopNarrationItem,
 	DesktopThinkingItem,
+	DesktopToolActivityKind,
 	DesktopToolItem,
 	DesktopTranscriptItem,
 } from "../../../../shared/desktop-rpc";
+import { type TimelineStep, ToolTimeline } from "../../elements/tool-timeline";
 import { ChatMessage } from "../../ui/chat-message";
-import { ThinkingStep, ThinkingSteps, ThinkingStepsContent, ThinkingStepsHeader } from "../../ui/thinking-steps";
-import { ToolCall } from "../../ui/tool-call";
 import { SubagentCard } from "./subagent-card";
 
 type WorkItem = DesktopThinkingItem | DesktopNarrationItem | DesktopToolItem;
@@ -20,11 +20,13 @@ interface WorkGroup {
 	readonly items: readonly WorkItem[];
 }
 
-type WorkProcessRow =
-	| { readonly kind: "exploration"; readonly id: string; readonly items: readonly DesktopToolItem[] }
-	| { readonly kind: "item"; readonly item: WorkItem };
-
-type ToolCategory = "search" | "read" | "update" | "command" | "skill" | "other";
+interface WorkTimelineCluster {
+	readonly id: string;
+	readonly kind: "thinking" | "narration" | DesktopToolActivityKind;
+	readonly activityId: string;
+	readonly items: readonly WorkItem[];
+	readonly narrations: readonly DesktopNarrationItem[];
+}
 
 const MemoizedTranscriptItem = memo(TranscriptItem);
 const MemoizedWorkProcess = memo(WorkProcess, sameWorkProcess);
@@ -44,22 +46,35 @@ export function TranscriptItems({ items, loading }: { items: readonly DesktopTra
 
 export function groupTranscriptItems(items: readonly DesktopTranscriptItem[]): (DesktopTranscriptItem | WorkGroup)[] {
 	const rows: (DesktopTranscriptItem | WorkGroup)[] = [];
+	const pendingCompactions: DesktopTranscriptItem[] = [];
 
 	for (const item of items) {
 		if (item.kind === "message" && item.role === "toolResult") continue;
 		if (item.kind === "permission" || item.kind === "extension_permission") continue;
+		if (item.kind === "compaction") {
+			pendingCompactions.push(item);
+			continue;
+		}
 		if (isWorkItem(item)) {
 			const turnId = workItemTurnId(item);
 			const previous = rows.at(-1);
 			if (previous && !("kind" in previous) && workItemTurnId(previous.items[0]!) === turnId) {
 				rows[rows.length - 1] = { ...previous, items: [...previous.items, item] };
+				pendingCompactions.length = 0;
 			} else {
+				rows.push(...pendingCompactions);
+				pendingCompactions.length = 0;
 				rows.push({ id: `work:${turnId}:${item.id}`, items: [item] });
 			}
 			continue;
 		}
+		const previous = rows.at(-1);
+		if (!previous || "kind" in previous) rows.push(...pendingCompactions);
+		pendingCompactions.length = 0;
 		rows.push(item);
 	}
+	const previous = rows.at(-1);
+	if (!previous || "kind" in previous) rows.push(...pendingCompactions);
 	return rows;
 }
 
@@ -98,16 +113,7 @@ export function TranscriptItem({ item, animate = false }: { item: DesktopTranscr
 	}
 
 	if (item.kind === "tool") {
-		const presentation = toolPresentation(item);
-		return (
-			<ToolCall
-				icon={presentation.icon}
-				label={presentation.label}
-				summary={item.summary}
-				details={item.details}
-				status={item.status}
-			/>
-		);
+		return <WorkProcess group={{ id: `work:${item.id}`, items: [item] }} settled={false} />;
 	}
 
 	if (item.kind === "subagent") {
@@ -192,6 +198,7 @@ function WorkProcess({ group, settled }: { readonly group: WorkGroup; readonly s
 			(item.kind === "narration" && item.status === "streaming") ||
 			(item.kind === "tool" && item.status === "running"),
 	);
+	const steps = workTimelineSteps(group.items);
 	const [open, setOpen] = useState(running);
 
 	useEffect(() => {
@@ -202,66 +209,24 @@ function WorkProcess({ group, settled }: { readonly group: WorkGroup; readonly s
 		}
 	}, [running, settled]);
 
-	const title = workGroupTitle(group.items, running);
-	const rows = workProcessRows(group.items);
 	const anchorItem = group.items.at(-1);
+	if (steps.length === 0) return null;
+
+	const label = workTimelineSummary(steps, group.items, running);
 
 	return (
-		<ThinkingSteps open={open} onOpenChange={setOpen} className="w-full" data-transcript-item-id={anchorItem?.id}>
-			<ThinkingStepsHeader>{title}</ThinkingStepsHeader>
-			<ThinkingStepsContent className="gap-1 px-1 pb-2 pt-1">
-				{rows.map((row) =>
-					row.kind === "exploration" ? (
-						<ExplorationStep key={row.id} items={row.items} />
-					) : (
-						<WorkProcessStep key={row.item.id} item={row.item} />
-					),
-				)}
-			</ThinkingStepsContent>
-		</ThinkingSteps>
+		<div className="py-0.5" data-transcript-item-id={anchorItem?.id}>
+			<ToolTimeline
+				activeLabel={label}
+				className="max-w-none"
+				open={open}
+				onOpenChange={setOpen}
+				restingLabel={label}
+				steps={steps}
+				streaming={running}
+			/>
+		</div>
 	);
-}
-
-export function workGroupTitle(items: readonly WorkItem[], running: boolean): string {
-	const tool = items.find((item): item is DesktopToolItem => item.kind === "tool");
-	if (tool?.toolName === "Skill") {
-		const skill = tool.summary?.replace(/^\//, "");
-		if (skill) return running ? `Loading ${skill}…` : `Loaded ${skill}`;
-	}
-	if (tool) {
-		switch (toolCategory(tool.toolName)) {
-			case "search":
-			case "read":
-				return "Exploring";
-			case "update":
-				return "Implementing";
-			case "command":
-				return "Executing";
-			case "skill":
-				return "Loading skill";
-			case "other":
-				return "Working";
-		}
-	}
-	if (items.some((item) => item.kind === "thinking")) return running ? "Reasoning…" : "Reasoning";
-	return running ? "Working…" : "Working";
-}
-
-export function workProcessRows(items: readonly WorkItem[]): readonly WorkProcessRow[] {
-	const rows: WorkProcessRow[] = [];
-	for (const item of items) {
-		if (item.kind === "tool" && isExplorationTool(item)) {
-			const previous = rows.at(-1);
-			if (previous?.kind === "exploration") {
-				rows[rows.length - 1] = { ...previous, items: [...previous.items, item] };
-			} else {
-				rows.push({ kind: "exploration", id: `exploration:${item.id}`, items: [item] });
-			}
-			continue;
-		}
-		rows.push({ kind: "item", item });
-	}
-	return rows;
 }
 
 function sameWorkProcess(
@@ -273,130 +238,173 @@ function sameWorkProcess(
 	return previous.group.items.every((item, index) => item === next.group.items[index]);
 }
 
-function WorkProcessStep({ item }: { readonly item: WorkItem }) {
-	const thinkingRef = useRef<HTMLParagraphElement>(null);
-	const followsThinkingRef = useRef(true);
-
-	useLayoutEffect(() => {
-		if (item.kind !== "thinking" || item.status !== "streaming" || !followsThinkingRef.current) return;
-		const element = thinkingRef.current;
-		if (element) element.scrollTop = element.scrollHeight;
-	}, [item]);
-
-	if (item.kind === "tool") return <ToolStep item={item} />;
-	if (item.kind === "narration") {
-		return (
-			<ThinkingStep
-				showIcon={false}
-				label={item.text}
-				status={item.status === "streaming" ? "active" : "complete"}
-			/>
+export function workTimelineSteps(items: readonly WorkItem[]): TimelineStep[] {
+	return workTimelineClusters(items).map((cluster) => {
+		const running = cluster.items.some(
+			(item) =>
+				(item.kind === "thinking" && item.status === "streaming") ||
+				(item.kind === "narration" && item.status === "streaming") ||
+				(item.kind === "tool" && item.status === "running"),
 		);
+		if (cluster.kind === "thinking") {
+			const text = cluster.items
+				.filter((item): item is DesktopThinkingItem => item.kind === "thinking")
+				.map((item) => item.text)
+				.join("\n\n");
+			return {
+				id: cluster.id,
+				verb: "Thinking",
+				chip: text,
+				icon: "sparkles",
+				active: running,
+				...(text.length > 160 ? { details: text } : {}),
+			};
+		}
+
+		const tools = cluster.items.filter((item): item is DesktopToolItem => item.kind === "tool");
+		if (tools.length === 0) {
+			const narration = cluster.narrations.map((item) => item.text).join("\n\n");
+			return {
+				id: cluster.id,
+				verb: running ? "Working" : "Worked",
+				chip: narration,
+				icon: "sparkles",
+				active: running,
+			};
+		}
+
+		const presentation = toolPresentation(tools[0]!, running);
+		const details = toolClusterDetails(cluster.narrations, tools);
+		return {
+			id: cluster.id,
+			verb: presentation.label,
+			chip: toolClusterChip(tools),
+			icon: presentation.icon,
+			active: running,
+			...(details ? { details } : {}),
+		};
+	});
+}
+
+function workTimelineClusters(items: readonly WorkItem[]): readonly WorkTimelineCluster[] {
+	const clusters: WorkTimelineCluster[] = [];
+	let pendingNarrations: DesktopNarrationItem[] = [];
+
+	for (const item of items) {
+		if (item.kind === "narration") {
+			pendingNarrations = [...pendingNarrations, item];
+			continue;
+		}
+
+		const kind = item.kind === "thinking" ? "thinking" : item.activityKind;
+		const previous = clusters.at(-1);
+		if (previous && previous.kind === kind && previous.activityId === item.activityId) {
+			clusters[clusters.length - 1] = {
+				...previous,
+				items: [...previous.items, item],
+				narrations: [...previous.narrations, ...pendingNarrations],
+			};
+		} else {
+			clusters.push({
+				id: `timeline:${item.id}`,
+				kind,
+				activityId: item.activityId,
+				items: [item],
+				narrations: pendingNarrations,
+			});
+		}
+		pendingNarrations = [];
 	}
-	if (item.kind === "thinking") {
-		return (
-			<ThinkingStep icon="clock" label="Reasoning" status={item.status === "streaming" ? "active" : "complete"}>
-				<p
-					ref={thinkingRef}
-					className="max-h-48 overflow-y-auto pt-1 text-[12px] leading-relaxed whitespace-pre-wrap text-muted-foreground"
-					onScroll={(event) => {
-						const element = event.currentTarget;
-						followsThinkingRef.current = element.scrollHeight - element.scrollTop - element.clientHeight <= 24;
-					}}
-				>
-					{item.text}
-				</p>
-			</ThinkingStep>
-		);
+
+	if (pendingNarrations.length > 0) {
+		clusters.push({
+			id: `timeline:${pendingNarrations[0]!.id}`,
+			kind: "narration",
+			activityId: pendingNarrations[0]!.activityId,
+			items: [],
+			narrations: pendingNarrations,
+		});
 	}
-	return null;
+
+	return clusters;
 }
 
-function ExplorationStep({ items }: { readonly items: readonly DesktopToolItem[] }) {
-	const running = items.some((item) => item.status === "running");
-	const label = explorationSummary(items, running);
-	return (
-		<ThinkingStep icon="search" label={label} status={running ? "active" : "complete"}>
-			<div className="flex flex-col gap-1 py-1">
-				{items.map((item) => (
-					<ToolStep key={item.id} item={item} />
-				))}
-			</div>
-		</ThinkingStep>
-	);
+function toolClusterChip(items: readonly DesktopToolItem[]): string {
+	if (items.length > 1) {
+		const category = items[0]!.activityKind;
+		if (category === "search") return `${items.length} searches`;
+		if (category === "read" || category === "write") return `${items.length} files`;
+		if (category === "execute") return `${items.length} commands`;
+		return `${items.length} actions`;
+	}
+	const tool = items[0]!;
+	return tool.summary ?? humanizeToolName(tool.toolName);
 }
 
-export function explorationSummary(items: readonly DesktopToolItem[], running: boolean): string {
-	if (running) return "Exploring";
-	const files = items.filter((item) => toolCategory(item.toolName) === "read").length;
-	const searches = items.length - files;
-	const parts = [
-		files > 0 ? `${files} ${files === 1 ? "file" : "files"}` : undefined,
-		searches > 0 ? `${searches} ${searches === 1 ? "search" : "searches"}` : undefined,
-	].filter((part): part is string => Boolean(part));
-	return `Explored ${parts.join(", ")}`;
+function toolClusterDetails(
+	narrations: readonly DesktopNarrationItem[],
+	tools: readonly DesktopToolItem[],
+): string | undefined {
+	const narration = narrations.map((item) => item.text).join("\n\n");
+	const toolDetails = tools
+		.map((item) => {
+			const summary = toolClusterChip([item]);
+			const details = item.details ? `\n${item.details}` : "";
+			return `${humanizeToolName(item.toolName)} · ${summary}${details}`;
+		})
+		.join("\n\n");
+	return [narration, toolDetails].filter(Boolean).join("\n\n") || undefined;
 }
 
-function ToolStep({ item }: { readonly item: DesktopToolItem }) {
-	const presentation = toolPresentation(item);
-	return (
-		<ToolCall
-			icon={presentation.icon}
-			label={presentation.label}
-			summary={item.summary}
-			details={item.details}
-			status={item.status}
-		/>
-	);
+export function workTimelineSummary(
+	steps: readonly TimelineStep[],
+	items: readonly WorkItem[],
+	running: boolean,
+): string {
+	const operationCount = items.filter((item): item is DesktopToolItem => item.kind === "tool").length;
+	const filesChanged = new Set(
+		items
+			.filter((item): item is DesktopToolItem => item.kind === "tool" && item.activityKind === "write")
+			.map((item) => item.summary)
+			.filter((summary): summary is string => Boolean(summary)),
+	).size;
+	const stepLabel = `${steps.length} ${steps.length === 1 ? "step" : "steps"}`;
+	if (running) return `${stepLabel} · Working`;
+	if (filesChanged > 0) return `${stepLabel} · ${filesChanged} ${filesChanged === 1 ? "file" : "files"} changed`;
+	return `${stepLabel} · ${operationCount} ${operationCount === 1 ? "action" : "actions"}`;
 }
 
-function toolPresentation(item: DesktopToolItem): { icon: IconName; label: string } {
-	const category = toolCategory(item.toolName);
+function toolPresentation(item: DesktopToolItem, running: boolean): { icon: IconName; label: string } {
+	const category = item.activityKind;
 	if (category === "search") {
 		return {
 			icon: "search",
-			label: item.status === "running" ? "Searching code" : "Searched code",
+			label: running ? "Searching" : "Searched",
 		};
 	}
 	if (category === "read") {
 		return {
 			icon: "file-code",
-			label: item.status === "running" ? "Reading files" : "Read files",
+			label: running ? "Reading" : "Read",
 		};
 	}
-	if (category === "update") {
+	if (category === "write") {
 		return {
 			icon: "file-code",
-			label: item.status === "running" ? "Updating files" : "Updated files",
+			label: running ? "Editing" : "Edited",
 		};
 	}
-	if (category === "command") {
-		return {
-			icon: "terminal",
-			label: item.status === "running" ? "Running command" : "Ran command",
-		};
-	}
+	// execute 与 operation 共用 Ran：未知能力的工具不假装成命令，也不另造动词。
 	return {
 		icon: "terminal",
-		label: item.status === "running" ? "Working" : "Completed work",
+		label: running ? "Running" : "Ran",
 	};
 }
 
-function toolCategory(toolName: string): ToolCategory {
-	const normalizedName = toolName.toLowerCase();
-	if (normalizedName.includes("search") || normalizedName === "grep" || normalizedName === "glob") return "search";
-	if (normalizedName.includes("read")) return "read";
-	if (normalizedName.includes("write") || normalizedName.includes("edit")) return "update";
-	if (normalizedName === "bash" || normalizedName.includes("shell") || normalizedName.includes("terminal")) {
-		return "command";
-	}
-	if (normalizedName === "skill") return "skill";
-	return "other";
-}
-
-function isExplorationTool(item: DesktopToolItem): boolean {
-	const category = toolCategory(item.toolName);
-	return category === "search" || category === "read";
+function humanizeToolName(toolName: string): string {
+	const normalized = toolName.replace(/^[a-z]+__/, "").replace(/([a-z])([A-Z])/g, "$1 $2");
+	const words = normalized.split(/[_\s-]+/).filter(Boolean);
+	return words.map((word) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`).join(" ");
 }
 
 function isWorkItem(item: DesktopTranscriptItem): item is WorkItem {

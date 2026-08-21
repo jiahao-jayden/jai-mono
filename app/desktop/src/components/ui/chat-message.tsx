@@ -33,6 +33,16 @@ const streamdownControls = {
 	code: { copy: true, download: false },
 	table: { copy: true, download: true, fullscreen: true },
 };
+// Words settle in as they arrive rather than snapping the whole block. The
+// stagger stays under a frame so a fast stream still reads as continuous text,
+// and `sep: "word"` keeps CJK runs intact instead of animating per glyph.
+const streamdownAnimation = {
+	animation: "fadeIn" as const,
+	duration: 420,
+	easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+	sep: "word" as const,
+	stagger: 12,
+};
 
 type StreamdownIconProps = SVGProps<SVGSVGElement> & { size?: number };
 
@@ -72,6 +82,8 @@ export const MarkdownContent = memo(function MarkdownContent({
 			className={cn("chat-markdown", className)}
 			controls={streamdownControls}
 			icons={streamdownIcons}
+			animated={isStreaming ? streamdownAnimation : false}
+			caret={isStreaming ? "block" : undefined}
 			isAnimating={isStreaming}
 			lineNumbers={false}
 			mode={isStreaming ? "streaming" : "static"}

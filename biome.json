@@ -33,7 +33,8 @@
 			"!**/dist",
 			"!**/models-snapshot.json",
 			"!**/components/ui",
-			"!**/components/ai-elements"
+			"!**/components/ai-elements",
+			"!**/components/elements"
 		]
 	}
 }
