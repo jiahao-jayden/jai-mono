@@ -4,20 +4,14 @@ dist/
 .DS_Store
 *.tsbuildinfo
 .claude/
+.codex/
+.impeccable/
 .vite/
 .jai/
 .trellis/
 .wayfinder/
 out/
 docs/*
-!docs/build-coding-agent/
-docs/build-coding-agent/*
-!docs/build-coding-agent/10-agent-plugins-v1-adapter.md
-!docs/build-coding-agent/11-agent-plugins-v1-plugin-validation.md
-!docs/cli/
-!docs/cli/*.md
-!docs/bench/
-!docs/bench/*.md
 app/docs/.blume/
 # packages/*/node_modules/
 packages/*/dist/
