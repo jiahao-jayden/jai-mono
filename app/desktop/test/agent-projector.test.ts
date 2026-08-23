@@ -4,7 +4,7 @@ import type { CodingSessionSnapshot } from "../electron/data";
 import { projectSessionSnapshot } from "../electron/agent/projection/durable";
 
 describe("projectSessionSnapshot", () => {
-	test("持久化重放保留工具结果里已解析的展示类别", () => {
+	test("持久化重放把 Connector 工具还原为外部调用", () => {
 		const assistant: CodingAgentMessage = {
 			role: "assistant",
 			content: [
@@ -29,7 +29,7 @@ describe("projectSessionSnapshot", () => {
 		const toolResult: CodingAgentMessage = {
 			role: "toolResult",
 			toolCallId: "call-1",
-			toolName: "Read",
+			toolName: "connector__execute_action",
 			content: [{ type: "text", text: "3 unread" }],
 			isError: false,
 			timestamp: 2,
@@ -47,9 +47,9 @@ describe("projectSessionSnapshot", () => {
 		const projected = projectSessionSnapshot("session-1", snapshot);
 		const tools = projected.items.filter((item) => item.kind === "tool");
 
-		// A cold reload resolves the category from the tool name, not from the transcript.
+		// A cold reload resolves the Connector transport namespace from the tool name.
 		expect(tools).toEqual([
-			expect.objectContaining({ kind: "tool", activityKind: "read", status: "complete" }),
+			expect.objectContaining({ kind: "tool", activityKind: "call", status: "complete" }),
 		]);
 	});
 

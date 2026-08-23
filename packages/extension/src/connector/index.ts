@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { ToolActivityKind } from "@jai/agent";
 import {
 	type CodingAgentExtension,
 	type CodingExtensionRuntime,
@@ -95,7 +94,7 @@ export function createConnectorExtension(
 			{
 				name: "connector__list_apps",
 				description: "List enabled Connectors and safe connection summaries.",
-				activityKind: "read",
+				activityKind: "call",
 				parameters: emptyParameters,
 				authorization: {
 					owner: "core",
@@ -111,7 +110,7 @@ export function createConnectorExtension(
 			{
 				name: "connector__list_connections",
 				description: "List Connector account connections, health and scope summaries.",
-				activityKind: "read",
+				activityKind: "call",
 				parameters: emptyParameters,
 				authorization: {
 					owner: "core",
@@ -129,7 +128,7 @@ export function createConnectorExtension(
 			{
 				name: "connector__search_actions",
 				description: "Search available Connector Actions without exposing Connector-specific tools.",
-				activityKind: "search",
+				activityKind: "call",
 				parameters: searchParameters,
 				authorization: {
 					owner: "core",
@@ -148,7 +147,7 @@ export function createConnectorExtension(
 			{
 				name: "connector__get_action_guide",
 				description: "Get the input/output schema and usage guide for one Connector Action.",
-				activityKind: "read",
+				activityKind: "call",
 				parameters: guideParameters,
 				authorization: {
 					owner: "core",
@@ -167,8 +166,8 @@ export function createConnectorExtension(
 			{
 				name: "connector__execute_action",
 				description: "Execute one Connector Action after discovering its guide.",
+				activityKind: "call",
 				parameters: executeParameters,
-				resolveActivityKind: (_runtime, args) => executeActivityKind(options.client, args),
 				executionMode: "sequential",
 				authorization: { owner: "extension" },
 				execute: async (runtime, { toolCallId, args, signal }) =>
@@ -176,21 +175,6 @@ export function createConnectorExtension(
 			},
 		] satisfies readonly CodingExtensionTool<ConnectorExtensionConfiguration>[],
 	});
-}
-
-/**
- * The presentation category for one `execute_action` call, taken from the
- * Action's own declared side effect. `destructive` has no dedicated verb yet, so
- * it presents as a generic operation rather than borrowing the write verb. An
- * unknown Action stays a generic operation — the action ID is never parsed.
- */
-function executeActivityKind(client: ConnectorService, args: JsonObject): ToolActivityKind | undefined {
-	const actionId = args.actionId;
-	if (typeof actionId !== "string") return undefined;
-	const sideEffect = client.actionSideEffect(actionId);
-	if (sideEffect === "read") return "read";
-	if (sideEffect === "write") return "write";
-	return undefined;
 }
 
 async function executeConnectorAction(

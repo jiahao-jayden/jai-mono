@@ -38,7 +38,7 @@ export interface ToolCall {
  * A tool's user-visible capability. This metadata is only for presentation;
  * callers must not use it to authorize tool calls or make security decisions.
  */
-export type ToolActivityKind = "search" | "read" | "write" | "execute" | "operation";
+export type ToolActivityKind = "search" | "read" | "write" | "execute" | "call" | "operation";
 
 /* -------------------------------------------------------------------------- */
 /*                                 消息 Message                                 */

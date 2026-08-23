@@ -6,10 +6,9 @@ import type { DesktopToolActivityKind } from "../../../shared/desktop-rpc";
  * execution time, so it is never written into the transcript; a cold reload has
  * nothing but the tool name to go on.
  *
- * Only names this app itself registers belong here. Extension and MCP tools are
- * absent on purpose: their categories live with their own declarations, and
- * guessing one from a name like `search` or `list` is exactly what this table
- * must not do.
+ * The Connector and MCP prefixes are transport namespaces, not verbs inferred
+ * from a tool name. They remain stable on replay and identify remote calls even
+ * after their original extension metadata is no longer in memory.
  */
 const BUILT_IN_ACTIVITY_KINDS: Readonly<Record<string, DesktopToolActivityKind>> = {
 	Read: "read",
@@ -23,5 +22,6 @@ const BUILT_IN_ACTIVITY_KINDS: Readonly<Record<string, DesktopToolActivityKind>>
 
 /** The replay category for one tool name; unknown tools stay a generic operation. */
 export function replayActivityKind(toolName: string): DesktopToolActivityKind {
+	if (toolName.startsWith("connector__") || toolName.startsWith("mcp__")) return "call";
 	return BUILT_IN_ACTIVITY_KINDS[toolName] ?? "operation";
 }

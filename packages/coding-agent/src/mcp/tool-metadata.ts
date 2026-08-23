@@ -10,12 +10,12 @@ export interface McpToolMetadata {
 }
 
 /**
- * MCP annotations are hints, never authorization input. Only a positive
- * read-only declaration has a presentation mapping; every other MCP tool is a
- * generic operation instead of a guessed write, command, or service action.
+ * An MCP tool is always presented as an external call. Its annotations stay
+ * out of the presentation category because they are hints, not authorization
+ * input, and a read-only call is not a local file read.
  */
-export function mcpToolActivityKind(tool: McpToolMetadata): ToolActivityKind {
-	return tool.annotations?.readOnlyHint === true ? "read" : "operation";
+export function mcpToolActivityKind(_tool: McpToolMetadata): ToolActivityKind {
+	return "call";
 }
 
 export function mcpToolTitle(tool: McpToolMetadata): string {

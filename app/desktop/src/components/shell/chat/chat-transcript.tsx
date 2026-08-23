@@ -335,6 +335,7 @@ function toolClusterChip(items: readonly DesktopToolItem[]): string {
 		if (category === "search") return `${items.length} searches`;
 		if (category === "read" || category === "write") return `${items.length} files`;
 		if (category === "execute") return `${items.length} commands`;
+		if (category === "call") return `${items.length} calls`;
 		return `${items.length} actions`;
 	}
 	const tool = items[0]!;
@@ -394,7 +395,13 @@ function toolPresentation(item: DesktopToolItem, running: boolean): { icon: Icon
 			label: running ? "Editing" : "Edited",
 		};
 	}
-	// execute 与 operation 共用 Ran：未知能力的工具不假装成命令，也不另造动词。
+	if (category === "call") {
+		return {
+			icon: "link",
+			label: running ? "Calling" : "Called",
+		};
+	}
+	// Generic operations do not pretend to be commands or remote service calls.
 	return {
 		icon: "terminal",
 		label: running ? "Running" : "Ran",

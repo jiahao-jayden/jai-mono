@@ -80,7 +80,7 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 		expandable && "transition-colors hover:text-foreground/90",
 	);
 	const chevronClassName = cn(
-		"ms-auto inline-flex shrink-0 opacity-60 transition-transform duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+		"ms-auto inline-flex shrink-0 opacity-60 transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
 		open && "rotate-90",
 	);
 	const row = (
@@ -109,8 +109,8 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 	return (
 		<Collapsible open={open} onOpenChange={setOpen}>
 			<CollapsibleTrigger className={rowClassName}>{row}</CollapsibleTrigger>
-			<CollapsibleContent className={cn(collapsePanel, "outline-none")}>
-				<pre className="mt-2 max-h-64 overflow-auto rounded-md bg-foreground/[0.06] px-2 py-1.5 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-foreground/70">
+			<CollapsibleContent className="mt-2 [contain:paint] outline-none">
+				<pre className="max-h-64 overflow-auto rounded-md bg-foreground/[0.06] px-2 py-1.5 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-foreground/70">
 					{step.details}
 				</pre>
 			</CollapsibleContent>

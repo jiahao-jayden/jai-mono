@@ -86,7 +86,7 @@ describe("transcript grouping", () => {
 		]);
 	});
 
-	test("未知 MCP 即使命名为 search 或 list 也只聚合为通用操作", () => {
+	test("MCP 工具无论名称或操作类型都聚合为外部调用", () => {
 		const items: DesktopTranscriptItem[] = [
 			{
 				kind: "message",
@@ -112,7 +112,7 @@ describe("transcript grouping", () => {
 				activityId: "message:assistant-1",
 				toolCallId: "list-apps",
 				toolName: "mcp__ext__srv__list_apps",
-				activityKind: "operation",
+				activityKind: "call",
 				status: "complete",
 			},
 			{
@@ -122,7 +122,7 @@ describe("transcript grouping", () => {
 				activityId: "message:assistant-1",
 				toolCallId: "list-connections",
 				toolName: "mcp__ext__srv__list_connections",
-				activityKind: "operation",
+				activityKind: "call",
 				status: "complete",
 			},
 			{
@@ -141,7 +141,7 @@ describe("transcript grouping", () => {
 				activityId: "message:assistant-2",
 				toolCallId: "search-actions",
 				toolName: "mcp__ext__srv__search_things",
-				activityKind: "operation",
+				activityKind: "call",
 				status: "complete",
 				summary: "pending records",
 			},
@@ -152,7 +152,7 @@ describe("transcript grouping", () => {
 				activityId: "message:assistant-3",
 				toolCallId: "search-messages",
 				toolName: "mcp__ext__srv__search_things",
-				activityKind: "operation",
+				activityKind: "call",
 				status: "complete",
 				summary: "messages",
 			},
@@ -163,7 +163,7 @@ describe("transcript grouping", () => {
 				activityId: "message:assistant-3",
 				toolCallId: "search-list",
 				toolName: "mcp__ext__srv__search_things",
-				activityKind: "operation",
+				activityKind: "call",
 				status: "complete",
 				summary: "list",
 			},
@@ -188,14 +188,14 @@ describe("transcript grouping", () => {
 			(item): item is Extract<DesktopTranscriptItem, { kind: "tool" }> => item.kind === "tool",
 		);
 		expect(workTimelineSteps(tools)).toMatchObject([
-			{ verb: "Ran", chip: "2 actions" },
-			{ verb: "Ran", chip: "pending records" },
-			{ verb: "Ran", chip: "2 actions" },
+			{ verb: "Called", chip: "2 calls" },
+			{ verb: "Called", chip: "pending records" },
+			{ verb: "Called", chip: "2 calls" },
 		]);
 		expect((markup.match(/data-slot="tool-timeline"/g) ?? []).length).toBe(1);
 	});
 
-	test("Connector 工具按投影下来的类别分层显示动词", () => {
+	test("Connector 工具统一显示为外部调用", () => {
 		const tool = (
 			id: string,
 			toolName: string,
@@ -214,22 +214,15 @@ describe("transcript grouping", () => {
 		});
 
 		const tools = [
-			tool("list-apps", "connector__list_apps", "read", "apps"),
-			tool("search-actions", "connector__search_actions", "search", "pending records"),
-			// A read-only Action and a write Action split into separate steps even
-			// though both are execute_action on the same activity.
-			tool("read-mail", "connector__execute_action", "read", "google_gmail.list_messages"),
-			tool("send-mail", "connector__execute_action", "write", "google_gmail.send_message"),
-			// destructive has no dedicated verb yet and stays a generic operation.
-			tool("purge", "connector__execute_action", "operation", "google_gmail.purge"),
+			tool("list-apps", "connector__list_apps", "call", "apps"),
+			tool("search-actions", "connector__search_actions", "call", "pending records"),
+			tool("read-mail", "connector__execute_action", "call", "google_gmail.list_messages"),
+			tool("send-mail", "connector__execute_action", "call", "google_gmail.send_message"),
+			tool("purge", "connector__execute_action", "call", "google_gmail.purge"),
 		];
 
 		expect(workTimelineSteps(tools)).toMatchObject([
-			{ verb: "Read", chip: "apps" },
-			{ verb: "Searched", chip: "pending records" },
-			{ verb: "Read", chip: "google_gmail.list_messages" },
-			{ verb: "Edited", chip: "google_gmail.send_message" },
-			{ verb: "Ran", chip: "google_gmail.purge" },
+			{ verb: "Called", chip: "5 calls" },
 		]);
 	});
 

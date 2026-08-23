@@ -111,31 +111,20 @@ describe("Connector Extension", () => {
 		);
 
 		expect(kinds).toEqual({
-			connector__list_apps: "read",
-			connector__list_connections: "read",
-			connector__search_actions: "search",
-			connector__get_action_guide: "read",
-			connector__execute_action: undefined,
+			connector__list_apps: "call",
+			connector__list_connections: "call",
+			connector__search_actions: "call",
+			connector__get_action_guide: "call",
+			connector__execute_action: "call",
 		});
 	});
 
-	test("resolves execute_action's category from the Action's declared side effect", () => {
-		const client = clientFor({
-			prepared: preparedAction("allow"),
-			sideEffects: { "demo.read": "read", "demo.create": "write", "demo.purge": "destructive" },
-		});
-		const extension = createConnectorExtension({ client });
+	test("does not vary external-call presentation by a Connector Action side effect", () => {
+		const extension = createConnectorExtension({ client: clientFor({ prepared: preparedAction("allow") }) });
 		const tool = extension.tools?.find((candidate) => candidate.name === "connector__execute_action");
-		const resolve = (actionId: unknown) =>
-			tool?.resolveActivityKind?.(undefined as never, { actionId, input: {} } as never);
 
-		expect(resolve("demo.read")).toBe("read");
-		expect(resolve("demo.create")).toBe("write");
-		// destructive has no dedicated verb; it must not borrow the write verb.
-		expect(resolve("demo.purge")).toBeUndefined();
-		// An Action the catalog does not define is never guessed from its ID.
-		expect(resolve("demo.search_messages")).toBeUndefined();
-		expect(resolve(undefined)).toBeUndefined();
+		expect(tool?.activityKind).toBe("call");
+		expect(tool?.resolveActivityKind).toBeUndefined();
 	});
 });
 

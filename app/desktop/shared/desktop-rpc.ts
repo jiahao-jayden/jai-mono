@@ -453,7 +453,7 @@ export interface DesktopNarrationItem {
 	readonly timestamp: number;
 }
 
-export type DesktopToolActivityKind = "search" | "read" | "write" | "execute" | "operation";
+export type DesktopToolActivityKind = "search" | "read" | "write" | "execute" | "call" | "operation";
 
 export interface DesktopToolItem {
 	readonly kind: "tool";
