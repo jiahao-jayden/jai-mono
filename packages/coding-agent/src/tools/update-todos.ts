@@ -62,7 +62,6 @@ export function createUpdateTodosTool(
 ): AgentTool<typeof updateTodosParameters, UpdateTodosToolDetails> {
 	return {
 		name: UPDATE_TODOS_TOOL_NAME,
-		title: () => "Updating progress",
 		description:
 			"Replace the current session Todo list after a meaningful plan or progress change. Use stable IDs, keep at most one item in progress, and mark work completed only after its required verification succeeds.",
 		parameters: updateTodosParameters,

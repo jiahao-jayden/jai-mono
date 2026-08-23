@@ -67,8 +67,6 @@ function appendStatus(output: string, status: string): string {
 export function createBashTool(options: BashToolOptions): AgentTool<typeof bashParameters, BashToolDetails> {
 	return {
 		name: "Bash",
-		activityKind: "execute",
-		title: (args) => `Run ${args.command}`,
 		description: "Execute a POSIX shell command in the workspace with timeout, cancellation, and bounded output.",
 		parameters: bashParameters,
 		executionMode: "sequential",

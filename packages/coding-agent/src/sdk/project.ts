@@ -15,6 +15,11 @@ import type {
 	JsonObject,
 	JsonValue,
 } from "./types";
+import {
+	resolveToolPresentation,
+	type CodingToolPresentation,
+	type ResolvedCodingToolPresentation,
+} from "./tool-presentation";
 
 export class CodingSdkFailure extends TaggedError("coding_sdk.failure")<{
 	readonly phase: CodingSdkErrorPhase;
@@ -99,62 +104,87 @@ export function projectPermissionRequest(
 	};
 }
 
-export function projectEvent(event: AgentEvent): CodingAgentEvent {
-	switch (event.type) {
-		case "agent_start":
-			return { type: "agent_start" };
-		case "agent_end":
-			return { type: "agent_end", messages: projectMessages(event.messages) };
-		case "turn_start":
-			return { type: "turn_start" };
-		case "turn_end":
-			return {
-				type: "turn_end",
-				message: projectMessage(event.message) as CodingAssistantMessage,
-				toolResults: event.toolResults.map((message) => projectMessage(message) as CodingToolResult),
-			};
-		case "message_start":
-			return { type: "message_start", message: projectMessage(event.message) };
-		case "message_update":
-			return {
-				type: "message_update",
-				message: projectMessage(event.message) as CodingAssistantMessage,
-				assistantEvent: projectAssistantEvent(event.assistantEvent),
-			};
-		case "message_end":
-			return { type: "message_end", message: projectMessage(event.message) };
-		case "message_discard":
-			return { type: "message_discard" };
-		case "tool_execution_start":
-			return {
-				type: "tool_execution_start",
-				toolCallId: event.toolCallId,
-				toolName: event.toolName,
-				activityKind: event.activityKind,
-				title: event.title,
-				args: projectJson(event.args),
-			};
-		case "tool_execution_update":
-			return {
-				type: "tool_execution_update",
-				toolCallId: event.toolCallId,
-				toolName: event.toolName,
-				activityKind: event.activityKind,
-				partial: projectJson(event.partial),
-			};
-		case "tool_execution_end":
-			return {
-				type: "tool_execution_end",
-				toolCallId: event.toolCallId,
-				toolName: event.toolName,
-				activityKind: event.activityKind,
-				result: projectJson(event.result),
-				isError: event.isError,
-			};
-		case "compaction_start":
-			return { type: "compaction_start", trigger: event.trigger, tokensBefore: event.tokensBefore };
-		case "compaction_end":
-			return { type: "compaction_end", outcome: projectJson(event.outcome) };
+export class CodingEventProjector {
+	readonly #toolPresentations: ReadonlyMap<string, CodingToolPresentation>;
+	readonly #toolCalls = new Map<string, ResolvedCodingToolPresentation>();
+
+	constructor(toolPresentations: ReadonlyMap<string, CodingToolPresentation>) {
+		this.#toolPresentations = toolPresentations;
+	}
+
+	project(event: AgentEvent): CodingAgentEvent {
+		switch (event.type) {
+			case "agent_start":
+				return { type: "agent_start" };
+			case "agent_end":
+				return { type: "agent_end", messages: projectMessages(event.messages) };
+			case "turn_start":
+				return { type: "turn_start" };
+			case "turn_end":
+				return {
+					type: "turn_end",
+					message: projectMessage(event.message) as CodingAssistantMessage,
+					toolResults: event.toolResults.map((message) => projectMessage(message) as CodingToolResult),
+				};
+			case "message_start":
+				return { type: "message_start", message: projectMessage(event.message) };
+			case "message_update":
+				return {
+					type: "message_update",
+					message: projectMessage(event.message) as CodingAssistantMessage,
+					assistantEvent: projectAssistantEvent(event.assistantEvent),
+				};
+			case "message_end":
+				return { type: "message_end", message: projectMessage(event.message) };
+			case "message_discard":
+				return { type: "message_discard" };
+			case "tool_execution_start":
+				const presentation = resolveToolPresentation(
+					event.toolName,
+					event.args,
+					this.#toolPresentations.get(event.toolName),
+				);
+				this.#toolCalls.set(event.toolCallId, presentation);
+				return {
+					type: "tool_execution_start",
+					toolCallId: event.toolCallId,
+					toolName: event.toolName,
+					activityKind: presentation.activityKind,
+					title: presentation.title,
+					args: projectJson(event.args),
+				};
+			case "tool_execution_update":
+				const updatePresentation = this.#presentationFor(event.toolCallId, event.toolName);
+				return {
+					type: "tool_execution_update",
+					toolCallId: event.toolCallId,
+					toolName: event.toolName,
+					activityKind: updatePresentation.activityKind,
+					partial: projectJson(event.partial),
+				};
+			case "tool_execution_end":
+				const endPresentation = this.#presentationFor(event.toolCallId, event.toolName);
+				this.#toolCalls.delete(event.toolCallId);
+				return {
+					type: "tool_execution_end",
+					toolCallId: event.toolCallId,
+					toolName: event.toolName,
+					activityKind: endPresentation.activityKind,
+					result: projectJson(event.result),
+					isError: event.isError,
+				};
+			case "compaction_start":
+				return { type: "compaction_start", trigger: event.trigger, tokensBefore: event.tokensBefore };
+			case "compaction_end":
+				return { type: "compaction_end", outcome: projectJson(event.outcome) };
+		}
+	}
+
+	#presentationFor(toolCallId: string, toolName: string): ResolvedCodingToolPresentation {
+		return (
+			this.#toolCalls.get(toolCallId) ??
+			resolveToolPresentation(toolName, undefined, this.#toolPresentations.get(toolName))
+		);
 	}
 }
 

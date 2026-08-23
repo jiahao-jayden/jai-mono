@@ -1,5 +1,4 @@
 import path from "node:path";
-import type { AgentTool } from "@jai/agent";
 import { connectAgentPluginMcp } from "../mcp/runtime";
 import type { AgentPluginMcpRuntime } from "../mcp/types";
 import { loadAgentPluginDirectory } from "../package/loader";
@@ -35,7 +34,7 @@ export async function activateAgentPlugins(
 	discovery: AgentPluginDiscovery,
 	dataDirectory: string,
 ): Promise<AgentPluginRuntime> {
-	const tools: AgentTool[] = [];
+	const tools: AgentPluginRuntime["tools"][number][] = [];
 	const diagnostics: AgentPluginDiagnostic[] = [...discovery.diagnostics];
 	const mcpRuntimes: AgentPluginMcpRuntime[] = [];
 	for (const plugin of discovery.plugins) {

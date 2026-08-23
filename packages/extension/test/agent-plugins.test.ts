@@ -101,9 +101,9 @@ describe("Agent Plugins 组件适配器", () => {
 		const runtime = await connectAgentPluginMcp(loaded.value, { pluginDataDirectory: path.join(root, "data") });
 		expect(runtime.isOk()).toBe(true);
 		if (runtime.isErr()) return;
-		expect(runtime.value.tools.map((tool) => tool.name)).toEqual(["mcp__agent-plugins-test__probe__echo"]);
-		expect(runtime.value.tools[0]?.activityKind).toBe("read");
-		const result = await runtime.value.tools[0]!.execute("call-1", { text: "hello" });
+		expect(runtime.value.tools.map((entry) => entry.tool.name)).toEqual(["mcp__agent-plugins-test__probe__echo"]);
+		expect(runtime.value.tools[0]?.presentation.activityKind).toBe("call");
+		const result = await runtime.value.tools[0]!.tool.execute("call-1", { text: "hello" });
 		expect(result.content).toEqual([
 			{ type: "text", text: JSON.stringify({ text: "hello", cwd: await realpath(root) }) },
 		]);
@@ -134,7 +134,7 @@ describe("Agent Plugins 组件适配器", () => {
 		const runtime = await connectAgentPluginMcp(loaded.value, { pluginDataDirectory: dataRoot });
 		expect(runtime.isOk()).toBe(true);
 		if (runtime.isErr()) return;
-		const result = await runtime.value.tools[0]!.execute("context-1", {});
+		const result = await runtime.value.tools[0]!.tool.execute("context-1", {});
 		const first = result.content[0];
 		expect(first?.type).toBe("text");
 		if (first?.type !== "text") return;

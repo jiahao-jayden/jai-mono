@@ -23,8 +23,6 @@ export interface GlobToolDetails {
 export function createGlobTool(options: SearchToolOptions): AgentTool<typeof globParameters, GlobToolDetails> {
 	return {
 		name: "Glob",
-		activityKind: "search",
-		title: (args) => `Find ${args.pattern}`,
 		description:
 			"Find files by glob pattern. Respects .gitignore and returns paths relative to the search directory.",
 		parameters: globParameters,

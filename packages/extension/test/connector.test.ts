@@ -107,7 +107,7 @@ describe("Connector Extension", () => {
 	test("declares a presentation category on every registered tool", () => {
 		const extension = createConnectorExtension({ client: clientFor({ prepared: preparedAction("allow") }) });
 		const kinds = Object.fromEntries(
-			(extension.tools ?? []).map((tool) => [tool.name, tool.activityKind]),
+			(extension.tools ?? []).map((tool) => [tool.name, tool.presentation?.activityKind]),
 		);
 
 		expect(kinds).toEqual({
@@ -123,8 +123,8 @@ describe("Connector Extension", () => {
 		const extension = createConnectorExtension({ client: clientFor({ prepared: preparedAction("allow") }) });
 		const tool = extension.tools?.find((candidate) => candidate.name === "connector__execute_action");
 
-		expect(tool?.activityKind).toBe("call");
-		expect(tool?.resolveActivityKind).toBeUndefined();
+		expect(tool?.presentation?.activityKind).toBe("call");
+		expect(tool?.presentation?.resolveActivityKind).toBeUndefined();
 	});
 });
 

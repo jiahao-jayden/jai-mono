@@ -16,10 +16,10 @@ describe("通用 MCP 客户端", () => {
 
 		expect(runtime.isOk()).toBe(true);
 		if (runtime.isErr()) return;
-		expect(runtime.value.tools.map((tool) => tool.name)).toEqual(["mcp__settings__probe__echo"]);
-		expect(runtime.value.tools[0]?.activityKind).toBe("call");
-		expect(runtime.value.tools[0]?.title?.({ text: "hello" })).toBe("Fetch value");
-		const result = await runtime.value.tools[0]!.execute("call-1", { text: "hello" });
+		expect(runtime.value.tools.map((entry) => entry.tool.name)).toEqual(["mcp__settings__probe__echo"]);
+		expect(runtime.value.tools[0]?.presentation.activityKind).toBe("call");
+		expect(runtime.value.tools[0]?.presentation.title?.({ text: "hello" })).toBe("Fetch value");
+		const result = await runtime.value.tools[0]!.tool.execute("call-1", { text: "hello" });
 		expect(result.content).toEqual([{ type: "text", text: "hello" }]);
 		await runtime.value.close();
 	});
@@ -37,11 +37,11 @@ describe("通用 MCP 客户端", () => {
 				expect(runtime.isOk()).toBe(true);
 				if (runtime.isErr()) return;
 				expect(runtime.value.diagnostics).toEqual([]);
-				expect(runtime.value.tools.map((tool) => tool.name)).toEqual([
+				expect(runtime.value.tools.map((entry) => entry.tool.name)).toEqual([
 					`mcp__settings__${type}__echo`,
 				]);
-				expect(runtime.value.tools[0]?.activityKind).toBe("call");
-				const result = await runtime.value.tools[0]!.execute("call-1", { text: type });
+				expect(runtime.value.tools[0]?.presentation.activityKind).toBe("call");
+				const result = await runtime.value.tools[0]!.tool.execute("call-1", { text: type });
 				expect(result.content).toEqual([{ type: "text", text: type }]);
 				await runtime.value.close();
 			} finally {

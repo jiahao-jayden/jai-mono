@@ -28,8 +28,6 @@ export interface GrepToolDetails {
 export function createGrepTool(options: SearchToolOptions): AgentTool<typeof grepParameters, GrepToolDetails> {
 	return {
 		name: "Grep",
-		activityKind: "search",
-		title: (args) => `Search ${args.pattern}`,
 		description:
 			"Search UTF-8 file contents with a regex. Supports include globs, literal matching, case folding, and context lines.",
 		parameters: grepParameters,

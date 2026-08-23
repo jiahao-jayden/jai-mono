@@ -49,7 +49,7 @@ export function assembleAgentCapabilities(input: AssembleAgentCapabilitiesInput)
 			...(input.extensionTools ?? []),
 			...codingTools,
 			...(input.skills ? [input.skills.tool] : []),
-			...(input.mcp?.tools ?? []),
+			...(input.mcp?.tools.map(({ tool }) => tool) ?? []),
 		],
 		aroundToolCall: [
 			...(input.extensionToolMiddleware ? [input.extensionToolMiddleware] : []),

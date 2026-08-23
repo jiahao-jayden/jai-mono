@@ -17,21 +17,10 @@ describe("createHarnessTools", () => {
 			"sequential",
 			"sequential",
 		]);
-		expect([
-			tools[0]?.title?.({ path: "README.md" }),
-			tools[1]?.title?.({ pattern: "**/*.ts" }),
-			tools[2]?.title?.({ pattern: "AgentTool" }),
-			tools[3]?.title?.({ path: "result.md", content: "" }),
-			tools[4]?.title?.({ path: "result.md", edits: [] }),
-			tools[5]?.title?.({ command: "bun test" }),
-		]).toEqual([
-			"Read README.md",
-			"Find **/*.ts",
-			"Search AgentTool",
-			"Write result.md",
-			"Edit result.md",
-			"Run bun test",
-		]);
+		for (const tool of tools) {
+			expect(tool).not.toHaveProperty("title");
+			expect(tool).not.toHaveProperty("activityKind");
+		}
 	});
 
 	test("does not expose internal infrastructure", () => {

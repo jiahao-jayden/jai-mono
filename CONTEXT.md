@@ -194,6 +194,10 @@ _Avoid_: silent deny, approval hang
 A JSON-safe public projection of the Coding Agent's canonical Agent event stream. It preserves Agent-centric lifecycle, turn, message, tool-execution, and compaction semantics without introducing Desktop or product-business event names. Permission approval remains a handler interaction; Session App State, Todo, and Artifact are read-model facts rather than a second business-event vocabulary.
 _Avoid_: UI event, Desktop event, business event, raw provider event
 
+**Tool Execution Presentation**:
+The Coding Agent SDK's user-facing title and category for one tool call. It describes an execution for hosts but never changes its execution or authorization semantics.
+_Avoid_: Agent tool metadata, permission category, UI guess
+
 **Desktop Event Envelope**:
 A Desktop-owned transport wrapper that adds session correlation, sequence numbers, schema version, and IPC/UI delivery metadata around an SDK Agent Event Projection. The Coding Agent SDK does not define or depend on this envelope.
 _Avoid_: SDK event envelope, Agent event payload

@@ -94,7 +94,7 @@ export function createConnectorExtension(
 			{
 				name: "connector__list_apps",
 				description: "List enabled Connectors and safe connection summaries.",
-				activityKind: "call",
+				presentation: { activityKind: "call" },
 				parameters: emptyParameters,
 				authorization: {
 					owner: "core",
@@ -110,7 +110,7 @@ export function createConnectorExtension(
 			{
 				name: "connector__list_connections",
 				description: "List Connector account connections, health and scope summaries.",
-				activityKind: "call",
+				presentation: { activityKind: "call" },
 				parameters: emptyParameters,
 				authorization: {
 					owner: "core",
@@ -128,7 +128,7 @@ export function createConnectorExtension(
 			{
 				name: "connector__search_actions",
 				description: "Search available Connector Actions without exposing Connector-specific tools.",
-				activityKind: "call",
+				presentation: { activityKind: "call" },
 				parameters: searchParameters,
 				authorization: {
 					owner: "core",
@@ -147,7 +147,7 @@ export function createConnectorExtension(
 			{
 				name: "connector__get_action_guide",
 				description: "Get the input/output schema and usage guide for one Connector Action.",
-				activityKind: "call",
+				presentation: { activityKind: "call" },
 				parameters: guideParameters,
 				authorization: {
 					owner: "core",
@@ -166,7 +166,7 @@ export function createConnectorExtension(
 			{
 				name: "connector__execute_action",
 				description: "Execute one Connector Action after discovering its guide.",
-				activityKind: "call",
+				presentation: { activityKind: "call" },
 				parameters: executeParameters,
 				executionMode: "sequential",
 				authorization: { owner: "extension" },

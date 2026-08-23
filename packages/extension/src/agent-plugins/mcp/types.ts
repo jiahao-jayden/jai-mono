@@ -1,4 +1,5 @@
 import type { AgentTool } from "@jai/agent";
+import type { CodingToolPresentation } from "@jai/coding-agent";
 import type { AgentPluginDiagnostic } from "../shared/diagnostics";
 
 export const AGENT_PLUGINS_MCP_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json" as const;
@@ -29,7 +30,12 @@ export interface AgentPluginSseServer {
 export type AgentPluginMcpServer = AgentPluginStdioServer | AgentPluginHttpServer | AgentPluginSseServer;
 
 export interface AgentPluginMcpRuntime {
-	readonly tools: readonly AgentTool[];
+	readonly tools: readonly AgentPluginMcpTool[];
 	readonly diagnostics: readonly AgentPluginDiagnostic[];
 	close(): Promise<void>;
+}
+
+export interface AgentPluginMcpTool {
+	readonly tool: AgentTool;
+	readonly presentation: CodingToolPresentation;
 }

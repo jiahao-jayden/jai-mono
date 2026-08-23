@@ -56,22 +56,31 @@ export async function createAgentPluginsExtension(
 }
 
 function toExtensionTool(tool: AgentPluginRuntime["tools"][number]): CodingExtensionTool<any, any, AgentPluginRuntime> {
+	const agentTool = tool.tool;
 	return {
-		name: tool.name,
-		description: tool.description,
-		parameters: tool.parameters,
+		name: agentTool.name,
+		description: agentTool.description,
+		parameters: agentTool.parameters,
+		presentation: {
+			...(tool.presentation.activityKind ? { activityKind: tool.presentation.activityKind } : {}),
+			...(tool.presentation.title
+				? { title: (_runtime, args) => tool.presentation.title!(args) }
+				: {}),
+			...(tool.presentation.resolveActivityKind
+				? { resolveActivityKind: (_runtime, args) => tool.presentation.resolveActivityKind!(args) }
+				: {}),
+		},
 		authorization: {
 			owner: "core",
 			permission: {
 				sideEffect: "destructive",
 				dataSensitivity: "sensitive",
-				reason: `Runs external MCP tool "${tool.name}" from an Agent Plugins package.`,
+				reason: `Runs external MCP tool "${agentTool.name}" from an Agent Plugins package.`,
 			},
 		},
-		...(tool.title ? { title: (_runtime, args) => tool.title!(args) } : {}),
-		...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
+		...(agentTool.executionMode ? { executionMode: agentTool.executionMode } : {}),
 		execute: async (_runtime, { toolCallId, args, signal }): Promise<CodingExtensionToolResult> => {
-			const result = await tool.execute(toolCallId, args, signal);
+			const result = await agentTool.execute(toolCallId, args, signal);
 			return {
 				content: result.content,
 				...(result.terminate ? { terminate: true } : {}),

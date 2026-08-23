@@ -103,9 +103,7 @@ describe("createCodingTools", () => {
 		);
 
 		expect(tool).toMatchObject({ name: "SpawnAgent", executionMode: "parallel" });
-		expect(tool.title?.({ title: "Inspect repository", task: "Inspect the repository." })).toBe(
-			"Inspect repository",
-		);
+		expect(tool).not.toHaveProperty("title");
 		expect(result).toEqual({
 			content: [{ type: "text", text: "Inspection complete." }],
 			details: {

@@ -7,12 +7,9 @@ import type {
 	Provider,
 	TextContent,
 	Tool,
-	ToolActivityKind,
 	ToolCall,
 	ToolResultMessage,
 } from "@jai/ai";
-
-export type { ToolActivityKind } from "@jai/ai";
 
 import type { Static, TSchema } from "@sinclair/typebox";
 
@@ -34,14 +31,6 @@ export type ToolUpdateCallback<TDetails = unknown> = (partial: AgentToolResult<T
 export type ToolExecutionMode = "sequential" | "parallel";
 
 export interface AgentTool<T extends TSchema = TSchema, TDetails = unknown> extends Tool<T> {
-	/** 单次调用的用户可见标题；缺省使用 name。 */
-	title?(args: Static<T>): string;
-	/**
-	 * 单次调用的展示类别，覆盖静态的 `activityKind`。用于同一个工具按参数呈现
-	 * 不同能力（如 Connector 的 execute_action 按 Action 的 sideEffect 变化）。
-	 * 必须同步解析：`tool_execution_start` 在 execute 之前就要带上类别。
-	 */
-	resolveActivityKind?(args: Static<T>): ToolActivityKind | undefined;
 	/**
 	 * 执行工具。参数已由 loop 校验并转换为 Static<T>。
 	 * 失败请 throw，由 loop 捕获转成 isError 的 ToolResultMessage。
@@ -111,22 +100,18 @@ export type CoreAgentEvent =
 			type: "tool_execution_start";
 			toolCallId: string;
 			toolName: string;
-			activityKind: ToolActivityKind;
-			title: string;
 			args: unknown;
 	  }
 	| {
 			type: "tool_execution_update";
 			toolCallId: string;
 			toolName: string;
-			activityKind: ToolActivityKind;
 			partial: AgentToolResult;
 	  }
 	| {
 			type: "tool_execution_end";
 			toolCallId: string;
 			toolName: string;
-			activityKind: ToolActivityKind;
 			result: AgentToolResult;
 			isError: boolean;
 	  };

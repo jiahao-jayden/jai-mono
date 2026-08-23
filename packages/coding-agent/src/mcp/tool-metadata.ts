@@ -1,4 +1,4 @@
-import type { ToolActivityKind } from "@jai/agent";
+import type { CodingToolPresentation } from "../sdk/tool-presentation";
 
 /** The subset of MCP tool annotations that is safe and useful for transcript presentation. */
 export interface McpToolMetadata {
@@ -14,10 +14,9 @@ export interface McpToolMetadata {
  * out of the presentation category because they are hints, not authorization
  * input, and a read-only call is not a local file read.
  */
-export function mcpToolActivityKind(_tool: McpToolMetadata): ToolActivityKind {
-	return "call";
-}
-
-export function mcpToolTitle(tool: McpToolMetadata): string {
-	return tool.annotations?.title?.trim() || tool.name;
+export function mcpToolPresentation(tool: McpToolMetadata): CodingToolPresentation {
+	return {
+		activityKind: "call",
+		title: () => tool.annotations?.title?.trim() || tool.name,
+	};
 }

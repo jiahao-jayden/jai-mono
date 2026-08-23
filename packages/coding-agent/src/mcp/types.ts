@@ -1,4 +1,5 @@
 import type { AgentTool } from "@jai/agent";
+import type { CodingToolPresentation } from "../sdk/tool-presentation";
 
 export interface McpStdioServer {
 	readonly name: string;
@@ -31,9 +32,14 @@ export interface McpDiagnostic {
 }
 
 export interface McpRuntime {
-	readonly tools: readonly AgentTool[];
+	readonly tools: readonly McpTool[];
 	readonly diagnostics: readonly McpDiagnostic[];
 	close(): Promise<void>;
+}
+
+export interface McpTool {
+	readonly tool: AgentTool;
+	readonly presentation: CodingToolPresentation;
 }
 
 export interface McpConnectOptions {

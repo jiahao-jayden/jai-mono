@@ -54,7 +54,6 @@ export function createSpawnAgentTool(
 
 	return {
 		name: SPAWN_AGENT_TOOL_NAME,
-		title: (args) => args.title,
 		description:
 			"Delegate one independent task to an isolated subagent and wait for its final result. The task must include all required context because the subagent cannot see the parent transcript. Emit multiple independent SpawnAgent calls together when they can run in parallel.",
 		parameters: spawnAgentParameters,

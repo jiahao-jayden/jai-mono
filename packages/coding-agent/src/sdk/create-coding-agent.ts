@@ -27,6 +27,7 @@ import {
 	extensionMiddleware,
 	extensionPermissions,
 	extensionSkills,
+	extensionToolPresentations,
 	extensionTools,
 	type InitializedExtension,
 	notifyExtensionSettled,
@@ -42,12 +43,12 @@ import {
 	closedError,
 	projectArtifact,
 	projectError,
-	projectEvent,
 	projectJson,
 	projectMessages,
 	projectPermissionRequest,
 	todosFromAppState,
 } from "./project";
+import { CodingEventProjector } from "./project";
 import {
 	type CodingSchema,
 	createExtensionSessionStateAdapter,
@@ -69,6 +70,7 @@ import type {
 	JsonObject,
 	JsonValue,
 } from "./types";
+import { builtInToolPresentations } from "./tool-presentation";
 
 export async function createCodingAgent<TAppState extends JsonObject = JsonObject>(
 	input: CodingAgentCreateOptions,
@@ -158,7 +160,14 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			});
 		}
 		return Result.ok(
-			new PublicCodingAgent<TAppState>(internal, sessionId, modelRuntime, ephemeralDirectory, extensions),
+			new PublicCodingAgent<TAppState>(
+				internal,
+				sessionId,
+				modelRuntime,
+				ephemeralDirectory,
+				extensions,
+				new Map([...builtInToolPresentations(), ...extensionToolPresentations(extensions)]),
+			),
 		);
 	} catch (error) {
 		await disposeExtensions(extensions).catch(() => {});
@@ -178,6 +187,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 	readonly #pendingArtifacts = new Map<string, CodingAgentArtifact>();
 	readonly #listeners = new Set<(event: CodingAgentEvent) => void>();
 	readonly #stopArtifactProjection: () => void;
+	readonly #eventProjector: CodingEventProjector;
 	#closed = false;
 	#running = false;
 	#tail: Promise<void> = Promise.resolve();
@@ -191,6 +201,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		modelRuntime: { readonly model: Model; readonly provider: Provider },
 		ephemeralDirectory?: string,
 		extensions: readonly InitializedExtension[] = [],
+		toolPresentations = builtInToolPresentations(),
 	) {
 		this.#internal = internal;
 		this.#sessionId = sessionId;
@@ -198,6 +209,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		this.#provider = modelRuntime.provider;
 		this.#ephemeralDirectory = ephemeralDirectory;
 		this.#extensions = extensions;
+		this.#eventProjector = new CodingEventProjector(toolPresentations);
 		for (const artifact of artifactsFromAppState(internal.state.appState)) {
 			this.#artifacts.set(artifact.id, artifact);
 		}
@@ -209,8 +221,8 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 				const outcome = extensionOutcome(event.message.stopReason);
 				await notifyExtensionTurnEnd(this.#extensions, { outcome });
 			}
+			const projected = this.#eventProjector.project(event);
 			if (this.#listeners.size === 0) return;
-			const projected = projectEvent(event);
 			for (const listener of this.#listeners) listener(projected);
 		});
 	}

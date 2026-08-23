@@ -1,4 +1,4 @@
-export { type McpToolMetadata, mcpToolActivityKind, mcpToolTitle } from "./mcp";
+export { type McpToolMetadata, mcpToolPresentation } from "./mcp";
 export { createCodingAgent } from "./sdk/create-coding-agent";
 export {
 	emptyPersistedCodingSessionState,
@@ -45,6 +45,7 @@ export type {
 	CodingExtensionSessionStateStore,
 	CodingExtensionSkill,
 	CodingExtensionTool,
+	CodingExtensionToolPresentation,
 	CodingExtensionToolCall,
 	CodingExtensionToolCatalog,
 	CodingExtensionToolPermissionResolver,
@@ -82,3 +83,4 @@ export type {
 	JsonObject,
 	JsonValue,
 } from "./sdk/types";
+export type { CodingToolActivityKind, CodingToolPresentation } from "./sdk/tool-presentation";

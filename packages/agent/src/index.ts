@@ -12,7 +12,6 @@ export {
 	type JsonValue,
 	type ObserverErrorInfo,
 	type Session,
-	type ToolActivityKind,
 	type ToolCallContext,
 	type ToolExecutionMode,
 	type ToolInfo,

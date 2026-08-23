@@ -1,4 +1,3 @@
-import type { ToolActivityKind } from "@jai/agent";
 import type { TObject, TSchema } from "@sinclair/typebox";
 import type { Result as ResultType } from "better-result";
 import type { JsonObject, JsonValue } from "../../core/json";
@@ -6,6 +5,7 @@ import type { CodingExtensionToolCall, CodingToolPermission } from "../../permis
 import type { CodingPluginSkillCard } from "../../skills/catalog";
 import type { CodingExtensionError, CodingExtensionOperationFailed } from "../extension-errors";
 import type { CodingPermissionMode } from "../types";
+import type { CodingToolActivityKind } from "../tool-presentation";
 
 export interface CodingExtensionConfiguration<TConfig extends JsonObject = JsonObject> {
 	readonly scope: "user" | "project";
@@ -124,20 +124,22 @@ export interface CodingExtensionTool<
 		runtime: CodingExtensionRuntime<TConfig, TState, TInstance>,
 		call: CodingExtensionToolCall<JsonObject>,
 	) => CodingExtensionToolResult | Promise<CodingExtensionToolResult>;
+	readonly presentation?: CodingExtensionToolPresentation<TConfig, TState, TInstance>;
+	readonly executionMode?: "sequential" | "parallel";
+}
+
+/** A Coding Agent SDK projection. It does not affect execution or authorization. */
+export interface CodingExtensionToolPresentation<
+	TConfig extends JsonObject = JsonObject,
+	TState extends JsonObject = JsonObject,
+	TInstance = undefined,
+> {
+	readonly activityKind?: CodingToolActivityKind;
 	readonly title?: (runtime: CodingExtensionRuntime<TConfig, TState, TInstance>, args: JsonObject) => string;
-	/** Presentation capability. Omit only when this should appear as a generic operation. */
-	readonly activityKind?: ToolActivityKind;
-	/**
-	 * Per-call presentation capability, overriding `activityKind`. Must resolve
-	 * synchronously from already-loaded metadata: the start event carries the
-	 * category before `execute` runs. Return undefined when the call has no
-	 * authoritative category rather than guessing one.
-	 */
 	readonly resolveActivityKind?: (
 		runtime: CodingExtensionRuntime<TConfig, TState, TInstance>,
 		args: JsonObject,
-	) => ToolActivityKind | undefined;
-	readonly executionMode?: "sequential" | "parallel";
+	) => CodingToolActivityKind | undefined;
 }
 
 export type CodingExtensionToolPermissionResolver<

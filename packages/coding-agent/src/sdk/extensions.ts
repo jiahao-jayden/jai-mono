@@ -2,6 +2,7 @@ import type { AgentMessage, AgentTool, ToolMiddleware } from "@jai/agent";
 import { validateToolArguments } from "@jai/ai";
 import { panic, Result, type Result as ResultType } from "better-result";
 import type { JsonObject } from "../core/json";
+import type { CodingToolPresentation } from "./tool-presentation";
 import {
 	CodingExtensionDeactivationFailed,
 	type CodingExtensionError,
@@ -28,6 +29,7 @@ import type {
 	CodingExtensionSessionStateAdapter,
 	CodingExtensionSkill,
 	CodingExtensionTool,
+	CodingExtensionToolPresentation,
 	CodingExtensionToolCall,
 	CodingExtensionToolResult,
 	CodingToolCatalogDiscovery,
@@ -62,6 +64,7 @@ export type {
 	CodingExtensionSessionStateStore,
 	CodingExtensionSkill,
 	CodingExtensionTool,
+	CodingExtensionToolPresentation,
 	CodingExtensionToolCall,
 	CodingExtensionToolCatalog,
 	CodingExtensionToolPermissionResolver,
@@ -81,6 +84,7 @@ export interface InitializedExtension {
 	runtime?: CodingExtensionRuntime<any, any, any>;
 	readonly tools: AgentTool[];
 	readonly catalogTools: AgentTool[];
+	readonly toolPresentations: Map<string, CodingToolPresentation>;
 	readonly skills: readonly CodingExtensionSkill[];
 	readonly permissions: Map<string, ResolvedExtensionToolPermission>;
 	readonly extensionAuthorizedToolNames: string[];
@@ -199,6 +203,12 @@ export function extensionTools(extensions: readonly InitializedExtension[]): rea
 
 export function extensionCatalogTools(extensions: readonly InitializedExtension[]): readonly AgentTool[] {
 	return extensions.flatMap((extension) => extension.catalogTools);
+}
+
+export function extensionToolPresentations(
+	extensions: readonly InitializedExtension[],
+): ReadonlyMap<string, CodingToolPresentation> {
+	return new Map(extensions.flatMap((extension) => [...extension.toolPresentations]));
 }
 
 export function extensionSkills(extensions: readonly InitializedExtension[]): readonly CodingExtensionSkill[] {
@@ -485,6 +495,7 @@ function createInitializedExtension(extension: CodingAgentExtension<any, any, an
 		extension,
 		tools: [],
 		catalogTools: [],
+		toolPresentations: new Map(),
 		skills: extension.skills ?? [],
 		permissions,
 		extensionAuthorizedToolNames,
@@ -520,18 +531,25 @@ function mapExtensionTools(
 		} else {
 			extension.extensionAuthorizedToolNames.push(tool.name);
 		}
+		const presentation = tool.presentation;
+		if (presentation) {
+			extension.toolPresentations.set(tool.name, {
+				...(presentation.activityKind ? { activityKind: presentation.activityKind } : {}),
+				...(presentation.title
+					? { title: (args) => presentation.title!(extensionRuntime(extension), args as JsonObject) }
+					: {}),
+				...(presentation.resolveActivityKind
+					? {
+							resolveActivityKind: (args) =>
+								presentation.resolveActivityKind!(extensionRuntime(extension), args as JsonObject),
+						}
+					: {}),
+			});
+		}
 		return {
 			name: tool.name,
-			activityKind: tool.activityKind ?? "operation",
 			description: tool.description,
 			parameters: tool.parameters,
-			...(tool.title ? { title: (args: JsonObject) => tool.title!(extensionRuntime(extension), args) } : {}),
-			...(tool.resolveActivityKind
-				? {
-						resolveActivityKind: (args: JsonObject) =>
-							tool.resolveActivityKind!(extensionRuntime(extension), args),
-					}
-				: {}),
 			...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
 			execute: async (toolCallId, args, signal) => {
 				const result = await tool.execute(extensionRuntime(extension), {

@@ -1,6 +1,6 @@
-import type { AgentTool } from "@jai/agent";
 import type { AgentPluginSkillDescriptor, LoadedAgentPlugin } from "../package/types";
 import type { AgentPluginDiagnostic } from "../shared/diagnostics";
+import type { AgentPluginMcpTool } from "../mcp/types";
 
 export interface AgentPluginDirectory {
 	readonly path: string;
@@ -21,7 +21,7 @@ export interface AgentPluginDiscovery {
 
 export interface AgentPluginRuntime {
 	readonly skills: readonly AgentPluginSkillDescriptor[];
-	readonly tools: readonly AgentTool[];
+	readonly tools: readonly AgentPluginMcpTool[];
 	readonly diagnostics: readonly AgentPluginDiagnostic[];
 	close(): Promise<void>;
 }

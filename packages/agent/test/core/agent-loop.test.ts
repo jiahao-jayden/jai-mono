@@ -166,7 +166,6 @@ describe("agentLoop", () => {
 		const calls: string[] = [];
 		const readTool: AgentTool<typeof toolParameters> = {
 			name: "read",
-			title: (args) => `Read ${args.path}`,
 			description: "Read a file",
 			parameters: toolParameters,
 			async execute(_id, args) {
@@ -249,7 +248,6 @@ describe("agentLoop", () => {
 		const readParameters = Type.Object({ path: Type.String() });
 		const readTool: AgentTool<typeof readParameters> = {
 			name: "read",
-			title: (args) => `Read ${args.path}`,
 			description: "Read a file",
 			parameters: readParameters,
 			async execute(_id, args) {
@@ -284,15 +282,15 @@ describe("agentLoop", () => {
 			"tool_execution_start",
 		);
 		expect(events.find((event) => event.type === "tool_execution_start")).toMatchObject({
-			title: "Read a.txt",
-			activityKind: "operation",
+			toolName: "read",
+			args: { path: "a.txt" },
 		});
 		expect(events.map((event) => event.type)).toContain(
 			"tool_execution_end",
 		);
 	});
 
-	test("carries the per-call activity kind on the start and end events", async () => {
+	test("keeps tool lifecycle events free of presentation metadata", async () => {
 		const toolCall: ToolCall = {
 			type: "toolCall",
 			id: "call-1",
@@ -304,8 +302,6 @@ describe("agentLoop", () => {
 			name: "act",
 			description: "Run one action",
 			parameters: actParameters,
-			activityKind: "operation",
-			resolveActivityKind: (args) => (args.actionId === "demo.read" ? "read" : undefined),
 			async execute() {
 				return { content: [{ type: "text", text: "ok" }] };
 			},
@@ -318,49 +314,11 @@ describe("agentLoop", () => {
 			}),
 		);
 
-		// Resolved before execute, so a live Running label can already read Reading.
-		expect(events.find((event) => event.type === "tool_execution_start")).toMatchObject({
-			activityKind: "read",
-		});
-		expect(events.find((event) => event.type === "tool_execution_end")).toMatchObject({
-			activityKind: "read",
-		});
-		// activityKind is presentation-only and never written into the persisted message.
-		expect(messages.find((message) => message.role === "toolResult")).not.toMatchObject({
-			activityKind: expect.anything(),
-		});
-	});
-
-	test("falls back to the static activity kind when a call has no authoritative category", async () => {
-		const actParameters = Type.Object({ actionId: Type.String() });
-		const actTool: AgentTool<typeof actParameters> = {
-			name: "act",
-			description: "Run one action",
-			parameters: actParameters,
-			activityKind: "operation",
-			resolveActivityKind: (args) => (args.actionId === "demo.read" ? "read" : undefined),
-			async execute() {
-				return { content: [{ type: "text", text: "ok" }] };
-			},
-		};
-		const toolCall: ToolCall = {
-			type: "toolCall",
-			id: "call-1",
-			name: "act",
-			// Named like a search, but the catalog defines no such action.
-			arguments: { actionId: "demo.search_messages" },
-		};
-
-		const { events } = await collect(
-			agentLoop([user("act")], context([actTool]), {
-				model,
-				provider: providerFor([assistant([toolCall], "toolUse"), assistant([{ type: "text", text: "done" }])], []),
-			}),
-		);
-
-		expect(events.find((event) => event.type === "tool_execution_start")).toMatchObject({
-			activityKind: "operation",
-		});
+		for (const event of events.filter((event) => event.type.startsWith("tool_execution_"))) {
+			expect(event).not.toHaveProperty("activityKind");
+			expect(event).not.toHaveProperty("title");
+		}
+		expect(messages.find((message) => message.role === "toolResult")).toBeDefined();
 	});
 
 	test("发布流式增量时不等待整个响应结束", async () => {

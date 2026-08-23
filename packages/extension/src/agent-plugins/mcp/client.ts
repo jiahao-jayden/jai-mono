@@ -1,16 +1,16 @@
-import type { AgentTool, AgentToolResult } from "@jai/agent";
-import { type McpToolMetadata, mcpToolActivityKind, mcpToolTitle } from "@jai/coding-agent";
+import type { AgentToolResult } from "@jai/agent";
+import { type McpToolMetadata, mcpToolPresentation } from "@jai/coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { type TSchema, Type } from "@sinclair/typebox";
 import { AgentPluginMcpConnectionFailed } from "../package/errors";
-import type { AgentPluginMcpServer } from "./types";
+import type { AgentPluginMcpServer, AgentPluginMcpTool } from "./types";
 
 interface ConnectedServer {
 	readonly client: Client;
-	readonly tools: readonly AgentTool[];
+	readonly tools: readonly AgentPluginMcpTool[];
 }
 
 export async function connectPluginMcp(
@@ -18,7 +18,7 @@ export async function connectPluginMcp(
 	servers: readonly AgentPluginMcpServer[],
 	signal?: AbortSignal,
 ): Promise<{
-	readonly tools: readonly AgentTool[];
+	readonly tools: readonly AgentPluginMcpTool[];
 	readonly diagnostics: readonly { readonly serverName: string; readonly message: string }[];
 	readonly close: () => Promise<void>;
 }> {
@@ -82,27 +82,28 @@ function createTool(
 	serverName: string,
 	client: Client,
 	tool: McpToolMetadata & { readonly description?: string; readonly inputSchema?: unknown },
-): AgentTool {
+): AgentPluginMcpTool {
 	return {
-		name: `mcp__${sanitize(namespace)}__${sanitize(serverName)}__${sanitize(tool.name)}`,
-		activityKind: mcpToolActivityKind(tool),
-		title: () => mcpToolTitle(tool),
-		description: tool.description?.trim() || `MCP tool ${tool.name} from ${serverName}`,
-		parameters: jsonSchemaToTypeBox(tool.inputSchema),
-		executionMode: "parallel",
-		execute: async (_toolCallId, input, signal): Promise<AgentToolResult> => {
-			try {
-				const result = await client.callTool(
-					{ name: tool.name, arguments: input as Record<string, unknown> },
-					undefined,
-					signal ? { signal } : undefined,
-				);
-				if (!("content" in result)) return { content: [{ type: "text", text: JSON.stringify(result) ?? "" }] };
-				return { content: mapContent((result as { readonly content?: readonly unknown[] }).content) };
-			} catch (cause) {
-				throw new AgentPluginMcpConnectionFailed({ serverName, message: `MCP tool "${tool.name}" failed`, cause });
-			}
+		tool: {
+			name: `mcp__${sanitize(namespace)}__${sanitize(serverName)}__${sanitize(tool.name)}`,
+			description: tool.description?.trim() || `MCP tool ${tool.name} from ${serverName}`,
+			parameters: jsonSchemaToTypeBox(tool.inputSchema),
+			executionMode: "parallel",
+			execute: async (_toolCallId, input, signal): Promise<AgentToolResult> => {
+				try {
+					const result = await client.callTool(
+						{ name: tool.name, arguments: input as Record<string, unknown> },
+						undefined,
+						signal ? { signal } : undefined,
+					);
+					if (!("content" in result)) return { content: [{ type: "text", text: JSON.stringify(result) ?? "" }] };
+					return { content: mapContent((result as { readonly content?: readonly unknown[] }).content) };
+				} catch (cause) {
+					throw new AgentPluginMcpConnectionFailed({ serverName, message: `MCP tool "${tool.name}" failed`, cause });
+				}
+			},
 		},
+		presentation: mcpToolPresentation(tool),
 	};
 }
 

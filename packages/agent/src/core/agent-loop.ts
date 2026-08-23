@@ -20,7 +20,6 @@ import type {
 	AgentTool,
 	AgentToolResult,
 	CoreAgentEvent,
-	ToolActivityKind,
 	ToolCallContext,
 } from "./types";
 
@@ -438,13 +437,10 @@ async function executeToolCallBatch(run: AgentLoopRuntime, toolCalls: ToolCall[]
 async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promise<ExecutedToolCall> {
 	const { context, config, signal, emit } = run;
 	const tool = context.tools.find((candidate) => candidate.name === toolCall.name);
-	const activityKind = resolveToolActivityKind(tool, toolCall.arguments);
 	emit({
 		type: "tool_execution_start",
 		toolCallId: toolCall.id,
 		toolName: toolCall.name,
-		activityKind,
-		title: resolveToolTitle(tool, toolCall.arguments),
 		args: toolCall.arguments,
 	});
 
@@ -486,7 +482,6 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 					type: "tool_execution_update",
 					toolCallId: toolCall.id,
 					toolName: toolCall.name,
-					activityKind,
 					partial,
 				});
 			});
@@ -522,38 +517,11 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 		type: "tool_execution_end",
 		toolCallId: toolCall.id,
 		toolName: toolCall.name,
-		activityKind,
 		result,
 		isError,
 	});
 
 	return outcome;
-}
-
-function resolveToolTitle(tool: AgentTool | undefined, args: unknown): string {
-	const fallback = tool?.name || "Tool";
-	if (!tool?.title) return fallback;
-	try {
-		const title = tool.title(args as never).trim() || fallback;
-		return title.length > 80 ? `${title.slice(0, 79)}…` : title;
-	} catch {
-		return fallback;
-	}
-}
-
-/**
- * 展示类别的解析入口。优先按本次参数解析（`resolveActivityKind`），因为同一个
- * 工具可以按 Action 呈现不同能力；解析失败或没有声明时退回静态字段，最终退回
- * `operation`——绝不按工具名猜。
- */
-function resolveToolActivityKind(tool: AgentTool | undefined, args: unknown): ToolActivityKind {
-	const fallback = tool?.activityKind ?? "operation";
-	if (!tool?.resolveActivityKind) return fallback;
-	try {
-		return tool.resolveActivityKind(args as never) ?? fallback;
-	} catch {
-		return fallback;
-	}
 }
 
 function finalArguments(tool: AgentTool, toolCall: ToolCall, args: Record<string, unknown>): Record<string, unknown> {

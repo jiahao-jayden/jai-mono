@@ -486,7 +486,7 @@ function createSkillsRuntime<TSchema extends TObject, TAppState extends JsonObje
 }
 
 function subagentActivity(event: AgentEvent) {
-	return event.type === "tool_execution_start" ? event.title : undefined;
+	return event.type === "tool_execution_start" ? event.toolName : undefined;
 }
 
 function finalAssistantText(messages: readonly AgentMessage[]): string {
