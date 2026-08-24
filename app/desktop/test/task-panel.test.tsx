@@ -13,11 +13,7 @@ describe("TaskPanel", () => {
 				artifacts={noArtifacts}
 				selectedArtifactId={null}
 				onOpenArtifact={noop}
-				todos={{
-					version: 1,
-					updatedAt: 1,
-					items: [{ id: "inspect", content: "Inspect storage", status: "in_progress" }],
-				}}
+				todos={[{ id: "inspect", content: "Inspect storage", status: "in_progress" }]}
 			/>,
 		);
 
@@ -55,16 +51,12 @@ describe("TaskPanel", () => {
 				artifacts={noArtifacts}
 				selectedArtifactId={null}
 				onOpenArtifact={noop}
-				todos={{
-					version: 1,
-					updatedAt: 1,
-					items: [
+				todos={[
 						{ id: "inspect", content: "Inspect storage", status: "completed" },
 						{ id: "render", content: "Render progress", status: "in_progress" },
 						{ id: "verify", content: "Verify behavior", status: "pending" },
 						{ id: "skipped", content: "Discard old path", status: "cancelled" },
-					],
-				}}
+					]}
 			/>,
 		);
 
@@ -84,11 +76,7 @@ describe("TaskPanel", () => {
 				artifacts={noArtifacts}
 				selectedArtifactId={null}
 				onOpenArtifact={noop}
-				todos={{
-					version: 1,
-					updatedAt: 1,
-					items: [{ id: "render", content: "Render progress", status: "in_progress" }],
-				}}
+				todos={[{ id: "render", content: "Render progress", status: "in_progress" }]}
 			/>,
 		);
 

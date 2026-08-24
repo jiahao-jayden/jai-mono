@@ -424,6 +424,8 @@ export type DesktopAttachmentRegistrationInput = Static<typeof desktopAttachment
 export interface DesktopMessageItem {
 	readonly kind: "message";
 	readonly id: string;
+	/** Durable ledger entry id for a message that can be used as a branch target. */
+	readonly entryId?: string;
 	readonly role: "user" | "assistant" | "toolResult";
 	readonly text: string;
 	readonly status: "streaming" | "complete";
@@ -539,11 +541,8 @@ export interface DesktopTodoItem {
 	readonly status: DesktopTodoStatus;
 }
 
-export interface DesktopTodos {
-	readonly version: 1;
-	readonly updatedAt: number;
-	readonly items: readonly DesktopTodoItem[];
-}
+/** 与 CodingAgentState.todos 同形：Desktop 不再自己维护第二份 Todo 读模型。 */
+export type DesktopTodos = readonly DesktopTodoItem[];
 
 export interface DesktopAgentSnapshot {
 	readonly sessionId: string;
@@ -612,6 +611,22 @@ export interface DesktopAgentMessageInput extends DesktopAgentSessionInput {
 	readonly modelRef: string;
 	readonly mode: DesktopAgentMode;
 	readonly attachments?: readonly DesktopMessageAttachment[];
+}
+
+export const desktopAgentNavigateInputSchema = Type.Object(
+	{
+		sessionId: Type.String({ minLength: 1 }),
+		entryId: Type.String({ minLength: 1 }),
+		modelRef: Type.String({ pattern: "/" }),
+		mode: Type.Union([Type.Literal("manual"), Type.Literal("automate"), Type.Literal("plan")]),
+	},
+	{ additionalProperties: false },
+);
+
+export interface DesktopAgentNavigateInput extends DesktopAgentSessionInput {
+	readonly entryId: string;
+	readonly modelRef: string;
+	readonly mode: DesktopAgentMode;
 }
 
 export const desktopSessionCreateInputSchema = Type.Object(
@@ -704,7 +719,7 @@ export interface DesktopApi {
 			readonly limit?: number;
 			readonly cursor?: SessionListCursor;
 		}): DesktopSessionListPage;
-		rename(input: DesktopSessionRenameInput): CodingSession;
+		rename(input: DesktopSessionRenameInput): Promise<CodingSession>;
 		move(input: MoveSessionInput): Promise<CodingSession>;
 		delete(input: DesktopSessionDeleteInput): Promise<void>;
 	};
@@ -723,6 +738,7 @@ export interface DesktopApi {
 	};
 	readonly agent: {
 		send(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;
+		navigate(input: DesktopAgentNavigateInput): Promise<void>;
 		abort(sessionId: string): void;
 		steer(input: DesktopAgentMessageInput): void;
 		followUp(input: DesktopAgentMessageInput): void;

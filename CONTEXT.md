@@ -43,8 +43,20 @@ A persisted conversation and Session App State record selected when a Coding Age
 _Avoid_: session agent, execution handle
 
 **Session Store**:
-The durable owner of Coding Agent Sessions and their append-only entries. Local JSONL, SQLite, and network database implementations share the same create, append, revision-conflict, and replay semantics.
-_Avoid_: filesystem repository, session directory, transcript cache
+The durable owner of Coding Agent Sessions and their append-only journal entries. Jai has one durable implementation: SQLite at `$JAI_HOME/data.sqlite`, shared by Desktop and CLI; `InMemorySessionStore` exists only for ephemeral execution and tests.
+_Avoid_: filesystem repository, session directory, JSONL store, transcript cache
+
+**Session Journal**:
+The append-only Session facts owned by `@jai/agent`: messages, app-state updates, compaction facts, and branch facts. A journal is replayed into a Session Snapshot; Desktop metadata and UI projections are not journal entries.
+_Avoid_: session index, Desktop state, transcript cache
+
+**Desktop Session Metadata**:
+Desktop-owned current metadata for one Session, including title, title source, and Project association. It lives in the same SQLite database as the Session Journal but is a separate fact model and must not be encoded as Session App State or a journal entry.
+_Avoid_: session state entry, session index, transcript metadata
+
+**Desktop Session Projection**:
+A disposable Desktop read model reconstructed from a Session Snapshot and live SDK event projections. It may contain transcript items, Todo, Artifact, and transport sequence state, but never becomes a durable Session fact.
+_Avoid_: session source of truth, durable UI state, journal writer
 
 **Session Selection**:
 The explicit choice of a `new`, `resume`, or `ephemeral` Coding Agent Session when creating a Coding Agent. It never silently creates a durable Session while attempting to resume one.

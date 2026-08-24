@@ -81,16 +81,18 @@ export function subagentItem(input: SubagentItemInput): DesktopSubagentItem {
 
 export interface UserMessageItemInput {
 	readonly id: string;
+	readonly entryId?: string;
 	readonly message: CodingAgentMessage;
 	readonly status: DesktopMessageItem["status"];
 }
 
-export function userMessageItem({ id, message, status }: UserMessageItemInput): DesktopMessageItem {
+export function userMessageItem({ id, entryId, message, status }: UserMessageItemInput): DesktopMessageItem {
 	const slashInvocation = slashInvocationOf(message);
 	const attachments = attachmentsOf(message);
 	return {
 		kind: "message",
 		id,
+		...(entryId ? { entryId } : {}),
 		role: message.role,
 		text: messageText(message),
 		status,

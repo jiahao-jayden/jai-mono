@@ -12,13 +12,14 @@ const settings: CompactionSettings = { reserveTokens: 1_000, tailTurns: 2, prese
 
 /** 一条 user message entry，text 长度决定它的估算体积。 */
 function u(id: string, text: string): SessionEntry {
-	return { type: "message", id, timestamp: id, message: { role: "user", content: text, timestamp: 0 } };
+	return { type: "message", id, parentId: null, timestamp: id, message: { role: "user", content: text, timestamp: 0 } };
 }
 
 function a(id: string, text: string, toolCallIds: string[] = []): SessionEntry {
 	return {
 		type: "message",
 		id,
+		parentId: null,
 		timestamp: id,
 		message: {
 			role: "assistant",
@@ -39,6 +40,7 @@ function r(id: string, toolCallId: string, text: string): SessionEntry {
 	return {
 		type: "message",
 		id,
+		parentId: null,
 		timestamp: id,
 		message: {
 			role: "toolResult",
@@ -55,6 +57,7 @@ function compaction(id: string, summary: string, firstKeptEntryId: string): Sess
 	return {
 		type: "compaction",
 		id,
+		parentId: null,
 		timestamp: "2026-01-01T00:00:00.000Z",
 		summary,
 		firstKeptEntryId,
@@ -112,7 +115,7 @@ describe("projectCompactedMessages", () => {
 	});
 
 	test("app_state entries never reach the model", () => {
-		const entries: SessionEntry[] = [u("e0", "hi"), { type: "app_state", id: "e1", timestamp: "e1", value: {} }];
+		const entries: SessionEntry[] = [u("e0", "hi"), { type: "app_state", id: "e1", parentId: null, timestamp: "e1", value: {} }];
 
 		expect(projectCompactedMessages(entries)).toHaveLength(1);
 	});

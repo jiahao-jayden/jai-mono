@@ -1,8 +1,8 @@
 import path from "node:path";
 import { type CodingPermissionMode, createCodingAgent as createPublicCodingAgent } from "@jai/coding-agent";
 import { type ConnectorSettings, createDefaultConnectorService, type MemoryConnectorService } from "@jai/connector";
-import { createConnectorExtension } from "@jai/extension/connector";
 import { createAgentPluginsExtension } from "@jai/extension/agent-plugins";
+import { createConnectorExtension } from "@jai/extension/connector";
 import { TaggedError } from "better-result";
 import type { DesktopAgentCreationFailureReason, DesktopAgentMode } from "../../shared/desktop-rpc";
 import type { DesktopConfigService } from "../config";
@@ -25,7 +25,6 @@ export function createDesktopAgentFactory(
 	config: DesktopConfigService,
 ): DesktopAgentFactory {
 	return async ({ sessionId, modelRef, mode, requestApproval, requestExtensionApproval }) => {
-		const session = service.getSession(sessionId);
 		const executionContext = await service.resolveExecutionContext(sessionId);
 		const pluginDirectories = await discoverDesktopAgentPluginDirectories({
 			workspaceDirectory: executionContext.localFileAccess ? executionContext.cwd : undefined,
@@ -43,7 +42,12 @@ export function createDesktopAgentFactory(
 			model: resolvedModel.model,
 			provider: resolvedModel.provider,
 			cwd: executionContext.localFileAccess ? executionContext.cwd : process.cwd(),
-			session: { kind: "resume", id: sessionId, directory: service.sessionDirectory(session.projectId) },
+			session: {
+				kind: "resume",
+				id: sessionId,
+				store: service.sessionStore,
+			},
+			agentDataRoot: service.dataRoot,
 			requestApproval,
 			extensionRuntime: config.createExtensionRuntimeAdapter({
 				requestApproval: requestExtensionApproval,
@@ -56,10 +60,7 @@ export function createDesktopAgentFactory(
 			...(resolvedModel.maxTurns ? { maxTurns: resolvedModel.maxTurns } : {}),
 			instructions,
 			compactionSummaryInstructions: ARTIFACT_COMPACTION_INSTRUCTIONS,
-			extensions: [
-				createConnectorExtension({ client: connectorService }),
-				agentPluginsExtension,
-			],
+			extensions: [createConnectorExtension({ client: connectorService }), agentPluginsExtension],
 		});
 		if (created.isErr()) {
 			throw new DesktopAgentCreationFailed({

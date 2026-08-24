@@ -1,19 +1,28 @@
 import type { Usage } from "@jai/ai";
+import type { Result } from "better-result";
 import { TaggedError } from "better-result";
 import type { JsonObject } from "../../core/agent-state";
 import type { AgentMessage } from "../../core/types";
 
-export interface MessageEntry {
-	type: "message";
+/**
+ * 树上的节点：它占据对话中的一个位置，parentId 定义这个位置。
+ *
+ * parentId 禁止 undefined：JSON.stringify 会把值为 undefined 的键整个丢掉，
+ * round-trip 回来就和"树外 entry"无法区分了。根节点写 null。
+ */
+interface TreeEntryBase {
 	id: string;
+	parentId: string | null;
 	timestamp: string;
+}
+
+export interface MessageEntry extends TreeEntryBase {
+	type: "message";
 	message: AgentMessage;
 }
 
-export interface AppStateEntry<TAppState extends JsonObject = JsonObject> {
+export interface AppStateEntry<TAppState extends JsonObject = JsonObject> extends TreeEntryBase {
 	type: "app_state";
-	id: string;
-	timestamp: string;
 	value: TAppState;
 }
 
@@ -21,10 +30,8 @@ export interface AppStateEntry<TAppState extends JsonObject = JsonObject> {
  * 一次压缩的事实：摘要文本，加上"从哪条 message entry 开始保留原文"。
  * 原始 message entry 一条不删，压缩只是叠加一层新的读取视角。
  */
-export interface CompactionEntry {
+export interface CompactionEntry extends TreeEntryBase {
 	type: "compaction";
-	id: string;
-	timestamp: string;
 	summary: string;
 	/** 摘要之后第一条保留原文的 message entry id */
 	firstKeptEntryId: string;
@@ -34,15 +41,38 @@ export interface CompactionEntry {
 	usage: Usage;
 }
 
-/** 一次 session 变更的最小事实单位 */
-export type SessionEntry<TAppState extends JsonObject = JsonObject> =
+/**
+ * 一次导航发生的那一刻，同时也是新分支的第一个节点：parentId 是导航目标，
+ * fromId 是被放弃那条路的旧 leaf。
+ *
+ * 让它是树节点而不是一个旁挂的标记，leaf 推进规则才能保持统一——applyEntry
+ * 因此不需要任何导航特例。
+ */
+export interface BranchEntry extends TreeEntryBase {
+	type: "branch";
+	/** 被放弃那条分支的 leaf。旧分支的 entry 一条都不删，这里只是指回去。 */
+	fromId: string;
+}
+
+/** 占据对话中一个位置的 entry。 */
+export type TreeEntry<TAppState extends JsonObject = JsonObject> =
 	| MessageEntry
 	| AppStateEntry<TAppState>
-	| CompactionEntry;
+	| CompactionEntry
+	| BranchEntry;
+
+/** 一次 session 变更的最小事实单位。 */
+export type SessionEntry<TAppState extends JsonObject = JsonObject> = TreeEntry<TAppState>;
 
 export interface SessionSnapshot<TAppState extends JsonObject = JsonObject> {
+	/** 整棵树，写入顺序。分支视图由 branchOf(entries, leafId) 派生。 */
 	entries: SessionEntry<TAppState>[];
+	/** 对话当前停在哪个节点上。 */
+	leafId: string | null;
+	/** 沿当前分支折叠的结果。 */
 	appState: TAppState;
+	/** header 里的初值。切分支后要重算 appState，而当前折叠值自己给不出这个基准。 */
+	readonly initialAppState: TAppState;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -64,7 +94,30 @@ export interface SessionStore<TAppState extends JsonObject = JsonObject> {
 	create(id: string, appState: TAppState): Promise<string>;
 	append(id: string, entry: SessionEntry<TAppState>, expectedRevision: string): Promise<string>;
 	list(): Promise<string[]>;
+	delete(id: string): Promise<void>;
+	follow(id: string, afterEntryId: string | undefined, listener: SessionFollowListener<TAppState>): () => void;
 }
+
+export type SessionFollowListener<TAppState extends JsonObject> = (
+	update: Result<SessionFollowUpdate<TAppState>, SessionFollowLost>,
+) => void;
+
+export interface SessionFollowUpdate<TAppState extends JsonObject> {
+	readonly entries: readonly SessionEntry<TAppState>[];
+	readonly revision: string;
+	readonly lastEntryId: string;
+}
+
+export class SessionFollowLost extends TaggedError("session.follow_lost")<{
+	readonly message: string;
+	readonly afterEntryId: string;
+}> {}
+
+/** 旁观一个不存在的 session：调用方可以处理，所以走 Result 而不是抛出。 */
+export class SessionNotFound extends TaggedError("session.not_found")<{
+	readonly message: string;
+	readonly id: string;
+}> {}
 
 /** 持有 revision 的写入句柄，调用方因此不必手工接力 revision。 */
 export interface SessionHandle<TAppState extends JsonObject = JsonObject> {
@@ -100,3 +153,16 @@ export class SessionReadOnlyError extends TaggedError("session.read_only")<{
 		super({ message, ...options });
 	}
 }
+
+/** 导航目标不在树上。调用方给错了 id，什么都还没被碰过。 */
+export class SessionUnknownEntry extends TaggedError("session.unknown_entry")<{
+	readonly message: string;
+	readonly entryId: string;
+}> {}
+
+/** 导航没能完成。抛出时保证没有写入任何 entry，leaf 也没动过。 */
+export class SessionNavigateFailed extends TaggedError("session.navigate_failed")<{
+	readonly cause?: unknown;
+	readonly message: string;
+	readonly entryId: string;
+}> {}

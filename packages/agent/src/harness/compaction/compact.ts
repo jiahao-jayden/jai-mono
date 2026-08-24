@@ -2,7 +2,7 @@ import type { AssistantMessage } from "@jai/ai";
 import type { AgentMessage } from "../../core/types";
 import { estimateTokens } from "./estimate";
 import { buildCompactedMessages, findCompactionCut } from "./projection";
-import { serializeConversation } from "./serialize";
+import { serializeConversation, summaryOutcomeOf } from "./serialize";
 import { type CompactInput, type CompactionResult, compactionFailure } from "./types";
 
 /**
@@ -76,24 +76,12 @@ export async function compact(input: CompactInput): Promise<CompactionResult> {
 }
 
 function extractSummary(message: AssistantMessage): string {
-	if (message.stopReason === "aborted") {
-		throw compactionFailure("aborted", "Summarization was aborted");
+	const outcome = summaryOutcomeOf(message);
+	if (outcome.status === "aborted") throw compactionFailure("aborted", "Summarization was aborted");
+	if (outcome.status === "failed") {
+		throw compactionFailure("summarization_failed", `Summarization ${outcome.reason}`);
 	}
-	if (message.stopReason !== "stop" && message.stopReason !== "length") {
-		throw compactionFailure(
-			"summarization_failed",
-			`Summarization ended with stopReason "${message.stopReason}": ${message.error?.message ?? "no summary produced"}`,
-		);
-	}
-
-	const summary = message.content
-		.filter((part) => part.type === "text")
-		.map((part) => part.text)
-		.join("\n")
-		.trim();
-
-	if (summary.length === 0) throw compactionFailure("summarization_failed", "Summarization returned no text");
-	return summary;
+	return outcome.text;
 }
 
 /**

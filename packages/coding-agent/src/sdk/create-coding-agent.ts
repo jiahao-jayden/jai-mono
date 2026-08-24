@@ -2,8 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { AgentEvent, AgentMessage } from "@jai/agent";
-import { FileSessionStore } from "@jai/agent/node";
+import { type AgentEvent, type AgentMessage, InMemorySessionStore, type SessionStore } from "@jai/agent";
 import type { Model, Provider } from "@jai/ai";
 import { Result, type Result as ResultType } from "better-result";
 import type { CodingMessageAttachment as InternalCodingAttachment } from "../attachments";
@@ -39,6 +38,7 @@ import { resolveSdkModel } from "./model";
 import {
 	agentClosedFailure,
 	artifactsFromAppState,
+	CodingEventProjector,
 	CodingSdkFailure,
 	closedError,
 	projectArtifact,
@@ -48,13 +48,13 @@ import {
 	projectPermissionRequest,
 	todosFromAppState,
 } from "./project";
-import { CodingEventProjector } from "./project";
 import {
 	type CodingSchema,
 	createExtensionSessionStateAdapter,
 	emptyPersistedCodingSessionState,
 	type PersistedCodingSessionState,
 } from "./session-state";
+import { builtInToolPresentations } from "./tool-presentation";
 import { resolveCodingToolSelection } from "./tool-selection";
 import type {
 	CodingAgent,
@@ -70,7 +70,6 @@ import type {
 	JsonObject,
 	JsonValue,
 } from "./types";
-import { builtInToolPresentations } from "./tool-presentation";
 
 export async function createCodingAgent<TAppState extends JsonObject = JsonObject>(
 	input: CodingAgentCreateOptions,
@@ -86,8 +85,11 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 		if (session.kind === "ephemeral") {
 			ephemeralDirectory = await mkdtemp(path.join(tmpdir(), "jai-coding-agent-"));
 		}
-		const sessionDirectory = session.kind === "ephemeral" ? ephemeralDirectory! : session.directory;
-		const store = new FileSessionStore<PersistedCodingSessionState<TAppState>>(sessionDirectory);
+		const agentDataRoot = session.kind === "ephemeral" ? ephemeralDirectory! : (input.agentDataRoot ?? cwd);
+		const store: SessionStore<PersistedCodingSessionState<TAppState>> =
+			session.kind === "ephemeral"
+				? new InMemorySessionStore<PersistedCodingSessionState<TAppState>>()
+				: (session.store as SessionStore<PersistedCodingSessionState<TAppState>>);
 		await validateSessionSelection(session, store, sessionId);
 		const preparedExtensions = prepareExtensions(input.extensions ?? []);
 		if (preparedExtensions.isErr()) throw preparedExtensions.error;
@@ -98,16 +100,16 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			executionContext: {
 				localFileAccess: true,
 				cwd,
-				configRoot: sessionDirectory,
+				configRoot: agentDataRoot,
 				defaultAllowedDirectories: [cwd] as readonly [string, ...string[]],
 			},
 			sessionId,
-			sessionDirectory,
+			sessionStore: store,
 			appState: emptyPersistedCodingSessionState<TAppState>(),
 			instructions: [DEFAULT_CODING_AGENT_INSTRUCTIONS, input.instructions].filter(Boolean).join("\n\n"),
 			configDefinition: sdkConfigDefinition,
 			configOptions: {
-				homeDir: sessionDirectory,
+				homeDir: agentDataRoot,
 				workspaceTrusted: false,
 			},
 			resolveProvider: () => {
@@ -333,6 +335,16 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 			);
 	}
 
+	async navigate(entryId: string): Promise<ResultType<void, CodingSdkError>> {
+		if (this.#closed) return Result.err(closedError());
+		try {
+			await this.#internal.navigate(entryId);
+			return Result.ok(undefined);
+		} catch (error) {
+			return Result.err(projectError(error, "navigation"));
+		}
+	}
+
 	async generateTitle(firstMessage: string): Promise<ResultType<string, CodingSdkError>> {
 		if (this.#closed) return Result.err(closedError());
 		try {
@@ -490,7 +502,7 @@ function extensionOutcomeFromMessages(messages: readonly AgentMessage[]): Coding
 
 async function validateSessionSelection<TAppState extends JsonObject>(
 	selection: CodingSessionSelection,
-	store: FileSessionStore<PersistedCodingSessionState<TAppState>>,
+	store: SessionStore<PersistedCodingSessionState<TAppState>>,
 	sessionId: string,
 ): Promise<void> {
 	const existing = await store.load(sessionId);

@@ -1,3 +1,4 @@
+import type { SessionStore } from "@jai/agent";
 import type { Result } from "better-result";
 import type { JsonObject, JsonValue } from "../core/json";
 import type { CodingToolName } from "../tools/names";
@@ -95,6 +96,7 @@ export type CodingSdkErrorPhase =
 	| "tool"
 	| "permission"
 	| "compaction"
+	| "navigation"
 	| "lifecycle";
 
 export interface CodingSdkError {
@@ -105,8 +107,8 @@ export interface CodingSdkError {
 }
 
 export type CodingSessionSelection =
-	| { readonly kind: "new"; readonly id?: string; readonly directory: string }
-	| { readonly kind: "resume"; readonly id: string; readonly directory: string }
+	| { readonly kind: "new"; readonly id?: string; readonly store: SessionStore<JsonObject> }
+	| { readonly kind: "resume"; readonly id: string; readonly store: SessionStore<JsonObject> }
 	| { readonly kind: "ephemeral" };
 
 export interface CodingAttachment {
@@ -155,6 +157,8 @@ export interface CodingAgentCreateOptions {
 	/** Host adapter for extension-owned configuration and approval workflows. */
 	readonly extensionRuntime?: CodingExtensionRuntimeAdapter;
 	readonly cwd?: string;
+	/** Root for agent-owned configuration and other durable data. */
+	readonly agentDataRoot?: string;
 	readonly session?: CodingSessionSelection;
 	readonly permissionMode?: CodingPermissionMode;
 	readonly maxTurns?: number;
@@ -204,7 +208,7 @@ export type CodingAgentEvent =
 				| { readonly type: "done"; readonly reason: CodingStopReason; readonly message: CodingAssistantMessage }
 				| { readonly type: "error"; readonly reason: "error" | "aborted"; readonly error: CodingAssistantMessage };
 	  }
-	| { readonly type: "message_end"; readonly message: CodingAgentMessage }
+	| { readonly type: "message_end"; readonly message: CodingAgentMessage; readonly entryId?: string }
 	| { readonly type: "message_discard" }
 	| {
 			readonly type: "tool_execution_start";
@@ -263,6 +267,7 @@ export interface CodingAgent<TAppState extends JsonObject = JsonObject> {
 	steer(prompt: string): Promise<Result<void, CodingSdkError>>;
 	followUp(prompt: string): Promise<Result<void, CodingSdkError>>;
 	waitForIdle(): Promise<Result<void, CodingSdkError>>;
+	navigate(entryId: string): Promise<Result<void, CodingSdkError>>;
 	generateTitle(firstMessage: string): Promise<Result<string, CodingSdkError>>;
 	abort(): Promise<Result<void, CodingSdkError>>;
 	subscribe(listener: (event: CodingAgentEvent) => void): () => void;

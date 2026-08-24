@@ -1,51 +1,55 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
+import { type JsonObject } from "@jai/agent";
+import { SqliteSessionStore } from "@jai/agent/node";
 import { DatabaseSync } from "node:sqlite";
-import {
-	databaseInvalidError,
-	databaseUnsupportedError,
-	projectNotFoundError,
-	projectPathConflictError,
-	sessionNotFoundError,
-} from "./errors";
+import { databaseInvalidError, projectNotFoundError, projectPathConflictError, sessionNotFoundError } from "./errors";
 import type { CodingBusinessRepository, CreateProjectRecord, CreateSessionRecord } from "./repository";
-import type {
-	CodingSession,
-	Project,
-	ProviderModelInventory,
-	SessionListCursor,
-	SessionListPage,
-	SessionProjectHistory,
-} from "./types";
+import type { CodingSession, Project, ProviderModelInventory, SessionListCursor, SessionListPage } from "./types";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 6;
 
+/**
+ * Desktop metadata in the same SQLite database as the generic SessionStore journal.
+ * The journal owns messages and app state; this module owns only Desktop concepts.
+ */
 export class SqliteCodingBusinessRepository implements CodingBusinessRepository {
 	readonly #database: DatabaseSync;
+	readonly #sessionStore: SqliteSessionStore<JsonObject>;
 
 	private constructor(database: DatabaseSync) {
 		this.#database = database;
+		// The generic journal schema has to exist before Desktop metadata adds its
+		// foreign key. This does not merge the responsibilities: the store still
+		// owns only journal rows, and this repository owns only Desktop metadata.
+		this.#sessionStore = new SqliteSessionStore<JsonObject>(database);
 		this.#migrate();
 	}
 
-	static async open(path: string): Promise<SqliteCodingBusinessRepository> {
-		if (path !== ":memory:") await mkdir(dirname(path), { recursive: true });
-		return new SqliteCodingBusinessRepository(new DatabaseSync(path));
+	static async open(databasePath: string): Promise<SqliteCodingBusinessRepository> {
+		if (databasePath !== ":memory:") await mkdir(dirname(databasePath), { recursive: true });
+		const database = new DatabaseSync(databasePath);
+		const version = userVersion(database);
+		if (version === 0 || version === SCHEMA_VERSION) return new SqliteCodingBusinessRepository(database);
+		database.close();
+		await Promise.all([databasePath, `${databasePath}-shm`, `${databasePath}-wal`].map((file) => rm(file, { force: true })));
+		return new SqliteCodingBusinessRepository(new DatabaseSync(databasePath));
+	}
+
+	createSessionStore<TAppState extends JsonObject = JsonObject>(): SqliteSessionStore<TAppState> {
+		return this.#sessionStore as SqliteSessionStore<TAppState>;
 	}
 
 	createProject(record: CreateProjectRecord): Project {
 		try {
 			this.#database
 				.prepare(
-					`INSERT INTO projects
-						(id, display_name, path, canonical_path, created_at, updated_at)
+					`INSERT INTO projects (id, display_name, path, canonical_path, created_at, updated_at)
 					 VALUES (?, ?, ?, ?, ?, ?)`,
 				)
 				.run(record.id, record.displayName, record.path, record.canonicalPath, record.now, record.now);
 		} catch (error) {
-			if (this.findProjectByCanonicalPath(record.canonicalPath)) {
-				throw projectPathConflictError(record.canonicalPath, error);
-			}
+			if (this.findProjectByCanonicalPath(record.canonicalPath)) throw projectPathConflictError(record.canonicalPath, error);
 			throw error;
 		}
 		return this.#requireProject(record.id);
@@ -85,12 +89,7 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 
 	relinkProject(
 		id: string,
-		location: {
-			readonly displayName: string;
-			readonly path: string;
-			readonly canonicalPath: string;
-			readonly now: number;
-		},
+		location: { readonly displayName: string; readonly path: string; readonly canonicalPath: string; readonly now: number },
 	): Project {
 		try {
 			const result = this.#database
@@ -112,36 +111,31 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 	createSession(record: CreateSessionRecord): CodingSession {
 		this.#database
 			.prepare(
-				`INSERT INTO sessions
-					(id, project_id, title, title_source, title_generation_attempted_at,
-					 created_at, updated_at, last_activity_at)
-				 VALUES (?, ?, ?, 'fallback', NULL, ?, ?, ?)`,
+				`INSERT INTO desktop_session_metadata (session_id, project_id, title, title_source, title_generation_attempted_at)
+				 VALUES (?, ?, ?, 'fallback', NULL)`,
 			)
-			.run(record.id, record.projectId, record.title, record.now, record.now, record.now);
+			.run(record.id, record.projectId, record.title);
 		return this.#requireSession(record.id);
 	}
 
-	deleteSession(id: string): void {
-		this.#database.prepare("DELETE FROM sessions WHERE id = ?").run(id);
-	}
-
 	getSession(id: string): CodingSession | undefined {
-		return mapSession(this.#sessionStatement().get(id));
+		return mapSession(this.#database.prepare(`${sessionSelect()} WHERE journal.id = ?`).get(id));
 	}
 
 	listSessions(input: { readonly limit?: number; readonly cursor?: SessionListCursor } = {}): SessionListPage {
 		const limit = Math.min(Math.max(input.limit ?? 50, 1), 100);
+		const cursorTimestamp = input.cursor ? new Date(input.cursor.lastActivityAt).toISOString() : undefined;
 		const rows = input.cursor
 			? this.#database
 					.prepare(
 						`${sessionSelect()}
-						 WHERE last_activity_at < ?
-						    OR (last_activity_at = ? AND id < ?)
-						 ORDER BY last_activity_at DESC, id DESC
+						 WHERE journal.updated_at < ?
+						    OR (journal.updated_at = ? AND journal.id < ?)
+						 ORDER BY journal.updated_at DESC, journal.id DESC
 						 LIMIT ?`,
 					)
-					.all(input.cursor.lastActivityAt, input.cursor.lastActivityAt, input.cursor.id, limit + 1)
-			: this.#database.prepare(`${sessionSelect()} ORDER BY last_activity_at DESC, id DESC LIMIT ?`).all(limit + 1);
+					.all(cursorTimestamp!, cursorTimestamp!, input.cursor.id, limit + 1)
+			: this.#database.prepare(`${sessionSelect()} ORDER BY journal.updated_at DESC, journal.id DESC LIMIT ?`).all(limit + 1);
 		const sessions = rows.slice(0, limit).map((row) => mapSession(row)!);
 		const last = sessions.at(-1);
 		return {
@@ -150,78 +144,69 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 		};
 	}
 
-	renameSession(id: string, title: string, now: number): CodingSession {
-		this.#updateSession(
-			id,
-			"UPDATE sessions SET title = ?, title_source = 'manual', updated_at = ? WHERE id = ?",
-			title,
-			now,
-		);
-		return this.#requireSession(id);
-	}
-
-	markTitleGenerationAttempted(id: string, now: number): CodingSession {
-		this.#updateSession(
-			id,
-			`UPDATE sessions
-			 SET title_generation_attempted_at = COALESCE(title_generation_attempted_at, ?),
-			     updated_at = ?
-			 WHERE id = ?`,
-			now,
-			now,
-		);
-		return this.#requireSession(id);
-	}
-
-	setGeneratedTitle(id: string, title: string, now: number): CodingSession {
-		const session = this.#requireSession(id);
-		if (session.titleSource !== "fallback") return session;
+	renameSession(id: string, title: string): CodingSession {
+		this.#requireSession(id);
 		this.#database
 			.prepare(
-				`UPDATE sessions
-				 SET title = ?, title_source = 'generated', updated_at = ?
-				 WHERE id = ? AND title_source = 'fallback'`,
+				`INSERT INTO desktop_session_metadata (session_id, project_id, title, title_source, title_generation_attempted_at)
+				 VALUES (?, NULL, ?, 'manual', NULL)
+				 ON CONFLICT(session_id) DO UPDATE SET title = excluded.title, title_source = 'manual'`,
 			)
-			.run(title, now, id);
+			.run(id, title);
 		return this.#requireSession(id);
 	}
 
-	touchSession(id: string, now: number): CodingSession {
-		this.#updateSession(id, "UPDATE sessions SET updated_at = ?, last_activity_at = ? WHERE id = ?", now, now);
-		return this.#requireSession(id);
-	}
-
-	moveSession(id: string, toProjectId: string | null, now: number): CodingSession {
-		const current = this.#requireSession(id);
-		if (toProjectId !== null) this.#requireProject(toProjectId);
-		if (current.projectId === toProjectId) return current;
-
-		this.#transaction(() => {
-			this.#database
-				.prepare("UPDATE sessions SET project_id = ?, updated_at = ? WHERE id = ?")
-				.run(toProjectId, now, id);
-			this.#database
-				.prepare(
-					`INSERT INTO session_project_history
-						(session_id, from_project_id, to_project_id, moved_at)
-					 VALUES (?, ?, ?, ?)`,
-				)
-				.run(id, current.projectId, toProjectId, now);
-		});
-		return this.#requireSession(id);
-	}
-
-	listProjectHistory(sessionId: string): SessionProjectHistory[] {
-		this.#requireSession(sessionId);
-		return this.#database
+	markTitleGenerationAttempted(id: string, timestamp: number): CodingSession {
+		this.#requireSession(id);
+		this.#database
 			.prepare(
-				`SELECT id, session_id, from_project_id, to_project_id, moved_at
-				 FROM session_project_history
-				 WHERE session_id = ?
-				 ORDER BY id ASC`,
+				`INSERT INTO desktop_session_metadata (session_id, project_id, title, title_source, title_generation_attempted_at)
+				 VALUES (?, NULL, 'New session', 'fallback', ?)
+				 ON CONFLICT(session_id) DO UPDATE SET
+				  title_generation_attempted_at = COALESCE(desktop_session_metadata.title_generation_attempted_at, excluded.title_generation_attempted_at)`,
 			)
-			.all(sessionId)
-			.map((row) => mapProjectHistory(row));
+			.run(id, timestamp);
+		return this.#requireSession(id);
+	}
+
+	setGeneratedTitle(id: string, title: string): CodingSession {
+		this.#requireSession(id);
+		this.#database
+			.prepare(
+				`INSERT INTO desktop_session_metadata (session_id, project_id, title, title_source, title_generation_attempted_at)
+				 VALUES (?, NULL, ?, 'generated', NULL)
+				 ON CONFLICT(session_id) DO UPDATE SET
+				  title = excluded.title,
+				  title_source = 'generated'
+				 WHERE desktop_session_metadata.title_source = 'fallback'`,
+			)
+			.run(id, title);
+		return this.#requireSession(id);
+	}
+
+	shouldGenerateSessionTitle(id: string): boolean {
+		this.#requireSession(id);
+		const metadata = this.#database
+			.prepare(
+				`SELECT title_source, title_generation_attempted_at
+				 FROM desktop_session_metadata
+				 WHERE session_id = ?`,
+			)
+			.get(id) as { readonly title_source: string; readonly title_generation_attempted_at: number | null } | undefined;
+		return metadata === undefined || (metadata.title_source === "fallback" && metadata.title_generation_attempted_at === null);
+	}
+
+	moveSession(id: string, toProjectId: string | null): CodingSession {
+		this.#requireSession(id);
+		if (toProjectId !== null) this.#requireProject(toProjectId);
+		this.#database
+			.prepare(
+				`INSERT INTO desktop_session_metadata (session_id, project_id, title, title_source, title_generation_attempted_at)
+				 VALUES (?, ?, 'New session', 'fallback', NULL)
+				 ON CONFLICT(session_id) DO UPDATE SET project_id = excluded.project_id`,
+			)
+			.run(id, toProjectId);
+		return this.#requireSession(id);
 	}
 
 	getProviderModelInventory(profileId: string): ProviderModelInventory | undefined {
@@ -243,8 +228,8 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 				`INSERT INTO provider_model_inventory (profile_id, model_ids_json, fetched_at)
 				 VALUES (?, ?, ?)
 				 ON CONFLICT(profile_id) DO UPDATE SET
-				 	model_ids_json = excluded.model_ids_json,
-				 	fetched_at = excluded.fetched_at`,
+				  model_ids_json = excluded.model_ids_json,
+				  fetched_at = excluded.fetched_at`,
 			)
 			.run(record.profileId, JSON.stringify(modelIds), record.fetchedAt);
 		return this.getProviderModelInventory(record.profileId)!;
@@ -256,9 +241,7 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 
 	renameProviderModelInventory(fromProfileId: string, toProfileId: string): void {
 		if (fromProfileId === toProfileId) return;
-		this.#database
-			.prepare("UPDATE provider_model_inventory SET profile_id = ? WHERE profile_id = ?")
-			.run(toProfileId, fromProfileId);
+		this.#database.prepare("UPDATE provider_model_inventory SET profile_id = ? WHERE profile_id = ?").run(toProfileId, fromProfileId);
 	}
 
 	close(): void {
@@ -270,17 +253,10 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 		this.#database.exec("PRAGMA journal_mode = WAL");
 		this.#database.exec("PRAGMA synchronous = NORMAL");
 		this.#database.exec("PRAGMA busy_timeout = 5000");
-		const current = this.#database.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined;
-		const version = current?.user_version ?? 0;
-		if (version !== 0 && version !== SCHEMA_VERSION) {
-			throw databaseUnsupportedError(version);
-		}
-		if (version === SCHEMA_VERSION) return;
-
+		if (userVersion(this.#database) === SCHEMA_VERSION) return;
 		this.#transaction(() => {
-			if (version === 0) {
-				this.#database.exec(`
-				CREATE TABLE projects (
+			this.#database.exec(`
+				CREATE TABLE IF NOT EXISTS projects (
 					id TEXT PRIMARY KEY,
 					display_name TEXT NOT NULL,
 					path TEXT NOT NULL,
@@ -288,45 +264,23 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 					created_at INTEGER NOT NULL,
 					updated_at INTEGER NOT NULL
 				);
-
-				CREATE TABLE sessions (
-					id TEXT PRIMARY KEY,
+				CREATE TABLE IF NOT EXISTS desktop_session_metadata (
+					session_id TEXT PRIMARY KEY REFERENCES session_journals(id) ON DELETE CASCADE,
 					project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
 					title TEXT NOT NULL,
-					title_source TEXT NOT NULL
-						CHECK (title_source IN ('fallback', 'generated', 'manual')),
-					title_generation_attempted_at INTEGER,
-					created_at INTEGER NOT NULL,
-					updated_at INTEGER NOT NULL,
-					last_activity_at INTEGER NOT NULL
+					title_source TEXT NOT NULL CHECK (title_source IN ('fallback', 'generated', 'manual')),
+					title_generation_attempted_at INTEGER
 				);
-
-				CREATE TABLE session_project_history (
-					id INTEGER PRIMARY KEY,
-					session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-					from_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
-					to_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
-					moved_at INTEGER NOT NULL
-				);
-
-				CREATE INDEX sessions_recents
-					ON sessions(last_activity_at DESC, id DESC);
-				CREATE INDEX sessions_project
-					ON sessions(project_id, last_activity_at DESC, id DESC);
-				CREATE TABLE provider_model_inventory (
+				CREATE INDEX IF NOT EXISTS desktop_session_metadata_project
+					ON desktop_session_metadata(project_id);
+				CREATE TABLE IF NOT EXISTS provider_model_inventory (
 					profile_id TEXT PRIMARY KEY,
 					model_ids_json TEXT NOT NULL,
 					fetched_at INTEGER NOT NULL
 				);
 				PRAGMA user_version = ${SCHEMA_VERSION};
 			`);
-				return;
-			}
 		});
-	}
-
-	#sessionStatement() {
-		return this.#database.prepare(`${sessionSelect()} WHERE id = ?`);
 	}
 
 	#requireProject(id: string): Project {
@@ -339,11 +293,6 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 		const session = this.getSession(id);
 		if (!session) throw sessionNotFoundError(id);
 		return session;
-	}
-
-	#updateSession(id: string, sql: string, ...parameters: (string | number | null)[]): void {
-		const result = this.#database.prepare(sql).run(...parameters, id);
-		if (result.changes === 0) throw sessionNotFoundError(id);
 	}
 
 	#transaction<T>(operation: () => T): T {
@@ -359,10 +308,18 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 	}
 }
 
+function userVersion(database: DatabaseSync): number {
+	const result = database.prepare("PRAGMA user_version").get() as { readonly user_version?: number } | undefined;
+	return result?.user_version ?? 0;
+}
+
 function sessionSelect(): string {
-	return `SELECT id, project_id, title, title_source, title_generation_attempted_at,
-		created_at, updated_at, last_activity_at
-		FROM sessions`;
+	return `SELECT journal.id, metadata.project_id,
+		COALESCE(metadata.title, 'New session') AS title,
+		COALESCE(metadata.title_source, 'fallback') AS title_source,
+		journal.updated_at
+		FROM session_journals AS journal
+		LEFT JOIN desktop_session_metadata AS metadata ON metadata.session_id = journal.id`;
 }
 
 function mapProject(value: unknown): Project | undefined {
@@ -380,28 +337,14 @@ function mapProject(value: unknown): Project | undefined {
 function mapSession(value: unknown): CodingSession | undefined {
 	if (!isRow(value)) return undefined;
 	const projectId = value.project_id;
-	const titleGenerationAttemptedAt = value.title_generation_attempted_at;
+	const lastActivityAt = Date.parse(stringColumn(value, "updated_at"));
+	if (!Number.isFinite(lastActivityAt)) throw databaseInvalidError("Invalid Session journal timestamp");
 	return {
 		id: stringColumn(value, "id"),
 		projectId: projectId === null ? null : stringColumn(value, "project_id"),
 		title: stringColumn(value, "title"),
 		titleSource: stringColumn(value, "title_source") as CodingSession["titleSource"],
-		titleGenerationAttemptedAt:
-			titleGenerationAttemptedAt === null ? null : numberColumn(value, "title_generation_attempted_at"),
-		createdAt: numberColumn(value, "created_at"),
-		updatedAt: numberColumn(value, "updated_at"),
-		lastActivityAt: numberColumn(value, "last_activity_at"),
-	};
-}
-
-function mapProjectHistory(value: unknown): SessionProjectHistory {
-	if (!isRow(value)) throw databaseInvalidError("Invalid session project history row");
-	return {
-		id: numberColumn(value, "id"),
-		sessionId: stringColumn(value, "session_id"),
-		fromProjectId: nullableStringColumn(value, "from_project_id"),
-		toProjectId: nullableStringColumn(value, "to_project_id"),
-		movedAt: numberColumn(value, "moved_at"),
+		lastActivityAt,
 	};
 }
 
@@ -426,9 +369,7 @@ function mapProviderModelInventory(value: unknown): ProviderModelInventory | und
 }
 
 function uniqueModelIds(values: readonly string[]): string[] {
-	return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((left, right) =>
-		left.localeCompare(right),
-	);
+	return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((left, right) => left.localeCompare(right));
 }
 
 function isRow(value: unknown): value is Record<string, unknown> {
@@ -439,10 +380,6 @@ function stringColumn(row: Record<string, unknown>, name: string): string {
 	const value = row[name];
 	if (typeof value !== "string") throw databaseInvalidError(`Invalid SQLite string column "${name}"`);
 	return value;
-}
-
-function nullableStringColumn(row: Record<string, unknown>, name: string): string | null {
-	return row[name] === null ? null : stringColumn(row, name);
 }
 
 function numberColumn(row: Record<string, unknown>, name: string): number {

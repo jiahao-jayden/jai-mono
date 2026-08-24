@@ -24,8 +24,8 @@ describe("public API", () => {
 		for (const name of ["openSession", "InMemorySessionStore", "compact", "promptTemplate"]) {
 			expect(root).toHaveProperty(name);
 		}
-		expect(root).not.toHaveProperty("FileSessionStore");
-		expect(node).toHaveProperty("FileSessionStore");
+		expect(root).not.toHaveProperty("SqliteSessionStore");
+		expect(node).toHaveProperty("SqliteSessionStore");
 	});
 
 	test("exports 包含默认入口、/core 和 /node", () => {

@@ -88,13 +88,11 @@ export function createDesktopRuntime(dependencies: {
 		}
 	};
 
-	agentHost.setSessionActivityListener((sessionId) => business.touchSession(sessionId));
 	agentHost.setRunCompletedListener(async ({ sessionId, firstMessage, agent }) => {
-		const session = business.getSession(sessionId);
-		if (session.titleSource !== "fallback" || session.titleGenerationAttemptedAt !== null) return;
-		business.markTitleGenerationAttempted(sessionId);
+		if (!(await business.shouldGenerateSessionTitle(sessionId))) return;
+		await business.markTitleGenerationAttempted(sessionId);
 		const title = await agent.generateTitle(firstMessage);
-		if (title.isOk() && title.value.trim()) business.setGeneratedTitle(sessionId, title.value);
+		if (title.isOk() && title.value.trim()) await business.setGeneratedTitle(sessionId, title.value);
 	});
 
 	setDesktopModelCatalogUpdateListener(() => {

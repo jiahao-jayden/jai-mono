@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { zeroUsage, type AssistantMessage, type Usage } from "@jai/ai";
 import { estimateContextTokens, estimateTokens, resolveCompactionSettings, shouldCompact } from "../../../src/harness";
-import type { AgentContext, AgentMessage } from "../../../src";
-import { compactionEntry, messageEntry, model } from "../../support/fixtures";
-import type { SessionEntry } from "../../../src/harness";
+import type { AgentContext, AgentMessage, JsonObject } from "../../../src";
+import { chain, compactionEntry, messageEntry, model } from "../../support/fixtures";
 
 const user = (text: string): AgentMessage => ({ role: "user", content: text, timestamp: 0 });
 
@@ -96,11 +95,11 @@ describe("estimateContextTokens", () => {
 	});
 
 	test("invalidates the baseline when a compaction was logged after the last usage", () => {
-		const entries: SessionEntry[] = [
+		const { entries } = chain<JsonObject>(
 			messageEntry("e0", "hi"),
-			{ type: "message", id: "e1", timestamp: "e1", message: reply(5_000) },
+			{ type: "message", id: "e1", parentId: null, timestamp: "e1", message: reply(5_000) },
 			compactionEntry("e2", "summary", "e1"),
-		];
+		);
 
 		const estimate = estimateContextTokens(contextOf([user("hi"), reply(5_000)]), entries);
 

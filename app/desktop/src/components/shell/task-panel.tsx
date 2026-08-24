@@ -21,7 +21,7 @@ export function TaskPanel({ status, todos, artifacts, selectedArtifactId, onOpen
 	const ArchiveIcon = icons.archive;
 	const FileCodeIcon = icons["file-code"];
 	const HtmlIcon = icons["rectangle-horizontal"];
-	const todoItems = todos?.items ?? [];
+	const todoItems = todos ?? [];
 	const completedTodos = todoItems.filter((item) => item.status === "completed").length;
 	const cancelledTodos = todoItems.filter((item) => item.status === "cancelled").length;
 	const resolvedTodos = completedTodos + cancelledTodos;

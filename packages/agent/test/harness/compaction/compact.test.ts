@@ -23,7 +23,7 @@ async function expectErrorCode(promise: Promise<unknown>, code: string): Promise
 }
 
 function u(id: string, text: string): SessionEntry {
-	return { type: "message", id, timestamp: id, message: { role: "user", content: text, timestamp: 0 } };
+	return { type: "message", id, parentId: null, timestamp: id, message: { role: "user", content: text, timestamp: 0 } };
 }
 
 const entries: SessionEntry[] = [u("e0", "x".repeat(4_000)), u("e1", "y".repeat(4_000)), u("e2", "recent")];
@@ -103,6 +103,7 @@ describe("compact", () => {
 				previous: {
 					type: "compaction",
 					id: "c0",
+					parentId: null,
 					timestamp: "2026-01-01T00:00:00.000Z",
 					summary: "EARLIER",
 					firstKeptEntryId: "e0",
@@ -132,6 +133,7 @@ describe("compact", () => {
 			{
 				type: "message",
 				id: "e1",
+				parentId: null,
 				timestamp: "e1",
 				message: {
 					role: "toolResult",
@@ -160,6 +162,7 @@ describe("compact", () => {
 			{
 				type: "message",
 				id: "e1",
+				parentId: null,
 				timestamp: "e1",
 				message: {
 					role: "assistant",

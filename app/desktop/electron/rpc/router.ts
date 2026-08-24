@@ -13,6 +13,7 @@ import {
 	type DesktopWorkspaceFile,
 	type DesktopWorkspaceListResult,
 	desktopAgentMessageInputSchema,
+	desktopAgentNavigateInputSchema,
 	desktopArtifactReadInputSchema,
 	desktopAttachmentRegistrationInputSchema,
 	desktopConnectorOAuthApplicationIdSchema,
@@ -166,7 +167,7 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 					runningSessionIds: rt.agentHost.runningSessionIds(),
 				};
 			},
-			rename(_event, input) {
+			async rename(_event, input) {
 				const parsed = parse(desktopSessionRenameInputSchema, input, "Invalid Session rename input");
 				return rt.business.renameSession(parsed.sessionId, parsed.title);
 			},
@@ -290,6 +291,11 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 							}
 						: {}),
 				});
+			},
+			navigate(_event, input) {
+				return rt.agentHost.navigate(
+					parse(desktopAgentNavigateInputSchema, input, "Invalid agent navigation input"),
+				);
 			},
 			abort(_event, sessionId) {
 				rt.agentHost.abort(parse(desktopSessionIdSchema, sessionId, "Invalid session id"));

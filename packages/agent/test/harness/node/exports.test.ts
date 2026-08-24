@@ -46,9 +46,9 @@ describe("environment exports", () => {
 		]) {
 			expect(root).toHaveProperty(name);
 		}
-		expect(root).not.toHaveProperty("FileSessionStore");
+		expect(root).not.toHaveProperty("SqliteSessionStore");
 		expect(node).toHaveProperty("NodeExecutionEnvironment");
-		expect(node).toHaveProperty("FileSessionStore");
+		expect(node).toHaveProperty("SqliteSessionStore");
 	});
 
 	test("root builds for browsers and its static source graph contains no Node builtins", async () => {
@@ -63,6 +63,6 @@ describe("environment exports", () => {
 		const specifiers = [...graph.values()].flat();
 		expect(specifiers.filter((specifier) => specifier.startsWith("node:"))).toEqual([]);
 		expect([...graph.keys()].some((path) => path.endsWith("/harness/session/index.ts"))).toBe(true);
-		expect([...graph.keys()].some((path) => path.endsWith("/session/stores/file.ts"))).toBe(false);
+		expect([...graph.keys()].some((path) => path.endsWith("/session/stores/sqlite.ts"))).toBe(false);
 	});
 });

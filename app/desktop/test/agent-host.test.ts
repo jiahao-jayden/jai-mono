@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import type {
-	CodingAgentEvent,
-	CodingAgentMessage,
-	CodingAgentState,
-	CodingAgent,
-	CodingRunResult,
-	CodingSdkError,
+import {
+	type CodingAgentEvent,
+	type CodingAgentMessage,
+	type CodingAgentState,
+	type CodingAgent,
+	type CodingRunResult,
+	type CodingSdkError,
 	type JsonObject,
+	todosFromAppState,
 } from "@jai/coding-agent";
 import { getErrorCode } from "@jai/common";
 import { Result } from "better-result";
@@ -20,7 +21,7 @@ describe("DesktopAgentHost", () => {
 			const user = userMessage(input);
 			const assistant = assistantMessage("done");
 			self.emit({ type: "message_start", message: user });
-			self.emit({ type: "message_end", message: user });
+			self.emit({ type: "message_end", message: user, entryId: "entry:user-1" });
 			self.emit({ type: "message_start", message: assistant });
 			self.emit({ type: "message_end", message: assistant });
 			return [user, assistant];
@@ -34,7 +35,26 @@ describe("DesktopAgentHost", () => {
 		const snapshot = host.getSnapshot("session-1");
 		expect(snapshot.status).toBe("idle");
 		expect(snapshot.items.filter((item) => item.kind === "message")).toHaveLength(2);
+		expect(snapshot.items).toContainEqual(expect.objectContaining({ entryId: "entry:user-1", role: "user" }));
 		expect(snapshot.lastSeq).toBe(envelopes.length);
+		host.close();
+	});
+
+	test("导航由当前 Coding Agent 执行并释放过期 runtime", async () => {
+		const agent = new FakeAgent(async () => []);
+		const host = new DesktopAgentHost(() => {}, async () => agent);
+
+		await expect(
+			host.navigate({
+				sessionId: "session-1",
+				entryId: "entry:user-1",
+				modelRef: "provider/model",
+				mode: "manual",
+			}),
+		).resolves.toBeUndefined();
+
+		expect(agent.navigatedEntryIds).toEqual(["entry:user-1"]);
+		expect(host.hasSession("session-1")).toBe(false);
 		host.close();
 	});
 
@@ -129,9 +149,7 @@ describe("DesktopAgentHost", () => {
 		await host.send(input("continue"));
 		await agent.finished;
 
-		expect(host.getSnapshot("session-1").todos).toMatchObject({
-			items: [{ id: "resume", status: "in_progress" }],
-		});
+		expect(host.getSnapshot("session-1").todos).toMatchObject([{ id: "resume", status: "in_progress" }]);
 		host.close();
 	});
 
@@ -641,7 +659,7 @@ describe("DesktopAgentHost", () => {
 		await agent.finished;
 
 		expect(host.getSnapshot("session-1")).toMatchObject({
-			todos: { items: [{ id: "render", status: "in_progress" }] },
+			todos: [{ id: "render", status: "in_progress" }],
 			items: [],
 		});
 		expect(events.some((envelope) => envelope.event.type === "todos_replace")).toBe(true);
@@ -1012,6 +1030,7 @@ class FakeAgent implements CodingAgent {
 	readonly #listeners = new Set<(event: CodingAgentEvent) => void>();
 	readonly #invoke: (agent: FakeAgent, input: string) => Promise<CodingAgentMessage[]>;
 	finished: Promise<CodingAgentMessage[]> = Promise.resolve([]);
+	readonly navigatedEntryIds: string[] = [];
 	#appState: Record<string, unknown>;
 	#artifacts: CodingAgentState["artifacts"];
 
@@ -1029,7 +1048,8 @@ class FakeAgent implements CodingAgent {
 			sessionId: "session-1",
 			status: "idle",
 			messages: [],
-			todos: [],
+			// 与真 SDK 一样从 appState 投影：写死 [] 会让 host 读错命名空间也照样绿。
+			todos: todosFromAppState(this.#appState as JsonObject),
 			artifacts: this.#artifacts,
 			appState: structuredClone(this.#appState) as JsonObject,
 		};
@@ -1056,6 +1076,10 @@ class FakeAgent implements CodingAgent {
 		return Promise.resolve(Result.ok(undefined));
 	}
 	followUp(_input: string): Promise<Result<void, CodingSdkError>> {
+		return Promise.resolve(Result.ok(undefined));
+	}
+	navigate(entryId: string): Promise<Result<void, CodingSdkError>> {
+		this.navigatedEntryIds.push(entryId);
 		return Promise.resolve(Result.ok(undefined));
 	}
 	waitForIdle(): Promise<Result<void, CodingSdkError>> {
@@ -1127,6 +1151,9 @@ class RebindableFakeAgent implements CodingAgent {
 		return Promise.resolve(Result.ok(undefined));
 	}
 	followUp(_input: string): Promise<Result<void, CodingSdkError>> {
+		return Promise.resolve(Result.ok(undefined));
+	}
+	navigate(_entryId: string): Promise<Result<void, CodingSdkError>> {
 		return Promise.resolve(Result.ok(undefined));
 	}
 	generateTitle(_firstMessage: string): Promise<Result<string, CodingSdkError>> {

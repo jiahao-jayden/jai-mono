@@ -8,7 +8,8 @@
 		"predev": "bun run --cwd ../../packages/coding-agent build && bun run --cwd ../../packages/extension build",
 		"dev": "electron-forge start",
 		"build": "electron-forge package",
-		"make": "electron-forge make"
+		"make": "electron-forge make",
+		"typecheck": "tsc -p tsconfig.json --noEmit"
 	},
 	"dependencies": {
 		"@base-ui/react": "^1.4.0",

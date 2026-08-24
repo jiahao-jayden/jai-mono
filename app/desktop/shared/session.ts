@@ -14,9 +14,6 @@ export interface CodingSession {
 	readonly projectId: string | null;
 	readonly title: string;
 	readonly titleSource: SessionTitleSource;
-	readonly titleGenerationAttemptedAt: number | null;
-	readonly createdAt: number;
-	readonly updatedAt: number;
 	readonly lastActivityAt: number;
 }
 

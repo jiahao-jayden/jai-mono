@@ -121,11 +121,13 @@ export function ChatColumn({
 
 	const isNewChat = !session;
 	const isAgentWorking = chat.status === "submitted" || chat.status === "streaming";
+	const navigationDisabled = isAgentWorking || !selectedModelRef;
 	const pendingPermissions = chat.messages.filter(
 		(item): item is DesktopPermissionItem => item.kind === "permission" && item.status === "pending",
 	);
 	const pendingExtensionPermissions = chat.messages.filter(
-		(item): item is DesktopExtensionPermissionItem => item.kind === "extension_permission" && item.status === "pending",
+		(item): item is DesktopExtensionPermissionItem =>
+			item.kind === "extension_permission" && item.status === "pending",
 	);
 	const pendingApprovals = [...pendingPermissions, ...pendingExtensionPermissions];
 	const transcriptItems =
@@ -355,7 +357,12 @@ export function ChatColumn({
 											这个会话还没有消息。
 										</p>
 									) : null}
-									<TranscriptItems items={transcriptItems} loading={chat.isLoading} />
+									<TranscriptItems
+										items={transcriptItems}
+										loading={chat.isLoading}
+										navigationDisabled={navigationDisabled}
+										onNavigate={chat.navigate}
+									/>
 									{isAgentWorking ? (
 										<div className="flex items-center gap-2 px-1 py-1 text-muted-foreground" role="status">
 											<ThinkingOrb aria-hidden size={20} state="solving" />
@@ -391,7 +398,8 @@ export function ChatColumn({
 														description: item.request.summary.description || item.request.reason,
 														command: item.request.summary.command,
 														path: item.request.summary.path,
-														canAlwaysAllow: item.request.canAlwaysAllow ?? Boolean(item.request.suggestedRule),
+														canAlwaysAllow:
+															item.request.canAlwaysAllow ?? Boolean(item.request.suggestedRule),
 													}
 												: {
 														id: item.request.requestId,
@@ -408,7 +416,11 @@ export function ChatColumn({
 											if (request?.kind === "extension_permission") {
 												const extensionDecision =
 													decision === "deny" ? "deny" : decision === "allow" ? "allow" : "allowOnce";
-												return chat.resolvePermission({ kind: "extension", requestId, decision: extensionDecision });
+												return chat.resolvePermission({
+													kind: "extension",
+													requestId,
+													decision: extensionDecision,
+												});
 											}
 											const toolDecision = decision === "allow" ? "alwaysAllow" : decision;
 											return chat.resolvePermission({ requestId, decision: toolDecision });

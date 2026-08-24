@@ -12,10 +12,11 @@ import {
 	type JsonObject,
 	type ObserverErrorInfo,
 	openSession,
+	type SessionStore,
 	type ToolExecutionMode,
 	type ToolMiddleware,
 } from "@jai/agent";
-import { FileSessionStore, NodeExecutionEnvironment } from "@jai/agent/node";
+import { NodeExecutionEnvironment } from "@jai/agent/node";
 import type { Model, Provider } from "@jai/ai";
 import type { TObject } from "@sinclair/typebox";
 import { attachmentUserMessage, CodingAttachmentRun, type CodingMessageAttachment } from "../attachments";
@@ -86,7 +87,7 @@ export interface CodingAgentSkillsOptions
 export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState extends JsonObject = JsonObject> {
 	readonly executionContext: CodingExecutionContext;
 	readonly sessionId: string;
-	readonly sessionDirectory: string;
+	readonly sessionStore: SessionStore<TAppState>;
 	readonly appState?: TAppState;
 	readonly instructions?: string;
 	readonly resolveInstructions?: (snapshot: ConfigSnapshot<TSchema>) => string | Promise<string>;
@@ -218,6 +219,10 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		return this.#agent.waitForIdle();
 	}
 
+	navigate(entryId: string): Promise<void> {
+		return this.#agent.navigate(entryId);
+	}
+
 	close(): void {
 		if (this.#runtime.closed) return;
 		this.#runtime.closed = true;
@@ -257,8 +262,11 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		await mcp?.close();
 		throw error;
 	}
-	const sessionStore = new FileSessionStore<TAppState>(options.sessionDirectory);
-	const sessionHandle = await openSession(sessionStore, options.sessionId, options.appState ?? ({} as TAppState));
+	const sessionHandle = await openSession(
+		options.sessionStore,
+		options.sessionId,
+		options.appState ?? ({} as TAppState),
+	);
 	const selectPermissionSettings = options.permissions?.selectSettings ?? defaultPermissionSettings;
 	const sessionAllowRules = new Set<string>();
 	const persistProjectLocalAllowRules =

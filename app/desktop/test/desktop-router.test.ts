@@ -27,6 +27,7 @@ function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) 
 			closeSession: record("closeSession"),
 			abort: record("abort"),
 			invalidateSessions: record("invalidateSessions"),
+			navigate: record("navigate"),
 			send: record("send", { accepted: true as const }),
 			...(overrides.agentHost as object),
 		},
@@ -76,6 +77,18 @@ describe("createDesktopRouter — 输入校验", () => {
 		const base = { sessionId: "s1", modelRef: "p/m" };
 		expect(() => r.agent.send(event, { ...base, message: "", mode: "manual" })).toThrow();
 		expect(() => r.agent.send(event, { ...base, message: "hi", mode: "yolo" })).toThrow();
+	});
+
+	test("agent.navigate 校验 entry、model 和 mode", () => {
+		const { router: r, calls } = router();
+		const base = { sessionId: "s1", entryId: "entry-1", modelRef: "p/m", mode: "manual" as const };
+		expect(() => r.agent.navigate(event, { ...base, entryId: "" })).toThrow();
+		expect(() => r.agent.navigate(event, { ...base, modelRef: "missing-separator" })).toThrow();
+		expect(() => r.agent.navigate(event, { ...base, mode: "yolo" })).toThrow();
+		expect(calls).toEqual([]);
+
+		r.agent.navigate(event, base);
+		expect(calls.map((call) => call.name)).toEqual(["navigate"]);
 	});
 
 	test("workspace.open 只在 application 目标下接受 applicationId", () => {

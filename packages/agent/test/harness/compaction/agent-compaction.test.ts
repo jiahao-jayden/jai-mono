@@ -242,7 +242,13 @@ describe("Agent compaction", () => {
 		const store = new InMemorySessionStore<AppState>();
 		const seed = await openSession(store, "s1", defaultAppState);
 		for (const [index, message] of longHistory().entries()) {
-			await seed.append({ type: "message", id: `seed-${index}`, timestamp: "2026-01-01T00:00:00.000Z", message });
+			await seed.append({
+				type: "message",
+				id: `seed-${index}`,
+				parentId: index === 0 ? null : `seed-${index - 1}`,
+				timestamp: "2026-01-01T00:00:00.000Z",
+				message,
+			});
 		}
 
 		const agent = new Agent<AppState>({

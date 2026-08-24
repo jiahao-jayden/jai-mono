@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CodingAgentMessage } from "@jai/coding-agent";
-import type { CodingSessionSnapshot } from "../electron/data";
+import type { CodingSessionEntry, CodingSessionSnapshot } from "../electron/data";
 import { projectSessionSnapshot } from "../electron/agent/projection/durable";
 
 describe("projectSessionSnapshot", () => {
@@ -34,15 +34,15 @@ describe("projectSessionSnapshot", () => {
 			isError: false,
 			timestamp: 2,
 		} as CodingAgentMessage;
-		const snapshot: CodingSessionSnapshot = {
+		const snapshot = durableSnapshot({
 			appState: {},
 			createdAt: "2026-08-01T00:00:00.000Z",
 			updatedAt: "2026-08-01T00:00:00.000Z",
 			entries: [
 				{ id: "1", type: "message", timestamp: "2026-08-01T00:00:00.000Z", message: assistant },
 				{ id: "2", type: "message", timestamp: "2026-08-01T00:00:01.000Z", message: toolResult },
-			] as CodingSessionSnapshot["entries"],
-		};
+			],
+		});
 
 		const projected = projectSessionSnapshot("session-1", snapshot);
 		const tools = projected.items.filter((item) => item.kind === "tool");
@@ -54,7 +54,7 @@ describe("projectSessionSnapshot", () => {
 	});
 
 	test("从 appState 白名单投影 Todo，不解析 transcript", () => {
-		const snapshot: CodingSessionSnapshot = {
+		const snapshot = durableSnapshot({
 			appState: {
 				todos: {
 					version: 1,
@@ -68,23 +68,19 @@ describe("projectSessionSnapshot", () => {
 			createdAt: "2026-08-01T00:00:00.000Z",
 			updatedAt: "2026-08-01T00:00:00.000Z",
 			entries: [],
-		};
+		});
 
 		const projected = projectSessionSnapshot("session-1", snapshot);
 
-		expect(projected.todos).toEqual({
-			version: 1,
-			updatedAt: 1_786_017_600_000,
-			items: [
-				{ id: "inspect", content: "Inspect storage", status: "completed" },
-				{ id: "render", content: "Render progress", status: "in_progress" },
-			],
-		});
+		expect(projected.todos).toEqual([
+			{ id: "inspect", content: "Inspect storage", status: "completed" },
+			{ id: "render", content: "Render progress", status: "in_progress" },
+		]);
 		expect(JSON.stringify(projected.todos)).not.toContain("secret");
 	});
 
 	test("只投影 SDK 已确认成功的 Markdown 与 HTML Artifact facts", () => {
-		const snapshot: CodingSessionSnapshot = {
+		const snapshot = durableSnapshot({
 			appState: {
 				artifacts: {
 					version: 1,
@@ -176,7 +172,7 @@ describe("projectSessionSnapshot", () => {
 					},
 				},
 			],
-		};
+		});
 
 		expect(projectSessionSnapshot("session-1", snapshot).artifacts).toEqual([
 			expect.objectContaining({
@@ -189,7 +185,7 @@ describe("projectSessionSnapshot", () => {
 	});
 
 	test("compaction 后从 appState Artifact catalog 恢复元数据", () => {
-		const snapshot: CodingSessionSnapshot = {
+		const snapshot = durableSnapshot({
 			appState: {
 				artifacts: {
 					version: 1,
@@ -225,7 +221,7 @@ describe("projectSessionSnapshot", () => {
 					},
 				},
 			],
-		};
+		});
 
 		expect(projectSessionSnapshot("session-1", snapshot).artifacts).toEqual([
 			expect.objectContaining({ id: "artifact:docs/report.md", path: "docs/report.md", format: "markdown" }),
@@ -233,7 +229,7 @@ describe("projectSessionSnapshot", () => {
 	});
 
 	test("将 durable messages、tools 与 compaction 投影为 renderer-safe transcript", () => {
-		const snapshot: CodingSessionSnapshot = {
+		const snapshot = durableSnapshot({
 			appState: {},
 			createdAt: "2026-08-01T00:00:00.000Z",
 			updatedAt: "2026-08-01T00:00:03.000Z",
@@ -348,13 +344,13 @@ describe("projectSessionSnapshot", () => {
 					},
 				},
 			],
-		};
+		});
 
 		const projected = projectSessionSnapshot("session-1", snapshot);
 
 		expect(projected).toMatchObject({ sessionId: "session-1", status: "idle", lastSeq: 0 });
 		expect(projected.items).toEqual([
-			expect.objectContaining({ kind: "message", role: "user", text: "write" }),
+			expect.objectContaining({ kind: "message", role: "user", text: "write", entryId: "user-1" }),
 			expect.objectContaining({
 				kind: "thinking",
 				text: "I should update the requested file.",
@@ -392,7 +388,7 @@ describe("projectSessionSnapshot", () => {
 	});
 
 	test("只将 toolUse 文本投影为工作叙述，最终回答仍是普通消息", () => {
-		const snapshot: CodingSessionSnapshot = {
+		const snapshot = durableSnapshot({
 			appState: {},
 			createdAt: "2026-08-01T00:00:00.000Z",
 			updatedAt: "2026-08-01T00:00:02.000Z",
@@ -422,7 +418,7 @@ describe("projectSessionSnapshot", () => {
 					message: assistantMessage("Implemented and verified", "stop"),
 				},
 			],
-		};
+		});
 
 		const projected = projectSessionSnapshot("session-1", snapshot);
 
@@ -435,7 +431,7 @@ describe("projectSessionSnapshot", () => {
 	});
 
 	test("从 durable user message 恢复 slash invocation metadata", () => {
-		const snapshot: CodingSessionSnapshot = {
+		const snapshot = durableSnapshot({
 			appState: {},
 			createdAt: "2026-08-01T00:00:00.000Z",
 			updatedAt: "2026-08-01T00:00:00.000Z",
@@ -454,7 +450,7 @@ describe("projectSessionSnapshot", () => {
 					},
 				},
 			],
-		};
+		});
 
 		const projected = projectSessionSnapshot("session-1", snapshot);
 
@@ -466,7 +462,7 @@ describe("projectSessionSnapshot", () => {
 	});
 
 	test("不把 synthetic user message 投影到 transcript", () => {
-		const snapshot: CodingSessionSnapshot = {
+		const snapshot = durableSnapshot({
 			appState: {},
 			createdAt: "2026-08-01T00:00:00.000Z",
 			updatedAt: "2026-08-01T00:00:00.000Z",
@@ -488,7 +484,7 @@ describe("projectSessionSnapshot", () => {
 					message: { role: "user", content: "Visible message", timestamp: 2 },
 				},
 			],
-		};
+		});
 
 		const projected = projectSessionSnapshot("session-1", snapshot);
 
@@ -517,4 +513,26 @@ function assistantMessage(
 		stopReason,
 		timestamp: 1,
 	};
+}
+
+/** parentId 在 fixture 里全是噪音,但 branchOf 少了它就走不通:这里按声明顺序串成直链。 */
+type Unlinked<TEntry> = TEntry extends unknown ? Omit<TEntry, "parentId"> : never;
+
+/**
+ * 投影遍历的是当前分支而不是写入顺序数组。fixture 缺 parentId / leafId 会被 branchOf
+ * 判成残缺树,所以这里补上:entry 依次相连,leaf 指向最后一条。
+ */
+function durableSnapshot(fixture: {
+	appState: CodingSessionSnapshot["appState"];
+	createdAt: string;
+	updatedAt: string;
+	entries: readonly Unlinked<CodingSessionEntry>[];
+}): CodingSessionSnapshot {
+	let parentId: string | null = null;
+	const entries = fixture.entries.map((entry) => {
+		const linked = { ...entry, parentId };
+		parentId = entry.id;
+		return linked;
+	}) as CodingSessionSnapshot["entries"];
+	return { ...fixture, entries, leafId: parentId, initialAppState: {} };
 }

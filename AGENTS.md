@@ -24,6 +24,32 @@
 - 不按行数机械内联。类型守卫、事件处理器、递归、协议边界、错误 DTO 投影、领域校验及多处复用函数可以保持短小。
 - 评审新增短函数时，先问“删除这个函数并内联后，是否损失复用、约束或可读性”；答案是否定的就不要提取。
 
+# 架构与目录规则
+
+## 事实归属
+
+- 一类 durable fact 只能有一个 owner：会话消息、分支、压缩与 Session App State 属于 `@jai/agent` journal；Todo、Artifact、Extension state 的业务语义属于 `@jai/coding-agent`；标题、项目归属与项目目录属于 Desktop；运行中状态、审批、流式 seq 和 renderer state 都是可丢弃的内存状态。
+- Durable journal 只有 SQLite：CLI 与 Desktop 共用 `$JAI_HOME/data.sqlite`（默认 `~/.jai/data.sqlite`）。不得新增 JSONL、双写、重建索引、fallback 或第二种 durable adapter。
+- `session_project_history` 不是当前领域概念；移动 Session 只更新当前项目归属。除非先出现明确的产品查询或审计用例，不得重新引入。
+- Projection 是单向读取模型：可以把 journal / SDK state 转为 RPC DTO、CLI 输出或 UI item，但不得把 projection、UI state、Desktop metadata 写回 journal，也不得把未筛选的内部对象越过进程边界。
+
+## 模块、入口与依赖方向
+
+- 目录首先按领域事实或角色命名，而非按泛化技术命名。新目录不得命名为 `data`、`common`、`shared`、`helpers`、`utils`、`services`、`misc`；已有泛化目录在触及其领域时优先收敛为明确模块。
+- 模块角色只使用：`core`（纯领域/执行语义）、`runtime`（生命周期与编排）、`adapters`（SQLite、Node、RPC、Electron、MCP 等外部实现）、`projection`（只读 DTO/UI 投影）或明确的产品领域目录（如 `sessions`、`projects`、`permissions`）。
+- `main.ts`、`runtime.ts`、composition root 只负责装配与生命周期；`index.ts` 只定义模块对外 interface 和 re-export。它们不得承载领域规则、SQL、UI 投影或协议实现。
+- 每个模块只暴露一个小而稳定的 interface；调用方与测试都通过该 interface 使用模块。不要为单一实现建立 interface / factory / strategy。`SessionStore` 保留是因为 SQLite durable store 与 InMemory ephemeral/test store 是真实的两个 adapter；Desktop 的单一 SQLite 实现不应复制这种 seam。
+- 依赖方向固定：`core` 不依赖 `runtime`、adapter、host 或 UI；`runtime` 可以依赖 `core` 和自己的 contract；adapter 依赖 contract 但不携带宿主业务规则；projection 只读取 domain facts；renderer 只能依赖 shared RPC DTO，不得 import Electron 或 Agent 内部实现。
+- Host（Desktop、CLI）只负责装配、I/O、宿主生命周期与输出适配；不得重实现 Agent、session、权限或 Coding Agent 的产品语义。
+
+## 目录导航与拆分
+
+- 每个领域目录的 `index.ts` 应让读者先知道：模块拥有的事实、对外动作、错误语义和生命周期；实现细节留在同目录的私有文件。
+- `types.ts`、`errors.ts`、`sqlite.ts`、`projection.ts` 等文件必须放在其所属领域目录下；跨目录移动前先问“它拥有哪类事实或协议”。没有明确 owner 的代码不准落到根目录。
+- 测试目录镜像源码领域目录；测试通过 public interface 证明行为，除非测试的是 adapter 或协议边界本身。
+- 文件达到 600 行前必须评估是否同时混入多个领域或角色；达到 700 行必须按领域文件夹拆分。不要只把几行函数拆到同级文件来降低行数。
+- 命名表达角色：`open*` 获取有生命周期资源；`create*` 构造新对象；`resolve*` 纯计算/选择；`project*` 内部事实到安全读取模型；`run*` 编排完整用例；`*Registry` 只索引运行中对象，不持久化领域事实。
+
 # 编码规则
 1. 不保留向后兼容。过时的直接删，别加兼容层、别写migration、别留fallback。
 

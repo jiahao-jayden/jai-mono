@@ -10,7 +10,10 @@ import type {
 	DesktopTranscriptItem,
 } from "../../../../shared/desktop-rpc";
 import { type TimelineStep, ToolTimeline } from "../../elements/tool-timeline";
+import { Button } from "../../ui/button";
 import { ChatMessage } from "../../ui/chat-message";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
+import { Tooltip } from "../../ui/tooltip";
 import { SubagentCard } from "./subagent-card";
 
 type WorkItem = DesktopThinkingItem | DesktopNarrationItem | DesktopToolItem;
@@ -31,13 +34,29 @@ interface WorkTimelineCluster {
 const MemoizedTranscriptItem = memo(TranscriptItem);
 const MemoizedWorkProcess = memo(WorkProcess, sameWorkProcess);
 
-export function TranscriptItems({ items, loading }: { items: readonly DesktopTranscriptItem[]; loading: boolean }) {
+export function TranscriptItems({
+	items,
+	loading,
+	navigationDisabled = false,
+	onNavigate,
+}: {
+	readonly items: readonly DesktopTranscriptItem[];
+	readonly loading: boolean;
+	readonly navigationDisabled?: boolean;
+	readonly onNavigate?: (entryId: string) => Promise<boolean>;
+}) {
 	const animatedItemIds = useTranscriptItemAnimations(items, loading);
 	const rows = groupTranscriptItems(items);
 
 	return rows.map((row, index) =>
 		"kind" in row ? (
-			<MemoizedTranscriptItem key={row.id} animate={animatedItemIds.has(row.id)} item={row} />
+			<MemoizedTranscriptItem
+				key={row.id}
+				animate={animatedItemIds.has(row.id)}
+				item={row}
+				navigationDisabled={navigationDisabled}
+				onNavigate={onNavigate}
+			/>
 		) : (
 			<MemoizedWorkProcess key={row.id} group={row} settled={index < rows.length - 1} />
 		),
@@ -78,7 +97,17 @@ export function groupTranscriptItems(items: readonly DesktopTranscriptItem[]): (
 	return rows;
 }
 
-export function TranscriptItem({ item, animate = false }: { item: DesktopTranscriptItem; animate?: boolean }) {
+export function TranscriptItem({
+	item,
+	animate = false,
+	navigationDisabled = false,
+	onNavigate,
+}: {
+	readonly item: DesktopTranscriptItem;
+	readonly animate?: boolean;
+	readonly navigationDisabled?: boolean;
+	readonly onNavigate?: (entryId: string) => Promise<boolean>;
+}) {
 	if (item.kind === "thinking" || item.kind === "narration") {
 		return <WorkProcess group={{ id: `work:${item.id}`, items: [item] }} settled={false} />;
 	}
@@ -96,6 +125,14 @@ export function TranscriptItem({ item, animate = false }: { item: DesktopTranscr
 		const isStreaming = item.status === "streaming";
 		const attachmentFiles = item.attachments ? filesForAttachments(item.attachments) : [];
 		const messageAttachments = attachmentFiles.length > 0 ? undefined : item.attachments;
+		const navigation = user && item.entryId && onNavigate ? { entryId: item.entryId, onNavigate } : undefined;
+		const actions = navigation ? (
+			<NavigateToMessageAction
+				disabled={navigationDisabled}
+				entryId={navigation.entryId}
+				onNavigate={navigation.onNavigate}
+			/>
+		) : undefined;
 		return (
 			<div className={messageAlignment} data-transcript-item-id={item.id}>
 				<ChatMessage
@@ -105,6 +142,7 @@ export function TranscriptItem({ item, animate = false }: { item: DesktopTranscr
 					from={from}
 					files={attachmentFiles}
 					isStreaming={isStreaming}
+					actions={actions}
 				>
 					{item.text}
 				</ChatMessage>
@@ -133,6 +171,89 @@ export function TranscriptItem({ item, animate = false }: { item: DesktopTranscr
 	}
 
 	return null;
+}
+
+function NavigateToMessageAction({
+	disabled,
+	entryId,
+	onNavigate,
+}: {
+	readonly disabled: boolean;
+	readonly entryId: string;
+	readonly onNavigate: (entryId: string) => Promise<boolean>;
+}) {
+	const CornerDownRightIcon = useIcon("corner-down-right");
+	const [open, setOpen] = useState(false);
+	const [pending, setPending] = useState(false);
+	const [error, setError] = useState<string>();
+	const actionDisabled = disabled || pending;
+
+	const openDialog = () => {
+		if (actionDisabled) return;
+		setError(undefined);
+		setOpen(true);
+	};
+	const onOpenChange = (nextOpen: boolean) => {
+		if (!nextOpen && !pending) {
+			setError(undefined);
+			setOpen(false);
+		}
+	};
+	const navigate = async () => {
+		if (pending) return;
+		setPending(true);
+		setError(undefined);
+		try {
+			if (await onNavigate(entryId)) {
+				setOpen(false);
+				return;
+			}
+			setError("无法回到这条消息。请检查模型后重试。");
+		} catch {
+			setError("无法回到这条消息。请稍后重试。");
+		} finally {
+			setPending(false);
+		}
+	};
+
+	return (
+		<>
+			<Tooltip content="回到这里" side="top">
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-sm"
+					disabled={actionDisabled}
+					aria-label="回到这里"
+					title="回到这里"
+					onClick={openDialog}
+				>
+					<CornerDownRightIcon size={15} strokeWidth={1.75} />
+				</Button>
+			</Tooltip>
+			<Dialog open={open} onOpenChange={onOpenChange}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>回到这条消息？</DialogTitle>
+						<DialogDescription>后续对话会从这里继续；当前后续内容将保留为分支。</DialogDescription>
+					</DialogHeader>
+					{error ? (
+						<p className="text-[12px] leading-relaxed text-destructive" role="alert">
+							{error}
+						</p>
+					) : null}
+					<DialogFooter>
+						<Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>
+							取消
+						</Button>
+						<Button type="button" loading={pending} onClick={() => void navigate()}>
+							回到这里
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+		</>
+	);
 }
 
 function CompactionDivider({

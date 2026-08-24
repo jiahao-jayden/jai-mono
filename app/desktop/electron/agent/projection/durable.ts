@@ -1,10 +1,10 @@
+import { branchOf } from "@jai/agent";
 import type { AssistantMessage } from "@jai/ai";
-import { type CodingAgentMessage, codingArtifactsFromAppState } from "@jai/coding-agent";
+import { type CodingAgentMessage, codingArtifactsFromAppState, todosFromAppState } from "@jai/coding-agent";
 import type {
 	DesktopAgentSnapshot,
 	DesktopArtifact,
 	DesktopCompactionItem,
-	DesktopTodos,
 	DesktopTranscriptItem,
 } from "../../../shared/desktop-rpc";
 import type { CodingSessionSnapshot } from "../../data";
@@ -14,7 +14,6 @@ import {
 	assistantPartItem,
 	COMPACTION_SUMMARY_MAX,
 	type DesktopAssistantItem,
-	isRecord,
 	isSyntheticOnlyMessage,
 	subagentItemId,
 	TOOL_SUMMARY_MAX,
@@ -33,7 +32,7 @@ export function projectSessionSnapshot(sessionId: string, snapshot: CodingSessio
 	);
 	let currentTurnId: string | undefined;
 
-	for (const entry of snapshot.entries) {
+	for (const entry of branchOf(snapshot.entries, snapshot.leafId)) {
 		if (entry.type === "compaction") {
 			const item: DesktopCompactionItem = {
 				kind: "compaction",
@@ -82,6 +81,7 @@ export function projectSessionSnapshot(sessionId: string, snapshot: CodingSessio
 		if (isSyntheticOnlyMessage(entry.message)) continue;
 		const messageItem = userMessageItem({
 			id: `message:${entry.id}`,
+			entryId: entry.id,
 			message: entry.message,
 			status: "complete",
 		});
@@ -97,12 +97,12 @@ export function projectSessionSnapshot(sessionId: string, snapshot: CodingSessio
 				: item,
 	);
 
-	const todos = projectSessionTodos(snapshot.appState.todos);
+	const todos = todosFromAppState(snapshot.appState);
 	return {
 		sessionId,
 		status: "idle",
 		items: projectedItems,
-		...(todos ? { todos } : {}),
+		...(todos.length ? { todos } : {}),
 		artifacts: sortArtifacts(artifacts.values()),
 		lastSeq: 0,
 	};
@@ -171,25 +171,6 @@ function assistantItems(
 		});
 		return item ? [item] : [];
 	});
-}
-
-/** Reads the Todo read-model out of Session App State, rejecting anything malformed. */
-export function projectSessionTodos(value: unknown): DesktopTodos | undefined {
-	if (!isRecord(value) || value.version !== 1 || typeof value.updatedAt !== "number" || !Array.isArray(value.items)) {
-		return undefined;
-	}
-	const items = value.items.flatMap((candidate) => {
-		if (!isRecord(candidate)) return [];
-		if (typeof candidate.id !== "string" || typeof candidate.content !== "string") return [];
-		if (!isTodoStatus(candidate.status)) return [];
-		return [{ id: candidate.id, content: candidate.content, status: candidate.status }];
-	});
-	if (items.length !== value.items.length) return undefined;
-	return { version: 1, updatedAt: value.updatedAt, items };
-}
-
-function isTodoStatus(value: unknown): value is DesktopTodos["items"][number]["status"] {
-	return value === "pending" || value === "in_progress" || value === "completed" || value === "cancelled";
 }
 
 function parseTimestamp(value: string): number {

@@ -62,7 +62,11 @@ export interface PersistedCodingSessionState<TAppState extends JsonObject> exten
 export function emptyPersistedCodingSessionState<
 	TAppState extends JsonObject,
 >(): PersistedCodingSessionState<TAppState> {
-	return { version: 1, appState: {} as TAppState, extensions: {} };
+	return {
+		version: 1,
+		appState: {} as TAppState,
+		extensions: {},
+	};
 }
 
 function extensionStateFromAppState(

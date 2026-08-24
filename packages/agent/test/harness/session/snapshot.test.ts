@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { applyEntry, emptySnapshot, replay } from "../../../src/harness";
-import { appStateEntry, compactionEntry, defaultAppState, messageEntry } from "../../support/fixtures";
+import { appStateEntry, chain, compactionEntry, defaultAppState, messageEntry } from "../../support/fixtures";
 
 describe("applyEntry", () => {
 	const base = emptySnapshot(defaultAppState, "2026-01-01T00:00:00.000Z");
@@ -17,24 +17,30 @@ describe("applyEntry", () => {
 
 	test("app_state entries replace business state with a deep copy", () => {
 		const value = { resolved: true };
-		const next = applyEntry(base, { type: "app_state", id: "e0", timestamp: "t", value });
+		const next = applyEntry(base, { type: "app_state", id: "e0", parentId: null, timestamp: "t", value });
 		value.resolved = false;
 
 		expect(next.appState).toEqual({ resolved: true });
 	});
 
 	test("compaction entries only extend the log", () => {
-		const entry = compactionEntry("e1", "summary so far", "e0", "2026-01-01T00:00:02.000Z");
-		const next = applyEntry(applyEntry(base, messageEntry("e0", "hi")), entry);
+		const { entries, leafId } = chain(
+			messageEntry("e0", "hi"),
+			compactionEntry("e1", "summary so far", "e0", "2026-01-01T00:00:02.000Z"),
+		);
+		const next = entries.reduce(applyEntry, base);
 
 		expect(next.entries.map((item) => item.type)).toEqual(["message", "compaction"]);
 		expect(next.appState).toEqual({ resolved: false });
+		expect(next.leafId).toBe(leafId);
 		expect(next.updatedAt).toBe("2026-01-01T00:00:02.000Z");
 	});
 
 	test("replay folds a whole log", () => {
-		const entries = [appStateEntry("e0", true), appStateEntry("e1", false)];
+		const { entries, leafId } = chain(appStateEntry("e0", true), appStateEntry("e1", false));
+		const snapshot = replay(defaultAppState, entries, "t");
 
-		expect(replay(defaultAppState, entries, "t").appState).toEqual({ resolved: false });
+		expect(snapshot.appState).toEqual({ resolved: false });
+		expect(snapshot.leafId).toBe(leafId);
 	});
 });

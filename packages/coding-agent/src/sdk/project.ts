@@ -2,6 +2,11 @@ import path from "node:path";
 import type { AgentEvent, AgentMessage } from "@jai/agent";
 import { panic, TaggedError } from "better-result";
 import type { PermissionApprovalRequest } from "../permissions";
+import {
+	type CodingToolPresentation,
+	type ResolvedCodingToolPresentation,
+	resolveToolPresentation,
+} from "./tool-presentation";
 import type {
 	CodingAgentArtifact,
 	CodingAgentEvent,
@@ -15,11 +20,6 @@ import type {
 	JsonObject,
 	JsonValue,
 } from "./types";
-import {
-	resolveToolPresentation,
-	type CodingToolPresentation,
-	type ResolvedCodingToolPresentation,
-} from "./tool-presentation";
 
 export class CodingSdkFailure extends TaggedError("coding_sdk.failure")<{
 	readonly phase: CodingSdkErrorPhase;
@@ -135,10 +135,14 @@ export class CodingEventProjector {
 					assistantEvent: projectAssistantEvent(event.assistantEvent),
 				};
 			case "message_end":
-				return { type: "message_end", message: projectMessage(event.message) };
+				return {
+					type: "message_end",
+					message: projectMessage(event.message),
+					...(event.entryId ? { entryId: event.entryId } : {}),
+				};
 			case "message_discard":
 				return { type: "message_discard" };
-			case "tool_execution_start":
+			case "tool_execution_start": {
 				const presentation = resolveToolPresentation(
 					event.toolName,
 					event.args,
@@ -153,7 +157,8 @@ export class CodingEventProjector {
 					title: presentation.title,
 					args: projectJson(event.args),
 				};
-			case "tool_execution_update":
+			}
+			case "tool_execution_update": {
 				const updatePresentation = this.#presentationFor(event.toolCallId, event.toolName);
 				return {
 					type: "tool_execution_update",
@@ -162,7 +167,8 @@ export class CodingEventProjector {
 					activityKind: updatePresentation.activityKind,
 					partial: projectJson(event.partial),
 				};
-			case "tool_execution_end":
+			}
+			case "tool_execution_end": {
 				const endPresentation = this.#presentationFor(event.toolCallId, event.toolName);
 				this.#toolCalls.delete(event.toolCallId);
 				return {
@@ -173,6 +179,7 @@ export class CodingEventProjector {
 					result: projectJson(event.result),
 					isError: event.isError,
 				};
+			}
 			case "compaction_start":
 				return { type: "compaction_start", trigger: event.trigger, tokensBefore: event.tokensBefore };
 			case "compaction_end":

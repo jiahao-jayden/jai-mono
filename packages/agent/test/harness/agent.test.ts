@@ -24,6 +24,58 @@ describe("Agent", () => {
 		expect(record?.snapshot.appState).toEqual({ resolved: true });
 	});
 
+	// 观察者在 run 中途异步写 app_state（coding-agent 的 artifact 投影就是这个形状）。
+	// 铸号与入镜像若隔着 await，这条 app_state 与紧随其后的 toolResult 会读到同一个
+	// parentId 变成兄弟，后写的那条落到旁支上，appState 于是被重算回 header 初值。
+	test("app_state written by an observer mid-run stays on the same branch as the messages around it", async () => {
+		const store = new InMemorySessionStore<AppState>();
+		// 真实 store 的写入可能跨若干个宏任务。写入立刻兑现时，
+		// 上一条 entry 早就进了镜像，这个竞态根本不会出现——所以这里必须让它慢下来。
+		const slowAppend = store.append.bind(store);
+		store.append = async (id, entry, revision) => {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			return slowAppend(id, entry, revision);
+		};
+		const handle = await openSession(store, "s1", defaultAppState);
+		const echo: AgentTool = {
+			name: "echo",
+			description: "echo",
+			parameters: Type.Object({}),
+			async execute() {
+				return { content: [{ type: "text", text: "ok" }] };
+			},
+		};
+		const agent = new Agent<AppState>({
+			model,
+			provider: providerFor([
+				{
+					...assistant(""),
+					content: [{ type: "toolCall", id: "c1", name: "echo", arguments: {} }],
+					stopReason: "toolUse",
+				},
+				assistant("done"),
+			]),
+			sessionHandle: handle,
+			instructions: testInstructions,
+			tools: [echo],
+		});
+		let write = Promise.resolve();
+		agent.subscribe((event) => {
+			if (event.type !== "tool_execution_end") return;
+			write = agent.updateAppState(() => ({ resolved: true }));
+		});
+
+		await agent.invoke("hello");
+		await write;
+
+		const snapshot = (await store.load("s1"))?.snapshot;
+		const entries = snapshot?.entries ?? [];
+		expect(entries.map((entry) => entry.type)).toEqual(["message", "message", "app_state", "message", "message"]);
+		expect(entries.map((entry, index) => entry.parentId)).toEqual([null, ...entries.slice(0, -1).map((entry) => entry.id)]);
+		expect(snapshot?.leafId).toBe(entries.at(-1)?.id ?? null);
+		expect(snapshot?.appState).toEqual({ resolved: true });
+	});
+
 	test("keeps protocol repair attempts out of the durable session transcript", async () => {
 		const store = new InMemorySessionStore<AppState>();
 		const invalid: AssistantMessage = {
@@ -120,6 +172,32 @@ describe("Agent", () => {
 		expect(agent.state.appState).toEqual(defaultAppState);
 	});
 
+	test("a failed append cannot become the parent of the next durable entry", async () => {
+		const store = new InMemorySessionStore<AppState>();
+		const append = store.append.bind(store);
+		let failNextAppend = true;
+		store.append = async (id, entry, revision) => {
+			if (failNextAppend) {
+				failNextAppend = false;
+				throw new Error("temporary storage failure");
+			}
+			return append(id, entry, revision);
+		};
+		const agent = new Agent<AppState>({
+			model,
+			provider: providerFor([]),
+			sessionHandle: await openSession(store, "s1", defaultAppState),
+		});
+
+		await expect(agent.updateAppState(() => ({ resolved: true }))).rejects.toThrow("temporary storage failure");
+		await agent.updateAppState(() => ({ resolved: true }));
+
+		const snapshot = (await store.load("s1"))?.snapshot;
+		expect(snapshot?.entries).toMatchObject([{ type: "app_state", id: "s1:1", parentId: null }]);
+		expect(snapshot?.appState).toEqual({ resolved: true });
+		expect(agent.state.appState).toEqual({ resolved: true });
+	});
+
 	test("uses the provided instructions, not the snapshot", async () => {
 		const contexts: Context[] = [];
 		const agent = new Agent<AppState>({
@@ -143,15 +221,18 @@ describe("Agent", () => {
 			instructions: testInstructions,
 		});
 		const persistedWhenSeen: number[] = [];
+		const entryIdsWhenSeen: string[] = [];
 
 		agent.subscribe(async (event) => {
 			if (event.type !== "message_end") return;
 			const record = await store.load("s1");
 			persistedWhenSeen.push(record?.snapshot.entries.length ?? 0);
+			if (event.entryId) entryIdsWhenSeen.push(event.entryId);
 		});
 		await agent.invoke("hello");
 
 		expect(persistedWhenSeen).toEqual([1, 2]);
+		expect(entryIdsWhenSeen).toEqual(["s1:0", "s1:1"]);
 	});
 
 	test("a failed write fails the run instead of silently losing history", async () => {

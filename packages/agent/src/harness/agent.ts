@@ -4,7 +4,14 @@ import { TaggedError } from "better-result";
 import { type AgentInput, CoreAgent, type CoreAgentOptions } from "../core/agent";
 import { type AgentState, cloneJson, type JsonObject } from "../core/agent-state";
 import type { Session } from "../core/session";
-import type { AgentContext, AgentMessage, AgentTool, CoreAgentEvent, ObserverErrorInfo, RetryModelCall } from "../core/types";
+import type {
+	AgentContext,
+	AgentMessage,
+	AgentTool,
+	CoreAgentEvent,
+	ObserverErrorInfo,
+	RetryModelCall,
+} from "../core/types";
 import { compact } from "./compaction/compact";
 import { estimateContextTokens, estimateTokens, resolveCompactionSettings, shouldCompact } from "./compaction/estimate";
 import { hasUncompactedTruncation, isContextOverflow } from "./compaction/overflow";
@@ -24,12 +31,15 @@ import type { AgentEvent, AgentEventListener, AgentRun } from "./events";
 import { type AgentHookMap, type BeforeModelCallPhase, HookHost } from "./hooks";
 import { restoreFromSnapshot } from "./session/agent-binding";
 import { SessionLedger } from "./session/ledger";
+import { branchOf, contextMessages } from "./session/tree";
 import {
 	type CompactionEntry,
 	SessionBusyError,
 	SessionConflictError,
 	type SessionHandle,
+	SessionNavigateFailed,
 	SessionReadOnlyError,
+	SessionUnknownEntry,
 } from "./session/types";
 
 export interface DefaultCompactionOptions {
@@ -256,6 +266,53 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 	}
 
 	/**
+	 * 回到树上较早的一个 entry，从那里立即长出一条新分支。
+	 *
+	 * 旧分支完整保留在 ledger 中，但不再进入新分支的模型上下文。导航不调用模型，
+	 * 只写入一个 branch entry；落盘失败时再把内存 transcript 退回原来的分支。
+	 */
+	async navigate(entryId: string): Promise<void> {
+		if (this.agent.state.isRunning) {
+			throw new SessionNavigateFailed({ message: "Cannot navigate while a run is active.", entryId });
+		}
+		// App-state writes are queued independently from the core run. Drain them before
+		// choosing the branch target so navigation cannot overtake a pending tree append.
+		await this.appStateWrites;
+
+		const target = this.ledger.entries.find((entry) => entry.id === entryId);
+		if (!target) throw new SessionUnknownEntry({ message: `No entry "${entryId}" in this session`, entryId });
+
+		const fromId = this.ledger.leafId;
+		if (fromId === null) return;
+
+		// 集合差同时覆盖普通回退和从旁支再次导航的情形。
+		const kept = new Set(branchOf(this.ledger.entries, entryId).map((entry) => entry.id));
+		const abandoned = branchOf(this.ledger.entries, fromId).filter((entry) => !kept.has(entry.id));
+		if (abandoned.length === 0) return;
+
+		const entry = this.ledger.mintBranch({ targetId: entryId, fromId });
+		const previousMessages = this.agent.state.messages;
+		this.agent.reset(contextMessages([...branchOf(this.ledger.entries, entryId), entry]));
+
+		try {
+			await this.ledger.commitBranch(entry);
+		} catch (error) {
+			// 落盘失败：把 transcript 退回导航前，否则 agent 会活在一条磁盘上不存在的分支上。
+			this.agent.reset(previousMessages);
+			throw new SessionNavigateFailed({
+				message: `Failed to persist the branch entry for "${entryId}"`,
+				entryId,
+				cause: error,
+			});
+		}
+
+		// appState 是分支内事实，导航必须让它跟着回退。store 已沿新分支从 header 初值
+		// 重算过，直接采信那一份，不在这里折第二遍。
+		const appState = this.ledger.appState;
+		if (appState) this.agent.setAppState(appState);
+	}
+
+	/**
 	 * 清空进程内 transcript 与压缩视图，保留 appState。
 	 * SessionStore 是 append-only 的，磁盘上的历史不会因此消失；重新打开同一个 session 仍会恢复。
 	 */
@@ -411,17 +468,17 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 
 	/** 先落盘再对外发事件，UI 不会先显示一条最终没能写入的消息。 */
 	private async handleCoreEvent(event: CoreAgentEvent): Promise<void> {
-		await this.persist(event);
-		await this.publish(event);
+		const entryId = await this.persist(event);
+		await this.publish(event.type === "message_end" && entryId ? { ...event, entryId } : event);
 	}
 
 	/** 关键写入：抛出即让整次 run 失败，对应的事件也不会对外发布。 */
-	private async persist(event: CoreAgentEvent): Promise<void> {
+	private async persist(event: CoreAgentEvent): Promise<string | undefined> {
 		if (
 			event.type === "message_end" &&
 			(event.message.role !== "assistant" || !isModelOutputProtocolViolation(event.message))
 		) {
-			await this.ledger.appendMessage(event.message);
+			return (await this.ledger.appendMessage(event.message)).id;
 		}
 	}
 
@@ -449,7 +506,7 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 }
 
 /** id 与 timestamp 由 ledger 补，策略不参与。 */
-type NewCompactionEntry = Omit<CompactionEntry, "type" | "id" | "timestamp">;
+type NewCompactionEntry = Omit<CompactionEntry, "type" | "id" | "parentId" | "timestamp">;
 class ConflictingDurableSource extends TaggedError("agent.conflicting_durable_source")<{
 	readonly message: string;
 }> {}

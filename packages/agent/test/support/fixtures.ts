@@ -6,7 +6,7 @@ import {
 	type Provider,
 	zeroUsage,
 } from "@jai/ai";
-import { Agent, type SessionEntry } from "../../src";
+import { Agent, type JsonObject, type SessionEntry } from "../../src";
 
 export const model: Model = {
 	id: "test-model",
@@ -71,13 +71,14 @@ export function messageEntry(id: string, text: string, timestamp = id): SessionE
 	return {
 		type: "message",
 		id,
+		parentId: null,
 		timestamp,
 		message: { role: "user", content: text, timestamp: 0 },
 	};
 }
 
 export function appStateEntry(id: string, resolved: boolean, timestamp = id): SessionEntry<AppState> {
-	return { type: "app_state", id, timestamp, value: { resolved } };
+	return { type: "app_state", id, parentId: null, timestamp, value: { resolved } };
 }
 
 export function compactionEntry(
@@ -89,6 +90,7 @@ export function compactionEntry(
 	return {
 		type: "compaction",
 		id,
+		parentId: null,
 		timestamp,
 		summary,
 		firstKeptEntryId,
@@ -96,4 +98,23 @@ export function compactionEntry(
 		tokensAfter: 100,
 		usage: zeroUsage(),
 	};
+}
+
+/**
+ * 把若干 entry 串成一条直链分支：每条的 parentId 指向前一条，返回分支的 leaf。
+ *
+ * 构造器本身把 parentId 置 null，单独用就是一堆根节点——branchOf 只会返回单元素分支，
+ * 断言会静默失真。凡是"这些 entry 属于同一条对话"的地方都必须过一遍 chain。
+ */
+export function chain<T extends JsonObject>(...entries: SessionEntry<T>[]): {
+	entries: SessionEntry<T>[];
+	leafId: string | null;
+} {
+	let parentId: string | null = null;
+	const linked = entries.map((entry) => {
+		const linkedEntry = { ...entry, parentId };
+		parentId = entry.id;
+		return linkedEntry;
+	});
+	return { entries: linked, leafId: parentId };
 }

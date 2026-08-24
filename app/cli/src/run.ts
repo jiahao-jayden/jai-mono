@@ -3,6 +3,8 @@ import path from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
+import { attachSession, type JsonObject, type SessionSnapshot } from "@jai/agent";
+import { SqliteSessionStore } from "@jai/agent/node";
 import {
 	type CodingAgent,
 	type CodingAgentEvent,
@@ -13,7 +15,6 @@ import {
 	type CodingPermissionRequest,
 	type CodingSdkError,
 	createCodingAgent,
-	type JsonObject,
 	type JsonValue,
 } from "@jai/coding-agent";
 import { createAgentPluginsExtension } from "@jai/extension/agent-plugins";
@@ -59,6 +60,7 @@ interface CliOptions {
 	readonly model?: string;
 	readonly cwd: string;
 	readonly sessionId?: string;
+	readonly attachSessionId?: string;
 	readonly noSessionPersistence: boolean;
 	readonly permissionMode?: CodingPermissionMode;
 	readonly maxTurns?: number;
@@ -98,6 +100,8 @@ export async function runCli(argv: readonly string[]): Promise<number> {
 	}
 
 	let agent: CodingAgent | undefined;
+	let closeSessionStore: (() => void) | undefined;
+	let closeAttachment: (() => void) | undefined;
 	let interrupted = false;
 	const abort = () => {
 		interrupted = true;
@@ -105,12 +109,27 @@ export async function runCli(argv: readonly string[]): Promise<number> {
 	};
 	process.once("SIGINT", abort);
 	try {
+		const jaiHome = resolveJaiHome();
+		if (options.attachSessionId) {
+			if (options.outputFormat !== "stream-json")
+				throw new CliUsageError({ message: "--attach requires --output-format stream-json" });
+			closeAttachment = await runAttach(options.attachSessionId, path.join(jaiHome, "data.sqlite"));
+			await new Promise<void>((resolve) => {
+				const detach = () => {
+					closeAttachment?.();
+					resolve();
+				};
+				process.once("SIGINT", detach);
+			});
+			return interrupted ? 130 : 0;
+		}
 		const prompt = await resolvePrompt(options);
 		if (!options.interactive && !prompt)
 			throw new CliUsageError({ message: "A prompt or stdin input is required with -p" });
 
-		const homeDirectory = process.env.JAI_HOME ?? homedir();
-		agent = await createCliAgent(options, homeDirectory);
+		const runtime = await createCliAgent(options, jaiHome);
+		agent = runtime.agent;
+		closeSessionStore = runtime.close;
 		const sessionId = agent.sessionId;
 		if (options.interactive) {
 			if (prompt) await runOne(agent, prompt, options.outputFormat, sessionId);
@@ -128,6 +147,8 @@ export async function runCli(argv: readonly string[]): Promise<number> {
 	} finally {
 		process.off("SIGINT", abort);
 		await agent?.close();
+		closeSessionStore?.();
+		closeAttachment?.();
 	}
 }
 
@@ -144,6 +165,7 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
 				model: { type: "string" },
 				cwd: { type: "string" },
 				"session-id": { type: "string" },
+				attach: { type: "string" },
 				"no-session-persistence": { type: "boolean", default: false },
 				"permission-mode": { type: "string" },
 				"max-turns": { type: "string" },
@@ -180,6 +202,7 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
 			...(parsed.values.model === undefined ? {} : { model: parsed.values.model }),
 			cwd,
 			...(parsed.values["session-id"] === undefined ? {} : { sessionId: parsed.values["session-id"] }),
+			...(parsed.values.attach === undefined ? {} : { attachSessionId: parsed.values.attach }),
 			noSessionPersistence: parsed.values["no-session-persistence"] ?? false,
 			...(permissionMode === undefined ? {} : { permissionMode }),
 			...(maxTurns === undefined ? {} : { maxTurns }),
@@ -220,18 +243,21 @@ async function resolvePrompt(options: CliOptions): Promise<string | undefined> {
 	return prompt || undefined;
 }
 
-async function createCliAgent(options: CliOptions, homeDirectory: string): Promise<CodingAgent> {
+async function createCliAgent(
+	options: CliOptions,
+	jaiHome: string,
+): Promise<{ readonly agent: CodingAgent; readonly close: () => void }> {
 	const pluginDirectories = await discoverCliAgentPluginDirectories({
-		homeDirectory,
+		homeDirectory: path.dirname(jaiHome),
 		workspaceDirectory: options.cwd,
 		workspaceTrusted: options.trustWorkspace,
 	});
-	const sessionDirectory = path.join(homeDirectory, "jai", "projects", path.basename(options.cwd), "sessions");
+	const sessionStore = await SqliteSessionStore.open<JsonObject>(path.join(jaiHome, "data.sqlite"));
 	const session = options.noSessionPersistence
 		? { kind: "ephemeral" as const }
 		: options.sessionId
-			? { kind: "resume" as const, id: options.sessionId, directory: sessionDirectory }
-			: { kind: "new" as const, directory: sessionDirectory };
+			? { kind: "resume" as const, id: options.sessionId, store: sessionStore }
+			: { kind: "new" as const, store: sessionStore };
 	const model = options.model ?? process.env.JAI_MODEL;
 	if (!model) {
 		throw new CliAgentError({
@@ -243,21 +269,57 @@ async function createCliAgent(options: CliOptions, homeDirectory: string): Promi
 	}
 	const agentPluginsExtension = await createAgentPluginsExtension({
 		directories: pluginDirectories,
-		dataDirectory: path.join(homeDirectory, ".jai", "agent-plugin-data"),
+		dataDirectory: path.join(jaiHome, "agent-plugin-data"),
 	});
 	const created = await createCodingAgent({
 		model,
 		cwd: options.cwd,
+		agentDataRoot: jaiHome,
 		session,
 		requestApproval: createCliApproval(options.permissionMode),
 		...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
 		...(options.maxTurns ? { maxTurns: options.maxTurns } : {}),
-		extensions: [
-			agentPluginsExtension,
-		],
+		extensions: [agentPluginsExtension],
 	});
-	if (created.isErr()) throw new CliAgentError(created.error);
-	return created.value;
+	if (created.isErr()) {
+		sessionStore.close();
+		throw new CliAgentError(created.error);
+	}
+	return { agent: created.value, close: () => sessionStore.close() };
+}
+
+async function runAttach(sessionId: string, databasePath: string): Promise<() => void> {
+	const store = await SqliteSessionStore.open<JsonObject>(databasePath);
+	const attached = await attachSession(store, sessionId);
+	if (attached.isErr()) {
+		store.close();
+		throw new CliUsageError({ message: attached.error.message });
+	}
+	const attachment = attached.value;
+	let delivered = 0;
+	const emit = (snapshot: SessionSnapshot<JsonObject>): void => {
+		if (delivered === 0) writeEvent({ type: "system", subtype: "init", session_id: sessionId });
+		for (const entry of snapshot.entries.slice(delivered)) {
+			writeEvent({ type: "event", session_id: sessionId, event: projectWireValue(entry) });
+		}
+		delivered = snapshot.entries.length;
+	};
+	emit(attachment.snapshot);
+	const stop = attachment.onChange(emit);
+	// 跟读断了要说出来，否则旁观者只会看到输出无声停住。
+	const stopLost = attachment.onLost((error) => {
+		writeEvent({ type: "system", subtype: "attach_lost", session_id: sessionId, message: error.message });
+	});
+	return () => {
+		stop();
+		stopLost();
+		attachment.close();
+		store.close();
+	};
+}
+
+function resolveJaiHome(): string {
+	return path.resolve(process.env.JAI_HOME ?? path.join(homedir(), ".jai"));
 }
 
 async function runInteractive(agent: CodingAgent, outputFormat: OutputFormat, sessionId: string): Promise<void> {
@@ -529,5 +591,5 @@ function projectCliError(error: unknown): JsonObject {
 }
 
 function helpText(): string {
-	return `Jai coding agent\n\nUsage:\n  jai [prompt]\n  jai -p [prompt] [options]\n  cat task.md | jai -p [options]\n\nOptions:\n  -p, --print [text]               Run one non-interactive prompt\n      --output-format <format>     text | json | stream-json\n      --model <profile/model>      Override configured model\n      --cwd <path>                 Workspace root (default: current directory)\n      --session-id <id>            Resume a durable session\n      --no-session-persistence     Use a temporary session\n      --permission-mode <mode>     default | acceptEdits | plan | dontAsk | bypassPermissions\n      --max-turns <n>              Maximum model turns\n      --trust-workspace            Enable trusted project-local configuration\n  -h, --help                       Show this help\n  -v, --version                    Show the CLI version\n`;
+	return `Jai coding agent\n\nUsage:\n  jai [prompt]\n  jai -p [prompt] [options]\n  cat task.md | jai -p [options]\n\nOptions:\n  -p, --print [text]               Run one non-interactive prompt\n      --output-format <format>     text | json | stream-json\n      --model <profile/model>      Override configured model\n      --cwd <path>                 Workspace root (default: current directory)\n      --session-id <id>            Resume a durable session\n      --attach <id>                Read-only follow a durable session\n      --no-session-persistence     Use a temporary session\n      --permission-mode <mode>     default | acceptEdits | plan | dontAsk | bypassPermissions\n      --max-turns <n>              Maximum model turns\n      --trust-workspace            Enable trusted project-local configuration\n  -h, --help                       Show this help\n  -v, --version                    Show the CLI version\n`;
 }

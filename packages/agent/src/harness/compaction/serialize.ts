@@ -1,3 +1,4 @@
+import type { AssistantMessage } from "@jai/ai";
 import type { AgentMessage } from "../../core/types";
 
 /** 一个 tool result 不该独占摘要预算，超长部分对摘要没有边际价值。 */
@@ -10,6 +11,34 @@ const TOOL_RESULT_MAX_CHARS = 2_000;
  */
 export function serializeConversation(messages: readonly AgentMessage[]): string {
 	return messages.map(serializeMessage).filter(Boolean).join("\n\n");
+}
+
+/**
+ * 一次摘要调用产出了什么。压缩与分支总结共用这一份判定："哪些 stopReason 能产出
+ * 可用摘要"是领域约束，两处各写一遍就是第二份真相源；而两者的失败要映射成不同的
+ * 错误类型，所以这里只给出结论，不自己抛。
+ */
+export type SummaryOutcome =
+	| { status: "ok"; text: string }
+	| { status: "aborted" }
+	| { status: "failed"; reason: string };
+
+export function summaryOutcomeOf(message: AssistantMessage): SummaryOutcome {
+	if (message.stopReason === "aborted") return { status: "aborted" };
+	if (message.stopReason !== "stop" && message.stopReason !== "length") {
+		return {
+			status: "failed",
+			reason: `ended with stopReason "${message.stopReason}": ${message.error?.message ?? "no summary produced"}`,
+		};
+	}
+
+	const text = message.content
+		.filter((part) => part.type === "text")
+		.map((part) => part.text)
+		.join("\n")
+		.trim();
+
+	return text.length === 0 ? { status: "failed", reason: "returned no text" } : { status: "ok", text };
 }
 
 /** 循环引用之类的取值不该让压缩死在拼 Prompt 或估算体积这一步。 */

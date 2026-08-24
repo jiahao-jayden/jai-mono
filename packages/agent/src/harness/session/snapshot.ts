@@ -1,10 +1,13 @@
 import { cloneJson, type JsonObject } from "../../core/agent-state";
+import { branchOf } from "./tree";
 import type { SessionEntry, SessionSnapshot } from "./types";
 
 export function emptySnapshot<T extends JsonObject>(appState: T, now: string): SessionSnapshot<T> {
 	return {
 		entries: [],
+		leafId: null,
 		appState: cloneJson(appState),
+		initialAppState: cloneJson(appState),
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -18,19 +21,22 @@ export function applyEntry<T extends JsonObject>(
 	snapshot: SessionSnapshot<T>,
 	entry: SessionEntry<T>,
 ): SessionSnapshot<T> {
-	const next: SessionSnapshot<T> = {
-		...snapshot,
-		entries: [...snapshot.entries, entry],
-		updatedAt: entry.timestamp,
-	};
+	const entries = [...snapshot.entries, entry];
 
-	switch (entry.type) {
-		case "message":
-		case "compaction":
-			return next;
-		case "app_state":
-			return { ...next, appState: cloneJson(entry.value) };
-	}
+	const next: SessionSnapshot<T> = { ...snapshot, entries, leafId: entry.id, updatedAt: entry.timestamp };
+	if (entry.type === "app_state") return { ...next, appState: cloneJson(entry.value) };
+
+	// parentId !== 当前 leaf ⇔ 刚刚发生过一次导航，增量折叠出来的 appState 说的是
+	// 另一条路，必须从 header 初值沿新分支重算。
+	return entry.parentId === snapshot.leafId
+		? next
+		: { ...next, appState: branchAppState(entries, entry.id, snapshot.initialAppState) };
+}
+
+function branchAppState<T extends JsonObject>(entries: readonly SessionEntry<T>[], leafId: string, initial: T): T {
+	let appState = initial;
+	for (const entry of branchOf(entries, leafId)) if (entry.type === "app_state") appState = entry.value;
+	return cloneJson(appState);
 }
 
 export function replay<T extends JsonObject>(

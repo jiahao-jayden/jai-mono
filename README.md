@@ -149,7 +149,7 @@ Defines common messages, content blocks, tool schemas, model metadata, usage and
 
 ### `@jai/agent`
 
-Provides the `Agent` facade and lower-level `CoreAgent`, including invocation, streaming, steering, follow-ups and abort. The harness adds Node execution environments, six general-purpose workspace tools, hooks, session stores and context compaction. Tools and hooks are assembled explicitly when an Agent is constructed; the package has no runtime Extension registry. `FileSessionStore` is available from `@jai/agent/node`.
+Provides the `Agent` facade and lower-level `CoreAgent`, including invocation, streaming, steering, follow-ups and abort. The harness adds Node execution environments, six general-purpose workspace tools, hooks, session stores and context compaction. Tools and hooks are assembled explicitly when an Agent is constructed; the package has no runtime Extension registry. `SqliteSessionStore` is available from `@jai/agent/node`.
 
 ### `@jai/coding-agent`
 

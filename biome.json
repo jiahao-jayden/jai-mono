@@ -1,9 +1,9 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.3.14/schema.json",
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true,
+			"preset": "recommended",
 			"style": {
 				"noNonNullAssertion": "off",
 				"useConst": "error",

@@ -1,9 +1,7 @@
+export type { ReadOnlySessionAttachment } from "@jai/agent";
+export { attachSession, SessionFollowLost, SessionNotFound } from "@jai/agent";
 export { type McpToolMetadata, mcpToolPresentation } from "./mcp";
 export { createCodingAgent } from "./sdk/create-coding-agent";
-export {
-	emptyPersistedCodingSessionState,
-	type PersistedCodingSessionState,
-} from "./sdk/session-state";
 export type { CodingExtensionError } from "./sdk/extension-errors";
 export {
 	CodingExtensionActivationFailed,
@@ -45,10 +43,10 @@ export type {
 	CodingExtensionSessionStateStore,
 	CodingExtensionSkill,
 	CodingExtensionTool,
-	CodingExtensionToolPresentation,
 	CodingExtensionToolCall,
 	CodingExtensionToolCatalog,
 	CodingExtensionToolPermissionResolver,
+	CodingExtensionToolPresentation,
 	CodingExtensionToolResult,
 	CodingToolCatalogDiscovery,
 	CodingToolPermission,
@@ -56,7 +54,12 @@ export type {
 } from "./sdk/extensions";
 export { defineExtension } from "./sdk/extensions";
 export type { CodingProviderOptions } from "./sdk/model";
-export { codingArtifactsFromAppState } from "./sdk/project";
+export { codingArtifactsFromAppState, todosFromAppState } from "./sdk/project";
+export {
+	emptyPersistedCodingSessionState,
+	type PersistedCodingSessionState,
+} from "./sdk/session-state";
+export type { CodingToolActivityKind, CodingToolPresentation } from "./sdk/tool-presentation";
 export type {
 	CodingAgent,
 	CodingAgentArtifact,
@@ -83,4 +86,3 @@ export type {
 	JsonObject,
 	JsonValue,
 } from "./sdk/types";
-export type { CodingToolActivityKind, CodingToolPresentation } from "./sdk/tool-presentation";

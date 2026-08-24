@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { type AssistantMessage, zeroUsage } from "@jai/ai";
+import { SqliteSessionStore } from "@jai/agent/node";
 import { Type } from "@sinclair/typebox";
 import { Result } from "better-result";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -14,11 +15,19 @@ import {
 
 const roots: string[] = [];
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
+const sessionStores: SqliteSessionStore[] = [];
 
 afterEach(async () => {
+	for (const store of sessionStores.splice(0)) store.close();
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 	for (const server of servers.splice(0)) server.stop(true);
 });
+
+async function openStore(root: string): Promise<SqliteSessionStore> {
+	const store = await SqliteSessionStore.open(join(root, "data.sqlite"));
+	sessionStores.push(store);
+	return store;
+}
 
 describe("public Coding Agent SDK", () => {
 	test("creates a runnable Agent and persists a session", async () => {
@@ -28,27 +37,36 @@ describe("public Coding Agent SDK", () => {
 
 		const created = await createCodingAgent({
 			...input,
-			session: { kind: "new", id: "public-session", directory: join(root, "sessions") },
+			session: { kind: "new", id: "public-session", store: await openStore(root) },
 			permissionMode: "default",
 		});
 		expect(created.isOk()).toBe(true);
 		if (created.isErr()) return;
 
 		const events: string[] = [];
-		const unsubscribe = created.value.subscribe((event) => events.push(event.type));
+		const entryIds: string[] = [];
+		const unsubscribe = created.value.subscribe((event) => {
+			events.push(event.type);
+			if (event.type === "message_end" && event.entryId) entryIds.push(event.entryId);
+		});
 		const result = await created.value.prompt("hello");
 		unsubscribe();
 
 		expect(result.isOk()).toBe(true);
 		expect(events).toContain("agent_start");
 		expect(events).toContain("agent_end");
+		expect(entryIds).toEqual(["public-session:0", "public-session:1"]);
 		expect(created.value.state.messages.at(-1)).toMatchObject({ role: "assistant" });
+		expect(await created.value.navigate("missing-entry")).toMatchObject({
+			status: "error",
+			error: { code: "session.unknown_entry", phase: "navigation" },
+		});
 		const closed = await created.value.close();
 		expect(closed.isOk()).toBe(true);
 
 		const resumed = await createCodingAgent({
 			...input,
-			session: { kind: "resume", id: "public-session", directory: join(root, "sessions") },
+			session: { kind: "resume", id: "public-session", store: await openStore(root) },
 		});
 		expect(resumed.isOk()).toBe(true);
 		if (resumed.isOk()) await resumed.value.close();
@@ -59,7 +77,7 @@ describe("public Coding Agent SDK", () => {
 		roots.push(root);
 		const result = await createCodingAgent({
 			...createInput(root, [assistant("unused")]),
-			session: { kind: "resume", id: "missing", directory: join(root, "sessions") },
+			session: { kind: "resume", id: "missing", store: await openStore(root) },
 		});
 
 		expect(result).toMatchObject({
@@ -90,7 +108,7 @@ describe("public Coding Agent SDK", () => {
 		]);
 		const created = await createCodingAgent({
 			...input,
-			session: { kind: "new", id: "artifact-session", directory: join(root, "sessions") },
+			session: { kind: "new", id: "artifact-session", store: await openStore(root) },
 			permissionMode: "bypassPermissions",
 		});
 		expect(created.isOk()).toBe(true);
@@ -105,7 +123,7 @@ describe("public Coding Agent SDK", () => {
 
 		const resumed = await createCodingAgent({
 			...input,
-			session: { kind: "resume", id: "artifact-session", directory: join(root, "sessions") },
+			session: { kind: "resume", id: "artifact-session", store: await openStore(root) },
 		});
 		expect(resumed.isOk()).toBe(true);
 		if (resumed.isErr()) return;
@@ -285,7 +303,7 @@ describe("public Coding Agent SDK", () => {
 				},
 			},
 		});
-		const session = { kind: "new" as const, id: "extension-state", directory: join(root, "sessions") };
+		const session = { kind: "new" as const, id: "extension-state", store: await openStore(root) };
 		const first = await createCodingAgent({ ...createInput(root, [assistant("unused")]), session, extensions: [extension] });
 		expect(first.isOk()).toBe(true);
 		if (first.isErr()) return;
@@ -294,7 +312,7 @@ describe("public Coding Agent SDK", () => {
 
 		const resumed = await createCodingAgent({
 			...createInput(root, [assistant("unused")]),
-			session: { kind: "resume", id: "extension-state", directory: join(root, "sessions") },
+			session: { kind: "resume", id: "extension-state", store: await openStore(root) },
 			extensions: [extension],
 		});
 		expect(resumed.isOk()).toBe(true);

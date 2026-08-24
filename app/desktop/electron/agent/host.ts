@@ -9,35 +9,26 @@ import type {
 	CodingPermissionRequest,
 } from "@jai/coding-agent";
 import { toErrorEnvelope } from "@jai/common";
-import { TaggedError } from "better-result";
 import type {
 	DesktopAgentEvent,
 	DesktopAgentEventEnvelope,
 	DesktopAgentMessageInput,
 	DesktopAgentMode,
+	DesktopAgentNavigateInput,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
 	DesktopArtifact,
 	DesktopCompactionItem,
-	DesktopExtensionApprovalRequest,
-	DesktopExtensionPermissionItem,
 	DesktopExtensionPermissionResolution,
 	DesktopMessageItem,
-	DesktopPermissionItem,
 	DesktopTodos,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
-import { DesktopApprovalRegistry } from "./approval-registry";
+import { DesktopAgentApprovalRequests } from "./approval-requests";
 import { sortArtifacts } from "./artifacts";
-import { projectSessionTodos } from "./projection/durable";
-import {
-	assistantPartItem,
-	COMPACTION_SUMMARY_MAX,
-	type DesktopAssistantItem,
-	isRecord,
-	truncate,
-	userMessageItem,
-} from "./projection/items";
+import { desktopAgentError } from "./errors";
+import { completedCompactionItem } from "./projection/compaction";
+import { assistantPartItem, type DesktopAssistantItem, userMessageItem } from "./projection/items";
 import {
 	type LiveProjection,
 	type LiveProjectionContext,
@@ -46,47 +37,14 @@ import {
 	projectToolStart,
 } from "./projection/live";
 
-type DesktopAgentErrorInit = { readonly data?: { readonly sessionId: string }; readonly message: string };
-class DesktopAgentFactoryUnavailable extends TaggedError("desktop_agent.factory_unavailable")<DesktopAgentErrorInit> {}
-class DesktopAgentSessionNotFound extends TaggedError("desktop_agent.session_not_found")<DesktopAgentErrorInit> {}
-class DesktopAgentSessionBusy extends TaggedError("desktop_agent.session_busy")<DesktopAgentErrorInit> {}
-
-function desktopAgentError(
-	reason: "factory_unavailable" | "session_not_found" | "session_busy",
-	init: DesktopAgentErrorInit,
-) {
-	switch (reason) {
-		case "factory_unavailable":
-			return new DesktopAgentFactoryUnavailable(init);
-		case "session_not_found":
-			return new DesktopAgentSessionNotFound(init);
-		case "session_busy":
-			return new DesktopAgentSessionBusy(init);
-	}
-}
-
-function completedCompactionItem(outcome: unknown): DesktopCompactionItem | undefined {
-	if (!isRecord(outcome) || outcome.status !== "success" || !isRecord(outcome.entry)) return undefined;
-
-	const entry = outcome.entry;
-	if (typeof entry.id !== "string" || typeof entry.summary !== "string" || typeof entry.timestamp !== "string") {
-		return undefined;
-	}
-
-	const timestamp = Date.parse(entry.timestamp);
-	if (!Number.isFinite(timestamp)) return undefined;
-
-	return {
-		kind: "compaction",
-		id: `compaction:${entry.id}`,
-		summary: truncate(entry.summary, COMPACTION_SUMMARY_MAX),
-		timestamp,
-		status: "complete",
-	};
-}
-
 export interface DesktopAgentSendInput extends DesktopAgentMessageInput {
 	readonly resolvedAttachments?: readonly CodingAttachment[];
+}
+
+interface DesktopAgentRuntimeInput {
+	readonly sessionId: string;
+	readonly modelRef: string;
+	readonly mode: DesktopAgentMode;
 }
 
 export interface DesktopAgentFactoryContext {
@@ -140,11 +98,7 @@ interface SessionRuntime {
 export class DesktopAgentHost {
 	readonly #sessions = new Map<string, SessionRuntime>();
 	readonly #creating = new Map<string, Promise<SessionRuntime>>();
-	readonly #approvals = new DesktopApprovalRegistry<CodingPermissionRequest, CodingPermissionDecision>();
-	readonly #extensionApprovals = new DesktopApprovalRegistry<
-		DesktopExtensionApprovalRequest,
-		CodingExtensionApprovalDecision
-	>();
+	readonly #approvalRequests: DesktopAgentApprovalRequests<SessionRuntime>;
 	readonly #emit: DesktopAgentEventSink;
 	#factory?: DesktopAgentFactory;
 	#onSessionActivity?: (sessionId: string) => void;
@@ -153,6 +107,10 @@ export class DesktopAgentHost {
 	constructor(emit: DesktopAgentEventSink, factory?: DesktopAgentFactory) {
 		this.#emit = emit;
 		this.#factory = factory;
+		this.#approvalRequests = new DesktopAgentApprovalRequests<SessionRuntime>(
+			(sessionId) => this.#requireSession(sessionId),
+			(runtime, event) => this.#emitNow(runtime, event),
+		);
 	}
 
 	setFactory(factory: DesktopAgentFactory): void {
@@ -178,8 +136,11 @@ export class DesktopAgentHost {
 	}
 
 	async send(input: DesktopAgentSendInput): Promise<{ readonly accepted: true }> {
-		const runtime = await this.#getOrCreate(input);
-		if (runtime.rebinding) await runtime.rebinding;
+		let runtime = await this.#getOrCreate(input);
+		if (runtime.rebinding) {
+			await runtime.rebinding;
+			runtime = await this.#getOrCreate(input);
+		}
 		runtime.pendingRuns += 1;
 		runtime.status = "running";
 		this.#emitNow(runtime, { type: "status", status: "running" });
@@ -251,8 +212,7 @@ export class DesktopAgentHost {
 	abort(sessionId: string): void {
 		const runtime = this.#requireSession(sessionId);
 		void runtime.agent.abort();
-		this.#approvals.cancelSession(sessionId);
-		this.#extensionApprovals.cancelSession(sessionId);
+		this.#approvalRequests.cancelSession(sessionId);
 	}
 
 	steer(input: DesktopAgentMessageInput): void {
@@ -263,12 +223,38 @@ export class DesktopAgentHost {
 		void this.#requireSession(input.sessionId).agent.followUp(input.message);
 	}
 
+	async navigate(input: DesktopAgentNavigateInput): Promise<void> {
+		const runtime = await this.#getOrCreate(input);
+		if (runtime.status === "running" || runtime.agent.state.status === "running" || runtime.rebinding) {
+			throw desktopAgentError("session_busy", {
+				message: `Session "${input.sessionId}" is busy`,
+				data: { sessionId: input.sessionId },
+			});
+		}
+
+		const navigation = runtime.agent.navigate(input.entryId).then((result) => {
+			if (result.isErr()) {
+				throw desktopAgentError("navigation_failed", {
+					message: "Unable to restore the selected message.",
+					data: { sessionId: input.sessionId, entryId: input.entryId },
+				});
+			}
+			this.closeSession(input.sessionId);
+		});
+		runtime.rebinding = navigation;
+		try {
+			await navigation;
+		} finally {
+			if (runtime.rebinding === navigation) runtime.rebinding = undefined;
+		}
+	}
+
 	resolvePermission(resolution: { readonly requestId: string; readonly decision: CodingPermissionDecision }): void {
-		this.#approvals.resolve(resolution);
+		this.#approvalRequests.resolveTool(resolution);
 	}
 
 	resolveExtensionPermission(resolution: DesktopExtensionPermissionResolution): void {
-		this.#extensionApprovals.resolve(resolution);
+		this.#approvalRequests.resolveExtension(resolution);
 	}
 
 	getSnapshot(sessionId: string): DesktopAgentSnapshot {
@@ -294,8 +280,7 @@ export class DesktopAgentHost {
 		if (!runtime) return;
 		runtime.closed = true;
 		this.#clearPendingTranscriptUpdates(runtime);
-		this.#approvals.cancelSession(sessionId);
-		this.#extensionApprovals.cancelSession(sessionId);
+		this.#approvalRequests.cancelSession(sessionId);
 		void runtime.agent.close();
 		runtime.unsubscribe();
 		this.#sessions.delete(sessionId);
@@ -310,11 +295,10 @@ export class DesktopAgentHost {
 
 	close(): void {
 		for (const sessionId of [...this.#sessions.keys()]) this.closeSession(sessionId);
-		this.#approvals.close();
-		this.#extensionApprovals.close();
+		this.#approvalRequests.close();
 	}
 
-	async #getOrCreate(input: DesktopAgentMessageInput): Promise<SessionRuntime> {
+	async #getOrCreate(input: DesktopAgentRuntimeInput): Promise<SessionRuntime> {
 		const existing = this.#sessions.get(input.sessionId);
 		if (existing) {
 			if (existing.status === "running" || (existing.modelRef === input.modelRef && existing.mode === input.mode)) {
@@ -351,9 +335,9 @@ export class DesktopAgentHost {
 		}
 	}
 
-	async #createRuntime(input: DesktopAgentMessageInput): Promise<SessionRuntime> {
+	async #createRuntime(input: DesktopAgentRuntimeInput): Promise<SessionRuntime> {
 		const agent = await this.#createAgent(input.sessionId, input.modelRef, input.mode);
-		const todos = projectSessionTodos(agent.state.appState.todos);
+		const todos = agent.state.todos;
 		const runtime: SessionRuntime = {
 			sessionId: input.sessionId,
 			modelRef: input.modelRef,
@@ -383,8 +367,9 @@ export class DesktopAgentHost {
 			sessionId,
 			modelRef,
 			mode,
-			requestApproval: (request, signal) => this.#requestApproval(sessionId, request, signal),
-			requestExtensionApproval: (request, signal) => this.#requestExtensionApproval(sessionId, request, signal),
+			requestApproval: (request, signal) => this.#approvalRequests.requestTool(sessionId, request, signal),
+			requestExtensionApproval: (request, signal) =>
+				this.#approvalRequests.requestExtension(sessionId, request, signal),
 		});
 	}
 
@@ -407,84 +392,8 @@ export class DesktopAgentHost {
 		runtime.unsubscribe();
 		runtime.agent = replacement;
 		runtime.unsubscribe = replacement.subscribe((event) => this.#onAgentEvent(runtime, event));
-		this.#approvals.cancelSession(runtime.sessionId);
-		this.#extensionApprovals.cancelSession(runtime.sessionId);
+		this.#approvalRequests.cancelSession(runtime.sessionId);
 		void previous.close();
-	}
-
-	async #requestApproval(
-		sessionId: string,
-		request: CodingPermissionRequest,
-		signal?: AbortSignal,
-	): Promise<CodingPermissionDecision> {
-		const runtime = this.#requireSession(sessionId);
-		const safeRequest = projectPermissionRequest(request);
-		const pending = this.#approvals.register(request, signal);
-		const item: DesktopPermissionItem = {
-			kind: "permission",
-			id: `permission:${request.requestId}`,
-			request: safeRequest,
-			status: "pending",
-		};
-		runtime.items.set(item.id, item);
-		this.#emitNow(runtime, { type: "transcript_upsert", item });
-		try {
-			const decision = await pending.result;
-			const resolved: DesktopPermissionItem = {
-				...item,
-				status: decision === "deny" ? "denied" : "allowed",
-				approvalOrigin: "manual",
-			};
-			runtime.items.set(item.id, resolved);
-			this.#emitNow(runtime, { type: "transcript_upsert", item: resolved });
-			return decision;
-		} catch (error) {
-			if (runtime.closed) throw error;
-			const cancelled: DesktopPermissionItem = { ...item, status: "cancelled" };
-			runtime.items.set(item.id, cancelled);
-			this.#emitNow(runtime, { type: "transcript_upsert", item: cancelled });
-			throw error;
-		}
-	}
-
-	async #requestExtensionApproval(
-		sessionId: string,
-		request: CodingExtensionApprovalRequest,
-		signal?: AbortSignal,
-	): Promise<CodingExtensionApprovalDecision> {
-		const runtime = this.#requireSession(sessionId);
-		if (request.sessionId !== sessionId) {
-			throw new DesktopAgentSessionNotFound({
-				message: `Extension approval session "${request.sessionId}" does not match active session`,
-				data: { sessionId: request.sessionId },
-			});
-		}
-		const safeRequest = projectExtensionApprovalRequest(request);
-		const pending = this.#extensionApprovals.register(safeRequest, signal);
-		const item: DesktopExtensionPermissionItem = {
-			kind: "extension_permission",
-			id: `extension-permission:${request.requestId}`,
-			request: safeRequest,
-			status: "pending",
-		};
-		runtime.items.set(item.id, item);
-		this.#emitNow(runtime, { type: "transcript_upsert", item });
-		try {
-			const decision = await pending.result;
-			const resolved: DesktopExtensionPermissionItem = {
-				...item,
-				status: decision === "deny" ? "denied" : "allowed",
-			};
-			runtime.items.set(item.id, resolved);
-			this.#emitNow(runtime, { type: "transcript_upsert", item: resolved });
-			return decision;
-		} catch (error) {
-			if (runtime.closed) throw error;
-			const cancelled: DesktopExtensionPermissionItem = { ...item, status: "cancelled" };
-			runtime.items.set(item.id, cancelled);
-			this.#emitNow(runtime, { type: "transcript_upsert", item: cancelled });
-			throw error;
-		}
 	}
 
 	#onAgentEvent(runtime: SessionRuntime, event: CodingAgentEvent): void {
@@ -501,7 +410,7 @@ export class DesktopAgentHost {
 				return;
 			}
 			case "message_end": {
-				const completeItems = this.#projectMessageItems(runtime, event.message, "complete");
+				const completeItems = this.#projectMessageItems(runtime, event.message, "complete", event.entryId);
 				const narrationIds = new Set(
 					completeItems.filter((item) => item.kind === "narration").map((item) => item.id),
 				);
@@ -607,7 +516,7 @@ export class DesktopAgentHost {
 				return;
 			}
 			case "todos": {
-				const todos = projectSessionTodos(runtime.agent.state.appState.todos);
+				const todos = runtime.agent.state.todos;
 				if (!todos) return;
 				runtime.todos = todos;
 				this.#emitNow(runtime, { type: "todos_replace", todos });
@@ -620,6 +529,7 @@ export class DesktopAgentHost {
 		runtime: SessionRuntime,
 		message: CodingAgentMessage,
 		status: DesktopMessageItem["status"],
+		entryId?: string,
 	): DesktopAssistantItem[] {
 		if (message.role === "toolResult") return [];
 		if (message.role === "assistant") {
@@ -637,7 +547,14 @@ export class DesktopAgentHost {
 		}
 		const id = this.#ensureMessageId(runtime, "user");
 		runtime.currentTurnId = id;
-		return [userMessageItem({ id, message, status })];
+		return [
+			userMessageItem({
+				id,
+				message,
+				status,
+				...(entryId ? { entryId } : {}),
+			}),
+		];
 	}
 
 	#ensureMessageId(runtime: SessionRuntime, role: "assistant" | "user"): string {
@@ -738,48 +655,4 @@ export class DesktopAgentHost {
 			data: { sessionId },
 		});
 	}
-}
-
-/**
- * Drops the raw tool arguments; the SDK already decided what is safe to show,
- * including the risk its Danger Layer classified.
- */
-function projectPermissionRequest(request: CodingPermissionRequest): DesktopPermissionItem["request"] {
-	return {
-		requestId: request.requestId,
-		sessionId: request.sessionId,
-		toolCallId: request.toolCallId,
-		toolName: request.toolName,
-		reason: request.reason,
-		canAlwaysAllow: request.canAlwaysAllow,
-		summary: request.summary,
-		...(request.suggestedRule ? { suggestedRule: request.suggestedRule } : {}),
-		...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),
-	};
-}
-
-function projectExtensionApprovalRequest(request: CodingExtensionApprovalRequest): DesktopExtensionApprovalRequest {
-	return {
-		requestId: request.requestId,
-		extensionId: request.extensionId,
-		operationId: request.operationId,
-		sessionId: request.sessionId,
-		toolCallId: request.toolCallId,
-		reason: request.reason,
-		sideEffect: request.sideEffect,
-		dataSensitivity: request.dataSensitivity,
-		presentation: {
-			title: request.presentation.title,
-			...(request.presentation.description ? { description: request.presentation.description } : {}),
-			...(request.presentation.attributes
-				? {
-						attributes: request.presentation.attributes.map((attribute) => ({
-							label: attribute.label,
-							value: attribute.value,
-						})),
-					}
-				: {}),
-		},
-		...(request.expiresAt === undefined ? {} : { expiresAt: request.expiresAt }),
-	};
 }

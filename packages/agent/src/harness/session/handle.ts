@@ -2,6 +2,7 @@ import { TaggedError } from "better-result";
 import type { JsonObject } from "../../core/agent-state";
 import { findUnresolvedToolCalls, interruptedToolResult } from "../../core/tool-protocol";
 import { applyEntry } from "./snapshot";
+import { branchOf, contextMessages } from "./tree";
 import { type SessionHandle, SessionReadOnlyError, type SessionStore } from "./types";
 
 class SessionDisappeared extends TaggedError("session.disappeared")<{ readonly message: string }> {}
@@ -27,12 +28,13 @@ export async function openSession<TAppState extends JsonObject>(
 	let revision = record.revision;
 	const readOnly = record.readOnly;
 	if (!readOnly) {
-		for (const call of findUnresolvedToolCalls(
-			snapshot.entries.flatMap((entry) => (entry.type === "message" ? [entry.message] : [])),
-		)) {
+		// 只扫当前分支：整棵树里补 interrupted，会给被抛弃分支上的 tool call
+		// 补出永远读不到的结果。补出的 entry 自身也是树节点，带 parentId、推进 leaf。
+		for (const call of findUnresolvedToolCalls(contextMessages(branchOf(snapshot.entries, snapshot.leafId)))) {
 			const entry = {
 				type: "message" as const,
 				id: `${id}:interrupted:${call.toolCallId}`,
+				parentId: snapshot.leafId,
 				timestamp: new Date().toISOString(),
 				message: interruptedToolResult(call),
 			};

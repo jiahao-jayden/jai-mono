@@ -22,6 +22,8 @@ export function serialized<T extends JsonObject>(store: SessionStore<T>): Sessio
 		load: (id) => enqueue(id, () => store.load(id)),
 		create: (id, init) => enqueue(id, () => store.create(id, init)),
 		append: (id, entry, revision) => enqueue(id, () => store.append(id, entry, revision)),
+		delete: (id) => enqueue(id, () => store.delete(id)),
 		list: () => store.list(),
+		follow: (id, afterEntryId, listener) => store.follow(id, afterEntryId, listener),
 	};
 }

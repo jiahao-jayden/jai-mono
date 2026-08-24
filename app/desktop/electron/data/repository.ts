@@ -1,11 +1,4 @@
-import type {
-	CodingSession,
-	Project,
-	ProviderModelInventory,
-	SessionListCursor,
-	SessionListPage,
-	SessionProjectHistory,
-} from "./types";
+import type { CodingSession, Project, ProviderModelInventory, SessionListCursor, SessionListPage } from "./types";
 
 export interface CreateProjectRecord {
 	readonly id: string;
@@ -19,9 +12,9 @@ export interface CreateSessionRecord {
 	readonly id: string;
 	readonly projectId: string | null;
 	readonly title: string;
-	readonly now: number;
 }
 
+/** Desktop-owned metadata over the generic SessionStore journal. */
 export interface CodingBusinessRepository {
 	createProject(record: CreateProjectRecord): Project;
 	getProject(id: string): Project | undefined;
@@ -38,15 +31,13 @@ export interface CodingBusinessRepository {
 	): Project;
 
 	createSession(record: CreateSessionRecord): CodingSession;
-	deleteSession(id: string): void;
 	getSession(id: string): CodingSession | undefined;
 	listSessions(input?: { readonly limit?: number; readonly cursor?: SessionListCursor }): SessionListPage;
-	renameSession(id: string, title: string, now: number): CodingSession;
-	markTitleGenerationAttempted(id: string, now: number): CodingSession;
-	setGeneratedTitle(id: string, title: string, now: number): CodingSession;
-	touchSession(id: string, now: number): CodingSession;
-	moveSession(id: string, toProjectId: string | null, now: number): CodingSession;
-	listProjectHistory(sessionId: string): SessionProjectHistory[];
+	renameSession(id: string, title: string): CodingSession;
+	markTitleGenerationAttempted(id: string, timestamp: number): CodingSession;
+	setGeneratedTitle(id: string, title: string): CodingSession;
+	shouldGenerateSessionTitle(id: string): boolean;
+	moveSession(id: string, toProjectId: string | null): CodingSession;
 
 	getProviderModelInventory(profileId: string): ProviderModelInventory | undefined;
 	replaceProviderModelInventory(record: ProviderModelInventory): ProviderModelInventory;

@@ -17,6 +17,5 @@ export type {
 	ProviderModelInventory,
 	SessionListCursor,
 	SessionListPage,
-	SessionProjectHistory,
 	SessionTitleSource,
 } from "./types";

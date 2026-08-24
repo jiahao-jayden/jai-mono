@@ -20,9 +20,6 @@ const session: CodingSession = {
 	projectId: project.id,
 	title: "完善 Chats 与 Projects 页面",
 	titleSource: "manual",
-	titleGenerationAttemptedAt: null,
-	createdAt: 1,
-	updatedAt: 1,
 	lastActivityAt: Date.now(),
 };
 

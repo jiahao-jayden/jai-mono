@@ -1,6 +1,7 @@
 import type { TextContent, UserMessage } from "@jai/ai";
 import type { AgentMessage } from "../../core/types";
-import type { CompactionEntry, MessageEntry, SessionEntry } from "../session/types";
+import { type ContextEntry, contextEntries } from "../session/tree";
+import type { CompactionEntry, SessionEntry } from "../session/types";
 import { estimateTokens } from "./estimate";
 import type { CompactionSettings } from "./types";
 
@@ -8,10 +9,6 @@ export interface CompactionCut {
 	firstKeptEntryId: string;
 	messagesToSummarize: AgentMessage[];
 	messagesToKeep: AgentMessage[];
-}
-
-function isMessage(entry: SessionEntry): entry is MessageEntry {
-	return entry.type === "message";
 }
 
 export function latestCompaction(entries: readonly SessionEntry[]): CompactionEntry | undefined {
@@ -28,18 +25,15 @@ export function latestCompaction(entries: readonly SessionEntry[]): CompactionEn
  */
 export function projectCompactedMessages(entries: readonly SessionEntry[]): AgentMessage[] {
 	const index = entries.findLastIndex((entry) => entry.type === "compaction");
-	if (index < 0) return entries.filter(isMessage).map((entry) => entry.message);
+	if (index < 0) return contextEntries(entries).map((entry) => entry.message);
 
 	const compaction = entries[index] as CompactionEntry;
-	const before = entries.slice(0, index).filter(isMessage);
+	const before = contextEntries(entries.slice(0, index));
 	const keepFrom = before.findIndex((entry) => entry.id === compaction.firstKeptEntryId);
 
 	return buildCompactedMessages(compaction.summary, Date.parse(compaction.timestamp), [
 		...(keepFrom < 0 ? [] : before.slice(keepFrom).map((entry) => entry.message)),
-		...entries
-			.slice(index + 1)
-			.filter(isMessage)
-			.map((entry) => entry.message),
+		...contextEntries(entries.slice(index + 1)).map((entry) => entry.message),
 	]);
 }
 
@@ -94,14 +88,14 @@ export function findCompactionCut(
 	if (keepStart <= 0 || keepStart >= candidates.length) return undefined;
 
 	return {
-		firstKeptEntryId: (candidates[keepStart] as MessageEntry).id,
+		firstKeptEntryId: (candidates[keepStart] as ContextEntry).id,
 		messagesToSummarize: messages.slice(0, keepStart),
 		messagesToKeep: messages.slice(keepStart),
 	};
 }
 
-function summarizableEntries(entries: readonly SessionEntry[]): MessageEntry[] {
-	const messages = entries.filter(isMessage);
+function summarizableEntries(entries: readonly SessionEntry[]): ContextEntry[] {
+	const messages = contextEntries(entries);
 	const compaction = latestCompaction(entries);
 	if (!compaction) return messages;
 
@@ -159,7 +153,7 @@ export function projectWithCompaction(
 	firstKeptEntryId: string,
 	timestamp: number,
 ): AgentMessage[] {
-	const messages = entries.filter(isMessage);
+	const messages = contextEntries(entries);
 	const start = messages.findIndex((entry) => entry.id === firstKeptEntryId);
 
 	return buildCompactedMessages(
@@ -169,9 +163,9 @@ export function projectWithCompaction(
 	);
 }
 
-/** 校验 custom strategy 给出的切点：必须指向真实 message entry，且落在协议安全边界上。 */
+/** 校验 custom strategy 给出的切点：必须指向一条占 transcript 位置的 entry，且落在协议安全边界上。 */
 export function isSafeCutPoint(entries: readonly SessionEntry[], firstKeptEntryId: string): boolean {
-	const kept = entries.filter(isMessage).find((entry) => entry.id === firstKeptEntryId);
+	const kept = contextEntries(entries).find((entry) => entry.id === firstKeptEntryId);
 	return kept !== undefined && isSafeBoundary(kept.message);
 }
 

@@ -48,7 +48,7 @@ export class DesktopApprovalRegistry<TRequest extends ApprovalRequest, TDecision
 				data: { requestId: request.requestId },
 			});
 		}
-	if (signal?.aborted) throw approvalAborted(request.toolName);
+		if (signal?.aborted) throw approvalAborted(request.toolName);
 
 		let resolveResult!: (decision: TDecision) => void;
 		let rejectResult!: (error: unknown) => void;

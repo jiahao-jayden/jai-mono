@@ -40,6 +40,13 @@ describe("jai CLI options", () => {
 		});
 	});
 
+	test("parses a read-only session attachment", () => {
+		expect(parseCliOptions(["--attach", "session-1", "--output-format", "stream-json"])).toMatchObject({
+			attachSessionId: "session-1",
+			outputFormat: "stream-json",
+		});
+	});
+
 	test("supports Claude-style --print and rejects the old --prompt spelling", () => {
 		expect(parseCliOptions(["--print", "inspect the repository"])).toMatchObject({
 			prompt: "inspect the repository",

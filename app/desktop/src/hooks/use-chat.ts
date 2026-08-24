@@ -46,6 +46,7 @@ export interface Chat {
 	readonly error: string | undefined;
 	sendMessage(message: ChatMessageInput): Promise<boolean>;
 	stop(): Promise<void>;
+	navigate(entryId: string): Promise<boolean>;
 	clearError(): void;
 	resolvePermission(resolution: DesktopPermissionResolution): Promise<void>;
 }
@@ -240,6 +241,26 @@ export function useChat(options: UseChatOptions): Chat {
 		}
 	}, []);
 
+	const navigate = useCallback(async (entryId: string): Promise<boolean> => {
+		const current = stateRef.current;
+		const latest = latestOptions.current;
+		if (!current.sessionId || !latest.modelRef || current.agentStatus === "running" || current.submitting) {
+			return false;
+		}
+		try {
+			await desktop.agent.navigate({
+				sessionId: current.sessionId,
+				entryId,
+				modelRef: latest.modelRef,
+				mode: latest.mode,
+			});
+			await dispatcher?.refresh(current.sessionId);
+			return true;
+		} catch {
+			return false;
+		}
+	}, []);
+
 	const clearError = useCallback(() => {
 		setState((current) => (current.error ? { ...current, error: undefined } : current));
 	}, []);
@@ -262,6 +283,7 @@ export function useChat(options: UseChatOptions): Chat {
 		error: state.error,
 		sendMessage,
 		stop,
+		navigate,
 		clearError,
 		resolvePermission,
 	};

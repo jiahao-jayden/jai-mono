@@ -12,6 +12,8 @@ dist/
 .wayfinder/
 out/
 docs/*
+!docs/point/
+!docs/point/*.md
 app/docs/.blume/
 # packages/*/node_modules/
 packages/*/dist/

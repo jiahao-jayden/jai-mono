@@ -111,7 +111,7 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 			isRunning: false,
 			pendingToolCallIds: new Set(),
 		};
-	this.tools = assertUniqueTools(options.tools ?? []);
+		this.tools = assertUniqueTools(options.tools ?? []);
 		this.commitEvent = options.commitEvent;
 		this.onObserverError = options.onObserverError;
 		this.config = {
@@ -263,15 +263,15 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 	}
 
 	/**
-	 * 清空 transcript 与运行残留；appState 属于业务状态，不受影响。
-	 * 运行中 reset 会破坏 loop 使用的上下文，因此直接拒绝。
+	 * 换掉 transcript 并清空运行残留；appState 属于业务状态，不受影响。
+	 * 运行中 reset 会破坏 loop 使用的上下文，因此直接拒绝——分支导航也押在这个守卫上。
 	 */
-	reset(): void {
+	reset(messages: readonly AgentMessage[] = []): void {
 		if (this.activeRun) {
 			throw agentError("reset_while_running", { message: "Cannot reset Agent while a run is active." });
 		}
 
-		this.internalState.messages = [];
+		this.internalState.messages = [...messages];
 		this.internalState.streamingMessage = undefined;
 		this.internalState.pendingToolCallIds = new Set();
 		this.internalState.error = undefined;

@@ -10,6 +10,8 @@ import {
 	type Provider,
 	zeroUsage,
 } from "@jai/ai";
+import { InMemorySessionStore } from "@jai/agent";
+import { SqliteSessionStore } from "@jai/agent/node";
 import { Type } from "@sinclair/typebox";
 import { defineCodingConfig } from "../src/config";
 import {
@@ -21,6 +23,7 @@ import {
 import { createCodingAgent } from "../src/runtime";
 
 const roots: string[] = [];
+const sessionStores: SqliteSessionStore[] = [];
 
 const definition = defineCodingConfig({
 	schemaVersion: 1,
@@ -50,11 +53,12 @@ const model: Model = {
 };
 
 afterEach(async () => {
+	for (const store of sessionStores.splice(0)) store.close();
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe("createCodingAgent", () => {
-	test("组装配置、provider、内置 tools 与 FileSessionStore", async () => {
+	test("组装配置、provider、内置 tools 与 SqliteSessionStore", async () => {
 		const fixture = await createFixture();
 		const contexts: Context[] = [];
 		let resolvedMode: unknown;
@@ -81,7 +85,25 @@ describe("createCodingAgent", () => {
 				"Bash",
 				"Skill",
 			]);
-			expect(await readFile(join(fixture.sessionDirectory, "session-1.jsonl"), "utf8")).toContain('"type":"message"');
+			expect(JSON.stringify((await fixture.sessionStore.load("session-1"))?.snapshot.entries)).toContain(
+				'"type":"message"',
+			);
+		} finally {
+			codingAgent.close();
+		}
+	});
+
+	test("accepts an injected in-memory session store without writing to the default SQLite store", async () => {
+		const fixture = await createFixture();
+		const codingAgent = await createCodingAgent({
+			...fixture,
+			sessionStore: new InMemorySessionStore(),
+			resolveProvider: () => ({ provider: providerFor([assistant("done")]), model }),
+		});
+
+		try {
+			await codingAgent.invoke("hello");
+			expect(await fixture.sessionStore.load("session-1")).toBeUndefined();
 		} finally {
 			codingAgent.close();
 		}
@@ -283,7 +305,7 @@ describe("createCodingAgent", () => {
 			await codingAgent.invoke("review this change");
 			expect(contexts[0]?.tools.map((tool) => tool.name)).toContain("Skill");
 			expect(JSON.stringify(contexts[1]?.messages)).toContain("# Review changes");
-			expect(await readFile(join(fixture.sessionDirectory, "session-1.jsonl"), "utf8")).toContain(
+			expect(JSON.stringify((await fixture.sessionStore.load("session-1"))?.snapshot.entries)).toContain(
 				"# Review changes",
 			);
 		} finally {
@@ -349,7 +371,7 @@ describe("createCodingAgent", () => {
 				content: "/review inspect this patch",
 			});
 			expect(skillDescription).toContain('explicitly invoked "/review"');
-			expect(await readFile(join(fixture.sessionDirectory, "session-1.jsonl"), "utf8")).toContain(
+			expect(JSON.stringify((await fixture.sessionStore.load("session-1"))?.snapshot.entries)).toContain(
 				'"slashInvocation":{"name":"review","kind":"skill","displayName":"review"}',
 			);
 		} finally {
@@ -401,7 +423,6 @@ describe("createCodingAgent", () => {
 	test("UpdateTodos 在成功事件发布前持久化 Coding Session 状态", async () => {
 		const fixture = await createFixture();
 		const contexts: Context[] = [];
-		const sessionFile = join(fixture.sessionDirectory, "session-1.jsonl");
 		const persistedWhenObserved: string[] = [];
 		const observedResults: Array<{ readonly isError: boolean; readonly result: unknown }> = [];
 		const codingAgent = await createCodingAgent({
@@ -426,7 +447,7 @@ describe("createCodingAgent", () => {
 			if (event.type !== "tool_execution_end" || event.toolName !== "UpdateTodos") return;
 			observedResults.push({ isError: event.isError, result: event.result });
 			if (event.isError) return;
-			persistedWhenObserved.push(await readFile(sessionFile, "utf8"));
+			persistedWhenObserved.push(JSON.stringify((await fixture.sessionStore.load("session-1"))?.snapshot.entries));
 		});
 
 		try {
@@ -492,6 +513,8 @@ async function createFixture() {
 	roots.push(root);
 	const workspaceRoot = join(root, "workspace");
 	await mkdir(workspaceRoot);
+	const sessionStore = await SqliteSessionStore.open(join(root, "data.sqlite"));
+	sessionStores.push(sessionStore);
 	return {
 		executionContext: {
 			localFileAccess: true as const,
@@ -500,7 +523,7 @@ async function createFixture() {
 			defaultAllowedDirectories: [workspaceRoot] as [string],
 		},
 		sessionId: "session-1",
-		sessionDirectory: join(root, "sessions"),
+		sessionStore,
 		configDefinition: definition,
 		configOptions: { homeDir: join(root, "home") },
 	};
