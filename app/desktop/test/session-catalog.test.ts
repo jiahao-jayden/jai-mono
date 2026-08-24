@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { openSession, type JsonObject } from "@jai/agent";
-import { SqliteSessionStore } from "@jai/agent/node";
+import { SqliteSessionStore } from "@jai/agent/node/sqlite";
 import { emptyPersistedCodingSessionState } from "@jai/coding-agent";
 import { DesktopSessionCatalog } from "../electron/session-catalog";
 

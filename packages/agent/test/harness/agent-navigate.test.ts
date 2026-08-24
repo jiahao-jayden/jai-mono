@@ -12,7 +12,7 @@ import {
 	type SessionEntry,
 	type SessionHandle,
 } from "../../src";
-import { SqliteSessionStore } from "../../src/node";
+import { SqliteSessionStore } from "../../src/node/sqlite";
 import { assistant, defaultAppState, model, providerFor, testInstructions, type AppState } from "../support/fixtures";
 
 const directories: string[] = [];

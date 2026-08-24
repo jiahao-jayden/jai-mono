@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { InMemorySessionStore } from "../../../src/harness";
-import { SqliteSessionStore } from "../../../src/node";
+import { SqliteSessionStore } from "../../../src/node/sqlite";
 import {
 	describeSessionStoreContract,
 	type SessionStoreContractHarness,

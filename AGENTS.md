@@ -39,6 +39,7 @@
 - 模块角色只使用：`core`（纯领域/执行语义）、`runtime`（生命周期与编排）、`adapters`（SQLite、Node、RPC、Electron、MCP 等外部实现）、`projection`（只读 DTO/UI 投影）或明确的产品领域目录（如 `sessions`、`projects`、`permissions`）。
 - `main.ts`、`runtime.ts`、composition root 只负责装配与生命周期；`index.ts` 只定义模块对外 interface 和 re-export。它们不得承载领域规则、SQL、UI 投影或协议实现。
 - 每个模块只暴露一个小而稳定的 interface；调用方与测试都通过该 interface 使用模块。不要为单一实现建立 interface / factory / strategy。`SessionStore` 保留是因为 SQLite durable store 与 InMemory ephemeral/test store 是真实的两个 adapter；Desktop 的单一 SQLite 实现不应复制这种 seam。
+- Node adapter 的导出按实际运行时依赖拆分：`@jai/agent/node/environment` 只提供 Node execution environment，`@jai/agent/node/sqlite` 才引入 SQLite durable store。调用方只能导入需要的 adapter；不得以聚合 `node` 入口把 SQLite 静态带入不需要持久化的 SDK bundle。
 - 依赖方向固定：`core` 不依赖 `runtime`、adapter、host 或 UI；`runtime` 可以依赖 `core` 和自己的 contract；adapter 依赖 contract 但不携带宿主业务规则；projection 只读取 domain facts；renderer 只能依赖 shared RPC DTO，不得 import Electron 或 Agent 内部实现。
 - Host（Desktop、CLI）只负责装配、I/O、宿主生命周期与输出适配；不得重实现 Agent、session、权限或 Coding Agent 的产品语义。
 

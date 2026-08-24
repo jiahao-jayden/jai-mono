@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeExecutionEnvironment } from "../../../src/node";
+import { NodeExecutionEnvironment } from "../../../src/node/environment";
 
 const temporaryDirectories: string[] = [];
 

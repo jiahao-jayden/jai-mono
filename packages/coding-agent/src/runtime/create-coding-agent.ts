@@ -16,7 +16,7 @@ import {
 	type ToolExecutionMode,
 	type ToolMiddleware,
 } from "@jai/agent";
-import { NodeExecutionEnvironment } from "@jai/agent/node";
+import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
 import type { Model, Provider } from "@jai/ai";
 import type { TObject } from "@sinclair/typebox";
 import { attachmentUserMessage, CodingAttachmentRun, type CodingMessageAttachment } from "../attachments";

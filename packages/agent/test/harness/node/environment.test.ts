@@ -3,7 +3,7 @@ import { chmod, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getErrorCode } from "@jai/common";
-import { NodeExecutionEnvironment } from "../../../src/node";
+import { NodeExecutionEnvironment } from "../../../src/node/environment";
 
 const temporaryDirectories: string[] = [];
 async function temporaryDirectory(prefix: string): Promise<string> {

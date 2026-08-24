@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import * as root from "../../../src";
-import * as node from "../../../src/node";
+import * as nodeEnvironment from "../../../src/node/environment";
+import * as nodeSqlite from "../../../src/node/sqlite";
 
 async function collectStaticSourceGraph(entrypoint: string): Promise<Map<string, string[]>> {
 	const graph = new Map<string, string[]>();
@@ -47,8 +48,9 @@ describe("environment exports", () => {
 			expect(root).toHaveProperty(name);
 		}
 		expect(root).not.toHaveProperty("SqliteSessionStore");
-		expect(node).toHaveProperty("NodeExecutionEnvironment");
-		expect(node).toHaveProperty("SqliteSessionStore");
+		expect(nodeEnvironment).toHaveProperty("NodeExecutionEnvironment");
+		expect(nodeEnvironment).not.toHaveProperty("SqliteSessionStore");
+		expect(nodeSqlite).toHaveProperty("SqliteSessionStore");
 	});
 
 	test("root builds for browsers and its static source graph contains no Node builtins", async () => {

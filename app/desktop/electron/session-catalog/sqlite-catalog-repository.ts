@@ -1,7 +1,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { type JsonObject } from "@jai/agent";
-import { SqliteSessionStore } from "@jai/agent/node";
+import { SqliteSessionStore } from "@jai/agent/node/sqlite";
 import { DatabaseSync } from "node:sqlite";
 import { databaseInvalidError, projectNotFoundError, projectPathConflictError, sessionNotFoundError } from "./errors";
 import type { CreateProjectRecord, CreateSessionRecord, DesktopSessionCatalogRepository } from "./repository";

@@ -11,7 +11,7 @@ import {
 	zeroUsage,
 } from "@jai/ai";
 import { InMemorySessionStore } from "@jai/agent";
-import { SqliteSessionStore } from "@jai/agent/node";
+import { SqliteSessionStore } from "@jai/agent/node/sqlite";
 import { Type } from "@sinclair/typebox";
 import { defineCodingConfig } from "../src/config";
 import {

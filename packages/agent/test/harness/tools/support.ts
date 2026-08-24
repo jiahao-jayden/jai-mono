@@ -1,4 +1,4 @@
-import { NodeExecutionEnvironment } from "../../../src/node";
+import { NodeExecutionEnvironment } from "../../../src/node/environment";
 
 export function createNodeToolOptions(cwd: string) {
 	const environment = new NodeExecutionEnvironment({ cwd });

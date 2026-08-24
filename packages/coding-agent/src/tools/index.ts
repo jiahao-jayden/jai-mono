@@ -1,5 +1,5 @@
 import { type AgentTool, createHarnessTools } from "@jai/agent";
-import { NodeExecutionEnvironment } from "@jai/agent/node";
+import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
 import type { CodingToolName } from "./names";
 import type { CodingToolOptions } from "./types";
 

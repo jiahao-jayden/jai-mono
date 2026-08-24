@@ -4,7 +4,7 @@ import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import { attachSession, type JsonObject, type SessionSnapshot } from "@jai/agent";
-import { SqliteSessionStore } from "@jai/agent/node";
+import { SqliteSessionStore } from "@jai/agent/node/sqlite";
 import {
 	type CodingAgent,
 	type CodingAgentEvent,

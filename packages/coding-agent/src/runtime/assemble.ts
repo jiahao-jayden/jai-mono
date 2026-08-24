@@ -1,5 +1,5 @@
 import type { AgentHookMap, AgentTool, ToolMiddleware } from "@jai/agent";
-import { NodeExecutionEnvironment } from "@jai/agent/node";
+import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
 import type { CodingAttachmentRun } from "../attachments";
 import type { McpRuntime } from "../mcp";
 import type { CodingSkillsRuntime } from "../skills";

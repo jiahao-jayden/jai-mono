@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { type AssistantMessage, zeroUsage } from "@jai/ai";
-import { SqliteSessionStore } from "@jai/agent/node";
+import { SqliteSessionStore } from "@jai/agent/node/sqlite";
 import { Type } from "@sinclair/typebox";
 import { Result } from "better-result";
 import { mkdtemp, rm } from "node:fs/promises";

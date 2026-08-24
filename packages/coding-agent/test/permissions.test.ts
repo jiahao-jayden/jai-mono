@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, symlink, unlink, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { ToolCallContext } from "@jai/agent";
-import { NodeExecutionEnvironment } from "@jai/agent/node";
+import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
 import { getErrorCode } from "@jai/common";
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";

@@ -4,7 +4,8 @@ import type { AgentEvent, AgentHookMap, AgentOptions, AgentRun } from "../src";
 import * as root from "../src";
 import type { CoreAgentEvent, CoreAgentOptions, CoreAgentRun } from "../src/core";
 import * as core from "../src/core";
-import * as node from "../src/node";
+import * as nodeEnvironment from "../src/node/environment";
+import * as nodeSqlite from "../src/node/sqlite";
 import { assistant, model, providerFor } from "./support/fixtures";
 
 describe("public API", () => {
@@ -25,14 +26,16 @@ describe("public API", () => {
 			expect(root).toHaveProperty(name);
 		}
 		expect(root).not.toHaveProperty("SqliteSessionStore");
-		expect(node).toHaveProperty("SqliteSessionStore");
+		expect(nodeEnvironment).toHaveProperty("NodeExecutionEnvironment");
+		expect(nodeSqlite).toHaveProperty("SqliteSessionStore");
 	});
 
-	test("exports 包含默认入口、/core 和 /node", () => {
+	test("exports 包含默认入口、/core 和明确的 Node adapter 子路径", () => {
 		expect(packageJson.exports).toEqual({
 			".": "./src/index.ts",
 			"./core": "./src/core/index.ts",
-			"./node": "./src/node.ts",
+			"./node/environment": "./src/node/environment.ts",
+			"./node/sqlite": "./src/node/sqlite.ts",
 		});
 	});
 
