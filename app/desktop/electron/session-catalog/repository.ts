@@ -1,4 +1,4 @@
-import type { CodingSession, Project, ProviderModelInventory, SessionListCursor, SessionListPage } from "./types";
+import type { CodingSession, Project, SessionListCursor, SessionListPage } from "./types";
 
 export interface CreateProjectRecord {
 	readonly id: string;
@@ -14,8 +14,8 @@ export interface CreateSessionRecord {
 	readonly title: string;
 }
 
-/** Desktop-owned metadata over the generic SessionStore journal. */
-export interface CodingBusinessRepository {
+/** Desktop-owned Project and Session metadata over the generic SessionStore journal. */
+export interface DesktopSessionCatalogRepository {
 	createProject(record: CreateProjectRecord): Project;
 	getProject(id: string): Project | undefined;
 	findProjectByCanonicalPath(canonicalPath: string): Project | undefined;
@@ -38,10 +38,5 @@ export interface CodingBusinessRepository {
 	setGeneratedTitle(id: string, title: string): CodingSession;
 	shouldGenerateSessionTitle(id: string): boolean;
 	moveSession(id: string, toProjectId: string | null): CodingSession;
-
-	getProviderModelInventory(profileId: string): ProviderModelInventory | undefined;
-	replaceProviderModelInventory(record: ProviderModelInventory): ProviderModelInventory;
-	deleteProviderModelInventory(profileId: string): void;
-	renameProviderModelInventory(fromProfileId: string, toProfileId: string): void;
 	close(): void;
 }

@@ -3,9 +3,9 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getErrorCode } from "@jai/common";
-import type { ProviderModelInventory } from "../electron/data";
 import { DesktopConfigService } from "../electron/config";
-import { ModelCatalogStore } from "../electron/config/model-catalog";
+import { ModelCatalogStore } from "../electron/model-catalog";
+import type { ProviderModelInventory } from "../electron/config/model-inventory";
 
 const roots: string[] = [];
 
@@ -274,7 +274,7 @@ describe("DesktopConfigService", () => {
 				},
 			],
 		});
-		inventory.replaceProviderModelInventory("gateway", ["gpt-test"]);
+		inventory.replace("gateway", ["gpt-test"]);
 
 		expect(await service.resolveAgentInput("gateway/gpt-test")).toEqual({
 			model: "openai-compatible/gpt-test",
@@ -468,11 +468,11 @@ async function fixture(): Promise<string> {
 class TestInventory {
 	readonly #entries = new Map<string, ProviderModelInventory>();
 
-	getProviderModelInventory(profileId: string): ProviderModelInventory | undefined {
+	get(profileId: string): ProviderModelInventory | undefined {
 		return this.#entries.get(profileId);
 	}
 
-	replaceProviderModelInventory(profileId: string, modelIds: readonly string[]): ProviderModelInventory {
+	replace(profileId: string, modelIds: readonly string[]): ProviderModelInventory {
 		const entry = {
 			profileId,
 			modelIds: [...new Set(modelIds)].sort((left, right) => left.localeCompare(right)),
@@ -482,11 +482,11 @@ class TestInventory {
 		return entry;
 	}
 
-	deleteProviderModelInventory(profileId: string): void {
+	delete(profileId: string): void {
 		this.#entries.delete(profileId);
 	}
 
-	renameProviderModelInventory(fromProfileId: string, toProfileId: string): void {
+	rename(fromProfileId: string, toProfileId: string): void {
 		const entry = this.#entries.get(fromProfileId);
 		if (!entry || fromProfileId === toProfileId) return;
 		this.#entries.delete(fromProfileId);

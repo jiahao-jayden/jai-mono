@@ -4,8 +4,8 @@ import { type JsonObject } from "@jai/agent";
 import { SqliteSessionStore } from "@jai/agent/node";
 import { DatabaseSync } from "node:sqlite";
 import { databaseInvalidError, projectNotFoundError, projectPathConflictError, sessionNotFoundError } from "./errors";
-import type { CodingBusinessRepository, CreateProjectRecord, CreateSessionRecord } from "./repository";
-import type { CodingSession, Project, ProviderModelInventory, SessionListCursor, SessionListPage } from "./types";
+import type { CreateProjectRecord, CreateSessionRecord, DesktopSessionCatalogRepository } from "./repository";
+import type { CodingSession, Project, SessionListCursor, SessionListPage } from "./types";
 
 const SCHEMA_VERSION = 6;
 
@@ -13,7 +13,7 @@ const SCHEMA_VERSION = 6;
  * Desktop metadata in the same SQLite database as the generic SessionStore journal.
  * The journal owns messages and app state; this module owns only Desktop concepts.
  */
-export class SqliteCodingBusinessRepository implements CodingBusinessRepository {
+export class SqliteDesktopSessionCatalogRepository implements DesktopSessionCatalogRepository {
 	readonly #database: DatabaseSync;
 	readonly #sessionStore: SqliteSessionStore<JsonObject>;
 
@@ -26,14 +26,14 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 		this.#migrate();
 	}
 
-	static async open(databasePath: string): Promise<SqliteCodingBusinessRepository> {
+	static async open(databasePath: string): Promise<SqliteDesktopSessionCatalogRepository> {
 		if (databasePath !== ":memory:") await mkdir(dirname(databasePath), { recursive: true });
 		const database = new DatabaseSync(databasePath);
 		const version = userVersion(database);
-		if (version === 0 || version === SCHEMA_VERSION) return new SqliteCodingBusinessRepository(database);
+		if (version === 0 || version === SCHEMA_VERSION) return new SqliteDesktopSessionCatalogRepository(database);
 		database.close();
 		await Promise.all([databasePath, `${databasePath}-shm`, `${databasePath}-wal`].map((file) => rm(file, { force: true })));
-		return new SqliteCodingBusinessRepository(new DatabaseSync(databasePath));
+		return new SqliteDesktopSessionCatalogRepository(new DatabaseSync(databasePath));
 	}
 
 	createSessionStore<TAppState extends JsonObject = JsonObject>(): SqliteSessionStore<TAppState> {
@@ -209,41 +209,6 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 		return this.#requireSession(id);
 	}
 
-	getProviderModelInventory(profileId: string): ProviderModelInventory | undefined {
-		return mapProviderModelInventory(
-			this.#database
-				.prepare(
-					`SELECT profile_id, model_ids_json, fetched_at
-					 FROM provider_model_inventory
-					 WHERE profile_id = ?`,
-				)
-				.get(profileId),
-		);
-	}
-
-	replaceProviderModelInventory(record: ProviderModelInventory): ProviderModelInventory {
-		const modelIds = uniqueModelIds(record.modelIds);
-		this.#database
-			.prepare(
-				`INSERT INTO provider_model_inventory (profile_id, model_ids_json, fetched_at)
-				 VALUES (?, ?, ?)
-				 ON CONFLICT(profile_id) DO UPDATE SET
-				  model_ids_json = excluded.model_ids_json,
-				  fetched_at = excluded.fetched_at`,
-			)
-			.run(record.profileId, JSON.stringify(modelIds), record.fetchedAt);
-		return this.getProviderModelInventory(record.profileId)!;
-	}
-
-	deleteProviderModelInventory(profileId: string): void {
-		this.#database.prepare("DELETE FROM provider_model_inventory WHERE profile_id = ?").run(profileId);
-	}
-
-	renameProviderModelInventory(fromProfileId: string, toProfileId: string): void {
-		if (fromProfileId === toProfileId) return;
-		this.#database.prepare("UPDATE provider_model_inventory SET profile_id = ? WHERE profile_id = ?").run(toProfileId, fromProfileId);
-	}
-
 	close(): void {
 		this.#database.close();
 	}
@@ -273,11 +238,6 @@ export class SqliteCodingBusinessRepository implements CodingBusinessRepository 
 				);
 				CREATE INDEX IF NOT EXISTS desktop_session_metadata_project
 					ON desktop_session_metadata(project_id);
-				CREATE TABLE IF NOT EXISTS provider_model_inventory (
-					profile_id TEXT PRIMARY KEY,
-					model_ids_json TEXT NOT NULL,
-					fetched_at INTEGER NOT NULL
-				);
 				PRAGMA user_version = ${SCHEMA_VERSION};
 			`);
 		});
@@ -346,30 +306,6 @@ function mapSession(value: unknown): CodingSession | undefined {
 		titleSource: stringColumn(value, "title_source") as CodingSession["titleSource"],
 		lastActivityAt,
 	};
-}
-
-function mapProviderModelInventory(value: unknown): ProviderModelInventory | undefined {
-	if (value === undefined) return undefined;
-	if (!isRow(value)) throw databaseInvalidError("Invalid provider model inventory row");
-	const rawModelIds = stringColumn(value, "model_ids_json");
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(rawModelIds);
-	} catch {
-		throw databaseInvalidError("Invalid provider model inventory JSON");
-	}
-	if (!Array.isArray(parsed) || parsed.some((modelId) => typeof modelId !== "string")) {
-		throw databaseInvalidError("Invalid provider model inventory model IDs");
-	}
-	return {
-		profileId: stringColumn(value, "profile_id"),
-		modelIds: uniqueModelIds(parsed),
-		fetchedAt: numberColumn(value, "fetched_at"),
-	};
-}
-
-function uniqueModelIds(values: readonly string[]): string[] {
-	return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((left, right) => left.localeCompare(right));
 }
 
 function isRow(value: unknown): value is Record<string, unknown> {

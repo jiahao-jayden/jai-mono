@@ -6,7 +6,7 @@ import { createConnectorExtension } from "@jai/extension/connector";
 import { TaggedError } from "better-result";
 import type { DesktopAgentCreationFailureReason, DesktopAgentMode } from "../../shared/desktop-rpc";
 import type { DesktopConfigService } from "../config";
-import type { CodingBusinessService, CodingExecutionContext } from "../data";
+import type { CodingExecutionContext, DesktopSessionCatalog } from "../session-catalog";
 import type { DesktopAgentFactory } from "./host";
 import { discoverDesktopAgentPluginDirectories } from "./plugin-directories";
 
@@ -20,12 +20,12 @@ class DesktopAgentCreationFailed extends TaggedError("desktop_agent.creation_fai
 }> {}
 
 export function createDesktopAgentFactory(
-	service: CodingBusinessService,
+	sessionCatalog: DesktopSessionCatalog,
 	connectorService: MemoryConnectorService,
 	config: DesktopConfigService,
 ): DesktopAgentFactory {
 	return async ({ sessionId, modelRef, mode, requestApproval, requestExtensionApproval }) => {
-		const executionContext = await service.resolveExecutionContext(sessionId);
+		const executionContext = await sessionCatalog.resolveExecutionContext(sessionId);
 		const pluginDirectories = await discoverDesktopAgentPluginDirectories({
 			workspaceDirectory: executionContext.localFileAccess ? executionContext.cwd : undefined,
 			workspaceTrusted: executionContext.localFileAccess,
@@ -36,7 +36,7 @@ export function createDesktopAgentFactory(
 		const resolvedModel = await config.resolveAgentInput(modelRef);
 		const agentPluginsExtension = await createAgentPluginsExtension({
 			directories: pluginDirectories,
-			dataDirectory: path.join(service.dataRoot, "agent-plugin-data"),
+			dataDirectory: path.join(sessionCatalog.dataRoot, "agent-plugin-data"),
 		});
 		const created = await createPublicCodingAgent({
 			model: resolvedModel.model,
@@ -45,9 +45,9 @@ export function createDesktopAgentFactory(
 			session: {
 				kind: "resume",
 				id: sessionId,
-				store: service.sessionStore,
+				store: sessionCatalog.sessionStore,
 			},
-			agentDataRoot: service.dataRoot,
+			agentDataRoot: sessionCatalog.dataRoot,
 			requestApproval,
 			extensionRuntime: config.createExtensionRuntimeAdapter({
 				requestApproval: requestExtensionApproval,

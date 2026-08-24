@@ -1,13 +1,14 @@
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { app, BrowserWindow } from "electron";
-import { type DesktopConnectorRuntime, openDesktopConnectorRuntime } from "./connector-runtime";
-import { CodingBusinessService } from "./data";
+import { type DesktopConnectorRuntime, openDesktopConnectorRuntime } from "./connector/runtime";
+import { SqliteProviderModelInventoryStore } from "./config/sqlite-model-inventory";
 import { mainLog } from "./logger";
 import { hydrateDesktopModelCatalog, startDesktopModelCatalog } from "./model-catalog";
 import { createDesktopRouter } from "./rpc/router";
 import { registerDesktopRpc } from "./rpc/server";
 import { createDesktopRuntime, type DesktopRuntime } from "./runtime";
+import { DesktopSessionCatalog, jaiDatabasePath } from "./session-catalog";
 import { createMainWindow } from "./windows";
 
 const isMac = process.platform === "darwin";
@@ -49,14 +50,16 @@ if (!app.requestSingleInstanceLock()) {
 	void app
 		.whenReady()
 		.then(async () => {
-			const [codingBusiness, openedConnectorRuntime] = await Promise.all([
-				CodingBusinessService.open(),
+			const sessionCatalog = await DesktopSessionCatalog.open();
+			const [openedConnectorRuntime, , providerModelInventory] = await Promise.all([
 				openDesktopConnectorRuntime(),
 				hydrateDesktopModelCatalog(),
+				SqliteProviderModelInventoryStore.open(jaiDatabasePath(sessionCatalog.dataRoot)),
 			]);
 			connectorRuntime = openedConnectorRuntime;
 			const runtime = createDesktopRuntime({
-				business: codingBusiness,
+				sessions: sessionCatalog,
+				providerModelInventory,
 				connector: openedConnectorRuntime.service,
 			});
 			desktopRuntime = runtime;

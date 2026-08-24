@@ -10,7 +10,7 @@ import {
 	resolveConfiguredDesktopMcpServers,
 	resolveConfiguredProvider,
 } from "../electron/config/coding-settings";
-import { normalizeModelCatalog } from "../electron/config/model-catalog";
+import { normalizeModelCatalog } from "../electron/model-catalog";
 
 const roots: string[] = [];
 

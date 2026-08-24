@@ -4,21 +4,22 @@ import { app, BrowserWindow, dialog, shell } from "electron";
 import type { DesktopAgentEvent } from "../shared/desktop-rpc";
 import { createDesktopAgentFactory } from "./agent/factory";
 import { DesktopAgentHost } from "./agent/host";
-import { type AttachmentRegistry, createAttachmentRegistry } from "./attachments";
-import { createBroadcaster } from "./broadcast";
+import { type AttachmentRegistry, createAttachmentRegistry } from "./rpc/attachments";
+import { createBroadcaster } from "./rpc/broadcast";
 import { DesktopConfigService } from "./config";
-import type { CodingBusinessService } from "./data";
+import { type SqliteProviderModelInventoryStore } from "./config/sqlite-model-inventory";
 import { desktopModelCatalog, setDesktopModelCatalogUpdateListener } from "./model-catalog";
-import { DesktopOAuthManager } from "./oauth";
+import { DesktopOAuthManager } from "./oauth/manager";
 import { createDesktopThemeService, type DesktopThemeService } from "./theme";
 import { createOpenWithService, type OpenWithService } from "./workspace/open-with";
+import type { DesktopSessionCatalog } from "./session-catalog";
 
 /**
  * Everything the RPC router needs, resolved once at startup. Each field is
  * non-optional, so handlers never have to guard against a half-built runtime.
  */
 export interface DesktopRuntime {
-	readonly business: CodingBusinessService;
+	readonly sessions: DesktopSessionCatalog;
 	readonly config: DesktopConfigService;
 	readonly oauth: DesktopOAuthManager;
 	readonly agentHost: DesktopAgentHost;
@@ -38,13 +39,14 @@ export interface DesktopRuntime {
 export type WindowSender = Electron.WebContents;
 
 export function createDesktopRuntime(dependencies: {
-	readonly business: CodingBusinessService;
+	readonly sessions: DesktopSessionCatalog;
+	readonly providerModelInventory: SqliteProviderModelInventoryStore;
 	readonly connector: MemoryConnectorService;
 }): DesktopRuntime {
-	const { business, connector } = dependencies;
+	const { sessions, providerModelInventory, connector } = dependencies;
 	const broadcast = createBroadcaster();
-	const config = new DesktopConfigService({ catalog: desktopModelCatalog, inventory: business });
-	const agentHost = new DesktopAgentHost(broadcast, createDesktopAgentFactory(business, connector, config));
+	const config = new DesktopConfigService({ catalog: desktopModelCatalog, inventory: providerModelInventory });
+	const agentHost = new DesktopAgentHost(broadcast, createDesktopAgentFactory(sessions, connector, config));
 	const attachments = createAttachmentRegistry();
 	const theme = createDesktopThemeService();
 	const openWith = createOpenWithService({
@@ -89,10 +91,10 @@ export function createDesktopRuntime(dependencies: {
 	};
 
 	agentHost.setRunCompletedListener(async ({ sessionId, firstMessage, agent }) => {
-		if (!(await business.shouldGenerateSessionTitle(sessionId))) return;
-		await business.markTitleGenerationAttempted(sessionId);
+		if (!(await sessions.shouldGenerateSessionTitle(sessionId))) return;
+		await sessions.markTitleGenerationAttempted(sessionId);
 		const title = await agent.generateTitle(firstMessage);
-		if (title.isOk() && title.value.trim()) await business.setGeneratedTitle(sessionId, title.value);
+		if (title.isOk() && title.value.trim()) await sessions.setGeneratedTitle(sessionId, title.value);
 	});
 
 	setDesktopModelCatalogUpdateListener(() => {
@@ -101,7 +103,7 @@ export function createDesktopRuntime(dependencies: {
 	});
 
 	return {
-		business,
+		sessions,
 		config,
 		oauth,
 		agentHost,
@@ -116,8 +118,9 @@ export function createDesktopRuntime(dependencies: {
 			// The OAuth manager calls into config while closing, so it must finish first.
 			await oauth.close();
 			config.close();
+			providerModelInventory.close();
 			desktopModelCatalog.close();
-			business.close();
+			sessions.close();
 			attachments.clear();
 		},
 	};

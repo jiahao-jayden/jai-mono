@@ -1,5 +1,5 @@
-import { mainLog } from "./logger";
-import { ModelCatalogStore } from "./config/model-catalog";
+import { mainLog } from "../logger";
+import { ModelCatalogStore } from "./store";
 
 let onCatalogUpdated: (() => void) | undefined;
 

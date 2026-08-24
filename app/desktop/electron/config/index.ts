@@ -14,7 +14,6 @@ import type {
 	DesktopProviderFetchModelsResult,
 	DesktopProviderProfileInput,
 } from "../../shared/desktop-rpc";
-import type { CodingBusinessService, ProviderModelInventory } from "../data";
 import {
 	type CodingAgentSettings,
 	desktopCodingConfigDefinition,
@@ -31,7 +30,8 @@ import {
 	toStoredConnectorOAuthToken,
 	validateConnectorConfigInput,
 } from "./connector";
-import type { ModelCatalogStore } from "./model-catalog";
+import type { ProviderModelInventory, ProviderModelInventoryStore } from "./model-inventory";
+import type { ModelCatalogStore } from "../model-catalog";
 import {
 	projectProviderConfig,
 	providerConfigError,
@@ -47,26 +47,14 @@ const profileIdPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 export class DesktopConfigService {
 	readonly #store: CodingConfigStore<typeof desktopCodingConfigDefinition.schema>;
 	readonly #catalog?: ModelCatalogStore;
-	readonly #inventory?: Pick<
-		CodingBusinessService,
-		| "deleteProviderModelInventory"
-		| "getProviderModelInventory"
-		| "renameProviderModelInventory"
-		| "replaceProviderModelInventory"
-	>;
+	readonly #inventory?: ProviderModelInventoryStore;
 
 	constructor(
 		options: {
 			readonly homeDir?: string;
 			readonly environment?: Readonly<Record<string, string | undefined>>;
 			readonly catalog?: ModelCatalogStore;
-			readonly inventory?: Pick<
-				CodingBusinessService,
-				| "deleteProviderModelInventory"
-				| "getProviderModelInventory"
-				| "renameProviderModelInventory"
-				| "replaceProviderModelInventory"
-			>;
+			readonly inventory?: ProviderModelInventoryStore;
 		} = {},
 	) {
 		this.#store = new CodingConfigStore(desktopCodingConfigDefinition, {
@@ -144,7 +132,7 @@ export class DesktopConfigService {
 				cause,
 			});
 		}
-		const inventory = this.#inventory?.replaceProviderModelInventory(profileId, modelIds);
+		const inventory = this.#inventory?.replace(profileId, modelIds);
 		if (!inventory) {
 			throw invalidInput("Provider model inventory is unavailable");
 		}
@@ -160,7 +148,7 @@ export class DesktopConfigService {
 	async resolveAgentInput(modelRef: string): Promise<ResolvedDesktopSdkAgentInput> {
 		const separator = modelRef.indexOf("/");
 		const profileId = separator > 0 ? modelRef.slice(0, separator) : "";
-		const inventory = profileId ? this.#inventory?.getProviderModelInventory(profileId) : undefined;
+		const inventory = profileId ? this.#inventory?.get(profileId) : undefined;
 		const snapshot = await this.#store.load();
 		return resolveDesktopSdkAgentInput(snapshot.settings, modelRef, this.#catalog?.cached?.catalog, {
 			...(inventory ? { availableModelIds: inventory.modelIds } : {}),
@@ -296,7 +284,7 @@ export class DesktopConfigService {
 	#inventories(settings: Readonly<CodingAgentSettings>): ReadonlyMap<string, ProviderModelInventory> {
 		const inventories = new Map<string, ProviderModelInventory>();
 		for (const profileId of Object.keys(settings.providers)) {
-			const inventory = this.#inventory?.getProviderModelInventory(profileId);
+			const inventory = this.#inventory?.get(profileId);
 			if (inventory) inventories.set(profileId, inventory);
 		}
 		return inventories;
@@ -305,22 +293,22 @@ export class DesktopConfigService {
 	#seedLegacyInventories(settings: Readonly<CodingAgentSettings>): void {
 		if (!this.#inventory) return;
 		for (const [profileId, profile] of Object.entries(settings.providers)) {
-			if (this.#inventory.getProviderModelInventory(profileId)) continue;
+			if (this.#inventory.get(profileId)) continue;
 			const modelIds = Object.entries(profile.models ?? {})
 				.map(([modelId, model]) => model.remoteModelId ?? modelId)
 				.filter(Boolean);
-			if (modelIds.length > 0) this.#inventory.replaceProviderModelInventory(profileId, modelIds);
+			if (modelIds.length > 0) this.#inventory.replace(profileId, modelIds);
 		}
 	}
 
 	#seedInputInventories(profiles: readonly DesktopProviderProfileInput[]): void {
 		if (!this.#inventory) return;
 		for (const profile of profiles) {
-			if (this.#inventory.getProviderModelInventory(profile.id)) continue;
+			if (this.#inventory.get(profile.id)) continue;
 			const modelIds = profile.models
 				.filter((model) => model.source === "unverified")
 				.map((model) => model.remoteModelId);
-			if (modelIds.length > 0) this.#inventory.replaceProviderModelInventory(profile.id, modelIds);
+			if (modelIds.length > 0) this.#inventory.replace(profile.id, modelIds);
 		}
 	}
 
@@ -330,7 +318,7 @@ export class DesktopConfigService {
 	): void {
 		if (!this.#inventory) return;
 		for (const profileId of Object.keys(current)) {
-			if (!next[profileId]) this.#inventory.deleteProviderModelInventory(profileId);
+			if (!next[profileId]) this.#inventory.delete(profileId);
 		}
 	}
 
@@ -343,7 +331,7 @@ export class DesktopConfigService {
 		for (const profile of profiles) {
 			if (!profile.previousId || profile.previousId === profile.id) continue;
 			if (!current[profile.previousId] || next[profile.previousId]) continue;
-			this.#inventory.renameProviderModelInventory(profile.previousId, profile.id);
+			this.#inventory.rename(profile.previousId, profile.id);
 		}
 	}
 }

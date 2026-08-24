@@ -6,9 +6,9 @@ import type {
 	DesktopProviderProfile,
 	DesktopProviderProfileInput,
 } from "../../shared/desktop-rpc";
-import type { ProviderModelInventory } from "../data";
 import type { CodingAgentSettings } from "./coding-settings";
-import { findCatalogModel, findCatalogModelMatch, type ModelCatalog } from "./model-catalog";
+import type { ProviderModelInventory } from "./model-inventory";
+import { findCatalogModel, findCatalogModelMatch, type ModelCatalog } from "../model-catalog";
 import { DEFAULT_PROVIDER_VENDORS } from "./provider-vendors";
 
 const profileIdPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import type { CodingAttachment } from "@jai/coding-agent";
 import { TaggedError } from "better-result";
-import type { DesktopAttachmentRegistrationInput, DesktopMessageAttachment } from "../shared/desktop-rpc";
+import type { DesktopAttachmentRegistrationInput, DesktopMessageAttachment } from "../../shared/desktop-rpc";
 
 class AttachmentRegistrationFailed extends TaggedError("desktop_attachment.registration_failed")<{
 	readonly cause?: unknown;

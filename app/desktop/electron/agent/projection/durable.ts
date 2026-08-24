@@ -7,7 +7,7 @@ import type {
 	DesktopCompactionItem,
 	DesktopTranscriptItem,
 } from "../../../shared/desktop-rpc";
-import type { CodingSessionSnapshot } from "../../data";
+import type { CodingSessionSnapshot } from "../../session-catalog";
 import { sortArtifacts } from "../artifacts";
 import { replayActivityKind } from "./activity-kind";
 import {

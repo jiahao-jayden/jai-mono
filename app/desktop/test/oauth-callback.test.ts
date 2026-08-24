@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { desktopOAuthCallbackUrl, isDesktopOAuthCallbackUrl } from "../electron/oauth-callback";
+import { desktopOAuthCallbackUrl, isDesktopOAuthCallbackUrl } from "../electron/oauth/callback-server";
 
 describe("Desktop OAuth callback server", () => {
 	test("accepts only its fixed loopback callback URL", () => {

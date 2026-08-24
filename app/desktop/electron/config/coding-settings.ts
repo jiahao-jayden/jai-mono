@@ -12,7 +12,7 @@ import {
 import type { CodingProviderOptions } from "@jai/coding-agent";
 import { type Static, Type } from "@sinclair/typebox";
 import { TaggedError } from "better-result";
-import { findCatalogModel, type ModelCatalog, type ModelCatalogCost } from "./model-catalog";
+import { findCatalogModel, type ModelCatalog, type ModelCatalogCost } from "../model-catalog";
 import {
 	mergePermissionConfigs,
 	permissionConfigFields,

@@ -7,7 +7,7 @@ import {
 	findCatalogModelMatch,
 	ModelCatalogStore,
 	normalizeModelCatalog,
-} from "../electron/config/model-catalog";
+} from "../electron/model-catalog";
 
 const roots: string[] = [];
 
@@ -242,4 +242,3 @@ function rawCatalog(): unknown {
 		},
 	};
 }
-

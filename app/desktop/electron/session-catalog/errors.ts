@@ -5,12 +5,12 @@ type BusinessErrorInit = {
 	readonly data?: Record<string, unknown>;
 	readonly message: string;
 };
-class ProjectNotFound extends TaggedError("coding_business.project_not_found")<BusinessErrorInit> {}
-class ProjectPathInvalid extends TaggedError("coding_business.project_path_invalid")<BusinessErrorInit> {}
-class ProjectPathConflict extends TaggedError("coding_business.project_path_conflict")<BusinessErrorInit> {}
-class SessionNotFound extends TaggedError("coding_business.session_not_found")<BusinessErrorInit> {}
-class SessionBusy extends TaggedError("coding_business.session_busy")<BusinessErrorInit> {}
-class DatabaseInvalid extends TaggedError("coding_business.database_invalid")<BusinessErrorInit> {}
+class ProjectNotFound extends TaggedError("desktop_session_catalog.project_not_found")<BusinessErrorInit> {}
+class ProjectPathInvalid extends TaggedError("desktop_session_catalog.project_path_invalid")<BusinessErrorInit> {}
+class ProjectPathConflict extends TaggedError("desktop_session_catalog.project_path_conflict")<BusinessErrorInit> {}
+class SessionNotFound extends TaggedError("desktop_session_catalog.session_not_found")<BusinessErrorInit> {}
+class SessionBusy extends TaggedError("desktop_session_catalog.session_busy")<BusinessErrorInit> {}
+class DatabaseInvalid extends TaggedError("desktop_session_catalog.database_invalid")<BusinessErrorInit> {}
 
 function businessError(
 	reason:

@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { TaggedError } from "better-result";
-import { findDefaultProviderVendor } from "./provider-vendors";
+import { findDefaultProviderVendor } from "../config/provider-vendors";
 
 const CATALOG_URL = "https://models.dev/catalog.json";
 export const MODEL_CATALOG_FRESHNESS_MS = 48 * 60 * 60 * 1_000;
@@ -537,4 +537,3 @@ function toCachedResult(cached: CachedModelCatalog, refreshed: boolean, now = Da
 		stale: !isFresh(cached, now),
 	};
 }
-

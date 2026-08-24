@@ -6,8 +6,8 @@ import { emptyPersistedCodingSessionState, type PersistedCodingSessionState } fr
 import { getErrorCode } from "@jai/common";
 import { projectNotFoundError, projectPathInvalidError, sessionNotFoundError } from "./errors";
 import { defaultJaiHome, jaiDatabasePath } from "./layout";
-import type { CodingBusinessRepository } from "./repository";
-import { SqliteCodingBusinessRepository } from "./sqlite-repository";
+import type { DesktopSessionCatalogRepository } from "./repository";
+import { SqliteDesktopSessionCatalogRepository } from "./sqlite-catalog-repository";
 import type {
 	CodingExecutionContext,
 	CodingSession,
@@ -16,44 +16,43 @@ import type {
 	CreateSessionInput,
 	MoveSessionInput,
 	Project,
-	ProviderModelInventory,
 	SessionListCursor,
 	SessionListPage,
 } from "./types";
 
-export interface CodingBusinessServiceOptions {
+export interface DesktopSessionCatalogOptions {
 	readonly dataRoot?: string;
 	readonly now?: () => number;
 	readonly createId?: () => string;
 }
 
 /**
- * Desktop's single durable-data module. Both its metadata and the generic Agent
- * journal live in the one SQLite database behind the supplied SessionStore.
+ * Coordinates Desktop Project and Session metadata with the generic Agent
+ * journal, both stored in the same SQLite file.
  */
-export class CodingBusinessService {
-	readonly repository: CodingBusinessRepository;
+export class DesktopSessionCatalog {
+	readonly #repository: DesktopSessionCatalogRepository;
 	readonly dataRoot: string;
 	readonly #now: () => number;
 	readonly #createId: () => string;
 	readonly #sessionStore: SessionStore<PersistedCodingSessionState<JsonObject>>;
 
 	constructor(
-		repository: CodingBusinessRepository,
+		repository: DesktopSessionCatalogRepository,
 		sessionStore: SessionStore<PersistedCodingSessionState<JsonObject>>,
-		options: CodingBusinessServiceOptions = {},
+		options: DesktopSessionCatalogOptions = {},
 	) {
-		this.repository = repository;
+		this.#repository = repository;
 		this.dataRoot = path.resolve(options.dataRoot ?? defaultJaiHome());
 		this.#now = options.now ?? Date.now;
 		this.#createId = options.createId ?? randomUUID;
 		this.#sessionStore = sessionStore;
 	}
 
-	static async open(options: CodingBusinessServiceOptions = {}): Promise<CodingBusinessService> {
+	static async open(options: DesktopSessionCatalogOptions = {}): Promise<DesktopSessionCatalog> {
 		const dataRoot = path.resolve(options.dataRoot ?? defaultJaiHome());
-		const repository = await SqliteCodingBusinessRepository.open(jaiDatabasePath(dataRoot));
-		return new CodingBusinessService(repository, repository.createSessionStore<PersistedCodingSessionState<JsonObject>>(), {
+		const repository = await SqliteDesktopSessionCatalogRepository.open(jaiDatabasePath(dataRoot));
+		return new DesktopSessionCatalog(repository, repository.createSessionStore<PersistedCodingSessionState<JsonObject>>(), {
 			...options,
 			dataRoot,
 		});
@@ -61,36 +60,20 @@ export class CodingBusinessService {
 
 	async createProject(input: CreateProjectInput): Promise<Project> {
 		const location = await resolveProjectLocation(input.path, input.displayName);
-		return this.repository.createProject({ id: this.#createId(), ...location, now: this.#now() });
+		return this.#repository.createProject({ id: this.#createId(), ...location, now: this.#now() });
 	}
 
 	async relinkProject(projectId: string, input: CreateProjectInput): Promise<Project> {
 		this.getProject(projectId);
 		const location = await resolveProjectLocation(input.path, input.displayName);
-		return this.repository.relinkProject(projectId, { ...location, now: this.#now() });
-	}
-
-	getProviderModelInventory(profileId: string): ProviderModelInventory | undefined {
-		return this.repository.getProviderModelInventory(profileId);
-	}
-
-	replaceProviderModelInventory(profileId: string, modelIds: readonly string[]): ProviderModelInventory {
-		return this.repository.replaceProviderModelInventory({ profileId, modelIds, fetchedAt: this.#now() });
-	}
-
-	deleteProviderModelInventory(profileId: string): void {
-		this.repository.deleteProviderModelInventory(profileId);
-	}
-
-	renameProviderModelInventory(fromProfileId: string, toProfileId: string): void {
-		this.repository.renameProviderModelInventory(fromProfileId, toProfileId);
+		return this.#repository.relinkProject(projectId, { ...location, now: this.#now() });
 	}
 
 	async createSession<TAppState extends JsonObject = JsonObject>(
 		input: CreateSessionInput<TAppState>,
 	): Promise<CodingSession> {
 		const projectId = input.projectId ?? null;
-		if (projectId !== null && !this.repository.getProject(projectId)) throw projectNotFoundError(projectId);
+		if (projectId !== null && !this.#repository.getProject(projectId)) throw projectNotFoundError(projectId);
 		const id = this.#createId();
 		const appState = {
 			...emptyPersistedCodingSessionState<TAppState>(),
@@ -98,7 +81,7 @@ export class CodingBusinessService {
 		} satisfies PersistedCodingSessionState<TAppState>;
 		await this.#sessionStore.create(id, appState);
 		try {
-			return this.repository.createSession({ id, projectId, title: fallbackTitle(input.firstMessage) });
+			return this.#repository.createSession({ id, projectId, title: fallbackTitle(input.firstMessage) });
 		} catch (error) {
 			await this.#sessionStore.delete(id);
 			throw error;
@@ -106,13 +89,13 @@ export class CodingBusinessService {
 	}
 
 	getProject(id: string): Project {
-		const project = this.repository.getProject(id);
+		const project = this.#repository.getProject(id);
 		if (!project) throw projectNotFoundError(id);
 		return project;
 	}
 
 	listProjects(): Project[] {
-		return this.repository.listProjects();
+		return this.#repository.listProjects();
 	}
 
 	async isProjectAvailable(projectId: string): Promise<boolean> {
@@ -126,13 +109,13 @@ export class CodingBusinessService {
 	}
 
 	getSession(id: string): CodingSession {
-		const session = this.repository.getSession(id);
+		const session = this.#repository.getSession(id);
 		if (!session) throw sessionNotFoundError(id);
 		return session;
 	}
 
 	listSessions(input?: { readonly limit?: number; readonly cursor?: SessionListCursor }): SessionListPage {
-		return this.repository.listSessions(input);
+		return this.#repository.listSessions(input);
 	}
 
 	async deleteSession(id: string): Promise<void> {
@@ -142,22 +125,22 @@ export class CodingBusinessService {
 
 	renameSession(id: string, title: string): CodingSession {
 		this.getSession(id);
-		return this.repository.renameSession(id, normalizeManualTitle(title));
+		return this.#repository.renameSession(id, normalizeManualTitle(title));
 	}
 
 	markTitleGenerationAttempted(id: string): CodingSession {
 		this.getSession(id);
-		return this.repository.markTitleGenerationAttempted(id, this.#now());
+		return this.#repository.markTitleGenerationAttempted(id, this.#now());
 	}
 
 	setGeneratedTitle(id: string, title: string): CodingSession {
 		this.getSession(id);
-		return this.repository.setGeneratedTitle(id, normalizeGeneratedTitle(title));
+		return this.#repository.setGeneratedTitle(id, normalizeGeneratedTitle(title));
 	}
 
 	shouldGenerateSessionTitle(id: string): boolean {
 		this.getSession(id);
-		return this.repository.shouldGenerateSessionTitle(id);
+		return this.#repository.shouldGenerateSessionTitle(id);
 	}
 
 	async loadSessionSnapshot(
@@ -171,11 +154,11 @@ export class CodingBusinessService {
 
 	async moveSession(input: MoveSessionInput): Promise<CodingSession> {
 		const session = this.getSession(input.sessionId);
-		if (input.toProjectId !== null && !this.repository.getProject(input.toProjectId)) {
+		if (input.toProjectId !== null && !this.#repository.getProject(input.toProjectId)) {
 			throw projectNotFoundError(input.toProjectId);
 		}
 		if (session.projectId === input.toProjectId) return session;
-		return this.repository.moveSession(input.sessionId, input.toProjectId);
+		return this.#repository.moveSession(input.sessionId, input.toProjectId);
 	}
 
 	async resolveExecutionContext(sessionId: string): Promise<CodingExecutionContext> {
@@ -198,7 +181,7 @@ export class CodingBusinessService {
 	close(): void {
 		const store = this.#sessionStore as SessionStore<PersistedCodingSessionState<JsonObject>> & { close?: () => void };
 		store.close?.();
-		this.repository.close();
+		this.#repository.close();
 	}
 }
 
@@ -216,7 +199,7 @@ async function resolveProjectLocation(
 			canonicalPath,
 		};
 	} catch (error) {
-		if (getErrorCode(error) === "coding_business.project_path_invalid") throw error;
+		if (getErrorCode(error) === "desktop_session_catalog.project_path_invalid") throw error;
 		throw projectPathInvalidError(absolutePath, error);
 	}
 }

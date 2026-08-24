@@ -1,9 +1,9 @@
 import { OAuthFlowManager, OAuthGatewayClient } from "@jai/connector";
 import { TaggedError } from "better-result";
 import { shell } from "electron";
-import { findDesktopConnectorOAuthApplication } from "./config/connector";
-import type { DesktopConfigService } from "./config/index";
-import { DesktopOAuthCallbackServer, isDesktopOAuthCallbackUrl } from "./oauth-callback";
+import { findDesktopConnectorOAuthApplication } from "../config/connector";
+import type { DesktopConfigService } from "../config";
+import { DesktopOAuthCallbackServer, isDesktopOAuthCallbackUrl } from "./callback-server";
 
 const oauthGatewayEndpoint = "https://jai-connector.jayden0.com";
 const oauthFlowTtlMs = 2 * 60_000;

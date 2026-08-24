@@ -42,12 +42,19 @@
 - 依赖方向固定：`core` 不依赖 `runtime`、adapter、host 或 UI；`runtime` 可以依赖 `core` 和自己的 contract；adapter 依赖 contract 但不携带宿主业务规则；projection 只读取 domain facts；renderer 只能依赖 shared RPC DTO，不得 import Electron 或 Agent 内部实现。
 - Host（Desktop、CLI）只负责装配、I/O、宿主生命周期与输出适配；不得重实现 Agent、session、权限或 Coding Agent 的产品语义。
 
+### Desktop Electron 目录地图
+
+- `app/desktop/electron/main.ts`、`preload.ts`、`runtime.ts` 是 Electron 入口与 composition root；`logger.ts`、`theme.ts`、`windows.ts` 是进程级系统能力。不要把新的产品领域文件继续平铺在 `electron/` 根目录。
+- `agent/` 持有活跃 Coding Agent runtime、审批和 live projection；`session-catalog/` 持有 Desktop 的 Project/Session metadata 与 Journal 协调；`config/` 持有用户配置、Provider profile 与已发现模型清单。
+- `connector/` 持有 Connector 的长生命周期 runtime；`model-catalog/` 持有 Models.dev cache store 与刷新生命周期；`oauth/` 持有 Connector OAuth 管理与回调 server。
+- `rpc/` 持有 IPC router、验证、错误 DTO、renderer 事件广播与 RPC 生命周期内的 attachment registry；`workspace/` 持有操作系统 workspace 集成。
+
 ## 目录导航与拆分
 
 - 每个领域目录的 `index.ts` 应让读者先知道：模块拥有的事实、对外动作、错误语义和生命周期；实现细节留在同目录的私有文件。
 - `types.ts`、`errors.ts`、`sqlite.ts`、`projection.ts` 等文件必须放在其所属领域目录下；跨目录移动前先问“它拥有哪类事实或协议”。没有明确 owner 的代码不准落到根目录。
 - 测试目录镜像源码领域目录；测试通过 public interface 证明行为，除非测试的是 adapter 或协议边界本身。
-- 文件达到 600 行前必须评估是否同时混入多个领域或角色；达到 700 行必须按领域文件夹拆分。不要只把几行函数拆到同级文件来降低行数。
+- 文件达到 600 行前必须评估是否同时混入多个领域或角色；800 行左右不因行数机械拆分。只有职责已混杂、接口不清或拆分能显著改善定位时，才按领域文件夹拆分；不要只把几行函数拆到同级文件来降低行数。
 - 命名表达角色：`open*` 获取有生命周期资源；`create*` 构造新对象；`resolve*` 纯计算/选择；`project*` 内部事实到安全读取模型；`run*` 编排完整用例；`*Registry` 只索引运行中对象，不持久化领域事实。
 
 # 编码规则
@@ -67,4 +74,4 @@
 
 8. 先看成熟产品怎么解决同一个问题，用已验证的模式，别从零发明。
 
-9. 一个代码文件禁止超过 700 行，否则需要进行拆分，拆分时，尽量以文件夹进行领域级拆分，而非无意义的全部放在同一个文件夹
+9. 单个代码文件可以达到约 800 行；是否拆分以职责边界和可导航性为准，而非行数本身。需要拆分时，尽量以文件夹进行领域级拆分，而非无意义地把内容平铺在同一个文件夹。

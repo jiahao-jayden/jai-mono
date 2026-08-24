@@ -9,12 +9,6 @@ export type {
 	SessionTitleSource,
 } from "../../shared/session";
 
-export interface ProviderModelInventory {
-	readonly profileId: string;
-	readonly modelIds: readonly string[];
-	readonly fetchedAt: number;
-}
-
 export type CodingExecutionContext =
 	| {
 			readonly localFileAccess: true;

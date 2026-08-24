@@ -1,10 +1,11 @@
 export type {
-	CodingBusinessRepository,
+	DesktopSessionCatalogRepository,
 	CreateProjectRecord,
 	CreateSessionRecord,
 } from "./repository";
-export { CodingBusinessService, type CodingBusinessServiceOptions } from "./service";
-export { SqliteCodingBusinessRepository } from "./sqlite-repository";
+export { DesktopSessionCatalog, type DesktopSessionCatalogOptions } from "./catalog";
+export { SqliteDesktopSessionCatalogRepository } from "./sqlite-catalog-repository";
+export { defaultJaiHome, jaiDatabasePath } from "./layout";
 export type {
 	CodingExecutionContext,
 	CodingSession,
@@ -14,7 +15,6 @@ export type {
 	CreateSessionInput,
 	MoveSessionInput,
 	Project,
-	ProviderModelInventory,
 	SessionListCursor,
 	SessionListPage,
 	SessionTitleSource,

@@ -1,5 +1,5 @@
 import { BrowserWindow } from "electron";
-import { DESKTOP_EVENTS_CHANNEL, type DesktopAgentEventEnvelope } from "../shared/desktop-rpc";
+import { DESKTOP_EVENTS_CHANNEL, type DesktopAgentEventEnvelope } from "../../shared/desktop-rpc";
 
 /**
  * Sends one Desktop Event Envelope to every live renderer window.

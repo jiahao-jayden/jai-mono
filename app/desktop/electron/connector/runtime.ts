@@ -6,7 +6,7 @@ import {
 	OAuthGatewayClient,
 	parseConnectorOAuthScopes,
 } from "@jai/connector";
-import { createDesktopConnectorConfigStore } from "./config/connector-store";
+import { createDesktopConnectorConfigStore } from "../config/connector-store";
 
 const oauthGatewayEndpoint = "https://jai-connector.jayden0.com";
 const oauthRefreshLeadMs = 5 * 60_000;

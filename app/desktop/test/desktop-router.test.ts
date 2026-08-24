@@ -13,14 +13,14 @@ function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) 
 		};
 
 	const runtime = {
-		business: {
+		sessions: {
 			createSession: record("createSession", { id: "session-1" }),
 			getSession: record("getSession", { id: "session-1", projectId: null }),
 			listSessions: record("listSessions", { sessions: [], nextCursor: null }),
 			renameSession: record("renameSession", { id: "session-1" }),
 			deleteSession: record("deleteSession"),
 			listProjects: record("listProjects", []),
-			...(overrides.business as object),
+			...(overrides.sessions as object),
 		},
 		agentHost: {
 			runningSessionIds: record("runningSessionIds", []),

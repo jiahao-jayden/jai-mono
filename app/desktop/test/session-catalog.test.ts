@@ -6,17 +6,17 @@ import { DatabaseSync } from "node:sqlite";
 import { openSession, type JsonObject } from "@jai/agent";
 import { SqliteSessionStore } from "@jai/agent/node";
 import { emptyPersistedCodingSessionState } from "@jai/coding-agent";
-import { CodingBusinessService } from "../electron/data/service";
+import { DesktopSessionCatalog } from "../electron/session-catalog";
 
 const roots: string[] = [];
-const services: CodingBusinessService[] = [];
+const services: DesktopSessionCatalog[] = [];
 
 afterEach(async () => {
 	for (const service of services.splice(0)) service.close();
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe("CodingBusinessService", () => {
+describe("DesktopSessionCatalog", () => {
 	test("一个 SQLite 文件同时保存 journal 与 Desktop metadata，但两者独立演化", async () => {
 		const fixture = await createFixture(["project-1", "session-1"]);
 		const folder = join(fixture.root, "project");
@@ -53,13 +53,7 @@ describe("CodingBusinessService", () => {
 			.get() as { readonly journals: number; readonly entries: number; readonly metadata: number };
 		database.close();
 
-		expect(tables).toEqual([
-			"desktop_session_metadata",
-			"projects",
-			"provider_model_inventory",
-			"session_journal_entries",
-			"session_journals",
-		]);
+		expect(tables).toEqual(["desktop_session_metadata", "projects", "session_journal_entries", "session_journals"]);
 		expect(counts).toEqual({ journals: 1, entries: 0, metadata: 1 });
 	});
 
@@ -80,23 +74,6 @@ describe("CodingBusinessService", () => {
 				titleSource: "fallback",
 			}),
 		]);
-	});
-
-	test("endpoint inventory atomically replaces and preserves an explicit empty result", async () => {
-		const fixture = await createFixture([]);
-		fixture.service.replaceProviderModelInventory("openai", ["gpt-z", "gpt-a", "gpt-z"]);
-		expect(fixture.service.getProviderModelInventory("openai")).toEqual({
-			profileId: "openai",
-			modelIds: ["gpt-a", "gpt-z"],
-			fetchedAt: 1000,
-		});
-
-		fixture.service.replaceProviderModelInventory("openai", []);
-		expect(fixture.service.getProviderModelInventory("openai")).toEqual({
-			profileId: "openai",
-			modelIds: [],
-			fetchedAt: 1001,
-		});
 	});
 
 	test("创建 Project 与 Session，并解析 execution context", async () => {
@@ -290,7 +267,7 @@ async function createFixture(ids: string[]) {
 	roots.push(root);
 	const dataRoot = join(root, "data");
 	let now = 1000;
-	const service = await CodingBusinessService.open({
+	const service = await DesktopSessionCatalog.open({
 		dataRoot,
 		createId: () => {
 			const id = ids.shift();
