@@ -31,7 +31,6 @@ export interface UseChatOptions {
 	readonly mode: DesktopAgentMode;
 	readonly queue: readonly QueuedMessage[];
 	onSessionCreated(sessionId: string): void;
-	onDraftAccepted(): void;
 	onMessageQueued(text: string, mode: DesktopAgentMode): void;
 	onQueuedMessageAccepted(messageId: string): void;
 }
@@ -198,7 +197,6 @@ export function useChat(options: UseChatOptions): Chat {
 						mode,
 						...(attachments.length > 0 ? { attachments } : {}),
 					});
-					latest.onDraftAccepted();
 					return true;
 				}
 
@@ -215,7 +213,6 @@ export function useChat(options: UseChatOptions): Chat {
 					mode,
 					...(attachments.length > 0 ? { attachments } : {}),
 				});
-				latest.onDraftAccepted();
 				void invalidateRecentSessions();
 				return true;
 			} catch (error) {

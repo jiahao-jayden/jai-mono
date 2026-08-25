@@ -178,6 +178,7 @@ export function ChatComposer({
 		}
 		const accepted = await onSend({ text: value, mode: selectedAgentMode, attachments });
 		if (accepted) {
+			onValueChange("");
 			const ids = attachments.map((attachment) => attachment.id);
 			if (ids.length > 0) void desktop.attachment.release(ids);
 			setFiles([]);

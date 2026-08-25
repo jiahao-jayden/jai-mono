@@ -27,7 +27,7 @@ describe("desktop chat store", () => {
 		expect(selectDraft(useDesktopChatStore.getState())).toBe("");
 	});
 
-	test("入队和接受队首均通过 message id 精确更新", () => {
+	test("入队和接受队首均通过 message id 精确更新，且不隐式修改草稿", () => {
 		const store = useDesktopChatStore.getState();
 		store.setDraft("first");
 		store.enqueueMessage("first", "manual");
@@ -38,7 +38,7 @@ describe("desktop chat store", () => {
 
 		store.acceptQueuedMessage(first.id);
 		expect(useDesktopChatStore.getState().queue).toEqual([second]);
-		expect(selectDraft(useDesktopChatStore.getState())).toBe("");
+		expect(selectDraft(useDesktopChatStore.getState())).toBe("second");
 	});
 
 	test("编辑队列项将内容恢复到当前 draft 并移除该项", () => {

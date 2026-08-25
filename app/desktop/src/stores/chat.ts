@@ -18,7 +18,6 @@ interface DesktopChatStore {
 	newChat(): void;
 	setDraft(value: string): void;
 	sessionCreated(sessionId: string): void;
-	acceptDraft(): void;
 	enqueueMessage(text: string, mode: DesktopAgentMode): void;
 	acceptQueuedMessage(messageId: string): void;
 	editQueuedMessage(messageId: string): void;
@@ -68,15 +67,8 @@ export const useDesktopChatStore = create<DesktopChatStore>((set, get) => ({
 		});
 	},
 
-	acceptDraft() {
-		const key = draftKey(get().activeSessionId);
-		set((state) => ({ drafts: { ...state.drafts, [key]: "" } }));
-	},
-
 	enqueueMessage(text, mode) {
-		const key = draftKey(get().activeSessionId);
 		set((state) => ({
-			drafts: { ...state.drafts, [key]: "" },
 			queue: [...state.queue, { id: crypto.randomUUID(), text, mode }],
 		}));
 	},
