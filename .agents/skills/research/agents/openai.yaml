@@ -1,3 +1,4 @@
 interface:
   display_name: "Research"
-  short_description: "Research from high-trust sources"
+  short_description: "追一手来源,产出可复核的调研笔记"
+  default_prompt: "Use $research to investigate this question against primary sources and write a citable note."
