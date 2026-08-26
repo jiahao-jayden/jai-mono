@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createWriteTool } from "../../../src";
@@ -36,6 +36,9 @@ describe("write tool", () => {
 		expect(await readFile(join(cwd, "src", "file.txt"), "utf8")).toBe("second");
 		expect(created.details?.created).toBe(true);
 		expect(overwritten.details?.created).toBe(false);
+		const canonicalPath = await realpath(join(cwd, "src", "file.txt"));
+		expect(created.fileChanges).toEqual([{ operation: "add", path: canonicalPath }]);
+		expect(overwritten.fileChanges).toEqual([{ operation: "modify", path: canonicalPath }]);
 	});
 
 	test("does not modify a file when already aborted", async () => {

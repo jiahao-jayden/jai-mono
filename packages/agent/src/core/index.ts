@@ -12,6 +12,14 @@ export {
 	type JsonValue,
 	type MutableAgentState,
 } from "./agent-state";
+export {
+	createManualEffectGate,
+	EffectGateInterrupted,
+	isEffectGateInterrupted,
+	type EffectGate,
+	type EffectGateAction,
+	type ManualEffectGate,
+} from "./effect-gate";
 export type { Session, ToolInfo } from "./session";
 export type {
 	AgentContext,
@@ -19,6 +27,8 @@ export type {
 	AgentTool,
 	AgentToolResult,
 	CoreAgentEvent,
+	EffectBoundary,
+	EffectEntryReservation,
 	ObserverErrorInfo,
 	OnModelError,
 	PrepareContext,

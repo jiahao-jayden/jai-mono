@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createEditTool } from "../../../src";
@@ -35,6 +35,7 @@ describe("edit tool", () => {
 
 		expect(await readFile(join(cwd, "file.txt"), "utf8")).toBe("first\nmiddle\nlast");
 		expect(result.details).toMatchObject({ replacements: 2, firstChangedLine: 1 });
+		expect(result.fileChanges).toEqual([{ operation: "modify", path: await realpath(join(cwd, "file.txt")) }]);
 	});
 
 	test("preserves UTF-8 BOM and CRLF line endings", async () => {

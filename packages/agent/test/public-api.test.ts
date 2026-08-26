@@ -5,7 +5,6 @@ import * as root from "../src";
 import type { CoreAgentEvent, CoreAgentOptions, CoreAgentRun } from "../src/core";
 import * as core from "../src/core";
 import * as nodeEnvironment from "../src/node/environment";
-import * as nodeSqlite from "../src/node/sqlite";
 import { assistant, model, providerFor } from "./support/fixtures";
 
 describe("public API", () => {
@@ -22,12 +21,11 @@ describe("public API", () => {
 	});
 
 	test("包根同时给出 session、compaction 与 prompt 能力", () => {
-		for (const name of ["openSession", "InMemorySessionStore", "compact", "promptTemplate"]) {
+		for (const name of ["openSession", "InMemorySessionStore", "InMemoryOperationJournal", "recoverOperation", "compact", "promptTemplate"]) {
 			expect(root).toHaveProperty(name);
 		}
 		expect(root).not.toHaveProperty("SqliteSessionStore");
 		expect(nodeEnvironment).toHaveProperty("NodeExecutionEnvironment");
-		expect(nodeSqlite).toHaveProperty("SqliteSessionStore");
 	});
 
 	test("exports 包含默认入口、/core 和明确的 Node adapter 子路径", () => {
@@ -35,7 +33,6 @@ describe("public API", () => {
 			".": "./src/index.ts",
 			"./core": "./src/core/index.ts",
 			"./node/environment": "./src/node/environment.ts",
-			"./node/sqlite": "./src/node/sqlite.ts",
 		});
 	});
 

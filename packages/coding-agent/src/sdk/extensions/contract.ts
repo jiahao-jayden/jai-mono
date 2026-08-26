@@ -4,8 +4,8 @@ import type { JsonObject, JsonValue } from "../../core/json";
 import type { CodingExtensionToolCall, CodingToolPermission } from "../../permissions/tool-permission";
 import type { CodingPluginSkillCard } from "../../skills/catalog";
 import type { CodingExtensionError, CodingExtensionOperationFailed } from "../extension-errors";
-import type { CodingPermissionMode } from "../types";
 import type { CodingToolActivityKind } from "../tool-presentation";
+import type { CodingPermissionMode } from "../types";
 
 export interface CodingExtensionConfiguration<TConfig extends JsonObject = JsonObject> {
 	readonly scope: "user" | "project";

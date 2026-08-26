@@ -2,6 +2,8 @@
 // 显式列举是为了避免以后新增 core 类型时意外扩大默认 API。
 export {
 	type AgentContext,
+	type EffectBoundary,
+	type EffectEntryReservation,
 	type AgentInput,
 	type AgentMessage,
 	type AgentState,

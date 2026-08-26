@@ -9,6 +9,7 @@ import {
 	type AgentMessage,
 	type AgentRun,
 	type AgentTool,
+	type EffectBoundary,
 	type JsonObject,
 	type ObserverErrorInfo,
 	openSession,
@@ -74,6 +75,7 @@ export interface CodingAgentRuntimeOptions {
 	readonly maxIterations?: number;
 	readonly toolExecution?: ToolExecutionMode;
 	readonly compaction?: AgentCompactionOptions;
+	readonly effectBoundary?: EffectBoundary;
 	readonly hooks?: AgentHookMap;
 	readonly onObserverError?: (info: ObserverErrorInfo<AgentEvent>) => void;
 }
@@ -199,16 +201,20 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		return this.#agent.stream(this.#skills?.prepareInput(input).input ?? input);
 	}
 
+	advance(input: readonly { readonly message: AgentMessage; readonly entryId?: string }[] = []): Promise<AgentMessage[]> {
+		return this.#agent.streamFromDurableContextWithReservedEntries(input).result();
+	}
+
 	subscribe(listener: AgentEventListener): () => void {
 		return this.#agent.subscribe(listener);
 	}
 
-	steer(message: AgentMessage): void {
-		this.#agent.steer(message);
+	steer(message: AgentMessage, entryId?: string): void {
+		this.#agent.steer(message, entryId);
 	}
 
-	followUp(message: AgentMessage): void {
-		this.#agent.followUp(message);
+	followUp(message: AgentMessage, entryId?: string): void {
+		this.#agent.followUp(message, entryId);
 	}
 
 	abort(): void {
@@ -438,6 +444,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		maxIterations: resolvedAgentOptions.maxIterations,
 		toolExecution: resolvedAgentOptions.toolExecution,
 		compaction: resolvedAgentOptions.compaction,
+		effectBoundary: resolvedAgentOptions.effectBoundary,
 		hooks: {
 			...hooks,
 			beforeModelCall,

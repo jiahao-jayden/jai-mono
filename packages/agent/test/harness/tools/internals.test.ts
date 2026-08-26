@@ -15,7 +15,7 @@ describe("harness tool internals", () => {
 		expect(long.details?.truncated).toBe(true);
 	});
 
-	test("mutation queues serialize by filesystem identity and canonical path", async () => {
+	test("mutation queues serialize by filesystem identity and resolved path", async () => {
 		const firstFileSystem = {} as FileSystem;
 		const secondFileSystem = {} as FileSystem;
 		const trace: string[] = [];
@@ -43,8 +43,8 @@ describe("harness tool internals", () => {
 	test("tools run against injected capabilities without Node I/O", async () => {
 		let written: string | Uint8Array | undefined;
 		const fileSystem = {
-			resolvePath: async () => ({ path: "memory:/file.txt", canonicalPath: "memory:/file.txt" }),
-			writeFileAtomic: async (_path: string, content: string | Uint8Array) => {
+			resolvePath: async () => ({ path: "memory:/file.txt" }),
+			writeFile: async (_path: string, content: string | Uint8Array) => {
 				written = content;
 				return { created: true };
 			},

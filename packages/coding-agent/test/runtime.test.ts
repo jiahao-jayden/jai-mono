@@ -11,7 +11,6 @@ import {
 	zeroUsage,
 } from "@jai/ai";
 import { InMemorySessionStore } from "@jai/agent";
-import { SqliteSessionStore } from "@jai/agent/node/sqlite";
 import { Type } from "@sinclair/typebox";
 import { defineCodingConfig } from "../src/config";
 import {
@@ -23,7 +22,6 @@ import {
 import { createCodingAgent } from "../src/runtime";
 
 const roots: string[] = [];
-const sessionStores: SqliteSessionStore[] = [];
 
 const definition = defineCodingConfig({
 	schemaVersion: 1,
@@ -53,12 +51,11 @@ const model: Model = {
 };
 
 afterEach(async () => {
-	for (const store of sessionStores.splice(0)) store.close();
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe("createCodingAgent", () => {
-	test("组装配置、provider、内置 tools 与 SqliteSessionStore", async () => {
+	test("组装配置、provider、内置 tools 与 SessionStore", async () => {
 		const fixture = await createFixture();
 		const contexts: Context[] = [];
 		let resolvedMode: unknown;
@@ -513,8 +510,7 @@ async function createFixture() {
 	roots.push(root);
 	const workspaceRoot = join(root, "workspace");
 	await mkdir(workspaceRoot);
-	const sessionStore = await SqliteSessionStore.open(join(root, "data.sqlite"));
-	sessionStores.push(sessionStore);
+	const sessionStore = new InMemorySessionStore();
 	return {
 		executionContext: {
 			localFileAccess: true as const,

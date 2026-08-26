@@ -34,6 +34,19 @@ export interface ToolCall {
 	arguments: Record<string, unknown>;
 }
 
+/**
+ * A narrow, durable description of a filesystem effect completed by a tool.
+ *
+ * This is deliberately separate from a tool's arbitrary `details`: it can be
+ * safely persisted with the tool-result message and projected by Hosts without
+ * leaking implementation-specific result data into a client protocol. Paths
+ * are canonical absolute paths when emitted by workspace tools.
+ */
+export interface ToolFileChange {
+	readonly operation: "add" | "modify" | "delete";
+	readonly path: string;
+}
+
 /* -------------------------------------------------------------------------- */
 /*                                 消息 Message                                 */
 /* -------------------------------------------------------------------------- */
@@ -70,6 +83,8 @@ export interface ToolResultMessage {
 	toolCallId: string;
 	toolName: string;
 	content: (TextContent | ImageContent)[];
+	/** Durable, LLM-invisible filesystem facts produced by this completed tool call. */
+	fileChanges?: readonly ToolFileChange[];
 	isError: boolean;
 	timestamp: number;
 }

@@ -1,5 +1,6 @@
 import type { JsonObject } from "../../core/agent-state";
 import type { AgentMessage } from "../../core/types";
+import type { EffectGate, EffectGateAction } from "../../core/effect-gate";
 import { buildCompactedMessages, latestCompaction } from "../compaction/projection";
 import { branchOf, contextEntries } from "./tree";
 import type { BranchEntry, CompactionEntry, MessageEntry, SessionEntry, SessionHandle, TreeEntry } from "./types";
@@ -22,6 +23,7 @@ export class SessionLedger<TAppState extends JsonObject> {
 	constructor(
 		private readonly handle: SessionHandle<TAppState> | undefined,
 		initialMessages: readonly AgentMessage[] = [],
+		private readonly effectGate?: EffectGate,
 	) {
 		this.tree = handle ? [...handle.snapshot.entries] : localEntries(initialMessages);
 		this.branch = branchOf(this.tree, handle ? handle.snapshot.leafId : (this.tree.at(-1)?.id ?? null));
@@ -72,10 +74,11 @@ export class SessionLedger<TAppState extends JsonObject> {
 		return contextEntries(this.branch).findIndex((entry) => entry.id === id);
 	}
 
-	async appendMessage(message: AgentMessage): Promise<MessageEntry> {
+	async appendMessage(message: AgentMessage, entryId?: string): Promise<MessageEntry> {
 		let entry!: MessageEntry;
 		await this.enqueueAppend(() => {
-			entry = { type: "message", ...this.nextNode(), message };
+			const node = this.nextNode();
+			entry = { type: "message", ...node, ...(entryId ? { id: entryId } : {}), message };
 			return entry;
 		});
 		return entry;
@@ -151,6 +154,7 @@ export class SessionLedger<TAppState extends JsonObject> {
 	private enqueueAppend(createEntry: () => TreeEntry<TAppState>): Promise<void> {
 		const next = this.appendTail.then(async () => {
 			const entry = createEntry();
+			if (this.handle) await this.effectGate?.beforeEffect(entryEffect(entry));
 			await this.handle?.append(entry);
 			this.tree.push(entry);
 			this.branch = branchOf(this.tree, entry.id);
@@ -167,6 +171,15 @@ export class SessionLedger<TAppState extends JsonObject> {
 			timestamp: now(),
 		};
 	}
+}
+
+function entryEffect(entry: TreeEntry<JsonObject>): EffectGateAction {
+	return {
+		type: "session_entry",
+		entryId: entry.id,
+		entryType: entry.type,
+		...(entry.type === "message" ? { messageRole: entry.message.role } : {}),
+	};
 }
 
 function localEntries<TAppState extends JsonObject>(messages: readonly AgentMessage[]): SessionEntry<TAppState>[] {

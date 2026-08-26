@@ -254,6 +254,7 @@ describe("agentLoop", () => {
 				calls.push(args.path);
 				return {
 					content: [{ type: "text", text: "contents" }],
+					fileChanges: [{ operation: "modify", path: "/workspace/a.txt" }],
 				};
 			},
 		};
@@ -284,6 +285,9 @@ describe("agentLoop", () => {
 		expect(events.find((event) => event.type === "tool_execution_start")).toMatchObject({
 			toolName: "read",
 			args: { path: "a.txt" },
+		});
+		expect(messages.find((message) => message.role === "toolResult")).toMatchObject({
+			fileChanges: [{ operation: "modify", path: "/workspace/a.txt" }],
 		});
 		expect(events.map((event) => event.type)).toContain(
 			"tool_execution_end",
@@ -398,7 +402,7 @@ describe("agentLoop", () => {
 		expect(events.slice(0, discardIndex).some((event) => event.type === "message_update")).toBe(true);
 	});
 
-	test("projects an interrupted tool call into a provider-safe context", async () => {
+	test("does not fabricate a tool result for an unresolved tool call", async () => {
 		const interrupted = assistant(
 			[{ type: "toolCall", id: "call-interrupted", name: "read", arguments: { path: "a.txt" } }],
 			"toolUse",
@@ -416,12 +420,6 @@ describe("agentLoop", () => {
 
 		expect(contexts[0]?.messages).toEqual([
 			interrupted,
-			expect.objectContaining({
-				role: "toolResult",
-				toolCallId: "call-interrupted",
-				toolName: "read",
-				isError: true,
-			}),
 			expect.objectContaining({ role: "user", content: "sent after interruption" }),
 			expect.objectContaining({ role: "user", content: "continue" }),
 		]);

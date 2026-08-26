@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { type AssistantMessage, zeroUsage } from "@jai/ai";
-import { SqliteSessionStore } from "@jai/agent/node/sqlite";
+import { InMemorySessionStore } from "@jai/agent";
 import { Type } from "@sinclair/typebox";
 import { Result } from "better-result";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -15,17 +15,19 @@ import {
 
 const roots: string[] = [];
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
-const sessionStores: SqliteSessionStore[] = [];
+const sessionStores = new Map<string, InMemorySessionStore>();
 
 afterEach(async () => {
-	for (const store of sessionStores.splice(0)) store.close();
+	sessionStores.clear();
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 	for (const server of servers.splice(0)) server.stop(true);
 });
 
-async function openStore(root: string): Promise<SqliteSessionStore> {
-	const store = await SqliteSessionStore.open(join(root, "data.sqlite"));
-	sessionStores.push(store);
+async function openStore(root: string): Promise<InMemorySessionStore> {
+	const existing = sessionStores.get(root);
+	if (existing) return existing;
+	const store = new InMemorySessionStore();
+	sessionStores.set(root, store);
 	return store;
 }
 
@@ -70,6 +72,33 @@ describe("public Coding Agent SDK", () => {
 		});
 		expect(resumed.isOk()).toBe(true);
 		if (resumed.isOk()) await resumed.value.close();
+	});
+
+	test("writes a Host-reserved queued input at its exact Session Journal identity", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const store = await openStore(root);
+		const created = await createCodingAgent({
+			...createInput(root, [assistant("steering consumed")]),
+			session: { kind: "new", id: "reserved-input-session", store },
+			permissionMode: "bypassPermissions",
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+
+		const advanced = await created.value.advance([
+			{ text: "change direction", entryId: "host-steer-entry-1" },
+		]);
+		expect(advanced.isOk()).toBe(true);
+		const stored = await store.load("reserved-input-session");
+		expect(stored?.snapshot.entries.at(0)).toMatchObject({
+			type: "message",
+			id: "host-steer-entry-1",
+			parentId: null,
+			message: { role: "user", content: "change direction" },
+		});
+		expect(stored?.snapshot.entries.filter((entry) => entry.id === "host-steer-entry-1")).toHaveLength(1);
+		await created.value.close();
 	});
 
 	test("resume never silently creates a missing session", async () => {

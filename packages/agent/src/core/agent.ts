@@ -123,6 +123,8 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 			maxIterations: options.maxIterations,
 			toolExecution: options.toolExecution,
 			toolMiddlewares: options.toolMiddlewares ? [...options.toolMiddlewares] : undefined,
+			effectBoundary: options.effectBoundary,
+			effectGate: options.effectGate,
 			prepareContext: options.prepareContext,
 			onModelError: options.onModelError,
 		};
@@ -180,6 +182,11 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 		return this.startRun(input);
 	}
 
+	/** Continues from the current durable context, even when no new input is appended. */
+	resume(input: AgentInput = []): Promise<AgentMessage[]> {
+		return this.startRun(input, true);
+	}
+
 	stream(input: AgentInput): CoreAgentRun {
 		const output = new EventStream<CoreAgentEvent, AgentMessage[]>(
 			() => false,
@@ -207,7 +214,7 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 		return output;
 	}
 
-	private startRun(input: AgentInput): Promise<AgentMessage[]> {
+	private startRun(input: AgentInput, runFromContext = false): Promise<AgentMessage[]> {
 		if (this.activeRun) {
 			throw agentError("already_running", { message: "Agent is already running. Use steer() or followUp()." });
 		}
@@ -220,24 +227,27 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 		this.internalState.pendingToolCallIds = new Set();
 		this.internalState.error = undefined;
 
-		return this.processRun(prompts, activeRun);
+		return this.processRun(prompts, activeRun, runFromContext);
 	}
 
-	private async processRun(prompts: AgentMessage[], activeRun: ActiveRun): Promise<AgentMessage[]> {
+	private async processRun(
+		prompts: AgentMessage[],
+		activeRun: ActiveRun,
+		runFromContext: boolean,
+	): Promise<AgentMessage[]> {
 		try {
 			const stream = agentLoop(
 				prompts,
 				this.createContextSnapshot(),
 				this.createLoopConfig(),
 				activeRun.controller.signal,
+				async (event) => {
+					this.reduce(event);
+					await this.commitEvent?.(event);
+					await this.publish(event);
+				},
+				runFromContext,
 			);
-
-			for await (const event of stream) {
-				this.reduce(event);
-				await this.commitEvent?.(event);
-				await this.publish(event);
-			}
-
 			return await stream.result();
 		} finally {
 			this.finishRun(activeRun);

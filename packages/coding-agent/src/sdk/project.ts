@@ -314,6 +314,9 @@ export function projectMessage(message: AgentMessage): CodingAgentMessage {
 							}
 						: { type: "image", image: content.image, mimeType: content.mimeType },
 				),
+				...(message.fileChanges
+					? { fileChanges: message.fileChanges.map((change) => ({ operation: change.operation, path: change.path })) }
+					: {}),
 				isError: message.isError,
 				timestamp: message.timestamp,
 			};

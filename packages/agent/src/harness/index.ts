@@ -27,6 +27,7 @@ export type {
 	ShouldCompactHook,
 	ShouldCompactHookInput,
 } from "./hooks";
+export * from "./operations";
 export { promptTemplate } from "./prompt";
 export * from "./session";
 export * from "./tools";

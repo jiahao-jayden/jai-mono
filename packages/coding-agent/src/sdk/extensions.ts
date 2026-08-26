@@ -2,7 +2,6 @@ import type { AgentMessage, AgentTool, ToolMiddleware } from "@jai/agent";
 import { validateToolArguments } from "@jai/ai";
 import { panic, Result, type Result as ResultType } from "better-result";
 import type { JsonObject } from "../core/json";
-import type { CodingToolPresentation } from "./tool-presentation";
 import {
 	CodingExtensionDeactivationFailed,
 	type CodingExtensionError,
@@ -29,14 +28,15 @@ import type {
 	CodingExtensionSessionStateAdapter,
 	CodingExtensionSkill,
 	CodingExtensionTool,
-	CodingExtensionToolPresentation,
 	CodingExtensionToolCall,
+	CodingExtensionToolPresentation,
 	CodingExtensionToolResult,
 	CodingToolCatalogDiscovery,
 	CodingToolPermission,
 	CodingTurnEndInput,
 } from "./extensions/contract";
 import { extensionContext } from "./extensions/host-adapters";
+import type { CodingToolPresentation } from "./tool-presentation";
 
 export type {
 	CodingAfterToolCallInput,
@@ -64,10 +64,10 @@ export type {
 	CodingExtensionSessionStateStore,
 	CodingExtensionSkill,
 	CodingExtensionTool,
-	CodingExtensionToolPresentation,
 	CodingExtensionToolCall,
 	CodingExtensionToolCatalog,
 	CodingExtensionToolPermissionResolver,
+	CodingExtensionToolPresentation,
 	CodingExtensionToolResult,
 	CodingToolCatalogDiscovery,
 	CodingToolPermission,

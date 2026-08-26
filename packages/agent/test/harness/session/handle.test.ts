@@ -53,7 +53,7 @@ describe("openSession", () => {
 		await expect(session.append(messageEntry("e2", "mine"))).rejects.toBeInstanceOf(SessionConflictError);
 	});
 
-	test("persists error results for tool calls interrupted before reopening", async () => {
+	test("leaves unresolved tool calls untouched for the Runtime Host recovery protocol", async () => {
 		const store = new InMemorySessionStore<AppState>();
 		const first = await openSession(store, "s1", defaultAppState);
 		const { entries } = chain<AppState>(
@@ -73,17 +73,6 @@ describe("openSession", () => {
 		for (const entry of entries) await first.append(entry);
 
 		const reopened = await openSession(store, "s1", defaultAppState);
-		const recovered = reopened.snapshot.entries.at(-1);
-
-		expect(recovered).toMatchObject({
-			type: "message",
-			id: "s1:interrupted:call-1",
-			message: {
-				role: "toolResult",
-				toolCallId: "call-1",
-				toolName: "Read",
-				isError: true,
-			},
-		});
+		expect(reopened.snapshot.entries.map((entry) => entry.id)).toEqual(["assistant-1", "user-2"]);
 	});
 });

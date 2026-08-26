@@ -12,6 +12,7 @@ import {
 } from "@jai/ai";
 import { getErrorMessage } from "@jai/common";
 import { TaggedError } from "better-result";
+import { isEffectGateInterrupted, type EffectGateAction } from "./effect-gate";
 import { projectToolCallProtocol } from "./tool-protocol";
 import type {
 	AgentContext,
@@ -20,6 +21,7 @@ import type {
 	AgentTool,
 	AgentToolResult,
 	CoreAgentEvent,
+	EffectEntryReservation,
 	ToolCallContext,
 } from "./types";
 
@@ -27,7 +29,7 @@ class ToolAborted extends TaggedError("tool.aborted")<{ readonly message: string
 class ToolNotFound extends TaggedError("tool.not_found")<{ readonly message: string }> {}
 class ToolInvalidArguments extends TaggedError("tool.invalid_arguments")<{ readonly message: string }> {}
 
-type Emit = (event: CoreAgentEvent) => void;
+type Emit = (event: CoreAgentEvent) => Promise<void>;
 
 export type AgentEventStream = EventStream<CoreAgentEvent, AgentMessage[]>;
 
@@ -47,6 +49,7 @@ interface ExecutedToolCall {
 	toolCall: ToolCall;
 	result: AgentToolResult;
 	isError: boolean;
+	resultEntryId?: string;
 }
 
 interface ExecutedToolBatch {
@@ -71,6 +74,9 @@ export function agentLoop(
 	context: AgentContext,
 	config: AgentLoopConfig,
 	signal?: AbortSignal,
+	onEvent?: (event: CoreAgentEvent) => void | Promise<void>,
+	/** Runs one provider turn from an already durable context when prompts are empty. */
+	runFromContext = false,
 ): AgentEventStream {
 	const stream = new EventStream<CoreAgentEvent, AgentMessage[]>(
 		(event) => event.type === "agent_end",
@@ -85,10 +91,17 @@ export function agentLoop(
 		newMessages: [],
 		config,
 		signal,
-		emit: (event) => stream.push(event),
+		emit: async (event) => {
+			await onEvent?.(event);
+			stream.push(event);
+		},
 	};
 
-	void driveAgentLoop(prompts, runtime).catch((error) => {
+	void driveAgentLoop(prompts, runtime, runFromContext).catch((error) => {
+		if (onEvent) {
+			stream.fail(error);
+			return;
+		}
 		const message = createUnexpectedErrorMessage(config, error);
 		stream.push({ type: "message_start", message });
 		stream.push({ type: "message_end", message });
@@ -105,44 +118,81 @@ export function agentLoop(
  * 驱动一次 run：反复执行 turn，直到没有更多工具调用且没有 follow-up。
  * 本函数只做 run 级编排（steering / follow-up / 收尾），单个 turn 的细节交给 runTurn。
  */
-async function driveAgentLoop(prompts: AgentMessage[], run: AgentLoopRuntime): Promise<void> {
+async function driveAgentLoop(
+	prompts: AgentMessage[],
+	run: AgentLoopRuntime,
+	runFromContext: boolean,
+): Promise<void> {
 	const { config, newMessages, signal, emit } = run;
-	emit({ type: "agent_start" });
+	await emit({ type: "agent_start" });
 
 	let pendingMessages = [...prompts, ...((await config.getSteeringMessages?.()) ?? [])];
 	let turnCount = 0;
+	let resumableToolTurn = pendingMessages.length === 0 ? unfinishedToolTurn(run.context.messages) : undefined;
+	let shouldRunCurrentContext = runFromContext && pendingMessages.length === 0 && !resumableToolTurn;
 	while (true) {
 		let hasMoreToolCalls = true;
 
+		// A crash may happen after the assistant tool-call entry commits but before
+		// T1. The durable assistant message is then enough to prove the call was
+		// not dispatched, so resume executes that exact snapshot before asking the
+		// model anything new. T1-without-T2 never reaches here: Host recovery parks it.
+		if (resumableToolTurn) {
+			let resumed: TurnResult;
+			try {
+				resumed = await resumeToolTurn(run, resumableToolTurn);
+			} catch (error) {
+				if (isEffectGateInterrupted(error)) throw error;
+				const message = createUnexpectedErrorMessage(config, error);
+				run.context.messages.push(message);
+				newMessages.push(message);
+				await emit({ type: "message_start", message });
+				await emit({ type: "message_end", message });
+				await emit({ type: "turn_end", message, toolResults: [] });
+				await emit({ type: "agent_end", messages: newMessages });
+				return;
+			}
+			resumableToolTurn = undefined;
+			shouldRunCurrentContext = false;
+			if (resumed.stopped || signal?.aborted) {
+				await emit({ type: "agent_end", messages: newMessages });
+				return;
+			}
+			hasMoreToolCalls = resumed.hasMoreToolCalls;
+			pendingMessages = (await config.getSteeringMessages?.()) ?? [];
+		}
+
 		// 一个 task：连续的 turn，直到模型不再调用工具且没有 steering 消息。
-		while (hasMoreToolCalls || pendingMessages.length > 0) {
+		while (hasMoreToolCalls || pendingMessages.length > 0 || shouldRunCurrentContext) {
 			if (config.maxIterations !== undefined && turnCount >= config.maxIterations) {
 				const message = createIterationLimitMessage(config, turnCount);
 				run.context.messages.push(message);
 				newMessages.push(message);
-				emit({ type: "message_start", message });
-				emit({ type: "message_end", message });
-				emit({ type: "agent_end", messages: newMessages });
+				await emit({ type: "message_start", message });
+				await emit({ type: "message_end", message });
+				await emit({ type: "agent_end", messages: newMessages });
 				return;
 			}
 			let turn: TurnResult;
 			try {
 				turn = await runTurn(run, pendingMessages);
 			} catch (error) {
+				if (isEffectGateInterrupted(error)) throw error;
 				const message = createUnexpectedErrorMessage(config, error);
 				run.context.messages.push(message);
 				newMessages.push(message);
-				emit({ type: "message_start", message });
-				emit({ type: "message_end", message });
-				emit({ type: "turn_end", message, toolResults: [] });
-				emit({ type: "agent_end", messages: newMessages });
+				await emit({ type: "message_start", message });
+				await emit({ type: "message_end", message });
+				await emit({ type: "turn_end", message, toolResults: [] });
+				await emit({ type: "agent_end", messages: newMessages });
 				return;
 			}
 			turnCount += 1;
 			pendingMessages = [];
+			shouldRunCurrentContext = false;
 
 			if (turn.stopped || signal?.aborted) {
-				emit({ type: "agent_end", messages: newMessages });
+				await emit({ type: "agent_end", messages: newMessages });
 				return;
 			}
 
@@ -161,7 +211,7 @@ async function driveAgentLoop(prompts: AgentMessage[], run: AgentLoopRuntime): P
 
 		break;
 	}
-	emit({ type: "agent_end", messages: newMessages });
+	await emit({ type: "agent_end", messages: newMessages });
 }
 
 /**
@@ -170,14 +220,14 @@ async function driveAgentLoop(prompts: AgentMessage[], run: AgentLoopRuntime): P
  */
 async function runTurn(run: AgentLoopRuntime, pendingMessages: AgentMessage[]): Promise<TurnResult> {
 	const { context, newMessages, emit } = run;
-	emit({ type: "turn_start" });
+	await emit({ type: "turn_start" });
 
 	// 注入 pending（steering / follow-up / 首个 task 的 prompt）。
 	for (const pending of pendingMessages) {
-		emit({ type: "message_start", message: pending });
+		await emit({ type: "message_start", message: pending });
 		context.messages.push(pending);
 		newMessages.push(pending);
-		emit({ type: "message_end", message: pending });
+		await emit({ type: "message_end", message: pending });
 	}
 
 	const message = await streamAssistantResponse(run);
@@ -186,15 +236,15 @@ async function runTurn(run: AgentLoopRuntime, pendingMessages: AgentMessage[]): 
 	// core 认识的只是 provider-neutral 的 StopReason，压缩由上层在下次请求前处理。
 	if (isModelOutputProtocolViolation(message)) {
 		const failure = createProtocolRepairFailureMessage(message);
-		emit({ type: "message_start", message: failure });
-		emit({ type: "message_end", message: failure });
-		emit({ type: "turn_end", message: failure, toolResults: [] });
+		await emit({ type: "message_start", message: failure });
+		await emit({ type: "message_end", message: failure });
+		await emit({ type: "turn_end", message: failure, toolResults: [] });
 		return { hasMoreToolCalls: false, stopped: true };
 	}
 
 	newMessages.push(message);
 	if (message.stopReason === "error" || message.stopReason === "aborted" || message.stopReason === "contextOverflow") {
-		emit({ type: "turn_end", message, toolResults: [] });
+		await emit({ type: "turn_end", message, toolResults: [] });
 		return { hasMoreToolCalls: false, stopped: true };
 	}
 
@@ -214,8 +264,34 @@ async function runTurn(run: AgentLoopRuntime, pendingMessages: AgentMessage[]): 
 		}
 	}
 
-	emit({ type: "turn_end", message, toolResults });
+	await emit({ type: "turn_end", message, toolResults });
 	return { hasMoreToolCalls, stopped: false };
+}
+
+/**
+ * Continue an assistant turn restored at the precise "assistant durable, T1
+ * absent" prefix. No provider request occurs before these calls receive their
+ * normal T1 reservations and execute.
+ */
+async function resumeToolTurn(run: AgentLoopRuntime, message: AssistantMessage): Promise<TurnResult> {
+	const { context, newMessages, emit } = run;
+	const toolCalls = message.content.filter((content) => content.type === "toolCall");
+	if (toolCalls.length === 0) return { hasMoreToolCalls: false, stopped: false };
+
+	await emit({ type: "turn_start" });
+	const batch = await executeToolCallBatch(run, toolCalls);
+	for (const result of batch.messages) {
+		context.messages.push(result);
+		newMessages.push(result);
+	}
+	await emit({ type: "turn_end", message, toolResults: batch.messages });
+	return { hasMoreToolCalls: !batch.terminate, stopped: false };
+}
+
+function unfinishedToolTurn(messages: readonly AgentMessage[]): AssistantMessage | undefined {
+	const last = messages.at(-1);
+	if (last?.role !== "assistant" || last.stopReason !== "toolUse") return undefined;
+	return last.content.some((content) => content.type === "toolCall") ? last : undefined;
 }
 
 /**
@@ -228,6 +304,7 @@ async function runTurn(run: AgentLoopRuntime, pendingMessages: AgentMessage[]): 
 interface ModelCallAttempt {
 	message: AssistantMessage;
 	started: boolean;
+	assistantEntryId?: string;
 }
 
 async function streamAssistantResponse(run: AgentLoopRuntime): Promise<AssistantMessage> {
@@ -249,7 +326,7 @@ async function streamAssistantResponse(run: AgentLoopRuntime): Promise<Assistant
 	// 文本工具调用是模型输出协议错误，不是 provider 故障。丢弃这次尝试，附加一次
 	// 临时纠正消息后重新请求；它的内容已经流式发布出去了，所以要先撤回。
 	if (isModelOutputProtocolViolation(attempt.message)) {
-		discardAttempt(run, attempt);
+		await discardAttempt(run, attempt);
 		const directive = config.onModelError ? await config.onModelError(attempt.message, prepared) : undefined;
 		attemptContext = appendProtocolRepairMessage(directive?.context ?? prepared);
 		attempt = await attemptModelCall(run, attemptContext);
@@ -264,7 +341,7 @@ async function streamAssistantResponse(run: AgentLoopRuntime): Promise<Assistant
 	) {
 		const directive = await config.onModelError(attempt.message, attemptContext);
 		if (directive) {
-			discardAttempt(run, attempt);
+			await discardAttempt(run, attempt);
 			attemptContext = directive.context;
 			attempt = await attemptModelCall(run, attemptContext);
 		}
@@ -273,22 +350,22 @@ async function streamAssistantResponse(run: AgentLoopRuntime): Promise<Assistant
 	// 最终协议错误不进入 transcript，也不把模型输出展示成普通 assistant 文本。
 	context.tools = [...attemptContext.tools];
 	if (isModelOutputProtocolViolation(attempt.message)) {
-		discardAttempt(run, attempt);
+		await discardAttempt(run, attempt);
 		return discardProtocolViolationContent(attempt.message);
 	}
 
 	// provider 从未发出 start 时没有流式内容，补一条 message_start 让消费者拿到
 	// 完整的 start/end 配对。
-	if (!attempt.started) emit({ type: "message_start", message: attempt.message });
+	if (!attempt.started) await emit({ type: "message_start", message: attempt.message });
 	context.messages.push(attempt.message);
-	emit({ type: "message_end", message: attempt.message });
+	await emit({ type: "message_end", message: attempt.message, entryId: attempt.assistantEntryId });
 
 	return attempt.message;
 }
 
 /** 撤回一次已经流式发布、但不会进入 transcript 的 assistant 尝试。 */
-function discardAttempt(run: AgentLoopRuntime, attempt: ModelCallAttempt): void {
-	if (attempt.started) run.emit({ type: "message_discard" });
+async function discardAttempt(run: AgentLoopRuntime, attempt: ModelCallAttempt): Promise<void> {
+	if (attempt.started) await run.emit({ type: "message_discard" });
 }
 
 async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): Promise<ModelCallAttempt> {
@@ -299,6 +376,9 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 		messages: projectToolCallProtocol(request.messages),
 		tools: request.tools,
 	};
+
+	const reservation = await reserveModelEffect(config, request, signal);
+	await pauseBeforeEffect(config, { type: "model_request", ...(reservation ? { assistantEntryId: reservation.entryId } : {}) });
 
 	// 调用 LLM
 	const response = config.provider.stream(config.model, llmContext, {
@@ -314,7 +394,7 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 		switch (event.type) {
 			case "start":
 				started = true;
-				emit({ type: "message_start", message: event.partial });
+				await emit({ type: "message_start", message: event.partial });
 				break;
 
 			case "text_start":
@@ -326,16 +406,43 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 			case "toolcall_start":
 			case "toolcall_delta":
 			case "toolcall_end":
-				emit({ type: "message_update", message: event.partial, assistantEvent: event });
+				await emit({ type: "message_update", message: event.partial, assistantEvent: event });
 				break;
 
 			case "done":
 			case "error":
-				return { message: await response.result(), started };
+				return settleModelEffect(config, reservation, await response.result(), started);
 		}
 	}
 
-	return { message: await response.result(), started };
+	return settleModelEffect(config, reservation, await response.result(), started);
+}
+
+async function reserveModelEffect(
+	config: AgentLoopConfig,
+	context: AgentContext,
+	signal: AbortSignal | undefined,
+): Promise<EffectEntryReservation | undefined> {
+	if (!config.effectBoundary) return undefined;
+	await pauseBeforeEffect(config, { type: "model_intent" });
+	return config.effectBoundary.beforeModelEffect({ context, model: config.model, signal });
+}
+
+async function settleModelEffect(
+	config: AgentLoopConfig,
+	reservation: EffectEntryReservation | undefined,
+	message: AssistantMessage,
+	started: boolean,
+): Promise<ModelCallAttempt> {
+	if (reservation) {
+		await pauseBeforeEffect(config, { type: "model_usage", assistantEntryId: reservation.entryId });
+		await config.effectBoundary?.afterModelEffect({ reservation, message });
+	}
+	return { message, started, assistantEntryId: reservation?.entryId };
+}
+
+async function pauseBeforeEffect(config: AgentLoopConfig, action: EffectGateAction): Promise<void> {
+	await config.effectGate?.beforeEffect(action);
 }
 
 function appendProtocolRepairMessage(context: AgentContext): AgentContext {
@@ -397,27 +504,30 @@ async function executeToolCallBatch(run: AgentLoopRuntime, toolCalls: ToolCall[]
 	const outcomes: ExecutedToolCall[] = [];
 	const messages: ToolResultMessage[] = [];
 
-	// 将 Agent 内部的执行结果，转为下一轮模型可以调用的消息
-	const publish = (outcome: ExecutedToolCall): void => {
+	// 将 Agent 内部的执行结果，转为下一轮模型可以调用的消息。
+	// message_end is awaited so its T2 Session Journal entry is durable before
+	// the next provider request can observe this result.
+	const publish = async (outcome: ExecutedToolCall): Promise<void> => {
 		const message: ToolResultMessage = {
 			role: "toolResult",
 			toolCallId: outcome.toolCall.id,
 			toolName: outcome.toolCall.name,
 			content: outcome.result.content,
+			...(outcome.result.fileChanges ? { fileChanges: outcome.result.fileChanges } : {}),
 			isError: outcome.isError,
 			timestamp: Date.now(),
 		};
 
 		outcomes.push(outcome);
 		messages.push(message);
-		emit({ type: "message_start", message });
-		emit({ type: "message_end", message });
+		await emit({ type: "message_start", message });
+		await emit({ type: "message_end", message, entryId: outcome.resultEntryId });
 	};
 
 	if (sequential) {
 		for (const toolCall of toolCalls) {
 			const toolCallResult = await executeToolCall(run, toolCall);
-			publish(toolCallResult);
+			await publish(toolCallResult);
 			if (signal?.aborted) break;
 		}
 	} else {
@@ -425,7 +535,7 @@ async function executeToolCallBatch(run: AgentLoopRuntime, toolCalls: ToolCall[]
 		const parallelOutcomes = await Promise.all(toolCalls.map((toolCall) => executeToolCall(run, toolCall)));
 
 		// Promise.all 保持输入顺序，因此回给模型的消息顺序稳定。
-		parallelOutcomes.forEach(publish);
+		for (const outcome of parallelOutcomes) await publish(outcome);
 	}
 
 	return {
@@ -437,16 +547,11 @@ async function executeToolCallBatch(run: AgentLoopRuntime, toolCalls: ToolCall[]
 async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promise<ExecutedToolCall> {
 	const { context, config, signal, emit } = run;
 	const tool = context.tools.find((candidate) => candidate.name === toolCall.name);
-	emit({
-		type: "tool_execution_start",
-		toolCallId: toolCall.id,
-		toolName: toolCall.name,
-		args: toolCall.arguments,
-	});
 
 	let acceptingUpdates = true;
 	let result: AgentToolResult;
 	let isError = false;
+	let resultEntryId: string | undefined;
 
 	try {
 		if (signal?.aborted) {
@@ -474,17 +579,37 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 
 		// 工具执行。中间件可能改写过 ctx.args，进真实工具前再校验一次：
 		// 首次校验的结论对改写后的参数不成立，短路的中间件则走不到这里。
-		const invoke = (): Promise<AgentToolResult> =>
-			tool.execute(toolCall.id, finalArguments(tool, toolCall, ctx.args), signal, (partial) => {
+		const invoke = async (): Promise<AgentToolResult> => {
+			const args = finalArguments(tool, toolCall, ctx.args);
+			let reservation: EffectEntryReservation | undefined;
+			if (config.effectBoundary) {
+				await pauseBeforeEffect(config, { type: "tool_intent", toolCallId: toolCall.id, toolName: toolCall.name });
+				reservation = await config.effectBoundary.beforeToolEffect({ toolCall, tool, args, signal });
+			}
+			resultEntryId = reservation?.entryId;
+			await pauseBeforeEffect(config, {
+				type: "tool_execute",
+				toolCallId: toolCall.id,
+				toolName: toolCall.name,
+				...(resultEntryId ? { resultEntryId } : {}),
+			});
+			await emit({
+				type: "tool_execution_start",
+				toolCallId: toolCall.id,
+				toolName: toolCall.name,
+				args,
+			});
+			return tool.execute(toolCall.id, args, signal, (partial) => {
 				if (!acceptingUpdates) return;
 
-				emit({
+				void emit({
 					type: "tool_execution_update",
 					toolCallId: toolCall.id,
 					toolName: toolCall.name,
 					partial,
-				});
+				}).catch(() => {});
 			});
+		};
 
 		// 责任链
 		const middlewares = config.toolMiddlewares ?? [];
@@ -497,6 +622,7 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 
 		result = await dispatch(0);
 	} catch (error) {
+		if (isEffectGateInterrupted(error)) throw error;
 		// 工具执行错误不能成为阻塞，而是让 agent-loop 可见
 		result = {
 			content: [{ type: "text", text: getErrorMessage(error) }],
@@ -506,14 +632,15 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 		acceptingUpdates = false;
 	}
 
-	const outcome = {
+	const outcome: ExecutedToolCall = {
 		toolCall,
 		result,
 		isError,
+		...(resultEntryId ? { resultEntryId } : {}),
 	};
 
 	// 5. 无论成功失败，都用 execution_end 闭合本次调用生命周期。
-	emit({
+	await emit({
 		type: "tool_execution_end",
 		toolCallId: toolCall.id,
 		toolName: toolCall.name,

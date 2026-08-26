@@ -1,7 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { describe, expect, test } from "bun:test";
 import type { AssistantMessage, Context } from "@jai/ai";
 import {
 	Agent,
@@ -12,24 +9,11 @@ import {
 	type SessionEntry,
 	type SessionHandle,
 } from "../../src";
-import { SqliteSessionStore } from "../../src/node/sqlite";
 import { assistant, defaultAppState, model, providerFor, testInstructions, type AppState } from "../support/fixtures";
 
-const directories: string[] = [];
-const stores: SqliteSessionStore<AppState>[] = [];
-
-async function openStore(): Promise<SqliteSessionStore<AppState>> {
-	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "jai-navigate-"));
-	directories.push(directory);
-	const store = await SqliteSessionStore.open<AppState>(path.join(directory, "data.sqlite"));
-	stores.push(store);
-	return store;
+async function openStore(): Promise<InMemorySessionStore<AppState>> {
+	return new InMemorySessionStore<AppState>();
 }
-
-afterEach(async () => {
-	for (const store of stores.splice(0)) store.close();
-	for (const directory of directories.splice(0)) await fs.rm(directory, { recursive: true, force: true });
-});
 
 function agentOn(
 	handle: SessionHandle<AppState>,

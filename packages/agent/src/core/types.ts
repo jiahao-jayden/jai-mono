@@ -8,14 +8,21 @@ import type {
 	TextContent,
 	Tool,
 	ToolCall,
+	ToolFileChange,
 	ToolResultMessage,
 } from "@jai/ai";
 
 import type { Static, TSchema } from "@sinclair/typebox";
+import type { EffectGate } from "./effect-gate";
 
 export interface AgentToolResult<TDetails = unknown> {
 	/** 回给模型的内容（会被包进 ToolResultMessage 送回 LLM）。 */
 	content: (TextContent | ImageContent)[];
+	/**
+	 * 完成的文件副作用；这是可进入 T2 tool-result fact 的受限白名单，不能用
+	 * `details` 代替。路径由 workspace tool 归一为 canonical absolute path。
+	 */
+	fileChanges?: readonly ToolFileChange[];
 	/** 给日志 / UI 的结构化数据，不进 LLM 上下文。 */
 	details?: TDetails;
 	/**
@@ -66,6 +73,34 @@ export interface ToolCallContext {
  */
 export type ToolMiddleware = (ctx: ToolCallContext, next: () => Promise<AgentToolResult>) => Promise<AgentToolResult>;
 
+/**
+ * A storage-agnostic intent-before-effect seam. The Agent core never decides
+ * what an intent record means or where it is stored; a Runtime Host supplies
+ * this contract when an external model or tool effect needs durable recovery.
+ */
+export interface EffectBoundary {
+	beforeModelEffect(input: {
+		readonly context: AgentContext;
+		readonly model: Model;
+		readonly signal?: AbortSignal;
+	}): Promise<EffectEntryReservation>;
+	beforeToolEffect(input: {
+		readonly toolCall: ToolCall;
+		readonly tool: AgentTool;
+		readonly args: Record<string, unknown>;
+		readonly signal?: AbortSignal;
+	}): Promise<EffectEntryReservation>;
+	afterModelEffect(input: {
+		readonly reservation: EffectEntryReservation;
+		readonly message: AssistantMessage;
+	}): Promise<void>;
+}
+
+/** Preallocated Session Journal entry identity for the effect's durable result. */
+export interface EffectEntryReservation {
+	readonly entryId: string;
+}
+
 export type AgentMessage = Message;
 
 /**
@@ -88,7 +123,7 @@ export type CoreAgentEvent =
 	| { type: "message_start"; message: AgentMessage }
 	// 仅 assistant 流式期间发出，透传底层 provider 的细粒度事件
 	| { type: "message_update"; message: AssistantMessage; assistantEvent: AssistantMessageEvent }
-	| { type: "message_end"; message: AgentMessage }
+	| { type: "message_end"; message: AgentMessage; entryId?: string }
 	/**
 	 * 一次已经流式发布出去的 assistant 尝试被丢弃了（协议违规重试、或 provider
 	 * 在 start 之后失败）。消费者必须撤掉为它渲染的内容：后续重试会以新的
@@ -150,6 +185,10 @@ export interface AgentLoopConfig {
 	 * 用于权限、参数改写、结果包装、重试等横切逻辑。默认无。
 	 */
 	toolMiddlewares?: ToolMiddleware[];
+	/** Optional Runtime Host intent-before-effect contract for this invocation. */
+	effectBoundary?: EffectBoundary;
+	/** Optional crash-prefix gate; omitted in automatic production execution. */
+	effectGate?: EffectGate;
 	/**
 	 * steering 接入点：一个 turn 的工具执行完后调用，返回的消息在下一次 LLM 请求前注入。
 	 * loop 只调用它，不持有队列。默认无（返回 []）。

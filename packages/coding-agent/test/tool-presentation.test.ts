@@ -62,4 +62,33 @@ describe("CodingEventProjector", () => {
 			}),
 		).toMatchObject({ activityKind: "operation", title: "unknown_tool" });
 	});
+
+	test("projects durable file changes from a completed tool result", () => {
+		const projector = new CodingEventProjector(new Map());
+		expect(
+			projector.project({
+				type: "message_end",
+				message: {
+					role: "toolResult",
+					toolCallId: "write-1",
+					toolName: "Write",
+					content: [{ type: "text", text: "Created /workspace/index.ts" }],
+					fileChanges: [{ operation: "add", path: "/workspace/index.ts" }],
+					isError: false,
+					timestamp: 0,
+				},
+			}),
+		).toEqual({
+			type: "message_end",
+			message: {
+				role: "toolResult",
+				toolCallId: "write-1",
+				toolName: "Write",
+				content: [{ type: "text", text: "Created /workspace/index.ts" }],
+				fileChanges: [{ operation: "add", path: "/workspace/index.ts" }],
+				isError: false,
+				timestamp: 0,
+			},
+		});
+	});
 });

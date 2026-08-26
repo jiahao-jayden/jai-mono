@@ -114,6 +114,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 	private resolveTools?: (staticTools: readonly AgentTool[]) => readonly AgentTool[];
 	private readonly onObserverError?: (info: ObserverErrorInfo<AgentEvent>) => void;
 	private appStateWrites: Promise<void> = Promise.resolve();
+	/** Carries a Host-reserved Session entry id until the ordinary message-end commit. */
+	private readonly reservedMessageEntries = new WeakMap<object, string>();
 	/**
 	 * 本次 model call 的完整 transcript。prepareContext → provider → onModelError
 	 * 是严格嵌套的，且 Agent 不允许并发 run，所以这一格暂存是安全的。
@@ -140,6 +142,7 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		this.ledger = new SessionLedger<TAppState>(
 			options.sessionHandle,
 			restored.messages ?? options.session?.messages ?? [],
+			options.effectGate,
 		);
 
 		this.agent = new CoreAgent<TAppState>({
@@ -151,6 +154,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 			providerOptions: options.providerOptions,
 			maxIterations: options.maxIterations,
 			toolExecution: options.toolExecution,
+			effectBoundary: options.effectBoundary,
+			effectGate: options.effectGate,
 			toolMiddlewares: [(context, next) => this.hooks.runAroundToolCall(context, next)],
 			session: options.session,
 			instructions: options.instructions,
@@ -213,6 +218,15 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 	 * 否则本层产生的事件不会进入这条流。
 	 */
 	stream(input: AgentInput): AgentRun {
+		return this.streamInvocation(() => this.invoke(input));
+	}
+
+	/** Continues a recovered durable operation without appending its initial input again. */
+	streamFromDurableContext(input: AgentInput = []): AgentRun {
+		return this.streamInvocation(() => this.agent.resume(input));
+	}
+
+	private streamInvocation(invoke: () => Promise<AgentMessage[]>): AgentRun {
 		const output = new EventStream<AgentEvent, AgentMessage[]>(
 			() => false,
 			() => [],
@@ -223,7 +237,7 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 
 		let run: Promise<AgentMessage[]>;
 		try {
-			run = this.invoke(input);
+			run = invoke();
 		} catch (error) {
 			unsubscribe();
 			throw error;
@@ -239,11 +253,31 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		return output;
 	}
 
-	steer(message: AgentMessage): void {
+	/** Starts a run with caller-reserved ids for its initial durable inputs. */
+	streamWithReservedEntries(input: readonly { readonly message: AgentMessage; readonly entryId?: string }[]): AgentRun {
+		for (const item of input) {
+			if (item.entryId) this.reservedMessageEntries.set(item.message, item.entryId);
+		}
+		return this.stream(input.map((item) => item.message));
+	}
+
+	/** Continues a recovered operation while committing newly consumed inputs under Host-reserved ids. */
+	streamFromDurableContextWithReservedEntries(
+		input: readonly { readonly message: AgentMessage; readonly entryId?: string }[],
+	): AgentRun {
+		for (const item of input) {
+			if (item.entryId) this.reservedMessageEntries.set(item.message, item.entryId);
+		}
+		return this.streamFromDurableContext(input.map((item) => item.message));
+	}
+
+	steer(message: AgentMessage, entryId?: string): void {
+		if (entryId) this.reservedMessageEntries.set(message, entryId);
 		this.agent.steer(message);
 	}
 
-	followUp(message: AgentMessage): void {
+	followUp(message: AgentMessage, entryId?: string): void {
+		if (entryId) this.reservedMessageEntries.set(message, entryId);
 		this.agent.followUp(message);
 	}
 
@@ -478,7 +512,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 			event.type === "message_end" &&
 			(event.message.role !== "assistant" || !isModelOutputProtocolViolation(event.message))
 		) {
-			return (await this.ledger.appendMessage(event.message)).id;
+			const entryId = event.entryId ?? this.reservedMessageEntries.get(event.message);
+			return (await this.ledger.appendMessage(event.message, entryId)).id;
 		}
 	}
 
