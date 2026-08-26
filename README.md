@@ -82,7 +82,7 @@ bun run desktop:dev
 
 ```bash
 bun run cli -- --help
-cat task.md | bun run cli -- -p --output-format stream-json --permission-mode bypassPermissions --no-session-persistence
+cat task.md | bun run cli -- -p --output-format stream-json --no-session-persistence
 ```
 
 发布后的包提供同名 `jai` binary；WorkBuddy、CI 和其他 subprocess host 只需要调用这个普通 CLI，不需要导入 Desktop 或 SDK。

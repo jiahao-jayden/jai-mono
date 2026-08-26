@@ -21,14 +21,78 @@ JSON business state that is restored and persisted with a Session. The Agent own
 _Avoid_: Extension state, UI state, transcript
 
 **Agent Runtime State**:
-Execution-only state such as running status, streaming messages, and pending tool calls. It is distinct from Session App State and is not persisted as business state.
+Execution-only state such as running status, streaming messages, and pending tool calls. It is distinct from Session App State and is not persisted as business state; after a restart it is rebuilt from the Session Journal and Operation Journal rather than treated as a durable object.
 _Avoid_: app state, session data
 
 ## Coding Agent SDK and hosts
 
 **Coding Agent SDK**:
-The public `@jai/coding-agent` product runtime consumed by Desktop, CLI, and other callers. The package holds both the SDK Interface and the coding implementation it is built on: the root export (`src/sdk.ts`) is the small public surface, while Jai product defaults are available through `./jai-host`. `@jai/agent` and anything not named in `exports` stays internal.
-_Avoid_: Desktop Agent, coding-agent implementation
+The public `@jai/coding-agent` Interface and its coding execution implementation, consumed by Desktop, CLI, and third-party callers. It owns portable Coding Agent semantics, but never Jai's data-root layout, concrete database, cross-host recovery policy, or Desktop/CLI presentation policy. `@jai/agent` and anything not named in `exports` stays internal.
+_Avoid_: Jai Product Runtime, Desktop Agent, coding-agent implementation
+
+**Jai Product Runtime**:
+The product-runtime module inside `app/server`. It owns the cross-host Jai product policy: `$JAI_HOME` layout, Product Session Persistence lifecycle, Session selection and recovery policy, and common Agent assembly defaults. It is used by the Runtime Host; it does not expose a second Agent loop or an SDK-shaped bag of options.
+_Avoid_: Coding Agent SDK, Desktop runtime, CLI runtime, generic service layer
+
+**Runtime Host**:
+The long-lived server process that is the sole runtime authority for a set of Jai Sessions. Desktop, CLI, and other clients send commands to it and receive projections; they do not independently open the durable store, recover a Session, or drive a second Agent loop. A Runtime Host is a process boundary around the Jai Product Runtime, not a replacement for it.
+_Avoid_: Desktop app, CLI command, Agent SDK, execution environment
+
+**Runtime Agent Settings**:
+The Server-owned durable product facts used to assemble a Coding Agent for a Runtime Host: default model, Provider Profiles and their credentials, turn limit, each profile's explicit model-discovery inventory, Connector credential/OAuth token, and Connector policy. A client receives a safe Settings Snapshot, never the raw stored fact; model discovery runs inside the Host with the stored connection. `JAI_MODEL` may bootstrap an empty Host once, but clients and later environment values do not override durable settings. Persisted extension configuration does not itself grant a capability; Host-owned capability assembly decides which Extensions are present for an Operation.
+_Avoid_: CLI flag, Desktop-local settings, SDK configuration
+
+**Runtime Agent Plugins Assembly**:
+The Runtime Host's per-Operation assembly of the portable `agent-plugins` Extension. It discovers user-level package roots (`~/.jai/plugins/*` and `~/.agents/plugins/*`) and, only for an explicitly trusted Workspace, that Workspace's project-level package roots. ACP Client `cwd` is not itself a capability grant.
+_Avoid_: Desktop plugin discovery, CLI plugin discovery, client-cwd trust, SDK default capability
+
+**Workspace Trust**:
+An explicit, durable Host-owned decision for one canonical Workspace root. Its current decision gates project-local capabilities such as Agent Plugins; it is never inferred from a Client's `cwd`, Session metadata, or project configuration.
+_Avoid_: Desktop preference, Session App State, client-cwd trust, transient prompt flag
+
+**Runtime Model Catalog**:
+The Runtime Host's normalized, allowlisted cache of Models.dev public metadata, its ETag, and fetch time. It is a durable Host fact used to project model capabilities consistently to every product client; Desktop can request a safe current or refreshed projection but never owns a second JSON cache or imports the raw upstream payload.
+_Avoid_: Desktop model cache, provider credential inventory, upstream payload mirror
+
+**Runtime Connector OAuth Operation**:
+The Host-owned PKCE and authorization-code exchange lifecycle for one Connector. The Host validates the callback, records a durable exchange intent immediately before the token request, then persists the correlated Connector token fact. Authorization codes and PKCE verifier/state are never durable facts and are never replayed: after a crash, an intent without its correlated token fact becomes interrupted and requires the user to authorize again. Desktop only opens the browser, receives a fixed callback, and forwards its URL.
+_Avoid_: Desktop OAuth authority, replayable authorization code, token projection
+
+**Runtime Session Configuration**:
+The Runtime Host's append-only, per-Session choice of model and permission preset. It is neither SDK Session App State nor Desktop UI state. Prompt admission atomically binds each Durable Operation to the configuration fact current at acceptance, so a later selector change affects only later work and recovery can reopen an interrupted operation with its original model/mode choice. ACP `configOptions` and `config_option_update` are safe projections of this fact.
+_Avoid_: mutable live Agent settings, global Provider settings, ACP source of truth
+
+**Runtime Host Client**:
+The narrow local ACP client used by Desktop and CLI to join—or launch—one Runtime Host. It sends protocol commands, renders projections, and returns a user's permission choice, but it does not import SQLite, construct a Coding Agent, resolve model policy, or own durable Session facts.
+_Avoid_: embedded Runtime Host, local Agent loop, database client
+
+**Desktop ACP Agent Host**:
+The Electron-main adapter that joins the Runtime Host through `@jai/server/acp-client`. It owns only volatile Session projection state and permission presentation; it does not create `CodingAgent`, open SQLite, or decide recovery. A mid-run steer is sent as the active Session's next ACP `session/prompt` and inherits Runtime Host durable admission; follow-up and branch navigation still fail explicitly because ACP v2 has no matching durable command semantics here.
+_Avoid_: Desktop Coding Agent runtime, ACP source of truth, local journal owner
+
+**Live Operation Projection**:
+A disposable, whitelist-only stream of one Runtime Host Operation's message chunks and tool progress. It exists for immediate display, may be dropped on disconnect or crash, and uses a preallocated durable message id when one is available. It never authorizes an effect, records a terminal tool result, or substitutes for Session Journal replay.
+_Avoid_: event journal, recovery log, transcript source of truth
+
+**ACP Display Terminal**:
+An agent-owned, display-only terminal projected for a running tool after its Tool Dispatch Boundary. Its output may be dropped or replaced while live; its exit is announced only when the matching durable tool result exists. It neither executes commands received from a Client nor becomes a Session Journal or recovery fact.
+_Avoid_: client shell, terminal ownership, durable command log
+
+**ACP Agent Protocol Adapter**:
+The wire adapter that presents a Runtime Host as an Agent to Agent Client Protocol clients. It projects accepted prompts, Session updates, model/mode config options, permission requests, cancellation, and resume through ACP, while keeping journal facts, T1/T2 recovery, and Jai-specific product policy behind the server interface.
+_Avoid_: Operation Journal, internal event bus, UI state, database protocol
+
+**Session Controller**:
+The one ephemeral client connection authorized by a Runtime Host to submit prompt, cancellation, and approval commands for one Session. It is a runtime lease, not a durable Session fact or a SQLite writer lease; after disconnection or Host restart it disappears and recovery is decided from journals.
+_Avoid_: Session owner, durable lock, UI tab, Agent runtime
+
+**Ephemeral Session**:
+A Runtime Host-managed Session whose Journal and Operation facts exist only in the Host's memory for the ACP connection that created it. It follows the same prompt admission and effect protocol as a durable Session, but is excluded from durable Session and Desktop Catalog projections, cannot be resumed, and is discarded when that connection closes or the Host exits.
+_Avoid_: CLI-owned in-memory store, durable session with a delete flag, catalog item
+
+**Runtime Approval**:
+One ephemeral, Host-mediated wait for the SDK's canonical permission evaluator. The Host projects only a whitelist DTO to the current Session Controller and accepts only an explicit allow-once, allowed always-allow, or denial decision; connection loss, cancellation, and malformed ACP responses resolve fail-closed. It is neither a durable journal fact nor an independent permission policy.
+_Avoid_: persisted approval, ACP authorization, permission evaluator
 
 **Coding Agent Documentation Site**:
 The Blume-built, public developer documentation entry point for the Coding Agent SDK, CLI, Host Adapters, and WorkBuddy use. It launches with Chinese as the default locale, keeps English in the same i18n tree, and presents established contracts without redefining Coding Agent product semantics; Desktop migration internals remain private.
@@ -43,23 +107,67 @@ A persisted conversation and Session App State record selected when a Coding Age
 _Avoid_: session agent, execution handle
 
 **Session Store**:
-The durable owner of Coding Agent Sessions and their append-only journal entries. Jai has one durable implementation: SQLite at `$JAI_HOME/data.sqlite`, shared by Desktop and CLI; `InMemorySessionStore` exists only for ephemeral execution and tests.
+The durable contract for Coding Agent Sessions and their append-only journal entries. `@jai/agent` defines the contract and Session facts but contains no database implementation; the internal Product Session Persistence module provides Jai's one durable SQLite implementation at `$JAI_HOME/data.sqlite`, shared by Desktop and CLI. `InMemorySessionStore` exists only for ephemeral execution and tests.
 _Avoid_: filesystem repository, session directory, JSONL store, transcript cache
 
 **Session Journal**:
-The append-only Session facts owned by `@jai/agent`: messages, app-state updates, compaction facts, and branch facts. A journal is replayed into a Session Snapshot; Desktop metadata and UI projections are not journal entries.
-_Avoid_: session index, Desktop state, transcript cache
+The append-only Session facts owned by `@jai/agent`: messages, app-state updates, compaction facts, and branch facts. A journal is replayed into a Session Snapshot; Product Session Catalog metadata and UI projections are not journal entries.
+_Avoid_: session index, product state, transcript cache
 
-**Desktop Session Metadata**:
-Desktop-owned current metadata for one Session, including title, title source, and Project association. It lives in the same SQLite database as the Session Journal but is a separate fact model and must not be encoded as Session App State or a journal entry.
-_Avoid_: session state entry, session index, transcript metadata
+**Product Session Persistence**:
+The Jai Product Runtime's persistence domain. It owns the concrete SQLite adapter and schema for Agent-owned Session and Operation Journals, shared by Desktop and CLI. It implements Agent contracts but does not redefine Session facts or expose a public SDK persistence Interface.
+_Avoid_: Coding Agent SDK, generic database layer, Product Session Catalog
+
+**Operation Journal**:
+The append-only, Session-scoped execution facts owned by `@jai/agent`: operation acceptance and terminal outcome, input queue transitions, model attempts and settled usage, and tool dispatch/outcome facts. It never enters model context or the conversation tree; it is reduced with the Session Journal to decide recovery. A latest durable terminal assistant result can temporarily derive an inferred terminal verdict when `operation_finished` is missing; Runtime Host records that one missing terminal fact before reopening any driver.
+_Avoid_: transcript, Agent Runtime State, Desktop event log
+
+**Runtime Usage Projection**:
+The ACP-facing cumulative `usage_update.cost` derived from every durable `usage_settled` Operation Journal record in one Session, including a settled provider response that was later discarded from the conversation tree. It is a read model rebuilt on `resume(...start)`; it never invents model-context `used` or `size` values from volatile runtime state.
+_Avoid_: mutable token counter, assistant-message-only cost, billing ledger owner
+
+**ACP Plan Projection**:
+The ACP-facing full replacement of the Coding Agent-owned durable Todo list. The Runtime Host adapter calls the SDK's safe Todo projection rather than interpreting arbitrary Session App State, preserving pending, in-progress, completed, and cancelled status without a Host-owned plan store.
+_Avoid_: Host-owned plan state, Todo migration, completed-cancellation alias
+
+**Durable Operation**:
+One accepted unit of Session work, such as a user input, compaction, or navigation. It has a stable operation id, records its execution intent before every external effect, and reaches one durable terminal outcome or a Recovery Verdict.
+_Avoid_: Execution Drain, execution round, UI task
+
+**Tool Dispatch Boundary**:
+The durable T1 fact written after final validation and immediately before calling a tool implementation. Its matching T2 outcome is the durable tool-result fact. A process crash between T1 and T2 leaves an Indeterminate Tool Operation, never an implied failed or unexecuted call.
+_Avoid_: tool start event, permission decision, tool result
+
+**Durable Tool File Change**:
+A narrow field on a completed tool-result T2 fact: canonical absolute path plus `add`, `modify`, or `delete`. Workspace tools create it only after their filesystem mutation succeeds; ACP projects it as authoritative `diff.changes` during both live delivery and replay, while Desktop may retain that projection only in its disposable tool read model. It is intentionally distinct from arbitrary tool `details`, and it carries no patch until the Host can prove that a patch is consistent with the durable change.
+_Avoid_: parsed result text, transient tool details, client-side diff inference, unverified patch
+
+**Effect Gate**:
+An optional, portable Agent test seam placed immediately before a model intent/request/usage settlement, tool intent/execution, or durable Session entry append. Production runs do not install one. Its manual driver releases exactly one identified action at a time, so a test can interrupt at any prefix and reopen the same durable store without treating the interruption as an assistant or tool failure.
+_Avoid_: production scheduler, event journal, SQLite test double, tool replay policy
+
+**Indeterminate Tool Operation**:
+A recovery verdict for a Tool Dispatch Boundary with no durable outcome. The system must reconcile it with tool-specific evidence or park the Durable Operation; it must not silently replay the tool.
+_Avoid_: interrupted result, automatic retry, tool error
+
+**Desktop Session Catalog**:
+Desktop-owned current metadata for one Session, including title, title source, and Workspace/Project association. It is a separate product fact model and must not be encoded as Session App State or a journal entry. The Runtime Host may provide its single-writer SQLite adapter, but it does not own or interpret Desktop Catalog semantics.
+_Avoid_: session state entry, Agent journal, Runtime Host session state, transcript metadata
+
+**Desktop Catalog Control Channel**:
+A private local JSON-RPC channel through which Desktop accesses its durable Session Catalog while the Runtime Host retains the only SQLite connection. It is not an ACP extension, is not exposed by the ACP stdio bridge, and does not carry Agent commands or Session Journal facts.
+_Avoid_: ACP capability, Agent transport, Desktop database connection
+
+**Desktop Configuration Control Channel**:
+A private local JSON-RPC channel through which Desktop reads a safe Provider Settings Snapshot, writes an optimistic Provider Settings command, requests model discovery, explicitly reveals one Provider API key when the user asks, starts/completes/disconnects Host-owned Connector OAuth, and reads or refreshes the Runtime Model Catalog. The Runtime Host retains the credential and the only SQLite connection; the channel is not ACP or an SDK configuration Interface. It neither accepts nor returns connector tokens, raw catalog payloads, or extension configuration.
+_Avoid_: provider credential store, ACP capability, Desktop-local settings
 
 **Desktop Session Projection**:
 A disposable Desktop read model reconstructed from a Session Snapshot and live SDK event projections. It may contain transcript items, Todo, Artifact, and transport sequence state, but never becomes a durable Session fact.
 _Avoid_: session source of truth, durable UI state, journal writer
 
 **Session Selection**:
-The explicit choice of a `new`, `resume`, or `ephemeral` Coding Agent Session when creating a Coding Agent. It never silently creates a durable Session while attempting to resume one.
+The Runtime Host's explicit choice of a `new`, `resume`, or Host-managed `ephemeral` Coding Agent Session. It never silently creates a durable Session while attempting to resume one.
 _Avoid_: open-or-create, session fallback
 
 **Coding Agent**:
@@ -75,20 +183,24 @@ The immutable model choice, permission policy, turn limit, and instruction overr
 _Avoid_: agent rebind, mutable agent settings
 
 **Execution Drain**:
-The single serialized provider/tool execution chain owned by one Coding Agent for one Coding Agent Session. Multiple admitted inputs may be delivered through the same drain; different Sessions may have independent drains.
+The single serialized provider/tool execution chain owned by one Coding Agent for one Coding Agent Session. Multiple admitted inputs may be delivered through the same drain; different Sessions may have independent drains. The drain is process-local and disposable; it advances Durable Operations but is not itself durable.
 _Avoid_: active round, parallel session run
 
 **Prompt Admission**:
-The durable acceptance of a user input into a Coding Agent Session before the input is delivered to the model. It is distinct from the Execution Drain that later processes it.
+The durable acceptance of a user input as a Durable Operation before the input is delivered to the model. It records the delivery policy and is distinct from the Execution Drain that later processes it.
 _Avoid_: run start, queued UI message
 
+**Durable Steering Input**:
+An input accepted while a Durable Operation is active. Its `input_queued` Operation Journal record is T1; the user Session Journal entry with the preallocated identity is T2 and is written only at the Agent's next safe checkpoint. If a process ends between them, recovery re-delivers that exact input once; a driver must never terminally finish while this T2 is absent.
+_Avoid_: in-memory steering queue, second Operation, immediate transcript append
+
 **Input Delivery Policy**:
-The SDK-owned rule for delivering an admitted input: `steer` promotes it at the next safe provider-turn boundary, while `queue` preserves FIFO delivery after the current drain reaches an idle boundary.
+The SDK-owned rule for delivering an admitted input: `steer` promotes it at the next safe provider-turn boundary, while `follow_up` preserves FIFO delivery after the current drain reaches an idle boundary.
 _Avoid_: Desktop input mode, host queue policy
 
 **Host Adapter**:
-A caller-specific module that supplies I/O, model resolution, approval decisions, and UI or process projections around the Coding Agent SDK. It is not represented by one aggregate SDK interface and does not define Coding Agent product semantics.
-_Avoid_: host runtime, frontend wrapper
+A caller-specific module that supplies platform I/O, model credentials or resolution, approval presentation, and UI or process projections around the Jai Product Runtime and Coding Agent SDK. It is not represented by one aggregate SDK Interface and does not define cross-host Jai product policy.
+_Avoid_: Jai Product Runtime, frontend wrapper
 
 **Model Resolver**:
 The required creation function that maps a requested model and SDK settings snapshot to the process-local Model and Provider used by one Coding Agent. The SDK owns when resolution occurs and all Coding Agent-facing provider semantics.
@@ -139,8 +251,8 @@ The optional creation function that presents an SDK permission request and retur
 _Avoid_: approval authority, permission evaluator
 
 **Connector Integration**:
-The optional process-local Connector client and action approval handler supplied when creating a Coding Agent. The SDK owns Agent-facing connector tools, request projection, and permission semantics.
-_Avoid_: connector authority, raw connector tool
+The Server-local `ConnectorService` and Extension runtime adapter assembled from Runtime Agent Settings for one Coding Agent Operation. The SDK owns Agent-facing connector tools, request projection, and permission semantics; the Host owns credentials, policy persistence and approval routing.
+_Avoid_: connector authority, raw connector tool, Desktop connector runtime
 
 **Coding Connector Capability**:
 The optional SDK-owned Agent-facing capability for discovering allowed Connector Provider actions, invoking them, projecting results, applying permission policy, and cleaning up connector runtime resources. If no Connector Integration is supplied, the capability is absent from the Coding Agent's Capability Snapshot.
@@ -155,11 +267,11 @@ The immutable set of Coding Agent tools and external capabilities assembled by t
 _Avoid_: live tool registry, host capability cache
 
 **Coding Agent Product Semantics**:
-The runtime-owned meaning of prompts, tools, permission evaluation, sessions, Session App State, Todo, Artifact, subagents, Skills, MCP, compaction, and Agent lifecycle.
-_Avoid_: Desktop business logic, chat UI behavior
+The SDK-owned meaning of prompts, tools, permission evaluation, Session App State, Todo, Artifact, subagents, Skills, MCP, compaction, and Agent lifecycle. Jai Product Runtime owns only the cross-host product defaults and persistence policy with which those semantics are assembled.
+_Avoid_: Jai Product Runtime, Desktop business logic, chat UI behavior
 
 **Desktop Product Semantics**:
-Desktop-owned meaning for windows, IPC, workspace/library presentation, settings screens, attachments, notifications, and UI state. It consumes SDK facts and commands instead of reimplementing Coding Agent Product Semantics.
+Desktop-owned meaning for windows, IPC, workspace/library presentation, settings screens, attachments, notifications, and UI state. It consumes Jai Product Runtime and SDK facts and commands instead of reimplementing Coding Agent Product Semantics.
 _Avoid_: Desktop Agent runtime
 
 **Canonical Permission Mode**:
@@ -167,7 +279,7 @@ The permission policy vocabulary defined by the Coding Agent SDK and shared by e
 _Avoid_: Desktop mode, permission toggle
 
 **Desktop Permission Preset**:
-A Desktop-owned presentation choice that maps to a Canonical Permission Mode without redefining its evaluation. In the current mapping, `manual` selects `default`, `automate` selects `bypassPermissions`, and `plan` is declared but not implemented in the current milestone.
+A Desktop presentation of the Runtime Session Configuration mode selector. The Runtime Host maps `manual` to `default`, `automate` to `bypassPermissions`, and `plan` to `plan` before it opens a Coding Agent; Desktop does not reimplement this policy.
 _Avoid_: Desktop permission implementation, prompt mode
 
 **Unsupported Permission Mode**:
