@@ -16,7 +16,7 @@
 		"test:e2e": "CLI_E2E=1 bun test test/provider-e2e.test.ts"
 	},
 	"dependencies": {
-		"@jai/extension": "workspace:*",
+		"@jai/server": "workspace:*",
 		"tree-sitter-bash": "0.25.0",
 		"web-tree-sitter": "0.25.10"
 	},

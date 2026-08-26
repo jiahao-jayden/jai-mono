@@ -29,11 +29,7 @@ describeE2E("jai CLI provider subprocess", () => {
 					root,
 					"--output-format",
 					"stream-json",
-					"--permission-mode",
-					"bypassPermissions",
 					"--no-session-persistence",
-					"--max-turns",
-					"2",
 				],
 				cwd: resolve(import.meta.dir, ".."),
 				env: {

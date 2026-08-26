@@ -1,370 +1,250 @@
+import {
+  connectDesktopConfigurationClient,
+  type DesktopConfigurationClient,
+} from "@jai/server/desktop-configuration-client";
 import type {
-	CodingExtensionApprovalDecision,
-	CodingExtensionApprovalRequest,
-	CodingExtensionRuntimeAdapter,
-	JsonObject,
-} from "@jai/coding-agent";
-import { CodingExtensionHostOperationFailed } from "@jai/coding-agent";
-import { Result } from "better-result";
-import type { OAuthTokenResponse } from "@jai/connector";
+  RuntimeAgentSettingsInput,
+  RuntimeAgentSettingsSnapshot,
+  RuntimeModelCatalog,
+} from "@jai/server";
 import type {
-	DesktopProviderApiKeyRevealResult,
-	DesktopProviderConfigInput,
-	DesktopProviderConfigSnapshot,
-	DesktopProviderFetchModelsResult,
-	DesktopProviderProfileInput,
+  DesktopProviderApiKeyRevealResult,
+  DesktopProviderConfigInput,
+  DesktopProviderConfigSnapshot,
+  DesktopProviderFetchModelsResult,
 } from "../../shared/desktop-rpc";
 import {
-	type CodingAgentSettings,
-	desktopCodingConfigDefinition,
-	discoverConfiguredModels,
-	type ResolvedDesktopSdkAgentInput,
-	resolveDesktopSdkAgentInput,
-} from "./coding-settings";
-import {
-	findDesktopConnectorOAuthApplication,
-	projectConnectorConfig,
-	removeConnectorOAuthToken,
-	storeConnectorOAuthToken,
-	toStoredConnector,
-	toStoredConnectorOAuthToken,
-	validateConnectorConfigInput,
+  findDesktopConnectorOAuthApplication,
+  projectRuntimeConnectorConfig,
+  toRuntimeConnector,
+  validateConnectorConfigInput,
 } from "./connector";
-import type { ProviderModelInventory, ProviderModelInventoryStore } from "./model-inventory";
-import type { ModelCatalogStore } from "../model-catalog";
 import {
-	projectProviderConfig,
-	providerConfigError,
-	safeDiscoveryErrorData,
-	toStoredProfile,
-	validateProviderProfiles,
+  projectRuntimeProviderConfig,
+  providerConfigError,
+  validateProviderProfiles,
 } from "./provider";
-import { CodingConfigStore } from "./store";
-import { isSystemConfigInput, projectSystemConfig, toStoredSystemConfig } from "./system";
 
-const profileIdPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-
+/**
+ * Desktop's configuration adapter. Runtime-affecting settings, Provider facts
+ * and credentials all live in the Runtime Host; this module only projects and
+ * submits safe DTOs over its private control channel.
+ */
 export class DesktopConfigService {
-	readonly #store: CodingConfigStore<typeof desktopCodingConfigDefinition.schema>;
-	readonly #catalog?: ModelCatalogStore;
-	readonly #inventory?: ProviderModelInventoryStore;
+  #catalog?: RuntimeModelCatalog;
 
-	constructor(
-		options: {
-			readonly homeDir?: string;
-			readonly environment?: Readonly<Record<string, string | undefined>>;
-			readonly catalog?: ModelCatalogStore;
-			readonly inventory?: ProviderModelInventoryStore;
-		} = {},
-	) {
-		this.#store = new CodingConfigStore(desktopCodingConfigDefinition, {
-			homeDir: options.homeDir,
-			environment: options.environment,
-			workspaceTrusted: false,
-		});
-		this.#catalog = options.catalog;
-		this.#inventory = options.inventory;
-	}
+  constructor(private readonly client: DesktopConfigurationClient) {}
 
-	async get(): Promise<DesktopProviderConfigSnapshot> {
-		const [snapshot, userScope] = await Promise.all([this.#store.load(), this.#store.readScope("user")]);
-		this.#seedLegacyInventories(snapshot.settings);
-		return projectDesktopConfig(
-			snapshot.settings,
-			userScope.revision,
-			this.#catalog?.cached?.catalog,
-			this.#inventories(snapshot.settings),
-		);
-	}
+  static async open(
+    options: {
+      readonly homeDir?: string;
+      readonly environment?: Readonly<Record<string, string | undefined>>;
+    } = {},
+  ): Promise<DesktopConfigService> {
+    const connected = await connectDesktopConfigurationClient({
+      environment: options.environment,
+    });
+    if (connected.isErr()) throw connected.error;
+    const service = new DesktopConfigService(connected.value);
+    await service.#loadModelCatalog();
+    return service;
+  }
 
-	async save(input: DesktopProviderConfigInput): Promise<DesktopProviderConfigSnapshot> {
-		validateInput(input, this.#catalog?.cached?.catalog);
-		const [userScope, effectiveSnapshot] = await Promise.all([this.#store.readScope("user"), this.#store.load()]);
-		this.#seedLegacyInventories(effectiveSnapshot.settings);
-		this.#seedInputInventories(input.profiles);
-		const currentProviders = userScope.settings.providers ?? {};
-		const providers = Object.fromEntries(
-			input.profiles.map((profile) => [
-				profile.id,
-				toStoredProfile(
-					profile,
-					currentProviders[profile.id] ?? (profile.previousId ? currentProviders[profile.previousId] : undefined),
-					effectiveSnapshot.settings.providers[profile.id] ??
-						(profile.previousId ? effectiveSnapshot.settings.providers[profile.previousId] : undefined),
-				),
-			]),
-		);
-		const settings = structuredClone(userScope.settings);
-		settings.providers = providers;
-		if (input.connector) {
-			settings.connector = toStoredConnector(input.connector, userScope.settings.connector);
-		}
-		const agent = toStoredSystemConfig(input);
-		if (agent) settings.agent = agent;
-		else delete settings.agent;
+  async get(): Promise<DesktopProviderConfigSnapshot> {
+    const [remote] = await Promise.all([
+      this.#remoteSnapshot(),
+      this.#loadModelCatalog(),
+    ]);
+    return this.#project(remote);
+  }
 
-		const snapshot = await this.#store.writeScope("user", settings, {
-			expectedRevision: input.revision,
-		});
-		this.#migrateRenamedInventories(input.profiles, currentProviders, providers);
-		this.#deleteRemovedInventories(currentProviders, providers);
-		return projectDesktopConfig(
-			snapshot.settings,
-			snapshot.scopeRevisions.user,
-			this.#catalog?.cached?.catalog,
-			this.#inventories(snapshot.settings),
-		);
-	}
+  async save(
+    input: DesktopProviderConfigInput,
+  ): Promise<DesktopProviderConfigSnapshot> {
+    await this.#loadModelCatalog();
+    validateInput(input, this.#catalog);
+    const remote = await this.#remoteSnapshot();
+    const savedRemote = await this.client.save(toRuntimeInput(input, remote));
+    if (savedRemote.isErr()) throw savedRemote.error;
+    return this.#project(savedRemote.value);
+  }
 
-	async fetchModels(profileId: string): Promise<DesktopProviderFetchModelsResult> {
-		if (!profileIdPattern.test(profileId)) throw invalidInput("Invalid Provider profile");
-		const snapshot = await this.#store.load();
-		let modelIds: readonly string[];
-		try {
-			modelIds = await discoverConfiguredModels(snapshot.settings, profileId);
-		} catch (cause) {
-			throw providerConfigError("model_fetch_failed", {
-				message: "Unable to fetch models from the configured Provider",
-				data: {
-					profileId,
-					...safeDiscoveryErrorData(cause, snapshot.settings.providers[profileId]?.adapter),
-				},
-				cause,
-			});
-		}
-		const inventory = this.#inventory?.replace(profileId, modelIds);
-		if (!inventory) {
-			throw invalidInput("Provider model inventory is unavailable");
-		}
-		const projected = await this.get();
-		return {
-			profileId,
-			modelCount: inventory.modelIds.length,
-			fetchedAt: inventory.fetchedAt,
-			snapshot: projected,
-		};
-	}
+  async fetchModels(
+    profileId: string,
+  ): Promise<DesktopProviderFetchModelsResult> {
+    const fetched = await this.client.fetchModels(profileId);
+    if (fetched.isErr()) throw fetched.error;
+    return {
+      profileId: fetched.value.profileId,
+      modelCount: fetched.value.modelCount,
+      fetchedAt: fetched.value.fetchedAt,
+      snapshot: this.#project(fetched.value.snapshot),
+    };
+  }
 
-	async resolveAgentInput(modelRef: string): Promise<ResolvedDesktopSdkAgentInput> {
-		const separator = modelRef.indexOf("/");
-		const profileId = separator > 0 ? modelRef.slice(0, separator) : "";
-		const inventory = profileId ? this.#inventory?.get(profileId) : undefined;
-		const snapshot = await this.#store.load();
-		return resolveDesktopSdkAgentInput(snapshot.settings, modelRef, this.#catalog?.cached?.catalog, {
-			...(inventory ? { availableModelIds: inventory.modelIds } : {}),
-			requireVerifiedCapabilities: true,
-		});
-	}
+  async refreshModelCatalog(): Promise<boolean> {
+    const refreshed = await this.client.refreshModelCatalog();
+    if (refreshed.isErr()) throw refreshed.error;
+    this.#catalog = refreshed.value.catalog;
+    return refreshed.value.refreshed;
+  }
 
-	createExtensionRuntimeAdapter(options: {
-		readonly requestApproval: (
-			request: CodingExtensionApprovalRequest,
-			signal?: AbortSignal,
-		) => Promise<CodingExtensionApprovalDecision>;
-		readonly onConfigurationWritten?: (input: {
-			readonly extensionId: string;
-			readonly scope: "user" | "project";
-			readonly value: JsonObject;
-		}) => void | Promise<void>;
-	}): CodingExtensionRuntimeAdapter {
-		return {
-			readConfiguration: async ({ extensionId, scope }) => {
-				try {
-					const { settings } = await this.#readExtensionConfigurationScope(scope);
-					const value = extensionId === "connector" ? settings.connector : settings.extensions?.[extensionId];
-					return Result.ok(value === undefined ? undefined : (structuredClone(value) as JsonObject));
-				} catch (cause) {
-					return Result.err(
-						new CodingExtensionHostOperationFailed({
-							operation: "configuration_read",
-							message: "Desktop could not read Extension configuration",
-							cause,
-						}),
-					);
-				}
-			},
-			writeConfiguration: async ({ extensionId, scope, value }) => {
-				try {
-					const current = await this.#readExtensionConfigurationScope(scope);
-					const settings = structuredClone(current.settings);
-					if (extensionId === "connector") settings.connector = value as CodingAgentSettings["connector"];
-					else settings.extensions = { ...(settings.extensions ?? {}), [extensionId]: structuredClone(value) };
-					const snapshot = await this.#store.writeScope("user", settings, {
-						expectedRevision: current.revision,
-					});
-					const persisted =
-						extensionId === "connector" ? snapshot.settings.connector : snapshot.settings.extensions?.[extensionId];
-					if (persisted === undefined)
-						throw invalidInput(`Extension "${extensionId}" configuration was not persisted`);
-					const projected = structuredClone(persisted) as JsonObject;
-					await options.onConfigurationWritten?.({ extensionId, scope, value: projected });
-					return Result.ok(projected);
-				} catch (cause) {
-					return Result.err(
-						new CodingExtensionHostOperationFailed({
-							operation: "configuration_write",
-							message: "Desktop could not write Extension configuration",
-							cause,
-						}),
-					);
-				}
-			},
-			requestApproval: async (request, signal) => {
-				try {
-					return Result.ok(await options.requestApproval(request, signal));
-				} catch (cause) {
-					return Result.err(
-						new CodingExtensionHostOperationFailed({
-							operation: "approval",
-							message: "Desktop could not request Extension approval",
-							cause,
-						}),
-					);
-				}
-			},
-		};
-	}
+  async revealApiKey(
+    profileId: string,
+  ): Promise<DesktopProviderApiKeyRevealResult> {
+    const revealed = await this.client.revealApiKey(profileId);
+    if (revealed.isErr()) throw revealed.error;
+    return revealed.value;
+  }
 
-	async revealApiKey(profileId: string): Promise<DesktopProviderApiKeyRevealResult> {
-		if (!profileIdPattern.test(profileId)) throw invalidInput("Invalid Provider profile");
-		const userScope = await this.#store.readScope("user");
-		const apiKey = userScope.settings.providers?.[profileId]?.apiKey;
-		if (!apiKey) {
-			throw providerConfigError("credential_unavailable", {
-				message: `Provider "${profileId}" has no user-saved API key to reveal`,
-				data: { profileId },
-			});
-		}
-		return { profileId, apiKey };
-	}
+  async startConnectorOAuth(connectorId: string) {
+    const application = findDesktopConnectorOAuthApplication(connectorId);
+    if (!application) throw invalidInput("Unknown OAuth Connector application");
+    const started = await this.client.startConnectorOAuth(application.id);
+    if (started.isErr()) throw started.error;
+    return started.value;
+  }
 
-	async saveConnectorOAuth(connectorId: string, token: OAuthTokenResponse): Promise<DesktopProviderConfigSnapshot> {
-		const application = findDesktopConnectorOAuthApplication(connectorId);
-		if (!application) throw invalidInput("Unknown OAuth Connector application");
-		const userScope = await this.#store.readScope("user");
-		const settings = structuredClone(userScope.settings);
-		settings.connector = storeConnectorOAuthToken(
-			settings.connector,
-			application.id,
-			toStoredConnectorOAuthToken(application.id, token),
-		);
-		const snapshot = await this.#store.writeScope("user", settings, { expectedRevision: userScope.revision });
-		return projectDesktopConfig(
-			snapshot.settings,
-			snapshot.scopeRevisions.user,
-			this.#catalog?.cached?.catalog,
-			this.#inventories(snapshot.settings),
-		);
-	}
+  async completeConnectorOAuth(callbackUrl: string) {
+    const completed = await this.client.completeConnectorOAuth(callbackUrl);
+    if (completed.isErr()) throw completed.error;
+    return completed.value.connectorId;
+  }
 
-	async disconnectConnectorOAuth(connectorId: string): Promise<DesktopProviderConfigSnapshot> {
-		const application = findDesktopConnectorOAuthApplication(connectorId);
-		if (!application) throw invalidInput("Unknown OAuth Connector application");
-		const userScope = await this.#store.readScope("user");
-		const settings = structuredClone(userScope.settings);
-		settings.connector = removeConnectorOAuthToken(settings.connector, application.id);
-		const snapshot = await this.#store.writeScope("user", settings, { expectedRevision: userScope.revision });
-		return projectDesktopConfig(
-			snapshot.settings,
-			snapshot.scopeRevisions.user,
-			this.#catalog?.cached?.catalog,
-			this.#inventories(snapshot.settings),
-		);
-	}
+  async disconnectConnectorOAuth(
+    connectorId: string,
+  ): Promise<DesktopProviderConfigSnapshot> {
+    const application = findDesktopConnectorOAuthApplication(connectorId);
+    if (!application) throw invalidInput("Unknown OAuth Connector application");
+    const saved = await this.client.disconnectConnectorOAuth(application.id);
+    if (saved.isErr()) throw saved.error;
+    return this.#project(saved.value);
+  }
 
-	close(): void {
-		this.#store.close();
-	}
+  async close(): Promise<void> {
+    await this.client.close();
+  }
 
-	async #readExtensionConfigurationScope(scope: "user" | "project") {
-		if (scope === "project") throw invalidInput("Project-scoped Extension configuration is unavailable in Desktop");
-		return this.#store.readScope("user");
-	}
+  async #remoteSnapshot(): Promise<RuntimeAgentSettingsSnapshot> {
+    const snapshot = await this.client.get();
+    if (snapshot.isErr()) throw snapshot.error;
+    return snapshot.value;
+  }
 
-	#inventories(settings: Readonly<CodingAgentSettings>): ReadonlyMap<string, ProviderModelInventory> {
-		const inventories = new Map<string, ProviderModelInventory>();
-		for (const profileId of Object.keys(settings.providers)) {
-			const inventory = this.#inventory?.get(profileId);
-			if (inventory) inventories.set(profileId, inventory);
-		}
-		return inventories;
-	}
+  async #loadModelCatalog(): Promise<void> {
+    const catalog = await this.client.getModelCatalog();
+    if (catalog.isOk()) this.#catalog = catalog.value.catalog;
+  }
 
-	#seedLegacyInventories(settings: Readonly<CodingAgentSettings>): void {
-		if (!this.#inventory) return;
-		for (const [profileId, profile] of Object.entries(settings.providers)) {
-			if (this.#inventory.get(profileId)) continue;
-			const modelIds = Object.entries(profile.models ?? {})
-				.map(([modelId, model]) => model.remoteModelId ?? modelId)
-				.filter(Boolean);
-			if (modelIds.length > 0) this.#inventory.replace(profileId, modelIds);
-		}
-	}
-
-	#seedInputInventories(profiles: readonly DesktopProviderProfileInput[]): void {
-		if (!this.#inventory) return;
-		for (const profile of profiles) {
-			if (this.#inventory.get(profile.id)) continue;
-			const modelIds = profile.models
-				.filter((model) => model.source === "unverified")
-				.map((model) => model.remoteModelId);
-			if (modelIds.length > 0) this.#inventory.replace(profile.id, modelIds);
-		}
-	}
-
-	#deleteRemovedInventories(
-		current: Readonly<CodingAgentSettings["providers"]>,
-		next: Readonly<CodingAgentSettings["providers"]>,
-	): void {
-		if (!this.#inventory) return;
-		for (const profileId of Object.keys(current)) {
-			if (!next[profileId]) this.#inventory.delete(profileId);
-		}
-	}
-
-	#migrateRenamedInventories(
-		profiles: readonly DesktopProviderProfileInput[],
-		current: Readonly<CodingAgentSettings["providers"]>,
-		next: Readonly<CodingAgentSettings["providers"]>,
-	): void {
-		if (!this.#inventory) return;
-		for (const profile of profiles) {
-			if (!profile.previousId || profile.previousId === profile.id) continue;
-			if (!current[profile.previousId] || next[profile.previousId]) continue;
-			this.#inventory.rename(profile.previousId, profile.id);
-		}
-	}
+  #project(
+    remote: RuntimeAgentSettingsSnapshot,
+  ): DesktopProviderConfigSnapshot {
+    return {
+      ...projectRuntimeProviderConfig(remote, this.#catalog),
+      ...(remote.language === undefined ? {} : { language: remote.language }),
+      ...(remote.maxTurns === undefined
+        ? {}
+        : { maxIterations: remote.maxTurns }),
+      ...(remote.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: remote.reasoningEffort }),
+      connector: projectRuntimeConnectorConfig(remote.connector),
+    };
+  }
 }
 
-function projectDesktopConfig(
-	settings: Readonly<CodingAgentSettings>,
-	revision: string | null,
-	catalog: Parameters<typeof projectProviderConfig>[2],
-	inventories: ReadonlyMap<string, ProviderModelInventory>,
-): DesktopProviderConfigSnapshot {
-	return {
-		...projectProviderConfig(settings, revision, catalog, inventories),
-		...projectSystemConfig(settings),
-		connector: projectConnectorConfig(settings.connector),
-	};
+function toRuntimeInput(
+  input: DesktopProviderConfigInput,
+  current: RuntimeAgentSettingsSnapshot,
+): RuntimeAgentSettingsInput {
+  return {
+    revision: input.revision,
+    model: selectDefaultModel(input, current.model),
+    ...(input.maxIterations === undefined
+      ? {}
+      : { maxTurns: input.maxIterations }),
+    ...(input.language === undefined ? {} : { language: input.language }),
+    ...(input.reasoningEffort === undefined
+      ? {}
+      : { reasoningEffort: input.reasoningEffort }),
+    ...(input.connector === undefined
+      ? {}
+      : { connector: toRuntimeConnector(input.connector) }),
+    providers: input.profiles.map((profile) => ({
+      id: profile.id,
+      ...(profile.previousId === undefined
+        ? {}
+        : { previousId: profile.previousId }),
+      name: profile.name,
+      adapter: profile.adapter,
+      ...(profile.baseURL.trim() ? { baseURL: profile.baseURL } : {}),
+      authentication: profile.authentication,
+      ...(profile.apiKey === undefined ? {} : { apiKey: profile.apiKey }),
+      ...(profile.clearApiKey === undefined
+        ? {}
+        : { clearApiKey: profile.clearApiKey }),
+      enabled: true,
+      models: profile.models.map((model) => ({
+        id: model.id,
+        ...(model.remoteModelId === model.id
+          ? {}
+          : { remoteModelId: model.remoteModelId }),
+        enabled: model.enabled,
+      })),
+    })),
+  };
 }
 
-function validateInput(input: DesktopProviderConfigInput, catalog: Parameters<typeof projectProviderConfig>[2]): void {
-	if (
-		!isRecord(input) ||
-		(input.revision !== null && typeof input.revision !== "string") ||
-		!isSystemConfigInput(input) ||
-		!validateConnectorConfigInput(input.connector)
-	) {
-		throw invalidInput("Invalid Provider configuration");
-	}
-	validateProviderProfiles(input.profiles, catalog);
+function selectDefaultModel(
+  input: DesktopProviderConfigInput,
+  current: string,
+): string {
+  if (current) return current;
+  for (const profile of input.profiles) {
+    const model = profile.models.find((candidate) => candidate.enabled);
+    if (model) return `${profile.id}/${model.remoteModelId}`;
+  }
+  return "";
+}
+
+function validateInput(
+  input: DesktopProviderConfigInput,
+  catalog: Parameters<typeof validateProviderProfiles>[1],
+): void {
+  if (
+    !isRecord(input) ||
+    (input.revision !== null && typeof input.revision !== "string") ||
+    !isRuntimePresentationInput(input) ||
+    !validateConnectorConfigInput(input.connector)
+  ) {
+    throw invalidInput("Invalid Provider configuration");
+  }
+  validateProviderProfiles(input.profiles, catalog);
+}
+
+function isRuntimePresentationInput(
+  input: Pick<
+    DesktopProviderConfigInput,
+    "language" | "maxIterations" | "reasoningEffort"
+  >,
+): boolean {
+  return !(
+    (input.language !== undefined &&
+      (typeof input.language !== "string" ||
+        !/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(input.language))) ||
+    (input.maxIterations !== undefined &&
+      (!Number.isInteger(input.maxIterations) || input.maxIterations < 1)) ||
+    (input.reasoningEffort !== undefined &&
+      input.reasoningEffort !== "low" &&
+      input.reasoningEffort !== "medium" &&
+      input.reasoningEffort !== "high")
+  );
 }
 
 function invalidInput(message: string) {
-	return providerConfigError("invalid_input", { message });
+  return providerConfigError("invalid_input", { message });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

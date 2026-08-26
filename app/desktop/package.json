@@ -5,7 +5,7 @@
 	"description": "JAI desktop application",
 	"main": ".vite/build/main.js",
 	"scripts": {
-		"predev": "bun run --cwd ../../packages/coding-agent build && bun run --cwd ../../packages/extension build",
+		"predev": "bun run --cwd ../server build && bun run --cwd ../../packages/coding-agent build && bun run --cwd ../../packages/extension build",
 		"dev": "electron-forge start",
 		"build": "electron-forge package",
 		"make": "electron-forge make",
@@ -23,6 +23,7 @@
 		"@jai/common": "workspace:*",
 		"@jai/connector": "workspace:*",
 		"@jai/extension": "workspace:*",
+		"@jai/server": "workspace:*",
 		"@lobehub/icons": "^5.15.0",
 		"@monaco-editor/react": "^4.7.0",
 		"@pierre/trees": "^1.0.0-beta.6",

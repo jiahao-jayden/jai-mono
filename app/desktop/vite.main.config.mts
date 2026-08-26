@@ -4,11 +4,6 @@ import { defineConfig } from "vite";
 const workspaceRoot = path.resolve(import.meta.dirname, "../..");
 
 export default defineConfig({
-	build: {
-		rollupOptions: {
-			external: ["node:sqlite"],
-		},
-	},
 	resolve: {
 		alias: [
 			{ find: /^@jai\/coding-agent$/, replacement: path.join(workspaceRoot, "packages/coding-agent/src/sdk.ts") },

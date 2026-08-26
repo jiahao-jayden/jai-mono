@@ -471,8 +471,12 @@ function toolClusterDetails(
 	const toolDetails = tools
 		.map((item) => {
 			const summary = toolClusterChip([item]);
-			const details = item.details ? `\n${item.details}` : "";
-			return `${humanizeToolName(item.toolName)} · ${summary}${details}`;
+			const changedFiles = item.fileChanges
+				?.map((change) => `${fileChangeVerb(change.operation)} ${change.path}`)
+				.join("\n");
+			const details = [item.details, changedFiles].filter(Boolean).join("\n");
+			const body = details ? `\n${details}` : "";
+			return `${humanizeToolName(item.toolName)} · ${summary}${body}`;
 		})
 		.join("\n\n");
 	return [narration, toolDetails].filter(Boolean).join("\n\n") || undefined;
@@ -484,16 +488,36 @@ export function workTimelineSummary(
 	running: boolean,
 ): string {
 	const operationCount = items.filter((item): item is DesktopToolItem => item.kind === "tool").length;
-	const filesChanged = new Set(
+	const changedPaths = new Set(
 		items
-			.filter((item): item is DesktopToolItem => item.kind === "tool" && item.activityKind === "write")
-			.map((item) => item.summary)
-			.filter((summary): summary is string => Boolean(summary)),
-	).size;
+			.filter((item): item is DesktopToolItem => item.kind === "tool")
+			.flatMap((item) => item.fileChanges ?? [])
+			.map((change) => change.path),
+	);
+	const filesChanged =
+		changedPaths.size > 0
+			? changedPaths.size
+			: new Set(
+					items
+						.filter((item): item is DesktopToolItem => item.kind === "tool" && item.activityKind === "write")
+						.map((item) => item.summary)
+						.filter((summary): summary is string => Boolean(summary)),
+				).size;
 	const stepLabel = `${steps.length} ${steps.length === 1 ? "step" : "steps"}`;
 	if (running) return `${stepLabel} · Working`;
 	if (filesChanged > 0) return `${stepLabel} · ${filesChanged} ${filesChanged === 1 ? "file" : "files"} changed`;
 	return `${stepLabel} · ${operationCount} ${operationCount === 1 ? "action" : "actions"}`;
+}
+
+function fileChangeVerb(operation: "add" | "modify" | "delete"): string {
+	switch (operation) {
+		case "add":
+			return "Added";
+		case "modify":
+			return "Modified";
+		case "delete":
+			return "Deleted";
+	}
 }
 
 function toolPresentation(item: DesktopToolItem, running: boolean): { icon: IconName; label: string } {

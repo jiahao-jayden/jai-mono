@@ -457,6 +457,12 @@ export interface DesktopNarrationItem {
 
 export type DesktopToolActivityKind = "search" | "read" | "write" | "execute" | "call" | "operation";
 
+/** A safe, read-only projection of one durable ACP `diff.changes` entry. */
+export interface DesktopToolFileChange {
+	readonly operation: "add" | "modify" | "delete";
+	readonly path: string;
+}
+
 export interface DesktopToolItem {
 	readonly kind: "tool";
 	readonly id: string;
@@ -469,6 +475,8 @@ export interface DesktopToolItem {
 	readonly status: "running" | "complete";
 	readonly summary?: string;
 	readonly details?: string;
+	/** Present only when the completed tool-result T2 carried ACP diff content. */
+	readonly fileChanges?: readonly DesktopToolFileChange[];
 }
 
 export interface DesktopSubagentItem {
@@ -718,7 +726,7 @@ export interface DesktopApi {
 		list(input?: {
 			readonly limit?: number;
 			readonly cursor?: SessionListCursor;
-		}): DesktopSessionListPage;
+		}): Promise<DesktopSessionListPage>;
 		rename(input: DesktopSessionRenameInput): Promise<CodingSession>;
 		move(input: MoveSessionInput): Promise<CodingSession>;
 		delete(input: DesktopSessionDeleteInput): Promise<void>;

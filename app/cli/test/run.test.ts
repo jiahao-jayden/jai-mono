@@ -1,50 +1,51 @@
 import { describe, expect, test } from "bun:test";
 import { type AssistantMessage, zeroUsage } from "@jai/ai";
 import type { CodingAgentMessage } from "@jai/coding-agent";
-import { createCliApproval, parseCliOptions, projectCliResult, projectStreamEvent, runCli } from "../src/run";
+import { parseCliOptions, projectCliResult, projectStreamEvent } from "../src/run";
 
 describe("jai CLI options", () => {
-	test("parses print mode, execution policy, and machine output", () => {
+	test("parses print mode and machine output", () => {
 		expect(
 			parseCliOptions([
 				"-p",
 				"inspect the repository",
 				"--output-format",
 				"stream-json",
-				"--permission-mode",
-				"bypassPermissions",
-				"--max-turns",
-				"25",
-				"--no-session-persistence",
 			]),
 		).toMatchObject({
 			prompt: "inspect the repository",
 			outputFormat: "stream-json",
-			permissionMode: "bypassPermissions",
-			maxTurns: 25,
-			noSessionPersistence: true,
 		});
 	});
 
-	test("rejects an unsupported permission mode", () => {
-		expect(() => parseCliOptions(["-p", "hello", "--permission-mode", "unsafe"])).toThrow(
-			"Unsupported permission mode",
+	test("rejects Agent configuration flags because the Runtime Host owns them", () => {
+		expect(() => parseCliOptions(["-p", "hello", "--model", "openai/gpt"])).toThrow("Unknown option");
+		expect(() => parseCliOptions(["-p", "hello", "--permission-mode", "bypassPermissions"])).toThrow(
+			"Unknown option",
 		);
 	});
 
 	test("accepts a bare -p for stdin print mode", () => {
-		expect(parseCliOptions(["-p", "--no-session-persistence"])).toMatchObject({
+		expect(parseCliOptions(["-p"])).toMatchObject({
 			printMode: true,
 			interactive: false,
-			noSessionPersistence: true,
 		});
 	});
 
-	test("parses a read-only session attachment", () => {
-		expect(parseCliOptions(["--attach", "session-1", "--output-format", "stream-json"])).toMatchObject({
-			attachSessionId: "session-1",
-			outputFormat: "stream-json",
+	test("maps no-session-persistence to a Host-owned ephemeral Session request", () => {
+		expect(parseCliOptions(["-p", "one-shot", "--no-session-persistence"])).toMatchObject({
+			prompt: "one-shot",
+			noSessionPersistence: true,
 		});
+		expect(() => parseCliOptions(["-p", "one-shot", "--no-session-persistence", "--session-id", "s-1"])).toThrow(
+			"--no-session-persistence cannot be combined with --session-id",
+		);
+	});
+
+	test("rejects direct journal attachment", () => {
+		expect(() => parseCliOptions(["--attach", "session-1", "--output-format", "stream-json"])).toThrow(
+			"Unknown option",
+		);
 	});
 
 	test("supports Claude-style --print and rejects the old --prompt spelling", () => {
@@ -58,10 +59,6 @@ describe("jai CLI options", () => {
 			prompt: "inspect the repository",
 			printMode: true,
 		});
-	});
-
-	test("returns an execution failure when no model is configured", async () => {
-		expect(await runCli(["-p", "hello", "--no-session-persistence"])).toBe(1);
 	});
 
 	test("projects stream-json events and aggregates provider usage", () => {
@@ -148,19 +145,5 @@ describe("run diagnostics", () => {
 		expect(projectCliResult("session-1", [assistant("iterationLimit")]).diagnostics.stop_reason).toBe(
 			"iteration_limit",
 		);
-	});
-});
-
-// 测试进程本身没有 TTY，因此这里走的就是无人值守路径。
-describe("headless 审批", () => {
-	const request = { toolName: "Bash", args: { command: "echo value > output.txt" } } as never;
-
-	test("bypassPermissions 下自动放行，不再抛 permission 错误", async () => {
-		await expect(createCliApproval("bypassPermissions")(request)).resolves.toBe("allowOnce");
-	});
-
-	test("未选择 bypassPermissions 时仍然报错", async () => {
-		await expect(createCliApproval(undefined)(request)).rejects.toThrow(/Permission required for Bash/);
-		await expect(createCliApproval("default")(request)).rejects.toThrow(/Permission required for Bash/);
 	});
 });

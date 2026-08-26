@@ -1,27 +1,26 @@
-import { homedir } from "node:os";
 import path from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
-import { attachSession, type JsonObject, type SessionSnapshot } from "@jai/agent";
-import { SqliteSessionStore } from "@jai/agent/node/sqlite";
 import {
-	type CodingAgent,
+	connectJaiRuntimeHost,
+	type AcpJsonRpcNotification,
+	type AcpJsonRpcRequest,
+	type AcpJsonRpcResponse,
+	type AcpPromptBlock,
+	type LocalAcpV2Client,
+} from "@jai/server/acp-client";
+import {
 	type CodingAgentEvent,
 	type CodingAgentMessage,
 	type CodingAssistantMessage,
-	type CodingPermissionDecision,
-	type CodingPermissionMode,
-	type CodingPermissionRequest,
 	type CodingSdkError,
-	createCodingAgent,
 	type JsonValue,
 } from "@jai/coding-agent";
-import { createAgentPluginsExtension } from "@jai/extension/agent-plugins";
 import { TaggedError } from "better-result";
-import { discoverCliAgentPluginDirectories } from "./plugin-directories";
 
 type OutputFormat = "text" | "json" | "stream-json";
+type JsonObject = Record<string, JsonValue>;
 
 export interface CliUsage {
 	readonly input_tokens: number;
@@ -57,14 +56,9 @@ export interface CliResult {
 interface CliOptions {
 	readonly prompt?: string;
 	readonly outputFormat: OutputFormat;
-	readonly model?: string;
 	readonly cwd: string;
 	readonly sessionId?: string;
-	readonly attachSessionId?: string;
 	readonly noSessionPersistence: boolean;
-	readonly permissionMode?: CodingPermissionMode;
-	readonly maxTurns?: number;
-	readonly trustWorkspace: boolean;
 	readonly printMode: boolean;
 	readonly interactive: boolean;
 	readonly help: boolean;
@@ -72,7 +66,6 @@ interface CliOptions {
 }
 
 class CliUsageError extends TaggedError("cli.usage_invalid")<{ readonly message: string }> {}
-class CliPermissionError extends TaggedError("cli.permission_unavailable")<{ readonly message: string }> {}
 class CliAgentError extends TaggedError("cli.agent_failed")<{
 	readonly code: string;
 	readonly message: string;
@@ -80,6 +73,7 @@ class CliAgentError extends TaggedError("cli.agent_failed")<{
 	readonly retryable: boolean;
 	readonly details?: JsonValue;
 }> {}
+class CliRuntimeError extends TaggedError("cli.runtime_unavailable")<{ readonly message: string }> {}
 const VERSION = "0.0.0";
 
 export async function runCli(argv: readonly string[]): Promise<number> {
@@ -99,56 +93,42 @@ export async function runCli(argv: readonly string[]): Promise<number> {
 		return 0;
 	}
 
-	let agent: CodingAgent | undefined;
-	let closeSessionStore: (() => void) | undefined;
-	let closeAttachment: (() => void) | undefined;
+	let client: LocalAcpV2Client | undefined;
+	let activeSessionId: string | undefined;
 	let interrupted = false;
 	const abort = () => {
 		interrupted = true;
-		void agent?.abort();
+		if (activeSessionId) client?.notify("session/cancel", { sessionId: activeSessionId });
 	};
 	process.once("SIGINT", abort);
 	try {
-		const jaiHome = resolveJaiHome();
-		if (options.attachSessionId) {
-			if (options.outputFormat !== "stream-json")
-				throw new CliUsageError({ message: "--attach requires --output-format stream-json" });
-			closeAttachment = await runAttach(options.attachSessionId, path.join(jaiHome, "data.sqlite"));
-			await new Promise<void>((resolve) => {
-				const detach = () => {
-					closeAttachment?.();
-					resolve();
-				};
-				process.once("SIGINT", detach);
-			});
-			return interrupted ? 130 : 0;
-		}
 		const prompt = await resolvePrompt(options);
 		if (!options.interactive && !prompt)
 			throw new CliUsageError({ message: "A prompt or stdin input is required with -p" });
-
-		const runtime = await createCliAgent(options, jaiHome);
-		agent = runtime.agent;
-		closeSessionStore = runtime.close;
-		const sessionId = agent.sessionId;
+		const connected = await connectJaiRuntimeHost();
+		if (connected.isErr()) throw new CliRuntimeError({ message: connected.error.message });
+		client = connected.value;
+		await initializeClient(client);
+		const sessionId = await openCliSession(client, options);
+		activeSessionId = sessionId;
+		const session = new CliSession(client, sessionId, options.outputFormat);
 		if (options.interactive) {
-			if (prompt) await runOne(agent, prompt, options.outputFormat, sessionId);
-			await runInteractive(agent, options.outputFormat, sessionId);
+			if (prompt) await runOne(session, prompt);
+			await runInteractive(session);
 		} else {
-			await runOne(agent, prompt!, options.outputFormat, sessionId);
+			await runOne(session, prompt!);
 		}
+		session.close();
 		return 0;
 	} catch (error) {
 		if (options.outputFormat === "stream-json" || options.outputFormat === "json")
 			writeEvent({ type: "error", error: projectCliError(error) });
 		else process.stderr.write(`jai: ${errorMessage(error)}\n`);
 		if (interrupted) return 130;
-		return error instanceof CliPermissionError || error instanceof CliUsageError ? 2 : 1;
+		return error instanceof CliUsageError ? 2 : 1;
 	} finally {
 		process.off("SIGINT", abort);
-		await agent?.close();
-		closeSessionStore?.();
-		closeAttachment?.();
+		await client?.close();
 	}
 }
 
@@ -162,14 +142,9 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
 			options: {
 				print: { type: "string", short: "p" },
 				"output-format": { type: "string", default: "text" },
-				model: { type: "string" },
 				cwd: { type: "string" },
 				"session-id": { type: "string" },
-				attach: { type: "string" },
 				"no-session-persistence": { type: "boolean", default: false },
-				"permission-mode": { type: "string" },
-				"max-turns": { type: "string" },
-				"trust-workspace": { type: "boolean", default: false },
 				help: { type: "boolean", short: "h", default: false },
 				version: { type: "boolean", short: "v", default: false },
 			},
@@ -178,35 +153,18 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
 		if (outputFormat !== "text" && outputFormat !== "json" && outputFormat !== "stream-json") {
 			throw new CliUsageError({ message: `Unsupported output format: ${String(outputFormat)}` });
 		}
-		const permissionMode = parsed.values["permission-mode"];
-		if (
-			permissionMode !== undefined &&
-			permissionMode !== "default" &&
-			permissionMode !== "acceptEdits" &&
-			permissionMode !== "plan" &&
-			permissionMode !== "dontAsk" &&
-			permissionMode !== "bypassPermissions"
-		) {
-			throw new CliUsageError({ message: `Unsupported permission mode: ${permissionMode}` });
-		}
-		const maxTurns = parsed.values["max-turns"] === undefined ? undefined : Number(parsed.values["max-turns"]);
-		if (maxTurns !== undefined && (!Number.isInteger(maxTurns) || maxTurns < 1)) {
-			throw new CliUsageError({ message: "--max-turns must be a positive integer" });
-		}
 		const positionalPrompt = parsed.positionals.length > 0 ? parsed.positionals.join(" ") : undefined;
 		const prompt = parsed.values.print ?? positionalPrompt;
 		const cwd = path.resolve(parsed.values.cwd ?? process.cwd());
+		if (parsed.values["no-session-persistence"] && parsed.values["session-id"] !== undefined) {
+			throw new CliUsageError({ message: "--no-session-persistence cannot be combined with --session-id" });
+		}
 		return {
 			...(prompt === undefined ? {} : { prompt }),
 			outputFormat,
-			...(parsed.values.model === undefined ? {} : { model: parsed.values.model }),
 			cwd,
 			...(parsed.values["session-id"] === undefined ? {} : { sessionId: parsed.values["session-id"] }),
-			...(parsed.values.attach === undefined ? {} : { attachSessionId: parsed.values.attach }),
 			noSessionPersistence: parsed.values["no-session-persistence"] ?? false,
-			...(permissionMode === undefined ? {} : { permissionMode }),
-			...(maxTurns === undefined ? {} : { maxTurns }),
-			trustWorkspace: parsed.values["trust-workspace"] ?? false,
 			printMode: normalized.printMode,
 			interactive: !normalized.printMode && Boolean(input.isTTY),
 			help: parsed.values.help ?? false,
@@ -243,86 +201,37 @@ async function resolvePrompt(options: CliOptions): Promise<string | undefined> {
 	return prompt || undefined;
 }
 
-async function createCliAgent(
-	options: CliOptions,
-	jaiHome: string,
-): Promise<{ readonly agent: CodingAgent; readonly close: () => void }> {
-	const pluginDirectories = await discoverCliAgentPluginDirectories({
-		homeDirectory: path.dirname(jaiHome),
-		workspaceDirectory: options.cwd,
-		workspaceTrusted: options.trustWorkspace,
+async function initializeClient(client: LocalAcpV2Client): Promise<void> {
+	const initialized = await client.request("initialize", {
+		protocolVersion: 2,
+		capabilities: {},
+		info: { name: "jai-cli", version: VERSION },
 	});
-	const sessionStore = await SqliteSessionStore.open<JsonObject>(path.join(jaiHome, "data.sqlite"));
-	const session = options.noSessionPersistence
-		? { kind: "ephemeral" as const }
-		: options.sessionId
-			? { kind: "resume" as const, id: options.sessionId, store: sessionStore }
-			: { kind: "new" as const, store: sessionStore };
-	const model = options.model ?? process.env.JAI_MODEL;
-	if (!model) {
-		throw new CliAgentError({
-			code: "coding_sdk.model_unavailable",
-			message: "No model selected; pass --model <provider/model> or set JAI_MODEL",
-			phase: "model",
-			retryable: false,
+	if (initialized.isErr()) throw new CliRuntimeError({ message: initialized.error.message });
+}
+
+async function openCliSession(client: LocalAcpV2Client, options: CliOptions): Promise<string> {
+	if (options.sessionId) {
+		const resumed = await client.request("session/resume", {
+			sessionId: options.sessionId,
+			cwd: options.cwd,
+			replayFrom: "none",
 		});
+		if (resumed.isErr()) throw new CliRuntimeError({ message: resumed.error.message });
+		return options.sessionId;
 	}
-	const agentPluginsExtension = await createAgentPluginsExtension({
-		directories: pluginDirectories,
-		dataDirectory: path.join(jaiHome, "agent-plugin-data"),
-	});
-	const created = await createCodingAgent({
-		model,
+	const created = await client.request("session/new", {
 		cwd: options.cwd,
-		agentDataRoot: jaiHome,
-		session,
-		requestApproval: createCliApproval(options.permissionMode),
-		...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
-		...(options.maxTurns ? { maxTurns: options.maxTurns } : {}),
-		extensions: [agentPluginsExtension],
+		...(options.noSessionPersistence ? { ephemeral: true } : {}),
 	});
-	if (created.isErr()) {
-		sessionStore.close();
-		throw new CliAgentError(created.error);
+	if (created.isErr()) throw new CliRuntimeError({ message: created.error.message });
+	if (!isRecord(created.value) || typeof created.value.sessionId !== "string") {
+		throw new CliRuntimeError({ message: "Runtime Host returned an invalid session/new result" });
 	}
-	return { agent: created.value, close: () => sessionStore.close() };
+	return created.value.sessionId;
 }
 
-async function runAttach(sessionId: string, databasePath: string): Promise<() => void> {
-	const store = await SqliteSessionStore.open<JsonObject>(databasePath);
-	const attached = await attachSession(store, sessionId);
-	if (attached.isErr()) {
-		store.close();
-		throw new CliUsageError({ message: attached.error.message });
-	}
-	const attachment = attached.value;
-	let delivered = 0;
-	const emit = (snapshot: SessionSnapshot<JsonObject>): void => {
-		if (delivered === 0) writeEvent({ type: "system", subtype: "init", session_id: sessionId });
-		for (const entry of snapshot.entries.slice(delivered)) {
-			writeEvent({ type: "event", session_id: sessionId, event: projectWireValue(entry) });
-		}
-		delivered = snapshot.entries.length;
-	};
-	emit(attachment.snapshot);
-	const stop = attachment.onChange(emit);
-	// 跟读断了要说出来，否则旁观者只会看到输出无声停住。
-	const stopLost = attachment.onLost((error) => {
-		writeEvent({ type: "system", subtype: "attach_lost", session_id: sessionId, message: error.message });
-	});
-	return () => {
-		stop();
-		stopLost();
-		attachment.close();
-		store.close();
-	};
-}
-
-function resolveJaiHome(): string {
-	return path.resolve(process.env.JAI_HOME ?? path.join(homedir(), ".jai"));
-}
-
-async function runInteractive(agent: CodingAgent, outputFormat: OutputFormat, sessionId: string): Promise<void> {
+async function runInteractive(session: CliSession): Promise<void> {
 	const reader = createInterface({ input, output, terminal: true });
 	try {
 		while (true) {
@@ -333,71 +242,143 @@ async function runInteractive(agent: CodingAgent, outputFormat: OutputFormat, se
 				process.stdout.write("/help  /exit  /quit\n");
 				continue;
 			}
-			await runOne(agent, prompt, outputFormat, sessionId);
+			await runOne(session, prompt);
 		}
 	} finally {
 		reader.close();
 	}
 }
 
-async function runOne(
-	agent: CodingAgent,
-	prompt: string,
-	outputFormat: OutputFormat,
-	sessionId: string,
-): Promise<void> {
-	const unsubscribe = agent.subscribe((event) => {
-		if (outputFormat === "stream-json") {
-			const projected = projectStreamEvent(sessionId, event);
-			if (projected) writeEvent(projected);
-		}
-		if (outputFormat === "text" && event.type === "message_update" && event.assistantEvent.type === "text_delta") {
-			process.stdout.write(event.assistantEvent.delta);
-		}
-	});
-	const run = await agent.prompt(prompt);
-	unsubscribe();
-	if (run.isErr()) throw new CliAgentError(run.error);
-	const messages = run.value.messages;
-	const result = projectCliResult(sessionId, messages);
-	if (outputFormat === "json") process.stdout.write(`${JSON.stringify(result)}\n`);
-	if (outputFormat === "stream-json") writeEvent({ ...result, session_id: sessionId });
-	if (outputFormat === "text") process.stdout.write("\n");
+async function runOne(session: CliSession, prompt: string): Promise<void> {
+	const outcome = await session.prompt(prompt);
+	if (session.outputFormat === "json") {
+		process.stdout.write(
+			`${JSON.stringify({
+				type: "result",
+				sessionId: session.id,
+				text: outcome.text,
+				diagnostics: { stop_reason: outcome.stopReason },
+			})}\n`,
+		);
+	}
+	if (session.outputFormat === "stream-json") {
+		writeEvent({ type: "result", session_id: session.id, text: outcome.text, stop_reason: outcome.stopReason });
+	}
+	if (session.outputFormat === "text") process.stdout.write("\n");
 }
 
-/**
- * 无人值守（无 TTY）时没有人能回答审批。此时唯一合理的行为取决于调用方是否
- * 已经显式选择了 bypassPermissions：选了就按该模式的语义自动放行，没选就报错。
- *
- * 这里放行的只是被风险层判为 `ask` 的命令。root/home 删除等硬熔断在
- * evaluatePermission 内部直接 deny，根本不会创建审批请求，因此不受影响。
- */
-export function createCliApproval(
-	permissionMode: CliOptions["permissionMode"],
-): (request: CodingPermissionRequest, signal?: AbortSignal) => Promise<CodingPermissionDecision> {
-	return async function requestCliApproval(request, signal) {
-		if (!input.isTTY || !output.isTTY) {
-			if (permissionMode === "bypassPermissions") return "allowOnce";
-			throw new CliPermissionError({
-				message: `Permission required for ${request.toolName}; use --permission-mode`,
-			});
+class CliSession {
+	readonly #unsubscribe: () => void;
+	readonly #unsubscribeRequests: () => void;
+	#pending?: { readonly resolve: (value: CliPromptOutcome) => void };
+	#text = "";
+	#stopReason = "none";
+
+	constructor(
+		private readonly client: LocalAcpV2Client,
+		readonly id: string,
+		readonly outputFormat: OutputFormat,
+	) {
+		this.#unsubscribe = client.subscribe((notification) => this.handleNotification(notification));
+		this.#unsubscribeRequests = client.subscribeRequest((request) => {
+			void this.respondToPermission(request);
+		});
+	}
+
+	async prompt(text: string): Promise<CliPromptOutcome> {
+		if (this.#pending) throw new CliRuntimeError({ message: `Session "${this.id}" is already running` });
+		this.#text = "";
+		this.#stopReason = "none";
+		const completed = new Promise<CliPromptOutcome>((resolve) => {
+			this.#pending = { resolve };
+		});
+		const sent = await this.client.request("session/prompt", {
+			sessionId: this.id,
+			prompt: [{ type: "text", text } satisfies AcpPromptBlock],
+		});
+		if (sent.isErr()) {
+			this.#pending = undefined;
+			throw new CliRuntimeError({ message: sent.error.message });
 		}
-		if (signal?.aborted) return "deny";
-		const command = request.args.command;
-		const question =
-			typeof command === "string"
-				? `${request.toolName}: ${String(request.args.command)}\nAllow? [y]es/[n]o/[a]lways `
-				: `${request.toolName} requests permission. Allow? [y]es/[n]o/[a]lways `;
-		const reader = createInterface({ input, output, terminal: true });
-		try {
-			const answer = (await reader.question(question)).trim().toLowerCase();
-			if (answer === "a" || answer === "always") return "alwaysAllow";
-			if (answer === "y" || answer === "yes") return "allowOnce";
-			return "deny";
-		} finally {
-			reader.close();
+		if (this.outputFormat === "stream-json") writeEvent({ type: "system", subtype: "init", session_id: this.id });
+		return completed;
+	}
+
+	close(): void {
+		this.#unsubscribe();
+		this.#unsubscribeRequests();
+	}
+
+	private handleNotification(notification: AcpJsonRpcNotification): void {
+		if (notification.method !== "session/update" || !isRecord(notification.params)) return;
+		if (notification.params.sessionId !== this.id || !isRecord(notification.params.update)) return;
+		const update = notification.params.update;
+		if (update.sessionUpdate === "agent_message") {
+			const text = blocksText(update.content);
+			if (text) {
+				this.#text = text;
+				if (this.outputFormat === "text") process.stdout.write(text);
+				if (this.outputFormat === "stream-json") {
+					writeEvent({ type: "assistant", session_id: this.id, content: [{ type: "text", text }] });
+				}
+			}
+			return;
 		}
-	};
+		if (update.sessionUpdate !== "state_update" || update.state !== "idle") return;
+		this.#stopReason = typeof update.stopReason === "string" ? update.stopReason : "none";
+		const pending = this.#pending;
+		this.#pending = undefined;
+		pending?.resolve({ text: this.#text, stopReason: this.#stopReason });
+	}
+
+	private async respondToPermission(request: AcpJsonRpcRequest): Promise<void> {
+		if (request.method !== "session/request_permission" || request.id === undefined || !isRecord(request.params)) return;
+		if (request.params.sessionId !== this.id) return;
+		const optionId = await choosePermissionOption(request.params);
+		const response: AcpJsonRpcResponse = {
+			jsonrpc: "2.0",
+			id: request.id,
+			result: { outcome: { outcome: "selected", optionId } },
+		};
+		this.client.respond(response);
+	}
+}
+
+interface CliPromptOutcome {
+	readonly text: string;
+	readonly stopReason: string;
+}
+
+async function choosePermissionOption(params: Record<string, unknown>): Promise<string> {
+	const options = Array.isArray(params.options)
+		? params.options.filter(isRecord).filter((option): option is Record<string, unknown> => typeof option.optionId === "string")
+		: [];
+	const reject = options.find((option) => option.kind === "reject_once")?.optionId ?? "reject";
+	if (!input.isTTY || !output.isTTY) return reject as string;
+	const title = typeof params.title === "string" ? params.title : "Permission requested";
+	const reader = createInterface({ input, output, terminal: true });
+	try {
+		const answer = (await reader.question(`${title}\nAllow? [y]es/[n]o/[a]lways `)).trim().toLowerCase();
+		if (answer === "a" || answer === "always") {
+			const always = options.find((option) => option.kind === "allow_always")?.optionId;
+			if (typeof always === "string") return always;
+		}
+		if (answer === "y" || answer === "yes") {
+			const once = options.find((option) => option.kind === "allow_once")?.optionId;
+			if (typeof once === "string") return once;
+		}
+		return reject as string;
+	} finally {
+		reader.close();
+	}
+}
+
+function blocksText(value: unknown): string {
+	if (!Array.isArray(value)) return "";
+	return value
+		.filter(isRecord)
+		.flatMap((block) => (block.type === "text" && typeof block.text === "string" ? [block.text] : []))
+		.join("");
 }
 
 function writeEvent(event: unknown): void {
@@ -585,11 +566,15 @@ function projectCliError(error: unknown): JsonObject {
 			...(error.details === undefined ? {} : { details: error.details }),
 		};
 	}
-	if (error instanceof CliPermissionError) return { code: "cli.permission_unavailable", message: error.message };
+	if (error instanceof CliRuntimeError) return { code: "cli.runtime_unavailable", message: error.message };
 	if (error instanceof CliUsageError) return { code: "cli.usage_invalid", message: error.message };
 	return { code: "cli.unknown", message: errorMessage(error) };
 }
 
 function helpText(): string {
-	return `Jai coding agent\n\nUsage:\n  jai [prompt]\n  jai -p [prompt] [options]\n  cat task.md | jai -p [options]\n\nOptions:\n  -p, --print [text]               Run one non-interactive prompt\n      --output-format <format>     text | json | stream-json\n      --model <profile/model>      Override configured model\n      --cwd <path>                 Workspace root (default: current directory)\n      --session-id <id>            Resume a durable session\n      --attach <id>                Read-only follow a durable session\n      --no-session-persistence     Use a temporary session\n      --permission-mode <mode>     default | acceptEdits | plan | dontAsk | bypassPermissions\n      --max-turns <n>              Maximum model turns\n      --trust-workspace            Enable trusted project-local configuration\n  -h, --help                       Show this help\n  -v, --version                    Show the CLI version\n`;
+	return `Jai coding agent\n\nUsage:\n  jai [prompt]\n  jai -p [prompt] [options]\n  cat task.md | jai -p [options]\n\nOptions:\n  -p, --print [text]               Run one non-interactive prompt\n      --output-format <format>     text | json | stream-json\n      --cwd <path>                 Workspace root (default: current directory)\n      --session-id <id>            Resume a durable session\n      --no-session-persistence    Run in a Host-managed connection-scoped Session\n  -h, --help                       Show this help\n  -v, --version                    Show the CLI version\n`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

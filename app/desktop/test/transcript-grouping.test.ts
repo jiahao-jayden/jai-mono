@@ -6,6 +6,7 @@ import {
 	groupTranscriptItems,
 	TranscriptItem,
 	TranscriptItems,
+	workTimelineSummary,
 	workTimelineSteps,
 } from "../src/components/shell/chat/chat-transcript";
 
@@ -49,6 +50,22 @@ describe("transcript grouping", () => {
 		const markup = renderToStaticMarkup(createElement(TranscriptItem, { item: tool }));
 		expect(markup).toContain('data-slot="tool-timeline"');
 		expect(markup).toContain("1 step · 1 action");
+	});
+
+	test("使用 durable ACP diff 路径计数已变更文件", () => {
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:write-1",
+			turnId: "turn-1",
+			activityId: "assistant:1",
+			toolCallId: "write-1",
+			toolName: "Write",
+			activityKind: "write",
+			status: "complete",
+			fileChanges: [{ operation: "add", path: "/workspace/index.ts" }],
+		};
+
+		expect(workTimelineSummary(workTimelineSteps([tool]), [tool], false)).toBe("1 step · 1 file changed");
 	});
 
 	test("context compaction 不会切断同一 turn 的工作日志", () => {

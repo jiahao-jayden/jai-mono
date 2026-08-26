@@ -1,495 +1,522 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getErrorCode } from "@jai/common";
+import type {
+  DesktopConfigurationClient,
+  DesktopConfigurationClientError,
+} from "@jai/server/desktop-configuration-client";
+import type {
+  RuntimeAgentSettingsInput,
+  RuntimeAgentSettingsModelFetchResult,
+  RuntimeAgentSettingsSnapshot,
+  WorkspaceTrustSnapshot,
+} from "@jai/server";
+import { Result } from "better-result";
 import { DesktopConfigService } from "../electron/config";
-import { ModelCatalogStore } from "../electron/model-catalog";
-import type { ProviderModelInventory } from "../electron/config/model-inventory";
-
-const roots: string[] = [];
-
-afterEach(async () => {
-	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
-});
 
 describe("DesktopConfigService", () => {
-	test("原子保存 profile，但不向 renderer 投影 API key", async () => {
-		const homeDir = await fixture();
-		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
+  test("persists Provider credentials only through the Runtime Host", async () => {
+    const homeDir = await mkdtemp(
+      join(tmpdir(), "jai-remote-provider-config-"),
+    );
+    const host = new FakeDesktopConfigurationClient();
+    const service = new DesktopConfigService(host);
+    try {
+      const saved = await service.save({
+        revision: null,
+        profiles: [
+          {
+            id: "gateway",
+            name: "Gateway",
+            adapter: "openai-compatible",
+            baseURL: "https://gateway.example.com/v1",
+            authentication: "api-key",
+            apiKey: "gateway-secret-1234",
+            models: [
+              {
+                id: "gpt-test",
+                name: "GPT Test",
+                remoteModelId: "gpt-test",
+                source: "unverified",
+                verified: false,
+                enabled: true,
+              },
+            ],
+          },
+        ],
+      });
 
-		const snapshot = await service.save({
-			revision: null,
-			profiles: [
-				{
-					id: "openai",
-					name: "OpenAI",
-					adapter: "openai-compatible",
-					baseURL: "https://api.openai.com/v1",
-					authentication: "api-key",
-					apiKey: "sk-secret-1234",
-					models: [
-						{
-							id: "gpt-main",
-							name: "GPT Main",
-							remoteModelId: "gpt-main",
-							source: "unverified",
-							verified: false,
-							enabled: true,
-						},
-						{
-							id: "gpt-off",
-							name: "GPT Off",
-							remoteModelId: "gpt-off",
-							source: "unverified",
-							verified: false,
-							enabled: false,
-						},
-					],
-				},
-			],
-		});
+      expect(host.lastSaved?.providers[0]?.apiKey).toBe("gateway-secret-1234");
+      expect(saved.profiles).toMatchObject([
+        {
+          id: "gateway",
+          credentialConfigured: true,
+          credentialMask: "•••• 1234",
+        },
+      ]);
+      expect(JSON.stringify(saved)).not.toContain("gateway-secret");
+      await expect(
+        readFile(join(homeDir, ".jai", "settings.json"), "utf8"),
+      ).rejects.toThrow();
+    } finally {
+      await service.close();
+      await rm(homeDir, { recursive: true, force: true });
+    }
+  });
 
-		expect(snapshot).toMatchObject({
-			profiles: [{ credentialConfigured: true, credentialMask: "•••• 1234" }],
-		});
-		expect(
-			snapshot.providerPresets.map(({ id, catalogProvider, adapter, baseURL }) => ({
-				id,
-				catalogProvider,
-				adapter,
-				baseURL,
-			})),
-		).toEqual([
-			{ id: "anthropic", catalogProvider: "anthropic", adapter: "anthropic", baseURL: "" },
-			{ id: "openai", catalogProvider: "openai", adapter: "openai-responses", baseURL: "" },
-			{
-				id: "deepseek",
-				catalogProvider: "deepseek",
-				adapter: "openai-compatible",
-				baseURL: "https://api.deepseek.com/v1",
-			},
-			{
-				id: "minimax",
-				catalogProvider: "minimax",
-				adapter: "openai-compatible",
-				baseURL: "https://api.minimax.io/v1",
-			},
-			{
-				id: "moonshot",
-				catalogProvider: "moonshotai",
-				adapter: "openai-compatible",
-				baseURL: "https://api.moonshot.cn/v1",
-			},
-		]);
-		expect(JSON.stringify(snapshot)).not.toContain("sk-secret");
-		expect(await service.revealApiKey("openai")).toEqual({
-			profileId: "openai",
-			apiKey: "sk-secret-1234",
-		});
-		const document = await readFile(join(homeDir, ".jai", "settings.json"), "utf8");
-		expect(document).toContain("sk-secret-1234");
-		expect(JSON.parse(document).providers.openai.models).toEqual({ "gpt-main": { enabled: true } });
-		service.close();
-	});
+  test("keeps the Agent turn limit in the Runtime Host rather than duplicating it in Desktop settings", async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), "jai-remote-turn-limit-"));
+    const host = new FakeDesktopConfigurationClient();
+    const service = new DesktopConfigService(host);
+    try {
+      const saved = await service.save({
+        revision: null,
+        profiles: [],
+        maxIterations: 12,
+      });
+      expect(host.lastSaved?.maxTurns).toBe(12);
+      expect(saved.maxIterations).toBe(12);
+      await expect(
+        readFile(join(homeDir, ".jai", "settings.json"), "utf8"),
+      ).rejects.toThrow();
 
-	test("未修改连接时保留 main-only credential，修改 endpoint 时要求重新输入", async () => {
-		const homeDir = await fixture();
-		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
-		const first = await service.save({
-			revision: null,
-			profiles: [
-				{
-					id: "anthropic",
-					name: "Anthropic",
-					adapter: "anthropic",
-					baseURL: "https://api.anthropic.com",
-					authentication: "api-key",
-					apiKey: "secret-abcd",
-					models: [
-						{
-							id: "claude",
-							name: "Claude",
-							remoteModelId: "claude",
-							source: "unverified",
-							verified: false,
-							enabled: false,
-						},
-					],
-				},
-			],
-		});
+      const reopened = new DesktopConfigService(host);
+      try {
+        expect((await reopened.get()).maxIterations).toBe(12);
+      } finally {
+        await reopened.close();
+      }
+    } finally {
+      await service.close();
+      await rm(homeDir, { recursive: true, force: true });
+    }
+  });
 
-		const preserved = await service.save({
-			revision: first.revision,
-			profiles: first.profiles.map(({ credentialConfigured: _configured, credentialMask: _mask, ...profile }) => profile),
-		});
-		expect(preserved.profiles[0]?.credentialConfigured).toBe(true);
+  test("writes language and reasoning effort to the Runtime Host, not a Desktop settings file", async () => {
+    const homeDir = await mkdtemp(
+      join(tmpdir(), "jai-remote-runtime-preferences-"),
+    );
+    const host = new FakeDesktopConfigurationClient();
+    const service = new DesktopConfigService(host);
+    try {
+      const saved = await service.save({
+        revision: null,
+        profiles: [],
+        language: "zh-CN",
+        reasoningEffort: "medium",
+      });
+      expect(host.lastSaved).toMatchObject({
+        language: "zh-CN",
+        reasoningEffort: "medium",
+      });
+      expect(saved).toMatchObject({
+        language: "zh-CN",
+        reasoningEffort: "medium",
+      });
+      await expect(
+        readFile(join(homeDir, ".jai", "settings.json"), "utf8"),
+      ).rejects.toThrow();
+    } finally {
+      await service.close();
+      await rm(homeDir, { recursive: true, force: true });
+    }
+  });
 
-		try {
-			await service.save({
-				revision: preserved.revision,
-				profiles: preserved.profiles.map(({ credentialConfigured: _configured, credentialMask: _mask, ...profile }) => ({
-					...profile,
-					baseURL: "https://anthropic.example.com",
-				})),
-			});
-			throw new Error("Expected connection change to require a credential");
-		} catch (error) {
-			expect(getErrorCode(error)).toBe("desktop_provider_config.credential_required");
-		}
-		service.close();
-	});
+  test("uses the Host-owned model inventory rather than a Desktop SQLite cache", async () => {
+    const homeDir = await mkdtemp(
+      join(tmpdir(), "jai-remote-provider-models-"),
+    );
+    const host = new FakeDesktopConfigurationClient({
+      revision: "r1",
+      model: "gateway/gpt-test",
+      profiles: [
+        {
+          id: "gateway",
+          name: "Gateway",
+          adapter: "openai-compatible",
+          baseURL: "https://gateway.example.com/v1",
+          authentication: "api-key",
+          credentialConfigured: true,
+          credentialMask: "•••• 1234",
+          enabled: true,
+          models: [{ id: "gpt-test", enabled: true }],
+        },
+      ],
+    });
+    const service = new DesktopConfigService(host);
+    try {
+      const fetched = await service.fetchModels("gateway");
+      expect(host.fetches).toEqual(["gateway"]);
+      expect(fetched).toMatchObject({
+        profileId: "gateway",
+        modelCount: 2,
+        fetchedAt: 123,
+      });
+      expect(
+        fetched.snapshot.profiles[0]?.models.map(
+          (model) => model.remoteModelId,
+        ),
+      ).toEqual(["gpt-next", "gpt-test"]);
+    } finally {
+      await service.close();
+      await rm(homeDir, { recursive: true, force: true });
+    }
+  });
 
-	test("保存模型启用状态和 agent defaults 时不把 catalog 固化进用户配置", async () => {
-		const homeDir = await fixture();
-		const catalog = new ModelCatalogStore({
-			cachePath: join(homeDir, "catalog.json"),
-			fetch: async () =>
-				new Response(
-					JSON.stringify({
-						providers: {
-							openai: {
-								models: {
-									"gpt-test": {
-										name: "GPT Test",
-										reasoning: true,
-										tool_call: true,
-										modalities: { input: ["text", "image"], output: ["text"] },
-										cost: { input: 1, output: 2 },
-										limit: { context: 128_000, output: 8_000 },
-									},
-								},
-							},
-						},
-					}),
-				),
-		});
-		await catalog.start();
-		const service = new DesktopConfigService({
-			homeDir,
-			environment: {},
-			catalog,
-			inventory: new TestInventory(),
-		});
+  test("reads and refreshes Models.dev metadata only through the Runtime Host", async () => {
+    const host = new FakeDesktopConfigurationClient();
+    const service = new DesktopConfigService(host);
+    try {
+      await service.get();
+      expect(host.modelCatalogReads).toEqual(["get"]);
+      expect(await service.refreshModelCatalog()).toBe(true);
+      expect(host.modelCatalogReads).toEqual(["get", "refresh"]);
+    } finally {
+      await service.close();
+    }
+  });
 
-		const snapshot = await service.save({
-			revision: null,
-			language: "zh-CN",
-			maxIterations: 8,
-			reasoningEffort: "medium",
-			profiles: [
-				{
-					id: "gateway",
-					name: "Gateway",
-					adapter: "openai-compatible",
-					baseURL: "https://gateway.example.com/v1",
-					authentication: "api-key",
-					apiKey: "sk-secret-1234",
-					models: [
-						{
-							id: "gpt-test",
-							name: "GPT Test",
-							remoteModelId: "gpt-test",
-							source: "catalog",
-							verified: true,
-							enabled: true,
-							inputModalities: ["text", "image"],
-							outputModalities: ["text"],
-							toolCall: true,
-							contextWindow: 128_000,
-							maxTokens: 8_000,
-						},
-					],
-				},
-			],
-		});
+  test("reveal is an explicit Host request, not a local file read", async () => {
+    const host = new FakeDesktopConfigurationClient();
+    const service = new DesktopConfigService(host);
+    try {
+      expect(await service.revealApiKey("gateway")).toEqual({
+        profileId: "gateway",
+        apiKey: "host-secret",
+      });
+    } finally {
+      await service.close();
+    }
+  });
 
-		expect(snapshot).toMatchObject({
-			language: "zh-CN",
-			maxIterations: 8,
-			reasoningEffort: "medium",
-			profiles: [{ id: "gateway", models: [] }],
-		});
-		const document = await readFile(join(homeDir, ".jai", "settings.json"), "utf8");
-		const persisted = JSON.parse(document);
-		expect(persisted.providers.gateway.catalogProvider).toBeUndefined();
-		expect(persisted.providers.gateway.models).toEqual({ "gpt-test": { enabled: true } });
-		expect(document).not.toContain('"name":"GPT Test"');
-		service.close();
-		catalog.close();
-	});
+  test("sends Connector secrets only to the Runtime Host and returns a safe projection", async () => {
+    const homeDir = await mkdtemp(
+      join(tmpdir(), "jai-remote-connector-config-"),
+    );
+    const host = new FakeDesktopConfigurationClient();
+    const service = new DesktopConfigService(host);
+    try {
+      const saved = await service.save({
+        revision: null,
+        profiles: [],
+        connector: {
+          policy: { default: "allow", actions: {} },
+          connectors: [
+            {
+              id: "context7",
+              enabled: true,
+              credentials: { apiKey: "ctx-secret-1234" },
+            },
+          ],
+        },
+      });
 
-	test("将已验证的 Desktop profile 投影为公开 SDK model/provider 输入", async () => {
-		const homeDir = await fixture();
-		const inventory = new TestInventory();
-		const catalog = new ModelCatalogStore({
-			cachePath: join(homeDir, "catalog.json"),
-			fetch: async () =>
-				new Response(
-					JSON.stringify({
-						providers: {
-							openai: {
-								models: {
-									"gpt-test": {
-										name: "GPT Test",
-										tool_call: true,
-										modalities: { input: ["text"], output: ["text"] },
-										limit: { context: 128_000, output: 8_000 },
-									},
-								},
-							},
-						},
-					}),
-				),
-		});
-		await catalog.start();
-		const service = new DesktopConfigService({ homeDir, environment: {}, catalog, inventory });
-		await service.save({
-			revision: null,
-			maxIterations: 9,
-			profiles: [
-				{
-					id: "gateway",
-					name: "Gateway",
-					adapter: "openai-compatible",
-					baseURL: "https://gateway.example.com/v1",
-					authentication: "api-key",
-					apiKey: "gateway-secret",
-					models: [
-						{
-							id: "gpt-test",
-							name: "GPT Test",
-							remoteModelId: "gpt-test",
-							source: "catalog",
-							verified: true,
-							enabled: true,
-							inputModalities: ["text"],
-							outputModalities: ["text"],
-							toolCall: true,
-							contextWindow: 128_000,
-							maxTokens: 8_000,
-						},
-					],
-				},
-			],
-		});
-		inventory.replace("gateway", ["gpt-test"]);
+      expect(
+        host.lastSaved?.connector?.connectors?.context7?.credentials?.apiKey,
+      ).toBe("ctx-secret-1234");
+      expect(
+        saved.connector.connectors.find(
+          (connector) => connector.id === "context7",
+        )?.credentials,
+      ).toMatchObject([{ key: "apiKey", configured: true, mask: "•••• 1234" }]);
+      expect(JSON.stringify(saved)).not.toContain("ctx-secret");
+      await expect(
+        readFile(join(homeDir, ".jai", "settings.json"), "utf8"),
+      ).rejects.toThrow();
+    } finally {
+      await service.close();
+      await rm(homeDir, { recursive: true, force: true });
+    }
+  });
 
-		expect(await service.resolveAgentInput("gateway/gpt-test")).toEqual({
-			model: "openai-compatible/gpt-test",
-			provider: {
-				apiKey: "gateway-secret",
-				baseUrl: "https://gateway.example.com/v1",
-				authentication: "bearer",
-			},
-			maxTurns: 9,
-		});
-		service.close();
-		catalog.close();
-	});
+  test("forwards Connector OAuth authorization and callback to the Runtime Host without token handling", async () => {
+    const host = new FakeDesktopConfigurationClient();
+    const service = new DesktopConfigService(host);
+    try {
+      const started = await service.startConnectorOAuth("github");
+      expect(host.oauthStarts).toEqual(["github"]);
+      expect(started.authorizationUrl).toContain("/v1/oauth/github/authorize?");
 
-	test("重命名 profile 时迁移 inventory 并保留已保存凭证", async () => {
-		const homeDir = await fixture();
-		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
-		const initial = await service.save({
-			revision: null,
-			profiles: [
-				{
-					id: "old",
-					name: "Old",
-					adapter: "openai-compatible",
-					baseURL: "https://api.openai.com/v1",
-					authentication: "api-key",
-					apiKey: "sk-secret-1234",
-					models: [
-						{
-							id: "gpt",
-							name: "GPT",
-							remoteModelId: "gpt",
-							source: "unverified",
-							verified: false,
-							enabled: false,
-						},
-					],
-				},
-			],
-		});
+      const connectorId = await service.completeConnectorOAuth(
+        "http://127.0.0.1:43821/v1/oauth/callback?provider=github&state=host-state&code=one-time-code",
+      );
+      expect(connectorId).toBe("github");
+      expect(host.oauthCallbacks).toEqual([
+        "http://127.0.0.1:43821/v1/oauth/callback?provider=github&state=host-state&code=one-time-code",
+      ]);
+      const connected = await service.get();
+      expect(
+        connected.connector.connectors.find(
+          (connector) => connector.id === "github",
+        )?.oauth,
+      ).toMatchObject({
+        connected: true,
+        scopes: ["repo", "workflow"],
+      });
+      expect(JSON.stringify(connected)).not.toContain("accessToken");
+      expect(JSON.stringify(connected)).not.toContain("refreshToken");
 
-		const renamed = await service.save({
-			revision: initial.revision,
-			profiles: initial.profiles.map(({ credentialConfigured: _configured, credentialMask: _mask, ...profile }) => ({
-				...profile,
-				id: "new",
-				previousId: "old",
-			})),
-		});
-
-		expect(renamed.profiles).toMatchObject([{ id: "new", credentialConfigured: true, models: [{ id: "gpt" }] }]);
-		service.close();
-	});
-
-	test("在 Settings 保存非 OAuth Connector credentials，但不投影明文", async () => {
-		const homeDir = await fixture();
-		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
-		const first = await service.save({
-			revision: null,
-			profiles: [],
-			connector: {
-				policy: { default: "allow", actions: { "context7.search_libraries": "allow" } },
-				connectors: [
-					{
-						id: "context7",
-						enabled: true,
-						credentials: { apiKey: "ctx-secret-1234" },
-					},
-				],
-			},
-		});
-		expect(first.connector.connectors.find((connector) => connector.id === "context7")).toMatchObject({
-			credentials: [{ key: "apiKey", configured: true, mask: "•••• 1234" }],
-		});
-		expect(JSON.stringify(first)).not.toContain("ctx-secret-1234");
-
-		const preserved = await service.save({
-			revision: first.revision,
-			profiles: [],
-			connector: {
-				policy: { default: "allow", actions: { "context7.search_libraries": "allow" } },
-				connectors: [{ id: "context7", enabled: true, credentials: {} }],
-			},
-		});
-		expect(preserved.connector.connectors.find((connector) => connector.id === "context7")?.credentials[0]?.configured).toBe(
-			true,
-		);
-		expect(preserved.connector.policy).toEqual({
-			default: "allow",
-			actions: { "context7.search_libraries": "allow" },
-		});
-		const document = await readFile(join(homeDir, ".jai", "settings.json"), "utf8");
-		expect(document).toContain("ctx-secret-1234");
-		service.close();
-	});
-
-	test("Extension Runtime adapter 为 Connector 与其他 Extension 分别持久化 user 配置", async () => {
-		const homeDir = await fixture();
-		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
-		const writes: unknown[] = [];
-		const adapter = service.createExtensionRuntimeAdapter({
-			requestApproval: async () => "deny",
-			onConfigurationWritten: (input) => writes.push(input),
-		});
-		if (!adapter.writeConfiguration || !adapter.readConfiguration) throw new Error("Extension Runtime adapter is incomplete");
-
-		const connectorResult = await adapter.writeConfiguration({
-			extensionId: "connector",
-			scope: "user",
-			value: {
-				policy: { default: "ask", actions: { "github.create_issue": "allow" } },
-				connectors: { github: { enabled: true, credentials: { token: "github-secret" } } },
-			},
-		});
-		const otherResult = await adapter.writeConfiguration({
-			extensionId: "example-extension",
-			scope: "user",
-			value: { enabled: true, nested: { retries: 2 } },
-		});
-
-		expect(connectorResult.isOk()).toBe(true);
-		expect(otherResult.isOk()).toBe(true);
-		if (connectorResult.isErr() || otherResult.isErr()) return;
-		const connector = connectorResult.value;
-		const other = otherResult.value;
-		expect(connector).toEqual({
-			policy: { default: "ask", actions: { "github.create_issue": "allow" } },
-			connectors: { github: { enabled: true, credentials: { token: "github-secret" } } },
-		});
-		expect(other).toEqual({ enabled: true, nested: { retries: 2 } });
-		const readConnector = await adapter.readConfiguration({ extensionId: "connector", scope: "user" });
-		const readOther = await adapter.readConfiguration({ extensionId: "example-extension", scope: "user" });
-		expect(readConnector).toMatchObject({ status: "ok", value: connector });
-		expect(readOther).toMatchObject({ status: "ok", value: other });
-		expect(writes).toEqual([
-			{ extensionId: "connector", scope: "user", value: connector },
-			{ extensionId: "example-extension", scope: "user", value: other },
-		]);
-
-		expect(await adapter.readConfiguration({ extensionId: "example-extension", scope: "project" })).toMatchObject({
-			status: "error",
-			error: { _tag: "coding_extension.host_operation_failed" },
-		});
-		service.close();
-	});
-
-	test("OAuth Connector token 保存到 settings.json，但只向 renderer 投影连接状态", async () => {
-		const homeDir = await fixture();
-		const service = new DesktopConfigService({ homeDir, environment: {}, inventory: new TestInventory() });
-		const snapshot = await service.saveConnectorOAuth("google_drive", {
-			accessToken: "drive-access-secret",
-			tokenType: "Bearer",
-			refreshToken: "drive-refresh-secret",
-			expiresIn: 3_600,
-			scope: "https://www.googleapis.com/auth/drive.metadata.readonly",
-		});
-		const drive = snapshot.connector.connectors.find((connector) => connector.id === "google_drive");
-		expect(drive?.oauth).toMatchObject({
-			connected: true,
-			scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly"],
-		});
-		expect(snapshot.connector.connectors.find((connector) => connector.id === "google_gmail")?.oauth?.connected).toBe(
-			false,
-		);
-		expect(JSON.stringify(snapshot)).not.toContain("drive-access-secret");
-		expect(JSON.stringify(snapshot)).not.toContain("drive-refresh-secret");
-
-		const document = JSON.parse(await readFile(join(homeDir, ".jai", "settings.json"), "utf8"));
-		expect(document.connector.connectors.google_drive.credentials).toMatchObject({
-			accessToken: "drive-access-secret",
-			refreshToken: "drive-refresh-secret",
-			tokenType: "Bearer",
-		});
-
-		const disconnected = await service.disconnectConnectorOAuth("google_drive");
-		expect(disconnected.connector.connectors.find((connector) => connector.id === "google_drive")?.oauth?.connected).toBe(
-			false,
-		);
-		const afterDisconnect = JSON.parse(await readFile(join(homeDir, ".jai", "settings.json"), "utf8"));
-		expect(afterDisconnect.connector.connectors.google_drive.credentials).toBeUndefined();
-		service.close();
-	});
+      const disconnected = await service.disconnectConnectorOAuth("github");
+      expect(host.oauthDisconnects).toEqual(["github"]);
+      expect(
+        disconnected.connector.connectors.find(
+          (connector) => connector.id === "github",
+        )?.oauth,
+      ).toEqual({
+        connected: false,
+        scopes: [],
+      });
+    } finally {
+      await service.close();
+    }
+  });
 });
 
-async function fixture(): Promise<string> {
-	const root = await mkdtemp(join(tmpdir(), "jai-desktop-provider-"));
-	roots.push(root);
-	return join(root, "home");
+class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
+  readonly fetches: string[] = [];
+  readonly oauthStarts: string[] = [];
+  readonly oauthCallbacks: string[] = [];
+  readonly oauthDisconnects: string[] = [];
+  readonly modelCatalogReads: string[] = [];
+  lastSaved?: RuntimeAgentSettingsInput;
+  #snapshot: RuntimeAgentSettingsSnapshot;
+
+  constructor(snapshot: Partial<RuntimeAgentSettingsSnapshot> = {}) {
+    this.#snapshot = {
+      revision: snapshot.revision ?? null,
+      model: snapshot.model ?? "",
+      ...(snapshot.maxTurns === undefined
+        ? {}
+        : { maxTurns: snapshot.maxTurns }),
+      ...(snapshot.language === undefined
+        ? {}
+        : { language: snapshot.language }),
+      ...(snapshot.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: snapshot.reasoningEffort }),
+      profiles: snapshot.profiles ?? [],
+      connector: snapshot.connector ?? {
+        policy: { default: "ask", actions: {} },
+        connectors: [],
+      },
+    };
+  }
+
+  async get() {
+    return Result.ok(this.#snapshot);
+  }
+
+  async save(input: RuntimeAgentSettingsInput) {
+    this.lastSaved = input;
+    this.#snapshot = {
+      revision: "r2",
+      model: input.model,
+      ...(input.maxTurns === undefined ? {} : { maxTurns: input.maxTurns }),
+      ...(input.language === undefined ? {} : { language: input.language }),
+      ...(input.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: input.reasoningEffort }),
+      profiles: input.providers.map((profile) => ({
+        id: profile.id,
+        name: profile.name,
+        adapter: profile.adapter,
+        ...(profile.baseURL === undefined ? {} : { baseURL: profile.baseURL }),
+        authentication: profile.authentication,
+        credentialConfigured: Boolean(profile.apiKey),
+        ...(profile.apiKey
+          ? { credentialMask: `•••• ${profile.apiKey.slice(-4)}` }
+          : {}),
+        enabled: profile.enabled,
+        models: profile.models,
+      })),
+      connector:
+        input.connector === undefined
+          ? this.#snapshot.connector
+          : projectConnector(input.connector, this.#snapshot.connector),
+    };
+    return Result.ok(this.#snapshot);
+  }
+
+  async fetchModels(profileId: string) {
+    this.fetches.push(profileId);
+    const profile = this.#snapshot.profiles.find(
+      (candidate) => candidate.id === profileId,
+    );
+    if (!profile) return Result.err({} as DesktopConfigurationClientError);
+    this.#snapshot = {
+      ...this.#snapshot,
+      profiles: this.#snapshot.profiles.map((candidate) =>
+        candidate.id === profileId
+          ? {
+              ...candidate,
+              modelsFetchedAt: 123,
+              models: [
+                { id: "gpt-test", enabled: true },
+                { id: "gpt-next", enabled: false },
+              ],
+            }
+          : candidate,
+      ),
+    };
+    return Result.ok({
+      profileId,
+      modelCount: 2,
+      fetchedAt: 123,
+      snapshot: this.#snapshot,
+    } satisfies RuntimeAgentSettingsModelFetchResult);
+  }
+
+  async revealApiKey(profileId: string) {
+    return Result.ok({ profileId, apiKey: "host-secret" });
+  }
+
+  async startConnectorOAuth(connectorId: string) {
+    this.oauthStarts.push(connectorId);
+    return Result.ok({
+      connectorId,
+      expiresAt: 1_800_000_000_000,
+      authorizationUrl:
+        "https://oauth.jai.dev/v1/oauth/github/authorize?state=host-state&code_challenge=host-challenge&code_challenge_method=S256",
+    });
+  }
+
+  async completeConnectorOAuth(callbackUrl: string) {
+    this.oauthCallbacks.push(callbackUrl);
+    const connectorId = "github";
+    const current = this.#snapshot.connector;
+    const existing = current.connectors.find(
+      (connector) => connector.id === connectorId,
+    );
+    this.#snapshot = {
+      ...this.#snapshot,
+      connector: {
+        ...current,
+        connectors: [
+          ...current.connectors.filter(
+            (connector) => connector.id !== connectorId,
+          ),
+          {
+            id: connectorId,
+            enabled: existing?.enabled ?? true,
+            credentials: existing?.credentials ?? [],
+            oauth: {
+              connected: true,
+              scopes: ["repo", "workflow"],
+            },
+          },
+        ],
+      },
+    };
+    return Result.ok({ connectorId, snapshot: this.#snapshot });
+  }
+
+  async disconnectConnectorOAuth(connectorId: string) {
+    this.oauthDisconnects.push(connectorId);
+    const current = this.#snapshot.connector;
+    const existing = current.connectors.find(
+      (connector) => connector.id === connectorId,
+    );
+    this.#snapshot = {
+      ...this.#snapshot,
+      connector: {
+        ...current,
+        connectors: [
+          ...current.connectors.filter(
+            (connector) => connector.id !== connectorId,
+          ),
+          {
+            id: connectorId,
+            enabled: existing?.enabled ?? true,
+            credentials: existing?.credentials ?? [],
+            oauth: { connected: false, scopes: [] },
+          },
+        ],
+      },
+    };
+    return Result.ok(this.#snapshot);
+  }
+
+  async getModelCatalog() {
+    this.modelCatalogReads.push("get");
+    return Result.ok({
+      catalog: {
+        providers: {
+          openai: {
+            id: "openai",
+            name: "OpenAI",
+            models: { "gpt-test": { id: "gpt-test", name: "GPT Test" } },
+          },
+        },
+      },
+      fetchedAt: 1,
+      stale: false,
+      refreshed: false,
+    });
+  }
+
+  async refreshModelCatalog() {
+    this.modelCatalogReads.push("refresh");
+    return Result.ok({
+      catalog: {
+        providers: {
+          openai: {
+            id: "openai",
+            name: "OpenAI",
+            models: { "gpt-test": { id: "gpt-test", name: "GPT Test" } },
+          },
+        },
+      },
+      fetchedAt: 2,
+      stale: false,
+      refreshed: true,
+    });
+  }
+
+  async getWorkspaceTrust(workspacePath: string) {
+    return Result.ok({
+      workspacePath,
+      trusted: false,
+    } satisfies WorkspaceTrustSnapshot);
+  }
+
+  async setWorkspaceTrust(workspacePath: string, trusted: boolean) {
+    return Result.ok({
+      workspacePath,
+      trusted,
+    } satisfies WorkspaceTrustSnapshot);
+  }
+
+  async close(): Promise<void> {}
 }
 
-class TestInventory {
-	readonly #entries = new Map<string, ProviderModelInventory>();
-
-	get(profileId: string): ProviderModelInventory | undefined {
-		return this.#entries.get(profileId);
-	}
-
-	replace(profileId: string, modelIds: readonly string[]): ProviderModelInventory {
-		const entry = {
-			profileId,
-			modelIds: [...new Set(modelIds)].sort((left, right) => left.localeCompare(right)),
-			fetchedAt: 1,
-		};
-		this.#entries.set(profileId, entry);
-		return entry;
-	}
-
-	delete(profileId: string): void {
-		this.#entries.delete(profileId);
-	}
-
-	rename(fromProfileId: string, toProfileId: string): void {
-		const entry = this.#entries.get(fromProfileId);
-		if (!entry || fromProfileId === toProfileId) return;
-		this.#entries.delete(fromProfileId);
-		this.#entries.set(toProfileId, { ...entry, profileId: toProfileId });
-	}
+function projectConnector(
+  input: NonNullable<RuntimeAgentSettingsInput["connector"]>,
+  previous: RuntimeAgentSettingsSnapshot["connector"],
+): RuntimeAgentSettingsSnapshot["connector"] {
+  const existing = new Map(
+    previous.connectors.map((connector) => [connector.id, connector]),
+  );
+  return {
+    policy: {
+      default: input.policy?.default ?? "ask",
+      actions: { ...(input.policy?.actions ?? {}) },
+    },
+    connectors: Object.entries(input.connectors ?? {}).map(
+      ([id, connector]) => ({
+        id,
+        enabled: connector.enabled !== false,
+        credentials: Object.entries(connector.credentials ?? {}).map(
+          ([key, value]) => ({
+            key,
+            configured: Boolean(value),
+            ...(value ? { mask: `•••• ${value.slice(-4)}` } : {}),
+          }),
+        ),
+        ...(existing.get(id)?.oauth === undefined
+          ? {}
+          : { oauth: existing.get(id)!.oauth }),
+      }),
+    ),
+  };
 }

@@ -123,9 +123,9 @@ describe("createDesktopRouter — 输入校验", () => {
 });
 
 describe("createDesktopRouter — 行为", () => {
-	test("session.list 合并 Agent 的运行中会话", () => {
+	test("session.list 合并 Agent 的运行中会话", async () => {
 		const { router: r } = router({ agentHost: { runningSessionIds: () => ["session-9"] } });
-		expect(r.session.list(event, undefined).runningSessionIds).toEqual(["session-9"]);
+		expect((await r.session.list(event, undefined)).runningSessionIds).toEqual(["session-9"]);
 	});
 
 	test("provider.save 之后失效已打开的 Agent 会话", async () => {

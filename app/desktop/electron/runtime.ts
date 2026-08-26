@@ -1,28 +1,24 @@
-import type { MemoryConnectorService } from "@jai/connector";
 import { TaggedError } from "better-result";
 import { app, BrowserWindow, dialog, shell } from "electron";
 import type { DesktopAgentEvent } from "../shared/desktop-rpc";
-import { createDesktopAgentFactory } from "./agent/factory";
-import { DesktopAgentHost } from "./agent/host";
+import { DesktopAcpAgentHost } from "./agent/acp-host";
 import { type AttachmentRegistry, createAttachmentRegistry } from "./rpc/attachments";
 import { createBroadcaster } from "./rpc/broadcast";
 import { DesktopConfigService } from "./config";
-import { type SqliteProviderModelInventoryStore } from "./config/sqlite-model-inventory";
-import { desktopModelCatalog, setDesktopModelCatalogUpdateListener } from "./model-catalog";
 import { DesktopOAuthManager } from "./oauth/manager";
 import { createDesktopThemeService, type DesktopThemeService } from "./theme";
 import { createOpenWithService, type OpenWithService } from "./workspace/open-with";
-import type { DesktopSessionCatalog } from "./session-catalog";
+import type { DesktopSessionCatalogPort } from "./session-catalog/remote";
 
 /**
  * Everything the RPC router needs, resolved once at startup. Each field is
  * non-optional, so handlers never have to guard against a half-built runtime.
  */
 export interface DesktopRuntime {
-	readonly sessions: DesktopSessionCatalog;
+	readonly sessions: DesktopSessionCatalogPort;
 	readonly config: DesktopConfigService;
 	readonly oauth: DesktopOAuthManager;
-	readonly agentHost: DesktopAgentHost;
+	readonly agentHost: DesktopAcpAgentHost;
 	readonly attachments: AttachmentRegistry;
 	readonly theme: DesktopThemeService;
 	readonly openWith: OpenWithService;
@@ -38,15 +34,18 @@ export interface DesktopRuntime {
 /** The `sender` of an IPC invocation, narrowed to what window lookup needs. */
 export type WindowSender = Electron.WebContents;
 
-export function createDesktopRuntime(dependencies: {
-	readonly sessions: DesktopSessionCatalog;
-	readonly providerModelInventory: SqliteProviderModelInventoryStore;
-	readonly connector: MemoryConnectorService;
-}): DesktopRuntime {
-	const { sessions, providerModelInventory, connector } = dependencies;
+export async function createDesktopRuntime(dependencies: {
+	readonly sessions: DesktopSessionCatalogPort;
+}): Promise<DesktopRuntime> {
+	const { sessions } = dependencies;
 	const broadcast = createBroadcaster();
-	const config = new DesktopConfigService({ catalog: desktopModelCatalog, inventory: providerModelInventory });
-	const agentHost = new DesktopAgentHost(broadcast, createDesktopAgentFactory(sessions, connector, config));
+	const config = await DesktopConfigService.open();
+	const agentHost = await DesktopAcpAgentHost.open(broadcast, {
+		resolveSessionCwd: async (sessionId) => {
+			const execution = await sessions.resolveExecutionContext(sessionId);
+			return execution.localFileAccess ? execution.cwd : process.cwd();
+		},
+	});
 	const attachments = createAttachmentRegistry();
 	const theme = createDesktopThemeService();
 	const openWith = createOpenWithService({
@@ -90,17 +89,12 @@ export function createDesktopRuntime(dependencies: {
 		}
 	};
 
-	agentHost.setRunCompletedListener(async ({ sessionId, firstMessage, agent }) => {
-		if (!(await sessions.shouldGenerateSessionTitle(sessionId))) return;
-		await sessions.markTitleGenerationAttempted(sessionId);
-		const title = await agent.generateTitle(firstMessage);
-		if (title.isOk() && title.value.trim()) await sessions.setGeneratedTitle(sessionId, title.value);
-	});
-
-	setDesktopModelCatalogUpdateListener(() => {
-		agentHost.invalidateSessions();
-		publish({ type: "model_catalog_updated" });
-	});
+	void config
+		.refreshModelCatalog()
+		.then((refreshed) => {
+			if (refreshed) publish({ type: "model_catalog_updated" });
+		})
+		.catch(() => {});
 
 	return {
 		sessions,
@@ -117,10 +111,8 @@ export function createDesktopRuntime(dependencies: {
 			agentHost.close();
 			// The OAuth manager calls into config while closing, so it must finish first.
 			await oauth.close();
-			config.close();
-			providerModelInventory.close();
-			desktopModelCatalog.close();
-			sessions.close();
+			await config.close();
+			await sessions.close();
 			attachments.clear();
 		},
 	};

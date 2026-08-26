@@ -1,0 +1,49 @@
+{
+	"name": "@jai/server",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Jai Runtime Host and ACP v2 Agent adapter.",
+	"files": ["dist/main.js", "dist/stdio-main.js", "dist/acp-client.js", "dist/desktop-catalog-client.js", "dist/desktop-configuration-client.js", "dist/model-catalog-client.js"],
+	"bin": {
+		"jai-runtime-host": "./dist/main.js",
+		"jai-acp": "./dist/stdio-main.js"
+	},
+	"exports": {
+		".": "./src/index.ts",
+		"./acp-client": {
+			"types": "./src/acp-client.ts",
+			"default": "./dist/acp-client.js"
+		},
+		"./desktop-catalog-client": {
+			"types": "./src/desktop-catalog-client.ts",
+			"default": "./dist/desktop-catalog-client.js"
+		},
+		"./desktop-configuration-client": {
+			"types": "./src/desktop-configuration-client.ts",
+			"default": "./dist/desktop-configuration-client.js"
+		},
+		"./model-catalog": {
+			"types": "./src/model-catalog-client.ts",
+			"default": "./dist/model-catalog-client.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build": "bun build src/main.ts src/stdio-main.ts src/acp-client.ts src/desktop-catalog-client.ts src/desktop-configuration-client.ts src/model-catalog-client.ts --target=node --format=esm --outdir dist",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@jai/ai": "workspace:*",
+		"@jai/agent": "workspace:*",
+		"@jai/coding-agent": "workspace:*",
+		"@jai/connector": "workspace:*",
+		"@jai/extension": "workspace:*",
+		"better-result": "^3.0.0"
+	},
+	"devDependencies": {
+		"@sinclair/typebox": "^0.34.49",
+		"typescript": "catalog:"
+	}
+}

@@ -1,11 +1,8 @@
-import type { CodingAgentSettings } from "./coding-settings";
+import type { RuntimeConnectorProjection, RuntimeConnectorSettings } from "@jai/server";
 import {
 	type ConnectorOAuthApplicationDefinition,
-	type ConnectorOAuthApplicationId,
 	findConnectorOAuthApplication,
 	listConnectorActionCatalog,
-	type OAuthTokenResponse,
-	parseConnectorOAuthScopes,
 } from "@jai/connector";
 import type {
 	DesktopConnector,
@@ -101,31 +98,20 @@ export const connectorDefinitions = [
 	},
 ] as const;
 
-const oauthCredentialKeys = ["accessToken", "refreshToken", "tokenType", "expiresAt", "scopes"] as const;
-
-export type ConnectorOAuthToken = OAuthTokenResponse & {
-	readonly expiresAt?: number;
-	readonly scopes: readonly string[];
-};
-
 export function findDesktopConnectorOAuthApplication(
 	connectorId: string,
 ): ConnectorOAuthApplicationDefinition | undefined {
 	return findConnectorOAuthApplication(connectorId);
 }
 
-export function projectConnectorConfig(
-	settings: CodingAgentSettings["connector"] | undefined,
-): DesktopConnectorConfigSnapshot {
-	const connectors = settings?.connectors ?? {};
-	const policy = settings?.policy;
-	const defaultPermission: DesktopConnectorPermission = policy?.default ?? "ask";
-	const actionPermissions = policy?.actions ?? {};
+/** Maps the Host's secret-free Connector projection to the Desktop DTO. */
+export function projectRuntimeConnectorConfig(settings: RuntimeConnectorProjection): DesktopConnectorConfigSnapshot {
+	const connectors = new Map(settings.connectors.map((connector) => [connector.id, connector]));
 	const actionCatalog = listConnectorActionCatalog();
 	return {
 		connectors: connectorDefinitions.map((definition): DesktopConnector => {
-			const connector = connectors[definition.id];
-			const credentials = connector?.credentials ?? {};
+			const connector = connectors.get(definition.id);
+			const credentials = new Map(connector?.credentials.map((credential) => [credential.key, credential]) ?? []);
 			const oauth = findConnectorOAuthApplication(definition.id);
 			return {
 				id: definition.id,
@@ -134,17 +120,14 @@ export function projectConnectorConfig(
 				description: definition.description,
 				authTypes: definition.authTypes,
 				enabled: connector?.enabled !== false,
-				credentials: definition.credentials.map(
-					(definitionCredential): DesktopConnectorCredential => ({
+				credentials: definition.credentials.map((definitionCredential): DesktopConnectorCredential => {
+					const credential = credentials.get(definitionCredential.key);
+					return {
 						...definitionCredential,
-						configured:
-							typeof credentials[definitionCredential.key] === "string" &&
-							credentials[definitionCredential.key]!.length > 0,
-						...(credentials[definitionCredential.key]
-							? { mask: maskCredential(credentials[definitionCredential.key]!) }
-							: {}),
-					}),
-				),
+						configured: credential?.configured === true,
+						...(credential?.mask === undefined ? {} : { mask: credential.mask }),
+					};
+				}),
 				actions: actionCatalog
 					.filter((action) => action.connectorId === definition.id)
 					.map((action) => ({
@@ -152,115 +135,35 @@ export function projectConnectorConfig(
 						description: action.description,
 						sideEffect: action.sideEffect,
 						dataSensitivity: action.dataSensitivity,
-						permission: actionPermissions[`${action.connectorId}.${action.actionId}`] ?? defaultPermission,
+						permission: settings.policy.actions[`${action.connectorId}.${action.actionId}`] ?? settings.policy.default,
 					})),
 				...(oauth
 					? {
-							oauth: projectOAuthConnection(credentials, oauth.scopes),
+							oauth: connector?.oauth ?? { connected: false, scopes: [] },
 						}
 					: {}),
 			};
 		}),
-		policy: {
-			default: defaultPermission,
-			actions: { ...actionPermissions },
-		},
+		policy: { default: settings.policy.default, actions: { ...settings.policy.actions } },
 	};
 }
 
-export function toStoredConnectorOAuthToken(
-	connectorId: ConnectorOAuthApplicationId,
-	token: OAuthTokenResponse,
-	now = Date.now(),
-): ConnectorOAuthToken {
-	const application = findConnectorOAuthApplication(connectorId)!;
-	const scopes = parseConnectorOAuthScopes(token.scope);
+export function toRuntimeConnector(input: DesktopConnectorConfigInput): RuntimeConnectorSettings {
 	return {
-		accessToken: token.accessToken,
-		tokenType: token.tokenType,
-		...(token.refreshToken ? { refreshToken: token.refreshToken } : {}),
-		...(token.expiresIn === undefined ? {} : { expiresAt: now + token.expiresIn * 1_000 }),
-		scopes: scopes.length > 0 ? scopes : application.scopes,
-	};
-}
-
-export function storeConnectorOAuthToken(
-	connector: CodingAgentSettings["connector"] | undefined,
-	connectorId: ConnectorOAuthApplicationId,
-	token: ConnectorOAuthToken,
-): NonNullable<CodingAgentSettings["connector"]> {
-	const connectors = connector?.connectors ?? {};
-	const current = connectors[connectorId];
-	const credentials = {
-		...(current?.credentials ?? {}),
-		accessToken: token.accessToken,
-		tokenType: token.tokenType,
-		scopes: token.scopes.join(" "),
-		...(token.refreshToken ? { refreshToken: token.refreshToken } : {}),
-		...(token.expiresAt === undefined ? {} : { expiresAt: String(token.expiresAt) }),
-	};
-	return {
-		...(connector ?? {}),
-		connectors: {
-			...connectors,
-			[connectorId]: {
-				...(current ?? {}),
-				enabled: current?.enabled ?? true,
-				credentials,
-			},
-		},
-	};
-}
-
-export function removeConnectorOAuthToken(
-	connector: CodingAgentSettings["connector"] | undefined,
-	connectorId: ConnectorOAuthApplicationId,
-): NonNullable<CodingAgentSettings["connector"]> {
-	const connectors = connector?.connectors ?? {};
-	const current = connectors[connectorId];
-	const { credentials: _currentCredentials, ...currentWithoutCredentials } = current ?? {};
-	const credentials = { ...(current?.credentials ?? {}) };
-	for (const key of oauthCredentialKeys) delete credentials[key];
-	return {
-		...(connector ?? {}),
-		connectors: {
-			...connectors,
-			[connectorId]: {
-				...currentWithoutCredentials,
-				enabled: current?.enabled ?? true,
-				...(Object.keys(credentials).length > 0 ? { credentials } : {}),
-			},
-		},
-	};
-}
-
-export function toStoredConnector(
-	input: DesktopConnectorConfigInput,
-	current: CodingAgentSettings["connector"] | undefined,
-): NonNullable<CodingAgentSettings["connector"]> {
-	const currentConnectors = current?.connectors ?? {};
-	const nextConnectors = { ...currentConnectors };
-	for (const connector of input.connectors) {
-		const currentCredentials = currentConnectors[connector.id]?.credentials ?? {};
-		const credentials = { ...currentCredentials };
-		for (const [key, value] of Object.entries(connector.credentials)) {
-			const trimmed = value.trim();
-			if (trimmed) credentials[key] = trimmed;
-		}
-		nextConnectors[connector.id] = {
-			...(currentConnectors[connector.id] ?? {}),
-			enabled: connector.enabled,
-			...(Object.keys(credentials).length > 0 ? { credentials } : {}),
-		};
-	}
-	return {
-		...(current ?? {}),
-		policy: {
-			...(current?.policy ?? {}),
-			default: input.policy.default,
-			actions: { ...input.policy.actions },
-		},
-		connectors: nextConnectors,
+		policy: { default: input.policy.default, actions: { ...input.policy.actions } },
+		connectors: Object.fromEntries(
+			input.connectors.map((connector) => [
+				connector.id,
+				{
+					enabled: connector.enabled,
+					credentials: Object.fromEntries(
+						Object.entries(connector.credentials)
+							.map(([key, value]) => [key, value.trim()] as const)
+							.filter(([, value]) => Boolean(value)),
+					),
+				},
+			]),
+		),
 	};
 }
 
@@ -301,24 +204,6 @@ function isValidConnectorPolicy(value: unknown): value is DesktopConnectorConfig
 
 function isConnectorPermission(value: unknown): value is DesktopConnectorPermission {
 	return value === "allow" || value === "deny";
-}
-
-function maskCredential(value: string): string {
-	return `•••• ${value.slice(-4)}`;
-}
-
-function projectOAuthConnection(
-	credentials: Readonly<Record<string, string>>,
-	defaultScopes: readonly string[],
-): NonNullable<DesktopConnector["oauth"]> {
-	const accessToken = credentials.accessToken;
-	const expiresAt = Number(credentials.expiresAt);
-	const scopes = parseConnectorOAuthScopes(credentials.scopes);
-	return {
-		connected: Boolean(accessToken),
-		scopes: scopes.length > 0 ? scopes : accessToken ? defaultScopes : [],
-		...(Number.isFinite(expiresAt) && expiresAt > 0 ? { expiresAt } : {}),
-	};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
