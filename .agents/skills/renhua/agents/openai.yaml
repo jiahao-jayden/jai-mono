@@ -1,0 +1,6 @@
+interface:
+  display_name: "人话"
+  short_description: "中文技术写作与项目文档去 AI 味"
+  default_prompt: "Use $renhua to revise this Chinese text while preserving my judgment, details, and voice."
+policy:
+  allow_implicit_invocation: true

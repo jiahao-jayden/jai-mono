@@ -89,6 +89,30 @@
       "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
       "computedHash": "4a02bd01030d5ed6a5040c0382b9f56fbf02c7c8b8fd68aa1bcc55628963f760"
     },
+    "jn": {
+      "source": "jiahao-jayden/skills",
+      "sourceType": "github",
+      "skillPath": "jn/SKILL.md",
+      "computedHash": "4eceafb87c5cabc1bb46b5dc6326aceec9ba7e7a98f89ae804b49cbf5ace51fa"
+    },
+    "jn-grilling": {
+      "source": "jiahao-jayden/skills",
+      "sourceType": "github",
+      "skillPath": "jn-grilling/SKILL.md",
+      "computedHash": "09376ec6948a7875695e7b4ba68e5016f061dd4499d2c6e86e5efb0ecf45ee7d"
+    },
+    "jn-intent": {
+      "source": "jiahao-jayden/skills",
+      "sourceType": "github",
+      "skillPath": "jn-intent/SKILL.md",
+      "computedHash": "5f4919581cce7ae1933b96e73b23dfc9d8a530146999996bd9c82f41fad68909"
+    },
+    "jn-plan": {
+      "source": "jiahao-jayden/skills",
+      "sourceType": "github",
+      "skillPath": "jn-plan/SKILL.md",
+      "computedHash": "ac79e53787bb4087d8619914f32b36d40606651b12bdef6ceb00596eecd20c46"
+    },
     "layout": {
       "source": "pbakaus/impeccable",
       "sourceType": "github",
@@ -130,6 +154,12 @@
       "source": "pbakaus/impeccable",
       "sourceType": "github",
       "computedHash": "2c20b12bb4ece445d45fc63bda020aecf78b3cdf6d593beb59c273f658293130"
+    },
+    "renhua": {
+      "source": "jiahao-jayden/skills",
+      "sourceType": "github",
+      "skillPath": "renhua/SKILL.md",
+      "computedHash": "bc13df246d18a0514df578c04fc8678272bed0ad7084c5e207b8f41b876faf47"
     },
     "research": {
       "source": "mattpocock/skills",
