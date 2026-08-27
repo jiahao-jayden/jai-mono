@@ -34,13 +34,13 @@
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "jn/SKILL.md",
-      "computedHash": "c5e59c4b15fd10dcb3b1f653eb33868233160b76745588452591cfbc49b35b90"
+      "computedHash": "323852d2dfa3a3d0724503267a88bf2d817e4586d27158b04326c749515ac9d4"
     },
     "jn-grilling": {
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "jn-grilling/SKILL.md",
-      "computedHash": "c282d42352d6a2c4a0fa370f6aacbebac6bdae9f33c1747900e483c66f3bf7e2"
+      "computedHash": "5bb1a544e21bd0e03683ebb2a6b483e49675767b97da318d8bf94bd01ef6f395"
     },
     "jn-intent": {
       "source": "jiahao-jayden/skills",
@@ -52,7 +52,7 @@
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "jn-plan/SKILL.md",
-      "computedHash": "350713661dfb20d1976070c05be9c4570d922d20707964e77efcbdd6c91dd1b0"
+      "computedHash": "eab50c463d97d234ff35ab1c228d33011ed1bf656e9281e6a8911c8bad6cc7cc"
     },
     "prototype": {
       "source": "emilkowalski/skills",
