@@ -17,6 +17,7 @@ interface DesktopChatStore {
 	openSession(sessionId: string): void;
 	newChat(): void;
 	setDraft(value: string): void;
+	clearDraft(sessionId: string): void;
 	sessionCreated(sessionId: string): void;
 	enqueueMessage(text: string, mode: DesktopAgentMode): void;
 	acceptQueuedMessage(messageId: string): void;
@@ -51,6 +52,12 @@ export const useDesktopChatStore = create<DesktopChatStore>((set, get) => ({
 	setDraft(value) {
 		const key = draftKey(get().activeSessionId);
 		set((state) => ({ drafts: { ...state.drafts, [key]: value } }));
+	},
+
+	clearDraft(sessionId) {
+		set((state) => ({
+			drafts: { ...state.drafts, [sessionId]: "" },
+		}));
 	},
 
 	sessionCreated(sessionId) {

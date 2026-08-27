@@ -75,6 +75,7 @@ export function AppShell() {
 	const openSessionInStore = useDesktopChatStore((state) => state.openSession);
 	const newChat = useDesktopChatStore((state) => state.newChat);
 	const setDraft = useDesktopChatStore((state) => state.setDraft);
+	const clearDraft = useDesktopChatStore((state) => state.clearDraft);
 	const sessionCreated = useDesktopChatStore((state) => state.sessionCreated);
 	const enqueueMessage = useDesktopChatStore((state) => state.enqueueMessage);
 	const acceptQueuedMessage = useDesktopChatStore((state) => state.acceptQueuedMessage);
@@ -153,6 +154,7 @@ export function AppShell() {
 			sessionCreated(sessionId);
 			navigate(`/chat/${sessionId}`, { replace: true });
 		},
+		onMessageAccepted: clearDraft,
 		onMessageQueued: enqueueMessage,
 		onQueuedMessageAccepted: acceptQueuedMessage,
 	});

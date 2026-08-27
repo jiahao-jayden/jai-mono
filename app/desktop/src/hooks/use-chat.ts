@@ -31,6 +31,7 @@ export interface UseChatOptions {
 	readonly mode: DesktopAgentMode;
 	readonly queue: readonly QueuedMessage[];
 	onSessionCreated(sessionId: string): void;
+	onMessageAccepted(sessionId: string): void;
 	onMessageQueued(text: string, mode: DesktopAgentMode): void;
 	onQueuedMessageAccepted(messageId: string): void;
 }
@@ -175,7 +176,15 @@ export function useChat(options: UseChatOptions): Chat {
 					}));
 					return false;
 				}
+				if (!current.sessionId) {
+					setState((previous) => ({
+						...previous,
+						error: "当前会话尚未准备好，请稍后重试。",
+					}));
+					return false;
+				}
 				latest.onMessageQueued(text, mode);
+				latest.onMessageAccepted(current.sessionId);
 				return true;
 			}
 			if (latest.queue.length > 0) {
@@ -197,6 +206,7 @@ export function useChat(options: UseChatOptions): Chat {
 						mode,
 						...(attachments.length > 0 ? { attachments } : {}),
 					});
+					latest.onMessageAccepted(current.sessionId);
 					return true;
 				}
 
@@ -213,6 +223,7 @@ export function useChat(options: UseChatOptions): Chat {
 					mode,
 					...(attachments.length > 0 ? { attachments } : {}),
 				});
+				latest.onMessageAccepted(session.id);
 				void invalidateRecentSessions();
 				return true;
 			} catch (error) {

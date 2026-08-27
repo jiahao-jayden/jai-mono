@@ -27,6 +27,17 @@ describe("desktop chat store", () => {
 		expect(selectDraft(useDesktopChatStore.getState())).toBe("");
 	});
 
+	test("首条消息被接受后按创建的 session 清空草稿", () => {
+		const store = useDesktopChatStore.getState();
+		store.setDraft("first message");
+		store.sessionCreated("session-1");
+		store.newChat();
+
+		store.clearDraft("session-1");
+
+		expect(useDesktopChatStore.getState().drafts["session-1"]).toBe("");
+	});
+
 	test("入队和接受队首均通过 message id 精确更新，且不隐式修改草稿", () => {
 		const store = useDesktopChatStore.getState();
 		store.setDraft("first");
