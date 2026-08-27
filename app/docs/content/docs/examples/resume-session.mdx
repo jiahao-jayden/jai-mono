@@ -7,16 +7,22 @@ description: 恢复已有 durable session，读取已持久化状态并继续同
 
 ```ts
 // @docs-compile
-import { createCodingAgent } from "@jai/coding-agent";
+import { createCodingAgent, type CodingSessionStore } from "@jai/coding-agent";
 
 const sessionId = "issue-482";
+declare const sessionStore: CodingSessionStore;
 const resumed = await createCodingAgent({
   model: "openai/gpt-4.1-mini",
   cwd: ".",
+  fileCapabilities: {
+    homeDirectory: "/Users/alice",
+    workspaceDirectory: "/workspace/repository",
+    workspaceTrusted: true,
+  },
   session: {
     kind: "resume",
     id: sessionId,
-    directory: ".jai/sessions",
+    store: sessionStore,
   },
 });
 

@@ -55,13 +55,26 @@ describe("Coding Agent Runtime Operation driver", () => {
 		});
 		if (queued.isErr()) throw queued.error;
 
+		let capabilitySourceCalls = 0;
 		const driver = createCodingAgentOperationDriver({
 			resolveOptions: () =>
 				Result.ok({
 					model: "anthropic/test-model",
 					provider: { apiKey: "test", baseUrl: provider.url.toString() },
-					agentDataRoot: root,
 				}),
+			capabilitySource: {
+				resolve: async () => {
+					capabilitySourceCalls++;
+					return Result.ok({
+						fileCapabilities: {
+							homeDirectory: root,
+							workspaceDirectory: root,
+							workspaceTrusted: false,
+						},
+						extensions: [],
+					});
+				},
+			},
 		});
 		const resumedHost = createRuntimeHost({
 			persistence,
@@ -86,6 +99,7 @@ describe("Coding Agent Runtime Operation driver", () => {
 			expect.objectContaining({ type: "operation_finished", operationId: "operation-1", outcome: "completed" }),
 		);
 		expect(providerRequests).toHaveLength(1);
+		expect(capabilitySourceCalls).toBeGreaterThan(0);
 		expect(JSON.stringify(providerRequests[0])).toContain("first direction");
 		expect(JSON.stringify(providerRequests[0])).toContain("second direction");
 

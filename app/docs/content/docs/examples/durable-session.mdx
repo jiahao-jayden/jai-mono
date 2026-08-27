@@ -3,19 +3,26 @@ title: 创建 Durable Session
 description: 创建具名 durable session，处理重复 ID，并在运行结束后安全关闭 Agent。
 ---
 
-`new` 创建一个可恢复的 session。ID 与目录由宿主决定；同一目录中重复 ID 会返回 `coding_sdk.session_exists`。
+`new` 创建一个可恢复的 session。Journal store 由宿主提供；同一 store 中重复 ID 会返回 `coding_sdk.session_exists`。
 
 ```ts
 // @docs-compile
-import { createCodingAgent } from "@jai/coding-agent";
+import { createCodingAgent, type CodingSessionStore } from "@jai/coding-agent";
+
+declare const sessionStore: CodingSessionStore;
 
 const created = await createCodingAgent({
   model: "openai/gpt-4.1-mini",
   cwd: ".",
+  fileCapabilities: {
+    homeDirectory: "/Users/alice",
+    workspaceDirectory: "/workspace/repository",
+    workspaceTrusted: true,
+  },
   session: {
     kind: "new",
     id: "issue-482",
-    directory: ".jai/sessions",
+    store: sessionStore,
   },
   permissionMode: "plan",
   maxTurns: 20,
@@ -40,6 +47,6 @@ if (created.isErr()) {
 }
 ```
 
-durable state 写入 `session.directory`。SDK 不提供 session 列表或命名 API；产品负责索引、展示和清理，再在需要时传入 `resume`。
+durable state 写入 Host 提供的 Session Journal store。SDK 不提供 session 列表或命名 API；产品负责索引、展示和清理，再在需要时传入 `resume`。
 
 接着看 [恢复 Session](/docs/examples/resume-session)。

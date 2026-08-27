@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   type AgentEvent,
+  type EffectBoundary,
   type AgentMessage,
   InMemorySessionStore,
   type SessionStore,
@@ -66,6 +67,7 @@ import type {
   CodingAgentArtifact,
   CodingAgentCreateOptions,
   CodingAgentEvent,
+  CodingAgentFileCapabilities,
   CodingAgentState,
   CodingPermissionMode,
   CodingPromptOptions,
@@ -100,10 +102,11 @@ export async function createCodingAgent<
         path.join(tmpdir(), "jai-coding-agent-"),
       );
     }
-    const agentDataRoot =
-      session.kind === "ephemeral"
-        ? ephemeralDirectory!
-        : (input.agentDataRoot ?? cwd);
+    const fileCapabilities = resolveFileCapabilities(
+      input,
+      session,
+      ephemeralDirectory,
+    );
     const store: SessionStore<PersistedCodingSessionState<TAppState>> =
       session.kind === "ephemeral"
         ? new InMemorySessionStore<PersistedCodingSessionState<TAppState>>()
@@ -124,7 +127,7 @@ export async function createCodingAgent<
       executionContext: {
         localFileAccess: true,
         cwd,
-        configRoot: agentDataRoot,
+        configRoot: fileCapabilities.workspaceDirectory,
         defaultAllowedDirectories: [cwd] as readonly [string, ...string[]],
       },
       sessionId,
@@ -135,9 +138,10 @@ export async function createCodingAgent<
         .join("\n\n"),
       configDefinition: sdkConfigDefinition,
       configOptions: {
-        homeDir: agentDataRoot,
-        workspaceTrusted: false,
+        homeDir: fileCapabilities.homeDirectory,
+        workspaceTrusted: fileCapabilities.workspaceTrusted,
       },
+      skills: fileCapabilities,
       resolveProvider: () => {
         const runtime = resolveSdkModel(input.model, input.provider);
         modelRuntime = runtime;
@@ -152,7 +156,7 @@ export async function createCodingAgent<
           ? {}
           : { providerOptions: input.providerOptions }),
         ...(input.effectBoundary
-          ? { effectBoundary: input.effectBoundary }
+          ? { effectBoundary: input.effectBoundary as EffectBoundary }
           : {}),
       }),
       permissions: {
@@ -681,6 +685,26 @@ function resolveSessionId(selection: CodingSessionSelection): string {
   if (selection.kind === "resume") return selection.id;
   if (selection.kind === "new" && selection.id) return selection.id;
   return `coding-${randomUUID()}`;
+}
+
+function resolveFileCapabilities(
+  input: CodingAgentCreateOptions,
+  session: CodingSessionSelection,
+  ephemeralDirectory: string | undefined,
+): CodingAgentFileCapabilities {
+  if (session.kind === "ephemeral") {
+    return {
+      homeDirectory: ephemeralDirectory!,
+      workspaceDirectory: ephemeralDirectory!,
+      workspaceTrusted: false,
+    };
+  }
+  if (input.fileCapabilities) return input.fileCapabilities;
+  throw new CodingSdkFailure({
+    phase: "runtime_creation",
+    code: "coding_sdk.file_capabilities_required",
+    message: "Persistent Coding Agent sessions require Host-provided file capabilities",
+  });
 }
 
 function extensionOutcome(stopReason: string): CodingTurnEndInput["outcome"] {

@@ -22,7 +22,7 @@
 		"registry": "https://registry.npmjs.org/"
 	},
 	"scripts": {
-		"build": "node ./scripts/tsup.cjs && tsc -p tsconfig.build.json",
+		"build": "node ./scripts/tsup.cjs",
 		"prepack": "node ./scripts/tsup.cjs",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"test": "bun test",

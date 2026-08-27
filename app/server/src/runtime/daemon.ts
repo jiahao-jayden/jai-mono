@@ -1,12 +1,14 @@
-import { join } from "node:path";
 import { Result, type Result as ResultType } from "better-result";
 import {
-  createCodingAgentOperationDriver,
-  createRuntimeAgentPluginsExtension,
-  createRuntimeConnectorAgentAssembly,
+	createCodingAgentOperationDriver,
+	createRuntimeConnectorAgentAssembly,
 } from "../agents";
 import { RuntimeOperationOpenFailed } from "../operations";
 import type { AcpImplementationInfo } from "../protocol/acp-v2";
+import {
+	createDesktopLocalRuntimeCapabilitySource,
+	type RuntimeCapabilitySource,
+} from "../runtime-capabilities";
 import {
   openJaiRuntimeServer,
   type JaiRuntimeServer,
@@ -18,8 +20,10 @@ import { RuntimeHostConfigurationInvalid } from "./configuration";
 export interface OpenConfiguredRuntimeHostOptions {
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly dataDirectory?: string;
-  /** Product-owned user capability root; defaults to the OS user's home directory. */
-  readonly homeDirectory?: string;
+	/** Product-owned user capability root; defaults to the OS user's home directory. */
+	readonly homeDirectory?: string;
+	/** Alternate Host source used by non-local products and deterministic tests. */
+	readonly capabilitySource?: RuntimeCapabilitySource;
   readonly endpoint?: string;
   readonly info?: AcpImplementationInfo;
 }
@@ -40,9 +44,18 @@ export async function openConfiguredRuntimeHost(
   const environment = options.environment ?? process.env;
   const dataDirectory =
     options.dataDirectory ?? resolveJaiDataDirectory(environment);
-  const opened = await openJaiRuntimeServer({
-    dataDirectory,
-    createOperationDriver: ({ agentSettings, workspaceTrust }) => {
+	const opened = await openJaiRuntimeServer({
+		dataDirectory,
+		createOperationDriver: ({ agentSettings, workspaceTrust }) => {
+			const capabilitySource =
+				options.capabilitySource ??
+				createDesktopLocalRuntimeCapabilitySource({
+					dataDirectory,
+					workspaceTrust,
+					...(options.homeDirectory === undefined
+						? {}
+						: { homeDirectory: options.homeDirectory }),
+				});
       const bootstrapModel = environment.JAI_MODEL?.trim();
       if (bootstrapModel) {
         const bootstrapped = agentSettings.bootstrap({
@@ -87,34 +100,7 @@ export async function openConfiguredRuntimeHost(
                 }),
               );
             }
-            const trust = await workspaceTrust.get(input.cwd);
-            if (
-              trust.isErr() &&
-              trust.error._tag !== "workspace_trust.invalid"
-            ) {
-              return Result.err(
-                new RuntimeOperationOpenFailed({
-                  message: `Runtime Host could not resolve Workspace trust for Operation "${input.operationId}"`,
-                  sessionId: input.sessionId,
-                  operationId: input.operationId,
-                  cause: trust.error,
-                }),
-              );
-            }
-            const agentPlugins = await createRuntimeAgentPluginsExtension({
-              dataDirectory: join(
-                dataDirectory,
-                "agent-plugins",
-                input.sessionId,
-              ),
-              ...(options.homeDirectory === undefined
-                ? {}
-                : { homeDirectory: options.homeDirectory }),
-              ...(trust.isOk() && trust.value.trusted
-                ? { trustedWorkspacePath: trust.value.workspacePath }
-                : {}),
-            });
-            return Result.ok({
+				return Result.ok({
               model: current.value.model,
               ...(current.value.provider
                 ? { provider: current.value.provider }
@@ -128,12 +114,12 @@ export async function openConfiguredRuntimeHost(
               ...(current.value.providerOptions
                 ? { providerOptions: current.value.providerOptions }
                 : {}),
-              extensions: [...connector.value.extensions, agentPlugins],
-              extensionRuntime: connector.value.extensionRuntime,
-              agentDataRoot: join(dataDirectory, "agent"),
-            });
-          },
-        }),
+					extensions: connector.value.extensions,
+					extensionRuntime: connector.value.extensionRuntime,
+				});
+			},
+			capabilitySource,
+		}),
       );
     },
     info: options.info ?? {

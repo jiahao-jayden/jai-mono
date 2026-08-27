@@ -23,10 +23,15 @@ import {
 	RuntimeOperationExecutionFailed,
 	RuntimeOperationOpenFailed,
 } from "../operations";
+import type { RuntimeCapabilitySource } from "../runtime-capabilities";
 
 type CodingAgentOperationOptions = Omit<
 	CodingAgentCreateOptions,
 	"cwd" | "effectBoundary" | "requestApproval" | "session"
+>;
+type CodingAgentOperationConfiguration = Omit<
+	CodingAgentOperationOptions,
+	"fileCapabilities"
 >;
 
 export interface CodingAgentOperationDriverOptions {
@@ -34,8 +39,10 @@ export interface CodingAgentOperationDriverOptions {
 	readonly resolveOptions: (
 		input: Pick<RuntimeOperationOpenInput, "sessionId" | "cwd" | "operationId" | "runtimeConfiguration">,
 	) =>
-		| ResultType<CodingAgentOperationOptions, RuntimeOperationOpenFailed>
-		| Promise<ResultType<CodingAgentOperationOptions, RuntimeOperationOpenFailed>>;
+		| ResultType<CodingAgentOperationConfiguration, RuntimeOperationOpenFailed>
+		| Promise<ResultType<CodingAgentOperationConfiguration, RuntimeOperationOpenFailed>>;
+	/** Supplies Host-selected file capabilities and disposable Extensions per Operation. */
+	readonly capabilitySource: RuntimeCapabilitySource;
 }
 
 /**
@@ -54,7 +61,7 @@ class DefaultCodingAgentOperationDriver implements RuntimeOperationDriver {
 
 	async preflight(input: RuntimeOperationPreflightInput): Promise<ResultType<void, RuntimeOperationOpenFailed>> {
 		try {
-		const configured = await this.options.resolveOptions(input);
+			const configured = await this.#resolveOptions(input);
 			return configured.isOk() ? Result.ok(undefined) : Result.err(configured.error);
 		} catch (cause) {
 			return Result.err(
@@ -70,7 +77,7 @@ class DefaultCodingAgentOperationDriver implements RuntimeOperationDriver {
 
 	async openOperation(input: RuntimeOperationOpenInput): Promise<ResultType<RuntimeOperation, RuntimeOperationOpenFailed>> {
 		try {
-			const configured = await this.options.resolveOptions(input);
+			const configured = await this.#resolveOptions(input);
 			if (configured.isErr()) return Result.err(configured.error);
 			const created = await createCodingAgent({
 				...configured.value,
@@ -119,6 +126,33 @@ class DefaultCodingAgentOperationDriver implements RuntimeOperationDriver {
 				}),
 			);
 		}
+	}
+
+	async #resolveOptions(
+		input: Pick<RuntimeOperationOpenInput, "sessionId" | "cwd" | "operationId" | "runtimeConfiguration">,
+	): Promise<ResultType<CodingAgentOperationOptions, RuntimeOperationOpenFailed>> {
+		const configured = await this.options.resolveOptions(input);
+		if (configured.isErr()) return Result.err(configured.error);
+		const capabilities = await this.options.capabilitySource.resolve({
+			sessionId: input.sessionId,
+			operationId: input.operationId,
+			cwd: input.cwd,
+		});
+		if (capabilities.isErr()) {
+			return Result.err(
+				new RuntimeOperationOpenFailed({
+					message: `Coding Agent capability source could not prepare Operation "${input.operationId}"`,
+					sessionId: input.sessionId,
+					operationId: input.operationId,
+					cause: capabilities.error,
+				}),
+			);
+		}
+		return Result.ok({
+			...configured.value,
+			fileCapabilities: capabilities.value.fileCapabilities,
+			extensions: [...(configured.value.extensions ?? []), ...capabilities.value.extensions],
+		});
 	}
 }
 

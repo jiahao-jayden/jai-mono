@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProductSqliteDatabase, SqliteDesktopCatalogAccess } from "../../src/persistence";
@@ -246,20 +246,37 @@ describe("Runtime Host daemon composition", () => {
 		}
 	});
 
-	test("assembles user Agent Plugins into a live Host-owned Coding Agent operation", async () => {
+	test("assembles user and trusted workspace capabilities into a live Host-owned Coding Agent operation", async () => {
 		const dataDirectory = await mkdtemp(join(tmpdir(), "jai-runtime-daemon-"));
 		temporaryDirectories.push(dataDirectory);
 		const homeDirectory = join(dataDirectory, "home");
 		const workspace = join(dataDirectory, "workspace");
 		await mkdir(workspace, { recursive: true });
+		await writeCodingConfig(join(homeDirectory, ".jai", "settings.json"), {});
+		await writeCodingConfig(join(workspace, ".jai", "settings.json"), {
+			allow: ["Bash(mkdir .desktop-source-config)"],
+		});
+		await createSkill(join(homeDirectory, ".jai", "skills", "home-skill"), "home-skill");
+		await createSkill(join(workspace, ".agents", "skills", "workspace-skill"), "workspace-skill");
 		await createPlugin(join(homeDirectory, ".jai", "plugins", "host-plugin"), "host-plugin");
 		await createPlugin(join(workspace, ".jai", "plugins", "project-plugin"), "project-plugin");
 		const providerRequests: unknown[] = [];
+		const providerResponses = [
+			anthropicToolCallEvents([
+				{
+					id: "allow-workspace-config",
+					name: "Bash",
+					arguments: { command: "mkdir .desktop-source-config" },
+				},
+			]),
+			anthropicTextEvents("Local Runtime Capability Source assembled by Runtime Host"),
+		];
 		const provider = Bun.serve({
 			port: 0,
 			fetch: async (request) => {
 				providerRequests.push(await request.json());
-				return new Response(anthropicTextEvents("Plugin capability assembled by Runtime Host"), {
+				const response = providerResponses.shift();
+				return new Response(response ?? "No fake provider response left", {
 					headers: { "content-type": "text/event-stream" },
 				});
 			},
@@ -324,7 +341,7 @@ describe("Runtime Host daemon composition", () => {
 
 				await waitFor(
 					() =>
-						updates.some((update) => JSON.stringify(update).includes("Plugin capability assembled by Runtime Host")) &&
+						updates.some((update) => JSON.stringify(update).includes("Local Runtime Capability Source assembled by Runtime Host")) &&
 						updates.some((update) => JSON.stringify(update).includes('"state":"idle"')),
 				);
 			} finally {
@@ -332,14 +349,18 @@ describe("Runtime Host daemon composition", () => {
 				await client.value.close();
 			}
 
-			expect(providerRequests).toHaveLength(1);
+			expect(providerRequests).toHaveLength(2);
 			const request = providerRequests[0] as { readonly tools?: readonly { readonly name?: string; readonly description?: string }[] };
-			expect(request.tools).toContainEqual(
-				expect.objectContaining({ name: "Skill", description: expect.stringContaining("host-plugin-skill") }),
-			);
-			expect(request.tools).toContainEqual(
-				expect.objectContaining({ name: "Skill", description: expect.stringContaining("project-plugin-skill") }),
-			);
+			const skillTool = request.tools?.find((tool) => tool.name === "Skill");
+			const skillDescription = skillTool?.description;
+			expect(typeof skillDescription).toBe("string");
+			if (typeof skillDescription === "string") {
+				expect(skillDescription).toContain("home-skill");
+				expect(skillDescription).toContain("workspace-skill");
+				expect(skillDescription).toContain("host-plugin-skill");
+				expect(skillDescription).toContain("project-plugin-skill");
+			}
+			expect((await stat(join(workspace, ".desktop-source-config"))).isDirectory()).toBe(true);
 		} finally {
 			await opened.value.close();
 			provider.stop(true);
@@ -356,6 +377,22 @@ async function createPlugin(directory: string, name: string): Promise<void> {
 	await writeFile(
 		join(directory, "skills", `${name}-skill`, "SKILL.md"),
 		`---\nname: ${name}-skill\ndescription: ${name} capability\n---\n\nInstructions\n`,
+	);
+}
+
+async function createSkill(directory: string, name: string): Promise<void> {
+	await mkdir(directory, { recursive: true });
+	await writeFile(
+		join(directory, "SKILL.md"),
+		`---\nname: ${name}\ndescription: ${name} capability\n---\n\nInstructions\n`,
+	);
+}
+
+async function writeCodingConfig(path: string, permissions: Record<string, unknown>): Promise<void> {
+	await mkdir(join(path, ".."), { recursive: true });
+	await writeFile(
+		path,
+		JSON.stringify({ $schema: "https://jai.dev/schemas/coding-agent-sdk-v1.json", schemaVersion: 1, permissions }),
 	);
 }
 
@@ -392,6 +429,50 @@ function anthropicTextEvents(text: string): string {
 		}),
 		sse("message_stop", { type: "message_stop" }),
 	].join("");
+}
+
+function anthropicToolCallEvents(
+	calls: readonly { readonly id: string; readonly name: string; readonly arguments: Readonly<Record<string, unknown>> }[],
+): string {
+	const events = [
+		sse("message_start", {
+			type: "message_start",
+			message: {
+				id: "message-id",
+				type: "message",
+				role: "assistant",
+				model: "test-model",
+				content: [],
+				stop_reason: null,
+				stop_sequence: null,
+				usage: { input_tokens: 1, output_tokens: 0 },
+			},
+		}),
+	];
+	for (const [index, call] of calls.entries()) {
+		events.push(
+			sse("content_block_start", {
+				type: "content_block_start",
+				index,
+				content_block: { type: "tool_use", id: call.id, name: call.name, input: {} },
+			}),
+			sse("content_block_delta", {
+				type: "content_block_delta",
+				index,
+				delta: { type: "input_json_delta", partial_json: JSON.stringify(call.arguments) },
+			}),
+			sse("content_block_stop", { type: "content_block_stop", index }),
+		);
+	}
+	events.push(
+		sse("message_delta", {
+			type: "message_delta",
+			delta: { stop_reason: "tool_use", stop_sequence: null },
+			usage: { output_tokens: 1 },
+		}),
+		sse("message_stop", { type: "message_stop" }),
+	);
+	return events.join("");
 }
 
 function sse(event: string, data: unknown): string {

@@ -3,7 +3,7 @@ import { type AssistantMessage, zeroUsage } from "@jai/ai";
 import { InMemorySessionStore } from "@jai/agent";
 import { Type } from "@sinclair/typebox";
 import { Result } from "better-result";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -113,6 +113,91 @@ describe("public Coding Agent SDK", () => {
 			status: "error",
 			error: { code: "coding_sdk.session_not_found", phase: "session" },
 		});
+	});
+
+	test("persistent sessions require Host-provided file capabilities", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const { fileCapabilities: _fileCapabilities, ...input } = createInput(root, [assistant("unused")]);
+
+		const result = await createCodingAgent({
+			...input,
+			session: { kind: "new", id: "missing-file-capabilities", store: await openStore(root) },
+		});
+
+		expect(result).toMatchObject({
+			status: "error",
+			error: {
+				code: "coding_sdk.file_capabilities_required",
+				phase: "runtime_creation",
+			},
+		});
+	});
+
+	test("uses Host-selected workspace configuration and Skills", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const homeDirectory = join(root, "home");
+		const workspaceDirectory = join(root, "workspace");
+		await mkdir(join(workspaceDirectory, ".jai"), { recursive: true });
+		await writeFile(
+			join(workspaceDirectory, ".jai", "settings.json"),
+			JSON.stringify({
+				$schema: "https://jai.dev/schemas/coding-agent-sdk-v1.json",
+				schemaVersion: 1,
+				permissions: { defaultMode: "bypassPermissions" },
+			}),
+		);
+		const skillDirectory = join(workspaceDirectory, ".agents", "skills", "workspace-skill");
+		await mkdir(skillDirectory, { recursive: true });
+		await writeFile(
+			join(skillDirectory, "SKILL.md"),
+			"---\nname: workspace-skill\ndescription: Workspace skill\n---\n\n# Workspace skill\n",
+		);
+		let approvals = 0;
+		let executions = 0;
+		const created = await createCodingAgent({
+			...createInput(root, [
+				assistantToolCall("Skill", "load-workspace-skill", { skill: "workspace-skill" }),
+				assistantToolCall("CapabilityWrite", "capability-write", { value: "written" }),
+				assistant("done"),
+			]),
+			fileCapabilities: { homeDirectory, workspaceDirectory, workspaceTrusted: true },
+			session: { kind: "new", id: "host-file-capabilities", store: await openStore(root) },
+			requestApproval: () => {
+				approvals++;
+				return "deny";
+			},
+			extensions: [
+				defineExtension({
+					id: "capability-write",
+					tools: [
+						{
+							name: "CapabilityWrite",
+							description: "Writes after the configured permission policy is applied",
+							parameters: Type.Object({ value: Type.String() }),
+							authorization: { owner: "core", permission: { sideEffect: "write", reason: "Writes capability state" } },
+							execute: async () => {
+								executions++;
+								return { content: [{ type: "text", text: "written" }] };
+							},
+						},
+					],
+				}),
+			],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+
+		const run = await created.value.prompt("load the workspace skill and write state");
+		expect(run.isOk()).toBe(true);
+		if (run.isErr()) throw new Error(`${run.error.code}: ${run.error.message}`);
+		const skillResult = run.value.messages.find(
+			(message) => message.role === "toolResult" && message.toolName === "Skill",
+		);
+		expect(skillResult?.content[0]).toMatchObject({ text: expect.stringContaining("# Workspace skill") });
+		expect({ approvals, executions }).toEqual({ approvals: 0, executions: 1 });
+		await created.value.close();
 	});
 
 	test("accepts plan mode and defers read-only enforcement to the permission layer", async () => {
@@ -722,6 +807,11 @@ function createInput(
 	return {
 		model: "anthropic/test-model",
 		cwd: root,
+		fileCapabilities: {
+			homeDirectory: root,
+			workspaceDirectory: root,
+			workspaceTrusted: false,
+		},
 		provider: { apiKey: "test", baseUrl: server.url.toString() },
 	};
 }

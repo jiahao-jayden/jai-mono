@@ -26,12 +26,17 @@ export class WorkspaceTrustCorrupted extends TaggedError("workspace_trust.corrup
 export type WorkspaceTrustReadError = WorkspaceTrustInvalid | WorkspaceTrustCorrupted;
 export type WorkspaceTrustWriteError = WorkspaceTrustInvalid | WorkspaceTrustCorrupted;
 
+/** Read-only durable trust capability required by Operation capability sources. */
+export interface WorkspaceTrustReader {
+	get(workspacePath: string): Promise<ResultType<WorkspaceTrustSnapshot, WorkspaceTrustReadError>>;
+}
+
 /**
  * Host-owned durable Workspace trust facts. The table is append-only: the
  * latest fact for a canonical root authorizes its project-local capabilities.
  * Desktop and ACP clients can request a decision, but never infer one from cwd.
  */
-export class SqliteWorkspaceTrust {
+export class SqliteWorkspaceTrust implements WorkspaceTrustReader {
 	constructor(private readonly database: DatabaseSync) {
 		this.database.exec(`
 			CREATE TABLE IF NOT EXISTS runtime_workspace_trust_facts (

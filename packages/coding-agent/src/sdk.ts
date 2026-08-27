@@ -1,5 +1,3 @@
-export type { ReadOnlySessionAttachment } from "@jai/agent";
-export { attachSession, SessionFollowLost, SessionNotFound } from "@jai/agent";
 export { type McpToolMetadata, mcpToolPresentation } from "./mcp";
 export { createCodingAgent } from "./sdk/create-coding-agent";
 export type { CodingExtensionError } from "./sdk/extension-errors";
@@ -65,6 +63,7 @@ export type {
 	CodingAgentArtifact,
 	CodingAgentCreateOptions,
 	CodingAgentEvent,
+	CodingAgentFileCapabilities,
 	CodingAgentMessage,
 	CodingAgentState,
 	CodingAgentTodo,
@@ -72,6 +71,7 @@ export type {
 	CodingAssistantMessage,
 	CodingAttachment,
 	CodingFileChange,
+	CodingEffectBoundary,
 	CodingImageContent,
 	CodingPermissionDecision,
 	CodingPermissionMode,
@@ -82,6 +82,7 @@ export type {
 	CodingRunResult,
 	CodingSdkError,
 	CodingSdkErrorPhase,
+	CodingSessionStore,
 	CodingSessionSelection,
 	CodingToolName,
 	CodingToolResult,

@@ -1,4 +1,3 @@
-import type { EffectBoundary, SessionStore } from "@jai/agent";
 import type { Result } from "better-result";
 import type { JsonObject, JsonValue } from "../core/json";
 import type { CodingToolName } from "../tools/names";
@@ -133,16 +132,25 @@ export interface CodingSdkError {
   readonly phase: CodingSdkErrorPhase;
 }
 
+/**
+ * Host-owned Session Journal adapter. Its durable representation and lifecycle
+ * remain owned by the Agent journal rather than this SDK.
+ */
+export type CodingSessionStore = object;
+
+/** Host-owned effect recovery protocol supplied only by product runtimes. */
+export type CodingEffectBoundary = object;
+
 export type CodingSessionSelection =
   | {
       readonly kind: "new";
       readonly id?: string;
-      readonly store: SessionStore<JsonObject>;
+      readonly store: CodingSessionStore;
     }
   | {
       readonly kind: "resume";
       readonly id: string;
-      readonly store: SessionStore<JsonObject>;
+      readonly store: CodingSessionStore;
     }
   | { readonly kind: "ephemeral" };
 
@@ -185,6 +193,16 @@ export type CodingApprovalHandler = (
   signal?: AbortSignal,
 ) => CodingPermissionDecision | Promise<CodingPermissionDecision>;
 
+/** Local Coding Agent inputs selected by the Host for one persistent session. */
+export interface CodingAgentFileCapabilities {
+  /** User-owned root containing `.jai/settings.json` and user Skills. */
+  readonly homeDirectory: string;
+  /** Workspace root containing project configuration and Skills. */
+  readonly workspaceDirectory: string;
+  /** Whether project-level configuration and Skills may participate. */
+  readonly workspaceTrusted: boolean;
+}
+
 export interface CodingAgentCreateOptions {
   readonly model: string;
   readonly provider?: CodingProviderOptions;
@@ -192,8 +210,11 @@ export interface CodingAgentCreateOptions {
   /** Host adapter for extension-owned configuration and approval workflows. */
   readonly extensionRuntime?: CodingExtensionRuntimeAdapter;
   readonly cwd?: string;
-  /** Root for agent-owned configuration and other durable data. */
-  readonly agentDataRoot?: string;
+  /**
+   * Host-selected local configuration and Skill roots. Required for persistent
+   * sessions; ephemeral sessions use an isolated temporary directory instead.
+   */
+  readonly fileCapabilities?: CodingAgentFileCapabilities;
   readonly session?: CodingSessionSelection;
   readonly permissionMode?: CodingPermissionMode;
   readonly maxTurns?: number;
@@ -202,7 +223,7 @@ export interface CodingAgentCreateOptions {
   readonly instructions?: string;
   readonly compactionSummaryInstructions?: string;
   /** Optional host-owned durable effect protocol for model and tool execution. */
-  readonly effectBoundary?: EffectBoundary;
+  readonly effectBoundary?: CodingEffectBoundary;
   readonly requestApproval?: CodingApprovalHandler;
   /** Enables only these built-in tools. Extension tools remain extension-owned. */
   readonly tools?: readonly CodingToolName[];

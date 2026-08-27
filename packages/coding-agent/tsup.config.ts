@@ -8,6 +8,7 @@ export default defineConfig({
 	platform: "node",
 	target: "node20",
 	tsconfig: "tsconfig.build.json",
+	dts: true,
 	sourcemap: true,
 	clean: true,
 	splitting: false,

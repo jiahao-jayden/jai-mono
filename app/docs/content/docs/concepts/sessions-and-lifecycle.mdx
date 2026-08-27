@@ -6,8 +6,8 @@ description: 选择 durable 或 ephemeral session，并在宿主生命周期结�
 `CodingSessionSelection` 有三种形式：
 
 ```ts
-{ kind: "new", directory: string, id?: string }
-{ kind: "resume", id: string, directory: string }
+{ kind: "new", store: CodingSessionStore, id?: string }
+{ kind: "resume", id: string, store: CodingSessionStore }
 { kind: "ephemeral" }
 ```
 
@@ -18,18 +18,27 @@ description: 选择 durable 或 ephemeral session，并在宿主生命周期结�
 - `ephemeral`：在系统临时目录创建 session；成功 `close()` 后删除该目录。
 
 ```ts
+import { createCodingAgent, type CodingSessionStore } from "@jai/coding-agent";
+
+declare const sessionStore: CodingSessionStore;
+
 const created = await createCodingAgent({
   model: "openai/gpt-4.1-mini",
   cwd: process.cwd(),
+  fileCapabilities: {
+    homeDirectory: process.env.HOME ?? process.cwd(),
+    workspaceDirectory: process.cwd(),
+    workspaceTrusted: true,
+  },
   session: {
     kind: "new",
     id: "issue-482",
-    directory: `${process.cwd()}/.jai/sessions`,
+    store: sessionStore,
   },
 });
 ```
 
-SDK 持久化 Agent 消息和 app state，但不提供“列出所有 session”的 root API。会话 ID 的索引、列表、名称和清理策略属于宿主产品。
+SDK 通过 Host-owned store 持久化 Agent 消息和 app state，但不提供“列出所有 session”的 root API。会话 ID 的索引、列表、名称和清理策略属于宿主产品。
 
 ## 状态迁移
 

@@ -12,6 +12,7 @@ interface CodingAgentCreateOptions {
   extensions?: readonly CodingAgentExtension[];
   extensionRuntime?: CodingExtensionRuntimeAdapter;
   cwd?: string;
+  fileCapabilities?: CodingAgentFileCapabilities;
   session?: CodingSessionSelection;
   permissionMode?: CodingPermissionMode;
   maxTurns?: number;
@@ -23,7 +24,15 @@ interface CodingAgentCreateOptions {
 }
 ```
 
-`model` 是 `<provider>/<model>`，其中 provider 只能是 `anthropic`、`openai` 或 `openai-compatible`。`cwd` 默认是 `process.cwd()`；省略 `session` 时默认 ephemeral。
+`model` 是 `<provider>/<model>`，其中 provider 只能是 `anthropic`、`openai` 或 `openai-compatible`。`cwd` 默认是 `process.cwd()`；省略 `session` 时默认 ephemeral。`new` 与 `resume` 必须由 Host 提供 `fileCapabilities`，SDK 不会从 `cwd` 或数据目录推断本地配置来源。
+
+```ts
+interface CodingAgentFileCapabilities {
+  homeDirectory: string;
+  workspaceDirectory: string;
+  workspaceTrusted: boolean;
+}
+```
 
 ## Provider
 
@@ -42,12 +51,12 @@ interface CodingProviderOptions {
 
 ```ts
 type CodingSessionSelection =
-  | { kind: "new"; id?: string; directory: string }
-  | { kind: "resume"; id: string; directory: string }
+  | { kind: "new"; id?: string; store: CodingSessionStore }
+  | { kind: "resume"; id: string; store: CodingSessionStore }
   | { kind: "ephemeral" };
 ```
 
-`new` 与 `resume` 要求调用方提供 durable session 的目录。session 的目录布局和列表策略属于宿主，不是 SDK public API。
+`new` 与 `resume` 要求调用方提供 Host-owned 的 durable Session Journal store。store 的持久化实现、目录布局和列表策略属于宿主，不是 SDK public API。
 
 ## Extensions
 
