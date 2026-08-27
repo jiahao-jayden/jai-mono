@@ -533,8 +533,15 @@ function projectEntry(sessionId: string, entry: SessionEntry): readonly AcpJsonR
 	}
 	if (entry.type !== "message") return [];
 	switch (entry.message.role) {
-		case "user":
-			return [userMessageUpdate(sessionId, entry.id, userPrompt(entry.message))];
+	case "user":
+			return [
+				userMessageUpdate(
+					sessionId,
+					entry.id,
+					userPrompt(entry.message),
+					projectSlashInvocation(entry.message.metadata?.slashInvocation),
+				),
+			];
 		case "assistant": {
 			const content = agentMessageContent(entry.message);
 			return [
@@ -863,11 +870,45 @@ function userMessageUpdate(
 	sessionId: string,
 	messageId: string,
 	content: readonly AcpPromptBlock[],
+	slashInvocation?: AcpSlashInvocation,
 ): AcpJsonRpcNotification {
 	return {
 		jsonrpc: "2.0",
 		method: "session/update",
-		params: { sessionId, update: { sessionUpdate: "user_message", messageId, content } },
+		params: {
+			sessionId,
+			update: {
+				sessionUpdate: "user_message",
+				messageId,
+				content,
+				...(slashInvocation ? { slashInvocation } : {}),
+			},
+		},
+	};
+}
+
+interface AcpSlashInvocation {
+	readonly name: string;
+	readonly kind: "skill" | "command";
+	readonly commandKind?: "extension" | "file" | "skill";
+	readonly displayName: string;
+}
+
+function projectSlashInvocation(value: unknown): AcpSlashInvocation | undefined {
+	if (!isObject(value) || typeof value.name !== "string" || typeof value.displayName !== "string") return undefined;
+	if (!value.name.trim() || !value.displayName.trim()) return undefined;
+	if (value.kind === "skill") {
+		return { name: value.name, kind: "skill", displayName: value.displayName };
+	}
+	if (value.kind !== "command") return undefined;
+	if (value.commandKind !== "extension" && value.commandKind !== "file" && value.commandKind !== "skill") {
+		return undefined;
+	}
+	return {
+		name: value.name,
+		kind: "command",
+		commandKind: value.commandKind,
+		displayName: value.displayName,
 	};
 }
 

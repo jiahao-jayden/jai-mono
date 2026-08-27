@@ -12,6 +12,10 @@
 		"./agent-plugins": {
 			"types": "./dist/agent-plugins/index.d.ts",
 			"import": "./dist/agent-plugins.js"
+		},
+		"./skills": {
+			"types": "./dist/skills/index.d.ts",
+			"import": "./dist/skills.js"
 		}
 	},
 	"scripts": {
@@ -20,6 +24,7 @@
 		"test": "bun test"
 	},
 	"dependencies": {
+		"@jai/common": "workspace:*",
 		"@jai/coding-agent": "workspace:*",
 		"@jai/connector": "workspace:*",
 		"@modelcontextprotocol/sdk": "1.29.0",

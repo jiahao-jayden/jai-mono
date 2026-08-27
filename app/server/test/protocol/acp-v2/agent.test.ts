@@ -954,6 +954,82 @@ describe("ACP v2 Agent adapter", () => {
 			{ jsonrpc: "2.0", id: 5, result: {} },
 		]);
 	});
+
+	test("projects only the safe slash invocation DTO from durable user metadata", async () => {
+		const persistence = new InMemoryProductSessionPersistence();
+		const host = createRuntimeHost({ persistence, createId: ids("session-1", "operation-1") });
+		const first = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		await first.handle({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: { protocolVersion: 2, capabilities: {}, info: { name: "first", version: "1.0.0" } },
+		});
+		await first.handle({ jsonrpc: "2.0", id: 2, method: "session/new", params: { cwd: "/workspace" } });
+		const stored = await persistence.load("session-1");
+		if (stored.isErr()) throw stored.error;
+		const appended = await persistence.appendEntry({
+			sessionId: "session-1",
+			expectedRevision: stored.value.revision,
+			entry: {
+				type: "message",
+				id: "slash-input",
+				parentId: stored.value.snapshot.leafId,
+				timestamp: new Date(1).toISOString(),
+				message: {
+					role: "user",
+					content: "/review target",
+					timestamp: 1,
+					metadata: {
+						slashInvocation: {
+							name: "review",
+							kind: "command",
+							commandKind: "file",
+							displayName: "Review a target",
+							path: "/must-not-project",
+							cause: "must-not-project",
+						},
+					},
+				},
+			},
+		});
+		expect(appended.isOk()).toBe(true);
+		await first.close();
+
+		const resumed = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		await resumed.handle({
+			jsonrpc: "2.0",
+			id: 3,
+			method: "initialize",
+			params: { protocolVersion: 2, capabilities: {}, info: { name: "second", version: "1.0.0" } },
+		});
+		const replayed = await resumed.handle({
+			jsonrpc: "2.0",
+			id: 4,
+			method: "session/resume",
+			params: { sessionId: "session-1", cwd: "/workspace", replayFrom: { type: "start" } },
+		});
+
+		expect(replayed).toContainEqual(
+			expect.objectContaining({
+				method: "session/update",
+				params: expect.objectContaining({
+					sessionId: "session-1",
+					update: expect.objectContaining({
+						sessionUpdate: "user_message",
+						messageId: "slash-input",
+						slashInvocation: {
+							name: "review",
+							kind: "command",
+							commandKind: "file",
+							displayName: "Review a target",
+						},
+					}),
+				}),
+			}),
+		);
+		expect(JSON.stringify(replayed)).not.toContain("must-not-project");
+	});
 });
 
 function configuredSessionPolicy(): RuntimeSessionConfigurationPolicy {

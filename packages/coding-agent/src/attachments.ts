@@ -162,7 +162,7 @@ function attachmentInstructions(attachments: readonly CodingMessageAttachment[])
 		...attachments.flatMap((attachment, index) => [
 			`- ${attachment.filename} (${attachment.mimeType}, ${attachment.size} bytes)`,
 			`  Exact attachment handle: ${attachmentLocator(runAttachmentIdForIndex(index))}`,
-			`  Use this handle as the path for Read, Edit, or Write. For binary parsing in Bash or a Skill, use $${shellVariable(index)}.`,
+			`  Use this handle as the path for Read, Edit, Write, Bash, or an Extension-provided resource tool: $${shellVariable(index)}.`,
 		]),
 		"Only the attachment handles listed in this run are active; previous-run handles are unavailable.",
 		"Attachments are available only to this CodingAgent run, not to subagents.",

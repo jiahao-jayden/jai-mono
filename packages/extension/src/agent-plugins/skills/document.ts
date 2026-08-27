@@ -6,7 +6,7 @@ export class InvalidPluginSkillDocument extends TaggedError("jai_plugins.skill_i
 	readonly cause?: unknown;
 }> {}
 
-const SKILL_NAME = /^(?!.*--)[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*$/u;
+const SKILL_NAME = /^(?!.*--)[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_SKILL_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1_024;
 const MAX_COMPATIBILITY_LENGTH = 500;

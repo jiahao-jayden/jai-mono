@@ -12,7 +12,6 @@ export const codingToolNames = [
 	"Glob",
 	"Grep",
 	"Bash",
-	"Skill",
 	"UpdateTodos",
 	"SpawnAgent",
 ] as const;

@@ -108,9 +108,6 @@ export function evaluatePermission(
 	if (call.toolName === "Bash") {
 		return evaluateDefaultBash(call);
 	}
-	if (call.toolName === "Skill") {
-		return decision("allow", "built-in", "Skill resources are constrained to the selected Skill root");
-	}
 	return decision("ask", "built-in", "Unknown permission behavior");
 }
 

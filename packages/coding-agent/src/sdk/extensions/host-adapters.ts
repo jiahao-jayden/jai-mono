@@ -1,10 +1,12 @@
 import { Value } from "@sinclair/typebox/value";
 import { Result, type Result as ResultType } from "better-result";
+import type { CodingCommandRegistry } from "../../commands";
 import type { JsonObject } from "../../core/json";
 import {
 	CodingExtensionApprovalAborted,
 	CodingExtensionConfigurationUnavailable,
 	type CodingExtensionError,
+	CodingExtensionOperationFailed,
 	CodingExtensionPersistentApprovalUnavailable,
 	CodingExtensionSessionStateUnavailable,
 	extensionContractViolation,
@@ -13,6 +15,8 @@ import type {
 	CodingAgentExtension,
 	CodingExtensionApprovalDecision,
 	CodingExtensionApprovalRequest,
+	CodingExtensionCommand,
+	CodingExtensionCommandRegistration,
 	CodingExtensionConfigurationStore,
 	CodingExtensionContext,
 	CodingExtensionRuntimeAdapter,
@@ -22,51 +26,87 @@ import type {
 
 export async function extensionContext<TConfig extends JsonObject, TState extends JsonObject>(
 	extension: CodingAgentExtension<TConfig, TState>,
-	context: Omit<CodingExtensionContext, "configuration" | "sessionState" | "requestApproval">,
+	context: Omit<CodingExtensionContext, "configuration" | "sessionState" | "requestApproval" | "registerCommand">,
 	runtime: CodingExtensionRuntimeAdapter | undefined,
 	sessionState: CodingExtensionSessionStateAdapter | undefined,
+	commands?: CodingCommandRegistry,
 ): Promise<ResultType<CodingExtensionContext<TConfig, TState>, CodingExtensionError>> {
 	return Result.gen(async function* () {
 		const configuration = yield* Result.await(extensionConfiguration(extension, runtime));
 		const state = yield* Result.await(extensionSessionState(extension, sessionState));
+		const requestApproval = async (request: CodingExtensionApprovalRequest, signal?: AbortSignal) => {
+			const valid = assertExtensionApprovalRequest(extension.id, context.sessionId, request);
+			if (valid.isErr()) return valid;
+			if (signal?.aborted) {
+				return Result.err(
+					new CodingExtensionApprovalAborted({
+						extensionId: extension.id,
+						message: "Extension approval was aborted",
+					}),
+				);
+			}
+			const requested = runtime?.requestApproval
+				? await runtime.requestApproval(structuredClone(request), signal)
+				: Result.ok<CodingExtensionApprovalDecision, CodingExtensionError>("deny");
+			if (requested.isErr()) return requested;
+			const decision = requested.value;
+			if (decision !== "deny" && decision !== "allowOnce" && decision !== "allow") {
+				return Result.err(
+					extensionContractViolation({
+						extensionId: extension.id,
+						message: "Extension approval handler returned an invalid decision",
+					}),
+				);
+			}
+			if (decision === "allow" && !configuration.persistent) {
+				return Result.err(
+					new CodingExtensionPersistentApprovalUnavailable({
+						extensionId: extension.id,
+						message: `Extension "${extension.id}" cannot persist an allow decision`,
+					}),
+				);
+			}
+			return Result.ok(decision);
+		};
+		const registerCommand = (command: CodingExtensionCommand<TConfig, TState>) => {
+			if (!commands) {
+				return Result.err(
+					new CodingExtensionOperationFailed({
+						message: `Command registration is unavailable for extension "${extension.id}"`,
+					}),
+				);
+			}
+			const registered = commands.register(extension.id, {
+				...command,
+				kind: command.kind ?? "extension",
+				handler: (args, commandContext) =>
+					command.handler(args, {
+						...commandContext,
+						extensionId: extension.id,
+						configuration,
+						sessionState: state,
+						requestApproval,
+					}),
+			});
+			if (registered.isOk()) {
+				const registration: CodingExtensionCommandRegistration = {
+					unregister: () => registered.value.unregister(),
+				};
+				return Result.ok(registration);
+			}
+			return Result.err(
+				new CodingExtensionOperationFailed({
+					message: registered.error.message,
+					cause: registered.error,
+				}),
+			);
+		};
 		return Result.ok({
 			...context,
 			configuration,
 			sessionState: state,
-			requestApproval: async (request: CodingExtensionApprovalRequest, signal?: AbortSignal) => {
-				const valid = assertExtensionApprovalRequest(extension.id, context.sessionId, request);
-				if (valid.isErr()) return valid;
-				if (signal?.aborted) {
-					return Result.err(
-						new CodingExtensionApprovalAborted({
-							extensionId: extension.id,
-							message: "Extension approval was aborted",
-						}),
-					);
-				}
-				const requested = runtime?.requestApproval
-					? await runtime.requestApproval(structuredClone(request), signal)
-					: Result.ok<CodingExtensionApprovalDecision, CodingExtensionError>("deny");
-				if (requested.isErr()) return requested;
-				const decision = requested.value;
-				if (decision !== "deny" && decision !== "allowOnce" && decision !== "allow") {
-					return Result.err(
-						extensionContractViolation({
-							extensionId: extension.id,
-							message: "Extension approval handler returned an invalid decision",
-						}),
-					);
-				}
-				if (decision === "allow" && !configuration.persistent) {
-					return Result.err(
-						new CodingExtensionPersistentApprovalUnavailable({
-							extensionId: extension.id,
-							message: `Extension "${extension.id}" cannot persist an allow decision`,
-						}),
-					);
-				}
-				return Result.ok(decision);
-			},
+			requestApproval,
+			registerCommand,
 		});
 	});
 }

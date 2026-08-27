@@ -38,6 +38,7 @@ function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) 
 		},
 		theme: { get: record("theme.get", "system"), set: record("theme.set"), restore: record("theme.restore") },
 		config: { ...(overrides.config as object) },
+		commands: { list: record("commands.list", []), ...(overrides.commands as object) },
 		oauth: { ...(overrides.oauth as object) },
 		openWith: { ...(overrides.openWith as object) },
 		publish: record("publish"),
@@ -120,6 +121,12 @@ describe("createDesktopRouter — 输入校验", () => {
 		expect(r.session.list(event, undefined)).toBeDefined();
 		expect(r.session.list(event, { limit: 20 })).toBeDefined();
 	});
+
+	test("command.list 不接受 renderer 传入的路径", () => {
+		const { router: r, calls } = router();
+		expect(() => r.command.list(event, { path: "/tmp" } as never)).toThrow();
+		expect(calls).toEqual([]);
+	});
 });
 
 describe("createDesktopRouter — 行为", () => {
@@ -145,5 +152,32 @@ describe("createDesktopRouter — 行为", () => {
 		expect(r.theme.get(event)).toBe("system");
 		r.theme.set(event, "dark");
 		expect(calls.map((call) => call.name)).toEqual(["theme.get", "theme.set"]);
+	});
+
+	test("command.list 仅从已登记项目解析 workspace 和 trust", async () => {
+		const command = {
+			name: "skill:review",
+			displayName: "skill:review",
+			description: "Review changes",
+			kind: "skill" as const,
+		};
+		const { router: r, calls } = router({
+			sessions: {
+				getProject: () => ({ id: "project-1", canonicalPath: "/registered/project" }),
+				isProjectAvailable: () => true,
+			},
+			config: { getWorkspaceTrust: () => ({ trusted: true }) },
+			commands: { list: () => [command] },
+		});
+
+		expect(await r.command.list(event, { projectId: "project-1" })).toEqual([
+			{
+				name: "skill:review",
+				displayName: "skill:review",
+				description: "Review changes",
+				commandKind: "skill",
+			},
+		]);
+		expect(calls.map((call) => call.name)).not.toContain("commands.list");
 	});
 });

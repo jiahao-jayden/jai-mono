@@ -3,11 +3,12 @@ import { type AssistantMessage, zeroUsage } from "@jai/ai";
 import { InMemorySessionStore } from "@jai/agent";
 import { Type } from "@sinclair/typebox";
 import { Result } from "better-result";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	CodingExtensionOperationFailed,
+	CodingCommandExecutionFailed,
 	createCodingAgent,
 	defineExtension,
 	type CodingAgentCreateOptions,
@@ -134,72 +135,6 @@ describe("public Coding Agent SDK", () => {
 		});
 	});
 
-	test("uses Host-selected workspace configuration and Skills", async () => {
-		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
-		roots.push(root);
-		const homeDirectory = join(root, "home");
-		const workspaceDirectory = join(root, "workspace");
-		await mkdir(join(workspaceDirectory, ".jai"), { recursive: true });
-		await writeFile(
-			join(workspaceDirectory, ".jai", "settings.json"),
-			JSON.stringify({
-				$schema: "https://jai.dev/schemas/coding-agent-sdk-v1.json",
-				schemaVersion: 1,
-				permissions: { defaultMode: "bypassPermissions" },
-			}),
-		);
-		const skillDirectory = join(workspaceDirectory, ".agents", "skills", "workspace-skill");
-		await mkdir(skillDirectory, { recursive: true });
-		await writeFile(
-			join(skillDirectory, "SKILL.md"),
-			"---\nname: workspace-skill\ndescription: Workspace skill\n---\n\n# Workspace skill\n",
-		);
-		let approvals = 0;
-		let executions = 0;
-		const created = await createCodingAgent({
-			...createInput(root, [
-				assistantToolCall("Skill", "load-workspace-skill", { skill: "workspace-skill" }),
-				assistantToolCall("CapabilityWrite", "capability-write", { value: "written" }),
-				assistant("done"),
-			]),
-			fileCapabilities: { homeDirectory, workspaceDirectory, workspaceTrusted: true },
-			session: { kind: "new", id: "host-file-capabilities", store: await openStore(root) },
-			requestApproval: () => {
-				approvals++;
-				return "deny";
-			},
-			extensions: [
-				defineExtension({
-					id: "capability-write",
-					tools: [
-						{
-							name: "CapabilityWrite",
-							description: "Writes after the configured permission policy is applied",
-							parameters: Type.Object({ value: Type.String() }),
-							authorization: { owner: "core", permission: { sideEffect: "write", reason: "Writes capability state" } },
-							execute: async () => {
-								executions++;
-								return { content: [{ type: "text", text: "written" }] };
-							},
-						},
-					],
-				}),
-			],
-		});
-		expect(created.isOk()).toBe(true);
-		if (created.isErr()) return;
-
-		const run = await created.value.prompt("load the workspace skill and write state");
-		expect(run.isOk()).toBe(true);
-		if (run.isErr()) throw new Error(`${run.error.code}: ${run.error.message}`);
-		const skillResult = run.value.messages.find(
-			(message) => message.role === "toolResult" && message.toolName === "Skill",
-		);
-		expect(skillResult?.content[0]).toMatchObject({ text: expect.stringContaining("# Workspace skill") });
-		expect({ approvals, executions }).toEqual({ approvals: 0, executions: 1 });
-		await created.value.close();
-	});
-
 	test("accepts plan mode and defers read-only enforcement to the permission layer", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
 		roots.push(root);
@@ -211,6 +146,182 @@ describe("public Coding Agent SDK", () => {
 
 		expect(result.status).toBe("ok");
 		if (result.status === "ok") await result.value.close();
+	});
+
+	test("dispatches Extension commands with raw args, stable duplicate suffixes, and unknown slash fallback", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-commands-"));
+		roots.push(root);
+		const observed: Array<{
+			readonly args: string;
+			readonly cwd: string;
+			readonly extensionId: string;
+			readonly sessionId: string;
+			readonly sessionStateCount?: number;
+		}> = [];
+		const created = await createCodingAgent({
+			...createInput(root, [assistant("unknown slash reached the model")]),
+			session: { kind: "ephemeral" },
+			extensions: [
+				defineExtension({
+					id: "first-review-command",
+					sessionState: {
+						schema: Type.Object({ invocations: Type.Number() }),
+						defaultValue: { invocations: 0 },
+					},
+					lifecycle: {
+						activate: (context) => {
+							const registered = context.registerCommand({
+								name: "review",
+								description: "Run the first review",
+								handler: async (args, commandContext) => {
+									const updated = await commandContext.sessionState.update((current) => ({
+										invocations: current.invocations + 1,
+									}));
+									if (updated.isErr()) return Result.err(new CodingCommandExecutionFailed({ message: updated.error.message }));
+									observed.push({
+										args,
+										cwd: commandContext.cwd,
+										extensionId: commandContext.extensionId,
+										sessionId: commandContext.sessionId,
+										sessionStateCount: updated.value.invocations,
+									});
+									return Result.ok({ kind: "handled" });
+								},
+							});
+								return registered.isErr() ? Result.err(registered.error) : Result.ok(undefined);
+						},
+					},
+				}),
+				defineExtension({
+					id: "second-review-command",
+					lifecycle: {
+						activate: (context) => {
+							const registered = context.registerCommand({
+								name: "review",
+								description: "Run the second review",
+								handler: (args, commandContext) => {
+									observed.push({
+										args,
+										cwd: commandContext.cwd,
+										extensionId: commandContext.extensionId,
+										sessionId: commandContext.sessionId,
+									});
+									return Result.ok({ kind: "handled" });
+								},
+							});
+								return registered.isErr() ? Result.err(registered.error) : Result.ok(undefined);
+						},
+					},
+				}),
+			],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+
+		expect(await created.value.prompt("/review:1  inspect first  ")).toMatchObject({ status: "ok" });
+		expect(await created.value.prompt("/review:2 inspect second")).toMatchObject({ status: "ok" });
+		expect(await created.value.prompt("/unknown keep this text")).toMatchObject({ status: "ok" });
+		expect(observed).toEqual([
+			{
+				args: "inspect first  ",
+				cwd: root,
+				extensionId: "first-review-command",
+				sessionId: expect.any(String),
+				sessionStateCount: 1,
+			},
+			{
+				args: "inspect second",
+				cwd: root,
+				extensionId: "second-review-command",
+				sessionId: expect.any(String),
+			},
+		]);
+		expect(created.value.state.messages[0]).toMatchObject({
+			role: "user",
+			content: "/unknown keep this text",
+		});
+		await created.value.close();
+	});
+
+	test("runs prompt-result Extension commands through the model pipeline with safe invocation metadata", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-command-prompt-"));
+		roots.push(root);
+		const requests: unknown[] = [];
+		const created = await createCodingAgent({
+			...createInput(root, [assistant("expanded command complete")], requests),
+			session: { kind: "ephemeral" },
+			extensions: [
+				defineExtension({
+					id: "prompt-command",
+					lifecycle: {
+						activate: (context) => {
+							const registered = context.registerCommand({
+								name: "template",
+								description: "Expand a prompt template",
+								handler: (args) => Result.ok({ kind: "prompt", prompt: `Template context: ${args}` }),
+							});
+								return registered.isErr() ? Result.err(registered.error) : Result.ok(undefined);
+						},
+					},
+				}),
+			],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+
+		const run = await created.value.prompt("/template preserve these args");
+		expect(run).toMatchObject({ status: "ok" });
+		expect(JSON.stringify(requests)).toContain("Template context: preserve these args");
+		expect(created.value.state.messages[0]).toMatchObject({
+			role: "user",
+			content: "/template preserve these args",
+			metadata: {
+				slashInvocation: {
+					name: "template",
+					kind: "command",
+					commandKind: "extension",
+				},
+			},
+		});
+		expect(JSON.stringify(created.value.state)).not.toContain("Template context:");
+		await created.value.close();
+	});
+
+	test("projects command handler failures without their diagnostic cause", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-command-failure-"));
+		roots.push(root);
+		const created = await createCodingAgent({
+			...createInput(root, [assistant("unused")]),
+			session: { kind: "ephemeral" },
+			extensions: [
+				defineExtension({
+					id: "failing-command",
+					lifecycle: {
+						activate: (context) => {
+							const registered = context.registerCommand({
+								name: "fail",
+								description: "Fail for test coverage",
+								handler: () =>
+									Result.err(
+										new CodingCommandExecutionFailed({
+											message: "Command failed safely",
+											cause: { secret: "must not project" },
+										}),
+									),
+							});
+								return registered.isErr() ? Result.err(registered.error) : Result.ok(undefined);
+						},
+					},
+				}),
+			],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+
+		const run = await created.value.prompt("/fail");
+		expect(run).toMatchObject({ status: "error", error: { code: "coding_command.execution_failed" } });
+		expect(JSON.stringify(run)).not.toContain("must not project");
+		await created.value.close();
 	});
 
 	test("owns Artifact state and persists it without a Desktop projection subscriber", async () => {
@@ -792,10 +903,12 @@ describe("public Coding Agent SDK", () => {
 function createInput(
 	root: string,
 	responses: AssistantMessage[],
+	requests?: unknown[],
 ): Omit<CodingAgentCreateOptions, "session"> {
 	const server = Bun.serve({
 		port: 0,
-		fetch() {
+		async fetch(request) {
+			if (requests) requests.push(await request.json());
 			const response = responses.shift();
 			if (!response) return new Response("No fake provider response left", { status: 500 });
 			return new Response(anthropicEvents(response), {

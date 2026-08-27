@@ -1,8 +1,11 @@
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import type { CodingAgentExtension } from "@jai/coding-agent";
-import { createAgentPluginsExtension, type AgentPluginsDirectory } from "@jai/extension/agent-plugins";
+import {
+	createAgentPluginsExtension,
+	type AgentPluginsDirectory,
+	type AgentPluginsExtension,
+} from "@jai/extension/agent-plugins";
 
 /**
  * Product capability policy for Agent Plugins. User roots are always explicit;
@@ -32,7 +35,7 @@ export async function createRuntimeAgentPluginsExtension(input: {
 	readonly homeDirectory?: string;
 	/** Canonical root supplied only after the Runtime Host reads a durable trust fact. */
 	readonly trustedWorkspacePath?: string;
-}): Promise<CodingAgentExtension<any, any, any>> {
+}): Promise<AgentPluginsExtension> {
 	const directories = await discoverRuntimeAgentPluginDirectories(input);
 	return createAgentPluginsExtension({
 		directories,

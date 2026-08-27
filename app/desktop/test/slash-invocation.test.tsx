@@ -7,11 +7,12 @@ describe("SlashInvocationText", () => {
 		const markup = renderToStaticMarkup(
 			<SlashInvocationText
 				text="/review inspect this patch"
-				invocation={{ name: "review", kind: "skill", displayName: "Review changes" }}
+				invocation={{ name: "review", kind: "command", commandKind: "skill", displayName: "Review changes" }}
 			/>,
 		);
 
 		expect(markup).toContain('data-note="Review changes"');
+		expect(markup).toContain('data-command-kind="skill"');
 		expect(markup).toContain('title="Review changes"');
 		expect(markup).toContain('<span class="slash-invocation"');
 		expect(markup).toContain("/review");

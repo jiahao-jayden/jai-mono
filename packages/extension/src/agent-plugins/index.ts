@@ -20,17 +20,21 @@ export interface AgentPluginsExtensionOptions {
 	readonly scope?: "user" | "project";
 }
 
+/** Agent Plugin skill descriptors are inputs for another Extension, never commands themselves. */
+export type AgentPluginsExtension = CodingAgentExtension<any, any, AgentPluginRuntime> & {
+	readonly skillCards: AgentPluginRuntime["skills"];
+};
+
 /**
  * Loads portable Agent Plugins v1 Skills and MCP servers through the public
  * Coding Agent Extension contract.
  */
 export async function createAgentPluginsExtension(
 	options: AgentPluginsExtensionOptions,
-): Promise<CodingAgentExtension<any, any, AgentPluginRuntime>> {
+): Promise<AgentPluginsExtension> {
 	const discovery = await discoverAgentPlugins(options);
-	return defineExtension({
+	const extension = defineExtension({
 		id: "agent-plugins",
-		skills: discovery.skills,
 		lifecycle: {
 			activate: async () => {
 				try {
@@ -53,7 +57,10 @@ export async function createAgentPluginsExtension(
 			} satisfies CodingExtensionToolCatalog<any, any, AgentPluginRuntime>,
 		],
 	});
+	return { ...extension, skillCards: discovery.skills };
 }
+
+export type { AgentPluginSkillDescriptor } from "./package/types";
 
 function toExtensionTool(tool: AgentPluginRuntime["tools"][number]): CodingExtensionTool<any, any, AgentPluginRuntime> {
 	const agentTool = tool.tool;

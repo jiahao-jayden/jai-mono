@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { type FSWatcher, watch as watchFileSystem } from "node:fs";
+import { type FSWatcher, unwatchFile, watchFile, watch as watchFileSystem } from "node:fs";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { getErrorMessage } from "@jai/common";
@@ -20,7 +20,7 @@ class SkillPathEscape extends TaggedError("coding_skill_file.path_escape")<{
 	readonly data?: Record<string, unknown>;
 	readonly message: string;
 }> {}
-const SKILL_NAME = /^(?!.*--)[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*$/u;
+const SKILL_NAME = /^(?!.*--)[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_SKILL_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1_024;
 const MAX_COMPATIBILITY_LENGTH = 500;
@@ -48,7 +48,6 @@ export interface CodingSkillPluginSource {
 
 export interface CodingSkillCard {
 	readonly name: string;
-	readonly displayName: string;
 	readonly description: string;
 	readonly contentRevision: string;
 	readonly location: string;
@@ -105,6 +104,7 @@ export class CodingSkillCatalog {
 	readonly #options: CodingSkillCatalogOptions;
 	readonly #listeners = new Set<(snapshot: CodingSkillCatalogSnapshot) => void>();
 	readonly #watchers = new Set<FSWatcher>();
+	readonly #polledPaths = new Set<string>();
 	#snapshot: CodingSkillCatalogSnapshot = { revision: "empty", skills: [], diagnostics: [] };
 	#reloadTimer?: ReturnType<typeof setTimeout>;
 	#closed = false;
@@ -208,15 +208,21 @@ export class CodingSkillCatalog {
 		if (this.#closed) return;
 		this.#closeWatchers();
 		const directories = new Set<string>();
+		const paths = new Set<string>();
 		for (const root of this.#roots()) {
 			directories.add(await nearestExistingDirectory(root.path));
-			for (const skillDirectory of await childDirectories(root.path)) directories.add(skillDirectory);
+			paths.add(root.path);
+			for (const skillDirectory of await childDirectories(root.path, root.source.scope === "user")) {
+				directories.add(skillDirectory);
+				paths.add(path.join(skillDirectory, "SKILL.md"));
+			}
 		}
 		for (const directory of directories) {
 			const watcher = watchFileSystem(directory, () => this.#scheduleReload());
 			watcher.on("error", () => this.#scheduleReload());
 			this.#watchers.add(watcher);
 		}
+		for (const path of paths) this.#watchPath(path);
 	}
 
 	#scheduleReload(): void {
@@ -238,6 +244,21 @@ export class CodingSkillCatalog {
 	#closeWatchers(): void {
 		for (const watcher of this.#watchers) watcher.close();
 		this.#watchers.clear();
+		for (const path of this.#polledPaths) unwatchFile(path);
+		this.#polledPaths.clear();
+	}
+
+	#watchPath(path: string): void {
+		watchFile(path, { interval: 100, persistent: false }, (current, previous) => {
+			if (
+				current.mtimeMs !== previous.mtimeMs ||
+				current.ctimeMs !== previous.ctimeMs ||
+				current.size !== previous.size
+			) {
+				this.#scheduleReload();
+			}
+		});
+		this.#polledPaths.add(path);
 	}
 }
 
@@ -276,7 +297,10 @@ async function readSkill(
 	const location = path.join(skillDirectory, "SKILL.md");
 	const canonicalDirectory = await realpath(skillDirectory);
 	const canonicalLocation = await realpath(location);
-	if (!isInside(canonicalDirectory, canonicalRoot) || !isInside(canonicalLocation, canonicalDirectory)) {
+	if (
+		(root.source.scope === "project" && !isInside(canonicalDirectory, canonicalRoot)) ||
+		!isInside(canonicalLocation, canonicalDirectory)
+	) {
 		throw new SkillPathEscape({
 			message: `Skill path escapes its catalog root: ${skillDirectory}`,
 			data: { path: skillDirectory },
@@ -289,7 +313,6 @@ async function readSkill(
 	const parsed = validateSkillFrontmatter(frontmatter, directoryName);
 	return {
 		name: parsed.name,
-		displayName: parsed.metadata.displayName ?? parsed.name,
 		description: parsed.description,
 		contentRevision: createHash("sha256").update(content).digest("hex"),
 		location: canonicalLocation,
@@ -419,7 +442,7 @@ async function nearestExistingDirectory(candidate: string): Promise<string> {
 	}
 }
 
-async function childDirectories(directory: string): Promise<string[]> {
+async function childDirectories(directory: string, allowExternalTargets: boolean): Promise<string[]> {
 	const entries = await readdir(directory, { withFileTypes: true }).catch((error) => {
 		if (isNodeError(error, "ENOENT")) return [];
 		throw error;
@@ -432,7 +455,9 @@ async function childDirectories(directory: string): Promise<string[]> {
 		const info = await stat(candidate).catch(() => undefined);
 		if (!info?.isDirectory()) continue;
 		const canonicalCandidate = await realpath(candidate).catch(() => undefined);
-		if (canonicalCandidate && isInside(canonicalCandidate, canonicalDirectory)) directories.push(candidate);
+		if (canonicalCandidate && (allowExternalTargets || isInside(canonicalCandidate, canonicalDirectory))) {
+			directories.push(candidate);
+		}
 	}
 	return directories;
 }

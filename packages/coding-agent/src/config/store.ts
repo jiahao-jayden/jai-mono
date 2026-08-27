@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { type FSWatcher, watch as watchFileSystem } from "node:fs";
+import { type FSWatcher, unwatchFile, watch as watchFileSystem, watchFile } from "node:fs";
 import { copyFile, mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -61,6 +61,7 @@ export class CodingConfigStore<TSchema extends TObject> {
 	private readonly environment: Readonly<Record<string, string | undefined>>;
 	private readonly listeners = new Set<(event: ConfigWatchEvent<TSchema>) => void>();
 	private readonly watchers = new Set<FSWatcher>();
+	private readonly polledPaths = new Set<string>();
 	private readonly debounceMs: number;
 	private workspaceTrusted: boolean;
 	private lastValid?: ConfigSnapshot<TSchema>;
@@ -295,8 +296,9 @@ export class CodingConfigStore<TSchema extends TObject> {
 	private async replaceWatchers(): Promise<void> {
 		this.closeWatchers();
 		const directories = new Set<string>();
+		const files = Object.values(this.paths).filter((value): value is string => value !== undefined);
 		try {
-			for (const path of Object.values(this.paths).filter((value): value is string => value !== undefined)) {
+			for (const path of files) {
 				const configDirectory = dirname(path);
 				directories.add(await nearestExistingDirectory(configDirectory));
 			}
@@ -305,6 +307,7 @@ export class CodingConfigStore<TSchema extends TObject> {
 				watcher.on("error", (error) => this.emitInvalid(configWatchError([...directories], error)));
 				this.watchers.add(watcher);
 			}
+			for (const path of files) this.watchPath(path);
 		} catch (error) {
 			this.closeWatchers();
 			throw configWatchError([...directories], error);
@@ -344,6 +347,21 @@ export class CodingConfigStore<TSchema extends TObject> {
 	private closeWatchers(): void {
 		for (const watcher of this.watchers) watcher.close();
 		this.watchers.clear();
+		for (const path of this.polledPaths) unwatchFile(path);
+		this.polledPaths.clear();
+	}
+
+	private watchPath(path: string): void {
+		watchFile(path, { interval: 100, persistent: false }, (current, previous) => {
+			if (
+				current.mtimeMs !== previous.mtimeMs ||
+				current.ctimeMs !== previous.ctimeMs ||
+				current.size !== previous.size
+			) {
+				this.scheduleReload();
+			}
+		});
+		this.polledPaths.add(path);
 	}
 }
 

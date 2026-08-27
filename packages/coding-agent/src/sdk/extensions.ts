@@ -1,6 +1,7 @@
 import type { AgentMessage, AgentTool, ToolMiddleware } from "@jai/agent";
 import { validateToolArguments } from "@jai/ai";
 import { panic, Result, type Result as ResultType } from "better-result";
+import type { CodingCommandRegistry } from "../commands";
 import type { JsonObject } from "../core/json";
 import {
 	CodingExtensionDeactivationFailed,
@@ -26,10 +27,8 @@ import type {
 	CodingExtensionRuntime,
 	CodingExtensionRuntimeAdapter,
 	CodingExtensionSessionStateAdapter,
-	CodingExtensionSkill,
 	CodingExtensionTool,
 	CodingExtensionToolCall,
-	CodingExtensionToolPresentation,
 	CodingExtensionToolResult,
 	CodingToolCatalogDiscovery,
 	CodingToolPermission,
@@ -51,6 +50,9 @@ export type {
 	CodingExtensionApprovalDecision,
 	CodingExtensionApprovalPresentation,
 	CodingExtensionApprovalRequest,
+	CodingExtensionCommand,
+	CodingExtensionCommandContext,
+	CodingExtensionCommandRegistration,
 	CodingExtensionConfiguration,
 	CodingExtensionConfigurationStore,
 	CodingExtensionContext,
@@ -62,7 +64,6 @@ export type {
 	CodingExtensionSessionState,
 	CodingExtensionSessionStateAdapter,
 	CodingExtensionSessionStateStore,
-	CodingExtensionSkill,
 	CodingExtensionTool,
 	CodingExtensionToolCall,
 	CodingExtensionToolCatalog,
@@ -85,7 +86,6 @@ export interface InitializedExtension {
 	readonly tools: AgentTool[];
 	readonly catalogTools: AgentTool[];
 	readonly toolPresentations: Map<string, CodingToolPresentation>;
-	readonly skills: readonly CodingExtensionSkill[];
 	readonly permissions: Map<string, ResolvedExtensionToolPermission>;
 	readonly extensionAuthorizedToolNames: string[];
 	reportDiagnostic?: (diagnostic: CodingExtensionDiagnostic) => void | Promise<void>;
@@ -96,8 +96,8 @@ type ResolvedExtensionToolPermission = (
 ) => CodingToolPermission | Promise<CodingToolPermission>;
 
 export async function initializeExtensions(
-	extensions: readonly CodingAgentExtension[],
-	context: Omit<CodingExtensionContext, "configuration" | "sessionState" | "requestApproval">,
+	extensions: readonly CodingAgentExtension<any, any, any>[],
+	context: Omit<CodingExtensionContext, "configuration" | "sessionState" | "requestApproval" | "registerCommand">,
 	runtime?: CodingExtensionRuntimeAdapter,
 	sessionState?: CodingExtensionSessionStateAdapter,
 ): Promise<ResultType<readonly InitializedExtension[], CodingExtensionError>> {
@@ -108,7 +108,7 @@ export async function initializeExtensions(
 }
 
 export function prepareExtensions(
-	extensions: readonly CodingAgentExtension[],
+	extensions: readonly CodingAgentExtension<any, any, any>[],
 ): ResultType<readonly InitializedExtension[], CodingExtensionError> {
 	const ids = assertExtensionIds(extensions);
 	if (ids.isErr()) return ids;
@@ -120,18 +120,25 @@ export function prepareExtensions(
 interface ExtensionActivationRegistries {
 	readonly permissions?: Map<string, ResolvedExtensionToolPermission>;
 	readonly authorizedToolNames?: Set<string>;
+	readonly commands?: CodingCommandRegistry;
 }
 
 export async function activateExtensions(
 	initialized: readonly InitializedExtension[],
-	context: Omit<CodingExtensionContext, "configuration" | "sessionState" | "requestApproval">,
+	context: Omit<CodingExtensionContext, "configuration" | "sessionState" | "requestApproval" | "registerCommand">,
 	runtime?: CodingExtensionRuntimeAdapter,
 	sessionState?: CodingExtensionSessionStateAdapter,
 	registries: ExtensionActivationRegistries = {},
 ): Promise<ResultType<void, CodingExtensionError>> {
 	for (const extension of initialized) {
 		extension.reportDiagnostic = runtime?.reportDiagnostic;
-		const initializedContext = await extensionContext(extension.extension, context, runtime, sessionState);
+		const initializedContext = await extensionContext(
+			extension.extension,
+			context,
+			runtime,
+			sessionState,
+			registries.commands,
+		);
 		if (initializedContext.isErr()) return rollbackExtensions(initialized, initializedContext.error);
 		const instance = await activateExtension(extension.extension, initializedContext.value);
 		if (instance.isErr()) return rollbackExtensions(initialized, instance.error);
@@ -157,7 +164,9 @@ export async function activateExtensions(
 	return Result.ok(undefined);
 }
 
-function assertExtensionIds(extensions: readonly CodingAgentExtension[]): ResultType<void, CodingExtensionError> {
+function assertExtensionIds(
+	extensions: readonly CodingAgentExtension<any, any, any>[],
+): ResultType<void, CodingExtensionError> {
 	const extensionIds = new Set<string>();
 	for (const extension of extensions) {
 		const id = extension.id.trim();
@@ -209,10 +218,6 @@ export function extensionToolPresentations(
 	extensions: readonly InitializedExtension[],
 ): ReadonlyMap<string, CodingToolPresentation> {
 	return new Map(extensions.flatMap((extension) => [...extension.toolPresentations]));
-}
-
-export function extensionSkills(extensions: readonly InitializedExtension[]): readonly CodingExtensionSkill[] {
-	return extensions.flatMap((extension) => extension.skills);
 }
 
 export function extensionPermissions(
@@ -426,10 +431,9 @@ async function notifyObserver(
 }
 
 export function assertExtensionCapabilityNames(
-	extensions: readonly CodingAgentExtension[],
+	extensions: readonly CodingAgentExtension<any, any, any>[],
 ): ResultType<void, CodingExtensionError> {
 	const toolNames = reservedToolNames();
-	const skillNames = new Set<string>();
 	const extensionIds = new Set<string>();
 	for (const extension of extensions) {
 		const extensionId = extension.id;
@@ -441,17 +445,12 @@ export function assertExtensionCapabilityNames(
 				return Result.err(extensionCapabilityConflict("tool", tool.name));
 			toolNames.add(tool.name);
 		}
-		for (const skill of extension.skills ?? []) {
-			if (!skill.name.trim() || skillNames.has(skill.name))
-				return Result.err(extensionCapabilityConflict("skill", skill.name));
-			skillNames.add(skill.name);
-		}
 	}
 	return Result.ok(undefined);
 }
 
 function assertCatalogCapabilityNames(
-	extensions: readonly CodingAgentExtension[],
+	extensions: readonly CodingAgentExtension<any, any, any>[],
 	initialized: readonly InitializedExtension[],
 ): ResultType<void, CodingExtensionError> {
 	const toolNames = reservedToolNames();
@@ -480,7 +479,6 @@ function reservedToolNames(): Set<string> {
 		"Glob",
 		"Grep",
 		"Bash",
-		"Skill",
 		"UpdateTodos",
 		"SpawnAgent",
 		"SearchTools",
@@ -496,7 +494,6 @@ function createInitializedExtension(extension: CodingAgentExtension<any, any, an
 		tools: [],
 		catalogTools: [],
 		toolPresentations: new Map(),
-		skills: extension.skills ?? [],
 		permissions,
 		extensionAuthorizedToolNames,
 	};
@@ -548,7 +545,9 @@ function mapExtensionTools(
 		}
 		return {
 			name: tool.name,
-			description: tool.description,
+			get description() {
+				return tool.description;
+			},
 			parameters: tool.parameters,
 			...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
 			execute: async (toolCallId, args, signal) => {

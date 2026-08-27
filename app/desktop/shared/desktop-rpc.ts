@@ -89,6 +89,23 @@ export interface DesktopProject extends Project {
 	readonly available: boolean;
 }
 
+export interface DesktopCommandDescriptor {
+	readonly name: string;
+	readonly displayName: string;
+	readonly description: string;
+	readonly commandKind: "file" | "skill";
+	readonly argumentHint?: string;
+}
+
+export const desktopCommandListInputSchema = Type.Object(
+	{
+		projectId: Type.Optional(Type.String({ minLength: 1 })),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopCommandListInput = Static<typeof desktopCommandListInputSchema>;
+
 export type DesktopArtifactFormat = "markdown" | "html";
 
 export interface DesktopArtifact {
@@ -389,6 +406,8 @@ export interface DesktopProviderApiKeyRevealResult {
 export interface DesktopSlashInvocation {
 	readonly name: string;
 	readonly kind: "skill" | "command";
+	/** Command subtype; absent only for legacy pre-registry Skill metadata. */
+	readonly commandKind?: "extension" | "file" | "skill";
 	readonly displayName: string;
 }
 
@@ -743,6 +762,9 @@ export interface DesktopApi {
 		read(input: DesktopWorkspaceReadInput): Promise<DesktopWorkspaceFile>;
 		openApplications(input: DesktopWorkspaceReadInput): Promise<DesktopWorkspaceOpenApplications>;
 		open(input: DesktopWorkspaceOpenInput): Promise<void>;
+	};
+	readonly command: {
+		list(input?: DesktopCommandListInput): Promise<readonly DesktopCommandDescriptor[]>;
 	};
 	readonly agent: {
 		send(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;

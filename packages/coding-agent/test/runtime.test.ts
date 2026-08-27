@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -80,7 +80,6 @@ describe("createCodingAgent", () => {
 				"Write",
 				"Edit",
 				"Bash",
-				"Skill",
 			]);
 			expect(JSON.stringify((await fixture.sessionStore.load("session-1"))?.snapshot.entries)).toContain(
 				'"type":"message"',
@@ -164,31 +163,6 @@ describe("createCodingAgent", () => {
 			const document = JSON.parse(await readFile(settingsPath, "utf8"));
 			expect(document.permission.bash).toEqual({ "printf *": "allow", "date *": "allow" });
 			expect(approvals).toEqual([["bash:printf *", "bash:date *"]]);
-		} finally {
-			codingAgent.close();
-		}
-	});
-
-	test("未归属 execution context 只暴露用户级 Skill，不暴露 Workspace 工具", async () => {
-		const fixture = await createFixture();
-		const contexts: Context[] = [];
-		const codingAgent = await createCodingAgent({
-			...fixture,
-			executionContext: { localFileAccess: false },
-			resolveProvider: () => ({
-				provider: providerFor([assistant("done")], contexts),
-				model,
-			}),
-		});
-
-		try {
-			await codingAgent.invoke("hello");
-			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual([
-				"UpdateTodos",
-				"SpawnAgent",
-				"Skill",
-			]);
-			expect(codingAgent.configSnapshot.settings.permissions.defaultMode).toBe("default");
 		} finally {
 			codingAgent.close();
 		}
@@ -280,105 +254,8 @@ describe("createCodingAgent", () => {
 		}
 	});
 
-	test("Skill 工具按需加载正文并把结果写入 durable transcript", async () => {
-		const fixture = await createFixture();
-		await writeSkill(join(fixture.configOptions.homeDir, ".agents", "skills"), "review", "Review changes");
-		const contexts: Context[] = [];
-		const codingAgent = await createCodingAgent({
-			...fixture,
-			resolveProvider: () => ({
-				provider: providerFor(
-					[
-						assistantToolCall("Skill", { skill: "review" }),
-						assistant("reviewed"),
-					],
-					contexts,
-				),
-				model,
-			}),
-		});
-
-		try {
-			await codingAgent.invoke("review this change");
-			expect(contexts[0]?.tools.map((tool) => tool.name)).toContain("Skill");
-			expect(JSON.stringify(contexts[1]?.messages)).toContain("# Review changes");
-			expect(JSON.stringify((await fixture.sessionStore.load("session-1"))?.snapshot.entries)).toContain(
-				"# Review changes",
-			);
-		} finally {
-			codingAgent.close();
-		}
-	});
-
-	test("Skill 资源读取拒绝 lexical escape 与越界 symlink", async () => {
-		const fixture = await createFixture();
-		const skillsDirectory = join(fixture.configOptions.homeDir, ".agents", "skills");
-		await writeSkill(skillsDirectory, "review", "Review changes");
-		const outside = join(fixture.configOptions.homeDir, "secret.txt");
-		await writeFile(outside, "must-not-leak");
-		await symlink(outside, join(skillsDirectory, "review", "escape.txt"));
-		const contexts: Context[] = [];
-		const codingAgent = await createCodingAgent({
-			...fixture,
-			resolveProvider: () => ({
-				provider: providerFor(
-					[
-						assistantToolCall("Skill", { skill: "review", path: "escape.txt" }),
-						assistant("done"),
-					],
-					contexts,
-				),
-				model,
-			}),
-		});
-
-		try {
-			await codingAgent.invoke("read the skill resource");
-			expect(JSON.stringify(contexts[1]?.messages)).not.toContain("must-not-leak");
-			expect(JSON.stringify(contexts[1]?.messages)).toContain("escapes");
-		} finally {
-			codingAgent.close();
-		}
-	});
-
-	test("开头 /name 保留原消息并强制本次 run 先调用对应 Skill", async () => {
-		const fixture = await createFixture();
-		await writeSkill(join(fixture.configOptions.homeDir, ".agents", "skills"), "review", "Review changes");
-		const contexts: Context[] = [];
-		let skillDescription = "";
-		const provider = providerFor([assistant("done")], contexts);
-		const codingAgent = await createCodingAgent({
-			...fixture,
-			resolveProvider: () => ({
-				provider: {
-					id: provider.id,
-					stream(model, context, options) {
-						skillDescription = context.tools.find((tool) => tool.name === "Skill")?.description ?? "";
-						return provider.stream(model, context, options);
-					},
-				},
-				model,
-			}),
-		});
-
-		try {
-			await codingAgent.invoke("/review inspect this patch");
-			expect(contexts[0]?.messages[0]).toMatchObject({
-				role: "user",
-				content: "/review inspect this patch",
-			});
-			expect(skillDescription).toContain('explicitly invoked "/review"');
-			expect(JSON.stringify((await fixture.sessionStore.load("session-1"))?.snapshot.entries)).toContain(
-				'"slashInvocation":{"name":"review","kind":"skill","displayName":"review"}',
-			);
-		} finally {
-			codingAgent.close();
-		}
-	});
-
 	test("SpawnAgent 使用隔离上下文并把最终文本返回父 Agent", async () => {
 		const fixture = await createFixture();
-		await writeSkill(join(fixture.configOptions.homeDir, ".agents", "skills"), "review", "Review changes");
 		const contexts: Context[] = [];
 		const codingAgent = await createCodingAgent({
 			...fixture,
@@ -389,7 +266,6 @@ describe("createCodingAgent", () => {
 							title: "Inspect repository",
 							task: "Read the workspace and report the result.",
 						}),
-						assistantToolCall("Skill", { skill: "review" }),
 						assistant("Child inspection result."),
 						assistant("Parent received the result."),
 					],
@@ -403,15 +279,13 @@ describe("createCodingAgent", () => {
 			await codingAgent.invoke("Parent-only conversation context.");
 
 			expect(contexts[0]?.tools.map((tool) => tool.name)).toContain("SpawnAgent");
-			expect(contexts[1]?.tools.map((tool) => tool.name)).toContain("Skill");
 			expect(contexts[1]?.tools.map((tool) => tool.name)).not.toContain("SpawnAgent");
 			expect(contexts[1]?.messages[0]).toMatchObject({
 				role: "user",
 				content: "Read the workspace and report the result.",
 			});
 			expect(JSON.stringify(contexts[1]?.messages)).not.toContain("Parent-only conversation context.");
-			expect(JSON.stringify(contexts[2]?.messages)).toContain("# Review changes");
-			expect(JSON.stringify(contexts[3]?.messages)).toContain("Child inspection result.");
+			expect(JSON.stringify(contexts[2]?.messages)).toContain("Child inspection result.");
 		} finally {
 			codingAgent.close();
 		}
@@ -563,13 +437,4 @@ function providerFor(responses: AssistantMessage[], contexts: Context[] = []): P
 			return stream;
 		},
 	};
-}
-
-async function writeSkill(directory: string, name: string, description: string): Promise<void> {
-	const skillDirectory = join(directory, name);
-	await mkdir(skillDirectory, { recursive: true });
-	await writeFile(
-		join(skillDirectory, "SKILL.md"),
-		`---\nname: ${name}\ndescription: ${description}\n---\n\n# ${description}\n`,
-	);
 }

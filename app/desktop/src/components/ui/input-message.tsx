@@ -89,7 +89,7 @@ interface InputMessageProps
   /** Extra props forwarded to the underlying textarea. */
   textareaProps?: Omit<
     TextareaHTMLAttributes<HTMLTextAreaElement>,
-    "value" | "onChange" | "onKeyDown" | "disabled" | "placeholder"
+    "value" | "onChange" | "disabled" | "placeholder"
   >;
   /** Previously-sent messages, oldest first. When the textarea is focused,
    *  ArrowUp (caret on the first line) recalls the previous one and walks
@@ -193,6 +193,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
     const {
       onFocus: _textareaOnFocus,
       onBlur: _textareaOnBlur,
+      onKeyDown: textareaOnKeyDown,
       ...restTextareaProps
     } = textareaProps ?? {};
 
@@ -268,6 +269,9 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
       (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
         if (e.nativeEvent.isComposing) return;
 
+        textareaOnKeyDown?.(e);
+        if (e.defaultPrevented) return;
+
         // Readline-style history. Only plain ArrowUp/ArrowDown navigate (no
         // modifiers), and only when the caret is on the first/last line so
         // multi-line editing still works normally.
@@ -318,7 +322,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
           handleSend();
         }
       },
-      [history, value, historyIndex, onValueChange, setCaretEnd, handleSend]
+      [history, value, historyIndex, onValueChange, setCaretEnd, handleSend, textareaOnKeyDown]
     );
 
     const handleContainerMouseDown = useCallback(

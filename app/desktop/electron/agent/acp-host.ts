@@ -399,6 +399,7 @@ export class DesktopAcpAgentHost {
 		const previous = runtime.items.get(id);
 		const previousText = previous?.kind === "message" ? previous.text : "";
 		const complete = update.sessionUpdate === "user_message" || update.sessionUpdate === "agent_message";
+		const slashInvocation = role === "user" ? parseSlashInvocation(update.slashInvocation) : undefined;
 		const item: DesktopMessageItem = {
 			kind: "message",
 			id,
@@ -406,6 +407,7 @@ export class DesktopAcpAgentHost {
 			text: update.content === null ? "" : complete ? text : previousText + text,
 			status: complete ? "complete" : "streaming",
 			timestamp: Date.now(),
+			...(slashInvocation ? { slashInvocation } : {}),
 		};
 		runtime.items.set(id, item);
 		this.#emitEvent(runtime, { type: "transcript_upsert", item });
@@ -567,6 +569,22 @@ export class DesktopAcpAgentHost {
 		}
 		return runtime;
 	}
+}
+
+function parseSlashInvocation(value: unknown): DesktopMessageItem["slashInvocation"] | undefined {
+	if (!isRecord(value) || typeof value.name !== "string" || typeof value.displayName !== "string") return undefined;
+	if (!value.name.trim() || !value.displayName.trim()) return undefined;
+	if (value.kind === "skill") return { name: value.name, kind: "skill", displayName: value.displayName };
+	if (value.kind !== "command") return undefined;
+	if (value.commandKind !== "extension" && value.commandKind !== "file" && value.commandKind !== "skill") {
+		return undefined;
+	}
+	return {
+		name: value.name,
+		kind: "command",
+		commandKind: value.commandKind,
+		displayName: value.displayName,
+	};
 }
 
 interface DesktopAttachmentLike extends DesktopMessageAttachment {

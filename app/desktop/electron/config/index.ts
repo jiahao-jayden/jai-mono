@@ -89,15 +89,21 @@ export class DesktopConfigService {
     return refreshed.value.refreshed;
   }
 
-  async revealApiKey(
-    profileId: string,
-  ): Promise<DesktopProviderApiKeyRevealResult> {
+	async revealApiKey(
+		profileId: string,
+	): Promise<DesktopProviderApiKeyRevealResult> {
     const revealed = await this.client.revealApiKey(profileId);
     if (revealed.isErr()) throw revealed.error;
-    return revealed.value;
-  }
+		return revealed.value;
+	}
 
-  async startConnectorOAuth(connectorId: string) {
+	async getWorkspaceTrust(workspacePath: string) {
+		const trust = await this.client.getWorkspaceTrust(workspacePath);
+		if (trust.isErr()) throw trust.error;
+		return trust.value;
+	}
+
+	async startConnectorOAuth(connectorId: string) {
     const application = findDesktopConnectorOAuthApplication(connectorId);
     if (!application) throw invalidInput("Unknown OAuth Connector application");
     const started = await this.client.startConnectorOAuth(application.id);

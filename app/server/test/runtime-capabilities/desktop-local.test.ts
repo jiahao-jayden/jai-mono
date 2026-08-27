@@ -51,8 +51,11 @@ describe("Desktop Local Runtime Capability Source", () => {
 				workspaceDirectory,
 				workspaceTrusted: true,
 			});
-			expect(resolved.value.extensions).toHaveLength(1);
-			expect(resolved.value.extensions[0]?.skills?.map((skill) => skill.name).sort()).toEqual([
+			expect(resolved.value.extensions).toHaveLength(2);
+			expect(resolved.value.extensions.map((extension) => extension.id)).toEqual(["jai.skills", "agent-plugins"]);
+			const agentPlugins = resolved.value.extensions.find((extension) => extension.id === "agent-plugins");
+			expect("skillCards" in agentPlugins!).toBe(true);
+			expect(agentPluginSkillNames(agentPlugins).toSorted()).toEqual([
 				"project-plugin-skill",
 				"user-plugin-skill",
 			]);
@@ -91,7 +94,8 @@ describe("Desktop Local Runtime Capability Source", () => {
 		expect(resolved.isOk()).toBe(true);
 		if (resolved.isErr()) return;
 		expect(resolved.value.fileCapabilities.workspaceTrusted).toBe(false);
-		expect(resolved.value.extensions[0]?.skills?.map((skill) => skill.name)).toEqual([
+		const agentPlugins = resolved.value.extensions.find((extension) => extension.id === "agent-plugins");
+		expect(agentPluginSkillNames(agentPlugins)).toEqual([
 			"user-plugin-skill",
 		]);
 	});
@@ -133,5 +137,19 @@ async function createPlugin(directory: string, name: string): Promise<void> {
 	await writeFile(
 		join(directory, "skills", `${name}-skill`, "SKILL.md"),
 		`---\nname: ${name}-skill\ndescription: ${name} capability\n---\n\nInstructions\n`,
+	);
+}
+
+function agentPluginSkillNames(extension: unknown): readonly string[] {
+	if (
+		typeof extension !== "object" ||
+		extension === null ||
+		!("skillCards" in extension) ||
+		!Array.isArray(extension.skillCards)
+	) {
+		return [];
+	}
+	return extension.skillCards.flatMap((card) =>
+		typeof card === "object" && card !== null && "name" in card && typeof card.name === "string" ? [card.name] : [],
 	);
 }

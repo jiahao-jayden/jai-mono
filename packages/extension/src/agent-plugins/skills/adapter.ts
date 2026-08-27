@@ -53,7 +53,6 @@ async function discoverPluginSkills(
 			const parsed = validateSkillFrontmatter(frontmatter, entry.name);
 			skills.push({
 				name: parsed.name,
-				displayName: parsed.metadata.displayName ?? parsed.name,
 				description: parsed.description,
 				contentRevision: createHash("sha256").update(content).digest("hex"),
 				location: canonicalDocument,

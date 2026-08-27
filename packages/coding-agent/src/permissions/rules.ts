@@ -92,8 +92,6 @@ export function permissionName(toolName: CanonicalToolName): string {
 			return "grep";
 		case "Bash":
 			return "bash";
-		case "Skill":
-			return "skill";
 		case "SpawnAgent":
 			return "task";
 		case "UpdateTodos":

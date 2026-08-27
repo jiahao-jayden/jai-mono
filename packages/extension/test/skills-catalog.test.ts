@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CodingSkillCatalog, resolveSlashInvocation, validateSkillFrontmatter } from "../src/skills";
+import { CodingSkillCatalog, validateSkillFrontmatter } from "../src/skills";
 
 const roots: string[] = [];
 
@@ -107,7 +107,7 @@ describe("CodingSkillCatalog", () => {
 		catalog.close();
 	});
 
-	test("slash registry 让 command 优先于同名 Skill，未知 slash 保持未解析", async () => {
+	test("catalog 只负责 Skill 发现，不解析 slash 输入", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-skills-slash-"));
 		roots.push(root);
 		const homeDirectory = join(root, "home");
@@ -115,12 +115,71 @@ describe("CodingSkillCatalog", () => {
 		const catalog = new CodingSkillCatalog({ homeDirectory, workspaceTrusted: false });
 		const snapshot = await catalog.load();
 
-		expect(resolveSlashInvocation("/review now", snapshot, new Set(["review"]))).toEqual({
-			name: "review",
-			kind: "command",
-			displayName: "review",
-		});
-		expect(resolveSlashInvocation("/unknown keep as text", snapshot)).toBeUndefined();
+		expect(snapshot.skills.map((skill) => skill.name)).toEqual(["review"]);
+		catalog.close();
+	});
+
+	test("本地 Skill 只接受 Agent Skills schema，并要求 name 与目录一致", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-skills-frontmatter-name-"));
+		roots.push(root);
+		const homeDirectory = join(root, "home");
+		const skillsDirectory = join(homeDirectory, ".agents", "skills");
+		await Promise.all([
+			writeSkill(skillsDirectory, "design-patterns", "Design patterns"),
+			writeSkillDocument(
+				join(skillsDirectory, "code-design-patterns"),
+				"---\nname: design-patterns\ndescription: Mismatched directory\n---\n",
+			),
+			writeSkillDocument(
+				join(skillsDirectory, "hidden-review"),
+				"---\nname: hidden-review\ndescription: Nonstandard field\nhidden: true\n---\n",
+			),
+		]);
+		const catalog = new CodingSkillCatalog({ homeDirectory, workspaceTrusted: false });
+
+		const snapshot = await catalog.load();
+
+		expect(snapshot.skills).toEqual([
+			expect.objectContaining({
+				name: "design-patterns",
+			}),
+		]);
+		expect(snapshot.skills[0]).not.toHaveProperty("displayName");
+		expect(snapshot.diagnostics).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ skillName: "code-design-patterns", code: "invalid" }),
+				expect.objectContaining({ skillName: "hidden-review", code: "invalid" }),
+			]),
+		);
+		catalog.close();
+	});
+
+	test("用户级根目录允许显式 Skill symlink，项目根目录仍隔离越界目标", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-skills-symlink-"));
+		roots.push(root);
+		const homeDirectory = join(root, "home");
+		const workspaceDirectory = join(root, "workspace");
+		const externalRoot = join(root, "external");
+		const externalSkillDirectory = join(externalRoot, "linked-review");
+		await writeSkill(externalRoot, "linked-review", "Linked review");
+		await Promise.all([
+			mkdir(join(homeDirectory, ".agents", "skills"), { recursive: true }),
+			mkdir(join(workspaceDirectory, ".agents", "skills"), { recursive: true }),
+		]);
+		await Promise.all([
+			symlink(externalSkillDirectory, join(homeDirectory, ".agents", "skills", "linked-review")),
+			symlink(externalSkillDirectory, join(workspaceDirectory, ".agents", "skills", "linked-review")),
+		]);
+		const catalog = new CodingSkillCatalog({ homeDirectory, workspaceDirectory, workspaceTrusted: true });
+
+		const snapshot = await catalog.load();
+
+		expect(snapshot.skills).toEqual([
+			expect.objectContaining({ name: "linked-review", source: { scope: "user", directory: ".agents" } }),
+		]);
+		expect(snapshot.diagnostics).toEqual(
+			expect.arrayContaining([expect.objectContaining({ skillName: "linked-review", code: "invalid" })]),
+		);
 		catalog.close();
 	});
 
@@ -143,13 +202,19 @@ describe("CodingSkillCatalog", () => {
 		catalog.close();
 	});
 
-	test("Skill frontmatter 复用规范约束并保留 Unicode 名称", () => {
-		expect(validateSkillFrontmatter({ name: "技能-分析", description: "分析任务", compatibility: "需要 Python", metadata: { author: "团队" }, "allowed-tools": "Read Grep" }, "技能-分析")).toMatchObject({
-			name: "技能-分析",
-			description: "分析任务",
-			compatibility: "需要 Python",
+	test("Skill frontmatter 严格遵循 Agent Skills 字段与名称约束", () => {
+		expect(validateSkillFrontmatter({ name: "skill-analysis", description: "Analyze a task", compatibility: "Requires Python", metadata: { author: "team", version: "1.0.0", displayName: "Ignored" }, "allowed-tools": "Read Grep" }, "skill-analysis")).toMatchObject({
+			name: "skill-analysis",
+			description: "Analyze a task",
+			compatibility: "Requires Python",
 			allowedTools: ["Read", "Grep"],
+			metadata: { author: "team", version: "1.0.0", displayName: "Ignored" },
 		});
+		for (const field of ["version", "argument-hint", "hidden", "disable-model-invocation", "user-invocable"] as const) {
+			expect(() => validateSkillFrontmatter({ name: "review", description: "Review", [field]: true })).toThrow();
+		}
+		expect(() => validateSkillFrontmatter({ name: "skill-analysis", description: "Analyze", metadata: { version: "1.0.0" } }, "other-directory")).toThrow();
+		expect(() => validateSkillFrontmatter({ name: "技能-分析", description: "Analyze" }, "技能-分析")).toThrow();
 		expect(() => validateSkillFrontmatter({ name: "review", description: "Review", compatibility: "x".repeat(501) }, "review")).toThrow();
 		expect(() => validateSkillFrontmatter({ name: "review", description: "Review", metadata: { version: 1 } }, "review")).toThrow();
 		expect(() => validateSkillFrontmatter({ name: "review", description: "Review", "allowed-tools": ["Read"] }, "review")).toThrow();
@@ -158,10 +223,10 @@ describe("CodingSkillCatalog", () => {
 });
 
 async function writeSkill(directory: string, name: string, description: string): Promise<void> {
-	const skillDirectory = join(directory, name);
-	await mkdir(skillDirectory, { recursive: true });
-	await writeFile(
-		join(skillDirectory, "SKILL.md"),
-		`---\nname: ${name}\ndescription: ${description}\nmetadata:\n  displayName: ${description}\n---\n\n# ${description}\n`,
-	);
+	await writeSkillDocument(join(directory, name), `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${description}\n`);
+}
+
+async function writeSkillDocument(directory: string, content: string): Promise<void> {
+	await mkdir(directory, { recursive: true });
+	await writeFile(join(directory, "SKILL.md"), content);
 }

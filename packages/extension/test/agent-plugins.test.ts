@@ -27,8 +27,9 @@ describe("Agent Plugins 组件适配器", () => {
 			directories: [root],
 			dataDirectory: path.join(root, "data"),
 		});
-		expect(extension.skills?.map((skill) => skill.name)).toEqual(["plugin-skill"]);
+		expect(extension.skillCards.map((skill) => skill.name)).toEqual(["plugin-skill"]);
 		expect(extension.hooks).toBeUndefined();
+		expect("commands" in extension).toBe(false);
 	});
 
 	test("发现 Plugin Skill，并保留其目录作为资源根", async () => {
@@ -60,7 +61,10 @@ describe("Agent Plugins 组件适配器", () => {
 		await mkdir(path.join(root, "skills", "healthy"), { recursive: true });
 		await writeFile(path.join(root, "skills", "healthy", "SKILL.md"), "---\nname: healthy\ndescription: Healthy Skill\n---\n\nInstructions\n");
 		await mkdir(path.join(root, "skills", "broken"), { recursive: true });
-		await writeFile(path.join(root, "skills", "broken", "SKILL.md"), "---\nname: broken\n---\n");
+		await writeFile(
+			path.join(root, "skills", "broken", "SKILL.md"),
+			"---\nname: broken\ndescription: Broken Skill\nhidden: true\n---\n",
+		);
 
 		const result = await loadAgentPluginDirectory(root);
 		expect(result.isOk()).toBe(true);

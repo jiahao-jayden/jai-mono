@@ -195,11 +195,11 @@ export type CodingApprovalHandler = (
 
 /** Local Coding Agent inputs selected by the Host for one persistent session. */
 export interface CodingAgentFileCapabilities {
-  /** User-owned root containing `.jai/settings.json` and user Skills. */
+	/** User-owned root containing `.jai/settings.json` and extension-owned resources. */
   readonly homeDirectory: string;
-  /** Workspace root containing project configuration and Skills. */
+	/** Workspace root containing project configuration and extension-owned resources. */
   readonly workspaceDirectory: string;
-  /** Whether project-level configuration and Skills may participate. */
+	/** Whether project-level configuration and extension-owned resources may participate. */
   readonly workspaceTrusted: boolean;
 }
 
@@ -211,7 +211,7 @@ export interface CodingAgentCreateOptions {
   readonly extensionRuntime?: CodingExtensionRuntimeAdapter;
   readonly cwd?: string;
   /**
-   * Host-selected local configuration and Skill roots. Required for persistent
+	 * Host-selected local configuration and extension resource roots. Required for persistent
    * sessions; ephemeral sessions use an isolated temporary directory instead.
    */
   readonly fileCapabilities?: CodingAgentFileCapabilities;

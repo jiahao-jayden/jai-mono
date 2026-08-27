@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { Result, type Result as ResultType } from "better-result";
+import { createSkillsExtension } from "@jai/extension/skills";
 import { createRuntimeAgentPluginsExtension } from "../agents";
 import type { WorkspaceTrustReader } from "../workspaces";
 import {
@@ -53,13 +54,18 @@ class DesktopLocalRuntimeCapabilitySource implements RuntimeCapabilitySource {
 					? { trustedWorkspacePath: trust.value.workspacePath }
 					: {}),
 			});
+			const fileCapabilities = {
+				homeDirectory: this.#homeDirectory,
+				workspaceDirectory: input.cwd,
+				workspaceTrusted: trust.isOk() && trust.value.trusted,
+			};
+			const skillsExtension = createSkillsExtension({
+				...fileCapabilities,
+				pluginSkills: agentPlugins.skillCards,
+			});
 			return Result.ok({
-				fileCapabilities: {
-					homeDirectory: this.#homeDirectory,
-					workspaceDirectory: input.cwd,
-					workspaceTrusted: trust.isOk() && trust.value.trusted,
-				},
-				extensions: [agentPlugins],
+				fileCapabilities,
+				extensions: [skillsExtension, agentPlugins],
 			});
 		} catch (cause) {
 			return Result.err(

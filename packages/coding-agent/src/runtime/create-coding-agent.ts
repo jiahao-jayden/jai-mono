@@ -1,4 +1,3 @@
-import { homedir } from "node:os";
 import {
 	Agent,
 	type AgentCompactionOptions,
@@ -7,7 +6,6 @@ import {
 	type AgentHookMap,
 	type AgentInput,
 	type AgentMessage,
-	type AgentRun,
 	type AgentTool,
 	type EffectBoundary,
 	type JsonObject,
@@ -21,6 +19,7 @@ import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
 import type { Model, Provider } from "@jai/ai";
 import type { TObject } from "@sinclair/typebox";
 import { attachmentUserMessage, CodingAttachmentRun, type CodingMessageAttachment } from "../attachments";
+import type { CodingCommandDispatch, CodingCommandRegistry } from "../commands";
 import {
 	type CodingConfigDefinition,
 	CodingConfigStore,
@@ -38,7 +37,6 @@ import {
 	type PermissionConfig,
 	type PermissionSettings,
 } from "../permissions";
-import { type CodingPluginSkillCard, CodingSkillsRuntime, type CodingSkillsRuntimeOptions } from "../skills";
 import {
 	type CodingToolOptions,
 	createSpawnAgentTool,
@@ -80,12 +78,6 @@ export interface CodingAgentRuntimeOptions {
 	readonly onObserverError?: (info: ObserverErrorInfo<AgentEvent>) => void;
 }
 
-export interface CodingAgentSkillsOptions
-	extends Partial<Pick<CodingSkillsRuntimeOptions, "homeDirectory" | "workspaceDirectory" | "workspaceTrusted">> {
-	readonly debounceMs?: number;
-	readonly commandNames?: readonly string[];
-}
-
 export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState extends JsonObject = JsonObject> {
 	readonly executionContext: CodingExecutionContext;
 	readonly sessionId: string;
@@ -102,16 +94,15 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 		snapshot: ConfigSnapshot<TSchema>,
 	) => readonly McpServer[] | Promise<readonly McpServer[]>;
 	readonly permissions?: CodingAgentPermissionOptions<TSchema>;
-	readonly skills?: false | CodingAgentSkillsOptions;
 	readonly tools?: Omit<CodingToolOptions, "cwd">;
 	readonly enabledTools?: ReadonlySet<CodingToolName>;
-	readonly extensionSkills?: readonly CodingPluginSkillCard[];
 	readonly extensionTools?: readonly AgentTool[];
 	readonly extensionToolMiddleware?: ToolMiddleware;
 	readonly extensionToolPermissions?: ReadonlyMap<string, ExtensionToolPermissionResolver>;
 	readonly extensionAuthorizedToolNames?: ReadonlySet<string>;
 	extensionToolCatalog?: ToolCatalog;
 	readonly extensionBeforeModelCall?: (messages: readonly AgentMessage[]) => Promise<AgentMessage[]>;
+	readonly commands?: CodingCommandRegistry;
 	readonly agent?: CodingAgentRuntimeOptions;
 	readonly resolveAgentOptions?: (
 		snapshot: ConfigSnapshot<TSchema>,
@@ -133,7 +124,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	readonly #agent: Agent<TAppState>;
 	readonly #runtime: RuntimeState<TSchema>;
 	readonly #stopConfigWatch: () => void;
-	readonly #skills?: CodingSkillsRuntime;
+	readonly #commands?: CodingCommandRegistry;
 	readonly #mcp?: McpRuntime;
 	readonly #attachments: CodingAttachmentRun;
 	readonly #extensionToolCatalog: ExtensionToolCatalogSlot;
@@ -144,7 +135,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		configStore: CodingConfigStore<TSchema>,
 		runtime: RuntimeState<TSchema>,
 		stopConfigWatch: () => void,
-		skills?: CodingSkillsRuntime,
+		commands?: CodingCommandRegistry,
 		mcp?: McpRuntime,
 		attachments: CodingAttachmentRun = new CodingAttachmentRun(),
 		extensionToolCatalog: ExtensionToolCatalogSlot = {},
@@ -154,7 +145,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.configStore = configStore;
 		this.#runtime = runtime;
 		this.#stopConfigWatch = stopConfigWatch;
-		this.#skills = skills;
+		this.#commands = commands;
 		this.#mcp = mcp;
 		this.#attachments = attachments;
 		this.#extensionToolCatalog = extensionToolCatalog;
@@ -184,8 +175,15 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#agent.addTools([catalog.searchTool]);
 	}
 
-	invoke(input: AgentInput): Promise<AgentMessage[]> {
-		return this.#agent.invoke(this.#skills?.prepareInput(input).input ?? input);
+	async invoke(input: AgentInput): Promise<AgentMessage[]> {
+		const command = await this.#dispatchCommand(input);
+		if (command?.kind === "handled") return [];
+		const prepared = command?.kind === "prompt" ? command.input : input;
+		try {
+			return await this.#agent.invoke(prepared);
+		} finally {
+			this.#commands?.clearPromptContext();
+		}
 	}
 
 	invokeWithAttachments(input: {
@@ -193,15 +191,21 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		readonly attachments: readonly CodingMessageAttachment[];
 	}): Promise<AgentMessage[]> {
 		const message = attachmentUserMessage({ text: input.text, attachments: input.attachments });
-		const prepared = this.#skills?.prepareInput(message).input ?? message;
-		return this.#attachments.invoke(input.attachments, () => this.#agent.invoke(prepared));
+		return this.#attachments.invoke(input.attachments, async () => {
+			const command = await this.#dispatchCommand(message);
+			if (command?.kind === "handled") return [];
+			const prepared = command?.kind === "prompt" ? command.input : message;
+			try {
+				return await this.#agent.invoke(prepared);
+			} finally {
+				this.#commands?.clearPromptContext();
+			}
+		});
 	}
 
-	stream(input: AgentInput): AgentRun {
-		return this.#agent.stream(this.#skills?.prepareInput(input).input ?? input);
-	}
-
-	advance(input: readonly { readonly message: AgentMessage; readonly entryId?: string }[] = []): Promise<AgentMessage[]> {
+	advance(
+		input: readonly { readonly message: AgentMessage; readonly entryId?: string }[] = [],
+	): Promise<AgentMessage[]> {
 		return this.#agent.streamFromDurableContextWithReservedEntries(input).result();
 	}
 
@@ -229,12 +233,18 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		return this.#agent.navigate(entryId);
 	}
 
+	async #dispatchCommand(input: AgentInput): Promise<CodingCommandDispatch | undefined> {
+		if (!this.#commands) return undefined;
+		const dispatched = await this.#commands.dispatch(input);
+		if (dispatched.isErr()) throw dispatched.error;
+		return dispatched.value;
+	}
+
 	close(): void {
 		if (this.#runtime.closed) return;
 		this.#runtime.closed = true;
 		this.#agent.abort();
 		this.#stopConfigWatch();
-		this.#skills?.close();
 		void this.#mcp?.close();
 		this.configStore.close();
 	}
@@ -258,16 +268,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		...(options.resolveAgentOptions ? await options.resolveAgentOptions(snapshot, { provider, model }) : {}),
 	};
 	const mcp = await createMcpRuntime(options.resolveMcpServers ? await options.resolveMcpServers(snapshot) : []);
-	let skills: CodingSkillsRuntime | undefined;
-	try {
-		skills =
-			options.enabledTools?.has("Skill") === false
-				? undefined
-				: await createSkillsRuntime(options, options.extensionSkills);
-	} catch (error) {
-		await mcp?.close();
-		throw error;
-	}
 	const sessionHandle = await openSession(
 		options.sessionStore,
 		options.sessionId,
@@ -324,6 +324,22 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			messages: await options.extensionBeforeModelCall!(messages),
 		}));
 	}
+	if (options.commands) {
+		beforeModelCall.push(({ messages }) => {
+			const context = options.commands?.promptContext();
+			if (!context) return;
+			return {
+				messages: [
+					...messages,
+					{
+						role: "user",
+						content: [{ type: "text", text: context, synthetic: true }],
+						timestamp: Date.now(),
+					},
+				],
+			};
+		});
+	}
 	const toolEnvironment = options.executionContext.localFileAccess
 		? new NodeExecutionEnvironment({
 				cwd: options.executionContext.cwd,
@@ -350,49 +366,36 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const spawnAgentTool = createSpawnAgentTool(async ({ task, signal, onActivity }) => {
 		signal?.throwIfAborted();
 		const childToolCatalog = extensionToolCatalog.current?.createScope();
-		const childSkills =
-			options.enabledTools?.has("Skill") === false
-				? undefined
-				: await createSkillsRuntime(options, options.extensionSkills);
 		const childCapabilities = assembleAgentCapabilities({
 			kind: "subagent",
 			executionContext: options.executionContext,
 			toolOptions: options.tools,
 			toolEnvironment,
 			enabledTools: options.enabledTools,
-			skills: childSkills,
 			mcp,
 			permissionMiddleware,
 			extensionTools: options.extensionTools,
 			extensionToolMiddleware: options.extensionToolMiddleware,
 			extraTools: childToolCatalog ? [childToolCatalog.searchTool] : [],
 		});
-		let child: Agent;
-		try {
-			child = new Agent({
-				model,
-				provider,
-				tools: childCapabilities.tools,
-				instructions: [resolvedInstructions, SUBAGENT_INSTRUCTIONS].filter(Boolean).join("\n\n"),
-				temperature: resolvedAgentOptions.temperature,
-				maxTokens: resolvedAgentOptions.maxTokens,
-				providerOptions: resolvedAgentOptions.providerOptions,
-				maxIterations: resolvedAgentOptions.maxIterations,
-				toolExecution: resolvedAgentOptions.toolExecution,
-				compaction: resolvedAgentOptions.compaction,
-				...(childToolCatalog
-					? { resolveTools: (staticTools) => childToolCatalog.toolsForRequest(staticTools) }
-					: {}),
-				hooks: {
-					aroundToolCall: childCapabilities.aroundToolCall,
-					onEvent: childCapabilities.onEvent,
-				},
-				onObserverError: resolvedAgentOptions.onObserverError,
-			});
-		} catch (error) {
-			childSkills?.close();
-			throw error;
-		}
+		const child = new Agent({
+			model,
+			provider,
+			tools: childCapabilities.tools,
+			instructions: [resolvedInstructions, SUBAGENT_INSTRUCTIONS].filter(Boolean).join("\n\n"),
+			temperature: resolvedAgentOptions.temperature,
+			maxTokens: resolvedAgentOptions.maxTokens,
+			providerOptions: resolvedAgentOptions.providerOptions,
+			maxIterations: resolvedAgentOptions.maxIterations,
+			toolExecution: resolvedAgentOptions.toolExecution,
+			compaction: resolvedAgentOptions.compaction,
+			...(childToolCatalog ? { resolveTools: (staticTools) => childToolCatalog.toolsForRequest(staticTools) } : {}),
+			hooks: {
+				aroundToolCall: childCapabilities.aroundToolCall,
+				onEvent: childCapabilities.onEvent,
+			},
+			onObserverError: resolvedAgentOptions.onObserverError,
+		});
 		const unsubscribe = child.subscribe((event) => {
 			const activity = subagentActivity(event);
 			if (activity) onActivity(activity);
@@ -402,14 +405,12 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 
 		try {
 			signal?.throwIfAborted();
-			const input = childSkills?.prepareInput(task).input ?? task;
-			return finalAssistantText(await child.invoke(input));
+			return finalAssistantText(await child.invoke(task));
 		} finally {
 			signal?.removeEventListener("abort", abortChild);
 			unsubscribe();
 			child.abort();
 			await child.waitForIdle().catch(() => {});
-			childSkills?.close();
 		}
 	});
 	const primaryTools = [
@@ -422,7 +423,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		toolOptions: options.tools,
 		toolEnvironment,
 		enabledTools: options.enabledTools,
-		skills,
 		mcp,
 		attachments: options.executionContext.localFileAccess ? attachments : undefined,
 		permissionMiddleware,
@@ -461,7 +461,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		configStore,
 		runtime,
 		stopConfigWatch,
-		skills,
+		options.commands,
 		mcp,
 		attachments,
 		extensionToolCatalog,
@@ -478,26 +478,6 @@ async function createMcpRuntime(servers: readonly McpServer[]): Promise<McpRunti
 		diagnostics: [{ serverName: result.error.serverName, message: result.error.message }],
 		close: async () => {},
 	};
-}
-
-function createSkillsRuntime<TSchema extends TObject, TAppState extends JsonObject>(
-	options: CreateCodingAgentOptions<TSchema, TAppState>,
-	pluginSkills: CodingSkillsRuntimeOptions["pluginSkills"] = [],
-): Promise<CodingSkillsRuntime | undefined> {
-	if (options.skills === false) return Promise.resolve(undefined);
-	return CodingSkillsRuntime.create({
-		homeDirectory: options.skills?.homeDirectory ?? options.configOptions?.homeDir ?? homedir(),
-		workspaceDirectory:
-			options.skills?.workspaceDirectory ??
-			(options.executionContext.localFileAccess ? options.executionContext.configRoot : undefined),
-		workspaceTrusted:
-			options.skills?.workspaceTrusted ??
-			options.configOptions?.workspaceTrusted ??
-			options.executionContext.localFileAccess,
-		debounceMs: options.skills?.debounceMs,
-		commandNames: options.skills?.commandNames,
-		pluginSkills,
-	});
 }
 
 function subagentActivity(event: AgentEvent) {

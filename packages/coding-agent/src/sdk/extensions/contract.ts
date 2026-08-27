@@ -1,8 +1,13 @@
 import type { TObject, TSchema } from "@sinclair/typebox";
 import type { Result as ResultType } from "better-result";
+import type {
+	CodingCommandContext,
+	CodingCommandExecutionFailed,
+	CodingCommandKind,
+	CodingCommandResult,
+} from "../../commands";
 import type { JsonObject, JsonValue } from "../../core/json";
 import type { CodingExtensionToolCall, CodingToolPermission } from "../../permissions/tool-permission";
-import type { CodingPluginSkillCard } from "../../skills/catalog";
 import type { CodingExtensionError, CodingExtensionOperationFailed } from "../extension-errors";
 import type { CodingToolActivityKind } from "../tool-presentation";
 import type { CodingPermissionMode } from "../types";
@@ -84,6 +89,42 @@ export interface CodingExtensionContext<
 		request: CodingExtensionApprovalRequest,
 		signal?: AbortSignal,
 	): Promise<ResultType<CodingExtensionApprovalDecision, CodingExtensionError>>;
+	registerCommand(
+		command: CodingExtensionCommand<TConfig, TState>,
+	): ResultType<CodingExtensionCommandRegistration, CodingExtensionOperationFailed>;
+}
+
+export interface CodingExtensionCommandRegistration {
+	unregister(): void;
+}
+
+export interface CodingExtensionCommandContext<
+	TConfig extends JsonObject = JsonObject,
+	TState extends JsonObject = JsonObject,
+> extends CodingCommandContext {
+	readonly extensionId: string;
+	readonly configuration: CodingExtensionConfigurationStore<TConfig>;
+	readonly sessionState: CodingExtensionSessionStateStore<TState>;
+	requestApproval(
+		request: CodingExtensionApprovalRequest,
+		signal?: AbortSignal,
+	): Promise<ResultType<CodingExtensionApprovalDecision, CodingExtensionError>>;
+}
+
+export interface CodingExtensionCommand<
+	TConfig extends JsonObject = JsonObject,
+	TState extends JsonObject = JsonObject,
+> {
+	readonly name: string;
+	readonly description: string;
+	readonly displayName?: string;
+	readonly kind?: CodingCommandKind;
+	handler(
+		args: string,
+		context: CodingExtensionCommandContext<TConfig, TState>,
+	):
+		| ResultType<CodingCommandResult, CodingCommandExecutionFailed>
+		| Promise<ResultType<CodingCommandResult, CodingCommandExecutionFailed>>;
 }
 
 export interface CodingExtensionRuntime<
@@ -150,12 +191,6 @@ export type CodingExtensionToolPermissionResolver<
 	runtime: CodingExtensionRuntime<TConfig, TState, TInstance>,
 	call: CodingExtensionToolCall<JsonObject>,
 ) => CodingToolPermission | Promise<CodingToolPermission>;
-
-/**
- * An immutable Skill discovered by an Extension. Structurally a plugin-sourced catalog card — named
- * here so the Extension contract reads on its own terms without redeclaring the shape.
- */
-export type CodingExtensionSkill = CodingPluginSkillCard;
 
 export interface CodingBeforeToolCallInput {
 	readonly toolCallId: string;
@@ -289,7 +324,6 @@ export interface CodingAgentExtension<
 	readonly configuration?: CodingExtensionConfiguration<TConfig>;
 	readonly sessionState?: CodingExtensionSessionState<TState>;
 	readonly tools?: readonly CodingExtensionTool<TConfig, TState, TInstance>[];
-	readonly skills?: readonly CodingExtensionSkill[];
 	readonly hooks?: CodingExtensionHooks<TConfig, TState, TInstance>;
 	readonly catalogs?: readonly CodingExtensionToolCatalog<TConfig, TState, TInstance>[];
 	readonly lifecycle?: CodingExtensionLifecycle<TConfig, TState, TInstance>;

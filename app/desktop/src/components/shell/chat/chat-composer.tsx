@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessageInput, ChatStatus } from "@/hooks/use-chat";
 import { rememberAttachmentFiles } from "@/lib/attachment-files";
 import { desktop, desktopFilePath } from "@/lib/desktop";
@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
 	DesktopAgentMode,
+	DesktopCommandDescriptor,
 	DesktopMessageAttachment,
 	DesktopProject,
 	DesktopProviderConfigSnapshot,
@@ -18,6 +19,7 @@ import { ChatMessageQueue } from "./chat-message-queue";
 import { MessageAttachmentPicker } from "./message-attachment-picker";
 import { ModelSelector } from "./model-selector";
 import { ProjectPicker } from "./project-picker";
+import { filterSlashCommands, slashCommandQuery, SlashCommandMenu } from "./slash-command-menu";
 
 interface ChatComposerProps {
 	value: string;
@@ -91,6 +93,9 @@ export function ChatComposer({
 	const [attachments, setAttachments] = useState<readonly DesktopMessageAttachment[]>([]);
 	const [attachmentError, setAttachmentError] = useState<string | undefined>(undefined);
 	const [registeringAttachments, setRegisteringAttachments] = useState(false);
+	const [commands, setCommands] = useState<readonly DesktopCommandDescriptor[]>([]);
+	const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+	const [dismissedSlashValue, setDismissedSlashValue] = useState<string | undefined>(undefined);
 	const attachmentRef = useRef(attachments);
 	const hasDraft = value.trim().length > 0;
 	const hasAttachments = files.length > 0;
@@ -103,6 +108,34 @@ export function ChatComposer({
 	const submitDisabled = composerDisabled || (!stopAction && !hasMessageContent);
 	const submitVariant = stopAction ? "secondary" : "accent";
 	const submitClassName = cn(stopAction && "text-primary-2");
+	const slashQuery = slashCommandQuery(value);
+	const matchingCommands = useMemo(() => filterSlashCommands(commands, slashQuery), [commands, slashQuery]);
+	const commandSuggestionsOpen =
+		slashQuery !== undefined && matchingCommands.length > 0 && dismissedSlashValue !== value;
+	const selectedCommand = matchingCommands[selectedCommandIndex] ?? matchingCommands[0];
+
+	useEffect(() => {
+		let disposed = false;
+		const list = project?.available ? desktop.command.list({ projectId: project.id }) : desktop.command.list();
+		void list
+			.then((next) => {
+				if (!disposed) setCommands(next);
+			})
+			.catch(() => {
+				if (!disposed) setCommands([]);
+			});
+		return () => {
+			disposed = true;
+		};
+	}, [project?.available, project?.id]);
+
+	useEffect(() => {
+		setSelectedCommandIndex((current) => Math.min(current, Math.max(matchingCommands.length - 1, 0)));
+	}, [matchingCommands.length]);
+
+	useEffect(() => {
+		if (slashQuery === undefined) setDismissedSlashValue(undefined);
+	}, [slashQuery]);
 
 	useEffect(() => {
 		attachmentRef.current = attachments;
@@ -187,6 +220,38 @@ export function ChatComposer({
 	};
 	const onSubmit = () => void submitMessage();
 	const pickerDisabled = composerDisabled || isStreaming;
+	const selectCommand = useCallback(
+		(command: DesktopCommandDescriptor) => {
+			setDismissedSlashValue(undefined);
+			onValueChange(`/${command.name} `);
+		},
+		[onValueChange],
+	);
+	const handleSlashCommandKeyDown = useCallback(
+		(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+			if (!commandSuggestionsOpen || matchingCommands.length === 0) return;
+			if (event.key === "ArrowDown" && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+				event.preventDefault();
+				setSelectedCommandIndex((current) => (current + 1) % matchingCommands.length);
+				return;
+			}
+			if (event.key === "ArrowUp" && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+				event.preventDefault();
+				setSelectedCommandIndex((current) => (current - 1 + matchingCommands.length) % matchingCommands.length);
+				return;
+			}
+			if (event.key === "Enter" && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+				event.preventDefault();
+				if (selectedCommand) selectCommand(selectedCommand);
+				return;
+			}
+			if (event.key === "Escape") {
+				event.preventDefault();
+				setDismissedSlashValue(value);
+			}
+		},
+		[commandSuggestionsOpen, matchingCommands.length, selectedCommand, selectCommand, value],
+	);
 
 	return (
 		<div>
@@ -196,6 +261,13 @@ export function ChatComposer({
 				onRemove={onRemoveQueuedMessage}
 				onReorder={onReorderQueuedMessages}
 			/>
+			{commandSuggestionsOpen ? (
+				<SlashCommandMenu
+					commands={matchingCommands}
+					selectedIndex={selectedCommandIndex}
+					onSelect={selectCommand}
+				/>
+			) : null}
 			<InputMessage
 				value={value}
 				onValueChange={onValueChange}
@@ -209,7 +281,7 @@ export function ChatComposer({
 				onFilesChange={(nextFiles) => void handleFilesChange(nextFiles)}
 				accept={ALL_FILES_ACCEPT}
 				filePreviewSize={COMPOSER_FILE_PREVIEW_SIZE}
-				textareaProps={{ "aria-label": "Message" }}
+				textareaProps={{ "aria-label": "Message", onKeyDown: handleSlashCommandKeyDown }}
 				submitSlot={
 					<Button
 						type="button"

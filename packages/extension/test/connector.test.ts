@@ -167,6 +167,7 @@ function extensionContext(input: {
 			update: async () => Result.ok({}),
 		},
 		requestApproval: input.requestApproval,
+		registerCommand: () => Result.ok({ unregister: () => {} }),
 		instance: undefined,
 	};
 }

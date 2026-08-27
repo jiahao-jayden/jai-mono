@@ -9,6 +9,7 @@ import { DesktopOAuthManager } from "./oauth/manager";
 import { createDesktopThemeService, type DesktopThemeService } from "./theme";
 import { createOpenWithService, type OpenWithService } from "./workspace/open-with";
 import type { DesktopSessionCatalogPort } from "./session-catalog/remote";
+import { createDesktopCommandCatalog, type DesktopCommandCatalog } from "./commands/catalog";
 
 /**
  * Everything the RPC router needs, resolved once at startup. Each field is
@@ -22,6 +23,7 @@ export interface DesktopRuntime {
 	readonly attachments: AttachmentRegistry;
 	readonly theme: DesktopThemeService;
 	readonly openWith: OpenWithService;
+	readonly commands: DesktopCommandCatalog;
 	/** Broadcasts an app-wide event to every renderer window. */
 	publish(event: DesktopAgentEvent): void;
 	/** Asks the user for a project folder. Returns undefined when they cancel. */
@@ -60,6 +62,7 @@ export async function createDesktopRuntime(dependencies: {
 			}
 		},
 	});
+	const commands = createDesktopCommandCatalog();
 
 	const publish = (event: DesktopAgentEvent): void => {
 		broadcast({ sessionId: "desktop", seq: 1, event });
@@ -104,6 +107,7 @@ export async function createDesktopRuntime(dependencies: {
 		attachments,
 		theme,
 		openWith,
+		commands,
 		publish,
 		pickProjectDirectory: (sender) => pickProjectDirectory(BrowserWindow.fromWebContents(sender)),
 		receiveOAuthCallback: (url) => receiveOAuthCallback(url),

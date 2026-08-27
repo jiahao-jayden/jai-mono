@@ -1,4 +1,4 @@
-import type { CodingExtensionSkill } from "@jai/coding-agent";
+import type { CodingPluginSkillCard } from "../../skills/catalog";
 import type { AgentPluginMcpServer } from "../mcp/types";
 import type { AgentPluginDiagnostic } from "../shared/diagnostics";
 
@@ -17,8 +17,8 @@ export interface AgentPluginManifestV1 {
 	readonly extensions?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
 }
 
-export interface AgentPluginSkillDescriptor extends CodingExtensionSkill {
-	readonly source: Extract<CodingExtensionSkill["source"], { readonly directory: "plugin" }>;
+export interface AgentPluginSkillDescriptor extends CodingPluginSkillCard {
+	readonly source: Extract<CodingPluginSkillCard["source"], { readonly directory: "plugin" }>;
 }
 
 export interface LoadedAgentPlugin {

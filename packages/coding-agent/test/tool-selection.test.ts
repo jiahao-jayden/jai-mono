@@ -10,7 +10,6 @@ describe("public built-in tool selection", () => {
 			"Glob",
 			"Grep",
 			"Bash",
-			"Skill",
 			"UpdateTodos",
 			"SpawnAgent",
 		]);

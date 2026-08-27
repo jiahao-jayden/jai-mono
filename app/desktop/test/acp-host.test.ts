@@ -25,7 +25,18 @@ describe("DesktopAcpAgentHost", () => {
 			method: "session/update",
 			params: {
 				sessionId: "session-1",
-				update: { sessionUpdate: "user_message", messageId: "entry-1", content: [{ type: "text", text: "hello" }] },
+				update: {
+					sessionUpdate: "user_message",
+					messageId: "entry-1",
+					content: [{ type: "text", text: "hello" }],
+					slashInvocation: {
+						name: "review",
+						kind: "command",
+						commandKind: "file",
+						displayName: "Review a target",
+						path: "/must-not-project",
+					},
+				},
 			},
 		});
 		client.publish({
@@ -44,7 +55,19 @@ describe("DesktopAcpAgentHost", () => {
 		]);
 		expect(host.getSnapshot("session-1")).toMatchObject({
 			status: "running",
-			items: [{ kind: "message", role: "user", text: "hello" }],
+			items: [
+				{
+					kind: "message",
+					role: "user",
+					text: "hello",
+					slashInvocation: {
+						name: "review",
+						kind: "command",
+						commandKind: "file",
+						displayName: "Review a target",
+					},
+				},
+			],
 		});
 		expect(events.map((event) => event.seq)).toEqual([1, 2]);
 		host.close();

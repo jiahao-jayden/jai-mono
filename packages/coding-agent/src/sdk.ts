@@ -1,3 +1,8 @@
+export {
+	CodingCommandExecutionFailed,
+	CodingCommandRegistrationFailed,
+} from "./commands";
+export type { CodingCommandKind } from "./commands";
 export { type McpToolMetadata, mcpToolPresentation } from "./mcp";
 export { createCodingAgent } from "./sdk/create-coding-agent";
 export type { CodingExtensionError } from "./sdk/extension-errors";
@@ -29,6 +34,9 @@ export type {
 	CodingExtensionApprovalDecision,
 	CodingExtensionApprovalPresentation,
 	CodingExtensionApprovalRequest,
+	CodingExtensionCommand,
+	CodingExtensionCommandContext,
+	CodingExtensionCommandRegistration,
 	CodingExtensionConfiguration,
 	CodingExtensionConfigurationStore,
 	CodingExtensionContext,
@@ -39,7 +47,6 @@ export type {
 	CodingExtensionRuntimeAdapter,
 	CodingExtensionSessionState,
 	CodingExtensionSessionStateStore,
-	CodingExtensionSkill,
 	CodingExtensionTool,
 	CodingExtensionToolCall,
 	CodingExtensionToolCatalog,
@@ -70,8 +77,8 @@ export type {
 	CodingApprovalHandler,
 	CodingAssistantMessage,
 	CodingAttachment,
-	CodingFileChange,
 	CodingEffectBoundary,
+	CodingFileChange,
 	CodingImageContent,
 	CodingPermissionDecision,
 	CodingPermissionMode,
@@ -82,8 +89,8 @@ export type {
 	CodingRunResult,
 	CodingSdkError,
 	CodingSdkErrorPhase,
-	CodingSessionStore,
 	CodingSessionSelection,
+	CodingSessionStore,
 	CodingToolName,
 	CodingToolResult,
 	JsonObject,

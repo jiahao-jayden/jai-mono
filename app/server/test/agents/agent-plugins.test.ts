@@ -43,7 +43,7 @@ describe("Runtime Host Agent Plugins assembly", () => {
 			trustedWorkspacePath: path.join(root, "workspace"),
 		});
 		expect(extension.id).toBe("agent-plugins");
-		expect(extension.skills?.map((skill) => skill.name)).toEqual([
+		expect(extension.skillCards.map((skill) => skill.name)).toEqual([
 			"project-plugin-skill",
 			"another-user-plugin-skill",
 			"user-plugin-skill",

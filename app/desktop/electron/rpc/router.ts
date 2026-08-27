@@ -6,6 +6,7 @@ import type { IpcMainInvokeEvent } from "electron";
 import {
 	type DesktopApi,
 	type DesktopArtifact,
+	type DesktopCommandDescriptor,
 	type DesktopExtensionPermissionResolution,
 	type DesktopProject,
 	type DesktopProviderConfigInput,
@@ -17,6 +18,7 @@ import {
 	desktopArtifactReadInputSchema,
 	desktopAttachmentRegistrationInputSchema,
 	desktopConnectorOAuthApplicationIdSchema,
+	desktopCommandListInputSchema,
 	desktopExtensionPermissionResolutionSchema,
 	desktopPermissionResolutionSchema,
 	desktopSessionCreateInputSchema,
@@ -276,6 +278,20 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				}
 			},
 		},
+		command: {
+			async list(_event, input) {
+				const parsed = parse(desktopCommandListInputSchema, input ?? {}, "Invalid command list input");
+				if (parsed.projectId === undefined) {
+					return projectCommands(rt, undefined, false);
+				}
+				const project = await rt.sessions.getProject(parsed.projectId);
+				if (!(await rt.sessions.isProjectAvailable(project.id))) {
+					return projectCommands(rt, undefined, false);
+				}
+				const trust = await rt.config.getWorkspaceTrust(project.canonicalPath);
+				return projectCommands(rt, project.canonicalPath, trust.trusted);
+			},
+		},
 		agent: {
 			send(_event, input) {
 				const parsed = parse(desktopAgentMessageInputSchema, input, "Invalid agent message input");
@@ -325,4 +341,22 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			},
 		},
 	};
+}
+
+async function projectCommands(
+	runtime: DesktopRuntime,
+	workspaceDirectory: string | undefined,
+	workspaceTrusted: boolean,
+): Promise<readonly DesktopCommandDescriptor[]> {
+	const commands = await runtime.commands.list({
+		...(workspaceDirectory === undefined ? {} : { workspaceDirectory }),
+		workspaceTrusted,
+	});
+	return commands.map((command) => ({
+		name: command.name,
+		displayName: command.displayName,
+		description: command.description,
+		commandKind: command.kind,
+		...(command.argumentHint === undefined ? {} : { argumentHint: command.argumentHint }),
+	}));
 }
