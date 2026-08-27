@@ -63,4 +63,4 @@ Durable fact 与 owner:
 - Desktop 的 Provider/API-key 设置走私有 Desktop configuration RPC，最终由 `SqliteRuntimeAgentSettings` 持久化，并不是这批 Coding Agent JSON（`app/desktop/electron/config/index.ts`、`app/server/src/config/runtime-agent-settings.ts`）。
 - 仓库没有 Web Host 或 Web database adapter；因此本次只能建立 source contract 与 Web 接入边界，不能假定数据库或 tenant 模型。
 - 已撤回未完成的 Execution Environment/E2B contract 改动；Node 的 canonical path、streaming read、atomic write 和 Bash full output semantics 已恢复，并通过 `@jai/agent` 类型检查与相关测试。
-- Agent slash command 的一手实现对比与本次后续决策输入见[调研](../research/agent-slash-command-implementations.md)；该笔记不改变本意图已确认的事实归属。
+- Agent slash command 的一手实现对比与本次后续决策输入见[调研](../../research/agent-slash-command-implementations.md)；该笔记不改变本意图已确认的事实归属。

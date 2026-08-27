@@ -16,6 +16,10 @@
 		"./skills": {
 			"types": "./dist/skills/index.d.ts",
 			"import": "./dist/skills.js"
+		},
+		"./search": {
+			"types": "./dist/search/index.d.ts",
+			"import": "./dist/search.js"
 		}
 	},
 	"scripts": {
@@ -24,8 +28,9 @@
 		"test": "bun test"
 	},
 	"dependencies": {
-		"@jai/common": "workspace:*",
+		"@ff-labs/fff-node": "0.10.5",
 		"@jai/coding-agent": "workspace:*",
+		"@jai/common": "workspace:*",
 		"@jai/connector": "workspace:*",
 		"@modelcontextprotocol/sdk": "1.29.0",
 		"@sinclair/typebox": "^0.34.49",

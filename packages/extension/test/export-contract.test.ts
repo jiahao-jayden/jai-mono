@@ -11,6 +11,7 @@ describe("Official Extensions package exports", () => {
 			"./connector": { types: "./dist/connector/index.d.ts", import: "./dist/connector.js" },
 			"./agent-plugins": { types: "./dist/agent-plugins/index.d.ts", import: "./dist/agent-plugins.js" },
 			"./skills": { types: "./dist/skills/index.d.ts", import: "./dist/skills.js" },
+			"./search": { types: "./dist/search/index.d.ts", import: "./dist/search.js" },
 		});
 	});
 });
