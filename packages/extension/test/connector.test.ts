@@ -150,6 +150,7 @@ function extensionContext(input: {
 	return {
 		sessionId: "session-1",
 		cwd: "/workspace",
+		workspace: { directory: "/workspace", trusted: true },
 		permissionMode: input.permissionMode ?? "default",
 		configuration: {
 			get value() {

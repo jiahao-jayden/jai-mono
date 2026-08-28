@@ -3,7 +3,6 @@ export {
 	CodingCommandRegistrationFailed,
 } from "./commands";
 export type { CodingCommandKind } from "./commands";
-export { type McpToolMetadata, mcpToolPresentation } from "./mcp";
 export { createCodingAgent } from "./sdk/create-coding-agent";
 export type { CodingExtensionError } from "./sdk/extension-errors";
 export {
@@ -11,6 +10,7 @@ export {
 	CodingExtensionApprovalAborted,
 	CodingExtensionCapabilityConflict,
 	CodingExtensionCatalogDiscoveryFailed,
+	CodingExtensionConfigurationResolutionFailed,
 	CodingExtensionConfigurationUnavailable,
 	CodingExtensionContractViolation,
 	CodingExtensionDeactivationFailed,
@@ -38,6 +38,8 @@ export type {
 	CodingExtensionCommandContext,
 	CodingExtensionCommandRegistration,
 	CodingExtensionConfiguration,
+	CodingExtensionConfigurationLayers,
+	CodingExtensionLayeredConfiguration,
 	CodingExtensionConfigurationStore,
 	CodingExtensionContext,
 	CodingExtensionDiagnostic,
@@ -47,12 +49,14 @@ export type {
 	CodingExtensionRuntimeAdapter,
 	CodingExtensionSessionState,
 	CodingExtensionSessionStateStore,
+	CodingExtensionScopedConfiguration,
 	CodingExtensionTool,
 	CodingExtensionToolCall,
 	CodingExtensionToolCatalog,
 	CodingExtensionToolPermissionResolver,
 	CodingExtensionToolPresentation,
 	CodingExtensionToolResult,
+	CodingExtensionWorkspace,
 	CodingToolCatalogDiscovery,
 	CodingToolPermission,
 	CodingTurnEndInput,

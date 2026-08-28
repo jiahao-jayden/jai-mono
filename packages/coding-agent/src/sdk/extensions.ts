@@ -1,5 +1,6 @@
 import type { AgentMessage, AgentTool, ToolMiddleware } from "@jai/agent";
 import { validateToolArguments } from "@jai/ai";
+import { KindGuard } from "@sinclair/typebox";
 import { panic, Result, type Result as ResultType } from "better-result";
 import type { CodingCommandRegistry } from "../commands";
 import type { JsonObject } from "../core/json";
@@ -36,6 +37,7 @@ import type {
 } from "./extensions/contract";
 import { extensionContext } from "./extensions/host-adapters";
 import type { CodingToolPresentation } from "./tool-presentation";
+import { ToolCatalog } from "../runtime/tool-catalog";
 
 export type {
 	CodingAfterToolCallInput,
@@ -54,6 +56,8 @@ export type {
 	CodingExtensionCommandContext,
 	CodingExtensionCommandRegistration,
 	CodingExtensionConfiguration,
+	CodingExtensionConfigurationLayers,
+	CodingExtensionLayeredConfiguration,
 	CodingExtensionConfigurationStore,
 	CodingExtensionContext,
 	CodingExtensionDiagnostic,
@@ -64,12 +68,14 @@ export type {
 	CodingExtensionSessionState,
 	CodingExtensionSessionStateAdapter,
 	CodingExtensionSessionStateStore,
+	CodingExtensionScopedConfiguration,
 	CodingExtensionTool,
 	CodingExtensionToolCall,
 	CodingExtensionToolCatalog,
 	CodingExtensionToolPermissionResolver,
 	CodingExtensionToolPresentation,
 	CodingExtensionToolResult,
+	CodingExtensionWorkspace,
 	CodingToolCatalogDiscovery,
 	CodingToolPermission,
 	CodingTurnEndInput,
@@ -94,6 +100,21 @@ export interface InitializedExtension {
 type ResolvedExtensionToolPermission = (
 	call: CodingExtensionToolCall<JsonObject>,
 ) => CodingToolPermission | Promise<CodingToolPermission>;
+
+interface MappedExtensionTools {
+	readonly tools: AgentTool[];
+	readonly toolPresentations: Map<string, CodingToolPresentation>;
+	readonly permissions: Map<string, ResolvedExtensionToolPermission>;
+	readonly extensionAuthorizedToolNames: string[];
+}
+
+interface ExtensionToolMappingState {
+	readonly staticTools: MappedExtensionTools;
+	readonly catalogs: Map<string, MappedExtensionTools>;
+}
+
+const catalogRefreshCoordinators = new WeakMap<InitializedExtension, ExtensionCatalogRefreshCoordinator>();
+const extensionToolMappings = new WeakMap<InitializedExtension, ExtensionToolMappingState>();
 
 export async function initializeExtensions(
 	extensions: readonly CodingAgentExtension<any, any, any>[],
@@ -120,6 +141,8 @@ export function prepareExtensions(
 interface ExtensionActivationRegistries {
 	readonly permissions?: Map<string, ResolvedExtensionToolPermission>;
 	readonly authorizedToolNames?: Set<string>;
+	readonly toolPresentations?: Map<string, CodingToolPresentation>;
+	readonly toolCatalog?: ToolCatalog;
 	readonly commands?: CodingCommandRegistry;
 }
 
@@ -144,16 +167,14 @@ export async function activateExtensions(
 		if (instance.isErr()) return rollbackExtensions(initialized, instance.error);
 		const initializedRuntime = { ...initializedContext.value, instance: instance.value };
 		extension.runtime = initializedRuntime;
-		const catalogTools = await discoverCatalogTools(extension.extension, initializedRuntime);
-		if (catalogTools.isErr()) return rollbackExtensions(initialized, catalogTools.error);
-		extension.catalogTools.push(...mapExtensionTools(extension, catalogTools.value));
-		syncActivationRegistries(initialized, registries);
 	}
-	const catalogCapabilities = assertCatalogCapabilityNames(
-		initialized.map((extension) => extension.extension),
-		initialized,
-	);
-	if (catalogCapabilities.isErr()) return rollbackExtensions(initialized, catalogCapabilities.error);
+	if (initialized.some((extension) => extension.extension.catalogs?.length)) {
+		const coordinator = new ExtensionCatalogRefreshCoordinator(initialized, registries);
+		for (const extension of initialized) catalogRefreshCoordinators.set(extension, coordinator);
+		const initialSnapshot = await coordinator.initialize();
+		if (initialSnapshot.isErr()) return rollbackExtensions(initialized, initialSnapshot.error);
+	}
+	syncActivationRegistries(initialized, registries);
 	for (const extension of initialized) {
 		const runtimeValue = extensionRuntime(extension);
 		const readiness = await invokeExtensionHook(extension, "session_start", () =>
@@ -180,6 +201,12 @@ export async function disposeExtensions(
 	extensions: readonly InitializedExtension[],
 ): Promise<ResultType<void, CodingExtensionError>> {
 	let failure: CodingExtensionError | undefined;
+	const coordinator = extensions.map((extension) => catalogRefreshCoordinators.get(extension)).find(Boolean);
+	if (coordinator) {
+		const stopped = await coordinator.dispose();
+		if (stopped.isErr()) failure = stopped.error;
+		for (const extension of extensions) catalogRefreshCoordinators.delete(extension);
+	}
 	for (const extension of [...extensions].reverse()) {
 		const runtime = extension.runtime;
 		if (!runtime) continue;
@@ -193,6 +220,7 @@ export async function disposeExtensions(
 			});
 		} finally {
 			extension.runtime = undefined;
+			extensionToolMappings.delete(extension);
 		}
 	}
 	return failure ? Result.err(failure) : Result.ok(undefined);
@@ -450,22 +478,47 @@ export function assertExtensionCapabilityNames(
 }
 
 function assertCatalogCapabilityNames(
-	extensions: readonly CodingAgentExtension<any, any, any>[],
 	initialized: readonly InitializedExtension[],
+	discovered: ReadonlyMap<InitializedExtension, ReadonlyMap<string, readonly CodingExtensionTool<any, any, any>[]>>,
 ): ResultType<void, CodingExtensionError> {
 	const toolNames = reservedToolNames();
-	for (const extension of extensions) {
-		for (const tool of extension.tools ?? []) {
+	for (const extension of initialized) {
+		for (const tool of extension.extension.tools ?? []) {
 			if (!tool.name.trim() || toolNames.has(tool.name))
 				return Result.err(extensionCapabilityConflict("tool", tool.name));
 			toolNames.add(tool.name);
 		}
-	}
-	for (const extension of initialized) {
-		for (const tool of extension.catalogTools) {
-			if (!tool.name.trim() || toolNames.has(tool.name))
-				return Result.err(extensionCapabilityConflict("tool", tool.name));
-			toolNames.add(tool.name);
+		for (const tools of discovered.get(extension)?.values() ?? []) {
+			for (const tool of tools) {
+				if (typeof tool.name !== "string" || !tool.name.trim() || toolNames.has(tool.name))
+					return Result.err(extensionCapabilityConflict("tool", tool.name));
+				if (
+					typeof tool.description !== "string" ||
+					!tool.description.trim() ||
+					typeof tool.execute !== "function" ||
+					!KindGuard.IsSchema(tool.parameters)
+				) {
+					return Result.err(
+						extensionContractViolation({
+							extensionId: extension.id,
+							message: `Extension "${extension.id}" catalog tool "${tool.name}" has an invalid descriptor`,
+						}),
+					);
+				}
+				if (
+					!tool.authorization ||
+					(tool.authorization.owner !== "core" && tool.authorization.owner !== "extension") ||
+					(tool.authorization.owner === "core" && tool.authorization.permission === undefined)
+				) {
+					return Result.err(
+						extensionContractViolation({
+							extensionId: extension.id,
+							message: `Extension "${extension.id}" catalog tool "${tool.name}" has invalid authorization`,
+						}),
+					);
+				}
+				toolNames.add(tool.name);
+			}
 		}
 	}
 	return Result.ok(undefined);
@@ -476,8 +529,6 @@ function reservedToolNames(): Set<string> {
 		"Read",
 		"Write",
 		"Edit",
-		"Glob",
-		"Grep",
 		"Bash",
 		"UpdateTodos",
 		"SpawnAgent",
@@ -486,18 +537,20 @@ function reservedToolNames(): Set<string> {
 }
 
 function createInitializedExtension(extension: CodingAgentExtension<any, any, any>): InitializedExtension {
-	const permissions = new Map<string, ResolvedExtensionToolPermission>();
-	const extensionAuthorizedToolNames: string[] = [];
 	const initialized: InitializedExtension = {
 		id: extension.id,
 		extension,
+		runtime: undefined,
 		tools: [],
 		catalogTools: [],
-		toolPresentations: new Map(),
-		permissions,
-		extensionAuthorizedToolNames,
+		toolPresentations: new Map<string, CodingToolPresentation>(),
+		permissions: new Map<string, ResolvedExtensionToolPermission>(),
+		extensionAuthorizedToolNames: [],
 	};
-	initialized.tools.push(...mapExtensionTools(initialized, extension.tools ?? []));
+	const staticToolMappings = mapExtensionTools(initialized, extension.tools ?? []);
+	extensionToolMappings.set(initialized, { staticTools: staticToolMappings, catalogs: new Map() });
+	initialized.tools.push(...staticToolMappings.tools);
+	rebuildExtensionCatalogProjection(initialized);
 	return initialized;
 }
 
@@ -512,25 +565,38 @@ function syncActivationRegistries(
 ): void {
 	if (registries.permissions) extensionPermissions(extensions, registries.permissions);
 	if (registries.authorizedToolNames) extensionAuthorizedToolNames(extensions, registries.authorizedToolNames);
+	if (registries.toolPresentations) {
+		for (const name of registries.toolPresentations.keys()) {
+			if (!reservedToolNames().has(name)) registries.toolPresentations.delete(name);
+		}
+		for (const extension of extensions) {
+			for (const [name, presentation] of extension.toolPresentations) {
+				registries.toolPresentations.set(name, presentation);
+			}
+		}
+	}
 }
 
 function mapExtensionTools(
 	extension: InitializedExtension,
 	definitions: readonly CodingExtensionTool<any, any, any>[],
-): AgentTool[] {
-	return definitions.map((tool) => {
+): MappedExtensionTools {
+	const permissions = new Map<string, ResolvedExtensionToolPermission>();
+	const extensionAuthorizedToolNames: string[] = [];
+	const toolPresentations = new Map<string, CodingToolPresentation>();
+	const tools = definitions.map((tool) => {
 		const authorization = tool.authorization;
 		if (authorization.owner === "core") {
 			const permission = authorization.permission;
-			extension.permissions.set(tool.name, (call) =>
+			permissions.set(tool.name, (call) =>
 				typeof permission === "function" ? permission(extensionRuntime(extension), call) : permission,
 			);
 		} else {
-			extension.extensionAuthorizedToolNames.push(tool.name);
+			extensionAuthorizedToolNames.push(tool.name);
 		}
 		const presentation = tool.presentation;
 		if (presentation) {
-			extension.toolPresentations.set(tool.name, {
+			toolPresentations.set(tool.name, {
 				...(presentation.activityKind ? { activityKind: presentation.activityKind } : {}),
 				...(presentation.title
 					? { title: (args) => presentation.title!(extensionRuntime(extension), args as JsonObject) }
@@ -560,15 +626,36 @@ function mapExtensionTools(
 			},
 		} satisfies AgentTool;
 	});
+	return { tools, toolPresentations, permissions, extensionAuthorizedToolNames };
+}
+
+function rebuildExtensionCatalogProjection(extension: InitializedExtension): void {
+	const mappings = toolMappingState(extension);
+	extension.catalogTools.splice(0, extension.catalogTools.length);
+	extension.catalogTools.push(...[...mappings.catalogs.values()].flatMap((mapping) => mapping.tools));
+	extension.toolPresentations.clear();
+	extension.permissions.clear();
+	extension.extensionAuthorizedToolNames.splice(0, extension.extensionAuthorizedToolNames.length);
+	for (const mapping of [mappings.staticTools, ...mappings.catalogs.values()]) {
+		for (const [name, presentation] of mapping.toolPresentations) extension.toolPresentations.set(name, presentation);
+		for (const [name, permission] of mapping.permissions) extension.permissions.set(name, permission);
+		extension.extensionAuthorizedToolNames.push(...mapping.extensionAuthorizedToolNames);
+	}
+}
+
+function toolMappingState(extension: InitializedExtension): ExtensionToolMappingState {
+	const state = extensionToolMappings.get(extension);
+	if (state) return state;
+	return panic(`Extension "${extension.id}" tool mappings were requested after disposal`);
 }
 
 async function discoverCatalogTools(
-	extension: CodingAgentExtension<any, any, any>,
-	runtime: CodingExtensionRuntime<any, any, any>,
-): Promise<ResultType<readonly CodingExtensionTool<any, any, any>[], CodingExtensionError>> {
+	extension: InitializedExtension,
+	signal?: AbortSignal,
+): Promise<ResultType<ReadonlyMap<string, readonly CodingExtensionTool<any, any, any>[]>, CodingExtensionError>> {
 	const seen = new Set<string>();
-	const tools: CodingExtensionTool<any, any, any>[] = [];
-	for (const catalog of extension.catalogs ?? []) {
+	const discoveredCatalogs = new Map<string, readonly CodingExtensionTool<any, any, any>[]>();
+	for (const catalog of extension.extension.catalogs ?? []) {
 		if (!catalog.id.trim() || seen.has(catalog.id)) {
 			return Result.err(
 				extensionContractViolation({
@@ -581,7 +668,7 @@ async function discoverCatalogTools(
 		seen.add(catalog.id);
 		let discovered: ResultType<CodingToolCatalogDiscovery<any, any, any>, CodingExtensionOperationFailed>;
 		try {
-			discovered = await catalog.discover(runtime);
+			discovered = await catalog.discover(extensionRuntime(extension), signal);
 		} catch (cause) {
 			return Result.err(
 				extensionCatalogDiscoveryFailed(
@@ -594,9 +681,172 @@ async function discoverCatalogTools(
 		if (discovered.isErr()) {
 			return Result.err(extensionCatalogDiscoveryFailed(extension.id, catalog.id, discovered.error));
 		}
-		tools.push(...discovered.value.tools);
+		await reportCatalogDiagnostics(extension, catalog.id, discovered.value.diagnostics);
+		discoveredCatalogs.set(catalog.id, discovered.value.tools);
 	}
-	return Result.ok(tools);
+	return Result.ok(discoveredCatalogs);
+}
+
+class ExtensionCatalogRefreshCoordinator {
+	readonly #abortController = new AbortController();
+	readonly #subscriptionDisposers: Array<() => void | Promise<void>> = [];
+	readonly #extensions: readonly InitializedExtension[];
+	readonly #registries: ExtensionActivationRegistries;
+	#refreshRequested = false;
+	#refreshTail: Promise<void> = Promise.resolve();
+	#closed = false;
+
+	constructor(
+		extensions: readonly InitializedExtension[],
+		registries: ExtensionActivationRegistries,
+	) {
+		this.#extensions = extensions;
+		this.#registries = registries;
+	}
+
+	async initialize(): Promise<ResultType<void, CodingExtensionError>> {
+		const discovered = await this.#discoverAndCommit();
+		if (discovered.isErr()) return discovered;
+		return this.#subscribe();
+	}
+
+	invalidate(): void {
+		if (this.#closed || this.#refreshRequested) return;
+		this.#refreshRequested = true;
+		this.#refreshTail = this.#refreshTail.then(() => this.#drainRefreshes());
+	}
+
+	async dispose(): Promise<ResultType<void, CodingExtensionError>> {
+		if (this.#closed) return Result.ok(undefined);
+		this.#closed = true;
+		this.#abortController.abort();
+		let failure: CodingExtensionError | undefined;
+		for (const dispose of [...this.#subscriptionDisposers].reverse()) {
+			try {
+				await dispose();
+			} catch (cause) {
+				failure ??= new CodingExtensionDeactivationFailed({
+					extensionId: this.#extensions[0]?.id,
+					message: "Extension catalog subscription cleanup failed",
+					cause,
+				});
+			}
+		}
+		this.#subscriptionDisposers.splice(0, this.#subscriptionDisposers.length);
+		return failure ? Result.err(failure) : Result.ok(undefined);
+	}
+
+	async #subscribe(): Promise<ResultType<void, CodingExtensionError>> {
+		for (const extension of this.#extensions) {
+			for (const catalog of extension.extension.catalogs ?? []) {
+				if (!catalog.subscribe) continue;
+				let dispose: void | (() => void | Promise<void>);
+				try {
+					dispose = await catalog.subscribe(extensionRuntime(extension), () => this.invalidate());
+				} catch (cause) {
+					return Result.err(
+						extensionCatalogDiscoveryFailed(
+							extension.id,
+							catalog.id,
+							extensionOperationFailed(
+								cause,
+								`Extension "${extension.id}" catalog "${catalog.id}" subscription failed`,
+							),
+						),
+					);
+				}
+				if (dispose !== undefined && typeof dispose !== "function") {
+					return Result.err(
+						extensionContractViolation({
+							extensionId: extension.id,
+							catalogId: catalog.id,
+							message: `Extension "${extension.id}" catalog "${catalog.id}" returned an invalid subscription disposer`,
+						}),
+					);
+				}
+				if (dispose) this.#subscriptionDisposers.push(dispose);
+			}
+		}
+		return Result.ok(undefined);
+	}
+
+	async #drainRefreshes(): Promise<void> {
+		while (this.#refreshRequested && !this.#closed) {
+			this.#refreshRequested = false;
+			try {
+				const discovered = await this.#discoverAndCommit();
+				if (discovered.isErr() && !this.#closed) await this.#reportFailure(discovered.error);
+			} catch (cause) {
+				if (!this.#closed) {
+					await this.#reportDiagnostic({
+						code: "coding_extension.catalog_refresh_failed",
+						message: cause instanceof Error ? cause.message : "Extension catalog refresh failed",
+						extensionId: this.#extensions[0]?.id ?? "unknown-extension",
+					});
+				}
+			}
+		}
+	}
+
+	async #discoverAndCommit(): Promise<ResultType<void, CodingExtensionError>> {
+		const discovered = new Map<InitializedExtension, ReadonlyMap<string, readonly CodingExtensionTool<any, any, any>[]>>();
+		for (const extension of this.#extensions) {
+			const catalogs = await discoverCatalogTools(extension, this.#abortController.signal);
+			if (this.#closed) return Result.ok(undefined);
+			if (catalogs.isErr()) return catalogs;
+			discovered.set(extension, catalogs.value);
+		}
+		const names = assertCatalogCapabilityNames(this.#extensions, discovered);
+		if (names.isErr()) return names;
+		if (this.#closed) return Result.ok(undefined);
+		for (const extension of this.#extensions) {
+			const mappings = new Map<string, MappedExtensionTools>();
+			for (const [catalogId, tools] of discovered.get(extension) ?? []) {
+				mappings.set(catalogId, mapExtensionTools(extension, tools));
+			}
+			const currentMappings = toolMappingState(extension);
+			currentMappings.catalogs.clear();
+			for (const [catalogId, mapping] of mappings) currentMappings.catalogs.set(catalogId, mapping);
+			rebuildExtensionCatalogProjection(extension);
+		}
+		syncActivationRegistries(this.#extensions, this.#registries);
+		this.#registries.toolCatalog?.replace(extensionCatalogTools(this.#extensions));
+		return Result.ok(undefined);
+	}
+
+	async #reportFailure(error: CodingExtensionError): Promise<void> {
+		await this.#reportDiagnostic({
+			code: error._tag,
+			message: error.message,
+			extensionId:
+				"extensionId" in error && typeof error.extensionId === "string"
+					? error.extensionId
+					: (this.#extensions[0]?.id ?? "unknown-extension"),
+			...("catalogId" in error && typeof error.catalogId === "string" ? { catalogId: error.catalogId } : {}),
+		});
+	}
+
+	async #reportDiagnostic(diagnostic: CodingExtensionDiagnostic): Promise<void> {
+		try {
+			await this.#extensions.find((extension) => extension.id === diagnostic.extensionId)?.reportDiagnostic?.(diagnostic);
+		} catch {
+			// Diagnostics are observer-only and cannot prevent a later catalog refresh.
+		}
+	}
+}
+
+async function reportCatalogDiagnostics(
+	extension: InitializedExtension,
+	catalogId: string,
+	diagnostics: readonly CodingExtensionDiagnostic[] | undefined,
+): Promise<void> {
+	for (const diagnostic of diagnostics ?? []) {
+		try {
+			await extension.reportDiagnostic?.({ ...diagnostic, extensionId: extension.id, catalogId });
+		} catch {
+			// Diagnostics are observer-only and cannot invalidate a discovered descriptor snapshot.
+		}
+	}
 }
 
 async function activateExtension(

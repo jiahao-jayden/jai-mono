@@ -1,15 +1,18 @@
 import { Value } from "@sinclair/typebox/value";
+import type { TObject } from "@sinclair/typebox";
 import { Result, type Result as ResultType } from "better-result";
 import type { CodingCommandRegistry } from "../../commands";
 import type { JsonObject } from "../../core/json";
 import {
 	CodingExtensionApprovalAborted,
+	CodingExtensionConfigurationResolutionFailed,
 	CodingExtensionConfigurationUnavailable,
 	type CodingExtensionError,
 	CodingExtensionOperationFailed,
 	CodingExtensionPersistentApprovalUnavailable,
 	CodingExtensionSessionStateUnavailable,
 	extensionContractViolation,
+	extensionOperationFailed,
 } from "../extension-errors";
 import type {
 	CodingAgentExtension,
@@ -17,6 +20,7 @@ import type {
 	CodingExtensionApprovalRequest,
 	CodingExtensionCommand,
 	CodingExtensionCommandRegistration,
+	CodingExtensionLayeredConfiguration,
 	CodingExtensionConfigurationStore,
 	CodingExtensionContext,
 	CodingExtensionRuntimeAdapter,
@@ -32,7 +36,7 @@ export async function extensionContext<TConfig extends JsonObject, TState extend
 	commands?: CodingCommandRegistry,
 ): Promise<ResultType<CodingExtensionContext<TConfig, TState>, CodingExtensionError>> {
 	return Result.gen(async function* () {
-		const configuration = yield* Result.await(extensionConfiguration(extension, runtime));
+		const configuration = yield* Result.await(extensionConfiguration(extension, context, runtime));
 		const state = yield* Result.await(extensionSessionState(extension, sessionState));
 		const requestApproval = async (request: CodingExtensionApprovalRequest, signal?: AbortSignal) => {
 			const valid = assertExtensionApprovalRequest(extension.id, context.sessionId, request);
@@ -113,10 +117,14 @@ export async function extensionContext<TConfig extends JsonObject, TState extend
 
 async function extensionConfiguration<TConfig extends JsonObject, TState extends JsonObject>(
 	extension: CodingAgentExtension<TConfig, TState>,
+	context: Omit<CodingExtensionContext, "configuration" | "sessionState" | "requestApproval" | "registerCommand">,
 	runtime: CodingExtensionRuntimeAdapter | undefined,
 ): Promise<ResultType<CodingExtensionConfigurationStore<TConfig>, CodingExtensionError>> {
 	const declaration = extension.configuration;
 	if (!declaration) return Result.ok(unavailableConfiguration<TConfig>(extension.id));
+	if (declaration.scope === "layered") {
+		return layeredConfiguration(extension.id, declaration, context.workspace, runtime);
+	}
 	if (!Value.Check(declaration.schema, declaration.defaultValue)) {
 		return Result.err(
 			extensionContractViolation({
@@ -126,7 +134,7 @@ async function extensionConfiguration<TConfig extends JsonObject, TState extends
 		);
 	}
 	const loaded = runtime?.readConfiguration
-		? await runtime.readConfiguration({ extensionId: extension.id, scope: declaration.scope })
+		? await runtime.readConfiguration({ extensionId: extension.id, scope: declaration.scope, workspace: context.workspace })
 		: Result.ok<JsonObject | undefined, CodingExtensionError>(undefined);
 	if (loaded.isErr()) return loaded;
 	if (loaded.value !== undefined && !Value.Check(declaration.schema, loaded.value)) {
@@ -179,6 +187,96 @@ async function extensionConfiguration<TConfig extends JsonObject, TState extends
 			return Result.ok(structuredClone(value));
 		},
 	});
+}
+
+async function layeredConfiguration<TConfig extends JsonObject>(
+	extensionId: string,
+	declaration: CodingExtensionLayeredConfiguration<TConfig>,
+	workspace: CodingExtensionContext["workspace"],
+	runtime: CodingExtensionRuntimeAdapter | undefined,
+): Promise<ResultType<CodingExtensionConfigurationStore<TConfig>, CodingExtensionError>> {
+	if (!Value.Check(declaration.schema, declaration.defaultValue)) {
+		return Result.err(
+			extensionContractViolation({
+				extensionId,
+				message: `Extension "${extensionId}" declared an invalid default configuration`,
+			}),
+		);
+	}
+	const user = yieldConfigurationLayer(extensionId, "user", declaration.layerSchema, workspace, runtime);
+	const project = workspace.trusted
+		? yieldConfigurationLayer(extensionId, "project", declaration.layerSchema, workspace, runtime)
+		: Promise.resolve(Result.ok<JsonObject | undefined, CodingExtensionError>(undefined));
+	const [userLayer, projectLayer] = await Promise.all([user, project]);
+	if (userLayer.isErr()) return userLayer;
+	if (projectLayer.isErr()) return projectLayer;
+	try {
+		const resolved = await declaration.resolve({
+			...(userLayer.value === undefined ? {} : { user: structuredClone(userLayer.value) }),
+			...(projectLayer.value === undefined ? {} : { project: structuredClone(projectLayer.value) }),
+		});
+		if (resolved.isErr()) {
+			return Result.err(
+				new CodingExtensionConfigurationResolutionFailed({
+					extensionId,
+					message: `Extension "${extensionId}" could not resolve layered configuration: ${resolved.error.message}`,
+					cause: resolved.error,
+				}),
+			);
+		}
+		if (!Value.Check(declaration.schema, resolved.value)) {
+			return Result.err(
+				extensionContractViolation({
+					extensionId,
+					message: `Extension "${extensionId}" resolved an invalid layered configuration`,
+				}),
+			);
+		}
+		const value = structuredClone(resolved.value);
+		return Result.ok({
+			get value() {
+				return structuredClone(value);
+			},
+			persistent: false,
+			update: async () =>
+				Result.err(
+					new CodingExtensionConfigurationUnavailable({
+						extensionId,
+						message: `Extension "${extensionId}" layered configuration does not declare a write target`,
+					}),
+				),
+		});
+	} catch (cause) {
+		return Result.err(
+			new CodingExtensionConfigurationResolutionFailed({
+				extensionId,
+				message: `Extension "${extensionId}" could not resolve layered configuration`,
+				cause: extensionOperationFailed(cause, `Extension "${extensionId}" layered configuration resolver failed`),
+			}),
+		);
+	}
+}
+
+async function yieldConfigurationLayer(
+	extensionId: string,
+	scope: "user" | "project",
+	schema: TObject,
+	workspace: CodingExtensionContext["workspace"],
+	runtime: CodingExtensionRuntimeAdapter | undefined,
+): Promise<ResultType<JsonObject | undefined, CodingExtensionError>> {
+	const loaded = runtime?.readConfiguration
+		? await runtime.readConfiguration({ extensionId, scope, workspace })
+		: Result.ok<JsonObject | undefined, CodingExtensionError>(undefined);
+	if (loaded.isErr()) return loaded;
+	if (loaded.value !== undefined && !Value.Check(schema, loaded.value)) {
+		return Result.err(
+			extensionContractViolation({
+				extensionId,
+				message: `Extension "${extensionId}" ${scope} configuration layer is invalid`,
+			}),
+		);
+	}
+	return Result.ok(loaded.value === undefined ? undefined : structuredClone(loaded.value));
 }
 
 async function extensionSessionState<TConfig extends JsonObject, TState extends JsonObject>(

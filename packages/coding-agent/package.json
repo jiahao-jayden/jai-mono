@@ -30,7 +30,6 @@
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.110.0",
-		"@modelcontextprotocol/sdk": "1.29.0",
 		"@sinclair/typebox": "^0.34.49",
 		"better-result": "^3.0.0",
 		"openai": "^6.45.0",

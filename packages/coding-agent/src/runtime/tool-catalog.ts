@@ -28,7 +28,7 @@ export interface ToolCatalogMatch {
  */
 export class ToolCatalog {
 	readonly searchTool: AgentTool<typeof searchParameters>;
-	readonly #tools: readonly AgentTool[];
+	#tools: readonly AgentTool[];
 	readonly #limit: number;
 	#activeNames: readonly string[] = [];
 
@@ -36,12 +36,7 @@ export class ToolCatalog {
 		if (!Number.isInteger(limit) || limit < 1 || limit > 8) {
 			panic(`Tool catalog limit must be between 1 and 8, received ${limit}`);
 		}
-		const names = new Set<string>();
-		for (const tool of tools) {
-			if (!tool.name.trim() || names.has(tool.name)) panic(`Duplicate catalog tool "${tool.name}"`);
-			names.add(tool.name);
-		}
-		this.#tools = [...tools];
+		this.#tools = validateCatalogTools(tools);
 		this.#limit = limit;
 		this.searchTool = {
 			name: "SearchTools",
@@ -64,6 +59,14 @@ export class ToolCatalog {
 
 	createScope(): ToolCatalog {
 		return new ToolCatalog(this.#tools, this.#limit);
+	}
+
+	/** Replaces the descriptor snapshot for future requests and retains only still-valid active names. */
+	replace(tools: readonly AgentTool[]): void {
+		const next = validateCatalogTools(tools);
+		const nextNames = new Set(next.map((tool) => tool.name));
+		this.#tools = next;
+		this.#activeNames = this.#activeNames.filter((name) => nextNames.has(name));
 	}
 
 	toolsForRequest(staticTools: readonly AgentTool[]): readonly AgentTool[] {
@@ -89,6 +92,15 @@ export class ToolCatalog {
 		this.#activeNames = matches.map((tool) => tool.name);
 		return matches.map((tool) => ({ name: tool.name, description: tool.description }));
 	}
+}
+
+function validateCatalogTools(tools: readonly AgentTool[]): readonly AgentTool[] {
+	const names = new Set<string>();
+	for (const tool of tools) {
+		if (!tool.name.trim() || names.has(tool.name)) panic(`Duplicate catalog tool "${tool.name}"`);
+		names.add(tool.name);
+	}
+	return [...tools];
 }
 
 function score(tool: AgentTool, terms: readonly string[]): number {

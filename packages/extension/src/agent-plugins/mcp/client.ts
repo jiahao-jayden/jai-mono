@@ -1,11 +1,11 @@
 import type { AgentToolResult } from "@jai/agent";
-import { type McpToolMetadata, mcpToolPresentation } from "@jai/coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { type TSchema, Type } from "@sinclair/typebox";
 import { AgentPluginMcpConnectionFailed } from "../package/errors";
+import { type McpToolMetadata, mcpToolPresentation } from "../../mcp/presentation";
 import type { AgentPluginMcpServer, AgentPluginMcpTool } from "./types";
 
 interface ConnectedServer {

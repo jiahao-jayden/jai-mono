@@ -20,6 +20,10 @@
 		"./search": {
 			"types": "./dist/search/index.d.ts",
 			"import": "./dist/search.js"
+		},
+		"./mcp": {
+			"types": "./dist/mcp/index.d.ts",
+			"import": "./dist/mcp.js"
 		}
 	},
 	"scripts": {

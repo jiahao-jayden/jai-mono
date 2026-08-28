@@ -37,4 +37,25 @@ describe("ToolCatalog", () => {
 			"LinearIssue",
 		]);
 	});
+
+	test("replaces future descriptor snapshots while retaining only active names that still exist", () => {
+		const catalog = new ToolCatalog([
+			catalogTool("GitHubReview", "Read GitHub pull request comments"),
+			catalogTool("LinearIssue", "Read Linear issues"),
+		]);
+		catalog.search("github");
+		const requestBeforeReplace = catalog.toolsForRequest([catalog.searchTool]);
+		catalog.replace([
+			catalogTool("GitHubReview", "Review pull requests with updated metadata"),
+			catalogTool("PagerDutyIncident", "Read PagerDuty incidents"),
+		]);
+		expect(catalog.toolsForRequest([catalog.searchTool]).map((tool) => tool.name)).toEqual([
+			"SearchTools",
+			"GitHubReview",
+		]);
+		expect(requestBeforeReplace.map((tool) => tool.name)).toEqual(["SearchTools", "GitHubReview"]);
+
+		catalog.replace([catalogTool("PagerDutyIncident", "Read PagerDuty incidents")]);
+		expect(catalog.toolsForRequest([catalog.searchTool]).map((tool) => tool.name)).toEqual(["SearchTools"]);
+	});
 });

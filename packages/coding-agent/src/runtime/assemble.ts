@@ -1,7 +1,6 @@
 import type { AgentHookMap, AgentTool, ToolMiddleware } from "@jai/agent";
 import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
 import type { CodingAttachmentRun } from "../attachments";
-import type { McpRuntime } from "../mcp";
 import { type CodingToolOptions, createCodingTools } from "../tools";
 import type { CodingToolName } from "../tools/names";
 import type { CodingExecutionContext } from "./execution-context";
@@ -12,7 +11,6 @@ export interface AssembleAgentCapabilitiesInput {
 	readonly toolOptions?: Omit<CodingToolOptions, "cwd">;
 	readonly toolEnvironment?: NodeExecutionEnvironment;
 	readonly enabledTools?: ReadonlySet<CodingToolName>;
-	readonly mcp?: McpRuntime;
 	readonly attachments?: CodingAttachmentRun;
 	readonly permissionMiddleware?: ToolMiddleware;
 	readonly extensionTools?: readonly AgentTool[];
@@ -46,7 +44,6 @@ export function assembleAgentCapabilities(input: AssembleAgentCapabilitiesInput)
 			...(input.extraTools ?? []),
 			...(input.extensionTools ?? []),
 			...codingTools,
-			...(input.mcp?.tools.map(({ tool }) => tool) ?? []),
 		],
 		aroundToolCall: [
 			...(input.extensionToolMiddleware ? [input.extensionToolMiddleware] : []),

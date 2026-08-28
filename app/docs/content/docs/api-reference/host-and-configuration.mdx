@@ -62,7 +62,21 @@ type CodingSessionSelection =
 
 `CodingAgentExtension` 必须声明稳定 `id`；tools、skills、hooks 与 catalogs 在 definition 顶层声明。activation context 提供 `sessionId`、`cwd`、`permissionMode`，以及该 Extension 声明的 configuration 与 session state store；它只返回 session 私有 instance。更多字段与约束见 [工具与动态能力](/docs/guides/tools-and-capabilities)。
 
-`extensionRuntime` 是宿主为 Extension configuration 与 Extension-owned approval 提供的 adapter。
+`extensionRuntime` 是宿主为 Extension configuration 与 Extension-owned approval 提供的 adapter。读取 configuration 时，SDK 会同时提供 Extension id、requested scope 与 Host-resolved workspace identity/trust；Host 必须只在 workspace trusted 时参与 project-scoped configuration。
+
+普通 Extension 选择一个 `user` 或 `project` scope。声明 `layered` configuration 的 Extension 会分别收到 user 与 trusted-project 的原始、已校验 layer，并自行解析 resolved value；SDK 不会做通用 deep merge，也不会为 layered configuration 猜测 `update()` 的写入目标。
 普通嵌入只需使用 core-owned tools，不需要传它；需要持久化 Extension configuration 或由
 Extension 自己处理授权时，宿主必须显式提供对应读写与审批能力。`allow` 类型的永久决策在
 没有持久化 adapter 时会 fail closed。
+
+## Dynamic tool catalogs
+
+动态 Extension catalog 只通过 `discover()` 返回 descriptor。需要在运行中更新时，它可以可选地声明 `subscribe(runtime, invalidate)`；`invalidate` 没有 payload，不能成为绕过 schema、名称冲突或 permission 的注册通道。SDK 合并通知并串行重新 discovery，验证完整快照后才更新下一次模型请求的工具。
+
+刷新失败不会关闭 Agent：Host 只会收到 JSON-safe `CodingExtensionDiagnostic`，已验证的上一个工具快照继续可用。SDK close 会先调用 subscription disposer，再执行 Extension 的 `deactivate()`；Host 不需要也不能管理 catalog watcher 或 Tool Catalog 实例。
+
+## Official MCP Extension
+
+`@jai/extension/mcp` 提供 `createMcpExtension()`。将它放入 `CodingAgentCreateOptions.extensions` 后，Host 只需经 `extensionRuntime.readConfiguration` 提供名为 `servers` 的 user/project layer；MCP Extension 自己解析 server map，project 的同名 server 完整替换 user server。它支持 `stdio`、`streamable-http` 与 `sse`，并在 session 内管理 client、`tools/list_changed`、连接断开和有上限的指数退避重连。
+
+MCP server 不会直接注册工具：每次连接成功或 server 宣告 tools list changed 时，Extension 只发出 catalog invalidation。Core 重新 discovery、校验并决定下一次模型请求可见的 snapshot；失败维持 last-known-good snapshot，并通过已有 diagnostic adapter 安全投影。

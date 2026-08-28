@@ -12,11 +12,34 @@ import type { CodingExtensionError, CodingExtensionOperationFailed } from "../ex
 import type { CodingToolActivityKind } from "../tool-presentation";
 import type { CodingPermissionMode } from "../types";
 
-export interface CodingExtensionConfiguration<TConfig extends JsonObject = JsonObject> {
+export interface CodingExtensionScopedConfiguration<TConfig extends JsonObject = JsonObject> {
 	readonly scope: "user" | "project";
 	readonly schema: TObject;
 	readonly defaultValue: TConfig;
 }
+
+export interface CodingExtensionConfigurationLayers {
+	readonly user?: JsonObject;
+	readonly project?: JsonObject;
+}
+
+export interface CodingExtensionLayeredConfiguration<TConfig extends JsonObject = JsonObject> {
+	readonly scope: "layered";
+	/** Validates each un-defaulted user/project source before this Extension resolves them. */
+	readonly layerSchema: TObject;
+	/** Validates the resolved configuration returned by the Extension-owned resolver. */
+	readonly schema: TObject;
+	readonly defaultValue: TConfig;
+	resolve(
+		layers: CodingExtensionConfigurationLayers,
+	):
+		| ResultType<TConfig, CodingExtensionOperationFailed>
+		| Promise<ResultType<TConfig, CodingExtensionOperationFailed>>;
+}
+
+export type CodingExtensionConfiguration<TConfig extends JsonObject = JsonObject> =
+	| CodingExtensionScopedConfiguration<TConfig>
+	| CodingExtensionLayeredConfiguration<TConfig>;
 
 export interface CodingExtensionConfigurationStore<TConfig extends JsonObject = JsonObject> {
 	readonly value: TConfig;
@@ -55,10 +78,16 @@ export interface CodingExtensionApprovalRequest {
 
 export type CodingExtensionApprovalDecision = "deny" | "allowOnce" | "allow";
 
+export interface CodingExtensionWorkspace {
+	readonly directory: string;
+	readonly trusted: boolean;
+}
+
 export interface CodingExtensionRuntimeAdapter {
 	readConfiguration?(input: {
 		readonly extensionId: string;
 		readonly scope: "user" | "project";
+		readonly workspace: CodingExtensionWorkspace;
 	}):
 		| ResultType<JsonObject | undefined, CodingExtensionError>
 		| Promise<ResultType<JsonObject | undefined, CodingExtensionError>>;
@@ -82,6 +111,8 @@ export interface CodingExtensionContext<
 > {
 	readonly sessionId: string;
 	readonly cwd: string;
+	/** The Host-resolved workspace that may participate in project configuration. */
+	readonly workspace: CodingExtensionWorkspace;
 	readonly permissionMode: CodingPermissionMode;
 	readonly configuration: CodingExtensionConfigurationStore<TConfig>;
 	readonly sessionState: CodingExtensionSessionStateStore<TState>;
@@ -304,6 +335,14 @@ export interface CodingExtensionToolCatalog<
 	):
 		| ResultType<CodingToolCatalogDiscovery<TConfig, TState, TInstance>, CodingExtensionOperationFailed>
 		| Promise<ResultType<CodingToolCatalogDiscovery<TConfig, TState, TInstance>, CodingExtensionOperationFailed>>;
+	/**
+	 * Optionally tells core that a subsequent request should rediscover this catalog.
+	 * The callback deliberately carries no tools or other mutable catalog state.
+	 */
+	subscribe?(
+		runtime: CodingExtensionRuntime<TConfig, TState, TInstance>,
+		invalidate: () => void,
+	): void | (() => void | Promise<void>) | Promise<void | (() => void | Promise<void>)>;
 }
 
 export interface CodingToolCatalogDiscovery<

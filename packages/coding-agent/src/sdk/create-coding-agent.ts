@@ -29,10 +29,8 @@ import {
 	extensionAuthorizedToolNames,
 	extensionBeforeAgentStart,
 	extensionBeforeModelCall,
-	extensionCatalogTools,
 	extensionMiddleware,
 	extensionPermissions,
-	extensionToolPresentations,
 	extensionTools,
 	type InitializedExtension,
 	notifyExtensionSettled,
@@ -103,8 +101,12 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 		const preparedExtensions = prepareExtensions(input.extensions ?? []);
 		if (preparedExtensions.isErr()) throw preparedExtensions.error;
 		extensions = preparedExtensions.value;
+		const extensionToolCatalog = extensions.some((extension) => extension.extension.catalogs?.length)
+			? new ToolCatalog([])
+			: undefined;
 		const extensionToolPermissions = extensionPermissions(extensions);
 		const extensionAuthorizedToolNameSet = extensionAuthorizedToolNames(extensions);
+		const toolPresentations = new Map(builtInToolPresentations());
 		const internal = await createInternalCodingAgent<CodingSchema, PersistedCodingSessionState<TAppState>>({
 			executionContext: {
 				localFileAccess: true,
@@ -126,7 +128,6 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				modelRuntime = runtime;
 				return runtime;
 			},
-			resolveMcpServers: () => [],
 			resolveAgentOptions: () => ({
 				...(input.maxTurns === undefined ? {} : { maxIterations: input.maxTurns }),
 				...(input.providerOptions === undefined ? {} : { providerOptions: input.providerOptions }),
@@ -150,6 +151,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			extensionToolMiddleware: extensionMiddleware(extensions),
 			extensionToolPermissions,
 			extensionAuthorizedToolNames: extensionAuthorizedToolNameSet,
+			...(extensionToolCatalog ? { extensionToolCatalog } : {}),
 			enabledTools,
 			agent: input.compactionSummaryInstructions
 				? {
@@ -161,18 +163,26 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 		});
 		const activatedExtensions = await activateExtensions(
 			extensions,
-			{ sessionId, cwd, permissionMode: input.permissionMode ?? "default" },
+			{
+				sessionId,
+				cwd,
+				workspace: {
+					directory: fileCapabilities.workspaceDirectory,
+					trusted: fileCapabilities.workspaceTrusted,
+				},
+				permissionMode: input.permissionMode ?? "default",
+			},
 			input.extensionRuntime,
 			createExtensionSessionStateAdapter(internal),
 			{
 				permissions: extensionToolPermissions,
 				authorizedToolNames: extensionAuthorizedToolNameSet,
+				toolPresentations,
+				...(extensionToolCatalog ? { toolCatalog: extensionToolCatalog } : {}),
 				commands,
 			},
 		);
 		if (activatedExtensions.isErr()) throw activatedExtensions.error;
-		const catalogTools = extensionCatalogTools(extensions);
-		if (catalogTools.length > 0) internal.setExtensionToolCatalog(new ToolCatalog(catalogTools));
 		if (!modelRuntime) {
 			throw new CodingSdkFailure({
 				phase: "runtime_creation",
@@ -187,7 +197,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				modelRuntime,
 				ephemeralDirectory,
 				extensions,
-				new Map([...builtInToolPresentations(), ...extensionToolPresentations(extensions)]),
+				toolPresentations,
 			),
 		);
 	} catch (error) {

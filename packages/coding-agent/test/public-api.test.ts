@@ -75,6 +75,62 @@ describe("public Coding Agent SDK", () => {
 		if (resumed.isOk()) await resumed.value.close();
 	});
 
+	test("activates a discovered catalog tool for the next model request", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const requests: unknown[] = [];
+		let executions = 0;
+		const created = await createCodingAgent({
+			...createInput(
+				root,
+				[
+					assistantToolCall("SearchTools", "catalog-search", { query: "echo" }),
+					assistantToolCall("CatalogEcho", "catalog-echo", {}),
+					assistant("done"),
+				],
+				requests,
+			),
+			session: { kind: "ephemeral" },
+			extensions: [
+				defineExtension({
+					id: "dynamic-catalog",
+					catalogs: [
+						{
+							id: "remote-tools",
+							discover: () =>
+								Result.ok({
+									tools: [
+										{
+											name: "CatalogEcho",
+											description: "Echoes a catalog result",
+											parameters: Type.Object({}),
+											authorization: {
+												owner: "core",
+												permission: { sideEffect: "read", reason: "Reads a remote catalog result" },
+											},
+											execute: async () => {
+												executions += 1;
+												return { content: [{ type: "text", text: "echo" }] };
+											},
+										},
+									],
+								}),
+						},
+					],
+				}),
+			],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+
+		expect((await created.value.prompt("use the catalog")).isOk()).toBe(true);
+		expect(executions).toBe(1);
+		expect(JSON.stringify(requests[0])).toContain("SearchTools");
+		expect(JSON.stringify(requests[0])).not.toContain("CatalogEcho");
+		expect(JSON.stringify(requests[1])).toContain("CatalogEcho");
+		await created.value.close();
+	});
+
 	test("writes a Host-reserved queued input at its exact Session Journal identity", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
 		roots.push(root);

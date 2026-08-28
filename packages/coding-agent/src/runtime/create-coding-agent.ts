@@ -1,5 +1,6 @@
 import {
 	Agent,
+	type AgentContext,
 	type AgentCompactionOptions,
 	type AgentEvent,
 	type AgentEventListener,
@@ -27,7 +28,6 @@ import {
 	type ConfigSnapshot,
 	type ResolvedCodingSettings,
 } from "../config";
-import { connectMcpServers, type McpRuntime, type McpServer } from "../mcp";
 import {
 	createPermissionMiddleware,
 	type ExtensionToolPermissionResolver,
@@ -90,9 +90,6 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 	readonly resolveProvider: (
 		snapshot: ConfigSnapshot<TSchema>,
 	) => ResolvedCodingProvider | Promise<ResolvedCodingProvider>;
-	readonly resolveMcpServers?: (
-		snapshot: ConfigSnapshot<TSchema>,
-	) => readonly McpServer[] | Promise<readonly McpServer[]>;
 	readonly permissions?: CodingAgentPermissionOptions<TSchema>;
 	readonly tools?: Omit<CodingToolOptions, "cwd">;
 	readonly enabledTools?: ReadonlySet<CodingToolName>;
@@ -125,10 +122,8 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	readonly #runtime: RuntimeState<TSchema>;
 	readonly #stopConfigWatch: () => void;
 	readonly #commands?: CodingCommandRegistry;
-	readonly #mcp?: McpRuntime;
 	readonly #attachments: CodingAttachmentRun;
 	readonly #extensionToolCatalog: ExtensionToolCatalogSlot;
-	readonly #coreToolPermissions: Map<string, ExtensionToolPermissionResolver>;
 
 	constructor(
 		agent: Agent<TAppState>,
@@ -136,20 +131,16 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		runtime: RuntimeState<TSchema>,
 		stopConfigWatch: () => void,
 		commands?: CodingCommandRegistry,
-		mcp?: McpRuntime,
 		attachments: CodingAttachmentRun = new CodingAttachmentRun(),
 		extensionToolCatalog: ExtensionToolCatalogSlot = {},
-		coreToolPermissions: Map<string, ExtensionToolPermissionResolver> = new Map(),
 	) {
 		this.#agent = agent;
 		this.configStore = configStore;
 		this.#runtime = runtime;
 		this.#stopConfigWatch = stopConfigWatch;
 		this.#commands = commands;
-		this.#mcp = mcp;
 		this.#attachments = attachments;
 		this.#extensionToolCatalog = extensionToolCatalog;
-		this.#coreToolPermissions = coreToolPermissions;
 	}
 
 	get configSnapshot(): ConfigSnapshot<TSchema> {
@@ -162,17 +153,6 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 
 	updateAppState(update: (current: TAppState) => TAppState): Promise<void> {
 		return this.#agent.updateAppState(update);
-	}
-
-	get mcpDiagnostics() {
-		return this.#mcp?.diagnostics ?? [];
-	}
-
-	setExtensionToolCatalog(catalog: ToolCatalog): void {
-		this.#extensionToolCatalog.current = catalog;
-		this.#coreToolPermissions.set("SearchTools", () => catalog.permission);
-		this.#agent.setToolResolver((staticTools) => catalog.toolsForRequest(staticTools));
-		this.#agent.addTools([catalog.searchTool]);
 	}
 
 	async invoke(input: AgentInput): Promise<AgentMessage[]> {
@@ -245,7 +225,6 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#runtime.closed = true;
 		this.#agent.abort();
 		this.#stopConfigWatch();
-		void this.#mcp?.close();
 		this.configStore.close();
 	}
 }
@@ -267,7 +246,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		...options.agent,
 		...(options.resolveAgentOptions ? await options.resolveAgentOptions(snapshot, { provider, model }) : {}),
 	};
-	const mcp = await createMcpRuntime(options.resolveMcpServers ? await options.resolveMcpServers(snapshot) : []);
 	const sessionHandle = await openSession(
 		options.sessionStore,
 		options.sessionId,
@@ -372,7 +350,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			toolOptions: options.tools,
 			toolEnvironment,
 			enabledTools: options.enabledTools,
-			mcp,
 			permissionMiddleware,
 			extensionTools: options.extensionTools,
 			extensionToolMiddleware: options.extensionToolMiddleware,
@@ -423,7 +400,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		toolOptions: options.tools,
 		toolEnvironment,
 		enabledTools: options.enabledTools,
-		mcp,
 		attachments: options.executionContext.localFileAccess ? attachments : undefined,
 		permissionMiddleware,
 		extensionTools: options.extensionTools,
@@ -432,10 +408,11 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		extraAroundToolCall: hooks?.aroundToolCall,
 		extraOnEvent: hooks?.onEvent,
 	});
+	const staticTools = capabilities.tools;
 	agent = new Agent<TAppState>({
 		model,
 		provider,
-		tools: capabilities.tools,
+		tools: staticTools,
 		sessionHandle,
 		instructions: resolvedInstructions,
 		temperature: resolvedAgentOptions.temperature,
@@ -444,6 +421,17 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		maxIterations: resolvedAgentOptions.maxIterations,
 		toolExecution: resolvedAgentOptions.toolExecution,
 		compaction: resolvedAgentOptions.compaction,
+		...(extensionToolCatalog.current
+			? { resolveTools: (staticTools) => extensionToolCatalog.current!.toolsForRequest(staticTools) }
+			: {}),
+		...(extensionToolCatalog.current
+			? {
+					prepareContext: (context: AgentContext) => ({
+						...context,
+						tools: extensionToolCatalog.current!.toolsForRequest(staticTools),
+					}),
+				}
+			: {}),
 		effectBoundary: resolvedAgentOptions.effectBoundary,
 		hooks: {
 			...hooks,
@@ -462,22 +450,9 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		runtime,
 		stopConfigWatch,
 		options.commands,
-		mcp,
 		attachments,
 		extensionToolCatalog,
-		coreToolPermissions,
 	);
-}
-
-async function createMcpRuntime(servers: readonly McpServer[]): Promise<McpRuntime | undefined> {
-	if (servers.length === 0) return undefined;
-	const result = await connectMcpServers({ namespace: "settings", servers });
-	if (result.isOk()) return result.value;
-	return {
-		tools: [],
-		diagnostics: [{ serverName: result.error.serverName, message: result.error.message }],
-		close: async () => {},
-	};
 }
 
 function subagentActivity(event: AgentEvent) {

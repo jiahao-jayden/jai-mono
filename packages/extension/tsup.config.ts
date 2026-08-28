@@ -6,6 +6,7 @@ export default defineConfig({
 		"agent-plugins": "src/agent-plugins/index.ts",
 		skills: "src/skills/index.ts",
 		search: "src/search/index.ts",
+		mcp: "src/mcp/index.ts",
 	},
 	format: ["esm"],
 	platform: "node",

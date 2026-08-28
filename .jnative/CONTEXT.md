@@ -27,3 +27,11 @@ _Avoid_: shell command, Agent Plugin command
 **Skill Command**:
 通过 `/skill:<skill-name>` 命名空间调用的 Skill prompt 入口；它与普通 `/name` Command 分开，并与模型通过 `Skill` tool 按需加载的能力共存。
 _Avoid_: Extension command, ordinary command
+
+**Layered Extension Configuration**:
+同一 Extension 的 user 与 trusted-project 原始配置分别校验后，由该 Extension 自己合并出的 resolved configuration；core 只提供 layer 读取、校验与生命周期，不定义领域合并规则。
+_Avoid_: global configuration, generic deep merge
+
+**Official MCP Extension**:
+`@jai/extension/mcp` 提供的 MCP capability provider，拥有 per-session transport、client、重连、tool projection 与 server 配置解析；Coding Agent 仅通过通用动态 catalog 装配其工具。
+_Avoid_: Coding Agent MCP runtime, host-managed MCP client, Agent Plugin discovery

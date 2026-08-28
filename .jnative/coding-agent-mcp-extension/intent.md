@@ -10,11 +10,11 @@
 
 ## 期望结果
 
-提供官方 MCP Extension（从 `@jai/extension/mcp` 导出）：它在顶层声明自身 MCP configuration schema，并在每个 Coding Agent session 的 `activate()` 中从 extension-owned configuration 连接 server，在 catalog discovery 中公开 MCP tool descriptor，在 `deactivate()` 中关闭连接。Host 只选择是否装配该 Extension，并提供通用的 configuration、approval 与 diagnostic adapter；它不解析 MCP server、持有 client 或重实现 transport。
+提供官方 MCP Extension（从 `@jai/extension/mcp` 导出）：它在顶层声明自身 MCP configuration schema，并在每个 Coding Agent session 的 `activate()` 中从 extension-owned configuration 连接 server，在 catalog discovery 中公开 MCP tool descriptor，在 `deactivate()` 中关闭连接。配置由 user 与 trusted-project 两个未补默认值的 layer 组成：MCP Extension 自己合并，project 的同名 server 完整替换 user server；本次只读，不提供 configuration 写回。Host 只选择是否装配该 Extension，并提供通用的 configuration、approval 与 diagnostic adapter；它不解析 MCP server、持有 client 或重实现 transport。
 
 Coding Agent core 仅消费已经投影的 catalog tool，并继续拥有通用的 schema 校验、权限 middleware、Tool Catalog 搜索激活和 transcript presentation。MCP tool 的名称、描述、参数投影和执行转发由 MCP Extension 提供。
 
-在 session 存续期间，MCP Extension 会以受控的 lifecycle 路径处理连接断开后的重连，以及 MCP `notifications/tools/list_changed` 后的重新发现。Coding Agent 的 catalog runtime 必须能原子替换该 Extension 的 descriptor snapshot：已经消失的工具不再可搜索或执行，仍存在的已激活工具保持正确路由，新工具默认 inactive。Extension 不能借此获得命令式注册 API 或直接篡改 core 的 active set、schema 校验和权限路由。
+在 session 存续期间，MCP Extension 会以受控的 lifecycle 路径处理连接断开后的持续指数退避重连，以及 MCP `notifications/tools/list_changed` 后的重新发现。Coding Agent 的 catalog runtime 必须能原子替换该 Extension 的 descriptor snapshot：已经消失的工具不再可搜索或执行，仍存在的已激活工具保持正确路由，新工具默认 inactive。刷新失败保留最后一个有效快照并投影 controlled diagnostic；成功重连后才替换。Extension 不能借此获得命令式注册 API 或直接篡改 core 的 active set、schema 校验和权限路由。
 
 删除 `@jai/coding-agent` 中的 MCP client、runtime option、直接工具注入、诊断 getter 与关闭逻辑；不保留 `resolveMcpServers` 或兼容 fallback。现有 MCP transport、JSON Schema 投影、受限 HTTP redirect/header 处理、stdio/HTTP/SSE 行为和受控 diagnostic 语义随实现迁至 Extension，并由同等覆盖的测试验证。
 
@@ -52,4 +52,5 @@ Durable fact 与 owner:
 - public SDK 当前总是向该旧路径传空列表，且仓库没有其他 `resolveMcpServers` 或 `connectMcpServers` 调用方；迁移可删除旧 seam，不需要兼容层（`packages/coding-agent/src/sdk/create-coding-agent.ts`）。
 - ACP v2 已拒绝 session request 自带 MCP server，Host 是 Extension 的装配 owner（`app/server/src/protocol/acp-v2/agent.ts`）。
 - 当前 `ToolCatalog` 只接受创建时的 immutable descriptor list，`CodingExtensionToolCatalog.discover()` 也只在 activation 后执行一次；实现 MCP 重新发现必须新增显式刷新 protocol，不能让 Extension 私下修改 catalog（`packages/coding-agent/src/runtime/tool-catalog.ts`、`packages/coding-agent/src/sdk/extensions.ts`）。
+- 当前 Extension configuration 只声明单个 `user` 或 `project` scope；本特性需要让 core 分别读取两个未补默认值的 layer，同时由 MCP Extension 完成 domain merge，不能加入通用 deep merge 或默认写回目标（`packages/coding-agent/src/sdk/extensions/contract.ts`、`packages/coding-agent/src/sdk/extensions/host-adapters.ts`）。
 - Pi 的参考实现确认“Extension owns capability”这一事实归属，并验证重连与工具列表刷新应由 provider 触发；OAuth 和配置热更新仍超出本特性范围，详见[调研](../research/pi-mcp-extension.md)。

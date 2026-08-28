@@ -69,7 +69,7 @@ function defineExtension<const T extends CodingAgentExtension>(definition: T): T
 
 `defineExtension()` 只负责类型推导与定义校验，返回传入的同一个定义。它不启动资源、不注册全局能力，也没有隐式运行时。
 
-`CodingExtensionContext` 是 activate 期间可用的受限 host 数据：`sessionId`、`cwd`、`permissionMode`、configuration、session state 和 extension-owned approval。activation 成功后，core 将 instance 与 context 绑定为 `CodingExtensionRuntime`，交给工具、catalog 和 hook 调用：
+`CodingExtensionContext` 是 activate 期间可用的受限 host 数据：`sessionId`、`cwd`、Host-resolved workspace/trust、`permissionMode`、configuration、session state 和 extension-owned approval。activation 成功后，core 将 instance 与 context 绑定为 `CodingExtensionRuntime`，交给工具、catalog 和 hook 调用：
 
 ```ts
 interface CodingExtensionRuntime<TConfig, TState, TInstance>
@@ -121,7 +121,9 @@ Connector 是第一类静态声明的例子。它当前对模型暴露的不是�
 
 目标实现把这五个工具直接放入 `tools`。它们的 `execute(runtime, call)` 从 runtime 取 session ID、configuration 和 approval；不需要 `activate()`。Connector 的外部 Action 继续遵循 `search -> guide -> execute(actionId, input)`，不迁移为大量 model tools。
 
-Agent Plugins MCP 是不同场景：MCP 的 `tools/list` 只有连接 server 后才可取得。目前 adapter 把所有条目变成普通 `AgentTool`，再由 runtime 全量加入每次模型请求。这是 schema/context 爆炸的来源。它应该改为静态声明一个 `CodingExtensionToolCatalog`：
+官方 MCP 由 `@jai/extension/mcp` 的 `createMcpExtension()` 提供。Host 只把它放进 `extensions`，并通过现有 Extension configuration adapter 提供 user/trusted-project 层；同名 project server 完整替换 user server，不做 server entry deep merge。stdio、streamable HTTP、SSE transport、redirect/header 限制、client close、tool projection 与 reconnect 都属于这个 Extension 的 session instance，`@jai/coding-agent` 不再携带 MCP transport 或 runtime option。
+
+MCP 的 `tools/list` 只有连接 server 后才可取得，因此官方 Extension 静态声明一个 `CodingExtensionToolCatalog`：
 
 ```ts
 interface CodingExtensionToolCatalog<TConfig, TState, TInstance> {
@@ -138,7 +140,11 @@ interface CodingToolCatalogDiscovery<TConfig, TState, TInstance> {
 }
 ```
 
-catalog adapter 可将 MCP client 放进 per-session instance，`discover()` 用它取得 descriptor，工具执行再用同一 client 调用 MCP。单个 MCP server 的可恢复失败可以产出受控 diagnostic 并只缺少该 server 的条目；整个 adapter 无法建立时才返回 `Err`，使 agent 创建失败。
+catalog adapter 将 MCP client 放进 per-session instance，`discover()` 用它取得 descriptor，工具执行再用同一 client 调用 MCP。单个 server 初次连接失败只产生受控 diagnostic 并缺少该 server 的条目；已有有效 snapshot 的刷新失败则保留 core 中的 last-known-good snapshot。断线会按有上限的指数退避持续重连，连接成功和 `notifications/tools/list_changed` 都只触发 catalog invalidation。
+
+catalog 的工具集会变化时，可选地声明无 payload 的 `subscribe(runtime, invalidate)`。Extension 只能调用 `invalidate()`，不能传入、注册、删除或替换工具；core 会合并连续通知、串行重新调用所有 catalog 的 `discover()`，完成全局名称冲突校验后，才原子替换下一次请求可见的 descriptor、permission 与 presentation snapshot。一次刷新失败只投影 diagnostic，并保留 last-known-good snapshot。关闭时 core 先停止所有 catalog subscription、使刷新失效并 abort discovery signal，随后才逆序 `deactivate()` Extension instance。
+
+Agent Plugins 的 `mcp.json` 仍是独立的发现与信任协议：它不装载官方 Extension，也不获得 Tool Catalog 访问权；仅复用 MCP 的安全 transcript presentation。
 
 ## ToolCatalog
 
@@ -159,6 +165,8 @@ SearchTools({ query: "manage GitHub pull request comments", limit: 8 })
 `SearchTools` 激活真实、带独立 TypeBox schema 的工具，而不是返回泛型的 `execute(name, args)`。后者会丢失参数校验、标准 permission path、`beforeToolCall` middleware 和工具 UI。激活只在当前并行 tool batch 结束后生效，绝不改变正在执行的 batch；每次模型请求都绑定一个 tool snapshot。
 
 每次新搜索替换 catalog active set，并有硬上限，避免长 session 再次积累到全量 schema。resume 默认不恢复 active set，只保留 `SearchTools`；模型按需重新搜索。以后可以在 `ToolCatalog` 内部采用 provider-native deferred loading，但不能因此改变 Extension interface。
+
+刷新替换会收敛 active set：仍存在的名称保持 active，已消失的名称移除，新增工具默认 inactive。已经发给模型的 request snapshot、正在执行的 batch 和 subagent 已创建的 scoped catalog 都不会被原地改写。
 
 ## 生命周期 hooks
 
@@ -182,6 +190,12 @@ SearchTools({ query: "manage GitHub pull request comments", limit: 8 })
 ## Extension session state
 
 configuration 是 user/project 级设置；session state 是一个 extension 在特定 session 中的可恢复工作状态。二者不能互相代替。
+
+### Layered Extension configuration
+
+多数 Extension 只声明一个 `user` 或 `project` configuration scope。需要同时读取两个 scope 的 Extension 必须声明 `layered` configuration：core 分别读取并校验**未补默认值**的 user layer 和 trusted-project layer，再把它们交给 Extension-own resolver。resolver 返回的 resolved value 仍要按完整 schema 校验。
+
+core 不做通用 deep merge，也不根据 `cwd` 推断 project capability；Host-resolved workspace 不可信时 project layer 不参与。这样 server map、覆盖和冲突规则留在提供能力的 Extension，而不是变成所有 Extension 被迫接受的平台语义。layered configuration 在当前 contract 是只读，`update()` 明确 fail closed，直到一个产品用例能定义写回 scope。
 
 ```ts
 interface CodingExtensionSessionState<TState extends JsonObject> {
@@ -220,7 +234,7 @@ interface PersistedCodingSessionState<TAppState extends JsonObject> {
 验证顶层定义、固定 capability 与 schema
   -> 创建 context，读取 configuration 和 session state
   -> 按声明顺序 activate extension instance
-  -> discover catalog，并注册为 inactive
+  -> discover catalog、验证并注册为 inactive，再启动失效 subscription
   -> 按声明顺序调用 sessionStart
   -> agent 可用
 

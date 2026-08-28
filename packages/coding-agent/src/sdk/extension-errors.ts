@@ -36,6 +36,9 @@ export class CodingExtensionContractViolation extends TaggedError(
 export class CodingExtensionConfigurationUnavailable extends TaggedError(
 	"coding_extension.configuration_unavailable",
 )<ExtensionErrorInit> {}
+export class CodingExtensionConfigurationResolutionFailed extends TaggedError(
+	"coding_extension.configuration_resolution_failed",
+)<ExtensionErrorInit> {}
 export class CodingExtensionSessionStateUnavailable extends TaggedError(
 	"coding_extension.session_state_unavailable",
 )<ExtensionErrorInit> {}
@@ -60,6 +63,7 @@ export type CodingExtensionError =
 	| CodingExtensionCapabilityConflict
 	| CodingExtensionContractViolation
 	| CodingExtensionConfigurationUnavailable
+	| CodingExtensionConfigurationResolutionFailed
 	| CodingExtensionSessionStateUnavailable
 	| CodingExtensionPersistentApprovalUnavailable
 	| CodingExtensionApprovalAborted
