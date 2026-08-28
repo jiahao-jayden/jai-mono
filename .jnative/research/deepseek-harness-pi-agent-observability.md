@@ -1,122 +1,113 @@
 # DeepSeek Harness 与 Pi Agent 如何做 Agent 观测和日志收集
 
-核验日期：**2026-08-28**。DeepSeek Harness 钉住官方仓库 `deepseek-ai/deepseek-harness` commit [`cd5ef8148158c3a752a658978873241fdf8e2bbc`](https://github.com/deepseek-ai/deepseek-harness/tree/cd5ef8148158c3a752a658978873241fdf8e2bbc)、`@deepseek-ai/dsh@0.1.2-alpha.1`；Pi 钉住 `badlogic/pi-mono` commit [`56700d42ed65a94a80af7376adb19a9298065164`](https://github.com/badlogic/pi-mono/tree/56700d42ed65a94a80af7376adb19a9298065164)、相关包版本 `0.84.3`。两者都在快速迭代，固定版本是为了避免把后续实现混入当前结论。
+核验日期：**2026-08-28**。
 
-本文中的 DeepSeek Harness 指官方 [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness)，不是同名的第三方 Python 协议适配项目。官方仓库明确称其为 DeepSeek AI 开发的 open-source agent harness，并标注为 developer preview（[README](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/README.md#L1-L15)）。
+- DeepSeek Harness：`deepseek-ai/deepseek-harness` commit [`cd5ef8148158c3a752a658978873241fdf8e2bbc`](https://github.com/deepseek-ai/deepseek-harness/tree/cd5ef8148158c3a752a658978873241fdf8e2bbc)，tag `dsh-v0.1.2-alpha.1`，`@deepseek-ai/dsh`、`@deepseek-ai/dsh-session-telemetry-otel`、`@deepseek-ai/dsh-session-log-deepseek` 均为 `0.1.2-alpha.1`（[manifests](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/apps/cli/package.json#L1-L15)）。
+- Pi：`badlogic/pi-mono` commit [`56700d42ed65a94a80af7376adb19a9298065164`](https://github.com/badlogic/pi-mono/tree/56700d42ed65a94a80af7376adb19a9298065164)，本文涉及的 `@earendil-works/pi-ai`、`pi-agent-core`、`pi-coding-agent`、`pi-telemetry` 与 `pi-session-backend-sqlite-node` 均为 `0.84.3`（[package manifests](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/package.json#L1-L5)）。
+
+固定完整 SHA 与版本，是为了让所有结论可重复核验；本文只使用这两个固定版本的官方源码、README、manifest 与发行装配，不推断私有 collector、服务端留存或用户自装 Extension 的行为。
 
 ## 结论
 
-1. **两者都没有把传统应用日志当成 Agent 的事实源。** DeepSeek 的主干是 append-only `SessionEvent` ledger，turn、step、请求语义、逐块响应、工具调用和结果都从这里派生；Pi 的主干是 live 结构化事件加 append-only session JSONL，前者服务 UI/宿主，后者保存可恢复的对话事实（[DeepSeek 事件定义](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/core/session/src/types.ts#L215-L301)，[Pi 事件定义](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/agent/src/types.ts#L422-L444)，[Pi session 格式](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/docs/session-format.md#L1-L35)）。
+1. **两套实现都把结构化 Agent 事实与传统 diagnostic log 分开，但事实模型不同。** DeepSeek 以带连续 `seq`/`time` 的 append-only `SessionEvent` 为主干，持久化、surface、UI、查询与遥测都从它投影；Pi 当前 CLI 则把 live `AgentEvent → AgentSessionEvent` 与 durable `SessionManager v3 JSONL` 分层，只有最终消息等对话事实落盘（[DeepSeek event envelope](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/core/session/src/types.ts#L327-L417)，[Pi event union](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/agent/src/types.ts#L422-L444)，[Pi 持久化接线](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/agent-session.ts#L643-L724)）。
 
-2. **DeepSeek 的 durable ledger 比 Pi 的 session 更接近完整运行轨迹。** DeepSeek 持久化 turn/step 边界、canonical request header、每个 provider-neutral response chunk 及最终消息；Pi 的 streaming/tool update 是瞬态事件，session 主要保存最终 user/assistant/toolResult、模型变化、压缩和分支事实。因此 DeepSeek 能从本地 ledger 计算 TTFT 和逐 step 时间线，Pi 默认只能从 live stream 实时采集，事后无法从 session 恢复所有 chunk timing（[DeepSeek 响应落账](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/core/agent-loop/src/agent.ts#L340-L425)，[Pi wire projection](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/modes/json-event.ts#L10-L60)）。
+2. **DeepSeek 的本地 ledger 更接近可回放执行轨迹，Pi v3 更接近可恢复对话树。** DeepSeek 保存 turn/step、请求语义、每条 provider-neutral chunk、最终消息与工具事实；Pi 的 message/tool update 只 live，v3 JSONL 保存最终 message、模型/thinking 变化、compaction、branch summary 与 Extension entries。因此 DeepSeek 可从本地 ledger 投影逐 step timing，Pi 事后不能从 v3 session 恢复 token/chunk 到达时序（[DeepSeek response append](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/core/agent-loop/src/agent.ts#L339-L425)，[Pi v3 entries](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/session-manager.ts#L30-L156)）。
 
-3. **两者记录的是模型调用的语义表示，不是 HTTP wire dump。** DeepSeek 的 `request/header` 保存 provider、model、system prompt、tool schemas 和调用配置，消息历史由 ledger 推导；Pi session 保存最终 assistant 内容、provider/model、usage/cost、stop reason 和错误文本，并允许 Extension 在请求前观察 provider payload。两者都不默认保存 Authorization header、原始 response body/SSE 字节或 DNS/TLS/socket timing（[DeepSeek 请求构造](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/core/agent-loop/src/agent.ts#L438-L529)，[Pi provider hooks](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/extensions/types.ts#L687-L714)）。
+3. **两者默认记录模型调用的语义表示，而不是 HTTP wire dump。** 两者都不默认保存 Authorization header、原始 request bytes、SSE/WebSocket frame、DNS/TLS/socket timing；Pi Extension 可实时看/改 provider payload 与 request headers，也可看 response status/headers，但默认不持久化这些 hook 数据（[DeepSeek request record](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/core/agent-loop/src/agent.ts#L438-L541)，[Pi hooks](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/extensions/types.ts#L687-L714)，[Pi hook 接线](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/sdk.ts#L304-L365)）。
 
-4. **工具调用在两者中都是一等可观测对象，但 shell 输出都被降成模型可见文本。** 两者都持久化 tool name、call id、arguments、result 和错误状态。DeepSeek 在合并文本里给 stderr 加 `[stderr]` 标记；Pi 的 stdout/stderr 共用同一 accumulator，默认连通道身份也丢失。两者都会截断长输出，把全文放到易失的临时文件并在结果中留下路径（[DeepSeek shell render](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/shell/tool-bash/src/render.ts#L11-L62)，[Pi bash 合并](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/tools/bash.ts#L391-L443)）。
+4. **DeepSeek 已运行 OTel Logs exporter，Pi 只有已定义但未接入生产路径的 span contract。** DeepSeek 的管线是 `LoggerProvider → BatchLogRecordProcessor → OTLPLogExporter(HTTP)`，没有 Agent traces/metrics；Pi 虽定义 `pi.ai.request`、`pi.harness.*`、`pi.session.write`，但 Coding Agent 未注入 telemetry context，`AgentHarness` runtime 的主要动作仍返回 `HarnessNotImplemented`，也没有 first-party exporter（[DeepSeek pipeline](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-telemetry-otel/src/index.ts#L197-L231)，[Pi telemetry 定位](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/telemetry/README.md#L1-L13)，[Pi Harness scaffold](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/agent/src/harness/agent-harness.ts#L347-L420)）。
 
-5. **DeepSeek 已有可工作的远端导出，但只是 OTel Logs；Pi 有更完整的 span 词汇，却尚未接线。** DeepSeek 用 `LoggerProvider → BatchLogRecordProcessor → OTLP/HTTP exporter` 把 session records 映射为 log records，没有 agent traces 或 metrics。Pi 定义了 request/run/turn/tool/session-write 等 telemetry span schema，但当前 Agent Harness 仍是 scaffold，Coding Agent 没有注入 telemetry context，也没有 first-party exporter（[DeepSeek OTel pipeline](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-telemetry-otel/src/index.ts#L197-L231)，[Pi telemetry 定位](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/telemetry/README.md#L1-L13)，[Pi 未接线 Harness](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/agent/src/harness/agent-harness.ts#L305-L420)）。
+5. **DeepSeek OTel 并非逐 chunk 全量镜像，另有默认关闭的 `dsh_session_log` 通道。** OTel 对一般 event 发送完整 `event.data` copy，但 `assistant/chunk` 每个 `(turn, step)` 只发送第一条，完整 assembled 内容由最终 `assistant/message` 发送；`dsh_session_log` 则可把连续完整 canonical event envelope suffix 随官方 DeepSeek 模型请求发送，并用 durable acceptance watermark 推进，但发行装配的 `enabled` 默认是 `false`（[first-chunk projection](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-telemetry/src/coordinator.ts#L179-L202)，[`dsh_session_log` payload/accept](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-log-deepseek/src/index.ts#L64-L99)，[默认关闭](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-log-deepseek/src/index.ts#L21-L30)）。
 
-6. **DeepSeek 的默认分享边界需要特别警惕，Pi 当前则没有上传 Agent 运行内容。** DeepSeek 的发行组合默认是 `FEEDBACK_ONLY`：用户执行 `/feedback` 后，session 截至该事件的前缀被发往 DeepSeek OTLP Logs endpoint；`FULL` 才实时上传，`DISABLED` 或 `DSH_TELEMETRY_DISABLED` 完全关闭。被发送的 body 是完整 `event.data` deep copy，而官方 seam 默认没有内建脱敏规则。Pi 的 install telemetry 只发版本 ping，不含 prompt、tool 或 trace 数据；其 Agent telemetry 没有默认 exporter（[DeepSeek composition](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/bundle/base/cordis.patch.yml#L168-L203)，[DeepSeek redaction seam](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-telemetry/src/index.ts#L24-L44)，[Pi install telemetry](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L1270-L1306)）。
+6. **Pi 必须区分“当前 CLI v3”与“已实现但未接入的 v4 JSONL/SQLite”。** 当前 Coding Agent composition root 仍创建 `AgentSession + SessionManager`，默认写 tree-shaped v3 JSONL；仓库里的 v4 mutation JSONL adapter 和 SQLite repository/search backend 都是真实现，但 CLI 未装配，且可执行 Harness runtime 尚未完成，不能写成 Pi 已迁移到 v4 或 SQLite（[CLI composition](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/sdk.ts#L374-L402)，[v4 codec](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/agent/src/harness/session/jsonl/codec.ts#L203-L239)，[SQLite backend](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/session-backends/sqlite-node/README.md#L1-L22)）。
 
-7. **两者都把本地会话记录作为恢复与审计入口，而不是把远端观测平台当唯一入口。** DeepSeek 提供 Web Trajectory、Session Query API、ZIP export 和 OTLP collector；Pi 提供 SDK subscribe、JSON/RPC 事件流、session JSONL、Extension hooks 与 `/debug` TUI 快照。DeepSeek 的可视化更完整，Pi 的嵌入和扩展面更直接（[DeepSeek Trajectory](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/client/ui-trajectory/README.md#L10-L36)，[Pi JSON mode](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/docs/json.md#L1-L98)，[Pi Extensions](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/docs/extensions.md#L3-L29)）。
+7. **“Pi 不上传 Agent telemetry”成立，但“Pi 默认不联网”不成立。** 当前没有 Agent span exporter；interactive 启动仍会按缓存策略刷新 `pi.dev` 模型目录、检查版本与 package 更新，fresh install/升级时默认发送只含版本与 User-Agent 的 install ping，模型调用发往所选 provider。`PI_OFFLINE`/`--offline` 可关闭启动网络动作和 install ping；显式 `/share` 会上传完整 session 导出并加入 system prompt 与 tool schemas（[启动网络](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L1081-L1117)，[install ping](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L1260-L1306)，[/share 内容](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/modes/interactive/session-share.ts#L24-L57)）。
 
-## 逐项对比
+8. **错误与 shell 不能用“都只留 message、全文都在一个临时文件”概括。** DeepSeek shell 先按 stdout/stderr 分流捕获并各自允许 64 KiB 内存、最多 64 MiB spill，render 后还可能经过 50 KB 通用 tool-result spill；Pi 的两条 pipe 默认进入同一字节流。Pi 普通 run/tool error 多压成 message，`cause` 默认不持久化，但部分 provider 路径会把含 `stack` 的 `AssistantMessage.diagnostics` 随最终消息保存（[DeepSeek shell capture](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/shell/bash-local/src/index.ts#L173-L197)，[DeepSeek generic spill](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/spill/spill-policy/src/index.ts#L1-L35)，[Pi pipe merge](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/tools/bash.ts#L83-L128)，[Pi diagnostics](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/ai/src/utils/diagnostics.ts#L1-L37)）。
 
-| 维度 | DeepSeek Harness | Pi Agent |
+## 两套数据链
+
+### DeepSeek Harness
+
+```text
+Agent loop / provider-normalized stream
+  → Session.append(SessionEvent)
+      ├─ surface → 下一次模型请求 / Chat
+      ├─ persistence write-behind → 默认 JSONL + Zstd
+      ├─ Session Query / Web Trajectory / ZIP export
+      └─ telemetry projection
+          ├─ FULL：实时 handoff
+          └─ FEEDBACK_ONLY：反馈时释放当前生命周期前缀
+              → OTel Logs / OTLP HTTP collector
+
+可选且默认关闭：canonical suffix → dsh_session_log → DeepSeek 模型请求扩展
+```
+
+默认 durable 文件位于 `$DSH_HOME/sessions` 下的 session 目录，格式为 `session.jsonl.zstd`；SQLite persistence 是可选替代而非 shipped 默认（[base 装配](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/bundle/base/cordis.patch.yml#L110-L133)，[JSONL layout](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-persistence-jsonl/README.md#L43-L71)）。
+
+OTel backend 类默认 `DISABLED`，发行 base 默认 `FEEDBACK_ONLY`，默认 endpoint 是 `https://harness-telemetry.deepseeksvc.com/v1/logs`；任意非空 `DSH_TELEMETRY_DISABLED` 都会 hard opt-out。发行装配没有默认 redaction 规则，可能发送 prompt、reasoning、tool 参数/结果、system prompt、tool schema、cwd 与反馈文字（[模式与 endpoint](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/bundle/base/cordis.patch.yml#L168-L203)，[hard opt-out](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/apps/cli/src/profile-boot.ts#L89-L103)，[redaction seam](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-telemetry/src/index.ts#L24-L44)）。
+
+OTel cursor 只表示 handed off/enqueued，没有 durable outbox、collector ack 或跨进程补传，属于 best effort、偏 at-most-once。可选 `dsh_session_log` 则在 HTTP 2xx 后追加 acceptance watermark；失败会重发未确认尾部，2xx 后 watermark 落盘前崩溃可能重复，方向上接近 at-least-once（[OTel cursor](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-telemetry/src/coordinator.ts#L32-L43)，[`dsh_session_log` delivery](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-log-deepseek/README.md#L34-L46)）。
+
+### Pi Agent / Coding Agent
+
+```text
+Provider stream → Core AgentEvent
+  ├─ in-memory state / awaited subscribers
+  └─ Coding AgentSession
+      ├─ TUI / SDK / JSON / RPC / Extension（live）
+      └─ message_end → SessionManager → v3 tree JSONL
+
+v4 JSONL repository + SQLite backend：已实现的 library 能力，CLI 未接入
+pi.* telemetry schemas：已定义，production instrumentation/exporter 未接入
+```
+
+当前 v3 默认路径为 `~/.pi/agent/sessions/--<cwd encoded>--/<timestamp>_<uuid>.jsonl`。新 session 在第一条 assistant message 前可以只在内存，首次 assistant 到达才创建文件并写入前缀；之后同步 append。loader 会跳过中间 malformed line，因此它不是严格 WAL（[format/path](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/docs/session-format.md#L1-L27)，[首次 flush](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/session-manager.ts#L980-L1050)，[loader](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/session-manager.ts#L503-L556)）。
+
+`AssistantMessage.diagnostics` 是错误边界的例外：它可含 `{name,message,stack,code}`，部分 provider recovery/failure 路径会追加该值，最终 assistant message 又被原样持久化。普通 tool throw 仍只形成文本结果，不保留原始 thrown object/cause（[diagnostic shape](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/ai/src/types.ts#L427-L447)，[Codex failure path](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/ai/src/api/openai-codex-responses.ts#L345-L354)，[tool error projection](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/agent/src/agent-loop.ts#L711-L786)）。
+
+## 逐维对比
+
+| 维度 | DeepSeek Harness | Pi Agent / Coding Agent |
 |---|---|---|
-| Canonical 事实源 | 单一 `SessionEvent` ledger；运行轨迹、历史、UI、持久化、遥测都消费它 | live `AgentEvent` / `AgentSessionEvent` 与 durable session entries 分层 |
-| 生命周期 | `turn/start/end`、`step/start/end` 持久化 | agent/turn/message/tool events 默认只 live；最终消息持久化 |
-| 模型输入 | canonical request header + ledger message surface，可语义重建 | session messages 可重建上下文；Extension 可看最终 provider payload |
-| 模型输出 | 每个 provider-neutral chunk + 最终 message 都进 ledger | live delta + 最终 message；session 只保留最终 message |
-| Usage / cost | token usage 进入最终 assistant message；未形成 OTel metrics | token、cache、cost 进入 assistant message；未形成默认 metrics |
-| 工具 | durable `tool/call` / `tool/result`，带 source seq 关系 | live start/update/end；durable assistant toolCall + toolResult |
-| stdout / stderr | 合并文本，stderr 带标记；超限 spill 临时文件 | 完全合并；超限完整输出存临时文件 |
-| 错误 | tool result 保存有限 `{name, code}`；部分 `agent/error` 只 live | 模型错误进 assistant message；tool throw 压成文本；stack/cause 不持久化 |
-| 默认本地落点 | `$DSH_HOME/sessions/.../session.jsonl.zstd` | `~/.pi/agent/sessions/--<cwd>--/<timestamp>_<uuid>.jsonl` |
-| 替代存储 | 可显式使用 SQLite；官方 bundle 不默认启用 | 无第二种官方 durable adapter |
-| 远端导出 | 可工作的 OTLP/HTTP Logs；无 traces/metrics | typed telemetry contract + in-memory adapter；Coding Agent 未接线，无 exporter |
-| 默认远端行为 | 发行组合 `FEEDBACK_ONLY`；反馈时上传 session 前缀 | 只有可关闭的 install/version ping，不上传 Agent session |
-| 脱敏 | 有 redaction waterfall seam，但默认零规则 | telemetry schema 要求低基数、排除内容；当前没有运行导出 |
-| 送达保证 | best effort，无 durable outbox；handoff 不等于 collector ack | 尚无生产导出链 |
-| 人工查看 | Web Trajectory、query、ZIP export | session 文件、JSON/RPC、SDK、Extension、`/debug` 快照 |
+| 当前 canonical 主干 | 单一 append-only `SessionEvent` ledger；surface、durability、UI、query、telemetry 均由其投影（[契约](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/core/session/src/types.ts#L215-L301)） | live `AgentEvent`/`AgentSessionEvent` 与 durable v3 entries 分层（[接线](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/agent-session.ts#L643-L724)） |
+| 模型流 | 每条 normalized chunk 本地 durable；最终 message durable | delta 只 live，最终 message durable（[stream projection](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/agent/src/agent-loop.ts#L312-L369)） |
+| 默认 durable store | JSONL + Zstd；SQLite 可选 | CLI v3 tree JSONL；v4 JSONL/SQLite 已实现但未接入 |
+| 工具事实 | `tool/call` 与 `tool/result` durable | start/update/end live；最终 toolCall/toolResult message durable |
+| shell 输出 | executor 分开捕获 stdout/stderr，render 后失去交错；per-stream spill + 通用 result spill 两层 | stdout/stderr 进入同一字节流；截断全文写临时 `.log`（[Pi executor](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/bash-executor.ts#L29-L40)） |
+| 错误 | durable failure 为白名单字段；ops `agent-error` 仅 name/message，无 stack/cause（[projection](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-telemetry/src/coordinator.ts#L228-L247)） | 普通 run/tool error 多仅 message；optional assistant diagnostics 可能 durable stack，cause 默认不 durable |
+| UI / 本地消费 | Web Chat、Trajectory、Session Query、ZIP export（[Trajectory](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/client/ui-trajectory/README.md#L10-L36)） | TUI、SDK subscribe、JSON/RPC、Extension、显式 `/debug` 本地快照（[JSON projection](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/modes/json-event.ts#L1-L61)） |
+| Agent 远端 exporter | OTel Logs 已接线；默认反馈触发；无 Agent traces/metrics | span schema 已发布；production instrumentation/exporter 未接线 |
+| 其他网络 | 模型 API；默认反馈 OTel；可选且默认关闭 `dsh_session_log` | 模型 provider；启动时目录/版本/package 检查；条件性 install ping；显式 `/share` |
+| 远端可靠性 | OTel best effort；`dsh_session_log` 接近 at-least-once | 无 Agent span 远端链可评价 |
+| 默认内容脱敏 | OTel 有 seam，但发行组合零规则 | 无 Agent exporter；这不约束 provider、share 或 Extension |
 
-## DeepSeek Harness 的采集链
+## 能回答什么，不能回答什么
 
-```text
-Agent loop
-  ├─ append SessionEvent
-  │    ├─ in-memory session
-  │    ├─ JSONL + Zstd persistence（默认）
-  │    ├─ Web Trajectory / Session Query / ZIP export
-  │    └─ session telemetry projection
-  │          └─ OTLP/HTTP Logs（按 mode）
-  └─ emit agent/* live events
-       └─ runtime coordination；大部分不 durable
-```
+| 问题 | DeepSeek 默认本地 | Pi CLI v3 默认本地 |
+|---|---:|---:|
+| 最终 prompt/completion/tool call/result | 是 | 是 |
+| provider/model/usage/终止状态 | 是 | 是 |
+| turn/step 与逐 chunk timing | 是，event 使用 epoch-ms；没有单调时钟 | 否，相关 update 只 live |
+| HTTP request/response bytes、SSE frame | 否 | 否 |
+| response status/headers | 默认不 durable | Extension live 可见，默认不 durable |
+| stdout/stderr 独立内容与严格交错 | 独立内容可到 render 前，严格交错不保留 | 否 |
+| 完整 shell 输出长期可审计 | 否，spill 在临时目录且会清理 | 否，全文仅临时 `.log` |
+| CPU/RSS/GC/DNS/TLS metrics | 否 | 否 |
+| exception stack/cause | 默认 durable 记录无 stack/cause | provider diagnostics 有时含 stack；cause 默认无 |
 
-`Session.append()` 会 snapshot/freeze payload、校验 lossless JSON，再通知持久化和其他消费者；`session/flush` 是 durability barrier（[Session 设计](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/core/session/README.md#L28-L58)）。默认每个 session 写 `session.jsonl.zstd`，连续 chunk 可被物理打包；也可关闭压缩得到普通 NDJSON（[JSONL backend](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-persistence-jsonl/README.md#L43-L103)）。
+## 核验边界与未确认项
 
-OTel 导出不是 durable outbox。内存 cursor 只表示 record 已交给 backend，不能证明 collector 收到；process crash、queue overflow 或 collector 不可达都可能丢数据，resume 不会补传（[可靠性限制](https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-telemetry/README.md#L108-L117)）。
-
-## Pi Agent 的采集链
-
-```text
-Core Agent
-  ├─ AgentEvent stream
-  │    ├─ Agent.subscribe()
-  │    ├─ JSON mode / RPC stdout
-  │    └─ Coding Agent live UI
-  └─ AgentSession projection
-       ├─ message_end → append session entry
-       ├─ retry / compaction / queue / bash live events
-       └─ version 3 tree-shaped JSONL
-
-Telemetry contract / span schemas
-  └─ 当前未接入 Coding Agent 运行链
-```
-
-Core listener 是 awaited，慢 observer 会给 run completion 施加背压；`AgentSession` listener 则同步调用，不承诺 durable delivery 或 replay（[Core subscribe](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/agent/src/agent.ts#L240-L253)，[Session subscribe](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/agent-session.ts#L853-L868)）。JSON/RPC wire 会去掉 cumulative partial，只保留 delta，并以 `message_end` 为最终权威值，避免日志体积随回复长度二次增长（[wire projection](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/modes/json-event.ts#L40-L60)）。
-
-Pi session 是 version 3、append-only、tree-shaped JSONL：header 后的 entry 以 `id` / `parentId` 形成分支树，保存 messages、模型和 thinking 变化、compaction、branch summary、Extension custom entries、labels 与 session info（[entry 类型](https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/session-manager.ts#L30-L156)）。它是 durable conversation facts，不是完整 runtime event log。
-
-## 默认记录与明确缺口
-
-两者默认本地都会保存：
-
-- user prompt、assistant text/reasoning、tool call arguments 与模型可见结果；
-- provider/model、token usage，以及错误或终止状态；
-- session 分支、压缩或扩展产生的 durable facts；
-- shell 的截断合并输出及超限全文的临时路径。
-
-两者默认都不能提供：
-
-- 原始 HTTP request/response、认证 header、原始 SSE frame；
-- stdout/stderr 独立 chunk、单调时钟与严格交错顺序；
-- CPU、RSS、GC、网络阶段耗时等系统 metrics；
-- 完整 exception stack/cause 或未经筛选的 SDK error；
-- 远端观测数据的可靠送达保证。
-
-差别在于：DeepSeek 本地保存逐 chunk 轨迹并已有 OTel Logs 导出；Pi 不持久化逐 chunk 事件，但提供更清晰的宿主订阅和 Extension interception。DeepSeek 的运行数据可能在用户反馈时被整体镜像出去；Pi 当前没有这条 Agent 内容上传链。
+- DeepSeek collector 的服务端 schema、retention、access control、地域、二次处理和删除政策未公开到足以从客户端源码回答。
+- “DeepSeek 无 traces/metrics”只限定于固定版本的官方 Agent observability 装配；部署方自定义插件不在范围内。
+- “Pi telemetry 未接线”只限定于固定源码中的 first-party production path；宿主自定义 stream/fetch、Extension 或外层包装器可以另行采集。
+- 本文不把 Pi v4/Harness 的规格说明当作当前 CLI 运行事实，也不把显式 `/share` 当作默认后台上传。
 
 ## 对 jai-mono 的影响
 
-1. **不需要新增第二套 durable observability store。** DeepSeek 最成功的部分是让 canonical journal 驱动恢复、UI、查询、导出和 telemetry projection；这与 JAI 已有“Agent SQLite journal 是唯一 durable owner”一致。观测能力应从 journal 和 live runtime state 单向投影，不能再建 JSONL 或双写日志。
-
-2. **把四种东西明确分层：durable facts、live events、diagnostic logs、traces/metrics。** Pi 证明 session 与 live stream 服务不同可靠性需求；DeepSeek 证明 OTel Logs 只是 journal 镜像，不等于 tracing。JAI 的接口应标出谁可 replay、谁允许丢、谁会阻塞 run、observer 失败是否影响执行。
-
-3. **如果目标是排查 Agent 执行，应保留结构化 stdout/stderr。** 给模型的合并文本只是 projection。执行事实至少应有 channel、seq、monotonic offset、exit/signal/timeout、truncation 和 durable artifact reference；否则两套参考实现都无法解决远程输出交错与丢包诊断。
-
-4. **先定义真实需要回答的问题，再选择 OTel signal。** 要看 session 内容和工具结果，用受权限控制的 journal projection；要看 session → turn → model/tool 的父子关系、duration 和状态，用 spans；要做吞吐、错误率、token/cost 和延迟分布，用 metrics。不要像 DeepSeek 一样把 ledger 镜像为 OTel Logs 后称作 tracing，也不要像 Pi 一样只完成 schema 而没有 production 接线。
-
-5. **遥测 DTO 必须白名单化。** DeepSeek 的完整 `event.data`、默认无脱敏和 feedback-triggered 上传不符合 JAI 当前边界。远端记录只应带 provider/model、operation/session/run/tool IDs、状态、usage/cost、latency 和稳定错误 `_tag`；prompt、completion、tool 参数/输出、headers、credentials、stack、cause 与 SDK object 默认禁止进入通用 telemetry。
-
-6. **最终产品装配必须成为隐私测试对象。** 库默认值不足以说明产品行为：DeepSeek backend 类默认 `DISABLED`，发行 bundle 却默认 `FEEDBACK_ONLY`。JAI 应测试最终 composition root 的 endpoint、触发条件、默认关闭状态、hard opt-out、retention 和 redaction。
-
-7. **优先完成本地可审计界面，再增加远端导出。** 最小闭环应是 Desktop/CLI 能按 session、turn、model、tool 查看 journal projection、usage 和安全错误；远端 exporter 是可选 adapter。若以后需要可靠上传，应明确选择 best effort 或 durable outbox，不能把 enqueue/handoff 误写成 delivery。
-
-## 核验边界
-
-- 只核验上述固定 commit 的官方公开源码、仓库文档和发行 composition；不推断私有部署。
-- DeepSeek “无 traces/metrics”指固定版本没有官方 Agent `TracerProvider` / `MeterProvider` 管线，不否定部署方自行添加。
-- Pi “telemetry 未接线”指固定版本的 Coding Agent 与 Agent Harness scaffold；已定义 schema 不被当作已运行的 instrumentation。
-- 本文研究观测与日志收集，不评价两套 Agent 的模型质量、工具能力或整体产品体验。
+1. **坚持 SQLite journal 是唯一 durable owner。** DeepSeek 的优势来自 canonical ledger 驱动恢复、UI、查询与 exporter，而不是来自 JSONL 格式。jai-mono 应从现有 journal 和可丢弃 live state 单向投影，不新增 observability JSONL、双写或第二套 durable adapter。
+2. **明确分开 durable facts、live events、diagnostic logs 与 traces/metrics。** 每个接口都应说明 replay、背压、失败隔离和 durability；不能把 OTel Logs 镜像称作 tracing，也不能把 schema 存在称作 production instrumentation。
+3. **shell 事实应结构化且 durable artifact 化。** 模型可见的合并/截断文本只是 projection；执行层至少保留 channel、seq、monotonic offset、exit/signal/timeout、truncation 与 artifact reference，避免复刻两套实现的交错丢失和临时文件失效。
+4. **远端 telemetry 只传显式白名单 DTO。** 默认排除 prompt、completion、reasoning、tool 参数/输出、headers、credentials、cwd、stack、cause 与 SDK error object；只保留 operation/provider/model、稳定 ID、状态、usage/cost、latency 与错误 `_tag`。
+5. **用最终 composition root 做隐私与网络测试。** 测 endpoint、触发条件、默认关闭、hard opt-out、redaction 和 shutdown；库默认值不能代表产品默认值，DeepSeek 的 `DISABLED` 类默认与 `FEEDBACK_ONLY` 发行默认已经证明这一点。
+6. **先完成本地可审计投影，再加可选 exporter。** Desktop/CLI 先能按 session、turn、model、tool 查看 journal facts、usage 与安全错误；要远端关系和 duration 用 spans，要聚合分布用 metrics。若未来要求可靠上传，必须明确 best effort 或 durable outbox，不能把 enqueue 当 delivery。
