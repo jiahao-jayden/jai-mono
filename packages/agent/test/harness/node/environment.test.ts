@@ -90,60 +90,15 @@ describe("NodeExecutionEnvironment", () => {
 		expect(await readFile(path, "utf8")).toBe("second");
 	});
 
-	test("maps unavailable ripgrep and shell to stable codes", async () => {
+	test("maps an unavailable shell to a stable code", async () => {
 		const workspace = await temporaryDirectory("jai-errors-");
 		const environment = new NodeExecutionEnvironment({
 			cwd: workspace,
-			ripgrepPath: join(workspace, "missing-rg"),
 			shellPath: join(workspace, "missing-shell"),
 		});
 		await expectErrorCode(
-			environment.glob({ cwd: workspace, pattern: "*", limit: 10 }),
-			"filesearch.backend_unavailable",
-		);
-		await expectErrorCode(
 			environment.execute("true", { cwd: workspace, timeoutMs: 100 }),
 			"shell.shell_unavailable",
-		);
-	});
-
-	test("maps invalid search patterns and pre-abort to stable codes", async () => {
-		const workspace = await temporaryDirectory("jai-search-errors-");
-		await writeFile(join(workspace, "file.txt"), "contents");
-		const environment = new NodeExecutionEnvironment({ cwd: workspace });
-		await expectErrorCode(
-			environment.grep({
-				cwd: workspace,
-				target: ".",
-				pattern: "[",
-				limit: 10,
-			}),
-			"filesearch.invalid_pattern",
-		);
-		const controller = new AbortController();
-		controller.abort();
-		await expectErrorCode(
-			environment.glob({
-				cwd: workspace,
-				pattern: "*",
-				limit: 10,
-				signal: controller.signal,
-			}),
-			"filesearch.aborted",
-		);
-	});
-
-	test("marks truncated ripgrep stderr", async () => {
-		const workspace = await temporaryDirectory("jai-search-stderr-");
-		const ripgrep = join(workspace, "fake-rg");
-		await writeFile(
-			ripgrep,
-			"#!/bin/sh\ndd if=/dev/zero bs=60000 count=1 2>/dev/null | tr '\\0' x >&2\nexit 2\n",
-		);
-		await chmod(ripgrep, 0o755);
-		const environment = new NodeExecutionEnvironment({ cwd: workspace, ripgrepPath: ripgrep });
-		await expect(environment.glob({ cwd: workspace, pattern: "*", limit: 10 })).rejects.toThrow(
-			"[stderr truncated]",
 		);
 	});
 

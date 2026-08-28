@@ -37,8 +37,6 @@ describe("environment exports", () => {
 			"fileSearchError",
 			"shellError",
 			"createReadTool",
-			"createGlobTool",
-			"createGrepTool",
 			"createWriteTool",
 			"createEditTool",
 			"createBashTool",

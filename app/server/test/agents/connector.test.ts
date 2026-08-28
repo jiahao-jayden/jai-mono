@@ -24,6 +24,7 @@ describe("Runtime Host Connector assembly", () => {
 			const read = await assembled.value.extensionRuntime.readConfiguration?.({
 				extensionId: "connector",
 				scope: "user",
+				workspace: { directory: "/workspace", trusted: true },
 			});
 			expect(read?.isOk()).toBe(true);
 			if (!read || read.isErr()) throw read?.error;

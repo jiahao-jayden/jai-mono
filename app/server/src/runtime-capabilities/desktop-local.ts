@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { Result, type Result as ResultType } from "better-result";
+import { createFffSearchExtension } from "@jai/extension/search";
 import { createSkillsExtension } from "@jai/extension/skills";
 import { createRuntimeAgentPluginsExtension } from "../agents";
 import type { WorkspaceTrustReader } from "../workspaces";
@@ -63,9 +64,12 @@ class DesktopLocalRuntimeCapabilitySource implements RuntimeCapabilitySource {
 				...fileCapabilities,
 				pluginSkills: agentPlugins.skillCards,
 			});
+			const fffSearchExtension = createFffSearchExtension({
+				dataDirectory: join(this.options.dataDirectory, "fff", input.sessionId),
+			});
 			return Result.ok({
 				fileCapabilities,
-				extensions: [skillsExtension, agentPlugins],
+				extensions: [skillsExtension, agentPlugins, fffSearchExtension],
 			});
 		} catch (cause) {
 			return Result.err(

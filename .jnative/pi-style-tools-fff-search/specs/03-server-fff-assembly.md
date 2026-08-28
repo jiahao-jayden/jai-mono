@@ -1,6 +1,6 @@
 # 03: Server Operation 装配与 Electron 打包
 
-阻塞于:01、02 · 状态:⬜
+阻塞于:01、02 · 状态:✅
 
 ## 交付什么
 
@@ -57,22 +57,37 @@
 ## 验收(门禁)
 
 未跑完并贴出真实输出,不得标 ✅:
-- [ ] Server Operation 测试证明无 Desktop 配置时自动出现 `fffind`、`ffgrep`，且 capability source 关闭 Operation 后释放 runtime；
-- [ ] 未信任 workspace、越界路径、取消和 FFF 初始化失败均映射到稳定错误；
-- [ ] `cd app/server && bun run typecheck`；
-- [ ] `cd app/server && bun test`；
-- [ ] `cd app/desktop && bun run typecheck`；当前 `app/desktop/package.json` 没有 test script，验收注明这一点；
-- [ ] Electron Forge package 产物成功加载 native binding，并完成一次 workspace find/grep smoke test；
-- [ ] Desktop 不新增搜索设置、首次启用 UI 或 renderer 侧 FFF 内部对象。
+- [x] Server Operation 测试证明无 Desktop 配置时自动出现 `fffind`、`ffgrep`，且 capability source 关闭 Operation 后释放 runtime；
+- [x] 未信任 workspace、越界路径、取消和 FFF 初始化失败均映射到稳定错误；
+- [x] `cd app/server && bun run typecheck`；
+- [x] `cd app/server && bun test`（Bun 1.4.0，90 pass / 0 fail）；
+- [x] `cd app/desktop && bun run typecheck`；当前 `app/desktop/package.json` 没有 test script，验收注明这一点；
+- [x] Electron Forge package 产物成功加载 native binding，并完成一次 workspace find/grep smoke test；
+- [x] Desktop 不新增搜索设置、首次启用 UI 或 renderer 侧 FFF 内部对象。
 
 ## 决策记录
 
-<!-- 只记录本刀实施中出现的局部、非显然选择;改变跨 spec 方案时回到 plan.md。-->
+- Server 的 Bun bundle 将 `@ff-labs/fff-node` 保持为外部依赖；FFF 依靠运行时解析平台二进制，内联后会丢失该包的解析根。`scripts/stage-fff-runtime.mts` 因此将 `fff-node`、当前平台 `fff-bin`、`ffi-rs` 与当前平台 FFI addon 复制到 `dist/node_modules`。Forge 以 `extraResource` 将整个 `app/server/dist` 放入 `Resources/dist`，不把 native `.dylib` / `.node` 放进 asar。
+- Desktop 通过 `runtime-host/entrypoint.ts` 在已打包时为两条 Host 启动路径传入 `Resources/dist/main.js`；未打包时仍走 Server package 的正常解析入口。
+- `app/desktop` 的 `dev`、`build`、`make` 统一先执行 `prepare-runtime`，保证 Forge 读取的是当前 Server bundle 和原生 staging。
+- `prepare-runtime` 之后用 `bunx electron-forge package` 打 darwin-arm64 产物。native binding 只出现在 `Contents/Resources/dist/node_modules`，asar 内没有 `.node` / `.dylib`。
+- Connector 测试补上 MCP 落地后必需的 `workspace` 字段，否则 `app/server` typecheck 过不了。
 
 ## 遗留问题
 
-<!-- 发现但本次不做的 -->
+无。
 
 ## 停在哪
 
-<!-- 完成或挂起时填:停在哪、下一刀不许碰什么。写给下一个 session 看,要具体 -->
+- 三项工作都已完成。本地 Server Operation 默认带上 `fffind`/`ffgrep`；关闭 Operation 时 Extension `deactivate` 销毁 FFF runtime；打包后的 Desktop 从 `Resources/dist` 加载同一套 native binding。
+- 不要恢复 Glob/ripgrep Grep，不要增加 Desktop 搜索开关，不要把 FFF state 写入 SQLite journal。
+
+## 验收记录
+
+- [x] `createDesktopLocalRuntimeCapabilitySource` 在无 Desktop 配置时装配 `jai.fff-search`，工具名为 `fffind`、`ffgrep`（`app/server/test/runtime-capabilities/desktop-local.test.ts`）。live Host operation 测试会激活并在 Host close 时走 Extension deactivate（`app/server/test/runtime/daemon.test.ts`）。
+- [x] 越界路径、取消、非法 pattern、初始化失败由 FFF Extension 投影为 `filesearch.*` / `CodingExtensionOperationFailed`（`packages/extension/test/search-extension.test.ts`）。未信任 workspace 仍装配搜索工具，但不授予 project plugin（`desktop-local.test.ts`）。
+- [x] `cd app/server && bun run typecheck`。
+- [x] `cd app/server && bun test`：90 pass / 0 fail（Bun 1.4.0）。
+- [x] `cd app/desktop && bun run typecheck`。`app/desktop/package.json` 没有 test script。
+- [x] `bunx electron-forge package` 产出 `out/@jayden-jai-desktop-darwin-arm64/@jayden-jai-desktop.app`。用该包 `Resources/dist/node_modules/@ff-labs/fff-node` 完成 create → waitForIndexReady → find `readme.md` → grep `hello fff` → destroy。
+- [x] Desktop renderer/settings 未新增搜索开关、首次启用 UI 或 FFF 内部对象。

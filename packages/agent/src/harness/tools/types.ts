@@ -1,4 +1,4 @@
-import type { ExecutionEnvironment, FileSearch, FileSystem, Shell } from "../environment";
+import type { ExecutionEnvironment, FileSystem, Shell } from "../environment";
 
 export interface TruncationDetails {
 	truncated: true;
@@ -13,10 +13,6 @@ export interface TruncationDetails {
 export interface WorkspaceToolOptions {
 	fileSystem: FileSystem;
 	workspaceRoot: string;
-}
-
-export interface SearchToolOptions extends WorkspaceToolOptions {
-	fileSearch: FileSearch;
 }
 
 export interface BashToolOptions extends WorkspaceToolOptions {

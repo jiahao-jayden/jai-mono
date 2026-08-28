@@ -5,10 +5,10 @@
 	"description": "JAI desktop application",
 	"main": ".vite/build/main.js",
 	"scripts": {
-		"predev": "bun run --cwd ../server build && bun run --cwd ../../packages/coding-agent build && bun run --cwd ../../packages/extension build",
-		"dev": "electron-forge start",
-		"build": "electron-forge package",
-		"make": "electron-forge make",
+		"prepare-runtime": "bun run --cwd ../server build && bun run --cwd ../../packages/coding-agent build && bun run --cwd ../../packages/extension build",
+		"dev": "bun run prepare-runtime && electron-forge start",
+		"build": "bun run prepare-runtime && electron-forge package",
+		"make": "bun run prepare-runtime && electron-forge make",
 		"typecheck": "tsc -p tsconfig.json --noEmit"
 	},
 	"dependencies": {

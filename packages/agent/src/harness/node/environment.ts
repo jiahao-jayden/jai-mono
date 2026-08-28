@@ -5,21 +5,15 @@ import { createReadStream } from "node:fs";
 import { access, appendFile, chmod, lstat, mkdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { createInterface } from "node:readline";
 import { StringDecoder } from "node:string_decoder";
 import { getErrorMessage } from "@jai/common";
 import { TaggedError } from "better-result";
-import { fileSearchError, fileSystemError, shellError } from "../environment/errors";
+import { fileSystemError, shellError } from "../environment/errors";
 import type {
 	AbortOptions,
 	AtomicWriteOptions,
 	ExecutionEnvironment,
 	FileStat,
-	GlobQuery,
-	GlobResult,
-	GrepMatch,
-	GrepQuery,
-	GrepResult,
 	PathCapability,
 	PathCapabilityManager,
 	ResolvedPath,
@@ -31,14 +25,10 @@ import type {
 } from "../environment/types";
 import { isNodeErrorCode, isNotFound, isPermissionDenied } from "./errors";
 
-const MAX_STDERR_BYTES = 50 * 1024;
-const MAX_MATCH_COLUMNS = 2_000;
-
 export interface NodeExecutionEnvironmentOptions {
 	cwd: string;
 	shellPath?: string;
 	shellEnv?: Record<string, string>;
-	ripgrepPath?: string;
 }
 
 interface IssuedPathCapability extends PathCapability {
@@ -127,7 +117,6 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 	readonly #cwd: string;
 	readonly #shellPath?: string;
 	readonly #shellEnv?: Record<string, string>;
-	readonly #ripgrepPath: string;
 	readonly #issuedCapabilities = new WeakSet<PathCapability>();
 	readonly #activeCapability = new AsyncLocalStorage<IssuedPathCapability>();
 
@@ -135,7 +124,6 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 		this.#cwd = options.cwd;
 		this.#shellPath = options.shellPath;
 		this.#shellEnv = options.shellEnv;
-		this.#ripgrepPath = options.ripgrepPath ?? "rg";
 	}
 
 	async createPathCapability(input: string, options: ResolvePathOptions): Promise<PathCapability> {
@@ -339,72 +327,6 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 		};
 	}
 
-	async glob(query: GlobQuery): Promise<GlobResult> {
-		await this.#assertActivePath(query.cwd, true);
-		const rows = await this.#runRipgrep(
-			["--files", "--hidden", "--glob", query.pattern, "--", "."],
-			query.cwd,
-			query.signal,
-			query.limit,
-		);
-		return {
-			paths: rows.lines.map((line) => line.replaceAll("\\", "/").replace(/^\.\//, "")),
-			limitReached: rows.limitReached,
-		};
-	}
-
-	async grep(query: GrepQuery): Promise<GrepResult> {
-		await this.#assertActivePath(query.target === "." ? query.cwd : resolve(query.cwd, query.target), true);
-		const args = [
-			"--json",
-			"--line-number",
-			"--color=never",
-			"--hidden",
-			"--max-columns",
-			String(MAX_MATCH_COLUMNS),
-			"--max-columns-preview",
-		];
-		if (query.ignoreCase) args.push("--ignore-case");
-		if (query.literal) args.push("--fixed-strings");
-		if (query.include) args.push("--glob", query.include);
-		if (query.context && query.context > 0) args.push("--context", String(query.context));
-		args.push("--", query.pattern, query.target);
-		const rows: GrepMatch[] = [];
-		let matches = 0;
-		let limitReached = false;
-		let trailing = 0;
-		await this.#runRipgrep(args, query.cwd, query.signal, undefined, (line) => {
-			let event: {
-				type?: string;
-				data?: { path?: { text?: string }; lines?: { text?: string }; line_number?: number };
-			};
-			try {
-				event = JSON.parse(line);
-			} catch {
-				return true;
-			}
-			if (event.type !== "match" && event.type !== "context") return true;
-			if (event.type === "match" && limitReached) return false;
-			const path = event.data?.path?.text?.replaceAll("\\", "/").replace(/^\.\//, "");
-			const lineNumber = event.data?.line_number;
-			const text = event.data?.lines?.text?.replace(/\r?\n$/, "");
-			if (!path || lineNumber === undefined || text === undefined) return true;
-			rows.push({ path, line: lineNumber, text, kind: event.type });
-			if (event.type === "match") {
-				matches++;
-				if (matches >= query.limit) {
-					limitReached = true;
-					trailing = query.context ?? 0;
-					if (trailing === 0) return false;
-				}
-			} else if (limitReached && --trailing === 0) {
-				return false;
-			}
-			return true;
-		});
-		return { rows, matches, limitReached };
-	}
-
 	async #assertActivePath(path: string, mustExist: boolean): Promise<void> {
 		const capability = this.#activeCapability.getStore();
 		if (!capability) return;
@@ -422,83 +344,6 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 			throw fileSystemError("outside_boundary", "Authorized path changed before execution", {
 				resource: canonicalPath,
 			});
-		}
-	}
-
-	async #runRipgrep(
-		args: string[],
-		cwd: string,
-		signal?: AbortSignal,
-		limit?: number,
-		onLine?: (line: string) => boolean,
-	): Promise<{ lines: string[]; limitReached: boolean }> {
-		if (signal?.aborted) throw fileSearchError("aborted", "Operation aborted", { resource: cwd });
-		const executable = await resolveExecutable(this.#ripgrepPath);
-		if (!executable) {
-			throw fileSearchError("backend_unavailable", "ripgrep (rg) is required for glob and grep", {
-				resource: cwd,
-			});
-		}
-		const child = spawn(executable, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
-		const output = createInterface({ input: child.stdout! });
-		const stderr: Buffer[] = [];
-		let stderrBytes = 0;
-		let stderrTruncated = false;
-		const lines: string[] = [];
-		let limitReached = false;
-		let spawnError: unknown;
-		const completion = new Promise<number | null>((resolve) => {
-			child.once("close", resolve);
-			child.once("error", (error) => {
-				spawnError = error;
-				resolve(null);
-			});
-		});
-		child.stderr?.on("data", (chunk: Buffer) => {
-			const kept = chunk.subarray(0, Math.max(0, MAX_STDERR_BYTES - stderrBytes));
-			if (kept.length) stderr.push(kept);
-			stderrBytes += kept.length;
-			stderrTruncated ||= kept.length < chunk.length;
-		});
-		const abort = () => child.kill();
-		signal?.addEventListener("abort", abort, { once: true });
-		try {
-			for await (const line of output) {
-				if (limit !== undefined && lines.length >= limit) {
-					limitReached = true;
-					child.kill();
-					break;
-				}
-				if (!line) continue;
-				if (onLine && !onLine(line)) {
-					limitReached = true;
-					child.kill();
-					break;
-				}
-				if (!onLine) lines.push(line);
-			}
-			const code = await completion;
-			if (signal?.aborted) throw fileSearchError("aborted", "Operation aborted", { resource: cwd });
-			if (spawnError) {
-				const unavailable = isNotFound(spawnError);
-				throw fileSearchError(
-					unavailable ? "backend_unavailable" : "search_failed",
-					unavailable ? "ripgrep (rg) is required for glob and grep" : getErrorMessage(spawnError),
-					{ resource: cwd, cause: spawnError },
-				);
-			}
-			if (!limitReached && code !== 0 && code !== 1) {
-				const stderrText = Buffer.concat(stderr).toString("utf8").trim();
-				const message = stderrText
-					? `${stderrText}${stderrTruncated ? "\n[stderr truncated]" : ""}`
-					: `ripgrep exited with code ${code}`;
-				const invalid = code === 2 && message.toLowerCase().includes("regex");
-				throw fileSearchError(invalid ? "invalid_pattern" : "search_failed", message, { resource: cwd });
-			}
-			return { lines, limitReached };
-		} finally {
-			signal?.removeEventListener("abort", abort);
-			output.close();
 		}
 	}
 

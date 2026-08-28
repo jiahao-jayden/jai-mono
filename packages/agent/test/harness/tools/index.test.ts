@@ -8,10 +8,8 @@ describe("createHarnessTools", () => {
 		const { environment } = createNodeToolOptions(process.cwd());
 		const tools = createHarnessTools({ environment, workspaceRoot: process.cwd() });
 
-		expect(tools.map((tool) => tool.name)).toEqual(["Read", "Glob", "Grep", "Write", "Edit", "Bash"]);
+		expect(tools.map((tool) => tool.name)).toEqual(["Read", "Bash", "Edit", "Write"]);
 		expect(tools.map((tool) => tool.executionMode)).toEqual([
-			"parallel",
-			"parallel",
 			"parallel",
 			"sequential",
 			"sequential",

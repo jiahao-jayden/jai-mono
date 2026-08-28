@@ -43,8 +43,8 @@ describe("harness tool internals", () => {
 	test("tools run against injected capabilities without Node I/O", async () => {
 		let written: string | Uint8Array | undefined;
 		const fileSystem = {
-			resolvePath: async () => ({ path: "memory:/file.txt" }),
-			writeFile: async (_path: string, content: string | Uint8Array) => {
+			resolvePath: async () => ({ path: "memory:/file.txt", canonicalPath: "memory:/file.txt" }),
+			writeFileAtomic: async (_path: string, content: string | Uint8Array) => {
 				written = content;
 				return { created: true };
 			},
@@ -56,5 +56,6 @@ describe("harness tool internals", () => {
 			type: "text",
 			text: "Created 5 bytes to file.txt",
 		});
+		expect(result.fileChanges).toEqual([{ operation: "add", path: "memory:/file.txt" }]);
 	});
 });

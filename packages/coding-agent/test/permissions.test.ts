@@ -42,8 +42,8 @@ describe("permission rules", () => {
 		}
 	});
 
-	test("Read 规则覆盖 Glob/Grep，Edit 规则覆盖 Write", () => {
-		expect(matchesPermissionRule(parsePermissionRule("Read(**/.env)"), call("Glob", { path: "src/.env" }))).toBe(
+	test("Read 和 Edit 规则分别匹配文件读取与写入", () => {
+		expect(matchesPermissionRule(parsePermissionRule("Read(**/.env)"), call("Read", { path: "src/.env" }))).toBe(
 			true,
 		);
 		expect(matchesPermissionRule(parsePermissionRule("Edit(/src/**)"), call("Write", { path: "src/app.ts" }))).toBe(

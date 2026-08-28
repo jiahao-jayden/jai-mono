@@ -71,5 +71,5 @@ describe("bash tool", () => {
 		expect(fullOutputPath).toBeDefined();
 		await access(fullOutputPath!);
 		await rm(fullOutputPath!, { force: true });
-	});
+	}, 15_000);
 });

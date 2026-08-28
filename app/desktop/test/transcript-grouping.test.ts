@@ -41,7 +41,7 @@ describe("transcript grouping", () => {
 			turnId: "turn-1",
 			activityId: "assistant:1",
 			toolCallId: "search-1",
-			toolName: "Grep",
+			toolName: "ffgrep",
 			activityKind: "search",
 			status: "complete",
 			summary: "chat-transcript.tsx",

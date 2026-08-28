@@ -4,8 +4,6 @@ export const canonicalToolNames = [
 	"Read",
 	"Write",
 	"Edit",
-	"Glob",
-	"Grep",
 	"Bash",
 	"UpdateTodos",
 	"SpawnAgent",

@@ -264,7 +264,7 @@ function validateCall(call: PermissionCall): void {
 }
 
 function isReadCall(call: PermissionCall): boolean {
-	return call.toolName === "Read" || call.toolName === "Glob" || call.toolName === "Grep";
+	return call.toolName === "Read";
 }
 
 function isEditCall(call: PermissionCall): boolean {
@@ -272,7 +272,6 @@ function isEditCall(call: PermissionCall): boolean {
 }
 
 function pathArg(call: PermissionCall): string {
-	if (call.toolName === "Glob" || call.toolName === "Grep") return stringArg(call, "path") || ".";
 	return stringArg(call, "path");
 }
 

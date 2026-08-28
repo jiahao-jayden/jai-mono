@@ -30,6 +30,7 @@ import type {
 } from "../../shared/desktop-rpc";
 import { sortArtifacts } from "./artifacts";
 import { desktopAgentError } from "./errors";
+import { resolveDesktopRuntimeHostEntrypoint } from "../runtime-host/entrypoint";
 
 class DesktopAcpConnectionFailed extends TaggedError("desktop_agent.acp_connection_failed")<{
 	readonly message: string;
@@ -102,12 +103,14 @@ export class DesktopAcpAgentHost {
 		emit: DesktopAcpAgentEventSink,
 		options: DesktopAcpAgentHostOptions,
 	): Promise<DesktopAcpAgentHost> {
+		const runtimeHostEntrypoint = resolveDesktopRuntimeHostEntrypoint();
 		const clientResult = options.client
 			? Result.ok(options.client)
 			: await connectJaiRuntimeHost({
 				...(options.dataDirectory === undefined ? {} : { dataDirectory: options.dataDirectory }),
 				...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
 				...(options.environment === undefined ? {} : { environment: options.environment }),
+				...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
 			});
 		if (clientResult.isErr()) {
 			throw new DesktopAcpConnectionFailed({

@@ -30,11 +30,12 @@
 		"./package.json": "./package.json"
 	},
 	"scripts": {
-		"build": "bun build src/main.ts src/stdio-main.ts src/acp-client.ts src/desktop-catalog-client.ts src/desktop-configuration-client.ts src/model-catalog-client.ts --target=node --format=esm --outdir dist",
+		"build": "bun build src/main.ts src/stdio-main.ts src/acp-client.ts src/desktop-catalog-client.ts src/desktop-configuration-client.ts src/model-catalog-client.ts --target=node --format=esm --external @ff-labs/fff-node --outdir dist && bun scripts/stage-fff-runtime.mts",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"test": "bun test"
 	},
 	"dependencies": {
+		"@ff-labs/fff-node": "0.10.5",
 		"@jai/ai": "workspace:*",
 		"@jai/agent": "workspace:*",
 		"@jai/coding-agent": "workspace:*",

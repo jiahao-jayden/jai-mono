@@ -51,8 +51,14 @@ describe("Desktop Local Runtime Capability Source", () => {
 				workspaceDirectory,
 				workspaceTrusted: true,
 			});
-			expect(resolved.value.extensions).toHaveLength(2);
-			expect(resolved.value.extensions.map((extension) => extension.id)).toEqual(["jai.skills", "agent-plugins"]);
+			expect(resolved.value.extensions).toHaveLength(3);
+			expect(resolved.value.extensions.map((extension) => extension.id)).toEqual([
+				"jai.skills",
+				"agent-plugins",
+				"jai.fff-search",
+			]);
+			const fffSearch = resolved.value.extensions.find((extension) => extension.id === "jai.fff-search");
+			expect(fffSearch?.tools?.map((tool) => tool.name)).toEqual(["fffind", "ffgrep"]);
 			const agentPlugins = resolved.value.extensions.find((extension) => extension.id === "agent-plugins");
 			expect("skillCards" in agentPlugins!).toBe(true);
 			expect(agentPluginSkillNames(agentPlugins).toSorted()).toEqual([

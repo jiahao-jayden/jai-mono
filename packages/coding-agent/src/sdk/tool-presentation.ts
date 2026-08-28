@@ -18,8 +18,6 @@ export interface ResolvedCodingToolPresentation {
 export function builtInToolPresentations(): ReadonlyMap<string, CodingToolPresentation> {
 	const presentations: readonly (readonly [string, CodingToolPresentation])[] = [
 		["Read", { activityKind: "read", title: (args) => `Read ${stringArgument(args, "path") ?? "file"}` }],
-		["Glob", { activityKind: "search", title: (args) => `Find ${stringArgument(args, "pattern") ?? "files"}` }],
-		["Grep", { activityKind: "search", title: (args) => `Search ${stringArgument(args, "pattern") ?? "files"}` }],
 		["Write", { activityKind: "write", title: (args) => `Write ${stringArgument(args, "path") ?? "file"}` }],
 		["Edit", { activityKind: "write", title: (args) => `Edit ${stringArgument(args, "path") ?? "file"}` }],
 		["Bash", { activityKind: "execute", title: (args) => `Run ${stringArgument(args, "command") ?? "command"}` }],

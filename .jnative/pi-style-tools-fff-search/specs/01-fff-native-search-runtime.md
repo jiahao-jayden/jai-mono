@@ -1,6 +1,6 @@
 # 01: FFF 原生搜索 runtime 与 Pi 工具 contract
 
-阻塞于:`@jai/agent` 全量测试既有失败 · 状态:🔄
+阻塞于:无 · 状态:✅
 
 ## 交付什么
 
@@ -74,19 +74,19 @@ Agent 在一个 Operation 内可以直接调用 Pi FFF 的 `fffind`、`ffgrep` �
 
 ## 遗留问题
 
-- `@jai/agent` 未修改的全量测试在 2026-08-27 仍有三项失败：`write tool > creates parent directories and atomically overwrites files`、`edit tool > applies multiple replacements against the original file`、`harness tool internals > tools run against injected capabilities without Node I/O`。前两项收到的 `fileChanges` 为 `undefined`，第三项 mock 缺少 `writeFileAtomic`。这是 Spec 01 的验收门禁，不能当作通过。
+无。
 
 ## 停在哪
 
-- 已新增 `@jai/extension/search` 的 `createFffSearchExtension` 和 FFF runtime，`fffind`/`ffgrep` 的 smoke/contract 测试与 `@jai/extension` 全量测试通过。`@jai/agent` typecheck 通过，但完整 `bun test` 仍有上述三个既有失败；Spec 保持 🔄，不得进入 Spec 02。
-- 下一刀先让 `cd packages/agent && bun test` 全绿，并重新运行本 spec 的全部验收命令；在 Spec 01 标 ✅ 前，不得改动默认 roster、旧 `Glob`/`Grep`、Server capability source 或 Electron 打包。
+- 已完成并验证 `@jai/extension/search` 的 `createFffSearchExtension` 和 FFF runtime；`fffind`/`ffgrep` smoke/contract、Extension 全量测试以及 Agent 全量测试全部通过。
+- 下一刀进入 Spec 02：仅修改内置 roster、旧 `Glob`/`Grep`/ripgrep 路径、权限和 presentation；不得在本刀装配 Server capability source 或修改 Electron 打包。
 
 ## 验收记录
 
 - [x] `@ff-labs/fff-node@0.10.5`：在 Bun 完成 `FileFinder.create → waitForIndexReady → fileSearch/grep → destroy` native smoke test。
 - [x] `fffind` / `ffgrep` contract：覆盖成功、空结果、limit/cursor、取消、非法 regex、workspace 越界与关闭 native runtime（`packages/extension/test/search-extension.test.ts`）。
 - [x] `cd packages/agent && bun run typecheck`。
-- [ ] `cd packages/agent && bun test`：3 failed / 239 passed，见「遗留问题」。
+- [x] `cd packages/agent && bun test`：242 passed / 0 failed（2026-08-28；同时补回原子 Write/Edit 的 canonical `fileChanges` contract，并将 injected FileSystem test mock 更新为 `writeFileAtomic`）。
 - [x] `cd packages/extension && bun run typecheck`。
 - [x] `cd packages/extension && bun test`：31 passed / 0 failed。
 - [x] 工具结果只含分组文本与 JSON-safe count/cursor DTO；native SDK 错误、handle 与 cause 未进入结果。

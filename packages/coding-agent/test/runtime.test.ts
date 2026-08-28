@@ -71,16 +71,7 @@ describe("createCodingAgent", () => {
 			const messages = await codingAgent.invoke("hello");
 			expect(messages.at(-1)?.role).toBe("assistant");
 			expect(resolvedMode).toBe("default");
-			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual([
-				"UpdateTodos",
-				"SpawnAgent",
-				"Read",
-				"Glob",
-				"Grep",
-				"Write",
-				"Edit",
-				"Bash",
-			]);
+			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["Read", "Bash", "Edit", "Write"]);
 			expect(JSON.stringify((await fixture.sessionStore.load("session-1"))?.snapshot.entries)).toContain(
 				'"type":"message"',
 			);
@@ -173,13 +164,13 @@ describe("createCodingAgent", () => {
 		const contexts: Context[] = [];
 		const codingAgent = await createCodingAgent({
 			...fixture,
-			enabledTools: new Set(["Read", "Grep", "UpdateTodos"]),
+			enabledTools: new Set(["Read", "Bash", "UpdateTodos"]),
 			resolveProvider: () => ({ provider: providerFor([assistant("done")], contexts), model }),
 		});
 
 		try {
 			await codingAgent.invoke("inspect the project");
-			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["UpdateTodos", "Read", "Grep"]);
+			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["UpdateTodos", "Read", "Bash"]);
 		} finally {
 			codingAgent.close();
 		}
@@ -259,6 +250,7 @@ describe("createCodingAgent", () => {
 		const contexts: Context[] = [];
 		const codingAgent = await createCodingAgent({
 			...fixture,
+			enabledTools: new Set(["SpawnAgent"]),
 			resolveProvider: () => ({
 				provider: providerFor(
 					[
@@ -298,6 +290,7 @@ describe("createCodingAgent", () => {
 		const observedResults: Array<{ readonly isError: boolean; readonly result: unknown }> = [];
 		const codingAgent = await createCodingAgent({
 			...fixture,
+			enabledTools: new Set(["UpdateTodos"]),
 			resolveProvider: () => ({
 				provider: providerFor(
 					[
@@ -341,6 +334,7 @@ describe("createCodingAgent", () => {
 		const fixture = await createFixture();
 		const codingAgent = await createCodingAgent({
 			...fixture,
+			enabledTools: new Set(["UpdateTodos"]),
 			resolveProvider: () => ({
 				provider: providerFor([
 					assistantToolCall("UpdateTodos", {

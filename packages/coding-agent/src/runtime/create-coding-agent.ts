@@ -322,7 +322,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		? new NodeExecutionEnvironment({
 				cwd: options.executionContext.cwd,
 				shellPath: options.tools?.shell,
-				ripgrepPath: options.tools?.ripgrepPath,
 			})
 		: undefined;
 	const extensionToolCatalog: ExtensionToolCatalogSlot = { current: options.extensionToolCatalog };
@@ -391,8 +390,9 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		}
 	});
 	const primaryTools = [
-		...(options.enabledTools?.has("UpdateTodos") === false ? [] : [updateTodosTool]),
-		...(options.enabledTools?.has("SpawnAgent") === false ? [] : [spawnAgentTool]),
+		...(options.enabledTools?.has("UpdateTodos") ? [updateTodosTool] : []),
+		...(options.enabledTools?.has("SpawnAgent") ? [spawnAgentTool] : []),
+		...(extensionToolCatalog.current ? [extensionToolCatalog.current.searchTool] : []),
 	];
 	const capabilities = assembleAgentCapabilities({
 		kind: "primary",

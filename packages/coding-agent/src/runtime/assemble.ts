@@ -34,7 +34,6 @@ export function assembleAgentCapabilities(input: AssembleAgentCapabilitiesInput)
 					new NodeExecutionEnvironment({
 						cwd: input.executionContext.cwd,
 						shellPath: input.toolOptions?.shell,
-						ripgrepPath: input.toolOptions?.ripgrepPath,
 					}),
 				input.enabledTools,
 			)

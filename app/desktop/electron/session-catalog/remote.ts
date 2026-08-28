@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { resolveDesktopRuntimeHostEntrypoint } from "../runtime-host/entrypoint";
 import type { JsonObject } from "@jai/agent";
 import { connectDesktopCatalogClient, type DesktopCatalogClient } from "@jai/server/desktop-catalog-client";
 import { connectJaiRuntimeHost, resolveJaiDataDirectory } from "@jai/server/acp-client";
@@ -234,7 +235,11 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 }
 
 async function createSessionJournal(dataDirectory: string, sessionId: string, cwd: string): Promise<void> {
-	const connected = await connectJaiRuntimeHost({ dataDirectory });
+	const runtimeHostEntrypoint = resolveDesktopRuntimeHostEntrypoint();
+	const connected = await connectJaiRuntimeHost({
+		dataDirectory,
+		...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
+	});
 	if (connected.isErr()) throw new DesktopRemoteCatalogFailed({ method: "session/new", message: "Could not connect to Runtime Host for Session creation", cause: connected.error });
 	try {
 		const initialized = await connected.value.request("initialize", {

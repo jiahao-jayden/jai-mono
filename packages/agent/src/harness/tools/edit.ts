@@ -189,6 +189,7 @@ export function createEditTool(options: WorkspaceToolOptions): AgentTool<typeof 
 							text: `Successfully replaced ${located.length} block(s) in ${args.path}`,
 						},
 					],
+					fileChanges: [{ operation: "modify", path: resolved.canonicalPath }],
 					details: {
 						path: resolved.path,
 						replacements: located.length,

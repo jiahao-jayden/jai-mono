@@ -59,46 +59,6 @@ export interface FileSystem {
 	createTempFile(options?: TempFileOptions): Promise<TemporaryFile>;
 }
 
-export interface GlobQuery extends AbortOptions {
-	cwd: string;
-	pattern: string;
-	limit: number;
-}
-
-export interface GlobResult {
-	paths: string[];
-	limitReached: boolean;
-}
-
-export interface GrepQuery extends AbortOptions {
-	cwd: string;
-	target: string;
-	pattern: string;
-	include?: string;
-	ignoreCase?: boolean;
-	literal?: boolean;
-	context?: number;
-	limit: number;
-}
-
-export interface GrepMatch {
-	path: string;
-	line: number;
-	text: string;
-	kind: "match" | "context";
-}
-
-export interface GrepResult {
-	rows: GrepMatch[];
-	matches: number;
-	limitReached: boolean;
-}
-
-export interface FileSearch {
-	glob(query: GlobQuery): Promise<GlobResult>;
-	grep(query: GrepQuery): Promise<GrepResult>;
-}
-
 export interface ShellOutputChunk {
 	stream: "stdout" | "stderr";
 	text: string;
@@ -120,4 +80,4 @@ export interface Shell {
 	execute(command: string, options: ShellExecuteOptions): Promise<ShellResult>;
 }
 
-export interface ExecutionEnvironment extends FileSystem, FileSearch, Shell {}
+export interface ExecutionEnvironment extends FileSystem, Shell {}

@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { join } from "node:path";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { MakerDeb } from "@electron-forge/maker-deb";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
@@ -14,13 +15,14 @@ const wasmResources = [
 	require.resolve("web-tree-sitter/tree-sitter.wasm"),
 	require.resolve("tree-sitter-bash/tree-sitter-bash.wasm"),
 ];
+const runtimeHostResource = join(import.meta.dirname, "../server/dist");
 
 const config: ForgeConfig = {
 	packagerConfig: {
 		appBundleId: "com.jayden.jai",
 		asar: true,
 		executableName: "JAI",
-		extraResource: wasmResources,
+		extraResource: [...wasmResources, runtimeHostResource],
 		protocols: [
 			{
 				name: "JAI Connector",

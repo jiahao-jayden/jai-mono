@@ -280,7 +280,6 @@ async function createPathCapability(
 }
 
 function toolPath(toolName: CanonicalToolName, args: Readonly<Record<string, unknown>>): string | undefined {
-	if (toolName === "Glob" || toolName === "Grep") return stringArg(args, "path") || ".";
 	if (toolName === "Read" || toolName === "Write" || toolName === "Edit") return stringArg(args, "path");
 	return undefined;
 }
@@ -294,11 +293,7 @@ function pathResolveOptions(
 		base: workspaceRoot,
 		boundary: workspaceRoot,
 		mustExist: toolName !== "Write",
-		...(toolName === "Read" || toolName === "Edit"
-			? { expectedKind: "file" as const }
-			: toolName === "Glob"
-				? { expectedKind: "directory" as const }
-				: {}),
+		...(toolName === "Read" || toolName === "Edit" ? { expectedKind: "file" as const } : {}),
 		signal,
 	};
 }
@@ -376,8 +371,8 @@ function suggestedRules(
 		const path = absolutePath(args, workspaceRoot);
 		return path ? { rules: [`Edit(${rootPath(path)})`], scope: "session" } : undefined;
 	}
-	if (toolName === "Read" || toolName === "Glob" || toolName === "Grep") {
-		const path = absolutePath(args, workspaceRoot, toolName === "Glob" || toolName === "Grep");
+	if (toolName === "Read") {
+		const path = absolutePath(args, workspaceRoot);
 		return path ? { rules: [`Read(${rootPath(path)})`], scope: "session" } : undefined;
 	}
 	return undefined;

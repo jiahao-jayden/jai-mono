@@ -203,11 +203,11 @@ describe("CodingSkillCatalog", () => {
 	});
 
 	test("Skill frontmatter 严格遵循 Agent Skills 字段与名称约束", () => {
-		expect(validateSkillFrontmatter({ name: "skill-analysis", description: "Analyze a task", compatibility: "Requires Python", metadata: { author: "team", version: "1.0.0", displayName: "Ignored" }, "allowed-tools": "Read Grep" }, "skill-analysis")).toMatchObject({
+		expect(validateSkillFrontmatter({ name: "skill-analysis", description: "Analyze a task", compatibility: "Requires Python", metadata: { author: "team", version: "1.0.0", displayName: "Ignored" }, "allowed-tools": "Read ffgrep" }, "skill-analysis")).toMatchObject({
 			name: "skill-analysis",
 			description: "Analyze a task",
 			compatibility: "Requires Python",
-			allowedTools: ["Read", "Grep"],
+			allowedTools: ["Read", "ffgrep"],
 			metadata: { author: "team", version: "1.0.0", displayName: "Ignored" },
 		});
 		for (const field of ["version", "argument-hint", "hidden", "disable-model-invocation", "user-invocable"] as const) {

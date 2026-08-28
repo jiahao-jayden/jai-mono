@@ -19,7 +19,6 @@ export function createCodingTools(
 	environment = new NodeExecutionEnvironment({
 		cwd: options.cwd,
 		shellPath: options.shell,
-		ripgrepPath: options.ripgrepPath,
 	}),
 	enabledTools?: ReadonlySet<CodingToolName>,
 ): AgentTool[] {

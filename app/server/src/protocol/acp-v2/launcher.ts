@@ -24,6 +24,8 @@ export interface ConnectJaiRuntimeHostOptions {
 	readonly environment?: Readonly<Record<string, string | undefined>>;
 	readonly dataDirectory?: string;
 	readonly endpoint?: string;
+	/** Desktop's packaged Runtime Host entrypoint, when it lives outside app.asar. */
+	readonly runtimeHostEntrypoint?: string;
 	readonly retryDelayMs?: number;
 	readonly retryCount?: number;
 }
@@ -42,7 +44,7 @@ export async function connectJaiRuntimeHost(
 	const connected = await openLocalAcpV2Client(endpoint);
 	if (connected.isOk()) return connected;
 	try {
-		const entrypoint = packagedRuntimeHostEntrypoint();
+		const entrypoint = options.runtimeHostEntrypoint ?? packagedRuntimeHostEntrypoint();
 		const child = spawn(process.execPath, [entrypoint], {
 			detached: true,
 			stdio: "ignore",

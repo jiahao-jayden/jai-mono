@@ -162,6 +162,7 @@
         "jai-acp": "./dist/stdio-main.js",
       },
       "dependencies": {
+        "@ff-labs/fff-node": "0.10.5",
         "@jai/agent": "workspace:*",
         "@jai/ai": "workspace:*",
         "@jai/coding-agent": "workspace:*",

@@ -1,7 +1,7 @@
-import { type CodingToolName, codingToolNames } from "../tools/names";
+import { type CodingToolName, codingToolNames, defaultCodingToolNames } from "../tools/names";
 import { CodingSdkFailure } from "./project";
 
-export { codingToolNames };
+export { codingToolNames, defaultCodingToolNames };
 
 export function resolveCodingToolSelection(
 	tools: readonly CodingToolName[] | undefined,
@@ -9,7 +9,7 @@ export function resolveCodingToolSelection(
 ): ReadonlySet<CodingToolName> {
 	assertKnownTools(tools, "tools");
 	assertKnownTools(excludeTools, "excludeTools");
-	const selected = new Set<CodingToolName>(tools ?? codingToolNames);
+	const selected = new Set<CodingToolName>(tools ?? defaultCodingToolNames);
 	for (const tool of excludeTools ?? []) selected.delete(tool);
 	return selected;
 }

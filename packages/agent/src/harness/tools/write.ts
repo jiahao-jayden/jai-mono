@@ -37,6 +37,7 @@ export function createWriteTool(options: WorkspaceToolOptions): AgentTool<typeof
 							text: `${created ? "Created" : "Wrote"} ${bytes} bytes to ${args.path}`,
 						},
 					],
+					fileChanges: [{ operation: created ? "add" : "modify", path: resolved.canonicalPath }],
 					details: { path: resolved.path, bytes, created },
 				};
 			});

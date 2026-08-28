@@ -86,10 +86,6 @@ export function permissionName(toolName: CanonicalToolName): string {
 		case "Write":
 		case "Edit":
 			return "edit";
-		case "Glob":
-			return "glob";
-		case "Grep":
-			return "grep";
 		case "Bash":
 			return "bash";
 		case "SpawnAgent":
@@ -323,7 +319,6 @@ export function splitBashCommand(command: string): string[] | undefined {
 
 function matchesTool(ruleTool: CanonicalToolName, callTool: CanonicalToolName): boolean {
 	if (ruleTool === callTool) return true;
-	if (ruleTool === "Read") return callTool === "Glob" || callTool === "Grep";
 	if (ruleTool === "Edit") return callTool === "Write";
 	return false;
 }
@@ -334,7 +329,6 @@ function requiredString(call: PermissionCall, key: string): string {
 }
 
 function requiredPath(call: PermissionCall): string {
-	if (call.toolName === "Glob" || call.toolName === "Grep") return requiredString(call, "path") || ".";
 	return requiredString(call, "path");
 }
 
