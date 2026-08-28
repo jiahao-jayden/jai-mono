@@ -30,7 +30,6 @@ import type {
 } from "../../shared/desktop-rpc";
 import { sortArtifacts } from "./artifacts";
 import { desktopAgentError } from "./errors";
-import { resolveDesktopRuntimeHostEntrypoint } from "../runtime-host/entrypoint";
 
 class DesktopAcpConnectionFailed extends TaggedError("desktop_agent.acp_connection_failed")<{
 	readonly message: string;
@@ -103,7 +102,9 @@ export class DesktopAcpAgentHost {
 		emit: DesktopAcpAgentEventSink,
 		options: DesktopAcpAgentHostOptions,
 	): Promise<DesktopAcpAgentHost> {
-		const runtimeHostEntrypoint = resolveDesktopRuntimeHostEntrypoint();
+		const runtimeHostEntrypoint = options.client
+			? undefined
+			: (await import("../runtime-host/entrypoint")).resolveDesktopRuntimeHostEntrypoint();
 		const clientResult = options.client
 			? Result.ok(options.client)
 			: await connectJaiRuntimeHost({
@@ -134,26 +135,18 @@ export class DesktopAcpAgentHost {
 	}
 
 	async send(input: DesktopAcpSendInput): Promise<{ readonly accepted: true }> {
-		const runtime = await this.#ensureSession(input.sessionId, input.modelRef, input.mode);
-		await this.#setConfiguration(runtime, input.modelRef, input.mode);
-		const prompt = [
-			{ type: "text", text: input.message } as const,
-			...(input.resolvedAttachments ?? []).map((attachment) => ({
-				type: "resource_link" as const,
-				uri: pathToFileURL(attachment.sourcePath).toString(),
-				name: attachment.filename,
-			})),
-		];
-		const response = await this.#request("session/prompt", { sessionId: runtime.sessionId, prompt });
-		if (response.isErr()) throw response.error;
-		return { accepted: true };
+		return this.#admitPrompt(input);
 	}
 
-	async navigate(_input: DesktopAgentNavigateInput): Promise<void> {
-		throw desktopAgentError("unsupported_operation", {
-			message: "ACP v2 does not expose branch navigation yet.",
-			data: { sessionId: _input.sessionId },
+	async navigate(input: DesktopAgentNavigateInput): Promise<void> {
+		const runtime = await this.#ensureSession(input.sessionId, input.modelRef, input.mode);
+		await this.#setConfiguration(runtime, input.modelRef, input.mode);
+		const response = await this.#request("session/navigate", {
+			sessionId: runtime.sessionId,
+			entryId: input.entryId,
 		});
+		if (response.isErr()) throw response.error;
+		await this.#rebuildProjection(runtime);
 	}
 
 	abort(sessionId: string): void {
@@ -164,17 +157,14 @@ export class DesktopAcpAgentHost {
 	}
 
 	steer(input: DesktopAgentMessageInput): void {
-		void this.send(input).catch((error) => {
+		void this.#admitPrompt(input, "steer").catch((error) => {
 			const runtime = this.#sessions.get(input.sessionId);
 			if (runtime) this.#emitRuntimeError(runtime, error instanceof Error ? error.message : "Could not send steering input");
 		});
 	}
 
-	followUp(input: DesktopAgentMessageInput): void {
-		throw desktopAgentError("unsupported_operation", {
-			message: "Follow-up is unavailable until its input admission is durable.",
-			data: { sessionId: input.sessionId },
-		});
+	followUp(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }> {
+		return this.#admitPrompt(input, "follow_up");
 	}
 
 	resolvePermission(resolution: DesktopPermissionResolution): void {
@@ -289,6 +279,43 @@ export class DesktopAcpAgentHost {
 			}
 		}
 		return runtime;
+	}
+
+	async #admitPrompt(
+		input: DesktopAcpSendInput,
+		delivery?: "steer" | "follow_up",
+	): Promise<{ readonly accepted: true }> {
+		const runtime = await this.#ensureSession(input.sessionId, input.modelRef, input.mode);
+		await this.#setConfiguration(runtime, input.modelRef, input.mode);
+		const prompt = [
+			{ type: "text", text: input.message } as const,
+			...(input.resolvedAttachments ?? []).map((attachment) => ({
+				type: "resource_link" as const,
+				uri: pathToFileURL(attachment.sourcePath).toString(),
+				name: attachment.filename,
+			})),
+		];
+		const response = await this.#request("session/prompt", {
+			sessionId: runtime.sessionId,
+			prompt,
+			...(delivery ? { delivery } : {}),
+		});
+		if (response.isErr()) throw response.error;
+		return { accepted: true };
+	}
+
+	async #rebuildProjection(runtime: AcpSessionRuntime): Promise<void> {
+		runtime.items.clear();
+		runtime.artifacts.clear();
+		runtime.terminalToolCallIds.clear();
+		runtime.terminalOutput.clear();
+		runtime.todos = undefined;
+		const replayed = await this.#request("session/resume", {
+			sessionId: runtime.sessionId,
+			cwd: runtime.cwd,
+			replayFrom: { type: "start" },
+		});
+		if (replayed.isErr()) throw replayed.error;
 	}
 
 	async #setConfiguration(runtime: AcpSessionRuntime, modelRef: string, mode: DesktopAgentMode): Promise<void> {

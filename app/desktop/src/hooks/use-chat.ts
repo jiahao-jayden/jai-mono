@@ -183,9 +183,27 @@ export function useChat(options: UseChatOptions): Chat {
 					}));
 					return false;
 				}
-				latest.onMessageQueued(text, mode);
-				latest.onMessageAccepted(current.sessionId);
-				return true;
+				if (!latest.modelRef) {
+					setState((previous) => ({ ...previous, error: "请先选择可用模型。" }));
+					return false;
+				}
+				try {
+					await desktop.agent.followUp({
+						sessionId: current.sessionId,
+						message: text,
+						modelRef: latest.modelRef,
+						mode,
+					});
+					latest.onMessageAccepted(current.sessionId);
+					return true;
+				} catch (error) {
+					const failure = getDesktopRemoteRpcFailure(error);
+					setState((previous) => ({
+						...previous,
+						error: chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
+					}));
+					return false;
+				}
 			}
 			if (latest.queue.length > 0) {
 				setState((previous) => ({ ...previous, error: "请先处理队列中的消息。" }));

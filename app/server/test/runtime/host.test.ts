@@ -526,6 +526,120 @@ describe("RuntimeHost", () => {
     });
   });
 
+  test("records a mid-run follow-up with FIFO delivery instead of steer", async () => {
+    const driver = new ControlledOperationDriver();
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = createRuntimeHost({
+      persistence,
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1", "input-1", "entry-follow-1"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+    const first = await opened.value.prompt({ text: "start" });
+    if (first.isErr()) throw first.error;
+    await driver.opened;
+    await Promise.resolve();
+
+    const followUp = await opened.value.prompt({
+      text: "then summarize",
+      delivery: "follow_up",
+    });
+    if (followUp.isErr()) throw followUp.error;
+    expect(followUp.value).toEqual({
+      operationId: "operation-1",
+      inputEntryId: "entry-follow-1",
+    });
+    expect(driver.queuedInputs).toEqual([
+      {
+        inputId: "input-1",
+        delivery: "follow_up",
+        entryId: "entry-follow-1",
+        text: "then summarize",
+      },
+    ]);
+
+    const durable = await persistence.load("session-1");
+    if (durable.isErr()) throw durable.error;
+    expect(durable.value.operationRecords.at(-1)).toMatchObject({
+      type: "input_queued",
+      operationId: "operation-1",
+      delivery: "follow_up",
+      inputEntryId: "entry-follow-1",
+    });
+  });
+
+  test("writes a branch entry when navigating an idle Session back to an earlier message", async () => {
+    const driver = new ControlledOperationDriver();
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = createRuntimeHost({
+      persistence,
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1", "branch-1"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+    const admitted = await opened.value.prompt({ text: "start" });
+    if (admitted.isErr()) throw admitted.error;
+    await driver.opened;
+    const beforeAssistant = await persistence.load("session-1");
+    if (beforeAssistant.isErr()) throw beforeAssistant.error;
+    const appendedAssistant = await persistence.appendEntry({
+      sessionId: "session-1",
+      expectedRevision: beforeAssistant.value.revision,
+      entry: {
+        type: "message",
+        id: "assistant-1",
+        parentId: "operation-1:input",
+        timestamp: "2026-08-28T00:00:02.000Z",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "done" }],
+          provider: "test",
+          model: "test-model",
+          usage: zeroUsage(),
+          stopReason: "stop",
+          timestamp: 0,
+        },
+      },
+    });
+    if (appendedAssistant.isErr()) throw appendedAssistant.error;
+    driver.finish("completed");
+    await driver.closed;
+
+    const navigated = await opened.value.navigate("operation-1:input");
+    if (navigated.isErr()) throw navigated.error;
+    const durable = await persistence.load("session-1");
+    if (durable.isErr()) throw durable.error;
+    expect(durable.value.snapshot.leafId).toBe("branch-1");
+    expect(durable.value.snapshot.entries.at(-1)).toMatchObject({
+      type: "branch",
+      id: "branch-1",
+      parentId: "operation-1:input",
+      fromId: "assistant-1",
+    });
+  });
+
+  test("rejects navigation while a live Operation is still active", async () => {
+    const driver = new ControlledOperationDriver();
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = createRuntimeHost({
+      persistence,
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+    const admitted = await opened.value.prompt({ text: "start" });
+    if (admitted.isErr()) throw admitted.error;
+    await driver.opened;
+    const navigated = await opened.value.navigate("operation-1:input");
+    expect(navigated).toMatchObject({
+      status: "error",
+      error: { _tag: "runtime_host.session_busy" },
+    });
+  });
+
   test("never writes a terminal outcome while a durable steer input lacks its Session entry", async () => {
     const driver = new ControlledOperationDriver();
     const persistence = new InMemoryProductSessionPersistence();

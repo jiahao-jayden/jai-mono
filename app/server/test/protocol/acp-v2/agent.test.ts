@@ -1030,6 +1030,94 @@ describe("ACP v2 Agent adapter", () => {
 		);
 		expect(JSON.stringify(replayed)).not.toContain("must-not-project");
 	});
+
+	test("accepts a follow-up delivery on session/prompt while an Operation is live", async () => {
+		const persistence = new InMemoryProductSessionPersistence();
+		const driver = new ProjectionDriver();
+		const host = createRuntimeHost({
+			persistence,
+			operationDriver: driver,
+			createId: ids("session-1", "operation-1", "input-1", "entry-follow-1"),
+		});
+		const agent = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: { protocolVersion: 2, capabilities: {}, info: { name: "test-client", version: "1.0.0" } },
+		});
+		await agent.handle({ jsonrpc: "2.0", id: 2, method: "session/new", params: { cwd: "/workspace" } });
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 3,
+			method: "session/prompt",
+			params: { sessionId: "session-1", prompt: [{ type: "text", text: "start" }] },
+		});
+		await driver.opened;
+		const followUp = await agent.handle({
+			jsonrpc: "2.0",
+			id: 4,
+			method: "session/prompt",
+			params: {
+				sessionId: "session-1",
+				delivery: "follow_up",
+				prompt: [{ type: "text", text: "then summarize" }],
+			},
+		});
+		expect(followUp).toContainEqual({ jsonrpc: "2.0", id: 4, result: {} });
+		const durable = await persistence.load("session-1");
+		if (durable.isErr()) throw durable.error;
+		expect(durable.value.operationRecords.at(-1)).toMatchObject({
+			type: "input_queued",
+			delivery: "follow_up",
+			inputEntryId: "entry-follow-1",
+		});
+	});
+
+	test("session/navigate forks the current branch and resume replays only that branch", async () => {
+		const persistence = new InMemoryProductSessionPersistence();
+		const driver = new ProjectionDriver();
+		const host = createRuntimeHost({
+			persistence,
+			operationDriver: driver,
+			createId: ids("session-1", "operation-1", "branch-1"),
+		});
+		const agent = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: { protocolVersion: 2, capabilities: {}, info: { name: "test-client", version: "1.0.0" } },
+		});
+		await agent.handle({ jsonrpc: "2.0", id: 2, method: "session/new", params: { cwd: "/workspace" } });
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 3,
+			method: "session/prompt",
+			params: { sessionId: "session-1", prompt: [{ type: "text", text: "start" }] },
+		});
+		await driver.opened;
+		await driver.appendAssistant("done");
+		driver.finish("completed");
+		await driver.closed;
+
+		const navigated = await agent.handle({
+			jsonrpc: "2.0",
+			id: 4,
+			method: "session/navigate",
+			params: { sessionId: "session-1", entryId: "operation-1:input" },
+		});
+		expect(navigated).toContainEqual({ jsonrpc: "2.0", id: 4, result: {} });
+
+		const replayed = await agent.handle({
+			jsonrpc: "2.0",
+			id: 5,
+			method: "session/resume",
+			params: { sessionId: "session-1", cwd: "/workspace", replayFrom: { type: "start" } },
+		});
+		expect(JSON.stringify(replayed)).toContain("operation-1:input");
+		expect(JSON.stringify(replayed)).not.toContain("assistant-1");
+	});
 });
 
 function configuredSessionPolicy(): RuntimeSessionConfigurationPolicy {
@@ -1092,6 +1180,7 @@ class ProjectionDriver implements RuntimeOperationDriver {
 				this.finish("aborted");
 				return Result.ok<void, RuntimeOperationExecutionFailed>(undefined);
 			},
+			enqueueInput: async () => Result.ok<void, RuntimeOperationExecutionFailed>(undefined),
 			awaitOutcome: async () => Result.ok(await this.#outcome),
 			subscribe: (listener) => {
 				this.#listeners.add(listener);

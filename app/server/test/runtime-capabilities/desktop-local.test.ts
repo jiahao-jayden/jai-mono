@@ -51,11 +51,12 @@ describe("Desktop Local Runtime Capability Source", () => {
 				workspaceDirectory,
 				workspaceTrusted: true,
 			});
-			expect(resolved.value.extensions).toHaveLength(3);
+			expect(resolved.value.extensions).toHaveLength(4);
 			expect(resolved.value.extensions.map((extension) => extension.id)).toEqual([
 				"jai.skills",
 				"agent-plugins",
 				"jai.fff-search",
+				"mcp",
 			]);
 			const fffSearch = resolved.value.extensions.find((extension) => extension.id === "jai.fff-search");
 			expect(fffSearch?.tools?.map((tool) => tool.name)).toEqual(["fffind", "ffgrep"]);

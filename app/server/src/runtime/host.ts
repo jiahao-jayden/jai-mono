@@ -1,5 +1,6 @@
 import type { AssistantMessage } from "@jai/ai";
 import {
+  branchOf,
   type JsonObject,
   type JsonValue,
   type MessageEntry,
@@ -66,6 +67,7 @@ export interface PromptAdmission {
 
 export interface RuntimePromptInput {
   readonly text: string;
+  readonly delivery?: "steer" | "follow_up";
   readonly metadata?: Readonly<Record<string, JsonValue>>;
 }
 
@@ -111,6 +113,7 @@ export type RuntimeSessionEvent =
 
 export interface RuntimeSessionSnapshot {
   readonly entries: readonly SessionEntry<JsonObject>[];
+  readonly leafId: string | null;
   readonly recovery: readonly OperationRecoveryVerdict[];
   /** Cumulative durable model cost, including discarded responses. */
   readonly usage: { readonly cost: number };
@@ -238,6 +241,9 @@ export interface RuntimeSession {
   prompt(
     input: RuntimePromptInput,
   ): Promise<Result<PromptAdmission, RuntimeHostPromptError>>;
+  navigate(
+    entryId: string,
+  ): Promise<Result<void, RuntimeHostPromptError>>;
   recovery(): Promise<
     Result<readonly OperationRecoveryVerdict[], RuntimeHostRecoveryError>
   >;
@@ -668,7 +674,7 @@ class DefaultRuntimeSession implements RuntimeSession {
       }
       if (this.#indeterminate) return Result.err(this.#indeterminate);
       if (this.operationDriver && this.#active)
-        return this.queueActiveInput(this.#active, input.text);
+        return this.queueActiveInput(this.#active, input);
       const operationId = this.createId();
       const loaded = await this.persistence.load(this.id);
       if (loaded.isErr()) return Result.err(this.reject(loaded.error));
@@ -778,9 +784,99 @@ class DefaultRuntimeSession implements RuntimeSession {
     const foreground = this.foregroundState(loaded.value, recovery.value);
     return Result.ok({
       entries: loaded.value.snapshot.entries,
+      leafId: loaded.value.snapshot.leafId,
       recovery: recovery.value,
       usage: { cost: usageCost(loaded.value.operationRecords) },
       ...foreground,
+    });
+  }
+
+  async navigate(
+    entryId: string,
+  ): Promise<Result<void, RuntimeHostPromptError>> {
+    if (this.#closed) return Result.err(this.closed());
+    if (!entryId.trim()) {
+      return Result.err(
+        new RuntimeHostPromptRejected({
+          message: "Navigation target must not be empty",
+          sessionId: this.id,
+        }),
+      );
+    }
+    return this.enqueue(async () => {
+      if (this.#suspended) {
+        return Result.err(
+          new RuntimeHostSessionBusy({
+            message: `Operation "${this.#suspended.operationId}" must be recovered before this Session can navigate`,
+            sessionId: this.id,
+            operationId: this.#suspended.operationId,
+          }),
+        );
+      }
+      if (this.#indeterminate) return Result.err(this.#indeterminate);
+      if (this.#active) {
+        return Result.err(
+          new RuntimeHostSessionBusy({
+            message: `Session "${this.id}" cannot navigate while Operation "${this.#active.operationId}" is active`,
+            sessionId: this.id,
+            operationId: this.#active.operationId,
+          }),
+        );
+      }
+      const loaded = await this.persistence.load(this.id);
+      if (loaded.isErr()) return Result.err(this.reject(loaded.error));
+      const recovered = recoverDurableState(loaded.value);
+      if (recovered.isErr()) return Result.err(this.reject(recovered.error));
+      const active = recovered.value.find((verdict) => verdict.status !== "terminal");
+      if (active) {
+        return Result.err(
+          new RuntimeHostSessionBusy({
+            message: `Session "${this.id}" cannot navigate while Operation "${active.operationId}" is active`,
+            sessionId: this.id,
+            operationId: active.operationId,
+          }),
+        );
+      }
+      const snapshot = loaded.value.snapshot;
+      if (!snapshot.entries.some((entry) => entry.id === entryId)) {
+        return Result.err(
+          new RuntimeHostPromptRejected({
+            message: `Session "${this.id}" has no entry "${entryId}"`,
+            sessionId: this.id,
+          }),
+        );
+      }
+      const fromId = snapshot.leafId;
+      if (fromId === null) return Result.ok(undefined);
+      let abandoned: readonly SessionEntry<JsonObject>[];
+      try {
+        const kept = new Set(branchOf(snapshot.entries, entryId).map((entry) => entry.id));
+        abandoned = branchOf(snapshot.entries, fromId).filter((entry) => !kept.has(entry.id));
+      } catch (error) {
+        return Result.err(
+          new RuntimeHostPromptRejected({
+            message: `Session "${this.id}" has a broken branch while navigating to "${entryId}"`,
+            sessionId: this.id,
+            cause: error,
+          }),
+        );
+      }
+      if (abandoned.length === 0) return Result.ok(undefined);
+      const entry = {
+        type: "branch" as const,
+        id: this.createId(),
+        parentId: entryId,
+        fromId,
+        timestamp: this.now().toISOString(),
+      };
+      const appended = await this.persistence.appendEntry({
+        sessionId: this.id,
+        entry,
+        expectedRevision: loaded.value.revision,
+      });
+      if (appended.isErr()) return Result.err(this.reject(appended.error));
+      this.publish({ type: "entry_appended", entry });
+      return Result.ok(undefined);
     });
   }
 
@@ -1015,7 +1111,7 @@ class DefaultRuntimeSession implements RuntimeSession {
   /** Records a mid-run input before offering it to the disposable live Agent. */
   private async queueActiveInput(
     active: ActiveOperation,
-    text: string,
+    input: RuntimePromptInput,
   ): Promise<Result<PromptAdmission, RuntimeHostPromptError>> {
     if (active.resource && !active.resource.enqueueInput) {
       return Result.err(
@@ -1029,9 +1125,9 @@ class DefaultRuntimeSession implements RuntimeSession {
     const inputEntryId = this.createId();
     const queued: RuntimeQueuedInput = {
       inputId,
-      delivery: "steer",
+      delivery: input.delivery === "follow_up" ? "follow_up" : "steer",
       entryId: inputEntryId,
-      text,
+      text: input.text,
     };
     const appended = await this.persistence.appendOperation({
       sessionId: this.id,
@@ -1041,7 +1137,7 @@ class DefaultRuntimeSession implements RuntimeSession {
         inputId,
         delivery: queued.delivery,
         inputEntryId,
-        text,
+        text: input.text,
         timestamp: this.now().toISOString(),
       },
     });

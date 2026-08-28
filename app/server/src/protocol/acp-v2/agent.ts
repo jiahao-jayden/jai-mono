@@ -1,6 +1,6 @@
 import { isAbsolute } from "node:path";
 import type { ToolFileChange } from "@jai/ai";
-import type { AgentMessage, JsonValue, SessionEntry } from "@jai/agent";
+import { branchOf, type AgentMessage, type JsonValue, type SessionEntry } from "@jai/agent";
 import { todosFromAppState, type CodingAgentTodo } from "@jai/coding-agent";
 import type { RuntimeOperationContent } from "../../operations";
 import type {
@@ -60,6 +60,9 @@ class DefaultAcpV2Agent implements AcpV2Agent {
 					break;
 				case "session/prompt":
 					response = await this.prompt(request);
+					break;
+				case "session/navigate":
+					response = await this.navigate(request);
 					break;
 				case "session/set_config_option":
 					response = await this.setConfigOption(request);
@@ -206,9 +209,31 @@ class DefaultAcpV2Agent implements AcpV2Agent {
 		if (!session)
 			return this.respondError(request.id, -32004, `Session "${sessionId}" is not active on this ACP connection`);
 
-		const admission = await session.prompt({ text: promptText(prompt), metadata: promptMetadata(prompt) });
+		const delivery = parseDelivery(params?.delivery);
+		if (delivery === "invalid") return this.respondError(request.id, -32602, "Invalid session/prompt parameters");
+		const admission = await session.prompt({
+			text: promptText(prompt),
+			metadata: promptMetadata(prompt),
+			...(delivery ? { delivery } : {}),
+		});
 		if (admission.isErr()) return this.respondError(request.id, -32001, admission.error.message);
 
+		return this.respond(request.id, {});
+	}
+
+	private async navigate(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
+		const params = objectParams(request.params);
+		const sessionId = params?.sessionId;
+		const entryId = params?.entryId;
+		if (typeof sessionId !== "string" || typeof entryId !== "string" || !entryId.trim()) {
+			return this.respondError(request.id, -32602, "Invalid session/navigate parameters");
+		}
+		const session = this.#sessions.get(sessionId);
+		if (!session) {
+			return this.respondError(request.id, -32004, `Session "${sessionId}" is not active on this ACP connection`);
+		}
+		const navigated = await session.navigate(entryId);
+		if (navigated.isErr()) return this.respondError(request.id, -32001, navigated.error.message);
 		return this.respond(request.id, {});
 	}
 
@@ -396,6 +421,12 @@ function promptMetadata(prompt: readonly AcpPromptBlock[]): AcpPromptMetadata {
 	};
 }
 
+function parseDelivery(value: unknown): "steer" | "follow_up" | "invalid" | undefined {
+	if (value === undefined) return undefined;
+	if (value === "steer" || value === "follow_up") return value;
+	return "invalid";
+}
+
 function parseReplayFrom(value: unknown): "none" | "start" | "invalid" {
 	if (value === undefined || value === null) return "none";
 	if (!isObject(value) || value.type !== "start") return "invalid";
@@ -468,7 +499,7 @@ function configOptionUpdate(
 
 function projectSnapshot(sessionId: string, snapshot: RuntimeSessionSnapshot): readonly AcpJsonRpcNotification[] {
 	return [
-		...snapshot.entries.flatMap((entry) => projectEntry(sessionId, entry)),
+		...branchOf(snapshot.entries, snapshot.leafId).flatMap((entry) => projectEntry(sessionId, entry)),
 		...(snapshot.usage.cost === 0 ? [] : [usageUpdate(sessionId, snapshot.usage.cost)]),
 		stateUpdate(sessionId, snapshot.state, snapshot.stopReason),
 	];

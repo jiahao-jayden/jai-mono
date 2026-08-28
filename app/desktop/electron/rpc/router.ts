@@ -318,7 +318,7 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				rt.agentHost.steer(parse(desktopAgentMessageInputSchema, input, "Invalid agent message input"));
 			},
 			followUp(_event, input) {
-				rt.agentHost.followUp(parse(desktopAgentMessageInputSchema, input, "Invalid agent message input"));
+				return rt.agentHost.followUp(parse(desktopAgentMessageInputSchema, input, "Invalid agent message input"));
 			},
 			resolvePermission(_event, resolution) {
 				if (Value.Check(desktopPermissionResolutionSchema, resolution)) {

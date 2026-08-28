@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { Result, type Result as ResultType } from "better-result";
+import { createMcpExtension } from "@jai/extension/mcp";
 import { createFffSearchExtension } from "@jai/extension/search";
 import { createSkillsExtension } from "@jai/extension/skills";
 import { createRuntimeAgentPluginsExtension } from "../agents";
@@ -19,7 +20,7 @@ export interface DesktopLocalRuntimeCapabilitySourceOptions {
 	readonly homeDirectory?: string;
 }
 
-/** Selects Desktop's local JSON, Skills, and Agent Plugins for one Operation. */
+/** Selects Desktop's local JSON, Skills, Agent Plugins, and official MCP for one Operation. */
 export function createDesktopLocalRuntimeCapabilitySource(
 	options: DesktopLocalRuntimeCapabilitySourceOptions,
 ): RuntimeCapabilitySource {
@@ -69,7 +70,7 @@ class DesktopLocalRuntimeCapabilitySource implements RuntimeCapabilitySource {
 			});
 			return Result.ok({
 				fileCapabilities,
-				extensions: [skillsExtension, agentPlugins, fffSearchExtension],
+				extensions: [skillsExtension, agentPlugins, fffSearchExtension, createMcpExtension()],
 			});
 		} catch (cause) {
 			return Result.err(

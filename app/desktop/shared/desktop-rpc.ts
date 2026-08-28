@@ -771,7 +771,7 @@ export interface DesktopApi {
 		navigate(input: DesktopAgentNavigateInput): Promise<void>;
 		abort(sessionId: string): void;
 		steer(input: DesktopAgentMessageInput): void;
-		followUp(input: DesktopAgentMessageInput): void;
+		followUp(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;
 		resolvePermission(resolution: DesktopPermissionResolution): void;
 		getSnapshot(sessionId: string): Promise<DesktopAgentSnapshot>;
 		close(sessionId: string): void;

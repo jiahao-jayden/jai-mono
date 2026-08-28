@@ -82,6 +82,48 @@ describe("DesktopAcpAgentHost", () => {
 		host.steer({ sessionId: "session-1", modelRef: "profile/model", mode: "manual", message: "change direction" });
 		await new Promise<void>((resolve) => setTimeout(resolve, 0));
 		expect(client.methods).toContain("session/prompt");
+		expect(client.params.at(-1)).toMatchObject({ delivery: "steer" });
+		host.close();
+	});
+
+	test("admits follow-up through ACP prompt delivery instead of throwing", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.followUp({
+			sessionId: "session-1",
+			modelRef: "profile/model",
+			mode: "manual",
+			message: "then summarize",
+		});
+		expect(client.methods).toContain("session/prompt");
+		expect(client.params.at(-1)).toMatchObject({
+			delivery: "follow_up",
+			prompt: [{ type: "text", text: "then summarize" }],
+		});
+		host.close();
+	});
+
+	test("navigates through ACP then rebuilds the Session projection", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+		await host.navigate({
+			sessionId: "session-1",
+			entryId: "operation-1:input",
+			modelRef: "profile/model",
+			mode: "manual",
+		});
+		expect(client.methods).toContain("session/navigate");
+		expect(client.params.find((params) => params && typeof params === "object" && "entryId" in params)).toMatchObject({
+			entryId: "operation-1:input",
+		});
+		expect(client.methods.filter((method) => method === "session/resume")).toHaveLength(2);
 		host.close();
 	});
 
@@ -312,14 +354,20 @@ describe("DesktopAcpAgentHost", () => {
 
 class FakeAcpClient implements LocalAcpV2Client {
 	readonly methods: string[] = [];
+	readonly params: unknown[] = [];
 	readonly notifications: Array<{ readonly method: string; readonly params: unknown }> = [];
 	readonly responses: AcpJsonRpcResponse[] = [];
 	readonly #listeners = new Set<(notification: AcpJsonRpcNotification) => void>();
 	readonly #requests = new Set<(request: AcpJsonRpcRequest) => void>();
+	#resumeCalls = 0;
 
-	async request(method: string): Promise<ResultType<unknown, AcpLocalClientError>> {
+	async request(method: string, params?: unknown): Promise<ResultType<unknown, AcpLocalClientError>> {
 		this.methods.push(method);
-		if (method === "session/resume") return Result.err({} as AcpLocalClientError);
+		this.params.push(params);
+		if (method === "session/resume") {
+			this.#resumeCalls += 1;
+			if (this.#resumeCalls === 1) return Result.err({} as AcpLocalClientError);
+		}
 		return Result.ok({});
 	}
 
