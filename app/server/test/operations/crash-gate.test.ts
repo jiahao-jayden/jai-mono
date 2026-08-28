@@ -73,7 +73,7 @@ async function createScenario(effectGate?: EffectGate): Promise<CrashScenario> {
 	const admission = await opened.value.prompt({ text: "read a.txt" });
 	if (admission.isErr()) throw admission.error;
 
-	const sessionHandle = await openSession(new RuntimeSessionStore(persistence, "/workspace"), "session-1", {});
+	const sessionHandle = await openSession(new RuntimeSessionStore(persistence), "session-1", {});
 	const toolCalls: string[] = [];
 	const read: AgentTool<typeof toolParameters> = {
 		name: "read",
@@ -286,7 +286,7 @@ describe("manual Effect Gate crash prefixes", () => {
 			],
 		});
 
-		const sessionHandle = await openSession(new RuntimeSessionStore(scenario.persistence, "/workspace"), "session-1", {});
+		const sessionHandle = await openSession(new RuntimeSessionStore(scenario.persistence), "session-1", {});
 		const resumedProvider: Provider = {
 			id: "test",
 			stream() {
@@ -348,7 +348,7 @@ describe("manual Effect Gate crash prefixes", () => {
 		gate.interrupt();
 		await run.catch(() => {});
 
-		const sessionHandle = await openSession(new RuntimeSessionStore(scenario.persistence, "/workspace"), "session-1", {});
+		const sessionHandle = await openSession(new RuntimeSessionStore(scenario.persistence), "session-1", {});
 		const finalProviderCalls = { current: 0 };
 		const finalProvider: Provider = {
 			id: "test",

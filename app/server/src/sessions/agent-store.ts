@@ -1,12 +1,5 @@
-import {
-	type JsonObject,
-	type SessionEntry,
-	type SessionFollowListener,
-	SessionFollowLost,
-	type SessionStore,
-	type StoredSession,
-} from "@jai/agent";
-import { Result, TaggedError } from "better-result";
+import type { JsonObject, SessionEntry, SessionStore, StoredSession } from "@jai/agent";
+import { TaggedError } from "better-result";
 import type { ProductSessionPersistence } from "./types";
 
 class RuntimeSessionStoreWriteFailed extends TaggedError("runtime_session_store.write_failed")<{
@@ -34,8 +27,6 @@ export type RuntimeSessionEntryCommitted<TAppState extends JsonObject = JsonObje
 export class RuntimeSessionStore<TAppState extends JsonObject = JsonObject> implements SessionStore<TAppState> {
 	constructor(
 		private readonly persistence: ProductSessionPersistence<TAppState>,
-		private readonly cwd: string,
-		private readonly now: () => Date = () => new Date(),
 		private readonly onEntryCommitted?: RuntimeSessionEntryCommitted<TAppState>,
 	) {}
 
@@ -76,55 +67,10 @@ export class RuntimeSessionStore<TAppState extends JsonObject = JsonObject> impl
 		});
 	}
 
-	async list(): Promise<string[]> {
-		const listed = await this.persistence.list();
-		if (listed.isErr()) {
-			throw new RuntimeSessionStoreWriteFailed({
-				message: "Could not list Sessions through the Runtime Host store adapter",
-				sessionId: "",
-				cause: listed.error,
-			});
-		}
-		return listed.value.map((session) => session.id);
-	}
-
 	async delete(id: string): Promise<void> {
 		throw new RuntimeSessionStoreDeleteUnsupported({
 			message: `Runtime Host does not support deleting durable Session "${id}"`,
 			sessionId: id,
 		});
-	}
-
-	follow(id: string, afterEntryId: string | undefined, listener: SessionFollowListener<TAppState>): () => void {
-		let closed = false;
-		let cursor = afterEntryId;
-		let tail = Promise.resolve();
-		const reload = (): void => {
-			tail = tail.then(async () => {
-				if (closed) return;
-				const loaded = await this.load(id);
-				if (!loaded) {
-					listener(Result.err(new SessionFollowLost({ message: `Session "${id}" does not exist`, afterEntryId: cursor ?? "" })));
-					closed = true;
-					return;
-				}
-				const start = cursor === undefined ? 0 : loaded.snapshot.entries.findIndex((entry) => entry.id === cursor) + 1;
-				if (cursor !== undefined && start === 0) {
-					listener(Result.err(new SessionFollowLost({ message: `Entry "${cursor}" was not found`, afterEntryId: cursor })));
-					closed = true;
-					return;
-				}
-				const entries = loaded.snapshot.entries.slice(start);
-				if (entries.length === 0) return;
-				cursor = entries.at(-1)?.id;
-				listener(Result.ok({ entries, revision: loaded.revision, lastEntryId: cursor! }));
-			});
-		};
-		const interval = setInterval(reload, 250);
-		reload();
-		return () => {
-			closed = true;
-			clearInterval(interval);
-		};
 	}
 }

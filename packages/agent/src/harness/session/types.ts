@@ -1,5 +1,4 @@
 import type { Usage } from "@jai/ai";
-import type { Result } from "better-result";
 import { TaggedError } from "better-result";
 import type { JsonObject } from "../../core/agent-state";
 import type { AgentMessage } from "../../core/types";
@@ -93,31 +92,8 @@ export interface SessionStore<TAppState extends JsonObject = JsonObject> {
 	/** 仅当 session 不存在时创建，返回初始 revision。 */
 	create(id: string, appState: TAppState): Promise<string>;
 	append(id: string, entry: SessionEntry<TAppState>, expectedRevision: string): Promise<string>;
-	list(): Promise<string[]>;
 	delete(id: string): Promise<void>;
-	follow(id: string, afterEntryId: string | undefined, listener: SessionFollowListener<TAppState>): () => void;
 }
-
-export type SessionFollowListener<TAppState extends JsonObject> = (
-	update: Result<SessionFollowUpdate<TAppState>, SessionFollowLost>,
-) => void;
-
-export interface SessionFollowUpdate<TAppState extends JsonObject> {
-	readonly entries: readonly SessionEntry<TAppState>[];
-	readonly revision: string;
-	readonly lastEntryId: string;
-}
-
-export class SessionFollowLost extends TaggedError("session.follow_lost")<{
-	readonly message: string;
-	readonly afterEntryId: string;
-}> {}
-
-/** 旁观一个不存在的 session：调用方可以处理，所以走 Result 而不是抛出。 */
-export class SessionNotFound extends TaggedError("session.not_found")<{
-	readonly message: string;
-	readonly id: string;
-}> {}
 
 /** 持有 revision 的写入句柄，调用方因此不必手工接力 revision。 */
 export interface SessionHandle<TAppState extends JsonObject = JsonObject> {

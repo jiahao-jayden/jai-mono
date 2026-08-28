@@ -63,7 +63,7 @@ describe("Operation effect boundary", () => {
 		const admission = await runtimeSession.value.prompt({ text: "read a.txt" });
 		if (admission.isErr()) throw admission.error;
 
-		const store = new RuntimeSessionStore(persistence, "/workspace");
+		const store = new RuntimeSessionStore(persistence);
 		const sessionHandle = await openSession(store, "session-1", {});
 		const toolParameters = Type.Object({ path: Type.String() });
 		const calls: string[] = [];

@@ -1209,11 +1209,8 @@ class DefaultRuntimeSession implements RuntimeSession {
       cwd: this.info.cwd,
       operationId: active.operationId,
       runtimeConfiguration: configuration,
-      sessionStore: new RuntimeSessionStore(
-        this.persistence,
-        this.info.cwd,
-        undefined,
-        (_sessionId, entry) => this.publish({ type: "entry_appended", entry }),
+      sessionStore: new RuntimeSessionStore(this.persistence, (_sessionId, entry) =>
+        this.publish({ type: "entry_appended", entry }),
       ),
       effectBoundary: createOperationEffectBoundary({
         sessionId: this.id,

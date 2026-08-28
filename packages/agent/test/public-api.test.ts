@@ -25,6 +25,8 @@ describe("public API", () => {
 			expect(root).toHaveProperty(name);
 		}
 		expect(root).not.toHaveProperty("SqliteSessionStore");
+		expect(root).not.toHaveProperty("attachSession");
+		expect(root).not.toHaveProperty("serialized");
 		expect(nodeEnvironment).toHaveProperty("NodeExecutionEnvironment");
 	});
 
