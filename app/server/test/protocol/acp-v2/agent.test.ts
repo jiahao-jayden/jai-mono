@@ -110,6 +110,45 @@ describe("ACP v2 Agent adapter", () => {
 		]);
 	});
 
+	test("lists Sessions without a Product title field", async () => {
+		const host = createRuntimeHost({
+			persistence: new InMemoryProductSessionPersistence(),
+			createId: ids("session-1"),
+			now: () => new Date("2026-08-25T10:00:00.000Z"),
+		});
+		const agent = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: { protocolVersion: 2, capabilities: {}, info: { name: "test-client", version: "1.0.0" } },
+		});
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 2,
+			method: "session/new",
+			params: { cwd: "/workspace" },
+		});
+
+		const listed = await agent.handle({
+			jsonrpc: "2.0",
+			id: 3,
+			method: "session/list",
+			params: {},
+		});
+
+		expect(listed).toEqual([
+			{
+				jsonrpc: "2.0",
+				id: 3,
+				result: {
+					sessions: [{ sessionId: "session-1", cwd: "/workspace", updatedAt: "2026-08-25T10:00:00.000Z" }],
+				},
+			},
+		]);
+		expect((listed[0] as { result: { sessions: readonly unknown[] } }).result.sessions[0]).not.toHaveProperty("title");
+	});
+
 	test("uses ACP v2 session config options to durably set a later Session model", async () => {
 		const persistence = new InMemoryProductSessionPersistence();
 		const agent = createAcpV2Agent({

@@ -156,7 +156,6 @@ class DefaultAcpV2Agent implements AcpV2Agent {
 				sessionId: session.id,
 				cwd: session.cwd,
 				updatedAt: session.updatedAt,
-				...(session.title ? { title: session.title } : {}),
 			}));
 		return this.respond(request.id, { sessions });
 	}

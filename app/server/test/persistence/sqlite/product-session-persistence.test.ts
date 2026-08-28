@@ -145,4 +145,28 @@ describe("SqliteProductSessionPersistence", () => {
 		]);
 		reopened.close();
 	});
+
+	test("does not project leftover product_session_catalog.title into Product Session info", async () => {
+		const { DatabaseSync } = await import("node:sqlite");
+		const database = new DatabaseSync(":memory:");
+		const persistence = new SqliteProductSessionPersistence(database);
+		const created = await persistence.create({
+			id: "session-1",
+			appState: {},
+			runtimeConfiguration: { model: "profile/model-a", mode: "manual" },
+			cwd: "/workspace",
+			createdAt: "2026-08-25T10:00:00.000Z",
+		});
+		if (created.isErr()) throw created.error;
+		database.prepare("UPDATE product_session_catalog SET title = ? WHERE session_id = ?").run("Leftover title", "session-1");
+
+		const listed = await persistence.list();
+		if (listed.isErr()) throw listed.error;
+		expect(listed.value).toEqual([{ id: "session-1", cwd: "/workspace", updatedAt: "2026-08-25T10:00:00.000Z" }]);
+		expect(listed.value[0]).not.toHaveProperty("title");
+
+		const loaded = await persistence.load("session-1");
+		if (loaded.isErr()) throw loaded.error;
+		expect(loaded.value).not.toHaveProperty("title");
+	});
 });

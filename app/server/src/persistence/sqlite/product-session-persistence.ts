@@ -47,7 +47,6 @@ interface OperationRuntimeConfigurationRow {
 interface CatalogRow {
 	readonly id: string;
 	readonly cwd: string;
-	readonly title: string | null;
 	readonly updated_at: string;
 }
 
@@ -103,8 +102,8 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 					.run(input.id, this.nextSequence(input.id), JSON.stringify(input.runtimeConfiguration), input.createdAt);
 				this.database
 					.prepare(
-						`INSERT INTO product_session_catalog (session_id, cwd, title, updated_at)
-						 VALUES (?, ?, NULL, ?)`,
+						`INSERT INTO product_session_catalog (session_id, cwd, updated_at)
+						 VALUES (?, ?, ?)`,
 					)
 					.run(input.id, input.cwd, input.createdAt);
 			});
@@ -144,7 +143,7 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 		try {
 			const rows = this.database
 				.prepare(
-					`SELECT session_id AS id, cwd, title, updated_at
+					`SELECT session_id AS id, cwd, updated_at
 					 FROM product_session_catalog
 					 ORDER BY updated_at DESC, session_id DESC`,
 				)
@@ -427,7 +426,7 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 	private read(sessionId: string): ProductSessionDurableState<TAppState> | undefined {
 		const catalog = this.database
 			.prepare(
-				`SELECT session_id AS id, cwd, title, updated_at
+				`SELECT session_id AS id, cwd, updated_at
 				 FROM product_session_catalog
 				 WHERE session_id = ?`,
 			)
@@ -575,7 +574,6 @@ function projectCatalogRow(row: CatalogRow): ProductSessionInfo {
 		id: row.id,
 		cwd: row.cwd,
 		updatedAt: row.updated_at,
-		...(row.title ? { title: row.title } : {}),
 	};
 }
 

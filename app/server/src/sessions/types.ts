@@ -14,7 +14,6 @@ export interface ProductSessionInfo {
 	readonly id: string;
 	readonly cwd: string;
 	readonly updatedAt: string;
-	readonly title?: string;
 }
 
 export interface ProductSessionDurableState<TAppState extends JsonObject = JsonObject> extends ProductSessionInfo {
