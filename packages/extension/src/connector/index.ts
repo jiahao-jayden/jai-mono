@@ -59,25 +59,12 @@ const connectorConfigurationSchema = Type.Object(
 				{ additionalProperties: false },
 			),
 		),
-		connectors: Type.Optional(
-			Type.Record(
-				Type.String({ minLength: 1 }),
-				Type.Object(
-					{
-						enabled: Type.Optional(Type.Boolean()),
-						credentials: Type.Optional(Type.Record(Type.String({ minLength: 1 }), Type.String())),
-					},
-					{ additionalProperties: false },
-				),
-			),
-		),
 	},
 	{ additionalProperties: false },
 );
 type ConnectorExtensionConfiguration = Static<typeof connectorConfigurationSchema>;
 const connectorDefaultConfiguration: ConnectorExtensionConfiguration = {
 	policy: { default: "ask", actions: {} },
-	connectors: {},
 };
 
 export function createConnectorExtension(

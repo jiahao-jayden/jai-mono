@@ -21,7 +21,6 @@ type ConnectorContext = CodingExtensionRuntime<{
 		readonly default?: "allow" | "ask" | "deny";
 		readonly actions?: Readonly<Record<string, "allow" | "ask" | "deny">>;
 	};
-	readonly connectors?: Readonly<Record<string, { readonly enabled?: boolean; readonly credentials?: Readonly<Record<string, string>> }>>;
 }>;
 
 describe("Connector Extension", () => {
@@ -64,7 +63,6 @@ describe("Connector Extension", () => {
 		expect(updates).toEqual([
 			{
 				policy: { default: "ask", actions: { "demo.create": "allow" } },
-				connectors: {},
 			},
 		]);
 		expect(executed).toEqual([preparedAction("ask")]);
@@ -145,7 +143,6 @@ function extensionContext(input: {
 }): ConnectorContext {
 	let value: ConnectorContext["configuration"]["value"] = {
 		policy: { default: "ask" as const, actions: {} as Record<string, "allow" | "ask" | "deny"> },
-		connectors: {},
 	};
 	return {
 		sessionId: "session-1",

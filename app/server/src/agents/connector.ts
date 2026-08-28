@@ -22,9 +22,9 @@ export interface RuntimeConnectorAgentAssembly {
 }
 
 /**
- * Server-local Connector assembly. It hides raw Connector credentials behind
- * the ConnectorService and exposes only its policy as Extension configuration.
- * No SDK package, ACP client, or Desktop process needs SQLite access to use it.
+ * Server-local Connector assembly. Connector enabled flags and credentials stay
+ * in Host settings and reach adapters only through ConnectorService. Extension
+ * configuration is the policy slice; it cannot read or write the connectors tree.
  */
 export function createRuntimeConnectorAgentAssembly(
 	settings: SqliteRuntimeAgentSettings,
@@ -64,7 +64,7 @@ function policyConfiguration(settings: RuntimeConnectorSettings): JsonObject {
 }
 
 function policyFromConfiguration(value: JsonObject): NonNullable<RuntimeConnectorSettings["policy"]> | undefined {
-	if (!record(value) || !only(value, ["policy", "connectors"])) return undefined;
+	if (!record(value) || !only(value, ["policy"])) return undefined;
 	const policy = value.policy;
 	if (!record(policy) || !only(policy, ["default", "actions"])) return undefined;
 	if (policy.default !== undefined && !permission(policy.default)) return undefined;

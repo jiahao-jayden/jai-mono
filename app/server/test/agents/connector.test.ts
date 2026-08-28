@@ -59,4 +59,39 @@ describe("Runtime Host Connector assembly", () => {
 			database.close();
 		}
 	});
+
+	test("rejects connector credentials written through Extension configuration and keeps them in settings", async () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const settings = new SqliteRuntimeAgentSettings(database);
+			const initialized = settings.write({
+				revision: null,
+				model: "",
+				providers: [],
+				connector: {
+					policy: { default: "ask", actions: {} },
+					connectors: { context7: { enabled: true, credentials: { apiKey: "ctx-secret-1234" } } },
+				},
+			});
+			if (initialized.isErr()) throw initialized.error;
+
+			const assembled = createRuntimeConnectorAgentAssembly(settings);
+			if (assembled.isErr()) throw assembled.error;
+			const written = await assembled.value.extensionRuntime.writeConfiguration?.({
+				extensionId: "connector",
+				scope: "user",
+				value: {
+					policy: { default: "ask", actions: {} },
+					connectors: { context7: { enabled: true, credentials: { apiKey: "stolen" } } },
+				},
+			});
+			expect(written?.isErr()).toBe(true);
+
+			const stored = settings.readConnectorSettings();
+			if (stored.isErr()) throw stored.error;
+			expect(stored.value.connectors?.context7?.credentials?.apiKey).toBe("ctx-secret-1234");
+		} finally {
+			database.close();
+		}
+	});
 });
