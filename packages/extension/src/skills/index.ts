@@ -1,16 +1,16 @@
 import { createHash } from "node:crypto";
 import { open, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import { Type } from "@sinclair/typebox";
-import { Result, TaggedError } from "better-result";
 import {
-	CodingExtensionOperationFailed,
-	defineExtension,
 	type CodingAgentExtension,
 	type CodingExtensionCommandRegistration,
 	type CodingExtensionContext,
+	CodingExtensionOperationFailed,
 	type CodingExtensionTool,
+	defineExtension,
 } from "@jai/coding-agent";
+import { Type } from "@sinclair/typebox";
+import { Result, TaggedError } from "better-result";
 import {
 	type CodingSkillCard,
 	CodingSkillCatalog,
@@ -85,14 +85,12 @@ export async function discoverSkillsCommands(
 	const commandCatalog = new CodingPromptCommandCatalog(options);
 	try {
 		await Promise.all([skillCatalog.load(), commandCatalog.load()]);
-		const skills = skillCatalog.snapshot.skills
-			.filter(isLocalSkill)
-			.map((skill) => ({
-				name: `skill:${skill.name}`,
-				displayName: `skill:${skill.name}`,
-				description: `Load the ${skill.name} Skill into the current prompt`,
-				kind: "skill" as const,
-			}));
+		const skills = skillCatalog.snapshot.skills.filter(isLocalSkill).map((skill) => ({
+			name: `skill:${skill.name}`,
+			displayName: `skill:${skill.name}`,
+			description: `Load the ${skill.name} Skill into the current prompt`,
+			kind: "skill" as const,
+		}));
 		const commands = commandCatalog.snapshot.commands.map((command) => ({
 			name: command.name,
 			displayName: command.displayName,
@@ -492,8 +490,8 @@ function isNodeError(error: unknown, code: string): error is NodeJS.ErrnoExcepti
 export {
 	type CodingPluginSkillCard,
 	type CodingSkillCard,
-	type CodingSkillCatalogOptions,
 	CodingSkillCatalog,
+	type CodingSkillCatalogOptions,
 	validateSkillFrontmatter,
 } from "./catalog";
 export type {
