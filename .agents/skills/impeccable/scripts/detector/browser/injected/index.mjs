@@ -626,7 +626,7 @@ if (IS_BROWSER) {
       if (currentStyle.filter && currentStyle.filter !== 'none') reasons.add('filter');
       if (currentStyle.backdropFilter && currentStyle.backdropFilter !== 'none') reasons.add('backdrop filter');
 
-      const solidBg = parseRgb(currentStyle.backgroundColor);
+      const solidBg = parseRgb(currentStyle.backgroundColor) || parseAnyColor(currentStyle.backgroundColor);
       if (solidBg && solidBg.a >= 0.95 && (!bgImage || bgImage === 'none')) break;
       current = current.parentElement;
     }
@@ -688,7 +688,7 @@ if (IS_BROWSER) {
       // starve the url()-backed texts this mode exists to sample.
       if (options.imageOnly && !reasons.includes('image background')) continue;
 
-      const textColor = parseRgb(style.color);
+      const textColor = parseRgb(style.color) || parseAnyColor(style.color);
       const fontSize = parseFloat(style.fontSize) || 16;
       const fontWeight = parseInt(style.fontWeight) || 400;
       const isLargeText = fontSize >= WCAG_LARGE_TEXT_PX || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700);
@@ -985,7 +985,7 @@ if (IS_BROWSER) {
         return sample;
       }
     }
-    const bg = parseRgb(style.backgroundColor);
+    const bg = parseRgb(style.backgroundColor) || parseAnyColor(style.backgroundColor);
     if (bg && bg.a > 0.05) return { status: 'sampled', color: bg, method: 'solid-background' };
     return { status: 'unresolved', reason: 'no readable background' };
   }
@@ -1115,7 +1115,7 @@ if (IS_BROWSER) {
     }
 
     const style = getComputedStyle(el);
-    const textColor = parseRgb(style.color) || candidate.textColor;
+    const textColor = parseRgb(style.color) || parseAnyColor(style.color) || candidate.textColor;
     if (!textColor) return { ...candidate, status: 'unresolved', confidence: 'none', reason: 'unreadable text color' };
 
     const rect = getDirectTextRect(el) || el.getBoundingClientRect();
@@ -1673,6 +1673,69 @@ if (IS_BROWSER) {
       }).filter(f => _ruleOk(f.type));
       pageLevelFindings.push(...mapped);
       addBrowserFindings(groupMap, document.body, mapped);
+    }
+
+    // Value-level suppression (issue #639). `disabledRules` above handles
+    // whole rules; this applies the config's remaining ignoreValues entries,
+    // which the CLI filters through isIgnoredFindingValue in
+    // cli/lib/impeccable-config.mjs, so a project waiver like
+    // overused-font = "geist mono" reaches the overlay and extension too.
+    const _normValue = (v) => String(v || '').trim().replace(/^["']|["']$/g, '')
+      .replace(/\+/g, ' ').replace(/\s+/g, ' ').toLowerCase();
+    const _disabledValues = EXTENSION_MODE
+      ? (Array.isArray(window.__IMPECCABLE_CONFIG__?.disabledValues) ? window.__IMPECCABLE_CONFIG__.disabledValues : [])
+        .filter(e => e && typeof e === 'object' && e.rule && e.value)
+        .map(e => ({ rule: String(e.rule).trim().toLowerCase(), value: _normValue(e.value) }))
+      : [];
+    if (_disabledValues.length > 0) {
+      // The six rules whose findings carry a matchable value; keep in step
+      // with extractFindingIgnoreValue in cli/lib/impeccable-config.mjs.
+      // Everything else is suppressed by rule or by file scope, both already
+      // resolved into disabledRules before the scan message was sent.
+      const _directValueRules = new Set([
+        'overused-font',
+        'bounce-easing',
+        'design-system-font',
+        'design-system-color',
+        'design-system-radius',
+        'design-system-font-size',
+      ]);
+      // The design-system checks set `ignoreValue` on their findings; the
+      // detail fallbacks catch overused-font, whose value lives in its
+      // sentence. Two CLI matchers are not mirrored here: the motion
+      // extractor (a value-scoped bounce-easing waiver only matches when the
+      // finding carries ignoreValue directly) and the design-system-color
+      // color-equality fallback (a waiver written as rgb() will not match a
+      // finding reported as hex; store the reported form).
+      const _findingValue = (f) => {
+        if (!f || !_directValueRules.has(f.type || f.id)) return '';
+        const direct = f.ignoreValue || f.value;
+        if (direct) return _normValue(direct);
+        for (const text of [f.detail, f.snippet]) {
+          if (typeof text !== 'string' || !text) continue;
+          const primary = text.match(/Primary font:\s*([^()\n;]+)/i);
+          if (primary) return _normValue(primary[1]);
+          const google = text.match(/Google Fonts:\s*([^()\n;]+)/i);
+          if (google) return _normValue(google[1]);
+          const family = text.match(/font-family\s*:\s*["']?([^'",;\n]+)/i);
+          if (family) return _normValue(family[1]);
+        }
+        return '';
+      };
+      const _valueIgnored = (f) => {
+        const value = _findingValue(f);
+        if (!value) return false;
+        const rule = f.type || f.id;
+        return _disabledValues.some(e => e.rule === rule && e.value === value);
+      };
+      for (const [el, list] of [...groupMap.entries()]) {
+        const kept = list.filter(f => !_valueIgnored(f));
+        if (kept.length > 0) groupMap.set(el, kept);
+        else groupMap.delete(el);
+      }
+      for (let i = pageLevelFindings.length - 1; i >= 0; i--) {
+        if (_valueIgnored(pageLevelFindings[i])) pageLevelFindings.splice(i, 1);
+      }
     }
 
     return {

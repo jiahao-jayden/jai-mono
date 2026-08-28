@@ -22,7 +22,8 @@
     "impeccable": {
       "source": "pbakaus/impeccable",
       "sourceType": "github",
-      "computedHash": "a26b3dd377c4572b1c34c68f82ab9a1cb806f21c7157060327fe60e9b6d2e277"
+      "skillPath": ".agents/skills/impeccable/SKILL.md",
+      "computedHash": "fcca0e64a46392a83c4d43766d21f2b0b2a0c584278e0cb4fb9739019b87bcb5"
     },
     "improve-codebase-architecture": {
       "source": "mattpocock/skills",
@@ -34,25 +35,25 @@
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "jn/SKILL.md",
-      "computedHash": "0d4c512bbe426a3a12d9afdd536169b36f976b563bc34b1ae3577f97c921a2fd"
+      "computedHash": "c65d09b64267ac4ce56b3b4f86c91f114a7612b461ae8641c7ee80df782dd9a4"
     },
     "jn-grilling": {
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "jn-grilling/SKILL.md",
-      "computedHash": "5bb1a544e21bd0e03683ebb2a6b483e49675767b97da318d8bf94bd01ef6f395"
+      "computedHash": "c128679686edbe73198e57039831ba6d8bc417406f135715bc6701710d731278"
     },
     "jn-intent": {
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "jn-intent/SKILL.md",
-      "computedHash": "85edeb2a2d82c1fb3f537aa80f066c91cf2258059148891e8f1b52e591f499a2"
+      "computedHash": "2187b188295b807e146d4b8a0327ed2b3ad697e074a488b976e1083d6b8f8e6e"
     },
     "jn-plan": {
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "jn-plan/SKILL.md",
-      "computedHash": "e3c493e0b580caa5e8fbe27d0f9f252ccf498d3fbba0ff9640172ceab4eafcfe"
+      "computedHash": "7ca31f5ba2dae3a40a14ff73e97b72f7b4b435b1d85c8e8d2e96597c61041cae"
     },
     "prototype": {
       "source": "emilkowalski/skills",
