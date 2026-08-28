@@ -25,5 +25,4 @@ export const sdkConfigDefinition = defineCodingConfig({
 		permission: { merge: "custom", project: "trusted", default: {}, mergeValues: mergePermissionConfigs },
 		permissions: permissionConfigFields,
 	},
-	migrations: [],
 });

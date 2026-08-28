@@ -246,7 +246,7 @@ async function argsForPermission(
 		...args,
 		[bashPermissionScanArgument]: scan.isOk()
 			? scan.value
-			: { patterns: [], alwaysPatterns: [], destructive: false, opaque: true },
+			: { patterns: [], destructive: false, opaque: true },
 	};
 }
 

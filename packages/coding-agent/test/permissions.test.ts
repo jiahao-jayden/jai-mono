@@ -15,9 +15,7 @@ import {
 	matchesPermissionRule,
 	normalizePermissionSettings,
 	permissionConfigFields,
-	PermissionApprovalRegistry,
-	type PermissionRequest,
-	permissionRequestSchema,
+	type PermissionApprovalRequest,
 	parsePermissionRule,
 	permissionSettingsSchema,
 	scanBashCommand,
@@ -79,47 +77,6 @@ describe("permission rules", () => {
 			expect(result.isOk()).toBe(true);
 			if (result.isOk()) expect(result.value.destructive).toBe(true);
 		}
-	});
-});
-
-describe("PermissionApprovalRegistry", () => {
-	test("approval DTO schema 拒绝原始工具参数和未知字段", () => {
-		const request = permissionRequest("permission-1");
-		expect(Value.Check(permissionRequestSchema, request)).toBe(true);
-		expect(Value.Check(permissionRequestSchema, { ...request, args: { command: "npm test" } })).toBe(false);
-	});
-
-	test("先注册再一次性消费 decision", async () => {
-		const registry = new PermissionApprovalRegistry();
-		const pending = registry.register(permissionRequest("permission-1"));
-		expect(registry.list()).toEqual([pending.request]);
-		expect(registry.resolve({ requestId: "permission-1", decision: "allowOnce" })).toEqual(pending.request);
-		await expect(pending.result).resolves.toBe("allowOnce");
-		expect(() => registry.resolve({ requestId: "permission-1", decision: "deny" })).toThrow(
-			"missing or already resolved",
-		);
-	});
-
-	test("拒绝重复 requestId，并在 abort 时移除 pending request", async () => {
-		const registry = new PermissionApprovalRegistry();
-		const controller = new AbortController();
-		const pending = registry.register(permissionRequest("permission-1"), controller.signal);
-		expect(() => registry.register(permissionRequest("permission-1"))).toThrow("already exists");
-		controller.abort();
-		await expect(pending.result).rejects.toMatchObject({ _tag: "coding_permission.aborted" });
-		expect(registry.list()).toEqual([]);
-	});
-
-	test("按 session 取消且 close 后拒绝新请求", async () => {
-		const registry = new PermissionApprovalRegistry();
-		const first = registry.register(permissionRequest("permission-1", "session-1"));
-		const second = registry.register(permissionRequest("permission-2", "session-2"));
-		expect(registry.cancelSession("session-1")).toBe(1);
-		await expect(first.result).rejects.toMatchObject({ _tag: "coding_permission.aborted" });
-		expect(registry.list().map((request) => request.requestId)).toEqual(["permission-2"]);
-		registry.close();
-		await expect(second.result).rejects.toMatchObject({ _tag: "coding_permission.registry_closed" });
-		expect(() => registry.register(permissionRequest("permission-3"))).toThrow("registry is closed");
 	});
 });
 
@@ -708,7 +665,6 @@ describe("permission settings schema", () => {
 				schemaUrl: "https://jai.test/permission-settings-v1.json",
 				schema: Type.Object({ permissions: permissionSettingsSchema }, { additionalProperties: false }),
 				fields: { permissions: permissionConfigFields },
-				migrations: [],
 			});
 			const store = new CodingConfigStore(definition, {
 				projectRoot: join(root, "project"),
@@ -742,12 +698,12 @@ describe("permission settings schema", () => {
 
 describe("approval request summary", () => {
 	test("summary 由 SDK 填充，risk 来自 evaluator 而不是工具名", async () => {
-		const requests: PermissionRequest[] = [];
+		const requests: PermissionApprovalRequest[] = [];
 		const middleware = createPermissionMiddleware({
 			workspaceRoot,
 			settings: {},
 			requestApproval: (request) => {
-				requests.push(request as unknown as PermissionRequest);
+				requests.push(request);
 				return "allowOnce";
 			},
 		});
@@ -759,6 +715,7 @@ describe("approval request summary", () => {
 			path: "src/app.ts",
 			risk: "medium",
 		});
+		expect(JSON.stringify(write.summary)).not.toContain("secret");
 
 		// The Danger Layer classifies this as destructive, so the summary says high
 		// without anyone inspecting the tool name.
@@ -766,32 +723,6 @@ describe("approval request summary", () => {
 		const bash = requests.at(-1)!;
 		expect(bash.summary.command).toBe("rm -rf /tmp/x");
 		expect(bash.summary.risk).toBe("high");
-	});
-
-	test("summary 通过 schema 校验，且不含原始参数", async () => {
-		const requests: unknown[] = [];
-		const middleware = createPermissionMiddleware({
-			workspaceRoot,
-			settings: {},
-			requestApproval: (request) => {
-				requests.push({
-					requestId: request.requestId,
-					sessionId: "session-1",
-					toolCallId: request.toolCallId,
-					toolName: request.toolName,
-					reason: request.reason,
-					canAlwaysAllow: request.canAlwaysAllow,
-					summary: request.summary,
-					...(request.suggestedRule ? { suggestedRule: request.suggestedRule } : {}),
-					...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),
-				});
-				return "allowOnce";
-			},
-		});
-
-		await middleware(context("Write", { path: "src/app.ts", content: "secret" }), async () => ({ content: [] }));
-		expect(Value.Check(permissionRequestSchema, requests[0])).toBe(true);
-		expect(JSON.stringify(requests[0])).not.toContain("secret");
 	});
 });
 
@@ -818,15 +749,3 @@ async function writeConfig(path: string, schemaUrl: string, permissions: Record<
 	await writeFile(path, `${JSON.stringify({ $schema: schemaUrl, schemaVersion: 1, permissions }, null, 2)}\n`);
 }
 
-function permissionRequest(requestId: string, sessionId = "session-1"): PermissionRequest {
-	return {
-		requestId,
-		sessionId,
-		toolCallId: `tool-${requestId}`,
-		toolName: "Bash",
-		reason: "Command requires confirmation",
-		summary: { title: "Run command", command: "npm test" },
-		suggestedRule: "Bash(npm test)",
-		rememberScope: "project-local",
-	};
-}

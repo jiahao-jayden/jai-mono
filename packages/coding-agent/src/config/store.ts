@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { type FSWatcher, unwatchFile, watch as watchFileSystem, watchFile } from "node:fs";
-import { copyFile, mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { Static, TObject } from "@sinclair/typebox";
@@ -8,7 +8,6 @@ import { Value } from "@sinclair/typebox/value";
 import { TaggedError } from "better-result";
 import { createCodingConfigFileSchema, defineCodingConfig } from "./definition";
 import {
-	configMigrationError,
 	configParseError,
 	configReadError,
 	configScopeUnavailableError,
@@ -235,17 +234,13 @@ export class CodingConfigStore<TSchema extends TObject> {
 				issues: [{ path: "/$schema", message: "Expected a string" }],
 			});
 		}
-		if ((version as number) > this.definition.schemaVersion) {
+		if ((version as number) !== this.definition.schemaVersion) {
 			throw configUnsupportedVersionError({
 				scope,
 				path,
 				expectedVersion: this.definition.schemaVersion,
 				actualVersion: version as number,
 			});
-		}
-		if ((version as number) < this.definition.schemaVersion) {
-			document = await this.migrateScope(scope, path, raw, document, version as number);
-			raw = `${JSON.stringify(document, null, 2)}\n`;
 		}
 
 		this.validateDocument(scope, path, document);
@@ -257,33 +252,6 @@ export class CodingConfigStore<TSchema extends TObject> {
 		const issues = validationIssues(createCodingConfigFileSchema(this.definition), document);
 		if (issues.length > 0) {
 			throw configValidationError(`Invalid coding configuration in ${path}`, { scope, path, issues });
-		}
-	}
-
-	private async migrateScope(
-		scope: ConfigFileScope,
-		path: string,
-		original: string,
-		input: Record<string, unknown>,
-		fromVersion: number,
-	): Promise<Record<string, unknown>> {
-		let document = structuredClone(input);
-		let version = fromVersion;
-		try {
-			while (version < this.definition.schemaVersion) {
-				const migration = this.definition.migrations.find((candidate) => candidate.from === version);
-				if (!migration) throw new Error(`No migration registered from version ${version}`);
-				document = migration.migrate(structuredClone(document));
-				version += 1;
-				document.schemaVersion = version;
-			}
-			document.$schema = this.definition.schemaUrl;
-			this.validateDocument(scope, path, document);
-			await backupFile(path, original);
-			await atomicWrite(path, `${JSON.stringify(document, null, 2)}\n`);
-			return document;
-		} catch (error) {
-			throw configMigrationError({ scope, path, fromVersion: version }, error);
 		}
 	}
 
@@ -396,20 +364,6 @@ async function atomicWrite(path: string, content: string): Promise<void> {
 		await rm(temporary, { force: true }).catch(() => {});
 		throw error;
 	}
-}
-
-async function backupFile(path: string, content: string): Promise<void> {
-	const backupDirectory = join(dirname(path), "backups");
-	await mkdir(backupDirectory, { recursive: true });
-	const backupPath = join(backupDirectory, `${basename(path)}.${Date.now()}.${randomUUID()}.bak`);
-	await copyFile(path, backupPath);
-	// Verify the backup corresponds to the bytes that were read before migration.
-	if ((await readFile(backupPath, "utf8")) !== content) throw new Error("Configuration backup verification failed");
-	const backups = (await readdir(backupDirectory))
-		.filter((entry) => entry.startsWith(`${basename(path)}.`) && entry.endsWith(".bak"))
-		.sort()
-		.reverse();
-	await Promise.all(backups.slice(5).map((entry) => rm(join(backupDirectory, entry), { force: true })));
 }
 
 async function fileRevision(path: string): Promise<string | null> {

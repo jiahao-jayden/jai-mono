@@ -1,5 +1,4 @@
 import { type Static, Type } from "@sinclair/typebox";
-import { canonicalToolNameSchema } from "./types";
 
 export const permissionApprovalDecisionSchema = Type.Union([
 	Type.Literal("deny"),
@@ -20,31 +19,6 @@ export const permissionRequestSummarySchema = Type.Object(
 	{ additionalProperties: false },
 );
 
-export const permissionRequestSchema = Type.Object(
-	{
-		requestId: Type.String({ minLength: 1 }),
-		sessionId: Type.String({ minLength: 1 }),
-		toolCallId: Type.String({ minLength: 1 }),
-		toolName: canonicalToolNameSchema,
-		reason: Type.String({ minLength: 1 }),
-		canAlwaysAllow: Type.Optional(Type.Boolean()),
-		summary: permissionRequestSummarySchema,
-		suggestedRule: Type.Optional(Type.String({ minLength: 1 })),
-		rememberScope: Type.Optional(Type.Union([Type.Literal("session"), Type.Literal("project-local")])),
-	},
-	{ additionalProperties: false },
-);
-
-export const permissionResolutionSchema = Type.Object(
-	{
-		requestId: Type.String({ minLength: 1 }),
-		decision: permissionApprovalDecisionSchema,
-	},
-	{ additionalProperties: false },
-);
-
 export type PermissionApprovalDecision = Static<typeof permissionApprovalDecisionSchema>;
-export type PermissionRequest = Static<typeof permissionRequestSchema>;
 export type PermissionRequestSummary = Static<typeof permissionRequestSummarySchema>;
-export type PermissionResolution = Static<typeof permissionResolutionSchema>;
 export type PermissionRisk = Static<typeof permissionRiskSchema>;

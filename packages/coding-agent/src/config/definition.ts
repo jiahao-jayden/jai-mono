@@ -12,21 +12,7 @@ export function defineCodingConfig<const TSchema extends TObject>(
 
 	validateFieldTree(definition.schema, definition.fields, "");
 
-	const versions = new Set<number>();
-	for (const migration of definition.migrations) {
-		if (!Number.isInteger(migration.from) || migration.from < 1 || migration.from >= definition.schemaVersion) {
-			throw configDefinitionError(`Invalid migration source version ${migration.from}`, "migrations");
-		}
-		if (versions.has(migration.from)) {
-			throw configDefinitionError(`Duplicate migration from version ${migration.from}`, "migrations");
-		}
-		versions.add(migration.from);
-	}
-
-	return Object.freeze({
-		...definition,
-		migrations: Object.freeze([...definition.migrations].sort((left, right) => left.from - right.from)),
-	});
+	return Object.freeze({ ...definition });
 }
 
 export function createScopeSchema(schema: TObject): TObject {

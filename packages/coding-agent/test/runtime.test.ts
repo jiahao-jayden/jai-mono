@@ -34,7 +34,6 @@ const definition = defineCodingConfig({
 		permission: { merge: "custom", project: "trusted", mergeValues: mergePermissionConfigs },
 		permissions: permissionConfigFields,
 	},
-	migrations: [],
 });
 
 const model: Model = {

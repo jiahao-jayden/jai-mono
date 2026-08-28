@@ -1,6 +1,5 @@
 import {
 	Agent,
-	type AgentContext,
 	type AgentCompactionOptions,
 	type AgentEvent,
 	type AgentEventListener,
@@ -123,7 +122,6 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	readonly #stopConfigWatch: () => void;
 	readonly #commands?: CodingCommandRegistry;
 	readonly #attachments: CodingAttachmentRun;
-	readonly #extensionToolCatalog: ExtensionToolCatalogSlot;
 
 	constructor(
 		agent: Agent<TAppState>,
@@ -132,7 +130,6 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		stopConfigWatch: () => void,
 		commands?: CodingCommandRegistry,
 		attachments: CodingAttachmentRun = new CodingAttachmentRun(),
-		extensionToolCatalog: ExtensionToolCatalogSlot = {},
 	) {
 		this.#agent = agent;
 		this.configStore = configStore;
@@ -140,7 +137,6 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#stopConfigWatch = stopConfigWatch;
 		this.#commands = commands;
 		this.#attachments = attachments;
-		this.#extensionToolCatalog = extensionToolCatalog;
 	}
 
 	get configSnapshot(): ConfigSnapshot<TSchema> {
@@ -424,14 +420,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		...(extensionToolCatalog.current
 			? { resolveTools: (staticTools) => extensionToolCatalog.current!.toolsForRequest(staticTools) }
 			: {}),
-		...(extensionToolCatalog.current
-			? {
-					prepareContext: (context: AgentContext) => ({
-						...context,
-						tools: extensionToolCatalog.current!.toolsForRequest(staticTools),
-					}),
-				}
-			: {}),
 		effectBoundary: resolvedAgentOptions.effectBoundary,
 		hooks: {
 			...hooks,
@@ -451,7 +439,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		stopConfigWatch,
 		options.commands,
 		attachments,
-		extensionToolCatalog,
 	);
 }
 

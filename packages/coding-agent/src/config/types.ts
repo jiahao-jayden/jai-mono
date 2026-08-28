@@ -32,18 +32,12 @@ export interface ConfigFieldTree {
 	readonly [key: string]: ConfigFieldRule | ConfigFieldTree;
 }
 
-export interface ConfigMigration {
-	readonly from: number;
-	readonly migrate: (document: Record<string, unknown>) => Record<string, unknown>;
-}
-
 export interface CodingConfigDefinition<TSchema extends TObject = TObject> {
 	readonly schemaVersion: number;
 	readonly schemaUrl: string;
 	/** Describes settings fields only; file metadata is added by the config runtime. */
 	readonly schema: TSchema;
 	readonly fields: ConfigFieldTree;
-	readonly migrations: readonly ConfigMigration[];
 }
 
 export type ResolvedCodingSettings<TSchema extends TObject> = Static<TSchema>;

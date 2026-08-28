@@ -61,7 +61,6 @@ const definition = defineCodingConfig({
 			combineRestrictions: (lower, higher) => Math.min(lower as number, higher as number),
 		},
 	},
-	migrations: [],
 });
 
 afterEach(async () => {
@@ -133,7 +132,7 @@ describe("CodingConfigStore", () => {
 		expect((await store.setWorkspaceTrusted(true)).settings.name).toBe("project");
 	});
 
-	test("缺失配置使用默认值；无效 JSON、未知字段和未来版本 fail closed", async () => {
+	test("缺失配置使用默认值；无效 JSON、未知字段和错误版本 fail closed", async () => {
 		const fixture = await createFixture();
 		const store = new CodingConfigStore(definition, fixture.options);
 		expect((await store.load()).settings.name).toBe("default");
@@ -149,51 +148,18 @@ describe("CodingConfigStore", () => {
 		await expect(store.load()).rejects.toMatchObject({ _tag: "coding_config.unsupported_version" });
 	});
 
-	test("显式迁移会原子写回并留下备份", async () => {
+	test("旧 schemaVersion 不升级、不改文件", async () => {
 		const fixture = await createFixture();
 		const version2 = defineCodingConfig({
 			...definition,
 			schemaVersion: 2,
 			schemaUrl: "https://jai.test/schemas/coding-settings-v2.json",
-			migrations: [
-				{
-					from: 1,
-					migrate: (document) => {
-						const { oldName, ...rest } = document;
-						return { ...rest, name: oldName };
-					},
-				},
-			],
-		});
-		await put(fixture.paths.user, { oldName: "migrated" });
-
-		const snapshot = await new CodingConfigStore(version2, fixture.options).load();
-		expect(snapshot.settings.name).toBe("migrated");
-		const migrated = JSON.parse(await readFile(fixture.paths.user, "utf8"));
-		expect(migrated).toMatchObject({
-			$schema: version2.schemaUrl,
-			schemaVersion: 2,
-			name: "migrated",
-		});
-		const backups = await Array.fromAsync(
-			new Bun.Glob("settings.json.*.bak").scan({ cwd: join(dirname(fixture.paths.user), "backups") }),
-		);
-		expect(backups).toHaveLength(1);
-	});
-
-	test("迁移结果无效时保留原文件并返回 migration TaggedError", async () => {
-		const fixture = await createFixture();
-		const version2 = defineCodingConfig({
-			...definition,
-			schemaVersion: 2,
-			schemaUrl: "https://jai.test/schemas/coding-settings-v2.json",
-			migrations: [{ from: 1, migrate: () => ({ name: 42 }) }],
 		});
 		await put(fixture.paths.user, { name: "original" });
 		const original = await readFile(fixture.paths.user, "utf8");
 
 		await expect(new CodingConfigStore(version2, fixture.options).load()).rejects.toMatchObject({
-			_tag: "coding_config.migration_failed",
+			_tag: "coding_config.unsupported_version",
 		});
 		expect(await readFile(fixture.paths.user, "utf8")).toBe(original);
 	});
@@ -304,7 +270,6 @@ describe("defineCodingConfig", () => {
 				schemaUrl,
 				schema: Type.Object({ limit: Type.Number() }),
 				fields: { limit: { merge: "restrictOnly", project: "always" } },
-				migrations: [],
 			}),
 		).toThrow("restrictOnly requires combineRestrictions");
 	});

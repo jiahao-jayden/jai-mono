@@ -8,7 +8,6 @@ class ConfigReadFailed extends TaggedError("coding_config.read_failed")<ConfigEr
 class ConfigParseFailed extends TaggedError("coding_config.parse_failed")<ConfigErrorInit> {}
 class ConfigValidationFailed extends TaggedError("coding_config.validation_failed")<ConfigErrorInit> {}
 class ConfigUnsupportedVersion extends TaggedError("coding_config.unsupported_version")<ConfigErrorInit> {}
-class ConfigMigrationFailed extends TaggedError("coding_config.migration_failed")<ConfigErrorInit> {}
 class ConfigWriteConflict extends TaggedError("coding_config.write_conflict")<ConfigErrorInit> {}
 class ConfigWriteFailed extends TaggedError("coding_config.write_failed")<ConfigErrorInit> {}
 class ConfigWatchFailed extends TaggedError("coding_config.watch_failed")<ConfigErrorInit> {}
@@ -21,7 +20,6 @@ function configError(
 		| "parse_failed"
 		| "validation_failed"
 		| "unsupported_version"
-		| "migration_failed"
 		| "write_conflict"
 		| "write_failed"
 		| "watch_failed"
@@ -39,8 +37,6 @@ function configError(
 			return new ConfigValidationFailed(init);
 		case "unsupported_version":
 			return new ConfigUnsupportedVersion(init);
-		case "migration_failed":
-			return new ConfigMigrationFailed(init);
 		case "write_conflict":
 			return new ConfigWriteConflict(init);
 		case "write_failed":
@@ -112,14 +108,6 @@ export function configUnsupportedVersionError(
 			expectedVersion: data.expectedVersion,
 			actualVersion: data.actualVersion,
 		},
-	});
-}
-
-export function configMigrationError(data: FileErrorData & { readonly fromVersion: number }, cause: unknown) {
-	return configError("migration_failed", {
-		message: `Failed to migrate configuration from version ${data.fromVersion} in ${data.path}`,
-		data: { scope: data.scope, path: data.path, fromVersion: data.fromVersion },
-		cause,
 	});
 }
 

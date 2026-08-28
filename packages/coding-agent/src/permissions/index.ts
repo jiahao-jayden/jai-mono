@@ -1,10 +1,5 @@
-export {
-	type PermissionApprovalDecision,
-	type PermissionRequest,
-	permissionRequestSchema,
-} from "./approval";
-export { PermissionApprovalRegistry } from "./approval-registry";
 export { scanBashCommand } from "./bash-parser";
+export type { PermissionApprovalDecision } from "./approval";
 export {
 	mergePermissionConfigs,
 	normalizePermissionSettings,
