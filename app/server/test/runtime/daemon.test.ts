@@ -254,7 +254,7 @@ describe("Runtime Host daemon composition", () => {
 		await mkdir(workspace, { recursive: true });
 		await writeCodingConfig(join(homeDirectory, ".jai", "settings.json"), {});
 		await writeCodingConfig(join(workspace, ".jai", "settings.json"), {
-			allow: ["Bash(mkdir .desktop-source-config)"],
+			permission: { bash: { "mkdir .desktop-source-config": "allow" } },
 		});
 		await createSkill(join(homeDirectory, ".jai", "skills", "home-skill"), "home-skill");
 		await createSkill(join(workspace, ".agents", "skills", "workspace-skill"), "workspace-skill");
@@ -388,11 +388,11 @@ async function createSkill(directory: string, name: string): Promise<void> {
 	);
 }
 
-async function writeCodingConfig(path: string, permissions: Record<string, unknown>): Promise<void> {
+async function writeCodingConfig(path: string, settings: Record<string, unknown>): Promise<void> {
 	await mkdir(join(path, ".."), { recursive: true });
 	await writeFile(
 		path,
-		JSON.stringify({ $schema: "https://jai.dev/schemas/coding-agent-sdk-v1.json", schemaVersion: 1, permissions }),
+		JSON.stringify({ $schema: "https://jai.dev/schemas/coding-agent-sdk-v1.json", schemaVersion: 1, ...settings }),
 	);
 }
 

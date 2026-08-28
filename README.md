@@ -24,7 +24,7 @@ Jai Mono 是 PandaWork 的 TypeScript monorepo。它同时包含底层的 provid
 
 - 对话优先的桌面工作空间，支持项目、会话历史和会话恢复
 - 流式回复、思考过程、tool call、steering、follow-up 和中断
-- 面向项目工作区的 `read`、`glob`、`grep`、`write`、`edit` 和 `bash` 工具
+- 面向项目工作区的 `read`、`write`、`edit`、`bash` 工具，以及由 Runtime Host 装配的 `fffind`、`ffgrep`
 - 权限规则、危险命令扫描和需要确认的操作审批
 - 持久化 session、Todo 进度、输出文件和 context compaction
 - Anthropic、OpenAI Responses 以及 OpenAI-compatible provider 适配层
@@ -104,7 +104,6 @@ bun run cli:pack
 | `app/docs` | Blume-powered public SDK, CLI and WorkBuddy documentation site |
 | `packages/ai` | Provider-neutral model types, streaming protocol and provider adapters |
 | `packages/agent` | Core agent loop, harness, tools, hooks, sessions and compaction |
-| `packages/coding` | Coding-agent assembly, project config, permissions, skills and business services |
 | `packages/coding-agent` | Public Coding Agent SDK used by Desktop, CLI and external hosts |
 | `packages/extension` | Official Connector and Agent Plugins extensions for the public SDK |
 | `packages/common` | Shared JSON types and wire-safe error utilities |
@@ -128,10 +127,10 @@ Run package tests and type checks with the package-local scripts:
 (cd packages/common && bun test)
 (cd packages/ai && bun test)
 (cd packages/agent && bun test)
-(cd packages/coding && bun test)
+(cd packages/coding-agent && bun test)
 (cd packages/ai && bun run typecheck)
 (cd packages/agent && bun run typecheck)
-(cd packages/coding && bun run typecheck)
+(cd packages/coding-agent && bun run typecheck)
 bun test app/desktop/test
 ```
 

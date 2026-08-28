@@ -3,6 +3,22 @@ title: 权限
 description: 配置 permission mode，实现可取消、可关联工具调用的授权回调，并理解不可绕过的安全限制。
 ---
 
+持久化规则写在 `.jai/settings.json` 的 `permission` tree，按工具名分组。`permissions` 只保留 mode、额外目录和 bypass 限制，不再使用 `allow` / `ask` / `deny` 字符串列表。
+
+```json
+{
+  "permission": {
+    "bash": { "npm test *": "allow", "git push *": "ask" },
+    "read": { "**/.env": "deny" },
+    "edit": { "src/**": "allow" }
+  },
+  "permissions": {
+    "defaultMode": "default",
+    "additionalDirectories": ["../shared"]
+  }
+}
+```
+
 通过顶层 `permissionMode` 选择默认策略，并通过 `requestApproval` 处理需要用户决定的调用：
 
 - `default`：安全读取自动允许，其余按规则或询问处理。

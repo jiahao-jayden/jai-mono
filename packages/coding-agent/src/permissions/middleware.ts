@@ -10,11 +10,19 @@ import type {
 import type { JsonObject } from "../core/json";
 import type { PermissionApprovalDecision, PermissionRequestSummary, PermissionRisk } from "./approval";
 import { bashPermissionScanArgument, scanBashCommand } from "./bash-parser";
+import { mergePermissionConfigs } from "./definition";
 import { permissionAbortedError, permissionApprovalUnavailableError, permissionDeniedError } from "./errors";
 import { evaluatePermission } from "./evaluate";
 import { bashAlwaysPattern } from "./rules";
 import type { CodingExtensionToolCall, CodingToolPermission } from "./tool-permission";
-import { type CanonicalToolName, canonicalToolNames, type PermissionDecision, type PermissionSettings } from "./types";
+import {
+	type CanonicalToolName,
+	canonicalToolNames,
+	type PermissionAction,
+	type PermissionConfig,
+	type PermissionDecision,
+	type PermissionSettings,
+} from "./types";
 
 export interface PermissionApprovalRequest {
 	readonly requestId: string;
@@ -51,11 +59,13 @@ export interface PermissionMiddlewareOptions {
 	) => PermissionApprovalDecision | Promise<PermissionApprovalDecision>;
 	readonly persistProjectLocalAllowRules?: (rules: readonly string[]) => void | Promise<void>;
 	readonly pathCapabilities?: PathCapabilityManager;
-	readonly sessionAllowRules?: Set<string>;
+	readonly sessionAllowRules?: SessionAllowRules;
 }
 
+export type SessionAllowRules = Record<string, PermissionAction | Record<string, PermissionAction>>;
+
 export function createPermissionMiddleware(options: PermissionMiddlewareOptions): ToolMiddleware {
-	const sessionAllowRules = options.sessionAllowRules ?? new Set<string>();
+	const sessionAllowRules = options.sessionAllowRules ?? {};
 	return async (context, next) => {
 		if (options.extensionAuthorizedToolNames?.has(context.tool.name)) return next();
 		const extensionPermission =
@@ -114,8 +124,8 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 			summary: approvalSummary(toolName, permissionArgs, decided),
 			...(suggested
 				? {
-						suggestedRule: suggested.rules[0],
-						suggestedRules: suggested.rules,
+						suggestedRule: formatSuggestedRule(toolName, suggested.rules[0]!),
+						suggestedRules: suggested.rules.map((rule) => formatSuggestedRule(toolName, rule)),
 						rememberScope: suggested.scope,
 					}
 				: {}),
@@ -145,7 +155,7 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 
 		if (approval === "alwaysAllow" && suggested) {
 			if (suggested.scope === "session") {
-				for (const rule of suggested.rules) sessionAllowRules.add(rule);
+				rememberSessionAllows(sessionAllowRules, toolName, suggested.rules);
 				if (capability) {
 					const canonicalSuggested = suggestedRules(
 						toolName,
@@ -154,7 +164,7 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 						canonicalDecision,
 					);
 					if (canonicalSuggested) {
-						for (const rule of canonicalSuggested.rules) sessionAllowRules.add(rule);
+						rememberSessionAllows(sessionAllowRules, toolName, canonicalSuggested.rules);
 					}
 				}
 			} else if (options.persistProjectLocalAllowRules) {
@@ -350,8 +360,31 @@ async function currentSettings(
 	return typeof value === "function" ? value() : value;
 }
 
-function withSessionRules(settings: PermissionSettings, sessionRules: ReadonlySet<string>): PermissionSettings {
-	return sessionRules.size === 0 ? settings : { ...settings, allow: [...(settings.allow ?? []), ...sessionRules] };
+function withSessionRules(settings: PermissionSettings, sessionRules: PermissionConfig): PermissionSettings {
+	return Object.keys(sessionRules).length === 0
+		? settings
+		: {
+				...settings,
+				permission: mergePermissionConfigs([{ value: settings.permission ?? {} }, { value: sessionRules }]),
+			};
+}
+
+function rememberSessionAllows(
+	sessionAllow: SessionAllowRules,
+	toolName: CanonicalToolName,
+	patterns: readonly string[],
+): void {
+	const permission = toolName === "Read" ? "read" : "edit";
+	const current = sessionAllow[permission];
+	const next: Record<string, PermissionAction> =
+		current === undefined ? {} : typeof current === "string" ? { "*": current } : { ...current };
+	for (const pattern of patterns) next[pattern] = "allow";
+	sessionAllow[permission] = next;
+}
+
+function formatSuggestedRule(toolName: CanonicalToolName, rule: string): string {
+	if (toolName === "Bash") return rule;
+	return `${toolName === "Read" ? "Read" : "Edit"}(${rule})`;
 }
 
 function suggestedRules(
@@ -369,11 +402,11 @@ function suggestedRules(
 	}
 	if (toolName === "Write" || toolName === "Edit") {
 		const path = absolutePath(args, workspaceRoot);
-		return path ? { rules: [`Edit(${rootPath(path)})`], scope: "session" } : undefined;
+		return path ? { rules: [rootPath(path)], scope: "session" } : undefined;
 	}
 	if (toolName === "Read") {
 		const path = absolutePath(args, workspaceRoot);
-		return path ? { rules: [`Read(${rootPath(path)})`], scope: "session" } : undefined;
+		return path ? { rules: [rootPath(path)], scope: "session" } : undefined;
 	}
 	return undefined;
 }

@@ -1,14 +1,6 @@
 import { homedir } from "node:os";
 import { isAbsolute, resolve, sep } from "node:path";
-import { invalidPermissionRuleError } from "./errors";
-import {
-	type CanonicalToolName,
-	canonicalToolNames,
-	type ParsedPermissionRule,
-	type PermissionCall,
-	type PermissionConfig,
-	type PermissionEffect,
-} from "./types";
+import type { CanonicalToolName, PermissionCall, PermissionConfig, PermissionEffect } from "./types";
 
 export interface PermissionConfigRule {
 	readonly permission: string;
@@ -39,32 +31,6 @@ const bashArity: Readonly<Record<string, number>> = {
 	yarn: 2,
 	"yarn run": 3,
 };
-
-const rulePattern = /^([A-Za-z][A-Za-z0-9]*)(?:\(([\s\S]*)\))?$/;
-
-export function parsePermissionRule(rule: string): ParsedPermissionRule {
-	const match = rulePattern.exec(rule);
-	if (!match) throw invalidPermissionRuleError(rule, `Invalid permission rule: ${rule}`);
-	const toolName = match[1];
-	if (!isCanonicalToolName(toolName)) {
-		throw invalidPermissionRuleError(rule, `Unknown permission tool: ${toolName}`);
-	}
-	const specifier = match[2];
-	if (specifier !== undefined && specifier.length === 0) {
-		throw invalidPermissionRuleError(rule, `Permission rule specifier cannot be empty: ${rule}`);
-	}
-	return specifier === undefined ? { raw: rule, toolName } : { raw: rule, toolName, specifier };
-}
-
-export function matchesPermissionRule(rule: ParsedPermissionRule, call: PermissionCall): boolean {
-	if (!matchesTool(rule.toolName, call.toolName)) return false;
-	if (rule.specifier === undefined || rule.specifier === "*") return true;
-	if (rule.toolName === "Bash") return matchBash(rule.specifier, requiredString(call, "command"));
-	if (rule.toolName === "Read" || rule.toolName === "Edit") {
-		return matchPath(rule.specifier, requiredPath(call), call.workspaceRoot);
-	}
-	return false;
-}
 
 export function flattenPermissionConfig(config: PermissionConfig | undefined): PermissionConfigRule[] {
 	if (!config) return [];
@@ -101,10 +67,11 @@ export function matchesPermissionConfigRule(
 	command?: string,
 ): boolean {
 	if (!wildcardExpression(rule.permission, false).test(permissionName(call.toolName))) return false;
-	const value = command ?? stringArg(call.args, call.toolName === "Bash" ? "command" : "path");
-	return call.toolName === "Bash"
-		? matchBash(rule.pattern, value)
-		: rule.pattern === "*" || wildcardExpression(rule.pattern, true).test(value);
+	if (call.toolName === "Bash") return matchBash(rule.pattern, command ?? stringArg(call.args, "command"));
+	if (call.toolName === "Read" || call.toolName === "Write" || call.toolName === "Edit") {
+		return matchPath(rule.pattern, stringArg(call.args, "path"), call.workspaceRoot);
+	}
+	return rule.pattern === "*";
 }
 
 export function bashAlwaysPattern(command: string): string | undefined {
@@ -317,21 +284,6 @@ export function splitBashCommand(command: string): string[] | undefined {
 	return commands.length > 0 ? commands : undefined;
 }
 
-function matchesTool(ruleTool: CanonicalToolName, callTool: CanonicalToolName): boolean {
-	if (ruleTool === callTool) return true;
-	if (ruleTool === "Edit") return callTool === "Write";
-	return false;
-}
-
-function requiredString(call: PermissionCall, key: string): string {
-	const value = call.args[key];
-	return typeof value === "string" ? value : "";
-}
-
-function requiredPath(call: PermissionCall): string {
-	return requiredString(call, "path");
-}
-
 function matchBash(pattern: string, command: string): boolean {
 	if (pattern.endsWith(" *")) {
 		const prefix = pattern.slice(0, -2);
@@ -389,10 +341,6 @@ function wildcardExpression(pattern: string, pathMode: boolean): RegExp {
 
 function escapeRegex(value: string): string {
 	return /[\\^$.*+?()[\]{}|]/.test(value) ? `\\${value}` : value;
-}
-
-function isCanonicalToolName(value: string): value is CanonicalToolName {
-	return (canonicalToolNames as readonly string[]).includes(value);
 }
 
 function pushCommand(commands: string[], value: string): boolean {

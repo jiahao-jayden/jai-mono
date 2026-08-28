@@ -13,7 +13,7 @@ import type { Model, Provider } from "@jai/ai";
 import { Result, type Result as ResultType } from "better-result";
 import type { CodingMessageAttachment as InternalCodingAttachment } from "../attachments";
 import { createCodingCommandRegistry } from "../commands";
-import type { PermissionSettings } from "../permissions";
+import { permissionSettingsFromConfig } from "../permissions";
 import {
 	createCodingAgent as createInternalCodingAgent,
 	DEFAULT_CODING_AGENT_INSTRUCTIONS,
@@ -67,7 +67,6 @@ import type {
 	CodingAgentEvent,
 	CodingAgentFileCapabilities,
 	CodingAgentState,
-	CodingPermissionMode,
 	CodingPromptOptions,
 	CodingQueuedInput,
 	CodingRunResult,
@@ -137,7 +136,11 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				requestApproval: input.requestApproval
 					? (request, signal) => input.requestApproval!(projectPermissionRequest(sessionId, request), signal)
 					: undefined,
-				selectSettings: (snapshot) => selectPermissionSettings(snapshot.settings.permissions, input.permissionMode),
+				selectSettings: (snapshot) =>
+					permissionSettingsFromConfig(
+						snapshot.settings as Readonly<Record<string, unknown>>,
+						input.permissionMode,
+					),
 			},
 			extensionTools: extensionTools(extensions),
 			extensionBeforeModelCall: async (messages) => {
@@ -656,9 +659,3 @@ function isJsonObject(value: JsonValue | undefined): value is JsonObject {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function selectPermissionSettings(
-	settings: PermissionSettings | undefined,
-	mode?: CodingPermissionMode,
-): PermissionSettings {
-	return { ...(settings ?? {}), ...(mode ? { defaultMode: mode } : {}) };
-}

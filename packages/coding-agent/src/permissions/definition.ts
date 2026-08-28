@@ -1,6 +1,12 @@
 import { type Static, Type } from "@sinclair/typebox";
 import type { ConfigFieldTree } from "../config";
-import type { PermissionAction, PermissionConfig, PermissionSettings, ResolvedPermissionSettings } from "./types";
+import type {
+	PermissionAction,
+	PermissionConfig,
+	PermissionMode,
+	PermissionSettings,
+	ResolvedPermissionSettings,
+} from "./types";
 
 export const permissionActionSchema = Type.Union([Type.Literal("allow"), Type.Literal("ask"), Type.Literal("deny")]);
 export const permissionRuleValueSchema = Type.Union([
@@ -20,9 +26,6 @@ const permissionModeSchema = Type.Union([
 export const permissionSettingsSchema = Type.Object(
 	{
 		defaultMode: Type.Optional(permissionModeSchema),
-		allow: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-		ask: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-		deny: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
 		additionalDirectories: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
 		disableBypassPermissionsMode: Type.Optional(Type.Literal("disable")),
 	},
@@ -33,19 +36,6 @@ export type PermissionSettingsDocument = Static<typeof permissionSettingsSchema>
 
 export const permissionConfigFields = {
 	defaultMode: { merge: "replace", project: "trusted", default: "default" },
-	allow: {
-		merge: "appendUnique",
-		project: "trusted",
-		default: [],
-		uniqueBy: (value) => String(value),
-	},
-	ask: {
-		merge: "appendUnique",
-		project: "always",
-		default: [],
-		uniqueBy: (value) => String(value),
-	},
-	deny: { merge: "denyUnion", project: "always", default: [] },
 	additionalDirectories: {
 		merge: "appendUnique",
 		project: "trusted",
@@ -89,14 +79,23 @@ export function normalizePermissionSettings(settings: PermissionSettings = {}): 
 		...(settings.permission && Object.keys(settings.permission).length > 0
 			? { permission: Object.freeze(settings.permission) }
 			: {}),
-		allow: Object.freeze(unique(settings.allow)),
-		ask: Object.freeze(unique(settings.ask)),
-		deny: Object.freeze(unique(settings.deny)),
 		additionalDirectories: Object.freeze(unique(settings.additionalDirectories)),
 		...(settings.disableBypassPermissionsMode === "disable"
 			? { disableBypassPermissionsMode: "disable" as const }
 			: {}),
 	});
+}
+
+export function permissionSettingsFromConfig(
+	settings: Readonly<Record<string, unknown>>,
+	mode?: PermissionMode,
+): PermissionSettings {
+	const policy = isRecord(settings.permissions) ? (settings.permissions as PermissionSettings) : {};
+	return {
+		...policy,
+		...(isRecord(settings.permission) ? { permission: settings.permission as PermissionConfig } : {}),
+		...(mode ? { defaultMode: mode } : {}),
+	};
 }
 
 function unique(values: readonly string[] | undefined): string[] {

@@ -1,10 +1,5 @@
 import { TaggedError } from "better-result";
 
-class InvalidPermissionRule extends TaggedError("coding_permission.invalid_rule")<{
-	readonly message: string;
-	readonly rule: string;
-}> {}
-
 class InvalidPermissionCall extends TaggedError("coding_permission.invalid_call")<{
 	readonly message: string;
 	readonly toolName: string;
@@ -25,13 +20,6 @@ class PermissionAborted extends TaggedError("coding_permission.aborted")<{
 	readonly message: string;
 	readonly toolName: string;
 }> {}
-
-export function invalidPermissionRuleError(rule: string, message: string) {
-	return new InvalidPermissionRule({
-		message,
-		rule,
-	});
-}
 
 export function invalidPermissionCallError(toolName: string, message: string) {
 	return new InvalidPermissionCall({

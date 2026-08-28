@@ -10,8 +10,6 @@ import {
 	flattenPermissionConfig,
 	isDestructiveBashCommand,
 	matchesPermissionConfigRule,
-	matchesPermissionRule,
-	parsePermissionRule,
 	permissionName,
 	splitBashCommand,
 } from "./rules";
@@ -66,11 +64,8 @@ export function evaluatePermission(
 	}
 	const bashRisk = bashRiskDecision(call);
 	if (bashRisk) return bashRisk;
-	// Deny rules and mode boundaries outrank the `permission` config tree. Without this, a single
-	// "always allow" (which persists into project-local `permission.bash`) would silently disable the
-	// whole deny list, Plan mode, and an administrator's `disableBypassPermissionsMode`.
-	const denyRule = matchingRule("deny", resolved.deny, call);
-	if (denyRule) return decision("deny", "rule", "Matched deny rule", denyRule);
+	// Mode boundaries outrank the `permission` tree. A persisted Always Allow must not
+	// disable Plan mode or an administrator's `disableBypassPermissionsMode`.
 	if (
 		resolved.defaultMode === "plan" &&
 		(isEditCall(call) || (call.toolName === "Bash" && !isReadOnlyBash(stringArg(call, "command"))))
@@ -80,11 +75,8 @@ export function evaluatePermission(
 	if (resolved.defaultMode === "bypassPermissions" && resolved.disableBypassPermissionsMode === "disable") {
 		return decision("deny", "mode", "Bypass Permissions is disabled by configuration");
 	}
-	if (resolved.permission && Object.keys(resolved.permission).length > 0)
+	if (resolved.permission && Object.keys(resolved.permission).length > 0) {
 		return evaluateConfiguredPermission(call, resolved);
-	for (const effect of ["deny", "ask", "allow"] as const) {
-		const rule = matchingRule(effect, resolved[effect], call);
-		if (rule) return decision(effect, "rule", `Matched ${effect} rule`, rule);
 	}
 
 	if (resolved.defaultMode === "dontAsk") {
@@ -228,27 +220,6 @@ function configuredRuleDecision(
 			alwaysPatterns: command ? [bashAlwaysPattern(command) ?? `${command} *`] : undefined,
 		},
 	);
-}
-
-function matchingRule(effect: PermissionEffect, rawRules: readonly string[], call: PermissionCall): string | undefined {
-	const rules = rawRules.map(parsePermissionRule);
-	if (call.toolName !== "Bash") return rules.find((rule) => matchesPermissionRule(rule, call))?.raw;
-	const command = stringArg(call, "command");
-	const subcommands = splitBashCommand(command);
-	if (!subcommands) return undefined;
-	if (effect === "allow") {
-		const matched = subcommands.every((subcommand) =>
-			rules.some((rule) => matchesPermissionRule(rule, withBashCommand(call, subcommand))),
-		);
-		return matched ? rules.find((rule) => rule.toolName === "Bash")?.raw : undefined;
-	}
-	return rules.find((rule) =>
-		subcommands.some((subcommand) => matchesPermissionRule(rule, withBashCommand(call, subcommand))),
-	)?.raw;
-}
-
-function withBashCommand(call: PermissionCall, command: string): PermissionCall {
-	return { ...call, args: { ...call.args, command } };
 }
 
 function validateCall(call: PermissionCall): void {

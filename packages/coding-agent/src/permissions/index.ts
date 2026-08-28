@@ -5,6 +5,7 @@ export {
 	normalizePermissionSettings,
 	permissionConfigFields,
 	permissionConfigSchema,
+	permissionSettingsFromConfig,
 	permissionSettingsSchema,
 } from "./definition";
 export { evaluatePermission } from "./evaluate";
@@ -12,13 +13,9 @@ export {
 	createPermissionMiddleware,
 	type ExtensionToolPermissionResolver,
 	type PermissionApprovalRequest,
+	type SessionAllowRules,
 } from "./middleware";
-export {
-	isDestructiveBashCommand,
-	matchesPermissionRule,
-	parsePermissionRule,
-	splitBashCommand,
-} from "./rules";
+export { isDestructiveBashCommand, splitBashCommand } from "./rules";
 export type { CodingExtensionToolCall, CodingToolPermission } from "./tool-permission";
 export type {
 	PermissionAction,

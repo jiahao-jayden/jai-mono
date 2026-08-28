@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { ToolCallContext } from "@jai/agent";
 import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
-import { getErrorCode } from "@jai/common";
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { CodingConfigStore, defineCodingConfig } from "../src/config";
@@ -12,41 +11,28 @@ import {
 	createPermissionMiddleware,
 	evaluatePermission,
 	isDestructiveBashCommand,
-	matchesPermissionRule,
+	mergePermissionConfigs,
 	normalizePermissionSettings,
 	permissionConfigFields,
+	permissionConfigSchema,
 	type PermissionApprovalRequest,
-	parsePermissionRule,
 	permissionSettingsSchema,
 	scanBashCommand,
 	splitBashCommand,
 	type PermissionCall,
+	type SessionAllowRules,
 } from "../src/permissions";
 
 const workspaceRoot = resolve("/tmp/jai-permission-workspace");
 
 describe("permission rules", () => {
-	test("解析 canonical PascalCase 工具名并拒绝旧小写名", () => {
-		expect(parsePermissionRule("Bash(npm test *)")).toEqual({
-			raw: "Bash(npm test *)",
-			toolName: "Bash",
-			specifier: "npm test *",
-		});
-		try {
-			parsePermissionRule("bash(npm test)");
-			throw new Error("Expected parsePermissionRule to throw");
-		} catch (error) {
-			expect(getErrorCode(error)).toBe("coding_permission.invalid_rule");
-		}
-	});
-
-	test("Read 和 Edit 规则分别匹配文件读取与写入", () => {
-		expect(matchesPermissionRule(parsePermissionRule("Read(**/.env)"), call("Read", { path: "src/.env" }))).toBe(
-			true,
-		);
-		expect(matchesPermissionRule(parsePermissionRule("Edit(/src/**)"), call("Write", { path: "src/app.ts" }))).toBe(
-			true,
-		);
+	test("permission tree 用同一套路径语义匹配 Read 与 Edit/Write", () => {
+		expect(
+			evaluatePermission(call("Read", { path: "src/.env" }), { permission: { read: { "**/.env": "deny" } } }),
+		).toMatchObject({ behavior: "deny", source: "rule" });
+		expect(
+			evaluatePermission(call("Write", { path: "src/app.ts" }), { permission: { edit: { "/src/**": "allow" } } }),
+		).toMatchObject({ behavior: "allow", source: "rule" });
 	});
 
 	test("Bash compound command 按 shell 运算符拆分", () => {
@@ -85,17 +71,16 @@ describe("permission 配置不得削弱安全边界", () => {
 		({ toolName, workspaceRoot, args }) as PermissionCall;
 
 	test("deny 规则在 permission 配置存在时仍然生效", () => {
-		const deny = ["Read(**/.env)"];
-		// A single "always allow" persists into project-local `permission.bash`; that must not
-		// disable the deny list.
-		expect(evaluatePermission(call("Read", { path: `${workspaceRoot}/.env` }), { defaultMode: "default", deny })).toMatchObject(
-			{ behavior: "deny" },
-		);
 		expect(
 			evaluatePermission(call("Read", { path: `${workspaceRoot}/.env` }), {
 				defaultMode: "default",
-				deny,
-				permission: { bash: { "ls *": "allow" } },
+				permission: { read: { "**/.env": "deny" } },
+			}),
+		).toMatchObject({ behavior: "deny" });
+		expect(
+			evaluatePermission(call("Read", { path: `${workspaceRoot}/.env` }), {
+				defaultMode: "default",
+				permission: { bash: { "ls *": "allow" }, read: { "**/.env": "deny" } },
 			}),
 		).toMatchObject({ behavior: "deny" });
 	});
@@ -328,7 +313,7 @@ describe("permission middleware", () => {
 
 	test("显式共享 Session allow rules 时父子 middleware 复用授权", async () => {
 		let approvals = 0;
-		const sessionAllowRules = new Set<string>();
+		const sessionAllowRules: SessionAllowRules = {};
 		const options = {
 			workspaceRoot,
 			settings: {},
@@ -404,7 +389,7 @@ describe("permission middleware", () => {
 		let asked = false;
 		const middleware = createPermissionMiddleware({
 			workspaceRoot,
-			settings: { deny: ["Bash(git push *)"] },
+			settings: { permission: { bash: { "git push *": "deny" } } },
 			requestApproval: () => {
 				asked = true;
 				return "allowOnce";
@@ -500,7 +485,7 @@ describe("permission evaluation", () => {
 		expect(
 			evaluatePermission(call("SpawnAgent", { title: "Inspect", task: "Inspect the repository." }), {
 				defaultMode: "dontAsk",
-				deny: ["SpawnAgent"],
+				permission: { task: "deny" },
 			}),
 		).toMatchObject({ behavior: "allow", source: "built-in" });
 	});
@@ -518,11 +503,15 @@ describe("permission evaluation", () => {
 		const request = call("Bash", { command: "git push origin main" });
 		expect(
 			evaluatePermission(request, {
-				allow: ["Bash(git push origin main)"],
-				ask: ["Bash(git push *)"],
-				deny: ["Bash(git *)"],
+				permission: {
+					bash: {
+						"git push origin main": "allow",
+						"git push *": "ask",
+						"git *": "deny",
+					},
+				},
 			}),
-		).toMatchObject({ behavior: "deny", source: "rule", rule: "Bash(git *)" });
+		).toMatchObject({ behavior: "deny", source: "rule", permission: "bash" });
 	});
 
 	test("有序 permission 使用最后匹配规则并默认 Ask", () => {
@@ -573,9 +562,9 @@ describe("permission evaluation", () => {
 
 	test("Allow compound Bash 要求每个子命令分别匹配", () => {
 		const request = call("Bash", { command: "git status && npm test" });
-		expect(evaluatePermission(request, { allow: ["Bash(git status)"] }).behavior).toBe("ask");
+		expect(evaluatePermission(request, { permission: { bash: { "git status": "allow" } } }).behavior).toBe("ask");
 		expect(
-			evaluatePermission(request, { allow: ["Bash(git status)", "Bash(npm test)"] }),
+			evaluatePermission(request, { permission: { bash: { "git status": "allow", "npm test": "allow" } } }),
 		).toMatchObject({ behavior: "allow", source: "rule" });
 	});
 
@@ -608,13 +597,13 @@ describe("permission evaluation", () => {
 		expect(
 			evaluatePermission(call("Write", { path: "src/app.ts" }), {
 				defaultMode: "plan",
-				allow: ["Write(src/app.ts)"],
+				permission: { edit: { "src/app.ts": "allow" } },
 			}),
 		).toMatchObject({ behavior: "deny", source: "mode" });
 		expect(
 			evaluatePermission(call("Bash", { command: "bun test" }), {
 				defaultMode: "plan",
-				allow: ["Bash(bun test)"],
+				permission: { bash: { "bun test": "allow" } },
 			}),
 		).toMatchObject({ behavior: "deny", source: "mode" });
 	});
@@ -634,7 +623,7 @@ describe("permission evaluation", () => {
 		expect(
 			evaluatePermission(call("Bash", { command: "npm test" }), {
 				defaultMode: "dontAsk",
-				allow: ["Bash(npm test)"],
+				permission: { bash: { "npm test": "allow" } },
 			}).behavior,
 		).toBe("allow");
 	});
@@ -647,48 +636,58 @@ describe("permission settings schema", () => {
 		expect(Value.Check(permissionSettingsSchema, { managed: true })).toBe(false);
 	});
 
-	test("normalize 去重并补齐默认值", () => {
-		expect(normalizePermissionSettings({ allow: ["Bash(ls)", "Bash(ls)"] })).toEqual({
+	test("normalize 补齐默认值", () => {
+		expect(normalizePermissionSettings({ additionalDirectories: ["../shared", "../shared"] })).toEqual({
 			defaultMode: "default",
-			allow: ["Bash(ls)"],
-			ask: [],
-			deny: [],
-			additionalDirectories: [],
+			additionalDirectories: ["../shared"],
 		});
 	});
 
-	test("未 trust 时 project Ask/Deny 生效而 Allow 与额外目录延迟", async () => {
+	test("未 trust 时忽略 project permission tree 与额外目录", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-permission-config-"));
 		try {
 			const definition = defineCodingConfig({
 				schemaVersion: 1,
 				schemaUrl: "https://jai.test/permission-settings-v1.json",
-				schema: Type.Object({ permissions: permissionSettingsSchema }, { additionalProperties: false }),
-				fields: { permissions: permissionConfigFields },
+				schema: Type.Object(
+					{
+						permission: permissionConfigSchema,
+						permissions: permissionSettingsSchema,
+					},
+					{ additionalProperties: false },
+				),
+				fields: {
+					permission: { merge: "custom", project: "trusted", default: {}, mergeValues: mergePermissionConfigs },
+					permissions: permissionConfigFields,
+				},
 			});
 			const store = new CodingConfigStore(definition, {
 				projectRoot: join(root, "project"),
 				homeDir: join(root, "home"),
 			});
-			await writeConfig(store.paths["project-shared"]!, definition.schemaUrl, {
-				allow: ["Bash(npm test)"],
-				ask: ["Bash(git push *)"],
-				deny: ["Read(**/.env)"],
-				additionalDirectories: ["../shared"],
+			await mkdir(dirname(store.paths["project-shared"]!), { recursive: true });
+			await writeFile(
+				store.paths["project-shared"]!,
+				`${JSON.stringify({
+					$schema: definition.schemaUrl,
+					schemaVersion: 1,
+					permission: { bash: { "npm test *": "allow" }, read: { "**/.env": "deny" } },
+					permissions: { additionalDirectories: ["../shared"] },
+				})}\n`,
+			);
+			expect((await store.load()).settings).toEqual({
+				permission: {},
+				permissions: {
+					defaultMode: "default",
+					additionalDirectories: [],
+				},
 			});
-			expect((await store.load()).settings.permissions).toEqual({
-				defaultMode: "default",
-				allow: [],
-				ask: ["Bash(git push *)"],
-				deny: ["Read(**/.env)"],
-				additionalDirectories: [],
-			});
-			expect((await store.setWorkspaceTrusted(true)).settings.permissions).toEqual({
-				defaultMode: "default",
-				allow: ["Bash(npm test)"],
-				ask: ["Bash(git push *)"],
-				deny: ["Read(**/.env)"],
-				additionalDirectories: ["../shared"],
+			expect((await store.setWorkspaceTrusted(true)).settings).toEqual({
+				permission: { bash: { "npm test *": "allow" }, read: { "**/.env": "deny" } },
+				permissions: {
+					defaultMode: "default",
+					additionalDirectories: ["../shared"],
+				},
 			});
 		} finally {
 			await rm(root, { recursive: true, force: true });
@@ -742,10 +741,5 @@ function context(toolName: string, args: Record<string, unknown>): ToolCallConte
 		},
 		args,
 	};
-}
-
-async function writeConfig(path: string, schemaUrl: string, permissions: Record<string, unknown>): Promise<void> {
-	await mkdir(dirname(path), { recursive: true });
-	await writeFile(path, `${JSON.stringify({ $schema: schemaUrl, schemaVersion: 1, permissions }, null, 2)}\n`);
 }
 

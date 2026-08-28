@@ -33,7 +33,7 @@ import {
 	type PermissionAction,
 	type PermissionApprovalDecision,
 	type PermissionApprovalRequest,
-	type PermissionConfig,
+	permissionSettingsFromConfig,
 	type PermissionSettings,
 } from "../permissions";
 import {
@@ -248,7 +248,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		options.appState ?? ({} as TAppState),
 	);
 	const selectPermissionSettings = options.permissions?.selectSettings ?? defaultPermissionSettings;
-	const sessionAllowRules = new Set<string>();
+	const sessionAllowRules = {};
 	const persistProjectLocalAllowRules =
 		options.permissions?.persistProjectLocalAllowRules ??
 		(async (rules: readonly string[]) => {
@@ -460,13 +460,7 @@ function finalAssistantText(messages: readonly AgentMessage[]): string {
 }
 
 function defaultPermissionSettings<TSchema extends TObject>(snapshot: ConfigSnapshot<TSchema>): PermissionSettings {
-	const settings = snapshot.settings as Readonly<Record<string, unknown>>;
-	// Two complementary shapes, not two generations: `permissions` carries the mode and the
-	// allow/ask/deny lists, `permission` carries the per-tool config tree. Both feed one settings object.
-	const modeAndRules = isRecord(settings.permissions) ? (settings.permissions as PermissionSettings) : {};
-	return isRecord(settings.permission)
-		? { ...modeAndRules, permission: settings.permission as PermissionConfig }
-		: modeAndRules;
+	return permissionSettingsFromConfig(snapshot.settings as Readonly<Record<string, unknown>>);
 }
 
 async function persistBashAllowRules<TSchema extends TObject>(

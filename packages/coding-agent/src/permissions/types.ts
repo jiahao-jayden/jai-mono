@@ -20,9 +20,6 @@ export type PermissionConfig = Readonly<Record<string, PermissionRuleValue>>;
 export interface PermissionSettings {
 	readonly permission?: PermissionConfig;
 	readonly defaultMode?: PermissionMode;
-	readonly allow?: readonly string[];
-	readonly ask?: readonly string[];
-	readonly deny?: readonly string[];
 	readonly additionalDirectories?: readonly string[];
 	readonly disableBypassPermissionsMode?: "disable";
 }
@@ -30,17 +27,8 @@ export interface PermissionSettings {
 export interface ResolvedPermissionSettings {
 	readonly defaultMode: PermissionMode;
 	readonly permission?: PermissionConfig;
-	readonly allow: readonly string[];
-	readonly ask: readonly string[];
-	readonly deny: readonly string[];
 	readonly additionalDirectories: readonly string[];
 	readonly disableBypassPermissionsMode?: "disable";
-}
-
-export interface ParsedPermissionRule {
-	readonly raw: string;
-	readonly toolName: CanonicalToolName;
-	readonly specifier?: string;
 }
 
 export interface PermissionCall {
