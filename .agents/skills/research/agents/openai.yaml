@@ -1,4 +1,4 @@
 interface:
   display_name: "Research"
-  short_description: "追一手来源,产出可复核的调研笔记"
-  default_prompt: "Use $research to investigate this question against primary sources and write a citable note."
+  short_description: "追一手来源，产出可复核笔记和可选 HTML 报告"
+  default_prompt: "Use $research to investigate this question against primary sources, write a citable note, and generate an HTML report when a visual would help."

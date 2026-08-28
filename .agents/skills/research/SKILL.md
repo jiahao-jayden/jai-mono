@@ -1,9 +1,9 @@
 ---
 name: research
-description: "针对一个问题做调研,追到一手来源,产出带引证的 markdown 笔记。Use when the user asks to 调研/研究/investigate a topic, compare how other projects solved something, verify how a third-party library, protocol or API actually behaves, or needs outside facts before a decision."
+description: "针对一个问题做调研，追到一手来源，产出带引证的 Markdown 笔记；用户要求报告或问题包含复杂关系、流程、时间演变或多方案比较时，可同时产出带可视化的 HTML 报告。Use when the user asks to 调研/研究/investigate a topic, compare how other projects solved something, verify how a third-party library, protocol or API actually behaves, or needs outside facts before a decision."
 ---
 
-回答一个问题,证据追到一手来源,产出一份别人能复核的笔记。
+回答一个问题，证据追到一手来源，产出一份别人能复核的笔记。用户要求可视化报告，或问题确实存在复杂关系、流程、时间演变或多方案比较时，同时输出 HTML 报告。
 
 **结论必须可复核。** 读者应当能顺着引证走到源头,自己判断你的结论对不对。做不到这一点的调研,只是一份读起来可信的猜测。
 
@@ -71,6 +71,8 @@ subagent 把详细笔记写到文件,只回传结论和文件路径。把大段�
 
 **只产内容。** 调用方决定笔记存到哪、叫什么。没有调用方(用户直接点名你)时,看仓库里已有的调研笔记放在哪、长什么样,跟随已有约定;没有约定就放一个合理的位置并说明放在哪了。
 
+Markdown 是事实和引证的唯一依据。HTML 只是更方便阅读的入口，不能在里面新增 Markdown 没有的结论。
+
 ### 固定的框
 
 只有两件事是固定的:
@@ -124,3 +126,36 @@ subagent 把详细笔记写到文件,只回传结论和文件路径。把大段�
 每一条结论都能指到笔记里某一处具体引证。指不到的,要么去补证据,要么把它从结论降级成「待验证」并写明。
 
 一个没参与调研的人,只读这份笔记就能判断结论是否成立,不需要重新查一遍。
+
+## 7. 可视化 HTML 报告
+
+### 什么时候生成
+
+用户明确要 HTML、可视化报告、汇报页或可以直接打开的报告时，生成。即使用户没说，只要调研的重点是以下任一项，也可以同时生成并在交付时说明：
+
+- 组件、系统或参与方之间的关系
+- 有顺序的流程、调用链或状态变化
+- 版本、事件或决策随时间的变化
+- 三个以上方案需要按相同维度比较
+
+单点查证、两三条独立结论，或一张表就能说清的对比，不生成 HTML。图不能比一段清楚的文字或表格多带来信息时，不画图。
+
+### 怎么生成
+
+生成报告前先读 [`references/visual-report.md`](references/visual-report.md) 和 [`assets/report-template.html`](assets/report-template.html)。将它保存为与笔记同名的 `.html` 文件，例如 `oauth-auth-code-flow.md` 和 `oauth-auth-code-flow.html`。
+
+- 使用模板里的 Tailwind CDN：`https://cdn.tailwindcss.com`。报告打开时需要联网，交付时明确说明这点。
+- Tailwind 负责页面排版；关系、流程和时间线用内嵌 SVG；多方案比较优先用 HTML 表格。
+- 默认只放一张主图，除非两张图回答的是不同问题。主图超过 9 个节点或 12 条关系时，拆成概览和细节，或改用表格。
+- 图表必须来自已经核验过的事实。每个结论标记 `data-claim-id`，并用 `data-source-ids` 连到报告中的来源；报告的来源链接也应能回到 Markdown 笔记。
+- 让图表有标题和说明。SVG 带 `role="img"`、`<title>` 和 `<desc>`；不要用颜色作为唯一的信息来源。
+
+报告至少包含：问题、直接结论、关键图或对比、证据来源、对本项目的影响、尚未确认的事。内容顺序可以因题目调整，但直接结论必须在最前。
+
+生成后运行：
+
+```bash
+python3 <skill-dir>/scripts/check_report.py <report>.html
+```
+
+检查失败就修复；检查只验证报告结构和来源关联，不替代对事实的核验。
