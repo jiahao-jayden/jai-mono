@@ -168,7 +168,6 @@ export class DesktopAcpAgentHost {
 	}
 
 	resolvePermission(resolution: DesktopPermissionResolution): void {
-		if ("kind" in resolution) return;
 		const pending = this.#pendingPermissions.get(resolution.requestId);
 		if (!pending) return;
 		this.#pendingPermissions.delete(resolution.requestId);
@@ -184,10 +183,6 @@ export class DesktopAcpAgentHost {
 			type: "transcript_upsert",
 			item: { ...pending.item, status: resolution.decision === "deny" ? "denied" : "allowed" },
 		});
-	}
-
-	resolveExtensionPermission(_resolution: unknown): void {
-		// Extension approvals are not part of the current Runtime Host ACP surface.
 	}
 
 	async rebindSession<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {

@@ -30,18 +30,7 @@ export const desktopPermissionResolutionSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
-export type DesktopToolPermissionResolution = Static<typeof desktopPermissionResolutionSchema>;
-
-export const desktopExtensionPermissionResolutionSchema = Type.Object(
-	{
-		kind: Type.Literal("extension"),
-		requestId: Type.String({ minLength: 1 }),
-		decision: Type.Union([Type.Literal("deny"), Type.Literal("allowOnce"), Type.Literal("allow")]),
-	},
-	{ additionalProperties: false },
-);
-
-export type DesktopExtensionPermissionResolution = Static<typeof desktopExtensionPermissionResolutionSchema>;
+export type DesktopPermissionResolution = Static<typeof desktopPermissionResolutionSchema>;
 
 export const DESKTOP_RPC_CHANNEL = "desktop:rpc";
 export const DESKTOP_EVENTS_CHANNEL = "desktop:events";
@@ -516,32 +505,6 @@ export interface DesktopPermissionItem {
 	readonly approvalOrigin?: "automatic" | "manual";
 }
 
-export interface DesktopExtensionApprovalRequest {
-	readonly requestId: string;
-	readonly extensionId: string;
-	readonly operationId: string;
-	readonly sessionId: string;
-	readonly toolCallId: string;
-	readonly reason: string;
-	readonly sideEffect: "read" | "write" | "destructive";
-	readonly dataSensitivity: "normal" | "sensitive" | "secret";
-	readonly presentation: {
-		readonly title: string;
-		readonly description?: string;
-		readonly attributes?: readonly { readonly label: string; readonly value: string }[];
-	};
-	readonly expiresAt?: number;
-}
-
-export interface DesktopExtensionPermissionItem {
-	readonly kind: "extension_permission";
-	readonly id: string;
-	readonly request: DesktopExtensionApprovalRequest;
-	readonly status: "pending" | "allowed" | "denied" | "cancelled";
-}
-
-export type DesktopPermissionResolution = DesktopToolPermissionResolution | DesktopExtensionPermissionResolution;
-
 export interface DesktopCompactionItem {
 	readonly kind: "compaction";
 	readonly id: string;
@@ -557,7 +520,6 @@ export type DesktopTranscriptItem =
 	| DesktopToolItem
 	| DesktopSubagentItem
 	| DesktopPermissionItem
-	| DesktopExtensionPermissionItem
 	| DesktopCompactionItem;
 
 export type DesktopTodoStatus = "pending" | "in_progress" | "completed" | "cancelled";

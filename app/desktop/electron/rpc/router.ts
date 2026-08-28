@@ -1,16 +1,12 @@
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import { Value } from "@sinclair/typebox/value";
-import { TaggedError } from "better-result";
 import type { IpcMainInvokeEvent } from "electron";
 import {
 	type DesktopApi,
 	type DesktopArtifact,
 	type DesktopCommandDescriptor,
-	type DesktopExtensionPermissionResolution,
 	type DesktopProject,
 	type DesktopProviderConfigInput,
-	type DesktopToolPermissionResolution,
 	type DesktopWorkspaceFile,
 	type DesktopWorkspaceListResult,
 	desktopAgentMessageInputSchema,
@@ -19,7 +15,6 @@ import {
 	desktopAttachmentRegistrationInputSchema,
 	desktopConnectorOAuthApplicationIdSchema,
 	desktopCommandListInputSchema,
-	desktopExtensionPermissionResolutionSchema,
 	desktopPermissionResolutionSchema,
 	desktopSessionCreateInputSchema,
 	desktopSessionDeleteInputSchema,
@@ -51,10 +46,6 @@ export type DesktopRouterImplementation<T> = {
 };
 
 export type DesktopRouter = DesktopRouterImplementation<DesktopApi>;
-
-class InvalidAgentInput extends TaggedError("desktop_agent_input.invalid_value")<{ readonly message: string }> {}
-
-const agentInputError = (init: { readonly message: string }) => new InvalidAgentInput(init);
 
 export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 	async function workspaceRootForSession(sessionId: string): Promise<string> {
@@ -321,15 +312,9 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				return rt.agentHost.followUp(parse(desktopAgentMessageInputSchema, input, "Invalid agent message input"));
 			},
 			resolvePermission(_event, resolution) {
-				if (Value.Check(desktopPermissionResolutionSchema, resolution)) {
-					rt.agentHost.resolvePermission(resolution as DesktopToolPermissionResolution);
-					return;
-				}
-				if (Value.Check(desktopExtensionPermissionResolutionSchema, resolution)) {
-					rt.agentHost.resolveExtensionPermission(resolution as DesktopExtensionPermissionResolution);
-					return;
-				}
-				throw agentInputError({ message: "Invalid permission resolution" });
+				rt.agentHost.resolvePermission(
+					parse(desktopPermissionResolutionSchema, resolution, "Invalid permission resolution"),
+				);
 			},
 			async getSnapshot(_event, sessionId) {
 				const parsedSessionId = parse(desktopSessionIdSchema, sessionId, "Invalid session id");

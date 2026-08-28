@@ -278,4 +278,31 @@ describe("transcript grouping", () => {
 			{ id: "work:turn-1:tool:1", items: [tool] },
 		]);
 	});
+
+	test("skips permission items because they render in the composer approval card", () => {
+		const permission: Extract<DesktopTranscriptItem, { kind: "permission" }> = {
+			kind: "permission",
+			id: "permission:tool-1",
+			request: {
+				requestId: "tool-1",
+				sessionId: "session-1",
+				toolCallId: "tool-1",
+				toolName: "Bash",
+				reason: "needs approval",
+				summary: { title: "Run bun test" },
+			},
+			status: "pending",
+		};
+		const reply: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:reply",
+			role: "assistant",
+			text: "需要先批准这条命令。",
+			status: "complete",
+			timestamp: 1,
+		};
+
+		expect(groupTranscriptItems([reply, permission])).toEqual([reply]);
+		expect(renderToStaticMarkup(createElement(TranscriptItem, { item: permission }))).toBe("");
+	});
 });

@@ -29,6 +29,7 @@ function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) 
 			invalidateSessions: record("invalidateSessions"),
 			navigate: record("navigate"),
 			send: record("send", { accepted: true as const }),
+			resolvePermission: record("resolvePermission"),
 			...(overrides.agentHost as object),
 		},
 		attachments: {
@@ -126,6 +127,21 @@ describe("createDesktopRouter — 输入校验", () => {
 		const { router: r, calls } = router();
 		expect(() => r.command.list(event, { path: "/tmp" } as never)).toThrow();
 		expect(calls).toEqual([]);
+	});
+
+	test("agent.resolvePermission 只接受工具审批，拒绝 extension 决议", () => {
+		const { router: r, calls } = router();
+		expect(() =>
+			r.agent.resolvePermission(event, {
+				kind: "extension",
+				requestId: "req-1",
+				decision: "allow",
+			}),
+		).toThrow();
+		expect(calls).toEqual([]);
+
+		r.agent.resolvePermission(event, { requestId: "req-1", decision: "alwaysAllow" });
+		expect(calls).toEqual([{ name: "resolvePermission", args: [{ requestId: "req-1", decision: "alwaysAllow" }] }]);
 	});
 });
 

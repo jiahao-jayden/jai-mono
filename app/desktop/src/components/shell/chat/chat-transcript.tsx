@@ -69,7 +69,7 @@ export function groupTranscriptItems(items: readonly DesktopTranscriptItem[]): (
 
 	for (const item of items) {
 		if (item.kind === "message" && item.role === "toolResult") continue;
-		if (item.kind === "permission" || item.kind === "extension_permission") continue;
+		if (item.kind === "permission") continue;
 		if (item.kind === "compaction") {
 			pendingCompactions.push(item);
 			continue;
@@ -162,7 +162,7 @@ export function TranscriptItem({
 		);
 	}
 
-	if (item.kind === "permission" || item.kind === "extension_permission") {
+	if (item.kind === "permission") {
 		return null;
 	}
 
