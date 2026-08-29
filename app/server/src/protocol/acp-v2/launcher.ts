@@ -3,12 +3,8 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import { resolveJaiDataDirectory } from "../../runtime/paths";
+import { type AcpLocalClientConnectFailed, type LocalAcpV2Client, openLocalAcpV2Client } from "./local-client";
 import { localAcpV2EndpointFor } from "./local-endpoint";
-import {
-	AcpLocalClientConnectFailed,
-	openLocalAcpV2Client,
-	type LocalAcpV2Client,
-} from "./local-client";
 
 export class RuntimeHostClientLaunchFailed extends TaggedError("runtime_host_client.launch_failed")<{
 	readonly endpoint: string;
@@ -16,9 +12,7 @@ export class RuntimeHostClientLaunchFailed extends TaggedError("runtime_host_cli
 	readonly cause?: unknown;
 }> {}
 
-export type RuntimeHostClientConnectError =
-	| RuntimeHostClientLaunchFailed
-	| AcpLocalClientConnectFailed;
+export type RuntimeHostClientConnectError = RuntimeHostClientLaunchFailed | AcpLocalClientConnectFailed;
 
 export interface ConnectJaiRuntimeHostOptions {
 	readonly environment?: Readonly<Record<string, string | undefined>>;
@@ -26,6 +20,11 @@ export interface ConnectJaiRuntimeHostOptions {
 	readonly endpoint?: string;
 	/** Desktop's packaged Runtime Host entrypoint, when it lives outside app.asar. */
 	readonly runtimeHostEntrypoint?: string;
+	/** Host-owned launcher for a packaged Runtime Host that cannot use Node's child_process. */
+	readonly launchRuntimeHost?: (input: {
+		readonly entrypoint: string;
+		readonly environment: Readonly<Record<string, string | undefined>>;
+	}) => void;
 	readonly retryDelayMs?: number;
 	readonly retryCount?: number;
 }
@@ -45,12 +44,17 @@ export async function connectJaiRuntimeHost(
 	if (connected.isOk()) return connected;
 	try {
 		const entrypoint = options.runtimeHostEntrypoint ?? packagedRuntimeHostEntrypoint();
-		const child = spawn(process.execPath, [entrypoint], {
-			detached: true,
-			stdio: "ignore",
-			env: { ...environment, JAI_HOME: dataDirectory, JAI_RUNTIME_ENDPOINT: endpoint },
-		});
-		child.unref();
+		const runtimeEnvironment = { ...environment, JAI_HOME: dataDirectory, JAI_RUNTIME_ENDPOINT: endpoint };
+		if (options.launchRuntimeHost) {
+			options.launchRuntimeHost({ entrypoint, environment: runtimeEnvironment });
+		} else {
+			const child = spawn(process.execPath, [entrypoint], {
+				detached: true,
+				stdio: "ignore",
+				env: runtimeEnvironment,
+			});
+			child.unref();
+		}
 	} catch (cause) {
 		return Result.err(
 			new RuntimeHostClientLaunchFailed({

@@ -11,6 +11,7 @@ import type {
 	ProductOperationRuntimeConfiguration,
 	ProductSessionDurableState,
 	ProductSessionInfo,
+	ProductSessionJournalFact,
 	ProductSessionPersistence,
 	PromptAdmissionTransaction,
 	RuntimeConfigurationAppend,
@@ -31,12 +32,16 @@ export class InMemoryProductSessionPersistence<TAppState extends JsonObject = Js
 	readonly #sessions = new Map<string, ProductSessionInfo>();
 	readonly #runtimeConfigurations = new Map<string, import("./configuration").RuntimeSessionConfiguration>();
 	readonly #operationRuntimeConfigurations = new Map<string, Map<string, ProductOperationRuntimeConfiguration>>();
+	readonly #journalFacts = new Map<string, ProductSessionJournalFact<TAppState>[]>();
+	readonly #nextJournalSequence = new Map<string, number>();
 
 	constructor(sessionStore: SessionStore<TAppState> = new InMemorySessionStore<TAppState>()) {
 		this.#sessionStore = sessionStore;
 	}
 
-	async create(input: import("./types").CreateProductSession<TAppState>): Promise<ResultType<void, ProductSessionAlreadyExists | ProductSessionAdmissionConflict>> {
+	async create(
+		input: import("./types").CreateProductSession<TAppState>,
+	): Promise<ResultType<void, ProductSessionAlreadyExists | ProductSessionAdmissionConflict>> {
 		try {
 			await this.#sessionStore.create(input.id, input.appState);
 		} catch (error) {
@@ -62,6 +67,8 @@ export class InMemoryProductSessionPersistence<TAppState extends JsonObject = Js
 			this.#sessions.set(input.id, { id: input.id, cwd: input.cwd, updatedAt: input.createdAt });
 			this.#runtimeConfigurations.set(input.id, structuredClone(input.runtimeConfiguration));
 			this.#operationRuntimeConfigurations.set(input.id, new Map());
+			this.#journalFacts.set(input.id, []);
+			this.#nextJournalSequence.set(input.id, 1);
 			return Result.ok<void, ProductSessionAlreadyExists | ProductSessionAdmissionConflict>(undefined);
 		}
 
@@ -117,6 +124,7 @@ export class InMemoryProductSessionPersistence<TAppState extends JsonObject = Js
 				snapshot: stored.snapshot,
 				revision: stored.revision,
 				operationRecords: operationRecords.value,
+				journalFacts: [...(this.#journalFacts.get(sessionId) ?? [])],
 				runtimeConfiguration: structuredClone(runtimeConfiguration),
 				operationRuntimeConfigurations: [
 					...(this.#operationRuntimeConfigurations.get(sessionId)?.values() ?? []),
@@ -210,6 +218,21 @@ export class InMemoryProductSessionPersistence<TAppState extends JsonObject = Js
 
 			const appended = await this.#operationJournal.append(input.sessionId, input.operation);
 			if (appended.isOk()) {
+				const facts = this.#journalFacts.get(input.sessionId);
+				const nextSequence = this.#nextJournalSequence.get(input.sessionId);
+				if (!facts || nextSequence === undefined) {
+					return Result.err(
+						new ProductSessionAdmissionConflict({
+							message: `Session metadata for "${input.sessionId}" has no fact sequence`,
+							sessionId: input.sessionId,
+						}),
+					);
+				}
+				facts.push(
+					{ sequence: nextSequence, kind: "entry", entry: structuredClone(input.inputEntry) },
+					{ sequence: nextSequence + 1, kind: "operation", record: structuredClone(input.operation) },
+				);
+				this.#nextJournalSequence.set(input.sessionId, nextSequence + 2);
 				const runtimeConfiguration = this.#runtimeConfigurations.get(input.sessionId);
 				const operationConfigurations = this.#operationRuntimeConfigurations.get(input.sessionId);
 				if (!runtimeConfiguration || !operationConfigurations) {
@@ -284,6 +307,18 @@ export class InMemoryProductSessionPersistence<TAppState extends JsonObject = Js
 						}),
 					);
 				}
+				const facts = this.#journalFacts.get(input.sessionId);
+				const nextSequence = this.#nextJournalSequence.get(input.sessionId);
+				if (!facts || nextSequence === undefined) {
+					return Result.err(
+						new ProductSessionAdmissionConflict({
+							message: `Session metadata for "${input.sessionId}" has no fact sequence`,
+							sessionId: input.sessionId,
+						}),
+					);
+				}
+				facts.push({ sequence: nextSequence, kind: "operation", record: structuredClone(input.record) });
+				this.#nextJournalSequence.set(input.sessionId, nextSequence + 1);
 				const session = this.#sessions.get(input.sessionId);
 				if (!session) {
 					return Result.err(
@@ -321,11 +356,19 @@ export class InMemoryProductSessionPersistence<TAppState extends JsonObject = Js
 				);
 			}
 			try {
-				const revision = await this.#sessionStore.append(
-					input.sessionId,
-					input.entry,
-					input.expectedRevision,
-				);
+				const revision = await this.#sessionStore.append(input.sessionId, input.entry, input.expectedRevision);
+				const facts = this.#journalFacts.get(input.sessionId);
+				const nextSequence = this.#nextJournalSequence.get(input.sessionId);
+				if (!facts || nextSequence === undefined) {
+					return Result.err(
+						new ProductSessionAdmissionConflict({
+							message: `Session metadata for "${input.sessionId}" has no fact sequence`,
+							sessionId: input.sessionId,
+						}),
+					);
+				}
+				facts.push({ sequence: nextSequence, kind: "entry", entry: structuredClone(input.entry) });
+				this.#nextJournalSequence.set(input.sessionId, nextSequence + 1);
 				this.#sessions.set(input.sessionId, { ...session, updatedAt: input.entry.timestamp });
 				return Result.ok(revision);
 			} catch (error) {

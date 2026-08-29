@@ -16,10 +16,20 @@ export interface ProductSessionInfo {
 	readonly updatedAt: string;
 }
 
+/**
+ * The existing SQLite fact sequence projected for read-only consumers. It is
+ * not a new durable store: it preserves the total order already assigned to
+ * Session entries and Operation records at write time.
+ */
+export type ProductSessionJournalFact<TAppState extends JsonObject = JsonObject> =
+	| { readonly sequence: number; readonly kind: "entry"; readonly entry: SessionEntry<TAppState> }
+	| { readonly sequence: number; readonly kind: "operation"; readonly record: OperationRecord };
+
 export interface ProductSessionDurableState<TAppState extends JsonObject = JsonObject> extends ProductSessionInfo {
 	readonly snapshot: SessionSnapshot<TAppState>;
 	readonly revision: string;
 	readonly operationRecords: readonly OperationRecord[];
+	readonly journalFacts: readonly ProductSessionJournalFact<TAppState>[];
 	/** Latest configuration for a not-yet-accepted prompt. */
 	readonly runtimeConfiguration: RuntimeSessionConfiguration;
 	/** Configuration frozen at every accepted Operation's durable admission. */

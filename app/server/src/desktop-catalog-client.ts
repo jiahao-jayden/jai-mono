@@ -1,11 +1,10 @@
 import { Result, type Result as ResultType, TaggedError } from "better-result";
-import { resolveJaiDataDirectory } from "./runtime/paths";
 import { connectJaiRuntimeHost, type RuntimeHostClientConnectError } from "./protocol/acp-v2/launcher";
 import {
-	openLocalAcpV2Client,
 	type AcpLocalClientConnectFailed,
 	type AcpLocalClientError,
 	type LocalAcpV2Client,
+	openLocalAcpV2Client,
 } from "./protocol/acp-v2/local-client";
 import { localDesktopCatalogEndpointFor } from "./protocol/desktop-catalog/local-endpoint";
 import type {
@@ -14,6 +13,7 @@ import type {
 	DesktopCatalogSessionCursor,
 	DesktopCatalogSessionPage,
 } from "./protocol/desktop-catalog/types";
+import { resolveJaiDataDirectory } from "./runtime/paths";
 
 export class DesktopCatalogClientResponseInvalid extends TaggedError("desktop_catalog_client.invalid_response")<{
 	readonly method: string;
@@ -31,6 +31,13 @@ export interface ConnectDesktopCatalogClientOptions {
 	readonly dataDirectory?: string;
 	/** Optional override for the ACP endpoint used only to ensure the Host is running. */
 	readonly runtimeEndpoint?: string;
+	/** Desktop's packaged Runtime Host entrypoint, when it lives outside app.asar. */
+	readonly runtimeHostEntrypoint?: string;
+	/** Host-owned launcher for a packaged Runtime Host that cannot use Node's child_process. */
+	readonly launchRuntimeHost?: (input: {
+		readonly entrypoint: string;
+		readonly environment: Readonly<Record<string, string | undefined>>;
+	}) => void;
 	/** Optional override for the private Desktop Catalog control endpoint. */
 	readonly endpoint?: string;
 	readonly retryDelayMs?: number;
@@ -51,6 +58,8 @@ export async function connectDesktopCatalogClient(
 		environment,
 		dataDirectory,
 		...(options.runtimeEndpoint === undefined ? {} : { endpoint: options.runtimeEndpoint }),
+		...(options.runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint: options.runtimeHostEntrypoint }),
+		...(options.launchRuntimeHost === undefined ? {} : { launchRuntimeHost: options.launchRuntimeHost }),
 		...(options.retryDelayMs === undefined ? {} : { retryDelayMs: options.retryDelayMs }),
 		...(options.retryCount === undefined ? {} : { retryCount: options.retryCount }),
 	});
@@ -88,12 +97,18 @@ export interface DesktopCatalogClient {
 		readonly projectId: string | null;
 		readonly title: string;
 	}): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>>;
-	renameSession(input: { readonly sessionId: string; readonly title: string }): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>>;
+	renameSession(input: {
+		readonly sessionId: string;
+		readonly title: string;
+	}): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>>;
 	markTitleGenerationAttempted(input: {
 		readonly sessionId: string;
 		readonly timestamp: number;
 	}): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>>;
-	setGeneratedTitle(input: { readonly sessionId: string; readonly title: string }): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>>;
+	setGeneratedTitle(input: {
+		readonly sessionId: string;
+		readonly title: string;
+	}): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>>;
 	shouldGenerateSessionTitle(sessionId: string): Promise<ResultType<boolean, DesktopCatalogClientError>>;
 	moveSession(input: {
 		readonly sessionId: string;
@@ -109,22 +124,27 @@ class DefaultDesktopCatalogClient implements DesktopCatalogClient {
 		return this.request("jai/desktop-catalog/projects/list", {}, projects);
 	}
 
-	async createProject(input: DesktopCatalogProject): Promise<ResultType<DesktopCatalogProject, DesktopCatalogClientError>> {
+	async createProject(
+		input: DesktopCatalogProject,
+	): Promise<ResultType<DesktopCatalogProject, DesktopCatalogClientError>> {
 		return this.request("jai/desktop-catalog/projects/create", input, project);
 	}
 
-	async relinkProject(input: DesktopCatalogProject): Promise<ResultType<DesktopCatalogProject, DesktopCatalogClientError>> {
+	async relinkProject(
+		input: DesktopCatalogProject,
+	): Promise<ResultType<DesktopCatalogProject, DesktopCatalogClientError>> {
 		return this.request("jai/desktop-catalog/projects/relink", input, project);
 	}
 
-	async listSessions(input: {
-		readonly limit?: number;
-		readonly cursor?: DesktopCatalogSessionCursor;
-	} = {}): Promise<ResultType<DesktopCatalogSessionPage, DesktopCatalogClientError>> {
+	async listSessions(
+		input: { readonly limit?: number; readonly cursor?: DesktopCatalogSessionCursor } = {},
+	): Promise<ResultType<DesktopCatalogSessionPage, DesktopCatalogClientError>> {
 		return this.request("jai/desktop-catalog/sessions/list", input, sessionPage);
 	}
 
-	async getSession(sessionId: string): Promise<ResultType<DesktopCatalogSession | undefined, DesktopCatalogClientError>> {
+	async getSession(
+		sessionId: string,
+	): Promise<ResultType<DesktopCatalogSession | undefined, DesktopCatalogClientError>> {
 		const response = await this.client.request("jai/desktop-catalog/sessions/get", { sessionId });
 		if (response.isErr()) return Result.err(response.error);
 		if (response.value === undefined) return Result.ok(undefined);
@@ -141,10 +161,14 @@ class DefaultDesktopCatalogClient implements DesktopCatalogClient {
 	async deleteSession(sessionId: string): Promise<ResultType<void, DesktopCatalogClientError>> {
 		const response = await this.client.request("jai/desktop-catalog/sessions/delete", { sessionId });
 		if (response.isErr()) return Result.err(response.error);
-		return response.value === undefined ? Result.ok(undefined) : Result.err(new DesktopCatalogClientResponseInvalid({
-			method: "jai/desktop-catalog/sessions/delete",
-			message: "Desktop Catalog Session delete response was not empty",
-		}));
+		return response.value === undefined
+			? Result.ok(undefined)
+			: Result.err(
+					new DesktopCatalogClientResponseInvalid({
+						method: "jai/desktop-catalog/sessions/delete",
+						message: "Desktop Catalog Session delete response was not empty",
+					}),
+				);
 	}
 
 	async ensureSession(input: {
@@ -243,7 +267,8 @@ function sessionPage(value: unknown): DesktopCatalogSessionPage | undefined {
 	if (sessions.some((candidate) => candidate === undefined)) return undefined;
 	const rawCursor = value.nextCursor;
 	if (rawCursor === undefined) return { sessions: sessions as DesktopCatalogSession[] };
-	if (!record(rawCursor) || typeof rawCursor.lastActivityAt !== "number" || typeof rawCursor.id !== "string") return undefined;
+	if (!record(rawCursor) || typeof rawCursor.lastActivityAt !== "number" || typeof rawCursor.id !== "string")
+		return undefined;
 	return {
 		sessions: sessions as DesktopCatalogSession[],
 		nextCursor: { lastActivityAt: rawCursor.lastActivityAt, id: rawCursor.id },

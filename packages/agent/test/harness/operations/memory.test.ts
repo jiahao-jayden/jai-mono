@@ -38,6 +38,31 @@ describe("InMemoryOperationJournal", () => {
 		expect(result.error._tag).toBe("operations.duplicate_record");
 	});
 
+	test("uses model-attempt identity for compact stream summaries", async () => {
+		const journal = new InMemoryOperationJournal();
+		await journal.create("session-a");
+		const summary: OperationRecord = {
+			type: "model_stream_settled",
+			operationId: "op-1",
+			turnId: "turn-1",
+			attemptId: "attempt-1",
+			assistantEntryId: "assistant-1",
+			firstOutputAt: null,
+			lastOutputAt: null,
+			chunkCount: 0,
+			chunkTypeCounts: { text_delta: 0, thinking_delta: 0, toolcall_delta: 0 },
+			outcome: "failed",
+			timestamp: "2026-08-25T00:00:01.000Z",
+		};
+		expect((await journal.append("session-a", summary)).isOk()).toBe(true);
+
+		const duplicate = await journal.append("session-a", { ...summary, timestamp: "2026-08-25T00:00:02.000Z" });
+
+		expect(duplicate.isErr()).toBe(true);
+		if (duplicate.isOk()) throw new Error("Expected duplicate stream summary");
+		expect(duplicate.error._tag).toBe("operations.duplicate_record");
+	});
+
 	test("reports an absent journal as a typed caller-handled failure", async () => {
 		const result = await new InMemoryOperationJournal().load("missing");
 

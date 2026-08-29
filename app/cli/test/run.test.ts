@@ -61,6 +61,18 @@ describe("jai CLI options", () => {
 		});
 	});
 
+	test("opens a durable Session trajectory only through an explicit command and scope", () => {
+		expect(parseCliOptions(["trajectory", "--session-id", "session-1", "--scope", "final_text"])).toMatchObject({
+			command: "trajectory",
+			sessionId: "session-1",
+			trajectoryScopes: ["final_text"],
+		});
+		expect(() => parseCliOptions(["trajectory"])).toThrow("requires --session-id");
+		expect(() => parseCliOptions(["trajectory", "--session-id", "session-1", "--scope", "all"])).toThrow(
+			"Unsupported trajectory scope",
+		);
+	});
+
 	test("projects stream-json events and aggregates provider usage", () => {
 		const message: AssistantMessage = {
 			role: "assistant",

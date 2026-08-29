@@ -269,11 +269,22 @@ describe("RuntimeHost", () => {
     });
     if (admitted.isErr()) throw admitted.error;
 
+    const started = await persistence.appendOperation({
+      sessionId: "session-1",
+      record: {
+        type: "turn_started",
+        operationId: "operation-1",
+        turnId: "turn-1",
+        timestamp: "2026-08-26T00:00:00.500Z",
+      },
+    });
+    if (started.isErr()) throw started.error;
     const attempted = await persistence.appendOperation({
       sessionId: "session-1",
       record: {
         type: "model_attempted",
         operationId: "operation-1",
+        turnId: "turn-1",
         attemptId: "attempt-1",
         assistantEntryId: "assistant-1",
         modelSnapshotId: "test:model",

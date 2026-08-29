@@ -1,26 +1,27 @@
 import { mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
-import { acquireLocalRuntimeOwner, type LocalRuntimeOwner, type RuntimeHost } from "../../runtime";
-import {
-	createDesktopCatalogControl,
-	localDesktopCatalogEndpointFor,
-	openLocalDesktopCatalogControlServer,
-	type DesktopCatalogAccess,
-	type LocalDesktopCatalogControlServer,
-} from "../desktop-catalog";
-import {
-	createDesktopConfigurationControl,
-	localDesktopConfigurationEndpointFor,
-	openLocalDesktopConfigurationControlServer,
-	type LocalDesktopConfigurationControlServer,
-} from "../desktop-configuration";
 import type { SqliteRuntimeAgentSettings } from "../../config";
 import type { RuntimeConnectorOAuthController } from "../../connectors";
 import type { SqliteRuntimeModelCatalog } from "../../model-catalog";
+import { acquireLocalRuntimeOwner, type LocalRuntimeOwner, type RuntimeHost } from "../../runtime";
+import type { TrajectoryBrowserLauncher, TrajectoryFeed } from "../../trajectory";
 import type { SqliteWorkspaceTrust } from "../../workspaces";
-import { openLocalAcpV2Server, type LocalAcpV2Server } from "./local-transport";
+import {
+	createDesktopCatalogControl,
+	type DesktopCatalogAccess,
+	type LocalDesktopCatalogControlServer,
+	localDesktopCatalogEndpointFor,
+	openLocalDesktopCatalogControlServer,
+} from "../desktop-catalog";
+import {
+	createDesktopConfigurationControl,
+	type LocalDesktopConfigurationControlServer,
+	localDesktopConfigurationEndpointFor,
+	openLocalDesktopConfigurationControlServer,
+} from "../desktop-configuration";
 import { localAcpV2EndpointFor } from "./local-endpoint";
+import { type LocalAcpV2Server, openLocalAcpV2Server } from "./local-transport";
 import type { AcpImplementationInfo } from "./types";
 
 export class LocalRuntimeHostOpenFailed extends TaggedError("runtime_host.local_open_failed")<{
@@ -32,6 +33,8 @@ export class LocalRuntimeHostOpenFailed extends TaggedError("runtime_host.local_
 export interface OpenLocalRuntimeHostOptions {
 	readonly dataDirectory: string;
 	readonly host: RuntimeHost;
+	readonly trajectoryFeed?: TrajectoryFeed;
+	readonly trajectoryBrowserLauncher?: TrajectoryBrowserLauncher;
 	readonly info: AcpImplementationInfo;
 	/** Desktop Catalog facts stay Desktop-owned, but the Host owns their one SQLite writer. */
 	readonly desktopCatalog?: DesktopCatalogAccess;
@@ -92,7 +95,13 @@ export async function openLocalRuntimeHost(
 			if (desktopCatalogEndpoint) await unlink(desktopCatalogEndpoint).catch(() => {});
 			if (desktopConfigurationEndpoint) await unlink(desktopConfigurationEndpoint).catch(() => {});
 		}
-		const transport = await openLocalAcpV2Server({ endpoint, host: options.host, info: options.info });
+		const transport = await openLocalAcpV2Server({
+			endpoint,
+			host: options.host,
+			info: options.info,
+			...(options.trajectoryFeed ? { trajectoryFeed: options.trajectoryFeed } : {}),
+			...(options.trajectoryBrowserLauncher ? { trajectoryBrowserLauncher: options.trajectoryBrowserLauncher } : {}),
+		});
 		if (transport.isErr()) throw transport.error;
 		acpTransport = transport.value;
 		if (options.desktopCatalog && desktopCatalogEndpoint) {
@@ -106,12 +115,12 @@ export async function openLocalRuntimeHost(
 		if (options.desktopConfiguration && desktopConfigurationEndpoint) {
 			const openedConfiguration = await openLocalDesktopConfigurationControlServer({
 				endpoint: desktopConfigurationEndpoint,
-			control: createDesktopConfigurationControl(
-				options.desktopConfiguration,
-				options.desktopConnectorOAuth,
-				options.desktopModelCatalog,
-				options.desktopWorkspaceTrust,
-			),
+				control: createDesktopConfigurationControl(
+					options.desktopConfiguration,
+					options.desktopConnectorOAuth,
+					options.desktopModelCatalog,
+					options.desktopWorkspaceTrust,
+				),
 			});
 			if (openedConfiguration.isErr()) throw openedConfiguration.error;
 			desktopConfigurationTransport = openedConfiguration.value;
@@ -174,8 +183,10 @@ class OwnedLocalRuntimeHost implements LocalRuntimeHostServer {
 					try {
 						if (process.platform !== "win32") {
 							await unlink(this.endpoint).catch(() => {});
-							if (this.desktopCatalogTransport) await unlink(this.desktopCatalogTransport.endpoint).catch(() => {});
-							if (this.desktopConfigurationTransport) await unlink(this.desktopConfigurationTransport.endpoint).catch(() => {});
+							if (this.desktopCatalogTransport)
+								await unlink(this.desktopCatalogTransport.endpoint).catch(() => {});
+							if (this.desktopConfigurationTransport)
+								await unlink(this.desktopConfigurationTransport.endpoint).catch(() => {});
 						}
 					} finally {
 						await this.owner.release();

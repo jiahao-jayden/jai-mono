@@ -80,7 +80,7 @@ describe("Coding Agent Runtime Operation driver", () => {
 			persistence,
 			operationDriver: driver,
 			initialAppState: emptyCodingSessionState,
-			createId: ids("attempt-1", "assistant-1"),
+			createId: ids("turn-1", "attempt-1", "assistant-1"),
 		});
 		const resumed = await resumedHost.openSession({ kind: "resume", id: "session-1", cwd: root });
 		if (resumed.isErr()) throw resumed.error;
@@ -98,6 +98,35 @@ describe("Coding Agent Runtime Operation driver", () => {
 		expect(durable.value.operationRecords).toContainEqual(
 			expect.objectContaining({ type: "operation_finished", operationId: "operation-1", outcome: "completed" }),
 		);
+		expect(durable.value.operationRecords).toContainEqual(
+			expect.objectContaining({
+			type: "turn_started",
+			operationId: "operation-1",
+			turnId: "turn-1",
+		}),
+	);
+		expect(durable.value.operationRecords).toContainEqual(
+			expect.objectContaining({
+			type: "model_stream_settled",
+			turnId: "turn-1",
+			attemptId: "attempt-1",
+			assistantEntryId: "assistant-1",
+			chunkCount: 1,
+			chunkTypeCounts: { text_delta: 1, thinking_delta: 0, toolcall_delta: 0 },
+			outcome: "completed",
+			firstOutputAt: expect.any(String),
+			lastOutputAt: expect.any(String),
+		}),
+	);
+		expect(durable.value.operationRecords).toContainEqual(
+			expect.objectContaining({
+			type: "turn_finished",
+			turnId: "turn-1",
+			assistantEntryId: "assistant-1",
+			outcome: "completed",
+		}),
+	);
+		expect(JSON.stringify(durable.value.operationRecords)).not.toContain("steering completed");
 		expect(providerRequests).toHaveLength(1);
 		expect(capabilitySourceCalls).toBeGreaterThan(0);
 		expect(JSON.stringify(providerRequests[0])).toContain("first direction");

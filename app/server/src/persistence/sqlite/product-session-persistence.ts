@@ -3,9 +3,9 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { type JsonObject, type OperationRecord, replay, type SessionEntry } from "@jai/agent";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
+import type { RuntimeSessionConfiguration } from "../../sessions";
 import {
 	type OperationRecordAppend,
-	type ProductOperationRuntimeConfiguration,
 	ProductSessionAdmissionConflict,
 	ProductSessionAlreadyExists,
 	type ProductSessionDurableState,
@@ -16,7 +16,6 @@ import {
 	type RuntimeConfigurationAppend,
 	type SessionEntryAppend,
 } from "../../sessions";
-import type { RuntimeSessionConfiguration } from "../../sessions";
 
 interface SessionRow {
 	readonly id: string;
@@ -26,11 +25,13 @@ interface SessionRow {
 }
 
 interface SessionEntryRow {
+	readonly sequence: number;
 	readonly entry_type: string;
 	readonly entry_json: string;
 }
 
 interface OperationRow {
+	readonly sequence: number;
 	readonly record_json: string;
 }
 
@@ -446,7 +447,7 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 
 		const entries = this.database
 			.prepare(
-				`SELECT entry_type, entry_json
+				`SELECT sequence, entry_type, entry_json
 				 FROM session_journal_entries
 				 WHERE session_id = ?
 				 ORDER BY sequence ASC`,
@@ -454,7 +455,7 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 			.all(sessionId) as unknown as SessionEntryRow[];
 		const operationRecords = this.database
 			.prepare(
-				`SELECT record_json
+				`SELECT sequence, record_json
 				 FROM operation_journal_records
 				 WHERE session_id = ?
 				 ORDER BY sequence ASC`,
@@ -476,20 +477,34 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 			)
 			.all(sessionId) as unknown as OperationRuntimeConfigurationRow[];
 
+		const parsedEntries = entries.map((row) => parseSessionEntry<TAppState>(row, sessionId));
+		const parsedOperationRecords = operationRecords.map((row) => parseOperationRecord(row.record_json, sessionId));
 		const snapshot = replay<TAppState>(
 			parseJsonObject(
 				sessionId,
 				journal.initial_app_state_json,
 				`Session "${sessionId}" has invalid initial app state`,
 			) as TAppState,
-			entries.map((row) => parseSessionEntry<TAppState>(row, sessionId)),
+			parsedEntries,
 			journal.created_at,
 		);
 		return {
 			...projectCatalogRow(catalog),
 			snapshot,
 			revision: journal.revision,
-			operationRecords: operationRecords.map((row) => parseOperationRecord(row.record_json, sessionId)),
+			operationRecords: parsedOperationRecords,
+			journalFacts: [
+				...entries.map((row, index) => ({
+					sequence: row.sequence,
+					kind: "entry" as const,
+					entry: parsedEntries[index]!,
+				})),
+				...operationRecords.map((row, index) => ({
+					sequence: row.sequence,
+					kind: "operation" as const,
+					record: parsedOperationRecords[index]!,
+				})),
+			].sort((left, right) => left.sequence - right.sequence),
 			runtimeConfiguration: runtimeConfiguration.configuration,
 			operationRuntimeConfigurations: operationRuntimeConfigurations.map((row) => ({
 				operationId: row.operation_id,
@@ -597,11 +612,7 @@ function parseOperationRecord(raw: string, sessionId: string): OperationRecord {
 }
 
 function parseRuntimeSessionConfiguration(raw: string, sessionId: string): RuntimeSessionConfiguration {
-	const parsed = parseJson(
-		sessionId,
-		raw,
-		`Session "${sessionId}" contains malformed Runtime configuration JSON`,
-	);
+	const parsed = parseJson(sessionId, raw, `Session "${sessionId}" contains malformed Runtime configuration JSON`);
 	if (!isRuntimeSessionConfiguration(parsed)) {
 		throw corrupted(sessionId, `Session "${sessionId}" contains invalid Runtime configuration`);
 	}
@@ -636,22 +647,60 @@ function isOperationRecord(value: unknown): value is OperationRecord {
 	switch (value.type) {
 		case "operation_accepted":
 			return typeof value.inputEntryId === "string" && typeof value.kind === "string";
+		case "turn_started":
+			return typeof value.turnId === "string";
 		case "model_attempted":
 			return (
+				typeof value.turnId === "string" &&
 				typeof value.attemptId === "string" &&
 				typeof value.assistantEntryId === "string" &&
 				typeof value.modelSnapshotId === "string"
+			);
+		case "model_stream_settled":
+			return (
+				typeof value.turnId === "string" &&
+				typeof value.attemptId === "string" &&
+				typeof value.assistantEntryId === "string" &&
+				(value.firstOutputAt === null || typeof value.firstOutputAt === "string") &&
+				(value.lastOutputAt === null || typeof value.lastOutputAt === "string") &&
+				typeof value.chunkCount === "number" &&
+				isJsonObject(value.chunkTypeCounts) &&
+				typeof value.chunkTypeCounts.text_delta === "number" &&
+				typeof value.chunkTypeCounts.thinking_delta === "number" &&
+				typeof value.chunkTypeCounts.toolcall_delta === "number" &&
+				(value.outcome === "completed" ||
+					value.outcome === "failed" ||
+					value.outcome === "aborted" ||
+					value.outcome === "discarded")
 			);
 		case "usage_settled":
 			return typeof value.attemptId === "string" && isJsonObject(value.usage);
 		case "tool_dispatched":
 			return (
+				typeof value.turnId === "string" &&
 				typeof value.toolCallId === "string" &&
 				typeof value.toolName === "string" &&
 				typeof value.assistantEntryId === "string" &&
 				typeof value.resultEntryId === "string" &&
 				isJsonObject(value.args) &&
 				typeof value.argsHash === "string"
+			);
+		case "tool_timing_settled":
+			return (
+				typeof value.turnId === "string" &&
+				typeof value.toolCallId === "string" &&
+				typeof value.startedAt === "string" &&
+				typeof value.finishedAt === "string" &&
+				(value.outcome === "completed" || value.outcome === "failed")
+			);
+		case "turn_finished":
+			return (
+				typeof value.turnId === "string" &&
+				(value.assistantEntryId === undefined || typeof value.assistantEntryId === "string") &&
+				(value.outcome === "completed" ||
+					value.outcome === "failed" ||
+					value.outcome === "aborted" ||
+					value.outcome === "blocked")
 			);
 		case "input_queued":
 			return (

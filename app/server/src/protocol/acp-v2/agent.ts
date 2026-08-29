@@ -1,7 +1,7 @@
 import { isAbsolute } from "node:path";
+import { type AgentMessage, branchOf, type JsonValue, type SessionEntry } from "@jai/agent";
 import type { ToolFileChange } from "@jai/ai";
-import { branchOf, type AgentMessage, type JsonValue, type SessionEntry } from "@jai/agent";
-import { todosFromAppState, type CodingAgentTodo } from "@jai/coding-agent";
+import { type CodingAgentTodo, todosFromAppState } from "@jai/coding-agent";
 import type { RuntimeOperationContent } from "../../operations";
 import type {
 	RuntimeApprovalRequest,
@@ -10,8 +10,8 @@ import type {
 	RuntimeSessionSnapshot,
 } from "../../runtime";
 import type { RuntimeSessionConfigurationChange, RuntimeSessionConfigurationSnapshot } from "../../sessions";
+import { type AcpTrajectoryProtocol, createAcpTrajectoryProtocol } from "./trajectory";
 import type {
-	AcpV2AgentOptions,
 	AcpJsonRpcNotification,
 	AcpJsonRpcRequest,
 	AcpJsonRpcResponse,
@@ -20,13 +20,12 @@ import type {
 	AcpPromptMetadata,
 	AcpRequestId,
 	AcpV2Agent,
+	AcpV2AgentOptions,
 } from "./types";
 
 const ACP_V2 = 2;
 
-export function createAcpV2Agent(
-	options: AcpV2AgentOptions,
-): AcpV2Agent {
+export function createAcpV2Agent(options: AcpV2AgentOptions): AcpV2Agent {
 	return new DefaultAcpV2Agent(options);
 }
 
@@ -35,49 +34,61 @@ class DefaultAcpV2Agent implements AcpV2Agent {
 	readonly #unsubscribes = new Map<string, () => void>();
 	readonly #outbound: AcpJsonRpcNotification[] = [];
 	readonly #controllerId = crypto.randomUUID();
+	readonly #trajectory?: AcpTrajectoryProtocol;
 	#initialized = false;
+	#clientName = "";
 	#handling = 0;
 
-	constructor(private readonly options: AcpV2AgentOptions) {}
+	constructor(private readonly options: AcpV2AgentOptions) {
+		if (options.trajectoryFeed) {
+			this.#trajectory = createAcpTrajectoryProtocol({
+				feed: options.trajectoryFeed,
+				publish: (notification) => this.publishNotification(notification),
+				...(options.trajectoryBrowserLauncher ? { browserLauncher: options.trajectoryBrowserLauncher } : {}),
+				canOpenBrowser: () => this.#clientName === "jai-cli",
+			});
+		}
+	}
 
 	async handle(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
 		this.#handling += 1;
 		try {
-		let response: readonly AcpOutboundMessage[];
-		if (request.jsonrpc !== "2.0") response = this.respondError(request.id, -32600, "Expected JSON-RPC 2.0");
-		else if (request.method === "initialize") response = this.initialize(request);
-		else if (!this.#initialized) response = this.respondError(request.id, -32002, "ACP connection is not initialized");
-		else {
-			switch (request.method) {
-				case "session/new":
-					response = await this.newSession(request);
-					break;
-				case "session/list":
-					response = await this.listSessions(request);
-					break;
-				case "session/resume":
-					response = await this.resumeSession(request);
-					break;
-				case "session/prompt":
-					response = await this.prompt(request);
-					break;
-				case "session/navigate":
-					response = await this.navigate(request);
-					break;
-				case "session/set_config_option":
-					response = await this.setConfigOption(request);
-					break;
-				case "session/cancel":
-					response = await this.cancel(request);
-					break;
-				case "session/close":
-					response = await this.closeSession(request);
-					break;
-				default:
-					response = this.respondError(request.id, -32601, `Unsupported ACP method "${request.method}"`);
+			let response: readonly AcpOutboundMessage[];
+			if (request.jsonrpc !== "2.0") response = this.respondError(request.id, -32600, "Expected JSON-RPC 2.0");
+			else if (request.method === "initialize") response = this.initialize(request);
+			else if (!this.#initialized)
+				response = this.respondError(request.id, -32002, "ACP connection is not initialized");
+			else {
+				switch (request.method) {
+					case "session/new":
+						response = await this.newSession(request);
+						break;
+					case "session/list":
+						response = await this.listSessions(request);
+						break;
+					case "session/resume":
+						response = await this.resumeSession(request);
+						break;
+					case "session/prompt":
+						response = await this.prompt(request);
+						break;
+					case "session/navigate":
+						response = await this.navigate(request);
+						break;
+					case "session/set_config_option":
+						response = await this.setConfigOption(request);
+						break;
+					case "session/cancel":
+						response = await this.cancel(request);
+						break;
+					case "session/close":
+						response = await this.closeSession(request);
+						break;
+					default:
+						response = await this.trajectory(request);
+				}
 			}
-		}
-		return [...response, ...this.drain()];
+			return [...response, ...this.drain()];
 		} finally {
 			this.#handling -= 1;
 		}
@@ -94,6 +105,7 @@ class DefaultAcpV2Agent implements AcpV2Agent {
 			return this.respondError(request.id, -32602, "Invalid initialize parameters");
 		}
 		this.#initialized = true;
+		this.#clientName = typeof params.info.name === "string" ? params.info.name : "";
 		return this.respond(request.id, {
 			protocolVersion: ACP_V2,
 			capabilities: { session: {} },
@@ -136,7 +148,9 @@ class DefaultAcpV2Agent implements AcpV2Agent {
 		}
 		return this.respond(request.id, {
 			sessionId: opened.value.id,
-			...(configOptions(configuration.value).length > 0 ? { configOptions: configOptions(configuration.value) } : {}),
+			...(configOptions(configuration.value).length > 0
+				? { configOptions: configOptions(configuration.value) }
+				: {}),
 		});
 	}
 
@@ -187,7 +201,8 @@ class DefaultAcpV2Agent implements AcpV2Agent {
 			this.detach(sessionId);
 			return this.respondError(request.id, -32001, configuration.error.message);
 		}
-		const result = configOptions(configuration.value).length > 0 ? { configOptions: configOptions(configuration.value) } : {};
+		const result =
+			configOptions(configuration.value).length > 0 ? { configOptions: configOptions(configuration.value) } : {};
 		if (replayFrom === "none") return this.respond(request.id, result);
 		const snapshot = await opened.value.snapshot();
 		if (snapshot.isErr()) return this.respondError(request.id, -32001, snapshot.error.message);
@@ -288,12 +303,19 @@ class DefaultAcpV2Agent implements AcpV2Agent {
 	}
 
 	async close(): Promise<void> {
+		this.#trajectory?.close();
 		const sessions = [...this.#sessions.values()];
 		const unsubscribes = [...this.#unsubscribes.values()];
 		this.#sessions.clear();
 		this.#unsubscribes.clear();
 		for (const unsubscribe of unsubscribes) unsubscribe();
 		await Promise.all(sessions.map((session) => session.close()));
+	}
+
+	private async trajectory(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
+		const handled = await this.#trajectory?.handle(request.method, request.params);
+		if (!handled) return this.respondError(request.id, -32601, `Unsupported ACP method "${request.method}"`);
+		return this.respond(request.id, handled);
 	}
 
 	drain(): readonly AcpJsonRpcNotification[] {
@@ -432,8 +454,10 @@ function parseReplayFrom(value: unknown): "none" | "start" | "invalid" {
 	return "start";
 }
 
-function parseConfigurationChange(value: Record<string, unknown> | undefined): RuntimeSessionConfigurationChange | undefined {
-	if (!value || value.type !== "id" || typeof value.value !== "string") return undefined;
+function parseConfigurationChange(
+	value: Record<string, unknown> | undefined,
+): RuntimeSessionConfigurationChange | undefined {
+	if (value?.type !== "id" || typeof value.value !== "string") return undefined;
 	if (value.configId === "model") return { configId: "model", value: value.value };
 	if (value.configId === "mode") {
 		return value.value === "manual" || value.value === "automate" || value.value === "plan"
@@ -537,9 +561,7 @@ function projectPermissionRequest(sessionId: string, request: RuntimeApprovalReq
 		},
 		options: [
 			{ optionId: "allow-once", name: "Allow once", kind: "allow_once" },
-			...(request.canAlwaysAllow
-				? [{ optionId: "allow-always", name: "Always allow", kind: "allow_always" }]
-				: []),
+			...(request.canAlwaysAllow ? [{ optionId: "allow-always", name: "Always allow", kind: "allow_always" }] : []),
 			{ optionId: "reject", name: "Deny", kind: "reject_once" },
 		],
 	};
@@ -563,7 +585,7 @@ function projectEntry(sessionId: string, entry: SessionEntry): readonly AcpJsonR
 	}
 	if (entry.type !== "message") return [];
 	switch (entry.message.role) {
-	case "user":
+		case "user":
 			return [
 				userMessageUpdate(
 					sessionId,
@@ -616,7 +638,9 @@ function agentMessageUpdate(
 	};
 }
 
-function agentMessageContent(message: Extract<AgentMessage, { readonly role: "assistant" }>): readonly AcpPromptBlock[] {
+function agentMessageContent(
+	message: Extract<AgentMessage, { readonly role: "assistant" }>,
+): readonly AcpPromptBlock[] {
 	return message.content.flatMap((part) =>
 		part.type === "text" ? [{ type: "text", text: part.text } satisfies AcpPromptBlock] : [],
 	);
@@ -677,11 +701,13 @@ function toolResultUpdate(
 	if (diff) content.push(diff);
 	const terminalId = terminalIdForTool(message.toolName, message.toolCallId);
 	if (terminalId) content.push(terminalReference(terminalId));
-	const updates = [toolCallUpdate(sessionId, {
-		toolCallId: message.toolCallId,
-		status: message.isError ? "failed" : "completed",
-		content,
-	})];
+	const updates = [
+		toolCallUpdate(sessionId, {
+			toolCallId: message.toolCallId,
+			status: message.isError ? "failed" : "completed",
+			content,
+		}),
+	];
 	// The result Session entry is T2. Only now may ACP learn that the display
 	// terminal has exited; live output before this point is explicitly volatile.
 	if (terminalId) updates.push(terminalUpdate(sessionId, { terminalId, exitStatus: {} }));
@@ -700,7 +726,7 @@ function projectOperationEvent(
 			return [messageChunkUpdate(sessionId, event.messageId, event.channel, { type: "text", text: event.text })];
 		case "message_cleared":
 			return [messageClearUpdate(sessionId, event.messageId, event.channel)];
-		case "tool_started":
+		case "tool_started": {
 			const updates = [
 				toolCallUpdate(sessionId, {
 					toolCallId: event.toolCallId,
@@ -721,6 +747,7 @@ function projectOperationEvent(
 				);
 			}
 			return updates;
+		}
 		case "tool_content_chunk":
 			return [
 				{
@@ -882,7 +909,8 @@ function jsonObject(value: unknown): Readonly<Record<string, JsonValue>> {
 }
 
 function jsonValue(value: unknown): JsonValue | undefined {
-	if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+	if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+		return value;
 	if (Array.isArray(value)) {
 		const items: JsonValue[] = [];
 		for (const item of value) {

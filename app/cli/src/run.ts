@@ -2,21 +2,22 @@ import path from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
+import type {
+	CodingAgentEvent,
+	CodingAgentMessage,
+	CodingAssistantMessage,
+	CodingSdkError,
+	JsonValue,
+} from "@jai/coding-agent";
+import type { TrajectoryContentScope } from "@jai/server";
 import {
-	connectJaiRuntimeHost,
 	type AcpJsonRpcNotification,
 	type AcpJsonRpcRequest,
 	type AcpJsonRpcResponse,
 	type AcpPromptBlock,
+	connectJaiRuntimeHost,
 	type LocalAcpV2Client,
 } from "@jai/server/acp-client";
-import {
-	type CodingAgentEvent,
-	type CodingAgentMessage,
-	type CodingAssistantMessage,
-	type CodingSdkError,
-	type JsonValue,
-} from "@jai/coding-agent";
 import { TaggedError } from "better-result";
 
 type OutputFormat = "text" | "json" | "stream-json";
@@ -54,6 +55,7 @@ export interface CliResult {
 }
 
 interface CliOptions {
+	readonly command: "run" | "trajectory";
 	readonly prompt?: string;
 	readonly outputFormat: OutputFormat;
 	readonly cwd: string;
@@ -63,6 +65,7 @@ interface CliOptions {
 	readonly interactive: boolean;
 	readonly help: boolean;
 	readonly version: boolean;
+	readonly trajectoryScopes: readonly TrajectoryContentScope[];
 }
 
 class CliUsageError extends TaggedError("cli.usage_invalid")<{ readonly message: string }> {}
@@ -102,13 +105,17 @@ export async function runCli(argv: readonly string[]): Promise<number> {
 	};
 	process.once("SIGINT", abort);
 	try {
-		const prompt = await resolvePrompt(options);
-		if (!options.interactive && !prompt)
-			throw new CliUsageError({ message: "A prompt or stdin input is required with -p" });
 		const connected = await connectJaiRuntimeHost();
 		if (connected.isErr()) throw new CliRuntimeError({ message: connected.error.message });
 		client = connected.value;
 		await initializeClient(client);
+		if (options.command === "trajectory") {
+			await openTrajectoryInBrowser(client, options);
+			return 0;
+		}
+		const prompt = await resolvePrompt(options);
+		if (!options.interactive && !prompt)
+			throw new CliUsageError({ message: "A prompt or stdin input is required with -p" });
 		const sessionId = await openCliSession(client, options);
 		activeSessionId = sessionId;
 		const session = new CliSession(client, sessionId, options.outputFormat);
@@ -134,7 +141,9 @@ export async function runCli(argv: readonly string[]): Promise<number> {
 
 export function parseCliOptions(argv: readonly string[]): CliOptions {
 	try {
-		const normalized = normalizePrintFlag(argv);
+		const command = argv[0] === "trajectory" ? "trajectory" : "run";
+		const commandArgs = command === "trajectory" ? argv.slice(1) : argv;
+		const normalized = normalizePrintFlag(commandArgs);
 		const parsed = parseArgs({
 			args: normalized.argv,
 			allowPositionals: true,
@@ -145,6 +154,7 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
 				cwd: { type: "string" },
 				"session-id": { type: "string" },
 				"no-session-persistence": { type: "boolean", default: false },
+				scope: { type: "string", multiple: true },
 				help: { type: "boolean", short: "h", default: false },
 				version: { type: "boolean", short: "v", default: false },
 			},
@@ -159,21 +169,44 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
 		if (parsed.values["no-session-persistence"] && parsed.values["session-id"] !== undefined) {
 			throw new CliUsageError({ message: "--no-session-persistence cannot be combined with --session-id" });
 		}
+		const trajectoryScopes = parseTrajectoryScopes(parsed.values.scope ?? []);
+		if (command === "trajectory") {
+			if (prompt !== undefined) throw new CliUsageError({ message: "jai trajectory does not accept a prompt" });
+			if (parsed.values["session-id"] === undefined)
+				throw new CliUsageError({ message: "jai trajectory requires --session-id" });
+			if (parsed.values["no-session-persistence"]) {
+				throw new CliUsageError({ message: "jai trajectory requires a durable Session" });
+			}
+		}
 		return {
+			command,
 			...(prompt === undefined ? {} : { prompt }),
 			outputFormat,
 			cwd,
 			...(parsed.values["session-id"] === undefined ? {} : { sessionId: parsed.values["session-id"] }),
 			noSessionPersistence: parsed.values["no-session-persistence"] ?? false,
 			printMode: normalized.printMode,
-			interactive: !normalized.printMode && Boolean(input.isTTY),
+			interactive: command === "run" && !normalized.printMode && Boolean(input.isTTY),
 			help: parsed.values.help ?? false,
 			version: parsed.values.version ?? false,
+			trajectoryScopes,
 		};
 	} catch (error) {
 		if (error instanceof CliUsageError) throw error;
 		throw new CliUsageError({ message: error instanceof Error ? error.message : String(error) });
 	}
+}
+
+function parseTrajectoryScopes(values: readonly string[]): readonly TrajectoryContentScope[] {
+	const allowed = new Set<TrajectoryContentScope>(["prompt", "final_text", "reasoning", "tool_input", "tool_output"]);
+	const scopes: TrajectoryContentScope[] = [];
+	for (const value of values) {
+		if (!allowed.has(value as TrajectoryContentScope)) {
+			throw new CliUsageError({ message: `Unsupported trajectory scope: ${value}` });
+		}
+		if (!scopes.includes(value as TrajectoryContentScope)) scopes.push(value as TrajectoryContentScope);
+	}
+	return scopes;
 }
 
 function normalizePrintFlag(argv: readonly string[]): { readonly argv: string[]; readonly printMode: boolean } {
@@ -208,6 +241,30 @@ async function initializeClient(client: LocalAcpV2Client): Promise<void> {
 		info: { name: "jai-cli", version: VERSION },
 	});
 	if (initialized.isErr()) throw new CliRuntimeError({ message: initialized.error.message });
+}
+
+async function openTrajectoryInBrowser(client: LocalAcpV2Client, options: CliOptions): Promise<void> {
+	const opened = await client.request("jai/trajectory/browser/open", {
+		sessionId: options.sessionId,
+		scopes: options.trajectoryScopes,
+	});
+	if (opened.isErr()) throw new CliRuntimeError({ message: opened.error.message });
+	if (!isRecord(opened.value) || opened.value.ok !== true) {
+		const error =
+			isRecord(opened.value) && isRecord(opened.value.error) && typeof opened.value.error.message === "string"
+				? opened.value.error.message
+				: "Trajectory browser could not be opened";
+		throw new CliRuntimeError({ message: error });
+	}
+	if (options.outputFormat === "stream-json") {
+		writeEvent({ type: "system", subtype: "trajectory_opened", session_id: options.sessionId! });
+		return;
+	}
+	if (options.outputFormat === "json") {
+		process.stdout.write(`${JSON.stringify({ type: "trajectory_opened", sessionId: options.sessionId })}\n`);
+		return;
+	}
+	process.stdout.write(`Opened trajectory for Session ${options.sessionId}\n`);
 }
 
 async function openCliSession(client: LocalAcpV2Client, options: CliOptions): Promise<string> {
@@ -332,7 +389,8 @@ class CliSession {
 	}
 
 	private async respondToPermission(request: AcpJsonRpcRequest): Promise<void> {
-		if (request.method !== "session/request_permission" || request.id === undefined || !isRecord(request.params)) return;
+		if (request.method !== "session/request_permission" || request.id === undefined || !isRecord(request.params))
+			return;
 		if (request.params.sessionId !== this.id) return;
 		const optionId = await choosePermissionOption(request.params);
 		const response: AcpJsonRpcResponse = {
@@ -351,7 +409,9 @@ interface CliPromptOutcome {
 
 async function choosePermissionOption(params: Record<string, unknown>): Promise<string> {
 	const options = Array.isArray(params.options)
-		? params.options.filter(isRecord).filter((option): option is Record<string, unknown> => typeof option.optionId === "string")
+		? params.options
+				.filter(isRecord)
+				.filter((option): option is Record<string, unknown> => typeof option.optionId === "string")
 		: [];
 	const reject = options.find((option) => option.kind === "reject_once")?.optionId ?? "reject";
 	if (!input.isTTY || !output.isTTY) return reject as string;
@@ -572,7 +632,7 @@ function projectCliError(error: unknown): JsonObject {
 }
 
 function helpText(): string {
-	return `Jai coding agent\n\nUsage:\n  jai [prompt]\n  jai -p [prompt] [options]\n  cat task.md | jai -p [options]\n\nOptions:\n  -p, --print [text]               Run one non-interactive prompt\n      --output-format <format>     text | json | stream-json\n      --cwd <path>                 Workspace root (default: current directory)\n      --session-id <id>            Resume a durable session\n      --no-session-persistence    Run in a Host-managed connection-scoped Session\n  -h, --help                       Show this help\n  -v, --version                    Show the CLI version\n`;
+	return `Jai coding agent\n\nUsage:\n  jai [prompt]\n  jai -p [prompt] [options]\n  cat task.md | jai -p [options]\n  jai trajectory --session-id <id> [--scope <scope>]\n\nOptions:\n  -p, --print [text]               Run one non-interactive prompt\n      --output-format <format>     text | json | stream-json\n      --cwd <path>                 Workspace root (default: current directory)\n      --session-id <id>            Resume a durable session\n      --no-session-persistence    Run in a Host-managed connection-scoped Session\n      --scope <scope>              Explicit Browser content scope (repeatable)\n  -h, --help                       Show this help\n  -v, --version                    Show the CLI version\n`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,0 +1,7 @@
+:root { color: #282825; background: #fffefa; font-synthesis: none; text-rendering: optimizeLegibility; }
+html, body, #root { min-width: 0; min-height: 100%; margin: 0; }
+body { min-height: 100vh; background: #fffefa; }
+::selection { background: #c9e2da; color: #183d33; }
+.trajectory-browser-view { min-height: 100vh; }
+.trajectory-browser-error { max-width: 42rem; margin: 12vh auto; padding: 1.5rem; color: #5b3730; font-family: "Manrope Variable", "PingFang SC", system-ui, sans-serif; }
+.trajectory-browser-error h1 { margin: 0; color: #282825; font-size: 1.4rem; letter-spacing: -.025em; }.trajectory-browser-error p { max-width: 65ch; margin: .65rem 0 0; line-height: 1.6; }

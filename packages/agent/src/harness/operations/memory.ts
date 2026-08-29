@@ -56,12 +56,19 @@ function sameRecordIdentity(left: OperationRecord, right: OperationRecord): bool
 		case "operation_accepted":
 		case "operation_finished":
 			return true;
+		case "turn_started":
+		case "turn_finished":
+			return right.type === left.type && left.turnId === right.turnId;
 		case "model_attempted":
 			return right.type === "model_attempted" && left.attemptId === right.attemptId;
+		case "model_stream_settled":
+			return right.type === "model_stream_settled" && left.attemptId === right.attemptId;
 		case "usage_settled":
 			return right.type === "usage_settled" && left.attemptId === right.attemptId;
 		case "tool_dispatched":
 			return right.type === "tool_dispatched" && left.toolCallId === right.toolCallId;
+		case "tool_timing_settled":
+			return right.type === "tool_timing_settled" && left.toolCallId === right.toolCallId;
 		case "input_queued":
 			return right.type === "input_queued" && left.inputId === right.inputId;
 	}

@@ -66,6 +66,7 @@ interface ChatColumnProps {
 	artifactPanelOpen: boolean;
 	onToggleSidebar(): void;
 	onToggleArtifactPanel(): void;
+	onOpenTrajectory(): void;
 	onOpenProviderSettings(): void;
 	onSelectProviderModel(modelRef: string): void;
 	onSelectAgentMode(mode: DesktopAgentMode): void;
@@ -99,6 +100,7 @@ export function ChatColumn({
 	artifactPanelOpen,
 	onToggleSidebar,
 	onToggleArtifactPanel,
+	onOpenTrajectory,
 	onOpenProviderSettings,
 	onSelectProviderModel,
 	onSelectAgentMode,
@@ -112,6 +114,7 @@ export function ChatColumn({
 	const FolderOffIcon = icons["folder-off"];
 	const PanelLeftIcon = icons["panel-left-close"];
 	const PanelRightIcon = icons["panel-right"];
+	const LayersIcon = icons.layers;
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const cancelTitleEditRef = useRef(false);
 	const reducedMotion = useReducedMotion();
@@ -254,21 +257,34 @@ export function ChatColumn({
 						</>
 					) : null}
 				</div>
-				<div className="shrink-0" style={noDrag}>
+				<div className="flex shrink-0 items-center gap-1" style={noDrag}>
 					{session ? (
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon-sm"
-							onClick={onToggleArtifactPanel}
-							aria-expanded={artifactPanelOpen}
-							aria-controls="workspace-panel"
-							aria-label={artifactPanelOpen ? "Close workspace" : "Open workspace"}
-							title={artifactPanelOpen ? "Close workspace" : "Open workspace"}
-							className="shrink-0 text-muted-foreground"
-						>
-							<PanelRightIcon size={16} />
-						</Button>
+						<>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-sm"
+								onClick={onOpenTrajectory}
+								aria-label="Open trajectory"
+								title="Open trajectory"
+								className="shrink-0 text-muted-foreground"
+							>
+								<LayersIcon size={16} />
+							</Button>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-sm"
+								onClick={onToggleArtifactPanel}
+								aria-expanded={artifactPanelOpen}
+								aria-controls="workspace-panel"
+								aria-label={artifactPanelOpen ? "Close workspace" : "Open workspace"}
+								title={artifactPanelOpen ? "Close workspace" : "Open workspace"}
+								className="shrink-0 text-muted-foreground"
+							>
+								<PanelRightIcon size={16} />
+							</Button>
+						</>
 					) : (
 						<span className="size-8" aria-hidden="true" />
 					)}
@@ -387,12 +403,9 @@ export function ChatColumn({
 											description: item.request.summary.description || item.request.reason,
 											command: item.request.summary.command,
 											path: item.request.summary.path,
-											canAlwaysAllow:
-												item.request.canAlwaysAllow ?? Boolean(item.request.suggestedRule),
+											canAlwaysAllow: item.request.canAlwaysAllow ?? Boolean(item.request.suggestedRule),
 										}))}
-										onResolve={(requestId, decision) =>
-											chat.resolvePermission({ requestId, decision })
-										}
+										onResolve={(requestId, decision) => chat.resolvePermission({ requestId, decision })}
 									/>
 								) : null}
 							</AnimatePresence>

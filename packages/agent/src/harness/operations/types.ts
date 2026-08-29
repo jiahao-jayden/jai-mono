@@ -6,6 +6,9 @@ import type { JsonObject } from "../../core/agent-state";
 export type DurableOperationKind = "prompt" | "compaction" | "navigation";
 export type OperationTerminalOutcome = "completed" | "failed" | "aborted" | "blocked";
 export type OperationInputDelivery = "steer" | "follow_up";
+export type ModelStreamChunkType = "text_delta" | "thinking_delta" | "toolcall_delta";
+export type ModelStreamTerminalOutcome = "completed" | "failed" | "aborted" | "discarded";
+export type ToolTerminalOutcome = "completed" | "failed";
 
 interface OperationRecordBase {
 	readonly operationId: string;
@@ -23,10 +26,34 @@ export interface OperationAccepted extends OperationRecordBase {
 /** Intent written before a provider request starts. */
 export interface ModelAttempted extends OperationRecordBase {
 	readonly type: "model_attempted";
+	readonly turnId: string;
 	readonly attemptId: string;
 	/** Preallocated Session Journal entry for the final assistant response. */
 	readonly assistantEntryId: string;
 	readonly modelSnapshotId: string;
+}
+
+/** One Agent loop turn, which may contain one model attempt and several tool calls. */
+export interface TurnStarted extends OperationRecordBase {
+	readonly type: "turn_started";
+	readonly turnId: string;
+}
+
+/**
+ * Compact model-stream terminal summary. Delta content remains exclusively in
+ * the Session Journal's final assistant message; this record only preserves
+ * timing and a fixed allowlist of delta kinds.
+ */
+export interface ModelStreamSettled extends OperationRecordBase {
+	readonly type: "model_stream_settled";
+	readonly turnId: string;
+	readonly attemptId: string;
+	readonly assistantEntryId: string;
+	readonly firstOutputAt: string | null;
+	readonly lastOutputAt: string | null;
+	readonly chunkCount: number;
+	readonly chunkTypeCounts: Readonly<Record<ModelStreamChunkType, number>>;
+	readonly outcome: ModelStreamTerminalOutcome;
 }
 
 /** Usage is a ledger fact even when the corresponding response is discarded. */
@@ -39,6 +66,7 @@ export interface UsageSettled extends OperationRecordBase {
 /** T1: final arguments are durable before the tool implementation sees them. */
 export interface ToolDispatched extends OperationRecordBase {
 	readonly type: "tool_dispatched";
+	readonly turnId: string;
 	readonly toolCallId: string;
 	readonly toolName: string;
 	/** The durable assistant message that introduced the tool call. */
@@ -47,6 +75,24 @@ export interface ToolDispatched extends OperationRecordBase {
 	readonly argsHash: string;
 	/** Preallocated Session Journal entry for the T2 tool result. */
 	readonly resultEntryId: string;
+}
+
+/** Completion timing for a previously durable tool dispatch intent. */
+export interface ToolTimingSettled extends OperationRecordBase {
+	readonly type: "tool_timing_settled";
+	readonly turnId: string;
+	readonly toolCallId: string;
+	readonly startedAt: string;
+	readonly finishedAt: string;
+	readonly outcome: ToolTerminalOutcome;
+}
+
+/** Terminal timing for a turn. An unclosed start represents an interrupted turn. */
+export interface TurnFinished extends OperationRecordBase {
+	readonly type: "turn_finished";
+	readonly turnId: string;
+	readonly assistantEntryId?: string;
+	readonly outcome: OperationTerminalOutcome;
 }
 
 /** Durable input intent. Its Session entry is written only when the Agent reaches a safe checkpoint. */
@@ -68,7 +114,17 @@ export interface OperationFinished extends OperationRecordBase {
  * Operation records express execution facts only. Messages and tool results remain
  * Session Journal entries, so the same transcript is never stored twice.
  */
-export type OperationRecord = OperationAccepted | ModelAttempted | UsageSettled | ToolDispatched | InputQueued | OperationFinished;
+export type OperationRecord =
+	| OperationAccepted
+	| TurnStarted
+	| ModelAttempted
+	| ModelStreamSettled
+	| UsageSettled
+	| ToolDispatched
+	| ToolTimingSettled
+	| TurnFinished
+	| InputQueued
+	| OperationFinished;
 
 /** Input accepted by the Host but not yet present in the Session Journal. */
 export interface PendingOperationInput {
@@ -90,7 +146,11 @@ export interface OperationRecoveryEvidence {
 }
 
 export type OperationRecoveryVerdict =
-	| { readonly status: "ready"; readonly operationId: string; readonly pendingInputs?: readonly PendingOperationInput[] }
+	| {
+			readonly status: "ready";
+			readonly operationId: string;
+			readonly pendingInputs?: readonly PendingOperationInput[];
+	  }
 	| {
 			readonly status: "provider_interrupted";
 			readonly operationId: string;

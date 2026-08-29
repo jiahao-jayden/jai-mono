@@ -8,6 +8,27 @@ import { createRuntimeHost } from "../../../src/runtime";
 import { InMemoryProductSessionPersistence } from "../../../src/sessions";
 
 describe("Runtime Host ACP client launcher", () => {
+	test("delegates a packaged Runtime Host launch without importing its host adapter", async () => {
+		const launches: { readonly entrypoint: string; readonly environment: Readonly<Record<string, string | undefined>> }[] = [];
+		const client = await connectJaiRuntimeHost({
+			dataDirectory: "/tmp/jai-runtime-host",
+			endpoint: "/tmp/jai-runtime-host.sock",
+			environment: { JAI_VERSION: "test" },
+			runtimeHostEntrypoint: "/Applications/JAI.app/Contents/Resources/dist/main.js",
+			launchRuntimeHost: (launch) => launches.push(launch),
+			retryCount: 0,
+		});
+		expect(client.isErr()).toBe(true);
+		expect(launches).toEqual([{
+			entrypoint: "/Applications/JAI.app/Contents/Resources/dist/main.js",
+			environment: {
+				JAI_VERSION: "test",
+				JAI_HOME: "/tmp/jai-runtime-host",
+				JAI_RUNTIME_ENDPOINT: "/tmp/jai-runtime-host.sock",
+			},
+		}]);
+	});
+
 	test("joins an existing local Host without a model environment or a SQLite dependency", async () => {
 		const directory = await mkdtemp(join(tmpdir(), "jai-acp-launcher-"));
 		const endpoint = join(directory, "runtime.sock");

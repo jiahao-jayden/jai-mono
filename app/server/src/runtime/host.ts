@@ -272,6 +272,11 @@ export interface RuntimeHost {
   openSession(
     input: RuntimeSessionSelection,
   ): Promise<Result<RuntimeSession, RuntimeHostOpenError>>;
+  /** Attaches a disposable observer without taking a Session controller or opening a driver. */
+  observeSession(
+    sessionId: string,
+    listener: (event: RuntimeSessionEvent) => void,
+  ): Promise<Result<() => void, RuntimeHostPromptRejected>>;
 }
 
 export interface RuntimeHostOptions {
@@ -402,6 +407,25 @@ class DefaultRuntimeHost implements RuntimeHost {
     } finally {
       this.#pendingSessionIds.delete(id);
     }
+  }
+
+  async observeSession(
+    sessionId: string,
+    listener: (event: RuntimeSessionEvent) => void,
+  ): Promise<Result<() => void, RuntimeHostPromptRejected>> {
+    const live = this.#liveSessions.get(sessionId);
+    if (live) return Result.ok(live.subscribe(listener));
+    const found = await this.options.persistence.load(sessionId);
+    if (found.isErr()) {
+      return Result.err(
+        new RuntimeHostPromptRejected({
+          message: found.error.message,
+          sessionId: found.error.sessionId,
+          cause: found.error,
+        }),
+      );
+    }
+    return Result.ok(() => {});
   }
 
   private async openNewSession(

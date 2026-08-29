@@ -149,6 +149,7 @@ describe("manual Effect Gate crash prefixes", () => {
 		if (afterIntent.isErr()) throw afterIntent.error;
 		expect(afterIntent.value.operationRecords).toMatchObject([
 			{ type: "operation_accepted" },
+			{ type: "turn_started", turnId: "assistant-1" },
 			{ type: "model_attempted", assistantEntryId: "assistant-1" },
 		]);
 

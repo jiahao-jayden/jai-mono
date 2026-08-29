@@ -1,16 +1,12 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
-import { resolveDesktopRuntimeHostEntrypoint } from "../runtime-host/entrypoint";
 import type { JsonObject } from "@jai/agent";
-import { connectDesktopCatalogClient, type DesktopCatalogClient } from "@jai/server/desktop-catalog-client";
 import { connectJaiRuntimeHost, resolveJaiDataDirectory } from "@jai/server/acp-client";
-import { Result, TaggedError } from "better-result";
-import {
-	projectNotFoundError,
-	projectPathInvalidError,
-	sessionNotFoundError,
-	} from "./errors";
+import { connectDesktopCatalogClient, type DesktopCatalogClient } from "@jai/server/desktop-catalog-client";
+import { type Result, TaggedError } from "better-result";
+import { createDesktopRuntimeHostLauncher, resolveDesktopRuntimeHostEntrypoint } from "../runtime-host/entrypoint";
+import { projectNotFoundError, projectPathInvalidError, sessionNotFoundError } from "./errors";
 import type {
 	CodingExecutionContext,
 	CodingSession,
@@ -25,7 +21,9 @@ import type {
 export interface DesktopSessionCatalogPort {
 	createProject(input: CreateProjectInput): Promise<Project>;
 	relinkProject(projectId: string, input: CreateProjectInput): Promise<Project>;
-	createSession<TAppState extends JsonObject = JsonObject>(input: CreateSessionInput<TAppState>): Promise<CodingSession>;
+	createSession<TAppState extends JsonObject = JsonObject>(
+		input: CreateSessionInput<TAppState>,
+	): Promise<CodingSession>;
 	getProject(id: string): Promise<Project>;
 	listProjects(): Promise<readonly Project[]>;
 	isProjectAvailable(projectId: string): Promise<boolean>;
@@ -73,23 +71,34 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 		this.#createId = options.createId ?? randomUUID;
 	}
 
-	static async open(options: {
-		readonly dataDirectory?: string;
-		readonly environment?: Readonly<Record<string, string | undefined>>;
-		readonly endpoint?: string;
-	} = {}): Promise<RemoteDesktopSessionCatalog> {
+	static async open(
+		options: {
+			readonly dataDirectory?: string;
+			readonly environment?: Readonly<Record<string, string | undefined>>;
+			readonly endpoint?: string;
+		} = {},
+	): Promise<RemoteDesktopSessionCatalog> {
 		const dataDirectory = path.resolve(options.dataDirectory ?? resolveJaiDataDirectory(options.environment));
+		const runtimeHostEntrypoint = resolveDesktopRuntimeHostEntrypoint();
+		const launchRuntimeHost = createDesktopRuntimeHostLauncher();
 		const connected = await connectDesktopCatalogClient({
 			dataDirectory,
 			...(options.environment === undefined ? {} : { environment: options.environment }),
 			...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
+			...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
+			...(launchRuntimeHost === undefined ? {} : { launchRuntimeHost }),
 		});
 		if (connected.isErr()) {
-			throw new DesktopRemoteCatalogFailed({ method: "connect", message: "Desktop could not connect to Runtime Host Catalog", cause: connected.error });
+			throw new DesktopRemoteCatalogFailed({
+				method: "connect",
+				message: "Desktop could not connect to Runtime Host Catalog",
+				cause: connected.error,
+			});
 		}
 		const catalog = new RemoteDesktopSessionCatalog({
 			catalog: connected.value,
-			createSessionJournal: ({ sessionId, cwd }) => createSessionJournal(dataDirectory, sessionId, cwd),
+			createSessionJournal: ({ sessionId, cwd }) =>
+				createSessionJournal(dataDirectory, sessionId, cwd, runtimeHostEntrypoint, launchRuntimeHost),
 		});
 		await catalog.#refreshProjects();
 		return catalog;
@@ -128,7 +137,9 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 		return project;
 	}
 
-	async createSession<TAppState extends JsonObject = JsonObject>(input: CreateSessionInput<TAppState>): Promise<CodingSession> {
+	async createSession<TAppState extends JsonObject = JsonObject>(
+		input: CreateSessionInput<TAppState>,
+	): Promise<CodingSession> {
 		const projectId = input.projectId ?? null;
 		if (projectId !== null) await this.getProject(projectId);
 		const id = this.#createId();
@@ -168,7 +179,10 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 		return session;
 	}
 
-	async listSessions(input?: { readonly limit?: number; readonly cursor?: SessionListCursor }): Promise<SessionListPage> {
+	async listSessions(input?: {
+		readonly limit?: number;
+		readonly cursor?: SessionListCursor;
+	}): Promise<SessionListPage> {
 		return unwrap(await this.#transport.catalog.listSessions(input), "sessions/list");
 	}
 
@@ -179,7 +193,10 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 
 	async renameSession(id: string, title: string): Promise<CodingSession> {
 		await this.getSession(id);
-		return unwrap(await this.#transport.catalog.renameSession({ sessionId: id, title: normalizeManualTitle(title) }), "sessions/rename");
+		return unwrap(
+			await this.#transport.catalog.renameSession({ sessionId: id, title: normalizeManualTitle(title) }),
+			"sessions/rename",
+		);
 	}
 
 	async markTitleGenerationAttempted(id: string): Promise<CodingSession> {
@@ -192,7 +209,10 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 
 	async setGeneratedTitle(id: string, title: string): Promise<CodingSession> {
 		await this.getSession(id);
-		return unwrap(await this.#transport.catalog.setGeneratedTitle({ sessionId: id, title: normalizeGeneratedTitle(title) }), "sessions/set-generated-title");
+		return unwrap(
+			await this.#transport.catalog.setGeneratedTitle({ sessionId: id, title: normalizeGeneratedTitle(title) }),
+			"sessions/set-generated-title",
+		);
 	}
 
 	async shouldGenerateSessionTitle(id: string): Promise<boolean> {
@@ -203,12 +223,16 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 	async moveSession(input: MoveSessionInput): Promise<CodingSession> {
 		await this.getSession(input.sessionId);
 		if (input.toProjectId !== null) await this.getProject(input.toProjectId);
-		return unwrap(await this.#transport.catalog.moveSession({ sessionId: input.sessionId, projectId: input.toProjectId }), "sessions/move");
+		return unwrap(
+			await this.#transport.catalog.moveSession({ sessionId: input.sessionId, projectId: input.toProjectId }),
+			"sessions/move",
+		);
 	}
 
 	async resolveExecutionContext(sessionId: string): Promise<CodingExecutionContext> {
 		const session = await this.getSession(sessionId);
-		if (session.projectId === null || !(await this.isProjectAvailable(session.projectId))) return { localFileAccess: false };
+		if (session.projectId === null || !(await this.isProjectAvailable(session.projectId)))
+			return { localFileAccess: false };
 		const project = await this.getProject(session.projectId);
 		return {
 			localFileAccess: true,
@@ -234,24 +258,50 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 	}
 }
 
-async function createSessionJournal(dataDirectory: string, sessionId: string, cwd: string): Promise<void> {
-	const runtimeHostEntrypoint = resolveDesktopRuntimeHostEntrypoint();
+async function createSessionJournal(
+	dataDirectory: string,
+	sessionId: string,
+	cwd: string,
+	runtimeHostEntrypoint: string | undefined,
+	launchRuntimeHost: ReturnType<typeof createDesktopRuntimeHostLauncher>,
+): Promise<void> {
 	const connected = await connectJaiRuntimeHost({
 		dataDirectory,
 		...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
+		...(launchRuntimeHost === undefined ? {} : { launchRuntimeHost }),
 	});
-	if (connected.isErr()) throw new DesktopRemoteCatalogFailed({ method: "session/new", message: "Could not connect to Runtime Host for Session creation", cause: connected.error });
+	if (connected.isErr())
+		throw new DesktopRemoteCatalogFailed({
+			method: "session/new",
+			message: "Could not connect to Runtime Host for Session creation",
+			cause: connected.error,
+		});
 	try {
 		const initialized = await connected.value.request("initialize", {
 			protocolVersion: 2,
 			capabilities: {},
 			info: { name: "jai-desktop-catalog", version: "0.0.0" },
 		});
-		if (initialized.isErr()) throw new DesktopRemoteCatalogFailed({ method: "initialize", message: "Could not initialize Runtime Host", cause: initialized.error });
+		if (initialized.isErr())
+			throw new DesktopRemoteCatalogFailed({
+				method: "initialize",
+				message: "Could not initialize Runtime Host",
+				cause: initialized.error,
+			});
 		const created = await connected.value.request("session/new", { sessionId, cwd });
-		if (created.isErr()) throw new DesktopRemoteCatalogFailed({ method: "session/new", message: "Could not create Runtime Host Session", cause: created.error });
+		if (created.isErr())
+			throw new DesktopRemoteCatalogFailed({
+				method: "session/new",
+				message: "Could not create Runtime Host Session",
+				cause: created.error,
+			});
 		const closed = await connected.value.request("session/close", { sessionId });
-		if (closed.isErr()) throw new DesktopRemoteCatalogFailed({ method: "session/close", message: "Could not release temporary Session controller", cause: closed.error });
+		if (closed.isErr())
+			throw new DesktopRemoteCatalogFailed({
+				method: "session/close",
+				message: "Could not release temporary Session controller",
+				cause: closed.error,
+			});
 	} finally {
 		await connected.value.close();
 	}
@@ -262,14 +312,23 @@ function unwrap<T>(result: Result<T, { readonly message: string; readonly cause?
 	throw new DesktopRemoteCatalogFailed({ method, message: result.error.message, cause: result.error.cause });
 }
 
-async function resolveProjectLocation(inputPath: string, displayName?: string): Promise<{ readonly displayName: string; readonly path: string; readonly canonicalPath: string }> {
+async function resolveProjectLocation(
+	inputPath: string,
+	displayName?: string,
+): Promise<{ readonly displayName: string; readonly path: string; readonly canonicalPath: string }> {
 	const absolutePath = path.resolve(inputPath);
 	try {
 		const [canonicalPath, stat] = await Promise.all([fs.realpath(absolutePath), fs.stat(absolutePath)]);
 		if (!stat.isDirectory()) throw projectPathInvalidError(absolutePath);
 		return { displayName: displayName?.trim() || path.basename(absolutePath), path: absolutePath, canonicalPath };
 	} catch (error) {
-		if (error && typeof error === "object" && "_tag" in error && error._tag === "desktop_session_catalog.project_path_invalid") throw error;
+		if (
+			error &&
+			typeof error === "object" &&
+			"_tag" in error &&
+			error._tag === "desktop_session_catalog.project_path_invalid"
+		)
+			throw error;
 		throw projectPathInvalidError(absolutePath, error);
 	}
 }

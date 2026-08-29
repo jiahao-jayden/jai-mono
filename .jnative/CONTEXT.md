@@ -35,3 +35,7 @@ _Avoid_: global configuration, generic deep merge
 **Official MCP Extension**:
 `@jai/extension/mcp` 提供的 MCP capability provider，拥有 per-session transport、client、重连、tool projection 与 server 配置解析；Coding Agent 仅通过通用动态 catalog 装配其工具。
 _Avoid_: Coding Agent MCP runtime, host-managed MCP client, Agent Plugin discovery
+
+**Agent Trajectory**:
+按单个 Session 展示 turn、模型尝试、流式摘要、usage、工具执行、耗时和安全错误的只读运行轨迹。Server 从 Session/Operation journal 与可丢弃 live events 生成 wire-safe DTO；共享轨迹界面模块通过小而稳定的 `TrajectoryDataSource` interface 在 Browser 与 Desktop 中消费同一 record identity 和交互状态。Browser 使用 REST/SSE；Desktop 经 Server 现有本机 ACP v2 连接上的 JAI namespaced read-only protocol、Desktop Main `LocalAcpV2Client` 与 Electron IPC/push 消费，observer 不取得 Session controller。两者都不成为事实源，Server 不依赖 Electron。
+_Avoid_: observability database, trace store, chat history, iframe trajectory, localhost-backed Desktop view, Electron adapter in Server, catalog/config trajectory tunnel

@@ -1,11 +1,11 @@
 import {
-	type CodingExtensionApprovalDecision,
-	type CodingExtensionRuntimeAdapter,
-	createCodingAgent,
 	type CodingAgent,
 	type CodingAgentCreateOptions,
 	type CodingAgentEvent,
 	type CodingAgentMessage,
+	type CodingExtensionApprovalDecision,
+	type CodingExtensionRuntimeAdapter,
+	createCodingAgent,
 	type JsonObject,
 	type JsonValue,
 } from "@jai/coding-agent";
@@ -16,12 +16,12 @@ import {
 	type RuntimeOperationContent,
 	type RuntimeOperationDriver,
 	type RuntimeOperationEvent,
-	type RuntimeOperationOpenInput,
-	type RuntimeOperationPreflightInput,
-	type RuntimeOperationOutcome,
-	type RuntimeQueuedInput,
 	RuntimeOperationExecutionFailed,
 	RuntimeOperationOpenFailed,
+	type RuntimeOperationOpenInput,
+	type RuntimeOperationOutcome,
+	type RuntimeOperationPreflightInput,
+	type RuntimeQueuedInput,
 } from "../operations";
 import type { RuntimeCapabilitySource } from "../runtime-capabilities";
 
@@ -29,10 +29,8 @@ type CodingAgentOperationOptions = Omit<
 	CodingAgentCreateOptions,
 	"cwd" | "effectBoundary" | "requestApproval" | "session"
 >;
-type CodingAgentOperationConfiguration = Omit<
-	CodingAgentOperationOptions,
-	"fileCapabilities"
->;
+type CodingAgentOperationConfiguration = Omit<CodingAgentOperationOptions, "fileCapabilities">;
+type CodingAssistantStopReason = Extract<CodingAgentMessage, { readonly role: "assistant" }>["stopReason"];
 
 export interface CodingAgentOperationDriverOptions {
 	/** Product configuration stays at the Server composition root, never inside the SDK. */
@@ -50,9 +48,7 @@ export interface CodingAgentOperationDriverOptions {
  * The SDK receives a generic SessionStore and EffectBoundary, never SQLite,
  * ACP, $JAI_HOME, or Desktop/CLI product configuration.
  */
-export function createCodingAgentOperationDriver(
-	options: CodingAgentOperationDriverOptions,
-): RuntimeOperationDriver {
+export function createCodingAgentOperationDriver(options: CodingAgentOperationDriverOptions): RuntimeOperationDriver {
 	return new DefaultCodingAgentOperationDriver(options);
 }
 
@@ -75,7 +71,9 @@ class DefaultCodingAgentOperationDriver implements RuntimeOperationDriver {
 		}
 	}
 
-	async openOperation(input: RuntimeOperationOpenInput): Promise<ResultType<RuntimeOperation, RuntimeOperationOpenFailed>> {
+	async openOperation(
+		input: RuntimeOperationOpenInput,
+	): Promise<ResultType<RuntimeOperation, RuntimeOperationOpenFailed>> {
 		try {
 			const configured = await this.#resolveOptions(input);
 			if (configured.isErr()) return Result.err(configured.error);
@@ -182,9 +180,7 @@ function withRuntimeApprovals(
 				},
 				signal,
 			);
-			return Result.ok<CodingExtensionApprovalDecision>(
-				decision === "alwaysAllow" ? "allow" : decision,
-			);
+			return Result.ok<CodingExtensionApprovalDecision>(decision === "alwaysAllow" ? "allow" : decision);
 		},
 	};
 }
@@ -282,8 +278,16 @@ class CodingAgentOperation implements RuntimeOperation {
 		await this.agent.close();
 	}
 
-	private async advance(inputs: readonly RuntimeQueuedInput[]): Promise<ResultType<RuntimeOperationOutcome, RuntimeOperationExecutionFailed>> {
+	private async advance(
+		inputs: readonly RuntimeQueuedInput[],
+	): Promise<ResultType<RuntimeOperationOutcome, RuntimeOperationExecutionFailed>> {
 		const result = await this.agent.advance(inputs.map((input) => ({ text: input.text, entryId: input.entryId })));
+		const effectBoundary = operationEffectBoundary(this.input.effectBoundary);
+		try {
+			await effectBoundary?.flushTiming();
+		} catch (cause) {
+			return Result.err(this.failed("could not persist execution timing", cause));
+		}
 		if (result.isErr()) return Result.err(this.failed("failed", result.error));
 		return Result.ok(resolveOutcome(result.value.messages));
 	}
@@ -299,19 +303,44 @@ class CodingAgentOperation implements RuntimeOperation {
 
 	private observe(event: CodingAgentEvent): void {
 		switch (event.type) {
+			case "turn_start":
+				operationEffectBoundary(this.input.effectBoundary)?.beginTurn();
+				return;
+			case "turn_end":
+				operationEffectBoundary(this.input.effectBoundary)?.finishTurn({
+					outcome: operationOutcomeForStopReason(event.message.stopReason),
+				});
+				return;
 			case "message_start":
 				if (event.message.role === "assistant") this.startAssistantMessage();
 				return;
 			case "message_update":
 				this.projectAssistantUpdate(event);
 				return;
-			case "message_end":
-				if (event.message.role === "assistant") this.#activeAssistant = undefined;
+			case "message_end": {
+				if (event.message.role !== "assistant") return;
+				const active = this.#activeAssistant;
+				if (active) {
+					operationEffectBoundary(this.input.effectBoundary)?.finishModelStream({
+						assistantEntryId: active.messageId,
+						outcome: operationOutcomeForStopReason(event.message.stopReason),
+					});
+				}
+				this.#activeAssistant = undefined;
 				return;
-			case "message_discard":
+			}
+			case "message_discard": {
+				const active = this.#activeAssistant;
+				if (active) {
+					operationEffectBoundary(this.input.effectBoundary)?.finishModelStream({
+						assistantEntryId: active.messageId,
+						outcome: "discarded",
+					});
+				}
 				this.clearAssistantMessage();
 				return;
-			case "tool_execution_start":
+			}
+			case "tool_execution_start": {
 				const terminal = terminalForTool(event.toolName, event.toolCallId, event.args, this.input.cwd);
 				this.publish({
 					type: "tool_started",
@@ -323,7 +352,8 @@ class CodingAgentOperation implements RuntimeOperation {
 					...(terminal ? { terminal } : {}),
 				});
 				return;
-			case "tool_execution_update":
+			}
+			case "tool_execution_update": {
 				const terminalId = terminalIdForTool(event.toolName, event.toolCallId);
 				if (terminalId) {
 					for (const content of toolProgressContent(event.partial)) {
@@ -337,6 +367,13 @@ class CodingAgentOperation implements RuntimeOperation {
 					this.publish({ type: "tool_content_chunk", toolCallId: event.toolCallId, content });
 				}
 				return;
+			}
+			case "tool_execution_end":
+				operationEffectBoundary(this.input.effectBoundary)?.finishTool({
+					toolCallId: event.toolCallId,
+					outcome: event.isError ? "failed" : "completed",
+				});
+				return;
 			default:
 				return;
 		}
@@ -346,6 +383,7 @@ class CodingAgentOperation implements RuntimeOperation {
 		const messageId = this.#reservedAssistantEntryIds.shift();
 		if (!messageId) return;
 		this.#activeAssistant = { messageId, thoughtMessageId: `${messageId}:thought` };
+		operationEffectBoundary(this.input.effectBoundary)?.beginModelStream({ assistantEntryId: messageId });
 	}
 
 	private projectAssistantUpdate(event: Extract<CodingAgentEvent, { readonly type: "message_update" }>): void {
@@ -353,6 +391,10 @@ class CodingAgentOperation implements RuntimeOperation {
 		if (!active) return;
 		switch (event.assistantEvent.type) {
 			case "text_delta":
+				operationEffectBoundary(this.input.effectBoundary)?.noteModelStreamChunk({
+					assistantEntryId: active.messageId,
+					type: "text_delta",
+				});
 				this.publish({
 					type: "message_chunk",
 					messageId: active.messageId,
@@ -361,11 +403,21 @@ class CodingAgentOperation implements RuntimeOperation {
 				});
 				return;
 			case "thinking_delta":
+				operationEffectBoundary(this.input.effectBoundary)?.noteModelStreamChunk({
+					assistantEntryId: active.messageId,
+					type: "thinking_delta",
+				});
 				this.publish({
 					type: "message_chunk",
 					messageId: active.thoughtMessageId,
 					channel: "thought",
 					text: event.assistantEvent.delta,
+				});
+				return;
+			case "toolcall_delta":
+				operationEffectBoundary(this.input.effectBoundary)?.noteModelStreamChunk({
+					assistantEntryId: active.messageId,
+					type: "toolcall_delta",
 				});
 				return;
 			default:
@@ -407,6 +459,23 @@ class CodingAgentOperation implements RuntimeOperation {
 	}
 }
 
+function operationOutcomeForStopReason(stopReason: CodingAssistantStopReason): RuntimeOperationOutcome {
+	switch (stopReason) {
+		case "aborted":
+			return "aborted";
+		case "error":
+		case "contextOverflow":
+			return "failed";
+		case "stop":
+		case "length":
+		case "toolUse":
+		case "iterationLimit":
+			return "completed";
+		default:
+			return "failed";
+	}
+}
+
 function resolveOutcome(messages: readonly CodingAgentMessage[]): RuntimeOperationOutcome {
 	const finalAssistant = [...messages].reverse().find((message) => message.role === "assistant");
 	if (!finalAssistant) return "failed";
@@ -415,7 +484,9 @@ function resolveOutcome(messages: readonly CodingAgentMessage[]): RuntimeOperati
 	return "completed";
 }
 
-function operationEffectBoundary(value: RuntimeOperationOpenInput["effectBoundary"]): OperationEffectBoundary | undefined {
+function operationEffectBoundary(
+	value: RuntimeOperationOpenInput["effectBoundary"],
+): OperationEffectBoundary | undefined {
 	return typeof (value as Partial<OperationEffectBoundary>).subscribe === "function"
 		? (value as OperationEffectBoundary)
 		: undefined;
@@ -459,7 +530,9 @@ function terminalIdForTool(toolName: string, toolCallId: string): string | undef
 	return toolName === "Bash" ? `terminal:${toolCallId}` : undefined;
 }
 
-function toolProgressContent(value: JsonValue): readonly Extract<RuntimeOperationEvent, { readonly type: "tool_content_chunk" }>["content"][] {
+function toolProgressContent(
+	value: JsonValue,
+): readonly Extract<RuntimeOperationEvent, { readonly type: "tool_content_chunk" }>["content"][] {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
 	const content = value.content;
 	if (!Array.isArray(content)) return [];

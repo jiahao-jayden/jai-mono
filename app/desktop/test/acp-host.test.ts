@@ -350,6 +350,31 @@ describe("DesktopAcpAgentHost", () => {
 		]);
 		host.close();
 	});
+
+	test("projects the read-only trajectory protocol through ACP push without opening a Session controller", async () => {
+		const client = new FakeAcpClient();
+		const events: DesktopAgentEventEnvelope[] = [];
+		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+
+		const snapshot = await host.trajectorySnapshot({ sessionId: "session-1" });
+		expect(snapshot).toMatchObject({ ok: true, value: { snapshot: { session: { sessionId: "session-1" } } } });
+		const subscription = await host.trajectorySubscribe({ sessionId: "session-1", cursor: "1" });
+		expect(subscription).toEqual({ ok: true, value: { subscriptionId: "trajectory-1" } });
+		expect(events).toContainEqual(
+			expect.objectContaining({
+				sessionId: "session-1",
+				event: expect.objectContaining({ type: "trajectory_update", subscriptionId: "trajectory-1" }),
+			}),
+		);
+		expect(client.methods).toEqual(["initialize", "jai/trajectory/snapshot", "jai/trajectory/subscribe"]);
+
+		host.trajectoryUnsubscribe({ subscriptionId: "trajectory-1" });
+		expect(client.methods.at(-1)).toBe("jai/trajectory/unsubscribe");
+		host.close();
+	});
 });
 
 class FakeAcpClient implements LocalAcpV2Client {
@@ -364,6 +389,30 @@ class FakeAcpClient implements LocalAcpV2Client {
 	async request(method: string, params?: unknown): Promise<ResultType<unknown, AcpLocalClientError>> {
 		this.methods.push(method);
 		this.params.push(params);
+		if (method === "jai/trajectory/snapshot") {
+			return Result.ok({
+				ok: true,
+				value: { snapshot: { session: { sessionId: "session-1", cwd: "/workspace" }, cursor: { value: "1" }, items: [] } },
+			});
+		}
+		if (method === "jai/trajectory/subscribe") {
+			this.publish({
+				jsonrpc: "2.0",
+				method: "jai/trajectory/update",
+				params: {
+					subscriptionId: "trajectory-1",
+					sessionId: "session-1",
+					item: {
+						id: "operation-1:chunk",
+						cursor: { value: "2" },
+						timestamp: "2026-08-29T00:00:00.000Z",
+						type: "live_chunk",
+						chunk: { messageId: "message-1", channel: "agent", text: "working" },
+					},
+				},
+			});
+			return Result.ok({ ok: true, value: { subscriptionId: "trajectory-1" } });
+		}
 		if (method === "session/resume") {
 			this.#resumeCalls += 1;
 			if (this.#resumeCalls === 1) return Result.err({} as AcpLocalClientError);

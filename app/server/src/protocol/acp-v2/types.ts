@@ -1,5 +1,6 @@
 import type { JsonValue } from "@jai/agent";
 import type { RuntimeHost } from "../../runtime";
+import type { TrajectoryBrowserLauncher, TrajectoryFeed } from "../../trajectory";
 
 export type AcpRequestId = string | number;
 
@@ -49,6 +50,10 @@ export type AcpPromptBlock =
 export interface AcpV2AgentOptions {
 	readonly host: RuntimeHost;
 	readonly info: AcpImplementationInfo;
+	/** Optional JAI namespaced read-only trajectory protocol; it never opens a Session controller. */
+	readonly trajectoryFeed?: TrajectoryFeed;
+	/** Optional CLI-only Browser launcher; no capability is returned over ACP. */
+	readonly trajectoryBrowserLauncher?: TrajectoryBrowserLauncher;
 	readonly notificationSink?: AcpNotificationSink;
 	/** Reverse-request seam for ACP interactions such as `session/request_permission`. */
 	readonly clientRequestSink?: AcpClientRequestSink;

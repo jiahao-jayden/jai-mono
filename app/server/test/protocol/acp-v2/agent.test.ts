@@ -298,11 +298,22 @@ describe("ACP v2 Agent adapter", () => {
 		if (direct.isErr()) throw direct.error;
 		const admitted = await direct.value.prompt({ text: "persisted usage" });
 		if (admitted.isErr()) throw admitted.error;
-		const attempted = await replayPersistence.appendOperation({
+    const started = await replayPersistence.appendOperation({
+      sessionId: "session-2",
+      record: {
+        type: "turn_started",
+        operationId: "operation-2",
+        turnId: "turn-1",
+        timestamp: "2026-08-25T23:59:59.000Z",
+      },
+    });
+    if (started.isErr()) throw started.error;
+    const attempted = await replayPersistence.appendOperation({
 			sessionId: "session-2",
 			record: {
 				type: "model_attempted",
 				operationId: "operation-2",
+				turnId: "turn-1",
 				attemptId: "attempt-1",
 				assistantEntryId: "assistant-1",
 				modelSnapshotId: "test:test-model",

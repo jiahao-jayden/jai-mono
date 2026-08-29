@@ -149,6 +149,7 @@ describe("Operation effect boundary", () => {
 		]);
 		expect(durable.value.operationRecords).toMatchObject([
 			{ type: "operation_accepted", operationId: "operation-1" },
+			{ type: "turn_started", turnId: "assistant-1" },
 			{ type: "model_attempted", attemptId: "attempt-1", assistantEntryId: "assistant-1" },
 			{ type: "usage_settled", attemptId: "attempt-1" },
 			{ type: "tool_dispatched", resultEntryId: "tool-result-1" },

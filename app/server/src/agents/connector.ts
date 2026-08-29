@@ -1,19 +1,19 @@
 import {
+	type CodingAgentCreateOptions,
 	CodingExtensionContractViolation,
 	CodingExtensionHostOperationFailed,
-	type CodingAgentCreateOptions,
 	type CodingExtensionRuntimeAdapter,
 	type JsonObject,
 } from "@jai/coding-agent";
 import { createDefaultConnectorService } from "@jai/connector";
 import { createConnectorExtension } from "@jai/extension/connector";
 import { Result, type Result as ResultType } from "better-result";
-import {
-	type RuntimeAgentSettingsReadError,
-	type RuntimeAgentSettingsWriteError,
-	type RuntimeConnectorPermission,
-	type RuntimeConnectorSettings,
-	type SqliteRuntimeAgentSettings,
+import type {
+	RuntimeAgentSettingsReadError,
+	RuntimeAgentSettingsWriteError,
+	RuntimeConnectorPermission,
+	RuntimeConnectorSettings,
+	SqliteRuntimeAgentSettings,
 } from "../config";
 
 export interface RuntimeConnectorAgentAssembly {
@@ -36,7 +36,7 @@ export function createRuntimeConnectorAgentAssembly(
 		extensions: [createConnectorExtension({ client: service })],
 		extensionRuntime: {
 			readConfiguration(input) {
-				if (input.extensionId !== "connector") return Result.err(unknownExtension(input.extensionId));
+				if (input.extensionId !== "connector") return Result.ok(undefined);
 				const current = settings.readConnectorSettings();
 				if (current.isErr()) return Result.err(readFailed(current.error));
 				return Result.ok(policyConfiguration(current.value));

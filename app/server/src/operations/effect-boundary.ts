@@ -1,6 +1,15 @@
 import { createHash } from "node:crypto";
+import type {
+	EffectBoundary,
+	EffectEntryReservation,
+	JsonObject,
+	ModelStreamChunkType,
+	ModelStreamTerminalOutcome,
+	OperationRecord,
+	OperationTerminalOutcome,
+	ToolTerminalOutcome,
+} from "@jai/agent";
 import type { AssistantMessage } from "@jai/ai";
-import type { EffectBoundary, EffectEntryReservation, JsonObject } from "@jai/agent";
 import { TaggedError } from "better-result";
 import type { ProductSessionPersistence } from "../sessions";
 
@@ -56,6 +65,13 @@ export type OperationEffectEvent =
  */
 export interface OperationEffectBoundary extends EffectBoundary {
 	subscribe(listener: (event: OperationEffectEvent) => void): () => void;
+	beginTurn(): void;
+	beginModelStream(input: { readonly assistantEntryId: string }): void;
+	noteModelStreamChunk(input: { readonly assistantEntryId: string; readonly type: ModelStreamChunkType }): void;
+	finishModelStream(input: { readonly assistantEntryId: string; readonly outcome: ModelStreamTerminalOutcome }): void;
+	finishTool(input: { readonly toolCallId: string; readonly outcome: ToolTerminalOutcome }): void;
+	finishTurn(input: { readonly outcome: OperationTerminalOutcome }): void;
+	flushTiming(): Promise<void>;
 }
 
 /**
@@ -77,10 +93,17 @@ class DefaultOperationEffectBoundary implements OperationEffectBoundary {
 	 * pass the same preallocated id straight through to SessionLedger.
 	 */
 	readonly #attemptsByAssistantEntry = new Map<string, string>();
+	readonly #turnsByAssistantEntry = new Map<string, string>();
+	readonly #modelStreamsByAssistantEntry = new Map<string, ModelStreamAccumulator>();
+	readonly #toolTimingByToolCallId = new Map<string, ToolTimingStart>();
+	#timingTail: Promise<void>;
+	#timingFailure: OperationEffectWriteFailed | OperationEffectProtocolViolation | undefined;
+	#activeTurn: ActiveTurn | undefined;
 	readonly #now: () => Date;
 
 	constructor(private readonly options: OperationEffectBoundaryOptions) {
 		this.#now = options.now ?? (() => new Date());
+		this.#timingTail = Promise.resolve();
 	}
 
 	subscribe(listener: (event: OperationEffectEvent) => void): () => void {
@@ -90,23 +113,33 @@ class DefaultOperationEffectBoundary implements OperationEffectBoundary {
 		};
 	}
 
-	async beforeModelEffect(input: { readonly model: { readonly id: string; readonly provider: string; readonly remoteModelId?: string } }): Promise<EffectEntryReservation> {
+	async beforeModelEffect(input: {
+		readonly model: { readonly id: string; readonly provider: string; readonly remoteModelId?: string };
+	}): Promise<EffectEntryReservation> {
 		const attemptId = this.options.createId();
 		const entryId = this.options.createId();
+		const turn = this.#activeTurn ?? this.beginImplicitTurn(entryId);
+		await this.flushTiming();
 		await this.append({
 			type: "model_attempted",
 			operationId: this.options.operationId,
+			turnId: turn.turnId,
 			attemptId,
 			assistantEntryId: entryId,
 			modelSnapshotId: `${input.model.provider}:${input.model.id}:${input.model.remoteModelId ?? input.model.id}`,
 			timestamp: this.#now().toISOString(),
 		});
 		this.#attemptsByAssistantEntry.set(entryId, attemptId);
+		this.#turnsByAssistantEntry.set(entryId, turn.turnId);
+		this.#activeTurn = { ...turn, assistantEntryId: entryId };
 		this.publish({ type: "model_reserved", assistantEntryId: entryId });
 		return { entryId };
 	}
 
-	async afterModelEffect(input: { readonly reservation: EffectEntryReservation; readonly message: AssistantMessage }): Promise<void> {
+	async afterModelEffect(input: {
+		readonly reservation: EffectEntryReservation;
+		readonly message: AssistantMessage;
+	}): Promise<void> {
 		const attemptId = this.#attemptsByAssistantEntry.get(input.reservation.entryId);
 		if (!attemptId) {
 			throw new OperationEffectProtocolViolation({
@@ -140,20 +173,133 @@ class DefaultOperationEffectBoundary implements OperationEffectBoundary {
 				operationId: this.options.operationId,
 			});
 		}
+		const turn = await this.turnForAssistantEntry(assistantEntryId);
+		await this.flushTiming();
 		const args = asJsonObject(input.args, this.options);
 		const resultEntryId = this.options.createId();
+		const timestamp = this.timestamp();
 		await this.append({
 			type: "tool_dispatched",
 			operationId: this.options.operationId,
+			turnId: turn.turnId,
 			toolCallId: input.toolCall.id,
 			toolName: input.toolCall.name,
 			assistantEntryId,
 			args,
 			argsHash: hashJson(args),
 			resultEntryId,
-			timestamp: this.#now().toISOString(),
+			timestamp,
 		});
+		this.#toolTimingByToolCallId.set(input.toolCall.id, { turnId: turn.turnId, startedAt: timestamp });
 		return { entryId: resultEntryId };
+	}
+
+	beginTurn(): ActiveTurn {
+		if (this.#activeTurn) return this.#activeTurn;
+		const turn: ActiveTurn = { turnId: this.options.createId() };
+		this.#activeTurn = turn;
+		this.scheduleTiming({
+			type: "turn_started",
+			operationId: this.options.operationId,
+			turnId: turn.turnId,
+			timestamp: this.timestamp(),
+		});
+		return turn;
+	}
+
+	beginModelStream(input: { readonly assistantEntryId: string }): void {
+		if (this.#modelStreamsByAssistantEntry.has(input.assistantEntryId)) return;
+		const attemptId = this.#attemptsByAssistantEntry.get(input.assistantEntryId);
+		const turnId = this.#turnsByAssistantEntry.get(input.assistantEntryId);
+		if (!attemptId || !turnId) {
+			this.failTiming(`Model stream uses unknown assistant entry "${input.assistantEntryId}"`);
+			return;
+		}
+		this.#modelStreamsByAssistantEntry.set(input.assistantEntryId, {
+			attemptId,
+			turnId,
+			firstOutputAt: null,
+			lastOutputAt: null,
+			chunkCount: 0,
+			chunkTypeCounts: { text_delta: 0, thinking_delta: 0, toolcall_delta: 0 },
+		});
+	}
+
+	noteModelStreamChunk(input: { readonly assistantEntryId: string; readonly type: ModelStreamChunkType }): void {
+		const stream = this.#modelStreamsByAssistantEntry.get(input.assistantEntryId);
+		if (!stream) {
+			this.failTiming(`Model stream chunk uses unopened assistant entry "${input.assistantEntryId}"`);
+			return;
+		}
+		const timestamp = this.timestamp();
+		stream.firstOutputAt ??= timestamp;
+		stream.lastOutputAt = timestamp;
+		stream.chunkCount += 1;
+		stream.chunkTypeCounts[input.type] += 1;
+	}
+
+	finishModelStream(input: { readonly assistantEntryId: string; readonly outcome: ModelStreamTerminalOutcome }): void {
+		const stream = this.#modelStreamsByAssistantEntry.get(input.assistantEntryId);
+		if (!stream) {
+			this.failTiming(`Model stream settles unopened assistant entry "${input.assistantEntryId}"`);
+			return;
+		}
+		this.#modelStreamsByAssistantEntry.delete(input.assistantEntryId);
+		this.scheduleTiming({
+			type: "model_stream_settled",
+			operationId: this.options.operationId,
+			turnId: stream.turnId,
+			attemptId: stream.attemptId,
+			assistantEntryId: input.assistantEntryId,
+			firstOutputAt: stream.firstOutputAt,
+			lastOutputAt: stream.lastOutputAt,
+			chunkCount: stream.chunkCount,
+			chunkTypeCounts: stream.chunkTypeCounts,
+			outcome: input.outcome,
+			timestamp: this.timestamp(),
+		});
+	}
+
+	finishTool(input: { readonly toolCallId: string; readonly outcome: ToolTerminalOutcome }): void {
+		const timing = this.#toolTimingByToolCallId.get(input.toolCallId);
+		if (!timing) {
+			this.failTiming(`Tool timing settles unknown call "${input.toolCallId}"`);
+			return;
+		}
+		this.#toolTimingByToolCallId.delete(input.toolCallId);
+		const timestamp = this.timestamp();
+		this.scheduleTiming({
+			type: "tool_timing_settled",
+			operationId: this.options.operationId,
+			turnId: timing.turnId,
+			toolCallId: input.toolCallId,
+			startedAt: timing.startedAt,
+			finishedAt: timestamp,
+			outcome: input.outcome,
+			timestamp,
+		});
+	}
+
+	finishTurn(input: { readonly outcome: OperationTerminalOutcome }): void {
+		const turn = this.#activeTurn;
+		if (!turn) {
+			this.failTiming("Turn finished without a matching start");
+			return;
+		}
+		this.#activeTurn = undefined;
+		this.scheduleTiming({
+			type: "turn_finished",
+			operationId: this.options.operationId,
+			turnId: turn.turnId,
+			...(turn.assistantEntryId ? { assistantEntryId: turn.assistantEntryId } : {}),
+			outcome: input.outcome,
+			timestamp: this.timestamp(),
+		});
+	}
+
+	async flushTiming(): Promise<void> {
+		await this.#timingTail;
+		if (this.#timingFailure) throw this.#timingFailure;
 	}
 
 	/**
@@ -195,6 +341,59 @@ class DefaultOperationEffectBoundary implements OperationEffectBoundary {
 		return entry.id;
 	}
 
+	private async turnForAssistantEntry(assistantEntryId: string): Promise<ActiveTurn> {
+		const known = this.#turnsByAssistantEntry.get(assistantEntryId);
+		if (known) {
+			this.#activeTurn = { turnId: known, assistantEntryId };
+			return this.#activeTurn;
+		}
+		const loaded = await this.options.persistence.load(this.options.sessionId);
+		if (loaded.isErr()) {
+			throw new OperationEffectReadFailed({
+				message: `Could not restore the durable model attempt for Operation "${this.options.operationId}"`,
+				sessionId: this.options.sessionId,
+				operationId: this.options.operationId,
+				cause: loaded.error,
+			});
+		}
+		const attempted = loaded.value.operationRecords.find(
+			(record): record is Extract<OperationRecord, { readonly type: "model_attempted" }> =>
+				record.type === "model_attempted" &&
+				record.operationId === this.options.operationId &&
+				record.assistantEntryId === assistantEntryId,
+		);
+		if (attempted) {
+			this.#turnsByAssistantEntry.set(assistantEntryId, attempted.turnId);
+			this.#activeTurn = { turnId: attempted.turnId, assistantEntryId };
+			return this.#activeTurn;
+		}
+		this.beginTurn();
+		const turn = this.#activeTurn;
+		if (!turn) {
+			throw new OperationEffectProtocolViolation({
+				message: `Could not start a timing turn for Operation "${this.options.operationId}"`,
+				sessionId: this.options.sessionId,
+				operationId: this.options.operationId,
+			});
+		}
+		const associated = { ...turn, assistantEntryId };
+		this.#activeTurn = associated;
+		this.#turnsByAssistantEntry.set(assistantEntryId, associated.turnId);
+		return associated;
+	}
+
+	private beginImplicitTurn(assistantEntryId: string): ActiveTurn {
+		const turn: ActiveTurn = { turnId: assistantEntryId, assistantEntryId };
+		this.#activeTurn = turn;
+		this.scheduleTiming({
+			type: "turn_started",
+			operationId: this.options.operationId,
+			turnId: turn.turnId,
+			timestamp: this.timestamp(),
+		});
+		return turn;
+	}
+
 	private async append(record: Parameters<ProductSessionPersistence["appendOperation"]>[0]["record"]): Promise<void> {
 		const appended = await this.options.persistence.appendOperation({ sessionId: this.options.sessionId, record });
 		if (appended.isOk()) return;
@@ -206,6 +405,34 @@ class DefaultOperationEffectBoundary implements OperationEffectBoundary {
 		});
 	}
 
+	private scheduleTiming(record: OperationRecord): void {
+		this.#timingTail = this.#timingTail.then(async () => {
+			if (this.#timingFailure) return;
+			try {
+				await this.append(record);
+			} catch (cause) {
+				this.#timingFailure ??= new OperationEffectWriteFailed({
+					message: `Could not persist ${record.type} for Operation "${this.options.operationId}"`,
+					sessionId: this.options.sessionId,
+					operationId: this.options.operationId,
+					cause,
+				});
+			}
+		});
+	}
+
+	private failTiming(message: string): void {
+		this.#timingFailure ??= new OperationEffectProtocolViolation({
+			message: `${message} in Operation "${this.options.operationId}"`,
+			sessionId: this.options.sessionId,
+			operationId: this.options.operationId,
+		});
+	}
+
+	private timestamp(): string {
+		return this.#now().toISOString();
+	}
+
 	private publish(event: OperationEffectEvent): void {
 		for (const listener of [...this.#listeners]) {
 			try {
@@ -215,6 +442,25 @@ class DefaultOperationEffectBoundary implements OperationEffectBoundary {
 			}
 		}
 	}
+}
+
+interface ActiveTurn {
+	readonly turnId: string;
+	readonly assistantEntryId?: string;
+}
+
+interface ModelStreamAccumulator {
+	readonly attemptId: string;
+	readonly turnId: string;
+	firstOutputAt: string | null;
+	lastOutputAt: string | null;
+	chunkCount: number;
+	chunkTypeCounts: Record<ModelStreamChunkType, number>;
+}
+
+interface ToolTimingStart {
+	readonly turnId: string;
+	readonly startedAt: string;
 }
 
 function asJsonObject(value: Record<string, unknown>, options: OperationEffectBoundaryOptions): JsonObject {

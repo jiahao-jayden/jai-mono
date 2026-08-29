@@ -1,11 +1,8 @@
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
-import type {
-	AcpJsonRpcNotification,
-	AcpJsonRpcRequest,
-	LocalAcpV2Client,
-} from "@jai/server/acp-client";
+import type { AcpJsonRpcNotification, AcpJsonRpcRequest, LocalAcpV2Client } from "@jai/server/acp-client";
 import { connectJaiRuntimeHost } from "@jai/server/acp-client";
+import type { TrajectoryItem, TrajectorySnapshot, TrajectoryWireError } from "@jai/trajectory-ui";
 import { Result, TaggedError } from "better-result";
 import type {
 	DesktopAgentEvent,
@@ -26,6 +23,12 @@ import type {
 	DesktopToolActivityKind,
 	DesktopToolFileChange,
 	DesktopToolItem,
+	DesktopTrajectoryResult,
+	DesktopTrajectorySnapshotInput,
+	DesktopTrajectorySnapshotResult,
+	DesktopTrajectorySubscribeInput,
+	DesktopTrajectorySubscribeResult,
+	DesktopTrajectoryUnsubscribeInput,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
 import { sortArtifacts } from "./artifacts";
@@ -85,6 +88,9 @@ export class DesktopAcpAgentHost {
 	readonly #resolveSessionCwd: (sessionId: string) => Promise<string>;
 	readonly #sessions = new Map<string, AcpSessionRuntime>();
 	readonly #pendingPermissions = new Map<string, PendingPermission>();
+	readonly #trajectorySubscriptions = new Map<string, { readonly sessionId: string }>();
+	readonly #pendingTrajectoryItems = new Map<string, TrajectoryItem[]>();
+	readonly #eventSequences = new Map<string, number>();
 	readonly #client: LocalAcpV2Client;
 	readonly #unsubscribeUpdates: () => void;
 	readonly #unsubscribeRequests: () => void;
@@ -102,17 +108,18 @@ export class DesktopAcpAgentHost {
 		emit: DesktopAcpAgentEventSink,
 		options: DesktopAcpAgentHostOptions,
 	): Promise<DesktopAcpAgentHost> {
-		const runtimeHostEntrypoint = options.client
-			? undefined
-			: (await import("../runtime-host/entrypoint")).resolveDesktopRuntimeHostEntrypoint();
+		const runtimeHost = options.client ? undefined : await import("../runtime-host/entrypoint");
+		const runtimeHostEntrypoint = runtimeHost?.resolveDesktopRuntimeHostEntrypoint();
+		const launchRuntimeHost = runtimeHost?.createDesktopRuntimeHostLauncher();
 		const clientResult = options.client
 			? Result.ok(options.client)
 			: await connectJaiRuntimeHost({
-				...(options.dataDirectory === undefined ? {} : { dataDirectory: options.dataDirectory }),
-				...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
-				...(options.environment === undefined ? {} : { environment: options.environment }),
-				...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
-			});
+					...(options.dataDirectory === undefined ? {} : { dataDirectory: options.dataDirectory }),
+					...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
+					...(options.environment === undefined ? {} : { environment: options.environment }),
+					...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
+					...(launchRuntimeHost === undefined ? {} : { launchRuntimeHost }),
+				});
 		if (clientResult.isErr()) {
 			throw new DesktopAcpConnectionFailed({
 				message: "Desktop could not connect to the Jai Runtime Host",
@@ -159,7 +166,8 @@ export class DesktopAcpAgentHost {
 	steer(input: DesktopAgentMessageInput): void {
 		void this.#admitPrompt(input, "steer").catch((error) => {
 			const runtime = this.#sessions.get(input.sessionId);
-			if (runtime) this.#emitRuntimeError(runtime, error instanceof Error ? error.message : "Could not send steering input");
+			if (runtime)
+				this.#emitRuntimeError(runtime, error instanceof Error ? error.message : "Could not send steering input");
 		});
 	}
 
@@ -171,7 +179,12 @@ export class DesktopAcpAgentHost {
 		const pending = this.#pendingPermissions.get(resolution.requestId);
 		if (!pending) return;
 		this.#pendingPermissions.delete(resolution.requestId);
-		const optionId = resolution.decision === "alwaysAllow" ? "allow-always" : resolution.decision === "allowOnce" ? "allow-once" : "reject";
+		const optionId =
+			resolution.decision === "alwaysAllow"
+				? "allow-always"
+				: resolution.decision === "allowOnce"
+					? "allow-once"
+					: "reject";
 		const sent = this.#client.respond({
 			jsonrpc: "2.0",
 			id: pending.requestId,
@@ -195,7 +208,9 @@ export class DesktopAcpAgentHost {
 	}
 
 	runningSessionIds(): string[] {
-		return [...this.#sessions.values()].filter((session) => session.status === "running").map((session) => session.sessionId);
+		return [...this.#sessions.values()]
+			.filter((session) => session.status === "running")
+			.map((session) => session.sessionId);
 	}
 
 	getSnapshot(sessionId: string): DesktopAgentSnapshot {
@@ -222,6 +237,31 @@ export class DesktopAcpAgentHost {
 		return artifact ? structuredClone(artifact) : undefined;
 	}
 
+	async trajectorySnapshot(input: DesktopTrajectorySnapshotInput): Promise<DesktopTrajectorySnapshotResult> {
+		const response = await this.#client.request("jai/trajectory/snapshot", input);
+		if (response.isErr()) return trajectoryUnavailable("Trajectory is temporarily unavailable");
+		return projectTrajectorySnapshotResult(response.value);
+	}
+
+	async trajectorySubscribe(input: DesktopTrajectorySubscribeInput): Promise<DesktopTrajectorySubscribeResult> {
+		const response = await this.#client.request("jai/trajectory/subscribe", input);
+		if (response.isErr()) return trajectoryUnavailable("Trajectory is temporarily unavailable");
+		const result = projectTrajectorySubscribeResult(response.value);
+		if (!result.ok) return result;
+		const subscriptionId = result.value.subscriptionId;
+		this.#trajectorySubscriptions.set(subscriptionId, { sessionId: input.sessionId });
+		const pending = this.#pendingTrajectoryItems.get(subscriptionId) ?? [];
+		this.#pendingTrajectoryItems.delete(subscriptionId);
+		for (const item of pending) this.#emitTrajectory(input.sessionId, subscriptionId, item);
+		return result;
+	}
+
+	trajectoryUnsubscribe(input: DesktopTrajectoryUnsubscribeInput): void {
+		this.#trajectorySubscriptions.delete(input.subscriptionId);
+		this.#pendingTrajectoryItems.delete(input.subscriptionId);
+		void this.#client.request("jai/trajectory/unsubscribe", input);
+	}
+
 	closeSession(sessionId: string): void {
 		const runtime = this.#sessions.get(sessionId);
 		if (!runtime) return;
@@ -239,9 +279,13 @@ export class DesktopAcpAgentHost {
 		if (this.#closed) return;
 		this.#closed = true;
 		for (const sessionId of [...this.#sessions.keys()]) this.closeSession(sessionId);
+		for (const subscriptionId of [...this.#trajectorySubscriptions.keys()]) {
+			this.trajectoryUnsubscribe({ subscriptionId });
+		}
 		this.#unsubscribeUpdates();
 		this.#unsubscribeRequests();
-		for (const pending of this.#pendingPermissions.values()) pending.reject(new DesktopAcpConnectionClosed({ message: "ACP connection closed" }));
+		for (const pending of this.#pendingPermissions.values())
+			pending.reject(new DesktopAcpConnectionClosed({ message: "ACP connection closed" }));
 		this.#pendingPermissions.clear();
 		void this.#client.close();
 	}
@@ -261,7 +305,7 @@ export class DesktopAcpAgentHost {
 			artifacts: new Map(),
 			terminalToolCallIds: new Map(),
 			terminalOutput: new Map(),
-			seq: 0,
+			seq: this.#eventSequences.get(sessionId) ?? 0,
 			closed: false,
 		};
 		this.#sessions.set(sessionId, runtime);
@@ -270,7 +314,11 @@ export class DesktopAcpAgentHost {
 			const created = await this.#client.request("session/new", { sessionId, cwd });
 			if (created.isErr()) {
 				this.#sessions.delete(sessionId);
-				throw new DesktopAcpRequestFailed({ method: "session/new", message: created.error.message, cause: created.error });
+				throw new DesktopAcpRequestFailed({
+					method: "session/new",
+					message: created.error.message,
+					cause: created.error,
+				});
 			}
 		}
 		return runtime;
@@ -337,14 +385,16 @@ export class DesktopAcpAgentHost {
 	async #request(method: string, params: unknown) {
 		const result = await this.#client.request(method, params);
 		if (result.isErr()) {
-			return Result.err(
-				new DesktopAcpRequestFailed({ method, message: result.error.message, cause: result.error }),
-			);
+			return Result.err(new DesktopAcpRequestFailed({ method, message: result.error.message, cause: result.error }));
 		}
 		return Result.ok(result.value);
 	}
 
 	#onNotification(notification: AcpJsonRpcNotification): void {
+		if (notification.method === "jai/trajectory/update") {
+			this.#trajectoryUpdate(notification.params);
+			return;
+		}
 		if (notification.method !== "session/update" || !isRecord(notification.params)) return;
 		const sessionId = notification.params.sessionId;
 		const update = notification.params.update;
@@ -385,7 +435,8 @@ export class DesktopAcpAgentHost {
 	}
 
 	#onRequest(request: AcpJsonRpcRequest): void {
-		if (request.method !== "session/request_permission" || request.id === undefined || !isRecord(request.params)) return;
+		if (request.method !== "session/request_permission" || request.id === undefined || !isRecord(request.params))
+			return;
 		const sessionId = request.params.sessionId;
 		const runtime = typeof sessionId === "string" ? this.#sessions.get(sessionId) : undefined;
 		if (!runtime) {
@@ -393,7 +444,12 @@ export class DesktopAcpAgentHost {
 			return;
 		}
 		const projected = projectPermission(runtime, request);
-		const item = { kind: "permission" as const, id: `permission:${projected.request.requestId}`, request: projected.request, status: "pending" as const };
+		const item = {
+			kind: "permission" as const,
+			id: `permission:${projected.request.requestId}`,
+			request: projected.request,
+			status: "pending" as const,
+		};
 		runtime.items.set(item.id, item);
 		this.#pendingPermissions.set(projected.request.requestId, {
 			requestId: request.id,
@@ -453,7 +509,14 @@ export class DesktopAcpAgentHost {
 			id,
 			turnId: update.messageId,
 			activityId: update.messageId,
-			text: update.content === null ? "" : update.sessionUpdate === "agent_thought" ? text : previous?.kind === "thinking" ? previous.text + text : text,
+			text:
+				update.content === null
+					? ""
+					: update.sessionUpdate === "agent_thought"
+						? text
+						: previous?.kind === "thinking"
+							? previous.text + text
+							: text,
 			status: update.sessionUpdate === "agent_thought" ? "complete" : "streaming",
 			timestamp: Date.now(),
 		};
@@ -467,7 +530,7 @@ export class DesktopAcpAgentHost {
 		const previous = runtime.items.get(id);
 		const previousTool = previous?.kind === "tool" ? previous : undefined;
 		const status = update.status === "completed" || update.status === "failed" ? "complete" : "running";
-		const title = typeof update.title === "string" ? update.title : previousTool?.toolName ?? "Tool";
+		const title = typeof update.title === "string" ? update.title : (previousTool?.toolName ?? "Tool");
 		let bufferedTerminalOutput = "";
 		for (const terminalId of terminalIds(update.content)) {
 			runtime.terminalToolCallIds.set(terminalId, update.toolCallId);
@@ -583,14 +646,47 @@ export class DesktopAcpAgentHost {
 
 	#emitEvent(runtime: AcpSessionRuntime, event: DesktopAgentEvent): void {
 		if (runtime.closed) return;
-		runtime.seq += 1;
-		this.#emit({ sessionId: runtime.sessionId, seq: runtime.seq, event: structuredClone(event) });
+		const seq = this.#nextSequence(runtime.sessionId);
+		runtime.seq = seq;
+		this.#emit({ sessionId: runtime.sessionId, seq, event: structuredClone(event) });
+	}
+
+	#trajectoryUpdate(params: unknown): void {
+		if (!isRecord(params) || typeof params.subscriptionId !== "string" || typeof params.sessionId !== "string")
+			return;
+		if (!isTrajectoryItem(params.item)) return;
+		const subscription = this.#trajectorySubscriptions.get(params.subscriptionId);
+		if (!subscription) {
+			const pending = this.#pendingTrajectoryItems.get(params.subscriptionId) ?? [];
+			pending.push(params.item);
+			this.#pendingTrajectoryItems.set(params.subscriptionId, pending);
+			return;
+		}
+		if (subscription.sessionId !== params.sessionId) return;
+		this.#emitTrajectory(params.sessionId, params.subscriptionId, params.item);
+	}
+
+	#emitTrajectory(sessionId: string, subscriptionId: string, item: TrajectoryItem): void {
+		this.#emit({
+			sessionId,
+			seq: this.#nextSequence(sessionId),
+			event: { type: "trajectory_update", subscriptionId, item: structuredClone(item) },
+		});
+	}
+
+	#nextSequence(sessionId: string): number {
+		const seq = (this.#eventSequences.get(sessionId) ?? 0) + 1;
+		this.#eventSequences.set(sessionId, seq);
+		return seq;
 	}
 
 	#requireSession(sessionId: string): AcpSessionRuntime {
 		const runtime = this.#sessions.get(sessionId);
 		if (!runtime) {
-			throw desktopAgentError("session_not_found", { message: `Session "${sessionId}" is not active`, data: { sessionId } });
+			throw desktopAgentError("session_not_found", {
+				message: `Session "${sessionId}" is not active`,
+				data: { sessionId },
+			});
 		}
 		return runtime;
 	}
@@ -624,7 +720,10 @@ interface PendingPermission {
 	readonly reject: (error: unknown) => void;
 }
 
-function projectPermission(runtime: AcpSessionRuntime, request: AcpJsonRpcRequest): { readonly request: DesktopPermissionRequest } {
+function projectPermission(
+	runtime: AcpSessionRuntime,
+	request: AcpJsonRpcRequest,
+): { readonly request: DesktopPermissionRequest } {
 	const params = request.params as Record<string, unknown>;
 	const subject = isRecord(params.subject) && isRecord(params.subject.toolCall) ? params.subject.toolCall : {};
 	const toolCallId = typeof subject.toolCallId === "string" ? subject.toolCallId : `permission-${String(request.id)}`;
@@ -647,7 +746,10 @@ function contentText(value: unknown): string {
 	if (typeof value === "string") return value;
 	if (!Array.isArray(value)) return "";
 	return value
-		.filter((block): block is Record<string, unknown> => isRecord(block) && block.type === "text" && typeof block.text === "string")
+		.filter(
+			(block): block is Record<string, unknown> =>
+				isRecord(block) && block.type === "text" && typeof block.text === "string",
+		)
 		.map((block) => block.text as string)
 		.join("");
 }
@@ -697,6 +799,89 @@ function activityKind(toolName: string): DesktopToolActivityKind {
 	if (normalized.includes("bash") || normalized.includes("shell") || normalized.includes("execute")) return "execute";
 	if (normalized.includes("call") || normalized.includes("connector")) return "call";
 	return "operation";
+}
+
+function projectTrajectorySnapshotResult(value: unknown): DesktopTrajectorySnapshotResult {
+	if (isAcpTrajectoryFailure(value)) return { ok: false, error: projectTrajectoryError(value.error) };
+	if (!isRecord(value) || value.ok !== true || !isRecord(value.value) || !isTrajectorySnapshot(value.value.snapshot)) {
+		return trajectoryUnavailable("Trajectory returned an invalid snapshot");
+	}
+	return { ok: true, value: { snapshot: value.value.snapshot } };
+}
+
+function projectTrajectorySubscribeResult(value: unknown): DesktopTrajectorySubscribeResult {
+	if (isAcpTrajectoryFailure(value)) return { ok: false, error: projectTrajectoryError(value.error) };
+	if (
+		!isRecord(value) ||
+		value.ok !== true ||
+		!isRecord(value.value) ||
+		typeof value.value.subscriptionId !== "string" ||
+		!value.value.subscriptionId
+	) {
+		return trajectoryUnavailable("Trajectory returned an invalid subscription");
+	}
+	return { ok: true, value: { subscriptionId: value.value.subscriptionId } };
+}
+
+function trajectoryUnavailable<T>(message: string): DesktopTrajectoryResult<T> {
+	return { ok: false, error: { code: "unavailable", message } };
+}
+
+function isAcpTrajectoryFailure(
+	value: unknown,
+): value is { readonly ok: false; readonly error: { readonly code: string; readonly message: string } } {
+	return (
+		isRecord(value) &&
+		value.ok === false &&
+		isRecord(value.error) &&
+		typeof value.error.code === "string" &&
+		typeof value.error.message === "string"
+	);
+}
+
+function projectTrajectoryError(error: { readonly code: string; readonly message: string }): TrajectoryWireError {
+	if (error.code === "cursor_expired") return { code: "cursor_expired", message: error.message };
+	if (error.code === "forbidden") return { code: "forbidden", message: error.message };
+	return { code: "unavailable", message: "Trajectory is temporarily unavailable" };
+}
+
+function isTrajectorySnapshot(value: unknown): value is TrajectorySnapshot {
+	return (
+		isRecord(value) &&
+		isRecord(value.session) &&
+		typeof value.session.sessionId === "string" &&
+		typeof value.session.cwd === "string" &&
+		isRecord(value.cursor) &&
+		typeof value.cursor.value === "string" &&
+		Array.isArray(value.items) &&
+		value.items.every(isTrajectoryItem)
+	);
+}
+
+function isTrajectoryItem(value: unknown): value is TrajectoryItem {
+	if (
+		!isRecord(value) ||
+		typeof value.id !== "string" ||
+		typeof value.timestamp !== "string" ||
+		!isRecord(value.cursor) ||
+		typeof value.cursor.value !== "string"
+	)
+		return false;
+	if (value.type === "live_chunk") {
+		return (
+			isRecord(value.chunk) &&
+			typeof value.chunk.messageId === "string" &&
+			(value.chunk.channel === "agent" || value.chunk.channel === "thought" || value.chunk.channel === "tool") &&
+			typeof value.chunk.text === "string"
+		);
+	}
+	if (value.type === "journal") return isRecord(value.journal);
+	if (value.type !== "message" || !isRecord(value.message)) return false;
+	return (
+		typeof value.message.entryId === "string" &&
+		(value.message.role === "user" || value.message.role === "assistant" || value.message.role === "toolResult") &&
+		(value.message.parentId === null || typeof value.message.parentId === "string")
+	);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

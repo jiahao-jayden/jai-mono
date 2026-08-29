@@ -13,8 +13,8 @@ import {
 	desktopAgentNavigateInputSchema,
 	desktopArtifactReadInputSchema,
 	desktopAttachmentRegistrationInputSchema,
-	desktopConnectorOAuthApplicationIdSchema,
 	desktopCommandListInputSchema,
+	desktopConnectorOAuthApplicationIdSchema,
 	desktopPermissionResolutionSchema,
 	desktopSessionCreateInputSchema,
 	desktopSessionDeleteInputSchema,
@@ -22,6 +22,9 @@ import {
 	desktopSessionListInputSchema,
 	desktopSessionMoveInputSchema,
 	desktopSessionRenameInputSchema,
+	desktopTrajectorySnapshotInputSchema,
+	desktopTrajectorySubscribeInputSchema,
+	desktopTrajectoryUnsubscribeInputSchema,
 	desktopWorkspaceListInputSchema,
 	desktopWorkspaceOpenInputSchema,
 	desktopWorkspaceReadInputSchema,
@@ -154,7 +157,9 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			},
 			async list(_event, input) {
 				return {
-					...(await rt.sessions.listSessions(parse(desktopSessionListInputSchema, input, "Invalid Session list input"))),
+					...(await rt.sessions.listSessions(
+						parse(desktopSessionListInputSchema, input, "Invalid Session list input"),
+					)),
 					runningSessionIds: rt.agentHost.runningSessionIds(),
 				};
 			},
@@ -323,6 +328,23 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			},
 			close(_event, sessionId) {
 				rt.agentHost.closeSession(parse(desktopSessionIdSchema, sessionId, "Invalid session id"));
+			},
+		},
+		trajectory: {
+			snapshot(_event, input) {
+				return rt.agentHost.trajectorySnapshot(
+					parse(desktopTrajectorySnapshotInputSchema, input, "Invalid trajectory snapshot input"),
+				);
+			},
+			subscribe(_event, input) {
+				return rt.agentHost.trajectorySubscribe(
+					parse(desktopTrajectorySubscribeInputSchema, input, "Invalid trajectory subscription input"),
+				);
+			},
+			unsubscribe(_event, input) {
+				rt.agentHost.trajectoryUnsubscribe(
+					parse(desktopTrajectoryUnsubscribeInputSchema, input, "Invalid trajectory unsubscribe input"),
+				);
 			},
 		},
 	};

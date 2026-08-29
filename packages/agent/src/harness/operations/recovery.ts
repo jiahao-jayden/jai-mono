@@ -1,11 +1,14 @@
 import { Result } from "better-result";
 import type {
 	ModelAttempted,
+	ModelStreamSettled,
 	OperationRecord,
 	OperationRecoveryEvidence,
 	OperationRecoveryVerdict,
 	PendingOperationInput,
 	ToolDispatched,
+	ToolTimingSettled,
+	TurnStarted,
 } from "./types";
 import { OperationCorruptedLog } from "./types";
 
@@ -29,8 +32,13 @@ export function recoverOperation(
 
 	const attempts = new Map<string, ModelAttempted>();
 	const settledAttempts = new Set<string>();
+	const streamSummaries = new Set<string>();
 	const dispatches: ToolDispatched[] = [];
+	const dispatchesByToolCallId = new Map<string, ToolDispatched>();
 	const queuedInputs: PendingOperationInput[] = [];
+	const turns = new Map<string, TurnStarted>();
+	const finishedTurns = new Set<string>();
+	const settledTools = new Set<string>();
 	const toolCallIds = new Set<string>();
 	const resultEntryIds = new Set<string>();
 	const inputIds = new Set<string>();
@@ -48,11 +56,28 @@ export function recoverOperation(
 			case "operation_accepted":
 				return corrupted(`Operation "${operationId}" was accepted more than once`);
 
+			case "turn_started":
+				if (turns.has(record.turnId)) {
+					return corrupted(`Operation "${operationId}" repeats turn "${record.turnId}"`);
+				}
+				turns.set(record.turnId, record);
+				break;
+
 			case "model_attempted":
+				if (!turns.has(record.turnId)) {
+					return corrupted(`Operation "${operationId}" attempts a model for unknown turn "${record.turnId}"`);
+				}
 				if (attempts.has(record.attemptId)) {
 					return corrupted(`Operation "${operationId}" repeats model attempt "${record.attemptId}"`);
 				}
 				attempts.set(record.attemptId, record);
+				break;
+
+			case "model_stream_settled":
+				{
+					const error = validateModelStream(record, attempts, turns, streamSummaries, operationId);
+					if (error) return corrupted(error);
+				}
 				break;
 
 			case "usage_settled":
@@ -66,6 +91,11 @@ export function recoverOperation(
 				break;
 
 			case "tool_dispatched":
+				if (!turns.has(record.turnId)) {
+					return corrupted(
+						`Operation "${operationId}" dispatches tool "${record.toolCallId}" for unknown turn "${record.turnId}"`,
+					);
+				}
 				if (!hasAssistantEntry(attempts, record.assistantEntryId)) {
 					return corrupted(
 						`Tool "${record.toolCallId}" was dispatched without a matching model attempt in operation "${operationId}"`,
@@ -85,6 +115,24 @@ export function recoverOperation(
 				toolCallIds.add(record.toolCallId);
 				resultEntryIds.add(record.resultEntryId);
 				dispatches.push(record);
+				dispatchesByToolCallId.set(record.toolCallId, record);
+				break;
+
+			case "tool_timing_settled":
+				{
+					const error = validateToolTiming(record, turns, dispatchesByToolCallId, settledTools, operationId);
+					if (error) return corrupted(error);
+				}
+				break;
+
+			case "turn_finished":
+				if (!turns.has(record.turnId)) {
+					return corrupted(`Operation "${operationId}" finishes unknown turn "${record.turnId}"`);
+				}
+				if (finishedTurns.has(record.turnId)) {
+					return corrupted(`Operation "${operationId}" finishes turn "${record.turnId}" twice`);
+				}
+				finishedTurns.add(record.turnId);
 				break;
 
 			case "input_queued":
@@ -147,13 +195,75 @@ export function recoverOperation(
 		const outcome = evidence.terminalOutcomeByAssistantEntryId.get(latestAttempt.assistantEntryId);
 		if (outcome) {
 			if (pendingInputs.length > 0) {
-				return corrupted(`Operation "${operationId}" has a terminal assistant result before accepted input was consumed`);
+				return corrupted(
+					`Operation "${operationId}" has a terminal assistant result before accepted input was consumed`,
+				);
 			}
 			return Result.ok({ status: "terminal", operationId, outcome, finalization: "inferred" });
 		}
 	}
 
 	return Result.ok({ status: "ready", operationId, ...(pendingInputs.length === 0 ? {} : { pendingInputs }) });
+}
+
+function validateModelStream(
+	record: ModelStreamSettled,
+	attempts: ReadonlyMap<string, ModelAttempted>,
+	turns: ReadonlyMap<string, TurnStarted>,
+	streamSummaries: Set<string>,
+	operationId: string,
+): string | undefined {
+	const attempt = attempts.get(record.attemptId);
+	if (!attempt) return `Operation "${operationId}" settles stream for unknown attempt "${record.attemptId}"`;
+	if (!turns.has(record.turnId)) {
+		return `Operation "${operationId}" settles stream for unknown turn "${record.turnId}"`;
+	}
+	if (attempt.assistantEntryId !== record.assistantEntryId) {
+		return `Operation "${operationId}" stream summary mismatches assistant entry for attempt "${record.attemptId}"`;
+	}
+	if (attempt.turnId !== record.turnId) {
+		return `Operation "${operationId}" stream summary mismatches turn for attempt "${record.attemptId}"`;
+	}
+	if (streamSummaries.has(record.attemptId)) {
+		return `Operation "${operationId}" settles stream twice for attempt "${record.attemptId}"`;
+	}
+	if (!Number.isInteger(record.chunkCount) || record.chunkCount < 0) {
+		return `Operation "${operationId}" has an invalid stream chunk count`;
+	}
+	const counted = Object.values(record.chunkTypeCounts).reduce((total, count) => total + count, 0);
+	if (
+		Object.values(record.chunkTypeCounts).some((count) => !Number.isInteger(count) || count < 0) ||
+		counted !== record.chunkCount
+	) {
+		return `Operation "${operationId}" has inconsistent stream chunk type counts`;
+	}
+	if ((record.firstOutputAt === null) !== (record.lastOutputAt === null)) {
+		return `Operation "${operationId}" has incomplete stream output timing`;
+	}
+	streamSummaries.add(record.attemptId);
+}
+
+function validateToolTiming(
+	record: ToolTimingSettled,
+	turns: ReadonlyMap<string, TurnStarted>,
+	dispatches: ReadonlyMap<string, ToolDispatched>,
+	settledTools: Set<string>,
+	operationId: string,
+): string | undefined {
+	if (!turns.has(record.turnId)) {
+		return `Operation "${operationId}" settles unknown turn tool "${record.toolCallId}"`;
+	}
+	const dispatch = dispatches.get(record.toolCallId);
+	if (!dispatch) {
+		return `Operation "${operationId}" settles undispatched tool "${record.toolCallId}"`;
+	}
+	if (dispatch.turnId !== record.turnId) {
+		return `Operation "${operationId}" settles tool "${record.toolCallId}" for the wrong turn`;
+	}
+	if (settledTools.has(record.toolCallId)) {
+		return `Operation "${operationId}" settles tool "${record.toolCallId}" twice`;
+	}
+	settledTools.add(record.toolCallId);
 }
 
 /**

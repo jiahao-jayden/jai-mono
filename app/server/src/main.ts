@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { openConfiguredRuntimeHost } from "./runtime";
 
-const opened = await openConfiguredRuntimeHost();
+const opened = await openConfiguredRuntimeHost({
+	browserAssetsDirectory: join(dirname(fileURLToPath(import.meta.url)), "trajectory-browser"),
+});
 if (opened.isErr()) {
 	process.stderr.write(`jai-runtime-host: ${opened.error.message}\n`);
 	process.exitCode = 1;
