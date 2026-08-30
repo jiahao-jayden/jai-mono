@@ -11,7 +11,7 @@
 
 ## 方案
 
-先在 Agent/Extension 侧接入 FFF 的 Node 原生 binding，建立 Operation-scoped 的搜索 runtime 与两个 Pi FFF 工具：`fffind`、`ffgrep`。工具命名、默认 mode 与本地状态边界以[调研](../research/pi-fff-tool-contract.md)为事实输入；runtime 负责索引启动、workspace 边界、取消与销毁；工具负责参数校验、分组/分页结果和 `filesearch.*` 错误投影。FFF adapter 不执行 shell，不把索引对象或 SDK 错误跨进程传递。`fff-multi-grep` 保持未暴露，另立需求再决定。
+先在 Agent/Extension 侧接入 FFF 的 Node 原生 binding，建立 Operation-scoped 的搜索 runtime 与两个 Pi FFF 工具：`fffind`、`ffgrep`。工具命名、默认 mode 与本地状态边界以[调研](../../research/pi-fff-tool-contract.md)为事实输入；runtime 负责索引启动、workspace 边界、取消与销毁；工具负责参数校验、分组/分页结果和 `filesearch.*` 错误投影。FFF adapter 不执行 shell，不把索引对象或 SDK 错误跨进程传递。`fff-multi-grep` 保持未暴露，另立需求再决定。
 
 随后移除现有 `Glob`、ripgrep `Grep` 工具及旧搜索后端，把 Coding Agent 的默认内置 roster 改为 `Read`、`Bash`、`Edit`、`Write`。FFF 工具由 Server capability source 作为内置 Extension 随每个本地 Operation 自动加入，因此不受 Desktop 侧工具开关控制，也不需要新增 `workspace-search` 配置。SDK 仍保留显式 built-in tool allowlist 能力，但默认行为与 Pi 对齐。
 

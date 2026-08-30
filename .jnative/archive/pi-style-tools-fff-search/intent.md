@@ -49,4 +49,4 @@ Durable fact 与 owner:
 - 当前内置 roster 是 `Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`UpdateTodos`、`SpawnAgent`（`packages/coding-agent/src/tools/names.ts`）；当前 `Glob/Grep` 都由 `NodeExecutionEnvironment` 的 ripgrep 路径提供。
 - 现有 `FileSearch` 已是 `Glob`/`Grep` 后端的窄 contract（`packages/agent/src/harness/environment/types.ts`）；权限路径 capability 位于 Coding Agent middleware 外层，FFF 不重做该边界。
 - Electron packager 启用了 asar（`app/desktop/forge.config.ts`），FFF 的 Node 原生 binding 必须按 Electron Forge 的原生模块策略验证和打包。
-- Pi 与 `@ff-labs/pi-fff` 的工具名、参数、默认 mode 与本地状态行为见[调研](../research/pi-fff-tool-contract.md)；native package 分发与 ABI 仍需在 Spec 01 的真实 smoke test 中钉死，避免以转述决定公共 API。
+- Pi 与 `@ff-labs/pi-fff` 的工具名、参数、默认 mode 与本地状态行为见[调研](../../research/pi-fff-tool-contract.md)；native package 分发与 ABI 仍需在 Spec 01 的真实 smoke test 中钉死，避免以转述决定公共 API。

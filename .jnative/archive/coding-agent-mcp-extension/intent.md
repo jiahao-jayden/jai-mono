@@ -53,4 +53,4 @@ Durable fact 与 owner:
 - ACP v2 已拒绝 session request 自带 MCP server，Host 是 Extension 的装配 owner（`app/server/src/protocol/acp-v2/agent.ts`）。
 - 当前 `ToolCatalog` 只接受创建时的 immutable descriptor list，`CodingExtensionToolCatalog.discover()` 也只在 activation 后执行一次；实现 MCP 重新发现必须新增显式刷新 protocol，不能让 Extension 私下修改 catalog（`packages/coding-agent/src/runtime/tool-catalog.ts`、`packages/coding-agent/src/sdk/extensions.ts`）。
 - 当前 Extension configuration 只声明单个 `user` 或 `project` scope；本特性需要让 core 分别读取两个未补默认值的 layer，同时由 MCP Extension 完成 domain merge，不能加入通用 deep merge 或默认写回目标（`packages/coding-agent/src/sdk/extensions/contract.ts`、`packages/coding-agent/src/sdk/extensions/host-adapters.ts`）。
-- Pi 的参考实现确认“Extension owns capability”这一事实归属，并验证重连与工具列表刷新应由 provider 触发；OAuth 和配置热更新仍超出本特性范围，详见[调研](../research/pi-mcp-extension.md)。
+- Pi 的参考实现确认“Extension owns capability”这一事实归属，并验证重连与工具列表刷新应由 provider 触发；OAuth 和配置热更新仍超出本特性范围，详见[调研](../../research/pi-mcp-extension.md)。
