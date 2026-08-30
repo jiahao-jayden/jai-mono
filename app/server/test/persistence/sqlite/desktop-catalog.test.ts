@@ -121,4 +121,50 @@ describe("SqliteDesktopCatalogAccess", () => {
 			database.close();
 		}
 	});
+
+	test("deletes a Session that already has admitted Operations", async () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const persistence = new SqliteProductSessionPersistence(database);
+			const catalog = new SqliteDesktopCatalogAccess(database);
+			const created = await persistence.create({
+				id: "session-1",
+				appState: {},
+				runtimeConfiguration: { model: "test/model", mode: "manual" },
+				cwd: "/workspace",
+				createdAt,
+			});
+			if (created.isErr()) throw created.error;
+			const admitted = await persistence.admitPrompt({
+				sessionId: "session-1",
+				inputEntry: {
+					type: "message",
+					id: "operation-1:input",
+					parentId: null,
+					timestamp: createdAt,
+					message: { role: "user", content: "你好", timestamp: Date.parse(createdAt) },
+				},
+				operation: {
+					type: "operation_accepted",
+					operationId: "operation-1",
+					kind: "prompt",
+					inputEntryId: "operation-1:input",
+					startLeafId: null,
+					timestamp: createdAt,
+				},
+			});
+			if (admitted.isErr()) throw admitted.error;
+			const ensured = catalog.ensureSession({ sessionId: "session-1", projectId: null, title: "你好" });
+			if (ensured.isErr()) throw ensured.error;
+
+			const deleted = catalog.deleteSession("session-1");
+			if (deleted.isErr()) throw deleted.error;
+
+			const missing = await persistence.load("session-1");
+			expect(missing.isErr()).toBe(true);
+			expect(catalog.getSession("session-1")).toEqual(expect.objectContaining({ value: undefined }));
+		} finally {
+			database.close();
+		}
+	});
 });

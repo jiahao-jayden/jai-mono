@@ -414,12 +414,13 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 				PRIMARY KEY (session_id, sequence)
 			);
 			CREATE TABLE IF NOT EXISTS product_operation_runtime_configurations (
-				session_id TEXT NOT NULL,
+				session_id TEXT NOT NULL REFERENCES session_journals(id) ON DELETE CASCADE,
 				operation_id TEXT NOT NULL,
 				configuration_sequence INTEGER NOT NULL,
 				PRIMARY KEY (session_id, operation_id),
 				FOREIGN KEY (session_id, configuration_sequence)
 					REFERENCES product_session_runtime_configurations(session_id, sequence)
+					ON DELETE CASCADE
 			);
 		`);
 	}
