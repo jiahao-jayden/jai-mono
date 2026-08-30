@@ -478,7 +478,18 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 			.all(sessionId) as unknown as OperationRuntimeConfigurationRow[];
 
 		const parsedEntries = entries.map((row) => parseSessionEntry<TAppState>(row, sessionId));
-		const parsedOperationRecords = operationRecords.map((row) => parseOperationRecord(row.record_json, sessionId));
+		const discardedOperations = new Set<string>();
+		const readableOperations: { readonly sequence: number; readonly record: OperationRecord }[] = [];
+		for (const row of operationRecords) {
+			const record = parseOperationRecord(row.record_json, sessionId);
+			if (record) {
+				readableOperations.push({ sequence: row.sequence, record });
+				continue;
+			}
+			const operationId = operationIdIn(row.record_json, sessionId);
+			if (operationId) discardedOperations.add(operationId);
+		}
+		const keptOperations = readableOperations.filter((item) => !discardedOperations.has(item.record.operationId));
 		const snapshot = replay<TAppState>(
 			parseJsonObject(
 				sessionId,
@@ -492,24 +503,30 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 			...projectCatalogRow(catalog),
 			snapshot,
 			revision: journal.revision,
-			operationRecords: parsedOperationRecords,
+			operationRecords: keptOperations.map((item) => item.record),
 			journalFacts: [
 				...entries.map((row, index) => ({
 					sequence: row.sequence,
 					kind: "entry" as const,
 					entry: parsedEntries[index]!,
 				})),
-				...operationRecords.map((row, index) => ({
-					sequence: row.sequence,
+				...keptOperations.map((item) => ({
+					sequence: item.sequence,
 					kind: "operation" as const,
-					record: parsedOperationRecords[index]!,
+					record: item.record,
 				})),
 			].sort((left, right) => left.sequence - right.sequence),
 			runtimeConfiguration: runtimeConfiguration.configuration,
-			operationRuntimeConfigurations: operationRuntimeConfigurations.map((row) => ({
-				operationId: row.operation_id,
-				configuration: parseRuntimeSessionConfiguration(row.configuration_json, sessionId),
-			})),
+			operationRuntimeConfigurations: operationRuntimeConfigurations.flatMap((row) =>
+				discardedOperations.has(row.operation_id)
+					? []
+					: [
+							{
+								operationId: row.operation_id,
+								configuration: parseRuntimeSessionConfiguration(row.configuration_json, sessionId),
+							},
+						],
+			),
 		};
 	}
 
@@ -603,12 +620,14 @@ function parseSessionEntry<TAppState extends JsonObject>(
 	return parsed as SessionEntry<TAppState>;
 }
 
-function parseOperationRecord(raw: string, sessionId: string): OperationRecord {
+function parseOperationRecord(raw: string, sessionId: string): OperationRecord | undefined {
 	const parsed = parseJson(sessionId, raw, `Session "${sessionId}" contains malformed operation JSON`);
-	if (!isOperationRecord(parsed)) {
-		throw corrupted(sessionId, `Session "${sessionId}" contains an invalid Operation Journal record`);
-	}
-	return parsed;
+	return isOperationRecord(parsed) ? parsed : undefined;
+}
+
+function operationIdIn(raw: string, sessionId: string): string | undefined {
+	const parsed = parseJson(sessionId, raw, `Session "${sessionId}" contains malformed operation JSON`);
+	return isJsonObject(parsed) && typeof parsed.operationId === "string" ? parsed.operationId : undefined;
 }
 
 function parseRuntimeSessionConfiguration(raw: string, sessionId: string): RuntimeSessionConfiguration {

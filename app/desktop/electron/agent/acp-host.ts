@@ -310,16 +310,23 @@ export class DesktopAcpAgentHost {
 		};
 		this.#sessions.set(sessionId, runtime);
 		const resumed = await this.#client.request("session/resume", { sessionId, cwd, replayFrom: { type: "start" } });
-		if (resumed.isErr()) {
-			const created = await this.#client.request("session/new", { sessionId, cwd });
-			if (created.isErr()) {
-				this.#sessions.delete(sessionId);
-				throw new DesktopAcpRequestFailed({
-					method: "session/new",
-					message: created.error.message,
-					cause: created.error,
-				});
-			}
+		if (resumed.isOk()) return runtime;
+		if (!resumed.error.message.includes("does not exist")) {
+			this.#sessions.delete(sessionId);
+			throw new DesktopAcpRequestFailed({
+				method: "session/resume",
+				message: resumed.error.message,
+				cause: resumed.error,
+			});
+		}
+		const created = await this.#client.request("session/new", { sessionId, cwd });
+		if (created.isErr()) {
+			this.#sessions.delete(sessionId);
+			throw new DesktopAcpRequestFailed({
+				method: "session/new",
+				message: created.error.message,
+				cause: created.error,
+			});
 		}
 		return runtime;
 	}

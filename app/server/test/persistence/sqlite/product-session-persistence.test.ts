@@ -169,4 +169,97 @@ describe("SqliteProductSessionPersistence", () => {
 		if (loaded.isErr()) throw loaded.error;
 		expect(loaded.value).not.toHaveProperty("title");
 	});
+
+	test("keeps the Session Journal when an Operation record is no longer a current fact", async () => {
+		const { DatabaseSync } = await import("node:sqlite");
+		const database = new DatabaseSync(":memory:");
+		const persistence = new SqliteProductSessionPersistence(database);
+		const created = await persistence.create({
+			id: "session-1",
+			appState: {},
+			runtimeConfiguration: { model: "profile/model", mode: "manual" },
+			cwd: "/workspace",
+			createdAt: "2026-08-25T10:00:00.000Z",
+		});
+		if (created.isErr()) throw created.error;
+		const admitted = await persistence.admitPrompt({
+			sessionId: "session-1",
+			inputEntry: {
+				type: "message",
+				id: "operation-1:input",
+				parentId: null,
+				timestamp: "2026-08-25T10:00:01.000Z",
+				message: { role: "user", content: "你好", timestamp: Date.parse("2026-08-25T10:00:01.000Z") },
+			},
+			operation: {
+				type: "operation_accepted",
+				operationId: "operation-1",
+				kind: "prompt",
+				inputEntryId: "operation-1:input",
+				startLeafId: null,
+				timestamp: "2026-08-25T10:00:01.000Z",
+			},
+		});
+		if (admitted.isErr()) throw admitted.error;
+		const afterAdmit = await persistence.load("session-1");
+		if (afterAdmit.isErr()) throw afterAdmit.error;
+		const appended = await persistence.appendEntry({
+			sessionId: "session-1",
+			expectedRevision: afterAdmit.value.revision,
+			entry: {
+				type: "message",
+				id: "assistant-1",
+				parentId: "operation-1:input",
+				timestamp: "2026-08-25T10:00:02.000Z",
+				message: {
+					role: "assistant",
+					content: [{ type: "text", text: "你好！" }],
+					provider: "openai-compatible",
+					model: "deepseek-v4-flash",
+					usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+					stopReason: "stop",
+					timestamp: Date.parse("2026-08-25T10:00:02.000Z"),
+				},
+			},
+		});
+		if (appended.isErr()) throw appended.error;
+		database
+			.prepare(
+				`INSERT INTO operation_journal_records (session_id, sequence, operation_id, record_type, record_json)
+				 VALUES (?, ?, ?, ?, ?)`,
+			)
+			.run(
+				"session-1",
+				100,
+				"operation-1",
+				"model_attempted",
+				JSON.stringify({
+					type: "model_attempted",
+					operationId: "operation-1",
+					attemptId: "attempt-1",
+					assistantEntryId: "assistant-1",
+					modelSnapshotId: "openai-compatible:deepseek-v4-flash",
+					timestamp: "2026-08-25T10:00:02.000Z",
+				}),
+			);
+
+		const loaded = await persistence.load("session-1");
+		if (loaded.isErr()) throw loaded.error;
+		expect(loaded.value.snapshot.entries.map((entry) => entry.id)).toEqual(["operation-1:input", "assistant-1"]);
+		expect(loaded.value.operationRecords).toEqual([]);
+		expect(loaded.value.journalFacts.every((fact) => fact.kind === "entry")).toBe(true);
+
+		const host = createRuntimeHost({ persistence, createId: ids("ignored") });
+		const resumed = await host.openSession({
+			kind: "resume",
+			id: "session-1",
+			cwd: "/workspace",
+			controllerId: "desktop",
+		});
+		if (resumed.isErr()) throw resumed.error;
+		const snapshot = await resumed.value.snapshot();
+		if (snapshot.isErr()) throw snapshot.error;
+		expect(snapshot.value.entries.map((entry) => entry.id)).toEqual(["operation-1:input", "assistant-1"]);
+		await resumed.value.close();
+	});
 });

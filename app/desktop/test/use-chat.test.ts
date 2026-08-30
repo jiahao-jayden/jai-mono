@@ -30,6 +30,12 @@ describe("useChat projection", () => {
 		expect(message).not.toContain("api-key");
 	});
 
+	test("打开失败不把骨架屏留住，也不泄露内部错误", () => {
+		const message = chatFailureMessage({ operation: "load", code: "desktop_agent.acp_request_failed" });
+		expect(message).toBe("会话记录无法打开。这条会话的执行日志已无法读取。");
+		expect(message).not.toContain("Could not load");
+	});
+
 	test("snapshot 替换本地消息，增量按 item id upsert", () => {
 		const snapshotUpdate: DesktopAgentProjectionUpdate = {
 			type: "snapshot",

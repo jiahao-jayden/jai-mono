@@ -113,9 +113,22 @@ export function useChat(options: UseChatOptions): Chat {
 			artifacts: [],
 		});
 		dispatcher ??= createDesktopAgentEventDispatcher();
-		return dispatcher.subscribe(sessionId, (update) => {
+		const unsubscribe = dispatcher.subscribe(sessionId, (update) => {
 			setState((current) => applyChatProjectionUpdate(current, update));
 		});
+		void dispatcher.refresh(sessionId).catch((error) => {
+			const failure = getDesktopRemoteRpcFailure(error);
+			setState((previous) =>
+				previous.sessionId !== sessionId
+					? previous
+					: {
+							...previous,
+							error: chatFailureMessage({ operation: "load", code: failure?.tag }),
+							isLoading: false,
+						},
+			);
+		});
+		return unsubscribe;
 	}, [options.id]);
 
 	const dispatchQueueHead = useCallback(async () => {
@@ -376,7 +389,7 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 
 export function chatFailureMessage(input: {
 	readonly code?: string;
-	readonly operation: "message" | "queue" | "runtime";
+	readonly operation: "message" | "queue" | "runtime" | "load";
 	readonly reason?: DesktopAgentCreationFailureReason;
 }): string {
 	switch (input.code) {
@@ -422,12 +435,14 @@ function agentCreationFailureMessage(reason: DesktopAgentCreationFailureReason |
 	}
 }
 
-function defaultChatFailureMessage(operation: "message" | "queue" | "runtime"): string {
+function defaultChatFailureMessage(operation: "message" | "queue" | "runtime" | "load"): string {
 	switch (operation) {
 		case "queue":
 			return "队列消息未发送。请稍后重试。";
 		case "runtime":
 			return "当前响应未完成。请重试。";
+		case "load":
+			return "会话记录无法打开。这条会话的执行日志已无法读取。";
 		case "message":
 			return "消息未发送。请稍后重试。";
 	}

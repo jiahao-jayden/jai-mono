@@ -1,6 +1,8 @@
 export {
 	connectJaiRuntimeHost,
+	isLocalRuntimeHostStale,
 	RuntimeHostClientLaunchFailed,
+	stopLocalRuntimeHost,
 	type ConnectJaiRuntimeHostOptions,
 	type RuntimeHostClientConnectError,
 } from "./protocol/acp-v2/launcher";

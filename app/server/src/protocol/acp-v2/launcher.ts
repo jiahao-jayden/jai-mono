@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { readFile, stat, unlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
@@ -30,9 +31,9 @@ export interface ConnectJaiRuntimeHostOptions {
 }
 
 /**
- * Client-only launcher for Desktop/CLI. It first joins an existing Host; only
- * when none exists does it spawn the packaged daemon. This module imports no
- * SQLite adapter, RuntimeHost, or Coding Agent implementation.
+ * Client-only launcher for Desktop/CLI. It joins a live Host only when that
+ * process is at least as new as the Runtime Host entrypoint on disk; an older
+ * lock is replaced so `desktop:dev` rebuilds are not silently ignored.
  */
 export async function connectJaiRuntimeHost(
 	options: ConnectJaiRuntimeHostOptions = {},
@@ -40,10 +41,15 @@ export async function connectJaiRuntimeHost(
 	const environment = options.environment ?? process.env;
 	const dataDirectory = options.dataDirectory ?? resolveJaiDataDirectory(environment);
 	const endpoint = options.endpoint ?? localAcpV2EndpointFor(dataDirectory);
+	const lockPath = join(dataDirectory, "runtime-host.lock");
+	const entrypoint = options.runtimeHostEntrypoint ?? packagedRuntimeHostEntrypoint();
 	const connected = await openLocalAcpV2Client(endpoint);
-	if (connected.isOk()) return connected;
+	if (connected.isOk()) {
+		if (!(await isLocalRuntimeHostStale(lockPath, entrypoint))) return connected;
+		await connected.value.close();
+		await stopLocalRuntimeHost(lockPath, endpoint);
+	}
 	try {
-		const entrypoint = options.runtimeHostEntrypoint ?? packagedRuntimeHostEntrypoint();
 		const runtimeEnvironment = { ...environment, JAI_HOME: dataDirectory, JAI_RUNTIME_ENDPOINT: endpoint };
 		if (options.launchRuntimeHost) {
 			options.launchRuntimeHost({ entrypoint, environment: runtimeEnvironment });
@@ -75,13 +81,67 @@ export async function connectJaiRuntimeHost(
 		new RuntimeHostClientLaunchFailed({
 			message: `Runtime Host did not become available at "${endpoint}"`,
 			endpoint,
-			cause: connected.error,
+			cause: connected.isErr() ? connected.error : undefined,
 		}),
 	);
+}
+
+/** True when the on-disk Host bundle is newer than the process holding the lock. */
+export async function isLocalRuntimeHostStale(lockPath: string, entrypoint: string): Promise<boolean> {
+	let entrypointMtimeMs: number;
+	try {
+		entrypointMtimeMs = (await stat(entrypoint)).mtimeMs;
+	} catch {
+		return false;
+	}
+	try {
+		const parsed = JSON.parse(await readFile(lockPath, "utf8")) as { readonly createdAt?: unknown };
+		if (typeof parsed.createdAt !== "string") return false;
+		const createdAt = Date.parse(parsed.createdAt);
+		return Number.isFinite(createdAt) && entrypointMtimeMs > createdAt;
+	} catch {
+		return false;
+	}
+}
+
+/** Stops the lock holder so the next connect can spawn the current Host bundle. */
+export async function stopLocalRuntimeHost(lockPath: string, endpoint: string): Promise<void> {
+	const pid = await lockPid(lockPath);
+	if (pid !== undefined) {
+		try {
+			process.kill(pid, "SIGKILL");
+		} catch {
+			// The lock holder is already gone.
+		}
+		const deadline = Date.now() + 500;
+		while (Date.now() < deadline && isPidAlive(pid)) {
+			await new Promise<void>((resolve) => setTimeout(resolve, 25));
+		}
+	}
+	await unlink(lockPath).catch(() => {});
+	if (process.platform !== "win32") await unlink(endpoint).catch(() => {});
 }
 
 function packagedRuntimeHostEntrypoint(): string {
 	const require = createRequire(import.meta.url);
 	const packageManifest = require.resolve("@jai/server/package.json");
 	return join(dirname(packageManifest), "dist", "main.js");
+}
+
+async function lockPid(lockPath: string): Promise<number | undefined> {
+	try {
+		const parsed = JSON.parse(await readFile(lockPath, "utf8")) as { readonly pid?: unknown };
+		return typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && parsed.pid > 0 ? parsed.pid : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function isPidAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
 }

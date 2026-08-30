@@ -351,6 +351,21 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
+	test("does not create a Session when resume fails because the journal cannot be read", async () => {
+		const client = new FakeAcpClient();
+		client.resumeError = 'Could not load Session "session-1"';
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await expect(host.ensureSessionProjection("session-1")).rejects.toMatchObject({
+			_tag: "desktop_agent.acp_request_failed",
+			method: "session/resume",
+		});
+		expect(client.methods).toEqual(["initialize", "session/resume"]);
+		host.close();
+	});
+
 	test("projects the read-only trajectory protocol through ACP push without opening a Session controller", async () => {
 		const client = new FakeAcpClient();
 		const events: DesktopAgentEventEnvelope[] = [];
@@ -385,6 +400,7 @@ class FakeAcpClient implements LocalAcpV2Client {
 	readonly #listeners = new Set<(notification: AcpJsonRpcNotification) => void>();
 	readonly #requests = new Set<(request: AcpJsonRpcRequest) => void>();
 	#resumeCalls = 0;
+	resumeError?: string;
 
 	async request(method: string, params?: unknown): Promise<ResultType<unknown, AcpLocalClientError>> {
 		this.methods.push(method);
@@ -415,7 +431,10 @@ class FakeAcpClient implements LocalAcpV2Client {
 		}
 		if (method === "session/resume") {
 			this.#resumeCalls += 1;
-			if (this.#resumeCalls === 1) return Result.err({} as AcpLocalClientError);
+			if (this.resumeError) return Result.err({ message: this.resumeError } as AcpLocalClientError);
+			if (this.#resumeCalls === 1) {
+				return Result.err({ message: 'Session "session-1" does not exist' } as AcpLocalClientError);
+			}
 		}
 		return Result.ok({});
 	}
