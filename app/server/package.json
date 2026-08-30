@@ -30,7 +30,7 @@
 		"./package.json": "./package.json"
 	},
 	"scripts": {
-		"build": "bun run --cwd ../../packages/trajectory-ui build && bun build src/main.ts src/stdio-main.ts src/acp-client.ts src/desktop-catalog-client.ts src/desktop-configuration-client.ts src/model-catalog-client.ts --target=node --format=esm --external @ff-labs/fff-node --outdir dist && bun scripts/stage-fff-runtime.mts && bun scripts/stage-trajectory-browser.mts",
+		"build": "bun run --cwd ../../packages/trajectory-ui build && bun build src/main.ts src/stdio-main.ts src/acp-client.ts src/desktop-catalog-client.ts src/desktop-configuration-client.ts src/model-catalog-client.ts --target=node --format=esm --conditions=bun --external @ff-labs/fff-node --outdir dist && bun scripts/stage-fff-runtime.mts && bun scripts/stage-trajectory-browser.mts",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"test": "bun test"
 	},

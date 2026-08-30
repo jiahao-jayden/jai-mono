@@ -7,22 +7,27 @@
 	"exports": {
 		"./connector": {
 			"types": "./dist/connector/index.d.ts",
+			"bun": "./src/connector/index.ts",
 			"import": "./dist/connector.js"
 		},
 		"./agent-plugins": {
 			"types": "./dist/agent-plugins/index.d.ts",
+			"bun": "./src/agent-plugins/index.ts",
 			"import": "./dist/agent-plugins.js"
 		},
 		"./skills": {
 			"types": "./dist/skills/index.d.ts",
+			"bun": "./src/skills/index.ts",
 			"import": "./dist/skills.js"
 		},
 		"./search": {
 			"types": "./dist/search/index.d.ts",
+			"bun": "./src/search/index.ts",
 			"import": "./dist/search.js"
 		},
 		"./mcp": {
 			"types": "./dist/mcp/index.d.ts",
+			"bun": "./src/mcp/index.ts",
 			"import": "./dist/mcp.js"
 		}
 	},
