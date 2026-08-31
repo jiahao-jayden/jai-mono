@@ -36,6 +36,18 @@ _Avoid_: global configuration, generic deep merge
 `@jai/extension/mcp` 提供的 MCP capability provider，拥有 per-session transport、client、重连、tool projection 与 server 配置解析；Coding Agent 仅通过通用动态 catalog 装配其工具。
 _Avoid_: Coding Agent MCP runtime, host-managed MCP client, Agent Plugin discovery
 
-**Agent Trajectory**:
-按单个 Session 展示 turn、模型尝试、流式摘要、usage、工具执行、耗时和安全错误的只读运行轨迹。Server 从 Session/Operation journal 与可丢弃 live events 生成 wire-safe DTO；共享轨迹界面模块通过小而稳定的 `TrajectoryDataSource` interface 在 Browser 与 Desktop 中消费同一 record identity 和交互状态。Browser 使用 REST/SSE；Desktop 经 Server 现有本机 ACP v2 连接上的 JAI namespaced read-only protocol、Desktop Main `LocalAcpV2Client` 与 Electron IPC/push 消费，observer 不取得 Session controller。两者都不成为事实源，Server 不依赖 Electron。
-_Avoid_: observability database, trace store, chat history, iframe trajectory, localhost-backed Desktop view, Electron adapter in Server, catalog/config trajectory tunnel
+**Telemetry Context**:
+领域代码可见的全部观测接口，只暴露 `startSpan`；返回的 span 提供 `addEvent`、`setAttributes`、`setStatus`。它是一个 port，不知道数据流向哪里，也不拥有任何长期保存的数据。整体替换为 no-op 时，Agent、工具、Journal 与用户结果的行为必须完全不变。
+_Avoid_: logger, tracer SDK, observability service, event bus
+
+**Telemetry Sink**:
+`Telemetry Context` 的具体实现（adapter），决定记录最终去哪：no-op（产品默认）、in-memory（仅测试替身）、本地文件、stderr、OTLP exporter。所有去向都在同一接口背后，没有「诊断日志」与「遥测上报」两套并行机制；宿主可同时启用多个，单个 sink 失败逐个隔离，不影响其他 sink，也不改变任何 `Result`。内容治理在扇出**之前**统一做一次，sink 只接收已投影的安全记录，自己不再脱敏。
+_Avoid_: telemetry backend, exporter service, trace store, diagnostic logger
+
+**观测不写 durable fact**:
+观测不拥有任何长期保存的数据：span、事件、队列、关联状态都是可丢弃的内存状态。时延在运行时现场测量并随记录走，不写入 Operation Journal、不写 SQLite、不新增表。本地文件 sink 输出的是**可删除的诊断产物**：它提供事后可见性，但没有保留保证、可被清理、可被关闭，不是事实来源、不参与恢复、不得被任何代码当权威数据读，也不为它建查询接口、协议或 UI。SQLite sink 在接口上成立但未实现——启用它等于让观测重新变成持久化的 trace store，须作为新需求重新确认数据治理、保留期与所有权。
+_Avoid_: trajectory record, telemetry storage, trace journal, observability database, local span history
+
+**Telemetry Content Reference**:
+观测中一切可能承载用户内容的字段的唯一表达形式，为 `omitted` / `hash` / `redacted_excerpt` / `approved_pointer` 的联合类型，默认恒为 `omitted`。它由类型系统强制，用来阻止「为了排查先把内容塞进 attributes」的惯性；标记敏感却无人执行脱敏，等同于没有脱敏。
+_Avoid_: sensitive flag, redaction hint, debug payload
