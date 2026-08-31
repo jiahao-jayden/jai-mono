@@ -144,27 +144,6 @@ describe("createDesktopRouter — 输入校验", () => {
 		expect(calls).toEqual([{ name: "resolvePermission", args: [{ requestId: "req-1", decision: "alwaysAllow" }] }]);
 	});
 
-	test("trajectory 只接受固定 Session、cursor 与内容 scope DTO", () => {
-		const { router: r } = router({
-			agentHost: {
-				trajectorySnapshot: () => ({ ok: true, value: { snapshot: {} } }),
-				trajectorySubscribe: () => ({ ok: true, value: { subscriptionId: "trajectory-1" } }),
-				trajectoryUnsubscribe: () => undefined,
-			},
-		});
-		expect(() => r.trajectory.snapshot(event, { sessionId: "", scopes: [] })).toThrow();
-		expect(() => r.trajectory.subscribe(event, { sessionId: "s1", cursor: "", scopes: [] })).toThrow();
-		expect(() => r.trajectory.snapshot(event, { sessionId: "s1", scopes: ["all"] })).toThrow();
-		expect(r.trajectory.snapshot(event, { sessionId: "s1", scopes: ["final_text"] })).toEqual({
-			ok: true,
-			value: { snapshot: {} },
-		});
-		expect(r.trajectory.subscribe(event, { sessionId: "s1", cursor: "2" })).toEqual({
-			ok: true,
-			value: { subscriptionId: "trajectory-1" },
-		});
-		expect(r.trajectory.unsubscribe(event, { subscriptionId: "trajectory-1" })).toBeUndefined();
-	});
 });
 
 describe("createDesktopRouter — 行为", () => {

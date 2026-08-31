@@ -1,7 +1,6 @@
 import { createServer, type Server, type Socket } from "node:net";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { RuntimeHost } from "../../runtime";
-import type { TrajectoryBrowserLauncher, TrajectoryFeed } from "../../trajectory";
 import { createAcpV2Agent } from "./agent";
 import type {
 	AcpImplementationInfo,
@@ -25,8 +24,6 @@ export interface LocalAcpV2Server {
 export interface OpenLocalAcpV2ServerOptions {
 	readonly endpoint: string;
 	readonly host: RuntimeHost;
-	readonly trajectoryFeed?: TrajectoryFeed;
-	readonly trajectoryBrowserLauncher?: TrajectoryBrowserLauncher;
 	readonly info: AcpImplementationInfo;
 }
 
@@ -41,7 +38,7 @@ export async function openLocalAcpV2Server(
 	const sockets = new Set<Socket>();
 	const server = createServer((socket) => {
 		sockets.add(socket);
-		openConnection(socket, options.host, options.info, options.trajectoryFeed, options.trajectoryBrowserLauncher);
+		openConnection(socket, options.host, options.info);
 		socket.once("close", () => sockets.delete(socket));
 	});
 	try {
@@ -76,19 +73,11 @@ class NodeLocalAcpV2Server implements LocalAcpV2Server {
 	}
 }
 
-function openConnection(
-	socket: Socket,
-	host: RuntimeHost,
-	info: AcpImplementationInfo,
-	trajectoryFeed?: TrajectoryFeed,
-	trajectoryBrowserLauncher?: TrajectoryBrowserLauncher,
-): void {
+function openConnection(socket: Socket, host: RuntimeHost, info: AcpImplementationInfo): void {
 	const clientRequests = new PendingClientRequests(socket);
 	const agent = createAcpV2Agent({
 		host,
 		info,
-		...(trajectoryFeed ? { trajectoryFeed } : {}),
-		...(trajectoryBrowserLauncher ? { trajectoryBrowserLauncher } : {}),
 		notificationSink: (notification) => write(socket, notification),
 		clientRequestSink: clientRequests,
 	});

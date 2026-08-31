@@ -25,7 +25,6 @@
 		"@jai/connector": "workspace:*",
 		"@jai/extension": "workspace:*",
 		"@jai/server": "workspace:*",
-		"@jai/trajectory-ui": "workspace:*",
 		"@lobehub/icons": "^5.15.0",
 		"@monaco-editor/react": "^4.7.0",
 		"@pierre/trees": "^1.0.0-beta.6",

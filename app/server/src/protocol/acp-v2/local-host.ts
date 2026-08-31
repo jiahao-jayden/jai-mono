@@ -5,7 +5,6 @@ import type { SqliteRuntimeAgentSettings } from "../../config";
 import type { RuntimeConnectorOAuthController } from "../../connectors";
 import type { SqliteRuntimeModelCatalog } from "../../model-catalog";
 import { acquireLocalRuntimeOwner, type LocalRuntimeOwner, type RuntimeHost } from "../../runtime";
-import type { TrajectoryBrowserLauncher, TrajectoryFeed } from "../../trajectory";
 import type { SqliteWorkspaceTrust } from "../../workspaces";
 import {
 	createDesktopCatalogControl,
@@ -33,8 +32,6 @@ export class LocalRuntimeHostOpenFailed extends TaggedError("runtime_host.local_
 export interface OpenLocalRuntimeHostOptions {
 	readonly dataDirectory: string;
 	readonly host: RuntimeHost;
-	readonly trajectoryFeed?: TrajectoryFeed;
-	readonly trajectoryBrowserLauncher?: TrajectoryBrowserLauncher;
 	readonly info: AcpImplementationInfo;
 	/** Desktop Catalog facts stay Desktop-owned, but the Host owns their one SQLite writer. */
 	readonly desktopCatalog?: DesktopCatalogAccess;
@@ -99,8 +96,6 @@ export async function openLocalRuntimeHost(
 			endpoint,
 			host: options.host,
 			info: options.info,
-			...(options.trajectoryFeed ? { trajectoryFeed: options.trajectoryFeed } : {}),
-			...(options.trajectoryBrowserLauncher ? { trajectoryBrowserLauncher: options.trajectoryBrowserLauncher } : {}),
 		});
 		if (transport.isErr()) throw transport.error;
 		acpTransport = transport.value;

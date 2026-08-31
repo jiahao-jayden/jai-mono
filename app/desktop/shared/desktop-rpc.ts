@@ -1,11 +1,5 @@
 import { type Static, Type } from "@sinclair/typebox";
 import type { ConnectorActionPermission } from "@jai/connector";
-import type {
-	TrajectoryContentScope,
-	TrajectoryItem,
-	TrajectorySnapshot,
-	TrajectoryWireError,
-} from "@jai/trajectory-ui";
 import type { CodingSession, MoveSessionInput, Project, SessionListCursor, SessionListPage } from "./session";
 
 export type { CodingSession, MoveSessionInput, Project, SessionListCursor, SessionListPage } from "./session";
@@ -548,56 +542,6 @@ export interface DesktopAgentSnapshot {
 	readonly lastSeq: number;
 }
 
-export const desktopTrajectoryScopeSchema = Type.Union([
-	Type.Literal("prompt"),
-	Type.Literal("final_text"),
-	Type.Literal("reasoning"),
-	Type.Literal("tool_input"),
-	Type.Literal("tool_output"),
-]);
-
-export const desktopTrajectorySnapshotInputSchema = Type.Object(
-	{
-		sessionId: Type.String({ minLength: 1 }),
-		scopes: Type.Optional(Type.Array(desktopTrajectoryScopeSchema)),
-	},
-	{ additionalProperties: false },
-);
-
-export interface DesktopTrajectorySnapshotInput {
-	readonly sessionId: string;
-	readonly scopes?: readonly TrajectoryContentScope[];
-}
-
-export const desktopTrajectorySubscribeInputSchema = Type.Object(
-	{
-		sessionId: Type.String({ minLength: 1 }),
-		cursor: Type.String({ minLength: 1 }),
-		scopes: Type.Optional(Type.Array(desktopTrajectoryScopeSchema)),
-	},
-	{ additionalProperties: false },
-);
-
-export interface DesktopTrajectorySubscribeInput extends DesktopTrajectorySnapshotInput {
-	readonly cursor: string;
-}
-
-export const desktopTrajectoryUnsubscribeInputSchema = Type.Object(
-	{ subscriptionId: Type.String({ minLength: 1 }) },
-	{ additionalProperties: false },
-);
-
-export interface DesktopTrajectoryUnsubscribeInput {
-	readonly subscriptionId: string;
-}
-
-export type DesktopTrajectoryResult<T> =
-	| { readonly ok: true; readonly value: T }
-	| { readonly ok: false; readonly error: TrajectoryWireError };
-
-export type DesktopTrajectorySnapshotResult = DesktopTrajectoryResult<{ readonly snapshot: TrajectorySnapshot }>;
-export type DesktopTrajectorySubscribeResult = DesktopTrajectoryResult<{ readonly subscriptionId: string }>;
-
 export type DesktopAgentEvent =
 	| { readonly type: "status"; readonly status: DesktopAgentStatus }
 	| { readonly type: "transcript_upsert"; readonly item: DesktopTranscriptItem }
@@ -607,7 +551,6 @@ export type DesktopAgentEvent =
 	| { readonly type: "model_catalog_updated" }
 	| { readonly type: "connector_oauth_completed"; readonly connectorId: string }
 	| { readonly type: "connector_oauth_failed"; readonly connectorId: string; readonly message: string }
-	| { readonly type: "trajectory_update"; readonly subscriptionId: string; readonly item: TrajectoryItem }
 	| {
 			readonly type: "runtime_error";
 			readonly error: { readonly code: string };
@@ -794,11 +737,6 @@ export interface DesktopApi {
 		resolvePermission(resolution: DesktopPermissionResolution): void;
 		getSnapshot(sessionId: string): Promise<DesktopAgentSnapshot>;
 		close(sessionId: string): void;
-	};
-	readonly trajectory: {
-		snapshot(input: DesktopTrajectorySnapshotInput): Promise<DesktopTrajectorySnapshotResult>;
-		subscribe(input: DesktopTrajectorySubscribeInput): Promise<DesktopTrajectorySubscribeResult>;
-		unsubscribe(input: DesktopTrajectoryUnsubscribeInput): void;
 	};
 }
 

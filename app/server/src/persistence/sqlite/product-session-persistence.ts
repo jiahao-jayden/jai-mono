@@ -667,60 +667,22 @@ function isOperationRecord(value: unknown): value is OperationRecord {
 	switch (value.type) {
 		case "operation_accepted":
 			return typeof value.inputEntryId === "string" && typeof value.kind === "string";
-		case "turn_started":
-			return typeof value.turnId === "string";
 		case "model_attempted":
 			return (
-				typeof value.turnId === "string" &&
 				typeof value.attemptId === "string" &&
 				typeof value.assistantEntryId === "string" &&
 				typeof value.modelSnapshotId === "string"
-			);
-		case "model_stream_settled":
-			return (
-				typeof value.turnId === "string" &&
-				typeof value.attemptId === "string" &&
-				typeof value.assistantEntryId === "string" &&
-				(value.firstOutputAt === null || typeof value.firstOutputAt === "string") &&
-				(value.lastOutputAt === null || typeof value.lastOutputAt === "string") &&
-				typeof value.chunkCount === "number" &&
-				isJsonObject(value.chunkTypeCounts) &&
-				typeof value.chunkTypeCounts.text_delta === "number" &&
-				typeof value.chunkTypeCounts.thinking_delta === "number" &&
-				typeof value.chunkTypeCounts.toolcall_delta === "number" &&
-				(value.outcome === "completed" ||
-					value.outcome === "failed" ||
-					value.outcome === "aborted" ||
-					value.outcome === "discarded")
 			);
 		case "usage_settled":
 			return typeof value.attemptId === "string" && isJsonObject(value.usage);
 		case "tool_dispatched":
 			return (
-				typeof value.turnId === "string" &&
 				typeof value.toolCallId === "string" &&
 				typeof value.toolName === "string" &&
 				typeof value.assistantEntryId === "string" &&
 				typeof value.resultEntryId === "string" &&
 				isJsonObject(value.args) &&
 				typeof value.argsHash === "string"
-			);
-		case "tool_timing_settled":
-			return (
-				typeof value.turnId === "string" &&
-				typeof value.toolCallId === "string" &&
-				typeof value.startedAt === "string" &&
-				typeof value.finishedAt === "string" &&
-				(value.outcome === "completed" || value.outcome === "failed")
-			);
-		case "turn_finished":
-			return (
-				typeof value.turnId === "string" &&
-				(value.assistantEntryId === undefined || typeof value.assistantEntryId === "string") &&
-				(value.outcome === "completed" ||
-					value.outcome === "failed" ||
-					value.outcome === "aborted" ||
-					value.outcome === "blocked")
 			);
 		case "input_queued":
 			return (

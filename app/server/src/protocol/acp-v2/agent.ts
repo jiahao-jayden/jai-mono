@@ -10,7 +10,6 @@ import type {
 	RuntimeSessionSnapshot,
 } from "../../runtime";
 import type { RuntimeSessionConfigurationChange, RuntimeSessionConfigurationSnapshot } from "../../sessions";
-import { type AcpTrajectoryProtocol, createAcpTrajectoryProtocol } from "./trajectory";
 import type {
 	AcpJsonRpcNotification,
 	AcpJsonRpcRequest,
@@ -34,21 +33,10 @@ class DefaultAcpV2Agent implements AcpV2Agent {
 	readonly #unsubscribes = new Map<string, () => void>();
 	readonly #outbound: AcpJsonRpcNotification[] = [];
 	readonly #controllerId = crypto.randomUUID();
-	readonly #trajectory?: AcpTrajectoryProtocol;
 	#initialized = false;
-	#clientName = "";
 	#handling = 0;
 
-	constructor(private readonly options: AcpV2AgentOptions) {
-		if (options.trajectoryFeed) {
-			this.#trajectory = createAcpTrajectoryProtocol({
-				feed: options.trajectoryFeed,
-				publish: (notification) => this.publishNotification(notification),
-				...(options.trajectoryBrowserLauncher ? { browserLauncher: options.trajectoryBrowserLauncher } : {}),
-				canOpenBrowser: () => this.#clientName === "jai-cli",
-			});
-		}
-	}
+	constructor(private readonly options: AcpV2AgentOptions) {}
 
 	async handle(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
 		this.#handling += 1;
@@ -85,7 +73,7 @@ class DefaultAcpV2Agent implements AcpV2Agent {
 						response = await this.closeSession(request);
 						break;
 					default:
-						response = await this.trajectory(request);
+						response = this.respondError(request.id, -32601, `Unsupported ACP method "${request.method}"`);
 				}
 			}
 			return [...response, ...this.drain()];
@@ -105,7 +93,6 @@ class DefaultAcpV2Agent implements AcpV2Agent {
 			return this.respondError(request.id, -32602, "Invalid initialize parameters");
 		}
 		this.#initialized = true;
-		this.#clientName = typeof params.info.name === "string" ? params.info.name : "";
 		return this.respond(request.id, {
 			protocolVersion: ACP_V2,
 			capabilities: { session: {} },
@@ -303,19 +290,12 @@ class DefaultAcpV2Agent implements AcpV2Agent {
 	}
 
 	async close(): Promise<void> {
-		this.#trajectory?.close();
 		const sessions = [...this.#sessions.values()];
 		const unsubscribes = [...this.#unsubscribes.values()];
 		this.#sessions.clear();
 		this.#unsubscribes.clear();
 		for (const unsubscribe of unsubscribes) unsubscribe();
 		await Promise.all(sessions.map((session) => session.close()));
-	}
-
-	private async trajectory(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
-		const handled = await this.#trajectory?.handle(request.method, request.params);
-		if (!handled) return this.respondError(request.id, -32601, `Unsupported ACP method "${request.method}"`);
-		return this.respond(request.id, handled);
 	}
 
 	drain(): readonly AcpJsonRpcNotification[] {

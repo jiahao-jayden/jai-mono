@@ -15,7 +15,6 @@ const accepted = (operationId = "op-1", inputEntryId = "entry-user-1"): Operatio
 const attempted = (operationId = "op-1"): OperationRecord => ({
 	type: "model_attempted",
 	operationId,
-	turnId: "turn-1",
 	attemptId: "attempt-1",
 	assistantEntryId: "entry-assistant-1",
 	modelSnapshotId: "model-1",
@@ -33,7 +32,6 @@ const settled = (operationId = "op-1"): OperationRecord => ({
 const dispatched = (operationId = "op-1"): OperationRecord => ({
 	type: "tool_dispatched",
 	operationId,
-	turnId: "turn-1",
 	toolCallId: "call-1",
 	toolName: "Write",
 	assistantEntryId: "entry-assistant-1",
@@ -41,27 +39,6 @@ const dispatched = (operationId = "op-1"): OperationRecord => ({
 	argsHash: "hash-1",
 	resultEntryId: "entry-result-1",
 	timestamp: "2026-08-25T00:00:03.000Z",
-});
-
-const turnStarted = (operationId = "op-1"): OperationRecord => ({
-	type: "turn_started",
-	operationId,
-	turnId: "turn-1",
-	timestamp: "2026-08-25T00:00:00.500Z",
-});
-
-const streamSettled = (operationId = "op-1"): Extract<OperationRecord, { readonly type: "model_stream_settled" }> => ({
-	type: "model_stream_settled",
-	operationId,
-	turnId: "turn-1",
-	attemptId: "attempt-1",
-	assistantEntryId: "entry-assistant-1",
-	firstOutputAt: null,
-	lastOutputAt: null,
-	chunkCount: 0,
-	chunkTypeCounts: { text_delta: 0, thinking_delta: 0, toolcall_delta: 0 },
-	outcome: "failed",
-	timestamp: "2026-08-25T00:00:02.500Z",
 });
 
 const queuedInput = (operationId = "op-1"): OperationRecord => ({
@@ -99,7 +76,7 @@ describe("recoverOperation", () => {
 	});
 
 	test("an uncommitted model response is provider-interrupted", () => {
-		const result = recover([accepted(), turnStarted(), attempted(), settled()], ["entry-user-1"]);
+		const result = recover([accepted(), attempted(), settled()], ["entry-user-1"]);
 
 		expect(result.isOk()).toBe(true);
 		if (result.isErr()) throw result.error;
@@ -108,34 +85,10 @@ describe("recoverOperation", () => {
 			operationId: "op-1",
 			attemptId: "attempt-1",
 		});
-	});
-
-	test("timing summaries keep the existing recovery verdict and record explicit zero-output failure", () => {
-		const result = recover(
-			[accepted(), turnStarted(), attempted(), settled(), streamSettled()],
-			["entry-user-1"],
-		);
-
-		expect(result.isOk()).toBe(true);
-		if (result.isErr()) throw result.error;
-		expect(result.value).toEqual({
-			status: "provider_interrupted",
-			operationId: "op-1",
-			attemptId: "attempt-1",
-		});
-	});
-
-	test("rejects a stream summary that mismatches its model attempt identity", () => {
-		const invalid: OperationRecord = { ...streamSettled(), assistantEntryId: "other-assistant" };
-		const result = recover([accepted(), turnStarted(), attempted(), settled(), invalid], ["entry-user-1"]);
-
-		expect(result.isErr()).toBe(true);
-		if (result.isOk()) throw new Error("Expected corrupted timing record");
-		expect(result.error._tag).toBe("operations.corrupted_log");
 	});
 
 	test("T1 without its Session Journal result is indeterminate and never a synthetic tool error", () => {
-		const result = recover([accepted(), turnStarted(), attempted(), settled(), dispatched()], ["entry-user-1", "entry-assistant-1"]);
+		const result = recover([accepted(), attempted(), settled(), dispatched()], ["entry-user-1", "entry-assistant-1"]);
 
 		expect(result.isOk()).toBe(true);
 		if (result.isErr()) throw result.error;
@@ -154,7 +107,7 @@ describe("recoverOperation", () => {
 
 	test("a durable tool result makes the operation ready to continue", () => {
 		const result = recover(
-			[accepted(), turnStarted(), attempted(), settled(), dispatched()],
+			[accepted(), attempted(), settled(), dispatched()],
 			["entry-user-1", "entry-assistant-1", "entry-result-1"],
 		);
 
@@ -211,7 +164,7 @@ describe("recoverOperation", () => {
 
 	test("infers a terminal outcome from the latest durable assistant result until the Host finalizes it", () => {
 		const result = recover(
-			[accepted(), turnStarted(), attempted(), settled()],
+			[accepted(), attempted(), settled()],
 			["entry-user-1", "entry-assistant-1"],
 			new Map([["entry-assistant-1", "completed"]]),
 		);
@@ -227,7 +180,7 @@ describe("recoverOperation", () => {
 	});
 
 	test("rejects a T1 that does not belong to a durable model response", () => {
-		const result = recover([accepted(), turnStarted(), dispatched()], ["entry-user-1"]);
+		const result = recover([accepted(), dispatched()], ["entry-user-1"]);
 
 		expect(result.isErr()).toBe(true);
 		if (result.isOk()) throw new Error("Expected corruption result");

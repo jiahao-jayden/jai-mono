@@ -15,7 +15,6 @@ export interface OpenConfiguredRuntimeHostOptions {
 	/** Alternate Host source used by non-local products and deterministic tests. */
 	readonly capabilitySource?: RuntimeCapabilitySource;
 	readonly endpoint?: string;
-	readonly browserAssetsDirectory?: string;
 	readonly info?: AcpImplementationInfo;
 }
 
@@ -100,9 +99,6 @@ export async function openConfiguredRuntimeHost(
 			version: environment.JAI_VERSION ?? "0.0.0",
 		},
 		...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
-		...(options.browserAssetsDirectory === undefined
-			? {}
-			: { browserAssetsDirectory: options.browserAssetsDirectory }),
 	});
 	return opened;
 }

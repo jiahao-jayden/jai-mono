@@ -12,8 +12,6 @@ export type { LocalAcpV2Server, OpenLocalAcpV2ServerOptions } from "./local-tran
 export { AcpLocalTransportListenFailed, openLocalAcpV2Server } from "./local-transport";
 export type { AcpStdioBridgeOptions } from "./stdio-bridge";
 export { AcpStdioBridgeOpenFailed, AcpStdioBridgeRunFailed, runAcpStdioBridge } from "./stdio-bridge";
-export type { AcpTrajectoryProtocol, AcpTrajectoryResult } from "./trajectory";
-export { createAcpTrajectoryProtocol } from "./trajectory";
 export type {
 	AcpClientRequestSink,
 	AcpImplementationInfo,

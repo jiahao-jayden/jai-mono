@@ -9,16 +9,6 @@ import { ProductSqliteDatabase, SqliteDesktopCatalogAccess, SqliteProductSession
 import type { AcpImplementationInfo } from "../protocol/acp-v2";
 import { type LocalRuntimeHostServer, openLocalRuntimeHost } from "../protocol/acp-v2";
 import { InMemoryProductSessionPersistence } from "../sessions";
-import {
-	createRuntimeTrajectoryLiveSource,
-	createTrajectoryBrowserAssets,
-	createTrajectoryBrowserLauncher,
-	createTrajectoryFeed,
-	openTrajectoryHttpServer,
-	type TrajectoryCapability,
-	type TrajectoryContentScope,
-	type TrajectoryHttpServer,
-} from "../trajectory";
 import { SqliteWorkspaceTrust } from "../workspaces";
 import type { RuntimeHostConfigurationInvalid } from "./configuration";
 import { createRuntimeHost } from "./host";
@@ -44,8 +34,6 @@ export interface OpenJaiRuntimeServerOptions {
 	}) => ResultType<RuntimeOperationDriver, RuntimeHostConfigurationInvalid>;
 	readonly info: AcpImplementationInfo;
 	readonly endpoint?: string;
-	/** Optional packaged Browser bundle. Omitted in non-Browser hosts and tests. */
-	readonly browserAssetsDirectory?: string;
 }
 
 /** The process-wide Runtime Host resource: database, owner lease and local ACP endpoint. */
@@ -55,13 +43,6 @@ export interface JaiRuntimeServer {
 	readonly desktopCatalogEndpoint: string;
 	/** Private local channel for Server-owned, safe Desktop configuration projection. */
 	readonly desktopConfigurationEndpoint: string;
-	/** Process-local loopback origin for Browser and other explicit HTTP preview callers. */
-	readonly trajectoryOrigin: string;
-	/** Never bridge this capability issuer over ACP or Desktop IPC. */
-	issueTrajectoryCapability(input: {
-		readonly sessionId: string;
-		readonly scopes?: readonly TrajectoryContentScope[];
-	}): TrajectoryCapability;
 	close(): Promise<void>;
 }
 
@@ -76,7 +57,6 @@ export async function openJaiRuntimeServer(
 	let localHost: LocalRuntimeHostServer | undefined;
 	let connectorOAuth: RuntimeConnectorOAuth | undefined;
 	let modelCatalog: SqliteRuntimeModelCatalog | undefined;
-	let trajectoryHttp: TrajectoryHttpServer | undefined;
 	try {
 		database = await ProductSqliteDatabase.open(join(options.dataDirectory, "data.sqlite"));
 		const persistence = new SqliteProductSessionPersistence(database.connection);
@@ -102,25 +82,9 @@ export async function openJaiRuntimeServer(
 			initialAppState: () => emptyPersistedCodingSessionState(),
 			configurationPolicy: createRuntimeSessionConfigurationPolicy(agentSettings),
 		});
-		const trajectoryFeed = createTrajectoryFeed({
-			persistence,
-			desktopCatalog,
-			liveSource: createRuntimeTrajectoryLiveSource(host),
-		});
-		const openedTrajectoryHttp = await openTrajectoryHttpServer({
-			feed: trajectoryFeed,
-			...(options.browserAssetsDirectory
-				? { browserAssets: createTrajectoryBrowserAssets(options.browserAssetsDirectory) }
-				: {}),
-		});
-		if (openedTrajectoryHttp.isErr()) throw openedTrajectoryHttp.error;
-		trajectoryHttp = openedTrajectoryHttp.value;
-		const trajectoryBrowserLauncher = createTrajectoryBrowserLauncher(trajectoryHttp);
 		const opened = await openLocalRuntimeHost({
 			dataDirectory: options.dataDirectory,
 			host,
-			trajectoryFeed,
-			trajectoryBrowserLauncher,
 			info: options.info,
 			desktopCatalog,
 			desktopConfiguration: agentSettings,
@@ -131,10 +95,9 @@ export async function openJaiRuntimeServer(
 		});
 		if (opened.isErr()) throw opened.error;
 		localHost = opened.value;
-		return Result.ok(new DefaultJaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog, trajectoryHttp));
+		return Result.ok(new DefaultJaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog));
 	} catch (error) {
 		await localHost?.close().catch(() => {});
-		trajectoryHttp?.close();
 		connectorOAuth?.close();
 		modelCatalog?.close();
 		database?.close();
@@ -157,7 +120,6 @@ class DefaultJaiRuntimeServer implements JaiRuntimeServer {
 		private readonly database: ProductSqliteDatabase,
 		private readonly connectorOAuth: RuntimeConnectorOAuth,
 		private readonly modelCatalog: SqliteRuntimeModelCatalog,
-		private readonly trajectoryHttp: TrajectoryHttpServer,
 	) {
 		this.#localHost = localHost;
 	}
@@ -174,22 +136,10 @@ class DefaultJaiRuntimeServer implements JaiRuntimeServer {
 		return this.#localHost.desktopConfigurationEndpoint!;
 	}
 
-	get trajectoryOrigin(): string {
-		return this.trajectoryHttp.origin;
-	}
-
-	issueTrajectoryCapability(input: {
-		readonly sessionId: string;
-		readonly scopes?: readonly TrajectoryContentScope[];
-	}): TrajectoryCapability {
-		return this.trajectoryHttp.issue(input);
-	}
-
 	async close(): Promise<void> {
 		if (this.#closed) return;
 		this.#closed = true;
 		try {
-			this.trajectoryHttp.close();
 			await this.#localHost.close();
 		} finally {
 			try {

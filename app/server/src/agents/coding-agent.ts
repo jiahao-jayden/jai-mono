@@ -30,7 +30,6 @@ type CodingAgentOperationOptions = Omit<
 	"cwd" | "effectBoundary" | "requestApproval" | "session"
 >;
 type CodingAgentOperationConfiguration = Omit<CodingAgentOperationOptions, "fileCapabilities">;
-type CodingAssistantStopReason = Extract<CodingAgentMessage, { readonly role: "assistant" }>["stopReason"];
 
 export interface CodingAgentOperationDriverOptions {
 	/** Product configuration stays at the Server composition root, never inside the SDK. */
@@ -282,12 +281,6 @@ class CodingAgentOperation implements RuntimeOperation {
 		inputs: readonly RuntimeQueuedInput[],
 	): Promise<ResultType<RuntimeOperationOutcome, RuntimeOperationExecutionFailed>> {
 		const result = await this.agent.advance(inputs.map((input) => ({ text: input.text, entryId: input.entryId })));
-		const effectBoundary = operationEffectBoundary(this.input.effectBoundary);
-		try {
-			await effectBoundary?.flushTiming();
-		} catch (cause) {
-			return Result.err(this.failed("could not persist execution timing", cause));
-		}
 		if (result.isErr()) return Result.err(this.failed("failed", result.error));
 		return Result.ok(resolveOutcome(result.value.messages));
 	}
@@ -303,14 +296,6 @@ class CodingAgentOperation implements RuntimeOperation {
 
 	private observe(event: CodingAgentEvent): void {
 		switch (event.type) {
-			case "turn_start":
-				operationEffectBoundary(this.input.effectBoundary)?.beginTurn();
-				return;
-			case "turn_end":
-				operationEffectBoundary(this.input.effectBoundary)?.finishTurn({
-					outcome: operationOutcomeForStopReason(event.message.stopReason),
-				});
-				return;
 			case "message_start":
 				if (event.message.role === "assistant") this.startAssistantMessage();
 				return;
@@ -319,24 +304,10 @@ class CodingAgentOperation implements RuntimeOperation {
 				return;
 			case "message_end": {
 				if (event.message.role !== "assistant") return;
-				const active = this.#activeAssistant;
-				if (active) {
-					operationEffectBoundary(this.input.effectBoundary)?.finishModelStream({
-						assistantEntryId: active.messageId,
-						outcome: operationOutcomeForStopReason(event.message.stopReason),
-					});
-				}
 				this.#activeAssistant = undefined;
 				return;
 			}
 			case "message_discard": {
-				const active = this.#activeAssistant;
-				if (active) {
-					operationEffectBoundary(this.input.effectBoundary)?.finishModelStream({
-						assistantEntryId: active.messageId,
-						outcome: "discarded",
-					});
-				}
 				this.clearAssistantMessage();
 				return;
 			}
@@ -369,10 +340,6 @@ class CodingAgentOperation implements RuntimeOperation {
 				return;
 			}
 			case "tool_execution_end":
-				operationEffectBoundary(this.input.effectBoundary)?.finishTool({
-					toolCallId: event.toolCallId,
-					outcome: event.isError ? "failed" : "completed",
-				});
 				return;
 			default:
 				return;
@@ -383,7 +350,6 @@ class CodingAgentOperation implements RuntimeOperation {
 		const messageId = this.#reservedAssistantEntryIds.shift();
 		if (!messageId) return;
 		this.#activeAssistant = { messageId, thoughtMessageId: `${messageId}:thought` };
-		operationEffectBoundary(this.input.effectBoundary)?.beginModelStream({ assistantEntryId: messageId });
 	}
 
 	private projectAssistantUpdate(event: Extract<CodingAgentEvent, { readonly type: "message_update" }>): void {
@@ -391,10 +357,6 @@ class CodingAgentOperation implements RuntimeOperation {
 		if (!active) return;
 		switch (event.assistantEvent.type) {
 			case "text_delta":
-				operationEffectBoundary(this.input.effectBoundary)?.noteModelStreamChunk({
-					assistantEntryId: active.messageId,
-					type: "text_delta",
-				});
 				this.publish({
 					type: "message_chunk",
 					messageId: active.messageId,
@@ -403,10 +365,6 @@ class CodingAgentOperation implements RuntimeOperation {
 				});
 				return;
 			case "thinking_delta":
-				operationEffectBoundary(this.input.effectBoundary)?.noteModelStreamChunk({
-					assistantEntryId: active.messageId,
-					type: "thinking_delta",
-				});
 				this.publish({
 					type: "message_chunk",
 					messageId: active.thoughtMessageId,
@@ -415,10 +373,6 @@ class CodingAgentOperation implements RuntimeOperation {
 				});
 				return;
 			case "toolcall_delta":
-				operationEffectBoundary(this.input.effectBoundary)?.noteModelStreamChunk({
-					assistantEntryId: active.messageId,
-					type: "toolcall_delta",
-				});
 				return;
 			default:
 				return;
@@ -456,23 +410,6 @@ class CodingAgentOperation implements RuntimeOperation {
 				// The Runtime Host may always rebuild a client from its durable journal.
 			}
 		}
-	}
-}
-
-function operationOutcomeForStopReason(stopReason: CodingAssistantStopReason): RuntimeOperationOutcome {
-	switch (stopReason) {
-		case "aborted":
-			return "aborted";
-		case "error":
-		case "contextOverflow":
-			return "failed";
-		case "stop":
-		case "length":
-		case "toolUse":
-		case "iterationLimit":
-			return "completed";
-		default:
-			return "failed";
 	}
 }
 

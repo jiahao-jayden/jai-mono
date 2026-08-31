@@ -38,7 +38,6 @@ import { ProjectPage, ProjectsPage } from "./projects-page";
 import { ProviderSettingsDialog } from "./settings/provider-settings-dialog";
 import { Sidebar } from "./sidebar/sidebar";
 import { TaskPanel } from "./task-panel";
-import { TrajectoryPage } from "./trajectory-page";
 import { WorkspacePanel } from "./workspace-panel";
 
 const MIN_SIDEBAR_WIDTH = 200;
@@ -86,10 +85,9 @@ export function AppShell() {
 	const setSelectedProjectId = useDesktopChatStore((state) => state.setSelectedProjectId);
 	const setSelectedModelRef = useDesktopChatStore((state) => state.setSelectedModelRef);
 	const setSelectedAgentMode = useDesktopChatStore((state) => state.setSelectedAgentMode);
-	const trajectoryRoute = matchPath("/chat/:sessionId/trajectory", location.pathname);
 	const chatRoute = matchPath("/chat/:sessionId", location.pathname);
 	const projectRoute = matchPath("/projects/:projectId", location.pathname);
-	const routeSessionId = trajectoryRoute?.params.sessionId ?? chatRoute?.params.sessionId;
+	const routeSessionId = chatRoute?.params.sessionId;
 	const activeSessionId = routeSessionId && routeSessionId !== "new" ? routeSessionId : null;
 	const routeProjectId = projectRoute?.params.projectId;
 	const activeView =
@@ -99,9 +97,7 @@ export function AppShell() {
 				? "projects"
 				: routeProjectId
 					? "project"
-					: trajectoryRoute
-						? "trajectory"
-						: "chat";
+					: "chat";
 	useEffect(() => {
 		if (activeSessionId) {
 			if (storedSessionId !== activeSessionId) openSessionInStore(activeSessionId);
@@ -358,7 +354,7 @@ export function AppShell() {
 		>
 			{sidebarOpen ? (
 				<Sidebar
-					activeView={activeView === "trajectory" ? "chat" : activeView}
+					activeView={activeView}
 					sessions={sessions}
 					projects={projects}
 					runningSessionIds={runningSessionIds}
@@ -468,16 +464,6 @@ export function AppShell() {
 					}
 				/>
 				<Route
-					path="/chat/:sessionId/trajectory"
-					element={
-						activeSessionId ? (
-							<TrajectoryPage sessionId={activeSessionId} onBack={() => navigate(`/chat/${activeSessionId}`)} />
-						) : (
-							<Navigate to="/chat/new" replace />
-						)
-					}
-				/>
-				<Route
 					path="/chat/:sessionId"
 					element={
 						<ChatColumn
@@ -505,9 +491,6 @@ export function AppShell() {
 							artifactPanelOpen={artifactPanelOpen}
 							onToggleSidebar={() => setSidebarOpen(true)}
 							onToggleArtifactPanel={() => setArtifactPanelOpen((open) => !open)}
-							onOpenTrajectory={() => {
-								if (session) navigate(`/chat/${session.id}/trajectory`);
-							}}
 							onOpenProviderSettings={openProviderSettings}
 							onSelectProviderModel={setSelectedModelRef}
 							onSelectAgentMode={setSelectedAgentMode}

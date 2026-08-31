@@ -2,7 +2,6 @@ import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AcpJsonRpcNotification, AcpJsonRpcRequest, LocalAcpV2Client } from "@jai/server/acp-client";
 import { connectJaiRuntimeHost } from "@jai/server/acp-client";
-import type { TrajectoryItem, TrajectorySnapshot, TrajectoryWireError } from "@jai/trajectory-ui";
 import { Result, TaggedError } from "better-result";
 import type {
 	DesktopAgentEvent,
@@ -23,12 +22,6 @@ import type {
 	DesktopToolActivityKind,
 	DesktopToolFileChange,
 	DesktopToolItem,
-	DesktopTrajectoryResult,
-	DesktopTrajectorySnapshotInput,
-	DesktopTrajectorySnapshotResult,
-	DesktopTrajectorySubscribeInput,
-	DesktopTrajectorySubscribeResult,
-	DesktopTrajectoryUnsubscribeInput,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
 import { sortArtifacts } from "./artifacts";
@@ -88,9 +81,6 @@ export class DesktopAcpAgentHost {
 	readonly #resolveSessionCwd: (sessionId: string) => Promise<string>;
 	readonly #sessions = new Map<string, AcpSessionRuntime>();
 	readonly #pendingPermissions = new Map<string, PendingPermission>();
-	readonly #trajectorySubscriptions = new Map<string, { readonly sessionId: string }>();
-	readonly #pendingTrajectoryItems = new Map<string, TrajectoryItem[]>();
-	readonly #eventSequences = new Map<string, number>();
 	readonly #client: LocalAcpV2Client;
 	readonly #unsubscribeUpdates: () => void;
 	readonly #unsubscribeRequests: () => void;
@@ -237,31 +227,6 @@ export class DesktopAcpAgentHost {
 		return artifact ? structuredClone(artifact) : undefined;
 	}
 
-	async trajectorySnapshot(input: DesktopTrajectorySnapshotInput): Promise<DesktopTrajectorySnapshotResult> {
-		const response = await this.#client.request("jai/trajectory/snapshot", input);
-		if (response.isErr()) return trajectoryUnavailable("Trajectory is temporarily unavailable");
-		return projectTrajectorySnapshotResult(response.value);
-	}
-
-	async trajectorySubscribe(input: DesktopTrajectorySubscribeInput): Promise<DesktopTrajectorySubscribeResult> {
-		const response = await this.#client.request("jai/trajectory/subscribe", input);
-		if (response.isErr()) return trajectoryUnavailable("Trajectory is temporarily unavailable");
-		const result = projectTrajectorySubscribeResult(response.value);
-		if (!result.ok) return result;
-		const subscriptionId = result.value.subscriptionId;
-		this.#trajectorySubscriptions.set(subscriptionId, { sessionId: input.sessionId });
-		const pending = this.#pendingTrajectoryItems.get(subscriptionId) ?? [];
-		this.#pendingTrajectoryItems.delete(subscriptionId);
-		for (const item of pending) this.#emitTrajectory(input.sessionId, subscriptionId, item);
-		return result;
-	}
-
-	trajectoryUnsubscribe(input: DesktopTrajectoryUnsubscribeInput): void {
-		this.#trajectorySubscriptions.delete(input.subscriptionId);
-		this.#pendingTrajectoryItems.delete(input.subscriptionId);
-		void this.#client.request("jai/trajectory/unsubscribe", input);
-	}
-
 	closeSession(sessionId: string): void {
 		const runtime = this.#sessions.get(sessionId);
 		if (!runtime) return;
@@ -279,9 +244,6 @@ export class DesktopAcpAgentHost {
 		if (this.#closed) return;
 		this.#closed = true;
 		for (const sessionId of [...this.#sessions.keys()]) this.closeSession(sessionId);
-		for (const subscriptionId of [...this.#trajectorySubscriptions.keys()]) {
-			this.trajectoryUnsubscribe({ subscriptionId });
-		}
 		this.#unsubscribeUpdates();
 		this.#unsubscribeRequests();
 		for (const pending of this.#pendingPermissions.values())
@@ -305,7 +267,7 @@ export class DesktopAcpAgentHost {
 			artifacts: new Map(),
 			terminalToolCallIds: new Map(),
 			terminalOutput: new Map(),
-			seq: this.#eventSequences.get(sessionId) ?? 0,
+			seq: 0,
 			closed: false,
 		};
 		this.#sessions.set(sessionId, runtime);
@@ -398,10 +360,6 @@ export class DesktopAcpAgentHost {
 	}
 
 	#onNotification(notification: AcpJsonRpcNotification): void {
-		if (notification.method === "jai/trajectory/update") {
-			this.#trajectoryUpdate(notification.params);
-			return;
-		}
 		if (notification.method !== "session/update" || !isRecord(notification.params)) return;
 		const sessionId = notification.params.sessionId;
 		const update = notification.params.update;
@@ -653,38 +611,8 @@ export class DesktopAcpAgentHost {
 
 	#emitEvent(runtime: AcpSessionRuntime, event: DesktopAgentEvent): void {
 		if (runtime.closed) return;
-		const seq = this.#nextSequence(runtime.sessionId);
-		runtime.seq = seq;
-		this.#emit({ sessionId: runtime.sessionId, seq, event: structuredClone(event) });
-	}
-
-	#trajectoryUpdate(params: unknown): void {
-		if (!isRecord(params) || typeof params.subscriptionId !== "string" || typeof params.sessionId !== "string")
-			return;
-		if (!isTrajectoryItem(params.item)) return;
-		const subscription = this.#trajectorySubscriptions.get(params.subscriptionId);
-		if (!subscription) {
-			const pending = this.#pendingTrajectoryItems.get(params.subscriptionId) ?? [];
-			pending.push(params.item);
-			this.#pendingTrajectoryItems.set(params.subscriptionId, pending);
-			return;
-		}
-		if (subscription.sessionId !== params.sessionId) return;
-		this.#emitTrajectory(params.sessionId, params.subscriptionId, params.item);
-	}
-
-	#emitTrajectory(sessionId: string, subscriptionId: string, item: TrajectoryItem): void {
-		this.#emit({
-			sessionId,
-			seq: this.#nextSequence(sessionId),
-			event: { type: "trajectory_update", subscriptionId, item: structuredClone(item) },
-		});
-	}
-
-	#nextSequence(sessionId: string): number {
-		const seq = (this.#eventSequences.get(sessionId) ?? 0) + 1;
-		this.#eventSequences.set(sessionId, seq);
-		return seq;
+		runtime.seq += 1;
+		this.#emit({ sessionId: runtime.sessionId, seq: runtime.seq, event: structuredClone(event) });
 	}
 
 	#requireSession(sessionId: string): AcpSessionRuntime {
@@ -806,89 +734,6 @@ function activityKind(toolName: string): DesktopToolActivityKind {
 	if (normalized.includes("bash") || normalized.includes("shell") || normalized.includes("execute")) return "execute";
 	if (normalized.includes("call") || normalized.includes("connector")) return "call";
 	return "operation";
-}
-
-function projectTrajectorySnapshotResult(value: unknown): DesktopTrajectorySnapshotResult {
-	if (isAcpTrajectoryFailure(value)) return { ok: false, error: projectTrajectoryError(value.error) };
-	if (!isRecord(value) || value.ok !== true || !isRecord(value.value) || !isTrajectorySnapshot(value.value.snapshot)) {
-		return trajectoryUnavailable("Trajectory returned an invalid snapshot");
-	}
-	return { ok: true, value: { snapshot: value.value.snapshot } };
-}
-
-function projectTrajectorySubscribeResult(value: unknown): DesktopTrajectorySubscribeResult {
-	if (isAcpTrajectoryFailure(value)) return { ok: false, error: projectTrajectoryError(value.error) };
-	if (
-		!isRecord(value) ||
-		value.ok !== true ||
-		!isRecord(value.value) ||
-		typeof value.value.subscriptionId !== "string" ||
-		!value.value.subscriptionId
-	) {
-		return trajectoryUnavailable("Trajectory returned an invalid subscription");
-	}
-	return { ok: true, value: { subscriptionId: value.value.subscriptionId } };
-}
-
-function trajectoryUnavailable<T>(message: string): DesktopTrajectoryResult<T> {
-	return { ok: false, error: { code: "unavailable", message } };
-}
-
-function isAcpTrajectoryFailure(
-	value: unknown,
-): value is { readonly ok: false; readonly error: { readonly code: string; readonly message: string } } {
-	return (
-		isRecord(value) &&
-		value.ok === false &&
-		isRecord(value.error) &&
-		typeof value.error.code === "string" &&
-		typeof value.error.message === "string"
-	);
-}
-
-function projectTrajectoryError(error: { readonly code: string; readonly message: string }): TrajectoryWireError {
-	if (error.code === "cursor_expired") return { code: "cursor_expired", message: error.message };
-	if (error.code === "forbidden") return { code: "forbidden", message: error.message };
-	return { code: "unavailable", message: "Trajectory is temporarily unavailable" };
-}
-
-function isTrajectorySnapshot(value: unknown): value is TrajectorySnapshot {
-	return (
-		isRecord(value) &&
-		isRecord(value.session) &&
-		typeof value.session.sessionId === "string" &&
-		typeof value.session.cwd === "string" &&
-		isRecord(value.cursor) &&
-		typeof value.cursor.value === "string" &&
-		Array.isArray(value.items) &&
-		value.items.every(isTrajectoryItem)
-	);
-}
-
-function isTrajectoryItem(value: unknown): value is TrajectoryItem {
-	if (
-		!isRecord(value) ||
-		typeof value.id !== "string" ||
-		typeof value.timestamp !== "string" ||
-		!isRecord(value.cursor) ||
-		typeof value.cursor.value !== "string"
-	)
-		return false;
-	if (value.type === "live_chunk") {
-		return (
-			isRecord(value.chunk) &&
-			typeof value.chunk.messageId === "string" &&
-			(value.chunk.channel === "agent" || value.chunk.channel === "thought" || value.chunk.channel === "tool") &&
-			typeof value.chunk.text === "string"
-		);
-	}
-	if (value.type === "journal") return isRecord(value.journal);
-	if (value.type !== "message" || !isRecord(value.message)) return false;
-	return (
-		typeof value.message.entryId === "string" &&
-		(value.message.role === "user" || value.message.role === "assistant" || value.message.role === "toolResult") &&
-		(value.message.parentId === null || typeof value.message.parentId === "string")
-	);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
