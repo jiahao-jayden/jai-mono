@@ -1,9 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import {
+	normalizeRuntimeModelCatalog,
 	parseRuntimeModelCatalog,
 	RUNTIME_MODEL_CATALOG_FRESHNESS_MS,
-	normalizeRuntimeModelCatalog,
 	type RuntimeModelCatalog,
 	type RuntimeModelCatalogSnapshot,
 } from "./catalog";
@@ -102,7 +102,8 @@ export class SqliteRuntimeModelCatalog {
 	private async refreshOnce(): Promise<ResultType<RuntimeModelCatalogSnapshot, RuntimeModelCatalogError>> {
 		const current = this.read();
 		if (current.isErr()) return current;
-		if (current.value && isFresh(current.value, this.#now())) return Result.ok(snapshotFor(current.value, false, this.#now()));
+		if (current.value && isFresh(current.value, this.#now()))
+			return Result.ok(snapshotFor(current.value, false, this.#now()));
 		try {
 			const headers = new Headers({ accept: "application/json" });
 			if (current.value?.etag) headers.set("if-none-match", current.value.etag);
@@ -130,7 +131,9 @@ export class SqliteRuntimeModelCatalog {
 		} catch (cause) {
 			if (current.value) return Result.ok(snapshotFor(current.value, false, this.#now()));
 			if (cause instanceof RuntimeModelCatalogFetchFailed) return Result.err(cause);
-			return Result.err(new RuntimeModelCatalogFetchFailed({ message: "Unable to fetch the Models.dev catalog", cause }));
+			return Result.err(
+				new RuntimeModelCatalogFetchFailed({ message: "Unable to fetch the Models.dev catalog", cause }),
+			);
 		}
 	}
 
@@ -144,11 +147,15 @@ export class SqliteRuntimeModelCatalog {
 			if (!row) return Result.ok(undefined);
 			const catalog = parseRuntimeModelCatalog(JSON.parse(row.catalog_json));
 			if (!catalog || !Number.isInteger(row.fetched_at) || row.fetched_at < 0) {
-				return Result.err(new RuntimeModelCatalogReadFailed({ message: "Runtime Model Catalog fact is corrupted" }));
+				return Result.err(
+					new RuntimeModelCatalogReadFailed({ message: "Runtime Model Catalog fact is corrupted" }),
+				);
 			}
 			return Result.ok({ catalog, ...(row.etag ? { etag: row.etag } : {}), fetchedAt: row.fetched_at });
 		} catch (cause) {
-			return Result.err(new RuntimeModelCatalogReadFailed({ message: "Could not read Runtime Model Catalog", cause }));
+			return Result.err(
+				new RuntimeModelCatalogReadFailed({ message: "Could not read Runtime Model Catalog", cause }),
+			);
 		}
 	}
 
@@ -166,7 +173,9 @@ export class SqliteRuntimeModelCatalog {
 				.run(JSON.stringify(value.catalog), value.etag ?? null, value.fetchedAt);
 			return Result.ok(undefined);
 		} catch (cause) {
-			return Result.err(new RuntimeModelCatalogWriteFailed({ message: "Could not persist Runtime Model Catalog", cause }));
+			return Result.err(
+				new RuntimeModelCatalogWriteFailed({ message: "Could not persist Runtime Model Catalog", cause }),
+			);
 		}
 	}
 
@@ -187,7 +196,11 @@ function isFresh(value: StoredModelCatalog, now: number): boolean {
 	return now - value.fetchedAt < RUNTIME_MODEL_CATALOG_FRESHNESS_MS;
 }
 
-function snapshotFor(value: StoredModelCatalog | undefined, refreshed: boolean, now: number): RuntimeModelCatalogSnapshot {
+function snapshotFor(
+	value: StoredModelCatalog | undefined,
+	refreshed: boolean,
+	now: number,
+): RuntimeModelCatalogSnapshot {
 	return value
 		? {
 				catalog: structuredClone(value.catalog),

@@ -1,8 +1,8 @@
 import {
-	CodingExtensionOperationFailed,
-	defineExtension,
 	type CodingAgentExtension,
 	type CodingExtensionConfigurationLayers,
+	CodingExtensionOperationFailed,
+	defineExtension,
 } from "@jai/coding-agent";
 import { Type } from "@sinclair/typebox";
 import { Result, type Result as ResultType } from "better-result";
@@ -74,16 +74,26 @@ const resolvedSseServerSchema = Type.Object(
 	{ additionalProperties: false },
 );
 const resolvedConfigurationSchema = Type.Object(
-	{ servers: Type.Record(Type.String({ minLength: 1 }), Type.Union([resolvedStdioServerSchema, resolvedHttpServerSchema, resolvedSseServerSchema])) },
+	{
+		servers: Type.Record(
+			Type.String({ minLength: 1 }),
+			Type.Union([resolvedStdioServerSchema, resolvedHttpServerSchema, resolvedSseServerSchema]),
+		),
+	},
 	{ additionalProperties: false },
 );
 
 /** Creates the official MCP capability provider. Host code only installs this Extension. */
-export function createMcpExtension(options: McpExtensionOptions = {}): CodingAgentExtension<McpExtensionConfiguration, {}, McpExtensionRuntime> {
+export function createMcpExtension(
+	options: McpExtensionOptions = {},
+): CodingAgentExtension<McpExtensionConfiguration, {}, McpExtensionRuntime> {
 	const id = options.id ?? "mcp";
 	const namespace = options.namespace ?? "mcp";
 	const initialRetryDelayMs = positiveDelay(options.initialRetryDelayMs, DEFAULT_INITIAL_RETRY_DELAY_MS);
-	const maxRetryDelayMs = Math.max(initialRetryDelayMs, positiveDelay(options.maxRetryDelayMs, DEFAULT_MAX_RETRY_DELAY_MS));
+	const maxRetryDelayMs = Math.max(
+		initialRetryDelayMs,
+		positiveDelay(options.maxRetryDelayMs, DEFAULT_MAX_RETRY_DELAY_MS),
+	);
 	return defineExtension({
 		id,
 		configuration: {
@@ -145,12 +155,16 @@ function resolveServer(name: string, value: unknown): ResultType<McpServer, Codi
 	}
 	if (value.type === "stdio") {
 		if (typeof value.command !== "string" || !value.command.trim()) {
-			return Result.err(new CodingExtensionOperationFailed({ message: `MCP stdio server "${name}" requires a command` }));
+			return Result.err(
+				new CodingExtensionOperationFailed({ message: `MCP stdio server "${name}" requires a command` }),
+			);
 		}
 		const args = stringArray(value.args);
 		const env = stringRecord(value.env);
 		if (!args || !env || (value.cwd !== undefined && (typeof value.cwd !== "string" || !value.cwd.trim()))) {
-			return Result.err(new CodingExtensionOperationFailed({ message: `MCP stdio server "${name}" has invalid options` }));
+			return Result.err(
+				new CodingExtensionOperationFailed({ message: `MCP stdio server "${name}" has invalid options` }),
+			);
 		}
 		return Result.ok({
 			name,
@@ -163,13 +177,18 @@ function resolveServer(name: string, value: unknown): ResultType<McpServer, Codi
 	}
 	if (value.type === "streamable-http" || value.type === "sse") {
 		if (typeof value.url !== "string" || !isAllowedRemoteUrl(value.url)) {
-			return Result.err(new CodingExtensionOperationFailed({ message: `MCP ${value.type} server "${name}" has an invalid URL` }));
+			return Result.err(
+				new CodingExtensionOperationFailed({ message: `MCP ${value.type} server "${name}" has an invalid URL` }),
+			);
 		}
 		const headers = stringRecord(value.headers);
-		if (!headers) return Result.err(new CodingExtensionOperationFailed({ message: `MCP server "${name}" has invalid headers` }));
+		if (!headers)
+			return Result.err(new CodingExtensionOperationFailed({ message: `MCP server "${name}" has invalid headers` }));
 		return Result.ok({ name, type: value.type, url: value.url, headers });
 	}
-	return Result.err(new CodingExtensionOperationFailed({ message: `MCP server "${name}" has unsupported transport "${value.type}"` }));
+	return Result.err(
+		new CodingExtensionOperationFailed({ message: `MCP server "${name}" has unsupported transport "${value.type}"` }),
+	);
 }
 
 function positiveDelay(value: number | undefined, fallback: number): number {
@@ -191,7 +210,10 @@ function isAllowedRemoteUrl(value: string): boolean {
 	try {
 		const url = new URL(value);
 		if (url.username || url.password) return false;
-		return url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname));
+		return (
+			url.protocol === "https:" ||
+			(url.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname))
+		);
 	} catch {
 		return false;
 	}

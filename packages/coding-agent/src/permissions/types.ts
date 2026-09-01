@@ -1,13 +1,6 @@
 import { Type } from "@sinclair/typebox";
 
-export const canonicalToolNames = [
-	"Read",
-	"Write",
-	"Edit",
-	"Bash",
-	"UpdateTodos",
-	"SpawnAgent",
-] as const;
+export const canonicalToolNames = ["Read", "Write", "Edit", "Bash", "UpdateTodos", "SpawnAgent"] as const;
 export const canonicalToolNameSchema = Type.Union(canonicalToolNames.map((name) => Type.Literal(name)));
 
 export type CanonicalToolName = (typeof canonicalToolNames)[number];

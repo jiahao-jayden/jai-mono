@@ -65,4 +65,9 @@ export async function activateAgentPlugins(
 	};
 }
 
-export type { AgentPluginDirectory, AgentPluginDiscovery, AgentPluginRuntime, AgentPluginRuntimeOptions } from "./types";
+export type {
+	AgentPluginDirectory,
+	AgentPluginDiscovery,
+	AgentPluginRuntime,
+	AgentPluginRuntimeOptions,
+} from "./types";

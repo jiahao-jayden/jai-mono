@@ -39,11 +39,7 @@ export function assembleAgentCapabilities(input: AssembleAgentCapabilitiesInput)
 			)
 		: [];
 	return {
-		tools: [
-			...(input.extraTools ?? []),
-			...(input.extensionTools ?? []),
-			...codingTools,
-		],
+		tools: [...(input.extraTools ?? []), ...(input.extensionTools ?? []), ...codingTools],
 		aroundToolCall: [
 			...(input.extensionToolMiddleware ? [input.extensionToolMiddleware] : []),
 			...(input.extraAroundToolCall ?? []),

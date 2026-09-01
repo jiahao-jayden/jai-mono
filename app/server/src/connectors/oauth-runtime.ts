@@ -2,12 +2,12 @@ import {
 	findConnectorOAuthApplication,
 	OAuthFlowManager,
 	OAuthGatewayClient,
-	parseConnectorOAuthScopes,
 	type OAuthGatewayFetcher,
+	parseConnectorOAuthScopes,
 } from "@jai/connector";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { RuntimeAgentSettingsSnapshot, SqliteRuntimeAgentSettings } from "../config";
-import { SqliteRuntimeConnectorOAuthIntentStore, type RuntimeConnectorOAuthIntentStoreFailed } from "./oauth-intents";
+import type { RuntimeConnectorOAuthIntentStoreFailed, SqliteRuntimeConnectorOAuthIntentStore } from "./oauth-intents";
 
 const defaultOAuthGatewayEndpoint = "https://jai-connector.jayden0.com";
 const defaultOAuthFlowTtlMs = 2 * 60_000;
@@ -84,7 +84,9 @@ export class RuntimeConnectorOAuth implements RuntimeConnectorOAuthController {
 		return this.begin(connectorId);
 	}
 
-	async complete(callbackUrl: string): Promise<ResultType<RuntimeConnectorOAuthCompletion, RuntimeConnectorOAuthError>> {
+	async complete(
+		callbackUrl: string,
+	): Promise<ResultType<RuntimeConnectorOAuthCompletion, RuntimeConnectorOAuthError>> {
 		const callback = parseCallback(callbackUrl);
 		if (callback.isErr()) return callback;
 		this.removeExpired(callback.value.state);
@@ -114,7 +116,11 @@ export class RuntimeConnectorOAuth implements RuntimeConnectorOAuthController {
 		const recorded = this.#intents.start({ id: intentId, connectorId: pending.connectorId, createdAt: now });
 		if (recorded.isErr()) return Result.err(recorded.error);
 
-		const token = await this.#flow.complete(callback.value.oauthServiceId, callback.value.state, callback.value.code!);
+		const token = await this.#flow.complete(
+			callback.value.oauthServiceId,
+			callback.value.state,
+			callback.value.code!,
+		);
 		this.#pending.delete(callback.value.state);
 		if (token.isErr()) {
 			void this.#intents.settle(intentId, "failed", this.nowIso());
@@ -186,7 +192,9 @@ export class RuntimeConnectorOAuth implements RuntimeConnectorOAuthController {
 		this.#pending.clear();
 	}
 
-	private async begin(connectorId: string): Promise<ResultType<RuntimeConnectorOAuthStart, RuntimeConnectorOAuthError>> {
+	private async begin(
+		connectorId: string,
+	): Promise<ResultType<RuntimeConnectorOAuthStart, RuntimeConnectorOAuthError>> {
 		this.removeExpired();
 		const application = findConnectorOAuthApplication(connectorId);
 		if (!application) {
@@ -230,7 +238,13 @@ export class RuntimeConnectorOAuth implements RuntimeConnectorOAuthController {
 function parseCallback(
 	rawUrl: string,
 ): ResultType<
-	{ readonly oauthServiceId: string; readonly state: string; readonly code?: string; readonly error?: string; readonly errorDescription?: string },
+	{
+		readonly oauthServiceId: string;
+		readonly state: string;
+		readonly code?: string;
+		readonly error?: string;
+		readonly errorDescription?: string;
+	},
 	RuntimeConnectorOAuthRejected
 > {
 	let url: URL;
@@ -240,8 +254,12 @@ function parseCallback(
 		return Result.err(new RuntimeConnectorOAuthRejected({ message: "OAuth callback URL is invalid", cause }));
 	}
 	const desktopCallback =
-		url.protocol === "http:" && url.hostname === "127.0.0.1" && url.port === "43821" && url.pathname === "/v1/oauth/callback";
-	const deepLinkCallback = url.protocol === "jai:" && url.hostname === "connector" && url.pathname === "/oauth/callback";
+		url.protocol === "http:" &&
+		url.hostname === "127.0.0.1" &&
+		url.port === "43821" &&
+		url.pathname === "/v1/oauth/callback";
+	const deepLinkCallback =
+		url.protocol === "jai:" && url.hostname === "connector" && url.pathname === "/oauth/callback";
 	if (!desktopCallback && !deepLinkCallback) {
 		return Result.err(new RuntimeConnectorOAuthRejected({ message: "OAuth callback URL is not recognized" }));
 	}

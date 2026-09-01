@@ -85,12 +85,18 @@ export interface DesktopCatalogAccess {
 		readonly projectId: string | null;
 		readonly title: string;
 	}): Result<DesktopCatalogSession, DesktopCatalogStorageError>;
-	renameSession(input: { readonly sessionId: string; readonly title: string }): Result<DesktopCatalogSession, DesktopCatalogStorageError>;
+	renameSession(input: {
+		readonly sessionId: string;
+		readonly title: string;
+	}): Result<DesktopCatalogSession, DesktopCatalogStorageError>;
 	markTitleGenerationAttempted(input: {
 		readonly sessionId: string;
 		readonly timestamp: number;
 	}): Result<DesktopCatalogSession, DesktopCatalogStorageError>;
-	setGeneratedTitle(input: { readonly sessionId: string; readonly title: string }): Result<DesktopCatalogSession, DesktopCatalogStorageError>;
+	setGeneratedTitle(input: {
+		readonly sessionId: string;
+		readonly title: string;
+	}): Result<DesktopCatalogSession, DesktopCatalogStorageError>;
 	shouldGenerateSessionTitle(sessionId: string): Result<boolean, DesktopCatalogStorageError>;
 	moveSession(input: {
 		readonly sessionId: string;

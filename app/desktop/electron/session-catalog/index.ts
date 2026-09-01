@@ -1,4 +1,4 @@
-export { RemoteDesktopSessionCatalog, type DesktopSessionCatalogPort } from "./remote";
+export { type DesktopSessionCatalogPort, RemoteDesktopSessionCatalog } from "./remote";
 export type {
 	CodingExecutionContext,
 	CodingSession,

@@ -1,13 +1,13 @@
 import {
 	type CodingAgentExtension,
-	type CodingExtensionToolCatalog,
-	type CodingExtensionTool,
-	type CodingExtensionToolResult,
 	CodingExtensionOperationFailed,
+	type CodingExtensionTool,
+	type CodingExtensionToolCatalog,
+	type CodingExtensionToolResult,
 	defineExtension,
 } from "@jai/coding-agent";
 import { Result } from "better-result";
-import { activateAgentPlugins, discoverAgentPlugins, type AgentPluginRuntime } from "./runtime";
+import { type AgentPluginRuntime, activateAgentPlugins, discoverAgentPlugins } from "./runtime";
 
 export interface AgentPluginsDirectory {
 	readonly path: string;
@@ -70,9 +70,7 @@ function toExtensionTool(tool: AgentPluginRuntime["tools"][number]): CodingExten
 		parameters: agentTool.parameters,
 		presentation: {
 			...(tool.presentation.activityKind ? { activityKind: tool.presentation.activityKind } : {}),
-			...(tool.presentation.title
-				? { title: (_runtime, args) => tool.presentation.title!(args) }
-				: {}),
+			...(tool.presentation.title ? { title: (_runtime, args) => tool.presentation.title!(args) } : {}),
 			...(tool.presentation.resolveActivityKind
 				? { resolveActivityKind: (_runtime, args) => tool.presentation.resolveActivityKind!(args) }
 				: {}),

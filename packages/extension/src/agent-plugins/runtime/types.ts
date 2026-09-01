@@ -1,6 +1,6 @@
+import type { AgentPluginMcpTool } from "../mcp/types";
 import type { AgentPluginSkillDescriptor, LoadedAgentPlugin } from "../package/types";
 import type { AgentPluginDiagnostic } from "../shared/diagnostics";
-import type { AgentPluginMcpTool } from "../mcp/types";
 
 export interface AgentPluginDirectory {
 	readonly path: string;

@@ -32,7 +32,8 @@ class DefaultDesktopCatalogControl implements DesktopCatalogControl {
 
 		switch (request.method) {
 			case "jai/desktop-catalog/projects/list":
-				if (!isEmpty(params)) return this.error(request.id, -32602, "Invalid Desktop Catalog project list parameters");
+				if (!isEmpty(params))
+					return this.error(request.id, -32602, "Invalid Desktop Catalog project list parameters");
 				return this.project(request.id, this.catalog.listProjects());
 			case "jai/desktop-catalog/projects/create": {
 				const project = parseProject(params);
@@ -86,8 +87,7 @@ class DefaultDesktopCatalogControl implements DesktopCatalogControl {
 			}
 			case "jai/desktop-catalog/sessions/set-generated-title": {
 				const session = parseSessionTitle(params);
-				if (!session)
-					return this.error(request.id, -32602, "Invalid Desktop Catalog generated-title parameters");
+				if (!session) return this.error(request.id, -32602, "Invalid Desktop Catalog generated-title parameters");
 				return this.project(request.id, this.catalog.setGeneratedTitle(session));
 			}
 			case "jai/desktop-catalog/sessions/should-generate-title": {
@@ -174,7 +174,8 @@ function parseSessionList(
 	const limit = value.limit;
 	if (limit !== undefined && (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1)) return undefined;
 	const rawCursor = value.cursor;
-	if (rawCursor === undefined) return hasOnly(value, ["limit"]) ? { ...(limit === undefined ? {} : { limit }) } : undefined;
+	if (rawCursor === undefined)
+		return hasOnly(value, ["limit"]) ? { ...(limit === undefined ? {} : { limit }) } : undefined;
 	const cursor = object(rawCursor);
 	if (
 		!cursor ||
@@ -187,7 +188,10 @@ function parseSessionList(
 	) {
 		return undefined;
 	}
-	return { ...(limit === undefined ? {} : { limit }), cursor: { lastActivityAt: cursor.lastActivityAt, id: cursor.id } };
+	return {
+		...(limit === undefined ? {} : { limit }),
+		cursor: { lastActivityAt: cursor.lastActivityAt, id: cursor.id },
+	};
 }
 
 function parseEnsureSession(
@@ -196,7 +200,8 @@ function parseEnsureSession(
 	const sessionId = requiredString(value, "sessionId");
 	const projectId = nullableString(value, "projectId");
 	const title = requiredString(value, "title");
-	if (!sessionId || projectId === undefined || !title || !hasOnly(value, ["sessionId", "projectId", "title"])) return undefined;
+	if (!sessionId || projectId === undefined || !title || !hasOnly(value, ["sessionId", "projectId", "title"]))
+		return undefined;
 	return { sessionId, projectId, title };
 }
 

@@ -4,8 +4,8 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { type TSchema, Type } from "@sinclair/typebox";
-import { AgentPluginMcpConnectionFailed } from "../package/errors";
 import { type McpToolMetadata, mcpToolPresentation } from "../../mcp/presentation";
+import { AgentPluginMcpConnectionFailed } from "../package/errors";
 import type { AgentPluginMcpServer, AgentPluginMcpTool } from "./types";
 
 interface ConnectedServer {
@@ -99,7 +99,11 @@ function createTool(
 					if (!("content" in result)) return { content: [{ type: "text", text: JSON.stringify(result) ?? "" }] };
 					return { content: mapContent((result as { readonly content?: readonly unknown[] }).content) };
 				} catch (cause) {
-					throw new AgentPluginMcpConnectionFailed({ serverName, message: `MCP tool "${tool.name}" failed`, cause });
+					throw new AgentPluginMcpConnectionFailed({
+						serverName,
+						message: `MCP tool "${tool.name}" failed`,
+						cause,
+					});
 				}
 			},
 		},

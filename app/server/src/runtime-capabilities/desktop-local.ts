@@ -1,16 +1,16 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { Result, type Result as ResultType } from "better-result";
 import { createMcpExtension } from "@jai/extension/mcp";
 import { createFffSearchExtension } from "@jai/extension/search";
 import { createSkillsExtension } from "@jai/extension/skills";
+import { Result, type Result as ResultType } from "better-result";
 import { createRuntimeAgentPluginsExtension } from "../agents";
 import type { WorkspaceTrustReader } from "../workspaces";
 import {
 	type RuntimeCapabilityAssembly,
 	type RuntimeCapabilitySource,
-	type RuntimeCapabilitySourceInput,
 	RuntimeCapabilitySourceFailed,
+	type RuntimeCapabilitySourceInput,
 } from "./source";
 
 export interface DesktopLocalRuntimeCapabilitySourceOptions {
@@ -52,9 +52,7 @@ class DesktopLocalRuntimeCapabilitySource implements RuntimeCapabilitySource {
 			const agentPlugins = await createRuntimeAgentPluginsExtension({
 				dataDirectory: join(this.options.dataDirectory, "agent-plugins", input.sessionId),
 				homeDirectory: this.#homeDirectory,
-				...(trust.isOk() && trust.value.trusted
-					? { trustedWorkspacePath: trust.value.workspacePath }
-					: {}),
+				...(trust.isOk() && trust.value.trusted ? { trustedWorkspacePath: trust.value.workspacePath } : {}),
 			});
 			const fileCapabilities = {
 				homeDirectory: this.#homeDirectory,

@@ -4,6 +4,7 @@ import { KindGuard } from "@sinclair/typebox";
 import { panic, Result, type Result as ResultType } from "better-result";
 import type { CodingCommandRegistry } from "../commands";
 import type { JsonObject } from "../core/json";
+import type { ToolCatalog } from "../runtime/tool-catalog";
 import {
 	CodingExtensionDeactivationFailed,
 	type CodingExtensionError,
@@ -37,7 +38,6 @@ import type {
 } from "./extensions/contract";
 import { extensionContext } from "./extensions/host-adapters";
 import type { CodingToolPresentation } from "./tool-presentation";
-import { ToolCatalog } from "../runtime/tool-catalog";
 
 export type {
 	CodingAfterToolCallInput,
@@ -57,18 +57,18 @@ export type {
 	CodingExtensionCommandRegistration,
 	CodingExtensionConfiguration,
 	CodingExtensionConfigurationLayers,
-	CodingExtensionLayeredConfiguration,
 	CodingExtensionConfigurationStore,
 	CodingExtensionContext,
 	CodingExtensionDiagnostic,
 	CodingExtensionHooks,
+	CodingExtensionLayeredConfiguration,
 	CodingExtensionLifecycle,
 	CodingExtensionRuntime,
 	CodingExtensionRuntimeAdapter,
+	CodingExtensionScopedConfiguration,
 	CodingExtensionSessionState,
 	CodingExtensionSessionStateAdapter,
 	CodingExtensionSessionStateStore,
-	CodingExtensionScopedConfiguration,
 	CodingExtensionTool,
 	CodingExtensionToolCall,
 	CodingExtensionToolCatalog,
@@ -525,15 +525,7 @@ function assertCatalogCapabilityNames(
 }
 
 function reservedToolNames(): Set<string> {
-	return new Set([
-		"Read",
-		"Write",
-		"Edit",
-		"Bash",
-		"UpdateTodos",
-		"SpawnAgent",
-		"SearchTools",
-	]);
+	return new Set(["Read", "Write", "Edit", "Bash", "UpdateTodos", "SpawnAgent", "SearchTools"]);
 }
 
 function createInitializedExtension(extension: CodingAgentExtension<any, any, any>): InitializedExtension {
@@ -696,10 +688,7 @@ class ExtensionCatalogRefreshCoordinator {
 	#refreshTail: Promise<void> = Promise.resolve();
 	#closed = false;
 
-	constructor(
-		extensions: readonly InitializedExtension[],
-		registries: ExtensionActivationRegistries,
-	) {
+	constructor(extensions: readonly InitializedExtension[], registries: ExtensionActivationRegistries) {
 		this.#extensions = extensions;
 		this.#registries = registries;
 	}
@@ -789,7 +778,10 @@ class ExtensionCatalogRefreshCoordinator {
 	}
 
 	async #discoverAndCommit(): Promise<ResultType<void, CodingExtensionError>> {
-		const discovered = new Map<InitializedExtension, ReadonlyMap<string, readonly CodingExtensionTool<any, any, any>[]>>();
+		const discovered = new Map<
+			InitializedExtension,
+			ReadonlyMap<string, readonly CodingExtensionTool<any, any, any>[]>
+		>();
 		for (const extension of this.#extensions) {
 			const catalogs = await discoverCatalogTools(extension, this.#abortController.signal);
 			if (this.#closed) return Result.ok(undefined);
@@ -828,7 +820,9 @@ class ExtensionCatalogRefreshCoordinator {
 
 	async #reportDiagnostic(diagnostic: CodingExtensionDiagnostic): Promise<void> {
 		try {
-			await this.#extensions.find((extension) => extension.id === diagnostic.extensionId)?.reportDiagnostic?.(diagnostic);
+			await this.#extensions
+				.find((extension) => extension.id === diagnostic.extensionId)
+				?.reportDiagnostic?.(diagnostic);
 		} catch {
 			// Diagnostics are observer-only and cannot prevent a later catalog refresh.
 		}

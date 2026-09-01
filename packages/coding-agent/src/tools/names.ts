@@ -5,17 +5,8 @@
  * `codingToolNames` rather than declared alongside it. Lives in `tools/` because the roster describes
  * what this layer provides — the SDK facade re-exports the type as part of its public surface.
  */
-export const defaultCodingToolNames = [
-	"Read",
-	"Bash",
-	"Edit",
-	"Write",
-] as const;
+export const defaultCodingToolNames = ["Read", "Bash", "Edit", "Write"] as const;
 
-export const codingToolNames = [
-	...defaultCodingToolNames,
-	"UpdateTodos",
-	"SpawnAgent",
-] as const;
+export const codingToolNames = [...defaultCodingToolNames, "UpdateTodos", "SpawnAgent"] as const;
 
 export type CodingToolName = (typeof codingToolNames)[number];

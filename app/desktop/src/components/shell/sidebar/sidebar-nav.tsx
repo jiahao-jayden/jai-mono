@@ -38,7 +38,8 @@ export function SidebarNav({ activeView, onNewChat, onOpenChats, onOpenProjects 
 				const active = activeView === id;
 				const onClick = id === "chats" ? onOpenChats : id === "projects" ? onOpenProjects : undefined;
 				const ariaCurrent = active ? ("page" as const) : undefined;
-				const navigationClassName = "h-auto w-full justify-start gap-3 rounded-lg px-3.25 py-2 text-left text-[13.5px]";
+				const navigationClassName =
+					"h-auto w-full justify-start gap-3 rounded-lg px-3.25 py-2 text-left text-[13.5px]";
 				return (
 					<Button
 						type="button"

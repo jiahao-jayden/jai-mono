@@ -36,7 +36,9 @@ export class SqliteRuntimeConnectorOAuthIntentStore {
 		`);
 	}
 
-	start(input: Omit<RuntimeConnectorOAuthIntent, "status" | "updatedAt">): ResultType<void, RuntimeConnectorOAuthIntentStoreFailed> {
+	start(
+		input: Omit<RuntimeConnectorOAuthIntent, "status" | "updatedAt">,
+	): ResultType<void, RuntimeConnectorOAuthIntentStoreFailed> {
 		try {
 			this.database
 				.prepare(
@@ -89,12 +91,12 @@ export class SqliteRuntimeConnectorOAuthIntentStore {
 					 ORDER BY created_at, id`,
 				)
 				.all() as unknown as readonly {
-					readonly id: string;
-					readonly connector_id: string;
-					readonly status: RuntimeConnectorOAuthIntentStatus;
-					readonly created_at: string;
-					readonly updated_at: string;
-				}[];
+				readonly id: string;
+				readonly connector_id: string;
+				readonly status: RuntimeConnectorOAuthIntentStatus;
+				readonly created_at: string;
+				readonly updated_at: string;
+			}[];
 			return Result.ok(
 				rows.map((row) => ({
 					id: row.id,

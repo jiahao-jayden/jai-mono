@@ -93,8 +93,8 @@ function registerBashParserWasm(): void {
 	if (app.isPackaged) {
 		Object.assign(globalThis, {
 			[bashParserWasmSourcesKey]: {
-			parser: join(process.resourcesPath, "tree-sitter.wasm"),
-			bashLanguage: join(process.resourcesPath, "tree-sitter-bash.wasm"),
+				parser: join(process.resourcesPath, "tree-sitter.wasm"),
+				bashLanguage: join(process.resourcesPath, "tree-sitter-bash.wasm"),
 			},
 		});
 		return;

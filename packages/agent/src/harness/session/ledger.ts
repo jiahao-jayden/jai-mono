@@ -1,6 +1,6 @@
 import type { JsonObject } from "../../core/agent-state";
-import type { AgentMessage } from "../../core/types";
 import type { EffectGate, EffectGateAction } from "../../core/effect-gate";
+import type { AgentMessage } from "../../core/types";
 import { buildCompactedMessages, latestCompaction } from "../compaction/projection";
 import { branchOf, contextEntries } from "./tree";
 import type { BranchEntry, CompactionEntry, MessageEntry, SessionEntry, SessionHandle, TreeEntry } from "./types";

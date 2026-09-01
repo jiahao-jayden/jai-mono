@@ -1,5 +1,5 @@
-import { Value } from "@sinclair/typebox/value";
 import type { TObject } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { Result, type Result as ResultType } from "better-result";
 import type { CodingCommandRegistry } from "../../commands";
 import type { JsonObject } from "../../core/json";
@@ -20,9 +20,9 @@ import type {
 	CodingExtensionApprovalRequest,
 	CodingExtensionCommand,
 	CodingExtensionCommandRegistration,
-	CodingExtensionLayeredConfiguration,
 	CodingExtensionConfigurationStore,
 	CodingExtensionContext,
+	CodingExtensionLayeredConfiguration,
 	CodingExtensionRuntimeAdapter,
 	CodingExtensionSessionStateAdapter,
 	CodingExtensionSessionStateStore,
@@ -134,7 +134,11 @@ async function extensionConfiguration<TConfig extends JsonObject, TState extends
 		);
 	}
 	const loaded = runtime?.readConfiguration
-		? await runtime.readConfiguration({ extensionId: extension.id, scope: declaration.scope, workspace: context.workspace })
+		? await runtime.readConfiguration({
+				extensionId: extension.id,
+				scope: declaration.scope,
+				workspace: context.workspace,
+			})
 		: Result.ok<JsonObject | undefined, CodingExtensionError>(undefined);
 	if (loaded.isErr()) return loaded;
 	if (loaded.value !== undefined && !Value.Check(declaration.schema, loaded.value)) {

@@ -1,14 +1,9 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { dirname, extname, join } from "node:path";
-import {
-	localAcpV2EndpointFor,
-	openLocalAcpV2Client,
-	runAcpStdioBridge,
-	resolveJaiDataDirectory,
-} from "./index";
+import { fileURLToPath } from "node:url";
+import { localAcpV2EndpointFor, openLocalAcpV2Client, resolveJaiDataDirectory, runAcpStdioBridge } from "./index";
 
 const dataDirectory = resolveJaiDataDirectory();
 const endpoint = process.env.JAI_RUNTIME_ENDPOINT ?? localAcpV2EndpointFor(dataDirectory);

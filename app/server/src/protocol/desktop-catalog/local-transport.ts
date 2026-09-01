@@ -92,7 +92,11 @@ async function handleLine(socket: Socket, control: DesktopCatalogControl, line: 
 	const output = await control.handle(message);
 	if (output === undefined) {
 		if (message.id !== undefined) {
-			write(socket, { jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "Unknown local control method" } });
+			write(socket, {
+				jsonrpc: "2.0",
+				id: message.id,
+				error: { code: -32601, message: "Unknown local control method" },
+			});
 		}
 		return;
 	}
@@ -104,7 +108,11 @@ function write(
 	message:
 		| AcpOutboundMessage
 		| AcpJsonRpcResponse
-		| { readonly jsonrpc: "2.0"; readonly id: null; readonly error: { readonly code: number; readonly message: string } },
+		| {
+				readonly jsonrpc: "2.0";
+				readonly id: null;
+				readonly error: { readonly code: number; readonly message: string };
+		  },
 ): void {
 	if (socket.destroyed || !socket.writable) return;
 	try {

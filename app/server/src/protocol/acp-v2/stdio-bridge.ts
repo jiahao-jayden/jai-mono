@@ -1,10 +1,6 @@
 import { createInterface } from "node:readline";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
-import {
-	openLocalAcpV2Client,
-	type AcpLocalClientError,
-	type LocalAcpV2Client,
-} from "./local-client";
+import { type AcpLocalClientError, type LocalAcpV2Client, openLocalAcpV2Client } from "./local-client";
 import type { AcpJsonRpcNotification, AcpJsonRpcRequest, AcpJsonRpcResponse, AcpRequestId } from "./types";
 
 export class AcpStdioBridgeOpenFailed extends TaggedError("acp_stdio.open_failed")<{
@@ -165,14 +161,8 @@ function parseClientRequest(value: unknown): ParsedClientMessage {
 			...(value.params === undefined ? {} : { params: value.params }),
 		};
 	}
-	if (
-		(typeof value.id === "string" || typeof value.id === "number") &&
-		("result" in value || "error" in value)
-	) {
-		if (
-			isRecord(value.error) &&
-			(typeof value.error.code !== "number" || typeof value.error.message !== "string")
-		) {
+	if ((typeof value.id === "string" || typeof value.id === "number") && ("result" in value || "error" in value)) {
+		if (isRecord(value.error) && (typeof value.error.code !== "number" || typeof value.error.message !== "string")) {
 			return { kind: "invalid", id: null };
 		}
 		return {

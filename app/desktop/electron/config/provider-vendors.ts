@@ -61,4 +61,3 @@ export function findDefaultProviderVendor(modelId: string): DefaultProviderVendo
 		vendor.modelIdPrefixes.some((prefix) => normalizedModelId.startsWith(prefix)),
 	);
 }
-

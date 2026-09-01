@@ -2,9 +2,9 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import {
-	createAgentPluginsExtension,
 	type AgentPluginsDirectory,
 	type AgentPluginsExtension,
+	createAgentPluginsExtension,
 } from "@jai/extension/agent-plugins";
 
 /**
@@ -13,14 +13,19 @@ import {
  * canonical workspace through its durable Workspace trust facts. ACP `cwd`
  * alone is never a capability grant.
  */
-export async function discoverRuntimeAgentPluginDirectories(options: {
-	readonly homeDirectory?: string;
-	/** Canonical root supplied only after the Runtime Host reads a durable trust fact. */
-	readonly trustedWorkspacePath?: string;
-} = {}): Promise<readonly AgentPluginsDirectory[]> {
+export async function discoverRuntimeAgentPluginDirectories(
+	options: {
+		readonly homeDirectory?: string;
+		/** Canonical root supplied only after the Runtime Host reads a durable trust fact. */
+		readonly trustedWorkspacePath?: string;
+	} = {},
+): Promise<readonly AgentPluginsDirectory[]> {
 	const homeDirectory = path.resolve(options.homeDirectory ?? homedir());
 	const projectRoots = options.trustedWorkspacePath
-		? [path.join(options.trustedWorkspacePath, ".jai", "plugins"), path.join(options.trustedWorkspacePath, ".agents", "plugins")]
+		? [
+				path.join(options.trustedWorkspacePath, ".jai", "plugins"),
+				path.join(options.trustedWorkspacePath, ".agents", "plugins"),
+			]
 		: [];
 	const userRoots = [path.join(homeDirectory, ".jai", "plugins"), path.join(homeDirectory, ".agents", "plugins")];
 	const [project, user] = await Promise.all([

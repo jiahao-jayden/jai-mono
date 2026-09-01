@@ -4,14 +4,14 @@ import {
 	type DesktopCatalogAccess,
 	type DesktopCatalogProject,
 	DesktopCatalogProjectNotFound,
+	DesktopCatalogProjectPathConflict,
 	type DesktopCatalogSession,
 	type DesktopCatalogSessionCursor,
-	type DesktopCatalogSessionPage,
-	DesktopCatalogProjectPathConflict,
 	DesktopCatalogSessionNotFound,
+	type DesktopCatalogSessionPage,
 	DesktopCatalogStorageCorrupted,
-	DesktopCatalogStorageFailed,
 	type DesktopCatalogStorageError,
+	DesktopCatalogStorageFailed,
 	type DesktopCatalogTitleSource,
 } from "../../protocol/desktop-catalog/types";
 
@@ -123,10 +123,9 @@ export class SqliteDesktopCatalogAccess implements DesktopCatalogAccess {
 		}
 	}
 
-	listSessions(input: {
-		readonly limit?: number;
-		readonly cursor?: DesktopCatalogSessionCursor;
-	} = {}): ResultType<DesktopCatalogSessionPage, DesktopCatalogStorageError> {
+	listSessions(
+		input: { readonly limit?: number; readonly cursor?: DesktopCatalogSessionCursor } = {},
+	): ResultType<DesktopCatalogSessionPage, DesktopCatalogStorageError> {
 		try {
 			const limit = Math.min(Math.max(input.limit ?? 50, 1), 100);
 			const cursorTimestamp = input.cursor ? new Date(input.cursor.lastActivityAt).toISOString() : undefined;
@@ -297,7 +296,9 @@ export class SqliteDesktopCatalogAccess implements DesktopCatalogAccess {
 					`SELECT title_source, title_generation_attempted_at
 					 FROM desktop_session_metadata WHERE session_id = ?`,
 				)
-				.get(sessionId) as { readonly title_source: string; readonly title_generation_attempted_at: number | null } | undefined;
+				.get(sessionId) as
+				| { readonly title_source: string; readonly title_generation_attempted_at: number | null }
+				| undefined;
 			return Result.ok(
 				metadata === undefined ||
 					(metadata.title_source === "fallback" && metadata.title_generation_attempted_at === null),

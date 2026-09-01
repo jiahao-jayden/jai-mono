@@ -9,7 +9,9 @@ class DesktopAgentFactoryUnavailable extends TaggedError("desktop_agent.factory_
 class DesktopAgentSessionNotFound extends TaggedError("desktop_agent.session_not_found")<DesktopAgentErrorInit> {}
 class DesktopAgentSessionBusy extends TaggedError("desktop_agent.session_busy")<DesktopAgentErrorInit> {}
 class DesktopAgentNavigationFailed extends TaggedError("desktop_agent.navigation_failed")<DesktopAgentErrorInit> {}
-class DesktopAgentUnsupportedOperation extends TaggedError("desktop_agent.unsupported_operation")<DesktopAgentErrorInit> {}
+class DesktopAgentUnsupportedOperation extends TaggedError(
+	"desktop_agent.unsupported_operation",
+)<DesktopAgentErrorInit> {}
 
 export function desktopAgentError(
 	reason: "factory_unavailable" | "session_not_found" | "session_busy" | "navigation_failed" | "unsupported_operation",

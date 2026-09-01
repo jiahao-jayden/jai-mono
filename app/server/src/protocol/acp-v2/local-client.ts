@@ -192,13 +192,17 @@ class NodeLocalAcpV2Client implements LocalAcpV2Client {
 		const resolve = this.#pending.get(message.id);
 		if (!resolve) return;
 		this.#pending.delete(message.id);
-		resolve(this.resolveResponse({
-			jsonrpc: "2.0",
-			id: message.id,
-			...(isObject(message.error) && typeof message.error.code === "number" && typeof message.error.message === "string"
-				? { error: { code: message.error.code, message: message.error.message } }
-				: { result: message.result }),
-		}));
+		resolve(
+			this.resolveResponse({
+				jsonrpc: "2.0",
+				id: message.id,
+				...(isObject(message.error) &&
+				typeof message.error.code === "number" &&
+				typeof message.error.message === "string"
+					? { error: { code: message.error.code, message: message.error.message } }
+					: { result: message.result }),
+			}),
+		);
 	}
 
 	private disconnect(cause?: unknown): void {

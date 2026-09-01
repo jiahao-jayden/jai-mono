@@ -1,25 +1,14 @@
-export {
-	acquireLocalRuntimeOwner,
-	RuntimeHostAlreadyOwned,
-	RuntimeHostOwnerAcquireFailed,
-	type LocalRuntimeOwner,
-} from "./local-owner";
-export { resolveJaiDataDirectory } from "./paths";
-export {
-	openConfiguredRuntimeHost,
-	type OpenConfiguredRuntimeHostOptions,
-} from "./daemon";
+export type { RuntimeApprovalRequest } from "../operations";
 export { RuntimeHostConfigurationInvalid } from "./configuration";
 export {
-	openJaiRuntimeServer,
-	JaiRuntimeServerOpenFailed,
-	type JaiRuntimeServer,
-	type OpenJaiRuntimeServerOptions,
-} from "./server";
+	type OpenConfiguredRuntimeHostOptions,
+	openConfiguredRuntimeHost,
+} from "./daemon";
 export {
 	createRuntimeHost,
 	type PromptAdmission,
 	type RuntimeCancelOutcome,
+	type RuntimeForegroundState,
 	type RuntimeHost,
 	type RuntimeHostCancelError,
 	type RuntimeHostConfigurationError,
@@ -31,11 +20,10 @@ export {
 	RuntimeHostPromptRejected,
 	RuntimeHostRecoveryCorrupted,
 	type RuntimeHostRecoveryError,
-	type RuntimeHostSnapshotError,
-	type RuntimeForegroundState,
 	RuntimeHostSessionAlreadyExists,
 	RuntimeHostSessionControllerHeld,
 	RuntimeHostSessionNotFound,
+	type RuntimeHostSnapshotError,
 	type RuntimePromptInput,
 	type RuntimeSession,
 	type RuntimeSessionEvent,
@@ -43,4 +31,16 @@ export {
 	type RuntimeSessionSnapshot,
 	type RuntimeStopReason,
 } from "./host";
-export type { RuntimeApprovalRequest } from "../operations";
+export {
+	acquireLocalRuntimeOwner,
+	type LocalRuntimeOwner,
+	RuntimeHostAlreadyOwned,
+	RuntimeHostOwnerAcquireFailed,
+} from "./local-owner";
+export { resolveJaiDataDirectory } from "./paths";
+export {
+	type JaiRuntimeServer,
+	JaiRuntimeServerOpenFailed,
+	type OpenJaiRuntimeServerOptions,
+	openJaiRuntimeServer,
+} from "./server";

@@ -1,9 +1,9 @@
-import type { RuntimeConnectorProjection, RuntimeConnectorSettings } from "@jai/server";
 import {
 	type ConnectorOAuthApplicationDefinition,
 	findConnectorOAuthApplication,
 	listConnectorActionCatalog,
 } from "@jai/connector";
+import type { RuntimeConnectorProjection, RuntimeConnectorSettings } from "@jai/server";
 import type {
 	DesktopConnector,
 	DesktopConnectorConfigInput,
@@ -135,7 +135,8 @@ export function projectRuntimeConnectorConfig(settings: RuntimeConnectorProjecti
 						description: action.description,
 						sideEffect: action.sideEffect,
 						dataSensitivity: action.dataSensitivity,
-						permission: settings.policy.actions[`${action.connectorId}.${action.actionId}`] ?? settings.policy.default,
+						permission:
+							settings.policy.actions[`${action.connectorId}.${action.actionId}`] ?? settings.policy.default,
 					})),
 				...(oauth
 					? {

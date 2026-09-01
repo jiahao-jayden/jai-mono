@@ -1,7 +1,7 @@
 import { TaggedError } from "better-result";
 import { shell } from "electron";
-import { findDesktopConnectorOAuthApplication } from "../config/connector";
 import type { DesktopConfigService } from "../config";
+import { findDesktopConnectorOAuthApplication } from "../config/connector";
 import { DesktopOAuthCallbackServer } from "./callback-server";
 
 class DesktopOAuthCallbackInvalid extends TaggedError("desktop_oauth.callback_invalid")<{

@@ -19,7 +19,7 @@ import { ChatMessageQueue } from "./chat-message-queue";
 import { MessageAttachmentPicker } from "./message-attachment-picker";
 import { ModelSelector } from "./model-selector";
 import { ProjectPicker } from "./project-picker";
-import { filterSlashCommands, slashCommandQuery, SlashCommandMenu } from "./slash-command-menu";
+import { filterSlashCommands, SlashCommandMenu, slashCommandQuery } from "./slash-command-menu";
 
 interface ChatComposerProps {
 	value: string;

@@ -40,11 +40,7 @@ class OperationCommandRegistry implements CodingCommandRegistry {
 	): ResultType<CodingCommandRegistration, CodingCommandRegistrationFailed> {
 		const extension = extensionId.trim();
 		const kind = command.kind ?? "extension";
-		if (
-			!extension ||
-			!isCommandName(command.name) ||
-			!command.description.trim()
-		) {
+		if (!extension || !isCommandName(command.name) || !command.description.trim()) {
 			return Result.err(
 				new CodingCommandRegistrationFailed({
 					command: command.name,

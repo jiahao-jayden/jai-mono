@@ -12,7 +12,7 @@ import {
 } from "@jai/ai";
 import { getErrorMessage } from "@jai/common";
 import { TaggedError } from "better-result";
-import { isEffectGateInterrupted, type EffectGateAction } from "./effect-gate";
+import { type EffectGateAction, isEffectGateInterrupted } from "./effect-gate";
 import { projectToolCallProtocol } from "./tool-protocol";
 import type {
 	AgentContext,
@@ -118,11 +118,7 @@ export function agentLoop(
  * 驱动一次 run：反复执行 turn，直到没有更多工具调用且没有 follow-up。
  * 本函数只做 run 级编排（steering / follow-up / 收尾），单个 turn 的细节交给 runTurn。
  */
-async function driveAgentLoop(
-	prompts: AgentMessage[],
-	run: AgentLoopRuntime,
-	runFromContext: boolean,
-): Promise<void> {
+async function driveAgentLoop(prompts: AgentMessage[], run: AgentLoopRuntime, runFromContext: boolean): Promise<void> {
 	const { config, newMessages, signal, emit } = run;
 	await emit({ type: "agent_start" });
 
@@ -378,7 +374,10 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 	};
 
 	const reservation = await reserveModelEffect(config, request, signal);
-	await pauseBeforeEffect(config, { type: "model_request", ...(reservation ? { assistantEntryId: reservation.entryId } : {}) });
+	await pauseBeforeEffect(config, {
+		type: "model_request",
+		...(reservation ? { assistantEntryId: reservation.entryId } : {}),
+	});
 
 	// 调用 LLM
 	const response = config.provider.stream(config.model, llmContext, {

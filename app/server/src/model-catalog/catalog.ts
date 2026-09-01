@@ -71,7 +71,8 @@ export class RuntimeModelCatalogInvalid extends TaggedError("runtime_model_catal
 export function normalizeRuntimeModelCatalog(value: unknown): RuntimeModelCatalog {
 	const root = record(value);
 	const providersValue = root ? record(root.providers) : undefined;
-	if (!providersValue) throw new RuntimeModelCatalogInvalid({ message: "Models.dev catalog has an unsupported shape" });
+	if (!providersValue)
+		throw new RuntimeModelCatalogInvalid({ message: "Models.dev catalog has an unsupported shape" });
 	const providers: Record<string, RuntimeModelCatalogProvider> = {};
 	for (const [providerId, rawProvider] of Object.entries(providersValue)) {
 		if (!nonEmpty(providerId)) continue;
@@ -106,16 +107,12 @@ export function parseRuntimeModelCatalogSnapshot(value: unknown): RuntimeModelCa
 	const candidate = record(value);
 	if (!candidate || typeof candidate.stale !== "boolean" || typeof candidate.refreshed !== "boolean") return undefined;
 	if (candidate.catalog === undefined) {
-		return candidate.fetchedAt === undefined
-			? { stale: candidate.stale, refreshed: candidate.refreshed }
-			: undefined;
+		return candidate.fetchedAt === undefined ? { stale: candidate.stale, refreshed: candidate.refreshed } : undefined;
 	}
 	const fetchedAt = candidate.fetchedAt;
 	if (typeof fetchedAt !== "number" || !Number.isInteger(fetchedAt) || fetchedAt < 0) return undefined;
 	const catalog = parseRuntimeModelCatalog(candidate.catalog);
-	return catalog
-		? { catalog, fetchedAt, stale: candidate.stale, refreshed: candidate.refreshed }
-		: undefined;
+	return catalog ? { catalog, fetchedAt, stale: candidate.stale, refreshed: candidate.refreshed } : undefined;
 }
 
 export function findRuntimeModelCatalog(
@@ -161,29 +158,61 @@ function normalizeModel(id: string, value: unknown): RuntimeModelCatalogModel | 
 		...(string(source.description) ? { description: string(source.description)! } : {}),
 		...(string(source.family) ? { family: string(source.family)! } : {}),
 		...(string(source.status) ? { status: string(source.status)! } : {}),
-		...(string(source.release_date ?? source.releaseDate) ? { releaseDate: string(source.release_date ?? source.releaseDate)! } : {}),
-		...(string(source.last_updated ?? source.lastUpdated) ? { lastUpdated: string(source.last_updated ?? source.lastUpdated)! } : {}),
+		...(string(source.release_date ?? source.releaseDate)
+			? { releaseDate: string(source.release_date ?? source.releaseDate)! }
+			: {}),
+		...(string(source.last_updated ?? source.lastUpdated)
+			? { lastUpdated: string(source.last_updated ?? source.lastUpdated)! }
+			: {}),
 		...(string(source.knowledge) ? { knowledge: string(source.knowledge)! } : {}),
-		...(boolean(source.open_weights ?? source.openWeights) === undefined ? {} : { openWeights: boolean(source.open_weights ?? source.openWeights)! }),
+		...(boolean(source.open_weights ?? source.openWeights) === undefined
+			? {}
+			: { openWeights: boolean(source.open_weights ?? source.openWeights)! }),
 		...(boolean(source.attachment) === undefined ? {} : { attachment: boolean(source.attachment)! }),
 		...(boolean(source.reasoning) === undefined ? {} : { reasoning: boolean(source.reasoning)! }),
-		...(reasoningOptions(source.reasoning_options ?? source.reasoningOptions).length ? { reasoningOptions: reasoningOptions(source.reasoning_options ?? source.reasoningOptions) } : {}),
+		...(reasoningOptions(source.reasoning_options ?? source.reasoningOptions).length
+			? { reasoningOptions: reasoningOptions(source.reasoning_options ?? source.reasoningOptions) }
+			: {}),
 		...(boolean(source.temperature) === undefined ? {} : { temperature: boolean(source.temperature)! }),
 		...(interleaved === undefined ? {} : { interleaved }),
-		...(boolean(source.tool_call ?? source.toolCall) === undefined ? {} : { toolCall: boolean(source.tool_call ?? source.toolCall)! }),
-		...(boolean(source.structured_output ?? source.structuredOutput) === undefined ? {} : { structuredOutput: boolean(source.structured_output ?? source.structuredOutput)! }),
-		...(modalitiesFor(modalities?.input ?? source.inputModalities).length ? { inputModalities: modalitiesFor(modalities?.input ?? source.inputModalities) } : {}),
-		...(modalitiesFor(modalities?.output ?? source.outputModalities).length ? { outputModalities: modalitiesFor(modalities?.output ?? source.outputModalities) } : {}),
+		...(boolean(source.tool_call ?? source.toolCall) === undefined
+			? {}
+			: { toolCall: boolean(source.tool_call ?? source.toolCall)! }),
+		...(boolean(source.structured_output ?? source.structuredOutput) === undefined
+			? {}
+			: { structuredOutput: boolean(source.structured_output ?? source.structuredOutput)! }),
+		...(modalitiesFor(modalities?.input ?? source.inputModalities).length
+			? { inputModalities: modalitiesFor(modalities?.input ?? source.inputModalities) }
+			: {}),
+		...(modalitiesFor(modalities?.output ?? source.outputModalities).length
+			? { outputModalities: modalitiesFor(modalities?.output ?? source.outputModalities) }
+			: {}),
 		...(normalizedCost(cost) === undefined ? {} : { cost: normalizedCost(cost)! }),
-		...(positiveInteger(limit?.context ?? source.contextWindow) === undefined ? {} : { contextWindow: positiveInteger(limit?.context ?? source.contextWindow)! }),
-		...(positiveInteger(limit?.input ?? source.inputLimit) === undefined ? {} : { inputLimit: positiveInteger(limit?.input ?? source.inputLimit)! }),
-		...(positiveInteger(limit?.output ?? source.maxTokens) === undefined ? {} : { maxTokens: positiveInteger(limit?.output ?? source.maxTokens)! }),
+		...(positiveInteger(limit?.context ?? source.contextWindow) === undefined
+			? {}
+			: { contextWindow: positiveInteger(limit?.context ?? source.contextWindow)! }),
+		...(positiveInteger(limit?.input ?? source.inputLimit) === undefined
+			? {}
+			: { inputLimit: positiveInteger(limit?.input ?? source.inputLimit)! }),
+		...(positiveInteger(limit?.output ?? source.maxTokens) === undefined
+			? {}
+			: { maxTokens: positiveInteger(limit?.output ?? source.maxTokens)! }),
 	};
 }
 
 function reasoningOptions(value: unknown): readonly string[] {
 	if (!Array.isArray(value)) return [];
-	return [...new Set(value.flatMap((option) => (typeof option === "string" && option ? [option] : record(option) && Array.isArray(option.values) ? option.values.filter(nonEmpty) : [])))];
+	return [
+		...new Set(
+			value.flatMap((option) =>
+				typeof option === "string" && option
+					? [option]
+					: record(option) && Array.isArray(option.values)
+						? option.values.filter(nonEmpty)
+						: [],
+			),
+		),
+	];
 }
 
 function modalitiesFor(value: unknown): readonly RuntimeModelCatalogModality[] {
@@ -196,8 +225,12 @@ function normalizedCost(value: Record<string, unknown> | undefined): RuntimeMode
 	const cost = {
 		...(finite(value.input) === undefined ? {} : { input: finite(value.input)! }),
 		...(finite(value.output) === undefined ? {} : { output: finite(value.output)! }),
-		...(finite(value.cache_read ?? value.cacheRead) === undefined ? {} : { cacheRead: finite(value.cache_read ?? value.cacheRead)! }),
-		...(finite(value.cache_write ?? value.cacheWrite) === undefined ? {} : { cacheWrite: finite(value.cache_write ?? value.cacheWrite)! }),
+		...(finite(value.cache_read ?? value.cacheRead) === undefined
+			? {}
+			: { cacheRead: finite(value.cache_read ?? value.cacheRead)! }),
+		...(finite(value.cache_write ?? value.cacheWrite) === undefined
+			? {}
+			: { cacheWrite: finite(value.cache_write ?? value.cacheWrite)! }),
 		...(finite(value.reasoning) === undefined ? {} : { reasoning: finite(value.reasoning)! }),
 	};
 	return Object.keys(cost).length === 0 ? undefined : cost;
@@ -206,7 +239,9 @@ function normalizedCost(value: Record<string, unknown> | undefined): RuntimeMode
 function interleavedValue(value: unknown): RuntimeModelCatalogModel["interleaved"] | undefined {
 	if (value === true) return true;
 	const source = record(value);
-	return source?.field === "reasoning" || source?.field === "reasoning_content" || source?.field === "reasoning_details"
+	return source?.field === "reasoning" ||
+		source?.field === "reasoning_content" ||
+		source?.field === "reasoning_details"
 		? { field: source.field }
 		: undefined;
 }
@@ -214,7 +249,8 @@ function interleavedValue(value: unknown): RuntimeModelCatalogModel["interleaved
 function defaultCatalogProviderFor(modelId: string): string | undefined {
 	const normalized = modelId.trim().toLocaleLowerCase();
 	if (normalized.startsWith("claude-")) return "anthropic";
-	if (["gpt-", "chatgpt-", "o1", "o3", "o4", "o5", "codex-"].some((prefix) => normalized.startsWith(prefix))) return "openai";
+	if (["gpt-", "chatgpt-", "o1", "o3", "o4", "o5", "codex-"].some((prefix) => normalized.startsWith(prefix)))
+		return "openai";
 	if (normalized.startsWith("deepseek-")) return "deepseek";
 	if (normalized.startsWith("minimax-")) return "minimax";
 	if (normalized.startsWith("kimi-") || normalized.startsWith("moonshot-")) return "moonshotai";
@@ -226,7 +262,9 @@ function sameJson(source: unknown, normalized: RuntimeModelCatalog): boolean {
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-	return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+	return typeof value === "object" && value !== null && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: undefined;
 }
 
 function nonEmpty(value: unknown): value is string {

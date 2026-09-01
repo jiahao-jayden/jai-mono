@@ -1,6 +1,6 @@
 import {
-	CodingExtensionOperationFailed,
 	type CodingExtensionDiagnostic,
+	CodingExtensionOperationFailed,
 	type CodingExtensionTool,
 	type CodingExtensionToolResult,
 	type CodingToolCatalogDiscovery,
@@ -37,17 +37,25 @@ export class McpExtensionRuntime {
 	#closed = false;
 
 	constructor(configuration: McpExtensionConfiguration, options: McpRuntimeOptions) {
-		this.#servers = Object.values(configuration.servers).map((server) => new ManagedMcpServer(server, options, {
-			invalidate: () => this.#invalidate(),
-			report: (diagnostic) => this.#diagnostics.push(diagnostic),
-		}));
+		this.#servers = Object.values(configuration.servers).map(
+			(server) =>
+				new ManagedMcpServer(server, options, {
+					invalidate: () => this.#invalidate(),
+					report: (diagnostic) => this.#diagnostics.push(diagnostic),
+				}),
+		);
 	}
 
 	async start(): Promise<void> {
 		await Promise.all(this.#servers.map((server) => server.start()));
 	}
 
-	async discover(): Promise<ResultType<CodingToolCatalogDiscovery<McpExtensionConfiguration, {}, McpExtensionRuntime>, CodingExtensionOperationFailed>> {
+	async discover(): Promise<
+		ResultType<
+			CodingToolCatalogDiscovery<McpExtensionConfiguration, {}, McpExtensionRuntime>,
+			CodingExtensionOperationFailed
+		>
+	> {
 		const tools: CodingExtensionTool<McpExtensionConfiguration, {}, McpExtensionRuntime>[] = [];
 		for (const server of this.#servers) {
 			const discovered = await server.discover();
@@ -113,7 +121,12 @@ class ManagedMcpServer {
 		await this.#connect();
 	}
 
-	async discover(): Promise<ResultType<readonly CodingExtensionTool<McpExtensionConfiguration, {}, McpExtensionRuntime>[], CodingExtensionOperationFailed>> {
+	async discover(): Promise<
+		ResultType<
+			readonly CodingExtensionTool<McpExtensionConfiguration, {}, McpExtensionRuntime>[],
+			CodingExtensionOperationFailed
+		>
+	> {
 		const client = this.#client;
 		if (!client) {
 			return Result.err(
@@ -248,7 +261,11 @@ class ManagedMcpServer {
 			});
 		}
 		try {
-			const result = await client.callTool({ name: toolName, arguments: args }, undefined, signal ? { signal } : undefined);
+			const result = await client.callTool(
+				{ name: toolName, arguments: args },
+				undefined,
+				signal ? { signal } : undefined,
+			);
 			if (!("content" in result)) {
 				return { content: [{ type: "text", text: JSON.stringify(result.toolResult ?? result) ?? "" }] };
 			}
@@ -302,7 +319,12 @@ function mapMcpContent(content: readonly unknown[] | undefined): CodingExtension
 	for (const item of content) {
 		if (isRecord(item) && item.type === "text" && typeof item.text === "string") {
 			mapped.push({ type: "text", text: item.text });
-		} else if (isRecord(item) && item.type === "image" && typeof item.data === "string" && typeof item.mimeType === "string") {
+		} else if (
+			isRecord(item) &&
+			item.type === "image" &&
+			typeof item.data === "string" &&
+			typeof item.mimeType === "string"
+		) {
 			mapped.push({ type: "image", image: item.data, mimeType: item.mimeType });
 		} else {
 			mapped.push({ type: "text", text: JSON.stringify(item) ?? String(item) });
@@ -343,7 +365,8 @@ function createRestrictedFetch(
 				for (const name of crossOriginSensitiveNames) headers.delete(name);
 			}
 			const method = (currentInit.method ?? "GET").toUpperCase();
-			const switchToGet = response.status === 303 || ((response.status === 301 || response.status === 302) && method === "POST");
+			const switchToGet =
+				response.status === 303 || ((response.status === 301 || response.status === 302) && method === "POST");
 			currentInit = {
 				...currentInit,
 				...(switchToGet ? { method: "GET", body: undefined } : {}),
@@ -374,7 +397,11 @@ function jsonSchemaToTypeBox(schema: unknown): TSchema {
 	switch (schema.type) {
 		case "object": {
 			const properties = isRecord(schema.properties) ? schema.properties : {};
-			const required = new Set(Array.isArray(schema.required) ? schema.required.filter((value): value is string => typeof value === "string") : []);
+			const required = new Set(
+				Array.isArray(schema.required)
+					? schema.required.filter((value): value is string => typeof value === "string")
+					: [],
+			);
 			const mapped = Object.fromEntries(
 				Object.entries(properties).map(([key, value]) => [
 					key,
@@ -386,7 +413,10 @@ function jsonSchemaToTypeBox(schema: unknown): TSchema {
 		case "array":
 			return Type.Array(jsonSchemaToTypeBox(schema.items));
 		case "string":
-			return Type.String({ ...(typeof schema.minLength === "number" ? { minLength: schema.minLength } : {}), ...(typeof schema.maxLength === "number" ? { maxLength: schema.maxLength } : {}) });
+			return Type.String({
+				...(typeof schema.minLength === "number" ? { minLength: schema.minLength } : {}),
+				...(typeof schema.maxLength === "number" ? { maxLength: schema.maxLength } : {}),
+			});
 		case "number":
 			return Type.Number();
 		case "integer":
@@ -401,7 +431,8 @@ function jsonSchemaToTypeBox(schema: unknown): TSchema {
 }
 
 function literalSchema(value: unknown): TSchema[] {
-	if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return [Type.Literal(value)];
+	if (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+		return [Type.Literal(value)];
 	if (value === null) return [Type.Null()];
 	return [];
 }

@@ -254,7 +254,9 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 	}
 
 	/** Starts a run with caller-reserved ids for its initial durable inputs. */
-	streamWithReservedEntries(input: readonly { readonly message: AgentMessage; readonly entryId?: string }[]): AgentRun {
+	streamWithReservedEntries(
+		input: readonly { readonly message: AgentMessage; readonly entryId?: string }[],
+	): AgentRun {
 		for (const item of input) {
 			if (item.entryId) this.reservedMessageEntries.set(item.message, item.entryId);
 		}

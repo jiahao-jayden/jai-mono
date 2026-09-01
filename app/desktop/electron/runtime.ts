@@ -2,14 +2,14 @@ import { TaggedError } from "better-result";
 import { app, BrowserWindow, dialog, shell } from "electron";
 import type { DesktopAgentEvent } from "../shared/desktop-rpc";
 import { DesktopAcpAgentHost } from "./agent/acp-host";
-import { type AttachmentRegistry, createAttachmentRegistry } from "./rpc/attachments";
-import { createBroadcaster } from "./rpc/broadcast";
+import { createDesktopCommandCatalog, type DesktopCommandCatalog } from "./commands/catalog";
 import { DesktopConfigService } from "./config";
 import { DesktopOAuthManager } from "./oauth/manager";
+import { type AttachmentRegistry, createAttachmentRegistry } from "./rpc/attachments";
+import { createBroadcaster } from "./rpc/broadcast";
+import type { DesktopSessionCatalogPort } from "./session-catalog/remote";
 import { createDesktopThemeService, type DesktopThemeService } from "./theme";
 import { createOpenWithService, type OpenWithService } from "./workspace/open-with";
-import type { DesktopSessionCatalogPort } from "./session-catalog/remote";
-import { createDesktopCommandCatalog, type DesktopCommandCatalog } from "./commands/catalog";
 
 /**
  * Everything the RPC router needs, resolved once at startup. Each field is
