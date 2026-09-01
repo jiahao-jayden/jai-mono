@@ -235,9 +235,7 @@ export class RuntimeConnectorOAuth implements RuntimeConnectorOAuthController {
 	}
 }
 
-function parseCallback(
-	rawUrl: string,
-): ResultType<
+function parseCallback(rawUrl: string): ResultType<
 	{
 		readonly oauthServiceId: string;
 		readonly state: string;

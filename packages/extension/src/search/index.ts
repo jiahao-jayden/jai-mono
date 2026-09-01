@@ -311,11 +311,13 @@ function formatGrep(
 			currentPath = item.path;
 			lines.push(`${item.path}${annotation(item.gitStatus, item.score)}`);
 		}
-		item.before.forEach((line, index) =>
-			lines.push(` ${item.line - item.before.length + index}- ${truncateLine(line)}`),
-		);
+		for (const [index, line] of item.before.entries()) {
+			lines.push(` ${item.line - item.before.length + index}- ${truncateLine(line)}`);
+		}
 		lines.push(` ${item.line}: ${truncateLine(item.text)}`);
-		item.after.forEach((line, index) => lines.push(` ${item.line + index + 1}- ${truncateLine(line)}`));
+		for (const [index, line] of item.after.entries()) {
+			lines.push(` ${item.line + index + 1}- ${truncateLine(line)}`);
+		}
 	}
 	return lines.join("\n");
 }
