@@ -11,19 +11,19 @@ const DEFAULT_MAX_QUEUE_SIZE = 256;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 5_000;
 
-export interface OtlpTelemetryExporterStats {
+export interface LangfuseOtlpTelemetryExporterStats {
 	readonly dropped: number;
 	readonly exported: number;
 	readonly failed: number;
 	readonly queued: number;
 }
 
-export interface OtlpTelemetrySink extends TelemetrySink {
+export interface LangfuseOtlpTelemetrySink extends TelemetrySink {
 	close(): Promise<void>;
-	readonly stats: OtlpTelemetryExporterStats;
+	readonly stats: LangfuseOtlpTelemetryExporterStats;
 }
 
-export interface OtlpTelemetrySinkOptions {
+export interface LangfuseOtlpTelemetrySinkOptions {
 	readonly endpoint: string;
 	readonly maxBatchSize?: number;
 	readonly maxQueueSize?: number;
@@ -39,11 +39,11 @@ export interface OtlpTelemetrySinkOptions {
  * 把已完成且已投影的 Jai span 发送到 OTLP/HTTP。调用方从不等待网络，失败与满队列
  * 都只反映在 `stats`，不会进入 Agent 的 Result 或控制流。
  */
-export function createOtlpTelemetrySink(options: OtlpTelemetrySinkOptions): OtlpTelemetrySink {
-	return new DefaultOtlpTelemetrySink(resolveOptions(options));
+export function createLangfuseOtlpTelemetrySink(options: LangfuseOtlpTelemetrySinkOptions): LangfuseOtlpTelemetrySink {
+	return new DefaultLangfuseOtlpTelemetrySink(resolveOptions(options));
 }
 
-interface ResolvedOtlpTelemetrySinkOptions {
+interface ResolvedLangfuseOtlpTelemetrySinkOptions {
 	readonly endpoint: string;
 	readonly exporter: SpanExporter;
 	readonly maxBatchSize: number;
@@ -51,16 +51,16 @@ interface ResolvedOtlpTelemetrySinkOptions {
 	readonly shutdownTimeoutMs: number;
 }
 
-class DefaultOtlpTelemetrySink implements OtlpTelemetrySink {
+class DefaultLangfuseOtlpTelemetrySink implements LangfuseOtlpTelemetrySink {
 	readonly #queue: ReadableSpan[] = [];
 	readonly #stats = { dropped: 0, exported: 0, failed: 0 };
 	#closed = false;
 	#closePromise?: Promise<void>;
 	#draining?: Promise<void>;
 
-	constructor(private readonly options: ResolvedOtlpTelemetrySinkOptions) {}
+	constructor(private readonly options: ResolvedLangfuseOtlpTelemetrySinkOptions) {}
 
-	get stats(): OtlpTelemetryExporterStats {
+	get stats(): LangfuseOtlpTelemetryExporterStats {
 		return { ...this.#stats, queued: this.#queue.length };
 	}
 
@@ -129,7 +129,7 @@ class DefaultOtlpTelemetrySink implements OtlpTelemetrySink {
 	}
 }
 
-function resolveOptions(options: OtlpTelemetrySinkOptions): ResolvedOtlpTelemetrySinkOptions {
+function resolveOptions(options: LangfuseOtlpTelemetrySinkOptions): ResolvedLangfuseOtlpTelemetrySinkOptions {
 	const endpoint = resolveTracesEndpoint(options.endpoint);
 	const publicKey = options.publicKey.trim();
 	const secretKey = options.secretKey.trim();
@@ -204,7 +204,7 @@ function projectOtlpSpan(record: TelemetrySpanRecord): ReadableSpan {
 		endTime: timestamp(record.endedAtMs ?? record.startedAtMs),
 		ended: true,
 		events: record.events.map(projectEvent),
-		instrumentationScope: { name: "@jai/telemetry-otlp", version: "1" },
+		instrumentationScope: { name: "@jai/server/telemetry/langfuse-otlp", version: "1" },
 		kind: SpanKind.INTERNAL,
 		links: [],
 		name: record.name,

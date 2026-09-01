@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { ExportResultCode, type ExportResult } from "@opentelemetry/core";
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
 import { createTelemetryContext, omittedTelemetryContent, type TelemetrySink, type TelemetrySpanRecord } from "@jai/telemetry";
-import { createOtlpTelemetrySink, type OtlpTelemetrySink } from "../src";
+import { createLangfuseOtlpTelemetrySink, type LangfuseOtlpTelemetrySink } from "../../src/telemetry/langfuse-otlp";
 
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
 
@@ -114,7 +114,7 @@ describe("OTLP telemetry sink", () => {
 			},
 		});
 		servers.push(server);
-		const sink = createOtlpTelemetrySink({
+		const sink = createLangfuseOtlpTelemetrySink({
 			endpoint: `${server.url}api/public/otel`,
 			publicKey: "pk-test",
 			secretKey: "sk-test",
@@ -154,7 +154,7 @@ describe("OTLP telemetry sink", () => {
 
 	test("队列满、导出失败和关闭超时均只更新统计，不阻塞并行 sink", async () => {
 		const blocked = new BlockingExporter();
-		const remote = createOtlpTelemetrySink({
+		const remote = createLangfuseOtlpTelemetrySink({
 			endpoint: "https://example.test/otel",
 			exporter: blocked,
 			maxQueueSize: 1,
@@ -251,8 +251,8 @@ class ThrowingShutdownExporter extends RecordingExporter {
 	}
 }
 
-function createSink(exporter: SpanExporter): OtlpTelemetrySink {
-	return createOtlpTelemetrySink({
+function createSink(exporter: SpanExporter): LangfuseOtlpTelemetrySink {
+	return createLangfuseOtlpTelemetrySink({
 		endpoint: "https://example.test/otel",
 		exporter,
 		publicKey: "pk-test",

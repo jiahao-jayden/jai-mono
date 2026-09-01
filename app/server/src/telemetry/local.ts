@@ -9,8 +9,8 @@ import {
 	createJsonlStderrTelemetrySink,
 	type TelemetryTextOutput,
 } from "@jai/telemetry/node";
-import { createOtlpTelemetrySink, type OtlpTelemetrySinkOptions } from "@jai/telemetry-otlp";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
+import { createLangfuseOtlpTelemetrySink, type LangfuseOtlpTelemetrySinkOptions } from "./langfuse-otlp";
 
 export class RuntimeTelemetryConfigurationInvalid extends TaggedError("telemetry.configuration_invalid")<{
 	readonly message: string;
@@ -80,7 +80,7 @@ export function resolveRuntimeTelemetry(
 		});
 	}
 	try {
-		const otlpSink = createOtlpTelemetrySink(otlpOptions.value);
+		const otlpSink = createLangfuseOtlpTelemetrySink(otlpOptions.value);
 		sinks.push(otlpSink);
 		return Result.ok({
 			close: () => otlpSink.close(),
@@ -97,7 +97,7 @@ function hasFileLimit(environment: Readonly<Record<string, string | undefined>>)
 
 function resolveOtlpTelemetryOptions(
 	environment: Readonly<Record<string, string | undefined>>,
-): ResultType<Omit<OtlpTelemetrySinkOptions, "exporter"> | undefined, RuntimeTelemetryConfigurationInvalid> {
+): ResultType<Omit<LangfuseOtlpTelemetrySinkOptions, "exporter"> | undefined, RuntimeTelemetryConfigurationInvalid> {
 	const hasOtlpConfiguration = OTLP_ENVIRONMENT_VARIABLES.some((name) => environment[name] !== undefined);
 	if (!hasOtlpConfiguration) return Result.ok(undefined);
 
