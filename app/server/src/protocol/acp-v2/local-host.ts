@@ -5,6 +5,7 @@ import type { SqliteRuntimeAgentSettings } from "../../config";
 import type { RuntimeConnectorOAuthController } from "../../connectors";
 import type { SqliteRuntimeModelCatalog } from "../../model-catalog";
 import { acquireLocalRuntimeOwner, type LocalRuntimeOwner, type RuntimeHost } from "../../runtime";
+import type { RuntimeTelemetryController } from "../../telemetry";
 import type { SqliteWorkspaceTrust } from "../../workspaces";
 import {
 	createDesktopCatalogControl,
@@ -43,6 +44,8 @@ export interface OpenLocalRuntimeHostOptions {
 	readonly desktopModelCatalog?: SqliteRuntimeModelCatalog;
 	/** Host-owned durable Workspace trust facts projected through Desktop configuration. */
 	readonly desktopWorkspaceTrust?: SqliteWorkspaceTrust;
+	/** Server-owned telemetry settings projected through Desktop configuration. */
+	readonly desktopTelemetry?: RuntimeTelemetryController;
 	/** Overrides the OS-specific default for test or embedding hosts. */
 	readonly endpoint?: string;
 }
@@ -115,6 +118,7 @@ export async function openLocalRuntimeHost(
 					options.desktopConnectorOAuth,
 					options.desktopModelCatalog,
 					options.desktopWorkspaceTrust,
+					options.desktopTelemetry,
 				),
 			});
 			if (openedConfiguration.isErr()) throw openedConfiguration.error;

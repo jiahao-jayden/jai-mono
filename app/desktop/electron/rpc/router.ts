@@ -22,6 +22,7 @@ import {
 	desktopSessionListInputSchema,
 	desktopSessionMoveInputSchema,
 	desktopSessionRenameInputSchema,
+	desktopTelemetrySettingsInputSchema,
 	desktopWorkspaceListInputSchema,
 	desktopWorkspaceOpenInputSchema,
 	desktopWorkspaceReadInputSchema,
@@ -103,6 +104,16 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			},
 			revealApiKey(_event, profileId) {
 				return rt.config.revealApiKey(profileId);
+			},
+		},
+		telemetry: {
+			get() {
+				return rt.config.getTelemetry();
+			},
+			save(_event, input) {
+				return rt.config.saveTelemetry(
+					parse(desktopTelemetrySettingsInputSchema, input, "Invalid telemetry configuration"),
+				);
 			},
 		},
 		connector: {

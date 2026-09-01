@@ -294,6 +294,55 @@ export interface DesktopProviderConfigSnapshot {
 	readonly connector: DesktopConnectorConfigSnapshot;
 }
 
+/** Safe Desktop projection of the Server-owned Langfuse key pair. */
+export interface DesktopTelemetryCredentialSnapshot {
+	readonly revision: string | null;
+	readonly configured: boolean;
+	readonly publicKeyMask?: string;
+	readonly secretKeyMask?: string;
+}
+
+/** User-visible observability policy. Keys never appear in this read model. */
+export interface DesktopTelemetrySettingsSnapshot {
+	readonly policyRevision: string | null;
+	readonly credential: DesktopTelemetryCredentialSnapshot;
+	readonly enabled: boolean;
+	readonly endpoint?: string;
+	readonly exporter: "langfuse-otlp";
+	readonly environmentOverride: boolean;
+	readonly configurationError?: string;
+}
+
+/**
+ * A write-only Langfuse key pair. The renderer keeps these values only in its
+ * short-lived form draft; successful calls return DesktopTelemetrySettingsSnapshot.
+ */
+export interface DesktopTelemetrySettingsInput {
+	readonly policyRevision: string | null;
+	readonly credentialRevision: string | null;
+	readonly enabled: boolean;
+	readonly endpoint?: string;
+	readonly exporter: "langfuse-otlp";
+	readonly publicKey?: string;
+	readonly secretKey?: string;
+	readonly clearCredentials?: boolean;
+}
+
+/** Strict IPC boundary for the write-only observability settings payload. */
+export const desktopTelemetrySettingsInputSchema = Type.Object(
+	{
+		policyRevision: Type.Union([Type.String(), Type.Null()]),
+		credentialRevision: Type.Union([Type.String(), Type.Null()]),
+		enabled: Type.Boolean(),
+		endpoint: Type.Optional(Type.String()),
+		exporter: Type.Literal("langfuse-otlp"),
+		publicKey: Type.Optional(Type.String()),
+		secretKey: Type.Optional(Type.String()),
+		clearCredentials: Type.Optional(Type.Boolean()),
+	},
+	{ additionalProperties: false },
+);
+
 export interface DesktopConnectorCredential {
 	readonly key: string;
 	readonly label: string;
@@ -692,6 +741,10 @@ export interface DesktopApi {
 		save(input: DesktopProviderConfigInput): Promise<DesktopProviderConfigSnapshot>;
 		fetchModels(profileId: string): Promise<DesktopProviderFetchModelsResult>;
 		revealApiKey(profileId: string): Promise<DesktopProviderApiKeyRevealResult>;
+	};
+	readonly telemetry: {
+		get(): Promise<DesktopTelemetrySettingsSnapshot>;
+		save(input: DesktopTelemetrySettingsInput): Promise<DesktopTelemetrySettingsSnapshot>;
 	};
 	readonly connector: {
 		startOAuth(connectorId: string): Promise<DesktopConnectorOAuthStartResult>;

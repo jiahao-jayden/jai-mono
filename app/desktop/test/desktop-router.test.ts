@@ -158,6 +158,60 @@ describe("createDesktopRouter — 行为", () => {
 		expect(calls.map((call) => call.name)).toContain("invalidateSessions");
 	});
 
+	test("telemetry.save delegates its validated payload without invalidating active Agent sessions", async () => {
+		let received: unknown;
+		const snapshot = {
+			credential: { configured: true, revision: "credential-r2" },
+			enabled: true,
+			endpoint: "https://langfuse.example/api/public/otel",
+			environmentOverride: false,
+			exporter: "langfuse-otlp" as const,
+			policyRevision: "policy-r2",
+		};
+		const { router: r, calls } = router({
+			config: {
+				saveTelemetry: (input: unknown) => {
+					received = input;
+					return snapshot;
+				},
+			},
+		});
+		const input = {
+			credentialRevision: "credential-r1",
+			enabled: true,
+			endpoint: "https://langfuse.example/api/public/otel",
+			exporter: "langfuse-otlp" as const,
+			policyRevision: "policy-r1",
+			publicKey: "pk-lf-write-only",
+			secretKey: "sk-lf-write-only",
+		};
+
+		expect(await r.telemetry.save(event, input)).toEqual(snapshot);
+		expect(received).toEqual(input);
+		expect(calls.map((call) => call.name)).not.toContain("invalidateSessions");
+	});
+
+	test("telemetry.save rejects fields outside the explicit IPC DTO", () => {
+		let saves = 0;
+		const { router: r } = router({
+			config: {
+				saveTelemetry: () => {
+					saves += 1;
+				},
+			},
+		});
+		expect(() =>
+			r.telemetry.save(event, {
+				credentialRevision: null,
+				enabled: false,
+				exporter: "langfuse-otlp",
+				policyRevision: null,
+				unexpected: "not allowed",
+			} as never),
+		).toThrow();
+		expect(saves).toBe(0);
+	});
+
 	test("session.delete 先关闭运行中的 Agent，再删除持久化 Session", async () => {
 		const { router: r, calls } = router();
 		await r.session.delete(event, { sessionId: "session-1" });

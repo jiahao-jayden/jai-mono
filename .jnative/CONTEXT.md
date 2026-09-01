@@ -51,3 +51,7 @@ _Avoid_: trajectory record, telemetry storage, trace journal, observability data
 **Telemetry Content Reference**:
 观测中一切可能承载用户内容的字段的唯一表达形式，为 `omitted` / `hash` / `redacted_excerpt` / `approved_pointer` 的联合类型，默认恒为 `omitted`。它由类型系统强制，用来阻止「为了排查先把内容塞进 attributes」的惯性；标记敏感却无人执行脱敏，等同于没有脱敏。
 _Avoid_: sensitive flag, redaction hint, debug payload
+
+**User Telemetry Policy**:
+用户在 `~/.jai/settings.json` 中保存的非秘密观测选择：是否启用远端导出、exporter 类型与 endpoint。它只允许 user scope，不能由项目 `.jai/settings.json` 改写；Langfuse key pair 不属于它，而由 Server 的 credential owner 保存。
+_Avoid_: project telemetry setting, telemetry secret, Agent telemetry configuration

@@ -8,11 +8,14 @@ import type {
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
 	DesktopProviderFetchModelsResult,
+	DesktopTelemetrySettingsInput,
+	DesktopTelemetrySettingsSnapshot,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
 import { ConnectorSettings } from "./connector-settings";
 import { GeneralSettings } from "./general-settings";
+import { ObservabilitySettings } from "./observability-settings";
 import { type ProfileDraft, toProfileDraft, validateProviderDraft } from "./provider-settings-types";
 import { ProvidersSettings } from "./providers-settings";
 
@@ -28,9 +31,13 @@ interface ProviderSettingsDialogProps {
 	readonly onRevealApiKey: (profileId: string) => Promise<string>;
 	readonly onStartConnectorOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
 	readonly onDisconnectConnectorOAuth: (connectorId: string) => Promise<DesktopProviderConfigSnapshot>;
+	readonly telemetry?: DesktopTelemetrySettingsSnapshot;
+	readonly telemetryLoading: boolean;
+	readonly telemetryLoadError: boolean;
+	readonly onSaveTelemetry: (input: DesktopTelemetrySettingsInput) => Promise<DesktopTelemetrySettingsSnapshot>;
 }
 
-type SettingsCategory = "general" | "providers" | "connector";
+type SettingsCategory = "general" | "providers" | "connector" | "advanced";
 
 export function ProviderSettingsDialog({
 	open,
@@ -44,6 +51,10 @@ export function ProviderSettingsDialog({
 	onRevealApiKey,
 	onStartConnectorOAuth,
 	onDisconnectConnectorOAuth,
+	telemetry,
+	telemetryLoading,
+	telemetryLoadError,
+	onSaveTelemetry,
 }: ProviderSettingsDialogProps) {
 	const [fetchingProfileId, setFetchingProfileId] = useState<string>();
 	const [lastFetch, setLastFetch] = useState<DesktopProviderFetchModelsResult>();
@@ -79,8 +90,13 @@ export function ProviderSettingsDialog({
 						onRevealApiKey={onRevealApiKey}
 						onStartConnectorOAuth={onStartConnectorOAuth}
 						onDisconnectConnectorOAuth={onDisconnectConnectorOAuth}
+						telemetry={telemetry}
+						telemetryLoading={telemetryLoading}
+						telemetryLoadError={telemetryLoadError}
+						onSaveTelemetry={onSaveTelemetry}
 						fetchingProfileId={fetchingProfileId}
 						lastFetch={lastFetch}
+						onRetry={onRetry}
 					/>
 				) : (
 					<ProviderLoadState loading={loading} error={loadError} onRetry={onRetry} />
@@ -139,22 +155,32 @@ function ProviderLoadState({
 
 interface ProviderConfigFormProps {
 	readonly snapshot: DesktopProviderConfigSnapshot;
+	readonly onRetry: () => void;
 	readonly onSave: (input: DesktopProviderConfigInput) => Promise<DesktopProviderConfigSnapshot>;
 	readonly onFetchModels: (profileId: string) => Promise<DesktopProviderFetchModelsResult>;
 	readonly onRevealApiKey: (profileId: string) => Promise<string>;
 	readonly onStartConnectorOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
 	readonly onDisconnectConnectorOAuth: (connectorId: string) => Promise<DesktopProviderConfigSnapshot>;
+	readonly telemetry?: DesktopTelemetrySettingsSnapshot;
+	readonly telemetryLoading: boolean;
+	readonly telemetryLoadError: boolean;
+	readonly onSaveTelemetry: (input: DesktopTelemetrySettingsInput) => Promise<DesktopTelemetrySettingsSnapshot>;
 	readonly fetchingProfileId?: string;
 	readonly lastFetch?: DesktopProviderFetchModelsResult;
 }
 
 function ProviderConfigForm({
 	snapshot,
+	onRetry,
 	onSave,
 	onFetchModels,
 	onRevealApiKey,
 	onStartConnectorOAuth,
 	onDisconnectConnectorOAuth,
+	telemetry,
+	telemetryLoading,
+	telemetryLoadError,
+	onSaveTelemetry,
 	fetchingProfileId,
 	lastFetch,
 }: ProviderConfigFormProps) {
@@ -169,6 +195,8 @@ function ProviderConfigForm({
 	const [error, setError] = useState<string>();
 	const [dirty, setDirty] = useState(false);
 	const canSave = profiles.length > 0 || snapshot.profiles.length > 0 || connector.connectors.length > 0;
+	const contentClassName = cn("min-h-0 flex-1", category === "connector" ? "flex overflow-hidden" : "overflow-y-auto");
+	const providerCategory = category !== "advanced";
 
 	const submit = async () => {
 		const validationError = validateProviderDraft(profiles, language, maxIterations);
@@ -213,15 +241,13 @@ function ProviderConfigForm({
 			className="flex h-full min-h-0"
 			onSubmit={(event) => {
 				event.preventDefault();
-				void submit();
+				if (providerCategory) void submit();
 			}}
 		>
 			<SettingsSidebar category={category} onCategoryChange={(nextCategory) => setCategory(nextCategory)} />
 
 			<div className="flex min-w-0 flex-1 flex-col">
-				<div
-					className={cn("min-h-0 flex-1", category === "connector" ? "flex overflow-hidden" : "overflow-y-auto")}
-				>
+				<div className={contentClassName}>
 					{category === "general" ? (
 						<GeneralSettings
 							language={language}
@@ -283,7 +309,7 @@ function ProviderConfigForm({
 							fetchingProfileId={fetchingProfileId}
 							lastFetch={lastFetch}
 						/>
-					) : (
+					) : category === "connector" ? (
 						<ConnectorSettings
 							snapshot={snapshot.connector}
 							value={connector}
@@ -294,24 +320,34 @@ function ProviderConfigForm({
 								setDirty(true);
 							}}
 						/>
+					) : (
+						<ObservabilitySettings
+							snapshot={telemetry}
+							loading={telemetryLoading}
+							loadError={telemetryLoadError}
+							onRetry={onRetry}
+							onSave={onSaveTelemetry}
+						/>
 					)}
 				</div>
 
-				<DialogFooter className="items-center px-6 pb-4">
-					{error ? (
-						<p className="mr-auto max-w-115 text-[12px] leading-relaxed text-destructive" role="alert">
-							{error}
-						</p>
-					) : dirty ? (
-						<p className="mr-auto flex items-center gap-1.5 text-[12px] text-muted-foreground" role="status">
-							<span className="size-1.5 rounded-full bg-amber-500" aria-hidden="true" />
-							Unsaved changes
-						</p>
-					) : null}
-					<Button type="submit" loading={saving} disabled={!canSave}>
-						Save
-					</Button>
-				</DialogFooter>
+				{providerCategory ? (
+					<DialogFooter className="items-center px-6 pb-4">
+						{error ? (
+							<p className="mr-auto max-w-115 text-[12px] leading-relaxed text-destructive" role="alert">
+								{error}
+							</p>
+						) : dirty ? (
+							<p className="mr-auto flex items-center gap-1.5 text-[12px] text-muted-foreground" role="status">
+								<span className="size-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+								Unsaved changes
+							</p>
+						) : null}
+						<Button type="submit" loading={saving} disabled={!canSave}>
+							Save
+						</Button>
+					</DialogFooter>
+				) : null}
 			</div>
 		</form>
 	);
@@ -329,6 +365,7 @@ function SettingsSidebar({
 		{ id: "general", label: "General", icon: "settings" },
 		{ id: "providers", label: "Providers", icon: "key" },
 		{ id: "connector", label: "Connector", icon: "link" },
+		{ id: "advanced", label: "Advanced", icon: "layers" },
 	];
 
 	return (

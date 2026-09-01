@@ -1,13 +1,71 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
 	SqliteRuntimeAgentSettings,
 	SqliteRuntimeModelCatalog,
 	SqliteWorkspaceTrust,
+	RuntimeTelemetryController,
 } from "../../../src";
 import { createDesktopConfigurationControl } from "../../../src/protocol/desktop-configuration";
 
 describe("Desktop configuration control", () => {
+	test("projects telemetry safely and accepts only the telemetry write DTO", async () => {
+		const dataDirectory = await mkdtemp(join(tmpdir(), "jai-desktop-telemetry-control-"));
+		const database = new DatabaseSync(":memory:");
+		try {
+			const settings = new SqliteRuntimeAgentSettings(database);
+			const telemetry = await RuntimeTelemetryController.open({
+				dataDirectory,
+				database,
+				environment: {},
+				errorOutput: { write() {} },
+			});
+			if (telemetry.isErr()) throw telemetry.error;
+			const control = createDesktopConfigurationControl(settings, undefined, undefined, undefined, telemetry.value);
+			const saved = await control.handle({
+				jsonrpc: "2.0",
+				id: 1,
+				method: "jai/desktop-configuration/telemetry/save",
+				params: {
+					policyRevision: null,
+					credentialRevision: null,
+					enabled: true,
+					exporter: "langfuse-otlp",
+					endpoint: "https://langfuse.example/api/public/otel",
+					publicKey: "pk-control-secret",
+					secretKey: "sk-control-secret",
+				},
+			});
+			expect(saved).toEqual([
+				expect.objectContaining({
+					id: 1,
+					result: expect.objectContaining({
+						credential: expect.objectContaining({ configured: true, publicKeyMask: "•••• cret" }),
+					}),
+				}),
+			]);
+			expect(JSON.stringify(saved)).not.toContain("pk-control-secret");
+			expect(JSON.stringify(saved)).not.toContain("sk-control-secret");
+
+			const invalid = await control.handle({
+				jsonrpc: "2.0",
+				id: 2,
+				method: "jai/desktop-configuration/telemetry/save",
+				params: { enabled: true, arbitrary: true },
+			});
+			expect(invalid).toEqual([
+				{ jsonrpc: "2.0", id: 2, error: { code: -32602, message: "Invalid telemetry configuration save parameters" } },
+			]);
+			await telemetry.value.close();
+		} finally {
+			database.close();
+			await rm(dataDirectory, { recursive: true, force: true });
+		}
+	});
+
 	test("projects Host-owned Model Catalog metadata and never accepts a client cache", async () => {
 		const database = new DatabaseSync(":memory:");
 		try {

@@ -3,6 +3,12 @@ export {
 	CodingCommandExecutionFailed,
 	CodingCommandRegistrationFailed,
 } from "./commands";
+export { CodingConfigStore } from "./config/store";
+export {
+	defaultUserTelemetryPolicy,
+	sdkConfigDefinition,
+	type UserTelemetryPolicy,
+} from "./sdk/config";
 export { createCodingAgent } from "./sdk/create-coding-agent";
 export type { CodingExtensionError } from "./sdk/extension-errors";
 export {

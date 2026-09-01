@@ -35,8 +35,16 @@ const definition = defineCodingConfig({
 				{ additionalProperties: false },
 			),
 			tags: Type.Array(Type.String()),
-			denies: Type.Array(Type.String()),
-			limit: Type.Number(),
+		denies: Type.Array(Type.String()),
+		limit: Type.Number(),
+		telemetry: Type.Optional(
+			Type.Object(
+				{
+					enabled: Type.Boolean(),
+				},
+				{ additionalProperties: false },
+			),
+		),
 		},
 		{ additionalProperties: false },
 	),
@@ -60,6 +68,7 @@ const definition = defineCodingConfig({
 			default: 100,
 			combineRestrictions: (lower, higher) => Math.min(lower as number, higher as number),
 		},
+		telemetry: { merge: "replace", project: "never" },
 	},
 });
 
@@ -130,6 +139,28 @@ describe("CodingConfigStore", () => {
 			limit: 40,
 		});
 		expect((await store.setWorkspaceTrusted(true)).settings.name).toBe("project");
+	});
+
+	test("project scope 直接拒绝 user-only 字段，不受 workspace trust 影响", async () => {
+		for (const scope of ["project-shared", "project-local"] as const) {
+			const fixture = await createFixture();
+			await put(fixture.paths[scope]!, { telemetry: { enabled: true } });
+			for (const workspaceTrusted of [false, true]) {
+				await expect(
+					new CodingConfigStore(definition, { ...fixture.options, workspaceTrusted }).load(),
+				).rejects.toMatchObject({
+					_tag: "coding_config.validation_failed",
+					data: {
+						issues: [
+							{
+								path: "/telemetry",
+								message: "This setting is only allowed in user configuration",
+							},
+						],
+					},
+				});
+			}
+		}
 	});
 
 	test("缺失配置使用默认值；无效 JSON、未知字段和错误版本 fail closed", async () => {

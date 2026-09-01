@@ -25,6 +25,34 @@ describe("Desktop configuration client", () => {
 			const catalog = await client.value.getModelCatalog();
 			if (catalog.isErr()) throw catalog.error;
 			expect(catalog.value).toEqual({ stale: false, refreshed: false });
+			const initialTelemetry = await client.value.getTelemetry();
+			if (initialTelemetry.isErr()) throw initialTelemetry.error;
+			expect(initialTelemetry.value).toEqual({
+				credential: { revision: null, configured: false },
+				enabled: false,
+				environmentOverride: false,
+				exporter: "langfuse-otlp",
+				policyRevision: null,
+			});
+			const savedTelemetry = await client.value.saveTelemetry({
+				credentialRevision: initialTelemetry.value.credential.revision,
+				enabled: true,
+				endpoint: "https://langfuse.example/api/public/otel",
+				exporter: "langfuse-otlp",
+				policyRevision: initialTelemetry.value.policyRevision,
+				publicKey: "pk-client-secret",
+				secretKey: "sk-client-secret",
+			});
+			if (savedTelemetry.isErr()) throw savedTelemetry.error;
+			expect(savedTelemetry.value).toMatchObject({
+				credential: {
+					configured: true,
+					publicKeyMask: "•••• cret",
+					secretKeyMask: "•••• cret",
+				},
+				enabled: true,
+			});
+			expect(JSON.stringify(savedTelemetry.value)).not.toContain("client-secret");
 			const saved = await client.value.save({
 					revision: initial.value.revision,
 					model: "gateway/gpt-test",

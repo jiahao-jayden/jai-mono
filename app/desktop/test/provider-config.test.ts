@@ -7,10 +7,12 @@ import type {
   DesktopConfigurationClientError,
 } from "@jai/server/desktop-configuration-client";
 import type {
-  RuntimeAgentSettingsInput,
-  RuntimeAgentSettingsModelFetchResult,
-  RuntimeAgentSettingsSnapshot,
-  WorkspaceTrustSnapshot,
+	RuntimeAgentSettingsInput,
+	RuntimeAgentSettingsModelFetchResult,
+	RuntimeAgentSettingsSnapshot,
+	RuntimeTelemetrySettingsInput,
+	RuntimeTelemetrySettingsSnapshot,
+	WorkspaceTrustSnapshot,
 } from "@jai/server";
 import { Result } from "better-result";
 import { DesktopConfigService } from "../electron/config";
@@ -190,7 +192,7 @@ describe("DesktopConfigService", () => {
     }
   });
 
-  test("sends Connector secrets only to the Runtime Host and returns a safe projection", async () => {
+	test("sends Connector secrets only to the Runtime Host and returns a safe projection", async () => {
     const homeDir = await mkdtemp(
       join(tmpdir(), "jai-remote-connector-config-"),
     );
@@ -210,7 +212,7 @@ describe("DesktopConfigService", () => {
             },
           ],
         },
-      });
+	});
 
       expect(
         host.lastSaved?.connector?.connectors?.context7?.credentials?.apiKey,
@@ -229,6 +231,84 @@ describe("DesktopConfigService", () => {
       await rm(homeDir, { recursive: true, force: true });
     }
   });
+
+	test("sends Langfuse keys only through the write command and returns a masked telemetry projection", async () => {
+		const host = new FakeDesktopConfigurationClient();
+		const service = new DesktopConfigService(host);
+		try {
+			const saved = await service.saveTelemetry({
+				credentialRevision: null,
+				enabled: true,
+				endpoint: "https://langfuse.example/api/public/otel",
+				exporter: "langfuse-otlp",
+				policyRevision: null,
+				publicKey: "pk-lf-public-1234",
+				secretKey: "sk-lf-secret-5678",
+			});
+
+			expect(host.lastTelemetrySaved).toMatchObject({
+				publicKey: "pk-lf-public-1234",
+				secretKey: "sk-lf-secret-5678",
+			});
+			expect(saved).toMatchObject({
+				credential: {
+					configured: true,
+					publicKeyMask: "•••• 1234",
+					secretKeyMask: "•••• 5678",
+				},
+				enabled: true,
+				endpoint: "https://langfuse.example/api/public/otel",
+			});
+			expect(JSON.stringify(saved)).not.toContain("pk-lf-public");
+			expect(JSON.stringify(saved)).not.toContain("sk-lf-secret");
+			expect(JSON.stringify(await service.getTelemetry())).not.toContain("pk-lf-public");
+			expect(JSON.stringify(await service.getTelemetry())).not.toContain("sk-lf-secret");
+		} finally {
+			await service.close();
+		}
+	});
+
+	test("rejects unrecognized telemetry input before it reaches the Runtime Host", async () => {
+		const host = new FakeDesktopConfigurationClient();
+		const service = new DesktopConfigService(host);
+		try {
+			await expect(
+				service.saveTelemetry({
+					credentialRevision: null,
+					enabled: false,
+					exporter: "langfuse-otlp",
+					policyRevision: null,
+					unexpected: "not allowed",
+				} as never),
+			).rejects.toMatchObject({ _tag: "desktop_telemetry.invalid_input" });
+			expect(host.lastTelemetrySaved).toBeUndefined();
+		} finally {
+			await service.close();
+		}
+	});
+
+	test("projects an environment-controlled telemetry setup without reading keys", async () => {
+		const host = new FakeDesktopConfigurationClient(
+			{},
+			{
+				environmentOverride: true,
+			},
+		);
+		const service = new DesktopConfigService(host);
+		try {
+			const telemetry = await service.getTelemetry();
+			expect(telemetry).toEqual({
+				credential: { configured: false, revision: null },
+				enabled: false,
+				environmentOverride: true,
+				exporter: "langfuse-otlp",
+				policyRevision: null,
+			});
+			expect(JSON.stringify(telemetry)).not.toContain("JAI_TELEMETRY_LANGFUSE_SECRET_KEY");
+		} finally {
+			await service.close();
+		}
+	});
 
   test("forwards Connector OAuth authorization and callback to the Runtime Host without token handling", async () => {
     const host = new FakeDesktopConfigurationClient();
@@ -278,11 +358,16 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
   readonly oauthStarts: string[] = [];
   readonly oauthCallbacks: string[] = [];
   readonly oauthDisconnects: string[] = [];
-  readonly modelCatalogReads: string[] = [];
-  lastSaved?: RuntimeAgentSettingsInput;
-  #snapshot: RuntimeAgentSettingsSnapshot;
+	readonly modelCatalogReads: string[] = [];
+	lastSaved?: RuntimeAgentSettingsInput;
+	lastTelemetrySaved?: RuntimeTelemetrySettingsInput;
+	#snapshot: RuntimeAgentSettingsSnapshot;
+	#telemetrySnapshot: RuntimeTelemetrySettingsSnapshot;
 
-  constructor(snapshot: Partial<RuntimeAgentSettingsSnapshot> = {}) {
+	constructor(
+		snapshot: Partial<RuntimeAgentSettingsSnapshot> = {},
+		telemetry: Partial<RuntimeTelemetrySettingsSnapshot> = {},
+	) {
     this.#snapshot = {
       revision: snapshot.revision ?? null,
       model: snapshot.model ?? "",
@@ -298,10 +383,30 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
       profiles: snapshot.profiles ?? [],
       connector: snapshot.connector ?? {
         policy: { default: "ask", actions: {} },
-        connectors: [],
-      },
-    };
-  }
+			connectors: [],
+		},
+		};
+		this.#telemetrySnapshot = {
+			credential: {
+				revision: telemetry.credential?.revision ?? null,
+				configured: telemetry.credential?.configured ?? false,
+				...(telemetry.credential?.publicKeyMask === undefined
+					? {}
+					: { publicKeyMask: telemetry.credential.publicKeyMask }),
+				...(telemetry.credential?.secretKeyMask === undefined
+					? {}
+					: { secretKeyMask: telemetry.credential.secretKeyMask }),
+			},
+			enabled: telemetry.enabled ?? false,
+			...(telemetry.endpoint === undefined ? {} : { endpoint: telemetry.endpoint }),
+			environmentOverride: telemetry.environmentOverride ?? false,
+			exporter: "langfuse-otlp",
+			policyRevision: telemetry.policyRevision ?? null,
+			...(telemetry.configurationError === undefined
+				? {}
+				: { configurationError: telemetry.configurationError }),
+		};
+	}
 
   async get() {
     return Result.ok(this.#snapshot);
@@ -367,9 +472,46 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
     } satisfies RuntimeAgentSettingsModelFetchResult);
   }
 
-  async revealApiKey(profileId: string) {
-    return Result.ok({ profileId, apiKey: "host-secret" });
-  }
+	async revealApiKey(profileId: string) {
+		return Result.ok({ profileId, apiKey: "host-secret" });
+	}
+
+	async getTelemetry() {
+		return Result.ok(this.#telemetrySnapshot);
+	}
+
+	async saveTelemetry(input: RuntimeTelemetrySettingsInput) {
+		this.lastTelemetrySaved = input;
+		const replaced = input.publicKey !== undefined;
+		const cleared = input.clearCredentials === true;
+		const configured = cleared ? false : replaced || this.#telemetrySnapshot.credential.configured;
+		this.#telemetrySnapshot = {
+			credential: {
+				revision: "telemetry-r2",
+				configured,
+				...(configured && !cleared
+					? {
+							publicKeyMask: replaced
+								? telemetryCredentialMask(input.publicKey!)
+								: this.#telemetrySnapshot.credential.publicKeyMask,
+							secretKeyMask: replaced
+								? telemetryCredentialMask(input.secretKey!)
+								: this.#telemetrySnapshot.credential.secretKeyMask,
+						}
+					: {}),
+			},
+			enabled: input.enabled,
+			...(input.endpoint === undefined
+				? this.#telemetrySnapshot.endpoint === undefined
+					? {}
+					: { endpoint: this.#telemetrySnapshot.endpoint }
+				: { endpoint: input.endpoint }),
+			environmentOverride: false,
+			exporter: "langfuse-otlp",
+			policyRevision: "telemetry-r2",
+		};
+		return Result.ok(this.#telemetrySnapshot);
+	}
 
   async startConnectorOAuth(connectorId: string) {
     this.oauthStarts.push(connectorId);
@@ -519,4 +661,8 @@ function projectConnector(
       }),
     ),
   };
+}
+
+function telemetryCredentialMask(value: string): string {
+	return `•••• ${value.slice(-4)}`;
 }

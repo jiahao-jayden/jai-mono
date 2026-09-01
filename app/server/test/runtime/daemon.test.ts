@@ -43,6 +43,36 @@ describe("Runtime Host daemon composition", () => {
 		}
 	});
 
+	test("keeps the Runtime Host available when telemetry policy is invalid", async () => {
+		const dataDirectory = await mkdtemp(join(tmpdir(), "jai-runtime-daemon-"));
+		temporaryDirectories.push(dataDirectory);
+		await writeCodingConfig(join(dataDirectory, "settings.json"), {
+			telemetry: {
+				enabled: true,
+				exporter: "langfuse-otlp",
+				endpoint: "not an HTTP URL",
+			},
+		});
+		const opened = await openConfiguredRuntimeHost({ environment: {}, dataDirectory });
+		if (opened.isErr()) throw opened.error;
+		try {
+			const client = await connectDesktopConfigurationClient({ dataDirectory, environment: {} });
+			if (client.isErr()) throw client.error;
+			try {
+				const telemetry = await client.value.getTelemetry();
+				if (telemetry.isErr()) throw telemetry.error;
+				expect(telemetry.value).toMatchObject({
+					enabled: false,
+					configurationError: "Telemetry endpoint must be an HTTP URL",
+				});
+			} finally {
+				await client.value.close();
+			}
+		} finally {
+			await opened.value.close();
+		}
+	});
+
 	test("serves Connector OAuth start and disconnect only through the local Host control endpoint", async () => {
 		const dataDirectory = await mkdtemp(join(tmpdir(), "jai-runtime-daemon-"));
 		temporaryDirectories.push(dataDirectory);

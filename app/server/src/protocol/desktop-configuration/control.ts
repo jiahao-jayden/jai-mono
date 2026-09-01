@@ -1,10 +1,12 @@
 import type { Result } from "better-result";
-import {
-	parseRuntimeAgentSettingsInput,
-	type SqliteRuntimeAgentSettings,
-} from "../../config";
+import { parseRuntimeAgentSettingsInput, type SqliteRuntimeAgentSettings } from "../../config";
 import type { RuntimeConnectorOAuthController } from "../../connectors";
 import type { SqliteRuntimeModelCatalog } from "../../model-catalog";
+import {
+	parseRuntimeTelemetrySettingsInput,
+	type RuntimeTelemetryController,
+	type RuntimeTelemetrySettingsInput,
+} from "../../telemetry";
 import type { SqliteWorkspaceTrust } from "../../workspaces";
 import type { AcpJsonRpcRequest, AcpJsonRpcResponse, AcpOutboundMessage } from "../acp-v2/types";
 
@@ -24,8 +26,9 @@ export function createDesktopConfigurationControl(
 	connectorOAuth?: RuntimeConnectorOAuthController,
 	modelCatalog?: SqliteRuntimeModelCatalog,
 	workspaceTrust?: SqliteWorkspaceTrust,
+	telemetry?: RuntimeTelemetryController,
 ): DesktopConfigurationControl {
-	return new DefaultDesktopConfigurationControl(settings, connectorOAuth, modelCatalog, workspaceTrust);
+	return new DefaultDesktopConfigurationControl(settings, connectorOAuth, modelCatalog, workspaceTrust, telemetry);
 }
 
 class DefaultDesktopConfigurationControl implements DesktopConfigurationControl {
@@ -34,6 +37,7 @@ class DefaultDesktopConfigurationControl implements DesktopConfigurationControl 
 		private readonly connectorOAuth?: RuntimeConnectorOAuthController,
 		private readonly modelCatalog?: SqliteRuntimeModelCatalog,
 		private readonly workspaceTrust?: SqliteWorkspaceTrust,
+		private readonly telemetry?: RuntimeTelemetryController,
 	) {}
 
 	async handle(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[] | undefined> {
@@ -52,30 +56,50 @@ class DefaultDesktopConfigurationControl implements DesktopConfigurationControl 
 				if (!input) return this.error(request.id, -32602, "Invalid Desktop configuration save parameters");
 				return this.project(request.id, this.settings.write(input));
 			}
+			case "jai/desktop-configuration/telemetry/get": {
+				if (Object.keys(params).length > 0)
+					return this.error(request.id, -32602, "Invalid telemetry configuration get parameters");
+				if (!this.telemetry) return this.error(request.id, -32601, "Telemetry configuration is not available");
+				return this.project(request.id, await this.telemetry.snapshot());
+			}
+			case "jai/desktop-configuration/telemetry/save": {
+				const input = parseRuntimeTelemetrySettingsInput(params);
+				if (!input) return this.error(request.id, -32602, "Invalid telemetry configuration save parameters");
+				if (!this.telemetry) return this.error(request.id, -32601, "Telemetry configuration is not available");
+				return this.project(
+					request.id,
+					await this.telemetry.save(params as unknown as RuntimeTelemetrySettingsInput),
+				);
+			}
 			case "jai/desktop-configuration/fetch-models": {
-				if (!onlyProfileId(params)) return this.error(request.id, -32602, "Invalid Provider model fetch parameters");
+				if (!onlyProfileId(params))
+					return this.error(request.id, -32602, "Invalid Provider model fetch parameters");
 				const fetched = await this.settings.fetchModels(params.profileId);
 				if (fetched.isErr()) return this.error(request.id, -32001, fetched.error.message);
 				return [{ jsonrpc: "2.0", id: request.id, result: fetched.value } satisfies AcpJsonRpcResponse];
 			}
 			case "jai/desktop-configuration/reveal-api-key": {
-				if (!onlyProfileId(params)) return this.error(request.id, -32602, "Invalid Provider credential reveal parameters");
+				if (!onlyProfileId(params))
+					return this.error(request.id, -32602, "Invalid Provider credential reveal parameters");
 				const revealed = this.settings.revealApiKey(params.profileId);
 				if (revealed.isErr()) return this.error(request.id, -32001, revealed.error.message);
 				return [{ jsonrpc: "2.0", id: request.id, result: revealed.value } satisfies AcpJsonRpcResponse];
 			}
 			case "jai/desktop-configuration/connector-oauth/start": {
-				if (!onlyConnectorId(params)) return this.error(request.id, -32602, "Invalid Connector OAuth start parameters");
+				if (!onlyConnectorId(params))
+					return this.error(request.id, -32602, "Invalid Connector OAuth start parameters");
 				if (!this.connectorOAuth) return this.error(request.id, -32601, "Connector OAuth is not available");
 				return this.project(request.id, await this.connectorOAuth.start(params.connectorId));
 			}
 			case "jai/desktop-configuration/connector-oauth/complete": {
-				if (!onlyCallbackUrl(params)) return this.error(request.id, -32602, "Invalid Connector OAuth callback parameters");
+				if (!onlyCallbackUrl(params))
+					return this.error(request.id, -32602, "Invalid Connector OAuth callback parameters");
 				if (!this.connectorOAuth) return this.error(request.id, -32601, "Connector OAuth is not available");
 				return this.project(request.id, await this.connectorOAuth.complete(params.callbackUrl));
 			}
 			case "jai/desktop-configuration/connector-oauth/disconnect": {
-				if (!onlyConnectorId(params)) return this.error(request.id, -32602, "Invalid Connector OAuth disconnect parameters");
+				if (!onlyConnectorId(params))
+					return this.error(request.id, -32602, "Invalid Connector OAuth disconnect parameters");
 				if (!this.connectorOAuth) return this.error(request.id, -32601, "Connector OAuth is not available");
 				return this.project(request.id, this.connectorOAuth.disconnect(params.connectorId));
 			}
@@ -92,12 +116,14 @@ class DefaultDesktopConfigurationControl implements DesktopConfigurationControl 
 				return this.project(request.id, await this.modelCatalog.refresh());
 			}
 			case "jai/desktop-configuration/workspace-trust/get": {
-				if (!onlyWorkspacePath(params)) return this.error(request.id, -32602, "Invalid Workspace trust get parameters");
+				if (!onlyWorkspacePath(params))
+					return this.error(request.id, -32602, "Invalid Workspace trust get parameters");
 				if (!this.workspaceTrust) return this.error(request.id, -32601, "Workspace trust is not available");
 				return this.project(request.id, await this.workspaceTrust.get(params.workspacePath));
 			}
 			case "jai/desktop-configuration/workspace-trust/set": {
-				if (!workspaceTrustInput(params)) return this.error(request.id, -32602, "Invalid Workspace trust set parameters");
+				if (!workspaceTrustInput(params))
+					return this.error(request.id, -32602, "Invalid Workspace trust set parameters");
 				if (!this.workspaceTrust) return this.error(request.id, -32601, "Workspace trust is not available");
 				return this.project(request.id, await this.workspaceTrust.set(params));
 			}
@@ -145,8 +171,6 @@ function workspaceTrustInput(
 	value: Record<string, unknown>,
 ): value is { readonly workspacePath: string; readonly trusted: boolean } {
 	return (
-		Object.keys(value).length === 2 &&
-		typeof value.workspacePath === "string" &&
-		typeof value.trusted === "boolean"
+		Object.keys(value).length === 2 && typeof value.workspacePath === "string" && typeof value.trusted === "boolean"
 	);
 }

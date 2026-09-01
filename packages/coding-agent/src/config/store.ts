@@ -1,12 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { type FSWatcher, unwatchFile, watch as watchFileSystem, watchFile } from "node:fs";
+import { type FSWatcher, unwatchFile, watchFile, watch as watchFileSystem } from "node:fs";
 import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { Static, TObject } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { TaggedError } from "better-result";
-import { createCodingConfigFileSchema, defineCodingConfig } from "./definition";
+import { createCodingConfigFileSchema, defineCodingConfig, projectScopeFieldIssues } from "./definition";
 import {
 	configParseError,
 	configReadError,
@@ -43,12 +43,12 @@ export interface ConfigScopeSnapshot<TSchema extends TObject> {
 const scopes = ["user", "project-shared", "project-local"] as const;
 
 export function resolveCodingConfigPaths(
-	options: Pick<CodingConfigStoreOptions, "homeDir" | "projectRoot">,
+	options: Pick<CodingConfigStoreOptions, "homeDir" | "projectRoot" | "userConfigPath">,
 ): ConfigPaths {
 	const home = options.homeDir ?? homedir();
 	const projectRoot = options.projectRoot;
 	return {
-		user: join(home, ".jai", "settings.json"),
+		user: options.userConfigPath ?? join(home, ".jai", "settings.json"),
 		"project-shared": projectRoot ? join(projectRoot, ".jai", "settings.json") : undefined,
 		"project-local": projectRoot ? join(projectRoot, ".jai", "settings.local.json") : undefined,
 	};
@@ -250,6 +250,7 @@ export class CodingConfigStore<TSchema extends TObject> {
 
 	private validateDocument(scope: ConfigFileScope, path: string, document: Record<string, unknown>): void {
 		const issues = validationIssues(createCodingConfigFileSchema(this.definition), document);
+		issues.push(...projectScopeFieldIssues(this.definition.fields, scope, document));
 		if (issues.length > 0) {
 			throw configValidationError(`Invalid coding configuration in ${path}`, { scope, path, issues });
 		}

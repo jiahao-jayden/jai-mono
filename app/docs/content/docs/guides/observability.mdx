@@ -1,0 +1,44 @@
+---
+title: 可观测性
+description: 在 Desktop 中配置 Langfuse OTLP telemetry，并了解设置文件、密钥与环境变量的边界。
+---
+
+JAI 默认不发送 telemetry。要把 Coding Agent 的 telemetry 导出到 Langfuse，在 Desktop 中打开 **Settings → Advanced → Observability**，填写 Langfuse OTLP endpoint、Public Key 和 Secret Key，然后启用 telemetry。
+
+endpoint 应指向 Langfuse Cloud 或自托管实例的 `/api/public/otel` 路径。保存后，后续 Operation 立即采用新设置；已开始的 Operation 仍由开始时的 exporter 完成。
+
+观测配置无效、key pair 不完整或环境变量不完整时，Runtime Host 继续运行，telemetry 会退回 no-op。Desktop 会显示配置错误，并可以直接保存有效设置修复它；无效保存不会替换已经生效的 exporter。
+
+## 保存位置
+
+`~/.jai/settings.json` 保存的是非秘密 policy：开关、exporter 和 endpoint。例如，保留现有文件的 `$schema` 与 `schemaVersion` 后，`telemetry` 部分可以是：
+
+```json
+{
+  "telemetry": {
+    "enabled": true,
+    "exporter": "langfuse-otlp",
+    "endpoint": "https://cloud.langfuse.com/api/public/otel"
+  }
+}
+```
+
+Langfuse Public Key 和 Secret Key 不会写入 `settings.json`。它们只由本机 Runtime Host 保存到 `$JAI_HOME/data.sqlite`，默认路径是 `~/.jai/data.sqlite`。Settings 只显示已配置状态和掩码，不能重新显示原始 key。
+
+不要在项目的 `.jai/settings.json` 或 `.jai/settings.local.json` 中添加 `telemetry`。这两个 project scope 一旦包含 telemetry，配置会被拒绝；代码仓库不能决定何时向远端观测服务发送数据。
+
+## Headless 覆盖
+
+CLI、CI 或其他 headless Runtime Host 可以用环境变量配置 Langfuse：
+
+```bash
+export JAI_TELEMETRY_OTLP_ENDPOINT="https://cloud.langfuse.com/api/public/otel"
+export JAI_TELEMETRY_LANGFUSE_PUBLIC_KEY="<Langfuse Public Key>"
+export JAI_TELEMETRY_LANGFUSE_SECRET_KEY="<Langfuse Secret Key>"
+```
+
+只要任一 `JAI_TELEMETRY_*` 变量存在，Runtime Host 就完全使用环境变量配置，不会和 `settings.json` 或本机保存的 key 逐项合并。Desktop 会显示环境覆盖状态并禁用本地编辑。运行 exporter 需要同时提供上面三个变量。
+
+## 删除配置
+
+在 **Settings → Advanced → Observability** 中关闭 telemetry 后，后续 Operation 不再导出。选择清除保存的 keys 会同时关闭 telemetry，并从本机 credential store 删除 Langfuse key pair。

@@ -17,8 +17,8 @@ export interface ConfigEnvironmentBinding {
 
 export interface ConfigFieldRule {
 	readonly merge: ConfigMergePolicy;
-	/** Project values that can broaden authority require workspace trust. */
-	readonly project: "always" | "trusted";
+	/** Project values that can broaden authority require workspace trust; "never" rejects the field in project files. */
+	readonly project: "always" | "trusted" | "never";
 	readonly default?: unknown;
 	readonly environment?: ConfigEnvironmentBinding;
 	readonly uniqueBy?: (value: unknown) => string;
@@ -70,6 +70,8 @@ export type ConfigWatchEvent<TSchema extends TObject = TObject> =
 export interface CodingConfigStoreOptions {
 	readonly projectRoot?: string;
 	readonly homeDir?: string;
+	/** Overrides the user settings location while preserving the standard document format. */
+	readonly userConfigPath?: string;
 	readonly environment?: Readonly<Record<string, string | undefined>>;
 	readonly workspaceTrusted?: boolean;
 	readonly watchDebounceMs?: number;

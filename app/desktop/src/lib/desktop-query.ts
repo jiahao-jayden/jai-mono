@@ -12,6 +12,7 @@ export const SESSION_PAGE_SIZE = 50;
 export const desktopQueryKeys = {
 	projects: ["desktop", "projects"] as const,
 	providerConfig: ["desktop", "provider-config"] as const,
+	telemetry: ["desktop", "telemetry"] as const,
 	sessions: {
 		recents: ["desktop", "sessions", "recents"] as const,
 	},

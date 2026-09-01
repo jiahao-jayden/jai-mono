@@ -9,4 +9,5 @@ export * from "./protocol/desktop-catalog";
 export * from "./protocol/desktop-configuration";
 export * from "./runtime";
 export * from "./sessions";
+export * from "./telemetry";
 export * from "./workspaces";

@@ -1,6 +1,6 @@
 import { type TObject, type TSchema, Type } from "@sinclair/typebox";
 import { configDefinitionError } from "./errors";
-import type { CodingConfigDefinition, ConfigFieldRule, ConfigFieldTree } from "./types";
+import type { CodingConfigDefinition, ConfigFieldRule, ConfigFieldTree, ConfigFileScope } from "./types";
 
 export function defineCodingConfig<const TSchema extends TObject>(
 	definition: CodingConfigDefinition<TSchema>,
@@ -40,6 +40,16 @@ export function createCodingConfigFileSchema(definition: CodingConfigDefinition<
 	);
 }
 
+/** Fields marked project: "never" fail during file validation instead of being silently ignored at merge time. */
+export function projectScopeFieldIssues(
+	fields: ConfigFieldTree,
+	scope: ConfigFileScope,
+	settings: Record<string, unknown>,
+): Array<{ path: string; message: string }> {
+	if (scope === "user") return [];
+	return collectProjectScopeFieldIssues(fields, settings, "");
+}
+
 function validateFieldTree(schema: TObject, fields: ConfigFieldTree, parentPath: string): void {
 	const schemaKeys = new Set(Object.keys(schema.properties));
 	for (const key of Object.keys(fields)) {
@@ -75,6 +85,33 @@ export function isFieldRule(value: ConfigFieldRule | ConfigFieldTree): value is 
 	return "merge" in value;
 }
 
+function collectProjectScopeFieldIssues(
+	fields: ConfigFieldTree,
+	settings: Record<string, unknown>,
+	parentPath: string,
+): Array<{ path: string; message: string }> {
+	const issues: Array<{ path: string; message: string }> = [];
+	for (const [key, field] of Object.entries(fields)) {
+		if (!Object.hasOwn(settings, key)) continue;
+		const path = parentPath ? `${parentPath}/${key}` : `/${key}`;
+		if (isFieldRule(field)) {
+			if (field.project === "never") {
+				issues.push({ path, message: "This setting is only allowed in user configuration" });
+			}
+			continue;
+		}
+		const value = settings[key];
+		if (isPlainValueObject(value)) {
+			issues.push(...collectProjectScopeFieldIssues(field, value, path));
+		}
+	}
+	return issues;
+}
+
 function isObjectSchema(schema: TSchema): schema is TObject {
 	return "properties" in schema && typeof schema.properties === "object" && schema.properties !== null;
+}
+
+function isPlainValueObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

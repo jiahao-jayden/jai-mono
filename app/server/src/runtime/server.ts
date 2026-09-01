@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { emptyPersistedCodingSessionState } from "@jai/coding-agent";
+import type { TelemetryContext } from "@jai/telemetry";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import { createRuntimeSessionConfigurationPolicy, SqliteRuntimeAgentSettings } from "../config";
 import { RuntimeConnectorOAuth, SqliteRuntimeConnectorOAuthIntentStore } from "../connectors";
@@ -9,6 +10,7 @@ import { ProductSqliteDatabase, SqliteDesktopCatalogAccess, SqliteProductSession
 import type { AcpImplementationInfo } from "../protocol/acp-v2";
 import { type LocalRuntimeHostServer, openLocalRuntimeHost } from "../protocol/acp-v2";
 import { InMemoryProductSessionPersistence } from "../sessions";
+import { RuntimeTelemetryController } from "../telemetry";
 import { SqliteWorkspaceTrust } from "../workspaces";
 import type { RuntimeHostConfigurationInvalid } from "./configuration";
 import { createRuntimeHost } from "./host";
@@ -31,9 +33,13 @@ export interface OpenJaiRuntimeServerOptions {
 		readonly agentSettings: SqliteRuntimeAgentSettings;
 		/** Host-owned durable Workspace trust facts; no raw SQLite access escapes composition. */
 		readonly workspaceTrust: SqliteWorkspaceTrust;
+		/** Stable Host-owned context; it may swap exporters between Operations. */
+		readonly telemetry: TelemetryContext;
 	}) => ResultType<RuntimeOperationDriver, RuntimeHostConfigurationInvalid>;
-	/** 仅用于回收由 Host 配置的旁路观测 adapter；失败不得影响 Host 生命周期。 */
-	readonly closeTelemetry?: () => Promise<void>;
+	/** Embedder-owned telemetry bypasses the user settings controller. */
+	readonly telemetry?: TelemetryContext;
+	readonly telemetryEnvironment?: Readonly<Record<string, string | undefined>>;
+	readonly telemetryErrorOutput?: { write(text: string): void };
 	readonly info: AcpImplementationInfo;
 	readonly endpoint?: string;
 }
@@ -59,17 +65,37 @@ export async function openJaiRuntimeServer(
 	let localHost: LocalRuntimeHostServer | undefined;
 	let connectorOAuth: RuntimeConnectorOAuth | undefined;
 	let modelCatalog: SqliteRuntimeModelCatalog | undefined;
+	let telemetry: RuntimeTelemetryController | undefined;
 	try {
 		database = await ProductSqliteDatabase.open(join(options.dataDirectory, "data.sqlite"));
 		const persistence = new SqliteProductSessionPersistence(database.connection);
 		const desktopCatalog = new SqliteDesktopCatalogAccess(database.connection);
 		const agentSettings = new SqliteRuntimeAgentSettings(database.connection);
 		const workspaceTrust = new SqliteWorkspaceTrust(database.connection);
-		const assembled = options.createOperationDriver({ agentSettings, workspaceTrust });
+		if (!options.telemetry) {
+			const openedTelemetry = await RuntimeTelemetryController.open({
+				dataDirectory: options.dataDirectory,
+				database: database.connection,
+				environment: options.telemetryEnvironment ?? process.env,
+				errorOutput: options.telemetryErrorOutput ?? process.stderr,
+			});
+			if (openedTelemetry.isErr()) throw openedTelemetry.error;
+			telemetry = openedTelemetry.value;
+		}
+		const telemetryContext = options.telemetry ?? telemetry?.context;
+		if (!telemetryContext) {
+			throw new Error("Runtime telemetry context was not initialized");
+		}
+		const assembled = options.createOperationDriver({
+			agentSettings,
+			workspaceTrust,
+			telemetry: telemetryContext,
+		});
 		if (assembled.isErr()) {
 			database.close();
 			database = undefined;
-			await closeTelemetry(options.closeTelemetry);
+			await telemetry?.close();
+			telemetry = undefined;
 			return Result.err(assembled.error);
 		}
 		connectorOAuth = new RuntimeConnectorOAuth(agentSettings, {
@@ -94,19 +120,18 @@ export async function openJaiRuntimeServer(
 			desktopConnectorOAuth: connectorOAuth,
 			desktopModelCatalog: modelCatalog,
 			desktopWorkspaceTrust: workspaceTrust,
+			...(telemetry ? { desktopTelemetry: telemetry } : {}),
 			...(options.endpoint ? { endpoint: options.endpoint } : {}),
 		});
 		if (opened.isErr()) throw opened.error;
 		localHost = opened.value;
-		return Result.ok(
-			new DefaultJaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog, options.closeTelemetry),
-		);
+		return Result.ok(new DefaultJaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog, telemetry));
 	} catch (error) {
 		await localHost?.close().catch(() => {});
 		connectorOAuth?.close();
 		modelCatalog?.close();
+		await telemetry?.close().catch(() => {});
 		database?.close();
-		await closeTelemetry(options.closeTelemetry);
 		return Result.err(
 			new JaiRuntimeServerOpenFailed({
 				message: `Could not open Jai Runtime Server from "${options.dataDirectory}"`,
@@ -126,7 +151,7 @@ class DefaultJaiRuntimeServer implements JaiRuntimeServer {
 		private readonly database: ProductSqliteDatabase,
 		private readonly connectorOAuth: RuntimeConnectorOAuth,
 		private readonly modelCatalog: SqliteRuntimeModelCatalog,
-		private readonly telemetryClose: (() => Promise<void>) | undefined,
+		private readonly telemetry: RuntimeTelemetryController | undefined,
 	) {
 		this.#localHost = localHost;
 	}
@@ -158,19 +183,10 @@ class DefaultJaiRuntimeServer implements JaiRuntimeServer {
 					try {
 						this.database.close();
 					} finally {
-						await closeTelemetry(this.telemetryClose);
+						await this.telemetry?.close();
 					}
 				}
 			}
 		}
-	}
-}
-
-async function closeTelemetry(close: (() => Promise<void>) | undefined): Promise<void> {
-	if (close === undefined) return;
-	try {
-		await close();
-	} catch {
-		return;
 	}
 }

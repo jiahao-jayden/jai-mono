@@ -29,6 +29,7 @@ import {
 	type DesktopArtifact,
 	type DesktopProject,
 	type DesktopProviderConfigInput,
+	type DesktopTelemetrySettingsInput,
 	isDesktopProviderModelRunnable,
 } from "../../../shared/desktop-rpc";
 import { ChatColumn } from "./chat/chat-column";
@@ -115,6 +116,10 @@ export function AppShell() {
 	const providerQuery = useQuery({
 		queryKey: desktopQueryKeys.providerConfig,
 		queryFn: () => desktop.provider.get(),
+	});
+	const telemetryQuery = useQuery({
+		queryKey: desktopQueryKeys.telemetry,
+		queryFn: () => desktop.telemetry.get(),
 	});
 	useEffect(() => {
 		return window.desktopRpc.onAgentEvent((envelope) => {
@@ -218,6 +223,11 @@ export function AppShell() {
 		desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, snapshot);
 		return snapshot;
 	};
+	const updateTelemetrySettings = async (input: DesktopTelemetrySettingsInput) => {
+		const snapshot = await desktop.telemetry.save(input);
+		desktopQueryClient.setQueryData(desktopQueryKeys.telemetry, snapshot);
+		return snapshot;
+	};
 	const fetchProviderModelsMutation = useMutation({
 		mutationFn: (profileId: string) => desktop.provider.fetchModels(profileId),
 		onSuccess: (result) => {
@@ -238,7 +248,12 @@ export function AppShell() {
 	const openProviderSettings = useCallback(() => {
 		setProviderSettingsOpen(true);
 		void providerQuery.refetch();
-	}, [providerQuery.refetch]);
+		void telemetryQuery.refetch();
+	}, [providerQuery.refetch, telemetryQuery.refetch]);
+	const retrySettings = () => {
+		void providerQuery.refetch();
+		void telemetryQuery.refetch();
+	};
 	useEffect(() => {
 		const openSettingsShortcut = (event: globalThis.KeyboardEvent) => {
 			if (event.key !== "," || (!event.metaKey && !event.ctrlKey)) return;
@@ -539,12 +554,16 @@ export function AppShell() {
 				loading={providerQuery.isLoading || providerQuery.isFetching}
 				loadError={providerQuery.isError && !providerQuery.isFetching}
 				onOpenChange={setProviderSettingsOpen}
-				onRetry={() => void providerQuery.refetch()}
+				onRetry={retrySettings}
 				onSave={updateProviderConfig}
 				onFetchModels={fetchProviderModels}
 				onRevealApiKey={revealProviderApiKey}
 				onStartConnectorOAuth={startConnectorOAuth}
 				onDisconnectConnectorOAuth={disconnectConnectorOAuth}
+				telemetry={telemetryQuery.data}
+				telemetryLoading={telemetryQuery.isLoading || telemetryQuery.isFetching}
+				telemetryLoadError={telemetryQuery.isError && !telemetryQuery.isFetching}
+				onSaveTelemetry={updateTelemetrySettings}
 			/>
 		</div>
 	);

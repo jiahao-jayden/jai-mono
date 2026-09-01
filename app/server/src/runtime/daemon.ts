@@ -4,7 +4,6 @@ import { createCodingAgentOperationDriver, createRuntimeConnectorAgentAssembly }
 import { RuntimeOperationOpenFailed } from "../operations";
 import type { AcpImplementationInfo } from "../protocol/acp-v2";
 import { createDesktopLocalRuntimeCapabilitySource, type RuntimeCapabilitySource } from "../runtime-capabilities";
-import { type ResolvedRuntimeTelemetry, resolveRuntimeTelemetry } from "../telemetry";
 import { RuntimeHostConfigurationInvalid } from "./configuration";
 import { resolveJaiDataDirectory } from "./paths";
 import { type JaiRuntimeServer, type JaiRuntimeServerOpenFailed, openJaiRuntimeServer } from "./server";
@@ -32,19 +31,9 @@ export async function openConfiguredRuntimeHost(
 ): Promise<ResultType<JaiRuntimeServer, RuntimeHostConfigurationInvalid | JaiRuntimeServerOpenFailed>> {
 	const environment = options.environment ?? process.env;
 	const dataDirectory = options.dataDirectory ?? resolveJaiDataDirectory(environment);
-	let telemetry: ResolvedRuntimeTelemetry;
-	if (options.telemetry) {
-		telemetry = { context: options.telemetry };
-	} else {
-		const configuredTelemetry = resolveRuntimeTelemetry({ environment, errorOutput: process.stderr });
-		if (configuredTelemetry.isErr()) {
-			return Result.err(new RuntimeHostConfigurationInvalid({ message: configuredTelemetry.error.message }));
-		}
-		telemetry = configuredTelemetry.value;
-	}
 	const opened = await openJaiRuntimeServer({
 		dataDirectory,
-		createOperationDriver: ({ agentSettings, workspaceTrust }) => {
+		createOperationDriver: ({ agentSettings, workspaceTrust, telemetry }) => {
 			const capabilitySource =
 				options.capabilitySource ??
 				createDesktopLocalRuntimeCapabilitySource({
@@ -104,11 +93,13 @@ export async function openConfiguredRuntimeHost(
 						});
 					},
 					capabilitySource,
-					telemetry: telemetry.context,
+					telemetry,
 				}),
 			);
 		},
-		...(telemetry.close === undefined ? {} : { closeTelemetry: telemetry.close }),
+		...(options.telemetry === undefined ? {} : { telemetry: options.telemetry }),
+		telemetryEnvironment: environment,
+		telemetryErrorOutput: process.stderr,
 		info: options.info ?? {
 			name: "jai",
 			title: "Jai",
