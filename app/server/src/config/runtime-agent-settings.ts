@@ -987,15 +987,7 @@ function normalizeProfile(
 				? normalizeHeaders(input.headers)
 				: undefined;
 	if (headers instanceof RuntimeAgentSettingsInvalid) return Result.err(headers);
-	const connectionChanged =
-		previous !== undefined &&
-		(previous.adapter !== input.adapter ||
-			previous.baseURL !== baseURL ||
-			previous.authentication !== input.authentication ||
-			!sameHeaders(previous.headers, headers));
-	const apiKey = input.clearApiKey
-		? undefined
-		: input.apiKey?.trim() || (connectionChanged ? undefined : previous?.apiKey);
+	const apiKey = input.clearApiKey ? undefined : input.apiKey?.trim() || previous?.apiKey;
 	if (input.authentication !== "none" && !apiKey) {
 		return Result.err(
 			new RuntimeAgentSettingsInvalid({
@@ -1439,13 +1431,6 @@ function normalizeHeaders(
 		headers[name] = headerValue;
 	}
 	return headers;
-}
-
-function sameHeaders(
-	left: Readonly<Record<string, string>> | undefined,
-	right: Readonly<Record<string, string>> | undefined,
-): boolean {
-	return JSON.stringify(left ?? {}) === JSON.stringify(right ?? {});
 }
 
 function validModelReference(value: string): boolean {

@@ -70,7 +70,7 @@ describe("Runtime Agent Settings", () => {
     }
   });
 
-  test("preserves a credential only for an unchanged connection and detects stale writes", () => {
+  test("preserves a stored credential when the connection changes and detects stale writes", () => {
     const database = new DatabaseSync(":memory:");
     try {
       const settings = new SqliteRuntimeAgentSettings(database);
@@ -130,12 +130,18 @@ describe("Runtime Agent Settings", () => {
           }),
         ),
       });
-      expect(changedConnection.isErr()).toBe(true);
-      if (changedConnection.isOk())
-        throw new Error("Expected a new credential requirement");
-      expect(changedConnection.error._tag).toBe(
-        "runtime_config.agent_settings_invalid",
-      );
+      if (changedConnection.isErr()) throw changedConnection.error;
+      expect(changedConnection.value.profiles[0]).toMatchObject({
+        credentialConfigured: true,
+        credentialMask: "•••• 1234",
+      });
+      const resolved = settings.resolveOptions();
+      if (resolved.isErr()) throw resolved.error;
+      expect(resolved.value.provider).toEqual({
+        apiKey: "gateway-secret-1234",
+        baseUrl: "https://changed.example.com/v1",
+        authentication: "bearer",
+      });
     } finally {
       database.close();
     }
