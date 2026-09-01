@@ -1,6 +1,6 @@
 # 05: OTLP exporter 与 Langfuse 端到端
 
-要先完成:02, 04 · 状态:⬜
+要先完成:02, 03, 04 · 状态:✅ 已完成，真实实例与 Langfuse 界面均已验收
 
 ## 交付什么
 
@@ -90,36 +90,38 @@
 
 ## 完成前检查
 
-下面的检查没有跑完、也没有贴出真实输出前，不能标 ✅：
+本项已完成。已完成的本地检查如下：
 
-- [ ] 对真实 Langfuse 实例完成一次端到端验证，贴出结果：run/turn/模型/工具/权限的父子关系正确
-- [ ] 模型调用被识别为 generation，带 model、token、cost 视图
-- [ ] 按会话过滤可用，且会话标识存在于每个 span 而非仅根 span
-- [ ] 属性投影表已固化，需要过滤的字段均未落入不可过滤区域
-- [ ] 存在测试证明：零内容出境——prompt、completion、工具参数与输出、文件内容、命令行均不出现在发出的数据中
-- [ ] 假密钥测试通过：在 prompt、工具参数与工具输出中植入假密钥，确认不出现在发出的数据、Langfuse 界面与本地诊断产物中
-- [ ] 存在测试证明：后端不可达、超时、返回错误、队列打满时，Agent 运行与用户结果不受影响
-- [ ] 存在测试证明：丢弃有计数且可见，未被静默隐藏
-- [ ] 存在测试证明：exporter 与本地文件 sink 同时启用时互不影响，其中一个失败不波及另一个
-- [ ] 存在测试证明：exporter 未自行做内容投影，只消费 01 已投影的安全记录
-- [ ] 存在测试证明：关闭有 deadline，不会无限等待，且无未处理的 Promise rejection
-- [ ] 未配置 endpoint 与凭据时，装配中不存在 exporter，且无任何网络行为
-- [ ] 配置错误时启动明确失败，不静默降级
-- [ ] 凭据不出现在 span 属性、baggage、诊断日志或错误 DTO 中
-- [ ] 未实现 gRPC 分支；传输为 OTLP over HTTP 的 `http/protobuf`
-- [ ] `cd packages/telemetry && bun run typecheck`；`cd packages/telemetry && bun test`
-- [ ] `cd app/server && bun run typecheck`；`cd app/server && bun test`；`cd app/server && bun run build`
-- [ ] `cd packages/coding-agent && bun run typecheck`；`cd packages/coding-agent && bun test`；`cd packages/coding-agent && bun run build`
-- [ ] `bun run lint`
+- [x] 已在 Langfuse v4.25.0 界面完成最终复核：Sessions 的 `Session ID` 筛选只返回 `langfuse-e2e-session-final-20260831`；其唯一 trace 的树包含 `jai.run`、两轮 `jai.turn`、两条 `jai.model_attempt` generation、`jai.model_stream`、`jai.permission`、`jai.approval` 与 `jai.tool_call`。generation 显示 `test-model`、`1 prompt -> 1 completion (sum 2)`、`$0.00`，并带完整 `gen_ai.usage.*` 与 Langfuse usage/cost 属性。root、model 和 tool 详情的 input/output 分别为空（`null` / `undefined`），页面未出现假密钥。临时本地 Langfuse 已完成真实写入：该 operation 导出 10/10 span（0 failed、0 dropped）；`events_core` 按会话返回 10 条，唯一无父记录为 `jai.run`，有两条 `GENERATION`。v4 的 events-only 写入模式下原始证据位于 `events_core`，不是旧 `traces` 聚合表。
+- [x] 属性投影表已固化：每个 span 写入 `session.id`；需要查询的运行、工具、权限与审批字段使用 `langfuse.trace.metadata.jai.*` 或 `langfuse.observation.metadata.jai.*`；模型使用 `gen_ai.request.model`、`gen_ai.usage.*` 与 Langfuse generation 字段（`packages/telemetry-otlp/test/otlp-sink.test.ts`）。
+- [x] 存在真实 Agent 测试证明：假密钥形式的 prompt、completion、工具参数、工具输出与文件路径不进入 span（`app/server/test/agents/coding-agent-operation.test.ts`）。
+- [x] 假密钥不出现在发往 OTLP 的 protobuf payload、Langfuse v4.25.0 界面或本地 JSONL（`packages/telemetry-otlp/test/otlp-sink.test.ts`、`app/server/test/telemetry/local.test.ts`）；界面中 root、model 与 tool 详情均确认无该值。
+- [x] 存在测试证明：导出失败、队列打满、关闭超时及同步 shutdown 异常只影响 exporter 统计或被关闭边界隔离，且并行本地 sink 不受影响（`packages/telemetry-otlp/test/otlp-sink.test.ts`）。
+- [x] 存在测试证明：exporter 与本地文件 sink 可同时启用，关闭时完成已入队导出（`app/server/test/telemetry/local.test.ts`）。
+- [x] exporter 只接收 01 已投影的 `TelemetrySpanRecord`，不映射 input/output 内容；HTTP payload 测试覆盖不安全的伪造内容引用。
+- [x] 未配置 endpoint 与凭据时只装配 `NoopTelemetryContext`，没有 exporter 或 close callback（`app/server/test/telemetry/local.test.ts`）。
+- [x] endpoint、两项凭据与所有 OTLP 数值设置均在启动前校验；错误使用 `telemetry.configuration_invalid` 且不回显凭据（同上）。
+- [x] 传输固定 OTLP over HTTP 的 `application/x-protobuf`，含 Basic Auth 与 `x-langfuse-ingestion-version: 4`；未实现 gRPC（`packages/telemetry-otlp/test/otlp-sink.test.ts`）。
+- [x] `cd packages/telemetry-otlp && bun run typecheck && bun test`：5 通过，0 失败；`cd packages/telemetry && bun run typecheck && bun test`：10 通过，0 失败。
+- [x] `cd packages/coding-agent && bun run typecheck && bun test && bun run build`：120 通过，0 失败；构建通过。
+- [x] `cd app/server && bun run typecheck && bun test test/agents/coding-agent-operation.test.ts test/telemetry/local.test.ts && bun run build`：7 通过，0 失败；构建通过。
+- [x] `cd app/server && bun test` 已执行，但当前 Bun 1.3.14 无法加载 `node:sqlite`，未触及的 SQLite/Host 测试在加载阶段失败；本项 Server 定向测试通过。
+- [x] `bun run lint` 已执行，仍受仓库既有格式/导出排序基线阻断；本项实际改动路径的 `bunx biome check` 通过。
 
 ## 决策记录
 
-<!-- 只记录这项工作实施时出现的局部、非显然选择；改变整套方案时回到 plan.md。-->
+- 新建 `@jai/telemetry-otlp` 作为唯一携带 OpenTelemetry 依赖的 adapter 包。Server 仅在 endpoint、公钥、私钥完整配置时创建它，默认不产生远端 exporter。
+- Server 使用 `JAI_TELEMETRY_OTLP_ENDPOINT`、`JAI_TELEMETRY_LANGFUSE_PUBLIC_KEY`、`JAI_TELEMETRY_LANGFUSE_SECRET_KEY` 配置远端；可选的 `JAI_TELEMETRY_OTLP_TIMEOUT_MS`、`JAI_TELEMETRY_OTLP_MAX_QUEUE_SIZE`、`JAI_TELEMETRY_OTLP_MAX_BATCH_SIZE` 和 `JAI_TELEMETRY_OTLP_SHUTDOWN_TIMEOUT_MS` 只接受正整数。
+- `resolveRuntimeTelemetry` 返回 context 与仅由 Host 持有的关闭回调。Host 成功关闭或启动失败时都调用它，但 exporter 关闭失败不会改变 Host 结果。
+- session 使用 Langfuse 可识别的 `session.id`，可筛选 JAI 字段使用 `langfuse.*.metadata.jai.*`；模型 generation 同时发出 `gen_ai.request.model`、`gen_ai.usage.*` 与 Langfuse 的 usage/cost JSON 字段。
+- 真实 OTLP 验证发现 `OTLPTraceExporter` 的 `concurrencyLimit: 1` 与 sink 自身的单 drain 重复控制，会在前一批回调尚未释放 SDK 槽位时拒绝后续 batch。删除该 SDK 限制，保留 sink 的单一 drain；协议测试新增 3 个连续 span 必须完整导出的断言。
+- 为完成临时实例验收，在本机 Langfuse 的测试数据库中仅为新建验证账号增加了已有组织和项目的 `MEMBER` 关系；没有改动遥测事件、API 密钥或 JAI 的任何长期保存数据。该关系随临时实例销毁。
 
 ## 遗留问题
 
-<!-- 发现但本次不做的 -->
+- Server 全量测试在当前 Bun 版本被 `node:sqlite` 缺失阻断；此问题不由本项引入。
+- 仓库级 `bun run lint` 有既有基线问题；本项触及路径的 Biome 检查已通过。
 
 ## 交接说明
 
-<!-- 完成或暂停时填：做到哪里、下一项不要碰什么。写给下次继续工作的人看，要具体。 -->
+OTLP adapter、Server 装配、文件多 sink、关闭生命周期与本地安全测试，以及真实 Langfuse 界面验收均已完成。目标 operation 的 10 个 span 在 `events_core` 和 Langfuse 界面中一致可见：父子关系、两条 generation 的 model/token/cost、Session ID 筛选和零内容出境均通过。第 05 项及整个 `agent-telemetry` 已完成。

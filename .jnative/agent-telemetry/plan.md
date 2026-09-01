@@ -1,9 +1,9 @@
 # 计划: Agent 观测（Telemetry）
 
-来源:[需求说明](./intent.md) · 日期:2026-08-31 · 状态:⏳ 等待确认
+来源:[需求说明](./intent.md) · 日期:2026-08-31 · 状态:✅ 已确认 · 可执行 · 确认日期:2026-08-31
 
-请确认这些文件:`intent.md`、`plan.md`、`todo.md` 与 `specs/` 下全部 5 份工作项。
-开始条件:状态改为 `✅ 已确认 · 可执行` 前，只完善计划文件，不开始实现或修改正式代码。
+已确认文件:`intent.md`、`plan.md`、`todo.md` 与 `specs/` 下全部 5 份工作项。
+开始条件已满足：按依赖顺序连续实施每一项工作，并完成各项列出的检查。
 
 ## 背景
 
@@ -131,9 +131,9 @@ JAI 现在没有任何可用的运行观测能力。提交 `9858690` 移除 Agen
 | `@jai/agent` | `cd packages/agent && bun run typecheck`；`cd packages/agent && bun test` |
 | `@jai/coding-agent` | `cd packages/coding-agent && bun run typecheck`；`cd packages/coding-agent && bun test`；`cd packages/coding-agent && bun run build` |
 | `@jai/server` | `cd app/server && bun run typecheck`；`cd app/server && bun test`；`cd app/server && bun run build` |
-| 仓库静态检查 | `bun run lint` |
+| 本项改动的静态检查 | 对本项实际改动的 TypeScript 源码与测试路径运行 `bunx biome check <paths>`；01 已核验 `bunx biome check packages/telemetry` |
 
-`packages/telemetry` 的 `typecheck` 与 `test` 脚本在 01 建立；其余命令已核实存在于对应 `package.json`。
+`packages/telemetry` 的 `typecheck` 与 `test` 脚本在 01 建立；其余命令已核实存在于对应 `package.json`。仓库级 `bun run lint` 在 2026-08-31 报告 91 个本需求未触及的既有错误与 15 个警告，不能作为本特性的完成条件；每项必须改为核验自身实际触及路径，并在该项的「完成前检查」记录命令和输出。
 
 ## 为什么这样拆分
 

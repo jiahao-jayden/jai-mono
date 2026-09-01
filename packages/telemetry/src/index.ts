@@ -1,0 +1,31 @@
+export { InMemoryTelemetryContext } from "./adapters/in-memory";
+export { NoopTelemetryContext } from "./adapters/noop";
+export {
+	omittedTelemetryContent,
+	type TelemetryApprovalDecision,
+	type TelemetryApprovalOutcome,
+	type TelemetryAttributeValue,
+	type TelemetryContentReference,
+	type TelemetryContext,
+	type TelemetryContextOptions,
+	type TelemetryErrorCategory,
+	type TelemetryEventAttributes,
+	type TelemetryEventDefinitions,
+	type TelemetryEventInput,
+	type TelemetryEventName,
+	type TelemetryEventRecord,
+	type TelemetryPermissionDecision,
+	type TelemetryPermissionOutcome,
+	type TelemetryPermissionPhase,
+	type TelemetryPermissionRisk,
+	type TelemetryPermissionSource,
+	type TelemetrySink,
+	type TelemetrySpan,
+	type TelemetrySpanAttributes,
+	type TelemetrySpanDefinitions,
+	type TelemetrySpanName,
+	type TelemetrySpanRecord,
+	type TelemetrySpanStatus,
+	type TelemetryStartSpanOptions,
+} from "./core/contracts";
+export { createTelemetryContext, runWithTelemetrySpan } from "./runtime/telemetry-context";

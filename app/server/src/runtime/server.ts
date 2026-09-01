@@ -32,6 +32,8 @@ export interface OpenJaiRuntimeServerOptions {
 		/** Host-owned durable Workspace trust facts; no raw SQLite access escapes composition. */
 		readonly workspaceTrust: SqliteWorkspaceTrust;
 	}) => ResultType<RuntimeOperationDriver, RuntimeHostConfigurationInvalid>;
+	/** 仅用于回收由 Host 配置的旁路观测 adapter；失败不得影响 Host 生命周期。 */
+	readonly closeTelemetry?: () => Promise<void>;
 	readonly info: AcpImplementationInfo;
 	readonly endpoint?: string;
 }
@@ -67,6 +69,7 @@ export async function openJaiRuntimeServer(
 		if (assembled.isErr()) {
 			database.close();
 			database = undefined;
+			await closeTelemetry(options.closeTelemetry);
 			return Result.err(assembled.error);
 		}
 		connectorOAuth = new RuntimeConnectorOAuth(agentSettings, {
@@ -95,12 +98,15 @@ export async function openJaiRuntimeServer(
 		});
 		if (opened.isErr()) throw opened.error;
 		localHost = opened.value;
-		return Result.ok(new DefaultJaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog));
+		return Result.ok(
+			new DefaultJaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog, options.closeTelemetry),
+		);
 	} catch (error) {
 		await localHost?.close().catch(() => {});
 		connectorOAuth?.close();
 		modelCatalog?.close();
 		database?.close();
+		await closeTelemetry(options.closeTelemetry);
 		return Result.err(
 			new JaiRuntimeServerOpenFailed({
 				message: `Could not open Jai Runtime Server from "${options.dataDirectory}"`,
@@ -120,6 +126,7 @@ class DefaultJaiRuntimeServer implements JaiRuntimeServer {
 		private readonly database: ProductSqliteDatabase,
 		private readonly connectorOAuth: RuntimeConnectorOAuth,
 		private readonly modelCatalog: SqliteRuntimeModelCatalog,
+		private readonly telemetryClose: (() => Promise<void>) | undefined,
 	) {
 		this.#localHost = localHost;
 	}
@@ -148,9 +155,22 @@ class DefaultJaiRuntimeServer implements JaiRuntimeServer {
 				try {
 					this.modelCatalog.close();
 				} finally {
-					this.database.close();
+					try {
+						this.database.close();
+					} finally {
+						await closeTelemetry(this.telemetryClose);
+					}
 				}
 			}
 		}
+	}
+}
+
+async function closeTelemetry(close: (() => Promise<void>) | undefined): Promise<void> {
+	if (close === undefined) return;
+	try {
+		await close();
+	} catch {
+		return;
 	}
 }

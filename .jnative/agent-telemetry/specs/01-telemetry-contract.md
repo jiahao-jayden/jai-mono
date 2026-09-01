@@ -1,6 +1,6 @@
 # 01: 观测契约与零依赖实现
 
-要先完成:无 · 状态:⬜
+要先完成:无 · 状态:✅
 
 ## 交付什么
 
@@ -85,21 +85,23 @@
 
 下面的检查没有跑完、也没有贴出真实输出前，不能标 ✅：
 
-- [ ] `packages/telemetry` 无任何运行时依赖，且不 import `@jai/agent`、Node 内建模块或厂商 SDK
-- [ ] 存在测试证明：把观测换成 no-op 后，调用方可观察的行为与使用 in-memory 时一致
-- [ ] 存在测试证明：属性或事件的坏 payload 不会使调用方失败
-- [ ] 存在测试证明：callback 抛出的领域异常被原样 rethrow，既不被吞掉也不被包装成观测错误
-- [ ] 存在测试证明：父子约束成立（例如 turn span 必须挂在 run span 下）
-- [ ] 存在类型层面的证明：内容字段无法直接承载裸字符串，只能是内容引用联合中的一支
-- [ ] 存在测试证明：启用多个 sink 时，其中一个抛错或阻塞不影响其他 sink，也不影响调用方
-- [ ] 存在测试证明：sink 收到的记录已完成内容投影，未脱敏数据不可能到达任何 sink
-- [ ] `cd packages/telemetry && bun run typecheck`
-- [ ] `cd packages/telemetry && bun test`
-- [ ] `bun run lint`
+- [x] `packages/telemetry` 无任何运行时依赖，且不 import `@jai/agent`、Node 内建模块或厂商 SDK（`rg -n 'node:|@jai/agent|@opentelemetry|langfuse' packages/telemetry` 无输出）
+- [x] 存在测试证明：把观测换成 no-op 后，调用方可观察的行为与使用 in-memory 时一致
+- [x] 存在测试证明：属性或事件的坏 payload 不会使调用方失败
+- [x] 存在测试证明：callback 抛出的领域异常被原样 rethrow，既不被吞掉也不被包装成观测错误
+- [x] 存在测试证明：父子约束成立（例如 turn span 必须挂在 run span 下）
+- [x] 存在类型层面的证明：内容字段无法直接承载裸字符串，只能是内容引用联合中的一支（`@ts-expect-error` 编译检查）
+- [x] 存在测试证明：启用多个 sink 时，其中一个抛错或阻塞不影响其他 sink，也不影响调用方
+- [x] 存在测试证明：sink 收到的记录已完成内容投影，未脱敏数据不可能到达任何 sink
+- [x] `cd packages/telemetry && bun run typecheck`（2026-08-31：通过）
+- [x] `cd packages/telemetry && bun test`（2026-08-31：6 通过，0 失败）
+- [x] `bunx biome check packages/telemetry`（2026-08-31：通过；仓库级 `bun run lint` 仍报 91 个既有错误、15 个警告，首批位于 `app/desktop/electron/agent/errors.ts`、`app/desktop/electron/commands/catalog.ts`、`app/desktop/electron/config/*` 与 `app/server/*`，已按 plan.md 的静态检查边界记录为非本项问题。）
 
 ## 决策记录
 
-<!-- 只记录这项工作实施时出现的局部、非显然选择；改变整套方案时回到 plan.md。-->
+- `TelemetryContext` 保持只暴露 `startSpan`。构造时可选的 `onSpanStateChange` 仅供 `InMemoryTelemetryContext` 捕获**同一份安全投影**，让测试能发现未结算 span；它不是产品 sink、读取面或持久化事实。
+- 错误分类收敛为有限的 `TelemetryErrorCategory` 联合，原始 `Error.message` 一律以 `omitted` 内容引用表示，避免把自由文本伪装成低基数属性。
+- sink 只在 span 结算后收到记录；扇出为每个 sink 单独排入微任务并捕获 rejection，因而观察故障不影响调用方或其他 sink。
 
 ## 遗留问题
 
@@ -107,4 +109,4 @@
 
 ## 交接说明
 
-<!-- 完成或暂停时填：做到哪里、下一项不要碰什么。写给下次继续工作的人看，要具体。 -->
+`packages/telemetry` 与 lockfile 已建立：契约、白名单投影、no-op、in-memory、扇出隔离及 6 个测试均已完成。不要在第 02 项之前改写这些词汇或把观测接入 `commitEvent`。仓库级 `bun run lint` 的 91 个既有错误、15 个警告已记录为非本项问题；后续工作按 plan.md 对实际改动路径运行 Biome。

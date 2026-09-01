@@ -1,8 +1,8 @@
+export type { CodingCommandKind } from "./commands";
 export {
 	CodingCommandExecutionFailed,
 	CodingCommandRegistrationFailed,
 } from "./commands";
-export type { CodingCommandKind } from "./commands";
 export { createCodingAgent } from "./sdk/create-coding-agent";
 export type { CodingExtensionError } from "./sdk/extension-errors";
 export {
@@ -39,17 +39,17 @@ export type {
 	CodingExtensionCommandRegistration,
 	CodingExtensionConfiguration,
 	CodingExtensionConfigurationLayers,
-	CodingExtensionLayeredConfiguration,
 	CodingExtensionConfigurationStore,
 	CodingExtensionContext,
 	CodingExtensionDiagnostic,
 	CodingExtensionHooks,
+	CodingExtensionLayeredConfiguration,
 	CodingExtensionLifecycle,
 	CodingExtensionRuntime,
 	CodingExtensionRuntimeAdapter,
+	CodingExtensionScopedConfiguration,
 	CodingExtensionSessionState,
 	CodingExtensionSessionStateStore,
-	CodingExtensionScopedConfiguration,
 	CodingExtensionTool,
 	CodingExtensionToolCall,
 	CodingExtensionToolCatalog,
@@ -68,6 +68,12 @@ export {
 	emptyPersistedCodingSessionState,
 	type PersistedCodingSessionState,
 } from "./sdk/session-state";
+export type {
+	CodingAgentTelemetryEffectEvent,
+	CodingAgentTelemetryObserver,
+	CodingAgentTelemetryObserverOptions,
+} from "./sdk/telemetry";
+export { createCodingAgentTelemetryObserver } from "./sdk/telemetry";
 export type { CodingToolActivityKind, CodingToolPresentation } from "./sdk/tool-presentation";
 export type {
 	CodingAgent,

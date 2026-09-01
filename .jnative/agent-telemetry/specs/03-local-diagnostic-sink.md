@@ -1,6 +1,6 @@
 # 03: 本地 sink adapter（文件与 stderr）
 
-要先完成:02 · 状态:⬜
+要先完成:02 · 状态:✅
 
 ## 交付什么
 
@@ -82,24 +82,26 @@
 
 下面的检查没有跑完、也没有贴出真实输出前，不能标 ✅：
 
-- [ ] 存在测试证明：记录不含 stack、不含 cause、不含用户内容
-- [ ] 存在测试证明：sink 未自行做内容投影，只消费 01 已投影的安全记录
-- [ ] 存在测试证明：写出的文件可被重新读回并还原一次运行的因果结构
-- [ ] 本地文件的路径、轮转策略、保留期与体积上限已确定并写入「决策记录」
-- [ ] 存在测试证明：协议模式下 stdout 不被诊断输出污染
-- [ ] 存在测试证明：sink 自身失败（写入错误、目标不可用、磁盘满）不改变任何 `Result`、不使 run 失败，也不影响同时启用的其他 sink
-- [ ] 存在测试证明：关联 ID 能把同一次运行的记录串起来
-- [ ] 业务模块未新增 `console.*`；仓库生产代码 `console.*` 计数仍为 0
-- [ ] sink 按运行时依赖单独导出，未静态带入零依赖契约包
-- [ ] 未为本地文件新增查询接口、协议方法或 UI
-- [ ] `cd packages/telemetry && bun run typecheck`；`cd packages/telemetry && bun test`
-- [ ] `cd packages/coding-agent && bun run typecheck`；`cd packages/coding-agent && bun test`；`cd packages/coding-agent && bun run build`
-- [ ] `cd app/server && bun run typecheck`；`cd app/server && bun test`；`cd app/server && bun run build`
-- [ ] `bun run lint`
+- [x] 存在测试证明：记录不含 stack、不含 cause、不含用户内容（`packages/telemetry/test/node-sinks.test.ts`）
+- [x] 存在测试证明：sink 未自行做内容投影，只消费 01 已投影的安全记录（同上：从 `createTelemetryContext` 写入裸字符串时落盘为 `omitted`）
+- [x] 存在测试证明：写出的文件可被重新读回并还原一次运行的因果结构（同上，以 `id` / `parentId` 重建 run → turn → tool）
+- [x] 本地文件的路径、轮转策略、保留期与体积上限已确定并写入「决策记录」
+- [x] 存在测试证明：协议模式下 stdout 不被诊断输出污染（同上：sink 只获得注入的 stderr writer）
+- [x] 存在测试证明：sink 自身失败（写入错误、目标不可用、磁盘满）不改变任何 `Result`、不使 run 失败，也不影响同时启用的其他 sink（同上：目录目标写入失败仍送达并行 sink）
+- [x] 存在测试证明：关联 ID 能把同一次运行的记录串起来（同上）
+- [x] 业务模块未新增 `console.*`；`rg -n "console\\." app/*/src packages/*/src` 无输出
+- [x] sink 以 `@jai/telemetry/node` 单独导出；根入口、core、runtime 与 adapters 均不 import Node 内建模块
+- [x] 未为本地文件新增查询接口、协议方法或 UI
+- [x] `cd packages/telemetry && bun run typecheck`；`cd packages/telemetry && bun test`（2026-08-31：10 通过，0 失败）
+- [x] `cd packages/coding-agent && bun run typecheck`；`cd packages/coding-agent && bun test`；`cd packages/coding-agent && bun run build`（2026-08-31：118 通过，0 失败；构建通过）
+- [x] `cd app/server && bun run typecheck`；`cd app/server && bun test test/telemetry/local.test.ts test/agents/coding-agent-operation.test.ts`；`cd app/server && bun run build`（2026-08-31：5 通过，0 失败；构建通过）
+- [x] `bunx biome check packages/telemetry/src/node packages/telemetry/test/node-sinks.test.ts app/server/src/telemetry app/server/src/runtime/daemon.ts app/server/test/telemetry/local.test.ts`（2026-08-31：通过；仓库级 lint 基线见 `plan.md`）
 
 ## 决策记录
 
-<!-- 只记录这项工作实施时出现的局部、非显然选择；改变整套方案时回到 plan.md。-->
+- 默认关闭。设置 `JAI_TELEMETRY_FILE=/绝对或相对路径` 才启用 JSONL 文件；设置 `JAI_TELEMETRY_STDERR=1` 才启用 stderr。两者可以同时开启，stdout 从不作为诊断目标。
+- 文件在“当前大小 + 下一条记录”超过 `JAI_TELEMETRY_MAX_BYTES` 时轮转；默认每个文件上限 1,048,576 bytes，保留 3 个旧副本（当前文件加副本最多约 4 MiB）。`JAI_TELEMETRY_MAX_FILES=0` 不保留旧文件。单条记录本身超过上限时丢弃，以保证文件体积上限。
+- 文件是宿主控制的可删除诊断产物：不读回到产品、不参与恢复、无查询 RPC/UI。`@jai/telemetry/node` 只负责追加 JSONL 和轮转；内容投影仍只在 01 的 context 扇出前完成。
 
 ## 遗留问题
 
@@ -107,4 +109,4 @@
 
 ## 交接说明
 
-<!-- 完成或暂停时填：做到哪里、下一项不要碰什么。写给下次继续工作的人看，要具体。 -->
+`@jai/telemetry/node` 已提供文件与 stderr JSONL sink，Server daemon 从显式环境变量装配它们，默认 no-op。04 只能在已有 run / turn / tool 链上扩展权限和审批 span；不要让权限观察逻辑写文件、改本地 sink、落 Journal 或给这些文件增加读取面。

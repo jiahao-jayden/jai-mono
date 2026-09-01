@@ -1,8 +1,10 @@
+import type { TelemetryContext } from "@jai/telemetry";
 import { Result, type Result as ResultType } from "better-result";
 import { createCodingAgentOperationDriver, createRuntimeConnectorAgentAssembly } from "../agents";
 import { RuntimeOperationOpenFailed } from "../operations";
 import type { AcpImplementationInfo } from "../protocol/acp-v2";
 import { createDesktopLocalRuntimeCapabilitySource, type RuntimeCapabilitySource } from "../runtime-capabilities";
+import { type ResolvedRuntimeTelemetry, resolveRuntimeTelemetry } from "../telemetry";
 import { RuntimeHostConfigurationInvalid } from "./configuration";
 import { resolveJaiDataDirectory } from "./paths";
 import { type JaiRuntimeServer, type JaiRuntimeServerOpenFailed, openJaiRuntimeServer } from "./server";
@@ -14,6 +16,8 @@ export interface OpenConfiguredRuntimeHostOptions {
 	readonly homeDirectory?: string;
 	/** Alternate Host source used by non-local products and deterministic tests. */
 	readonly capabilitySource?: RuntimeCapabilitySource;
+	/** Embedder-provided telemetry context; otherwise local diagnostic settings come from the environment. */
+	readonly telemetry?: TelemetryContext;
 	readonly endpoint?: string;
 	readonly info?: AcpImplementationInfo;
 }
@@ -28,6 +32,16 @@ export async function openConfiguredRuntimeHost(
 ): Promise<ResultType<JaiRuntimeServer, RuntimeHostConfigurationInvalid | JaiRuntimeServerOpenFailed>> {
 	const environment = options.environment ?? process.env;
 	const dataDirectory = options.dataDirectory ?? resolveJaiDataDirectory(environment);
+	let telemetry: ResolvedRuntimeTelemetry;
+	if (options.telemetry) {
+		telemetry = { context: options.telemetry };
+	} else {
+		const configuredTelemetry = resolveRuntimeTelemetry({ environment, errorOutput: process.stderr });
+		if (configuredTelemetry.isErr()) {
+			return Result.err(new RuntimeHostConfigurationInvalid({ message: configuredTelemetry.error.message }));
+		}
+		telemetry = configuredTelemetry.value;
+	}
 	const opened = await openJaiRuntimeServer({
 		dataDirectory,
 		createOperationDriver: ({ agentSettings, workspaceTrust }) => {
@@ -90,9 +104,11 @@ export async function openConfiguredRuntimeHost(
 						});
 					},
 					capabilitySource,
+					telemetry: telemetry.context,
 				}),
 			);
 		},
+		...(telemetry.close === undefined ? {} : { closeTelemetry: telemetry.close }),
 		info: options.info ?? {
 			name: "jai",
 			title: "Jai",

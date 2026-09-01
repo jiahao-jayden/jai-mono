@@ -16,6 +16,8 @@ import {
 	permissionConfigFields,
 	permissionConfigSchema,
 	type PermissionApprovalRequest,
+	type PermissionSettings,
+	type PermissionTelemetryEvent,
 	permissionSettingsSchema,
 	scanBashCommand,
 	splitBashCommand,
@@ -278,6 +280,71 @@ describe("permission middleware", () => {
 			return { content: [] };
 		});
 		expect({ approvals, executions }).toEqual({ approvals: 1, executions: 2 });
+	});
+
+	test("权限遥测投影三种判定、重检拒绝与取消，且不含调用内容", async () => {
+		const events: PermissionTelemetryEvent[] = [];
+		let settings: PermissionSettings = {};
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: () => settings,
+		telemetryObserver: { observePermissionEvent: (event) => events.push(event) },
+		requestApproval: () => {
+				settings = { permission: { edit: { "**": "deny" } } };
+				return "allowOnce";
+			},
+		});
+
+		await middleware(context("Read", { path: "private/allow.txt", token: "allow-secret" }), async () => ({ content: [] }));
+		await expect(
+			middleware(context("Bash", { command: "rm -rf /", secret: "deny-secret" }), async () => ({ content: [] })),
+		).rejects.toMatchObject({ _tag: "coding_permission.denied" });
+		await expect(
+			middleware(context("Write", { path: "private/rechecked.txt", content: "ask-secret" }), async () => ({ content: [] })),
+		).rejects.toMatchObject({ _tag: "coding_permission.denied" });
+
+		const cancelled = new AbortController();
+		let markApprovalStarted: () => void;
+		const approvalStarted = new Promise<void>((resolve) => {
+			markApprovalStarted = resolve;
+		});
+		const cancellationMiddleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: {},
+			telemetryObserver: { observePermissionEvent: (event) => events.push(event) },
+			requestApproval: (_request, signal) => {
+				markApprovalStarted!();
+				return new Promise<"allowOnce">((_, reject) => {
+					signal?.addEventListener("abort", () => reject(new Error("approval wait cancelled")), { once: true });
+				});
+			},
+		});
+		const pending = cancellationMiddleware(
+			context("Write", { path: "private/cancelled.txt", content: "cancel-secret" }, cancelled.signal),
+			async () => ({ content: [] }),
+		);
+		await approvalStarted;
+		cancelled.abort();
+		await expect(pending).rejects.toThrow("approval wait cancelled");
+
+		expect(events).toContainEqual(
+			expect.objectContaining({ type: "permission_decided", decision: "allow", risk: "low", source: "built-in" }),
+		);
+		expect(events).toContainEqual(
+			expect.objectContaining({ type: "permission_decided", decision: "deny", risk: "high", source: "danger-layer" }),
+		);
+		expect(events).toContainEqual(
+			expect.objectContaining({ type: "permission_decided", decision: "ask", risk: "medium", source: "built-in" }),
+		);
+		expect(events).toContainEqual(
+			expect.objectContaining({ type: "permission_decided", decision: "deny", phase: "recheck", source: "rule" }),
+		);
+		expect(events).toContainEqual(expect.objectContaining({ type: "approval_cancelled" }));
+		expect(events).toContainEqual(expect.objectContaining({ type: "permission_settled", outcome: "cancelled" }));
+		const serialized = JSON.stringify(events);
+		for (const value of ["allow-secret", "deny-secret", "ask-secret", "cancel-secret", "private/"]) {
+			expect(serialized).not.toContain(value);
+		}
 	});
 
 	test("没有注册 permission policy 的外部工具拒绝执行", async () => {
@@ -729,7 +796,7 @@ function call(toolName: PermissionCall["toolName"], args: Record<string, unknown
 	return { toolName, args, workspaceRoot };
 }
 
-function context(toolName: string, args: Record<string, unknown>): ToolCallContext {
+function context(toolName: string, args: Record<string, unknown>, signal?: AbortSignal): ToolCallContext {
 	const parameters = Type.Object({}, { additionalProperties: true });
 	return {
 		toolCall: { type: "toolCall", id: "tool-call", name: toolName, arguments: args },
@@ -740,6 +807,6 @@ function context(toolName: string, args: Record<string, unknown>): ToolCallConte
 			execute: async () => ({ content: [] }),
 		},
 		args,
+		...(signal ? { signal } : {}),
 	};
 }
-

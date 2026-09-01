@@ -1,6 +1,6 @@
 # 04: 权限与审批观测
 
-要先完成:02 · 状态:⬜
+要先完成:02 · 状态:✅
 
 ## 交付什么
 
@@ -73,26 +73,30 @@
 
 下面的检查没有跑完、也没有贴出真实输出前，不能标 ✅：
 
-- [ ] 存在测试证明：放行、拒绝、需要询问三种判定结果均可见，且带风险级别
-- [ ] 存在测试证明：审批等待时长被记录，且与模型耗时、工具耗时分开
-- [ ] 存在测试证明：审批后重新检查导致的拒绝与首次判定拒绝可区分
-- [ ] 存在测试证明：权限与审批记录不含工具参数原文、命令行原文或文件路径原文
-- [ ] 存在测试证明：审批被取消或超时时对应 span 仍被结算
-- [ ] 既有权限判定逻辑、风险分级与审批行为未被改变，既有测试全部通过
-- [ ] 未新增长期保存的数据，未写回 Journal
-- [ ] `cd packages/coding-agent && bun run typecheck`；`cd packages/coding-agent && bun test`；`cd packages/coding-agent && bun run build`
-- [ ] `cd packages/telemetry && bun run typecheck`；`cd packages/telemetry && bun test`
-- [ ] `cd app/server && bun run typecheck`；`cd app/server && bun test`
-- [ ] `bun run lint`
+- [x] 存在测试证明：放行、拒绝、需要询问三种判定结果均可见，且带风险级别（`packages/coding-agent/test/permissions.test.ts`）
+- [x] 存在测试证明：审批等待时长被记录，且与模型耗时、工具耗时分开（`packages/coding-agent/test/telemetry.test.ts`）
+- [x] 存在测试证明：审批后重新检查导致的拒绝与首次判定拒绝可区分（同上，`phase: recheck` 与 `outcome: recheck_denied`）
+- [x] 存在测试证明：权限与审批记录不含工具参数原文、命令行原文或文件路径原文（同上及 Server operation 测试）
+- [x] 存在测试证明：审批被取消或超时时对应 span 仍被结算（同上）
+- [x] 既有权限判定逻辑、风险分级与审批行为未被改变，既有测试全部通过（`@jai/coding-agent`：120 通过，0 失败）
+- [x] 未新增长期保存的数据，未写回 Journal
+- [x] `cd packages/coding-agent && bun run typecheck`；`cd packages/coding-agent && bun test`；`cd packages/coding-agent && bun run build`（2026-08-31：120 通过，0 失败；构建通过）
+- [x] `cd packages/telemetry && bun run typecheck`；`cd packages/telemetry && bun test`（2026-08-31：10 通过，0 失败）
+- [x] `cd app/server && bun run typecheck`；`cd app/server && bun test test/agents/coding-agent-operation.test.ts test/telemetry/local.test.ts`；`cd app/server && bun run build`（2026-08-31：5 通过，0 失败；构建通过）
+- [x] `cd app/server && bun test` 已尝试；当前 Bun 运行时无法加载 `node:sqlite`，23 个未触及的 SQLite 测试在加载时失败；本项触及的 Server 测试均已由上项命令通过
+- [x] `bunx biome check --formatter-enabled=false packages/telemetry/src packages/coding-agent/src/permissions/index.ts packages/coding-agent/src/permissions/middleware.ts packages/coding-agent/src/permissions/telemetry.ts packages/coding-agent/src/runtime/create-coding-agent.ts packages/coding-agent/src/sdk.ts packages/coding-agent/src/sdk/create-coding-agent.ts packages/coding-agent/src/sdk/telemetry.ts packages/coding-agent/src/sdk/types.ts app/server/src/agents/coding-agent.ts`（2026-08-31：通过；仓库级 lint 基线见 `plan.md`）
 
 ## 决策记录
 
-<!-- 只记录这项工作实施时出现的局部、非显然选择；改变整套方案时回到 plan.md。-->
+- 权限中间件只发送不含参数、路径、命令和理由的 `PermissionTelemetryEvent` 联合；Server 在创建 Agent 前把同一个 `CodingAgentTelemetryObserver` 注入中间件，因此这一旁路没有新增运行时 seam 或 durable fact。
+- `jai.permission` 挂在当前 `jai.turn` 下，以 `toolCallId` 与同回合的 `jai.tool_call` 关联。这样被拒绝、根本不会开始执行的工具调用仍有可见权限 span；`jai.approval` 则是权限 span 的子节点。
+- 审批等待由 observer 的单调时钟在 `approval_requested` 到决定/取消之间测量；重检拒绝单独以 `phase: recheck` / `canonical_recheck` 和 `outcome: recheck_denied` 表达。
+- 遥测风险映射复用既有 evaluator 结果：危险层为高，显式 normal 为中，内置 Read 为低，其余未显式分级的内置或规则决策为中；它只改变观测投影，不参与或修改原有判定。
 
 ## 遗留问题
 
-<!-- 发现但本次不做的 -->
+无。
 
 ## 交接说明
 
-<!-- 完成或暂停时填：做到哪里、下一项不要碰什么。写给下次继续工作的人看，要具体。 -->
+04 已完成。05 应复用 `@jai/telemetry` 已安全投影的 record，并将 run/session 标识按 Langfuse 规则映射到每个 OTLP span；不要改权限判定、审批协议、Journal 或本地 sink。

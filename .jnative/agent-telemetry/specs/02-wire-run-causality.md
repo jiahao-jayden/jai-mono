@@ -1,13 +1,13 @@
 # 02: 在既有 seam 上接线，产生运行因果链
 
-要先完成:01 · 状态:⬜
+要先完成:01 · 状态:✅
 
 ## 交付什么
 
 一次真实的 Agent 运行会产生一条完整的因果链。做完之后：
 
 - 从一次运行可以看到：run 开始 → 每个 turn → 每次模型尝试与模型流结算 → 每次工具调用与结算 → 最终结果。父子关系正确，不依赖事件到达顺序。
-- 模型流的首个输出时间、流耗时、工具耗时出现在对应 span 上，数据来自 02 恢复的执行事实与运行时边界。
+- 模型流的首个输出时间、流耗时、工具耗时出现在对应 span 上，数据由既有运行时边界现场测量，不恢复任何 Journal timing record。
 - 已发布后被丢弃的模型尝试能被识别为「丢弃」，不会被当成最终输出。
 - **把观测整体换成 no-op 后，Agent、工具、Journal 与用户结果的行为完全不变**，有测试证明。
 - 观测自身出错（坏 payload、监听器抛错）不改变任何 `Result`，不使 run 失败。
@@ -18,7 +18,7 @@
 
 - 在既有观察者 seam 上订阅 `CoreAgentEvent`，把 run、turn、消息、工具四类生命周期事件投影成 01 定义的 `jai.*` span 与 event。**接在观察者一侧，绝不接进 `commitEvent`。**
 - 在 Server 的 operation effect boundary 的只读订阅上，关联模型与工具的 durable 意图，使 span 使用与 Journal 一致的稳定 identity，而不是自造 ID。
-- 把 02 的 timing 执行事实与运行时边界的时间投影到对应 span 的属性上。
+- 在模型流与工具执行的既有运行时边界现场测量首个输出时间、模型流耗时与工具耗时，并投影到对应 span 的属性上；不恢复或新增任何 Journal timing record。
 - 正确处理被丢弃的模型尝试：已经流式发布出去又被撤销的尝试，其 span 以「丢弃」结算，不与重试后的新尝试混为一谈。
 - 在 `packages/coding-agent` 的 runtime 与 Server 的 Runtime Host 完成装配：默认使用 no-op，测试可注入 in-memory。装配属于组合根，不承载领域规则。
 - 保证观测的生命周期不泄漏：run 结束时所有 span 已结算，没有永远挂着的 span。
@@ -53,7 +53,7 @@
 
 本项不新增、不修改任何长期保存的数据。它只读取：
 
-- Operation Journal 的执行事实（含 02 恢复的三类 timing），由 `@jai/agent` 维护。
+- Operation Journal 的既有执行事实，由 `@jai/agent` 维护；本项只读订阅其 effect boundary 以关联稳定 identity，不恢复或新增任何 timing record。
 - Session Journal 的会话事实，由 `@jai/agent` 维护。
 
 观测产生的 span、事件与关联状态全部是可丢弃的内存状态，不落库。
@@ -82,21 +82,23 @@
 
 下面的检查没有跑完、也没有贴出真实输出前，不能标 ✅：
 
-- [ ] 存在测试证明：一次真实运行产生的因果树结构正确（turn 挂在 run 下，模型与工具 span 挂在 turn 下）
-- [ ] 存在测试证明：把观测换成 no-op 后，Agent、工具、Journal 与用户结果的行为与注入 in-memory 时完全一致
-- [ ] 存在测试证明：观测监听器抛错不改变任何 `Result`、不使 run 失败
-- [ ] 存在测试证明：已发布后被丢弃的模型尝试以「丢弃」结算，不被当作最终输出
-- [ ] 存在测试证明：run 结束后没有未结算的 span（含中止与失败路径）
-- [ ] 观测未接入 `commitEvent`，仅接在观察者一侧
-- [ ] span 未写回任何 Journal，未新增长期保存的数据
-- [ ] `cd packages/agent && bun run typecheck`；`cd packages/agent && bun test`
-- [ ] `cd packages/coding-agent && bun run typecheck`；`cd packages/coding-agent && bun test`；`cd packages/coding-agent && bun run build`
-- [ ] `cd app/server && bun run typecheck`；`cd app/server && bun test`；`cd app/server && bun run build`
-- [ ] `bun run lint`
+- [x] 存在测试证明：一次真实运行产生的因果树结构正确（turn 挂在 run 下，模型与工具 span 挂在 turn 下；`app/server/test/agents/coding-agent-operation.test.ts`）
+- [x] 存在测试证明：把观测换成 no-op 后，Agent、工具、Journal 与用户结果的行为与注入 in-memory 时完全一致（同上）
+- [x] 存在测试证明：观测监听器抛错不改变任何 `Result`、不使 run 失败（同上，以抛错的 `TelemetryContext` 注入）
+- [x] 存在测试证明：已发布后被丢弃的模型尝试以「丢弃」结算，不被当作最终输出（`packages/coding-agent/test/telemetry.test.ts`；Agent core 既有 `message_discard` 回归也已运行）
+- [x] 存在测试证明：run 结束后没有未结算的 span（同上两处测试均断言 `endedAtMs`）
+- [x] 观测未接入 `commitEvent`，仅接在 `CodingAgent.subscribe` 和 `OperationEffectBoundary.subscribe` 的观察者一侧
+- [x] span 未写回任何 Journal，未新增长期保存的数据；effect event 只投影既有 `model_attempted` / `tool_dispatched` 的安全 identity
+- [x] `cd packages/agent && bun run typecheck`；`cd packages/agent && bun test`（2026-08-31：通过）
+- [x] `cd packages/coding-agent && bun run typecheck`；`cd packages/coding-agent && bun test`；`cd packages/coding-agent && bun run build`（2026-08-31：118 通过，0 失败；构建通过）
+- [x] `cd app/server && bun run typecheck`；`cd app/server && bun test test/agents/coding-agent-operation.test.ts`；`cd app/server && bun run build`（2026-08-31：2 通过，0 失败；构建通过）
+- [x] `bunx biome check packages/telemetry packages/coding-agent/src/sdk.ts packages/coding-agent/src/sdk/telemetry.ts packages/coding-agent/test/telemetry.test.ts packages/coding-agent/package.json app/server/package.json app/server/src/agents/coding-agent.ts app/server/src/operations/effect-boundary.ts app/server/test/agents/coding-agent-operation.test.ts`（2026-08-31：通过；仓库级 lint 基线见 `plan.md`）
 
 ## 决策记录
 
-<!-- 只记录这项工作实施时出现的局部、非显然选择；改变整套方案时回到 plan.md。-->
+- 一个 `RuntimeOperation` 只驱动一次 Agent run，因此 `runId` 复用稳定的 `operationId`；turn 没有 durable identity，使用 `operationId:turn:N` 作为只在内存中存在的观察编号。模型 attempt 与 tool call 则只接受 effect boundary 已持久化意图中的 `attemptId` / `toolCallId`，不造厂商或随机 ID。
+- `model_reserved` 与新增的 `tool_reserved` 都在既有 `OperationEffectBoundary.subscribe` 事件联合内发布，且仅携带已白名单的 identity 与模型名；工具参数、结果、路径和原始内容均不进入该投影。
+- 测试将 `createRuntimeHost` 直接从 `runtime/host` 导入，避免测试仅因无关的 daemon SQLite composition 被 Bun 的 `node:sqlite` 限制阻断；产品入口和 durable adapter 未改变。
 
 ## 遗留问题
 
@@ -104,4 +106,4 @@
 
 ## 交接说明
 
-<!-- 完成或暂停时填：做到哪里、下一项不要碰什么。写给下次继续工作的人看，要具体。 -->
+run / turn / model attempt / model stream / tool call 因果链已接到两处既有观察 seam：`packages/coding-agent/src/sdk/telemetry.ts` 持有所有短生命周期映射，`app/server/src/agents/coding-agent.ts` 仅装配 no-op 或注入的 context。03 只能新增可删除的本地 sink adapter 与宿主配置，不得新增 Journal record、查询面或产品内存历史；04 才能扩展权限词汇。

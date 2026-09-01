@@ -43,6 +43,16 @@ export type OperationEffectEvent =
 	| {
 			readonly type: "model_reserved";
 			readonly assistantEntryId: string;
+			readonly attemptId: string;
+			readonly model: string;
+			readonly provider: string;
+	  }
+	| {
+			readonly type: "tool_reserved";
+			readonly assistantEntryId: string;
+			readonly resultEntryId: string;
+			readonly toolCallId: string;
+			readonly toolName: string;
 	  }
 	| {
 			readonly type: "usage_settled";
@@ -104,7 +114,13 @@ class DefaultOperationEffectBoundary implements OperationEffectBoundary {
 			timestamp: this.#now().toISOString(),
 		});
 		this.#attemptsByAssistantEntry.set(entryId, attemptId);
-		this.publish({ type: "model_reserved", assistantEntryId: entryId });
+		this.publish({
+			type: "model_reserved",
+			assistantEntryId: entryId,
+			attemptId,
+			model: input.model.id,
+			provider: input.model.provider,
+		});
 		return { entryId };
 	}
 
@@ -157,6 +173,13 @@ class DefaultOperationEffectBoundary implements OperationEffectBoundary {
 			argsHash: hashJson(args),
 			resultEntryId,
 			timestamp: this.#now().toISOString(),
+		});
+		this.publish({
+			type: "tool_reserved",
+			assistantEntryId,
+			resultEntryId,
+			toolCallId: input.toolCall.id,
+			toolName: input.toolCall.name,
 		});
 		return { entryId: resultEntryId };
 	}

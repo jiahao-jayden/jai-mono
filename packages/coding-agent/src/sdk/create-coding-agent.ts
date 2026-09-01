@@ -141,6 +141,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 						snapshot.settings as Readonly<Record<string, unknown>>,
 						input.permissionMode,
 					),
+				telemetryObserver: input.permissionTelemetryObserver,
 			},
 			extensionTools: extensionTools(extensions),
 			extensionBeforeModelCall: async (messages) => {
@@ -658,4 +659,3 @@ function isPersistedCodingSessionState(value: JsonObject): value is PersistedCod
 function isJsonObject(value: JsonValue | undefined): value is JsonObject {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-

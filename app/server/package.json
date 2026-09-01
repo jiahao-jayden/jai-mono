@@ -41,6 +41,8 @@
 		"@jai/coding-agent": "workspace:*",
 		"@jai/connector": "workspace:*",
 		"@jai/extension": "workspace:*",
+		"@jai/telemetry": "workspace:*",
+		"@jai/telemetry-otlp": "workspace:*",
 		"better-result": "^3.0.0"
 	},
 	"devDependencies": {

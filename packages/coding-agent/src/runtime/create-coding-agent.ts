@@ -33,8 +33,9 @@ import {
 	type PermissionAction,
 	type PermissionApprovalDecision,
 	type PermissionApprovalRequest,
-	permissionSettingsFromConfig,
 	type PermissionSettings,
+	type PermissionTelemetryObserver,
+	permissionSettingsFromConfig,
 } from "../permissions";
 import {
 	type CodingToolOptions,
@@ -63,6 +64,8 @@ export interface CodingAgentPermissionOptions<TSchema extends TObject> {
 		signal?: AbortSignal,
 	) => PermissionApprovalDecision | Promise<PermissionApprovalDecision>;
 	readonly persistProjectLocalAllowRules?: (rules: readonly string[]) => void | Promise<void>;
+	/** 可选旁路，观察权限事实而不参与判定或审批。 */
+	readonly telemetryObserver?: PermissionTelemetryObserver;
 }
 
 export interface CodingAgentRuntimeOptions {
@@ -335,6 +338,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		persistProjectLocalAllowRules,
 		pathCapabilities: toolEnvironment,
 		sessionAllowRules,
+		telemetryObserver: options.permissions?.telemetryObserver,
 	});
 	const spawnAgentTool = createSpawnAgentTool(async ({ task, signal, onActivity }) => {
 		signal?.throwIfAborted();
@@ -432,14 +436,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const stopConfigWatch = configStore.watch((event) => {
 		if (!runtime.closed && event.status === "valid") runtime.snapshot = event.snapshot;
 	});
-	return new CodingAgent(
-		agent,
-		configStore,
-		runtime,
-		stopConfigWatch,
-		options.commands,
-		attachments,
-	);
+	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, options.commands, attachments);
 }
 
 function subagentActivity(event: AgentEvent) {

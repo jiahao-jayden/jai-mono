@@ -1,0 +1,25 @@
+{
+	"name": "@jai/telemetry-otlp",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Node OTLP/HTTP exporter adapter for Jai telemetry.",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@jai/telemetry": "workspace:*",
+		"@opentelemetry/api": "1.9.0",
+		"@opentelemetry/core": "2.10.0",
+		"@opentelemetry/exporter-trace-otlp-proto": "0.221.0",
+		"@opentelemetry/resources": "2.10.0",
+		"@opentelemetry/sdk-trace-base": "2.10.0"
+	},
+	"devDependencies": {
+		"typescript": "catalog:"
+	}
+}

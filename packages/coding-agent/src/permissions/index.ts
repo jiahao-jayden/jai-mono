@@ -1,5 +1,5 @@
-export { scanBashCommand } from "./bash-parser";
 export type { PermissionApprovalDecision } from "./approval";
+export { scanBashCommand } from "./bash-parser";
 export {
 	mergePermissionConfigs,
 	normalizePermissionSettings,
@@ -16,6 +16,7 @@ export {
 	type SessionAllowRules,
 } from "./middleware";
 export { isDestructiveBashCommand, splitBashCommand } from "./rules";
+export type { PermissionTelemetryEvent, PermissionTelemetryObserver } from "./telemetry";
 export type { CodingExtensionToolCall, CodingToolPermission } from "./tool-permission";
 export type {
 	PermissionAction,

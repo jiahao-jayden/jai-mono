@@ -3,12 +3,15 @@ import {
 	type CodingAgentCreateOptions,
 	type CodingAgentEvent,
 	type CodingAgentMessage,
+	type CodingAgentTelemetryObserver,
 	type CodingExtensionApprovalDecision,
 	type CodingExtensionRuntimeAdapter,
 	createCodingAgent,
+	createCodingAgentTelemetryObserver,
 	type JsonObject,
 	type JsonValue,
 } from "@jai/coding-agent";
+import { NoopTelemetryContext, type TelemetryContext } from "@jai/telemetry";
 import { Result, type Result as ResultType } from "better-result";
 import {
 	type OperationEffectBoundary,
@@ -27,7 +30,7 @@ import type { RuntimeCapabilitySource } from "../runtime-capabilities";
 
 type CodingAgentOperationOptions = Omit<
 	CodingAgentCreateOptions,
-	"cwd" | "effectBoundary" | "requestApproval" | "session"
+	"cwd" | "effectBoundary" | "permissionTelemetryObserver" | "requestApproval" | "session"
 >;
 type CodingAgentOperationConfiguration = Omit<CodingAgentOperationOptions, "fileCapabilities">;
 
@@ -40,6 +43,8 @@ export interface CodingAgentOperationDriverOptions {
 		| Promise<ResultType<CodingAgentOperationConfiguration, RuntimeOperationOpenFailed>>;
 	/** Supplies Host-selected file capabilities and disposable Extensions per Operation. */
 	readonly capabilitySource: RuntimeCapabilitySource;
+	/** Product composition chooses a sink-backed context; absence is an inert no-op. */
+	readonly telemetry?: TelemetryContext;
 }
 
 /**
@@ -52,7 +57,11 @@ export function createCodingAgentOperationDriver(options: CodingAgentOperationDr
 }
 
 class DefaultCodingAgentOperationDriver implements RuntimeOperationDriver {
-	constructor(private readonly options: CodingAgentOperationDriverOptions) {}
+	readonly #telemetry: TelemetryContext;
+
+	constructor(private readonly options: CodingAgentOperationDriverOptions) {
+		this.#telemetry = options.telemetry ?? new NoopTelemetryContext();
+	}
 
 	async preflight(input: RuntimeOperationPreflightInput): Promise<ResultType<void, RuntimeOperationOpenFailed>> {
 		try {
@@ -76,6 +85,11 @@ class DefaultCodingAgentOperationDriver implements RuntimeOperationDriver {
 		try {
 			const configured = await this.#resolveOptions(input);
 			if (configured.isErr()) return Result.err(configured.error);
+			const telemetryObserver = createCodingAgentTelemetryObserver({
+				telemetry: this.#telemetry,
+				operationId: input.operationId,
+				sessionId: input.sessionId,
+			});
 			const created = await createCodingAgent({
 				...configured.value,
 				...(configured.value.extensionRuntime
@@ -85,6 +99,7 @@ class DefaultCodingAgentOperationDriver implements RuntimeOperationDriver {
 				cwd: input.cwd,
 				session: { kind: "resume", id: input.sessionId, store: input.sessionStore },
 				effectBoundary: input.effectBoundary,
+				permissionTelemetryObserver: telemetryObserver,
 				requestApproval: (request, signal) =>
 					input.requestApproval(
 						{
@@ -103,6 +118,7 @@ class DefaultCodingAgentOperationDriver implements RuntimeOperationDriver {
 					),
 			});
 			if (created.isErr()) {
+				telemetryObserver.close();
 				return Result.err(
 					new RuntimeOperationOpenFailed({
 						message: `Coding Agent could not open Operation "${input.operationId}"`,
@@ -112,7 +128,7 @@ class DefaultCodingAgentOperationDriver implements RuntimeOperationDriver {
 					}),
 				);
 			}
-			return Result.ok(new CodingAgentOperation(input, created.value));
+			return Result.ok(new CodingAgentOperation(input, created.value, telemetryObserver));
 		} catch (error) {
 			return Result.err(
 				new RuntimeOperationOpenFailed({
@@ -210,24 +226,34 @@ class CodingAgentOperation implements RuntimeOperation {
 	readonly #terminalSnapshots = new Map<string, string>();
 	#stopAgentObservation?: () => void;
 	#stopEffectObservation?: () => void;
+	readonly #telemetryObserver: CodingAgentTelemetryObserver;
 	#activeAssistant?: { readonly messageId: string; readonly thoughtMessageId: string };
 	#closed = false;
 
 	constructor(
 		private readonly input: RuntimeOperationOpenInput,
 		private readonly agent: CodingAgent,
+		telemetryObserver: CodingAgentTelemetryObserver,
 	) {
+		this.#telemetryObserver = telemetryObserver;
 		const effectBoundary = operationEffectBoundary(input.effectBoundary);
 		if (effectBoundary) {
 			this.#stopEffectObservation = effectBoundary.subscribe((event) => {
+				if (event.type === "model_reserved" || event.type === "tool_reserved") {
+					this.#telemetryObserver.observeEffectEvent(event);
+				}
 				if (event.type === "model_reserved") {
 					this.#reservedAssistantEntryIds.push(event.assistantEntryId);
 					return;
 				}
+				if (event.type === "tool_reserved") return;
 				this.publish({ type: "usage_settled", cost: event.usage.cost.total });
 			});
 		}
-		this.#stopAgentObservation = this.agent.subscribe((event) => this.observe(event));
+		this.#stopAgentObservation = this.agent.subscribe((event) => {
+			this.#telemetryObserver.observeAgentEvent(event);
+			this.observe(event);
+		});
 		this.#outcome = this.advance(input.pendingInputs ?? []);
 	}
 
@@ -270,6 +296,7 @@ class CodingAgentOperation implements RuntimeOperation {
 	async close(): Promise<void> {
 		if (this.#closed) return;
 		this.#closed = true;
+		this.#telemetryObserver.close();
 		this.#stopAgentObservation?.();
 		this.#stopEffectObservation?.();
 		this.#listeners.clear();
