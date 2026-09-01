@@ -1,6 +1,6 @@
 # 04: Server 去掉 Default 戏法
 
-要先完成:01, 02, 03 · 状态:⬜
+要先完成:01, 02, 03 · 状态:✅
 
 ## 交付什么
 
@@ -63,12 +63,25 @@ Server 里单一生产实现不再经过空 `create*`，也不再叫 `Default…
 
 ## 决策记录
 
-<!-- 只记录这项工作实施时出现的局部、非显然选择；改变整套方案时回到 plan.md。-->
+- 空工厂删除 + class 用产品名（并入单实现 interface）：`RuntimeHost`、`RuntimeSession`（host.ts，两个 interface 都并入 class）、`CodingAgentOperationDriver`（implements 真实 port `RuntimeOperationDriver`）、`AcpV2Agent`（并入 types.ts 的 interface）、`DesktopCatalogControl`、`DesktopConfigurationControl`、`OperationEffectBoundary`（implements 真实 port `EffectBoundary`）、`DesktopLocalRuntimeCapabilitySource`（原就无 Default 前缀，只删工厂）。
+- `open*`/`connect*` 返回类去 Default 前缀并并入同名 interface，入口保留：`JaiRuntimeServer`（openJaiRuntimeServer）、`DesktopCatalogClient`/`DesktopConfigurationClient`（connect*）、`LocalDesktopCatalogControlServer`/`LocalDesktopConfigurationControlServer`（open*）。
+- **`OperationEffectBoundary` 方法签名的类型修正**：并入 interface 前，interface `extends EffectBoundary` 而未重声明 `beforeModelEffect`/`beforeToolEffect`，对外暴露的是端口的宽参数（含 `context`/`tool`/`signal`）；实现 class 用的是更窄的私有签名（只 `model` / `toolCall`+`args`）。直接把 class 当类型用会因 excess-property 检查拒绝 `context`/`tool`（effect-boundary 测试即如此）。为保持对外形状与端口一致，把两个方法参数改为 `Parameters<EffectBoundary["beforeModelEffect"]>[0]` / `Parameters<EffectBoundary["beforeToolEffect"]>[0]`，实现体不变（仍只读需要的字段）。这不改变运行时行为，只让 class 对外类型等于原 interface 暴露的类型。
+- 调用点用两遍 sed 重写：先 `createXxx(` → `new Xxx(`，再把剩余裸符号（import、类型位）改名；`ReturnType<typeof createAcpV2Agent>` 手工改为 `AcpV2Agent`。`createRuntimeConnectorAgentAssembly` / `createRuntimeSessionConfigurationPolicy` 等真实装配工厂未动。
+- Desktop 消费者用 `import type { DesktopCatalogClient / DesktopConfigurationClient }`，名字与公开方法集不变，interface→class 不影响其类型形状。
 
 ## 遗留问题
 
-<!-- 发现但本次不做的 -->
+- `packages/coding-agent/src/commands/registry.ts` 的 `const kind = ...` 是 pre-existing 未使用变量（biome warning，非本项引入，biome 修复标为 unsafe），本项未动方法体，保留。
+- `app/desktop` 某 provider-config 测试的 import 排序 lint error 是既有问题，不在本项改动文件内，未处理。
+
+## 完成前检查结果
+
+- ✅ Server src 与 test 无本项列出的空 `create*`，也无 `DefaultRuntimeHost`/`DefaultAcpV2Agent`/`DefaultCodingAgentOperationDriver`/`DefaultDesktopCatalogControl`/`DefaultDesktopConfigurationControl`/`DefaultOperationEffectBoundary`/`DefaultJaiRuntimeServer`/`DefaultRuntimeSession`/`DefaultDesktopCatalogClient`/`DefaultDesktopConfigurationClient`/`DefaultLocalDesktopCatalogControlServer`/`DefaultLocalDesktopConfigurationControlServer`（rg 零命中）。
+- ✅ `openJaiRuntimeServer`、本地 catalog/configuration 的 `open*`、catalog/configuration 的 `connect*` 仍在。
+- ✅ `app/server` typecheck 通过（tsc 覆盖所有 src + test 文件，验证改名在生产与测试代码全一致；期间修正了 effect-boundary 测试暴露的端口参数类型问题）。
+- ⚠️ `bun test`：整套 server 测试传递性 import `node:sqlite`，当前 bun 1.3.14 不提供该内置模块（`No such built-in module: node:sqlite`；Node 22.5+ 才有）。已 stash 全部改动在干净树上跑 `host.test.ts`，同样 0 pass / 1 fail，确认是改动前就存在的运行时环境阻塞，与本项改名无关。sqlite-free 的用例通过。
+- ✅ `bun run lint`：本项触及文件 0 error（仅 1 个 pre-existing warning）；全库唯一 error 在未触及的 Desktop 测试文件，属既有问题。
 
 ## 交接说明
 
-<!-- 完成或暂停时填：做到哪里、下一项不要碰什么。写给下次继续工作的人看，要具体。 -->
+Server 单实现已全部用产品名 class 直接构造，入口 `open*`/`connect*` 保留。第 5 项做残留短封装审计时：(1) 全库搜索已删符号只应命中 `dist/`、`out/` 构建产物和 `.jnative` 文档；(2) server 测试因 `node:sqlite` 无法在此 bun 运行，若第 5 项改到 server 代码，验证同样依赖 typecheck + sqlite-free 测试；(3) `effect-boundary.ts` 的两个方法现用 `Parameters<EffectBoundary[...]>[0]`，不要再改回窄签名。

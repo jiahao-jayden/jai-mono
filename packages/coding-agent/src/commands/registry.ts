@@ -9,7 +9,6 @@ import {
 	type CodingCommandKind,
 	type CodingCommandRegistration,
 	CodingCommandRegistrationFailed,
-	type CodingCommandRegistry,
 	type CodingCommandResult,
 	type CodingRegisteredCommand,
 } from "./contract";
@@ -19,13 +18,8 @@ interface RegisteredCommand {
 	readonly definition: CodingCommandDefinition;
 }
 
-export interface CreateCodingCommandRegistryOptions extends CodingCommandContext {}
-
-export function createCodingCommandRegistry(options: CreateCodingCommandRegistryOptions): CodingCommandRegistry {
-	return new OperationCommandRegistry(options);
-}
-
-class OperationCommandRegistry implements CodingCommandRegistry {
+/** 一次 Operation 内的命令索引：注册、列出、解析冲突并派发 slash 调用。 */
+export class CodingCommandRegistry {
 	readonly #context: CodingCommandContext;
 	readonly #commands = new Map<string, RegisteredCommand[]>();
 	#activePromptContext?: string;

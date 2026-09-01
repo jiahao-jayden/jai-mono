@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { connectJaiRuntimeHost, isLocalRuntimeHostStale, stopLocalRuntimeHost } from "../../../src/acp-client";
 import { openLocalAcpV2Server } from "../../../src/protocol/acp-v2";
-import { createRuntimeHost } from "../../../src/runtime";
+import { RuntimeHost } from "../../../src/runtime";
 import { InMemoryProductSessionPersistence } from "../../../src/sessions";
 
 describe("Runtime Host ACP client launcher", () => {
@@ -35,7 +35,7 @@ describe("Runtime Host ACP client launcher", () => {
 		const endpoint = join(directory, "runtime.sock");
 		const opened = await openLocalAcpV2Server({
 			endpoint,
-			host: createRuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),
+			host: new RuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),
 			info: { name: "jai", version: "0.0.0" },
 		});
 		if (opened.isErr()) throw opened.error;
@@ -81,7 +81,7 @@ describe("Runtime Host ACP client launcher", () => {
 		const holder = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
 		const opened = await openLocalAcpV2Server({
 			endpoint,
-			host: createRuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),
+			host: new RuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),
 			info: { name: "jai", version: "0.0.0" },
 		});
 		if (opened.isErr()) throw opened.error;

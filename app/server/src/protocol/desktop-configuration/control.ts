@@ -17,21 +17,7 @@ const methodPrefix = "jai/desktop-configuration/";
  * snapshot and an optimistic write command; raw stored configuration never
  * crosses this channel.
  */
-export interface DesktopConfigurationControl {
-	handle(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[] | undefined>;
-}
-
-export function createDesktopConfigurationControl(
-	settings: SqliteRuntimeAgentSettings,
-	connectorOAuth?: RuntimeConnectorOAuthController,
-	modelCatalog?: SqliteRuntimeModelCatalog,
-	workspaceTrust?: SqliteWorkspaceTrust,
-	telemetry?: RuntimeTelemetryController,
-): DesktopConfigurationControl {
-	return new DefaultDesktopConfigurationControl(settings, connectorOAuth, modelCatalog, workspaceTrust, telemetry);
-}
-
-class DefaultDesktopConfigurationControl implements DesktopConfigurationControl {
+export class DesktopConfigurationControl {
 	constructor(
 		private readonly settings: SqliteRuntimeAgentSettings,
 		private readonly connectorOAuth?: RuntimeConnectorOAuthController,

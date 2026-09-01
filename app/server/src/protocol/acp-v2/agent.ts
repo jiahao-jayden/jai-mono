@@ -18,17 +18,12 @@ import type {
 	AcpPromptBlock,
 	AcpPromptMetadata,
 	AcpRequestId,
-	AcpV2Agent,
 	AcpV2AgentOptions,
 } from "./types";
 
 const ACP_V2 = 2;
 
-export function createAcpV2Agent(options: AcpV2AgentOptions): AcpV2Agent {
-	return new DefaultAcpV2Agent(options);
-}
-
-class DefaultAcpV2Agent implements AcpV2Agent {
+export class AcpV2Agent {
 	readonly #sessions = new Map<string, RuntimeSession>();
 	readonly #unsubscribes = new Map<string, () => void>();
 	readonly #outbound: AcpJsonRpcNotification[] = [];

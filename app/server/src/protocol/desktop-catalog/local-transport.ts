@@ -9,11 +9,6 @@ export class DesktopCatalogControlListenFailed extends TaggedError("desktop_cata
 	readonly cause?: unknown;
 }> {}
 
-export interface LocalDesktopCatalogControlServer {
-	readonly endpoint: string;
-	close(): Promise<void>;
-}
-
 /**
  * The private control transport for Desktop's durable catalog facts. Unlike
  * ACP it has no stdio bridge and no Agent protocol surface.
@@ -30,7 +25,7 @@ export async function openLocalDesktopCatalogControlServer(input: {
 	});
 	try {
 		await listen(server, input.endpoint);
-		return Result.ok(new DefaultLocalDesktopCatalogControlServer(input.endpoint, server, sockets));
+		return Result.ok(new LocalDesktopCatalogControlServer(input.endpoint, server, sockets));
 	} catch (cause) {
 		server.close();
 		return Result.err(
@@ -43,7 +38,7 @@ export async function openLocalDesktopCatalogControlServer(input: {
 	}
 }
 
-class DefaultLocalDesktopCatalogControlServer implements LocalDesktopCatalogControlServer {
+export class LocalDesktopCatalogControlServer {
 	#closed = false;
 
 	constructor(

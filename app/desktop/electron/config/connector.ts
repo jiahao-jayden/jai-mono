@@ -1,8 +1,4 @@
-import {
-	type ConnectorOAuthApplicationDefinition,
-	findConnectorOAuthApplication,
-	listConnectorActionCatalog,
-} from "@jai/connector";
+import { findConnectorOAuthApplication, listConnectorActionCatalog } from "@jai/connector";
 import type { RuntimeConnectorProjection, RuntimeConnectorSettings } from "@jai/server";
 import type {
 	DesktopConnector,
@@ -97,12 +93,6 @@ export const connectorDefinitions = [
 		credentials: [],
 	},
 ] as const;
-
-export function findDesktopConnectorOAuthApplication(
-	connectorId: string,
-): ConnectorOAuthApplicationDefinition | undefined {
-	return findConnectorOAuthApplication(connectorId);
-}
 
 /** Maps the Host's secret-free Connector projection to the Desktop DTO. */
 export function projectRuntimeConnectorConfig(settings: RuntimeConnectorProjection): DesktopConnectorConfigSnapshot {

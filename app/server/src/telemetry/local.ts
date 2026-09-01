@@ -4,13 +4,9 @@ import {
 	type TelemetryContext,
 	type TelemetrySink,
 } from "@jai/telemetry";
-import {
-	createJsonlFileTelemetrySink,
-	createJsonlStderrTelemetrySink,
-	type TelemetryTextOutput,
-} from "@jai/telemetry/node";
+import { createJsonlStderrTelemetrySink, JsonlFileTelemetrySink, type TelemetryTextOutput } from "@jai/telemetry/node";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
-import { createLangfuseOtlpTelemetrySink, type LangfuseOtlpTelemetrySinkOptions } from "./langfuse-otlp";
+import { LangfuseOtlpTelemetrySink, type LangfuseOtlpTelemetrySinkOptions } from "./langfuse-otlp";
 
 export class RuntimeTelemetryConfigurationInvalid extends TaggedError("telemetry.configuration_invalid")<{
 	readonly message: string;
@@ -68,7 +64,7 @@ export function resolveRuntimeTelemetry(
 		if (!Number.isSafeInteger(maxFiles) || maxFiles < 0) {
 			return invalid("JAI_TELEMETRY_MAX_FILES must be a non-negative integer");
 		}
-		sinks.push(createJsonlFileTelemetrySink({ path: filePath, maxBytes, maxFiles }));
+		sinks.push(new JsonlFileTelemetrySink({ path: filePath, maxBytes, maxFiles }));
 	}
 	if (stderrSetting === "1") sinks.push(createJsonlStderrTelemetrySink(options.errorOutput));
 
@@ -80,7 +76,7 @@ export function resolveRuntimeTelemetry(
 		});
 	}
 	try {
-		const otlpSink = createLangfuseOtlpTelemetrySink(otlpOptions.value);
+		const otlpSink = new LangfuseOtlpTelemetrySink(otlpOptions.value);
 		sinks.push(otlpSink);
 		return Result.ok({
 			close: () => otlpSink.close(),

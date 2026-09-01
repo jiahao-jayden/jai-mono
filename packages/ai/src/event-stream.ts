@@ -96,7 +96,3 @@ export class AssistantMessageEventStream extends EventStream<AssistantMessageEve
 		);
 	}
 }
-
-export function createAssistantMessageEventStream(): AssistantMessageEventStream {
-	return new AssistantMessageEventStream();
-}

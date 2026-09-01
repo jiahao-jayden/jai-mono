@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Result } from "better-result";
-import { createCodingAgentOperationDriver } from "../../src/agents";
+import { CodingAgentOperationDriver } from "../../src/agents";
 import {
 	RuntimeCapabilitySourceFailed,
 	type RuntimeCapabilitySourceInput,
@@ -9,7 +9,7 @@ import {
 describe("Coding Agent Runtime Capability Source", () => {
 	test("preflight consumes an injected source without any local filesystem policy", async () => {
 		const sourceInputs: RuntimeCapabilitySourceInput[] = [];
-		const driver = createCodingAgentOperationDriver({
+		const driver = new CodingAgentOperationDriver({
 			resolveOptions: () => Result.ok({ model: "openai/model" }),
 			capabilitySource: {
 				resolve: async (input) => {
@@ -44,7 +44,7 @@ describe("Coding Agent Runtime Capability Source", () => {
 	});
 
 	test("projects a source failure as a recoverable Operation open failure", async () => {
-		const driver = createCodingAgentOperationDriver({
+		const driver = new CodingAgentOperationDriver({
 			resolveOptions: () => Result.ok({ model: "openai/model" }),
 			capabilitySource: {
 				resolve: async (input) =>

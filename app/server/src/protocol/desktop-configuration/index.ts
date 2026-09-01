@@ -1,8 +1,7 @@
-export type { DesktopConfigurationControl } from "./control";
-export { createDesktopConfigurationControl } from "./control";
+export { DesktopConfigurationControl } from "./control";
 export { localDesktopConfigurationEndpointFor } from "./local-endpoint";
 export {
 	DesktopConfigurationControlListenFailed,
-	type LocalDesktopConfigurationControlServer,
+	LocalDesktopConfigurationControlServer,
 	openLocalDesktopConfigurationControlServer,
 } from "./local-transport";

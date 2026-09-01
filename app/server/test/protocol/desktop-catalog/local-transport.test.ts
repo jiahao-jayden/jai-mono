@@ -9,7 +9,7 @@ import {
 } from "../../../src/persistence";
 import { openLocalAcpV2Client } from "../../../src/protocol/acp-v2";
 import {
-	createDesktopCatalogControl,
+	DesktopCatalogControl,
 	openLocalDesktopCatalogControlServer,
 } from "../../../src/protocol/desktop-catalog";
 
@@ -31,7 +31,7 @@ describe("Desktop Catalog local control transport", () => {
 			const catalog = new SqliteDesktopCatalogAccess(database);
 			const opened = await openLocalDesktopCatalogControlServer({
 				endpoint,
-				control: createDesktopCatalogControl(catalog),
+				control: new DesktopCatalogControl(catalog),
 			});
 			if (opened.isErr()) throw opened.error;
 			const client = await openLocalAcpV2Client(endpoint);

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Result } from "better-result";
 import { ProductSqliteDatabase } from "../../src/persistence";
-import { createDesktopLocalRuntimeCapabilitySource } from "../../src/runtime-capabilities";
+import { DesktopLocalRuntimeCapabilitySource } from "../../src/runtime-capabilities";
 import {
 	SqliteWorkspaceTrust,
 	WorkspaceTrustCorrupted,
@@ -32,7 +32,7 @@ describe("Desktop Local Runtime Capability Source", () => {
 			const workspaceTrust = new SqliteWorkspaceTrust(database.connection);
 			const persisted = await workspaceTrust.set({ workspacePath: workspaceDirectory, trusted: true });
 			expect(persisted).toMatchObject({ status: "ok", value: { workspacePath: canonicalWorkspace, trusted: true } });
-			const source = createDesktopLocalRuntimeCapabilitySource({
+			const source = new DesktopLocalRuntimeCapabilitySource({
 				dataDirectory: join(root, "data"),
 				homeDirectory,
 				workspaceTrust,
@@ -78,7 +78,7 @@ describe("Desktop Local Runtime Capability Source", () => {
 		const workspaceDirectory = join(root, "workspace");
 		await createPlugin(join(homeDirectory, ".jai", "plugins", "user-plugin"), "user-plugin");
 		await createPlugin(join(workspaceDirectory, ".jai", "plugins", "project-plugin"), "project-plugin");
-		const source = createDesktopLocalRuntimeCapabilitySource({
+		const source = new DesktopLocalRuntimeCapabilitySource({
 			dataDirectory: join(root, "data"),
 			homeDirectory,
 			workspaceTrust: {
@@ -108,7 +108,7 @@ describe("Desktop Local Runtime Capability Source", () => {
 	});
 
 	test("turns a durable trust read failure into an Operation capability error", async () => {
-		const source = createDesktopLocalRuntimeCapabilitySource({
+		const source = new DesktopLocalRuntimeCapabilitySource({
 			dataDirectory: "/data",
 			homeDirectory: "/home",
 			workspaceTrust: {

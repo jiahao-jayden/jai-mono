@@ -1,9 +1,8 @@
-export type { DesktopCatalogControl } from "./control";
-export { createDesktopCatalogControl } from "./control";
+export { DesktopCatalogControl } from "./control";
 export { localDesktopCatalogEndpointFor } from "./local-endpoint";
 export {
 	DesktopCatalogControlListenFailed,
-	type LocalDesktopCatalogControlServer,
+	LocalDesktopCatalogControlServer,
 	openLocalDesktopCatalogControlServer,
 } from "./local-transport";
 export {

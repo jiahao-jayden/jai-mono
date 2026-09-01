@@ -1,23 +1,19 @@
+import { findConnectorOAuthApplication } from "@jai/connector";
 import type { RuntimeAgentSettingsInput, RuntimeAgentSettingsSnapshot, RuntimeModelCatalog } from "@jai/server";
 import {
 	connectDesktopConfigurationClient,
 	type DesktopConfigurationClient,
 } from "@jai/server/desktop-configuration-client";
 import type {
-	DesktopUiLocale,
 	DesktopProviderApiKeyRevealResult,
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
 	DesktopProviderFetchModelsResult,
 	DesktopTelemetrySettingsInput,
 	DesktopTelemetrySettingsSnapshot,
+	DesktopUiLocale,
 } from "../../shared/desktop-rpc";
-import {
-	findDesktopConnectorOAuthApplication,
-	projectRuntimeConnectorConfig,
-	toRuntimeConnector,
-	validateConnectorConfigInput,
-} from "./connector";
+import { projectRuntimeConnectorConfig, toRuntimeConnector, validateConnectorConfigInput } from "./connector";
 import { projectRuntimeProviderConfig, providerConfigError, validateProviderProfiles } from "./provider";
 import { projectRuntimeTelemetrySettings, toRuntimeTelemetrySettingsInput } from "./telemetry";
 
@@ -105,7 +101,7 @@ export class DesktopConfigService {
 	}
 
 	async startConnectorOAuth(connectorId: string) {
-		const application = findDesktopConnectorOAuthApplication(connectorId);
+		const application = findConnectorOAuthApplication(connectorId);
 		if (!application) throw invalidInput("Unknown OAuth Connector application");
 		const started = await this.client.startConnectorOAuth(application.id);
 		if (started.isErr()) throw started.error;
@@ -119,7 +115,7 @@ export class DesktopConfigService {
 	}
 
 	async disconnectConnectorOAuth(connectorId: string): Promise<DesktopProviderConfigSnapshot> {
-		const application = findDesktopConnectorOAuthApplication(connectorId);
+		const application = findConnectorOAuthApplication(connectorId);
 		if (!application) throw invalidInput("Unknown OAuth Connector application");
 		const saved = await this.client.disconnectConnectorOAuth(application.id);
 		if (saved.isErr()) throw saved.error;

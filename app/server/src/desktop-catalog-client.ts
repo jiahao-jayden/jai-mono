@@ -70,7 +70,7 @@ export async function connectDesktopCatalogClient(
 	const retryCount = options.retryCount ?? 60;
 	for (let attempt = 0; attempt < retryCount; attempt += 1) {
 		const opened = await openLocalAcpV2Client(endpoint);
-		if (opened.isOk()) return Result.ok(new DefaultDesktopCatalogClient(opened.value));
+		if (opened.isOk()) return Result.ok(new DesktopCatalogClient(opened.value));
 		if (attempt === retryCount - 1) return Result.err(opened.error);
 		await new Promise<void>((resolve) => setTimeout(resolve, retryDelayMs));
 	}
@@ -82,42 +82,7 @@ export async function connectDesktopCatalogClient(
 	);
 }
 
-export interface DesktopCatalogClient {
-	listProjects(): Promise<ResultType<readonly DesktopCatalogProject[], DesktopCatalogClientError>>;
-	createProject(input: DesktopCatalogProject): Promise<ResultType<DesktopCatalogProject, DesktopCatalogClientError>>;
-	relinkProject(input: DesktopCatalogProject): Promise<ResultType<DesktopCatalogProject, DesktopCatalogClientError>>;
-	listSessions(input?: {
-		readonly limit?: number;
-		readonly cursor?: DesktopCatalogSessionCursor;
-	}): Promise<ResultType<DesktopCatalogSessionPage, DesktopCatalogClientError>>;
-	getSession(sessionId: string): Promise<ResultType<DesktopCatalogSession | undefined, DesktopCatalogClientError>>;
-	deleteSession(sessionId: string): Promise<ResultType<void, DesktopCatalogClientError>>;
-	ensureSession(input: {
-		readonly sessionId: string;
-		readonly projectId: string | null;
-		readonly title: string;
-	}): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>>;
-	renameSession(input: {
-		readonly sessionId: string;
-		readonly title: string;
-	}): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>>;
-	markTitleGenerationAttempted(input: {
-		readonly sessionId: string;
-		readonly timestamp: number;
-	}): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>>;
-	setGeneratedTitle(input: {
-		readonly sessionId: string;
-		readonly title: string;
-	}): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>>;
-	shouldGenerateSessionTitle(sessionId: string): Promise<ResultType<boolean, DesktopCatalogClientError>>;
-	moveSession(input: {
-		readonly sessionId: string;
-		readonly projectId: string | null;
-	}): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>>;
-	close(): Promise<void>;
-}
-
-class DefaultDesktopCatalogClient implements DesktopCatalogClient {
+export class DesktopCatalogClient {
 	constructor(private readonly client: LocalAcpV2Client) {}
 
 	async listProjects(): Promise<ResultType<readonly DesktopCatalogProject[], DesktopCatalogClientError>> {

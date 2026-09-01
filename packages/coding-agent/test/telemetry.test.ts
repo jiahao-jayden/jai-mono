@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { InMemoryTelemetryContext } from "@jai/telemetry";
-import { createCodingAgentTelemetryObserver } from "../src/sdk";
+import { CodingAgentTelemetryObserver } from "../src/sdk";
 import type { CodingAssistantMessage } from "../src/sdk/types";
 
 describe("Coding Agent telemetry observer", () => {
 	test("使用 effect identity 建立 run、turn、模型与工具的因果树，且不记录内容", async () => {
 		let now = 100;
 		const telemetry = new InMemoryTelemetryContext({ now: () => now++ });
-		const observer = createCodingAgentTelemetryObserver({
+		const observer = new CodingAgentTelemetryObserver({
 			telemetry,
 			operationId: "operation-1",
 			sessionId: "session-1",
@@ -96,7 +96,7 @@ describe("Coding Agent telemetry observer", () => {
 
 	test("已经流式发布又被丢弃的模型尝试独立结算", async () => {
 		const telemetry = new InMemoryTelemetryContext();
-		const observer = createCodingAgentTelemetryObserver({
+		const observer = new CodingAgentTelemetryObserver({
 			telemetry,
 			operationId: "operation-1",
 			sessionId: "session-1",
@@ -146,7 +146,7 @@ describe("Coding Agent telemetry observer", () => {
 	test("权限与审批作为回合的子 span 记录等待、重检拒绝和取消", async () => {
 		let now = 100;
 		const telemetry = new InMemoryTelemetryContext({ now: () => now });
-		const observer = createCodingAgentTelemetryObserver({
+		const observer = new CodingAgentTelemetryObserver({
 			telemetry,
 			operationId: "operation-permission",
 			sessionId: "session-permission",

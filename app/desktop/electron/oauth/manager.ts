@@ -1,7 +1,7 @@
+import { findConnectorOAuthApplication } from "@jai/connector";
 import { TaggedError } from "better-result";
 import { shell } from "electron";
 import type { DesktopConfigService } from "../config";
-import { findDesktopConnectorOAuthApplication } from "../config/connector";
 import { DesktopOAuthCallbackServer } from "./callback-server";
 
 class DesktopOAuthCallbackInvalid extends TaggedError("desktop_oauth.callback_invalid")<{
@@ -43,7 +43,7 @@ export class DesktopOAuthManager {
 
 	async start(connectorId: string): Promise<DesktopOAuthStartResult> {
 		this.#removeExpiredConnectors();
-		const application = findDesktopConnectorOAuthApplication(connectorId);
+		const application = findConnectorOAuthApplication(connectorId);
 		if (!application) {
 			throw new DesktopOAuthCallbackInvalid({
 				message: "This Connector does not support OAuth authorization",
@@ -98,7 +98,7 @@ export class DesktopOAuthManager {
 	}
 
 	async disconnect(connectorId: string) {
-		const application = findDesktopConnectorOAuthApplication(connectorId);
+		const application = findConnectorOAuthApplication(connectorId);
 		if (!application) {
 			throw new DesktopOAuthCallbackInvalid({
 				message: "This Connector does not support OAuth authorization",

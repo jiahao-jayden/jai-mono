@@ -12,7 +12,7 @@ import {
 import type { AssistantMessage } from "@jai/ai";
 import { Result, TaggedError } from "better-result";
 import {
-	createOperationEffectBoundary,
+	OperationEffectBoundary,
 	type RuntimeApprovalDecision,
 	type RuntimeApprovalHandler,
 	type RuntimeApprovalRequest,
@@ -204,36 +204,6 @@ export type RuntimeHostSnapshotError = RuntimeHostPromptRejected | RuntimeHostRe
 export type RuntimeHostApprovalError = RuntimeHostPromptRejected | RuntimeHostApprovalNotFound;
 export type RuntimeHostConfigurationError = RuntimeHostPromptRejected | RuntimeHostConfigurationRejected;
 
-export interface RuntimeSession {
-	readonly id: string;
-	readonly info: ProductSessionInfo;
-	prompt(input: RuntimePromptInput): Promise<Result<PromptAdmission, RuntimeHostPromptError>>;
-	navigate(entryId: string): Promise<Result<void, RuntimeHostPromptError>>;
-	recovery(): Promise<Result<readonly OperationRecoveryVerdict[], RuntimeHostRecoveryError>>;
-	snapshot(): Promise<Result<RuntimeSessionSnapshot, RuntimeHostSnapshotError>>;
-	configuration(): Promise<Result<RuntimeSessionConfigurationSnapshot, RuntimeHostConfigurationError>>;
-	setConfiguration(
-		input: RuntimeSessionConfigurationChange,
-	): Promise<Result<RuntimeSessionConfigurationSnapshot, RuntimeHostConfigurationError>>;
-	subscribe(listener: (event: RuntimeSessionEvent) => void): () => void;
-	respondToApproval(input: {
-		readonly requestId: string;
-		readonly decision: RuntimeApprovalDecision;
-	}): Promise<Result<void, RuntimeHostApprovalError>>;
-	cancel(): Promise<Result<RuntimeCancelOutcome, RuntimeHostCancelError>>;
-	close(): Promise<void>;
-}
-
-export interface RuntimeHost {
-	listSessions(): Promise<Result<readonly ProductSessionInfo[], RuntimeHostPromptRejected>>;
-	openSession(input: RuntimeSessionSelection): Promise<Result<RuntimeSession, RuntimeHostOpenError>>;
-	/** Attaches a disposable observer without taking a Session controller or opening a driver. */
-	observeSession(
-		sessionId: string,
-		listener: (event: RuntimeSessionEvent) => void,
-	): Promise<Result<() => void, RuntimeHostPromptRejected>>;
-}
-
 export interface RuntimeHostOptions {
 	readonly persistence: ProductSessionPersistence;
 	/**
@@ -251,11 +221,7 @@ export interface RuntimeHostOptions {
 	readonly now?: () => Date;
 }
 
-export function createRuntimeHost(options: RuntimeHostOptions): RuntimeHost {
-	return new DefaultRuntimeHost(options);
-}
-
-class DefaultRuntimeHost implements RuntimeHost {
+export class RuntimeHost {
 	readonly #createId: () => string;
 	readonly #now: () => Date;
 	readonly #initialAppState: () => JsonObject;
@@ -266,7 +232,7 @@ class DefaultRuntimeHost implements RuntimeHost {
 	 * reattach to this runtime instead of reducing the same Journal into a
 	 * second Operation driver.
 	 */
-	readonly #liveSessions = new Map<string, DefaultRuntimeSession>();
+	readonly #liveSessions = new Map<string, RuntimeSession>();
 	readonly #ephemeralPersistences = new Map<string, ProductSessionPersistence>();
 	readonly #pendingSessionIds = new Set<string>();
 
@@ -506,9 +472,9 @@ class DefaultRuntimeHost implements RuntimeHost {
 		persistence: ProductSessionPersistence = this.options.persistence,
 		releaseController: () => void = () => this.releaseController(state.id, controllerId),
 		discardWhenClosed = false,
-	): DefaultRuntimeSession {
-		let session: DefaultRuntimeSession;
-		session = new DefaultRuntimeSession(
+	): RuntimeSession {
+		let session: RuntimeSession;
+		session = new RuntimeSession(
 			state,
 			persistence,
 			this.options.operationDriver,
@@ -548,7 +514,7 @@ class DefaultRuntimeHost implements RuntimeHost {
 	}
 }
 
-class DefaultRuntimeSession implements RuntimeSession {
+export class RuntimeSession {
 	readonly id: string;
 	readonly info: ProductSessionInfo;
 	#tail = Promise.resolve();
@@ -1101,7 +1067,7 @@ class DefaultRuntimeSession implements RuntimeSession {
 			sessionStore: new RuntimeSessionStore(this.persistence, (_sessionId, entry) =>
 				this.publish({ type: "entry_appended", entry }),
 			),
-			effectBoundary: createOperationEffectBoundary({
+			effectBoundary: new OperationEffectBoundary({
 				sessionId: this.id,
 				operationId: active.operationId,
 				persistence: this.persistence,

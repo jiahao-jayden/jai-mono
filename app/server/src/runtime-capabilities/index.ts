@@ -1,5 +1,4 @@
-export type { DesktopLocalRuntimeCapabilitySourceOptions } from "./desktop-local";
-export { createDesktopLocalRuntimeCapabilitySource } from "./desktop-local";
+export { DesktopLocalRuntimeCapabilitySource, type DesktopLocalRuntimeCapabilitySourceOptions } from "./desktop-local";
 export type {
 	RuntimeCapabilityAssembly,
 	RuntimeCapabilitySource,

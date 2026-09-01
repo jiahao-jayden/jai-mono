@@ -12,7 +12,7 @@ import {
 import type { Model, Provider } from "@jai/ai";
 import { Result, type Result as ResultType } from "better-result";
 import type { CodingMessageAttachment as InternalCodingAttachment } from "../attachments";
-import { createCodingCommandRegistry } from "../commands";
+import { CodingCommandRegistry } from "../commands";
 import { permissionSettingsFromConfig } from "../permissions";
 import {
 	createCodingAgent as createInternalCodingAgent,
@@ -86,7 +86,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 		const session = input.session ?? { kind: "ephemeral" as const };
 		const sessionId = resolveSessionId(session);
 		const cwd = input.cwd ?? process.cwd();
-		const commands = createCodingCommandRegistry({ sessionId, cwd });
+		const commands = new CodingCommandRegistry({ sessionId, cwd });
 		const enabledTools = resolveCodingToolSelection(input.tools, input.excludeTools);
 		if (session.kind === "ephemeral") {
 			ephemeralDirectory = await mkdtemp(path.join(tmpdir(), "jai-coding-agent-"));

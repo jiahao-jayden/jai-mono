@@ -1,6 +1,6 @@
 # 03: Coding Agent SDK 去掉空工厂
 
-要先完成:无 · 状态:⬜
+要先完成:无 · 状态:✅
 
 ## 交付什么
 
@@ -59,12 +59,22 @@ Coding Agent 的公开 SDK 用导出的 class 构造 telemetry observer；comman
 
 ## 决策记录
 
-<!-- 只记录这项工作实施时出现的局部、非显然选择；改变整套方案时回到 plan.md。-->
+- telemetry observer：删 `interface CodingAgentTelemetryObserver` 与工厂，`DefaultCodingAgentTelemetryObserver` 提升为 `export class CodingAgentTelemetryObserver implements PermissionTelemetryObserver`。保留对真实 port `PermissionTelemetryObserver` 的 implements；`observeAgentEvent` / `observeEffectEvent` / `close` 作为类方法，不再单独用 interface 声明。`this.options`（构造函数私有参数）无冲突，保留原样。
+- command registry：`CodingCommandRegistry` 原为 `contract.ts` 的单实现 interface，删除后把 `OperationCommandRegistry` 改名为 `export class CodingCommandRegistry`。同时删掉空工厂 `createCodingCommandRegistry` 和空别名 `CreateCodingCommandRegistryOptions`（等价于 `CodingCommandContext`）；构造函数直接接收 `CodingCommandContext`。`host-adapters.ts` / `runtime/create-coding-agent.ts` / `extensions.ts` 里 `import type { CodingCommandRegistry }` 无需改动——名字仍从 `../commands` 导出，只是由 interface 变为 class 类型。
+- `test:consumer` 无法在本地环境跑通：`npm pack` 出的 tgz 保留 `workspace:*` 依赖，`npm install ./tgz` 报 `EUNSUPPORTEDPROTOCOL`。已 `git stash` 全部改动后在干净树上复现同一失败，确认是环境限制（npm 不解析 workspace 协议），与本次改名无关。改以「重建 dist 后核对 `dist/sdk.d.ts` 公开类型面」替代验证。
 
 ## 遗留问题
 
-<!-- 发现但本次不做的 -->
+- `test:consumer` 在当前环境不可用（workspace 协议）。若要真正跑通，需要一个能改写 `workspace:*` 为具体版本的打包步骤，或用 bun 代替 npm 安装 tgz。属于工具链问题，超出本需求范围。
+
+## 完成前检查结果
+
+- ✅ 生产代码与测试无 `createCodingAgentTelemetryObserver` / `DefaultCodingAgentTelemetryObserver` / `createCodingCommandRegistry`（仅重建前的 `dist/` 残留，重建后消失）。
+- ✅ `createCodingAgent` 仍是公开装配入口（`dist/sdk.d.ts` 保留 declare + export）。
+- ✅ `packages/coding-agent` typecheck 通过；test 121 pass / 0 fail。
+- ⚠️ `test:consumer` 无法执行（环境的 `workspace:*` 限制，改动前后一致）；改以重建后核对 dist 公开类型面替代：`CodingAgentTelemetryObserver` 为导出 class，两个空工厂符号为 0 命中。
+- ✅ `app/server` typecheck 通过。
 
 ## 交接说明
 
-<!-- 完成或暂停时填：做到哪里、下一项不要碰什么。写给下次继续工作的人看，要具体。 -->
+`CodingAgentTelemetryObserver` 现为 `@jai/coding-agent` 导出的 class（`packages/coding-agent/src/sdk/telemetry.ts`），Server 已用 `new`。`CodingCommandRegistry` 为 `commands` 模块导出的 class（`registry.ts`），`createCodingAgent` 内部用 `new`。第 4 项改 Server operation driver 的 `Default` 外壳时，driver 构造 observer 的调用已用 `new CodingAgentTelemetryObserver`，不要再动 SDK 侧。改完 coding-agent 后已重建 dist，server 依赖最新。第 5 项做全库符号审计时，注意 `dist/`、`out/` 里的旧符号是构建产物。

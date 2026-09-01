@@ -1,6 +1,6 @@
 # 02: Agent / AI 去掉空工厂
 
-要先完成:无 · 状态:⬜
+要先完成:无 · 状态:✅
 
 ## 交付什么
 
@@ -58,12 +58,21 @@
 
 ## 决策记录
 
-<!-- 只记录这项工作实施时出现的局部、非显然选择；改变整套方案时回到 plan.md。-->
+- `effect-gate.ts` 里原 `interface ManualEffectGate` 只被单一实现使用，删除后把类 `DefaultManualEffectGate` 提升为 `export class ManualEffectGate implements EffectGate`。`gate`/`waitForAction`/`release`/`interrupt` 作为类成员保留，双重角色（既是把手又是 `EffectGate`）不变。
+- crash-gate 测试原用 `ReturnType<typeof createManualEffectGate>` 标注类型，改为直接用类类型 `ManualEffectGate`，不新建 interface。
+- `createAssistantMessageEventStream` 全库无调用方（grep 仅命中定义），直接删除；`AssistantMessageEventStream` class 被各包广泛 `new`，`@jai/ai` index 也只导出 class，删除无影响。
 
 ## 遗留问题
 
-<!-- 发现但本次不做的 -->
+无。
+
+## 完成前检查结果
+
+- ✅ 生产代码与测试无 `createManualEffectGate` / `DefaultManualEffectGate` / `createAssistantMessageEventStream`。
+- ✅ `packages/agent` typecheck 通过；test 228 pass / 0 fail。
+- ✅ `packages/ai` typecheck 通过；test 49 pass / 4 skip（真实模型联网用例，非本项）/ 0 fail。
+- ✅ `app/server` typecheck 通过。
 
 ## 交接说明
 
-<!-- 完成或暂停时填：做到哪里、下一项不要碰什么。写给下次继续工作的人看，要具体。 -->
+`ManualEffectGate` 现为 `@jai/agent/core` 导出的 class，测试用 `new ManualEffectGate()`。第 4 项改 Server crash-gate / effect-boundary 相关时，Effect Gate 已就绪，不要再动 `effect-gate.ts`。server 测试在第 4 项统一跑；跑前需确保 `@jai/agent` 的 dist 是最新（若 server 测试从 dist 解析）。

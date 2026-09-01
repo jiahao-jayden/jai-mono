@@ -5,11 +5,10 @@ export {
 	openConfiguredRuntimeHost,
 } from "./daemon";
 export {
-	createRuntimeHost,
 	type PromptAdmission,
 	type RuntimeCancelOutcome,
 	type RuntimeForegroundState,
-	type RuntimeHost,
+	RuntimeHost,
 	type RuntimeHostCancelError,
 	type RuntimeHostConfigurationError,
 	RuntimeHostConfigurationRejected,
@@ -25,7 +24,7 @@ export {
 	RuntimeHostSessionNotFound,
 	type RuntimeHostSnapshotError,
 	type RuntimePromptInput,
-	type RuntimeSession,
+	RuntimeSession,
 	type RuntimeSessionEvent,
 	type RuntimeSessionSelection,
 	type RuntimeSessionSnapshot,
@@ -39,7 +38,7 @@ export {
 } from "./local-owner";
 export { resolveJaiDataDirectory } from "./paths";
 export {
-	type JaiRuntimeServer,
+	JaiRuntimeServer,
 	JaiRuntimeServerOpenFailed,
 	type OpenJaiRuntimeServerOptions,
 	openJaiRuntimeServer,

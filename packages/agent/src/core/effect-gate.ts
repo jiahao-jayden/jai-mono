@@ -43,23 +43,6 @@ export function isEffectGateInterrupted(error: unknown): error is EffectGateInte
 	return error instanceof EffectGateInterrupted;
 }
 
-/**
- * Driver for deterministic crash-prefix tests. At most one visible action is
- * released at a time; parallel effects are queued FIFO after they reach the
- * same seam. Calling `interrupt()` emulates process death before the visible
- * effect starts.
- */
-export interface ManualEffectGate {
-	readonly gate: EffectGate;
-	waitForAction(): Promise<EffectGateAction>;
-	release(): boolean;
-	interrupt(): void;
-}
-
-export function createManualEffectGate(): ManualEffectGate {
-	return new DefaultManualEffectGate();
-}
-
 interface PendingEffect {
 	readonly action: EffectGateAction;
 	readonly resolve: () => void;
@@ -71,7 +54,13 @@ interface ActionWaiter {
 	readonly reject: (error: EffectGateInterrupted) => void;
 }
 
-class DefaultManualEffectGate implements ManualEffectGate, EffectGate {
+/**
+ * Driver for deterministic crash-prefix tests. At most one visible action is
+ * released at a time; parallel effects are queued FIFO after they reach the
+ * same seam. Calling `interrupt()` emulates process death before the visible
+ * effect starts.
+ */
+export class ManualEffectGate implements EffectGate {
 	readonly gate: EffectGate = this;
 	readonly #queued: PendingEffect[] = [];
 	readonly #waiters: ActionWaiter[] = [];

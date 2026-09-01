@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openLocalRuntimeHost } from "../../../src/protocol/acp-v2";
-import { createRuntimeHost } from "../../../src/runtime";
+import { RuntimeHost } from "../../../src/runtime";
 import { InMemoryProductSessionPersistence } from "../../../src/sessions";
 
 describe("Local Runtime Host server", () => {
@@ -13,7 +13,7 @@ describe("Local Runtime Host server", () => {
 		const options = {
 			dataDirectory: directory,
 			endpoint,
-			host: createRuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),
+			host: new RuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),
 			info: { name: "jai", version: "0.0.0" },
 		};
 		try {

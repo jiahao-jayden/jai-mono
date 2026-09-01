@@ -9,7 +9,7 @@ import {
 	SqliteWorkspaceTrust,
 	RuntimeTelemetryController,
 } from "../../../src";
-import { createDesktopConfigurationControl } from "../../../src/protocol/desktop-configuration";
+import { DesktopConfigurationControl } from "../../../src/protocol/desktop-configuration";
 
 describe("Desktop configuration control", () => {
 	test("projects telemetry safely and accepts only the telemetry write DTO", async () => {
@@ -24,7 +24,7 @@ describe("Desktop configuration control", () => {
 				errorOutput: { write() {} },
 			});
 			if (telemetry.isErr()) throw telemetry.error;
-			const control = createDesktopConfigurationControl(settings, undefined, undefined, undefined, telemetry.value);
+			const control = new DesktopConfigurationControl(settings, undefined, undefined, undefined, telemetry.value);
 			const saved = await control.handle({
 				jsonrpc: "2.0",
 				id: 1,
@@ -82,7 +82,7 @@ describe("Desktop configuration control", () => {
 						}),
 					),
 			});
-			const control = createDesktopConfigurationControl(settings, undefined, catalog);
+			const control = new DesktopConfigurationControl(settings, undefined, catalog);
 			const before = await control.handle({
 				jsonrpc: "2.0",
 				id: 1,
@@ -135,7 +135,7 @@ describe("Desktop configuration control", () => {
 		try {
 			const settings = new SqliteRuntimeAgentSettings(database);
 			const trust = new SqliteWorkspaceTrust(database);
-			const control = createDesktopConfigurationControl(settings, undefined, undefined, trust);
+			const control = new DesktopConfigurationControl(settings, undefined, undefined, trust);
 			const missing = await control.handle({
 				jsonrpc: "2.0",
 				id: 1,

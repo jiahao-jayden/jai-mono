@@ -14,7 +14,7 @@ import {
   RuntimeSessionConfigurationInvalid,
   type RuntimeSessionConfigurationPolicy,
 } from "../../src/sessions";
-import { createRuntimeHost } from "../../src/runtime";
+import { RuntimeHost } from "../../src/runtime";
 
 function ids(...values: string[]): () => string {
   let index = 0;
@@ -24,7 +24,7 @@ function ids(...values: string[]): () => string {
 describe("RuntimeHost", () => {
   test("durably accepts a prompt before it returns to the caller", async () => {
     const persistence = new InMemoryProductSessionPersistence();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       createId: ids("session-1", "operation-1"),
     });
@@ -70,7 +70,7 @@ describe("RuntimeHost", () => {
 
   test("resumes an existing durable Session without creating another one", async () => {
     const persistence = new InMemoryProductSessionPersistence();
-    const firstHost = createRuntimeHost({
+    const firstHost = new RuntimeHost({
       persistence,
       createId: ids("session-1", "operation-1"),
     });
@@ -78,7 +78,7 @@ describe("RuntimeHost", () => {
     if (created.isErr()) throw created.error;
     await created.value.prompt({ text: "first" });
 
-    const secondHost = createRuntimeHost({
+    const secondHost = new RuntimeHost({
       persistence,
       createId: ids("unused"),
     });
@@ -97,7 +97,7 @@ describe("RuntimeHost", () => {
   test("runs a connection-scoped Session without writing it to the durable catalog", async () => {
     const durablePersistence = new InMemoryProductSessionPersistence();
     const driver = new ControlledOperationDriver();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence: durablePersistence,
       createEphemeralPersistence: () => new InMemoryProductSessionPersistence(),
       operationDriver: driver,
@@ -141,7 +141,7 @@ describe("RuntimeHost", () => {
   });
 
   test("returns a typed failure when asked to resume a missing Session", async () => {
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence: new InMemoryProductSessionPersistence(),
     });
     const resumed = await host.openSession({ kind: "resume", id: "missing" });
@@ -153,7 +153,7 @@ describe("RuntimeHost", () => {
 
   test("serializes concurrent prompt admissions on one Session", async () => {
     const persistence = new InMemoryProductSessionPersistence();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       createId: ids("session-1", "operation-1", "operation-2"),
     });
@@ -200,7 +200,7 @@ describe("RuntimeHost", () => {
         );
       },
     };
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       operationDriver: driver,
       createId: ids("session-1", "operation-1"),
@@ -224,7 +224,7 @@ describe("RuntimeHost", () => {
 
   test("cancellation becomes a durable aborted terminal outcome", async () => {
     const persistence = new InMemoryProductSessionPersistence();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       createId: ids("session-1", "operation-1"),
       now: () => new Date("2026-08-25T12:00:00.000Z"),
@@ -255,7 +255,7 @@ describe("RuntimeHost", () => {
 
   test("finalizes a durable final assistant result during recovery without reopening a driver", async () => {
     const persistence = new InMemoryProductSessionPersistence();
-    const firstHost = createRuntimeHost({
+    const firstHost = new RuntimeHost({
       persistence,
       createId: ids("session-1", "operation-1"),
     });
@@ -317,7 +317,7 @@ describe("RuntimeHost", () => {
         );
       },
     };
-    const recoveredHost = createRuntimeHost({
+    const recoveredHost = new RuntimeHost({
       persistence,
       operationDriver: driver,
       now: () => new Date("2026-08-26T00:01:00.000Z"),
@@ -362,7 +362,7 @@ describe("RuntimeHost", () => {
   });
 
   test("allows only one ephemeral Session Controller at a time", async () => {
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence: new InMemoryProductSessionPersistence(),
       createId: ids("session-1"),
     });
@@ -394,7 +394,7 @@ describe("RuntimeHost", () => {
   test("reattaches a reconnecting Controller to its one live Operation driver", async () => {
     const driver = new ControlledOperationDriver();
     const persistence = new InMemoryProductSessionPersistence();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       operationDriver: driver,
       createId: ids("session-1", "operation-1"),
@@ -456,7 +456,7 @@ describe("RuntimeHost", () => {
   test("starts an admitted operation in the Server then durably finishes it", async () => {
     const driver = new ControlledOperationDriver();
     const persistence = new InMemoryProductSessionPersistence();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       operationDriver: driver,
       createId: ids("session-1", "operation-1", "attempt-1", "assistant-1"),
@@ -487,7 +487,7 @@ describe("RuntimeHost", () => {
   test("turns a second active prompt into a durable steer input for the current operation", async () => {
     const driver = new ControlledOperationDriver();
     const persistence = new InMemoryProductSessionPersistence();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       operationDriver: driver,
       createId: ids("session-1", "operation-1", "input-1", "entry-steer-1"),
@@ -529,7 +529,7 @@ describe("RuntimeHost", () => {
   test("records a mid-run follow-up with FIFO delivery instead of steer", async () => {
     const driver = new ControlledOperationDriver();
     const persistence = new InMemoryProductSessionPersistence();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       operationDriver: driver,
       createId: ids("session-1", "operation-1", "input-1", "entry-follow-1"),
@@ -572,7 +572,7 @@ describe("RuntimeHost", () => {
   test("writes a branch entry when navigating an idle Session back to an earlier message", async () => {
     const driver = new ControlledOperationDriver();
     const persistence = new InMemoryProductSessionPersistence();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       operationDriver: driver,
       createId: ids("session-1", "operation-1", "branch-1"),
@@ -623,7 +623,7 @@ describe("RuntimeHost", () => {
   test("rejects navigation while a live Operation is still active", async () => {
     const driver = new ControlledOperationDriver();
     const persistence = new InMemoryProductSessionPersistence();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       operationDriver: driver,
       createId: ids("session-1", "operation-1"),
@@ -643,7 +643,7 @@ describe("RuntimeHost", () => {
   test("never writes a terminal outcome while a durable steer input lacks its Session entry", async () => {
     const driver = new ControlledOperationDriver();
     const persistence = new InMemoryProductSessionPersistence();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       operationDriver: driver,
       createId: ids("session-1", "operation-1", "input-1", "entry-steer-1"),
@@ -708,7 +708,7 @@ describe("RuntimeHost", () => {
   test("freezes the durable Session configuration at prompt admission while later changes apply only to later work", async () => {
     const driver = new ControlledOperationDriver();
     const persistence = new InMemoryProductSessionPersistence();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       operationDriver: driver,
       configurationPolicy: configuredSessionPolicy(),
@@ -751,7 +751,7 @@ describe("RuntimeHost", () => {
 
   test("publishes a configuration projection only after its configuration fact is durable", async () => {
     const persistence = new InMemoryProductSessionPersistence();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       configurationPolicy: configuredSessionPolicy(),
       createId: ids("session-1"),
@@ -790,7 +790,7 @@ describe("RuntimeHost", () => {
   test("waits for the live driver to stop before recording a durable abort", async () => {
     const driver = new ControlledOperationDriver();
     const persistence = new InMemoryProductSessionPersistence();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence,
       operationDriver: driver,
       createId: ids("session-1", "operation-1"),
@@ -821,7 +821,7 @@ describe("RuntimeHost", () => {
 
   test("projects a pending approval as requires_action, then resumes after one approved decision", async () => {
     const driver = new ControlledOperationDriver();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence: new InMemoryProductSessionPersistence(),
       operationDriver: driver,
       createId: ids("session-1", "operation-1"),

@@ -54,11 +54,4 @@ export interface AcpV2AgentOptions {
 	readonly clientRequestSink?: AcpClientRequestSink;
 }
 
-export interface AcpV2Agent {
-	handle(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]>;
-	/** Drains notifications produced after a prior request returned. */
-	drain(): readonly AcpJsonRpcNotification[];
-	close(): Promise<void>;
-}
-
 export type AcpPromptMetadata = Readonly<Record<string, JsonValue>>;

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createRuntimeHost } from "../../../src/runtime";
+import { RuntimeHost } from "../../../src/runtime";
 import { SqliteProductSessionPersistence } from "../../../src/persistence";
 
 const temporaryDirectories: string[] = [];
@@ -22,7 +22,7 @@ describe("SqliteProductSessionPersistence", () => {
 		temporaryDirectories.push(root);
 		const databasePath = join(root, "data.sqlite");
 		const persistence = await SqliteProductSessionPersistence.open(databasePath);
-		const host = createRuntimeHost({
+		const host = new RuntimeHost({
 			persistence,
 			createId: ids("session-1", "operation-1"),
 			now: () => new Date("2026-08-25T10:00:00.000Z"),
@@ -58,7 +58,7 @@ describe("SqliteProductSessionPersistence", () => {
 
 	test("rejects a stale prompt without recording either half of the admission", async () => {
 		const persistence = new SqliteProductSessionPersistence(new (await import("node:sqlite")).DatabaseSync(":memory:"));
-		const host = createRuntimeHost({
+		const host = new RuntimeHost({
 			persistence,
 			createId: ids("session-1", "operation-1", "operation-2"),
 		});
@@ -249,7 +249,7 @@ describe("SqliteProductSessionPersistence", () => {
 		expect(loaded.value.operationRecords).toEqual([]);
 		expect(loaded.value.journalFacts.every((fact) => fact.kind === "entry")).toBe(true);
 
-		const host = createRuntimeHost({ persistence, createId: ids("ignored") });
+		const host = new RuntimeHost({ persistence, createId: ids("ignored") });
 		const resumed = await host.openSession({
 			kind: "resume",
 			id: "session-1",

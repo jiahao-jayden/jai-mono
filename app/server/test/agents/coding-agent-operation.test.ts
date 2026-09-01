@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Result } from "better-result";
 import { InMemoryTelemetryContext, type TelemetryContext } from "@jai/telemetry";
-import { createCodingAgentOperationDriver } from "../../src/agents";
-import { createRuntimeHost } from "../../src/runtime/host";
+import { CodingAgentOperationDriver } from "../../src/agents";
+import { RuntimeHost } from "../../src/runtime/host";
 import { InMemoryProductSessionPersistence } from "../../src/sessions";
 
 const roots: string[] = [];
@@ -33,7 +33,7 @@ describe("Coding Agent Runtime Operation driver", () => {
 		providers.push(provider);
 
 		const persistence = new InMemoryProductSessionPersistence();
-		const initialHost = createRuntimeHost({
+		const initialHost = new RuntimeHost({
 			persistence,
 			initialAppState: emptyCodingSessionState,
 			createId: ids("session-1", "operation-1"),
@@ -57,7 +57,7 @@ describe("Coding Agent Runtime Operation driver", () => {
 		if (queued.isErr()) throw queued.error;
 
 		let capabilitySourceCalls = 0;
-		const driver = createCodingAgentOperationDriver({
+		const driver = new CodingAgentOperationDriver({
 			resolveOptions: () =>
 				Result.ok({
 					model: "anthropic/test-model",
@@ -77,7 +77,7 @@ describe("Coding Agent Runtime Operation driver", () => {
 				},
 			},
 		});
-		const resumedHost = createRuntimeHost({
+		const resumedHost = new RuntimeHost({
 			persistence,
 			operationDriver: driver,
 			initialAppState: emptyCodingSessionState,
@@ -105,7 +105,7 @@ describe("Coding Agent Runtime Operation driver", () => {
 		expect(JSON.stringify(providerRequests[0])).toContain("second direction");
 
 		await resumed.value.close();
-		const reopenedHost = createRuntimeHost({
+		const reopenedHost = new RuntimeHost({
 			persistence,
 			operationDriver: driver,
 			initialAppState: emptyCodingSessionState,
@@ -176,7 +176,7 @@ async function runTelemetryOperation(telemetry?: TelemetryContext) {
 	providers.push(provider);
 
 	const persistence = new InMemoryProductSessionPersistence();
-	const driver = createCodingAgentOperationDriver({
+	const driver = new CodingAgentOperationDriver({
 		resolveOptions: () =>
 			Result.ok({
 				model: "anthropic/test-model",
@@ -195,7 +195,7 @@ async function runTelemetryOperation(telemetry?: TelemetryContext) {
 		},
 		...(telemetry ? { telemetry } : {}),
 	});
-	const host = createRuntimeHost({
+	const host = new RuntimeHost({
 		persistence,
 		operationDriver: driver,
 		initialAppState: emptyCodingSessionState,

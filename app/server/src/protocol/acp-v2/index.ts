@@ -1,4 +1,4 @@
-export { createAcpV2Agent } from "./agent";
+export { AcpV2Agent } from "./agent";
 export type { AcpLocalClientError, LocalAcpV2Client } from "./local-client";
 export {
 	AcpLocalClientConnectFailed,
@@ -22,6 +22,5 @@ export type {
 	AcpOutboundMessage,
 	AcpPromptBlock,
 	AcpRequestId,
-	AcpV2Agent,
 	AcpV2AgentOptions,
 } from "./types";

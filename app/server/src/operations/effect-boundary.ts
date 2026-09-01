@@ -60,25 +60,16 @@ export type OperationEffectEvent =
 	  };
 
 /**
- * The Agent core consumes only `EffectBoundary`; Server drivers may also use
- * this narrow observation seam to correlate ephemeral chunks with an already
- * preallocated Session Journal id.
- */
-export interface OperationEffectBoundary extends EffectBoundary {
-	subscribe(listener: (event: OperationEffectEvent) => void): () => void;
-}
-
-/**
  * Server implementation of the Agent core's storage-agnostic effect seam.
  * It persists model intent before a provider request and T1 before a tool
  * implementation receives final arguments. The matching result entries are
  * reserved here and committed later by the SessionStore adapter.
+ *
+ * The Agent core consumes only `EffectBoundary`; Server drivers may also use
+ * the narrow `subscribe` observation seam to correlate ephemeral chunks with an
+ * already preallocated Session Journal id.
  */
-export function createOperationEffectBoundary(options: OperationEffectBoundaryOptions): OperationEffectBoundary {
-	return new DefaultOperationEffectBoundary(options);
-}
-
-class DefaultOperationEffectBoundary implements OperationEffectBoundary {
+export class OperationEffectBoundary implements EffectBoundary {
 	readonly #assistantEntries = new Map<string, string>();
 	readonly #listeners = new Set<(event: OperationEffectEvent) => void>();
 	/**
@@ -100,9 +91,7 @@ class DefaultOperationEffectBoundary implements OperationEffectBoundary {
 		};
 	}
 
-	async beforeModelEffect(input: {
-		readonly model: { readonly id: string; readonly provider: string; readonly remoteModelId?: string };
-	}): Promise<EffectEntryReservation> {
+	async beforeModelEffect(input: Parameters<EffectBoundary["beforeModelEffect"]>[0]): Promise<EffectEntryReservation> {
 		const attemptId = this.options.createId();
 		const entryId = this.options.createId();
 		await this.append({
@@ -149,10 +138,7 @@ class DefaultOperationEffectBoundary implements OperationEffectBoundary {
 		}
 	}
 
-	async beforeToolEffect(input: {
-		readonly toolCall: { readonly id: string; readonly name: string };
-		readonly args: Record<string, unknown>;
-	}): Promise<EffectEntryReservation> {
+	async beforeToolEffect(input: Parameters<EffectBoundary["beforeToolEffect"]>[0]): Promise<EffectEntryReservation> {
 		const assistantEntryId = await this.resolveAssistantEntry(input.toolCall.id);
 		if (!assistantEntryId) {
 			throw new OperationEffectProtocolViolation({

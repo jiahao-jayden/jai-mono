@@ -1,6 +1,6 @@
 # 01: 观测 sink 去掉空工厂
 
-要先完成:无 · 状态:⬜
+要先完成:无 · 状态:✅
 
 ## 交付什么
 
@@ -61,12 +61,20 @@
 
 ## 决策记录
 
-<!-- 只记录这项工作实施时出现的局部、非显然选择；改变整套方案时回到 plan.md。-->
+- `LangfuseOtlpTelemetrySink` 的构造函数改为直接接收公开 `LangfuseOtlpTelemetrySinkOptions`，在内部调用 `resolveOptions`。原来 `create*` 承担的解析工作移入构造函数，`ResolvedLangfuseOtlpTelemetrySinkOptions` 保持私有。`this.options` 改为私有字段 `this.#options`。
+- 环境验证：`@opentelemetry/*` 依赖此前未安装、`@jai/coding-agent` dist 未重建，导致首次 server typecheck 报出与本项无关的错误。执行了根目录 `bun install`（lockfile 无变化）与 `packages/coding-agent` 的 `bun run build` 后，typecheck 通过。这两项属于环境准备，非本项代码改动。
 
 ## 遗留问题
 
-<!-- 发现但本次不做的 -->
+无。
+
+## 完成前检查结果
+
+- ✅ 生产代码与测试无 `createLangfuseOtlpTelemetrySink` / `DefaultLangfuseOtlpTelemetrySink` / `createJsonlFileTelemetrySink` / `createOtlpTelemetrySink` / `DefaultOtlpTelemetrySink`（仅 `dist/`、`out/` 构建产物残留，非源码）。
+- ✅ `createJsonlStderrTelemetrySink` 与 `createTelemetryContext` 仍在。
+- ✅ `packages/telemetry` typecheck / test 全绿（10 pass）。
+- ✅ `app/server` typecheck 通过；`test/telemetry/langfuse-otlp.test.ts`、`test/telemetry/local.test.ts` 全绿（10 pass）。
 
 ## 交接说明
 
-<!-- 完成或暂停时填：做到哪里、下一项不要碰什么。写给下次继续工作的人看，要具体。 -->
+Langfuse OTLP sink 现导出 class `LangfuseOtlpTelemetrySink`（`app/server/src/telemetry/langfuse-otlp.ts`），JSONL 文件 sink 导出 class `JsonlFileTelemetrySink`（`packages/telemetry/src/node/local-sinks.ts`，经 `@jai/telemetry/node` re-export）。调用方一律 `new`。第 4 项处理 Server 其余 `Default` 工厂时，不要再动这两处；`local.ts` 的 OTLP 装配已用 `new LangfuseOtlpTelemetrySink`。`dist/`、`out/` 里的旧符号是构建产物，等各自重新打包时消失，不手工改。

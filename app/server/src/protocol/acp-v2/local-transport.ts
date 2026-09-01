@@ -1,7 +1,7 @@
 import { createServer, type Server, type Socket } from "node:net";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { RuntimeHost } from "../../runtime";
-import { createAcpV2Agent } from "./agent";
+import { AcpV2Agent } from "./agent";
 import type {
 	AcpImplementationInfo,
 	AcpJsonRpcNotification,
@@ -75,7 +75,7 @@ class NodeLocalAcpV2Server implements LocalAcpV2Server {
 
 function openConnection(socket: Socket, host: RuntimeHost, info: AcpImplementationInfo): void {
 	const clientRequests = new PendingClientRequests(socket);
-	const agent = createAcpV2Agent({
+	const agent = new AcpV2Agent({
 		host,
 		info,
 		notificationSink: (notification) => write(socket, notification),
@@ -107,7 +107,7 @@ function openConnection(socket: Socket, host: RuntimeHost, info: AcpImplementati
 
 async function handleLine(
 	socket: Socket,
-	agent: ReturnType<typeof createAcpV2Agent>,
+	agent: AcpV2Agent,
 	clientRequests: PendingClientRequests,
 	line: string,
 ): Promise<void> {

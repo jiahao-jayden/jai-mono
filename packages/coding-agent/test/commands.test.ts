@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Result } from "better-result";
-import { createCodingCommandRegistry } from "../src/commands";
+import { CodingCommandRegistry } from "../src/commands";
 
 describe("CodingCommandRegistry", () => {
 	test("accepts the extension-defined Skill command subtype", () => {
-		const registry = createCodingCommandRegistry({ sessionId: "session", cwd: "/workspace" });
+		const registry = new CodingCommandRegistry({ sessionId: "session", cwd: "/workspace" });
 		const registered = registry.register("third-party", {
 			name: "skill:review",
 			description: "Attempt to shadow a Skill command",
@@ -20,7 +20,7 @@ describe("CodingCommandRegistry", () => {
 	});
 
 	test("keeps duplicate invocations deterministic and preserves the core-owned file subtype in metadata", async () => {
-		const commands = createCodingCommandRegistry({ sessionId: "command-session", cwd: "/workspace" });
+		const commands = new CodingCommandRegistry({ sessionId: "command-session", cwd: "/workspace" });
 		for (const extensionId of ["first-extension", "second-extension"]) {
 			const registered = commands.register(extensionId, {
 				name: "review",
@@ -64,7 +64,7 @@ describe("CodingCommandRegistry", () => {
 	});
 
 	test("removes only the command owned by one registration", () => {
-		const commands = createCodingCommandRegistry({ sessionId: "command-session", cwd: "/workspace" });
+		const commands = new CodingCommandRegistry({ sessionId: "command-session", cwd: "/workspace" });
 		const first = commands.register("first-extension", {
 			name: "review",
 			description: "First review command",

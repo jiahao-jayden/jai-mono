@@ -13,7 +13,7 @@ import { InMemoryProductSessionPersistence } from "../sessions";
 import { RuntimeTelemetryController } from "../telemetry";
 import { SqliteWorkspaceTrust } from "../workspaces";
 import type { RuntimeHostConfigurationInvalid } from "./configuration";
-import { createRuntimeHost } from "./host";
+import { RuntimeHost } from "./host";
 
 export class JaiRuntimeServerOpenFailed extends TaggedError("runtime_server.open_failed")<{
 	readonly dataDirectory: string;
@@ -42,16 +42,6 @@ export interface OpenJaiRuntimeServerOptions {
 	readonly telemetryErrorOutput?: { write(text: string): void };
 	readonly info: AcpImplementationInfo;
 	readonly endpoint?: string;
-}
-
-/** The process-wide Runtime Host resource: database, owner lease and local ACP endpoint. */
-export interface JaiRuntimeServer {
-	readonly endpoint: string;
-	/** Private local channel for Desktop-owned catalog storage; never bridged as ACP. */
-	readonly desktopCatalogEndpoint: string;
-	/** Private local channel for Server-owned, safe Desktop configuration projection. */
-	readonly desktopConfigurationEndpoint: string;
-	close(): Promise<void>;
 }
 
 /**
@@ -104,7 +94,7 @@ export async function openJaiRuntimeServer(
 		modelCatalog = new SqliteRuntimeModelCatalog(database.connection);
 		const recoveredOAuth = connectorOAuth.recover();
 		if (recoveredOAuth.isErr()) throw recoveredOAuth.error;
-		const host = createRuntimeHost({
+		const host = new RuntimeHost({
 			persistence,
 			createEphemeralPersistence: () => new InMemoryProductSessionPersistence(),
 			operationDriver: assembled.value,
@@ -125,7 +115,7 @@ export async function openJaiRuntimeServer(
 		});
 		if (opened.isErr()) throw opened.error;
 		localHost = opened.value;
-		return Result.ok(new DefaultJaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog, telemetry));
+		return Result.ok(new JaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog, telemetry));
 	} catch (error) {
 		await localHost?.close().catch(() => {});
 		connectorOAuth?.close();
@@ -142,7 +132,8 @@ export async function openJaiRuntimeServer(
 	}
 }
 
-class DefaultJaiRuntimeServer implements JaiRuntimeServer {
+/** The process-wide Runtime Host resource: database, owner lease and local ACP endpoint. */
+export class JaiRuntimeServer {
 	#closed = false;
 	readonly #localHost: LocalRuntimeHostServer;
 

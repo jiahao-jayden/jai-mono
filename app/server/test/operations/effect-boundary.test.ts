@@ -11,11 +11,11 @@ import { Agent, openSession, type AgentTool } from "@jai/agent";
 import { Type } from "@sinclair/typebox";
 import { Result } from "better-result";
 import {
-	createOperationEffectBoundary,
+	OperationEffectBoundary,
 	type RuntimeOperationDriver,
 	RuntimeOperationOpenFailed,
 } from "../../src/operations";
-import { createRuntimeHost } from "../../src/runtime";
+import { RuntimeHost } from "../../src/runtime";
 import { InMemoryProductSessionPersistence, RuntimeSessionStore } from "../../src/sessions";
 
 const model: Model = {
@@ -54,7 +54,7 @@ function assistant(
 describe("Operation effect boundary", () => {
 	test("writes model intent and usage, then T1, before their external effects; preallocated ids stay Session ids", async () => {
 		const persistence = new InMemoryProductSessionPersistence();
-		const host = createRuntimeHost({
+		const host = new RuntimeHost({
 			persistence,
 			createId: ids("session-1", "operation-1", "attempt-1", "assistant-1", "tool-result-1", "attempt-2", "assistant-2"),
 		});
@@ -108,7 +108,7 @@ describe("Operation effect boundary", () => {
 				return stream;
 			},
 		};
-		const boundary = createOperationEffectBoundary({
+		const boundary = new OperationEffectBoundary({
 			sessionId: "session-1",
 			operationId: "operation-1",
 			persistence,
@@ -165,13 +165,13 @@ describe("Operation effect boundary", () => {
 
 	test("parks T1 without T2 after reopen and never gives a generic driver permission to replay it", async () => {
 		const persistence = new InMemoryProductSessionPersistence();
-		const firstHost = createRuntimeHost({ persistence, createId: ids("session-1", "operation-1") });
+		const firstHost = new RuntimeHost({ persistence, createId: ids("session-1", "operation-1") });
 		const opened = await firstHost.openSession({ kind: "new", cwd: "/workspace" });
 		if (opened.isErr()) throw opened.error;
 		const admission = await opened.value.prompt({ text: "read a.txt" });
 		if (admission.isErr()) throw admission.error;
 
-		const boundary = createOperationEffectBoundary({
+		const boundary = new OperationEffectBoundary({
 			sessionId: "session-1",
 			operationId: "operation-1",
 			persistence,
@@ -224,7 +224,7 @@ describe("Operation effect boundary", () => {
 				);
 			},
 		};
-		const resumedHost = createRuntimeHost({ persistence, operationDriver: driver });
+		const resumedHost = new RuntimeHost({ persistence, operationDriver: driver });
 		const resumed = await resumedHost.openSession({ kind: "resume", id: "session-1", cwd: "/workspace" });
 		if (resumed.isErr()) throw resumed.error;
 

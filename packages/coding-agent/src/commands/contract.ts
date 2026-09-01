@@ -55,14 +55,3 @@ export interface CodingCommandRegistration {
 export type CodingCommandDispatch =
 	| { readonly kind: "handled"; readonly invocation: CodingCommandInvocation }
 	| { readonly kind: "prompt"; readonly input: AgentInput; readonly invocation: CodingCommandInvocation };
-
-export interface CodingCommandRegistry {
-	register(
-		extensionId: string,
-		command: CodingCommandDefinition,
-	): ResultType<CodingCommandRegistration, CodingCommandRegistrationFailed>;
-	list(): readonly CodingRegisteredCommand[];
-	dispatch(input: AgentInput): Promise<ResultType<CodingCommandDispatch | undefined, CodingCommandExecutionFailed>>;
-	promptContext(): string | undefined;
-	clearPromptContext(): void;
-}

@@ -68,19 +68,7 @@ export interface CodingAgentTelemetryObserverOptions {
  * 把 Coding Agent 的公开生命周期与 Server 已持久化的 effect identity 投影为 span。
  * 只保存一次运行期间的可丢弃状态；任何观察异常都被 containment 在本对象内。
  */
-export interface CodingAgentTelemetryObserver extends PermissionTelemetryObserver {
-	observeAgentEvent(event: CodingAgentEvent): void;
-	observeEffectEvent(event: CodingAgentTelemetryEffectEvent): void;
-	close(): void;
-}
-
-export function createCodingAgentTelemetryObserver(
-	options: CodingAgentTelemetryObserverOptions,
-): CodingAgentTelemetryObserver {
-	return new DefaultCodingAgentTelemetryObserver(options);
-}
-
-class DefaultCodingAgentTelemetryObserver implements CodingAgentTelemetryObserver {
+export class CodingAgentTelemetryObserver implements PermissionTelemetryObserver {
 	readonly #now: () => number;
 	readonly #modelAttempts = new Map<string, ActiveModelAttempt>();
 	readonly #pendingModelAttemptIds: string[] = [];

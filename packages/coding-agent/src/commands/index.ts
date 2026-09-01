@@ -7,8 +7,7 @@ export {
 	type CodingCommandKind,
 	type CodingCommandRegistration,
 	CodingCommandRegistrationFailed,
-	type CodingCommandRegistry,
 	type CodingCommandResult,
 	type CodingRegisteredCommand,
 } from "./contract";
-export { type CreateCodingCommandRegistryOptions, createCodingCommandRegistry } from "./registry";
+export { CodingCommandRegistry } from "./registry";

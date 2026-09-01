@@ -5,7 +5,7 @@ import {
 	recoverSessionOperations,
 	type AgentTool,
 } from "@jai/agent";
-import { createManualEffectGate, isEffectGateInterrupted, type EffectGate } from "@jai/agent/core";
+import { type EffectGate, isEffectGateInterrupted, ManualEffectGate } from "@jai/agent/core";
 import {
 	type AssistantMessage,
 	AssistantMessageEventStream,
@@ -15,8 +15,8 @@ import {
 	zeroUsage,
 } from "@jai/ai";
 import { Type } from "@sinclair/typebox";
-import { createOperationEffectBoundary } from "../../src/operations";
-import { createRuntimeHost } from "../../src/runtime";
+import { OperationEffectBoundary } from "../../src/operations";
+import { RuntimeHost } from "../../src/runtime";
 import { InMemoryProductSessionPersistence, RuntimeSessionStore, type ProductSessionDurableState } from "../../src/sessions";
 
 const model: Model = {
@@ -63,7 +63,7 @@ interface CrashScenario {
 
 async function createScenario(effectGate?: EffectGate): Promise<CrashScenario> {
 	const persistence = new InMemoryProductSessionPersistence();
-	const host = createRuntimeHost({
+	const host = new RuntimeHost({
 		persistence,
 		createId: ids("session-1", "operation-1"),
 		now: () => new Date("2026-08-26T00:00:00.000Z"),
@@ -113,7 +113,7 @@ async function createScenario(effectGate?: EffectGate): Promise<CrashScenario> {
 			provider,
 			tools: [read],
 			sessionHandle,
-			effectBoundary: createOperationEffectBoundary({
+			effectBoundary: new OperationEffectBoundary({
 				sessionId: "session-1",
 				operationId: "operation-1",
 				persistence,
@@ -127,7 +127,7 @@ async function createScenario(effectGate?: EffectGate): Promise<CrashScenario> {
 	};
 }
 
-async function release(gate: ReturnType<typeof createManualEffectGate>, expected: Record<string, unknown>): Promise<void> {
+async function release(gate: ManualEffectGate, expected: Record<string, unknown>): Promise<void> {
 	expect(await gate.waitForAction()).toMatchObject(expected);
 	expect(gate.release()).toBe(true);
 }
@@ -139,7 +139,7 @@ describe("manual Effect Gate crash prefixes", () => {
 		const automaticDurable = await automatic.persistence.load("session-1");
 		if (automaticDurable.isErr()) throw automaticDurable.error;
 
-		const gate = createManualEffectGate();
+		const gate = new ManualEffectGate();
 		const manual = await createScenario(gate.gate);
 		const run = manual.agent.invoke([]);
 		await release(gate, { type: "model_intent" });
@@ -206,7 +206,7 @@ describe("manual Effect Gate crash prefixes", () => {
 		] as const;
 
 		for (const [index, checkpoint] of checkpoints.entries()) {
-			const gate = createManualEffectGate();
+			const gate = new ManualEffectGate();
 			const scenario = await createScenario(gate.gate);
 			const run = scenario.agent.invoke([]);
 			for (let prior = 0; prior < index; prior += 1) await release(gate, checkpoints[prior]!.expected);
@@ -225,7 +225,7 @@ describe("manual Effect Gate crash prefixes", () => {
 			if (durable.isErr()) throw durable.error;
 			const reduced = recoverSessionOperations(durable.value.operationRecords, recoveryEvidence(durable.value));
 			if (reduced.isErr()) throw reduced.error;
-			const reopenedHost = createRuntimeHost({ persistence: scenario.persistence });
+			const reopenedHost = new RuntimeHost({ persistence: scenario.persistence });
 			const reopened = await reopenedHost.openSession({ kind: "resume", id: "session-1", cwd: "/workspace" });
 			if (reopened.isErr()) throw reopened.error;
 			const replay = await reopened.value.recovery();
@@ -239,7 +239,7 @@ describe("manual Effect Gate crash prefixes", () => {
 	});
 
 	test("durable steer T1 is replayed through the reserved Session entry after a crash before T2", async () => {
-		const gate = createManualEffectGate();
+		const gate = new ManualEffectGate();
 		const scenario = await createScenario(gate.gate);
 		const queued = await scenario.persistence.appendOperation({
 			sessionId: "session-1",
@@ -301,7 +301,7 @@ describe("manual Effect Gate crash prefixes", () => {
 			model,
 			provider: resumedProvider,
 			sessionHandle,
-			effectBoundary: createOperationEffectBoundary({
+			effectBoundary: new OperationEffectBoundary({
 				sessionId: "session-1",
 				operationId: "operation-1",
 				persistence: scenario.persistence,
@@ -337,7 +337,7 @@ describe("manual Effect Gate crash prefixes", () => {
 	});
 
 	test("a durable assistant tool call with no T1 resumes the exact tool before another model request", async () => {
-		const gate = createManualEffectGate();
+		const gate = new ManualEffectGate();
 		const scenario = await createScenario(gate.gate);
 		const run = scenario.agent.invoke([]);
 		await release(gate, { type: "model_intent" });
@@ -375,7 +375,7 @@ describe("manual Effect Gate crash prefixes", () => {
 			provider: finalProvider,
 			tools: [read],
 			sessionHandle,
-			effectBoundary: createOperationEffectBoundary({
+			effectBoundary: new OperationEffectBoundary({
 				sessionId: "session-1",
 				operationId: "operation-1",
 				persistence: scenario.persistence,

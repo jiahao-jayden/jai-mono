@@ -67,7 +67,7 @@ export async function connectDesktopConfigurationClient(
 	const retryCount = options.retryCount ?? 60;
 	for (let attempt = 0; attempt < retryCount; attempt += 1) {
 		const opened = await openLocalAcpV2Client(endpoint);
-		if (opened.isOk()) return Result.ok(new DefaultDesktopConfigurationClient(opened.value));
+		if (opened.isOk()) return Result.ok(new DesktopConfigurationClient(opened.value));
 		if (attempt === retryCount - 1) return Result.err(opened.error);
 		await new Promise<void>((resolve) => setTimeout(resolve, retryDelayMs));
 	}
@@ -79,44 +79,7 @@ export async function connectDesktopConfigurationClient(
 	);
 }
 
-export interface DesktopConfigurationClient {
-	get(): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>>;
-	save(
-		input: RuntimeAgentSettingsInput,
-	): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>>;
-	setLanguage(language: string): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>>;
-	fetchModels(
-		profileId: string,
-	): Promise<ResultType<RuntimeAgentSettingsModelFetchResult, DesktopConfigurationClientError>>;
-	revealApiKey(
-		profileId: string,
-	): Promise<ResultType<{ readonly profileId: string; readonly apiKey: string }, DesktopConfigurationClientError>>;
-	startConnectorOAuth(
-		connectorId: string,
-	): Promise<ResultType<RuntimeConnectorOAuthStart, DesktopConfigurationClientError>>;
-	completeConnectorOAuth(
-		callbackUrl: string,
-	): Promise<ResultType<RuntimeConnectorOAuthCompletion, DesktopConfigurationClientError>>;
-	disconnectConnectorOAuth(
-		connectorId: string,
-	): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>>;
-	getModelCatalog(): Promise<ResultType<RuntimeModelCatalogSnapshot, DesktopConfigurationClientError>>;
-	refreshModelCatalog(): Promise<ResultType<RuntimeModelCatalogSnapshot, DesktopConfigurationClientError>>;
-	getWorkspaceTrust(
-		workspacePath: string,
-	): Promise<ResultType<WorkspaceTrustSnapshot, DesktopConfigurationClientError>>;
-	setWorkspaceTrust(
-		workspacePath: string,
-		trusted: boolean,
-	): Promise<ResultType<WorkspaceTrustSnapshot, DesktopConfigurationClientError>>;
-	getTelemetry(): Promise<ResultType<RuntimeTelemetrySettingsSnapshot, DesktopConfigurationClientError>>;
-	saveTelemetry(
-		input: RuntimeTelemetrySettingsInput,
-	): Promise<ResultType<RuntimeTelemetrySettingsSnapshot, DesktopConfigurationClientError>>;
-	close(): Promise<void>;
-}
-
-class DefaultDesktopConfigurationClient implements DesktopConfigurationClient {
+export class DesktopConfigurationClient {
 	constructor(private readonly client: LocalAcpV2Client) {}
 
 	async get(): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>> {
@@ -129,7 +92,9 @@ class DefaultDesktopConfigurationClient implements DesktopConfigurationClient {
 		return this.request("jai/desktop-configuration/save", input);
 	}
 
-	async setLanguage(language: string): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>> {
+	async setLanguage(
+		language: string,
+	): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>> {
 		return this.request("jai/desktop-configuration/set-language", { language });
 	}
 
@@ -350,7 +315,8 @@ function parseSnapshot(value: unknown): RuntimeAgentSettingsSnapshot | undefined
 	) {
 		return undefined;
 	}
-	if (value.language !== undefined && (typeof value.language !== "string" || !language(value.language))) return undefined;
+	if (value.language !== undefined && (typeof value.language !== "string" || !language(value.language)))
+		return undefined;
 	const profiles = value.profiles.map(parseProfile);
 	if (profiles.some((profile) => profile === undefined)) return undefined;
 	return {

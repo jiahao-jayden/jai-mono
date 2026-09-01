@@ -74,12 +74,8 @@ export {
 	emptyPersistedCodingSessionState,
 	type PersistedCodingSessionState,
 } from "./sdk/session-state";
-export type {
-	CodingAgentTelemetryEffectEvent,
-	CodingAgentTelemetryObserver,
-	CodingAgentTelemetryObserverOptions,
-} from "./sdk/telemetry";
-export { createCodingAgentTelemetryObserver } from "./sdk/telemetry";
+export type { CodingAgentTelemetryEffectEvent, CodingAgentTelemetryObserverOptions } from "./sdk/telemetry";
+export { CodingAgentTelemetryObserver } from "./sdk/telemetry";
 export type { CodingToolActivityKind, CodingToolPresentation } from "./sdk/tool-presentation";
 export type {
 	CodingAgent,

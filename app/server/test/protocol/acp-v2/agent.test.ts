@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Result } from "better-result";
-import { createAcpV2Agent } from "../../../src/protocol/acp-v2";
+import { AcpV2Agent } from "../../../src/protocol/acp-v2";
 import {
 	type RuntimeOperation,
 	type RuntimeOperationDriver,
@@ -8,7 +8,7 @@ import {
 	type RuntimeOperationEvent,
 	type RuntimeOperationOpenInput,
 } from "../../../src/operations";
-import { createRuntimeHost } from "../../../src/runtime";
+import { RuntimeHost } from "../../../src/runtime";
 import {
 	InMemoryProductSessionPersistence,
 	RuntimeSessionConfigurationInvalid,
@@ -22,11 +22,11 @@ function ids(...values: string[]): () => string {
 
 describe("ACP v2 Agent adapter", () => {
 	test("accepts an ACP prompt only after Runtime Host durable admission, then projects user and running updates", async () => {
-		const host = createRuntimeHost({
+		const host = new RuntimeHost({
 			persistence: new InMemoryProductSessionPersistence(),
 			createId: ids("session-1", "operation-1"),
 		});
-		const agent = createAcpV2Agent({ host, info: { name: "jai", title: "Jai", version: "0.0.0" } });
+		const agent = new AcpV2Agent({ host, info: { name: "jai", title: "Jai", version: "0.0.0" } });
 
 		const initialized = await agent.handle({
 			jsonrpc: "2.0",
@@ -89,8 +89,8 @@ describe("ACP v2 Agent adapter", () => {
 	});
 
 	test("does not accept session methods before initialize", async () => {
-		const agent = createAcpV2Agent({
-			host: createRuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),
+		const agent = new AcpV2Agent({
+			host: new RuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),
 			info: { name: "jai", version: "0.0.0" },
 		});
 
@@ -111,12 +111,12 @@ describe("ACP v2 Agent adapter", () => {
 	});
 
 	test("lists Sessions without a Product title field", async () => {
-		const host = createRuntimeHost({
+		const host = new RuntimeHost({
 			persistence: new InMemoryProductSessionPersistence(),
 			createId: ids("session-1"),
 			now: () => new Date("2026-08-25T10:00:00.000Z"),
 		});
-		const agent = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		const agent = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
 		await agent.handle({
 			jsonrpc: "2.0",
 			id: 1,
@@ -151,8 +151,8 @@ describe("ACP v2 Agent adapter", () => {
 
 	test("uses ACP v2 session config options to durably set a later Session model", async () => {
 		const persistence = new InMemoryProductSessionPersistence();
-		const agent = createAcpV2Agent({
-			host: createRuntimeHost({
+		const agent = new AcpV2Agent({
+			host: new RuntimeHost({
 				persistence,
 				configurationPolicy: configuredSessionPolicy(),
 				createId: ids("session-1"),
@@ -227,8 +227,8 @@ describe("ACP v2 Agent adapter", () => {
 	});
 
 	test("does not expose Desktop Catalog control methods through the ACP Agent adapter", async () => {
-		const agent = createAcpV2Agent({
-			host: createRuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),
+		const agent = new AcpV2Agent({
+			host: new RuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),
 			info: { name: "jai", version: "0.0.0" },
 		});
 		await agent.handle({
@@ -257,12 +257,12 @@ describe("ACP v2 Agent adapter", () => {
 	test("projects a cumulative usage cost after settlement and replays it from the durable ledger", async () => {
 		const livePersistence = new InMemoryProductSessionPersistence();
 		const driver = new ProjectionDriver();
-		const liveHost = createRuntimeHost({
+		const liveHost = new RuntimeHost({
 			persistence: livePersistence,
 			operationDriver: driver,
 			createId: ids("session-1", "operation-1"),
 		});
-		const liveAgent = createAcpV2Agent({ host: liveHost, info: { name: "jai", version: "0.0.0" } });
+		const liveAgent = new AcpV2Agent({ host: liveHost, info: { name: "jai", version: "0.0.0" } });
 		await liveAgent.handle({
 			jsonrpc: "2.0",
 			id: 1,
@@ -290,7 +290,7 @@ describe("ACP v2 Agent adapter", () => {
 		await liveAgent.close();
 
 		const replayPersistence = new InMemoryProductSessionPersistence();
-		const replayHost = createRuntimeHost({
+		const replayHost = new RuntimeHost({
 			persistence: replayPersistence,
 			createId: ids("session-2", "operation-2"),
 		});
@@ -323,7 +323,7 @@ describe("ACP v2 Agent adapter", () => {
 		if (settled.isErr()) throw settled.error;
 		await direct.value.close();
 
-		const replayAgent = createAcpV2Agent({ host: replayHost, info: { name: "jai", version: "0.0.0" } });
+		const replayAgent = new AcpV2Agent({ host: replayHost, info: { name: "jai", version: "0.0.0" } });
 		await replayAgent.handle({
 			jsonrpc: "2.0",
 			id: 4,
@@ -347,12 +347,12 @@ describe("ACP v2 Agent adapter", () => {
 
 	test("projects the durable Coding Agent Todo list as an ACP plan with its cancelled status", async () => {
 		const driver = new ProjectionDriver();
-		const host = createRuntimeHost({
+		const host = new RuntimeHost({
 			persistence: new InMemoryProductSessionPersistence(),
 			operationDriver: driver,
 			createId: ids("session-1", "operation-1"),
 		});
-		const agent = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		const agent = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
 		await agent.handle({
 			jsonrpc: "2.0",
 			id: 1,
@@ -398,11 +398,11 @@ describe("ACP v2 Agent adapter", () => {
 	});
 
 	test("projects cancellation only after the Runtime Host records an aborted operation", async () => {
-		const host = createRuntimeHost({
+		const host = new RuntimeHost({
 			persistence: new InMemoryProductSessionPersistence(),
 			createId: ids("session-1", "operation-1"),
 		});
-		const agent = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		const agent = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
 		await agent.handle({
 			jsonrpc: "2.0",
 			id: 1,
@@ -436,8 +436,8 @@ describe("ACP v2 Agent adapter", () => {
 	});
 
 	test("rejects a session/cancel request because ACP v2 defines cancellation as a notification", async () => {
-		const agent = createAcpV2Agent({
-			host: createRuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),
+		const agent = new AcpV2Agent({
+			host: new RuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),
 			info: { name: "jai", version: "0.0.0" },
 		});
 		await agent.handle({
@@ -465,8 +465,8 @@ describe("ACP v2 Agent adapter", () => {
 
 	test("drains durable Agent output and terminal state that arrive after prompt acknowledgement", async () => {
 		const driver = new ProjectionDriver();
-		const agent = createAcpV2Agent({
-			host: createRuntimeHost({
+		const agent = new AcpV2Agent({
+			host: new RuntimeHost({
 				persistence: new InMemoryProductSessionPersistence(),
 				operationDriver: driver,
 				createId: ids("session-1", "operation-1"),
@@ -520,8 +520,8 @@ describe("ACP v2 Agent adapter", () => {
 
 	test("projects disposable live chunks while durable entries remain the replay frontier", async () => {
 		const driver = new ProjectionDriver();
-		const agent = createAcpV2Agent({
-			host: createRuntimeHost({
+		const agent = new AcpV2Agent({
+			host: new RuntimeHost({
 				persistence: new InMemoryProductSessionPersistence(),
 				operationDriver: driver,
 				createId: ids("session-1", "operation-1"),
@@ -606,8 +606,8 @@ describe("ACP v2 Agent adapter", () => {
 
 	test("projects Bash as a T1-gated display terminal and marks it exited only after the durable T2 result", async () => {
 		const driver = new ProjectionDriver();
-		const agent = createAcpV2Agent({
-			host: createRuntimeHost({
+		const agent = new AcpV2Agent({
+			host: new RuntimeHost({
 				persistence: new InMemoryProductSessionPersistence(),
 				operationDriver: driver,
 				createId: ids("session-1", "operation-1"),
@@ -726,12 +726,12 @@ describe("ACP v2 Agent adapter", () => {
 	test("projects durable T2 file changes as ACP diff content and replays the same diff", async () => {
 		const persistence = new InMemoryProductSessionPersistence();
 		const driver = new ProjectionDriver();
-		const host = createRuntimeHost({
+		const host = new RuntimeHost({
 			persistence,
 			operationDriver: driver,
 			createId: ids("session-1", "operation-1"),
 		});
-		const live = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		const live = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
 		await live.handle({
 			jsonrpc: "2.0",
 			id: 1,
@@ -802,7 +802,7 @@ describe("ACP v2 Agent adapter", () => {
 		await driver.closed;
 		await live.close();
 
-		const resumed = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		const resumed = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
 		await resumed.handle({
 			jsonrpc: "2.0",
 			id: 4,
@@ -822,8 +822,8 @@ describe("ACP v2 Agent adapter", () => {
 	test("turns a Runtime approval into an ACP v2 reverse permission request and returns the selected decision", async () => {
 		const driver = new ProjectionDriver();
 		const requests: Array<{ readonly method: string; readonly params: unknown }> = [];
-		const agent = createAcpV2Agent({
-			host: createRuntimeHost({
+		const agent = new AcpV2Agent({
+			host: new RuntimeHost({
 				persistence: new InMemoryProductSessionPersistence(),
 				operationDriver: driver,
 				createId: ids("session-1", "operation-1"),
@@ -941,8 +941,8 @@ describe("ACP v2 Agent adapter", () => {
 
 	test("replays durable messages before the session/resume response when replayFrom is start", async () => {
 		const persistence = new InMemoryProductSessionPersistence();
-		const host = createRuntimeHost({ persistence, createId: ids("session-1", "operation-1") });
-		const first = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		const host = new RuntimeHost({ persistence, createId: ids("session-1", "operation-1") });
+		const first = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
 		await first.handle({
 			jsonrpc: "2.0",
 			id: 1,
@@ -958,7 +958,7 @@ describe("ACP v2 Agent adapter", () => {
 		});
 		await first.close();
 
-		const resumedAgent = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		const resumedAgent = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
 		await resumedAgent.handle({
 			jsonrpc: "2.0",
 			id: 4,
@@ -996,8 +996,8 @@ describe("ACP v2 Agent adapter", () => {
 
 	test("projects only the safe slash invocation DTO from durable user metadata", async () => {
 		const persistence = new InMemoryProductSessionPersistence();
-		const host = createRuntimeHost({ persistence, createId: ids("session-1", "operation-1") });
-		const first = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		const host = new RuntimeHost({ persistence, createId: ids("session-1", "operation-1") });
+		const first = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
 		await first.handle({
 			jsonrpc: "2.0",
 			id: 1,
@@ -1035,7 +1035,7 @@ describe("ACP v2 Agent adapter", () => {
 		expect(appended.isOk()).toBe(true);
 		await first.close();
 
-		const resumed = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		const resumed = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
 		await resumed.handle({
 			jsonrpc: "2.0",
 			id: 3,
@@ -1073,12 +1073,12 @@ describe("ACP v2 Agent adapter", () => {
 	test("accepts a follow-up delivery on session/prompt while an Operation is live", async () => {
 		const persistence = new InMemoryProductSessionPersistence();
 		const driver = new ProjectionDriver();
-		const host = createRuntimeHost({
+		const host = new RuntimeHost({
 			persistence,
 			operationDriver: driver,
 			createId: ids("session-1", "operation-1", "input-1", "entry-follow-1"),
 		});
-		const agent = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		const agent = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
 		await agent.handle({
 			jsonrpc: "2.0",
 			id: 1,
@@ -1116,12 +1116,12 @@ describe("ACP v2 Agent adapter", () => {
 	test("session/navigate forks the current branch and resume replays only that branch", async () => {
 		const persistence = new InMemoryProductSessionPersistence();
 		const driver = new ProjectionDriver();
-		const host = createRuntimeHost({
+		const host = new RuntimeHost({
 			persistence,
 			operationDriver: driver,
 			createId: ids("session-1", "operation-1", "branch-1"),
 		});
-		const agent = createAcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		const agent = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
 		await agent.handle({
 			jsonrpc: "2.0",
 			id: 1,

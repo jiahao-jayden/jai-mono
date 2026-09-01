@@ -13,12 +13,11 @@ export {
 	type MutableAgentState,
 } from "./agent-state";
 export {
-	createManualEffectGate,
 	type EffectGate,
 	type EffectGateAction,
 	EffectGateInterrupted,
 	isEffectGateInterrupted,
-	type ManualEffectGate,
+	ManualEffectGate,
 } from "./effect-gate";
 export type { Session, ToolInfo } from "./session";
 export type {

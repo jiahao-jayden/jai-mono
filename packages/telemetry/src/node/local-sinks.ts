@@ -23,11 +23,7 @@ export function createJsonlStderrTelemetrySink(output: TelemetryTextOutput): Tel
 }
 
 /** 写入可删除的 JSONL 诊断文件；它不读取、不恢复，也不拥有领域事实。 */
-export function createJsonlFileTelemetrySink(options: JsonlFileTelemetrySinkOptions): TelemetrySink {
-	return new JsonlFileTelemetrySink(options);
-}
-
-class JsonlFileTelemetrySink implements TelemetrySink {
+export class JsonlFileTelemetrySink implements TelemetrySink {
 	#writeTail: Promise<void> = Promise.resolve();
 
 	constructor(private readonly options: JsonlFileTelemetrySinkOptions) {

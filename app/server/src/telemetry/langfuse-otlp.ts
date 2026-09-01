@@ -18,11 +18,6 @@ export interface LangfuseOtlpTelemetryExporterStats {
 	readonly queued: number;
 }
 
-export interface LangfuseOtlpTelemetrySink extends TelemetrySink {
-	close(): Promise<void>;
-	readonly stats: LangfuseOtlpTelemetryExporterStats;
-}
-
 export interface LangfuseOtlpTelemetrySinkOptions {
 	readonly endpoint: string;
 	readonly maxBatchSize?: number;
@@ -35,14 +30,6 @@ export interface LangfuseOtlpTelemetrySinkOptions {
 	readonly exporter?: SpanExporter;
 }
 
-/**
- * 把已完成且已投影的 Jai span 发送到 OTLP/HTTP。调用方从不等待网络，失败与满队列
- * 都只反映在 `stats`，不会进入 Agent 的 Result 或控制流。
- */
-export function createLangfuseOtlpTelemetrySink(options: LangfuseOtlpTelemetrySinkOptions): LangfuseOtlpTelemetrySink {
-	return new DefaultLangfuseOtlpTelemetrySink(resolveOptions(options));
-}
-
 interface ResolvedLangfuseOtlpTelemetrySinkOptions {
 	readonly endpoint: string;
 	readonly exporter: SpanExporter;
@@ -51,21 +38,28 @@ interface ResolvedLangfuseOtlpTelemetrySinkOptions {
 	readonly shutdownTimeoutMs: number;
 }
 
-class DefaultLangfuseOtlpTelemetrySink implements LangfuseOtlpTelemetrySink {
+/**
+ * 把已完成且已投影的 Jai span 发送到 OTLP/HTTP。调用方从不等待网络，失败与满队列
+ * 都只反映在 `stats`，不会进入 Agent 的 Result 或控制流。
+ */
+export class LangfuseOtlpTelemetrySink implements TelemetrySink {
 	readonly #queue: ReadableSpan[] = [];
 	readonly #stats = { dropped: 0, exported: 0, failed: 0 };
+	readonly #options: ResolvedLangfuseOtlpTelemetrySinkOptions;
 	#closed = false;
 	#closePromise?: Promise<void>;
 	#draining?: Promise<void>;
 
-	constructor(private readonly options: ResolvedLangfuseOtlpTelemetrySinkOptions) {}
+	constructor(options: LangfuseOtlpTelemetrySinkOptions) {
+		this.#options = resolveOptions(options);
+	}
 
 	get stats(): LangfuseOtlpTelemetryExporterStats {
 		return { ...this.#stats, queued: this.#queue.length };
 	}
 
 	record(record: TelemetrySpanRecord): void {
-		if (this.#closed || this.#queue.length >= this.options.maxQueueSize) {
+		if (this.#closed || this.#queue.length >= this.#options.maxQueueSize) {
 			this.#stats.dropped += 1;
 			return;
 		}
@@ -90,12 +84,12 @@ class DefaultLangfuseOtlpTelemetrySink implements LangfuseOtlpTelemetrySink {
 		this.#closed = true;
 		const drain = this.#draining;
 		if (drain) {
-			const drained = await waitWithin(drain, this.options.shutdownTimeoutMs);
+			const drained = await waitWithin(drain, this.#options.shutdownTimeoutMs);
 			if (!drained) this.#discardQueuedSpans();
 		}
 		await waitWithin(
-			Promise.resolve().then(() => this.options.exporter.shutdown()),
-			this.options.shutdownTimeoutMs,
+			Promise.resolve().then(() => this.#options.exporter.shutdown()),
+			this.#options.shutdownTimeoutMs,
 		);
 	}
 
@@ -113,8 +107,8 @@ class DefaultLangfuseOtlpTelemetrySink implements LangfuseOtlpTelemetrySink {
 
 	async #drain(): Promise<void> {
 		while (this.#queue.length > 0) {
-			const batch = this.#queue.splice(0, this.options.maxBatchSize);
-			const result = await exportBatch(this.options.exporter, batch);
+			const batch = this.#queue.splice(0, this.#options.maxBatchSize);
+			const result = await exportBatch(this.#options.exporter, batch);
 			if (result) {
 				this.#stats.exported += batch.length;
 			} else {

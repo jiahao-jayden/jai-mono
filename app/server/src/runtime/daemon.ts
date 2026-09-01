@@ -1,9 +1,9 @@
 import type { TelemetryContext } from "@jai/telemetry";
 import { Result, type Result as ResultType } from "better-result";
-import { createCodingAgentOperationDriver, createRuntimeConnectorAgentAssembly } from "../agents";
+import { CodingAgentOperationDriver, createRuntimeConnectorAgentAssembly } from "../agents";
 import { RuntimeOperationOpenFailed } from "../operations";
 import type { AcpImplementationInfo } from "../protocol/acp-v2";
-import { createDesktopLocalRuntimeCapabilitySource, type RuntimeCapabilitySource } from "../runtime-capabilities";
+import { DesktopLocalRuntimeCapabilitySource, type RuntimeCapabilitySource } from "../runtime-capabilities";
 import { RuntimeHostConfigurationInvalid } from "./configuration";
 import { resolveJaiDataDirectory } from "./paths";
 import { type JaiRuntimeServer, type JaiRuntimeServerOpenFailed, openJaiRuntimeServer } from "./server";
@@ -36,7 +36,7 @@ export async function openConfiguredRuntimeHost(
 		createOperationDriver: ({ agentSettings, workspaceTrust, telemetry }) => {
 			const capabilitySource =
 				options.capabilitySource ??
-				createDesktopLocalRuntimeCapabilitySource({
+				new DesktopLocalRuntimeCapabilitySource({
 					dataDirectory,
 					workspaceTrust,
 					...(options.homeDirectory === undefined ? {} : { homeDirectory: options.homeDirectory }),
@@ -58,7 +58,7 @@ export async function openConfiguredRuntimeHost(
 			}
 
 			return Result.ok(
-				createCodingAgentOperationDriver({
+				new CodingAgentOperationDriver({
 					resolveOptions: async (input) => {
 						const current = agentSettings.resolveOptions(input.runtimeConfiguration.model);
 						if (current.isErr()) {

@@ -13,15 +13,7 @@ const methodPrefix = "jai/desktop-catalog/";
  * Private, local-only JSON-RPC projection for Desktop Catalog storage. It is
  * intentionally separate from ACP: ACP remains the public Agent protocol.
  */
-export interface DesktopCatalogControl {
-	handle(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[] | undefined>;
-}
-
-export function createDesktopCatalogControl(catalog: DesktopCatalogAccess): DesktopCatalogControl {
-	return new DefaultDesktopCatalogControl(catalog);
-}
-
-class DefaultDesktopCatalogControl implements DesktopCatalogControl {
+export class DesktopCatalogControl {
 	constructor(private readonly catalog: DesktopCatalogAccess) {}
 
 	async handle(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[] | undefined> {

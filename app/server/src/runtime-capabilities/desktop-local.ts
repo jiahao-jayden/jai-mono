@@ -21,13 +21,7 @@ export interface DesktopLocalRuntimeCapabilitySourceOptions {
 }
 
 /** Selects Desktop's local JSON, Skills, Agent Plugins, and official MCP for one Operation. */
-export function createDesktopLocalRuntimeCapabilitySource(
-	options: DesktopLocalRuntimeCapabilitySourceOptions,
-): RuntimeCapabilitySource {
-	return new DesktopLocalRuntimeCapabilitySource(options);
-}
-
-class DesktopLocalRuntimeCapabilitySource implements RuntimeCapabilitySource {
+export class DesktopLocalRuntimeCapabilitySource implements RuntimeCapabilitySource {
 	readonly #homeDirectory: string;
 
 	constructor(private readonly options: DesktopLocalRuntimeCapabilitySourceOptions) {

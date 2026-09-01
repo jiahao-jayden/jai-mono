@@ -8,14 +8,14 @@ import { acquireLocalRuntimeOwner, type LocalRuntimeOwner, type RuntimeHost } fr
 import type { RuntimeTelemetryController } from "../../telemetry";
 import type { SqliteWorkspaceTrust } from "../../workspaces";
 import {
-	createDesktopCatalogControl,
 	type DesktopCatalogAccess,
+	DesktopCatalogControl,
 	type LocalDesktopCatalogControlServer,
 	localDesktopCatalogEndpointFor,
 	openLocalDesktopCatalogControlServer,
 } from "../desktop-catalog";
 import {
-	createDesktopConfigurationControl,
+	DesktopConfigurationControl,
 	type LocalDesktopConfigurationControlServer,
 	localDesktopConfigurationEndpointFor,
 	openLocalDesktopConfigurationControlServer,
@@ -105,7 +105,7 @@ export async function openLocalRuntimeHost(
 		if (options.desktopCatalog && desktopCatalogEndpoint) {
 			const openedCatalog = await openLocalDesktopCatalogControlServer({
 				endpoint: desktopCatalogEndpoint,
-				control: createDesktopCatalogControl(options.desktopCatalog),
+				control: new DesktopCatalogControl(options.desktopCatalog),
 			});
 			if (openedCatalog.isErr()) throw openedCatalog.error;
 			desktopCatalogTransport = openedCatalog.value;
@@ -113,7 +113,7 @@ export async function openLocalRuntimeHost(
 		if (options.desktopConfiguration && desktopConfigurationEndpoint) {
 			const openedConfiguration = await openLocalDesktopConfigurationControlServer({
 				endpoint: desktopConfigurationEndpoint,
-				control: createDesktopConfigurationControl(
+				control: new DesktopConfigurationControl(
 					options.desktopConfiguration,
 					options.desktopConnectorOAuth,
 					options.desktopModelCatalog,

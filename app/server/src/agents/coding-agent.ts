@@ -3,11 +3,10 @@ import {
 	type CodingAgentCreateOptions,
 	type CodingAgentEvent,
 	type CodingAgentMessage,
-	type CodingAgentTelemetryObserver,
+	CodingAgentTelemetryObserver,
 	type CodingExtensionApprovalDecision,
 	type CodingExtensionRuntimeAdapter,
 	createCodingAgent,
-	createCodingAgentTelemetryObserver,
 	type JsonObject,
 	type JsonValue,
 } from "@jai/coding-agent";
@@ -52,11 +51,7 @@ export interface CodingAgentOperationDriverOptions {
  * The SDK receives a generic SessionStore and EffectBoundary, never SQLite,
  * ACP, $JAI_HOME, or Desktop/CLI product configuration.
  */
-export function createCodingAgentOperationDriver(options: CodingAgentOperationDriverOptions): RuntimeOperationDriver {
-	return new DefaultCodingAgentOperationDriver(options);
-}
-
-class DefaultCodingAgentOperationDriver implements RuntimeOperationDriver {
+export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 	readonly #telemetry: TelemetryContext;
 
 	constructor(private readonly options: CodingAgentOperationDriverOptions) {
@@ -85,7 +80,7 @@ class DefaultCodingAgentOperationDriver implements RuntimeOperationDriver {
 		try {
 			const configured = await this.#resolveOptions(input);
 			if (configured.isErr()) return Result.err(configured.error);
-			const telemetryObserver = createCodingAgentTelemetryObserver({
+			const telemetryObserver = new CodingAgentTelemetryObserver({
 				telemetry: this.#telemetry,
 				operationId: input.operationId,
 				sessionId: input.sessionId,

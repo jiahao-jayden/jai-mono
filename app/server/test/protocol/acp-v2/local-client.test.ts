@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openLocalAcpV2Client, openLocalAcpV2Server } from "../../../src/protocol/acp-v2";
-import { createRuntimeHost } from "../../../src/runtime";
+import { RuntimeHost } from "../../../src/runtime";
 import { InMemoryProductSessionPersistence } from "../../../src/sessions";
 
 describe("ACP v2 local client", () => {
@@ -12,7 +12,7 @@ describe("ACP v2 local client", () => {
 		const endpoint = join(directory, "runtime.sock");
 		const server = await openLocalAcpV2Server({
 			endpoint,
-			host: createRuntimeHost({
+			host: new RuntimeHost({
 				persistence: new InMemoryProductSessionPersistence(),
 				createId: (() => {
 					const ids = ["session-1", "operation-1"];

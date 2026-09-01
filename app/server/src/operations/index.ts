@@ -1,5 +1,8 @@
-export type { OperationEffectBoundary, OperationEffectBoundaryOptions, OperationEffectEvent } from "./effect-boundary";
-export { createOperationEffectBoundary } from "./effect-boundary";
+export {
+	OperationEffectBoundary,
+	type OperationEffectBoundaryOptions,
+	type OperationEffectEvent,
+} from "./effect-boundary";
 export {
 	type RuntimeApprovalDecision,
 	type RuntimeApprovalHandler,

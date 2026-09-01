@@ -11,7 +11,7 @@ import {
   type RuntimeOperationOpenInput,
 } from "../../../src/operations";
 import { openLocalAcpV2Server } from "../../../src/protocol/acp-v2";
-import { createRuntimeHost } from "../../../src/runtime";
+import { RuntimeHost } from "../../../src/runtime";
 import { InMemoryProductSessionPersistence } from "../../../src/sessions";
 
 function ids(...values: string[]): () => string {
@@ -24,7 +24,7 @@ describe("ACP v2 local transport", () => {
     const directory = await mkdtemp(join(tmpdir(), "jai-acp-"));
     const endpoint = join(directory, "runtime.sock");
     const driver = new SocketProjectionDriver();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence: new InMemoryProductSessionPersistence(),
       operationDriver: driver,
       createId: ids("session-1", "operation-1"),
@@ -126,7 +126,7 @@ describe("ACP v2 local transport", () => {
     const endpoint = join(directory, "runtime.sock");
     const durablePersistence = new InMemoryProductSessionPersistence();
     const driver = new SocketProjectionDriver();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence: durablePersistence,
       createEphemeralPersistence: () => new InMemoryProductSessionPersistence(),
       operationDriver: driver,
@@ -201,7 +201,7 @@ describe("ACP v2 local transport", () => {
     const driver = new SocketProjectionDriver();
     const opened = await openLocalAcpV2Server({
       endpoint,
-      host: createRuntimeHost({
+      host: new RuntimeHost({
         persistence,
         operationDriver: driver,
         createId: ids("session-1", "operation-1"),
@@ -297,7 +297,7 @@ describe("ACP v2 local transport", () => {
     const directory = await mkdtemp(join(tmpdir(), "jai-acp-reverse-"));
     const endpoint = join(directory, "runtime.sock");
     const driver = new SocketProjectionDriver();
-    const host = createRuntimeHost({
+    const host = new RuntimeHost({
       persistence: new InMemoryProductSessionPersistence(),
       operationDriver: driver,
       createId: ids("session-1", "operation-1"),

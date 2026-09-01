@@ -1,6 +1,6 @@
 # 05: 残留短封装清扫
 
-要先完成:04 · 状态:⬜
+要先完成:04 · 状态:✅
 
 ## 交付什么
 
@@ -62,12 +62,29 @@
 
 ## 决策记录
 
-<!-- 只记录这项工作实施时出现的局部、非显然选择；改变整套方案时回到 plan.md。-->
+候选裁定（用抽取规则，不按行数）：
+
+- 删 `findDesktopConnectorOAuthApplication`（`app/desktop/electron/config/connector.ts`）。它整段 `return findConnectorOAuthApplication(connectorId)`，同签名、返回原始 SDK 类型、无投影、无分支/约束/生命周期。虽有 4 处调用（config `startConnectorOAuth` / `disconnectConnectorOAuth`、oauth manager `start` / `disconnect`），但没有任何被复用的逻辑——可复用单元是 `@jai/connector` 的 `findConnectorOAuthApplication` 本身，这层只多了个 Desktop 前缀，删除不损失复用、约束或可读性。4 处调用点已改为直接从 `@jai/connector` 导入 `findConnectorOAuthApplication`；`config/connector.ts` 顺带移除已无用的 `ConnectorOAuthApplicationDefinition` 类型导入。
+- 留 `createDesktopCommandCatalog` + `DesktopCommandCatalog`（`app/desktop/electron/commands/catalog.ts`）。它是对 `@jai/extension/skills` 的 `discoverSkillsCommands` 的只读适配器：绑定 `homeDirectory` 默认值，暴露一个被 `DesktopRuntime.commands` 消费的稳定契约（runtime 装配注入，renderer 经 RPC 读取）。属于「adapter 依赖 contract」而非空 `create → new DefaultXxx` 模式，抽取规则明确保护适配器与协议边界，保留。
+
+审查后留下的短函数及所属规则类别：
+
+- `config/connector.ts` 的 `projectRuntimeConnectorConfig` / `toRuntimeConnector` / `validateConnectorConfigInput` 等：错误 DTO 投影与领域校验（规则「不按行数机械内联…错误 DTO 投影、领域校验」）。
+- `runtime.ts` 里各 `create*Service`、`createBroadcaster`、`createAttachmentRegistry`、`createOpenWithService`：真正在装配、绑定宿主 I/O 的入口（plan「明确不改的 `create*`」）。
+- `oauth/manager.ts` 的 `authorizationState` / `callbackState`：协议字段解析。
 
 ## 遗留问题
 
-<!-- 发现但本次不做的 -->
+- Desktop 测试 `createDesktopRouter — 输入校验 > locale 只接受受限偏好并投影安全快照` 失败。已 stash 本项三处改动在干净树上复跑，失败依旧存在，属改动前既有问题，与本项无关，本次不修。
 
 ## 交接说明
 
-<!-- 完成或暂停时填：做到哪里、下一项不要碰什么。写给下次继续工作的人看，要具体。 -->
+sweep-thin-wrappers 五项全部完成。空工厂、`Default` 戏法、残留转发都已清掉，全库搜索已删符号（含旧名 `createOtlpTelemetrySink` / `DefaultOtlpTelemetrySink` 及第 4 项所有 `Default*` / `create*`）在生产代码与测试中零命中，只余 JN 文档内的记录。本项只动了 Electron 主进程三处 config/oauth 文件，无 JSX/UI，故不涉及原生 `<button>` 或图标库引用检查。下一项若继续，注意 `createDesktopCommandCatalog` 是有意保留的适配器，不要当空工厂删。
+
+## 完成前检查结果
+
+- [x] 全库搜索已删空工厂 / `Default*` / `findDesktopConnectorOAuthApplication`：生产代码与测试零命中（仅 JN 文档保留记录）
+- [x] 交接说明已列删除函数与保留短函数所属规则类别
+- [x] `cd app/desktop && bun run typecheck` → 通过（exit 0）
+- [x] `cd app/desktop && bun test` → 133 pass / 1 fail，唯一失败为既有的 locale router 测试（stash 后干净树复跑仍失败，非本项引入）；无新增原生 button / 图标库引用（未改 UI）
+- [x] `bun run lint` → 0 error（修复本项导入引入的格式问题），11 条既有 warning 未动

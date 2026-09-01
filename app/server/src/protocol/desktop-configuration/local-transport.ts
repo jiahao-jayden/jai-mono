@@ -11,11 +11,6 @@ export class DesktopConfigurationControlListenFailed extends TaggedError(
 	readonly cause?: unknown;
 }> {}
 
-export interface LocalDesktopConfigurationControlServer {
-	readonly endpoint: string;
-	close(): Promise<void>;
-}
-
 /** Private local JSON-RPC transport for Server-owned product configuration. */
 export async function openLocalDesktopConfigurationControlServer(input: {
 	readonly endpoint: string;
@@ -29,7 +24,7 @@ export async function openLocalDesktopConfigurationControlServer(input: {
 	});
 	try {
 		await listen(server, input.endpoint);
-		return Result.ok(new DefaultLocalDesktopConfigurationControlServer(input.endpoint, server, sockets));
+		return Result.ok(new LocalDesktopConfigurationControlServer(input.endpoint, server, sockets));
 	} catch (cause) {
 		server.close();
 		return Result.err(
@@ -42,7 +37,7 @@ export async function openLocalDesktopConfigurationControlServer(input: {
 	}
 }
 
-class DefaultLocalDesktopConfigurationControlServer implements LocalDesktopConfigurationControlServer {
+export class LocalDesktopConfigurationControlServer {
 	#closed = false;
 
 	constructor(

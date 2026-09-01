@@ -7,7 +7,7 @@ import {
 	type TelemetrySink,
 	type TelemetrySpanRecord,
 } from "../src";
-import { createJsonlFileTelemetrySink, createJsonlStderrTelemetrySink } from "../src/node";
+import { createJsonlStderrTelemetrySink, JsonlFileTelemetrySink } from "../src/node";
 
 const roots: string[] = [];
 
@@ -20,7 +20,7 @@ describe("Node telemetry sinks", () => {
 		const root = await temporaryDirectory();
 		const path = join(root, "telemetry.jsonl");
 		const telemetry = createTelemetryContext({
-			sinks: [createJsonlFileTelemetrySink({ path, maxBytes: 4_096, maxFiles: 2 })],
+			sinks: [new JsonlFileTelemetrySink({ path, maxBytes: 4_096, maxFiles: 2 })],
 		});
 		const run = telemetry.startSpan({ name: "jai.run", attributes: { operationId: "operation-1", runId: "operation-1" } });
 		const turn = telemetry.startSpan({ name: "jai.turn", parent: run, attributes: { turnId: "operation-1:turn:1" } });
@@ -65,7 +65,7 @@ describe("Node telemetry sinks", () => {
 	test("按显式大小上限轮转，并只保留配置数量的旧文件", async () => {
 		const root = await temporaryDirectory();
 		const path = join(root, "telemetry.jsonl");
-		const sink = createJsonlFileTelemetrySink({ path, maxBytes: 240, maxFiles: 2 });
+		const sink = new JsonlFileTelemetrySink({ path, maxBytes: 240, maxFiles: 2 });
 
 		for (let index = 1; index <= 5; index += 1) {
 			await sink.record(record(`run-${index}`));
@@ -88,7 +88,7 @@ describe("Node telemetry sinks", () => {
 			},
 		};
 		const telemetry = createTelemetryContext({
-			sinks: [createJsonlFileTelemetrySink({ path: root, maxBytes: 512, maxFiles: 1 }), receivingSink],
+			sinks: [new JsonlFileTelemetrySink({ path: root, maxBytes: 512, maxFiles: 1 }), receivingSink],
 		});
 		const run = telemetry.startSpan({ name: "jai.run", attributes: { operationId: "operation-1", runId: "operation-1" } });
 
