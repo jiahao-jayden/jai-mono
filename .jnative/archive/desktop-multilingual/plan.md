@@ -25,7 +25,7 @@ Desktop 当前以硬编码文案为主，中文与英文混排，日期/数字�
 
 ## 外部产品或规范的约定
 
-- **FormatJS/react-intl 10.1.25：**采用官方 `IntlProvider`、ICU 消息、日期/数字/相对时间 API；开发期使用 `@formatjs/cli` 6.16.22 提取消息。官方证据与版本锚点见[框架调研](../research/desktop-i18n-framework.md)。
+- **FormatJS/react-intl 10.1.25：**采用官方 `IntlProvider`、ICU 消息、日期/数字/相对时间 API；开发期使用 `@formatjs/cli` 6.16.22 提取消息。官方证据与版本锚点见[框架调研](../../research/desktop-i18n-framework.md)。
 - **BCP-47：**现有 Provider `Response language` 继续按已有规则使用 BCP-47 字符串；Desktop UI Locale 只接受受限的 `system`、`en`、`zh-CN`，不扩大 Provider 配置的自由文本语义。
 - **系统 locale：**首发只将系统 locale 解析到 `en` 或 `zh-CN`；其他系统语言回退英文。这个回退是首选语言解析规则，不是旧数据兼容层。
 
@@ -34,10 +34,10 @@ Desktop 当前以硬编码文案为主，中文与英文混排，日期/数字�
 | 维度 | 结论 | 依据 |
 |---|---|---|
 | 长期保存的数据与兼容 | 已确认选择：新增 Desktop UI Locale 偏好，Desktop 本地偏好存储维护；缺省值跟随系统；不迁移、不改写现有 Provider language。 | 需求选择；`AGENTS.md` 事实归属规则；当前 theme 的 Desktop 本地存储模式。 |
-| 外部产品或规范的约定 | 已确认选择：采用 FormatJS/react-intl 官方 React/ICU/Intl/catalog 工作流，不复制外部产品文案。 | [框架调研](../research/desktop-i18n-framework.md)。 |
+| 外部产品或规范的约定 | 已确认选择：采用 FormatJS/react-intl 官方 React/ICU/Intl/catalog 工作流，不复制外部产品文案。 | [框架调研](../../research/desktop-i18n-framework.md)。 |
 | 用户和调用方看到的行为 | 已确认选择：中英文完整切换，设置即时生效；UI locale 与 Agent Response language 独立。 | 用户已确认 Q1–Q5；当前 Provider 配置边界。 |
 | 权限与安全 | 已确认选择：locale 偏好不进入 journal、project 配置或 Agent runtime；RPC/错误只传安全白名单 DTO。 | `AGENTS.md` 错误处理、事实归属和 renderer 依赖规则。 |
-| 运行环境和依赖 | 已确认选择：只为 Desktop 增加 `react-intl` runtime 与 `@formatjs/cli` 开发依赖；不引入 detector、backend、Vite plugin 或第二个 i18n 框架。以 Electron `42.7.0` 为当前事实，目标平台做 `Intl` 冒烟验证。 | `app/desktop/package.json`；[框架调研](../research/desktop-i18n-framework.md)。 |
+| 运行环境和依赖 | 已确认选择：只为 Desktop 增加 `react-intl` runtime 与 `@formatjs/cli` 开发依赖；不引入 detector、backend、Vite plugin 或第二个 i18n 框架。以 Electron `42.7.0` 为当前事实，目标平台做 `Intl` 冒烟验证。 | `app/desktop/package.json`；[框架调研](../../research/desktop-i18n-framework.md)。 |
 | 同时操作和失败重试 | 已确认选择：locale 切换是单值偏好写入；保存失败时保持当前已激活 locale，并显示本地化错误；重复选择同一值安全无副作用。 | 单一 Desktop 偏好事实，无跨领域写入。 |
 
 ## 已确认的关键选择

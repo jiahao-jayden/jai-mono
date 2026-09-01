@@ -51,7 +51,7 @@
 - 默认零内容出境，由 01 的类型强制。见 plan.md「需要先想清的事」的权限与安全一行。
 - 默认不开启远端上传；未配置时 exporter 不存在。
 - 观测失败只影响观测。见 plan.md「方案」结尾的失败隔离不变量。
-- Langfuse 的 ingestion 约定严格遵循，细节见 plan.md「外部产品或规范的约定」与[调研笔记](../research/langfuse-otlp-ingestion.md)。
+- Langfuse 的 ingestion 约定严格遵循，细节见 plan.md「外部产品或规范的约定」与[调研笔记](../../../research/langfuse-otlp-ingestion.md)。
 
 ## 开始前确认
 

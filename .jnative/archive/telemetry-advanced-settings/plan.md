@@ -22,8 +22,8 @@ JAI 已有两个正确但不同的配置边界：Coding Agent file configuration
 
 ## 外部产品或规范的约定
 
-- **Langfuse:** 继续使用现有 `@jai/telemetry-otlp` OTLP HTTP/protobuf adapter；endpoint 仍是 Langfuse 的 `/api/public/otel` base endpoint，key pair 走 HTTP Basic Auth，header `x-langfuse-ingestion-version: 4` 由 adapter 发送。配置 UI 不改变 span 映射、内容投影或认证协议。详见[现有调研](../research/langfuse-otlp-ingestion.md)。
-- **Pi:** 只参考用户从 settings opt-in telemetry 的产品形状；JAI 不引入 Pi 的 `sensitive` 标记式治理。详见[现有调研](../research/agent-logging-observability-evidence.md)。
+- **Langfuse:** 继续使用现有 `@jai/telemetry-otlp` OTLP HTTP/protobuf adapter；endpoint 仍是 Langfuse 的 `/api/public/otel` base endpoint，key pair 走 HTTP Basic Auth，header `x-langfuse-ingestion-version: 4` 由 adapter 发送。配置 UI 不改变 span 映射、内容投影或认证协议。详见[现有调研](../../research/langfuse-otlp-ingestion.md)。
+- **Pi:** 只参考用户从 settings opt-in telemetry 的产品形状；JAI 不引入 Pi 的 `sensitive` 标记式治理。详见[现有调研](../../research/agent-logging-observability-evidence.md)。
 
 ## 需要先想清的事
 

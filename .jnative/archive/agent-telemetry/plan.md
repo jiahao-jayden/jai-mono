@@ -46,11 +46,11 @@ JAI 现在没有任何可用的运行观测能力。提交 `9858690` 移除 Agen
 
 ## 外部产品或规范的约定
 
-- **Langfuse —— 严格遵循其 ingestion 约定**（[调研笔记](../research/langfuse-otlp-ingestion.md)，核验日期 2026-08-31）。已确认接收通用 OTLP，不必用专有 SDK。硬约束：只支持 OTLP over HTTP（HTTP/JSON 与 HTTP/protobuf），**gRPC 明确不支持**；认证为 HTTP Basic，即 base64(`public_key:secret_key`)；`x-langfuse-ingestion-version: 4` 影响可见延迟（缺失最多滞后 10 分钟），但不会把不完整的 span 变成 v4-ready。映射规则：只有带 `gen_ai.*` 的 span 被识别为 generation 并获得 model/token/cost 视图；未映射属性落入**不可过滤**的 `metadata.attributes`，需要过滤的字段必须使用 `langfuse.trace.metadata.*` / `langfuse.observation.metadata.*` 前缀；trace 级属性必须复制到**每个** span 才能按 observation 过滤。OTel attribute 只支持标量与标量数组，结构化值需序列化为 JSON 字符串。ingestion 丢弃路径段含 `__proto__`/`constructor`/`prototype` 的 key。自托管端点 `http://localhost:3000/api/public/otel` 需 >= v3.22.0。已下线的 `POST /api/public/ingestion` 不使用。
+- **Langfuse —— 严格遵循其 ingestion 约定**（[调研笔记](../../research/langfuse-otlp-ingestion.md)，核验日期 2026-08-31）。已确认接收通用 OTLP，不必用专有 SDK。硬约束：只支持 OTLP over HTTP（HTTP/JSON 与 HTTP/protobuf），**gRPC 明确不支持**；认证为 HTTP Basic，即 base64(`public_key:secret_key`)；`x-langfuse-ingestion-version: 4` 影响可见延迟（缺失最多滞后 10 分钟），但不会把不完整的 span 变成 v4-ready。映射规则：只有带 `gen_ai.*` 的 span 被识别为 generation 并获得 model/token/cost 视图；未映射属性落入**不可过滤**的 `metadata.attributes`，需要过滤的字段必须使用 `langfuse.trace.metadata.*` / `langfuse.observation.metadata.*` 前缀；trace 级属性必须复制到**每个** span 才能按 observation 过滤。OTel attribute 只支持标量与标量数组，结构化值需序列化为 JSON 字符串。ingestion 丢弃路径段含 `__proto__`/`constructor`/`prototype` 的 key。自托管端点 `http://localhost:3000/api/public/otel` 需 >= v3.22.0。已下线的 `POST /api/public/ingestion` 不使用。
 
 - **OpenTelemetry —— 只作为导出映射，不作为领域模型。** GenAI 语义约定仍处于 Development 阶段，故内部使用稳定的 `jai.*` 名称，由 adapter 维护到 `gen_ai.*` 的映射版本。允许不同：JAI 的 span 层级与 outcome 词汇按自身领域定义，不迁就 OTel 的 `invoke_agent` / `execute_tool` 命名。
 
-- **Pi（`badlogic/pi-mono`）—— 只借鉴抽象的形状，不追求实现或协议兼容**（[调研笔记](../research/agent-logging-observability-evidence.md)）。借鉴：最小 port、`SpanStatus` 装不下 stack、span 定义带 parent 约束、错误只记低基数 `error.type`、in-memory 参考实现、两层 containment。**明确不照抄**：其 `sensitive` 标志无 adapter 执行脱敏。
+- **Pi（`badlogic/pi-mono`）—— 只借鉴抽象的形状，不追求实现或协议兼容**（[调研笔记](../../research/agent-logging-observability-evidence.md)）。借鉴：最小 port、`SpanStatus` 装不下 stack、span 定义带 parent 约束、错误只记低基数 `error.type`、in-memory 参考实现、两层 containment。**明确不照抄**：其 `sensitive` 标志无 adapter 执行脱敏。
 
 ## 需要先想清的事
 

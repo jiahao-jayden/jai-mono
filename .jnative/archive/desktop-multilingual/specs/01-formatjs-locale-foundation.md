@@ -24,7 +24,7 @@ Desktop 拥有一套可提取、可加载、可测试的英文/简体中文消�
 
 ## 需要遵守的整体选择
 
-- 使用 FormatJS/react-intl 10.1.25 与 `@formatjs/cli` 6.16.22 的官方 React/ICU/catalog 工作流，见[计划方案](../plan.md#方案)和[框架调研](../../research/desktop-i18n-framework.md)。
+- 使用 FormatJS/react-intl 10.1.25 与 `@formatjs/cli` 6.16.22 的官方 React/ICU/catalog 工作流，见[计划方案](../plan.md#方案)和[框架调研](../../../research/desktop-i18n-framework.md)。
 - UI Locale 偏好只由 Desktop 维护，和 Provider `Response language` 分离，见[计划关键选择](../plan.md#已确认的关键选择)。
 - 语言范围只包括 `en`、`zh-CN`，系统语言之外的首选值回退英文，见[外部约定](../plan.md#外部产品或规范的约定)。
 
