@@ -1,4 +1,3 @@
-import { getErrorMessage } from "@jai/common";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, animate, type MotionValue, motion, useMotionValue, useReducedMotion } from "motion/react";
 import {
@@ -10,8 +9,10 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { useIntl } from "react-intl";
 import { matchPath, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
 import { useChat } from "@/hooks/use-chat";
+import { desktopMessages } from "@/i18n/messages";
 import { desktop } from "@/lib/desktop";
 import {
 	desktopQueryClient,
@@ -60,6 +61,7 @@ const COLUMN_RESIZE_SPRING = {
 };
 
 export function AppShell() {
+	const intl = useIntl();
 	const location = useLocation();
 	const navigate = useNavigate();
 	const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -293,7 +295,9 @@ export function AppShell() {
 		},
 	});
 	const projectBusy = projectSelectionMutation.isPending;
-	const projectError = projectSelectionMutation.isError ? getErrorMessage(projectSelectionMutation.error) : undefined;
+	const projectError = projectSelectionMutation.isError
+		? intl.formatMessage(desktopMessages.projectsLoadError)
+		: undefined;
 	const chooseProject = async (candidate: DesktopProject) => {
 		if (projectBusy) return;
 		try {
@@ -351,16 +355,20 @@ export function AppShell() {
 		if (activeSessionId === sessionId) openNewChat();
 		void desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.recents });
 	};
-	const projectLoadErrorMessage = projectsQuery.isError ? getErrorMessage(projectsQuery.error) : undefined;
+	const projectLoadErrorMessage = projectsQuery.isError
+		? intl.formatMessage(desktopMessages.projectsLoadError)
+		: undefined;
 	const projectPageError = projectCreationMutation.isError
-		? getErrorMessage(projectCreationMutation.error)
+		? intl.formatMessage(desktopMessages.projectsLoadError)
 		: projectLoadErrorMessage;
-	const sessionLoadErrorMessage = sessionRecentsQuery.isError ? getErrorMessage(sessionRecentsQuery.error) : undefined;
+	const sessionLoadErrorMessage = sessionRecentsQuery.isError
+		? intl.formatMessage(desktopMessages.sidebarRecentsLoadError)
+		: undefined;
 	const pageProject = routeProjectId ? projects.find((candidate) => candidate.id === routeProjectId) : undefined;
 	const projectLoading = projectsQuery.isLoading || projectsQuery.isFetching;
 	const projectLoadError = projectsQuery.isError && projectsQuery.data === undefined;
 	const chatProjectError =
-		projectError || (projectsQuery.isError ? "Projects could not be loaded. Open the menu to retry." : undefined);
+		projectError || (projectsQuery.isError ? intl.formatMessage(desktopMessages.projectsLoadError) : undefined);
 
 	return (
 		<div
@@ -729,6 +737,7 @@ function ColumnResizeHandle({
 	readonly side: "left" | "right";
 	readonly position?: MotionValue<number>;
 }) {
+	const intl = useIntl();
 	const {
 		limits,
 		announcedWidth,
@@ -740,7 +749,10 @@ function ColumnResizeHandle({
 		onLostPointerCapture,
 		onKeyDown,
 	} = resize;
-	const label = side === "left" ? "调整侧边栏宽度" : "调整右侧面板宽度";
+	const label = intl.formatMessage(
+		side === "left" ? desktopMessages.appResizeSidebar : desktopMessages.appResizeRightPanel,
+	);
+	const valueText = intl.formatMessage(desktopMessages.appResizePixels, { count: announcedWidth });
 	const handleClassName = cn("group absolute top-0 bottom-0 z-20 w-6 cursor-col-resize touch-none outline-none", {
 		"left-0 -ml-3": side === "left",
 		"right-0 -mr-3": side === "right",
@@ -755,7 +767,7 @@ function ColumnResizeHandle({
 			aria-valuemin={Math.round(limits.min)}
 			aria-valuemax={Math.round(limits.max)}
 			aria-valuenow={announcedWidth}
-			aria-valuetext={`${announcedWidth} 像素`}
+			aria-valuetext={valueText}
 			tabIndex={0}
 			data-dragging={isDragging}
 			className={handleClassName}

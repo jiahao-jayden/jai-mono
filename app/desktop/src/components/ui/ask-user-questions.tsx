@@ -12,6 +12,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useIntl } from "react-intl";
 import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { CheckboxGroup as CheckboxGroupPrimitive } from "@base-ui/react/checkbox-group";
@@ -25,6 +26,7 @@ import { useIcon } from "@/lib/icon-context";
 import { useProximityHover } from "@/hooks/use-proximity-hover";
 import { useMergeSplitBlocks, SelectionBackgrounds } from "@/hooks/use-merge-split";
 import { Button } from "@/components/ui/button";
+import { desktopMessages } from "@/i18n/messages";
 
 export interface AskUserOption {
   id?: string;
@@ -134,12 +136,13 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
       onAnswersChange,
       onComplete,
       onSkip,
-      skipLabel = "Skip",
+      skipLabel,
       className,
       ...rest
     },
     ref
   ) {
+    const intl = useIntl();
     // ── Controlled / uncontrolled state ──────────────────────────
     const [internalIndex, setInternalIndex] = useState(defaultCurrentIndex);
     const isIndexControlled = controlledIndex !== undefined;
@@ -247,6 +250,11 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
       [currentAnswer]
     );
     const otherText = currentAnswer?.otherText ?? "";
+    const resolvedSkipLabel = skipLabel ?? intl.formatMessage(desktopMessages.questionsSkip);
+    const resolvedOtherPlaceholder = question?.otherPlaceholder ?? intl.formatMessage(desktopMessages.questionsOtherPlaceholder);
+    const resolvedOtherPlaceholderEllipsis = question?.otherPlaceholder ?? intl.formatMessage(desktopMessages.questionsOtherPlaceholderEllipsis);
+    const resolvedFreeTextPlaceholder = question?.freeTextPlaceholder ?? intl.formatMessage(desktopMessages.questionsFreeTextPlaceholder);
+    const resolvedNextLabel = question?.nextLabel ?? intl.formatMessage(safeIndex >= total - 1 ? desktopMessages.questionsFinish : desktopMessages.questionsContinue);
 
     const options = question?.options ?? [];
     const otherIndex = allowOther ? options.length : -1;
@@ -727,7 +735,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
           )}
           {...rest}
         >
-          <p className="text-[13px] text-muted-foreground">No questions.</p>
+          <p className="text-[13px] text-muted-foreground">{intl.formatMessage(desktopMessages.questionsNone)}</p>
         </div>
       );
     }
@@ -1150,7 +1158,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
             topAlign={isOtherMultiline}
             chipPosition={question.chipPosition ?? "right"}
             ariaLabel={
-              question.otherPlaceholder ?? "Describe in your own words"
+              resolvedOtherPlaceholder
             }
             showArrow={
               !isMulti &&
@@ -1177,11 +1185,10 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
                 rows={1}
                 value={otherText}
                 placeholder={
-                  question.otherPlaceholder ??
-                  "Describe in your own words…"
+                  resolvedOtherPlaceholderEllipsis
                 }
                 aria-label={
-                  question.otherPlaceholder ?? "Describe in your own words"
+                  resolvedOtherPlaceholder
                 }
                 onChange={(e) => handleOtherChange(e.target.value)}
                 onKeyDown={(e) => {
@@ -1340,7 +1347,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
                         ref={otherInputRef}
                         rows={1}
                         placeholder={
-                          question.freeTextPlaceholder ?? "Type your answer…"
+                          resolvedFreeTextPlaceholder
                         }
                         aria-labelledby={`${reactId}-${qId}-title`}
                         onKeyDown={(e) => {
@@ -1492,7 +1499,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
                           // mobile where it's hidden, tighten for the icon on ≥sm.
                           className="pr-3 sm:pr-[6px]"
                         >
-                          {skipLabel}
+                          {resolvedSkipLabel}
                         </Button>
                       </motion.div>
                     )}
@@ -1527,8 +1534,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
                           className="pr-3 sm:pr-[6px]"
                         >
                           <span className="inline-flex items-center gap-1.5">
-                            {question.nextLabel ??
-                              (safeIndex >= total - 1 ? "Finish" : "Continue")}
+                            {resolvedNextLabel}
                             {/* Shortcut hint — replaces the trailing arrow. Sits
                                 inside the button so it dims with the disabled
                                 state. ⌘↵ on macOS, ⌃↵ elsewhere. Desktop-only:

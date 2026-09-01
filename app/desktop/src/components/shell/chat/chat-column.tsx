@@ -1,4 +1,3 @@
-import { getErrorMessage } from "@jai/common";
 import { AnimatePresence, useReducedMotion } from "framer-motion";
 import {
 	type CSSProperties,
@@ -13,9 +12,11 @@ import {
 	useState,
 	type WheelEvent,
 } from "react";
+import { useIntl } from "react-intl";
 import { ThinkingOrb } from "thinking-orbs";
 import pandaLogo from "@/assets/icons/chat-area/logo.svg";
 import type { Chat } from "@/hooks/use-chat";
+import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type { QueuedMessage } from "@/stores/chat";
@@ -107,6 +108,7 @@ export function ChatColumn({
 	onRetryProjects,
 	onRenameSession,
 }: ChatColumnProps) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const FolderIcon = icons.folder;
 	const FolderOffIcon = icons["folder-off"];
@@ -138,7 +140,12 @@ export function ChatColumn({
 	});
 
 	const projectLabel =
-		project?.displayName ?? (projectLoading ? "Loading project…" : projectLoadError ? "Projects unavailable" : null);
+		project?.displayName ??
+		(projectLoading
+			? intl.formatMessage(desktopMessages.chatProjectLoading)
+			: projectLoadError
+				? intl.formatMessage(desktopMessages.chatProjectsUnavailable)
+				: null);
 
 	const drag = { WebkitAppRegion: "drag" } as CSSProperties;
 	const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
@@ -164,10 +171,10 @@ export function ChatColumn({
 
 		try {
 			await onRenameSession(session.id, title);
-		} catch (reason) {
+		} catch {
 			toast.add({
-				title: "无法重命名会话",
-				description: getErrorMessage(reason),
+				title: intl.formatMessage(desktopMessages.chatRenameFailed),
+				description: intl.formatMessage(desktopMessages.chatRenameFailed),
 				type: "error",
 			});
 		}
@@ -187,8 +194,8 @@ export function ChatColumn({
 								variant="ghost"
 								size="icon-sm"
 								onClick={onToggleSidebar}
-								aria-label="Show sidebar"
-								title="Show sidebar"
+								aria-label={intl.formatMessage(desktopMessages.chatShowSidebar)}
+								title={intl.formatMessage(desktopMessages.chatShowSidebar)}
 								className="text-muted-foreground"
 							>
 								<PanelLeftIcon size={16} />
@@ -224,7 +231,7 @@ export function ChatColumn({
 											cancelTitleEditing();
 										}
 									}}
-									aria-label="Session title"
+									aria-label={intl.formatMessage(desktopMessages.sessionTitle)}
 									maxLength={80}
 									className="h-7 min-w-0 max-w-64 flex-1 border-transparent bg-hover px-2 text-[15px] font-semibold"
 									style={noDrag}
@@ -241,8 +248,10 @@ export function ChatColumn({
 											startTitleEditing();
 										}
 									}}
-									aria-label={`Edit session title: ${session.title}`}
-									title="Double-click to rename"
+									aria-label={intl.formatMessage(desktopMessages.chatEditSessionTitle, {
+										title: session.title,
+									})}
+									title={intl.formatMessage(desktopMessages.chatRenameHint)}
 									contentClassName="min-w-0 max-w-full"
 									labelClassName="min-w-0 truncate text-left leading-6 ![text-box:normal]"
 									className="h-7 min-w-0 max-w-64 flex-1 justify-start px-1 text-[15px] font-semibold text-foreground"
@@ -263,8 +272,12 @@ export function ChatColumn({
 							onClick={onToggleArtifactPanel}
 							aria-expanded={artifactPanelOpen}
 							aria-controls="workspace-panel"
-							aria-label={artifactPanelOpen ? "Close workspace" : "Open workspace"}
-							title={artifactPanelOpen ? "Close workspace" : "Open workspace"}
+							aria-label={intl.formatMessage(
+								artifactPanelOpen ? desktopMessages.chatCloseWorkspace : desktopMessages.chatOpenWorkspace,
+							)}
+							title={intl.formatMessage(
+								artifactPanelOpen ? desktopMessages.chatCloseWorkspace : desktopMessages.chatOpenWorkspace,
+							)}
 							className="shrink-0 text-muted-foreground"
 						>
 							<PanelRightIcon size={16} />
@@ -287,10 +300,10 @@ export function ChatColumn({
 								draggable={false}
 							/>
 							<h1 className="font-serif text-[34px] tracking-[-0.025em] text-foreground">
-								{greeting()}, Jiahao
+								{intl.formatMessage(greetingMessage(), { name: "Jiahao" })}
 							</h1>
 							<p className="mt-2.5 text-[15px] text-muted-foreground">
-								Start a chat or hand a task to a local agent.
+								{intl.formatMessage(desktopMessages.chatNewDescription)}
 							</p>
 						</div>
 						<ChatComposer
@@ -345,7 +358,7 @@ export function ChatColumn({
 									{chat.isLoading ? <TranscriptLoading /> : null}
 									{!chat.isLoading && chat.messages.length === 0 ? (
 										<p className="py-16 text-center text-[13px] text-muted-foreground">
-											这个会话还没有消息。
+											{intl.formatMessage(desktopMessages.chatEmpty)}
 										</p>
 									) : null}
 									<TranscriptItems
@@ -357,7 +370,9 @@ export function ChatColumn({
 									{isAgentWorking ? (
 										<div className="flex items-center gap-2 px-1 py-1 text-muted-foreground" role="status">
 											<ThinkingOrb aria-hidden size={20} state="solving" />
-											<span className="shimmer-text text-[12px] font-medium">Agent 正在处理…</span>
+											<span className="shimmer-text text-[12px] font-medium">
+												{intl.formatMessage(desktopMessages.chatAgentWorking)}
+											</span>
 										</div>
 									) : null}
 									{transcriptScroll.tailSpace > 0 ? (
@@ -872,9 +887,9 @@ function scrollPromptIntoReadingPosition(
 	});
 }
 
-function greeting(): string {
+function greetingMessage() {
 	const hour = new Date().getHours();
-	if (hour < 12) return "Good morning";
-	if (hour < 18) return "Good afternoon";
-	return "Good evening";
+	if (hour < 12) return desktopMessages.chatMorning;
+	if (hour < 18) return desktopMessages.chatAfternoon;
+	return desktopMessages.chatEvening;
 }

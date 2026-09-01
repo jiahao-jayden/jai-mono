@@ -12,6 +12,8 @@ import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
 import { forwardRef, memo, type ReactNode, type SVGProps } from "react";
 import { motion, type HTMLMotionProps, useReducedMotion } from "framer-motion";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { defaultRemarkPlugins, Streamdown } from "streamdown";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
@@ -142,6 +144,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
     },
     ref
   ) => {
+    const intl = useIntl();
     const shape = useShape();
 		const FileIcon = useIcon("file-code");
 		const ImageIcon = useIcon("image");
@@ -157,7 +160,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
       <motion.div
         ref={ref}
         role="article"
-        aria-label={isUser ? "Your message" : "Assistant response"}
+        aria-label={intl.formatMessage(isUser ? desktopMessages.messageYour : desktopMessages.messageAssistant)}
         layout={shouldAnimate ? "position" : false}
         initial={shouldAnimate ? { opacity: 0, y: 8 } : false}
         animate={{ opacity: 1, y: 0 }}
@@ -240,7 +243,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
         )}
         {!isUser ? (
           <span className="sr-only" role="status">
-            {isStreaming ? "Assistant is responding" : "Assistant response complete"}
+            {intl.formatMessage(isStreaming ? desktopMessages.messageResponding : desktopMessages.messageComplete)}
           </span>
         ) : null}
         {(showTime || actions != null) && (

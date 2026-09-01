@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
+import { type IntlShape, useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { desktop } from "@/lib/desktop";
 import { desktopQueryKeys } from "@/lib/desktop-query";
 import { useIcon } from "@/lib/icon-context";
@@ -88,25 +90,31 @@ function ConnectorCatalogPage({
 	readonly onSelect: (connectorId: string) => void;
 	readonly onStartOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
 }) {
+	const intl = useIntl();
 	const [filter, setFilter] = useState<ConnectorFilter>("all");
 	const visibleConnectors = snapshot.connectors.filter((connector) => {
 		const connected = isConnectorConnected(connector, resolveConnectorValue(value, connector));
 		return filter === "all" || (filter === "connected" ? connected : !connected);
 	});
-	const emptyStateCopy = filter === "connected" ? "No connectors are connected yet." : "Every connector is set up.";
+	const emptyStateCopy =
+		filter === "connected"
+			? intl.formatMessage(desktopMessages.settingsNoConnectedConnectors)
+			: intl.formatMessage(desktopMessages.settingsEveryConnectorReady);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
 			<div className="px-6 pb-4 pt-6">
-				<h2 className="text-base font-semibold tracking-[-0.02em]">Connectors</h2>
+				<h2 className="text-base font-semibold tracking-[-0.02em]">
+					{intl.formatMessage(desktopMessages.settingsConnectors)}
+				</h2>
 			</div>
-			<nav className="flex gap-1 px-6" aria-label="Connector filters">
+			<nav className="flex gap-1 px-6" aria-label={intl.formatMessage(desktopMessages.settingsConnectorFilters)}>
 				{[
-					{ id: "all" as const, label: "All" },
-					{ id: "connected" as const, label: "Connected" },
+					{ id: "all" as const, label: intl.formatMessage(desktopMessages.settingsAll) },
+					{ id: "connected" as const, label: intl.formatMessage(desktopMessages.settingsConnected) },
 					{
 						id: "not-connected" as const,
-						label: "Not connected",
+						label: intl.formatMessage(desktopMessages.settingsNotConnected),
 					},
 				].map((item) => (
 					<Button
@@ -129,17 +137,20 @@ function ConnectorCatalogPage({
 
 			<div className="px-6 pb-8">
 				{visibleConnectors.length > 0 ? (
-					<table className="w-full table-fixed border-collapse" aria-label="Available connector apps">
+					<table
+						className="w-full table-fixed border-collapse"
+						aria-label={intl.formatMessage(desktopMessages.settingsConnectorApps)}
+					>
 						<thead>
 							<tr className="border-b border-border/55">
 								<th scope="col" className="w-[58%] py-4 text-left text-xs font-semibold text-foreground">
-									App
+									{intl.formatMessage(desktopMessages.settingsApp)}
 								</th>
 								<th scope="col" className="w-[22%] py-4 text-left text-xs font-semibold text-foreground">
-									Type
+									{intl.formatMessage(desktopMessages.settingsType)}
 								</th>
 								<th scope="col" className="w-[20%] py-4 text-center text-xs font-semibold text-foreground">
-									Status
+									{intl.formatMessage(desktopMessages.settingsStatus)}
 								</th>
 							</tr>
 						</thead>
@@ -177,8 +188,9 @@ function ConnectorTableRow({
 	readonly onSelect: () => void;
 	readonly onStartOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
 }) {
+	const intl = useIntl();
 	const CheckIcon = useIcon("check");
-	const authLabel = getAuthLabel(connector.authTypes);
+	const authLabel = getAuthLabel(connector.authTypes, intl);
 	const isOAuth = connector.authTypes.includes("oauth");
 	const [authorizing, setAuthorizing] = useState(false);
 	const [authorizationExpiresAt, setAuthorizationExpiresAt] = useState<number>();
@@ -192,9 +204,10 @@ function ConnectorTableRow({
 			if (event.connectorId !== connector.id) return;
 			setAuthorizing(false);
 			setAuthorizationExpiresAt(undefined);
-			if (event.type === "connector_oauth_failed") setOAuthError(event.message);
+			if (event.type === "connector_oauth_failed")
+				setOAuthError(intl.formatMessage(desktopMessages.settingsOAuthStartError));
 		});
-	}, [authorizing, connector.id]);
+	}, [authorizing, connector.id, intl.formatMessage]);
 
 	useEffect(() => {
 		if (!authorizing || authorizationExpiresAt === undefined) return;
@@ -202,12 +215,12 @@ function ConnectorTableRow({
 			() => {
 				setAuthorizing(false);
 				setAuthorizationExpiresAt(undefined);
-				setOAuthError("Authorization expired. Try again.");
+				setOAuthError(intl.formatMessage(desktopMessages.settingsAuthorizationExpired));
 			},
 			Math.max(0, authorizationExpiresAt - Date.now()),
 		);
 		return () => window.clearTimeout(timeout);
-	}, [authorizationExpiresAt, authorizing]);
+	}, [authorizationExpiresAt, authorizing, intl.formatMessage]);
 
 	const startOAuth = async () => {
 		setAuthorizing(true);
@@ -216,10 +229,10 @@ function ConnectorTableRow({
 		try {
 			const result = await onStartOAuth(connector.id);
 			setAuthorizationExpiresAt(result.expiresAt);
-		} catch (cause) {
+		} catch (_cause) {
 			setAuthorizing(false);
 			setAuthorizationExpiresAt(undefined);
-			setOAuthError(cause instanceof Error ? cause.message : "Unable to start OAuth authorization.");
+			setOAuthError(intl.formatMessage(desktopMessages.settingsOAuthStartError));
 		}
 	};
 
@@ -250,7 +263,7 @@ function ConnectorTableRow({
 				{connected ? (
 					<span className="inline-flex text-primary" role="status">
 						<CheckIcon size={18} strokeWidth={1.8} />
-						<span className="sr-only">Connected</span>
+						<span className="sr-only">{intl.formatMessage(desktopMessages.settingsConnectedStatus)}</span>
 					</span>
 				) : isOAuth ? (
 					<Button
@@ -258,13 +271,15 @@ function ConnectorTableRow({
 						variant="tertiary"
 						size="sm"
 						loading={authorizing}
-						title={oauthError}
+						title={oauthError ?? undefined}
 						onClick={(event) => {
 							event.stopPropagation();
 							void startOAuth();
 						}}
 					>
-						{oauthError ? "Retry" : "Connect"}
+						{intl.formatMessage(
+							oauthError ? desktopMessages.settingsRetryConnect : desktopMessages.settingsConnect,
+						)}
 					</Button>
 				) : (
 					<Button
@@ -276,7 +291,7 @@ function ConnectorTableRow({
 							onSelect();
 						}}
 					>
-						Configure
+						{intl.formatMessage(desktopMessages.settingsConfigure)}
 					</Button>
 				)}
 			</td>
@@ -303,6 +318,7 @@ function ConnectorDetailPage({
 	readonly onStartOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
 	readonly onDisconnectOAuth: (connectorId: string) => Promise<unknown>;
 }) {
+	const intl = useIntl();
 	const ArrowLeftIcon = useIcon("arrow-left");
 	const isOAuth = connector.authTypes.includes("oauth");
 	const connected = isOAuth ? connector.oauth?.connected === true : isConnectorConnected(connector, value);
@@ -325,9 +341,13 @@ function ConnectorDetailPage({
 			if (envelope.event.connectorId !== connector.id) return;
 			setAuthorizing(false);
 			setAuthorizationExpiresAt(undefined);
-			setOAuthError(envelope.event.type === "connector_oauth_failed" ? envelope.event.message : undefined);
+			setOAuthError(
+				envelope.event.type === "connector_oauth_failed"
+					? intl.formatMessage(desktopMessages.settingsOAuthStartError)
+					: undefined,
+			);
 		});
-	}, [connector.id]);
+	}, [connector.id, intl.formatMessage]);
 
 	useEffect(() => {
 		if (!authorizing || authorizationExpiresAt === undefined) return;
@@ -335,12 +355,12 @@ function ConnectorDetailPage({
 			() => {
 				setAuthorizing(false);
 				setAuthorizationExpiresAt(undefined);
-				setOAuthError("Authorization expired. Try again.");
+				setOAuthError(intl.formatMessage(desktopMessages.settingsAuthorizationExpired));
 			},
 			Math.max(0, authorizationExpiresAt - Date.now()),
 		);
 		return () => window.clearTimeout(timeout);
-	}, [authorizationExpiresAt, authorizing]);
+	}, [authorizationExpiresAt, authorizing, intl.formatMessage]);
 
 	useQuery({
 		queryKey: desktopQueryKeys.providerConfig,
@@ -358,10 +378,10 @@ function ConnectorDetailPage({
 		try {
 			const result = await onStartOAuth(connector.id);
 			setAuthorizationExpiresAt(result.expiresAt);
-		} catch (cause) {
+		} catch (_cause) {
 			setAuthorizing(false);
 			setAuthorizationExpiresAt(undefined);
-			setOAuthError(cause instanceof Error ? cause.message : "Unable to start OAuth authorization.");
+			setOAuthError(intl.formatMessage(desktopMessages.settingsOAuthStartError));
 		}
 	};
 
@@ -370,8 +390,8 @@ function ConnectorDetailPage({
 		setOAuthError(undefined);
 		try {
 			await onDisconnectOAuth(connector.id);
-		} catch (cause) {
-			setOAuthError(cause instanceof Error ? cause.message : "Unable to disconnect this account.");
+		} catch (_cause) {
+			setOAuthError(intl.formatMessage(desktopMessages.settingsOAuthDisconnectError));
 		} finally {
 			setDisconnecting(false);
 		}
@@ -388,7 +408,7 @@ function ConnectorDetailPage({
 					className="-ml-2 rounded-lg px-2.5"
 					onClick={onBack}
 				>
-					Connectors
+					{intl.formatMessage(desktopMessages.settingsConnectorBack)}
 				</Button>
 			</header>
 
@@ -413,24 +433,28 @@ function ConnectorDetailPage({
 								loading={disconnecting}
 								onClick={() => void disconnectOAuth()}
 							>
-								Disconnect
+								{intl.formatMessage(desktopMessages.settingsDisconnect)}
 							</Button>
 						) : null}
 					</div>
 				</div>
 
 				<p className="mt-3 max-w-3xl text-[14px] leading-relaxed text-muted-foreground">
-					{connector.description ?? "Configure this connector so your agent can use its tools."}
+					{connector.description ?? intl.formatMessage(desktopMessages.settingsConnectorDescription)}
 				</p>
 
 				{isOAuth ? (
 					<section className="mt-5 border-t border-border/55 pt-6">
-						<h3 className="text-[14px] font-semibold">Account access</h3>
+						<h3 className="text-[14px] font-semibold">
+							{intl.formatMessage(desktopMessages.settingsAccountAccess)}
+						</h3>
 						<p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted-foreground">
-							Connect this app in your browser. Only the permissions required by this app are requested.
+							{intl.formatMessage(desktopMessages.settingsAccountAccessDescription)}
 						</p>
 						{connected ? (
-							<p className="mt-5 text-[13px] text-primary">Connected to your {connector.name} account.</p>
+							<p className="mt-5 text-[13px] text-primary">
+								{intl.formatMessage(desktopMessages.settingsConnectedAccount, { name: connector.name })}
+							</p>
 						) : (
 							<>
 								<Button
@@ -442,11 +466,17 @@ function ConnectorDetailPage({
 									disabled={authorizing}
 									onClick={() => void startOAuth()}
 								>
-									{authorizing ? "Finish in browser" : oauthError ? "Retry" : "Connect"}
+									{intl.formatMessage(
+										authorizing
+											? desktopMessages.settingsFinishInBrowser
+											: oauthError
+												? desktopMessages.settingsRetryConnect
+												: desktopMessages.settingsConnect,
+									)}
 								</Button>
 								{authorizing ? (
 									<p className="mt-3 text-[12px] text-muted-foreground" role="status" aria-live="polite">
-										Waiting for approval in your browser…
+										{intl.formatMessage(desktopMessages.settingsWaitingForApproval)}
 									</p>
 								) : null}
 							</>
@@ -475,6 +505,7 @@ function ToolPermissionSettings({
 	readonly policy: DesktopConnectorConfigInput["policy"];
 	readonly onChange: (value: DesktopConnectorConfigInput["policy"]) => void;
 }) {
+	const intl = useIntl();
 	const [openGroupIds, setOpenGroupIds] = useState<ReadonlySet<string>>(
 		() => new Set(["read", "write", "destructive"]),
 	);
@@ -499,11 +530,19 @@ function ToolPermissionSettings({
 		permission: policy.actions[action.actionId] ?? policy.default,
 	}));
 	const groups = [
-		{ id: "read", label: "Read-only tools", actions: actions.filter((action) => action.sideEffect === "read") },
-		{ id: "write", label: "Write tools", actions: actions.filter((action) => action.sideEffect === "write") },
+		{
+			id: "read",
+			label: intl.formatMessage(desktopMessages.settingsReadOnlyTools),
+			actions: actions.filter((action) => action.sideEffect === "read"),
+		},
+		{
+			id: "write",
+			label: intl.formatMessage(desktopMessages.settingsWriteTools),
+			actions: actions.filter((action) => action.sideEffect === "write"),
+		},
 		{
 			id: "destructive",
-			label: "Destructive tools",
+			label: intl.formatMessage(desktopMessages.settingsDestructiveTools),
 			actions: actions.filter((action) => action.sideEffect === "destructive"),
 		},
 	].filter((group) => group.actions.length > 0);
@@ -512,9 +551,11 @@ function ToolPermissionSettings({
 		<section className="mt-6 border-t border-border/55 pt-6">
 			<div className="flex items-start justify-between gap-4">
 				<div>
-					<h3 className="text-[14px] font-semibold">Tool permissions</h3>
+					<h3 className="text-[14px] font-semibold">
+						{intl.formatMessage(desktopMessages.settingsToolPermissions)}
+					</h3>
 					<p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted-foreground">
-						Choose when the Agent is allowed to use these tools.
+						{intl.formatMessage(desktopMessages.settingsToolPermissionsDescription)}
 					</p>
 				</div>
 			</div>
@@ -538,7 +579,7 @@ function ToolPermissionSettings({
 							<div className="shrink-0">
 								<PermissionSelect
 									value={groupPermission(group.actions)}
-									ariaLabel={`${group.label} permission`}
+									ariaLabel={intl.formatMessage(desktopMessages.settingsPermission, { label: group.label })}
 									onChange={(permission) => updateGroup(group.actions[0]!.sideEffect, permission)}
 								/>
 							</div>
@@ -552,7 +593,9 @@ function ToolPermissionSettings({
 										</p>
 										<PermissionTabs
 											value={action.permission}
-											ariaLabel={`${action.actionId} permission`}
+											ariaLabel={intl.formatMessage(desktopMessages.settingsPermission, {
+												label: action.actionId,
+											})}
 											onChange={(permission) => updateAction(action.actionId, permission)}
 										/>
 									</div>
@@ -610,14 +653,16 @@ function PermissionTabs({
 	readonly ariaLabel: string;
 	readonly onChange: (value: DesktopConnectorPermission) => void;
 }) {
+	const intl = useIntl();
 	const AskIcon = useIcon("permission-ask");
 	const CheckIcon = useIcon("permission-allow");
 	const DenyIcon = useIcon("permission-deny");
 	const icons = { ask: AskIcon, allow: CheckIcon, deny: DenyIcon };
-	const labels = { ask: "Ask every time", allow: "Always allow", deny: "Blocked" } satisfies Record<
-		DesktopConnectorPermission,
-		string
-	>;
+	const labels = {
+		ask: intl.formatMessage(desktopMessages.settingsAskEveryTime),
+		allow: intl.formatMessage(desktopMessages.settingsAlwaysAllow),
+		deny: intl.formatMessage(desktopMessages.settingsBlocked),
+	} satisfies Record<DesktopConnectorPermission, string>;
 
 	return (
 		<fieldset className="flex items-center gap-0.5 rounded-lg border border-border/55 bg-muted/55 p-0.5">
@@ -656,6 +701,7 @@ function PermissionSelect({
 	readonly ariaLabel: string;
 	readonly onChange: (value: DesktopConnectorPermission) => void;
 }) {
+	const intl = useIntl();
 	const AskIcon = useIcon("permission-ask");
 	const CheckIcon = useIcon("permission-allow");
 	const DenyIcon = useIcon("permission-deny");
@@ -675,16 +721,16 @@ function PermissionSelect({
 			<SelectContent>
 				<SelectGroup>
 					<SelectItem index={0} value="ask" icon={AskIcon}>
-						Ask every time
+						{intl.formatMessage(desktopMessages.settingsAskEveryTime)}
 					</SelectItem>
 					<SelectItem index={1} value="allow" icon={CheckIcon}>
-						Always allow
+						{intl.formatMessage(desktopMessages.settingsAlwaysAllow)}
 					</SelectItem>
 					<SelectItem index={2} value="deny" icon={DenyIcon}>
-						Blocked
+						{intl.formatMessage(desktopMessages.settingsBlocked)}
 					</SelectItem>
 					<SelectItem index={3} value="custom" icon={CustomIcon}>
-						Custom
+						{intl.formatMessage(desktopMessages.settingsCustom)}
 					</SelectItem>
 				</SelectGroup>
 			</SelectContent>
@@ -722,12 +768,13 @@ function CredentialSettings({
 	readonly value: DesktopConnectorConfigInput["connectors"][number];
 	readonly onChange: (value: DesktopConnectorConfigInput["connectors"][number]) => void;
 }) {
+	const intl = useIntl();
 	return (
 		<div className="mt-5 border-t border-border/55 pt-6">
 			<div>
-				<h3 className="text-[14px] font-semibold">Credentials</h3>
+				<h3 className="text-[14px] font-semibold">{intl.formatMessage(desktopMessages.settingsCredentials)}</h3>
 				<p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
-					Values are stored in your local settings and are only sent to this connector.
+					{intl.formatMessage(desktopMessages.settingsCredentialsDescription)}
 				</p>
 				<div className="mt-5 grid max-w-3xl grid-cols-2 gap-x-5 gap-y-5">
 					{connector.credentials.map((credential) => (
@@ -848,11 +895,11 @@ function ConnectorBrandLogo({ connector, size }: { readonly connector: DesktopCo
 	);
 }
 
-function getAuthLabel(authTypes: readonly string[]): string {
+function getAuthLabel(authTypes: readonly string[], intl: IntlShape): string {
 	const authLabels: Record<string, string> = {
-		oauth: "Web",
-		api_key: "API key",
-		custom_credential: "Custom credentials",
+		oauth: intl.formatMessage(desktopMessages.settingsAuthWeb),
+		api_key: intl.formatMessage(desktopMessages.settingsAuthApiKey),
+		custom_credential: intl.formatMessage(desktopMessages.settingsAuthCustomCredentials),
 	};
 	return authTypes.map((authType) => authLabels[authType] ?? authType).join(" · ");
 }

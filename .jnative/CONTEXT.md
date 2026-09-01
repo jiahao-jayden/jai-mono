@@ -55,3 +55,7 @@ _Avoid_: sensitive flag, redaction hint, debug payload
 **User Telemetry Policy**:
 用户在 `~/.jai/settings.json` 中保存的非秘密观测选择：是否启用远端导出、exporter 类型与 endpoint。它只允许 user scope，不能由项目 `.jai/settings.json` 改写；Langfuse key pair 不属于它，而由 Server 的 credential owner 保存。
 _Avoid_: project telemetry setting, telemetry secret, Agent telemetry configuration
+
+**Desktop UI Locale**:
+Desktop 用户界面与桌面原生产品文案使用的语言选择；它由 Desktop 自己维护，支持跟随系统、英文和简体中文，并独立于 Agent 的 `Response language`。
+_Avoid_: Response language, Agent language, user content locale

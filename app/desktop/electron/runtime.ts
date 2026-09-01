@@ -1,9 +1,12 @@
 import { TaggedError } from "better-result";
 import { app, BrowserWindow, dialog, shell } from "electron";
 import type { DesktopAgentEvent } from "../shared/desktop-rpc";
+import enMessages from "../src/i18n/compiled/en.json";
+import zhCnMessages from "../src/i18n/compiled/zh-CN.json";
 import { DesktopAcpAgentHost } from "./agent/acp-host";
 import { createDesktopCommandCatalog, type DesktopCommandCatalog } from "./commands/catalog";
 import { DesktopConfigService } from "./config";
+import { createDesktopLocaleService, type DesktopLocaleService } from "./locale";
 import { DesktopOAuthManager } from "./oauth/manager";
 import { type AttachmentRegistry, createAttachmentRegistry } from "./rpc/attachments";
 import { createBroadcaster } from "./rpc/broadcast";
@@ -22,6 +25,7 @@ export interface DesktopRuntime {
 	readonly agentHost: DesktopAcpAgentHost;
 	readonly attachments: AttachmentRegistry;
 	readonly theme: DesktopThemeService;
+	readonly locale: DesktopLocaleService;
 	readonly openWith: OpenWithService;
 	readonly commands: DesktopCommandCatalog;
 	/** Broadcasts an app-wide event to every renderer window. */
@@ -50,6 +54,7 @@ export async function createDesktopRuntime(dependencies: {
 	});
 	const attachments = createAttachmentRegistry();
 	const theme = createDesktopThemeService();
+	const locale = createDesktopLocaleService();
 	const openWith = createOpenWithService({
 		openPath: (filePath) => shell.openPath(filePath),
 		fileIcon: async (applicationPath) => {
@@ -85,7 +90,6 @@ export async function createDesktopRuntime(dependencies: {
 				publish({
 					type: "connector_oauth_failed",
 					connectorId,
-					message: error instanceof Error ? error.message : "OAuth authorization could not be completed",
 				});
 			}
 			throw error;
@@ -106,10 +110,11 @@ export async function createDesktopRuntime(dependencies: {
 		agentHost,
 		attachments,
 		theme,
+		locale,
 		openWith,
 		commands,
 		publish,
-		pickProjectDirectory: (sender) => pickProjectDirectory(BrowserWindow.fromWebContents(sender)),
+		pickProjectDirectory: (sender) => pickProjectDirectory(BrowserWindow.fromWebContents(sender), locale),
 		receiveOAuthCallback: (url) => receiveOAuthCallback(url),
 		async close() {
 			agentHost.close();
@@ -127,18 +132,22 @@ class ProjectPickerFailed extends TaggedError("desktop_project.picker_failed")<{
 	readonly message: string;
 }> {}
 
-async function pickProjectDirectory(window: BrowserWindow | null): Promise<string | undefined> {
+async function pickProjectDirectory(
+	window: BrowserWindow | null,
+	locale: DesktopLocaleService,
+): Promise<string | undefined> {
+	const messages: Record<string, string> = locale.get().locale === "zh-CN" ? zhCnMessages : enMessages;
 	try {
 		const options: Electron.OpenDialogOptions = {
-			title: "Choose a project folder",
-			buttonLabel: "Choose Project",
+			title: messages["desktop.native.projectPickerTitle"]!,
+			buttonLabel: messages["desktop.native.projectPickerButton"]!,
 			properties: ["openDirectory", "createDirectory", "promptToCreate"],
 		};
 		const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
 		return result.canceled ? undefined : result.filePaths[0];
 	} catch (error) {
 		throw new ProjectPickerFailed({
-			message: "The project folder picker could not be opened",
+			message: messages["desktop.native.projectPickerError"]!,
 			cause: error,
 		});
 	}

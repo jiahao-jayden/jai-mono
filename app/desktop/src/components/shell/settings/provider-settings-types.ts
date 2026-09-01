@@ -9,6 +9,14 @@ export interface ProfileDraft extends DesktopProviderProfile {
 
 const profileIdPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
+export type ProviderDraftValidationError =
+	| { readonly kind: "invalid-response-language" }
+	| { readonly kind: "invalid-max-iterations" }
+	| { readonly kind: "provider-name-required" }
+	| { readonly kind: "profile-id-invalid"; readonly id: string }
+	| { readonly kind: "profile-id-duplicate"; readonly id: string }
+	| { readonly kind: "provider-api-key-required"; readonly name: string };
+
 export function toProfileDraft(profile: DesktopProviderProfile): ProfileDraft {
 	return { ...profile, models: [...profile.models], apiKey: "", clearApiKey: false, persistedId: profile.id };
 }
@@ -17,21 +25,21 @@ export function validateProviderDraft(
 	profiles: readonly ProfileDraft[],
 	language: string,
 	maxIterations: string,
-): string | undefined {
+): ProviderDraftValidationError | undefined {
 	if (language && !/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(language)) {
-		return "Response language 必须是有效的 BCP-47 标记，例如 zh-CN。";
+		return { kind: "invalid-response-language" };
 	}
 	if (maxIterations && (!Number.isInteger(Number(maxIterations)) || Number(maxIterations) < 1)) {
-		return "Max iterations 必须是正整数。";
+		return { kind: "invalid-max-iterations" };
 	}
 	const profileIds = new Set<string>();
 	for (const profile of profiles) {
-		if (!profile.name.trim()) return "每个 Provider 都需要名称。";
-		if (!profileIdPattern.test(profile.id)) return `Profile ID "${profile.id}" 格式无效。`;
-		if (profileIds.has(profile.id)) return `Profile ID "${profile.id}" 重复。`;
+		if (!profile.name.trim()) return { kind: "provider-name-required" };
+		if (!profileIdPattern.test(profile.id)) return { kind: "profile-id-invalid", id: profile.id };
+		if (profileIds.has(profile.id)) return { kind: "profile-id-duplicate", id: profile.id };
 		profileIds.add(profile.id);
 		if (profile.authentication === "api-key" && !profile.credentialConfigured && !profile.apiKey.trim()) {
-			return `${profile.name} 需要 API key。`;
+			return { kind: "provider-api-key-required", name: profile.name };
 		}
 	}
 	return undefined;

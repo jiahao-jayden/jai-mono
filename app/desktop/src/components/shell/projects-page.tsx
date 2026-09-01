@@ -1,6 +1,7 @@
-import { format, formatDistanceToNow } from "date-fns";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
+import { type IntlShape, useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type { CodingSession, DesktopProject } from "../../../shared/desktop-rpc";
@@ -26,16 +27,19 @@ export function ProjectsPage({
 	onAddProject,
 	onOpenProject,
 }: ProjectsPageProps) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const SearchIcon = icons.search;
 	const FolderIcon = icons.folder;
 	const [query, setQuery] = useState("");
 	const [sort, setSort] = useState<"updated" | "name">("updated");
 	const normalizedQuery = query.trim().toLocaleLowerCase();
-	const emptyTitle = normalizedQuery ? "没有匹配的项目" : "还没有项目";
+	const emptyTitle = intl.formatMessage(
+		normalizedQuery ? desktopMessages.projectsNoMatch : desktopMessages.projectsEmpty,
+	);
 	const emptyDescription = normalizedQuery
-		? "可以按项目名或本地路径搜索。"
-		: "选择一个本地目录，让 agent 在清晰的边界里工作。";
+		? intl.formatMessage(desktopMessages.projectsSearchDescription)
+		: intl.formatMessage(desktopMessages.projectsEmptyDescription);
 	const projectStats = useMemo(() => {
 		const stats = new Map<string, { count: number; latestActivity: number }>();
 		for (const session of sessions) {
@@ -67,8 +71,12 @@ export function ProjectsPage({
 			<div className="mx-auto flex h-full w-full max-w-250 flex-col px-10 pt-14 pb-8">
 				<header className="mb-8 flex shrink-0 items-center justify-between gap-6">
 					<div>
-						<h1 className="text-[26px] font-semibold tracking-[-0.025em]">Projects</h1>
-						<p className="mt-1 text-[13px] text-muted-foreground">本地目录与它们持续积累的工作上下文。</p>
+						<h1 className="text-[26px] font-semibold tracking-[-0.025em]">
+							{intl.formatMessage(desktopMessages.projectsTitle)}
+						</h1>
+						<p className="mt-1 text-[13px] text-muted-foreground">
+							{intl.formatMessage(desktopMessages.projectsDescription)}
+						</p>
 					</div>
 					<div className="flex items-center gap-2">
 						<div className="relative w-52">
@@ -79,8 +87,8 @@ export function ProjectsPage({
 							<Input
 								value={query}
 								onChange={(event) => setQuery(event.target.value)}
-								placeholder="Search projects"
-								aria-label="Search projects"
+								placeholder={intl.formatMessage(desktopMessages.projectsSearch)}
+								aria-label={intl.formatMessage(desktopMessages.projectsSearch)}
 								className="h-8 border-border bg-transparent pr-3 pl-9"
 							/>
 						</div>
@@ -90,9 +98,11 @@ export function ProjectsPage({
 							size="md"
 							onClick={() => setSort((current) => (current === "updated" ? "name" : "updated"))}
 							trailingIcon={icons["chevron-down"]}
-							aria-label="Change project sort"
+							aria-label={intl.formatMessage(desktopMessages.projectsSort)}
 						>
-							{sort === "updated" ? "Last updated" : "Name"}
+							{intl.formatMessage(
+								sort === "updated" ? desktopMessages.projectsLastUpdated : desktopMessages.projectsName,
+							)}
 						</Button>
 						<Button
 							type="button"
@@ -102,7 +112,7 @@ export function ProjectsPage({
 							onClick={onAddProject}
 							leadingIcon={icons.plus}
 						>
-							New project
+							{intl.formatMessage(desktopMessages.projectsNew)}
 						</Button>
 					</div>
 				</header>
@@ -111,7 +121,7 @@ export function ProjectsPage({
 					{loading && projects.length === 0 ? <ProjectGridSkeleton /> : null}
 					{error ? (
 						<div className="rounded-xl bg-destructive/8 px-4 py-3 text-[13px] text-destructive" role="alert">
-							Projects 暂时无法加载。请重新打开此页面。
+							{intl.formatMessage(desktopMessages.projectsPageLoadError)}
 						</div>
 					) : null}
 					{!loading && !error && visibleProjects.length === 0 ? (
@@ -131,7 +141,7 @@ export function ProjectsPage({
 									leadingIcon={icons.plus}
 									className="mt-5"
 								>
-									Add local folder
+									{intl.formatMessage(desktopMessages.projectsAddFolder)}
 								</Button>
 							) : null}
 						</div>
@@ -142,7 +152,11 @@ export function ProjectsPage({
 								const stats = projectStats.get(project.id);
 								const latestActivity = stats?.latestActivity ?? project.updatedAt;
 								const sessionCount = stats?.count ?? 0;
-								const availabilityLabel = project.available ? "Available" : "Folder unavailable";
+								const availabilityLabel = intl.formatMessage(
+									project.available
+										? desktopMessages.projectsAvailable
+										: desktopMessages.projectsFolderUnavailable,
+								);
 								return (
 									<Button
 										key={project.id}
@@ -173,9 +187,11 @@ export function ProjectsPage({
 												<span className="sr-only">{availabilityLabel}</span>
 											</span>
 											<span className="flex items-center justify-between text-[11.5px] text-muted-foreground">
-												<span>{sessionCount === 1 ? "1 chat" : `${sessionCount} chats`}</span>
+												<span>
+													{intl.formatMessage(desktopMessages.projectsChatCount, { count: sessionCount })}
+												</span>
 												<time dateTime={new Date(latestActivity).toISOString()}>
-													{formatProjectTime(latestActivity)}
+													{formatProjectTime(latestActivity, intl)}
 												</time>
 											</span>
 										</span>
@@ -199,10 +215,13 @@ interface ProjectPageProps {
 }
 
 export function ProjectPage({ project, sessions, composer, onBack, onSelectSession }: ProjectPageProps) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const MessageIcon = icons["message-circle"];
 	const projectSessions = sessions.filter((session) => session.projectId === project.id);
-	const availabilityLabel = project.available ? "Available" : "Folder unavailable";
+	const availabilityLabel = intl.formatMessage(
+		project.available ? desktopMessages.projectsAvailable : desktopMessages.projectsFolderUnavailable,
+	);
 
 	return (
 		<main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
@@ -215,7 +234,7 @@ export function ProjectPage({ project, sessions, composer, onBack, onSelectSessi
 					leadingIcon={icons["arrow-left"]}
 					className="mb-6 w-fit px-1 text-muted-foreground"
 				>
-					All projects
+					{intl.formatMessage(desktopMessages.projectsAll)}
 				</Button>
 				<header className="mb-7 flex items-start justify-between gap-6">
 					<div className="min-w-0">
@@ -237,13 +256,17 @@ export function ProjectPage({ project, sessions, composer, onBack, onSelectSessi
 				<div className="mb-7 shrink-0">{composer}</div>
 
 				<section className="min-h-0 flex-1">
-					<h2 className="mb-3 text-[12px] font-semibold text-muted-foreground">Recents</h2>
+					<h2 className="mb-3 text-[12px] font-semibold text-muted-foreground">
+						{intl.formatMessage(desktopMessages.projectsRecents)}
+					</h2>
 					<div className="h-[calc(100%-28px)] overflow-y-auto border-y border-border/70">
 						{projectSessions.length === 0 ? (
 							<div className="flex min-h-40 flex-col items-center justify-center text-center">
 								<MessageIcon size={22} className="mb-2.5 text-muted-foreground/50" />
-								<p className="text-[13px] font-medium">这个项目还没有对话</p>
-								<p className="mt-1 text-[12px] text-muted-foreground">从上面的输入框开始第一项工作。</p>
+								<p className="text-[13px] font-medium">{intl.formatMessage(desktopMessages.projectsNoChats)}</p>
+								<p className="mt-1 text-[12px] text-muted-foreground">
+									{intl.formatMessage(desktopMessages.projectsStartChat)}
+								</p>
 							</div>
 						) : (
 							<div className="divide-y divide-border/70">
@@ -267,7 +290,7 @@ export function ProjectPage({ project, sessions, composer, onBack, onSelectSessi
 												dateTime={new Date(session.lastActivityAt).toISOString()}
 												className="min-w-28 shrink-0 whitespace-nowrap text-right text-[11.5px] text-muted-foreground"
 											>
-												{formatProjectTime(session.lastActivityAt)}
+												{formatProjectTime(session.lastActivityAt, intl)}
 											</time>
 										</span>
 									</Button>
@@ -282,8 +305,13 @@ export function ProjectPage({ project, sessions, composer, onBack, onSelectSessi
 }
 
 function ProjectGridSkeleton() {
+	const intl = useIntl();
 	return (
-		<div className="grid grid-cols-2 gap-4" role="status" aria-label="Loading projects">
+		<div
+			className="grid grid-cols-2 gap-4"
+			role="status"
+			aria-label={intl.formatMessage(desktopMessages.projectsLoading)}
+		>
 			{[0, 1, 2, 3].map((item) => (
 				<div key={item} className="h-30 animate-pulse rounded-[14px] border border-border/60 bg-foreground/3" />
 			))}
@@ -291,8 +319,10 @@ function ProjectGridSkeleton() {
 	);
 }
 
-function formatProjectTime(timestamp: number): string {
-	const date = new Date(timestamp);
+function formatProjectTime(timestamp: number, intl: IntlShape): string {
 	const age = Date.now() - timestamp;
-	return age < 7 * 24 * 60 * 60 * 1000 ? formatDistanceToNow(date, { addSuffix: true }) : format(date, "MMM d");
+	if (age < 7 * 24 * 60 * 60 * 1000) {
+		return intl.formatRelativeTime(Math.round((timestamp - Date.now()) / 1000), "second", { numeric: "auto" });
+	}
+	return intl.formatDate(timestamp, { month: "short", day: "numeric" });
 }

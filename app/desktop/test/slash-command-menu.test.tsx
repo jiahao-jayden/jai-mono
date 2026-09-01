@@ -1,10 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { renderToStaticMarkup } from "react-dom/server";
+import { IntlProvider } from "react-intl";
+import { renderToStaticMarkup as renderToStaticMarkupBase } from "react-dom/server";
+import type { ReactNode } from "react";
+import enMessages from "../src/i18n/compiled/en.json";
 import {
 	filterSlashCommands,
 	slashCommandQuery,
 	SlashCommandMenu,
 } from "../src/components/shell/chat/slash-command-menu";
+
+function renderToStaticMarkup(node: ReactNode): string {
+	return renderToStaticMarkupBase(<IntlProvider locale="en" messages={enMessages}>{node}</IntlProvider>);
+}
 
 const commands = [
 	{ name: "skill:review", displayName: "skill:review", description: "Review changes", commandKind: "skill" as const },

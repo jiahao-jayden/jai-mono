@@ -1,5 +1,7 @@
 import { Popover } from "@base-ui/react/popover";
 import { useState } from "react";
+import { type IntlShape, useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { Elevated } from "@/lib/elevated";
 import { type IconComponent, resolveProviderBrandIcon, useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
@@ -28,6 +30,7 @@ export function ModelSelector({
 	onSelect,
 	onManage,
 }: ModelSelectorProps) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const AllProvidersIcon = icons.layers;
 	const ChevronDownIcon = icons["chevron-down"];
@@ -84,7 +87,7 @@ export function ModelSelector({
 		.filter((provider) => provider.models.length > 0);
 	const visibleModels = modelGroups.flatMap((provider) => provider.models);
 	const selectedModel = models.find((model) => model.ref === selectedModelRef);
-	const status = resolveModelStatus(config, selectedModelRef, loading, error);
+	const status = resolveModelStatus(config, selectedModelRef, loading, error, intl);
 	const triggerLabel = selectedModel ? selectedModel.name : status.label;
 
 	const chooseModel = (modelRef: string) => {
@@ -116,7 +119,7 @@ export function ModelSelector({
 						size="sm"
 						disabled={disabled}
 						active={open}
-						aria-label={`Model: ${triggerLabel}`}
+						aria-label={intl.formatMessage(desktopMessages.modelAria, { label: triggerLabel })}
 						className="min-w-0 max-w-60 justify-start px-2 text-[13.5px] font-medium text-foreground/85"
 						contentClassName="min-w-0"
 						labelClassName="flex min-w-0 items-center gap-1.5 whitespace-nowrap"
@@ -141,20 +144,20 @@ export function ModelSelector({
 								autoFocus
 								value={query}
 								onChange={(event) => setQuery(event.target.value)}
-								placeholder="Search models…"
-								aria-label="Search models"
+								placeholder={intl.formatMessage(desktopMessages.modelSearch)}
+								aria-label={intl.formatMessage(desktopMessages.modelSearch)}
 								className="h-9 border-0 bg-transparent px-0 text-[13.5px] shadow-none focus-visible:ring-0"
 							/>
 						</div>
 
 						<div className="flex min-h-0">
 							<nav
-								aria-label="Model providers"
+								aria-label={intl.formatMessage(desktopMessages.modelProviders)}
 								className="flex w-14 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border/50 py-2"
 							>
 								<ProviderFilterButton
 									icon={AllProvidersIcon}
-									label="All providers"
+									label={intl.formatMessage(desktopMessages.modelAllProviders)}
 									active={!activeProviderId}
 									onClick={() => setActiveProviderId(undefined)}
 								/>
@@ -169,7 +172,7 @@ export function ModelSelector({
 								))}
 								<ProviderFilterButton
 									icon={SettingsIcon}
-									label="Manage models & Providers"
+									label={intl.formatMessage(desktopMessages.modelManage)}
 									active={false}
 									onClick={manageModels}
 									className="mt-auto"
@@ -180,7 +183,7 @@ export function ModelSelector({
 								<TooltipProvider delayDuration={250}>
 									<div
 										role="listbox"
-										aria-label="Models"
+										aria-label={intl.formatMessage(desktopMessages.modelList)}
 										className="min-h-0 max-h-[min(347px,calc(100vh-213px))] overflow-y-auto p-2"
 									>
 										{visibleModels.length > 0 ? (
@@ -198,17 +201,18 @@ export function ModelSelector({
 															{provider.models.map((model) => {
 																const selected = model.ref === selectedModelRef;
 																return (
-																	<button
+																	<Button
 																		key={model.ref}
 																		type="button"
+																		variant="ghost"
+																		size="md"
+																		active={selected}
 																		role="option"
 																		aria-selected={selected}
 																		onClick={() => chooseModel(model.ref)}
 																		className={cn(
 																			"flex h-11 w-full cursor-pointer items-center gap-2 rounded-[10px] px-3 text-left outline-none transition-colors duration-75 focus-visible:ring-2 focus-visible:ring-primary-2/45 focus-visible:ring-inset",
-																			selected
-																				? "bg-accent text-foreground"
-																				: "hover:bg-accent/55 active:bg-accent",
+																			selected ? "text-foreground" : undefined,
 																		)}
 																	>
 																		<span className="flex min-w-0 flex-1 items-center gap-2 pointer-events-none">
@@ -217,14 +221,17 @@ export function ModelSelector({
 																			</span>
 																			{model.contextWindow ? (
 																				<span className="shrink-0 text-[10.5px] font-medium text-muted-foreground">
-																					{formatContextWindow(model.contextWindow)}
+																					{intl.formatNumber(model.contextWindow, {
+																						notation: "compact",
+																						maximumFractionDigits: 0,
+																					})}
 																				</span>
 																			) : null}
 																			<span className="ml-auto shrink-0 pointer-events-auto">
 																				<ModelCapabilities model={model} />
 																			</span>
 																		</span>
-																	</button>
+																	</Button>
 																);
 															})}
 														</div>
@@ -234,8 +241,8 @@ export function ModelSelector({
 										) : (
 											<div className="grid h-full min-h-32 place-items-center px-6 text-center text-[12.5px] text-muted-foreground">
 												{models.length === 0
-													? "No runnable models yet. Set up a Provider or enable a compatible model."
-													: "No models match your search."}
+													? intl.formatMessage(desktopMessages.modelEmpty)
+													: intl.formatMessage(desktopMessages.modelNoMatch)}
 											</div>
 										)}
 									</div>
@@ -263,28 +270,23 @@ function ProviderFilterButton({
 	onClick(): void;
 }) {
 	return (
-		<button
+		<Button
 			type="button"
+			variant="ghost"
+			size="icon"
+			active={active}
 			aria-label={label}
 			title={label}
 			onClick={onClick}
 			className={cn(
 				"flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg outline-none transition-colors duration-75 focus-visible:ring-2 focus-visible:ring-primary-2/45",
-				active
-					? "bg-accent text-foreground"
-					: "text-muted-foreground hover:bg-accent/55 hover:text-foreground/80 active:bg-accent",
+				active && "text-foreground",
 				className,
 			)}
 		>
 			<Icon size={18} strokeWidth={active ? 2 : 1.5} />
-		</button>
+		</Button>
 	);
-}
-
-function formatContextWindow(tokens: number): string {
-	if (tokens >= 1_000_000) return `${Math.round(tokens / 1_000_000)}M`;
-	if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
-	return String(tokens);
 }
 
 function resolveModelStatus(
@@ -292,10 +294,26 @@ function resolveModelStatus(
 	modelRef: string,
 	loading: boolean,
 	error: boolean,
+	intl: IntlShape,
 ): { readonly label: string; readonly title: string } {
-	if (loading) return { label: "Loading model…", title: "Loading Provider configuration" };
-	if (error) return { label: "Model unavailable", title: "Open Provider settings to retry" };
-	if (!modelRef) return { label: "Choose model", title: "Configure a Provider and model" };
+	if (loading) {
+		return {
+			label: intl.formatMessage(desktopMessages.modelLoading),
+			title: intl.formatMessage(desktopMessages.modelLoadingTitle),
+		};
+	}
+	if (error) {
+		return {
+			label: intl.formatMessage(desktopMessages.modelUnavailable),
+			title: intl.formatMessage(desktopMessages.modelRetryTitle),
+		};
+	}
+	if (!modelRef) {
+		return {
+			label: intl.formatMessage(desktopMessages.modelChoose),
+			title: intl.formatMessage(desktopMessages.modelConfigureTitle),
+		};
+	}
 	const separator = modelRef.indexOf("/");
 	const profileId = modelRef.slice(0, separator);
 	const modelId = modelRef.slice(separator + 1);
@@ -306,6 +324,6 @@ function resolveModelStatus(
 		label: model?.name ?? modelRef,
 		title: credentialReady
 			? `${profile?.name ?? profileId} · ${model?.name ?? modelId}`
-			: "Provider credential required",
+			: intl.formatMessage(desktopMessages.modelCredentialRequired),
 	};
 }

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { useIcon, useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type {
@@ -16,7 +18,12 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { ConnectorSettings } from "./connector-settings";
 import { GeneralSettings } from "./general-settings";
 import { ObservabilitySettings } from "./observability-settings";
-import { type ProfileDraft, toProfileDraft, validateProviderDraft } from "./provider-settings-types";
+import {
+	type ProfileDraft,
+	type ProviderDraftValidationError,
+	toProfileDraft,
+	validateProviderDraft,
+} from "./provider-settings-types";
 import { ProvidersSettings } from "./providers-settings";
 
 interface ProviderSettingsDialogProps {
@@ -129,23 +136,26 @@ function ProviderLoadState({
 	readonly error: boolean;
 	readonly onRetry: () => void;
 }) {
+	const intl = useIntl();
 	const SettingsIcon = useIcon("settings");
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<DialogHeader className="px-6 py-5">
-				<DialogTitle>Settings</DialogTitle>
+				<DialogTitle>{intl.formatMessage(desktopMessages.settingsTitle)}</DialogTitle>
 			</DialogHeader>
 			<div className="flex flex-1 items-center justify-center px-6 text-center">
 				<div>
 					<SettingsIcon className="mx-auto mb-3 size-5 text-muted-foreground" />
-					<p className="text-[14px] font-semibold">{loading ? "Loading settings…" : "Settings unavailable"}</p>
+					<p className="text-[14px] font-semibold">
+						{intl.formatMessage(loading ? desktopMessages.settingsLoading : desktopMessages.settingsUnavailable)}
+					</p>
 				</div>
 			</div>
 			{error ? (
 				<DialogFooter className="px-6 py-4">
 					<Button type="button" variant="tertiary" onClick={onRetry}>
-						Retry
+						{intl.formatMessage(desktopMessages.settingsRetry)}
 					</Button>
 				</DialogFooter>
 			) : null}
@@ -184,6 +194,7 @@ function ProviderConfigForm({
 	fetchingProfileId,
 	lastFetch,
 }: ProviderConfigFormProps) {
+	const intl = useIntl();
 	const [category, setCategory] = useState<SettingsCategory>("general");
 	const [profiles, setProfiles] = useState<ProfileDraft[]>(() => snapshot.profiles.map(toProfileDraft));
 	const [selectedProfileId, setSelectedProfileId] = useState(snapshot.profiles[0]?.id ?? "");
@@ -201,7 +212,7 @@ function ProviderConfigForm({
 	const submit = async () => {
 		const validationError = validateProviderDraft(profiles, language, maxIterations);
 		if (validationError) {
-			setError(validationError);
+			setError(formatProviderValidationError(validationError, intl));
 			return;
 		}
 		setSaving(true);
@@ -229,8 +240,8 @@ function ProviderConfigForm({
 			});
 			setProfiles(savedSnapshot.profiles.map(toProfileDraft));
 			setDirty(false);
-		} catch (cause) {
-			setError(cause instanceof Error ? cause.message : "配置未保存，请重试。");
+		} catch (_cause) {
+			setError(intl.formatMessage(desktopMessages.settingsProviderSaveError));
 		} finally {
 			setSaving(false);
 		}
@@ -278,7 +289,7 @@ function ProviderConfigForm({
 							onSelectedProfileChange={setSelectedProfileId}
 							onFetchModels={async (profileId) => {
 								if (dirty) {
-									setError("Save connection changes before fetching models.");
+									setError(intl.formatMessage(desktopMessages.settingsSaveBeforeFetchModels));
 									return;
 								}
 								setError(undefined);
@@ -301,8 +312,8 @@ function ProviderConfigForm({
 									}
 									setSelectedProfileId(profileId);
 									setCategory("providers");
-								} catch (cause) {
-									setError(cause instanceof Error ? cause.message : "Unable to fetch models.");
+								} catch (_cause) {
+									setError(intl.formatMessage(desktopMessages.settingsFetchModelsError));
 								}
 							}}
 							onRevealApiKey={onRevealApiKey}
@@ -340,11 +351,11 @@ function ProviderConfigForm({
 						) : dirty ? (
 							<p className="mr-auto flex items-center gap-1.5 text-[12px] text-muted-foreground" role="status">
 								<span className="size-1.5 rounded-full bg-amber-500" aria-hidden="true" />
-								Unsaved changes
+								{intl.formatMessage(desktopMessages.settingsUnsavedChanges)}
 							</p>
 						) : null}
 						<Button type="submit" loading={saving} disabled={!canSave}>
-							Save
+							{intl.formatMessage(desktopMessages.settingsSave)}
 						</Button>
 					</DialogFooter>
 				) : null}
@@ -360,20 +371,24 @@ function SettingsSidebar({
 	readonly category: SettingsCategory;
 	readonly onCategoryChange: (category: SettingsCategory) => void;
 }) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const categories: { id: SettingsCategory; label: string; icon: keyof typeof icons }[] = [
-		{ id: "general", label: "General", icon: "settings" },
-		{ id: "providers", label: "Providers", icon: "key" },
-		{ id: "connector", label: "Connector", icon: "link" },
-		{ id: "advanced", label: "Advanced", icon: "layers" },
+		{ id: "general", label: intl.formatMessage(desktopMessages.settingsGeneral), icon: "settings" },
+		{ id: "providers", label: intl.formatMessage(desktopMessages.settingsProviders), icon: "key" },
+		{ id: "connector", label: intl.formatMessage(desktopMessages.settingsConnector), icon: "link" },
+		{ id: "advanced", label: intl.formatMessage(desktopMessages.settingsAdvanced), icon: "layers" },
 	];
 
 	return (
 		<aside className="flex w-48 shrink-0 flex-col border-r border-border/45">
 			<DialogHeader className="mb-0 px-6 pt-5">
-				<DialogTitle>Settings</DialogTitle>
+				<DialogTitle>{intl.formatMessage(desktopMessages.settingsTitle)}</DialogTitle>
 			</DialogHeader>
-			<nav className="flex min-h-0 flex-1 flex-col gap-0.5 bg-muted/25 px-2 py-3" aria-label="Settings">
+			<nav
+				className="flex min-h-0 flex-1 flex-col gap-0.5 bg-muted/25 px-2 py-3"
+				aria-label={intl.formatMessage(desktopMessages.settingsTitle)}
+			>
 				{categories.map((item) => {
 					const Icon = icons[item.icon];
 					const isActive = category === item.id;
@@ -400,4 +415,21 @@ function SettingsSidebar({
 			</nav>
 		</aside>
 	);
+}
+
+function formatProviderValidationError(error: ProviderDraftValidationError, intl: ReturnType<typeof useIntl>): string {
+	switch (error.kind) {
+		case "invalid-response-language":
+			return intl.formatMessage(desktopMessages.settingsInvalidResponseLanguage);
+		case "invalid-max-iterations":
+			return intl.formatMessage(desktopMessages.settingsPositiveMaxIterations);
+		case "provider-name-required":
+			return intl.formatMessage(desktopMessages.settingsProviderNameRequired);
+		case "profile-id-invalid":
+			return intl.formatMessage(desktopMessages.settingsProfileIdInvalid, { id: error.id });
+		case "profile-id-duplicate":
+			return intl.formatMessage(desktopMessages.settingsProfileIdDuplicate, { id: error.id });
+		case "provider-api-key-required":
+			return intl.formatMessage(desktopMessages.settingsProviderApiKeyRequired, { name: error.name });
+	}
 }

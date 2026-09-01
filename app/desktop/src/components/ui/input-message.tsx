@@ -16,6 +16,8 @@ import {
   type TextareaHTMLAttributes,
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { cn } from "@/lib/utils";
 import { fontWeights } from "@/lib/font-weight";
 import { spring } from "@/lib/springs";
@@ -108,6 +110,7 @@ interface FilePreviewTileProps {
 }
 
 function FilePreviewTile({ file, onRemove, size }: FilePreviewTileProps) {
+  const intl = useIntl();
   const XIcon = useIcon("x");
 
   return (
@@ -126,14 +129,14 @@ function FilePreviewTile({ file, onRemove, size }: FilePreviewTileProps) {
       className="relative shrink-0 cursor-default group/tile"
     >
       <FileThumbnail file={file} size={size} />
-      <Tooltip content="Remove" side="top">
+      <Tooltip content={intl.formatMessage(desktopMessages.commonRemove)} side="top">
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onRemove();
           }}
-          aria-label={`Remove ${file.name}`}
+          aria-label={intl.formatMessage(desktopMessages.fileRemove, { name: file.name })}
           // Force the light-mode palette (dark circle + white X) regardless
           // of theme — the close badge needs to read as a "delete affordance"
           // over arbitrary image/PDF content, so it sits at a fixed contrast
@@ -155,7 +158,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
       value,
       onValueChange,
       onSend,
-      placeholder = "Ask me anything…",
+      placeholder,
       leftSlot,
       rightSlot,
       submitSlot,
@@ -164,7 +167,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
       minRows = 1,
       maxRows = 8,
       clickToFocus = true,
-      sendLabel = "Send",
+      sendLabel,
       files,
       onFilesChange,
       accept = DEFAULT_ACCEPT,
@@ -178,6 +181,9 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
     },
     ref
   ) => {
+    const intl = useIntl();
+    const resolvedPlaceholder = placeholder ?? intl.formatMessage(desktopMessages.inputAskAnything);
+    const resolvedSendLabel = sendLabel ?? intl.formatMessage(desktopMessages.composerSendMessage);
     const shape = useShape();
     const SendIcon = useIcon("send");
     const reduceMotion = useReducedMotion() ?? false;
@@ -569,13 +575,11 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
               textareaProps?.onBlur?.(e);
             }}
             placeholder={
-              dragOver && supportsFiles
-                ? "Drop files here to add to chat"
-                : placeholder
+              dragOver && supportsFiles ? intl.formatMessage(desktopMessages.inputDropFiles) : resolvedPlaceholder
             }
             disabled={disabled}
             rows={minRows}
-            aria-label={textareaProps?.["aria-label"] ?? "Message"}
+            aria-label={textareaProps?.["aria-label"] ?? intl.formatMessage(desktopMessages.composerMessage)}
             className={cn(
               "w-full resize-none bg-transparent outline-none",
               "text-[14px] leading-5 text-foreground placeholder:text-muted-foreground",
@@ -595,7 +599,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
                   size="icon-sm"
                   onClick={handleSend}
                   disabled={!canSend}
-                  aria-label={sendLabel}
+                  aria-label={resolvedSendLabel}
                 >
                   <AnimatePresence mode="wait" initial={false}>
                     <motion.span

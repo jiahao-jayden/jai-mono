@@ -73,6 +73,20 @@ export const desktopRpcRequestSchema = Type.Object(
 
 export type DesktopTheme = "light" | "dark" | "system";
 
+export const desktopUiLocalePreferenceSchema = Type.Union([
+	Type.Literal("system"),
+	Type.Literal("en"),
+	Type.Literal("zh-CN"),
+]);
+
+export type DesktopUiLocalePreference = Static<typeof desktopUiLocalePreferenceSchema>;
+export type DesktopUiLocale = Exclude<DesktopUiLocalePreference, "system">;
+
+export interface DesktopUiLocaleSnapshot {
+	readonly preference: DesktopUiLocalePreference;
+	readonly locale: DesktopUiLocale;
+}
+
 export type DesktopAgentStatus = "idle" | "running";
 export interface DesktopProject extends Project {
 	readonly available: boolean;
@@ -599,7 +613,7 @@ export type DesktopAgentEvent =
 	| { readonly type: "artifact_upsert"; readonly artifact: DesktopArtifact }
 	| { readonly type: "model_catalog_updated" }
 	| { readonly type: "connector_oauth_completed"; readonly connectorId: string }
-	| { readonly type: "connector_oauth_failed"; readonly connectorId: string; readonly message: string }
+	| { readonly type: "connector_oauth_failed"; readonly connectorId: string }
 	| {
 			readonly type: "runtime_error";
 			readonly error: { readonly code: string };
@@ -735,6 +749,10 @@ export interface DesktopApi {
 	readonly theme: {
 		get(): DesktopTheme;
 		set(theme: DesktopTheme): void;
+	};
+	readonly locale: {
+		get(): DesktopUiLocaleSnapshot;
+		set(preference: DesktopUiLocalePreference): DesktopUiLocaleSnapshot;
 	};
 	readonly provider: {
 		get(): Promise<DesktopProviderConfigSnapshot>;

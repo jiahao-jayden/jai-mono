@@ -1,0 +1,1161 @@
+{
+  "desktop.app.resizePixels": {
+    "defaultMessage": "{count} pixels"
+  },
+  "desktop.app.resizeRightPanel": {
+    "defaultMessage": "Resize right panel width"
+  },
+  "desktop.app.resizeSidebar": {
+    "defaultMessage": "Resize sidebar width"
+  },
+  "desktop.attachments.add": {
+    "defaultMessage": "Add files or photos"
+  },
+  "desktop.attachments.description": {
+    "defaultMessage": "Files and photos up to 20 MB"
+  },
+  "desktop.chat.afternoon": {
+    "defaultMessage": "Good afternoon, {name}"
+  },
+  "desktop.chat.agentWorking": {
+    "defaultMessage": "Agent is working…"
+  },
+  "desktop.chat.closeWorkspace": {
+    "defaultMessage": "Close workspace"
+  },
+  "desktop.chat.editSessionTitle": {
+    "defaultMessage": "Edit session title: {title}"
+  },
+  "desktop.chat.empty": {
+    "defaultMessage": "This session has no messages yet."
+  },
+  "desktop.chat.evening": {
+    "defaultMessage": "Good evening, {name}"
+  },
+  "desktop.chat.morning": {
+    "defaultMessage": "Good morning, {name}"
+  },
+  "desktop.chat.newDescription": {
+    "defaultMessage": "Start a chat or hand a task to a local agent."
+  },
+  "desktop.chat.openWorkspace": {
+    "defaultMessage": "Open workspace"
+  },
+  "desktop.chat.projectLoading": {
+    "defaultMessage": "Loading project…"
+  },
+  "desktop.chat.projectsUnavailable": {
+    "defaultMessage": "Projects unavailable"
+  },
+  "desktop.chat.renameFailed": {
+    "defaultMessage": "Could not rename session"
+  },
+  "desktop.chat.renameHint": {
+    "defaultMessage": "Double-click to rename"
+  },
+  "desktop.chat.showSidebar": {
+    "defaultMessage": "Show sidebar"
+  },
+  "desktop.chats.description": {
+    "defaultMessage": "Continue a recent conversation or hand a new task to the agent."
+  },
+  "desktop.chats.empty": {
+    "defaultMessage": "No chats yet"
+  },
+  "desktop.chats.emptyDescription": {
+    "defaultMessage": "New chats will be saved here so you can continue anytime."
+  },
+  "desktop.chats.loadError": {
+    "defaultMessage": "Chats could not be loaded. Try again later."
+  },
+  "desktop.chats.loading": {
+    "defaultMessage": "Loading chats"
+  },
+  "desktop.chats.new": {
+    "defaultMessage": "New chat"
+  },
+  "desktop.chats.noMatch": {
+    "defaultMessage": "No matching chats"
+  },
+  "desktop.chats.search": {
+    "defaultMessage": "Search chats"
+  },
+  "desktop.chats.searchDescription": {
+    "defaultMessage": "Try a different keyword."
+  },
+  "desktop.chats.title": {
+    "defaultMessage": "Chats"
+  },
+  "desktop.common.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "desktop.common.close": {
+    "defaultMessage": "Close"
+  },
+  "desktop.common.copied": {
+    "defaultMessage": "Copied"
+  },
+  "desktop.common.copy": {
+    "defaultMessage": "Copy"
+  },
+  "desktop.common.copyFailed": {
+    "defaultMessage": "Copy failed"
+  },
+  "desktop.common.copyToClipboard": {
+    "defaultMessage": "Copy to clipboard"
+  },
+  "desktop.common.delete": {
+    "defaultMessage": "Delete"
+  },
+  "desktop.common.dismiss": {
+    "defaultMessage": "Dismiss"
+  },
+  "desktop.common.remove": {
+    "defaultMessage": "Remove"
+  },
+  "desktop.common.retry": {
+    "defaultMessage": "Retry"
+  },
+  "desktop.composer.attachmentLimit": {
+    "defaultMessage": "Attachments must be 20 MB or less in total."
+  },
+  "desktop.composer.couldNotAddFiles": {
+    "defaultMessage": "Could not add those files."
+  },
+  "desktop.composer.message": {
+    "defaultMessage": "Message"
+  },
+  "desktop.composer.queueMessage": {
+    "defaultMessage": "Queue message"
+  },
+  "desktop.composer.sendMessage": {
+    "defaultMessage": "Send message"
+  },
+  "desktop.composer.stopResponse": {
+    "defaultMessage": "Stop response"
+  },
+  "desktop.composer.workOn": {
+    "defaultMessage": "What should the agent work on?"
+  },
+  "desktop.composer.writeMessage": {
+    "defaultMessage": "Write a message…"
+  },
+  "desktop.file.loadingPreview": {
+    "defaultMessage": "Loading preview"
+  },
+  "desktop.file.remove": {
+    "defaultMessage": "Remove {name}"
+  },
+  "desktop.file.typeAria": {
+    "defaultMessage": "{name}, {type} file"
+  },
+  "desktop.input.askAnything": {
+    "defaultMessage": "Ask me anything…"
+  },
+  "desktop.input.dropFiles": {
+    "defaultMessage": "Drop files here to add to chat"
+  },
+  "desktop.locale.loadingError": {
+    "defaultMessage": "Language settings could not be loaded.",
+    "description": "Shown when Desktop cannot read the saved UI locale preference."
+  },
+  "desktop.message.assistant": {
+    "defaultMessage": "Assistant response"
+  },
+  "desktop.message.complete": {
+    "defaultMessage": "Assistant response complete"
+  },
+  "desktop.message.jumpLatest": {
+    "defaultMessage": "Jump to latest message"
+  },
+  "desktop.message.responding": {
+    "defaultMessage": "Assistant is responding"
+  },
+  "desktop.message.your": {
+    "defaultMessage": "Your message"
+  },
+  "desktop.mode.aria": {
+    "defaultMessage": "Agent mode: {mode}"
+  },
+  "desktop.mode.automate": {
+    "defaultMessage": "Automate"
+  },
+  "desktop.mode.manual": {
+    "defaultMessage": "Manual"
+  },
+  "desktop.mode.plan": {
+    "defaultMessage": "Plan"
+  },
+  "desktop.model.allProviders": {
+    "defaultMessage": "All providers"
+  },
+  "desktop.model.aria": {
+    "defaultMessage": "Model: {label}"
+  },
+  "desktop.model.capabilityAria": {
+    "defaultMessage": "{label}: {text}"
+  },
+  "desktop.model.capabilitySupported": {
+    "defaultMessage": "Supported"
+  },
+  "desktop.model.capabilityTooltip": {
+    "defaultMessage": "{label} · {text}"
+  },
+  "desktop.model.capabilityUnknown": {
+    "defaultMessage": "Unknown"
+  },
+  "desktop.model.capabilityUnsupported": {
+    "defaultMessage": "Unsupported"
+  },
+  "desktop.model.choose": {
+    "defaultMessage": "Choose model"
+  },
+  "desktop.model.configureTitle": {
+    "defaultMessage": "Configure a Provider and model"
+  },
+  "desktop.model.credentialRequired": {
+    "defaultMessage": "Provider credential required"
+  },
+  "desktop.model.empty": {
+    "defaultMessage": "No runnable models yet. Set up a Provider or enable a compatible model."
+  },
+  "desktop.model.list": {
+    "defaultMessage": "Models"
+  },
+  "desktop.model.loading": {
+    "defaultMessage": "Loading model…"
+  },
+  "desktop.model.loadingTitle": {
+    "defaultMessage": "Loading Provider configuration"
+  },
+  "desktop.model.manage": {
+    "defaultMessage": "Manage models & Providers"
+  },
+  "desktop.model.noMatch": {
+    "defaultMessage": "No models match your search."
+  },
+  "desktop.model.providers": {
+    "defaultMessage": "Model providers"
+  },
+  "desktop.model.reasoning": {
+    "defaultMessage": "Reasoning"
+  },
+  "desktop.model.retryTitle": {
+    "defaultMessage": "Open Provider settings to retry"
+  },
+  "desktop.model.search": {
+    "defaultMessage": "Search models…"
+  },
+  "desktop.model.structuredOutput": {
+    "defaultMessage": "Structured output"
+  },
+  "desktop.model.tools": {
+    "defaultMessage": "Tools"
+  },
+  "desktop.model.unavailable": {
+    "defaultMessage": "Model unavailable"
+  },
+  "desktop.native.projectPickerButton": {
+    "defaultMessage": "Choose Project"
+  },
+  "desktop.native.projectPickerError": {
+    "defaultMessage": "The project folder picker could not be opened."
+  },
+  "desktop.native.projectPickerTitle": {
+    "defaultMessage": "Choose a project folder"
+  },
+  "desktop.permission.allowOnce": {
+    "defaultMessage": "Allow once"
+  },
+  "desktop.permission.alwaysAllow": {
+    "defaultMessage": "Always allow"
+  },
+  "desktop.permission.deny": {
+    "defaultMessage": "Deny"
+  },
+  "desktop.permission.next": {
+    "defaultMessage": "Next permission"
+  },
+  "desktop.permission.previous": {
+    "defaultMessage": "Previous permission"
+  },
+  "desktop.permission.request": {
+    "defaultMessage": "Permission request"
+  },
+  "desktop.permission.responseFailed": {
+    "defaultMessage": "Permission response was not submitted. Try again."
+  },
+  "desktop.projectPicker.addFolder": {
+    "defaultMessage": "Add a folder"
+  },
+  "desktop.projectPicker.aria": {
+    "defaultMessage": "Project: {label}"
+  },
+  "desktop.projectPicker.loading": {
+    "defaultMessage": "Loading projects…"
+  },
+  "desktop.projectPicker.noMatch": {
+    "defaultMessage": "No matching projects"
+  },
+  "desktop.projectPicker.noProject": {
+    "defaultMessage": "No project yet"
+  },
+  "desktop.projectPicker.relink": {
+    "defaultMessage": "This folder is unavailable. Choose it to relink."
+  },
+  "desktop.projectPicker.relinkLabel": {
+    "defaultMessage": "{name} (Relink)"
+  },
+  "desktop.projectPicker.retry": {
+    "defaultMessage": "Retry loading projects"
+  },
+  "desktop.projectPicker.search": {
+    "defaultMessage": "Search projects"
+  },
+  "desktop.projectPicker.unavailable": {
+    "defaultMessage": "Projects unavailable"
+  },
+  "desktop.projectPicker.updating": {
+    "defaultMessage": "Updating project…"
+  },
+  "desktop.projectPicker.workIn": {
+    "defaultMessage": "Work in a project or folder"
+  },
+  "desktop.projects.addFolder": {
+    "defaultMessage": "Add local folder"
+  },
+  "desktop.projects.all": {
+    "defaultMessage": "All projects"
+  },
+  "desktop.projects.available": {
+    "defaultMessage": "Available"
+  },
+  "desktop.projects.chatCount": {
+    "defaultMessage": "{count, plural, one {# chat} other {# chats}}"
+  },
+  "desktop.projects.description": {
+    "defaultMessage": "Local folders and the work context they accumulate over time."
+  },
+  "desktop.projects.empty": {
+    "defaultMessage": "No projects yet"
+  },
+  "desktop.projects.emptyDescription": {
+    "defaultMessage": "Choose a local folder so the agent can work within a clear boundary."
+  },
+  "desktop.projects.folderUnavailable": {
+    "defaultMessage": "Folder unavailable"
+  },
+  "desktop.projects.lastUpdated": {
+    "defaultMessage": "Last updated"
+  },
+  "desktop.projects.loadError": {
+    "defaultMessage": "Projects could not be loaded. Open the menu to retry."
+  },
+  "desktop.projects.loading": {
+    "defaultMessage": "Loading projects"
+  },
+  "desktop.projects.name": {
+    "defaultMessage": "Name"
+  },
+  "desktop.projects.new": {
+    "defaultMessage": "New project"
+  },
+  "desktop.projects.noChats": {
+    "defaultMessage": "This project has no chats yet."
+  },
+  "desktop.projects.noMatch": {
+    "defaultMessage": "No matching projects"
+  },
+  "desktop.projects.pageLoadError": {
+    "defaultMessage": "Projects could not be loaded. Try reopening this page."
+  },
+  "desktop.projects.recents": {
+    "defaultMessage": "Recents"
+  },
+  "desktop.projects.search": {
+    "defaultMessage": "Search projects"
+  },
+  "desktop.projects.searchDescription": {
+    "defaultMessage": "Search by project name or local path."
+  },
+  "desktop.projects.sort": {
+    "defaultMessage": "Change project sort"
+  },
+  "desktop.projects.startChat": {
+    "defaultMessage": "Start the first piece of work from the composer above."
+  },
+  "desktop.projects.title": {
+    "defaultMessage": "Projects"
+  },
+  "desktop.questions.continue": {
+    "defaultMessage": "Continue"
+  },
+  "desktop.questions.finish": {
+    "defaultMessage": "Finish"
+  },
+  "desktop.questions.freeTextPlaceholder": {
+    "defaultMessage": "Type your answer…"
+  },
+  "desktop.questions.none": {
+    "defaultMessage": "No questions."
+  },
+  "desktop.questions.otherPlaceholder": {
+    "defaultMessage": "Describe in your own words"
+  },
+  "desktop.questions.otherPlaceholderEllipsis": {
+    "defaultMessage": "Describe in your own words…"
+  },
+  "desktop.questions.skip": {
+    "defaultMessage": "Skip"
+  },
+  "desktop.queue.messagePosition": {
+    "defaultMessage": "Queued message {position} of {total}: {label}"
+  },
+  "desktop.queue.removeMessage": {
+    "defaultMessage": "Remove queued message: {label}"
+  },
+  "desktop.session.title": {
+    "defaultMessage": "Session title"
+  },
+  "desktop.settings.accountAccess": {
+    "defaultMessage": "Account access"
+  },
+  "desktop.settings.accountAccessDescription": {
+    "defaultMessage": "Connect this app in your browser. Only the permissions required by this app are requested."
+  },
+  "desktop.settings.advanced": {
+    "defaultMessage": "Advanced"
+  },
+  "desktop.settings.agentDefaults": {
+    "defaultMessage": "Agent Defaults"
+  },
+  "desktop.settings.all": {
+    "defaultMessage": "All"
+  },
+  "desktop.settings.alwaysAllow": {
+    "defaultMessage": "Always allow"
+  },
+  "desktop.settings.app": {
+    "defaultMessage": "App"
+  },
+  "desktop.settings.askEveryTime": {
+    "defaultMessage": "Ask every time"
+  },
+  "desktop.settings.authApiKey": {
+    "defaultMessage": "API key"
+  },
+  "desktop.settings.authCustomCredentials": {
+    "defaultMessage": "Custom credentials"
+  },
+  "desktop.settings.authWeb": {
+    "defaultMessage": "Web"
+  },
+  "desktop.settings.authorizationExpired": {
+    "defaultMessage": "Authorization expired. Try again."
+  },
+  "desktop.settings.blocked": {
+    "defaultMessage": "Blocked"
+  },
+  "desktop.settings.chinese": {
+    "defaultMessage": "简体中文"
+  },
+  "desktop.settings.configure": {
+    "defaultMessage": "Configure"
+  },
+  "desktop.settings.connect": {
+    "defaultMessage": "Connect"
+  },
+  "desktop.settings.connected": {
+    "defaultMessage": "Connected"
+  },
+  "desktop.settings.connectedAccount": {
+    "defaultMessage": "Connected to your {name} account."
+  },
+  "desktop.settings.connectedStatus": {
+    "defaultMessage": "Connected"
+  },
+  "desktop.settings.connector": {
+    "defaultMessage": "Connector"
+  },
+  "desktop.settings.connectorApps": {
+    "defaultMessage": "Available connector apps"
+  },
+  "desktop.settings.connectorBack": {
+    "defaultMessage": "Connectors"
+  },
+  "desktop.settings.connectorDescription": {
+    "defaultMessage": "Configure this connector so your agent can use its tools."
+  },
+  "desktop.settings.connectorFilters": {
+    "defaultMessage": "Connector filters"
+  },
+  "desktop.settings.connectors": {
+    "defaultMessage": "Connectors"
+  },
+  "desktop.settings.credentials": {
+    "defaultMessage": "Credentials"
+  },
+  "desktop.settings.credentialsDescription": {
+    "defaultMessage": "Values are stored in your local settings and are only sent to this connector."
+  },
+  "desktop.settings.custom": {
+    "defaultMessage": "Custom"
+  },
+  "desktop.settings.default": {
+    "defaultMessage": "Default"
+  },
+  "desktop.settings.destructiveTools": {
+    "defaultMessage": "Destructive tools"
+  },
+  "desktop.settings.disconnect": {
+    "defaultMessage": "Disconnect"
+  },
+  "desktop.settings.enableModel": {
+    "defaultMessage": "Enable {name}"
+  },
+  "desktop.settings.english": {
+    "defaultMessage": "English"
+  },
+  "desktop.settings.everyConnectorReady": {
+    "defaultMessage": "Every connector is set up."
+  },
+  "desktop.settings.fetchModels": {
+    "defaultMessage": "Fetch models"
+  },
+  "desktop.settings.fetchModelsError": {
+    "defaultMessage": "Unable to fetch models."
+  },
+  "desktop.settings.finishInBrowser": {
+    "defaultMessage": "Finish in browser"
+  },
+  "desktop.settings.followSystem": {
+    "defaultMessage": "Follow system"
+  },
+  "desktop.settings.general": {
+    "defaultMessage": "General"
+  },
+  "desktop.settings.high": {
+    "defaultMessage": "High"
+  },
+  "desktop.settings.interfaceLanguage": {
+    "defaultMessage": "Interface language"
+  },
+  "desktop.settings.interfaceLanguageDescription": {
+    "defaultMessage": "Choose the language used by the Desktop interface."
+  },
+  "desktop.settings.invalidResponseLanguage": {
+    "defaultMessage": "Response language must be a valid BCP-47 tag, for example zh-CN."
+  },
+  "desktop.settings.limitsUnavailable": {
+    "defaultMessage": "Limits unavailable"
+  },
+  "desktop.settings.loading": {
+    "defaultMessage": "Loading settings…"
+  },
+  "desktop.settings.localeSaveError": {
+    "defaultMessage": "Interface language could not be saved. Try again."
+  },
+  "desktop.settings.low": {
+    "defaultMessage": "Low"
+  },
+  "desktop.settings.maxIterations": {
+    "defaultMessage": "Max iterations"
+  },
+  "desktop.settings.medium": {
+    "defaultMessage": "Medium"
+  },
+  "desktop.settings.modelContext": {
+    "defaultMessage": "{value} context"
+  },
+  "desktop.settings.modelInput": {
+    "defaultMessage": "{value} input"
+  },
+  "desktop.settings.modelInputOutput": {
+    "defaultMessage": "Input: {input} → Output: {output}"
+  },
+  "desktop.settings.modelLimits": {
+    "defaultMessage": "Context: {context} · Input: {input} · Output: {output}"
+  },
+  "desktop.settings.modelOutput": {
+    "defaultMessage": "{value} output"
+  },
+  "desktop.settings.models": {
+    "defaultMessage": "Models"
+  },
+  "desktop.settings.modelsEmpty": {
+    "defaultMessage": "No models configured yet."
+  },
+  "desktop.settings.modelsFetched": {
+    "defaultMessage": "{count} models fetched"
+  },
+  "desktop.settings.modelsSearch": {
+    "defaultMessage": "Search {count} models"
+  },
+  "desktop.settings.modelsSearchHelp": {
+    "defaultMessage": "Showing {visible} of {total}. Search to find other models."
+  },
+  "desktop.settings.noConnectedConnectors": {
+    "defaultMessage": "No connectors are connected yet."
+  },
+  "desktop.settings.noModelsFetched": {
+    "defaultMessage": "No models fetched"
+  },
+  "desktop.settings.notConnected": {
+    "defaultMessage": "Not connected"
+  },
+  "desktop.settings.oauthDisconnectError": {
+    "defaultMessage": "Unable to disconnect this account."
+  },
+  "desktop.settings.oauthStartError": {
+    "defaultMessage": "Unable to start OAuth authorization."
+  },
+  "desktop.settings.observability": {
+    "defaultMessage": "Observability"
+  },
+  "desktop.settings.permission": {
+    "defaultMessage": "{label} permission"
+  },
+  "desktop.settings.positiveMaxIterations": {
+    "defaultMessage": "Max iterations must be a positive integer."
+  },
+  "desktop.settings.profileIdDuplicate": {
+    "defaultMessage": "Profile ID \"{id}\" is duplicated."
+  },
+  "desktop.settings.profileIdInvalid": {
+    "defaultMessage": "Profile ID \"{id}\" is invalid."
+  },
+  "desktop.settings.providerAdapter": {
+    "defaultMessage": "Adapter"
+  },
+  "desktop.settings.providerAdd": {
+    "defaultMessage": "Add provider"
+  },
+  "desktop.settings.providerApiKey": {
+    "defaultMessage": "API key"
+  },
+  "desktop.settings.providerApiKeyRequired": {
+    "defaultMessage": "{name} requires an API key."
+  },
+  "desktop.settings.providerConnection": {
+    "defaultMessage": "Connection"
+  },
+  "desktop.settings.providerDelete": {
+    "defaultMessage": "Delete provider"
+  },
+  "desktop.settings.providerDeleteAria": {
+    "defaultMessage": "Delete {name}"
+  },
+  "desktop.settings.providerEndpoint": {
+    "defaultMessage": "Endpoint"
+  },
+  "desktop.settings.providerEnterApiKey": {
+    "defaultMessage": "Enter API key"
+  },
+  "desktop.settings.providerHideApiKey": {
+    "defaultMessage": "Hide API key"
+  },
+  "desktop.settings.providerNameRequired": {
+    "defaultMessage": "Every Provider needs a name."
+  },
+  "desktop.settings.providerNew": {
+    "defaultMessage": "New provider"
+  },
+  "desktop.settings.providerNoProvider": {
+    "defaultMessage": "No Provider yet"
+  },
+  "desktop.settings.providerProfileName": {
+    "defaultMessage": "Profile name"
+  },
+  "desktop.settings.providerReplacementKey": {
+    "defaultMessage": "Enter replacement key"
+  },
+  "desktop.settings.providerRevealError": {
+    "defaultMessage": "Unable to reveal API key"
+  },
+  "desktop.settings.providerSaveError": {
+    "defaultMessage": "Settings could not be saved. Try again."
+  },
+  "desktop.settings.providerShowApiKey": {
+    "defaultMessage": "Show API key"
+  },
+  "desktop.settings.providers": {
+    "defaultMessage": "Providers"
+  },
+  "desktop.settings.readOnlyTools": {
+    "defaultMessage": "Read-only tools"
+  },
+  "desktop.settings.ready": {
+    "defaultMessage": "Ready"
+  },
+  "desktop.settings.reasoningEffort": {
+    "defaultMessage": "Reasoning effort"
+  },
+  "desktop.settings.responseLanguage": {
+    "defaultMessage": "Response language"
+  },
+  "desktop.settings.retry": {
+    "defaultMessage": "Retry"
+  },
+  "desktop.settings.retryConnect": {
+    "defaultMessage": "Retry"
+  },
+  "desktop.settings.save": {
+    "defaultMessage": "Save"
+  },
+  "desktop.settings.saveBeforeFetchModels": {
+    "defaultMessage": "Save connection changes before fetching models."
+  },
+  "desktop.settings.status": {
+    "defaultMessage": "Status"
+  },
+  "desktop.settings.telemetryBothKeysRequired": {
+    "defaultMessage": "Enter both the Langfuse public key and secret key."
+  },
+  "desktop.settings.telemetryClear": {
+    "defaultMessage": "Clear saved keys"
+  },
+  "desktop.settings.telemetryDescription": {
+    "defaultMessage": "Send coding-agent telemetry to Langfuse through OTLP. Telemetry stays disabled until you enable it."
+  },
+  "desktop.settings.telemetryDisableClear": {
+    "defaultMessage": "Disable and clear keys"
+  },
+  "desktop.settings.telemetryEnable": {
+    "defaultMessage": "Enable telemetry"
+  },
+  "desktop.settings.telemetryEndpoint": {
+    "defaultMessage": "Langfuse OTLP endpoint"
+  },
+  "desktop.settings.telemetryEndpointDescription": {
+    "defaultMessage": "Use the /api/public/otel endpoint for your Langfuse Cloud or self-hosted instance."
+  },
+  "desktop.settings.telemetryEndpointRequired": {
+    "defaultMessage": "Enter the Langfuse OTLP endpoint before enabling telemetry."
+  },
+  "desktop.settings.telemetryKeysRequired": {
+    "defaultMessage": "Enter a Langfuse public key and secret key before enabling telemetry."
+  },
+  "desktop.settings.telemetryNoKeys": {
+    "defaultMessage": "No Langfuse key pair is stored."
+  },
+  "desktop.settings.telemetryOverride": {
+    "defaultMessage": "This Runtime Host is configured by JAI_TELEMETRY_* environment variables. Local settings are read-only while that override is present."
+  },
+  "desktop.settings.telemetryPublicKey": {
+    "defaultMessage": "Langfuse public key"
+  },
+  "desktop.settings.telemetryPublicKeyDescription": {
+    "defaultMessage": "Leave both key fields empty to keep the stored key pair."
+  },
+  "desktop.settings.telemetrySaveError": {
+    "defaultMessage": "Observability settings could not be saved."
+  },
+  "desktop.settings.telemetrySecretKey": {
+    "defaultMessage": "Langfuse secret key"
+  },
+  "desktop.settings.telemetrySecretKeyDescription": {
+    "defaultMessage": "Keys are stored in the local Runtime Host database, never in settings.json."
+  },
+  "desktop.settings.telemetryStored": {
+    "defaultMessage": "Stored: {publicKey} and {secretKey}"
+  },
+  "desktop.settings.textUnsupported": {
+    "defaultMessage": "Text unsupported"
+  },
+  "desktop.settings.title": {
+    "defaultMessage": "Settings"
+  },
+  "desktop.settings.toolPermissions": {
+    "defaultMessage": "Tool permissions"
+  },
+  "desktop.settings.toolPermissionsDescription": {
+    "defaultMessage": "Choose when the Agent is allowed to use these tools."
+  },
+  "desktop.settings.toolsUnsupported": {
+    "defaultMessage": "Tools unsupported"
+  },
+  "desktop.settings.type": {
+    "defaultMessage": "Type"
+  },
+  "desktop.settings.unavailable": {
+    "defaultMessage": "Settings unavailable"
+  },
+  "desktop.settings.unlimited": {
+    "defaultMessage": "Unlimited"
+  },
+  "desktop.settings.unsavedChanges": {
+    "defaultMessage": "Unsaved changes"
+  },
+  "desktop.settings.unverified": {
+    "defaultMessage": "Unverified"
+  },
+  "desktop.settings.waitingForApproval": {
+    "defaultMessage": "Waiting for approval in your browser…"
+  },
+  "desktop.settings.writeTools": {
+    "defaultMessage": "Write tools"
+  },
+  "desktop.sidebar.actionsFor": {
+    "defaultMessage": "Actions for {title}"
+  },
+  "desktop.sidebar.chats": {
+    "defaultMessage": "Chats"
+  },
+  "desktop.sidebar.collapse": {
+    "defaultMessage": "Collapse sidebar"
+  },
+  "desktop.sidebar.deleteFailed": {
+    "defaultMessage": "Could not delete session"
+  },
+  "desktop.sidebar.deleteSessionDescription": {
+    "defaultMessage": "“{title}” and its local conversation history will be permanently deleted."
+  },
+  "desktop.sidebar.deleteSessionTitle": {
+    "defaultMessage": "Delete session?"
+  },
+  "desktop.sidebar.loadMore": {
+    "defaultMessage": "Load more"
+  },
+  "desktop.sidebar.loadingMore": {
+    "defaultMessage": "Loading more…"
+  },
+  "desktop.sidebar.loadingRecentSessions": {
+    "defaultMessage": "Loading recent sessions"
+  },
+  "desktop.sidebar.moveFailed": {
+    "defaultMessage": "Could not move session"
+  },
+  "desktop.sidebar.moveToProject": {
+    "defaultMessage": "Move to project"
+  },
+  "desktop.sidebar.new": {
+    "defaultMessage": "New"
+  },
+  "desktop.sidebar.noAvailableProjects": {
+    "defaultMessage": "No available projects"
+  },
+  "desktop.sidebar.noRecentSessions": {
+    "defaultMessage": "New chats will be saved here."
+  },
+  "desktop.sidebar.primary": {
+    "defaultMessage": "Primary"
+  },
+  "desktop.sidebar.projects": {
+    "defaultMessage": "Projects"
+  },
+  "desktop.sidebar.recents": {
+    "defaultMessage": "Recents"
+  },
+  "desktop.sidebar.recentsLoadError": {
+    "defaultMessage": "Recents could not be loaded. Try again later."
+  },
+  "desktop.sidebar.removeFromProject": {
+    "defaultMessage": "Remove from project"
+  },
+  "desktop.sidebar.removeFromProjectFailed": {
+    "defaultMessage": "Could not remove from project"
+  },
+  "desktop.sidebar.rename": {
+    "defaultMessage": "Rename"
+  },
+  "desktop.sidebar.renameFailed": {
+    "defaultMessage": "Could not rename session"
+  },
+  "desktop.sidebar.searchComingLater": {
+    "defaultMessage": "Search (coming later)"
+  },
+  "desktop.sidebar.sessionActions": {
+    "defaultMessage": "Session actions"
+  },
+  "desktop.sidebar.settings": {
+    "defaultMessage": "Settings"
+  },
+  "desktop.sidebar.settingsShortcut": {
+    "defaultMessage": "Settings (⌘,)"
+  },
+  "desktop.slash.commands": {
+    "defaultMessage": "Slash commands"
+  },
+  "desktop.subagent.aria": {
+    "defaultMessage": "Subagent {title}: {status}"
+  },
+  "desktop.subagent.completed": {
+    "defaultMessage": "Task completed"
+  },
+  "desktop.subagent.done": {
+    "defaultMessage": "Done"
+  },
+  "desktop.subagent.failed": {
+    "defaultMessage": "Failed"
+  },
+  "desktop.subagent.preparing": {
+    "defaultMessage": "Preparing delegated task…"
+  },
+  "desktop.subagent.running": {
+    "defaultMessage": "Running"
+  },
+  "desktop.subagent.stopped": {
+    "defaultMessage": "Task stopped"
+  },
+  "desktop.task.artifacts": {
+    "defaultMessage": "Artifacts"
+  },
+  "desktop.task.artifactsDescription": {
+    "defaultMessage": "Generated Markdown and HTML appear here."
+  },
+  "desktop.task.artifactsList": {
+    "defaultMessage": "Session artifacts"
+  },
+  "desktop.task.cancelled": {
+    "defaultMessage": "Cancelled"
+  },
+  "desktop.task.complete": {
+    "defaultMessage": "Complete"
+  },
+  "desktop.task.completed": {
+    "defaultMessage": "Completed"
+  },
+  "desktop.task.inProgress": {
+    "defaultMessage": "In progress"
+  },
+  "desktop.task.interrupted": {
+    "defaultMessage": "Interrupted"
+  },
+  "desktop.task.interruptedSummary": {
+    "defaultMessage": "Interrupted · {progress}"
+  },
+  "desktop.task.list": {
+    "defaultMessage": "Session tasks"
+  },
+  "desktop.task.noActiveTodo": {
+    "defaultMessage": "No active Todo"
+  },
+  "desktop.task.outputs": {
+    "defaultMessage": "Outputs"
+  },
+  "desktop.task.outputsDescription": {
+    "defaultMessage": "Files generated or modified by the Agent appear here."
+  },
+  "desktop.task.pending": {
+    "defaultMessage": "Pending"
+  },
+  "desktop.task.progress": {
+    "defaultMessage": "Progress"
+  },
+  "desktop.task.progressSummary": {
+    "defaultMessage": "{resolved} of {total} resolved"
+  },
+  "desktop.task.terminalSummary": {
+    "defaultMessage": "{completed} completed · {cancelled} cancelled"
+  },
+  "desktop.transcript.actions": {
+    "defaultMessage": "{count, plural, one {# action} other {# actions}}"
+  },
+  "desktop.transcript.actionsSummary": {
+    "defaultMessage": "{steps} · {count} {count, plural, one {action} other {actions}}"
+  },
+  "desktop.transcript.added": {
+    "defaultMessage": "Added"
+  },
+  "desktop.transcript.backDescription": {
+    "defaultMessage": "The conversation will continue from here; later content will be kept as a branch."
+  },
+  "desktop.transcript.backModelError": {
+    "defaultMessage": "Could not return to this message. Check the model and try again."
+  },
+  "desktop.transcript.backRetryError": {
+    "defaultMessage": "Could not return to this message. Try again later."
+  },
+  "desktop.transcript.backToHere": {
+    "defaultMessage": "Back to here"
+  },
+  "desktop.transcript.backToMessage": {
+    "defaultMessage": "Back to this message?"
+  },
+  "desktop.transcript.called": {
+    "defaultMessage": "Called"
+  },
+  "desktop.transcript.calling": {
+    "defaultMessage": "Calling"
+  },
+  "desktop.transcript.calls": {
+    "defaultMessage": "{count, plural, one {# call} other {# calls}}"
+  },
+  "desktop.transcript.commands": {
+    "defaultMessage": "{count, plural, one {# command} other {# commands}}"
+  },
+  "desktop.transcript.compacted": {
+    "defaultMessage": "Context compacted"
+  },
+  "desktop.transcript.compacting": {
+    "defaultMessage": "Compacting context"
+  },
+  "desktop.transcript.deleted": {
+    "defaultMessage": "Deleted"
+  },
+  "desktop.transcript.edited": {
+    "defaultMessage": "Edited"
+  },
+  "desktop.transcript.editing": {
+    "defaultMessage": "Editing"
+  },
+  "desktop.transcript.files": {
+    "defaultMessage": "{count, plural, one {# file} other {# files}}"
+  },
+  "desktop.transcript.filesSummary": {
+    "defaultMessage": "{steps} · {count} {count, plural, one {file} other {files}} changed"
+  },
+  "desktop.transcript.loading": {
+    "defaultMessage": "Loading conversation"
+  },
+  "desktop.transcript.modified": {
+    "defaultMessage": "Modified"
+  },
+  "desktop.transcript.moonwalking": {
+    "defaultMessage": "Moonwalking"
+  },
+  "desktop.transcript.planning": {
+    "defaultMessage": "Planning"
+  },
+  "desktop.transcript.ran": {
+    "defaultMessage": "Ran"
+  },
+  "desktop.transcript.read": {
+    "defaultMessage": "Read"
+  },
+  "desktop.transcript.reading": {
+    "defaultMessage": "Reading"
+  },
+  "desktop.transcript.refining": {
+    "defaultMessage": "Refining"
+  },
+  "desktop.transcript.running": {
+    "defaultMessage": "Running"
+  },
+  "desktop.transcript.searched": {
+    "defaultMessage": "Searched"
+  },
+  "desktop.transcript.searches": {
+    "defaultMessage": "{count, plural, one {# search} other {# searches}}"
+  },
+  "desktop.transcript.searching": {
+    "defaultMessage": "Searching"
+  },
+  "desktop.transcript.stepSummary": {
+    "defaultMessage": "{count} {count, plural, one {step} other {steps}}"
+  },
+  "desktop.transcript.thinking": {
+    "defaultMessage": "Thinking"
+  },
+  "desktop.transcript.worked": {
+    "defaultMessage": "Worked"
+  },
+  "desktop.transcript.working": {
+    "defaultMessage": "Working"
+  },
+  "desktop.transcript.workingSummary": {
+    "defaultMessage": "{steps} · Working"
+  },
+  "desktop.workspace.artifactPreview": {
+    "defaultMessage": "Artifact preview"
+  },
+  "desktop.workspace.artifacts": {
+    "defaultMessage": "Artifacts"
+  },
+  "desktop.workspace.artifactsDescription": {
+    "defaultMessage": "Generated Markdown and HTML appear here."
+  },
+  "desktop.workspace.chooseFile": {
+    "defaultMessage": "Open a file"
+  },
+  "desktop.workspace.chooseFileDescription": {
+    "defaultMessage": "Choose a file from the workspace tree"
+  },
+  "desktop.workspace.chooseOpen": {
+    "defaultMessage": "Choose how to open"
+  },
+  "desktop.workspace.closeFile": {
+    "defaultMessage": "Close {name}"
+  },
+  "desktop.workspace.collapseTree": {
+    "defaultMessage": "Collapse file tree"
+  },
+  "desktop.workspace.expandTree": {
+    "defaultMessage": "Expand file tree"
+  },
+  "desktop.workspace.fileUnavailable": {
+    "defaultMessage": "File unavailable"
+  },
+  "desktop.workspace.files": {
+    "defaultMessage": "Workspace files"
+  },
+  "desktop.workspace.filter": {
+    "defaultMessage": "Filter workspace files…"
+  },
+  "desktop.workspace.loadingPreview": {
+    "defaultMessage": "Loading preview"
+  },
+  "desktop.workspace.newTab": {
+    "defaultMessage": "New file tab"
+  },
+  "desktop.workspace.noArtifacts": {
+    "defaultMessage": "No artifacts yet"
+  },
+  "desktop.workspace.open": {
+    "defaultMessage": "Open"
+  },
+  "desktop.workspace.openCursor": {
+    "defaultMessage": "Open with Cursor"
+  },
+  "desktop.workspace.openCursorError": {
+    "defaultMessage": "Could not open with Cursor"
+  },
+  "desktop.workspace.openDefault": {
+    "defaultMessage": "Open {name} with the default app"
+  },
+  "desktop.workspace.openDefaultShort": {
+    "defaultMessage": "Open with default app"
+  },
+  "desktop.workspace.openFileError": {
+    "defaultMessage": "Could not open file"
+  },
+  "desktop.workspace.openFiles": {
+    "defaultMessage": "Open files"
+  },
+  "desktop.workspace.openWith": {
+    "defaultMessage": "Open with {name}"
+  },
+  "desktop.workspace.previewUnavailable": {
+    "defaultMessage": "Preview unavailable"
+  },
+  "desktop.workspace.previewUnavailableDescription": {
+    "defaultMessage": "The file is no longer available or the current project cannot access it."
+  },
+  "desktop.workspace.readDirectory": {
+    "defaultMessage": "Could not read this directory"
+  },
+  "desktop.workspace.readFileError": {
+    "defaultMessage": "Could not read this file."
+  },
+  "desktop.workspace.readRoot": {
+    "defaultMessage": "Could not read the workspace directory"
+  },
+  "desktop.workspace.reading": {
+    "defaultMessage": "Reading workspace…"
+  },
+  "desktop.workspace.readingFile": {
+    "defaultMessage": "Reading file…"
+  },
+  "desktop.workspace.selectArtifact": {
+    "defaultMessage": "Select an artifact"
+  },
+  "desktop.workspace.selectArtifactDescription": {
+    "defaultMessage": "Choose a file to view its preview."
+  },
+  "desktop.workspace.sessionArtifacts": {
+    "defaultMessage": "Session artifacts"
+  },
+  "desktop.workspace.tree": {
+    "defaultMessage": "Workspace file tree"
+  }
+}

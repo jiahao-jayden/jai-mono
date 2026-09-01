@@ -1,4 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { useIcon } from "@/lib/icon-context";
 import type { DesktopTelemetrySettingsInput, DesktopTelemetrySettingsSnapshot } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
@@ -14,6 +16,7 @@ interface ObservabilitySettingsProps {
 }
 
 export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, onSave }: ObservabilitySettingsProps) {
+	const intl = useIntl();
 	const LockIcon = useIcon("lock");
 	const TrashIcon = useIcon("trash");
 	const [enabled, setEnabled] = useState(snapshot?.enabled ?? false);
@@ -40,15 +43,15 @@ export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, o
 		const normalizedSecretKey = secretKey.trim();
 		const replacingCredentials = Boolean(normalizedPublicKey || normalizedSecretKey);
 		if (nextEnabled && !isHttpUrl(normalizedEndpoint)) {
-			setError("Enter the Langfuse OTLP endpoint before enabling telemetry.");
+			setError(intl.formatMessage(desktopMessages.settingsTelemetryEndpointRequired));
 			return;
 		}
 		if (!clearCredentials && replacingCredentials && (!normalizedPublicKey || !normalizedSecretKey)) {
-			setError("Enter both the Langfuse public key and secret key.");
+			setError(intl.formatMessage(desktopMessages.settingsTelemetryBothKeysRequired));
 			return;
 		}
 		if (!clearCredentials && nextEnabled && !snapshot.credential.configured && !replacingCredentials) {
-			setError("Enter a Langfuse public key and secret key before enabling telemetry.");
+			setError(intl.formatMessage(desktopMessages.settingsTelemetryKeysRequired));
 			return;
 		}
 		setSaving(true);
@@ -67,8 +70,8 @@ export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, o
 			setEndpoint(saved.endpoint ?? "");
 			setPublicKey("");
 			setSecretKey("");
-		} catch (cause) {
-			setError(cause instanceof Error ? cause.message : "Observability settings could not be saved.");
+		} catch (_cause) {
+			setError(intl.formatMessage(desktopMessages.settingsTelemetrySaveError));
 		} finally {
 			setSaving(false);
 		}
@@ -80,11 +83,11 @@ export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, o
 				<div className="max-w-80">
 					<LockIcon className="mx-auto mb-3 size-5 text-muted-foreground" />
 					<p className="text-[14px] font-semibold">
-						{loading ? "Loading observability settings..." : "Observability settings are unavailable"}
+						{intl.formatMessage(loading ? desktopMessages.settingsLoading : desktopMessages.settingsUnavailable)}
 					</p>
 					{loadError ? (
 						<Button type="button" variant="tertiary" className="mt-4" onClick={onRetry}>
-							Retry
+							{intl.formatMessage(desktopMessages.settingsRetry)}
 						</Button>
 					) : null}
 				</div>
@@ -93,22 +96,32 @@ export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, o
 	}
 
 	const formDisabled = saving || snapshot.environmentOverride;
-	const clearLabel = enabled ? "Disable and clear keys" : "Clear saved keys";
+	const clearLabel = intl.formatMessage(
+		enabled ? desktopMessages.settingsTelemetryDisableClear : desktopMessages.settingsTelemetryClear,
+	);
 	const credentialStatus = snapshot.credential.configured
-		? `Stored: ${snapshot.credential.publicKeyMask ?? "Public key"} and ${snapshot.credential.secretKeyMask ?? "Secret key"}`
-		: "No Langfuse key pair is stored.";
+		? intl.formatMessage(desktopMessages.settingsTelemetryStored, {
+				publicKey:
+					snapshot.credential.publicKeyMask ?? intl.formatMessage(desktopMessages.settingsTelemetryPublicKey),
+				secretKey:
+					snapshot.credential.secretKeyMask ?? intl.formatMessage(desktopMessages.settingsTelemetrySecretKey),
+			})
+		: intl.formatMessage(desktopMessages.settingsTelemetryNoKeys);
+	const configurationError = snapshot.configurationError
+		? intl.formatMessage(desktopMessages.settingsTelemetrySaveError)
+		: error;
 
 	return (
 		<div className="min-h-0 px-8 py-6">
 			<div className="flex items-start justify-between gap-6 border-b border-border/55 pb-5">
 				<div className="max-w-105">
-					<h2 className="text-base font-semibold">Observability</h2>
+					<h2 className="text-base font-semibold">{intl.formatMessage(desktopMessages.settingsObservability)}</h2>
 					<p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-						Send coding-agent telemetry to Langfuse through OTLP. Telemetry stays disabled until you enable it.
+						{intl.formatMessage(desktopMessages.settingsTelemetryDescription)}
 					</p>
 				</div>
 				<Switch
-					label="Enable telemetry"
+					label={intl.formatMessage(desktopMessages.settingsTelemetryEnable)}
 					checked={enabled}
 					disabled={formDisabled}
 					onToggle={() => setEnabled((current) => !current)}
@@ -119,16 +132,15 @@ export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, o
 				<div className="flex gap-3 border-b border-border/55 py-5" role="status">
 					<LockIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
 					<p className="text-[13px] leading-relaxed text-muted-foreground">
-						This Runtime Host is configured by <code>JAI_TELEMETRY_*</code> environment variables. Local settings
-						are read-only while that override is present.
+						{intl.formatMessage(desktopMessages.settingsTelemetryOverride)}
 					</p>
 				</div>
 			) : null}
 
 			<div className="divide-y divide-border/55">
 				<SettingsField
-					label="Langfuse OTLP endpoint"
-					description="Use the /api/public/otel endpoint for your Langfuse Cloud or self-hosted instance."
+					label={intl.formatMessage(desktopMessages.settingsTelemetryEndpoint)}
+					description={intl.formatMessage(desktopMessages.settingsTelemetryEndpointDescription)}
 				>
 					<Input
 						type="url"
@@ -136,15 +148,15 @@ export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, o
 						disabled={formDisabled}
 						onChange={(event) => setEndpoint(event.target.value)}
 						placeholder="https://your-langfuse.example/api/public/otel"
-						aria-label="Langfuse OTLP endpoint"
+						aria-label={intl.formatMessage(desktopMessages.settingsTelemetryEndpoint)}
 						autoComplete="off"
 						spellCheck={false}
 					/>
 				</SettingsField>
 
 				<SettingsField
-					label="Langfuse public key"
-					description="Leave both key fields empty to keep the stored key pair."
+					label={intl.formatMessage(desktopMessages.settingsTelemetryPublicKey)}
+					description={intl.formatMessage(desktopMessages.settingsTelemetryPublicKeyDescription)}
 				>
 					<Input
 						type="password"
@@ -152,15 +164,15 @@ export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, o
 						disabled={formDisabled}
 						onChange={(event) => setPublicKey(event.target.value)}
 						placeholder={snapshot.credential.publicKeyMask ?? "pk-lf-..."}
-						aria-label="Langfuse public key"
+						aria-label={intl.formatMessage(desktopMessages.settingsTelemetryPublicKey)}
 						autoComplete="off"
 						spellCheck={false}
 					/>
 				</SettingsField>
 
 				<SettingsField
-					label="Langfuse secret key"
-					description="Keys are stored in the local Runtime Host database, never in settings.json."
+					label={intl.formatMessage(desktopMessages.settingsTelemetrySecretKey)}
+					description={intl.formatMessage(desktopMessages.settingsTelemetrySecretKeyDescription)}
 				>
 					<Input
 						type="password"
@@ -168,7 +180,7 @@ export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, o
 						disabled={formDisabled}
 						onChange={(event) => setSecretKey(event.target.value)}
 						placeholder={snapshot.credential.secretKeyMask ?? "sk-lf-..."}
-						aria-label="Langfuse secret key"
+						aria-label={intl.formatMessage(desktopMessages.settingsTelemetrySecretKey)}
 						autoComplete="off"
 						spellCheck={false}
 					/>
@@ -191,12 +203,12 @@ export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, o
 					</Button>
 				) : null}
 				<Button type="button" loading={saving} disabled={formDisabled} onClick={() => void save(false)}>
-					Save
+					{intl.formatMessage(desktopMessages.settingsSave)}
 				</Button>
 			</div>
-			{snapshot.configurationError || error ? (
+			{configurationError ? (
 				<p className="mt-4 max-w-125 text-[12px] leading-relaxed text-destructive" role="alert">
-					{error ?? snapshot.configurationError}
+					{configurationError}
 				</p>
 			) : null}
 		</div>

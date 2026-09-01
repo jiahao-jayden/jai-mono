@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { cn } from "@/lib/utils";
 import { useShape } from "@/lib/shape-context";
 
@@ -51,6 +53,7 @@ interface FileThumbnailProps {
 }
 
 function FileThumbnail({ file, size, className }: FileThumbnailProps) {
+  const intl = useIntl();
   const shape = useShape();
   const isImage = file.type.startsWith("image/");
   const isPdf = file.type === "application/pdf";
@@ -133,18 +136,33 @@ function FileThumbnail({ file, size, className }: FileThumbnailProps) {
         <div className="absolute inset-0 flex items-center justify-center">
           <div
             className="w-6 h-6 rounded-full border-2 border-border border-t-muted-foreground animate-spin"
-            aria-label="Loading preview"
+            aria-label={intl.formatMessage(desktopMessages.fileLoadingPreview)}
             role="status"
           />
         </div>
       ) : (
-        <DocumentThumbnail fileName={file.name} fileType={fileType} size={size} />
+        <DocumentThumbnail
+          fileName={file.name}
+          fileType={fileType}
+          size={size}
+          ariaLabel={intl.formatMessage(desktopMessages.fileTypeAria, { name: file.name, type: fileType })}
+        />
       )}
     </div>
   );
 }
 
-function DocumentThumbnail({ fileName, fileType, size }: { fileName: string; fileType: string; size: number }) {
+function DocumentThumbnail({
+  fileName,
+  fileType,
+  size,
+  ariaLabel,
+}: {
+  fileName: string;
+  fileType: string;
+  size: number;
+  ariaLabel: string;
+}) {
   const compact = size < 112;
   const labelClassName = cn(
     "min-w-0 break-words font-medium text-foreground",
@@ -153,7 +171,7 @@ function DocumentThumbnail({ fileName, fileType, size }: { fileName: string; fil
   const cardClassName = cn("flex h-full flex-col justify-between", compact ? "p-2" : "p-2.5");
 
   return (
-    <div className={cardClassName} role="img" aria-label={`${fileName}, ${fileType} file`}>
+    <div className={cardClassName} role="img" aria-label={ariaLabel}>
       <span className={labelClassName} title={fileName}>
         {fileName}
       </span>

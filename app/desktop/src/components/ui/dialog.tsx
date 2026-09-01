@@ -7,6 +7,8 @@ import {
 } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { motion } from "framer-motion";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { cn } from "@/lib/utils";
 import { useIcon } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
@@ -61,6 +63,7 @@ interface DialogContentProps extends HTMLAttributes<HTMLDivElement> {
 
 const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
   ({ className, children, size = "sm", container, ...props }, ref) => {
+    const intl = useIntl();
     const XIcon = useIcon("x");
     const shape = useShape();
     const substrate = useSurface();
@@ -161,7 +164,7 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
                         className="absolute right-3 top-3"
                       >
                         <XIcon />
-                        <span className="sr-only">Close</span>
+                        <span className="sr-only">{intl.formatMessage(desktopMessages.commonClose)}</span>
                       </Button>
                     }
                   />

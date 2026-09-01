@@ -1,6 +1,8 @@
 import { AnimatePresence, motion, Reorder, useReducedMotion } from "framer-motion";
+import { useIntl } from "react-intl";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
+import { desktopMessages } from "@/i18n/messages";
 import { fontWeights } from "@/lib/font-weight";
 import { useIcon } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
@@ -65,6 +67,7 @@ interface QueuedMessageRowProps {
 }
 
 function QueuedMessageRow({ message, index, total, reducedMotion, onEdit, onRemove }: QueuedMessageRowProps) {
+	const intl = useIntl();
 	const XIcon = useIcon("x");
 	const label = message.text;
 
@@ -76,7 +79,7 @@ function QueuedMessageRow({ message, index, total, reducedMotion, onEdit, onRemo
 			animate={{ opacity: 1, scale: 1 }}
 			exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, transition: spring.fast.exit }}
 			transition={spring.fast}
-			aria-label={`Queued message ${index + 1} of ${total}: ${label}`}
+			aria-label={intl.formatMessage(desktopMessages.queuedMessagePosition, { position: index + 1, total, label })}
 			tabIndex={0}
 			onDoubleClick={() => onEdit(message.id)}
 			onKeyDown={(event) => {
@@ -96,7 +99,7 @@ function QueuedMessageRow({ message, index, total, reducedMotion, onEdit, onRemo
 			style={{ fontVariationSettings: fontWeights.normal }}
 		>
 			<span className="min-w-0 flex-1 truncate py-1 -my-1 [text-box:trim-both_cap_alphabetic]">{label}</span>
-			<Tooltip content="Remove" side="top">
+			<Tooltip content={intl.formatMessage(desktopMessages.commonRemove)} side="top">
 				<Button
 					type="button"
 					variant="ghost"
@@ -106,7 +109,7 @@ function QueuedMessageRow({ message, index, total, reducedMotion, onEdit, onRemo
 						event.stopPropagation();
 						onRemove(message.id);
 					}}
-					aria-label={`Remove queued message: ${label}`}
+					aria-label={intl.formatMessage(desktopMessages.queuedMessageRemove, { label })}
 					className="size-5 shrink-0 text-muted-foreground opacity-100 hover:bg-hover hover:text-foreground sm:opacity-0 sm:group-hover/qrow:opacity-100 sm:focus-visible:opacity-100"
 				>
 					<XIcon size={13} strokeWidth={2.5} />

@@ -1,4 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { useIcon } from "@/lib/icon-context";
 import { Button } from "./button";
 
@@ -8,6 +10,7 @@ interface MessageScrollerProps {
 }
 
 export function MessageScroller({ visible, onScrollToBottom }: MessageScrollerProps) {
+	const intl = useIntl();
 	const reducedMotion = useReducedMotion();
 	const ChevronDownIcon = useIcon("chevron-down");
 	const verticalOffset = reducedMotion ? 0 : 6;
@@ -21,11 +24,11 @@ export function MessageScroller({ visible, onScrollToBottom }: MessageScrollerPr
 			transition={{ duration: transitionDuration, ease: "easeOut" }}
 		>
 			<Button
-				aria-label="跳到最新消息"
+				aria-label={intl.formatMessage(desktopMessages.messageJumpLatest)}
 				className="bg-background shadow-sm rounded-full"
 				onClick={onScrollToBottom}
 				size="icon-sm"
-				title="跳到最新消息"
+				title={intl.formatMessage(desktopMessages.messageJumpLatest)}
 				type="button"
 				variant="tertiary"
 			>

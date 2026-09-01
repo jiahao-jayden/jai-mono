@@ -15,6 +15,8 @@ import {
   type ReactNode,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
 import { fontWeights } from "@/lib/font-weight";
@@ -285,6 +287,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
     },
     ref
   ) => {
+    const intl = useIntl();
     const internalRef = useRef<HTMLDivElement>(null);
     const shape = useShape();
     const group = useContext(CardGroupContext);
@@ -477,7 +480,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
             <button
               type="button"
               onClick={onDismiss}
-              aria-label="Dismiss"
+              aria-label={intl.formatMessage(desktopMessages.commonDismiss)}
               className={cn(
                 "absolute right-2 top-2 z-30 flex h-7 w-7 items-center justify-center text-muted-foreground hover:text-foreground hover:bg-hover cursor-pointer outline-none transition-colors duration-80 focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]",
                 shape.button

@@ -2,6 +2,8 @@
 
 import { forwardRef, useState, useCallback, useRef, useEffect, useId, type HTMLAttributes } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { cn } from "@/lib/utils";
 import { useIcon } from "@/lib/icon-context";
 import { fontWeights } from "@/lib/font-weight";
@@ -39,6 +41,11 @@ const InputCopy = forwardRef<HTMLDivElement, InputCopyProps>(
     const tooltipVisibleRef = useRef(false);
     const tooltipWasVisibleRef = useRef(false);
     const shape = useShape();
+    const intl = useIntl();
+    const copiedLabel = intl.formatMessage(desktopMessages.commonCopied);
+    const failedLabel = intl.formatMessage(desktopMessages.commonCopyFailed);
+    const copyLabel = intl.formatMessage(desktopMessages.commonCopy);
+    const copyToClipboardLabel = intl.formatMessage(desktopMessages.commonCopyToClipboard);
 
     // Associate the visible label with the button: the button's accessible
     // name reads "Copy <label>" (its own state label + the field label).
@@ -222,8 +229,8 @@ const InputCopy = forwardRef<HTMLDivElement, InputCopyProps>(
                 </svg>
               </span>
               <span className="select-none inline-grid text-left">
-                <span className="col-start-1 row-start-1 invisible" aria-hidden="true">Copied</span>
-                <span className="col-start-1 row-start-1">Failed</span>
+                <span className="col-start-1 row-start-1 invisible" aria-hidden="true">{copiedLabel}</span>
+                <span className="col-start-1 row-start-1">{failedLabel}</span>
               </span>
             </motion.span>
           ) : status === "copied" ? (
@@ -257,8 +264,8 @@ const InputCopy = forwardRef<HTMLDivElement, InputCopyProps>(
                 </svg>
               </span>
               <span className="select-none inline-grid text-left">
-                <span className="col-start-1 row-start-1 invisible" aria-hidden="true">Copied</span>
-                <span className="col-start-1 row-start-1">Copied</span>
+                <span className="col-start-1 row-start-1 invisible" aria-hidden="true">{copiedLabel}</span>
+                <span className="col-start-1 row-start-1">{copiedLabel}</span>
               </span>
             </motion.span>
           ) : (
@@ -274,8 +281,8 @@ const InputCopy = forwardRef<HTMLDivElement, InputCopyProps>(
                 <CopyIcon size={14} strokeWidth={1.5} className="transition-[stroke-width] duration-80 group-hover:stroke-[2]" />
               </span>
               <span className="select-none inline-grid text-left">
-                <span className="col-start-1 row-start-1 invisible" aria-hidden="true">Copied</span>
-                <span className="col-start-1 row-start-1">Copy</span>
+                <span className="col-start-1 row-start-1 invisible" aria-hidden="true">{copiedLabel}</span>
+                <span className="col-start-1 row-start-1">{copyLabel}</span>
               </span>
             </motion.span>
           )}
@@ -321,12 +328,12 @@ const InputCopy = forwardRef<HTMLDivElement, InputCopyProps>(
         disabled={disabled}
         aria-label={
           status === "copied"
-            ? "Copied"
+            ? copiedLabel
             : status === "error"
-              ? "Copy failed"
+              ? failedLabel
               : label
-                ? "Copy"
-                : "Copy to clipboard"
+                ? copyLabel
+                : copyToClipboardLabel
         }
         aria-labelledby={label ? `${buttonId} ${labelId}` : undefined}
         className={cn(
@@ -361,7 +368,7 @@ const InputCopy = forwardRef<HTMLDivElement, InputCopyProps>(
           </span>
         )}
         {variant === "icon" ? (
-          <Tooltip content={tooltipState === "idle" ? "Copy to clipboard" : status === "error" ? "Copy failed" : "Copied"} delayDuration={500} sideOffset={2} forceOpen={tooltipState === "copied" ? true : tooltipState === "suppressed" ? false : undefined} onOpenChange={handleTooltipOpenChange}>
+          <Tooltip content={tooltipState === "idle" ? copyToClipboardLabel : status === "error" ? failedLabel : copiedLabel} delayDuration={500} sideOffset={2} forceOpen={tooltipState === "copied" ? true : tooltipState === "suppressed" ? false : undefined} onOpenChange={handleTooltipOpenChange}>
             {button}
           </Tooltip>
         ) : (

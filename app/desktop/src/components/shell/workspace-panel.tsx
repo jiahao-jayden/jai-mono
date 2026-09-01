@@ -1,14 +1,15 @@
-import { getErrorMessage } from "@jai/common";
 import type { FileTree, FileTreeDirectoryHandle, FileTreeItemHandle } from "@pierre/trees";
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
+import { useIntl } from "react-intl";
 import { Button } from "@/components/ui/button";
 import { MarkdownContent } from "@/components/ui/chat-message";
 import { DropdownContent, DropdownMenu, DropdownTrigger } from "@/components/ui/dropdown";
 import { Input } from "@/components/ui/input";
 import { MenuItem } from "@/components/ui/menu-item";
 import { toast } from "@/components/ui/toast";
+import { desktopMessages } from "@/i18n/messages";
 import { desktop } from "@/lib/desktop";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
@@ -101,6 +102,7 @@ interface WorkspaceTab extends DesktopWorkspaceFile {
 }
 
 export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const FolderIcon = icons.folder;
 	const FolderOpenIcon = icons["folder-open"];
@@ -117,7 +119,12 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 	const [rootLoaded, setRootLoaded] = useState(false);
 	const [treeCollapsed, setTreeCollapsed] = useState(false);
 	const [tabs, setTabs] = useState<readonly WorkspaceTab[]>([
-		{ path: NEW_WORKSPACE_TAB_PATH, name: "打开文件", content: "", state: "empty" },
+		{
+			path: NEW_WORKSPACE_TAB_PATH,
+			name: intl.formatMessage(desktopMessages.workspaceChooseFile),
+			content: "",
+			state: "empty",
+		},
 	]);
 	const tabsRef = useRef<readonly WorkspaceTab[]>([]);
 	const [activePath, setActivePath] = useState<string | null>(NEW_WORKSPACE_TAB_PATH);
@@ -156,7 +163,11 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 					}
 					setError(null);
 				} catch {
-					setError(directoryPath ? "无法读取这个目录" : "无法读取工作区目录");
+					setError(
+						directoryPath
+							? intl.formatMessage(desktopMessages.workspaceReadDirectory)
+							: intl.formatMessage(desktopMessages.workspaceReadRoot),
+					);
 				} finally {
 					setLoadingPaths((current) => {
 						const next = new Set(current);
@@ -174,7 +185,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 				}
 			}
 		},
-		[sessionId],
+		[sessionId, intl.formatMessage],
 	);
 
 	const ensureFilePathInTree = useCallback(
@@ -234,10 +245,10 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 				setError(null);
 			} catch {
 				setTabs((current) => current.map((tab) => (tab.path === filePath ? { ...tab, state: "error" } : tab)));
-				setError("无法读取文件");
+				setError(intl.formatMessage(desktopMessages.workspaceReadFileError));
 			}
 		},
-		[ensureFilePathInTree, sessionId],
+		[ensureFilePathInTree, sessionId, intl.formatMessage],
 	);
 	openFileRef.current = openFile;
 
@@ -309,7 +320,12 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 			const index = current.findIndex((tab) => tab.path === filePath);
 			const next = current.filter((tab) => tab.path !== filePath);
 			if (next.length === 0) {
-				next.push({ path: NEW_WORKSPACE_TAB_PATH, name: "打开文件", content: "", state: "empty" });
+				next.push({
+					path: NEW_WORKSPACE_TAB_PATH,
+					name: intl.formatMessage(desktopMessages.workspaceChooseFile),
+					content: "",
+					state: "empty",
+				});
 			}
 			if (activePath === filePath) {
 				const nextTab = next[index] ?? next[index - 1] ?? null;
@@ -329,8 +345,8 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 	const isOpeningDefault = openingTarget === "default";
 	const cursorOpenDisabled = openingTarget !== null || openingApplicationId !== null;
 	const defaultOpenLabel = activeWorkspaceFileName
-		? `使用默认应用打开 ${activeWorkspaceFileName}`
-		: "使用默认应用打开";
+		? intl.formatMessage(desktopMessages.workspaceOpenDefault, { name: activeWorkspaceFileName })
+		: intl.formatMessage(desktopMessages.workspaceOpenDefaultShort);
 	const newTabExists = tabs.some((tab) => tab.path === NEW_WORKSPACE_TAB_PATH);
 	const previewInitial = reducedMotion ? { opacity: 0 } : { opacity: 0, transform: "translateY(4px)" };
 	const treeLoading = loadingPaths.size > 0;
@@ -352,10 +368,14 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 					target,
 					...(target === "application" && applicationId ? { applicationId } : {}),
 				});
-			} catch (reason) {
+			} catch {
 				toast.add({
-					title: target === "cursor" ? "无法使用 Cursor 打开" : "无法打开文件",
-					description: getErrorMessage(reason),
+					title: intl.formatMessage(
+						target === "cursor"
+							? desktopMessages.workspaceOpenCursorError
+							: desktopMessages.workspaceOpenFileError,
+					),
+					description: intl.formatMessage(desktopMessages.workspaceOpenFileError),
 					type: "error",
 				});
 			} finally {
@@ -363,7 +383,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 				else setOpeningTarget(null);
 			}
 		},
-		[activeWorkspaceFilePath, sessionId],
+		[activeWorkspaceFilePath, sessionId, intl.formatMessage],
 	);
 	const defaultOpenIcon = defaultOpenApplication?.iconDataUrl ? (
 		<img src={defaultOpenApplication.iconDataUrl} alt="" className="size-4 shrink-0" />
@@ -384,7 +404,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 		<MenuItem
 			index={1}
 			icon={TerminalIcon}
-			label="用 Cursor 打开"
+			label={intl.formatMessage(desktopMessages.workspaceOpenCursor)}
 			disabled={cursorOpenDisabled}
 			onSelect={() => void openActiveFile("cursor")}
 		/>
@@ -396,7 +416,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 					key="default"
 					index={0}
 					icon={FolderOpenIcon}
-					label="使用默认应用打开"
+					label={intl.formatMessage(desktopMessages.workspaceOpenDefaultShort)}
 					disabled={openControlsDisabled}
 					onSelect={() => void openActiveFile("default")}
 				/>,
@@ -405,16 +425,20 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 	return (
 		<aside
 			id="workspace-panel"
-			aria-label="Workspace files"
+			aria-label={intl.formatMessage(desktopMessages.workspaceFiles)}
 			className="flex h-full w-full min-w-0 flex-col bg-background"
 		>
 			<div
 				className="flex h-13 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/45 px-2.5"
 				role="tablist"
-				aria-label="打开的文件"
+				aria-label={intl.formatMessage(desktopMessages.workspaceOpenFiles)}
 			>
 				{tabs.map((tab) => {
 					const isActive = tab.path === activePath;
+					const tabName =
+						tab.path === NEW_WORKSPACE_TAB_PATH
+							? intl.formatMessage(desktopMessages.workspaceChooseFile)
+							: tab.name;
 					const tabGroupClassName = cn(
 						"group flex h-7 min-w-0 max-w-44 shrink-0 items-center rounded-[8px] text-[12.5px] transition-colors duration-80",
 						isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-hover hover:text-foreground",
@@ -433,14 +457,14 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 								labelClassName="flex min-w-0 items-center gap-1.5"
 							>
 								<FileIcon size={14} className="shrink-0" />
-								<span className="truncate">{tab.name}</span>
+								<span className="truncate">{tabName}</span>
 							</Button>
 							<Button
 								type="button"
 								variant="ghost"
 								size="icon-sm"
-								aria-label={`关闭 ${tab.name}`}
-								title={`关闭 ${tab.name}`}
+								aria-label={intl.formatMessage(desktopMessages.workspaceCloseFile, { name: tabName })}
+								title={intl.formatMessage(desktopMessages.workspaceCloseFile, { name: tabName })}
 								onClick={() => closeTab(tab.path)}
 								className="size-6 shrink-0 rounded-[5px] text-muted-foreground hover:text-foreground"
 							>
@@ -453,13 +477,18 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 					type="button"
 					variant="ghost"
 					size="icon-sm"
-					aria-label="新建文件标签"
-					title="新建文件标签"
+					aria-label={intl.formatMessage(desktopMessages.workspaceNewTab)}
+					title={intl.formatMessage(desktopMessages.workspaceNewTab)}
 					onClick={() => {
 						if (!newTabExists) {
 							setTabs((current) => [
 								...current,
-								{ path: NEW_WORKSPACE_TAB_PATH, name: "打开文件", content: "", state: "empty" },
+								{
+									path: NEW_WORKSPACE_TAB_PATH,
+									name: intl.formatMessage(desktopMessages.workspaceChooseFile),
+									content: "",
+									state: "empty",
+								},
 							]);
 						}
 						setActivePath(NEW_WORKSPACE_TAB_PATH);
@@ -473,8 +502,12 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 						type="button"
 						variant="ghost"
 						size="icon-sm"
-						aria-label={treeCollapsed ? "展开文件树" : "收起文件树"}
-						title={treeCollapsed ? "展开文件树" : "收起文件树"}
+						aria-label={intl.formatMessage(
+							treeCollapsed ? desktopMessages.workspaceExpandTree : desktopMessages.workspaceCollapseTree,
+						)}
+						title={intl.formatMessage(
+							treeCollapsed ? desktopMessages.workspaceExpandTree : desktopMessages.workspaceCollapseTree,
+						)}
 						aria-pressed={!treeCollapsed}
 						onClick={() => setTreeCollapsed((current) => !current)}
 						className="text-muted-foreground"
@@ -502,7 +535,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 						contentClassName="gap-1.5"
 					>
 						{defaultOpenIcon}
-						打开
+						{intl.formatMessage(desktopMessages.workspaceOpen)}
 					</Button>
 					<DropdownMenu disabled={openControlsDisabled}>
 						<DropdownTrigger
@@ -512,8 +545,8 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 									variant="secondary"
 									size="icon-sm"
 									disabled={openControlsDisabled}
-									aria-label="选择打开方式"
-									title="选择打开方式"
+									aria-label={intl.formatMessage(desktopMessages.workspaceChooseOpen)}
+									title={intl.formatMessage(desktopMessages.workspaceChooseOpen)}
 									className="h-7 w-7 rounded-l-none border-l border-foreground/10"
 								>
 									<ChevronDownIcon size={14} />
@@ -545,21 +578,27 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 								{activeTab.state === "empty" ? (
 									<div className="flex h-full min-h-72 flex-col items-center justify-center px-5 py-10 text-center">
 										<FolderIcon size={24} className="text-muted-foreground" />
-										<h2 className="mt-3 text-[14px] font-semibold">打开文件</h2>
+										<h2 className="mt-3 text-[14px] font-semibold">
+											{intl.formatMessage(desktopMessages.workspaceChooseFile)}
+										</h2>
 										<p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
-											从工作区目录树中选择文件
+											{intl.formatMessage(desktopMessages.workspaceChooseFileDescription)}
 										</p>
 									</div>
 								) : activeTab.state === "loading" ? (
 									<div className="flex h-full min-h-72 items-center justify-center gap-2 text-[12px] text-muted-foreground">
 										<LoadingIcon size={16} className="animate-spin" />
-										读取文件…
+										{intl.formatMessage(desktopMessages.workspaceReadingFile)}
 									</div>
 								) : activeTab.state === "error" ? (
 									<div className="flex h-full min-h-72 flex-col items-center justify-center px-5 text-center">
 										<FileIcon size={22} className="text-muted-foreground" />
-										<p className="mt-3 text-[13px] font-semibold">文件不可用</p>
-										<p className="mt-1 text-[12px] text-muted-foreground">{error ?? "无法读取这个文件。"}</p>
+										<p className="mt-3 text-[13px] font-semibold">
+											{intl.formatMessage(desktopMessages.workspaceFileUnavailable)}
+										</p>
+										<p className="mt-1 text-[12px] text-muted-foreground">
+											{error ?? intl.formatMessage(desktopMessages.workspaceReadFileError)}
+										</p>
 									</div>
 								) : activeContent !== null ? (
 									<FilePreview path={activeTab.path} content={activeContent} />
@@ -569,8 +608,12 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 					) : (
 						<div className="flex min-h-72 flex-1 flex-col items-center justify-center px-5 py-10 text-center">
 							<FolderIcon size={24} className="text-muted-foreground" />
-							<h2 className="mt-3 text-[14px] font-semibold">打开文件</h2>
-							<p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">从工作区目录树中选择文件</p>
+							<h2 className="mt-3 text-[14px] font-semibold">
+								{intl.formatMessage(desktopMessages.workspaceChooseFile)}
+							</h2>
+							<p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
+								{intl.formatMessage(desktopMessages.workspaceChooseFileDescription)}
+							</p>
 						</div>
 					)}
 				</section>
@@ -592,8 +635,8 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 							<Input
 								value={query}
 								onChange={(event) => setQuery(event.target.value)}
-								placeholder="筛选文件…"
-								aria-label="筛选工作区文件"
+								placeholder={intl.formatMessage(desktopMessages.workspaceFilter)}
+								aria-label={intl.formatMessage(desktopMessages.workspaceFilter)}
 								density="compact"
 								className="h-8 pl-8 pr-8"
 							/>
@@ -611,12 +654,12 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 								model={treeModel}
 								className="pierre-trees-host"
 								style={treeHostStyle}
-								aria-label="工作区文件树"
+								aria-label={intl.formatMessage(desktopMessages.workspaceTree)}
 							/>
 						) : (
 							<div className="flex items-center gap-2 px-3 py-4 text-[12px] text-muted-foreground">
 								{treeLoading ? <LoadingIcon size={14} className="animate-spin" /> : null}
-								{error ?? "读取工作区…"}
+								{error ?? intl.formatMessage(desktopMessages.workspaceReading)}
 							</div>
 						)}
 					</div>
@@ -639,10 +682,14 @@ function ApplicationMenuItem({
 	readonly opening: boolean;
 	onSelect(): void;
 }) {
+	const intl = useIntl();
 	const applicationIcon = application.iconDataUrl ? (
 		<img src={application.iconDataUrl} alt="" className="size-4 shrink-0" />
 	) : null;
-	const label = application.isDefault ? `使用 ${application.name} 打开` : `用 ${application.name} 打开`;
+	const label = intl.formatMessage(
+		application.isDefault ? desktopMessages.workspaceOpenDefault : desktopMessages.workspaceOpenWith,
+		{ name: application.name },
+	);
 	return (
 		<MenuItem
 			index={index}
@@ -679,6 +726,7 @@ interface ArtifactPanelProps {
 }
 
 export function ArtifactPanel({ sessionId, artifacts, selectedArtifactId, onSelectArtifact }: ArtifactPanelProps) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const ArchiveIcon = icons.archive;
 	const FileCodeIcon = icons["file-code"];
@@ -718,13 +766,15 @@ export function ArtifactPanel({ sessionId, artifacts, selectedArtifactId, onSele
 	return (
 		<aside
 			id="artifact-panel"
-			aria-label="Artifact preview"
+			aria-label={intl.formatMessage(desktopMessages.workspaceArtifactPreview)}
 			className="h-full w-full min-w-0 overflow-y-auto bg-background py-3 pr-3"
 		>
 			<div className="flex min-h-full flex-col overflow-hidden rounded-[14px] border border-border bg-card">
 				<div className="flex h-13 shrink-0 items-center gap-2 border-b border-border/45 px-4">
 					<ArchiveIcon size={16} className="text-muted-foreground" />
-					<h2 className="min-w-0 flex-1 text-[14px] font-semibold">Artifacts</h2>
+					<h2 className="min-w-0 flex-1 text-[14px] font-semibold">
+						{intl.formatMessage(desktopMessages.workspaceArtifacts)}
+					</h2>
 					<span className="text-[12px] tabular-nums text-muted-foreground">{artifacts.length}</span>
 				</div>
 
@@ -733,7 +783,10 @@ export function ArtifactPanel({ sessionId, artifacts, selectedArtifactId, onSele
 				) : (
 					<div className="flex min-h-0 flex-1 flex-col">
 						<div className="max-h-56 shrink-0 overflow-y-auto border-b border-border/45 p-2">
-							<ul className="space-y-1" aria-label="Session artifacts">
+							<ul
+								className="space-y-1"
+								aria-label={intl.formatMessage(desktopMessages.workspaceSessionArtifacts)}
+							>
 								{artifacts.map((artifact) => {
 									const isSelected = artifact.id === selectedArtifact?.id;
 									const ArtifactIcon = artifact.format === "html" ? HtmlIcon : FileCodeIcon;
@@ -789,14 +842,15 @@ export function ArtifactPanel({ sessionId, artifacts, selectedArtifactId, onSele
 }
 
 function ArtifactEmptyState({ icon: ArchiveIcon }: { readonly icon: ReturnType<typeof useIcons>["archive"] }) {
+	const intl = useIntl();
 	return (
 		<div className="flex min-h-90 flex-1 flex-col items-center justify-center px-6 py-10 text-center">
 			<span aria-hidden="true" className="flex size-10 items-center justify-center text-muted-foreground">
 				<ArchiveIcon size={22} />
 			</span>
-			<h3 className="mt-3 text-[13px] font-semibold">No artifacts yet</h3>
+			<h3 className="mt-3 text-[13px] font-semibold">{intl.formatMessage(desktopMessages.workspaceNoArtifacts)}</h3>
 			<p className="mt-2 max-w-56 text-[12px] leading-5 text-foreground/65">
-				生成的 Markdown 和 HTML 会显示在这里。
+				{intl.formatMessage(desktopMessages.workspaceArtifactsDescription)}
 			</p>
 		</div>
 	);
@@ -815,12 +869,17 @@ function ArtifactPreview({
 	readonly loadingIcon: ReturnType<typeof useIcons>["loader"];
 	readonly fileIcon: ReturnType<typeof useIcons>["file-code"];
 }) {
+	const intl = useIntl();
 	if (!artifact) {
 		return (
 			<div className="flex min-h-72 flex-1 flex-col items-center justify-center px-6 py-10 text-center">
 				<FileCodeIcon size={22} className="text-muted-foreground" />
-				<h3 className="mt-3 text-[13px] font-semibold">Select an artifact</h3>
-				<p className="mt-2 max-w-56 text-[12px] leading-5 text-foreground/65">选择一个文件以查看预览。</p>
+				<h3 className="mt-3 text-[13px] font-semibold">
+					{intl.formatMessage(desktopMessages.workspaceSelectArtifact)}
+				</h3>
+				<p className="mt-2 max-w-56 text-[12px] leading-5 text-foreground/65">
+					{intl.formatMessage(desktopMessages.workspaceSelectArtifactDescription)}
+				</p>
 			</div>
 		);
 	}
@@ -829,7 +888,7 @@ function ArtifactPreview({
 		return (
 			<div className="flex min-h-72 flex-1 flex-col items-center justify-center gap-3 px-6 py-10 text-center text-[12px] text-foreground/65">
 				<LoadingIcon size={18} className="animate-spin text-muted-foreground" />
-				Loading preview
+				{intl.formatMessage(desktopMessages.workspaceLoadingPreview)}
 			</div>
 		);
 	}
@@ -838,9 +897,11 @@ function ArtifactPreview({
 		return (
 			<div className="flex min-h-72 flex-1 flex-col items-center justify-center px-6 py-10 text-center">
 				<FileCodeIcon size={22} className="text-muted-foreground" />
-				<h3 className="mt-3 text-[13px] font-semibold">Preview unavailable</h3>
+				<h3 className="mt-3 text-[13px] font-semibold">
+					{intl.formatMessage(desktopMessages.workspacePreviewUnavailable)}
+				</h3>
 				<p className="mt-2 max-w-56 text-[12px] leading-5 text-foreground/65">
-					文件不再可用，或当前项目没有访问权限。
+					{intl.formatMessage(desktopMessages.workspacePreviewUnavailableDescription)}
 				</p>
 			</div>
 		);

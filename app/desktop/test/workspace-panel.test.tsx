@@ -1,17 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { renderToStaticMarkup } from "react-dom/server";
+import { IntlProvider } from "react-intl";
+import { renderToStaticMarkup as renderToStaticMarkupBase } from "react-dom/server";
+import type { ReactNode } from "react";
+import enMessages from "../src/i18n/compiled/en.json";
 import { ArtifactPanel, WorkspacePanel } from "../src/components/shell/workspace-panel";
+
+function renderToStaticMarkup(node: ReactNode): string {
+	return renderToStaticMarkupBase(<IntlProvider locale="en" messages={enMessages}>{node}</IntlProvider>);
+}
 
 describe("WorkspacePanel", () => {
 	test("提供文件标签栏、打开文件空状态、打开操作与工作区文件树入口", () => {
 		const markup = renderToStaticMarkup(<WorkspacePanel sessionId="session-1" />);
 
 		expect(markup).toContain('id="workspace-panel"');
-		expect(markup).toContain("新建文件标签");
-		expect(markup).toContain("打开文件");
-		expect(markup).toContain("使用默认应用打开");
-		expect(markup).toContain("筛选文件");
-		expect(markup).toContain("收起文件树");
+		expect(markup).toContain("New file tab");
+		expect(markup).toContain("Open a file");
+		expect(markup).toContain("Open with default app");
+		expect(markup).toContain("Filter workspace files");
+		expect(markup).toContain("Collapse file tree");
 	});
 });
 
@@ -24,7 +31,7 @@ describe("ArtifactPanel", () => {
 		expect(markup).toContain('id="artifact-panel"');
 		expect(markup).toContain("Artifacts");
 		expect(markup).toContain("No artifacts yet");
-		expect(markup).toContain("生成的 Markdown 和 HTML 会显示在这里。");
+		expect(markup).toContain("Generated Markdown and HTML appear here.");
 	});
 
 	test("列出会话的 Markdown 与 HTML Artifact", () => {

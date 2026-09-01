@@ -1,5 +1,6 @@
-import { format, formatDistanceToNow } from "date-fns";
 import { useMemo, useState } from "react";
+import { type IntlShape, useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
 import type { CodingSession, DesktopProject } from "../../../shared/desktop-rpc";
 import { Button } from "../ui/button";
@@ -28,13 +29,16 @@ export function ChatsPage({
 	onSelectSession,
 	onLoadMore,
 }: ChatsPageProps) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const SearchIcon = icons.search;
 	const MessageIcon = icons["message-circle"];
 	const [query, setQuery] = useState("");
 	const normalizedQuery = query.trim().toLocaleLowerCase();
-	const emptyTitle = normalizedQuery ? "没有匹配的对话" : "还没有对话";
-	const emptyDescription = normalizedQuery ? "换一个关键词试试。" : "新对话会保存在这里，随时可以继续。";
+	const emptyTitle = intl.formatMessage(normalizedQuery ? desktopMessages.chatsNoMatch : desktopMessages.chatsEmpty);
+	const emptyDescription = normalizedQuery
+		? intl.formatMessage(desktopMessages.chatsSearchDescription)
+		: intl.formatMessage(desktopMessages.chatsEmptyDescription);
 	const projectNames = useMemo(
 		() => new Map(projects.map((project) => [project.id, project.displayName])),
 		[projects],
@@ -54,8 +58,12 @@ export function ChatsPage({
 			<div className="mx-auto flex h-full w-full max-w-250 flex-col px-10 pt-14 pb-8">
 				<header className="mb-8 flex shrink-0 items-center justify-between gap-6">
 					<div>
-						<h1 className="text-[26px] font-semibold tracking-[-0.025em]">Chats</h1>
-						<p className="mt-1 text-[13px] text-muted-foreground">继续最近的对话，或把一个新任务交给 agent。</p>
+						<h1 className="text-[26px] font-semibold tracking-[-0.025em]">
+							{intl.formatMessage(desktopMessages.chatsTitle)}
+						</h1>
+						<p className="mt-1 text-[13px] text-muted-foreground">
+							{intl.formatMessage(desktopMessages.chatsDescription)}
+						</p>
 					</div>
 					<div className="flex items-center gap-2">
 						<div className="relative w-56">
@@ -66,13 +74,13 @@ export function ChatsPage({
 							<Input
 								value={query}
 								onChange={(event) => setQuery(event.target.value)}
-								placeholder="Search chats"
-								aria-label="Search chats"
+								placeholder={intl.formatMessage(desktopMessages.chatsSearch)}
+								aria-label={intl.formatMessage(desktopMessages.chatsSearch)}
 								className="h-8 border-border bg-transparent pr-3 pl-9"
 							/>
 						</div>
 						<Button type="button" variant="primary" size="md" onClick={onNewChat} leadingIcon={icons.plus}>
-							New chat
+							{intl.formatMessage(desktopMessages.chatsNew)}
 						</Button>
 					</div>
 				</header>
@@ -81,7 +89,7 @@ export function ChatsPage({
 					{loading && sessions.length === 0 ? <ChatRowsSkeleton /> : null}
 					{error ? (
 						<div className="rounded-xl bg-destructive/8 px-4 py-3 text-[13px] text-destructive" role="alert">
-							Chats 暂时无法加载。请稍后重试。
+							{intl.formatMessage(desktopMessages.chatsLoadError)}
 						</div>
 					) : null}
 					{!loading && !error && filteredSessions.length === 0 ? (
@@ -121,7 +129,7 @@ export function ChatsPage({
 												dateTime={new Date(session.lastActivityAt).toISOString()}
 												className="min-w-28 shrink-0 whitespace-nowrap text-right text-[11.5px] text-muted-foreground"
 											>
-												{formatSessionTime(session.lastActivityAt)}
+												{formatSessionTime(session.lastActivityAt, intl)}
 											</time>
 										</span>
 									</Button>
@@ -132,7 +140,7 @@ export function ChatsPage({
 					{hasNextPage && !normalizedQuery ? (
 						<div className="pt-4 text-center">
 							<Button type="button" variant="ghost" size="sm" loading={loadingMore} onClick={onLoadMore}>
-								Load more
+								{intl.formatMessage(desktopMessages.sidebarLoadMore)}
 							</Button>
 						</div>
 					) : null}
@@ -143,8 +151,13 @@ export function ChatsPage({
 }
 
 function ChatRowsSkeleton() {
+	const intl = useIntl();
 	return (
-		<div className="divide-y divide-border/60 border-y border-border/60" role="status" aria-label="Loading chats">
+		<div
+			className="divide-y divide-border/60 border-y border-border/60"
+			role="status"
+			aria-label={intl.formatMessage(desktopMessages.chatsLoading)}
+		>
 			{[0, 1, 2, 3, 4].map((item) => (
 				<div key={item} className="flex h-11 items-center justify-between px-3">
 					<div className="h-3 w-2/5 animate-pulse rounded bg-foreground/7" />
@@ -155,8 +168,10 @@ function ChatRowsSkeleton() {
 	);
 }
 
-function formatSessionTime(timestamp: number): string {
-	const date = new Date(timestamp);
+function formatSessionTime(timestamp: number, intl: IntlShape): string {
 	const age = Date.now() - timestamp;
-	return age < 7 * 24 * 60 * 60 * 1000 ? formatDistanceToNow(date, { addSuffix: true }) : format(date, "MMM d");
+	if (age < 7 * 24 * 60 * 60 * 1000) {
+		return intl.formatRelativeTime(Math.round((timestamp - Date.now()) / 1000), "second", { numeric: "auto" });
+	}
+	return intl.formatDate(timestamp, { month: "short", day: "numeric" });
 }

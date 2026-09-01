@@ -23,6 +23,7 @@ import {
 	desktopSessionMoveInputSchema,
 	desktopSessionRenameInputSchema,
 	desktopTelemetrySettingsInputSchema,
+	desktopUiLocalePreferenceSchema,
 	desktopWorkspaceListInputSchema,
 	desktopWorkspaceOpenInputSchema,
 	desktopWorkspaceReadInputSchema,
@@ -86,6 +87,16 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			},
 			set(_event, theme) {
 				rt.theme.set(theme);
+			},
+		},
+		locale: {
+			get() {
+				return rt.locale.get();
+			},
+			set(_event, preference) {
+				return rt.locale.set(
+					parse(desktopUiLocalePreferenceSchema, preference, "Invalid Desktop UI locale preference"),
+				);
 			},
 		},
 		provider: {

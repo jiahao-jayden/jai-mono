@@ -1,6 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { renderToStaticMarkup } from "react-dom/server";
+import { IntlProvider } from "react-intl";
+import { renderToStaticMarkup as renderToStaticMarkupBase } from "react-dom/server";
+import type { ReactNode } from "react";
+import enMessages from "../src/i18n/compiled/en.json";
+import zhCnMessages from "../src/i18n/compiled/zh-CN.json";
 import { TaskPanel } from "../src/components/shell/task-panel";
+
+function renderToStaticMarkup(node: ReactNode): string {
+	return renderToStaticMarkupBase(<IntlProvider locale="en" messages={enMessages}>{node}</IntlProvider>);
+}
+
+function renderChineseToStaticMarkup(node: ReactNode): string {
+	return renderToStaticMarkupBase(<IntlProvider locale="zh-CN" messages={zhCnMessages}>{node}</IntlProvider>);
+}
 
 const noArtifacts = [];
 const noop = () => {};
@@ -20,7 +32,7 @@ describe("TaskPanel", () => {
 		expect(markup).toContain("Inspect storage");
 		expect(markup).toContain("Outputs");
 		expect(markup).toContain("Artifacts");
-		expect(markup).toContain("生成的 Markdown 和 HTML 会显示在这里。");
+		expect(markup).toContain("Generated Markdown and HTML appear here.");
 
 		const artifactMarkup = renderToStaticMarkup(
 			<TaskPanel
@@ -83,5 +95,21 @@ describe("TaskPanel", () => {
 		expect(markup).toContain("Interrupted · 0 of 1 resolved");
 		expect(markup).toContain('aria-label="Interrupted"');
 		expect(markup).not.toContain('aria-current="step"');
+	});
+
+	test("简体中文 locale 同时迁移面板标题和状态", () => {
+		const markup = renderChineseToStaticMarkup(
+			<TaskPanel
+				status="idle"
+				artifacts={noArtifacts}
+				selectedArtifactId={null}
+				onOpenArtifact={noop}
+				todos={[{ id: "render", content: "Render progress", status: "in_progress" }]}
+			/>,
+		);
+
+		expect(markup).toContain("进度");
+		expect(markup).toContain("已中断");
+		expect(markup).toContain("输出");
 	});
 });

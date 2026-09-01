@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { renderToStaticMarkup } from "react-dom/server";
+import { IntlProvider } from "react-intl";
+import { renderToStaticMarkup as renderToStaticMarkupBase } from "react-dom/server";
+import type { ReactNode } from "react";
+import enMessages from "../src/i18n/compiled/en.json";
 import { Sidebar } from "../src/components/shell/sidebar/sidebar";
+
+function renderToStaticMarkup(node: ReactNode): string {
+	return renderToStaticMarkupBase(<IntlProvider locale="en" messages={enMessages}>{node}</IntlProvider>);
+}
 
 const baseSessions = [
 	{

@@ -1,4 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type IntlShape, useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { filesForAttachments } from "@/lib/attachment-files";
 import { type IconName, useIcon } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
@@ -182,6 +184,7 @@ function NavigateToMessageAction({
 	readonly entryId: string;
 	readonly onNavigate: (entryId: string) => Promise<boolean>;
 }) {
+	const intl = useIntl();
 	const CornerDownRightIcon = useIcon("corner-down-right");
 	const [open, setOpen] = useState(false);
 	const [pending, setPending] = useState(false);
@@ -208,9 +211,9 @@ function NavigateToMessageAction({
 				setOpen(false);
 				return;
 			}
-			setError("无法回到这条消息。请检查模型后重试。");
+			setError(intl.formatMessage(desktopMessages.transcriptBackModelError));
 		} catch {
-			setError("无法回到这条消息。请稍后重试。");
+			setError(intl.formatMessage(desktopMessages.transcriptBackRetryError));
 		} finally {
 			setPending(false);
 		}
@@ -218,14 +221,14 @@ function NavigateToMessageAction({
 
 	return (
 		<>
-			<Tooltip content="回到这里" side="top">
+			<Tooltip content={intl.formatMessage(desktopMessages.transcriptBackToHere)} side="top">
 				<Button
 					type="button"
 					variant="ghost"
 					size="icon-sm"
 					disabled={actionDisabled}
-					aria-label="回到这里"
-					title="回到这里"
+					aria-label={intl.formatMessage(desktopMessages.transcriptBackToHere)}
+					title={intl.formatMessage(desktopMessages.transcriptBackToHere)}
 					onClick={openDialog}
 				>
 					<CornerDownRightIcon size={15} strokeWidth={1.75} />
@@ -234,8 +237,8 @@ function NavigateToMessageAction({
 			<Dialog open={open} onOpenChange={onOpenChange}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>回到这条消息？</DialogTitle>
-						<DialogDescription>后续对话会从这里继续；当前后续内容将保留为分支。</DialogDescription>
+						<DialogTitle>{intl.formatMessage(desktopMessages.transcriptBackToMessage)}</DialogTitle>
+						<DialogDescription>{intl.formatMessage(desktopMessages.transcriptBackDescription)}</DialogDescription>
 					</DialogHeader>
 					{error ? (
 						<p className="text-[12px] leading-relaxed text-destructive" role="alert">
@@ -244,10 +247,10 @@ function NavigateToMessageAction({
 					) : null}
 					<DialogFooter>
 						<Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>
-							取消
+							{intl.formatMessage(desktopMessages.commonCancel)}
 						</Button>
 						<Button type="button" loading={pending} onClick={() => void navigate()}>
-							回到这里
+							{intl.formatMessage(desktopMessages.transcriptBackToHere)}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -261,9 +264,12 @@ function CompactionDivider({
 }: {
 	readonly item: Extract<DesktopTranscriptItem, { readonly kind: "compaction" }>;
 }) {
+	const intl = useIntl();
 	const LoaderIcon = useIcon("loader");
 	const compacting = item.status === "compacting";
-	const label = compacting ? "Compacting context" : "Context compacted";
+	const label = intl.formatMessage(
+		compacting ? desktopMessages.transcriptCompacting : desktopMessages.transcriptCompacted,
+	);
 	const live = compacting ? "polite" : "off";
 	const indicator = compacting ? (
 		<LoaderIcon
@@ -313,13 +319,14 @@ function useTranscriptItemAnimations(items: readonly DesktopTranscriptItem[], lo
 }
 
 function WorkProcess({ group, settled }: { readonly group: WorkGroup; readonly settled: boolean }) {
+	const intl = useIntl();
 	const running = group.items.some(
 		(item) =>
 			(item.kind === "thinking" && item.status === "streaming") ||
 			(item.kind === "narration" && item.status === "streaming") ||
 			(item.kind === "tool" && item.status === "running"),
 	);
-	const steps = workTimelineSteps(group.items);
+	const steps = workTimelineSteps(group.items, intl);
 	const [open, setOpen] = useState(running);
 
 	useEffect(() => {
@@ -333,7 +340,7 @@ function WorkProcess({ group, settled }: { readonly group: WorkGroup; readonly s
 	const anchorItem = group.items.at(-1);
 	if (steps.length === 0) return null;
 
-	const label = workTimelineSummary(steps, group.items, running);
+	const label = workTimelineSummary(steps, group.items, running, intl);
 
 	return (
 		<div className="py-0.5" data-transcript-item-id={anchorItem?.id}>
@@ -359,7 +366,7 @@ function sameWorkProcess(
 	return previous.group.items.every((item, index) => item === next.group.items[index]);
 }
 
-export function workTimelineSteps(items: readonly WorkItem[]): TimelineStep[] {
+export function workTimelineSteps(items: readonly WorkItem[], intl: IntlShape): TimelineStep[] {
 	return workTimelineClusters(items).map((cluster) => {
 		const running = cluster.items.some(
 			(item) =>
@@ -374,7 +381,7 @@ export function workTimelineSteps(items: readonly WorkItem[]): TimelineStep[] {
 				.join("\n\n");
 			return {
 				id: cluster.id,
-				verb: "Thinking",
+				verb: intl.formatMessage(desktopMessages.transcriptThinking),
 				chip: text,
 				icon: "sparkles",
 				active: running,
@@ -387,19 +394,19 @@ export function workTimelineSteps(items: readonly WorkItem[]): TimelineStep[] {
 			const narration = cluster.narrations.map((item) => item.text).join("\n\n");
 			return {
 				id: cluster.id,
-				verb: running ? "Working" : "Worked",
+				verb: intl.formatMessage(running ? desktopMessages.transcriptWorking : desktopMessages.transcriptWorked),
 				chip: narration,
 				icon: "sparkles",
 				active: running,
 			};
 		}
 
-		const presentation = toolPresentation(tools[0]!, running);
-		const details = toolClusterDetails(cluster.narrations, tools);
+		const presentation = toolPresentation(tools[0]!, running, intl);
+		const details = toolClusterDetails(cluster.narrations, tools, intl);
 		return {
 			id: cluster.id,
 			verb: presentation.label,
-			chip: toolClusterChip(tools),
+			chip: toolClusterChip(tools, intl),
 			icon: presentation.icon,
 			active: running,
 			...(details ? { details } : {}),
@@ -450,14 +457,16 @@ function workTimelineClusters(items: readonly WorkItem[]): readonly WorkTimeline
 	return clusters;
 }
 
-function toolClusterChip(items: readonly DesktopToolItem[]): string {
+function toolClusterChip(items: readonly DesktopToolItem[], intl: IntlShape): string {
 	if (items.length > 1) {
 		const category = items[0]!.activityKind;
-		if (category === "search") return `${items.length} searches`;
-		if (category === "read" || category === "write") return `${items.length} files`;
-		if (category === "execute") return `${items.length} commands`;
-		if (category === "call") return `${items.length} calls`;
-		return `${items.length} actions`;
+		if (category === "search") return intl.formatMessage(desktopMessages.transcriptSearches, { count: items.length });
+		if (category === "read" || category === "write")
+			return intl.formatMessage(desktopMessages.transcriptFiles, { count: items.length });
+		if (category === "execute")
+			return intl.formatMessage(desktopMessages.transcriptCommands, { count: items.length });
+		if (category === "call") return intl.formatMessage(desktopMessages.transcriptCalls, { count: items.length });
+		return intl.formatMessage(desktopMessages.transcriptActions, { count: items.length });
 	}
 	const tool = items[0]!;
 	return tool.summary ?? humanizeToolName(tool.toolName);
@@ -466,13 +475,14 @@ function toolClusterChip(items: readonly DesktopToolItem[]): string {
 function toolClusterDetails(
 	narrations: readonly DesktopNarrationItem[],
 	tools: readonly DesktopToolItem[],
+	intl: IntlShape,
 ): string | undefined {
 	const narration = narrations.map((item) => item.text).join("\n\n");
 	const toolDetails = tools
 		.map((item) => {
-			const summary = toolClusterChip([item]);
+			const summary = toolClusterChip([item], intl);
 			const changedFiles = item.fileChanges
-				?.map((change) => `${fileChangeVerb(change.operation)} ${change.path}`)
+				?.map((change) => `${fileChangeVerb(change.operation, intl)} ${change.path}`)
 				.join("\n");
 			const details = [item.details, changedFiles].filter(Boolean).join("\n");
 			const body = details ? `\n${details}` : "";
@@ -486,6 +496,7 @@ export function workTimelineSummary(
 	steps: readonly TimelineStep[],
 	items: readonly WorkItem[],
 	running: boolean,
+	intl: IntlShape,
 ): string {
 	const operationCount = items.filter((item): item is DesktopToolItem => item.kind === "tool").length;
 	const changedPaths = new Set(
@@ -503,53 +514,55 @@ export function workTimelineSummary(
 						.map((item) => item.summary)
 						.filter((summary): summary is string => Boolean(summary)),
 				).size;
-	const stepLabel = `${steps.length} ${steps.length === 1 ? "step" : "steps"}`;
-	if (running) return `${stepLabel} · Working`;
-	if (filesChanged > 0) return `${stepLabel} · ${filesChanged} ${filesChanged === 1 ? "file" : "files"} changed`;
-	return `${stepLabel} · ${operationCount} ${operationCount === 1 ? "action" : "actions"}`;
+	const stepLabel = intl.formatMessage(desktopMessages.transcriptStepSummary, { count: steps.length });
+	if (running) return intl.formatMessage(desktopMessages.transcriptWorkingSummary, { steps: stepLabel });
+	if (filesChanged > 0) {
+		return intl.formatMessage(desktopMessages.transcriptFilesSummary, { steps: stepLabel, count: filesChanged });
+	}
+	return intl.formatMessage(desktopMessages.transcriptActionsSummary, { steps: stepLabel, count: operationCount });
 }
 
-function fileChangeVerb(operation: "add" | "modify" | "delete"): string {
+function fileChangeVerb(operation: "add" | "modify" | "delete", intl: IntlShape): string {
 	switch (operation) {
 		case "add":
-			return "Added";
+			return intl.formatMessage(desktopMessages.transcriptAdded);
 		case "modify":
-			return "Modified";
+			return intl.formatMessage(desktopMessages.transcriptModified);
 		case "delete":
-			return "Deleted";
+			return intl.formatMessage(desktopMessages.transcriptDeleted);
 	}
 }
 
-function toolPresentation(item: DesktopToolItem, running: boolean): { icon: IconName; label: string } {
+function toolPresentation(item: DesktopToolItem, running: boolean, intl: IntlShape): { icon: IconName; label: string } {
 	const category = item.activityKind;
 	if (category === "search") {
 		return {
 			icon: "search",
-			label: running ? "Searching" : "Searched",
+			label: intl.formatMessage(running ? desktopMessages.transcriptSearching : desktopMessages.transcriptSearched),
 		};
 	}
 	if (category === "read") {
 		return {
 			icon: "file-code",
-			label: running ? "Reading" : "Read",
+			label: intl.formatMessage(running ? desktopMessages.transcriptReading : desktopMessages.transcriptRead),
 		};
 	}
 	if (category === "write") {
 		return {
 			icon: "file-code",
-			label: running ? "Editing" : "Edited",
+			label: intl.formatMessage(running ? desktopMessages.transcriptEditing : desktopMessages.transcriptEdited),
 		};
 	}
 	if (category === "call") {
 		return {
 			icon: "link",
-			label: running ? "Calling" : "Called",
+			label: intl.formatMessage(running ? desktopMessages.transcriptCalling : desktopMessages.transcriptCalled),
 		};
 	}
 	// Generic operations do not pretend to be commands or remote service calls.
 	return {
 		icon: "terminal",
-		label: running ? "Running" : "Ran",
+		label: intl.formatMessage(running ? desktopMessages.transcriptRunning : desktopMessages.transcriptRan),
 	};
 }
 
@@ -568,8 +581,9 @@ function workItemTurnId(item: WorkItem): string {
 }
 
 export function TranscriptLoading() {
+	const intl = useIntl();
 	return (
-		<div className="space-y-4 py-6" role="status" aria-label="Loading conversation">
+		<div className="space-y-4 py-6" role="status" aria-label={intl.formatMessage(desktopMessages.transcriptLoading)}>
 			<div className="ml-auto h-12 w-56 animate-pulse rounded-[14px] bg-primary-2/8" />
 			<div className="h-4 w-[72%] animate-pulse rounded bg-foreground/6" />
 			<div className="h-4 w-[58%] animate-pulse rounded bg-foreground/5" />

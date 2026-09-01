@@ -1,9 +1,11 @@
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
 import { Button } from "../../ui/button";
 
 const navigation = [
-	{ id: "chats", label: "Chats", icon: "message-circle", available: true },
-	{ id: "projects", label: "Projects", icon: "folder", available: true },
+	{ id: "chats", message: desktopMessages.sidebarChats, icon: "message-circle", available: true },
+	{ id: "projects", message: desktopMessages.sidebarProjects, icon: "folder", available: true },
 ] as const;
 
 interface SidebarNavProps {
@@ -14,11 +16,12 @@ interface SidebarNavProps {
 }
 
 export function SidebarNav({ activeView, onNewChat, onOpenChats, onOpenProjects }: SidebarNavProps) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const PlusIcon = icons.plus;
 
 	return (
-		<nav aria-label="Primary" className="space-y-0.5 px-2.5">
+		<nav aria-label={intl.formatMessage(desktopMessages.sidebarPrimary)} className="space-y-0.5 px-2.5">
 			<Button
 				type="button"
 				variant="navigation"
@@ -30,11 +33,12 @@ export function SidebarNav({ activeView, onNewChat, onOpenChats, onOpenProjects 
 					<span className="flex size-5.5 items-center justify-center rounded-full bg-foreground/8 text-foreground/80">
 						<PlusIcon size={13} strokeWidth={2} />
 					</span>
-					New
+					{intl.formatMessage(desktopMessages.sidebarNew)}
 				</span>
 			</Button>
-			{navigation.map(({ id, label, icon }) => {
+			{navigation.map(({ id, message, icon }) => {
 				const Icon = icons[icon];
+				const label = intl.formatMessage(message);
 				const active = activeView === id;
 				const onClick = id === "chats" ? onOpenChats : id === "projects" ? onOpenProjects : undefined;
 				const ariaCurrent = active ? ("page" as const) : undefined;

@@ -1,5 +1,8 @@
 import { type ReactNode, useState } from "react";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { resolveProviderBrandIcon, useIcon } from "@/lib/icon-context";
+import { cn } from "@/lib/utils";
 import type {
 	DesktopProviderAdapter,
 	DesktopProviderFetchModelsResult,
@@ -36,6 +39,7 @@ export function ProvidersSettings({
 	fetchingProfileId,
 	lastFetch,
 }: ProvidersSettingsProps) {
+	const intl = useIntl();
 	const KeyIcon = useIcon("key");
 	const TrashIcon = useIcon("trash");
 	const selectedIndex = profiles.findIndex((profile) => profile.id === selectedProfileId);
@@ -50,7 +54,7 @@ export function ProvidersSettings({
 		const id = uniqueProfileId(profiles, preset?.id ?? "provider");
 		const profile: ProfileDraft = {
 			id,
-			name: preset?.name ?? "New provider",
+			name: preset?.name ?? intl.formatMessage(desktopMessages.settingsProviderNew),
 			adapter: preset?.adapter ?? "openai-compatible",
 			baseURL: preset?.baseURL ?? "",
 			authentication: preset?.authentication ?? "api-key",
@@ -73,7 +77,7 @@ export function ProvidersSettings({
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<div className="px-8 pt-6">
-				<h2 className="text-base font-semibold">Providers</h2>
+				<h2 className="text-base font-semibold">{intl.formatMessage(desktopMessages.settingsProviders)}</h2>
 			</div>
 			<div className="flex items-center gap-1 px-8 pb-0 pt-3">
 				<div className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto">
@@ -84,18 +88,20 @@ export function ProvidersSettings({
 							size="md"
 							key={profile.id}
 							onClick={() => onSelectedProfileChange(profile.id)}
-							className={`relative flex shrink-0 items-center gap-1.5 rounded-t-lg px-3 pb-2.5 pt-2 text-[13px] transition-colors ${
+							className={cn(
+								"relative flex shrink-0 items-center gap-1.5 rounded-t-lg px-3 pb-2.5 pt-2 text-[13px] transition-colors",
 								profile.id === selectedProfileId
 									? "font-medium text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-foreground"
-									: "text-muted-foreground hover:text-foreground"
-							}`}
+									: "text-muted-foreground hover:text-foreground",
+							)}
 						>
 							<span
-								className={`size-1.5 shrink-0 rounded-full ${
+								className={cn(
+									"size-1.5 shrink-0 rounded-full",
 									profile.authentication === "none" || profile.credentialConfigured || profile.apiKey
 										? "bg-primary-2"
-										: "bg-muted-foreground/30"
-								}`}
+										: "bg-muted-foreground/30",
+								)}
 							/>
 							<span className="max-w-28 truncate">{profile.name}</span>
 						</Button>
@@ -109,30 +115,34 @@ export function ProvidersSettings({
 					<div className="flex flex-col gap-5">
 						<section className="flex flex-col gap-4">
 							<div className="flex items-center justify-between">
-								<h3 className="text-[14px] font-semibold">Connection</h3>
+								<h3 className="text-[14px] font-semibold">
+									{intl.formatMessage(desktopMessages.settingsProviderConnection)}
+								</h3>
 								<Button
 									type="button"
 									variant="ghost"
 									size="icon-sm"
 									onClick={removeSelected}
-									aria-label={`Delete ${selected.name}`}
-									title="Delete provider"
+									aria-label={intl.formatMessage(desktopMessages.settingsProviderDeleteAria, {
+										name: selected.name,
+									})}
+									title={intl.formatMessage(desktopMessages.settingsProviderDelete)}
 								>
 									<TrashIcon />
 								</Button>
 							</div>
 							<div className="grid grid-cols-2 gap-3">
-								<Field label="Profile name">
+								<Field label={intl.formatMessage(desktopMessages.settingsProviderProfileName)}>
 									<Input
 										value={selected.name}
 										onChange={(event) =>
 											updateSelected((profile) => ({ ...profile, name: event.target.value }))
 										}
-										aria-label="Profile name"
+										aria-label={intl.formatMessage(desktopMessages.settingsProviderProfileName)}
 										autoComplete="off"
 									/>
 								</Field>
-								<Field label="Adapter">
+								<Field label={intl.formatMessage(desktopMessages.settingsProviderAdapter)}>
 									<Select
 										value={selected.adapter}
 										onValueChange={(adapter) =>
@@ -143,7 +153,10 @@ export function ProvidersSettings({
 											}))
 										}
 									>
-										<SelectTrigger className="w-full" aria-label="Adapter" />
+										<SelectTrigger
+											className="w-full"
+											aria-label={intl.formatMessage(desktopMessages.settingsProviderAdapter)}
+										/>
 										<SelectContent>
 											<SelectGroup>
 												<SelectItem index={0} value="openai-responses">
@@ -160,7 +173,7 @@ export function ProvidersSettings({
 									</Select>
 								</Field>
 							</div>
-							<Field label="Endpoint">
+							<Field label={intl.formatMessage(desktopMessages.settingsProviderEndpoint)}>
 								<Input
 									type="url"
 									value={selected.baseURL}
@@ -168,13 +181,13 @@ export function ProvidersSettings({
 										updateSelected((profile) => ({ ...profile, baseURL: event.target.value }))
 									}
 									placeholder="https://…"
-									aria-label="Endpoint"
+									aria-label={intl.formatMessage(desktopMessages.settingsProviderEndpoint)}
 									autoComplete="url"
 									spellCheck={false}
 								/>
 							</Field>
 							{selected.authentication === "api-key" ? (
-								<Field label="API key">
+								<Field label={intl.formatMessage(desktopMessages.settingsProviderApiKey)}>
 									<ApiKeyInput
 										key={`${selected.id}:${selected.credentialMask ?? "new"}`}
 										value={selected.apiKey}
@@ -206,7 +219,9 @@ export function ProvidersSettings({
 					<div className="flex h-full min-h-72 items-center justify-center text-center">
 						<div>
 							<KeyIcon className="mx-auto mb-3 size-5 text-muted-foreground" />
-							<p className="text-[14px] font-semibold">No Provider yet</p>
+							<p className="text-[14px] font-semibold">
+								{intl.formatMessage(desktopMessages.settingsProviderNoProvider)}
+							</p>
 							<AddProviderMenu providerPresets={providerPresets} onAdd={addProfile} />
 						</div>
 					</div>
@@ -229,6 +244,7 @@ function ApiKeyInput({
 	readonly onReveal: () => Promise<string>;
 	readonly onChange: (value: string) => void;
 }) {
+	const intl = useIntl();
 	const KeyIcon = useIcon("key");
 	const EyeIcon = useIcon("eye");
 	const EyeOffIcon = useIcon("eye-off");
@@ -237,7 +253,9 @@ function ApiKeyInput({
 	const [revealing, setRevealing] = useState(false);
 	const [revealError, setRevealError] = useState<string>();
 	const VisibilityIcon = revealed ? EyeOffIcon : EyeIcon;
-	const visibilityLabel = revealed ? "Hide API key" : "Show API key";
+	const visibilityLabel = intl.formatMessage(
+		revealed ? desktopMessages.settingsProviderHideApiKey : desktopMessages.settingsProviderShowApiKey,
+	);
 
 	if (credentialConfigured) {
 		const toggleReveal = async () => {
@@ -255,8 +273,8 @@ function ApiKeyInput({
 			try {
 				setRevealedKey(await onReveal());
 				setRevealed(true);
-			} catch (cause) {
-				setRevealError(cause instanceof Error ? cause.message : "Unable to reveal API key");
+			} catch {
+				setRevealError(intl.formatMessage(desktopMessages.settingsProviderRevealError));
 			} finally {
 				setRevealing(false);
 			}
@@ -273,7 +291,7 @@ function ApiKeyInput({
 							value={visibleValue}
 							onChange={(event) => onChange(event.target.value)}
 							className="px-10 font-mono text-[12px]"
-							aria-label="API key"
+							aria-label={intl.formatMessage(desktopMessages.settingsProviderApiKey)}
 							autoComplete="off"
 							spellCheck={false}
 						/>
@@ -311,9 +329,13 @@ function ApiKeyInput({
 				type={revealed ? "text" : "password"}
 				value={value}
 				onChange={(event) => onChange(event.target.value)}
-				placeholder={credentialConfigured ? "Enter replacement key" : "Enter API key"}
+				placeholder={
+					credentialConfigured
+						? intl.formatMessage(desktopMessages.settingsProviderReplacementKey)
+						: intl.formatMessage(desktopMessages.settingsProviderEnterApiKey)
+				}
 				className="px-10"
-				aria-label="API key"
+				aria-label={intl.formatMessage(desktopMessages.settingsProviderApiKey)}
 				autoComplete="new-password"
 				spellCheck={false}
 			/>
@@ -342,18 +364,20 @@ function AddProviderMenu({
 	readonly onAdd: (preset?: DesktopProviderPreset) => void;
 	readonly compact?: boolean;
 }) {
+	const intl = useIntl();
 	const PlusIcon = useIcon("plus");
+	const addLabel = intl.formatMessage(desktopMessages.settingsProviderAdd);
 	return (
 		<DropdownMenu>
 			<DropdownTrigger
 				render={
 					compact ? (
-						<Button type="button" variant="ghost" size="icon-sm" title="Add provider" aria-label="Add provider">
+						<Button type="button" variant="ghost" size="icon-sm" title={addLabel} aria-label={addLabel}>
 							<PlusIcon />
 						</Button>
 					) : (
 						<Button type="button" variant="secondary" size="sm" className="mt-4">
-							Add provider
+							{addLabel}
 						</Button>
 					)
 				}
@@ -369,7 +393,12 @@ function AddProviderMenu({
 					/>
 				))}
 				<DropdownSeparator />
-				<MenuItem index={providerPresets.length} icon={PlusIcon} label="Custom provider" onSelect={() => onAdd()} />
+				<MenuItem
+					index={providerPresets.length}
+					icon={PlusIcon}
+					label={intl.formatMessage(desktopMessages.settingsProviderNew)}
+					onSelect={() => onAdd()}
+				/>
 			</DropdownContent>
 		</DropdownMenu>
 	);

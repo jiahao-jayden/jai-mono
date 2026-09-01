@@ -1,15 +1,30 @@
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type { DesktopSubagentItem } from "../../../../shared/desktop-rpc";
 import { NextStep } from "../../ui/next-step";
 
 export function SubagentCard({ item }: { readonly item: DesktopSubagentItem }) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const running = item.status === "running";
 	const complete = item.status === "complete";
 	const StatusIcon = running ? icons.sparkles : complete ? icons.check : icons["shield-alert"];
-	const statusLabel = running ? "Running" : complete ? "Done" : "Failed";
-	const fallbackActivity = running ? "Preparing delegated task…" : complete ? "Task completed" : "Task stopped";
+	const statusLabel = intl.formatMessage(
+		running
+			? desktopMessages.subagentRunning
+			: complete
+				? desktopMessages.subagentDone
+				: desktopMessages.subagentFailed,
+	);
+	const fallbackActivity = intl.formatMessage(
+		running
+			? desktopMessages.subagentPreparing
+			: complete
+				? desktopMessages.subagentCompleted
+				: desktopMessages.subagentStopped,
+	);
 	const activityTitle = item.activityTitle ?? fallbackActivity;
 	const cardClassName = cn(
 		"w-full overflow-hidden rounded-[14px] border px-3.5 py-3 transition-colors duration-150",
@@ -37,7 +52,10 @@ export function SubagentCard({ item }: { readonly item: DesktopSubagentItem }) {
 	);
 
 	return (
-		<section aria-label={`Subagent ${item.title}: ${statusLabel}`} className={cardClassName}>
+		<section
+			aria-label={intl.formatMessage(desktopMessages.subagentAria, { title: item.title, status: statusLabel })}
+			className={cardClassName}
+		>
 			<div className="flex items-start gap-3">
 				<span aria-hidden="true" className={iconClassName}>
 					<StatusIcon size={15} strokeWidth={1.7} />

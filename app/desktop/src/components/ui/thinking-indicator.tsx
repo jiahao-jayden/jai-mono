@@ -2,6 +2,8 @@
 
 import { forwardRef, useState, useEffect, type HTMLAttributes } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { cn } from "@/lib/utils";
 import { fontWeights } from "@/lib/font-weight";
 
@@ -14,7 +16,12 @@ const infinity =
 const circleB =
   "M 12 16 C 14.21 16 16 14.21 16 12 C 16 9.79 14.21 8 12 8 C 9.79 8 8 9.79 8 12 C 8 14.21 9.79 16 12 16 Z";
 
-const words = ["Thinking", "Moonwalking", "Planning", "Refining"];
+const words = [
+  desktopMessages.transcriptThinking,
+  desktopMessages.transcriptMoonwalking,
+  desktopMessages.transcriptPlanning,
+  desktopMessages.transcriptRefining,
+];
 
 interface ThinkingIndicatorProps extends HTMLAttributes<HTMLDivElement> {
   /** Show the morphing circle⇄infinity glyph before the label. Set to `false`
@@ -24,10 +31,12 @@ interface ThinkingIndicatorProps extends HTMLAttributes<HTMLDivElement> {
 
 const ThinkingIndicator = forwardRef<HTMLDivElement, ThinkingIndicatorProps>(
   ({ className, showIcon = true, ...props }, ref) => {
+  const intl = useIntl();
   const [index, setIndex] = useState(0);
   // Reduced motion drops the infinite glyph morph and the word cycling — a
   // static glyph and label carry the same meaning without the movement.
   const reduceMotion = useReducedMotion() ?? false;
+  const longestWord = words.reduce((a, b) => (a.defaultMessage.length >= b.defaultMessage.length ? a : b));
 
   useEffect(() => {
     if (reduceMotion) return;
@@ -47,7 +56,7 @@ const ThinkingIndicator = forwardRef<HTMLDivElement, ThinkingIndicatorProps>(
       {/* Static announcement — the cycling word display below is aria-hidden
           so screen readers hear one "Thinking…" instead of a re-announcement
           every 4 seconds. */}
-      <span className="sr-only">Thinking…</span>
+      <span className="sr-only">{intl.formatMessage(desktopMessages.transcriptThinking)}…</span>
       {showIcon && (
         <motion.svg
           aria-hidden
@@ -86,22 +95,22 @@ const ThinkingIndicator = forwardRef<HTMLDivElement, ThinkingIndicatorProps>(
         style={{ fontVariationSettings: fontWeights.medium }}
       >
         <span className="col-start-1 row-start-1 invisible shimmer-text">
-          {words.reduce((a, b) => (a.length >= b.length ? a : b))}
+          {intl.formatMessage(longestWord)}
         </span>
         {reduceMotion ? (
           <span className="col-start-1 row-start-1 shimmer-text">
-            {words[0]}
+            {intl.formatMessage(words[0])}
           </span>
         ) : (
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.span
-              key={words[index]}
+              key={words[index].id}
               className="col-start-1 row-start-1 shimmer-text"
               initial={{ y: "80%", opacity: 0 }}
               animate={{ y: 0, opacity: 1, transition: { duration: 0.24, ease: [0.4, 0, 0.2, 1] } }}
               exit={{ y: "-80%", opacity: 0, transition: { duration: 0.16, ease: [0.4, 0, 0.2, 1] } }}
             >
-              {words[index]}
+              {intl.formatMessage(words[index])}
             </motion.span>
           </AnimatePresence>
         )}

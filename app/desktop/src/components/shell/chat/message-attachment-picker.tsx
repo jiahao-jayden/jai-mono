@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
 import { Button } from "../../ui/button";
 import { DropdownContent, DropdownMenu, DropdownTrigger } from "../../ui/dropdown";
@@ -10,10 +12,11 @@ interface MessageAttachmentPickerProps {
 }
 
 export function MessageAttachmentPicker({ disabled, onOpen }: MessageAttachmentPickerProps) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const PlusIcon = icons.plus;
 	const [open, setOpen] = useState(false);
-	const triggerLabel = "Add files or photos";
+	const triggerLabel = intl.formatMessage(desktopMessages.attachmentsAdd);
 
 	return (
 		<DropdownMenu open={open} onOpenChange={setOpen} disabled={disabled}>
@@ -36,8 +39,8 @@ export function MessageAttachmentPicker({ disabled, onOpen }: MessageAttachmentP
 				<MenuItem
 					index={0}
 					icon={icons.image}
-					label="Add files or photos"
-					description="Files and photos up to 20 MB"
+					label={triggerLabel}
+					description={intl.formatMessage(desktopMessages.attachmentsDescription)}
 					disabled={disabled}
 					onSelect={() => {
 						onOpen();

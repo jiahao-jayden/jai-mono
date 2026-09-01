@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type { DesktopProject } from "../../../../shared/desktop-rpc";
@@ -29,6 +31,7 @@ export function ProjectPicker({
 	onAdd,
 	onRetry,
 }: ProjectPickerProps) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -38,16 +41,16 @@ export function ProjectPicker({
 	const ChevronDownIcon = icons["chevron-down"];
 	const ProjectIcon = project && !project.available ? FolderOffIcon : FolderIcon;
 	const label = busy
-		? "Updating project…"
+		? intl.formatMessage(desktopMessages.projectPickerUpdating)
 		: loading && projects.length === 0
-			? "Loading projects…"
+			? intl.formatMessage(desktopMessages.projectPickerLoading)
 			: loadError
-				? "Projects unavailable"
+				? intl.formatMessage(desktopMessages.projectPickerUnavailable)
 				: project
 					? project.available
 						? project.displayName
-						: `${project.displayName} (Relink)`
-					: "Work in a project or folder";
+						: intl.formatMessage(desktopMessages.projectPickerRelinkLabel, { name: project.displayName })
+					: intl.formatMessage(desktopMessages.projectPickerWorkIn);
 	const triggerDisabled = disabled || busy || (loading && projects.length === 0);
 	const normalizedQuery = query.trim().toLocaleLowerCase();
 	const filteredProjects = normalizedQuery
@@ -78,8 +81,10 @@ export function ProjectPicker({
 							disabled={triggerDisabled}
 							active={open}
 							className="min-w-0 max-w-72 gap-1.5 px-2.5 text-[13.5px] text-foreground/75"
-							aria-label={`Project: ${label}`}
-							title={project && !project.available ? "This folder is unavailable. Choose it to relink." : label}
+							aria-label={intl.formatMessage(desktopMessages.projectPickerAria, { label })}
+							title={
+								project && !project.available ? intl.formatMessage(desktopMessages.projectPickerRelink) : label
+							}
 						>
 							<span className="flex min-w-0 items-center gap-1.5">
 								<ProjectIcon
@@ -113,13 +118,18 @@ export function ProjectPicker({
 							onKeyDown={(event) => {
 								if (event.key !== "Escape") event.stopPropagation();
 							}}
-							aria-label="Search projects"
-							placeholder="Search projects"
+							aria-label={intl.formatMessage(desktopMessages.projectPickerSearch)}
+							placeholder={intl.formatMessage(desktopMessages.projectPickerSearch)}
 							className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground"
 						/>
 					</div>
 					{loadError ? (
-						<MenuItem index={0} icon={icons["rotate-ccw"]} label="Retry loading projects" onSelect={onRetry} />
+						<MenuItem
+							index={0}
+							icon={icons["rotate-ccw"]}
+							label={intl.formatMessage(desktopMessages.projectPickerRetry)}
+							onSelect={onRetry}
+						/>
 					) : (
 						<>
 							{filteredProjects.map((candidate, index) => (
@@ -127,7 +137,13 @@ export function ProjectPicker({
 									key={candidate.id}
 									index={index}
 									icon={candidate.available ? FolderIcon : FolderOffIcon}
-									label={`${candidate.displayName}${candidate.available ? "" : " (Relink)"}`}
+									label={
+										candidate.available
+											? candidate.displayName
+											: intl.formatMessage(desktopMessages.projectPickerRelinkLabel, {
+													name: candidate.displayName,
+												})
+									}
 									description={candidate.path}
 									title={candidate.path}
 									checked={candidate.id === project?.id}
@@ -136,7 +152,11 @@ export function ProjectPicker({
 							))}
 							{filteredProjects.length === 0 ? (
 								<p className="px-2 py-2.5 text-[12px] text-muted-foreground">
-									{projects.length === 0 ? "No project yet" : "No matching projects"}
+									{intl.formatMessage(
+										projects.length === 0
+											? desktopMessages.projectPickerNoProject
+											: desktopMessages.projectPickerNoMatch,
+									)}
 								</p>
 							) : null}
 						</>
@@ -147,7 +167,7 @@ export function ProjectPicker({
 							<MenuItem
 								index={filteredProjects.length}
 								icon={icons.plus}
-								label="Add a folder"
+								label={intl.formatMessage(desktopMessages.projectPickerAddFolder)}
 								onSelect={() => void onAdd()}
 							/>
 						</>
@@ -155,7 +175,7 @@ export function ProjectPicker({
 				</DropdownContent>
 			</DropdownMenu>
 			<span className="sr-only" role="status" aria-live="polite">
-				{busy ? "Updating project" : ""}
+				{busy ? intl.formatMessage(desktopMessages.projectPickerUpdating) : ""}
 			</span>
 		</>
 	);

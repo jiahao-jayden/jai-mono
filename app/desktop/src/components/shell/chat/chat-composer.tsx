@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useIntl } from "react-intl";
 import type { ChatMessageInput, ChatStatus } from "@/hooks/use-chat";
+import { desktopMessages } from "@/i18n/messages";
 import { rememberAttachmentFiles } from "@/lib/attachment-files";
 import { desktop, desktopFilePath } from "@/lib/desktop";
 import { useIcons } from "@/lib/icon-context";
@@ -86,6 +88,7 @@ export function ChatComposer({
 	large = false,
 	showProjectPicker = true,
 }: ChatComposerProps) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const SendIcon = icons.send;
 	const StopIcon = icons.stop;
@@ -103,7 +106,13 @@ export function ChatComposer({
 	const isStreaming = status === "streaming";
 	const isSubmitting = status === "submitted";
 	const stopAction = isStreaming && !hasMessageContent;
-	const submitLabel = stopAction ? "Stop response" : isStreaming ? "Queue message" : "Send message";
+	const submitLabel = intl.formatMessage(
+		stopAction
+			? desktopMessages.composerStopResponse
+			: isStreaming
+				? desktopMessages.composerQueueMessage
+				: desktopMessages.composerSendMessage,
+	);
 	const composerDisabled = disabled || isSubmitting || registeringAttachments;
 	const submitDisabled = composerDisabled || (!stopAction && !hasMessageContent);
 	const submitVariant = stopAction ? "secondary" : "accent";
@@ -152,7 +161,7 @@ export function ChatComposer({
 	const handleFilesChange = async (nextFiles: File[]) => {
 		const total = nextFiles.reduce((sum, file) => sum + file.size, 0);
 		if (total > MAX_MESSAGE_ATTACHMENT_BYTES) {
-			setAttachmentError("Attachments must be 20 MB or less in total.");
+			setAttachmentError(intl.formatMessage(desktopMessages.composerAttachmentLimit));
 			return;
 		}
 
@@ -196,10 +205,10 @@ export function ChatComposer({
 				return attachment ? [attachment] : [];
 			});
 			setAttachments(nextAttachments);
-		} catch (error) {
+		} catch {
 			setFiles(previousFiles);
 			setAttachments(previousAttachments);
-			setAttachmentError(error instanceof Error ? error.message : "Could not add those files.");
+			setAttachmentError(intl.formatMessage(desktopMessages.composerCouldNotAddFiles));
 		} finally {
 			setRegisteringAttachments(false);
 		}
@@ -275,13 +284,18 @@ export function ChatComposer({
 				disabled={composerDisabled}
 				minRows={large ? 2 : 1}
 				maxRows={8}
-				placeholder={large ? "What should the agent work on?" : "Write a message…"}
+				placeholder={intl.formatMessage(
+					large ? desktopMessages.composerWorkOn : desktopMessages.composerWriteMessage,
+				)}
 				sendLabel={submitLabel}
 				files={files}
 				onFilesChange={(nextFiles) => void handleFilesChange(nextFiles)}
 				accept={ALL_FILES_ACCEPT}
 				filePreviewSize={COMPOSER_FILE_PREVIEW_SIZE}
-				textareaProps={{ "aria-label": "Message", onKeyDown: handleSlashCommandKeyDown }}
+				textareaProps={{
+					"aria-label": intl.formatMessage(desktopMessages.composerMessage),
+					onKeyDown: handleSlashCommandKeyDown,
+				}}
 				submitSlot={
 					<Button
 						type="button"

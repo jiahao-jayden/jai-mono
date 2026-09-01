@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { type IntlShape, useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { resolveProviderBrandIcon, useIcon } from "@/lib/icon-context";
 import {
 	type DesktopProviderFetchModelsResult,
@@ -30,6 +32,7 @@ export function ProviderModelEditor({
 	fetching,
 	lastFetch,
 }: ProviderModelEditorProps) {
+	const intl = useIntl();
 	const RefreshIcon = useIcon("rotate-ccw");
 	const SearchIcon = useIcon("search");
 	const [query, setQuery] = useState("");
@@ -47,7 +50,7 @@ export function ProviderModelEditor({
 	return (
 		<section className="flex flex-col gap-3 pt-2">
 			<div className="flex items-center justify-between gap-3">
-				<h3 className="text-[14px] font-semibold">Models</h3>
+				<h3 className="text-[14px] font-semibold">{intl.formatMessage(desktopMessages.settingsModels)}</h3>
 				<Button
 					type="button"
 					variant="tertiary"
@@ -57,13 +60,17 @@ export function ProviderModelEditor({
 					disabled={fetching}
 					onClick={() => void onFetchModels(profile.id)}
 				>
-					Fetch models
+					{intl.formatMessage(desktopMessages.settingsFetchModels)}
 				</Button>
 			</div>
-			{lastFetch ? <p className="text-[12px] text-muted-foreground">{lastFetch.modelCount} models fetched</p> : null}
+			{lastFetch ? (
+				<p className="text-[12px] text-muted-foreground">
+					{intl.formatMessage(desktopMessages.settingsModelsFetched, { count: lastFetch.modelCount })}
+				</p>
+			) : null}
 			{profile.models.length === 0 ? (
 				<div className="flex min-h-28 items-center justify-center rounded-xl bg-muted/35 px-4 text-[13px] text-muted-foreground">
-					No models fetched
+					{intl.formatMessage(desktopMessages.settingsNoModelsFetched)}
 				</div>
 			) : (
 				<div className="flex flex-col gap-2">
@@ -76,30 +83,32 @@ export function ProviderModelEditor({
 							density="compact"
 							value={query}
 							onChange={(event) => setQuery(event.target.value)}
-							placeholder={`Search ${profile.models.length} models`}
-							aria-label="Search models"
+							placeholder={intl.formatMessage(desktopMessages.settingsModelsSearch, {
+								count: profile.models.length,
+							})}
+							aria-label={intl.formatMessage(desktopMessages.settingsModels)}
 							className="pl-8"
 						/>
 					</div>
 					{matchingModels.length === 0 ? (
 						<div className="flex min-h-20 items-center justify-center rounded-xl bg-muted/35 px-4 text-[12px] text-muted-foreground">
-							No matching models
+							{intl.formatMessage(desktopMessages.modelNoMatch)}
 						</div>
 					) : (
 						<>
 							<CheckboxGroup
 								checkedIndices={checkedIndices}
 								className="max-h-80 w-full divide-y divide-border/45 overflow-y-auto rounded-lg border border-border/45 bg-transparent py-0.5"
-								aria-label={`${profile.name} models`}
+								aria-label={intl.formatMessage(desktopMessages.settingsModels)}
 							>
 								{visibleModels.map((model, index) => {
-									const availability = modelAvailability(model);
+									const availability = modelAvailability(model, intl);
 									return (
 										<CheckboxItem
 											key={model.id}
 											index={index}
 											checked={model.enabled}
-											label={`Enable ${model.name}`}
+											label={intl.formatMessage(desktopMessages.settingsEnableModel, { name: model.name })}
 											disabled={!availability.selectable && !model.enabled}
 											onToggle={() =>
 												onModelsChange(
@@ -112,14 +121,17 @@ export function ProviderModelEditor({
 											}
 											className="h-auto min-h-13 items-start rounded-md px-2.5 py-2 data-[disabled=true]:cursor-not-allowed"
 										>
-											<ModelCard model={model} availability={availability} />
+											<ModelCard model={model} availability={availability} intl={intl} />
 										</CheckboxItem>
 									);
 								})}
 							</CheckboxGroup>
 							{matchingModels.length > visibleModels.length ? (
 								<p className="text-[11px] text-muted-foreground">
-									Showing {visibleModels.length} of {matchingModels.length}. Search to find other models.
+									{intl.formatMessage(desktopMessages.settingsModelsSearchHelp, {
+										visible: visibleModels.length,
+										total: matchingModels.length,
+									})}
 								</p>
 							) : null}
 						</>
@@ -133,9 +145,11 @@ export function ProviderModelEditor({
 function ModelCard({
 	model,
 	availability,
+	intl,
 }: {
 	readonly model: DesktopProviderModel;
 	readonly availability: ModelAvailability;
+	readonly intl: IntlShape;
 }) {
 	const ArrowIcon = useIcon("arrow-right");
 	const BrandIcon = resolveProviderBrandIcon(model.metadataProvider, model.remoteModelId);
@@ -161,7 +175,10 @@ function ModelCard({
 				<div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
 					<div
 						className="flex min-w-0 items-center gap-1.5"
-						title={`Input: ${formatModalities(model.inputModalities)} → Output: ${formatModalities(model.outputModalities)}`}
+						title={intl.formatMessage(desktopMessages.settingsModelInputOutput, {
+							input: formatModalities(model.inputModalities),
+							output: formatModalities(model.outputModalities),
+						})}
 					>
 						<span className="truncate text-muted-foreground/80">{formatModalities(model.inputModalities)}</span>
 						<ArrowIcon size={11} className="shrink-0 text-muted-foreground" />
@@ -172,18 +189,34 @@ function ModelCard({
 					</span>
 					<div
 						className="flex items-center gap-1.5"
-						title={`Context: ${formatLimit(model.contextWindow)} · Input: ${formatLimit(model.inputLimit)} · Output: ${formatLimit(model.maxTokens)}`}
+						title={intl.formatMessage(desktopMessages.settingsModelLimits, {
+							context: formatLimit(model.contextWindow, intl),
+							input: formatLimit(model.inputLimit, intl),
+							output: formatLimit(model.maxTokens, intl),
+						})}
 					>
 						<span>
-							<span className="text-muted-foreground/80">{formatCompactLimit(model.contextWindow)} context</span>
+							<span className="text-muted-foreground/80">
+								{intl.formatMessage(desktopMessages.settingsModelContext, {
+									value: formatCompactLimit(model.contextWindow, intl),
+								})}
+							</span>
 						</span>
 						<span className="text-muted-foreground/50">·</span>
 						<span>
-							<span className="text-muted-foreground/80">{formatCompactLimit(model.inputLimit)} input</span>
+							<span className="text-muted-foreground/80">
+								{intl.formatMessage(desktopMessages.settingsModelInput, {
+									value: formatCompactLimit(model.inputLimit, intl),
+								})}
+							</span>
 						</span>
 						<span className="text-muted-foreground/50">·</span>
 						<span>
-							<span className="text-muted-foreground/80">{formatCompactLimit(model.maxTokens)} output</span>
+							<span className="text-muted-foreground/80">
+								{intl.formatMessage(desktopMessages.settingsModelOutput, {
+									value: formatCompactLimit(model.maxTokens, intl),
+								})}
+							</span>
 						</span>
 					</div>
 				</div>
@@ -198,27 +231,31 @@ interface ModelAvailability {
 	readonly verified: boolean;
 }
 
-function modelAvailability(model: DesktopProviderModel): ModelAvailability {
-	if (!model.verified) return { label: "Unverified", selectable: false, verified: false };
+function modelAvailability(model: DesktopProviderModel, intl: IntlShape): ModelAvailability {
+	if (!model.verified)
+		return { label: intl.formatMessage(desktopMessages.settingsUnverified), selectable: false, verified: false };
 	if (!model.inputModalities?.includes("text") || !model.outputModalities?.includes("text")) {
-		return { label: "Text unsupported", selectable: false, verified: true };
+		return { label: intl.formatMessage(desktopMessages.settingsTextUnsupported), selectable: false, verified: true };
 	}
-	if (model.toolCall !== true) return { label: "Tools unsupported", selectable: false, verified: true };
+	if (model.toolCall !== true)
+		return { label: intl.formatMessage(desktopMessages.settingsToolsUnsupported), selectable: false, verified: true };
 	if (!isDesktopProviderModelRunnable(model))
-		return { label: "Limits unavailable", selectable: false, verified: true };
-	return { label: "Ready", selectable: true, verified: true };
+		return {
+			label: intl.formatMessage(desktopMessages.settingsLimitsUnavailable),
+			selectable: false,
+			verified: true,
+		};
+	return { label: intl.formatMessage(desktopMessages.settingsReady), selectable: true, verified: true };
 }
 
 function formatModalities(value: readonly string[] | undefined): string {
 	return value?.join(", ") || "—";
 }
 
-function formatLimit(value: number | undefined): string {
-	return value === undefined ? "—" : value.toLocaleString();
+function formatLimit(value: number | undefined, intl: IntlShape): string {
+	return value === undefined ? "—" : intl.formatNumber(value);
 }
 
-function formatCompactLimit(value: number | undefined): string {
-	return value === undefined
-		? "—"
-		: new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 2 }).format(value);
+function formatCompactLimit(value: number | undefined, intl: IntlShape): string {
+	return value === undefined ? "—" : intl.formatNumber(value, { notation: "compact", maximumFractionDigits: 2 });
 }

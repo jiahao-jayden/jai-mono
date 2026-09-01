@@ -38,6 +38,10 @@ function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) 
 			resolve: record("resolve", { id: "attachment-1" }),
 		},
 		theme: { get: record("theme.get", "system"), set: record("theme.set"), restore: record("theme.restore") },
+		locale: {
+			get: record("locale.get", { preference: "system", locale: "en" }),
+			set: record("locale.set", { preference: "en", locale: "en" }),
+		},
 		config: { ...(overrides.config as object) },
 		commands: { list: record("commands.list", []), ...(overrides.commands as object) },
 		oauth: { ...(overrides.oauth as object) },
@@ -62,6 +66,14 @@ describe("createDesktopRouter — 输入校验", () => {
 
 		r.session.create(event, { firstMessage: "hi", projectId: null });
 		expect(calls.map((call) => call.name)).toEqual(["createSession"]);
+	});
+
+	test("locale 只接受受限偏好并投影安全快照", () => {
+		const { router: r, calls } = router();
+		expect(r.locale.get(event)).toEqual({ preference: "system", locale: "en" });
+		r.locale.set(event, "zh-CN");
+		expect(() => r.locale.set(event, "fr")).toThrow();
+		expect(calls.map((call) => call.name)).toEqual(["locale.get", "locale.set"]);
 	});
 
 	test("agent.send 要求 modelRef 带 profile 分隔符", () => {

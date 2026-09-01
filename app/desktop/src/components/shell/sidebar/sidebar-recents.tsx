@@ -1,5 +1,6 @@
-import { getErrorMessage } from "@jai/common";
 import { useRef, useState } from "react";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type { CodingSession, DesktopProject } from "../../../../shared/desktop-rpc";
@@ -46,6 +47,7 @@ export function SidebarRecents({
 	onDeleteSession,
 	onLoadMore,
 }: SidebarRecentsProps) {
+	const intl = useIntl();
 	const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
 	const [editingTitle, setEditingTitle] = useState("");
 	const cancelEditRef = useRef(false);
@@ -73,10 +75,10 @@ export function SidebarRecents({
 
 		try {
 			await onRenameSession(session.id, title);
-		} catch (reason) {
+		} catch {
 			toast.add({
-				title: "无法重命名会话",
-				description: getErrorMessage(reason),
+				title: intl.formatMessage(desktopMessages.sidebarRenameFailed),
+				description: intl.formatMessage(desktopMessages.sidebarRenameFailed),
 				type: "error",
 			});
 		}
@@ -85,12 +87,18 @@ export function SidebarRecents({
 	return (
 		<>
 			<div className="px-5 pt-5 pb-1.5">
-				<span className="text-[12px] font-semibold text-muted-foreground">Recents</span>
+				<span className="text-[12px] font-semibold text-muted-foreground">
+					{intl.formatMessage(desktopMessages.sidebarRecents)}
+				</span>
 			</div>
 
 			<div className="scrollbar-hidden min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2.5 pb-2">
 				{loading && sessions.length === 0 ? (
-					<div className="space-y-2 px-2.5 py-2" role="status" aria-label="Loading recent sessions">
+					<div
+						className="space-y-2 px-2.5 py-2"
+						role="status"
+						aria-label={intl.formatMessage(desktopMessages.sidebarLoadingRecentSessions)}
+					>
 						{[0, 1, 2].map((item) => (
 							<div key={item} className="h-8 animate-pulse rounded-lg bg-foreground/5" />
 						))}
@@ -98,11 +106,13 @@ export function SidebarRecents({
 				) : null}
 				{error ? (
 					<p className="mx-2.5 my-2 rounded-lg bg-destructive/8 px-3 py-2 text-[12px] leading-relaxed text-destructive">
-						Recents 暂时无法加载。请稍后重试。
+						{intl.formatMessage(desktopMessages.sidebarRecentsLoadError)}
 					</p>
 				) : null}
 				{!loading && !error && sessions.length === 0 ? (
-					<p className="px-2.5 py-3 text-[12.5px] leading-relaxed text-muted-foreground">新对话会保存在这里。</p>
+					<p className="px-2.5 py-3 text-[12.5px] leading-relaxed text-muted-foreground">
+						{intl.formatMessage(desktopMessages.sidebarNoRecentSessions)}
+					</p>
 				) : null}
 				{sessions.map((session) => {
 					const selected = session.id === activeSessionId;
@@ -125,7 +135,7 @@ export function SidebarRecents({
 											cancelEditing();
 										}
 									}}
-									aria-label="Session title"
+									aria-label={intl.formatMessage(desktopMessages.sessionTitle)}
 									maxLength={80}
 									className="h-8 rounded-lg border-border bg-sidebar px-2.5 text-[13.5px] font-normal focus-visible:ring-0"
 								/>
@@ -176,7 +186,9 @@ export function SidebarRecents({
 						onClick={onLoadMore}
 						className="mt-1 w-full justify-center rounded-lg text-[12px] text-muted-foreground"
 					>
-						{loadingMore ? "Loading more…" : "Load more"}
+						{intl.formatMessage(
+							loadingMore ? desktopMessages.sidebarLoadingMore : desktopMessages.sidebarLoadMore,
+						)}
 					</Button>
 				) : null}
 			</div>
@@ -201,6 +213,7 @@ function SessionActions({
 	readonly onMove: (sessionId: string, projectId: string | null) => Promise<void>;
 	readonly onDelete: (sessionId: string) => Promise<void>;
 }) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [dialog, setDialog] = useState<SessionActionDialog>(null);
@@ -225,10 +238,10 @@ function SessionActions({
 		setPending(true);
 		try {
 			await onMove(session.id, projectId);
-		} catch (reason) {
+		} catch {
 			toast.add({
-				title: "无法移动会话",
-				description: getErrorMessage(reason),
+				title: intl.formatMessage(desktopMessages.sidebarMoveFailed),
+				description: intl.formatMessage(desktopMessages.sidebarMoveFailed),
 				type: "error",
 			});
 		} finally {
@@ -243,8 +256,8 @@ function SessionActions({
 		try {
 			await onDelete(session.id);
 			setDialog(null);
-		} catch (reason) {
-			setError(getErrorMessage(reason));
+		} catch {
+			setError(intl.formatMessage(desktopMessages.sidebarDeleteFailed));
 			setPending(false);
 		}
 	};
@@ -254,10 +267,10 @@ function SessionActions({
 		setPending(true);
 		try {
 			await onMove(session.id, null);
-		} catch (reason) {
+		} catch {
 			toast.add({
-				title: "无法从项目移除",
-				description: getErrorMessage(reason),
+				title: intl.formatMessage(desktopMessages.sidebarRemoveFromProjectFailed),
+				description: intl.formatMessage(desktopMessages.sidebarRemoveFromProjectFailed),
 				type: "error",
 			});
 		} finally {
@@ -275,8 +288,8 @@ function SessionActions({
 							variant="navigation"
 							size="icon-sm"
 							active={menuOpen}
-							aria-label={`Actions for ${session.title}`}
-							title="Session actions"
+							aria-label={intl.formatMessage(desktopMessages.sidebarActionsFor, { title: session.title })}
+							title={intl.formatMessage(desktopMessages.sidebarSessionActions)}
 							data-session-actions
 							className={cn(
 								"absolute top-1/2 right-1 size-7 -translate-y-1/2 rounded-lg text-foreground transition-opacity",
@@ -296,13 +309,19 @@ function SessionActions({
 					hoverVariant="navigation"
 					className="w-48 gap-0.5 p-1"
 				>
-					<MenuItem index={0} icon={icons.pencil} label="Rename" className="h-8 px-2" onSelect={onStartRename} />
+					<MenuItem
+						index={0}
+						icon={icons.pencil}
+						label={intl.formatMessage(desktopMessages.sidebarRename)}
+						className="h-8 px-2"
+						onSelect={onStartRename}
+					/>
 					<DropdownSubmenu>
 						<MenuItem
 							index={1}
 							icon={icons["folder-open"]}
 							trailingIcon={icons["chevron-right"]}
-							label="移动到项目"
+							label={intl.formatMessage(desktopMessages.sidebarMoveToProject)}
 							submenu
 							className="h-8 px-2"
 						/>
@@ -321,7 +340,11 @@ function SessionActions({
 									/>
 								))
 							) : (
-								<MenuItem index={0} label="暂无可用项目" disabled />
+								<MenuItem
+									index={0}
+									label={intl.formatMessage(desktopMessages.sidebarNoAvailableProjects)}
+									disabled
+								/>
 							)}
 						</DropdownSubmenuContent>
 					</DropdownSubmenu>
@@ -329,7 +352,7 @@ function SessionActions({
 						<MenuItem
 							index={2}
 							icon={icons["folder-off"]}
-							label="从项目移除"
+							label={intl.formatMessage(desktopMessages.sidebarRemoveFromProject)}
 							className="h-8 px-2"
 							onSelect={() => void removeFromProject()}
 						/>
@@ -338,7 +361,7 @@ function SessionActions({
 					<MenuItem
 						index={session.projectId === null ? 2 : 3}
 						icon={icons.trash}
-						label="Delete"
+						label={intl.formatMessage(desktopMessages.commonDelete)}
 						variant="destructive"
 						className="h-8 px-2"
 						onSelect={openDialog}
@@ -349,15 +372,15 @@ function SessionActions({
 			<Dialog open={dialog === "delete"} onOpenChange={(open) => !open && closeDialog()}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Delete session?</DialogTitle>
+						<DialogTitle>{intl.formatMessage(desktopMessages.sidebarDeleteSessionTitle)}</DialogTitle>
 						<DialogDescription>
-							“{session.title}” and its local conversation history will be permanently deleted.
+							{intl.formatMessage(desktopMessages.sidebarDeleteSessionDescription, { title: session.title })}
 						</DialogDescription>
 					</DialogHeader>
 					<ActionError message={error} />
 					<DialogFooter>
 						<Button type="button" variant="ghost" disabled={pending} onClick={closeDialog}>
-							Cancel
+							{intl.formatMessage(desktopMessages.commonCancel)}
 						</Button>
 						<Button
 							type="button"
@@ -366,7 +389,7 @@ function SessionActions({
 							onClick={() => void remove()}
 							className="text-destructive"
 						>
-							Delete
+							{intl.formatMessage(desktopMessages.commonDelete)}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

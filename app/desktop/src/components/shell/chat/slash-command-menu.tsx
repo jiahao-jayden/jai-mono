@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type { DesktopCommandDescriptor } from "../../../../shared/desktop-rpc";
@@ -26,12 +28,13 @@ export function filterSlashCommands(
 }
 
 export function SlashCommandMenu({ commands, selectedIndex, onSelect }: SlashCommandMenuProps) {
+	const intl = useIntl();
 	const icons = useIcons();
 
 	return (
 		<div
 			role="listbox"
-			aria-label="Slash commands"
+			aria-label={intl.formatMessage(desktopMessages.slashCommands)}
 			className="mb-2 max-h-72 overflow-y-auto rounded-md border border-border bg-card p-1 shadow-surface-3"
 		>
 			{commands.map((command, index) => {

@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { renderToStaticMarkup } from "react-dom/server";
+import { IntlProvider } from "react-intl";
+import { renderToStaticMarkup as renderToStaticMarkupBase } from "react-dom/server";
+import type { ReactNode } from "react";
 import type { DesktopProject } from "../shared/desktop-rpc";
+import enMessages from "../src/i18n/compiled/en.json";
 import { ProjectPicker } from "../src/components/shell/chat/project-picker";
+
+function renderToStaticMarkup(node: ReactNode): string {
+	return renderToStaticMarkupBase(<IntlProvider locale="en" messages={enMessages}>{node}</IntlProvider>);
+}
 
 const project: DesktopProject = {
 	id: "project-1",

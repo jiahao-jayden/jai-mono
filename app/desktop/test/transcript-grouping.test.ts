@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { createElement, type ReactNode } from "react";
+import { createIntl, IntlProvider } from "react-intl";
+import { renderToStaticMarkup as renderToStaticMarkupBase } from "react-dom/server";
+import enMessages from "../src/i18n/compiled/en.json";
 import type { DesktopTranscriptItem } from "../shared/desktop-rpc";
 import {
 	groupTranscriptItems,
@@ -9,6 +11,12 @@ import {
 	workTimelineSummary,
 	workTimelineSteps,
 } from "../src/components/shell/chat/chat-transcript";
+
+const intl = createIntl({ locale: "en", messages: enMessages });
+
+function renderToStaticMarkup(node: ReactNode): string {
+	return renderToStaticMarkupBase(createElement(IntlProvider, { locale: "en", messages: enMessages }, node));
+}
 
 describe("transcript grouping", () => {
 	test("只将明确的 compaction item 渲染为上下文压缩", () => {
@@ -65,7 +73,7 @@ describe("transcript grouping", () => {
 			fileChanges: [{ operation: "add", path: "/workspace/index.ts" }],
 		};
 
-		expect(workTimelineSummary(workTimelineSteps([tool]), [tool], false)).toBe("1 step · 1 file changed");
+		expect(workTimelineSummary(workTimelineSteps([tool], intl), [tool], false, intl)).toBe("1 step · 1 file changed");
 	});
 
 	test("context compaction 不会切断同一 turn 的工作日志", () => {
@@ -204,7 +212,7 @@ describe("transcript grouping", () => {
 		const tools = items.filter(
 			(item): item is Extract<DesktopTranscriptItem, { kind: "tool" }> => item.kind === "tool",
 		);
-		expect(workTimelineSteps(tools)).toMatchObject([
+		expect(workTimelineSteps(tools, intl)).toMatchObject([
 			{ verb: "Called", chip: "2 calls" },
 			{ verb: "Called", chip: "pending records" },
 			{ verb: "Called", chip: "2 calls" },
@@ -238,7 +246,7 @@ describe("transcript grouping", () => {
 			tool("purge", "connector__execute_action", "call", "google_gmail.purge"),
 		];
 
-		expect(workTimelineSteps(tools)).toMatchObject([
+		expect(workTimelineSteps(tools, intl)).toMatchObject([
 			{ verb: "Called", chip: "5 calls" },
 		]);
 	});

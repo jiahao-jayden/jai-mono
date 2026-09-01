@@ -1,9 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { IntlProvider } from "react-intl";
+import { renderToStaticMarkup as renderToStaticMarkupBase } from "react-dom/server";
+import type { ReactNode } from "react";
+import enMessages from "../src/i18n/compiled/en.json";
 import type { CodingSession } from "../shared/desktop-rpc";
-import { renderToStaticMarkup } from "react-dom/server";
 import type { DesktopProject } from "../shared/desktop-rpc";
 import { ChatsPage } from "../src/components/shell/chats-page";
 import { ProjectPage, ProjectsPage } from "../src/components/shell/projects-page";
+
+function renderToStaticMarkup(node: ReactNode): string {
+	return renderToStaticMarkupBase(<IntlProvider locale="en" messages={enMessages}>{node}</IntlProvider>);
+}
 
 const project: DesktopProject = {
 	id: "project-1",

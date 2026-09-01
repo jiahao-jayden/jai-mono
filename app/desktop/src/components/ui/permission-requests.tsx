@@ -1,7 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { type MessageDescriptor, useIntl } from "react-intl";
 import { useState } from "react";
+import { desktopMessages } from "@/i18n/messages";
 import { fontWeights } from "@/lib/font-weight";
 import { useIcon } from "@/lib/icon-context";
 import { useShape } from "@/lib/shape-context";
@@ -27,14 +29,15 @@ interface PermissionRequestsProps {
 
 const baseDecisions: readonly {
 	readonly id: PermissionDecision;
-	readonly title: string;
+	readonly message: MessageDescriptor;
 	readonly variant: "ghost" | "tertiary" | "primary";
 }[] = [
-	{ id: "deny", title: "Deny", variant: "ghost" },
-	{ id: "allowOnce", title: "Allow once", variant: "primary" },
+	{ id: "deny", message: desktopMessages.permissionDeny, variant: "ghost" },
+	{ id: "allowOnce", message: desktopMessages.permissionAllowOnce, variant: "primary" },
 ];
 
 export function PermissionRequests({ requests, onResolve }: PermissionRequestsProps) {
+	const intl = useIntl();
 	const [index, setIndex] = useState(0);
 	const [resolving, setResolving] = useState<PermissionDecision>();
 	const [resolveError, setResolveError] = useState<string>();
@@ -47,7 +50,7 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 	const decisions = request?.canAlwaysAllow
 		? [
 				baseDecisions[0]!,
-				{ id: "alwaysAllow" as const, title: "Always allow", variant: "tertiary" as const },
+				{ id: "alwaysAllow" as const, message: desktopMessages.permissionAlwaysAllow, variant: "tertiary" as const },
 				baseDecisions[1]!,
 			]
 		: baseDecisions;
@@ -63,7 +66,7 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 			await onResolve(request.id, decision);
 			setResolving(undefined);
 		} catch {
-			setResolveError("Permission response was not submitted. Try again.");
+			setResolveError(intl.formatMessage(desktopMessages.permissionResponseFailed));
 			setResolving(undefined);
 		}
 	};
@@ -75,7 +78,7 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 			exit={{ opacity: 0, y: 3, transition: spring.fast.exit }}
 			transition={spring.moderate}
 			className={cn("relative mx-auto w-full max-w-155 overflow-hidden border border-border bg-card", shape.container)}
-			aria-label="Permission request"
+			aria-label={intl.formatMessage(desktopMessages.permissionRequest)}
 		>
 			<header className="flex items-start justify-between gap-3 px-3 pt-3 pb-2">
 				<div className="min-w-0">
@@ -95,7 +98,7 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 							size="icon-sm"
 							onClick={() => setIndex((current) => Math.max(0, current - 1))}
 							disabled={safeIndex === 0 || Boolean(resolving)}
-							aria-label="Previous permission"
+							aria-label={intl.formatMessage(desktopMessages.permissionPrevious)}
 						>
 							<ArrowLeft size={14} />
 						</Button>
@@ -108,7 +111,7 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 							size="icon-sm"
 							onClick={() => setIndex((current) => Math.min(requests.length - 1, current + 1))}
 							disabled={safeIndex === requests.length - 1 || Boolean(resolving)}
-							aria-label="Next permission"
+							aria-label={intl.formatMessage(desktopMessages.permissionNext)}
 						>
 							<ArrowRight size={14} />
 						</Button>
@@ -143,7 +146,7 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 						loading={resolving === decision.id}
 						onClick={() => void resolve(decision.id)}
 					>
-						{decision.title}
+						{intl.formatMessage(decision.message)}
 					</Button>
 				))}
 			</div>

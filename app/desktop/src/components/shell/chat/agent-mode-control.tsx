@@ -2,6 +2,8 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import type { IconName } from "@/lib/icon-context";
 import { useIcons } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
@@ -14,7 +16,7 @@ import { MenuItem } from "../../ui/menu-item";
 interface AgentModeMeta {
 	readonly iconClassName: string;
 	readonly icon: IconName;
-	readonly label: string;
+	readonly message: (typeof desktopMessages)[keyof typeof desktopMessages];
 	readonly surfaceClassName: string;
 }
 
@@ -24,19 +26,19 @@ const agentModeMeta: Readonly<Record<DesktopAgentMode, AgentModeMeta>> = {
 	manual: {
 		iconClassName: "text-agent-mode-manual",
 		icon: "shield",
-		label: "Manual",
+		message: desktopMessages.modeManual,
 		surfaceClassName: "bg-transparent",
 	},
 	automate: {
 		iconClassName: "text-agent-mode-automate",
 		icon: "rocket",
-		label: "Automate",
+		message: desktopMessages.modeAutomate,
 		surfaceClassName: "bg-agent-mode-automate-surface",
 	},
 	plan: {
 		iconClassName: "text-agent-mode-plan",
 		icon: "brain",
-		label: "Plan",
+		message: desktopMessages.modePlan,
 		surfaceClassName: "bg-agent-mode-plan-surface",
 	},
 };
@@ -48,10 +50,12 @@ interface AgentModeControlProps {
 }
 
 export function AgentModeControl({ disabled = false, mode, onSelect }: AgentModeControlProps) {
+	const intl = useIntl();
 	const icons = useIcons();
 	const reducedMotion = useReducedMotion() ?? false;
 	const [open, setOpen] = useState(false);
 	const meta = agentModeMeta[mode];
+	const modeLabel = intl.formatMessage(meta.message);
 	const Icon = icons[meta.icon];
 	const ChevronDownIcon = icons["chevron-down"];
 
@@ -65,7 +69,7 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 						size="sm"
 						active={open}
 						disabled={disabled}
-						aria-label={`Agent mode: ${meta.label}`}
+						aria-label={intl.formatMessage(desktopMessages.modeAria, { mode: modeLabel })}
 						className={cn("px-2.5 text-[13px] text-foreground", meta.surfaceClassName)}
 						labelClassName="flex items-center [text-box:normal]"
 					>
@@ -83,7 +87,7 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 									transition={spring.moderate}
 								>
 									<Icon size={14} strokeWidth={1.7} className={meta.iconClassName} />
-									<span className="font-medium">{meta.label}</span>
+									<span className="font-medium">{modeLabel}</span>
 								</motion.span>
 							</AnimatePresence>
 							<ChevronDownIcon
@@ -97,12 +101,13 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 			<DropdownContent checkedIndex={agentModes.indexOf(mode)} sideOffset={6} className="w-44">
 				{agentModes.map((candidate, index) => {
 					const option = agentModeMeta[candidate];
+					const optionLabel = intl.formatMessage(option.message);
 					return (
 						<MenuItem
 							key={candidate}
 							index={index}
 							icon={icons[option.icon]}
-							label={option.label}
+							label={optionLabel}
 							className="h-8 px-2"
 							checked={candidate === mode}
 							onSelect={() => onSelect(candidate)}
