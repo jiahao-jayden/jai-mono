@@ -7,19 +7,15 @@ import { Input } from "../../ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "../../ui/select";
 
 interface GeneralSettingsProps {
-	readonly language: string;
 	readonly maxIterations: string;
 	readonly reasoningEffort: string;
-	readonly onLanguageChange: (value: string) => void;
 	readonly onMaxIterationsChange: (value: string) => void;
 	readonly onReasoningEffortChange: (value: string) => void;
 }
 
 export function GeneralSettings({
-	language,
 	maxIterations,
 	reasoningEffort,
-	onLanguageChange,
 	onMaxIterationsChange,
 	onReasoningEffortChange,
 }: GeneralSettingsProps) {
@@ -75,16 +71,6 @@ export function GeneralSettings({
 							{intl.formatMessage(desktopMessages.settingsLocaleSaveError)}
 						</p>
 					) : null}
-				</SettingsRow>
-
-				<SettingsRow label={intl.formatMessage(desktopMessages.settingsResponseLanguage)}>
-					<Input
-						value={language}
-						onChange={(event) => onLanguageChange(event.target.value)}
-						placeholder="zh-CN"
-						aria-label={intl.formatMessage(desktopMessages.settingsResponseLanguage)}
-						autoComplete="off"
-					/>
 				</SettingsRow>
 
 				<SettingsRow label={intl.formatMessage(desktopMessages.settingsMaxIterations)}>

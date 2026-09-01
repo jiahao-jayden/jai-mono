@@ -93,10 +93,13 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			get() {
 				return rt.locale.get();
 			},
-			set(_event, preference) {
-				return rt.locale.set(
+			async set(_event, preference) {
+				const snapshot = rt.locale.set(
 					parse(desktopUiLocalePreferenceSchema, preference, "Invalid Desktop UI locale preference"),
 				);
+				await rt.config.setAgentLanguage(snapshot.locale);
+				rt.agentHost.invalidateSessions();
+				return snapshot;
 			},
 		},
 		provider: {

@@ -198,7 +198,6 @@ function ProviderConfigForm({
 	const [category, setCategory] = useState<SettingsCategory>("general");
 	const [profiles, setProfiles] = useState<ProfileDraft[]>(() => snapshot.profiles.map(toProfileDraft));
 	const [selectedProfileId, setSelectedProfileId] = useState(snapshot.profiles[0]?.id ?? "");
-	const [language, setLanguage] = useState(snapshot.language ?? "");
 	const [maxIterations, setMaxIterations] = useState(snapshot.maxIterations?.toString() ?? "");
 	const [reasoningEffort, setReasoningEffort] = useState(snapshot.reasoningEffort ?? "");
 	const [connector, setConnector] = useState<DesktopConnectorConfigInput>(() => toConnectorInput(snapshot.connector));
@@ -210,7 +209,7 @@ function ProviderConfigForm({
 	const providerCategory = category !== "advanced";
 
 	const submit = async () => {
-		const validationError = validateProviderDraft(profiles, language, maxIterations);
+		const validationError = validateProviderDraft(profiles, maxIterations);
 		if (validationError) {
 			setError(formatProviderValidationError(validationError, intl));
 			return;
@@ -220,7 +219,6 @@ function ProviderConfigForm({
 		try {
 			const savedSnapshot = await onSave({
 				revision: snapshot.revision,
-				...(language ? { language } : {}),
 				...(maxIterations ? { maxIterations: Number(maxIterations) } : {}),
 				...(reasoningEffort ? { reasoningEffort: reasoningEffort as "low" | "medium" | "high" } : {}),
 				connector,
@@ -261,13 +259,8 @@ function ProviderConfigForm({
 				<div className={contentClassName}>
 					{category === "general" ? (
 						<GeneralSettings
-							language={language}
 							maxIterations={maxIterations}
 							reasoningEffort={reasoningEffort}
-							onLanguageChange={(value) => {
-								setLanguage(value);
-								setDirty(true);
-							}}
 							onMaxIterationsChange={(value) => {
 								setMaxIterations(value);
 								setDirty(true);
@@ -419,8 +412,6 @@ function SettingsSidebar({
 
 function formatProviderValidationError(error: ProviderDraftValidationError, intl: ReturnType<typeof useIntl>): string {
 	switch (error.kind) {
-		case "invalid-response-language":
-			return intl.formatMessage(desktopMessages.settingsInvalidResponseLanguage);
 		case "invalid-max-iterations":
 			return intl.formatMessage(desktopMessages.settingsPositiveMaxIterations);
 		case "provider-name-required":

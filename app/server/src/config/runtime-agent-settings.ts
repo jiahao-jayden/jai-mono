@@ -319,6 +319,21 @@ export class SqliteRuntimeAgentSettings {
 		return this.persist(next.value, current.value.revision, now);
 	}
 
+	setLanguage(
+		language: string,
+		now = new Date().toISOString(),
+	): ResultType<RuntimeAgentSettingsSnapshot, RuntimeAgentSettingsWriteError> {
+		if (!languagePattern.test(language)) {
+			return Result.err(new RuntimeAgentSettingsInvalid({ message: "Runtime Agent language is invalid" }));
+		}
+		const current = this.current();
+		if (current.isErr()) {
+			if (current.error._tag !== "runtime_config.agent_settings_missing") return Result.err(current.error);
+			return this.insertInitial({ revision: null, model: "", language, providers: [] }, now);
+		}
+		return this.persist({ ...current.value.settings, language }, current.value.revision, now);
+	}
+
 	/**
 	 * Discovers models through the Server-owned Provider connection, then commits
 	 * the inventory into the same durable configuration fact. A Desktop process

@@ -543,9 +543,6 @@
   "desktop.settings.interfaceLanguageDescription": {
     "defaultMessage": "Choose the language used by the Desktop interface."
   },
-  "desktop.settings.invalidResponseLanguage": {
-    "defaultMessage": "Response language must be a valid BCP-47 tag, for example zh-CN."
-  },
   "desktop.settings.limitsUnavailable": {
     "defaultMessage": "Limits unavailable"
   },
@@ -689,9 +686,6 @@
   },
   "desktop.settings.reasoningEffort": {
     "defaultMessage": "Reasoning effort"
-  },
-  "desktop.settings.responseLanguage": {
-    "defaultMessage": "Response language"
   },
   "desktop.settings.retry": {
     "defaultMessage": "Retry"

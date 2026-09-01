@@ -300,7 +300,6 @@ export interface DesktopProviderPreset {
 
 export interface DesktopProviderConfigSnapshot {
 	readonly revision: string | null;
-	readonly language?: string;
 	readonly maxIterations?: number;
 	readonly reasoningEffort?: "low" | "medium" | "high";
 	readonly providerPresets: readonly DesktopProviderPreset[];
@@ -436,7 +435,6 @@ export interface DesktopProviderProfileInput {
 
 export interface DesktopProviderConfigInput {
 	readonly revision: string | null;
-	readonly language?: string;
 	readonly maxIterations?: number;
 	readonly reasoningEffort?: "low" | "medium" | "high";
 	readonly profiles: readonly DesktopProviderProfileInput[];
@@ -752,7 +750,7 @@ export interface DesktopApi {
 	};
 	readonly locale: {
 		get(): DesktopUiLocaleSnapshot;
-		set(preference: DesktopUiLocalePreference): DesktopUiLocaleSnapshot;
+		set(preference: DesktopUiLocalePreference): Promise<DesktopUiLocaleSnapshot>;
 	};
 	readonly provider: {
 		get(): Promise<DesktopProviderConfigSnapshot>;

@@ -84,6 +84,7 @@ export interface DesktopConfigurationClient {
 	save(
 		input: RuntimeAgentSettingsInput,
 	): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>>;
+	setLanguage(language: string): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>>;
 	fetchModels(
 		profileId: string,
 	): Promise<ResultType<RuntimeAgentSettingsModelFetchResult, DesktopConfigurationClientError>>;
@@ -126,6 +127,10 @@ class DefaultDesktopConfigurationClient implements DesktopConfigurationClient {
 		input: RuntimeAgentSettingsInput,
 	): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>> {
 		return this.request("jai/desktop-configuration/save", input);
+	}
+
+	async setLanguage(language: string): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>> {
+		return this.request("jai/desktop-configuration/set-language", { language });
 	}
 
 	async fetchModels(
@@ -345,15 +350,21 @@ function parseSnapshot(value: unknown): RuntimeAgentSettingsSnapshot | undefined
 	) {
 		return undefined;
 	}
+	if (value.language !== undefined && (typeof value.language !== "string" || !language(value.language))) return undefined;
 	const profiles = value.profiles.map(parseProfile);
 	if (profiles.some((profile) => profile === undefined)) return undefined;
 	return {
 		revision: value.revision,
 		model: value.model,
 		...(value.maxTurns === undefined ? {} : { maxTurns: value.maxTurns }),
+		...(value.language === undefined ? {} : { language: value.language }),
 		profiles: profiles as RuntimeProviderProfileProjection[],
 		connector,
 	};
+}
+
+function language(value: string): boolean {
+	return /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(value);
 }
 
 function parseConnector(value: unknown): RuntimeAgentSettingsSnapshot["connector"] | undefined {

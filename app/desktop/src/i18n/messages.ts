@@ -283,7 +283,6 @@ export const desktopMessages = defineMessages({
 	settingsSave: { id: "desktop.settings.save", defaultMessage: "Save" },
 	settingsRetry: { id: "desktop.settings.retry", defaultMessage: "Retry" },
 	settingsAgentDefaults: { id: "desktop.settings.agentDefaults", defaultMessage: "Agent Defaults" },
-	settingsResponseLanguage: { id: "desktop.settings.responseLanguage", defaultMessage: "Response language" },
 	settingsMaxIterations: { id: "desktop.settings.maxIterations", defaultMessage: "Max iterations" },
 	settingsUnlimited: { id: "desktop.settings.unlimited", defaultMessage: "Unlimited" },
 	settingsReasoningEffort: { id: "desktop.settings.reasoningEffort", defaultMessage: "Reasoning effort" },
@@ -326,10 +325,6 @@ export const desktopMessages = defineMessages({
 	settingsProviderRevealError: {
 		id: "desktop.settings.providerRevealError",
 		defaultMessage: "Unable to reveal API key",
-	},
-	settingsInvalidResponseLanguage: {
-		id: "desktop.settings.invalidResponseLanguage",
-		defaultMessage: "Response language must be a valid BCP-47 tag, for example zh-CN.",
 	},
 	settingsPositiveMaxIterations: {
 		id: "desktop.settings.positiveMaxIterations",

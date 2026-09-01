@@ -69,11 +69,18 @@ describe("Desktop configuration client", () => {
 						},
 					],
 				});
-				if (saved.isErr()) throw saved.error;
-				expect(saved.value.profiles).toMatchObject([
-					{ id: "gateway", credentialConfigured: true, credentialMask: "•••• 1234" },
-				]);
+			if (saved.isErr()) throw saved.error;
+			expect(saved.value.profiles).toMatchObject([
+				{ id: "gateway", credentialConfigured: true, credentialMask: "•••• 1234" },
+			]);
 			expect(JSON.stringify(saved.value)).not.toContain("gateway-secret");
+			const language = await client.value.setLanguage("zh-CN");
+			if (language.isErr()) throw language.error;
+			expect(language.value.language).toBe("zh-CN");
+			expect(language.value.profiles).toMatchObject([
+				{ id: "gateway", credentialConfigured: true, credentialMask: "•••• 1234" },
+			]);
+			expect(JSON.stringify(language.value)).not.toContain("gateway-secret");
 			const initialTrust = await client.value.getWorkspaceTrust(dataDirectory);
 			if (initialTrust.isErr()) throw initialTrust.error;
 			expect(initialTrust.value).toEqual({ workspacePath: canonicalDataDirectory, trusted: false });

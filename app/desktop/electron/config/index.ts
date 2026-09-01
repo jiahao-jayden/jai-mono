@@ -4,6 +4,7 @@ import {
 	type DesktopConfigurationClient,
 } from "@jai/server/desktop-configuration-client";
 import type {
+	DesktopUiLocale,
 	DesktopProviderApiKeyRevealResult,
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
@@ -54,6 +55,11 @@ export class DesktopConfigService {
 		const savedRemote = await this.client.save(toRuntimeInput(input, remote));
 		if (savedRemote.isErr()) throw savedRemote.error;
 		return this.#project(savedRemote.value);
+	}
+
+	async setAgentLanguage(language: DesktopUiLocale): Promise<void> {
+		const saved = await this.client.setLanguage(language);
+		if (saved.isErr()) throw saved.error;
 	}
 
 	async fetchModels(profileId: string): Promise<DesktopProviderFetchModelsResult> {
@@ -138,7 +144,6 @@ export class DesktopConfigService {
 	#project(remote: RuntimeAgentSettingsSnapshot): DesktopProviderConfigSnapshot {
 		return {
 			...projectRuntimeProviderConfig(remote, this.#catalog),
-			...(remote.language === undefined ? {} : { language: remote.language }),
 			...(remote.maxTurns === undefined ? {} : { maxIterations: remote.maxTurns }),
 			...(remote.reasoningEffort === undefined ? {} : { reasoningEffort: remote.reasoningEffort }),
 			connector: projectRuntimeConnectorConfig(remote.connector),
@@ -154,7 +159,7 @@ function toRuntimeInput(
 		revision: input.revision,
 		model: selectDefaultModel(input, current.model),
 		...(input.maxIterations === undefined ? {} : { maxTurns: input.maxIterations }),
-		...(input.language === undefined ? {} : { language: input.language }),
+		...(current.language === undefined ? {} : { language: current.language }),
 		...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
 		...(input.connector === undefined ? {} : { connector: toRuntimeConnector(input.connector) }),
 		providers: input.profiles.map((profile) => ({
@@ -201,11 +206,9 @@ function validateInput(
 }
 
 function isRuntimePresentationInput(
-	input: Pick<DesktopProviderConfigInput, "language" | "maxIterations" | "reasoningEffort">,
+	input: Pick<DesktopProviderConfigInput, "maxIterations" | "reasoningEffort">,
 ): boolean {
 	return !(
-		(input.language !== undefined &&
-			(typeof input.language !== "string" || !/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(input.language))) ||
 		(input.maxIterations !== undefined && (!Number.isInteger(input.maxIterations) || input.maxIterations < 1)) ||
 		(input.reasoningEffort !== undefined &&
 			input.reasoningEffort !== "low" &&

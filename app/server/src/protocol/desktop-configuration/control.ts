@@ -56,6 +56,11 @@ class DefaultDesktopConfigurationControl implements DesktopConfigurationControl 
 				if (!input) return this.error(request.id, -32602, "Invalid Desktop configuration save parameters");
 				return this.project(request.id, this.settings.write(input));
 			}
+			case "jai/desktop-configuration/set-language": {
+				if (!onlyLanguage(params))
+					return this.error(request.id, -32602, "Invalid Desktop configuration language parameters");
+				return this.project(request.id, this.settings.setLanguage(params.language));
+			}
 			case "jai/desktop-configuration/telemetry/get": {
 				if (Object.keys(params).length > 0)
 					return this.error(request.id, -32602, "Invalid telemetry configuration get parameters");
@@ -153,6 +158,10 @@ function object(value: unknown): Record<string, unknown> | undefined {
 
 function onlyProfileId(value: Record<string, unknown>): value is { readonly profileId: string } {
 	return Object.keys(value).length === 1 && typeof value.profileId === "string";
+}
+
+function onlyLanguage(value: Record<string, unknown>): value is { readonly language: string } {
+	return Object.keys(value).length === 1 && typeof value.language === "string";
 }
 
 function onlyConnectorId(value: Record<string, unknown>): value is { readonly connectorId: string } {

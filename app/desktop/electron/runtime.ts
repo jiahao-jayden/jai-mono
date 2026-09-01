@@ -46,6 +46,8 @@ export async function createDesktopRuntime(dependencies: {
 	const { sessions } = dependencies;
 	const broadcast = createBroadcaster();
 	const config = await DesktopConfigService.open();
+	const locale = createDesktopLocaleService();
+	await config.setAgentLanguage(locale.get().locale);
 	const agentHost = await DesktopAcpAgentHost.open(broadcast, {
 		resolveSessionCwd: async (sessionId) => {
 			const execution = await sessions.resolveExecutionContext(sessionId);
@@ -54,7 +56,6 @@ export async function createDesktopRuntime(dependencies: {
 	});
 	const attachments = createAttachmentRegistry();
 	const theme = createDesktopThemeService();
-	const locale = createDesktopLocaleService();
 	const openWith = createOpenWithService({
 		openPath: (filePath) => shell.openPath(filePath),
 		fileIcon: async (applicationPath) => {

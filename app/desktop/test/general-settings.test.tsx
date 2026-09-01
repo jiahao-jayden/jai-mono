@@ -9,10 +9,8 @@ function renderGeneralSettings(locale: "en" | "zh-CN"): string {
 		<IntlProvider locale={locale} messages={{}}>
 			<LocaleProvider initialSnapshot={{ preference: locale, locale }}>
 				<GeneralSettings
-					language="zh-CN"
 					maxIterations=""
 					reasoningEffort=""
-					onLanguageChange={() => {}}
 					onMaxIterationsChange={() => {}}
 					onReasoningEffortChange={() => {}}
 				/>
@@ -22,15 +20,15 @@ function renderGeneralSettings(locale: "en" | "zh-CN"): string {
 }
 
 describe("GeneralSettings", () => {
-	test("界面语言和 Agent 回复语言保持为两个独立字段", () => {
+	test("只保留界面语言，Agent 回复语言由它派生", () => {
 		const english = renderGeneralSettings("en");
 		const chinese = renderGeneralSettings("zh-CN");
 
 		expect(english).toContain("Interface language");
-		expect(english).toContain("Response language");
+		expect(english).not.toContain("Response language");
 		expect(english).toContain("English");
 		expect(chinese).toContain("界面语言");
-		expect(chinese).toContain("回复语言");
+		expect(chinese).not.toContain("回复语言");
 		expect(chinese).toContain("简体中文");
 	});
 });

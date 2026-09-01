@@ -10,7 +10,6 @@ export interface ProfileDraft extends DesktopProviderProfile {
 const profileIdPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 export type ProviderDraftValidationError =
-	| { readonly kind: "invalid-response-language" }
 	| { readonly kind: "invalid-max-iterations" }
 	| { readonly kind: "provider-name-required" }
 	| { readonly kind: "profile-id-invalid"; readonly id: string }
@@ -23,12 +22,8 @@ export function toProfileDraft(profile: DesktopProviderProfile): ProfileDraft {
 
 export function validateProviderDraft(
 	profiles: readonly ProfileDraft[],
-	language: string,
 	maxIterations: string,
 ): ProviderDraftValidationError | undefined {
-	if (language && !/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(language)) {
-		return { kind: "invalid-response-language" };
-	}
 	if (maxIterations && (!Number.isInteger(Number(maxIterations)) || Number(maxIterations) < 1)) {
 		return { kind: "invalid-max-iterations" };
 	}

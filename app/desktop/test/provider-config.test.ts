@@ -95,27 +95,18 @@ describe("DesktopConfigService", () => {
     }
   });
 
-  test("writes language and reasoning effort to the Runtime Host, not a Desktop settings file", async () => {
+  test("synchronizes the Desktop locale to the Runtime Host without exposing it in provider settings", async () => {
     const homeDir = await mkdtemp(
       join(tmpdir(), "jai-remote-runtime-preferences-"),
     );
     const host = new FakeDesktopConfigurationClient();
     const service = new DesktopConfigService(host);
     try {
-      const saved = await service.save({
-        revision: null,
-        profiles: [],
-        language: "zh-CN",
-        reasoningEffort: "medium",
-      });
-      expect(host.lastSaved).toMatchObject({
-        language: "zh-CN",
-        reasoningEffort: "medium",
-      });
-      expect(saved).toMatchObject({
-        language: "zh-CN",
-        reasoningEffort: "medium",
-      });
+      await service.setAgentLanguage("zh-CN");
+      expect(host.lastLanguage).toBe("zh-CN");
+		await service.save({ revision: "r2", profiles: [] });
+		expect(host.lastSaved?.language).toBe("zh-CN");
+      expect(await service.get()).not.toHaveProperty("language");
       await expect(
         readFile(join(homeDir, ".jai", "settings.json"), "utf8"),
       ).rejects.toThrow();
@@ -360,6 +351,7 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
   readonly oauthDisconnects: string[] = [];
 	readonly modelCatalogReads: string[] = [];
 	lastSaved?: RuntimeAgentSettingsInput;
+	lastLanguage?: string;
 	lastTelemetrySaved?: RuntimeTelemetrySettingsInput;
 	#snapshot: RuntimeAgentSettingsSnapshot;
 	#telemetrySnapshot: RuntimeTelemetrySettingsSnapshot;
@@ -442,6 +434,12 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
     };
     return Result.ok(this.#snapshot);
   }
+
+	async setLanguage(language: string) {
+		this.lastLanguage = language;
+		this.#snapshot = { ...this.#snapshot, revision: "r2", language };
+		return Result.ok(this.#snapshot);
+	}
 
   async fetchModels(profileId: string) {
     this.fetches.push(profileId);
