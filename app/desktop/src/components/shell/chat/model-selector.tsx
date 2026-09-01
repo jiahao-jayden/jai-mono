@@ -200,6 +200,12 @@ export function ModelSelector({
 															) : null}
 															{provider.models.map((model) => {
 																const selected = model.ref === selectedModelRef;
+																const contextWindowLabel = model.contextWindow
+																	? intl.formatNumber(model.contextWindow, {
+																			notation: "compact",
+																			maximumFractionDigits: 0,
+																		})
+																	: undefined;
 																return (
 																	<Button
 																		key={model.ref}
@@ -210,25 +216,26 @@ export function ModelSelector({
 																		role="option"
 																		aria-selected={selected}
 																		onClick={() => chooseModel(model.ref)}
+																		contentClassName="w-full min-w-0 justify-start"
+																		labelClassName="flex min-w-0 w-full"
 																		className={cn(
-																			"flex h-11 w-full cursor-pointer items-center gap-2 rounded-[10px] px-3 text-left outline-none transition-colors duration-75 focus-visible:ring-2 focus-visible:ring-primary-2/45 focus-visible:ring-inset",
-																			selected ? "text-foreground" : undefined,
+																			"h-11 w-full justify-start rounded-[10px] px-2 text-left outline-none transition-colors duration-75 focus-visible:ring-2 focus-visible:ring-primary-2/45 focus-visible:ring-inset",
+																			selected && "text-foreground",
 																		)}
 																	>
-																		<span className="flex min-w-0 flex-1 items-center gap-2 pointer-events-none">
-																			<span className="min-w-0 truncate text-[13.5px] font-medium text-foreground">
+																		<span className="flex min-w-0 w-full items-center gap-3 pointer-events-none">
+																			<span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-foreground">
 																				{model.name}
 																			</span>
-																			{model.contextWindow ? (
-																				<span className="shrink-0 text-[10.5px] font-medium text-muted-foreground">
-																					{intl.formatNumber(model.contextWindow, {
-																						notation: "compact",
-																						maximumFractionDigits: 0,
-																					})}
+																			<span className="flex shrink-0 items-center gap-2">
+																				{contextWindowLabel ? (
+																					<span className="text-[10.5px] font-medium tabular-nums text-muted-foreground">
+																						{contextWindowLabel}
+																					</span>
+																				) : null}
+																				<span className="pointer-events-auto">
+																					<ModelCapabilities model={model} />
 																				</span>
-																			) : null}
-																			<span className="ml-auto shrink-0 pointer-events-auto">
-																				<ModelCapabilities model={model} />
 																			</span>
 																		</span>
 																	</Button>
