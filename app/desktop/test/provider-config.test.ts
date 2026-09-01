@@ -27,6 +27,10 @@ describe("DesktopConfigService", () => {
     try {
       const saved = await service.save({
         revision: null,
+        connector: {
+          policy: { default: "ask", actions: {} },
+          connectors: [],
+        },
         profiles: [
           {
             id: "gateway",
@@ -50,6 +54,7 @@ describe("DesktopConfigService", () => {
       });
 
       expect(host.lastSaved?.providers[0]?.apiKey).toBe("gateway-secret-1234");
+      expect(host.lastSaved?.connector?.policy?.default).toBe("ask");
       expect(saved.profiles).toMatchObject([
         {
           id: "gateway",

@@ -71,7 +71,7 @@ export async function connectJaiRuntimeHost(
 		);
 	}
 	const retryDelayMs = options.retryDelayMs ?? 50;
-	const retryCount = options.retryCount ?? 60;
+	const retryCount = options.retryCount ?? 240;
 	for (let attempt = 0; attempt < retryCount; attempt += 1) {
 		await new Promise<void>((resolve) => setTimeout(resolve, retryDelayMs));
 		const retried = await openLocalAcpV2Client(endpoint);

@@ -194,7 +194,7 @@ function isValidConnectorPolicy(value: unknown): value is DesktopConnectorConfig
 }
 
 function isConnectorPermission(value: unknown): value is DesktopConnectorPermission {
-	return value === "allow" || value === "deny";
+	return value === "ask" || value === "allow" || value === "deny";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

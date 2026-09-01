@@ -56,6 +56,41 @@ describe("Runtime Host ACP client launcher", () => {
 		}
 	});
 
+	test("waits for a cold-started Runtime Host beyond the previous three-second window", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "jai-acp-cold-start-"));
+		const endpoint = join(directory, "runtime.sock");
+		let opened: Awaited<ReturnType<typeof openLocalAcpV2Server>> | undefined;
+		let hostReady: Promise<void> | undefined;
+		try {
+			const client = await connectJaiRuntimeHost({
+				dataDirectory: directory,
+				endpoint,
+				environment: {},
+				runtimeHostEntrypoint: join(directory, "main.js"),
+				launchRuntimeHost: () => {
+					hostReady = new Promise((resolve) => {
+						setTimeout(() => {
+							void openLocalAcpV2Server({
+								endpoint,
+								host: new RuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),
+								info: { name: "jai", version: "0.0.0" },
+							}).then((server) => {
+								opened = server;
+								resolve();
+							});
+						}, 3_200);
+					});
+				},
+			});
+			expect(client.isOk()).toBe(true);
+			if (client.isOk()) await client.value.close();
+		} finally {
+			await hostReady;
+			if (opened?.isOk()) await opened.value.close();
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
 	test("treats a Host lock older than the current entrypoint as stale", async () => {
 		const directory = await mkdtemp(join(tmpdir(), "jai-acp-stale-"));
 		const entrypoint = join(directory, "main.js");
