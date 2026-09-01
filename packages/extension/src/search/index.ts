@@ -170,9 +170,9 @@ export function createFffSearchExtension(
 ): CodingAgentExtension<any, any, FffSearchRuntime> {
 	let runtime: FffSearchRuntime | undefined;
 	const findTool: CodingExtensionTool<any, any, FffSearchRuntime, typeof findParameters> = {
-		name: "fffind",
+		name: "find",
 		description:
-			"Fuzzy file and path search. Results are ranked by frecency and Git status, with cursor pagination for large result sets.",
+			"Fuzzy file and path search. Use this instead of Bash find or ls. Results are ranked by frecency and Git status, with cursor pagination.",
 		parameters: findParameters,
 		authorization: {
 			owner: "core",
@@ -186,9 +186,9 @@ export function createFffSearchExtension(
 		execute: (active, call) => active.instance.find(call.args as FindInput, call.signal),
 	};
 	const grepTool: CodingExtensionTool<any, any, FffSearchRuntime, typeof grepParameters> = {
-		name: "ffgrep",
+		name: "grep",
 		description:
-			"Search file contents with smart-case literal or regex matching. Results are grouped by file and support cursor pagination.",
+			"Search file contents with smart-case literal or regex matching. Use this instead of Bash grep. Results are grouped by file and support cursor pagination.",
 		parameters: grepParameters,
 		authorization: {
 			owner: "core",

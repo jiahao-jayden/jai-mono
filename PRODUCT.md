@@ -36,7 +36,7 @@ Agent-first 工作空间: 对话为主界面，直接理解并操作本地项目
 
 核心能力:
 - 多模型对话 (streaming, reasoning, tool call, compaction)
-- Agent 工具调用: read, write, edit, bash, fffind, ffgrep
+- Agent 工具调用: read, write, edit, bash, find, grep
 - 项目工作区绑定
 - 会话历史与恢复
 - 权限请求审批

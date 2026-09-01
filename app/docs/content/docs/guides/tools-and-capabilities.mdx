@@ -7,7 +7,7 @@ SDK 的内置工具名由 `CodingToolName` 定义：
 
 `Read`、`Bash`、`Edit`、`Write`，以及按需加入的 `UpdateTodos`、`SpawnAgent`。
 
-默认启用四个核心工具。`tools` 用于建立白名单，`excludeTools` 在最后移除工具；两个列表重叠时排除优先。文件搜索由 Runtime Host 装配的 `fffind`、`ffgrep` Extension 提供，不是内置工具名。
+默认启用四个核心工具。`tools` 用于建立白名单，`excludeTools` 在最后移除工具；两个列表重叠时排除优先。文件搜索由 Runtime Host 装配的 `find`、`grep` Extension 提供，不是内置工具名。
 
 ```ts
 const created = await createCodingAgent({

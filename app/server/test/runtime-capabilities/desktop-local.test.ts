@@ -59,7 +59,7 @@ describe("Desktop Local Runtime Capability Source", () => {
 				"mcp",
 			]);
 			const fffSearch = resolved.value.extensions.find((extension) => extension.id === "jai.fff-search");
-			expect(fffSearch?.tools?.map((tool) => tool.name)).toEqual(["fffind", "ffgrep"]);
+			expect(fffSearch?.tools?.map((tool) => tool.name)).toEqual(["find", "grep"]);
 			const agentPlugins = resolved.value.extensions.find((extension) => extension.id === "agent-plugins");
 			expect("skillCards" in agentPlugins!).toBe(true);
 			expect(agentPluginSkillNames(agentPlugins).toSorted()).toEqual([

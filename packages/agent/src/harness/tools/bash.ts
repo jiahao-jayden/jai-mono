@@ -67,7 +67,8 @@ function appendStatus(output: string, status: string): string {
 export function createBashTool(options: BashToolOptions): AgentTool<typeof bashParameters, BashToolDetails> {
 	return {
 		name: "Bash",
-		description: "Execute a POSIX shell command in the workspace with timeout, cancellation, and bounded output.",
+		description:
+			"Execute a POSIX shell command in the workspace with timeout, cancellation, and bounded output. Do not use grep, find, cat, ls, head, or tail to explore the workspace; search with the grep or find tools, or rg if Bash search is required. Read files with Read.",
 		parameters: bashParameters,
 		executionMode: "sequential",
 		async execute(_toolCallId, args, signal, onUpdate) {

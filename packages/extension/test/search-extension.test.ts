@@ -16,7 +16,7 @@ describe("FFF search extension", () => {
 	test("exposes only Pi's default tools", () => {
 		const extension = createFffSearchExtension();
 		expect(extension.id).toBe("jai.fff-search");
-		expect(extension.tools?.map((tool) => tool.name)).toEqual(["fffind", "ffgrep"]);
+		expect(extension.tools?.map((tool) => tool.name)).toEqual(["find", "grep"]);
 	});
 
 	test("runs native find/grep with grouping, cursor pagination, boundaries, cancellation, and cleanup", async () => {

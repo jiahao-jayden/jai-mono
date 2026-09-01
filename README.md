@@ -24,7 +24,7 @@ Jai Mono 是 PandaWork 的 TypeScript monorepo。它同时包含底层的 provid
 
 - 对话优先的桌面工作空间，支持项目、会话历史和会话恢复
 - 流式回复、思考过程、tool call、steering、follow-up 和中断
-- 面向项目工作区的 `read`、`write`、`edit`、`bash` 工具，以及由 Runtime Host 装配的 `fffind`、`ffgrep`
+- 面向项目工作区的 `read`、`write`、`edit`、`bash` 工具，以及由 Runtime Host 装配的 `find`、`grep`
 - 权限规则、危险命令扫描和需要确认的操作审批
 - 持久化 session、Todo 进度、输出文件和 context compaction
 - Anthropic、OpenAI Responses 以及 OpenAI-compatible provider 适配层

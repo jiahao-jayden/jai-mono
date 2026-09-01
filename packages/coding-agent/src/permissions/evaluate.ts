@@ -32,6 +32,7 @@ const readOnlyCommands = new Set([
 	"head",
 	"ls",
 	"pwd",
+	"rg",
 	"sleep",
 	"stat",
 	"tail",
