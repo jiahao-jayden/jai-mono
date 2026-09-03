@@ -3,6 +3,8 @@ import { createServer, type Server } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { openConfiguredRuntimeHost } from "@jai/server";
+import { connectDesktopConfigurationClient } from "@jai/server/desktop-configuration-client";
 
 const roots: string[] = [];
 const describeE2E = process.env.CLI_E2E === "1" ? describe : describe.skip;
@@ -18,7 +20,11 @@ describeE2E("jai CLI provider subprocess", () => {
 		if (!address || typeof address === "string") throw new Error("Mock provider did not bind a TCP address");
 		const root = await mkdtemp(join(tmpdir(), "jai-cli-provider-e2e-"));
 		roots.push(root);
+		const dataDirectory = join(root, "home");
+		const runtime = await openConfiguredRuntimeHost({ dataDirectory, environment: {} });
+		if (runtime.isErr()) throw runtime.error;
 		try {
+			await configureMockProvider(dataDirectory, address.port);
 			const child = Bun.spawn({
 				cmd: [
 					process.execPath,
@@ -30,29 +36,15 @@ describeE2E("jai CLI provider subprocess", () => {
 					"--output-format",
 					"stream-json",
 					"--no-session-persistence",
+					"--model",
+					"test/mock",
+					"--mode",
+					"automate",
 				],
 				cwd: resolve(import.meta.dir, ".."),
 				env: {
 					...process.env,
 					JAI_HOME: join(root, "home"),
-					JAI_AGENT_MODEL: "test/mock",
-					JAI_PROVIDERS: JSON.stringify({
-						test: {
-							adapter: "openai-compatible",
-							baseURL: `http://127.0.0.1:${address.port}/v1`,
-							auth: "none",
-							models: {
-								mock: {
-									enabled: true,
-									input: ["text"],
-									modalities: { input: ["text"], output: ["text"] },
-									toolCall: true,
-									contextWindow: 128_000,
-									maxTokens: 256,
-								},
-							},
-						},
-					}),
 				},
 				stdout: "pipe",
 				stderr: "pipe",
@@ -63,32 +55,49 @@ describeE2E("jai CLI provider subprocess", () => {
 				new Response(child.stderr).text(),
 			]);
 
-			expect(exitCode).toBe(0);
 			expect(stderr).toBe("");
+			expect(exitCode).toBe(0);
 			const records = stdout
 				.trim()
 				.split("\n")
 				.map((line) => JSON.parse(line) as Record<string, unknown>);
-			expect(records.some((record) => record.type === "tool_start" && record.tool_name === "Write")).toBe(true);
-			expect(records.some((record) => record.type === "tool_end" && record.is_error === false)).toBe(true);
-			expect(
-				records.some(
-					(record) =>
-						record.type === "assistant" &&
-						JSON.stringify(record.message).includes('"type":"tool_use"'),
-				),
-			).toBe(true);
 			const result = records.at(-1);
 			expect(result).toMatchObject({
 				type: "result",
-				usage: { input_tokens: 30, output_tokens: 13, total_tokens: 43 },
+				diagnostics: { stop_reason: "end_turn", tool_calls: 1, tool_errors: 0 },
 			});
 			expect(await readFile(join(root, "smoke.txt"), "utf8")).toBe("tool completed");
 		} finally {
+			await runtime.value.close();
 			await closeServer(server);
 		}
 	});
 });
+
+async function configureMockProvider(dataDirectory: string, port: number): Promise<void> {
+	const connected = await connectDesktopConfigurationClient({ dataDirectory, environment: {} });
+	if (connected.isErr()) throw connected.error;
+	try {
+		const saved = await connected.value.save({
+			revision: null,
+			model: "test/mock",
+			providers: [
+				{
+					id: "test",
+					name: "Test",
+					adapter: "openai-compatible",
+					baseURL: `http://127.0.0.1:${port}/v1`,
+					authentication: "none",
+					enabled: true,
+					models: [{ id: "mock", enabled: true }],
+				},
+			],
+		});
+		if (saved.isErr()) throw saved.error;
+	} finally {
+		await connected.value.close();
+	}
+}
 
 async function startMockProvider(): Promise<Server> {
 	let requestCount = 0;

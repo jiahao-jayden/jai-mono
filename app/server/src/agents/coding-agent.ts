@@ -122,7 +122,7 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 				telemetryObserver.close();
 				return Result.err(
 					new RuntimeOperationOpenFailed({
-						message: `Coding Agent could not open Operation "${input.operationId}"`,
+						message: `Coding Agent could not open Operation "${input.operationId}": ${created.error.message}`,
 						sessionId: input.sessionId,
 						operationId: input.operationId,
 						cause: created.error,

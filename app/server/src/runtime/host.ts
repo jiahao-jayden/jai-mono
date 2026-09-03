@@ -104,6 +104,7 @@ export type RuntimeSessionEvent =
 			readonly state: RuntimeForegroundState;
 			readonly operationId?: string;
 			readonly stopReason?: RuntimeStopReason;
+			readonly errorMessage?: string;
 	  }
 	| {
 			readonly type: "configuration_changed";
@@ -1088,7 +1089,7 @@ export class RuntimeSession {
 				active,
 				Result.err(
 					new RuntimeOperationExecutionFailed({
-						message: `Could not start Operation "${active.operationId}"`,
+						message: `Could not start Operation "${active.operationId}": ${opened.error.message}`,
 						sessionId: this.id,
 						operationId: active.operationId,
 						cause: opened.error,
@@ -1222,6 +1223,7 @@ export class RuntimeSession {
 				state: "idle",
 				operationId: active.operationId,
 				stopReason: stopReasonFor(terminalOutcome),
+				...(outcome.isErr() ? { errorMessage: outcome.error.message } : {}),
 			});
 			return inferredTerminalOutcome ? Result.ok(inferredTerminalOutcome) : outcome;
 		});

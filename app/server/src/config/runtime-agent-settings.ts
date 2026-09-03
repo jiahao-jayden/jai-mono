@@ -1401,7 +1401,12 @@ function validateBaseURL(profileId: string, value: string): ResultType<void, Run
 	try {
 		const url = new URL(value);
 		const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1";
-		if ((url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) || url.username || url.password) {
+		const internalGateway = url.hostname === "provider-gateway";
+		if (
+			(url.protocol !== "https:" && !(url.protocol === "http:" && (loopback || internalGateway))) ||
+			url.username ||
+			url.password
+		) {
 			return Result.err(
 				new RuntimeAgentSettingsInvalid({
 					message: `Provider profile "${profileId}" baseURL must use HTTPS or loopback HTTP without userinfo`,

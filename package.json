@@ -15,6 +15,7 @@
 		"lint:fix": "biome check --write .",
 		"format": "biome format --write .",
 		"cli": "bun app/cli/src/main.ts",
+		"frontier:smoke": "bun app/frontier-smoke/src/main.ts",
 		"cli:build": "cd app/cli && bun run build",
 		"cli:pack": "cd app/cli && npm pack",
 		"desktop:dev": "cd app/desktop && bun dev",

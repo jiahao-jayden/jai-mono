@@ -514,7 +514,7 @@ function projectRuntimeEvent(sessionId: string, event: RuntimeSessionEvent): rea
 		case "operation_event":
 			return projectOperationEvent(sessionId, event.operationId, event.event);
 		case "state_changed":
-			return [stateUpdate(sessionId, event.state, event.stopReason)];
+			return [stateUpdate(sessionId, event.state, event.stopReason, event.errorMessage)];
 		case "configuration_changed":
 			return [configOptionUpdate(sessionId, event.configuration)];
 		case "approval_requested":
@@ -556,11 +556,7 @@ function permissionDecision(response: unknown, canAlwaysAllow: boolean): "deny" 
 	}
 }
 
-function projectEntry(
-	sessionId: string,
-	entry: SessionEntry,
-	operationId?: string,
-): readonly AcpJsonRpcNotification[] {
+function projectEntry(sessionId: string, entry: SessionEntry, operationId?: string): readonly AcpJsonRpcNotification[] {
 	if (entry.type === "app_state") {
 		return Object.hasOwn(entry.value, "todos") ? [planUpdate(sessionId, todosFromAppState(entry.value))] : [];
 	}
@@ -725,7 +721,14 @@ function projectOperationEvent(
 				),
 			];
 		case "message_cleared":
-			return [messageClearUpdate(sessionId, event.messageId, event.channel, event.channel === "thought" ? operationId : undefined)];
+			return [
+				messageClearUpdate(
+					sessionId,
+					event.messageId,
+					event.channel,
+					event.channel === "thought" ? operationId : undefined,
+				),
+			];
 		case "tool_started": {
 			const updates = [
 				toolCallUpdate(sessionId, {
@@ -843,7 +846,9 @@ function toolCallUpdate(
 	};
 }
 
-function operationMetadata(operationId: string | undefined): { readonly _meta?: { readonly jai: { readonly operationId: string } } } {
+function operationMetadata(operationId: string | undefined): {
+	readonly _meta?: { readonly jai: { readonly operationId: string } };
+} {
 	return operationId ? { _meta: { jai: { operationId } } } : {};
 }
 
@@ -989,13 +994,19 @@ function stateUpdate(
 	sessionId: string,
 	state: "running" | "requires_action" | "idle",
 	stopReason?: "end_turn" | "cancelled" | "error",
+	errorMessage?: string,
 ): AcpJsonRpcNotification {
 	return {
 		jsonrpc: "2.0",
 		method: "session/update",
 		params: {
 			sessionId,
-			update: { sessionUpdate: "state_update", state, ...(stopReason ? { stopReason } : {}) },
+			update: {
+				sessionUpdate: "state_update",
+				state,
+				...(stopReason ? { stopReason } : {}),
+				...(errorMessage ? { errorMessage } : {}),
+			},
 		},
 	};
 }

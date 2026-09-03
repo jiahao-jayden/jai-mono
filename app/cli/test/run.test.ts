@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type AssistantMessage, zeroUsage } from "@jai/ai";
 import type { CodingAgentMessage } from "@jai/coding-agent";
-import { parseCliOptions, projectCliResult, projectStreamEvent } from "../src/run";
+import { parseCliOptions, projectCliPromptResult, projectCliResult, projectStreamEvent } from "../src/run";
 
 describe("jai CLI options", () => {
 	test("parses print mode and machine output", () => {
@@ -18,8 +18,14 @@ describe("jai CLI options", () => {
 		});
 	});
 
-	test("rejects Agent configuration flags because the Runtime Host owns them", () => {
-		expect(() => parseCliOptions(["-p", "hello", "--model", "openai/gpt"])).toThrow("Unknown option");
+	test("forwards model and session mode selection to the Runtime Host", () => {
+		expect(parseCliOptions(["-p", "hello", "--model", "openai/gpt", "--mode", "automate"])).toMatchObject({
+			model: "openai/gpt",
+			mode: "automate",
+		});
+		expect(() => parseCliOptions(["-p", "hello", "--mode", "bypassPermissions"])).toThrow(
+			"Unsupported session mode",
+		);
 		expect(() => parseCliOptions(["-p", "hello", "--permission-mode", "bypassPermissions"])).toThrow(
 			"Unknown option",
 		);
@@ -145,5 +151,25 @@ describe("run diagnostics", () => {
 		expect(projectCliResult("session-1", [assistant("iterationLimit")]).diagnostics.stop_reason).toBe(
 			"iteration_limit",
 		);
+	});
+
+	test("projects the final headless result from Server-projected facts", () => {
+		expect(
+			projectCliPromptResult("session-1", {
+				text: "done",
+				stopReason: "end_turn",
+				totalCostUsd: 0.0125,
+				toolCalls: 3,
+				toolErrors: 1,
+				durationMs: 987,
+			}),
+		).toEqual({
+			type: "result",
+			sessionId: "session-1",
+			text: "done",
+			total_cost_usd: 0.0125,
+			diagnostics: { stop_reason: "end_turn", tool_calls: 3, tool_errors: 1 },
+			duration_ms: 987,
+		});
 	});
 });

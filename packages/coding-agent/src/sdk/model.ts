@@ -127,7 +127,12 @@ function resolveBaseURL(
 	try {
 		const url = new URL(baseURL);
 		const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1";
-		if ((url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) || url.username || url.password) {
+		const internalGateway = url.hostname === "provider-gateway";
+		if (
+			(url.protocol !== "https:" && !(url.protocol === "http:" && (loopback || internalGateway))) ||
+			url.username ||
+			url.password
+		) {
 			throw new Error("invalid");
 		}
 		return baseURL;

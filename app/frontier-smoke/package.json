@@ -1,0 +1,24 @@
+{
+	"name": "@jai/frontier-smoke",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Local task-definition-compatible Frontier smoke runner for Jai.",
+	"bin": {
+		"jai-frontier-smoke": "./dist/main.js"
+	},
+	"scripts": {
+		"build": "bun build src/main.ts --target=node --format=esm --outfile dist/main.js",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@jai/server": "workspace:*",
+		"better-result": "^3.0.0",
+		"smol-toml": "^1.8.0"
+	},
+	"devDependencies": {
+		"@types/node": "^25.5.0",
+		"typescript": "catalog:"
+	}
+}

@@ -20,6 +20,7 @@ import {
 import { TaggedError } from "better-result";
 
 type OutputFormat = "text" | "json" | "stream-json";
+type CliSessionMode = "manual" | "automate" | "plan";
 type JsonObject = Record<string, JsonValue>;
 
 export interface CliUsage {
@@ -41,6 +42,7 @@ export interface CliDiagnostics {
 	readonly stop_reason: string;
 	readonly tool_calls: number;
 	readonly tool_errors: number;
+	readonly error_message?: string;
 }
 
 export interface CliResult {
@@ -57,6 +59,8 @@ interface CliOptions {
 	readonly prompt?: string;
 	readonly outputFormat: OutputFormat;
 	readonly cwd: string;
+	readonly model?: string;
+	readonly mode?: CliSessionMode;
 	readonly sessionId?: string;
 	readonly noSessionPersistence: boolean;
 	readonly printMode: boolean;
@@ -111,6 +115,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
 			throw new CliUsageError({ message: "A prompt or stdin input is required with -p" });
 		const sessionId = await openCliSession(client, options);
 		activeSessionId = sessionId;
+		await configureCliSession(client, sessionId, options);
 		const session = new CliSession(client, sessionId, options.outputFormat);
 		if (options.interactive) {
 			if (prompt) await runOne(session, prompt);
@@ -143,6 +148,8 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
 				print: { type: "string", short: "p" },
 				"output-format": { type: "string", default: "text" },
 				cwd: { type: "string" },
+				model: { type: "string" },
+				mode: { type: "string" },
 				"session-id": { type: "string" },
 				"no-session-persistence": { type: "boolean", default: false },
 				help: { type: "boolean", short: "h", default: false },
@@ -152,6 +159,14 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
 		const outputFormat = parsed.values["output-format"];
 		if (outputFormat !== "text" && outputFormat !== "json" && outputFormat !== "stream-json") {
 			throw new CliUsageError({ message: `Unsupported output format: ${String(outputFormat)}` });
+		}
+		const mode = parsed.values.mode;
+		if (mode !== undefined && mode !== "manual" && mode !== "automate" && mode !== "plan") {
+			throw new CliUsageError({ message: `Unsupported session mode: ${String(mode)}` });
+		}
+		const model = parsed.values.model?.trim();
+		if (parsed.values.model !== undefined && !model) {
+			throw new CliUsageError({ message: "--model must not be empty" });
 		}
 		const positionalPrompt = parsed.positionals.length > 0 ? parsed.positionals.join(" ") : undefined;
 		const prompt = parsed.values.print ?? positionalPrompt;
@@ -163,6 +178,8 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
 			...(prompt === undefined ? {} : { prompt }),
 			outputFormat,
 			cwd,
+			...(model === undefined ? {} : { model }),
+			...(mode === undefined ? {} : { mode }),
 			...(parsed.values["session-id"] === undefined ? {} : { sessionId: parsed.values["session-id"] }),
 			noSessionPersistence: parsed.values["no-session-persistence"] ?? false,
 			printMode: normalized.printMode,
@@ -231,6 +248,21 @@ async function openCliSession(client: LocalAcpV2Client, options: CliOptions): Pr
 	return created.value.sessionId;
 }
 
+async function configureCliSession(client: LocalAcpV2Client, sessionId: string, options: CliOptions): Promise<void> {
+	for (const change of [
+		...(options.model === undefined ? [] : [{ configId: "model", value: options.model } as const]),
+		...(options.mode === undefined ? [] : [{ configId: "mode", value: options.mode } as const]),
+	]) {
+		const updated = await client.request("session/set_config_option", {
+			sessionId,
+			type: "id",
+			configId: change.configId,
+			value: change.value,
+		});
+		if (updated.isErr()) throw new CliRuntimeError({ message: updated.error.message });
+	}
+}
+
 async function runInteractive(session: CliSession): Promise<void> {
 	const reader = createInterface({ input, output, terminal: true });
 	try {
@@ -251,18 +283,19 @@ async function runInteractive(session: CliSession): Promise<void> {
 
 async function runOne(session: CliSession, prompt: string): Promise<void> {
 	const outcome = await session.prompt(prompt);
+	const result = projectCliPromptResult(session.id, outcome);
 	if (session.outputFormat === "json") {
-		process.stdout.write(
-			`${JSON.stringify({
-				type: "result",
-				sessionId: session.id,
-				text: outcome.text,
-				diagnostics: { stop_reason: outcome.stopReason },
-			})}\n`,
-		);
+		process.stdout.write(`${JSON.stringify(result)}\n`);
 	}
 	if (session.outputFormat === "stream-json") {
-		writeEvent({ type: "result", session_id: session.id, text: outcome.text, stop_reason: outcome.stopReason });
+		writeEvent({
+			type: "result",
+			session_id: result.sessionId,
+			text: result.text,
+			total_cost_usd: result.total_cost_usd,
+			diagnostics: result.diagnostics,
+			duration_ms: result.duration_ms,
+		});
 	}
 	if (session.outputFormat === "text") process.stdout.write("\n");
 }
@@ -273,6 +306,10 @@ class CliSession {
 	#pending?: { readonly resolve: (value: CliPromptOutcome) => void };
 	#text = "";
 	#stopReason = "none";
+	#errorMessage?: string;
+	#totalCostUsd = 0;
+	#startedAt = 0;
+	#toolStates = new Map<string, "pending" | "in_progress" | "completed" | "failed">();
 
 	constructor(
 		private readonly client: LocalAcpV2Client,
@@ -289,6 +326,10 @@ class CliSession {
 		if (this.#pending) throw new CliRuntimeError({ message: `Session "${this.id}" is already running` });
 		this.#text = "";
 		this.#stopReason = "none";
+		this.#errorMessage = undefined;
+		this.#totalCostUsd = 0;
+		this.#toolStates.clear();
+		this.#startedAt = Date.now();
 		const completed = new Promise<CliPromptOutcome>((resolve) => {
 			this.#pending = { resolve };
 		});
@@ -324,11 +365,31 @@ class CliSession {
 			}
 			return;
 		}
+		if (update.sessionUpdate === "usage_update" && typeof update.cost === "number" && Number.isFinite(update.cost)) {
+			this.#totalCostUsd = update.cost;
+			return;
+		}
+		if (update.sessionUpdate === "tool_call_update" && typeof update.toolCallId === "string") {
+			const status = update.status;
+			if (status === "pending" || status === "in_progress" || status === "completed" || status === "failed") {
+				this.#toolStates.set(update.toolCallId, status);
+			}
+			return;
+		}
 		if (update.sessionUpdate !== "state_update" || update.state !== "idle") return;
 		this.#stopReason = typeof update.stopReason === "string" ? update.stopReason : "none";
+		this.#errorMessage = typeof update.errorMessage === "string" ? update.errorMessage : undefined;
 		const pending = this.#pending;
 		this.#pending = undefined;
-		pending?.resolve({ text: this.#text, stopReason: this.#stopReason });
+		pending?.resolve({
+			text: this.#text,
+			stopReason: this.#stopReason,
+			totalCostUsd: this.#totalCostUsd,
+			toolCalls: this.#toolStates.size,
+			toolErrors: [...this.#toolStates.values()].filter((status) => status === "failed").length,
+			durationMs: Math.max(0, Date.now() - this.#startedAt),
+			errorMessage: this.#errorMessage,
+		});
 	}
 
 	private async respondToPermission(request: AcpJsonRpcRequest): Promise<void> {
@@ -345,9 +406,36 @@ class CliSession {
 	}
 }
 
-interface CliPromptOutcome {
+export interface CliPromptOutcome {
 	readonly text: string;
 	readonly stopReason: string;
+	readonly totalCostUsd: number;
+	readonly toolCalls: number;
+	readonly toolErrors: number;
+	readonly durationMs: number;
+	readonly errorMessage?: string;
+}
+
+/** Safe, final runtime facts for a non-interactive CLI invocation. */
+export function projectCliPromptResult(
+	sessionId: string,
+	outcome: CliPromptOutcome,
+): Omit<CliResult, "messages" | "usage"> & {
+	readonly duration_ms: number;
+} {
+	return {
+		type: "result",
+		sessionId,
+		text: outcome.text,
+		total_cost_usd: outcome.totalCostUsd,
+		diagnostics: {
+			stop_reason: outcome.stopReason,
+			tool_calls: outcome.toolCalls,
+			tool_errors: outcome.toolErrors,
+			...(outcome.errorMessage === undefined ? {} : { error_message: outcome.errorMessage }),
+		},
+		duration_ms: outcome.durationMs,
+	};
 }
 
 async function choosePermissionOption(params: Record<string, unknown>): Promise<string> {
@@ -575,7 +663,7 @@ function projectCliError(error: unknown): JsonObject {
 }
 
 function helpText(): string {
-	return `Jai coding agent\n\nUsage:\n  jai [prompt]\n  jai -p [prompt] [options]\n  cat task.md | jai -p [options]\n\nOptions:\n  -p, --print [text]               Run one non-interactive prompt\n      --output-format <format>     text | json | stream-json\n      --cwd <path>                 Workspace root (default: current directory)\n      --session-id <id>            Resume a durable session\n      --no-session-persistence    Run in a Host-managed connection-scoped Session\n  -h, --help                       Show this help\n  -v, --version                    Show the CLI version\n`;
+	return `Jai coding agent\n\nUsage:\n  jai [prompt]\n  jai -p [prompt] [options]\n  cat task.md | jai -p [options]\n\nOptions:\n  -p, --print [text]               Run one non-interactive prompt\n      --output-format <format>     text | json | stream-json\n      --cwd <path>                 Workspace root (default: current directory)\n      --model <model>              Select an enabled Runtime Host model\n      --mode <mode>                manual | automate | plan (default: Host setting)\n      --session-id <id>            Resume a durable session\n      --no-session-persistence    Run in a Host-managed connection-scoped Session\n  -h, --help                       Show this help\n  -v, --version                    Show the CLI version\n`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
