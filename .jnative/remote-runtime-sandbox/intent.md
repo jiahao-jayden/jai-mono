@@ -56,13 +56,13 @@ workspace、进程、临时凭据、网络策略
 - Desktop 仅持有 volatile ACP projection 和 approval routing，Session journal、Coding Agent 与恢复仍由 Runtime Host 持有（`app/desktop/electron/agent/acp-host.ts`）。
 - 当前本地 transport 是 Unix socket 的 ACP v2（`app/server/src/protocol/acp-v2/local-transport.ts`）；Desktop catalog/configuration 是隔离的私有本地协议。
 - Hono 当前只用于 `app/oauth-gateway` 的无状态 OAuth gateway，而非 Runtime Host（`app/oauth-gateway/package.json`）。
-- 现有运行时不提供操作系统级 sandbox；云端执行必须由独立隔离环境承载。行业对比见[云端执行环境调研](../research/cloud-coding-agent-environments.md)与[本地/云端环境对比](../research/cloud-local-agent-environment-comparison.md)。
-- E2B 的标准 API 可以作为一台 sandbox 的 lifecycle/filesystem/process adapter，但不能单独保证 workspace 内的强路径隔离；首版权限边界应是整个 sandbox，若要 workspace-only 强制隔离需另做 sandbox-side confinement。[E2B 边界核验](../research/e2b-realpath-workspace-boundary.md)
+- 现有运行时不提供操作系统级 sandbox；云端执行必须由独立隔离环境承载。行业对比见[云端执行环境调研](../research/sandbox/cloud-coding-agent-environments.md)与[本地/云端环境对比](../research/sandbox/cloud-local-agent-environment-comparison.md)。
+- E2B 的标准 API 可以作为一台 sandbox 的 lifecycle/filesystem/process adapter，但不能单独保证 workspace 内的强路径隔离；首版权限边界应是整个 sandbox，若要 workspace-only 强制隔离需另做 sandbox-side confinement。[E2B 边界核验](../research/sandbox/e2b-realpath-workspace-boundary.md)
 
 ## 参考对象
 
-- t3code：借鉴“独立 Server Runtime + 共享客户端运行时 + 认证的 WSS/RPC”这一分层，不要求复制其 Effect RPC 或 provider 机制。[调研](../research/t3code-hono-architecture.md)
-- GitHub Copilot、Claude Code、OpenAI Codex：借鉴“可重建环境 + 可回收机器 + Git/PR/diff 交接 + 可恢复会话”的产品边界。[调研](../research/cloud-coding-agent-environments.md)
+- t3code：借鉴“独立 Server Runtime + 共享客户端运行时 + 认证的 WSS/RPC”这一分层，不要求复制其 Effect RPC 或 provider 机制。[调研](../research/platform/t3code-hono-architecture.md)
+- GitHub Copilot、Claude Code、OpenAI Codex：借鉴“可重建环境 + 可回收机器 + Git/PR/diff 交接 + 可恢复会话”的产品边界。[调研](../research/sandbox/cloud-coding-agent-environments.md)
 
 ## 仍需确认
 

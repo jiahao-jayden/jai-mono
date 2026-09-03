@@ -5,7 +5,7 @@
 版本钉死：`e2b@2.46.0`，对应 E2B 官方仓库
 [`e2b-dev/E2B@d42686d`](https://github.com/e2b-dev/E2B/tree/d42686d982f741b01f2c71da304e63846b34706f)。该版本号由已解包
 SDK 的 `packages/js-sdk/package.json` 核对；该 tag 到 SHA 的映射沿用
-[`e2b-filesystem-2026-08-26.md`](../../docs/research/e2b-filesystem-2026-08-26.md)
+[`e2b-filesystem-2026-08-26.md`](./e2b-filesystem-2026-08-26.md)
 已记录的官方 tag Atom 核验。本文所有源码链接固定到此 commit，以免后续 SDK
 变化改变结论。E2B 官方文档/仓库的在线复抓受本机失效代理阻断；以下事实均由
 该官方源码包与协议原文复核，不使用第三方转述。

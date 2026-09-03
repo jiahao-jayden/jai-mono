@@ -29,7 +29,7 @@ JAI 当前的 telemetry 已经提供元数据 trace，但内容路径被设计�
 
 ## 外部产品或规范的约定
 
-- **Langfuse OTLP v4:** 使用现有 OTLP/HTTP protobuf exporter。手动构造的 span 使用优先级最高的 `langfuse.observation.input` / `langfuse.observation.output`；结构化值必须 JSON 字符串化。模型 span 继续使用 `langfuse.observation.type=generation` 和既有 `gen_ai.*` model/usage 属性，工具 span 保持普通 observation 并携带同一 input/output 属性。详见[Langfuse OTLP 调研](../research/langfuse-otlp-ingestion.md)。
+- **Langfuse OTLP v4:** 使用现有 OTLP/HTTP protobuf exporter。手动构造的 span 使用优先级最高的 `langfuse.observation.input` / `langfuse.observation.output`；结构化值必须 JSON 字符串化。模型 span 继续使用 `langfuse.observation.type=generation` 和既有 `gen_ai.*` model/usage 属性，工具 span 保持普通 observation 并携带同一 input/output 属性。详见[Langfuse OTLP 调研](../research/observability/langfuse-otlp-ingestion.md)。
 - **we0-agent-x:** 只借鉴在 `around_model_request` 和 `around_tool_execute` 获取实际 payload 的时机、以及按 session/operation 关联内容的可用性。JAI 不采用它的自由 `extra`、本地 session trace、异常 stack 保存或前端 payload API。
 
 ## 已确认的关键选择

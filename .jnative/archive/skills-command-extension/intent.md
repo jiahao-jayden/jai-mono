@@ -59,5 +59,5 @@ Durable fact 与 owner:
 - 当前 `CodingSkillsRuntime` 在 `packages/coding-agent/src/skills/runtime.ts` 内同时拥有 catalog、Skill tool、slash 识别和事件钩子；`packages/coding-agent/src/runtime/create-coding-agent.ts` 与 `assemble.ts` 对它有特殊装配路径。
 - 当前 Extension contract (`packages/coding-agent/src/sdk/extensions/contract.ts`) 能贡献 tools、skills、hooks 和 lifecycle，但没有 Command 注册字段；Agent Plugin adapter (`packages/extension/src/agent-plugins`) 只返回 Skill cards 与 Extension tools。
 - Desktop shared RPC 已有 `DesktopSlashInvocation.kind = "skill" | "command"` 与对应安全 projection；本特性复用该 DTO，不把 Extension 内部对象越过 renderer 边界。
-- Pi、OpenCode dev 与 Claude Code 的一手实现对比见[调研](../../research/agent-slash-command-implementations.md)；其中 Pi 的 `Extension command` / `prompt template` / `skill:` 三分法与本意图采用的入口划分最接近。
+- Pi、OpenCode dev 与 Claude Code 的一手实现对比见[调研](../../research/tools/agent-slash-command-implementations.md)；其中 Pi 的 `Extension command` / `prompt template` / `skill:` 三分法与本意图采用的入口划分最接近。
 - `runtime-source-adapter` 已完成 `fileCapabilities` 与 Desktop Local source；本特性以其提供的真实用户根、workspace 根和 trust 为本地 Skills Extension 的输入，不重新引入 `$JAI_HOME/agent` fallback。

@@ -66,4 +66,4 @@ JAI 已经长期保存会话消息、分支、压缩、模型尝试、usage 和�
 ## 参考对象
 
 - DeepSeek Harness 的 `SessionEvent → Trajectory` 模式只借鉴思路：统一使用已保存的 Agent 事实构建历史与实时轨迹，并以相同 record identity 联动时间线和明细。JAI 不采用其 JSONL 持久化、完整 chunk 文本落盘或默认遥测上传策略。
-- 固定版本、证据和与 Pi Agent 的对比见[调研笔记](../../research/deepseek-harness-pi-agent-observability.md)。
+- 固定版本、证据和与 Pi Agent 的对比见[调研笔记](../../research/observability/deepseek-harness-pi-agent-observability.md)。

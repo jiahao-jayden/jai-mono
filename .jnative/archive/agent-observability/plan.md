@@ -25,7 +25,7 @@ JAI 已把 Session message、branch、compaction、Operation admission、model a
 
 ## 外部产品或规范的约定
 
-- [DeepSeek Harness 固定版本调研](../../research/deepseek-harness-pi-agent-observability.md)只作为信息架构与交互参考：借鉴 canonical facts 投影 Trajectory、历史与实时使用相同 identity；不兼容其协议，不采用 JSONL/Zstd、逐 chunk 文本持久化、OTLP 或默认上传。
+- [DeepSeek Harness 固定版本调研](../../research/observability/deepseek-harness-pi-agent-observability.md)只作为信息架构与交互参考：借鉴 canonical facts 投影 Trajectory、历史与实时使用相同 identity；不兼容其协议，不采用 JSONL/Zstd、逐 chunk 文本持久化、OTLP 或默认上传。
 - OpenAPI 采用 [OpenAPI Specification 3.1.1](https://spec.openapis.org/oas/v3.1.1.html) 描述 `/v1` preview、安全 scheme、错误 DTO 和 SSE endpoint；不承诺旧 preview 兼容。
 - SSE framing、`id`/重连语义参考 [WHATWG Server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html)。Browser 因 Bearer header 使用 fetch-based 流解析，不使用 query token。
 - Bearer header 采用 [RFC 6750](https://www.rfc-editor.org/rfc/rfc6750.html) 的形式，但这里只是 loopback capability，不建设 OAuth。

@@ -50,7 +50,7 @@
 - `CodingAgentTelemetryObserver` 已为 model attempt/tool call 建立稳定 span，且所有 observer 异常被 containment；它故意只投影 usage、时延与 outcome（`packages/coding-agent/src/sdk/telemetry.ts`）。
 - `create-coding-agent` 的 `beforeModelCall` hooks 依次完成 attachments、Todo、Extension context 与 Command prompt context 注入；Agent core 在该链和 tool-call protocol 投影完成后、`provider.stream()` 前观察最终发送版本（`packages/coding-agent/src/runtime/create-coding-agent.ts`、`packages/agent/src/core/agent-loop.ts`）。
 - `CodingAgentEvent` 已带 assistant message、tool args 与 final tool result；Server `CodingAgentOperation` 已订阅这些事件，但它向 renderer 投影 live chunk，不应成为内容日志 owner（`packages/coding-agent/src/sdk/types.ts`、`app/server/src/agents/coding-agent.ts`）。
-- `LangfuseOtlpTelemetrySink` 当前会把 model attempt 投影为 generation，并导出 model、usage 与 cost；Langfuse 支持通用 `gen_ai.*` 与 OpenInference input/output 映射，但手动构造的 JAI span 应优先使用 `langfuse.observation.input` / `langfuse.observation.output`（[现有调研](../research/langfuse-otlp-ingestion.md)）。
+- `LangfuseOtlpTelemetrySink` 当前会把 model attempt 投影为 generation，并导出 model、usage 与 cost；Langfuse 支持通用 `gen_ai.*` 与 OpenInference input/output 映射，但手动构造的 JAI span 应优先使用 `langfuse.observation.input` / `langfuse.observation.output`（[现有调研](../research/observability/langfuse-otlp-ingestion.md)）。
 - user-only policy 目前只有 `enabled`、`exporter` 和 `endpoint`；Desktop 已有 Langfuse 设置表单，Server RuntimeTelemetryController 已支持后续 Operation 生效的热替换（`app/server/src/telemetry/user-policy.ts`、`app/server/src/telemetry/runtime-controller.ts`、`app/desktop/src/components/shell/settings/observability-settings.tsx`）。
 - `we0-agent-x` 使用 Loguru 动态记录模型 request/response、工具 input/output 及最终 system prompt；`SessionTraceSink` 将部分压缩后的 payload 直接本地落盘，并允许异常 stack 与任意 `extra` 字段沿日志链流动（`/Users/jayden/code/wecode/new-we0/we0-agent-x/app/core/hooks/agent_log_hook.py`、`app/core/observability/session_trace_sink.py`）。该模型与 JAI 的 DTO 与 durable-fact 规则不兼容。
 
@@ -61,7 +61,7 @@
 | 用户与调用方看到的行为 | 已启用 telemetry 时默认发送最终 model request/assistant completion 和工具 input/final output；未启用 telemetry 时没有内容出站。Desktop 不增加内容开关或原文查看入口，只更新既有 telemetry 的出站范围说明。 | 用户要求默认传输，不需要额外配置。 |
 | 内容范围 | 模型输入使用最终 hook 链和 tool-call protocol 投影之后的 system prompt/messages JSON；模型输出只取最终 assistant 可见内容与 tool call；工具只取启动 args 与最终 result。thinking、图像 bytes、stream progress、stack/cause 排除。 | 数据复盘价值与泄漏/体积风险的边界。 |
 | 长期保存 | JAI 不保存内容。Langfuse 是唯一内容持久化位置，其 retention、访问和导出由用户配置的项目治理。 | `AGENTS.md` durable owner 与 projection 规则。 |
-| 传输与平台 | 延续 OTLP/HTTP protobuf 和 Langfuse v4 ingestion。model/tool 都通过 `langfuse.observation.input` / `langfuse.observation.output` 写入内容；现有 `gen_ai.*` 继续承载模型与 usage 语义。 | [Langfuse OTLP 调研](../research/langfuse-otlp-ingestion.md)。 |
+| 传输与平台 | 延续 OTLP/HTTP protobuf 和 Langfuse v4 ingestion。model/tool 都通过 `langfuse.observation.input` / `langfuse.observation.output` 写入内容；现有 `gen_ai.*` 继续承载模型与 usage 语义。 | [Langfuse OTLP 调研](../research/observability/langfuse-otlp-ingestion.md)。 |
 | 权限与安全 | 已有 telemetry user-only enable 是唯一授权；环境变量为完整覆盖；generic sink、RPC、Journal 和 local diagnostics 绝不接收 raw content。 | 现有 advanced settings 设计与 `AGENTS.md` 跨进程 DTO 规则。 |
 | 运行与失败 | 内容仅随已经被选中的 Langfuse generation 异步入队；无 exporter 或关闭时不序列化、保留或发送内容。内容 exporter 失败继续被隔离。 | telemetry 的 no-op/best-effort 不变量。 |
 

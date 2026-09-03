@@ -49,5 +49,5 @@ Desktop 支持英文与简体中文两套完整的用户界面文案。首次启
 
 ## 参考对象
 
-- FormatJS/react-intl 10.1.25：作为本次 Desktop UI i18n 框架，配合仅用于开发检查的 `@formatjs/cli` 6.16.22。官方资料显示它兼容 React 19，提供 ICU、日期/数字/相对时间格式化和消息提取。详见[框架调研](../../research/desktop-i18n-framework.md)。
+- FormatJS/react-intl 10.1.25：作为本次 Desktop UI i18n 框架，配合仅用于开发检查的 `@formatjs/cli` 6.16.22。官方资料显示它兼容 React 19，提供 ICU、日期/数字/相对时间格式化和消息提取。详见[框架调研](../../research/desktop/desktop-i18n-framework.md)。
 - 不遵循任何外部产品的界面文案或行为；仅采用 FormatJS 官方的 `IntlProvider`、消息描述符、格式化 API 和提取机制。

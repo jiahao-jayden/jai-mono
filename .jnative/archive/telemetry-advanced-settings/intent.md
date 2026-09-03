@@ -57,5 +57,5 @@ Desktop Settings 出现「Advanced」分类，其中的 Observability 区块可�
 
 ## 参考对象
 
-- Pi 的 `settings.json` 用于用户显式 opt-in telemetry/analytics；JAI 借鉴「用户设置控制开关」这一点，不复用 Pi 的 exporter 实现或敏感数据治理。证据见 `.jnative/research/agent-logging-observability-evidence.md`。
-- Langfuse 仍是第一个 exporter 目标，使用既有 OTLP HTTP/protobuf adapter 与 Basic Auth；endpoint 与 key pair 的协议约定不变。证据见 `.jnative/research/langfuse-otlp-ingestion.md`。
+- Pi 的 `settings.json` 用于用户显式 opt-in telemetry/analytics；JAI 借鉴「用户设置控制开关」这一点，不复用 Pi 的 exporter 实现或敏感数据治理。证据见 `.jnative/research/observability/agent-logging-observability-evidence.md`。
+- Langfuse 仍是第一个 exporter 目标，使用既有 OTLP HTTP/protobuf adapter 与 Basic Auth；endpoint 与 key pair 的协议约定不变。证据见 `.jnative/research/observability/langfuse-otlp-ingestion.md`。

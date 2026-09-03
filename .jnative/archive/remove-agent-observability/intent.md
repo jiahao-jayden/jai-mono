@@ -32,7 +32,7 @@
 
 ## 边界
 
-- 不删除本次调研产物 `docs/research/agent-*.md/html`，它们是决策资料，不是运行时观测实现。
+- 不删除本次调研产物 `.jnative/research/observability/agent-*.md/html`，它们是决策资料，不是运行时观测实现。
 - 不删除 `.jnative/agent-observability/`；它是已完成工作的历史记录，不参与生产运行。
 - 不删除 Agent 的基础 Session/Operation Journal、一般 CLI 输出、`TaggedError` / `Result` 错误语义、Desktop 聊天或现有 ACP 主协议。
 - 不实现新的 OTLP、vendor telemetry、日志框架或替代的可观测功能；这些属于另一个经确认的需求。

@@ -35,8 +35,13 @@ JN 的文件可以保留 `spec`、`todo.md` 这些名称，对话里先说清楚
 ```
 <repo>/.jnative/
 ├── CONTEXT.md                # 项目术语表,共识对齐用
-├── research/                 # 调研笔记,跨特性共用
-│   └── <topic>.md
+├── research/                 # 调研笔记,跨特性共用,按主题分目录
+│   ├── observability/        # 观测、Langfuse、telemetry
+│   ├── sandbox/              # E2B、云端执行环境
+│   ├── harness/              # Pi/Maka harness、ACP
+│   ├── tools/                # 工具、权限、附件、插件、MCP
+│   ├── desktop/              # Desktop UI、i18n
+│   └── platform/             # 宿主架构、依赖、connector
 ├── archive/                  # 已归档的特性,定位时跳过
 │   └── <slug>/
 └── <slug>/                   # 一个特性,slug 短横线小写、取自意图、不带日期
@@ -82,12 +87,12 @@ _Avoid_: <该避免的同义词>
 
 ## 调研
 
-仓库外的事实，例如第三方库怎么实现、协议怎么定义，交给 `research`。笔记放 `.jnative/research/<topic>.md`，`<topic>` 不带特性 slug，因为同一份调研可能被多个需求复用。已有笔记覆盖当前问题时直接引用，不要重复查一遍。
+仓库外的事实，例如第三方库怎么实现、协议怎么定义，交给 `research`。笔记放 `.jnative/research/<area>/<topic>.md`，`<topic>` 不带特性 slug，因为同一份调研可能被多个需求复用。按主题选目录：观测进 `observability`，沙箱/云执行进 `sandbox`，Agent harness 与 ACP 进 `harness`，工具/权限/附件/插件进 `tools`，Desktop UI 进 `desktop`，宿主架构与依赖进 `platform`。已有笔记覆盖当前问题时直接引用，不要重复查一遍。
 
 在需求说明的「已确认的现状」或计划的「方案」链接笔记。这样下次看到结论时，能知道它来自哪里，而不是重新猜一次：
 
 ```markdown
-- Connector 的 Action 按 provider 定义的行为和数据格式生成([调研](../research/open-connector-actions.md))
+- Connector 的 Action 按 provider 定义的行为和数据格式生成([调研](../research/platform/open-connector-actions.md))
 ```
 
 ## 归档

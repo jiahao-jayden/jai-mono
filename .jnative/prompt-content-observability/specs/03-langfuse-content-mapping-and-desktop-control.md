@@ -13,7 +13,7 @@
 
 ## 开始前确认
 
-- 阅读 [需求说明](../intent.md)、[整体计划](../plan.md)、前两项的交接说明，以及 [Langfuse OTLP 调研](../../research/langfuse-otlp-ingestion.md)。
+- 阅读 [需求说明](../intent.md)、[整体计划](../plan.md)、前两项的交接说明，以及 [Langfuse OTLP 调研](../../research/observability/langfuse-otlp-ingestion.md)。
 - 核对 `app/server/src/telemetry/langfuse-otlp.ts` 当前 `projectSpanAttributes` / `projectGenerationAttributes` 映射和 OTLP exporter 测试替身。
 - 核对 Desktop telemetry RPC DTO、消息目录和 `observability-settings.tsx` 的受控表单模式。
 

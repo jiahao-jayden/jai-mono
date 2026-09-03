@@ -38,7 +38,7 @@ GitHub Copilot、Claude Code 和 OpenAI Codex 官方文档。固定源码版本�
    因此 JAI 必须保持一个由真实 Tool 需求裁剪的 adapter contract，不能让
    Desktop 复刻 E2B SDK，也不能假装 E2B 完整具备 Node 语义。
    [Pi 的产品层断层](./pi-agent-cloud-environment.md#pi-coding-agent产品层的本地绑定仍然存在)
-   [E2B 差异](../../docs/research/e2b-execution-environment-protocol-2026-08-26.md)
+   [E2B 差异](./e2b-execution-environment-protocol-2026-08-26.md)
 
 4. **主流云产品处理本地 / 云端差异的方式，是可重建环境 + Git/PR/diff +
    Session history，不是远程透明访问开发者电脑。** Copilot checkout 仓库并以
