@@ -461,7 +461,7 @@ export const desktopMessages = defineMessages({
 	settingsTelemetryDescription: {
 		id: "desktop.settings.telemetryDescription",
 		defaultMessage:
-			"Send coding-agent telemetry to Langfuse through OTLP. Telemetry stays disabled until you enable it.",
+			"Send coding-agent telemetry to Langfuse through OTLP, including final model messages and replies plus tool inputs and results. Telemetry stays disabled until you enable it.",
 	},
 	settingsTelemetryOverride: {
 		id: "desktop.settings.telemetryOverride",

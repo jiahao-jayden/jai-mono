@@ -80,7 +80,7 @@ export function resolveRuntimeTelemetry(
 		sinks.push(otlpSink);
 		return Result.ok({
 			close: () => otlpSink.close(),
-			context: createTelemetryContext({ sinks }),
+			context: createTelemetryContext({ contentSink: otlpSink, sinks }),
 		});
 	} catch {
 		return invalid("JAI_TELEMETRY_OTLP_ENDPOINT and related OTLP settings must be valid");

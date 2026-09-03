@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { ExportResultCode, type ExportResult } from "@opentelemetry/core";
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
-import { createTelemetryContext, omittedTelemetryContent, type TelemetrySink, type TelemetrySpanRecord } from "@jai/telemetry";
+import {
+	createTelemetryContext,
+	omittedTelemetryContent,
+	type TelemetrySink,
+	type TelemetrySpanRecord,
+} from "@jai/telemetry";
 import { LangfuseOtlpTelemetrySink } from "../../src/telemetry/langfuse-otlp";
 
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
@@ -150,6 +155,94 @@ describe("OTLP telemetry sink", () => {
 		for (const value of ["sk-fake-tool-input", "sk-fake-tool-output", "sk-fake-tool-error", "sk-test"]) {
 			expect(body).not.toContain(value);
 		}
+	});
+
+	test("只把内容专用通路关联到对应的 Langfuse observation", async () => {
+		const exporter = new RecordingExporter();
+		const sink = createSink(exporter);
+		const genericRecords: TelemetrySpanRecord[] = [];
+		const genericSink: TelemetrySink = {
+			record(record): void {
+				genericRecords.push(record);
+			},
+		};
+		const telemetry = createTelemetryContext({ contentSink: sink, sinks: [sink, genericSink] });
+		const run = telemetry.startSpan({
+			name: "jai.run",
+			attributes: { operationId: "operation-content", runId: "run-content", sessionId: "session-content" },
+		});
+		const turn = telemetry.startSpan({ name: "jai.turn", parent: run, attributes: { turnId: "turn-content" } });
+		const attempt = telemetry.startSpan({
+			name: "jai.model_attempt",
+			parent: turn,
+			attributes: { attemptId: "attempt-content", model: "model-content", provider: "provider-content" },
+		});
+		const tool = telemetry.startSpan({
+			name: "jai.tool_call",
+			parent: turn,
+			attributes: { toolCallId: "tool-content", toolName: "Read" },
+		});
+
+		attempt.recordContent({ input: [{ role: "user", text: "model-input-secret" }] });
+		attempt.recordContent({ output: { text: "model-output-secret" } });
+		tool.recordContent({ input: { path: "/private/tool-input-secret" } });
+		tool.recordContent({ output: { content: "tool-output-secret" } });
+		attempt.setStatus({ kind: "ok" });
+		tool.setStatus({ kind: "ok" });
+		turn.setStatus({ kind: "ok" });
+		run.setStatus({ kind: "ok" });
+		await sink.close();
+
+		const attemptSpan = findSpan(exporter.spans, "jai.model_attempt");
+		const toolSpan = findSpan(exporter.spans, "jai.tool_call");
+		expect(attemptSpan.attributes).toMatchObject({
+			"langfuse.observation.input": JSON.stringify([{ role: "user", text: "model-input-secret" }]),
+			"langfuse.observation.output": JSON.stringify({ text: "model-output-secret" }),
+		});
+		expect(toolSpan.attributes).toMatchObject({
+			"langfuse.observation.input": JSON.stringify({ path: "/private/tool-input-secret" }),
+			"langfuse.observation.output": JSON.stringify({ content: "tool-output-secret" }),
+		});
+		const genericJson = JSON.stringify(genericRecords);
+		for (const secret of ["model-input-secret", "model-output-secret", "tool-input-secret", "tool-output-secret"]) {
+			expect(genericJson).not.toContain(secret);
+		}
+	});
+
+	test("用 trace 与 span identity 隔离不同 context 的内容", async () => {
+		const exporter = new RecordingExporter();
+		const sink = createSink(exporter);
+		const first = createTelemetryContext({
+			contentSink: sink,
+			createTraceId: () => "first-trace",
+			sinks: [sink],
+		});
+		const second = createTelemetryContext({
+			contentSink: sink,
+			createTraceId: () => "second-trace",
+			sinks: [sink],
+		});
+		const firstRun = first.startSpan({
+			name: "jai.run",
+			attributes: { operationId: "first-operation", runId: "first-operation" },
+		});
+		const secondRun = second.startSpan({
+			name: "jai.run",
+			attributes: { operationId: "second-operation", runId: "second-operation" },
+		});
+		expect(firstRun.id).toBe(secondRun.id);
+		firstRun.recordContent({ input: "first-content" });
+		secondRun.recordContent({ input: "second-content" });
+		firstRun.setStatus({ kind: "ok" });
+		secondRun.setStatus({ kind: "ok" });
+		await sink.close();
+
+		expect(
+			exporter.spans
+				.map((span) => span.attributes["langfuse.observation.input"])
+				.filter((value): value is string => typeof value === "string")
+				.sort(),
+		).toEqual([JSON.stringify("first-content"), JSON.stringify("second-content")]);
 	});
 
 	test("队列满、导出失败和关闭超时均只更新统计，不阻塞并行 sink", async () => {

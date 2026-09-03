@@ -1,4 +1,6 @@
-import type { TelemetryContext, TelemetrySpan, TelemetrySpanStatus } from "@jai/telemetry";
+import type { ModelRequestObservation, ModelRequestObserver } from "@jai/agent";
+import type { ImageContent, Message, TextContent } from "@jai/ai";
+import type { TelemetryContentValue, TelemetryContext, TelemetrySpan, TelemetrySpanStatus } from "@jai/telemetry";
 import type { PermissionTelemetryEvent, PermissionTelemetryObserver } from "../permissions";
 import type { CodingAgentEvent, CodingAssistantMessage, CodingStopReason } from "./types";
 
@@ -68,9 +70,10 @@ export interface CodingAgentTelemetryObserverOptions {
  * 把 Coding Agent 的公开生命周期与 Server 已持久化的 effect identity 投影为 span。
  * 只保存一次运行期间的可丢弃状态；任何观察异常都被 containment 在本对象内。
  */
-export class CodingAgentTelemetryObserver implements PermissionTelemetryObserver {
+export class CodingAgentTelemetryObserver implements ModelRequestObserver, PermissionTelemetryObserver {
 	readonly #now: () => number;
 	readonly #modelAttempts = new Map<string, ActiveModelAttempt>();
+	readonly #pendingModelInputs = new Map<string, TelemetryContentValue>();
 	readonly #pendingModelAttemptIds: string[] = [];
 	readonly #reservedTools = new Map<string, ReservedToolCall>();
 	readonly #activeTools = new Map<string, ActiveToolCall>();
@@ -86,6 +89,10 @@ export class CodingAgentTelemetryObserver implements PermissionTelemetryObserver
 		this.#now = options.now ?? Date.now;
 	}
 
+	get enabled(): boolean {
+		return !this.#closed && (this.#run?.contentCaptureEnabled ?? this.options.telemetry.contentCaptureEnabled);
+	}
+
 	observeAgentEvent(event: CodingAgentEvent): void {
 		try {
 			if (this.#closed) return;
@@ -99,6 +106,21 @@ export class CodingAgentTelemetryObserver implements PermissionTelemetryObserver
 		try {
 			if (this.#closed) return;
 			this.#observeEffectEvent(event);
+		} catch {
+			return;
+		}
+	}
+
+	observeModelRequest(observation: ModelRequestObservation): void {
+		try {
+			if (!this.enabled || !observation.assistantEntryId) return;
+			const input = projectModelRequest(observation);
+			const attempt = this.#modelAttempts.get(observation.assistantEntryId);
+			if (!attempt) {
+				this.#pendingModelInputs.set(observation.assistantEntryId, input);
+				return;
+			}
+			if (attempt.span.contentCaptureEnabled) attempt.span.recordContent({ input });
 		} catch {
 			return;
 		}
@@ -152,10 +174,10 @@ export class CodingAgentTelemetryObserver implements PermissionTelemetryObserver
 				this.#finishModelAttempt("discarded");
 				return;
 			case "tool_execution_start":
-				this.#startToolCall(event.toolCallId, event.toolName);
+				this.#startToolCall(event);
 				return;
 			case "tool_execution_end":
-				this.#finishToolCall(event.toolCallId, event.isError ? "failed" : "completed");
+				this.#finishToolCall(event.toolCallId, event.isError ? "failed" : "completed", event);
 				return;
 			case "tool_execution_update":
 			case "compaction_start":
@@ -294,6 +316,9 @@ export class CodingAgentTelemetryObserver implements PermissionTelemetryObserver
 			attributes: { attemptId: event.attemptId, model: event.model, provider: event.provider },
 		});
 		span.addEvent({ name: "jai.model_attempt.started" });
+		const input = this.#pendingModelInputs.get(event.assistantEntryId);
+		if (input && span.contentCaptureEnabled) span.recordContent({ input });
+		this.#pendingModelInputs.delete(event.assistantEntryId);
 		this.#modelAttempts.set(event.assistantEntryId, { assistantEntryId: event.assistantEntryId, span });
 		this.#pendingModelAttemptIds.push(event.assistantEntryId);
 	}
@@ -326,10 +351,14 @@ export class CodingAgentTelemetryObserver implements PermissionTelemetryObserver
 	#finishModelAttempt(outcome: TelemetryOutcome, message?: CodingAssistantMessage): void {
 		const attempt = this.#activeModelAttempt();
 		if (!attempt) return;
+		if (message && attempt.span.contentCaptureEnabled) {
+			attempt.span.recordContent({ output: projectAssistantOutput(message) });
+		}
 		this.#settleModelAttempt(attempt, outcome, message?.usage);
 	}
 
-	#startToolCall(toolCallId: string, toolName: string): void {
+	#startToolCall(event: Extract<CodingAgentEvent, { readonly type: "tool_execution_start" }>): void {
+		const { toolCallId, toolName } = event;
 		const turn = this.#turn;
 		const reservation = this.#reservedTools.get(toolCallId);
 		if (!turn || !reservation || reservation.toolName !== toolName || this.#activeTools.has(toolCallId)) return;
@@ -339,12 +368,35 @@ export class CodingAgentTelemetryObserver implements PermissionTelemetryObserver
 			attributes: { toolCallId: reservation.toolCallId, toolName: reservation.toolName },
 		});
 		span.addEvent({ name: "jai.tool_call.dispatched" });
+		if (span.contentCaptureEnabled) {
+			const args = projectContentValue(event.args);
+			span.recordContent({
+				input: {
+					toolCallId,
+					toolName,
+					...(args === undefined ? {} : { arguments: args }),
+				},
+			});
+		}
 		this.#activeTools.set(toolCallId, { span, startedAtMs: this.#readNow() });
 	}
 
-	#finishToolCall(toolCallId: string, outcome: Extract<TelemetryOutcome, "completed" | "failed" | "aborted">): void {
+	#finishToolCall(
+		toolCallId: string,
+		outcome: Extract<TelemetryOutcome, "completed" | "failed" | "aborted">,
+		event?: Extract<CodingAgentEvent, { readonly type: "tool_execution_end" }>,
+	): void {
 		const active = this.#activeTools.get(toolCallId);
 		if (!active) return;
+		if (event && active.span.contentCaptureEnabled) {
+			const result = projectContentValue(event.result);
+			active.span.recordContent({
+				output: {
+					isError: event.isError,
+					...(result === undefined ? {} : { result }),
+				},
+			});
+		}
 		const durationMs = elapsedSince(active.startedAtMs, this.#readNow());
 		active.span.setAttributes({ durationMs });
 		active.span.addEvent({ name: "jai.tool_call.settled", attributes: { durationMs } });
@@ -372,6 +424,7 @@ export class CodingAgentTelemetryObserver implements PermissionTelemetryObserver
 
 	#settleAll(outcome: TelemetryOutcome): void {
 		this.#settleOutstandingChildren(outcome);
+		this.#pendingModelInputs.clear();
 		const settledOutcome = worstOutcome(outcome, this.#lastOutcome);
 		this.#lastOutcome = settledOutcome;
 		const turn = this.#turn;
@@ -434,6 +487,7 @@ export class CodingAgentTelemetryObserver implements PermissionTelemetryObserver
 		attempt.span.addEvent({ name: "jai.model_attempt.settled", attributes: { outcome } });
 		attempt.span.setStatus(statusForOutcome(outcome));
 		this.#modelAttempts.delete(attempt.assistantEntryId);
+		this.#pendingModelInputs.delete(attempt.assistantEntryId);
 		this.#removePendingModelAttempt(attempt.assistantEntryId);
 		this.#lastOutcome = worstOutcome(this.#lastOutcome, outcome);
 	}
@@ -457,6 +511,115 @@ export class CodingAgentTelemetryObserver implements PermissionTelemetryObserver
 		} catch {
 			return Date.now();
 		}
+	}
+}
+
+function projectModelRequest(observation: ModelRequestObservation): TelemetryContentValue {
+	return {
+		messages: [
+			{ role: "system", content: [{ type: "text", text: observation.context.systemPrompt }] },
+			...observation.context.messages.map(projectModelMessage),
+		],
+	};
+}
+
+function projectModelMessage(message: Message): TelemetryContentValue {
+	switch (message.role) {
+		case "user":
+			return {
+				role: "user",
+				content:
+					typeof message.content === "string"
+						? [{ type: "text", text: message.content }]
+						: message.content.map(projectModelContent),
+			};
+		case "assistant":
+			return {
+				role: "assistant",
+				content: message.content.flatMap((content): TelemetryContentValue[] => {
+					if (content.type === "text") return [{ type: "text", text: content.text }];
+					if (content.type === "thinking") return [];
+					const argumentsValue = projectContentValue(content.arguments);
+					return [
+						{
+							type: "toolCall",
+							id: content.id,
+							name: content.name,
+							...(argumentsValue === undefined ? {} : { arguments: argumentsValue }),
+						},
+					];
+				}),
+			};
+		case "toolResult":
+			return {
+				role: "toolResult",
+				toolCallId: message.toolCallId,
+				toolName: message.toolName,
+				isError: message.isError,
+				content: message.content.map(projectModelContent),
+			};
+	}
+}
+
+function projectModelContent(content: TextContent | ImageContent): TelemetryContentValue {
+	if (content.type === "text") {
+		return { type: "text", text: content.text, ...(content.synthetic ? { synthetic: true } : {}) };
+	}
+	return { type: "image", mimeType: content.mimeType };
+}
+
+function projectAssistantOutput(message: CodingAssistantMessage): TelemetryContentValue {
+	return {
+		role: "assistant",
+		content: message.content.flatMap((content): TelemetryContentValue[] => {
+			if (content.type === "text") return [{ type: "text", text: content.text }];
+			if (content.type === "thinking") return [];
+			const argumentsValue = projectContentValue(content.arguments);
+			return [
+				{
+					type: "toolCall",
+					id: content.id,
+					name: content.name,
+					...(argumentsValue === undefined ? {} : { arguments: argumentsValue }),
+				},
+			];
+		}),
+	};
+}
+
+function projectContentValue(value: unknown, ancestors = new Set<object>()): TelemetryContentValue | undefined {
+	if (value === null || typeof value === "boolean" || typeof value === "string") return value;
+	if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+	if (Array.isArray(value)) {
+		if (ancestors.has(value)) return undefined;
+		ancestors.add(value);
+		try {
+			const projected = value.map((item) => projectContentValue(item, ancestors));
+			return projected.some((item) => item === undefined) ? undefined : (projected as TelemetryContentValue[]);
+		} finally {
+			ancestors.delete(value);
+		}
+	}
+	if (typeof value !== "object" || ancestors.has(value)) return undefined;
+	ancestors.add(value);
+	try {
+		const record = value as Record<string, unknown>;
+		if (record.type === "image") {
+			return {
+				type: "image",
+				...(typeof record.mimeType === "string" ? { mimeType: record.mimeType } : {}),
+			};
+		}
+		const projected: Record<string, TelemetryContentValue> = {};
+		for (const [key, item] of Object.entries(record)) {
+			if (key === "__proto__" || key === "constructor" || key === "prototype") return undefined;
+			const child = projectContentValue(item, ancestors);
+			if (child === undefined) return undefined;
+			projected[key] = child;
+		}
+		return projected;
+	} finally {
+		ancestors.delete(value);
 	}
 }
 

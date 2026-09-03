@@ -56,6 +56,10 @@ _Avoid_: sensitive flag, redaction hint, debug payload
 用户在 `~/.jai/settings.json` 中保存的非秘密观测选择：是否启用远端导出、exporter 类型与 endpoint。它只允许 user scope，不能由项目 `.jai/settings.json` 改写；Langfuse key pair 不属于它，而由 Server 的 credential owner 保存。
 _Avoid_: project telemetry setting, telemetry secret, Agent telemetry configuration
 
+**Observation Content Capture**:
+用户开启 Langfuse telemetry 后，随一次 model attempt 或 tool call 发往该观测后端的原始文本/JSON 内容，用于在后端查看运行记录或整理训练数据。它包含最终 system prompt/message、可见 assistant output 及 tool input/final output，不进入通用 `TelemetrySpanRecord`、本地 JSONL/stderr、Session Journal、RPC DTO 或 Desktop renderer；telemetry 未启用时不复制、投影或采集，图像二进制与 thinking 内容不属于第一版。
+_Avoid_: generic telemetry attribute, session log, prompt journal
+
 **Desktop UI Locale**:
 Desktop 用户界面与桌面原生产品文案使用的语言选择；它由 Desktop 自己维护，支持跟随系统、英文和简体中文，并独立于 Agent 的 `Response language`。
 _Avoid_: Response language, Agent language, user content locale

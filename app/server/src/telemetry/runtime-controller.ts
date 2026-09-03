@@ -4,6 +4,7 @@ import {
 	NoopTelemetryContext,
 	type TelemetryContext,
 	type TelemetrySpan,
+	type TelemetrySpanContent,
 	type TelemetrySpanName,
 	type TelemetrySpanStatus,
 	type TelemetryStartSpanOptions,
@@ -347,6 +348,10 @@ class SwitchingTelemetryContext implements TelemetryContext {
 		this.#generations.add(this.#current);
 	}
 
+	get contentCaptureEnabled(): boolean {
+		return this.#current.resource.context.contentCaptureEnabled;
+	}
+
 	startSpan<Name extends TelemetrySpanName>(options: TelemetryStartSpanOptions<Name>): TelemetrySpan<Name> {
 		const parent = options.parent;
 		const generation = parent instanceof SwitchingTelemetrySpan ? parent.generation : this.#current;
@@ -410,6 +415,10 @@ class SwitchingTelemetrySpan<Name extends TelemetrySpanName> implements Telemetr
 		return this.inner.id;
 	}
 
+	get contentCaptureEnabled(): boolean {
+		return this.inner.contentCaptureEnabled;
+	}
+
 	get name(): Name {
 		return this.inner.name;
 	}
@@ -417,6 +426,14 @@ class SwitchingTelemetrySpan<Name extends TelemetrySpanName> implements Telemetr
 	addEvent(...args: Parameters<TelemetrySpan<Name>["addEvent"]>): void {
 		try {
 			this.inner.addEvent(...args);
+		} catch {
+			return;
+		}
+	}
+
+	recordContent(content: TelemetrySpanContent): void {
+		try {
+			this.inner.recordContent(content);
 		} catch {
 			return;
 		}

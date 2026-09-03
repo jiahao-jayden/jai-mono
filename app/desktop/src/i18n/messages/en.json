@@ -709,7 +709,7 @@
     "defaultMessage": "Clear saved keys"
   },
   "desktop.settings.telemetryDescription": {
-    "defaultMessage": "Send coding-agent telemetry to Langfuse through OTLP. Telemetry stays disabled until you enable it."
+    "defaultMessage": "Send coding-agent telemetry to Langfuse through OTLP, including final model messages and replies plus tool inputs and results. Telemetry stays disabled until you enable it."
   },
   "desktop.settings.telemetryDisableClear": {
     "defaultMessage": "Disable and clear keys"

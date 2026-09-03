@@ -22,6 +22,7 @@ import type {
 	AgentToolResult,
 	CoreAgentEvent,
 	EffectEntryReservation,
+	ModelRequestObservation,
 	ToolCallContext,
 } from "./types";
 
@@ -378,6 +379,10 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 		type: "model_request",
 		...(reservation ? { assistantEntryId: reservation.entryId } : {}),
 	});
+	observeModelRequest(config, {
+		context: llmContext,
+		...(reservation ? { assistantEntryId: reservation.entryId } : {}),
+	});
 
 	// 调用 LLM
 	const response = config.provider.stream(config.model, llmContext, {
@@ -415,6 +420,23 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 	}
 
 	return settleModelEffect(config, reservation, await response.result(), started);
+}
+
+function observeModelRequest(config: AgentLoopConfig, observation: ModelRequestObservation): void {
+	try {
+		const observer = config.modelRequestObserver;
+		if (!observer?.enabled) return;
+		const context = structuredClone({
+			systemPrompt: observation.context.systemPrompt,
+			messages: observation.context.messages,
+		});
+		observer.observeModelRequest({
+			...observation,
+			context,
+		});
+	} catch {
+		return;
+	}
 }
 
 async function reserveModelEffect(

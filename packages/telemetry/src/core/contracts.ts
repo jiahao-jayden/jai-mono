@@ -7,6 +7,23 @@ export type TelemetryContentReference =
 /** 所有未明确批准的内容都以省略表达，不能用裸字符串替代。 */
 export const omittedTelemetryContent: TelemetryContentReference = { kind: "omitted" };
 
+/**
+ * 已获用户授权、仅供内容感知 exporter 使用的 JSON 值。它不是 span attribute，
+ * 也绝不能进入 generic telemetry sink、Journal 或 RPC DTO。
+ */
+export type TelemetryContentValue =
+	| null
+	| boolean
+	| number
+	| string
+	| readonly TelemetryContentValue[]
+	| { readonly [key: string]: TelemetryContentValue };
+
+/** 单个 observation 允许逐步写入 input 与 output；至少包含其中一个。 */
+export type TelemetrySpanContent =
+	| { readonly input: TelemetryContentValue; readonly output?: TelemetryContentValue }
+	| { readonly input?: TelemetryContentValue; readonly output: TelemetryContentValue };
+
 export type TelemetryAttributeValue = string | number | boolean | TelemetryContentReference;
 
 /** 错误只按少量稳定类别归档，绝不能把原始 message 当作类别。 */
@@ -203,10 +220,28 @@ export interface TelemetrySink {
 	record(record: TelemetrySpanRecord): void | Promise<void>;
 }
 
+/**
+ * 原文内容的单独出口。实现只能在内存中关联到随后到达的安全 span，不能把内容
+ * 转交给 `TelemetrySink` 或异步保存到另一套 JAI 存储。
+ */
+export interface TelemetryContentSink {
+	recordContent(record: TelemetryContentRecord): void;
+}
+
+export interface TelemetryContentRecord {
+	readonly content: TelemetrySpanContent;
+	readonly schemaVersion: 1;
+	readonly spanId: string;
+	readonly traceId: string;
+}
+
 export interface TelemetrySpan<Name extends TelemetrySpanName = TelemetrySpanName> {
+	/** Whether this span's creation generation has a dedicated raw-content sink. */
+	readonly contentCaptureEnabled: boolean;
 	readonly id: string;
 	readonly name: Name;
 	addEvent<EventName extends TelemetryEventNameForSpan<Name>>(event: TelemetryEventInput<EventName>): void;
+	recordContent(content: TelemetrySpanContent): void;
 	setAttributes(attributes: Partial<TelemetrySpanAttributes<Name>>): void;
 	setStatus(status: TelemetrySpanStatus): void;
 }
@@ -222,10 +257,14 @@ export type TelemetryStartSpanOptions<Name extends TelemetrySpanName> = {
 
 /** 领域代码只依赖这一端口；sink、时钟和输出目的地均由宿主装配。 */
 export interface TelemetryContext {
+	/** Whether new spans can send raw content through a dedicated sink. */
+	readonly contentCaptureEnabled: boolean;
 	startSpan<Name extends TelemetrySpanName>(options: TelemetryStartSpanOptions<Name>): TelemetrySpan<Name>;
 }
 
 export interface TelemetryContextOptions {
+	/** 只由已获授权的远端 exporter 装配；它与通用 sink 完全分离。 */
+	readonly contentSink?: TelemetryContentSink;
 	/** 测试可注入 trace identity；生产缺省使用安全随机值。 */
 	readonly createTraceId?: () => string;
 	readonly now?: () => number;

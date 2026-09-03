@@ -3,6 +3,7 @@ import type {
 	TelemetryEventInput,
 	TelemetryEventNameForSpan,
 	TelemetrySpan,
+	TelemetrySpanContent,
 	TelemetrySpanName,
 	TelemetrySpanStatus,
 	TelemetryStartSpanOptions,
@@ -10,6 +11,8 @@ import type {
 
 /** 产品默认实现：保留端口形状，但不分配记录、队列或输出。 */
 export class NoopTelemetryContext implements TelemetryContext {
+	readonly contentCaptureEnabled = false;
+
 	startSpan<Name extends TelemetrySpanName>(options: TelemetryStartSpanOptions<Name>): TelemetrySpan<Name> {
 		void options;
 		return new NoopTelemetrySpan(options.name);
@@ -17,6 +20,7 @@ export class NoopTelemetryContext implements TelemetryContext {
 }
 
 class NoopTelemetrySpan<Name extends TelemetrySpanName> implements TelemetrySpan<Name> {
+	readonly contentCaptureEnabled = false;
 	readonly id: string;
 	readonly name: Name;
 
@@ -27,6 +31,11 @@ class NoopTelemetrySpan<Name extends TelemetrySpanName> implements TelemetrySpan
 
 	addEvent<EventName extends TelemetryEventNameForSpan<Name>>(event: TelemetryEventInput<EventName>): void {
 		void event;
+		return;
+	}
+
+	recordContent(content: TelemetrySpanContent): void {
+		void content;
 		return;
 	}
 

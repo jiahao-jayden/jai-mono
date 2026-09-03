@@ -124,6 +124,7 @@ export class CoreAgent<TAppState extends JsonObject = JsonObject> {
 			toolExecution: options.toolExecution,
 			toolMiddlewares: options.toolMiddlewares ? [...options.toolMiddlewares] : undefined,
 			effectBoundary: options.effectBoundary,
+			modelRequestObserver: options.modelRequestObserver,
 			effectGate: options.effectGate,
 			prepareContext: options.prepareContext,
 			onModelError: options.onModelError,

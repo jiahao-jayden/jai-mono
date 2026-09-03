@@ -1,3 +1,4 @@
+import type { ModelRequestObserver } from "@jai/agent";
 import type { Result } from "better-result";
 import type { JsonObject, JsonValue } from "../core/json";
 import type { PermissionTelemetryObserver } from "../permissions";
@@ -208,6 +209,8 @@ export interface CodingAgentCreateOptions {
 	readonly requestApproval?: CodingApprovalHandler;
 	/** 可选旁路，观察权限事实而不参与判定或审批。 */
 	readonly permissionTelemetryObserver?: PermissionTelemetryObserver;
+	/** 可选旁路，在实际 provider 请求打开前观察最终模型上下文。 */
+	readonly modelRequestTelemetryObserver?: ModelRequestObserver;
 	/** Enables only these built-in tools. Extension tools remain extension-owned. */
 	readonly tools?: readonly CodingToolName[];
 	/** Removes built-in tools after `tools` selection; exclusion wins on overlap. */

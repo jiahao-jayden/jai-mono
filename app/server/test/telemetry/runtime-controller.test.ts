@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createTelemetryContext, type TelemetrySink } from "@jai/telemetry";
+import { createTelemetryContext, type TelemetryContentSink, type TelemetrySink } from "@jai/telemetry";
 import { Result } from "better-result";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -62,6 +62,56 @@ describe("Runtime telemetry controller", () => {
 
 			await controller.close();
 			expect(closed).toEqual(expect.arrayContaining(["pk-first", "pk-second"]));
+		} finally {
+			database.close();
+		}
+	});
+
+	test("keeps content with the telemetry generation that started its span", async () => {
+		const dataDirectory = await temporaryDataDirectory();
+		const database = new DatabaseSync(":memory:");
+		const recorded: string[] = [];
+		const contents: string[] = [];
+		const closed: string[] = [];
+		try {
+			const controller = await openController({ dataDirectory, recorded, contents, closed, database });
+			const first = await controller.save(settingsInput());
+			if (first.isErr()) throw first.error;
+
+			const oldRun = controller.context.startSpan({
+				name: "jai.run",
+				attributes: { operationId: "old-content", runId: "old-content" },
+			});
+			expect(oldRun.contentCaptureEnabled).toBe(true);
+			oldRun.recordContent({ input: "first-generation-input" });
+			const second = await controller.save(
+				settingsInput({
+					policyRevision: first.value.policyRevision,
+					credentialRevision: first.value.credential.revision,
+					publicKey: "pk-second",
+					secretKey: "sk-second",
+				}),
+			);
+			if (second.isErr()) throw second.error;
+			expect(oldRun.contentCaptureEnabled).toBe(true);
+			oldRun.recordContent({ output: "first-generation-output" });
+			oldRun.setStatus({ kind: "ok" });
+
+			const newRun = controller.context.startSpan({
+				name: "jai.run",
+				attributes: { operationId: "new-content", runId: "new-content" },
+			});
+			expect(newRun.contentCaptureEnabled).toBe(true);
+			newRun.recordContent({ input: "second-generation-input" });
+			newRun.setStatus({ kind: "ok" });
+			await waitFor(() => contents.length === 3);
+
+			expect(contents).toEqual([
+				"pk-first:first-generation-input",
+				"pk-first:first-generation-output",
+				"pk-second:second-generation-input",
+			]);
+			await controller.close();
 		} finally {
 			database.close();
 		}
@@ -210,6 +260,7 @@ async function openController(input: {
 	readonly dataDirectory: string;
 	readonly database: DatabaseSync;
 	readonly recorded: string[];
+	readonly contents?: string[];
 	readonly closed: string[];
 	readonly environment?: Readonly<Record<string, string | undefined>>;
 }): Promise<RuntimeTelemetryController> {
@@ -233,8 +284,16 @@ async function openController(input: {
 					input.recorded.push(`${publicKey}:${record.attributes.operationId}`);
 				},
 			};
+			const contentSink: TelemetryContentSink | undefined = input.contents
+				? {
+						recordContent(record): void {
+							if (record.content.input !== undefined) input.contents?.push(`${publicKey}:${record.content.input}`);
+							if (record.content.output !== undefined) input.contents?.push(`${publicKey}:${record.content.output}`);
+						},
+					}
+				: undefined;
 			return Result.ok({
-				context: createTelemetryContext({ sinks: [sink] }),
+				context: createTelemetryContext({ ...(contentSink ? { contentSink } : {}), sinks: [sink] }),
 				close: async () => {
 					input.closed.push(publicKey);
 				},

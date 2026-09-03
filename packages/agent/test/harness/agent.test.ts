@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { AssistantMessageEventStream, type AssistantMessage, type Context, type Provider, zeroUsage } from "@jai/ai";
 import { Type } from "@sinclair/typebox";
-import { Agent, type AgentEvent, type AgentTool, InMemorySessionStore, openSession } from "../../src";
+import {
+	Agent,
+	type AgentEvent,
+	type AgentTool,
+	InMemorySessionStore,
+	type ModelRequestContext,
+	openSession,
+} from "../../src";
 import { assistant, defaultAppState, messageEntry, model, providerFor, testInstructions, type AppState } from "../support/fixtures";
 
 describe("Agent", () => {
@@ -210,6 +217,78 @@ describe("Agent", () => {
 		await agent.invoke("hello");
 
 		expect(contexts[0]?.systemPrompt).toBe(testInstructions);
+	});
+
+	test("observes the provider-ready context after effect reservation without affecting the request", async () => {
+		const providerContexts: Context[] = [];
+		const observedContexts: ModelRequestContext[] = [];
+		const reservationStates: boolean[] = [];
+		let reserved = false;
+		const agent = new Agent<AppState>({
+			model,
+			provider: providerFor([assistant("done")], providerContexts),
+			instructions: testInstructions,
+			effectBoundary: {
+				async beforeModelEffect() {
+					reserved = true;
+					return { entryId: "assistant-1" };
+				},
+				async beforeToolEffect() {
+					return { entryId: "tool-1" };
+				},
+				async afterModelEffect() {},
+			},
+			hooks: {
+				beforeModelCall: [({ messages }) => ({
+					messages: [
+						...messages,
+						{
+							role: "user",
+							content: [{ type: "text", text: "final injected context", synthetic: true }],
+							timestamp: 1,
+						},
+					],
+				})],
+			},
+			modelRequestObserver: {
+				enabled: true,
+				observeModelRequest(observation) {
+					observedContexts.push(observation.context);
+					reservationStates.push(reserved);
+					throw new Error("telemetry observer failed");
+				},
+			},
+		});
+
+		await expect(agent.invoke("hello")).resolves.toHaveLength(2);
+
+		expect(reservationStates).toEqual([true]);
+		expect(observedContexts[0]).toEqual({
+			systemPrompt: providerContexts[0]?.systemPrompt,
+			messages: providerContexts[0]?.messages,
+		});
+		expect(observedContexts[0]?.messages.at(-1)).toMatchObject({
+			role: "user",
+			content: [{ type: "text", text: "final injected context", synthetic: true }],
+		});
+	});
+
+	test("does not copy or deliver a model request while its observer is disabled", async () => {
+		let observed = false;
+		const agent = new Agent<AppState>({
+			model,
+			provider: providerFor([assistant("done")]),
+			modelRequestObserver: {
+				enabled: false,
+				observeModelRequest() {
+					observed = true;
+				},
+			},
+		});
+
+		await expect(agent.invoke("private prompt")).resolves.toHaveLength(2);
+
+		expect(observed).toBe(false);
 	});
 
 	test("persists an event before external listeners observe it", async () => {

@@ -9,6 +9,7 @@ import {
 	type AgentTool,
 	type EffectBoundary,
 	type JsonObject,
+	type ModelRequestObserver,
 	type ObserverErrorInfo,
 	openSession,
 	type SessionStore,
@@ -101,6 +102,7 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 	readonly extensionAuthorizedToolNames?: ReadonlySet<string>;
 	extensionToolCatalog?: ToolCatalog;
 	readonly extensionBeforeModelCall?: (messages: readonly AgentMessage[]) => Promise<AgentMessage[]>;
+	readonly modelRequestObserver?: ModelRequestObserver;
 	readonly commands?: CodingCommandRegistry;
 	readonly agent?: CodingAgentRuntimeOptions;
 	readonly resolveAgentOptions?: (
@@ -425,6 +427,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			? { resolveTools: (staticTools) => extensionToolCatalog.current!.toolsForRequest(staticTools) }
 			: {}),
 		effectBoundary: resolvedAgentOptions.effectBoundary,
+		modelRequestObserver: options.modelRequestObserver,
 		hooks: {
 			...hooks,
 			beforeModelCall,

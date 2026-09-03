@@ -29,7 +29,12 @@ import type { RuntimeCapabilitySource } from "../runtime-capabilities";
 
 type CodingAgentOperationOptions = Omit<
 	CodingAgentCreateOptions,
-	"cwd" | "effectBoundary" | "permissionTelemetryObserver" | "requestApproval" | "session"
+	| "cwd"
+	| "effectBoundary"
+	| "modelRequestTelemetryObserver"
+	| "permissionTelemetryObserver"
+	| "requestApproval"
+	| "session"
 >;
 type CodingAgentOperationConfiguration = Omit<CodingAgentOperationOptions, "fileCapabilities">;
 
@@ -94,6 +99,7 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 				cwd: input.cwd,
 				session: { kind: "resume", id: input.sessionId, store: input.sessionStore },
 				effectBoundary: input.effectBoundary,
+				modelRequestTelemetryObserver: telemetryObserver,
 				permissionTelemetryObserver: telemetryObserver,
 				requestApproval: (request, signal) =>
 					input.requestApproval(

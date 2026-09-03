@@ -235,7 +235,7 @@
   "desktop.settings.status": "状态",
   "desktop.settings.telemetryBothKeysRequired": "请输入 Langfuse 公钥和私钥。",
   "desktop.settings.telemetryClear": "清除已保存的密钥",
-  "desktop.settings.telemetryDescription": "通过 OTLP 将 coding-agent 遥测发送到 Langfuse。启用前遥测保持关闭。",
+  "desktop.settings.telemetryDescription": "通过 OTLP 将 coding-agent 遥测发送到 Langfuse，包括最终模型消息、回复以及工具输入和结果。启用前遥测保持关闭。",
   "desktop.settings.telemetryDisableClear": "停用并清除密钥",
   "desktop.settings.telemetryEnable": "启用遥测",
   "desktop.settings.telemetryEndpoint": "Langfuse OTLP 端点",

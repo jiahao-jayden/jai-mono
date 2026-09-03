@@ -3,7 +3,13 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Result } from "better-result";
-import { InMemoryTelemetryContext, type TelemetryContext } from "@jai/telemetry";
+import {
+	createTelemetryContext,
+	InMemoryTelemetryContext,
+	type TelemetryContentRecord,
+	type TelemetryContext,
+	type TelemetrySink,
+} from "@jai/telemetry";
 import { CodingAgentOperationDriver } from "../../src/agents";
 import { RuntimeHost } from "../../src/runtime/host";
 import { InMemoryProductSessionPersistence } from "../../src/sessions";
@@ -152,6 +158,35 @@ describe("Coding Agent Runtime Operation driver", () => {
 		expect(JSON.stringify(spans)).not.toContain("sk-fake-completion");
 		expect(JSON.stringify(spans)).not.toContain("sk-fake-file-name");
 	});
+
+	test("真实 operation 只把 prompt、model output 与 tool payload 交给内容 sink", async () => {
+		const contents: TelemetryContentRecord[] = [];
+		const genericRecords: unknown[] = [];
+		const genericSink: TelemetrySink = {
+			record(record): void {
+				genericRecords.push(record);
+			},
+		};
+		const telemetry = createTelemetryContext({
+			contentSink: {
+				recordContent(record): void {
+					contents.push(record);
+				},
+			},
+			sinks: [genericSink],
+		});
+		expect(telemetry.contentCaptureEnabled).toBe(true);
+
+		await runTelemetryOperation(telemetry);
+		await waitFor(() => genericRecords.length > 0);
+
+		const captured = JSON.stringify(contents);
+		const generic = JSON.stringify(genericRecords);
+		for (const value of ["sk-fake-prompt", "sk-fake-file-name", "sk-fake-file-content", "sk-fake-completion"]) {
+			expect(captured).toContain(value);
+			expect(generic).not.toContain(value);
+		}
+	});
 });
 
 async function runTelemetryOperation(telemetry?: TelemetryContext) {
@@ -222,6 +257,7 @@ async function runTelemetryOperation(telemetry?: TelemetryContext) {
 
 function throwingTelemetryContext(): TelemetryContext {
 	return {
+		contentCaptureEnabled: false,
 		startSpan() {
 			throw new Error("telemetry observer failed");
 		},

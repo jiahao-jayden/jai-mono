@@ -101,6 +101,24 @@ export interface EffectEntryReservation {
 	readonly entryId: string;
 }
 
+/** 内容观察所需的 provider-ready request 快照；工具定义不会越过这个边界。 */
+export interface ModelRequestContext {
+	readonly systemPrompt: string;
+	readonly messages: readonly Message[];
+}
+
+/** A provider-ready model request observed after all context and protocol projection. */
+export interface ModelRequestObservation {
+	readonly assistantEntryId?: string;
+	readonly context: ModelRequestContext;
+}
+
+/** A best-effort observer that cannot affect model execution. */
+export interface ModelRequestObserver {
+	readonly enabled: boolean;
+	observeModelRequest(observation: ModelRequestObservation): void;
+}
+
 export type AgentMessage = Message;
 
 /**
@@ -187,6 +205,8 @@ export interface AgentLoopConfig {
 	toolMiddlewares?: ToolMiddleware[];
 	/** Optional Runtime Host intent-before-effect contract for this invocation. */
 	effectBoundary?: EffectBoundary;
+	/** Optional best-effort observation immediately before the provider request is opened. */
+	modelRequestObserver?: ModelRequestObserver;
 	/** Optional crash-prefix gate; omitted in automatic production execution. */
 	effectGate?: EffectGate;
 	/**

@@ -26,6 +26,10 @@ export class InMemoryTelemetryContext implements TelemetryContext {
 		return [...this.#records.values()];
 	}
 
+	get contentCaptureEnabled(): boolean {
+		return this.#context.contentCaptureEnabled;
+	}
+
 	startSpan<Name extends TelemetrySpanName>(options: TelemetryStartSpanOptions<Name>): TelemetrySpan<Name> {
 		return this.#context.startSpan(options);
 	}

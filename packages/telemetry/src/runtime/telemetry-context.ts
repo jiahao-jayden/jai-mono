@@ -1,7 +1,10 @@
 import {
 	omittedTelemetryContent,
 	type TelemetryAttributeValue,
+	type TelemetryContentRecord,
 	type TelemetryContentReference,
+	type TelemetryContentSink,
+	type TelemetryContentValue,
 	type TelemetryContext,
 	type TelemetryContextOptions,
 	type TelemetryErrorCategory,
@@ -12,6 +15,7 @@ import {
 	type TelemetrySink,
 	type TelemetrySpan,
 	type TelemetrySpanAttributes,
+	type TelemetrySpanContent,
 	type TelemetrySpanName,
 	type TelemetrySpanRecord,
 	type TelemetrySpanStatus,
@@ -42,7 +46,13 @@ interface RuntimeSpanState {
 /** 宿主在组合根创建；未提供 sink 时仍是完整但无输出的安全旁路。 */
 export function createTelemetryContext(options: TelemetryContextOptions = {}): TelemetryContext {
 	const sinks = options.sinks ?? [];
-	return new RuntimeTelemetryContext(sinks, options.createTraceId, options.now, options.onSpanStateChange);
+	return new RuntimeTelemetryContext(
+		sinks,
+		options.contentSink,
+		options.createTraceId,
+		options.now,
+		options.onSpanStateChange,
+	);
 }
 
 export async function runWithTelemetrySpan<Name extends TelemetrySpanName, Value>(
@@ -63,6 +73,7 @@ export async function runWithTelemetrySpan<Name extends TelemetrySpanName, Value
 
 class RuntimeTelemetryContext implements TelemetryContext {
 	readonly #now: () => number;
+	readonly #contentSink: TelemetryContentSink | undefined;
 	readonly #onSpanStateChange: ((record: TelemetrySpanRecord) => void) | undefined;
 	readonly #sinks: readonly TelemetrySink[];
 	readonly #states = new WeakMap<object, RuntimeSpanState>();
@@ -71,14 +82,43 @@ class RuntimeTelemetryContext implements TelemetryContext {
 
 	constructor(
 		sinks: readonly TelemetrySink[],
+		contentSink: TelemetryContentSink | undefined,
 		createTraceId: (() => string) | undefined,
 		now: (() => number) | undefined,
 		onSpanStateChange: ((record: TelemetrySpanRecord) => void) | undefined,
 	) {
 		this.#sinks = [...sinks];
+		this.#contentSink = contentSink;
 		this.#now = now ?? Date.now;
 		this.#onSpanStateChange = onSpanStateChange;
 		this.#createTraceId = createTraceId;
+	}
+
+	get contentCaptureEnabled(): boolean {
+		return this.#contentSink !== undefined;
+	}
+
+	recordContent(span: object, content: TelemetrySpanContent): void {
+		const state = this.#states.get(span);
+		if (!state || state.status || !this.#contentSink) return;
+		try {
+			const projected = cloneSpanContent(content);
+			if (!projected) return;
+			const record: TelemetryContentRecord = {
+				content: projected,
+				schemaVersion: 1,
+				spanId: state.id,
+				traceId: state.traceId,
+			};
+			this.#contentSink.recordContent(record);
+		} catch {
+			return;
+		}
+	}
+
+	canCaptureContent(span: object): boolean {
+		const state = this.#states.get(span);
+		return state !== undefined && state.status === undefined && this.#contentSink !== undefined;
 	}
 
 	startSpan<Name extends TelemetrySpanName>(options: TelemetryStartSpanOptions<Name>): TelemetrySpan<Name> {
@@ -225,8 +265,17 @@ class RuntimeTelemetrySpan<Name extends TelemetrySpanName> implements TelemetryS
 		this.name = name;
 	}
 
+	get contentCaptureEnabled(): boolean {
+		return this.#context.canCaptureContent(this);
+	}
+
 	addEvent<EventName extends TelemetryEventNameForSpan<Name>>(event: TelemetryEventInput<EventName>): void {
 		this.#context.addEvent<Name>(this, event);
+		return;
+	}
+
+	recordContent(content: TelemetrySpanContent): void {
+		this.#context.recordContent(this, content);
 		return;
 	}
 
@@ -312,6 +361,45 @@ function cloneContentReference(reference: TelemetryContentReference): TelemetryC
 	if (reference.kind === "hash") return { kind: "hash", algorithm: "sha256", value: reference.value };
 	if (reference.kind === "redacted_excerpt") return { kind: "redacted_excerpt", text: reference.text };
 	return { kind: "approved_pointer", pointer: reference.pointer };
+}
+
+function cloneSpanContent(content: TelemetrySpanContent): TelemetrySpanContent | undefined {
+	if (!isRecord(content)) return undefined;
+	const input = Object.hasOwn(content, "input") ? cloneContentValue(content.input) : undefined;
+	const output = Object.hasOwn(content, "output") ? cloneContentValue(content.output) : undefined;
+	if (input === undefined && output === undefined) return undefined;
+	return {
+		...(input === undefined ? {} : { input }),
+		...(output === undefined ? {} : { output }),
+	} as TelemetrySpanContent;
+}
+
+function cloneContentValue(value: unknown): TelemetryContentValue | undefined {
+	if (value === null || typeof value === "boolean" || typeof value === "string") return value;
+	if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+	if (Array.isArray(value)) {
+		const copy: TelemetryContentValue[] = [];
+		for (const item of value) {
+			const projected = cloneContentValue(item);
+			if (projected === undefined) return undefined;
+			copy.push(projected);
+		}
+		return copy;
+	}
+	if (!isRecord(value)) return undefined;
+	const copy: Record<string, TelemetryContentValue> = {};
+	for (const [key, item] of Object.entries(value)) {
+		if (key === "__proto__" || key === "constructor" || key === "prototype") return undefined;
+		const projected = cloneContentValue(item);
+		if (projected === undefined) return undefined;
+		copy[key] = projected;
+	}
+	return copy;
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+	if (typeof value !== "object" || value === null) return false;
+	return !Array.isArray(value);
 }
 
 let nextFallbackTraceId = 1;

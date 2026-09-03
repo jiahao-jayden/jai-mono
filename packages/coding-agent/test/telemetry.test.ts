@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { InMemoryTelemetryContext } from "@jai/telemetry";
+import { type Context, zeroUsage } from "@jai/ai";
+import {
+	createTelemetryContext,
+	InMemoryTelemetryContext,
+	type TelemetryContentRecord,
+	type TelemetryContext,
+	type TelemetrySink,
+} from "@jai/telemetry";
 import { CodingAgentTelemetryObserver } from "../src/sdk";
 import type { CodingAssistantMessage } from "../src/sdk/types";
 
@@ -24,6 +31,13 @@ describe("Coding Agent telemetry observer", () => {
 			assistantEntryId: "assistant-1",
 			model: "test-model",
 			provider: "test",
+		});
+		observer.observeModelRequest({
+			assistantEntryId: "assistant-1",
+			context: {
+				systemPrompt: "private-model-system-prompt",
+				messages: [{ role: "user", content: "private-model-input", timestamp: 1 }],
+			},
 		});
 		observer.observeAgentEvent({ type: "message_start", message: toolUse });
 		observer.observeAgentEvent({
@@ -92,6 +106,224 @@ describe("Coding Agent telemetry observer", () => {
 		expect(tool.attributes).toMatchObject({ toolCallId: "call-1", toolName: "Read" });
 		expect(telemetry.spans.every((record) => record.endedAtMs !== undefined)).toBe(true);
 		expect(JSON.stringify(telemetry.spans)).not.toContain("private-tool");
+		expect(JSON.stringify(telemetry.spans)).not.toContain("private-model");
+	});
+
+	test("captures final model and tool content only through the dedicated content sink", async () => {
+		const contentRecords: TelemetryContentRecord[] = [];
+		const genericRecords: unknown[] = [];
+		const genericSink: TelemetrySink = {
+			record(record): void {
+				genericRecords.push(record);
+			},
+		};
+		const telemetry = createTelemetryContext({
+			contentSink: {
+				recordContent(record): void {
+					contentRecords.push(record);
+				},
+			},
+			sinks: [genericSink],
+		});
+		let currentContentCaptureEnabled = true;
+		const operationTelemetry: TelemetryContext = {
+			get contentCaptureEnabled(): boolean {
+				return currentContentCaptureEnabled;
+			},
+			startSpan(options) {
+				return telemetry.startSpan(options);
+			},
+		};
+		const observer = new CodingAgentTelemetryObserver({
+			telemetry: operationTelemetry,
+			operationId: "operation-content",
+			sessionId: "session-content",
+		});
+		const modelOutput: CodingAssistantMessage = {
+			...assistant("toolUse"),
+			content: [
+				{ type: "text", text: "visible assistant result" },
+				{ type: "thinking", thinking: "hidden model thought" },
+				{
+					type: "toolCall",
+					id: "call-1",
+					name: "Read",
+					arguments: { path: "secret.txt" },
+				},
+			],
+		};
+		const request: Context = {
+			systemPrompt: "private model system prompt",
+			messages: [
+				{ role: "user", content: "private user prompt", timestamp: 1 },
+				{
+					role: "user",
+					content: [
+						{ type: "text", text: "attached text" },
+						{ type: "image", image: "request-image-bytes", mimeType: "image/png" },
+					],
+					timestamp: 2,
+				},
+				{
+					role: "assistant",
+					content: [
+						{ type: "text", text: "previous visible text" },
+						{ type: "thinking", thinking: "previous hidden thought" },
+						{
+							type: "toolCall",
+							id: "previous-call",
+							name: "Read",
+							arguments: { path: "previous.txt" },
+						},
+					],
+					provider: "test",
+					model: "test-model",
+					usage: zeroUsage(),
+					stopReason: "toolUse",
+					timestamp: 3,
+				},
+				{
+					role: "toolResult",
+					toolCallId: "previous-call",
+					toolName: "Read",
+					content: [
+						{ type: "text", text: "previous tool result" },
+						{ type: "image", image: "tool-result-image-bytes", mimeType: "image/png" },
+					],
+					isError: false,
+					timestamp: 4,
+				},
+			],
+			tools: [],
+		};
+
+		observer.observeAgentEvent({ type: "agent_start" });
+		currentContentCaptureEnabled = false;
+		observer.observeAgentEvent({ type: "turn_start" });
+		observer.observeEffectEvent({
+			type: "model_reserved",
+			attemptId: "attempt-1",
+			assistantEntryId: "assistant-1",
+			model: "test-model",
+			provider: "test",
+		});
+		observer.observeModelRequest({ assistantEntryId: "assistant-1", context: request });
+		observer.observeAgentEvent({ type: "message_start", message: modelOutput });
+		observer.observeAgentEvent({ type: "message_end", message: modelOutput, entryId: "assistant-1" });
+		observer.observeEffectEvent({
+			type: "tool_reserved",
+			assistantEntryId: "assistant-1",
+			resultEntryId: "result-1",
+			toolCallId: "call-1",
+			toolName: "Read",
+		});
+		observer.observeAgentEvent({
+			type: "tool_execution_start",
+			toolCallId: "call-1",
+			toolName: "Read",
+			activityKind: "read",
+			title: "Read secret.txt",
+			args: {
+				path: "secret.txt",
+				screenshot: { type: "image", image: "tool-input-image-bytes", mimeType: "image/png" },
+			},
+		});
+		observer.observeAgentEvent({
+			type: "tool_execution_end",
+			toolCallId: "call-1",
+			toolName: "Read",
+			activityKind: "read",
+			result: {
+				content: [
+					{ type: "text", text: "final tool result" },
+					{ type: "image", image: "tool-output-image-bytes", mimeType: "image/png" },
+				],
+				details: { rows: 2 },
+			},
+			isError: false,
+		});
+		observer.observeAgentEvent({ type: "turn_end", message: modelOutput, toolResults: [] });
+		observer.observeAgentEvent({ type: "agent_end", messages: [modelOutput] });
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(contentRecords.map((record) => record.content)).toEqual([
+			{
+				input: {
+					messages: [
+						{ role: "system", content: [{ type: "text", text: "private model system prompt" }] },
+						{ role: "user", content: [{ type: "text", text: "private user prompt" }] },
+						{
+							role: "user",
+							content: [
+								{ type: "text", text: "attached text" },
+								{ type: "image", mimeType: "image/png" },
+							],
+						},
+						{
+							role: "assistant",
+							content: [
+								{ type: "text", text: "previous visible text" },
+								{
+									type: "toolCall",
+									id: "previous-call",
+									name: "Read",
+									arguments: { path: "previous.txt" },
+								},
+							],
+						},
+						{
+							role: "toolResult",
+							toolCallId: "previous-call",
+							toolName: "Read",
+							isError: false,
+							content: [
+								{ type: "text", text: "previous tool result" },
+								{ type: "image", mimeType: "image/png" },
+							],
+						},
+					],
+				},
+			},
+			{
+				output: {
+					role: "assistant",
+					content: [
+						{ type: "text", text: "visible assistant result" },
+						{ type: "toolCall", id: "call-1", name: "Read", arguments: { path: "secret.txt" } },
+					],
+				},
+			},
+			{
+				input: {
+					toolCallId: "call-1",
+					toolName: "Read",
+					arguments: {
+						path: "secret.txt",
+						screenshot: { type: "image", mimeType: "image/png" },
+					},
+				},
+			},
+			{
+				output: {
+					isError: false,
+					result: {
+						content: [
+							{ type: "text", text: "final tool result" },
+							{ type: "image", mimeType: "image/png" },
+						],
+						details: { rows: 2 },
+					},
+				},
+			},
+		]);
+		const captured = JSON.stringify(contentRecords);
+		expect(captured).not.toContain("hidden model thought");
+		expect(captured).not.toContain("previous hidden thought");
+		expect(captured).not.toContain("image-bytes");
+		expect(JSON.stringify(genericRecords)).not.toContain("private model system prompt");
+		expect(JSON.stringify(genericRecords)).not.toContain("visible assistant result");
+		expect(JSON.stringify(genericRecords)).not.toContain("final tool result");
 	});
 
 	test("已经流式发布又被丢弃的模型尝试独立结算", async () => {

@@ -111,6 +111,7 @@ describe("Runtime local telemetry configuration", () => {
 			name: "jai.run",
 			attributes: { operationId: "operation-otlp", runId: "run-otlp", sessionId: "session-otlp" },
 		});
+		run.recordContent({ input: "content-must-not-reach-local-jsonl" });
 		run.setStatus({ kind: "ok" });
 		if (configured.value.close === undefined) throw new Error("Expected configured OTLP telemetry to have a close callback");
 		await configured.value.close();
@@ -122,6 +123,7 @@ describe("Runtime local telemetry configuration", () => {
 		expect(requests[0]).toMatchObject({ path: "/api/public/otel/v1/traces" });
 		expect(requests[0].headers.get("x-langfuse-ingestion-version")).toBe("4");
 		expect(fileRecord).not.toContain("sk-server-test");
+		expect(fileRecord).not.toContain("content-must-not-reach-local-jsonl");
 	});
 
 	test("拒绝不完整或无效的 OTLP 配置，且错误不回显凭据", () => {

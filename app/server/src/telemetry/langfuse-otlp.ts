@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import type { TelemetrySink, TelemetrySpanRecord } from "@jai/telemetry";
+import type {
+	TelemetryContentRecord,
+	TelemetryContentSink,
+	TelemetryContentValue,
+	TelemetrySink,
+	TelemetrySpanContent,
+	TelemetrySpanRecord,
+} from "@jai/telemetry";
 import { type Attributes, type HrTime, SpanKind, SpanStatusCode, TraceFlags } from "@opentelemetry/api";
 import { type ExportResult, ExportResultCode } from "@opentelemetry/core";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
@@ -42,7 +49,9 @@ interface ResolvedLangfuseOtlpTelemetrySinkOptions {
  * 把已完成且已投影的 Jai span 发送到 OTLP/HTTP。调用方从不等待网络，失败与满队列
  * 都只反映在 `stats`，不会进入 Agent 的 Result 或控制流。
  */
-export class LangfuseOtlpTelemetrySink implements TelemetrySink {
+
+export class LangfuseOtlpTelemetrySink implements TelemetryContentSink, TelemetrySink {
+	readonly #contentBySpanKey = new Map<string, TelemetryContentRecord>();
 	readonly #queue: ReadableSpan[] = [];
 	readonly #stats = { dropped: 0, exported: 0, failed: 0 };
 	readonly #options: ResolvedLangfuseOtlpTelemetrySinkOptions;
@@ -59,16 +68,33 @@ export class LangfuseOtlpTelemetrySink implements TelemetrySink {
 	}
 
 	record(record: TelemetrySpanRecord): void {
+		const content = this.#takeContent(record);
 		if (this.#closed || this.#queue.length >= this.#options.maxQueueSize) {
 			this.#stats.dropped += 1;
 			return;
 		}
 		try {
-			this.#queue.push(projectOtlpSpan(record));
+			this.#queue.push(projectOtlpSpan(record, content));
 			this.#startDrain();
 		} catch {
 			this.#stats.failed += 1;
 		}
+	}
+
+	recordContent(record: TelemetryContentRecord): void {
+		if (this.#closed) return;
+		const key = `${record.traceId.length}:${record.traceId}${record.spanId}`;
+		const current = this.#contentBySpanKey.get(key);
+		if (!current && this.#contentBySpanKey.size >= this.#options.maxQueueSize) {
+			this.#stats.dropped += 1;
+			return;
+		}
+		this.#contentBySpanKey.set(key, {
+			content: mergeSpanContent(current?.content, record.content),
+			schemaVersion: 1,
+			spanId: record.spanId,
+			traceId: record.traceId,
+		});
 	}
 
 	close(): Promise<void> {
@@ -91,6 +117,15 @@ export class LangfuseOtlpTelemetrySink implements TelemetrySink {
 			Promise.resolve().then(() => this.#options.exporter.shutdown()),
 			this.#options.shutdownTimeoutMs,
 		);
+		this.#contentBySpanKey.clear();
+	}
+
+	#takeContent(record: TelemetrySpanRecord): TelemetrySpanContent | undefined {
+		const key = `${record.traceId.length}:${record.traceId}${record.id}`;
+		const cached = this.#contentBySpanKey.get(key);
+		if (!cached) return undefined;
+		this.#contentBySpanKey.delete(key);
+		return cached.content;
 	}
 
 	#startDrain(): void {
@@ -186,9 +221,9 @@ function resolvePositiveInteger(value: number | undefined, fallback: number, nam
 	return resolved;
 }
 
-function projectOtlpSpan(record: TelemetrySpanRecord): ReadableSpan {
+function projectOtlpSpan(record: TelemetrySpanRecord, content: TelemetrySpanContent | undefined): ReadableSpan {
 	const traceId = otlpIdentifier(record.traceId, 32);
-	const attributes = projectSpanAttributes(record);
+	const attributes = projectSpanAttributes(record, content);
 	return {
 		attributes,
 		droppedAttributesCount: 0,
@@ -224,7 +259,7 @@ function projectOtlpSpan(record: TelemetrySpanRecord): ReadableSpan {
 	};
 }
 
-function projectSpanAttributes(record: TelemetrySpanRecord): Attributes {
+function projectSpanAttributes(record: TelemetrySpanRecord, content: TelemetrySpanContent | undefined): Attributes {
 	const attributes: Attributes = {
 		"langfuse.observation.metadata.jai.span_name": record.name,
 		"langfuse.observation.type": record.name === "jai.model_attempt" ? "generation" : "span",
@@ -298,8 +333,29 @@ function projectSpanAttributes(record: TelemetrySpanRecord): Attributes {
 		"langfuse.observation.metadata.jai.first_output_ms",
 		attributeNumber(record.attributes, "firstOutputMs"),
 	);
+	setStringAttribute(attributes, "langfuse.observation.input", serializeContent(content?.input));
+	setStringAttribute(attributes, "langfuse.observation.output", serializeContent(content?.output));
 	if (record.name === "jai.model_attempt") projectGenerationAttributes(attributes, record);
 	return attributes;
+}
+
+function mergeSpanContent(current: TelemetrySpanContent | undefined, next: TelemetrySpanContent): TelemetrySpanContent {
+	return {
+		...(current?.input === undefined ? {} : { input: current.input }),
+		...(current?.output === undefined ? {} : { output: current.output }),
+		...(next.input === undefined ? {} : { input: next.input }),
+		...(next.output === undefined ? {} : { output: next.output }),
+	} as TelemetrySpanContent;
+}
+
+function serializeContent(value: TelemetryContentValue | undefined): string | undefined {
+	if (value === undefined) return undefined;
+	try {
+		const serialized = JSON.stringify(value);
+		return serialized === undefined ? undefined : serialized;
+	} catch {
+		return undefined;
+	}
 }
 
 function projectGenerationAttributes(attributes: Attributes, record: TelemetrySpanRecord): void {

@@ -156,6 +156,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			extensionToolPermissions,
 			extensionAuthorizedToolNames: extensionAuthorizedToolNameSet,
 			...(extensionToolCatalog ? { extensionToolCatalog } : {}),
+			modelRequestObserver: input.modelRequestTelemetryObserver,
 			enabledTools,
 			agent: input.compactionSummaryInstructions
 				? {

@@ -235,7 +235,7 @@
   "desktop.settings.status": "Status",
   "desktop.settings.telemetryBothKeysRequired": "Enter both the Langfuse public key and secret key.",
   "desktop.settings.telemetryClear": "Clear saved keys",
-  "desktop.settings.telemetryDescription": "Send coding-agent telemetry to Langfuse through OTLP. Telemetry stays disabled until you enable it.",
+  "desktop.settings.telemetryDescription": "Send coding-agent telemetry to Langfuse through OTLP, including final model messages and replies plus tool inputs and results. Telemetry stays disabled until you enable it.",
   "desktop.settings.telemetryDisableClear": "Disable and clear keys",
   "desktop.settings.telemetryEnable": "Enable telemetry",
   "desktop.settings.telemetryEndpoint": "Langfuse OTLP endpoint",

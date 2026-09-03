@@ -299,7 +299,7 @@
   "desktop.settings.credentials": "凭据",
   "desktop.settings.credentialsDescription": "值会保存在本地设置中，只发送给此 Connector。",
   "desktop.settings.telemetryEnable": "启用遥测",
-  "desktop.settings.telemetryDescription": "通过 OTLP 将 coding-agent 遥测发送到 Langfuse。启用前遥测保持关闭。",
+  "desktop.settings.telemetryDescription": "通过 OTLP 将 coding-agent 遥测发送到 Langfuse，包括最终模型消息、回复以及工具输入和结果。启用前遥测保持关闭。",
   "desktop.settings.telemetryOverride": "此 Runtime Host 由 JAI_TELEMETRY_* 环境变量配置。存在该覆盖时，本地设置为只读。",
   "desktop.settings.telemetryEndpoint": "Langfuse OTLP 端点",
   "desktop.settings.telemetryEndpointDescription": "Langfuse Cloud 或自托管实例请使用 /api/public/otel 端点。",

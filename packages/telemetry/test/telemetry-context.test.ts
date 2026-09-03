@@ -5,6 +5,7 @@ import {
 	NoopTelemetryContext,
 	omittedTelemetryContent,
 	runWithTelemetrySpan,
+	type TelemetryContentSink,
 	type TelemetryContext,
 	type TelemetrySink,
 	type TelemetrySpanAttributes,
@@ -66,6 +67,7 @@ describe("telemetry context", () => {
 		await inMemory.waitForSettledSpans();
 
 		expect(noOpResult).toBe(inMemoryResult);
+		expect(inMemory.contentCaptureEnabled).toBe(false);
 		expect(inMemory.spans).toHaveLength(1);
 	});
 
@@ -153,5 +155,59 @@ describe("telemetry context", () => {
 		});
 		expect(JSON.stringify(received[0])).not.toContain("secret value");
 		expect(JSON.stringify(received[0])).not.toContain("unexpected");
+	});
+
+	test("delivers raw content only to the dedicated content sink", async () => {
+		const genericRecords: unknown[] = [];
+		const contentRecords: unknown[] = [];
+		const genericSink: TelemetrySink = {
+			record(record): void {
+				genericRecords.push(record);
+			},
+		};
+		const contentSink: TelemetryContentSink = {
+			recordContent(record): void {
+				contentRecords.push(record);
+			},
+		};
+		const telemetry = createTelemetryContext({ contentSink, sinks: [genericSink] });
+		const run = telemetry.startSpan({ name: "jai.run", attributes: { operationId: "operation", runId: "run" } });
+		const turn = telemetry.startSpan({ name: "jai.turn", parent: run, attributes: { turnId: "turn" } });
+		const tool = telemetry.startSpan({ name: "jai.tool_call", parent: turn, attributes: { toolCallId: "tool", toolName: "read" } });
+		const input = { secret: "tool-input-secret" };
+
+		tool.recordContent({ input });
+		input.secret = "mutated-after-recording";
+		tool.recordContent({ output: { result: "tool-output-secret" } });
+		tool.setStatus({ kind: "ok" });
+		await waitForFanout();
+
+		expect(contentRecords).toEqual([
+			{
+				content: { input: { secret: "tool-input-secret" } },
+				schemaVersion: 1,
+				spanId: tool.id,
+				traceId: expect.any(String),
+			},
+			{
+				content: { output: { result: "tool-output-secret" } },
+				schemaVersion: 1,
+				spanId: tool.id,
+				traceId: expect.any(String),
+			},
+		]);
+		const genericJson = JSON.stringify(genericRecords);
+		expect(genericJson).not.toContain("tool-input-secret");
+		expect(genericJson).not.toContain("tool-output-secret");
+
+		const withoutContentSink = createTelemetryContext({ sinks: [genericSink] });
+		const noOpRun = withoutContentSink.startSpan({
+			name: "jai.run",
+			attributes: { operationId: "no-content", runId: "no-content" },
+		});
+		noOpRun.recordContent({ input: "must-not-reach-any-sink" });
+		noOpRun.setStatus({ kind: "ok" });
+		await waitForFanout();
+		expect(JSON.stringify(genericRecords)).not.toContain("must-not-reach-any-sink");
 	});
 });
