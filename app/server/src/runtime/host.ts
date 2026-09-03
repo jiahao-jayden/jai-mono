@@ -5,6 +5,7 @@ import {
 	type MessageEntry,
 	type OperationAccepted,
 	type OperationFinished,
+	type OperationRecord,
 	type OperationRecoveryVerdict,
 	recoverSessionOperations,
 	type SessionEntry,
@@ -84,6 +85,8 @@ export type RuntimeSessionEvent =
 	| {
 			readonly type: "entry_appended";
 			readonly entry: SessionEntry<JsonObject>;
+			/** Present only for a durable entry committed by an active Operation. */
+			readonly operationId?: string;
 	  }
 	| {
 			/** A durable usage ledger update, projected as a cumulative client-facing cost. */
@@ -114,6 +117,8 @@ export type RuntimeSessionEvent =
 export interface RuntimeSessionSnapshot {
 	readonly entries: readonly SessionEntry<JsonObject>[];
 	readonly leafId: string | null;
+	/** Read-only projection of existing Operation records for replay grouping. */
+	readonly operationIdByEntryId: ReadonlyMap<string, string>;
 	readonly recovery: readonly OperationRecoveryVerdict[];
 	/** Cumulative durable model cost, including discarded responses. */
 	readonly usage: { readonly cost: number };
@@ -619,7 +624,7 @@ export class RuntimeSession {
 			});
 			if (accepted.isErr()) return Result.err(this.reject(accepted.error));
 			if (this.operationDriver) this.#active = createActiveOperation(operationId);
-			this.publish({ type: "entry_appended", entry: inputEntry });
+			this.publish({ type: "entry_appended", entry: inputEntry, operationId });
 			return Result.ok({ operationId, inputEntryId });
 		});
 		if (admitted.isOk() && !this.#suspended) {
@@ -677,6 +682,7 @@ export class RuntimeSession {
 		return Result.ok({
 			entries: loaded.value.snapshot.entries,
 			leafId: loaded.value.snapshot.leafId,
+			operationIdByEntryId: operationIdByEntryId(loaded.value.operationRecords),
 			recovery: recovery.value,
 			usage: { cost: usageCost(loaded.value.operationRecords) },
 			...foreground,
@@ -1065,7 +1071,7 @@ export class RuntimeSession {
 			operationId: active.operationId,
 			runtimeConfiguration: configuration,
 			sessionStore: new RuntimeSessionStore(this.persistence, (_sessionId, entry) =>
-				this.publish({ type: "entry_appended", entry }),
+				this.publish({ type: "entry_appended", entry, operationId: active.operationId }),
 			),
 			effectBoundary: new OperationEffectBoundary({
 				sessionId: this.id,
@@ -1446,6 +1452,22 @@ function hasPendingInputs(verdict: OperationRecoveryVerdict | undefined): boolea
 		(verdict?.status === "ready" || verdict?.status === "provider_interrupted") &&
 		(verdict.pendingInputs?.length ?? 0) > 0
 	);
+}
+
+function operationIdByEntryId(records: readonly OperationRecord[]): ReadonlyMap<string, string> {
+	const result = new Map<string, string>();
+	for (const record of records) {
+		if (record.type === "operation_accepted") {
+			result.set(record.inputEntryId, record.operationId);
+			continue;
+		}
+		if (record.type === "model_attempted") {
+			result.set(record.assistantEntryId, record.operationId);
+			continue;
+		}
+		if (record.type === "tool_dispatched") result.set(record.resultEntryId, record.operationId);
+	}
+	return result;
 }
 
 function recoverDurableState(

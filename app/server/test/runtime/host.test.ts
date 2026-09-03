@@ -66,6 +66,12 @@ describe("RuntimeHost", () => {
       status: "ready",
       operationId: "operation-1",
     });
+
+    const snapshot = await opened.value.snapshot();
+    if (snapshot.isErr()) throw snapshot.error;
+    expect(snapshot.value.operationIdByEntryId.get("operation-1:input")).toBe(
+      "operation-1",
+    );
   });
 
   test("resumes an existing durable Session without creating another one", async () => {

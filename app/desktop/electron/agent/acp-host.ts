@@ -468,19 +468,23 @@ export class DesktopAcpAgentHost {
 			return;
 		}
 		const previous = runtime.items.get(id);
+		const previousThinking = previous?.kind === "thinking" ? previous : undefined;
+		const operationId = operationIdFromMetadata(update._meta);
+		const turnId = previousThinking?.turnId ?? operationId;
+		if (!turnId) return;
 		const text = contentText(update.content);
 		const item: DesktopThinkingItem = {
 			kind: "thinking",
 			id,
-			turnId: update.messageId,
+			turnId,
 			activityId: update.messageId,
 			text:
 				update.content === null
 					? ""
 					: update.sessionUpdate === "agent_thought"
 						? text
-						: previous?.kind === "thinking"
-							? previous.text + text
+						: previousThinking
+							? previousThinking.text + text
 							: text,
 			status: update.sessionUpdate === "agent_thought" ? "complete" : "streaming",
 			timestamp: Date.now(),
@@ -494,6 +498,9 @@ export class DesktopAcpAgentHost {
 		const id = `tool:${update.toolCallId}`;
 		const previous = runtime.items.get(id);
 		const previousTool = previous?.kind === "tool" ? previous : undefined;
+		const operationId = operationIdFromMetadata(update._meta);
+		const turnId = previousTool?.turnId ?? operationId;
+		if (!turnId) return;
 		const status = update.status === "completed" || update.status === "failed" ? "complete" : "running";
 		const title = typeof update.title === "string" ? update.title : (previousTool?.toolName ?? "Tool");
 		let bufferedTerminalOutput = "";
@@ -507,7 +514,7 @@ export class DesktopAcpAgentHost {
 		const item: DesktopToolItem = {
 			kind: "tool",
 			id,
-			turnId: previousTool?.turnId ?? id,
+			turnId,
 			activityId: previousTool?.activityId ?? id,
 			toolCallId: update.toolCallId,
 			toolName: title,
@@ -735,6 +742,11 @@ function activityKind(toolName: string): DesktopToolActivityKind {
 	if (normalized.includes("bash") || normalized.includes("shell") || normalized.includes("execute")) return "execute";
 	if (normalized.includes("call") || normalized.includes("connector")) return "call";
 	return "operation";
+}
+
+function operationIdFromMetadata(value: unknown): string | undefined {
+	if (!isRecord(value) || !isRecord(value.jai) || typeof value.jai.operationId !== "string") return undefined;
+	return value.jai.operationId;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

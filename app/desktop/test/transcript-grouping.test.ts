@@ -60,6 +60,36 @@ describe("transcript grouping", () => {
 		expect(markup).toContain("1 step · 1 action");
 	});
 
+	test("同一运行内的工具只形成一个外层工作过程", () => {
+		const firstTool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:read-1",
+			turnId: "operation-1",
+			activityId: "tool:read-1",
+			toolCallId: "read-1",
+			toolName: "Read",
+			activityKind: "read",
+			status: "complete",
+		};
+		const secondTool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			...firstTool,
+			id: "tool:search-1",
+			activityId: "tool:search-1",
+			toolCallId: "search-1",
+			toolName: "Grep",
+			activityKind: "search",
+		};
+
+		expect(groupTranscriptItems([firstTool, secondTool])).toEqual([
+			{ id: "work:operation-1:tool:read-1", items: [firstTool, secondTool] },
+		]);
+		const markup = renderToStaticMarkup(
+			createElement(TranscriptItems, { items: [firstTool, secondTool], loading: false }),
+		);
+		expect(markup).toContain("2 steps · 2 actions");
+		expect((markup.match(/data-slot=\"tool-timeline\"/g) ?? []).length).toBe(1);
+	});
+
 	test("使用 durable ACP diff 路径计数已变更文件", () => {
 		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
 			kind: "tool",

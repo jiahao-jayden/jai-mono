@@ -583,6 +583,7 @@ describe("ACP v2 Agent adapter", () => {
 						kind: "read",
 						status: "in_progress",
 						rawInput: { path: "package.json" },
+						_meta: { jai: { operationId: "operation-1" } },
 					},
 				},
 			},
@@ -595,6 +596,7 @@ describe("ACP v2 Agent adapter", () => {
 						sessionUpdate: "tool_call_content_chunk",
 						toolCallId: "tool-1",
 						content: { type: "content", content: { type: "text", text: "found it" } },
+						_meta: { jai: { operationId: "operation-1" } },
 					},
 				},
 			},
@@ -628,7 +630,6 @@ describe("ACP v2 Agent adapter", () => {
 			params: { sessionId: "session-1", prompt: [{ type: "text", text: "run build" }] },
 		});
 		await driver.opened;
-
 		driver.emit({
 			type: "tool_started",
 			toolCallId: "tool-1",
@@ -654,6 +655,7 @@ describe("ACP v2 Agent adapter", () => {
 						status: "in_progress",
 						rawInput: { command: "bun test" },
 						content: [{ type: "terminal", terminalId: "terminal:tool-1" }],
+						_meta: { jai: { operationId: "operation-1" } },
 					},
 				},
 			},
@@ -706,6 +708,7 @@ describe("ACP v2 Agent adapter", () => {
 							{ type: "content", content: { type: "text", text: "1 pass" } },
 							{ type: "terminal", terminalId: "terminal:tool-1" },
 						],
+						_meta: { jai: { operationId: "operation-1" } },
 					},
 				},
 			},
@@ -746,6 +749,37 @@ describe("ACP v2 Agent adapter", () => {
 			params: { sessionId: "session-1", prompt: [{ type: "text", text: "write a file" }] },
 		});
 		await driver.opened;
+		const attempted = await persistence.appendOperation({
+			sessionId: "session-1",
+			record: {
+				type: "model_attempted",
+				operationId: "operation-1",
+				attemptId: "attempt-1",
+				assistantEntryId: "assistant-1",
+				modelSnapshotId: "test:test-model",
+				timestamp: "2026-09-03T00:00:00.000Z",
+			},
+		});
+		if (attempted.isErr()) throw attempted.error;
+		await driver.appendAssistantToolCall({ toolCallId: "tool-1", toolName: "Write" });
+		expect(live.drain()).toEqual([
+			{
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: {
+					sessionId: "session-1",
+					update: {
+						sessionUpdate: "tool_call_update",
+						toolCallId: "tool-1",
+						title: "Write",
+						kind: "other",
+						status: "pending",
+						rawInput: {},
+						_meta: { jai: { operationId: "operation-1" } },
+					},
+				},
+			},
+		]);
 
 		driver.emit({
 			type: "tool_started",
@@ -768,10 +802,27 @@ describe("ACP v2 Agent adapter", () => {
 						kind: "edit",
 						status: "in_progress",
 						rawInput: { path: "index.ts", content: "export {};" },
+						_meta: { jai: { operationId: "operation-1" } },
 					},
 				},
 			},
 		]);
+
+		const dispatched = await persistence.appendOperation({
+			sessionId: "session-1",
+			record: {
+				type: "tool_dispatched",
+				operationId: "operation-1",
+				toolCallId: "tool-1",
+				toolName: "Write",
+				assistantEntryId: "assistant-1",
+				args: { path: "index.ts", content: "export {};" },
+				argsHash: "test",
+				resultEntryId: "result:tool-1",
+				timestamp: "2026-09-03T00:00:00.000Z",
+			},
+		});
+		if (dispatched.isErr()) throw dispatched.error;
 
 		await driver.appendToolResult({
 			toolCallId: "tool-1",
@@ -793,6 +844,7 @@ describe("ACP v2 Agent adapter", () => {
 						{ type: "content", content: { type: "text", text: "Created 10 bytes to index.ts" } },
 						{ type: "diff", changes: [{ operation: "add", path: "/workspace/index.ts" }] },
 					],
+					_meta: { jai: { operationId: "operation-1" } },
 				},
 			},
 		} satisfies import("../../../src/protocol/acp-v2").AcpJsonRpcNotification;
@@ -1259,6 +1311,39 @@ class ProjectionDriver implements RuntimeOperationDriver {
 						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 					},
 					stopReason: "stop",
+					timestamp: Date.now(),
+				},
+			},
+			stored.revision,
+		);
+	}
+
+	async appendAssistantToolCall(input: { readonly toolCallId: string; readonly toolName: string }): Promise<void> {
+		const operation = this.#input;
+		if (!operation) throw new Error("Operation was not opened");
+		const stored = await operation.sessionStore.load(operation.sessionId);
+		if (!stored) throw new Error("Session was not available");
+		await operation.sessionStore.append(
+			operation.sessionId,
+			{
+				type: "message",
+				id: "assistant-1",
+				parentId: stored.snapshot.leafId,
+				timestamp: "2026-09-03T00:00:00.000Z",
+				message: {
+					role: "assistant",
+					content: [{ type: "toolCall", id: input.toolCallId, name: input.toolName, arguments: {} }],
+					provider: "test",
+					model: "test-model",
+					usage: {
+						input: 0,
+						output: 0,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 0,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
+					stopReason: "toolUse",
 					timestamp: Date.now(),
 				},
 			},

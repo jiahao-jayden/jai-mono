@@ -8,7 +8,7 @@ import type {
 	LocalAcpV2Client,
 } from "@jai/server/acp-client";
 import { DesktopAcpAgentHost } from "../electron/agent/acp-host";
-import type { DesktopAgentEventEnvelope } from "../shared/desktop-rpc";
+import type { DesktopAgentEventEnvelope, DesktopToolItem } from "../shared/desktop-rpc";
 
 describe("DesktopAcpAgentHost", () => {
 	test("connects through ACP, configures a session, and projects updates without a Coding Agent", async () => {
@@ -316,8 +316,9 @@ describe("DesktopAcpAgentHost", () => {
 					toolCallId: "tool-1",
 					title: "Run bun test",
 					kind: "execute",
-					status: "in_progress",
-					content: [{ type: "terminal", terminalId: "terminal:tool-1" }],
+						status: "in_progress",
+						content: [{ type: "terminal", terminalId: "terminal:tool-1" }],
+						_meta: { jai: { operationId: "operation-1" } },
 				},
 			},
 		});
@@ -346,10 +347,11 @@ describe("DesktopAcpAgentHost", () => {
 					sessionUpdate: "tool_call_update",
 					toolCallId: "tool-1",
 					status: "completed",
-					content: [
-						{ type: "content", content: { type: "text", text: "1 pass" } },
-						{ type: "terminal", terminalId: "terminal:tool-1" },
-					],
+						content: [
+							{ type: "content", content: { type: "text", text: "1 pass" } },
+							{ type: "terminal", terminalId: "terminal:tool-1" },
+						],
+						_meta: { jai: { operationId: "operation-1" } },
 				},
 			},
 		});
@@ -378,10 +380,11 @@ describe("DesktopAcpAgentHost", () => {
 					title: "Write index.ts",
 					kind: "edit",
 					status: "completed",
-					content: [
-						{ type: "content", content: { type: "text", text: "Created index.ts" } },
-						{ type: "diff", changes: [{ operation: "add", path: "/workspace/index.ts" }] },
-					],
+						content: [
+							{ type: "content", content: { type: "text", text: "Created index.ts" } },
+							{ type: "diff", changes: [{ operation: "add", path: "/workspace/index.ts" }] },
+						],
+						_meta: { jai: { operationId: "operation-1" } },
 				},
 			},
 		});
@@ -393,6 +396,38 @@ describe("DesktopAcpAgentHost", () => {
 				fileChanges: [{ operation: "add", path: "/workspace/index.ts" }],
 			}),
 		]);
+		host.close();
+	});
+
+	test("projects tools from one ACP operation into the same transcript turn", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+
+		for (const toolCallId of ["tool-1", "tool-2"]) {
+			client.publish({
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: {
+					sessionId: "session-1",
+					update: {
+						sessionUpdate: "tool_call_update",
+						toolCallId,
+						title: "Read package.json",
+						kind: "read",
+						status: "completed",
+						_meta: { jai: { operationId: "operation-1" } },
+					},
+				},
+			});
+		}
+
+		const tools = host.getSnapshot("session-1").items.filter((item): item is DesktopToolItem => item.kind === "tool");
+		expect(tools).toHaveLength(2);
+		expect(tools.map((tool) => tool.turnId)).toEqual(["operation-1", "operation-1"]);
 		host.close();
 	});
 

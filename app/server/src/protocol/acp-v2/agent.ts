@@ -497,7 +497,9 @@ function configOptionUpdate(
 
 function projectSnapshot(sessionId: string, snapshot: RuntimeSessionSnapshot): readonly AcpJsonRpcNotification[] {
 	return [
-		...branchOf(snapshot.entries, snapshot.leafId).flatMap((entry) => projectEntry(sessionId, entry)),
+		...branchOf(snapshot.entries, snapshot.leafId).flatMap((entry) =>
+			projectEntry(sessionId, entry, snapshot.operationIdByEntryId.get(entry.id)),
+		),
 		...(snapshot.usage.cost === 0 ? [] : [usageUpdate(sessionId, snapshot.usage.cost)]),
 		stateUpdate(sessionId, snapshot.state, snapshot.stopReason),
 	];
@@ -506,11 +508,11 @@ function projectSnapshot(sessionId: string, snapshot: RuntimeSessionSnapshot): r
 function projectRuntimeEvent(sessionId: string, event: RuntimeSessionEvent): readonly AcpJsonRpcNotification[] {
 	switch (event.type) {
 		case "entry_appended":
-			return projectEntry(sessionId, event.entry);
+			return projectEntry(sessionId, event.entry, event.operationId);
 		case "usage_changed":
 			return [usageUpdate(sessionId, event.cost)];
 		case "operation_event":
-			return projectOperationEvent(sessionId, event.event);
+			return projectOperationEvent(sessionId, event.operationId, event.event);
 		case "state_changed":
 			return [stateUpdate(sessionId, event.state, event.stopReason)];
 		case "configuration_changed":
@@ -554,7 +556,11 @@ function permissionDecision(response: unknown, canAlwaysAllow: boolean): "deny" 
 	}
 }
 
-function projectEntry(sessionId: string, entry: SessionEntry): readonly AcpJsonRpcNotification[] {
+function projectEntry(
+	sessionId: string,
+	entry: SessionEntry,
+	operationId?: string,
+): readonly AcpJsonRpcNotification[] {
 	if (entry.type === "app_state") {
 		return Object.hasOwn(entry.value, "todos") ? [planUpdate(sessionId, todosFromAppState(entry.value))] : [];
 	}
@@ -573,12 +579,12 @@ function projectEntry(sessionId: string, entry: SessionEntry): readonly AcpJsonR
 			const content = agentMessageContent(entry.message);
 			return [
 				...(content.length > 0 ? [agentMessageUpdate(sessionId, entry.id, content)] : []),
-				...agentThoughtUpdate(sessionId, entry.id, entry.message),
-				...toolCallsFromAssistant(sessionId, entry.message),
+				...agentThoughtUpdate(sessionId, entry.id, entry.message, operationId),
+				...toolCallsFromAssistant(sessionId, entry.message, operationId),
 			];
 		}
 		case "toolResult":
-			return toolResultUpdate(sessionId, entry.message);
+			return toolResultUpdate(sessionId, entry.message, operationId);
 	}
 }
 
@@ -625,6 +631,7 @@ function agentThoughtUpdate(
 	sessionId: string,
 	messageId: string,
 	message: Extract<AgentMessage, { readonly role: "assistant" }>,
+	operationId?: string,
 ): readonly AcpJsonRpcNotification[] {
 	const content = message.content.flatMap((part) =>
 		part.type === "thinking" ? [{ type: "text", text: part.thinking } satisfies AcpPromptBlock] : [],
@@ -636,7 +643,12 @@ function agentThoughtUpdate(
 			method: "session/update",
 			params: {
 				sessionId,
-				update: { sessionUpdate: "agent_thought", messageId: `${messageId}:thought`, content },
+				update: {
+					sessionUpdate: "agent_thought",
+					messageId: `${messageId}:thought`,
+					content,
+					...operationMetadata(operationId),
+				},
 			},
 		},
 	];
@@ -645,6 +657,7 @@ function agentThoughtUpdate(
 function toolCallsFromAssistant(
 	sessionId: string,
 	message: Extract<AgentMessage, { readonly role: "assistant" }>,
+	operationId?: string,
 ): readonly AcpJsonRpcNotification[] {
 	return message.content.flatMap((part) => {
 		if (part.type !== "toolCall") return [];
@@ -655,6 +668,7 @@ function toolCallsFromAssistant(
 				kind: "other",
 				status: "pending",
 				rawInput: jsonObject(part.arguments),
+				operationId,
 			}),
 		];
 	});
@@ -663,6 +677,7 @@ function toolCallsFromAssistant(
 function toolResultUpdate(
 	sessionId: string,
 	message: Extract<AgentMessage, { readonly role: "toolResult" }>,
+	operationId?: string,
 ): readonly AcpJsonRpcNotification[] {
 	const content: object[] = [];
 	for (const part of message.content) {
@@ -681,6 +696,7 @@ function toolResultUpdate(
 			toolCallId: message.toolCallId,
 			status: message.isError ? "failed" : "completed",
 			content,
+			operationId,
 		}),
 	];
 	// The result Session entry is T2. Only now may ACP learn that the display
@@ -691,6 +707,7 @@ function toolResultUpdate(
 
 function projectOperationEvent(
 	sessionId: string,
+	operationId: string,
 	event: Extract<RuntimeSessionEvent, { readonly type: "operation_event" }>["event"],
 ): readonly AcpJsonRpcNotification[] {
 	switch (event.type) {
@@ -698,9 +715,17 @@ function projectOperationEvent(
 			// RuntimeSession converts this durable ledger signal into `usage_changed`.
 			return [];
 		case "message_chunk":
-			return [messageChunkUpdate(sessionId, event.messageId, event.channel, { type: "text", text: event.text })];
+			return [
+				messageChunkUpdate(
+					sessionId,
+					event.messageId,
+					event.channel,
+					{ type: "text", text: event.text },
+					event.channel === "thought" ? operationId : undefined,
+				),
+			];
 		case "message_cleared":
-			return [messageClearUpdate(sessionId, event.messageId, event.channel)];
+			return [messageClearUpdate(sessionId, event.messageId, event.channel, event.channel === "thought" ? operationId : undefined)];
 		case "tool_started": {
 			const updates = [
 				toolCallUpdate(sessionId, {
@@ -710,6 +735,7 @@ function projectOperationEvent(
 					status: "in_progress",
 					rawInput: event.rawInput,
 					...(event.terminal ? { content: [terminalReference(event.terminal.terminalId)] } : {}),
+					operationId,
 				}),
 			];
 			if (event.terminal) {
@@ -734,6 +760,7 @@ function projectOperationEvent(
 							sessionUpdate: "tool_call_content_chunk",
 							toolCallId: event.toolCallId,
 							content: { type: "content", content: operationContent(event.content) },
+							...operationMetadata(operationId),
 						},
 					},
 				},
@@ -755,6 +782,7 @@ function messageChunkUpdate(
 	messageId: string,
 	channel: "agent" | "thought",
 	content: AcpPromptBlock,
+	operationId?: string,
 ): AcpJsonRpcNotification {
 	return {
 		jsonrpc: "2.0",
@@ -765,6 +793,7 @@ function messageChunkUpdate(
 				sessionUpdate: channel === "agent" ? "agent_message_chunk" : "agent_thought_chunk",
 				messageId,
 				content,
+				...operationMetadata(operationId),
 			},
 		},
 	};
@@ -774,6 +803,7 @@ function messageClearUpdate(
 	sessionId: string,
 	messageId: string,
 	channel: "agent" | "thought",
+	operationId?: string,
 ): AcpJsonRpcNotification {
 	return {
 		jsonrpc: "2.0",
@@ -784,6 +814,7 @@ function messageClearUpdate(
 				sessionUpdate: channel === "agent" ? "agent_message" : "agent_thought",
 				messageId,
 				content: null,
+				...operationMetadata(operationId),
 			},
 		},
 	};
@@ -798,13 +829,22 @@ function toolCallUpdate(
 		readonly status?: "pending" | "in_progress" | "completed" | "failed";
 		readonly rawInput?: Readonly<Record<string, JsonValue>>;
 		readonly content?: readonly object[];
+		readonly operationId?: string;
 	},
 ): AcpJsonRpcNotification {
+	const { operationId, ...toolUpdate } = update;
 	return {
 		jsonrpc: "2.0",
 		method: "session/update",
-		params: { sessionId, update: { sessionUpdate: "tool_call_update", ...update } },
+		params: {
+			sessionId,
+			update: { sessionUpdate: "tool_call_update", ...toolUpdate, ...operationMetadata(operationId) },
+		},
 	};
+}
+
+function operationMetadata(operationId: string | undefined): { readonly _meta?: { readonly jai: { readonly operationId: string } } } {
+	return operationId ? { _meta: { jai: { operationId } } } : {};
 }
 
 function terminalIdForTool(toolName: string, toolCallId: string): string | undefined {
