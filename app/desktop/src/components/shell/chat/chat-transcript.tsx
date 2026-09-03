@@ -327,7 +327,8 @@ function WorkProcess({ group, settled }: { readonly group: WorkGroup; readonly s
 			(item.kind === "tool" && item.status === "running"),
 	);
 	const steps = workTimelineSteps(group.items, intl);
-	const [open, setOpen] = useState(running);
+	const hasWebSearchResults = group.items.some((item) => item.kind === "tool" && item.webSearchResults !== undefined);
+	const [open, setOpen] = useState(running || hasWebSearchResults);
 
 	useEffect(() => {
 		if (running) {
@@ -336,6 +337,10 @@ function WorkProcess({ group, settled }: { readonly group: WorkGroup; readonly s
 			setOpen(false);
 		}
 	}, [running, settled]);
+
+	useEffect(() => {
+		if (hasWebSearchResults) setOpen(true);
+	}, [hasWebSearchResults]);
 
 	const anchorItem = group.items.at(-1);
 	if (steps.length === 0) return null;
@@ -401,17 +406,35 @@ export function workTimelineSteps(items: readonly WorkItem[], intl: IntlShape): 
 			};
 		}
 
-		const presentation = toolPresentation(tools[0]!, running, intl);
 		const details = toolClusterDetails(cluster.narrations, tools, intl);
+		const webSearchResults = tools.flatMap((tool) => tool.webSearchResults ?? []);
+		const hasWebSearchResults = tools.some((tool) => tool.webSearchResults !== undefined);
+		const presentation = toolPresentation(tools[0]!, running, intl);
+		const label = hasWebSearchResults
+			? webSearchLabel(tools, running, intl)
+			: presentation.label;
 		return {
 			id: cluster.id,
-			verb: presentation.label,
-			chip: toolClusterChip(tools, intl),
+			verb: label,
+			...(hasWebSearchResults ? {} : { chip: toolClusterChip(tools, intl) }),
 			icon: presentation.icon,
 			active: running,
 			...(details ? { details } : {}),
+			...(hasWebSearchResults ? { webSearchResults } : {}),
 		};
 	});
+}
+
+function webSearchLabel(tools: readonly DesktopToolItem[], running: boolean, intl: IntlShape): string {
+	const tool = tools.find((item) => item.webSearchResults !== undefined);
+	if (!tool) return intl.formatMessage(running ? desktopMessages.transcriptWebSearching : desktopMessages.transcriptWebSearchResults);
+	if (!isGenericWebSearchToolName(tool.toolName)) return tool.toolName;
+	if (tool.searchQuery) return tool.searchQuery;
+	return intl.formatMessage(running ? desktopMessages.transcriptWebSearching : desktopMessages.transcriptWebSearchResults);
+}
+
+function isGenericWebSearchToolName(value: string): boolean {
+	return value.trim().toLowerCase().replaceAll(/[_-]/g, " ") === "web search";
 }
 
 function workTimelineClusters(items: readonly WorkItem[]): readonly WorkTimelineCluster[] {

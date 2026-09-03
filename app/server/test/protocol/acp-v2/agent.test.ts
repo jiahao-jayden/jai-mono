@@ -557,6 +557,15 @@ describe("ACP v2 Agent adapter", () => {
 			toolCallId: "tool-1",
 			content: { type: "text", text: "found it" },
 		});
+		driver.emit({
+			type: "tool_details",
+			toolCallId: "tool-1",
+			toolName: "web_search",
+			webSearch: {
+				provider: "exa",
+				results: [{ title: "Jai release notes", url: "https://example.com/releases" }],
+			},
+		});
 
 		expect(agent.drain()).toEqual([
 			{
@@ -597,6 +606,27 @@ describe("ACP v2 Agent adapter", () => {
 						toolCallId: "tool-1",
 						content: { type: "content", content: { type: "text", text: "found it" } },
 						_meta: { jai: { operationId: "operation-1" } },
+					},
+				},
+			},
+			{
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: {
+					sessionId: "session-1",
+					update: {
+						sessionUpdate: "tool_call_update",
+						toolCallId: "tool-1",
+						status: "completed",
+						_meta: {
+							jai: {
+								operationId: "operation-1",
+								webSearch: {
+									provider: "exa",
+									results: [{ title: "Jai release notes", url: "https://example.com/releases" }],
+								},
+							},
+						},
 					},
 				},
 			},

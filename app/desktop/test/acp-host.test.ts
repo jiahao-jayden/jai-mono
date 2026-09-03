@@ -256,6 +256,44 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
+	test("cancels a pending ACP permission when the Session becomes idle", async () => {
+		const client = new FakeAcpClient();
+		const events: DesktopAgentEventEnvelope[] = [];
+		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+		client.requestFromHost({
+			jsonrpc: "2.0",
+			id: 19,
+			method: "session/request_permission",
+			params: {
+				sessionId: "session-1",
+				title: "Search the public web",
+				subject: { type: "tool_call", toolCall: { toolCallId: "tool-1", title: "web_search" } },
+				options: [{ optionId: "allow-once", name: "Allow once", kind: "allow_once" }],
+			},
+		});
+
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: { sessionId: "session-1", update: { sessionUpdate: "state_update", state: "idle" } },
+		});
+
+		expect(client.responses).toContainEqual({
+			jsonrpc: "2.0",
+			id: 19,
+			result: { outcome: { outcome: "cancelled" } },
+		});
+		expect(host.getSnapshot("session-1").items).toContainEqual(
+			expect.objectContaining({ kind: "permission", status: "cancelled" }),
+		);
+		expect(events.at(-1)).toMatchObject({ sessionId: "session-1", event: { type: "status", status: "idle" } });
+		host.close();
+	});
+
 	test("round-trips the ACP v2 request-permission schema fixture", async () => {
 		const client = new FakeAcpClient();
 		const events: DesktopAgentEventEnvelope[] = [];
@@ -359,6 +397,127 @@ describe("DesktopAcpAgentHost", () => {
 		expect(host.getSnapshot("session-1").items).toEqual([
 			expect.objectContaining({ kind: "tool", toolCallId: "tool-1", status: "complete", details: "1 pass" }),
 		]);
+		host.close();
+	});
+
+	test("projects Web Search metadata as a filtered Desktop tool result list", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "tool_call_update",
+					toolCallId: "tool-1",
+					title: "Search web for release notes",
+					kind: "search",
+					status: "in_progress",
+					rawInput: { query: "Jai release notes" },
+					_meta: { jai: { operationId: "operation-1" } },
+				},
+			},
+		});
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "tool_call_update",
+					toolCallId: "tool-1",
+					status: "completed",
+					_meta: {
+						jai: {
+							operationId: "operation-1",
+							webSearch: {
+								provider: "exa",
+								results: [
+									{ title: "Jai releases", url: "https://example.com/releases" },
+									{ title: "Unsafe", url: "file:///etc/passwd" },
+									{ title: "Missing URL" },
+								],
+							},
+						},
+					},
+				},
+			},
+		});
+
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({
+				kind: "tool",
+				toolCallId: "tool-1",
+				status: "complete",
+				searchQuery: "Jai release notes",
+				webSearchResults: [{ title: "Jai releases", url: "https://example.com/releases" }],
+			}),
+		]);
+		host.close();
+	});
+
+	test("parses durable Web Search text into the Desktop source list", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "tool_call_update",
+					toolCallId: "tool-1",
+					title: "web_search",
+					kind: "search",
+					status: "in_progress",
+					rawInput: { query: "AI daily news" },
+					_meta: { jai: { operationId: "operation-1" } },
+				},
+			},
+		});
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "tool_call_update",
+					toolCallId: "tool-1",
+					status: "completed",
+					content: [
+						{
+							type: "content",
+							content: {
+								type: "text",
+								text: "Provider: anysearch\n\n1. AI Daily\nhttps://example.com/ai-daily\nLatest AI news\n\n2. Release notes\nhttps://docs.example.com/releases",
+							},
+						},
+					],
+					_meta: { jai: { operationId: "operation-1" } },
+				},
+			},
+		});
+
+		expect(host.getSnapshot("session-1").items).toContainEqual(
+			expect.objectContaining({
+				kind: "tool",
+				toolCallId: "tool-1",
+				status: "complete",
+				webSearchResults: [
+					{ title: "AI Daily", url: "https://example.com/ai-daily" },
+					{ title: "Release notes", url: "https://docs.example.com/releases" },
+				],
+			}),
+		);
 		host.close();
 	});
 

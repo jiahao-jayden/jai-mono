@@ -16,6 +16,7 @@ export type { ResolvedRuntimeTelemetry, ResolveRuntimeTelemetryOptions } from ".
 export { RuntimeTelemetryConfigurationInvalid, resolveRuntimeTelemetry } from "./local";
 export type {
 	OpenRuntimeTelemetryControllerOptions,
+	RuntimeTelemetryCredentialId,
 	RuntimeTelemetrySettingsInput,
 	RuntimeTelemetrySettingsReadError,
 	RuntimeTelemetrySettingsSnapshot,

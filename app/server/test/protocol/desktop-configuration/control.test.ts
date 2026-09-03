@@ -66,6 +66,130 @@ describe("Desktop configuration control", () => {
 		}
 	});
 
+	test("reveals Web Search credentials only for supported credential ids", async () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const settings = new SqliteRuntimeAgentSettings(database);
+			const saved = settings.write({
+				revision: null,
+				model: "",
+				providers: [],
+				webSearch: {
+					providers: [{ id: "parallel", enabled: false, apiKey: "parallel-secret-1234" }],
+				},
+			});
+			if (saved.isErr()) throw saved.error;
+			const control = new DesktopConfigurationControl(settings);
+
+			const revealed = await control.handle({
+				jsonrpc: "2.0",
+				id: 1,
+				method: "jai/desktop-configuration/reveal-web-search-api-key",
+				params: { credentialId: "parallel" },
+			});
+			expect(revealed).toEqual([
+				{
+					jsonrpc: "2.0",
+					id: 1,
+					result: { credentialId: "parallel", apiKey: "parallel-secret-1234" },
+				},
+			]);
+
+			const invalid = await control.handle({
+				jsonrpc: "2.0",
+				id: 2,
+				method: "jai/desktop-configuration/reveal-web-search-api-key",
+				params: { credentialId: "unknown" },
+			});
+			expect(invalid).toEqual([
+				{
+					jsonrpc: "2.0",
+					id: 2,
+					error: { code: -32602, message: "Invalid Web Search credential reveal parameters" },
+				},
+			]);
+		} finally {
+			database.close();
+		}
+	});
+
+	test("reveals Connector and telemetry credentials only through explicit allowlisted requests", async () => {
+		const dataDirectory = await mkdtemp(join(tmpdir(), "jai-desktop-credential-control-"));
+		const database = new DatabaseSync(":memory:");
+		try {
+			const settings = new SqliteRuntimeAgentSettings(database);
+			const saved = settings.write({
+				revision: null,
+				model: "",
+				providers: [],
+				connector: {
+					policy: { default: "ask", actions: {} },
+					connectors: { context7: { credentials: { apiKey: "ctx-secret" } } },
+				},
+			});
+			if (saved.isErr()) throw saved.error;
+			const telemetry = await RuntimeTelemetryController.open({
+				dataDirectory,
+				database,
+				environment: {},
+				errorOutput: { write() {} },
+			});
+			if (telemetry.isErr()) throw telemetry.error;
+			const configured = await telemetry.value.save({
+				credentialRevision: null,
+				enabled: false,
+				exporter: "langfuse-otlp",
+				policyRevision: null,
+				publicKey: "pk-control",
+				secretKey: "sk-control",
+			});
+			if (configured.isErr()) throw configured.error;
+			const control = new DesktopConfigurationControl(settings, undefined, undefined, undefined, telemetry.value);
+
+			const connector = await control.handle({
+				jsonrpc: "2.0",
+				id: 1,
+				method: "jai/desktop-configuration/reveal-connector-credential",
+				params: { connectorId: "context7", credentialKey: "apiKey" },
+			});
+			expect(connector).toEqual([
+				{
+					jsonrpc: "2.0",
+					id: 1,
+					result: { connectorId: "context7", credentialKey: "apiKey", value: "ctx-secret" },
+				},
+			]);
+
+			const telemetryReveal = await control.handle({
+				jsonrpc: "2.0",
+				id: 2,
+				method: "jai/desktop-configuration/telemetry/reveal-credential",
+				params: { credentialId: "secret" },
+			});
+			expect(telemetryReveal).toEqual([
+				{ jsonrpc: "2.0", id: 2, result: { credentialId: "secret", value: "sk-control" } },
+			]);
+
+			const invalid = await control.handle({
+				jsonrpc: "2.0",
+				id: 3,
+				method: "jai/desktop-configuration/telemetry/reveal-credential",
+				params: { credentialId: "unknown" },
+			});
+			expect(invalid).toEqual([
+				{
+					jsonrpc: "2.0",
+					id: 3,
+					error: { code: -32602, message: "Invalid telemetry credential reveal parameters" },
+				},
+			]);
+			await telemetry.value.close();
+		} finally {
+			database.close();
+			await rm(dataDirectory, { recursive: true, force: true });
+		}
+	});
+
 	test("projects Host-owned Model Catalog metadata and never accepts a client cache", async () => {
 		const database = new DatabaseSync(":memory:");
 		try {

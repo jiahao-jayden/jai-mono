@@ -14,6 +14,14 @@ export interface RuntimeQueuedInput {
 	readonly text: string;
 }
 
+export interface RuntimeWebSearchDetails {
+	readonly provider: string;
+	readonly results: readonly {
+		readonly title: string;
+		readonly url: string;
+	}[];
+}
+
 /**
  * Whitelisted, disposable progress emitted by a running Operation.
  *
@@ -74,6 +82,13 @@ export type RuntimeOperationEvent =
 			readonly type: "terminal_output";
 			readonly terminalId: string;
 			readonly text: string;
+	  }
+	| {
+			/** Structured, display-only results from the static web_search Extension tool. */
+			readonly type: "tool_details";
+			readonly toolCallId: string;
+			readonly toolName: "web_search";
+			readonly webSearch: RuntimeWebSearchDetails;
 	  };
 
 /** The small safe subset of SDK tool output that a Host may display live. */

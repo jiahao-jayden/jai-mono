@@ -1,7 +1,10 @@
 {
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
-		"noEmit": true
+		"noEmit": true,
+		"paths": {
+			"@jai/extension/web-search": ["../../packages/extension/src/web-search/index.ts"]
+		}
 	},
 	"include": ["src/**/*", "test/**/*"]
 }

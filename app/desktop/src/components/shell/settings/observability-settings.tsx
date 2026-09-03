@@ -2,10 +2,15 @@ import { type ReactNode, useEffect, useState } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { useIcon } from "@/lib/icon-context";
-import type { DesktopTelemetrySettingsInput, DesktopTelemetrySettingsSnapshot } from "../../../../shared/desktop-rpc";
+import type {
+	DesktopTelemetryCredentialId,
+	DesktopTelemetrySettingsInput,
+	DesktopTelemetrySettingsSnapshot,
+} from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Switch } from "../../ui/switch";
+import { ApiKeyInput } from "./api-key-input";
 
 interface ObservabilitySettingsProps {
 	readonly snapshot?: DesktopTelemetrySettingsSnapshot;
@@ -13,9 +18,17 @@ interface ObservabilitySettingsProps {
 	readonly loadError: boolean;
 	readonly onRetry: () => void;
 	readonly onSave: (input: DesktopTelemetrySettingsInput) => Promise<DesktopTelemetrySettingsSnapshot>;
+	readonly onRevealCredential: (credentialId: DesktopTelemetryCredentialId) => Promise<string>;
 }
 
-export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, onSave }: ObservabilitySettingsProps) {
+export function ObservabilitySettings({
+	snapshot,
+	loading,
+	loadError,
+	onRetry,
+	onSave,
+	onRevealCredential,
+}: ObservabilitySettingsProps) {
 	const intl = useIntl();
 	const LockIcon = useIcon("lock");
 	const TrashIcon = useIcon("trash");
@@ -106,7 +119,7 @@ export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, o
 				secretKey:
 					snapshot.credential.secretKeyMask ?? intl.formatMessage(desktopMessages.settingsTelemetrySecretKey),
 			})
-		: intl.formatMessage(desktopMessages.settingsTelemetryNoKeys);
+		: undefined;
 	const configurationError = snapshot.configurationError
 		? intl.formatMessage(desktopMessages.settingsTelemetrySaveError)
 		: error;
@@ -158,15 +171,20 @@ export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, o
 					label={intl.formatMessage(desktopMessages.settingsTelemetryPublicKey)}
 					description={intl.formatMessage(desktopMessages.settingsTelemetryPublicKeyDescription)}
 				>
-					<Input
-						type="password"
+					<ApiKeyInput
+						key={`telemetry-public:${snapshot.credential.publicKeyMask ?? "new"}`}
 						value={publicKey}
+						credentialConfigured={snapshot.credential.configured}
+						credentialMask={snapshot.credential.publicKeyMask}
 						disabled={formDisabled}
-						onChange={(event) => setPublicKey(event.target.value)}
-						placeholder={snapshot.credential.publicKeyMask ?? "pk-lf-..."}
-						aria-label={intl.formatMessage(desktopMessages.settingsTelemetryPublicKey)}
-						autoComplete="off"
-						spellCheck={false}
+						onReveal={() => onRevealCredential("public")}
+						onChange={setPublicKey}
+						label={intl.formatMessage(desktopMessages.settingsTelemetryPublicKey)}
+						showLabel={intl.formatMessage(desktopMessages.settingsProviderShowApiKey)}
+						hideLabel={intl.formatMessage(desktopMessages.settingsProviderHideApiKey)}
+						revealErrorLabel={intl.formatMessage(desktopMessages.settingsProviderRevealError)}
+						replacementPlaceholder={intl.formatMessage(desktopMessages.settingsProviderReplacementKey)}
+						enterPlaceholder="pk-lf-..."
 					/>
 				</SettingsField>
 
@@ -174,23 +192,30 @@ export function ObservabilitySettings({ snapshot, loading, loadError, onRetry, o
 					label={intl.formatMessage(desktopMessages.settingsTelemetrySecretKey)}
 					description={intl.formatMessage(desktopMessages.settingsTelemetrySecretKeyDescription)}
 				>
-					<Input
-						type="password"
+					<ApiKeyInput
+						key={`telemetry-secret:${snapshot.credential.secretKeyMask ?? "new"}`}
 						value={secretKey}
+						credentialConfigured={snapshot.credential.configured}
+						credentialMask={snapshot.credential.secretKeyMask}
 						disabled={formDisabled}
-						onChange={(event) => setSecretKey(event.target.value)}
-						placeholder={snapshot.credential.secretKeyMask ?? "sk-lf-..."}
-						aria-label={intl.formatMessage(desktopMessages.settingsTelemetrySecretKey)}
-						autoComplete="off"
-						spellCheck={false}
+						onReveal={() => onRevealCredential("secret")}
+						onChange={setSecretKey}
+						label={intl.formatMessage(desktopMessages.settingsTelemetrySecretKey)}
+						showLabel={intl.formatMessage(desktopMessages.settingsProviderShowApiKey)}
+						hideLabel={intl.formatMessage(desktopMessages.settingsProviderHideApiKey)}
+						revealErrorLabel={intl.formatMessage(desktopMessages.settingsProviderRevealError)}
+						replacementPlaceholder={intl.formatMessage(desktopMessages.settingsProviderReplacementKey)}
+						enterPlaceholder="sk-lf-..."
 					/>
 				</SettingsField>
 			</div>
 
 			<div className="flex flex-wrap items-center gap-x-4 gap-y-3 pt-5">
-				<p className="mr-auto text-[12px] text-muted-foreground" role="status">
-					{credentialStatus}
-				</p>
+				{credentialStatus ? (
+					<p className="mr-auto text-[12px] text-muted-foreground" role="status">
+						{credentialStatus}
+					</p>
+				) : null}
 				{snapshot.credential.configured ? (
 					<Button
 						type="button"

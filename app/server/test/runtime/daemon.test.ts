@@ -34,6 +34,14 @@ describe("Runtime Host daemon composition", () => {
 					model: "",
 					profiles: [],
 					connector: { policy: { default: "ask", actions: {} }, connectors: [] },
+					webSearch: {
+						providers: [
+							{ id: "exa", enabled: false, credentialConfigured: false },
+							{ id: "parallel", enabled: false, credentialConfigured: false },
+							{ id: "anysearch", enabled: false, credentialConfigured: false },
+						],
+						fetch: { jina: { credentialConfigured: false } },
+					},
 				});
 			} finally {
 				await client.value.close();

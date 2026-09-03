@@ -305,6 +305,54 @@ export interface DesktopProviderConfigSnapshot {
 	readonly providerPresets: readonly DesktopProviderPreset[];
 	readonly profiles: readonly DesktopProviderProfile[];
 	readonly connector: DesktopConnectorConfigSnapshot;
+	readonly webSearch: DesktopWebSearchConfigSnapshot;
+}
+
+export type DesktopWebSearchProviderId = "exa" | "parallel" | "anysearch";
+export type DesktopWebSearchCredentialId = DesktopWebSearchProviderId | "jina";
+
+export interface DesktopWebSearchProviderSnapshot {
+	readonly id: DesktopWebSearchProviderId;
+	readonly enabled: boolean;
+	readonly order?: number;
+	readonly credentialConfigured: boolean;
+	readonly credentialMask?: string;
+}
+
+export interface DesktopWebSearchConfigSnapshot {
+	readonly providers: readonly DesktopWebSearchProviderSnapshot[];
+	readonly fetch: DesktopWebSearchFetchConfigSnapshot;
+}
+
+export interface DesktopWebSearchFetchConfigSnapshot {
+	readonly jina: DesktopWebSearchJinaSnapshot;
+}
+
+export interface DesktopWebSearchJinaSnapshot {
+	readonly credentialConfigured: boolean;
+	readonly credentialMask?: string;
+}
+
+export interface DesktopWebSearchProviderInput {
+	readonly id: DesktopWebSearchProviderId;
+	readonly enabled: boolean;
+	readonly order?: number;
+	readonly apiKey?: string;
+	readonly clearApiKey?: boolean;
+}
+
+export interface DesktopWebSearchConfigInput {
+	readonly providers: readonly DesktopWebSearchProviderInput[];
+	readonly fetch?: DesktopWebSearchFetchConfigInput;
+}
+
+export interface DesktopWebSearchFetchConfigInput {
+	readonly jina?: DesktopWebSearchJinaInput;
+}
+
+export interface DesktopWebSearchJinaInput {
+	readonly apiKey?: string;
+	readonly clearApiKey?: boolean;
 }
 
 /** Safe Desktop projection of the Server-owned Langfuse key pair. */
@@ -439,6 +487,7 @@ export interface DesktopProviderConfigInput {
 	readonly reasoningEffort?: "low" | "medium" | "high";
 	readonly profiles: readonly DesktopProviderProfileInput[];
 	readonly connector?: DesktopConnectorConfigInput;
+	readonly webSearch?: DesktopWebSearchConfigInput;
 }
 
 export interface DesktopProviderFetchModelsResult {
@@ -451,6 +500,24 @@ export interface DesktopProviderFetchModelsResult {
 export interface DesktopProviderApiKeyRevealResult {
 	readonly profileId: string;
 	readonly apiKey: string;
+}
+
+export interface DesktopWebSearchApiKeyRevealResult {
+	readonly credentialId: DesktopWebSearchCredentialId;
+	readonly apiKey: string;
+}
+
+export interface DesktopConnectorCredentialRevealResult {
+	readonly connectorId: string;
+	readonly credentialKey: string;
+	readonly value: string;
+}
+
+export type DesktopTelemetryCredentialId = "public" | "secret";
+
+export interface DesktopTelemetryCredentialRevealResult {
+	readonly credentialId: DesktopTelemetryCredentialId;
+	readonly value: string;
 }
 
 export interface DesktopSlashInvocation {
@@ -532,6 +599,11 @@ export interface DesktopToolFileChange {
 	readonly path: string;
 }
 
+export interface DesktopWebSearchResult {
+	readonly title: string;
+	readonly url: string;
+}
+
 export interface DesktopToolItem {
 	readonly kind: "tool";
 	readonly id: string;
@@ -544,6 +616,9 @@ export interface DesktopToolItem {
 	readonly status: "running" | "complete";
 	readonly summary?: string;
 	readonly details?: string;
+	/** Volatile structured results from the static web_search Extension tool. */
+	readonly searchQuery?: string;
+	readonly webSearchResults?: readonly DesktopWebSearchResult[];
 	/** Present only when the completed tool-result T2 carried ACP diff content. */
 	readonly fileChanges?: readonly DesktopToolFileChange[];
 }
@@ -757,12 +832,15 @@ export interface DesktopApi {
 		save(input: DesktopProviderConfigInput): Promise<DesktopProviderConfigSnapshot>;
 		fetchModels(profileId: string): Promise<DesktopProviderFetchModelsResult>;
 		revealApiKey(profileId: string): Promise<DesktopProviderApiKeyRevealResult>;
+		revealWebSearchApiKey(credentialId: DesktopWebSearchCredentialId): Promise<DesktopWebSearchApiKeyRevealResult>;
 	};
 	readonly telemetry: {
 		get(): Promise<DesktopTelemetrySettingsSnapshot>;
 		save(input: DesktopTelemetrySettingsInput): Promise<DesktopTelemetrySettingsSnapshot>;
+		revealCredential(credentialId: DesktopTelemetryCredentialId): Promise<DesktopTelemetryCredentialRevealResult>;
 	};
 	readonly connector: {
+		revealCredential(connectorId: string, credentialKey: string): Promise<DesktopConnectorCredentialRevealResult>;
 		startOAuth(connectorId: string): Promise<DesktopConnectorOAuthStartResult>;
 		disconnectOAuth(connectorId: string): Promise<DesktopProviderConfigSnapshot>;
 	};

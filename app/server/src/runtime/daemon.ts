@@ -1,6 +1,6 @@
 import type { TelemetryContext } from "@jai/telemetry";
 import { Result, type Result as ResultType } from "better-result";
-import { CodingAgentOperationDriver, createRuntimeConnectorAgentAssembly } from "../agents";
+import { CodingAgentOperationDriver, createRuntimeConnectorAgentAssembly, createRuntimeWebSearchAgentAssembly } from "../agents";
 import { RuntimeOperationOpenFailed } from "../operations";
 import type { AcpImplementationInfo } from "../protocol/acp-v2";
 import { DesktopLocalRuntimeCapabilitySource, type RuntimeCapabilitySource } from "../runtime-capabilities";
@@ -82,13 +82,24 @@ export async function openConfiguredRuntimeHost(
 								}),
 							);
 						}
+						const webSearch = createRuntimeWebSearchAgentAssembly(agentSettings);
+						if (webSearch.isErr()) {
+							return Result.err(
+								new RuntimeOperationOpenFailed({
+									message: `Runtime Host Web Search configuration cannot open Operation "${input.operationId}"`,
+									sessionId: input.sessionId,
+									operationId: input.operationId,
+									cause: webSearch.error,
+								}),
+							);
+						}
 						return Result.ok({
 							model: current.value.model,
 							...(current.value.provider ? { provider: current.value.provider } : {}),
 							...(current.value.maxTurns ? { maxTurns: current.value.maxTurns } : {}),
 							...(current.value.instructions ? { instructions: current.value.instructions } : {}),
 							...(current.value.providerOptions ? { providerOptions: current.value.providerOptions } : {}),
-							extensions: connector.value.extensions,
+							extensions: [...connector.value.extensions, ...webSearch.value.extensions],
 							extensionRuntime: connector.value.extensionRuntime,
 						});
 					},

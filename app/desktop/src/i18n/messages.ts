@@ -168,6 +168,8 @@ export const desktopMessages = defineMessages({
 	transcriptWorked: { id: "desktop.transcript.worked", defaultMessage: "Worked" },
 	transcriptSearching: { id: "desktop.transcript.searching", defaultMessage: "Searching" },
 	transcriptSearched: { id: "desktop.transcript.searched", defaultMessage: "Searched" },
+	transcriptWebSearching: { id: "desktop.transcript.webSearching", defaultMessage: "Searching web" },
+	transcriptWebSearchResults: { id: "desktop.transcript.webSearchResults", defaultMessage: "Web search results" },
 	transcriptReading: { id: "desktop.transcript.reading", defaultMessage: "Reading" },
 	transcriptRead: { id: "desktop.transcript.read", defaultMessage: "Read" },
 	transcriptEditing: { id: "desktop.transcript.editing", defaultMessage: "Editing" },
@@ -275,6 +277,45 @@ export const desktopMessages = defineMessages({
 	settingsTitle: { id: "desktop.settings.title", defaultMessage: "Settings" },
 	settingsGeneral: { id: "desktop.settings.general", defaultMessage: "General" },
 	settingsProviders: { id: "desktop.settings.providers", defaultMessage: "Providers" },
+	settingsWebSearch: { id: "desktop.settings.webSearch", defaultMessage: "Web Search" },
+	settingsWebSearchEnabled: { id: "desktop.settings.webSearchEnabled", defaultMessage: "Enabled" },
+	settingsWebSearchConfigured: { id: "desktop.settings.webSearchConfigured", defaultMessage: "Configured · {mask}" },
+	settingsWebSearchApiKey: { id: "desktop.settings.webSearchApiKey", defaultMessage: "API key" },
+	settingsWebSearchReplaceKey: { id: "desktop.settings.webSearchReplaceKey", defaultMessage: "Replace API key" },
+	settingsWebSearchEnterKey: { id: "desktop.settings.webSearchEnterKey", defaultMessage: "Enter API key" },
+	settingsWebSearchKeyWillClear: { id: "desktop.settings.webSearchKeyWillClear", defaultMessage: "Will clear" },
+	settingsWebSearchClearKey: { id: "desktop.settings.webSearchClearKey", defaultMessage: "Clear API key" },
+	settingsWebSearchApiKeyRequired: {
+		id: "desktop.settings.webSearchApiKeyRequired",
+		defaultMessage: "Enabled Web Search services need an API key.",
+	},
+	settingsWebSearchOrder: { id: "desktop.settings.webSearchOrder", defaultMessage: "Order" },
+	settingsWebSearchRandom: { id: "desktop.settings.webSearchRandom", defaultMessage: "Random" },
+	settingsWebSearchJina: { id: "desktop.settings.webSearchJina", defaultMessage: "Jina Reader" },
+	settingsWebSearchJinaPreferred: { id: "desktop.settings.webSearchJinaPreferred", defaultMessage: "Preferred" },
+	settingsWebSearchJinaDescription: {
+		id: "desktop.settings.webSearchJinaDescription",
+		defaultMessage:
+			"Fetch tries Jina Reader first. An API key is optional; direct fetch with Turndown remains available as fallback.",
+	},
+	settingsWebSearchJinaConfigured: {
+		id: "desktop.settings.webSearchJinaConfigured",
+		defaultMessage: "Configured · {mask}",
+	},
+	settingsWebSearchJinaApiKey: { id: "desktop.settings.webSearchJinaApiKey", defaultMessage: "API key (optional)" },
+	settingsWebSearchJinaReplaceKey: {
+		id: "desktop.settings.webSearchJinaReplaceKey",
+		defaultMessage: "Replace API key",
+	},
+	settingsWebSearchJinaEnterKey: {
+		id: "desktop.settings.webSearchJinaEnterKey",
+		defaultMessage: "Enter API key (optional)",
+	},
+	settingsWebSearchJinaKeyWillClear: {
+		id: "desktop.settings.webSearchJinaKeyWillClear",
+		defaultMessage: "Will clear",
+	},
+	settingsWebSearchJinaClearKey: { id: "desktop.settings.webSearchJinaClearKey", defaultMessage: "Clear API key" },
 	settingsConnector: { id: "desktop.settings.connector", defaultMessage: "Connector" },
 	settingsAdvanced: { id: "desktop.settings.advanced", defaultMessage: "Advanced" },
 	settingsLoading: { id: "desktop.settings.loading", defaultMessage: "Loading settings…" },
@@ -491,10 +532,6 @@ export const desktopMessages = defineMessages({
 	settingsTelemetryStored: {
 		id: "desktop.settings.telemetryStored",
 		defaultMessage: "Stored: {publicKey} and {secretKey}",
-	},
-	settingsTelemetryNoKeys: {
-		id: "desktop.settings.telemetryNoKeys",
-		defaultMessage: "No Langfuse key pair is stored.",
 	},
 	settingsTelemetryEndpointRequired: {
 		id: "desktop.settings.telemetryEndpointRequired",

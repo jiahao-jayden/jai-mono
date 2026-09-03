@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 describe("Official Extensions package exports", () => {
-	test("exposes Connector, Skills, Agent Plugins, Search, and MCP as independent subpaths", async () => {
+	test("exposes Connector, Skills, Agent Plugins, Search, Web Search, and MCP as independent subpaths", async () => {
 		const manifest = JSON.parse(await readFile(join(import.meta.dir, "..", "package.json"), "utf8")) as {
 			readonly exports: Readonly<Record<string, { readonly types: string; readonly bun: string; readonly import: string }>>;
 		};
@@ -20,6 +20,11 @@ describe("Official Extensions package exports", () => {
 			},
 			"./skills": { types: "./dist/skills/index.d.ts", bun: "./src/skills/index.ts", import: "./dist/skills.js" },
 			"./search": { types: "./dist/search/index.d.ts", bun: "./src/search/index.ts", import: "./dist/search.js" },
+			"./web-search": {
+				types: "./dist/web-search/index.d.ts",
+				bun: "./src/web-search/index.ts",
+				import: "./dist/web-search.js",
+			},
 			"./mcp": { types: "./dist/mcp/index.d.ts", bun: "./src/mcp/index.ts", import: "./dist/mcp.js" },
 		});
 	});

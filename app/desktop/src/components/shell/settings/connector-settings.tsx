@@ -18,6 +18,7 @@ import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "../../ui/select";
 import { Tooltip } from "../../ui/tooltip";
+import { ApiKeyInput } from "./api-key-input";
 
 type ConnectorFilter = "all" | "connected" | "not-connected";
 
@@ -29,6 +30,7 @@ interface ConnectorSettingsProps {
 	readonly onChange: (value: DesktopConnectorConfigInput) => void;
 	readonly onStartOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
 	readonly onDisconnectOAuth: (connectorId: string) => Promise<unknown>;
+	readonly onRevealCredential: (connectorId: string, credentialKey: string) => Promise<string>;
 }
 
 export function ConnectorSettings({
@@ -37,6 +39,7 @@ export function ConnectorSettings({
 	onChange,
 	onStartOAuth,
 	onDisconnectOAuth,
+	onRevealCredential,
 }: ConnectorSettingsProps) {
 	const [selectedConnectorId, setSelectedConnectorId] = useState<string>();
 
@@ -64,6 +67,7 @@ export function ConnectorSettings({
 				onPolicyChange={updatePolicy}
 				onStartOAuth={onStartOAuth}
 				onDisconnectOAuth={onDisconnectOAuth}
+				onRevealCredential={onRevealCredential}
 				onBack={() => setSelectedConnectorId(undefined)}
 			/>
 		);
@@ -308,6 +312,7 @@ function ConnectorDetailPage({
 	onBack,
 	onStartOAuth,
 	onDisconnectOAuth,
+	onRevealCredential,
 }: {
 	readonly connector: DesktopConnector;
 	readonly value: DesktopConnectorConfigInput["connectors"][number];
@@ -317,6 +322,7 @@ function ConnectorDetailPage({
 	readonly onBack: () => void;
 	readonly onStartOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
 	readonly onDisconnectOAuth: (connectorId: string) => Promise<unknown>;
+	readonly onRevealCredential: (connectorId: string, credentialKey: string) => Promise<string>;
 }) {
 	const intl = useIntl();
 	const ArrowLeftIcon = useIcon("arrow-left");
@@ -488,7 +494,12 @@ function ConnectorDetailPage({
 						) : null}
 					</section>
 				) : (
-					<CredentialSettings connector={connector} value={value} onChange={onChange} />
+					<CredentialSettings
+						connector={connector}
+						value={value}
+						onRevealCredential={onRevealCredential}
+						onChange={onChange}
+					/>
 				)}
 				<ToolPermissionSettings connector={connector} policy={policy} onChange={onPolicyChange} />
 			</main>
@@ -762,10 +773,12 @@ function groupPermission(
 function CredentialSettings({
 	connector,
 	value,
+	onRevealCredential,
 	onChange,
 }: {
 	readonly connector: DesktopConnector;
 	readonly value: DesktopConnectorConfigInput["connectors"][number];
+	readonly onRevealCredential: (connectorId: string, credentialKey: string) => Promise<string>;
 	readonly onChange: (value: DesktopConnectorConfigInput["connectors"][number]) => void;
 }) {
 	const intl = useIntl();
@@ -782,6 +795,7 @@ function CredentialSettings({
 							key={credential.key}
 							credential={credential}
 							value={value.credentials[credential.key] ?? ""}
+							onReveal={() => onRevealCredential(connector.id, credential.key)}
 							onChange={(nextValue) =>
 								onChange({
 									...value,
@@ -799,26 +813,48 @@ function CredentialSettings({
 function CredentialField({
 	credential,
 	value,
+	onReveal,
 	onChange,
 }: {
 	readonly credential: DesktopConnectorCredential;
 	readonly value: string;
+	readonly onReveal: () => Promise<string>;
 	readonly onChange: (value: string) => void;
 }) {
 	const inputType = credential.kind === "secret" ? "password" : credential.kind === "url" ? "url" : "text";
 	const placeholder = credential.configured ? credential.mask : credential.placeholder;
+	const intl = useIntl();
+	const secretInput =
+		credential.kind === "secret" ? (
+			<ApiKeyInput
+				key={`${credential.key}:${credential.mask ?? "new"}`}
+				value={value}
+				credentialConfigured={credential.configured}
+				credentialMask={credential.mask}
+				onReveal={onReveal}
+				onChange={onChange}
+				label={credential.label}
+				showLabel={intl.formatMessage(desktopMessages.settingsProviderShowApiKey)}
+				hideLabel={intl.formatMessage(desktopMessages.settingsProviderHideApiKey)}
+				revealErrorLabel={intl.formatMessage(desktopMessages.settingsProviderRevealError)}
+				replacementPlaceholder={intl.formatMessage(desktopMessages.settingsProviderReplacementKey)}
+				enterPlaceholder={credential.placeholder ?? intl.formatMessage(desktopMessages.settingsProviderEnterApiKey)}
+			/>
+		) : null;
 
 	return (
 		<DetailField label={credential.label} description={credential.description}>
-			<Input
-				type={inputType}
-				value={value}
-				placeholder={placeholder}
-				onChange={(event) => onChange(event.target.value)}
-				aria-label={credential.label}
-				autoComplete={credential.kind === "secret" ? "new-password" : "off"}
-				spellCheck={false}
-			/>
+			{secretInput ?? (
+				<Input
+					type={inputType}
+					value={value}
+					placeholder={placeholder}
+					onChange={(event) => onChange(event.target.value)}
+					aria-label={credential.label}
+					autoComplete="off"
+					spellCheck={false}
+				/>
+			)}
 		</DetailField>
 	);
 }

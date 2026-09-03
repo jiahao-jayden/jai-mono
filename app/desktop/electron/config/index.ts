@@ -9,13 +9,23 @@ import type {
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
 	DesktopProviderFetchModelsResult,
+	DesktopConnectorCredentialRevealResult,
 	DesktopTelemetrySettingsInput,
 	DesktopTelemetrySettingsSnapshot,
+	DesktopTelemetryCredentialId,
+	DesktopTelemetryCredentialRevealResult,
 	DesktopUiLocale,
+	DesktopWebSearchApiKeyRevealResult,
+	DesktopWebSearchCredentialId,
 } from "../../shared/desktop-rpc";
 import { projectRuntimeConnectorConfig, toRuntimeConnector, validateConnectorConfigInput } from "./connector";
 import { projectRuntimeProviderConfig, providerConfigError, validateProviderProfiles } from "./provider";
 import { projectRuntimeTelemetrySettings, toRuntimeTelemetrySettingsInput } from "./telemetry";
+import {
+	projectRuntimeWebSearchConfig,
+	toRuntimeWebSearchInput,
+	validateWebSearchConfigInput,
+} from "./web-search";
 
 /**
  * Desktop's configuration adapter. Runtime-affecting settings, Provider facts
@@ -94,6 +104,27 @@ export class DesktopConfigService {
 		return revealed.value;
 	}
 
+	async revealWebSearchApiKey(credentialId: DesktopWebSearchCredentialId): Promise<DesktopWebSearchApiKeyRevealResult> {
+		const revealed = await this.client.revealWebSearchApiKey(credentialId);
+		if (revealed.isErr()) throw revealed.error;
+		return revealed.value;
+	}
+
+	async revealConnectorCredential(
+		connectorId: string,
+		credentialKey: string,
+	): Promise<DesktopConnectorCredentialRevealResult> {
+		const revealed = await this.client.revealConnectorCredential(connectorId, credentialKey);
+		if (revealed.isErr()) throw revealed.error;
+		return revealed.value;
+	}
+
+	async revealTelemetryCredential(credentialId: DesktopTelemetryCredentialId): Promise<DesktopTelemetryCredentialRevealResult> {
+		const revealed = await this.client.revealTelemetryCredential(credentialId);
+		if (revealed.isErr()) throw revealed.error;
+		return revealed.value;
+	}
+
 	async getWorkspaceTrust(workspacePath: string) {
 		const trust = await this.client.getWorkspaceTrust(workspacePath);
 		if (trust.isErr()) throw trust.error;
@@ -143,6 +174,7 @@ export class DesktopConfigService {
 			...(remote.maxTurns === undefined ? {} : { maxIterations: remote.maxTurns }),
 			...(remote.reasoningEffort === undefined ? {} : { reasoningEffort: remote.reasoningEffort }),
 			connector: projectRuntimeConnectorConfig(remote.connector),
+			webSearch: projectRuntimeWebSearchConfig(remote),
 		};
 	}
 }
@@ -158,6 +190,7 @@ function toRuntimeInput(
 		...(current.language === undefined ? {} : { language: current.language }),
 		...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
 		...(input.connector === undefined ? {} : { connector: toRuntimeConnector(input.connector) }),
+		...(input.webSearch === undefined ? {} : { webSearch: toRuntimeWebSearchInput(input.webSearch) }),
 		providers: input.profiles.map((profile) => ({
 			id: profile.id,
 			...(profile.previousId === undefined ? {} : { previousId: profile.previousId }),
@@ -199,6 +232,7 @@ function validateInput(
 		throw invalidInput("Invalid Provider configuration");
 	}
 	validateProviderProfiles(input.profiles, catalog);
+	if (input.webSearch !== undefined) validateWebSearchConfigInput(input.webSearch);
 }
 
 function isRuntimePresentationInput(

@@ -30,7 +30,9 @@ import {
 	type DesktopArtifact,
 	type DesktopProject,
 	type DesktopProviderConfigInput,
+	type DesktopTelemetryCredentialId,
 	type DesktopTelemetrySettingsInput,
+	type DesktopWebSearchCredentialId,
 	isDesktopProviderModelRunnable,
 } from "../../../shared/desktop-rpc";
 import { ChatColumn } from "./chat/chat-column";
@@ -240,6 +242,18 @@ export function AppShell() {
 	const revealProviderApiKey = async (profileId: string) => {
 		const result = await desktop.provider.revealApiKey(profileId);
 		return result.apiKey;
+	};
+	const revealWebSearchApiKey = async (credentialId: DesktopWebSearchCredentialId) => {
+		const result = await desktop.provider.revealWebSearchApiKey(credentialId);
+		return result.apiKey;
+	};
+	const revealConnectorCredential = async (connectorId: string, credentialKey: string) => {
+		const result = await desktop.connector.revealCredential(connectorId, credentialKey);
+		return result.value;
+	};
+	const revealTelemetryCredential = async (credentialId: DesktopTelemetryCredentialId) => {
+		const result = await desktop.telemetry.revealCredential(credentialId);
+		return result.value;
 	};
 	const startConnectorOAuth = (connectorId: string) => desktop.connector.startOAuth(connectorId);
 	const disconnectConnectorOAuth = async (connectorId: string) => {
@@ -566,6 +580,9 @@ export function AppShell() {
 				onSave={updateProviderConfig}
 				onFetchModels={fetchProviderModels}
 				onRevealApiKey={revealProviderApiKey}
+				onRevealWebSearchApiKey={revealWebSearchApiKey}
+				onRevealConnectorCredential={revealConnectorCredential}
+				onRevealTelemetryCredential={revealTelemetryCredential}
 				onStartConnectorOAuth={startConnectorOAuth}
 				onDisconnectConnectorOAuth={disconnectConnectorOAuth}
 				telemetry={telemetryQuery.data}

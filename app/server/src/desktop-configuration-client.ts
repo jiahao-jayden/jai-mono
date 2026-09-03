@@ -5,6 +5,7 @@ import type {
 	RuntimeAgentSettingsSnapshot,
 	RuntimeProviderModel,
 	RuntimeProviderProfileProjection,
+	RuntimeWebSearchCredentialId,
 } from "./config";
 import type { RuntimeConnectorOAuthCompletion, RuntimeConnectorOAuthStart } from "./connectors";
 import { parseRuntimeModelCatalogSnapshot, type RuntimeModelCatalogSnapshot } from "./model-catalog/catalog";
@@ -17,7 +18,11 @@ import {
 } from "./protocol/acp-v2/local-client";
 import { localDesktopConfigurationEndpointFor } from "./protocol/desktop-configuration";
 import { resolveJaiDataDirectory } from "./runtime/paths";
-import type { RuntimeTelemetrySettingsInput, RuntimeTelemetrySettingsSnapshot } from "./telemetry";
+import type {
+	RuntimeTelemetryCredentialId,
+	RuntimeTelemetrySettingsInput,
+	RuntimeTelemetrySettingsSnapshot,
+} from "./telemetry";
 import type { WorkspaceTrustSnapshot } from "./workspaces";
 
 export class DesktopConfigurationClientResponseInvalid extends TaggedError(
@@ -129,6 +134,78 @@ export class DesktopConfigurationClient {
 			new DesktopConfigurationClientResponseInvalid({
 				method: "jai/desktop-configuration/reveal-api-key",
 				message: "Desktop configuration credential reveal response did not match the expected DTO",
+			}),
+		);
+	}
+
+	async revealWebSearchApiKey(
+		credentialId: RuntimeWebSearchCredentialId,
+	): Promise<ResultType<{ readonly credentialId: RuntimeWebSearchCredentialId; readonly apiKey: string }, DesktopConfigurationClientError>> {
+		const response = await this.client.request("jai/desktop-configuration/reveal-web-search-api-key", { credentialId });
+		if (response.isErr()) return Result.err(response.error);
+		if (
+			record(response.value) &&
+			isRuntimeWebSearchCredentialId(response.value.credentialId) &&
+			typeof response.value.apiKey === "string"
+		) {
+			return Result.ok({
+				credentialId: response.value.credentialId,
+				apiKey: response.value.apiKey,
+			});
+		}
+		return Result.err(
+			new DesktopConfigurationClientResponseInvalid({
+				method: "jai/desktop-configuration/reveal-web-search-api-key",
+				message: "Desktop Web Search credential reveal response did not match the expected DTO",
+			}),
+		);
+	}
+
+	async revealConnectorCredential(
+		connectorId: string,
+		credentialKey: string,
+	): Promise<ResultType<{ readonly connectorId: string; readonly credentialKey: string; readonly value: string }, DesktopConfigurationClientError>> {
+		const response = await this.client.request("jai/desktop-configuration/reveal-connector-credential", {
+			connectorId,
+			credentialKey,
+		});
+		if (response.isErr()) return Result.err(response.error);
+		if (
+			record(response.value) &&
+			typeof response.value.connectorId === "string" &&
+			typeof response.value.credentialKey === "string" &&
+			typeof response.value.value === "string"
+		) {
+			return Result.ok({
+				connectorId: response.value.connectorId,
+				credentialKey: response.value.credentialKey,
+				value: response.value.value,
+			});
+		}
+		return Result.err(
+			new DesktopConfigurationClientResponseInvalid({
+				method: "jai/desktop-configuration/reveal-connector-credential",
+				message: "Desktop Connector credential reveal response did not match the expected DTO",
+			}),
+		);
+	}
+
+	async revealTelemetryCredential(
+		credentialId: RuntimeTelemetryCredentialId,
+	): Promise<ResultType<{ readonly credentialId: RuntimeTelemetryCredentialId; readonly value: string }, DesktopConfigurationClientError>> {
+		const response = await this.client.request("jai/desktop-configuration/telemetry/reveal-credential", { credentialId });
+		if (response.isErr()) return Result.err(response.error);
+		if (
+			record(response.value) &&
+			(response.value.credentialId === "public" || response.value.credentialId === "secret") &&
+			typeof response.value.value === "string"
+		) {
+			return Result.ok({ credentialId: response.value.credentialId, value: response.value.value });
+		}
+		return Result.err(
+			new DesktopConfigurationClientResponseInvalid({
+				method: "jai/desktop-configuration/telemetry/reveal-credential",
+				message: "Desktop telemetry credential reveal response did not match the expected DTO",
 			}),
 		);
 	}
@@ -309,6 +386,8 @@ function parseSnapshot(value: unknown): RuntimeAgentSettingsSnapshot | undefined
 	}
 	const connector = parseConnector(value.connector);
 	if (!connector) return undefined;
+	const webSearch = parseWebSearch(value.webSearch);
+	if (!webSearch) return undefined;
 	if (
 		value.maxTurns !== undefined &&
 		(typeof value.maxTurns !== "number" || !Number.isInteger(value.maxTurns) || value.maxTurns < 1)
@@ -326,6 +405,50 @@ function parseSnapshot(value: unknown): RuntimeAgentSettingsSnapshot | undefined
 		...(value.language === undefined ? {} : { language: value.language }),
 		profiles: profiles as RuntimeProviderProfileProjection[],
 		connector,
+		webSearch,
+	};
+}
+
+function parseWebSearch(value: unknown): RuntimeAgentSettingsSnapshot["webSearch"] | undefined {
+	if (!record(value) || !Array.isArray(value.providers)) return undefined;
+	const providers = value.providers.map((provider) => {
+		if (
+			!record(provider) ||
+			(provider.id !== "exa" && provider.id !== "parallel" && provider.id !== "anysearch") ||
+			typeof provider.enabled !== "boolean" ||
+			(provider.order !== undefined &&
+				(typeof provider.order !== "number" || !Number.isInteger(provider.order) || provider.order < 1)) ||
+			typeof provider.credentialConfigured !== "boolean" ||
+			(provider.credentialMask !== undefined && typeof provider.credentialMask !== "string")
+		) {
+			return undefined;
+		}
+		return {
+			id: provider.id,
+			enabled: provider.enabled,
+			...(provider.order === undefined ? {} : { order: provider.order }),
+			credentialConfigured: provider.credentialConfigured,
+			...(provider.credentialMask === undefined ? {} : { credentialMask: provider.credentialMask }),
+		};
+	});
+	if (providers.some((provider) => provider === undefined)) return undefined;
+	if (!record(value.fetch) || !record(value.fetch.jina)) return undefined;
+	if (
+		!Object.keys(value.fetch).every((key) => key === "jina") ||
+		!Object.keys(value.fetch.jina).every((key) => key === "credentialConfigured" || key === "credentialMask") ||
+		typeof value.fetch.jina.credentialConfigured !== "boolean" ||
+		(value.fetch.jina.credentialMask !== undefined && typeof value.fetch.jina.credentialMask !== "string")
+	) {
+		return undefined;
+	}
+	return {
+		providers: providers as RuntimeAgentSettingsSnapshot["webSearch"]["providers"],
+		fetch: {
+			jina: {
+				credentialConfigured: value.fetch.jina.credentialConfigured,
+				...(value.fetch.jina.credentialMask === undefined ? {} : { credentialMask: value.fetch.jina.credentialMask }),
+			},
+		},
 	};
 }
 
@@ -507,4 +630,8 @@ function permission(value: unknown): value is RuntimeAgentSettingsSnapshot["conn
 
 function record(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRuntimeWebSearchCredentialId(value: unknown): value is RuntimeWebSearchCredentialId {
+	return value === "jina" || value === "exa" || value === "parallel" || value === "anysearch";
 }

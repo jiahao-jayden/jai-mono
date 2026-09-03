@@ -25,6 +25,11 @@
 			"bun": "./src/search/index.ts",
 			"import": "./dist/search.js"
 		},
+		"./web-search": {
+			"types": "./dist/web-search/index.d.ts",
+			"bun": "./src/web-search/index.ts",
+			"import": "./dist/web-search.js"
+		},
 		"./mcp": {
 			"types": "./dist/mcp/index.d.ts",
 			"bun": "./src/mcp/index.ts",
@@ -43,11 +48,13 @@
 		"@modelcontextprotocol/sdk": "1.29.0",
 		"@sinclair/typebox": "^0.34.49",
 		"better-result": "^3.0.0",
+		"turndown": "^7.2.4",
 		"yaml": "^2.8.1"
 	},
 	"devDependencies": {
 		"@jai/agent": "workspace:*",
 		"@jai/ai": "workspace:*",
+		"@types/turndown": "^5.0.6",
 		"tsup": "^8.5.1",
 		"typescript": "~5.8.3"
 	}

@@ -42,6 +42,8 @@ export interface RuntimeTelemetrySettingsInput {
 	readonly secretKey?: string;
 }
 
+export type RuntimeTelemetryCredentialId = "public" | "secret";
+
 export class RuntimeTelemetrySettingsInvalid extends TaggedError("telemetry.settings_invalid")<{
 	readonly message: string;
 }> {}
@@ -186,6 +188,32 @@ export class RuntimeTelemetryController {
 		this.#context.replace(resolved.value);
 		this.#configurationError = undefined;
 		return Result.ok(this.#project(persistedPolicy, persistedCredential));
+	}
+
+	revealCredential(
+		credentialId: RuntimeTelemetryCredentialId,
+	): ResultType<
+		{ readonly credentialId: RuntimeTelemetryCredentialId; readonly value: string },
+		RuntimeTelemetrySettingsReadError | RuntimeTelemetrySettingsInvalid | RuntimeTelemetrySettingsLocked
+	> {
+		if (this.#closed) return Result.err(new RuntimeTelemetrySettingsLocked({ message: "Telemetry settings are unavailable" }));
+		if (hasRuntimeTelemetryEnvironmentOverride(this.#environment)) {
+			return Result.err(
+				new RuntimeTelemetrySettingsLocked({
+					message: "Telemetry credentials are controlled by JAI_TELEMETRY environment variables",
+				}),
+			);
+		}
+		if (!isRuntimeTelemetryCredentialId(credentialId)) {
+			return Result.err(new RuntimeTelemetrySettingsInvalid({ message: "Telemetry credential id is invalid" }));
+		}
+		const credentials = this.#credentials.readForExporter();
+		if (credentials.isErr()) return Result.err(readFailed(credentials.error));
+		const value = credentials.value?.[credentialId === "public" ? "publicKey" : "secretKey"];
+		if (!value) {
+			return Result.err(new RuntimeTelemetrySettingsInvalid({ message: "Telemetry credential is not configured" }));
+		}
+		return Result.ok({ credentialId, value });
 	}
 
 	async close(): Promise<void> {
@@ -506,6 +534,10 @@ function allowedInputKeys(value: Record<string, unknown>): boolean {
 
 function record(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRuntimeTelemetryCredentialId(value: unknown): value is RuntimeTelemetryCredentialId {
+	return value === "public" || value === "secret";
 }
 
 function invalid(message: string): ResultType<never, RuntimeTelemetrySettingsInvalid> {

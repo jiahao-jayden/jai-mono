@@ -1,9 +1,14 @@
 import type { Result } from "better-result";
-import { parseRuntimeAgentSettingsInput, type SqliteRuntimeAgentSettings } from "../../config";
+import {
+	parseRuntimeAgentSettingsInput,
+	type RuntimeWebSearchCredentialId,
+	type SqliteRuntimeAgentSettings,
+} from "../../config";
 import type { RuntimeConnectorOAuthController } from "../../connectors";
 import type { SqliteRuntimeModelCatalog } from "../../model-catalog";
 import {
 	parseRuntimeTelemetrySettingsInput,
+	type RuntimeTelemetryCredentialId,
 	type RuntimeTelemetryController,
 	type RuntimeTelemetrySettingsInput,
 } from "../../telemetry";
@@ -73,6 +78,28 @@ export class DesktopConfigurationControl {
 				if (!onlyProfileId(params))
 					return this.error(request.id, -32602, "Invalid Provider credential reveal parameters");
 				const revealed = this.settings.revealApiKey(params.profileId);
+				if (revealed.isErr()) return this.error(request.id, -32001, revealed.error.message);
+				return [{ jsonrpc: "2.0", id: request.id, result: revealed.value } satisfies AcpJsonRpcResponse];
+			}
+			case "jai/desktop-configuration/reveal-web-search-api-key": {
+				if (!onlyWebSearchCredentialId(params))
+					return this.error(request.id, -32602, "Invalid Web Search credential reveal parameters");
+				const revealed = this.settings.revealWebSearchApiKey(params.credentialId);
+				if (revealed.isErr()) return this.error(request.id, -32001, revealed.error.message);
+				return [{ jsonrpc: "2.0", id: request.id, result: revealed.value } satisfies AcpJsonRpcResponse];
+			}
+			case "jai/desktop-configuration/reveal-connector-credential": {
+				if (!onlyConnectorCredential(params))
+					return this.error(request.id, -32602, "Invalid Connector credential reveal parameters");
+				const revealed = this.settings.revealConnectorCredential(params.connectorId, params.credentialKey);
+				if (revealed.isErr()) return this.error(request.id, -32001, revealed.error.message);
+				return [{ jsonrpc: "2.0", id: request.id, result: revealed.value } satisfies AcpJsonRpcResponse];
+			}
+			case "jai/desktop-configuration/telemetry/reveal-credential": {
+				if (!onlyTelemetryCredentialId(params))
+					return this.error(request.id, -32602, "Invalid telemetry credential reveal parameters");
+				if (!this.telemetry) return this.error(request.id, -32601, "Telemetry configuration is not available");
+				const revealed = this.telemetry.revealCredential(params.credentialId);
 				if (revealed.isErr()) return this.error(request.id, -32001, revealed.error.message);
 				return [{ jsonrpc: "2.0", id: request.id, result: revealed.value } satisfies AcpJsonRpcResponse];
 			}
@@ -146,12 +173,38 @@ function onlyProfileId(value: Record<string, unknown>): value is { readonly prof
 	return Object.keys(value).length === 1 && typeof value.profileId === "string";
 }
 
+function onlyWebSearchCredentialId(
+	value: Record<string, unknown>,
+): value is { readonly credentialId: RuntimeWebSearchCredentialId } {
+	return (
+		Object.keys(value).length === 1 &&
+		typeof value.credentialId === "string" &&
+		(value.credentialId === "jina" || value.credentialId === "exa" || value.credentialId === "parallel" || value.credentialId === "anysearch")
+	);
+}
+
 function onlyLanguage(value: Record<string, unknown>): value is { readonly language: string } {
 	return Object.keys(value).length === 1 && typeof value.language === "string";
 }
 
 function onlyConnectorId(value: Record<string, unknown>): value is { readonly connectorId: string } {
 	return Object.keys(value).length === 1 && typeof value.connectorId === "string";
+}
+
+function onlyConnectorCredential(
+	value: Record<string, unknown>,
+): value is { readonly connectorId: string; readonly credentialKey: string } {
+	return (
+		Object.keys(value).length === 2 &&
+		typeof value.connectorId === "string" &&
+		typeof value.credentialKey === "string"
+	);
+}
+
+function onlyTelemetryCredentialId(
+	value: Record<string, unknown>,
+): value is { readonly credentialId: RuntimeTelemetryCredentialId } {
+	return Object.keys(value).length === 1 && (value.credentialId === "public" || value.credentialId === "secret");
 }
 
 function onlyCallbackUrl(value: Record<string, unknown>): value is { readonly callbackUrl: string } {

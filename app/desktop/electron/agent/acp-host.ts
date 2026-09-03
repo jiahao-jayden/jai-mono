@@ -23,6 +23,7 @@ import type {
 	DesktopToolFileChange,
 	DesktopToolItem,
 	DesktopTranscriptItem,
+	DesktopWebSearchResult,
 } from "../../shared/desktop-rpc";
 import { sortArtifacts } from "./artifacts";
 import { desktopAgentError } from "./errors";
@@ -182,9 +183,11 @@ export class DesktopAcpAgentHost {
 		});
 		if (sent.isErr()) pending.reject(sent.error);
 		else pending.resolve();
+		const item = { ...pending.item, status: resolution.decision === "deny" ? "denied" : "allowed" } as const;
+		pending.runtime.items.set(item.id, item);
 		this.#emitEvent(pending.runtime, {
 			type: "transcript_upsert",
-			item: { ...pending.item, status: resolution.decision === "deny" ? "denied" : "allowed" },
+			item,
 		});
 	}
 
@@ -429,6 +432,7 @@ export class DesktopAcpAgentHost {
 	#stateUpdate(runtime: AcpSessionRuntime, update: Record<string, unknown>): void {
 		const state = update.state;
 		runtime.status = state === "running" || state === "requires_action" ? "running" : "idle";
+		if (runtime.status === "idle") this.#cancelPendingPermissions(runtime);
 		this.#emitEvent(runtime, { type: "status", status: runtime.status });
 		if (update.stopReason === "error") this.#emitRuntimeError(runtime, "Runtime Host operation failed");
 	}
@@ -501,7 +505,12 @@ export class DesktopAcpAgentHost {
 		const operationId = operationIdFromMetadata(update._meta);
 		const turnId = previousTool?.turnId ?? operationId;
 		if (!turnId) return;
-		const status = update.status === "completed" || update.status === "failed" ? "complete" : "running";
+		const status =
+			update.status === "completed" || update.status === "failed"
+				? "complete"
+				: update.status === "pending" || update.status === "in_progress"
+					? "running"
+					: (previousTool?.status ?? "running");
 		const title = typeof update.title === "string" ? update.title : (previousTool?.toolName ?? "Tool");
 		let bufferedTerminalOutput = "";
 		for (const terminalId of terminalIds(update.content)) {
@@ -511,6 +520,15 @@ export class DesktopAcpAgentHost {
 		const durableDetails = toolContentText(update.content);
 		const fileChanges = toolFileChanges(update.content);
 		const details = durableDetails || previousTool?.details || bufferedTerminalOutput;
+		const rawInput = isRecord(update.rawInput) ? update.rawInput : undefined;
+		const isWebSearch = isWebSearchTool(update.title) || isWebSearchTool(previousTool?.toolName);
+		const webSearchResults =
+			webSearchResultsFromMetadata(update._meta) ??
+			(isWebSearch ? webSearchResultsFromText(durableDetails) : undefined);
+		const searchQuery =
+			isWebSearch && typeof rawInput?.query === "string"
+				? rawInput.query.trim().slice(0, 500)
+				: previousTool?.searchQuery;
 		const item: DesktopToolItem = {
 			kind: "tool",
 			id,
@@ -522,6 +540,12 @@ export class DesktopAcpAgentHost {
 			status,
 			...(previousTool?.summary ? { summary: previousTool.summary } : {}),
 			...(details ? { details } : {}),
+			...(searchQuery ? { searchQuery } : {}),
+			...(webSearchResults !== undefined
+				? { webSearchResults }
+				: previousTool?.webSearchResults
+					? { webSearchResults: previousTool.webSearchResults }
+					: {}),
 			...(fileChanges.length > 0
 				? { fileChanges }
 				: previousTool?.fileChanges
@@ -608,7 +632,9 @@ export class DesktopAcpAgentHost {
 			});
 			if (sent.isErr()) pending.reject(sent.error);
 			else pending.resolve();
-			this.#emitEvent(runtime, { type: "transcript_upsert", item: { ...pending.item, status: "cancelled" } });
+			const item = { ...pending.item, status: "cancelled" } as const;
+			runtime.items.set(item.id, item);
+			this.#emitEvent(runtime, { type: "transcript_upsert", item });
 		}
 	}
 
@@ -747,6 +773,67 @@ function activityKind(toolName: string): DesktopToolActivityKind {
 function operationIdFromMetadata(value: unknown): string | undefined {
 	if (!isRecord(value) || !isRecord(value.jai) || typeof value.jai.operationId !== "string") return undefined;
 	return value.jai.operationId;
+}
+
+function webSearchResultsFromMetadata(value: unknown): readonly DesktopWebSearchResult[] | undefined {
+	if (!isRecord(value) || !isRecord(value.jai) || !isRecord(value.jai.webSearch)) return undefined;
+	const results = value.jai.webSearch.results;
+	if (!Array.isArray(results)) return undefined;
+	return results.flatMap((result): DesktopWebSearchResult[] => {
+		if (!isRecord(result) || typeof result.title !== "string" || !result.title.trim()) return [];
+		if (typeof result.url !== "string") return [];
+		try {
+			const url = new URL(result.url);
+			if (url.protocol !== "http:" && url.protocol !== "https:") return [];
+			return [{ title: result.title.trim().slice(0, 500), url: url.toString() }];
+		} catch {
+			return [];
+		}
+	});
+}
+
+function webSearchResultsFromText(value: string): readonly DesktopWebSearchResult[] | undefined {
+	if (!value.trim()) return undefined;
+	const results: DesktopWebSearchResult[] = [];
+	const urls = new Set<string>();
+	const lines = value.split("\n");
+
+	for (let index = 0; index < lines.length; index += 1) {
+		const title = numberedSearchTitle(lines[index]);
+		if (!title) continue;
+		const url = nextSearchResultUrl(lines, index + 1);
+		if (!url || urls.has(url)) continue;
+		urls.add(url);
+		results.push({ title, url });
+	}
+
+	return results.length > 0 ? results : undefined;
+}
+
+function numberedSearchTitle(value: string | undefined): string | undefined {
+	if (!value) return undefined;
+	const match = value.trim().match(/^\d+\.\s+(.+)$/);
+	return match?.[1]?.trim().slice(0, 500) || undefined;
+}
+
+function nextSearchResultUrl(lines: readonly string[], start: number): string | undefined {
+	for (let index = start; index < lines.length; index += 1) {
+		const value = lines[index]?.trim();
+		if (!value) continue;
+		try {
+			const url = new URL(value);
+			return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+	return undefined;
+}
+
+function isWebSearchTool(value: unknown): boolean {
+	if (typeof value !== "string") return false;
+	const normalized = value.trim().toLowerCase().replaceAll(/[_-]/g, " ");
+	return normalized === "web search" || normalized.startsWith("search web for ");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -10,8 +10,12 @@ import type {
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
 	DesktopProviderFetchModelsResult,
+	DesktopTelemetryCredentialId,
 	DesktopTelemetrySettingsInput,
 	DesktopTelemetrySettingsSnapshot,
+	DesktopWebSearchConfigInput,
+	DesktopWebSearchConfigSnapshot,
+	DesktopWebSearchCredentialId,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
@@ -25,6 +29,7 @@ import {
 	validateProviderDraft,
 } from "./provider-settings-types";
 import { ProvidersSettings } from "./providers-settings";
+import { WebSearchSettings } from "./web-search-settings";
 
 interface ProviderSettingsDialogProps {
 	readonly open: boolean;
@@ -36,6 +41,9 @@ interface ProviderSettingsDialogProps {
 	readonly onSave: (input: DesktopProviderConfigInput) => Promise<DesktopProviderConfigSnapshot>;
 	readonly onFetchModels: (profileId: string) => Promise<DesktopProviderFetchModelsResult>;
 	readonly onRevealApiKey: (profileId: string) => Promise<string>;
+	readonly onRevealWebSearchApiKey: (credentialId: DesktopWebSearchCredentialId) => Promise<string>;
+	readonly onRevealConnectorCredential: (connectorId: string, credentialKey: string) => Promise<string>;
+	readonly onRevealTelemetryCredential: (credentialId: DesktopTelemetryCredentialId) => Promise<string>;
 	readonly onStartConnectorOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
 	readonly onDisconnectConnectorOAuth: (connectorId: string) => Promise<DesktopProviderConfigSnapshot>;
 	readonly telemetry?: DesktopTelemetrySettingsSnapshot;
@@ -44,7 +52,7 @@ interface ProviderSettingsDialogProps {
 	readonly onSaveTelemetry: (input: DesktopTelemetrySettingsInput) => Promise<DesktopTelemetrySettingsSnapshot>;
 }
 
-type SettingsCategory = "general" | "providers" | "connector" | "advanced";
+type SettingsCategory = "general" | "providers" | "web-search" | "connector" | "advanced";
 
 export function ProviderSettingsDialog({
 	open,
@@ -56,6 +64,9 @@ export function ProviderSettingsDialog({
 	onSave,
 	onFetchModels,
 	onRevealApiKey,
+	onRevealWebSearchApiKey,
+	onRevealConnectorCredential,
+	onRevealTelemetryCredential,
 	onStartConnectorOAuth,
 	onDisconnectConnectorOAuth,
 	telemetry,
@@ -95,6 +106,9 @@ export function ProviderSettingsDialog({
 						onSave={onSave}
 						onFetchModels={fetchModels}
 						onRevealApiKey={onRevealApiKey}
+						onRevealWebSearchApiKey={onRevealWebSearchApiKey}
+						onRevealConnectorCredential={onRevealConnectorCredential}
+						onRevealTelemetryCredential={onRevealTelemetryCredential}
 						onStartConnectorOAuth={onStartConnectorOAuth}
 						onDisconnectConnectorOAuth={onDisconnectConnectorOAuth}
 						telemetry={telemetry}
@@ -124,6 +138,17 @@ function toConnectorInput(snapshot: DesktopConnectorConfigSnapshot): DesktopConn
 			default: snapshot.policy.default,
 			actions: { ...snapshot.policy.actions },
 		},
+	};
+}
+
+function toWebSearchInput(snapshot: DesktopWebSearchConfigSnapshot): DesktopWebSearchConfigInput {
+	return {
+		providers: snapshot.providers.map((provider) => ({
+			id: provider.id,
+			enabled: provider.enabled,
+			...(provider.order === undefined ? {} : { order: provider.order }),
+		})),
+		fetch: { jina: {} },
 	};
 }
 
@@ -169,6 +194,9 @@ interface ProviderConfigFormProps {
 	readonly onSave: (input: DesktopProviderConfigInput) => Promise<DesktopProviderConfigSnapshot>;
 	readonly onFetchModels: (profileId: string) => Promise<DesktopProviderFetchModelsResult>;
 	readonly onRevealApiKey: (profileId: string) => Promise<string>;
+	readonly onRevealWebSearchApiKey: (credentialId: DesktopWebSearchCredentialId) => Promise<string>;
+	readonly onRevealConnectorCredential: (connectorId: string, credentialKey: string) => Promise<string>;
+	readonly onRevealTelemetryCredential: (credentialId: DesktopTelemetryCredentialId) => Promise<string>;
 	readonly onStartConnectorOAuth: (connectorId: string) => Promise<DesktopConnectorOAuthStartResult>;
 	readonly onDisconnectConnectorOAuth: (connectorId: string) => Promise<DesktopProviderConfigSnapshot>;
 	readonly telemetry?: DesktopTelemetrySettingsSnapshot;
@@ -185,6 +213,9 @@ function ProviderConfigForm({
 	onSave,
 	onFetchModels,
 	onRevealApiKey,
+	onRevealWebSearchApiKey,
+	onRevealConnectorCredential,
+	onRevealTelemetryCredential,
 	onStartConnectorOAuth,
 	onDisconnectConnectorOAuth,
 	telemetry,
@@ -201,10 +232,15 @@ function ProviderConfigForm({
 	const [maxIterations, setMaxIterations] = useState(snapshot.maxIterations?.toString() ?? "");
 	const [reasoningEffort, setReasoningEffort] = useState(snapshot.reasoningEffort ?? "");
 	const [connector, setConnector] = useState<DesktopConnectorConfigInput>(() => toConnectorInput(snapshot.connector));
+	const [webSearch, setWebSearch] = useState<DesktopWebSearchConfigInput>(() => toWebSearchInput(snapshot.webSearch));
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string>();
 	const [dirty, setDirty] = useState(false);
-	const canSave = profiles.length > 0 || snapshot.profiles.length > 0 || connector.connectors.length > 0;
+	const canSave =
+		profiles.length > 0 ||
+		snapshot.profiles.length > 0 ||
+		connector.connectors.length > 0 ||
+		webSearch.providers.length > 0;
 	const contentClassName = cn("min-h-0 flex-1", category === "connector" ? "flex overflow-hidden" : "overflow-y-auto");
 	const providerCategory = category !== "advanced";
 
@@ -212,6 +248,19 @@ function ProviderConfigForm({
 		const validationError = validateProviderDraft(profiles, maxIterations);
 		if (validationError) {
 			setError(formatProviderValidationError(validationError, intl));
+			return;
+		}
+		if (
+			webSearch.providers.some((provider) => {
+				const saved = snapshot.webSearch.providers.find((candidate) => candidate.id === provider.id);
+				return (
+					provider.enabled &&
+					!provider.apiKey?.trim() &&
+					(!saved?.credentialConfigured || provider.clearApiKey === true)
+				);
+			})
+		) {
+			setError(intl.formatMessage(desktopMessages.settingsWebSearchApiKeyRequired));
 			return;
 		}
 		setSaving(true);
@@ -222,6 +271,7 @@ function ProviderConfigForm({
 				...(maxIterations ? { maxIterations: Number(maxIterations) } : {}),
 				...(reasoningEffort ? { reasoningEffort: reasoningEffort as "low" | "medium" | "high" } : {}),
 				connector,
+				webSearch,
 				profiles: profiles.map(
 					({ credentialConfigured: _configured, credentialMask: _mask, persistedId, ...profile }) => ({
 						id: profile.id,
@@ -237,6 +287,7 @@ function ProviderConfigForm({
 				),
 			});
 			setProfiles(savedSnapshot.profiles.map(toProfileDraft));
+			setWebSearch(toWebSearchInput(savedSnapshot.webSearch));
 			setDirty(false);
 		} catch (_cause) {
 			setError(intl.formatMessage(desktopMessages.settingsProviderSaveError));
@@ -313,12 +364,23 @@ function ProviderConfigForm({
 							fetchingProfileId={fetchingProfileId}
 							lastFetch={lastFetch}
 						/>
+					) : category === "web-search" ? (
+						<WebSearchSettings
+							snapshot={snapshot.webSearch}
+							value={webSearch}
+							onRevealApiKey={onRevealWebSearchApiKey}
+							onChange={(value) => {
+								setWebSearch(value);
+								setDirty(true);
+							}}
+						/>
 					) : category === "connector" ? (
 						<ConnectorSettings
 							snapshot={snapshot.connector}
 							value={connector}
 							onStartOAuth={onStartConnectorOAuth}
 							onDisconnectOAuth={onDisconnectConnectorOAuth}
+							onRevealCredential={onRevealConnectorCredential}
 							onChange={(value) => {
 								setConnector(value);
 								setDirty(true);
@@ -331,6 +393,7 @@ function ProviderConfigForm({
 							loadError={telemetryLoadError}
 							onRetry={onRetry}
 							onSave={onSaveTelemetry}
+							onRevealCredential={onRevealTelemetryCredential}
 						/>
 					)}
 				</div>
@@ -369,6 +432,7 @@ function SettingsSidebar({
 	const categories: { id: SettingsCategory; label: string; icon: keyof typeof icons }[] = [
 		{ id: "general", label: intl.formatMessage(desktopMessages.settingsGeneral), icon: "settings" },
 		{ id: "providers", label: intl.formatMessage(desktopMessages.settingsProviders), icon: "key" },
+		{ id: "web-search", label: intl.formatMessage(desktopMessages.settingsWebSearch), icon: "globe" },
 		{ id: "connector", label: intl.formatMessage(desktopMessages.settingsConnector), icon: "link" },
 		{ id: "advanced", label: intl.formatMessage(desktopMessages.settingsAdvanced), icon: "layers" },
 	];

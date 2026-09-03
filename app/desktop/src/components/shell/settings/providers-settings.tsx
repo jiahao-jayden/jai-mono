@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { resolveProviderBrandIcon, useIcon } from "@/lib/icon-context";
@@ -13,6 +13,7 @@ import { DropdownContent, DropdownMenu, DropdownSeparator, DropdownTrigger } fro
 import { Input } from "../../ui/input";
 import { MenuItem } from "../../ui/menu-item";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "../../ui/select";
+import { ApiKeyInput } from "./api-key-input";
 import { ProviderModelEditor } from "./provider-model-editor";
 import { type ProfileDraft, uniqueProfileId } from "./provider-settings-types";
 
@@ -194,6 +195,14 @@ export function ProvidersSettings({
 										credentialConfigured={selected.credentialConfigured}
 										credentialMask={selected.credentialMask}
 										onReveal={() => onRevealApiKey(selected.id)}
+										label={intl.formatMessage(desktopMessages.settingsProviderApiKey)}
+										showLabel={intl.formatMessage(desktopMessages.settingsProviderShowApiKey)}
+										hideLabel={intl.formatMessage(desktopMessages.settingsProviderHideApiKey)}
+										revealErrorLabel={intl.formatMessage(desktopMessages.settingsProviderRevealError)}
+										replacementPlaceholder={intl.formatMessage(
+											desktopMessages.settingsProviderReplacementKey,
+										)}
+										enterPlaceholder={intl.formatMessage(desktopMessages.settingsProviderEnterApiKey)}
 										onChange={(apiKey) =>
 											updateSelected((profile) => ({
 												...profile,
@@ -227,130 +236,6 @@ export function ProvidersSettings({
 					</div>
 				)}
 			</div>
-		</div>
-	);
-}
-
-function ApiKeyInput({
-	value,
-	credentialConfigured,
-	credentialMask,
-	onReveal,
-	onChange,
-}: {
-	readonly value: string;
-	readonly credentialConfigured: boolean;
-	readonly credentialMask?: string;
-	readonly onReveal: () => Promise<string>;
-	readonly onChange: (value: string) => void;
-}) {
-	const intl = useIntl();
-	const KeyIcon = useIcon("key");
-	const EyeIcon = useIcon("eye");
-	const EyeOffIcon = useIcon("eye-off");
-	const [revealed, setRevealed] = useState(false);
-	const [revealedKey, setRevealedKey] = useState<string>();
-	const [revealing, setRevealing] = useState(false);
-	const [revealError, setRevealError] = useState<string>();
-	const VisibilityIcon = revealed ? EyeOffIcon : EyeIcon;
-	const visibilityLabel = intl.formatMessage(
-		revealed ? desktopMessages.settingsProviderHideApiKey : desktopMessages.settingsProviderShowApiKey,
-	);
-
-	if (credentialConfigured) {
-		const toggleReveal = async () => {
-			if (revealed) {
-				setRevealed(false);
-				setRevealedKey(undefined);
-				return;
-			}
-			if (value) {
-				setRevealed(true);
-				return;
-			}
-			setRevealing(true);
-			setRevealError(undefined);
-			try {
-				setRevealedKey(await onReveal());
-				setRevealed(true);
-			} catch {
-				setRevealError(intl.formatMessage(desktopMessages.settingsProviderRevealError));
-			} finally {
-				setRevealing(false);
-			}
-		};
-		const visibleValue = value || revealedKey || "";
-		const maskedValue = value ? maskApiKey(value) : (credentialMask ?? "••••");
-		return (
-			<div className="flex flex-col gap-1">
-				<div className="relative">
-					<KeyIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-					{revealed ? (
-						<Input
-							type="text"
-							value={visibleValue}
-							onChange={(event) => onChange(event.target.value)}
-							className="px-10 font-mono text-[12px]"
-							aria-label={intl.formatMessage(desktopMessages.settingsProviderApiKey)}
-							autoComplete="off"
-							spellCheck={false}
-						/>
-					) : (
-						<div className="flex h-9 items-center rounded-lg border border-input bg-input/20 px-10">
-							<code className="text-[12px] text-muted-foreground">{maskedValue}</code>
-						</div>
-					)}
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon-sm"
-						className="absolute top-1/2 right-0.5 -translate-y-1/2"
-						loading={revealing}
-						onClick={() => void toggleReveal()}
-						aria-label={visibilityLabel}
-						title={visibilityLabel}
-					>
-						<VisibilityIcon />
-					</Button>
-				</div>
-				{revealError ? (
-					<p className="text-[11px] text-destructive" role="alert">
-						{revealError}
-					</p>
-				) : null}
-			</div>
-		);
-	}
-
-	return (
-		<div className="relative">
-			<KeyIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-			<Input
-				type={revealed ? "text" : "password"}
-				value={value}
-				onChange={(event) => onChange(event.target.value)}
-				placeholder={
-					credentialConfigured
-						? intl.formatMessage(desktopMessages.settingsProviderReplacementKey)
-						: intl.formatMessage(desktopMessages.settingsProviderEnterApiKey)
-				}
-				className="px-10"
-				aria-label={intl.formatMessage(desktopMessages.settingsProviderApiKey)}
-				autoComplete="new-password"
-				spellCheck={false}
-			/>
-			<Button
-				type="button"
-				variant="ghost"
-				size="icon-sm"
-				className="absolute top-1/2 right-0.5 -translate-y-1/2"
-				disabled={!value}
-				onClick={() => setRevealed((current) => !current)}
-				aria-label={visibilityLabel}
-				title={visibilityLabel}
-			>
-				<VisibilityIcon />
-			</Button>
 		</div>
 	);
 }
@@ -411,8 +296,4 @@ function Field({ label, children }: { readonly label: string; readonly children:
 			{children}
 		</div>
 	);
-}
-
-function maskApiKey(value: string): string {
-	return `•••• ${value.slice(-4)}`;
 }

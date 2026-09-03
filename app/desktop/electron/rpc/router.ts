@@ -119,6 +119,9 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			revealApiKey(_event, profileId) {
 				return rt.config.revealApiKey(profileId);
 			},
+			revealWebSearchApiKey(_event, credentialId) {
+				return rt.config.revealWebSearchApiKey(credentialId);
+			},
 		},
 		telemetry: {
 			get() {
@@ -129,8 +132,14 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 					parse(desktopTelemetrySettingsInputSchema, input, "Invalid telemetry configuration"),
 				);
 			},
+			revealCredential(_event, credentialId) {
+				return rt.config.revealTelemetryCredential(credentialId);
+			},
 		},
 		connector: {
+			revealCredential(_event, connectorId, credentialKey) {
+				return rt.config.revealConnectorCredential(connectorId, credentialKey);
+			},
 			startOAuth(_event, connectorId) {
 				return rt.oauth.start(
 					parse(desktopConnectorOAuthApplicationIdSchema, connectorId, "Invalid OAuth Connector application"),

@@ -277,4 +277,207 @@ describe("Runtime Agent Settings", () => {
       database.close();
     }
   });
+
+  test("reveals saved Connector secrets without exposing OAuth credentials", () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      const settings = new SqliteRuntimeAgentSettings(database);
+      const saved = settings.write({
+        revision: null,
+        model: "",
+        providers: [],
+        connector: {
+          policy: { default: "ask", actions: {} },
+          connectors: {
+            context7: { credentials: { apiKey: "ctx-secret-1234" } },
+            github: { credentials: { accessToken: "oauth-secret" } },
+          },
+        },
+      });
+      if (saved.isErr()) throw saved.error;
+
+      expect(settings.revealConnectorCredential("context7", "apiKey")).toMatchObject({
+        status: "ok",
+        value: { connectorId: "context7", credentialKey: "apiKey", value: "ctx-secret-1234" },
+      });
+      expect(settings.revealConnectorCredential("github", "accessToken")).toMatchObject({
+        status: "error",
+        error: { _tag: "runtime_config.agent_settings_invalid" },
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  test("stores Web Search order and credentials in the Runtime Host projection", () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      const settings = new SqliteRuntimeAgentSettings(database);
+      const saved = settings.write({
+        revision: null,
+        model: "",
+        providers: [],
+        webSearch: {
+          providers: [
+            { id: "exa", enabled: true, order: 2, apiKey: "exa-secret-1234" },
+            { id: "parallel", enabled: true, order: 1, apiKey: "parallel-secret-5678" },
+            { id: "anysearch", enabled: false },
+          ],
+        },
+      });
+      if (saved.isErr()) throw saved.error;
+
+      expect(saved.value.webSearch).toEqual({
+        providers: [
+          { id: "exa", enabled: true, order: 2, credentialConfigured: true, credentialMask: "•••• 1234" },
+          { id: "parallel", enabled: true, order: 1, credentialConfigured: true, credentialMask: "•••• 5678" },
+          { id: "anysearch", enabled: false, credentialConfigured: false },
+        ],
+        fetch: { jina: { credentialConfigured: false } },
+      });
+      expect(JSON.stringify(saved.value)).not.toContain("exa-secret");
+      expect(JSON.stringify(saved.value)).not.toContain("parallel-secret");
+
+      const raw = settings.readWebSearchSettings();
+      if (raw.isErr()) throw raw.error;
+      expect(raw.value.providers.exa.apiKey).toBe("exa-secret-1234");
+      expect(raw.value.providers.parallel.apiKey).toBe("parallel-secret-5678");
+    } finally {
+      database.close();
+    }
+  });
+
+  test("preserves and clears Web Search keys through write-only input", () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      const settings = new SqliteRuntimeAgentSettings(database);
+      const initialized = settings.write({
+        revision: null,
+        model: "",
+        providers: [],
+        webSearch: {
+          providers: [{ id: "exa", enabled: false, apiKey: "exa-secret-1234" }],
+        },
+      });
+      if (initialized.isErr()) throw initialized.error;
+
+      const preserved = settings.write({
+        revision: initialized.value.revision,
+        model: "",
+        providers: [],
+        webSearch: { providers: [{ id: "exa", enabled: true }] },
+      });
+      if (preserved.isErr()) throw preserved.error;
+      expect(preserved.value.webSearch.providers[0]).toMatchObject({
+        id: "exa",
+        enabled: true,
+        credentialConfigured: true,
+      });
+
+      const cleared = settings.write({
+        revision: preserved.value.revision,
+        model: "",
+        providers: [],
+        webSearch: { providers: [{ id: "exa", enabled: false, clearApiKey: true }] },
+      });
+      if (cleared.isErr()) throw cleared.error;
+      expect(cleared.value.webSearch.providers[0]).toEqual({
+        id: "exa",
+        enabled: false,
+        credentialConfigured: false,
+      });
+      const raw = settings.readWebSearchSettings();
+      if (raw.isErr()) throw raw.error;
+      expect(raw.value.providers.exa.apiKey).toBeUndefined();
+    } finally {
+      database.close();
+    }
+  });
+
+  test("stores an optional Jina Reader key without requiring it", () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      const settings = new SqliteRuntimeAgentSettings(database);
+      const withoutKey = settings.write({
+        revision: null,
+        model: "",
+        providers: [],
+        webSearch: { providers: [], fetch: { jina: {} } },
+      });
+      if (withoutKey.isErr()) throw withoutKey.error;
+      expect(withoutKey.value.webSearch.fetch).toEqual({ jina: { credentialConfigured: false } });
+
+      const withKey = settings.write({
+        revision: withoutKey.value.revision,
+        model: "",
+        providers: [],
+        webSearch: { providers: [], fetch: { jina: { apiKey: "jina-secret-1234" } } },
+      });
+      if (withKey.isErr()) throw withKey.error;
+      expect(withKey.value.webSearch.fetch).toEqual({ jina: { credentialConfigured: true, credentialMask: "•••• 1234" } });
+      expect(JSON.stringify(withKey.value)).not.toContain("jina-secret-1234");
+
+      const raw = settings.readWebSearchSettings();
+      if (raw.isErr()) throw raw.error;
+      expect(raw.value.fetch?.jina.apiKey).toBe("jina-secret-1234");
+    } finally {
+      database.close();
+    }
+  });
+
+  test("reveals saved Web Search credentials without exposing them in snapshots", () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      const settings = new SqliteRuntimeAgentSettings(database);
+      const saved = settings.write({
+        revision: null,
+        model: "",
+        providers: [],
+        webSearch: {
+          providers: [{ id: "exa", enabled: false, apiKey: "exa-secret-1234" }],
+          fetch: { jina: { apiKey: "jina-secret-5678" } },
+        },
+      });
+      if (saved.isErr()) throw saved.error;
+
+      const exa = settings.revealWebSearchApiKey("exa");
+      if (exa.isErr()) throw exa.error;
+      expect(exa.value).toEqual({ credentialId: "exa", apiKey: "exa-secret-1234" });
+
+      const jina = settings.revealWebSearchApiKey("jina");
+      if (jina.isErr()) throw jina.error;
+      expect(jina.value).toEqual({ credentialId: "jina", apiKey: "jina-secret-5678" });
+    } finally {
+      database.close();
+    }
+  });
+
+  test("rejects enabled Web Search without a key, unknown fields, and stale revisions", () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      const settings = new SqliteRuntimeAgentSettings(database);
+      const missingKey = settings.write({
+        revision: null,
+        model: "",
+        providers: [],
+        webSearch: { providers: [{ id: "exa", enabled: true }] },
+      });
+      expect(missingKey).toMatchObject({ status: "error", error: { _tag: "runtime_config.agent_settings_invalid" } });
+
+      const invalidInput = settings.write({
+        revision: null,
+        model: "",
+        providers: [],
+        webSearch: { providers: [{ id: "exa", enabled: false, unexpected: true } as never] },
+      });
+      expect(invalidInput).toMatchObject({ status: "error", error: { _tag: "runtime_config.agent_settings_invalid" } });
+
+      const initialized = settings.write({ revision: null, model: "", providers: [] });
+      if (initialized.isErr()) throw initialized.error;
+      const stale = settings.write({ revision: "stale", model: "", providers: [] });
+      expect(stale).toMatchObject({ status: "error", error: { _tag: "runtime_config.agent_settings_write_conflict" } });
+    } finally {
+      database.close();
+    }
+  });
 });

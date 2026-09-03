@@ -2,7 +2,7 @@ import { isAbsolute } from "node:path";
 import { type AgentMessage, branchOf, type JsonValue, type SessionEntry } from "@jai/agent";
 import type { ToolFileChange } from "@jai/ai";
 import { type CodingAgentTodo, todosFromAppState } from "@jai/coding-agent";
-import type { RuntimeOperationContent } from "../../operations";
+import type { RuntimeOperationContent, RuntimeWebSearchDetails } from "../../operations";
 import type {
 	RuntimeApprovalRequest,
 	RuntimeSession,
@@ -752,6 +752,15 @@ function projectOperationEvent(
 			}
 			return updates;
 		}
+		case "tool_details":
+			return [
+				toolCallUpdate(sessionId, {
+					toolCallId: event.toolCallId,
+					status: "completed",
+					webSearch: event.webSearch,
+					operationId,
+				}),
+			];
 		case "tool_content_chunk":
 			return [
 				{
@@ -832,18 +841,41 @@ function toolCallUpdate(
 		readonly status?: "pending" | "in_progress" | "completed" | "failed";
 		readonly rawInput?: Readonly<Record<string, JsonValue>>;
 		readonly content?: readonly object[];
+		readonly webSearch?: RuntimeWebSearchDetails;
 		readonly operationId?: string;
 	},
 ): AcpJsonRpcNotification {
-	const { operationId, ...toolUpdate } = update;
+	const { operationId, webSearch, ...toolUpdate } = update;
 	return {
 		jsonrpc: "2.0",
 		method: "session/update",
 		params: {
 			sessionId,
-			update: { sessionUpdate: "tool_call_update", ...toolUpdate, ...operationMetadata(operationId) },
+			update: {
+				sessionUpdate: "tool_call_update",
+				...toolUpdate,
+				...toolMetadata(operationId, webSearch),
+			},
 		},
 	};
+}
+
+function toolMetadata(
+	operationId: string | undefined,
+	webSearch: RuntimeWebSearchDetails | undefined,
+): {
+	readonly _meta?: {
+		readonly jai: {
+			readonly operationId?: string;
+			readonly webSearch?: RuntimeWebSearchDetails;
+		};
+	};
+} {
+	const jai = {
+		...(operationId ? { operationId } : {}),
+		...(webSearch ? { webSearch } : {}),
+	};
+	return Object.keys(jai).length > 0 ? { _meta: { jai } } : {};
 }
 
 function operationMetadata(operationId: string | undefined): {

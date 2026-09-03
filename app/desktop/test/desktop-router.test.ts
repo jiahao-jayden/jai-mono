@@ -42,7 +42,10 @@ function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) 
 			get: record("locale.get", { preference: "system", locale: "en" }),
 			set: record("locale.set", { preference: "en", locale: "en" }),
 		},
-		config: { ...(overrides.config as object) },
+		config: {
+			setAgentLanguage: record("setAgentLanguage"),
+			...(overrides.config as object),
+		},
 		commands: { list: record("commands.list", []), ...(overrides.commands as object) },
 		oauth: { ...(overrides.oauth as object) },
 		openWith: { ...(overrides.openWith as object) },
@@ -73,7 +76,7 @@ describe("createDesktopRouter — 输入校验", () => {
 		expect(r.locale.get(event)).toEqual({ preference: "system", locale: "en" });
 		r.locale.set(event, "zh-CN");
 		expect(() => r.locale.set(event, "fr")).toThrow();
-		expect(calls.map((call) => call.name)).toEqual(["locale.get", "locale.set"]);
+		expect(calls.map((call) => call.name)).toEqual(["locale.get", "locale.set", "setAgentLanguage"]);
 	});
 
 	test("agent.send 要求 modelRef 带 profile 分隔符", () => {

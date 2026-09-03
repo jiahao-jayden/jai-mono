@@ -10,6 +10,8 @@ import type {
 	RuntimeAgentSettingsInput,
 	RuntimeAgentSettingsModelFetchResult,
 	RuntimeAgentSettingsSnapshot,
+	RuntimeTelemetryCredentialId,
+	RuntimeWebSearchCredentialId,
 	RuntimeTelemetrySettingsInput,
 	RuntimeTelemetrySettingsSnapshot,
 	WorkspaceTrustSnapshot,
@@ -71,6 +73,69 @@ describe("DesktopConfigService", () => {
       await rm(homeDir, { recursive: true, force: true });
     }
   });
+
+	test("forwards Web Search keys, clear commands, and optional order without storing a Desktop copy", async () => {
+		const host = new FakeDesktopConfigurationClient({
+      webSearch: {
+        providers: [
+          { id: "exa", enabled: true, order: 2, credentialConfigured: true, credentialMask: "•••• 1234" },
+          { id: "parallel", enabled: false, credentialConfigured: false },
+          { id: "anysearch", enabled: false, credentialConfigured: false },
+        ],
+        fetch: { jina: { credentialConfigured: false } },
+      },
+		});
+		const service = new DesktopConfigService(host);
+		try {
+			const saved = await service.save({
+				revision: null,
+				profiles: [],
+				webSearch: {
+					providers: [
+						{ id: "exa", enabled: false, clearApiKey: true },
+						{ id: "parallel", enabled: true, order: 1, apiKey: "parallel-secret-5678" },
+						{ id: "anysearch", enabled: false },
+					],
+				},
+			});
+
+			expect(host.lastSaved?.webSearch).toEqual({
+				providers: [
+					{ id: "exa", enabled: false, clearApiKey: true },
+					{ id: "parallel", enabled: true, order: 1, apiKey: "parallel-secret-5678" },
+					{ id: "anysearch", enabled: false },
+				],
+			});
+			expect(saved.webSearch.providers).toEqual([
+				{ id: "exa", enabled: false, credentialConfigured: false },
+				{ id: "parallel", enabled: true, order: 1, credentialConfigured: true, credentialMask: "•••• 5678" },
+				{ id: "anysearch", enabled: false, credentialConfigured: false },
+			]);
+			expect(JSON.stringify(saved)).not.toContain("parallel-secret");
+		} finally {
+			await service.close();
+		}
+	});
+
+	test("forwards an optional Jina Reader key without exposing it in the snapshot", async () => {
+		const host = new FakeDesktopConfigurationClient();
+		const service = new DesktopConfigService(host);
+		try {
+			const saved = await service.save({
+				revision: null,
+				profiles: [],
+				webSearch: {
+					providers: [],
+					fetch: { jina: { apiKey: "jina-secret-1234" } },
+				},
+			});
+			expect(host.lastSaved?.webSearch?.fetch).toEqual({ jina: { apiKey: "jina-secret-1234" } });
+			expect(saved.webSearch.fetch).toEqual({ jina: { credentialConfigured: true, credentialMask: "•••• 1234" } });
+			expect(JSON.stringify(saved)).not.toContain("jina-secret-1234");
+		} finally {
+			await service.close();
+		}
+	});
 
   test("keeps the Agent turn limit in the Runtime Host rather than duplicating it in Desktop settings", async () => {
     const homeDir = await mkdtemp(join(tmpdir(), "jai-remote-turn-limit-"));
@@ -175,7 +240,7 @@ describe("DesktopConfigService", () => {
     }
   });
 
-  test("reveal is an explicit Host request, not a local file read", async () => {
+	test("reveal is an explicit Host request, not a local file read", async () => {
     const host = new FakeDesktopConfigurationClient();
     const service = new DesktopConfigService(host);
     try {
@@ -227,6 +292,42 @@ describe("DesktopConfigService", () => {
       await rm(homeDir, { recursive: true, force: true });
     }
   });
+
+	test("reveals Web Search API keys through the Runtime Host", async () => {
+		const host = new FakeDesktopConfigurationClient();
+		const service = new DesktopConfigService(host);
+		try {
+			expect(await service.revealWebSearchApiKey("parallel")).toEqual({
+				credentialId: "parallel",
+				apiKey: "parallel-secret",
+			});
+			expect(await service.revealWebSearchApiKey("jina")).toEqual({
+				credentialId: "jina",
+				apiKey: "jina-secret",
+			});
+			expect(host.webSearchReveals).toEqual(["parallel", "jina"]);
+		} finally {
+			await service.close();
+		}
+	});
+
+	test("reveals Connector and telemetry keys through the Runtime Host", async () => {
+		const host = new FakeDesktopConfigurationClient();
+		const service = new DesktopConfigService(host);
+		try {
+			expect(await service.revealConnectorCredential("context7", "apiKey")).toEqual({
+				connectorId: "context7",
+				credentialKey: "apiKey",
+				value: "connector-secret",
+			});
+			expect(await service.revealTelemetryCredential("secret")).toEqual({
+				credentialId: "secret",
+				value: "sk-lf-secret",
+			});
+		} finally {
+			await service.close();
+		}
+	});
 
 	test("sends Langfuse keys only through the write command and returns a masked telemetry projection", async () => {
 		const host = new FakeDesktopConfigurationClient();
@@ -354,6 +455,9 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
   readonly oauthStarts: string[] = [];
   readonly oauthCallbacks: string[] = [];
   readonly oauthDisconnects: string[] = [];
+	readonly connectorReveals: string[] = [];
+	readonly webSearchReveals: RuntimeWebSearchCredentialId[] = [];
+	readonly telemetryReveals: RuntimeTelemetryCredentialId[] = [];
 	readonly modelCatalogReads: string[] = [];
 	lastSaved?: RuntimeAgentSettingsInput;
 	lastLanguage?: string;
@@ -381,6 +485,14 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
       connector: snapshot.connector ?? {
         policy: { default: "ask", actions: {} },
 			connectors: [],
+		},
+		webSearch: snapshot.webSearch ?? {
+			providers: [
+				{ id: "exa", enabled: false, credentialConfigured: false },
+				{ id: "parallel", enabled: false, credentialConfigured: false },
+				{ id: "anysearch", enabled: false, credentialConfigured: false },
+			],
+			fetch: { jina: { credentialConfigured: false } },
 		},
 		};
 		this.#telemetrySnapshot = {
@@ -436,6 +548,10 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
         input.connector === undefined
           ? this.#snapshot.connector
           : projectConnector(input.connector, this.#snapshot.connector),
+		webSearch:
+			input.webSearch === undefined
+				? this.#snapshot.webSearch
+				: projectWebSearch(input.webSearch, this.#snapshot.webSearch),
     };
     return Result.ok(this.#snapshot);
   }
@@ -477,6 +593,24 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
 
 	async revealApiKey(profileId: string) {
 		return Result.ok({ profileId, apiKey: "host-secret" });
+	}
+
+	async revealWebSearchApiKey(credentialId: RuntimeWebSearchCredentialId) {
+		this.webSearchReveals.push(credentialId);
+		return Result.ok({
+			credentialId,
+			apiKey: credentialId === "jina" ? "jina-secret" : "parallel-secret",
+		});
+	}
+
+	async revealConnectorCredential(connectorId: string, credentialKey: string) {
+		this.connectorReveals.push(`${connectorId}.${credentialKey}`);
+		return Result.ok({ connectorId, credentialKey, value: "connector-secret" });
+	}
+
+	async revealTelemetryCredential(credentialId: RuntimeTelemetryCredentialId) {
+		this.telemetryReveals.push(credentialId);
+		return Result.ok({ credentialId, value: credentialId === "public" ? "pk-lf-public" : "sk-lf-secret" });
 	}
 
 	async getTelemetry() {
@@ -664,6 +798,41 @@ function projectConnector(
       }),
     ),
   };
+}
+
+function projectWebSearch(
+	input: NonNullable<RuntimeAgentSettingsInput["webSearch"]>,
+	previous: RuntimeAgentSettingsSnapshot["webSearch"],
+): RuntimeAgentSettingsSnapshot["webSearch"] {
+	return {
+		providers: previous.providers.map((provider) => {
+			const next = input.providers.find((candidate) => candidate.id === provider.id);
+			const order = next === undefined ? provider.order : next.order;
+			return {
+				id: provider.id,
+				enabled: next?.enabled ?? provider.enabled,
+				...(order === undefined ? {} : { order }),
+				credentialConfigured: next?.clearApiKey ? false : next?.apiKey ? true : provider.credentialConfigured,
+				...(next?.clearApiKey ? {} : next?.apiKey ? { credentialMask: `•••• ${next.apiKey.slice(-4)}` } : provider.credentialMask === undefined ? {} : { credentialMask: provider.credentialMask }),
+			};
+		}),
+		fetch: {
+			jina: {
+				credentialConfigured: input.fetch?.jina?.clearApiKey
+					? false
+					: input.fetch?.jina?.apiKey
+						? true
+						: previous.fetch.jina.credentialConfigured,
+				...(input.fetch?.jina?.clearApiKey
+					? {}
+					: input.fetch?.jina?.apiKey
+						? { credentialMask: `•••• ${input.fetch.jina.apiKey.slice(-4)}` }
+						: previous.fetch.jina.credentialMask === undefined
+							? {}
+							: { credentialMask: previous.fetch.jina.credentialMask }),
+			},
+		},
+	};
 }
 
 function telemetryCredentialMask(value: string): string {

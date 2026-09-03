@@ -24,6 +24,7 @@ import {
 	type RuntimeOperationOutcome,
 	type RuntimeOperationPreflightInput,
 	type RuntimeQueuedInput,
+	type RuntimeWebSearchDetails,
 } from "../operations";
 import type { RuntimeCapabilitySource } from "../runtime-capabilities";
 
@@ -367,8 +368,18 @@ class CodingAgentOperation implements RuntimeOperation {
 				}
 				return;
 			}
-			case "tool_execution_end":
+			case "tool_execution_end": {
+				if (event.toolName !== "web_search" || event.isError) return;
+				const webSearch = projectWebSearchDetails(event.result);
+				if (!webSearch) return;
+				this.publish({
+					type: "tool_details",
+					toolCallId: event.toolCallId,
+					toolName: "web_search",
+					webSearch,
+				});
 				return;
+			}
 			default:
 				return;
 		}
@@ -513,4 +524,31 @@ function toolProgressContent(
 		}
 	}
 	return projected;
+}
+
+function projectWebSearchDetails(value: JsonValue): RuntimeWebSearchDetails | undefined {
+	const details = jsonObject(value).details;
+	if (!isJsonObject(details) || typeof details.provider !== "string" || !details.provider.trim()) return undefined;
+	if (!Array.isArray(details.results)) return undefined;
+
+	const results = details.results.flatMap((candidate): RuntimeWebSearchDetails["results"] => {
+		if (!isJsonObject(candidate) || typeof candidate.title !== "string" || !candidate.title.trim()) return [];
+		const url = publicWebUrl(candidate.url);
+		return url ? [{ title: candidate.title.trim().slice(0, 500), url }] : [];
+	});
+	return { provider: details.provider.trim().slice(0, 100), results };
+}
+
+function publicWebUrl(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	try {
+		const url = new URL(value);
+		return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

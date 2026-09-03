@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { type IconName, useIcon } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
+import type { DesktopWebSearchResult } from "../../../shared/desktop-rpc";
 import { collapsePanel, ShimmerLabel, SwapLabel } from "./surfaces";
+import { WebSearchResults } from "./web-search-results";
 
 export interface TimelineStep {
 	id: string;
@@ -12,6 +14,7 @@ export interface TimelineStep {
 	chip?: string;
 	icon: IconName;
 	details?: string;
+	webSearchResults?: readonly DesktopWebSearchResult[];
 	active?: boolean;
 }
 
@@ -71,10 +74,15 @@ export function ToolTimeline({
 }
 
 function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; readonly active: boolean }) {
-	const [open, setOpen] = useState(false);
+	const hasWebSearchResults = step.webSearchResults !== undefined;
+	const [open, setOpen] = useState(hasWebSearchResults);
 	const Icon = useIcon(step.icon);
 	const ChevronRight = useIcon("chevron-right");
-	const expandable = Boolean(step.details);
+	const expandable = Boolean(step.details || hasWebSearchResults);
+
+	useEffect(() => {
+		if (hasWebSearchResults) setOpen(true);
+	}, [hasWebSearchResults]);
 	const rowClassName = cn(
 		"flex min-w-0 items-center gap-2 text-start text-[13.5px] text-foreground/55 outline-none",
 		expandable && "transition-colors hover:text-foreground/90",
@@ -110,9 +118,13 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 		<Collapsible open={open} onOpenChange={setOpen}>
 			<CollapsibleTrigger className={rowClassName}>{row}</CollapsibleTrigger>
 			<CollapsibleContent className="mt-2 [contain:paint] outline-none">
-				<pre className="max-h-64 overflow-auto rounded-md bg-foreground/[0.06] px-2 py-1.5 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-foreground/70">
-					{step.details}
-				</pre>
+				{step.webSearchResults ? (
+					<WebSearchResults results={step.webSearchResults} />
+				) : (
+					<pre className="max-h-64 overflow-auto rounded-md bg-foreground/[0.06] px-2 py-1.5 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-foreground/70">
+						{step.details}
+					</pre>
+				)}
 			</CollapsibleContent>
 		</Collapsible>
 	);

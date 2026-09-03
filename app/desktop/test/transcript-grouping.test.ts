@@ -60,6 +60,73 @@ describe("transcript grouping", () => {
 		expect(markup).toContain("1 step · 1 action");
 	});
 
+	test("普通搜索工具不会进入 Web Search 来源渲染", () => {
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:connector-search-1",
+			turnId: "turn-1",
+			activityId: "assistant:1",
+			toolCallId: "connector-search-1",
+			toolName: "Search Tools",
+			activityKind: "search",
+			status: "complete",
+			searchQuery: "weather",
+			details: "Search completed",
+		};
+
+		const steps = workTimelineSteps([tool], intl);
+		expect(steps[0]?.webSearchResults).toBeUndefined();
+		expect(steps[0]?.searchQuery).toBeUndefined();
+		expect(renderToStaticMarkup(createElement(TranscriptItem, { item: tool }))).not.toContain(
+			'data-slot="web-search-results"',
+		);
+	});
+
+	test("Web Search 逐行渲染可打开的来源结果", () => {
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:web-search-1",
+			turnId: "turn-1",
+			activityId: "assistant:1",
+			toolCallId: "web-search-1",
+			toolName: "Search web for release notes",
+			activityKind: "search",
+			status: "complete",
+			searchQuery: "Jai release notes",
+			webSearchResults: [
+				{ title: "Jai releases", url: "https://example.com/releases" },
+				{ title: "Jai changelog", url: "https://docs.example.com/changelog" },
+			],
+		};
+
+		const markup = renderToStaticMarkup(createElement(TranscriptItem, { item: tool }));
+		expect(markup).toContain('data-slot="web-search-results"');
+		expect(markup).toContain("Search web for release notes");
+		expect(markup).not.toContain("Jai release notes");
+		expect(markup).toContain("Jai releases");
+		expect(markup).toContain("Jai changelog");
+		expect(markup).toContain('href="https://example.com/releases"');
+		expect(markup).toContain('src="https://example.com/favicon.ico"');
+		expect(markup).not.toContain("Web Search · Web Search");
+	});
+
+	test("Web Search 使用关键词作为通用工具名的结果标题", () => {
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:web-search-query-1",
+			turnId: "turn-1",
+			activityId: "assistant:1",
+			toolCallId: "web-search-query-1",
+			toolName: "web_search",
+			activityKind: "search",
+			status: "complete",
+			searchQuery: "latest AI news",
+			webSearchResults: [{ title: "AI Daily", url: "https://example.com/ai-daily" }],
+		};
+
+		expect(workTimelineSteps([tool], intl)[0]?.verb).toBe("latest AI news");
+	});
+
 	test("同一运行内的工具只形成一个外层工作过程", () => {
 		const firstTool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
 			kind: "tool",

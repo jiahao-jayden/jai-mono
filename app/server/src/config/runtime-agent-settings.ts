@@ -84,6 +84,72 @@ export interface RuntimeConnectorOAuthTokenInput {
 	readonly scopes: readonly string[];
 }
 
+export type RuntimeWebSearchProviderId = "exa" | "parallel" | "anysearch";
+export type RuntimeWebSearchCredentialId = RuntimeWebSearchProviderId | "jina";
+
+export interface RuntimeWebSearchProvider {
+	readonly enabled: boolean;
+	readonly order?: number;
+	readonly apiKey?: string;
+}
+
+export interface RuntimeWebSearchSettings {
+	readonly providers: Readonly<Record<RuntimeWebSearchProviderId, RuntimeWebSearchProvider>>;
+	readonly fetch?: RuntimeWebFetchSettings;
+}
+
+export interface RuntimeWebFetchJinaSettings {
+	readonly apiKey?: string;
+}
+
+export interface RuntimeWebFetchSettings {
+	readonly jina: RuntimeWebFetchJinaSettings;
+}
+
+export interface RuntimeWebSearchProviderInput {
+	readonly id: RuntimeWebSearchProviderId;
+	readonly enabled: boolean;
+	readonly order?: number;
+	readonly apiKey?: string;
+	readonly clearApiKey?: boolean;
+}
+
+export interface RuntimeWebSearchSettingsInput {
+	readonly providers: readonly RuntimeWebSearchProviderInput[];
+	readonly fetch?: RuntimeWebFetchSettingsInput;
+}
+
+export interface RuntimeWebFetchJinaSettingsInput {
+	readonly apiKey?: string;
+	readonly clearApiKey?: boolean;
+}
+
+export interface RuntimeWebFetchSettingsInput {
+	readonly jina?: RuntimeWebFetchJinaSettingsInput;
+}
+
+export interface RuntimeWebSearchProviderProjection {
+	readonly id: RuntimeWebSearchProviderId;
+	readonly enabled: boolean;
+	readonly order?: number;
+	readonly credentialConfigured: boolean;
+	readonly credentialMask?: string;
+}
+
+export interface RuntimeWebSearchSettingsProjection {
+	readonly providers: readonly RuntimeWebSearchProviderProjection[];
+	readonly fetch: RuntimeWebFetchSettingsProjection;
+}
+
+export interface RuntimeWebFetchJinaSettingsProjection {
+	readonly credentialConfigured: boolean;
+	readonly credentialMask?: string;
+}
+
+export interface RuntimeWebFetchSettingsProjection {
+	readonly jina: RuntimeWebFetchJinaSettingsProjection;
+}
+
 /**
  * Canonical product configuration used to assemble a Coding Agent. Secrets
  * stay in this Server-side fact; clients receive only a safe projection.
@@ -96,6 +162,7 @@ export interface RuntimeAgentSettings {
 	readonly providers: Readonly<Record<string, RuntimeProviderProfile>>;
 	readonly extensions: Readonly<Record<string, JsonObject>>;
 	readonly connector?: RuntimeConnectorSettings;
+	readonly webSearch?: RuntimeWebSearchSettings;
 }
 
 export interface RuntimeProviderProfileInput {
@@ -123,6 +190,7 @@ export interface RuntimeAgentSettingsInput {
 	readonly reasoningEffort?: RuntimeReasoningEffort;
 	readonly providers: readonly RuntimeProviderProfileInput[];
 	readonly connector?: RuntimeConnectorSettings;
+	readonly webSearch?: RuntimeWebSearchSettingsInput;
 }
 
 export interface RuntimeProviderProfileProjection {
@@ -155,6 +223,7 @@ export interface RuntimeAgentSettingsSnapshot {
 	readonly reasoningEffort?: RuntimeReasoningEffort;
 	readonly profiles: readonly RuntimeProviderProfileProjection[];
 	readonly connector: RuntimeConnectorProjection;
+	readonly webSearch: RuntimeWebSearchSettingsProjection;
 }
 
 export interface ResolvedRuntimeAgentOptions {
@@ -270,6 +339,7 @@ export class SqliteRuntimeAgentSettings {
 					model: "",
 					profiles: [],
 					connector: projectConnector(undefined),
+					webSearch: projectWebSearch(undefined),
 				});
 			}
 			return Result.err(current.error);
@@ -424,6 +494,13 @@ export class SqliteRuntimeAgentSettings {
 		return Result.ok(structuredClone(settings.value.connector ?? {}));
 	}
 
+	/** Returns the Server-local Web Search settings, including raw keys for Operation assembly only. */
+	readWebSearchSettings(): ResultType<RuntimeWebSearchSettings, RuntimeAgentSettingsReadError> {
+		const settings = this.read();
+		if (settings.isErr()) return Result.err(settings.error);
+		return Result.ok(structuredClone(settings.value.webSearch ?? defaultWebSearchSettings()));
+	}
+
 	/**
 	 * Persists the Connector Extension's policy slice while retaining every
 	 * credential. The Extension receives only this policy projection, so its
@@ -481,6 +558,59 @@ export class SqliteRuntimeAgentSettings {
 			);
 		}
 		return Result.ok({ profileId, apiKey });
+	}
+
+	revealWebSearchApiKey(
+		credentialId: RuntimeWebSearchCredentialId,
+	): ResultType<
+		{ readonly credentialId: RuntimeWebSearchCredentialId; readonly apiKey: string },
+		RuntimeAgentSettingsReadError | RuntimeAgentSettingsInvalid
+	> {
+		if (!isWebSearchCredentialId(credentialId)) {
+			return Result.err(
+				new RuntimeAgentSettingsInvalid({
+					message: "Web Search credential id is invalid",
+				}),
+			);
+		}
+		const settings = this.read();
+		if (settings.isErr()) return Result.err(settings.error);
+		const apiKey = credentialId === "jina" ? settings.value.webSearch?.fetch?.jina.apiKey : settings.value.webSearch?.providers[credentialId]?.apiKey;
+		if (!apiKey) {
+			return Result.err(
+				new RuntimeAgentSettingsInvalid({
+					message: `Web Search credential "${credentialId}" has no saved API key`,
+				}),
+			);
+		}
+		return Result.ok({ credentialId, apiKey });
+	}
+
+	revealConnectorCredential(
+		connectorId: string,
+		credentialKey: string,
+	): ResultType<
+		{ readonly connectorId: string; readonly credentialKey: string; readonly value: string },
+		RuntimeAgentSettingsReadError | RuntimeAgentSettingsInvalid
+	> {
+		if (!connectorId.trim() || !credentialKey.trim() || connectorOAuthCredentialKeys.has(credentialKey)) {
+			return Result.err(
+				new RuntimeAgentSettingsInvalid({
+					message: "Connector credential id is invalid",
+				}),
+			);
+		}
+		const settings = this.read();
+		if (settings.isErr()) return Result.err(settings.error);
+		const value = settings.value.connector?.connectors?.[connectorId]?.credentials?.[credentialKey];
+		if (!value) {
+			return Result.err(
+				new RuntimeAgentSettingsInvalid({
+					message: `Connector credential "${connectorId}.${credentialKey}" has no saved value`,
+				}),
+			);
+		}
+		return Result.ok({ connectorId, credentialKey, value });
 	}
 
 	saveConnectorOAuth(
@@ -744,7 +874,16 @@ export class SqliteRuntimeAgentSettings {
 export function parseRuntimeAgentSettingsInput(value: unknown): RuntimeAgentSettingsInput | undefined {
 	if (
 		!isRecord(value) ||
-		!hasOnly(value, ["revision", "model", "maxTurns", "language", "reasoningEffort", "providers", "connector"])
+		!hasOnly(value, [
+			"revision",
+			"model",
+			"maxTurns",
+			"language",
+			"reasoningEffort",
+			"providers",
+			"connector",
+			"webSearch",
+		])
 	)
 		return undefined;
 	if ((value.revision !== null && typeof value.revision !== "string") || typeof value.model !== "string")
@@ -758,6 +897,7 @@ export function parseRuntimeAgentSettingsInput(value: unknown): RuntimeAgentSett
 	if (reasoningEffort !== undefined && !isReasoningEffort(reasoningEffort)) return undefined;
 	if (!Array.isArray(value.providers)) return undefined;
 	if (value.connector !== undefined && !isRuntimeConnectorSettings(value.connector)) return undefined;
+	if (value.webSearch !== undefined && !isRuntimeWebSearchSettingsInput(value.webSearch)) return undefined;
 	const providers = value.providers.map(parseProfileInput);
 	if (providers.some((profile) => profile === undefined)) return undefined;
 	return {
@@ -768,6 +908,7 @@ export function parseRuntimeAgentSettingsInput(value: unknown): RuntimeAgentSett
 		...(reasoningEffort === undefined ? {} : { reasoningEffort }),
 		providers: providers as RuntimeProviderProfileInput[],
 		...(value.connector === undefined ? {} : { connector: value.connector }),
+		...(value.webSearch === undefined ? {} : { webSearch: value.webSearch }),
 	};
 }
 
@@ -947,6 +1088,11 @@ function settingsFromInput(
 		if (normalized.isErr()) return Result.err(normalized.error);
 		providers[inputProfile.id] = normalized.value;
 	}
+	const webSearch =
+		input.webSearch === undefined
+			? current.webSearch
+			: normalizeWebSearchSettings(input.webSearch, current.webSearch);
+	if (webSearch instanceof RuntimeAgentSettingsInvalid) return Result.err(webSearch);
 	return validateSettings({
 		model: input.model.trim(),
 		...(input.maxTurns === undefined ? {} : { maxTurns: input.maxTurns }),
@@ -961,6 +1107,7 @@ function settingsFromInput(
 			: {
 					connector: mergeConnectorSettings(input.connector, current.connector),
 				}),
+		...(webSearch === undefined ? {} : { webSearch }),
 	});
 }
 
@@ -1046,7 +1193,16 @@ function normalizeProfile(
 function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, RuntimeAgentSettingsInvalid> {
 	if (
 		!isRecord(value) ||
-		!hasOnly(value, ["model", "maxTurns", "language", "reasoningEffort", "providers", "extensions", "connector"])
+		!hasOnly(value, [
+			"model",
+			"maxTurns",
+			"language",
+			"reasoningEffort",
+			"providers",
+			"extensions",
+			"connector",
+			"webSearch",
+		])
 	) {
 		return Result.err(
 			new RuntimeAgentSettingsInvalid({
@@ -1088,7 +1244,8 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 	if (
 		!isRecord(value.providers) ||
 		!isJsonObjectRecord(value.extensions) ||
-		(value.connector !== undefined && !isRuntimeConnectorSettings(value.connector))
+		(value.connector !== undefined && !isRuntimeConnectorSettings(value.connector)) ||
+		(value.webSearch !== undefined && !isRuntimeWebSearchSettings(value.webSearch))
 	) {
 		return Result.err(
 			new RuntimeAgentSettingsInvalid({
@@ -1144,6 +1301,9 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 			: {
 					connector: structuredClone(value.connector) as RuntimeConnectorSettings,
 				}),
+		...(value.webSearch === undefined
+			? {}
+			: { webSearch: structuredClone(value.webSearch) as RuntimeWebSearchSettings }),
 	};
 	const separator = settings.model.indexOf("/");
 	const profileId = separator > 0 ? settings.model.slice(0, separator) : "";
@@ -1222,6 +1382,7 @@ function projectSnapshot(settings: RuntimeAgentSettings, revision: string): Runt
 			}))
 			.sort((left, right) => left.name.localeCompare(right.name)),
 		connector: projectConnector(settings.connector),
+		webSearch: projectWebSearch(settings.webSearch),
 	};
 }
 
@@ -1391,6 +1552,150 @@ function isRuntimeConnectorSettings(value: unknown): value is RuntimeConnectorSe
 		}
 	}
 	return true;
+}
+
+function defaultWebSearchSettings(): RuntimeWebSearchSettings {
+	return {
+		providers: {
+			exa: { enabled: false },
+			parallel: { enabled: false },
+			anysearch: { enabled: false },
+		},
+		fetch: { jina: {} },
+	};
+}
+
+function normalizeWebSearchSettings(
+	input: RuntimeWebSearchSettingsInput,
+	previous: RuntimeWebSearchSettings | undefined,
+): RuntimeWebSearchSettings | RuntimeAgentSettingsInvalid {
+	const current = previous?.providers ?? defaultWebSearchSettings().providers;
+	const providers: Record<RuntimeWebSearchProviderId, RuntimeWebSearchProvider> = { ...current };
+	const seen = new Set<RuntimeWebSearchProviderId>();
+	for (const provider of input.providers) {
+		if (seen.has(provider.id)) {
+			return new RuntimeAgentSettingsInvalid({ message: `Web Search Provider "${provider.id}" is duplicated` });
+		}
+		seen.add(provider.id);
+		const apiKey = provider.clearApiKey ? undefined : provider.apiKey?.trim() || current[provider.id]?.apiKey;
+		if (provider.enabled && !apiKey) {
+			return new RuntimeAgentSettingsInvalid({
+				message: `Web Search Provider "${provider.id}" requires an API key`,
+			});
+		}
+		providers[provider.id] = {
+			enabled: provider.enabled,
+			...(provider.order === undefined ? {} : { order: provider.order }),
+			...(apiKey ? { apiKey } : {}),
+		};
+	}
+	return {
+		providers,
+		fetch: normalizeWebFetchSettings(input.fetch, previous?.fetch ?? defaultWebSearchSettings().fetch!),
+	};
+}
+
+function isRuntimeWebSearchSettingsInput(value: unknown): value is RuntimeWebSearchSettingsInput {
+	if (!isRecord(value) || !hasOnly(value, ["providers", "fetch"]) || !Array.isArray(value.providers)) return false;
+	const seen = new Set<string>();
+	for (const provider of value.providers) {
+		if (
+			!isRecord(provider) ||
+			!hasOnly(provider, ["id", "enabled", "order", "apiKey", "clearApiKey"]) ||
+			!isWebSearchProviderId(provider.id) ||
+			seen.has(provider.id) ||
+			typeof provider.enabled !== "boolean" ||
+			(provider.order !== undefined &&
+				(typeof provider.order !== "number" || !Number.isInteger(provider.order) || provider.order < 1)) ||
+			(provider.apiKey !== undefined && typeof provider.apiKey !== "string") ||
+			(provider.clearApiKey !== undefined && typeof provider.clearApiKey !== "boolean")
+		) {
+			return false;
+		}
+		seen.add(provider.id);
+	}
+	return value.fetch === undefined || isRuntimeWebFetchSettingsInput(value.fetch);
+}
+
+function isRuntimeWebSearchSettings(value: unknown): value is RuntimeWebSearchSettings {
+	if (!isRecord(value) || !hasOnly(value, ["providers", "fetch"]) || !isRecord(value.providers)) return false;
+	const providerIds: RuntimeWebSearchProviderId[] = ["exa", "parallel", "anysearch"];
+	if (Object.keys(value.providers).some((id) => !isWebSearchProviderId(id))) return false;
+	for (const providerId of providerIds) {
+		const provider = value.providers[providerId];
+		if (
+			!isRecord(provider) ||
+			!hasOnly(provider, ["enabled", "order", "apiKey"]) ||
+			typeof provider.enabled !== "boolean" ||
+			(provider.order !== undefined &&
+				(typeof provider.order !== "number" || !Number.isInteger(provider.order) || provider.order < 1)) ||
+			(provider.apiKey !== undefined && typeof provider.apiKey !== "string") ||
+			(provider.enabled && typeof provider.apiKey !== "string")
+		) {
+			return false;
+		}
+	}
+	return value.fetch === undefined || isRuntimeWebFetchSettings(value.fetch);
+}
+
+function isWebSearchProviderId(value: unknown): value is RuntimeWebSearchProviderId {
+	return value === "exa" || value === "parallel" || value === "anysearch";
+}
+
+function isWebSearchCredentialId(value: unknown): value is RuntimeWebSearchCredentialId {
+	return value === "jina" || isWebSearchProviderId(value);
+}
+
+function projectWebSearch(settings: RuntimeWebSearchSettings | undefined): RuntimeWebSearchSettingsProjection {
+	const configured = settings ?? defaultWebSearchSettings();
+	const fetch = configured.fetch ?? defaultWebSearchSettings().fetch!;
+	return {
+		providers: (["exa", "parallel", "anysearch"] as const).map((id) => {
+			const provider = configured.providers[id] ?? { enabled: false };
+			return {
+				id,
+				enabled: provider.enabled,
+				...(provider.order === undefined ? {} : { order: provider.order }),
+				credentialConfigured: Boolean(provider.apiKey),
+				...(provider.apiKey ? { credentialMask: maskCredential(provider.apiKey) } : {}),
+			};
+		}),
+		fetch: projectWebFetch(fetch),
+	};
+}
+
+function normalizeWebFetchSettings(
+	input: RuntimeWebFetchSettingsInput | undefined,
+	previous: RuntimeWebFetchSettings,
+): RuntimeWebFetchSettings {
+	const jinaInput = input?.jina;
+	const apiKey = jinaInput?.clearApiKey ? undefined : jinaInput?.apiKey?.trim() || previous.jina.apiKey;
+	return { jina: apiKey ? { apiKey } : {} };
+}
+
+function isRuntimeWebFetchSettingsInput(value: unknown): value is RuntimeWebFetchSettingsInput {
+	if (!isRecord(value) || !hasOnly(value, ["jina"])) return false;
+	if (value.jina === undefined) return true;
+	return (
+		isRecord(value.jina) &&
+		hasOnly(value.jina, ["apiKey", "clearApiKey"]) &&
+		(value.jina.apiKey === undefined || typeof value.jina.apiKey === "string") &&
+		(value.jina.clearApiKey === undefined || typeof value.jina.clearApiKey === "boolean")
+	);
+}
+
+function isRuntimeWebFetchSettings(value: unknown): value is RuntimeWebFetchSettings {
+	if (!isRecord(value) || !hasOnly(value, ["jina"]) || !isRecord(value.jina)) return false;
+	return hasOnly(value.jina, ["apiKey"]) && (value.jina.apiKey === undefined || typeof value.jina.apiKey === "string");
+}
+
+function projectWebFetch(settings: RuntimeWebFetchSettings): RuntimeWebFetchSettingsProjection {
+	return {
+		jina: {
+			credentialConfigured: Boolean(settings.jina.apiKey),
+			...(settings.jina.apiKey ? { credentialMask: maskCredential(settings.jina.apiKey) } : {}),
+		},
+	};
 }
 
 function isConnectorPermission(value: unknown): value is RuntimeConnectorPermission {

@@ -678,6 +678,66 @@
   "desktop.settings.providers": {
     "defaultMessage": "Providers"
   },
+  "desktop.settings.webSearch": {
+    "defaultMessage": "Web Search"
+  },
+  "desktop.settings.webSearchEnabled": {
+    "defaultMessage": "Enabled"
+  },
+  "desktop.settings.webSearchConfigured": {
+    "defaultMessage": "Configured · {mask}"
+  },
+  "desktop.settings.webSearchApiKey": {
+    "defaultMessage": "API key"
+  },
+  "desktop.settings.webSearchReplaceKey": {
+    "defaultMessage": "Replace API key"
+  },
+  "desktop.settings.webSearchEnterKey": {
+    "defaultMessage": "Enter API key"
+  },
+  "desktop.settings.webSearchKeyWillClear": {
+    "defaultMessage": "Will clear"
+  },
+  "desktop.settings.webSearchClearKey": {
+    "defaultMessage": "Clear API key"
+  },
+  "desktop.settings.webSearchApiKeyRequired": {
+    "defaultMessage": "Enabled Web Search services need an API key."
+  },
+  "desktop.settings.webSearchOrder": {
+    "defaultMessage": "Order"
+  },
+  "desktop.settings.webSearchRandom": {
+    "defaultMessage": "Random"
+  },
+  "desktop.settings.webSearchJina": {
+    "defaultMessage": "Jina Reader"
+  },
+  "desktop.settings.webSearchJinaPreferred": {
+    "defaultMessage": "Preferred"
+  },
+  "desktop.settings.webSearchJinaDescription": {
+    "defaultMessage": "Fetch tries Jina Reader first. An API key is optional; direct fetch with Turndown remains available as fallback."
+  },
+  "desktop.settings.webSearchJinaConfigured": {
+    "defaultMessage": "Configured · {mask}"
+  },
+  "desktop.settings.webSearchJinaApiKey": {
+    "defaultMessage": "API key (optional)"
+  },
+  "desktop.settings.webSearchJinaReplaceKey": {
+    "defaultMessage": "Replace API key"
+  },
+  "desktop.settings.webSearchJinaEnterKey": {
+    "defaultMessage": "Enter API key (optional)"
+  },
+  "desktop.settings.webSearchJinaKeyWillClear": {
+    "defaultMessage": "Will clear"
+  },
+  "desktop.settings.webSearchJinaClearKey": {
+    "defaultMessage": "Clear API key"
+  },
   "desktop.settings.readOnlyTools": {
     "defaultMessage": "Read-only tools"
   },
@@ -728,9 +788,6 @@
   },
   "desktop.settings.telemetryKeysRequired": {
     "defaultMessage": "Enter a Langfuse public key and secret key before enabling telemetry."
-  },
-  "desktop.settings.telemetryNoKeys": {
-    "defaultMessage": "No Langfuse key pair is stored."
   },
   "desktop.settings.telemetryOverride": {
     "defaultMessage": "This Runtime Host is configured by JAI_TELEMETRY_* environment variables. Local settings are read-only while that override is present."
@@ -1034,6 +1091,12 @@
   },
   "desktop.transcript.searching": {
     "defaultMessage": "Searching"
+  },
+  "desktop.transcript.webSearchResults": {
+    "defaultMessage": "Web search results"
+  },
+  "desktop.transcript.webSearching": {
+    "defaultMessage": "Searching web"
   },
   "desktop.transcript.stepSummary": {
     "defaultMessage": "{count} {count, plural, one {step} other {steps}}"
