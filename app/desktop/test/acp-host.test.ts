@@ -73,6 +73,51 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
+	test("projects ACP message chunks before the final assistant message", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "agent_message_chunk",
+					messageId: "assistant-1",
+					content: { type: "text", text: "The response" },
+				},
+			},
+		});
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "agent_message_chunk",
+					messageId: "assistant-1",
+					content: { type: "text", text: " is streaming." },
+				},
+			},
+		});
+
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({
+				kind: "message",
+				id: "message:assistant-1",
+				role: "assistant",
+				text: "The response is streaming.",
+				status: "streaming",
+			}),
+		]);
+		host.close();
+	});
+
 	test("sends steering through ACP prompt admission instead of a Desktop memory queue", async () => {
 		const client = new FakeAcpClient();
 		const host = await DesktopAcpAgentHost.open(() => {}, {

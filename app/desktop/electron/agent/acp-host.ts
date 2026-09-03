@@ -679,6 +679,7 @@ function projectPermission(
 
 function contentText(value: unknown): string {
 	if (typeof value === "string") return value;
+	if (isRecord(value)) return value.type === "text" && typeof value.text === "string" ? value.text : "";
 	if (!Array.isArray(value)) return "";
 	return value
 		.filter(
