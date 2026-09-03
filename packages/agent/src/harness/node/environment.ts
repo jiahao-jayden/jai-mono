@@ -6,7 +6,6 @@ import { access, appendFile, chmod, lstat, mkdir, realpath, rename, rm, stat, wr
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { StringDecoder } from "node:string_decoder";
-import { getErrorMessage } from "@jai/common";
 import { TaggedError } from "better-result";
 import { fileSystemError, shellError } from "../environment/errors";
 import type {
@@ -107,7 +106,8 @@ function fileSystemFailure(error: unknown, resource: string): never {
 	if (isNodeErrorCode(error, "ABORT_ERR")) {
 		throw fileSystemError("aborted", "Operation aborted", { resource, cause: error });
 	}
-	throw fileSystemError("io_error", getErrorMessage(error) || `I/O failed: ${resource}`, {
+	const message = error instanceof Error ? error.message : String(error);
+	throw fileSystemError("io_error", message || `I/O failed: ${resource}`, {
 		resource,
 		cause: error,
 	});
@@ -471,7 +471,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 			if (spawnError) {
 				throw shellError(
 					isNotFound(spawnError) ? "shell_unavailable" : "spawn_failed",
-					getErrorMessage(spawnError),
+					spawnError instanceof Error ? spawnError.message : String(spawnError),
 					{ cause: spawnError },
 				);
 			}

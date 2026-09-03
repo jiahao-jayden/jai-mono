@@ -24,7 +24,6 @@
 		"@ibm/plex": "^6.4.1",
 		"@jai/agent": "workspace:*",
 		"@jai/coding-agent": "workspace:*",
-		"@jai/common": "workspace:*",
 		"@jai/connector": "workspace:*",
 		"@jai/extension": "workspace:*",
 		"@jai/server": "workspace:*",

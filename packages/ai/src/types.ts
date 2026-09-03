@@ -1,5 +1,6 @@
-import type { JsonValue } from "@jai/common";
 import type { TSchema } from "@sinclair/typebox";
+
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 /* -------------------------------------------------------------------------- */
 /*                             内容块 Content Blocks                             */

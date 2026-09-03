@@ -10,7 +10,6 @@ import {
 	validateToolArguments,
 	zeroUsage,
 } from "@jai/ai";
-import { getErrorMessage } from "@jai/common";
 import { TaggedError } from "better-result";
 import { type EffectGateAction, isEffectGateInterrupted } from "./effect-gate";
 import { projectToolCallProtocol } from "./tool-protocol";
@@ -646,7 +645,7 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 		if (isEffectGateInterrupted(error)) throw error;
 		// 工具执行错误不能成为阻塞，而是让 agent-loop 可见
 		result = {
-			content: [{ type: "text", text: getErrorMessage(error) }],
+			content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
 		};
 		isError = true;
 	} finally {

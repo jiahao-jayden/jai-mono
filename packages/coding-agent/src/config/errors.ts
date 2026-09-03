@@ -1,5 +1,5 @@
-import type { JsonValue } from "@jai/common";
 import { TaggedError } from "better-result";
+import type { JsonValue } from "../core/json";
 import type { ConfigFileScope } from "./types";
 
 type ConfigErrorInit = { readonly cause?: unknown; readonly data?: JsonValue; readonly message: string };

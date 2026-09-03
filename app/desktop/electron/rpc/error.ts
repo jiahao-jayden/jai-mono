@@ -1,14 +1,14 @@
-import { toErrorEnvelope } from "@jai/common";
+import { TaggedError } from "better-result";
 import type { DesktopAgentCreationFailureReason, DesktopRpcResponse } from "../../shared/desktop-rpc";
 
 export function projectDesktopRpcError(error: unknown): Extract<DesktopRpcResponse, { readonly status: "error" }> {
-	const envelope = toErrorEnvelope(error);
+	const tag = TaggedError.is(error) ? error._tag : "error.unknown";
 	return {
 		status: "error",
 		error: {
-			_tag: envelope.code,
+			_tag: tag,
 			message: "Desktop request failed.",
-			...(safeCreationFailureReason(envelope.code, error) ?? {}),
+			...(safeCreationFailureReason(tag, error) ?? {}),
 		},
 	};
 }

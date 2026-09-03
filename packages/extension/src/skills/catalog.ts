@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { type FSWatcher, unwatchFile, watchFile, watch as watchFileSystem } from "node:fs";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import { getErrorMessage } from "@jai/common";
 import { TaggedError } from "better-result";
 import { parse } from "yaml";
 
@@ -281,7 +280,7 @@ async function scanRoot(root: CatalogRoot, diagnostics: CodingSkillDiagnostic[])
 				code: "invalid",
 				path: skillDirectory,
 				skillName: entry.name,
-				message: getErrorMessage(error),
+				message: error instanceof Error ? error.message : String(error),
 			});
 		}
 	}

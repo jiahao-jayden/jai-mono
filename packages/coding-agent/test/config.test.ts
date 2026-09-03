@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { getErrorCode } from "@jai/common";
 import { Type } from "@sinclair/typebox";
 import {
 	CodingConfigStore,
@@ -280,7 +279,9 @@ describe("CodingConfigStore", () => {
 			await store.writeScope("project-local", {}, { expectedRevision: null });
 			throw new Error("Expected project-local write to fail");
 		} catch (error) {
-			expect(getErrorCode(error)).toBe("coding_config.scope_unavailable");
+			expect(typeof error === "object" && error !== null && "_tag" in error ? error._tag : undefined).toBe(
+				"coding_config.scope_unavailable",
+			);
 		}
 		store.close();
 	});
@@ -312,7 +313,9 @@ describe("defineCodingConfig", () => {
 		try {
 			await new CodingConfigStore(definition, fixture.options).load();
 		} catch (error) {
-			expect(getErrorCode(error)).toBe("coding_config.parse_failed");
+			expect(typeof error === "object" && error !== null && "_tag" in error ? error._tag : undefined).toBe(
+				"coding_config.parse_failed",
+			);
 		}
 	});
 });

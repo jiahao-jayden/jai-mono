@@ -1,4 +1,3 @@
-import { getErrorMessage } from "@jai/common";
 import { TaggedError } from "better-result";
 import type { AssistantMessageEventStream } from "./event-stream";
 import { ModelOutputProtocolViolation } from "./tool-protocol";
@@ -103,10 +102,11 @@ export function normalizeProviderError(error: unknown): ProviderErrorInfo {
 					requestId?: unknown;
 				})
 			: undefined;
-	if (!source) return { message: getErrorMessage(error) };
+	const fallback = error instanceof Error ? error.message : String(error);
+	if (!source) return { message: fallback };
 
 	const result: ProviderErrorInfo = {
-		message: typeof source.message === "string" ? source.message : getErrorMessage(error),
+		message: typeof source.message === "string" ? source.message : fallback,
 	};
 
 	if (typeof source.status === "number") result.status = source.status;

@@ -1,4 +1,3 @@
-import { getErrorMessage } from "@jai/common";
 import { type Static, Type } from "@sinclair/typebox";
 import { TaggedError } from "better-result";
 import type { AgentTool } from "../../core";
@@ -180,7 +179,7 @@ export function createBashTool(options: BashToolOptions): AgentTool<typeof bashP
 						});
 					}
 					throw bashError("execution_failed", {
-						message: appendStatus(diagnostic, getErrorMessage(error)),
+						message: appendStatus(diagnostic, error instanceof Error ? error.message : String(error)),
 						cause: error,
 					});
 				}

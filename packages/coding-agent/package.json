@@ -42,7 +42,6 @@
 	"devDependencies": {
 		"@jai/agent": "workspace:*",
 		"@jai/ai": "workspace:*",
-		"@jai/common": "workspace:*",
 		"@jai/connector": "workspace:*",
 		"tsup": "^8.5.1",
 		"typescript": "~5.8.3"

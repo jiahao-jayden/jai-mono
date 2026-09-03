@@ -13,7 +13,6 @@
 		"test": "bun test"
 	},
 	"dependencies": {
-		"@jai/common": "workspace:*",
 		"better-result": "^3.0.0"
 	},
 	"devDependencies": {

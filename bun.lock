@@ -35,7 +35,6 @@
       "name": "@jai/connector",
       "version": "0.0.0",
       "dependencies": {
-        "@jai/common": "workspace:*",
         "better-result": "^3.0.0",
       },
       "devDependencies": {
@@ -54,7 +53,6 @@
         "@ibm/plex": "^6.4.1",
         "@jai/agent": "workspace:*",
         "@jai/coding-agent": "workspace:*",
-        "@jai/common": "workspace:*",
         "@jai/connector": "workspace:*",
         "@jai/extension": "workspace:*",
         "@jai/server": "workspace:*",
@@ -193,7 +191,6 @@
       "version": "0.0.0",
       "dependencies": {
         "@jai/ai": "workspace:*",
-        "@jai/common": "workspace:*",
         "@sinclair/typebox": "catalog:",
         "better-result": "^3.0.0",
       },
@@ -206,7 +203,6 @@
       "version": "0.0.0",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.110.0",
-        "@jai/common": "workspace:*",
         "@sinclair/typebox": "catalog:",
         "better-result": "^3.0.0",
         "openai": "^6.45.0",
@@ -231,20 +227,9 @@
       "devDependencies": {
         "@jai/agent": "workspace:*",
         "@jai/ai": "workspace:*",
-        "@jai/common": "workspace:*",
         "@jai/connector": "workspace:*",
         "tsup": "^8.5.1",
         "typescript": "~5.8.3",
-      },
-    },
-    "packages/common": {
-      "name": "@jai/common",
-      "version": "0.0.0",
-      "dependencies": {
-        "better-result": "^3.0.0",
-      },
-      "devDependencies": {
-        "typescript": "catalog:",
       },
     },
     "packages/extension": {
@@ -253,7 +238,6 @@
       "dependencies": {
         "@ff-labs/fff-node": "0.10.5",
         "@jai/coding-agent": "workspace:*",
-        "@jai/common": "workspace:*",
         "@jai/connector": "workspace:*",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@sinclair/typebox": "^0.34.49",
@@ -833,8 +817,6 @@
     "@jai/ai": ["@jai/ai@workspace:packages/ai"],
 
     "@jai/coding-agent": ["@jai/coding-agent@workspace:packages/coding-agent"],
-
-    "@jai/common": ["@jai/common@workspace:packages/common"],
 
     "@jai/connector": ["@jai/connector@workspace:app/connector"],
 

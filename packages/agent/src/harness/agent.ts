@@ -1,5 +1,4 @@
 import { type AssistantMessage, EventStream, isModelOutputProtocolViolation, type Model, type Provider } from "@jai/ai";
-import { getErrorMessage } from "@jai/common";
 import { TaggedError } from "better-result";
 import { type AgentInput, CoreAgent, type CoreAgentOptions } from "../core/agent";
 import { type AgentState, cloneJson, type JsonObject } from "../core/agent-state";
@@ -562,7 +561,7 @@ function resolveCompaction(model: Model, options: AgentCompactionOptions | undef
 function toErrorInfo(error: unknown): CompactionErrorInfo {
 	if (isCompactionFailure(error))
 		return { code: error._tag.slice("compaction.".length) as CompactionErrorInfo["code"], message: error.message };
-	return { code: "unknown", message: getErrorMessage(error) };
+	return { code: "unknown", message: error instanceof Error ? error.message : String(error) };
 }
 
 function isSessionError(error: unknown): boolean {

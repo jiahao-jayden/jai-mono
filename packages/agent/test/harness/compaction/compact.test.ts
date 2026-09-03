@@ -7,7 +7,6 @@ import {
 	type Provider,
 	type StreamOptions,
 } from "@jai/ai";
-import { getErrorCode } from "@jai/common";
 import { compact, isContextOverflow, type CompactInput, type SessionEntry } from "../../../src/harness";
 import { model } from "../../support/fixtures";
 
@@ -18,7 +17,7 @@ async function expectErrorCode(promise: Promise<unknown>, code: string): Promise
 		await promise;
 		throw new Error(`Expected ${code}`);
 	} catch (error) {
-		expect(getErrorCode(error)).toBe(code);
+		expect(typeof error === "object" && error !== null && "_tag" in error ? error._tag : undefined).toBe(code);
 	}
 }
 

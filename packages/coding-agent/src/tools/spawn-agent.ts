@@ -1,5 +1,4 @@
 import type { AgentTool } from "@jai/agent";
-import { getErrorMessage } from "@jai/common";
 import { Type } from "@sinclair/typebox";
 import { TaggedError } from "better-result";
 
@@ -108,7 +107,7 @@ export function createSpawnAgentTool(
 				if (signal?.aborted) throw error;
 				if (error instanceof SubagentNoFinalText) throw error;
 				throw new SubagentRunFailed({
-					message: getErrorMessage(error),
+					message: error instanceof Error ? error.message : String(error),
 					cause: error,
 					data: { title },
 				});

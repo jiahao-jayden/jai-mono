@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getErrorCode } from "@jai/common";
 import { NodeExecutionEnvironment } from "../../../src/node/environment";
 
 const temporaryDirectories: string[] = [];
@@ -22,7 +21,7 @@ async function expectErrorCode(promise: Promise<unknown>, code: string): Promise
 		await promise;
 		throw new Error(`Expected ${code}`);
 	} catch (error) {
-		expect(getErrorCode(error)).toBe(code);
+		expect(typeof error === "object" && error !== null && "_tag" in error ? error._tag : undefined).toBe(code);
 	}
 }
 
