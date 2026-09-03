@@ -26,7 +26,7 @@
         <p class="text-sm font-semibold tracking-wide text-accent">RESEARCH REPORT</p>
         <h1 class="mt-3 max-w-4xl text-3xl font-semibold leading-tight sm:text-5xl">调研问题</h1>
         <div class="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
-          <p>核验日期：<time datetime="2026-08-28">2026-08-28</time></p>
+          <p>核验日期：<time datetime="YYYY-MM-DD">YYYY-MM-DD</time></p>
           <p>范围：<span>替换为本次调研范围</span></p>
           <a class="font-medium text-accent underline underline-offset-4" href="research-note.md">查看完整证据笔记</a>
         </div>
@@ -101,12 +101,18 @@
       <section class="mt-12 border-t border-slate-300 pt-8" data-report-section="sources" aria-labelledby="sources-title">
         <h2 id="sources-title" class="text-2xl font-semibold">来源</h2>
         <ol class="mt-5 space-y-4 text-sm leading-6 text-slate-700">
-          <li id="source-s1">
+          <!--
+            GitHub issue 来源示例：
+            <li id="source-gh-123" data-source-kind="github-issue"
+                data-github-repo="owner/repo" data-github-number="123"
+                data-github-state="closed">…</li>
+          -->
+          <li id="source-s1" data-source-kind="primary">
             <p class="font-medium">[S1] 一手来源标题</p>
             <a class="break-all text-accent underline underline-offset-4" href="https://example.com/source-1">https://example.com/source-1</a>
             <p>版本或提交：替换为版本、SHA 或访问日期。</p>
           </li>
-          <li id="source-s2">
+          <li id="source-s2" data-source-kind="primary">
             <p class="font-medium">[S2] 一手来源标题</p>
             <a class="break-all text-accent underline underline-offset-4" href="https://example.com/source-2">https://example.com/source-2</a>
             <p>版本或提交：替换为版本、SHA 或访问日期。</p>

@@ -23,7 +23,7 @@
       "source": "pbakaus/impeccable",
       "sourceType": "github",
       "skillPath": ".agents/skills/impeccable/SKILL.md",
-      "computedHash": "fcca0e64a46392a83c4d43766d21f2b0b2a0c584278e0cb4fb9739019b87bcb5"
+      "computedHash": "bb529f103869c4e9b19ebaa1486d551affe0500f0af7d5dea0ef172bfba8196d"
     },
     "improve-codebase-architecture": {
       "source": "mattpocock/skills",
@@ -71,7 +71,7 @@
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "research/SKILL.md",
-      "computedHash": "eb87f66b26b1ffbc1943957d01583883b7a48de02939a9d20e62b6827ffa44a6"
+      "computedHash": "3b509d066dfdc8c70dfc08fd593c486566cb597e18501c41c400ae7147b5c4ea"
     },
     "review-animations": {
       "source": "emilkowalski/skills",
@@ -83,7 +83,7 @@
       "source": "shadcn/ui",
       "sourceType": "github",
       "skillPath": "skills/shadcn/SKILL.md",
-      "computedHash": "c1a68ee06a668aced9ab2b5fbdea5f989864123794eb2e056b339a072dbb7f10"
+      "computedHash": "a86630dd9b32722a4ea6846abc6756d5da8f06bdc2343dbc625923cc5c7a758b"
     },
     "simplify-codebase": {
       "source": "tt-a1i/simplify-codebase",

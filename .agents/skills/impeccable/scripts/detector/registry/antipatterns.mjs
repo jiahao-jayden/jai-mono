@@ -34,7 +34,7 @@ const ANTIPATTERNS = [
     scopes: ['type'],
     name: 'Flat type hierarchy',
     description:
-      'Font sizes are too close together — no clear visual hierarchy. Use fewer sizes with more contrast (aim for at least a 1.25 ratio between steps).',
+      'Dominant heading and body roles are separated by less than 1.25× at every step, leaving the size hierarchy flat. Add at least one stronger size step.',
     skillSection: 'Typography',
     skillGuideline: 'flat type hierarchy',
   },
@@ -120,6 +120,24 @@ const ANTIPATTERNS = [
     description:
       'A large inline SVG that builds a pictorial scene from a pile of primitive shapes reads as placeholder clip art, not illustration. Icons, logos, and data graphics are fine at their scale; a hero-sized visual deserves real artwork, a photograph, or a deliberately drawn graphic.',
     skillSection: 'Imagery',
+  },
+  {
+    id: 'organic-clip-path',
+    category: 'quality',
+    name: 'Organic contour drawn as clip-path',
+    description:
+      'A clip-path polygon with many arbitrary vertices, or a curved clip-path path(), is CSS approximating a torn edge, blob, or silhouette. It reads as the cheap version of the effect and is usually a produced or photographic material replaced with code. Derive an alpha matte from the real image, or ship the shape as a cut-out raster; keep clip-path for geometry (cut corners, diagonals, hexagons).',
+    skillSection: 'Imagery',
+    skillGuideline: 'geometric masks standing in for organic contours',
+  },
+  {
+    id: 'buried-raster',
+    category: 'quality',
+    name: 'Raster buried under a wash or opacity',
+    description:
+      'A background image under a near-opaque gradient wash, or a raster on an element at near-zero opacity, never reaches the screen: the page shows the wash, and the produced texture or photo ships as a compliance token. Let the material show (a tint under 0.9 alpha, a blend mode, an opacity you can see) or remove the file.',
+    skillSection: 'Imagery',
+    skillGuideline: 'a produced material must survive to the screen',
   },
   {
     id: 'dark-glow',
@@ -215,7 +233,7 @@ const ANTIPATTERNS = [
     // rather than a failure. It fires only on the AI saturation pattern, not on
     // ordinary prose. Advisory findings are surfaced separately, never counted
     // as failures, and skipped by the design hook unless a project opts in.
-    advisory: true,
+    severity: 'advisory',
     name: 'Em-dash overuse',
     description:
       'Em-dash saturation in body copy is an AI cadence tell. Advisory only: humans use em-dashes legitimately, so this fires only on saturation — at least 8 em-dashes (— or --) at a density near one per 500 characters of body text — never on a long article that uses a few. Prefer commas, colons, periods, or parentheses.',
@@ -570,9 +588,10 @@ function getAntipattern(id) {
 // Advisory rules are detected and reported, but never treated as failures:
 // the CLI lists them under a separate "Advisory" section, they do not affect
 // exit codes or the failure count, and the design hook skips them by default.
-// The set is derived from the registry so a rule only needs `advisory: true`.
+// `severity` is the canonical registry field. The runtime finding serializer
+// derives its `advisory: true` compatibility/output flag from this set.
 const ADVISORY_RULE_IDS = new Set(
-  ANTIPATTERNS.filter(rule => rule.advisory === true).map(rule => rule.id),
+  ANTIPATTERNS.filter(rule => rule.severity === 'advisory').map(rule => rule.id),
 );
 
 function isAdvisoryRule(id) {

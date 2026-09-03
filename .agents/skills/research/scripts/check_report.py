@@ -11,6 +11,7 @@ verify that a source actually proves a claim; that remains the researcher's job.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
@@ -18,6 +19,8 @@ from pathlib import Path
 
 TAILWIND_CDN = "https://cdn.tailwindcss.com"
 REQUIRED_SECTIONS = {"conclusions", "sources", "impact", "unknowns"}
+GITHUB_SOURCE_KINDS = {"github-issue", "github-pr"}
+GITHUB_STATES = {"open", "closed", "merged"}
 
 
 class ReportParser(HTMLParser):
@@ -30,6 +33,7 @@ class ReportParser(HTMLParser):
         self.claims: list[tuple[str, list[str]]] = []
         self.source_ids: set[str] = set()
         self.source_links: dict[str, list[str]] = {}
+        self.source_metadata: dict[str, dict[str, str]] = {}
         self.svg_stack: list[dict[str, bool]] = []
         self.svg_errors: list[str] = []
         self._current_source: str | None = None
@@ -54,8 +58,10 @@ class ReportParser(HTMLParser):
 
         element_id = values.get("id", "")
         if element_id.startswith("source-"):
-            self.source_ids.add(element_id.removeprefix("source-"))
-            self._current_source = element_id.removeprefix("source-")
+            source_id = element_id.removeprefix("source-")
+            self.source_ids.add(source_id)
+            self.source_metadata[source_id] = values
+            self._current_source = source_id
 
         if tag == "a" and self._current_source and values.get("href"):
             self.source_links.setdefault(self._current_source, []).append(values["href"])
@@ -111,8 +117,32 @@ def validate(path: Path) -> list[str]:
                 errors.append(f"claim {claim_id!r} refers to missing source {source_id!r}")
 
     for source_id in parser.source_ids:
-        if not parser.source_links.get(source_id):
+        links = parser.source_links.get(source_id, [])
+        if not links:
             errors.append(f"source {source_id!r} has no link")
+
+        metadata = parser.source_metadata[source_id]
+        kind = metadata.get("data-source-kind", "")
+        if kind in GITHUB_SOURCE_KINDS:
+            repository = metadata.get("data-github-repo", "")
+            number = metadata.get("data-github-number", "")
+            state = metadata.get("data-github-state", "")
+            if not re.fullmatch(r"[^/\s]+/[^/\s]+", repository):
+                errors.append(f"GitHub source {source_id!r} needs data-github-repo=owner/repo")
+            if not number.isdecimal():
+                errors.append(f"GitHub source {source_id!r} needs a numeric data-github-number")
+            if state not in GITHUB_STATES:
+                errors.append(
+                    f"GitHub source {source_id!r} needs data-github-state="
+                    "open, closed, or merged"
+                )
+            if repository and number:
+                source_path = "issues" if kind == "github-issue" else "pull"
+                expected_url = f"github.com/{repository}/{source_path}/{number}"
+                if not any(expected_url in link for link in links):
+                    errors.append(
+                        f"GitHub source {source_id!r} needs a link to {expected_url}"
+                    )
 
     errors.extend(parser.svg_errors)
     return errors

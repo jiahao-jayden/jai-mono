@@ -1,9 +1,9 @@
 ---
 name: research
-description: "针对一个问题做调研，追到一手来源，产出带引证的 Markdown 笔记；用户要求报告或问题包含复杂关系、流程、时间演变或多方案比较时，可同时产出带可视化的 HTML 报告。Use when the user asks to 调研/研究/investigate a topic, compare how other projects solved something, verify how a third-party library, protocol or API actually behaves, or needs outside facts before a decision."
+description: "针对一个问题做调研，追到一手来源，产出带引证的 Markdown 笔记；用户要求报告或问题包含复杂关系、流程、时间演变、多方案比较或 GitHub issue 讨论时，可同时产出带可视化的 HTML 报告。Use when the user asks to 调研/研究/investigate a topic, compare how other projects solved something, inspect GitHub issues or maintainer responses, verify how a third-party library, protocol or API actually behaves, or needs outside facts before a decision."
 ---
 
-回答一个问题，证据追到一手来源，产出一份别人能复核的笔记。用户要求可视化报告，或问题确实存在复杂关系、流程、时间演变或多方案比较时，同时输出 HTML 报告。
+回答一个问题，证据追到一手来源，产出一份别人能复核的笔记。用户要求可视化报告，或问题确实存在复杂关系、流程、时间演变、多方案比较或 GitHub issue 讨论时，同时输出 HTML 报告。
 
 **结论必须可复核。** 读者应当能顺着引证走到源头,自己判断你的结论对不对。做不到这一点的调研,只是一份读起来可信的猜测。
 
@@ -67,9 +67,31 @@ subagent 把详细笔记写到文件,只回传结论和文件路径。把大段�
 
 笔记开头写明核验日期和钉住的版本,并说清为什么钉:避免后续变动混进结论。
 
+## 5.5 GitHub issue 和 PR
+
+当用户给出 GitHub issue/PR 链接，或问题涉及第三方库的真实故障、已知限制、维护者态度、修复进度时，读 [`references/github-issues.md`](references/github-issues.md)。
+
+不要把 issue 当成另一个搜索引擎。先用文档、规范、源码或 release 确认公开行为；只有这些来源没有回答实际使用中的问题、需要追踪回归，或需要了解维护者已经确认的限制时，才查 issue 和 PR。
+
+GitHub 讨论能提供三种不同东西，写报告时必须分开：
+
+- 维护者确认的当前行为、设计取舍或修复计划
+- 有版本、环境和复现步骤的实际案例
+- 用户反馈、重复提问和表情反应反映出的关注程度
+
+第一类可以支撑“维护者已确认”的结论；第二类只能说明“有人在这些条件下遇到过”；第三类不能推导出使用量、发生率或普遍性。issue 已关闭也不等于问题已经修复，必须看关闭原因、关联 PR、release 和受影响版本。
+
 ## 6. 产出
 
 **只产内容。** 调用方决定笔记存到哪、叫什么。没有调用方(用户直接点名你)时,看仓库里已有的调研笔记放在哪、长什么样,跟随已有约定;没有约定就放一个合理的位置并说明放在哪了。
+
+### 按主题归档
+
+目标仓库已有 `.jnative/research/` 时，新笔记必须放在 `.jnative/research/<area>/<topic>.md`，不要继续堆在 `research/` 根目录，也不要按当前特性 slug 建目录。`<topic>` 是短横线小写、能表明调研题目的名字；同一份协议、平台或实现调研应能被多个特性直接引用。
+
+先查看已有目录和笔记，复用已有 `<area>`，并先确认没有一份已有笔记已经覆盖当前问题。根据研究问题的主语义、读者最可能查找它的位置和后续复用方式自主分类；不要依赖一张预设主题表，也不要仅按当前需求名称分类。
+
+问题跨主题时，按需要被复用的主结论选一个目录，不要复制同一份笔记；从需求工件链接到它即可。没有匹配的主题时，创建一个简短、稳定、能概括一组相关研究的主题目录。生成 HTML 报告时，与 Markdown 保持同目录同名，例如 `.jnative/research/<area>/<topic>.md` 和 `.jnative/research/<area>/<topic>.html`。
 
 Markdown 是事实和引证的唯一依据。HTML 只是更方便阅读的入口，不能在里面新增 Markdown 没有的结论。
 
@@ -143,6 +165,8 @@ Markdown 是事实和引证的唯一依据。HTML 只是更方便阅读的入口
 ### 怎么生成
 
 生成报告前先读 [`references/visual-report.md`](references/visual-report.md) 和 [`assets/report-template.html`](assets/report-template.html)。将它保存为与笔记同名的 `.html` 文件，例如 `oauth-auth-code-flow.md` 和 `oauth-auth-code-flow.html`。
+
+如果使用 GitHub issue 或 PR，还要读 [`references/github-issues.md`](references/github-issues.md)。
 
 - 使用模板里的 Tailwind CDN：`https://cdn.tailwindcss.com`。报告打开时需要联网，交付时明确说明这点。
 - Tailwind 负责页面排版；关系、流程和时间线用内嵌 SVG；多方案比较优先用 HTML 表格。
