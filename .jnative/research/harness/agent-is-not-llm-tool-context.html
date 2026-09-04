@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="写于 2026-09-04。八个框架的源码都钉了版本：Tardigrade c338df7、DeepSeek Harness 76fda72、pi dd7e816（main）、Claude Code 2.1.260、opencode 70f7411、LangGraph 81bf17b、we0-age">
+    <title>Agent 不等于 LLM + Tool + Context：循环之外的那部分才拉开差距</title>
+    <style>
+:root {
+  --ink: #121826;
+  --muted: #4b5568;
+  --paper: #f4f6f8;
+  --panel: #ffffff;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --accent: #0f766e;
+  --accent-soft: #ccfbf1;
+  --inline-code-bg: #eef2f6;
+  --code-bg: #0b1220;
+  --code-fg: #e2e8f0;
+  --code-label: #94a3b8;
+  --quote-bg: #ffffff;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --sans: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --serif: "Source Serif 4", "Songti SC", "Noto Serif CJK SC", ui-serif, Georgia, serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --ink: #e5e7eb;
+  --muted: #9ca3af;
+  --paper: #0b1220;
+  --panel: #111827;
+  --line: #1f2937;
+  --line-strong: #334155;
+  --accent: #2dd4bf;
+  --accent-soft: #134e4a;
+  --inline-code-bg: #1e293b;
+  --code-bg: #020617;
+  --code-fg: #e2e8f0;
+  --code-label: #64748b;
+  --quote-bg: #111827;
+  --shadow: none;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #e5e7eb;
+    --muted: #9ca3af;
+    --paper: #0b1220;
+    --panel: #111827;
+    --line: #1f2937;
+    --line-strong: #334155;
+    --accent: #2dd4bf;
+    --accent-soft: #134e4a;
+    --inline-code-bg: #1e293b;
+    --code-bg: #020617;
+    --code-fg: #e2e8f0;
+    --code-label: #64748b;
+    --quote-bg: #111827;
+    --shadow: none;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-feature-settings: "ss01" on, "kern" on;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.8;
+}
+a { color: var(--accent); text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
+
+.layout {
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: 2rem 1rem 5rem;
+  display: flex;
+  gap: 2.5rem;
+}
+@media (min-width: 640px) { .layout { padding-left: 1.5rem; padding-right: 1.5rem; } }
+@media (min-width: 1024px) { .layout { padding: 3rem 2rem 6rem; } }
+
+/* Sidebar TOC (desktop) */
+.toc-side { display: none; width: 14rem; flex-shrink: 0; }
+@media (min-width: 1280px) { .toc-side { display: block; } }
+.toc-side nav {
+  position: sticky;
+  top: 2rem;
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  padding-right: .5rem;
+}
+.toc-title {
+  margin: 0 0 .75rem;
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.toc-links { display: flex; flex-direction: column; gap: .15rem; font-size: .875rem; }
+.toc-link {
+  display: block;
+  padding: .35rem .75rem;
+  border-left: 2px solid transparent;
+  border-radius: 0 .5rem .5rem 0;
+  color: var(--muted);
+  text-decoration: none;
+  line-height: 1.5;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.toc-link:hover { color: var(--ink); background: var(--line); }
+.toc-link.active { color: var(--accent); background: var(--accent-soft); border-left-color: var(--accent); }
+
+/* Mobile TOC */
+.toc-mobile { position: fixed; bottom: 1.25rem; right: 1.25rem; z-index: 50; }
+@media (min-width: 1280px) { .toc-mobile { display: none; } }
+.toc-toggle {
+  border: 0;
+  border-radius: 999px;
+  padding: .75rem 1rem;
+  font: inherit;
+  font-size: .875rem;
+  font-weight: 600;
+  color: var(--paper);
+  background: var(--ink);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, .25);
+  cursor: pointer;
+}
+.toc-mobile .toc-panel {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: 3.5rem;
+  width: 18rem;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 1rem;
+  background: var(--panel);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, .25);
+}
+.toc-mobile.open .toc-panel { display: block; }
+
+/* Theme toggle */
+.theme-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1.25rem;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: .4rem .8rem;
+  font: inherit;
+  font-size: .8rem;
+  color: var(--muted);
+  background: var(--panel);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.theme-toggle:hover { color: var(--ink); border-color: var(--accent); }
+.theme-toggle .icon { width: 1rem; height: 1rem; }
+:root[data-theme="dark"] .icon-sun, :root:not([data-theme]) .icon-sun { display: none; }
+:root[data-theme="dark"] .icon-moon { display: none; }
+:root[data-theme="light"] .icon-moon { display: inline; }
+:root[data-theme="light"] .icon-sun { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .icon-sun { display: inline; }
+  :root:not([data-theme]) .icon-moon { display: none; }
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .icon-sun { display: none; }
+  :root:not([data-theme]) .icon-moon { display: inline; }
+}
+
+/* Article */
+main { min-width: 0; flex: 1; }
+.hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 1.5rem;
+  background: var(--panel);
+  padding: 2.5rem 1.5rem;
+  box-shadow: var(--shadow);
+}
+@media (min-width: 640px) { .hero { padding: 3rem 2.5rem; } }
+.hero .glow {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 999px;
+  filter: blur(48px);
+  opacity: .7;
+}
+.hero .glow-a { right: -4rem; top: -5rem; width: 16rem; height: 16rem; background: var(--accent-soft); }
+.hero .glow-b { left: 2rem; bottom: -6rem; width: 14rem; height: 14rem; background: var(--accent-soft); opacity: .4; }
+.hero .kicker {
+  position: relative;
+  margin: 0;
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.hero h1 {
+  position: relative;
+  margin: 1rem 0 0;
+  max-width: 52rem;
+  font-family: var(--serif);
+  font-size: clamp(1.75rem, 3.4vw, 2.65rem);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+}
+.hero .lead {
+  position: relative;
+  margin: 1.25rem 0 0;
+  max-width: 48rem;
+  color: var(--muted);
+  font-size: .98rem;
+}
+.hero .lead code { font-size: .85em; }
+
+article { margin-top: 3rem; }
+article section { scroll-margin-top: 1.5rem; }
+article section + section { margin-top: 3.5rem; }
+article h2 {
+  margin: 0 0 1.25rem;
+  padding-bottom: .9rem;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--serif);
+  font-size: 1.65rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -.005em;
+}
+@media (min-width: 640px) { article h2 { font-size: 1.9rem; } }
+article p, article li { max-width: 46rem; margin: 0 0 1.1rem; color: var(--ink); }
+article ul, article ol { margin: 0 0 1.1rem 1.5rem; padding: 0; }
+article li { margin-bottom: .4rem; }
+article strong { font-weight: 600; }
+article hr { border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }
+
+code {
+  font-family: var(--mono);
+  font-size: .875em;
+  background: var(--inline-code-bg);
+  color: var(--accent);
+  padding: .12em .38em;
+  border-radius: .3rem;
+  word-break: break-word;
+}
+pre {
+  position: relative;
+  margin: 1.4rem 0 1.6rem;
+  padding: 1.25rem 1.25rem 1.1rem;
+  border-radius: .85rem;
+  background: var(--code-bg);
+  color: var(--code-fg);
+  font-family: var(--mono);
+  font-size: .84rem;
+  line-height: 1.7;
+  overflow-x: auto;
+  tab-size: 4;
+}
+pre[data-lang]::before {
+  content: attr(data-lang);
+  display: block;
+  margin-bottom: .6rem;
+  font-size: .7rem;
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--code-label);
+}
+pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+  border-radius: 0;
+  word-break: normal;
+}
+
+blockquote {
+  margin: 1.25rem 0 1.4rem;
+  padding: .9rem 1.25rem;
+  max-width: 46rem;
+  border-left: 4px solid var(--accent);
+  border-radius: 0 .75rem .75rem 0;
+  background: var(--quote-bg);
+  color: var(--muted);
+  font-style: italic;
+  box-shadow: var(--shadow);
+}
+blockquote p { margin: 0; color: inherit; }
+blockquote p + p { margin-top: .75rem; }
+blockquote code { font-style: normal; }
+
+.answer-tag {
+  display: inline-block;
+  vertical-align: .1em;
+  margin-right: .5rem;
+  padding: .1rem .55rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--sans);
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  font-style: normal;
+}
+
+footer.colophon {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+  font-size: .8rem;
+  color: var(--muted);
+}
+
+@media print {
+  .toc-side, .toc-mobile, .theme-toggle { display: none !important; }
+  .hero, blockquote { box-shadow: none; }
+  pre { white-space: pre-wrap; }
+  a::after { content: " (" attr(href) ")"; font-size: .75em; color: #555; }
+}
+</style>
+  </head>
+  <body>
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="切换明暗主题">
+      <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><span>主题</span>
+    </button>
+
+    <div id="toc-mobile" class="toc-mobile">
+      <button id="toc-toggle" class="toc-toggle" type="button" aria-expanded="false" aria-controls="toc-panel">目录</button>
+      <nav id="toc-panel" class="toc-panel" aria-label="文章目录">
+        <p class="toc-title">Contents</p>
+        <div class="toc-links"></div>
+      </nav>
+    </div>
+
+    <div class="layout">
+      <aside class="toc-side">
+        <nav aria-label="文章目录">
+          <p class="toc-title">Contents</p>
+          <div class="toc-links"></div>
+        </nav>
+      </aside>
+
+      <main>
+        <header class="hero">
+          <div class="glow glow-a"></div>
+          <div class="glow glow-b"></div>
+          <p class="kicker">Agent Harness · 源码级对照</p>
+          <h1>Agent 不等于 LLM + Tool + Context：循环之外的那部分才拉开差距</h1>
+          <p class="lead">写于 2026-09-04。八个框架的源码都钉了版本：Tardigrade <code>c338df7</code>、DeepSeek Harness <code>76fda72</code>、pi <code>dd7e816</code>（main）、Claude Code 2.1.260、opencode <code>70f7411</code>、LangGraph <code>81bf17b</code>、we0-agent-x 本地工作树、JAI <code>212a098</code>。每条论断后面给的都是这些版本上的行号，完整证据在同目录的 <a href="agent-harness-comparison.md">agent-harness-comparison.md</a>。</p>
+        </header>
+
+        <article>
+<section id="sec-1">
+<h2>那句话是谁说的</h2>
+<p>「Agent 就是 LLM 加工具加一个循环」这句话有出处，说的人也不是外行。</p>
+<p>Anthropic 在 2024 年 12 月的 <a href="https://www.anthropic.com/engineering/building-effective-agents" target="_blank" rel="noopener">Building effective agents</a> 里写：</p>
+<blockquote>
+<p>Agents can handle sophisticated tasks, but their implementation is often straightforward. They are typically just LLMs using tools based on environmental feedback in a loop.</p>
+</blockquote>
+<p>Thorsten Ball 在 2025 年 4 月的 <a href="https://ampcode.com/notes/how-to-build-an-agent" target="_blank" rel="noopener">How to Build an Agent</a> 里写得更直接：</p>
+<blockquote>
+<p>It's an LLM, a loop, and enough tokens. It's what we've been saying on the podcast from the start. The rest, the stuff that makes Amp so addictive and impressive? Elbow grease.</p>
+</blockquote>
+<p>Simon Willison 2025 年 9 月<a href="https://simonwillison.net/2025/Sep/18/agents/" target="_blank" rel="noopener">收敛成一句</a>：</p>
+<blockquote>
+<p>An LLM agent runs tools in a loop to achieve a goal.</p>
+</blockquote>
+<p>这三句话都对。它们定义的是 agent 的<strong>行为</strong>：模型自己决定下一步做什么，做完把结果喂回去。但 Ball 那句话的后半句常被漏掉：剩下的部分是 elbow grease。这篇文章讲的就是那个「剩下的部分」，以及它在八个框架里长成了多么不一样的形状。</p>
+<p>同一批人后来都在写这个「剩下的部分」。Anthropic 2025 年 11 月发了 <a href="https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents" target="_blank" rel="noopener">Effective harnesses for long-running agents</a>，OpenAI 2026 年 2 月发了 <a href="https://openai.com/index/harness-engineering/" target="_blank" rel="noopener">Harness engineering</a>，DeepSeek 的官方页直接写 Agent = Model + Harness。Harness 这个词指的就是包在循环外面、让它能在真实环境里跑完的那一层。</p>
+</section>
+
+<section id="sec-2">
+<h2>第一步：十行循环，以及它在哪一秒出问题</h2>
+<p>任何教程里的 agent 都长这样：</p>
+<pre data-lang="python"><code class="language-python">messages = [system_prompt, user_query]
+while True:
+    response = llm.chat(messages)
+    if not response.tool_calls:
+        return response.content
+    for call in response.tool_calls:
+        result = execute_tool(call)
+        messages.append(tool_result_message(call, result))
+</code></pre>
+<p>这段代码能跑。你让它改一个文件、查一个 API，它工作得很好。问题出在第 7 行和第 8 行之间。</p>
+<p>设想模型决定执行 <code>bash("rm -rf dist &amp;&amp; npm run build")</code>。<code>execute_tool</code> 开始跑，<code>dist</code> 目录在第 1 秒被删掉，<code>npm run build</code> 跑到第 3 秒，这时进程被杀了。原因可以是容器 OOM、机器断电、或者用户按了 Ctrl-C 之后关了终端。</p>
+<p>新进程起来，读你存的 <code>messages</code>。它看到最后一条是 assistant 说「我要执行 <code>rm -rf dist &amp;&amp; npm run build</code>」。它看不到任何工具结果，因为第 8 行 <code>messages.append</code> 还没执行到。对新进程来说，这个工具调用<strong>看起来从未发生过</strong>。</p>
+<p>于是它再跑一次。<code>rm -rf dist</code> 这次报 <code>No such file or directory</code>，问题不大。换成 <code>git push --force</code>、<code>stripe.charges.create(...)</code>、<code>DROP TABLE</code> 呢？</p>
+<p>这里有个容易混的地方。很多人会说「我们有记录，每条消息都存了 JSONL」。存的是<strong>会话记录</strong>（transcript）：人和模型说了什么。它在工具<strong>返回之后</strong>才写结果。崩在中间，记录上是空白。你需要的是另一种东西：在工具<strong>开始之前</strong>就写下「我要跑这个了」。这两种记录长得很像，都是一行行 JSON，但回答的问题不同。前者回答「聊到哪了」，后者回答「做到哪了」。</p>
+<p>Claude Code 就是前者的典型。我在本机 <code>~/.claude/projects/</code> 下一份 1478 行的 transcript 上跑了统计：</p>
+<pre data-lang="text"><code class="language-text">$ jq -r '.type' 8a78d37e-….jsonl | sort | uniq -c | sort -rn
+ 610 assistant
+ 374 user
+  82 last-prompt
+  81 permission-mode
+  ...
+$ jq -r 'if has(&quot;seq&quot;) then &quot;has_seq&quot; else &quot;no_seq&quot; end' … | sort | uniq -c
+1478 no_seq
+intent_records 0
+</code></pre>
+<p>没有序号，没有意图记录。<code>tool_use</code> 那一行是 assistant 消息的一部分，<code>tool_result</code> 在下一条 user 消息里。官方文档给了 <code>--resume</code> 和 <code>--continue</code>，但没有一页写工具执行中途崩掉怎么办。这不是批评，Claude Code 的定位是交互式终端工具，人就坐在旁边。但如果你拿 Agent SDK 去跑无人值守的长任务，就要知道它的记录是这一种。</p>
+</section>
+
+<section id="sec-3">
+<h2>第二步：先写一行再干活</h2>
+<p>把上面那段循环改 4 行：</p>
+<pre data-lang="python"><code class="language-python">for call in response.tool_calls:
+    journal.append({&quot;type&quot;: &quot;tool_dispatched&quot;, &quot;call_id&quot;: call.id,
+                    &quot;tool&quot;: call.name, &quot;args&quot;: call.args})   # 先写
+    result = execute_tool(call)
+    journal.append({&quot;type&quot;: &quot;tool_result&quot;, &quot;call_id&quot;: call.id,
+                    &quot;result&quot;: result})                       # 再写
+</code></pre>
+<p>现在同样的崩溃，新进程读到的是「有一条 <code>tool_dispatched</code>，没有对应 <code>call_id</code> 的 <code>tool_result</code>」。它知道这一步<strong>可能</strong>做了。它不知道做没做完。这个「不知道」就是后面所有分歧的起点。</p>
+<p>在继续之前把两个词说清楚，后面要反复用。</p>
+<p><strong>幂等</strong>：一个操作做一次和做十次结果一样。<code>mkdir -p</code> 幂等，<code>rm -rf dist</code> 大致幂等，<code>git push --force</code> 不幂等，<code>stripe.charges.create</code> 不幂等。有些外部服务允许你带一个唯一的 <code>idempotency key</code>，它靠这个键去重，这时不幂等的操作也能安全重试。前提是那个服务支持，bash 不支持。</p>
+<p><strong>at-least-once</strong>：系统保证这一步至少执行一次，可能更多。这是「崩了就重跑」的代价。和它对应的 exactly-once 在有外部副作用时几乎做不到，除非副作用和记录写在同一个数据库事务里。</p>
+</section>
+
+<section id="sec-4">
+<h2>第三步：模型调用本身也是要花钱的副作用</h2>
+<p>上面只说了工具。模型调用同样是「跑完才知道结果」的外部操作，而且每次都计费。崩在 provider 返回之前，新进程重新调一次，就是重复付费；连崩三次就是四倍账单。</p>
+<p>所以「先写一行再干活」的框架，对模型调用也写。Tardigrade 在打 provider 之前先追加一条 <code>ModelCalled</code>，注释写得很清楚（<a href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/agent/src/inference/machine.ts#L456-L469" target="_blank" rel="noopener">machine.ts#L456-L469</a>）：</p>
+<pre data-lang="ts"><code class="language-ts">// The mark records the attempt BEFORE the inference, appended by the act itself: a
+// died attempt leaves its mark, the next derivation counts it, the bound holds.
+// callId is the provider idempotency key (shared across retries of one logical
+// attempt); ordinal is the occurrence the dedup key reads.
+const mark = modelCalled({ callId: input.attempt, model: selected, ordinal: input.ordinal, … })
+yield* events.append([mark])
+</code></pre>
+<p>有了这条标记，重启后能数出「这个 attempt 已经死过几次」，超过 <code>giveUpAfter</code> 就判 <code>TurnFailed</code>，不会无限重调。JAI 的对应物是 <code>model_attempted</code>，预分配 <code>assistantEntryId</code>，恢复时同样按 id 点查。</p>
+<p>这一节要说的是：<strong>「会话记录」和「执行日志」的差别，从模型调用这一层就开始了</strong>，不只是工具。</p>
+</section>
+
+<section id="sec-5">
+<h2>第四步：八个框架把「事实」存成了三种形状</h2>
+<p>看完前三步，你已经能问出对的问题：这个框架的 durable 事实是什么形状，写在执行之前还是之后。我把八家的答案分成三类。</p>
+<p><strong>事件日志。</strong> 一张只追加的表，每一行是「发生了什么」，当前状态靠从头折叠算出来。Tardigrade 最纯粹，它的存储只有一张三列表（<a href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/platform/bun/src/host.ts#L175-L183" target="_blank" rel="noopener">platform/bun/src/host.ts#L175-L183</a>）：</p>
+<pre data-lang="ts"><code class="language-ts">yield* sql`CREATE TABLE events (
+  seq INTEGER NOT NULL PRIMARY KEY,
+  key TEXT,
+  event TEXT NOT NULL
+) WITHOUT ROWID`
+yield* sql`CREATE UNIQUE INDEX events_key ON events (key) WHERE key IS NOT NULL`
+</code></pre>
+<p><code>key</code> 上的唯一索引是它整套机制的地基：同一个 key 只能落一次，所以「有没有做过」等价于「这个 key 在不在表里」。DeepSeek Harness 的 <code>SessionEvent</code> 日志、JAI 的两本 journal、pi 在 main 分支上的 AgentHarness 都属于这一类。</p>
+<p><strong>状态快照。</strong> 不存「发生了什么」，存「现在是什么」。LangGraph 在每个 super-step 结束时把所有 channel 的值打包成一个 checkpoint，外加一份 <code>pending_writes</code> 记录同一步里已经成功的 node 写了什么。we0-agent-x 用 SQL 表做 message/part 的 upsert，同一条记录会被覆盖，它的设计文档明确写了「不引入 Outbox、Event Sourcing」。</p>
+<p><strong>只有消息。</strong> Claude Code 的 JSONL transcript。opencode 介于中间：message 和 part 是可变表，旁边另有一张 append-only 的 event 表，但恢复时读的是 part 的状态。</p>
+<p>这个三分法比「日志派 vs 快照派」多一类，多出来的这一类正好是最常见的。大多数自己拼 SDK 的团队做出来的都是第三种。</p>
+</section>
+
+<section id="sec-6">
+<h2>第五步：那一步到底做没做，四种回答</h2>
+<p>现在回到第二步留下的问题。日志里有 <code>tool_dispatched</code> 没有 <code>tool_result</code>，新进程怎么办。八个框架给了四种答案，每种都有源码。</p>
+<p><span class="answer-tag">重跑</span><strong>答案一：再跑一次。</strong> Tardigrade。reconciler 的逻辑只有一条：派生出来的 transition 如果在日志里找不到同 key 的结果，就 fire（<a href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/core/src/runtime/reconciler.ts#L204-L218" target="_blank" rel="noopener">reconciler.ts#L204-L218</a>）。工具的 key 绑在返回事件上（<a href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/agent/src/component/tool.ts#L33-L48" target="_blank" rel="noopener">tool.ts#L33-L48</a>）：</p>
+<pre data-lang="ts"><code class="language-ts">effect({
+  key: `tr:${call.callId}`,
+  act: (input, signal) =&gt;
+    Effect.gen(function* () {
+      const result = yield* tool.run(input.arguments, { … })
+      return [toolReturned({ callId: input.callId, result, … })]
+    })
+})
+</code></pre>
+<p>注意这里和第三步的差别：模型调用有前置的 <code>ModelCalled</code>，工具调用没有。<code>tr:&lt;callId&gt;</code> 只在工具返回时才写。所以对工具来说，Tardigrade 连「这一步可能做过」都不知道，它只知道「没有结果」，然后重跑。文档自己写明这是 at-least-once（<a href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/docs/explanations/why.md#L67" target="_blank" rel="noopener">why.md#L67</a>）：</p>
+<blockquote>
+<p>Every external effect runs at least once and its keyed result is recorded once. The transition key also functions as an idempotency key for providers that accept one.</p>
+</blockquote>
+<p>作者在 2026-09-04 开的 <a href="https://github.com/clavia-labs/tardigrade/pull/360" target="_blank" rel="noopener">PR #360</a> 里说得更坦白：</p>
+<blockquote>
+<p>External calls remain at least once across the gap between the side effect and its recorded outcome. The guide calls out idempotency keys and repeat-safe operations because event keys cannot make an external service transactional with the log.</p>
+</blockquote>
+<p>这条设计在下游都接受幂等键的场景里成立，比如它默认的沙箱 JS 工具和支持 idempotency key 的 provider。接一个原生 bash 工具进去，重跑 <code>git push --force</code> 就是重跑。</p>
+<p><span class="answer-tag">补结果</span><strong>答案二：补一条「结局未知」，让模型自己判断。</strong> DeepSeek Harness。它在工具执行前先 <code>append('tool/call')</code>，崩溃恢复时对每个没有结果的 call 合成一条错误结果（<a href="https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/core/session/src/repair.ts#L29-L134" target="_blank" rel="noopener">repair.ts#L91-L134</a>）：</p>
+<pre data-lang="ts"><code class="language-ts">for (const [callId, { step, callSeq }] of pendingCalls) {
+  const started = callSeq !== undefined
+  const message: ToolResultMessage = deepFreeze({
+    text: started
+      ? 'The tool call was interrupted after it was recorded, but no result was durably recorded. Its outcome is unknown. Decide whether to retry from the tool semantics: retry only if the operation is read-only or idempotent; if it may have side effects, first verify external state or ask the user. Do not retry blindly.'
+      : 'The tool call was interrupted before the Harness recorded it as started. Retry it if it is still needed.',
+  })
+  closers.push({ type: 'tool/result', /* error: TOOL_OUTCOME_UNKNOWN | TOOL_NOT_STARTED */ })
+}
+closers.push({ type: 'turn/end', /* reason: { kind: 'interrupted' } */ })
+</code></pre>
+<p>注意它区分了两种情况：<code>tool/call</code> 已落盘（可能做了）和还没落盘（肯定没做）。前者标 <code>TOOL_OUTCOME_UNKNOWN</code>，后者标 <code>TOOL_NOT_STARTED</code>。然后把 turn 闭合，把「要不要重试」这个决定写成一段英文交给模型。checkpoint policy 的 README 把边界说得很清楚：</p>
+<blockquote>
+<p>Durable execution intent, not exactly-once effects — the policy records that a call was dispatched, not that its external effect completed.</p>
+</blockquote>
+<p><span class="answer-tag">停住</span><strong>答案三：停下来等人。</strong> JAI。<code>recoverOperation</code> 是个纯函数，输入两本 journal，输出四种判定之一（<a href="packages/agent/src/harness/operations/recovery.ts#L17-L159">recovery.ts#L113-L126</a>）：</p>
+<pre data-lang="ts"><code class="language-ts">const incompleteDispatches = dispatches.filter((d) =&gt; !evidence.sessionEntryIds.has(d.resultEntryId));
+if (incompleteDispatches.length &gt; 0) {
+  if (terminal) {
+    return corrupted(`Operation &quot;${operationId}&quot; is terminal while a dispatched tool has no durable outcome`);
+  }
+  return Result.ok({ status: &quot;indeterminate_tool&quot;, operationId, dispatches: … });
+}
+</code></pre>
+<p>Runtime Host 拿到 <code>indeterminate_tool</code> 之后什么都不做（<a href="app/server/src/runtime/host.ts#L642-L666">host.ts#L642-L662</a>）：</p>
+<pre data-lang="ts"><code class="language-ts">/** Starts exactly one recovered provider-safe operation; indeterminate tools are deliberately parked. */
+resume(verdicts) {
+  if (verdict.status === &quot;indeterminate_tool&quot;) {
+    this.#indeterminate = new RuntimeHostIndeterminateTool({
+      message: `Operation &quot;${verdict.operationId}&quot; requires tool reconciliation before it can resume`, …
+    });
+    return Result.ok(undefined);
+  }
+</code></pre>
+<p>session 被 park 住，resume、navigate、cancel 都被挡。这是三种里最保守的，代价也在源码里能看到：错误文案写着 requires tool reconciliation，但仓库里没有任何 UI、RPC 或 CLI 能做这个 reconciliation。<code>rg reconcil</code> 只命中这条错误消息。</p>
+<p><span class="answer-tag">重跑节点</span><strong>答案四：从节点开头重来，副作用你自己管。</strong> LangGraph。它没有 tool 级的意图记录，恢复的粒度是 node。<a href="https://docs.langchain.com/oss/python/langgraph/interrupts" target="_blank" rel="noopener">官方文档</a>写：</p>
+<blockquote>
+<p>When execution resumes (after you provide the requested input), the runtime restarts the entire node from the beginning—it does not resume from the exact line where <code>interrupt</code> was called. This means any code that ran before the <code>interrupt</code> will execute again.</p>
+</blockquote>
+
+<blockquote>
+<p>Side effects called before <code>interrupt</code> must be idempotent</p>
+</blockquote>
+<p>这是把问题交还给应用层。opencode 和 we0-agent-x 大致也在这一档：opencode 把崩溃时还是 pending/running 的 part 投影成 interrupted，不重跑；we0-agent-x 按工具元数据 <code>has_side_effects</code> 分支，有副作用就 interrupted，没有就重跑。</p>
+<p>四种答案排成一行：重跑 / 补结果交给模型 / 停住交给人 / 重跑节点交给开发者。没有哪个是免费的。Tardigrade 换来的是不用人介入；DeepSeek Harness 换来的是流程能自动闭合；JAI 换来的是不会多做一次；LangGraph 换来的是框架最简单。</p>
+</section>
+
+<section id="sec-7">
+<h2>第六步：把一次崩溃走完</h2>
+<p>抽象的说法看多了容易飘。JAI 的 <code>crash-gate.test.ts</code> 用 11 个崩溃点把一次 run 切开，每个点断言恢复判定、provider 调用次数、工具调用次数（<a href="app/server/test/operations/crash-gate.test.ts#L193-L206">crash-gate.test.ts#L194-L206</a>）。挑其中四个点：</p>
+<pre data-lang="ts"><code class="language-ts">const checkpoints = [
+  { expected: { type: &quot;model_intent&quot; },                       recovery: &quot;ready&quot;,                providerCalls: 0, toolCalls: 0 },
+  { expected: { type: &quot;model_request&quot;, assistantEntryId: … }, recovery: &quot;provider_interrupted&quot;, … },
+  // …
+  { expected: { type: &quot;tool_execute&quot;, toolCallId: &quot;call-1&quot; }, recovery: &quot;indeterminate_tool&quot;,   providerCalls: 1, toolCalls: 0 },
+  { expected: { type: &quot;session_entry&quot;, entryId: &quot;tool-result-1&quot; }, recovery: &quot;indeterminate_tool&quot;, providerCalls: 1, toolCalls: 1 },
+];
+</code></pre>
+<p>读法是这样的。</p>
+<p>崩在 <code>model_intent</code> 之前：什么都没落盘，判 <code>ready</code>，重头跑，provider 0 次。</p>
+<p>崩在 <code>model_request</code> 发出之后、回复落盘之前：<code>model_attempted</code> 在，<code>assistantEntryId</code> 不在，判 <code>provider_interrupted</code>。这一档允许重调模型，因为模型调用的重复代价只是钱，不改外部世界。</p>
+<p>崩在 <code>tool_execute</code> 之前：assistant 的 tool_use 落了，<code>tool_dispatched</code> 没落。这时可以精确重跑那个工具，不用重新问模型。</p>
+<p>崩在 <code>tool_execute</code> 门上：<code>tool_dispatched</code> 已落，工具还没真的跑（<code>toolCalls: 0</code>）。判 <code>indeterminate_tool</code>，park。</p>
+<p>崩在 <code>session_entry</code> 门上：工具已经跑完（<code>toolCalls: 1</code>），结果那条 entry 还没写进 session journal。判定同样是 <code>indeterminate_tool</code>。</p>
+<p>最后两行值得对着看。一个工具没跑，一个跑完了，从 journal 里看它们一模一样：都是有 <code>tool_dispatched</code> 没有 <code>resultEntryId</code>。恢复逻辑只能看 journal，所以它们必须得到同一个判定。这就是第二步说的「不知道做没做」的精确含义。</p>
+<p>这张表说明了「意图先行」的收益是什么：<strong>每一种崩法都有一个确定的、可测试的判定</strong>，不需要人读日志猜。它也说明了写了意图不等于问题解决，最后两个点上你还是得停下来。</p>
+</section>
+
+<section id="sec-8">
+<h2>第七步：循环之外还有三件事会分出框架的高下</h2>
+<p>前面六步都在讲 durable 事实和恢复。这是差异最大、最难改的一条，但不是唯一一条。再看三个。</p>
+<p><strong>扩展能触到多深。</strong> Claude Code 的 hook 是 shell 命令，30 多个具名事件，脚本返回退出码 2 就能挡住这一步，返回 JSON 能改 <code>permissionDecision</code> 和 <code>updatedInput</code>。它能拦一步，改不了循环。opencode 有 21 个进程内 hook，pi v1 有 33 个 extension 事件，JAI 有 6 + 9 个，这一档能改消息数组和工具列表。Tardigrade 没有 hook 这个概念，它的 <code>permissions</code>、<code>budget</code>、<code>compaction</code> 都是 component，和内核用同一个 <code>initial / step / output</code> 接口（<a href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/core/src/component/component.ts#L14-L24" target="_blank" rel="noopener">component.ts#L14-L24</a>）。LangGraph 也没有 hook，你要插一步就加一个 node。</p>
+<p><strong>待批准的请求崩了还在不在。</strong> 这个问题在单人交互式场景里不存在，人就在终端前。在后台跑、要等人审批时它就是主要问题。opencode 的实现是一张内存 Map（<a href="https://github.com/sst/opencode/blob/70f74112e3f4a33ea1af8209c979a5060d7d2a36/packages/opencode/src/permission/index.ts#L18-L106" target="_blank" rel="noopener">permission/index.ts#L18-L106</a>）：</p>
+<pre data-lang="ts"><code class="language-ts">interface State {
+  pending: Map&lt;PermissionV1.ID, PendingEntry&gt;   // PendingEntry = { info, deferred }
+  approved: PermissionV1.Rule[]
+}
+…
+pending.set(id, { info, deferred })
+yield* events.publish(Event.Asked, info)
+return yield* Effect.ensuring(Deferred.await(deferred), Effect.sync(() =&gt; { pending.delete(id) }))
+</code></pre>
+<p>进程一退，finalizer 对所有 pending 发 <code>RejectedError</code>。JAI 的审批也是进程内 Map，<code>AGENTS.md</code> 明写「审批是可丢弃的内存状态」。Tardigrade 把权限请求做成 keyed actor call，请求和决定都是日志里的事件；LangGraph 的 <code>interrupt()</code> 存进 checkpoint。这两家崩了重启，那个「等你点同意」的状态还在。</p>
+<p><strong>UI 拿到的事件能不能重放。</strong> 前端断线重连，是重新拉全量，还是从某个位置续。Tardigrade 的 SSE 直接用日志 seq 当 <code>id</code>，<code>Last-Event-ID</code> 就是续传点。JAI 的 Desktop 事件带 seq 信封，发现断层就拉一次 snapshot。opencode 的 <code>/event</code> 有 id 但 handler 不做 catch-up。Claude Code 的 <code>stream-json</code> 没有序号。这条决定了多窗口、后台任务、回放调试能不能做。</p>
+</section>
+
+<section id="sec-9">
+<h2>第八步：多 agent 并行，便宜模型解决不了的那些</h2>
+<p>「并行跑几个 agent，用便宜的模型打满并发就行」这个想法把并行当成了网络 I/O 问题。实际卡住的地方都在状态上。这一节只列源码里能看到的。</p>
+<p><strong>子 agent 的身份。</strong> 并行起五个子 agent，崩了重放，怎么保证不变成十个？Tardigrade 的做法是让子 agent 的身份等于那次调用的 call id（<a href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/agent/src/packages/agents.ts#L43-L54" target="_blank" rel="noopener">agents.ts#L43-L54</a>）：</p>
+<pre data-lang="ts"><code class="language-ts">// Every call is its own agent: the child's identity is the call's id, so a Promise.all of five
+// runs is five agents by construction, and no name exists to collide on.
+// …
+// The call id is the child's identity AND the message id, so a replayed dispatch reaches the
+// same child and is absorbed as a duplicate.
+</code></pre>
+<p>opencode 的 <code>task</code> 工具建一个带 <code>parentID</code> 的子 session，默认深度 1。JAI 的 <code>SpawnAgent</code> 在同进程起独立 Agent，上限 4 个。Claude Code 每个 sub-agent 是独立的 <code>subagents/agent-&lt;id&gt;.jsonl</code>。</p>
+<p><strong>预算不能双扣。</strong> 父 agent 给整个 run 定了预算，子 agent 并发跑，重试时怎么不多扣？Tardigrade 在 spawn 之前先从父预算里划一份，划扣本身也按 call id 去重（<a href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/agent/src/packages/agents.ts#L484-L489" target="_blank" rel="noopener">agents.ts#L484-L489</a>）：</p>
+<pre data-lang="ts"><code class="language-ts">// Draw from the run's single budget before the child spawns, …
+// The draw is keyed on this call's id, so a re-driven code body reuses its grant and never draws twice.
+const budget = yield* Effect.promise(() =&gt; reserve(ctx.callId, want))
+if (budget &lt;= 0) return { error: &quot;the run's budget is exhausted; no budget to spawn this agent&quot; }
+</code></pre>
+<p>子 agent 自己预算用完时，<code>caller()</code> 把预算权威解析成调用它的那个 thread，往上要（<a href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/agent/src/component/budget.ts#L47-L51" target="_blank" rel="noopener">budget.ts#L47-L51</a>）。其他七家里我没有找到等价的机制。</p>
+<p><strong>同一份上下文不能被多个分支写。</strong> pi 的 v2 设计用 lane 给每个并行分支独立的树位置、operation log 和队列，SQLite 层用带 fence 的 <code>writer_leases</code> 拒绝第二个写者。这一条要标清楚：它在 <code>harness-v2/j4</code> 分支的设计文档和 substrate 里，主产品路径还没走上去。JAI 用树形 branch，LangGraph 用 subgraph 隔离 state。</p>
+<p>这三条加上第七步的「待批准请求在不在」，就是并行 agent 会撞上的墙。它们跟模型便宜不便宜没有关系。</p>
+</section>
+
+<section id="sec-10">
+<h2>怎么用这些信息</h2>
+<p>如果你的 agent 只在终端里陪人干活，人随时能看、能按 Ctrl-C，Claude Code 那种「会话记录 + hook」的形态够用，不需要事件日志。</p>
+<p>如果它要在后台跑，工具有副作用，你要先回答第二步那个问题：工具开始前写不写一行。写了之后再决定第五步的策略。我的判断是：能接受人介入就选 park 或补结果，不能接受人介入又不能保证下游幂等，就不要接不幂等的工具。</p>
+<p>如果你的流程能画成图、每个节点的副作用能自己做到幂等，LangGraph 的 checkpoint 够用，并且它是八家里最不用你操心持久层的。</p>
+<p>如果你想看事件日志派做到极致是什么样，读 Tardigrade 的 <code>reconciler.ts</code> 和 DeepSeek Harness 的 <code>repair.ts</code>，两个文件加起来不到 500 行。但别急着搬 Tardigrade 的 component / actor 抽象，它 22 天发了 22 个 release，核心契约在 8 月 25 日和 9 月 4 日各改过一次。</p>
+<p>最后回到开头那句话。「LLM 加工具加循环」定义了 agent 做什么。Tardigrade 作者在 PR #360 里那句「event keys cannot make an external service transactional with the log」定义了 harness 要解决什么。这两句话之间的距离，就是这篇文章。</p>
+</section>
+        </article>
+
+        <footer class="colophon">
+          本页由同目录的 <a href="agent-is-not-llm-tool-context.md">agent-is-not-llm-tool-context.md</a> 生成，事实与引证以 Markdown 为准。
+        </footer>
+      </main>
+    </div>
+
+    <script>
+(function () {
+  var root = document.documentElement;
+  var stored = null;
+  try { stored = localStorage.getItem('theme'); } catch (e) {}
+  if (stored === 'dark' || stored === 'light') root.setAttribute('data-theme', stored);
+
+  var toggle = document.getElementById('theme-toggle');
+  toggle.addEventListener('click', function () {
+    var systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var current = root.getAttribute('data-theme') || (systemDark ? 'dark' : 'light');
+    var next = current === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch (e) {}
+  });
+
+  var headings = Array.prototype.slice.call(document.querySelectorAll('article h2'));
+  var containers = document.querySelectorAll('.toc-links');
+  headings.forEach(function (h) {
+    var section = h.parentElement;
+    containers.forEach(function (c) {
+      var a = document.createElement('a');
+      a.href = '#' + section.id;
+      a.className = 'toc-link';
+      a.textContent = h.textContent;
+      a.dataset.target = section.id;
+      c.appendChild(a);
+    });
+  });
+
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc-link'));
+  function setActive(id) {
+    links.forEach(function (l) { l.classList.toggle('active', l.dataset.target === id); });
+  }
+  function updateActive() {
+    var line = window.innerHeight * 0.3;
+    var current = headings.length ? headings[0].parentElement.id : null;
+    for (var i = 0; i < headings.length; i++) {
+      if (headings[i].getBoundingClientRect().top <= line) current = headings[i].parentElement.id;
+    }
+    if (current) setActive(current);
+  }
+  window.addEventListener('scroll', updateActive, { passive: true });
+  window.addEventListener('resize', updateActive);
+  updateActive();
+
+  var mobile = document.getElementById('toc-mobile');
+  var mtoggle = document.getElementById('toc-toggle');
+  mtoggle.addEventListener('click', function () {
+    var open = mobile.classList.toggle('open');
+    mtoggle.setAttribute('aria-expanded', String(open));
+  });
+  mobile.querySelectorAll('.toc-panel').forEach(function (panel) {
+    panel.addEventListener('click', function (ev) {
+      if (ev.target.tagName === 'A') {
+        mobile.classList.remove('open');
+        mtoggle.setAttribute('aria-expanded', 'false');
+      }
+    });
+  });
+})();
+</script>
+  </body>
+</html>
