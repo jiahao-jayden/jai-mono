@@ -63,3 +63,11 @@ _Avoid_: generic telemetry attribute, session log, prompt journal
 **Desktop UI Locale**:
 Desktop 用户界面与桌面原生产品文案使用的语言选择；它由 Desktop 自己维护，支持跟随系统、英文和简体中文，并独立于 Agent 的 `Response language`。
 _Avoid_: Response language, Agent language, user content locale
+
+**Agent Output Trust Boundary**:
+Agent 产出的文本与 DTO 进入 Desktop renderer、被渲染成 DOM 并可能触发宿主动作（打开链接、导航、调用 RPC）的那条边界。约束的是 agent 产出的内容能让宿主做什么，与 `Workspace Path Boundary` 是两回事：后者只约束 agent 能读写哪些文件，对 agent 说了什么、宿主会照着做什么一无所知。Agent 读入的外部仓库、issue 与网页内容会进入模型上下文，因此 agent 输出按不可信内容对待。
+_Avoid_: workspace boundary, path boundary, permission boundary, sandbox
+
+**Workspace Path Boundary**:
+Agent 文件工具可访问的 canonical 路径范围，由 `realpath` 解析后与 workspace root 比较得出，并配合一次性 path capability 与执行前重检防 TOCTOU。它只管文件访问，不管 agent 输出。
+_Avoid_: trust boundary, permission scope

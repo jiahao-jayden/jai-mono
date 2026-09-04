@@ -38,6 +38,7 @@ Desktop renderer 侧的等价边界几乎不存在。全仓库没有 `will-navig
 | `packages/agent/src/core/agent-loop.ts` | abort 宽限超时 |
 | `packages/ai/src/event-stream.ts` | iterator `return()` 与失败传播 |
 | `packages/extension/src/mcp/runtime.ts` | 按 annotation 判定 sideEffect |
+| `app/server/src/telemetry/langfuse-otlp.ts` | 内容序列化字节上限与截断 |
 
 长期保存的数据与维护方:
 
@@ -62,7 +63,7 @@ WAL 会改变 `~/.jai/data.sqlite` 的落盘形态（多出 `-wal` / `-shm` 两�
 
 ## 工作量
 
-大。2026-09-01 用户决定做 11 项中除凭据加密外的 10 项。
+大。2026-09-01 用户决定做当时 11 项中除凭据加密外的 10 项。2026-09-04 复查 `8ca238b` 的 telemetry 内容导出时追加 #12，本轮范围变为 11 项。
 
 两个理由。一是根因项（renderer 信任边界）涉及主进程、renderer 和第三方库默认值三处配合，且 CSP 在开发与生产环境的策略不同，需要独立验证。二是剩下的修复分布在 `app/desktop`、`packages/coding-agent`、`packages/agent`、`packages/ai`、`packages/extension`、`app/server` 六个 workspace，验证命令各不相同，分开做才能分别验证、分别回滚。
 
@@ -95,6 +96,7 @@ react-dom 19.2.4 会拦 `javascript:`（client production bundle 内有 blocking
 | 9 | `EventStream` 失败可能成为 unhandled rejection | 低 | 中 | 根因 |
 | 10 | 官方 MCP 工具一律声明为 `read` | 低 | 高 | 根因，目前未激活 |
 | 11 | Unix socket 无显式权限设置 | 低 | 中 | 根因 |
+| 12 | Langfuse 内容序列化无体积上限，长会话整批 span 静默丢失 | 中 | 高 | 根因 · 2026-09-04 追加 |
 
 ### 逐条证据
 
@@ -118,9 +120,11 @@ react-dom 19.2.4 会拦 `javascript:`（client production bundle 内有 blocking
 
 **#11** Runtime Host socket 承载无认证的高权限 RPC，含 `jai/desktop-configuration/reveal-api-key`（`app/server/src/protocol/desktop-configuration/control.ts:72-77`）。只给 lock 文件设了 0600（`app/server/src/runtime/local-owner.ts:48`），socket 本身无 chmod，权限受 umask 影响。
 
+**#12** `app/server/src/telemetry/langfuse-otlp.ts:351-359` 的 `serializeContent` 只处理 `JSON.stringify` 抛错，序列化成功的字符串无论多大都原样写进 OTLP attribute。队列与批次按条数限制而非字节:`DEFAULT_MAX_BATCH_SIZE = 32`、`DEFAULT_MAX_QUEUE_SIZE = 256`（`:16-17`）。每次 model attempt 记录完整最终上下文而非增量，长会话单条即 MB 级，一批 32 条几十 MB。Langfuse 默认 body 上限 512 MiB 撞不到，先到的是 `DEFAULT_TIMEOUT_MS = 5_000` 的导出超时，之后整批 span 连同元数据一起丢，失败只落在 `stats`。该失效随会话变长必然出现。队列打满时最坏几百 MB 常驻内存。
+
 ### 已确认无需处理的部分
 
-依赖方向零违规（`packages/agent` 无反向依赖，`core` 不碰 harness 与 Node adapter，`packages/agent/test/harness/node/exports.test.ts:52-64` 用静态图断言根入口不含 node builtin，renderer 零 Electron / 零 agent 内部 import）。durable fact 单一 owner 落实，无 JSONL 双写、无 fallback、无第二 durable adapter；唯一 JSONL 是 telemetry 可删除诊断文件（`packages/telemetry/src/node/local-sinks.ts:25-36`）。无 SQL 注入面。无硬编码凭证。OAuth 设计正确（PKCE、state 与 verifier 留在 Runtime Host 内存、256-bit 随机、2 分钟 TTL、一次性消费、redirect 全来自部署配置、无 CORS 中间件）。Langfuse 不发送 prompt / 代码 / 工具输入输出 / API key，有专门测试断言（`app/server/test/telemetry/langfuse-otlp.test.ts:149-152`），默认关闭。RPC 错误投影不泄漏 stack、cause、原始 message，有测试（`app/desktop/test/rpc-error.test.ts:11-38`）。`dontAsk` 模式语义与文档一致（`app/docs/content/docs/guides/permissions.mdx:27`），且未在 Desktop UI 暴露。
+依赖方向零违规（`packages/agent` 无反向依赖，`core` 不碰 harness 与 Node adapter，`packages/agent/test/harness/node/exports.test.ts:52-64` 用静态图断言根入口不含 node builtin，renderer 零 Electron / 零 agent 内部 import）。durable fact 单一 owner 落实，无 JSONL 双写、无 fallback、无第二 durable adapter；唯一 JSONL 是 telemetry 可删除诊断文件（`packages/telemetry/src/node/local-sinks.ts:25-36`）。无 SQL 注入面。无硬编码凭证。OAuth 设计正确（PKCE、state 与 verifier 留在 Runtime Host 内存、256-bit 随机、2 分钟 TTL、一次性消费、redirect 全来自部署配置、无 CORS 中间件）。Langfuse 默认关闭；启用后会发送最终 model messages、assistant 回复与工具 input/result（`8ca238b`，2026-09-03 加入，本审查 9/1 的"不发送内容"结论对现状已不成立）。内容通路与 generic sink 通路彻底分离：原文只进 `TelemetryContentSink`，不进 `TelemetrySpanRecord`，因此本地 JSONL、stderr、Journal、RPC 与 renderer 仍然零内容，测试同时断言两侧（`app/server/test/agents/coding-agent-operation.test.ts`）。thinking 与图像二进制在投影层剔除（`packages/coding-agent/src/sdk/telemetry.ts:541,564-568`），未启用时在 `structuredClone` 之前返回。API key 不在内容通路内。RPC 错误投影不泄漏 stack、cause、原始 message，有测试（`app/desktop/test/rpc-error.test.ts:11-38`）。`dontAsk` 模式语义与文档一致（`app/docs/content/docs/guides/permissions.mdx:27`），且未在 Desktop UI 暴露。
 
 ### 评审中发现的文档滞后
 
