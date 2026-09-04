@@ -1,0 +1,1327 @@
+<!doctype html>
+<html lang="zh-CN" class="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aside · Chat 复刻</title>
+<style>
+/* ============================================================
+   0. 字体（Geist Variable，OFL 许可，来自 Aside 扩展包）
+   ============================================================ */
+@font-face{font-family:"Geist Variable";font-style:normal;font-weight:100 900;font-display:swap;src:url(fonts/geist-latin.woff2) format("woff2-variations");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Geist Variable";font-style:normal;font-weight:100 900;font-display:swap;src:url(fonts/geist-latin-ext.woff2) format("woff2-variations");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+
+/* ============================================================
+   1. Token：单色 alpha 阶梯 + squircle 圆角（实测自 Aside）
+   ============================================================ */
+:root{
+  --squircle-factor:1.4;
+  --radius-md:calc(.375rem * var(--squircle-factor));   /* 8.4px  */
+  --radius-lg:calc(.5rem * var(--squircle-factor));     /* 11.2px */
+  --radius-xl:calc(.75rem * var(--squircle-factor));    /* 16.8px */
+  --radius-2xl:calc(1rem * var(--squircle-factor));     /* 22.4px */
+  --ease:cubic-bezier(.4,0,.2,1);
+  --ease-out:cubic-bezier(0,0,.2,1);
+  --font-sans:"Geist Variable",Geist,-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB",sans-serif;
+  --font-mono:"Berkeley Mono","Geist Mono Variable","Geist Mono","JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+
+  /* light */
+  --fg-l:14.5%;
+  --background:oklch(100% 0 0);
+  --web-content-background:oklch(100% 0 0 / .8);
+  --foreground:oklch(14.5% 0 0);
+  --primary:oklch(14.5% 0 0 / .95);
+  --primary-foreground:oklch(98.5% 0 0 / .95);
+  --secondary:oklch(14.5% 0 0 / .08);
+  --secondary-foreground:oklch(14.5% 0 0 / .55);
+  --muted:oklch(14.5% 0 0 / .05);
+  --muted-foreground:oklch(14.5% 0 0 / .55);
+  --muted-hover:oklch(14.5% 0 0 / .05);
+  --accent:oklch(14.5% 0 0 / .1);
+  --accent-foreground:oklch(14.5% 0 0 / .85);
+  --destructive:oklch(57.7% .245 27.325);
+  --destructive-foreground:oklch(97.1% .013 17.38);
+  --brand:oklch(68.5% .169 237.323);
+  --success:oklch(69.6% .17 162.48);
+  --border:oklch(14.5% 0 0 / .1);
+  --border-surface:oklch(14.5% 0 0 / .1);
+  --border-surface-strong:oklch(14.5% 0 0 / .15);
+  --input:oklch(14.5% 0 0 / .1);
+  --ring:oklch(14.5% 0 0 / .08);
+  --surface-primary:oklch(100% 0 0);
+  --surface-secondary:oklch(100% 0 0 / .85);
+  --surface-tertiary:oklch(100% 0 0 / .55);
+  --surface-primary-foreground:oklch(14.5% 0 0 / .85);
+  --surface-secondary-foreground:oklch(14.5% 0 0 / .55);
+  --surface-tertiary-foreground:oklch(14.5% 0 0 / .25);
+  --popover:var(--background);
+  --popover-foreground:var(--foreground);
+  --tabs-list-bg:oklch(70.8% 0 0 / .2);
+  --logo-mark:oklch(14.5% 0 0 / .08);
+
+  /* 浏览器 shell（原生 Views，按截图复刻） */
+  --sidebar-bg:oklch(97% 0 0 / .5);
+  --sidebar-fg:oklch(20% 0 0);
+  --sidebar-muted:oklch(20% 0 0 / .55);
+  --sidebar-active:oklch(100% 0 0 / .9);
+  --sidebar-hover:oklch(100% 0 0 / .45);
+  --window-shadow:0 24px 60px -12px oklch(0 0 0 / .45), 0 0 0 .5px oklch(0 0 0 / .25);
+  --wallpaper:
+    radial-gradient(70% 60% at 82% 6%, oklch(93% .05 240) 0%, transparent 60%),
+    radial-gradient(60% 50% at 96% 55%, oklch(72% .16 45) 0%, oklch(62% .14 35 / .6) 30%, transparent 62%),
+    radial-gradient(80% 45% at 40% 100%, oklch(38% .09 265) 0%, transparent 70%),
+    radial-gradient(50% 40% at 10% 45%, oklch(60% .1 255) 0%, transparent 65%),
+    linear-gradient(180deg, oklch(84% .06 240) 0%, oklch(66% .1 250) 40%, oklch(46% .1 262) 72%, oklch(30% .07 268) 100%);
+  color-scheme:light;
+}
+.dark{
+  --background:oklch(20.5% 0 0);
+  --web-content-background:oklch(20.5% 0 0 / .8);
+  --foreground:oklch(98.5% 0 0);
+  --primary:oklch(98.5% 0 0 / .85);
+  --primary-foreground:oklch(14.5% 0 0 / .85);
+  --secondary:oklch(98.5% 0 0 / .08);
+  --secondary-foreground:oklch(98.5% 0 0 / .55);
+  --muted:oklch(98.5% 0 0 / .15);
+  --muted-foreground:oklch(98.5% 0 0 / .55);
+  --muted-hover:oklch(98.5% 0 0 / .075);
+  --accent:oklch(98.5% 0 0 / .1);
+  --accent-foreground:oklch(98.5% 0 0 / .85);
+  --destructive:oklch(70.4% .191 22.216);
+  --destructive-foreground:oklch(97.1% .013 17.38);
+  --brand:oklch(74.6% .16 232.661);
+  --success:oklch(76.5% .177 163.223);
+  --border:oklch(98.5% 0 0 / .1);
+  --border-surface:oklch(98.5% 0 0 / .15);
+  --border-surface-strong:oklch(98.5% 0 0 / .2);
+  --input:oklch(98.5% 0 0 / .1);
+  --ring:oklch(98.5% 0 0 / .08);
+  --surface-primary:oklch(98.5% 0 0 / .08);
+  --surface-secondary:oklch(98.5% 0 0 / .06);
+  --surface-tertiary:oklch(98.5% 0 0 / .04);
+  --surface-primary-foreground:oklch(98.5% 0 0 / .85);
+  --surface-secondary-foreground:oklch(98.5% 0 0 / .55);
+  --surface-tertiary-foreground:oklch(98.5% 0 0 / .25);
+  --popover:oklch(26.9% 0 0);
+  --tabs-list-bg:oklch(20.5% 0 0 / .4);
+  --logo-mark:oklch(98.5% 0 0 / .1);
+
+  --sidebar-bg:oklch(22% 0 0 / .62);
+  --sidebar-fg:oklch(96% 0 0);
+  --sidebar-muted:oklch(96% 0 0 / .55);
+  --sidebar-active:oklch(98.5% 0 0 / .1);
+  --sidebar-hover:oklch(98.5% 0 0 / .05);
+  --wallpaper:
+    radial-gradient(120% 90% at 78% 8%, oklch(45% .09 250) 0%, transparent 55%),
+    radial-gradient(90% 70% at 90% 60%, oklch(40% .12 40) 0%, transparent 50%),
+    radial-gradient(110% 80% at 15% 100%, oklch(28% .08 260) 0%, transparent 60%),
+    linear-gradient(180deg, oklch(36% .06 245) 0%, oklch(26% .07 255) 45%, oklch(16% .05 265) 100%);
+  color-scheme:dark;
+}
+
+/* ============================================================
+   2. Reset + 浏览器表面（选区、光标、滚动条、焦点环）
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box;border:0 solid var(--border)}
+html,body{height:100%;margin:0}
+body{
+  font-family:var(--font-sans);font-size:12px;line-height:18px;
+  color:var(--foreground);background:var(--wallpaper);background-attachment:fixed;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  font-feature-settings:"ss01","cv11";
+  overflow:hidden;
+}
+::selection{background:oklch(from var(--brand) l c h / .3)}
+button,input,textarea{font:inherit;color:inherit;background:none;border:0;margin:0;padding:0}
+button{cursor:default;-webkit-user-select:none;user-select:none}
+button:focus-visible,[tabindex]:focus-visible,[contenteditable]:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+svg{display:block;flex-shrink:0;pointer-events:none}
+.icon{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.icon-sm{width:14px;height:14px}
+.icon-lg{width:18px;height:18px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:var(--muted-foreground);opacity:.3;border-radius:999px;border:1.5px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-track{background:transparent}
+.hidden{display:none!important}
+
+/* ============================================================
+   3. Button 基类 + 变体（1:1 对应 Aside 的 button 变体）
+   ============================================================ */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;gap:4px;
+  border:1px solid transparent;background-clip:padding-box;
+  font-size:14px;line-height:20px;font-weight:500;white-space:nowrap;
+  color:var(--muted-foreground);
+  border-radius:var(--radius-lg);corner-shape:superellipse(var(--squircle-factor));
+  transition:all .15s var(--ease);will-change:transform;position:relative;
+}
+.btn:disabled{pointer-events:none;opacity:.5}
+.btn-ghost:hover,.btn-ghost[aria-expanded="true"]{background:var(--muted-hover);color:var(--foreground)}
+.btn-secondary{background:var(--secondary)}
+.btn-secondary:hover{background:oklch(from var(--secondary) l c h / calc(alpha * .8))}
+.btn-primary{background:var(--primary);color:var(--primary-foreground)}
+.btn-primary:hover{background:oklch(from var(--primary) l c h / calc(alpha * .9))}
+.btn-outline{border-color:var(--border);background:var(--background);color:var(--foreground)}
+.btn-outline:hover{background:var(--muted)}
+.btn-active{background:var(--secondary);color:var(--foreground);opacity:.5}
+.btn-active:hover{opacity:1}
+.btn-icon{width:32px;height:32px}
+.btn-icon-sm{width:28px;height:28px}
+.btn-icon-xs{width:24px;height:24px;border-radius:var(--radius-md)}
+.btn-pill{border-radius:9999px!important;corner-shape:superellipse(1)}
+.btn-chip{height:28px;padding:0 6px 0 10px;font-size:12.8px;line-height:19.2px;border-radius:9999px;corner-shape:superellipse(1)}
+.btn-chip .chev{opacity:.5}
+.btn-chip[aria-expanded="true"]{background:var(--muted-hover);color:var(--foreground)}
+.btn-text{height:28px;padding:0 10px;font-size:12.8px;line-height:19.2px}
+.tooltip-host{position:relative}
+
+/* ============================================================
+   4. 窗口 Shell：侧边栏（材质透明） + 内容卡片
+   ============================================================ */
+.window{
+  position:fixed;inset:0;display:grid;grid-template-columns:var(--sidebar-w,240px) 1fr;
+  transition:grid-template-columns .2s var(--ease-out);
+}
+.window[data-sidebar="closed"]{--sidebar-w:0px}
+.sidebar{
+  position:relative;overflow:hidden;min-width:0;
+  background:var(--sidebar-bg);
+  -webkit-backdrop-filter:blur(60px) saturate(180%);backdrop-filter:blur(60px) saturate(180%);
+  color:var(--sidebar-fg);
+  display:flex;flex-direction:column;
+  transition:opacity .2s var(--ease-out);
+}
+.window[data-sidebar="closed"] .sidebar{opacity:0}
+.sidebar-inner{width:240px;height:100%;display:flex;flex-direction:column;padding:0 6px;min-height:0}
+.traffic{display:flex;align-items:center;height:44px;padding:0 12px 0 14px;gap:8px;-webkit-app-region:drag}
+.traffic .light{width:12px;height:12px;border-radius:50%;box-shadow:inset 0 0 0 .5px oklch(0 0 0 / .18)}
+.traffic .close{background:#ff5f57}.traffic .min{background:#febc2e}.traffic .max{background:#28c840}
+.traffic .grow{flex:1}
+.sidebar-toggle{color:var(--sidebar-muted);border-radius:var(--radius-md);width:28px;height:28px}
+.sidebar-toggle:hover{background:var(--sidebar-hover);color:var(--sidebar-fg)}
+.sb-scroll{flex:1;min-height:0;overflow-y:auto;padding:6px 6px 8px;display:flex;flex-direction:column;gap:14px}
+.sb-scroll::-webkit-scrollbar{width:0}
+.sb-section-head{display:flex;align-items:center;justify-content:space-between;height:24px;padding:0 6px;color:var(--sidebar-muted);font-size:12px;font-weight:500;letter-spacing:-.005em}
+.sb-section-head button{color:inherit;display:inline-flex;width:20px;height:20px;align-items:center;justify-content:center;border-radius:6px;opacity:.6;transition:opacity .15s var(--ease),background .15s var(--ease)}
+.sb-section:hover .sb-section-head button{opacity:1}
+.sb-section-head button:hover{background:var(--sidebar-hover)}
+.sb-section[data-collapsed="true"] .sb-body{display:none}
+.sb-section[data-collapsed="true"] .sb-section-head button svg{transform:rotate(180deg)}
+.sb-body{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.dropzone{
+  margin:0 4px;height:44px;border:1px dashed oklch(from var(--sidebar-fg) l c h / .2);border-radius:var(--radius-lg);corner-shape:superellipse(var(--squircle-factor));
+  display:flex;align-items:center;justify-content:center;color:var(--sidebar-muted);font-size:12px;
+  transition:all .15s var(--ease);
+}
+.dropzone.is-over{border-color:var(--brand);background:oklch(from var(--brand) l c h / .1);color:var(--brand)}
+.sb-item{
+  display:flex;align-items:center;gap:8px;height:30px;padding:0 8px 0 8px;border-radius:var(--radius-lg);corner-shape:superellipse(var(--squircle-factor));
+  color:var(--sidebar-fg);font-size:13px;font-weight:400;line-height:18px;width:100%;text-align:left;position:relative;
+  transition:background .15s var(--ease),color .15s var(--ease);
+}
+.sb-item:hover{background:var(--sidebar-hover)}
+.sb-item[aria-current="page"]{background:var(--sidebar-active);box-shadow:0 1px 2px oklch(0 0 0 / .06),0 0 0 .5px oklch(0 0 0 / .04)}
+.sb-item .label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-item .icon{color:var(--sidebar-fg)}
+.sb-item.muted{color:var(--sidebar-muted)}
+.sb-item .badge{width:14px;height:14px;border-radius:50%;background:oklch(63.7% .237 25.331);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1}
+.sb-item .close-tab{opacity:0;width:20px;height:20px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--sidebar-muted);transition:opacity .15s var(--ease)}
+.sb-item:hover .close-tab{opacity:1}
+.sb-item .close-tab:hover{background:oklch(from var(--sidebar-fg) l c h / .1);color:var(--sidebar-fg)}
+.favicon{width:16px;height:16px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0}
+.sb-footer{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 10px}
+.avatar-btn{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 6px 0 2px;border-radius:var(--radius-md);color:var(--sidebar-muted)}
+.avatar-btn:hover{background:var(--sidebar-hover)}
+.avatar{width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,oklch(70% .1 60),oklch(45% .12 300));box-shadow:inset 0 0 0 .5px oklch(0 0 0 / .2)}
+
+.content{
+  position:relative;margin:8px 8px 8px 0;min-width:0;
+  background:var(--web-content-background);
+  -webkit-backdrop-filter:blur(40px) saturate(150%);backdrop-filter:blur(40px) saturate(150%);
+  border-radius:12px;overflow:hidden;
+  box-shadow:0 0 0 .5px oklch(0 0 0 / .18),0 8px 30px -8px oklch(0 0 0 / .25);
+  display:flex;flex-direction:column;color:var(--foreground);
+}
+.window[data-sidebar="closed"] .content{margin-left:8px}
+.toolbar{height:44px;display:flex;align-items:center;padding:0 8px 0 6px;gap:2px;flex-shrink:0;-webkit-app-region:drag}
+.toolbar .btn{-webkit-app-region:no-drag}
+.omnibox{
+  flex:1;min-width:0;display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;margin:0 6px;
+  border-radius:var(--radius-lg);corner-shape:superellipse(var(--squircle-factor));font-size:13px;line-height:18px;color:var(--muted-foreground);
+  transition:background .15s var(--ease);-webkit-app-region:no-drag;cursor:text;
+}
+.omnibox:hover{background:var(--muted)}
+.omnibox .brand{display:flex;align-items:center;gap:6px;color:var(--foreground);font-weight:500}
+.omnibox .sep{width:1px;height:14px;background:var(--border-surface-strong)}
+.omnibox .title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.omnibox .title b{font-weight:400;color:var(--foreground)}
+
+/* ============================================================
+   5. Chat 页面：顶栏 / 消息 / 输入框
+   ============================================================ */
+.page{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.view{position:absolute;inset:0;display:flex;flex-direction:column;opacity:1;transition:opacity .15s var(--ease)}
+.view[hidden]{display:none}
+.chat-nav{height:44px;flex-shrink:0;display:flex;align-items:center;padding:0 6px;gap:0}
+.chat-nav .left{display:flex;align-items:center;min-width:0;flex:1}
+.chat-nav .right{display:flex;align-items:center;gap:2px}
+.crumb{
+  display:inline-flex;align-items:center;gap:4px;height:28.5px;padding:4px 6px;min-width:0;
+  font-size:13px;line-height:18.57px;font-weight:500;letter-spacing:-.007em;color:var(--surface-primary-foreground);
+  border-radius:var(--radius-lg);corner-shape:superellipse(var(--squircle-factor));border:1px solid transparent;transition:all .15s var(--ease);
+}
+.crumb:hover{background:var(--muted-hover);color:var(--foreground)}
+.crumb .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crumb .caret{display:inline-block;width:1px;height:14px;background:var(--foreground);margin-left:3px;animation:caret 1s steps(2) infinite}
+@keyframes caret{50%{opacity:0}}
+
+/* 消息滚动区：column-reverse + 上下 16px 渐隐 */
+.thread{
+  position:relative;flex:1;min-height:0;display:flex;flex-direction:column-reverse;overflow:hidden auto;margin-right:4px;
+  --mask:16px;
+  -webkit-mask-image:linear-gradient(to top,transparent,black var(--mask),black 100%),linear-gradient(to bottom,transparent 0%,black var(--mask),black 100%),linear-gradient(black,black);
+  -webkit-mask-size:100% 100%,100% 100%,100% 100%;-webkit-mask-composite:destination-in;
+  mask-image:linear-gradient(to top,transparent,black var(--mask),black 100%),linear-gradient(to bottom,transparent 0%,black var(--mask),black 100%);
+  mask-composite:intersect;
+}
+.thread-inner{display:flex;flex-direction:column;min-height:100%;flex-shrink:0}
+.thread-col{width:100%;max-width:896px;margin:0 auto;padding:16px 20px;display:flex;flex-direction:column;min-width:0}
+.thread-end{height:24px;flex-shrink:0}
+
+/* 空状态 */
+.empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.empty svg{width:64px;height:64px;color:var(--logo-mark)}
+
+/* 消息 */
+.msg{width:100%;min-width:0;max-width:100%}
+.msg.is-user{margin-left:auto;display:flex;flex-direction:column;gap:8px;justify-content:flex-end;max-width:calc(100% - 40px);padding-bottom:8px}
+@media (min-width:640px){.msg.is-user{max-width:min(fit-content,80%)}}
+.bubble{
+  width:fit-content;max-width:100%;min-width:0;margin-left:auto;overflow:hidden;
+  background:var(--secondary);color:var(--foreground);
+  border-radius:var(--radius-xl);corner-shape:superellipse(1);padding:6px 12px;
+  font-size:14px;line-height:20px;white-space:pre-wrap;overflow-wrap:anywhere;
+}
+.bubble.editing{width:100%;background:var(--surface-primary);box-shadow:0 0 0 1px var(--border-surface);padding:8px 12px}
+.bubble.editing textarea{width:100%;resize:none;outline:none;font-size:14px;line-height:20px;color:var(--foreground);display:block;min-height:40px}
+.edit-actions{display:flex;justify-content:flex-end;gap:4px;margin-top:8px}
+.msg.is-assistant{display:flex;flex-direction:column;gap:8px}
+.msg.is-assistant .body{width:100%;max-width:100%;min-width:0;overflow:hidden;padding-bottom:8px;font-size:14px;line-height:20px}
+.actions{display:flex;align-items:center;min-height:24px;gap:0;transition:opacity .15s var(--ease)}
+.msg.is-user .actions{justify-content:flex-end;margin-right:-2px;opacity:0}
+.msg.is-user:hover .actions,.msg.is-user:focus-within .actions{opacity:1}
+.msg.is-assistant .actions{margin-left:-2px;gap:6px;opacity:0}
+.msg.is-assistant:hover .actions,.msg.is-assistant:focus-within .actions,.msg.is-assistant.is-last .actions{opacity:1}
+.actions .group{display:flex;align-items:center;margin-left:-2px}
+.stamp{font-size:13px;line-height:19.5px;font-weight:500;color:var(--muted-foreground);-webkit-user-select:none;user-select:none}
+.msg.is-user .stamp{margin-right:4px}
+.actions .btn-icon-xs .icon{width:14px;height:14px}
+.actions .btn-icon-xs.done{color:var(--success)}
+
+/* Streamdown 风格 markdown */
+.md>*+*{margin-top:1rem}
+.md>p{margin-bottom:.5rem}
+.md>p:first-child{margin-top:0}
+.md>p:last-child{margin-bottom:0}
+.md h1,.md h2,.md h3{font-weight:500;letter-spacing:-.01em;margin:0}
+.md h1{font-size:30px;line-height:36px}.md h2{font-size:20px;line-height:28px}.md h3{font-size:16px;line-height:24px}
+.md ul,.md ol{margin:0;padding-left:14px}
+.md ol{padding-left:16px}
+.md li{padding:0}
+.md li+li{margin-top:2px}
+.md ul li::marker{content:" • ";letter-spacing:2px;color:var(--muted-foreground)}
+.md ol li::marker{color:var(--muted-foreground);font-variant-numeric:tabular-nums}
+.md strong{font-weight:500}
+.md code{font-family:var(--font-mono);font-size:.85em;background:var(--muted);padding:.1em .35em;border-radius:6px;overflow-wrap:anywhere;white-space:pre-wrap}
+.md pre{
+  margin:0;border:1px solid var(--border);border-radius:var(--radius-lg);corner-shape:superellipse(var(--squircle-factor));
+  background:var(--surface-secondary);overflow:hidden;max-width:100%;
+}
+.dark .md pre{background:var(--surface-tertiary)}
+.md pre .code-head{display:flex;align-items:center;justify-content:space-between;height:32px;padding:4px 6px 0 12px;font-size:12px;color:var(--muted-foreground);font-weight:500}
+.md pre code{display:block;background:none;padding:6px 12px 12px;font-size:12.5px;line-height:19px;white-space:pre;overflow-x:auto;border-radius:0}
+.md a{color:var(--brand);text-decoration:none}
+.md a:hover{text-decoration:underline;text-underline-offset:3px}
+.md .tok{display:inline;animation:sd-blurIn .35s var(--ease-out) both}
+@keyframes sd-blurIn{0%{opacity:0;filter:blur(4px)}to{opacity:1;filter:blur(0)}}
+@keyframes sd-slideUp{0%{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes sd-fadeIn{0%{opacity:0}to{opacity:1}}
+.md .cursor::after{content:"";display:inline-block;width:6px;height:14px;margin-left:2px;vertical-align:-2px;background:var(--foreground);border-radius:1px;animation:caret .9s steps(2) infinite}
+
+/* Steps 时间线（agent 过程） */
+.steps{display:flex;flex-direction:column;margin:0 -4px;padding-bottom:8px;animation:sd-slideUp .25s var(--ease-out) both}
+.step{position:relative;display:flex;align-items:flex-start;gap:6px;font-size:14px;line-height:20px;padding-bottom:8px}
+.step .rail{position:relative;display:flex;align-items:flex-start;justify-content:center;width:24px;min-height:24px;flex-shrink:0;align-self:stretch}
+.step .line{position:absolute;top:24px;left:50%;height:calc(100% - 16px);min-height:8px;width:1px;transform:translateX(-50%);background:var(--border)}
+.step:last-child .line{display:none;height:calc(100% - 32px)}
+.step:last-child[data-open="true"] .line{display:block}
+.step .node{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;width:24px;height:24px;color:var(--muted-foreground)}
+.step .dot{width:6px;height:6px;border-radius:50%;background:oklch(from var(--muted-foreground) l c h / calc(alpha * .35))}
+.step .main{min-width:0;flex:1}
+.step-trigger{
+  display:flex;align-items:center;justify-content:flex-start;gap:4px;width:100%;min-height:24px;padding:0;text-align:left;
+  color:var(--muted-foreground);transition:color .15s var(--ease);font-weight:400;font-size:14px;line-height:20px;overflow:hidden;
+}
+.step-trigger:hover{color:var(--foreground)}
+.step-trigger .t{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.step-trigger .chev{opacity:0;transition:all .15s var(--ease)}
+.step-trigger:hover .chev{opacity:1}
+.step[data-open="true"] .step-trigger .chev{opacity:1;transform:rotate(90deg)}
+.step-panel{height:0;overflow:hidden;transition:height .2s var(--ease-out);font-size:14px}
+.step-panel-inner{padding:4px;padding-bottom:8px;opacity:0;transition:opacity .2s var(--ease-out),padding .2s var(--ease-out);will-change:opacity,padding;color:var(--muted-foreground)}
+.step[data-open="true"] .step-panel-inner{opacity:1;padding-top:12px}
+.step-panel-inner .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;line-height:18px}
+.step-panel-inner .kv dt{color:var(--surface-tertiary-foreground);font-weight:500}
+.step-panel-inner .kv dd{margin:0;color:var(--foreground);font-family:var(--font-mono);font-size:12px;overflow-wrap:anywhere}
+.step .node .spin{animation:spin 1s linear infinite;color:var(--muted-foreground)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Shimmer 文字 */
+.shimmer{
+  position:relative;display:inline-block;color:transparent;-webkit-background-clip:text;background-clip:text;
+  --spread:calc(var(--n,8) * 2.5px);
+  background-image:linear-gradient(90deg in oklch,transparent calc(50% - var(--spread)),var(--foreground),transparent calc(50% + var(--spread))),linear-gradient(var(--muted-foreground),var(--muted-foreground));
+  background-size:250% 100%,auto;background-repeat:no-repeat,padding-box;background-position:100% center,0 0;
+  animation:shimmer 1.5s ease-in-out infinite;
+}
+@keyframes shimmer{0%{background-position:100% center,0 0}66.6%,100%{background-position:0% center,0 0}}
+
+/* 错误横幅 */
+.error-card{
+  display:flex;flex-direction:column;gap:8px;overflow:hidden;width:100%;max-width:100%;min-width:0;margin-bottom:24px;
+  border:1px solid oklch(from var(--destructive) l c h / .2);background:oklch(from var(--destructive) l c h / .05);
+  border-radius:var(--radius-2xl);corner-shape:superellipse(var(--squircle-factor));padding:8px 12px;font-size:14px;line-height:20px;
+  animation:sd-slideUp .25s var(--ease-out) both;
+}
+.error-card .row{display:flex;align-items:flex-start;gap:8px}
+.error-card .row>.icon{margin-top:2px;color:var(--destructive)}
+.error-card .txt{flex:1;min-width:0}
+.error-card .txt p{margin:0}
+.error-card .txt .h{font-weight:500;color:var(--destructive)}
+.error-card .txt .d{color:var(--muted-foreground);overflow-wrap:anywhere}
+.error-card .btn-outline{align-self:center;margin-left:auto}
+
+/* 输入区 */
+.composer-wrap{position:relative;z-index:10;flex-shrink:0;display:flex;flex-direction:column;gap:16px;margin-bottom:2px}
+.composer-wrap form{margin:0 auto;width:100%;max-width:896px;padding:0 16px 8px}
+@media (min-width:1024px){.composer-wrap form{padding-left:32px;padding-right:32px}}
+.composer{
+  position:relative;display:flex;flex-direction:column;gap:2px;width:100%;overflow:hidden;
+  background:var(--surface-primary);border-radius:20px;corner-shape:superellipse(1);
+  box-shadow:0 0 0 1px var(--border-surface),0 10px 15px -3px oklch(0 0 0 / .05),0 4px 6px -4px oklch(0 0 0 / .05);
+  transition:all .15s var(--ease);
+}
+.dark .composer{box-shadow:0 0 0 1px var(--border-surface),0 10px 15px -3px oklch(0 0 0 / .1),0 4px 6px -4px oklch(0 0 0 / .1)}
+.composer:focus-within{box-shadow:0 0 0 1px var(--border-surface),0 10px 15px -3px oklch(0 0 0 / .1),0 4px 6px -4px oklch(0 0 0 / .1)}
+.dark .composer:focus-within{box-shadow:0 0 0 1px var(--border-surface-strong),0 10px 15px -3px oklch(0 0 0 / .2),0 4px 6px -4px oklch(0 0 0 / .2)}
+.composer .editor-row{position:relative;transition:padding .15s var(--ease)}
+.composer.compact .editor-row{padding:0 32px}
+.editor{
+  position:relative;min-height:20px;max-height:calc(15 * 22.75px + 1rem);overflow-y:auto;
+  padding:8px 10px;font-size:14px;line-height:22.75px;color:var(--surface-primary-foreground);
+  white-space:break-spaces;overflow-wrap:anywhere;outline:none;
+}
+.editor:empty::before{content:attr(data-placeholder);color:var(--muted-foreground);pointer-events:none;position:absolute}
+.editor .mention{color:var(--brand);background:oklch(from var(--brand) l c h / .12);border-radius:5px;padding:0 3px}
+.composer .lead{position:absolute;bottom:5px;left:5px}
+.composer .trail{position:absolute;bottom:5px;right:5px;display:flex;align-items:center;gap:4px}
+.composer.expanded .lead,.composer.expanded .trail{position:static}
+.composer .toolbar-row{display:flex;align-items:center;padding:4px;gap:0}
+.composer .toolbar-row .lgroup,.composer .toolbar-row .rgroup{display:flex;align-items:center;min-width:0}
+.composer .toolbar-row .lgroup{flex:1}
+.chips{display:flex;align-items:center;justify-content:space-between;padding:4px 0;margin:0 auto;width:100%;max-width:896px}
+.chips .lgroup,.chips .rgroup{display:flex;align-items:center;min-width:0}
+.send-btn .icon{width:18px;height:18px}
+.send-btn[data-state="idle"][data-empty="true"]{opacity:.5}
+.send-btn[data-state="streaming"] .up{display:none}
+.send-btn[data-state="idle"] .stop{display:none}
+.attachments{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px 0}
+.attachment{
+  display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 4px 0 8px;font-size:12.8px;font-weight:500;color:var(--surface-primary-foreground);
+  background:var(--muted);box-shadow:0 0 0 .5px var(--border);border-radius:9999px;
+  animation:sd-slideUp .2s var(--ease-out) both;
+}
+.attachment .rm{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--muted-foreground)}
+.attachment .rm:hover{background:var(--secondary);color:var(--foreground)}
+.usage{display:flex;align-items:center;justify-content:center;width:24px;height:24px;flex-shrink:0}
+.usage svg{width:16px;height:16px}
+.usage .track{stroke:currentColor;opacity:.1;fill:none;stroke-width:2}
+.usage .val{stroke:currentColor;opacity:.7;fill:none;stroke-width:2;stroke-linecap:round;transform:rotate(-90deg);transform-origin:center;transition:stroke-dasharray .3s var(--ease-out)}
+
+/* ============================================================
+   6. Chats 列表页
+   ============================================================ */
+.list-view{padding:12px 24px 0;display:flex;flex-direction:column;min-height:0}
+.list-view .composer-wrap form{padding:0;max-width:none}
+.list-head{display:flex;align-items:center;justify-content:space-between;height:32px;margin:14px 8px 10px}
+.tabs{
+  position:relative;display:inline-flex;align-items:center;justify-content:center;width:fit-content;padding:3px;
+  background:var(--tabs-list-bg);border-radius:var(--radius-lg);corner-shape:superellipse(var(--squircle-factor));color:var(--muted-foreground);
+}
+.tabs .indicator{
+  position:absolute;z-index:0;left:0;top:3px;height:25px;pointer-events:none;
+  background:var(--surface-primary);box-shadow:0 0 0 .5px var(--border-surface),0 4px 6px -1px oklch(0 0 0 / .1),0 2px 4px -2px oklch(0 0 0 / .1);
+  border-radius:var(--radius-md);corner-shape:superellipse(var(--squircle-factor));transition:transform .2s var(--ease-out),width .2s var(--ease-out);
+}
+.tabs button{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:25px;padding:2px 6px;border:1px solid transparent;border-radius:var(--radius-md);font-size:14px;line-height:20px;font-weight:500;color:var(--muted-foreground);transition:color .15s var(--ease)}
+.tabs button[aria-selected="true"]{color:var(--foreground)}
+.tabs button .icon{color:var(--muted-foreground)}
+.chat-list{display:flex;flex-direction:column;position:relative;overflow-y:auto;min-height:0;padding:0 0 8px}
+.chat-item{
+  display:flex;align-items:center;gap:16px;width:100%;height:36px;padding:8px 12px;text-align:left;overflow:hidden;
+  border-radius:var(--radius-lg);corner-shape:superellipse(var(--squircle-factor));transition:background .15s var(--ease);
+}
+.chat-item:hover{background:var(--muted-hover)}
+.chat-item .label{display:flex;align-items:center;gap:8px;flex:1;min-width:0;font-size:14px;line-height:20px;white-space:nowrap;overflow:hidden}
+.chat-item .label .t{display:flex;align-items:center;gap:6px;font-weight:500;color:var(--surface-primary-foreground);flex-shrink:0;max-width:60%;overflow:hidden;text-overflow:ellipsis}
+.chat-item .label .p{color:var(--muted-foreground);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.chat-item .meta{display:flex;align-items:center;gap:8px;flex-shrink:0;font-size:12px;line-height:16px;font-weight:500;color:var(--muted-foreground)}
+.chat-item .meta .live{width:6px;height:6px;border-radius:50%;background:var(--success);box-shadow:0 0 0 3px oklch(from var(--success) l c h / .2)}
+.chat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;padding:0 0 8px;overflow-y:auto}
+.chat-card{
+  display:flex;flex-direction:column;gap:8px;text-align:left;padding:12px 14px;min-height:120px;
+  background:var(--surface-primary);box-shadow:0 0 0 .5px var(--border-surface);border-radius:var(--radius-xl);corner-shape:superellipse(var(--squircle-factor));
+  transition:all .15s var(--ease);
+}
+.chat-card:hover{box-shadow:0 0 0 .5px var(--border-surface-strong),0 4px 12px -4px oklch(0 0 0 / .12);transform:translateY(-1px)}
+.chat-card .t{font-size:14px;font-weight:500;line-height:20px;color:var(--surface-primary-foreground)}
+.chat-card .p{font-size:13px;line-height:18px;color:var(--muted-foreground);flex:1;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.chat-card .meta{font-size:12px;font-weight:500;color:var(--muted-foreground)}
+.list-empty{padding:40px 0;text-align:center;color:var(--muted-foreground);font-size:14px}
+
+/* ============================================================
+   7. 浮层：下拉菜单 / tooltip / toast
+   ============================================================ */
+.menu{
+  position:fixed;z-index:60;min-width:200px;padding:4px;
+  background:var(--popover);color:var(--popover-foreground);
+  border-radius:var(--radius-lg);corner-shape:superellipse(var(--squircle-factor));
+  box-shadow:0 0 0 .5px var(--border-surface-strong),0 10px 15px -3px oklch(0 0 0 / .1),0 4px 6px -4px oklch(0 0 0 / .1);
+  transform-origin:var(--origin,top left);
+  animation:menu-in .15s var(--ease-out) both;
+}
+.dark .menu{box-shadow:0 0 0 .5px var(--border-surface-strong),0 10px 15px -3px oklch(0 0 0 / .4),0 4px 6px -4px oklch(0 0 0 / .4)}
+.menu[data-closing]{animation:menu-out .12s var(--ease) both}
+@keyframes menu-in{0%{opacity:0;transform:scale(.96) translateY(-2px)}to{opacity:1;transform:none}}
+@keyframes menu-out{to{opacity:0;transform:scale(.97)}}
+.menu .mh{padding:6px 8px 4px;font-size:12px;font-weight:500;color:var(--muted-foreground)}
+.menu .mi{
+  display:flex;align-items:center;gap:8px;width:100%;height:30px;padding:0 8px;text-align:left;
+  font-size:13px;line-height:18px;font-weight:400;color:var(--foreground);border-radius:var(--radius-md);corner-shape:superellipse(var(--squircle-factor));
+  transition:background .1s var(--ease);
+}
+.menu .mi:hover,.menu .mi:focus-visible{background:var(--muted-hover);box-shadow:none}
+.menu .mi .icon{color:var(--muted-foreground)}
+.menu .mi .sub{margin-left:auto;font-size:12px;color:var(--muted-foreground)}
+.menu .mi .check{margin-left:auto;opacity:0;color:var(--foreground)}
+.menu .mi[aria-checked="true"] .check{opacity:1}
+.menu .mi.danger{color:var(--destructive)}
+.menu .mi.danger .icon{color:var(--destructive)}
+.menu .sep{height:1px;background:var(--border);margin:4px -4px}
+.tip{
+  position:fixed;z-index:70;pointer-events:none;padding:4px 8px;font-size:12px;line-height:16px;font-weight:500;
+  background:var(--foreground);color:var(--background);border-radius:8px;corner-shape:superellipse(var(--squircle-factor));
+  box-shadow:0 4px 12px -4px oklch(0 0 0 / .3);animation:sd-fadeIn .12s var(--ease-out) both;white-space:nowrap;
+}
+.tip kbd{font-family:inherit;opacity:.6;margin-left:6px}
+.toast-host{position:fixed;right:20px;bottom:20px;z-index:80;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{
+  display:flex;align-items:center;gap:8px;padding:10px 14px;min-width:220px;
+  background:var(--popover);color:var(--foreground);font-size:13px;line-height:18px;font-weight:500;
+  border-radius:var(--radius-lg);corner-shape:superellipse(var(--squircle-factor));
+  box-shadow:0 0 0 .5px var(--border-surface-strong),0 10px 15px -3px oklch(0 0 0 / .12),0 4px 6px -4px oklch(0 0 0 / .1);
+  animation:sd-slideUp .2s var(--ease-out) both;pointer-events:auto;
+}
+.toast .icon{color:var(--success)}
+.toast[data-closing]{animation:menu-out .15s var(--ease) both}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ SVG sprite（统一 1.75 描边） ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-square-pen" viewBox="0 0 24 24"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.4 2.6a2.1 2.1 0 1 1 3 3L12 15l-4 1 1-4Z"/></symbol>
+    <symbol id="i-ellipsis" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></symbol>
+    <symbol id="i-list-check" viewBox="0 0 24 24"><path d="M11 6h9"/><path d="M11 12h9"/><path d="M11 18h9"/><path d="m3 6 1.5 1.5L7 5"/><path d="m3 12 1.5 1.5L7 11"/><path d="m3 18 1.5 1.5L7 17"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.2 6.4a2 2 0 0 0 0-2.8l-.8-.8a2 2 0 0 0-2.8 0L3 17.4V21h3.6Z"/><path d="m15 5 4 4"/></symbol>
+    <symbol id="i-branch" viewBox="0 0 24 24"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+    <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M12 8v4"/><circle cx="12" cy="15.5" r=".6" fill="currentColor"/></symbol>
+    <symbol id="i-model" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a15 15 0 0 1 0 18"/><path d="M12 3a15 15 0 0 0 0 18"/><path d="M3 12h18"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m10.9 12.1 9.6-9.6"/><path d="m15 5 3 3"/><path d="m18 2 3 3"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z" fill="currentColor" stroke="none"/><path d="M12 9v4" stroke="var(--background)" stroke-width="2"/><path d="M12 17h.01" stroke="var(--background)" stroke-width="2.4"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.5"/><path d="m21 16-5-5-8 8"/></symbol>
+    <symbol id="i-at" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 5a3 3 0 1 0-5.9.9A3.5 3.5 0 0 0 4.5 12a3.5 3.5 0 0 0 1.2 5.5A3 3 0 1 0 12 19Z"/><path d="M12 5a3 3 0 1 1 5.9.9A3.5 3.5 0 0 1 19.5 12a3.5 3.5 0 0 1-1.2 5.5A3 3 0 1 1 12 19Z"/><path d="M12 5v14"/></symbol>
+    <symbol id="i-loader" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 1 9 9"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></symbol>
+    <symbol id="i-logo" viewBox="0 0 48 48"><circle cx="24" cy="24" r="21" stroke="currentColor" stroke-width="3" fill="none"/><path d="M15 33 33 15l-6 12 6 6-18-18 6 12Z" fill="currentColor"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z"/></symbol>
+  </defs>
+</svg>
+
+<div class="window" id="window" data-sidebar="open">
+  <!-- ================= 侧边栏（原生材质复刻） ================= -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-inner">
+      <div class="traffic">
+        <span class="light close"></span><span class="light min"></span><span class="light max"></span>
+        <span class="grow"></span>
+        <button class="btn sidebar-toggle" data-action="toggle-sidebar" data-tip="收起侧边栏" data-kbd="⌘S"><svg class="icon"><use href="#i-panel"/></svg></button>
+      </div>
+
+      <div class="sb-scroll">
+        <section class="sb-section" data-collapsed="false">
+          <div class="sb-section-head"><span>Bookmarks</span><button data-action="collapse-section" aria-label="折叠"><svg class="icon-sm icon"><use href="#i-chevron-up"/></svg></button></div>
+          <div class="sb-body">
+            <div class="dropzone" id="dropzone">Drag tabs here to add bookmarks</div>
+          </div>
+        </section>
+
+        <section class="sb-section" data-collapsed="false">
+          <div class="sb-section-head"><span>Chats</span><button data-action="collapse-section" aria-label="折叠"><svg class="icon-sm icon"><use href="#i-chevron-up"/></svg></button></div>
+          <div class="sb-body" id="sb-chats">
+            <button class="sb-item" data-action="new-chat"><svg class="icon"><use href="#i-square-pen"/></svg><span class="label">New Chat</span></button>
+            <!-- chat items rendered by JS -->
+          </div>
+        </section>
+
+        <section class="sb-section" data-collapsed="false">
+          <div class="sb-section-head"><span>Tabs</span><button data-action="collapse-section" aria-label="折叠"><svg class="icon-sm icon"><use href="#i-chevron-up"/></svg></button></div>
+          <div class="sb-body" id="sb-tabs">
+            <button class="sb-item muted"><svg class="icon"><use href="#i-plus"/></svg><span class="label">打开新的标签页</span></button>
+            <button class="sb-item" draggable="true" data-tab="settings"><span class="favicon" style="background:oklch(45% 0 0)">⚙</span><span class="label">Settings &nbsp;›&nbsp; Appearance</span><span class="close-tab" data-action="close-tab"><svg class="icon-sm icon"><use href="#i-x"/></svg></span></button>
+            <button class="sb-item" draggable="true" data-tab="chats" aria-current="page"><span class="favicon" style="background:oklch(35% 0 0)"><svg class="icon" style="width:11px;height:11px;stroke-width:3"><use href="#i-logo"/></svg></span><span class="label">Chats</span><span class="close-tab" data-action="close-tab"><svg class="icon-sm icon"><use href="#i-x"/></svg></span></button>
+            <button class="sb-item" draggable="true" data-tab="chatgpt"><span class="favicon" style="background:oklch(25% 0 0)">G</span><span class="label">ChatGPT: Chat, Work, Create &amp; Code</span><span class="close-tab" data-action="close-tab"><svg class="icon-sm icon"><use href="#i-x"/></svg></span></button>
+          </div>
+        </section>
+      </div>
+
+      <div class="sb-footer">
+        <button class="avatar-btn" data-menu="account" aria-haspopup="menu" aria-expanded="false"><span class="avatar"></span><svg class="icon-sm icon"><use href="#i-chevron-down"/></svg></button>
+        <div style="display:flex;gap:2px">
+          <button class="btn sidebar-toggle" data-action="toggle-theme" data-tip="切换主题" data-kbd="⌘D"><svg class="icon theme-sun"><use href="#i-sun"/></svg><svg class="icon theme-moon hidden"><use href="#i-moon"/></svg></button>
+          <button class="btn sidebar-toggle" data-tip="搜索" data-kbd="⌘K"><svg class="icon"><use href="#i-search"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= 内容卡片 ================= -->
+  <main class="content">
+    <div class="toolbar">
+      <button class="btn btn-ghost btn-icon-sm" id="sidebar-open" data-action="toggle-sidebar" data-tip="展开侧边栏" style="display:none"><svg class="icon"><use href="#i-panel"/></svg></button>
+      <button class="btn btn-ghost btn-icon-sm" data-action="back" data-tip="后退"><svg class="icon"><use href="#i-chevron-left"/></svg></button>
+      <button class="btn btn-ghost btn-icon-sm" data-tip="前进" disabled><svg class="icon"><use href="#i-chevron-right"/></svg></button>
+      <button class="btn btn-ghost btn-icon-sm" data-tip="关闭标签页"><svg class="icon"><use href="#i-x"/></svg></button>
+      <div class="omnibox" id="omnibox">
+        <span class="brand"><svg class="icon" style="width:14px;height:14px;stroke-width:3"><use href="#i-logo"/></svg>Aside</span>
+        <span class="sep"></span>
+        <span class="title" id="omni-title"><b>Hello greeting</b> · Chats</span>
+      </div>
+      <button class="btn btn-ghost btn-icon-sm" data-tip="下载"><svg class="icon"><use href="#i-download"/></svg></button>
+      <button class="btn btn-ghost btn-icon-sm" data-tip="密码"><svg class="icon"><use href="#i-key"/></svg></button>
+      <button class="btn btn-ghost btn-icon-sm" data-tip="分享页面"><svg class="icon"><use href="#i-share"/></svg></button>
+    </div>
+
+    <div class="page">
+      <!-- ---- 会话视图 ---- -->
+      <section class="view" id="view-chat">
+        <nav class="chat-nav">
+          <div class="left">
+            <button class="btn btn-ghost btn-icon" data-action="new-chat" data-tip="New chat" data-kbd="⌘N"><svg class="icon"><use href="#i-square-pen"/></svg></button>
+            <button class="crumb" id="chat-title" data-action="rename"><span class="t">Hello greeting</span></button>
+            <button class="btn btn-ghost btn-icon" data-menu="chat-more" aria-haspopup="menu" aria-expanded="false"><svg class="icon"><use href="#i-ellipsis"/></svg></button>
+          </div>
+          <div class="right">
+            <button class="btn btn-ghost btn-text" id="share-btn" data-action="share" aria-label="Share chat"><svg class="icon icon-sm"><use href="#i-share"/></svg><span>Share</span></button>
+            <button class="btn btn-active btn-icon" id="pinned-btn" data-action="toggle-pinned" data-tip="Toggle pinned summary" aria-pressed="true"><svg class="icon"><use href="#i-list-check"/></svg></button>
+            <button class="btn btn-ghost btn-icon" data-action="toggle-sidebar" data-tip="Toggle side panel"><svg class="icon"><use href="#i-panel"/></svg></button>
+          </div>
+        </nav>
+
+        <div class="thread" id="thread">
+          <div class="thread-inner">
+            <div class="thread-col" id="messages"></div>
+            <div class="thread-end"></div>
+          </div>
+        </div>
+        <div class="empty" id="empty"><svg class="icon" style="stroke:none"><use href="#i-logo"/></svg></div>
+
+        <div class="composer-wrap">
+          <form id="composer-form" autocomplete="off">
+            <div class="composer compact" id="composer">
+              <div class="attachments hidden" id="attachments"></div>
+              <div class="editor-row">
+                <div class="editor" id="editor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Reply, @ for context" spellcheck="false"></div>
+              </div>
+              <div class="lead">
+                <button type="button" class="btn btn-secondary btn-icon-sm btn-pill" data-menu="attach" aria-haspopup="menu" aria-expanded="false" data-tip="Add context"><svg class="icon"><use href="#i-plus"/></svg></button>
+              </div>
+              <div class="trail">
+                <button type="button" class="btn btn-ghost btn-icon-sm btn-pill" data-action="mic" data-tip="Voice input"><svg class="icon"><use href="#i-mic"/></svg></button>
+                <button type="submit" class="btn btn-primary btn-icon-sm btn-pill send-btn" id="send-btn" data-state="idle" data-empty="true" data-tip="Send" data-kbd="↵"><svg class="icon up"><use href="#i-arrow-up"/></svg><svg class="icon stop"><use href="#i-stop"/></svg></button>
+              </div>
+            </div>
+            <div class="chips">
+              <div class="lgroup">
+                <button type="button" class="btn btn-ghost btn-chip" data-menu="project" aria-haspopup="menu" aria-expanded="false"><svg class="icon"><use href="#i-archive"/></svg><span class="lbl" data-bind="project">Project</span><svg class="icon icon-sm chev"><use href="#i-chevron-down"/></svg></button>
+                <button type="button" class="btn btn-ghost btn-chip" style="padding-left:6px" data-menu="guard" aria-haspopup="menu" aria-expanded="false"><svg class="icon"><use href="#i-shield"/></svg><span class="lbl" data-bind="guard" style="font-size:12px;line-height:16px">Guard</span><svg class="icon icon-sm chev"><use href="#i-chevron-down"/></svg></button>
+              </div>
+              <div class="rgroup">
+                <div class="usage" data-tip="Usage 35%"><svg viewBox="0 0 16 16"><circle class="track" cx="8" cy="8" r="6"/><circle class="val" cx="8" cy="8" r="6" stroke-dasharray="13.2 37.7"/></svg></div>
+                <button type="button" class="btn btn-ghost btn-chip" style="font-size:12px;line-height:16px" data-menu="model" aria-haspopup="menu" aria-expanded="false"><svg class="icon icon-sm" style="margin-left:-2px"><use href="#i-model"/></svg><span class="lbl" data-bind="model">GPT-5.6 Terra</span><svg class="icon icon-sm chev"><use href="#i-chevron-down"/></svg></button>
+                <button type="button" class="btn btn-ghost btn-chip" style="font-size:12px;line-height:16px" data-menu="thinking" aria-haspopup="menu" aria-expanded="false"><span class="lbl" data-bind="thinking">High</span><svg class="icon icon-sm chev"><use href="#i-chevron-down"/></svg></button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- ---- Chats 列表视图 ---- -->
+      <section class="view list-view" id="view-list" hidden>
+        <div class="composer-wrap">
+          <form id="list-form" autocomplete="off">
+            <div class="composer expanded" id="list-composer">
+              <div class="editor-row">
+                <div class="editor" id="list-editor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Ask AI a task, @ for context" spellcheck="false"></div>
+              </div>
+              <div class="toolbar-row">
+                <div class="lgroup">
+                  <button type="button" class="btn btn-secondary btn-icon-sm btn-pill" data-menu="attach" aria-haspopup="menu" aria-expanded="false" data-tip="Add context"><svg class="icon"><use href="#i-plus"/></svg></button>
+                  <button type="button" class="btn btn-ghost btn-chip" data-menu="project" aria-haspopup="menu" aria-expanded="false"><svg class="icon"><use href="#i-archive"/></svg><span class="lbl" data-bind="project">Project</span><svg class="icon icon-sm chev"><use href="#i-chevron-down"/></svg></button>
+                  <button type="button" class="btn btn-ghost btn-chip" style="padding-left:6px" data-menu="guard" aria-haspopup="menu" aria-expanded="false"><svg class="icon"><use href="#i-shield"/></svg><span class="lbl" data-bind="guard" style="font-size:12px;line-height:16px">Guard</span><svg class="icon icon-sm chev"><use href="#i-chevron-down"/></svg></button>
+                </div>
+                <div class="rgroup">
+                  <button type="button" class="btn btn-ghost btn-chip" style="font-size:12px;line-height:16px" data-menu="model" aria-haspopup="menu" aria-expanded="false"><svg class="icon icon-sm" style="margin-left:-2px"><use href="#i-model"/></svg><span class="lbl" data-bind="model">GPT-5.6 Terra</span><svg class="icon icon-sm chev"><use href="#i-chevron-down"/></svg></button>
+                  <button type="button" class="btn btn-ghost btn-chip" style="font-size:12px;line-height:16px" data-menu="thinking" aria-haspopup="menu" aria-expanded="false"><span class="lbl" data-bind="thinking">High</span><svg class="icon icon-sm chev"><use href="#i-chevron-down"/></svg></button>
+                  <button type="button" class="btn btn-ghost btn-icon-sm btn-pill" data-tip="Voice input"><svg class="icon"><use href="#i-mic"/></svg></button>
+                  <button type="submit" class="btn btn-primary btn-icon-sm btn-pill send-btn" id="list-send" data-state="idle" data-empty="true" data-tip="Send" data-kbd="↵"><svg class="icon up"><use href="#i-arrow-up"/></svg><svg class="icon stop"><use href="#i-stop"/></svg></button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <div class="list-head">
+          <div class="tabs" role="tablist" id="tabs">
+            <span class="indicator" role="presentation"></span>
+            <button role="tab" aria-selected="true" data-view="list"><svg class="icon"><use href="#i-list"/></svg><span>List</span></button>
+            <button role="tab" aria-selected="false" data-view="card"><svg class="icon"><use href="#i-grid"/></svg><span>Card</span></button>
+          </div>
+          <div style="display:flex;gap:2px">
+            <button class="btn btn-ghost btn-icon" data-tip="Search chats" data-kbd="⌘F"><svg class="icon"><use href="#i-search"/></svg></button>
+            <button class="btn btn-ghost btn-icon" id="sort-btn" data-action="sort" data-tip="Newest first"><svg class="icon" style="transition:transform .2s var(--ease-out)"><use href="#i-arrow-down"/></svg></button>
+          </div>
+        </div>
+        <div class="chat-list" id="chat-list"></div>
+        <div class="chat-grid hidden" id="chat-grid"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="toast-host" id="toasts"></div>
+
+<script>
+/* ============================================================
+   状态
+   ============================================================ */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const now = () => Date.now();
+const fmtTime = ts => new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+const rel = ts => { const d = (now() - ts) / 1000; if (d < 45) return 'a few seconds ago'; if (d < 3600) return `${Math.max(1, Math.round(d / 60))} minutes ago`; if (d < 86400) return `${Math.round(d / 3600)} hours ago`; return `${Math.round(d / 86400)} days ago`; };
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+const state = {
+  sessions: [],
+  currentId: null,
+  view: 'chat',           // chat | list
+  listMode: 'list',       // list | card
+  sortDesc: true,
+  settings: { project: 'Project', guard: 'Guard', model: 'GPT-5.6 Terra', thinking: 'High' },
+  streaming: null,        // { sessionId, abort }
+  attachments: [],
+};
+
+const seed = () => {
+  const t0 = now() - 14 * 60 * 1000;
+  state.sessions = [{
+    id: 'R63lbMr17q4vMku8', title: 'Hello greeting', createdAt: t0, updatedAt: t0 + 5000, unread: false,
+    messages: [
+      { id: uid(), role: 'user', text: 'HI', ts: t0 },
+      { id: uid(), role: 'assistant', md: 'Hi! How can I help?', ts: t0 + 4000, steps: [] },
+    ],
+  }, {
+    id: '2XpjA3BslG53soml', title: 'New Session', createdAt: now() - 3 * 60 * 1000, updatedAt: now() - 3 * 60 * 1000, messages: [],
+  }];
+  state.currentId = state.sessions[0].id;
+};
+
+/* ============================================================
+   模拟回答（含过程步骤）
+   ============================================================ */
+const answers = {
+  quicksort: {
+    steps: [
+      { icon: 'brain', title: 'Thinking', thinking: true, detail: '用户想要快速排序的代码。给一个 Python 版本，简洁、可读，附上复杂度说明即可。' },
+      { icon: 'globe', title: 'Reading current page: Chats', detail: { url: 'chrome-extension://…/main.html#/u/0/tasks', selection: 'none', length: '1.2 KB' } },
+    ],
+    md: `快速排序的核心是**选一个基准（pivot），把数组分成「小于」「等于」「大于」三部分**，再递归处理左右两边。
+
+\`\`\`python
+def quicksort(arr):
+    if len(arr) <= 1:
+        return arr
+    pivot = arr[len(arr) // 2]
+    left  = [x for x in arr if x < pivot]
+    mid   = [x for x in arr if x == pivot]
+    right = [x for x in arr if x > pivot]
+    return quicksort(left) + mid + quicksort(right)
+
+print(quicksort([3, 6, 8, 10, 1, 2, 1]))  # [1, 1, 2, 3, 6, 8, 10]
+\`\`\`
+
+几个要点：
+
+- 平均时间复杂度 \`O(n log n)\`，最坏 \`O(n²)\`（每次都选到最值时）。取中间元素或随机 pivot 能避开常见的最坏情况。
+- 上面这个写法额外分配了三个列表，好读但不省内存；需要原地排序时用 Lomuto / Hoare 分区。
+- Python 内置的 \`sorted()\` 用的是 Timsort，实际项目里直接用它就好。
+
+需要我给一个原地（in-place）分区的版本吗？`,
+  },
+  default: {
+    steps: [
+      { icon: 'brain', title: 'Thinking', thinking: true, detail: '先理解用户在问什么，再决定是否需要读取页面上下文。' },
+    ],
+    md: `明白了。我把这个问题拆成三步：
+
+1. 先确认目标和约束
+2. 找出现有代码里已经能复用的部分
+3. 再动手改，改完跑一遍检查
+
+你可以用 \`@\` 把当前页面或某个标签页作为上下文加进来，我会直接基于那个页面回答。`,
+  },
+};
+const pickAnswer = text => /排序|sort/i.test(text) ? answers.quicksort : answers.default;
+
+/* ============================================================
+   Markdown（Streamdown 风格的最小实现）
+   ============================================================ */
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const inline = s => esc(s)
+  .replace(/`([^`]+)`/g, '<code>$1</code>')
+  .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+const renderMd = (src, streaming = false) => {
+  const lines = src.split('\n'); const out = []; let i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (l.startsWith('```')) {
+      const lang = l.slice(3).trim(); const buf = []; i++;
+      while (i < lines.length && !lines[i].startsWith('```')) buf.push(lines[i++]);
+      const closed = i < lines.length; i++;
+      out.push(`<pre data-lang="${esc(lang)}"><div class="code-head"><span>${esc(lang || 'text')}</span><button type="button" class="btn btn-ghost btn-icon-xs" data-action="copy-code" data-tip="Copy code"><svg class="icon icon-sm"><use href="#i-copy"/></svg></button></div><code>${esc(buf.join('\n'))}${!closed && streaming ? '<span class="cursor"></span>' : ''}</code></pre>`);
+      continue;
+    }
+    if (/^#{1,3} /.test(l)) { const lvl = l.match(/^#+/)[0].length; out.push(`<h${lvl}>${inline(l.replace(/^#+ /, ''))}</h${lvl}>`); i++; continue; }
+    if (/^[-*] /.test(l)) { const items = []; while (i < lines.length && /^[-*] /.test(lines[i])) items.push(`<li>${inline(lines[i++].slice(2))}</li>`); out.push(`<ul>${items.join('')}</ul>`); continue; }
+    if (/^\d+\. /.test(l)) { const items = []; while (i < lines.length && /^\d+\. /.test(lines[i])) items.push(`<li>${inline(lines[i++].replace(/^\d+\. /, ''))}</li>`); out.push(`<ol>${items.join('')}</ol>`); continue; }
+    if (l.trim() === '') { i++; continue; }
+    const buf = []; while (i < lines.length && lines[i].trim() !== '' && !/^(```|[-*] |\d+\. |#{1,3} )/.test(lines[i])) buf.push(lines[i++]);
+    out.push(`<p>${inline(buf.join(' '))}</p>`);
+  }
+  let html = out.join('');
+  if (streaming && !html.includes('class="cursor"')) html = html.replace(/(<\/(p|li|h\d)>)(?![\s\S]*<\/(p|li|h\d)>)/, '<span class="cursor"></span>$1');
+  return html;
+};
+
+/* ============================================================
+   渲染：消息线程
+   ============================================================ */
+const current = () => state.sessions.find(s => s.id === state.currentId);
+const stepIcon = icon => `<svg class="icon"><use href="#i-${icon}"/></svg>`;
+
+const renderSteps = (m) => {
+  if (!m.steps || !m.steps.length) return '';
+  return `<div class="steps">${m.steps.map((s, idx) => {
+    const running = s.status === 'running';
+    const title = running && s.thinking ? `<span class="shimmer" style="--n:${s.title.length}">${esc(s.title)}</span>` : esc(s.title);
+    const node = running && !s.thinking ? `<svg class="icon spin"><use href="#i-loader"/></svg>` : (s.icon ? stepIcon(s.icon) : '<span class="dot"></span>');
+    const detail = typeof s.detail === 'string'
+      ? `<p style="margin:0;color:var(--foreground)">${esc(s.detail)}</p>`
+      : `<dl class="kv" style="margin:0">${Object.entries(s.detail || {}).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(String(v))}</dd>`).join('')}</dl>`;
+    return `<div class="step" data-open="${s.open ? 'true' : 'false'}" data-step="${idx}">
+      <div class="rail"><div class="line"></div><div class="node">${node}</div></div>
+      <div class="main">
+        <button type="button" class="step-trigger" data-action="toggle-step" aria-expanded="${s.open ? 'true' : 'false'}"><span class="t">${title}</span><svg class="icon chev"><use href="#i-chevron-right"/></svg></button>
+        <div class="step-panel"><div class="step-panel-inner">${detail}</div></div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+};
+
+const renderMessage = (m, isLast) => {
+  if (m.role === 'user') {
+    return `<div class="msg is-user" data-id="${m.id}">
+      <div class="bubble" data-role="bubble">${esc(m.text)}</div>
+      <div class="actions">
+        <span class="stamp">${fmtTime(m.ts)}</span>
+        <button type="button" class="btn btn-ghost btn-icon-xs" data-action="copy" data-tip="Copy"><svg class="icon"><use href="#i-copy"/></svg><span class="sr-only">Copy</span></button>
+        <button type="button" class="btn btn-ghost btn-icon-xs" data-action="edit" data-tip="Edit"><svg class="icon"><use href="#i-pencil"/></svg><span class="sr-only">Edit</span></button>
+      </div>
+    </div>`;
+  }
+  if (m.role === 'error') {
+    return `<div class="msg is-assistant" data-id="${m.id}"><div class="error-card" role="alert">
+      <div class="row"><svg class="icon"><use href="#i-alert"/></svg><div class="txt"><p class="h">${esc(m.title)}</p><p class="d">${esc(m.detail)}</p></div>
+      <button type="button" class="btn btn-outline btn-text" data-action="retry">Try again</button></div>
+    </div></div>`;
+  }
+  const streaming = m.status === 'streaming';
+  return `<div class="msg is-assistant ${isLast ? 'is-last' : ''}" data-id="${m.id}">
+    <div class="body">${renderSteps(m)}${m.md ? `<div class="md">${renderMd(m.md, streaming)}</div>` : ''}</div>
+    ${streaming ? '' : `<div class="actions">
+      <div class="group">
+        <button type="button" class="btn btn-ghost btn-icon-xs" data-action="copy" data-tip="Copy"><svg class="icon"><use href="#i-copy"/></svg><span class="sr-only">Copy</span></button>
+        <button type="button" class="btn btn-ghost btn-icon-xs" data-action="branch" data-tip="Branch"><svg class="icon"><use href="#i-branch"/></svg><span class="sr-only">Branch</span></button>
+      </div>
+      <span class="stamp">${fmtTime(m.ts)}</span>
+    </div>`}
+  </div>`;
+};
+
+const renderThread = () => {
+  const s = current(); const host = $('#messages');
+  if (!s) return;
+  const lastAssistant = [...s.messages].reverse().find(m => m.role === 'assistant');
+  host.innerHTML = s.messages.map(m => renderMessage(m, m === lastAssistant)).join('');
+  $('#empty').classList.toggle('hidden', s.messages.length > 0);
+  $('#share-btn').disabled = s.messages.length === 0;
+  $('#chat-title .t').textContent = s.title;
+  $('#omni-title').innerHTML = `<b>${esc(s.title)}</b> · Chats`;
+  document.title = `${s.title} ⋅ Chats`;
+  // 步骤面板高度
+  $$('.step[data-open="true"] .step-panel', host).forEach(p => { p.style.height = p.firstElementChild.scrollHeight + 'px'; });
+};
+
+const patchStreaming = (m) => {
+  const el = $(`.msg[data-id="${m.id}"]`); if (!el) { renderThread(); return; }
+  const body = $('.body', el);
+  const stepsHtml = renderSteps(m);
+  const mdEl = $('.md', body);
+  const stepsEl = $('.steps', body);
+  if (stepsEl) {
+    // 只在结构变化时重建 steps
+    if (stepsEl.dataset.sig !== JSON.stringify(m.steps.map(s => [s.status, s.open]))) {
+      stepsEl.outerHTML = stepsHtml; $('.steps', body).dataset.sig = JSON.stringify(m.steps.map(s => [s.status, s.open]));
+      $$('.step[data-open="true"] .step-panel', body).forEach(p => { p.style.height = p.firstElementChild.scrollHeight + 'px'; });
+    }
+  } else if (stepsHtml) body.insertAdjacentHTML('afterbegin', stepsHtml);
+  if (m.md) {
+    const html = renderMd(m.md, m.status === 'streaming');
+    if (mdEl) mdEl.innerHTML = html; else body.insertAdjacentHTML('beforeend', `<div class="md">${html}</div>`);
+    // 给最新 token 加 blurIn
+    const md = $('.md', body); const last = md.querySelector('.cursor')?.parentElement || md.lastElementChild;
+    if (last && last.lastChild && last.lastChild.nodeType === 3) {
+      const t = last.lastChild; const txt = t.textContent; const tail = txt.slice(-6); const head = txt.slice(0, -6);
+      t.textContent = head; const span = document.createElement('span'); span.className = 'tok'; span.textContent = tail; last.appendChild(span);
+      const cur = md.querySelector('.cursor'); if (cur) last.appendChild(cur);
+    }
+  }
+};
+
+/* ============================================================
+   渲染：侧边栏 / 列表页
+   ============================================================ */
+const renderSidebarChats = () => {
+  const host = $('#sb-chats'); $$('.sb-item[data-session]', host).forEach(e => e.remove()); $('.sb-item.muted[data-action="show-more"]', host)?.remove();
+  const sorted = [...state.sessions].sort((a, b) => b.updatedAt - a.updatedAt);
+  sorted.slice(0, 5).forEach(s => {
+    const b = document.createElement('button'); b.className = 'sb-item'; b.dataset.session = s.id;
+    if (s.id === state.currentId && state.view === 'chat') b.setAttribute('aria-current', 'page');
+    b.innerHTML = `<span class="label">${esc(s.title)}</span>${s.unread ? '<span class="badge">!</span>' : ''}${s.status === 'running' ? '<svg class="icon icon-sm spin" style="animation:spin 1s linear infinite;color:var(--sidebar-muted)"><use href="#i-loader"/></svg>' : ''}`;
+    host.appendChild(b);
+  });
+  const more = document.createElement('button'); more.className = 'sb-item muted'; more.dataset.action = 'show-more'; more.innerHTML = '<span class="label">Show more</span>'; host.appendChild(more);
+};
+
+const renderList = () => {
+  const sorted = [...state.sessions].sort((a, b) => state.sortDesc ? b.updatedAt - a.updatedAt : a.updatedAt - b.updatedAt);
+  const preview = s => { const last = [...s.messages].reverse().find(m => m.role !== 'error'); return last ? (last.role === 'user' ? last.text : last.md.replace(/[`*#\n]+/g, ' ').trim()) : ''; };
+  $('#chat-list').innerHTML = sorted.map(s => `<button class="chat-item" data-open-session="${s.id}">
+    <div class="label"><span class="t">${esc(s.title)}</span><span class="p">${esc(preview(s))}</span></div>
+    <div class="meta">${s.status === 'running' ? '<span class="live"></span>' : ''}<span data-tip="${new Date(s.updatedAt).toLocaleString()}">${rel(s.updatedAt)}</span></div>
+  </button>`).join('') || '<div class="list-empty">No chats yet</div>';
+  $('#chat-grid').innerHTML = sorted.map(s => `<button class="chat-card" data-open-session="${s.id}">
+    <div class="t">${esc(s.title)}</div><div class="p">${esc(preview(s)) || 'Empty session'}</div><div class="meta">${rel(s.updatedAt)}</div></button>`).join('');
+  $('#chat-list').classList.toggle('hidden', state.listMode !== 'list');
+  $('#chat-grid').classList.toggle('hidden', state.listMode !== 'card');
+};
+
+const positionTabIndicator = () => {
+  const tabs = $('#tabs'); const active = $('[aria-selected="true"]', tabs); const ind = $('.indicator', tabs);
+  ind.style.width = active.offsetWidth + 'px'; ind.style.transform = `translateX(${active.offsetLeft}px)`;
+};
+
+const showView = (v) => {
+  state.view = v;
+  $('#view-chat').hidden = v !== 'chat'; $('#view-list').hidden = v !== 'list';
+  if (v === 'list') { renderList(); requestAnimationFrame(positionTabIndicator); $('#omni-title').innerHTML = '<b>Chats</b>'; document.title = 'Chats'; }
+  else renderThread();
+  renderSidebarChats();
+};
+
+/* ============================================================
+   发送 / 流式
+   ============================================================ */
+const sleep = (ms, signal) => new Promise((res, rej) => { const t = setTimeout(res, ms); signal?.addEventListener('abort', () => { clearTimeout(t); rej(new Error('abort')); }, { once: true }); });
+
+const setSendState = (streaming) => {
+  $$('.send-btn').forEach(b => { b.dataset.state = streaming ? 'streaming' : 'idle'; b.dataset.tip = streaming ? 'Stop' : 'Send'; b.dataset.kbd = streaming ? 'Esc' : '↵'; });
+};
+
+const titleFrom = text => { const t = text.replace(/\s+/g, ' ').trim(); return t.length > 24 ? t.slice(0, 24) + '…' : t; };
+
+async function send(text, session) {
+  if (state.streaming) return;
+  const s = session || current();
+  const userMsg = { id: uid(), role: 'user', text, ts: now() };
+  s.messages.push(userMsg);
+  if (s.title === 'New Session' || s.title === 'New Chat') s.title = titleFrom(text);
+  s.updatedAt = now(); s.status = 'running';
+  const a = pickAnswer(text);
+  const reply = { id: uid(), role: 'assistant', md: '', ts: now(), status: 'streaming', steps: a.steps.map(st => ({ ...st, status: 'pending', open: false })) };
+  s.messages.push(reply);
+  if (state.currentId !== s.id) { state.currentId = s.id; }
+  showView('chat');
+  renderThread(); renderSidebarChats();
+  const ctrl = new AbortController(); state.streaming = { sessionId: s.id, abort: () => ctrl.abort() };
+  setSendState(true);
+  try {
+    for (const st of reply.steps) {
+      st.status = 'running'; patchStreaming(reply);
+      await sleep(st.thinking ? 1600 : 900, ctrl.signal);
+      st.status = 'done'; patchStreaming(reply);
+    }
+    const tokens = a.md.match(/[\s\S]{1,4}/g) || [];
+    for (const tk of tokens) { reply.md += tk; patchStreaming(reply); await sleep(14 + Math.random() * 20, ctrl.signal); }
+  } catch (e) {
+    if (e.message !== 'abort') throw e;
+    if (!reply.md) { s.messages.pop(); } else reply.md += '';
+  }
+  reply.status = 'done'; reply.ts = now(); s.updatedAt = now(); s.status = undefined;
+  state.streaming = null; setSendState(false);
+  renderThread(); renderSidebarChats();
+}
+
+const stop = () => { state.streaming?.abort(); };
+
+/* ============================================================
+   编辑器
+   ============================================================ */
+const editorText = ed => ed.innerText.replace(/\u00a0/g, ' ').replace(/\n$/, '');
+const syncSend = (ed, btn) => { btn.dataset.empty = editorText(ed).trim() === '' && state.attachments.length === 0 ? 'true' : 'false'; };
+const wireEditor = (ed, btn, onSubmit) => {
+  ed.addEventListener('input', () => { syncSend(ed, btn); highlightMentions(ed); });
+  ed.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); onSubmit(); }
+    if (e.key === 'Escape' && state.streaming) { e.preventDefault(); stop(); }
+    if (e.key === '@' ) { setTimeout(() => openMenu(ed, 'mention', { anchorCaret: true }), 0); }
+  });
+  ed.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text/plain')); });
+  ed.addEventListener('dragover', e => { e.preventDefault(); ed.closest('.composer').style.boxShadow = '0 0 0 2px var(--brand)'; });
+  ed.addEventListener('dragleave', () => { ed.closest('.composer').style.boxShadow = ''; });
+  ed.addEventListener('drop', e => { e.preventDefault(); ed.closest('.composer').style.boxShadow = ''; const tab = e.dataTransfer.getData('text/tab'); if (tab) addAttachment({ kind: 'tab', label: tab }); [...(e.dataTransfer.files || [])].forEach(f => addAttachment({ kind: 'file', label: f.name })); });
+};
+const highlightMentions = (ed) => { /* 保持简单：@xxx 由 mention 菜单以 span 插入，纯文本输入不重排 DOM */ };
+
+const addAttachment = (a) => {
+  state.attachments.push(a);
+  const host = $('#attachments'); host.classList.remove('hidden');
+  host.insertAdjacentHTML('beforeend', `<span class="attachment" data-idx="${state.attachments.length - 1}"><svg class="icon icon-sm" style="color:var(--muted-foreground)"><use href="#i-${a.kind === 'tab' ? 'globe' : a.kind === 'image' ? 'image' : 'file'}"/></svg>${esc(a.label)}<button type="button" class="rm" data-action="rm-attachment" aria-label="Remove"><svg class="icon-sm icon"><use href="#i-x"/></svg></button></span>`);
+  syncSend($('#editor'), $('#send-btn'));
+};
+const clearAttachments = () => { state.attachments = []; $('#attachments').innerHTML = ''; $('#attachments').classList.add('hidden'); };
+
+/* ============================================================
+   菜单 / Tooltip / Toast
+   ============================================================ */
+const menus = {
+  attach: () => [
+    { icon: 'file', label: 'Upload file', sub: '⌘U', act: () => addAttachment({ kind: 'file', label: 'notes.pdf' }) },
+    { icon: 'image', label: 'Take screenshot', act: () => addAttachment({ kind: 'image', label: 'Screenshot 13.41.png' }) },
+    { icon: 'globe', label: 'Current tab', sub: 'Chats', act: () => addAttachment({ kind: 'tab', label: 'Chats' }) },
+    { sep: true },
+    { icon: 'at', label: 'Mention a tab…', sub: '@', act: () => { const ed = $('#editor'); ed.focus(); document.execCommand('insertText', false, '@'); openMenu(ed, 'mention', { anchorCaret: true }); } },
+  ],
+  mention: () => [
+    { head: 'Open tabs' },
+    { icon: 'globe', label: 'Settings › Appearance', act: () => insertMention('@Settings') },
+    { icon: 'globe', label: 'Chats', act: () => insertMention('@Chats') },
+    { icon: 'globe', label: 'ChatGPT: Chat, Work, Create & Code', act: () => insertMention('@ChatGPT') },
+  ],
+  project: () => [
+    { head: 'Project' },
+    ...['No project', 'jai-mono', 'Design research', 'Personal'].map(p => ({ label: p, checked: (state.settings.project === p) || (p === 'No project' && state.settings.project === 'Project'), act: () => setSetting('project', p === 'No project' ? 'Project' : p) })),
+    { sep: true }, { icon: 'plus', label: 'New project…' },
+  ],
+  guard: () => [
+    { head: 'Permissions' },
+    { label: 'Guard', sub: 'Ask before acting', checked: state.settings.guard === 'Guard', act: () => setSetting('guard', 'Guard') },
+    { label: 'Auto', sub: 'Act without asking', checked: state.settings.guard === 'Auto', act: () => setSetting('guard', 'Auto') },
+    { label: 'Read-only', sub: 'Never act', checked: state.settings.guard === 'Read-only', act: () => setSetting('guard', 'Read-only') },
+  ],
+  model: () => [
+    { head: 'Model' },
+    ...['GPT-5.6 Terra', 'GPT-5.6 Sol', 'Claude Opus 5', 'Claude Fable 5.1', 'Gemini 3.5 Pro'].map(m => ({ icon: 'model', label: m, checked: state.settings.model === m, act: () => setSetting('model', m) })),
+    { sep: true }, { icon: 'key', label: 'Connect a provider…' },
+  ],
+  thinking: () => [
+    { head: 'Thinking level' },
+    ...['Low', 'Medium', 'High', 'Max'].map(t => ({ label: t, checked: state.settings.thinking === t, act: () => setSetting('thinking', t) })),
+  ],
+  'chat-more': () => [
+    { icon: 'pencil', label: 'Rename', sub: '⏎', act: () => rename() },
+    { icon: 'branch', label: 'Branch from here' },
+    { icon: 'archive', label: 'Move to project…' },
+    { icon: 'share', label: 'Share', act: () => share() },
+    { sep: true },
+    { icon: 'trash', label: 'Delete chat', danger: true, act: () => deleteCurrent() },
+  ],
+  account: () => [
+    { head: 'workmoly@…' },
+    { icon: 'key', label: 'Account' },
+    { icon: 'model', label: 'Usage', sub: '35%' },
+    { sep: true },
+    { icon: 'sun', label: 'Toggle theme', sub: '⌘D', act: toggleTheme },
+  ],
+};
+
+let openMenuEl = null, openMenuAnchor = null;
+const closeMenu = () => {
+  if (!openMenuEl) return; const el = openMenuEl, an = openMenuAnchor; openMenuEl = null; openMenuAnchor = null;
+  el.dataset.closing = ''; an?.setAttribute('aria-expanded', 'false');
+  setTimeout(() => el.remove(), 120);
+};
+const openMenu = (anchor, name, opts = {}) => {
+  if (openMenuEl && openMenuAnchor === anchor) { closeMenu(); return; }
+  closeMenu();
+  const items = menus[name](); const el = document.createElement('div'); el.className = 'menu'; el.setAttribute('role', 'menu');
+  el.innerHTML = items.map(it => it.sep ? '<div class="sep"></div>' : it.head ? `<div class="mh">${esc(it.head)}</div>` :
+    `<button type="button" class="mi ${it.danger ? 'danger' : ''}" role="menuitem" ${it.checked !== undefined ? `aria-checked="${it.checked}"` : ''}>${it.icon ? `<svg class="icon"><use href="#i-${it.icon}"/></svg>` : ''}<span>${esc(it.label)}</span>${it.sub ? `<span class="sub">${esc(it.sub)}</span>` : ''}${it.checked !== undefined ? '<svg class="icon icon-sm check"><use href="#i-check"/></svg>' : ''}</button>`).join('');
+  document.body.appendChild(el);
+  let r = anchor.getBoundingClientRect();
+  if (opts.anchorCaret) { const sel = getSelection(); if (sel.rangeCount) { const cr = sel.getRangeAt(0).getBoundingClientRect(); if (cr.width || cr.height) r = cr; } }
+  const mw = el.offsetWidth, mh = el.offsetHeight;
+  let x = r.left, y = r.bottom + 4, origin = 'top left';
+  if (y + mh > innerHeight - 8) { y = r.top - mh - 4; origin = 'bottom left'; }
+  if (x + mw > innerWidth - 8) { x = r.right - mw; origin = origin.replace('left', 'right'); }
+  el.style.left = Math.max(8, x) + 'px'; el.style.top = Math.max(8, y) + 'px'; el.style.setProperty('--origin', origin);
+  $$('.mi', el).forEach((b, i) => { const it = items.filter(x => !x.sep && !x.head)[i]; b.addEventListener('click', () => { closeMenu(); it.act?.(); }); });
+  openMenuEl = el; openMenuAnchor = anchor; anchor.setAttribute('aria-expanded', 'true');
+  $('.mi', el)?.focus({ preventScroll: true });
+};
+document.addEventListener('pointerdown', e => { if (openMenuEl && !openMenuEl.contains(e.target) && !openMenuAnchor?.contains(e.target)) closeMenu(); });
+
+const insertMention = (t) => {
+  const ed = $('#editor'); ed.focus();
+  const sel = getSelection(); const range = sel.getRangeAt(0);
+  // 删掉刚输入的 @
+  const node = range.startContainer; if (node.nodeType === 3 && node.textContent[range.startOffset - 1] === '@') { node.textContent = node.textContent.slice(0, range.startOffset - 1) + node.textContent.slice(range.startOffset); range.setStart(node, range.startOffset - 1); }
+  const span = document.createElement('span'); span.className = 'mention'; span.contentEditable = 'false'; span.textContent = t;
+  range.insertNode(span); range.setStartAfter(span); range.collapse(true); sel.removeAllRanges(); sel.addRange(range);
+  document.execCommand('insertText', false, ' '); syncSend(ed, $('#send-btn'));
+};
+
+const setSetting = (k, v) => { state.settings[k] = v; $$(`[data-bind="${k}"]`).forEach(e => e.textContent = v); };
+
+let tipEl = null, tipTimer = null;
+const showTip = (el) => {
+  hideTip(); const text = el.dataset.tip; if (!text) return;
+  tipTimer = setTimeout(() => {
+    tipEl = document.createElement('div'); tipEl.className = 'tip'; tipEl.setAttribute('role', 'tooltip');
+    tipEl.innerHTML = esc(text) + (el.dataset.kbd ? `<kbd>${esc(el.dataset.kbd)}</kbd>` : '');
+    document.body.appendChild(tipEl);
+    const r = el.getBoundingClientRect(); const w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+    let x = r.left + r.width / 2 - w / 2, y = r.top - h - 6; if (y < 8) y = r.bottom + 6;
+    tipEl.style.left = Math.min(Math.max(8, x), innerWidth - w - 8) + 'px'; tipEl.style.top = y + 'px';
+  }, 450);
+};
+const hideTip = () => { clearTimeout(tipTimer); tipEl?.remove(); tipEl = null; };
+document.addEventListener('pointerover', e => { const t = e.target.closest('[data-tip]'); if (t) showTip(t); });
+document.addEventListener('pointerout', e => { if (e.target.closest('[data-tip]')) hideTip(); });
+document.addEventListener('pointerdown', hideTip);
+
+const toast = (msg, icon = 'check') => {
+  const el = document.createElement('div'); el.className = 'toast'; el.innerHTML = `<svg class="icon"><use href="#i-${icon}"/></svg><span>${esc(msg)}</span>`;
+  $('#toasts').appendChild(el); setTimeout(() => { el.dataset.closing = ''; setTimeout(() => el.remove(), 150); }, 2200);
+};
+
+/* ============================================================
+   动作
+   ============================================================ */
+const copyText = async (text, btn) => {
+  try { await navigator.clipboard.writeText(text); } catch {}
+  if (btn) { const use = $('use', btn); use.setAttribute('href', '#i-check'); btn.classList.add('done'); setTimeout(() => { use.setAttribute('href', '#i-copy'); btn.classList.remove('done'); }, 1200); }
+};
+const newChat = () => {
+  const s = { id: uid(), title: 'New Chat', createdAt: now(), updatedAt: now(), messages: [] };
+  state.sessions.unshift(s); state.currentId = s.id; showView('chat'); clearAttachments(); $('#editor').focus();
+  $('#chat-title .t').innerHTML = 'New<span class="caret"></span>';
+};
+const openSession = id => { state.currentId = id; const s = current(); s.unread = false; showView('chat'); requestAnimationFrame(() => $('#editor').focus()); };
+const rename = () => {
+  const s = current(); const el = $('#chat-title .t'); el.contentEditable = 'true'; el.textContent = s.title; el.focus(); document.execCommand('selectAll');
+  const done = (save) => { el.contentEditable = 'false'; if (save && el.textContent.trim()) s.title = el.textContent.trim(); renderThread(); renderSidebarChats(); };
+  el.onblur = () => done(true); el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } if (e.key === 'Escape') { el.onblur = null; done(false); } };
+};
+const share = () => { copyText(location.href.split('#')[0] + '#/share/' + current().id); toast('Link copied'); };
+const deleteCurrent = () => { const idx = state.sessions.findIndex(s => s.id === state.currentId); state.sessions.splice(idx, 1); if (!state.sessions.length) newChat(); else { state.currentId = state.sessions[0].id; showView('list'); } toast('Chat deleted', 'trash'); };
+const toggleTheme = () => { const dark = !document.documentElement.classList.contains('dark'); document.documentElement.classList.toggle('dark', dark); document.documentElement.classList.toggle('light', !dark); $('.theme-sun').classList.toggle('hidden', dark); $('.theme-moon').classList.toggle('hidden', !dark); localStorage.setItem('aside-theme', dark ? 'dark' : 'light'); };
+const toggleSidebar = () => { const w = $('#window'); const closed = w.dataset.sidebar === 'closed'; w.dataset.sidebar = closed ? 'open' : 'closed'; $('#sidebar-open').style.display = closed ? 'none' : ''; };
+
+const startEdit = (msgEl) => {
+  const s = current(); const m = s.messages.find(x => x.id === msgEl.dataset.id); const bubble = $('[data-role=bubble]', msgEl);
+  bubble.classList.add('editing'); bubble.innerHTML = `<textarea rows="2">${esc(m.text)}</textarea><div class="edit-actions"><button type="button" class="btn btn-ghost btn-text" data-action="edit-cancel">Cancel</button><button type="button" class="btn btn-primary btn-text" data-action="edit-send">Send</button></div>`;
+  const ta = $('textarea', bubble); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); ta.style.height = ta.scrollHeight + 'px';
+  ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; });
+  ta.addEventListener('keydown', e => { if (e.key === 'Escape') renderThread(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitEdit(msgEl, ta.value); } });
+};
+const commitEdit = (msgEl, text) => {
+  const s = current(); const idx = s.messages.findIndex(x => x.id === msgEl.dataset.id);
+  s.messages.splice(idx); // 从这条开始截断，重新生成
+  send(text.trim() || 'HI', s);
+};
+const branch = (msgEl) => {
+  const s = current(); const idx = s.messages.findIndex(x => x.id === msgEl.dataset.id);
+  const b = { id: uid(), title: s.title + ' (branch)', createdAt: now(), updatedAt: now(), messages: s.messages.slice(0, idx + 1).map(m => ({ ...m, id: uid() })) };
+  state.sessions.unshift(b); state.currentId = b.id; showView('chat'); toast('Branched into a new chat', 'branch');
+};
+const retry = (msgEl) => {
+  const s = current(); const idx = s.messages.findIndex(x => x.id === msgEl.dataset.id); s.messages.splice(idx, 1);
+  const lastUser = [...s.messages].reverse().find(m => m.role === 'user'); if (lastUser) { s.messages.splice(s.messages.lastIndexOf(lastUser), 1); send(lastUser.text, s); }
+};
+
+/* ============================================================
+   事件委托
+   ============================================================ */
+document.addEventListener('click', e => {
+  const menuBtn = e.target.closest('[data-menu]'); if (menuBtn) { openMenu(menuBtn, menuBtn.dataset.menu); return; }
+  const open = e.target.closest('[data-open-session]'); if (open) { openSession(open.dataset.openSession); return; }
+  const sb = e.target.closest('.sb-item[data-session]'); if (sb) { openSession(sb.dataset.session); return; }
+  const tab = e.target.closest('#tabs [role=tab]'); if (tab) { $$('#tabs [role=tab]').forEach(t => t.setAttribute('aria-selected', t === tab)); state.listMode = tab.dataset.view; positionTabIndicator(); renderList(); return; }
+  const act = e.target.closest('[data-action]'); if (!act) return;
+  const msgEl = act.closest('.msg');
+  switch (act.dataset.action) {
+    case 'toggle-sidebar': toggleSidebar(); break;
+    case 'toggle-theme': toggleTheme(); break;
+    case 'collapse-section': { const sec = act.closest('.sb-section'); sec.dataset.collapsed = sec.dataset.collapsed === 'true' ? 'false' : 'true'; break; }
+    case 'close-tab': e.stopPropagation(); act.closest('.sb-item').remove(); break;
+    case 'new-chat': newChat(); break;
+    case 'show-more': case 'back': showView('list'); break;
+    case 'rename': rename(); break;
+    case 'share': share(); break;
+    case 'toggle-pinned': { const on = act.getAttribute('aria-pressed') === 'true'; act.setAttribute('aria-pressed', String(!on)); act.classList.toggle('btn-active', !on); act.classList.toggle('btn-ghost', on); toast(on ? 'Pinned summary hidden' : 'Pinned summary shown', 'list-check'); break; }
+    case 'sort': state.sortDesc = !state.sortDesc; act.dataset.tip = state.sortDesc ? 'Newest first' : 'Oldest first'; $('svg', act).style.transform = state.sortDesc ? '' : 'rotate(180deg)'; renderList(); break;
+    case 'mic': toast('Voice input is not available in this demo', 'mic'); break;
+    case 'rm-attachment': { const idx = +act.closest('.attachment').dataset.idx; state.attachments.splice(idx, 1); const host = $('#attachments'); act.closest('.attachment').remove(); $$('.attachment', host).forEach((a, i) => a.dataset.idx = i); if (!state.attachments.length) host.classList.add('hidden'); syncSend($('#editor'), $('#send-btn')); break; }
+    case 'copy': { const m = current().messages.find(x => x.id === msgEl.dataset.id); copyText(m.role === 'user' ? m.text : m.md, act); break; }
+    case 'copy-code': copyText(act.closest('pre').querySelector('code').innerText, act); break;
+    case 'edit': startEdit(msgEl); break;
+    case 'edit-cancel': renderThread(); break;
+    case 'edit-send': commitEdit(msgEl, $('textarea', msgEl).value); break;
+    case 'branch': branch(msgEl); break;
+    case 'retry': retry(msgEl); break;
+    case 'toggle-step': {
+      const step = act.closest('.step'); const open = step.dataset.open !== 'true'; const panel = $('.step-panel', step);
+      const m = current().messages.find(x => x.id === msgEl.dataset.id); m.steps[+step.dataset.step].open = open;
+      step.dataset.open = String(open); act.setAttribute('aria-expanded', String(open));
+      panel.style.height = open ? panel.firstElementChild.scrollHeight + 'px' : '0px';
+      $('.steps', msgEl).dataset.sig = JSON.stringify(m.steps.map(s => [s.status, s.open]));
+      break;
+    }
+  }
+});
+
+$('#composer-form').addEventListener('submit', e => {
+  e.preventDefault();
+  if (state.streaming) { stop(); return; }
+  const ed = $('#editor'); const text = editorText(ed).trim();
+  if (!text && !state.attachments.length) return;
+  const ctx = state.attachments.length ? `\n\n[${state.attachments.map(a => a.label).join(', ')}]` : '';
+  ed.textContent = ''; clearAttachments(); syncSend(ed, $('#send-btn'));
+  send(text + ctx);
+});
+$('#list-form').addEventListener('submit', e => {
+  e.preventDefault(); if (state.streaming) { stop(); return; }
+  const ed = $('#list-editor'); const text = editorText(ed).trim(); if (!text) return; ed.textContent = ''; syncSend(ed, $('#list-send'));
+  const s = { id: uid(), title: titleFrom(text), createdAt: now(), updatedAt: now(), messages: [] }; state.sessions.unshift(s); send(text, s);
+});
+wireEditor($('#editor'), $('#send-btn'), () => $('#composer-form').requestSubmit());
+wireEditor($('#list-editor'), $('#list-send'), () => $('#list-form').requestSubmit());
+
+// 侧边栏 tab 拖拽 → 书签区 / 输入框
+$$('#sb-tabs .sb-item[draggable]').forEach(el => el.addEventListener('dragstart', e => { e.dataTransfer.setData('text/tab', $('.label', el).textContent.trim()); e.dataTransfer.effectAllowed = 'copy'; }));
+const dz = $('#dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('is-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('is-over'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('is-over'); const t = e.dataTransfer.getData('text/tab'); if (!t) return; dz.insertAdjacentHTML('beforebegin', `<button class="sb-item"><svg class="icon"><use href="#i-bookmark"/></svg><span class="label">${esc(t)}</span></button>`); toast('Bookmark added', 'bookmark'); });
+
+// 快捷键
+document.addEventListener('keydown', e => {
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); newChat(); }
+  if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); toggleTheme(); }
+  if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); toggleSidebar(); }
+  if (e.key === 'Escape') { if (openMenuEl) closeMenu(); else if (state.streaming) stop(); }
+});
+addEventListener('resize', () => { if (state.view === 'list') positionTabIndicator(); });
+
+/* ============================================================
+   启动：跟随系统主题；复刻截图里的初始状态
+   ============================================================ */
+(() => {
+  const saved = localStorage.getItem('aside-theme'); const dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  if (dark) toggleTheme();
+  seed();
+  // 截图中的状态：用户问了「快速排序代码怎么写」，服务端报错
+  const s = current();
+  s.messages.push({ id: uid(), role: 'user', text: '快速排序代码怎么写', ts: now() - 60 * 1000 });
+  s.messages.push({ id: uid(), role: 'error', title: 'There was an error in ChatGPT server', detail: 'Encountered invalidated oauth token for user, failing request', ts: now() - 58 * 1000 });
+  s.unread = true; s.updatedAt = now() - 58 * 1000;
+  showView('chat');
+  setInterval(() => { if (state.view === 'list') renderList(); }, 30000);
+})();
+</script>
+</body>
+</html>
