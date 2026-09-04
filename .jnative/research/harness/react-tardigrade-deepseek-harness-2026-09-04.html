@@ -59,6 +59,63 @@
         </ol>
       </section>
 
+      <section class="mt-12" data-report-section="origin" aria-labelledby="origin-title">
+        <h2 id="origin-title" class="text-2xl font-semibold">起因：一条断在每一环的推理链</h2>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">这份笔记的起因是一条被当作结论的推理链：</p>
+        <blockquote class="mt-4 border-l-4 border-slate-400 bg-white px-5 py-4 leading-7 text-slate-700">React 的 Effect 有 cleanup → DeepSeek Harness 说自己 reversible → 所以 agent 的工具调用可以 rollback。</blockquote>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">这条链里每一步用的「可逆」都是不同的意思，最后的结论站不住。下面分别查三者的文档和源码，说清每一个「可逆」到底覆盖到哪一层，再给 JAI 的判断。<a class="text-accent underline underline-offset-4" href="react-tardigrade-deepseek-harness-2026-09-04.md">完整推理见证据笔记</a>。</p>
+      </section>
+
+      <section class="mt-12" data-report-section="react" aria-labelledby="react-title">
+        <h2 id="react-title" class="text-2xl font-semibold">React 的哪些思想和 Agent 有关</h2>
+        <div class="mt-6 space-y-6">
+          <div class="border border-slate-300 bg-white p-5">
+            <h3 class="font-semibold">1. 纯计算、提交、外部执行必须分成三层</h3>
+            <p class="mt-2 leading-7 text-slate-700">React 要求 render 是纯的：同样的 props、state、context 产出同样的结果。因为纯，React 才能暂停、重启或丢掉一次还没 commit 的 render。commit 才把结果写到 DOM。Effect 在 commit 之后跑，负责让 React 和外部系统同步。搬到 harness 里对应三个程序边界：已提交的 durable facts → 纯 projection/reducer → 受控 commit → executor（模型、工具、文件、网络）。第一层可以随便重放、丢弃；projection 重算时不可能顺手把工具跑了。React 没有定义后两层的 durability。<a class="text-accent underline underline-offset-4" href="#source-s1">来源 S1</a></p>
+          </div>
+          <div class="border border-slate-300 bg-white p-5">
+            <h3 class="font-semibold">2. State 快照、单向流、最小事实</h3>
+            <p class="mt-2 leading-7 text-slate-700">一次 render 看到的是 state 的快照；setter 请求的是下一个快照，不改当前调用看到的值。每份 state 只有一个 source of truth，只保存推不出来的最小状态。翻译到 agent：一项决策应写明它依赖哪些 committed facts、哪个 policy 版本、哪份 observation 快照。status、view、待执行 action 只要能从事实算出来，就不该再存第二份 durable truth。这不等于要一个全局 store，React 也没有提供 event sourcing 或跨进程一致性。<a class="text-accent underline underline-offset-4" href="#source-s1">来源 S1</a></p>
+          </div>
+          <div class="border border-slate-300 bg-white p-5">
+            <h3 class="font-semibold">3. Reducer、状态机、稳定 identity</h3>
+            <p class="mt-2 leading-7 text-slate-700">React reducer 把 action（发生了什么）和 state update（下一状态是什么）分开，reducer 本身要纯。Agent 里确定性的部分适合这个形态：权限、审批、operation 生命周期、恢复 verdict。给定 state 加一条 durable event 或已校验的 command，就能断言 transition、拒绝原因和下一项该做的工作。LLM 推理、wall clock、工具调用不能伪装成 reducer。React 的 key 说明连续性不能靠树里的偶然位置，但它只服务 render tree reconciliation，不是 durable entity ID 或 idempotency key。<a class="text-accent underline underline-offset-4" href="#source-s1">来源 S1</a></p>
+          </div>
+          <div class="border border-slate-300 bg-white p-5">
+            <h3 class="font-semibold">4. Effect 是外部同步边界，不是编排器</h3>
+            <p class="mt-2 leading-7 text-slate-700">Effect 定义为 render 之后把组件和外部系统同步的机制；依赖数组和 cleanup 描述同步和解除同步的生命周期。对 agent 的借鉴：executor 应声明它同步或改变哪个 capability、依赖哪个输入版本、request ID 是什么、怎么判成功、结束时释放哪些资源。cleanup 不能外推成 undo：断开 websocket、退订 listener 可以 cleanup；邮件发出去了、不可逆文件写了、shell 命令跑了，通常不能。Concurrent React 允许中断的也只是 DOM commit 之前的纯 render，不许可 agent 随意取消和重跑外部工具。<a class="text-accent underline underline-offset-4" href="#source-s1">来源 S1</a></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="mt-12" data-report-section="tardigrade-mapping" aria-labelledby="tardigrade-mapping-title">
+        <h2 id="tardigrade-mapping-title" class="text-2xl font-semibold">Tardigrade 怎么把 React 原则做成 Durable Harness</h2>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">Tardigrade 把 React 的「纯计算先于 effect」升级成了恢复协议：log 是 durable source of truth，纯 projection 保证重启后能算出同一项工作，keyed event record 决定这项工作是否已经完成。对外部 effect 它明确选了 at-least-once，没有假装能 rollback 或 exactly-once。<a class="text-accent underline underline-offset-4" href="#source-s2">来源 S2</a> <a class="text-accent underline underline-offset-4" href="#source-s4">S4</a></p>
+        <div class="mt-5 overflow-x-auto border border-slate-300 bg-white">
+          <table class="min-w-full text-left text-sm leading-6">
+            <thead class="bg-slate-100 text-slate-700"><tr><th class="px-4 py-3 font-semibold\">React 原则</th><th class="px-4 py-3 font-semibold\">Tardigrade 的对应</th><th class="px-4 py-3 font-semibold\">加上的 durable 语义</th><th class="px-4 py-3 font-semibold">不能等同的地方</th></tr></thead>
+            <tbody class="divide-y divide-slate-200 text-slate-700">
+              <tr><td class="px-4 py-3 font-medium text-ink">纯 render</td><td class="px-4 py-3">Component 的 <code>initial → step → output</code> 从 event log 投影出 state、view、transitions</td><td class="px-4 py-3">全量 log 可 replay；活跃时只处理 tail</td><td class="px-4 py-3">React render 是内存 renderer 语义，没有 durable event log</td></tr>
+              <tr><td class="px-4 py-3 font-medium text-ink">组件组合</td><td class="px-4 py-3">子 <code>view</code> 经 algebra 合并；子 transition 由 reconciler 协调</td><td class="px-4 py-3">子规则可以从同一份事实独立导出自己欠的工作</td><td class="px-4 py-3">组合不自动解决冲突、权限或资源 ownership</td></tr>
+              <tr><td class="px-4 py-3 font-medium text-ink">reconciliation</td><td class="px-4 py-3">runtime 从当前 transition 集里筛出 enabled 的工作；日志更新后作废旧快照重算</td><td class="px-4 py-3">transition key 同时说明工作是什么、以及已记录的结果不再重跑</td><td class="px-4 py-3">它协调的是工作，不是 DOM patch；transition 不是 <code>useEffect</code></td></tr>
+              <tr><td class="px-4 py-3 font-medium text-ink">Effect 外部边界</td><td class="px-4 py-3"><code>ExternalEffect</code> 在 runtime 里调外部服务，产出新 event</td><td class="px-4 py-3">effect 之后、append 之前崩溃，缺 key 的工作会重驱；at-least-once</td><td class="px-4 py-3">React 的依赖数组和 cleanup 没有 keyed result、日志去重或幂等协议</td></tr>
+              <tr><td class="px-4 py-3 font-medium text-ink">key / identity</td><td class="px-4 py-3">transition key 对应完成该工作所需的 event key</td><td class="px-4 py-3">replay 之后能找到同一项工作和同一份输入</td><td class="px-4 py-3">和 React list key 的 UI 局部 identity 完全是两回事</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="mt-12" data-report-section="dsh-scope" aria-labelledby="dsh-scope-title">
+        <h2 id="dsh-scope-title" class="text-2xl font-semibold">DSH 的「可逆」在哪一层</h2>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">DSH 架构文档在 Cordis 插件的上下文里使用 <em>reversible effects</em>。插件可以注册 prompt 区块、tool schema、模型适配器、provider、listener 和资源；插件卸载时，disposer 取消这些进程内注册。这是插件系统的生命周期治理，目的是热重载、配置替换或 agent scope 销毁后不留悬挂资源。<a class="text-accent underline underline-offset-4" href="#source-s3">来源 S3</a></p>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">另有两处更窄的 rollback：</p>
+        <ul class="mt-2 max-w-4xl list-disc space-y-2 pl-6 leading-7 text-slate-700">
+          <li>agent 创建时如果 setup/commit/owner disposal 出错，未发布的临时 session、agent 和 scope 会被撤回，半组装的对象不会暴露出去。</li>
+          <li>JSONL/Zstd 批次 append 或 <code>fsync</code> 失败时，持久化 adapter 把文件截断回这批之前的长度，读者看不到写了一半的尾巴。它保护的是尚未确认的物理写入，不是已提交逻辑事件的 undo。</li>
+        </ul>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">DSH 的 session 本身是 append-only 的 durable facts，message history 从 event log 派生。崩溃恢复不删除、不倒退事实；它在日志尾部补上 synthetic 的 <code>tool/result</code>、<code>step/end</code>、<code>turn/end</code>，让 transcript 对 provider 来说是合法闭合的。<a class="text-accent underline underline-offset-4" href="#source-s5">来源 S5</a></p>
+      </section>
+
       <section class="mt-12" data-report-section="visual" aria-labelledby="visual-title">
         <h2 id="visual-title" class="text-2xl font-semibold">共同原则与发生分歧的边界</h2>
         <figure class="mt-5 border border-slate-300 bg-white p-4 sm:p-8">
@@ -115,6 +172,24 @@
         </figure>
       </section>
 
+      <section class="mt-12" data-report-section="three-way" aria-labelledby="three-way-title">
+        <h2 id="three-way-title" class="text-2xl font-semibold">三者对照：故障后怎么守住事实</h2>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">React 给的是纯度和生命周期的思维模型。Tardigrade 用 event log 和 transition key 建了一个可重驱的 durable execution 模型。DSH 把「可逆」严格限制在装配生命周期和未提交的本地操作上，对已发出的外部调用采取保守恢复。它们不是三个可互换的 workflow engine。</p>
+        <div class="mt-5 overflow-x-auto border border-slate-300 bg-white">
+          <table class="min-w-full text-left text-sm leading-6">
+            <thead class="bg-slate-100 text-slate-700"><tr><th class="px-4 py-3 font-semibold">问题</th><th class="px-4 py-3 font-semibold">React</th><th class="px-4 py-3 font-semibold">Tardigrade</th><th class="px-4 py-3 font-semibold">DeepSeek Harness</th></tr></thead>
+            <tbody class="divide-y divide-slate-200 text-slate-700">
+              <tr><th class="px-4 py-3 font-medium text-ink">什么可以安全重复</th><td class="px-4 py-3">未 commit 的纯 render</td><td class="px-4 py-3">从 log 派生 component/projection</td><td class="px-4 py-3">event-log/history 的确定性派生；未发布的局部装配</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">外部工作怎么触发</th><td class="px-4 py-3">commit 后由 Effect 同步外部系统</td><td class="px-4 py-3">runtime 结算 enabled 的 keyed transition</td><td class="px-4 py-3">checkpoint 之后 dispatch model/tool execution</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">重复运行的默认</th><td class="px-4 py-3">Strict Mode 在开发期探测 setup/cleanup；不承诺 I/O 安全</td><td class="px-4 py-3">key 没有 result 就重驱；外部 effect at-least-once</td><td class="px-4 py-3">call 有记录、result 缺失就标 outcome unknown；不盲目重试有副作用的工具</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">「可逆」的含义</th><td class="px-4 py-3">teardown/cleanup 同步资源</td><td class="px-4 py-3">不是 undo；靠幂等 key 控制重复 effect</td><td class="px-4 py-3">plugin registration/resource disposal；未提交的装配和写入可回退</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">durable truth</th><td class="px-4 py-3">React 不定义</td><td class="px-4 py-3">immutable event log</td><td class="px-4 py-3">append-only SessionEvent log</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">外部副作用的最终保证</th><td class="px-4 py-3">不定义</td><td class="px-4 py-3">下游幂等时可近似只生效一次</td><td class="px-4 py-3">durable intent，不是 exactly-once；未知结果交外部核验或用户决策</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section class="mt-12" aria-labelledby="comparison-title">
         <h2 id="comparison-title" class="text-2xl font-semibold">对 JAI 的设计取舍</h2>
         <div class="mt-5 overflow-x-auto border border-slate-300 bg-white">
@@ -132,7 +207,13 @@
       <section class="mt-12 grid gap-8 lg:grid-cols-2">
         <section data-report-section="impact" aria-labelledby="impact-title">
           <h2 id="impact-title" class="text-2xl font-semibold">对本项目的影响</h2>
-          <div class="mt-5 border-l-4 border-accent bg-white px-5 py-4 leading-7 text-slate-700">保持 JAI 的 journal / Runtime Host / ACP 分层。近期可把 recovery verdict 收紧为“由 durable facts 推导的 action 白名单”，并在 extension/connector 领域独立审计注册与 teardown。未知 tool outcome 继续停驻，除非下游有可核验的幂等或对账契约。</div>
+          <ol class="mt-5 max-w-4xl list-decimal space-y-3 border-l-4 border-accent bg-white px-5 py-4 leading-7 text-slate-700">
+            <li>把 React 原则当设计检查用：任何新逻辑先回答它属于纯 projection、durable commit 还是 external executor 中的哪一层，不要跨层。state、projection、owner、ID 都按「最小事实、单向读取、稳定 identity」来。</li>
+            <li>从 Tardigrade 借「<code>owed action = f(durable facts)</code>」这个窄形式：允许自动恢复的 action 必须由纯 recovery reducer 导出，带稳定 identity、冻结的 inputs/config、前提记录和完成判据。不要为了用 component 这套词汇引入通用 actor graph。</li>
+            <li>DSH 的可逆 lifecycle 适合 JAI 的 extension/connector 装配：注册 listener、tool、prompt/provider 和长生命周期资源时，owner 要明确 teardown/disposer。这和 journal 事实、工具执行必须分开。JAI 是否已有等价 lifecycle contract，要在具体 extension/connector 领域单独审计后再改。</li>
+            <li>保持 JAI 对未知工具结果的保守策略。只有明确声明了下游 idempotency key、读后校验或补偿机制的 tool/provider，才可能从 <code>indeterminate_tool</code> 升级为 auto-retry。不把 Tardigrade 的 at-least-once 当默认。</li>
+            <li>做只读 replay/trace 时，重放的是纯 projection 和已有 observation。不要把 React 的 concurrent render 或 DSH 的 plugin unload 误读为可以安全取消或回滚工作区、用户授权、外部 API。</li>
+          </ol>
         </section>
         <section data-report-section="unknowns" aria-labelledby="unknowns-title">
           <h2 id="unknowns-title" class="text-2xl font-semibold">尚未确认</h2>

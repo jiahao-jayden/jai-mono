@@ -3,122 +3,382 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="可复核的调研报告模板">
-    <title>调研报告模板</title>
+    <meta name="description" content="替换：一句话说明这份报告回答什么问题">
+    <title>替换：问题的标题</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
+        darkMode: 'media',
         theme: {
           extend: {
             colors: {
-              ink: '#172033',
-              accent: '#0f766e',
-              paper: '#f8fafc'
+              ink: 'var(--ink)',
+              muted: 'var(--muted)',
+              paper: 'var(--paper)',
+              panel: 'var(--panel)',
+              line: 'var(--line)',
+              accent: 'var(--accent)',
+              'accent-soft': 'var(--accent-soft)',
+              warn: 'var(--warn)',
+              'warn-soft': 'var(--warn-soft)'
+            },
+            fontFamily: {
+              sans: ['system-ui', '-apple-system', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'sans-serif'],
+              mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace']
             }
           }
         }
       };
     </script>
+    <style>
+      /* 主题令牌。SVG 里的 fill/stroke 也引用这些变量，深色模式下图会跟着换色。 */
+      :root {
+        --ink: #172033;
+        --muted: #4b5563;
+        --paper: #f8fafc;
+        --panel: #ffffff;
+        --line: #cbd5e1;
+        --accent: #0f766e;
+        --accent-soft: #ccfbf1;
+        --warn: #b45309;
+        --warn-soft: #fef3c7;
+        --code-bg: #0f172a;
+        --code-fg: #e2e8f0;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --ink: #e5e7eb;
+          --muted: #9ca3af;
+          --paper: #0b1220;
+          --panel: #111827;
+          --line: #334155;
+          --accent: #2dd4bf;
+          --accent-soft: #134e4a;
+          --warn: #fbbf24;
+          --warn-soft: #451a03;
+          --code-bg: #020617;
+          --code-fg: #e2e8f0;
+        }
+      }
+
+      /* Tailwind preflight 会抹平这些元素，这里补回可读的默认样式。 */
+      .prose-block p { margin: 0 0 1rem; line-height: 1.85; }
+      .prose-block ul, .prose-block ol { margin: 0 0 1rem 1.5rem; line-height: 1.85; }
+      .prose-block ul { list-style: disc; }
+      .prose-block ol { list-style: decimal; }
+      .prose-block li { margin-bottom: .4rem; }
+      .prose-block a { color: var(--accent); text-decoration: underline; text-underline-offset: 4px; }
+      .prose-block h3 { font-size: 1.125rem; font-weight: 600; margin: 2rem 0 .75rem; }
+      .prose-block code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .875em; background: var(--accent-soft); color: var(--ink); padding: .1em .35em; }
+
+      /* 解释层：一句话、类比、对读者的意义。 */
+      [data-plain] { font-size: 1.125rem; line-height: 1.8; }
+      .analogy {
+        margin: 1rem 0 1.25rem; padding: 1rem 1.25rem;
+        border: 1px solid var(--line); background: var(--panel);
+        line-height: 1.8;
+      }
+      .analogy .label { display: block; font-size: .8125rem; font-weight: 600; color: var(--accent); margin-bottom: .35rem; }
+      .analogy .limit { display: block; margin-top: .5rem; font-size: .9375rem; color: var(--muted); }
+      .so-what { margin: 1rem 0; padding: .75rem 1.25rem; border-left: 3px solid var(--accent); line-height: 1.8; }
+      .so-what .label { font-weight: 600; margin-right: .5rem; }
+
+      /* 术语：正文里第一次出现用 dfn，点了跳到术语表。 */
+      dfn { font-style: normal; font-weight: 600; text-decoration: underline dotted; text-underline-offset: 4px; cursor: help; }
+      dfn a { color: inherit; text-decoration: none; }
+      .glossary dt { font-weight: 600; margin-top: 1rem; }
+      .glossary dd { margin: .25rem 0 0; line-height: 1.8; color: var(--muted); }
+
+      /* 证据层：折叠在每节下面。 */
+      details.evidence { margin-top: 1.25rem; border: 1px solid var(--line); background: var(--panel); }
+      details.evidence > summary { cursor: pointer; padding: .75rem 1.25rem; font-weight: 600; font-size: .9375rem; list-style: none; }
+      details.evidence > summary::-webkit-details-marker { display: none; }
+      details.evidence > summary::before { content: "▸ "; color: var(--accent); }
+      details.evidence[open] > summary::before { content: "▾ "; }
+      details.evidence > .body { padding: 0 1.25rem 1rem; border-top: 1px solid var(--line); }
+
+      pre.excerpt {
+        background: var(--code-bg); color: var(--code-fg);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: .8125rem; line-height: 1.6;
+        padding: 1rem 1.25rem; margin: .75rem 0 1.25rem;
+        overflow-x: auto; border-left: 3px solid var(--accent);
+      }
+      pre.excerpt code { background: none; color: inherit; padding: 0; font-size: inherit; }
+      pre.excerpt .loc { display: block; color: #94a3b8; margin-bottom: .5rem; }
+      blockquote.excerpt {
+        margin: .75rem 0 1.25rem; padding: .75rem 1.25rem;
+        border-left: 3px solid var(--accent); background: var(--paper);
+        color: var(--ink); line-height: 1.8;
+      }
+      blockquote.excerpt cite { display: block; margin-top: .5rem; font-size: .8125rem; color: var(--muted); font-style: normal; }
+
+      .data-table { width: 100%; border-collapse: collapse; font-size: .875rem; line-height: 1.6; }
+      .data-table th, .data-table td { border-bottom: 1px solid var(--line); padding: .75rem 1rem; text-align: left; vertical-align: top; }
+      .data-table thead th { position: sticky; top: 0; background: var(--panel); font-weight: 600; z-index: 1; }
+      .data-table tbody th { font-weight: 600; white-space: nowrap; }
+      .data-table a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+
+      /* 走一遍的步骤：编号大一点，每步一句人话。 */
+      ol.steps { counter-reset: step; list-style: none; margin: 1rem 0; padding: 0; }
+      ol.steps > li { counter-increment: step; position: relative; padding: 0 0 1.25rem 3rem; line-height: 1.8; }
+      ol.steps > li::before {
+        content: counter(step); position: absolute; left: 0; top: .1rem;
+        width: 2rem; height: 2rem; line-height: 2rem; text-align: center;
+        font-weight: 600; color: var(--paper); background: var(--accent);
+      }
+      ol.steps > li + li::after { content: ""; position: absolute; left: .95rem; top: -1.1rem; height: 1rem; border-left: 2px solid var(--line); }
+      ol.steps .code-ref { display: block; margin-top: .25rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8125rem; color: var(--muted); }
+
+      section[id] { scroll-margin-top: 1.5rem; }
+
+      @media print {
+        nav[aria-label="目录"] { display: none; }
+        details.evidence { border: none; }
+        details.evidence > summary { display: none; }
+        details.evidence > .body { display: block; border: none; padding: 0; }
+        pre.excerpt { white-space: pre-wrap; border: 1px solid #999; background: #fff; color: #000; }
+        a::after { content: " (" attr(href) ")"; font-size: .75em; color: #555; }
+        .data-table thead th { position: static; }
+      }
+    </style>
   </head>
-  <body class="bg-paper text-ink antialiased">
-    <main class="mx-auto max-w-6xl px-5 py-10 sm:px-8 lg:py-16">
-      <header class="border-b border-slate-300 pb-8">
-        <p class="text-sm font-semibold tracking-wide text-accent">RESEARCH REPORT</p>
-        <h1 class="mt-3 max-w-4xl text-3xl font-semibold leading-tight sm:text-5xl">调研问题</h1>
-        <div class="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
-          <p>核验日期：<time datetime="YYYY-MM-DD">YYYY-MM-DD</time></p>
-          <p>范围：<span>替换为本次调研范围</span></p>
-          <a class="font-medium text-accent underline underline-offset-4" href="research-note.md">查看完整证据笔记</a>
-        </div>
-      </header>
+  <body class="bg-paper font-sans text-ink antialiased">
+    <div class="mx-auto max-w-[1400px] px-5 py-10 sm:px-8 lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-12 lg:py-14">
 
-      <section class="mt-10" data-report-section="conclusions" aria-labelledby="conclusions-title">
-        <div class="flex items-baseline justify-between gap-4">
-          <h2 id="conclusions-title" class="text-2xl font-semibold">直接结论</h2>
-          <p class="text-sm text-slate-600">每条结论都能回到来源</p>
-        </div>
-        <ol class="mt-5 grid gap-4 md:grid-cols-3">
-          <li class="border border-slate-300 bg-white p-5" data-claim-id="c1" data-source-ids="s1">
-            <p class="text-sm font-semibold text-accent">结论 01</p>
-            <p class="mt-2 leading-7">替换为已经核验、可以独立读懂的结论。</p>
-            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s1">查看来源 1</a>
-          </li>
-          <li class="border border-slate-300 bg-white p-5" data-claim-id="c2" data-source-ids="s1 s2">
-            <p class="text-sm font-semibold text-accent">结论 02</p>
-            <p class="mt-2 leading-7">替换为第二条结论，并避免在 HTML 新增笔记没有的事实。</p>
-            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s2">查看来源 2</a>
-          </li>
-          <li class="border border-slate-300 bg-white p-5" data-claim-id="c3" data-source-ids="s2">
-            <p class="text-sm font-semibold text-accent">结论 03</p>
-            <p class="mt-2 leading-7">替换为第三条结论。没有足够证据时删掉，不要凑数。</p>
-            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s2">查看来源 2</a>
-          </li>
+      <!-- 目录：列出所有 h2，锚点 id 与 section id 一致。大屏粘性，小屏折叠。 -->
+      <nav aria-label="目录" class="mb-10 lg:sticky lg:top-8 lg:mb-0 lg:self-start">
+        <details class="border border-line bg-panel lg:hidden">
+          <summary class="cursor-pointer px-4 py-3 text-sm font-semibold">目录</summary>
+          <ol class="space-y-2 px-4 pb-4 text-sm text-muted">
+            <li><a href="#conclusions">结论</a></li>
+            <li><a href="#sec-mechanism">替换：中段章节标题</a></li>
+            <li><a href="#sec-mapping">替换：中段章节标题</a></li>
+            <li><a href="#coverage">来源覆盖</a></li>
+            <li><a href="#impact">对本项目的影响</a></li>
+            <li><a href="#unknowns">待验证</a></li>
+            <li><a href="#glossary">术语表</a></li>
+            <li><a href="#sources">来源</a></li>
+          </ol>
+        </details>
+        <ol class="hidden space-y-2 border-l border-line pl-4 text-sm text-muted lg:block">
+          <li><a class="hover:text-accent" href="#conclusions">结论</a></li>
+          <li><a class="hover:text-accent" href="#sec-mechanism">替换：中段章节标题</a></li>
+          <li><a class="hover:text-accent" href="#sec-mapping">替换：中段章节标题</a></li>
+          <li><a class="hover:text-accent" href="#coverage">来源覆盖</a></li>
+          <li><a class="hover:text-accent" href="#impact">对本项目的影响</a></li>
+          <li><a class="hover:text-accent" href="#unknowns">待验证</a></li>
+          <li><a class="hover:text-accent" href="#glossary">术语表</a></li>
+          <li><a class="hover:text-accent" href="#sources">来源</a></li>
         </ol>
-      </section>
+      </nav>
 
-      <section class="mt-12" data-report-section="visual" aria-labelledby="visual-title">
-        <h2 id="visual-title" class="text-2xl font-semibold">关键关系</h2>
-        <figure class="mt-5 border border-slate-300 bg-white p-4 sm:p-8">
-          <svg class="h-auto w-full" viewBox="0 0 960 360" role="img" aria-labelledby="diagram-title diagram-description">
-            <title id="diagram-title">替换为图表标题</title>
-            <desc id="diagram-description">替换为图表说明。说明节点、方向和强调色分别表示什么。</desc>
-            <defs>
-              <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                <path d="M0 0 L8 4 L0 8 Z" fill="#64748b"></path>
-              </marker>
-            </defs>
-            <path d="M270 180 H420" fill="none" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"></path>
-            <path d="M600 180 H750" fill="none" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"></path>
-            <rect x="40" y="120" width="230" height="120" rx="8" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"></rect>
-            <rect x="420" y="120" width="180" height="120" rx="8" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
-            <rect x="750" y="120" width="170" height="120" rx="8" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"></rect>
-            <text x="155" y="170" text-anchor="middle" fill="#172033" font-size="20" font-family="system-ui, sans-serif">来源或输入</text>
-            <text x="510" y="170" text-anchor="middle" fill="#172033" font-size="20" font-family="system-ui, sans-serif">核心关系</text>
-            <text x="835" y="170" text-anchor="middle" fill="#172033" font-size="20" font-family="system-ui, sans-serif">结果或影响</text>
-            <text x="155" y="204" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">替换为核验过的事实</text>
-            <text x="510" y="204" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">用强调色标出重点</text>
-            <text x="835" y="204" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">说明读者应关注什么</text>
-          </svg>
-          <figcaption class="mt-5 max-w-3xl text-sm leading-6 text-slate-600">这张图要说明的关系。替换后，写清它覆盖什么、没有覆盖什么，并在正文或节点附近给出相应来源。</figcaption>
-        </figure>
-      </section>
+      <main class="min-w-0">
+        <header class="border-b border-line pb-8">
+          <h1 class="max-w-4xl text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">替换：问题的标题</h1>
+          <p class="mt-5 max-w-3xl" data-plain>替换：用一句不带术语的话，回答这份报告的问题。读者只读这一句也该知道答案。</p>
+          <dl class="mt-6 grid gap-x-8 gap-y-2 text-sm text-muted sm:grid-cols-[auto_1fr]">
+            <dt class="font-semibold text-ink">核验日期</dt>
+            <dd><time datetime="YYYY-MM-DD">YYYY-MM-DD</time></dd>
+            <dt class="font-semibold text-ink">钉住的版本</dt>
+            <dd>替换：<code class="font-mono">owner/repo@sha</code>，以及为什么钉在这个版本。</dd>
+            <dt class="font-semibold text-ink">范围</dt>
+            <dd>替换：查了什么、没查什么。</dd>
+            <dt class="font-semibold text-ink">证据笔记</dt>
+            <dd><a class="text-accent underline underline-offset-4" href="research-note.md">替换：同名 Markdown 笔记</a>（事实和引证以它为准）</dd>
+          </dl>
+        </header>
 
-      <section class="mt-12 grid gap-8 lg:grid-cols-2">
-        <section data-report-section="impact" aria-labelledby="impact-title">
+        <!-- 结论：Markdown「## 结论」里有几条，这里就有几张卡片。人话在上，展开在下。 -->
+        <section id="conclusions" class="mt-12" data-report-section="conclusions" aria-labelledby="conclusions-title">
+          <h2 id="conclusions-title" class="text-2xl font-semibold">结论</h2>
+          <ol class="mt-6 grid gap-4 md:grid-cols-2">
+            <li class="border border-line bg-panel p-5" data-claim-id="c1" data-source-ids="s1 s2">
+              <div class="flex items-baseline justify-between gap-3">
+                <p class="text-sm font-semibold text-accent">结论 1</p>
+                <p class="flex gap-1 font-mono text-xs">
+                  <a class="border border-line px-1.5 py-0.5 hover:border-accent hover:text-accent" href="#source-s1">S1</a>
+                  <a class="border border-line px-1.5 py-0.5 hover:border-accent hover:text-accent" href="#source-s2">S2</a>
+                </p>
+              </div>
+              <p class="mt-3" data-plain>替换：一句人话。不带术语，或者术语在这句话里就解释掉。</p>
+              <p class="mt-3 leading-7 text-muted">替换：展开一段。可以出现 <dfn><a href="#term-example">术语</a></dfn>，第一次出现要标 dfn 并链到术语表。证据见 <a class="text-accent underline underline-offset-4" href="#sec-mechanism">对应章节</a>。</p>
+              <p class="mt-3 text-sm leading-6 text-muted">成立条件：替换为这条结论的限制或前提。</p>
+            </li>
+            <li class="border border-line bg-panel p-5" data-claim-id="c2" data-source-ids="s3">
+              <div class="flex items-baseline justify-between gap-3">
+                <p class="text-sm font-semibold text-accent">结论 2</p>
+                <p class="flex gap-1 font-mono text-xs">
+                  <a class="border border-line px-1.5 py-0.5 hover:border-accent hover:text-accent" href="#source-s3">S3</a>
+                </p>
+              </div>
+              <p class="mt-3" data-plain>替换：一句人话。</p>
+              <p class="mt-3 leading-7 text-muted">替换：展开一段。Markdown 里有几条这里就放几条，不挑选。</p>
+              <p class="mt-3 text-sm leading-6 text-muted">成立条件：替换。</p>
+            </li>
+          </ol>
+        </section>
+
+        <!-- 中段章节：一个 Markdown 的 ## 对应一个 section，标题一致。解释层四步在上，图在中间，证据折叠在下。 -->
+        <section id="sec-mechanism" class="mt-14" aria-labelledby="sec-mechanism-title">
+          <h2 id="sec-mechanism-title" class="text-2xl font-semibold">替换：中段章节标题</h2>
+          <div class="prose-block mt-5 max-w-[78ch]">
+            <p data-plain>替换：一句话说清这一节讲的东西是什么。</p>
+            <div class="analogy">
+              <span class="label">打个比方</span>
+              替换：一个日常生活的类比。餐厅点单本、快递签收、装修施工单，这类所有人都经历过的事。
+              <span class="limit">这个比方在一处不准：替换为类比失效的地方。</span>
+            </div>
+            <p>替换：展开细节。先说它为什么存在，再说它怎么运作。术语第一次出现用 <dfn><a href="#term-example">术语</a></dfn> 标出。</p>
+            <ol class="steps">
+              <li>替换：走一遍的第一步，一句人话说发生了什么。<span class="code-ref">file.ts:L10-L24</span></li>
+              <li>替换：第二步。<span class="code-ref">file.ts:L30-L41</span></li>
+              <li>替换：第三步。</li>
+            </ol>
+            <div class="so-what"><span class="label">对我们意味着</span>替换：具体到本项目，这一节的内容要求我们改什么、不改什么、小心什么。</div>
+          </div>
+
+          <figure class="mt-8 border border-line bg-panel p-4 sm:p-6">
+            <svg class="h-auto w-full" viewBox="0 0 960 300" role="img" aria-labelledby="fig-1-title fig-1-desc">
+              <title id="fig-1-title">替换：图表标题，用人话</title>
+              <desc id="fig-1-desc">替换：说明节点、方向、强调色和警示色分别表示什么。</desc>
+              <defs>
+                <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="var(--muted)"></path></marker>
+                <marker id="arrow-accent" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="var(--accent)"></path></marker>
+                <marker id="arrow-warn" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="var(--warn)"></path></marker>
+              </defs>
+              <path d="M270 150 H400" fill="none" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#arrow-accent)"></path>
+              <path d="M620 150 H750" fill="none" stroke="var(--muted)" stroke-width="2.5" marker-end="url(#arrow)"></path>
+              <path d="M510 210 V260" fill="none" stroke="var(--warn)" stroke-width="2.5" stroke-dasharray="6 5" marker-end="url(#arrow-warn)"></path>
+              <rect x="40" y="100" width="230" height="100" rx="4" fill="var(--panel)" stroke="var(--line)" stroke-width="2"></rect>
+              <rect x="400" y="100" width="220" height="100" rx="4" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"></rect>
+              <rect x="750" y="100" width="170" height="100" rx="4" fill="var(--panel)" stroke="var(--line)" stroke-width="2"></rect>
+              <text x="155" y="150" text-anchor="middle" fill="var(--ink)" font-size="18" font-weight="600" font-family="system-ui, sans-serif">替换：人话标签</text>
+              <text x="510" y="150" text-anchor="middle" fill="var(--ink)" font-size="18" font-weight="600" font-family="system-ui, sans-serif">替换：人话标签</text>
+              <text x="835" y="150" text-anchor="middle" fill="var(--ink)" font-size="18" font-weight="600" font-family="system-ui, sans-serif">替换：人话标签</text>
+              <text x="510" y="285" text-anchor="middle" fill="var(--warn)" font-size="13" font-family="system-ui, sans-serif">替换：警示色标出未知或危险边界</text>
+            </svg>
+            <figcaption class="mt-4 max-w-[78ch] text-sm leading-6 text-muted">替换：这张图回答什么问题，覆盖什么，没覆盖什么。节点对应代码里的什么，写在这里而不是图上。</figcaption>
+          </figure>
+
+          <details class="evidence">
+            <summary>证据与原文</summary>
+            <div class="body prose-block">
+              <p>替换：Markdown 这一节的原文，主张紧跟链接。<a href="https://github.com/owner/repo/blob/sha/path/file.ts#L10-L24"><code>file.ts#L10-L24</code></a></p>
+              <pre class="excerpt"><code><span class="loc">// path/file.ts:10-24 @ sha</span>替换：5 到 15 行源码摘录，多了截断并标 …</code></pre>
+              <p>替换：文档或规范的原句用引用块。<a href="https://example.com/spec#section">规范 §x.y</a></p>
+              <blockquote class="excerpt">替换：原句。<cite>来源：规范名称，版本或访问日期</cite></blockquote>
+            </div>
+          </details>
+        </section>
+
+        <section id="sec-mapping" class="mt-14" aria-labelledby="sec-mapping-title">
+          <h2 id="sec-mapping-title" class="text-2xl font-semibold">替换：中段章节标题</h2>
+          <div class="prose-block mt-5 max-w-[78ch]">
+            <p data-plain>替换：一句话说这张表回答什么问题，比如"两边各自把什么当成不可丢的事实"。</p>
+          </div>
+          <div class="mt-4 overflow-x-auto border border-line bg-panel">
+            <table class="data-table">
+              <thead>
+                <tr><th>维度</th><th>方案 A</th><th>方案 B</th><th>判断</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">替换：维度</th>
+                  <td>替换：事实。<a href="https://github.com/owner/repo/blob/sha/path#L1-L9">链接</a></td>
+                  <td>替换：事实。<a href="https://github.com/owner/repo/blob/sha/path#L1-L9">链接</a></td>
+                  <td>替换：判断和它的限制。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="prose-block mt-4 max-w-[78ch]">
+            <div class="so-what"><span class="label">对我们意味着</span>替换：从这张表里读者该带走的一句话。</div>
+          </div>
+        </section>
+
+        <!-- 来源覆盖：五行固定，原样搬 Markdown 的表。 -->
+        <section id="coverage" class="mt-14" data-report-section="coverage" aria-labelledby="coverage-title">
+          <h2 id="coverage-title" class="text-2xl font-semibold">来源覆盖</h2>
+          <p class="mt-3 max-w-[78ch] text-muted" data-plain>这张表告诉你我们查了哪些地方、没查哪些地方。没查的地方就是这份报告可能有盲区的地方。</p>
+          <div class="mt-5 overflow-x-auto border border-line bg-panel">
+            <table class="data-table">
+              <thead><tr><th>来源类别</th><th>查到了什么</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">官方文档 / 源码</th><td>替换</td></tr>
+                <tr><th scope="row">作者或维护者本人的说法</th><td>替换</td></tr>
+                <tr><th scope="row">同类方案</th><td>替换</td></tr>
+                <tr><th scope="row">issue / PR / 社区实践</th><td>替换</td></tr>
+                <tr><th scope="row">历史演变</th><td>替换</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- 影响：保留 Markdown 里的子标题和清单，每个子标题下先一句人话。 -->
+        <section id="impact" class="mt-14" data-report-section="impact" aria-labelledby="impact-title">
           <h2 id="impact-title" class="text-2xl font-semibold">对本项目的影响</h2>
-          <div class="mt-5 border-l-4 border-accent bg-white px-5 py-4 leading-7 text-slate-700">
-            替换为根据结论得出的具体行动、不需要做的事和原因。
+          <div class="prose-block mt-5 max-w-[78ch] border-l-4 border-accent bg-panel px-6 py-5">
+            <p data-plain>替换：一句话总结，这份调研之后我们要做的和不做的。</p>
+            <h3 class="!mt-4">替换：子标题，例如「近期」</h3>
+            <ul>
+              <li>替换：要改什么。</li>
+              <li>替换：不用改什么，以及为什么。</li>
+            </ul>
+            <h3>替换：子标题，例如「不应照搬」</h3>
+            <ol>
+              <li>替换：什么被证伪了。</li>
+            </ol>
           </div>
         </section>
-        <section data-report-section="unknowns" aria-labelledby="unknowns-title">
-          <h2 id="unknowns-title" class="text-2xl font-semibold">尚未确认</h2>
-          <div class="mt-5 border border-dashed border-slate-400 bg-white px-5 py-4 leading-7 text-slate-700">
-            替换为仍需要验证的问题；没有就写“无”。
-          </div>
-        </section>
-      </section>
 
-      <section class="mt-12 border-t border-slate-300 pt-8" data-report-section="sources" aria-labelledby="sources-title">
-        <h2 id="sources-title" class="text-2xl font-semibold">来源</h2>
-        <ol class="mt-5 space-y-4 text-sm leading-6 text-slate-700">
-          <!--
-            GitHub issue 来源示例：
-            <li id="source-gh-123" data-source-kind="github-issue"
-                data-github-repo="owner/repo" data-github-number="123"
-                data-github-state="closed">…</li>
-          -->
-          <li id="source-s1" data-source-kind="primary">
-            <p class="font-medium">[S1] 一手来源标题</p>
-            <a class="break-all text-accent underline underline-offset-4" href="https://example.com/source-1">https://example.com/source-1</a>
-            <p>版本或提交：替换为版本、SHA 或访问日期。</p>
-          </li>
-          <li id="source-s2" data-source-kind="primary">
-            <p class="font-medium">[S2] 一手来源标题</p>
-            <a class="break-all text-accent underline underline-offset-4" href="https://example.com/source-2">https://example.com/source-2</a>
-            <p>版本或提交：替换为版本、SHA 或访问日期。</p>
-          </li>
-        </ol>
-      </section>
-    </main>
+        <!-- 待验证：清单形式，用警示色。没有就写「无」。 -->
+        <section id="unknowns" class="mt-14" data-report-section="unknowns" aria-labelledby="unknowns-title">
+          <h2 id="unknowns-title" class="text-2xl font-semibold">待验证</h2>
+          <div class="prose-block mt-5 max-w-[78ch] border-l-4 border-warn bg-warn-soft px-6 py-5">
+            <ul>
+              <li>替换：哪条主张缺什么证据，补上后会改变哪条结论。</li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- 术语表：正文里每个 dfn 都在这里有一条。定义不能用另一个术语解释这个术语。 -->
+        <section id="glossary" class="mt-14" data-report-section="glossary" aria-labelledby="glossary-title">
+          <h2 id="glossary-title" class="text-2xl font-semibold">术语表</h2>
+          <dl class="glossary mt-4 max-w-[78ch]">
+            <dt id="term-example">术语</dt>
+            <dd>替换：一句人话定义，用日常例子而不是另一个术语。可以再跟一句它在本报告里为什么重要。</dd>
+          </dl>
+        </section>
+
+        <!-- 来源：Markdown 里出现过的每个链接都在这里，不挑选。 -->
+        <section id="sources" class="mt-14 border-t border-line pt-8" data-report-section="sources" aria-labelledby="sources-title">
+          <h2 id="sources-title" class="text-2xl font-semibold">来源</h2>
+          <ol class="mt-6 grid gap-x-8 gap-y-5 text-sm leading-6 md:grid-cols-2">
+            <!--
+              GitHub issue 来源示例：
+              <li id="source-gh-123" data-source-kind="github-issue"
+                  data-github-repo="owner/repo" data-github-number="123"
+                  data-github-state="closed">…</li>
+            -->
+            <li id="source-s1" data-source-kind="primary" class="border-l-2 border-line pl-4">
+              <p class="font-semibold"><span class="font-mono text-accent">S1</span> 替换：来源标题</p>
+              <a class="break-all text-accent underline underline-offset-4" href="https://github.com/owner/repo/blob/sha/path/file.ts#L10-L24">https://github.com/owner/repo/blob/sha/path/file.ts#L10-L24</a>
+              <p class="text-muted">替换：版本、SHA 或访问日期。</p>
+            </li>
+            <li id="source-s2" data-source-kind="primary" class="border-l-2 border-line pl-4">
+              <p class="font-semibold"><span class="font-mono text-accent">S2</span> 替换：来源标题</p>
+              <a class="break-all text-accent underline underline-offset-4" href="https://example.com/spec#section">https://example.com/spec#section</a>
+              <p class="text-muted">替换：版本、SHA 或访问日期。</p>
+            </li>
+            <li id="source-s3" data-source-kind="primary" class="border-l-2 border-line pl-4">
+              <p class="font-semibold"><span class="font-mono text-accent">S3</span> 替换：来源标题</p>
+              <a class="break-all text-accent underline underline-offset-4" href="https://github.com/owner/repo/blob/sha/path#L1-L9">https://github.com/owner/repo/blob/sha/path#L1-L9</a>
+              <p class="text-muted">替换：版本、SHA 或访问日期。</p>
+            </li>
+          </ol>
+        </section>
+      </main>
+    </div>
   </body>
 </html>

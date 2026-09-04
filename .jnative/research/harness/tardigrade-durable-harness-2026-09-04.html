@@ -63,6 +63,44 @@
         </ol>
       </section>
 
+      <section class="mt-12" data-report-section="summary" aria-labelledby="summary-title">
+        <h2 id="summary-title" class="text-2xl font-semibold">先用一段话说清它是什么</h2>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">Tardigrade 把 agent 的全部行为定义成日志的函数：<code>behavior = f(log)</code>。日志是一串只能追加、不能修改的事件。每个组件读日志，算出自己的状态，然后输出两样东西：一个给父组件合并的 <code>view</code>，和一份「还没做完的工作」清单，叫 <code>transition</code>。每项工作带一个稳定的 key。运行时挑出日志里还没有对应结果的 transition 去执行，把结果追加回日志，再重新算一遍，直到没有欠着的工作。<a class="text-accent underline underline-offset-4" href="#source-s1">来源 S1</a> <a class="text-accent underline underline-offset-4" href="#source-s2">S2</a></p>
+      </section>
+
+      <section class="mt-12" data-report-section="problem" aria-labelledby="problem-title">
+        <h2 id="problem-title" class="text-2xl font-semibold">它要解决的问题</h2>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">Tardigrade 的诊断：长程 agent 的 model loop 会不停吸进有状态的规则，权限、预算、工具、compaction、subagent 都算。如果这些规则都直接改同一个可变循环，「当前为什么走这一步」就越来越答不上来。它借 React 做类比：UI 里是 <code>state → component tree → UI/effects</code>，harness 里是 <code>event log → component tree → views/transitions</code>。这只是结构类比，它没有把 React runtime 搬进 agent，也没有证明复杂度一定下降。<a class="text-accent underline underline-offset-4" href="#source-s1">来源 S1</a></p>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">一个 Component 是 Moore 型状态机：</p>
+        <pre class="mt-3 max-w-4xl overflow-x-auto border border-slate-300 bg-white px-4 py-3 text-sm leading-6 text-slate-700"><code>S0 = initial()
+Sn+1 = step(Sn, eventn+1)            // 把已发生的事实折叠进状态
+{ view, transitions } = output(Sn)  // 只从当前状态导出，不看别的</code></pre>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">这个结构强制分开两件事：「从事实算出现在的状态、该做什么」是一件，「真去碰外部世界」是另一件。组合方式：子组件的 <code>view</code> 用可结合的 algebra 合并；子组件的 transitions 一起交给 reconciler；Effect 的 <code>Requirements</code> 类型把需要的外部服务声明到组合边界上。业务冲突、优先级、循环依赖不会自动消失，还是要靠 guard、key 和组合规则去设计。<a class="text-accent underline underline-offset-4" href="#source-s2">来源 S2</a></p>
+      </section>
+
+      <section class="mt-12" data-report-section="execution" aria-labelledby="execution-title">
+        <h2 id="execution-title" class="text-2xl font-semibold">从日志到静止：执行与恢复</h2>
+        <pre class="mt-5 max-w-4xl overflow-x-auto border border-slate-300 bg-white px-4 py-3 text-sm leading-6 text-slate-700"><code>append-only event log
+        │
+        ▼
+component/projection: state, view, desired transitions = f(log)
+        │
+        ▼
+reconciler: 过滤掉日志里已有 result key 的，留下还 enabled 的 transition
+        │
+        ├── Intent：直接生成一个新事件
+        └── ExternalEffect：调用外部服务，返回结果事件
+        │
+        ▼
+host 原子追加结果事件（按 key 去重）──► 回到投影，直到没有欠着的工作</code></pre>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">几个词的准确意思：<code>transition</code> 是当前日志快照下还欠着的一单位工作，不是已完成的任务；<code>key</code> 是完成这项工作需要的那条 durable 结果的标识，日志里已有这个 key 运行时就跳过；结算期间如果日志又往前走了，reconciler 丢掉过期推导重新算，不会提交旧计划。运行期的 state 是投影，不是存储对象：全量 replay 用 <code>initial</code>/<code>step</code> 把所有事件 fold 一遍，活跃进程只 fold 新增的 tail。<a class="text-accent underline underline-offset-4" href="#source-s2">来源 S2</a></p>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">存储契约有三条：append-only、全序事件、按 key 去重。Bun 和 Cloudflare 两个 adapter 都用 SQLite 事件表实现。通用 driver 只是内存里的 dirty/in-flight 调度器；进程重启后由宿主枚举日志重新 drive，Cloudflare 上靠 Durable Object alarm 重驱。所以它不是一个通用的 durable worker queue。<a class="text-accent underline underline-offset-4" href="#source-s3">来源 S3</a></p>
+        <div class="mt-5 border-l-4 border-accent bg-white px-5 py-4 leading-7 text-slate-700">
+          <p class="font-semibold">Compaction 是最有代表性的例子</p>
+          <p class="mt-2">Compaction 不删历史。组件从日志投影出当前 transcript；token 超过阈值时，派生一个带 key 的 summary effect；成功后把 <code>CompactionCompleted</code> checkpoint 追加进日志；之后的模型请求用「checkpoint summary + tail」这个投影。完整历史还在，可以重建和审计；模型看到的仍然是有损的摘要。这个例子说明，原本硬编码在 loop 里的策略可以变成能单独组合的行为。<a class="text-accent underline underline-offset-4" href="#source-s1">来源 S1</a></p>
+        </div>
+      </section>
+
       <section class="mt-12" data-report-section="visual" aria-labelledby="visual-title">
         <h2 id="visual-title" class="text-2xl font-semibold">恢复边界：相同的日志原则，不同的副作用策略</h2>
         <figure class="mt-5 border border-slate-300 bg-white p-4 sm:p-8">
@@ -119,6 +157,24 @@
         </figure>
       </section>
 
+      <section class="mt-12" data-report-section="mapping" aria-labelledby="mapping-title">
+        <h2 id="mapping-title" class="text-2xl font-semibold">Tardigrade 与 JAI 的映射</h2>
+        <div class="mt-5 overflow-x-auto border border-slate-300 bg-white">
+          <table class="min-w-full text-left text-sm leading-6">
+            <thead class="bg-slate-100 text-slate-700"><tr><th class="px-4 py-3 font-semibold">维度</th><th class="px-4 py-3 font-semibold">Tardigrade</th><th class="px-4 py-3 font-semibold">JAI 当前事实</th><th class="px-4 py-3 font-semibold">对 JAI 的判断</th></tr></thead>
+            <tbody class="divide-y divide-slate-200 text-slate-700">
+              <tr><th class="px-4 py-3 font-medium text-ink">Durable truth</th><td class="px-4 py-3">每个 thread 一份 append-only event log，state 可从它重建</td><td class="px-4 py-3">Agent journal 存消息、branch、compression、app state；Runtime Host 另外持久化 operation 和运行配置</td><td class="px-4 py-3">原则一致。新增 durable fact 先定唯一 owner；projection 和 Desktop metadata 不回写 journal</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">执行单位</th><td class="px-4 py-3">一个 Actor 可有多个 thread，thread 之间并发，单个 thread 内顺序结算</td><td class="px-4 py-3">Session 先原子接纳 prompt 和 <code>operation_accepted</code>，同一时刻只允许一个非终态 operation，后续输入排队或 steer</td><td class="px-4 py-3">交互式 coding session 不需要 actor graph 或多 worker scheduler。等能独立检查和恢复的后台工作出现，再为那个领域定义有界调度</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">Recovery</th><td class="px-4 py-3">结果 key 缺失就重驱 effect，at-least-once</td><td class="px-4 py-3"><code>tool_dispatched</code> 已落盘但没有最终结果时判为 <code>indeterminate_tool</code>，不自动继续</td><td class="px-4 py-3">学 stable identity 和 intent-before-effect；不学默认重跑。shell/file/network 结果未知时必须停下 reconciliation</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">Side-effect safety</th><td class="px-4 py-3">下游要接受 transition key 才能幂等；effect 发出后、append 之前的崩溃窗口框架消不掉</td><td class="px-4 py-3">Tool 参数定稿前先写 durable dispatch record；模型和 tool 的 effect boundary 分开记录</td><td class="px-4 py-3">给 JAI 的 tool/provider 分恢复能力等级，不泛称「可重试」</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">边界与读取模型</th><td class="px-4 py-3">Event log 驱动运行时，不定义产品 UI/RPC 边界</td><td class="px-4 py-3">Desktop/CLI 走 ACP；renderer 只持有可重建的 projection，不能 import Agent/Electron 内部事实</td><td class="px-4 py-3">保持 RPC 白名单 DTO 和单向 projection。raw journal 不暴露成 Desktop 或第三方的写 API</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">调试与实验</th><td class="px-4 py-3">同一份 log 支持 inspect、从 checkpoint fork、不执行 effect 的 replay 和 variant 比较</td><td class="px-4 py-3">UI replay 可从 Host durable facts 重建；但 JAI session 绑着 workspace、权限和用户当时的决策</td><td class="px-4 py-3">优先做只读 trace 和 effect-stub replay/eval。不等同于复制一份 session 然后继续执行真实副作用</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="mt-3 text-sm leading-6 text-slate-600">来源：<a class="text-accent underline underline-offset-4" href="#source-s4">S4</a>、<a class="text-accent underline underline-offset-4" href="#source-s5">S5</a>、<a class="text-accent underline underline-offset-4" href="#source-s6">S6</a>。</p>
+      </section>
+
       <section class="mt-12" aria-labelledby="comparison-title">
         <h2 id="comparison-title" class="text-2xl font-semibold">可迁移的原则与不可照搬的机制</h2>
         <div class="mt-5 overflow-x-auto border border-slate-300 bg-white">
@@ -133,10 +189,38 @@
         </div>
       </section>
 
+      <section class="mt-12" data-report-section="not-copy" aria-labelledby="not-copy-title">
+        <h2 id="not-copy-title" class="text-2xl font-semibold">不应照搬</h2>
+        <ol class="mt-5 max-w-4xl list-decimal space-y-3 border-l-4 border-c2410c bg-white px-5 py-4 leading-7 text-slate-700" style="border-color:#c2410c">
+          <li>不把 at-least-once effect 当 JAI 工具的默认恢复语义。它会把一次 crash 变成重复的 shell、文件或网络写入，也可能绕过原来的审批时点。</li>
+          <li>不用 Tardigrade 的 actor/thread 替换 JAI 的 Session/Operation。两边的 workspace、controller 和交互生命周期不对等。</li>
+          <li>不让 renderer 或第三方直接读写原始 journal。Tardigrade 的 log-first 不改变 JAI 的 DTO、projection 和 owner 边界。</li>
+          <li>不因为将来可能有 subagent/background task 就预建通用 scheduler。没有明确的 durable fact 和副作用契约，抽象只会模糊责任。</li>
+        </ol>
+      </section>
+
       <section class="mt-12 grid gap-8 lg:grid-cols-2">
         <section data-report-section="impact" aria-labelledby="impact-title">
           <h2 id="impact-title" class="text-2xl font-semibold">对 JAI 的影响</h2>
-          <div class="mt-5 border-l-4 border-accent bg-white px-5 py-4 leading-7 text-slate-700">近期不替换 Session、SQLite Runtime Host 或 ACP。把现有 recovery verdict 收紧为可恢复动作白名单，并对 provider/tool 建立“纯读取、幂等写入、可校验写入、不可判定写入”的恢复能力契约。中期优先做不执行真实副作用的只读 trace/replay。</div>
+          <div class="mt-5 border-l-4 border-accent bg-white px-5 py-4 leading-7 text-slate-700">
+            <p class="font-semibold">近期：收紧恢复契约，不换架构</p>
+            <p class="mt-2">把现有 <code>recoverOperation()</code> 的 verdict 当成 JAI 版的 Tardigrade seam。每个允许自动继续的分支，必须能由纯函数从可检查的 durable 证据推出来，并且明确拥有：稳定的 action identity、已冻结的 provider/tool 输入和运行配置、允许恢复的前提记录、一条可识别的完成或终态记录、重复调用时的依据（幂等键、读后校验或补偿手段）。不满足的分支保持 <code>requires_action</code>。「<code>T1</code> 已 dispatch、<code>T2</code> 结果缺失」时停下来，继续作为不可判定写入的基线。</p>
+            <div class="mt-3 overflow-x-auto border border-slate-300">
+              <table class="min-w-full text-left text-xs leading-5">
+                <thead class="bg-slate-100 text-slate-700"><tr><th class="px-3 py-2 font-semibold">等级</th><th class="px-3 py-2 font-semibold">崩溃后策略</th><th class="px-3 py-2 font-semibold">需要的证据</th></tr></thead>
+                <tbody class="divide-y divide-slate-200 text-slate-700">
+                  <tr><td class="px-3 py-2 font-medium text-ink">纯读取</td><td class="px-3 py-2">用同一输入重跑，结果仍要 durable 记录</td><td class="px-3 py-2">重读的结果不能冒充崩溃前的旧事实</td></tr>
+                  <tr><td class="px-3 py-2 font-medium text-ink">幂等写入</td><td class="px-3 py-2">以 action identity 作为下游 idempotency key 自动重试</td><td class="px-3 py-2">下游 API 明确接受并持久化该 key</td></tr>
+                  <tr><td class="px-3 py-2 font-medium text-ink">可校验写入</td><td class="px-3 py-2">先查目标状态，再决定要不要补做</td><td class="px-3 py-2">查询结果也写成 recovery evidence</td></tr>
+                  <tr><td class="px-3 py-2 font-medium text-ink">不可判定写入</td><td class="px-3 py-2">停下，走 user/tool reconciliation</td><td class="px-3 py-2">当前 <code>indeterminate_tool</code> 语义</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="mt-3 font-semibold">中期：让 replay 变成诊断和评测能力</p>
+            <p class="mt-2">从某个 Session snapshot 导出只读 trace，用固定的 provider response、已有的 tool result 或 effect stub 重放，回答「哪条 durable entry、哪个 recovery decision、哪个配置快照导致了现在这个状态」。它能复现 bug、对照 compaction、跑评测，不会重新执行工作区副作用。它不能叫普通的 session fork：JAI 的 session 绑着 workspace、权限主体、成本、外部服务和用户当时的授权。</p>
+            <p class="mt-3 font-semibold">长期：等真实的独立任务出现再加调度</p>
+            <p class="mt-2">将来如果出现能独立检查、独立恢复、并有明确副作用契约的后台 agent/task，再为它建独立的 bounded scheduler 和 durable lifecycle。不要从 Desktop Session 的 queue 自然外推出这个东西。</p>
+          </div>
         </section>
         <section data-report-section="unknowns" aria-labelledby="unknowns-title">
           <h2 id="unknowns-title" class="text-2xl font-semibold">尚未确认</h2>
