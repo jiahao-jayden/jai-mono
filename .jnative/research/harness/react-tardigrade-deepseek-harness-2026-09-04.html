@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="React、Tardigrade 与 DeepSeek Harness 可逆语义的可复核调研">
+    <title>React、Tardigrade 与 DeepSeek Harness</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: { extend: { colors: { ink: '#172033', accent: '#0f766e', paper: '#f8fafc' } } }
+      };
+    </script>
+  </head>
+  <body class="bg-paper text-ink antialiased">
+    <main class="mx-auto max-w-6xl px-5 py-10 sm:px-8 lg:py-16">
+      <header class="border-b border-slate-300 pb-8">
+        <p class="text-sm font-semibold tracking-wide text-accent">RESEARCH REPORT</p>
+        <h1 class="mt-3 max-w-5xl text-3xl font-semibold leading-tight sm:text-5xl">React 设计思想、Tardigrade 与 DeepSeek Harness「可逆」语义</h1>
+        <p class="mt-4 max-w-4xl leading-7 text-slate-700">问题：React 的哪些原则适合构建 agent harness？它们被 Tardigrade 如何延伸？DeepSeek Harness 的 reversible effects 又处在哪个层次？</p>
+        <div class="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
+          <p>核验日期：<time datetime="2026-09-04">2026-09-04</time></p>
+          <p>范围：React 官方文档、Tardigrade 与 DeepSeek Harness 固定源码提交</p>
+          <a class="font-medium text-accent underline underline-offset-4" href="react-tardigrade-deepseek-harness-2026-09-04.md">查看完整证据笔记</a>
+        </div>
+      </header>
+
+      <section class="mt-10" data-report-section="conclusions" aria-labelledby="conclusions-title">
+        <div class="flex items-baseline justify-between gap-4">
+          <h2 id="conclusions-title" class="text-2xl font-semibold">直接结论</h2>
+          <p class="text-sm text-slate-600">不要把同名的 Effect 或「可逆」当作同一语义</p>
+        </div>
+        <ol class="mt-5 grid gap-4 md:grid-cols-3">
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c1" data-source-ids="s1">
+            <p class="text-sm font-semibold text-accent">结论 01</p>
+            <p class="mt-2 leading-7">React 可迁移的核心是纯推导、受控提交、外部执行分相；不是组件树或 JSX。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s1">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c2" data-source-ids="s2 s4">
+            <p class="text-sm font-semibold text-accent">结论 02</p>
+            <p class="mt-2 leading-7">Tardigrade 将纯推导接到 immutable log 与 keyed transition，形成 at-least-once 的 durable execution。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s2">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c3" data-source-ids="s3">
+            <p class="text-sm font-semibold text-accent">结论 03</p>
+            <p class="mt-2 leading-7">DSH 的 reversible effects 指插件注册与资源的卸载清理，而非工具、副作用或会话历史的通用回滚。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s3">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c4" data-source-ids="s4 s5">
+            <p class="text-sm font-semibold text-accent">结论 04</p>
+            <p class="mt-2 leading-7">对 result 缺失，Tardigrade 默认重驱；DSH 标记 unknown 并要求幂等、核验或人工处理。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s5">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c5" data-source-ids="s1 s5 s6">
+            <p class="text-sm font-semibold text-accent">结论 05</p>
+            <p class="mt-2 leading-7">JAI 应吸收 React 的分相和 Tardigrade 的动作 identity，但保持当前未知工具结果停驻的保守边界。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s6">查看来源</a>
+          </li>
+        </ol>
+      </section>
+
+      <section class="mt-12" data-report-section="visual" aria-labelledby="visual-title">
+        <h2 id="visual-title" class="text-2xl font-semibold">共同原则与发生分歧的边界</h2>
+        <figure class="mt-5 border border-slate-300 bg-white p-4 sm:p-8">
+          <svg class="h-auto w-full" viewBox="0 0 1080 610" role="img" aria-labelledby="diagram-title diagram-description">
+            <title id="diagram-title">React 的分相原则，以及 Tardigrade 和 DeepSeek Harness 对外部副作用缺失结果的不同处理</title>
+            <desc id="diagram-description">上方是共同的纯推导、明确外部边界、记录事实路径。下方是外部结果未被记录时的三个不同层次：React 未定义 durable recovery，Tardigrade 重驱 keyed effect，DeepSeek Harness 标为 unknown 并采取保守恢复。青色表示可由已确认输入推导的部分，橙色表示不可判定的外部副作用窗口。</desc>
+            <defs>
+              <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#64748b"></path></marker>
+              <marker id="accent-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#0f766e"></path></marker>
+              <marker id="warning-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#c2410c"></path></marker>
+            </defs>
+            <path d="M275 132 H380" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#accent-arrow)"></path>
+            <path d="M700 132 H805" fill="none" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"></path>
+            <path d="M540 202 V274" fill="none" stroke="#c2410c" stroke-width="3" stroke-dasharray="8 7" marker-end="url(#warning-arrow)"></path>
+            <path d="M535 380 H245" fill="none" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"></path>
+            <path d="M540 380 V432" fill="none" stroke="#c2410c" stroke-width="3" marker-end="url(#warning-arrow)"></path>
+            <path d="M545 380 H835" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#accent-arrow)"></path>
+
+            <rect x="45" y="65" width="230" height="135" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
+            <text x="160" y="114" text-anchor="middle" fill="#172033" font-size="21" font-weight="700" font-family="system-ui, sans-serif">已确认输入</text>
+            <text x="160" y="147" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">snapshot / durable facts</text>
+            <text x="160" y="170" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">policy / observation</text>
+
+            <rect x="380" y="65" width="320" height="135" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
+            <text x="540" y="112" text-anchor="middle" fill="#172033" font-size="21" font-weight="700" font-family="system-ui, sans-serif">纯 projection / reducer</text>
+            <text x="540" y="144" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">state、view、候选 action</text>
+            <text x="540" y="168" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">可重算、可中断，不触及外界</text>
+
+            <rect x="805" y="65" width="230" height="135" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="2"></rect>
+            <text x="920" y="114" text-anchor="middle" fill="#172033" font-size="21" font-weight="700" font-family="system-ui, sans-serif">外部 executor</text>
+            <text x="920" y="147" text-anchor="middle" fill="#9a3412" font-size="15" font-family="system-ui, sans-serif">模型、工具、网络、文件</text>
+            <text x="920" y="170" text-anchor="middle" fill="#9a3412" font-size="15" font-family="system-ui, sans-serif">需要独立执行协议</text>
+
+            <rect x="350" y="274" width="380" height="106" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="2"></rect>
+            <text x="540" y="316" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">外部工作可能已发生，结果却未记录</text>
+            <text x="540" y="347" text-anchor="middle" fill="#9a3412" font-size="15" font-family="system-ui, sans-serif">这是 durability / recovery 的问题，不是 UI cleanup</text>
+
+            <rect x="45" y="432" width="270" height="130" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"></rect>
+            <text x="180" y="474" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">React</text>
+            <text x="180" y="505" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">Effect cleanup 可释放部分资源</text>
+            <text x="180" y="528" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">未定义 durable recovery / undo</text>
+
+            <rect x="405" y="432" width="270" height="130" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"></rect>
+            <text x="540" y="474" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">Tardigrade</text>
+            <text x="540" y="505" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">缺 result key → 重驱同一 effect</text>
+            <text x="540" y="528" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">at-least-once；下游需幂等</text>
+
+            <rect x="765" y="432" width="270" height="130" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
+            <text x="900" y="474" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">DeepSeek Harness</text>
+            <text x="900" y="505" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">outcome unknown → repair / 核验</text>
+            <text x="900" y="528" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">不盲目重试有副作用调用</text>
+          </svg>
+          <figcaption class="mt-5 max-w-4xl text-sm leading-6 text-slate-600">上方是 React 可迁移的分相原则；下方展示三个系统在“副作用已发生但事实未完整记录”时的不同保证。图没有宣称 React、Tardigrade 或 DSH 具有通用外部操作回滚能力。</figcaption>
+        </figure>
+      </section>
+
+      <section class="mt-12" aria-labelledby="comparison-title">
+        <h2 id="comparison-title" class="text-2xl font-semibold">对 JAI 的设计取舍</h2>
+        <div class="mt-5 overflow-x-auto border border-slate-300 bg-white">
+          <table class="min-w-full text-left text-sm leading-6">
+            <thead class="bg-slate-100 text-slate-700"><tr><th class="px-4 py-3 font-semibold">借鉴来源</th><th class="px-4 py-3 font-semibold">应吸收</th><th class="px-4 py-3 font-semibold">不应外推</th></tr></thead>
+            <tbody class="divide-y divide-slate-200 text-slate-700">
+              <tr><th class="px-4 py-3 font-medium text-ink">React</th><td class="px-4 py-3">纯 projection、最小事实、单一 owner、显式状态/identity。</td><td class="px-4 py-3">Effect cleanup 不能当作工具 undo；React key 不是 durable idempotency key。</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">Tardigrade</th><td class="px-4 py-3">将允许恢复的 action 从 durable evidence 纯地派生，并明确 action identity/完成判据。</td><td class="px-4 py-3">不默认采用 at-least-once 重跑，也不为交互式 Session 预建 actor graph。</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">DeepSeek Harness</th><td class="px-4 py-3">将 extension/connector 的注册、资源与 teardown 作为独立 lifecycle contract。</td><td class="px-4 py-3">插件卸载不等于撤销 journal 或外部工具的已发生影响。</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="mt-12 grid gap-8 lg:grid-cols-2">
+        <section data-report-section="impact" aria-labelledby="impact-title">
+          <h2 id="impact-title" class="text-2xl font-semibold">对本项目的影响</h2>
+          <div class="mt-5 border-l-4 border-accent bg-white px-5 py-4 leading-7 text-slate-700">保持 JAI 的 journal / Runtime Host / ACP 分层。近期可把 recovery verdict 收紧为“由 durable facts 推导的 action 白名单”，并在 extension/connector 领域独立审计注册与 teardown。未知 tool outcome 继续停驻，除非下游有可核验的幂等或对账契约。</div>
+        </section>
+        <section data-report-section="unknowns" aria-labelledby="unknowns-title">
+          <h2 id="unknowns-title" class="text-2xl font-semibold">尚未确认</h2>
+          <div class="mt-5 border border-dashed border-slate-400 bg-white px-5 py-4 leading-7 text-slate-700">JAI 每个 provider/tool 的幂等键、读后校验与补偿能力；以及 DSH 的 Cordis lifecycle 与 JAI extension/connector 的具体映射。在这些事实明确前，不扩大自动重试。</div>
+        </section>
+      </section>
+
+      <section class="mt-12 border-t border-slate-300 pt-8" data-report-section="sources" aria-labelledby="sources-title">
+        <h2 id="sources-title" class="text-2xl font-semibold">来源</h2>
+        <ol class="mt-5 space-y-4 text-sm leading-6 text-slate-700">
+          <li id="source-s1" data-source-kind="primary"><p class="font-medium">[S1] React：纯 render、commit 与 Effect</p><a class="break-all text-accent underline underline-offset-4" href="https://react.dev/reference/rules/components-and-hooks-must-be-pure#why-does-purity-matter">React 官方文档</a><p>核验时文档版本：v19.2。</p></li>
+          <li id="source-s2" data-source-kind="primary"><p class="font-medium">[S2] Tardigrade：Why 与 component 模型</p><a class="break-all text-accent underline underline-offset-4" href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/docs/site/Why.mdx#L51-L73">官方固定源码链接</a><p>提交：c338df71a2765a3a599740456446d5ad97f28240。</p></li>
+          <li id="source-s3" data-source-kind="primary"><p class="font-medium">[S3] DeepSeek Harness：reversible effects 的插件上下文</p><a class="break-all text-accent underline underline-offset-4" href="https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/docs/architecture.md#L9-L13">官方固定源码链接</a><p>提交：76fda729799fe9b3848dbe2c211d4b231032b81e。</p></li>
+          <li id="source-s4" data-source-kind="primary"><p class="font-medium">[S4] Tardigrade：external effect 的 at-least-once 边界</p><a class="break-all text-accent underline underline-offset-4" href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/README.md#L246-L256">官方固定源码链接</a><p>提交：c338df71a2765a3a599740456446d5ad97f28240。</p></li>
+          <li id="source-s5" data-source-kind="primary"><p class="font-medium">[S5] DeepSeek Harness：checkpoint 和 unknown outcome</p><a class="break-all text-accent underline underline-offset-4" href="https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/session/session-checkpoint-policy/README.md#L139-L147">官方固定源码链接</a><p>提交：76fda729799fe9b3848dbe2c211d4b231032b81e。</p></li>
+          <li id="source-s6" data-source-kind="primary"><p class="font-medium">[S6] JAI：不确定工具结果的 recovery verdict</p><a class="break-all text-accent underline underline-offset-4" href="../../../packages/agent/src/harness/operations/recovery.ts#L113">JAI recovery.ts</a><p>JAI 固定 HEAD：e1620f4e4d01e14b7f28caaff3454803e5c0e5b5。</p></li>
+        </ol>
+      </section>
+    </main>
+  </body>
+</html>

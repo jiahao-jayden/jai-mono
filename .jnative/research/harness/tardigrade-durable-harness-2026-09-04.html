@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Tardigrade 日志驱动 harness 与 JAI 的可复核调研报告">
+    <title>Tardigrade 的日志驱动 Harness 与 JAI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: { ink: '#172033', accent: '#0f766e', paper: '#f8fafc' }
+          }
+        }
+      };
+    </script>
+  </head>
+  <body class="bg-paper text-ink antialiased">
+    <main class="mx-auto max-w-6xl px-5 py-10 sm:px-8 lg:py-16">
+      <header class="border-b border-slate-300 pb-8">
+        <p class="text-sm font-semibold tracking-wide text-accent">RESEARCH REPORT</p>
+        <h1 class="mt-3 max-w-4xl text-3xl font-semibold leading-tight sm:text-5xl">Tardigrade 的日志驱动 Harness 与 JAI</h1>
+        <p class="mt-4 max-w-3xl leading-7 text-slate-700">问题：Tardigrade 如何用事件日志、状态机与 transition 组织 agent 行为？哪些原则值得 JAI 吸收，哪些运行语义不应照搬？</p>
+        <div class="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
+          <p>核验日期：<time datetime="2026-09-04">2026-09-04</time></p>
+          <p>范围：Tardigrade 官方文档/源码与 JAI 固定 HEAD 的架构对照</p>
+          <a class="font-medium text-accent underline underline-offset-4" href="tardigrade-durable-harness-2026-09-04.md">查看完整证据笔记</a>
+        </div>
+      </header>
+
+      <section class="mt-10" data-report-section="conclusions" aria-labelledby="conclusions-title">
+        <div class="flex items-baseline justify-between gap-4">
+          <h2 id="conclusions-title" class="text-2xl font-semibold">直接结论</h2>
+          <p class="text-sm text-slate-600">机制事实与愿景主张已分开</p>
+        </div>
+        <ol class="mt-5 grid gap-4 md:grid-cols-3">
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c1" data-source-ids="s1 s2">
+            <p class="text-sm font-semibold text-accent">结论 01</p>
+            <p class="mt-2 leading-7">Tardigrade 将 agent 行为表述为 <code>behavior = f(log)</code>：日志折叠成 state，再派生 view 与带 key 的欠下工作。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s1">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c2" data-source-ids="s2 s3">
+            <p class="text-sm font-semibold text-accent">结论 02</p>
+            <p class="mt-2 leading-7">reconciler 反复结算未记录 result key 的 transition；日志、状态与待办工作均可在重启后重建。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s2">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c3" data-source-ids="s3">
+            <p class="text-sm font-semibold text-accent">结论 03</p>
+            <p class="mt-2 leading-7">它的外部 effect 是 at-least-once，不是 exactly-once；端到端去重依赖下游接受 transition key 作为幂等键。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s3">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c4" data-source-ids="s4 s5">
+            <p class="text-sm font-semibold text-accent">结论 04</p>
+            <p class="mt-2 leading-7">JAI 已有 durable journal、纯 replay、Runtime Host 与可丢弃 ACP projection 的分层，不需要重写成通用 actor runtime。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s4">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c5" data-source-ids="s5 s6">
+            <p class="text-sm font-semibold text-accent">结论 05</p>
+            <p class="mt-2 leading-7">JAI 应借鉴「从 durable evidence 推导可恢复动作」的纪律，但保持工具结果不确定时停驻并 reconciliation 的安全语义。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s6">查看来源</a>
+          </li>
+        </ol>
+      </section>
+
+      <section class="mt-12" data-report-section="visual" aria-labelledby="visual-title">
+        <h2 id="visual-title" class="text-2xl font-semibold">恢复边界：相同的日志原则，不同的副作用策略</h2>
+        <figure class="mt-5 border border-slate-300 bg-white p-4 sm:p-8">
+          <svg class="h-auto w-full" viewBox="0 0 1040 560" role="img" aria-labelledby="diagram-title diagram-description">
+            <title id="diagram-title">Tardigrade 的日志派生 transition 循环与 JAI 对不确定工具调用的停驻策略</title>
+            <desc id="diagram-description">上方展示日志、派生 transition、外部 effect 和结果事件的循环。下方展示 effect 后结果缺失时，Tardigrade 默认重试而 JAI 停驻等待 reconciliation 的分歧。青色为可由 durable facts 推导的部分，橙色为 effect 之后的未知结果边界。</desc>
+            <defs>
+              <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#64748b"></path></marker>
+              <marker id="accent-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#0f766e"></path></marker>
+              <marker id="warning-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#c2410c"></path></marker>
+            </defs>
+
+            <path d="M245 132 H330" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#accent-arrow)"></path>
+            <path d="M525 132 H610" fill="none" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"></path>
+            <path d="M805 132 H890" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#accent-arrow)"></path>
+            <path d="M945 197 V245 H145 V197" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#accent-arrow)"></path>
+            <path d="M707 195 V280" fill="none" stroke="#c2410c" stroke-width="3" stroke-dasharray="8 7" marker-end="url(#warning-arrow)"></path>
+            <path d="M513 378 H405" fill="none" stroke="#c2410c" stroke-width="3" marker-end="url(#warning-arrow)"></path>
+            <path d="M513 378 H635" fill="none" stroke="#c2410c" stroke-width="3" marker-end="url(#warning-arrow)"></path>
+
+            <rect x="45" y="72" width="200" height="125" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
+            <text x="145" y="119" text-anchor="middle" fill="#172033" font-size="21" font-weight="700" font-family="system-ui, sans-serif">durable event log</text>
+            <text x="145" y="153" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">唯一行为输入</text>
+
+            <rect x="330" y="72" width="195" height="125" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
+            <text x="427" y="116" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">projection / component</text>
+            <text x="427" y="148" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">derive state + keyed</text>
+            <text x="427" y="171" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">transition = f(log)</text>
+
+            <rect x="610" y="72" width="195" height="125" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="2"></rect>
+            <text x="707" y="119" text-anchor="middle" fill="#172033" font-size="21" font-weight="700" font-family="system-ui, sans-serif">external effect</text>
+            <text x="707" y="153" text-anchor="middle" fill="#9a3412" font-size="15" font-family="system-ui, sans-serif">外部世界；可能崩溃</text>
+
+            <rect x="890" y="72" width="105" height="125" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
+            <text x="942" y="119" text-anchor="middle" fill="#172033" font-size="19" font-weight="700" font-family="system-ui, sans-serif">result</text>
+            <text x="942" y="148" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">append</text>
+            <text x="942" y="170" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">by key</text>
+
+            <rect x="497" y="280" width="420" height="98" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="2"></rect>
+            <text x="707" y="321" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">崩溃窗口：effect 已发生，result 尚未落盘</text>
+            <text x="707" y="351" text-anchor="middle" fill="#9a3412" font-size="15" font-family="system-ui, sans-serif">durable evidence 无法证明外部世界的结果</text>
+
+            <rect x="70" y="408" width="335" height="107" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"></rect>
+            <text x="237" y="450" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">Tardigrade 默认</text>
+            <text x="237" y="481" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">同 key / 同 input 重驱 effect</text>
+            <text x="237" y="503" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">语义：at-least-once</text>
+
+            <rect x="635" y="408" width="335" height="107" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
+            <text x="802" y="450" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">JAI 当前基线</text>
+            <text x="802" y="481" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">T1 无 T2 → indeterminate_tool</text>
+            <text x="802" y="503" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">停驻，要求 reconciliation</text>
+          </svg>
+          <figcaption class="mt-5 max-w-4xl text-sm leading-6 text-slate-600">共同点是由 durable facts 派生动作；分歧只在外部副作用之后、结果尚未落盘的未知窗口。图未表达 Tardigrade 的所有组件组合、也未暗示 JAI 已经实现所有工具的幂等或校验能力。</figcaption>
+        </figure>
+      </section>
+
+      <section class="mt-12" aria-labelledby="comparison-title">
+        <h2 id="comparison-title" class="text-2xl font-semibold">可迁移的原则与不可照搬的机制</h2>
+        <div class="mt-5 overflow-x-auto border border-slate-300 bg-white">
+          <table class="min-w-full text-left text-sm leading-6">
+            <thead class="bg-slate-100 text-slate-700"><tr><th class="px-4 py-3 font-semibold">维度</th><th class="px-4 py-3 font-semibold">建议</th><th class="px-4 py-3 font-semibold">边界</th></tr></thead>
+            <tbody class="divide-y divide-slate-200 text-slate-700">
+              <tr><th class="px-4 py-3 font-medium text-ink">恢复动作</th><td class="px-4 py-3">为可自动继续的动作建立 stable identity、冻结输入/配置、前置事实和完成记录。</td><td class="px-4 py-3">没有幂等、读后校验或补偿依据的写入必须停驻。</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">日志与投影</th><td class="px-4 py-3">将 replay 视为 durable record 的规格，并用只读 trace/effect stub 支持诊断与评测。</td><td class="px-4 py-3">不让 Desktop 或第三方直接写 raw journal；保持 DTO/projection 单向边界。</td></tr>
+              <tr><th class="px-4 py-3 font-medium text-ink">调度</th><td class="px-4 py-3">只在出现真正独立、可恢复的后台领域对象时，为它建有界调度。</td><td class="px-4 py-3">不把当前单 live operation 的 interactive Session 改造成 actor/thread graph。</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="mt-12 grid gap-8 lg:grid-cols-2">
+        <section data-report-section="impact" aria-labelledby="impact-title">
+          <h2 id="impact-title" class="text-2xl font-semibold">对 JAI 的影响</h2>
+          <div class="mt-5 border-l-4 border-accent bg-white px-5 py-4 leading-7 text-slate-700">近期不替换 Session、SQLite Runtime Host 或 ACP。把现有 recovery verdict 收紧为可恢复动作白名单，并对 provider/tool 建立“纯读取、幂等写入、可校验写入、不可判定写入”的恢复能力契约。中期优先做不执行真实副作用的只读 trace/replay。</div>
+        </section>
+        <section data-report-section="unknowns" aria-labelledby="unknowns-title">
+          <h2 id="unknowns-title" class="text-2xl font-semibold">尚未确认</h2>
+          <div class="mt-5 border border-dashed border-slate-400 bg-white px-5 py-4 leading-7 text-slate-700">JAI 各个具体 tool/provider 的幂等键、读后校验与补偿能力；telemetry 到 journal entry 的安全关联；以及 Tardigrade fork/branch/权限隔离的完整产品保证。这些未确认前，不扩大自动重试范围。</div>
+        </section>
+      </section>
+
+      <section class="mt-12 border-t border-slate-300 pt-8" data-report-section="sources" aria-labelledby="sources-title">
+        <h2 id="sources-title" class="text-2xl font-semibold">来源</h2>
+        <ol class="mt-5 space-y-4 text-sm leading-6 text-slate-700">
+          <li id="source-s1" data-source-kind="primary"><p class="font-medium">[S1] Tardigrade Why：行为、组件与 React 类比</p><a class="break-all text-accent underline underline-offset-4" href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/docs/site/Why.mdx#L51-L73">官方固定源码链接</a><p>提交：c338df71a2765a3a599740456446d5ad97f28240。</p></li>
+          <li id="source-s2" data-source-kind="primary"><p class="font-medium">[S2] Tardigrade projection 与 reconciler</p><a class="break-all text-accent underline underline-offset-4" href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/core/src/runtime/reconciler.ts#L204-L373">官方固定源码链接</a><p>提交：c338df71a2765a3a599740456446d5ad97f28240。</p></li>
+          <li id="source-s3" data-source-kind="primary"><p class="font-medium">[S3] Tardigrade 外部 effect 的 durability 限制</p><a class="break-all text-accent underline underline-offset-4" href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/README.md#L246-L256">官方固定源码链接</a><p>提交：c338df71a2765a3a599740456446d5ad97f28240。</p></li>
+          <li id="source-s4" data-source-kind="primary"><p class="font-medium">[S4] JAI durable fact owner 与 projection 规则</p><a class="break-all text-accent underline underline-offset-4" href="../../../AGENTS.md#L31">JAI AGENTS.md</a><p>JAI 固定 HEAD：e1620f4e4d01e14b7f28caaff3454803e5c0e5b5。</p></li>
+          <li id="source-s5" data-source-kind="primary"><p class="font-medium">[S5] JAI Runtime Host effect boundary</p><a class="break-all text-accent underline underline-offset-4" href="../../../app/server/src/operations/effect-boundary.ts#L62">JAI effect-boundary.ts</a><p>JAI 固定 HEAD：e1620f4e4d01e14b7f28caaff3454803e5c0e5b5。</p></li>
+          <li id="source-s6" data-source-kind="primary"><p class="font-medium">[S6] JAI 工具调用结果不确定时的 recovery verdict</p><a class="break-all text-accent underline underline-offset-4" href="../../../packages/agent/src/harness/operations/recovery.ts#L113">JAI recovery.ts</a><p>JAI 固定 HEAD：e1620f4e4d01e14b7f28caaff3454803e5c0e5b5。</p></li>
+        </ol>
+      </section>
+    </main>
+  </body>
+</html>
