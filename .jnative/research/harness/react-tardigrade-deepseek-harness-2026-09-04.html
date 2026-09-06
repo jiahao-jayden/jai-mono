@@ -3,235 +3,850 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="React、Tardigrade 与 DeepSeek Harness 可逆语义的可复核调研">
-    <title>React、Tardigrade 与 DeepSeek Harness</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: { extend: { colors: { ink: '#172033', accent: '#0f766e', paper: '#f8fafc' } } }
-      };
-    </script>
+    <meta name="description" content="React、Tardigrade 与 DeepSeek Harness「可逆」语义的系统边界与工程分相调研">
+    <title>React、Tardigrade 与 DeepSeek Harness：三个「可逆」语义的系统边界</title>
+    <style>
+:root {
+  --ink: #121826;
+  --muted: #4b5568;
+  --paper: #f4f6f8;
+  --panel: #ffffff;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --accent: #0f766e;
+  --accent-soft: #ccfbf1;
+  --inline-code-bg: #eef2f6;
+  --code-bg: #0b1220;
+  --code-fg: #e2e8f0;
+  --code-label: #94a3b8;
+  --quote-bg: #ffffff;
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --sans: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --serif: "Source Serif 4", "Songti SC", "Noto Serif CJK SC", ui-serif, Georgia, serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --ink: #e5e7eb;
+  --muted: #9ca3af;
+  --paper: #0b1220;
+  --panel: #111827;
+  --line: #1f2937;
+  --line-strong: #334155;
+  --accent: #2dd4bf;
+  --accent-soft: #134e4a;
+  --inline-code-bg: #1e293b;
+  --code-bg: #020617;
+  --code-fg: #e2e8f0;
+  --code-label: #64748b;
+  --quote-bg: #111827;
+  --shadow: none;
+  --card-shadow: none;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #e5e7eb;
+    --muted: #9ca3af;
+    --paper: #0b1220;
+    --panel: #111827;
+    --line: #1f2937;
+    --line-strong: #334155;
+    --accent: #2dd4bf;
+    --accent-soft: #134e4a;
+    --inline-code-bg: #1e293b;
+    --code-bg: #020617;
+    --code-fg: #e2e8f0;
+    --code-label: #64748b;
+    --quote-bg: #111827;
+    --shadow: none;
+    --card-shadow: none;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-feature-settings: "ss01" on, "kern" on;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.8;
+}
+a { color: var(--accent); text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
+
+.layout {
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: 2rem 1rem 5rem;
+  display: flex;
+  gap: 2.5rem;
+}
+@media (min-width: 640px) { .layout { padding-left: 1.5rem; padding-right: 1.5rem; } }
+@media (min-width: 1024px) { .layout { padding: 3rem 2rem 6rem; } }
+
+/* Sidebar TOC */
+.toc-side { display: none; width: 15rem; flex-shrink: 0; }
+@media (min-width: 1280px) { .toc-side { display: block; } }
+.toc-side nav {
+  position: sticky;
+  top: 2rem;
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  padding-right: .5rem;
+}
+.toc-title {
+  margin: 0 0 .75rem;
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.toc-links { display: flex; flex-direction: column; gap: .15rem; font-size: .875rem; }
+.toc-link {
+  display: block;
+  padding: .35rem .75rem;
+  border-left: 2px solid transparent;
+  border-radius: 0 .5rem .5rem 0;
+  color: var(--muted);
+  text-decoration: none;
+  line-height: 1.5;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.toc-link:hover { color: var(--ink); background: var(--line); }
+.toc-link.active { color: var(--accent); background: var(--accent-soft); border-left-color: var(--accent); }
+
+/* Mobile TOC */
+.toc-mobile { position: fixed; bottom: 1.25rem; right: 1.25rem; z-index: 50; }
+@media (min-width: 1280px) { .toc-mobile { display: none; } }
+.toc-toggle {
+  border: 0;
+  border-radius: 999px;
+  padding: .75rem 1rem;
+  font: inherit;
+  font-size: .875rem;
+  font-weight: 600;
+  color: var(--paper);
+  background: var(--ink);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, .25);
+  cursor: pointer;
+}
+.toc-mobile .toc-panel {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: 3.5rem;
+  width: 18rem;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 1rem;
+  background: var(--panel);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, .25);
+}
+.toc-mobile.open .toc-panel { display: block; }
+
+/* Theme toggle */
+.theme-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1.25rem;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: .4rem .8rem;
+  font: inherit;
+  font-size: .8rem;
+  color: var(--muted);
+  background: var(--panel);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.theme-toggle:hover { color: var(--ink); border-color: var(--accent); }
+.theme-toggle .icon { width: 1rem; height: 1rem; }
+:root[data-theme="dark"] .icon-sun, :root:not([data-theme]) .icon-sun { display: none; }
+:root[data-theme="dark"] .icon-moon { display: none; }
+:root[data-theme="light"] .icon-moon { display: inline; }
+:root[data-theme="light"] .icon-sun { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .icon-sun { display: inline; }
+  :root:not([data-theme]) .icon-moon { display: none; }
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .icon-sun { display: none; }
+  :root:not([data-theme]) .icon-moon { display: inline; }
+}
+
+/* Article */
+main { min-width: 0; flex: 1; }
+.hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 1.5rem;
+  background: var(--panel);
+  padding: 2.5rem 1.5rem;
+  box-shadow: var(--shadow);
+}
+@media (min-width: 640px) { .hero { padding: 3rem 2.5rem; } }
+.hero .glow {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 999px;
+  filter: blur(48px);
+  opacity: .7;
+}
+.hero .glow-a { right: -4rem; top: -5rem; width: 16rem; height: 16rem; background: var(--accent-soft); }
+.hero .glow-b { left: 2rem; bottom: -6rem; width: 14rem; height: 14rem; background: var(--accent-soft); opacity: .4; }
+.hero .kicker {
+  position: relative;
+  margin: 0;
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.hero h1 {
+  position: relative;
+  margin: 1rem 0 0;
+  max-width: 52rem;
+  font-family: var(--serif);
+  font-size: clamp(1.75rem, 3.2vw, 2.45rem);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+}
+.hero .lead {
+  position: relative;
+  margin: 1.25rem 0 0;
+  max-width: 48rem;
+  color: var(--muted);
+  font-size: .98rem;
+}
+.hero .meta {
+  position: relative;
+  margin-top: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  font-size: .85rem;
+  color: var(--muted);
+}
+
+article { margin-top: 3rem; }
+article section { scroll-margin-top: 1.5rem; }
+article section + section { margin-top: 3.5rem; }
+article h2 {
+  margin: 0 0 1.25rem;
+  padding-bottom: .9rem;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--serif);
+  font-size: 1.65rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -.005em;
+}
+@media (min-width: 640px) { article h2 { font-size: 1.85rem; } }
+article h3 {
+  margin: 1.8rem 0 .75rem;
+  font-family: var(--sans);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+article p, article li { max-width: 48rem; margin: 0 0 1.1rem; color: var(--ink); }
+article ul, article ol { margin: 0 0 1.1rem 1.5rem; padding: 0; }
+article li { margin-bottom: .4rem; }
+article strong { font-weight: 600; }
+article hr { border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }
+
+/* Cards Grid */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1.25rem;
+  margin: 1.5rem 0;
+}
+.conclusion-card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 1rem;
+  padding: 1.4rem;
+  box-shadow: var(--card-shadow);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.conclusion-card .badge {
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.conclusion-card p {
+  margin: .75rem 0 1rem;
+  font-size: .92rem;
+  line-height: 1.65;
+  color: var(--ink);
+}
+.conclusion-card a {
+  font-size: .82rem;
+  font-weight: 500;
+  margin-top: auto;
+}
+
+/* Feature Boxes */
+.feature-box {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--card-shadow);
+}
+.feature-box h3 { margin-top: 0; }
+
+/* Table Container */
+.table-container {
+  overflow-x: auto;
+  margin: 1.5rem 0;
+  border: 1px solid var(--line);
+  border-radius: .85rem;
+  background: var(--panel);
+  box-shadow: var(--card-shadow);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .88rem;
+  text-align: left;
+}
+th, td {
+  padding: .85rem 1.1rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+th {
+  background: var(--inline-code-bg);
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: none; }
+td { color: var(--muted); line-height: 1.6; }
+td strong, td .highlight { color: var(--ink); }
+
+code {
+  font-family: var(--mono);
+  font-size: .875em;
+  background: var(--inline-code-bg);
+  color: var(--accent);
+  padding: .12em .38em;
+  border-radius: .3rem;
+  word-break: break-word;
+}
+pre {
+  margin: 1.25rem 0 1.5rem;
+  padding: 1.25rem;
+  border-radius: .85rem;
+  background: var(--code-bg);
+  color: var(--code-fg);
+  font-family: var(--mono);
+  font-size: .84rem;
+  line-height: 1.7;
+  overflow-x: auto;
+}
+pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  margin: 1.25rem 0 1.4rem;
+  padding: .9rem 1.25rem;
+  max-width: 48rem;
+  border-left: 4px solid var(--accent);
+  border-radius: 0 .75rem .75rem 0;
+  background: var(--quote-bg);
+  color: var(--muted);
+  font-style: italic;
+  box-shadow: var(--shadow);
+}
+blockquote p { margin: 0; color: inherit; }
+
+/* SVG Visual Diagram */
+.diagram-figure {
+  margin: 2rem 0;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--panel);
+  padding: 1.5rem;
+  box-shadow: var(--card-shadow);
+}
+.diagram-figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.diagram-figure figcaption {
+  margin-top: 1rem;
+  font-size: .84rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* Impact & Sources */
+.impact-list {
+  border-left: 4px solid var(--accent);
+  background: var(--panel);
+  padding: 1.25rem 1.5rem;
+  border-radius: 0 1rem 1rem 0;
+  box-shadow: var(--card-shadow);
+  margin: 1.25rem 0;
+}
+.impact-list li { margin-bottom: .75rem; }
+
+.source-item {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+}
+.source-item:last-child { border-bottom: none; }
+.source-title { font-weight: 600; color: var(--ink); margin: 0 0 .25rem; font-size: .92rem; }
+.source-meta { font-size: .82rem; color: var(--muted); }
+
+footer.colophon {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+  font-size: .82rem;
+  color: var(--muted);
+}
+</style>
   </head>
-  <body class="bg-paper text-ink antialiased">
-    <main class="mx-auto max-w-6xl px-5 py-10 sm:px-8 lg:py-16">
-      <header class="border-b border-slate-300 pb-8">
-        <p class="text-sm font-semibold tracking-wide text-accent">RESEARCH REPORT</p>
-        <h1 class="mt-3 max-w-5xl text-3xl font-semibold leading-tight sm:text-5xl">React 设计思想、Tardigrade 与 DeepSeek Harness「可逆」语义</h1>
-        <p class="mt-4 max-w-4xl leading-7 text-slate-700">问题：React 的哪些原则适合构建 agent harness？它们被 Tardigrade 如何延伸？DeepSeek Harness 的 reversible effects 又处在哪个层次？</p>
-        <div class="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
-          <p>核验日期：<time datetime="2026-09-04">2026-09-04</time></p>
-          <p>范围：React 官方文档、Tardigrade 与 DeepSeek Harness 固定源码提交</p>
-          <a class="font-medium text-accent underline underline-offset-4" href="react-tardigrade-deepseek-harness-2026-09-04.md">查看完整证据笔记</a>
-        </div>
-      </header>
+  <body>
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="切换明暗主题">
+      <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><span>主题</span>
+    </button>
 
-      <section class="mt-10" data-report-section="conclusions" aria-labelledby="conclusions-title">
-        <div class="flex items-baseline justify-between gap-4">
-          <h2 id="conclusions-title" class="text-2xl font-semibold">直接结论</h2>
-          <p class="text-sm text-slate-600">不要把同名的 Effect 或「可逆」当作同一语义</p>
-        </div>
-        <ol class="mt-5 grid gap-4 md:grid-cols-3">
-          <li class="border border-slate-300 bg-white p-5" data-claim-id="c1" data-source-ids="s1">
-            <p class="text-sm font-semibold text-accent">结论 01</p>
-            <p class="mt-2 leading-7">React 可迁移的核心是纯推导、受控提交、外部执行分相；不是组件树或 JSX。</p>
-            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s1">查看来源</a>
-          </li>
-          <li class="border border-slate-300 bg-white p-5" data-claim-id="c2" data-source-ids="s2 s4">
-            <p class="text-sm font-semibold text-accent">结论 02</p>
-            <p class="mt-2 leading-7">Tardigrade 将纯推导接到 immutable log 与 keyed transition，形成 at-least-once 的 durable execution。</p>
-            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s2">查看来源</a>
-          </li>
-          <li class="border border-slate-300 bg-white p-5" data-claim-id="c3" data-source-ids="s3">
-            <p class="text-sm font-semibold text-accent">结论 03</p>
-            <p class="mt-2 leading-7">DSH 的 reversible effects 指插件注册与资源的卸载清理，而非工具、副作用或会话历史的通用回滚。</p>
-            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s3">查看来源</a>
-          </li>
-          <li class="border border-slate-300 bg-white p-5" data-claim-id="c4" data-source-ids="s4 s5">
-            <p class="text-sm font-semibold text-accent">结论 04</p>
-            <p class="mt-2 leading-7">对 result 缺失，Tardigrade 默认重驱；DSH 标记 unknown 并要求幂等、核验或人工处理。</p>
-            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s5">查看来源</a>
-          </li>
-          <li class="border border-slate-300 bg-white p-5" data-claim-id="c5" data-source-ids="s1 s5 s6">
-            <p class="text-sm font-semibold text-accent">结论 05</p>
-            <p class="mt-2 leading-7">JAI 应吸收 React 的分相和 Tardigrade 的动作 identity，但保持当前未知工具结果停驻的保守边界。</p>
-            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s6">查看来源</a>
-          </li>
-        </ol>
-      </section>
+    <div id="toc-mobile" class="toc-mobile">
+      <button id="toc-toggle" class="toc-toggle" type="button" aria-expanded="false" aria-controls="toc-panel">目录</button>
+      <nav id="toc-panel" class="toc-panel" aria-label="文章目录">
+        <p class="toc-title">Contents</p>
+        <div class="toc-links"></div>
+      </nav>
+    </div>
 
-      <section class="mt-12" data-report-section="origin" aria-labelledby="origin-title">
-        <h2 id="origin-title" class="text-2xl font-semibold">起因：一条断在每一环的推理链</h2>
-        <p class="mt-4 max-w-4xl leading-7 text-slate-700">这份笔记的起因是一条被当作结论的推理链：</p>
-        <blockquote class="mt-4 border-l-4 border-slate-400 bg-white px-5 py-4 leading-7 text-slate-700">React 的 Effect 有 cleanup → DeepSeek Harness 说自己 reversible → 所以 agent 的工具调用可以 rollback。</blockquote>
-        <p class="mt-4 max-w-4xl leading-7 text-slate-700">这条链里每一步用的「可逆」都是不同的意思，最后的结论站不住。下面分别查三者的文档和源码，说清每一个「可逆」到底覆盖到哪一层，再给 JAI 的判断。<a class="text-accent underline underline-offset-4" href="react-tardigrade-deepseek-harness-2026-09-04.md">完整推理见证据笔记</a>。</p>
-      </section>
+    <div class="layout">
+      <aside class="toc-side">
+        <nav aria-label="文章目录">
+          <p class="toc-title">Contents</p>
+          <div class="toc-links"></div>
+        </nav>
+      </aside>
 
-      <section class="mt-12" data-report-section="react" aria-labelledby="react-title">
-        <h2 id="react-title" class="text-2xl font-semibold">React 的哪些思想和 Agent 有关</h2>
-        <div class="mt-6 space-y-6">
-          <div class="border border-slate-300 bg-white p-5">
-            <h3 class="font-semibold">1. 纯计算、提交、外部执行必须分成三层</h3>
-            <p class="mt-2 leading-7 text-slate-700">React 要求 render 是纯的：同样的 props、state、context 产出同样的结果。因为纯，React 才能暂停、重启或丢掉一次还没 commit 的 render。commit 才把结果写到 DOM。Effect 在 commit 之后跑，负责让 React 和外部系统同步。搬到 harness 里对应三个程序边界：已提交的 durable facts → 纯 projection/reducer → 受控 commit → executor（模型、工具、文件、网络）。第一层可以随便重放、丢弃；projection 重算时不可能顺手把工具跑了。React 没有定义后两层的 durability。<a class="text-accent underline underline-offset-4" href="#source-s1">来源 S1</a></p>
+      <main>
+        <header class="hero">
+          <div class="glow glow-a"></div>
+          <div class="glow glow-b"></div>
+          <p class="kicker">Research Report · 架构分相与可逆语义</p>
+          <h1>React、Tardigrade 与 DeepSeek Harness：三个「可逆」语义的系统边界</h1>
+          <p class="lead">厘清 React Render/Effect 分相、Tardigrade 日志驱动状态机与 DeepSeek Harness Reversible Effects 在系统层级中的真实物理边界，推导高可靠 Agent Harness 的持久化与容错取舍。</p>
+          <div class="meta">
+            <span>核验日期：2026-09-04</span>
+            <span>范围：React v19.2 · Tardigrade <code>c338df7</code> · DSH <code>76fda72</code></span>
+            <a href="react-tardigrade-deepseek-harness-2026-09-04.md" target="_blank" rel="noopener">查看 Markdown 证据笔记</a>
           </div>
-          <div class="border border-slate-300 bg-white p-5">
-            <h3 class="font-semibold">2. State 快照、单向流、最小事实</h3>
-            <p class="mt-2 leading-7 text-slate-700">一次 render 看到的是 state 的快照；setter 请求的是下一个快照，不改当前调用看到的值。每份 state 只有一个 source of truth，只保存推不出来的最小状态。翻译到 agent：一项决策应写明它依赖哪些 committed facts、哪个 policy 版本、哪份 observation 快照。status、view、待执行 action 只要能从事实算出来，就不该再存第二份 durable truth。这不等于要一个全局 store，React 也没有提供 event sourcing 或跨进程一致性。<a class="text-accent underline underline-offset-4" href="#source-s1">来源 S1</a></p>
-          </div>
-          <div class="border border-slate-300 bg-white p-5">
-            <h3 class="font-semibold">3. Reducer、状态机、稳定 identity</h3>
-            <p class="mt-2 leading-7 text-slate-700">React reducer 把 action（发生了什么）和 state update（下一状态是什么）分开，reducer 本身要纯。Agent 里确定性的部分适合这个形态：权限、审批、operation 生命周期、恢复 verdict。给定 state 加一条 durable event 或已校验的 command，就能断言 transition、拒绝原因和下一项该做的工作。LLM 推理、wall clock、工具调用不能伪装成 reducer。React 的 key 说明连续性不能靠树里的偶然位置，但它只服务 render tree reconciliation，不是 durable entity ID 或 idempotency key。<a class="text-accent underline underline-offset-4" href="#source-s1">来源 S1</a></p>
-          </div>
-          <div class="border border-slate-300 bg-white p-5">
-            <h3 class="font-semibold">4. Effect 是外部同步边界，不是编排器</h3>
-            <p class="mt-2 leading-7 text-slate-700">Effect 定义为 render 之后把组件和外部系统同步的机制；依赖数组和 cleanup 描述同步和解除同步的生命周期。对 agent 的借鉴：executor 应声明它同步或改变哪个 capability、依赖哪个输入版本、request ID 是什么、怎么判成功、结束时释放哪些资源。cleanup 不能外推成 undo：断开 websocket、退订 listener 可以 cleanup；邮件发出去了、不可逆文件写了、shell 命令跑了，通常不能。Concurrent React 允许中断的也只是 DOM commit 之前的纯 render，不许可 agent 随意取消和重跑外部工具。<a class="text-accent underline underline-offset-4" href="#source-s1">来源 S1</a></p>
-          </div>
-        </div>
-      </section>
+        </header>
 
-      <section class="mt-12" data-report-section="tardigrade-mapping" aria-labelledby="tardigrade-mapping-title">
-        <h2 id="tardigrade-mapping-title" class="text-2xl font-semibold">Tardigrade 怎么把 React 原则做成 Durable Harness</h2>
-        <p class="mt-4 max-w-4xl leading-7 text-slate-700">Tardigrade 把 React 的「纯计算先于 effect」升级成了恢复协议：log 是 durable source of truth，纯 projection 保证重启后能算出同一项工作，keyed event record 决定这项工作是否已经完成。对外部 effect 它明确选了 at-least-once，没有假装能 rollback 或 exactly-once。<a class="text-accent underline underline-offset-4" href="#source-s2">来源 S2</a> <a class="text-accent underline underline-offset-4" href="#source-s4">S4</a></p>
-        <div class="mt-5 overflow-x-auto border border-slate-300 bg-white">
-          <table class="min-w-full text-left text-sm leading-6">
-            <thead class="bg-slate-100 text-slate-700"><tr><th class="px-4 py-3 font-semibold\">React 原则</th><th class="px-4 py-3 font-semibold\">Tardigrade 的对应</th><th class="px-4 py-3 font-semibold\">加上的 durable 语义</th><th class="px-4 py-3 font-semibold">不能等同的地方</th></tr></thead>
-            <tbody class="divide-y divide-slate-200 text-slate-700">
-              <tr><td class="px-4 py-3 font-medium text-ink">纯 render</td><td class="px-4 py-3">Component 的 <code>initial → step → output</code> 从 event log 投影出 state、view、transitions</td><td class="px-4 py-3">全量 log 可 replay；活跃时只处理 tail</td><td class="px-4 py-3">React render 是内存 renderer 语义，没有 durable event log</td></tr>
-              <tr><td class="px-4 py-3 font-medium text-ink">组件组合</td><td class="px-4 py-3">子 <code>view</code> 经 algebra 合并；子 transition 由 reconciler 协调</td><td class="px-4 py-3">子规则可以从同一份事实独立导出自己欠的工作</td><td class="px-4 py-3">组合不自动解决冲突、权限或资源 ownership</td></tr>
-              <tr><td class="px-4 py-3 font-medium text-ink">reconciliation</td><td class="px-4 py-3">runtime 从当前 transition 集里筛出 enabled 的工作；日志更新后作废旧快照重算</td><td class="px-4 py-3">transition key 同时说明工作是什么、以及已记录的结果不再重跑</td><td class="px-4 py-3">它协调的是工作，不是 DOM patch；transition 不是 <code>useEffect</code></td></tr>
-              <tr><td class="px-4 py-3 font-medium text-ink">Effect 外部边界</td><td class="px-4 py-3"><code>ExternalEffect</code> 在 runtime 里调外部服务，产出新 event</td><td class="px-4 py-3">effect 之后、append 之前崩溃，缺 key 的工作会重驱；at-least-once</td><td class="px-4 py-3">React 的依赖数组和 cleanup 没有 keyed result、日志去重或幂等协议</td></tr>
-              <tr><td class="px-4 py-3 font-medium text-ink">key / identity</td><td class="px-4 py-3">transition key 对应完成该工作所需的 event key</td><td class="px-4 py-3">replay 之后能找到同一项工作和同一份输入</td><td class="px-4 py-3">和 React list key 的 UI 局部 identity 完全是两回事</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+        <article>
+          <section id="sec-background">
+            <h2>背景与核心问题</h2>
+            <p>在 Agent 架构讨论中，常常出现一种推论：既然 React 的 Effect 具备 Cleanup 机制，DeepSeek Harness 也宣称支持 Reversible Effects，那么 Agent 的工具调用与外部副作用就能够像前端状态一样被通用回滚。</p>
+            <blockquote>React 的 Effect 有 cleanup → DeepSeek Harness 声明 reversible → 因此 Agent 的工具调用可以物理 rollback。</blockquote>
+            <p>这种推论混淆了不同系统层级中的「可逆」语义。React 清理的是前端连接与订阅；DeepSeek Harness 回退的是插件装配生命周期与未确认物理写入；Tardigrade 依靠 Key 进行重放去重。三者在底层分层上处于完全不同的抽象维度，均不具备对外部世界副作用的通用撤销能力。</p>
+          </section>
 
-      <section class="mt-12" data-report-section="dsh-scope" aria-labelledby="dsh-scope-title">
-        <h2 id="dsh-scope-title" class="text-2xl font-semibold">DSH 的「可逆」在哪一层</h2>
-        <p class="mt-4 max-w-4xl leading-7 text-slate-700">DSH 架构文档在 Cordis 插件的上下文里使用 <em>reversible effects</em>。插件可以注册 prompt 区块、tool schema、模型适配器、provider、listener 和资源；插件卸载时，disposer 取消这些进程内注册。这是插件系统的生命周期治理，目的是热重载、配置替换或 agent scope 销毁后不留悬挂资源。<a class="text-accent underline underline-offset-4" href="#source-s3">来源 S3</a></p>
-        <p class="mt-4 max-w-4xl leading-7 text-slate-700">另有两处更窄的 rollback：</p>
-        <ul class="mt-2 max-w-4xl list-disc space-y-2 pl-6 leading-7 text-slate-700">
-          <li>agent 创建时如果 setup/commit/owner disposal 出错，未发布的临时 session、agent 和 scope 会被撤回，半组装的对象不会暴露出去。</li>
-          <li>JSONL/Zstd 批次 append 或 <code>fsync</code> 失败时，持久化 adapter 把文件截断回这批之前的长度，读者看不到写了一半的尾巴。它保护的是尚未确认的物理写入，不是已提交逻辑事件的 undo。</li>
-        </ul>
-        <p class="mt-4 max-w-4xl leading-7 text-slate-700">DSH 的 session 本身是 append-only 的 durable facts，message history 从 event log 派生。崩溃恢复不删除、不倒退事实；它在日志尾部补上 synthetic 的 <code>tool/result</code>、<code>step/end</code>、<code>turn/end</code>，让 transcript 对 provider 来说是合法闭合的。<a class="text-accent underline underline-offset-4" href="#source-s5">来源 S5</a></p>
-      </section>
+          <section id="sec-conclusions">
+            <h2>直接结论</h2>
+            <div class="cards-grid">
+              <div class="conclusion-card">
+                <div>
+                  <span class="badge">结论 01</span>
+                  <p><strong>React 的核心价值在于纯推导、受控提交与外部执行的三层分相。</strong> 其模型解释了内存计算为何可以安全重算与丢弃，但本身不提供持久化日志或跨进程故障恢复。</p>
+                </div>
+                <a href="#sec-react">查看 React 分相论述 →</a>
+              </div>
+              <div class="conclusion-card">
+                <div>
+                  <span class="badge">结论 02</span>
+                  <p><strong>Tardigrade 将分相模型延伸为由不可变日志驱动的持久化执行（Durable Execution）。</strong> 依靠 Key 驱动 At-least-once 恢复，但无法在物理上撤销已生效的外部副作用。</p>
+                </div>
+                <a href="#sec-tardigrade">查看 Tardigrade 映射 →</a>
+              </div>
+              <div class="conclusion-card">
+                <div>
+                  <span class="badge">结论 03</span>
+                  <p><strong>DeepSeek Harness 的 Reversible Effects 严格局限于插件装配与进程内上下文资源。</strong> 插件卸载时的 Disposer 清理不涵盖已提交的会话历史与外部工具执行。</p>
+                </div>
+                <a href="#sec-dsh">查看 DSH 范围 →</a>
+              </div>
+              <div class="conclusion-card">
+                <div>
+                  <span class="badge">结论 04</span>
+                  <p><strong>面对中断导致的结果缺失，Tardigrade 与 DSH 采取了对立策略。</strong> Tardigrade 默认重新派发（At-least-once）；DSH 标定为未知结果交由模型判断或人工介入。</p>
+                </div>
+                <a href="#sec-comparison">查看故障恢复对比 →</a>
+              </div>
+              <div class="conclusion-card">
+                <div>
+                  <span class="badge">结论 05</span>
+                  <p><strong>对 JAI 架构的指导原则。</strong> 吸收 React 的纯推导隔离与 Tardigrade 的动作 Identity，对未知工具结果保持判定为 <code>indeterminate_tool</code> 并挂起的保守策略。</p>
+                </div>
+                <a href="#sec-impact">查看工程落地取舍 →</a>
+              </div>
+            </div>
+          </section>
 
-      <section class="mt-12" data-report-section="visual" aria-labelledby="visual-title">
-        <h2 id="visual-title" class="text-2xl font-semibold">共同原则与发生分歧的边界</h2>
-        <figure class="mt-5 border border-slate-300 bg-white p-4 sm:p-8">
-          <svg class="h-auto w-full" viewBox="0 0 1080 610" role="img" aria-labelledby="diagram-title diagram-description">
-            <title id="diagram-title">React 的分相原则，以及 Tardigrade 和 DeepSeek Harness 对外部副作用缺失结果的不同处理</title>
-            <desc id="diagram-description">上方是共同的纯推导、明确外部边界、记录事实路径。下方是外部结果未被记录时的三个不同层次：React 未定义 durable recovery，Tardigrade 重驱 keyed effect，DeepSeek Harness 标为 unknown 并采取保守恢复。青色表示可由已确认输入推导的部分，橙色表示不可判定的外部副作用窗口。</desc>
-            <defs>
-              <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#64748b"></path></marker>
-              <marker id="accent-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#0f766e"></path></marker>
-              <marker id="warning-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#c2410c"></path></marker>
-            </defs>
-            <path d="M275 132 H380" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#accent-arrow)"></path>
-            <path d="M700 132 H805" fill="none" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"></path>
-            <path d="M540 202 V274" fill="none" stroke="#c2410c" stroke-width="3" stroke-dasharray="8 7" marker-end="url(#warning-arrow)"></path>
-            <path d="M535 380 H245" fill="none" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"></path>
-            <path d="M540 380 V432" fill="none" stroke="#c2410c" stroke-width="3" marker-end="url(#warning-arrow)"></path>
-            <path d="M545 380 H835" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#accent-arrow)"></path>
+          <section id="sec-react">
+            <h2>React 架构思想对 Agent Harness 的映射</h2>
+            <div class="feature-box">
+              <h3>1. 纯推导、受控提交与外部执行的三层隔离</h3>
+              <p>React 的渲染管道严格分为纯 Render 计算、原子 Commit 提交与异步 Effect 同步三个阶段。计算阶段的纯函数特性使得渲染过程可以安全暂停与丢弃。搬到 Agent Harness 中，对应着清晰的三层边界：</p>
+              <pre><code>已提交的不可变事实（Durable Facts / Event Log）
+                   │
+                   ▼
+纯函数 Projection / Reducer（计算视图状态、权限结论、待执行 Action 与模型上下文）
+                   │
+                   ▼
+受控 Commit（记录决策结果或前置执行意图）
+                   │
+                   ▼
+外部 Executor（执行 LLM 推理、工具调用、文件修改与网络交互）
+                   │
+                   ▼
+执行结果作为新的 Durable Event 追加落盘，进入下一轮推导</code></pre>
+              <p>这种隔离保证了状态推导与决策重算绝不会意外触发外部工具，系统可基于历史事实进行确定性全量重放。</p>
+            </div>
 
-            <rect x="45" y="65" width="230" height="135" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
-            <text x="160" y="114" text-anchor="middle" fill="#172033" font-size="21" font-weight="700" font-family="system-ui, sans-serif">已确认输入</text>
-            <text x="160" y="147" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">snapshot / durable facts</text>
-            <text x="160" y="170" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">policy / observation</text>
+            <div class="feature-box">
+              <h3>2. 单一事实源与最小推导状态</h3>
+              <p>React 主张只持久化无法通过计算推导的最小状态集合。映射到 Agent 系统：运行期状态（当前视图、候选工具集、消息上下文）应始终作为持久化事件日志的只读投影，避免在数据库中维护多份易产生状态漂移的可变实体。</p>
+            </div>
 
-            <rect x="380" y="65" width="320" height="135" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
-            <text x="540" y="112" text-anchor="middle" fill="#172033" font-size="21" font-weight="700" font-family="system-ui, sans-serif">纯 projection / reducer</text>
-            <text x="540" y="144" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">state、view、候选 action</text>
-            <text x="540" y="168" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">可重算、可中断，不触及外界</text>
+            <div class="feature-box">
+              <h3>3. 确定性 Reducer 与稳定实体标识</h3>
+              <p>React Reducer 将事件输入与状态计算解耦。在 Agent 中，权限判定、审批流转、恢复判定等确定性逻辑均应保持纯函数特性。同时，Session、Operation、Tool Invocation 必须具备全局唯一的稳定 Identity，这是跨崩溃重放去重与对账的基础。</p>
+            </div>
 
-            <rect x="805" y="65" width="230" height="135" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="2"></rect>
-            <text x="920" y="114" text-anchor="middle" fill="#172033" font-size="21" font-weight="700" font-family="system-ui, sans-serif">外部 executor</text>
-            <text x="920" y="147" text-anchor="middle" fill="#9a3412" font-size="15" font-family="system-ui, sans-serif">模型、工具、网络、文件</text>
-            <text x="920" y="170" text-anchor="middle" fill="#9a3412" font-size="15" font-family="system-ui, sans-serif">需要独立执行协议</text>
+            <div class="feature-box">
+              <h3>4. Effect 作为同步边界与其非回滚性</h3>
+              <p>React Effect 用于同步外部系统，Cleanup 仅能释放进程内资源（如取消订阅、关闭连接）。一旦外部操作产生持久影响（如写入磁盘、扣费 API 调用、发送邮件），Cleanup 无法实现业务回滚。Concurrent React 允许中断的也仅仅是 DOM Commit 前的纯计算，无法撤销已派发的外部调用。</p>
+            </div>
+          </section>
 
-            <rect x="350" y="274" width="380" height="106" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="2"></rect>
-            <text x="540" y="316" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">外部工作可能已发生，结果却未记录</text>
-            <text x="540" y="347" text-anchor="middle" fill="#9a3412" font-size="15" font-family="system-ui, sans-serif">这是 durability / recovery 的问题，不是 UI cleanup</text>
+          <section id="sec-tardigrade">
+            <h2>Tardigrade：基于事件日志的持久化 Harness</h2>
+            <p>Tardigrade 完整实践了「纯推导先于副作用」的模型，将不可变事件日志作为唯一事实源，建立了具备崩溃恢复能力的执行底座：</p>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>React 原则</th>
+                    <th>Tardigrade 对应实现</th>
+                    <th>补充的持久化语义</th>
+                    <th>本质差异与边界</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>纯 Render</strong></td>
+                    <td>Component 采用 <code>initial → step → output</code>，从 Event Log 投影出 State、View 与 Transitions</td>
+                    <td>完整事件日志支持确定性重放；活跃运行时仅订阅 Tail 流</td>
+                    <td>React Render 仅服务于内存虚拟树，无底层持久化事件日志</td>
+                  </tr>
+                  <tr>
+                    <td><strong>组件组合</strong></td>
+                    <td>子 View 通过代数合并，子 Transition 由 Reconciler 统一协调调度</td>
+                    <td>多个子业务规则可基于同一份持久化事实独立推导欠缺的工作</td>
+                    <td>组合本身不自动解决外部并发写入冲突与权限归属</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Reconciliation</strong></td>
+                    <td>Reconciler 过滤出尚未执行的 Transition，日志追加后作废快照重新计算</td>
+                    <td>Transition Key 作为防重标识，已记录结果的操作不再重复触发</td>
+                    <td>调度的是异步外部工作而非 DOM Patch；Transition 不等同于 <code>useEffect</code></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Effect 边界</strong></td>
+                    <td><code>ExternalEffect</code> 在 Runtime 中调用外部服务并产出新事件落盘</td>
+                    <td>步骤在触发后、落盘前崩溃时，Reconciler 重新派发执行（At-least-once）</td>
+                    <td>React Cleanup 不具备基于持久化 Key 的日志去重或幂等保证</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Key / Identity</strong></td>
+                    <td>Transition Key 严格对应持久化事件中的唯一标识</td>
+                    <td>崩溃重启后能精准定位同一项工作与其输入参数</td>
+                    <td>与 React 仅用于 UI 列表 Diff 的局部 Key 属于完全不同的概念</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
 
-            <rect x="45" y="432" width="270" height="130" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"></rect>
-            <text x="180" y="474" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">React</text>
-            <text x="180" y="505" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">Effect cleanup 可释放部分资源</text>
-            <text x="180" y="528" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">未定义 durable recovery / undo</text>
+          <section id="sec-dsh">
+            <h2>DeepSeek Harness「可逆」机制的具体层次</h2>
+            <p>DeepSeek Harness 架构中所述的 <em>Reversible Effects</em>，其作用范围由具体上下文严格限定在三个层次：</p>
+            <ul>
+              <li><strong>Cordis 插件系统的生命周期治理</strong>：插件向上下文注册 Tool Schema、Prompt、Provider、Event Listener 等资源，卸载时由 Disposer 逆序注销，防止热重载或销毁后的资源泄漏。这是标准的依赖注入生命周期管理，不涉及业务日志回滚。</li>
+              <li><strong>未就绪临时状态的回滚</strong>：在 Agent 初始化失败时，未发布的临时 Scope 会被整体回收；在底层 JSONL 物理写入中断时，Adapter 会截断文件至上一个有效偏移量，防止脏读。</li>
+              <li><strong>已提交事实的只追加闭环</strong>：对于已写入 <code>SessionEvent</code> 的业务事实严格遵循只追加原则。崩溃恢复时在日志尾部合成 <code>TOOL_OUTCOME_UNKNOWN</code> 虚拟结果，将未知状态显式交由模型与用户决策。</li>
+            </ul>
+          </section>
 
-            <rect x="405" y="432" width="270" height="130" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"></rect>
-            <text x="540" y="474" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">Tardigrade</text>
-            <text x="540" y="505" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">缺 result key → 重驱同一 effect</text>
-            <text x="540" y="528" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">at-least-once；下游需幂等</text>
+          <section id="sec-visual">
+            <h2>系统分层与副作用分歧图示</h2>
+            <figure class="diagram-figure">
+              <svg viewBox="0 0 1080 610" role="img" aria-labelledby="diagram-title diagram-description">
+                <title id="diagram-title">React 分相原则与 Tardigrade、DSH 对未记录外部结果的不同容错策略</title>
+                <desc id="diagram-description">顶部展示纯推导、受控提交与外部执行路径；底部展示中途崩溃时 React、Tardigrade 与 DeepSeek Harness 不同的恢复语义。</desc>
+                <defs>
+                  <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#64748b"></path></marker>
+                  <marker id="accent-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#0f766e"></path></marker>
+                  <marker id="warning-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#c2410c"></path></marker>
+                </defs>
+                <path d="M275 132 H380" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#accent-arrow)"></path>
+                <path d="M700 132 H805" fill="none" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"></path>
+                <path d="M540 202 V274" fill="none" stroke="#c2410c" stroke-width="3" stroke-dasharray="8 7" marker-end="url(#warning-arrow)"></path>
+                <path d="M535 380 H245" fill="none" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"></path>
+                <path d="M540 380 V432" fill="none" stroke="#c2410c" stroke-width="3" marker-end="url(#warning-arrow)"></path>
+                <path d="M545 380 H835" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#accent-arrow)"></path>
 
-            <rect x="765" y="432" width="270" height="130" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
-            <text x="900" y="474" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">DeepSeek Harness</text>
-            <text x="900" y="505" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">outcome unknown → repair / 核验</text>
-            <text x="900" y="528" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">不盲目重试有副作用调用</text>
-          </svg>
-          <figcaption class="mt-5 max-w-4xl text-sm leading-6 text-slate-600">上方是 React 可迁移的分相原则；下方展示三个系统在“副作用已发生但事实未完整记录”时的不同保证。图没有宣称 React、Tardigrade 或 DSH 具有通用外部操作回滚能力。</figcaption>
-        </figure>
-      </section>
+                <rect x="45" y="65" width="230" height="135" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
+                <text x="160" y="114" text-anchor="middle" fill="#172033" font-size="21" font-weight="700" font-family="system-ui, sans-serif">已确认输入</text>
+                <text x="160" y="147" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">snapshot / durable facts</text>
+                <text x="160" y="170" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">policy / observation</text>
 
-      <section class="mt-12" data-report-section="three-way" aria-labelledby="three-way-title">
-        <h2 id="three-way-title" class="text-2xl font-semibold">三者对照：故障后怎么守住事实</h2>
-        <p class="mt-4 max-w-4xl leading-7 text-slate-700">React 给的是纯度和生命周期的思维模型。Tardigrade 用 event log 和 transition key 建了一个可重驱的 durable execution 模型。DSH 把「可逆」严格限制在装配生命周期和未提交的本地操作上，对已发出的外部调用采取保守恢复。它们不是三个可互换的 workflow engine。</p>
-        <div class="mt-5 overflow-x-auto border border-slate-300 bg-white">
-          <table class="min-w-full text-left text-sm leading-6">
-            <thead class="bg-slate-100 text-slate-700"><tr><th class="px-4 py-3 font-semibold">问题</th><th class="px-4 py-3 font-semibold">React</th><th class="px-4 py-3 font-semibold">Tardigrade</th><th class="px-4 py-3 font-semibold">DeepSeek Harness</th></tr></thead>
-            <tbody class="divide-y divide-slate-200 text-slate-700">
-              <tr><th class="px-4 py-3 font-medium text-ink">什么可以安全重复</th><td class="px-4 py-3">未 commit 的纯 render</td><td class="px-4 py-3">从 log 派生 component/projection</td><td class="px-4 py-3">event-log/history 的确定性派生；未发布的局部装配</td></tr>
-              <tr><th class="px-4 py-3 font-medium text-ink">外部工作怎么触发</th><td class="px-4 py-3">commit 后由 Effect 同步外部系统</td><td class="px-4 py-3">runtime 结算 enabled 的 keyed transition</td><td class="px-4 py-3">checkpoint 之后 dispatch model/tool execution</td></tr>
-              <tr><th class="px-4 py-3 font-medium text-ink">重复运行的默认</th><td class="px-4 py-3">Strict Mode 在开发期探测 setup/cleanup；不承诺 I/O 安全</td><td class="px-4 py-3">key 没有 result 就重驱；外部 effect at-least-once</td><td class="px-4 py-3">call 有记录、result 缺失就标 outcome unknown；不盲目重试有副作用的工具</td></tr>
-              <tr><th class="px-4 py-3 font-medium text-ink">「可逆」的含义</th><td class="px-4 py-3">teardown/cleanup 同步资源</td><td class="px-4 py-3">不是 undo；靠幂等 key 控制重复 effect</td><td class="px-4 py-3">plugin registration/resource disposal；未提交的装配和写入可回退</td></tr>
-              <tr><th class="px-4 py-3 font-medium text-ink">durable truth</th><td class="px-4 py-3">React 不定义</td><td class="px-4 py-3">immutable event log</td><td class="px-4 py-3">append-only SessionEvent log</td></tr>
-              <tr><th class="px-4 py-3 font-medium text-ink">外部副作用的最终保证</th><td class="px-4 py-3">不定义</td><td class="px-4 py-3">下游幂等时可近似只生效一次</td><td class="px-4 py-3">durable intent，不是 exactly-once；未知结果交外部核验或用户决策</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+                <rect x="380" y="65" width="320" height="135" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
+                <text x="540" y="112" text-anchor="middle" fill="#172033" font-size="21" font-weight="700" font-family="system-ui, sans-serif">纯 projection / reducer</text>
+                <text x="540" y="144" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">state、view、候选 action</text>
+                <text x="540" y="168" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">可重算、可中断，不触及外界</text>
 
-      <section class="mt-12" aria-labelledby="comparison-title">
-        <h2 id="comparison-title" class="text-2xl font-semibold">对 JAI 的设计取舍</h2>
-        <div class="mt-5 overflow-x-auto border border-slate-300 bg-white">
-          <table class="min-w-full text-left text-sm leading-6">
-            <thead class="bg-slate-100 text-slate-700"><tr><th class="px-4 py-3 font-semibold">借鉴来源</th><th class="px-4 py-3 font-semibold">应吸收</th><th class="px-4 py-3 font-semibold">不应外推</th></tr></thead>
-            <tbody class="divide-y divide-slate-200 text-slate-700">
-              <tr><th class="px-4 py-3 font-medium text-ink">React</th><td class="px-4 py-3">纯 projection、最小事实、单一 owner、显式状态/identity。</td><td class="px-4 py-3">Effect cleanup 不能当作工具 undo；React key 不是 durable idempotency key。</td></tr>
-              <tr><th class="px-4 py-3 font-medium text-ink">Tardigrade</th><td class="px-4 py-3">将允许恢复的 action 从 durable evidence 纯地派生，并明确 action identity/完成判据。</td><td class="px-4 py-3">不默认采用 at-least-once 重跑，也不为交互式 Session 预建 actor graph。</td></tr>
-              <tr><th class="px-4 py-3 font-medium text-ink">DeepSeek Harness</th><td class="px-4 py-3">将 extension/connector 的注册、资源与 teardown 作为独立 lifecycle contract。</td><td class="px-4 py-3">插件卸载不等于撤销 journal 或外部工具的已发生影响。</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+                <rect x="805" y="65" width="230" height="135" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="2"></rect>
+                <text x="920" y="114" text-anchor="middle" fill="#172033" font-size="21" font-weight="700" font-family="system-ui, sans-serif">外部 executor</text>
+                <text x="920" y="147" text-anchor="middle" fill="#9a3412" font-size="15" font-family="system-ui, sans-serif">模型、工具、网络、文件</text>
+                <text x="920" y="170" text-anchor="middle" fill="#9a3412" font-size="15" font-family="system-ui, sans-serif">需要独立执行协议</text>
 
-      <section class="mt-12 grid gap-8 lg:grid-cols-2">
-        <section data-report-section="impact" aria-labelledby="impact-title">
-          <h2 id="impact-title" class="text-2xl font-semibold">对本项目的影响</h2>
-          <ol class="mt-5 max-w-4xl list-decimal space-y-3 border-l-4 border-accent bg-white px-5 py-4 leading-7 text-slate-700">
-            <li>把 React 原则当设计检查用：任何新逻辑先回答它属于纯 projection、durable commit 还是 external executor 中的哪一层，不要跨层。state、projection、owner、ID 都按「最小事实、单向读取、稳定 identity」来。</li>
-            <li>从 Tardigrade 借「<code>owed action = f(durable facts)</code>」这个窄形式：允许自动恢复的 action 必须由纯 recovery reducer 导出，带稳定 identity、冻结的 inputs/config、前提记录和完成判据。不要为了用 component 这套词汇引入通用 actor graph。</li>
-            <li>DSH 的可逆 lifecycle 适合 JAI 的 extension/connector 装配：注册 listener、tool、prompt/provider 和长生命周期资源时，owner 要明确 teardown/disposer。这和 journal 事实、工具执行必须分开。JAI 是否已有等价 lifecycle contract，要在具体 extension/connector 领域单独审计后再改。</li>
-            <li>保持 JAI 对未知工具结果的保守策略。只有明确声明了下游 idempotency key、读后校验或补偿机制的 tool/provider，才可能从 <code>indeterminate_tool</code> 升级为 auto-retry。不把 Tardigrade 的 at-least-once 当默认。</li>
-            <li>做只读 replay/trace 时，重放的是纯 projection 和已有 observation。不要把 React 的 concurrent render 或 DSH 的 plugin unload 误读为可以安全取消或回滚工作区、用户授权、外部 API。</li>
-          </ol>
-        </section>
-        <section data-report-section="unknowns" aria-labelledby="unknowns-title">
-          <h2 id="unknowns-title" class="text-2xl font-semibold">尚未确认</h2>
-          <div class="mt-5 border border-dashed border-slate-400 bg-white px-5 py-4 leading-7 text-slate-700">JAI 每个 provider/tool 的幂等键、读后校验与补偿能力；以及 DSH 的 Cordis lifecycle 与 JAI extension/connector 的具体映射。在这些事实明确前，不扩大自动重试。</div>
-        </section>
-      </section>
+                <rect x="350" y="274" width="380" height="106" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="2"></rect>
+                <text x="540" y="316" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">外部工作已派发，但结果未落盘</text>
+                <text x="540" y="347" text-anchor="middle" fill="#9a3412" font-size="15" font-family="system-ui, sans-serif">持久化与崩溃恢复问题，非 UI Cleanup</text>
 
-      <section class="mt-12 border-t border-slate-300 pt-8" data-report-section="sources" aria-labelledby="sources-title">
-        <h2 id="sources-title" class="text-2xl font-semibold">来源</h2>
-        <ol class="mt-5 space-y-4 text-sm leading-6 text-slate-700">
-          <li id="source-s1" data-source-kind="primary"><p class="font-medium">[S1] React：纯 render、commit 与 Effect</p><a class="break-all text-accent underline underline-offset-4" href="https://react.dev/reference/rules/components-and-hooks-must-be-pure#why-does-purity-matter">React 官方文档</a><p>核验时文档版本：v19.2。</p></li>
-          <li id="source-s2" data-source-kind="primary"><p class="font-medium">[S2] Tardigrade：Why 与 component 模型</p><a class="break-all text-accent underline underline-offset-4" href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/docs/site/Why.mdx#L51-L73">官方固定源码链接</a><p>提交：c338df71a2765a3a599740456446d5ad97f28240。</p></li>
-          <li id="source-s3" data-source-kind="primary"><p class="font-medium">[S3] DeepSeek Harness：reversible effects 的插件上下文</p><a class="break-all text-accent underline underline-offset-4" href="https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/docs/architecture.md#L9-L13">官方固定源码链接</a><p>提交：76fda729799fe9b3848dbe2c211d4b231032b81e。</p></li>
-          <li id="source-s4" data-source-kind="primary"><p class="font-medium">[S4] Tardigrade：external effect 的 at-least-once 边界</p><a class="break-all text-accent underline underline-offset-4" href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/README.md#L246-L256">官方固定源码链接</a><p>提交：c338df71a2765a3a599740456446d5ad97f28240。</p></li>
-          <li id="source-s5" data-source-kind="primary"><p class="font-medium">[S5] DeepSeek Harness：checkpoint 和 unknown outcome</p><a class="break-all text-accent underline underline-offset-4" href="https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/session/session-checkpoint-policy/README.md#L139-L147">官方固定源码链接</a><p>提交：76fda729799fe9b3848dbe2c211d4b231032b81e。</p></li>
-          <li id="source-s6" data-source-kind="primary"><p class="font-medium">[S6] JAI：不确定工具结果的 recovery verdict</p><a class="break-all text-accent underline underline-offset-4" href="../../../packages/agent/src/harness/operations/recovery.ts#L113">JAI recovery.ts</a><p>JAI 固定 HEAD：e1620f4e4d01e14b7f28caaff3454803e5c0e5b5。</p></li>
-        </ol>
-      </section>
-    </main>
+                <rect x="45" y="432" width="270" height="130" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"></rect>
+                <text x="180" y="474" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">React</text>
+                <text x="180" y="505" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">Effect Cleanup 释放订阅与连接</text>
+                <text x="180" y="528" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">未定义持久化恢复或副作用回滚</text>
+
+                <rect x="405" y="432" width="270" height="130" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"></rect>
+                <text x="540" y="474" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">Tardigrade</text>
+                <text x="540" y="505" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">缺失 Result Key → 重新派发执行</text>
+                <text x="540" y="528" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">At-least-once；依赖下游幂等</text>
+
+                <rect x="765" y="432" width="270" height="130" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"></rect>
+                <text x="900" y="474" text-anchor="middle" fill="#172033" font-size="20" font-weight="700" font-family="system-ui, sans-serif">DeepSeek Harness</text>
+                <text x="900" y="505" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">合成 Unknown 结果 → 状态闭环</text>
+                <text x="900" y="528" text-anchor="middle" fill="#475569" font-size="15" font-family="system-ui, sans-serif">禁止盲目重试非幂等调用</text>
+              </svg>
+              <figcaption>图示说明：顶部展示纯推导与外部执行的分相隔离；底部展示当外部副作用已发生但结果未落盘时，三个系统截然不同的语义保证。</figcaption>
+            </figure>
+          </section>
+
+          <section id="sec-comparison">
+            <h2>故障恢复与状态一致性三方对比</h2>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>核心维度</th>
+                    <th>React (v19.2)</th>
+                    <th>Tardigrade (<code>c338df7</code>)</th>
+                    <th>DeepSeek Harness (<code>76fda72</code>)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>允许安全重试的范围</strong></td>
+                    <td>未 Commit 的纯 Render 计算</td>
+                    <td>从 Event Log 派生的 Component 状态与 Projection</td>
+                    <td>从历史日志中的确定性重推导；未发布的局部插件装配</td>
+                  </tr>
+                  <tr>
+                    <td><strong>外部副作用触发时机</strong></td>
+                    <td>Commit 完成后由 Effect 同步执行</td>
+                    <td>Reconciler 调度启用的 Keyed Transition</td>
+                    <td>意图写入 Checkpoint 后派发 Model / Tool 执行</td>
+                  </tr>
+                  <tr>
+                    <td><strong>崩溃恢复默认策略</strong></td>
+                    <td>开发期 Strict Mode 重复调用以排查隐患；无生产 I/O 恢复保证</td>
+                    <td>缺失结果 Key 则重新派发执行（At-least-once）</td>
+                    <td>缺失结果则标记为 <code>TOOL_OUTCOME_UNKNOWN</code>，禁止盲目重试非幂等操作</td>
+                  </tr>
+                  <tr>
+                    <td><strong>「可逆」的真实含义</strong></td>
+                    <td>释放前端订阅、定时器与事件监听器</td>
+                    <td>依赖 Key 去重防止重复生效，非物理撤销</td>
+                    <td>插件注册与临时装配的注销清理；底层未完成写入截断</td>
+                  </tr>
+                  <tr>
+                    <td><strong>持久化事实源</strong></td>
+                    <td>框架不定义（纯内存模型）</td>
+                    <td>不可变 SQLite Event Log 表（<code>seq, key, event</code>）</td>
+                    <td>只追加 <code>SessionEvent</code> 流（JSONL / Zstd）</td>
+                  </tr>
+                  <tr>
+                    <td><strong>外部副作用最终保证</strong></td>
+                    <td>框架不提供保证</td>
+                    <td>下游支持幂等键时可实现近似 Exactly-once</td>
+                    <td>保证执行意图持久化；不确定状态交由环境校验或人工对账</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="sec-impact">
+            <h2>对 JAI 架构演进的具体取舍</h2>
+            <ol class="impact-list">
+              <li><strong>严格维持三层执行边界</strong>：业务逻辑必须显式归属于纯 Projection、持久化 Commit 或外部 Executor 之一。Projection 与 Reducer 保持纯函数特性，支持基于历史 Journal 进行随时无害的全量重放。</li>
+              <li><strong>动作 Identity 与完成判据</strong>：参考 Tardigrade 的 Transition 模型，所有异步操作必须在派发前分配全局唯一的动作标识与前置记录，确保系统在恢复时能准确判定该步骤的状态。</li>
+              <li><strong>插件生命周期与业务状态解耦</strong>：吸收 DSH 的 Cordis 模式，为 Extension 与 Connector 建立统一的 Disposer 注销链，使其生命周期独立于持久化业务日志。</li>
+              <li><strong>坚持保守的未知状态恢复策略</strong>：对于崩溃时已派发但未落盘结果的工具调用，保持判定为 <code>indeterminate_tool</code> 并安全挂起。在下游工具未显式声明幂等协议前，绝不采用无条件的 At-least-once 重跑。</li>
+              <li><strong>明确只读回放边界</strong>：调试 Trace、Session Fork 与历史 Replay 仅限于纯状态派生与已记录的观察结果，严禁向外部环境重复触发副作用。</li>
+            </ol>
+          </section>
+
+          <section id="sec-sources">
+            <h2>来源与参考链接</h2>
+            <div class="source-item" id="source-s1">
+              <p class="source-title">[S1] React 官方文档：Render and Commit 与纯组件规则</p>
+              <div class="source-meta">
+                <a href="https://react.dev/reference/rules/components-and-hooks-must-be-pure#why-does-purity-matter" target="_blank" rel="noopener">react.dev 官方规范</a> · 核验版本：v19.2
+              </div>
+            </div>
+            <div class="source-item" id="source-s2">
+              <p class="source-title">[S2] Tardigrade 官方设计：Why 与 Component 状态机</p>
+              <div class="source-meta">
+                <a href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/docs/site/Why.mdx#L51-L73" target="_blank" rel="noopener">clavia-labs/tardigrade 源码</a> · Commit：<code>c338df7</code>
+              </div>
+            </div>
+            <div class="source-item" id="source-s3">
+              <p class="source-title">[S3] DeepSeek Harness：Reversible Effects 与 Cordis 生命周期</p>
+              <div class="source-meta">
+                <a href="https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/docs/architecture.md#L9-L13" target="_blank" rel="noopener">deepseek-ai/deepseek-harness 源码</a> · Commit：<code>76fda72</code>
+              </div>
+            </div>
+            <div class="source-item" id="source-s4">
+              <p class="source-title">[S4] Tardigrade：External Effect 的 At-least-once 边界与 Key 语义</p>
+              <div class="source-meta">
+                <a href="https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/README.md#L246-L256" target="_blank" rel="noopener">clavia-labs/tardigrade README</a> · Commit：<code>c338df7</code>
+              </div>
+            </div>
+            <div class="source-item" id="source-s5">
+              <p class="source-title">[S5] DeepSeek Harness：Checkpoint Policy 与 Unknown Outcome 修复路径</p>
+              <div class="source-meta">
+                <a href="https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/session/session-checkpoint-policy/README.md#L139-L147" target="_blank" rel="noopener">deepseek-ai/deepseek-harness Policy</a> · Commit：<code>76fda72</code>
+              </div>
+            </div>
+            <div class="source-item" id="source-s6">
+              <p class="source-title">[S6] JAI：不确定工具结果判定与双 Journal 事实归属</p>
+              <div class="source-meta">
+                <a href="../../../packages/agent/src/harness/operations/recovery.ts#L113">packages/agent/src/harness/operations/recovery.ts</a> · JAI 源码
+              </div>
+            </div>
+          </section>
+        </article>
+
+        <footer class="colophon">
+          本报告基于固定提交源码与官方技术规范生成。事实与逻辑依据参见同目录的 <a href="react-tardigrade-deepseek-harness-2026-09-04.md">react-tardigrade-deepseek-harness-2026-09-04.md</a>。
+        </footer>
+      </main>
+    </div>
+
+    <script>
+(function () {
+  var root = document.documentElement;
+  var stored = null;
+  try { stored = localStorage.getItem('theme'); } catch (e) {}
+  if (stored === 'dark' || stored === 'light') root.setAttribute('data-theme', stored);
+
+  var toggle = document.getElementById('theme-toggle');
+  toggle.addEventListener('click', function () {
+    var systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var current = root.getAttribute('data-theme') || (systemDark ? 'dark' : 'light');
+    var next = current === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch (e) {}
+  });
+
+  var headings = Array.prototype.slice.call(document.querySelectorAll('article h2'));
+  var containers = document.querySelectorAll('.toc-links');
+  headings.forEach(function (h) {
+    var section = h.parentElement;
+    containers.forEach(function (c) {
+      var a = document.createElement('a');
+      a.href = '#' + section.id;
+      a.className = 'toc-link';
+      a.textContent = h.textContent;
+      a.dataset.target = section.id;
+      c.appendChild(a);
+    });
+  });
+
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc-link'));
+  function setActive(id) {
+    links.forEach(function (l) { l.classList.toggle('active', l.dataset.target === id); });
+  }
+  function updateActive() {
+    var line = window.innerHeight * 0.3;
+    var current = headings.length ? headings[0].parentElement.id : null;
+    for (var i = 0; i < headings.length; i++) {
+      if (headings[i].getBoundingClientRect().top <= line) current = headings[i].parentElement.id;
+    }
+    if (current) setActive(current);
+  }
+  window.addEventListener('scroll', updateActive, { passive: true });
+  window.addEventListener('resize', updateActive);
+  updateActive();
+
+  var mobile = document.getElementById('toc-mobile');
+  var mtoggle = document.getElementById('toc-toggle');
+  mtoggle.addEventListener('click', function () {
+    var open = mobile.classList.toggle('open');
+    mtoggle.setAttribute('aria-expanded', String(open));
+  });
+  mobile.querySelectorAll('.toc-panel').forEach(function (panel) {
+    panel.addEventListener('click', function (ev) {
+      if (ev.target.tagName === 'A') {
+        mobile.classList.remove('open');
+        mtoggle.setAttribute('aria-expanded', 'false');
+      }
+    });
+  });
+})();
+</script>
   </body>
 </html>

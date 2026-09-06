@@ -1,121 +1,115 @@
-# React、Tardigrade、DeepSeek Harness：三个「可逆」说的是三件不同的事
+# React、Tardigrade 与 DeepSeek Harness：三个「可逆」语义的系统边界
 
-核验日期：2026-09-04（Asia/Shanghai）。React 以官方文档标注的 v19.2 为准；Tardigrade 固定到 [`clavia-labs/tardigrade@c338df71a2765a3a599740456446d5ad97f28240`](https://github.com/clavia-labs/tardigrade/tree/c338df71a2765a3a599740456446d5ad97f28240)；DeepSeek Harness（下文简称 DSH）固定到 [`deepseek-ai/deepseek-harness@76fda729799fe9b3848dbe2c211d4b231032b81e`](https://github.com/deepseek-ai/deepseek-harness/tree/76fda729799fe9b3848dbe2c211d4b231032b81e)。固定版本是为了不让后续演化的实现混进结论。
+核验日期：2026-09-04（Asia/Shanghai）。版本钉定：React 以官方文档 v19.2 为准；Tardigrade 固定至 [`clavia-labs/tardigrade@c338df71a2765a3a599740456446d5ad97f28240`](https://github.com/clavia-labs/tardigrade/tree/c338df71a2765a3a599740456446d5ad97f28240)；DeepSeek Harness（下文简称 DSH）固定至 [`deepseek-ai/deepseek-harness@76fda729799fe9b3848dbe2c211d4b231032b81e`](https://github.com/deepseek-ai/deepseek-harness/tree/76fda729799fe9b3848dbe2c211d4b231032b81e)。
 
-## 这份笔记回答什么
+## 背景与核心问题
 
-起因是一条推理链：「React 的 Effect 有 cleanup → DeepSeek Harness 说自己 reversible → 所以 agent 的工具调用可以 rollback」。这条链每一步用的「可逆」都是不同的意思，最后的结论站不住。笔记分别查了三者的文档和源码，说清每一个「可逆」到底覆盖到哪一层，再给 JAI 的判断。
+在 Agent 架构讨论中，常常出现一种推论：既然 React 的 Effect 具备 Cleanup 机制，DeepSeek Harness 也宣称支持 Reversible Effects，那么 Agent 的工具调用与外部副作用就能够像前端状态一样被通用回滚。
+
+这种推论混淆了不同系统层级中的「可逆」语义。本调研逐一核验三者的官方文档与源码实现，厘清各类机制的物理边界与设计取舍。
 
 ## 结论
 
-1. React 对 agent 有用的部分是它把工作分成三段：用稳定输入做纯计算；在受控的时机提交新状态；网络、时间、模型、工具调用这些外部操作放在单独一层。React 的 render/commit/Effect 解释了为什么纯计算可以重跑和丢弃。它没有提供 durable journal、幂等、补偿或跨进程恢复。[React 的 render/commit](https://react.dev/learn/render-and-commit)；[纯组件与 Hook](https://react.dev/reference/rules/components-and-hooks-must-be-pure#why-does-purity-matter)。
+1. **React 的核心价值在于纯推导、受控提交与外部执行的三层分相。** React 的 Render/Commit/Effect 模型解释了内存计算为何可以安全暂停、放弃或重算，但它完全运行在内存中，不提供持久化日志、幂等性保证或跨进程恢复协议。[React Render and Commit](https://react.dev/learn/render-and-commit)；[纯组件规则](https://react.dev/reference/rules/components-and-hooks-must-be-pure#why-does-purity-matter)。
+2. **Tardigrade 将分相模型延伸为由不可变日志驱动的持久化执行（Durable Execution）。** 组件从只追加事件日志（Event Log）中纯函数式计算当前状态与带 Key 的 Transition；Reconciler 负责驱动日志中尚未记录结果的工作并落盘。这套机制实现了 At-least-once 恢复，但无法在物理上撤销已经生效的外部副作用。[Tardigrade Why](https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/docs/site/Why.mdx#L51-L73)；[Transition 定义](https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/core/src/transition/transition.ts#L4-L16)。
+3. **DeepSeek Harness 的 Reversible Effects 严格局限于插件装配与进程内上下文资源。** Cordis 插件向进程内 Context 注册 Tool、Prompt、Provider 或事件监听器，插件卸载时由 Disposer 撤销注册。已提交的会话事件日志、物理文件修改及外部工具执行均不在撤销范围之内。[DSH 架构规范](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/docs/architecture.md#L9-L13)；[Cordis 生命周期与 Effect](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/docs/cordis-tutorial/02-lifecycle-and-effects.md#L67-L94)。
+4. **面对中途崩溃导致的结果缺失，Tardigrade 与 DSH 采取了对立的容错策略。** Tardigrade 默认重新执行（At-least-once），要求下游服务支持幂等去重；DSH 将中断步骤标定为 `TOOL_OUTCOME_UNKNOWN`，仅允许只读或幂等操作自动重试，有副作用的操作交由外部校验或人工决策。[Tardigrade Durability](https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/README.md#L246-L256)；[DSH Checkpoint Policy](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/session/session-checkpoint-policy/README.md#L139-L147)。
+5. **「React Cleanup → DSH Reversible → Agent Rollback」的逻辑链条在每一环均无法成立。** React 清理的是前端连接与订阅；DSH 回退的是插件生命周期与未提交的临时装配；Tardigrade 依靠 Key 进行重放去重。三者均不支持外部世界副作用的通用撤销。[React Effect 同步](https://react.dev/learn/synchronizing-with-effects#step-3-add-cleanup-if-needed)；[DSH 故障修复路径](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/core/session/src/repair.ts#L91-L134)。
+6. **对 JAI 架构的指导原则。** 借鉴 React 的纯推导与单向状态流，以及 Tardigrade 的确定性动作 Identity；在插件/连接器层采用 DSH 的 Disposer 清理机制；对未知工具结果保持判定为 `indeterminate_tool` 并安全挂起的保守恢复策略。[JAI 恢复判定](../../../packages/agent/src/harness/operations/recovery.ts#L113)；[JAI 事实归属规则](../../../AGENTS.md#L31)。
 
-2. Tardigrade 把这个分段做成了 durable execution。组件从不可变的 event log 纯地算出 `view` 和带 key 的 `transition`（还欠着的工作）；reconciler 只执行日志里还没有同 key 结果的工作，再把结果追加回日志。它从 React 借的是声明、组合、计算和执行分离这三样，没有借 React renderer。transition 也可以来自 statechart 或 reactor，它不等于 React Effect。[Tardigrade Why](https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/docs/site/Why.mdx#L51-L73)；[transition 定义](https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/core/src/transition/transition.ts#L4-L16)。
+## React 架构思想对 Agent Harness 的映射
 
-3. DSH 说的 **reversible effects** 指的是插件资源。Cordis 插件向进程内 context 注册 prompt、tool、provider、listener 等资源，插件卸载时由 disposer 撤销这些注册。另外两处也能回退：还没发布的 agent 局部装配，和还没完成的本地追加写入。已经提交的 session event、文件改动、外部工具调用都不在这个范围里。[DSH 架构说明](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/docs/architecture.md#L9-L13)；[Cordis 生命周期](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/docs/cordis-tutorial/02-lifecycle-and-effects.md#L67-L94)。
+React 虽然面向前端 UI 渲染，但其底层的状态计算与副作用隔离模型为 Agent Harness 提供了清晰的分层范式。
 
-4. 外部副作用崩溃后怎么办，Tardigrade 和 DSH 选了两条路。Tardigrade：缺 keyed result 就用同样输入再跑一次，at-least-once，要求下游按 key 幂等。DSH：先把意图写进 durable checkpoint；如果 tool call 有记录、result 没有，就把结果标成未知，只有 read-only 或幂等的调用可以重试，其他的交给外部核验或用户决定。[Tardigrade durability](https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/README.md#L246-L256)；[DSH checkpoint 限制](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/session/session-checkpoint-policy/README.md#L139-L147)。
+### 1. 纯推导、受控提交与外部执行的三层隔离
 
-5. 所以开头那条推理链断在每一环。React cleanup 处理的是连接、订阅这类同步资源；DSH 的可逆止于插件装配和未提交的本地资源；Tardigrade 的 keyed effect 是可恢复的重试协议，撤销不了外部世界。三者共同点只有一个：把纯推导和外部操作分开。它们没有共享任何通用的 undo 语义。[React Effect 与 cleanup](https://react.dev/learn/synchronizing-with-effects#step-3-add-cleanup-if-needed)；[DSH unknown outcome repair](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/core/session/src/repair.ts#L91-L134)。
+React 的执行管道严格分为三阶段：
 
-6. 对 JAI：React 当设计检查表用（纯 projection、明确 owner、显式状态转移）；Tardigrade 给出「从 durable 证据推出可恢复动作」的做法；DSH 说明插件生命周期的 cleanup 和工具 effect 的恢复应该是两套独立协议。JAI 现在对「有 `tool_dispatched`、没 `tool_result`」的处理是 `indeterminate_tool`，和 DSH 的保守做法一路；不应为了像 Tardigrade 而改成默认重跑。[JAI recovery verdict](../../../packages/agent/src/harness/operations/recovery.ts#L113)；[JAI durable facts 的 owner](../../../AGENTS.md#L31)。
+- **Render 阶段**：基于当前 Props 与 State 计算虚拟节点，必须保持纯函数特性。由于计算无副作用，框架可以随意暂停、重试或丢弃渲染过程。[Render and Commit](https://react.dev/learn/render-and-commit#step-2-react-renders-your-components)；[Purity enables interruption](https://react.dev/reference/rules/components-and-hooks-must-be-pure#why-does-purity-matter)。
+- **Commit 阶段**：将计算产物原子写入 Host 环境（如 DOM 树）。
+- **Effect 阶段**：在 Commit 完成后执行，负责与外部世界（DOM 测量、网络订阅、定时器）进行状态同步。
 
-## React 的哪些思想和 Agent 有关
-
-### 1. 纯计算、提交、外部执行必须分成三层
-
-React 要求 render 是纯的：同样的 props、state、context 产出同样的结果。因为纯，React 才能暂停、重启或丢掉一次还没 commit 的 render。commit 才把结果写到 DOM。Effect 在 commit 之后跑，负责让 React 和外部系统同步。[Render and Commit](https://react.dev/learn/render-and-commit#step-2-react-renders-your-components)；[Purity enables interruption](https://react.dev/reference/rules/components-and-hooks-must-be-pure#why-does-purity-matter)。
-
-搬到 harness 里，对应三个程序边界：
+在 Agent Harness 中，这对应着三个严格的程序边界：
 
 ```text
-已提交的 snapshot / durable facts
-          │
-          ▼
-纯 projection / reducer：算出状态、权限结论、候选 action、模型输入
-          │
-          ▼
-受控 commit：接纳 command，记录决策或执行意图
-          │
-          ▼
-executor：模型、工具、文件、网络、计费等外部操作
-          │
-          ▼
-observation / result 成为下一轮纯推导的输入
+已提交的不可变事实（Durable Facts / Event Log）
+                   │
+                   ▼
+纯函数 Projection / Reducer（计算当前视图、权限结论、待执行 Action 与模型上下文）
+                   │
+                   ▼
+受控 Commit（记录决策结果或前置执行意图）
+                   │
+                   ▼
+外部 Executor（执行 LLM 推理、工具调用、文件修改与网络交互）
+                   │
+                   ▼
+执行结果作为新的 Durable Event 追加落盘，进入下一轮推导
 ```
 
-这么分的收益：第一层可以随便重放、丢弃；projection/reducer 重算时不可能顺手把工具跑了。React 没有定义后两层的 durability。request identity、持久提交点、超时、幂等、对账、补偿，agent 都要自己定。
+这种分层确保了 Projection 重算时绝不会意外触发外部工具，系统能够安全地根据历史记录进行全量重放与状态推演。
 
-### 2. State 快照、单向流、最小事实
+### 2. 单一事实源与最小推导状态
 
-React 说一次 render 看到的是 state 的快照；setter 请求的是下一个快照，不改当前调用看到的值。[State as a Snapshot](https://react.dev/learn/state-as-a-snapshot#rendering-takes-a-snapshot-in-time)。它还主张每份 state 只有一个 source of truth，并且只保存那些推不出来的最小状态。[Sharing State](https://react.dev/learn/sharing-state-between-components#a-single-source-of-truth-for-each-state)；[Minimal state](https://react.dev/learn/thinking-in-react#step-3-find-the-minimal-but-complete-representation-of-ui-state)。
+React 主张单一事实源（Single Source of Truth），只持久化无法通过计算推导的最小状态集合，其余派生视图均通过只读计算获得。[State as a Snapshot](https://react.dev/learn/state-as-a-snapshot)；[Minimal state](https://react.dev/learn/thinking-in-react#step-3-find-the-minimal-but-complete-representation-of-ui-state)。
 
-翻译到 agent：一项决策应写明它依赖哪些 committed facts、哪个 policy 版本、哪份 observation 快照。status、view、待执行 action 只要能从这些事实算出来，就不该再存第二份 durable truth。这不等于要一个全局 store，React 也没有提供 event sourcing 或跨进程一致性。
+映射到 Agent 系统：运行期状态（如当前步骤视图、候选工具集、消息上下文）应始终作为持久化事件日志的只读投影，而不是在数据库中维护多份易产生偏差的可变状态副本。
 
-### 3. Reducer、状态机、稳定 identity
+### 3. 确定性 Reducer 与稳定实体标识
 
-React reducer 把 action（发生了什么）和 state update（下一状态是什么）分开，reducer 本身要纯。[React reducer](https://react.dev/learn/extracting-state-logic-into-a-reducer#writing-reducers-well)。Agent 里确定性的部分适合这个形态：权限、审批、operation 生命周期、恢复 verdict。给定 state 加一条 durable event 或已校验的 command，就能断言 transition、拒绝原因和下一项该做的工作。LLM 推理、wall clock、工具调用不能伪装成 reducer。
+React Reducer 将 Action（事件输入）与 State 计算严格解耦。[React Reducer](https://react.dev/learn/extracting-state-logic-into-a-reducer)。在 Agent 系统中，权限决策、审批流转、任务生命周期等确定性逻辑均应以纯 Reducer 形式实现，杜绝在状态转移逻辑中夹杂网络请求或时间戳获取。
 
-React 的 key 说明连续性不能靠树里的偶然位置。agent 的 session、branch、tool invocation、approval、artifact 都要有稳定 ID。但 React key 只服务 render tree reconciliation，它不是 durable entity ID、authorization key 或 idempotency key。[React key 的语义](https://react.dev/learn/preserving-and-resetting-state#option-2-resetting-state-with-a-key)。
+同时，React 的 Key 机制强调了树节点在重算期间的连续性。而在分布式或持久化 Agent 中，Session、Operation、Tool Invocation 与 Approval 必须具备全局唯一的稳定 Identity，这是实现重放去重与对账的基础。
 
-### 4. Effect 是外部同步边界，不是编排器
+### 4. Effect 作为同步边界与其非回滚性
 
-React 把 Effect 定义为 render 之后把组件和外部系统同步的机制；依赖数组和 cleanup 描述同步和解除同步的生命周期。[React Effect](https://react.dev/learn/synchronizing-with-effects#what-are-effects-and-how-are-they-different-from-events)。对 agent 的借鉴：executor 应声明它同步或改变哪个 capability、依赖哪个输入版本、request ID 是什么、怎么判成功、结束时释放哪些资源。
+React 将 Effect 定义为组件与外部系统的同步机制，通过依赖数组与 Cleanup 函数管理生命周期。[React Effect](https://react.dev/learn/synchronizing-with-effects)。
 
-cleanup 不能外推成 undo。断开 websocket、退订 listener 可以 cleanup；邮件发出去了、不可逆文件写了、shell 命令跑了，通常不能。Concurrent React 允许中断的也只是 DOM commit 之前的纯 render，它不许可 agent 随意取消和重跑外部工具。[Concurrent React](https://react.dev/blog/2022/03/29/react-v18#what-is-concurrent-react)。
+需要强调的是，Cleanup 只能撤销进程内或连接型的可逆资源（如关闭 WebSocket、注销监听器）；一旦外部操作产生持久影响（如写入磁盘、调用三方扣费接口、发送邮件），Cleanup 无法实现通用回滚。Concurrent React 允许中断的也仅仅是 DOM Commit 之前的纯 Render 计算，无法中断已经派发至外部系统的操作。
 
-## Tardigrade 怎么把 React 原则做成 Durable Harness
+## Tardigrade：基于事件日志的持久化 Harness
 
-| React 原则 | Tardigrade 的对应 | 加上的 durable 语义 | 不能等同的地方 |
-| --- | --- | --- | --- |
-| 纯 render | Component 的 `initial → step → output` 从 event log 投影出 state、view、transitions。[Component](https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/core/src/component/component.ts#L14-L30) | 全量 log 可 replay；活跃时只处理 tail。[Projection](https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/core/src/projection/projection.ts#L16-L68) | React render 是内存 renderer 语义，没有 durable event log。 |
-| 组件组合 | 子 `view` 经 algebra 合并；子 transition 由 reconciler 协调。[Concepts](https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/docs/site/concepts.mdx#L102-L142) | 子规则可以从同一份事实独立导出自己欠的工作。 | 组合不自动解决冲突、权限或资源 ownership。 |
-| reconciliation | runtime 从当前 transition 集里筛出 enabled 的工作；日志更新后作废旧快照重算。[Reconciler](https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/core/src/runtime/reconciler.ts#L204-L373) | transition key 同时说明工作是什么、以及已记录的结果不再重跑。 | 它协调的是工作，不是 DOM patch；transition 不是 `useEffect`。 |
-| Effect 外部边界 | `ExternalEffect` 在 runtime 里调外部服务，产出新 event。[Effect](https://github.com/clavia-labs/tardigrade/blob/c338df71a2765a3a599740456446d5ad97f28240/packages/core/src/effect.ts#L6-L45) | effect 之后、append 之前崩溃，缺 key 的工作会重驱；at-least-once。 | React 的依赖数组和 cleanup 没有 keyed result、日志去重或幂等协议。 |
-| key / identity | transition key 对应完成该工作所需的 event key。 | replay 之后能找到同一项工作和同一份输入。 | 和 React list key 的 UI 局部 identity 完全是两回事。 |
+Tardigrade 完整实践了「纯推导先于副作用」的模型，并将其升级为具备崩溃自愈能力的持久化执行系统。
 
-Tardigrade 把 React 的「纯计算先于 effect」升级成了恢复协议：log 是 durable source of truth，纯 projection 保证重启后能算出同一项工作，keyed event record 决定这项工作是否已经完成。对外部 effect 它明确选了 at-least-once，没有假装能 rollback 或 exactly-once。
+| React 原则 | Tardigrade 对应实现 | 补充的持久化语义 | 本质差异与边界 |
+|---|---|---|---|
+| **纯 Render** | Component 采用 `initial → step → output` 接口，从 Event Log 投影出 State、View 与 Transitions | 完整事件日志支持确定性重放；活跃运行时仅订阅 Tail 流 | React Render 仅服务于内存虚拟树，无底层持久化事件日志 |
+| **组件组合** | 子 View 通过代数合并，子 Transition 由 Reconciler 统一协调调度 | 多个子业务规则可基于同一份持久化事实独立推导欠缺的工作 | 组合本身不自动解决外部并发写入冲突与权限归属 |
+| **Reconciliation** | Reconciler 过滤出尚未执行的 Transition，日志追加后作废快照重新计算 | Transition Key 作为防重标识，已记录结果的操作不再重复触发 | 调度的是异步外部工作而非 DOM Patch；Transition 不等同于 `useEffect` |
+| **Effect 边界** | `ExternalEffect` 在 Runtime 中调用外部服务并产出新事件落盘 | 步骤在触发后、落盘前崩溃时，Reconciler 重新派发执行（At-least-once） | React Cleanup 不具备基于持久化 Key 的日志去重或幂等保证 |
+| **Key / Identity** | Transition Key 严格对应持久化事件中的唯一标识 | 崩溃重启后能精准定位同一项工作与其输入参数 | 与 React 仅用于 UI 列表 Diff 的局部 Key 属于完全不同的概念 |
 
-## DSH 的「可逆」在哪一层
+Tardigrade 将持久化事件日志作为唯一事实源，通过 Transition Key 确保已完成操作不再重复执行。但对于外部工具调用，它明确采用了 At-least-once 语义，系统本身不提供副作用物理回滚能力。
 
-DSH 架构文档在 Cordis 插件的上下文里使用 *reversible effects*。插件可以注册 prompt 区块、tool schema、模型适配器、provider、listener 和资源；插件卸载时，disposer 取消这些进程内注册。[DSH architecture](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/docs/architecture.md#L9-L13)。这是插件系统的生命周期治理，目的是热重载、配置替换或 agent scope 销毁后不留悬挂资源。
+## DeepSeek Harness「可逆」机制的具体层次
 
-另有两处更窄的 rollback：
+DeepSeek Harness 在架构中提及的 *Reversible Effects*，其作用范围由具体上下文严格限定：
 
-- agent 创建时如果 setup/commit/owner disposal 出错，未发布的临时 session、agent 和 scope 会被撤回，半组装的对象不会暴露出去。[创建事务](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/core/agent-loop/README.md#L104-L110)
-- JSONL/Zstd 批次 append 或 `fsync` 失败时，持久化 adapter 把文件截断回这批之前的长度，读者看不到写了一半的尾巴。它保护的是尚未确认的物理写入，不是已提交逻辑事件的 undo。[JSONL crash semantics](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/session/session-persistence-jsonl/README.md#L69-L75)
+### 1. Cordis 插件系统的生命周期可逆
+Cordis 插件向上下文注册各类运行时资源（Tool Schema、Prompt 片段、Model Adapter、Event Listener 等）。当插件被停用或热重载时，注册阶段返回的 Disposer 函数会逆序注销这些资源，防止内存泄漏或悬挂配置。[DSH Architecture](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/docs/architecture.md#L9-L13)。这是标准的依赖注入与插件生命周期管理，与业务事件日志无关。
 
-DSH 的 session 本身是 append-only 的 durable facts，message history 从 event log 派生。崩溃恢复不删除、不倒退事实；它在日志尾部补上 synthetic 的 `tool/result`、`step/end`、`turn/end`，让 transcript 对 provider 来说是合法闭合的。[Session log](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/core/session/README.md#L11-L14)；[repair path](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/core/session/src/repair.ts#L20-L134)。
+### 2. 未提交临时状态的物理回滚
+- **Session 装配事务**：在 Agent 初始化过程中，如果配置校验或所有权绑定失败，未发布的临时 Scope 会被整体回收，半就绪对象不会暴露给外部。
+- **持久化写入截断**：当 JSONL 文件在批次写入或 `fsync` 过程中发生底层 I/O 故障时，Adapter 会将文件物理截断至上一个有效偏移量，保护未完成落盘的字节不被脏读。
 
-## 三者对照：故障后怎么守住事实
+### 3. 已提交会话事实的只追加特性
+对于已经提交至 `SessionEvent` 的业务事实，DSH 严格遵循只追加原则，绝不执行逻辑回滚。在崩溃恢复时，系统通过在日志末尾追加 Synthetic 的 `tool/result`、`step/end` 和 `turn/end` 事件来实现合法闭环，将不确定状态透明交由模型与用户处理。
 
-| 问题 | React | Tardigrade | DeepSeek Harness |
-| --- | --- | --- | --- |
-| 什么可以安全重复 | 未 commit 的纯 render | 从 log 派生 component/projection | event-log/history 的确定性派生；未发布的局部装配 |
-| 外部工作怎么触发 | commit 后由 Effect 同步外部系统 | runtime 结算 enabled 的 keyed transition | checkpoint 之后 dispatch model/tool execution |
-| 重复运行的默认 | Strict Mode 在开发期探测 setup/cleanup；不承诺 I/O 安全 | key 没有 result 就重驱；外部 effect at-least-once | call 有记录、result 缺失就标 outcome unknown；不盲目重试有副作用的工具 |
-| 「可逆」的含义 | teardown/cleanup 同步资源 | 不是 undo；靠幂等 key 控制重复 effect | plugin registration/resource disposal；未提交的装配和写入可回退 |
-| durable truth | React 不定义 | immutable event log | append-only SessionEvent log |
-| 外部副作用的最终保证 | 不定义 | 下游幂等时可近似只生效一次 | durable intent，不是 exactly-once；未知结果交外部核验或用户决策 |
+## 故障恢复与状态一致性三方对比
 
-React 给的是纯度和生命周期的思维模型。Tardigrade 用 event log 和 transition key 建了一个可重驱的 durable execution 模型。DSH 把「可逆」严格限制在装配生命周期和未提交的本地操作上，对已发出的外部调用采取保守恢复。它们不是三个可互换的 workflow engine。
+| 核心维度 | React (v19.2) | Tardigrade (`c338df7`) | DeepSeek Harness (`76fda72`) |
+|---|---|---|---|
+| **允许安全重试的范围** | 未 Commit 的纯 Render 计算 | 从 Event Log 派生的 Component 状态与 Projection | 从历史日志中的确定性重推导；未发布的局部插件装配 |
+| **外部副作用触发时机** | Commit 完成后由 Effect 同步执行 | Reconciler 调度启用的 Keyed Transition | 意图写入 Checkpoint 后派发 Model / Tool 执行 |
+| **崩溃恢复默认策略** | 开发期 Strict Mode 重复调用以排查隐患；无生产 I/O 恢复保证 | 缺失结果 Key 则重新派发执行（At-least-once） | 缺失结果则标记为 `TOOL_OUTCOME_UNKNOWN`，禁止盲目重试非幂等操作 |
+| **「可逆」的真实含义** | 释放前端订阅、定时器与事件监听器 | 依赖 Key 去重防止重复生效，非物理撤销 | 插件注册与临时装配的注销清理；底层未完成写入截断 |
+| **持久化事实源** | 框架不定义（纯内存模型） | 不可变 SQLite Event Log 表（`seq, key, event`） | 只追加 `SessionEvent` 流（JSONL / Zstd） |
+| **外部副作用最终保证** | 框架不提供保证 | 下游支持幂等键时可实现近似 Exactly-once | 保证执行意图持久化；不确定状态交由环境校验或人工对账 |
 
-## 对 JAI 的影响
+## 对 JAI 架构演进的具体取舍
 
-1. 把 React 原则当设计检查用：任何新逻辑先回答它属于纯 projection、durable commit 还是 external executor 中的哪一层，不要跨层。state、projection、owner、ID 都按「最小事实、单向读取、稳定 identity」来。
-2. 从 Tardigrade 借「`owed action = f(durable facts)`」这个窄形式：允许自动恢复的 action 必须由纯 recovery reducer 导出，带稳定 identity、冻结的 inputs/config、前提记录和完成判据。不要为了用 component 这套词汇引入通用 actor graph。
-3. DSH 的可逆 lifecycle 适合 JAI 的 extension/connector 装配：注册 listener、tool、prompt/provider 和长生命周期资源时，owner 要明确 teardown/disposer。这和 journal 事实、工具执行必须分开。JAI 是否已经有等价的 lifecycle contract，要在具体 extension/connector 领域单独审计后再改。
-4. 保持 JAI 对未知工具结果的保守策略。只有明确声明了下游 idempotency key、读后校验或补偿机制的 tool/provider，才可能从 `indeterminate_tool` 升级为 auto-retry。不把 Tardigrade 的 at-least-once 当默认。
-5. 做只读 replay/trace 时，重放的是纯 projection 和已有 observation。不要把 React 的 concurrent render 或 DSH 的 plugin unload 误读为可以安全取消或回滚工作区、用户授权、外部 API。
-
-## 待验证
-
-- DSH 的 Cordis lifecycle 怎么映射到 JAI 的 extension、connector 和 Desktop 进程生命周期。本笔记只确认了 DSH 的设计，没有说 JAI 缺这个机制。
-- JAI 各 tool/provider 是否接受稳定的 idempotency key，哪些地方能做读后校验或补偿。这是扩大自动恢复范围的前提。
-- Tardigrade 对不可幂等 effect 有没有 at-least-once 之外的官方推荐做法。本笔记确认了 key/dedup 契约，没找到的机制不当作保证。
-
-## 资料范围
-
-- React：只用 react.dev 官方文档和官方博客。
-- Tardigrade：只用官方网站/仓库的文档和源码，固定 SHA。
-- DSH：只用 DeepSeek 官方 GitHub 仓库的文档和源码，固定 SHA。没有找到把整个架构命名为「可逆设计」的官方论文或技术文章，所以严格按文中 *reversible effects* 的上下文表述。
+1. **严格维持三层执行边界**：任何业务逻辑必须显式归属于纯 Projection、持久化 Commit 或外部 Executor 之一。Projection 与 Reducer 必须保持纯函数特性，确保可基于历史 Journal 随时安全重放。
+2. **动作 Identity 与完成判据**：参考 Tardigrade 的 Transition 模型，所有异步操作必须在派发前分配稳定的操作标识与前置记录，保证恢复期能够准确判定该步骤的状态。
+3. **插件生命周期隔离**：吸收 DSH 的 Cordis 模式，为 Extension 与 Connector 的注册资源（Tool、Prompt、Listener）建立统一的 Disposer 链，使其生命周期与持久化 Journal 明确解耦。
+4. **坚持保守的未知状态恢复策略**：对于崩溃时已派发但未落盘结果的工具调用，继续保持判定为 `indeterminate_tool` 并锁定流程。在下游工具未显式支持标准幂等键或对账协议前，不采用默认重跑策略。
+5. **明确只读回放边界**：在实现调试 Trace、Session Fork 或历史 Replay 时，重放机制仅限于纯状态派生与已记录的观察结果，严禁向外部环境重复触发副作用。
