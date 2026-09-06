@@ -40,14 +40,6 @@ export interface WebSearchProvider {
 	): Promise<ResultType<WebSearchResponse, WebSearchProviderFailure>>;
 }
 
-export interface WebSearchProviderFailureInit {
-	readonly provider: WebSearchProviderId;
-	readonly kind: WebSearchFailureKind;
-	readonly message: string;
-	readonly status?: number;
-	readonly cause?: unknown;
-}
-
 export interface WebSearchProviderConfiguration {
 	readonly id: WebSearchProviderId;
 	readonly enabled: boolean;

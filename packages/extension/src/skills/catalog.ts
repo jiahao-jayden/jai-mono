@@ -4,6 +4,7 @@ import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { TaggedError } from "better-result";
 import { parse } from "yaml";
+import { isInside } from "../agent-plugins/package/paths";
 
 class SkillCatalogLoadFailed extends TaggedError("coding_skills.catalog_load_failed")<{
 	readonly cause?: unknown;
@@ -415,11 +416,6 @@ function skillAllowedTools(value: unknown): string[] {
 
 function revisionOf(skills: readonly CodingSkillCard[], diagnostics: readonly CodingSkillDiagnostic[]): string {
 	return createHash("sha256").update(JSON.stringify({ skills, diagnostics })).digest("hex");
-}
-
-function isInside(candidate: string, directory: string): boolean {
-	const relative = path.relative(directory, candidate);
-	return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }
 
 function isNodeError(error: unknown, code: string): error is NodeJS.ErrnoException {

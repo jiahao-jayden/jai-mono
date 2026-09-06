@@ -3,7 +3,7 @@ import { TaggedError } from "better-result";
 import type { AgentContext, AgentMessage } from "../../core/types";
 import type { SessionEntry } from "../session/types";
 import { safeJson } from "./serialize";
-import type { CompactionSettings, CompactionSettingsOverrides, ContextTokenEstimate } from "./types";
+import type { CompactionSettings, ContextTokenEstimate } from "./types";
 
 const CHARS_PER_TOKEN = 4;
 /** 图片按固定占位计价：base64 字符数与实际 token 数没有可用的换算关系。 */
@@ -122,7 +122,7 @@ function clamp(value: number, min: number, max: number): number {
  */
 export function resolveCompactionSettings(
 	model: Model,
-	overrides: CompactionSettingsOverrides = {},
+	overrides: Partial<CompactionSettings> = {},
 ): CompactionSettings {
 	const reserveTokens = overrides.reserveTokens ?? clamp(model.maxTokens + 4_096, 8_192, 20_000);
 	const usableContext = Math.max(0, model.contextWindow - reserveTokens);

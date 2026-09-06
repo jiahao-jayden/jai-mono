@@ -252,7 +252,9 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		options.sessionId,
 		options.appState ?? ({} as TAppState),
 	);
-	const selectPermissionSettings = options.permissions?.selectSettings ?? defaultPermissionSettings;
+	const selectPermissionSettings =
+		options.permissions?.selectSettings ??
+		((snapshot: ConfigSnapshot<TSchema>) => permissionSettingsFromConfig(snapshot.settings as Readonly<Record<string, unknown>>));
 	const sessionAllowRules = {};
 	const persistProjectLocalAllowRules =
 		options.permissions?.persistProjectLocalAllowRules ??
@@ -375,7 +377,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			onObserverError: resolvedAgentOptions.onObserverError,
 		});
 		const unsubscribe = child.subscribe((event) => {
-			const activity = subagentActivity(event);
+			const activity = event.type === "tool_execution_start" ? event.toolName : undefined;
 			if (activity) onActivity(activity);
 		});
 		const abortChild = () => child.abort();
@@ -442,10 +444,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, options.commands, attachments);
 }
 
-function subagentActivity(event: AgentEvent) {
-	return event.type === "tool_execution_start" ? event.toolName : undefined;
-}
-
 function finalAssistantText(messages: readonly AgentMessage[]): string {
 	for (let index = messages.length - 1; index >= 0; index--) {
 		const message = messages[index];
@@ -457,10 +455,6 @@ function finalAssistantText(messages: readonly AgentMessage[]): string {
 		if (text) return text;
 	}
 	return "";
-}
-
-function defaultPermissionSettings<TSchema extends TObject>(snapshot: ConfigSnapshot<TSchema>): PermissionSettings {
-	return permissionSettingsFromConfig(snapshot.settings as Readonly<Record<string, unknown>>);
 }
 
 async function persistBashAllowRules<TSchema extends TObject>(

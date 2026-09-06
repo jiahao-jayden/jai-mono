@@ -21,7 +21,6 @@ import {
 	type CompactionErrorInfo,
 	type CompactionResult,
 	type CompactionSettings,
-	type CompactionSettingsOverrides,
 	type CompactionTrigger,
 	compactionFailure,
 	isCompactionFailure,
@@ -42,7 +41,7 @@ import {
 } from "./session/types";
 
 export interface DefaultCompactionOptions {
-	settings?: CompactionSettingsOverrides;
+	settings?: Partial<CompactionSettings>;
 	/** 追加到默认摘要 Prompt 末尾的领域要求，例如"保留所有文件路径"。 */
 	summaryInstructions?: string;
 }

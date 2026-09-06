@@ -11,7 +11,6 @@ import type {
 	WebSearchProvider,
 	WebSearchProviderConfiguration,
 	WebSearchProviderFailure,
-	WebSearchProviderId,
 	WebSearchResponse,
 	WebSearchRuntimeOptions,
 } from "./types";
@@ -50,7 +49,7 @@ export class WebSearchRuntime {
 			return Result.err(new WebSearchNoProviders({ message: "No Web Search Provider is configured" }));
 		const attempts: WebSearchAttemptSummary[] = [];
 		for (const provider of providers) {
-			if (signal?.aborted) return Result.err(providerFailureForAbort(provider.id));
+			if (signal?.aborted) return Result.err(new WebSearchProviderFailed({ message: "Web Search request was cancelled", provider: provider.id, kind: "aborted" }));
 			const result = await provider.search({ query: query.trim(), limit }, signal);
 			if (result.isOk()) {
 				for (const item of result.value.results) {
@@ -114,12 +113,4 @@ function shuffle<T>(values: readonly T[], random: () => number): T[] {
 
 function isFailoverFailure(error: WebSearchProviderFailure): boolean {
 	return error.kind === "unavailable" || error.kind === "rate_limited" || error.kind === "invalid_response";
-}
-
-function providerFailureForAbort(provider: WebSearchProviderId): WebSearchProviderFailure {
-	return new WebSearchProviderFailed({
-		message: "Web Search request was cancelled",
-		provider,
-		kind: "aborted",
-	});
 }

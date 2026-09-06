@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { open, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
+import { isInside } from "../agent-plugins/package/paths";
 import {
 	type CodingAgentExtension,
 	type CodingExtensionCommandRegistration,
@@ -60,12 +61,10 @@ const skillInputSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
-export interface CreateSkillsExtensionOptions extends CodingSkillCatalogOptions {}
-
 export { discoverSkillsCommands, type SkillsCommandDescriptor } from "./discover";
 
 export function createSkillsExtension(
-	options: CreateSkillsExtensionOptions,
+	options: CodingSkillCatalogOptions,
 ): CodingAgentExtension<any, any, SkillsExtensionInstance> {
 	let instance: SkillsExtensionInstance | undefined;
 	const tool: CodingExtensionTool<any, any, SkillsExtensionInstance> = {
@@ -426,11 +425,6 @@ async function renderDirectory(directory: string): Promise<string> {
 function isSkillEntryPath(value: string): boolean {
 	const normalized = value.trim().replaceAll("\\", "/");
 	return normalized === "" || normalized === "." || normalized === "SKILL.md";
-}
-
-function isInside(candidate: string, directory: string): boolean {
-	const relative = path.relative(directory, candidate);
-	return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }
 
 function escapeXml(value: string): string {

@@ -7,18 +7,9 @@ import {
 	defineExtension,
 } from "@jai/coding-agent";
 import { Result } from "better-result";
-import { type AgentPluginRuntime, activateAgentPlugins, discoverAgentPlugins } from "./runtime";
+import { type AgentPluginDirectory, type AgentPluginRuntime, type AgentPluginRuntimeOptions, activateAgentPlugins, discoverAgentPlugins } from "./runtime";
 
-export interface AgentPluginsDirectory {
-	readonly path: string;
-	readonly scope: "user" | "project";
-}
-
-export interface AgentPluginsExtensionOptions {
-	readonly directories: readonly (string | AgentPluginsDirectory)[];
-	readonly dataDirectory: string;
-	readonly scope?: "user" | "project";
-}
+export type { AgentPluginDirectory };
 
 /** Agent Plugin skill descriptors are inputs for another Extension, never commands themselves. */
 export type AgentPluginsExtension = CodingAgentExtension<any, any, AgentPluginRuntime> & {
@@ -30,7 +21,7 @@ export type AgentPluginsExtension = CodingAgentExtension<any, any, AgentPluginRu
  * Coding Agent Extension contract.
  */
 export async function createAgentPluginsExtension(
-	options: AgentPluginsExtensionOptions,
+	options: AgentPluginRuntimeOptions,
 ): Promise<AgentPluginsExtension> {
 	const discovery = await discoverAgentPlugins(options);
 	const extension = defineExtension({

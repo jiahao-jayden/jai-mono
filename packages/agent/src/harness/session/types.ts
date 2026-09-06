@@ -106,29 +106,17 @@ export interface SessionHandle<TAppState extends JsonObject = JsonObject> {
 export class SessionConflictError extends TaggedError("session.conflict")<{
 	readonly cause?: unknown;
 	readonly message: string;
-}> {
-	constructor(message: string, options: { cause?: unknown } = {}) {
-		super({ message, ...options });
-	}
-}
+}> {}
 
 export class SessionBusyError extends TaggedError("session.busy")<{
 	readonly cause?: unknown;
 	readonly message: string;
-}> {
-	constructor(message: string, options: { cause?: unknown } = {}) {
-		super({ message, ...options });
-	}
-}
+}> {}
 
 export class SessionReadOnlyError extends TaggedError("session.read_only")<{
 	readonly cause?: unknown;
 	readonly message: string;
-}> {
-	constructor(message: string, options: { cause?: unknown } = {}) {
-		super({ message, ...options });
-	}
-}
+}> {}
 
 /** 导航目标不在树上。调用方给错了 id，什么都还没被碰过。 */
 export class SessionUnknownEntry extends TaggedError("session.unknown_entry")<{

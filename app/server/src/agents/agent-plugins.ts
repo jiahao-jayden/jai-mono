@@ -2,7 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import {
-	type AgentPluginsDirectory,
+	type AgentPluginDirectory,
 	type AgentPluginsExtension,
 	createAgentPluginsExtension,
 } from "@jai/extension/agent-plugins";
@@ -19,7 +19,7 @@ export async function discoverRuntimeAgentPluginDirectories(
 		/** Canonical root supplied only after the Runtime Host reads a durable trust fact. */
 		readonly trustedWorkspacePath?: string;
 	} = {},
-): Promise<readonly AgentPluginsDirectory[]> {
+): Promise<readonly AgentPluginDirectory[]> {
 	const homeDirectory = path.resolve(options.homeDirectory ?? homedir());
 	const projectRoots = options.trustedWorkspacePath
 		? [
@@ -50,8 +50,8 @@ export async function createRuntimeAgentPluginsExtension(input: {
 
 async function discoverPluginDirectories(
 	roots: readonly string[],
-	scope: AgentPluginsDirectory["scope"],
-): Promise<readonly AgentPluginsDirectory[]> {
+	scope: AgentPluginDirectory["scope"],
+): Promise<readonly AgentPluginDirectory[]> {
 	const children = await Promise.all(roots.map(discoverPluginChildren));
 	return children.flatMap((entries) => entries.map((entry) => ({ path: entry, scope })));
 }

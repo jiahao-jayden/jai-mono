@@ -12,7 +12,7 @@ export class InMemorySessionStore<TAppState extends JsonObject = JsonObject> imp
 
 	async create(id: string, appState: TAppState): Promise<string> {
 		if (this.records.has(id)) {
-			throw new SessionConflictError(`Session "${id}" already exists`);
+			throw new SessionConflictError({ message: `Session "${id}" already exists` });
 		}
 
 		const revision = crypto.randomUUID();
@@ -26,9 +26,9 @@ export class InMemorySessionStore<TAppState extends JsonObject = JsonObject> imp
 
 	async append(id: string, entry: SessionEntry<TAppState>, expectedRevision: string): Promise<string> {
 		const current = this.records.get(id);
-		if (!current) throw new SessionConflictError(`Session "${id}" does not exist`);
+		if (!current) throw new SessionConflictError({ message: `Session "${id}" does not exist` });
 		if (current.revision !== expectedRevision) {
-			throw new SessionConflictError(`Session "${id}" revision conflict`);
+			throw new SessionConflictError({ message: `Session "${id}" revision conflict` });
 		}
 
 		const revision = crypto.randomUUID();

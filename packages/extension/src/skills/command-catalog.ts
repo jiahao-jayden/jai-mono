@@ -4,6 +4,7 @@ import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { TaggedError } from "better-result";
 import { parse } from "yaml";
+import { isInside } from "../agent-plugins/package/paths";
 import type { CodingSkillSource } from "./catalog";
 
 class CommandCatalogLoadFailed extends TaggedError("coding_commands.catalog_load_failed")<{
@@ -383,11 +384,6 @@ function revisionOf(
 	diagnostics: readonly CodingPromptCommandDiagnostic[],
 ): string {
 	return createHash("sha256").update(JSON.stringify({ commands, diagnostics })).digest("hex");
-}
-
-function isInside(candidate: string, directory: string): boolean {
-	const relative = path.relative(directory, candidate);
-	return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

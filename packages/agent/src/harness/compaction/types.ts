@@ -12,12 +12,6 @@ export interface CompactionSettings {
 	preserveRecentTokens: number;
 }
 
-export interface CompactionSettingsOverrides {
-	reserveTokens?: number;
-	tailTurns?: number;
-	preserveRecentTokens?: number;
-}
-
 export interface ContextTokenEstimate {
 	/** 本次判断使用的值：provider 基准与全量估算的较大者 */
 	tokens: number;

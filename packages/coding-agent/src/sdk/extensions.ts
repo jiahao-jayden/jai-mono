@@ -242,12 +242,6 @@ export function extensionCatalogTools(extensions: readonly InitializedExtension[
 	return extensions.flatMap((extension) => extension.catalogTools);
 }
 
-export function extensionToolPresentations(
-	extensions: readonly InitializedExtension[],
-): ReadonlyMap<string, CodingToolPresentation> {
-	return new Map(extensions.flatMap((extension) => [...extension.toolPresentations]));
-}
-
 export function extensionPermissions(
 	extensions: readonly InitializedExtension[],
 	target = new Map<string, ResolvedExtensionToolPermission>(),

@@ -37,7 +37,7 @@ export async function openSession<TAppState extends JsonObject>(
 			return snapshot;
 		},
 		append(entry) {
-			if (readOnly) throw new SessionReadOnlyError(`Session "${id}" is read-only`);
+			if (readOnly) throw new SessionReadOnlyError({ message: `Session "${id}" is read-only` });
 
 			const next = tail.then(async () => {
 				revision = await store.append(id, entry, revision);
