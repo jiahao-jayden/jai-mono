@@ -13,9 +13,6 @@
 				"noExplicitAny": "off",
 				"noControlCharactersInRegex": "off",
 				"noEmptyInterface": "off"
-			},
-			"complexity": {
-				"noExcessiveCognitiveComplexity": "error"
 			}
 		}
 	},

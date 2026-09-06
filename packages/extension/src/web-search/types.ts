@@ -30,13 +30,14 @@ export type WebSearchFailureKind =
 	| "rate_limited"
 	| "unavailable";
 
-export interface WebSearchTransport {
-	(input: string, init: RequestInit): Promise<Response>;
-}
+export type WebSearchTransport = (input: string, init: RequestInit) => Promise<Response>;
 
 export interface WebSearchProvider {
 	readonly id: WebSearchProviderId;
-	search(query: WebSearchQuery, signal?: AbortSignal): Promise<ResultType<WebSearchResponse, WebSearchProviderFailure>>;
+	search(
+		query: WebSearchQuery,
+		signal?: AbortSignal,
+	): Promise<ResultType<WebSearchResponse, WebSearchProviderFailure>>;
 }
 
 export interface WebSearchProviderFailureInit {

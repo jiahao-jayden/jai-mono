@@ -410,9 +410,7 @@ export function workTimelineSteps(items: readonly WorkItem[], intl: IntlShape): 
 		const webSearchResults = tools.flatMap((tool) => tool.webSearchResults ?? []);
 		const hasWebSearchResults = tools.some((tool) => tool.webSearchResults !== undefined);
 		const presentation = toolPresentation(tools[0]!, running, intl);
-		const label = hasWebSearchResults
-			? webSearchLabel(tools, running, intl)
-			: presentation.label;
+		const label = hasWebSearchResults ? webSearchLabel(tools, running, intl) : presentation.label;
 		return {
 			id: cluster.id,
 			verb: label,
@@ -427,10 +425,15 @@ export function workTimelineSteps(items: readonly WorkItem[], intl: IntlShape): 
 
 function webSearchLabel(tools: readonly DesktopToolItem[], running: boolean, intl: IntlShape): string {
 	const tool = tools.find((item) => item.webSearchResults !== undefined);
-	if (!tool) return intl.formatMessage(running ? desktopMessages.transcriptWebSearching : desktopMessages.transcriptWebSearchResults);
+	if (!tool)
+		return intl.formatMessage(
+			running ? desktopMessages.transcriptWebSearching : desktopMessages.transcriptWebSearchResults,
+		);
 	if (!isGenericWebSearchToolName(tool.toolName)) return tool.toolName;
 	if (tool.searchQuery) return tool.searchQuery;
-	return intl.formatMessage(running ? desktopMessages.transcriptWebSearching : desktopMessages.transcriptWebSearchResults);
+	return intl.formatMessage(
+		running ? desktopMessages.transcriptWebSearching : desktopMessages.transcriptWebSearchResults,
+	);
 }
 
 function isGenericWebSearchToolName(value: string): boolean {

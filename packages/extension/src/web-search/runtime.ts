@@ -1,13 +1,17 @@
 import { Result, type Result as ResultType } from "better-result";
-import { WebSearchAllProvidersFailed, WebSearchInvalidQuery, WebSearchNoProviders, WebSearchProviderFailed } from "./errors";
+import {
+	WebSearchAllProvidersFailed,
+	WebSearchInvalidQuery,
+	WebSearchNoProviders,
+	WebSearchProviderFailed,
+} from "./errors";
 import { WebFetchRuntime } from "./fetch";
 import type {
 	WebSearchAttemptSummary,
-	WebSearchFailureKind,
 	WebSearchProvider,
 	WebSearchProviderConfiguration,
-	WebSearchProviderId,
 	WebSearchProviderFailure,
+	WebSearchProviderId,
 	WebSearchResponse,
 	WebSearchRuntimeOptions,
 } from "./types";
@@ -20,7 +24,9 @@ export class WebSearchRuntime {
 
 	constructor(options: WebSearchRuntimeOptions & { readonly fetcher?: WebFetchRuntime }) {
 		this.#providers = options.providers;
-		this.#configurations = options.configurations ?? options.providers.map((provider, index) => ({ id: provider.id, enabled: true, order: index + 1 }));
+		this.#configurations =
+			options.configurations ??
+			options.providers.map((provider, index) => ({ id: provider.id, enabled: true, order: index + 1 }));
 		this.#random = options.random;
 		this.fetcher = options.fetcher ?? new WebFetchRuntime();
 	}
@@ -29,13 +35,19 @@ export class WebSearchRuntime {
 		query: string,
 		limit: number,
 		signal?: AbortSignal,
-	): Promise<ResultType<WebSearchResponse, WebSearchInvalidQuery | WebSearchNoProviders | WebSearchAllProvidersFailed | WebSearchProviderFailure>> {
+	): Promise<
+		ResultType<
+			WebSearchResponse,
+			WebSearchInvalidQuery | WebSearchNoProviders | WebSearchAllProvidersFailed | WebSearchProviderFailure
+		>
+	> {
 		if (!query.trim()) return Result.err(new WebSearchInvalidQuery({ message: "Search query must not be empty" }));
 		if (!Number.isInteger(limit) || limit < 1 || limit > 10) {
 			return Result.err(new WebSearchInvalidQuery({ message: "Search limit must be an integer from 1 to 10" }));
 		}
 		const providers = this.#orderedProviders();
-		if (!providers.length) return Result.err(new WebSearchNoProviders({ message: "No Web Search Provider is configured" }));
+		if (!providers.length)
+			return Result.err(new WebSearchNoProviders({ message: "No Web Search Provider is configured" }));
 		const attempts: WebSearchAttemptSummary[] = [];
 		for (const provider of providers) {
 			if (signal?.aborted) return Result.err(providerFailureForAbort(provider.id));
@@ -78,11 +90,16 @@ export function orderProviderConfigurations(
 	random: () => number = Math.random,
 ): readonly WebSearchProviderConfiguration[] {
 	const configured = providers.filter((provider) => provider.enabled);
-	const ordered = configured.filter((provider) => provider.order !== undefined).toSorted((left, right) => {
-		const orderDifference = left.order! - right.order!;
-		return orderDifference || left.id.localeCompare(right.id);
-	});
-	const unordered = shuffle(configured.filter((provider) => provider.order === undefined), random);
+	const ordered = configured
+		.filter((provider) => provider.order !== undefined)
+		.toSorted((left, right) => {
+			const orderDifference = left.order! - right.order!;
+			return orderDifference || left.id.localeCompare(right.id);
+		});
+	const unordered = shuffle(
+		configured.filter((provider) => provider.order === undefined),
+		random,
+	);
 	return ordered.length ? [...ordered, ...unordered] : unordered;
 }
 

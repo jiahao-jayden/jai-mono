@@ -5,15 +5,15 @@ import {
 	type DesktopConfigurationClient,
 } from "@jai/server/desktop-configuration-client";
 import type {
+	DesktopConnectorCredentialRevealResult,
 	DesktopProviderApiKeyRevealResult,
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
 	DesktopProviderFetchModelsResult,
-	DesktopConnectorCredentialRevealResult,
-	DesktopTelemetrySettingsInput,
-	DesktopTelemetrySettingsSnapshot,
 	DesktopTelemetryCredentialId,
 	DesktopTelemetryCredentialRevealResult,
+	DesktopTelemetrySettingsInput,
+	DesktopTelemetrySettingsSnapshot,
 	DesktopUiLocale,
 	DesktopWebSearchApiKeyRevealResult,
 	DesktopWebSearchCredentialId,
@@ -21,11 +21,7 @@ import type {
 import { projectRuntimeConnectorConfig, toRuntimeConnector, validateConnectorConfigInput } from "./connector";
 import { projectRuntimeProviderConfig, providerConfigError, validateProviderProfiles } from "./provider";
 import { projectRuntimeTelemetrySettings, toRuntimeTelemetrySettingsInput } from "./telemetry";
-import {
-	projectRuntimeWebSearchConfig,
-	toRuntimeWebSearchInput,
-	validateWebSearchConfigInput,
-} from "./web-search";
+import { projectRuntimeWebSearchConfig, toRuntimeWebSearchInput, validateWebSearchConfigInput } from "./web-search";
 
 /**
  * Desktop's configuration adapter. Runtime-affecting settings, Provider facts
@@ -104,7 +100,9 @@ export class DesktopConfigService {
 		return revealed.value;
 	}
 
-	async revealWebSearchApiKey(credentialId: DesktopWebSearchCredentialId): Promise<DesktopWebSearchApiKeyRevealResult> {
+	async revealWebSearchApiKey(
+		credentialId: DesktopWebSearchCredentialId,
+	): Promise<DesktopWebSearchApiKeyRevealResult> {
 		const revealed = await this.client.revealWebSearchApiKey(credentialId);
 		if (revealed.isErr()) throw revealed.error;
 		return revealed.value;
@@ -119,7 +117,9 @@ export class DesktopConfigService {
 		return revealed.value;
 	}
 
-	async revealTelemetryCredential(credentialId: DesktopTelemetryCredentialId): Promise<DesktopTelemetryCredentialRevealResult> {
+	async revealTelemetryCredential(
+		credentialId: DesktopTelemetryCredentialId,
+	): Promise<DesktopTelemetryCredentialRevealResult> {
 		const revealed = await this.client.revealTelemetryCredential(credentialId);
 		if (revealed.isErr()) throw revealed.error;
 		return revealed.value;

@@ -26,9 +26,7 @@ export interface WebFetchResponse {
 	readonly redirects: readonly string[];
 }
 
-export interface WebFetchTransport {
-	(input: string, init: RequestInit): Promise<Response>;
-}
+export type WebFetchTransport = (input: string, init: RequestInit) => Promise<Response>;
 
 export interface WebFetchOptions {
 	readonly transport?: WebFetchTransport;
@@ -83,10 +81,7 @@ export class WebFetchRuntime {
 		return this.#fetchDirect(parsed.value, signal);
 	}
 
-	async #fetchDirect(
-		parsed: URL,
-		signal?: AbortSignal,
-	): Promise<ResultType<WebFetchResponse, WebFetchFailed>> {
+	async #fetchDirect(parsed: URL, signal?: AbortSignal): Promise<ResultType<WebFetchResponse, WebFetchFailed>> {
 		let current = parsed;
 		const redirects: string[] = [];
 		for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
@@ -97,10 +92,18 @@ export class WebFetchRuntime {
 			const response = request.value.response;
 			if (isRedirect(response.status)) {
 				if (redirectCount === MAX_REDIRECTS) {
-					return Result.err(new WebFetchFailed({ reason: "redirect_limit", message: "Web Fetch redirect limit exceeded" }));
+					return Result.err(
+						new WebFetchFailed({ reason: "redirect_limit", message: "Web Fetch redirect limit exceeded" }),
+					);
 				}
 				const location = response.headers.get("location");
-				if (!location) return Result.err(new WebFetchFailed({ reason: "invalid_response", message: "Redirect response has no Location header" }));
+				if (!location)
+					return Result.err(
+						new WebFetchFailed({
+							reason: "invalid_response",
+							message: "Redirect response has no Location header",
+						}),
+					);
 				const next = parseRemoteUrl(new URL(location, current).toString());
 				if (next.isErr()) return next;
 				redirects.push(next.value.toString());
@@ -108,11 +111,22 @@ export class WebFetchRuntime {
 				continue;
 			}
 			if (!response.ok) {
-				return Result.err(new WebFetchFailed({ reason: "upstream", message: `Web Fetch returned HTTP ${response.status}`, status: response.status }));
+				return Result.err(
+					new WebFetchFailed({
+						reason: "upstream",
+						message: `Web Fetch returned HTTP ${response.status}`,
+						status: response.status,
+					}),
+				);
 			}
 			const mimeType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
 			if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-				return Result.err(new WebFetchFailed({ reason: "unsupported_mime", message: `Web Fetch does not read MIME type "${mimeType || "unknown"}"` }));
+				return Result.err(
+					new WebFetchFailed({
+						reason: "unsupported_mime",
+						message: `Web Fetch does not read MIME type "${mimeType || "unknown"}"`,
+					}),
+				);
 			}
 			const body = await readBody(response, request.value.signal, signal, request.value.timeoutSignal);
 			if (body.isErr()) return body;
@@ -131,10 +145,7 @@ export class WebFetchRuntime {
 		return Result.err(new WebFetchFailed({ reason: "redirect_limit", message: "Web Fetch redirect limit exceeded" }));
 	}
 
-	async #fetchWithJina(
-		url: URL,
-		signal?: AbortSignal,
-	): Promise<ResultType<WebFetchResponse, WebFetchFailed>> {
+	async #fetchWithJina(url: URL, signal?: AbortSignal): Promise<ResultType<WebFetchResponse, WebFetchFailed>> {
 		const request = await this.#request(`${JINA_READER_URL}${url.toString()}`, signal, {
 			accept: "text/markdown, text/plain",
 			"x-return-format": "markdown",
@@ -164,7 +175,9 @@ export class WebFetchRuntime {
 		if (body.isErr()) return body;
 		const content = limitText(normalizeText(body.value));
 		if (!content) {
-			return Result.err(new WebFetchFailed({ reason: "invalid_response", message: "Jina Reader returned empty content" }));
+			return Result.err(
+				new WebFetchFailed({ reason: "invalid_response", message: "Jina Reader returned empty content" }),
+			);
 		}
 		return Result.ok({
 			url: url.toString(),
@@ -176,27 +189,42 @@ export class WebFetchRuntime {
 	}
 
 	async #assertSafeTarget(url: URL, signal?: AbortSignal): Promise<ResultType<void, WebFetchFailed>> {
-		if (signal?.aborted) return Result.err(new WebFetchFailed({ reason: "aborted", message: "Web Fetch was cancelled" }));
+		if (signal?.aborted)
+			return Result.err(new WebFetchFailed({ reason: "aborted", message: "Web Fetch was cancelled" }));
 		if (url.port && url.port !== "80" && url.port !== "443") {
-			return Result.err(new WebFetchFailed({ reason: "blocked_target", message: "Web Fetch only allows ports 80 and 443" }));
+			return Result.err(
+				new WebFetchFailed({ reason: "blocked_target", message: "Web Fetch only allows ports 80 and 443" }),
+			);
 		}
 		const hostname = url.hostname.replace(/\.$/, "").toLowerCase();
 		if (isBlockedHostname(hostname)) {
-			return Result.err(new WebFetchFailed({ reason: "blocked_target", message: "Web Fetch target is not a public host" }));
+			return Result.err(
+				new WebFetchFailed({ reason: "blocked_target", message: "Web Fetch target is not a public host" }),
+			);
 		}
 		if (isPrivateAddress(hostname)) {
-			return Result.err(new WebFetchFailed({ reason: "blocked_target", message: "Web Fetch target is a private address" }));
+			return Result.err(
+				new WebFetchFailed({ reason: "blocked_target", message: "Web Fetch target is a private address" }),
+			);
 		}
 		if (isIP(hostname)) return Result.ok(undefined);
 		try {
 			const addresses = await this.#lookup(hostname);
-			if (signal?.aborted) return Result.err(new WebFetchFailed({ reason: "aborted", message: "Web Fetch was cancelled" }));
+			if (signal?.aborted)
+				return Result.err(new WebFetchFailed({ reason: "aborted", message: "Web Fetch was cancelled" }));
 			if (!addresses.length || addresses.some(isPrivateAddress)) {
-				return Result.err(new WebFetchFailed({ reason: "blocked_target", message: "Web Fetch target resolved to a non-public address" }));
+				return Result.err(
+					new WebFetchFailed({
+						reason: "blocked_target",
+						message: "Web Fetch target resolved to a non-public address",
+					}),
+				);
 			}
 			return Result.ok(undefined);
 		} catch (cause) {
-			return Result.err(new WebFetchFailed({ reason: "dns_failed", message: "Web Fetch could not resolve the target host", cause }));
+			return Result.err(
+				new WebFetchFailed({ reason: "dns_failed", message: "Web Fetch could not resolve the target host", cause }),
+			);
 		}
 	}
 
@@ -226,8 +254,10 @@ export class WebFetchRuntime {
 			});
 			return Result.ok({ response, signal: combined, timeoutSignal: timeout });
 		} catch (cause) {
-			if (signal?.aborted) return Result.err(new WebFetchFailed({ reason: "aborted", message: "Web Fetch was cancelled", cause }));
-			if (timeout.aborted) return Result.err(new WebFetchFailed({ reason: "timeout", message: "Web Fetch timed out", cause }));
+			if (signal?.aborted)
+				return Result.err(new WebFetchFailed({ reason: "aborted", message: "Web Fetch was cancelled", cause }));
+			if (timeout.aborted)
+				return Result.err(new WebFetchFailed({ reason: "timeout", message: "Web Fetch timed out", cause }));
 			return Result.err(new WebFetchFailed({ reason: "network", message: "Web Fetch request failed", cause }));
 		}
 	}
@@ -246,7 +276,9 @@ async function readBody(
 	if (response.headers.get("content-length")) {
 		const length = Number(response.headers.get("content-length"));
 		if (Number.isFinite(length) && length > MAX_BODY_BYTES) {
-			return Result.err(new WebFetchFailed({ reason: "body_too_large", message: "Web Fetch response is too large" }));
+			return Result.err(
+				new WebFetchFailed({ reason: "body_too_large", message: "Web Fetch response is too large" }),
+			);
 		}
 	}
 	if (!response.body) return Result.ok("");
@@ -259,9 +291,15 @@ async function readBody(
 			const chunk = await readChunk(reader, requestSignal);
 			if (chunk.done) break;
 			const value = chunk.value;
-			if (!value) return Result.err(new WebFetchFailed({ reason: "invalid_response", message: "Web Fetch returned an unreadable body" }));
+			if (!value)
+				return Result.err(
+					new WebFetchFailed({ reason: "invalid_response", message: "Web Fetch returned an unreadable body" }),
+				);
 			total += value.byteLength;
-			if (total > MAX_BODY_BYTES) return Result.err(new WebFetchFailed({ reason: "body_too_large", message: "Web Fetch response is too large" }));
+			if (total > MAX_BODY_BYTES)
+				return Result.err(
+					new WebFetchFailed({ reason: "body_too_large", message: "Web Fetch response is too large" }),
+				);
 			chunks.push(value);
 		}
 		const bytes = new Uint8Array(total);
@@ -272,9 +310,13 @@ async function readBody(
 		}
 		return Result.ok(new TextDecoder().decode(bytes));
 	} catch (cause) {
-		if (callerSignal?.aborted) return Result.err(new WebFetchFailed({ reason: "aborted", message: "Web Fetch was cancelled", cause }));
-		if (timeoutSignal?.aborted) return Result.err(new WebFetchFailed({ reason: "timeout", message: "Web Fetch timed out", cause }));
-		return Result.err(new WebFetchFailed({ reason: "network", message: "Web Fetch response could not be read", cause }));
+		if (callerSignal?.aborted)
+			return Result.err(new WebFetchFailed({ reason: "aborted", message: "Web Fetch was cancelled", cause }));
+		if (timeoutSignal?.aborted)
+			return Result.err(new WebFetchFailed({ reason: "timeout", message: "Web Fetch timed out", cause }));
+		return Result.err(
+			new WebFetchFailed({ reason: "network", message: "Web Fetch response could not be read", cause }),
+		);
 	} finally {
 		await reader.cancel().catch(() => {});
 	}
@@ -315,10 +357,17 @@ function parseRemoteUrl(value: string): ResultType<URL, WebFetchFailed> {
 	try {
 		const url = new URL(value);
 		if (url.protocol !== "http:" && url.protocol !== "https:") {
-			return Result.err(new WebFetchFailed({ reason: "invalid_url", message: "Web Fetch only allows HTTP(S) URLs" }));
+			return Result.err(
+				new WebFetchFailed({ reason: "invalid_url", message: "Web Fetch only allows HTTP(S) URLs" }),
+			);
 		}
 		if (url.username || url.password || !url.hostname) {
-			return Result.err(new WebFetchFailed({ reason: "invalid_url", message: "Web Fetch URL contains unsupported credentials or host data" }));
+			return Result.err(
+				new WebFetchFailed({
+					reason: "invalid_url",
+					message: "Web Fetch URL contains unsupported credentials or host data",
+				}),
+			);
 		}
 		return Result.ok(url);
 	} catch (cause) {
@@ -331,7 +380,14 @@ function isRedirect(status: number): boolean {
 }
 
 function isBlockedHostname(hostname: string): boolean {
-	return hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname.endsWith(".internal") || hostname.endsWith(".test") || hostname.endsWith(".invalid");
+	return (
+		hostname === "localhost" ||
+		hostname.endsWith(".localhost") ||
+		hostname.endsWith(".local") ||
+		hostname.endsWith(".internal") ||
+		hostname.endsWith(".test") ||
+		hostname.endsWith(".invalid")
+	);
 }
 
 function isPrivateAddress(value: string): boolean {
@@ -345,14 +401,26 @@ function isPrivateIpv4(value: string): boolean {
 	const parts = value.split(".").map(Number);
 	if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
 	const [first, second] = parts;
-	return first === 0 || first === 10 || first === 127 || (first === 100 && second! >= 64 && second! <= 127) || (first === 169 && second === 254) || (first === 172 && second! >= 16 && second! <= 31) || (first === 192 && second === 0) || (first === 192 && second === 168) || (first === 198 && (second === 18 || second === 19)) || first >= 224;
+	return (
+		first === 0 ||
+		first === 10 ||
+		first === 127 ||
+		(first === 100 && second! >= 64 && second! <= 127) ||
+		(first === 169 && second === 254) ||
+		(first === 172 && second! >= 16 && second! <= 31) ||
+		(first === 192 && second === 0) ||
+		(first === 192 && second === 168) ||
+		(first === 198 && (second === 18 || second === 19)) ||
+		first >= 224
+	);
 }
 
 function isPrivateIpv6(value: string): boolean {
 	const groups = ipv6Groups(value);
 	if (!groups) return true;
 	const first = groups[0]!;
-	if (groups.every((group) => group === 0) || groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1) return true;
+	if (groups.every((group) => group === 0) || (groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1))
+		return true;
 	if ((first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80) return true;
 	if (first === 0x2001 && groups[1] === 0x0db8) return true;
 	if (groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff) {
@@ -364,12 +432,24 @@ function isPrivateIpv6(value: string): boolean {
 function ipv6Groups(value: string): number[] | undefined {
 	const sections = value.split("::");
 	if (sections.length > 2) return undefined;
-	const head = sections[0] ? sections[0].split(":").filter(Boolean).map((part) => Number.parseInt(part, 16)) : [];
-	const tail = sections[1] ? sections[1].split(":").filter(Boolean).map((part) => Number.parseInt(part, 16)) : [];
+	const head = sections[0]
+		? sections[0]
+				.split(":")
+				.filter(Boolean)
+				.map((part) => Number.parseInt(part, 16))
+		: [];
+	const tail = sections[1]
+		? sections[1]
+				.split(":")
+				.filter(Boolean)
+				.map((part) => Number.parseInt(part, 16))
+		: [];
 	if ([...head, ...tail].some((group) => !Number.isInteger(group) || group < 0 || group > 0xffff)) return undefined;
 	if (sections.length === 1 && head.length !== 8) return undefined;
 	if (sections.length === 2 && head.length + tail.length >= 8) return undefined;
-	return sections.length === 2 ? [...head, ...Array.from({ length: 8 - head.length - tail.length }, () => 0), ...tail] : head;
+	return sections.length === 2
+		? [...head, ...Array.from({ length: 8 - head.length - tail.length }, () => 0), ...tail]
+		: head;
 }
 
 function extractHtmlTitle(value: string): string {
@@ -378,7 +458,9 @@ function extractHtmlTitle(value: string): string {
 }
 
 function extractHtmlText(value: string): string {
-	return normalizeText(turndown.turndown(value.replace(/<(head|script|style|noscript|template|svg)[^>]*>[\s\S]*?<\/\1>/gi, " ")));
+	return normalizeText(
+		turndown.turndown(value.replace(/<(head|script|style|noscript|template|svg)[^>]*>[\s\S]*?<\/\1>/gi, " ")),
+	);
 }
 
 const turndown = new TurndownService({
@@ -408,7 +490,12 @@ function decodeEntities(value: string): string {
 }
 
 function normalizeText(value: string): string {
-	return value.replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n[ \t]+/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+	return value
+		.replace(/\r/g, "")
+		.replace(/[ \t]+/g, " ")
+		.replace(/\n[ \t]+/g, "\n")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
 }
 
 function limitText(value: string): string {

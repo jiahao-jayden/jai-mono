@@ -140,8 +140,15 @@ export class DesktopConfigurationClient {
 
 	async revealWebSearchApiKey(
 		credentialId: RuntimeWebSearchCredentialId,
-	): Promise<ResultType<{ readonly credentialId: RuntimeWebSearchCredentialId; readonly apiKey: string }, DesktopConfigurationClientError>> {
-		const response = await this.client.request("jai/desktop-configuration/reveal-web-search-api-key", { credentialId });
+	): Promise<
+		ResultType<
+			{ readonly credentialId: RuntimeWebSearchCredentialId; readonly apiKey: string },
+			DesktopConfigurationClientError
+		>
+	> {
+		const response = await this.client.request("jai/desktop-configuration/reveal-web-search-api-key", {
+			credentialId,
+		});
 		if (response.isErr()) return Result.err(response.error);
 		if (
 			record(response.value) &&
@@ -164,7 +171,12 @@ export class DesktopConfigurationClient {
 	async revealConnectorCredential(
 		connectorId: string,
 		credentialKey: string,
-	): Promise<ResultType<{ readonly connectorId: string; readonly credentialKey: string; readonly value: string }, DesktopConfigurationClientError>> {
+	): Promise<
+		ResultType<
+			{ readonly connectorId: string; readonly credentialKey: string; readonly value: string },
+			DesktopConfigurationClientError
+		>
+	> {
 		const response = await this.client.request("jai/desktop-configuration/reveal-connector-credential", {
 			connectorId,
 			credentialKey,
@@ -192,8 +204,15 @@ export class DesktopConfigurationClient {
 
 	async revealTelemetryCredential(
 		credentialId: RuntimeTelemetryCredentialId,
-	): Promise<ResultType<{ readonly credentialId: RuntimeTelemetryCredentialId; readonly value: string }, DesktopConfigurationClientError>> {
-		const response = await this.client.request("jai/desktop-configuration/telemetry/reveal-credential", { credentialId });
+	): Promise<
+		ResultType<
+			{ readonly credentialId: RuntimeTelemetryCredentialId; readonly value: string },
+			DesktopConfigurationClientError
+		>
+	> {
+		const response = await this.client.request("jai/desktop-configuration/telemetry/reveal-credential", {
+			credentialId,
+		});
 		if (response.isErr()) return Result.err(response.error);
 		if (
 			record(response.value) &&
@@ -446,7 +465,9 @@ function parseWebSearch(value: unknown): RuntimeAgentSettingsSnapshot["webSearch
 		fetch: {
 			jina: {
 				credentialConfigured: value.fetch.jina.credentialConfigured,
-				...(value.fetch.jina.credentialMask === undefined ? {} : { credentialMask: value.fetch.jina.credentialMask }),
+				...(value.fetch.jina.credentialMask === undefined
+					? {}
+					: { credentialMask: value.fetch.jina.credentialMask }),
 			},
 		},
 	};

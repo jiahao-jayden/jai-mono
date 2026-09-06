@@ -1,14 +1,16 @@
-export { createWebSearchExtension } from "./extension";
-export { WebSearchRuntime, orderProviderConfigurations } from "./runtime";
-export { createWebSearchProvider } from "./providers";
-export { WebFetchRuntime } from "./fetch";
-export { WebFetchFailed } from "./fetch-errors";
 export {
 	WebSearchAllProvidersFailed,
 	WebSearchInvalidQuery,
 	WebSearchNoProviders,
 	WebSearchProviderFailed,
 } from "./errors";
+export { createWebSearchExtension } from "./extension";
+export type { WebFetchOptions, WebFetchResponse, WebFetchTransport } from "./fetch";
+export { WebFetchRuntime } from "./fetch";
+export type { WebFetchFailureReason } from "./fetch-errors";
+export { WebFetchFailed } from "./fetch-errors";
+export { createWebSearchProvider } from "./providers";
+export { orderProviderConfigurations, WebSearchRuntime } from "./runtime";
 export type {
 	WebSearchAttemptSummary,
 	WebSearchExtensionOptions,
@@ -24,5 +26,3 @@ export type {
 	WebSearchRuntimeOptions,
 	WebSearchTransport,
 } from "./types";
-export type { WebFetchOptions, WebFetchResponse, WebFetchTransport } from "./fetch";
-export type { WebFetchFailureReason } from "./fetch-errors";

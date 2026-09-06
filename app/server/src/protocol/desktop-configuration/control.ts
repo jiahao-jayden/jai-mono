@@ -8,8 +8,8 @@ import type { RuntimeConnectorOAuthController } from "../../connectors";
 import type { SqliteRuntimeModelCatalog } from "../../model-catalog";
 import {
 	parseRuntimeTelemetrySettingsInput,
-	type RuntimeTelemetryCredentialId,
 	type RuntimeTelemetryController,
+	type RuntimeTelemetryCredentialId,
 	type RuntimeTelemetrySettingsInput,
 } from "../../telemetry";
 import type { SqliteWorkspaceTrust } from "../../workspaces";
@@ -179,7 +179,10 @@ function onlyWebSearchCredentialId(
 	return (
 		Object.keys(value).length === 1 &&
 		typeof value.credentialId === "string" &&
-		(value.credentialId === "jina" || value.credentialId === "exa" || value.credentialId === "parallel" || value.credentialId === "anysearch")
+		(value.credentialId === "jina" ||
+			value.credentialId === "exa" ||
+			value.credentialId === "parallel" ||
+			value.credentialId === "anysearch")
 	);
 }
 

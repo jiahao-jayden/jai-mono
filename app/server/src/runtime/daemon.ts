@@ -1,6 +1,10 @@
 import type { TelemetryContext } from "@jai/telemetry";
 import { Result, type Result as ResultType } from "better-result";
-import { CodingAgentOperationDriver, createRuntimeConnectorAgentAssembly, createRuntimeWebSearchAgentAssembly } from "../agents";
+import {
+	CodingAgentOperationDriver,
+	createRuntimeConnectorAgentAssembly,
+	createRuntimeWebSearchAgentAssembly,
+} from "../agents";
 import { RuntimeOperationOpenFailed } from "../operations";
 import type { AcpImplementationInfo } from "../protocol/acp-v2";
 import { DesktopLocalRuntimeCapabilitySource, type RuntimeCapabilitySource } from "../runtime-capabilities";

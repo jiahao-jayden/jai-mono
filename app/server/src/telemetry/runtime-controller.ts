@@ -196,7 +196,8 @@ export class RuntimeTelemetryController {
 		{ readonly credentialId: RuntimeTelemetryCredentialId; readonly value: string },
 		RuntimeTelemetrySettingsReadError | RuntimeTelemetrySettingsInvalid | RuntimeTelemetrySettingsLocked
 	> {
-		if (this.#closed) return Result.err(new RuntimeTelemetrySettingsLocked({ message: "Telemetry settings are unavailable" }));
+		if (this.#closed)
+			return Result.err(new RuntimeTelemetrySettingsLocked({ message: "Telemetry settings are unavailable" }));
 		if (hasRuntimeTelemetryEnvironmentOverride(this.#environment)) {
 			return Result.err(
 				new RuntimeTelemetrySettingsLocked({

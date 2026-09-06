@@ -575,7 +575,10 @@ export class SqliteRuntimeAgentSettings {
 		}
 		const settings = this.read();
 		if (settings.isErr()) return Result.err(settings.error);
-		const apiKey = credentialId === "jina" ? settings.value.webSearch?.fetch?.jina.apiKey : settings.value.webSearch?.providers[credentialId]?.apiKey;
+		const apiKey =
+			credentialId === "jina"
+				? settings.value.webSearch?.fetch?.jina.apiKey
+				: settings.value.webSearch?.providers[credentialId]?.apiKey;
 		if (!apiKey) {
 			return Result.err(
 				new RuntimeAgentSettingsInvalid({

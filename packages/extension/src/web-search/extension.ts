@@ -7,9 +7,9 @@ import {
 } from "@jai/coding-agent";
 import { type Static, Type } from "@sinclair/typebox";
 import { Result } from "better-result";
-import { WebSearchRuntime } from "./runtime";
-import { createWebSearchProvider } from "./providers";
 import { WebFetchRuntime } from "./fetch";
+import { createWebSearchProvider } from "./providers";
+import { WebSearchRuntime } from "./runtime";
 import type { WebSearchExtensionOptions } from "./types";
 
 const searchParameters = Type.Object(
@@ -66,7 +66,8 @@ export function createWebSearchExtension(
 	};
 	const fetchTool: CodingExtensionTool<{}, {}, WebSearchRuntime, typeof fetchParameters> = {
 		name: "web_fetch",
-		description: "Fetch readable public web content from an HTTP(S) URL with redirect, host, MIME, timeout, and size limits.",
+		description:
+			"Fetch readable public web content from an HTTP(S) URL with redirect, host, MIME, timeout, and size limits.",
 		parameters: fetchParameters,
 		authorization: {
 			owner: "core",
@@ -133,7 +134,16 @@ export function createWebSearchExtension(
 	});
 }
 
-function formatSearchResponse(response: { readonly provider: string; readonly results: readonly { readonly title: string; readonly url: string; readonly snippet?: string; readonly content?: string; readonly publishedDate?: string }[] }): string {
+function formatSearchResponse(response: {
+	readonly provider: string;
+	readonly results: readonly {
+		readonly title: string;
+		readonly url: string;
+		readonly snippet?: string;
+		readonly content?: string;
+		readonly publishedDate?: string;
+	}[];
+}): string {
 	if (!response.results.length) return `Provider: ${response.provider}\nNo results found.`;
 	return [
 		`Provider: ${response.provider}`,

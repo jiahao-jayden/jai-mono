@@ -8,9 +8,7 @@ import { providerConfigError } from "./provider";
 
 const WEB_SEARCH_PROVIDER_IDS: readonly DesktopWebSearchProviderId[] = ["exa", "parallel", "anysearch"];
 
-export function projectRuntimeWebSearchConfig(
-	snapshot: RuntimeAgentSettingsSnapshot,
-): DesktopWebSearchConfigSnapshot {
+export function projectRuntimeWebSearchConfig(snapshot: RuntimeAgentSettingsSnapshot): DesktopWebSearchConfigSnapshot {
 	return {
 		providers: snapshot.webSearch.providers.map((provider) => ({
 			id: provider.id,
@@ -67,7 +65,10 @@ export function validateWebSearchConfigInput(value: unknown): asserts value is D
 	if (value.fetch !== undefined && (!isRecord(value.fetch) || !hasOnly(value.fetch, ["jina"]))) {
 		throw providerConfigError("invalid_input", { message: "Invalid Web Search fetch configuration" });
 	}
-	if (value.fetch?.jina !== undefined && (!isRecord(value.fetch.jina) || !hasOnly(value.fetch.jina, ["apiKey", "clearApiKey"]))) {
+	if (
+		value.fetch?.jina !== undefined &&
+		(!isRecord(value.fetch.jina) || !hasOnly(value.fetch.jina, ["apiKey", "clearApiKey"]))
+	) {
 		throw providerConfigError("invalid_input", { message: "Invalid Jina Reader configuration" });
 	}
 	if (
