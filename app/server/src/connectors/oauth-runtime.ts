@@ -40,19 +40,7 @@ export type RuntimeConnectorOAuthError =
 	| RuntimeConnectorOAuthOperationFailed
 	| RuntimeConnectorOAuthIntentStoreFailed;
 
-export interface RuntimeConnectorOAuthController {
-	start(connectorId: string): Promise<ResultType<RuntimeConnectorOAuthStart, RuntimeConnectorOAuthError>>;
-	complete(callbackUrl: string): Promise<ResultType<RuntimeConnectorOAuthCompletion, RuntimeConnectorOAuthError>>;
-	disconnect(connectorId: string): ResultType<RuntimeAgentSettingsSnapshot, RuntimeConnectorOAuthError>;
-	recover(): ResultType<void, RuntimeConnectorOAuthIntentStoreFailed>;
-	close(): void;
-}
-
-/**
- * The Runtime Host owns PKCE flow state, code exchange and the OAuth durable
- * boundary. Desktop only opens a browser and relays its callback URL.
- */
-export class RuntimeConnectorOAuth implements RuntimeConnectorOAuthController {
+export class RuntimeConnectorOAuth {
 	readonly #flow: OAuthFlowManager;
 	readonly #pending = new Map<string, { readonly connectorId: string; readonly expiresAt: number }>();
 	readonly #now: () => number;

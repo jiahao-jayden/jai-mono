@@ -13,7 +13,7 @@ import type {
 } from "@jai/ai";
 
 import type { Static, TSchema } from "@sinclair/typebox";
-import type { EffectGate } from "./effect-gate";
+import type { ManualEffectGate } from "./effect-gate";
 
 export interface AgentToolResult<TDetails = unknown> {
 	/** 回给模型的内容（会被包进 ToolResultMessage 送回 LLM）。 */
@@ -208,7 +208,7 @@ export interface AgentLoopConfig {
 	/** Optional best-effort observation immediately before the provider request is opened. */
 	modelRequestObserver?: ModelRequestObserver;
 	/** Optional crash-prefix gate; omitted in automatic production execution. */
-	effectGate?: EffectGate;
+	effectGate?: ManualEffectGate;
 	/**
 	 * steering 接入点：一个 turn 的工具执行完后调用，返回的消息在下一次 LLM 请求前注入。
 	 * loop 只调用它，不持有队列。默认无（返回 []）。

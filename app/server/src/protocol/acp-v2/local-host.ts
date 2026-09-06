@@ -2,13 +2,13 @@ import { mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { SqliteRuntimeAgentSettings } from "../../config";
-import type { RuntimeConnectorOAuthController } from "../../connectors";
+import type { RuntimeConnectorOAuth } from "../../connectors";
 import type { SqliteRuntimeModelCatalog } from "../../model-catalog";
 import { acquireLocalRuntimeOwner, type LocalRuntimeOwner, type RuntimeHost } from "../../runtime";
 import type { RuntimeTelemetryController } from "../../telemetry";
 import type { SqliteWorkspaceTrust } from "../../workspaces";
+import type { SqliteDesktopCatalogAccess } from "../../persistence/sqlite/desktop-catalog";
 import {
-	type DesktopCatalogAccess,
 	DesktopCatalogControl,
 	type LocalDesktopCatalogControlServer,
 	localDesktopCatalogEndpointFor,
@@ -21,7 +21,7 @@ import {
 	openLocalDesktopConfigurationControlServer,
 } from "../desktop-configuration";
 import { localAcpV2EndpointFor } from "./local-endpoint";
-import { type LocalAcpV2Server, openLocalAcpV2Server } from "./local-transport";
+import { type NodeLocalAcpV2Server, openLocalAcpV2Server } from "./local-transport";
 import type { AcpImplementationInfo } from "./types";
 
 export class LocalRuntimeHostOpenFailed extends TaggedError("runtime_host.local_open_failed")<{
@@ -35,11 +35,11 @@ export interface OpenLocalRuntimeHostOptions {
 	readonly host: RuntimeHost;
 	readonly info: AcpImplementationInfo;
 	/** Desktop Catalog facts stay Desktop-owned, but the Host owns their one SQLite writer. */
-	readonly desktopCatalog?: DesktopCatalogAccess;
+	readonly desktopCatalog?: SqliteDesktopCatalogAccess;
 	/** Server-owned provider configuration is projected through a private local control channel. */
 	readonly desktopConfiguration?: SqliteRuntimeAgentSettings;
 	/** Host-owned Connector OAuth flow used only by the private configuration channel. */
-	readonly desktopConnectorOAuth?: RuntimeConnectorOAuthController;
+	readonly desktopConnectorOAuth?: RuntimeConnectorOAuth;
 	/** Host-owned Models.dev metadata fact projected only through Desktop configuration. */
 	readonly desktopModelCatalog?: SqliteRuntimeModelCatalog;
 	/** Host-owned durable Workspace trust facts projected through Desktop configuration. */
@@ -50,13 +50,6 @@ export interface OpenLocalRuntimeHostOptions {
 	readonly endpoint?: string;
 }
 
-export interface LocalRuntimeHostServer {
-	readonly endpoint: string;
-	readonly desktopCatalogEndpoint?: string;
-	readonly desktopConfigurationEndpoint?: string;
-	close(): Promise<void>;
-}
-
 /**
  * The product-facing local server composition: one liveness owner plus one ACP
  * JSONL endpoint. It does not construct SQLite or a Coding Agent; those stay at
@@ -64,7 +57,7 @@ export interface LocalRuntimeHostServer {
  */
 export async function openLocalRuntimeHost(
 	options: OpenLocalRuntimeHostOptions,
-): Promise<ResultType<LocalRuntimeHostServer, LocalRuntimeHostOpenFailed>> {
+): Promise<ResultType<OwnedLocalRuntimeHost, LocalRuntimeHostOpenFailed>> {
 	const endpoint = options.endpoint ?? localAcpV2EndpointFor(options.dataDirectory);
 	const desktopCatalogEndpoint = options.desktopCatalog
 		? localDesktopCatalogEndpointFor(options.dataDirectory)
@@ -83,7 +76,7 @@ export async function openLocalRuntimeHost(
 			}),
 		);
 	}
-	let acpTransport: LocalAcpV2Server | undefined;
+	let acpTransport: NodeLocalAcpV2Server | undefined;
 	let desktopCatalogTransport: LocalDesktopCatalogControlServer | undefined;
 	let desktopConfigurationTransport: LocalDesktopConfigurationControlServer | undefined;
 	try {
@@ -148,13 +141,13 @@ export async function openLocalRuntimeHost(
 	}
 }
 
-class OwnedLocalRuntimeHost implements LocalRuntimeHostServer {
+export class OwnedLocalRuntimeHost {
 	#closed = false;
 
 	constructor(
 		readonly endpoint: string,
 		private readonly owner: LocalRuntimeOwner,
-		private readonly transport: LocalAcpV2Server,
+		private readonly transport: NodeLocalAcpV2Server,
 		private readonly desktopCatalogTransport?: LocalDesktopCatalogControlServer,
 		private readonly desktopConfigurationTransport?: LocalDesktopConfigurationControlServer,
 	) {}

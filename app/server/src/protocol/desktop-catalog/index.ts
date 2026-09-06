@@ -6,7 +6,6 @@ export {
 	openLocalDesktopCatalogControlServer,
 } from "./local-transport";
 export {
-	type DesktopCatalogAccess,
 	type DesktopCatalogProject,
 	DesktopCatalogProjectNotFound,
 	DesktopCatalogProjectPathConflict,

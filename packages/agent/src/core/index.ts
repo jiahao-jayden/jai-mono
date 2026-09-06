@@ -13,7 +13,6 @@ export {
 	type MutableAgentState,
 } from "./agent-state";
 export {
-	type EffectGate,
 	type EffectGateAction,
 	EffectGateInterrupted,
 	isEffectGateInterrupted,

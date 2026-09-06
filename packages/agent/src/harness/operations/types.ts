@@ -143,16 +143,3 @@ export class OperationRecordDuplicate extends TaggedError("operations.duplicate_
 export class OperationCorruptedLog extends TaggedError("operations.corrupted_log")<{
 	readonly message: string;
 }> {}
-
-/**
- * Append-only execution facts for one Session. The Runtime Host is the only
- * production writer; InMemoryOperationJournal exists for ephemeral execution/tests.
- */
-export interface OperationJournal {
-	create(sessionId: string): Promise<Result<void, OperationJournalAlreadyExists>>;
-	load(sessionId: string): Promise<Result<readonly OperationRecord[], OperationJournalNotFound>>;
-	append(
-		sessionId: string,
-		record: OperationRecord,
-	): Promise<Result<void, OperationJournalNotFound | OperationRecordDuplicate>>;
-}

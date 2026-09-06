@@ -7,7 +7,6 @@ export {
 export {
 	RuntimeConnectorOAuth,
 	type RuntimeConnectorOAuthCompletion,
-	type RuntimeConnectorOAuthController,
 	type RuntimeConnectorOAuthError,
 	RuntimeConnectorOAuthOperationFailed,
 	RuntimeConnectorOAuthRejected,

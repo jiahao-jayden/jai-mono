@@ -16,11 +16,6 @@ export class AcpLocalTransportListenFailed extends TaggedError("acp_local_transp
 	readonly cause?: unknown;
 }> {}
 
-export interface LocalAcpV2Server {
-	readonly endpoint: string;
-	close(): Promise<void>;
-}
-
 export interface OpenLocalAcpV2ServerOptions {
 	readonly endpoint: string;
 	readonly host: RuntimeHost;
@@ -34,7 +29,7 @@ export interface OpenLocalAcpV2ServerOptions {
  */
 export async function openLocalAcpV2Server(
 	options: OpenLocalAcpV2ServerOptions,
-): Promise<ResultType<LocalAcpV2Server, AcpLocalTransportListenFailed>> {
+): Promise<ResultType<NodeLocalAcpV2Server, AcpLocalTransportListenFailed>> {
 	const sockets = new Set<Socket>();
 	const server = createServer((socket) => {
 		sockets.add(socket);
@@ -56,7 +51,7 @@ export async function openLocalAcpV2Server(
 	}
 }
 
-class NodeLocalAcpV2Server implements LocalAcpV2Server {
+export class NodeLocalAcpV2Server {
 	#closed = false;
 
 	constructor(

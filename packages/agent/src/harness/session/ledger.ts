@@ -1,5 +1,5 @@
 import type { JsonObject } from "../../core/agent-state";
-import type { EffectGate, EffectGateAction } from "../../core/effect-gate";
+import type { EffectGateAction, ManualEffectGate } from "../../core/effect-gate";
 import type { AgentMessage } from "../../core/types";
 import { buildCompactedMessages, latestCompaction } from "../compaction/projection";
 import { branchOf, contextEntries } from "./tree";
@@ -23,7 +23,7 @@ export class SessionLedger<TAppState extends JsonObject> {
 	constructor(
 		private readonly handle: SessionHandle<TAppState> | undefined,
 		initialMessages: readonly AgentMessage[] = [],
-		private readonly effectGate?: EffectGate,
+		private readonly effectGate?: ManualEffectGate,
 	) {
 		this.tree = handle ? [...handle.snapshot.entries] : localEntries(initialMessages);
 		this.branch = branchOf(this.tree, handle ? handle.snapshot.leafId : (this.tree.at(-1)?.id ?? null));

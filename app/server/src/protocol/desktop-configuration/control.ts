@@ -4,7 +4,7 @@ import {
 	type RuntimeWebSearchCredentialId,
 	type SqliteRuntimeAgentSettings,
 } from "../../config";
-import type { RuntimeConnectorOAuthController } from "../../connectors";
+import type { RuntimeConnectorOAuth } from "../../connectors";
 import type { SqliteRuntimeModelCatalog } from "../../model-catalog";
 import {
 	parseRuntimeTelemetrySettingsInput,
@@ -25,7 +25,7 @@ const methodPrefix = "jai/desktop-configuration/";
 export class DesktopConfigurationControl {
 	constructor(
 		private readonly settings: SqliteRuntimeAgentSettings,
-		private readonly connectorOAuth?: RuntimeConnectorOAuthController,
+		private readonly connectorOAuth?: RuntimeConnectorOAuth,
 		private readonly modelCatalog?: SqliteRuntimeModelCatalog,
 		private readonly workspaceTrust?: SqliteWorkspaceTrust,
 		private readonly telemetry?: RuntimeTelemetryController,

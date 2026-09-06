@@ -27,9 +27,6 @@ export type EffectGateAction =
 	  };
 
 /** A small portable seam for manual-drive tests; automatic runs omit it. */
-export interface EffectGate {
-	beforeEffect(action: EffectGateAction): Promise<void>;
-}
 
 /**
  * Test-only process-stop signal. It must escape the Agent loop unchanged so a
@@ -60,8 +57,8 @@ interface ActionWaiter {
  * same seam. Calling `interrupt()` emulates process death before the visible
  * effect starts.
  */
-export class ManualEffectGate implements EffectGate {
-	readonly gate: EffectGate = this;
+export class ManualEffectGate {
+	readonly gate: ManualEffectGate = this;
 	readonly #queued: PendingEffect[] = [];
 	readonly #waiters: ActionWaiter[] = [];
 	#active: PendingEffect | undefined;

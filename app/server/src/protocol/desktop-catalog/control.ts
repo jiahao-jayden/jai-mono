@@ -1,7 +1,7 @@
 import type { Result } from "better-result";
 import type { AcpJsonRpcRequest, AcpJsonRpcResponse, AcpOutboundMessage } from "../acp-v2/types";
+import type { SqliteDesktopCatalogAccess } from "../../persistence/sqlite/desktop-catalog";
 import type {
-	DesktopCatalogAccess,
 	DesktopCatalogProject,
 	DesktopCatalogSessionCursor,
 	DesktopCatalogStorageError,
@@ -14,7 +14,7 @@ const methodPrefix = "jai/desktop-catalog/";
  * intentionally separate from ACP: ACP remains the public Agent protocol.
  */
 export class DesktopCatalogControl {
-	constructor(private readonly catalog: DesktopCatalogAccess) {}
+	constructor(private readonly catalog: SqliteDesktopCatalogAccess) {}
 
 	async handle(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[] | undefined> {
 		if (!request.method.startsWith(methodPrefix)) return undefined;

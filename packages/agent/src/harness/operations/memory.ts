@@ -1,9 +1,9 @@
 import { Result } from "better-result";
-import type { OperationJournal, OperationRecord } from "./types";
+import type { OperationRecord } from "./types";
 import { OperationJournalAlreadyExists, OperationJournalNotFound, OperationRecordDuplicate } from "./types";
 
 /** Ephemeral/test adapter. Durable adapters belong to the Runtime Host. */
-export class InMemoryOperationJournal implements OperationJournal {
+export class InMemoryOperationJournal {
 	readonly #records = new Map<string, OperationRecord[]>();
 
 	async create(sessionId: string) {

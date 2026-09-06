@@ -1,7 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { Result, type Result as ResultType } from "better-result";
 import {
-	type DesktopCatalogAccess,
 	type DesktopCatalogProject,
 	DesktopCatalogProjectNotFound,
 	DesktopCatalogProjectPathConflict,
@@ -37,7 +36,7 @@ interface SessionRow {
  * SQLite storage for Desktop Catalog facts. It is created by the Runtime Host
  * with its process-owned connection; no Desktop process obtains this adapter.
  */
-export class SqliteDesktopCatalogAccess implements DesktopCatalogAccess {
+export class SqliteDesktopCatalogAccess {
 	constructor(private readonly database: DatabaseSync) {
 		this.initialize();
 	}

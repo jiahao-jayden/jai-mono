@@ -5,7 +5,7 @@ import {
 	recoverSessionOperations,
 	type AgentTool,
 } from "@jai/agent";
-import { type EffectGate, isEffectGateInterrupted, ManualEffectGate } from "@jai/agent/core";
+import { isEffectGateInterrupted, ManualEffectGate } from "@jai/agent/core";
 import {
 	type AssistantMessage,
 	AssistantMessageEventStream,
@@ -61,7 +61,7 @@ interface CrashScenario {
 	readonly providerCalls: { current: number };
 }
 
-async function createScenario(effectGate?: EffectGate): Promise<CrashScenario> {
+async function createScenario(effectGate?: ManualEffectGate): Promise<CrashScenario> {
 	const persistence = new InMemoryProductSessionPersistence();
 	const host = new RuntimeHost({
 		persistence,

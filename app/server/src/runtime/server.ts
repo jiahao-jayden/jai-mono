@@ -8,7 +8,7 @@ import { SqliteRuntimeModelCatalog } from "../model-catalog";
 import type { RuntimeOperationDriver } from "../operations";
 import { ProductSqliteDatabase, SqliteDesktopCatalogAccess, SqliteProductSessionPersistence } from "../persistence";
 import type { AcpImplementationInfo } from "../protocol/acp-v2";
-import { type LocalRuntimeHostServer, openLocalRuntimeHost } from "../protocol/acp-v2";
+import { type OwnedLocalRuntimeHost, openLocalRuntimeHost } from "../protocol/acp-v2";
 import { InMemoryProductSessionPersistence } from "../sessions";
 import { RuntimeTelemetryController } from "../telemetry";
 import { SqliteWorkspaceTrust } from "../workspaces";
@@ -52,7 +52,7 @@ export async function openJaiRuntimeServer(
 	options: OpenJaiRuntimeServerOptions,
 ): Promise<ResultType<JaiRuntimeServer, JaiRuntimeServerOpenFailed | RuntimeHostConfigurationInvalid>> {
 	let database: ProductSqliteDatabase | undefined;
-	let localHost: LocalRuntimeHostServer | undefined;
+	let localHost: OwnedLocalRuntimeHost | undefined;
 	let connectorOAuth: RuntimeConnectorOAuth | undefined;
 	let modelCatalog: SqliteRuntimeModelCatalog | undefined;
 	let telemetry: RuntimeTelemetryController | undefined;
@@ -135,10 +135,10 @@ export async function openJaiRuntimeServer(
 /** The process-wide Runtime Host resource: database, owner lease and local ACP endpoint. */
 export class JaiRuntimeServer {
 	#closed = false;
-	readonly #localHost: LocalRuntimeHostServer;
+	readonly #localHost: OwnedLocalRuntimeHost;
 
 	constructor(
-		localHost: LocalRuntimeHostServer,
+		localHost: OwnedLocalRuntimeHost,
 		private readonly database: ProductSqliteDatabase,
 		private readonly connectorOAuth: RuntimeConnectorOAuth,
 		private readonly modelCatalog: SqliteRuntimeModelCatalog,

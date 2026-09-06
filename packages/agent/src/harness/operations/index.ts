@@ -8,7 +8,6 @@ export {
 	OperationCorruptedLog,
 	type OperationFinished,
 	type OperationInputDelivery,
-	type OperationJournal,
 	OperationJournalAlreadyExists,
 	OperationJournalNotFound,
 	type OperationRecord,
