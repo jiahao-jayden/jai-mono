@@ -21,7 +21,12 @@ import { ChatMessageQueue } from "./chat-message-queue";
 import { MessageAttachmentPicker } from "./message-attachment-picker";
 import { ModelSelector } from "./model-selector";
 import { ProjectPicker } from "./project-picker";
-import { filterSlashCommands, SlashCommandMenu, slashCommandQuery } from "./slash-command-menu";
+import {
+	ComposerCommandItem,
+	ComposerMenu,
+	useSlashMatches,
+	type ComposerCommand,
+} from "@/components/assistant-ui/elements/composer";
 
 interface ChatComposerProps {
 	value: string;
@@ -117,10 +122,21 @@ export function ChatComposer({
 	const submitDisabled = composerDisabled || (!stopAction && !hasMessageContent);
 	const submitVariant = stopAction ? "secondary" : "accent";
 	const submitClassName = cn(stopAction && "text-primary-2");
-	const slashQuery = slashCommandQuery(value);
-	const matchingCommands = useMemo(() => filterSlashCommands(commands, slashQuery), [commands, slashQuery]);
-	const commandSuggestionsOpen =
-		slashQuery !== undefined && matchingCommands.length > 0 && dismissedSlashValue !== value;
+	const composerCommands = useMemo<readonly ComposerCommand[]>(
+		() =>
+			commands.map((command) => ({
+				name: command.name,
+				description: command.argumentHint ?? command.description,
+				icon: command.commandKind === "skill" ? icons.sparkles : icons["file-code"],
+			})),
+		[commands, icons],
+	);
+	const commandByName = useMemo(
+		() => new Map(commands.map((command) => [command.name, command])),
+		[commands],
+	);
+	const matchingCommands = useSlashMatches(value, composerCommands);
+	const commandSuggestionsOpen = matchingCommands.length > 0 && dismissedSlashValue !== value;
 	const selectedCommand = matchingCommands[selectedCommandIndex] ?? matchingCommands[0];
 
 	useEffect(() => {
@@ -143,8 +159,8 @@ export function ChatComposer({
 	}, [matchingCommands.length]);
 
 	useEffect(() => {
-		if (slashQuery === undefined) setDismissedSlashValue(undefined);
-	}, [slashQuery]);
+		if (!value.startsWith("/")) setDismissedSlashValue(undefined);
+	}, [value]);
 
 	useEffect(() => {
 		attachmentRef.current = attachments;
@@ -251,7 +267,10 @@ export function ChatComposer({
 			}
 			if (event.key === "Enter" && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
 				event.preventDefault();
-				if (selectedCommand) selectCommand(selectedCommand);
+				if (selectedCommand) {
+					const descriptor = commandByName.get(selectedCommand.name);
+					if (descriptor) selectCommand(descriptor);
+				}
 				return;
 			}
 			if (event.key === "Escape") {
@@ -259,7 +278,7 @@ export function ChatComposer({
 				setDismissedSlashValue(value);
 			}
 		},
-		[commandSuggestionsOpen, matchingCommands.length, selectedCommand, selectCommand, value],
+		[commandByName, commandSuggestionsOpen, matchingCommands.length, selectedCommand, selectCommand, value],
 	);
 
 	return (
@@ -270,73 +289,88 @@ export function ChatComposer({
 				onRemove={onRemoveQueuedMessage}
 				onReorder={onReorderQueuedMessages}
 			/>
-			{commandSuggestionsOpen ? (
-				<SlashCommandMenu
-					commands={matchingCommands}
-					selectedIndex={selectedCommandIndex}
-					onSelect={selectCommand}
+			<div className="relative">
+				<ComposerMenu
+					open={commandSuggestionsOpen}
+					role="listbox"
+					aria-label={intl.formatMessage(desktopMessages.slashCommands)}
+				>
+					{matchingCommands.map((command, index) => {
+						const descriptor = commandByName.get(command.name);
+						return (
+							<ComposerCommandItem
+								key={command.name}
+								command={command}
+								active={index === selectedCommandIndex}
+								onMouseDown={(event) => event.preventDefault()}
+								onClick={() => {
+									if (descriptor) selectCommand(descriptor);
+								}}
+							/>
+						);
+					})}
+				</ComposerMenu>
+				<InputMessage
+					value={value}
+					onValueChange={onValueChange}
+					onSend={() => void submitMessage()}
+					disabled={composerDisabled}
+					minRows={large ? 2 : 1}
+					maxRows={8}
+					placeholder={intl.formatMessage(
+						large ? desktopMessages.composerWorkOn : desktopMessages.composerWriteMessage,
+					)}
+					sendLabel={submitLabel}
+					files={files}
+					onFilesChange={(nextFiles) => void handleFilesChange(nextFiles)}
+					accept={ALL_FILES_ACCEPT}
+					filePreviewSize={COMPOSER_FILE_PREVIEW_SIZE}
+					textareaProps={{
+						"aria-label": intl.formatMessage(desktopMessages.composerMessage),
+						onKeyDown: handleSlashCommandKeyDown,
+					}}
+					submitSlot={
+						<Button
+							type="button"
+							variant={submitVariant}
+							size="icon-sm"
+							className={submitClassName}
+							onClick={onSubmit}
+							disabled={submitDisabled}
+							aria-label={submitLabel}
+						>
+							{stopAction ? (
+								<StopIcon className="block !size-[11px] [&_path]:fill-current [&_path]:stroke-none" />
+							) : (
+								<SendIcon size={19} />
+							)}
+						</Button>
+					}
+					leftSlot={({ openFilePicker }) => (
+						<>
+							<MessageAttachmentPicker disabled={pickerDisabled} onOpen={() => openFilePicker()} />
+							<AgentModeControl
+								mode={selectedAgentMode}
+								disabled={isStreaming || isSubmitting}
+								onSelect={onSelectAgentMode}
+							/>
+						</>
+					)}
+					rightSlot={
+						<div className="hidden min-[900px]:block">
+							<ModelSelector
+								config={providerConfig}
+								selectedModelRef={selectedModelRef}
+								loading={providerLoading}
+								error={providerError}
+								disabled={isStreaming || isSubmitting || providerLoading}
+								onSelect={onSelectProviderModel}
+								onManage={onOpenProviderSettings}
+							/>
+						</div>
+					}
 				/>
-			) : null}
-			<InputMessage
-				value={value}
-				onValueChange={onValueChange}
-				onSend={() => void submitMessage()}
-				disabled={composerDisabled}
-				minRows={large ? 2 : 1}
-				maxRows={8}
-				placeholder={intl.formatMessage(
-					large ? desktopMessages.composerWorkOn : desktopMessages.composerWriteMessage,
-				)}
-				sendLabel={submitLabel}
-				files={files}
-				onFilesChange={(nextFiles) => void handleFilesChange(nextFiles)}
-				accept={ALL_FILES_ACCEPT}
-				filePreviewSize={COMPOSER_FILE_PREVIEW_SIZE}
-				textareaProps={{
-					"aria-label": intl.formatMessage(desktopMessages.composerMessage),
-					onKeyDown: handleSlashCommandKeyDown,
-				}}
-				submitSlot={
-					<Button
-						type="button"
-						variant={submitVariant}
-						size="icon-sm"
-						className={submitClassName}
-						onClick={onSubmit}
-						disabled={submitDisabled}
-						aria-label={submitLabel}
-					>
-						{stopAction ? (
-							<StopIcon className="block !size-[11px] [&_path]:fill-current [&_path]:stroke-none" />
-						) : (
-							<SendIcon size={19} />
-						)}
-					</Button>
-				}
-				leftSlot={({ openFilePicker }) => (
-					<>
-						<MessageAttachmentPicker disabled={pickerDisabled} onOpen={() => openFilePicker()} />
-						<AgentModeControl
-							mode={selectedAgentMode}
-							disabled={isStreaming || isSubmitting}
-							onSelect={onSelectAgentMode}
-						/>
-					</>
-				)}
-				rightSlot={
-					<div className="hidden min-[900px]:block">
-						<ModelSelector
-							config={providerConfig}
-							selectedModelRef={selectedModelRef}
-							loading={providerLoading}
-							error={providerError}
-							disabled={isStreaming || isSubmitting || providerLoading}
-							onSelect={onSelectProviderModel}
-							onManage={onOpenProviderSettings}
-						/>
-					</div>
-				}
-			/>
+			</div>
 			{attachmentError ? (
 				<p className="mt-1.5 px-2 text-[12px] text-destructive" role="alert">
 					{attachmentError}
