@@ -166,9 +166,8 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
         animate={{ opacity: 1, y: 0 }}
         transition={shouldAnimate ? spring.moderate : { duration: 0 }}
         className={cn(
-          "group flex max-w-[80%] flex-col gap-1.5",
-          isUser ? "items-end self-end" : "items-start self-start",
-          !isUser && "w-full min-w-0",
+          "group flex flex-col gap-1.5",
+          isUser ? "max-w-[80%] items-end self-end" : "w-full min-w-0 items-start self-start",
           className
         )}
         {...props}
@@ -223,13 +222,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
               isUser
                 ? cn(
                     shape.bg,
-                    // `text-pretty` is reserved for settled user bubbles. On the
-                    // assistant reply it's left off on purpose: `text-wrap: pretty`
-                    // re-balances the last lines on every content change, so a
-                    // word-by-word stream visibly reflows earlier words to new
-                    // lines. Default (normal) wrapping appends left-to-right and
-                    // stays put as the text grows.
-                    "px-3.5 text-pretty whitespace-pre-wrap bg-[color-mix(in_oklab,var(--accent),var(--background)_45%)] text-accent-foreground"
+                    "no-squircle rounded-xl px-3 py-1.5 text-pretty whitespace-pre-wrap bg-secondary text-secondary-foreground"
                   )
                 : "text-foreground/95 leading-[1.7]"
             )}

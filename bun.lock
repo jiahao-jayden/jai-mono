@@ -46,8 +46,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@base-ui/react": "^1.4.0",
-        "@fontsource-variable/manrope": "^5.2.8",
-        "@fontsource-variable/source-serif-4": "^5.2.8",
+        "@fontsource-variable/geist": "^5.3.0",
         "@hugeicons/core-free-icons": "^4.1.1",
         "@hugeicons/react": "^1.1.6",
         "@ibm/plex": "^6.4.1",
@@ -698,9 +697,7 @@
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
 
-    "@fontsource-variable/manrope": ["@fontsource-variable/manrope@5.3.0", "", {}, "sha512-6D5dgokHsWDDMtmXHznKa0hK229NN+1a4BLPmUCLqcO1Pw5EEhWY5RFt0AcXnVRAljFFPfRtLkJePQj6LSsV6g=="],
-
-    "@fontsource-variable/source-serif-4": ["@fontsource-variable/source-serif-4@5.3.0", "", {}, "sha512-9vch9WqxjaaA+1o9Ur8pOgIGbCYLjRReOUel23A6lOpD1syptgjtkORevvNmldJ5kGXQL29onQUqI5Ltz0s3bQ=="],
+    "@fontsource-variable/geist": ["@fontsource-variable/geist@5.3.0", "", {}, "sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA=="],
 
     "@formatjs/cli": ["@formatjs/cli@6.16.22", "", { "optionalDependencies": { "@formatjs/cli-native-darwin-arm64": "1.1.16", "@formatjs/cli-native-linux-arm64": "1.2.16", "@formatjs/cli-native-linux-arm64-musl": "1.0.14", "@formatjs/cli-native-linux-x64": "1.1.16", "@formatjs/cli-native-linux-x64-musl": "1.0.14", "@formatjs/cli-native-win32-x64": "1.1.17" }, "peerDependencies": { "@glimmer/env": "*", "@glimmer/reference": "*", "@glimmer/syntax": "^0.84.3 || ^0.95.0", "@glimmer/validator": "*", "@vue/compiler-core": "3", "content-tag": "4", "vue": "3" }, "optionalPeers": ["@glimmer/env", "@glimmer/reference", "@glimmer/syntax", "@glimmer/validator", "@vue/compiler-core", "content-tag", "vue"], "bin": { "formatjs": "bin/formatjs" } }, "sha512-zRoYm8TDxDvYLR2xx9GKzmVhgTyhSyKTdbgbfLvnAL9HOW63GemVELayqEr9p/O+FlVg45PSQx2HjHJrgYEb+w=="],
 

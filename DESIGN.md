@@ -1,55 +1,74 @@
 ---
 name: "PandaWork Desktop"
-description: "安静、温暖、以对话为中心的本地 AI agent 工作空间。"
+description: "单色 alpha 阶梯 + sky 品牌色 + macOS 材质壳层的本地 AI agent 工作空间。"
 colors:
-  brand-teal: "#3E8E7E"
-  brand-teal-deep: "#31705F"
-  canvas: "oklch(0.975 0.007 106.521)"
-  ink: "oklch(0.281 0.001 0)"
-  card: "oklch(1 0 0)"
-  accent-wash: "oklch(0.938 0.008 114.226)"
-  muted: "oklch(0.975 0.007 106.521)"
-  border: "oklch(0.872 0.004 106.484)"
-  sidebar: "oklch(0.959 0.008 106.548)"
+  brand-sky: "oklch(0.723 0.167 232.7)"
+  success: "oklch(0.696 0.149 162.4)"
   destructive: "oklch(0.577 0.245 27.325)"
-  dark-canvas: "oklch(0.235 0.001 0)"
-  dark-ink: "oklch(0.975 0.007 106.521)"
-  dark-card: "oklch(0.281 0.001 0)"
-  dark-brand-teal: "#5FBDAA"
+  fg: "oklch(0.21 0.006 285.9)"
+  bg: "oklch(1 0 0)"
+  border-surface: "color-mix(in oklch, var(--foreground) 9%, transparent)"
+  surface-primary: "color-mix(in oklch, var(--foreground) 5%, var(--background))"
+  surface-secondary: "color-mix(in oklch, var(--foreground) 8%, var(--background))"
+  surface-tertiary: "color-mix(in oklch, var(--foreground) 11%, var(--background))"
+  sidebar: "color-mix(in oklch, var(--foreground) 6%, transparent)"
+  web-content-background: "color-mix(in oklch, var(--background) 92%, var(--foreground) 3%)"
+  dark-fg: "oklch(0.92 0.004 286.3)"
+  dark-bg: "oklch(0.18 0.008 286.3)"
 typography:
   display:
-    fontFamily: '"Source Serif 4 Variable", "Songti SC", "Noto Serif CJK SC", Georgia, Cambria, "Times New Roman", serif'
-    fontSize: "34px"
-    fontWeight: 400
-    lineHeight: 1.2
-    letterSpacing: "-0.02em"
-  brand:
-    fontFamily: '"Source Serif 4 Variable", "Songti SC", "Noto Serif CJK SC", Georgia, Cambria, "Times New Roman", serif'
+    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
     fontSize: "20px"
-    fontWeight: 600
-    letterSpacing: "-0.02em"
+    fontWeight: 500
+    lineHeight: 1.3
+    letterSpacing: "-0.01em"
+  detail-title:
+    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontSize: "16px"
+    fontWeight: 500
+    letterSpacing: "-0.01em"
   body:
-    fontFamily: '"Manrope Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
     fontSize: "14px"
     fontWeight: 400
-    lineHeight: 1.5
-  label:
-    fontFamily: '"Manrope Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    lineHeight: "20px"
+  panel-body:
+    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontSize: "13px"
+    fontWeight: 400
+  section-label:
+    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
     fontSize: "12px"
     fontWeight: 500
+  meta:
+    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontSize: "12px"
+    fontWeight: 500
+  micro:
+    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontSize: "11px"
+    fontWeight: 500
+  markdown-h2:
+    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontSize: "1.125rem"
+    fontWeight: 500
+  markdown-h3:
+    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontSize: "1rem"
+    fontWeight: 500
   code:
-    fontFamily: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
-    fontSize: "11.5px"
+    fontFamily: '"Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+    fontSize: "13px"
     fontWeight: 400
 rounded:
+  caret: "1px"
   image: "2px"
-  item: "8px"
-  tab: "10px"
-  container: "12px"
-  card: "14px"
-  base: "16px"
+  micro: "4px"
+  sm: "6px"
+  md: "8px"
+  lg: "12px"
+  xl: "16px"
   pill: "20px"
-  pill-container: "24px"
 spacing:
   hairline: "1px"
   tight: "4px"
@@ -60,167 +79,155 @@ spacing:
   column: "32px"
 components:
   button-primary:
-    backgroundColor: "{colors.ink}"
-    textColor: "{colors.canvas}"
-    typography: "{typography.label}"
-    rounded: "{rounded.pill}"
-    padding: "0 16px"
-    height: "32px"
+    backgroundColor: "{colors.fg}"
+    textColor: "{colors.bg}"
+    typography: "{typography.section-label}"
+    rounded: "{rounded.sm}"
+    height: "30px"
   button-secondary:
-    backgroundColor: "{colors.accent-wash}"
-    textColor: "{colors.ink}"
-    typography: "{typography.label}"
-    rounded: "{rounded.pill}"
-    padding: "0 16px"
-    height: "32px"
-  button-tertiary:
-    backgroundColor: "transparent"
-    textColor: "{colors.ink}"
-    typography: "{typography.label}"
-    rounded: "{rounded.pill}"
-    padding: "0 16px"
-    height: "32px"
-  button-ghost:
-    backgroundColor: "transparent"
-    textColor: "{colors.ink}"
-    typography: "{typography.label}"
-    rounded: "{rounded.pill}"
-    padding: "0 16px"
-    height: "32px"
+    backgroundColor: "{colors.surface-secondary}"
+    textColor: "{colors.fg}"
+    typography: "{typography.section-label}"
+    rounded: "{rounded.sm}"
+    height: "30px"
   message-input:
-    backgroundColor: "{colors.card}"
-    textColor: "{colors.ink}"
+    backgroundColor: "{colors.surface-primary}"
+    textColor: "{colors.fg}"
     typography: "{typography.body}"
-    rounded: "{rounded.pill-container}"
+    rounded: "{rounded.pill}"
     padding: "8px"
-  card:
+  nav-item:
     backgroundColor: "transparent"
-    textColor: "{colors.ink}"
-    typography: "{typography.body}"
-    rounded: "{rounded.pill-container}"
+    textColor: "{colors.fg}"
+    typography: "{typography.section-label}"
+    rounded: "{rounded.md}"
+    height: "30px"
 ---
 
 # Design System: PandaWork Desktop
 
 ## Overview
 
-**Creative North Star: "桌上一盏温暖的灯"**
+桌面界面统一为 Aside 风格：单色 alpha 阶梯承担所有层次，sky 是唯一品牌色，macOS 上侧栏走系统 vibrancy、内容包进一张材质卡片。它仍然不是 IDE，也不是控制面板；对话始终是房间，导航、任务进度和本地上下文只是围绕对话摆放的家具。
 
-PandaWork 的界面像长时间陪伴用户的一盏桌灯：稳定、安静，只有在需要确认状态或下一步行动时才提高存在感。它不是 IDE，也不是控制面板；对话始终是房间，导航、任务进度和本地上下文只是围绕对话摆放的家具。
-
-人格是 Gentle、Crafted、Alive。Gentle 来自暖中性色、低对比层次和留白；Crafted 来自精确的字重、细边界与光学对齐；Alive 来自短促的状态过渡、呼吸光标和 agent thinking dots，而不是持续抢夺注意力的装饰动画。安静胜过花哨。
+人格是 Gentle、Crafted、Alive。Gentle 来自单色阶梯和留白；Crafted 来自 squircle 圆角、精确的像素字号与 `.5px` 描边；Alive 来自短促的状态过渡、shimmer 文本和 agent 时间线，而不是持续抢夺注意力的装饰动画。安静胜过花哨。
 
 **Key Characteristics:**
-- 暖白画布、柔和墨色与稀少的 teal-green 品牌强调。
-- Source Serif 4 只承担品牌和欢迎时刻，日常操作由 Manrope 承担。
-- 对话列拥有最多空间；辅助栏保持窄、平、低对比。
-- 状态具有轻微呼吸感，并完整尊重 reduced motion。
+- 单色 alpha 阶梯（`--foreground` + 透明度）派生所有 surface、border、hover、active；不再有第二套色相。
+- sky 是唯一品牌色，只用于链接、品牌字标和少量焦点；状态用 emerald（success）/ destructive。
+- Geist 承担全部 UI 文案，Geist Mono 只标记代码与路径；不再有 serif。
+- macOS 侧栏走 vibrancy，chat + 右栏 + 拖拽柄包进距窗边 8px、圆角 12px 的内容卡片；非 macOS 用实色 `--sidebar`。
+- 所有 `rounded-*` 元素套 `corner-shape: superellipse()` 做 squircle；显式 `no-squircle` 退出。
 
 ## Colors
 
-色彩以暖中性色为底，teal-green 是稀少而有意义的生命信号；深色主题使用对应的暗色语义 token，而非简单反相。
+色彩以 `--foreground` 的 alpha 阶梯为底：`--surface-primary/secondary/tertiary`、`--border-surface(-strong)`、`--muted-hover`、`--sidebar-active/hover` 全部由 `color-mix(in oklch, var(--foreground) N%, …)` 派生。sky 是唯一品牌色（`--brand`，light `sky-500` / dark `sky-400`），只出现在链接、品牌字标和 `.prose a`。状态色独立：`--success`（emerald）用于完成 / 可用，`--destructive` 用于错误 / 危险。
 
-### Primary
-- **Lamp Teal**：用于品牌字标、连接点、agent 工作状态、链接和少量焦点提示。
-- **Deep Teal**：用于需要稳定实色的品牌承载面，例如头像。
-
-### Neutral
-- **Warm Canvas**：应用与对话主画布。
-- **Soft Ink**：正文、主操作和高优先级图标。
-- **Paper Card**：输入容器及需要明确承载关系的卡片。
-- **Quiet Wash**：选中、hover 和次级表面的轻微区分。
-- **Hairline Border**：分栏、卡片和输入边缘；只承担结构，不成为视觉主体。
-- **Warm Sidebar**：标题栏和左侧导航的连续底色。
-- **Dark Canvas / Dark Ink / Dark Card**：暗色主题的同等语义角色。
-
-**The One Living Color Rule.** 同一视区只让 teal-green 承担少数关键状态；不要把导航、文件类型或普通装饰做成彩色拼盘。
+**The One Brand Color Rule.** 同一视区只让 sky 承担链接与品牌；导航、文件类型、普通装饰一律走单色阶梯，不要做成彩色拼盘。状态色（success / destructive）只在表达运行、完成、错误时出现，不参与品牌。
 
 ## Typography
 
-**Display Font:** Source Serif 4 Variable（中文回退至宋体序列）
-**Body Font:** Manrope Variable（中文回退至系统无衬线序列）
-**Label/Mono Font:** IBM Plex Mono（代码与路径）
+**Body Font:** Geist Variable（中文回退至系统无衬线）
+**Mono Font:** Geist Mono Variable（代码与路径）
 
-**Character:** Source Serif 4 带来像纸张和书页一样的温度，Manrope 保持桌面工具所需的清晰与克制；IBM Plex Mono 只标记代码、路径和工具输出。
+不再使用 Source Serif 4 与 Manrope。字重统一在 400（正文）/ 500（标题、标签、段头），不再使用 600/700 做层级；层级靠字号与留白表达。
 
 ### Hierarchy
-- **Display:** 欢迎语等单一情绪焦点；不得扩散到普通面板标题。
-- **Brand:** PandaWork 字标，使用紧凑字距和半粗字重。
-- **Body:** 对话、说明和主要 UI 文案；长文本限制在约 65ch。
-- **Label:** 导航、按钮、状态和元信息；常用 11–13.5px 的紧凑范围。
-- **Code:** 工具结果、输出路径和内联代码。
+- **Display / Page title:** 20px / 500，用于空态欢迎语和项目详情页标题。
+- **Detail title:** 16px / 500，用于 dialog 标题和连接器详情页标题。
+- **Body:** 14px / 400 / line-height 20px，对话、说明、主要 UI 文案、tab 标签、settings 分区标题。
+- **Panel body:** 13px / 400，右栏与侧栏列表条目、面板内描述。
+- **Section label / Meta:** 12px / 500，段头、导航条目、元信息。
+- **Micro:** 11px / 500，format 标签、极小元信息。
+- **Markdown:** h2 `1.125rem` / 500、h3 `1rem` / 500，由 streamdown 渲染，跟随根字号 12px。
 
-**The Serif Moment Rule.** Serif 只在品牌与欢迎时刻出现；操作密集区域坚持 sans，避免把工具界面做成杂志排版。
+**The Weight Rule.** 标题字重不超过 500；不要用 600/700 补层级，靠字号和留白。
 
 ## Layout
 
-Desktop shell 是固定标题栏下的三栏模式：44px 标题栏；264px 左侧导航；中间 chat column 自适应；会话存在且面板开启时显示 336px 右侧 task panel。壳层以 1024×640 为最小桌面边界，不把这组三栏尺寸推广为其他页面的通用网格。
+Desktop shell 是 macOS vibrancy 侧栏 + 一张内容卡片的三栏模式：240px 左侧导航；中间 chat column 最大宽 896px；会话存在且面板开启时显示右侧 task panel。壳层以 1024×640 为最小桌面边界。侧栏 44px 头/脚、30px 条目；chat nav 44px；右栏段头 24px、条目 30px。
 
-新会话内容居中，composer 最大宽度 720px；已有会话的 transcript 与 composer 最大宽度 760px，并使用 32px 横向内边距。左栏放稳定导航和最近会话，右栏只放 Progress、Outputs、Context；中栏永远保留最高视觉优先级。
+内容卡片距窗边 `m-2 ml-0`、圆角 12px、`bg-[var(--web-content-background)]`、`.5px` 描边 + 软阴影；侧栏收起时卡片 `ml-2`。非 macOS 根底色为实色 `--sidebar`，不做材质。
 
-间距以 4px 和 8px 为基础节奏，常用容器内距为 12px、16px、24px 或 32px。通过留白和窄分隔线建立层级，不用密集边框切割画布。
+间距以 4px 和 8px 为基础节奏，常用容器内距 12px、16px。通过留白和段头建立层级，不用密集边框切割画布；列表去 `divide-y`/`border-y`，用 `gap`。
 
 **The Room and Furniture Rule.** Chat column 永远是房间；辅助栏不得通过更高对比、更大标题或更强阴影与对话争夺主次。
 
 ## Elevation & Depth
 
-系统以 tonal layering 和 hairline edge 为主、低透明阴影为辅。浅色 surface scale 从轻微灰白递进到纸白；暗色 surface scale 逐级提亮，并增加细微内高光与低透明 drop。composer 使用低层级边缘和极浅落影保持可输入感，普通 card 默认透明、无框，依靠 substrate、divider 和 hover tint 组织关系。
+系统以 tonal layering（`--surface-primary/secondary/tertiary`）和 `.5px` `--border-surface` 描边为主、低透明阴影为辅。浮层（dropdown / dialog / toast / popover / tooltip）统一用 `bg-popover` + `shadow-[0_0_0_.5px_var(--border-surface-strong),0_10px_15px_-3px_rgb(0_0_0/.1),0_4px_6px_-4px_rgb(0_0_0/.1)]`。composer 用 `--surface-primary` + 20px squircle + `shadow-surface-2`。
 
-### Shadow Vocabulary
-- **Surface 1–2:** 轻微边缘与短落影，用于常驻输入和低层容器。
-- **Surface 3–8:** 仅在确有叠层关系时逐级增加距离；不是普通卡片的默认装饰。
-- **Shell Composer:** 单独实现的低透明短阴影，用于新会话的大输入框。
+`Elevated` 的 `surface-1..8` / `shadow-1..8` 梯子名字保留，值派生自 `--foreground` alpha，不改调用方。
 
-**The Flat-by-Default Rule.** 常驻表面默认平；阴影只说明真实叠层或输入承载，不用来制造“高级感”。
+**The Flat-by-Default Rule.** 常驻表面默认平；阴影只说明真实浮层或输入承载，不用来制造"高级感"。
 
 ## Shapes
 
-形状系统有 `pill` 与 `rounded` 两种真实模式。默认组件使用 20px 的 pill 元素和 24px 的 pill 容器；紧凑模式使用 8px 元素和 12px 容器。桌面 shell 的卡片与气泡采用已实现的 14–16px 柔和圆角，图像保持独立的 2px 微圆角。边界通常是一像素 hairline，避免厚描边。
+形状系统统一为 squircle：全局对 `rounded-*` 元素套 `corner-shape: superellipse()`，需要直角或普通圆角时显式加 `no-squircle` 退出（用户气泡、错误卡、toast 用 `no-squircle`）。
 
-**The Nested Curve Rule.** 外容器、内部按钮和焦点环保持同心的圆角关系；不要在同一控件中随意混入尖角。
+### Rounded scale
+- **caret:** 1px（流式光标条，glyph 级，不参与容器 scale）
+- **micro:** 4px（slash-invocation、format 标签）
+- **sm:** 6px（icon-xs、小按钮、状态点）
+- **md:** 8px（列表条目、导航条目、tab 指示器）
+- **lg:** 12px（卡片、popover、dropdown、内容卡片）
+- **xl:** 16px（dialog、错误卡）
+- **pill:** 20px（composer、用户气泡）
+
+**The Nested Curve Rule.** 外容器、内部按钮和焦点环保持同心的圆角关系；squircle 由全局 `corner-shape` 统一承担，不要在同一控件中混入尖角或自绘圆角。
 
 ## Components
 
 ### Buttons
-- **Shape:** 由 shape context 决定；默认 pill，紧凑模式为轻圆角。
-- **Primary:** 墨色实底、画布色文字；用于发送、确认和主要许可动作。
-- **Secondary:** quiet wash 底色；承载低一级动作。
-- **Tertiary / Ghost:** 透明底；tertiary 保留 hairline，ghost 主要依靠 hover tint。
-- **Hover / Focus:** 80ms 色彩响应；按下时背景减弱并轻微缩放。键盘焦点使用清晰的 2px teal 混合色 outline，disabled 同时降低透明度并阻断交互。
-- **Loading:** 使用连续的 infinity-path spinner，不改变按钮尺寸。
+- **Sizes:** `icon-xs` 24px / `icon-sm` 28px / `icon` 32px / `icon-lg` 36px；文字按钮高度 30px（默认）/ 28px（紧凑）。
+- **Primary:** `--foreground` 实底、`--background` 文字。
+- **Secondary / Tertiary:** `--surface-secondary` / 透明，`--foreground` 文字。
+- **Ghost:** 透明底，hover `--muted-hover`。
+- **Navigation:** `--sidebar-muted` 文字，hover `--sidebar-hover`，active `--sidebar-active` + `--foreground`。
+- **Hover / Focus:** 80ms 色彩响应；基类统一 `focus-visible:ring-3 ring-ring`。disabled 降低 opacity 并阻断交互。
+- **Loading:** 连续 infinity-path spinner，不改变按钮尺寸。
+
+### Tabs
+- **List:** `p-[3px] rounded-lg bg-[var(--tabs-list-bg)] text-muted-foreground`。
+- **Indicator:** `rounded-md bg-surface-primary` + `.5px` 描边 + 软阴影，200ms `ease [0,0,0.2,1]`。
+- **Item:** `h-[25px] px-1.5 text-[14px] font-medium`。
+
+### Menus (dropdown / menu-item / select / tooltip / toast)
+- **Container:** `bg-popover` + 浮层阴影；进入 `scale .96 → 1` + `y -2 → 0`，150ms。
+- **Item:** `h-[30px]`，hover `--muted-hover`（navigation 用 `--sidebar-hover`）。
+- **Tooltip:** `leading-4` + 浮层阴影，120ms。
+- **Toast:** `min-w-55 rounded-lg bg-popover` + 浮层阴影 + `sd-slideUp` 入场；success 图标 `text-success`。
 
 ### Cards / Containers
-- **Corner Style:** 跟随 shape context；shell 信息卡使用柔和 card 圆角。
-- **Background:** 通用 Card 默认透明无框；独立 shell 信息卡在确需承载时使用 paper card 与 hairline。
-- **Shadow Strategy:** 默认不加阴影。CardGroup 通过 divider、selected tint 和 proximity hover 表达关系。
-- **Internal Padding:** 常用 16px；inline card 和紧凑 task card 按内容收紧。
+- **Corner:** 跟随 squircle；shell 信息卡用 12px。
+- **Background:** 通用 Card 默认透明无框；`outlined` 用 `.5px` `--border-surface` 描边，不用 `border-border/60`。
+- **Shadow:** 默认不加阴影；CardGroup 靠 divider、selected tint 和 proximity hover 表达关系。
 
-### Inputs / Fields
-- **Style:** InputMessage 是可增长的多行输入容器，默认使用 surface 2、细边缘和容器圆角；shell composer 是已实现的 16px paper-card 变体。
-- **Focus:** hover、focus、drag 使用同一条一像素边缘改变对比，不叠加第二条边框；全局 focus-visible 仍提供 2px 可访问性 outline。
-- **Behavior:** 支持附件预览、消息队列、历史召回以及 Send / Queue / Stop 状态切换；状态过渡在 reduced motion 下退化为无位移动画。
+### Inputs / Composer
+- **InputMessage:** `--surface-primary` + 20px squircle + `shadow-surface-2`；`compact` / `expanded` 两种 layout，发送按钮 28px。
+- **Focus:** 全局 `focus-visible` 用 `box-shadow: 0 0 0 3px var(--ring)`。
 
 ### Navigation
-- **Style:** 左栏使用暖 sidebar substrate、13–13.5px 标签和 8px item 圆角。选中与 hover 使用 quiet wash，活动任务额外显示 teal 状态点。
-- **Hierarchy:** 顶部 Home / Code switch、主导航、Recents、Design 和 profile 按稳定区域分组；disabled 项保持可辨认但显著降权。
-- **Consistency:** Shell 内所有导航入口（包括主侧栏与 Settings 分类导航）统一复用 `Button` 的 `navigation` variant。Hover 与 selected 使用同一套 `sidebar-accent` / quiet wash 背景，不在局部改用 `ghost` 或自定义另一种 hover 色。
+- **Style:** 侧栏 240px 宽、44px 头/脚、30px 条目、12px 标签；选中 `--sidebar-active` + `--foreground`，hover `--sidebar-hover`，非选中 `--sidebar-muted`。
+- **Consistency:** Shell 内所有导航入口（主侧栏与 Settings 分类导航）统一复用 `Button` 的 `navigation` variant，不在局部改用 `ghost` 或自定义 hover 色。
 
-### Desktop Shell Composer
-
-新会话的大 composer 是桌面壳层的 signature component：欢迎语与输入框形成唯一视觉焦点，底栏同时展示附件入口、工作目录、模型状态和发送动作。运行中的已有会话 composer 增加一条极浅 teal 状态带，但不改变对话主导地位。
+### Agent Timeline (steps)
+- **Rail / Line / Node:** 24px 宽 rail，`1px` `--border` 连接线，24px node，`1.5px` 状态点。
+- **Label:** 14px / line-height 5；active 用 `shimmer-text`，其余 `--muted-foreground`。
+- **Collapse:** height + opacity + padding-top 三段过渡，200ms `ease [0,0,0.2,1]`。
 
 ## Do's and Don'ts
 
 ### Do:
 - **Do** 让对话列获得最多空间和最高文字对比。
-- **Do** 把 teal-green 留给品牌、连接、工作中和键盘焦点等有意义时刻。
-- **Do** 使用 hairline、tonal layering 和留白表达结构。
+- **Do** 把 sky 留给链接与品牌，把 success / destructive 留给状态。
+- **Do** 用 `--surface-*` tonal layering、`.5px` 描边和留白表达结构。
 - **Do** 为状态同时提供文字、图标或形状线索，并尊重 `prefers-reduced-motion`。
 - **Do** 让中英文 UI 遵循现有分工：中文偏情感与用户文案，英文偏产品名词和开发者概念。
 
 ### Don't:
-- **Don't** 把界面做成 IDE 式密集面板或 dashboard 控制台。
-- **Don't** 用多种高饱和色区分普通导航、文件类型或装饰。
-- **Don't** 给每张卡片默认加边框、阴影和独立白底。
+- **Don't** 引入第二套色相做导航、文件类型或装饰。
+- **Don't** 用 600/700 字重补层级；靠字号和留白。
+- **Don't** 给每张卡片默认加边框、阴影和独立白底；列表去 `divide-y`/`border-y`，用 `gap`。
 - **Don't** 让持续动画、强 glow 或大幅位移抢走对话注意力。
 - **Don't** 只用颜色传达运行、错误、选中或权限状态。

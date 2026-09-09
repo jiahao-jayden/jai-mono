@@ -21,7 +21,6 @@ import { desktopMessages } from "@/i18n/messages";
 import { cn } from "@/lib/utils";
 import { fontWeights } from "@/lib/font-weight";
 import { spring } from "@/lib/springs";
-import { useShape } from "@/lib/shape-context";
 import { useIcon } from "@/lib/icon-context";
 import { SurfaceProvider } from "@/lib/surface-context";
 import { FileThumbnail } from "@/components/ui/file-thumbnail";
@@ -141,7 +140,7 @@ function FilePreviewTile({ file, onRemove, size }: FilePreviewTileProps) {
           // of theme — the close badge needs to read as a "delete affordance"
           // over arbitrary image/PDF content, so it sits at a fixed contrast
           // instead of flipping with the surrounding surface.
-          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-neutral-900 text-white opacity-0 group-hover/tile:opacity-100 transition-opacity duration-80 flex items-center justify-center cursor-pointer outline-none focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]"
+          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-neutral-900 text-white opacity-0 group-hover/tile:opacity-100 transition-opacity duration-80 flex items-center justify-center cursor-pointer outline-none focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[color:var(--ring)]"
         >
           <XIcon size={12} strokeWidth={2.5} />
         </button>
@@ -184,7 +183,6 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
     const intl = useIntl();
     const resolvedPlaceholder = placeholder ?? intl.formatMessage(desktopMessages.inputAskAnything);
     const resolvedSendLabel = sendLabel ?? intl.formatMessage(desktopMessages.composerSendMessage);
-    const shape = useShape();
     const SendIcon = useIcon("send");
     const reduceMotion = useReducedMotion() ?? false;
 
@@ -192,7 +190,6 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [focusVisible, setFocusVisible] = useState(false);
     const [dragOver, setDragOver] = useState(false);
-    const [hovered, setHovered] = useState(false);
 
     // Split out onFocus/onBlur so the rest-spread onto the textarea can't
     // clobber the composed handlers below.
@@ -237,21 +234,16 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
     const trimmed = value.trim();
     const canSend = !disabled && (trimmed.length > 0 || filesArr.length > 0 || previewSlot != null);
 
-    // Edge = the box-shadow's 1px ring, recoloured in place per state so the
-    // stroke gains contrast without ever appearing to thicken (no second
-    // border band layered beside it). The drop (`0 1px 1px`) is kept so the
-    // composer holds its lift across states. Applied inline (not via a Tailwind
-    // `shadow-*` utility, which mangles multi-layer arbitrary values) with the
-    // precedence drag > focus > hover; when none are active, the className's
-    // `shadow-surface-2` supplies the resting edge.
-    const EDGE_DROP = "0 1px 1px -0.5px var(--shadow-color)";
+    // Edge = the box-shadow's 1px ring, recoloured in place per state (drag >
+    // focus > rest) over a constant soft drop, so the stroke gains contrast
+    // without appearing to thicken. Inline because Tailwind `shadow-*`
+    // mangles multi-layer arbitrary values.
+    const EDGE_DROP = "0 1px 2px var(--shadow-color)";
     const edgeShadow = dragOver
-      ? `0 0 0 1px #6B97FF, ${EDGE_DROP}`
+      ? `0 0 0 2px var(--brand), ${EDGE_DROP}`
       : focusVisible
-        ? `0 0 0 1px color-mix(in oklab, var(--foreground) 20%, transparent), ${EDGE_DROP}`
-        : hovered && clickToFocus && !disabled
-          ? `0 0 0 1px var(--border), ${EDGE_DROP}`
-          : undefined;
+        ? `0 0 0 1px var(--border-surface-strong), ${EDGE_DROP}`
+        : `0 0 0 1px var(--border-surface), ${EDGE_DROP}`;
 
     const handleSend = useCallback(() => {
       if (!canSend) return;
@@ -482,16 +474,14 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
           // border. State changes recolor that same 1px ring in place rather
           // than layering a second colored border beside it — so hover / focus
           // bump *contrast* without ever appearing to thicken the stroke.
-          "flex flex-col gap-1 overflow-hidden p-2 transition-[box-shadow,color] duration-80",
-          "bg-card shadow-surface-2",
-          shape.container,
+          "relative flex flex-col overflow-hidden transition-[box-shadow,color] duration-80",
+          "bg-surface-primary",
+          "rounded-[20px] no-squircle",
           clickToFocus && !disabled && "cursor-text",
           disabled && "opacity-50 pointer-events-none",
           className
         )}
-        style={edgeShadow ? { boxShadow: edgeShadow, ...style } : style}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        style={{ boxShadow: edgeShadow, ...style }}
         {...props}
       >
         <SurfaceProvider value={2}>
@@ -526,7 +516,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
                 transition={{ ...spring.moderate, bounce: 0 }}
                 className="overflow-hidden"
               >
-                <div className="pb-1">{previewSlot}</div>
+                <div className="px-2.5 pt-2">{previewSlot}</div>
               </motion.div>
             ) : filesArr.length > 0 && (
               <motion.div
@@ -537,7 +527,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
                 transition={{ ...spring.moderate, bounce: 0 }}
                 className="overflow-hidden"
               >
-                <div className="flex flex-wrap gap-2 pb-1">
+                <div className="flex flex-wrap gap-1.5 px-2.5 pt-2">
                   <AnimatePresence initial={false} mode="popLayout">
                     {filesArr.map((file, i) => (
                       <FilePreviewTile
@@ -581,25 +571,27 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
             rows={minRows}
             aria-label={textareaProps?.["aria-label"] ?? intl.formatMessage(desktopMessages.composerMessage)}
             className={cn(
-              "w-full resize-none bg-transparent outline-none",
-              "text-[14px] leading-5 text-foreground placeholder:text-muted-foreground",
-              "px-2 py-2"
+              "w-full resize-none bg-transparent outline-none focus-visible:shadow-none",
+              "text-[14px] leading-relaxed text-surface-primary-foreground placeholder:text-muted-foreground",
+              // Aside `.composer.compact`: editor row inset 32px each side for
+              // the absolutely positioned lead / trail buttons, plus 10px text pad.
+              "py-2 pr-[42px] pl-[42px]"
             )}
             style={{ fontVariationSettings: fontWeights.normal }}
             {...restTextareaProps}
           />
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">{leftContent}</div>
-            <div className="flex items-center gap-1.5 shrink-0">
+          <div className="absolute bottom-[5px] left-[5px] flex items-center gap-1">{leftContent}</div>
+          <div className="absolute right-[5px] bottom-[5px] flex items-center gap-1">
               {rightContent}
               {submitSlot ?? (
                 <Button
                   type="button"
-                  variant="accent"
+                  variant="primary"
                   size="icon-sm"
                   onClick={handleSend}
                   disabled={!canSend}
                   aria-label={resolvedSendLabel}
+                  className="rounded-full no-squircle"
                 >
                   <AnimatePresence mode="wait" initial={false}>
                     <motion.span
@@ -618,15 +610,11 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
                       transition={spring.fast}
                       className="flex items-center justify-center leading-none"
                     >
-                      <SendIcon
-                        size={19}
-                        className="block !h-[19px] !w-[19px]"
-                      />
+                      <SendIcon size={18} className="block size-4.5!" />
                     </motion.span>
                   </AnimatePresence>
                 </Button>
               )}
-            </div>
           </div>
         </SurfaceProvider>
       </div>

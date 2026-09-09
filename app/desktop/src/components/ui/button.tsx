@@ -17,26 +17,29 @@ import { useShape } from "@/lib/shape-context";
 const buttonVariants = cva(
   [
     "group group/button relative isolate inline-flex items-center justify-center outline-none cursor-pointer",
-    "transition-colors duration-80",
-    "disabled:pointer-events-none",
+    "transition-all duration-150 ease-[cubic-bezier(.4,0,.2,1)] will-change-transform select-none",
+    "font-medium disabled:opacity-50 disabled:pointer-events-none",
+    "focus-visible:ring-3 focus-visible:ring-ring",
   ],
   {
     variants: {
       variant: {
-        primary: "text-background disabled:opacity-50",
-        accent: "text-primary-2-foreground disabled:opacity-50",
-        secondary: "text-foreground disabled:opacity-50",
-        tertiary: "text-foreground disabled:opacity-50",
-        ghost: "text-muted-foreground hover:text-foreground disabled:opacity-50",
-        navigation: "text-foreground/85 hover:text-foreground",
+        primary: "text-primary-foreground",
+        accent: "text-white",
+        secondary: "text-foreground",
+        tertiary: "text-foreground",
+        ghost: "text-muted-foreground hover:text-foreground",
+        navigation: "text-sidebar-muted hover:text-sidebar-foreground",
       },
       size: {
         sm: "h-7 px-3 text-[12px] gap-1",
         md: "h-8 px-4 text-[13px] gap-1.5",
         lg: "h-9 px-5 text-[14px] gap-1.5",
-        "icon-sm": "h-8 w-8 p-0 [&_svg]:h-3.5 [&_svg]:w-3.5",
-        icon: "h-9 w-9 p-0 [&_svg]:h-4 [&_svg]:w-4",
-        "icon-lg": "h-10 w-10 p-0 [&_svg]:h-5 [&_svg]:w-5",
+        chip: "h-7 pl-2.5 pr-1.5 text-[13px] gap-1 font-normal text-muted-foreground hover:text-foreground [&_svg]:shrink-0",
+        "icon-xs": "h-6 w-6 p-0 [&_svg]:h-3.5 [&_svg]:w-3.5",
+        "icon-sm": "h-7 w-7 p-0 [&_svg]:h-4 [&_svg]:w-4",
+        icon: "h-8 w-8 p-0 [&_svg]:h-4 [&_svg]:w-4",
+        "icon-lg": "h-9 w-9 p-0 [&_svg]:h-5 [&_svg]:w-5",
       },
       iconLeft: { true: "" },
       iconRight: { true: "" },
@@ -75,26 +78,26 @@ interface ButtonProps
 }
 
 const bgVariants: Record<string, string> = {
-  primary: "bg-foreground group-hover/button:bg-foreground/90 group-active/button:bg-foreground/80",
-  accent: "bg-primary-2 group-hover/button:bg-primary-2/90 group-active/button:bg-primary-2/80",
-  secondary: "bg-accent group-hover/button:bg-accent/80 group-active/button:bg-accent",
-  tertiary: "border border-border bg-transparent group-hover/button:bg-hover group-active/button:bg-active",
-  ghost: "bg-transparent group-hover/button:bg-hover group-active/button:bg-active",
-  navigation: "bg-transparent group-hover/button:bg-sidebar-accent group-active/button:bg-sidebar-accent",
+  primary: "bg-primary group-hover/button:bg-primary/90 group-active/button:bg-primary/80",
+  accent: "bg-brand group-hover/button:bg-brand/90 group-active/button:bg-brand/80",
+  secondary: "bg-secondary group-hover/button:bg-secondary/80 group-active/button:bg-secondary",
+  tertiary: "border border-border bg-background group-hover/button:bg-muted group-active/button:bg-muted",
+  ghost: "bg-transparent group-hover/button:bg-muted-hover group-active/button:bg-muted-hover",
+  navigation: "bg-transparent group-hover/button:bg-sidebar-hover group-active/button:bg-sidebar-active",
 };
 
 const activeBgVariants: Record<string, string> = {
-  primary: "bg-foreground/80",
-  accent: "bg-primary-2/80",
-  secondary: "bg-accent",
-  tertiary: "border border-border bg-active",
-  ghost: "bg-active",
-  navigation: "bg-sidebar-accent",
+  primary: "bg-primary/80",
+  accent: "bg-brand/80",
+  secondary: "bg-secondary",
+  tertiary: "border border-border bg-secondary",
+  ghost: "bg-secondary text-foreground opacity-50 group-hover/button:opacity-100",
+  navigation: "bg-sidebar-active",
 };
 
 const disabledBgVariants: Record<string, string> = {
   primary: "bg-foreground",
-  accent: "bg-primary-2",
+  accent: "bg-brand",
   secondary: "bg-accent",
   tertiary: "border border-border bg-transparent",
   ghost: "bg-transparent",
@@ -131,19 +134,25 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           }>)
         : null;
     const label = asChildElement ? asChildElement.props.children : children;
-    const isIconOnly = size === "icon" || size === "icon-sm" || size === "icon-lg";
-    const iconSize = size === "sm" ? 14 : size === "lg" ? 20 : 16;
+    const isIconOnly = size === "icon" || size === "icon-xs" || size === "icon-sm" || size === "icon-lg";
+    const iconSize = size === "sm" || size === "chip" || size === "icon-xs" ? 14 : size === "lg" || size === "icon-lg" ? 20 : 16;
     const spinnerSizeClass =
-      size === "sm"
-        ? "h-7 w-7"
-        : size === "lg" || size === "icon"
-          ? "h-9 w-9"
-          : size === "icon-lg"
-            ? "h-10 w-10"
-            : "h-8 w-8";
+      size === "icon-xs"
+        ? "h-6 w-6"
+        : size === "sm"
+          ? "h-7 w-7"
+          : size === "lg" || size === "icon-lg"
+            ? "h-9 w-9"
+            : size === "icon"
+              ? "h-8 w-8"
+              : size === "icon-sm"
+                ? "h-7 w-7"
+                : "h-8 w-8";
     const shape = useShape();
     const v = variant ?? "primary";
     const isDisabled = disabled || loading;
+    // icon-xs uses a tighter radius (md) than the default squircle (lg); chips are pills.
+    const radiusOverride = size === "icon-xs" ? "rounded-md" : size === "chip" ? "rounded-full no-squircle" : undefined;
 
     // State priority: disabled > active/selected > hover > rest
     const bgClass = isDisabled
@@ -221,6 +230,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         iconRight: !isIconOnly && !!TrailingIcon,
       }),
       shape.button,
+      radiusOverride,
       className
     );
 

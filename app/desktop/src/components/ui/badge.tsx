@@ -34,6 +34,9 @@ const badgeVariants = cva(
       variant: {
         solid: "",
         dot: "border border-border text-foreground",
+        success: "bg-success/15 text-success",
+        destructive: "bg-destructive/15 text-destructive",
+        neutral: "bg-secondary text-secondary-foreground",
       },
       size: {
         sm: "h-5 px-2 text-[11px] gap-1",
@@ -56,22 +59,16 @@ interface BadgeProps
 
 const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
   (
-    {
-      className,
-      variant = "solid",
-      size = "md",
-      color = "gray",
-      children,
-      style,
-      ...props
-    },
+    { className, variant = "solid", size = "md", color = "gray", children, style, ...props },
     ref
   ) => {
     const shape = useShape();
     const colorValue = badgeColors[color];
     const isSolid = variant === "solid";
+    const isDot = variant === "dot";
     const dotSize = size === "sm" ? 6 : size === "lg" ? 8 : 7;
 
+    // solid is the user-label variant: its bg comes from the color palette.
     const colorStyle = isSolid
       ? color === "gray"
         ? { backgroundColor: "var(--accent)", color: "var(--foreground)" }
@@ -90,14 +87,10 @@ const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
         style={{ ...colorStyle, ...style }}
         {...props}
       >
-        {!isSolid && (
+        {isDot && (
           <span
             className="shrink-0 rounded-full"
-            style={{
-              width: dotSize,
-              height: dotSize,
-              backgroundColor: dotColor,
-            }}
+            style={{ width: dotSize, height: dotSize, backgroundColor: dotColor }}
           />
         )}
         {/* text-box needs a block container — the badge root is a flex

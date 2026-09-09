@@ -141,7 +141,7 @@ const Dropdown = forwardRef<HTMLDivElement, DropdownProps>(
           }}
           role="group"
           className={cn(
-            `relative flex flex-col gap-0.5 w-72 max-w-full ${shape.container} p-1 select-none`,
+            `relative flex flex-col gap-0.5 w-72 max-w-full ${shape.container} p-1 select-none bg-popover`,
             className
           )}
           {...props}
@@ -173,7 +173,7 @@ const Dropdown = forwardRef<HTMLDivElement, DropdownProps>(
             {activeRect && (
               <motion.div
                 key={sessionRef.current}
-                className={`absolute ${shape.bg} bg-hover pointer-events-none`}
+                className={`absolute ${shape.bg} bg-muted-hover pointer-events-none`}
                 initial={{
                   opacity: 0,
                   top: checkedRect?.top ?? activeRect.top,
@@ -201,13 +201,13 @@ const Dropdown = forwardRef<HTMLDivElement, DropdownProps>(
           <AnimatePresence>
             {focusRect && (
               <motion.div
-                className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]`}
+                className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--ring)]`}
                 initial={false}
                 animate={{
-                  left: focusRect.left - 2,
-                  top: focusRect.top - 2,
-                  width: focusRect.width + 4,
-                  height: focusRect.height + 4,
+                  left: focusRect.left,
+                  top: focusRect.top,
+                  width: focusRect.width,
+                  height: focusRect.height,
                 }}
                 exit={{ opacity: 0, transition: spring.fast.exit }}
                 transition={{
@@ -475,13 +475,17 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
           className="z-50 outline-none"
         >
           <motion.div
-            initial={{ opacity: 0, y: -4, scaleY: 0.96 }}
+            initial={{ opacity: 0, y: -2, scale: 0.96 }}
             animate={
               open
-                ? { opacity: 1, y: 0, scaleY: 1 }
-                : { opacity: 0, y: -4, scaleY: 0.96 }
+                ? { opacity: 1, y: 0, scale: 1 }
+                : { opacity: 0, y: -2, scale: 0.96 }
             }
-            transition={open ? spring.fast : spring.fast.exit}
+            transition={
+              open
+                ? { duration: 0.15, ease: [0, 0, 0.2, 1] }
+                : { duration: 0.12, ease: [0, 0, 0.2, 1] }
+            }
             style={{ transformOrigin: "top center" }}
             // Base UI defers unmount while actionsRef is set; release it once
             // the exit spring has finished so the close animation fully plays.
@@ -536,7 +540,7 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
                 className={cn(
                   // min-w tracks the trigger via the Positioner's
                   // --anchor-width var.
-                  `relative flex flex-col gap-0.5 w-72 max-w-full min-w-[var(--anchor-width)] max-h-[min(480px,var(--available-height))] overflow-y-auto ${shape.container} p-1 select-none outline-none`,
+                  `relative flex flex-col gap-0.5 w-72 max-w-full min-w-[var(--anchor-width)] max-h-[min(480px,var(--available-height))] overflow-y-auto ${shape.container} p-1 select-none outline-none bg-popover`,
                   className
                 )}
               >
@@ -570,8 +574,8 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
                       className={cn(
                         `absolute ${shape.bg} pointer-events-none`,
                         hoverVariant === "navigation"
-                          ? "bg-sidebar-accent"
-                          : "bg-hover"
+                          ? "bg-sidebar-hover"
+                          : "bg-muted-hover"
                       )}
                       initial={{
                         opacity: 0,
@@ -600,13 +604,13 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
                 <AnimatePresence>
                   {focusRect && (
                     <motion.div
-                      className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]`}
+                      className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--ring)]`}
                       initial={false}
                       animate={{
-                        left: focusRect.left - 2,
-                        top: focusRect.top - 2,
-                        width: focusRect.width + 4,
-                        height: focusRect.height + 4,
+                        left: focusRect.left,
+                        top: focusRect.top,
+                        width: focusRect.width,
+                        height: focusRect.height,
                       }}
                       exit={{ opacity: 0, transition: spring.fast.exit }}
                       transition={{
@@ -719,7 +723,7 @@ const DropdownLabel = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>
     <div
       ref={ref}
       className={cn(
-        "px-2 py-1.5 shrink-0 text-[11px] text-muted-foreground",
+        "px-2 pt-1.5 pb-1 shrink-0 text-[12px] font-medium text-muted-foreground",
         className
       )}
       {...props}
@@ -740,7 +744,7 @@ const DropdownSeparator = forwardRef<
   <div
     ref={ref}
     role="separator"
-    className={cn("my-1 -mx-1 h-px shrink-0 bg-border/60", className)}
+    className={cn("my-1 -mx-1 h-px shrink-0 bg-border", className)}
     {...props}
   />
 ));

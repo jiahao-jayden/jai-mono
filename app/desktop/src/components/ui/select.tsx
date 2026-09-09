@@ -201,15 +201,15 @@ const triggerVariants = cva(
     "text-[13px] h-9 px-3 min-w-[160px]",
     "transition-all duration-80",
     "disabled:opacity-50 disabled:pointer-events-none",
-    "focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]",
+    "focus-visible:ring-1 focus-visible:ring-[color:var(--ring)]",
   ],
   {
     variants: {
       variant: {
         bordered:
-          "border border-border bg-transparent text-foreground hover:bg-hover",
+          "border border-border bg-transparent text-foreground hover:bg-muted-hover",
         borderless:
-          "border border-transparent bg-transparent text-foreground hover:bg-hover",
+          "border border-transparent bg-transparent text-foreground hover:bg-muted-hover",
       },
     },
     defaultVariants: {
@@ -411,13 +411,17 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
           className="z-50 outline-none"
         >
           <motion.div
-            initial={{ opacity: 0, y: -4, scaleY: 0.96 }}
+            initial={{ opacity: 0, y: -2, scale: 0.96 }}
             animate={
               open
-                ? { opacity: 1, y: 0, scaleY: 1 }
-                : { opacity: 0, y: -4, scaleY: 0.96 }
+                ? { opacity: 1, y: 0, scale: 1 }
+                : { opacity: 0, y: -2, scale: 0.96 }
             }
-            transition={open ? spring.fast : spring.fast.exit}
+            transition={
+              open
+                ? { duration: 0.15, ease: [0, 0, 0.2, 1] }
+                : { duration: 0.12, ease: [0, 0, 0.2, 1] }
+            }
             style={{ transformOrigin: "top center" }}
             // Base UI defers unmount while actionsRef is set; release it once
             // the exit spring has finished so the close animation fully plays.
@@ -472,7 +476,7 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
                 className={cn(
                   // min-w tracks the trigger via the Positioner's --anchor-width
                   // var, matching the pre-migration minWidth: triggerRect.width.
-                  `relative flex flex-col gap-0.5 min-w-[var(--anchor-width)] max-h-[min(300px,var(--available-height))] overflow-y-auto ${shape.container} p-1 select-none outline-none`,
+                  `relative flex flex-col gap-0.5 min-w-[var(--anchor-width)] max-h-[min(300px,var(--available-height))] overflow-y-auto ${shape.container} p-1 select-none outline-none bg-popover`,
                   className
                 )}
               >
@@ -518,7 +522,7 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
                     {activeRect && (
                       <motion.div
                         key={sessionRef.current}
-                        className={`absolute ${shape.bg} bg-hover pointer-events-none`}
+                        className={`absolute ${shape.bg} bg-muted-hover pointer-events-none`}
                         initial={{
                           opacity: 0,
                           top: activeRect.top,
@@ -548,13 +552,13 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
                   <AnimatePresence>
                     {focusRect && (
                       <motion.div
-                        className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]`}
+                        className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--ring)]`}
                         initial={false}
                         animate={{
-                          left: focusRect.left - 2,
-                          top: focusRect.top - 2,
-                          width: focusRect.width + 4,
-                          height: focusRect.height + 4,
+                          left: focusRect.left,
+                          top: focusRect.top,
+                          width: focusRect.width,
+                          height: focusRect.height,
                         }}
                         exit={{ opacity: 0, transition: spring.fast.exit }}
                         transition={{
@@ -651,7 +655,7 @@ const SelectItem = forwardRef<HTMLDivElement, SelectItemProps>(
               // the text-box trim on the item text doesn't shrink the row.
               // shrink-0: the popup is a max-height flex column, so without it
               // a long list compresses rows to fit instead of scrolling.
-              `relative z-10 flex h-9 shrink-0 items-center gap-2 ${shape.item} px-2 text-[13px] cursor-pointer outline-none select-none`,
+              `relative z-10 flex h-[30px] shrink-0 items-center gap-2 ${shape.item} px-2 text-[13px] cursor-pointer outline-none select-none`,
               "transition-[color] duration-80",
               isActive || isChecked
                 ? "text-foreground"
@@ -746,7 +750,7 @@ const SelectLabel = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
     <div
       ref={ref}
       className={cn(
-        "px-2 py-1.5 shrink-0 text-[11px] text-muted-foreground",
+        "px-2 pt-1.5 pb-1 shrink-0 text-[12px] font-medium text-muted-foreground",
         className
       )}
       {...props}
@@ -763,7 +767,7 @@ const SelectSeparator = forwardRef<
   <div
     ref={ref}
     role="separator"
-    className={cn("my-1 -mx-1 h-px shrink-0 bg-border/60", className)}
+    className={cn("my-1 -mx-1 h-px shrink-0 bg-border", className)}
     {...props}
   />
 ));

@@ -73,7 +73,7 @@ describe("Sidebar", () => {
 		expect(markup).toContain('aria-disabled="true"');
 		expect(markup).toContain('tabindex="-1"');
 		// Should have hover class
-		expect(markup).toContain("group-hover/button:bg-sidebar-accent");
+		expect(markup).toContain("group-hover/button:bg-sidebar-hover");
 		// Should expose the unavailable state in its accessible title.
 		expect(markup).toContain("Search (coming later)");
 	});
@@ -130,8 +130,8 @@ describe("Sidebar", () => {
 		);
 
 		expect(markup).toContain('aria-current="page"');
-		expect(markup).toContain("bg-sidebar-accent");
-		expect(markup).toContain("font-semibold");
+		expect(markup).toContain("bg-sidebar-active");
+		expect(markup).toContain("font-normal");
 	});
 
 	test("全部行项目使用 8px 圆角", () => {

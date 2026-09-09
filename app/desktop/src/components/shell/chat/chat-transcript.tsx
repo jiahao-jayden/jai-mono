@@ -225,7 +225,7 @@ function NavigateToMessageAction({
 				<Button
 					type="button"
 					variant="ghost"
-					size="icon-sm"
+					size="icon"
 					disabled={actionDisabled}
 					aria-label={intl.formatMessage(desktopMessages.transcriptBackToHere)}
 					title={intl.formatMessage(desktopMessages.transcriptBackToHere)}
@@ -280,7 +280,7 @@ function CompactionDivider({
 		/>
 	) : undefined;
 	const className = cn("flex items-center gap-3 py-2 text-[11.5px] text-muted-foreground", {
-		"text-primary-2/90": compacting,
+		"text-brand": compacting,
 	});
 
 	return (
@@ -610,7 +610,7 @@ export function TranscriptLoading() {
 	const intl = useIntl();
 	return (
 		<div className="space-y-4 py-6" role="status" aria-label={intl.formatMessage(desktopMessages.transcriptLoading)}>
-			<div className="ml-auto h-12 w-56 animate-pulse rounded-[14px] bg-primary-2/8" />
+			<div className="ml-auto h-12 w-56 animate-pulse rounded-xl bg-secondary no-squircle" />
 			<div className="h-4 w-[72%] animate-pulse rounded bg-foreground/6" />
 			<div className="h-4 w-[58%] animate-pulse rounded bg-foreground/5" />
 		</div>

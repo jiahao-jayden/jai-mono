@@ -108,7 +108,7 @@ function ConnectorCatalogPage({
 	return (
 		<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
 			<div className="px-6 pb-4 pt-6">
-				<h2 className="text-base font-semibold tracking-[-0.02em]">
+				<h2 className="text-[14px] font-medium tracking-[-0.02em]">
 					{intl.formatMessage(desktopMessages.settingsConnectors)}
 				</h2>
 			</div>
@@ -146,14 +146,14 @@ function ConnectorCatalogPage({
 						aria-label={intl.formatMessage(desktopMessages.settingsConnectorApps)}
 					>
 						<thead>
-							<tr className="border-b border-border/55">
-								<th scope="col" className="w-[58%] py-4 text-left text-xs font-semibold text-foreground">
+							<tr className="border-b border-border">
+								<th scope="col" className="w-[58%] py-4 text-left text-[12px] font-medium text-foreground">
 									{intl.formatMessage(desktopMessages.settingsApp)}
 								</th>
-								<th scope="col" className="w-[22%] py-4 text-left text-xs font-semibold text-foreground">
+								<th scope="col" className="w-[22%] py-4 text-left text-[12px] font-medium text-foreground">
 									{intl.formatMessage(desktopMessages.settingsType)}
 								</th>
-								<th scope="col" className="w-[20%] py-4 text-center text-xs font-semibold text-foreground">
+								<th scope="col" className="w-[20%] py-4 text-center text-[12px] font-medium text-foreground">
 									{intl.formatMessage(desktopMessages.settingsStatus)}
 								</th>
 							</tr>
@@ -243,7 +243,7 @@ function ConnectorTableRow({
 	return (
 		<tr
 			tabIndex={0}
-			className="cursor-pointer border-b border-border/55 transition-colors duration-80 hover:bg-hover focus-visible:bg-hover last:border-b-0"
+			className="cursor-pointer transition-colors duration-80 hover:bg-muted-hover focus-visible:bg-muted-hover"
 			onClick={onSelect}
 			onKeyDown={(event) => {
 				if (event.target !== event.currentTarget) return;
@@ -254,12 +254,10 @@ function ConnectorTableRow({
 		>
 			<td className="py-2.5 pr-4">
 				<div className="flex min-w-0 items-center gap-3">
-					<span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-white p-1.5">
+					<span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-white p-1.5">
 						<ConnectorBrandLogo connector={connector} size={20} />
 					</span>
-					<p className="truncate text-[14px] font-semibold tracking-[-0.015em] text-foreground">
-						{connector.name}
-					</p>
+					<p className="truncate text-[14px] font-medium tracking-[-0.015em] text-foreground">{connector.name}</p>
 				</div>
 			</td>
 			<td className="py-2 pr-4 text-[13px] text-muted-foreground">{authLabel}</td>
@@ -422,12 +420,10 @@ function ConnectorDetailPage({
 				<div className="flex items-start justify-between gap-6">
 					<div className="min-w-0">
 						<div className="flex min-w-0 items-center gap-4">
-							<span className="flex size-6 shrink-0 items-center justify-center rounded-sm border border-border/60 bg-white p-1">
+							<span className="flex size-6 shrink-0 items-center justify-center rounded-sm border border-border bg-white p-1">
 								<ConnectorBrandLogo connector={connector} size={25} />
 							</span>
-							<h2 className="min-w-0 truncate text-[18px] font-semibold tracking-[-0.025em]">
-								{connector.name}
-							</h2>
+							<h2 className="min-w-0 truncate text-[16px] font-medium tracking-[-0.01em]">{connector.name}</h2>
 						</div>
 					</div>
 					<div className="flex shrink-0 items-center gap-3">
@@ -450,7 +446,7 @@ function ConnectorDetailPage({
 				</p>
 
 				{isOAuth ? (
-					<section className="mt-5 border-t border-border/55 pt-6">
+					<section className="mt-5 border-t border-border pt-6">
 						<h3 className="text-[14px] font-semibold">
 							{intl.formatMessage(desktopMessages.settingsAccountAccess)}
 						</h3>
@@ -559,7 +555,7 @@ function ToolPermissionSettings({
 	].filter((group) => group.actions.length > 0);
 
 	return (
-		<section className="mt-6 border-t border-border/55 pt-6">
+		<section className="mt-6 border-t border-border pt-6">
 			<div className="flex items-start justify-between gap-4">
 				<div>
 					<h3 className="text-[14px] font-semibold">
@@ -570,9 +566,9 @@ function ToolPermissionSettings({
 					</p>
 				</div>
 			</div>
-			<div className="mt-5">
+			<div className="mt-5 flex flex-col gap-2">
 				{groups.map((group) => (
-					<div key={group.id} className="border-b border-border/55 last:border-b-0">
+					<div key={group.id}>
 						<div className="flex h-12 items-center justify-between gap-4">
 							<GroupDisclosure
 								open={openGroupIds.has(group.id)}
@@ -596,7 +592,7 @@ function ToolPermissionSettings({
 							</div>
 						</div>
 						{openGroupIds.has(group.id) ? (
-							<div className="divide-y divide-border/55 border-t border-border/55">
+							<div className="flex flex-col gap-3 border-t border-border pt-3">
 								{group.actions.map((action) => (
 									<div key={action.actionId} className="flex min-h-14 items-center justify-between gap-4 pl-7">
 										<p className="min-w-0 truncate text-[13px] text-foreground" title={action.description}>
@@ -676,7 +672,7 @@ function PermissionTabs({
 	} satisfies Record<DesktopConnectorPermission, string>;
 
 	return (
-		<fieldset className="flex items-center gap-0.5 rounded-lg border border-border/55 bg-muted/55 p-0.5">
+		<fieldset className="flex items-center gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5">
 			<legend className="sr-only">{ariaLabel}</legend>
 			{(["ask", "allow", "deny"] as const).map((permission) => {
 				const Icon = icons[permission];
@@ -685,7 +681,7 @@ function PermissionTabs({
 						<Button
 							type="button"
 							variant="ghost"
-							size="icon-sm"
+							size="icon"
 							className={cn(
 								"rounded-md text-muted-foreground",
 								value === permission && "bg-card text-foreground shadow-sm",
@@ -783,7 +779,7 @@ function CredentialSettings({
 }) {
 	const intl = useIntl();
 	return (
-		<div className="mt-5 border-t border-border/55 pt-6">
+		<div className="mt-5 border-t border-border pt-6">
 			<div>
 				<h3 className="text-[14px] font-semibold">{intl.formatMessage(desktopMessages.settingsCredentials)}</h3>
 				<p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">

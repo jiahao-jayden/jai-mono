@@ -9,7 +9,7 @@
 	max-width: 100%;
 	color: color-mix(in oklch, var(--foreground) 95%, var(--background));
 	font-size: 14px;
-	line-height: 1.65;
+	line-height: 20px;
 	overflow-wrap: anywhere;
 }
 
@@ -23,7 +23,7 @@
 
 .chat-markdown :is(h1, [data-streamdown="heading-1"]) {
 	font-size: 1.25rem;
-	font-weight: 600;
+	font-weight: 500;
 	line-height: 1.3;
 	letter-spacing: -0.01em;
 	color: var(--foreground);
@@ -31,21 +31,21 @@
 
 .chat-markdown :is(h2, [data-streamdown="heading-2"]) {
 	font-size: 1.125rem;
-	font-weight: 600;
+	font-weight: 500;
 	line-height: 1.4;
 	color: var(--foreground);
 }
 
 .chat-markdown :is(h3, [data-streamdown="heading-3"]) {
 	font-size: 1rem;
-	font-weight: 600;
+	font-weight: 500;
 	line-height: 1.5;
 	color: color-mix(in oklch, var(--foreground) 92%, var(--background));
 }
 
 .chat-markdown :is(h4, h5, h6, [data-streamdown="heading-4"], [data-streamdown="heading-5"], [data-streamdown="heading-6"]) {
 	font-size: 0.875rem;
-	font-weight: 600;
+	font-weight: 500;
 	line-height: 1.5;
 	color: color-mix(in oklch, var(--foreground) 78%, var(--background));
 }
@@ -56,9 +56,9 @@
 
 .chat-markdown [data-streamdown="link"] {
 	cursor: pointer;
-	color: var(--primary-2);
+	color: var(--brand);
 	text-decoration-line: underline;
-	text-decoration-color: color-mix(in oklch, var(--primary-2) 58%, transparent);
+	text-decoration-color: color-mix(in oklch, var(--brand) 58%, transparent);
 	text-underline-offset: 0.18em;
 	transition:
 		color 80ms ease,
@@ -66,7 +66,7 @@
 }
 
 .chat-markdown [data-streamdown="link"]:hover {
-	color: color-mix(in oklch, var(--primary-2) 72%, var(--foreground));
+	color: color-mix(in oklch, var(--brand) 72%, var(--foreground));
 	text-decoration-color: currentColor;
 }
 
@@ -230,7 +230,7 @@
 
 .chat-markdown [data-streamdown="table-header-cell"] {
 	font-size: 13px !important;
-	font-weight: 600 !important;
+	font-weight: 500 !important;
 	color: color-mix(in oklch, var(--foreground) 92%, var(--background)) !important;
 }
 
@@ -246,7 +246,7 @@
 .chat-markdown blockquote {
 	position: relative;
 	padding: 0.125rem 0 0.125rem 1rem !important;
-	border-left: 1px solid color-mix(in oklch, var(--primary-2) 58%, transparent) !important;
+	border-left: 1px solid color-mix(in oklch, var(--brand) 58%, transparent) !important;
 	color: color-mix(in oklch, var(--foreground) 72%, var(--background)) !important;
 	font-style: italic;
 }
@@ -269,7 +269,7 @@
 
 .chat-markdown :is(strong, [data-streamdown="strong"]) {
 	color: var(--foreground) !important;
-	font-weight: 600;
+	font-weight: 500;
 }
 
 .chat-markdown :is([data-streamdown="code-block"], [data-streamdown="table-wrapper"]) :is(button, [role="button"]) {
@@ -291,13 +291,13 @@
 }
 
 .chat-markdown :is([data-streamdown="code-block"], [data-streamdown="table-wrapper"]) :is(button, [role="button"]):focus-visible {
-	outline: 2px solid color-mix(in oklch, var(--primary-2) 58%, transparent);
+	outline: 2px solid color-mix(in oklch, var(--brand) 58%, transparent);
 	outline-offset: 1px;
 }
 
 /* Streaming caret. Streamdown's own caret is the text glyph U+258B, which scales
    with the font and lands as a heavy block next to 14px body copy. We blank the
-   glyph and draw the mark ourselves: a 1.5px rule at cap height, in brand teal,
+   glyph and draw the mark ourselves: a 1.5px rule at cap height in the foreground,
    so it reads as a text cursor rather than a character the model emitted. It
    breathes rather than blinks — a hard blink at this size pulls the eye off the
    text it accompanies. */
@@ -308,7 +308,7 @@
 	height: 0.95em;
 	margin-left: 0.12em;
 	border-radius: 1px;
-	background: var(--primary-2);
+	background: var(--foreground);
 	vertical-align: -0.12em;
 	animation: chat-caret-breathe 1.4s ease-in-out infinite;
 }
@@ -320,6 +320,37 @@
 	}
 	50% {
 		opacity: 0.35;
+	}
+}
+
+@keyframes sd-blurIn {
+	0% {
+		opacity: 0;
+		filter: blur(4px);
+	}
+	100% {
+		opacity: 1;
+		filter: blur(0);
+	}
+}
+
+@keyframes sd-slideUp {
+	0% {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+	100% {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@keyframes sd-fadeIn {
+	0% {
+		opacity: 0;
+	}
+	100% {
+		opacity: 1;
 	}
 }
 

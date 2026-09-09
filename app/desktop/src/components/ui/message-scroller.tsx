@@ -27,7 +27,7 @@ export function MessageScroller({ visible, onScrollToBottom }: MessageScrollerPr
 				aria-label={intl.formatMessage(desktopMessages.messageJumpLatest)}
 				className="bg-background shadow-sm rounded-full"
 				onClick={onScrollToBottom}
-				size="icon-sm"
+				size="icon"
 				title={intl.formatMessage(desktopMessages.messageJumpLatest)}
 				type="button"
 				variant="tertiary"

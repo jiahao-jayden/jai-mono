@@ -52,99 +52,105 @@ export function TaskPanel({ status, todos, artifacts, selectedArtifactId, onOpen
 	const summaryInitial = reduceMotion ? { opacity: 0 } : { opacity: 0, transform: "translateY(18%)" };
 
 	return (
-		<aside className="h-full w-full min-w-0 overflow-y-auto bg-background py-3 pr-3">
-			<div className="overflow-hidden rounded-[14px] border border-border bg-card">
-				<section className="px-4 pt-3.5 pb-2.5">
-					<div className="flex items-center justify-between">
-						<h2 className="text-[14px] font-semibold">{intl.formatMessage(desktopMessages.taskProgress)}</h2>
-						<span aria-live="polite" className="flex items-center gap-2 text-[12.5px] text-foreground/70">
-							<AnimatePresence mode="popLayout" initial={false}>
-								<motion.span
-									key={progressLabel}
-									initial={summaryInitial}
-									animate={{ opacity: 1, transform: "translateY(0%)" }}
-									exit={{ opacity: 0 }}
-									transition={{ duration: 0.16, ease: [0.23, 1, 0.32, 1] }}
-								>
-									{progressLabel}
-								</motion.span>
-							</AnimatePresence>
-							<ChevronRightIcon size={13} />
-						</span>
-					</div>
-					{todoItems.length > 0 ? (
-						<ul className="mt-3 space-y-0.5" aria-label={intl.formatMessage(desktopMessages.taskList)}>
-							<AnimatePresence initial={false}>
-								{todoItems.map((todo) => (
-									<TodoRow key={todo.id} todo={todo} agentStatus={status} />
-								))}
-							</AnimatePresence>
-						</ul>
-					) : null}
-				</section>
+		<aside className="flex h-full w-full min-w-0 flex-col gap-3.5 overflow-y-auto p-3">
+			<section>
+				<div className="flex h-6 items-center justify-between px-1.5">
+					<h2 className="text-[12px] font-medium text-muted-foreground">
+						{intl.formatMessage(desktopMessages.taskProgress)}
+					</h2>
+					<span
+						aria-live="polite"
+						className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground"
+					>
+						<AnimatePresence mode="popLayout" initial={false}>
+							<motion.span
+								key={progressLabel}
+								initial={summaryInitial}
+								animate={{ opacity: 1, transform: "translateY(0%)" }}
+								exit={{ opacity: 0 }}
+								transition={{ duration: 0.16, ease: [0.23, 1, 0.32, 1] }}
+							>
+								{progressLabel}
+							</motion.span>
+						</AnimatePresence>
+						<ChevronRightIcon size={13} />
+					</span>
+				</div>
+				{todoItems.length > 0 ? (
+					<ul className="mt-1 space-y-0.5" aria-label={intl.formatMessage(desktopMessages.taskList)}>
+						<AnimatePresence initial={false}>
+							{todoItems.map((todo) => (
+								<TodoRow key={todo.id} todo={todo} agentStatus={status} />
+							))}
+						</AnimatePresence>
+					</ul>
+				) : null}
+			</section>
 
-				<div aria-hidden="true" className="mx-4 border-t border-border/45" />
+			<section>
+				<div className="flex h-6 items-center justify-between px-1.5">
+					<h2 className="text-[12px] font-medium text-muted-foreground">
+						{intl.formatMessage(desktopMessages.taskOutputs)}
+					</h2>
+					<ChevronRightIcon size={13} className="rotate-90 text-muted-foreground" />
+				</div>
+				<p className="px-1.5 py-1 text-[13px] leading-relaxed text-muted-foreground">
+					{intl.formatMessage(desktopMessages.taskOutputsDescription)}
+				</p>
+			</section>
 
-				<section className="px-4 py-2.5">
-					<div className="flex items-center justify-between pb-2">
-						<h2 className="text-[14px] font-semibold">{intl.formatMessage(desktopMessages.taskOutputs)}</h2>
-						<ChevronRightIcon size={13} className="rotate-90 text-muted-foreground" />
-					</div>
-					<p className="py-2 text-[12.5px] leading-relaxed text-foreground/70">
-						{intl.formatMessage(desktopMessages.taskOutputsDescription)}
+			<section>
+				<div className="flex h-6 items-center justify-between px-1.5">
+					<h2 className="text-[12px] font-medium text-muted-foreground">
+						{intl.formatMessage(desktopMessages.taskArtifacts)}
+					</h2>
+					<span className="flex items-center gap-1.5 text-[12px] font-medium tabular-nums text-muted-foreground">
+						{artifacts.length}
+						<ArchiveIcon size={14} />
+					</span>
+				</div>
+				{artifacts.length === 0 ? (
+					<p className="px-1.5 py-1 text-[13px] leading-relaxed text-muted-foreground">
+						{intl.formatMessage(desktopMessages.taskArtifactsDescription)}
 					</p>
-				</section>
-
-				<div aria-hidden="true" className="mx-4 border-t border-border/45" />
-
-				<section className="px-4 pt-2.5 pb-3.5">
-					<div className="flex items-center justify-between">
-						<h2 className="text-[14px] font-semibold">{intl.formatMessage(desktopMessages.taskArtifacts)}</h2>
-						<span className="flex items-center gap-1.5 text-[12px] tabular-nums text-muted-foreground">
-							{artifacts.length}
-							<ArchiveIcon size={14} />
-						</span>
-					</div>
-					{artifacts.length === 0 ? (
-						<p className="py-3 text-[12.5px] leading-relaxed text-foreground/70">
-							{intl.formatMessage(desktopMessages.taskArtifactsDescription)}
-						</p>
-					) : (
-						<ul
-							className="mt-2 max-h-44 space-y-1 overflow-y-auto"
-							aria-label={intl.formatMessage(desktopMessages.taskArtifactsList)}
-						>
-							{artifacts.map((artifact) => {
-								const isSelected = artifact.id === selectedArtifactId;
-								const ArtifactIcon = artifact.format === "html" ? HtmlIcon : FileCodeIcon;
-								return (
-									<li key={artifact.id}>
-										<Button
-											type="button"
-											variant="ghost"
-											size="sm"
-											active={isSelected}
-											onClick={() => onOpenArtifact(artifact)}
-											aria-current={isSelected ? "true" : undefined}
-											className="h-auto w-full justify-start rounded-[8px] px-2 py-1.5"
-											contentClassName="w-full min-w-0 justify-start"
-											labelClassName="flex min-w-0 flex-1 items-center gap-2"
+				) : (
+					<ul
+						className="mt-1 max-h-44 space-y-1 overflow-y-auto"
+						aria-label={intl.formatMessage(desktopMessages.taskArtifactsList)}
+					>
+						{artifacts.map((artifact) => {
+							const isSelected = artifact.id === selectedArtifactId;
+							const ArtifactIcon = artifact.format === "html" ? HtmlIcon : FileCodeIcon;
+							return (
+								<li key={artifact.id}>
+									<Button
+										type="button"
+										variant="ghost"
+										size="sm"
+										active={isSelected}
+										onClick={() => onOpenArtifact(artifact)}
+										aria-current={isSelected ? "true" : undefined}
+										className="h-[30px] w-full justify-start rounded-lg px-2 hover:bg-muted-hover"
+										contentClassName="w-full min-w-0 justify-start"
+										labelClassName="flex min-w-0 flex-1 items-center gap-2"
+									>
+										<ArtifactIcon size={14} className="shrink-0 text-muted-foreground" />
+										<span
+											className="min-w-0 flex-1 truncate text-left text-[13px] text-foreground"
+											title={artifact.path}
 										>
-											<ArtifactIcon size={14} className="shrink-0 text-muted-foreground" />
-											<span className="min-w-0 flex-1 truncate text-left text-[12px]" title={artifact.path}>
-												{artifactName(artifact.path)}
-											</span>
-											<span className="shrink-0 text-[10px] font-medium uppercase text-muted-foreground">
-												{artifact.format}
-											</span>
-										</Button>
-									</li>
-								);
-							})}
-						</ul>
-					)}
-				</section>
-			</div>
+											{artifactName(artifact.path)}
+										</span>
+										<span className="shrink-0 text-[11px] font-medium uppercase text-muted-foreground">
+											{artifact.format}
+										</span>
+									</Button>
+								</li>
+							);
+						})}
+					</ul>
+				)}
+			</section>
 		</aside>
 	);
 }
@@ -169,16 +175,16 @@ function TodoRow({ todo, agentStatus }: { readonly todo: DesktopTodoItem; readon
 			animate={{ opacity: 1, transform: "translateY(0%)" }}
 			exit={exit}
 			transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-			className="flex min-h-8 items-center gap-2.5"
+			className="flex h-[30px] items-center gap-2.5"
 			aria-current={ariaCurrent}
 		>
 			<TodoStatusIndicator status={todo.status} interrupted={isInterrupted} />
-			<span className="min-w-0 flex-1 text-[12.5px] leading-5">
+			<span className="min-w-0 flex-1 text-[13px] leading-5">
 				<span
 					className={cn("relative inline-block max-w-full truncate align-middle", {
 						"text-foreground": todo.status === "in_progress",
-						"text-foreground/70": todo.status === "pending",
-						"text-foreground/65": isCompleted || isCancelled,
+						"text-muted-foreground": todo.status === "pending",
+						"text-muted-foreground/70": isCompleted || isCancelled,
 						"line-through decoration-foreground/35": isCancelled,
 					})}
 					title={todo.content}
@@ -230,7 +236,7 @@ function TodoStatusIndicator({
 				initial={initial}
 				animate={{ opacity: 1, transform: "scale(1)" }}
 				transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
-				className="flex size-4 shrink-0 items-center justify-center rounded-[5px] bg-primary-2 text-primary-2-foreground shadow-[0_1px_2px_color-mix(in_oklch,var(--primary-2)_28%,transparent)]"
+				className="flex size-4 shrink-0 items-center justify-center rounded-[5px] bg-primary text-primary-foreground"
 				aria-label={statusLabel}
 				role="img"
 			>
@@ -252,7 +258,7 @@ function TodoStatusIndicator({
 	if (status === "in_progress") {
 		return (
 			<span
-				className="flex size-4 shrink-0 items-center justify-center text-primary-2"
+				className="flex size-4 shrink-0 items-center justify-center text-foreground"
 				aria-label={statusLabel}
 				role="img"
 			>
@@ -295,7 +301,7 @@ function UnicodeLoadingIndicator() {
 	}, [reduceMotion]);
 
 	return (
-		<span aria-hidden="true" className="font-mono text-[15px] leading-none">
+		<span aria-hidden="true" className="font-mono text-[14px] leading-none">
 			{spinner.frames[frameIndex]}
 		</span>
 	);

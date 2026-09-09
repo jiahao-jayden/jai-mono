@@ -39,7 +39,7 @@ export function GeneralSettings({
 
 	return (
 		<div className="px-8 py-6">
-			<h2 className="text-base font-semibold">{intl.formatMessage(desktopMessages.settingsAgentDefaults)}</h2>
+			<h2 className="text-[14px] font-medium">{intl.formatMessage(desktopMessages.settingsAgentDefaults)}</h2>
 
 			<div className="mt-5 flex flex-col gap-5">
 				<SettingsRow

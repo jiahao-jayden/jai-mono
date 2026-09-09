@@ -12,7 +12,6 @@ import { desktopMessages } from "@/i18n/messages";
 import { cn } from "@/lib/utils";
 import { useIcon } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
-import { useShape } from "@/lib/shape-context";
 import { SurfaceProvider, useSurface } from "@/lib/surface-context";
 import { surfaceClasses } from "@/lib/surface-classes";
 import { Button } from "@/components/ui/button";
@@ -65,7 +64,6 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
   ({ className, children, size = "sm", container, ...props }, ref) => {
     const intl = useIntl();
     const XIcon = useIcon("x");
-    const shape = useShape();
     const substrate = useSurface();
     const dialogLevel = Math.min(substrate + DIALOG_OFFSET, 8);
 
@@ -135,10 +133,10 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
                   container ? "absolute" : "fixed",
                   "left-1/2 top-1/2 z-50 w-[calc(100%-2rem)]",
                   surfaceClasses(dialogLevel),
-                  "p-6 focus:outline-none",
+                  "bg-popover rounded-xl shadow-[0_0_0_.5px_var(--border-surface-strong),0_10px_15px_-3px_rgb(0_0_0/.1),0_4px_6px_-4px_rgb(0_0_0/.1)]",
+                  "p-5 focus:outline-none",
                   size === "sm" && "max-w-[400px]",
                   size === "lg" && "max-w-[540px]",
-                  shape.container,
                   className
                 )}
                 style={{
@@ -160,7 +158,7 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
                     render={
                       <Button
                         variant="ghost"
-                        size="icon-sm"
+                        size="icon"
                         className="absolute right-3 top-3"
                       >
                         <XIcon />

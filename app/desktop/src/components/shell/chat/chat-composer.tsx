@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIntl } from "react-intl";
+import {
+	type ComposerCommand,
+	ComposerCommandItem,
+	ComposerMenu,
+	useSlashMatches,
+} from "@/components/assistant-ui/elements/composer";
 import type { ChatMessageInput, ChatStatus } from "@/hooks/use-chat";
 import { desktopMessages } from "@/i18n/messages";
 import { rememberAttachmentFiles } from "@/lib/attachment-files";
 import { desktop, desktopFilePath } from "@/lib/desktop";
 import { useIcons } from "@/lib/icon-context";
-import { cn } from "@/lib/utils";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
 	DesktopAgentMode,
@@ -21,12 +26,6 @@ import { ChatMessageQueue } from "./chat-message-queue";
 import { MessageAttachmentPicker } from "./message-attachment-picker";
 import { ModelSelector } from "./model-selector";
 import { ProjectPicker } from "./project-picker";
-import {
-	ComposerCommandItem,
-	ComposerMenu,
-	useSlashMatches,
-	type ComposerCommand,
-} from "@/components/assistant-ui/elements/composer";
 
 interface ChatComposerProps {
 	value: string;
@@ -120,8 +119,6 @@ export function ChatComposer({
 	);
 	const composerDisabled = disabled || isSubmitting || registeringAttachments;
 	const submitDisabled = composerDisabled || (!stopAction && !hasMessageContent);
-	const submitVariant = stopAction ? "secondary" : "accent";
-	const submitClassName = cn(stopAction && "text-primary-2");
 	const composerCommands = useMemo<readonly ComposerCommand[]>(
 		() =>
 			commands.map((command) => ({
@@ -131,10 +128,7 @@ export function ChatComposer({
 			})),
 		[commands, icons],
 	);
-	const commandByName = useMemo(
-		() => new Map(commands.map((command) => [command.name, command])),
-		[commands],
-	);
+	const commandByName = useMemo(() => new Map(commands.map((command) => [command.name, command])), [commands]);
 	const matchingCommands = useSlashMatches(value, composerCommands);
 	const commandSuggestionsOpen = matchingCommands.length > 0 && dismissedSlashValue !== value;
 	const selectedCommand = matchingCommands[selectedCommandIndex] ?? matchingCommands[0];
@@ -315,7 +309,7 @@ export function ChatComposer({
 					onValueChange={onValueChange}
 					onSend={() => void submitMessage()}
 					disabled={composerDisabled}
-					minRows={large ? 2 : 1}
+					minRows={1}
 					maxRows={8}
 					placeholder={intl.formatMessage(
 						large ? desktopMessages.composerWorkOn : desktopMessages.composerWriteMessage,
@@ -332,9 +326,9 @@ export function ChatComposer({
 					submitSlot={
 						<Button
 							type="button"
-							variant={submitVariant}
+							variant="primary"
 							size="icon-sm"
-							className={submitClassName}
+							className="rounded-full no-squircle"
 							onClick={onSubmit}
 							disabled={submitDisabled}
 							aria-label={submitLabel}
@@ -342,33 +336,13 @@ export function ChatComposer({
 							{stopAction ? (
 								<StopIcon className="block !size-[11px] [&_path]:fill-current [&_path]:stroke-none" />
 							) : (
-								<SendIcon size={19} />
+								<SendIcon size={18} className="size-4.5!" />
 							)}
 						</Button>
 					}
 					leftSlot={({ openFilePicker }) => (
-						<>
-							<MessageAttachmentPicker disabled={pickerDisabled} onOpen={() => openFilePicker()} />
-							<AgentModeControl
-								mode={selectedAgentMode}
-								disabled={isStreaming || isSubmitting}
-								onSelect={onSelectAgentMode}
-							/>
-						</>
+						<MessageAttachmentPicker disabled={pickerDisabled} onOpen={() => openFilePicker()} />
 					)}
-					rightSlot={
-						<div className="hidden min-[900px]:block">
-							<ModelSelector
-								config={providerConfig}
-								selectedModelRef={selectedModelRef}
-								loading={providerLoading}
-								error={providerError}
-								disabled={isStreaming || isSubmitting || providerLoading}
-								onSelect={onSelectProviderModel}
-								onManage={onOpenProviderSettings}
-							/>
-						</div>
-					}
 				/>
 			</div>
 			{attachmentError ? (
@@ -376,21 +350,39 @@ export function ChatComposer({
 					{attachmentError}
 				</p>
 			) : null}
-			{showProjectPicker ? (
-				<div className="mt-1.5 pl-2">
-					<ProjectPicker
-						project={project}
-						projects={projects}
+			<div className="flex items-center justify-between py-1">
+				<div className="flex min-w-0 items-center">
+					{showProjectPicker ? (
+						<ProjectPicker
+							project={project}
+							projects={projects}
+							disabled={isStreaming || isSubmitting}
+							busy={projectBusy}
+							loading={projectLoading}
+							loadError={projectLoadError}
+							onChoose={onChooseProject}
+							onAdd={onAddProject}
+							onRetry={onRetryProjects}
+						/>
+					) : null}
+					<AgentModeControl
+						mode={selectedAgentMode}
 						disabled={isStreaming || isSubmitting}
-						busy={projectBusy}
-						loading={projectLoading}
-						loadError={projectLoadError}
-						onChoose={onChooseProject}
-						onAdd={onAddProject}
-						onRetry={onRetryProjects}
+						onSelect={onSelectAgentMode}
 					/>
 				</div>
-			) : null}
+				<div className="flex min-w-0 items-center">
+					<ModelSelector
+						config={providerConfig}
+						selectedModelRef={selectedModelRef}
+						loading={providerLoading}
+						error={providerError}
+						disabled={isStreaming || isSubmitting || providerLoading}
+						onSelect={onSelectProviderModel}
+						onManage={onOpenProviderSettings}
+					/>
+				</div>
+			</div>
 		</div>
 	);
 }

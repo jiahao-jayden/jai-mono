@@ -16,6 +16,8 @@ import { spring } from "@/lib/springs";
 
 interface SwitchProps extends HTMLAttributes<HTMLDivElement> {
   label: string;
+  /** Keep the label for assistive tech only, e.g. when the row already names the setting. */
+  hideLabel?: boolean;
   checked: boolean;
   onToggle: () => void;
   disabled?: boolean;
@@ -33,7 +35,7 @@ const PRESS_SHRINK = 4;
 const DRAG_DEAD_ZONE = 2;
 
 const Switch = forwardRef<HTMLDivElement, SwitchProps>(
-  ({ label, checked, onToggle, disabled = false, thumbTransition, className, ...props }, ref) => {
+  ({ label, hideLabel = false, checked, onToggle, disabled = false, thumbTransition, className, ...props }, ref) => {
     const labelId = useId();
     const hasMounted = useRef(false);
     const [hovered, setHovered] = useState(false);
@@ -200,15 +202,15 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
           className={cn(
             "relative shrink-0 rounded-full outline-none cursor-pointer",
             "transition-colors duration-80",
-            "focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            "focus-visible:ring-1 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           )}
           style={{
             width: TRACK_WIDTH,
             height: TRACK_HEIGHT,
             backgroundColor: checked
-              ? hovered ? "#5C89F2" : "#6B97FF"
+              ? hovered ? "color-mix(in oklab, var(--brand) 90%, black)" : "var(--brand)"
               : hovered
-                ? "color-mix(in oklab, var(--accent), rgb(var(--overlay)) 10%)"
+                ? "color-mix(in oklab, var(--accent), var(--foreground) 10%)"
                 : "var(--accent)",
           }}
           onClick={(e) => e.stopPropagation()}
@@ -253,7 +255,8 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
             // text-box trim recenters the letterforms against the track; the
             // 20px track is taller than the label, so layout doesn't change.
             "text-[13px] [text-box:trim-both_cap_alphabetic] transition-[color] duration-80",
-            checked ? "text-foreground" : "text-muted-foreground"
+            checked ? "text-foreground" : "text-muted-foreground",
+            { "sr-only": hideLabel }
           )}
         >
           {label}

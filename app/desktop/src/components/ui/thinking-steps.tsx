@@ -21,19 +21,21 @@ const useIsoLayoutEffect =
 import { cn } from "@/lib/utils";
 import { useIcon } from "@/lib/icon-context";
 import type { IconName } from "@/lib/icon-context";
-import { spring } from "@/lib/springs";
-import { fontWeights } from "@/lib/font-weight";
-import { useShape } from "@/lib/shape-context";
 import { Badge } from "@/components/ui/badge";
 import type { BadgeColor } from "@/components/ui/badge";
 
 // ─── Shared collapsible parts ───────────────────────────────────────────────
 //
-// ThinkingSteps is built directly on Base UI's Collapsible with the
-// library's framer-motion springs layered on top.
+// ThinkingSteps is built directly on Base UI's Collapsible with a
+// measured-height animation layered on top (transform-immune, same setup as
+// the accordions).
 
 /** Open state of the nearest ThinkingSteps root, for the header trigger/panel. */
 const ThinkingStepsOpenContext = createContext(false);
+
+// Aside ease-out curve for panel height/opacity (200ms).
+const PANEL_EASE: [number, number, number, number] = [0, 0, 0.2, 1];
+const PANEL_DURATION = 0.2;
 
 interface TriggerRowProps extends HTMLAttributes<HTMLButtonElement> {
   open: boolean;
@@ -41,45 +43,36 @@ interface TriggerRowProps extends HTMLAttributes<HTMLButtonElement> {
 }
 
 /**
- * Trigger row: hover background, stable-weight label, and a
- * chevron that rotates from right (closed) to down (open). Mirrors the
- * library's accordion trigger styling.
+ * Header trigger row: a plain min-h-6 label in muted-foreground that lifts to
+ * foreground on hover, with a chevron that only appears on hover and rotates
+ * 90° when open. Mirrors the `.step-trigger` grammar.
  */
 const TriggerRow = forwardRef<HTMLButtonElement, TriggerRowProps>(
   ({ open, children, className, ...props }, ref) => {
     const ChevronRight = useIcon("chevron-right");
-    const shape = useShape();
 
     return (
       <div className="relative w-fit">
         <Collapsible.Trigger
           ref={ref}
           className={cn(
-            "group relative z-10 flex cursor-pointer select-none items-center gap-1.5 px-1 py-1.5 outline-none",
-            shape.item,
-            "text-muted-foreground transition-colors duration-80 hover:bg-hover hover:text-foreground",
-            "focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] focus-visible:ring-offset-0",
+            "group relative z-10 flex cursor-pointer select-none items-center gap-1 min-h-6 px-1 py-0.5 outline-none",
+            "text-muted-foreground font-normal text-[14px] leading-5 transition-colors duration-150 hover:text-foreground",
+            "focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0",
             className
           )}
           {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}
         >
-          <span
-            className="text-left text-[12.5px]"
-            style={{ fontVariationSettings: fontWeights.medium }}
-          >
+          <span className="block min-w-0 max-w-full truncate text-left">
             {children}
           </span>
 
           <motion.span
-            className="shrink-0 inline-flex items-center justify-center"
+            className="shrink-0 inline-flex items-center justify-center text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100"
             animate={{ rotate: open ? 90 : 0 }}
-            transition={spring.fast}
+            transition={{ duration: PANEL_DURATION, ease: PANEL_EASE }}
           >
-            <ChevronRight
-              size={13}
-              strokeWidth={1.5}
-              className="opacity-70 transition-opacity duration-80 group-hover:opacity-100"
-            />
+            <ChevronRight size={14} strokeWidth={1.5} />
           </motion.span>
         </Collapsible.Trigger>
       </div>
@@ -91,32 +84,33 @@ TriggerRow.displayName = "ThinkingStepsTriggerRow";
 interface CollapsePanelProps {
   open: boolean;
   children: ReactNode;
+  innerClassName?: string;
 }
 
 /**
- * Collapsible panel with a framer-motion height + spring animation.
+ * Collapsible panel with a measured-height animation (transform-immune) plus an
+ * inner opacity + padding-top transition, matching Aside's `.step-panel` /
+ * `.step-panel-inner` pair.
  *
  * Base UI's Panel would apply `hidden` the moment a controlled collapsible
  * closes (it can't observe the JS-driven exit animation), which is
  * `display: none` and would freeze the exit mid-flight. So we render through
  * `keepMounted` + `render`, strip Base UI's premature `hidden`, and only
  * apply the attribute ourselves once the framer exit has actually completed.
- * The persistent panel element keeps the trigger ↔ panel ARIA contract
- * intact (the trigger's `aria-controls` id lives on it).
  */
-function CollapsePanel({ open, children }: CollapsePanelProps) {
+function CollapsePanel({ open, children, innerClassName }: CollapsePanelProps) {
   // The open height is animated to a self-measured LAYOUT pixel value, not
   // `height: "auto"`: framer resolves an "auto" target by measuring the
   // element's *visual* (transformed) size, so under a scaled ancestor
   // (e.g. /demo's 1.7x card) the animation overshoots to scale× the real
   // height and snaps back when the final "auto" lands. offsetHeight and
-  // ResizeObserver are transform-immune. Same setup as the accordions.
+  // ResizeObserver are transform-immune.
   const innerRef = useRef<HTMLDivElement | null>(null);
   const roRef = useRef<ResizeObserver | null>(null);
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   // Panels open at mount render `initial: "auto"` and receive their first
   // pixel target a commit later; that hand-off must SNAP (duration 0), not
-  // spring. Panels that open later spring normally.
+  // animate. Panels that open later animate normally.
   const needsSnap = useRef(open);
 
   const measureRef = useCallback((el: HTMLDivElement | null) => {
@@ -133,7 +127,7 @@ function CollapsePanel({ open, children }: CollapsePanelProps) {
     roRef.current = ro;
   }, []);
 
-  // Re-measure synchronously (pre-paint) when opening, so the spring's
+  // Re-measure synchronously (pre-paint) when opening, so the animation's
   // target is the fresh layout height from its first frame.
   useIsoLayoutEffect(() => {
     if (open && innerRef.current && innerRef.current.offsetHeight > 0) {
@@ -173,22 +167,27 @@ function CollapsePanel({ open, children }: CollapsePanelProps) {
               className="overflow-hidden"
               initial={{ height: open ? "auto" : 0 }}
               animate={{ height: open ? contentHeight ?? 0 : 0 }}
-              // bounce: 0 — pure height looks better without overshoot.
               transition={
                 needsSnap.current
                   ? { duration: 0 }
-                  : { ...spring.moderate, bounce: 0 }
+                  : { duration: PANEL_DURATION, ease: PANEL_EASE }
               }
               onAnimationComplete={() => {
                 if (!open) setExitComplete(true);
               }}
             >
-              <div
+              <motion.div
                 ref={measureRef}
-                className="px-1 pb-2 pt-1 text-[13px] text-muted-foreground"
+                className={cn("px-1 pb-2 text-muted-foreground", innerClassName)}
+                initial={false}
+                animate={{
+                  opacity: open ? 1 : 0,
+                  paddingTop: open ? 12 : 4,
+                }}
+                transition={{ duration: PANEL_DURATION, ease: PANEL_EASE }}
               >
                 {children}
-              </div>
+              </motion.div>
             </motion.div>
           </div>
         );
@@ -221,7 +220,7 @@ const ThinkingSteps = forwardRef<HTMLDivElement, ThinkingStepsProps>(
           if (open === undefined) setInternalOpen(next);
           onOpenChange?.(next);
         }}
-        className={cn("w-80 max-w-full", className)}
+        className={cn("flex flex-col -mx-1 pb-2", className)}
         {...props}
       >
         <ThinkingStepsOpenContext.Provider value={isOpen}>
@@ -287,6 +286,9 @@ interface ThinkingStepProps {
   label: string;
   description?: string;
   status?: StepStatus;
+  /** When true, the rail's connector line is hidden unless this step is open.
+   *  Pass `true` on the last step so the line doesn't dangle into nothing. */
+  isLast?: boolean;
   children?: ReactNode;
   className?: string;
 }
@@ -297,15 +299,16 @@ function ThinkingStep({
   label,
   description,
   status = "complete",
+  isLast = false,
   children,
   className,
 }: ThinkingStepProps) {
     const Icon = useIcon(icon);
     const ChevronRight = useIcon("chevron-right");
-    const shape = useShape();
     const isActive = status === "active";
     const expandable = Boolean(children);
     const [open, setOpen] = useState(isActive);
+    const showLine = !isLast || open;
 
     useEffect(() => {
       if (!isActive) setOpen(false);
@@ -313,70 +316,84 @@ function ThinkingStep({
 
     if (status === "pending") return null;
 
-    const row = (
-      <>
-        <div className="flex w-3.25 shrink-0 items-start justify-center pt-px">
-          {showIcon ? (
-            <Icon size={13} strokeWidth={1.5} className="text-muted-foreground/75" />
-          ) : (
-            <div className="flex size-3.25 items-center justify-center">
-              <div className="size-1 rounded-full bg-muted-foreground/50" />
-            </div>
-          )}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <span
-            className={cn(
-              "text-[12.5px] leading-tight",
-              isActive ? "shimmer-text text-foreground" : "text-foreground/80"
-            )}
-            style={{ fontVariationSettings: fontWeights.medium }}
-          >
-            {label}
-            {isActive && "…"}
-          </span>
-          {description && (
-            <span className="text-[12px] leading-snug text-muted-foreground">
-              {description}
-            </span>
-          )}
-        </div>
-        {expandable && (
-          <span
-            className={cn(
-              "ml-auto mt-px inline-flex size-3.25 shrink-0 items-center justify-center text-muted-foreground/70 transition-transform duration-150 motion-reduce:transition-none",
-              open && "rotate-90"
-            )}
-          >
-            <ChevronRight size={13} strokeWidth={1.5} />
-          </span>
-        )}
-      </>
-    );
-
-    return (
-      <div className={cn("relative z-10 min-w-0 w-full", className)}>
-        {expandable ? (
-          <Collapsible.Root open={open} onOpenChange={setOpen} className="min-w-0 w-full">
-            <Collapsible.Trigger
-              className={cn(
-                "flex min-w-0 w-full gap-2 px-1 py-0.5 text-left outline-none transition-colors duration-80 hover:bg-hover",
-                "focus-visible:ring-1 focus-visible:ring-(--focus-ring,#6B97FF)",
-                shape.item
-              )}
-            >
-              {row}
-            </Collapsible.Trigger>
-            <Collapsible.Panel className="min-w-0 w-full pl-6 pr-1">
-              {children}
-            </Collapsible.Panel>
-          </Collapsible.Root>
+    const node = (
+      <div className="relative z-1 flex size-6 items-center justify-center text-muted-foreground">
+        {showIcon ? (
+          <Icon size={16} strokeWidth={1.5} />
         ) : (
-          <div className={cn("flex gap-2 px-1 py-0.5", shape.item)}>{row}</div>
+          <div className="size-1.5 rounded-full bg-muted-foreground/35" />
         )}
       </div>
     );
-}
+
+    const labelRow = (
+      <div className="flex items-center gap-1">
+        <span
+          className={cn(
+            "block min-w-0 flex-1 truncate text-[14px] leading-5",
+            isActive ? "shimmer-text" : "text-muted-foreground"
+          )}
+        >
+          {label}
+          {isActive && "…"}
+        </span>
+        {description && (
+          <span className="text-[14px] leading-5 text-muted-foreground">
+            {description}
+          </span>
+        )}
+        {expandable && (
+          <motion.span
+            className="shrink-0 inline-flex items-center justify-center text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+            animate={{ rotate: open ? 90 : 0 }}
+            transition={{ duration: PANEL_DURATION, ease: PANEL_EASE }}
+          >
+            <ChevronRight size={14} strokeWidth={1.5} />
+          </motion.span>
+        )}
+      </div>
+    );
+
+    return (
+      <div
+        className={cn(
+          "relative flex items-start gap-1.5 text-[14px] leading-5 pb-2",
+          className
+        )}
+      >
+        <div className="relative flex w-6 min-h-6 shrink-0 items-start justify-center self-stretch">
+          {showLine && (
+            <div className="absolute top-6 left-1/2 w-px bg-border h-[calc(100%-16px)] min-h-2 -translate-x-1/2" />
+          )}
+          {node}
+        </div>
+        {expandable ? (
+          <Collapsible.Root
+            open={open}
+            onOpenChange={setOpen}
+            className="group flex min-w-0 flex-1 flex-col"
+          >
+            <Collapsible.Trigger
+              className={cn(
+                "flex min-w-0 items-start gap-1 px-1 py-0.5 text-left outline-none",
+                "text-muted-foreground transition-colors duration-150 hover:text-foreground",
+                "focus-visible:ring-1 focus-visible:ring-ring"
+              )}
+            >
+              {labelRow}
+            </Collapsible.Trigger>
+            <CollapsePanel open={open}>
+              <div className="text-[14px]">{children}</div>
+            </CollapsePanel>
+          </Collapsible.Root>
+        ) : (
+          <div className="group flex min-w-0 flex-1 items-start px-1 py-0.5">
+            {labelRow}
+          </div>
+        )}
+      </div>
+    );
+  }
 
 // ─── ThinkingStepSources ────────────────────────────────────────────────────
 
@@ -414,7 +431,9 @@ function ThinkingStepSource({ color = "gray", delay = 0, children, className }: 
       initial={{ opacity: 0, scale: 0.85, filter: "blur(4px)" }}
       animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
       transition={{
-        ...spring.moderate,
+        type: "spring",
+        stiffness: 300,
+        damping: 26,
         delay,
         filter: { duration: 0.12, delay },
       }}
@@ -438,7 +457,6 @@ interface ThinkingStepImageProps {
 }
 
 function ThinkingStepImage({ src, alt = "", caption, delay = 0, className }: ThinkingStepImageProps) {
-  const shape = useShape();
   return (
     <motion.div
       className={cn("mt-1.5", className)}
@@ -452,10 +470,7 @@ function ThinkingStepImage({ src, alt = "", caption, delay = 0, className }: Thi
       <img
         src={src}
         alt={alt}
-        className={cn(
-          "w-full max-w-[200px] object-cover",
-          shape.container
-        )}
+        className="w-full max-w-[200px] rounded-xl no-squircle object-cover"
       />
       {caption && (
         <span className="text-[11px] text-muted-foreground mt-1 block">

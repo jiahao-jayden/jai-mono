@@ -14,32 +14,24 @@ import { DropdownContent, DropdownMenu, DropdownTrigger } from "../../ui/dropdow
 import { MenuItem } from "../../ui/menu-item";
 
 interface AgentModeMeta {
-	readonly iconClassName: string;
 	readonly icon: IconName;
 	readonly message: (typeof desktopMessages)[keyof typeof desktopMessages];
-	readonly surfaceClassName: string;
 }
 
 const agentModes: readonly DesktopAgentMode[] = ["manual", "automate", "plan"];
 
 const agentModeMeta: Readonly<Record<DesktopAgentMode, AgentModeMeta>> = {
 	manual: {
-		iconClassName: "text-agent-mode-manual",
 		icon: "shield",
 		message: desktopMessages.modeManual,
-		surfaceClassName: "bg-transparent",
 	},
 	automate: {
-		iconClassName: "text-agent-mode-automate",
 		icon: "rocket",
 		message: desktopMessages.modeAutomate,
-		surfaceClassName: "bg-agent-mode-automate-surface",
 	},
 	plan: {
-		iconClassName: "text-agent-mode-plan",
 		icon: "brain",
 		message: desktopMessages.modePlan,
-		surfaceClassName: "bg-agent-mode-plan-surface",
 	},
 };
 
@@ -66,14 +58,13 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 					<Button
 						type="button"
 						variant="ghost"
-						size="sm"
+						size="chip"
 						active={open}
 						disabled={disabled}
 						aria-label={intl.formatMessage(desktopMessages.modeAria, { mode: modeLabel })}
-						className={cn("px-2.5 text-[13px] text-foreground", meta.surfaceClassName)}
 						labelClassName="flex items-center [text-box:normal]"
 					>
-						<span className="inline-flex items-center gap-1.5">
+						<span className="inline-flex items-center gap-1">
 							{/* Quiet Swap: the icon+label cross-swap in place on mode change
 							    (state indication); the tinted background/colour transitions via
 							    the Button's own transition-colors. The chevron stays put. */}
@@ -86,13 +77,13 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 									exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
 									transition={spring.moderate}
 								>
-									<Icon size={14} strokeWidth={1.7} className={meta.iconClassName} />
-									<span className="font-medium">{modeLabel}</span>
+									<Icon size={14} strokeWidth={1.5} />
+									<span>{modeLabel}</span>
 								</motion.span>
 							</AnimatePresence>
 							<ChevronDownIcon
-								size={11}
-								className={cn("opacity-55 transition-transform duration-150", { "rotate-180": open })}
+								size={14}
+								className={cn("opacity-50 transition-transform duration-150", { "rotate-180": open })}
 							/>
 						</span>
 					</Button>
@@ -108,7 +99,6 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 							index={index}
 							icon={icons[option.icon]}
 							label={optionLabel}
-							className="h-8 px-2"
 							checked={candidate === mode}
 							onSelect={() => onSelect(candidate)}
 						/>

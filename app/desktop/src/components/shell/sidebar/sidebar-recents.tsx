@@ -17,6 +17,7 @@ import {
 import { Input } from "../../ui/input";
 import { MenuItem } from "../../ui/menu-item";
 import { toast } from "../../ui/toast";
+import { sidebarItemClassName } from "./sidebar-nav";
 
 interface SidebarRecentsProps {
 	sessions: readonly CodingSession[];
@@ -86,31 +87,31 @@ export function SidebarRecents({
 
 	return (
 		<>
-			<div className="px-5 pt-5 pb-1.5">
-				<span className="text-[12px] font-semibold text-muted-foreground">
+			<div className="mt-3.5 flex h-6 items-center px-3">
+				<span className="text-[12px] font-medium tracking-[-0.005em] text-sidebar-muted">
 					{intl.formatMessage(desktopMessages.sidebarRecents)}
 				</span>
 			</div>
 
-			<div className="scrollbar-hidden min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2.5 pb-2">
+			<div className="scrollbar-hidden mt-1 min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1.5 pb-2">
 				{loading && sessions.length === 0 ? (
 					<div
-						className="space-y-2 px-2.5 py-2"
+						className="space-y-0.5"
 						role="status"
 						aria-label={intl.formatMessage(desktopMessages.sidebarLoadingRecentSessions)}
 					>
 						{[0, 1, 2].map((item) => (
-							<div key={item} className="h-8 animate-pulse rounded-lg bg-foreground/5" />
+							<div key={item} className="h-[30px] animate-pulse rounded-lg bg-foreground/5" />
 						))}
 					</div>
 				) : null}
 				{error ? (
-					<p className="mx-2.5 my-2 rounded-lg bg-destructive/8 px-3 py-2 text-[12px] leading-relaxed text-destructive">
+					<p className="rounded-lg bg-destructive/8 px-2 py-2 text-[12px] leading-relaxed text-destructive">
 						{intl.formatMessage(desktopMessages.sidebarRecentsLoadError)}
 					</p>
 				) : null}
 				{!loading && !error && sessions.length === 0 ? (
-					<p className="px-2.5 py-3 text-[12.5px] leading-relaxed text-muted-foreground">
+					<p className="px-2 py-1.5 text-[13px] leading-[18px] text-sidebar-muted">
 						{intl.formatMessage(desktopMessages.sidebarNoRecentSessions)}
 					</p>
 				) : null}
@@ -137,7 +138,7 @@ export function SidebarRecents({
 									}}
 									aria-label={intl.formatMessage(desktopMessages.sessionTitle)}
 									maxLength={80}
-									className="h-8 rounded-lg border-border bg-sidebar px-2.5 text-[13.5px] font-normal focus-visible:ring-0"
+									className="h-[30px] rounded-lg border-transparent bg-sidebar-active px-2 text-[13px] font-normal focus-visible:ring-0"
 								/>
 							) : (
 								<>
@@ -157,10 +158,9 @@ export function SidebarRecents({
 										active={selected}
 										contentClassName="w-full min-w-0"
 										labelClassName="min-w-0 flex-1 [text-box:normal]"
-										className={cn(
-											"h-8 w-full justify-start rounded-lg pr-9 pl-2.5 text-left text-[13.5px] font-normal",
-											selected ? "text-foreground" : "text-foreground/85",
-										)}
+										className={cn(sidebarItemClassName, "pr-7", {
+											"shadow-[0_0_0_.5px_rgb(0_0_0/.05)]": selected,
+										})}
 									>
 										<span className="block truncate">{session.title}</span>
 									</Button>
@@ -184,7 +184,7 @@ export function SidebarRecents({
 						size="sm"
 						disabled={loadingMore}
 						onClick={onLoadMore}
-						className="mt-1 w-full justify-center rounded-lg text-[12px] text-muted-foreground"
+						className={cn(sidebarItemClassName, "text-sidebar-muted")}
 					>
 						{intl.formatMessage(
 							loadingMore ? desktopMessages.sidebarLoadingMore : desktopMessages.sidebarLoadMore,
@@ -286,19 +286,19 @@ function SessionActions({
 						<Button
 							type="button"
 							variant="navigation"
-							size="icon-sm"
+							size="icon-xs"
 							active={menuOpen}
 							aria-label={intl.formatMessage(desktopMessages.sidebarActionsFor, { title: session.title })}
 							title={intl.formatMessage(desktopMessages.sidebarSessionActions)}
 							data-session-actions
 							className={cn(
-								"absolute top-1/2 right-1 size-7 -translate-y-1/2 rounded-lg text-foreground transition-opacity",
+								"absolute top-1/2 right-1 size-5 -translate-y-1/2 rounded-[6px] text-sidebar-muted hover:text-sidebar-foreground transition-opacity",
 								visible || menuOpen
 									? "visible opacity-100"
 									: "invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100",
 							)}
 						>
-							<MoreVerticalIcon size={16} strokeWidth={1.5} />
+							<MoreVerticalIcon size={14} strokeWidth={1.5} />
 						</Button>
 					}
 				/>

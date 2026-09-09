@@ -77,26 +77,20 @@ export function ProjectPicker({
 						<Button
 							type="button"
 							variant="ghost"
-							size="sm"
+							size="chip"
 							disabled={triggerDisabled}
 							active={open}
-							className="min-w-0 max-w-72 gap-1.5 px-2.5 text-[13.5px] text-foreground/75"
+							className="min-w-0 max-w-72"
 							aria-label={intl.formatMessage(desktopMessages.projectPickerAria, { label })}
 							title={
 								project && !project.available ? intl.formatMessage(desktopMessages.projectPickerRelink) : label
 							}
 						>
-							<span className="flex min-w-0 items-center gap-1.5">
-								<ProjectIcon
-									size={14}
-									className={cn({
-										"text-destructive": project && !project.available,
-										"text-muted-foreground/70": !project || project.available,
-									})}
-								/>
+							<span className="flex min-w-0 items-center gap-1">
+								<ProjectIcon size={14} className={cn({ "text-destructive": project && !project.available })} />
 								<span className="truncate">{label}</span>
 								<ChevronDownIcon
-									size={10}
+									size={14}
 									className={cn("shrink-0 opacity-50 transition-transform duration-150", {
 										"rotate-180": open,
 									})}
@@ -110,7 +104,7 @@ export function ProjectPicker({
 					sideOffset={6}
 					className="w-90"
 				>
-					<div className="mb-0.5 flex h-8 shrink-0 items-center gap-1.5 border-b border-border/50 px-2">
+					<div className="mb-0.5 flex h-8 shrink-0 items-center gap-1.5 border-b border-border px-2">
 						<SearchIcon size={14} strokeWidth={1.5} className="shrink-0 text-muted-foreground" />
 						<input
 							value={query}

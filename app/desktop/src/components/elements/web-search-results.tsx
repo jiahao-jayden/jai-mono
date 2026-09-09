@@ -23,7 +23,7 @@ export function WebSearchResults({ results }: WebSearchResultsProps) {
 function WebSearchResultRow({ result }: { readonly result: DesktopWebSearchResult }) {
 	return (
 		<a
-			className="group flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-start outline-none transition-colors hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.06] focus-visible:ring-2 focus-visible:ring-primary-2/45"
+			className="group flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-start outline-none transition-colors hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.06] focus-visible:ring-3 focus-visible:ring-ring"
 			href={result.url}
 			target="_blank"
 			rel="noopener noreferrer"

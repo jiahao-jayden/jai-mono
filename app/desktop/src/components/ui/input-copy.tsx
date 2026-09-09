@@ -307,7 +307,7 @@ const InputCopy = forwardRef<HTMLDivElement, InputCopyProps>(
         )}
         style={{ fontVariationSettings: fontWeights.normal }}
       >
-        <mark className="bg-transparent text-foreground transition-colors duration-80 group-hover:bg-[#6B97FF]/20 group-hover:text-foreground">
+        <mark className="bg-transparent text-foreground transition-colors duration-80 group-hover:bg-brand/20 group-hover:text-foreground">
           {value}
         </mark>
       </span>
@@ -338,7 +338,7 @@ const InputCopy = forwardRef<HTMLDivElement, InputCopyProps>(
         aria-labelledby={label ? `${buttonId} ${labelId}` : undefined}
         className={cn(
           "group flex items-center w-full cursor-pointer outline-none transition-all duration-80",
-          "focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]",
+          "focus-visible:ring-1 focus-visible:ring-[color:var(--ring)]",
           shape.input
         )}
       >

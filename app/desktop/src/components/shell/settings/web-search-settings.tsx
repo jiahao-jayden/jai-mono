@@ -59,9 +59,7 @@ export function WebSearchSettings({ snapshot, value, onRevealApiKey, onChange }:
 
 	return (
 		<div className="px-8 py-6">
-			<h2 className="text-base font-semibold">{intl.formatMessage(desktopMessages.settingsWebSearch)}</h2>
-
-			<div className="mt-5 divide-y divide-border/55 border-y border-border/55">
+			<div className="flex flex-col gap-5">
 				{providers.map((provider) => {
 					const draft = value.providers.find((candidate) => candidate.id === provider.id);
 					const enabled = draft?.enabled ?? provider.enabled;
@@ -163,12 +161,10 @@ export function WebSearchSettings({ snapshot, value, onRevealApiKey, onChange }:
 				})}
 			</div>
 
-			<div className="border-b border-border/55 py-4">
+			<div className="py-4">
 				<div className="flex items-start justify-between gap-4">
 					<div className="min-w-0">
-						<p className="text-[14px] font-semibold">
-							{intl.formatMessage(desktopMessages.settingsWebSearchJina)}
-						</p>
+						<p className="text-[14px] font-medium">{intl.formatMessage(desktopMessages.settingsWebSearchJina)}</p>
 						{jinaConfigured ? (
 							<p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
 								{intl.formatMessage(desktopMessages.settingsWebSearchJinaConfigured, {

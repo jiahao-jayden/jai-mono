@@ -54,17 +54,12 @@ export function ChatsPage({
 		: sessions;
 
 	return (
-		<main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-			<div className="mx-auto flex h-full w-full max-w-250 flex-col px-10 pt-14 pb-8">
-				<header className="mb-8 flex shrink-0 items-center justify-between gap-6">
-					<div>
-						<h1 className="text-[26px] font-semibold tracking-[-0.025em]">
-							{intl.formatMessage(desktopMessages.chatsTitle)}
-						</h1>
-						<p className="mt-1 text-[13px] text-muted-foreground">
-							{intl.formatMessage(desktopMessages.chatsDescription)}
-						</p>
-					</div>
+		<main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+			<div className="mx-auto flex h-full w-full max-w-250 flex-col px-6 pt-3 pb-8">
+				<header className="my-3.5 flex h-8 shrink-0 items-center justify-between gap-4 px-2">
+					<h1 className="text-[14px] font-medium text-foreground">
+						{intl.formatMessage(desktopMessages.chatsTitle)}
+					</h1>
 					<div className="flex items-center gap-2">
 						<div className="relative w-56">
 							<SearchIcon
@@ -93,16 +88,16 @@ export function ChatsPage({
 						</div>
 					) : null}
 					{!loading && !error && filteredSessions.length === 0 ? (
-						<div className="flex min-h-72 flex-col items-center justify-center text-center">
+						<div className="flex flex-col items-center justify-center py-10 text-center">
 							<MessageIcon size={25} className="mb-3 text-muted-foreground/55" />
-							<p className="text-[14px] font-medium">{emptyTitle}</p>
-							<p className="mt-1 max-w-72 text-[12.5px] leading-relaxed text-muted-foreground">
+							<p className="text-[14px] font-medium text-foreground">{emptyTitle}</p>
+							<p className="mt-1 max-w-72 text-[13px] leading-relaxed text-muted-foreground">
 								{emptyDescription}
 							</p>
 						</div>
 					) : null}
 					{filteredSessions.length > 0 ? (
-						<div className="divide-y divide-border/70 border-y border-border/70">
+						<div className="flex flex-col">
 							{filteredSessions.map((session) => {
 								const projectName = session.projectId ? projectNames.get(session.projectId) : undefined;
 								return (
@@ -114,20 +109,20 @@ export function ChatsPage({
 										onClick={() => onSelectSession(session.id)}
 										contentClassName="w-full min-w-0"
 										labelClassName="w-full min-w-0 [text-box:normal]"
-										className="h-11 w-full rounded-none px-3 text-left"
+										className="h-9 w-full rounded-lg px-3 text-left hover:bg-muted-hover"
 									>
 										<span className="flex w-full min-w-0 items-center gap-4">
-											<span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-foreground">
+											<span className="min-w-0 flex-1 truncate text-[14px] font-medium text-surface-primary-foreground">
 												{session.title}
 											</span>
 											{projectName ? (
-												<span className="max-w-32 truncate text-[11.5px] text-muted-foreground">
+												<span className="max-w-32 truncate text-[12px] font-medium text-muted-foreground">
 													{projectName}
 												</span>
 											) : null}
 											<time
 												dateTime={new Date(session.lastActivityAt).toISOString()}
-												className="min-w-28 shrink-0 whitespace-nowrap text-right text-[11.5px] text-muted-foreground"
+												className="min-w-28 shrink-0 whitespace-nowrap text-right text-[12px] font-medium text-muted-foreground"
 											>
 												{formatSessionTime(session.lastActivityAt, intl)}
 											</time>
@@ -153,13 +148,9 @@ export function ChatsPage({
 function ChatRowsSkeleton() {
 	const intl = useIntl();
 	return (
-		<div
-			className="divide-y divide-border/60 border-y border-border/60"
-			role="status"
-			aria-label={intl.formatMessage(desktopMessages.chatsLoading)}
-		>
+		<div className="flex flex-col" role="status" aria-label={intl.formatMessage(desktopMessages.chatsLoading)}>
 			{[0, 1, 2, 3, 4].map((item) => (
-				<div key={item} className="flex h-11 items-center justify-between px-3">
+				<div key={item} className="flex h-9 items-center justify-between px-3">
 					<div className="h-3 w-2/5 animate-pulse rounded bg-foreground/7" />
 					<div className="h-3 w-16 animate-pulse rounded bg-foreground/5" />
 				</div>

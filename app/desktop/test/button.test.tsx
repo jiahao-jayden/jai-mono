@@ -27,7 +27,7 @@ describe("Button", () => {
 		);
 		expect(markup).toContain("Projects");
 		// Active navigation should render the selected background
-		expect(markup).toContain("sidebar-accent");
+		expect(markup).toContain("sidebar-active");
 	});
 
 	test("active prop 优先于 hover bg", () => {
@@ -36,9 +36,10 @@ describe("Button", () => {
 				Selected
 			</Button>,
 		);
-		expect(markup).toContain("bg-active");
-		// Should not contain hover bg rules when active
-		expect(markup).not.toContain("group-hover:bg-hover");
+		// Aside grammar: an engaged ghost button reads as a secondary surface.
+		expect(markup).toContain("bg-secondary");
+		// Should not contain the resting hover bg rule when active
+		expect(markup).not.toContain("group-hover/button:bg-muted-hover");
 	});
 
 	test("icon-only 模式不改变 hover stroke", () => {
@@ -51,10 +52,12 @@ describe("Button", () => {
 		expect(markup).not.toContain("group-hover:stroke");
 	});
 
-	test("不额外注入 focus ring", () => {
+	test("基类注入 focus ring", () => {
 		const markup = renderToStaticMarkup(
 			<Button variant="primary">Save</Button>,
 		);
-		expect(markup).not.toContain("focus-visible:ring");
+		// Aside grammar: the button base carries its own focus ring.
+		expect(markup).toContain("focus-visible:ring-3");
+		expect(markup).toContain("ring-ring");
 	});
 });

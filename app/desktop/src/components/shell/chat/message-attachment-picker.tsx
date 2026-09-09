@@ -24,14 +24,15 @@ export function MessageAttachmentPicker({ disabled, onOpen }: MessageAttachmentP
 				render={
 					<Button
 						type="button"
-						variant="ghost"
+						variant="secondary"
 						size="icon-sm"
 						disabled={disabled}
 						active={open}
 						aria-label={triggerLabel}
 						title={triggerLabel}
+						className="rounded-full no-squircle"
 					>
-						<PlusIcon size={14} strokeWidth={1.5} />
+						<PlusIcon size={16} strokeWidth={1.5} />
 					</Button>
 				}
 			/>
@@ -40,7 +41,6 @@ export function MessageAttachmentPicker({ disabled, onOpen }: MessageAttachmentP
 					index={0}
 					icon={icons.image}
 					label={triggerLabel}
-					description={intl.formatMessage(desktopMessages.attachmentsDescription)}
 					disabled={disabled}
 					onSelect={() => {
 						onOpen();

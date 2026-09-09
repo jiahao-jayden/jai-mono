@@ -409,6 +409,16 @@ export const desktopMessages = defineMessages({
 		defaultMessage: "Showing {visible} of {total}. Search to find other models.",
 	},
 	settingsModelsEmpty: { id: "desktop.settings.modelsEmpty", defaultMessage: "No models configured yet." },
+	settingsModelsEnabled: { id: "desktop.settings.modelsEnabled", defaultMessage: "Enabled ({count})" },
+	settingsModelsNoneEnabled: {
+		id: "desktop.settings.modelsNoneEnabled",
+		defaultMessage: "No models enabled. Turn on a model below to use it in chat.",
+	},
+	settingsModelsAvailable: { id: "desktop.settings.modelsAvailable", defaultMessage: "Available ({count})" },
+	settingsModelsUnverifiedGroup: {
+		id: "desktop.settings.modelsUnverifiedGroup",
+		defaultMessage: "{count} unverified models",
+	},
 	settingsModelInputOutput: {
 		id: "desktop.settings.modelInputOutput",
 		defaultMessage: "Input: {input} → Output: {output}",

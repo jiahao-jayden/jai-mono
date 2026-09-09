@@ -3,7 +3,6 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { Toaster } from "@/components/ui/toast";
 import { desktopQueryClient } from "@/lib/desktop-query";
-import { ShapeProvider } from "@/lib/shape-context";
 import { initLocale, LocaleProvider } from "./i18n/locale";
 import { initTheme } from "./stores/theme";
 import "./styles/global.css";
@@ -22,12 +21,10 @@ Promise.all([initTheme(), initLocale()]).then(([, localeSnapshot]) => {
 	ReactDOM.createRoot(document.getElementById("root")!).render(
 		<React.StrictMode>
 			<QueryClientProvider client={desktopQueryClient}>
-				<ShapeProvider defaultShape="rounded">
-					<LocaleProvider initialSnapshot={localeSnapshot}>
-						<App />
-						<Toaster />
-					</LocaleProvider>
-				</ShapeProvider>
+				<LocaleProvider initialSnapshot={localeSnapshot}>
+					<App />
+					<Toaster />
+				</LocaleProvider>
 			</QueryClientProvider>
 		</React.StrictMode>,
 	);

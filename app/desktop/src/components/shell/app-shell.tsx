@@ -39,13 +39,13 @@ import { ChatColumn } from "./chat/chat-column";
 import { ChatComposer } from "./chat/chat-composer";
 import { ChatsPage } from "./chats-page";
 import { ProjectPage, ProjectsPage } from "./projects-page";
-import { ProviderSettingsDialog } from "./settings/provider-settings-dialog";
+import { SettingsPage } from "./settings/settings-page";
 import { Sidebar } from "./sidebar/sidebar";
 import { TaskPanel } from "./task-panel";
 import { WorkspacePanel } from "./workspace-panel";
 
 const MIN_SIDEBAR_WIDTH = 200;
-const DEFAULT_SIDEBAR_WIDTH = 264;
+const DEFAULT_SIDEBAR_WIDTH = 240;
 const MAX_SIDEBAR_WIDTH = 420;
 const MIN_CHAT_WIDTH = 420;
 const MIN_WORKSPACE_PANEL_WIDTH = 320;
@@ -70,7 +70,6 @@ export function AppShell() {
 	const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
 	const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
 	const [requestedWorkspacePath, setRequestedWorkspacePath] = useState<string | null>(null);
-	const [providerSettingsOpen, setProviderSettingsOpen] = useState(false);
 	const storedSessionId = useDesktopChatStore((state) => state.activeSessionId);
 	const draft = useDesktopChatStore(selectDraft);
 	const queue = useDesktopChatStore((state) => state.queue);
@@ -100,9 +99,11 @@ export function AppShell() {
 			? "chats"
 			: location.pathname === "/projects"
 				? "projects"
-				: routeProjectId
-					? "project"
-					: "chat";
+				: location.pathname === "/settings"
+					? "settings"
+					: routeProjectId
+						? "project"
+						: "chat";
 	useEffect(() => {
 		if (activeSessionId) {
 			if (storedSessionId !== activeSessionId) openSessionInStore(activeSessionId);
@@ -262,10 +263,10 @@ export function AppShell() {
 		return snapshot;
 	};
 	const openProviderSettings = useCallback(() => {
-		setProviderSettingsOpen(true);
+		navigate("/settings");
 		void providerQuery.refetch();
 		void telemetryQuery.refetch();
-	}, [providerQuery.refetch, telemetryQuery.refetch]);
+	}, [navigate, providerQuery.refetch, telemetryQuery.refetch]);
 	const retrySettings = () => {
 		void providerQuery.refetch();
 		void telemetryQuery.refetch();
@@ -383,11 +384,15 @@ export function AppShell() {
 	const projectLoadError = projectsQuery.isError && projectsQuery.data === undefined;
 	const chatProjectError =
 		projectError || (projectsQuery.isError ? intl.formatMessage(desktopMessages.projectsLoadError) : undefined);
+	const contentCardClassName = cn(
+		"relative flex min-w-0 flex-1 overflow-hidden rounded-[12px] bg-[var(--web-content-background)] shadow-[0_0_0_var(--hairline)_var(--border-surface-strong),0_2px_10px_-4px_rgb(0_0_0/.1)]",
+		sidebarOpen ? "ml-0" : "ml-2",
+	);
 
 	return (
 		<div
 			ref={shellRef}
-			className="relative flex h-screen min-h-160 min-w-5xl overflow-hidden bg-background text-foreground"
+			className="relative flex h-screen min-h-160 min-w-5xl overflow-hidden bg-sidebar text-foreground"
 		>
 			{sidebarOpen ? (
 				<Sidebar
@@ -414,80 +419,27 @@ export function AppShell() {
 				/>
 			) : null}
 			{sidebarOpen ? <ColumnResizeHandle resize={sidebarResize} side="left" /> : null}
-			<Routes>
-				<Route
-					path="/chats"
-					element={
-						<ChatsPage
-							sessions={sessions}
-							projects={projects}
-							loading={sessionRecentsQuery.isLoading}
-							error={sessionLoadErrorMessage}
-							hasNextPage={sessionRecentsQuery.hasNextPage}
-							loadingMore={sessionRecentsQuery.isFetchingNextPage}
-							onNewChat={openNewChat}
-							onSelectSession={openSession}
-							onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
-						/>
-					}
-				/>
-				<Route
-					path="/projects"
-					element={
-						<ProjectsPage
-							projects={projects}
-							sessions={sessions}
-							loading={projectLoading}
-							error={projectPageError}
-							adding={projectCreationMutation.isPending}
-							onAddProject={() => void createProject()}
-							onOpenProject={openProject}
-						/>
-					}
-				/>
-				<Route
-					path="/projects/:projectId"
-					element={
-						pageProject ? (
-							<ProjectPage
-								project={pageProject}
+			<div className={contentCardClassName}>
+				<Routes>
+					<Route
+						path="/chats"
+						element={
+							<ChatsPage
 								sessions={sessions}
-								onBack={() => navigate("/projects")}
+								projects={projects}
+								loading={sessionRecentsQuery.isLoading}
+								error={sessionLoadErrorMessage}
+								hasNextPage={sessionRecentsQuery.hasNextPage}
+								loadingMore={sessionRecentsQuery.isFetchingNextPage}
+								onNewChat={openNewChat}
 								onSelectSession={openSession}
-								composer={
-									<ChatComposer
-										value={draft}
-										onValueChange={setDraft}
-										onSend={chat.sendMessage}
-										onStop={chat.stop}
-										status={chat.status}
-										disabled={!pageProject.available}
-										queue={queue}
-										onEditQueuedMessage={editQueuedMessage}
-										onRemoveQueuedMessage={removeQueuedMessage}
-										onReorderQueuedMessages={reorderQueuedMessages}
-										project={pageProject}
-										projects={projects}
-										projectBusy={projectBusy}
-										projectLoading={projectLoading}
-										projectLoadError={projectLoadError}
-										onChooseProject={chooseProject}
-										onAddProject={addProject}
-										onRetryProjects={() => void projectsQuery.refetch()}
-										providerConfig={providerQuery.data}
-										selectedModelRef={runtimeModelRef}
-										selectedAgentMode={selectedAgentMode}
-										providerLoading={providerQuery.isLoading}
-										providerError={providerQuery.isError}
-										onOpenProviderSettings={openProviderSettings}
-										onSelectProviderModel={setSelectedModelRef}
-										onSelectAgentMode={setSelectedAgentMode}
-										showProjectPicker={false}
-										large
-									/>
-								}
+								onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
 							/>
-						) : (
+						}
+					/>
+					<Route
+						path="/projects"
+						element={
 							<ProjectsPage
 								projects={projects}
 								sessions={sessions}
@@ -497,99 +449,160 @@ export function AppShell() {
 								onAddProject={() => void createProject()}
 								onOpenProject={openProject}
 							/>
-						)
-					}
-				/>
-				<Route
-					path="/chat/:sessionId"
-					element={
-						<ChatColumn
-							key={activeSessionId ?? "new"}
-							session={session}
-							project={project}
-							projects={projects}
-							chat={chat}
-							draft={draft}
-							queue={queue}
-							onDraftChange={setDraft}
-							onEditQueuedMessage={editQueuedMessage}
-							onRemoveQueuedMessage={removeQueuedMessage}
-							onReorderQueuedMessages={reorderQueuedMessages}
-							providerConfig={providerQuery.data}
-							selectedModelRef={runtimeModelRef}
-							selectedAgentMode={selectedAgentMode}
-							providerLoading={providerQuery.isLoading}
-							providerError={providerQuery.isError}
-							projectBusy={projectBusy}
-							projectLoading={projectLoading}
-							projectLoadError={projectLoadError}
-							projectError={chatProjectError}
-							sidebarOpen={sidebarOpen}
-							artifactPanelOpen={artifactPanelOpen}
-							onToggleSidebar={() => setSidebarOpen(true)}
-							onToggleArtifactPanel={() => setArtifactPanelOpen((open) => !open)}
-							onOpenProviderSettings={openProviderSettings}
-							onSelectProviderModel={setSelectedModelRef}
-							onSelectAgentMode={setSelectedAgentMode}
-							onChooseProject={chooseProject}
-							onAddProject={addProject}
-							onRetryProjects={() => void projectsQuery.refetch()}
-							onRenameSession={renameSession}
-						/>
-					}
-				/>
-				<Route path="*" element={<Navigate to="/chat/new" replace />} />
-			</Routes>
-			{rightPanelVisible && artifactPanelOpen ? (
-				<ColumnResizeHandle resize={rightPanelResize} side="right" position={visibleRightPanelWidth} />
-			) : null}
-			{rightPanelVisible ? (
-				<motion.div className="relative min-w-0 shrink-0 overflow-hidden" style={{ width: visibleRightPanelWidth }}>
-					<div className="absolute inset-0" aria-hidden={artifactPanelOpen} inert={artifactPanelOpen}>
-						<TaskPanel
-							status={chat.status === "streaming" ? "running" : "idle"}
-							todos={chat.todos}
-							artifacts={chat.artifacts}
-							selectedArtifactId={selectedArtifactId}
-							onOpenArtifact={openArtifact}
-						/>
-					</div>
-					<AnimatePresence initial={false}>
-						{artifactPanelOpen ? (
-							<motion.div
-								key="artifact-panel"
-								className="absolute inset-0 z-10 bg-background"
-								initial={artifactMotionInitial}
-								animate={{ opacity: 1, transform: "translateX(0%)" }}
-								exit={artifactMotionExit}
-								transition={artifactMotionTransition}
-							>
-								<WorkspacePanel sessionId={session.id} openFilePath={requestedWorkspacePath} />
-							</motion.div>
-						) : null}
-					</AnimatePresence>
-				</motion.div>
-			) : null}
-			<ProviderSettingsDialog
-				open={providerSettingsOpen}
-				snapshot={providerQuery.data}
-				loading={providerQuery.isLoading || providerQuery.isFetching}
-				loadError={providerQuery.isError && !providerQuery.isFetching}
-				onOpenChange={setProviderSettingsOpen}
-				onRetry={retrySettings}
-				onSave={updateProviderConfig}
-				onFetchModels={fetchProviderModels}
-				onRevealApiKey={revealProviderApiKey}
-				onRevealWebSearchApiKey={revealWebSearchApiKey}
-				onRevealConnectorCredential={revealConnectorCredential}
-				onRevealTelemetryCredential={revealTelemetryCredential}
-				onStartConnectorOAuth={startConnectorOAuth}
-				onDisconnectConnectorOAuth={disconnectConnectorOAuth}
-				telemetry={telemetryQuery.data}
-				telemetryLoading={telemetryQuery.isLoading || telemetryQuery.isFetching}
-				telemetryLoadError={telemetryQuery.isError && !telemetryQuery.isFetching}
-				onSaveTelemetry={updateTelemetrySettings}
-			/>
+						}
+					/>
+					<Route
+						path="/projects/:projectId"
+						element={
+							pageProject ? (
+								<ProjectPage
+									project={pageProject}
+									sessions={sessions}
+									onBack={() => navigate("/projects")}
+									onSelectSession={openSession}
+									composer={
+										<ChatComposer
+											value={draft}
+											onValueChange={setDraft}
+											onSend={chat.sendMessage}
+											onStop={chat.stop}
+											status={chat.status}
+											disabled={!pageProject.available}
+											queue={queue}
+											onEditQueuedMessage={editQueuedMessage}
+											onRemoveQueuedMessage={removeQueuedMessage}
+											onReorderQueuedMessages={reorderQueuedMessages}
+											project={pageProject}
+											projects={projects}
+											projectBusy={projectBusy}
+											projectLoading={projectLoading}
+											projectLoadError={projectLoadError}
+											onChooseProject={chooseProject}
+											onAddProject={addProject}
+											onRetryProjects={() => void projectsQuery.refetch()}
+											providerConfig={providerQuery.data}
+											selectedModelRef={runtimeModelRef}
+											selectedAgentMode={selectedAgentMode}
+											providerLoading={providerQuery.isLoading}
+											providerError={providerQuery.isError}
+											onOpenProviderSettings={openProviderSettings}
+											onSelectProviderModel={setSelectedModelRef}
+											onSelectAgentMode={setSelectedAgentMode}
+											showProjectPicker={false}
+											large
+										/>
+									}
+								/>
+							) : (
+								<ProjectsPage
+									projects={projects}
+									sessions={sessions}
+									loading={projectLoading}
+									error={projectPageError}
+									adding={projectCreationMutation.isPending}
+									onAddProject={() => void createProject()}
+									onOpenProject={openProject}
+								/>
+							)
+						}
+					/>
+					<Route
+						path="/chat/:sessionId"
+						element={
+							<ChatColumn
+								key={activeSessionId ?? "new"}
+								session={session}
+								project={project}
+								projects={projects}
+								chat={chat}
+								draft={draft}
+								queue={queue}
+								onDraftChange={setDraft}
+								onEditQueuedMessage={editQueuedMessage}
+								onRemoveQueuedMessage={removeQueuedMessage}
+								onReorderQueuedMessages={reorderQueuedMessages}
+								providerConfig={providerQuery.data}
+								selectedModelRef={runtimeModelRef}
+								selectedAgentMode={selectedAgentMode}
+								providerLoading={providerQuery.isLoading}
+								providerError={providerQuery.isError}
+								projectBusy={projectBusy}
+								projectLoading={projectLoading}
+								projectLoadError={projectLoadError}
+								projectError={chatProjectError}
+								sidebarOpen={sidebarOpen}
+								artifactPanelOpen={artifactPanelOpen}
+								onToggleSidebar={() => setSidebarOpen(true)}
+								onToggleArtifactPanel={() => setArtifactPanelOpen((open) => !open)}
+								onOpenProviderSettings={openProviderSettings}
+								onSelectProviderModel={setSelectedModelRef}
+								onSelectAgentMode={setSelectedAgentMode}
+								onChooseProject={chooseProject}
+								onAddProject={addProject}
+								onRetryProjects={() => void projectsQuery.refetch()}
+								onRenameSession={renameSession}
+							/>
+						}
+					/>
+					<Route
+						path="/settings"
+						element={
+							<SettingsPage
+								snapshot={providerQuery.data}
+								loading={providerQuery.isLoading || providerQuery.isFetching}
+								loadError={providerQuery.isError && !providerQuery.isFetching}
+								onRetry={retrySettings}
+								onSave={updateProviderConfig}
+								onFetchModels={fetchProviderModels}
+								onRevealApiKey={revealProviderApiKey}
+								onRevealWebSearchApiKey={revealWebSearchApiKey}
+								onRevealConnectorCredential={revealConnectorCredential}
+								onRevealTelemetryCredential={revealTelemetryCredential}
+								onStartConnectorOAuth={startConnectorOAuth}
+								onDisconnectConnectorOAuth={disconnectConnectorOAuth}
+								telemetry={telemetryQuery.data}
+								telemetryLoading={telemetryQuery.isLoading || telemetryQuery.isFetching}
+								telemetryLoadError={telemetryQuery.isError && !telemetryQuery.isFetching}
+								onSaveTelemetry={updateTelemetrySettings}
+							/>
+						}
+					/>
+					<Route path="*" element={<Navigate to="/chat/new" replace />} />
+				</Routes>
+				{rightPanelVisible && artifactPanelOpen ? (
+					<ColumnResizeHandle resize={rightPanelResize} side="right" position={visibleRightPanelWidth} />
+				) : null}
+				{rightPanelVisible ? (
+					<motion.div
+						className="relative min-w-0 shrink-0 overflow-hidden"
+						style={{ width: visibleRightPanelWidth }}
+					>
+						<div className="absolute inset-0" aria-hidden={artifactPanelOpen} inert={artifactPanelOpen}>
+							<TaskPanel
+								status={chat.status === "streaming" ? "running" : "idle"}
+								todos={chat.todos}
+								artifacts={chat.artifacts}
+								selectedArtifactId={selectedArtifactId}
+								onOpenArtifact={openArtifact}
+							/>
+						</div>
+						<AnimatePresence initial={false}>
+							{artifactPanelOpen ? (
+								<motion.div
+									key="artifact-panel"
+									className="absolute inset-0 z-10 bg-(--web-content-background)"
+									initial={artifactMotionInitial}
+									animate={{ opacity: 1, transform: "translateX(0%)" }}
+									exit={artifactMotionExit}
+									transition={artifactMotionTransition}
+								>
+									<WorkspacePanel sessionId={session.id} openFilePath={requestedWorkspacePath} />
+								</motion.div>
+							) : null}
+						</AnimatePresence>
+					</motion.div>
+				) : null}
+			</div>
 		</div>
 	);
 }
@@ -799,9 +812,9 @@ function ColumnResizeHandle({
 			<span
 				aria-hidden="true"
 				className={cn(
-					"pointer-events-none absolute top-1/2 left-1/2 h-6 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full transition-[opacity,transform,background-color] duration-150 group-hover:scale-y-100 group-hover:bg-muted-foreground/35 group-hover:opacity-100 group-focus-visible:scale-y-100 group-focus-visible:bg-primary-2 group-focus-visible:opacity-100",
+					"pointer-events-none absolute top-1/2 left-1/2 h-6 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full transition-[opacity,transform,background-color] duration-150 group-hover:scale-y-100 group-hover:bg-muted-foreground/35 group-hover:opacity-100 group-focus-visible:scale-y-100 group-focus-visible:bg-brand group-focus-visible:opacity-100",
 					{
-						"scale-y-100 bg-primary-2/70 opacity-100": isDragging,
+						"scale-y-100 bg-brand/70 opacity-100": isDragging,
 						"scale-y-75 bg-transparent opacity-0": !isDragging,
 					},
 				)}

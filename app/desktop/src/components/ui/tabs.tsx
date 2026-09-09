@@ -21,8 +21,6 @@ import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
 import { fontWeights } from "@/lib/font-weight";
 import { useShape } from "@/lib/shape-context";
-import { useSurface } from "@/lib/surface-context";
-import { surfaceClasses } from "@/lib/surface-classes";
 import { useProximityHover } from "@/hooks/use-proximity-hover";
 
 /* ─────────────────────── Contexts ─────────────────────── */
@@ -159,8 +157,6 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const isMouseInside = useRef(false);
     const shape = useShape();
-    const substrate = useSurface();
-    const indicatorLevel = Math.min(substrate + 3, 8);
     const valueOrderCtx = useContext(TabsValueOrderContext);
     const [optimisticIdx, setOptimisticIdx] = useState<number | null>(null);
 
@@ -277,8 +273,7 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
             setHoveredIndex(null);
           }}
           className={cn(
-            "relative inline-flex items-center gap-0.5 p-1 select-none bg-muted",
-            shape.container,
+            "relative inline-flex items-center gap-0.5 p-[3px] select-none rounded-lg bg-[var(--tabs-list-bg)] text-muted-foreground",
             className
           )}
           {...props}
@@ -287,9 +282,7 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
           {selectedRect && (
             <motion.div
               className={cn(
-                "absolute pointer-events-none",
-                surfaceClasses(indicatorLevel),
-                shape.bg,
+                "absolute pointer-events-none rounded-md bg-surface-primary shadow-[0_0_0_.5px_var(--border-surface),0_4px_6px_-1px_rgb(0_0_0/.1),0_2px_4px_-2px_rgb(0_0_0/.1)]",
                 indicatorClassName
               )}
               initial={false}
@@ -301,7 +294,8 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
                 opacity: isHovering ? 0.85 : 1,
               }}
               transition={{
-                ...spring.moderate,
+                duration: 0.2,
+                ease: [0, 0, 0.2, 1],
                 opacity: { duration: 0.08 },
               }}
             />
@@ -357,7 +351,7 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
             {focusRect && (
               <motion.div
                 className={cn(
-                  "absolute pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]",
+                  "absolute pointer-events-none z-20 border border-[color:var(--ring)]",
                   shape.focusRing
                 )}
                 initial={false}
@@ -432,7 +426,7 @@ const TabItem = forwardRef<HTMLButtonElement, TabItemProps>(
         className={cn(
           // Fixed height (not py) so the text-box trim below doesn't shrink
           // the tab — browsers without text-box support render identically.
-          "relative z-10 flex h-8 items-center gap-2 px-3 cursor-pointer bg-transparent border-none outline-none",
+          "relative z-10 flex h-[25px] items-center gap-1.5 px-1.5 cursor-pointer bg-transparent border-none outline-none",
           className
         )}
         {...props}
@@ -449,7 +443,7 @@ const TabItem = forwardRef<HTMLButtonElement, TabItemProps>(
         )}
         {/* Both stacked spans carry the text-box trim so the invisible bold
             sizer and the visible label keep identical boxes. */}
-        <span className="inline-grid text-[13px] whitespace-nowrap">
+        <span className="inline-grid text-[14px] font-medium whitespace-nowrap">
           <span
             className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
             style={{ fontVariationSettings: fontWeights.semibold }}
@@ -460,7 +454,7 @@ const TabItem = forwardRef<HTMLButtonElement, TabItemProps>(
           <span
             className={cn(
               "col-start-1 row-start-1 transition-[color,font-variation-settings] duration-80 [text-box:trim-both_cap_alphabetic]",
-              isActive ? "text-foreground" : "text-muted-foreground"
+              isSelected ? "text-foreground" : "text-muted-foreground"
             )}
             style={{
               fontVariationSettings: isSelected

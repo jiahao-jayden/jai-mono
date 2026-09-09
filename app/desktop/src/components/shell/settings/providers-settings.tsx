@@ -77,10 +77,7 @@ export function ProvidersSettings({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="px-8 pt-6">
-				<h2 className="text-base font-semibold">{intl.formatMessage(desktopMessages.settingsProviders)}</h2>
-			</div>
-			<div className="flex items-center gap-1 px-8 pb-0 pt-3">
+			<div className="flex items-center gap-1 px-8 pb-0 pt-4">
 				<div className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto">
 					{profiles.map((profile) => (
 						<Button
@@ -100,7 +97,7 @@ export function ProvidersSettings({
 								className={cn(
 									"size-1.5 shrink-0 rounded-full",
 									profile.authentication === "none" || profile.credentialConfigured || profile.apiKey
-										? "bg-primary-2"
+										? "bg-success"
 										: "bg-muted-foreground/30",
 								)}
 							/>
@@ -122,7 +119,7 @@ export function ProvidersSettings({
 								<Button
 									type="button"
 									variant="ghost"
-									size="icon-sm"
+									size="icon"
 									onClick={removeSelected}
 									aria-label={intl.formatMessage(desktopMessages.settingsProviderDeleteAria, {
 										name: selected.name,
@@ -257,7 +254,7 @@ function AddProviderMenu({
 			<DropdownTrigger
 				render={
 					compact ? (
-						<Button type="button" variant="ghost" size="icon-sm" title={addLabel} aria-label={addLabel}>
+						<Button type="button" variant="ghost" size="icon" title={addLabel} aria-label={addLabel}>
 							<PlusIcon />
 						</Button>
 					) : (

@@ -226,7 +226,7 @@ const TabsSubtle = forwardRef<HTMLDivElement, TabsSubtleProps>(
               <AnimatePresence>
                 {focusRect && (
                   <motion.div
-                    className={cn("absolute pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]", shape.focusRing)}
+                    className={cn("absolute pointer-events-none z-20 border border-[color:var(--ring)]", shape.focusRing)}
                     initial={false}
                     animate={{
                       left: focusRect.left - 2,
@@ -280,7 +280,7 @@ const TabsSubtleItem = forwardRef<HTMLButtonElement, TabsSubtleItemProps>(
     const labelContent = (
       // Both stacked spans carry the text-box trim so the invisible bold
       // sizer and the visible label keep identical boxes.
-      <span className="inline-grid text-[13px] whitespace-nowrap">
+      <span className="inline-grid text-[14px] whitespace-nowrap">
         <span
           className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
           style={{ fontVariationSettings: fontWeights.semibold }}

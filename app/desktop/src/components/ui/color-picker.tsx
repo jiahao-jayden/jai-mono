@@ -525,7 +525,7 @@ function SaturationSquare({ h, s, v, onChange }: SaturationSquareProps) {
       )}
       style={{
         height: SQUARE_HEIGHT,
-        boxShadow: focused ? "0 0 0 2px var(--focus-ring, #6B97FF)" : undefined,
+        boxShadow: focused ? "0 0 0 2px var(--ring)" : undefined,
       }}
     >
       <div
@@ -820,7 +820,7 @@ function FormatDropdown({
     >
       <Menu.Trigger
         className={cn(
-          "flex items-center justify-between gap-2 h-9 px-3 text-[13px] bg-transparent hover:bg-hover hover:text-foreground transition-colors duration-80 outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] cursor-pointer",
+          "flex items-center justify-between gap-2 h-9 px-3 text-[13px] bg-transparent hover:bg-hover hover:text-foreground transition-colors duration-80 outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--ring)] cursor-pointer",
           open ? "bg-active text-foreground" : "text-muted-foreground active:bg-active",
           shape.input
         )}
@@ -956,7 +956,7 @@ function FormatDropdown({
                 <AnimatePresence>
                   {focusRect && (
                     <motion.div
-                      className={`absolute ${menuShape.focusRing} pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]`}
+                      className={`absolute ${menuShape.focusRing} pointer-events-none z-20 border border-[color:var(--ring)]`}
                       initial={false}
                       animate={{
                         left: focusRect.left - 2,
@@ -1089,7 +1089,7 @@ const TextColorInput = forwardRef<HTMLInputElement, ColorInputProps>(
     return (
       <div
         className={cn(
-          "flex items-center h-9 px-2 bg-transparent hover:bg-hover active:bg-active transition-colors duration-80 focus-within:ring-1 focus-within:ring-[color:var(--focus-ring,#6B97FF)] select-none",
+          "flex items-center h-9 px-2 bg-transparent hover:bg-hover active:bg-active transition-colors duration-80 focus-within:ring-1 focus-within:ring-[color:var(--ring)] select-none",
           shape.input,
           className
         )}
@@ -1264,7 +1264,7 @@ const ScrubColorInput = forwardRef<HTMLInputElement, ColorInputProps>(
         largeStep={nudgeShiftStep ?? 10}
         format={format}
         className={cn(
-          "flex items-center h-9 bg-transparent hover:bg-hover active:bg-active transition-colors duration-80 focus-within:ring-1 focus-within:ring-[color:var(--focus-ring,#6B97FF)] select-none",
+          "flex items-center h-9 bg-transparent hover:bg-hover active:bg-active transition-colors duration-80 focus-within:ring-1 focus-within:ring-[color:var(--ring)] select-none",
           shape.input,
           className
         )}
@@ -1412,7 +1412,7 @@ function EyeDropperButton({ onPick }: { onPick: (hex: string) => void }) {
       onClick={handleClick}
       aria-label="Pick color from screen"
       className={cn(
-        "flex items-center justify-center h-9 px-3 text-muted-foreground bg-transparent hover:bg-hover hover:text-foreground active:bg-active transition-colors duration-80 outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] cursor-pointer",
+        "flex items-center justify-center h-9 px-3 text-muted-foreground bg-transparent hover:bg-hover hover:text-foreground active:bg-active transition-colors duration-80 outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--ring)] cursor-pointer",
         shape.input
       )}
     >
@@ -1462,7 +1462,7 @@ const ColorSwatch = forwardRef<HTMLButtonElement, ColorSwatchProps>(
     const shape = useShape();
     const [hovered, setHovered] = useState(false);
     const ring = selected
-      ? "inset 0 0 0 1px rgba(127,127,127,0.25), 0 0 0 2px var(--background), 0 0 0 4px #6B97FF"
+      ? "inset 0 0 0 1px rgba(127,127,127,0.25), 0 0 0 2px var(--background), 0 0 0 4px var(--ring)"
       : hovered
         ? "inset 0 0 0 1px rgba(127,127,127,0.25), 0 0 0 2px var(--background), 0 0 0 4px rgba(127,127,127,0.4)"
         : "inset 0 0 0 1px rgba(127,127,127,0.25)";
@@ -1560,7 +1560,7 @@ const ColorPicker = forwardRef<HTMLDivElement, ColorPickerProps>(
   (
     {
       value,
-      defaultValue = "#6B97FF",
+      defaultValue = "#0ea5e9",
       onValueChange,
       format,
       defaultFormat = "hex",
@@ -1974,7 +1974,7 @@ const ColorPickerPopover = forwardRef<HTMLDivElement, ColorPickerPopoverProps>(
     );
 
     const isControlled = pickerProps.value !== undefined;
-    const [internalValue, setInternalValue] = useState(pickerProps.value ?? pickerProps.defaultValue ?? "#6B97FF");
+    const [internalValue, setInternalValue] = useState(pickerProps.value ?? pickerProps.defaultValue ?? "#0ea5e9");
     const currentValue = isControlled ? (pickerProps.value as string) : internalValue;
 
     const handleValueChange = useCallback(
@@ -2017,7 +2017,7 @@ const ColorPickerPopover = forwardRef<HTMLDivElement, ColorPickerPopoverProps>(
         <div ref={ref} className="inline-flex">
           <Popover.Trigger
             className={cn(
-              "flex items-center gap-2 h-9 px-2 border border-border bg-transparent hover:bg-hover transition-colors duration-80 outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] cursor-pointer",
+              "flex items-center gap-2 h-9 px-2 border border-border bg-transparent hover:bg-hover transition-colors duration-80 outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--ring)] cursor-pointer",
               shape.input,
               triggerClassName
             )}

@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useIntl } from "react-intl";
+import { type MessageDescriptor, useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
-import { useIcon, useIcons } from "@/lib/icon-context";
+import { type IconName, useIcon, useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type {
 	DesktopConnectorConfigInput,
@@ -18,7 +18,6 @@ import type {
 	DesktopWebSearchCredentialId,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
 import { ConnectorSettings } from "./connector-settings";
 import { GeneralSettings } from "./general-settings";
 import { ObservabilitySettings } from "./observability-settings";
@@ -31,12 +30,10 @@ import {
 import { ProvidersSettings } from "./providers-settings";
 import { WebSearchSettings } from "./web-search-settings";
 
-interface ProviderSettingsDialogProps {
-	readonly open: boolean;
+interface SettingsPageProps {
 	readonly snapshot?: DesktopProviderConfigSnapshot;
 	readonly loading: boolean;
 	readonly loadError: boolean;
-	readonly onOpenChange: (open: boolean) => void;
 	readonly onRetry: () => void;
 	readonly onSave: (input: DesktopProviderConfigInput) => Promise<DesktopProviderConfigSnapshot>;
 	readonly onFetchModels: (profileId: string) => Promise<DesktopProviderFetchModelsResult>;
@@ -54,12 +51,18 @@ interface ProviderSettingsDialogProps {
 
 type SettingsCategory = "general" | "providers" | "web-search" | "connector" | "advanced";
 
-export function ProviderSettingsDialog({
-	open,
+const settingsCategories: Record<SettingsCategory, { label: MessageDescriptor; icon: IconName }> = {
+	general: { label: desktopMessages.settingsGeneral, icon: "settings" },
+	providers: { label: desktopMessages.settingsProviders, icon: "key" },
+	"web-search": { label: desktopMessages.settingsWebSearch, icon: "globe" },
+	connector: { label: desktopMessages.settingsConnector, icon: "link" },
+	advanced: { label: desktopMessages.settingsAdvanced, icon: "layers" },
+};
+
+export function SettingsPage({
 	snapshot,
 	loading,
 	loadError,
-	onOpenChange,
 	onRetry,
 	onSave,
 	onFetchModels,
@@ -73,7 +76,7 @@ export function ProviderSettingsDialog({
 	telemetryLoading,
 	telemetryLoadError,
 	onSaveTelemetry,
-}: ProviderSettingsDialogProps) {
+}: SettingsPageProps) {
 	const [fetchingProfileId, setFetchingProfileId] = useState<string>();
 	const [lastFetch, setLastFetch] = useState<DesktopProviderFetchModelsResult>();
 
@@ -88,42 +91,26 @@ export function ProviderSettingsDialog({
 		}
 	};
 
+	if (!snapshot) return <ProviderLoadState loading={loading} error={loadError} onRetry={onRetry} />;
 	return (
-		<Dialog
-			open={open}
-			onOpenChange={(nextOpen) => {
-				if (!nextOpen) setLastFetch(undefined);
-				onOpenChange(nextOpen);
-			}}
-		>
-			<DialogContent
-				size="lg"
-				className="h-[min(600px,calc(100vh-48px))] max-w-220 overflow-hidden bg-background p-0"
-			>
-				{snapshot ? (
-					<ProviderConfigForm
-						snapshot={snapshot}
-						onSave={onSave}
-						onFetchModels={fetchModels}
-						onRevealApiKey={onRevealApiKey}
-						onRevealWebSearchApiKey={onRevealWebSearchApiKey}
-						onRevealConnectorCredential={onRevealConnectorCredential}
-						onRevealTelemetryCredential={onRevealTelemetryCredential}
-						onStartConnectorOAuth={onStartConnectorOAuth}
-						onDisconnectConnectorOAuth={onDisconnectConnectorOAuth}
-						telemetry={telemetry}
-						telemetryLoading={telemetryLoading}
-						telemetryLoadError={telemetryLoadError}
-						onSaveTelemetry={onSaveTelemetry}
-						fetchingProfileId={fetchingProfileId}
-						lastFetch={lastFetch}
-						onRetry={onRetry}
-					/>
-				) : (
-					<ProviderLoadState loading={loading} error={loadError} onRetry={onRetry} />
-				)}
-			</DialogContent>
-		</Dialog>
+		<ProviderConfigForm
+			snapshot={snapshot}
+			onSave={onSave}
+			onFetchModels={fetchModels}
+			onRevealApiKey={onRevealApiKey}
+			onRevealWebSearchApiKey={onRevealWebSearchApiKey}
+			onRevealConnectorCredential={onRevealConnectorCredential}
+			onRevealTelemetryCredential={onRevealTelemetryCredential}
+			onStartConnectorOAuth={onStartConnectorOAuth}
+			onDisconnectConnectorOAuth={onDisconnectConnectorOAuth}
+			telemetry={telemetry}
+			telemetryLoading={telemetryLoading}
+			telemetryLoadError={telemetryLoadError}
+			onSaveTelemetry={onSaveTelemetry}
+			fetchingProfileId={fetchingProfileId}
+			lastFetch={lastFetch}
+			onRetry={onRetry}
+		/>
 	);
 }
 
@@ -165,24 +152,15 @@ function ProviderLoadState({
 	const SettingsIcon = useIcon("settings");
 
 	return (
-		<div className="flex h-full min-h-0 flex-col">
-			<DialogHeader className="px-6 py-5">
-				<DialogTitle>{intl.formatMessage(desktopMessages.settingsTitle)}</DialogTitle>
-			</DialogHeader>
-			<div className="flex flex-1 items-center justify-center px-6 text-center">
-				<div>
-					<SettingsIcon className="mx-auto mb-3 size-5 text-muted-foreground" />
-					<p className="text-[14px] font-semibold">
-						{intl.formatMessage(loading ? desktopMessages.settingsLoading : desktopMessages.settingsUnavailable)}
-					</p>
-				</div>
-			</div>
+		<div className="flex h-full min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
+			<SettingsIcon className="mb-3 size-5 text-muted-foreground" />
+			<p className="text-[14px] font-semibold">
+				{intl.formatMessage(loading ? desktopMessages.settingsLoading : desktopMessages.settingsUnavailable)}
+			</p>
 			{error ? (
-				<DialogFooter className="px-6 py-4">
-					<Button type="button" variant="tertiary" onClick={onRetry}>
-						{intl.formatMessage(desktopMessages.settingsRetry)}
-					</Button>
-				</DialogFooter>
+				<Button type="button" variant="tertiary" className="mt-4" onClick={onRetry}>
+					{intl.formatMessage(desktopMessages.settingsRetry)}
+				</Button>
 			) : null}
 		</div>
 	);
@@ -241,7 +219,10 @@ function ProviderConfigForm({
 		snapshot.profiles.length > 0 ||
 		connector.connectors.length > 0 ||
 		webSearch.providers.length > 0;
-	const contentClassName = cn("min-h-0 flex-1", category === "connector" ? "flex overflow-hidden" : "overflow-y-auto");
+	const contentClassName = cn(
+		"mx-auto min-h-0 w-full max-w-3xl flex-1",
+		category === "connector" ? "flex overflow-hidden" : "overflow-y-auto",
+	);
 	const providerCategory = category !== "advanced";
 
 	const submit = async () => {
@@ -298,7 +279,7 @@ function ProviderConfigForm({
 
 	return (
 		<form
-			className="flex h-full min-h-0"
+			className="flex h-full min-h-0 flex-1 bg-muted-hover"
 			onSubmit={(event) => {
 				event.preventDefault();
 				if (providerCategory) void submit();
@@ -306,7 +287,10 @@ function ProviderConfigForm({
 		>
 			<SettingsSidebar category={category} onCategoryChange={(nextCategory) => setCategory(nextCategory)} />
 
-			<div className="flex min-w-0 flex-1 flex-col">
+			<div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-primary shadow-surface-1 my-2 mr-2">
+				<h1 className="mx-auto w-full max-w-3xl shrink-0 px-8 pt-7 text-[22px] font-medium tracking-tight">
+					{intl.formatMessage(settingsCategories[category].label)}
+				</h1>
 				<div className={contentClassName}>
 					{category === "general" ? (
 						<GeneralSettings
@@ -399,7 +383,7 @@ function ProviderConfigForm({
 				</div>
 
 				{providerCategory ? (
-					<DialogFooter className="items-center px-6 pb-4">
+					<div className="flex shrink-0 items-center justify-end gap-3 border-t border-border px-8 py-3">
 						{error ? (
 							<p className="mr-auto max-w-115 text-[12px] leading-relaxed text-destructive" role="alert">
 								{error}
@@ -413,7 +397,7 @@ function ProviderConfigForm({
 						<Button type="submit" loading={saving} disabled={!canSave}>
 							{intl.formatMessage(desktopMessages.settingsSave)}
 						</Button>
-					</DialogFooter>
+					</div>
 				) : null}
 			</div>
 		</form>
@@ -429,43 +413,36 @@ function SettingsSidebar({
 }) {
 	const intl = useIntl();
 	const icons = useIcons();
-	const categories: { id: SettingsCategory; label: string; icon: keyof typeof icons }[] = [
-		{ id: "general", label: intl.formatMessage(desktopMessages.settingsGeneral), icon: "settings" },
-		{ id: "providers", label: intl.formatMessage(desktopMessages.settingsProviders), icon: "key" },
-		{ id: "web-search", label: intl.formatMessage(desktopMessages.settingsWebSearch), icon: "globe" },
-		{ id: "connector", label: intl.formatMessage(desktopMessages.settingsConnector), icon: "link" },
-		{ id: "advanced", label: intl.formatMessage(desktopMessages.settingsAdvanced), icon: "layers" },
-	];
+	const categoryIds = Object.keys(settingsCategories) as SettingsCategory[];
 
 	return (
-		<aside className="flex w-48 shrink-0 flex-col border-r border-border/45">
-			<DialogHeader className="mb-0 px-6 pt-5">
-				<DialogTitle>{intl.formatMessage(desktopMessages.settingsTitle)}</DialogTitle>
-			</DialogHeader>
+		<aside className="flex w-48 shrink-0 flex-col">
+			<h2 className="px-4 pt-5 pb-2 text-[12px] font-medium text-muted-foreground">
+				{intl.formatMessage(desktopMessages.settingsTitle)}
+			</h2>
 			<nav
-				className="flex min-h-0 flex-1 flex-col gap-0.5 bg-muted/25 px-2 py-3"
+				className="flex min-h-0 flex-1 flex-col gap-0.5 px-2"
 				aria-label={intl.formatMessage(desktopMessages.settingsTitle)}
 			>
-				{categories.map((item) => {
-					const Icon = icons[item.icon];
-					const isActive = category === item.id;
+				{categoryIds.map((id) => {
+					const item = settingsCategories[id];
+					const isActive = category === id;
 					const itemClassName = cn(
-						"h-auto w-full justify-start gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px]",
-						isActive ? "font-semibold text-foreground" : "text-foreground/85",
+						"h-8 w-full justify-start gap-2 rounded-lg px-2 text-left text-[14px] text-foreground",
+						{ "bg-active font-medium": isActive },
 					);
 					return (
 						<Button
 							type="button"
-							variant="navigation"
+							variant="ghost"
 							size="md"
-							leadingIcon={Icon}
-							key={item.id}
-							onClick={() => onCategoryChange(item.id)}
-							active={isActive}
+							leadingIcon={icons[item.icon]}
+							key={id}
+							onClick={() => onCategoryChange(id)}
 							aria-current={isActive ? "page" : undefined}
 							className={itemClassName}
 						>
-							{item.label}
+							{intl.formatMessage(item.label)}
 						</Button>
 					);
 				})}

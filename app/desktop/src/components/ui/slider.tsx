@@ -808,7 +808,7 @@ const Slider = forwardRef<HTMLDivElement, SliderProps>(
           />
           {/* Focus ring */}
           <motion.span
-            className="absolute rounded-full border border-[color:var(--focus-ring,#6B97FF)] pointer-events-none"
+            className="absolute rounded-full border border-[color:var(--ring)] pointer-events-none"
             initial={false}
             animate={{
               opacity: focusedThumb === index ? 1 : 0,
@@ -1423,7 +1423,7 @@ const SliderComfortable = forwardRef<HTMLDivElement, SliderComfortableProps>(
         )}
         initial={false}
         animate={{
-          outline: isFocused ? "1px solid var(--focus-ring, #6B97FF)" : "1px solid transparent",
+          outline: isFocused ? "1px solid var(--ring)" : "1px solid transparent",
         }}
         transition={spring.fast}
         onPointerDown={handlePointerDown}

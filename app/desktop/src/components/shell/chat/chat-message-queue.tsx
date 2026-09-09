@@ -94,7 +94,7 @@ function QueuedMessageRow({ message, index, total, reducedMotion, onEdit, onRemo
 			className={cn(
 				"group/qrow flex h-8 items-center gap-2 rounded-lg bg-muted px-2.5",
 				"cursor-grab text-[13px] text-foreground/85 select-none outline-none active:cursor-grabbing",
-				"focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]",
+				"focus-visible:ring-1 focus-visible:ring-[color:var(--ring)]",
 			)}
 			style={{ fontVariationSettings: fontWeights.normal }}
 		>
@@ -103,14 +103,14 @@ function QueuedMessageRow({ message, index, total, reducedMotion, onEdit, onRemo
 				<Button
 					type="button"
 					variant="ghost"
-					size="icon-sm"
+					size="icon"
 					onPointerDown={(event) => event.stopPropagation()}
 					onClick={(event) => {
 						event.stopPropagation();
 						onRemove(message.id);
 					}}
 					aria-label={intl.formatMessage(desktopMessages.queuedMessageRemove, { label })}
-					className="size-5 shrink-0 text-muted-foreground opacity-100 hover:bg-hover hover:text-foreground sm:opacity-0 sm:group-hover/qrow:opacity-100 sm:focus-visible:opacity-100"
+					className="size-5 shrink-0 text-muted-foreground opacity-100 hover:bg-muted-hover hover:text-foreground sm:opacity-0 sm:group-hover/qrow:opacity-100 sm:focus-visible:opacity-100"
 				>
 					<XIcon size={13} strokeWidth={2.5} />
 				</Button>

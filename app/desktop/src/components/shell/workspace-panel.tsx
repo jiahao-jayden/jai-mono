@@ -352,9 +352,8 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 	const treeLoading = loadingPaths.size > 0;
 	const activePreviewPath = activeTab?.path === NEW_WORKSPACE_TAB_PATH ? "/" : (activeTab?.path ?? "/");
 	const treeHostStyle = {
-		"--trees-bg-override": "color-mix(in oklch, var(--muted) 14%, var(--background))",
-		"--trees-selected-bg-override":
-			"color-mix(in oklch, var(--foreground) 11%, color-mix(in oklch, var(--muted) 14%, var(--background)))",
+		"--trees-bg-override": "var(--surface-tertiary)",
+		"--trees-selected-bg-override": "color-mix(in oklch, var(--foreground) 11%, var(--surface-tertiary))",
 	} as CSSProperties;
 	const openActiveFile = useCallback(
 		async (target: "default" | "cursor" | "application", applicationId?: string) => {
@@ -426,10 +425,10 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 		<aside
 			id="workspace-panel"
 			aria-label={intl.formatMessage(desktopMessages.workspaceFiles)}
-			className="flex h-full w-full min-w-0 flex-col bg-background"
+			className="flex h-full w-full min-w-0 flex-col"
 		>
 			<div
-				className="flex h-13 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/45 px-2.5"
+				className="flex h-11 shrink-0 items-center gap-1 overflow-x-auto px-2.5"
 				role="tablist"
 				aria-label={intl.formatMessage(desktopMessages.workspaceOpenFiles)}
 			>
@@ -440,8 +439,10 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 							? intl.formatMessage(desktopMessages.workspaceChooseFile)
 							: tab.name;
 					const tabGroupClassName = cn(
-						"group flex h-7 min-w-0 max-w-44 shrink-0 items-center rounded-[8px] text-[12.5px] transition-colors duration-80",
-						isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-hover hover:text-foreground",
+						"group flex h-7 min-w-0 max-w-44 shrink-0 items-center rounded-lg text-[12px] transition-colors duration-80",
+						isActive
+							? "bg-secondary text-foreground"
+							: "text-muted-foreground hover:bg-muted-hover hover:text-foreground",
 					);
 					return (
 						<div key={tab.path} className={tabGroupClassName}>
@@ -462,11 +463,11 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 							<Button
 								type="button"
 								variant="ghost"
-								size="icon-sm"
+								size="icon"
 								aria-label={intl.formatMessage(desktopMessages.workspaceCloseFile, { name: tabName })}
 								title={intl.formatMessage(desktopMessages.workspaceCloseFile, { name: tabName })}
 								onClick={() => closeTab(tab.path)}
-								className="size-6 shrink-0 rounded-[5px] text-muted-foreground hover:text-foreground"
+								className="size-6 shrink-0 rounded-md text-muted-foreground hover:text-foreground"
 							>
 								<XIcon size={12} />
 							</Button>
@@ -476,7 +477,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 				<Button
 					type="button"
 					variant="ghost"
-					size="icon-sm"
+					size="icon"
 					aria-label={intl.formatMessage(desktopMessages.workspaceNewTab)}
 					title={intl.formatMessage(desktopMessages.workspaceNewTab)}
 					onClick={() => {
@@ -497,11 +498,11 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 				>
 					<PlusIcon size={15} />
 				</Button>
-				<div className="ml-auto shrink-0 border-l border-border/45 pl-1">
+				<div className="ml-auto shrink-0 border-l border-border pl-1">
 					<Button
 						type="button"
 						variant="ghost"
-						size="icon-sm"
+						size="icon"
 						aria-label={intl.formatMessage(
 							treeCollapsed ? desktopMessages.workspaceExpandTree : desktopMessages.workspaceCollapseTree,
 						)}
@@ -516,12 +517,12 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 					</Button>
 				</div>
 			</div>
-			<div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/45 px-3">
+			<div className="flex h-10 shrink-0 items-center gap-2 px-3 text-[12px] text-muted-foreground">
 				<FolderOpenIcon size={14} className="shrink-0 text-muted-foreground" />
-				<span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground" title={activePreviewPath}>
+				<span className="min-w-0 flex-1 truncate" title={activePreviewPath}>
 					{activePreviewPath}
 				</span>
-				<div className="flex shrink-0 overflow-hidden rounded-[8px]">
+				<div className="flex shrink-0 overflow-hidden rounded-lg">
 					<Button
 						type="button"
 						variant="secondary"
@@ -543,7 +544,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 								<Button
 									type="button"
 									variant="secondary"
-									size="icon-sm"
+									size="icon"
 									disabled={openControlsDisabled}
 									aria-label={intl.formatMessage(desktopMessages.workspaceChooseOpen)}
 									title={intl.formatMessage(desktopMessages.workspaceChooseOpen)}
@@ -620,7 +621,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 
 				<section
 					className={cn(
-						"flex min-h-0 min-w-0 flex-col overflow-hidden border-l border-border/45 bg-muted/[0.14]",
+						"flex min-h-0 min-w-0 flex-col overflow-hidden border-l border-border bg-surface-tertiary",
 						treeCollapsed && "pointer-events-none opacity-0",
 					)}
 					aria-hidden={treeCollapsed}
@@ -767,76 +768,73 @@ export function ArtifactPanel({ sessionId, artifacts, selectedArtifactId, onSele
 		<aside
 			id="artifact-panel"
 			aria-label={intl.formatMessage(desktopMessages.workspaceArtifactPreview)}
-			className="h-full w-full min-w-0 overflow-y-auto bg-background py-3 pr-3"
+			className="flex h-full w-full min-w-0 flex-col gap-3.5 overflow-y-auto p-3"
 		>
-			<div className="flex min-h-full flex-col overflow-hidden rounded-[14px] border border-border bg-card">
-				<div className="flex h-13 shrink-0 items-center gap-2 border-b border-border/45 px-4">
-					<ArchiveIcon size={16} className="text-muted-foreground" />
-					<h2 className="min-w-0 flex-1 text-[14px] font-semibold">
-						{intl.formatMessage(desktopMessages.workspaceArtifacts)}
-					</h2>
-					<span className="text-[12px] tabular-nums text-muted-foreground">{artifacts.length}</span>
-				</div>
-
-				{artifacts.length === 0 ? (
-					<ArtifactEmptyState icon={ArchiveIcon} />
-				) : (
-					<div className="flex min-h-0 flex-1 flex-col">
-						<div className="max-h-56 shrink-0 overflow-y-auto border-b border-border/45 p-2">
-							<ul
-								className="space-y-1"
-								aria-label={intl.formatMessage(desktopMessages.workspaceSessionArtifacts)}
-							>
-								{artifacts.map((artifact) => {
-									const isSelected = artifact.id === selectedArtifact?.id;
-									const ArtifactIcon = artifact.format === "html" ? HtmlIcon : FileCodeIcon;
-									return (
-										<li key={artifact.id}>
-											<Button
-												type="button"
-												variant="ghost"
-												size="md"
-												active={isSelected}
-												onClick={() => onSelectArtifact(artifact)}
-												aria-current={isSelected ? "true" : undefined}
-												className="h-auto w-full justify-start rounded-[8px] px-2 py-1.5"
-												contentClassName="w-full min-w-0 justify-start"
-												labelClassName="flex min-w-0 flex-1 items-center gap-2"
-											>
-												<ArtifactIcon size={15} className="shrink-0 text-muted-foreground" />
-												<span className="min-w-0 flex-1 text-left">
-													<span
-														className="block truncate text-[12.5px] font-medium text-foreground"
-														title={artifact.path}
-													>
-														{artifactName(artifact.path)}
-													</span>
-													<span
-														className="mt-0.5 block truncate text-[11px] text-muted-foreground"
-														title={artifact.path}
-													>
-														{artifact.path}
-													</span>
-												</span>
-												<span className="shrink-0 text-[10.5px] font-medium uppercase text-muted-foreground">
-													{artifact.format}
-												</span>
-											</Button>
-										</li>
-									);
-								})}
-							</ul>
-						</div>
-						<ArtifactPreview
-							artifact={selectedArtifact}
-							preview={preview}
-							previewState={previewState}
-							loadingIcon={LoadingIcon}
-							fileIcon={FileCodeIcon}
-						/>
-					</div>
-				)}
+			<div className="flex h-6 items-center justify-between px-1.5">
+				<h2 className="text-[12px] font-medium text-muted-foreground">
+					{intl.formatMessage(desktopMessages.workspaceArtifacts)}
+				</h2>
+				<span className="flex items-center gap-1.5 text-[12px] font-medium tabular-nums text-muted-foreground">
+					<ArchiveIcon size={14} />
+					{artifacts.length}
+				</span>
 			</div>
+
+			{artifacts.length === 0 ? (
+				<ArtifactEmptyState icon={ArchiveIcon} />
+			) : (
+				<div className="flex min-h-0 flex-1 flex-col">
+					<div className="max-h-56 shrink-0 overflow-y-auto p-1">
+						<ul className="space-y-1" aria-label={intl.formatMessage(desktopMessages.workspaceSessionArtifacts)}>
+							{artifacts.map((artifact) => {
+								const isSelected = artifact.id === selectedArtifact?.id;
+								const ArtifactIcon = artifact.format === "html" ? HtmlIcon : FileCodeIcon;
+								return (
+									<li key={artifact.id}>
+										<Button
+											type="button"
+											variant="ghost"
+											size="md"
+											active={isSelected}
+											onClick={() => onSelectArtifact(artifact)}
+											aria-current={isSelected ? "true" : undefined}
+											className="h-auto w-full justify-start rounded-lg px-2 py-1.5 hover:bg-muted-hover"
+											contentClassName="w-full min-w-0 justify-start"
+											labelClassName="flex min-w-0 flex-1 items-center gap-2"
+										>
+											<ArtifactIcon size={15} className="shrink-0 text-muted-foreground" />
+											<span className="min-w-0 flex-1 text-left">
+												<span
+													className="block truncate text-[13px] font-medium text-foreground"
+													title={artifact.path}
+												>
+													{artifactName(artifact.path)}
+												</span>
+												<span
+													className="mt-0.5 block truncate text-[11px] text-muted-foreground"
+													title={artifact.path}
+												>
+													{artifact.path}
+												</span>
+											</span>
+											<span className="shrink-0 text-[11px] font-medium uppercase text-muted-foreground">
+												{artifact.format}
+											</span>
+										</Button>
+									</li>
+								);
+							})}
+						</ul>
+					</div>
+					<ArtifactPreview
+						artifact={selectedArtifact}
+						preview={preview}
+						previewState={previewState}
+						loadingIcon={LoadingIcon}
+						fileIcon={FileCodeIcon}
+					/>
+				</div>
+			)}
 		</aside>
 	);
 }
@@ -909,7 +907,7 @@ function ArtifactPreview({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/45 px-3 text-[12px] text-foreground/65">
+			<div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3 text-[12px] text-muted-foreground">
 				<FileCodeIcon size={14} className="shrink-0" />
 				<span className="min-w-0 flex-1 truncate" title={artifact.path}>
 					{artifact.path}

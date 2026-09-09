@@ -71,3 +71,15 @@ _Avoid_: workspace boundary, path boundary, permission boundary, sandbox
 **Workspace Path Boundary**:
 Agent 文件工具可访问的 canonical 路径范围，由 `realpath` 解析后与 workspace root 比较得出，并配合一次性 path capability 与执行前重检防 TOCTOU。它只管文件访问，不管 agent 输出。
 _Avoid_: trust boundary, permission scope
+
+**Aside DNA**:
+Desktop 视觉的参考对象：`.jnative/research/desktop/aside-chat-dna/` 里从 Aside 浏览器实测得到的 token、尺寸与复刻 `index.html`。数值严格遵循，结构保留三栏。
+_Avoid_: 参考风格, 灵感
+
+**Surface 阶梯（Elevated）与 Surface 三级（Aside）**:
+`surface-1..8` / `shadow-1..8` 是 `Elevated` 组件按叠层深度取的 8 级梯子，值派生自 fg/α；`surface-primary / secondary / tertiary` 是 Aside 的三级容器底色 token。两组名字都保留，前者只给 `Elevated`，后者给业务组件直接使用。
+_Avoid_: 把两组混叫 surface
+
+**Brand 与 Primary**:
+`--primary` 是 fg/.85 的单色主按钮底，`--brand` 是唯一色相 sky，只用于链接、@mention、选区、拖放高亮；状态用 `--success` / `--destructive`。
+_Avoid_: 品牌色 = 主按钮色, teal, primary-2

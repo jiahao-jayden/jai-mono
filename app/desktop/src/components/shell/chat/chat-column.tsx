@@ -14,7 +14,7 @@ import {
 } from "react";
 import { useIntl } from "react-intl";
 import { ThinkingOrb } from "thinking-orbs";
-import pandaLogo from "@/assets/icons/chat-area/logo.svg";
+import logo from "@/assets/icons/chat-area/logo.svg";
 import type { Chat } from "@/hooks/use-chat";
 import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
@@ -181,18 +181,18 @@ export function ChatColumn({
 	};
 
 	return (
-		<section className="flex min-w-0 flex-1 flex-col bg-background">
+		<section className="flex min-w-0 flex-1 flex-col">
 			<header
-				className={cn("flex h-13 shrink-0 items-center justify-between pr-5", sidebarOpen ? "pl-5" : "pl-20")}
+				className={cn("flex h-11 shrink-0 items-center justify-between pr-1.5", sidebarOpen ? "pl-1.5" : "pl-20")}
 				style={drag}
 			>
-				<div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden text-[15px]">
+				<div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden px-1.5 text-[13px]">
 					{!sidebarOpen ? (
 						<div className="mr-1 shrink-0" style={noDrag}>
 							<Button
 								type="button"
 								variant="ghost"
-								size="icon-sm"
+								size="icon"
 								onClick={onToggleSidebar}
 								aria-label={intl.formatMessage(desktopMessages.chatShowSidebar)}
 								title={intl.formatMessage(desktopMessages.chatShowSidebar)}
@@ -209,7 +209,9 @@ export function ChatColumn({
 							) : (
 								<FolderIcon size={16} className="shrink-0 text-muted-foreground" />
 							)}
-							<span className="max-w-40 truncate font-semibold">{projectLabel}</span>
+							<span className="max-w-40 truncate font-medium text-surface-primary-foreground">
+								{projectLabel}
+							</span>
 						</>
 					) : null}
 					{session ? (
@@ -233,7 +235,7 @@ export function ChatColumn({
 									}}
 									aria-label={intl.formatMessage(desktopMessages.sessionTitle)}
 									maxLength={80}
-									className="h-7 min-w-0 max-w-64 flex-1 border-transparent bg-hover px-2 text-[15px] font-semibold"
+									className="h-7 min-w-0 max-w-64 flex-1 border-transparent bg-muted-hover px-2 text-[13px] font-medium"
 									style={noDrag}
 								/>
 							) : (
@@ -254,7 +256,7 @@ export function ChatColumn({
 									title={intl.formatMessage(desktopMessages.chatRenameHint)}
 									contentClassName="min-w-0 max-w-full"
 									labelClassName="min-w-0 truncate text-left leading-6 ![text-box:normal]"
-									className="h-7 min-w-0 max-w-64 flex-1 justify-start px-1 text-[15px] font-semibold text-foreground"
+									className="h-7 min-w-0 max-w-64 flex-1 justify-start px-1.5 text-[13px] font-medium text-surface-primary-foreground hover:text-foreground"
 									style={noDrag}
 								>
 									{session.title}
@@ -268,7 +270,7 @@ export function ChatColumn({
 						<Button
 							type="button"
 							variant="ghost"
-							size="icon-sm"
+							size="icon"
 							onClick={onToggleArtifactPanel}
 							aria-expanded={artifactPanelOpen}
 							aria-controls="workspace-panel"
@@ -289,167 +291,130 @@ export function ChatColumn({
 			</header>
 
 			{isNewChat ? (
-				<div className="flex min-h-0 flex-1 items-center justify-center px-8 pb-[8vh]">
-					<div className="w-full max-w-180">
-						<div className="mb-7 text-center">
-							<img
-								src={pandaLogo}
-								alt=""
-								aria-hidden="true"
-								className="mx-auto mb-5 h-20 w-auto select-none"
-								draggable={false}
-							/>
-							<h1 className="font-serif text-[34px] tracking-[-0.025em] text-foreground">
-								{intl.formatMessage(greetingMessage(), { name: "Jiahao" })}
-							</h1>
-							<p className="mt-2.5 text-[15px] text-muted-foreground">
-								{intl.formatMessage(desktopMessages.chatNewDescription)}
-							</p>
-						</div>
-						<ChatComposer
-							value={draft}
-							onValueChange={onDraftChange}
-							onSend={chat.sendMessage}
-							onStop={chat.stop}
-							status={chat.status}
-							disabled={project?.available === false}
-							queue={queue}
-							onEditQueuedMessage={onEditQueuedMessage}
-							onRemoveQueuedMessage={onRemoveQueuedMessage}
-							onReorderQueuedMessages={onReorderQueuedMessages}
-							project={project}
-							projects={projects}
-							projectBusy={projectBusy}
-							projectLoading={projectLoading}
-							projectLoadError={projectLoadError}
-							onChooseProject={onChooseProject}
-							onAddProject={onAddProject}
-							onRetryProjects={onRetryProjects}
-							providerConfig={providerConfig}
-							selectedModelRef={selectedModelRef}
-							selectedAgentMode={selectedAgentMode}
-							providerLoading={providerLoading}
-							providerError={providerError}
-							onOpenProviderSettings={onOpenProviderSettings}
-							onSelectProviderModel={onSelectProviderModel}
-							onSelectAgentMode={onSelectAgentMode}
-							large
-						/>
-						<ComposerError message={chat.error || projectError} />
-					</div>
+				<div
+					className="flex min-h-0 flex-1 items-center justify-center"
+					aria-label={intl.formatMessage(greetingMessage(), { name: "Jiahao" })}
+					role="img"
+				>
+					<img src={logo} alt="" draggable={false} className="size-20 select-none" />
 				</div>
 			) : (
-				<>
-					<div className="relative min-h-0 flex-1">
-						<div
-							ref={scrollRef}
-							className="h-full overflow-y-auto"
-							onKeyDownCapture={transcriptScroll.onKeyDownCapture}
-							onPointerDown={transcriptScroll.onPointerDown}
-							onPointerMove={transcriptScroll.onPointerMove}
-							onPointerUp={transcriptScroll.onPointerUp}
-							onPointerCancel={transcriptScroll.onPointerUp}
-							onScroll={transcriptScroll.onScroll}
-							onTouchMove={transcriptScroll.onTouchMove}
-							onWheel={transcriptScroll.onWheel}
-						>
-							<div className="px-5">
-								<div className="mx-auto flex w-full max-w-190 flex-col gap-2 py-5">
-									{chat.isLoading ? <TranscriptLoading /> : null}
-									{!chat.isLoading && chat.messages.length === 0 ? (
-										<p className="py-16 text-center text-[13px] text-muted-foreground">
-											{intl.formatMessage(desktopMessages.chatEmpty)}
-										</p>
-									) : null}
-									<TranscriptItems
-										items={transcriptItems}
-										loading={chat.isLoading}
-										navigationDisabled={navigationDisabled}
-										onNavigate={chat.navigate}
-									/>
-									{isAgentWorking ? (
-										<div className="flex items-center gap-2 px-1 py-1 text-muted-foreground" role="status">
-											<ThinkingOrb aria-hidden size={20} state="solving" />
-											<span className="shimmer-text text-[12px] font-medium">
-												{intl.formatMessage(desktopMessages.chatAgentWorking)}
-											</span>
-										</div>
-									) : null}
-									{transcriptScroll.tailSpace > 0 ? (
-										<div
-											aria-hidden="true"
-											className="shrink-0"
-											style={{ height: transcriptScroll.tailSpace }}
-										/>
-									) : null}
-								</div>
-							</div>
-						</div>
-						<MessageScroller
-							onScrollToBottom={transcriptScroll.scrollToBottom}
-							visible={transcriptScroll.showMessageScroller}
-						/>
-					</div>
-					<div className="shrink-0 px-5 pb-3">
-						<div className="mx-auto flex w-full max-w-190 flex-col gap-2">
-							<AnimatePresence initial={false}>
-								{pendingApprovals.length > 0 ? (
-									<PermissionRequests
-										key="permission-requests"
-										requests={pendingApprovals.map((item) => ({
-											id: item.request.requestId,
-											title: item.request.summary.title,
-											description: item.request.summary.description || item.request.reason,
-											command: item.request.summary.command,
-											path: item.request.summary.path,
-											canAlwaysAllow: item.request.canAlwaysAllow ?? Boolean(item.request.suggestedRule),
-										}))}
-										onResolve={(requestId, decision) => chat.resolvePermission({ requestId, decision })}
+				<div className="relative min-h-0 flex-1">
+					<div
+						ref={scrollRef}
+						className="h-full overflow-y-auto"
+						onKeyDownCapture={transcriptScroll.onKeyDownCapture}
+						onPointerDown={transcriptScroll.onPointerDown}
+						onPointerMove={transcriptScroll.onPointerMove}
+						onPointerUp={transcriptScroll.onPointerUp}
+						onPointerCancel={transcriptScroll.onPointerUp}
+						onScroll={transcriptScroll.onScroll}
+						onTouchMove={transcriptScroll.onTouchMove}
+						onWheel={transcriptScroll.onWheel}
+					>
+						<div className="px-5">
+							<div className="mx-auto flex w-full max-w-[896px] flex-col gap-2 py-4">
+								{chat.isLoading ? <TranscriptLoading /> : null}
+								{!chat.isLoading && chat.messages.length === 0 ? (
+									<p className="py-16 text-center text-[13px] text-muted-foreground">
+										{intl.formatMessage(desktopMessages.chatEmpty)}
+									</p>
+								) : null}
+								<TranscriptItems
+									items={transcriptItems}
+									loading={chat.isLoading}
+									navigationDisabled={navigationDisabled}
+									onNavigate={chat.navigate}
+								/>
+								{isAgentWorking ? (
+									<div className="flex items-center gap-2 px-1 py-1 text-muted-foreground" role="status">
+										<ThinkingOrb aria-hidden size={20} state="solving" />
+										<span className="shimmer-text text-[12px] font-medium">
+											{intl.formatMessage(desktopMessages.chatAgentWorking)}
+										</span>
+									</div>
+								) : null}
+								{transcriptScroll.tailSpace > 0 ? (
+									<div
+										aria-hidden="true"
+										className="shrink-0"
+										style={{ height: transcriptScroll.tailSpace }}
 									/>
 								) : null}
-							</AnimatePresence>
-							<ChatComposer
-								value={draft}
-								onValueChange={onDraftChange}
-								onSend={chat.sendMessage}
-								onStop={chat.stop}
-								status={chat.status}
-								disabled={project?.available === false}
-								queue={queue}
-								onEditQueuedMessage={onEditQueuedMessage}
-								onRemoveQueuedMessage={onRemoveQueuedMessage}
-								onReorderQueuedMessages={onReorderQueuedMessages}
-								project={project}
-								projects={projects}
-								projectBusy={projectBusy}
-								projectLoading={projectLoading}
-								projectLoadError={projectLoadError}
-								onChooseProject={onChooseProject}
-								onAddProject={onAddProject}
-								onRetryProjects={onRetryProjects}
-								providerConfig={providerConfig}
-								selectedModelRef={selectedModelRef}
-								selectedAgentMode={selectedAgentMode}
-								providerLoading={providerLoading}
-								providerError={providerError}
-								onOpenProviderSettings={onOpenProviderSettings}
-								onSelectProviderModel={onSelectProviderModel}
-								onSelectAgentMode={onSelectAgentMode}
-							/>
-							<ComposerError message={chat.error || projectError} />
+							</div>
 						</div>
 					</div>
-				</>
+					<MessageScroller
+						onScrollToBottom={transcriptScroll.scrollToBottom}
+						visible={transcriptScroll.showMessageScroller}
+					/>
+				</div>
 			)}
+			<div className="shrink-0 px-4 pb-2 min-[1024px]:px-8">
+				<div className="mx-auto flex w-full max-w-[896px] flex-col gap-2">
+					<AnimatePresence initial={false}>
+						{pendingApprovals.length > 0 ? (
+							<PermissionRequests
+								key="permission-requests"
+								requests={pendingApprovals.map((item) => ({
+									id: item.request.requestId,
+									title: item.request.summary.title,
+									description: item.request.summary.description || item.request.reason,
+									command: item.request.summary.command,
+									path: item.request.summary.path,
+									canAlwaysAllow: item.request.canAlwaysAllow ?? Boolean(item.request.suggestedRule),
+								}))}
+								onResolve={(requestId, decision) => chat.resolvePermission({ requestId, decision })}
+							/>
+						) : null}
+					</AnimatePresence>
+					<ChatComposer
+						value={draft}
+						onValueChange={onDraftChange}
+						onSend={chat.sendMessage}
+						onStop={chat.stop}
+						status={chat.status}
+						disabled={project?.available === false}
+						queue={queue}
+						onEditQueuedMessage={onEditQueuedMessage}
+						onRemoveQueuedMessage={onRemoveQueuedMessage}
+						onReorderQueuedMessages={onReorderQueuedMessages}
+						project={project}
+						projects={projects}
+						projectBusy={projectBusy}
+						projectLoading={projectLoading}
+						projectLoadError={projectLoadError}
+						onChooseProject={onChooseProject}
+						onAddProject={onAddProject}
+						onRetryProjects={onRetryProjects}
+						providerConfig={providerConfig}
+						selectedModelRef={selectedModelRef}
+						selectedAgentMode={selectedAgentMode}
+						providerLoading={providerLoading}
+						providerError={providerError}
+						onOpenProviderSettings={onOpenProviderSettings}
+						onSelectProviderModel={onSelectProviderModel}
+						onSelectAgentMode={onSelectAgentMode}
+						large={isNewChat}
+					/>
+					<ComposerError message={chat.error || projectError} />
+				</div>
+			</div>
 		</section>
 	);
 }
 
 function ComposerError({ message }: { message?: string }) {
 	return message ? (
-		<p className="mt-2 px-2 text-[12px] text-destructive" role="alert" aria-live="assertive">
-			{message}
-		</p>
+		<div
+			className="mb-6 rounded-2xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-[14px] leading-5 no-squircle animate-[sd-slideUp_.25s_ease-out_both]"
+			role="alert"
+			aria-live="assertive"
+		>
+			<div className="flex items-start gap-2">
+				<p className="m-0 flex-1 min-w-0 font-medium text-destructive">{message}</p>
+			</div>
+		</div>
 	) : null;
 }
 

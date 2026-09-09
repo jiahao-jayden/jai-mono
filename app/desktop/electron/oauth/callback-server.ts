@@ -121,7 +121,7 @@ function writeCallbackPage(response: ServerResponse, status: number, message: st
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="color-scheme" content="light dark">
-	<meta name="theme-color" content="${success ? "#3e8e7e" : "#b42318"}">
+	<meta name="theme-color" content="${success ? "#0ea5e9" : "#b42318"}">
 	<title>${title} · JAI</title>
 	<style>
 		:root {
@@ -138,7 +138,7 @@ function writeCallbackPage(response: ServerResponse, status: number, message: st
 			place-items: center;
 			padding: 32px 20px;
 			background:
-				radial-gradient(circle at 50% 0%, rgba(62, 142, 126, 0.08), transparent 42%),
+				radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.08), transparent 42%),
 				#f7f7f4;
 		}
 		main {
@@ -162,8 +162,8 @@ function writeCallbackPage(response: ServerResponse, status: number, message: st
 			width: 10px;
 			height: 10px;
 			border-radius: 50%;
-			background: #3e8e7e;
-			box-shadow: 0 0 0 5px rgba(62, 142, 126, 0.12);
+			background: #0ea5e9;
+			box-shadow: 0 0 0 5px rgba(14, 165, 233, 0.12);
 		}
 		.status {
 			display: inline-flex;
@@ -182,7 +182,7 @@ function writeCallbackPage(response: ServerResponse, status: number, message: st
 			border-radius: 50%;
 			background: currentColor;
 		}
-		.success .status { color: #31705f; background: #e8f3ef; }
+		.success .status { color: #0369a1; background: #e0f2fe; }
 		.error .status { color: #9f2d24; background: #fcebe9; }
 		h1 {
 			margin: 18px 0 10px;
@@ -214,14 +214,14 @@ function writeCallbackPage(response: ServerResponse, status: number, message: st
 		@media (prefers-color-scheme: dark) {
 			:root { color: #f3f3ef; background: #242423; }
 			body {
-				background:
-					radial-gradient(circle at 50% 0%, rgba(95, 189, 170, 0.1), transparent 42%),
-					#242423;
+			background:
+				radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.1), transparent 42%),
+				#242423;
 			}
 			main { border-color: #444440; background: #2c2c2b; }
 			p { color: #aaa9a2; }
 			.next-step { border-color: #444440; color: #e8e8e3; }
-			.success .status { color: #73cfbb; background: rgba(62, 142, 126, 0.18); }
+			.success .status { color: #38bdf8; background: rgba(56, 189, 248, 0.18); }
 			.error .status { color: #f09a91; background: rgba(180, 35, 24, 0.18); }
 		}
 	</style>

@@ -27,26 +27,23 @@ export function SubagentCard({ item }: { readonly item: DesktopSubagentItem }) {
 	);
 	const activityTitle = item.activityTitle ?? fallbackActivity;
 	const cardClassName = cn(
-		"w-full overflow-hidden rounded-[14px] border px-3.5 py-3 transition-colors duration-150",
-		running && "border-primary-2/15 bg-primary-2/[0.025]",
-		complete && "border-border/55 bg-card/55",
-		item.status === "error" && "border-destructive/15 bg-destructive/[0.025]",
+		"w-full overflow-hidden rounded-xl bg-surface-secondary shadow-[0_0_0_.5px_var(--border-surface)] px-3 py-2.5 transition-colors duration-150",
 	);
 	const iconClassName = cn(
 		"flex size-8 shrink-0 items-center justify-center rounded-full",
-		running && "bg-primary-2/10 text-primary-2",
+		running && "bg-secondary text-foreground",
 		complete && "bg-foreground/5 text-muted-foreground",
 		item.status === "error" && "bg-destructive/8 text-destructive",
 	);
 	const statusClassName = cn(
 		"flex shrink-0 items-center gap-1.5 text-[11.5px]",
-		running && "text-primary-2",
+		running && "text-foreground",
 		complete && "text-muted-foreground",
 		item.status === "error" && "text-destructive",
 	);
 	const statusDotClassName = cn(
 		"size-1.5 rounded-full",
-		running && "bg-primary-2",
+		running && "bg-success",
 		complete && "bg-muted-foreground/55",
 		item.status === "error" && "bg-destructive",
 	);
@@ -62,7 +59,7 @@ export function SubagentCard({ item }: { readonly item: DesktopSubagentItem }) {
 				</span>
 				<div className="min-w-0 flex-1 pt-px">
 					<div className="flex items-center justify-between gap-3">
-						<h3 className="truncate text-[13.5px] font-semibold leading-tight text-foreground">{item.title}</h3>
+						<h3 className="truncate text-[13px] font-medium leading-tight text-foreground">{item.title}</h3>
 						<span className={statusClassName}>
 							<span aria-hidden="true" className={statusDotClassName} />
 							{statusLabel}

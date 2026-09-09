@@ -156,12 +156,12 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
       // menu popups are max-height flex columns — without it a long list
       // compresses rows to fit instead of scrolling.
       `relative z-10 flex shrink-0 items-center gap-2 ${shape.item} px-2 cursor-pointer outline-none`,
-      description ? "min-h-14 py-2" : "h-9",
+      description ? "min-h-14 py-2" : "h-[30px]",
       disabled && "opacity-50 pointer-events-none",
       directHighlight &&
         (navigationHighlight
-          ? "data-[highlighted]:bg-sidebar-accent"
-          : "data-[highlighted]:bg-hover"),
+          ? "data-[highlighted]:bg-sidebar-hover"
+          : "data-[highlighted]:bg-muted-hover"),
       className
     );
 

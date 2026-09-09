@@ -403,5 +403,9 @@
   "desktop.workspace.previewUnavailableDescription": "文件不再可用，或当前项目没有访问权限。",
   "desktop.native.projectPickerTitle": "选择项目目录",
   "desktop.native.projectPickerButton": "选择项目",
-  "desktop.native.projectPickerError": "无法打开项目目录选择器。"
+  "desktop.native.projectPickerError": "无法打开项目目录选择器。",
+  "desktop.settings.modelsEnabled": "已启用（{count}）",
+  "desktop.settings.modelsNoneEnabled": "还没有启用模型。打开下方模型的开关后即可在对话中使用。",
+  "desktop.settings.modelsAvailable": "可用模型（{count}）",
+  "desktop.settings.modelsUnverifiedGroup": "{count} 个未验证模型"
 }

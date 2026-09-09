@@ -200,7 +200,7 @@ const CardGroup = forwardRef<HTMLDivElement, CardGroupProps>(
             "relative grid",
             // A shared frame clips the highlight + dividers to its rounded
             // corners; separated tiles clip themselves.
-            outlined && !separated && `border border-border/60 overflow-hidden ${shape.container}`,
+            outlined && !separated && `shadow-[0_0_0_.5px_var(--border-surface)] overflow-hidden ${shape.container}`,
             separated ? "gap-2" : "gap-0",
             className
           )}
@@ -355,7 +355,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
     const tileShape = !group
       ? cn(shape.container, "overflow-hidden")
       : separated && outlined
-        ? cn(shape.container, "overflow-hidden border border-border/60")
+        ? cn(shape.container, "overflow-hidden shadow-[0_0_0_.5px_var(--border-surface)]")
         : "";
 
     // Stretched overlay makes the whole card the click target while keeping
@@ -371,7 +371,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
           target={external ? "_blank" : undefined}
           rel={external ? "noopener noreferrer" : undefined}
           aria-label={label}
-          className="absolute inset-0 z-20 outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] rounded-[inherit]"
+          className="absolute inset-0 z-20 outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--ring)] rounded-[inherit]"
         />
       ) : (
         <button
@@ -379,7 +379,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
           onClick={onClick}
           aria-label={label}
           aria-pressed={selected || undefined}
-          className="absolute inset-0 z-20 outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] rounded-[inherit]"
+          className="absolute inset-0 z-20 outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--ring)] rounded-[inherit]"
         />
       )
     ) : null;
@@ -482,7 +482,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
               onClick={onDismiss}
               aria-label={intl.formatMessage(desktopMessages.commonDismiss)}
               className={cn(
-                "absolute right-2 top-2 z-30 flex h-7 w-7 items-center justify-center text-muted-foreground hover:text-foreground hover:bg-hover cursor-pointer outline-none transition-colors duration-80 focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]",
+                "absolute right-2 top-2 z-30 flex h-7 w-7 items-center justify-center text-muted-foreground hover:text-foreground hover:bg-hover cursor-pointer outline-none transition-colors duration-80 focus-visible:ring-1 focus-visible:ring-[color:var(--ring)]",
                 shape.button
               )}
             >
@@ -886,7 +886,7 @@ function CardButton({
   const classes = cn(
     "group/action relative z-30 inline-flex items-center justify-center gap-1.5 h-7 px-2.5 text-[12px] cursor-pointer outline-none",
     "transition-colors duration-80",
-    "focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]",
+    "focus-visible:ring-1 focus-visible:ring-[color:var(--ring)]",
     "disabled:opacity-50 disabled:pointer-events-none",
     shape.button,
     CARD_BUTTON_VARIANTS[variant]

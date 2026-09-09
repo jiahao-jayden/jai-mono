@@ -9,8 +9,9 @@ import {
 } from "../../../../shared/desktop-rpc";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
-import { CheckboxGroup, CheckboxItem } from "../../ui/checkbox-group";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../ui/collapsible";
 import { Input } from "../../ui/input";
+import { Switch } from "../../ui/switch";
 import { Tooltip, TooltipProvider } from "../../ui/tooltip";
 import { ModelCapabilities } from "../model-capabilities";
 import type { ProfileDraft } from "./provider-settings-types";
@@ -35,17 +36,40 @@ export function ProviderModelEditor({
 	const intl = useIntl();
 	const RefreshIcon = useIcon("rotate-ccw");
 	const SearchIcon = useIcon("search");
+	const ChevronIcon = useIcon("chevron-right");
 	const [query, setQuery] = useState("");
 	const normalizedQuery = query.trim().toLocaleLowerCase();
+	const enabledModels = profile.models.filter((model) => model.enabled);
+	const candidates = profile.models.filter((model) => !model.enabled);
 	const matchingModels = normalizedQuery
-		? profile.models.filter(
+		? candidates.filter(
 				(model) =>
 					model.name.toLocaleLowerCase().includes(normalizedQuery) ||
 					model.remoteModelId.toLocaleLowerCase().includes(normalizedQuery),
 			)
-		: profile.models;
-	const visibleModels = matchingModels.slice(0, MAX_VISIBLE_MODELS);
-	const checkedIndices = new Set(visibleModels.flatMap((model, index) => (model.enabled ? [index] : [])));
+		: candidates;
+	// Unverified models are folded away only while browsing; a search shows everything it hits.
+	const verifiedModels = normalizedQuery ? matchingModels : matchingModels.filter((model) => model.verified);
+	const unverifiedModels = normalizedQuery ? [] : matchingModels.filter((model) => !model.verified);
+	const visibleModels = verifiedModels.slice(0, MAX_VISIBLE_MODELS);
+	const toggleModel = (id: string) =>
+		onModelsChange(
+			profile.models.map((candidate) =>
+				candidate.id === id ? { ...candidate, enabled: !candidate.enabled } : candidate,
+			),
+		);
+	const renderRow = (model: DesktopProviderModel) => {
+		const availability = modelAvailability(model, intl);
+		return (
+			<ModelRow
+				key={model.id}
+				model={model}
+				availability={availability}
+				intl={intl}
+				onToggle={() => toggleModel(model.id)}
+			/>
+		);
+	};
 
 	return (
 		<section className="flex flex-col gap-3 pt-2">
@@ -73,72 +97,112 @@ export function ProviderModelEditor({
 					{intl.formatMessage(desktopMessages.settingsNoModelsFetched)}
 				</div>
 			) : (
-				<div className="flex flex-col gap-2">
-					<div className="relative">
-						<SearchIcon
-							size={14}
-							className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-						/>
-						<Input
-							density="compact"
-							value={query}
-							onChange={(event) => setQuery(event.target.value)}
-							placeholder={intl.formatMessage(desktopMessages.settingsModelsSearch, {
-								count: profile.models.length,
-							})}
-							aria-label={intl.formatMessage(desktopMessages.settingsModels)}
-							className="pl-8"
-						/>
+				<div className="flex flex-col gap-5">
+					<div className="flex flex-col gap-2">
+						<h4 className="text-[12px] font-medium text-muted-foreground">
+							{intl.formatMessage(desktopMessages.settingsModelsEnabled, { count: enabledModels.length })}
+						</h4>
+						{enabledModels.length === 0 ? (
+							<div className="flex min-h-16 items-center justify-center rounded-xl bg-muted/35 px-4 text-[12px] text-muted-foreground">
+								{intl.formatMessage(desktopMessages.settingsModelsNoneEnabled)}
+							</div>
+						) : (
+							<div className="divide-y divide-border rounded-xl shadow-surface-1">
+								{enabledModels.map(renderRow)}
+							</div>
+						)}
 					</div>
-					{matchingModels.length === 0 ? (
-						<div className="flex min-h-20 items-center justify-center rounded-xl bg-muted/35 px-4 text-[12px] text-muted-foreground">
-							{intl.formatMessage(desktopMessages.modelNoMatch)}
-						</div>
-					) : (
-						<>
-							<CheckboxGroup
-								checkedIndices={checkedIndices}
-								className="max-h-80 w-full divide-y divide-border/45 overflow-y-auto rounded-lg border border-border/45 bg-transparent py-0.5"
-								aria-label={intl.formatMessage(desktopMessages.settingsModels)}
-							>
-								{visibleModels.map((model, index) => {
-									const availability = modelAvailability(model, intl);
-									return (
-										<CheckboxItem
-											key={model.id}
-											index={index}
-											checked={model.enabled}
-											label={intl.formatMessage(desktopMessages.settingsEnableModel, { name: model.name })}
-											disabled={!availability.selectable && !model.enabled}
-											onToggle={() =>
-												onModelsChange(
-													profile.models.map((candidate) =>
-														candidate.id === model.id
-															? { ...candidate, enabled: !candidate.enabled }
-															: candidate,
-													),
-												)
-											}
-											className="h-auto min-h-13 items-start rounded-md px-2.5 py-2 data-[disabled=true]:cursor-not-allowed"
-										>
-											<ModelCard model={model} availability={availability} intl={intl} />
-										</CheckboxItem>
-									);
+
+					<div className="flex flex-col gap-2">
+						<h4 className="text-[12px] font-medium text-muted-foreground">
+							{intl.formatMessage(desktopMessages.settingsModelsAvailable, { count: candidates.length })}
+						</h4>
+						<div className="relative">
+							<SearchIcon
+								size={14}
+								className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+							/>
+							<Input
+								density="compact"
+								value={query}
+								onChange={(event) => setQuery(event.target.value)}
+								placeholder={intl.formatMessage(desktopMessages.settingsModelsSearch, {
+									count: candidates.length,
 								})}
-							</CheckboxGroup>
-							{matchingModels.length > visibleModels.length ? (
-								<p className="text-[11px] text-muted-foreground">
-									{intl.formatMessage(desktopMessages.settingsModelsSearchHelp, {
-										visible: visibleModels.length,
-										total: matchingModels.length,
-									})}
-								</p>
-							) : null}
-						</>
-					)}
+								aria-label={intl.formatMessage(desktopMessages.settingsModelsAvailable, {
+									count: candidates.length,
+								})}
+								className="pl-8"
+							/>
+						</div>
+						{matchingModels.length === 0 ? (
+							<div className="flex min-h-16 items-center justify-center rounded-xl bg-muted/35 px-4 text-[12px] text-muted-foreground">
+								{intl.formatMessage(desktopMessages.modelNoMatch)}
+							</div>
+						) : (
+							<div className="max-h-80 overflow-y-auto rounded-xl shadow-surface-1">
+								<div className="divide-y divide-border">{visibleModels.map(renderRow)}</div>
+								{verifiedModels.length > visibleModels.length ? (
+									<p className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+										{intl.formatMessage(desktopMessages.settingsModelsSearchHelp, {
+											visible: visibleModels.length,
+											total: verifiedModels.length,
+										})}
+									</p>
+								) : null}
+								{unverifiedModels.length > 0 ? (
+									<Collapsible>
+										<CollapsibleTrigger
+											render={
+												<Button
+													type="button"
+													variant="ghost"
+													size="sm"
+													leadingIcon={ChevronIcon}
+													className="w-full justify-start rounded-none border-t border-border px-3 text-[12px] text-muted-foreground [&_svg]:transition-transform data-[panel-open]:[&_svg]:rotate-90"
+												/>
+											}
+										>
+											{intl.formatMessage(desktopMessages.settingsModelsUnverifiedGroup, {
+												count: unverifiedModels.length,
+											})}
+										</CollapsibleTrigger>
+										<CollapsibleContent className="divide-y divide-border border-t border-border">
+											{unverifiedModels.slice(0, MAX_VISIBLE_MODELS).map(renderRow)}
+										</CollapsibleContent>
+									</Collapsible>
+								) : null}
+							</div>
+						)}
+					</div>
 				</div>
 			)}
 		</section>
+	);
+}
+
+function ModelRow({
+	model,
+	availability,
+	intl,
+	onToggle,
+}: {
+	readonly model: DesktopProviderModel;
+	readonly availability: ModelAvailability;
+	readonly intl: IntlShape;
+	readonly onToggle: () => void;
+}) {
+	return (
+		<div className="flex items-center gap-4 px-3 py-2.5">
+			<ModelCard model={model} availability={availability} intl={intl} />
+			<Switch
+				label={intl.formatMessage(desktopMessages.settingsEnableModel, { name: model.name })}
+				hideLabel
+				checked={model.enabled}
+				disabled={!availability.selectable && !model.enabled}
+				onToggle={onToggle}
+			/>
+		</div>
 	);
 }
 

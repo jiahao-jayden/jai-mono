@@ -125,10 +125,10 @@ export function ObservabilitySettings({
 		: error;
 
 	return (
-		<div className="min-h-0 px-8 py-6">
-			<div className="flex items-start justify-between gap-6 border-b border-border/55 pb-5">
+		<div className="flex min-h-0 flex-col gap-5 px-8 py-6">
+			<div className="flex items-start justify-between gap-6">
 				<div className="max-w-105">
-					<h2 className="text-base font-semibold">{intl.formatMessage(desktopMessages.settingsObservability)}</h2>
+					<h2 className="text-[14px] font-medium">{intl.formatMessage(desktopMessages.settingsObservability)}</h2>
 					<p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
 						{intl.formatMessage(desktopMessages.settingsTelemetryDescription)}
 					</p>
@@ -142,7 +142,7 @@ export function ObservabilitySettings({
 			</div>
 
 			{snapshot.environmentOverride ? (
-				<div className="flex gap-3 border-b border-border/55 py-5" role="status">
+				<div className="flex gap-3" role="status">
 					<LockIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
 					<p className="text-[13px] leading-relaxed text-muted-foreground">
 						{intl.formatMessage(desktopMessages.settingsTelemetryOverride)}
@@ -150,7 +150,7 @@ export function ObservabilitySettings({
 				</div>
 			) : null}
 
-			<div className="divide-y divide-border/55">
+			<div className="flex flex-col gap-5">
 				<SettingsField
 					label={intl.formatMessage(desktopMessages.settingsTelemetryEndpoint)}
 					description={intl.formatMessage(desktopMessages.settingsTelemetryEndpointDescription)}

@@ -67,17 +67,12 @@ export function ProjectsPage({
 		});
 
 	return (
-		<main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-			<div className="mx-auto flex h-full w-full max-w-250 flex-col px-10 pt-14 pb-8">
-				<header className="mb-8 flex shrink-0 items-center justify-between gap-6">
-					<div>
-						<h1 className="text-[26px] font-semibold tracking-[-0.025em]">
-							{intl.formatMessage(desktopMessages.projectsTitle)}
-						</h1>
-						<p className="mt-1 text-[13px] text-muted-foreground">
-							{intl.formatMessage(desktopMessages.projectsDescription)}
-						</p>
-					</div>
+		<main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+			<div className="mx-auto flex h-full w-full max-w-250 flex-col px-6 pt-3 pb-8">
+				<header className="my-3.5 flex h-8 shrink-0 items-center justify-between gap-4 px-2">
+					<h1 className="text-[14px] font-medium text-foreground">
+						{intl.formatMessage(desktopMessages.projectsTitle)}
+					</h1>
 					<div className="flex items-center gap-2">
 						<div className="relative w-52">
 							<SearchIcon
@@ -125,10 +120,10 @@ export function ProjectsPage({
 						</div>
 					) : null}
 					{!loading && !error && visibleProjects.length === 0 ? (
-						<div className="flex min-h-72 flex-col items-center justify-center text-center">
+						<div className="flex flex-col items-center justify-center py-10 text-center">
 							<FolderIcon size={27} className="mb-3 text-muted-foreground/55" />
-							<p className="text-[14px] font-medium">{emptyTitle}</p>
-							<p className="mt-1 max-w-80 text-[12.5px] leading-relaxed text-muted-foreground">
+							<p className="text-[14px] font-medium text-foreground">{emptyTitle}</p>
+							<p className="mt-1 max-w-80 text-[13px] leading-relaxed text-muted-foreground">
 								{emptyDescription}
 							</p>
 							{!normalizedQuery ? (
@@ -165,28 +160,28 @@ export function ProjectsPage({
 										onClick={() => onOpenProject(project)}
 										contentClassName="h-full w-full"
 										labelClassName="h-full w-full [text-box:normal]"
-										className="h-30 justify-start rounded-[14px] border border-border/80 px-5 py-4 text-left hover:border-foreground/15"
+										className="min-h-30 justify-start rounded-xl bg-surface-primary px-5 py-4 text-left shadow-[0_0_0_.5px_var(--border-surface)] transition-[box-shadow,transform] duration-150 hover:-translate-y-px hover:shadow-[0_0_0_.5px_var(--border-surface-strong),0_4px_12px_-4px_rgb(0_0_0/.12)]"
 									>
-										<span className="flex h-full w-full min-w-0 flex-col justify-between">
+										<span className="flex h-full w-full min-w-0 flex-col justify-between gap-2">
 											<span className="flex min-w-0 items-start justify-between gap-4">
 												<span className="min-w-0">
-													<span className="block truncate text-[14px] font-semibold text-foreground">
+													<span className="block truncate text-[14px] font-medium text-surface-primary-foreground">
 														{project.displayName}
 													</span>
-													<span className="mt-1 block truncate font-mono text-[10.5px] text-muted-foreground">
+													<span className="mt-1 block truncate font-mono text-[11px] text-muted-foreground">
 														{project.path}
 													</span>
 												</span>
 												<span
 													className={cn(
 														"mt-1 size-1.5 shrink-0 rounded-full",
-														project.available ? "bg-primary-2" : "bg-destructive",
+														project.available ? "bg-success" : "bg-destructive",
 													)}
 													aria-hidden="true"
 												/>
 												<span className="sr-only">{availabilityLabel}</span>
 											</span>
-											<span className="flex items-center justify-between text-[11.5px] text-muted-foreground">
+											<span className="flex items-center justify-between text-[12px] font-medium text-muted-foreground">
 												<span>
 													{intl.formatMessage(desktopMessages.projectsChatCount, { count: sessionCount })}
 												</span>
@@ -224,52 +219,56 @@ export function ProjectPage({ project, sessions, composer, onBack, onSelectSessi
 	);
 
 	return (
-		<main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-			<div className="mx-auto flex h-full w-full max-w-250 flex-col px-10 pt-8 pb-8">
+		<main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+			<div className="mx-auto flex h-full w-full max-w-250 flex-col px-6 pt-3 pb-8">
 				<Button
 					type="button"
 					variant="ghost"
 					size="sm"
 					onClick={onBack}
 					leadingIcon={icons["arrow-left"]}
-					className="mb-6 w-fit px-1 text-muted-foreground"
+					className="my-3.5 w-fit px-2 text-muted-foreground"
 				>
 					{intl.formatMessage(desktopMessages.projectsAll)}
 				</Button>
-				<header className="mb-7 flex items-start justify-between gap-6">
+				<header className="mb-6 flex items-start justify-between gap-6 px-2">
 					<div className="min-w-0">
 						<div className="flex items-center gap-2.5">
-							<h1 className="truncate text-[25px] font-semibold tracking-[-0.025em]">{project.displayName}</h1>
+							<h1 className="truncate text-[20px] font-medium tracking-[-0.025em] text-foreground">
+								{project.displayName}
+							</h1>
 							<span
 								className={cn(
 									"size-1.5 shrink-0 rounded-full",
-									project.available ? "bg-primary-2" : "bg-destructive",
+									project.available ? "bg-success" : "bg-destructive",
 								)}
 								aria-hidden="true"
 							/>
 							<span className="sr-only">{availabilityLabel}</span>
 						</div>
-						<p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{project.path}</p>
+						<p className="mt-1 truncate font-mono text-[12px] text-muted-foreground">{project.path}</p>
 					</div>
 				</header>
 
-				<div className="mb-7 shrink-0">{composer}</div>
+				<div className="mb-6 shrink-0">{composer}</div>
 
 				<section className="min-h-0 flex-1">
-					<h2 className="mb-3 text-[12px] font-semibold text-muted-foreground">
+					<h2 className="mb-2 px-2 text-[12px] font-medium text-muted-foreground">
 						{intl.formatMessage(desktopMessages.projectsRecents)}
 					</h2>
-					<div className="h-[calc(100%-28px)] overflow-y-auto border-y border-border/70">
+					<div className="h-[calc(100%-28px)] overflow-y-auto">
 						{projectSessions.length === 0 ? (
-							<div className="flex min-h-40 flex-col items-center justify-center text-center">
+							<div className="flex flex-col items-center justify-center py-10 text-center">
 								<MessageIcon size={22} className="mb-2.5 text-muted-foreground/50" />
-								<p className="text-[13px] font-medium">{intl.formatMessage(desktopMessages.projectsNoChats)}</p>
-								<p className="mt-1 text-[12px] text-muted-foreground">
+								<p className="text-[14px] font-medium text-foreground">
+									{intl.formatMessage(desktopMessages.projectsNoChats)}
+								</p>
+								<p className="mt-1 text-[13px] text-muted-foreground">
 									{intl.formatMessage(desktopMessages.projectsStartChat)}
 								</p>
 							</div>
 						) : (
-							<div className="divide-y divide-border/70">
+							<div className="flex flex-col">
 								{projectSessions.map((session) => (
 									<Button
 										key={session.id}
@@ -279,16 +278,16 @@ export function ProjectPage({ project, sessions, composer, onBack, onSelectSessi
 										onClick={() => onSelectSession(session.id)}
 										contentClassName="w-full min-w-0"
 										labelClassName="w-full min-w-0 [text-box:normal]"
-										className="h-11 w-full rounded-none px-3 text-left"
+										className="h-9 w-full rounded-lg px-3 text-left hover:bg-muted-hover"
 									>
 										<span className="flex w-full min-w-0 items-center gap-4">
 											<MessageIcon size={14} className="shrink-0 text-muted-foreground/70" />
-											<span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-foreground">
+											<span className="min-w-0 flex-1 truncate text-[14px] font-medium text-surface-primary-foreground">
 												{session.title}
 											</span>
 											<time
 												dateTime={new Date(session.lastActivityAt).toISOString()}
-												className="min-w-28 shrink-0 whitespace-nowrap text-right text-[11.5px] text-muted-foreground"
+												className="min-w-28 shrink-0 whitespace-nowrap text-right text-[12px] font-medium text-muted-foreground"
 											>
 												{formatProjectTime(session.lastActivityAt, intl)}
 											</time>
@@ -313,7 +312,7 @@ function ProjectGridSkeleton() {
 			aria-label={intl.formatMessage(desktopMessages.projectsLoading)}
 		>
 			{[0, 1, 2, 3].map((item) => (
-				<div key={item} className="h-30 animate-pulse rounded-[14px] border border-border/60 bg-foreground/3" />
+				<div key={item} className="h-30 animate-pulse rounded-xl bg-foreground/3" />
 			))}
 		</div>
 	);

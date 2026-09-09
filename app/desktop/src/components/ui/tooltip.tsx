@@ -9,7 +9,6 @@ import {
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { spring } from "@/lib/springs";
 import { fontWeights } from "@/lib/font-weight";
 import { useShape } from "@/lib/shape-context";
 
@@ -174,7 +173,7 @@ function Tooltip({
                     // Trim recenters the label; the padding bump only applies
                     // where text-box is supported, keeping the same overall
                     // height (~26px) as untrimmed browsers.
-                    "bg-foreground text-background text-[12px] px-2 py-1",
+                    "bg-foreground text-background text-[12px] leading-4 px-2 py-1 shadow-[0_4px_12px_-4px_rgb(0_0_0/.3)]",
                     "[text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both]:py-2",
                     shape.bg,
                     className
@@ -189,7 +188,7 @@ function Tooltip({
                       ? { opacity: 0, ...slideOffset }
                       : { opacity: 1, x: 0, y: 0 }
                   }
-                  transition={exiting ? spring.fast.exit : spring.fast}
+                  transition={{ duration: 0.12, ease: "easeOut" }}
                 />
               );
             }}

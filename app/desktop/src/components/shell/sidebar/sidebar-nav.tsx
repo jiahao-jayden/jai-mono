@@ -1,6 +1,7 @@
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
+import { cn } from "@/lib/utils";
 import { Button } from "../../ui/button";
 
 const navigation = [
@@ -8,8 +9,11 @@ const navigation = [
 	{ id: "projects", message: desktopMessages.sidebarProjects, icon: "folder", available: true },
 ] as const;
 
+export const sidebarItemClassName =
+	"h-[30px] w-full justify-start gap-2 rounded-lg px-2 text-left text-[13px] font-normal text-sidebar-foreground";
+
 interface SidebarNavProps {
-	activeView: "chat" | "chats" | "projects" | "project";
+	activeView: "chat" | "chats" | "projects" | "project" | "settings";
 	onNewChat(): void;
 	onOpenChats(): void;
 	onOpenProjects(): void;
@@ -18,23 +22,18 @@ interface SidebarNavProps {
 export function SidebarNav({ activeView, onNewChat, onOpenChats, onOpenProjects }: SidebarNavProps) {
 	const intl = useIntl();
 	const icons = useIcons();
-	const PlusIcon = icons.plus;
 
 	return (
-		<nav aria-label={intl.formatMessage(desktopMessages.sidebarPrimary)} className="space-y-0.5 px-2.5">
+		<nav aria-label={intl.formatMessage(desktopMessages.sidebarPrimary)} className="space-y-0.5 px-1.5 pt-1.5">
 			<Button
 				type="button"
 				variant="navigation"
 				size="md"
 				onClick={onNewChat}
-				className="w-full justify-start gap-3 rounded-lg px-2.5 py-2 text-left text-[13.5px] font-medium text-foreground"
+				leadingIcon={icons.pencil}
+				className={sidebarItemClassName}
 			>
-				<span className="flex items-center gap-3">
-					<span className="flex size-5.5 items-center justify-center rounded-full bg-foreground/8 text-foreground/80">
-						<PlusIcon size={13} strokeWidth={2} />
-					</span>
-					{intl.formatMessage(desktopMessages.sidebarNew)}
-				</span>
+				{intl.formatMessage(desktopMessages.sidebarNew)}
 			</Button>
 			{navigation.map(({ id, message, icon }) => {
 				const Icon = icons[icon];
@@ -42,8 +41,9 @@ export function SidebarNav({ activeView, onNewChat, onOpenChats, onOpenProjects 
 				const active = activeView === id;
 				const onClick = id === "chats" ? onOpenChats : id === "projects" ? onOpenProjects : undefined;
 				const ariaCurrent = active ? ("page" as const) : undefined;
-				const navigationClassName =
-					"h-auto w-full justify-start gap-3 rounded-lg px-3.25 py-2 text-left text-[13.5px]";
+				const navigationClassName = cn(sidebarItemClassName, {
+					"shadow-[0_0_0_.5px_rgb(0_0_0/.05)]": active,
+				});
 				return (
 					<Button
 						type="button"

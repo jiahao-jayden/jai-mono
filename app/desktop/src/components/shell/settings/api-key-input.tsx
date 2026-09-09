@@ -89,7 +89,7 @@ export function ApiKeyInput({
 					<Button
 						type="button"
 						variant="ghost"
-						size="icon-sm"
+						size="icon"
 						className="absolute top-1/2 right-0.5 -translate-y-1/2"
 						loading={revealing}
 						disabled={disabled}
@@ -126,7 +126,7 @@ export function ApiKeyInput({
 			<Button
 				type="button"
 				variant="ghost"
-				size="icon-sm"
+				size="icon"
 				className="absolute top-1/2 right-0.5 -translate-y-1/2"
 				disabled={disabled || !value}
 				onClick={() => setRevealed((current) => !current)}

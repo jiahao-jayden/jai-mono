@@ -973,7 +973,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
             <motion.div
               aria-hidden
               className={cn(
-                "absolute pointer-events-none border border-[color:var(--focus-ring,#6B97FF)] z-20",
+                "absolute pointer-events-none border border-[color:var(--ring)] z-20",
                 shape.focusRing
               )}
               initial={{

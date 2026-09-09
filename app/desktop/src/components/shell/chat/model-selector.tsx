@@ -116,28 +116,28 @@ export function ModelSelector({
 					<Button
 						type="button"
 						variant="ghost"
-						size="sm"
+						size="chip"
 						disabled={disabled}
 						active={open}
 						aria-label={intl.formatMessage(desktopMessages.modelAria, { label: triggerLabel })}
-						className="min-w-0 max-w-60 justify-start px-2 text-[13.5px] font-medium text-foreground/85"
+						className="min-w-0 max-w-60 justify-start"
 						contentClassName="min-w-0"
-						labelClassName="flex min-w-0 items-center gap-1.5 whitespace-nowrap"
+						labelClassName="flex min-w-0 items-center gap-1 whitespace-nowrap"
 					/>
 				}
 				title={status.title}
 			>
 				<span className="min-w-0 truncate">{triggerLabel}</span>
-				<ChevronDownIcon size={14} className="shrink-0 text-muted-foreground" />
+				<ChevronDownIcon size={14} className="shrink-0 opacity-50" />
 			</Popover.Trigger>
 
 			<Popover.Portal>
 				<Popover.Positioner side="top" align="end" sideOffset={8} className="z-50 outline-none">
 					<Popover.Popup
 						render={<Elevated offset={2} shadowLevel={5} />}
-						className="flex max-h-[min(440px,calc(100vh-120px))] w-[min(360px,calc(100vw-32px))] flex-col overflow-hidden rounded-[14px] outline-none transition-opacity duration-150 data-starting-style:opacity-0 data-ending-style:opacity-0"
+						className="flex max-h-[min(440px,calc(100vh-120px))] w-[min(360px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg bg-popover outline-none transition-[opacity,transform] duration-150 ease-out data-starting-style:scale-[.96] data-starting-style:translate-y-[-2px] data-starting-style:opacity-0 data-ending-style:scale-[.96] data-ending-style:translate-y-[-2px] data-ending-style:opacity-0"
 					>
-						<div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/50 px-3">
+						<div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
 							<SearchIcon size={17} strokeWidth={1.5} className="shrink-0 text-muted-foreground" />
 							<Input
 								key={open ? "open" : "closed"}
@@ -153,7 +153,7 @@ export function ModelSelector({
 						<div className="flex min-h-0">
 							<nav
 								aria-label={intl.formatMessage(desktopMessages.modelProviders)}
-								className="flex w-14 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border/50 py-2"
+								className="flex w-14 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border py-2"
 							>
 								<ProviderFilterButton
 									icon={AllProvidersIcon}
@@ -219,7 +219,7 @@ export function ModelSelector({
 																		contentClassName="w-full min-w-0 justify-start"
 																		labelClassName="flex min-w-0 w-full"
 																		className={cn(
-																			"h-11 w-full justify-start rounded-[10px] px-2 text-left outline-none transition-colors duration-75 focus-visible:ring-2 focus-visible:ring-primary-2/45 focus-visible:ring-inset",
+																			"h-[30px] w-full justify-start rounded-[10px] px-2 text-left outline-none transition-colors duration-75 focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-inset",
 																			selected && "text-foreground",
 																		)}
 																	>
@@ -280,13 +280,13 @@ function ProviderFilterButton({
 		<Button
 			type="button"
 			variant="ghost"
-			size="icon"
+			size="icon-lg"
 			active={active}
 			aria-label={label}
 			title={label}
 			onClick={onClick}
 			className={cn(
-				"flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg outline-none transition-colors duration-75 focus-visible:ring-2 focus-visible:ring-primary-2/45",
+				"flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg outline-none transition-colors duration-75 focus-visible:ring-3 focus-visible:ring-ring",
 				active && "text-foreground",
 				className,
 			)}

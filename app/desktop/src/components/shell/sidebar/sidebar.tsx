@@ -6,7 +6,7 @@ import { SidebarNav } from "./sidebar-nav";
 import { SidebarRecents } from "./sidebar-recents";
 
 interface SidebarProps {
-	activeView: "chat" | "chats" | "projects" | "project";
+	activeView: "chat" | "chats" | "projects" | "project" | "settings";
 	sessions: readonly CodingSession[];
 	projects: readonly DesktopProject[];
 	runningSessionIds: readonly string[];
@@ -51,7 +51,7 @@ export function Sidebar({
 }: SidebarProps) {
 	return (
 		<motion.aside
-			className="flex h-full w-66 shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+			className="flex h-full w-60 shrink-0 flex-col overflow-hidden px-1.5 text-sidebar-foreground"
 			style={width ? { width } : undefined}
 		>
 			<SidebarHeader onToggleSidebar={onToggleSidebar} />

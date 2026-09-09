@@ -95,7 +95,7 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 						<Button
 							type="button"
 							variant="ghost"
-							size="icon-sm"
+							size="icon"
 							onClick={() => setIndex((current) => Math.max(0, current - 1))}
 							disabled={safeIndex === 0 || Boolean(resolving)}
 							aria-label={intl.formatMessage(desktopMessages.permissionPrevious)}
@@ -108,7 +108,7 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 						<Button
 							type="button"
 							variant="ghost"
-							size="icon-sm"
+							size="icon"
 							onClick={() => setIndex((current) => Math.min(requests.length - 1, current + 1))}
 							disabled={safeIndex === requests.length - 1 || Boolean(resolving)}
 							aria-label={intl.formatMessage(desktopMessages.permissionNext)}
