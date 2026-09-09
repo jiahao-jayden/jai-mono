@@ -1,22 +1,12 @@
 import { useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
-import { useIcons } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import type { CodingSession, DesktopProject } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
-import {
-	DropdownContent,
-	DropdownMenu,
-	DropdownSeparator,
-	DropdownSubmenu,
-	DropdownSubmenuContent,
-	DropdownTrigger,
-} from "../../ui/dropdown";
 import { Input } from "../../ui/input";
-import { MenuItem } from "../../ui/menu-item";
 import { toast } from "../../ui/toast";
+import { SessionActions } from "../session-actions";
 import { sidebarItemClassName } from "./sidebar-nav";
 
 interface SidebarRecentsProps {
@@ -138,7 +128,7 @@ export function SidebarRecents({
 									}}
 									aria-label={intl.formatMessage(desktopMessages.sessionTitle)}
 									maxLength={80}
-									className="h-[30px] rounded-lg border-transparent bg-sidebar-active px-2 text-[13px] font-normal focus-visible:ring-0"
+									className="h-[30px] rounded-lg border-transparent bg-sidebar-active px-[7px] py-0 text-[13px] leading-[18px] font-normal focus-visible:border-border-surface-strong focus-visible:shadow-none! focus-visible:ring-0"
 								/>
 							) : (
 								<>
@@ -157,7 +147,7 @@ export function SidebarRecents({
 										aria-current={selected ? "page" : undefined}
 										active={selected}
 										contentClassName="w-full min-w-0"
-										labelClassName="min-w-0 flex-1 [text-box:normal]"
+										labelClassName="min-w-0 flex-1 leading-[18px] [text-box:normal]"
 										className={cn(sidebarItemClassName, "pr-7", {
 											"shadow-[0_0_0_.5px_rgb(0_0_0/.05)]": selected,
 										})}
@@ -194,214 +184,4 @@ export function SidebarRecents({
 			</div>
 		</>
 	);
-}
-
-type SessionActionDialog = "delete" | null;
-
-function SessionActions({
-	session,
-	projects,
-	visible,
-	onStartRename,
-	onMove,
-	onDelete,
-}: {
-	readonly session: CodingSession;
-	readonly projects: readonly DesktopProject[];
-	readonly visible: boolean;
-	readonly onStartRename: () => void;
-	readonly onMove: (sessionId: string, projectId: string | null) => Promise<void>;
-	readonly onDelete: (sessionId: string) => Promise<void>;
-}) {
-	const intl = useIntl();
-	const icons = useIcons();
-	const [menuOpen, setMenuOpen] = useState(false);
-	const [dialog, setDialog] = useState<SessionActionDialog>(null);
-	const [pending, setPending] = useState(false);
-	const [error, setError] = useState<string>();
-	const MoreVerticalIcon = icons["more-vertical"];
-	const destinationProjects = projects.filter((project) => project.id !== session.projectId);
-
-	const openDialog = () => {
-		setError(undefined);
-		setDialog("delete");
-	};
-
-	const closeDialog = () => {
-		if (pending) return;
-		setDialog(null);
-		setError(undefined);
-	};
-
-	const move = async (projectId: string | null) => {
-		if (pending || projectId === session.projectId) return;
-		setPending(true);
-		try {
-			await onMove(session.id, projectId);
-		} catch {
-			toast.add({
-				title: intl.formatMessage(desktopMessages.sidebarMoveFailed),
-				description: intl.formatMessage(desktopMessages.sidebarMoveFailed),
-				type: "error",
-			});
-		} finally {
-			setPending(false);
-		}
-	};
-
-	const remove = async () => {
-		if (pending) return;
-		setPending(true);
-		setError(undefined);
-		try {
-			await onDelete(session.id);
-			setDialog(null);
-		} catch {
-			setError(intl.formatMessage(desktopMessages.sidebarDeleteFailed));
-			setPending(false);
-		}
-	};
-
-	const removeFromProject = async () => {
-		if (pending || session.projectId === null) return;
-		setPending(true);
-		try {
-			await onMove(session.id, null);
-		} catch {
-			toast.add({
-				title: intl.formatMessage(desktopMessages.sidebarRemoveFromProjectFailed),
-				description: intl.formatMessage(desktopMessages.sidebarRemoveFromProjectFailed),
-				type: "error",
-			});
-		} finally {
-			setPending(false);
-		}
-	};
-
-	return (
-		<>
-			<DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-				<DropdownTrigger
-					render={
-						<Button
-							type="button"
-							variant="navigation"
-							size="icon-xs"
-							active={menuOpen}
-							aria-label={intl.formatMessage(desktopMessages.sidebarActionsFor, { title: session.title })}
-							title={intl.formatMessage(desktopMessages.sidebarSessionActions)}
-							data-session-actions
-							className={cn(
-								"absolute top-1/2 right-1 size-5 -translate-y-1/2 rounded-[6px] text-sidebar-muted hover:text-sidebar-foreground transition-opacity",
-								visible || menuOpen
-									? "visible opacity-100"
-									: "invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100",
-							)}
-						>
-							<MoreVerticalIcon size={14} strokeWidth={1.5} />
-						</Button>
-					}
-				/>
-				<DropdownContent
-					side="bottom"
-					align="end"
-					sideOffset={6}
-					hoverVariant="navigation"
-					className="w-48 gap-0.5 p-1"
-				>
-					<MenuItem
-						index={0}
-						icon={icons.pencil}
-						label={intl.formatMessage(desktopMessages.sidebarRename)}
-						className="h-8 px-2"
-						onSelect={onStartRename}
-					/>
-					<DropdownSubmenu>
-						<MenuItem
-							index={1}
-							icon={icons["folder-open"]}
-							trailingIcon={icons["chevron-right"]}
-							label={intl.formatMessage(desktopMessages.sidebarMoveToProject)}
-							submenu
-							className="h-8 px-2"
-						/>
-						<DropdownSubmenuContent hoverVariant="navigation">
-							{destinationProjects.length > 0 ? (
-								destinationProjects.map((project, index) => (
-									<MenuItem
-										key={project.id}
-										index={index}
-										icon={project.available ? icons.folder : icons["folder-off"]}
-										label={project.displayName}
-										description={project.path}
-										disabled={pending || !project.available}
-										className="min-h-10 py-1.5"
-										onSelect={() => void move(project.id)}
-									/>
-								))
-							) : (
-								<MenuItem
-									index={0}
-									label={intl.formatMessage(desktopMessages.sidebarNoAvailableProjects)}
-									disabled
-								/>
-							)}
-						</DropdownSubmenuContent>
-					</DropdownSubmenu>
-					{session.projectId !== null ? (
-						<MenuItem
-							index={2}
-							icon={icons["folder-off"]}
-							label={intl.formatMessage(desktopMessages.sidebarRemoveFromProject)}
-							className="h-8 px-2"
-							onSelect={() => void removeFromProject()}
-						/>
-					) : null}
-					<DropdownSeparator />
-					<MenuItem
-						index={session.projectId === null ? 2 : 3}
-						icon={icons.trash}
-						label={intl.formatMessage(desktopMessages.commonDelete)}
-						variant="destructive"
-						className="h-8 px-2"
-						onSelect={openDialog}
-					/>
-				</DropdownContent>
-			</DropdownMenu>
-
-			<Dialog open={dialog === "delete"} onOpenChange={(open) => !open && closeDialog()}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>{intl.formatMessage(desktopMessages.sidebarDeleteSessionTitle)}</DialogTitle>
-						<DialogDescription>
-							{intl.formatMessage(desktopMessages.sidebarDeleteSessionDescription, { title: session.title })}
-						</DialogDescription>
-					</DialogHeader>
-					<ActionError message={error} />
-					<DialogFooter>
-						<Button type="button" variant="ghost" disabled={pending} onClick={closeDialog}>
-							{intl.formatMessage(desktopMessages.commonCancel)}
-						</Button>
-						<Button
-							type="button"
-							variant="tertiary"
-							loading={pending}
-							onClick={() => void remove()}
-							className="text-destructive"
-						>
-							{intl.formatMessage(desktopMessages.commonDelete)}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-		</>
-	);
-}
-
-function ActionError({ message }: { readonly message?: string }) {
-	return message ? (
-		<p className="mt-3 text-[12px] leading-relaxed text-destructive" role="alert">
-			{message}
-		</p>
-	) : null;
 }

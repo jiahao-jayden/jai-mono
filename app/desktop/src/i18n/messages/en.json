@@ -1,4 +1,7 @@
 {
+  "desktop.session.copyId": {
+    "defaultMessage": "Copy session ID"
+  },
   "desktop.app.resizePixels": {
     "defaultMessage": "{count} pixels"
   },

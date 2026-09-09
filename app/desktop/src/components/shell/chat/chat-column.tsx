@@ -33,6 +33,7 @@ import { Input } from "../../ui/input";
 import { MessageScroller } from "../../ui/message-scroller";
 import { PermissionRequests } from "../../ui/permission-requests";
 import { toast } from "../../ui/toast";
+import { SessionActions } from "../session-actions";
 import { ChatComposer } from "./chat-composer";
 import { TranscriptItems, TranscriptLoading } from "./chat-transcript";
 import {
@@ -74,6 +75,8 @@ interface ChatColumnProps {
 	onAddProject(): Promise<void>;
 	onRetryProjects(): void;
 	onRenameSession(sessionId: string, title: string): Promise<void>;
+	onMoveSession(sessionId: string, projectId: string | null): Promise<void>;
+	onDeleteSession(sessionId: string): Promise<void>;
 }
 
 export function ChatColumn({
@@ -107,6 +110,8 @@ export function ChatColumn({
 	onAddProject,
 	onRetryProjects,
 	onRenameSession,
+	onMoveSession,
+	onDeleteSession,
 }: ChatColumnProps) {
 	const intl = useIntl();
 	const icons = useIcons();
@@ -235,7 +240,7 @@ export function ChatColumn({
 									}}
 									aria-label={intl.formatMessage(desktopMessages.sessionTitle)}
 									maxLength={80}
-									className="h-7 min-w-0 max-w-64 flex-1 border-transparent bg-muted-hover px-2 text-[13px] font-medium"
+									className="h-7 min-w-0 max-w-64 flex-1 border-transparent bg-muted-hover px-[5px] py-0 text-[13px] leading-[18px] font-medium focus-visible:border-border-surface-strong focus-visible:shadow-none! focus-visible:ring-0"
 									style={noDrag}
 								/>
 							) : (
@@ -255,13 +260,24 @@ export function ChatColumn({
 									})}
 									title={intl.formatMessage(desktopMessages.chatRenameHint)}
 									contentClassName="min-w-0 max-w-full"
-									labelClassName="min-w-0 truncate text-left leading-6 ![text-box:normal]"
-									className="h-7 min-w-0 max-w-64 flex-1 justify-start px-1.5 text-[13px] font-medium text-surface-primary-foreground hover:text-foreground"
+									labelClassName="min-w-0 truncate text-left leading-[18px] ![text-box:normal]"
+									className="h-7 min-w-0 max-w-64 shrink justify-start px-1.5 text-[13px] font-medium text-surface-primary-foreground hover:text-foreground"
 									style={noDrag}
 								>
 									{session.title}
 								</Button>
 							)}
+							<div className="shrink-0" style={noDrag}>
+								<SessionActions
+									key={session.id}
+									session={session}
+									projects={projects}
+									placement="header"
+									onStartRename={startTitleEditing}
+									onMove={onMoveSession}
+									onDelete={onDeleteSession}
+								/>
+							</div>
 						</>
 					) : null}
 				</div>

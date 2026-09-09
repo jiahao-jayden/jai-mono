@@ -1,4 +1,5 @@
 {
+  "desktop.session.copyId": "复制会话 ID",
   "desktop.app.resizePixels": "{count} 像素",
   "desktop.app.resizeRightPanel": "调整右侧面板宽度",
   "desktop.app.resizeSidebar": "调整侧边栏宽度",

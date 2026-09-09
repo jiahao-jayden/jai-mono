@@ -1,4 +1,5 @@
 {
+  "desktop.session.copyId": "Copy session ID",
   "desktop.app.resizePixels": "{count} pixels",
   "desktop.app.resizeRightPanel": "Resize right panel width",
   "desktop.app.resizeSidebar": "Resize sidebar width",

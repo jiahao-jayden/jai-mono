@@ -563,6 +563,8 @@ export function AppShell() {
 								onAddProject={addProject}
 								onRetryProjects={() => void projectsQuery.refetch()}
 								onRenameSession={renameSession}
+								onMoveSession={moveSession}
+								onDeleteSession={deleteSession}
 							/>
 						}
 					/>

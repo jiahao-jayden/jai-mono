@@ -1,6 +1,7 @@
 import { defineMessages } from "react-intl";
 
 export const desktopMessages = defineMessages({
+	sessionCopyId: { id: "desktop.session.copyId", defaultMessage: "Copy session ID" },
 	loadingError: {
 		id: "desktop.locale.loadingError",
 		defaultMessage: "Language settings could not be loaded.",
