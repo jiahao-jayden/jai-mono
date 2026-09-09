@@ -7,6 +7,7 @@ import type { DesktopProject } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { DropdownContent, DropdownMenu, DropdownSeparator, DropdownTrigger } from "../../ui/dropdown";
 import { MenuItem } from "../../ui/menu-item";
+import { CreateProjectDialog } from "../create-project-dialog";
 
 interface ProjectPickerProps {
 	readonly project?: DesktopProject;
@@ -16,7 +17,6 @@ interface ProjectPickerProps {
 	readonly loading: boolean;
 	readonly loadError: boolean;
 	readonly onChoose: (project: DesktopProject) => Promise<void>;
-	readonly onAdd: () => Promise<void>;
 	readonly onRetry: () => void;
 }
 
@@ -28,16 +28,14 @@ export function ProjectPicker({
 	loading,
 	loadError,
 	onChoose,
-	onAdd,
 	onRetry,
 }: ProjectPickerProps) {
 	const intl = useIntl();
 	const icons = useIcons();
 	const [open, setOpen] = useState(false);
-	const [query, setQuery] = useState("");
+	const [creating, setCreating] = useState(false);
 	const FolderIcon = icons.folder;
 	const FolderOffIcon = icons["folder-off"];
-	const SearchIcon = icons.search;
 	const ChevronDownIcon = icons["chevron-down"];
 	const ProjectIcon = project && !project.available ? FolderOffIcon : FolderIcon;
 	const label = busy
@@ -52,24 +50,13 @@ export function ProjectPicker({
 						: intl.formatMessage(desktopMessages.projectPickerRelinkLabel, { name: project.displayName })
 					: intl.formatMessage(desktopMessages.projectPickerWorkIn);
 	const triggerDisabled = disabled || busy || (loading && projects.length === 0);
-	const normalizedQuery = query.trim().toLocaleLowerCase();
-	const filteredProjects = normalizedQuery
-		? projects.filter(
-				(candidate) =>
-					candidate.displayName.toLocaleLowerCase().includes(normalizedQuery) ||
-					candidate.path.toLocaleLowerCase().includes(normalizedQuery),
-			)
-		: projects;
-	const checkedIndex = filteredProjects.findIndex((candidate) => candidate.id === project?.id);
+	const checkedIndex = projects.findIndex((candidate) => candidate.id === project?.id);
 
 	return (
 		<>
 			<DropdownMenu
 				open={open}
-				onOpenChange={(nextOpen) => {
-					setOpen(nextOpen);
-					if (!nextOpen) setQuery("");
-				}}
+				onOpenChange={setOpen}
 				disabled={triggerDisabled}
 			>
 				<DropdownTrigger
@@ -102,21 +89,8 @@ export function ProjectPicker({
 				<DropdownContent
 					checkedIndex={checkedIndex >= 0 ? checkedIndex : undefined}
 					sideOffset={6}
-					className="w-90"
+					className="w-64"
 				>
-					<div className="mb-0.5 flex h-8 shrink-0 items-center gap-1.5 border-b border-border px-2">
-						<SearchIcon size={14} strokeWidth={1.5} className="shrink-0 text-muted-foreground" />
-						<input
-							value={query}
-							onChange={(event) => setQuery(event.target.value)}
-							onKeyDown={(event) => {
-								if (event.key !== "Escape") event.stopPropagation();
-							}}
-							aria-label={intl.formatMessage(desktopMessages.projectPickerSearch)}
-							placeholder={intl.formatMessage(desktopMessages.projectPickerSearch)}
-							className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground"
-						/>
-					</div>
 					{loadError ? (
 						<MenuItem
 							index={0}
@@ -126,7 +100,7 @@ export function ProjectPicker({
 						/>
 					) : (
 						<>
-							{filteredProjects.map((candidate, index) => (
+							{projects.map((candidate, index) => (
 								<MenuItem
 									key={candidate.id}
 									index={index}
@@ -138,19 +112,14 @@ export function ProjectPicker({
 													name: candidate.displayName,
 												})
 									}
-									description={candidate.path}
 									title={candidate.path}
 									checked={candidate.id === project?.id}
 									onSelect={() => void onChoose(candidate)}
 								/>
 							))}
-							{filteredProjects.length === 0 ? (
+							{projects.length === 0 ? (
 								<p className="px-2 py-2.5 text-[12px] text-muted-foreground">
-									{intl.formatMessage(
-										projects.length === 0
-											? desktopMessages.projectPickerNoProject
-											: desktopMessages.projectPickerNoMatch,
-									)}
+									{intl.formatMessage(desktopMessages.projectPickerNoProject)}
 								</p>
 							) : null}
 						</>
@@ -159,15 +128,16 @@ export function ProjectPicker({
 						<>
 							<DropdownSeparator />
 							<MenuItem
-								index={filteredProjects.length}
+								index={projects.length}
 								icon={icons.plus}
-								label={intl.formatMessage(desktopMessages.projectPickerAddFolder)}
-								onSelect={() => void onAdd()}
+								label={intl.formatMessage(desktopMessages.projectCreateStart)}
+								onSelect={() => setCreating(true)}
 							/>
 						</>
 					) : null}
 				</DropdownContent>
 			</DropdownMenu>
+			<CreateProjectDialog open={creating} onOpenChange={setCreating} onCreated={onChoose} />
 			<span className="sr-only" role="status" aria-live="polite">
 				{busy ? intl.formatMessage(desktopMessages.projectPickerUpdating) : ""}
 			</span>

@@ -31,7 +31,6 @@ describe("ProjectPicker", () => {
 				loading={false}
 				loadError={false}
 				onChoose={async () => {}}
-				onAdd={async () => {}}
 				onRetry={() => {}}
 			/>,
 		);
@@ -51,7 +50,6 @@ describe("ProjectPicker", () => {
 				loading={false}
 				loadError={false}
 				onChoose={async () => {}}
-				onAdd={async () => {}}
 				onRetry={() => {}}
 			/>,
 		);
@@ -69,7 +67,6 @@ describe("ProjectPicker", () => {
 				loading={false}
 				loadError
 				onChoose={async () => {}}
-				onAdd={async () => {}}
 				onRetry={() => {}}
 			/>,
 		);

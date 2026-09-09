@@ -57,8 +57,6 @@ describe("library pages", () => {
 				projects={[project]}
 				sessions={[session]}
 				loading={false}
-				adding={false}
-				onAddProject={() => {}}
 				onOpenProject={() => {}}
 			/>,
 		);

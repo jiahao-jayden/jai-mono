@@ -754,6 +754,16 @@ export interface DesktopAgentNavigateInput extends DesktopAgentSessionInput {
 	readonly mode: DesktopAgentMode;
 }
 
+export const desktopProjectCreateInputSchema = Type.Object(
+	{
+		name: Type.String({ minLength: 1, pattern: "\\S" }),
+		path: Type.String({ minLength: 1, pattern: "\\S" }),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopProjectCreateInput = Static<typeof desktopProjectCreateInputSchema>;
+
 export const desktopSessionCreateInputSchema = Type.Object(
 	{
 		projectId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
@@ -846,7 +856,9 @@ export interface DesktopApi {
 	};
 	readonly project: {
 		list(): Promise<DesktopProject[]>;
-		choose(): Promise<DesktopProject | null>;
+		/** Opens the native folder picker. Returns null when the user cancels. */
+		pickDirectory(): Promise<string | null>;
+		create(input: DesktopProjectCreateInput): Promise<DesktopProject>;
 		relink(projectId: string): Promise<DesktopProject | null>;
 	};
 	readonly session: {

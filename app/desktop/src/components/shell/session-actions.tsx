@@ -16,6 +16,7 @@ import {
 } from "../ui/dropdown";
 import { MenuItem } from "../ui/menu-item";
 import { toast } from "../ui/toast";
+import { CreateProjectDialog } from "./create-project-dialog";
 
 type SessionActionDialog = "delete" | null;
 
@@ -40,6 +41,7 @@ export function SessionActions({
 	const icons = useIcons();
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [dialog, setDialog] = useState<SessionActionDialog>(null);
+	const [creatingProject, setCreatingProject] = useState(false);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string>();
 	const MoreVerticalIcon = icons["more-vertical"];
@@ -170,7 +172,7 @@ export function SessionActions({
 									);
 								})
 							) : (
-								<MenuItem index={0} label={intl.formatMessage(desktopMessages.sidebarNoAvailableProjects)} disabled />
+								<MenuItem index={0} label={intl.formatMessage(desktopMessages.projectsEmpty)} disabled />
 							)}
 							{session.projectId !== null ? (
 								<MenuItem
@@ -181,6 +183,14 @@ export function SessionActions({
 									disabled={pending}
 								/>
 							) : null}
+							<DropdownSeparator />
+							<MenuItem
+								index={removeProjectIndex + 1}
+								icon={icons.plus}
+								label={intl.formatMessage(desktopMessages.projectCreateStart)}
+								onSelect={() => setCreatingProject(true)}
+								disabled={pending}
+							/>
 						</DropdownSubmenuContent>
 					</DropdownSubmenu>
 					<MenuItem
@@ -200,6 +210,12 @@ export function SessionActions({
 					/>
 				</DropdownContent>
 			</DropdownMenu>
+
+			<CreateProjectDialog
+				open={creatingProject}
+				onOpenChange={setCreatingProject}
+				onCreated={(project) => move(project.id)}
+			/>
 
 			<Dialog open={dialog === "delete"} onOpenChange={(open) => !open && closeDialog()}>
 				<DialogContent>

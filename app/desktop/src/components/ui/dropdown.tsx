@@ -141,7 +141,7 @@ const Dropdown = forwardRef<HTMLDivElement, DropdownProps>(
           }}
           role="group"
           className={cn(
-            `relative flex flex-col gap-0.5 w-72 max-w-full ${shape.container} p-1 select-none bg-popover`,
+            `relative flex flex-col w-72 max-w-full ${shape.container} p-1 select-none bg-popover`,
             className
           )}
           {...props}
@@ -335,7 +335,6 @@ type MenuPositionerProps = ComponentProps<typeof Menu.Positioner>;
 interface DropdownContentProps {
   children: ReactNode;
   className?: string;
-  hoverVariant?: "default" | "navigation";
   /** Index of the checked item. Drives the animated selected background and
    *  the radio-group value announced to assistive tech. */
   checkedIndex?: number;
@@ -350,7 +349,6 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
       className,
       children,
       checkedIndex,
-      hoverVariant = "default",
       side = "bottom",
       align = "start",
       sideOffset = 6,
@@ -540,7 +538,7 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
                 className={cn(
                   // min-w tracks the trigger via the Positioner's
                   // --anchor-width var.
-                  `relative flex flex-col gap-0.5 w-72 max-w-full min-w-[var(--anchor-width)] max-h-[min(480px,var(--available-height))] overflow-y-auto ${shape.container} p-1 select-none outline-none bg-popover`,
+                  `relative flex flex-col w-72 max-w-full min-w-[var(--anchor-width)] max-h-[min(480px,var(--available-height))] overflow-y-auto ${shape.container} p-1 select-none outline-none bg-popover`,
                   className
                 )}
               >
@@ -571,12 +569,7 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
                   {activeRect && (
                     <motion.div
                       key={sessionRef.current}
-                      className={cn(
-                        `absolute ${shape.bg} pointer-events-none`,
-                        hoverVariant === "navigation"
-                          ? "bg-sidebar-hover"
-                          : "bg-muted-hover"
-                      )}
+                      className={`absolute ${shape.bg} bg-muted-hover pointer-events-none`}
                       initial={{
                         opacity: 0,
                         top: checkedRect?.top ?? activeRect.top,
@@ -645,14 +638,12 @@ interface DropdownSubmenuContentProps {
   children: ReactNode;
   className?: string;
   sideOffset?: number;
-  hoverVariant?: "default" | "navigation";
 }
 
 function DropdownSubmenuContent({
   children,
   className,
   sideOffset = 6,
-  hoverVariant = "default",
 }: DropdownSubmenuContentProps) {
   const renderMenuItem = useCallback(
     ({
@@ -679,10 +670,9 @@ function DropdownSubmenuContent({
       activeIndex: null,
       inMenu: true,
       directHighlight: true,
-      navigationHighlight: hoverVariant === "navigation",
       renderMenuItem,
     }),
-    [hoverVariant, renderMenuItem]
+    [renderMenuItem]
   );
 
   return (
@@ -697,7 +687,7 @@ function DropdownSubmenuContent({
         <Menu.Popup
           render={<Elevated offset={2} shadowLevel={4} />}
           className={cn(
-            `relative flex w-48 max-w-(--available-width) flex-col gap-0.5 overflow-y-auto ${shape.container} p-1 select-none outline-none`,
+            `relative flex w-48 max-w-(--available-width) flex-col overflow-y-auto ${shape.container} p-1 select-none outline-none bg-popover`,
             "origin-left transition-[opacity,transform] duration-100 data-starting-style:translate-x-1 data-starting-style:scale-[0.98] data-starting-style:opacity-0 data-ending-style:translate-x-1 data-ending-style:scale-[0.98] data-ending-style:opacity-0",
             className
           )}
@@ -744,7 +734,7 @@ const DropdownSeparator = forwardRef<
   <div
     ref={ref}
     role="separator"
-    className={cn("my-1 -mx-1 h-px shrink-0 bg-border", className)}
+    className={cn("mx-1 my-1 h-px shrink-0 bg-border", className)}
     {...props}
   />
 ));

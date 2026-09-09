@@ -72,7 +72,6 @@ interface ChatColumnProps {
 	onSelectProviderModel(modelRef: string): void;
 	onSelectAgentMode(mode: DesktopAgentMode): void;
 	onChooseProject(project: DesktopProject): Promise<void>;
-	onAddProject(): Promise<void>;
 	onRetryProjects(): void;
 	onRenameSession(sessionId: string, title: string): Promise<void>;
 	onMoveSession(sessionId: string, projectId: string | null): Promise<void>;
@@ -107,7 +106,6 @@ export function ChatColumn({
 	onSelectProviderModel,
 	onSelectAgentMode,
 	onChooseProject,
-	onAddProject,
 	onRetryProjects,
 	onRenameSession,
 	onMoveSession,
@@ -401,7 +399,6 @@ export function ChatColumn({
 						projectLoading={projectLoading}
 						projectLoadError={projectLoadError}
 						onChooseProject={onChooseProject}
-						onAddProject={onAddProject}
 						onRetryProjects={onRetryProjects}
 						providerConfig={providerConfig}
 						selectedModelRef={selectedModelRef}

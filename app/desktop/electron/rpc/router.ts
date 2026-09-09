@@ -16,6 +16,7 @@ import {
 	desktopCommandListInputSchema,
 	desktopConnectorOAuthApplicationIdSchema,
 	desktopPermissionResolutionSchema,
+	desktopProjectCreateInputSchema,
 	desktopSessionCreateInputSchema,
 	desktopSessionDeleteInputSchema,
 	desktopSessionIdSchema,
@@ -163,10 +164,12 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 					})),
 				);
 			},
-			async choose(event) {
-				const path = await rt.pickProjectDirectory(event.sender);
-				if (!path) return null;
-				const project = await rt.sessions.createProject({ path });
+			async pickDirectory(event) {
+				return (await rt.pickProjectDirectory(event.sender)) ?? null;
+			},
+			async create(_event, input) {
+				const parsed = parse(desktopProjectCreateInputSchema, input, "Invalid project create input");
+				const project = await rt.sessions.createProject({ path: parsed.path, displayName: parsed.name });
 				return { ...project, available: true } satisfies DesktopProject;
 			},
 			async relink(event, projectId) {

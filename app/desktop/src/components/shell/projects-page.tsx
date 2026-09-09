@@ -7,28 +7,20 @@ import { cn } from "@/lib/utils";
 import type { CodingSession, DesktopProject } from "../../../shared/desktop-rpc";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { CreateProjectDialog } from "./create-project-dialog";
 
 interface ProjectsPageProps {
 	readonly projects: readonly DesktopProject[];
 	readonly sessions: readonly CodingSession[];
 	readonly loading: boolean;
 	readonly error?: string;
-	readonly adding: boolean;
-	readonly onAddProject: () => void;
 	readonly onOpenProject: (project: DesktopProject) => void;
 }
 
-export function ProjectsPage({
-	projects,
-	sessions,
-	loading,
-	error,
-	adding,
-	onAddProject,
-	onOpenProject,
-}: ProjectsPageProps) {
+export function ProjectsPage({ projects, sessions, loading, error, onOpenProject }: ProjectsPageProps) {
 	const intl = useIntl();
 	const icons = useIcons();
+	const [creating, setCreating] = useState(false);
 	const SearchIcon = icons.search;
 	const FolderIcon = icons.folder;
 	const [query, setQuery] = useState("");
@@ -103,8 +95,7 @@ export function ProjectsPage({
 							type="button"
 							variant="primary"
 							size="md"
-							loading={adding}
-							onClick={onAddProject}
+							onClick={() => setCreating(true)}
 							leadingIcon={icons.plus}
 						>
 							{intl.formatMessage(desktopMessages.projectsNew)}
@@ -131,12 +122,11 @@ export function ProjectsPage({
 									type="button"
 									variant="secondary"
 									size="md"
-									loading={adding}
-									onClick={onAddProject}
+									onClick={() => setCreating(true)}
 									leadingIcon={icons.plus}
 									className="mt-5"
 								>
-									{intl.formatMessage(desktopMessages.projectsAddFolder)}
+									{intl.formatMessage(desktopMessages.projectCreateStart)}
 								</Button>
 							) : null}
 						</div>
@@ -197,6 +187,7 @@ export function ProjectsPage({
 					) : null}
 				</div>
 			</div>
+			<CreateProjectDialog open={creating} onOpenChange={setCreating} onCreated={onOpenProject} />
 		</main>
 	);
 }

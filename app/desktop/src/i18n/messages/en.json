@@ -1,7 +1,4 @@
 {
-  "desktop.session.copyId": {
-    "defaultMessage": "Copy session ID"
-  },
   "desktop.app.resizePixels": {
     "defaultMessage": "{count} pixels"
   },
@@ -288,17 +285,41 @@
   "desktop.permission.responseFailed": {
     "defaultMessage": "Permission response was not submitted. Try again."
   },
-  "desktop.projectPicker.addFolder": {
-    "defaultMessage": "Add a folder"
+  "desktop.projectCreate.browse": {
+    "defaultMessage": "Choose folder"
+  },
+  "desktop.projectCreate.description": {
+    "defaultMessage": "Group related tasks, routines, and working context."
+  },
+  "desktop.projectCreate.directory": {
+    "defaultMessage": "Working directory"
+  },
+  "desktop.projectCreate.directoryPlaceholder": {
+    "defaultMessage": "Choose a local folder"
+  },
+  "desktop.projectCreate.failed": {
+    "defaultMessage": "The project could not be created. Check the folder and try again."
+  },
+  "desktop.projectCreate.name": {
+    "defaultMessage": "Name"
+  },
+  "desktop.projectCreate.namePlaceholder": {
+    "defaultMessage": "Project name"
+  },
+  "desktop.projectCreate.start": {
+    "defaultMessage": "Start a new project"
+  },
+  "desktop.projectCreate.submit": {
+    "defaultMessage": "Create"
+  },
+  "desktop.projectCreate.title": {
+    "defaultMessage": "Create Project"
   },
   "desktop.projectPicker.aria": {
     "defaultMessage": "Project: {label}"
   },
   "desktop.projectPicker.loading": {
     "defaultMessage": "Loading projects…"
-  },
-  "desktop.projectPicker.noMatch": {
-    "defaultMessage": "No matching projects"
   },
   "desktop.projectPicker.noProject": {
     "defaultMessage": "No project yet"
@@ -312,9 +333,6 @@
   "desktop.projectPicker.retry": {
     "defaultMessage": "Retry loading projects"
   },
-  "desktop.projectPicker.search": {
-    "defaultMessage": "Search projects"
-  },
   "desktop.projectPicker.unavailable": {
     "defaultMessage": "Projects unavailable"
   },
@@ -323,9 +341,6 @@
   },
   "desktop.projectPicker.workIn": {
     "defaultMessage": "Project"
-  },
-  "desktop.projects.addFolder": {
-    "defaultMessage": "Add local folder"
   },
   "desktop.projects.all": {
     "defaultMessage": "All projects"
@@ -416,6 +431,9 @@
   },
   "desktop.queue.removeMessage": {
     "defaultMessage": "Remove queued message: {label}"
+  },
+  "desktop.session.copyId": {
+    "defaultMessage": "Copy session ID"
   },
   "desktop.session.title": {
     "defaultMessage": "Session title"
@@ -896,9 +914,6 @@
   },
   "desktop.sidebar.new": {
     "defaultMessage": "New"
-  },
-  "desktop.sidebar.noAvailableProjects": {
-    "defaultMessage": "No available projects"
   },
   "desktop.sidebar.noRecentSessions": {
     "defaultMessage": "New chats will be saved here."

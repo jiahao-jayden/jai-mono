@@ -298,12 +298,8 @@ export function AppShell() {
 		return () => window.removeEventListener("keydown", openSettingsShortcut);
 	}, [openProviderSettings]);
 	const projectSelectionMutation = useMutation({
-		mutationFn: async (candidate?: DesktopProject) => {
-			const next = candidate
-				? candidate.available
-					? candidate
-					: await desktop.project.relink(candidate.id)
-				: await desktop.project.choose();
+		mutationFn: async (candidate: DesktopProject) => {
+			const next = candidate.available ? candidate : await desktop.project.relink(candidate.id);
 			if (!next || !session || session.projectId === next.id) return { project: next };
 			const moved = await desktop.session.move({ sessionId: session.id, toProjectId: next.id });
 			return { project: next, moved };
@@ -318,14 +314,6 @@ export function AppShell() {
 			setSelectedProjectId(next.id);
 		},
 	});
-	const projectCreationMutation = useMutation({
-		mutationFn: () => desktop.project.choose(),
-		onSuccess: (next) => {
-			if (!next) return;
-			upsertProject(next);
-			setSelectedProjectId(next.id);
-		},
-	});
 	const projectBusy = projectSelectionMutation.isPending;
 	const projectError = projectSelectionMutation.isError
 		? intl.formatMessage(desktopMessages.projectsLoadError)
@@ -334,23 +322,6 @@ export function AppShell() {
 		if (projectBusy) return;
 		try {
 			await projectSelectionMutation.mutateAsync(candidate);
-		} catch {
-			// Mutation state drives the recoverable project error UI.
-		}
-	};
-	const addProject = async () => {
-		if (projectBusy) return;
-		try {
-			await projectSelectionMutation.mutateAsync(undefined);
-		} catch {
-			// Mutation state drives the recoverable project error UI.
-		}
-	};
-	const createProject = async () => {
-		if (projectCreationMutation.isPending) return;
-		try {
-			const next = await projectCreationMutation.mutateAsync();
-			if (next) navigate(`/projects/${next.id}`);
 		} catch {
 			// Mutation state drives the recoverable project error UI.
 		}
@@ -390,9 +361,7 @@ export function AppShell() {
 	const projectLoadErrorMessage = projectsQuery.isError
 		? intl.formatMessage(desktopMessages.projectsLoadError)
 		: undefined;
-	const projectPageError = projectCreationMutation.isError
-		? intl.formatMessage(desktopMessages.projectsLoadError)
-		: projectLoadErrorMessage;
+	const projectPageError = projectLoadErrorMessage;
 	const sessionLoadErrorMessage = sessionRecentsQuery.isError
 		? intl.formatMessage(desktopMessages.sidebarRecentsLoadError)
 		: undefined;
@@ -467,8 +436,6 @@ export function AppShell() {
 								sessions={sessions}
 								loading={projectLoading}
 								error={projectPageError}
-								adding={projectCreationMutation.isPending}
-								onAddProject={() => void createProject()}
 								onOpenProject={openProject}
 							/>
 						}
@@ -500,7 +467,6 @@ export function AppShell() {
 											projectLoading={projectLoading}
 											projectLoadError={projectLoadError}
 											onChooseProject={chooseProject}
-											onAddProject={addProject}
 											onRetryProjects={() => void projectsQuery.refetch()}
 											providerConfig={providerQuery.data}
 											selectedModelRef={runtimeModelRef}
@@ -521,8 +487,6 @@ export function AppShell() {
 									sessions={sessions}
 									loading={projectLoading}
 									error={projectPageError}
-									adding={projectCreationMutation.isPending}
-									onAddProject={() => void createProject()}
 									onOpenProject={openProject}
 								/>
 							)
@@ -560,7 +524,6 @@ export function AppShell() {
 								onSelectProviderModel={setSelectedModelRef}
 								onSelectAgentMode={setSelectedAgentMode}
 								onChooseProject={chooseProject}
-								onAddProject={addProject}
 								onRetryProjects={() => void projectsQuery.refetch()}
 								onRenameSession={renameSession}
 								onMoveSession={moveSession}

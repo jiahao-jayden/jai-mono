@@ -162,7 +162,7 @@ html.right-panel-resizing * {
   --chart-4: oklch(48.8% 0.243 264.376);
   --chart-5: oklch(42.4% 0.199 265.638);
   /* Wash over the OS hud material; alpha sets how much wallpaper shows through. */
-  --sidebar: oklch(99% 0 0 / 0.5);
+  --sidebar: oklch(99% 0 0 / 0.72);
   --sidebar-foreground: oklch(20% 0 0);
   --sidebar-muted: oklch(20% 0 0 / 0.55);
   --sidebar-active: oklch(100% 0 0 / 0.9);

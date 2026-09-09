@@ -44,7 +44,6 @@ interface ChatComposerProps {
 	projectLoading: boolean;
 	projectLoadError: boolean;
 	onChooseProject(project: DesktopProject): Promise<void>;
-	onAddProject(): Promise<void>;
 	onRetryProjects(): void;
 	providerConfig?: DesktopProviderConfigSnapshot;
 	selectedModelRef: string;
@@ -79,7 +78,6 @@ export function ChatComposer({
 	projectLoading,
 	projectLoadError,
 	onChooseProject,
-	onAddProject,
 	onRetryProjects,
 	providerConfig,
 	selectedModelRef,
@@ -361,7 +359,6 @@ export function ChatComposer({
 							loading={projectLoading}
 							loadError={projectLoadError}
 							onChoose={onChooseProject}
-							onAdd={onAddProject}
 							onRetry={onRetryProjects}
 						/>
 					) : null}

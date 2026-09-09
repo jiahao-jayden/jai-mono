@@ -61,7 +61,6 @@ export interface DropdownContextValue {
    *  its own ARIA menuitem div. */
   renderMenuItem?: (opts: MenuItemRenderOptions) => ReactElement;
   directHighlight?: boolean;
-  navigationHighlight?: boolean;
 }
 
 export const DropdownContext = createContext<DropdownContextValue | null>(null);
@@ -122,7 +121,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
   ) => {
     const internalRef = useRef<HTMLDivElement>(null);
     const hasMounted = useRef(false);
-    const { registerItem, activeIndex, checkedIndex, renderMenuItem, directHighlight, navigationHighlight } =
+    const { registerItem, activeIndex, checkedIndex, renderMenuItem, directHighlight } =
       useDropdown();
 
     useEffect(() => {
@@ -155,13 +154,10 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
       // text-box trim on the label doesn't shrink the row. shrink-0 because
       // menu popups are max-height flex columns — without it a long list
       // compresses rows to fit instead of scrolling.
-      `relative z-10 flex shrink-0 items-center gap-2 ${shape.item} px-2 cursor-pointer outline-none`,
-      description ? "min-h-14 py-2" : "h-[30px]",
+      `relative z-10 flex shrink-0 items-center gap-2.5 ${shape.item} px-2.5 cursor-pointer outline-none`,
+      description ? "min-h-14 py-2" : "h-8",
       disabled && "opacity-50 pointer-events-none",
-      directHighlight &&
-        (navigationHighlight
-          ? "data-[highlighted]:bg-sidebar-hover"
-          : "data-[highlighted]:bg-muted-hover"),
+      directHighlight && "data-[highlighted]:bg-muted-hover",
       className
     );
 
@@ -170,10 +166,10 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
         {leadingVisual ?? (Icon && (
           <span className="inline-grid">
             <span className="col-start-1 row-start-1 invisible">
-              <Icon size={16} strokeWidth={2} />
+              <Icon size={18} strokeWidth={2} />
             </span>
             <Icon
-              size={16}
+              size={18}
               strokeWidth={isActive || checked ? 2 : 1.5}
               className={cn(
                 "col-start-1 row-start-1 transition-[color,stroke-width] duration-80",
@@ -188,7 +184,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
         ))}
         {/* Keep the full line box. `text-box: trim-both cap alphabetic`
             clips CJK glyphs and makes menu labels look vertically crushed. */}
-        <span className="min-w-0 flex-1 text-[13px]">
+        <span className="min-w-0 flex-1 text-[14px]">
           <span className="inline-grid max-w-full">
             <span
               className="col-start-1 row-start-1 invisible"
@@ -221,7 +217,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
         </span>
         {TrailingIcon ? (
           <TrailingIcon
-            size={15}
+            size={16}
             strokeWidth={1.5}
             className="shrink-0 text-muted-foreground"
           />
