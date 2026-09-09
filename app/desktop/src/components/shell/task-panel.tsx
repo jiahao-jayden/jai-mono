@@ -52,9 +52,10 @@ export function TaskPanel({ status, todos, artifacts, selectedArtifactId, onOpen
 	const summaryInitial = reduceMotion ? { opacity: 0 } : { opacity: 0, transform: "translateY(18%)" };
 
 	return (
-		<aside className="flex h-full w-full min-w-0 flex-col gap-3.5 overflow-y-auto p-3">
-			<section>
-				<div className="flex h-6 items-center justify-between px-1.5">
+		<aside className="flex h-full w-full min-w-0 flex-col overflow-y-auto p-2">
+			<div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl bg-surface-primary shadow-surface-1">
+			<section className="px-3 pt-3 pb-2.5">
+				<div className="flex h-6 items-center justify-between">
 					<h2 className="text-[12px] font-medium text-muted-foreground">
 						{intl.formatMessage(desktopMessages.taskProgress)}
 					</h2>
@@ -87,20 +88,20 @@ export function TaskPanel({ status, todos, artifacts, selectedArtifactId, onOpen
 				) : null}
 			</section>
 
-			<section>
-				<div className="flex h-6 items-center justify-between px-1.5">
+			<section className="px-3 pt-2.5 pb-2.5">
+				<div className="flex h-6 items-center justify-between">
 					<h2 className="text-[12px] font-medium text-muted-foreground">
 						{intl.formatMessage(desktopMessages.taskOutputs)}
 					</h2>
 					<ChevronRightIcon size={13} className="rotate-90 text-muted-foreground" />
 				</div>
-				<p className="px-1.5 py-1 text-[13px] leading-relaxed text-muted-foreground">
+				<p className="py-1 text-[13px] leading-relaxed text-muted-foreground">
 					{intl.formatMessage(desktopMessages.taskOutputsDescription)}
 				</p>
 			</section>
 
-			<section>
-				<div className="flex h-6 items-center justify-between px-1.5">
+			<section className="px-3 pt-2.5 pb-3">
+				<div className="flex h-6 items-center justify-between">
 					<h2 className="text-[12px] font-medium text-muted-foreground">
 						{intl.formatMessage(desktopMessages.taskArtifacts)}
 					</h2>
@@ -110,7 +111,7 @@ export function TaskPanel({ status, todos, artifacts, selectedArtifactId, onOpen
 					</span>
 				</div>
 				{artifacts.length === 0 ? (
-					<p className="px-1.5 py-1 text-[13px] leading-relaxed text-muted-foreground">
+					<p className="py-1 text-[13px] leading-relaxed text-muted-foreground">
 						{intl.formatMessage(desktopMessages.taskArtifactsDescription)}
 					</p>
 				) : (
@@ -151,6 +152,7 @@ export function TaskPanel({ status, todos, artifacts, selectedArtifactId, onOpen
 					</ul>
 				)}
 			</section>
+			</div>
 		</aside>
 	);
 }

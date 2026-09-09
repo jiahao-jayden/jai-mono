@@ -172,6 +172,7 @@ export function AppShell() {
 	const chatVisible = activeView === "chat";
 	const rightPanelVisible = chatVisible && !!session;
 	const sidebarWidth = useMotionValue(DEFAULT_SIDEBAR_WIDTH);
+	const visibleSidebarWidth = useMotionValue(DEFAULT_SIDEBAR_WIDTH);
 	const workspacePanelWidth = useMotionValue(DEFAULT_WORKSPACE_PANEL_WIDTH);
 	const visibleRightPanelWidth = useMotionValue(DEFAULT_TASK_PANEL_WIDTH);
 	const sidebarResize = useColumnResize(shellRef, sidebarWidth, {
@@ -199,6 +200,22 @@ export function AppShell() {
 		duration: reduceMotion ? 0.12 : 0.2,
 		ease: [0.23, 1, 0.32, 1] as const,
 	};
+	useEffect(() => {
+		const targetWidth = sidebarOpen ? sidebarWidth.get() : 0;
+		if (reduceMotion) {
+			visibleSidebarWidth.set(targetWidth);
+			return;
+		}
+		const controls = animate(visibleSidebarWidth, targetWidth, {
+			duration: 0.24,
+			ease: [0.77, 0, 0.175, 1],
+		});
+		return () => controls.stop();
+	}, [reduceMotion, sidebarOpen, sidebarWidth, visibleSidebarWidth]);
+	useEffect(() => {
+		if (!sidebarOpen) return;
+		return sidebarWidth.on("change", (width) => visibleSidebarWidth.set(width));
+	}, [sidebarOpen, sidebarWidth, visibleSidebarWidth]);
 	useEffect(() => {
 		const targetWidth = artifactPanelOpen ? workspacePanelWidth.get() : DEFAULT_TASK_PANEL_WIDTH;
 		if (reduceMotion) {
@@ -385,8 +402,8 @@ export function AppShell() {
 	const chatProjectError =
 		projectError || (projectsQuery.isError ? intl.formatMessage(desktopMessages.projectsLoadError) : undefined);
 	const contentCardClassName = cn(
-		"relative flex min-w-0 flex-1 overflow-hidden rounded-[12px] bg-[var(--web-content-background)] shadow-[0_0_0_var(--hairline)_var(--border-surface-strong),0_2px_10px_-4px_rgb(0_0_0/.1)]",
-		sidebarOpen ? "ml-0" : "ml-2",
+		"relative flex min-w-0 flex-1 overflow-hidden bg-[var(--web-content-background)] shadow-[0_0_0_var(--hairline)_var(--border-surface-strong),0_2px_10px_-4px_rgb(0_0_0/.1)] transition-[border-radius] duration-200",
+		sidebarOpen ? "rounded-[12px]" : "rounded-r-[12px]",
 	);
 
 	return (
@@ -394,7 +411,12 @@ export function AppShell() {
 			ref={shellRef}
 			className="relative flex h-screen min-h-160 min-w-5xl overflow-hidden bg-sidebar text-foreground"
 		>
-			{sidebarOpen ? (
+			<motion.div
+				className="relative h-full shrink-0 overflow-hidden"
+				style={{ width: visibleSidebarWidth }}
+				aria-hidden={!sidebarOpen}
+				inert={!sidebarOpen}
+			>
 				<Sidebar
 					activeView={activeView}
 					sessions={sessions}
@@ -417,7 +439,7 @@ export function AppShell() {
 					onDeleteSession={deleteSession}
 					onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
 				/>
-			) : null}
+			</motion.div>
 			{sidebarOpen ? <ColumnResizeHandle resize={sidebarResize} side="left" /> : null}
 			<div className={contentCardClassName}>
 				<Routes>

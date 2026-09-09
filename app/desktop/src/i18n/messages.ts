@@ -106,7 +106,7 @@ export const desktopMessages = defineMessages({
 	},
 	projectPickerRelinkLabel: { id: "desktop.projectPicker.relinkLabel", defaultMessage: "{name} (Relink)" },
 	projectPickerAria: { id: "desktop.projectPicker.aria", defaultMessage: "Project: {label}" },
-	projectPickerWorkIn: { id: "desktop.projectPicker.workIn", defaultMessage: "Work in a project or folder" },
+	projectPickerWorkIn: { id: "desktop.projectPicker.workIn", defaultMessage: "Project" },
 	projectPickerSearch: { id: "desktop.projectPicker.search", defaultMessage: "Search projects" },
 	projectPickerRetry: { id: "desktop.projectPicker.retry", defaultMessage: "Retry loading projects" },
 	projectPickerNoProject: { id: "desktop.projectPicker.noProject", defaultMessage: "No project yet" },

@@ -319,7 +319,7 @@
     "defaultMessage": "Updating project…"
   },
   "desktop.projectPicker.workIn": {
-    "defaultMessage": "Work in a project or folder"
+    "defaultMessage": "Project"
   },
   "desktop.projects.addFolder": {
     "defaultMessage": "Add local folder"
