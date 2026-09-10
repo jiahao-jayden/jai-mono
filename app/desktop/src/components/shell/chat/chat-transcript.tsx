@@ -1,11 +1,12 @@
+import { cn } from "cn";
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { type IntlShape, useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { filesForAttachments } from "@/lib/attachment-files";
 import { type IconName, useIcon } from "@/lib/icon-context";
-import { cn } from "cn";
 import type {
 	DesktopNarrationItem,
+	DesktopSubagentItem,
 	DesktopThinkingItem,
 	DesktopToolActivityKind,
 	DesktopToolItem,
@@ -16,9 +17,9 @@ import { Button } from "../../ui/button";
 import { ChatMessage } from "../../ui/chat-message";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
 import { Tooltip } from "../../ui/tooltip";
-import { SubagentCard } from "./subagent-card";
+import { SubagentAvatar } from "../subagent-avatar";
 
-type WorkItem = DesktopThinkingItem | DesktopNarrationItem | DesktopToolItem;
+type WorkItem = DesktopThinkingItem | DesktopNarrationItem | DesktopToolItem | DesktopSubagentItem;
 
 interface WorkGroup {
 	readonly id: string;
@@ -27,10 +28,14 @@ interface WorkGroup {
 
 interface WorkTimelineCluster {
 	readonly id: string;
-	readonly kind: "thinking" | "narration" | DesktopToolActivityKind;
+	readonly kind: "thinking" | "narration" | "subagent" | DesktopToolActivityKind;
 	readonly activityId: string;
 	readonly items: readonly WorkItem[];
 	readonly narrations: readonly DesktopNarrationItem[];
+}
+
+interface WorkTimelineOptions {
+	readonly onOpenSubagent?: (item: DesktopSubagentItem) => void;
 }
 
 const MemoizedTranscriptItem = memo(TranscriptItem);
@@ -41,11 +46,13 @@ export function TranscriptItems({
 	loading,
 	navigationDisabled = false,
 	onNavigate,
+	onOpenSubagent,
 }: {
 	readonly items: readonly DesktopTranscriptItem[];
 	readonly loading: boolean;
 	readonly navigationDisabled?: boolean;
 	readonly onNavigate?: (entryId: string) => Promise<boolean>;
+	readonly onOpenSubagent?: (item: DesktopSubagentItem) => void;
 }) {
 	const animatedItemIds = useTranscriptItemAnimations(items, loading);
 	const rows = groupTranscriptItems(items);
@@ -60,7 +67,12 @@ export function TranscriptItems({
 				onNavigate={onNavigate}
 			/>
 		) : (
-			<MemoizedWorkProcess key={row.id} group={row} settled={index < rows.length - 1} />
+			<MemoizedWorkProcess
+				key={row.id}
+				group={row}
+				settled={index < rows.length - 1}
+				onOpenSubagent={onOpenSubagent}
+			/>
 		),
 	);
 }
@@ -110,7 +122,7 @@ export function TranscriptItem({
 	readonly navigationDisabled?: boolean;
 	readonly onNavigate?: (entryId: string) => Promise<boolean>;
 }) {
-	if (item.kind === "thinking" || item.kind === "narration") {
+	if (item.kind === "thinking" || item.kind === "narration" || item.kind === "tool" || item.kind === "subagent") {
 		return <WorkProcess group={{ id: `work:${item.id}`, items: [item] }} settled={false} />;
 	}
 	if (item.kind === "message") {
@@ -148,18 +160,6 @@ export function TranscriptItem({
 				>
 					{item.text}
 				</ChatMessage>
-			</div>
-		);
-	}
-
-	if (item.kind === "tool") {
-		return <WorkProcess group={{ id: `work:${item.id}`, items: [item] }} settled={false} />;
-	}
-
-	if (item.kind === "subagent") {
-		return (
-			<div className="py-1" data-transcript-item-id={item.id}>
-				<SubagentCard item={item} />
 			</div>
 		);
 	}
@@ -318,15 +318,18 @@ function useTranscriptItemAnimations(items: readonly DesktopTranscriptItem[], lo
 	return animatedItemIds;
 }
 
-function WorkProcess({ group, settled }: { readonly group: WorkGroup; readonly settled: boolean }) {
+function WorkProcess({
+	group,
+	settled,
+	onOpenSubagent,
+}: {
+	readonly group: WorkGroup;
+	readonly settled: boolean;
+	readonly onOpenSubagent?: (item: DesktopSubagentItem) => void;
+}) {
 	const intl = useIntl();
-	const running = group.items.some(
-		(item) =>
-			(item.kind === "thinking" && item.status === "streaming") ||
-			(item.kind === "narration" && item.status === "streaming") ||
-			(item.kind === "tool" && item.status === "running"),
-	);
-	const steps = workTimelineSteps(group.items, intl);
+	const running = group.items.some(isWorkItemRunning);
+	const steps = workTimelineSteps(group.items, intl, { onOpenSubagent });
 	const hasWebSearchResults = group.items.some((item) => item.kind === "tool" && item.webSearchResults !== undefined);
 	const [open, setOpen] = useState(running || hasWebSearchResults);
 
@@ -362,6 +365,8 @@ function WorkProcess({ group, settled }: { readonly group: WorkGroup; readonly s
 	);
 }
 
+// `onOpenSubagent` is deliberately not compared: it only forwards to shell
+// state setters, so a stale closure behaves identically and the memo stays hot.
 function sameWorkProcess(
 	previous: { readonly group: WorkGroup; readonly settled: boolean },
 	next: { readonly group: WorkGroup; readonly settled: boolean },
@@ -371,14 +376,35 @@ function sameWorkProcess(
 	return previous.group.items.every((item, index) => item === next.group.items[index]);
 }
 
-export function workTimelineSteps(items: readonly WorkItem[], intl: IntlShape): TimelineStep[] {
+function isWorkItemRunning(item: WorkItem): boolean {
+	if (item.kind === "thinking" || item.kind === "narration") return item.status === "streaming";
+	return item.status === "running";
+}
+
+export function workTimelineSteps(
+	items: readonly WorkItem[],
+	intl: IntlShape,
+	options: WorkTimelineOptions = {},
+): TimelineStep[] {
 	return workTimelineClusters(items).map((cluster) => {
-		const running = cluster.items.some(
-			(item) =>
-				(item.kind === "thinking" && item.status === "streaming") ||
-				(item.kind === "narration" && item.status === "streaming") ||
-				(item.kind === "tool" && item.status === "running"),
-		);
+		const running = cluster.items.some(isWorkItemRunning);
+		if (cluster.kind === "subagent") {
+			const item = cluster.items[0] as DesktopSubagentItem;
+			const chip = running
+				? item.activityTitle
+				: item.status === "error"
+					? intl.formatMessage(desktopMessages.subagentFailed)
+					: undefined;
+			return {
+				id: cluster.id,
+				verb: item.title,
+				...(chip ? { chip } : {}),
+				icon: "users",
+				avatar: <SubagentAvatar item={item} size={14} />,
+				active: running,
+				...(options.onOpenSubagent ? { onSelect: () => options.onOpenSubagent?.(item) } : {}),
+			};
+		}
 		if (cluster.kind === "thinking") {
 			const text = cluster.items
 				.filter((item): item is DesktopThinkingItem => item.kind === "thinking")
@@ -450,9 +476,11 @@ function workTimelineClusters(items: readonly WorkItem[]): readonly WorkTimeline
 			continue;
 		}
 
-		const kind = item.kind === "thinking" ? "thinking" : item.activityKind;
+		const kind = item.kind === "thinking" || item.kind === "subagent" ? item.kind : item.activityKind;
+		// Each delegated task is its own row; tools of the same activity collapse into one.
+		const activityId = item.kind === "subagent" ? item.id : item.activityId;
 		const previous = clusters.at(-1);
-		if (previous && previous.kind === kind && previous.activityId === item.activityId) {
+		if (previous && previous.kind === kind && previous.activityId === activityId) {
 			clusters[clusters.length - 1] = {
 				...previous,
 				items: [...previous.items, item],
@@ -462,7 +490,7 @@ function workTimelineClusters(items: readonly WorkItem[]): readonly WorkTimeline
 			clusters.push({
 				id: `timeline:${item.id}`,
 				kind,
-				activityId: item.activityId,
+				activityId,
 				items: [item],
 				narrations: pendingNarrations,
 			});
@@ -524,7 +552,7 @@ export function workTimelineSummary(
 	running: boolean,
 	intl: IntlShape,
 ): string {
-	const operationCount = items.filter((item): item is DesktopToolItem => item.kind === "tool").length;
+	const operationCount = items.filter((item) => item.kind === "tool" || item.kind === "subagent").length;
 	const changedPaths = new Set(
 		items
 			.filter((item): item is DesktopToolItem => item.kind === "tool")
@@ -599,7 +627,7 @@ function humanizeToolName(toolName: string): string {
 }
 
 function isWorkItem(item: DesktopTranscriptItem): item is WorkItem {
-	return item.kind === "thinking" || item.kind === "narration" || item.kind === "tool";
+	return item.kind === "thinking" || item.kind === "narration" || item.kind === "tool" || item.kind === "subagent";
 }
 
 function workItemTurnId(item: WorkItem): string {

@@ -16,6 +16,7 @@ import type {
 	DesktopMessageItem,
 	DesktopPermissionRequest,
 	DesktopPermissionResolution,
+	DesktopSubagentItem,
 	DesktopThinkingItem,
 	DesktopTodoItem,
 	DesktopTodos,
@@ -27,6 +28,9 @@ import type {
 } from "../../shared/desktop-rpc";
 import { sortArtifacts } from "./artifacts";
 import { desktopAgentError } from "./errors";
+
+/** Canonical tool name registered by `@jai/extension/subagent`. */
+const SUBAGENT_TOOL_NAME = "SpawnAgent";
 
 class DesktopAcpConnectionFailed extends TaggedError("desktop_agent.acp_connection_failed")<{
 	readonly message: string;
@@ -499,6 +503,11 @@ export class DesktopAcpAgentHost {
 
 	#toolUpdate(runtime: AcpSessionRuntime, update: Record<string, unknown>): void {
 		if (typeof update.toolCallId !== "string") return;
+		const subagentId = `subagent:${update.toolCallId}`;
+		if (toolNameFromMetadata(update._meta) === SUBAGENT_TOOL_NAME || runtime.items.has(subagentId)) {
+			this.#subagentUpdate(runtime, update, subagentId);
+			return;
+		}
 		const id = `tool:${update.toolCallId}`;
 		const previous = runtime.items.get(id);
 		const previousTool = previous?.kind === "tool" ? previous : undefined;
@@ -551,6 +560,39 @@ export class DesktopAcpAgentHost {
 				: previousTool?.fileChanges
 					? { fileChanges: previousTool.fileChanges }
 					: {}),
+		};
+		runtime.items.set(id, item);
+		this.#emitEvent(runtime, { type: "transcript_upsert", item });
+	}
+
+	/**
+	 * SpawnAgent calls are a delegated task, not a command: the card shows the
+	 * delegated title and the child's current activity instead of raw output.
+	 */
+	#subagentUpdate(runtime: AcpSessionRuntime, update: Record<string, unknown>, id: string): void {
+		if (typeof update.toolCallId !== "string") return;
+		const previous = runtime.items.get(id);
+		const previousSubagent = previous?.kind === "subagent" ? previous : undefined;
+		const turnId = previousSubagent?.turnId ?? operationIdFromMetadata(update._meta);
+		if (!turnId) return;
+		const rawInput = isRecord(update.rawInput) ? update.rawInput : undefined;
+		const rawTitle = typeof rawInput?.title === "string" ? rawInput.title.trim() : "";
+		const title = rawTitle || previousSubagent?.title || SUBAGENT_TOOL_NAME;
+		const status =
+			update.status === "failed"
+				? "error"
+				: update.status === "completed"
+					? "complete"
+					: (previousSubagent?.status ?? "running");
+		const activityTitle = activityTitleFromMetadata(update._meta) ?? previousSubagent?.activityTitle;
+		const item: DesktopSubagentItem = {
+			kind: "subagent",
+			id,
+			turnId,
+			toolCallId: update.toolCallId,
+			title,
+			status,
+			...(activityTitle ? { activityTitle } : {}),
 		};
 		runtime.items.set(id, item);
 		this.#emitEvent(runtime, { type: "transcript_upsert", item });
@@ -773,6 +815,16 @@ function activityKind(toolName: string): DesktopToolActivityKind {
 function operationIdFromMetadata(value: unknown): string | undefined {
 	if (!isRecord(value) || !isRecord(value.jai) || typeof value.jai.operationId !== "string") return undefined;
 	return value.jai.operationId;
+}
+
+function toolNameFromMetadata(value: unknown): string | undefined {
+	if (!isRecord(value) || !isRecord(value.jai) || typeof value.jai.toolName !== "string") return undefined;
+	return value.jai.toolName;
+}
+
+function activityTitleFromMetadata(value: unknown): string | undefined {
+	if (!isRecord(value) || !isRecord(value.jai) || typeof value.jai.activityTitle !== "string") return undefined;
+	return value.jai.activityTitle.trim().slice(0, 200) || undefined;
 }
 
 function webSearchResultsFromMetadata(value: unknown): readonly DesktopWebSearchResult[] | undefined {

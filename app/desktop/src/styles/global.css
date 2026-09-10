@@ -4,7 +4,6 @@
 @import "tw-shimmer";
 @import "shadcn/tailwind.css";
 @import "./streamdown.css";
-@import "blobatar/motion.css";
 
 @custom-variant dark (&:is(.dark *));
 

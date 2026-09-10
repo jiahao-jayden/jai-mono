@@ -682,6 +682,7 @@ function toolCallsFromAssistant(
 				status: "pending",
 				rawInput: jsonObject(part.arguments),
 				operationId,
+				toolName: part.name,
 			}),
 		];
 	});
@@ -710,6 +711,7 @@ function toolResultUpdate(
 			status: message.isError ? "failed" : "completed",
 			content,
 			operationId,
+			toolName: message.toolName,
 		}),
 	];
 	// The result Session entry is T2. Only now may ACP learn that the display
@@ -756,6 +758,7 @@ function projectOperationEvent(
 					rawInput: event.rawInput,
 					...(event.terminal ? { content: [terminalReference(event.terminal.terminalId)] } : {}),
 					operationId,
+					toolName: event.toolName,
 				}),
 			];
 			if (event.terminal) {
@@ -775,6 +778,14 @@ function projectOperationEvent(
 					toolCallId: event.toolCallId,
 					status: "completed",
 					webSearch: event.webSearch,
+					operationId,
+				}),
+			];
+		case "tool_activity":
+			return [
+				toolCallUpdate(sessionId, {
+					toolCallId: event.toolCallId,
+					activityTitle: event.activityTitle,
 					operationId,
 				}),
 			];
@@ -860,9 +871,12 @@ function toolCallUpdate(
 		readonly content?: readonly object[];
 		readonly webSearch?: RuntimeWebSearchDetails;
 		readonly operationId?: string;
+		/** Canonical SDK tool identity; `title` is display-only and never a discriminator. */
+		readonly toolName?: string;
+		readonly activityTitle?: string;
 	},
 ): AcpJsonRpcNotification {
-	const { operationId, webSearch, ...toolUpdate } = update;
+	const { operationId, webSearch, toolName, activityTitle, ...toolUpdate } = update;
 	return {
 		jsonrpc: "2.0",
 		method: "session/update",
@@ -871,27 +885,21 @@ function toolCallUpdate(
 			update: {
 				sessionUpdate: "tool_call_update",
 				...toolUpdate,
-				...toolMetadata(operationId, webSearch),
+				...toolMetadata({ operationId, webSearch, toolName, activityTitle }),
 			},
 		},
 	};
 }
 
-function toolMetadata(
-	operationId: string | undefined,
-	webSearch: RuntimeWebSearchDetails | undefined,
-): {
-	readonly _meta?: {
-		readonly jai: {
-			readonly operationId?: string;
-			readonly webSearch?: RuntimeWebSearchDetails;
-		};
-	};
-} {
-	const jai = {
-		...(operationId ? { operationId } : {}),
-		...(webSearch ? { webSearch } : {}),
-	};
+interface ToolMetadata {
+	readonly operationId?: string;
+	readonly webSearch?: RuntimeWebSearchDetails;
+	readonly toolName?: string;
+	readonly activityTitle?: string;
+}
+
+function toolMetadata(fields: ToolMetadata): { readonly _meta?: { readonly jai: ToolMetadata } } {
+	const jai = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
 	return Object.keys(jai).length > 0 ? { _meta: { jai } } : {};
 }
 

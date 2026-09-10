@@ -26,6 +26,7 @@ import type {
 	DesktopPermissionItem,
 	DesktopProject,
 	DesktopProviderConfigSnapshot,
+	DesktopSubagentItem,
 	DesktopTranscriptItem,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
@@ -74,6 +75,7 @@ interface ChatColumnProps {
 	onRenameSession(sessionId: string, title: string): Promise<void>;
 	onMoveSession(sessionId: string, projectId: string | null): Promise<void>;
 	onDeleteSession(sessionId: string): Promise<void>;
+	onOpenSubagent?(item: DesktopSubagentItem): void;
 }
 
 export function ChatColumn({
@@ -106,6 +108,7 @@ export function ChatColumn({
 	onRenameSession,
 	onMoveSession,
 	onDeleteSession,
+	onOpenSubagent,
 }: ChatColumnProps) {
 	const intl = useIntl();
 	const icons = useIcons();
@@ -313,6 +316,7 @@ export function ChatColumn({
 									loading={chat.isLoading}
 									navigationDisabled={navigationDisabled}
 									onNavigate={chat.navigate}
+									onOpenSubagent={onOpenSubagent}
 								/>
 								{isAgentWorking ? (
 									<div className="flex items-center gap-2 px-1 py-1 text-muted-foreground" role="status">

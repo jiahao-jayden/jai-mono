@@ -461,6 +461,46 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
+	test("projects SpawnAgent calls as subagent items with delegated title and live activity", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+		const publish = (update: Record<string, unknown>) =>
+			client.publish({
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: { sessionId: "session-1", update: { sessionUpdate: "tool_call_update", toolCallId: "tool-1", ...update } },
+			});
+		publish({
+			title: "SpawnAgent",
+			kind: "other",
+			status: "pending",
+			rawInput: { title: "Inspect repository", task: "Read everything" },
+			_meta: { jai: { operationId: "operation-1", toolName: "SpawnAgent" } },
+		});
+		publish({ _meta: { jai: { operationId: "operation-1", activityTitle: "Read" } } });
+		expect(host.getSnapshot("session-1").items).toEqual([
+			{
+				kind: "subagent",
+				id: "subagent:tool-1",
+				turnId: "operation-1",
+				toolCallId: "tool-1",
+				title: "Inspect repository",
+				status: "running",
+				activityTitle: "Read",
+			},
+		]);
+
+		publish({ status: "failed", content: [], _meta: { jai: { operationId: "operation-1", toolName: "SpawnAgent" } } });
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({ kind: "subagent", status: "error", activityTitle: "Read" }),
+		]);
+		host.close();
+	});
+
 	test("parses durable Web Search text into the Desktop source list", async () => {
 		const client = new FakeAcpClient();
 		const host = await DesktopAcpAgentHost.open(() => {}, {

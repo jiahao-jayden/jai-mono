@@ -354,6 +354,15 @@ class CodingAgentOperation implements RuntimeOperation {
 				return;
 			}
 			case "tool_execution_update": {
+				const details = jsonObject(event.partial).details;
+				const activityTitle = isJsonObject(details) ? details.activityTitle : undefined;
+				if (typeof activityTitle === "string" && activityTitle.trim()) {
+					this.publish({
+						type: "tool_activity",
+						toolCallId: event.toolCallId,
+						activityTitle: activityTitle.trim().slice(0, 200),
+					});
+				}
 				const terminalId = terminalIdForTool(event.toolName, event.toolCallId);
 				if (terminalId) {
 					for (const content of toolProgressContent(event.partial)) {

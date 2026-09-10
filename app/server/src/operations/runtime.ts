@@ -72,6 +72,12 @@ export type RuntimeOperationEvent =
 			readonly content: RuntimeOperationContent;
 	  }
 	| {
+			/** Volatile one-line description of what a long-running tool is doing right now. */
+			readonly type: "tool_activity";
+			readonly toolCallId: string;
+			readonly activityTitle: string;
+	  }
+	| {
 			/** Volatile UTF-8 bytes appended to a display-only agent-owned terminal. */
 			readonly type: "terminal_output_chunk";
 			readonly terminalId: string;

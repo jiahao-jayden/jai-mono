@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { type IconName, useIcon } from "@/lib/icon-context";
 import { cn } from "cn";
@@ -16,6 +16,10 @@ export interface TimelineStep {
 	details?: string;
 	webSearchResults?: readonly DesktopWebSearchResult[];
 	active?: boolean;
+	/** Replaces the icon glyph, e.g. a subagent's face. */
+	avatar?: ReactNode;
+	/** The row is a plain button firing this instead of expanding details. */
+	onSelect?: () => void;
 }
 
 export interface ToolTimelineProps {
@@ -78,14 +82,15 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 	const [open, setOpen] = useState(hasWebSearchResults);
 	const Icon = useIcon(step.icon);
 	const ChevronRight = useIcon("chevron-right");
-	const expandable = Boolean(step.details || hasWebSearchResults);
+	const selectable = step.onSelect !== undefined;
+	const expandable = !selectable && Boolean(step.details || hasWebSearchResults);
 
 	useEffect(() => {
 		if (hasWebSearchResults) setOpen(true);
 	}, [hasWebSearchResults]);
 	const rowClassName = cn(
 		"flex min-w-0 items-center gap-2 text-start text-[13.5px] text-foreground/55 outline-none",
-		expandable && "transition-colors hover:text-foreground/90",
+		(expandable || selectable) && "transition-colors hover:text-foreground/90",
 	);
 	const chevronClassName = cn(
 		"ms-auto inline-flex shrink-0 opacity-60 transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
@@ -93,7 +98,7 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 	);
 	const row = (
 		<>
-			<Icon size={14} strokeWidth={1.5} className="shrink-0 text-foreground/35" />
+			{step.avatar ?? <Icon size={14} strokeWidth={1.5} className="shrink-0 text-foreground/35" />}
 			<ShimmerLabel active={active} className="relative min-w-0 truncate leading-none">
 				{step.verb}
 			</ShimmerLabel>
@@ -102,13 +107,21 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 					{step.chip}
 				</span>
 			) : null}
-			{expandable ? (
+			{expandable || selectable ? (
 				<span className={chevronClassName}>
 					<ChevronRight size={14} strokeWidth={1.5} />
 				</span>
 			) : null}
 		</>
 	);
+
+	if (selectable) {
+		return (
+			<button type="button" onClick={step.onSelect} className={cn(rowClassName, "max-w-full cursor-pointer self-start")}>
+				{row}
+			</button>
+		);
+	}
 
 	if (!expandable) {
 		return <div className={rowClassName}>{row}</div>;

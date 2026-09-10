@@ -1,12 +1,18 @@
-import type { ReactNode } from "react";
+import { cn } from "cn";
+import { type ReactNode, useEffect, useRef } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
-import { useIcons } from "@/lib/icon-context";
-import { cn } from "cn";
 import type { DesktopSubagentItem } from "../../../../shared/desktop-rpc";
 import { NextStep } from "../../ui/next-step";
+import { SubagentAvatar } from "../subagent-avatar";
 
-export function SubagentPanel({ items }: { readonly items: readonly DesktopSubagentItem[] }) {
+export function SubagentPanel({
+	items,
+	selectedId = null,
+}: {
+	readonly items: readonly DesktopSubagentItem[];
+	readonly selectedId?: string | null;
+}) {
 	const intl = useIntl();
 	const active = items.filter((item) => item.status === "running");
 	const settled = items.filter((item) => item.status !== "running");
@@ -17,13 +23,21 @@ export function SubagentPanel({ items }: { readonly items: readonly DesktopSubag
 			aria-label={intl.formatMessage(desktopMessages.dockSubagentPanel)}
 			className="flex h-full min-w-0 flex-col gap-4 overflow-y-auto px-3 pb-3"
 		>
-			<SubagentGroup label={intl.formatMessage(desktopMessages.subagentActive)} items={active}>
+			<SubagentGroup
+				label={intl.formatMessage(desktopMessages.subagentActive)}
+				items={active}
+				selectedId={selectedId}
+			>
 				<p className="px-1 text-[13px] text-muted-foreground">
 					{intl.formatMessage(desktopMessages.subagentPanelEmpty)}
 				</p>
 			</SubagentGroup>
 			{settled.length > 0 ? (
-				<SubagentGroup label={intl.formatMessage(desktopMessages.subagentComplete)} items={settled} />
+				<SubagentGroup
+					label={intl.formatMessage(desktopMessages.subagentComplete)}
+					items={settled}
+					selectedId={selectedId}
+				/>
 			) : null}
 		</section>
 	);
@@ -32,10 +46,12 @@ export function SubagentPanel({ items }: { readonly items: readonly DesktopSubag
 function SubagentGroup({
 	label,
 	items,
+	selectedId,
 	children,
 }: {
 	readonly label: string;
 	readonly items: readonly DesktopSubagentItem[];
+	readonly selectedId: string | null;
 	readonly children?: ReactNode;
 }) {
 	return (
@@ -47,9 +63,9 @@ function SubagentGroup({
 			</h2>
 			{items.length === 0 ? children : null}
 			{items.length > 0 ? (
-				<ul className="flex flex-col gap-1" aria-label={label}>
+				<ul className="flex flex-col gap-0.5" aria-label={label}>
 					{items.map((item) => (
-						<SubagentRow key={item.id} item={item} />
+						<SubagentRow key={item.id} item={item} selected={item.id === selectedId} />
 					))}
 				</ul>
 			) : null}
@@ -57,12 +73,11 @@ function SubagentGroup({
 	);
 }
 
-function SubagentRow({ item }: { readonly item: DesktopSubagentItem }) {
+function SubagentRow({ item, selected }: { readonly item: DesktopSubagentItem; readonly selected: boolean }) {
 	const intl = useIntl();
-	const icons = useIcons();
+	const ref = useRef<HTMLLIElement>(null);
 	const running = item.status === "running";
 	const complete = item.status === "complete";
-	const StatusIcon = running ? icons.loader : complete ? icons.check : icons["shield-alert"];
 	const statusLabel = intl.formatMessage(
 		running
 			? desktopMessages.subagentRunning
@@ -77,32 +92,34 @@ function SubagentRow({ item }: { readonly item: DesktopSubagentItem }) {
 				? desktopMessages.subagentCompleted
 				: desktopMessages.subagentStopped,
 	);
+	const rowClassName = cn(
+		"flex min-w-0 flex-col gap-1 rounded-lg px-2 py-2 transition-colors duration-150",
+		selected && "bg-sidebar-active",
+	);
+	const activityClassName = cn(
+		"max-w-full text-[12px] leading-4 text-muted-foreground",
+		running && "shimmer-text",
+		item.status === "error" && "text-destructive",
+	);
+
+	useEffect(() => {
+		if (selected) ref.current?.scrollIntoView({ block: "nearest" });
+	}, [selected]);
 
 	return (
 		<li
-			className="flex min-w-0 items-start gap-2.5 rounded-lg px-1 py-1"
+			ref={ref}
+			className={rowClassName}
+			aria-current={selected ? "true" : undefined}
 			aria-label={intl.formatMessage(desktopMessages.subagentAria, { title: item.title, status: statusLabel })}
 		>
-			<span
-				role="img"
-				aria-label={statusLabel}
-				className={cn("flex size-4 shrink-0 items-center justify-center pt-0.5", {
-					"text-foreground": running,
-					"text-muted-foreground": complete,
-					"text-destructive": item.status === "error",
-				})}
-			>
-				<StatusIcon size={13} strokeWidth={1.8} className={cn({ "animate-spin": running })} />
-			</span>
-			<div className="min-w-0 flex-1">
-				<p className="truncate text-[13px] leading-5 text-foreground" title={item.title}>
+			<div className="flex min-w-0 items-center gap-2.5">
+				<SubagentAvatar item={item} size={20} />
+				<p className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-foreground" title={item.title}>
 					{item.title}
 				</p>
-				<NextStep
-					value={item.activityTitle ?? fallbackActivity}
-					className="max-w-full text-[12px] leading-4 text-muted-foreground"
-				/>
 			</div>
+			<NextStep value={item.activityTitle ?? fallbackActivity} className={cn(activityClassName, "pl-[30px]")} />
 		</li>
 	);
 }

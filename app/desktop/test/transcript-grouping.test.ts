@@ -60,6 +60,41 @@ describe("transcript grouping", () => {
 		expect(markup).toContain("1 step · 1 action");
 	});
 
+	test("子代理和同一轮的工具合并进同一个 ToolTimeline，每个子代理独占一行", () => {
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:bash-1",
+			turnId: "turn-1",
+			activityId: "assistant:1",
+			toolCallId: "bash-1",
+			toolName: "Bash",
+			activityKind: "execute",
+			status: "complete",
+		};
+		const subagent: Extract<DesktopTranscriptItem, { kind: "subagent" }> = {
+			kind: "subagent",
+			id: "subagent:call-1",
+			turnId: "turn-1",
+			toolCallId: "call-1",
+			title: "Inspect desktop",
+			status: "running",
+			activityTitle: "Read",
+		};
+
+		expect(groupTranscriptItems([tool, subagent])).toEqual([{ id: "work:turn-1:tool:bash-1", items: [tool, subagent] }]);
+		const steps = workTimelineSteps([tool, subagent], intl, { onOpenSubagent: () => {} });
+		expect(steps).toHaveLength(2);
+		expect(steps[1]).toMatchObject({ verb: "Inspect desktop", chip: "Read", active: true });
+		expect(steps[1]?.onSelect).toBeFunction();
+		expect(workTimelineSummary(steps, [tool, subagent], false, intl)).toBe("2 steps · 2 actions");
+
+		const markup = renderToStaticMarkup(
+			createElement(TranscriptItems, { items: [tool, subagent], loading: false, onOpenSubagent: () => {} }),
+		);
+		expect(markup).toContain("Inspect desktop");
+		expect(markup).toContain("<img");
+	});
+
 	test("普通搜索工具不会进入 Web Search 来源渲染", () => {
 		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
 			kind: "tool",
