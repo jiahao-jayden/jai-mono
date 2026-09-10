@@ -8,7 +8,7 @@ import { createSubagentExtension } from "../../src/subagent";
 import { createTodoExtension } from "../../src/todo";
 import { assistant, assistantToolCall, createInput, temporaryDirectory } from "../sdk-fixture";
 
-test("Subagent installs with Todo, isolates history and catalog activation, streams progress and returns text", async () => {
+test("Subagent installs with Todo, isolates history and catalog search, streams progress and returns text", async () => {
 	const root = await temporaryDirectory();
 	const requests: any[] = [];
 	let turnStarts = 0;
@@ -43,7 +43,6 @@ test("Subagent installs with Todo, isolates history and catalog activation, stre
 			[
 				assistantToolCall("SpawnAgent", "spawn", { title: "Inspect", task: "child-only task" }),
 				assistantToolCall("SearchTools", "search", { query: "Echo" }),
-				assistantToolCall("Echo", "echo", {}),
 				assistant("child final"),
 				assistant("parent final"),
 			],
@@ -66,13 +65,12 @@ test("Subagent installs with Todo, isolates history and catalog activation, stre
 		expect(childTools).not.toContain("UpdateTodos");
 		expect(JSON.stringify(requests[1])).not.toContain("parent secret history");
 		expect(JSON.stringify(requests[1])).toContain("child-only task");
-		expect(requests[2].tools.map((tool: any) => tool.name)).toContain("Echo");
-		expect(requests[4].tools.map((tool: any) => tool.name)).not.toContain("Echo");
-		expect(JSON.stringify(requests[4].messages)).toContain("child final");
+		expect(requests[2].tools.map((tool: any) => tool.name)).toEqual(childTools);
+		expect(JSON.stringify(requests[3].messages)).toContain("child final");
 		expect(turnStarts).toBe(2);
 		expect(
 			events.filter((event) => event.type === "tool_execution_update").map((event) => JSON.stringify(event)),
-		).toEqual(expect.arrayContaining([expect.stringContaining('"activityTitle":"Echo"')]));
+		).toEqual(expect.arrayContaining([expect.stringContaining('"activityTitle":"SearchTools"')]));
 		const end = events.find((event) => event.type === "tool_execution_end");
 		expect(end).toMatchObject({ isError: false });
 		expect(JSON.stringify(end)).not.toContain('"cause"');

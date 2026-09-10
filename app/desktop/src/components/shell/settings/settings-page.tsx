@@ -7,6 +7,9 @@ import type {
 	DesktopConnectorConfigInput,
 	DesktopConnectorConfigSnapshot,
 	DesktopConnectorOAuthStartResult,
+	DesktopMcpSettingsInput,
+	DesktopMcpSettingsSnapshot,
+	DesktopMcpStatus,
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
 	DesktopProviderFetchModelsResult,
@@ -20,6 +23,7 @@ import type {
 import { Button } from "../../ui/button";
 import { ConnectorSettings } from "./connector-settings";
 import { GeneralSettings } from "./general-settings";
+import { McpSettings } from "./mcp-settings";
 import { ObservabilitySettings } from "./observability-settings";
 import {
 	type ProfileDraft,
@@ -47,15 +51,21 @@ interface SettingsPageProps {
 	readonly telemetryLoading: boolean;
 	readonly telemetryLoadError: boolean;
 	readonly onSaveTelemetry: (input: DesktopTelemetrySettingsInput) => Promise<DesktopTelemetrySettingsSnapshot>;
+	readonly mcp?: DesktopMcpSettingsSnapshot;
+	readonly mcpLoading: boolean;
+	readonly mcpLoadError: boolean;
+	readonly onSaveMcp: (input: DesktopMcpSettingsInput) => Promise<DesktopMcpSettingsSnapshot>;
+	readonly onRefreshMcpStatus: () => Promise<DesktopMcpStatus>;
 }
 
-type SettingsCategory = "general" | "providers" | "web-search" | "connector" | "advanced";
+type SettingsCategory = "general" | "providers" | "web-search" | "connector" | "mcp" | "advanced";
 
 const settingsCategories: Record<SettingsCategory, { label: MessageDescriptor; icon: IconName }> = {
 	general: { label: desktopMessages.settingsGeneral, icon: "settings" },
 	providers: { label: desktopMessages.settingsProviders, icon: "key" },
 	"web-search": { label: desktopMessages.settingsWebSearch, icon: "globe" },
 	connector: { label: desktopMessages.settingsConnector, icon: "link" },
+	mcp: { label: desktopMessages.settingsMcp, icon: "plug" },
 	advanced: { label: desktopMessages.settingsAdvanced, icon: "layers" },
 };
 
@@ -76,6 +86,11 @@ export function SettingsPage({
 	telemetryLoading,
 	telemetryLoadError,
 	onSaveTelemetry,
+	mcp,
+	mcpLoading,
+	mcpLoadError,
+	onSaveMcp,
+	onRefreshMcpStatus,
 }: SettingsPageProps) {
 	const [fetchingProfileId, setFetchingProfileId] = useState<string>();
 	const [lastFetch, setLastFetch] = useState<DesktopProviderFetchModelsResult>();
@@ -107,6 +122,11 @@ export function SettingsPage({
 			telemetryLoading={telemetryLoading}
 			telemetryLoadError={telemetryLoadError}
 			onSaveTelemetry={onSaveTelemetry}
+			mcp={mcp}
+			mcpLoading={mcpLoading}
+			mcpLoadError={mcpLoadError}
+			onSaveMcp={onSaveMcp}
+			onRefreshMcpStatus={onRefreshMcpStatus}
 			fetchingProfileId={fetchingProfileId}
 			lastFetch={lastFetch}
 			onRetry={onRetry}
@@ -181,6 +201,11 @@ interface ProviderConfigFormProps {
 	readonly telemetryLoading: boolean;
 	readonly telemetryLoadError: boolean;
 	readonly onSaveTelemetry: (input: DesktopTelemetrySettingsInput) => Promise<DesktopTelemetrySettingsSnapshot>;
+	readonly mcp?: DesktopMcpSettingsSnapshot;
+	readonly mcpLoading: boolean;
+	readonly mcpLoadError: boolean;
+	readonly onSaveMcp: (input: DesktopMcpSettingsInput) => Promise<DesktopMcpSettingsSnapshot>;
+	readonly onRefreshMcpStatus: () => Promise<DesktopMcpStatus>;
 	readonly fetchingProfileId?: string;
 	readonly lastFetch?: DesktopProviderFetchModelsResult;
 }
@@ -200,6 +225,11 @@ function ProviderConfigForm({
 	telemetryLoading,
 	telemetryLoadError,
 	onSaveTelemetry,
+	mcp,
+	mcpLoading,
+	mcpLoadError,
+	onSaveMcp,
+	onRefreshMcpStatus,
 	fetchingProfileId,
 	lastFetch,
 }: ProviderConfigFormProps) {
@@ -223,7 +253,7 @@ function ProviderConfigForm({
 		"mx-auto min-h-0 w-full max-w-3xl flex-1",
 		category === "connector" ? "flex overflow-hidden" : "overflow-y-auto",
 	);
-	const providerCategory = category !== "advanced";
+	const providerCategory = category !== "advanced" && category !== "mcp";
 
 	const submit = async () => {
 		const validationError = validateProviderDraft(profiles, maxIterations);
@@ -358,28 +388,37 @@ function ProviderConfigForm({
 								setDirty(true);
 							}}
 						/>
-					) : category === "connector" ? (
-						<ConnectorSettings
-							snapshot={snapshot.connector}
-							value={connector}
-							onStartOAuth={onStartConnectorOAuth}
-							onDisconnectOAuth={onDisconnectConnectorOAuth}
-							onRevealCredential={onRevealConnectorCredential}
-							onChange={(value) => {
-								setConnector(value);
-								setDirty(true);
-							}}
-						/>
-					) : (
-						<ObservabilitySettings
-							snapshot={telemetry}
-							loading={telemetryLoading}
-							loadError={telemetryLoadError}
-							onRetry={onRetry}
-							onSave={onSaveTelemetry}
-							onRevealCredential={onRevealTelemetryCredential}
-						/>
-					)}
+				) : category === "connector" ? (
+					<ConnectorSettings
+						snapshot={snapshot.connector}
+						value={connector}
+						onStartOAuth={onStartConnectorOAuth}
+						onDisconnectOAuth={onDisconnectConnectorOAuth}
+						onRevealCredential={onRevealConnectorCredential}
+						onChange={(value) => {
+							setConnector(value);
+							setDirty(true);
+						}}
+					/>
+				) : category === "mcp" ? (
+					<McpSettings
+						snapshot={mcp}
+						loading={mcpLoading}
+						loadError={mcpLoadError}
+						onRetry={onRetry}
+						onSave={onSaveMcp}
+						onRefreshStatus={onRefreshMcpStatus}
+					/>
+				) : (
+					<ObservabilitySettings
+						snapshot={telemetry}
+						loading={telemetryLoading}
+						loadError={telemetryLoadError}
+						onRetry={onRetry}
+						onSave={onSaveTelemetry}
+						onRevealCredential={onRevealTelemetryCredential}
+					/>
+				)}
 				</div>
 
 				{providerCategory ? (

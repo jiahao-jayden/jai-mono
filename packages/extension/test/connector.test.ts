@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Result } from "better-result";
 import type { CodingExtensionRuntime } from "@jai/coding-agent";
+import { Value } from "@sinclair/typebox/value";
 import { createConnectorExtension } from "../src/connector/index";
 import type {
 	ActionGuideResponse,
@@ -102,24 +103,32 @@ describe("Connector Extension", () => {
 		expect(executed).toEqual([]);
 	});
 
-	test("declares a presentation category on every registered tool", () => {
+	test("discovers Connector Actions as catalog tools with call presentation", async () => {
 		const extension = createConnectorExtension({ client: clientFor({ prepared: preparedAction("allow") }) });
-		const kinds = Object.fromEntries(
-			(extension.tools ?? []).map((tool) => [tool.name, tool.presentation?.activityKind]),
-		);
+		const catalog = extension.catalogs?.[0];
+		if (!catalog) throw new Error("Connector action catalog is unavailable");
+		const discovered = await catalog.discover(extensionContext({ requestApproval: async () => Result.ok("allowOnce") }));
+		expect(discovered.isOk()).toBe(true);
+		if (discovered.isErr()) return;
 
-		expect(kinds).toEqual({
-			connector__list_apps: "call",
-			connector__list_connections: "call",
-			connector__search_actions: "call",
-			connector__get_action_guide: "call",
-			connector__execute_action: "call",
-		});
+		expect(extension.tools).toBeUndefined();
+		expect(discovered.value.tools).toEqual([
+			expect.objectContaining({ name: "connector__demo__create", presentation: { activityKind: "call" } }),
+		]);
+		const tool = discovered.value.tools[0];
+		if (!tool) throw new Error("Connector action tool is unavailable");
+		expect(Value.Check(tool.parameters, { name: "record", kind: "issue" })).toBe(true);
+		expect(Value.Check(tool.parameters, { kind: "issue" })).toBe(false);
+		expect(Value.Check(tool.parameters, { name: "record", extra: true })).toBe(false);
 	});
 
-	test("does not vary external-call presentation by a Connector Action side effect", () => {
+	test("does not vary external-call presentation by a Connector Action side effect", async () => {
 		const extension = createConnectorExtension({ client: clientFor({ prepared: preparedAction("allow") }) });
-		const tool = extension.tools?.find((candidate) => candidate.name === "connector__execute_action");
+		const catalog = extension.catalogs?.[0];
+		if (!catalog) throw new Error("Connector action catalog is unavailable");
+		const discovered = await catalog.discover(extensionContext({ requestApproval: async () => Result.ok("allowOnce") }));
+		if (discovered.isErr()) return;
+		const tool = discovered.value.tools[0];
 
 		expect(tool?.presentation?.activityKind).toBe("call");
 		expect(tool?.presentation?.resolveActivityKind).toBeUndefined();
@@ -128,12 +137,16 @@ describe("Connector Extension", () => {
 
 async function executeAction(client: ConnectorService, context: ConnectorContext) {
 	const extension = createConnectorExtension({ client });
-	const tool = extension.tools?.find((candidate) => candidate.name === "connector__execute_action");
+	const catalog = extension.catalogs?.[0];
+	if (!catalog) throw new Error("Connector action catalog is unavailable");
+	const discovered = await catalog.discover(context);
+	if (discovered.isErr()) throw discovered.error;
+	const tool = discovered.value.tools.find((candidate) => candidate.name === "connector__demo__create");
 	if (!tool) throw new Error("Connector execute tool is unavailable");
 	return tool.execute(context, {
 		runAgent: async () => Result.ok([]),
 		toolCallId: "tool-call-1",
-		args: { actionId: "demo.create", input: { name: "record" } },
+		args: { name: "record" },
 	});
 }
 
@@ -194,7 +207,23 @@ function clientFor(input: {
 		actionSideEffect: (actionId: string) => input.sideEffects?.[actionId],
 		listApps: async () => Result.ok<ListAppsResponse>({ apps: [] }),
 		listConnections: async () => Result.ok<ListConnectionsResponse>({ connections: [] }),
-		searchActions: async (_input: SearchActionsInput) => Result.ok<SearchActionsResponse>({ actions: [], nextCursor: null }),
+		listActions: async () => Result.ok([actionGuide().action]),
+		searchActions: async (_input: SearchActionsInput) =>
+			Result.ok<SearchActionsResponse>({
+				actions: [
+					{
+						actionId: "demo.create",
+						connectorId: "demo",
+						description: "Create a demo record.",
+						policy: "ask",
+						sideEffect: "write",
+						dataSensitivity: "sensitive",
+						requiredScopes: [],
+						requiresGuide: true,
+					},
+				],
+				nextCursor: null,
+			}),
 		getActionGuide: async () => Result.ok<ActionGuideResponse>(actionGuide()),
 		prepareAction: async (_input, context) => {
 			input.onPrepare?.(context);
@@ -222,7 +251,15 @@ function actionGuide(): ActionGuideResponse {
 			connectorId: "demo",
 			actionId: "create",
 			description: "Create a demo record.",
-			inputSchema: { type: "object" },
+			inputSchema: {
+				type: "object",
+				properties: {
+					name: { type: "string" },
+					kind: { enum: ["issue", "bug"] },
+				},
+				required: ["name"],
+				additionalProperties: false,
+			},
 			outputSchema: { type: "object" },
 			requiredScopes: [],
 			sideEffect: "write",

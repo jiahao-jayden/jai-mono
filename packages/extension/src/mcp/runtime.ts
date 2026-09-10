@@ -291,7 +291,7 @@ class ManagedMcpServer {
 	}
 }
 
-function createTransport(server: McpServer): StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport {
+export function createTransport(server: McpServer): StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport {
 	if (server.type === "stdio") {
 		return new StdioClientTransport({
 			command: server.command,
@@ -334,7 +334,7 @@ function mapMcpContent(content: readonly unknown[] | undefined): CodingExtension
 }
 
 function filterGeneratedHeaders(headers: Readonly<Record<string, string>>): Record<string, string> {
-	const generated = new Set(["authorization", "mcp-session-id", "mcp-protocol-version"]);
+	const generated = new Set(["mcp-session-id", "mcp-protocol-version"]);
 	return Object.fromEntries(Object.entries(headers).filter(([key]) => !generated.has(key.toLowerCase())));
 }
 

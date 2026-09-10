@@ -52,6 +52,12 @@ interface ExecutedToolCall {
 	resultEntryId?: string;
 }
 
+interface ResolvedToolCall {
+	readonly reportedToolCall: ToolCall;
+	readonly toolCall: ToolCall;
+	readonly tool?: AgentTool;
+}
+
 interface ExecutedToolBatch {
 	messages: ToolResultMessage[];
 	terminate: boolean;
@@ -515,10 +521,8 @@ function createIterationLimitMessage(config: AgentLoopConfig, turnCount: number)
  */
 async function executeToolCallBatch(run: AgentLoopRuntime, toolCalls: ToolCall[]): Promise<ExecutedToolBatch> {
 	const { context, config, signal, emit } = run;
-	const hasSequentialTool = toolCalls.some((toolCall) => {
-		const tool = context.tools.find((candidate) => candidate.name === toolCall.name);
-		return tool?.executionMode === "sequential";
-	});
+	const resolvedToolCalls = toolCalls.map((toolCall) => resolveToolCall(config, context.tools, toolCall));
+	const hasSequentialTool = resolvedToolCalls.some(({ tool }) => tool?.executionMode === "sequential");
 
 	const sequential = config.toolExecution === "sequential" || hasSequentialTool;
 	const outcomes: ExecutedToolCall[] = [];
@@ -545,14 +549,14 @@ async function executeToolCallBatch(run: AgentLoopRuntime, toolCalls: ToolCall[]
 	};
 
 	if (sequential) {
-		for (const toolCall of toolCalls) {
+		for (const toolCall of resolvedToolCalls) {
 			const toolCallResult = await executeToolCall(run, toolCall);
 			await publish(toolCallResult);
 			if (signal?.aborted) break;
 		}
 	} else {
 		// 只读工具可并发执行；Promise.all 返回值仍保持输入顺序。
-		const parallelOutcomes = await Promise.all(toolCalls.map((toolCall) => executeToolCall(run, toolCall)));
+		const parallelOutcomes = await Promise.all(resolvedToolCalls.map((toolCall) => executeToolCall(run, toolCall)));
 
 		// Promise.all 保持输入顺序，因此回给模型的消息顺序稳定。
 		for (const outcome of parallelOutcomes) await publish(outcome);
@@ -564,9 +568,23 @@ async function executeToolCallBatch(run: AgentLoopRuntime, toolCalls: ToolCall[]
 	};
 }
 
-async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promise<ExecutedToolCall> {
-	const { context, config, signal, emit } = run;
-	const tool = context.tools.find((candidate) => candidate.name === toolCall.name);
+function resolveToolCall(
+	config: AgentLoopConfig,
+	tools: readonly AgentTool[],
+	reportedToolCall: ToolCall,
+): ResolvedToolCall {
+	const resolved = config.toolCallResolver?.(reportedToolCall, tools);
+	if (resolved) return { reportedToolCall, ...resolved };
+	return {
+		reportedToolCall,
+		toolCall: reportedToolCall,
+		tool: tools.find((candidate) => candidate.name === reportedToolCall.name),
+	};
+}
+
+async function executeToolCall(run: AgentLoopRuntime, resolved: ResolvedToolCall): Promise<ExecutedToolCall> {
+	const { config, signal, emit } = run;
+	const { reportedToolCall, toolCall, tool } = resolved;
 
 	let acceptingUpdates = true;
 	let result: AgentToolResult;
@@ -653,7 +671,7 @@ async function executeToolCall(run: AgentLoopRuntime, toolCall: ToolCall): Promi
 	}
 
 	const outcome: ExecutedToolCall = {
-		toolCall,
+		toolCall: reportedToolCall,
 		result,
 		isError,
 		...(resultEntryId ? { resultEntryId } : {}),

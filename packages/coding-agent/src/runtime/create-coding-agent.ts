@@ -18,7 +18,7 @@ import {
 	type ToolMiddleware,
 } from "@jai/agent";
 import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
-import type { Model, Provider } from "@jai/ai";
+import type { Model, Provider, ToolCall } from "@jai/ai";
 import type { TObject } from "@sinclair/typebox";
 import { attachmentUserMessage, CodingAttachmentRun, type CodingMessageAttachment } from "../attachments";
 import type { CodingCommandDispatch, CodingCommandRegistry } from "../commands";
@@ -300,7 +300,9 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const extensionToolCatalog: ExtensionToolCatalogSlot = { current: options.extensionToolCatalog };
 	const coreToolPermissions = new Map<string, ExtensionToolPermissionResolver>();
 	if (extensionToolCatalog.current) {
-		coreToolPermissions.set("SearchTools", () => extensionToolCatalog.current!.permission);
+		for (const tool of extensionToolCatalog.current.frontdoorTools) {
+			coreToolPermissions.set(tool.name, () => extensionToolCatalog.current!.permissions(tool.name)!);
+		}
 	}
 	const permissionMiddleware = createPermissionMiddleware({
 		workspaceRoot: options.executionContext.localFileAccess ? options.executionContext.cwd : process.cwd(),
@@ -334,7 +336,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			permissionMiddleware,
 			extensionTools: options.extensionTools,
 			extensionToolMiddleware: options.extensionToolMiddleware,
-			extraTools: childToolCatalog ? [childToolCatalog.searchTool] : [],
+			extraTools: childToolCatalog?.frontdoorTools ?? [],
 		});
 		const childSessionHandle = options.openChildSession ? await options.openChildSession(toolCallId) : undefined;
 		const child = new Agent({
@@ -349,7 +351,9 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			maxIterations: resolvedAgentOptions.maxIterations,
 			toolExecution: resolvedAgentOptions.toolExecution,
 			compaction: resolvedAgentOptions.compaction,
-			...(childToolCatalog ? { resolveTools: (staticTools) => childToolCatalog.toolsForRequest(staticTools) } : {}),
+			...(childToolCatalog
+				? { toolCallResolver: (toolCall) => resolveCatalogToolCall(childToolCatalog, toolCall) }
+				: {}),
 			hooks: {
 				aroundToolCall: childCapabilities.aroundToolCall,
 				onEvent: childCapabilities.onEvent,
@@ -373,7 +377,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			await child.waitForIdle();
 		}
 	};
-	const primaryTools = extensionToolCatalog.current ? [extensionToolCatalog.current.searchTool] : [];
+	const primaryTools = extensionToolCatalog.current?.frontdoorTools ?? [];
 	const capabilities = assembleAgentCapabilities({
 		kind: "primary",
 		executionContext: options.executionContext,
@@ -402,7 +406,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		toolExecution: resolvedAgentOptions.toolExecution,
 		compaction: resolvedAgentOptions.compaction,
 		...(extensionToolCatalog.current
-			? { resolveTools: (staticTools) => extensionToolCatalog.current!.toolsForRequest(staticTools) }
+			? { toolCallResolver: (toolCall) => resolveCatalogToolCall(extensionToolCatalog.current!, toolCall) }
 			: {}),
 		effectBoundary: resolvedAgentOptions.effectBoundary,
 		modelRequestObserver: options.modelRequestObserver,
@@ -418,6 +422,19 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		if (!runtime.closed && event.status === "valid") runtime.snapshot = event.snapshot;
 	});
 	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, options.commands, attachments, runAgent);
+}
+
+function resolveCatalogToolCall(catalog: ToolCatalog, toolCall: ToolCall) {
+	if (toolCall.name !== "ExecuteTool" || !isRecord(toolCall.arguments)) return;
+	const toolRef = toolCall.arguments.toolRef;
+	const input = toolCall.arguments.input;
+	if (typeof toolRef !== "string" || !isRecord(input)) return;
+	const resolved = catalog.resolve(toolRef, input);
+	if (!resolved) return;
+	return {
+		tool: resolved.tool,
+		toolCall: { ...toolCall, name: resolved.tool.name, arguments: resolved.input },
+	};
 }
 
 async function persistBashAllowRules<TSchema extends TObject>(

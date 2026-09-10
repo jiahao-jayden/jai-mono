@@ -6,6 +6,7 @@ import {
 } from "../../config";
 import type { RuntimeConnectorOAuth } from "../../connectors";
 import type { SqliteRuntimeModelCatalog } from "../../model-catalog";
+import type { RuntimeMcpSettingsController, RuntimeMcpSettingsInput } from "../../runtime-capabilities";
 import {
 	parseRuntimeTelemetrySettingsInput,
 	type RuntimeTelemetryController,
@@ -29,6 +30,7 @@ export class DesktopConfigurationControl {
 		private readonly modelCatalog?: SqliteRuntimeModelCatalog,
 		private readonly workspaceTrust?: SqliteWorkspaceTrust,
 		private readonly telemetry?: RuntimeTelemetryController,
+		private readonly mcpSettings?: RuntimeMcpSettingsController,
 	) {}
 
 	async handle(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[] | undefined> {
@@ -139,14 +141,32 @@ export class DesktopConfigurationControl {
 				if (!this.workspaceTrust) return this.error(request.id, -32601, "Workspace trust is not available");
 				return this.project(request.id, await this.workspaceTrust.get(params.workspacePath));
 			}
-			case "jai/desktop-configuration/workspace-trust/set": {
-				if (!workspaceTrustInput(params))
-					return this.error(request.id, -32602, "Invalid Workspace trust set parameters");
-				if (!this.workspaceTrust) return this.error(request.id, -32601, "Workspace trust is not available");
-				return this.project(request.id, await this.workspaceTrust.set(params));
-			}
-			default:
-				return this.error(request.id, -32601, `Unsupported Desktop configuration method "${request.method}"`);
+		case "jai/desktop-configuration/workspace-trust/set": {
+			if (!workspaceTrustInput(params))
+				return this.error(request.id, -32602, "Invalid Workspace trust set parameters");
+			if (!this.workspaceTrust) return this.error(request.id, -32601, "Workspace trust is not available");
+			return this.project(request.id, await this.workspaceTrust.set(params));
+		}
+		case "jai/desktop-configuration/mcp/get": {
+			if (Object.keys(params).length > 0)
+				return this.error(request.id, -32602, "Invalid MCP configuration get parameters");
+			if (!this.mcpSettings) return this.error(request.id, -32601, "MCP configuration is not available");
+			return this.project(request.id, await this.mcpSettings.snapshot());
+		}
+		case "jai/desktop-configuration/mcp/save": {
+			if (!mcpSaveInput(params))
+				return this.error(request.id, -32602, "Invalid MCP configuration save parameters");
+			if (!this.mcpSettings) return this.error(request.id, -32601, "MCP configuration is not available");
+			return this.project(request.id, await this.mcpSettings.save(params as RuntimeMcpSettingsInput));
+		}
+		case "jai/desktop-configuration/mcp/status": {
+			if (Object.keys(params).length > 0)
+				return this.error(request.id, -32602, "Invalid MCP status parameters");
+			if (!this.mcpSettings) return this.error(request.id, -32601, "MCP configuration is not available");
+			return this.project(request.id, await this.mcpSettings.status());
+		}
+		default:
+			return this.error(request.id, -32601, `Unsupported Desktop configuration method "${request.method}"`);
 		}
 	}
 
@@ -223,5 +243,18 @@ function workspaceTrustInput(
 ): value is { readonly workspacePath: string; readonly trusted: boolean } {
 	return (
 		Object.keys(value).length === 2 && typeof value.workspacePath === "string" && typeof value.trusted === "boolean"
+	);
+}
+
+function mcpSaveInput(
+	value: Record<string, unknown>,
+): value is { readonly revision: string; readonly mcp: unknown } {
+	return (
+		Object.keys(value).length === 2 &&
+		typeof value.revision === "string" &&
+		value.mcp !== undefined &&
+		typeof value.mcp === "object" &&
+		value.mcp !== null &&
+		!Array.isArray(value.mcp)
 	);
 }

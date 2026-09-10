@@ -52,6 +52,7 @@ import {
 	PanelRightIcon,
 	PauseIcon,
 	PlayIcon,
+	Plug01Icon,
 	RefreshIcon,
 	Rocket01Icon,
 	Search01Icon,
@@ -156,7 +157,8 @@ export type IconName =
 	| "eye"
 	| "eye-off"
 	| "skip-forward"
-	| "corner-down-right";
+	| "corner-down-right"
+	| "plug";
 
 function createHugeicon(icon: IconSvgElement): IconComponent {
 	return function Hugeicon(props) {
@@ -241,6 +243,7 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	"eye-off": createHugeicon(ViewOffSlashIcon),
 	"skip-forward": createHugeicon(Forward01Icon),
 	"corner-down-right": createHugeicon(ArrowTurnForwardIcon),
+	plug: createHugeicon(Plug01Icon),
 };
 
 const providerBrandIcons: Readonly<Record<string, IconComponent>> = {

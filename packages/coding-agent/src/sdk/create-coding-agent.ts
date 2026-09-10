@@ -100,9 +100,8 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 		const preparedExtensions = prepareExtensions(input.extensions ?? []);
 		if (preparedExtensions.isErr()) throw preparedExtensions.error;
 		extensions = preparedExtensions.value;
-		const extensionToolCatalog = extensions.some((extension) => extension.extension.catalogs?.length)
-			? new ToolCatalog([])
-			: undefined;
+		const extensionCatalogs = extensions.flatMap((extension) => extension.extension.catalogs ?? []);
+		const extensionToolCatalog = extensionCatalogs.length ? new ToolCatalog([]) : undefined;
 		const extensionToolPermissions = extensionPermissions(extensions);
 		const extensionAuthorizedToolNameSet = extensionAuthorizedToolNames(extensions);
 		const toolPresentations = new Map(builtInToolPresentations());

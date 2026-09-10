@@ -7,7 +7,13 @@ import {
 	defineExtension,
 } from "@jai/coding-agent";
 import { Result } from "better-result";
-import { type AgentPluginDirectory, type AgentPluginRuntime, type AgentPluginRuntimeOptions, activateAgentPlugins, discoverAgentPlugins } from "./runtime";
+import {
+	type AgentPluginDirectory,
+	type AgentPluginRuntime,
+	type AgentPluginRuntimeOptions,
+	activateAgentPlugins,
+	discoverAgentPlugins,
+} from "./runtime";
 
 export type { AgentPluginDirectory };
 
@@ -20,9 +26,7 @@ export type AgentPluginsExtension = CodingAgentExtension<any, any, AgentPluginRu
  * Loads portable Agent Plugins v1 Skills and MCP servers through the public
  * Coding Agent Extension contract.
  */
-export async function createAgentPluginsExtension(
-	options: AgentPluginRuntimeOptions,
-): Promise<AgentPluginsExtension> {
+export async function createAgentPluginsExtension(options: AgentPluginRuntimeOptions): Promise<AgentPluginsExtension> {
 	const discovery = await discoverAgentPlugins(options);
 	const extension = defineExtension({
 		id: "agent-plugins",

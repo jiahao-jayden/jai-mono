@@ -140,31 +140,47 @@ export class CodingConfigStore<TSchema extends TObject> {
 		settings: Partial<ResolvedCodingSettings<TSchema>>,
 		options: WriteScopeOptions,
 	): Promise<ConfigSnapshot<TSchema>> {
+		return this.writeScopeRaw(scope, settings as Record<string, unknown>, options);
+	}
+
+	/** Writes settings that include fields outside the SDK schema (e.g. product-owned `mcp`). */
+	async writeScopeRaw(
+		scope: ConfigFileScope,
+		settings: Record<string, unknown>,
+		options: WriteScopeOptions,
+	): Promise<ConfigSnapshot<TSchema>> {
 		const path = this.paths[scope];
 		if (!path) throw configScopeUnavailableError(scope);
-		let actualRevision: string | null;
 		try {
-			actualRevision = await fileRevision(path);
-		} catch (error) {
-			throw configWriteError({ scope, path }, error);
-		}
-		if (actualRevision !== options.expectedRevision) {
-			throw configWriteConflictError({
-				scope,
-				path,
-				expectedRevision: options.expectedRevision,
-				actualRevision,
-			});
-		}
+			await withWriteLock(path, async () => {
+				let actualRevision: string | null;
+				try {
+					actualRevision = await fileRevision(path);
+				} catch (error) {
+					throw configWriteError({ scope, path }, error);
+				}
+				if (actualRevision !== options.expectedRevision) {
+					throw configWriteConflictError({
+						scope,
+						path,
+						expectedRevision: options.expectedRevision,
+						actualRevision,
+					});
+				}
 
-		const document: Record<string, unknown> = {
-			$schema: this.definition.schemaUrl,
-			schemaVersion: this.definition.schemaVersion,
-			...settings,
-		};
-		this.validateDocument(scope, path, document);
-		try {
-			await atomicWrite(path, `${JSON.stringify(document, null, 2)}\n`);
+				const document: Record<string, unknown> = {
+					$schema: this.definition.schemaUrl,
+					schemaVersion: this.definition.schemaVersion,
+					...settings,
+				};
+				this.validateDocument(scope, path, document);
+				try {
+					await atomicWrite(path, `${JSON.stringify(document, null, 2)}\n`);
+				} catch (error) {
+					if (TaggedError.is(error)) throw error;
+					throw configWriteError({ scope, path }, error);
+				}
+			});
 		} catch (error) {
 			if (TaggedError.is(error)) throw error;
 			throw configWriteError({ scope, path }, error);
@@ -364,6 +380,51 @@ async function atomicWrite(path: string, content: string): Promise<void> {
 		await handle?.close().catch(() => {});
 		await rm(temporary, { force: true }).catch(() => {});
 		throw error;
+	}
+}
+
+async function withWriteLock<T>(path: string, action: () => Promise<T>): Promise<T> {
+	const directory = dirname(path);
+	const lockPath = `${path}.lock`;
+	await mkdir(directory, { recursive: true });
+	const deadline = Date.now() + 5_000;
+	let handle: Awaited<ReturnType<typeof open>> | undefined;
+	while (!handle) {
+		try {
+			handle = await open(lockPath, "wx", 0o600);
+		} catch (error) {
+			if (!isNodeError(error, "EEXIST")) throw error;
+			if (await releaseDeadWriteLock(lockPath)) continue;
+			if (Date.now() >= deadline) throw new Error(`Timed out waiting to write configuration: ${path}`);
+			await new Promise<void>((resolve) => setTimeout(resolve, 10));
+		}
+	}
+	try {
+		await handle.writeFile(String(process.pid), "utf8");
+		await handle.sync();
+		return await action();
+	} finally {
+		await handle.close().catch(() => {});
+		await rm(lockPath, { force: true }).catch(() => {});
+	}
+}
+
+async function releaseDeadWriteLock(lockPath: string): Promise<boolean> {
+	let owner: number;
+	try {
+		owner = Number.parseInt(await readFile(lockPath, "utf8"), 10);
+	} catch (error) {
+		if (isNodeError(error, "ENOENT")) return true;
+		return false;
+	}
+	if (!Number.isSafeInteger(owner) || owner < 1) return false;
+	try {
+		process.kill(owner, 0);
+		return false;
+	} catch (error) {
+		if (!isNodeError(error, "ESRCH")) return false;
+		await rm(lockPath, { force: true });
+		return true;
 	}
 }
 

@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto";
 import type { AgentTool, AgentToolResult } from "@jai/agent";
 import { Type } from "@sinclair/typebox";
-import { panic } from "better-result";
+import { panic, TaggedError } from "better-result";
 import type { CodingToolPermission } from "../permissions/tool-permission";
 
 const searchParameters = Type.Object(
@@ -10,37 +11,58 @@ const searchParameters = Type.Object(
 	},
 	{ additionalProperties: false },
 );
+const executeParameters = Type.Object(
+	{
+		toolRef: Type.String({ minLength: 1 }),
+		input: Type.Record(Type.String(), Type.Unknown()),
+	},
+	{ additionalProperties: false },
+);
 
 const searchPermission: CodingToolPermission = {
 	sideEffect: "read",
 	reason: "Searches the catalog of available tools.",
 };
 
+const executePermission: CodingToolPermission = {
+	sideEffect: "read",
+	reason: "Resolves a dynamic tool before its own permission policy is applied.",
+};
+
 export interface ToolCatalogMatch {
+	readonly toolRef: string;
 	readonly name: string;
 	readonly description: string;
+	readonly inputSchema: unknown;
 }
 
+class ToolCatalogReferenceUnavailable extends TaggedError("tool_catalog.reference_unavailable")<{
+	readonly message: string;
+}> {}
+
 /**
- * Owns catalog discovery results and the active model-visible subset. The
- * extension contract only supplies descriptors; ranking and activation stay
- * behind this seam.
+ * Owns the dynamic capability snapshot. Model-visible front-door schemas never
+ * change as catalogs refresh; resolved tools still execute through Agent core.
  */
 export class ToolCatalog {
 	readonly searchTool: AgentTool<typeof searchParameters>;
+	readonly executeTool: AgentTool<typeof executeParameters>;
 	#tools: readonly AgentTool[];
+	#references = new Map<string, AgentTool>();
 	readonly #limit: number;
-	#activeNames: readonly string[] = [];
 
-	constructor(tools: readonly AgentTool[], limit = 8) {
+	constructor(tools: readonly AgentTool[], options: { readonly limit?: number } = {}) {
+		const limit = options.limit ?? 8;
 		if (!Number.isInteger(limit) || limit < 1 || limit > 8) {
 			panic(`Tool catalog limit must be between 1 and 8, received ${limit}`);
 		}
-		this.#tools = validateCatalogTools(tools);
+		validateCatalogTools(tools);
+		this.#tools = [];
 		this.#limit = limit;
+		this.replace(tools);
 		this.searchTool = {
 			name: "SearchTools",
-			description: "Search available tools and activate matching tools for the next model request.",
+			description: "Search the dynamic tool catalog and return a tool reference, description, and input schema.",
 			parameters: searchParameters,
 			executionMode: "parallel",
 			execute: async (_toolCallId, args): Promise<AgentToolResult> => {
@@ -51,27 +73,37 @@ export class ToolCatalog {
 				};
 			},
 		};
+		this.executeTool = {
+			name: "ExecuteTool",
+			description: "Execute a dynamic tool returned by SearchTools with input that matches its schema.",
+			parameters: executeParameters,
+			executionMode: "parallel",
+			execute: async (): Promise<AgentToolResult> => {
+				throw new ToolCatalogReferenceUnavailable({
+					message: "The dynamic tool reference is unavailable. SearchTools again before retrying.",
+				});
+			},
+		};
 	}
 
-	get permission(): CodingToolPermission {
-		return searchPermission;
+	get frontdoorTools(): readonly AgentTool[] {
+		return [this.searchTool, this.executeTool];
+	}
+
+	permissions(toolName: string): CodingToolPermission | undefined {
+		if (toolName === this.searchTool.name) return searchPermission;
+		if (toolName === this.executeTool.name) return executePermission;
 	}
 
 	createScope(allow: (tool: AgentTool) => boolean): ToolCatalog {
-		return new ToolCatalog(this.#tools.filter(allow), this.#limit);
+		return new ToolCatalog(this.#tools.filter(allow), { limit: this.#limit });
 	}
 
-	/** Replaces the descriptor snapshot for future requests and retains only still-valid active names. */
+	/** Replaces the whole dynamic snapshot, making every prior reference stale. */
 	replace(tools: readonly AgentTool[]): void {
-		const next = validateCatalogTools(tools);
-		const nextNames = new Set(next.map((tool) => tool.name));
-		this.#tools = next;
-		this.#activeNames = this.#activeNames.filter((name) => nextNames.has(name));
-	}
-
-	toolsForRequest(staticTools: readonly AgentTool[]): readonly AgentTool[] {
-		const active = this.#activeNames.flatMap((name) => this.#tools.filter((tool) => tool.name === name));
-		return [...staticTools, ...active];
+		validateCatalogTools(tools);
+		this.#tools = [...tools];
+		this.#references = new Map(tools.map((tool) => [randomUUID(), tool]));
 	}
 
 	search(query: string, requestedLimit?: number): readonly ToolCatalogMatch[] {
@@ -86,11 +118,25 @@ export class ToolCatalog {
 			.sort((left, right) => right.score - left.score || left.tool.name.localeCompare(right.tool.name))
 			.slice(0, limit)
 			.map((entry) => entry.tool);
-		// Replaces the previous active set so each search refocuses the tool surface rather than growing
-		// it without bound. `executionMode: "parallel"` means concurrent searches race here and the last
-		// writer wins; that is acceptable for refocusing, but callers must not assume both survive.
-		this.#activeNames = matches.map((tool) => tool.name);
-		return matches.map((tool) => ({ name: tool.name, description: tool.description }));
+		return matches.map((tool) => ({
+			toolRef: this.#referenceFor(tool),
+			name: tool.name,
+			description: tool.description,
+			inputSchema: tool.parameters,
+		}));
+	}
+
+	resolve(toolRef: string, input: Record<string, unknown>) {
+		const tool = this.#references.get(toolRef);
+		if (!tool) return;
+		return { tool, input };
+	}
+
+	#referenceFor(tool: AgentTool): string {
+		for (const [reference, candidate] of this.#references) {
+			if (candidate === tool) return reference;
+		}
+		return panic(`Catalog reference for tool "${tool.name}" is missing`);
 	}
 }
 

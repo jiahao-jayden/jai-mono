@@ -413,6 +413,7 @@ function sessionSelect(): string {
 		journal.updated_at,
 		metadata.title_generation_attempted_at
 		FROM session_journals AS journal
+		INNER JOIN product_session_catalog AS product ON product.session_id = journal.id
 		LEFT JOIN desktop_session_metadata AS metadata ON metadata.session_id = journal.id`;
 }
 

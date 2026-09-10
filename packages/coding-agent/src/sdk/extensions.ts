@@ -4,9 +4,8 @@ import { KindGuard } from "@sinclair/typebox";
 import { panic, Result, type Result as ResultType } from "better-result";
 import type { CodingCommandRegistry } from "../commands";
 import type { JsonObject } from "../core/json";
-import type { ToolCatalog } from "../runtime/tool-catalog";
 import type { RunAgentExecution } from "../runtime/execution";
-import { executeExtensionTool } from "./extensions/execution";
+import type { ToolCatalog } from "../runtime/tool-catalog";
 import {
 	CodingExtensionDeactivationFailed,
 	type CodingExtensionError,
@@ -38,6 +37,7 @@ import type {
 	CodingToolPermission,
 	CodingTurnEndInput,
 } from "./extensions/contract";
+import { executeExtensionTool } from "./extensions/execution";
 import { extensionContext } from "./extensions/host-adapters";
 import type { CodingToolPresentation } from "./tool-presentation";
 
@@ -74,10 +74,10 @@ export type {
 	CodingExtensionTool,
 	CodingExtensionToolCall,
 	CodingExtensionToolCatalog,
+	CodingExtensionToolExecutionCall,
 	CodingExtensionToolPermissionResolver,
 	CodingExtensionToolPresentation,
 	CodingExtensionToolResult,
-	CodingExtensionToolExecutionCall,
 	CodingExtensionWorkspace,
 	CodingToolCatalogDiscovery,
 	CodingToolPermission,
@@ -525,7 +525,7 @@ function assertCatalogCapabilityNames(
 }
 
 function reservedToolNames(): Set<string> {
-	return new Set(["Read", "Write", "Edit", "Bash", "SearchTools"]);
+	return new Set(["Read", "Write", "Edit", "Bash", "SearchTools", "ExecuteTool"]);
 }
 
 function createInitializedExtension(extension: CodingAgentExtension<any, any, any>): InitializedExtension {
@@ -784,10 +784,13 @@ class ExtensionCatalogRefreshCoordinator {
 		const names = assertCatalogCapabilityNames(this.#extensions, discovered);
 		if (names.isErr()) return names;
 		if (this.#closed) return Result.ok(undefined);
+		const catalogTools: AgentTool[] = [];
 		for (const extension of this.#extensions) {
 			const mappings = new Map<string, MappedExtensionTools>();
 			for (const [catalogId, tools] of discovered.get(extension) ?? []) {
-				mappings.set(catalogId, mapExtensionTools(extension, tools));
+				const mapping = mapExtensionTools(extension, tools);
+				mappings.set(catalogId, mapping);
+				catalogTools.push(...mapping.tools);
 			}
 			const currentMappings = toolMappingState(extension);
 			currentMappings.catalogs.clear();
@@ -795,7 +798,7 @@ class ExtensionCatalogRefreshCoordinator {
 			rebuildExtensionCatalogProjection(extension);
 		}
 		syncActivationRegistries(this.#extensions, this.#registries);
-		this.#registries.toolCatalog?.replace(extensionCatalogTools(this.#extensions));
+		this.#registries.toolCatalog?.replace(catalogTools);
 		return Result.ok(undefined);
 	}
 

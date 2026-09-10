@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
 	type CodingAgentExtension,
+	CodingExtensionOperationFailed,
 	type CodingExtensionRuntime,
 	type CodingExtensionTool,
 	type CodingExtensionToolResult,
@@ -11,10 +12,12 @@ import {
 	type ConnectorService,
 	isJsonObject,
 	type JsonObject,
+	type JsonSchema,
+	type JsonValue,
 	type PrepareActionInput,
 } from "@jai/connector";
-import { type Static, Type } from "@sinclair/typebox";
-import { TaggedError } from "better-result";
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { Result, TaggedError } from "better-result";
 
 export interface ConnectorExtensionOptions {
 	readonly client: ConnectorService;
@@ -25,24 +28,6 @@ class ConnectorExtensionPermissionDenied extends TaggedError("connector_extensio
 	readonly message: string;
 }> {}
 
-const emptyParameters = Type.Object({}, { additionalProperties: false });
-const searchParameters = Type.Object(
-	{
-		query: Type.Optional(Type.String()),
-		connectorId: Type.Optional(Type.String()),
-		sideEffect: Type.Optional(Type.Union([Type.Literal("read"), Type.Literal("write"), Type.Literal("destructive")])),
-		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
-	},
-	{ additionalProperties: false },
-);
-const guideParameters = Type.Object({ actionId: Type.String({ minLength: 1 }) }, { additionalProperties: false });
-const executeParameters = Type.Object(
-	{
-		actionId: Type.String({ minLength: 1 }),
-		input: Type.Record(Type.String(), Type.Unknown()),
-	},
-	{ additionalProperties: false },
-);
 const connectorConfigurationSchema = Type.Object(
 	{
 		policy: Type.Optional(
@@ -77,91 +62,45 @@ export function createConnectorExtension(
 			schema: connectorConfigurationSchema,
 			defaultValue: connectorDefaultConfiguration,
 		},
-		tools: [
+		catalogs: [
 			{
-				name: "connector__list_apps",
-				description: "List enabled Connectors and safe connection summaries.",
-				presentation: { activityKind: "call" },
-				parameters: emptyParameters,
-				authorization: {
-					owner: "core",
-					permission: { sideEffect: "read", reason: "Lists available Connector applications." },
-				},
-				executionMode: "parallel",
-				execute: async (runtime, { toolCallId, signal }) => {
-					const result = await options.client.listApps(requestContext(runtime.sessionId, toolCallId, signal));
-					if (result.isErr()) throw result.error;
-					return textResult(result.value);
-				},
+				id: "actions",
+				discover: async (runtime, signal) => discoverConnectorActions(options.client, runtime, signal),
 			},
-			{
-				name: "connector__list_connections",
-				description: "List Connector account connections, health and scope summaries.",
-				presentation: { activityKind: "call" },
-				parameters: emptyParameters,
-				authorization: {
-					owner: "core",
-					permission: { sideEffect: "read", reason: "Lists Connector connection summaries." },
-				},
-				executionMode: "parallel",
-				execute: async (runtime, { toolCallId, signal }) => {
-					const result = await options.client.listConnections(
-						requestContext(runtime.sessionId, toolCallId, signal),
-					);
-					if (result.isErr()) throw result.error;
-					return textResult(result.value);
-				},
-			},
-			{
-				name: "connector__search_actions",
-				description: "Search available Connector Actions without exposing Connector-specific tools.",
-				presentation: { activityKind: "call" },
-				parameters: searchParameters,
-				authorization: {
-					owner: "core",
-					permission: { sideEffect: "read", reason: "Searches available Connector Actions." },
-				},
-				executionMode: "parallel",
-				execute: async (runtime, { toolCallId, args, signal }) => {
-					const result = await options.client.searchActions(
-						args as Static<typeof searchParameters>,
-						requestContext(runtime.sessionId, toolCallId, signal),
-					);
-					if (result.isErr()) throw result.error;
-					return textResult(result.value);
-				},
-			},
-			{
-				name: "connector__get_action_guide",
-				description: "Get the input/output schema and usage guide for one Connector Action.",
-				presentation: { activityKind: "call" },
-				parameters: guideParameters,
-				authorization: {
-					owner: "core",
-					permission: { sideEffect: "read", reason: "Reads a Connector Action guide." },
-				},
-				executionMode: "parallel",
-				execute: async (runtime, { toolCallId, args, signal }) => {
-					const result = await options.client.getActionGuide(
-						args as Static<typeof guideParameters>,
-						requestContext(runtime.sessionId, toolCallId, signal),
-					);
-					if (result.isErr()) throw result.error;
-					return textResult(result.value);
-				},
-			},
-			{
-				name: "connector__execute_action",
-				description: "Execute one Connector Action after discovering its guide.",
-				presentation: { activityKind: "call" },
-				parameters: executeParameters,
-				executionMode: "sequential",
-				authorization: { owner: "extension" },
-				execute: async (runtime, { toolCallId, args, signal }) =>
-					executeConnectorAction(options.client, runtime, toolCallId, executeInput(args), signal),
-			},
-		] satisfies readonly CodingExtensionTool<ConnectorExtensionConfiguration>[],
+		],
 	});
+}
+
+async function discoverConnectorActions(
+	client: ConnectorService,
+	runtime: CodingExtensionRuntime<ConnectorExtensionConfiguration>,
+	signal?: AbortSignal,
+) {
+	const request = requestContext(runtime.sessionId, randomUUID(), signal);
+	const actions = await client.listActions(request);
+	if (actions.isErr()) {
+		return Result.err(
+			new CodingExtensionOperationFailed({
+				message: "Connector Action catalog discovery failed",
+				cause: actions.error,
+			}),
+		);
+	}
+	const tools: CodingExtensionTool<ConnectorExtensionConfiguration>[] = [];
+	for (const action of actions.value) {
+		const actionId = `${action.connectorId}.${action.actionId}`;
+		tools.push({
+			name: `connector__${actionId.replaceAll(".", "__")}`,
+			description: action.description,
+			presentation: { activityKind: "call" },
+			parameters: jsonSchemaToTypeBox(action.inputSchema),
+			executionMode: action.sideEffect === "read" ? "parallel" : "sequential",
+			authorization: { owner: "extension" },
+			execute: async (toolRuntime, { toolCallId, args, signal: toolSignal }) =>
+				executeConnectorAction(client, toolRuntime, toolCallId, { actionId, input: actionInput(args) }, toolSignal),
+		});
+	}
+	return Result.ok({ tools });
 }
 
 async function executeConnectorAction(
@@ -246,16 +185,58 @@ async function persistActionAllow(
 	if (persisted.isErr()) throw persisted.error;
 }
 
-function executeInput(args: JsonObject): PrepareActionInput {
-	const actionId = args.actionId;
-	const input = args.input;
-	if (typeof actionId !== "string" || !isJsonObject(input)) {
+function actionInput(args: JsonObject): JsonObject {
+	if (!isJsonObject(args)) {
 		throw new ConnectorInputInvalid({
-			message: "Connector Action input must include an action ID and JSON object input",
-			data: { actionId: typeof actionId === "string" ? actionId : "", reason: "invalid tool arguments" },
+			message: "Connector Action input must be a JSON object",
+			data: { actionId: "", reason: "invalid tool arguments" },
 		});
 	}
-	return { actionId, input };
+	return args;
+}
+
+function jsonSchemaToTypeBox(schema: JsonSchema): TSchema {
+	if (schema.enum && schema.enum.length > 0) {
+		const literals = schema.enum.flatMap((value) => literalSchema(value));
+		if (literals.length === 1) return literals[0]!;
+		if (literals.length > 1) return Type.Union(literals);
+	}
+	switch (schema.type) {
+		case "object": {
+			const required = new Set(schema.required ?? []);
+			const properties = Object.fromEntries(
+				Object.entries(schema.properties ?? {}).map(([name, value]) => [
+					name,
+					required.has(name) ? jsonSchemaToTypeBox(value) : Type.Optional(jsonSchemaToTypeBox(value)),
+				]),
+			) as Record<string, TSchema>;
+			return Type.Object(properties, { additionalProperties: schema.additionalProperties !== false });
+		}
+		case "array":
+			return Type.Array(schema.items ? jsonSchemaToTypeBox(schema.items) : Type.Unknown());
+		case "string":
+			return Type.String({
+				...(schema.minLength === undefined ? {} : { minLength: schema.minLength }),
+				...(schema.maxLength === undefined ? {} : { maxLength: schema.maxLength }),
+			});
+		case "number":
+			return Type.Number();
+		case "integer":
+			return Type.Integer();
+		case "boolean":
+			return Type.Boolean();
+		case "null":
+			return Type.Null();
+		default:
+			return Type.Unknown();
+	}
+}
+
+function literalSchema(value: JsonValue): TSchema[] {
+	if (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+		return [Type.Literal(value)];
+	if (value === null) return [Type.Null()];
+	return [];
 }
 
 function requestContext(sessionId: string, requestId: string, signal?: AbortSignal) {

@@ -1,6 +1,7 @@
 import { createSubagentExtension } from "@jai/extension/subagent";
 import { createTodoExtension } from "@jai/extension/todo";
 import type { TelemetryContext } from "@jai/telemetry";
+import { homedir } from "node:os";
 import { Result, type Result as ResultType } from "better-result";
 import {
 	CodingAgentOperationDriver,
@@ -36,9 +37,11 @@ export async function openConfiguredRuntimeHost(
 	options: OpenConfiguredRuntimeHostOptions = {},
 ): Promise<ResultType<JaiRuntimeServer, RuntimeHostConfigurationInvalid | JaiRuntimeServerOpenFailed>> {
 	const environment = options.environment ?? process.env;
-	const dataDirectory = options.dataDirectory ?? resolveJaiDataDirectory(environment);
+	const homeDirectory = options.homeDirectory ?? homedir();
+	const dataDirectory = options.dataDirectory ?? resolveJaiDataDirectory(environment, homeDirectory);
 	const opened = await openJaiRuntimeServer({
 		dataDirectory,
+		homeDirectory,
 		createOperationDriver: ({ agentSettings, workspaceTrust, telemetry }) => {
 			const capabilitySource =
 				options.capabilitySource ??

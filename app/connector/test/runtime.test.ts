@@ -145,6 +145,23 @@ describe("MemoryConnectorService", () => {
 		if (secret.isOk()) expect(secret.value.actions).toHaveLength(0);
 	});
 
+	test("lists a complete Agent-discoverable Action snapshot", async () => {
+		const adapter: ConnectorAdapter = {
+			definition: connector,
+			actions: [queryAction, hiddenAction, secretAction],
+			execute: async (action, input) => Result.ok<JsonValue>({ actionId: action.actionId, input }),
+		};
+		const service = new MemoryConnectorService({
+			adapters: [adapter],
+			connections: [connection],
+			policy: { default: "allow", actions: { "demo.internal_check": "deny" } },
+		});
+
+		const actions = await service.listActions({ requestId: "request-1", sessionId: "session-1" });
+
+		expect(actions).toMatchObject({ status: "ok", value: [queryAction, hiddenAction] });
+	});
+
 	test("rejects changed prepared actions and prevents replays after execution", async () => {
 		const service = createService();
 		const prepared = await service.prepareAction(

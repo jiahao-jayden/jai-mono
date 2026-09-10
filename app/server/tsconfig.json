@@ -3,6 +3,9 @@
 	"compilerOptions": {
 		"noEmit": true,
 		"paths": {
+			"@jai/coding-agent": [
+				"../../packages/coding-agent/src/sdk.ts"
+			],
 			"@jai/extension/web-search": [
 				"../../packages/extension/src/web-search/index.ts"
 			],
@@ -11,6 +14,9 @@
 			],
 			"@jai/extension/subagent": [
 				"../../packages/extension/src/subagent/index.ts"
+			],
+			"@jai/extension/mcp": [
+				"../../packages/extension/src/mcp/index.ts"
 			]
 		}
 	},

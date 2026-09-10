@@ -10,6 +10,7 @@ import { ProductSqliteDatabase, SqliteDesktopCatalogAccess, SqliteProductSession
 import type { AcpImplementationInfo } from "../protocol/acp-v2";
 import { type OwnedLocalRuntimeHost, openLocalRuntimeHost } from "../protocol/acp-v2";
 import { InMemoryProductSessionPersistence } from "../sessions";
+import { RuntimeMcpSettingsController } from "../runtime-capabilities";
 import { RuntimeTelemetryController } from "../telemetry";
 import { SqliteWorkspaceTrust } from "../workspaces";
 import type { RuntimeHostConfigurationInvalid } from "./configuration";
@@ -24,6 +25,8 @@ export class JaiRuntimeServerOpenFailed extends TaggedError("runtime_server.open
 export interface OpenJaiRuntimeServerOptions {
 	/** Owns `$JAI_HOME` layout; the only durable database is `data.sqlite` within it. */
 	readonly dataDirectory: string;
+	/** Resolved user home directory used to locate `~/.jai/settings.json` for MCP configuration. */
+	readonly homeDirectory: string;
 	/**
 	 * Product assembly has access to durable Server configuration, never a raw
 	 * SQLite connection. This is deliberately the single construction seam for
@@ -56,12 +59,14 @@ export async function openJaiRuntimeServer(
 	let connectorOAuth: RuntimeConnectorOAuth | undefined;
 	let modelCatalog: SqliteRuntimeModelCatalog | undefined;
 	let telemetry: RuntimeTelemetryController | undefined;
+	let mcpSettings: RuntimeMcpSettingsController | undefined;
 	try {
 		database = await ProductSqliteDatabase.open(join(options.dataDirectory, "data.sqlite"));
 		const persistence = new SqliteProductSessionPersistence(database.connection);
 		const desktopCatalog = new SqliteDesktopCatalogAccess(database.connection);
 		const agentSettings = new SqliteRuntimeAgentSettings(database.connection);
 		const workspaceTrust = new SqliteWorkspaceTrust(database.connection);
+		mcpSettings = new RuntimeMcpSettingsController({ homeDirectory: options.homeDirectory });
 		if (!options.telemetry) {
 			const openedTelemetry = await RuntimeTelemetryController.open({
 				dataDirectory: options.dataDirectory,
@@ -101,25 +106,27 @@ export async function openJaiRuntimeServer(
 			initialAppState: () => emptyPersistedCodingSessionState(),
 			configurationPolicy: createRuntimeSessionConfigurationPolicy(agentSettings),
 		});
-		const opened = await openLocalRuntimeHost({
-			dataDirectory: options.dataDirectory,
-			host,
-			info: options.info,
-			desktopCatalog,
-			desktopConfiguration: agentSettings,
-			desktopConnectorOAuth: connectorOAuth,
-			desktopModelCatalog: modelCatalog,
-			desktopWorkspaceTrust: workspaceTrust,
-			...(telemetry ? { desktopTelemetry: telemetry } : {}),
-			...(options.endpoint ? { endpoint: options.endpoint } : {}),
-		});
-		if (opened.isErr()) throw opened.error;
-		localHost = opened.value;
-		return Result.ok(new JaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog, telemetry));
+	const opened = await openLocalRuntimeHost({
+		dataDirectory: options.dataDirectory,
+		host,
+		info: options.info,
+		desktopCatalog,
+		desktopConfiguration: agentSettings,
+		desktopConnectorOAuth: connectorOAuth,
+		desktopModelCatalog: modelCatalog,
+		desktopWorkspaceTrust: workspaceTrust,
+		...(telemetry ? { desktopTelemetry: telemetry } : {}),
+		desktopMcpSettings: mcpSettings,
+		...(options.endpoint ? { endpoint: options.endpoint } : {}),
+	});
+	if (opened.isErr()) throw opened.error;
+	localHost = opened.value;
+	return Result.ok(new JaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog, telemetry, mcpSettings));
 	} catch (error) {
 		await localHost?.close().catch(() => {});
 		connectorOAuth?.close();
 		modelCatalog?.close();
+		mcpSettings?.close();
 		await telemetry?.close().catch(() => {});
 		database?.close();
 		return Result.err(
@@ -143,6 +150,7 @@ export class JaiRuntimeServer {
 		private readonly connectorOAuth: RuntimeConnectorOAuth,
 		private readonly modelCatalog: SqliteRuntimeModelCatalog,
 		private readonly telemetry: RuntimeTelemetryController | undefined,
+		private readonly mcpSettings: RuntimeMcpSettingsController | undefined,
 	) {
 		this.#localHost = localHost;
 	}
@@ -172,9 +180,13 @@ export class JaiRuntimeServer {
 					this.modelCatalog.close();
 				} finally {
 					try {
-						this.database.close();
+						this.mcpSettings?.close();
 					} finally {
-						await this.telemetry?.close();
+						try {
+							this.database.close();
+						} finally {
+							await this.telemetry?.close();
+						}
 					}
 				}
 			}

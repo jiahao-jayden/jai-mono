@@ -209,6 +209,24 @@ describe("CodingConfigStore", () => {
 		expect(initial.scopeRevisions["project-local"]).toBeNull();
 	});
 
+	test("concurrent writers with one revision leave one complete document and one conflict", async () => {
+		const fixture = await createFixture();
+		const first = new CodingConfigStore(definition, { ...fixture.options, workspaceTrusted: true });
+		const second = new CodingConfigStore(definition, { ...fixture.options, workspaceTrusted: true });
+
+		const writes = await Promise.allSettled([
+			first.writeScope("project-local", { name: "first" }, { expectedRevision: null }),
+			second.writeScope("project-local", { name: "second" }, { expectedRevision: null }),
+		]);
+
+		expect(writes.filter((write) => write.status === "fulfilled")).toHaveLength(1);
+		expect(writes.filter((write) => write.status === "rejected")).toEqual([
+			expect.objectContaining({ reason: expect.objectContaining({ _tag: "coding_config.write_conflict" }) }),
+		]);
+		const document = JSON.parse(await readFile(fixture.paths["project-local"]!, "utf8"));
+		expect(["first", "second"]).toContain(document.name);
+	});
+
 	test("读取单一 scope 不混入默认值、项目值或环境变量", async () => {
 		const fixture = await createFixture();
 		await put(fixture.paths.user, { name: "user", metadata: { left: "kept" } });

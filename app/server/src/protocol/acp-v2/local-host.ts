@@ -4,10 +4,11 @@ import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { SqliteRuntimeAgentSettings } from "../../config";
 import type { RuntimeConnectorOAuth } from "../../connectors";
 import type { SqliteRuntimeModelCatalog } from "../../model-catalog";
+import type { SqliteDesktopCatalogAccess } from "../../persistence/sqlite/desktop-catalog";
 import { acquireLocalRuntimeOwner, type LocalRuntimeOwner, type RuntimeHost } from "../../runtime";
+import type { RuntimeMcpSettingsController } from "../../runtime-capabilities";
 import type { RuntimeTelemetryController } from "../../telemetry";
 import type { SqliteWorkspaceTrust } from "../../workspaces";
-import type { SqliteDesktopCatalogAccess } from "../../persistence/sqlite/desktop-catalog";
 import {
 	DesktopCatalogControl,
 	type LocalDesktopCatalogControlServer,
@@ -46,6 +47,8 @@ export interface OpenLocalRuntimeHostOptions {
 	readonly desktopWorkspaceTrust?: SqliteWorkspaceTrust;
 	/** Server-owned telemetry settings projected through Desktop configuration. */
 	readonly desktopTelemetry?: RuntimeTelemetryController;
+	/** Host-owned global MCP configuration in ~/.jai/settings.json projected through Desktop configuration. */
+	readonly desktopMcpSettings?: RuntimeMcpSettingsController;
 	/** Overrides the OS-specific default for test or embedding hosts. */
 	readonly endpoint?: string;
 }
@@ -112,6 +115,7 @@ export async function openLocalRuntimeHost(
 					options.desktopModelCatalog,
 					options.desktopWorkspaceTrust,
 					options.desktopTelemetry,
+					options.desktopMcpSettings,
 				),
 			});
 			if (openedConfiguration.isErr()) throw openedConfiguration.error;

@@ -143,10 +143,10 @@ describe("permission middleware", () => {
 		const middleware = createPermissionMiddleware({
 			workspaceRoot,
 			settings: {},
-			extensionAuthorizedToolNames: new Set(["connector__execute_action"]),
+			extensionAuthorizedToolNames: new Set(["connector__github__create_issue"]),
 			extensionToolPermissions: new Map([
 				[
-					"connector__execute_action",
+					"connector__github__create_issue",
 					async () => {
 						corePermissionLookups++;
 						return { sideEffect: "write" as const, reason: "Core should not inspect this action" };
@@ -159,7 +159,7 @@ describe("permission middleware", () => {
 			},
 		});
 
-		await middleware(context("connector__execute_action", { actionId: "github.create_issue" }), async () => {
+		await middleware(context("connector__github__create_issue", { title: "Issue" }), async () => {
 			executions++;
 			return { content: [] };
 		});

@@ -3,8 +3,10 @@ import {
 	type CodingExtensionConfigurationLayers,
 	CodingExtensionOperationFailed,
 	defineExtension,
+	type JsonObject,
 } from "@jai/coding-agent";
 import { Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { Result, type Result as ResultType } from "better-result";
 import { McpExtensionRuntime } from "./runtime";
 import type { McpExtensionConfiguration, McpExtensionOptions, McpServer } from "./types";
@@ -86,7 +88,7 @@ const resolvedConfigurationSchema = Type.Object(
 /** Creates the official MCP capability provider. Host code only installs this Extension. */
 export function createMcpExtension(
 	options: McpExtensionOptions = {},
-): CodingAgentExtension<McpExtensionConfiguration, {}, McpExtensionRuntime> {
+): CodingAgentExtension<McpExtensionConfiguration, Record<never, never>, McpExtensionRuntime> {
 	const id = options.id ?? "mcp";
 	const namespace = options.namespace ?? "mcp";
 	const initialRetryDelayMs = positiveDelay(options.initialRetryDelayMs, DEFAULT_INITIAL_RETRY_DELAY_MS);
@@ -221,4 +223,18 @@ function isAllowedRemoteUrl(value: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Validates raw user MCP configuration (the `mcp` section of settings.json) before persistence. */
+export function validateRawMcpConfiguration(value: unknown): ResultType<JsonObject, CodingExtensionOperationFailed> {
+	if (!isRecord(value)) {
+		return Result.err(new CodingExtensionOperationFailed({ message: "MCP configuration must be an object" }));
+	}
+	if (!Value.Check(rawConfigurationSchema, value)) {
+		const issues = [...Value.Errors(rawConfigurationSchema, value)]
+			.map((error) => `${error.path || "/"}: ${error.message}`)
+			.join("; ");
+		return Result.err(new CodingExtensionOperationFailed({ message: `MCP configuration is invalid: ${issues}` }));
+	}
+	return Result.ok(structuredClone(value) as JsonObject);
 }

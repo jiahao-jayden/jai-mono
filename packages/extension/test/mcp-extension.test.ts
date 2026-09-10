@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { Result } from "better-result";
 import type { JsonObject } from "@jai/coding-agent";
 import { disposeExtensions, initializeExtensions } from "../../coding-agent/src/sdk/extensions";
-import { createMcpExtension, resolveMcpConfiguration } from "../src/mcp";
+import { createMcpExtension, probeMcpServers, resolveMcpConfiguration, validateRawMcpConfiguration } from "../src/mcp";
+import type { McpServerStatus } from "../src/mcp";
 
 const context = {
 	sessionId: "mcp-extension-session",
@@ -95,6 +96,155 @@ describe("Official MCP Extension", () => {
 		expect(initialized.value[0]!.catalogTools.map((tool) => tool.name)).toEqual(["mcp__settings__notifications__second"]);
 		const disposed = await disposeExtensions(initialized.value);
 		expect(disposed.isOk()).toBe(true);
+	});
+});
+
+describe("validateRawMcpConfiguration", () => {
+	test("accepts a valid configuration with all transports", () => {
+		const valid = {
+			servers: {
+				local: { type: "stdio", command: "node", args: ["server.js"], env: { PATH: "/usr/bin" } },
+				remote: { type: "streamable-http", url: "https://example.com/mcp", headers: { Authorization: "Bearer x" } },
+				legacy: { type: "sse", url: "https://example.com/sse" },
+			},
+		};
+		const result = validateRawMcpConfiguration(valid);
+		expect(result.isOk()).toBe(true);
+		if (result.isErr()) return;
+		expect(result.value).toEqual(valid);
+	});
+
+	test("accepts an empty servers object", () => {
+		const result = validateRawMcpConfiguration({ servers: {} });
+		expect(result.isOk()).toBe(true);
+	});
+
+	test("accepts an object without servers", () => {
+		const result = validateRawMcpConfiguration({});
+		expect(result.isOk()).toBe(true);
+	});
+
+	test("rejects a non-object", () => {
+		const result = validateRawMcpConfiguration("not an object");
+		expect(result.isErr()).toBe(true);
+	});
+
+	test("rejects an unknown transport type", () => {
+		const result = validateRawMcpConfiguration({
+			servers: { bad: { type: "websocket", url: "wss://example.com" } },
+		});
+		expect(result.isErr()).toBe(true);
+	});
+
+	test("rejects a stdio server without a command", () => {
+		const result = validateRawMcpConfiguration({
+			servers: { bad: { type: "stdio", command: "" } },
+		});
+		expect(result.isErr()).toBe(true);
+	});
+
+	test("rejects additional top-level fields", () => {
+		const result = validateRawMcpConfiguration({ servers: {}, extra: true });
+		expect(result.isErr()).toBe(true);
+	});
+});
+
+describe("probeMcpServers", () => {
+	test("probes a stdio server and reports connected status with tool count", async () => {
+		const resolved = resolveMcpConfiguration({
+			user: {
+				servers: {
+					stdioProbe: { type: "stdio", command: "node", args: ["-e", stdioProbe("echo")], env: {} },
+				},
+			} as unknown as JsonObject,
+		});
+		if (resolved.isErr()) throw resolved.error;
+		const result = await probeMcpServers(resolved.value);
+		expect(result.isOk()).toBe(true);
+		if (result.isErr()) return;
+		expect(result.value.servers).toHaveLength(1);
+		expect(result.value.servers[0]).toMatchObject({
+			name: "stdioProbe",
+			type: "stdio",
+			connected: true,
+			toolCount: 1,
+		});
+	});
+
+	test("probes a streamable-http server and reports connected status", async () => {
+		const probe = await createHttpProbe("streamable-http");
+		try {
+			const resolved = resolveMcpConfiguration({
+				user: {
+					servers: {
+						httpProbe: { type: "streamable-http", url: probe.url, headers: {} },
+					},
+				} as unknown as JsonObject,
+			});
+			if (resolved.isErr()) throw resolved.error;
+			const result = await probeMcpServers(resolved.value);
+			expect(result.isOk()).toBe(true);
+			if (result.isErr()) return;
+			expect(result.value.servers).toHaveLength(1);
+			expect(result.value.servers[0]).toMatchObject({
+				name: "httpProbe",
+				type: "streamable-http",
+				connected: true,
+				toolCount: 1,
+			});
+		} finally {
+			await probe.close();
+		}
+	});
+
+	test("reports failed status for an unreachable server without leaking headers or cause", async () => {
+		const resolved = resolveMcpConfiguration({
+			user: {
+				servers: {
+					bad: {
+						type: "streamable-http",
+						url: "http://127.0.0.1:1/mcp",
+						headers: { Authorization: "Bearer secret-token" },
+					},
+				},
+			} as unknown as JsonObject,
+		});
+		if (resolved.isErr()) throw resolved.error;
+		const result = await probeMcpServers(resolved.value, { timeoutMs: 1000 });
+		expect(result.isOk()).toBe(true);
+		if (result.isErr()) return;
+		expect(result.value.servers).toHaveLength(1);
+		const server = result.value.servers[0]!;
+		expect(server.connected).toBe(false);
+		expect(server.toolCount).toBe(0);
+		expect(server.error).toBeDefined();
+		expect(JSON.stringify(server)).not.toContain("secret-token");
+		expect(JSON.stringify(server)).not.toContain("Bearer");
+	});
+
+	test("isolates failures: one failing server does not affect another", async () => {
+		const probe = await createHttpProbe("streamable-http");
+		try {
+			const resolved = resolveMcpConfiguration({
+				user: {
+					servers: {
+						good: { type: "streamable-http", url: probe.url, headers: {} },
+						bad: { type: "streamable-http", url: "http://127.0.0.1:1/mcp", headers: {} },
+					},
+				} as unknown as JsonObject,
+			});
+			if (resolved.isErr()) throw resolved.error;
+			const result = await probeMcpServers(resolved.value, { timeoutMs: 1000 });
+			expect(result.isOk()).toBe(true);
+			if (result.isErr()) return;
+			expect(result.value.servers).toHaveLength(2);
+			const good = result.value.servers.find((s: McpServerStatus) => s.name === "good");
+			const bad = result.value.servers.find((s: McpServerStatus) => s.name === "bad");
+			expect(good?.connected).toBe(true);
+			expect(bad?.connected).toBe(false);
+		} finally {
+			await probe.close();
+		}
 	});
 });
 

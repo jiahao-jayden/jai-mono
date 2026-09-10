@@ -152,6 +152,7 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 			providerOptions: options.providerOptions,
 			maxIterations: options.maxIterations,
 			toolExecution: options.toolExecution,
+			toolCallResolver: options.toolCallResolver,
 			effectBoundary: options.effectBoundary,
 			modelRequestObserver: options.modelRequestObserver,
 			effectGate: options.effectGate,

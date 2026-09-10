@@ -138,6 +138,17 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				return rt.config.revealTelemetryCredential(credentialId);
 			},
 		},
+		mcp: {
+			get() {
+				return rt.config.getMcpSettings();
+			},
+			save(_event, input) {
+				return rt.config.saveMcpSettings(input);
+			},
+			status() {
+				return rt.config.getMcpStatus();
+			},
+		},
 		connector: {
 			revealCredential(_event, connectorId, credentialKey) {
 				return rt.config.revealConnectorCredential(connectorId, credentialKey);

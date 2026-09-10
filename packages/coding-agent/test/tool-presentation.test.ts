@@ -8,7 +8,7 @@ describe("CodingEventProjector", () => {
 		const projector = new CodingEventProjector(
 			new Map([
 				[
-					"connector__execute_action",
+					"connector__github__create_issue",
 					{
 						title: () => "Create record",
 						resolveActivityKind: () => {
@@ -22,8 +22,8 @@ describe("CodingEventProjector", () => {
 		const start: Extract<AgentEvent, { type: "tool_execution_start" }> = {
 			type: "tool_execution_start",
 			toolCallId: "call-1",
-			toolName: "connector__execute_action",
-			args: { actionId: "crm.create" },
+			toolName: "connector__github__create_issue",
+			args: { title: "Record" },
 		};
 
 		expect(projector.project(start)).toMatchObject({
@@ -35,7 +35,7 @@ describe("CodingEventProjector", () => {
 			projector.project({
 				type: "tool_execution_update",
 				toolCallId: "call-1",
-				toolName: "connector__execute_action",
+				toolName: "connector__github__create_issue",
 				partial: { content: [] },
 			}),
 		).toMatchObject({ activityKind: "call" });
@@ -43,7 +43,7 @@ describe("CodingEventProjector", () => {
 			projector.project({
 				type: "tool_execution_end",
 				toolCallId: "call-1",
-				toolName: "connector__execute_action",
+				toolName: "connector__github__create_issue",
 				result: { content: [] },
 				isError: false,
 			}),

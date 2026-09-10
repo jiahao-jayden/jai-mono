@@ -56,6 +56,18 @@ export interface AgentTool<T extends TSchema = TSchema, TDetails = unknown> exte
 	executionMode?: ToolExecutionMode;
 }
 
+/**
+ * Converts a stable front-door invocation into the concrete tool that owns its
+ * validation, authorization, effects and presentation. Returning undefined
+ * leaves the original call on the normal dispatch path.
+ */
+export interface ResolvedToolCall {
+	readonly toolCall: ToolCall;
+	readonly tool: AgentTool;
+}
+
+export type ToolCallResolver = (toolCall: ToolCall, tools: readonly AgentTool[]) => ResolvedToolCall | undefined;
+
 /** 传给中间件的单次调用上下文：定位、校验后、execute 前的快照。 */
 export interface ToolCallContext {
 	toolCall: ToolCall;
@@ -198,6 +210,8 @@ export interface AgentLoopConfig {
 	maxIterations?: number;
 	/** 工具执行模式，默认 "parallel"。 */
 	toolExecution?: ToolExecutionMode;
+	/** Resolves stable front-door calls before tool scheduling and validation. */
+	toolCallResolver?: ToolCallResolver;
 	/**
 	 * 工具执行的拦截链（洋葱模型），按数组顺序自外向内包裹 execute。
 	 * 用于权限、参数改写、结果包装、重试等横切逻辑。默认无。

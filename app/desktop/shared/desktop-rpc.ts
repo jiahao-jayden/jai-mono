@@ -520,6 +520,33 @@ export interface DesktopTelemetryCredentialRevealResult {
 	readonly value: string;
 }
 
+/** Safe Desktop projection of the global MCP configuration stored in ~/.jai/settings.json. */
+export interface DesktopMcpSettingsSnapshot {
+	readonly revision: string | null;
+	readonly mcp: unknown;
+}
+
+/** Write-only MCP configuration payload; the renderer keeps this only in its short-lived form draft. */
+export interface DesktopMcpSettingsInput {
+	readonly revision: string | null;
+	readonly mcp: unknown;
+}
+
+export type DesktopMcpTransportType = "stdio" | "streamable-http" | "sse";
+
+/** Safe, read-only status of one MCP server connection. Never leaks headers, tokens, cause, or stack. */
+export interface DesktopMcpServerStatus {
+	readonly name: string;
+	readonly type: DesktopMcpTransportType;
+	readonly connected: boolean;
+	readonly toolCount?: number;
+	readonly error?: string;
+}
+
+export interface DesktopMcpStatus {
+	readonly servers: readonly DesktopMcpServerStatus[];
+}
+
 export interface DesktopSlashInvocation {
 	readonly name: string;
 	readonly kind: "skill" | "command";
@@ -875,6 +902,11 @@ export interface DesktopApi {
 		get(): Promise<DesktopTelemetrySettingsSnapshot>;
 		save(input: DesktopTelemetrySettingsInput): Promise<DesktopTelemetrySettingsSnapshot>;
 		revealCredential(credentialId: DesktopTelemetryCredentialId): Promise<DesktopTelemetryCredentialRevealResult>;
+	};
+	readonly mcp: {
+		get(): Promise<DesktopMcpSettingsSnapshot>;
+		save(input: DesktopMcpSettingsInput): Promise<DesktopMcpSettingsSnapshot>;
+		status(): Promise<DesktopMcpStatus>;
 	};
 	readonly connector: {
 		revealCredential(connectorId: string, credentialKey: string): Promise<DesktopConnectorCredentialRevealResult>;

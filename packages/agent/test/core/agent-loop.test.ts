@@ -294,6 +294,138 @@ describe("agentLoop", () => {
 		);
 	});
 
+	test("resolves a stable front-door call before concrete tool validation and lifecycle events", async () => {
+		const executeParameters = Type.Object({
+			toolRef: Type.String(),
+			input: Type.Record(Type.String(), Type.Unknown()),
+		});
+		const targetParameters = Type.Object({ path: Type.String() });
+		const target: AgentTool<typeof targetParameters> = {
+			name: "McpRead",
+			description: "Read an MCP resource",
+			parameters: targetParameters,
+			executionMode: "sequential",
+			async execute(_id, args) {
+				return { content: [{ type: "text", text: args.path }] };
+			},
+		};
+		const executeTool: AgentTool<typeof executeParameters> = {
+			name: "ExecuteTool",
+			description: "Stable dynamic tool front door",
+			parameters: executeParameters,
+			async execute() {
+				throw new Error("front door should have been resolved");
+			},
+		};
+		const call: ToolCall = {
+			type: "toolCall",
+			id: "frontdoor-call",
+			name: "ExecuteTool",
+			arguments: { toolRef: "opaque-reference", input: { path: "resource.txt" } },
+		};
+		const middlewareTools: string[] = [];
+
+		const { events, messages } = await collect(
+			agentLoop([user("read the resource")], context([executeTool]), {
+				model,
+				provider: providerFor([assistant([call], "toolUse"), assistant([{ type: "text", text: "done" }])], []),
+				toolCallResolver: (toolCall) =>
+					toolCall.name === "ExecuteTool"
+						? { tool: target, toolCall: { ...toolCall, name: target.name, arguments: { path: "resource.txt" } } }
+						: undefined,
+				toolMiddlewares: [
+					async (toolContext, next) => {
+						middlewareTools.push(`${toolContext.tool.name}:${String(toolContext.args.path)}`);
+						return next();
+					},
+				],
+			}),
+		);
+
+		expect(middlewareTools).toEqual(["McpRead:resource.txt"]);
+		expect(events.find((event) => event.type === "tool_execution_start")).toMatchObject({
+			toolCallId: "frontdoor-call",
+			toolName: "McpRead",
+			args: { path: "resource.txt" },
+		});
+		expect(messages.find((message) => message.role === "toolResult")).toMatchObject({
+			toolCallId: "frontdoor-call",
+			toolName: "ExecuteTool",
+			content: [{ type: "text", text: "resource.txt" }],
+		});
+	});
+
+	test("uses a resolved target's sequential mode and effect identity", async () => {
+		const executeParameters = Type.Object({
+			toolRef: Type.String(),
+			input: Type.Record(Type.String(), Type.Unknown()),
+		});
+		const targetParameters = Type.Object({});
+		const order: string[] = [];
+		const effects: string[] = [];
+		const target: AgentTool<typeof targetParameters> = {
+			name: "McpWrite",
+			description: "Write through MCP",
+			parameters: targetParameters,
+			executionMode: "sequential",
+			async execute() {
+				order.push("target:start");
+				await new Promise<void>((resolve) => setTimeout(resolve, 5));
+				order.push("target:end");
+				return { content: [] };
+			},
+		};
+		const executeTool: AgentTool<typeof executeParameters> = {
+			name: "ExecuteTool",
+			description: "Stable dynamic tool front door",
+			parameters: executeParameters,
+			async execute() {
+				throw new Error("front door should have been resolved");
+			},
+		};
+		const other: AgentTool<typeof targetParameters> = {
+			name: "Other",
+			description: "A parallel tool",
+			parameters: targetParameters,
+			async execute() {
+				order.push("other");
+				return { content: [] };
+			},
+		};
+		const frontDoorCall: ToolCall = {
+			type: "toolCall",
+			id: "frontdoor-call",
+			name: "ExecuteTool",
+			arguments: { toolRef: "opaque-reference", input: {} },
+		};
+		const otherCall: ToolCall = { type: "toolCall", id: "other-call", name: "Other", arguments: {} };
+
+		await collect(
+			agentLoop([user("write")], context([executeTool, other]), {
+				model,
+				provider: providerFor(
+					[assistant([frontDoorCall, otherCall], "toolUse"), assistant([{ type: "text", text: "done" }])],
+					[],
+				),
+				toolCallResolver: (toolCall) =>
+					toolCall.name === "ExecuteTool"
+						? { tool: target, toolCall: { ...toolCall, name: target.name, arguments: {} } }
+						: undefined,
+				effectBoundary: {
+					beforeModelEffect: async () => ({ entryId: "model-effect" }),
+					afterModelEffect: async () => {},
+					beforeToolEffect: async ({ tool, toolCall }) => {
+						effects.push(`${tool.name}:${toolCall.name}`);
+						return { entryId: "tool-effect" };
+					},
+				},
+			}),
+		);
+
+		expect(order).toEqual(["target:start", "target:end", "other"]);
+		expect(effects).toContain("McpWrite:McpWrite");
+	});
+
 	test("keeps tool lifecycle events free of presentation metadata", async () => {
 		const toolCall: ToolCall = {
 			type: "toolCall",

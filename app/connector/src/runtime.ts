@@ -112,6 +112,13 @@ export class MemoryConnectorService implements ConnectorService {
 		return Result.ok({ connections });
 	}
 
+	async listActions(_context: RequestContext): Promise<ResultType<readonly ActionDefinition[], never>> {
+		const actions = [...this.#actions.values()]
+			.filter((action) => !this.#isActionHidden(action))
+			.map((action) => structuredClone(action));
+		return Result.ok(actions);
+	}
+
 	async searchActions(
 		input: SearchActionsInput,
 		_context: RequestContext,

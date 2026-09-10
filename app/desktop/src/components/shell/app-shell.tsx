@@ -30,6 +30,7 @@ import { useIcons } from "@/lib/icon-context";
 import { selectDraft, useDesktopChatStore } from "@/stores/chat";
 import {
 	type DesktopArtifact,
+	type DesktopMcpSettingsInput,
 	type DesktopProject,
 	type DesktopProviderConfigInput,
 	type DesktopSubagentItem,
@@ -140,6 +141,10 @@ export function AppShell() {
 	const telemetryQuery = useQuery({
 		queryKey: desktopQueryKeys.telemetry,
 		queryFn: () => desktop.telemetry.get(),
+	});
+	const mcpQuery = useQuery({
+		queryKey: desktopQueryKeys.mcp,
+		queryFn: () => desktop.mcp.get(),
 	});
 	useEffect(() => {
 		return window.desktopRpc.onAgentEvent((envelope) => {
@@ -272,6 +277,12 @@ export function AppShell() {
 		desktopQueryClient.setQueryData(desktopQueryKeys.telemetry, snapshot);
 		return snapshot;
 	};
+	const saveMcpSettings = async (input: DesktopMcpSettingsInput) => {
+		const snapshot = await desktop.mcp.save(input);
+		desktopQueryClient.setQueryData(desktopQueryKeys.mcp, snapshot);
+		return snapshot;
+	};
+	const refreshMcpStatus = () => desktop.mcp.status();
 	const fetchProviderModelsMutation = useMutation({
 		mutationFn: (profileId: string) => desktop.provider.fetchModels(profileId),
 		onSuccess: (result) => {
@@ -305,10 +316,12 @@ export function AppShell() {
 		navigate("/settings");
 		void providerQuery.refetch();
 		void telemetryQuery.refetch();
-	}, [navigate, providerQuery.refetch, telemetryQuery.refetch]);
+		void mcpQuery.refetch();
+	}, [navigate, providerQuery.refetch, telemetryQuery.refetch, mcpQuery.refetch]);
 	const retrySettings = () => {
 		void providerQuery.refetch();
 		void telemetryQuery.refetch();
+		void mcpQuery.refetch();
 	};
 	useEffect(() => {
 		const openSettingsShortcut = (event: globalThis.KeyboardEvent) => {
@@ -593,6 +606,11 @@ export function AppShell() {
 								telemetryLoading={telemetryQuery.isLoading || telemetryQuery.isFetching}
 								telemetryLoadError={telemetryQuery.isError && !telemetryQuery.isFetching}
 								onSaveTelemetry={updateTelemetrySettings}
+								mcp={mcpQuery.data}
+								mcpLoading={mcpQuery.isLoading || mcpQuery.isFetching}
+								mcpLoadError={mcpQuery.isError && !mcpQuery.isFetching}
+								onSaveMcp={saveMcpSettings}
+								onRefreshMcpStatus={refreshMcpStatus}
 							/>
 						}
 					/>

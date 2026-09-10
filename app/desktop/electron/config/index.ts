@@ -6,6 +6,9 @@ import {
 } from "@jai/server/desktop-configuration-client";
 import type {
 	DesktopConnectorCredentialRevealResult,
+	DesktopMcpSettingsInput,
+	DesktopMcpSettingsSnapshot,
+	DesktopMcpStatus,
 	DesktopProviderApiKeyRevealResult,
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
@@ -92,6 +95,24 @@ export class DesktopConfigService {
 		const saved = await this.client.saveTelemetry(toRuntimeTelemetrySettingsInput(input));
 		if (saved.isErr()) throw saved.error;
 		return projectRuntimeTelemetrySettings(saved.value);
+	}
+
+	async getMcpSettings(): Promise<DesktopMcpSettingsSnapshot> {
+		const snapshot = await this.client.getMcpSettings();
+		if (snapshot.isErr()) throw snapshot.error;
+		return snapshot.value;
+	}
+
+	async saveMcpSettings(input: DesktopMcpSettingsInput): Promise<DesktopMcpSettingsSnapshot> {
+		const saved = await this.client.saveMcpSettings(input);
+		if (saved.isErr()) throw saved.error;
+		return saved.value;
+	}
+
+	async getMcpStatus(): Promise<DesktopMcpStatus> {
+		const status = await this.client.getMcpStatus();
+		if (status.isErr()) throw status.error;
+		return status.value;
 	}
 
 	async revealApiKey(profileId: string): Promise<DesktopProviderApiKeyRevealResult> {

@@ -230,6 +230,8 @@ export interface ConnectorService {
 	actionSideEffect(actionId: string): ActionSideEffect | undefined;
 	listApps(context: RequestContext): Promise<ResultType<ListAppsResponse, ConnectorFailure>>;
 	listConnections(context: RequestContext): Promise<ResultType<ListConnectionsResponse, ConnectorFailure>>;
+	/** Returns the complete current Agent-discoverable Action snapshot. */
+	listActions(context: RequestContext): Promise<ResultType<readonly ActionDefinition[], ConnectorFailure>>;
 	searchActions(
 		input: SearchActionsInput,
 		context: RequestContext,

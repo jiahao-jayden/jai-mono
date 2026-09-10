@@ -58,6 +58,37 @@ describe("SqliteDesktopCatalogAccess", () => {
 		}
 	});
 
+	test("does not expose journal-only child sessions in the Desktop session list", async () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const persistence = new SqliteProductSessionPersistence(database);
+			const catalog = new SqliteDesktopCatalogAccess(database);
+			const parent = await persistence.create({
+				id: "session-1",
+				appState: {},
+				runtimeConfiguration: { model: "test/model", mode: "manual" },
+				cwd: "/workspace",
+				createdAt,
+			});
+			if (parent.isErr()) throw parent.error;
+			const child = await persistence.createJournalOnly({
+				id: "session-1:tool-call-1",
+				appState: {},
+				createdAt,
+			});
+			if (child.isErr()) throw child.error;
+
+			const listed = catalog.listSessions();
+			if (listed.isErr()) throw listed.error;
+			expect(listed.value.sessions.map((session) => session.id)).toEqual(["session-1"]);
+			expect(catalog.getSession("session-1:tool-call-1")).toEqual(
+				expect.objectContaining({ value: undefined }),
+			);
+		} finally {
+			database.close();
+		}
+	});
+
 	test("enforces referential integrity and reports catalog conflicts as typed failures", async () => {
 		const database = new DatabaseSync(":memory:");
 		try {

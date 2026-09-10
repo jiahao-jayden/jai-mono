@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Result } from "better-result";
 import { DatabaseSync } from "node:sqlite";
 import { createRuntimeConnectorAgentAssembly } from "../../src/agents";
 import { SqliteRuntimeAgentSettings } from "../../src/config";
@@ -39,18 +38,6 @@ describe("Runtime Host Connector assembly", () => {
 			});
 			expect(written?.isOk()).toBe(true);
 			if (!written || written.isErr()) throw written?.error;
-
-			const extension = assembled.value.extensions[0];
-			const search = extension?.tools?.find((tool) => tool.name === "connector__search_actions");
-			if (!search) throw new Error("Connector search tool was not assembled");
-			const output = await search.execute(
-				{ sessionId: "session" } as Parameters<typeof search.execute>[0],
-				{ toolCallId: "tool-call", args: { connectorId: "context7" }, runAgent: async () => Result.ok([]) },
-			);
-			const content = output.content[0];
-			if (!content || content.type !== "text") throw new Error("Connector search result is not text");
-			const actions = JSON.parse(content.text) as { readonly actions: readonly { readonly actionId: string; readonly policy: string }[] };
-			expect(actions.actions.find((action) => action.actionId === "context7.search_libraries")?.policy).toBe("allow");
 
 			const stored = settings.readConnectorSettings();
 			if (stored.isErr()) throw stored.error;

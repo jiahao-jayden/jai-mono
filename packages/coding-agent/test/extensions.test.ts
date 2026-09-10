@@ -319,17 +319,14 @@ describe("Extension Runtime", () => {
 		if (activated.isErr() || !invalidate) return;
 
 		catalog.search("alpha");
-		expect(catalog.toolsForRequest([catalog.searchTool]).map((tool) => tool.name)).toEqual([
-			"SearchTools",
-			"CatalogAlpha",
-		]);
+		expect(catalog.frontdoorTools.map((tool) => tool.name)).toEqual(["SearchTools", "ExecuteTool"]);
 		expect(permissions.has("CatalogAlpha")).toBe(true);
 		expect(presentations.get("CatalogAlpha")?.title?.({})).toBe("Alpha");
 
 		revision = 1;
 		invalidate();
 		await flushCatalogRefresh();
-		expect(catalog.toolsForRequest([catalog.searchTool]).map((tool) => tool.name)).toEqual(["SearchTools"]);
+		expect(catalog.frontdoorTools.map((tool) => tool.name)).toEqual(["SearchTools", "ExecuteTool"]);
 		expect(permissions.has("CatalogAlpha")).toBe(false);
 		expect(permissions.has("CatalogBeta")).toBe(true);
 		expect(presentations.has("CatalogAlpha")).toBe(false);
@@ -344,7 +341,9 @@ describe("Extension Runtime", () => {
 		revision = 4;
 		invalidate();
 		await flushCatalogRefresh();
-		expect(catalog.search("beta")).toEqual([{ name: "CatalogBeta", description: "CatalogBeta description" }]);
+		expect(catalog.search("beta")).toEqual([
+			expect.objectContaining({ name: "CatalogBeta", description: "CatalogBeta description" }),
+		]);
 		expect(permissions.has("CatalogBeta")).toBe(true);
 		expect(diagnostics).toEqual(
 				expect.arrayContaining([
@@ -400,6 +399,8 @@ describe("Extension Runtime", () => {
 		invalidate();
 		await flushCatalogRefresh();
 		expect(discoveries).toBe(2);
-		expect(catalog.search("catalog")).toEqual([{ name: "CatalogFirst", description: "CatalogFirst description" }]);
+		expect(catalog.search("catalog")).toEqual([
+			expect.objectContaining({ name: "CatalogFirst", description: "CatalogFirst description" }),
+		]);
 	});
 });

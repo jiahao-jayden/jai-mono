@@ -38,6 +38,28 @@ export type DesktopConfigurationClientError =
 	| AcpLocalClientError
 	| DesktopConfigurationClientResponseInvalid;
 
+export interface DesktopMcpSettingsSnapshot {
+	readonly revision: string | null;
+	readonly mcp: unknown;
+}
+
+export interface DesktopMcpSettingsInput {
+	readonly revision: string | null;
+	readonly mcp: unknown;
+}
+
+export interface DesktopMcpServerStatus {
+	readonly name: string;
+	readonly type: "stdio" | "streamable-http" | "sse";
+	readonly connected: boolean;
+	readonly toolCount?: number;
+	readonly error?: string;
+}
+
+export interface DesktopMcpStatus {
+	readonly servers: readonly DesktopMcpServerStatus[];
+}
+
 export interface ConnectDesktopConfigurationClientOptions {
 	readonly environment?: Readonly<Record<string, string | undefined>>;
 	readonly dataDirectory?: string;
@@ -294,6 +316,29 @@ export class DesktopConfigurationClient {
 		return this.requestTelemetry("jai/desktop-configuration/telemetry/save", input);
 	}
 
+	async getMcpSettings(): Promise<ResultType<DesktopMcpSettingsSnapshot, DesktopConfigurationClientError>> {
+		return this.requestMcp("jai/desktop-configuration/mcp/get", {});
+	}
+
+	async saveMcpSettings(
+		input: DesktopMcpSettingsInput,
+	): Promise<ResultType<DesktopMcpSettingsSnapshot, DesktopConfigurationClientError>> {
+		return this.requestMcp("jai/desktop-configuration/mcp/save", input);
+	}
+
+	async getMcpStatus(): Promise<ResultType<DesktopMcpStatus, DesktopConfigurationClientError>> {
+		const response = await this.client.request("jai/desktop-configuration/mcp/status", {});
+		if (response.isErr()) return Result.err(response.error);
+		const status = parseMcpStatus(response.value);
+		if (status) return Result.ok(status);
+		return Result.err(
+			new DesktopConfigurationClientResponseInvalid({
+				method: "jai/desktop-configuration/mcp/status",
+				message: "MCP status response did not match the expected projection",
+			}),
+		);
+	}
+
 	close(): Promise<void> {
 		return this.client.close();
 	}
@@ -357,6 +402,22 @@ export class DesktopConfigurationClient {
 			new DesktopConfigurationClientResponseInvalid({
 				method,
 				message: "Telemetry configuration response did not match the expected projection",
+			}),
+		);
+	}
+
+	private async requestMcp(
+		method: "jai/desktop-configuration/mcp/get" | "jai/desktop-configuration/mcp/save",
+		params: unknown,
+	): Promise<ResultType<DesktopMcpSettingsSnapshot, DesktopConfigurationClientError>> {
+		const response = await this.client.request(method, params);
+		if (response.isErr()) return Result.err(response.error);
+		const snapshot = parseMcpSnapshot(response.value);
+		if (snapshot) return Result.ok(snapshot);
+		return Result.err(
+			new DesktopConfigurationClientResponseInvalid({
+				method,
+				message: "MCP configuration response did not match the expected projection",
 			}),
 		);
 	}
@@ -655,4 +716,38 @@ function record(value: unknown): value is Record<string, unknown> {
 
 function isRuntimeWebSearchCredentialId(value: unknown): value is RuntimeWebSearchCredentialId {
 	return value === "jina" || value === "exa" || value === "parallel" || value === "anysearch";
+}
+
+function parseMcpSnapshot(value: unknown): DesktopMcpSettingsSnapshot | undefined {
+	if (!record(value)) return undefined;
+	if (value.revision !== null && typeof value.revision !== "string") return undefined;
+	if (value.mcp !== undefined && value.mcp !== null && !record(value.mcp)) return undefined;
+	return { revision: value.revision, mcp: value.mcp };
+}
+
+function parseMcpStatus(value: unknown): DesktopMcpStatus | undefined {
+	if (!record(value) || !Array.isArray(value.servers)) return undefined;
+	const servers = value.servers.map((server) => {
+		if (
+			!record(server) ||
+			typeof server.name !== "string" ||
+			(server.type !== "stdio" && server.type !== "streamable-http" && server.type !== "sse") ||
+			typeof server.connected !== "boolean"
+		) {
+			return undefined;
+		}
+		if (server.toolCount !== undefined && (typeof server.toolCount !== "number" || !Number.isInteger(server.toolCount) || server.toolCount < 0)) {
+			return undefined;
+		}
+		if (server.error !== undefined && typeof server.error !== "string") return undefined;
+		return {
+			name: server.name,
+			type: server.type,
+			connected: server.connected,
+			...(server.toolCount === undefined ? {} : { toolCount: server.toolCount }),
+			...(server.error === undefined ? {} : { error: server.error }),
+		};
+	});
+	if (servers.some((server) => server === undefined)) return undefined;
+	return { servers: servers as readonly DesktopMcpServerStatus[] };
 }

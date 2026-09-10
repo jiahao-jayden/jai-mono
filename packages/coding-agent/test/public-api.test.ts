@@ -75,7 +75,7 @@ describe("public Coding Agent SDK", () => {
 		if (resumed.isOk()) await resumed.value.close();
 	});
 
-	test("activates a discovered catalog tool for the next model request", async () => {
+	test("keeps dynamic catalog tools outside every provider request", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
 		roots.push(root);
 		const requests: unknown[] = [];
@@ -85,7 +85,6 @@ describe("public Coding Agent SDK", () => {
 				root,
 				[
 					assistantToolCall("SearchTools", "catalog-search", { query: "echo" }),
-					assistantToolCall("CatalogEcho", "catalog-echo", {}),
 					assistant("done"),
 				],
 				requests,
@@ -124,10 +123,11 @@ describe("public Coding Agent SDK", () => {
 		if (created.isErr()) return;
 
 		expect((await created.value.prompt("use the catalog")).isOk()).toBe(true);
-		expect(executions).toBe(1);
-		expect(JSON.stringify(requests[0])).toContain("SearchTools");
-		expect(JSON.stringify(requests[0])).not.toContain("CatalogEcho");
-		expect(JSON.stringify(requests[1])).toContain("CatalogEcho");
+		expect(executions).toBe(0);
+		expect(providerToolNames(requests[0])).toContain("SearchTools");
+		expect(providerToolNames(requests[0])).toContain("ExecuteTool");
+		expect(providerToolNames(requests[0])).not.toContain("CatalogEcho");
+		expect(providerToolNames(requests[1])).toEqual(providerToolNames(requests[0]));
 		await created.value.close();
 	});
 
@@ -1087,4 +1087,13 @@ function assertJsonSafe(value: unknown): void {
 		expect(key).not.toBe("cause");
 		assertJsonSafe(item);
 	}
+}
+
+function providerToolNames(request: unknown): readonly string[] {
+	if (typeof request !== "object" || request === null || !("tools" in request) || !Array.isArray(request.tools)) {
+		throw new Error("Expected a provider request with tools");
+	}
+	return request.tools.flatMap((tool) =>
+		typeof tool === "object" && tool !== null && "name" in tool && typeof tool.name === "string" ? [tool.name] : [],
+	);
 }
