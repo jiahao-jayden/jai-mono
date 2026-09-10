@@ -408,7 +408,7 @@ export function workTimelineSteps(
 				verb: item.title,
 				...(chip ? { chip } : {}),
 				icon: "users",
-				avatar: <SubagentAvatar item={item} size={20} />,
+				avatar: <SubagentAvatar item={item} size={28} />,
 				active: running,
 				...(options.onOpenSubagent ? { onSelect: () => options.onOpenSubagent?.(item) } : {}),
 			};

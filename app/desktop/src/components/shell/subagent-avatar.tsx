@@ -6,8 +6,8 @@ import type { DesktopSubagentItem } from "../../../shared/desktop-rpc";
  * Every delegated task gets a stable face: the seed is the tool call id, so the
  * same subagent looks identical in the transcript row, the dock list and after
  * a session reload. Rendered static (one <img>) with the tone pinned mid-range,
- * so faces read as saturated dots at 20px instead of pale or inky blobs. Status
- * is carried by the text next to it, never by the face.
+ * so faces stay saturated and readable at larger sizes. Status is carried by
+ * the text next to it, never by the face.
  */
 export function SubagentAvatar({
 	item,

@@ -320,7 +320,7 @@ export function ChatColumn({
 								/>
 								{isAgentWorking ? (
 									<div className="flex items-center gap-2 px-1 py-1 text-muted-foreground" role="status">
-										<ThinkingOrb aria-hidden size={20} state="solving" />
+										<ThinkingOrb aria-hidden size={64} state="solving" style={{ width: 28, height: 28 }} />
 										<span className="shimmer-text text-[12px] font-medium">
 											{intl.formatMessage(desktopMessages.chatAgentWorking)}
 										</span>

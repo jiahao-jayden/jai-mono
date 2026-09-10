@@ -1,4 +1,5 @@
 import { type MotionValue, motion } from "motion/react";
+import logo from "@/assets/icons/chat-area/logo.svg";
 import type { CodingSession, DesktopProject } from "../../../../shared/desktop-rpc";
 import { SidebarFooter } from "./sidebar-footer";
 import { SidebarHeader } from "./sidebar-header";
@@ -55,6 +56,10 @@ export function Sidebar({
 			style={width ? { width } : undefined}
 		>
 			<SidebarHeader onToggleSidebar={onToggleSidebar} />
+			<div className="flex h-10 shrink-0 items-center gap-2 px-3.5">
+				<img src={logo} alt="" draggable={false} className="size-7 shrink-0 select-none" />
+				<span className="truncate text-[16px] font-medium tracking-[-0.01em] text-foreground">PandaWork</span>
+			</div>
 			<SidebarNav
 				activeView={activeView}
 				onNewChat={onNewChat}
