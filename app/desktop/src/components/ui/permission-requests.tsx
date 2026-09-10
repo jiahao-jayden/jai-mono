@@ -77,7 +77,7 @@ export function PermissionRequests({ requests, onResolve }: PermissionRequestsPr
 			animate={{ opacity: 1, y: 0 }}
 			exit={{ opacity: 0, y: 3, transition: spring.fast.exit }}
 			transition={spring.moderate}
-			className={cn("relative mx-auto w-full max-w-155 overflow-hidden border border-border bg-card", shape.container)}
+			className={cn("pointer-events-auto relative mx-auto w-full max-w-155 overflow-hidden border border-border bg-card", shape.container)}
 			aria-label={intl.formatMessage(desktopMessages.permissionRequest)}
 		>
 			<header className="flex items-start justify-between gap-3 px-3 pt-3 pb-2">

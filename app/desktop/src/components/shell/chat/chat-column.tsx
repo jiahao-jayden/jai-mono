@@ -342,8 +342,8 @@ export function ChatColumn({
 					/>
 				</div>
 			)}
-			<div className="shrink-0 px-4 pb-2 min-[1024px]:px-8">
-				<div className="mx-auto flex w-full max-w-[896px] flex-col gap-2">
+			<div className="relative shrink-0 px-4 pb-2 min-[1024px]:px-8">
+				<div className="pointer-events-none absolute right-4 bottom-full left-4 z-10 mb-2 min-[1024px]:right-8 min-[1024px]:left-8">
 					<AnimatePresence initial={false}>
 						{pendingApprovals.length > 0 ? (
 							<PermissionRequests
@@ -360,6 +360,8 @@ export function ChatColumn({
 							/>
 						) : null}
 					</AnimatePresence>
+				</div>
+				<div className="mx-auto flex w-full max-w-[896px] flex-col gap-2">
 					<ChatComposer
 						value={draft}
 						onValueChange={onDraftChange}
