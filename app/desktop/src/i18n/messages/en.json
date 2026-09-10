@@ -20,9 +20,6 @@
   "desktop.chat.agentWorking": {
     "defaultMessage": "Agent is working…"
   },
-  "desktop.chat.closeWorkspace": {
-    "defaultMessage": "Close workspace"
-  },
   "desktop.chat.editSessionTitle": {
     "defaultMessage": "Edit session title: {title}"
   },
@@ -32,14 +29,17 @@
   "desktop.chat.evening": {
     "defaultMessage": "Good evening, {name}"
   },
+  "desktop.chat.hideDock": {
+    "defaultMessage": "Hide side panel"
+  },
+  "desktop.chat.hideTaskCard": {
+    "defaultMessage": "Hide task card"
+  },
   "desktop.chat.morning": {
     "defaultMessage": "Good morning, {name}"
   },
   "desktop.chat.newDescription": {
     "defaultMessage": "Start a chat or hand a task to a local agent."
-  },
-  "desktop.chat.openWorkspace": {
-    "defaultMessage": "Open workspace"
   },
   "desktop.chat.projectLoading": {
     "defaultMessage": "Loading project…"
@@ -53,8 +53,14 @@
   "desktop.chat.renameHint": {
     "defaultMessage": "Double-click to rename"
   },
+  "desktop.chat.showDock": {
+    "defaultMessage": "Show side panel"
+  },
   "desktop.chat.showSidebar": {
     "defaultMessage": "Show sidebar"
+  },
+  "desktop.chat.showTaskCard": {
+    "defaultMessage": "Show task card"
   },
   "desktop.chats.description": {
     "defaultMessage": "Continue a recent conversation or hand a new task to the agent."
@@ -139,6 +145,21 @@
   },
   "desktop.composer.writeMessage": {
     "defaultMessage": "Write a message…"
+  },
+  "desktop.dock.closePanel": {
+    "defaultMessage": "Close {name}"
+  },
+  "desktop.dock.filePanel": {
+    "defaultMessage": "Files"
+  },
+  "desktop.dock.newPanel": {
+    "defaultMessage": "New panel"
+  },
+  "desktop.dock.panels": {
+    "defaultMessage": "Session panels"
+  },
+  "desktop.dock.subagentPanel": {
+    "defaultMessage": "Subagents"
   },
   "desktop.file.loadingPreview": {
     "defaultMessage": "Loading preview"
@@ -957,8 +978,14 @@
   "desktop.slash.commands": {
     "defaultMessage": "Slash commands"
   },
+  "desktop.subagent.active": {
+    "defaultMessage": "Active"
+  },
   "desktop.subagent.aria": {
     "defaultMessage": "Subagent {title}: {status}"
+  },
+  "desktop.subagent.complete": {
+    "defaultMessage": "Complete"
   },
   "desktop.subagent.completed": {
     "defaultMessage": "Task completed"
@@ -968,6 +995,9 @@
   },
   "desktop.subagent.failed": {
     "defaultMessage": "Failed"
+  },
+  "desktop.subagent.panelEmpty": {
+    "defaultMessage": "No active subagents"
   },
   "desktop.subagent.preparing": {
     "defaultMessage": "Preparing delegated task…"
@@ -980,9 +1010,6 @@
   },
   "desktop.task.artifacts": {
     "defaultMessage": "Artifacts"
-  },
-  "desktop.task.artifactsDescription": {
-    "defaultMessage": "Generated Markdown and HTML appear here."
   },
   "desktop.task.artifactsList": {
     "defaultMessage": "Session artifacts"
@@ -1010,12 +1037,6 @@
   },
   "desktop.task.noActiveTodo": {
     "defaultMessage": "No active Todo"
-  },
-  "desktop.task.outputs": {
-    "defaultMessage": "Outputs"
-  },
-  "desktop.task.outputsDescription": {
-    "defaultMessage": "Files generated or modified by the Agent appear here."
   },
   "desktop.task.pending": {
     "defaultMessage": "Pending"
@@ -1143,15 +1164,6 @@
   "desktop.transcript.workingSummary": {
     "defaultMessage": "{steps} · Working"
   },
-  "desktop.workspace.artifactPreview": {
-    "defaultMessage": "Artifact preview"
-  },
-  "desktop.workspace.artifacts": {
-    "defaultMessage": "Artifacts"
-  },
-  "desktop.workspace.artifactsDescription": {
-    "defaultMessage": "Generated Markdown and HTML appear here."
-  },
   "desktop.workspace.chooseFile": {
     "defaultMessage": "Open a file"
   },
@@ -1160,9 +1172,6 @@
   },
   "desktop.workspace.chooseOpen": {
     "defaultMessage": "Choose how to open"
-  },
-  "desktop.workspace.closeFile": {
-    "defaultMessage": "Close {name}"
   },
   "desktop.workspace.collapseTree": {
     "defaultMessage": "Collapse file tree"
@@ -1178,15 +1187,6 @@
   },
   "desktop.workspace.filter": {
     "defaultMessage": "Filter workspace files…"
-  },
-  "desktop.workspace.loadingPreview": {
-    "defaultMessage": "Loading preview"
-  },
-  "desktop.workspace.newTab": {
-    "defaultMessage": "New file tab"
-  },
-  "desktop.workspace.noArtifacts": {
-    "defaultMessage": "No artifacts yet"
   },
   "desktop.workspace.open": {
     "defaultMessage": "Open"
@@ -1206,17 +1206,8 @@
   "desktop.workspace.openFileError": {
     "defaultMessage": "Could not open file"
   },
-  "desktop.workspace.openFiles": {
-    "defaultMessage": "Open files"
-  },
   "desktop.workspace.openWith": {
     "defaultMessage": "Open with {name}"
-  },
-  "desktop.workspace.previewUnavailable": {
-    "defaultMessage": "Preview unavailable"
-  },
-  "desktop.workspace.previewUnavailableDescription": {
-    "defaultMessage": "The file is no longer available or the current project cannot access it."
   },
   "desktop.workspace.readDirectory": {
     "defaultMessage": "Could not read this directory"
@@ -1232,15 +1223,6 @@
   },
   "desktop.workspace.readingFile": {
     "defaultMessage": "Reading file…"
-  },
-  "desktop.workspace.selectArtifact": {
-    "defaultMessage": "Select an artifact"
-  },
-  "desktop.workspace.selectArtifactDescription": {
-    "defaultMessage": "Choose a file to view its preview."
-  },
-  "desktop.workspace.sessionArtifacts": {
-    "defaultMessage": "Session artifacts"
   },
   "desktop.workspace.tree": {
     "defaultMessage": "Workspace file tree"

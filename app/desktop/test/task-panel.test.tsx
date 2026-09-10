@@ -30,9 +30,8 @@ describe("TaskPanel", () => {
 		);
 
 		expect(markup).toContain("Inspect storage");
-		expect(markup).toContain("Outputs");
 		expect(markup).toContain("Artifacts");
-		expect(markup).toContain("Generated Markdown and HTML appear here.");
+		expect(markup).not.toContain("divide-y");
 
 		const artifactMarkup = renderToStaticMarkup(
 			<TaskPanel
@@ -110,6 +109,5 @@ describe("TaskPanel", () => {
 
 		expect(markup).toContain("进度");
 		expect(markup).toContain("已中断");
-		expect(markup).toContain("输出");
 	});
 });

@@ -1,10 +1,10 @@
+import { cn } from "cn";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
 import { useIntl } from "react-intl";
 import spinners from "unicode-animations/braille";
 import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
-import { cn } from "@/lib/utils";
 import type { DesktopAgentStatus, DesktopArtifact, DesktopTodoItem, DesktopTodos } from "../../../shared/desktop-rpc";
 import { Button } from "../ui/button";
 
@@ -20,8 +20,6 @@ export function TaskPanel({ status, todos, artifacts, selectedArtifactId, onOpen
 	const intl = useIntl();
 	const icons = useIcons();
 	const reduceMotion = useReducedMotion();
-	const ChevronRightIcon = icons["chevron-right"];
-	const ArchiveIcon = icons.archive;
 	const FileCodeIcon = icons["file-code"];
 	const HtmlIcon = icons["rectangle-horizontal"];
 	const todoItems = todos ?? [];
@@ -52,107 +50,73 @@ export function TaskPanel({ status, todos, artifacts, selectedArtifactId, onOpen
 	const summaryInitial = reduceMotion ? { opacity: 0 } : { opacity: 0, transform: "translateY(18%)" };
 
 	return (
-		<aside className="flex h-full w-full min-w-0 flex-col overflow-y-auto p-2">
-			<div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl bg-surface-primary shadow-surface-1">
-			<section className="px-3 pt-3 pb-2.5">
-				<div className="flex h-6 items-center justify-between">
-					<h2 className="text-[12px] font-medium text-muted-foreground">
-						{intl.formatMessage(desktopMessages.taskProgress)}
-					</h2>
-					<span
-						aria-live="polite"
-						className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground"
-					>
-						<AnimatePresence mode="popLayout" initial={false}>
-							<motion.span
-								key={progressLabel}
-								initial={summaryInitial}
-								animate={{ opacity: 1, transform: "translateY(0%)" }}
-								exit={{ opacity: 0 }}
-								transition={{ duration: 0.16, ease: [0.23, 1, 0.32, 1] }}
-							>
-								{progressLabel}
-							</motion.span>
-						</AnimatePresence>
-						<ChevronRightIcon size={13} />
-					</span>
-				</div>
-				{todoItems.length > 0 ? (
-					<ul className="mt-1 space-y-0.5" aria-label={intl.formatMessage(desktopMessages.taskList)}>
-						<AnimatePresence initial={false}>
-							{todoItems.map((todo) => (
-								<TodoRow key={todo.id} todo={todo} agentStatus={status} />
-							))}
-						</AnimatePresence>
-					</ul>
-				) : null}
-			</section>
-
-			<section className="px-3 pt-2.5 pb-2.5">
-				<div className="flex h-6 items-center justify-between">
-					<h2 className="text-[12px] font-medium text-muted-foreground">
-						{intl.formatMessage(desktopMessages.taskOutputs)}
-					</h2>
-					<ChevronRightIcon size={13} className="rotate-90 text-muted-foreground" />
-				</div>
-				<p className="py-1 text-[13px] leading-relaxed text-muted-foreground">
-					{intl.formatMessage(desktopMessages.taskOutputsDescription)}
-				</p>
-			</section>
-
-			<section className="px-3 pt-2.5 pb-3">
-				<div className="flex h-6 items-center justify-between">
-					<h2 className="text-[12px] font-medium text-muted-foreground">
-						{intl.formatMessage(desktopMessages.taskArtifacts)}
-					</h2>
-					<span className="flex items-center gap-1.5 text-[12px] font-medium tabular-nums text-muted-foreground">
-						{artifacts.length}
-						<ArchiveIcon size={14} />
-					</span>
-				</div>
-				{artifacts.length === 0 ? (
-					<p className="py-1 text-[13px] leading-relaxed text-muted-foreground">
-						{intl.formatMessage(desktopMessages.taskArtifactsDescription)}
-					</p>
-				) : (
-					<ul
-						className="mt-1 max-h-44 space-y-1 overflow-y-auto"
-						aria-label={intl.formatMessage(desktopMessages.taskArtifactsList)}
-					>
-						{artifacts.map((artifact) => {
-							const isSelected = artifact.id === selectedArtifactId;
-							const ArtifactIcon = artifact.format === "html" ? HtmlIcon : FileCodeIcon;
-							return (
-								<li key={artifact.id}>
-									<Button
-										type="button"
-										variant="ghost"
-										size="sm"
-										active={isSelected}
-										onClick={() => onOpenArtifact(artifact)}
-										aria-current={isSelected ? "true" : undefined}
-										className="h-[30px] w-full justify-start rounded-lg px-2 hover:bg-muted-hover"
-										contentClassName="w-full min-w-0 justify-start"
-										labelClassName="flex min-w-0 flex-1 items-center gap-2"
-									>
-										<ArtifactIcon size={14} className="shrink-0 text-muted-foreground" />
-										<span
-											className="min-w-0 flex-1 truncate text-left text-[13px] text-foreground"
-											title={artifact.path}
-										>
-											{artifactName(artifact.path)}
-										</span>
-										<span className="shrink-0 text-[11px] font-medium uppercase text-muted-foreground">
-											{artifact.format}
-										</span>
-									</Button>
-								</li>
-							);
-						})}
-					</ul>
-				)}
-			</section>
+		<aside className="flex h-full w-full min-w-0 flex-col overflow-y-auto pb-2">
+			<div className="flex h-6 items-center justify-between gap-2 px-3">
+				<h2 className="shrink-0 text-[12px] font-medium tracking-[-0.005em] text-muted-foreground">
+					{intl.formatMessage(desktopMessages.taskProgress)}
+				</h2>
+				<span aria-live="polite" className="min-w-0 text-[12px] font-medium text-muted-foreground">
+					<AnimatePresence mode="popLayout" initial={false}>
+						<motion.span
+							key={progressLabel}
+							initial={summaryInitial}
+							animate={{ opacity: 1, transform: "translateY(0%)" }}
+							exit={{ opacity: 0 }}
+							transition={{ duration: 0.16, ease: [0.23, 1, 0.32, 1] }}
+							className="block truncate"
+						>
+							{progressLabel}
+						</motion.span>
+					</AnimatePresence>
+				</span>
 			</div>
+			{todoItems.length > 0 ? (
+				<ul className="mt-1 space-y-0.5 px-1.5" aria-label={intl.formatMessage(desktopMessages.taskList)}>
+					<AnimatePresence initial={false}>
+						{todoItems.map((todo) => (
+							<TodoRow key={todo.id} todo={todo} agentStatus={status} />
+						))}
+					</AnimatePresence>
+				</ul>
+			) : null}
+
+			<div className="mt-3.5 flex h-6 items-center justify-between gap-2 px-3">
+				<h2 className="text-[12px] font-medium tracking-[-0.005em] text-muted-foreground">
+					{intl.formatMessage(desktopMessages.taskArtifacts)}
+				</h2>
+				<span className="text-[12px] font-medium tabular-nums text-muted-foreground">{artifacts.length}</span>
+			</div>
+			{artifacts.length > 0 ? (
+				<ul className="mt-1 space-y-0.5 px-1.5" aria-label={intl.formatMessage(desktopMessages.taskArtifactsList)}>
+					{artifacts.map((artifact) => {
+						const isSelected = artifact.id === selectedArtifactId;
+						const ArtifactIcon = artifact.format === "html" ? HtmlIcon : FileCodeIcon;
+						return (
+							<li key={artifact.id}>
+								<Button
+									type="button"
+									variant="ghost"
+									size="md"
+									active={isSelected}
+									onClick={() => onOpenArtifact(artifact)}
+									aria-current={isSelected ? "true" : undefined}
+									className="h-[30px] w-full justify-start gap-2 rounded-lg px-2 text-left text-[13px] font-normal"
+									contentClassName="w-full min-w-0 justify-start"
+									labelClassName="flex min-w-0 flex-1 items-center gap-2"
+								>
+									<ArtifactIcon size={14} className="shrink-0 text-muted-foreground" />
+									<span className="min-w-0 flex-1 truncate" title={artifact.path}>
+										{artifactName(artifact.path)}
+									</span>
+									<span className="shrink-0 text-[11px] font-medium uppercase text-muted-foreground">
+										{artifact.format}
+									</span>
+								</Button>
+							</li>
+						);
+					})}
+				</ul>
+			) : null}
 		</aside>
 	);
 }
@@ -177,7 +141,7 @@ function TodoRow({ todo, agentStatus }: { readonly todo: DesktopTodoItem; readon
 			animate={{ opacity: 1, transform: "translateY(0%)" }}
 			exit={exit}
 			transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-			className="flex h-[30px] items-center gap-2.5"
+			className="flex h-[30px] items-center gap-2.5 px-2"
 			aria-current={ariaCurrent}
 		>
 			<TodoStatusIndicator status={todo.status} interrupted={isInterrupted} />

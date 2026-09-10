@@ -14,6 +14,7 @@ import {
 	BrowserIcon,
 	BubbleChatIcon,
 	Cancel01Icon,
+	CheckListIcon,
 	CircleIcon,
 	Clock01Icon,
 	ColorsIcon,
@@ -125,6 +126,7 @@ export type IconName =
 	| "image"
 	| "link"
 	| "check"
+	| "check-list"
 	| "rotate-ccw"
 	| "play"
 	| "pause"
@@ -209,6 +211,7 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	image: createHugeicon(Image01Icon),
 	link: createHugeicon(Link01Icon),
 	check: createHugeicon(Tick01Icon),
+	"check-list": createHugeicon(CheckListIcon),
 	"rotate-ccw": createHugeicon(RefreshIcon),
 	play: createHugeicon(PlayIcon),
 	pause: createHugeicon(PauseIcon),

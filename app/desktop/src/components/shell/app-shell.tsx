@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
+import { cn } from "cn";
 import { AnimatePresence, animate, type MotionValue, motion, useMotionValue, useReducedMotion } from "motion/react";
 import {
+	type CSSProperties,
 	type KeyboardEvent as ReactKeyboardEvent,
 	type PointerEvent as ReactPointerEvent,
 	type RefObject,
@@ -24,7 +26,7 @@ import {
 	upsertProject,
 	upsertRecentSession,
 } from "@/lib/desktop-query";
-import { cn } from "@/lib/utils";
+import { useIcons } from "@/lib/icon-context";
 import { selectDraft, useDesktopChatStore } from "@/stores/chat";
 import {
 	type DesktopArtifact,
@@ -35,23 +37,32 @@ import {
 	type DesktopWebSearchCredentialId,
 	isDesktopProviderModelRunnable,
 } from "../../../shared/desktop-rpc";
+import { Button } from "../ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { ChatColumn } from "./chat/chat-column";
 import { ChatComposer } from "./chat/chat-composer";
 import { ChatsPage } from "./chats-page";
+import { Dock } from "./dock/dock";
+import { useDock } from "./dock/use-dock";
 import { ProjectPage, ProjectsPage } from "./projects-page";
 import { SettingsPage } from "./settings/settings-page";
 import { Sidebar } from "./sidebar/sidebar";
 import { TaskPanel } from "./task-panel";
-import { WorkspacePanel } from "./workspace-panel";
 
 const MIN_SIDEBAR_WIDTH = 200;
 const DEFAULT_SIDEBAR_WIDTH = 240;
 const MAX_SIDEBAR_WIDTH = 420;
 const MIN_CHAT_WIDTH = 420;
-const MIN_WORKSPACE_PANEL_WIDTH = 320;
-const DEFAULT_TASK_PANEL_WIDTH = 336;
-const DEFAULT_WORKSPACE_PANEL_WIDTH = 520;
-const MAX_WORKSPACE_PANEL_WIDTH = 720;
+const MIN_DOCK_WIDTH = 320;
+const DEFAULT_DOCK_WIDTH = 520;
+/** 放下卡片后 chat 仍能容纳消息列的 max-width（896）时，卡片才作为独立一列，否则退化为按钮弹出的 popover。 */
+const TASK_CARD_COLUMN_MIN_CHAT_WIDTH = 896;
+/** 卡片 256 + 两侧各 6px 留白，和 `w-64 px-1.5` 保持一致；留白给 hairline 和投影，动画容器是 overflow-hidden。 */
+const TASK_CARD_COLUMN_WIDTH = 268;
+/** 任务卡片的壳，列模式与 popover 模式共用，保证两种形态是同一张卡。 */
+const TASK_CARD_CLASS_NAME =
+	"w-64 gap-0 rounded-xl bg-popover p-0 pt-1 text-foreground shadow-[0_0_0_var(--hairline)_var(--border-surface-strong),0_4px_12px_-4px_rgb(0_0_0/.08)] ring-0";
+const MAX_DOCK_WIDTH = 720;
 const KEYBOARD_RESIZE_STEP = 16;
 const COLUMN_RESIZE_SPRING = {
 	type: "spring" as const,
@@ -64,12 +75,15 @@ const COLUMN_RESIZE_SPRING = {
 
 export function AppShell() {
 	const intl = useIntl();
+	const icons = useIcons();
 	const location = useLocation();
 	const navigate = useNavigate();
 	const [sidebarOpen, setSidebarOpen] = useState(true);
-	const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
+	const [dockOpen, setDockOpen] = useState(false);
+	const [taskCardOpen, setTaskCardOpen] = useState(true);
+	const [contentWidth, setContentWidth] = useState(Number.POSITIVE_INFINITY);
 	const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
-	const [requestedWorkspacePath, setRequestedWorkspacePath] = useState<string | null>(null);
+	const dock = useDock();
 	const storedSessionId = useDesktopChatStore((state) => state.activeSessionId);
 	const draft = useDesktopChatStore(selectDraft);
 	const queue = useDesktopChatStore((state) => state.queue);
@@ -169,37 +183,44 @@ export function AppShell() {
 		onQueuedMessageAccepted: acceptQueuedMessage,
 	});
 	const shellRef = useRef<HTMLDivElement>(null);
+	const contentRef = useRef<HTMLDivElement>(null);
 	const chatVisible = activeView === "chat";
-	const rightPanelVisible = chatVisible && !!session;
+	const dockMounted = chatVisible && !!session;
+	const dockVisible = dockMounted && dockOpen;
 	const sidebarWidth = useMotionValue(DEFAULT_SIDEBAR_WIDTH);
 	const visibleSidebarWidth = useMotionValue(DEFAULT_SIDEBAR_WIDTH);
-	const workspacePanelWidth = useMotionValue(DEFAULT_WORKSPACE_PANEL_WIDTH);
-	const visibleRightPanelWidth = useMotionValue(DEFAULT_TASK_PANEL_WIDTH);
+	const dockWidth = useMotionValue(DEFAULT_DOCK_WIDTH);
+	const visibleDockWidth = useMotionValue(0);
+	// ponytail: 只在 dock 显隐切换时重读 dock 宽度，拖拽 dock 期间不重算卡片形态。
+	const chatWidthWithTaskCard = contentWidth - (dockVisible ? dockWidth.get() : 0) - TASK_CARD_COLUMN_WIDTH;
+	const taskCardAsColumn = chatWidthWithTaskCard >= TASK_CARD_COLUMN_MIN_CHAT_WIDTH;
+	const taskCardVisible = dockMounted && taskCardAsColumn && taskCardOpen;
+	useEffect(() => {
+		const content = contentRef.current;
+		if (!content) return;
+		const observer = new ResizeObserver(([entry]) => setContentWidth(entry.contentRect.width));
+		observer.observe(content);
+		return () => observer.disconnect();
+	}, []);
 	const sidebarResize = useColumnResize(shellRef, sidebarWidth, {
 		defaultWidth: DEFAULT_SIDEBAR_WIDTH,
 		minWidth: MIN_SIDEBAR_WIDTH,
 		maxWidth: MAX_SIDEBAR_WIDTH,
 		direction: 1,
-		oppositeWidth: visibleRightPanelWidth,
-		oppositeVisible: rightPanelVisible,
+		oppositeWidth: visibleDockWidth,
+		oppositeVisible: dockVisible,
 		resizingClassName: "sidebar-resizing",
 	});
-	const rightPanelResize = useColumnResize(shellRef, workspacePanelWidth, {
-		defaultWidth: DEFAULT_WORKSPACE_PANEL_WIDTH,
-		minWidth: MIN_WORKSPACE_PANEL_WIDTH,
-		maxWidth: MAX_WORKSPACE_PANEL_WIDTH,
+	const dockResize = useColumnResize(shellRef, dockWidth, {
+		defaultWidth: DEFAULT_DOCK_WIDTH,
+		minWidth: MIN_DOCK_WIDTH,
+		maxWidth: MAX_DOCK_WIDTH,
 		direction: -1,
 		oppositeWidth: sidebarWidth,
 		oppositeVisible: sidebarOpen,
 		resizingClassName: "right-panel-resizing",
 	});
 	const reduceMotion = useReducedMotion() ?? false;
-	const artifactMotionInitial = reduceMotion ? { opacity: 1 } : { opacity: 1, transform: "translateX(6%)" };
-	const artifactMotionExit = reduceMotion ? { opacity: 1 } : { opacity: 1, transform: "translateX(6%)" };
-	const artifactMotionTransition = {
-		duration: reduceMotion ? 0.12 : 0.2,
-		ease: [0.23, 1, 0.32, 1] as const,
-	};
 	useEffect(() => {
 		const targetWidth = sidebarOpen ? sidebarWidth.get() : 0;
 		if (reduceMotion) {
@@ -217,22 +238,22 @@ export function AppShell() {
 		return sidebarWidth.on("change", (width) => visibleSidebarWidth.set(width));
 	}, [sidebarOpen, sidebarWidth, visibleSidebarWidth]);
 	useEffect(() => {
-		const targetWidth = artifactPanelOpen ? workspacePanelWidth.get() : DEFAULT_TASK_PANEL_WIDTH;
+		const targetWidth = dockVisible ? dockWidth.get() : 0;
 		if (reduceMotion) {
-			visibleRightPanelWidth.set(targetWidth);
+			visibleDockWidth.set(targetWidth);
 			return;
 		}
 
-		const controls = animate(visibleRightPanelWidth, targetWidth, {
+		const controls = animate(visibleDockWidth, targetWidth, {
 			duration: 0.24,
 			ease: [0.77, 0, 0.175, 1],
 		});
 		return () => controls.stop();
-	}, [artifactPanelOpen, reduceMotion, workspacePanelWidth, visibleRightPanelWidth]);
+	}, [dockVisible, dockWidth, reduceMotion, visibleDockWidth]);
 	useEffect(() => {
-		if (!artifactPanelOpen) return;
-		return workspacePanelWidth.on("change", (width) => visibleRightPanelWidth.set(width));
-	}, [artifactPanelOpen, workspacePanelWidth, visibleRightPanelWidth]);
+		if (!dockVisible) return;
+		return dockWidth.on("change", (width) => visibleDockWidth.set(width));
+	}, [dockVisible, dockWidth, visibleDockWidth]);
 	useEffect(() => {
 		setSelectedArtifactId((current) => {
 			if (current && chat.artifacts.some((artifact) => artifact.id === current)) return current;
@@ -339,11 +360,6 @@ export function AppShell() {
 		setSelectedProjectId(nextProject.id);
 		navigate(`/projects/${nextProject.id}`);
 	};
-	const openArtifact = (artifact: DesktopArtifact) => {
-		setSelectedArtifactId(artifact.id);
-		setRequestedWorkspacePath(artifact.path);
-		setArtifactPanelOpen(true);
-	};
 	const renameSession = async (sessionId: string, title: string) => {
 		const renamed = await desktop.session.rename({ sessionId, title });
 		upsertRecentSession(renamed);
@@ -370,6 +386,28 @@ export function AppShell() {
 	const projectLoadError = projectsQuery.isError && projectsQuery.data === undefined;
 	const chatProjectError =
 		projectError || (projectsQuery.isError ? intl.formatMessage(desktopMessages.projectsLoadError) : undefined);
+	const agentStatus = chat.status === "streaming" ? "running" : "idle";
+	const PanelRightIcon = icons["panel-right"];
+	const CheckListIcon = icons["check-list"];
+	const dockToggleLabel = intl.formatMessage(dockOpen ? desktopMessages.chatHideDock : desktopMessages.chatShowDock);
+	const taskCardToggleLabel = intl.formatMessage(
+		taskCardOpen ? desktopMessages.chatHideTaskCard : desktopMessages.chatShowTaskCard,
+	);
+	const taskListLabel = intl.formatMessage(desktopMessages.taskList);
+	const openArtifact = (artifact: DesktopArtifact) => {
+		setSelectedArtifactId(artifact.id);
+		setDockOpen(true);
+		dock.openFile(artifact.path);
+	};
+	const taskPanel = (
+		<TaskPanel
+			status={agentStatus}
+			todos={chat.todos}
+			artifacts={chat.artifacts}
+			selectedArtifactId={selectedArtifactId}
+			onOpenArtifact={openArtifact}
+		/>
+	);
 	const contentCardClassName = cn(
 		"relative flex min-w-0 flex-1 overflow-hidden bg-[var(--web-content-background)] shadow-[0_0_0_var(--hairline)_var(--border-surface-strong),0_2px_10px_-4px_rgb(0_0_0/.1)] transition-[border-radius] duration-200",
 		sidebarOpen ? "rounded-[12px]" : "rounded-r-[12px]",
@@ -410,7 +448,7 @@ export function AppShell() {
 				/>
 			</motion.div>
 			{sidebarOpen ? <ColumnResizeHandle resize={sidebarResize} side="left" /> : null}
-			<div className={contentCardClassName}>
+			<div ref={contentRef} className={contentCardClassName}>
 				<Routes>
 					<Route
 						path="/chats"
@@ -517,9 +555,7 @@ export function AppShell() {
 								projectLoadError={projectLoadError}
 								projectError={chatProjectError}
 								sidebarOpen={sidebarOpen}
-								artifactPanelOpen={artifactPanelOpen}
 								onToggleSidebar={() => setSidebarOpen(true)}
-								onToggleArtifactPanel={() => setArtifactPanelOpen((open) => !open)}
 								onOpenProviderSettings={openProviderSettings}
 								onSelectProviderModel={setSelectedModelRef}
 								onSelectAgentMode={setSelectedAgentMode}
@@ -556,37 +592,89 @@ export function AppShell() {
 					/>
 					<Route path="*" element={<Navigate to="/chat/new" replace />} />
 				</Routes>
-				{rightPanelVisible && artifactPanelOpen ? (
-					<ColumnResizeHandle resize={rightPanelResize} side="right" position={visibleRightPanelWidth} />
+				{dockMounted ? (
+					<div
+						className="absolute top-1.5 right-1.5 z-20 flex items-center gap-0.5"
+						style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+					>
+						{taskCardAsColumn ? (
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon"
+								onClick={() => setTaskCardOpen((open) => !open)}
+								aria-pressed={taskCardOpen}
+								aria-label={taskCardToggleLabel}
+								title={taskCardToggleLabel}
+								className="text-muted-foreground"
+							>
+								<CheckListIcon size={16} />
+							</Button>
+						) : (
+							<Popover>
+								<PopoverTrigger
+									render={
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon"
+											aria-label={taskListLabel}
+											title={taskListLabel}
+											className="text-muted-foreground"
+										>
+											<CheckListIcon size={16} />
+										</Button>
+									}
+								/>
+								<PopoverContent align="end" alignOffset={-34} sideOffset={6} className={TASK_CARD_CLASS_NAME}>
+									{taskPanel}
+								</PopoverContent>
+							</Popover>
+						)}
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							onClick={() => setDockOpen((open) => !open)}
+							aria-expanded={dockOpen}
+							aria-controls="session-dock"
+							aria-label={dockToggleLabel}
+							title={dockToggleLabel}
+							className="text-muted-foreground"
+						>
+							<PanelRightIcon size={16} />
+						</Button>
+					</div>
 				) : null}
-				{rightPanelVisible ? (
+				<AnimatePresence initial={false}>
+					{taskCardVisible ? (
+						<motion.div
+							key="task-card"
+							className="shrink-0 overflow-hidden"
+							initial={{ width: 0, opacity: 0 }}
+							animate={{ width: TASK_CARD_COLUMN_WIDTH, opacity: 1 }}
+							exit={{ width: 0, opacity: 0 }}
+							transition={reduceMotion ? { duration: 0 } : { duration: 0.24, ease: [0.77, 0, 0.175, 1] }}
+						>
+							<div className="flex h-full w-[268px] flex-col px-1.5 pt-11">
+								<div className={cn(TASK_CARD_CLASS_NAME, "max-h-full overflow-y-auto")}>{taskPanel}</div>
+							</div>
+						</motion.div>
+					) : null}
+				</AnimatePresence>
+				{dockVisible ? <ColumnResizeHandle resize={dockResize} side="right" position={visibleDockWidth} /> : null}
+				{dockMounted ? (
 					<motion.div
 						className="relative min-w-0 shrink-0 overflow-hidden"
-						style={{ width: visibleRightPanelWidth }}
+						style={{ width: visibleDockWidth }}
+						aria-hidden={!dockVisible}
+						inert={!dockVisible}
 					>
-						<div className="absolute inset-0" aria-hidden={artifactPanelOpen} inert={artifactPanelOpen}>
-							<TaskPanel
-								status={chat.status === "streaming" ? "running" : "idle"}
-								todos={chat.todos}
-								artifacts={chat.artifacts}
-								selectedArtifactId={selectedArtifactId}
-								onOpenArtifact={openArtifact}
-							/>
-						</div>
-						<AnimatePresence initial={false}>
-							{artifactPanelOpen ? (
-								<motion.div
-									key="artifact-panel"
-									className="absolute inset-0 z-10 bg-(--web-content-background)"
-									initial={artifactMotionInitial}
-									animate={{ opacity: 1, transform: "translateX(0%)" }}
-									exit={artifactMotionExit}
-									transition={artifactMotionTransition}
-								>
-									<WorkspacePanel sessionId={session.id} openFilePath={requestedWorkspacePath} />
-								</motion.div>
-							) : null}
-						</AnimatePresence>
+						<Dock
+							sessionId={session.id}
+							dock={dock}
+							subagents={chat.messages.filter((item) => item.kind === "subagent")}
+						/>
 					</motion.div>
 				) : null}
 			</div>

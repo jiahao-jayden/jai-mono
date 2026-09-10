@@ -12,22 +12,19 @@ import { toast } from "@/components/ui/toast";
 import { desktopMessages } from "@/i18n/messages";
 import { desktop } from "@/lib/desktop";
 import { useIcons } from "@/lib/icon-context";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import type {
-	DesktopArtifact,
-	DesktopArtifactPreview,
 	DesktopWorkspaceEntry,
-	DesktopWorkspaceFile,
 	DesktopWorkspaceOpenApplication,
 	DesktopWorkspaceOpenApplications,
 } from "../../../shared/desktop-rpc";
 
 interface WorkspacePanelProps {
 	readonly sessionId: string;
-	readonly openFilePath?: string | null;
+	/** null 表示这个面板还没选文件，显示空态。 */
+	readonly filePath: string | null;
+	onOpenFile(path: string): void;
 }
-
-const NEW_WORKSPACE_TAB_PATH = "__workspace_new_tab__";
 
 function treePathForEntry(entry: DesktopWorkspaceEntry): string {
 	return entry.kind === "directory" ? `${entry.path}/` : entry.path;
@@ -96,20 +93,19 @@ function canOpenInCursor(filePath: string): boolean {
 	]).has(extension ?? "");
 }
 
-interface WorkspaceTab extends DesktopWorkspaceFile {
-	readonly name: string;
-	readonly state: "empty" | "loading" | "ready" | "error";
-}
+type WorkspaceFileState =
+	| { readonly status: "empty" }
+	| { readonly status: "loading" }
+	| { readonly status: "error" }
+	| { readonly status: "ready"; readonly content: string };
 
-export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps) {
+export function WorkspacePanel({ sessionId, filePath, onOpenFile }: WorkspacePanelProps) {
 	const intl = useIntl();
 	const icons = useIcons();
 	const FolderIcon = icons.folder;
 	const FolderOpenIcon = icons["folder-open"];
 	const FileIcon = icons["file-code"];
 	const SearchIcon = icons.search;
-	const PlusIcon = icons.plus;
-	const XIcon = icons.x;
 	const LoadingIcon = icons.loader;
 	const PanelRightIcon = icons["panel-right"];
 	const ChevronDownIcon = icons["chevron-down"];
@@ -118,16 +114,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 	const [loadingPaths, setLoadingPaths] = useState<ReadonlySet<string>>(new Set());
 	const [rootLoaded, setRootLoaded] = useState(false);
 	const [treeCollapsed, setTreeCollapsed] = useState(false);
-	const [tabs, setTabs] = useState<readonly WorkspaceTab[]>([
-		{
-			path: NEW_WORKSPACE_TAB_PATH,
-			name: intl.formatMessage(desktopMessages.workspaceChooseFile),
-			content: "",
-			state: "empty",
-		},
-	]);
-	const tabsRef = useRef<readonly WorkspaceTab[]>([]);
-	const [activePath, setActivePath] = useState<string | null>(NEW_WORKSPACE_TAB_PATH);
+	const [file, setFile] = useState<WorkspaceFileState>({ status: "empty" });
 	const [query, setQuery] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [openingTarget, setOpeningTarget] = useState<"default" | "cursor" | null>(null);
@@ -138,8 +125,9 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 	const directoryPathsRef = useRef(new Set<string>());
 	const loadedDirectoriesRef = useRef(new Set<string>());
 	const directoryLoadsRef = useRef(new Map<string, Promise<void>>());
-	const openFileRef = useRef<(filePath: string) => Promise<void>>(async () => undefined);
+	const onOpenFileRef = useRef(onOpenFile);
 	const selectionSyncRef = useRef(false);
+	onOpenFileRef.current = onOpenFile;
 
 	const loadDirectory = useCallback(
 		async (directoryPath: string) => {
@@ -205,53 +193,6 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 		[loadDirectory],
 	);
 
-	useEffect(() => {
-		tabsRef.current = tabs;
-	}, [tabs]);
-
-	const openFile = useCallback(
-		async (filePath: string) => {
-			const existing = tabsRef.current.find((tab) => tab.path === filePath);
-			setActivePath(filePath);
-			if (existing && existing.state !== "error") return;
-
-			const name = filePath.split("/").at(-1) ?? filePath;
-			setTabs((current) => {
-				const index = current.findIndex((tab) => tab.path === filePath);
-				if (index === -1) {
-					const placeholderIndex = current.findIndex((tab) => tab.path === NEW_WORKSPACE_TAB_PATH);
-					if (placeholderIndex === -1)
-						return [...current, { path: filePath, name, content: "", state: "loading" }];
-					const next = [...current];
-					next[placeholderIndex] = { path: filePath, name, content: "", state: "loading" };
-					return next;
-				}
-				const next = [...current];
-				next[index] = { ...next[index], state: "loading" };
-				return next;
-			});
-			try {
-				await ensureFilePathInTree(filePath);
-				const file = await desktop.workspace.read({ sessionId, path: filePath });
-				setTabs((current) =>
-					current.map((tab) => (tab.path === filePath ? { ...tab, ...file, state: "ready" } : tab)),
-				);
-				const selectedItem = treeModelRef.current?.getItem(filePath);
-				if (selectedItem && !selectedItem.isSelected()) {
-					selectionSyncRef.current = true;
-					selectedItem.select();
-				}
-				treeModelRef.current?.scrollToPath(filePath, { focus: false, offset: "nearest" });
-				setError(null);
-			} catch {
-				setTabs((current) => current.map((tab) => (tab.path === filePath ? { ...tab, state: "error" } : tab)));
-				setError(intl.formatMessage(desktopMessages.workspaceReadFileError));
-			}
-		},
-		[ensureFilePathInTree, sessionId, intl.formatMessage],
-	);
-	openFileRef.current = openFile;
-
 	const { model: treeModel } = useFileTree({
 		paths: [],
 		initialExpansion: "closed",
@@ -266,7 +207,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 			}
 			const selectedPath = selectedPaths.at(-1);
 			if (!selectedPath || selectedPath.endsWith("/")) return;
-			void openFileRef.current(workspacePathForTreePath(selectedPath));
+			onOpenFileRef.current(workspacePathForTreePath(selectedPath));
 		},
 	});
 	treeModelRef.current = treeModel;
@@ -292,18 +233,42 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 	}, [query, treeModel]);
 
 	useEffect(() => {
-		if (openFilePath) void openFile(openFilePath);
-	}, [openFile, openFilePath]);
-
-	useEffect(() => {
-		let cancelled = false;
-		if (!activePath || activePath === NEW_WORKSPACE_TAB_PATH) {
-			setOpenApplications(null);
+		if (!filePath) {
+			setFile({ status: "empty" });
 			return;
 		}
+		let cancelled = false;
+		setFile({ status: "loading" });
+		void (async () => {
+			try {
+				await ensureFilePathInTree(filePath);
+				const result = await desktop.workspace.read({ sessionId, path: filePath });
+				if (cancelled) return;
+				setFile({ status: "ready", content: result.content });
+				const selectedItem = treeModelRef.current?.getItem(filePath);
+				if (selectedItem && !selectedItem.isSelected()) {
+					selectionSyncRef.current = true;
+					selectedItem.select();
+				}
+				treeModelRef.current?.scrollToPath(filePath, { focus: false, offset: "nearest" });
+				setError(null);
+			} catch {
+				if (cancelled) return;
+				setFile({ status: "error" });
+				setError(intl.formatMessage(desktopMessages.workspaceReadFileError));
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [ensureFilePathInTree, filePath, sessionId, intl.formatMessage]);
+
+	useEffect(() => {
 		setOpenApplications(null);
+		if (!filePath) return;
+		let cancelled = false;
 		void desktop.workspace
-			.openApplications({ sessionId, path: activePath })
+			.openApplications({ sessionId, path: filePath })
 			.then((result) => {
 				if (!cancelled) setOpenApplications(result);
 			})
@@ -313,57 +278,32 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 		return () => {
 			cancelled = true;
 		};
-	}, [activePath, sessionId]);
+	}, [filePath, sessionId]);
 
-	const closeTab = (filePath: string) => {
-		setTabs((current) => {
-			const index = current.findIndex((tab) => tab.path === filePath);
-			const next = current.filter((tab) => tab.path !== filePath);
-			if (next.length === 0) {
-				next.push({
-					path: NEW_WORKSPACE_TAB_PATH,
-					name: intl.formatMessage(desktopMessages.workspaceChooseFile),
-					content: "",
-					state: "empty",
-				});
-			}
-			if (activePath === filePath) {
-				const nextTab = next[index] ?? next[index - 1] ?? null;
-				setActivePath(nextTab?.path ?? null);
-			}
-			return next;
-		});
-	};
-
-	const activeTab = tabs.find((tab) => tab.path === activePath) ?? null;
-	const activeContent = activeTab?.state === "ready" ? activeTab.content : null;
-	const activeWorkspaceFilePath = activeTab?.path === NEW_WORKSPACE_TAB_PATH ? null : (activeTab?.path ?? null);
-	const activeWorkspaceFileName = activeWorkspaceFilePath ? (activeTab?.name ?? activeWorkspaceFilePath) : null;
-	const cursorOpenAvailable = activeWorkspaceFilePath ? canOpenInCursor(activeWorkspaceFilePath) : false;
+	const fileName = filePath?.split("/").at(-1) ?? null;
+	const cursorOpenAvailable = filePath ? canOpenInCursor(filePath) : false;
 	const defaultOpenApplication = openApplications?.defaultApplication;
-	const openControlsDisabled = !activeWorkspaceFilePath || openingTarget !== null || openingApplicationId !== null;
+	const openControlsDisabled = !filePath || openingTarget !== null || openingApplicationId !== null;
 	const isOpeningDefault = openingTarget === "default";
 	const cursorOpenDisabled = openingTarget !== null || openingApplicationId !== null;
-	const defaultOpenLabel = activeWorkspaceFileName
-		? intl.formatMessage(desktopMessages.workspaceOpenDefault, { name: activeWorkspaceFileName })
+	const defaultOpenLabel = fileName
+		? intl.formatMessage(desktopMessages.workspaceOpenDefault, { name: fileName })
 		: intl.formatMessage(desktopMessages.workspaceOpenDefaultShort);
-	const newTabExists = tabs.some((tab) => tab.path === NEW_WORKSPACE_TAB_PATH);
 	const previewInitial = reducedMotion ? { opacity: 0 } : { opacity: 0, transform: "translateY(4px)" };
 	const treeLoading = loadingPaths.size > 0;
-	const activePreviewPath = activeTab?.path === NEW_WORKSPACE_TAB_PATH ? "/" : (activeTab?.path ?? "/");
 	const treeHostStyle = {
 		"--trees-bg-override": "var(--surface-tertiary)",
 		"--trees-selected-bg-override": "color-mix(in oklch, var(--foreground) 11%, var(--surface-tertiary))",
 	} as CSSProperties;
 	const openActiveFile = useCallback(
 		async (target: "default" | "cursor" | "application", applicationId?: string) => {
-			if (!activeWorkspaceFilePath) return;
+			if (!filePath) return;
 			if (target === "application") setOpeningApplicationId(applicationId ?? null);
 			else setOpeningTarget(target);
 			try {
 				await desktop.workspace.open({
 					sessionId,
-					path: activeWorkspaceFilePath,
+					path: filePath,
 					target,
 					...(target === "application" && applicationId ? { applicationId } : {}),
 				});
@@ -382,7 +322,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 				else setOpeningTarget(null);
 			}
 		},
-		[activeWorkspaceFilePath, sessionId, intl.formatMessage],
+		[filePath, sessionId, intl.formatMessage],
 	);
 	const defaultOpenIcon = defaultOpenApplication?.iconDataUrl ? (
 		<img src={defaultOpenApplication.iconDataUrl} alt="" className="size-4 shrink-0" />
@@ -427,100 +367,10 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 			aria-label={intl.formatMessage(desktopMessages.workspaceFiles)}
 			className="flex h-full w-full min-w-0 flex-col"
 		>
-			<div
-				className="flex h-11 shrink-0 items-center gap-1 overflow-x-auto px-2.5"
-				role="tablist"
-				aria-label={intl.formatMessage(desktopMessages.workspaceOpenFiles)}
-			>
-				{tabs.map((tab) => {
-					const isActive = tab.path === activePath;
-					const tabName =
-						tab.path === NEW_WORKSPACE_TAB_PATH
-							? intl.formatMessage(desktopMessages.workspaceChooseFile)
-							: tab.name;
-					const tabGroupClassName = cn(
-						"group flex h-7 min-w-0 max-w-44 shrink-0 items-center rounded-lg text-[12px] transition-colors duration-80",
-						isActive
-							? "bg-secondary text-foreground"
-							: "text-muted-foreground hover:bg-muted-hover hover:text-foreground",
-					);
-					return (
-						<div key={tab.path} className={tabGroupClassName}>
-							<Button
-								type="button"
-								variant="ghost"
-								size="sm"
-								role="tab"
-								aria-selected={isActive}
-								onClick={() => setActivePath(tab.path)}
-								className="h-7 min-w-0 flex-1 rounded-none px-2.5 text-inherit hover:text-inherit"
-								contentClassName="min-w-0"
-								labelClassName="flex min-w-0 items-center gap-1.5"
-							>
-								<FileIcon size={14} className="shrink-0" />
-								<span className="truncate">{tabName}</span>
-							</Button>
-							<Button
-								type="button"
-								variant="ghost"
-								size="icon"
-								aria-label={intl.formatMessage(desktopMessages.workspaceCloseFile, { name: tabName })}
-								title={intl.formatMessage(desktopMessages.workspaceCloseFile, { name: tabName })}
-								onClick={() => closeTab(tab.path)}
-								className="size-6 shrink-0 rounded-md text-muted-foreground hover:text-foreground"
-							>
-								<XIcon size={12} />
-							</Button>
-						</div>
-					);
-				})}
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon"
-					aria-label={intl.formatMessage(desktopMessages.workspaceNewTab)}
-					title={intl.formatMessage(desktopMessages.workspaceNewTab)}
-					onClick={() => {
-						if (!newTabExists) {
-							setTabs((current) => [
-								...current,
-								{
-									path: NEW_WORKSPACE_TAB_PATH,
-									name: intl.formatMessage(desktopMessages.workspaceChooseFile),
-									content: "",
-									state: "empty",
-								},
-							]);
-						}
-						setActivePath(NEW_WORKSPACE_TAB_PATH);
-					}}
-					className="shrink-0 text-muted-foreground"
-				>
-					<PlusIcon size={15} />
-				</Button>
-				<div className="ml-auto shrink-0 border-l border-border pl-1">
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon"
-						aria-label={intl.formatMessage(
-							treeCollapsed ? desktopMessages.workspaceExpandTree : desktopMessages.workspaceCollapseTree,
-						)}
-						title={intl.formatMessage(
-							treeCollapsed ? desktopMessages.workspaceExpandTree : desktopMessages.workspaceCollapseTree,
-						)}
-						aria-pressed={!treeCollapsed}
-						onClick={() => setTreeCollapsed((current) => !current)}
-						className="text-muted-foreground"
-					>
-						<PanelRightIcon size={15} className={cn({ "rotate-180": treeCollapsed })} />
-					</Button>
-				</div>
-			</div>
 			<div className="flex h-10 shrink-0 items-center gap-2 px-3 text-[12px] text-muted-foreground">
 				<FolderOpenIcon size={14} className="shrink-0 text-muted-foreground" />
-				<span className="min-w-0 flex-1 truncate" title={activePreviewPath}>
-					{activePreviewPath}
+				<span className="min-w-0 flex-1 truncate" title={filePath ?? "/"}>
+					{filePath ?? "/"}
 				</span>
 				<div className="flex shrink-0 overflow-hidden rounded-lg">
 					<Button
@@ -533,7 +383,7 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 						aria-label={defaultOpenLabel}
 						title={defaultOpenLabel}
 						className="h-7 rounded-r-none px-2.5"
-						contentClassName="gap-1.5"
+						labelClassName="flex shrink-0 items-center gap-1.5 whitespace-nowrap"
 					>
 						{defaultOpenIcon}
 						{intl.formatMessage(desktopMessages.workspaceOpen)}
@@ -559,6 +409,22 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 						</DropdownContent>
 					</DropdownMenu>
 				</div>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-sm"
+					aria-label={intl.formatMessage(
+						treeCollapsed ? desktopMessages.workspaceExpandTree : desktopMessages.workspaceCollapseTree,
+					)}
+					title={intl.formatMessage(
+						treeCollapsed ? desktopMessages.workspaceExpandTree : desktopMessages.workspaceCollapseTree,
+					)}
+					aria-pressed={!treeCollapsed}
+					onClick={() => setTreeCollapsed((current) => !current)}
+					className="shrink-0 text-muted-foreground"
+				>
+					<PanelRightIcon size={15} className={cn({ "rotate-180": treeCollapsed })} />
+				</Button>
 			</div>
 			<div
 				className={cn(
@@ -567,56 +433,44 @@ export function WorkspacePanel({ sessionId, openFilePath }: WorkspacePanelProps)
 				)}
 			>
 				<section className="flex min-h-0 min-w-0 flex-col">
-					{activeTab ? (
-						<AnimatePresence mode="wait" initial={false}>
-							<motion.div
-								key={`${activeTab.path}:${activeTab.state}`}
-								initial={previewInitial}
-								animate={{ opacity: 1, transform: "translateY(0)" }}
-								transition={{ duration: reducedMotion ? 0.1 : 0.16, ease: [0.23, 1, 0.32, 1] }}
-								className="min-h-0 min-w-0 flex-1 overflow-y-auto"
-							>
-								{activeTab.state === "empty" ? (
-									<div className="flex h-full min-h-72 flex-col items-center justify-center px-5 py-10 text-center">
-										<FolderIcon size={24} className="text-muted-foreground" />
-										<h2 className="mt-3 text-[14px] font-semibold">
-											{intl.formatMessage(desktopMessages.workspaceChooseFile)}
-										</h2>
-										<p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
-											{intl.formatMessage(desktopMessages.workspaceChooseFileDescription)}
-										</p>
-									</div>
-								) : activeTab.state === "loading" ? (
-									<div className="flex h-full min-h-72 items-center justify-center gap-2 text-[12px] text-muted-foreground">
-										<LoadingIcon size={16} className="animate-spin" />
-										{intl.formatMessage(desktopMessages.workspaceReadingFile)}
-									</div>
-								) : activeTab.state === "error" ? (
-									<div className="flex h-full min-h-72 flex-col items-center justify-center px-5 text-center">
-										<FileIcon size={22} className="text-muted-foreground" />
-										<p className="mt-3 text-[13px] font-semibold">
-											{intl.formatMessage(desktopMessages.workspaceFileUnavailable)}
-										</p>
-										<p className="mt-1 text-[12px] text-muted-foreground">
-											{error ?? intl.formatMessage(desktopMessages.workspaceReadFileError)}
-										</p>
-									</div>
-								) : activeContent !== null ? (
-									<FilePreview path={activeTab.path} content={activeContent} />
-								) : null}
-							</motion.div>
-						</AnimatePresence>
-					) : (
-						<div className="flex min-h-72 flex-1 flex-col items-center justify-center px-5 py-10 text-center">
-							<FolderIcon size={24} className="text-muted-foreground" />
-							<h2 className="mt-3 text-[14px] font-semibold">
-								{intl.formatMessage(desktopMessages.workspaceChooseFile)}
-							</h2>
-							<p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
-								{intl.formatMessage(desktopMessages.workspaceChooseFileDescription)}
-							</p>
-						</div>
-					)}
+					<AnimatePresence mode="wait" initial={false}>
+						<motion.div
+							key={`${filePath ?? ""}:${file.status}`}
+							initial={previewInitial}
+							animate={{ opacity: 1, transform: "translateY(0)" }}
+							transition={{ duration: reducedMotion ? 0.1 : 0.16, ease: [0.23, 1, 0.32, 1] }}
+							className="min-h-0 min-w-0 flex-1 overflow-y-auto"
+						>
+							{file.status === "empty" ? (
+								<div className="flex h-full min-h-72 flex-col items-center justify-center px-5 py-10 text-center">
+									<FolderIcon size={24} className="text-muted-foreground" />
+									<h2 className="mt-3 text-[14px] font-medium">
+										{intl.formatMessage(desktopMessages.workspaceChooseFile)}
+									</h2>
+									<p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
+										{intl.formatMessage(desktopMessages.workspaceChooseFileDescription)}
+									</p>
+								</div>
+							) : file.status === "loading" ? (
+								<div className="flex h-full min-h-72 items-center justify-center gap-2 text-[12px] text-muted-foreground">
+									<LoadingIcon size={16} className="animate-spin" />
+									{intl.formatMessage(desktopMessages.workspaceReadingFile)}
+								</div>
+							) : file.status === "error" ? (
+								<div className="flex h-full min-h-72 flex-col items-center justify-center px-5 text-center">
+									<FileIcon size={22} className="text-muted-foreground" />
+									<p className="mt-3 text-[13px] font-medium">
+										{intl.formatMessage(desktopMessages.workspaceFileUnavailable)}
+									</p>
+									<p className="mt-1 text-[12px] text-muted-foreground">
+										{error ?? intl.formatMessage(desktopMessages.workspaceReadFileError)}
+									</p>
+								</div>
+							) : (
+								<FilePreview path={filePath ?? ""} content={file.content} />
+							)}
+						</motion.div>
+					</AnimatePresence>
 				</section>
 
 				<section
@@ -717,235 +571,4 @@ function FilePreview({ path, content }: { readonly path: string; readonly conten
 			{content}
 		</pre>
 	);
-}
-
-interface ArtifactPanelProps {
-	readonly sessionId: string;
-	readonly artifacts: readonly DesktopArtifact[];
-	readonly selectedArtifactId: string | null;
-	onSelectArtifact(artifact: DesktopArtifact): void;
-}
-
-export function ArtifactPanel({ sessionId, artifacts, selectedArtifactId, onSelectArtifact }: ArtifactPanelProps) {
-	const intl = useIntl();
-	const icons = useIcons();
-	const ArchiveIcon = icons.archive;
-	const FileCodeIcon = icons["file-code"];
-	const HtmlIcon = icons["rectangle-horizontal"];
-	const LoadingIcon = icons.loader;
-	const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
-	const [preview, setPreview] = useState<DesktopArtifactPreview | null>(null);
-	const [previewState, setPreviewState] = useState<"idle" | "loading" | "error">("idle");
-
-	useEffect(() => {
-		let cancelled = false;
-		if (!selectedArtifact) {
-			setPreview(null);
-			setPreviewState("idle");
-			return;
-		}
-
-		setPreview(null);
-		setPreviewState("loading");
-		void desktop.artifact
-			.read({ sessionId, artifactId: selectedArtifact.id })
-			.then((result) => {
-				if (cancelled) return;
-				setPreview(result);
-				setPreviewState("idle");
-			})
-			.catch(() => {
-				if (cancelled) return;
-				setPreviewState("error");
-			});
-
-		return () => {
-			cancelled = true;
-		};
-	}, [selectedArtifact, sessionId]);
-
-	return (
-		<aside
-			id="artifact-panel"
-			aria-label={intl.formatMessage(desktopMessages.workspaceArtifactPreview)}
-			className="flex h-full w-full min-w-0 flex-col gap-3.5 overflow-y-auto p-3"
-		>
-			<div className="flex h-6 items-center justify-between px-1.5">
-				<h2 className="text-[12px] font-medium text-muted-foreground">
-					{intl.formatMessage(desktopMessages.workspaceArtifacts)}
-				</h2>
-				<span className="flex items-center gap-1.5 text-[12px] font-medium tabular-nums text-muted-foreground">
-					<ArchiveIcon size={14} />
-					{artifacts.length}
-				</span>
-			</div>
-
-			{artifacts.length === 0 ? (
-				<ArtifactEmptyState icon={ArchiveIcon} />
-			) : (
-				<div className="flex min-h-0 flex-1 flex-col">
-					<div className="max-h-56 shrink-0 overflow-y-auto p-1">
-						<ul className="space-y-1" aria-label={intl.formatMessage(desktopMessages.workspaceSessionArtifacts)}>
-							{artifacts.map((artifact) => {
-								const isSelected = artifact.id === selectedArtifact?.id;
-								const ArtifactIcon = artifact.format === "html" ? HtmlIcon : FileCodeIcon;
-								return (
-									<li key={artifact.id}>
-										<Button
-											type="button"
-											variant="ghost"
-											size="md"
-											active={isSelected}
-											onClick={() => onSelectArtifact(artifact)}
-											aria-current={isSelected ? "true" : undefined}
-											className="h-auto w-full justify-start rounded-lg px-2 py-1.5 hover:bg-muted-hover"
-											contentClassName="w-full min-w-0 justify-start"
-											labelClassName="flex min-w-0 flex-1 items-center gap-2"
-										>
-											<ArtifactIcon size={15} className="shrink-0 text-muted-foreground" />
-											<span className="min-w-0 flex-1 text-left">
-												<span
-													className="block truncate text-[13px] font-medium text-foreground"
-													title={artifact.path}
-												>
-													{artifactName(artifact.path)}
-												</span>
-												<span
-													className="mt-0.5 block truncate text-[11px] text-muted-foreground"
-													title={artifact.path}
-												>
-													{artifact.path}
-												</span>
-											</span>
-											<span className="shrink-0 text-[11px] font-medium uppercase text-muted-foreground">
-												{artifact.format}
-											</span>
-										</Button>
-									</li>
-								);
-							})}
-						</ul>
-					</div>
-					<ArtifactPreview
-						artifact={selectedArtifact}
-						preview={preview}
-						previewState={previewState}
-						loadingIcon={LoadingIcon}
-						fileIcon={FileCodeIcon}
-					/>
-				</div>
-			)}
-		</aside>
-	);
-}
-
-function ArtifactEmptyState({ icon: ArchiveIcon }: { readonly icon: ReturnType<typeof useIcons>["archive"] }) {
-	const intl = useIntl();
-	return (
-		<div className="flex min-h-90 flex-1 flex-col items-center justify-center px-6 py-10 text-center">
-			<span aria-hidden="true" className="flex size-10 items-center justify-center text-muted-foreground">
-				<ArchiveIcon size={22} />
-			</span>
-			<h3 className="mt-3 text-[13px] font-semibold">{intl.formatMessage(desktopMessages.workspaceNoArtifacts)}</h3>
-			<p className="mt-2 max-w-56 text-[12px] leading-5 text-foreground/65">
-				{intl.formatMessage(desktopMessages.workspaceArtifactsDescription)}
-			</p>
-		</div>
-	);
-}
-
-function ArtifactPreview({
-	artifact,
-	preview,
-	previewState,
-	loadingIcon: LoadingIcon,
-	fileIcon: FileCodeIcon,
-}: {
-	readonly artifact: DesktopArtifact | null;
-	readonly preview: DesktopArtifactPreview | null;
-	readonly previewState: "idle" | "loading" | "error";
-	readonly loadingIcon: ReturnType<typeof useIcons>["loader"];
-	readonly fileIcon: ReturnType<typeof useIcons>["file-code"];
-}) {
-	const intl = useIntl();
-	if (!artifact) {
-		return (
-			<div className="flex min-h-72 flex-1 flex-col items-center justify-center px-6 py-10 text-center">
-				<FileCodeIcon size={22} className="text-muted-foreground" />
-				<h3 className="mt-3 text-[13px] font-semibold">
-					{intl.formatMessage(desktopMessages.workspaceSelectArtifact)}
-				</h3>
-				<p className="mt-2 max-w-56 text-[12px] leading-5 text-foreground/65">
-					{intl.formatMessage(desktopMessages.workspaceSelectArtifactDescription)}
-				</p>
-			</div>
-		);
-	}
-
-	if (previewState === "loading" || (previewState === "idle" && !preview)) {
-		return (
-			<div className="flex min-h-72 flex-1 flex-col items-center justify-center gap-3 px-6 py-10 text-center text-[12px] text-foreground/65">
-				<LoadingIcon size={18} className="animate-spin text-muted-foreground" />
-				{intl.formatMessage(desktopMessages.workspaceLoadingPreview)}
-			</div>
-		);
-	}
-
-	if (previewState === "error" || !preview) {
-		return (
-			<div className="flex min-h-72 flex-1 flex-col items-center justify-center px-6 py-10 text-center">
-				<FileCodeIcon size={22} className="text-muted-foreground" />
-				<h3 className="mt-3 text-[13px] font-semibold">
-					{intl.formatMessage(desktopMessages.workspacePreviewUnavailable)}
-				</h3>
-				<p className="mt-2 max-w-56 text-[12px] leading-5 text-foreground/65">
-					{intl.formatMessage(desktopMessages.workspacePreviewUnavailableDescription)}
-				</p>
-			</div>
-		);
-	}
-
-	return (
-		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3 text-[12px] text-muted-foreground">
-				<FileCodeIcon size={14} className="shrink-0" />
-				<span className="min-w-0 flex-1 truncate" title={artifact.path}>
-					{artifact.path}
-				</span>
-			</div>
-			{artifact.format === "markdown" ? (
-				<div className="min-h-72 flex-1 overflow-y-auto px-4 py-4">
-					<MarkdownContent content={preview.content} className="text-[13px] leading-6" />
-				</div>
-			) : (
-				<iframe
-					title={artifactName(artifact.path)}
-					sandbox=""
-					referrerPolicy="no-referrer"
-					srcDoc={sandboxHtml(preview.content)}
-					className="min-h-72 flex-1 border-0 bg-white"
-				/>
-			)}
-		</div>
-	);
-}
-
-function artifactName(path: string): string {
-	return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
-}
-
-function sandboxHtml(content: string): string {
-	const policy = "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:";
-	const csp = `<meta http-equiv="Content-Security-Policy" content="${policy}">`;
-	const headStart = content.match(/<head\b[^>]*>/i);
-	if (headStart?.index !== undefined) {
-		const insertionIndex = headStart.index + headStart[0].length;
-		return `${content.slice(0, insertionIndex)}${csp}${content.slice(insertionIndex)}`;
-	}
-	const htmlStart = content.match(/<html\b[^>]*>/i);
-	if (htmlStart?.index !== undefined) {
-		const insertionIndex = htmlStart.index + htmlStart[0].length;
-		return `${content.slice(0, insertionIndex)}<head>${csp}</head>${content.slice(insertionIndex)}`;
-	}
-	return `<!doctype html><html><head>${csp}</head><body>${content}</body></html>`;
 }

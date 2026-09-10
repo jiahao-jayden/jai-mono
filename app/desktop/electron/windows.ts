@@ -15,6 +15,9 @@ export function createMainWindow(): BrowserWindow {
 	const win = new BrowserWindow({
 		width: 1200,
 		height: 800,
+		// 与 AppShell 根节点的 min-w-5xl / min-h-160 一致，窗口缩到更小时 shell 会溢出被裁。
+		minWidth: 1024,
+		minHeight: 640,
 		show: false,
 		frame: !isMac,
 		titleBarStyle: isMac ? "hidden" : undefined,

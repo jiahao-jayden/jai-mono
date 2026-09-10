@@ -1,3 +1,4 @@
+import { cn } from "cn";
 import { AnimatePresence, useReducedMotion } from "framer-motion";
 import {
 	type CSSProperties,
@@ -18,7 +19,6 @@ import logo from "@/assets/icons/chat-area/logo.svg";
 import type { Chat } from "@/hooks/use-chat";
 import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
-import { cn } from "@/lib/utils";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
 	CodingSession,
@@ -65,9 +65,7 @@ interface ChatColumnProps {
 	projectLoadError: boolean;
 	projectError?: string;
 	sidebarOpen: boolean;
-	artifactPanelOpen: boolean;
 	onToggleSidebar(): void;
-	onToggleArtifactPanel(): void;
 	onOpenProviderSettings(): void;
 	onSelectProviderModel(modelRef: string): void;
 	onSelectAgentMode(mode: DesktopAgentMode): void;
@@ -99,9 +97,7 @@ export function ChatColumn({
 	projectLoadError,
 	projectError,
 	sidebarOpen,
-	artifactPanelOpen,
 	onToggleSidebar,
-	onToggleArtifactPanel,
 	onOpenProviderSettings,
 	onSelectProviderModel,
 	onSelectAgentMode,
@@ -116,7 +112,6 @@ export function ChatColumn({
 	const FolderIcon = icons.folder;
 	const FolderOffIcon = icons["folder-off"];
 	const PanelLeftIcon = icons["panel-left-close"];
-	const PanelRightIcon = icons["panel-right"];
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const cancelTitleEditRef = useRef(false);
 	const reducedMotion = useReducedMotion();
@@ -279,29 +274,8 @@ export function ChatColumn({
 						</>
 					) : null}
 				</div>
-				<div className="shrink-0" style={noDrag}>
-					{session ? (
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon"
-							onClick={onToggleArtifactPanel}
-							aria-expanded={artifactPanelOpen}
-							aria-controls="workspace-panel"
-							aria-label={intl.formatMessage(
-								artifactPanelOpen ? desktopMessages.chatCloseWorkspace : desktopMessages.chatOpenWorkspace,
-							)}
-							title={intl.formatMessage(
-								artifactPanelOpen ? desktopMessages.chatCloseWorkspace : desktopMessages.chatOpenWorkspace,
-							)}
-							className="shrink-0 text-muted-foreground"
-						>
-							<PanelRightIcon size={16} />
-						</Button>
-					) : (
-						<span className="size-8" aria-hidden="true" />
-					)}
-				</div>
+				{/* 右上角的任务卡片 / dock 开关由 AppShell 固定在内容卡片角上，这里只留出它们的位置。 */}
+				<span className="h-8 w-[66px] shrink-0" aria-hidden="true" />
 			</header>
 
 			{isNewChat ? (
