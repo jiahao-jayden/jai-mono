@@ -367,6 +367,24 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 		if (this.#ownsDatabase) this.database.close();
 	}
 
+	async relocate(
+		input: { readonly sessionId: string; readonly cwd: string },
+	): Promise<ResultType<void, ProductSessionNotFound | ProductSessionAdmissionConflict>> {
+		try {
+			this.transaction(() => {
+				const changed = this.database
+					.prepare("UPDATE product_session_catalog SET cwd = ? WHERE session_id = ?")
+					.run(input.cwd, input.sessionId);
+				if (changed.changes === 0)
+					throw new ProductSessionNotFound({ message: `Session "${input.sessionId}" does not exist`, sessionId: input.sessionId });
+			});
+			return Result.ok(undefined);
+		} catch (error) {
+			if (error instanceof ProductSessionNotFound) return Result.err(error);
+			return Result.err(this.conflict(input.sessionId, `Could not relocate Session "${input.sessionId}"`, error));
+		}
+	}
+
 	private initialize(): void {
 		this.database.exec("PRAGMA foreign_keys = ON");
 		this.database.exec("PRAGMA busy_timeout = 5000");

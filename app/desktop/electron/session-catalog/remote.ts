@@ -43,6 +43,7 @@ export interface DesktopSessionCatalogPort {
 export interface RemoteDesktopSessionCatalogTransport {
 	readonly catalog: DesktopCatalogClient;
 	createSessionJournal(input: { readonly sessionId: string; readonly cwd: string }): Promise<void>;
+	relocateSessionJournal(input: { readonly sessionId: string; readonly cwd: string }): Promise<void>;
 }
 
 class DesktopRemoteCatalogFailed extends TaggedError("desktop_session_catalog.remote_failed")<{
@@ -99,6 +100,8 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 			catalog: connected.value,
 			createSessionJournal: ({ sessionId, cwd }) =>
 				createSessionJournal(dataDirectory, sessionId, cwd, runtimeHostEntrypoint, launchRuntimeHost),
+			relocateSessionJournal: ({ sessionId, cwd }) =>
+				relocateSessionJournal(dataDirectory, sessionId, cwd, runtimeHostEntrypoint, launchRuntimeHost),
 		});
 		await catalog.#refreshProjects();
 		return catalog;
@@ -223,6 +226,8 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 	async moveSession(input: MoveSessionInput): Promise<CodingSession> {
 		await this.getSession(input.sessionId);
 		if (input.toProjectId !== null) await this.getProject(input.toProjectId);
+		const cwd = input.toProjectId === null ? process.cwd() : (await this.getProject(input.toProjectId)).canonicalPath;
+		await this.#transport.relocateSessionJournal({ sessionId: input.sessionId, cwd });
 		return unwrap(
 			await this.#transport.catalog.moveSession({ sessionId: input.sessionId, projectId: input.toProjectId }),
 			"sessions/move",
@@ -301,6 +306,48 @@ async function createSessionJournal(
 				method: "session/close",
 				message: "Could not release temporary Session controller",
 				cause: closed.error,
+			});
+	} finally {
+		await connected.value.close();
+	}
+}
+
+async function relocateSessionJournal(
+	dataDirectory: string,
+	sessionId: string,
+	cwd: string,
+	runtimeHostEntrypoint: string | undefined,
+	launchRuntimeHost: ReturnType<typeof createDesktopRuntimeHostLauncher>,
+): Promise<void> {
+	const connected = await connectJaiRuntimeHost({
+		dataDirectory,
+		...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
+		...(launchRuntimeHost === undefined ? {} : { launchRuntimeHost }),
+	});
+	if (connected.isErr())
+		throw new DesktopRemoteCatalogFailed({
+			method: "session/relocate",
+			message: "Could not connect to Runtime Host for Session relocation",
+			cause: connected.error,
+		});
+	try {
+		const initialized = await connected.value.request("initialize", {
+			protocolVersion: 2,
+			capabilities: {},
+			info: { name: "jai-desktop-catalog", version: "0.0.0" },
+		});
+		if (initialized.isErr())
+			throw new DesktopRemoteCatalogFailed({
+				method: "initialize",
+				message: "Could not initialize Runtime Host",
+				cause: initialized.error,
+			});
+		const relocated = await connected.value.request("session/relocate", { sessionId, cwd });
+		if (relocated.isErr())
+			throw new DesktopRemoteCatalogFailed({
+				method: "session/relocate",
+				message: relocated.error.message,
+				cause: relocated.error,
 			});
 	} finally {
 		await connected.value.close();

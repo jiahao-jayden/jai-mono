@@ -1251,6 +1251,57 @@ describe("ACP v2 Agent adapter", () => {
 		expect(JSON.stringify(replayed)).toContain("operation-1:input");
 		expect(JSON.stringify(replayed)).not.toContain("assistant-1");
 	});
+
+	test("session/relocate updates the durable cwd and appends a hidden user message that resume replay does not project", async () => {
+		const host = new RuntimeHost({
+			persistence: new InMemoryProductSessionPersistence(),
+			createId: ids("session-1", "relocation-1"),
+		});
+		const agent = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: { protocolVersion: 2, capabilities: {}, info: { name: "test-client", version: "1.0.0" } },
+		});
+		await agent.handle({ jsonrpc: "2.0", id: 2, method: "session/new", params: { cwd: "/old-workspace" } });
+
+		const relocated = await agent.handle({
+			jsonrpc: "2.0",
+			id: 3,
+			method: "session/relocate",
+			params: { sessionId: "session-1", cwd: "/new-workspace" },
+		});
+		expect(relocated).toEqual([{ jsonrpc: "2.0", id: 3, result: {} }]);
+
+		const replayed = await agent.handle({
+			jsonrpc: "2.0",
+			id: 4,
+			method: "session/resume",
+			params: { sessionId: "session-1", cwd: "/new-workspace", replayFrom: { type: "start" } },
+		});
+		expect(replayed).toContainEqual(expect.objectContaining({ jsonrpc: "2.0", id: 4, result: expect.any(Object) }));
+		expect(JSON.stringify(replayed)).not.toContain("user_message");
+		expect(JSON.stringify(replayed)).not.toContain("relocation-1");
+
+		const resumedOld = await agent.handle({
+			jsonrpc: "2.0",
+			id: 5,
+			method: "session/resume",
+			params: { sessionId: "session-1", cwd: "/old-workspace" },
+		});
+		expect(resumedOld).toContainEqual(
+			expect.objectContaining({ jsonrpc: "2.0", id: 5, error: expect.objectContaining({ message: expect.stringContaining("different workspace") }) }),
+		);
+
+		const invalid = await agent.handle({
+			jsonrpc: "2.0",
+			id: 6,
+			method: "session/relocate",
+			params: { sessionId: "session-1", cwd: "relative/path" },
+		});
+		expect(invalid).toContainEqual(expect.objectContaining({ jsonrpc: "2.0", id: 6, error: expect.any(Object) }));
+	});
 });
 
 function configuredSessionPolicy(): RuntimeSessionConfigurationPolicy {

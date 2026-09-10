@@ -261,6 +261,42 @@ export class RuntimeHost {
 		);
 	}
 
+	async relocateSession(
+		input: { readonly sessionId: string; readonly cwd: string },
+	): Promise<Result<void, RuntimeHostPromptRejected>> {
+		const relocated = await this.options.persistence.relocate(input);
+		if (relocated.isErr()) {
+			return Result.err(
+				new RuntimeHostPromptRejected({
+					message: relocated.error.message,
+					sessionId: input.sessionId,
+					cause: relocated.error,
+				}),
+			);
+		}
+		const loaded = await this.options.persistence.load(input.sessionId);
+		if (loaded.isErr()) return Result.ok(undefined);
+		const now = this.#now();
+		const entry: MessageEntry = {
+			type: "message",
+			id: this.#createId(),
+			parentId: loaded.value.snapshot.leafId,
+			timestamp: now.toISOString(),
+			message: {
+				role: "user",
+				content: `Switched workspace to ${input.cwd}`,
+				metadata: { hidden: true },
+				timestamp: now.getTime(),
+			},
+		};
+		await this.options.persistence.appendEntry({
+			sessionId: input.sessionId,
+			entry,
+			expectedRevision: loaded.value.revision,
+		});
+		return Result.ok(undefined);
+	}
+
 	async openSession(input: RuntimeSessionSelection): Promise<Result<RuntimeSession, RuntimeHostOpenError>> {
 		if (input.kind === "resume") {
 			const found = await this.options.persistence.load(input.id);

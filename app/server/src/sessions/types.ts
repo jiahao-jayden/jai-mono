@@ -117,4 +117,7 @@ export interface ProductSessionPersistence<TAppState extends JsonObject = JsonOb
 	appendEntry(
 		input: SessionEntryAppend<TAppState>,
 	): Promise<Result<string, ProductSessionNotFound | ProductSessionAdmissionConflict>>;
+	relocate(
+		input: { readonly sessionId: string; readonly cwd: string },
+	): Promise<Result<void, ProductSessionNotFound | ProductSessionAdmissionConflict>>;
 }

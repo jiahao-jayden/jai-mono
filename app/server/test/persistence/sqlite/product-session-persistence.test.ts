@@ -262,4 +262,42 @@ describe("SqliteProductSessionPersistence", () => {
 		expect(snapshot.value.entries.map((entry) => entry.id)).toEqual(["operation-1:input", "assistant-1"]);
 		await resumed.value.close();
 	});
+
+	test("relocate updates the durable cwd and appends a hidden user message so a resume with the new workspace succeeds", async () => {
+		const { DatabaseSync } = await import("node:sqlite");
+		const database = new DatabaseSync(":memory:");
+		const persistence = new SqliteProductSessionPersistence(database);
+		const created = await persistence.create({
+			id: "session-1",
+			appState: {},
+			runtimeConfiguration: { model: "profile/model", mode: "manual" },
+			cwd: "/old-workspace",
+			createdAt: "2026-08-25T10:00:00.000Z",
+		});
+		if (created.isErr()) throw created.error;
+
+		const host = new RuntimeHost({ persistence, createId: ids("relocation-1", "ignored") });
+		const relocated = await host.relocateSession({ sessionId: "session-1", cwd: "/new-workspace" });
+		if (relocated.isErr()) throw relocated.error;
+
+		const loaded = await persistence.load("session-1");
+		if (loaded.isErr()) throw loaded.error;
+		expect(loaded.value.cwd).toBe("/new-workspace");
+		expect(loaded.value.snapshot.entries).toHaveLength(1);
+		expect(loaded.value.snapshot.entries[0]).toMatchObject({
+			type: "message",
+			message: { role: "user", metadata: { hidden: true } },
+		});
+		expect(loaded.value.snapshot.leafId).toBe("relocation-1");
+
+		const resumedNew = await host.openSession({ kind: "resume", id: "session-1", cwd: "/new-workspace", controllerId: "desktop" });
+		if (resumedNew.isErr()) throw resumedNew.error;
+		await resumedNew.value.close();
+
+		const resumedOld = await host.openSession({ kind: "resume", id: "session-1", cwd: "/old-workspace", controllerId: "desktop" });
+		expect(resumedOld.isErr()).toBe(true);
+
+		const missing = await host.relocateSession({ sessionId: "missing", cwd: "/anywhere" });
+		expect(missing.isErr()).toBe(true);
+	});
 });

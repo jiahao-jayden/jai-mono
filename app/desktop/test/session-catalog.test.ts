@@ -57,15 +57,18 @@ describe("RemoteDesktopSessionCatalog", () => {
 
 			await catalog.markTitleGenerationAttempted(session.id);
 			await catalog.renameSession(session.id, "Manual");
-			const generated = await catalog.setGeneratedTitle(session.id, "Generated");
-			const moved = await catalog.moveSession({ sessionId: session.id, toProjectId: second.id });
+		const generated = await catalog.setGeneratedTitle(session.id, "Generated");
+		const moved = await catalog.moveSession({ sessionId: session.id, toProjectId: second.id });
 
-			expect(generated).toMatchObject({ title: "Manual", titleSource: "manual" });
-			expect(moved.projectId).toBe(second.id);
-			expect(await catalog.resolveExecutionContext(session.id)).toMatchObject({
-				localFileAccess: true,
-				cwd: await realpath(secondFolder),
-			});
+		expect(generated).toMatchObject({ title: "Manual", titleSource: "manual" });
+		expect(moved.projectId).toBe(second.id);
+		expect(await catalog.resolveExecutionContext(session.id)).toMatchObject({
+			localFileAccess: true,
+			cwd: await realpath(secondFolder),
+		});
+		expect(transport.journalRelocations).toEqual([
+			{ sessionId: session.id, cwd: await realpath(secondFolder) },
+		]);
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
@@ -87,6 +90,7 @@ describe("RemoteDesktopSessionCatalog", () => {
 class MemoryCatalogTransport implements RemoteDesktopSessionCatalogTransport {
 	readonly journalIds = new Set<string>();
 	readonly journalCreations: { readonly sessionId: string; readonly cwd: string }[] = [];
+	readonly journalRelocations: { readonly sessionId: string; readonly cwd: string }[] = [];
 	readonly #projects = new Map<string, DesktopCatalogProject>();
 	readonly #sessions = new Map<string, DesktopCatalogSession>();
 
@@ -133,6 +137,12 @@ class MemoryCatalogTransport implements RemoteDesktopSessionCatalogTransport {
 	async createSessionJournal(input: { readonly sessionId: string; readonly cwd: string }): Promise<void> {
 		this.journalIds.add(input.sessionId);
 		this.journalCreations.push(input);
+	}
+
+	async relocateSessionJournal(input: { readonly sessionId: string; readonly cwd: string }): Promise<void> {
+		if (!this.journalIds.has(input.sessionId))
+			throw new Error(`Session journal "${input.sessionId}" was not created`);
+		this.journalRelocations.push(input);
 	}
 
 	#requireSession(sessionId: string) {
