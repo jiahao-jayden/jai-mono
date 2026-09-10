@@ -5,7 +5,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { type IconName, useIcon } from "@/lib/icon-context";
 import { cn } from "cn";
 import type { DesktopWebSearchResult } from "../../../shared/desktop-rpc";
-import { collapsePanel, ShimmerLabel, SwapLabel } from "./surfaces";
+import { collapsePanel, paper, ShimmerLabel, SwapLabel } from "./surfaces";
 import { WebSearchResults } from "./web-search-results";
 
 export interface TimelineStep {
@@ -54,7 +54,7 @@ export function ToolTimeline({
 			onOpenChange={onOpenChange}
 			className={cn("w-full max-w-sm", className)}
 		>
-			<CollapsibleTrigger className="group/trigger flex items-center gap-1.5 rounded-md py-1 text-[13.5px] text-foreground/55 outline-none transition-colors hover:text-foreground/90">
+			<CollapsibleTrigger className="group/trigger flex items-center gap-1.5 rounded-md py-1 text-[14px] text-foreground/55 outline-none transition-colors hover:text-foreground/90">
 				<span className={chevronClassName}>
 					<ChevronRight size={14} strokeWidth={1.5} />
 				</span>
@@ -89,7 +89,7 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 		if (hasWebSearchResults) setOpen(true);
 	}, [hasWebSearchResults]);
 	const rowClassName = cn(
-		"flex min-w-0 items-center gap-2 text-start text-[13.5px] text-foreground/55 outline-none",
+		"flex min-w-0 items-center gap-2 text-start text-[14px] text-foreground/55 outline-none",
 		(expandable || selectable) && "transition-colors hover:text-foreground/90",
 	);
 	const chevronClassName = cn(
@@ -103,7 +103,7 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 				{step.verb}
 			</ShimmerLabel>
 			{step.chip ? (
-				<span className="max-w-48 truncate rounded-md bg-foreground/[0.06] px-1.5 py-0.5 font-mono text-[11px] text-foreground/70">
+				<span className="max-w-48 truncate rounded-md bg-foreground/6 px-1.5 py-0.5 font-mono text-[11px] text-foreground/70">
 					{step.chip}
 				</span>
 			) : null}
@@ -130,11 +130,13 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 	return (
 		<Collapsible open={open} onOpenChange={setOpen}>
 			<CollapsibleTrigger className={rowClassName}>{row}</CollapsibleTrigger>
-			<CollapsibleContent className="mt-2 [contain:paint] outline-none">
+			<CollapsibleContent className="mt-2 contain-[paint] outline-none">
 				{step.webSearchResults ? (
-					<WebSearchResults results={step.webSearchResults} />
+					<div className={cn(paper, "max-h-52 overflow-y-auto rounded-lg p-2")}>
+						<WebSearchResults results={step.webSearchResults} />
+					</div>
 				) : (
-					<pre className="max-h-64 overflow-auto rounded-md bg-foreground/[0.06] px-2 py-1.5 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-foreground/70">
+					<pre className={cn(paper, "max-h-64 overflow-auto rounded-lg px-3 py-2.5 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-foreground/70")}>
 						{step.details}
 					</pre>
 				)}

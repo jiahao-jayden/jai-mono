@@ -332,6 +332,7 @@ function WorkProcess({
 	const steps = workTimelineSteps(group.items, intl, { onOpenSubagent });
 	const hasWebSearchResults = group.items.some((item) => item.kind === "tool" && item.webSearchResults !== undefined);
 	const [open, setOpen] = useState(running || hasWebSearchResults);
+	const [now, setNow] = useState(Date.now);
 
 	useEffect(() => {
 		if (running) {
@@ -345,10 +346,17 @@ function WorkProcess({
 		if (hasWebSearchResults) setOpen(true);
 	}, [hasWebSearchResults]);
 
+	useEffect(() => {
+		if (!running) return;
+		setNow(Date.now());
+		const interval = window.setInterval(() => setNow(Date.now()), 1_000);
+		return () => window.clearInterval(interval);
+	}, [running]);
+
 	const anchorItem = group.items.at(-1);
 	if (steps.length === 0) return null;
 
-	const label = workTimelineSummary(steps, group.items, running, intl);
+	const label = workTimelineSummary(group.items, running, intl, now);
 
 	return (
 		<div className="py-0.5" data-transcript-item-id={anchorItem?.id}>
@@ -400,7 +408,7 @@ export function workTimelineSteps(
 				verb: item.title,
 				...(chip ? { chip } : {}),
 				icon: "users",
-				avatar: <SubagentAvatar item={item} size={14} />,
+				avatar: <SubagentAvatar item={item} size={20} />,
 				active: running,
 				...(options.onOpenSubagent ? { onSelect: () => options.onOpenSubagent?.(item) } : {}),
 			};
@@ -547,33 +555,40 @@ function toolClusterDetails(
 }
 
 export function workTimelineSummary(
-	steps: readonly TimelineStep[],
 	items: readonly WorkItem[],
 	running: boolean,
 	intl: IntlShape,
+	now = Date.now(),
 ): string {
-	const operationCount = items.filter((item) => item.kind === "tool" || item.kind === "subagent").length;
-	const changedPaths = new Set(
-		items
-			.filter((item): item is DesktopToolItem => item.kind === "tool")
-			.flatMap((item) => item.fileChanges ?? [])
-			.map((change) => change.path),
+	const timedItems = items.filter(
+		(item): item is DesktopToolItem | DesktopSubagentItem =>
+			(item.kind === "tool" || item.kind === "subagent") && item.startedAt !== undefined,
 	);
-	const filesChanged =
-		changedPaths.size > 0
-			? changedPaths.size
-			: new Set(
-					items
-						.filter((item): item is DesktopToolItem => item.kind === "tool" && item.activityKind === "write")
-						.map((item) => item.summary)
-						.filter((summary): summary is string => Boolean(summary)),
-				).size;
-	const stepLabel = intl.formatMessage(desktopMessages.transcriptStepSummary, { count: steps.length });
-	if (running) return intl.formatMessage(desktopMessages.transcriptWorkingSummary, { steps: stepLabel });
-	if (filesChanged > 0) {
-		return intl.formatMessage(desktopMessages.transcriptFilesSummary, { steps: stepLabel, count: filesChanged });
+	if (timedItems.length === 0) {
+		return intl.formatMessage(running ? desktopMessages.transcriptWorking : desktopMessages.transcriptWorked);
 	}
-	return intl.formatMessage(desktopMessages.transcriptActionsSummary, { steps: stepLabel, count: operationCount });
+	const startedAt = Math.min(...timedItems.map((item) => item.startedAt!));
+	const completedAt = running
+		? now
+		: Math.max(...timedItems.map((item) => item.completedAt ?? item.startedAt!));
+	const duration = formatWorkDuration(completedAt - startedAt, intl);
+	return intl.formatMessage(running ? desktopMessages.transcriptWorkingDuration : desktopMessages.transcriptWorkedDuration, {
+		duration,
+	});
+}
+
+export function formatWorkDuration(milliseconds: number, intl: IntlShape): string {
+	const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
+	const minutes = Math.floor(seconds / 60);
+	const hours = Math.floor(minutes / 60);
+	const units = [
+		...(hours > 0 ? [intl.formatNumber(hours, { style: "unit", unit: "hour", unitDisplay: "narrow" })] : []),
+		...(minutes % 60 > 0 ? [intl.formatNumber(minutes % 60, { style: "unit", unit: "minute", unitDisplay: "narrow" })] : []),
+		...(seconds % 60 > 0 || minutes === 0
+			? [intl.formatNumber(seconds % 60, { style: "unit", unit: "second", unitDisplay: "narrow" })]
+			: []),
+	];
+	return units.join(" ");
 }
 
 function fileChangeVerb(operation: "add" | "modify" | "delete", intl: IntlShape): string {

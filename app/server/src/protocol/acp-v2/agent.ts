@@ -593,11 +593,11 @@ function projectEntry(sessionId: string, entry: SessionEntry, operationId?: stri
 			return [
 				...(content.length > 0 ? [agentMessageUpdate(sessionId, entry.id, content)] : []),
 				...agentThoughtUpdate(sessionId, entry.id, entry.message, operationId),
-				...toolCallsFromAssistant(sessionId, entry.message, operationId),
+				...toolCallsFromAssistant(sessionId, entry.message, operationId, Date.parse(entry.timestamp)),
 			];
 		}
 		case "toolResult":
-			return toolResultUpdate(sessionId, entry.message, operationId);
+			return toolResultUpdate(sessionId, entry.message, operationId, Date.parse(entry.timestamp));
 	}
 }
 
@@ -671,6 +671,7 @@ function toolCallsFromAssistant(
 	sessionId: string,
 	message: Extract<AgentMessage, { readonly role: "assistant" }>,
 	operationId?: string,
+	startedAt?: number,
 ): readonly AcpJsonRpcNotification[] {
 	return message.content.flatMap((part) => {
 		if (part.type !== "toolCall") return [];
@@ -683,6 +684,7 @@ function toolCallsFromAssistant(
 				rawInput: jsonObject(part.arguments),
 				operationId,
 				toolName: part.name,
+				startedAt,
 			}),
 		];
 	});
@@ -692,6 +694,7 @@ function toolResultUpdate(
 	sessionId: string,
 	message: Extract<AgentMessage, { readonly role: "toolResult" }>,
 	operationId?: string,
+	completedAt?: number,
 ): readonly AcpJsonRpcNotification[] {
 	const content: object[] = [];
 	for (const part of message.content) {
@@ -712,6 +715,7 @@ function toolResultUpdate(
 			content,
 			operationId,
 			toolName: message.toolName,
+			completedAt,
 		}),
 	];
 	// The result Session entry is T2. Only now may ACP learn that the display
@@ -874,9 +878,11 @@ function toolCallUpdate(
 		/** Canonical SDK tool identity; `title` is display-only and never a discriminator. */
 		readonly toolName?: string;
 		readonly activityTitle?: string;
+		readonly startedAt?: number;
+		readonly completedAt?: number;
 	},
 ): AcpJsonRpcNotification {
-	const { operationId, webSearch, toolName, activityTitle, ...toolUpdate } = update;
+	const { operationId, webSearch, toolName, activityTitle, startedAt, completedAt, ...toolUpdate } = update;
 	return {
 		jsonrpc: "2.0",
 		method: "session/update",
@@ -885,7 +891,7 @@ function toolCallUpdate(
 			update: {
 				sessionUpdate: "tool_call_update",
 				...toolUpdate,
-				...toolMetadata({ operationId, webSearch, toolName, activityTitle }),
+				...toolMetadata({ operationId, webSearch, toolName, activityTitle, startedAt, completedAt }),
 			},
 		},
 	};
@@ -896,6 +902,8 @@ interface ToolMetadata {
 	readonly webSearch?: RuntimeWebSearchDetails;
 	readonly toolName?: string;
 	readonly activityTitle?: string;
+	readonly startedAt?: number;
+	readonly completedAt?: number;
 }
 
 function toolMetadata(fields: ToolMetadata): { readonly _meta?: { readonly jai: ToolMetadata } } {

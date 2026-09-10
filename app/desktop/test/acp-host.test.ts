@@ -118,6 +118,67 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
+	test("moves an assistant progress message into its following tool timeline", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "agent_message",
+					messageId: "assistant-progress",
+					content: { type: "text", text: "I will verify another source." },
+				},
+			},
+		});
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "tool_call_update",
+					toolCallId: "tool-1",
+					title: "Search web for sources",
+					kind: "search",
+					status: "in_progress",
+					_meta: { jai: { operationId: "operation-1" } },
+				},
+			},
+		});
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "agent_message",
+					messageId: "assistant-final",
+					content: { type: "text", text: "Here is the report." },
+				},
+			},
+		});
+
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({
+				kind: "narration",
+				id: "message:assistant-progress",
+				turnId: "operation-1",
+				text: "I will verify another source.",
+			}),
+			expect.objectContaining({ kind: "tool", toolCallId: "tool-1", turnId: "operation-1" }),
+			expect.objectContaining({ kind: "message", id: "message:assistant-final", text: "Here is the report." }),
+		]);
+		host.close();
+	});
+
 	test("sends steering through ACP prompt admission instead of a Desktop memory queue", async () => {
 		const client = new FakeAcpClient();
 		const host = await DesktopAcpAgentHost.open(() => {}, {
@@ -400,6 +461,47 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
+	test("does not project web fetch calls into the transcript", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "tool_call_update",
+					toolCallId: "web-fetch-1",
+					title: "Read https://example.com",
+					status: "in_progress",
+					_meta: { jai: { operationId: "operation-1", toolName: "web_fetch" } },
+				},
+			},
+		});
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "tool_call_update",
+					toolCallId: "web-fetch-1",
+					status: "completed",
+					content: [{ type: "content", content: { type: "text", text: "Fetched page" } }],
+					_meta: { jai: { operationId: "operation-1" } },
+				},
+			},
+		});
+
+		expect(host.getSnapshot("session-1").items).toEqual([]);
+		host.close();
+	});
+
 	test("projects Web Search metadata as a filtered Desktop tool result list", async () => {
 		const client = new FakeAcpClient();
 		const host = await DesktopAcpAgentHost.open(() => {}, {
@@ -483,20 +585,27 @@ describe("DesktopAcpAgentHost", () => {
 		});
 		publish({ _meta: { jai: { operationId: "operation-1", activityTitle: "Read" } } });
 		expect(host.getSnapshot("session-1").items).toEqual([
-			{
+			expect.objectContaining({
 				kind: "subagent",
 				id: "subagent:tool-1",
 				turnId: "operation-1",
 				toolCallId: "tool-1",
 				title: "Inspect repository",
 				status: "running",
+				startedAt: expect.any(Number),
 				activityTitle: "Read",
-			},
+			}),
 		]);
 
 		publish({ status: "failed", content: [], _meta: { jai: { operationId: "operation-1", toolName: "SpawnAgent" } } });
 		expect(host.getSnapshot("session-1").items).toEqual([
-			expect.objectContaining({ kind: "subagent", status: "error", activityTitle: "Read" }),
+			expect.objectContaining({
+				kind: "subagent",
+				status: "error",
+				startedAt: expect.any(Number),
+				completedAt: expect.any(Number),
+				activityTitle: "Read",
+			}),
 		]);
 		host.close();
 	});

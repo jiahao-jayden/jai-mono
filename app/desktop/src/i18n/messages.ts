@@ -184,6 +184,8 @@ export const desktopMessages = defineMessages({
 	transcriptRefining: { id: "desktop.transcript.refining", defaultMessage: "Refining" },
 	transcriptWorking: { id: "desktop.transcript.working", defaultMessage: "Working" },
 	transcriptWorked: { id: "desktop.transcript.worked", defaultMessage: "Worked" },
+	transcriptWorkingDuration: { id: "desktop.transcript.workingDuration", defaultMessage: "Working · {duration}" },
+	transcriptWorkedDuration: { id: "desktop.transcript.workedDuration", defaultMessage: "Worked for {duration}" },
 	transcriptSearching: { id: "desktop.transcript.searching", defaultMessage: "Searching" },
 	transcriptSearched: { id: "desktop.transcript.searched", defaultMessage: "Searched" },
 	transcriptWebSearching: { id: "desktop.transcript.webSearching", defaultMessage: "Searching web" },
@@ -196,19 +198,6 @@ export const desktopMessages = defineMessages({
 	transcriptCalled: { id: "desktop.transcript.called", defaultMessage: "Called" },
 	transcriptRunning: { id: "desktop.transcript.running", defaultMessage: "Running" },
 	transcriptRan: { id: "desktop.transcript.ran", defaultMessage: "Ran" },
-	transcriptStepSummary: {
-		id: "desktop.transcript.stepSummary",
-		defaultMessage: "{count} {count, plural, one {step} other {steps}}",
-	},
-	transcriptWorkingSummary: { id: "desktop.transcript.workingSummary", defaultMessage: "{steps} · Working" },
-	transcriptFilesSummary: {
-		id: "desktop.transcript.filesSummary",
-		defaultMessage: "{steps} · {count} {count, plural, one {file} other {files}} changed",
-	},
-	transcriptActionsSummary: {
-		id: "desktop.transcript.actionsSummary",
-		defaultMessage: "{steps} · {count} {count, plural, one {action} other {actions}}",
-	},
 	transcriptSearches: {
 		id: "desktop.transcript.searches",
 		defaultMessage: "{count, plural, one {# search} other {# searches}}",

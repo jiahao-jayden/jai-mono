@@ -14,6 +14,7 @@ import type {
 	DesktopArtifact,
 	DesktopMessageAttachment,
 	DesktopMessageItem,
+	DesktopNarrationItem,
 	DesktopPermissionRequest,
 	DesktopPermissionResolution,
 	DesktopSubagentItem,
@@ -58,6 +59,7 @@ interface AcpSessionRuntime {
 	readonly artifacts: Map<string, DesktopArtifact>;
 	readonly terminalToolCallIds: Map<string, string>;
 	readonly terminalOutput: Map<string, string>;
+	readonly hiddenToolCallIds: Set<string>;
 	todos?: DesktopTodos;
 	seq: number;
 	closed: boolean;
@@ -274,6 +276,7 @@ export class DesktopAcpAgentHost {
 			artifacts: new Map(),
 			terminalToolCallIds: new Map(),
 			terminalOutput: new Map(),
+			hiddenToolCallIds: new Set(),
 			seq: 0,
 			closed: false,
 		};
@@ -451,19 +454,48 @@ export class DesktopAcpAgentHost {
 		}
 		const text = contentText(update.content);
 		const previous = runtime.items.get(id);
-		const previousText = previous?.kind === "message" ? previous.text : "";
+		const previousMessage = previous?.kind === "message" ? previous : undefined;
+		const previousNarration = previous?.kind === "narration" ? previous : undefined;
+		const previousText = previousMessage?.text ?? previousNarration?.text ?? "";
 		const complete = update.sessionUpdate === "user_message" || update.sessionUpdate === "agent_message";
 		const slashInvocation = role === "user" ? parseSlashInvocation(update.slashInvocation) : undefined;
-		const item: DesktopMessageItem = {
-			kind: "message",
-			id,
-			role,
-			text: update.content === null ? "" : complete ? text : previousText + text,
-			status: complete ? "complete" : "streaming",
-			timestamp: Date.now(),
-			...(slashInvocation ? { slashInvocation } : {}),
-		};
+		const item: DesktopMessageItem | DesktopNarrationItem =
+			role === "assistant" && previousNarration
+				? {
+						kind: "narration",
+						id,
+						turnId: previousNarration.turnId,
+						activityId: previousNarration.activityId,
+						text: complete ? text : previousText + text,
+						status: complete ? "complete" : "streaming",
+						timestamp: Date.now(),
+					}
+				: {
+						kind: "message",
+						id,
+						role,
+						text: complete ? text : previousText + text,
+						status: complete ? "complete" : "streaming",
+						timestamp: Date.now(),
+						...(slashInvocation ? { slashInvocation } : {}),
+					};
 		runtime.items.set(id, item);
+		this.#emitEvent(runtime, { type: "transcript_upsert", item });
+	}
+
+	#projectTrailingNarration(runtime: AcpSessionRuntime, turnId: string): void {
+		const previous = [...runtime.items.values()].at(-1);
+		if (previous?.kind !== "message" || previous.role !== "assistant" || !previous.text.trim()) return;
+		const item: DesktopNarrationItem = {
+			kind: "narration",
+			id: previous.id,
+			turnId,
+			activityId: previous.id,
+			text: previous.text,
+			status: previous.status,
+			timestamp: previous.timestamp,
+		};
+		runtime.items.set(item.id, item);
 		this.#emitEvent(runtime, { type: "transcript_upsert", item });
 	}
 
@@ -509,11 +541,17 @@ export class DesktopAcpAgentHost {
 			return;
 		}
 		const id = `tool:${update.toolCallId}`;
+		if (isWebFetchTool(toolNameFromMetadata(update._meta)) || runtime.hiddenToolCallIds.has(update.toolCallId)) {
+			runtime.hiddenToolCallIds.add(update.toolCallId);
+			if (runtime.items.delete(id)) this.#emitEvent(runtime, { type: "transcript_remove", id });
+			return;
+		}
 		const previous = runtime.items.get(id);
 		const previousTool = previous?.kind === "tool" ? previous : undefined;
 		const operationId = operationIdFromMetadata(update._meta);
 		const turnId = previousTool?.turnId ?? operationId;
 		if (!turnId) return;
+		if (!previousTool) this.#projectTrailingNarration(runtime, turnId);
 		const status =
 			update.status === "completed" || update.status === "failed"
 				? "complete"
@@ -538,6 +576,8 @@ export class DesktopAcpAgentHost {
 			isWebSearch && typeof rawInput?.query === "string"
 				? rawInput.query.trim().slice(0, 500)
 				: previousTool?.searchQuery;
+		const startedAt = toolTimestampFromMetadata(update._meta, "startedAt");
+		const completedAt = toolTimestampFromMetadata(update._meta, "completedAt");
 		const item: DesktopToolItem = {
 			kind: "tool",
 			id,
@@ -545,6 +585,20 @@ export class DesktopAcpAgentHost {
 			activityId: previousTool?.activityId ?? id,
 			toolCallId: update.toolCallId,
 			toolName: title,
+			...(startedAt !== undefined
+				? { startedAt }
+				: previousTool?.startedAt !== undefined
+					? { startedAt: previousTool.startedAt }
+					: status === "running"
+						? { startedAt: Date.now() }
+						: {}),
+			...(completedAt !== undefined
+				? { completedAt }
+				: previousTool?.completedAt !== undefined
+					? { completedAt: previousTool.completedAt }
+					: status === "complete" && previousTool?.startedAt !== undefined
+						? { completedAt: Date.now() }
+						: {}),
 			activityKind: activityKind(title),
 			status,
 			...(previousTool?.summary ? { summary: previousTool.summary } : {}),
@@ -585,12 +639,28 @@ export class DesktopAcpAgentHost {
 					? "complete"
 					: (previousSubagent?.status ?? "running");
 		const activityTitle = activityTitleFromMetadata(update._meta) ?? previousSubagent?.activityTitle;
+		const startedAt = toolTimestampFromMetadata(update._meta, "startedAt");
+		const completedAt = toolTimestampFromMetadata(update._meta, "completedAt");
 		const item: DesktopSubagentItem = {
 			kind: "subagent",
 			id,
 			turnId,
 			toolCallId: update.toolCallId,
 			title,
+			...(startedAt !== undefined
+				? { startedAt }
+				: previousSubagent?.startedAt !== undefined
+					? { startedAt: previousSubagent.startedAt }
+					: status === "running"
+						? { startedAt: Date.now() }
+						: {}),
+			...(completedAt !== undefined
+				? { completedAt }
+				: previousSubagent?.completedAt !== undefined
+					? { completedAt: previousSubagent.completedAt }
+					: status !== "running" && previousSubagent?.startedAt !== undefined
+						? { completedAt: Date.now() }
+						: {}),
 			status,
 			...(activityTitle ? { activityTitle } : {}),
 		};
@@ -827,6 +897,11 @@ function activityTitleFromMetadata(value: unknown): string | undefined {
 	return value.jai.activityTitle.trim().slice(0, 200) || undefined;
 }
 
+function toolTimestampFromMetadata(value: unknown, field: "startedAt" | "completedAt"): number | undefined {
+	if (!isRecord(value) || !isRecord(value.jai) || typeof value.jai[field] !== "number") return undefined;
+	return Number.isFinite(value.jai[field]) ? value.jai[field] : undefined;
+}
+
 function webSearchResultsFromMetadata(value: unknown): readonly DesktopWebSearchResult[] | undefined {
 	if (!isRecord(value) || !isRecord(value.jai) || !isRecord(value.jai.webSearch)) return undefined;
 	const results = value.jai.webSearch.results;
@@ -886,6 +961,11 @@ function isWebSearchTool(value: unknown): boolean {
 	if (typeof value !== "string") return false;
 	const normalized = value.trim().toLowerCase().replaceAll(/[_-]/g, " ");
 	return normalized === "web search" || normalized.startsWith("search web for ");
+}
+
+function isWebFetchTool(value: unknown): boolean {
+	if (typeof value !== "string") return false;
+	return value.trim().toLowerCase().replaceAll(/[_-]/g, " ") === "web fetch";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

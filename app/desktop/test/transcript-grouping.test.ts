@@ -8,6 +8,7 @@ import {
 	groupTranscriptItems,
 	TranscriptItem,
 	TranscriptItems,
+	formatWorkDuration,
 	workTimelineSummary,
 	workTimelineSteps,
 } from "../src/components/shell/chat/chat-transcript";
@@ -52,12 +53,14 @@ describe("transcript grouping", () => {
 			toolName: "grep",
 			activityKind: "search",
 			status: "complete",
+			startedAt: 0,
+			completedAt: 61_000,
 			summary: "chat-transcript.tsx",
 		};
 
 		const markup = renderToStaticMarkup(createElement(TranscriptItem, { item: tool }));
 		expect(markup).toContain('data-slot="tool-timeline"');
-		expect(markup).toContain("1 step · 1 action");
+		expect(markup).toContain("Worked for 1m");
 	});
 
 	test("子代理和同一轮的工具合并进同一个 ToolTimeline，每个子代理独占一行", () => {
@@ -70,6 +73,8 @@ describe("transcript grouping", () => {
 			toolName: "Bash",
 			activityKind: "execute",
 			status: "complete",
+			startedAt: 0,
+			completedAt: 90_000,
 		};
 		const subagent: Extract<DesktopTranscriptItem, { kind: "subagent" }> = {
 			kind: "subagent",
@@ -78,6 +83,7 @@ describe("transcript grouping", () => {
 			toolCallId: "call-1",
 			title: "Inspect desktop",
 			status: "running",
+			startedAt: 30_000,
 			activityTitle: "Read",
 		};
 
@@ -86,7 +92,7 @@ describe("transcript grouping", () => {
 		expect(steps).toHaveLength(2);
 		expect(steps[1]).toMatchObject({ verb: "Inspect desktop", chip: "Read", active: true });
 		expect(steps[1]?.onSelect).toBeFunction();
-		expect(workTimelineSummary(steps, [tool, subagent], false, intl)).toBe("2 steps · 2 actions");
+		expect(workTimelineSummary([tool, subagent], false, intl)).toBe("Worked for 1m 30s");
 
 		const markup = renderToStaticMarkup(
 			createElement(TranscriptItems, { items: [tool, subagent], loading: false, onOpenSubagent: () => {} }),
@@ -172,6 +178,8 @@ describe("transcript grouping", () => {
 			toolName: "Read",
 			activityKind: "read",
 			status: "complete",
+			startedAt: 0,
+			completedAt: 61_000,
 		};
 		const secondTool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
 			...firstTool,
@@ -188,11 +196,11 @@ describe("transcript grouping", () => {
 		const markup = renderToStaticMarkup(
 			createElement(TranscriptItems, { items: [firstTool, secondTool], loading: false }),
 		);
-		expect(markup).toContain("2 steps · 2 actions");
+		expect(markup).toContain("Worked for 1m");
 		expect((markup.match(/data-slot=\"tool-timeline\"/g) ?? []).length).toBe(1);
 	});
 
-	test("使用 durable ACP diff 路径计数已变更文件", () => {
+	test("已完成的工具显示从开始到结束的工作时长", () => {
 		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
 			kind: "tool",
 			id: "tool:write-1",
@@ -202,10 +210,16 @@ describe("transcript grouping", () => {
 			toolName: "Write",
 			activityKind: "write",
 			status: "complete",
+			startedAt: 0,
+			completedAt: 61_000,
 			fileChanges: [{ operation: "add", path: "/workspace/index.ts" }],
 		};
 
-		expect(workTimelineSummary(workTimelineSteps([tool], intl), [tool], false, intl)).toBe("1 step · 1 file changed");
+		expect(workTimelineSummary([tool], false, intl)).toBe("Worked for 1m 1s");
+	});
+
+	test("工作时长使用本地化的紧凑单位", () => {
+		expect(formatWorkDuration(3 * 60_000 + 27_000, intl)).toBe("3m 27s");
 	});
 
 	test("context compaction 不会切断同一 turn 的工作日志", () => {
@@ -340,7 +354,7 @@ describe("transcript grouping", () => {
 		expect(rows[1]).toMatchObject({ id: "work:message:user-1:message:assistant-1:0" });
 
 		const markup = renderToStaticMarkup(createElement(TranscriptItems, { items, loading: false }));
-		expect(markup).toContain("3 steps · 5 actions");
+		expect(markup).toContain("Worked");
 		const tools = items.filter(
 			(item): item is Extract<DesktopTranscriptItem, { kind: "tool" }> => item.kind === "tool",
 		);

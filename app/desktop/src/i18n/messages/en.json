@@ -1053,9 +1053,6 @@
   "desktop.transcript.actions": {
     "defaultMessage": "{count, plural, one {# action} other {# actions}}"
   },
-  "desktop.transcript.actionsSummary": {
-    "defaultMessage": "{steps} · {count} {count, plural, one {action} other {actions}}"
-  },
   "desktop.transcript.added": {
     "defaultMessage": "Added"
   },
@@ -1104,9 +1101,6 @@
   "desktop.transcript.files": {
     "defaultMessage": "{count, plural, one {# file} other {# files}}"
   },
-  "desktop.transcript.filesSummary": {
-    "defaultMessage": "{steps} · {count} {count, plural, one {file} other {files}} changed"
-  },
   "desktop.transcript.loading": {
     "defaultMessage": "Loading conversation"
   },
@@ -1143,9 +1137,6 @@
   "desktop.transcript.searching": {
     "defaultMessage": "Searching"
   },
-  "desktop.transcript.stepSummary": {
-    "defaultMessage": "{count} {count, plural, one {step} other {steps}}"
-  },
   "desktop.transcript.thinking": {
     "defaultMessage": "Thinking"
   },
@@ -1158,11 +1149,14 @@
   "desktop.transcript.worked": {
     "defaultMessage": "Worked"
   },
+  "desktop.transcript.workedDuration": {
+    "defaultMessage": "Worked for {duration}"
+  },
   "desktop.transcript.working": {
     "defaultMessage": "Working"
   },
-  "desktop.transcript.workingSummary": {
-    "defaultMessage": "{steps} · Working"
+  "desktop.transcript.workingDuration": {
+    "defaultMessage": "Working · {duration}"
   },
   "desktop.workspace.chooseFile": {
     "defaultMessage": "Open a file"

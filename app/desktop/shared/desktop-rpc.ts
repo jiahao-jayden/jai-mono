@@ -611,6 +611,10 @@ export interface DesktopToolItem {
 	readonly activityId: string;
 	readonly toolCallId: string;
 	readonly toolName: string;
+	/** Tool-call journal timestamp, or a local observation while streaming. */
+	readonly startedAt?: number;
+	/** Tool-result journal timestamp, or a local observation while streaming. */
+	readonly completedAt?: number;
 	/** Captured at tool registration and execution, never inferred from the name in the renderer. */
 	readonly activityKind: DesktopToolActivityKind;
 	readonly status: "running" | "complete";
@@ -629,6 +633,10 @@ export interface DesktopSubagentItem {
 	readonly turnId: string;
 	readonly toolCallId: string;
 	readonly title: string;
+	/** Tool-call journal timestamp, or a local observation while streaming. */
+	readonly startedAt?: number;
+	/** Tool-result journal timestamp, or a local observation while streaming. */
+	readonly completedAt?: number;
 	readonly status: "running" | "complete" | "error";
 	readonly activityTitle?: string;
 }

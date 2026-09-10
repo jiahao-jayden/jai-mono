@@ -222,7 +222,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
               isUser
                 ? cn(
                     shape.bg,
-                    "no-squircle rounded-xl px-3 py-1.5 text-pretty whitespace-pre-wrap bg-secondary text-secondary-foreground"
+                    "no-squircle rounded-xl px-3 py-2 text-pretty leading-5 whitespace-pre-wrap bg-secondary text-foreground/85"
                   )
                 : "text-foreground/95 leading-[1.7]"
             )}
