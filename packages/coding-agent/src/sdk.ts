@@ -62,6 +62,7 @@ export type {
 	CodingExtensionToolPermissionResolver,
 	CodingExtensionToolPresentation,
 	CodingExtensionToolResult,
+	CodingExtensionToolExecutionCall,
 	CodingExtensionWorkspace,
 	CodingToolCatalogDiscovery,
 	CodingToolPermission,
@@ -69,7 +70,7 @@ export type {
 } from "./sdk/extensions";
 export { defineExtension } from "./sdk/extensions";
 export type { CodingProviderOptions } from "./sdk/model";
-export { codingArtifactsFromAppState, todosFromAppState } from "./sdk/project";
+export { codingArtifactsFromAppState } from "./sdk/project";
 export {
 	emptyPersistedCodingSessionState,
 	type PersistedCodingSessionState,
@@ -85,7 +86,6 @@ export type {
 	CodingAgentFileCapabilities,
 	CodingAgentMessage,
 	CodingAgentState,
-	CodingAgentTodo,
 	CodingApprovalHandler,
 	CodingAssistantMessage,
 	CodingAttachment,

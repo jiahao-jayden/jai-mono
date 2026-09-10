@@ -57,8 +57,8 @@ export class ToolCatalog {
 		return searchPermission;
 	}
 
-	createScope(): ToolCatalog {
-		return new ToolCatalog(this.#tools, this.#limit);
+	createScope(allow: (tool: AgentTool) => boolean): ToolCatalog {
+		return new ToolCatalog(this.#tools.filter(allow), this.#limit);
 	}
 
 	/** Replaces the descriptor snapshot for future requests and retains only still-valid active names. */

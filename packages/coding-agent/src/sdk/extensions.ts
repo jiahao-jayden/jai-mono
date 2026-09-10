@@ -5,6 +5,8 @@ import { panic, Result, type Result as ResultType } from "better-result";
 import type { CodingCommandRegistry } from "../commands";
 import type { JsonObject } from "../core/json";
 import type { ToolCatalog } from "../runtime/tool-catalog";
+import type { RunAgentExecution } from "../runtime/execution";
+import { executeExtensionTool } from "./extensions/execution";
 import {
 	CodingExtensionDeactivationFailed,
 	type CodingExtensionError,
@@ -75,6 +77,7 @@ export type {
 	CodingExtensionToolPermissionResolver,
 	CodingExtensionToolPresentation,
 	CodingExtensionToolResult,
+	CodingExtensionToolExecutionCall,
 	CodingExtensionWorkspace,
 	CodingToolCatalogDiscovery,
 	CodingToolPermission,
@@ -89,6 +92,7 @@ export interface InitializedExtension {
 	readonly id: string;
 	readonly extension: CodingAgentExtension<any, any, any>;
 	runtime?: CodingExtensionRuntime<any, any, any>;
+	runAgent?: RunAgentExecution;
 	readonly tools: AgentTool[];
 	readonly catalogTools: AgentTool[];
 	readonly toolPresentations: Map<string, CodingToolPresentation>;
@@ -139,6 +143,7 @@ export function prepareExtensions(
 }
 
 interface ExtensionActivationRegistries {
+	readonly runAgent?: RunAgentExecution;
 	readonly permissions?: Map<string, ResolvedExtensionToolPermission>;
 	readonly authorizedToolNames?: Set<string>;
 	readonly toolPresentations?: Map<string, CodingToolPresentation>;
@@ -155,6 +160,7 @@ export async function activateExtensions(
 ): Promise<ResultType<void, CodingExtensionError>> {
 	for (const extension of initialized) {
 		extension.reportDiagnostic = runtime?.reportDiagnostic;
+		extension.runAgent = registries.runAgent;
 		const initializedContext = await extensionContext(
 			extension.extension,
 			context,
@@ -519,7 +525,7 @@ function assertCatalogCapabilityNames(
 }
 
 function reservedToolNames(): Set<string> {
-	return new Set(["Read", "Write", "Edit", "Bash", "UpdateTodos", "SpawnAgent", "SearchTools"]);
+	return new Set(["Read", "Write", "Edit", "Bash", "SearchTools"]);
 }
 
 function createInitializedExtension(extension: CodingAgentExtension<any, any, any>): InitializedExtension {
@@ -602,14 +608,7 @@ function mapExtensionTools(
 			},
 			parameters: tool.parameters,
 			...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
-			execute: async (toolCallId, args, signal) => {
-				const result = await tool.execute(extensionRuntime(extension), {
-					toolCallId,
-					args: args as JsonObject,
-					signal,
-				});
-				return { ...result, content: [...result.content] };
-			},
+			execute: (...args) => executeExtensionTool(tool, extensionRuntime(extension), extension.runAgent, ...args),
 		} satisfies AgentTool;
 	});
 	return { tools, toolPresentations, permissions, extensionAuthorizedToolNames };

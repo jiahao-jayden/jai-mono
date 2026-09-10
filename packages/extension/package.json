@@ -3,7 +3,9 @@
 	"version": "0.1.0",
 	"type": "module",
 	"description": "Official extensions for Jai Coding Agent.",
-	"files": ["dist"],
+	"files": [
+		"dist"
+	],
 	"exports": {
 		"./connector": {
 			"types": "./dist/connector/index.d.ts",
@@ -34,17 +36,27 @@
 			"types": "./dist/mcp/index.d.ts",
 			"bun": "./src/mcp/index.ts",
 			"import": "./dist/mcp.js"
+		},
+		"./todo": {
+			"types": "./dist/todo/index.d.ts",
+			"bun": "./src/todo/index.ts",
+			"import": "./dist/todo.js"
+		},
+		"./subagent": {
+			"types": "./dist/subagent/index.d.ts",
+			"bun": "./src/subagent/index.ts",
+			"import": "./dist/subagent.js"
 		}
 	},
 	"scripts": {
 		"build": "tsup && tsc -p tsconfig.build.json",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
-		"test": "bun test"
+		"test": "bun test",
+		"prepack": "bun run build"
 	},
 	"dependencies": {
 		"@ff-labs/fff-node": "0.10.5",
-		"@jai/coding-agent": "workspace:*",
-		"@jai/connector": "workspace:*",
+		"@jai/coding-agent": "0.1.0",
 		"@modelcontextprotocol/sdk": "1.29.0",
 		"@sinclair/typebox": "^0.34.49",
 		"better-result": "^3.0.0",
@@ -56,6 +68,7 @@
 		"@jai/ai": "workspace:*",
 		"@types/turndown": "^5.0.6",
 		"tsup": "^8.5.1",
-		"typescript": "~5.8.3"
+		"typescript": "~5.8.3",
+		"@jai/connector": "workspace:*"
 	}
 }

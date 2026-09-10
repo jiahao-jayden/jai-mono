@@ -2,6 +2,8 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
 	entry: {
+		subagent: "src/subagent/index.ts",
+		todo: "src/todo/index.ts",
 		connector: "src/connector/index.ts",
 		"agent-plugins": "src/agent-plugins/index.ts",
 		skills: "src/skills/index.ts",

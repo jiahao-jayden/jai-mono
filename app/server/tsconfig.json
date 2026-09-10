@@ -3,8 +3,19 @@
 	"compilerOptions": {
 		"noEmit": true,
 		"paths": {
-			"@jai/extension/web-search": ["../../packages/extension/src/web-search/index.ts"]
+			"@jai/extension/web-search": [
+				"../../packages/extension/src/web-search/index.ts"
+			],
+			"@jai/extension/todo": [
+				"../../packages/extension/src/todo/index.ts"
+			],
+			"@jai/extension/subagent": [
+				"../../packages/extension/src/subagent/index.ts"
+			]
 		}
 	},
-	"include": ["src/**/*", "test/**/*"]
+	"include": [
+		"src/**/*",
+		"test/**/*"
+	]
 }

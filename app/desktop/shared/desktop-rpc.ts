@@ -666,7 +666,7 @@ export interface DesktopTodoItem {
 	readonly status: DesktopTodoStatus;
 }
 
-/** 与 CodingAgentState.todos 同形：Desktop 不再自己维护第二份 Todo 读模型。 */
+/** 来自 ACP plan 的 Todo 只读投影；业务状态由 Todo Extension 维护。 */
 export type DesktopTodos = readonly DesktopTodoItem[];
 
 export interface DesktopAgentSnapshot {

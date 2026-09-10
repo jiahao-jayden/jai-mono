@@ -3,17 +3,34 @@ title: Todos 与 Artifacts
 description: 从公开状态读取 Agent 维护的 Todo 列表和 Markdown/HTML artifact 目录。
 ---
 
-`UpdateTodos` 每次替换完整列表。公开项包含：
+Todo 由可选的 `@jai/extension/todo` 提供。安装后，`UpdateTodos` 每次替换完整列表。公开项包含：
 
 ```ts
-type CodingAgentTodo = {
+type TodoItem = {
   id: string;
   content: string;
   status: "pending" | "in_progress" | "completed" | "cancelled";
 };
 ```
 
-宿主只读取 `agent.state.todos`，不要直接修改 `appState.todos`。
+```ts
+import { createCodingAgent } from "@jai/coding-agent";
+import { createTodoExtension, todosFromExtensionState } from "@jai/extension/todo";
+
+const result = await createCodingAgent({
+  model: "openai/gpt-4.1-mini",
+  extensions: [createTodoExtension()],
+});
+if (result.isOk()) {
+  const agent = result.value;
+  await agent.prompt("Plan the work");
+  const todos = todosFromExtensionState(agent.state.extensions);
+  console.log(todos?.items);
+  await agent.close();
+}
+```
+
+`state.extensions` 是只读 JSON 快照。Todo 通过现有 Extension sessionState 写入 journal；无状态时读取返回 `undefined`，主动清空后返回 `items: []`。不再读取旧顶层 `appState.todos`。
 
 ## Artifacts
 

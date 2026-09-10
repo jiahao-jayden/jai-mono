@@ -10,7 +10,7 @@ interface CodingAgentState<TAppState extends JsonObject = JsonObject> {
   sessionId: string;
   status: "idle" | "running" | "aborted" | "closed";
   messages: readonly CodingAgentMessage[];
-  todos: readonly CodingAgentTodo[];
+  extensions: JsonObject; // 按 Extension ID 保存的只读状态快照
   artifacts: readonly CodingAgentArtifact[];
   appState: TAppState;
   error?: JsonObject;

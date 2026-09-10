@@ -38,20 +38,12 @@ import {
 	type PermissionTelemetryObserver,
 	permissionSettingsFromConfig,
 } from "../permissions";
-import {
-	type CodingToolOptions,
-	createSpawnAgentTool,
-	createUpdateTodosTool,
-	type SessionTodoItem,
-	type SessionTodos,
-} from "../tools";
+import type { CodingToolOptions } from "../tools";
 import type { CodingToolName } from "../tools/names";
 import { assembleAgentCapabilities } from "./assemble";
 import type { CodingExecutionContext } from "./execution-context";
 import type { ToolCatalog } from "./tool-catalog";
-
-const SUBAGENT_INSTRUCTIONS =
-	"You are an internal subagent. Complete only the delegated task using the available tools, then return a concise final result to the parent agent. You cannot see the parent conversation, so rely only on the task and workspace.";
+import type { RunAgentExecution } from "./execution";
 
 export interface ResolvedCodingProvider {
 	readonly provider: Provider;
@@ -122,6 +114,7 @@ interface RuntimeState<TSchema extends TObject> {
 
 export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject = JsonObject> {
 	readonly configStore: CodingConfigStore<TSchema>;
+	readonly runAgent: RunAgentExecution;
 	readonly #agent: Agent<TAppState>;
 	readonly #runtime: RuntimeState<TSchema>;
 	readonly #stopConfigWatch: () => void;
@@ -133,8 +126,9 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		configStore: CodingConfigStore<TSchema>,
 		runtime: RuntimeState<TSchema>,
 		stopConfigWatch: () => void,
-		commands?: CodingCommandRegistry,
-		attachments: CodingAttachmentRun = new CodingAttachmentRun(),
+		commands: CodingCommandRegistry | undefined,
+		attachments: CodingAttachmentRun,
+		runAgent: RunAgentExecution,
 	) {
 		this.#agent = agent;
 		this.configStore = configStore;
@@ -142,6 +136,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#stopConfigWatch = stopConfigWatch;
 		this.#commands = commands;
 		this.#attachments = attachments;
+		this.runAgent = runAgent;
 	}
 
 	get configSnapshot(): ConfigSnapshot<TSchema> {
@@ -262,43 +257,12 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			const next = await persistBashAllowRules(configStore, rules);
 			if (next) runtime.snapshot = next;
 		});
-	let agent!: Agent<TAppState>;
 	const attachments = new CodingAttachmentRun();
-	const updateTodosTool = createUpdateTodosTool(async (items) => {
-		const todos: SessionTodos = {
-			version: 1,
-			updatedAt: Date.now(),
-			items: items.map((item) => ({ ...item })),
-		};
-		const next = { ...agent.state.appState, todos } as TAppState;
-		await agent.setAppState(next);
-		return todos;
-	});
 	const hooks = resolvedAgentOptions.hooks;
 	const beforeModelCall = [...(hooks?.beforeModelCall ?? [])];
 	beforeModelCall.unshift(async ({ messages }) => {
 		const projected = await attachments.project(messages);
 		return projected ? { messages: projected } : undefined;
-	});
-	beforeModelCall.push(({ messages }) => {
-		const todos = sessionTodosFromAppState(agent.state.appState);
-		if (!todos) return;
-		return {
-			messages: [
-				...messages,
-				{
-					role: "user",
-					content: [
-						{
-							type: "text",
-							text: `Current session Todo state (internal state data, not a new user request):\n${JSON.stringify(todos.items)}`,
-							synthetic: true,
-						},
-					],
-					timestamp: todos.updatedAt,
-				},
-			],
-		};
 	});
 	if (options.extensionBeforeModelCall) {
 		beforeModelCall.push(async ({ messages }) => ({
@@ -344,11 +308,12 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		sessionAllowRules,
 		telemetryObserver: options.permissions?.telemetryObserver,
 	});
-	const spawnAgentTool = createSpawnAgentTool(async ({ task, signal, onActivity }) => {
+	const runAgent: RunAgentExecution = async ({ prompt, instructions, excludeTools = [], signal, onActivity }) => {
 		signal?.throwIfAborted();
-		const childToolCatalog = extensionToolCatalog.current?.createScope();
+		const allowed = (tool: AgentTool) => !excludeTools.includes(tool.name);
+		const childToolCatalog = extensionToolCatalog.current?.createScope(allowed);
 		const childCapabilities = assembleAgentCapabilities({
-			kind: "subagent",
+			kind: "isolated",
 			executionContext: options.executionContext,
 			toolOptions: options.tools,
 			toolEnvironment,
@@ -361,8 +326,8 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		const child = new Agent({
 			model,
 			provider,
-			tools: childCapabilities.tools,
-			instructions: [resolvedInstructions, SUBAGENT_INSTRUCTIONS].filter(Boolean).join("\n\n"),
+			tools: childCapabilities.tools.filter(allowed),
+			instructions: [resolvedInstructions, instructions].filter(Boolean).join("\n\n"),
 			temperature: resolvedAgentOptions.temperature,
 			maxTokens: resolvedAgentOptions.maxTokens,
 			providerOptions: resolvedAgentOptions.providerOptions,
@@ -378,26 +343,22 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		});
 		const unsubscribe = child.subscribe((event) => {
 			const activity = event.type === "tool_execution_start" ? event.toolName : undefined;
-			if (activity) onActivity(activity);
+			if (activity) onActivity?.(activity);
 		});
 		const abortChild = () => child.abort();
 		signal?.addEventListener("abort", abortChild, { once: true });
 
 		try {
 			signal?.throwIfAborted();
-			return finalAssistantText(await child.invoke(task));
+			return await child.invoke(prompt);
 		} finally {
 			signal?.removeEventListener("abort", abortChild);
 			unsubscribe();
 			child.abort();
-			await child.waitForIdle().catch(() => {});
+			await child.waitForIdle();
 		}
-	});
-	const primaryTools = [
-		...(options.enabledTools?.has("UpdateTodos") ? [updateTodosTool] : []),
-		...(options.enabledTools?.has("SpawnAgent") ? [spawnAgentTool] : []),
-		...(extensionToolCatalog.current ? [extensionToolCatalog.current.searchTool] : []),
-	];
+	};
+	const primaryTools = extensionToolCatalog.current ? [extensionToolCatalog.current.searchTool] : [];
 	const capabilities = assembleAgentCapabilities({
 		kind: "primary",
 		executionContext: options.executionContext,
@@ -413,7 +374,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		extraOnEvent: hooks?.onEvent,
 	});
 	const staticTools = capabilities.tools;
-	agent = new Agent<TAppState>({
+	const agent = new Agent<TAppState>({
 		model,
 		provider,
 		tools: staticTools,
@@ -441,20 +402,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	const stopConfigWatch = configStore.watch((event) => {
 		if (!runtime.closed && event.status === "valid") runtime.snapshot = event.snapshot;
 	});
-	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, options.commands, attachments);
-}
-
-function finalAssistantText(messages: readonly AgentMessage[]): string {
-	for (let index = messages.length - 1; index >= 0; index--) {
-		const message = messages[index];
-		if (message?.role !== "assistant") continue;
-		const text = message.content
-			.flatMap((part) => (part.type === "text" ? [part.text] : []))
-			.join("")
-			.trim();
-		if (text) return text;
-	}
-	return "";
+	return new CodingAgent(agent, configStore, runtime, stopConfigWatch, options.commands, attachments, runAgent);
 }
 
 async function persistBashAllowRules<TSchema extends TObject>(
@@ -495,42 +443,6 @@ async function persistBashAllowRules<TSchema extends TObject>(
 			if (!isRecord(error) || error._tag !== "coding_config.write_conflict" || attempt === 1) throw error;
 		}
 	}
-}
-
-function sessionTodosFromAppState(appState: JsonObject): SessionTodos | undefined {
-	const value = appState.todos;
-	if (
-		!isRecord(value) ||
-		value.version !== 1 ||
-		typeof value.updatedAt !== "number" ||
-		!Number.isFinite(value.updatedAt)
-	) {
-		return undefined;
-	}
-	if (!Array.isArray(value.items) || value.items.length > 20) return undefined;
-	const ids = new Set<string>();
-	let inProgressCount = 0;
-	const items = value.items.flatMap((candidate) => {
-		if (!isRecord(candidate)) return [];
-		const { id, content, status } = candidate;
-		if (
-			typeof id !== "string" ||
-			!/^[A-Za-z0-9._-]{1,64}$/.test(id) ||
-			ids.has(id) ||
-			typeof content !== "string" ||
-			content.length === 0 ||
-			content.length > 200 ||
-			(status !== "pending" && status !== "in_progress" && status !== "completed" && status !== "cancelled")
-		) {
-			return [];
-		}
-		ids.add(id);
-		if (status === "in_progress") inProgressCount++;
-		const item: SessionTodoItem = { id, content, status };
-		return [item];
-	});
-	if (items.length !== value.items.length || inProgressCount > 1) return undefined;
-	return { version: 1, updatedAt: value.updatedAt, items };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

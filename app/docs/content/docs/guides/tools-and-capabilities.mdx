@@ -5,7 +5,7 @@ description: 选择内置工具，并通过公开 Extension API 增加工具、s
 
 SDK 的内置工具名由 `CodingToolName` 定义：
 
-`Read`、`Bash`、`Edit`、`Write`，以及按需加入的 `UpdateTodos`、`SpawnAgent`。
+`Read`、`Bash`、`Edit`、`Write`。Todo 和 Subagent 由可选的官方 Extension 提供，不在内置工具名单中。
 
 默认启用四个核心工具。`tools` 用于建立白名单，`excludeTools` 在最后移除工具；两个列表重叠时排除优先。文件搜索由 Runtime Host 装配的 `find`、`grep` Extension 提供，不是内置工具名。
 
@@ -63,3 +63,20 @@ rules 与 approval handler 管理。只有已实现完整授权事务的 Extensi
 `authorization: { owner: "extension" }`；这会让 core 不再对同一次 tool call 额外审批。
 
 Extension capability 不公开 `mcpServers`。Jai Agent Plugin 的发现与 MCP descriptor 适配属于 `@jai/extension` 和 Desktop/CLI 宿主；最终传给 SDK 的是静态 capabilities 与 catalog descriptor。
+
+## Todo 与 Subagent
+
+```ts
+import { createCodingAgent } from "@jai/coding-agent";
+import { createTodoExtension } from "@jai/extension/todo";
+import { createSubagentExtension } from "@jai/extension/subagent";
+
+const created = await createCodingAgent({
+  model: "openai/gpt-4.1-mini",
+  extensions: [createTodoExtension(), createSubagentExtension()],
+});
+```
+
+不安装时不注册两项工具。`SpawnAgent` 等待最终文本，同一会话最多同时运行 4 个子任务，超限立即返回错误。子任务复用模型和工作目录，不包含父消息，也不包含 Todo/Subagent 工具。所有子工具仍经过原权限链；父调用取消时，子执行随之停止并清理。
+
+Extension 工具的第二个参数提供 `onUpdate` 和 `runAgent`。`onUpdate` 发送普通工具进度；`runAgent({ prompt, instructions, excludeTools, onActivity })` 返回带安全消息 DTO 的 Result。执行能力只在这次工具调用期间有效，调用结束时取消并等待未结束的子执行，不能保存后用作后台任务接口。子执行不新增持久化会话，也不重新启动父 Extension 的会话/轮次钩子。

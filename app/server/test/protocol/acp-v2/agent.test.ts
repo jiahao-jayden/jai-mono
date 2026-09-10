@@ -392,6 +392,18 @@ describe("ACP v2 Agent adapter", () => {
 				},
 			},
 		]);
+		await driver.appendTodos([]);
+		expect(agent.drain()).toContainEqual(expect.objectContaining({
+			params: { sessionId: "session-1", update: { sessionUpdate: "plan_update", plan: { planId: "todos", entries: [] } } },
+		}));
+		const replayed = await agent.handle({
+			jsonrpc: "2.0", id: 4, method: "session/resume",
+			params: { sessionId: "session-1", cwd: "/workspace", replayFrom: { type: "start" } },
+		});
+		const plans = replayed.filter((message: any) => message.params?.update?.sessionUpdate === "plan_update");
+		expect(plans).toHaveLength(2);
+		expect(plans.at(-1)).toMatchObject({ params: { update: { plan: { entries: [] } } } });
+
 		driver.finish("completed");
 		await driver.closed;
 		await agent.close();
@@ -1392,14 +1404,13 @@ class ProjectionDriver implements RuntimeOperationDriver {
 			input.sessionId,
 			{
 				type: "app_state",
-				id: "todos-1",
+				id: `todos-${stored.revision}`,
 				parentId: stored.snapshot.leafId,
 				timestamp: "2026-08-26T12:00:00.000Z",
 				value: {
 					version: 1,
 					appState: {},
-					extensions: {},
-					todos: { items: items.map((item) => ({ ...item })), updatedAt: 1_772_213_600_000 },
+					extensions: { "jai.todo": { version: 1, items: items.map((item) => ({ ...item })), updatedAt: 1_772_213_600_000 } },
 				},
 			},
 			stored.revision,

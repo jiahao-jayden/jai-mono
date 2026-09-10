@@ -21,8 +21,6 @@ export function builtInToolPresentations(): ReadonlyMap<string, CodingToolPresen
 		["Write", { activityKind: "write", title: (args) => `Write ${stringArgument(args, "path") ?? "file"}` }],
 		["Edit", { activityKind: "write", title: (args) => `Edit ${stringArgument(args, "path") ?? "file"}` }],
 		["Bash", { activityKind: "execute", title: (args) => `Run ${stringArgument(args, "command") ?? "command"}` }],
-		["UpdateTodos", { title: () => "Updating progress" }],
-		["SpawnAgent", { title: (args) => stringArgument(args, "title") ?? "SpawnAgent" }],
 		["SearchTools", { activityKind: "search" }],
 	];
 	return new Map(presentations);

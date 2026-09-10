@@ -10,7 +10,7 @@ import type { JsonObject, JsonValue } from "../../core/json";
 import type { CodingExtensionToolCall, CodingToolPermission } from "../../permissions/tool-permission";
 import type { CodingExtensionError, CodingExtensionOperationFailed } from "../extension-errors";
 import type { CodingToolActivityKind } from "../tool-presentation";
-import type { CodingPermissionMode } from "../types";
+import type { CodingAgentMessage, CodingPermissionMode, CodingSdkError } from "../types";
 
 export interface CodingExtensionScopedConfiguration<TConfig extends JsonObject = JsonObject> {
 	readonly scope: "user" | "project";
@@ -175,6 +175,17 @@ export interface CodingExtensionToolResult {
 	readonly terminate?: boolean;
 }
 
+/** Valid only until the owning tool call settles. No session or provider handles escape. */
+export interface CodingExtensionToolExecutionCall extends CodingExtensionToolCall<JsonObject> {
+	readonly onUpdate?: (update: CodingExtensionToolResult) => void;
+	runAgent(input: {
+		readonly prompt: string;
+		readonly instructions: string;
+		readonly excludeTools?: readonly string[];
+		readonly onActivity?: (toolName: string) => void;
+	}): Promise<ResultType<readonly CodingAgentMessage[], CodingSdkError>>;
+}
+
 export interface CodingExtensionTool<
 	TConfig extends JsonObject = JsonObject,
 	TState extends JsonObject = JsonObject,
@@ -194,7 +205,7 @@ export interface CodingExtensionTool<
 		| { readonly owner: "extension" };
 	readonly execute: (
 		runtime: CodingExtensionRuntime<TConfig, TState, TInstance>,
-		call: CodingExtensionToolCall<JsonObject>,
+		call: CodingExtensionToolExecutionCall,
 	) => CodingExtensionToolResult | Promise<CodingExtensionToolResult>;
 	readonly presentation?: CodingExtensionToolPresentation<TConfig, TState, TInstance>;
 	readonly executionMode?: "sequential" | "parallel";

@@ -3,16 +3,7 @@ import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
 import type { CodingToolName } from "./names";
 import type { CodingToolOptions } from "./types";
 
-export {
-	createSpawnAgentTool,
-	MAX_CONCURRENT_SUBAGENTS,
-} from "./spawn-agent";
 export type { CodingToolOptions } from "./types";
-export {
-	createUpdateTodosTool,
-	type SessionTodoItem,
-	type SessionTodos,
-} from "./update-todos";
 
 export function createCodingTools(
 	options: CodingToolOptions,

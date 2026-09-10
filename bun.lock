@@ -231,7 +231,6 @@
       "version": "0.1.0",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.110.0",
-        "@jai/telemetry": "workspace:*",
         "@sinclair/typebox": "^0.34.49",
         "better-result": "^3.0.0",
         "openai": "^6.45.0",
@@ -243,6 +242,7 @@
         "@jai/agent": "workspace:*",
         "@jai/ai": "workspace:*",
         "@jai/connector": "workspace:*",
+        "@jai/telemetry": "workspace:*",
         "tsup": "^8.5.1",
         "typescript": "~5.8.3",
       },
@@ -252,8 +252,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@ff-labs/fff-node": "0.10.5",
-        "@jai/coding-agent": "workspace:*",
-        "@jai/connector": "workspace:*",
+        "@jai/coding-agent": "0.1.0",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@sinclair/typebox": "^0.34.49",
         "better-result": "^3.0.0",
@@ -263,6 +262,7 @@
       "devDependencies": {
         "@jai/agent": "workspace:*",
         "@jai/ai": "workspace:*",
+        "@jai/connector": "workspace:*",
         "@types/turndown": "^5.0.6",
         "tsup": "^8.5.1",
         "typescript": "~5.8.3",

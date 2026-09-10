@@ -28,9 +28,9 @@ type CodingPermissionDecision = "deny" | "allowOnce" | "alwaysAllow";
 
 ## 工具与状态项
 
-`CodingToolName`：`Read | Bash | Edit | Write | UpdateTodos | SpawnAgent`。`find` 与 `grep` 由 Search Extension 提供，不是内置工具名。
+`CodingToolName`：`Read | Bash | Edit | Write`。`find` 与 `grep` 由 Search Extension 提供，不是内置工具名。
 
-`CodingAgentTodo`：`id`、`content`、四态 `status`。
+`TodoItem`（由 `@jai/extension/todo` 导出）：`id`、`content`、四态 `status`。`UpdateTodos` 与 `SpawnAgent` 分别由 Todo、Subagent Extension 显式提供。
 
 `CodingAgentArtifact`：`id`、`toolCallId`、`path`、`format: "markdown" | "html"`、`updatedAt`。
 

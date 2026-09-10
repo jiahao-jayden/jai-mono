@@ -31,7 +31,6 @@
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.110.0",
-		"@jai/telemetry": "workspace:*",
 		"@sinclair/typebox": "^0.34.49",
 		"better-result": "^3.0.0",
 		"openai": "^6.45.0",
@@ -44,6 +43,7 @@
 		"@jai/ai": "workspace:*",
 		"@jai/connector": "workspace:*",
 		"tsup": "^8.5.1",
-		"typescript": "~5.8.3"
+		"typescript": "~5.8.3",
+		"@jai/telemetry": "workspace:*"
 	}
 }

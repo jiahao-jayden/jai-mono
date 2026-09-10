@@ -7,6 +7,6 @@
  */
 export const defaultCodingToolNames = ["Read", "Bash", "Edit", "Write"] as const;
 
-export const codingToolNames = [...defaultCodingToolNames, "UpdateTodos", "SpawnAgent"] as const;
+export const codingToolNames = defaultCodingToolNames;
 
 export type CodingToolName = (typeof codingToolNames)[number];

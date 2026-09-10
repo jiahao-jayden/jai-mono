@@ -158,6 +158,7 @@ describe("Operation effect boundary", () => {
 		expect(effectEvents).toMatchObject([
 			{ type: "model_reserved", assistantEntryId: "assistant-1" },
 			{ type: "usage_settled", usage: zeroUsage() },
+			{ type: "tool_reserved", assistantEntryId: "assistant-1", toolCallId: "call-1", toolName: "read", resultEntryId: "tool-result-1" },
 			{ type: "model_reserved", assistantEntryId: "assistant-2" },
 			{ type: "usage_settled", usage: zeroUsage() },
 		]);

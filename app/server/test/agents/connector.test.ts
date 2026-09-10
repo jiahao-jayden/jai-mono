@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Result } from "better-result";
 import { DatabaseSync } from "node:sqlite";
 import { createRuntimeConnectorAgentAssembly } from "../../src/agents";
 import { SqliteRuntimeAgentSettings } from "../../src/config";
@@ -44,7 +45,7 @@ describe("Runtime Host Connector assembly", () => {
 			if (!search) throw new Error("Connector search tool was not assembled");
 			const output = await search.execute(
 				{ sessionId: "session" } as Parameters<typeof search.execute>[0],
-				{ toolCallId: "tool-call", args: { connectorId: "context7" } },
+				{ toolCallId: "tool-call", args: { connectorId: "context7" }, runAgent: async () => Result.ok([]) },
 			);
 			const content = output.content[0];
 			if (!content || content.type !== "text") throw new Error("Connector search result is not text");

@@ -170,7 +170,7 @@ describe("SqliteProductSessionPersistence", () => {
 		expect(loaded.value).not.toHaveProperty("title");
 	});
 
-	test("keeps the Session Journal when an Operation record is no longer a current fact", async () => {
+	test("keeps the Session Journal while discarding unsupported Operation records", async () => {
 		const { DatabaseSync } = await import("node:sqlite");
 		const database = new DatabaseSync(":memory:");
 		const persistence = new SqliteProductSessionPersistence(database);
@@ -232,9 +232,9 @@ describe("SqliteProductSessionPersistence", () => {
 				"session-1",
 				100,
 				"operation-1",
-				"model_attempted",
+				"unsupported_record",
 				JSON.stringify({
-					type: "model_attempted",
+					type: "unsupported_record",
 					operationId: "operation-1",
 					attemptId: "attempt-1",
 					assistantEntryId: "assistant-1",

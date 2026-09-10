@@ -131,6 +131,7 @@ async function executeAction(client: ConnectorService, context: ConnectorContext
 	const tool = extension.tools?.find((candidate) => candidate.name === "connector__execute_action");
 	if (!tool) throw new Error("Connector execute tool is unavailable");
 	return tool.execute(context, {
+		runAgent: async () => Result.ok([]),
 		toolCallId: "tool-call-1",
 		args: { actionId: "demo.create", input: { name: "record" } },
 	});

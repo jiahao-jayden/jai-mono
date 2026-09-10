@@ -163,13 +163,13 @@ describe("createCodingAgent", () => {
 		const contexts: Context[] = [];
 		const codingAgent = await createCodingAgent({
 			...fixture,
-			enabledTools: new Set(["Read", "Bash", "UpdateTodos"]),
+			enabledTools: new Set(["Read", "Bash"]),
 			resolveProvider: () => ({ provider: providerFor([assistant("done")], contexts), model }),
 		});
 
 		try {
 			await codingAgent.invoke("inspect the project");
-			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["UpdateTodos", "Read", "Bash"]);
+			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["Read", "Bash"]);
 		} finally {
 			codingAgent.close();
 		}
@@ -243,133 +243,6 @@ describe("createCodingAgent", () => {
 			codingAgent.close();
 		}
 	});
-
-	test("SpawnAgent 使用隔离上下文并把最终文本返回父 Agent", async () => {
-		const fixture = await createFixture();
-		const contexts: Context[] = [];
-		const codingAgent = await createCodingAgent({
-			...fixture,
-			enabledTools: new Set(["SpawnAgent"]),
-			resolveProvider: () => ({
-				provider: providerFor(
-					[
-						assistantToolCall("SpawnAgent", {
-							title: "Inspect repository",
-							task: "Read the workspace and report the result.",
-						}),
-						assistant("Child inspection result."),
-						assistant("Parent received the result."),
-					],
-					contexts,
-				),
-				model,
-			}),
-		});
-
-		try {
-			await codingAgent.invoke("Parent-only conversation context.");
-
-			expect(contexts[0]?.tools.map((tool) => tool.name)).toContain("SpawnAgent");
-			expect(contexts[1]?.tools.map((tool) => tool.name)).not.toContain("SpawnAgent");
-			expect(contexts[1]?.messages[0]).toMatchObject({
-				role: "user",
-				content: "Read the workspace and report the result.",
-			});
-			expect(JSON.stringify(contexts[1]?.messages)).not.toContain("Parent-only conversation context.");
-			expect(JSON.stringify(contexts[2]?.messages)).toContain("Child inspection result.");
-		} finally {
-			codingAgent.close();
-		}
-	});
-
-	test("UpdateTodos 在成功事件发布前持久化 Coding Session 状态", async () => {
-		const fixture = await createFixture();
-		const contexts: Context[] = [];
-		const persistedWhenObserved: string[] = [];
-		const observedResults: Array<{ readonly isError: boolean; readonly result: unknown }> = [];
-		const codingAgent = await createCodingAgent({
-			...fixture,
-			enabledTools: new Set(["UpdateTodos"]),
-			resolveProvider: () => ({
-				provider: providerFor(
-					[
-						assistantToolCall("UpdateTodos", {
-							todos: [
-								{ id: "inspect", content: "Inspect storage", status: "completed" },
-								{ id: "render", content: "Render progress", status: "in_progress" },
-							],
-						}),
-						assistant("Working through the plan."),
-					],
-					contexts,
-				),
-				model,
-			}),
-		});
-		codingAgent.subscribe(async (event) => {
-			if (event.type !== "tool_execution_end" || event.toolName !== "UpdateTodos") return;
-			observedResults.push({ isError: event.isError, result: event.result });
-			if (event.isError) return;
-			persistedWhenObserved.push(JSON.stringify((await fixture.sessionStore.load("session-1"))?.snapshot.entries));
-		});
-
-		try {
-			await codingAgent.invoke("Implement the Todo feature.");
-
-			expect(contexts[0]?.tools.map((tool) => tool.name)).toContain("UpdateTodos");
-			expect(observedResults).toEqual([{ isError: false, result: expect.anything() }]);
-			expect(persistedWhenObserved).toHaveLength(1);
-			expect(persistedWhenObserved[0]).toContain('"type":"app_state"');
-			expect(persistedWhenObserved[0]).toContain('"id":"render"');
-			expect(codingAgent.state.appState.todos).toMatchObject({ version: 1 });
-			expect(JSON.stringify(contexts[1]?.messages)).toContain("Current session Todo state");
-			expect(JSON.stringify(contexts[1]?.messages)).toContain('"id":"render"');
-		} finally {
-			codingAgent.close();
-		}
-	});
-
-	test("跨轮次保留 Todo，下一轮更新时整体替换上一轮列表", async () => {
-		const fixture = await createFixture();
-		const codingAgent = await createCodingAgent({
-			...fixture,
-			enabledTools: new Set(["UpdateTodos"]),
-			resolveProvider: () => ({
-				provider: providerFor([
-					assistantToolCall("UpdateTodos", {
-						todos: [{ id: "old", content: "Finish the previous round", status: "completed" }],
-					}),
-					assistant("First round complete."),
-					assistant("Second round without Todo updates."),
-					assistantToolCall("UpdateTodos", {
-						todos: [{ id: "new", content: "Start the new round", status: "in_progress" }],
-					}),
-					assistant("Third round started."),
-				]),
-				model,
-			}),
-		});
-
-		try {
-			await codingAgent.invoke("Complete the first round.");
-			expect(codingAgent.state.appState.todos).toMatchObject({
-				items: [{ id: "old", status: "completed" }],
-			});
-
-			await codingAgent.invoke("Continue without a new plan.");
-			expect(codingAgent.state.appState.todos).toMatchObject({
-				items: [{ id: "old", status: "completed" }],
-			});
-
-			await codingAgent.invoke("Start a new plan.");
-			expect(codingAgent.state.appState.todos).toMatchObject({
-				items: [{ id: "new", status: "in_progress" }],
-			});
-		} finally {
-			codingAgent.close();
-		}
-	});
-
 });
 
 async function createFixture() {

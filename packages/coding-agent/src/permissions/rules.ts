@@ -54,10 +54,6 @@ export function permissionName(toolName: CanonicalToolName): string {
 			return "edit";
 		case "Bash":
 			return "bash";
-		case "SpawnAgent":
-			return "task";
-		case "UpdateTodos":
-			return "todowrite";
 	}
 }
 

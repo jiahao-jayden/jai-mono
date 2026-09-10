@@ -11,7 +11,6 @@ import type {
 	CodingAgentArtifact,
 	CodingAgentEvent,
 	CodingAgentMessage,
-	CodingAgentTodo,
 	CodingAssistantMessage,
 	CodingPermissionRequest,
 	CodingSdkError,
@@ -214,22 +213,6 @@ export function projectError(error: unknown, phase: CodingSdkErrorPhase): Coding
 		retryable: reportedPhase === "model" || reportedPhase === "tool",
 		phase: reportedPhase,
 	};
-}
-
-export function todosFromAppState(appState: JsonObject): readonly CodingAgentTodo[] {
-	const todos = appState.todos;
-	if (!isRecord(todos) || !Array.isArray(todos.items)) return [];
-	return todos.items.flatMap((item) => {
-		if (!isRecord(item) || typeof item.id !== "string" || typeof item.content !== "string") return [];
-		if (
-			item.status !== "pending" &&
-			item.status !== "in_progress" &&
-			item.status !== "completed" &&
-			item.status !== "cancelled"
-		)
-			return [];
-		return [{ id: item.id, content: item.content, status: item.status }];
-	});
 }
 
 export function projectJson(value: unknown): JsonValue {

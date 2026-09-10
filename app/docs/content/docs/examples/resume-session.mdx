@@ -37,7 +37,7 @@ if (resumed.isErr()) {
   try {
     console.dir({
       messages: agent.state.messages,
-      todos: agent.state.todos,
+      extensions: agent.state.extensions,
       artifacts: agent.state.artifacts,
     });
     const continued = await agent.prompt("继续上次分析，并列出下一步。");

@@ -331,12 +331,6 @@ export type CodingAgentEvent =
 	  }
 	| { readonly type: "compaction_end"; readonly outcome: JsonValue };
 
-export interface CodingAgentTodo {
-	readonly id: string;
-	readonly content: string;
-	readonly status: "pending" | "in_progress" | "completed" | "cancelled";
-}
-
 export interface CodingAgentArtifact {
 	readonly id: string;
 	readonly toolCallId: string;
@@ -349,7 +343,8 @@ export interface CodingAgentState<TAppState extends JsonObject = JsonObject> {
 	readonly sessionId: string;
 	readonly status: "idle" | "running" | "aborted" | "closed";
 	readonly messages: readonly CodingAgentMessage[];
-	readonly todos: readonly CodingAgentTodo[];
+	/** Read-only snapshot of per-extension session state. */
+	readonly extensions: JsonObject;
 	readonly artifacts: readonly CodingAgentArtifact[];
 	readonly appState: TAppState;
 	readonly error?: JsonObject;

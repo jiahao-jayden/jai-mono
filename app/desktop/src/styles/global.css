@@ -272,6 +272,37 @@ html.right-panel-resizing * {
   }
 }
 
+/* Chromium-only (Electron): thin, trackless, rounded thumb that only shows on hover. */
+:root {
+  --scrollbar-thumb: rgb(0 0 0 / 0.25);
+  --scrollbar-thumb-active: rgb(0 0 0 / 0.45);
+}
+.dark {
+  --scrollbar-thumb: rgb(255 255 255 / 0.2);
+  --scrollbar-thumb-active: rgb(255 255 255 / 0.4);
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  background-color: transparent;
+}
+*:hover::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+}
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-active);
+}
+
 @utility scrollbar-hidden {
   -ms-overflow-style: none;
   scrollbar-width: none;

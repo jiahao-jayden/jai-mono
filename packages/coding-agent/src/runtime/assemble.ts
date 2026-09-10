@@ -6,7 +6,7 @@ import type { CodingToolName } from "../tools/names";
 import type { CodingExecutionContext } from "./execution-context";
 
 export interface AssembleAgentCapabilitiesInput {
-	readonly kind: "primary" | "subagent";
+	readonly kind: "primary" | "isolated";
 	readonly executionContext: CodingExecutionContext;
 	readonly toolOptions?: Omit<CodingToolOptions, "cwd">;
 	readonly toolEnvironment?: NodeExecutionEnvironment;

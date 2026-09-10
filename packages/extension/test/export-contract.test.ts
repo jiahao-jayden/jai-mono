@@ -3,11 +3,13 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 describe("Official Extensions package exports", () => {
-	test("exposes Connector, Skills, Agent Plugins, Search, Web Search, and MCP as independent subpaths", async () => {
+	test("exposes Connector, Skills, Agent Plugins, Search, Web Search, MCP, Todo, and Subagent as independent subpaths", async () => {
 		const manifest = JSON.parse(await readFile(join(import.meta.dir, "..", "package.json"), "utf8")) as {
 			readonly exports: Readonly<Record<string, { readonly types: string; readonly bun: string; readonly import: string }>>;
 		};
 		expect(manifest.exports).toEqual({
+			"./todo": { types: "./dist/todo/index.d.ts", bun: "./src/todo/index.ts", import: "./dist/todo.js" },
+			"./subagent": { types: "./dist/subagent/index.d.ts", bun: "./src/subagent/index.ts", import: "./dist/subagent.js" },
 			"./connector": {
 				types: "./dist/connector/index.d.ts",
 				bun: "./src/connector/index.ts",

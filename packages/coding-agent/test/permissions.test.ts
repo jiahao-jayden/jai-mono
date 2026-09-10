@@ -548,14 +548,6 @@ describe("permission middleware", () => {
 });
 
 describe("permission evaluation", () => {
-	test("内部协调工具在所有权限模式下直接允许", () => {
-		expect(
-			evaluatePermission(call("SpawnAgent", { title: "Inspect", task: "Inspect the repository." }), {
-				defaultMode: "dontAsk",
-				permission: { task: "deny" },
-			}),
-		).toMatchObject({ behavior: "allow", source: "built-in" });
-	});
 
 	test("root/home rm -rf circuit breaker 固定拒绝", () => {
 		for (const command of ["rm -rf /", "rm -r -f ~", "rm --recursive --force $HOME", "rm -rf ${HOME}"]) {

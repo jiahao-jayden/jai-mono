@@ -1,7 +1,7 @@
 import { isAbsolute } from "node:path";
 import { type AgentMessage, branchOf, type JsonValue, type SessionEntry } from "@jai/agent";
 import type { ToolFileChange } from "@jai/ai";
-import { type CodingAgentTodo, todosFromAppState } from "@jai/coding-agent";
+import { type TodoItem, todosFromExtensionState } from "@jai/extension/todo";
 import type { RuntimeOperationContent, RuntimeWebSearchDetails } from "../../operations";
 import type {
 	RuntimeApprovalRequest,
@@ -558,7 +558,9 @@ function permissionDecision(response: unknown, canAlwaysAllow: boolean): "deny" 
 
 function projectEntry(sessionId: string, entry: SessionEntry, operationId?: string): readonly AcpJsonRpcNotification[] {
 	if (entry.type === "app_state") {
-		return Object.hasOwn(entry.value, "todos") ? [planUpdate(sessionId, todosFromAppState(entry.value))] : [];
+		const extensions = entry.value.extensions;
+		const todos = isObject(extensions) ? todosFromExtensionState(extensions) : undefined;
+		return todos ? [planUpdate(sessionId, todos.items)] : [];
 	}
 	if (entry.type !== "message") return [];
 	switch (entry.message.role) {
@@ -1051,7 +1053,7 @@ function usageUpdate(sessionId: string, cost: number): AcpJsonRpcNotification {
 	};
 }
 
-function planUpdate(sessionId: string, todos: readonly CodingAgentTodo[]): AcpJsonRpcNotification {
+function planUpdate(sessionId: string, todos: readonly TodoItem[]): AcpJsonRpcNotification {
 	return {
 		jsonrpc: "2.0",
 		method: "session/update",

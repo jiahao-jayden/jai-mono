@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 
 const execFile = promisify(execFileCallback);
 const packageDirectory = join(dirname(fileURLToPath(import.meta.url)), "..");
+const extensionDirectory = join(packageDirectory, "../extension");
 const documentationDirectory = join(packageDirectory, "../../app/docs/content/docs");
 const require = createRequire(import.meta.url);
 const temporaryDirectory = await mkdtemp(join(tmpdir(), "jai-coding-agent-consumer-"));
@@ -17,23 +18,28 @@ try {
 	await runNpm(["pack", "--pack-destination", temporaryDirectory], {
 		cwd: packageDirectory,
 	});
-	const archive = (await readdir(temporaryDirectory)).find((name) => name.endsWith(".tgz"));
-	if (!archive) throw new Error("npm pack did not create a tarball");
+	await runNpm(["pack", "--pack-destination", temporaryDirectory], { cwd: extensionDirectory });
+	const archives = (await readdir(temporaryDirectory)).filter((name) => name.endsWith(".tgz"));
+	if (archives.length !== 2) throw new Error("npm pack must create both SDK and Extension tarballs");
 
 	const consumerDirectory = join(temporaryDirectory, "consumer");
-	await writeFile(
-		join(temporaryDirectory, "package.json"),
-		JSON.stringify({ private: true, type: "module" }),
+	await writeFile(join(temporaryDirectory, "package.json"), JSON.stringify({ private: true, type: "module" }));
+	await runNpm(
+		["install", "--ignore-scripts", "--no-audit", "--no-fund", ...archives.map((archive) => `./${archive}`)],
+		{
+			cwd: temporaryDirectory,
+		},
 	);
-	await runNpm(["install", "--ignore-scripts", "--no-audit", "--no-fund", `./${archive}`], {
-		cwd: temporaryDirectory,
-	});
 	await mkdir(consumerDirectory);
 	await writeFile(
 		join(consumerDirectory, "index.ts"),
 		[
 			'import { createCodingAgent, type CodingAgentCreateOptions } from "@jai/coding-agent";',
-			'const options = { model: "anthropic/claude-sonnet-4-20250514" } satisfies CodingAgentCreateOptions;',
+			'import { createTodoExtension, todosFromExtensionState } from "@jai/extension/todo";',
+			'import { createSubagentExtension } from "@jai/extension/subagent";',
+			"const extensions = [createTodoExtension(), createSubagentExtension()];",
+			"void todosFromExtensionState({});",
+			'const options = { extensions, model: "anthropic/claude-sonnet-4-20250514" } satisfies CodingAgentCreateOptions;',
 			"void createCodingAgent(options);",
 		].join("\n"),
 	);
@@ -65,6 +71,9 @@ try {
 		join(consumerDirectory, "runtime.mjs"),
 		[
 			'import { createCodingAgent } from "@jai/coding-agent";',
+			'import { createTodoExtension } from "@jai/extension/todo";',
+			'import { createSubagentExtension } from "@jai/extension/subagent";',
+			'if (createTodoExtension().tools[0].name !== "UpdateTodos" || createSubagentExtension().tools[0].name !== "SpawnAgent") throw new Error("Invalid extension exports");',
 			'const result = await createCodingAgent({ model: "unsupported/model" });',
 			'if (!result.isErr()) throw new Error("Expected a public SDK error result");',
 		].join("\n"),
@@ -76,9 +85,7 @@ try {
 
 async function compiledDocumentationExamples() {
 	const files = (await documentationFiles(documentationDirectory)).sort();
-	const examples = await Promise.all(
-		files.map(async (file) => documentationExamples(await readFile(file, "utf8"))),
-	);
+	const examples = await Promise.all(files.map(async (file) => documentationExamples(await readFile(file, "utf8"))));
 	return examples.flat();
 }
 

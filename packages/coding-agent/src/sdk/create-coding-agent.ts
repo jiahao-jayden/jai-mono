@@ -50,7 +50,6 @@ import {
 	projectJson,
 	projectMessages,
 	projectPermissionRequest,
-	todosFromAppState,
 } from "./project";
 import {
 	type CodingSchema,
@@ -180,6 +179,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			input.extensionRuntime,
 			createExtensionSessionStateAdapter(internal),
 			{
+				runAgent: internal.runAgent,
 				permissions: extensionToolPermissions,
 				authorizedToolNames: extensionAuthorizedToolNameSet,
 				toolPresentations,
@@ -273,7 +273,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 			sessionId: this.#sessionId,
 			status: this.#closed ? "closed" : this.#running ? "running" : state.error ? "aborted" : "idle",
 			messages: projectMessages(state.messages),
-			todos: todosFromAppState(state.appState),
+			extensions: projectJson(state.appState.extensions) as JsonObject,
 			artifacts: [...this.#artifacts.values()].sort((left, right) => right.updatedAt - left.updatedAt),
 			appState: structuredClone(state.appState.appState) as TAppState,
 			...(state.error ? { error: projectJson(state.error) as JsonObject } : {}),

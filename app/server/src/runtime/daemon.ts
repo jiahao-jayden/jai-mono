@@ -1,3 +1,5 @@
+import { createSubagentExtension } from "@jai/extension/subagent";
+import { createTodoExtension } from "@jai/extension/todo";
 import type { TelemetryContext } from "@jai/telemetry";
 import { Result, type Result as ResultType } from "better-result";
 import {
@@ -103,7 +105,12 @@ export async function openConfiguredRuntimeHost(
 							...(current.value.maxTurns ? { maxTurns: current.value.maxTurns } : {}),
 							...(current.value.instructions ? { instructions: current.value.instructions } : {}),
 							...(current.value.providerOptions ? { providerOptions: current.value.providerOptions } : {}),
-							extensions: [...connector.value.extensions, ...webSearch.value.extensions],
+							extensions: [
+								createTodoExtension(),
+								createSubagentExtension(),
+								...connector.value.extensions,
+								...webSearch.value.extensions,
+							],
 							extensionRuntime: connector.value.extensionRuntime,
 						});
 					},
