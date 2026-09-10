@@ -14,7 +14,7 @@ interface ShapeClasses {
 }
 
 // Aside DNA: controls and form inputs share squircle `radius-lg` (shadcn
-// base-mira default). Only the chat composer is a 20px pill, set inline there.
+// base-nova default). Only the chat composer is a 20px pill, set inline there.
 const shape: ShapeClasses = {
 	item: "rounded-lg",
 	bg: "rounded-lg",
