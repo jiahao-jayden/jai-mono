@@ -6,7 +6,7 @@ import { desktopMessages } from "@/i18n/messages";
 import { fontWeights } from "@/lib/font-weight";
 import { useIcon } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import type { QueuedMessage } from "@/stores/chat";
 
 interface ChatMessageQueueProps {

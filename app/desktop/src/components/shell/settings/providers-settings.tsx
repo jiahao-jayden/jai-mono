@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { resolveProviderBrandIcon, useIcon } from "@/lib/icon-context";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import type {
 	DesktopProviderAdapter,
 	DesktopProviderFetchModelsResult,

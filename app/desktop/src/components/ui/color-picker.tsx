@@ -17,7 +17,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Popover } from "@base-ui/react/popover";
 import { Menu } from "@base-ui/react/menu";
 import { NumberField } from "@base-ui/react/number-field";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { spring } from "@/lib/springs";
 import { fontWeights } from "@/lib/font-weight";
 import { useShape, shapeMap } from "@/lib/shape-context";

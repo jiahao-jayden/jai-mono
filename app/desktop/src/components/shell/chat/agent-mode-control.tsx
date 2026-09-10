@@ -7,7 +7,7 @@ import { desktopMessages } from "@/i18n/messages";
 import type { IconName } from "@/lib/icon-context";
 import { useIcons } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import type { DesktopAgentMode } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { DropdownContent, DropdownMenu, DropdownTrigger } from "../../ui/dropdown";

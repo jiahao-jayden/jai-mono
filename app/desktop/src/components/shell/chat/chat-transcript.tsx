@@ -3,7 +3,7 @@ import { type IntlShape, useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { filesForAttachments } from "@/lib/attachment-files";
 import { type IconName, useIcon } from "@/lib/icon-context";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import type {
 	DesktopNarrationItem,
 	DesktopThinkingItem,

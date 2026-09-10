@@ -2,7 +2,7 @@
 
 import type { ComponentProps } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 
 export const paper = "bg-background border border-border/60 dark:bg-popover";
 

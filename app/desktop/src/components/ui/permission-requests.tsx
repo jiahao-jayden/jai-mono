@@ -8,7 +8,7 @@ import { fontWeights } from "@/lib/font-weight";
 import { useIcon } from "@/lib/icon-context";
 import { useShape } from "@/lib/shape-context";
 import { spring } from "@/lib/springs";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { Button } from "./button";
 
 export type PermissionDecision = "deny" | "allowOnce" | "alwaysAllow";

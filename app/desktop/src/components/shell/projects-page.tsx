@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { type IntlShape, useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import type { CodingSession, DesktopProject } from "../../../shared/desktop-rpc";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";

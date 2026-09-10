@@ -14,7 +14,7 @@ import {
 } from "react";
 import { Field } from "@base-ui/react/field";
 import type { IconComponent } from "@/lib/icon-context";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { fontWeights } from "@/lib/font-weight";
 import { useShape } from "@/lib/shape-context";
 import { useProximityHover } from "@/hooks/use-proximity-hover";

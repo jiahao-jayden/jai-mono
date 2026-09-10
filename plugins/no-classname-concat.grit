@@ -1,0 +1,14 @@
+engine biome(1.0)
+language js(jsx)
+
+jsx_attribute(name = "className", $value) where {
+	$value <: or {
+		contains JsTemplateExpression(),
+		contains `$left + $right`
+	},
+	register_diagnostic(
+		span = $value,
+		message = "不要用模板字符串或 + 拼接 className，改用 cn()",
+		severity = "error"
+	)
+}

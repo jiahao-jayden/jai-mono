@@ -9,7 +9,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { motion } from "framer-motion";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { useIcon } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
 import { SurfaceProvider, useSurface } from "@/lib/surface-context";

@@ -1,7 +1,7 @@
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import type * as React from "react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { useShape } from "@/lib/shape-context";
 
 interface InputProps extends React.ComponentProps<"input"> {

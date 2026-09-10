@@ -4,7 +4,7 @@ import { forwardRef, useState, useEffect, type HTMLAttributes } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { fontWeights } from "@/lib/font-weight";
 
 const circleA =

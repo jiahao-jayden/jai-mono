@@ -18,7 +18,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { fontWeights } from "@/lib/font-weight";
 import { spring } from "@/lib/springs";
 import { useIcon } from "@/lib/icon-context";

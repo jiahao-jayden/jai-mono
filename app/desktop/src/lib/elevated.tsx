@@ -3,7 +3,7 @@
 import { type ComponentPropsWithoutRef, forwardRef, type ReactNode } from "react";
 import { surfaceClasses } from "@/lib/surface-classes";
 import { SurfaceProvider, useSurface } from "@/lib/surface-context";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 
 interface ElevatedProps extends ComponentPropsWithoutRef<"div"> {
 	/**

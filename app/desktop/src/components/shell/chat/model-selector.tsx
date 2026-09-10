@@ -4,7 +4,7 @@ import { type IntlShape, useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { Elevated } from "@/lib/elevated";
 import { type IconComponent, resolveProviderBrandIcon, useIcons } from "@/lib/icon-context";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { type DesktopProviderConfigSnapshot, isDesktopProviderModelRunnable } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { type MessageDescriptor, useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { type IconName, useIcon, useIcons } from "@/lib/icon-context";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import type {
 	DesktopConnectorConfigInput,
 	DesktopConnectorConfigSnapshot,

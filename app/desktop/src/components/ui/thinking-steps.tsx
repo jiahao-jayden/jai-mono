@@ -18,7 +18,7 @@ import { Collapsible } from "@base-ui/react/collapsible";
 // SSR-safe layout effect (client components still server-render in Next).
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { useIcon } from "@/lib/icon-context";
 import type { IconName } from "@/lib/icon-context";
 import { Badge } from "@/components/ui/badge";

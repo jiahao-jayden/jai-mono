@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { useShape } from "@/lib/shape-context";
 
 // ─── Lazy pdfjs loader ────────────────────────────────────────────────────

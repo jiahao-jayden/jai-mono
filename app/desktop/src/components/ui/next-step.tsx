@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 
 interface NextStepProps {
 	readonly value: string;

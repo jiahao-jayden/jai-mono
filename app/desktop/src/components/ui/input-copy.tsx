@@ -4,7 +4,7 @@ import { forwardRef, useState, useCallback, useRef, useEffect, useId, type HTMLA
 import { motion, AnimatePresence } from "framer-motion";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { useIcon } from "@/lib/icon-context";
 import { fontWeights } from "@/lib/font-weight";
 import { useShape } from "@/lib/shape-context";

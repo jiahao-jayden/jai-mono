@@ -2,7 +2,7 @@
 
 import { forwardRef, type HTMLAttributes } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { useShape } from "@/lib/shape-context";
 
 const badgeColors = {

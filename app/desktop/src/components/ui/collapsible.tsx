@@ -2,7 +2,7 @@
 
 import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
 import type { ComponentProps } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 
 function Collapsible(props: ComponentProps<typeof CollapsiblePrimitive.Root>) {
 	return <CollapsiblePrimitive.Root data-slot="collapsible" {...props} />;

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { type IconName, useIcon } from "@/lib/icon-context";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import type { DesktopWebSearchResult } from "../../../shared/desktop-rpc";
 import { collapsePanel, ShimmerLabel, SwapLabel } from "./surfaces";
 import { WebSearchResults } from "./web-search-results";

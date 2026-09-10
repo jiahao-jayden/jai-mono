@@ -20,7 +20,7 @@ import {
   type MotionValue,
 } from "framer-motion";
 import { Slider as SliderPrimitive } from "@base-ui/react/slider";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { spring } from "@/lib/springs";
 import { fontWeights } from "@/lib/font-weight";
 import { useShape } from "@/lib/shape-context";

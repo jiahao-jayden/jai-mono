@@ -15,7 +15,7 @@ import { motion, type HTMLMotionProps, useReducedMotion } from "framer-motion";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { defaultRemarkPlugins, Streamdown } from "streamdown";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { spring } from "@/lib/springs";
 import { useShape } from "@/lib/shape-context";
 import { remarkDisableSetextH2 } from "@/lib/remark-disable-setext-h2";

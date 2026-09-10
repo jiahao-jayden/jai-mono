@@ -19,7 +19,7 @@ import { Accordion as AccordionPrimitive } from "@base-ui/react/accordion";
 // SSR-safe layout effect (client components still server-render in Next).
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { useIcon } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
 import { fontWeights } from "@/lib/font-weight";

@@ -5,7 +5,7 @@ import { desktopMessages } from "@/i18n/messages";
 import { desktop } from "@/lib/desktop";
 import { desktopQueryKeys } from "@/lib/desktop-query";
 import { useIcon } from "@/lib/icon-context";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import type {
 	DesktopConnector,
 	DesktopConnectorConfigInput,

@@ -23,7 +23,7 @@ import {
   type DropdownContextValue,
   type MenuItemRenderOptions,
 } from "@/components/ui/menu-item";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 import { spring, exitFallbackMs } from "@/lib/springs";
 import { useProximityHover } from "@/hooks/use-proximity-hover";
 import { shapeMap } from "@/lib/shape-context";

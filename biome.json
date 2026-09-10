@@ -1,5 +1,6 @@
 {
 	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"plugins": ["./plugins/no-classname-concat.grit"],
 	"linter": {
 		"enabled": true,
 		"rules": {
@@ -7,7 +8,15 @@
 			"style": {
 				"noNonNullAssertion": "off",
 				"useConst": "error",
-				"useNodejsImportProtocol": "off"
+				"useNodejsImportProtocol": "off",
+				"noRestrictedImports": {
+					"level": "error",
+					"options": {
+						"paths": {
+							"@/lib/utils": "组合 Tailwind class 只能使用 cn 包：import { cn } from \"cn\""
+						}
+					}
+				}
 			},
 			"suspicious": {
 				"noExplicitAny": "off",
