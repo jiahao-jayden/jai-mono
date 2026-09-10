@@ -57,7 +57,7 @@ const MIN_CHAT_WIDTH = 420;
 const MIN_DOCK_WIDTH = 320;
 const DEFAULT_DOCK_WIDTH = 520;
 /** 放下卡片后 chat 仍能容纳消息列的 max-width（896）时，卡片才作为独立一列，否则退化为按钮弹出的 popover。 */
-const TASK_CARD_COLUMN_MIN_CHAT_WIDTH = 896;
+const TASK_CARD_COLUMN_MIN_CHAT_WIDTH = 760;
 /** 卡片 256 + 两侧各 6px 留白，和 `w-64 px-1.5` 保持一致；留白给 hairline 和投影，动画容器是 overflow-hidden。 */
 const TASK_CARD_COLUMN_WIDTH = 268;
 /** 任务卡片的壳，列模式与 popover 模式共用，保证两种形态是同一张卡。 */
