@@ -88,6 +88,80 @@ describe("ACP v2 Agent adapter", () => {
 		]);
 	});
 
+	test("publishes a transcript invalidation when a child journal changes", async () => {
+		const driver = new ProjectionDriver();
+		const host = new RuntimeHost({
+			persistence: new InMemoryProductSessionPersistence(),
+			operationDriver: driver,
+			createId: ids("session-1", "operation-1"),
+		});
+		const agent = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: { protocolVersion: 2, capabilities: {}, info: { name: "test-client", version: "1.0.0" } },
+		});
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 2,
+			method: "session/new",
+			params: { cwd: "/workspace" },
+		});
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 3,
+			method: "session/prompt",
+			params: { sessionId: "session-1", prompt: [{ type: "text", text: "spawn" }] },
+		});
+		const input = await driver.opened;
+		const child = await input.openChildSession!("tool-call-1");
+
+		await child.append({
+			type: "message",
+			id: "child-message-1",
+			parentId: null,
+			timestamp: "2026-09-10T00:00:00.000Z",
+			message: { role: "user", content: "inspect files", timestamp: 1_789_000_000_000 },
+		});
+
+		expect(agent.drain()).toContainEqual({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "subagent_transcript_changed",
+					toolCallId: "tool-call-1",
+				},
+			},
+		});
+		const history = await agent.handle({
+			jsonrpc: "2.0",
+			id: 4,
+			method: "session/subagent_transcript",
+			params: { sessionId: "session-1", toolCallId: "tool-call-1" },
+		});
+		expect(history).toEqual([
+			{
+				jsonrpc: "2.0",
+				id: 4,
+				result: {
+					items: [
+						{
+							sessionUpdate: "user_message",
+							messageId: "child-message-1",
+							content: [{ type: "text", text: "inspect files" }],
+						},
+					],
+				},
+			},
+		]);
+		driver.finish("completed");
+		await driver.closed;
+		await agent.close();
+	});
+
 	test("does not accept session methods before initialize", async () => {
 		const agent = new AcpV2Agent({
 			host: new RuntimeHost({ persistence: new InMemoryProductSessionPersistence() }),

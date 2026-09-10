@@ -74,3 +74,71 @@ export class RuntimeSessionStore<TAppState extends JsonObject = JsonObject> impl
 		});
 	}
 }
+
+/**
+ * SessionStore backed by journal-only Product persistence: writes Session
+ * journals without catalog entries, so child sessions never appear in the
+ * product session list. Used by subagent child Agents.
+ */
+export class JournalOnlySessionStore<TAppState extends JsonObject = JsonObject> implements SessionStore<TAppState> {
+	constructor(
+		private readonly persistence: ProductSessionPersistence<TAppState>,
+		private readonly onEntryCommitted?: RuntimeSessionEntryCommitted<TAppState>,
+		private readonly now: () => Date = () => new Date(),
+	) {}
+
+	async load(id: string): Promise<StoredSession<TAppState> | undefined> {
+		const loaded = await this.persistence.loadJournalOnly(id);
+		if (loaded.isErr()) {
+			if (loaded.error._tag === "product_sessions.not_found") return undefined;
+			throw new RuntimeSessionStoreWriteFailed({
+				message: `Could not load journal-only Session "${id}"`,
+				sessionId: id,
+				cause: loaded.error,
+			});
+		}
+		return loaded.value;
+	}
+
+	async create(id: string, appState: TAppState): Promise<string> {
+		const created = await this.persistence.createJournalOnly({
+			id,
+			appState,
+			createdAt: this.now().toISOString(),
+		});
+		if (created.isOk()) return created.value;
+		if (created.error._tag === "product_sessions.already_exists") {
+			const loaded = await this.persistence.loadJournalOnly(id);
+			if (loaded.isOk()) return loaded.value.revision;
+		}
+		throw new RuntimeSessionStoreWriteFailed({
+			message: `Could not create journal-only Session "${id}"`,
+			sessionId: id,
+			cause: created.error,
+		});
+	}
+
+	async append(id: string, entry: SessionEntry<TAppState>, expectedRevision: string): Promise<string> {
+		const appended = await this.persistence.appendJournalOnly({ sessionId: id, entry, expectedRevision });
+		if (appended.isOk()) {
+			try {
+				this.onEntryCommitted?.(id, entry);
+			} catch {
+				// Projection observers never invalidate a durable append.
+			}
+			return appended.value;
+		}
+		throw new RuntimeSessionStoreWriteFailed({
+			message: `Could not append an entry to journal-only Session "${id}"`,
+			sessionId: id,
+			cause: appended.error,
+		});
+	}
+
+	async delete(id: string): Promise<void> {
+		throw new RuntimeSessionStoreDeleteUnsupported({
+			message: `Journal-only Session "${id}" cannot be deleted through the store adapter`,
+			sessionId: id,
+		});
+	}
+}

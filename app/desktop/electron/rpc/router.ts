@@ -23,6 +23,7 @@ import {
 	desktopSessionListInputSchema,
 	desktopSessionMoveInputSchema,
 	desktopSessionRenameInputSchema,
+	desktopSubagentTranscriptInputSchema,
 	desktopTelemetrySettingsInputSchema,
 	desktopUiLocalePreferenceSchema,
 	desktopWorkspaceListInputSchema,
@@ -359,6 +360,11 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				const parsedSessionId = parse(desktopSessionIdSchema, sessionId, "Invalid session id");
 				const runtimeSnapshot = await rt.agentHost.ensureSessionProjection(parsedSessionId);
 				return { ...runtimeSnapshot, artifacts: sortArtifacts(runtimeSnapshot.artifacts) };
+			},
+			async getSubagentTranscript(_event, input) {
+				return rt.agentHost.getSubagentTranscript(
+					parse(desktopSubagentTranscriptInputSchema, input, "Invalid subagent transcript request"),
+				);
 			},
 			close(_event, sessionId) {
 				rt.agentHost.closeSession(parse(desktopSessionIdSchema, sessionId, "Invalid session id"));

@@ -754,6 +754,149 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
+	test("projects a subagent transcript into Desktop transcript items", async () => {
+		const client = new FakeAcpClient();
+		client.subagentTranscript = {
+			items: [
+				{
+					sessionUpdate: "user_message",
+					messageId: "child-entry-1",
+					content: [{ type: "text", text: "child hello" }],
+				},
+				{
+					sessionUpdate: "agent_message",
+					messageId: "child-entry-2",
+					content: [{ type: "text", text: "child reply" }],
+				},
+			],
+		};
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+
+		const transcript = await host.getSubagentTranscript({
+			sessionId: "session-1",
+			toolCallId: "tool-call-1",
+		});
+
+		expect(client.methods).toContain("session/subagent_transcript");
+		expect(transcript.items).toHaveLength(2);
+		expect(transcript.items[0]).toMatchObject({
+			kind: "message",
+			role: "user",
+			text: "child hello",
+		});
+		expect(transcript.items[1]).toMatchObject({
+			kind: "message",
+			role: "assistant",
+			text: "child reply",
+		});
+		host.close();
+	});
+
+	test("returns an empty subagent transcript when the child journal is missing", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+
+		const transcript = await host.getSubagentTranscript({
+			sessionId: "session-1",
+			toolCallId: "missing-tool-call",
+		});
+
+		expect(transcript.items).toEqual([]);
+		host.close();
+	});
+
+	test("rejects a failed subagent transcript request instead of presenting it as empty", async () => {
+		const client = new FakeAcpClient();
+		client.subagentTranscriptError = "Could not read child journal";
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+
+		await expect(
+			host.getSubagentTranscript({
+				sessionId: "session-1",
+				toolCallId: "tool-call-1",
+			}),
+		).rejects.toMatchObject({
+			_tag: "desktop_agent.acp_request_failed",
+			method: "session/subagent_transcript",
+		});
+		host.close();
+	});
+
+	test("emits a transcript invalidation when a child journal changes", async () => {
+		const client = new FakeAcpClient();
+		const events: DesktopAgentEventEnvelope[] = [];
+		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "subagent_transcript_changed",
+					toolCallId: "tool-call-1",
+				},
+			},
+		});
+
+		expect(events.at(-1)).toMatchObject({
+			sessionId: "session-1",
+			event: {
+				type: "subagent_transcript_changed",
+				toolCallId: "tool-call-1",
+			},
+		});
+		host.close();
+	});
+
+	test("propagates the server errorMessage on a runtime failure instead of a hardcoded string", async () => {
+		const client = new FakeAcpClient();
+		const events: DesktopAgentEventEnvelope[] = [];
+		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "state_update",
+					state: "idle",
+					stopReason: "error",
+					errorMessage: "Coding Agent failed while executing Operation \"op-1\": model rate limit",
+				},
+			},
+		});
+
+		const runtimeError = events.find((e) => e.event.type === "runtime_error");
+		expect(runtimeError).toMatchObject({
+			event: {
+				type: "runtime_error",
+				error: { code: "Coding Agent failed while executing Operation \"op-1\": model rate limit" },
+			},
+		});
+		host.close();
+	});
+
 });
 
 class FakeAcpClient implements LocalAcpV2Client {
@@ -765,6 +908,8 @@ class FakeAcpClient implements LocalAcpV2Client {
 	readonly #requests = new Set<(request: AcpJsonRpcRequest) => void>();
 	#resumeCalls = 0;
 	resumeError?: string;
+	subagentTranscript?: { readonly items: readonly unknown[] };
+	subagentTranscriptError?: string;
 
 	async request(method: string, params?: unknown): Promise<ResultType<unknown, AcpLocalClientError>> {
 		this.methods.push(method);
@@ -775,6 +920,12 @@ class FakeAcpClient implements LocalAcpV2Client {
 			if (this.#resumeCalls === 1) {
 				return Result.err({ message: 'Session "session-1" does not exist' } as AcpLocalClientError);
 			}
+		}
+		if (method === "session/subagent_transcript") {
+			if (this.subagentTranscriptError) {
+				return Result.err({ message: this.subagentTranscriptError } as AcpLocalClientError);
+			}
+			return Result.ok(this.subagentTranscript ?? { items: [] });
 		}
 		return Result.ok({});
 	}

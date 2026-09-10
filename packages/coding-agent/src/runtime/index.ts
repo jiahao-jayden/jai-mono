@@ -4,6 +4,7 @@ export {
 	type CodingAgentRuntimeOptions,
 	type CreateCodingAgentOptions,
 	createCodingAgent,
+	type OpenChildSession,
 	type ResolvedCodingProvider,
 } from "./create-coding-agent";
 export { DEFAULT_CODING_AGENT_INSTRUCTIONS } from "./default-instructions";

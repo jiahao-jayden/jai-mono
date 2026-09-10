@@ -7,8 +7,10 @@ import {
 	type OperationFinished,
 	type OperationRecord,
 	type OperationRecoveryVerdict,
+	openSession,
 	recoverSessionOperations,
 	type SessionEntry,
+	type SessionSnapshot,
 } from "@jai/agent";
 import type { AssistantMessage } from "@jai/ai";
 import { Result, TaggedError } from "better-result";
@@ -25,8 +27,10 @@ import {
 	type RuntimeQueuedInput,
 } from "../operations";
 import type {
+	ProductSessionAdmissionConflict,
 	ProductSessionDurableState,
 	ProductSessionInfo,
+	ProductSessionNotFound,
 	ProductSessionPersistence,
 	RuntimeSessionConfiguration,
 	RuntimeSessionConfigurationChange,
@@ -36,6 +40,7 @@ import type {
 import {
 	createUnconfiguredRuntimeSessionConfigurationPolicy,
 	isRuntimeSessionMode,
+	JournalOnlySessionStore,
 	type RuntimeSessionConfigurationInvalid,
 	RuntimeSessionStore,
 } from "../sessions";
@@ -113,6 +118,15 @@ export type RuntimeSessionEvent =
 	| {
 			readonly type: "approval_requested";
 			readonly request: RuntimeApprovalRequest;
+	  }
+	| {
+			/** A durable entry appended to a child journal by a subagent. */
+			readonly type: "child_entry_appended";
+			readonly parentSessionId: string;
+			readonly childSessionId: string;
+			readonly toolCallId: string;
+			readonly entry: SessionEntry<JsonObject>;
+			readonly operationId?: string;
 	  };
 
 export interface RuntimeSessionSnapshot {
@@ -261,9 +275,10 @@ export class RuntimeHost {
 		);
 	}
 
-	async relocateSession(
-		input: { readonly sessionId: string; readonly cwd: string },
-	): Promise<Result<void, RuntimeHostPromptRejected>> {
+	async relocateSession(input: {
+		readonly sessionId: string;
+		readonly cwd: string;
+	}): Promise<Result<void, RuntimeHostPromptRejected>> {
 		const relocated = await this.options.persistence.relocate(input);
 		if (relocated.isErr()) {
 			return Result.err(
@@ -528,6 +543,7 @@ export class RuntimeHost {
 			() => {
 				if (this.#liveSessions.get(state.id) === session) this.#liveSessions.delete(state.id);
 			},
+			this.#initialAppState,
 		);
 		if (!discardWhenClosed) this.#liveSessions.set(state.id, session);
 		return session;
@@ -573,6 +589,7 @@ export class RuntimeSession {
 	#usageCost: number;
 	readonly #pendingApprovals = new Map<string, PendingRuntimeApproval>();
 	readonly #listeners = new Set<(event: RuntimeSessionEvent) => void>();
+	readonly #initialAppState: () => JsonObject;
 
 	constructor(
 		state: ProductSessionDurableState,
@@ -584,9 +601,11 @@ export class RuntimeSession {
 		private releaseController: () => void,
 		private readonly discardWhenClosed: boolean,
 		private readonly releaseLiveSession: () => void,
+		initialAppState: () => JsonObject,
 	) {
 		this.id = state.id;
 		this.info = state;
+		this.#initialAppState = initialAppState;
 		this.#usageCost = usageCost(state.operationRecords);
 	}
 
@@ -724,6 +743,16 @@ export class RuntimeSession {
 			usage: { cost: usageCost(loaded.value.operationRecords) },
 			...foreground,
 		});
+	}
+
+	/** Loads a journal-only child session snapshot for subagent history replay. */
+	async childSessionSnapshot(
+		toolCallId: string,
+	): Promise<Result<SessionSnapshot<JsonObject>, ProductSessionNotFound | ProductSessionAdmissionConflict>> {
+		const childSessionId = `${this.id}:${toolCallId}`;
+		const loaded = await this.persistence.loadJournalOnly(childSessionId);
+		if (loaded.isErr()) return Result.err(loaded.error);
+		return Result.ok(loaded.value.snapshot);
 	}
 
 	async navigate(entryId: string): Promise<Result<void, RuntimeHostPromptError>> {
@@ -1119,6 +1148,24 @@ export class RuntimeSession {
 			}),
 			pendingInputs: active.pendingInputs,
 			requestApproval: (request, signal) => this.requestApproval(request, signal),
+			openChildSession: (toolCallId) =>
+				openSession(
+					new JournalOnlySessionStore(
+						this.persistence,
+						(childSessionId, entry) =>
+							this.publish({
+								type: "child_entry_appended",
+								parentSessionId: this.id,
+								childSessionId,
+								toolCallId,
+								entry,
+								operationId: active.operationId,
+							}),
+						this.now,
+					),
+					`${this.id}:${toolCallId}`,
+					this.#initialAppState(),
+				),
 		});
 		if (opened.isErr()) {
 			return this.completeOperation(

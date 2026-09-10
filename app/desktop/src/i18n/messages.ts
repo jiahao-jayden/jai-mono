@@ -240,6 +240,8 @@ export const desktopMessages = defineMessages({
 	subagentActive: { id: "desktop.subagent.active", defaultMessage: "Active" },
 	subagentComplete: { id: "desktop.subagent.complete", defaultMessage: "Complete" },
 	subagentPanelEmpty: { id: "desktop.subagent.panelEmpty", defaultMessage: "No active subagents" },
+	subagentHistoryEmpty: { id: "desktop.subagent.historyEmpty", defaultMessage: "No transcript available" },
+	subagentHistoryLoading: { id: "desktop.subagent.historyLoading", defaultMessage: "Loading transcript…" },
 	dockPanels: { id: "desktop.dock.panels", defaultMessage: "Session panels" },
 	dockNewPanel: { id: "desktop.dock.newPanel", defaultMessage: "New panel" },
 	dockClosePanel: { id: "desktop.dock.closePanel", defaultMessage: "Close {name}" },

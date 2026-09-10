@@ -36,6 +36,16 @@ describe("useChat projection", () => {
 		expect(message).not.toContain("Could not load");
 	});
 
+	test("runtime 失败展示服务端返回的具体错误消息", () => {
+		const message = chatFailureMessage({ operation: "runtime", code: "Coding Agent failed while executing Operation \"op-1\": model rate limit" });
+		expect(message).toBe("Coding Agent failed while executing Operation \"op-1\": model rate limit");
+	});
+
+	test("runtime 失败在缺少具体消息时回退到泛化提示", () => {
+		const message = chatFailureMessage({ operation: "runtime", code: "Runtime Host operation failed" });
+		expect(message).toBe("当前响应未完成。请重试。");
+	});
+
 	test("snapshot 替换本地消息，增量按 item id upsert", () => {
 		const snapshotUpdate: DesktopAgentProjectionUpdate = {
 			type: "snapshot",

@@ -61,6 +61,9 @@ export class AcpV2Agent {
 					case "session/navigate":
 						response = await this.navigate(request);
 						break;
+					case "session/subagent_transcript":
+						response = await this.subagentTranscript(request);
+						break;
 					case "session/set_config_option":
 						response = await this.setConfigOption(request);
 						break;
@@ -245,6 +248,33 @@ export class AcpV2Agent {
 		const navigated = await session.navigate(entryId);
 		if (navigated.isErr()) return this.respondError(request.id, -32001, navigated.error.message);
 		return this.respond(request.id, {});
+	}
+
+	private async subagentTranscript(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
+		const params = objectParams(request.params);
+		const sessionId = params?.sessionId;
+		const toolCallId = params?.toolCallId;
+		if (typeof sessionId !== "string" || typeof toolCallId !== "string" || !toolCallId.trim()) {
+			return this.respondError(request.id, -32602, "Invalid session/subagent_transcript parameters");
+		}
+		const session = this.#sessions.get(sessionId);
+		if (!session) {
+			return this.respondError(request.id, -32004, `Session "${sessionId}" is not active on this ACP connection`);
+		}
+		const snapshot = await session.childSessionSnapshot(toolCallId);
+		if (snapshot.isErr()) {
+			return snapshot.error._tag === "product_sessions.not_found"
+				? this.respond(request.id, { items: [] })
+				: this.respondError(request.id, -32001, snapshot.error.message);
+		}
+		const operationId = `child:${toolCallId}`;
+		const items = snapshot.value.entries.flatMap((entry) =>
+			projectEntry(sessionId, entry, operationId).flatMap((notification) => {
+				const params = notification.params;
+				return isObject(params) && isObject(params.update) ? [params.update] : [];
+			}),
+		);
+		return this.respond(request.id, { items });
 	}
 
 	private async setConfigOption(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
@@ -533,6 +563,20 @@ function projectRuntimeEvent(sessionId: string, event: RuntimeSessionEvent): rea
 			return [configOptionUpdate(sessionId, event.configuration)];
 		case "approval_requested":
 			return [];
+		case "child_entry_appended":
+			return [
+				{
+					jsonrpc: "2.0",
+					method: "session/update",
+					params: {
+						sessionId,
+						update: {
+							sessionUpdate: "subagent_transcript_changed",
+							toolCallId: event.toolCallId,
+						},
+					},
+				},
+			];
 	}
 }
 

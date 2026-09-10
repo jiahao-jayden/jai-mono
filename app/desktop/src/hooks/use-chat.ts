@@ -351,6 +351,7 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 			return { ...state, lastSeq: seq };
 		case "connector_oauth_completed":
 		case "connector_oauth_failed":
+		case "subagent_transcript_changed":
 			return { ...state, lastSeq: seq };
 		case "transcript_upsert":
 			return {
@@ -418,6 +419,9 @@ export function chatFailureMessage(input: {
 		case "desktop_agent.creation_failed":
 			return agentCreationFailureMessage(input.reason);
 		default:
+			if (input.operation === "runtime" && input.code && input.code !== "Runtime Host operation failed") {
+				return input.code;
+			}
 			return defaultChatFailureMessage(input.operation);
 	}
 }

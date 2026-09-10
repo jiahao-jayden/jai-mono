@@ -996,6 +996,12 @@
   "desktop.subagent.failed": {
     "defaultMessage": "Failed"
   },
+  "desktop.subagent.historyEmpty": {
+    "defaultMessage": "No transcript available"
+  },
+  "desktop.subagent.historyLoading": {
+    "defaultMessage": "Loading transcript…"
+  },
   "desktop.subagent.panelEmpty": {
     "defaultMessage": "No active subagents"
   },

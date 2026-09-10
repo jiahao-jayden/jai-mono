@@ -5,6 +5,7 @@ import type {
 	OperationRecord,
 	SessionEntry,
 	SessionSnapshot,
+	StoredSession,
 } from "@jai/agent";
 import type { Result } from "better-result";
 import { TaggedError } from "better-result";
@@ -92,6 +93,13 @@ export class ProductSessionAdmissionConflict extends TaggedError("product_sessio
 	readonly cause?: unknown;
 }> {}
 
+/** Input for creating a journal-only Session that never enters the product catalog. */
+export interface CreateJournalOnlySession<TAppState extends JsonObject = JsonObject> {
+	readonly id: string;
+	readonly appState: TAppState;
+	readonly createdAt: string;
+}
+
 /**
  * Product persistence owns the transaction that bridges the two Agent facts.
  * SessionStore and OperationJournal stay separate domain contracts; callers cannot
@@ -117,7 +125,20 @@ export interface ProductSessionPersistence<TAppState extends JsonObject = JsonOb
 	appendEntry(
 		input: SessionEntryAppend<TAppState>,
 	): Promise<Result<string, ProductSessionNotFound | ProductSessionAdmissionConflict>>;
-	relocate(
-		input: { readonly sessionId: string; readonly cwd: string },
-	): Promise<Result<void, ProductSessionNotFound | ProductSessionAdmissionConflict>>;
+	relocate(input: {
+		readonly sessionId: string;
+		readonly cwd: string;
+	}): Promise<Result<void, ProductSessionNotFound | ProductSessionAdmissionConflict>>;
+	/** Create a Session journal without a catalog entry or runtime configuration. */
+	createJournalOnly(
+		input: CreateJournalOnlySession<TAppState>,
+	): Promise<Result<string, ProductSessionAlreadyExists | ProductSessionAdmissionConflict>>;
+	/** Load a journal-only Session by id, bypassing the catalog check. */
+	loadJournalOnly(
+		sessionId: string,
+	): Promise<Result<StoredSession<TAppState>, ProductSessionNotFound | ProductSessionAdmissionConflict>>;
+	/** Append a Session entry to a journal-only Session, bypassing the catalog update. */
+	appendJournalOnly(
+		input: SessionEntryAppend<TAppState>,
+	): Promise<Result<string, ProductSessionNotFound | ProductSessionAdmissionConflict>>;
 }

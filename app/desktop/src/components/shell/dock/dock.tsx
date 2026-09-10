@@ -7,17 +7,16 @@ import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
 import type { DesktopSubagentItem } from "../../../../shared/desktop-rpc";
 import { WorkspacePanel } from "../workspace-panel";
-import { SubagentPanel } from "./subagent-panel";
+import { SubagentHistoryPanel, SubagentPanel } from "./subagent-panel";
 import type { DockState, DockTab } from "./use-dock";
 
 interface DockProps {
 	readonly sessionId: string;
 	readonly dock: DockState;
 	readonly subagents: readonly DesktopSubagentItem[];
-	readonly selectedSubagentId?: string | null;
 }
 
-export function Dock({ sessionId, dock, subagents, selectedSubagentId = null }: DockProps) {
+export function Dock({ sessionId, dock, subagents }: DockProps) {
 	const intl = useIntl();
 	const icons = useIcons();
 	const PlusIcon = icons.plus;
@@ -94,7 +93,12 @@ export function Dock({ sessionId, dock, subagents, selectedSubagentId = null }: 
 						))}
 					</div>
 				) : activeTab.kind === "subagents" ? (
-					<SubagentPanel items={subagents} selectedId={selectedSubagentId} />
+					<SubagentPanel
+						items={subagents}
+						onOpenHistory={(item) => dock.openSubagentHistory(item.toolCallId, item.title)}
+					/>
+				) : activeTab.kind === "subagent-history" ? (
+					<SubagentHistoryPanel sessionId={sessionId} toolCallId={activeTab.toolCallId} title={activeTab.title} />
 				) : (
 					<WorkspacePanel sessionId={sessionId} filePath={activeTab.path} onOpenFile={dock.openFile} />
 				)}
@@ -117,11 +121,14 @@ function DockTabButton({
 	const intl = useIntl();
 	const icons = useIcons();
 	const XIcon = icons.x;
-	const TabIcon = tab.kind === "subagents" ? icons.users : icons["file-code"];
+	const TabIcon =
+		tab.kind === "subagents" ? icons.users : tab.kind === "subagent-history" ? icons.users : icons["file-code"];
 	const label =
 		tab.kind === "subagents"
 			? intl.formatMessage(desktopMessages.dockSubagentPanel)
-			: (tab.name ?? intl.formatMessage(desktopMessages.workspaceChooseFile));
+			: tab.kind === "subagent-history"
+				? tab.title
+				: (tab.name ?? intl.formatMessage(desktopMessages.workspaceChooseFile));
 	const closeLabel = intl.formatMessage(desktopMessages.dockClosePanel, { name: label });
 
 	return (

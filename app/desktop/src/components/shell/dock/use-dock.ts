@@ -2,11 +2,12 @@ import { useState } from "react";
 
 /**
  * 右栏打开的面板实例。文件面板多例（按 path 去重，path 为 null 表示还没选文件），
- * 子代理面板单例。
+ * 子代理列表面板单例，子代理历史面板按 toolCallId 去重多例。
  */
 export type DockTab =
 	| { readonly id: string; readonly kind: "file"; readonly path: string | null; readonly name: string | null }
-	| { readonly id: typeof SUBAGENTS_TAB_ID; readonly kind: "subagents" };
+	| { readonly id: typeof SUBAGENTS_TAB_ID; readonly kind: "subagents" }
+	| { readonly id: string; readonly kind: "subagent-history"; readonly toolCallId: string; readonly title: string };
 
 const SUBAGENTS_TAB_ID = "subagents";
 const EMPTY_FILE_TAB_ID = "file:new";
@@ -30,6 +31,9 @@ export function useDock() {
 		},
 		openSubagentPanel() {
 			activate({ id: SUBAGENTS_TAB_ID, kind: "subagents" });
+		},
+		openSubagentHistory(toolCallId: string, title: string) {
+			activate({ id: `subagent-history:${toolCallId}`, kind: "subagent-history", toolCallId, title });
 		},
 		openFile(path: string) {
 			const tab = { id: `file:${path}`, kind: "file", path, name: path.split("/").at(-1) ?? path } as const;

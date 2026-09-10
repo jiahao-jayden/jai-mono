@@ -1,5 +1,11 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import {
+	CodingConfigStore,
+	CodingExtensionHostOperationFailed,
+	sdkConfigDefinition,
+	type JsonObject,
+} from "@jai/coding-agent";
 import { createMcpExtension } from "@jai/extension/mcp";
 import { createFffSearchExtension } from "@jai/extension/search";
 import { createSkillsExtension } from "@jai/extension/skills";
@@ -63,6 +69,36 @@ export class DesktopLocalRuntimeCapabilitySource implements RuntimeCapabilitySou
 			return Result.ok({
 				fileCapabilities,
 				extensions: [skillsExtension, agentPlugins, fffSearchExtension, createMcpExtension()],
+				extensionRuntime: {
+					readConfiguration: async ({ extensionId, scope }) => {
+						if (extensionId !== "mcp" || scope !== "user") return Result.ok(undefined);
+						const config = new CodingConfigStore(sdkConfigDefinition, { homeDir: this.#homeDirectory });
+						try {
+							const user = await config.readScope("user");
+							const configuration = Reflect.get(user.settings, "mcp");
+							if (configuration === undefined) return Result.ok(undefined);
+							if (isJsonObject(configuration)) return Result.ok(configuration);
+							return Result.err(
+								new CodingExtensionHostOperationFailed({
+									extensionId,
+									operation: "configuration_read",
+									message: "MCP user configuration must be an object",
+								}),
+							);
+						} catch (cause) {
+							return Result.err(
+								new CodingExtensionHostOperationFailed({
+									extensionId,
+									operation: "configuration_read",
+									message: "Could not read MCP user configuration",
+									cause,
+								}),
+							);
+						} finally {
+							config.close();
+						}
+					},
+				},
 			});
 		} catch (cause) {
 			return Result.err(
@@ -75,4 +111,8 @@ export class DesktopLocalRuntimeCapabilitySource implements RuntimeCapabilitySou
 			);
 		}
 	}
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -1,4 +1,8 @@
-import type { CodingAgentCreateOptions, CodingAgentFileCapabilities } from "@jai/coding-agent";
+import type {
+	CodingAgentCreateOptions,
+	CodingAgentFileCapabilities,
+	CodingExtensionRuntimeAdapter,
+} from "@jai/coding-agent";
 import type { Result } from "better-result";
 import { TaggedError } from "better-result";
 
@@ -6,6 +10,8 @@ import { TaggedError } from "better-result";
 export interface RuntimeCapabilityAssembly {
 	readonly fileCapabilities: CodingAgentFileCapabilities;
 	readonly extensions: NonNullable<CodingAgentCreateOptions["extensions"]>;
+	/** File-backed extension configuration for this Operation. */
+	readonly extensionRuntime?: Pick<CodingExtensionRuntimeAdapter, "readConfiguration">;
 }
 
 /** Stable Operation input that a capability source may use to select Host-owned resources. */

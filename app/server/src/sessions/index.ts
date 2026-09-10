@@ -1,5 +1,5 @@
 export type { RuntimeSessionEntryCommitted } from "./agent-store";
-export { RuntimeSessionStore } from "./agent-store";
+export { JournalOnlySessionStore, RuntimeSessionStore } from "./agent-store";
 export {
 	createUnconfiguredRuntimeSessionConfigurationPolicy,
 	defaultRuntimeSessionConfiguration,
@@ -15,6 +15,7 @@ export {
 } from "./configuration";
 export { InMemoryProductSessionPersistence } from "./memory";
 export {
+	type CreateJournalOnlySession,
 	type CreateProductSession,
 	type OperationRecordAppend,
 	type ProductOperationRuntimeConfiguration,

@@ -18,6 +18,7 @@ import {
 	createCodingAgent as createInternalCodingAgent,
 	DEFAULT_CODING_AGENT_INSTRUCTIONS,
 	type CodingAgent as InternalCodingAgent,
+	type OpenChildSession,
 } from "../runtime";
 import { ToolCatalog } from "../runtime/tool-catalog";
 import { sdkConfigDefinition } from "./config";
@@ -157,6 +158,13 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			...(extensionToolCatalog ? { extensionToolCatalog } : {}),
 			modelRequestObserver: input.modelRequestTelemetryObserver,
 			enabledTools,
+			...(input.openChildSession
+				? {
+						openChildSession: input.openChildSession as unknown as OpenChildSession<
+							PersistedCodingSessionState<TAppState>
+						>,
+					}
+				: {}),
 			agent: input.compactionSummaryInstructions
 				? {
 						compaction: {

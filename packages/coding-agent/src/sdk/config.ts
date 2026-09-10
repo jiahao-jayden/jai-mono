@@ -25,9 +25,9 @@ export const defaultUserTelemetryPolicy: UserTelemetryPolicy = Object.freeze({
 });
 
 /**
- * The public SDK only consumes permission settings. It reserves telemetry as
- * a user-only Host-owned field, while the Server validates its contents so a
- * telemetry typo cannot block an Agent from opening.
+ * The public SDK only consumes permission settings. It reserves telemetry and
+ * mcp as user-only Host-owned fields, while the Server validates their
+ * contents so a typo in either cannot block an Agent from opening.
  */
 export const sdkConfigDefinition = defineCodingConfig({
 	schemaVersion: 1,
@@ -37,6 +37,7 @@ export const sdkConfigDefinition = defineCodingConfig({
 			permission: Type.Optional(permissionConfigSchema),
 			permissions: permissionSettingsSchema,
 			telemetry: Type.Optional(Type.Unknown()),
+			mcp: Type.Optional(Type.Unknown()),
 		},
 		{ additionalProperties: false },
 	),
@@ -48,5 +49,6 @@ export const sdkConfigDefinition = defineCodingConfig({
 			project: "never",
 			default: defaultUserTelemetryPolicy,
 		},
+		mcp: { merge: "replace", project: "never" },
 	},
 });

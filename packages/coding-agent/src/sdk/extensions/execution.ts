@@ -29,7 +29,7 @@ export async function executeExtensionTool(
 				phase: "runtime_creation" as const,
 				retryable: false,
 			});
-		const execution = executeAgent({ ...input, signal: callSignal });
+		const execution = executeAgent({ ...input, toolCallId, signal: callSignal });
 		pending.add(execution);
 		try {
 			const messages = await execution;

@@ -16,6 +16,7 @@ function dockState(tabs: readonly DockTab[], activeTabId: string | null): DockSt
 		activeTab: tabs.find((tab) => tab.id === activeTabId) ?? null,
 		openFilePanel: () => {},
 		openSubagentPanel: () => {},
+		openSubagentHistory: () => {},
 		openFile: () => {},
 		selectTab: () => {},
 		closeTab: () => {},
@@ -90,5 +91,41 @@ describe("Dock", () => {
 
 		expect(markup).toContain("No active subagents");
 		expect(markup).not.toContain("Complete");
+	});
+
+	test("subagent-history tab 渲染标题并使用 users 图标", () => {
+		const markup = renderDock(
+			[{ id: "subagent-history:call-1", kind: "subagent-history", toolCallId: "call-1", title: "Audit Mac software" }],
+			"subagent-history:call-1",
+		);
+
+		expect(markup).toContain("Audit Mac software");
+		expect(markup).toContain('aria-label="Close Audit Mac software"');
+	});
+
+	test("subagent 列表行可点击打开 history tab", () => {
+		const opened: { toolCallId: string; title: string }[] = [];
+		const markup = renderToStaticMarkup(
+			<Dock
+				sessionId="session-1"
+				dock={{
+					...dockState([{ id: "subagents", kind: "subagents" }], "subagents"),
+					openSubagentHistory: (toolCallId, title) => opened.push({ toolCallId, title }),
+				}}
+				subagents={[
+					{
+						kind: "subagent",
+						id: "sub-1",
+						turnId: "turn-1",
+						toolCallId: "call-1",
+						title: "Audit Mac software",
+						status: "complete",
+					},
+				]}
+			/>,
+		);
+
+		expect(markup).toContain('role="button"');
+		expect(markup).toContain("Audit Mac software");
 	});
 });

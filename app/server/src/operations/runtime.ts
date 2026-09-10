@@ -1,4 +1,4 @@
-import type { EffectBoundary, JsonObject, SessionStore } from "@jai/agent";
+import type { EffectBoundary, JsonObject, SessionHandle, SessionStore } from "@jai/agent";
 import type { Result } from "better-result";
 import { TaggedError } from "better-result";
 import type { RuntimeSessionConfiguration } from "../sessions";
@@ -152,6 +152,12 @@ export interface RuntimeOperationOpenInput {
 	readonly pendingInputs?: readonly RuntimeQueuedInput[];
 	/** Current Session Controller's approval interaction, mediated by the Host. */
 	readonly requestApproval: RuntimeApprovalHandler;
+	/**
+	 * Opens a journal-only child session for a subagent, identified by the
+	 * SpawnAgent tool call id. Child journals persist in the same SQLite
+	 * database but never enter the product session catalog.
+	 */
+	readonly openChildSession?: (toolCallId: string) => Promise<SessionHandle<JsonObject>>;
 }
 
 /** Read-only readiness check that must complete before prompt admission. */

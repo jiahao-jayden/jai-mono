@@ -18,6 +18,7 @@ import type {
 	DesktopPermissionRequest,
 	DesktopPermissionResolution,
 	DesktopSubagentItem,
+	DesktopSubagentTranscript,
 	DesktopThinkingItem,
 	DesktopTodoItem,
 	DesktopTodos,
@@ -231,6 +232,21 @@ export class DesktopAcpAgentHost {
 		return this.getSnapshot(sessionId);
 	}
 
+	/** Loads the durable transcript of a subagent child journal. */
+	async getSubagentTranscript(input: {
+		readonly sessionId: string;
+		readonly toolCallId: string;
+	}): Promise<DesktopSubagentTranscript> {
+		await this.#ensureSession(input.sessionId, "", "manual");
+		const result = await this.#request("session/subagent_transcript", {
+			sessionId: input.sessionId,
+			toolCallId: input.toolCallId,
+		});
+		if (result.isErr()) throw result.error;
+		const value = result.value as { readonly items?: readonly unknown[] };
+		return { items: value.items ? this.#projectSubagentItems(value.items) : [] };
+	}
+
 	getArtifact(sessionId: string, artifactId: string): DesktopArtifact | undefined {
 		const artifact = this.#sessions.get(sessionId)?.artifacts.get(artifactId);
 		return artifact ? structuredClone(artifact) : undefined;
@@ -376,6 +392,10 @@ export class DesktopAcpAgentHost {
 		if (typeof sessionId !== "string" || !isRecord(update) || typeof update.sessionUpdate !== "string") return;
 		const runtime = this.#sessions.get(sessionId);
 		if (!runtime) return;
+		this.#processUpdate(runtime, update);
+	}
+
+	#processUpdate(runtime: AcpSessionRuntime, update: Record<string, unknown>): void {
 		switch (update.sessionUpdate) {
 			case "state_update":
 				this.#stateUpdate(runtime, update);
@@ -403,10 +423,46 @@ export class DesktopAcpAgentHost {
 			case "terminal_output_chunk":
 				this.#terminalOutputChunk(runtime, update);
 				return;
+			case "subagent_transcript_changed":
+				if (typeof update.toolCallId === "string") {
+					this.#emitEvent(runtime, {
+						type: "subagent_transcript_changed",
+						toolCallId: update.toolCallId,
+					});
+				}
+				return;
 			case "plan_update":
 				this.#planUpdate(runtime, update);
 				return;
 		}
+	}
+
+	/**
+	 * Projects a batch of ACP session/update params into transcript items using
+	 * a disposable runtime. The runtime is marked closed so #emitEvent is a no-op;
+	 * items still accumulate in runtime.items for collection.
+	 */
+	#projectSubagentItems(items: readonly unknown[]): readonly DesktopTranscriptItem[] {
+		const runtime: AcpSessionRuntime = {
+			sessionId: "subagent-transcript",
+			cwd: "",
+			modelRef: "",
+			mode: "manual",
+			configured: true,
+			status: "idle",
+			items: new Map(),
+			artifacts: new Map(),
+			terminalToolCallIds: new Map(),
+			terminalOutput: new Map(),
+			hiddenToolCallIds: new Set(),
+			seq: 0,
+			closed: true,
+		};
+		for (const item of items) {
+			if (!isRecord(item) || typeof item.sessionUpdate !== "string") continue;
+			this.#processUpdate(runtime, item);
+		}
+		return [...runtime.items.values()];
 	}
 
 	#onRequest(request: AcpJsonRpcRequest): void {
@@ -441,7 +497,13 @@ export class DesktopAcpAgentHost {
 		runtime.status = state === "running" || state === "requires_action" ? "running" : "idle";
 		if (runtime.status === "idle") this.#cancelPendingPermissions(runtime);
 		this.#emitEvent(runtime, { type: "status", status: runtime.status });
-		if (update.stopReason === "error") this.#emitRuntimeError(runtime, "Runtime Host operation failed");
+		if (update.stopReason === "error") {
+			const message =
+				typeof update.errorMessage === "string" && update.errorMessage.trim()
+					? update.errorMessage
+					: "Runtime Host operation failed";
+			this.#emitRuntimeError(runtime, message);
+		}
 	}
 
 	#messageUpdate(runtime: AcpSessionRuntime, update: Record<string, unknown>, role: "user" | "assistant"): void {

@@ -12,6 +12,7 @@ import {
 	type ModelRequestObserver,
 	type ObserverErrorInfo,
 	openSession,
+	type SessionHandle,
 	type SessionStore,
 	type ToolExecutionMode,
 	type ToolMiddleware,
@@ -41,9 +42,11 @@ import {
 import type { CodingToolOptions } from "../tools";
 import type { CodingToolName } from "../tools/names";
 import { assembleAgentCapabilities } from "./assemble";
+import type { OpenChildSession, RunAgentExecution } from "./execution";
 import type { CodingExecutionContext } from "./execution-context";
 import type { ToolCatalog } from "./tool-catalog";
-import type { RunAgentExecution } from "./execution";
+
+export type { OpenChildSession };
 
 export interface ResolvedCodingProvider {
 	readonly provider: Provider;
@@ -92,7 +95,7 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 	readonly extensionToolMiddleware?: ToolMiddleware;
 	readonly extensionToolPermissions?: ReadonlyMap<string, ExtensionToolPermissionResolver>;
 	readonly extensionAuthorizedToolNames?: ReadonlySet<string>;
-	extensionToolCatalog?: ToolCatalog;
+	readonly extensionToolCatalog?: ToolCatalog;
 	readonly extensionBeforeModelCall?: (messages: readonly AgentMessage[]) => Promise<AgentMessage[]>;
 	readonly modelRequestObserver?: ModelRequestObserver;
 	readonly commands?: CodingCommandRegistry;
@@ -101,6 +104,8 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 		snapshot: ConfigSnapshot<TSchema>,
 		resolved: ResolvedCodingProvider,
 	) => CodingAgentRuntimeOptions | Promise<CodingAgentRuntimeOptions>;
+	/** Host-supplied factory that opens a journal-only child session for each subagent invocation. */
+	readonly openChildSession?: OpenChildSession<TAppState>;
 }
 
 interface ExtensionToolCatalogSlot {
@@ -249,7 +254,8 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	);
 	const selectPermissionSettings =
 		options.permissions?.selectSettings ??
-		((snapshot: ConfigSnapshot<TSchema>) => permissionSettingsFromConfig(snapshot.settings as Readonly<Record<string, unknown>>));
+		((snapshot: ConfigSnapshot<TSchema>) =>
+			permissionSettingsFromConfig(snapshot.settings as Readonly<Record<string, unknown>>));
 	const sessionAllowRules = {};
 	const persistProjectLocalAllowRules =
 		options.permissions?.persistProjectLocalAllowRules ??
@@ -308,7 +314,14 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		sessionAllowRules,
 		telemetryObserver: options.permissions?.telemetryObserver,
 	});
-	const runAgent: RunAgentExecution = async ({ prompt, instructions, excludeTools = [], signal, onActivity }) => {
+	const runAgent: RunAgentExecution = async ({
+		prompt,
+		instructions,
+		excludeTools = [],
+		signal,
+		onActivity,
+		toolCallId,
+	}) => {
 		signal?.throwIfAborted();
 		const allowed = (tool: AgentTool) => !excludeTools.includes(tool.name);
 		const childToolCatalog = extensionToolCatalog.current?.createScope(allowed);
@@ -323,11 +336,13 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			extensionToolMiddleware: options.extensionToolMiddleware,
 			extraTools: childToolCatalog ? [childToolCatalog.searchTool] : [],
 		});
+		const childSessionHandle = options.openChildSession ? await options.openChildSession(toolCallId) : undefined;
 		const child = new Agent({
 			model,
 			provider,
 			tools: childCapabilities.tools.filter(allowed),
 			instructions: [resolvedInstructions, instructions].filter(Boolean).join("\n\n"),
+			...(childSessionHandle ? { sessionHandle: childSessionHandle as SessionHandle<JsonObject> } : {}),
 			temperature: resolvedAgentOptions.temperature,
 			maxTokens: resolvedAgentOptions.maxTokens,
 			providerOptions: resolvedAgentOptions.providerOptions,

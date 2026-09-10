@@ -1,10 +1,11 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { type JsonObject, type OperationRecord, replay, type SessionEntry } from "@jai/agent";
+import { type JsonObject, type OperationRecord, replay, type SessionEntry, type StoredSession } from "@jai/agent";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { RuntimeSessionConfiguration } from "../../sessions";
 import {
+	type CreateJournalOnlySession,
 	type OperationRecordAppend,
 	ProductSessionAdmissionConflict,
 	ProductSessionAlreadyExists,
@@ -363,20 +364,117 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 		}
 	}
 
+	async createJournalOnly(
+		input: CreateJournalOnlySession<TAppState>,
+	): Promise<ResultType<string, ProductSessionAlreadyExists | ProductSessionAdmissionConflict>> {
+		try {
+			const revision = this.transaction(() => {
+				const revision = crypto.randomUUID();
+				this.database
+					.prepare(
+						`INSERT INTO session_journals (id, revision, initial_app_state_json, created_at, updated_at)
+						 VALUES (?, ?, ?, ?, ?)`,
+					)
+					.run(input.id, revision, JSON.stringify(input.appState), input.createdAt, input.createdAt);
+				this.database
+					.prepare("INSERT INTO session_fact_sequences (session_id, next_sequence) VALUES (?, 0)")
+					.run(input.id);
+				return revision;
+			});
+			return Result.ok(revision);
+		} catch (error) {
+			if (isUniqueViolation(error)) {
+				return Result.err(
+					new ProductSessionAlreadyExists({
+						message: `Session "${input.id}" already exists`,
+						sessionId: input.id,
+					}),
+				);
+			}
+			return Result.err(this.conflict(input.id, `Could not create journal-only Session "${input.id}"`, error));
+		}
+	}
+
+	async loadJournalOnly(
+		sessionId: string,
+	): Promise<ResultType<StoredSession<TAppState>, ProductSessionNotFound | ProductSessionAdmissionConflict>> {
+		try {
+			const record = this.readJournalOnly(sessionId);
+			if (!record) {
+				return Result.err(
+					new ProductSessionNotFound({ message: `Session "${sessionId}" does not exist`, sessionId }),
+				);
+			}
+			return Result.ok(record);
+		} catch (error) {
+			return Result.err(this.conflict(sessionId, `Could not load journal-only Session "${sessionId}"`, error));
+		}
+	}
+
+	async appendJournalOnly(
+		input: SessionEntryAppend<TAppState>,
+	): Promise<ResultType<string, ProductSessionNotFound | ProductSessionAdmissionConflict>> {
+		try {
+			const revision = this.transaction(() => {
+				const current = this.database
+					.prepare("SELECT revision FROM session_journals WHERE id = ?")
+					.get(input.sessionId) as { readonly revision: string } | undefined;
+				if (!current) {
+					throw new ProductSessionNotFound({
+						message: `Session "${input.sessionId}" does not exist`,
+						sessionId: input.sessionId,
+					});
+				}
+				if (current.revision !== input.expectedRevision) {
+					throw new ProductSessionAdmissionConflict({
+						message: `Session "${input.sessionId}" revision conflict while appending an entry`,
+						sessionId: input.sessionId,
+					});
+				}
+				const sequence = this.nextSequence(input.sessionId);
+				this.database
+					.prepare(
+						`INSERT INTO session_journal_entries (session_id, sequence, entry_id, entry_type, entry_json)
+						 VALUES (?, ?, ?, ?, ?)`,
+					)
+					.run(input.sessionId, sequence, input.entry.id, input.entry.type, JSON.stringify(input.entry));
+				const nextRevision = crypto.randomUUID();
+				this.database
+					.prepare("UPDATE session_journals SET revision = ?, updated_at = ? WHERE id = ?")
+					.run(nextRevision, input.entry.timestamp, input.sessionId);
+				return nextRevision;
+			});
+			return Result.ok(revision);
+		} catch (error) {
+			if (error instanceof ProductSessionNotFound) return Result.err(error);
+			return Result.err(
+				this.conflict(
+					input.sessionId,
+					`Could not append Session Journal entry for Session "${input.sessionId}"`,
+					error,
+				),
+			);
+		}
+	}
+
 	close(): void {
 		if (this.#ownsDatabase) this.database.close();
 	}
 
-	async relocate(
-		input: { readonly sessionId: string; readonly cwd: string },
-	): Promise<ResultType<void, ProductSessionNotFound | ProductSessionAdmissionConflict>> {
+	async relocate(input: {
+		readonly sessionId: string;
+		readonly cwd: string;
+	}): Promise<ResultType<void, ProductSessionNotFound | ProductSessionAdmissionConflict>> {
 		try {
 			this.transaction(() => {
 				const changed = this.database
 					.prepare("UPDATE product_session_catalog SET cwd = ? WHERE session_id = ?")
 					.run(input.cwd, input.sessionId);
 				if (changed.changes === 0)
-					throw new ProductSessionNotFound({ message: `Session "${input.sessionId}" does not exist`, sessionId: input.sessionId });
+					throw new ProductSessionNotFound({
+						message: `Session "${input.sessionId}" does not exist`,
+						sessionId: input.sessionId,
+					});
 			});
 			return Result.ok(undefined);
 		} catch (error) {
@@ -547,6 +645,38 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 						],
 			),
 		};
+	}
+
+	/** Read a journal-only Session: same journal entries, no catalog or runtime configuration. */
+	private readJournalOnly(sessionId: string): StoredSession<TAppState> | undefined {
+		const journal = this.database
+			.prepare(
+				`SELECT id, revision, initial_app_state_json, created_at
+				 FROM session_journals
+				 WHERE id = ?`,
+			)
+			.get(sessionId) as SessionRow | undefined;
+		if (!journal) return undefined;
+
+		const entries = this.database
+			.prepare(
+				`SELECT sequence, entry_type, entry_json
+				 FROM session_journal_entries
+				 WHERE session_id = ?
+				 ORDER BY sequence ASC`,
+			)
+			.all(sessionId) as unknown as SessionEntryRow[];
+		const parsedEntries = entries.map((row) => parseSessionEntry<TAppState>(row, sessionId));
+		const snapshot = replay<TAppState>(
+			parseJsonObject(
+				sessionId,
+				journal.initial_app_state_json,
+				`Session "${sessionId}" has invalid initial app state`,
+			) as TAppState,
+			parsedEntries,
+			journal.created_at,
+		);
+		return { snapshot, revision: journal.revision, readOnly: false };
 	}
 
 	private latestRuntimeConfiguration(

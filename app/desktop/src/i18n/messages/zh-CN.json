@@ -139,6 +139,8 @@
   "desktop.subagent.completed": "任务已完成",
   "desktop.subagent.done": "完成",
   "desktop.subagent.failed": "失败",
+  "desktop.subagent.historyEmpty": "暂无对话记录",
+  "desktop.subagent.historyLoading": "正在加载对话记录…",
   "desktop.subagent.aria": "Subagent {title}：{status}",
   "desktop.subagent.preparing": "正在准备委派任务…",
   "desktop.subagent.running": "运行中",

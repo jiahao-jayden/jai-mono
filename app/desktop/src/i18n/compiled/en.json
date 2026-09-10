@@ -331,6 +331,8 @@
   "desktop.subagent.completed": "Task completed",
   "desktop.subagent.done": "Done",
   "desktop.subagent.failed": "Failed",
+  "desktop.subagent.historyEmpty": "No transcript available",
+  "desktop.subagent.historyLoading": "Loading transcript…",
   "desktop.subagent.panelEmpty": "No active subagents",
   "desktop.subagent.preparing": "Preparing delegated task…",
   "desktop.subagent.running": "Running",

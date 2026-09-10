@@ -641,6 +641,16 @@ export interface DesktopSubagentItem {
 	readonly activityTitle?: string;
 }
 
+export interface DesktopSubagentTranscriptInput {
+	readonly sessionId: string;
+	readonly toolCallId: string;
+}
+
+/** Read-only projection of a subagent's journal transcript. */
+export interface DesktopSubagentTranscript {
+	readonly items: readonly DesktopTranscriptItem[];
+}
+
 export interface DesktopPermissionItem {
 	readonly kind: "permission";
 	readonly id: string;
@@ -690,6 +700,7 @@ export type DesktopAgentEvent =
 	| { readonly type: "status"; readonly status: DesktopAgentStatus }
 	| { readonly type: "transcript_upsert"; readonly item: DesktopTranscriptItem }
 	| { readonly type: "transcript_remove"; readonly id: string }
+	| { readonly type: "subagent_transcript_changed"; readonly toolCallId: string }
 	| { readonly type: "todos_replace"; readonly todos: DesktopTodos }
 	| { readonly type: "artifact_upsert"; readonly artifact: DesktopArtifact }
 	| { readonly type: "model_catalog_updated" }
@@ -825,6 +836,14 @@ export const desktopSessionListInputSchema = Type.Union([
 
 export const desktopSessionIdSchema = Type.String({ minLength: 1 });
 
+export const desktopSubagentTranscriptInputSchema = Type.Object(
+	{
+		sessionId: Type.String({ minLength: 1 }),
+		toolCallId: Type.String({ minLength: 1 }),
+	},
+	{ additionalProperties: false },
+);
+
 export const desktopConnectorOAuthApplicationIdSchema = Type.Union([
 	Type.Literal("google_drive"),
 	Type.Literal("google_gmail"),
@@ -903,6 +922,7 @@ export interface DesktopApi {
 		followUp(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;
 		resolvePermission(resolution: DesktopPermissionResolution): void;
 		getSnapshot(sessionId: string): Promise<DesktopAgentSnapshot>;
+		getSubagentTranscript(input: DesktopSubagentTranscriptInput): Promise<DesktopSubagentTranscript>;
 		close(sessionId: string): void;
 	};
 }

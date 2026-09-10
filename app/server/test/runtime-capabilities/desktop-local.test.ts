@@ -107,6 +107,56 @@ describe("Desktop Local Runtime Capability Source", () => {
 		]);
 	});
 
+	test("loads global MCP configuration from the Jai settings document", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-runtime-capabilities-"));
+		temporaryDirectories.push(root);
+		const homeDirectory = join(root, "home");
+		const workspaceDirectory = join(root, "workspace");
+		await mkdir(join(homeDirectory, ".jai"), { recursive: true });
+		await writeFile(
+			join(homeDirectory, ".jai", "settings.json"),
+			JSON.stringify({
+				$schema: "https://jai.dev/schemas/coding-agent-sdk-v1.json",
+				schemaVersion: 1,
+				permissions: {},
+				mcp: {
+					servers: {
+						we0: { type: "streamable-http", url: "https://we0.ai/api/mcp", headers: {} },
+					},
+				},
+			}),
+		);
+		const source = new DesktopLocalRuntimeCapabilitySource({
+			dataDirectory: join(root, "data"),
+			homeDirectory,
+			workspaceTrust: {
+				get: async () => Result.ok({ workspacePath: workspaceDirectory, trusted: false }),
+			},
+		});
+
+		const resolved = await source.resolve({
+			sessionId: "session-1",
+			operationId: "operation-1",
+			cwd: workspaceDirectory,
+		});
+
+		expect(resolved.isOk()).toBe(true);
+		if (resolved.isErr()) return;
+		const configuration = await resolved.value.extensionRuntime?.readConfiguration?.({
+			extensionId: "mcp",
+			scope: "user",
+			workspace: { directory: workspaceDirectory, trusted: false },
+		});
+		expect(configuration).toMatchObject({
+			status: "ok",
+			value: {
+				servers: {
+					we0: { type: "streamable-http", url: "https://we0.ai/api/mcp", headers: {} },
+				},
+			},
+		});
+	});
+
 	test("turns a durable trust read failure into an Operation capability error", async () => {
 		const source = new DesktopLocalRuntimeCapabilitySource({
 			dataDirectory: "/data",

@@ -215,6 +215,11 @@ export interface CodingAgentCreateOptions {
 	readonly tools?: readonly CodingToolName[];
 	/** Removes built-in tools after `tools` selection; exclusion wins on overlap. */
 	readonly excludeTools?: readonly CodingToolName[];
+	/**
+	 * Host-supplied factory that opens a journal-only child session for each
+	 * subagent invocation. When omitted, subagent transcripts are not persisted.
+	 */
+	readonly openChildSession?: (toolCallId: string) => Promise<unknown>;
 }
 
 export interface CodingPromptOptions {

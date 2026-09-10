@@ -4,9 +4,11 @@ import {
 	type JsonObject,
 	SessionConflictError,
 	type SessionStore,
+	type StoredSession,
 } from "@jai/agent";
 import { Result, type Result as ResultType } from "better-result";
 import type {
+	CreateJournalOnlySession,
 	OperationRecordAppend,
 	ProductOperationRuntimeConfiguration,
 	ProductSessionDurableState,
@@ -383,14 +385,81 @@ export class InMemoryProductSessionPersistence<TAppState extends JsonObject = Js
 		});
 	}
 
-	async relocate(
-		input: { readonly sessionId: string; readonly cwd: string },
-	): Promise<ResultType<void, ProductSessionNotFound | ProductSessionAdmissionConflict>> {
+	async relocate(input: {
+		readonly sessionId: string;
+		readonly cwd: string;
+	}): Promise<ResultType<void, ProductSessionNotFound | ProductSessionAdmissionConflict>> {
 		const session = this.#sessions.get(input.sessionId);
 		if (!session)
-			return Result.err(new ProductSessionNotFound({ message: `Session "${input.sessionId}" does not exist`, sessionId: input.sessionId }));
+			return Result.err(
+				new ProductSessionNotFound({
+					message: `Session "${input.sessionId}" does not exist`,
+					sessionId: input.sessionId,
+				}),
+			);
 		this.#sessions.set(input.sessionId, { ...session, cwd: input.cwd });
 		return Result.ok(undefined);
+	}
+
+	async createJournalOnly(
+		input: CreateJournalOnlySession<TAppState>,
+	): Promise<ResultType<string, ProductSessionAlreadyExists | ProductSessionAdmissionConflict>> {
+		try {
+			const revision = await this.#sessionStore.create(input.id, input.appState);
+			return Result.ok(revision);
+		} catch (error) {
+			if (error instanceof SessionConflictError) {
+				return Result.err(
+					new ProductSessionAlreadyExists({
+						message: `Session "${input.id}" already exists`,
+						sessionId: input.id,
+					}),
+				);
+			}
+			return Result.err(
+				new ProductSessionAdmissionConflict({
+					message: `Could not create journal-only Session "${input.id}"`,
+					sessionId: input.id,
+					cause: error,
+				}),
+			);
+		}
+	}
+
+	async loadJournalOnly(
+		sessionId: string,
+	): Promise<ResultType<StoredSession<TAppState>, ProductSessionNotFound | ProductSessionAdmissionConflict>> {
+		const stored = await this.#sessionStore.load(sessionId);
+		if (!stored) {
+			return Result.err(new ProductSessionNotFound({ message: `Session "${sessionId}" does not exist`, sessionId }));
+		}
+		return Result.ok(stored);
+	}
+
+	async appendJournalOnly(
+		input: SessionEntryAppend<TAppState>,
+	): Promise<ResultType<string, ProductSessionNotFound | ProductSessionAdmissionConflict>> {
+		const stored = await this.#sessionStore.load(input.sessionId);
+		if (!stored) {
+			return Result.err(
+				new ProductSessionNotFound({
+					message: `Session "${input.sessionId}" does not exist`,
+					sessionId: input.sessionId,
+				}),
+			);
+		}
+		try {
+			const revision = await this.#sessionStore.append(input.sessionId, input.entry, input.expectedRevision);
+			return Result.ok(revision);
+		} catch (error) {
+			return Result.err(
+				new ProductSessionAdmissionConflict({
+					message: `Could not append Session Journal entry for Session "${input.sessionId}"`,
+					sessionId: input.sessionId,
+					cause: error,
+				}),
+			);
+		}
 	}
 
 	#enqueue<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {

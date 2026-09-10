@@ -84,7 +84,6 @@ export function AppShell() {
 	const [taskCardOpen, setTaskCardOpen] = useState(true);
 	const [contentWidth, setContentWidth] = useState(Number.POSITIVE_INFINITY);
 	const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
-	const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null);
 	const dock = useDock();
 	const storedSessionId = useDesktopChatStore((state) => state.activeSessionId);
 	const draft = useDesktopChatStore(selectDraft);
@@ -402,9 +401,8 @@ export function AppShell() {
 		dock.openFile(artifact.path);
 	};
 	const openSubagent = (item: DesktopSubagentItem) => {
-		setSelectedSubagentId(item.id);
 		setDockOpen(true);
-		dock.openSubagentPanel();
+		dock.openSubagentHistory(item.toolCallId, item.title);
 	};
 	const taskPanel = (
 		<TaskPanel
@@ -682,7 +680,6 @@ export function AppShell() {
 							sessionId={session.id}
 							dock={dock}
 							subagents={chat.messages.filter((item) => item.kind === "subagent")}
-							selectedSubagentId={selectedSubagentId}
 						/>
 					</motion.div>
 				) : null}

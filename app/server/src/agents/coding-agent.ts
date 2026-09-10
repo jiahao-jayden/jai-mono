@@ -91,18 +91,19 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 				operationId: input.operationId,
 				sessionId: input.sessionId,
 			});
-			const created = await createCodingAgent({
-				...configured.value,
-				...(configured.value.extensionRuntime
-					? { extensionRuntime: withRuntimeApprovals(configured.value.extensionRuntime, input) }
-					: {}),
-				permissionMode: permissionModeFor(input.runtimeConfiguration.mode),
-				cwd: input.cwd,
-				session: { kind: "resume", id: input.sessionId, store: input.sessionStore },
-				effectBoundary: input.effectBoundary,
-				modelRequestTelemetryObserver: telemetryObserver,
-				permissionTelemetryObserver: telemetryObserver,
-				requestApproval: (request, signal) =>
+		const created = await createCodingAgent({
+			...configured.value,
+			...(configured.value.extensionRuntime
+				? { extensionRuntime: withRuntimeApprovals(configured.value.extensionRuntime, input) }
+				: {}),
+			permissionMode: permissionModeFor(input.runtimeConfiguration.mode),
+			cwd: input.cwd,
+			session: { kind: "resume", id: input.sessionId, store: input.sessionStore },
+			effectBoundary: input.effectBoundary,
+			modelRequestTelemetryObserver: telemetryObserver,
+			permissionTelemetryObserver: telemetryObserver,
+			...(input.openChildSession ? { openChildSession: input.openChildSession } : {}),
+			requestApproval: (request, signal) =>
 					input.requestApproval(
 						{
 							requestId: request.requestId,
@@ -163,10 +164,15 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 				}),
 			);
 		}
+		const extensionRuntime = mergeExtensionRuntimes(
+			configured.value.extensionRuntime,
+			capabilities.value.extensionRuntime,
+		);
 		return Result.ok({
 			...configured.value,
 			fileCapabilities: capabilities.value.fileCapabilities,
 			extensions: [...(configured.value.extensions ?? []), ...capabilities.value.extensions],
+			...(extensionRuntime ? { extensionRuntime } : {}),
 		});
 	}
 }
@@ -205,6 +211,28 @@ function withRuntimeApprovals(
 function approvalRisk(sideEffect: "read" | "write" | "destructive"): "low" | "medium" | "high" {
 	if (sideEffect === "destructive") return "high";
 	return sideEffect === "write" ? "medium" : "low";
+}
+
+function mergeExtensionRuntimes(
+	configured: CodingExtensionRuntimeAdapter | undefined,
+	capabilities: Pick<CodingExtensionRuntimeAdapter, "readConfiguration"> | undefined,
+): CodingExtensionRuntimeAdapter | undefined {
+	if (!configured) return capabilities;
+	if (!capabilities) return configured;
+	const configuredRead = configured.readConfiguration;
+	const capabilityRead = capabilities.readConfiguration;
+	if (!configuredRead || !capabilityRead) return { ...configured, ...capabilities };
+	return {
+		...configured,
+		...capabilities,
+		readConfiguration: async (input) => {
+			const capabilityConfiguration = await capabilityRead(input);
+			if (capabilityConfiguration.isErr() || capabilityConfiguration.value !== undefined) {
+				return capabilityConfiguration;
+			}
+			return configuredRead(input);
+		},
+	};
 }
 
 function permissionModeFor(
