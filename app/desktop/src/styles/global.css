@@ -4,6 +4,7 @@
 @import "tw-shimmer";
 @import "shadcn/tailwind.css";
 @import "./streamdown.css";
+@import "blobatar/motion.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -272,7 +273,7 @@ html.right-panel-resizing * {
   }
 }
 
-/* Chromium-only (Electron): thin, trackless, rounded thumb that only shows on hover. */
+/* Chromium-only (Electron): thin, trackless thumb that appears only at the scrollbar edge. */
 :root {
   --scrollbar-thumb: rgb(0 0 0 / 0.25);
   --scrollbar-thumb-active: rgb(0 0 0 / 0.45);
@@ -294,9 +295,6 @@ html.right-panel-resizing * {
   border: 3px solid transparent;
   background-clip: padding-box;
   background-color: transparent;
-}
-*:hover::-webkit-scrollbar-thumb {
-  background-color: var(--scrollbar-thumb);
 }
 ::-webkit-scrollbar-thumb:hover,
 ::-webkit-scrollbar-thumb:active {

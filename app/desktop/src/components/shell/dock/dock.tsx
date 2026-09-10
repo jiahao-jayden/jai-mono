@@ -14,9 +14,10 @@ interface DockProps {
 	readonly sessionId: string;
 	readonly dock: DockState;
 	readonly subagents: readonly DesktopSubagentItem[];
+	readonly selectedSubagentId?: string | null;
 }
 
-export function Dock({ sessionId, dock, subagents }: DockProps) {
+export function Dock({ sessionId, dock, subagents, selectedSubagentId = null }: DockProps) {
 	const intl = useIntl();
 	const icons = useIcons();
 	const PlusIcon = icons.plus;
@@ -93,7 +94,7 @@ export function Dock({ sessionId, dock, subagents }: DockProps) {
 						))}
 					</div>
 				) : activeTab.kind === "subagents" ? (
-					<SubagentPanel items={subagents} />
+					<SubagentPanel items={subagents} selectedId={selectedSubagentId} />
 				) : (
 					<WorkspacePanel sessionId={sessionId} filePath={activeTab.path} onOpenFile={dock.openFile} />
 				)}
@@ -139,7 +140,7 @@ function DockTabButton({
 				role="tab"
 				aria-selected={active}
 				onClick={onSelect}
-				className="h-7 min-w-0 flex-1 rounded-md px-2 text-inherit hover:bg-transparent hover:text-inherit"
+				className="h-7 min-w-0 flex-1 rounded-md px-2 text-inherit hover:text-inherit [&>span:first-child]:bg-transparent!"
 				contentClassName="min-w-0"
 				labelClassName="flex min-w-0 items-center gap-1.5"
 			>
