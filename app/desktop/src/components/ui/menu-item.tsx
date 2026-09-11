@@ -10,8 +10,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import type { IconComponent } from "@/lib/icon-context";
-import { motion, AnimatePresence } from "framer-motion";
+import { type IconComponent, useIcons } from "@/lib/icon-context";
 import { cn } from "cn";
 import { fontWeights } from "@/lib/font-weight";
 import { shapeMap } from "@/lib/shape-context";
@@ -123,7 +122,8 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
     ref
   ) => {
     const internalRef = useRef<HTMLDivElement>(null);
-    const hasMounted = useRef(false);
+    const icons = useIcons();
+    const CheckIcon = icons.check;
     const { registerItem, activeIndex, checkedIndex, renderMenuItem, directHighlight, size = "default" } =
       useDropdown();
 
@@ -132,18 +132,13 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
       return () => registerItem(index, null);
     }, [index, registerItem]);
 
-    useEffect(() => {
-      hasMounted.current = true;
-    }, []);
-
     const isActive = activeIndex === index;
-    const skipAnimation = !hasMounted.current;
     const isSm = size === "sm";
     const iconSize = isSm ? 16 : 18;
     const trailingIconSize = isSm ? 14 : 16;
-    const labelTextClass = isSm ? "text-[13px]" : "text-[14px]";
+    const labelTextClass = isSm ? "text-[13.5px]" : "text-[14px]";
     const descriptionTextClass = isSm ? "text-[11px]" : "text-[12px]";
-    const checkedWeight = isSm ? fontWeights.medium : fontWeights.semibold;
+    const checkedWeight = fontWeights.normal;
 
     const mergeRef = (node: HTMLDivElement | null) => {
       (internalRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
@@ -233,38 +228,9 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
             className="shrink-0 text-muted-foreground"
           />
         ) : null}
-        <AnimatePresence>
-          {checked && (
-            <motion.svg
-              key="check"
-              width={16}
-              height={16}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-foreground shrink-0"
-              initial={{ opacity: 1 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 1 }}
-            >
-              <motion.path
-                d="M4 12L9 17L20 6"
-                initial={{ pathLength: skipAnimation ? 1 : 0 }}
-                animate={{
-                  pathLength: 1,
-                  transition: { duration: 0.08, ease: "easeOut" },
-                }}
-                exit={{
-                  pathLength: 0,
-                  transition: { duration: 0.04, ease: "easeIn" },
-                }}
-              />
-            </motion.svg>
-          )}
-        </AnimatePresence>
+        {checked ? (
+          <CheckIcon size={16} strokeWidth={2} className="shrink-0 text-foreground" />
+        ) : null}
       </>
     );
 

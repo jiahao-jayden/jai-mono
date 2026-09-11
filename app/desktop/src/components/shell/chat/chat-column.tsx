@@ -236,7 +236,7 @@ export function ChatColumn({
 									}}
 									aria-label={intl.formatMessage(desktopMessages.sessionTitle)}
 									maxLength={80}
-									className="h-7 min-w-0 max-w-64 flex-1 border-transparent bg-muted-hover px-[5px] py-0 text-[13px] leading-[18px] font-medium focus-visible:border-border-surface-strong focus-visible:shadow-none! focus-visible:ring-0"
+									className="h-7 min-w-0 max-w-64 flex-1 border-transparent bg-muted-hover px-[5px] py-0 text-[13px] leading-[18px] font-medium focus-visible:border-brand"
 									style={noDrag}
 								/>
 							) : (

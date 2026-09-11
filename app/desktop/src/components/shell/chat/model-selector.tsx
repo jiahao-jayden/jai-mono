@@ -1,15 +1,16 @@
 import { Popover } from "@base-ui/react/popover";
+import { cn } from "cn";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import { type IntlShape, useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { Elevated } from "@/lib/elevated";
 import { type IconComponent, resolveProviderBrandIcon, useIcons } from "@/lib/icon-context";
-import { cn } from "cn";
+import { spring } from "@/lib/springs";
 import { type DesktopProviderConfigSnapshot, isDesktopProviderModelRunnable } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { TooltipProvider } from "../../ui/tooltip";
-import { ModelCapabilities } from "../model-capabilities";
 
 interface ModelSelectorProps {
 	config?: DesktopProviderConfigSnapshot;
@@ -32,11 +33,15 @@ export function ModelSelector({
 }: ModelSelectorProps) {
 	const intl = useIntl();
 	const icons = useIcons();
+	const reducedMotion = useReducedMotion() ?? false;
 	const AllProvidersIcon = icons.layers;
 	const ChevronDownIcon = icons["chevron-down"];
 	const SearchIcon = icons.search;
 	const SettingsIcon = icons.settings;
+	const CheckIcon = icons.check;
+	const ExternalLinkIcon = icons["arrow-up-right"];
 	const [open, setOpen] = useState(false);
+	const [hovered, setHovered] = useState(false);
 	const [query, setQuery] = useState("");
 	const [activeProviderId, setActiveProviderId] = useState<string>();
 
@@ -61,15 +66,12 @@ export function ModelSelector({
 						remoteModelId: model.remoteModelId,
 						providerId: profile.id,
 						providerName: profile.name,
-						contextWindow: model.contextWindow,
-						toolCall: model.toolCall,
-						structuredOutput: model.structuredOutput,
-						reasoning: model.reasoning,
 					})),
 				},
 			];
 		}) ?? [];
 	const models = providers.flatMap((provider) => provider.models);
+	const singleProvider = providers.length === 1;
 	const normalizedQuery = query.trim().toLocaleLowerCase();
 	const modelGroups = providers
 		.filter((provider) => !activeProviderId || provider.id === activeProviderId)
@@ -89,6 +91,7 @@ export function ModelSelector({
 	const selectedModel = models.find((model) => model.ref === selectedModelRef);
 	const status = resolveModelStatus(config, selectedModelRef, loading, error, intl);
 	const triggerLabel = selectedModel ? selectedModel.name : status.label;
+	const chevronVisible = !selectedModelRef || hovered || open;
 
 	const chooseModel = (modelRef: string) => {
 		onSelect(modelRef);
@@ -119,26 +122,47 @@ export function ModelSelector({
 						size="chip"
 						disabled={disabled}
 						active={open}
+						onMouseEnter={() => setHovered(true)}
+						onMouseLeave={() => setHovered(false)}
 						aria-label={intl.formatMessage(desktopMessages.modelAria, { label: triggerLabel })}
 						className="min-w-0 max-w-60 justify-start"
 						contentClassName="min-w-0"
-						labelClassName="flex min-w-0 items-center gap-1 whitespace-nowrap"
+						labelClassName="flex min-w-0 items-center whitespace-nowrap"
 					/>
 				}
 				title={status.title}
 			>
-				<span className="min-w-0 truncate">{triggerLabel}</span>
-				<ChevronDownIcon size={14} className="shrink-0 opacity-50" />
+				<span className="flex min-w-0 items-center">
+					<AnimatePresence mode="popLayout" initial={false}>
+						<motion.span
+							key={selectedModelRef}
+							className="min-w-0 flex-1 truncate"
+							initial={reducedMotion ? { opacity: 0 } : { opacity: 0, transform: "translateX(8px)" }}
+							animate={{ opacity: 1, transform: "translateX(0)" }}
+							exit={reducedMotion ? { opacity: 0 } : { opacity: 0, transform: "translateX(-8px)" }}
+							transition={spring.moderate}
+						>
+							{triggerLabel}
+						</motion.span>
+					</AnimatePresence>
+					<motion.span
+						className="shrink-0 overflow-hidden"
+						animate={{ width: chevronVisible ? 18 : 0, opacity: chevronVisible ? 1 : 0 }}
+						transition={spring.moderate}
+					>
+						<ChevronDownIcon size={14} className="ml-1 opacity-50" />
+					</motion.span>
+				</span>
 			</Popover.Trigger>
 
 			<Popover.Portal>
 				<Popover.Positioner side="top" align="end" sideOffset={8} className="z-50 outline-none">
 					<Popover.Popup
 						render={<Elevated offset={2} shadowLevel={5} />}
-						className="flex max-h-[min(440px,calc(100vh-120px))] w-[min(360px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg bg-popover outline-none transition-[opacity,transform] duration-150 ease-out data-starting-style:scale-[.96] data-starting-style:translate-y-[-2px] data-starting-style:opacity-0 data-ending-style:scale-[.96] data-ending-style:translate-y-[-2px] data-ending-style:opacity-0"
+						className="flex max-h-[min(440px,calc(100vh-120px))] w-[min(220px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg bg-popover outline-none transition-[opacity,transform] duration-150 ease-out data-starting-style:scale-[.96] data-starting-style:translate-y-[-2px] data-starting-style:opacity-0 data-ending-style:scale-[.96] data-ending-style:translate-y-[-2px] data-ending-style:opacity-0"
 					>
-						<div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
-							<SearchIcon size={17} strokeWidth={1.5} className="shrink-0 text-muted-foreground" />
+						<div className="flex h-8 shrink-0 items-center gap-2 px-3">
+							<SearchIcon size={15} strokeWidth={1.5} className="shrink-0 text-muted-foreground" />
 							<Input
 								key={open ? "open" : "closed"}
 								autoFocus
@@ -146,38 +170,40 @@ export function ModelSelector({
 								onChange={(event) => setQuery(event.target.value)}
 								placeholder={intl.formatMessage(desktopMessages.modelSearch)}
 								aria-label={intl.formatMessage(desktopMessages.modelSearch)}
-								className="h-9 border-0 bg-transparent px-0 text-[13.5px] shadow-none focus-visible:ring-0"
+								className="h-7 border-0 bg-transparent px-0 text-[13.5px] shadow-none focus-visible:ring-0"
 							/>
 						</div>
 
 						<div className="flex min-h-0">
-							<nav
-								aria-label={intl.formatMessage(desktopMessages.modelProviders)}
-								className="flex w-14 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border py-2"
-							>
-								<ProviderFilterButton
-									icon={AllProvidersIcon}
-									label={intl.formatMessage(desktopMessages.modelAllProviders)}
-									active={!activeProviderId}
-									onClick={() => setActiveProviderId(undefined)}
-								/>
-								{providers.map((provider) => (
+							{!singleProvider && (
+								<nav
+									aria-label={intl.formatMessage(desktopMessages.modelProviders)}
+									className="flex w-14 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border py-2"
+								>
 									<ProviderFilterButton
-										key={provider.id}
-										icon={provider.icon}
-										label={provider.name}
-										active={activeProviderId === provider.id}
-										onClick={() => setActiveProviderId(provider.id)}
+										icon={AllProvidersIcon}
+										label={intl.formatMessage(desktopMessages.modelAllProviders)}
+										active={!activeProviderId}
+										onClick={() => setActiveProviderId(undefined)}
 									/>
-								))}
-								<ProviderFilterButton
-									icon={SettingsIcon}
-									label={intl.formatMessage(desktopMessages.modelManage)}
-									active={false}
-									onClick={manageModels}
-									className="mt-auto"
-								/>
-							</nav>
+									{providers.map((provider) => (
+										<ProviderFilterButton
+											key={provider.id}
+											icon={provider.icon}
+											label={provider.name}
+											active={activeProviderId === provider.id}
+											onClick={() => setActiveProviderId(provider.id)}
+										/>
+									))}
+									<ProviderFilterButton
+										icon={SettingsIcon}
+										label={intl.formatMessage(desktopMessages.modelManage)}
+										active={false}
+										onClick={manageModels}
+										className="mt-auto"
+									/>
+								</nav>
+							)}
 
 							<div className="flex min-w-0 flex-1 flex-col">
 								<TooltipProvider delayDuration={250}>
@@ -192,7 +218,7 @@ export function ModelSelector({
 													const ProviderIcon = provider.icon;
 													return (
 														<div key={provider.id}>
-															{!activeProviderId ? (
+															{!activeProviderId && !singleProvider ? (
 																<div className="flex h-7 items-center gap-1.5 px-2 text-[11.5px] font-medium text-muted-foreground">
 																	<ProviderIcon size={15} strokeWidth={1.7} />
 																	<span className="truncate">{provider.name}</span>
@@ -200,43 +226,30 @@ export function ModelSelector({
 															) : null}
 															{provider.models.map((model) => {
 																const selected = model.ref === selectedModelRef;
-																const contextWindowLabel = model.contextWindow
-																	? intl.formatNumber(model.contextWindow, {
-																			notation: "compact",
-																			maximumFractionDigits: 0,
-																		})
-																	: undefined;
 																return (
 																	<Button
 																		key={model.ref}
 																		type="button"
 																		variant="ghost"
 																		size="md"
-																		active={selected}
 																		role="option"
 																		aria-selected={selected}
 																		onClick={() => chooseModel(model.ref)}
 																		contentClassName="w-full min-w-0 justify-start"
 																		labelClassName="flex min-w-0 w-full"
-																		className={cn(
-																			"h-[30px] w-full justify-start rounded-[10px] px-2 text-left outline-none transition-colors duration-75 focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-inset",
-																			selected && "text-foreground",
-																		)}
+																		className="h-[30px] w-full justify-start rounded-[10px] px-2 text-left outline-none transition-colors duration-75 focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-inset"
 																	>
 																		<span className="flex min-w-0 w-full items-center gap-3 pointer-events-none">
-																			<span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-foreground">
+																			<span className="min-w-0 flex-1 truncate text-[13.5px] font-normal text-foreground">
 																				{model.name}
 																			</span>
-																			<span className="flex shrink-0 items-center gap-2">
-																				{contextWindowLabel ? (
-																					<span className="text-[10.5px] font-medium tabular-nums text-muted-foreground">
-																						{contextWindowLabel}
-																					</span>
-																				) : null}
-																				<span className="pointer-events-auto">
-																					<ModelCapabilities model={model} />
-																				</span>
-																			</span>
+																			{selected ? (
+																				<CheckIcon
+																					size={16}
+																					strokeWidth={2}
+																					className="shrink-0 text-foreground"
+																				/>
+																			) : null}
 																		</span>
 																	</Button>
 																);
@@ -246,7 +259,7 @@ export function ModelSelector({
 												})}
 											</div>
 										) : (
-											<div className="grid h-full min-h-32 place-items-center px-6 text-center text-[12.5px] text-muted-foreground">
+											<div className="px-3 py-2 text-center text-[12.5px] text-muted-foreground">
 												{models.length === 0
 													? intl.formatMessage(desktopMessages.modelEmpty)
 													: intl.formatMessage(desktopMessages.modelNoMatch)}
@@ -256,6 +269,22 @@ export function ModelSelector({
 								</TooltipProvider>
 							</div>
 						</div>
+						{singleProvider && (
+							<div className="flex shrink-0 items-center border-t border-border px-2 py-1">
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									onClick={manageModels}
+									className="w-full justify-start px-2 text-[13.5px] text-foreground"
+									contentClassName="w-full justify-start"
+									labelClassName="flex w-full items-center justify-between"
+								>
+									<span className="font-normal">{intl.formatMessage(desktopMessages.modelManage)}</span>
+									<ExternalLinkIcon size={14} strokeWidth={1.5} className="shrink-0" />
+								</Button>
+							</div>
+						)}
 					</Popover.Popup>
 				</Popover.Positioner>
 			</Popover.Portal>

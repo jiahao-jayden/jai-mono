@@ -250,7 +250,7 @@
     "defaultMessage": "Loading Provider configuration"
   },
   "desktop.model.manage": {
-    "defaultMessage": "Manage models & Providers"
+    "defaultMessage": "Settings"
   },
   "desktop.model.noMatch": {
     "defaultMessage": "No models match your search."

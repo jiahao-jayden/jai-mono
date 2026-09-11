@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "cn";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import { useIntl } from "react-intl";
@@ -7,7 +8,6 @@ import { desktopMessages } from "@/i18n/messages";
 import type { IconName } from "@/lib/icon-context";
 import { useIcons } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
-import { cn } from "cn";
 import type { DesktopAgentMode } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { DropdownContent, DropdownMenu, DropdownTrigger } from "../../ui/dropdown";
@@ -89,7 +89,7 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 					</Button>
 				}
 			/>
-			<DropdownContent checkedIndex={agentModes.indexOf(mode)} sideOffset={6} className="w-44">
+			<DropdownContent checkedIndex={agentModes.indexOf(mode)} sideOffset={6} size="sm" className="w-44">
 				{agentModes.map((candidate, index) => {
 					const option = agentModeMeta[candidate];
 					const optionLabel = intl.formatMessage(option.message);

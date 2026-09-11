@@ -83,8 +83,6 @@ const Dropdown = forwardRef<HTMLDivElement, DropdownProps>(
     const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
 
     const activeRect = activeIndex !== null ? itemRects[activeIndex] : null;
-    const checkedRect =
-      checkedIndex != null ? itemRects[checkedIndex] : null;
     const focusRect = focusedIndex !== null ? itemRects[focusedIndex] : null;
     return (
       <DropdownContext.Provider value={{ registerItem, activeIndex, checkedIndex }}>
@@ -146,28 +144,6 @@ const Dropdown = forwardRef<HTMLDivElement, DropdownProps>(
           )}
           {...props}
         >
-          {/* Selected background */}
-          <AnimatePresence>
-            {checkedRect && (
-              <motion.div
-                className={`absolute ${shape.bg} bg-active pointer-events-none`}
-                initial={false}
-                animate={{
-                  top: checkedRect.top,
-                  left: checkedRect.left,
-                  width: checkedRect.width,
-                  height: checkedRect.height,
-                  opacity: 1,
-                }}
-                exit={{ opacity: 0, transition: spring.moderate.exit }}
-                transition={{
-                  ...spring.moderate,
-                  opacity: { duration: 0.08 },
-                }}
-              />
-            )}
-          </AnimatePresence>
-
           {/* Hover background */}
           <AnimatePresence>
             {activeRect && (
@@ -176,10 +152,10 @@ const Dropdown = forwardRef<HTMLDivElement, DropdownProps>(
                 className={`absolute ${shape.bg} bg-muted-hover pointer-events-none`}
                 initial={{
                   opacity: 0,
-                  top: checkedRect?.top ?? activeRect.top,
-                  left: checkedRect?.left ?? activeRect.left,
-                  width: checkedRect?.width ?? activeRect.width,
-                  height: checkedRect?.height ?? activeRect.height,
+                  top: activeRect.top,
+                  left: activeRect.left,
+                  width: activeRect.width,
+                  height: activeRect.height,
                 }}
                 animate={{
                   opacity: 1,
@@ -324,8 +300,8 @@ const DropdownTrigger = Menu.Trigger;
 // DropdownContent (popup panel)
 //
 // Portal > Positioner > Popup carrying the exact inline-panel visuals:
-// Elevated surface, proximity-hover overlays, animated selected background,
-// and animated focus ring. Children are wrapped in a Menu.RadioGroup so
+// Elevated surface, proximity-hover overlays, and animated focus ring.
+// Children are wrapped in a Menu.RadioGroup so
 // radio-style MenuItems (boolean `checked`) get correct aria-checked from
 // `checkedIndex`.
 // ---------------------------------------------------------------------------
@@ -335,8 +311,8 @@ type MenuPositionerProps = ComponentProps<typeof Menu.Positioner>;
 interface DropdownContentProps {
   children: ReactNode;
   className?: string;
-  /** Index of the checked item. Drives the animated selected background and
-   *  the radio-group value announced to assistive tech. */
+  /** Index of the checked item. Drives the radio-group value announced to
+   *  assistive tech. */
   checkedIndex?: number;
   side?: MenuPositionerProps["side"];
   align?: MenuPositionerProps["align"];
@@ -405,7 +381,6 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
     }, [open, measureItems]);
 
     const activeRect = activeIndex !== null ? itemRects[activeIndex] : null;
-    const checkedRect = checkedIndex != null ? itemRects[checkedIndex] : null;
     const focusRect = focusedIndex !== null ? itemRects[focusedIndex] : null;
     // Inside the popup, Base UI's Menu.Item / Menu.RadioItem own the role,
     // aria-checked, tabIndex, roving highlight, typeahead, and Enter/Space/
@@ -547,28 +522,6 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
                   className
                 )}
               >
-                {/* Selected background */}
-                <AnimatePresence>
-                  {checkedRect && (
-                    <motion.div
-                      className={`absolute ${shape.bg} bg-active pointer-events-none`}
-                      initial={false}
-                      animate={{
-                        top: checkedRect.top,
-                        left: checkedRect.left,
-                        width: checkedRect.width,
-                        height: checkedRect.height,
-                        opacity: 1,
-                      }}
-                      exit={{ opacity: 0, transition: spring.moderate.exit }}
-                      transition={{
-                        ...spring.moderate,
-                        opacity: { duration: 0.08 },
-                      }}
-                    />
-                  )}
-                </AnimatePresence>
-
                 {/* Hover background */}
                 <AnimatePresence>
                   {activeRect && (
@@ -577,10 +530,10 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
                       className={`absolute ${shape.bg} bg-muted-hover pointer-events-none`}
                       initial={{
                         opacity: 0,
-                        top: checkedRect?.top ?? activeRect.top,
-                        left: checkedRect?.left ?? activeRect.left,
-                        width: checkedRect?.width ?? activeRect.width,
-                        height: checkedRect?.height ?? activeRect.height,
+                        top: activeRect.top,
+                        left: activeRect.left,
+                        width: activeRect.width,
+                        height: activeRect.height,
                       }}
                       animate={{
                         opacity: 1,

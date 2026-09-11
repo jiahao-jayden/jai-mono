@@ -140,7 +140,7 @@ export const desktopMessages = defineMessages({
 	modelProviders: { id: "desktop.model.providers", defaultMessage: "Model providers" },
 	modelList: { id: "desktop.model.list", defaultMessage: "Models" },
 	modelAllProviders: { id: "desktop.model.allProviders", defaultMessage: "All providers" },
-	modelManage: { id: "desktop.model.manage", defaultMessage: "Manage models & Providers" },
+	modelManage: { id: "desktop.model.manage", defaultMessage: "Settings" },
 	modelEmpty: {
 		id: "desktop.model.empty",
 		defaultMessage: "No runnable models yet. Set up a Provider or enable a compatible model.",

@@ -66,7 +66,7 @@
   "desktop.model.list": "模型",
   "desktop.model.loading": "正在加载模型…",
   "desktop.model.loadingTitle": "正在加载 Provider 配置",
-  "desktop.model.manage": "管理模型和 Provider",
+  "desktop.model.manage": "设置",
   "desktop.model.providers": "模型 Provider",
   "desktop.model.reasoning": "推理",
   "desktop.model.retryTitle": "打开 Provider 设置重试",

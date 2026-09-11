@@ -10,6 +10,7 @@ import {
 	ArrowTurnForwardIcon,
 	ArrowUp01Icon,
 	ArrowUp02Icon,
+	ArrowUpRight03Icon,
 	BrainIcon,
 	BrowserIcon,
 	BubbleChatIcon,
@@ -108,6 +109,7 @@ export type IconName =
 	| "arrow-left"
 	| "arrow-right"
 	| "arrow-up"
+	| "arrow-up-right"
 	| "send"
 	| "search"
 	| "loader"
@@ -194,6 +196,7 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	"arrow-left": createHugeicon(ArrowLeft01Icon),
 	"arrow-right": createHugeicon(ArrowRight01Icon),
 	"arrow-up": createHugeicon(ArrowUp01Icon),
+	"arrow-up-right": createHugeicon(ArrowUpRight03Icon),
 	send: createHugeicon(ArrowUp02Icon),
 	search: createHugeicon(Search01Icon),
 	loader: createHugeicon(Loading03Icon),
