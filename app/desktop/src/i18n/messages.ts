@@ -335,7 +335,7 @@ export const desktopMessages = defineMessages({
 	settingsMcpConfigLabel: { id: "desktop.settings.mcpConfigLabel", defaultMessage: "MCP configuration (JSON)" },
 	settingsMcpConfigPlaceholder: {
 		id: "desktop.settings.mcpConfigPlaceholder",
-		defaultMessage: '{\n  "servers": {}\n}',
+		defaultMessage: "'{\n  \"servers\": {}\n}'",
 	},
 	settingsMcpSave: { id: "desktop.settings.mcpSave", defaultMessage: "Save configuration" },
 	settingsMcpRefresh: { id: "desktop.settings.mcpRefresh", defaultMessage: "Refresh status" },
@@ -371,6 +371,13 @@ export const desktopMessages = defineMessages({
 		defaultMessage: "Choose the language used by the Desktop interface.",
 	},
 	settingsFollowSystem: { id: "desktop.settings.followSystem", defaultMessage: "Follow system" },
+	settingsTheme: { id: "desktop.settings.theme", defaultMessage: "Theme" },
+	settingsThemeDescription: {
+		id: "desktop.settings.themeDescription",
+		defaultMessage: "Choose light, dark, or follow the system appearance.",
+	},
+	settingsLight: { id: "desktop.settings.light", defaultMessage: "Light" },
+	settingsDark: { id: "desktop.settings.dark", defaultMessage: "Dark" },
 	settingsEnglish: { id: "desktop.settings.english", defaultMessage: "English" },
 	settingsChinese: { id: "desktop.settings.chinese", defaultMessage: "简体中文" },
 	settingsLocaleSaveError: {

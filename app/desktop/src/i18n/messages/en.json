@@ -468,54 +468,6 @@
   "desktop.settings.advanced": {
     "defaultMessage": "Advanced"
   },
-  "desktop.settings.mcp": {
-    "defaultMessage": "MCP"
-  },
-  "desktop.settings.mcpDescription": {
-    "defaultMessage": "Edit the global MCP server configuration stored in ~/.jai/settings.json. Supports stdio, streamable-http, and sse transports."
-  },
-  "desktop.settings.mcpConfigLabel": {
-    "defaultMessage": "MCP configuration (JSON)"
-  },
-  "desktop.settings.mcpConfigPlaceholder": {
-    "defaultMessage": "{\n  \"servers\": {}\n}"
-  },
-  "desktop.settings.mcpSave": {
-    "defaultMessage": "Save configuration"
-  },
-  "desktop.settings.mcpRefresh": {
-    "defaultMessage": "Refresh status"
-  },
-  "desktop.settings.mcpRefreshing": {
-    "defaultMessage": "Checking…"
-  },
-  "desktop.settings.mcpSaveError": {
-    "defaultMessage": "Could not save MCP configuration."
-  },
-  "desktop.settings.mcpInvalidJson": {
-    "defaultMessage": "Invalid JSON."
-  },
-  "desktop.settings.mcpStatusColumnServer": {
-    "defaultMessage": "Server"
-  },
-  "desktop.settings.mcpStatusColumnType": {
-    "defaultMessage": "Transport"
-  },
-  "desktop.settings.mcpStatusColumnStatus": {
-    "defaultMessage": "Status"
-  },
-  "desktop.settings.mcpStatusColumnTools": {
-    "defaultMessage": "Tools"
-  },
-  "desktop.settings.mcpStatusConnected": {
-    "defaultMessage": "Connected"
-  },
-  "desktop.settings.mcpStatusDisconnected": {
-    "defaultMessage": "Disconnected"
-  },
-  "desktop.settings.mcpStatusEmpty": {
-    "defaultMessage": "No MCP servers configured."
-  },
   "desktop.settings.agentDefaults": {
     "defaultMessage": "Agent Defaults"
   },
@@ -591,6 +543,9 @@
   "desktop.settings.custom": {
     "defaultMessage": "Custom"
   },
+  "desktop.settings.dark": {
+    "defaultMessage": "Dark"
+  },
   "desktop.settings.default": {
     "defaultMessage": "Default"
   },
@@ -633,6 +588,9 @@
   "desktop.settings.interfaceLanguageDescription": {
     "defaultMessage": "Choose the language used by the Desktop interface."
   },
+  "desktop.settings.light": {
+    "defaultMessage": "Light"
+  },
   "desktop.settings.limitsUnavailable": {
     "defaultMessage": "Limits unavailable"
   },
@@ -647,6 +605,54 @@
   },
   "desktop.settings.maxIterations": {
     "defaultMessage": "Max iterations"
+  },
+  "desktop.settings.mcp": {
+    "defaultMessage": "MCP"
+  },
+  "desktop.settings.mcpConfigLabel": {
+    "defaultMessage": "MCP configuration (JSON)"
+  },
+  "desktop.settings.mcpConfigPlaceholder": {
+    "defaultMessage": "'{ \"servers\": {} }'"
+  },
+  "desktop.settings.mcpDescription": {
+    "defaultMessage": "Edit the global MCP server configuration stored in ~/.jai/settings.json. Supports stdio, streamable-http, and sse transports."
+  },
+  "desktop.settings.mcpInvalidJson": {
+    "defaultMessage": "Invalid JSON."
+  },
+  "desktop.settings.mcpRefresh": {
+    "defaultMessage": "Refresh status"
+  },
+  "desktop.settings.mcpRefreshing": {
+    "defaultMessage": "Checking…"
+  },
+  "desktop.settings.mcpSave": {
+    "defaultMessage": "Save configuration"
+  },
+  "desktop.settings.mcpSaveError": {
+    "defaultMessage": "Could not save MCP configuration."
+  },
+  "desktop.settings.mcpStatusColumnServer": {
+    "defaultMessage": "Server"
+  },
+  "desktop.settings.mcpStatusColumnStatus": {
+    "defaultMessage": "Status"
+  },
+  "desktop.settings.mcpStatusColumnTools": {
+    "defaultMessage": "Tools"
+  },
+  "desktop.settings.mcpStatusColumnType": {
+    "defaultMessage": "Transport"
+  },
+  "desktop.settings.mcpStatusConnected": {
+    "defaultMessage": "Connected"
+  },
+  "desktop.settings.mcpStatusDisconnected": {
+    "defaultMessage": "Disconnected"
+  },
+  "desktop.settings.mcpStatusEmpty": {
+    "defaultMessage": "No MCP servers configured."
   },
   "desktop.settings.medium": {
     "defaultMessage": "Medium"
@@ -854,6 +860,12 @@
   },
   "desktop.settings.textUnsupported": {
     "defaultMessage": "Text unsupported"
+  },
+  "desktop.settings.theme": {
+    "defaultMessage": "Theme"
+  },
+  "desktop.settings.themeDescription": {
+    "defaultMessage": "Choose light, dark, or follow the system appearance."
   },
   "desktop.settings.title": {
     "defaultMessage": "Settings"
