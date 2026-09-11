@@ -623,7 +623,7 @@ function projectEntry(sessionId: string, entry: SessionEntry, operationId?: stri
 	if (entry.type !== "message") return [];
 	switch (entry.message.role) {
 		case "user":
-			if (entry.message.metadata?.hidden) return [];
+			if (entry.message.metadata?.synthetic) return [];
 			return [
 				userMessageUpdate(
 					sessionId,

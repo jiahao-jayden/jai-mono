@@ -51,7 +51,6 @@ export class CodingAttachmentRun {
 					: {
 							type: "text" as const,
 							text: `Attachment: ${attachment.filename} (${attachment.sourcePath})`,
-							synthetic: true,
 						},
 			),
 		);

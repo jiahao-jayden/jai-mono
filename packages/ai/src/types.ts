@@ -8,8 +8,6 @@ type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string
 export interface TextContent {
 	type: "text";
 	text: string;
-	/** Product-injected context visible to providers but omitted from user-facing projections. */
-	synthetic?: boolean;
 }
 
 export interface ThinkingContent {

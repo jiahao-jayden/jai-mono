@@ -263,7 +263,7 @@ describe("SqliteProductSessionPersistence", () => {
 		await resumed.value.close();
 	});
 
-	test("relocate updates the durable cwd and appends a hidden user message so a resume with the new workspace succeeds", async () => {
+	test("relocate updates the durable cwd and appends a synthetic user message so a resume with the new workspace succeeds", async () => {
 		const { DatabaseSync } = await import("node:sqlite");
 		const database = new DatabaseSync(":memory:");
 		const persistence = new SqliteProductSessionPersistence(database);
@@ -286,7 +286,7 @@ describe("SqliteProductSessionPersistence", () => {
 		expect(loaded.value.snapshot.entries).toHaveLength(1);
 		expect(loaded.value.snapshot.entries[0]).toMatchObject({
 			type: "message",
-			message: { role: "user", metadata: { hidden: true } },
+			message: { role: "user", metadata: { synthetic: true } },
 		});
 		expect(loaded.value.snapshot.leafId).toBe("relocation-1");
 

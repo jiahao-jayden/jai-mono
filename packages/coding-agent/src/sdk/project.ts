@@ -244,7 +244,6 @@ export function projectMessage(message: AgentMessage): CodingAgentMessage {
 									? {
 											type: "text",
 											text: content.text,
-											...(content.synthetic ? { synthetic: true } : {}),
 										}
 									: { type: "image", image: content.image, mimeType: content.mimeType },
 							),
@@ -260,7 +259,6 @@ export function projectMessage(message: AgentMessage): CodingAgentMessage {
 							return {
 								type: "text" as const,
 								text: content.text,
-								...(content.synthetic ? { synthetic: true } : {}),
 							};
 						case "thinking":
 							return { type: "thinking" as const, thinking: content.thinking };
@@ -293,7 +291,6 @@ export function projectMessage(message: AgentMessage): CodingAgentMessage {
 						? {
 								type: "text",
 								text: content.text,
-								...(content.synthetic ? { synthetic: true } : {}),
 							}
 						: { type: "image", image: content.image, mimeType: content.mimeType },
 				),

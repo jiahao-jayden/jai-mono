@@ -563,7 +563,7 @@ function projectModelMessage(message: Message): TelemetryContentValue {
 
 function projectModelContent(content: TextContent | ImageContent): TelemetryContentValue {
 	if (content.type === "text") {
-		return { type: "text", text: content.text, ...(content.synthetic ? { synthetic: true } : {}) };
+		return { type: "text", text: content.text };
 	}
 	return { type: "image", mimeType: content.mimeType };
 }

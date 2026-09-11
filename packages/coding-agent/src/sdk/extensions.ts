@@ -357,7 +357,7 @@ export async function extensionBeforeModelCall(
 	extensions: readonly InitializedExtension[],
 	messages: readonly AgentMessage[],
 ): Promise<ResultType<AgentMessage[], CodingExtensionError>> {
-	// Shallow copy: Extensions only append synthetic context here (they receive no messages and cannot
+	// Shallow copy: Extensions only append system context here (they receive no messages and cannot
 	// reach the existing ones), so deep-cloning the whole transcript on every model call buys nothing.
 	const current = [...messages] as AgentMessage[];
 	for (const extension of extensions) {
@@ -378,7 +378,8 @@ export async function extensionBeforeModelCall(
 		}
 		current.push({
 			role: "user",
-			content: [{ type: "text", text: result.context, synthetic: true }],
+			content: [{ type: "text", text: result.context }],
+			metadata: { synthetic: true },
 			timestamp: Date.now(),
 		});
 	}

@@ -244,7 +244,8 @@ describe("Agent", () => {
 						...messages,
 						{
 							role: "user",
-							content: [{ type: "text", text: "final injected context", synthetic: true }],
+							content: [{ type: "text", text: "final injected context" }],
+							metadata: { synthetic: true },
 							timestamp: 1,
 						},
 					],
@@ -269,7 +270,8 @@ describe("Agent", () => {
 		});
 		expect(observedContexts[0]?.messages.at(-1)).toMatchObject({
 			role: "user",
-			content: [{ type: "text", text: "final injected context", synthetic: true }],
+			content: [{ type: "text", text: "final injected context" }],
+			metadata: { synthetic: true },
 		});
 	});
 

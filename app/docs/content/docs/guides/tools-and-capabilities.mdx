@@ -52,7 +52,7 @@ const created = await createCodingAgent({
 });
 ```
 
-每个 Extension 在 activation 时获得 `{ sessionId, cwd, permissionMode, configuration, sessionState }`。`beforeAgentStart` 可以阻止公开 prompt；`beforeModelCall` 只能追加本次请求的受限 synthetic context；`beforeToolCall` 可以继续、改写参数或 block。`turnStart`、`turnEnd`、`afterModelCall`、`afterToolCall` 与 `agentSettled` 都是 observer，失败仅报告 diagnostic。
+每个 Extension 在 activation 时获得 `{ sessionId, cwd, permissionMode, configuration, sessionState }`。`beforeAgentStart` 可以阻止公开 prompt；`beforeModelCall` 只能追加本次请求的受限 system context；`beforeToolCall` 可以继续、改写参数或 block。`turnStart`、`turnEnd`、`afterModelCall`、`afterToolCall` 与 `agentSettled` 都是 observer，失败仅报告 diagnostic。
 
 MCP 等连接后才能枚举的工具使用 `catalogs`。模型初始只看到 core 的 `SearchTools`；搜索到的至多 8 个真实工具从下一次模型请求开始可用。一次新搜索会替换已激活集合，因此不会把完整 catalog 长期堆进 context。
 

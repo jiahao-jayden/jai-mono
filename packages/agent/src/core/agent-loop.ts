@@ -482,9 +482,9 @@ function appendProtocolRepairMessage(context: AgentContext): AgentContext {
 					{
 						type: "text",
 						text: "The previous response used an unsupported text-based tool-call format. Use the native tool-calling interface for the provided tools and do not emit markup-based tool calls.",
-						synthetic: true,
 					},
 				],
+				metadata: { synthetic: true },
 				timestamp: Date.now(),
 			},
 		],

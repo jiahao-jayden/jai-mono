@@ -63,7 +63,6 @@ describe("CodingAttachmentRun", () => {
 		expect(projected?.[0]?.content).toContainEqual({
 			type: "text",
 			text: "Attachment: notes.txt (/tmp/notes.txt)",
-			synthetic: true,
 		});
 	});
 });

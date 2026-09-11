@@ -284,7 +284,8 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 					...messages,
 					{
 						role: "user",
-						content: [{ type: "text", text: context, synthetic: true }],
+						content: [{ type: "text", text: context }],
+						metadata: { synthetic: true },
 						timestamp: Date.now(),
 					},
 				],

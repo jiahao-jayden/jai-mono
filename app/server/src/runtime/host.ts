@@ -300,7 +300,7 @@ export class RuntimeHost {
 			message: {
 				role: "user",
 				content: `Switched workspace to ${input.cwd}`,
-				metadata: { hidden: true },
+				metadata: { synthetic: true },
 				timestamp: now.getTime(),
 			},
 		};

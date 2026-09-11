@@ -1339,7 +1339,7 @@ describe("ACP v2 Agent adapter", () => {
 		expect(JSON.stringify(replayed)).not.toContain("assistant-1");
 	});
 
-	test("session/relocate updates the durable cwd and appends a hidden user message that resume replay does not project", async () => {
+	test("session/relocate updates the durable cwd and appends a synthetic user message that resume replay does not project", async () => {
 		const host = new RuntimeHost({
 			persistence: new InMemoryProductSessionPersistence(),
 			createId: ids("session-1", "relocation-1"),

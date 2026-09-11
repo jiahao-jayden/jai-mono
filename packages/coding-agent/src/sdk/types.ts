@@ -12,7 +12,6 @@ export type { JsonObject, JsonValue } from "../core/json";
 export interface CodingTextContent {
 	readonly type: "text";
 	readonly text: string;
-	readonly synthetic?: boolean;
 }
 
 export interface CodingThinkingContent {

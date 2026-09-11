@@ -196,7 +196,7 @@ describe("agentLoop", () => {
 		]);
 		expect(contexts[1]?.messages.at(-1)).toMatchObject({
 			role: "user",
-			content: [{ type: "text", synthetic: true }],
+			metadata: { synthetic: true },
 		});
 		expect(messages.some((message) => JSON.stringify(message).includes("<invoke"))).toBe(false);
 	});
@@ -230,7 +230,7 @@ describe("agentLoop", () => {
 		});
 		expect(contexts[1]?.messages.at(-1)).toMatchObject({
 			role: "user",
-			content: [{ type: "text", synthetic: true }],
+			metadata: { synthetic: true },
 		});
 	});
 

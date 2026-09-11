@@ -264,7 +264,7 @@ export type CodingBeforeAgentStartResult =
 export interface CodingBeforeModelCallInput {}
 
 export interface CodingBeforeModelCallResult {
-	/** Appended as a synthetic context message for this request only. */
+	/** Appended as a system-generated context message for this request only. */
 	readonly context?: string;
 }
 
