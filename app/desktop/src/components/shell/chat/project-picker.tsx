@@ -89,7 +89,8 @@ export function ProjectPicker({
 				<DropdownContent
 					checkedIndex={checkedIndex >= 0 ? checkedIndex : undefined}
 					sideOffset={6}
-					className="w-64"
+					size="sm"
+					className="w-56"
 				>
 					{loadError ? (
 						<MenuItem

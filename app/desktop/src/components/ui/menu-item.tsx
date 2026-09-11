@@ -61,6 +61,9 @@ export interface DropdownContextValue {
    *  its own ARIA menuitem div. */
   renderMenuItem?: (opts: MenuItemRenderOptions) => ReactElement;
   directHighlight?: boolean;
+  /** Visual scale of items within this dropdown. `"sm"` shrinks icons, text,
+   *  and row height for secondary-level submenus. @default "default" */
+  size?: "default" | "sm";
 }
 
 export const DropdownContext = createContext<DropdownContextValue | null>(null);
@@ -121,7 +124,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
   ) => {
     const internalRef = useRef<HTMLDivElement>(null);
     const hasMounted = useRef(false);
-    const { registerItem, activeIndex, checkedIndex, renderMenuItem, directHighlight } =
+    const { registerItem, activeIndex, checkedIndex, renderMenuItem, directHighlight, size = "default" } =
       useDropdown();
 
     useEffect(() => {
@@ -135,6 +138,12 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
 
     const isActive = activeIndex === index;
     const skipAnimation = !hasMounted.current;
+    const isSm = size === "sm";
+    const iconSize = isSm ? 16 : 18;
+    const trailingIconSize = isSm ? 14 : 16;
+    const labelTextClass = isSm ? "text-[13px]" : "text-[14px]";
+    const descriptionTextClass = isSm ? "text-[11px]" : "text-[12px]";
+    const checkedWeight = isSm ? fontWeights.medium : fontWeights.semibold;
 
     const mergeRef = (node: HTMLDivElement | null) => {
       (internalRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
@@ -155,7 +164,9 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
       // menu popups are max-height flex columns — without it a long list
       // compresses rows to fit instead of scrolling.
       `relative z-10 flex shrink-0 items-center gap-2.5 ${shape.item} px-2.5 cursor-pointer outline-none`,
-      description ? "min-h-14 py-2" : "h-8",
+      description
+        ? cn(isSm ? "min-h-12 py-1.5" : "min-h-14 py-2")
+        : cn(isSm ? "h-7" : "h-8"),
       disabled && "opacity-50 pointer-events-none",
       directHighlight && "data-[highlighted]:bg-muted-hover",
       className
@@ -164,12 +175,12 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
     const content = (
       <>
         {leadingVisual ?? (Icon && (
-          <span className="inline-grid">
+          <span className="inline-grid place-items-center">
             <span className="col-start-1 row-start-1 invisible">
-              <Icon size={18} strokeWidth={2} />
+              <Icon size={iconSize} strokeWidth={2} />
             </span>
             <Icon
-              size={18}
+              size={iconSize}
               strokeWidth={isActive || checked ? 2 : 1.5}
               className={cn(
                 "col-start-1 row-start-1 transition-[color,stroke-width] duration-80",
@@ -184,11 +195,11 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
         ))}
         {/* Keep the full line box. `text-box: trim-both cap alphabetic`
             clips CJK glyphs and makes menu labels look vertically crushed. */}
-        <span className="min-w-0 flex-1 text-[14px]">
+        <span className={cn("min-w-0 flex-1", labelTextClass)}>
           <span className="inline-grid max-w-full">
             <span
               className="col-start-1 row-start-1 invisible"
-              style={{ fontVariationSettings: fontWeights.semibold }}
+              style={{ fontVariationSettings: checkedWeight }}
               aria-hidden="true"
             >
               {label}
@@ -202,7 +213,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
               )}
               style={{
                 fontVariationSettings: checked
-                  ? fontWeights.semibold
+                  ? checkedWeight
                   : fontWeights.normal,
               }}
             >
@@ -210,14 +221,14 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
             </span>
           </span>
           {description ? (
-            <span className="mt-1 block truncate text-[12px] leading-none text-muted-foreground/70">
+            <span className={cn("mt-1 block truncate leading-none text-muted-foreground/70", descriptionTextClass)}>
               {description}
             </span>
           ) : null}
         </span>
         {TrailingIcon ? (
           <TrailingIcon
-            size={16}
+            size={trailingIconSize}
             strokeWidth={1.5}
             className="shrink-0 text-muted-foreground"
           />

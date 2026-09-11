@@ -341,6 +341,9 @@ interface DropdownContentProps {
   side?: MenuPositionerProps["side"];
   align?: MenuPositionerProps["align"];
   sideOffset?: number;
+  /** Visual scale of items. `"sm"` shrinks icons, text, and row height for
+   *  compact popups (e.g. project picker). @default "default" */
+  size?: "default" | "sm";
 }
 
 const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
@@ -352,6 +355,7 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
       side = "bottom",
       align = "start",
       sideOffset = 6,
+      size = "default",
     },
     ref
   ) => {
@@ -460,8 +464,9 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
         checkedIndex,
         inMenu: true,
         renderMenuItem,
+        size,
       }),
-      [registerItem, activeIndex, checkedIndex, renderMenuItem]
+      [registerItem, activeIndex, checkedIndex, renderMenuItem, size]
     );
 
     return (
@@ -670,6 +675,7 @@ function DropdownSubmenuContent({
       activeIndex: null,
       inMenu: true,
       directHighlight: true,
+      size: "sm" as const,
       renderMenuItem,
     }),
     [renderMenuItem]
