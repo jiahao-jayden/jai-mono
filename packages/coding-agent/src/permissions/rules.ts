@@ -73,9 +73,8 @@ export function matchesPermissionConfigRule(
 export function bashAlwaysPattern(command: string): string | undefined {
 	const rawTokens = shellWords(command);
 	if (!rawTokens || rawTokens.length === 0) return undefined;
-	// Skip `VAR=value` assignments so a rule is suggested for the command itself. Attachment
-	// projection prefixes `JAI_ATTACHMENT_n=/tmp/...` onto Bash commands, which would otherwise be
-	// persisted as an "always allow" rule bound to a temp path — one that never matches again.
+	// Skip `VAR=value` assignments so a rule is suggested for the command itself rather than a
+	// particular environment value.
 	const tokens = rawTokens.slice(rawTokens.findIndex((token) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)));
 	if (tokens.length === 0) return undefined;
 	let best: string | undefined;

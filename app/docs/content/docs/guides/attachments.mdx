@@ -24,7 +24,7 @@ const result = await agent.prompt("分析这张截图中的错误信息，并给
 });
 ```
 
-`id` 在本次 run 内必须唯一。`sourcePath` 是宿主已经验证过的实际本地文件路径；`image()` 返回模型可消费的 base64 image content。SDK 只在这次 prompt 中建立附件引用，运行结束后不要缓存或在下一次 prompt 复用这些引用。
+`id` 在本次 run 内必须唯一。`sourcePath` 是宿主已经验证过的实际本地文件路径：非图片附件会以文件名和绝对路径作为模型上下文，模型可直接用 Read、Edit、Write 或 Bash 操作它；`image()` 返回模型可消费的 base64 image content。SDK 只在这次 prompt 中投影附件内容，运行结束后不会再投影它们。
 
 附件不由 `steer()` 或 `followUp()` 消费；它们只接收文字。要发送另一份文件，使用新的 `prompt(text, { attachments })`。
 

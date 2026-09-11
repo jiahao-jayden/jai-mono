@@ -384,7 +384,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		toolOptions: options.tools,
 		toolEnvironment,
 		enabledTools: options.enabledTools,
-		attachments: options.executionContext.localFileAccess ? attachments : undefined,
 		permissionMiddleware,
 		extensionTools: options.extensionTools,
 		extensionToolMiddleware: options.extensionToolMiddleware,

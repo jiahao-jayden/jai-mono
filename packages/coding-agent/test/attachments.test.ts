@@ -37,4 +37,33 @@ describe("CodingAttachmentRun", () => {
 		expect(reads).toBe(1);
 		expect(projected?.[0]?.content).toContainEqual({ type: "image", image: "YWJj", mimeType: "image/png" });
 	});
+
+	test("projects a non-image attachment as its absolute path", async () => {
+		const run = new CodingAttachmentRun();
+		const textAttachmentMessage = {
+			...message,
+			metadata: {
+				messageAttachments: [{ id: "file-1", filename: "notes.txt", mimeType: "text/plain", size: 3 }],
+			},
+		};
+
+		const projected = await run.invoke(
+			[
+				{
+					id: "file-1",
+					filename: "notes.txt",
+					mimeType: "text/plain",
+					size: 3,
+					sourcePath: "/tmp/notes.txt",
+				},
+			],
+			async () => run.project([textAttachmentMessage]),
+		);
+
+		expect(projected?.[0]?.content).toContainEqual({
+			type: "text",
+			text: "Attachment: notes.txt (/tmp/notes.txt)",
+			synthetic: true,
+		});
+	});
 });
