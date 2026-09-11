@@ -163,8 +163,7 @@ export function AppShell() {
 	const session = sessions.find((candidate) => candidate.id === activeSessionId);
 	const projects = projectsQuery.data ?? [];
 	const selectedProject = projects.find((candidate) => candidate.id === selectedProjectId);
-	const defaultProject = projects.find((candidate) => candidate.available) ?? projects[0];
-	const projectId = session?.projectId ?? selectedProject?.id ?? defaultProject?.id ?? null;
+	const projectId = session?.projectId ?? selectedProject?.id ?? null;
 	const newSessionProjectId = routeProjectId ?? projectId;
 	const project = projects.find((candidate) => candidate.id === projectId);
 	const enabledModelRefs =
@@ -363,6 +362,7 @@ export function AppShell() {
 	};
 	const openNewChat = () => {
 		newChat();
+		setSelectedProjectId(null);
 		navigate("/chat/new");
 	};
 	const openSession = (sessionId: string) => {
