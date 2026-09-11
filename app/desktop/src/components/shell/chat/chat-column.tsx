@@ -15,7 +15,7 @@ import {
 } from "react";
 import { useIntl } from "react-intl";
 import { ThinkingOrb } from "thinking-orbs";
-import logo from "@/assets/icons/chat-area/logo.svg";
+import logo from "@/assets/icons/chat-area/logo-silver.svg";
 import type { Chat } from "@/hooks/use-chat";
 import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
