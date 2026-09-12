@@ -227,18 +227,6 @@ export function AppShell() {
 	});
 	const reduceMotion = useReducedMotion() ?? false;
 	useEffect(() => {
-		const targetWidth = sidebarOpen ? sidebarWidth.get() : 0;
-		if (reduceMotion) {
-			visibleSidebarWidth.set(targetWidth);
-			return;
-		}
-		const controls = animate(visibleSidebarWidth, targetWidth, {
-			duration: 0.24,
-			ease: [0.77, 0, 0.175, 1],
-		});
-		return () => controls.stop();
-	}, [reduceMotion, sidebarOpen, sidebarWidth, visibleSidebarWidth]);
-	useEffect(() => {
 		if (!sidebarOpen) return;
 		return sidebarWidth.on("change", (width) => visibleSidebarWidth.set(width));
 	}, [sidebarOpen, sidebarWidth, visibleSidebarWidth]);
@@ -403,6 +391,7 @@ export function AppShell() {
 	const agentStatus = chat.status === "streaming" ? "running" : "idle";
 	const PanelRightIcon = icons["panel-right"];
 	const CheckListIcon = icons["check-list"];
+	const PanelLeftIcon = icons["panel-left-close"];
 	const dockToggleLabel = intl.formatMessage(dockOpen ? desktopMessages.chatHideDock : desktopMessages.chatShowDock);
 	const taskCardToggleLabel = intl.formatMessage(
 		taskCardOpen ? desktopMessages.chatHideTaskCard : desktopMessages.chatShowTaskCard,
@@ -437,33 +426,38 @@ export function AppShell() {
 			className="relative flex h-screen min-h-160 min-w-5xl overflow-hidden bg-sidebar text-foreground"
 		>
 			<motion.div
-				className="relative h-full shrink-0 overflow-hidden"
+				className="relative h-full min-w-0 shrink-0 overflow-hidden"
 				style={{ width: visibleSidebarWidth }}
 				aria-hidden={!sidebarOpen}
 				inert={!sidebarOpen}
 			>
-				<Sidebar
-					activeView={activeView}
-					sessions={sessions}
-					projects={projects}
-					runningSessionIds={runningSessionIds}
-					activeSessionId={chatVisible ? activeSessionId : null}
-					loading={sessionRecentsQuery.isLoading}
-					error={sessionLoadErrorMessage}
-					hasNextPage={sessionRecentsQuery.hasNextPage}
-					loadingMore={sessionRecentsQuery.isFetchingNextPage}
-					width={sidebarResize.width}
-					onToggleSidebar={() => setSidebarOpen(false)}
-					onNewChat={openNewChat}
-					onOpenChats={() => navigate("/chats")}
-					onOpenProjects={() => navigate("/projects")}
-					onOpenSettings={openProviderSettings}
-					onSelectSession={openSession}
-					onRenameSession={renameSession}
-					onMoveSession={moveSession}
-					onDeleteSession={deleteSession}
-					onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
-				/>
+				{sidebarOpen ? (
+					<Sidebar
+						activeView={activeView}
+						sessions={sessions}
+						projects={projects}
+						runningSessionIds={runningSessionIds}
+						activeSessionId={chatVisible ? activeSessionId : null}
+						loading={sessionRecentsQuery.isLoading}
+						error={sessionLoadErrorMessage}
+						hasNextPage={sessionRecentsQuery.hasNextPage}
+						loadingMore={sessionRecentsQuery.isFetchingNextPage}
+						width={sidebarResize.width}
+						onToggleSidebar={() => {
+							visibleSidebarWidth.set(0);
+							setSidebarOpen(false);
+						}}
+						onNewChat={openNewChat}
+						onOpenChats={() => navigate("/chats")}
+						onOpenProjects={() => navigate("/projects")}
+						onOpenSettings={openProviderSettings}
+						onSelectSession={openSession}
+						onRenameSession={renameSession}
+						onMoveSession={moveSession}
+						onDeleteSession={deleteSession}
+						onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
+					/>
+				) : null}
 			</motion.div>
 			{sidebarOpen ? <ColumnResizeHandle resize={sidebarResize} side="left" /> : null}
 			<div ref={contentRef} className={contentCardClassName}>
@@ -573,7 +567,6 @@ export function AppShell() {
 								projectLoadError={projectLoadError}
 								projectError={chatProjectError}
 								sidebarOpen={sidebarOpen}
-								onToggleSidebar={() => setSidebarOpen(true)}
 								onOpenProviderSettings={openProviderSettings}
 								onSelectProviderModel={setSelectedModelRef}
 								onSelectAgentMode={setSelectedAgentMode}
@@ -616,6 +609,28 @@ export function AppShell() {
 					/>
 					<Route path="*" element={<Navigate to="/chat/new" replace />} />
 				</Routes>
+				{!sidebarOpen ? (
+					<div
+						className="absolute top-0 left-20 z-30 flex h-11 items-center"
+						style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+					>
+						<Button
+							type="button"
+							variant="navigation"
+							size="icon-sm"
+							onClick={() => {
+								visibleSidebarWidth.set(sidebarWidth.get());
+								setSidebarOpen(true);
+							}}
+							aria-label={intl.formatMessage(desktopMessages.chatShowSidebar)}
+							title={intl.formatMessage(desktopMessages.chatShowSidebar)}
+							className="rounded-md"
+							style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+						>
+							<PanelLeftIcon size={16} />
+						</Button>
+					</div>
+				) : null}
 				{dockMounted ? (
 					<div
 						className="absolute top-1.5 right-1.5 z-20 flex items-center gap-0.5"

@@ -456,7 +456,8 @@ function SettingsSidebar({
 
 	return (
 		<aside className="flex w-48 shrink-0 flex-col">
-			<h2 className="px-4 pt-5 pb-2 text-[12px] font-medium text-muted-foreground">
+			<div className="h-11 shrink-0" aria-hidden="true" />
+			<h2 className="px-4 pb-2 text-[12px] font-medium text-muted-foreground">
 				{intl.formatMessage(desktopMessages.settingsTitle)}
 			</h2>
 			<nav

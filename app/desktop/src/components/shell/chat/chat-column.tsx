@@ -66,7 +66,6 @@ interface ChatColumnProps {
 	projectLoadError: boolean;
 	projectError?: string;
 	sidebarOpen: boolean;
-	onToggleSidebar(): void;
 	onOpenProviderSettings(): void;
 	onSelectProviderModel(modelRef: string): void;
 	onSelectAgentMode(mode: DesktopAgentMode): void;
@@ -99,7 +98,6 @@ export function ChatColumn({
 	projectLoadError,
 	projectError,
 	sidebarOpen,
-	onToggleSidebar,
 	onOpenProviderSettings,
 	onSelectProviderModel,
 	onSelectAgentMode,
@@ -114,7 +112,6 @@ export function ChatColumn({
 	const icons = useIcons();
 	const FolderIcon = icons.folder;
 	const FolderOffIcon = icons["folder-off"];
-	const PanelLeftIcon = icons["panel-left-close"];
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const cancelTitleEditRef = useRef(false);
 	const reducedMotion = useReducedMotion();
@@ -184,26 +181,11 @@ export function ChatColumn({
 	return (
 		<section className="flex min-w-0 flex-1 flex-col">
 			<header
-				className={cn("flex h-11 shrink-0 items-center justify-between pr-1.5", sidebarOpen ? "pl-1.5" : "pl-20")}
+				className={cn("flex h-11 shrink-0 items-center justify-between pr-1.5", sidebarOpen ? "pl-1.5" : "pl-28")}
 				style={drag}
 			>
-				<div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden px-1.5 text-[13px]">
-					{!sidebarOpen ? (
-						<div className="mr-1 shrink-0" style={noDrag}>
-							<Button
-								type="button"
-								variant="ghost"
-								size="icon"
-								onClick={onToggleSidebar}
-								aria-label={intl.formatMessage(desktopMessages.chatShowSidebar)}
-								title={intl.formatMessage(desktopMessages.chatShowSidebar)}
-								className="text-muted-foreground"
-							>
-								<PanelLeftIcon size={16} />
-							</Button>
-						</div>
-					) : null}
-					{projectLabel ? (
+			<div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden px-1.5 text-[13px]">
+				{projectLabel ? (
 						<>
 							{project && !project.available ? (
 								<FolderOffIcon size={16} className="shrink-0 text-destructive" />

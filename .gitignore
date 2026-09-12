@@ -53,3 +53,5 @@ plans/
 # test workspace
 /workspace/
 study/
+
+__pycache__/

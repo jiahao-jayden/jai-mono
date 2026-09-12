@@ -21,7 +21,7 @@ export function createMainWindow(): BrowserWindow {
 		show: false,
 		frame: !isMac,
 		titleBarStyle: isMac ? "hidden" : undefined,
-		trafficLightPosition: isMac ? { x: 18, y: 18 } : undefined,
+		trafficLightPosition: isMac ? { x: 18, y: 15 } : undefined,
 		vibrancy: isMac ? "hud" : undefined,
 		visualEffectState: isMac ? "active" : undefined,
 		backgroundColor: isMac ? "#00000000" : undefined,
