@@ -1,5 +1,7 @@
 export {
 	CodingAgent,
+	type CapabilityNoticeProducer,
+	type CapabilityNoticeSlot,
 	type CodingAgentPermissionOptions,
 	type CodingAgentRuntimeOptions,
 	type CreateCodingAgentOptions,

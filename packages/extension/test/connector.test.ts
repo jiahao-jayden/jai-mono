@@ -3,9 +3,12 @@ import { Result } from "better-result";
 import type { CodingExtensionRuntime } from "@jai/coding-agent";
 import { Value } from "@sinclair/typebox/value";
 import { createConnectorExtension } from "../src/connector/index";
+import { MemoryConnectorService } from "@jai/connector";
 import type {
+	ActionDefinition,
 	ActionGuideResponse,
 	ActionSideEffect,
+	ConnectorAdapter,
 	ConnectorService,
 	ExecuteActionResponse,
 	HealthResponse,
@@ -132,6 +135,28 @@ describe("Connector Extension", () => {
 
 		expect(tool?.presentation?.activityKind).toBe("call");
 		expect(tool?.presentation?.resolveActivityKind).toBeUndefined();
+	});
+
+	test("catalog subscribe invalidates when the Connector service announces a configuration change", async () => {
+		const service = new MemoryConnectorService({ adapters: [demoAdapter()], connections: [] });
+		const extension = createConnectorExtension({ client: service });
+		const catalog = extension.catalogs?.[0];
+		if (!catalog?.subscribe) throw new Error("Connector catalog subscribe is unavailable");
+		const runtime = extensionContext({ requestApproval: async () => Result.ok("allowOnce") });
+		let invalidated = 0;
+		const dispose = catalog.subscribe(runtime, () => {
+			invalidated++;
+		});
+		expect(typeof dispose).toBe("function");
+		if (typeof dispose !== "function") return;
+
+		const refreshed = new MemoryConnectorService({ adapters: [demoAdapter()], connections: [] });
+		service.applyConfiguration(refreshed);
+		expect(invalidated).toBe(1);
+
+		dispose();
+		service.applyConfiguration(refreshed);
+		expect(invalidated).toBe(1);
 	});
 });
 
@@ -266,5 +291,13 @@ function actionGuide(): ActionGuideResponse {
 			dataSensitivity: "sensitive",
 		},
 		policy: "ask",
+	};
+}
+
+function demoAdapter(): ConnectorAdapter {
+	return {
+		definition: { id: "demo", displayName: "Demo", authTypes: [] },
+		actions: [actionGuide().action],
+		execute: async () => Result.ok({ ok: true }),
 	};
 }

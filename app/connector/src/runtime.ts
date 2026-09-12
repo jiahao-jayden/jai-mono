@@ -64,6 +64,8 @@ export class MemoryConnectorService implements ConnectorService {
 	#credentials: Readonly<Record<string, Readonly<Record<string, string>>>>;
 	#policy: ConnectorPolicy;
 	readonly #preparedActions = new Map<string, PreparedAction>();
+	readonly #listeners = new Set<() => void>();
+	#settingsDisposer?: () => void;
 
 	constructor(options: MemoryConnectorServiceOptions) {
 		this.#adapters = [...options.adapters];
@@ -86,6 +88,29 @@ export class MemoryConnectorService implements ConnectorService {
 		this.#connections = source.#connections;
 		this.#credentials = source.#credentials;
 		this.#policy = source.#policy;
+		for (const listener of this.#listeners) {
+			try {
+				listener();
+			} catch {
+				// A broken subscriber must not block other subscribers.
+			}
+		}
+	}
+
+	subscribe(listener: () => void): () => void {
+		this.#listeners.add(listener);
+		return () => {
+			this.#listeners.delete(listener);
+			if (this.#listeners.size === 0) {
+				this.#settingsDisposer?.();
+				this.#settingsDisposer = undefined;
+			}
+		};
+	}
+
+	/** Attaches the settings watcher disposer so it is released when the last catalog subscriber detaches. */
+	setSettingsDisposer(disposer: () => void): void {
+		this.#settingsDisposer = disposer;
 	}
 
 	actionSideEffect(actionId: string): ActionSideEffect | undefined {

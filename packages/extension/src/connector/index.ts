@@ -66,6 +66,12 @@ export function createConnectorExtension(
 			{
 				id: "actions",
 				discover: async (runtime, signal) => discoverConnectorActions(options.client, runtime, signal),
+				subscribe: (_runtime, invalidate) => {
+					const stop = options.client.subscribe?.(invalidate);
+					return () => {
+						stop?.();
+					};
+				},
 			},
 		],
 	});

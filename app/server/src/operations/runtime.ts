@@ -158,6 +158,8 @@ export interface RuntimeOperationOpenInput {
 	 * database but never enter the product session catalog.
 	 */
 	readonly openChildSession?: (toolCallId: string) => Promise<SessionHandle<JsonObject>>;
+	/** Per-session capability notice slot; lets the last-told-model binding survive across Operations. */
+	readonly capabilityNotice?: import("@jai/coding-agent").CapabilityNoticeSlot;
 }
 
 /** Read-only readiness check that must complete before prompt admission. */

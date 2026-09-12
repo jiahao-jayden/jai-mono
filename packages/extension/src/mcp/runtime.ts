@@ -31,23 +31,22 @@ interface McpRuntimeOptions {
 
 /** Owns one session's MCP connections, reconnect timers, descriptors and safe diagnostics. */
 export class McpExtensionRuntime {
-	readonly #servers: readonly ManagedMcpServer[];
+	readonly #options: McpRuntimeOptions;
+	readonly #servers = new Map<string, ManagedMcpServer>();
 	readonly #diagnostics: CodingExtensionDiagnostic[] = [];
 	readonly #invalidators = new Set<() => void>();
+	#configDisposer?: () => void;
 	#closed = false;
 
 	constructor(configuration: McpExtensionConfiguration, options: McpRuntimeOptions) {
-		this.#servers = Object.values(configuration.servers).map(
-			(server) =>
-				new ManagedMcpServer(server, options, {
-					invalidate: () => this.#invalidate(),
-					report: (diagnostic) => this.#diagnostics.push(diagnostic),
-				}),
-		);
+		this.#options = options;
+		for (const server of Object.values(configuration.servers)) {
+			this.#servers.set(server.name, this.#createServer(server));
+		}
 	}
 
 	async start(): Promise<void> {
-		await Promise.all(this.#servers.map((server) => server.start()));
+		await Promise.all([...this.#servers.values()].map((server) => server.start()));
 	}
 
 	async discover(): Promise<
@@ -57,7 +56,7 @@ export class McpExtensionRuntime {
 		>
 	> {
 		const tools: CodingExtensionTool<McpExtensionConfiguration, {}, McpExtensionRuntime>[] = [];
-		for (const server of this.#servers) {
+		for (const server of this.#servers.values()) {
 			const discovered = await server.discover();
 			if (discovered.isErr()) {
 				if (server.hasSnapshot) return Result.err(discovered.error);
@@ -76,16 +75,65 @@ export class McpExtensionRuntime {
 		};
 	}
 
+	/** Reconciles the server set against a new configuration: starts new, stops removed, restarts changed. */
+	async reconcile(configuration: McpExtensionConfiguration): Promise<void> {
+		if (this.#closed) return;
+		const nextServers = new Map<string, McpServer>();
+		for (const server of Object.values(configuration.servers)) nextServers.set(server.name, server);
+		const toRemove: string[] = [];
+		const toRestart: string[] = [];
+		for (const [name, existing] of this.#servers) {
+			const next = nextServers.get(name);
+			if (next === undefined) toRemove.push(name);
+			else if (!sameServerConfig(existing.serverConfig, next)) toRestart.push(name);
+		}
+		for (const name of toRemove) {
+			const server = this.#servers.get(name);
+			this.#servers.delete(name);
+			await server?.close();
+		}
+		for (const name of toRestart) {
+			const old = this.#servers.get(name);
+			this.#servers.delete(name);
+			await old?.close();
+			const next = nextServers.get(name)!;
+			const server = this.#createServer(next);
+			this.#servers.set(name, server);
+			void server.start();
+		}
+		for (const [name, next] of nextServers) {
+			if (this.#servers.has(name)) continue;
+			const server = this.#createServer(next);
+			this.#servers.set(name, server);
+			void server.start();
+		}
+		this.#invalidate();
+	}
+
+	setConfigDisposer(disposer: () => void): void {
+		this.#configDisposer = disposer;
+	}
+
 	async close(): Promise<void> {
 		if (this.#closed) return;
 		this.#closed = true;
+		this.#configDisposer?.();
+		this.#configDisposer = undefined;
 		this.#invalidators.clear();
-		await Promise.all(this.#servers.map((server) => server.close()));
+		await Promise.all([...this.#servers.values()].map((server) => server.close()));
+		this.#servers.clear();
 	}
 
 	#invalidate(): void {
 		if (this.#closed) return;
 		for (const invalidate of this.#invalidators) invalidate();
+	}
+
+	#createServer(server: McpServer): ManagedMcpServer {
+		return new ManagedMcpServer(server, this.#options, {
+			invalidate: () => this.#invalidate(),
+			report: (diagnostic) => this.#diagnostics.push(diagnostic),
+		});
 	}
 }
 
@@ -111,6 +159,10 @@ class ManagedMcpServer {
 		this.#server = server;
 		this.#options = options;
 		this.#host = host;
+	}
+
+	get serverConfig(): McpServer {
+		return this.#server;
 	}
 
 	get hasSnapshot(): boolean {
@@ -443,4 +495,8 @@ function sanitize(value: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sameServerConfig(left: McpServer, right: McpServer): boolean {
+	return JSON.stringify(left) === JSON.stringify(right);
 }

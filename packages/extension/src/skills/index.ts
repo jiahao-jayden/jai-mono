@@ -63,15 +63,15 @@ const skillInputSchema = Type.Object(
 
 export { discoverSkillsCommands, type SkillsCommandDescriptor } from "./discover";
 
+const SKILL_TOOL_DESCRIPTION =
+	"Load an Agent Skill by name. Available skills are announced in the conversation's capability notice; use this tool with the skill name to load SKILL.md, or provide path to read a resource inside that Skill. Skill resources may live outside the project workspace — use this tool, not filesystem tools, to read them.";
+
 export function createSkillsExtension(
 	options: CodingSkillCatalogOptions,
 ): CodingAgentExtension<any, any, SkillsExtensionInstance> {
-	let instance: SkillsExtensionInstance | undefined;
 	const tool: CodingExtensionTool<any, any, SkillsExtensionInstance> = {
 		name: "Skill",
-		get description() {
-			return instance?.description ?? skillToolDescription([]);
-		},
+		description: SKILL_TOOL_DESCRIPTION,
 		parameters: skillInputSchema,
 		authorization: {
 			owner: "core",
@@ -88,6 +88,15 @@ export function createSkillsExtension(
 	return defineExtension({
 		id: SKILLS_EXTENSION_ID,
 		tools: [tool],
+		catalogs: [
+			{
+				id: "skills",
+				presentation: "announced",
+				discover: (runtime) =>
+					Result.ok({ tools: runtime.instance.catalog.snapshot.skills.map(skillCatalogTool) }),
+				subscribe: (runtime, invalidate) => runtime.instance.catalog.watch(() => invalidate()),
+			},
+		],
 		lifecycle: {
 			activate: async (context) => {
 				const skillCatalog = new CodingSkillCatalog(options);
@@ -105,7 +114,6 @@ export function createSkillsExtension(
 							}),
 						);
 					}
-					instance = next;
 					return Result.ok(next);
 				} catch (cause) {
 					skillCatalog.close();
@@ -120,7 +128,6 @@ export function createSkillsExtension(
 			},
 			deactivate: (runtime) => {
 				runtime.instance.close();
-				if (instance === runtime.instance) instance = undefined;
 			},
 		},
 	});
@@ -142,10 +149,6 @@ class SkillsExtensionInstance {
 		this.catalog = catalog;
 		this.commandCatalog = commandCatalog;
 		this.#context = context;
-	}
-
-	get description(): string {
-		return skillToolDescription(this.catalog.snapshot.skills);
 	}
 
 	activate() {
@@ -266,24 +269,14 @@ class SkillsExtensionInstance {
 	}
 }
 
-function skillToolDescription(skills: readonly CodingSkillCard[]): string {
-	const lines = [
-		"Load an Agent Skill before doing skill-specific work.",
-		"Only use skills listed in <available_skills>. Omit path to load SKILL.md; provide path to read a resource inside that Skill.",
-		"Skill resources may live outside the project workspace. Use this tool, not filesystem tools, to read them.",
-		"<available_skills>",
-	];
-	for (const skill of skills) {
-		lines.push(
-			"<skill>",
-			`<name>${escapeXml(skill.name)}</name>`,
-			`<description>${escapeXml(skill.description)}</description>`,
-			`<source>${skill.source.scope}:${skill.source.directory}</source>`,
-			"</skill>",
-		);
-	}
-	lines.push("</available_skills>");
-	return lines.join("\n");
+function skillCatalogTool(skill: CodingSkillCard): CodingExtensionTool<any, any, SkillsExtensionInstance> {
+	return {
+		name: skill.name,
+		description: skill.description,
+		parameters: Type.Object({}),
+		authorization: { owner: "core", permission: { sideEffect: "read", reason: "Skill catalog entry" } },
+		execute: async () => ({ content: [{ type: "text", text: "Use the Skill tool to load this skill" }] }),
+	};
 }
 
 function renderSkillCommandPrompt(skill: CodingSkillCard, body: string, args: string): string {

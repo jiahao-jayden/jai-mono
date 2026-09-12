@@ -21,6 +21,7 @@ import type {
 	CodingExtensionCommand,
 	CodingExtensionCommandRegistration,
 	CodingExtensionConfigurationStore,
+	CodingExtensionConfigurationWatchEvent,
 	CodingExtensionContext,
 	CodingExtensionLayeredConfiguration,
 	CodingExtensionRuntimeAdapter,
@@ -34,9 +35,10 @@ export async function extensionContext<TConfig extends JsonObject, TState extend
 	runtime: CodingExtensionRuntimeAdapter | undefined,
 	sessionState: CodingExtensionSessionStateAdapter | undefined,
 	commands?: CodingCommandRegistry,
+	configChangeWatcher?: (listener: () => void) => () => void,
 ): Promise<ResultType<CodingExtensionContext<TConfig, TState>, CodingExtensionError>> {
 	return Result.gen(async function* () {
-		const configuration = yield* Result.await(extensionConfiguration(extension, context, runtime));
+		const configuration = yield* Result.await(extensionConfiguration(extension, context, runtime, configChangeWatcher));
 		const state = yield* Result.await(extensionSessionState(extension, sessionState));
 		const requestApproval = async (request: CodingExtensionApprovalRequest, signal?: AbortSignal) => {
 			const valid = assertExtensionApprovalRequest(extension.id, context.sessionId, request);
@@ -119,11 +121,12 @@ async function extensionConfiguration<TConfig extends JsonObject, TState extends
 	extension: CodingAgentExtension<TConfig, TState>,
 	context: Omit<CodingExtensionContext, "configuration" | "sessionState" | "requestApproval" | "registerCommand">,
 	runtime: CodingExtensionRuntimeAdapter | undefined,
+	configChangeWatcher?: (listener: () => void) => () => void,
 ): Promise<ResultType<CodingExtensionConfigurationStore<TConfig>, CodingExtensionError>> {
 	const declaration = extension.configuration;
 	if (!declaration) return Result.ok(unavailableConfiguration<TConfig>(extension.id));
 	if (declaration.scope === "layered") {
-		return layeredConfiguration(extension.id, declaration, context.workspace, runtime);
+		return layeredConfiguration(extension.id, declaration, context.workspace, runtime, configChangeWatcher);
 	}
 	if (!Value.Check(declaration.schema, declaration.defaultValue)) {
 		return Result.err(
@@ -198,6 +201,7 @@ async function layeredConfiguration<TConfig extends JsonObject>(
 	declaration: CodingExtensionLayeredConfiguration<TConfig>,
 	workspace: CodingExtensionContext["workspace"],
 	runtime: CodingExtensionRuntimeAdapter | undefined,
+	configChangeWatcher?: (listener: () => void) => () => void,
 ): Promise<ResultType<CodingExtensionConfigurationStore<TConfig>, CodingExtensionError>> {
 	if (!Value.Check(declaration.schema, declaration.defaultValue)) {
 		return Result.err(
@@ -207,6 +211,50 @@ async function layeredConfiguration<TConfig extends JsonObject>(
 			}),
 		);
 	}
+	const initial = await resolveLayeredConfig(extensionId, declaration, workspace, runtime);
+	if (initial.isErr()) return initial;
+	let value = structuredClone(initial.value);
+	const listeners = new Set<(event: CodingExtensionConfigurationWatchEvent<TConfig>) => void>();
+	if (configChangeWatcher) {
+		configChangeWatcher(() => {
+			void resolveLayeredConfig(extensionId, declaration, workspace, runtime).then((result) => {
+				if (result.isErr()) {
+					for (const listener of listeners) listener({ status: "invalid", error: result.error });
+					return;
+				}
+				value = structuredClone(result.value);
+				for (const listener of listeners)
+					listener({ status: "valid", value: structuredClone(value) });
+			});
+		});
+	}
+	return Result.ok({
+		get value() {
+			return structuredClone(value);
+		},
+		persistent: false,
+		update: async () =>
+			Result.err(
+				new CodingExtensionConfigurationUnavailable({
+					extensionId,
+					message: `Extension "${extensionId}" layered configuration does not declare a write target`,
+				}),
+			),
+		watch: (listener) => {
+			listeners.add(listener);
+			return () => {
+				listeners.delete(listener);
+			};
+		},
+	});
+}
+
+async function resolveLayeredConfig<TConfig extends JsonObject>(
+	extensionId: string,
+	declaration: CodingExtensionLayeredConfiguration<TConfig>,
+	workspace: CodingExtensionContext["workspace"],
+	runtime: CodingExtensionRuntimeAdapter | undefined,
+): Promise<ResultType<TConfig, CodingExtensionError>> {
 	const user = yieldConfigurationLayer(extensionId, "user", declaration.layerSchema, workspace, runtime);
 	const project = workspace.trusted
 		? yieldConfigurationLayer(extensionId, "project", declaration.layerSchema, workspace, runtime)
@@ -236,20 +284,7 @@ async function layeredConfiguration<TConfig extends JsonObject>(
 				}),
 			);
 		}
-		const value = structuredClone(resolved.value);
-		return Result.ok({
-			get value() {
-				return structuredClone(value);
-			},
-			persistent: false,
-			update: async () =>
-				Result.err(
-					new CodingExtensionConfigurationUnavailable({
-						extensionId,
-						message: `Extension "${extensionId}" layered configuration does not declare a write target`,
-					}),
-				),
-		});
+		return Result.ok(structuredClone(resolved.value));
 	} catch (cause) {
 		return Result.err(
 			new CodingExtensionConfigurationResolutionFailed({

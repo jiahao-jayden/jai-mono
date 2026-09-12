@@ -590,6 +590,7 @@ export class RuntimeSession {
 	readonly #pendingApprovals = new Map<string, PendingRuntimeApproval>();
 	readonly #listeners = new Set<(event: RuntimeSessionEvent) => void>();
 	readonly #initialAppState: () => JsonObject;
+	readonly #capabilityNotice: import("@jai/coding-agent").CapabilityNoticeSlot = { lastTold: new Map() };
 
 	constructor(
 		state: ProductSessionDurableState,
@@ -1165,7 +1166,8 @@ export class RuntimeSession {
 					),
 					`${this.id}:${toolCallId}`,
 					this.#initialAppState(),
-				),
+			),
+			capabilityNotice: this.#capabilityNotice,
 		});
 		if (opened.isErr()) {
 			return this.completeOperation(

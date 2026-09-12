@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Result } from "better-result";
 import type { JsonObject } from "@jai/coding-agent";
-import { disposeExtensions, initializeExtensions } from "../../coding-agent/src/sdk/extensions";
+import {
+	activateExtensions,
+	disposeExtensions,
+	initializeExtensions,
+	prepareExtensions,
+} from "../../coding-agent/src/sdk/extensions";
 import { createMcpExtension, probeMcpServers, resolveMcpConfiguration, validateRawMcpConfiguration } from "../src/mcp";
 import type { McpServerStatus } from "../src/mcp";
 
@@ -96,6 +101,56 @@ describe("Official MCP Extension", () => {
 		expect(initialized.value[0]!.catalogTools.map((tool) => tool.name)).toEqual(["mcp__settings__notifications__second"]);
 		const disposed = await disposeExtensions(initialized.value);
 		expect(disposed.isOk()).toBe(true);
+	});
+
+	test("reconciles servers when configuration changes: add, remove, restart", async () => {
+		let configServers: Record<string, unknown> = {
+			alpha: { type: "stdio", command: "node", args: ["-e", stdioProbe("echo-alpha")], env: {} },
+		};
+		let configListener: (() => void) | undefined;
+		const configChangeWatcher = (listener: () => void) => {
+			configListener = listener;
+			return () => {
+				configListener = undefined;
+			};
+		};
+		const extension = createMcpExtension({ namespace: "settings" });
+		const prepared = prepareExtensions([extension]);
+		expect(prepared.isOk()).toBe(true);
+		if (prepared.isErr()) return;
+		const activated = await activateExtensions(
+			prepared.value,
+			context,
+			{
+				readConfiguration: ({ scope }) =>
+					scope === "user"
+						? Result.ok({ servers: configServers } as unknown as JsonObject)
+						: Result.ok(undefined),
+			},
+			undefined,
+			{ configChangeWatcher },
+		);
+		expect(activated.isOk()).toBe(true);
+		if (activated.isErr()) return;
+
+		await waitFor(() => prepared.value[0]!.catalogTools[0]?.name === "mcp__settings__alpha__echo-alpha");
+		expect(prepared.value[0]!.catalogTools.map((tool) => tool.name)).toEqual(["mcp__settings__alpha__echo-alpha"]);
+
+		configServers = {
+			beta: { type: "stdio", command: "node", args: ["-e", stdioProbe("echo-beta")], env: {} },
+		};
+		configListener?.();
+		await waitFor(() => prepared.value[0]!.catalogTools[0]?.name === "mcp__settings__beta__echo-beta");
+		expect(prepared.value[0]!.catalogTools.map((tool) => tool.name)).toEqual(["mcp__settings__beta__echo-beta"]);
+
+		configServers = {
+			alpha: { type: "stdio", command: "node", args: ["-e", stdioProbe("echo-alpha-v2")], env: {} },
+		};
+		configListener?.();
+		await waitFor(() => prepared.value[0]!.catalogTools[0]?.name === "mcp__settings__alpha__echo-alpha-v2");
+		expect(prepared.value[0]!.catalogTools.map((tool) => tool.name)).toEqual(["mcp__settings__alpha__echo-alpha-v2"]);
+
+		await disposeExtensions(prepared.value);
 	});
 });
 

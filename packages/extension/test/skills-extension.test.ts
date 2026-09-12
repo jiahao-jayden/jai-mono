@@ -48,6 +48,9 @@ describe("Skills Extension", () => {
 		expect(JSON.stringify(requests[1])).toContain("# Updated review instructions");
 		expect(JSON.stringify(requests[3])).toContain("# Updated review instructions");
 		expect(created.value.state.messages[0]).toMatchObject({
+			metadata: { synthetic: true },
+		});
+		expect(created.value.state.messages[1]).toMatchObject({
 			metadata: { slashInvocation: { name: "skill:review", commandKind: "skill" } },
 		});
 		await created.value.close();
@@ -78,9 +81,13 @@ describe("Skills Extension", () => {
 		expect(await created.value.prompt("/skill:private-review inspect this")).toMatchObject({ status: "ok" });
 
 		const automaticSkillList = JSON.stringify(requests[0]);
-		expect(automaticSkillList).toContain("<name>visible-review</name>");
-		expect(automaticSkillList).toContain("<name>manual-review</name>");
-		expect(automaticSkillList).toContain("<name>private-review</name>");
+		expect(automaticSkillList).toContain("visible-review");
+		expect(automaticSkillList).toContain("Visible review");
+		expect(automaticSkillList).toContain("manual-review");
+		expect(automaticSkillList).toContain("Manual review");
+		expect(automaticSkillList).toContain("private-review");
+		expect(automaticSkillList).toContain("Private review");
+		expect(automaticSkillList).not.toContain("<available_skills>");
 		expect(JSON.stringify(requests[1])).toContain("# Manual instructions");
 		expect(JSON.stringify(requests[2])).toContain("# Private instructions");
 		const sessionMessages = JSON.stringify(created.value.state.messages);
@@ -180,6 +187,76 @@ describe("Skills Extension", () => {
 		expect(JSON.stringify(requests[2])).not.toContain("must-not-leak");
 		expect(JSON.stringify(requests[4])).toContain("# Plugin review instructions");
 		expect(JSON.stringify(requests)).not.toContain("# Project only");
+		await created.value.close();
+	});
+
+	test("Skill tool description stays constant when skill files change", async () => {
+		const root = await temporaryDirectory();
+		const skillsDirectory = join(root, ".agents", "skills");
+		await writeSkill(skillsDirectory, "review", "Review changes", "# Review instructions");
+		const requests: unknown[] = [];
+		const created = await createTestAgent({
+			root,
+			requests,
+			responses: [assistant("first response"), assistant("second response")],
+			extensions: [
+				createSkillsExtension({ homeDirectory: root, workspaceDirectory: root, workspaceTrusted: true }),
+			],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+
+		expect(await created.value.prompt("first request")).toMatchObject({ status: "ok" });
+		const firstDescription = extractSkillToolDescription(requests[0]);
+
+		await writeSkill(skillsDirectory, "review", "Review changes", "# Updated review instructions");
+		await Bun.sleep(300);
+		expect(await created.value.prompt("second request")).toMatchObject({ status: "ok" });
+		const secondDescription = extractSkillToolDescription(requests[1]);
+
+		expect(firstDescription).toBe(secondDescription);
+		expect(firstDescription).not.toContain("<available_skills>");
+		expect(firstDescription).not.toContain("review");
+		await created.value.close();
+	});
+
+	test("first run announces the full skill list, subsequent change produces incremental notice", async () => {
+		const root = await temporaryDirectory();
+		const skillsDirectory = join(root, ".agents", "skills");
+		await writeSkill(skillsDirectory, "alpha", "Alpha skill", "# Alpha instructions");
+		const requests: unknown[] = [];
+		const created = await createTestAgent({
+			root,
+			requests,
+			responses: [assistant("first response"), assistant("second response")],
+			extensions: [
+				createSkillsExtension({ homeDirectory: root, workspaceDirectory: root, workspaceTrusted: true }),
+			],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+
+		expect(await created.value.prompt("first request")).toMatchObject({ status: "ok" });
+		const firstMessages = (requests[0] as { messages: Array<{ role: string; content: string }> }).messages;
+		const firstNotice = firstMessages.find(
+			(message) => message.role === "user" && message.content.includes("新增:"),
+		);
+		expect(firstNotice).toBeDefined();
+		expect(firstNotice!.content).toContain("alpha");
+		expect(firstNotice!.content).toContain("Alpha skill");
+
+		await writeSkill(skillsDirectory, "beta", "Beta skill", "# Beta instructions");
+		await Bun.sleep(300);
+		expect(await created.value.prompt("second request")).toMatchObject({ status: "ok" });
+		const secondMessages = (requests[1] as { messages: Array<{ role: string; content: string }> }).messages;
+		const secondNotice = secondMessages.findLast(
+			(message) => message.role === "user" && message.content.includes("新增:"),
+		);
+		expect(secondNotice).toBeDefined();
+		expect(secondNotice!.content).toContain("beta");
+		expect(secondNotice!.content).toContain("Beta skill");
+		expect(secondNotice!.content).not.toContain("alpha");
+
 		await created.value.close();
 	});
 });
@@ -292,4 +369,9 @@ function assistant(text: string): AssistantMessage {
 
 function assistantToolCall(name: string, id: string, argumentsValue: Readonly<Record<string, unknown>>): AssistantMessage {
 	return { ...assistant(""), content: [{ type: "toolCall", id, name, arguments: argumentsValue }], stopReason: "toolUse" };
+}
+
+function extractSkillToolDescription(request: unknown): string {
+	const body = request as { tools?: Array<{ name: string; description: string }> };
+	return body.tools?.find((tool) => tool.name === "Skill")?.description ?? "";
 }

@@ -36,6 +36,18 @@ _Avoid_: global configuration, generic deep merge
 `@jai/extension/mcp` 提供的 MCP capability provider，拥有 per-session transport、client、重连、tool projection 与 server 配置解析；Coding Agent 仅通过通用动态 catalog 装配其工具。
 _Avoid_: Coding Agent MCP runtime, host-managed MCP client, Agent Plugin discovery
 
+**Capability Change Notice**:
+Operation 内工具目录或 skill 清单发生变化时写进 Session journal 的一条 user 消息：带 `metadata.synthetic: true`，只给模型看、用户界面不显示，只含名字与一句描述。它只在用户下一条消息进来、新 run 发起时作为初始输入第一条投递，不打断进行中的 run，不走 `steer`。
+_Avoid_: system reminder, steer message, tools_changed event
+
+**Capability Binding**:
+coding-agent core 为每个 catalog 持有的"上一次告知模型的条目集合"，用来和当前 discover 结果比对得到差异。它是每个 Operation 的内存状态，打开时重建，不持久化；extension 不持有也不读取它。
+_Avoid_: discovery cache, tool registry snapshot, catalog store
+
+**Catalog Presentation**:
+Extension catalog 声明条目如何到达模型：`searchable` 进 `SearchTools` 目录、按需搜索；`announced` 不进目录，由 core 以全量清单加增量通知的形式注入，压缩时当前全量清单附在压缩摘要后。Skill 是目前唯一的 `announced` catalog。
+_Avoid_: tool visibility, static tool, dynamic tool
+
 **Telemetry Context**:
 领域代码可见的全部观测接口，只暴露 `startSpan`；返回的 span 提供 `addEvent`、`setAttributes`、`setStatus`。它是一个 port，不知道数据流向哪里，也不拥有任何长期保存的数据。整体替换为 no-op 时，Agent、工具、Journal 与用户结果的行为必须完全不变。
 _Avoid_: logger, tracer SDK, observability service, event bus

@@ -18,6 +18,7 @@ import {
 	createCodingAgent as createInternalCodingAgent,
 	DEFAULT_CODING_AGENT_INSTRUCTIONS,
 	type CodingAgent as InternalCodingAgent,
+	type CapabilityNoticeSlot,
 	type OpenChildSession,
 } from "../runtime";
 import { ToolCatalog } from "../runtime/tool-catalog";
@@ -101,7 +102,8 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 		if (preparedExtensions.isErr()) throw preparedExtensions.error;
 		extensions = preparedExtensions.value;
 		const extensionCatalogs = extensions.flatMap((extension) => extension.extension.catalogs ?? []);
-		const extensionToolCatalog = extensionCatalogs.length ? new ToolCatalog([]) : undefined;
+	const extensionToolCatalog = extensionCatalogs.length ? new ToolCatalog([]) : undefined;
+	const capabilityNotice: CapabilityNoticeSlot = input.capabilityNotice ?? { lastTold: new Map() };
 		const extensionToolPermissions = extensionPermissions(extensions);
 		const extensionAuthorizedToolNameSet = extensionAuthorizedToolNames(extensions);
 		const toolPresentations = new Map(builtInToolPresentations());
@@ -154,9 +156,10 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			extensionToolMiddleware: extensionMiddleware(extensions),
 			extensionToolPermissions,
 			extensionAuthorizedToolNames: extensionAuthorizedToolNameSet,
-			...(extensionToolCatalog ? { extensionToolCatalog } : {}),
-			modelRequestObserver: input.modelRequestTelemetryObserver,
-			enabledTools,
+		...(extensionToolCatalog ? { extensionToolCatalog } : {}),
+		modelRequestObserver: input.modelRequestTelemetryObserver,
+		enabledTools,
+		capabilityNotice,
 			...(input.openChildSession
 				? {
 						openChildSession: input.openChildSession as unknown as OpenChildSession<
@@ -191,7 +194,12 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				authorizedToolNames: extensionAuthorizedToolNameSet,
 				toolPresentations,
 				...(extensionToolCatalog ? { toolCatalog: extensionToolCatalog } : {}),
+				capabilityNotice,
 				commands,
+			configChangeWatcher: (listener) =>
+				internal.configStore.watch((event) => {
+					if (event.status === "valid") listener();
+				}),
 			},
 		);
 		if (activatedExtensions.isErr()) throw activatedExtensions.error;

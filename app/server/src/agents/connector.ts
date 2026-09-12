@@ -32,6 +32,12 @@ export function createRuntimeConnectorAgentAssembly(
 	const configured = settings.readConnectorSettings();
 	if (configured.isErr()) return Result.err(configured.error);
 	const service = createDefaultConnectorService(configured.value);
+	const stopSettings = settings.subscribe(() => {
+		const next = settings.readConnectorSettings();
+		if (next.isErr()) return;
+		service.applyConfiguration(createDefaultConnectorService(next.value));
+	});
+	service.setSettingsDisposer(stopSettings);
 	return Result.ok({
 		extensions: [createConnectorExtension({ client: service })],
 		extensionRuntime: {

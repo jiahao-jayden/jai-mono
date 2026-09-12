@@ -113,17 +113,23 @@ export function createMcpExtension(
 			},
 		],
 		lifecycle: {
-			activate: async (context) => {
-				const runtime = new McpExtensionRuntime(context.configuration.value, {
-					extensionId: id,
-					catalogId: CATALOG_ID,
-					namespace,
-					initialRetryDelayMs,
-					maxRetryDelayMs,
+		activate: async (context) => {
+			const runtime = new McpExtensionRuntime(context.configuration.value, {
+				extensionId: id,
+				catalogId: CATALOG_ID,
+				namespace,
+				initialRetryDelayMs,
+				maxRetryDelayMs,
+			});
+			if (context.configuration.watch) {
+				const stop = context.configuration.watch((event) => {
+					if (event.status === "valid") void runtime.reconcile(event.value);
 				});
-				await runtime.start();
-				return Result.ok(runtime);
-			},
+				runtime.setConfigDisposer(stop);
+			}
+			await runtime.start();
+			return Result.ok(runtime);
+		},
 			deactivate: (runtime) => runtime.instance.close(),
 		},
 	});

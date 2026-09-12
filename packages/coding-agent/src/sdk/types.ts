@@ -6,6 +6,7 @@ import type { CodingToolName } from "../tools/names";
 import type { CodingAgentExtension, CodingExtensionRuntimeAdapter } from "./extensions";
 import type { CodingProviderOptions } from "./model";
 import type { CodingToolActivityKind } from "./tool-presentation";
+import type { CapabilityNoticeSlot } from "../runtime";
 
 export type { JsonObject, JsonValue } from "../core/json";
 
@@ -219,6 +220,8 @@ export interface CodingAgentCreateOptions {
 	 * subagent invocation. When omitted, subagent transcripts are not persisted.
 	 */
 	readonly openChildSession?: (toolCallId: string) => Promise<unknown>;
+	/** Host-supplied capability notice slot; when omitted a fresh per-call slot is created. Passing a shared slot lets the last-told-model binding survive across Operations within a session. */
+	readonly capabilityNotice?: CapabilityNoticeSlot;
 }
 
 export interface CodingPromptOptions {

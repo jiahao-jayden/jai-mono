@@ -4,6 +4,7 @@ export {
 	CodingCommandRegistrationFailed,
 } from "./commands";
 export { CodingConfigStore } from "./config/store";
+export type { CapabilityNoticeSlot } from "./runtime/create-coding-agent";
 export {
 	defaultUserTelemetryPolicy,
 	sdkConfigDefinition,
@@ -59,10 +60,10 @@ export type {
 	CodingExtensionTool,
 	CodingExtensionToolCall,
 	CodingExtensionToolCatalog,
+	CodingExtensionToolExecutionCall,
 	CodingExtensionToolPermissionResolver,
 	CodingExtensionToolPresentation,
 	CodingExtensionToolResult,
-	CodingExtensionToolExecutionCall,
 	CodingExtensionWorkspace,
 	CodingToolCatalogDiscovery,
 	CodingToolPermission,

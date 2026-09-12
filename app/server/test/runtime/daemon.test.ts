@@ -388,16 +388,12 @@ describe("Runtime Host daemon composition", () => {
 			}
 
 			expect(providerRequests).toHaveLength(2);
-			const request = providerRequests[0] as { readonly tools?: readonly { readonly name?: string; readonly description?: string }[] };
+			const request = providerRequests[0] as {
+				readonly tools?: readonly { readonly name?: string; readonly description?: string }[];
+			};
 			const skillTool = request.tools?.find((tool) => tool.name === "Skill");
-			const skillDescription = skillTool?.description;
-			expect(typeof skillDescription).toBe("string");
-			if (typeof skillDescription === "string") {
-				expect(skillDescription).toContain("home-skill");
-				expect(skillDescription).toContain("workspace-skill");
-				expect(skillDescription).toContain("host-plugin-skill");
-				expect(skillDescription).toContain("project-plugin-skill");
-			}
+			expect(typeof skillTool?.description).toBe("string");
+			expect(skillTool?.description).toContain("Load an Agent Skill by name");
 			expect((await stat(join(workspace, ".desktop-source-config"))).isDirectory()).toBe(true);
 		} finally {
 			await opened.value.close();

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "@sinclair/typebox";
 import { Result } from "better-result";
+import { type AgentMessage } from "@jai/agent";
 import {
 	CodingExtensionHostOperationFailed,
 	CodingExtensionOperationFailed,
@@ -402,5 +403,275 @@ describe("Extension Runtime", () => {
 		expect(catalog.search("catalog")).toEqual([
 			expect.objectContaining({ name: "CatalogFirst", description: "CatalogFirst description" }),
 		]);
+	});
+});
+
+describe("Capability Change Notice", () => {
+	test("searchable catalog produces no notice on first run, diff notice after invalidation", async () => {
+		let revision = 0;
+		let invalidate: (() => void) | undefined;
+		const extension = defineExtension({
+			id: "searchable-catalog",
+			catalogs: [
+				{
+					id: "tools",
+					discover: () => {
+						if (revision === 0) return Result.ok({ tools: [catalogTool("ToolAlpha", "Alpha")] });
+						return Result.ok({ tools: [catalogTool("ToolBeta", "Beta")] });
+					},
+					subscribe: (_runtime, notify) => {
+						invalidate = notify;
+						return () => {};
+					},
+				},
+			],
+		});
+		const prepared = prepareExtensions([extension]);
+		expect(prepared.isOk()).toBe(true);
+		if (prepared.isErr()) return;
+		const catalog = new ToolCatalog([]);
+		const capabilityNotice: { current?: { produceNotice(): Promise<AgentMessage | undefined>; announcedSnapshot(): string }; lastTold: Map<string, ReadonlyMap<string, string>> } = { lastTold: new Map() };
+		const activated = await activateExtensions(prepared.value, context, undefined, undefined, {
+			toolCatalog: catalog,
+			capabilityNotice,
+		});
+		expect(activated.isOk()).toBe(true);
+		if (activated.isErr() || !invalidate) return;
+
+		const firstNotice = await capabilityNotice.current!.produceNotice();
+		expect(firstNotice).toBeUndefined();
+
+		revision = 1;
+		invalidate();
+		await flushCatalogRefresh();
+
+		const secondNotice = await capabilityNotice.current!.produceNotice();
+		expect(secondNotice).toBeDefined();
+		expect(secondNotice!.role).toBe("user");
+		expect((secondNotice as { metadata: unknown }).metadata).toEqual({ synthetic: true });
+		const text = typeof secondNotice!.content === "string" ? secondNotice!.content : "";
+		expect(text).toContain("ToolBeta");
+		expect(text).toContain("ToolAlpha");
+		expect(text).toContain("SearchTools");
+
+		const thirdNotice = await capabilityNotice.current!.produceNotice();
+		expect(thirdNotice).toBeUndefined();
+
+		await disposeExtensions(prepared.value);
+	});
+
+	test("announced catalog produces full list on first run, incremental after change", async () => {
+		let revision = 0;
+		let invalidate: (() => void) | undefined;
+		const extension = defineExtension({
+			id: "announced-catalog",
+			catalogs: [
+				{
+					id: "skills",
+					presentation: "announced",
+					discover: () => {
+						if (revision === 0) return Result.ok({ tools: [catalogTool("SkillOne", "First")] });
+						return Result.ok({ tools: [catalogTool("SkillOne", "First"), catalogTool("SkillTwo", "Second")] });
+					},
+					subscribe: (_runtime, notify) => {
+						invalidate = notify;
+						return () => {};
+					},
+				},
+			],
+		});
+		const prepared = prepareExtensions([extension]);
+		expect(prepared.isOk()).toBe(true);
+		if (prepared.isErr()) return;
+		const catalog = new ToolCatalog([]);
+		const capabilityNotice: { current?: { produceNotice(): Promise<AgentMessage | undefined>; announcedSnapshot(): string }; lastTold: Map<string, ReadonlyMap<string, string>> } = { lastTold: new Map() };
+		const activated = await activateExtensions(prepared.value, context, undefined, undefined, {
+			toolCatalog: catalog,
+			capabilityNotice,
+		});
+		expect(activated.isOk()).toBe(true);
+		if (activated.isErr() || !invalidate) return;
+
+		expect(catalog.search("skill")).toEqual([]);
+
+		const firstNotice = await capabilityNotice.current!.produceNotice();
+		expect(firstNotice).toBeDefined();
+		const firstText = typeof firstNotice!.content === "string" ? firstNotice!.content : "";
+		expect(firstText).toContain("SkillOne");
+		expect(firstText).toContain("SkillOne description");
+		expect(firstText).not.toContain("SearchTools");
+
+		revision = 1;
+		invalidate();
+		await flushCatalogRefresh();
+
+		const secondNotice = await capabilityNotice.current!.produceNotice();
+		expect(secondNotice).toBeDefined();
+		const secondText = typeof secondNotice!.content === "string" ? secondNotice!.content : "";
+		expect(secondText).toContain("SkillTwo");
+		expect(secondText).not.toContain("SkillOne");
+
+		const snapshot = capabilityNotice.current!.announcedSnapshot();
+		expect(snapshot).toContain("SkillOne");
+		expect(snapshot).toContain("SkillTwo");
+		expect(snapshot).toContain("<available_skills>");
+
+		await disposeExtensions(prepared.value);
+	});
+
+	test("multiple invalidations within one run coalesce into a single notice", async () => {
+		let revision = 0;
+		let invalidate: (() => void) | undefined;
+		const extension = defineExtension({
+			id: "coalesce-catalog",
+			catalogs: [
+				{
+					id: "tools",
+					discover: () => {
+						revision += 1;
+						return Result.ok({ tools: [catalogTool(`Tool${revision}`, `Revision ${revision}`)] });
+					},
+					subscribe: (_runtime, notify) => {
+						invalidate = notify;
+						return () => {};
+					},
+				},
+			],
+		});
+		const prepared = prepareExtensions([extension]);
+		expect(prepared.isOk()).toBe(true);
+		if (prepared.isErr()) return;
+		const catalog = new ToolCatalog([]);
+		const capabilityNotice: { current?: { produceNotice(): Promise<AgentMessage | undefined>; announcedSnapshot(): string }; lastTold: Map<string, ReadonlyMap<string, string>> } = { lastTold: new Map() };
+		const activated = await activateExtensions(prepared.value, context, undefined, undefined, {
+			toolCatalog: catalog,
+			capabilityNotice,
+		});
+		expect(activated.isOk()).toBe(true);
+		if (activated.isErr() || !invalidate) return;
+
+		await capabilityNotice.current!.produceNotice();
+
+		invalidate();
+		invalidate();
+		invalidate();
+		await flushCatalogRefresh();
+
+		const notice = await capabilityNotice.current!.produceNotice();
+		expect(notice).toBeDefined();
+		const text = typeof notice!.content === "string" ? notice!.content : "";
+		expect(text).toContain("Tool2");
+		expect(text).toContain("Tool1");
+		expect(text).toContain("SearchTools");
+
+		const next = await capabilityNotice.current!.produceNotice();
+		expect(next).toBeUndefined();
+
+		await disposeExtensions(prepared.value);
+	});
+});
+
+describe("Layered Configuration Hot Update", () => {
+	test("layered store watch fires on config change and updates value", async () => {
+		let configValue = "initial";
+		let configListener: (() => void) | undefined;
+		const extension = defineExtension({
+			id: "layered-hot-update",
+			configuration: {
+				scope: "layered" as const,
+				layerSchema: Type.Object({ value: Type.Optional(Type.String()) }, { additionalProperties: false }),
+				schema: Type.Object({ value: Type.String() }),
+				defaultValue: { value: "default" },
+				resolve: (layers) => {
+					const user = layers.user as { readonly value?: string } | undefined;
+					return Result.ok({ value: user?.value ?? "default" });
+				},
+			},
+			lifecycle: { activate: () => Result.ok(undefined) },
+		});
+		const prepared = prepareExtensions([extension]);
+		expect(prepared.isOk()).toBe(true);
+		if (prepared.isErr()) return;
+		const configChangeWatcher = (listener: () => void) => {
+			configListener = listener;
+			return () => {
+				configListener = undefined;
+			};
+		};
+		const activated = await activateExtensions(prepared.value, context, {
+			readConfiguration: () => Result.ok({ value: configValue }),
+		}, undefined, { configChangeWatcher });
+		expect(activated.isOk()).toBe(true);
+		if (activated.isErr()) return;
+
+		const store = prepared.value[0]!.runtime!.configuration;
+		expect(store.value).toEqual({ value: "initial" });
+
+		const events: Array<{ status: string; value?: string }> = [];
+		store.watch?.((event) => {
+			if (event.status === "valid") events.push({ status: "valid", value: event.value.value });
+			else events.push({ status: "invalid" });
+		});
+
+		configValue = "updated";
+		configListener?.();
+		await flushCatalogRefresh();
+
+		expect(events).toEqual([{ status: "valid", value: "updated" }]);
+		expect(store.value).toEqual({ value: "updated" });
+
+		await disposeExtensions(prepared.value);
+	});
+
+	test("invalid layered re-resolve keeps last valid and reports invalid event", async () => {
+		let revision = 0;
+		let configListener: (() => void) | undefined;
+		const extension = defineExtension({
+			id: "layered-invalid-keep",
+			configuration: {
+				scope: "layered" as const,
+				layerSchema: Type.Object({ value: Type.Optional(Type.String()) }, { additionalProperties: false }),
+				schema: Type.Object({ value: Type.String() }),
+				defaultValue: { value: "default" },
+				resolve: (layers) => {
+					revision += 1;
+					const user = layers.user as { readonly value?: string } | undefined;
+					if (revision === 2) return Result.err(new CodingExtensionOperationFailed({ message: "bad config" }));
+					return Result.ok({ value: user?.value ?? "default" });
+				},
+			},
+			lifecycle: { activate: () => Result.ok(undefined) },
+		});
+		const prepared = prepareExtensions([extension]);
+		expect(prepared.isOk()).toBe(true);
+		if (prepared.isErr()) return;
+		const configChangeWatcher = (listener: () => void) => {
+			configListener = listener;
+			return () => {
+				configListener = undefined;
+			};
+		};
+		const activated = await activateExtensions(prepared.value, context, {
+			readConfiguration: () => Result.ok({ value: "ok" }),
+		}, undefined, { configChangeWatcher });
+		expect(activated.isOk()).toBe(true);
+		if (activated.isErr()) return;
+
+		const store = prepared.value[0]!.runtime!.configuration;
+		expect(store.value).toEqual({ value: "ok" });
+
+		const events: Array<{ status: string; value?: string }> = [];
+		store.watch?.((event) => {
+			if (event.status === "valid") events.push({ status: "valid", value: event.value.value });
+			else events.push({ status: "invalid" });
+		});
+
+		configListener?.();
+		await flushCatalogRefresh();
+
+		expect(events).toEqual([{ status: "invalid" }]);
+		expect(store.value).toEqual({ value: "ok" });
+
+		await disposeExtensions(prepared.value);
 	});
 });

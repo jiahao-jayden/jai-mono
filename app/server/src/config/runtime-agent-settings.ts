@@ -290,6 +290,8 @@ const connectorOAuthCredentialKeys = new Set([
  * resolution behind one SQLite row. No client receives a raw stored object.
  */
 export class SqliteRuntimeAgentSettings {
+	readonly #listeners = new Set<() => void>();
+
 	constructor(private readonly database: DatabaseSync) {
 		this.database.exec(`
 			CREATE TABLE IF NOT EXISTS runtime_agent_settings (
@@ -298,6 +300,23 @@ export class SqliteRuntimeAgentSettings {
 				updated_at TEXT NOT NULL
 			);
 		`);
+	}
+
+	subscribe(listener: () => void): () => void {
+		this.#listeners.add(listener);
+		return () => {
+			this.#listeners.delete(listener);
+		};
+	}
+
+	private notify(): void {
+		for (const listener of this.#listeners) {
+			try {
+				listener();
+			} catch {
+				// A broken subscriber must not block other subscribers or the write path.
+			}
+		}
 	}
 
 	bootstrap(
@@ -771,6 +790,7 @@ export class SqliteRuntimeAgentSettings {
 			this.database
 				.prepare(`INSERT INTO runtime_agent_settings (key, settings_json, updated_at) VALUES ('default', ?, ?)`)
 				.run(JSON.stringify(initial.value), now);
+			this.notify();
 			return Result.ok(projectSnapshot(initial.value, revisionFor(initial.value)));
 		} catch (cause) {
 			return Result.err(
@@ -809,6 +829,7 @@ export class SqliteRuntimeAgentSettings {
 				.prepare("UPDATE runtime_agent_settings SET settings_json = ?, updated_at = ? WHERE key = 'default'")
 				.run(encoded, now);
 			this.database.exec("COMMIT");
+			this.notify();
 			return Result.ok(projectSnapshot(validated.value, revisionFor(validated.value)));
 		} catch (cause) {
 			try {

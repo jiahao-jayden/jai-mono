@@ -253,6 +253,8 @@ export interface ConnectorService {
 		context: RequestContext,
 	): Promise<ResultType<void, ConnectorFailure>>;
 	health(context: RequestContext): Promise<ResultType<HealthResponse, ConnectorFailure>>;
+	/** Subscribe to connector configuration changes (enabled flags, credentials, policy). Fires after `applyConfiguration`. */
+	subscribe?(listener: () => void): () => void;
 }
 
 export type ConnectorFailure =

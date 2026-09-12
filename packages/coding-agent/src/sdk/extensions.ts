@@ -4,6 +4,7 @@ import { KindGuard } from "@sinclair/typebox";
 import { panic, Result, type Result as ResultType } from "better-result";
 import type { CodingCommandRegistry } from "../commands";
 import type { JsonObject } from "../core/json";
+import type { CapabilityNoticeProducer, CapabilityNoticeSlot } from "../runtime/create-coding-agent";
 import type { RunAgentExecution } from "../runtime/execution";
 import type { ToolCatalog } from "../runtime/tool-catalog";
 import {
@@ -60,6 +61,7 @@ export type {
 	CodingExtensionConfiguration,
 	CodingExtensionConfigurationLayers,
 	CodingExtensionConfigurationStore,
+	CodingExtensionConfigurationWatchEvent,
 	CodingExtensionContext,
 	CodingExtensionDiagnostic,
 	CodingExtensionHooks,
@@ -148,7 +150,10 @@ interface ExtensionActivationRegistries {
 	readonly authorizedToolNames?: Set<string>;
 	readonly toolPresentations?: Map<string, CodingToolPresentation>;
 	readonly toolCatalog?: ToolCatalog;
+	readonly capabilityNotice?: CapabilityNoticeSlot;
 	readonly commands?: CodingCommandRegistry;
+	/** Fires when the host config store reloads a valid snapshot; layered configurations use this to re-resolve. */
+	readonly configChangeWatcher?: (listener: () => void) => () => void;
 }
 
 export async function activateExtensions(
@@ -167,6 +172,7 @@ export async function activateExtensions(
 			runtime,
 			sessionState,
 			registries.commands,
+			registries.configChangeWatcher,
 		);
 		if (initializedContext.isErr()) return rollbackExtensions(initialized, initializedContext.error);
 		const instance = await activateExtension(extension.extension, initializedContext.value);
@@ -673,11 +679,18 @@ async function discoverCatalogTools(
 	return Result.ok(discoveredCatalogs);
 }
 
+interface CatalogBinding {
+	readonly presentation: "searchable" | "announced";
+	lastTold: ReadonlyMap<string, string>;
+	current: ReadonlyMap<string, string>;
+}
+
 class ExtensionCatalogRefreshCoordinator {
 	readonly #abortController = new AbortController();
 	readonly #subscriptionDisposers: Array<() => void | Promise<void>> = [];
 	readonly #extensions: readonly InitializedExtension[];
 	readonly #registries: ExtensionActivationRegistries;
+	readonly #bindings = new Map<string, CatalogBinding>();
 	#refreshRequested = false;
 	#refreshTail: Promise<void> = Promise.resolve();
 	#closed = false;
@@ -690,6 +703,7 @@ class ExtensionCatalogRefreshCoordinator {
 	async initialize(): Promise<ResultType<void, CodingExtensionError>> {
 		const discovered = await this.#discoverAndCommit();
 		if (discovered.isErr()) return discovered;
+		if (this.#registries.capabilityNotice) this.#registries.capabilityNotice.current = this;
 		return this.#subscribe();
 	}
 
@@ -697,6 +711,49 @@ class ExtensionCatalogRefreshCoordinator {
 		if (this.#closed || this.#refreshRequested) return;
 		this.#refreshRequested = true;
 		this.#refreshTail = this.#refreshTail.then(() => this.#drainRefreshes());
+	}
+
+	async produceNotice(): Promise<AgentMessage | undefined> {
+		await this.#refreshTail;
+		const additions: string[] = [];
+		const removals: string[] = [];
+		const updates: string[] = [];
+		let hasReplaced = false;
+		for (const binding of this.#bindings.values()) {
+			const diff = diffCatalog(binding.lastTold, binding.current);
+			for (const [name, description] of diff.added) additions.push(`${name} (${description})`);
+			for (const name of diff.removed) removals.push(name);
+			for (const [name, description] of diff.changed) updates.push(`${name} (${description})`);
+			if (
+				binding.presentation === "searchable" &&
+				(diff.added.length || diff.removed.length || diff.changed.length)
+			) {
+				hasReplaced = true;
+			}
+		}
+		if (!additions.length && !removals.length && !updates.length) return undefined;
+		const slot = this.#registries.capabilityNotice;
+		for (const [catalogId, binding] of this.#bindings) {
+			binding.lastTold = binding.current;
+			slot?.lastTold.set(catalogId, binding.current);
+		}
+		const lines: string[] = [];
+		if (additions.length) lines.push(`新增: ${additions.join(", ")}`);
+		if (removals.length) lines.push(`删除: ${removals.join(", ")}`);
+		if (updates.length) lines.push(`更新: ${updates.join(", ")}`);
+		if (hasReplaced) lines.push("之前的工具引用已失效，请用 SearchTools 重新查找。");
+		return { role: "user", content: lines.join("\n"), metadata: { synthetic: true }, timestamp: Date.now() };
+	}
+
+	announcedSnapshot(): string {
+		const sections: string[] = [];
+		for (const [catalogId, binding] of this.#bindings) {
+			if (binding.presentation !== "announced" || binding.current.size === 0) continue;
+			sections.push(`<available_${catalogId}>`);
+			for (const [name, description] of binding.current) sections.push(`- ${name}: ${description}`);
+			sections.push(`</available_${catalogId}>`);
+		}
+		return sections.join("\n");
 	}
 
 	async dispose(): Promise<ResultType<void, CodingExtensionError>> {
@@ -791,7 +848,26 @@ class ExtensionCatalogRefreshCoordinator {
 			for (const [catalogId, tools] of discovered.get(extension) ?? []) {
 				const mapping = mapExtensionTools(extension, tools);
 				mappings.set(catalogId, mapping);
-				catalogTools.push(...mapping.tools);
+				const presentation =
+					extension.extension.catalogs?.find((c) => c.id === catalogId)?.presentation ?? "searchable";
+				const current = new Map(mapping.tools.map((tool) => [tool.name, tool.description] as const));
+				const existing = this.#bindings.get(catalogId);
+				if (existing) {
+					existing.current = current;
+				} else {
+					const slot = this.#registries.capabilityNotice;
+					const savedLastTold = slot?.lastTold.get(catalogId);
+					this.#bindings.set(catalogId, {
+						presentation,
+						lastTold: savedLastTold
+							? new Map(savedLastTold)
+							: presentation === "searchable"
+								? current
+								: new Map(),
+						current,
+					});
+				}
+				if (presentation === "searchable") catalogTools.push(...mapping.tools);
 			}
 			const currentMappings = toolMappingState(extension);
 			currentMappings.catalogs.clear();
@@ -824,6 +900,26 @@ class ExtensionCatalogRefreshCoordinator {
 			// Diagnostics are observer-only and cannot prevent a later catalog refresh.
 		}
 	}
+}
+
+function diffCatalog(
+	lastTold: ReadonlyMap<string, string>,
+	current: ReadonlyMap<string, string>,
+): {
+	added: readonly [string, string][];
+	removed: readonly string[];
+	changed: readonly [string, string][];
+} {
+	const added: [string, string][] = [];
+	const removed: string[] = [];
+	const changed: [string, string][] = [];
+	for (const [name, description] of current) {
+		const previous = lastTold.get(name);
+		if (previous === undefined) added.push([name, description]);
+		else if (previous !== description) changed.push([name, description]);
+	}
+	for (const name of lastTold.keys()) if (!current.has(name)) removed.push(name);
+	return { added, removed, changed };
 }
 
 async function reportCatalogDiagnostics(

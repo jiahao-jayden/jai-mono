@@ -41,10 +41,16 @@ export type CodingExtensionConfiguration<TConfig extends JsonObject = JsonObject
 	| CodingExtensionScopedConfiguration<TConfig>
 	| CodingExtensionLayeredConfiguration<TConfig>;
 
+export type CodingExtensionConfigurationWatchEvent<TConfig extends JsonObject = JsonObject> =
+	| { readonly status: "valid"; readonly value: TConfig }
+	| { readonly status: "invalid"; readonly error: unknown };
+
 export interface CodingExtensionConfigurationStore<TConfig extends JsonObject = JsonObject> {
 	readonly value: TConfig;
 	readonly persistent: boolean;
 	update(next: TConfig): Promise<ResultType<TConfig, CodingExtensionError>>;
+	/** Subscribes to host-pushed configuration changes (layered configurations only). Returns an unsubscribe. */
+	watch?(listener: (event: CodingExtensionConfigurationWatchEvent<TConfig>) => void): () => void;
 }
 
 export interface CodingExtensionSessionState<TState extends JsonObject = JsonObject> {
@@ -340,6 +346,13 @@ export interface CodingExtensionToolCatalog<
 	TInstance = undefined,
 > {
 	readonly id: string;
+	/**
+	 * How catalog entries reach the model. `searchable` (default) entries go into the
+	 * `SearchTools` directory and are loaded on demand. `announced` entries never enter
+	 * the directory; core injects the full list as a capability notice on first run and
+	 * after compaction, with incremental diffs on subsequent runs.
+	 */
+	readonly presentation?: "searchable" | "announced";
 	discover(
 		runtime: CodingExtensionRuntime<TConfig, TState, TInstance>,
 		signal?: AbortSignal,
