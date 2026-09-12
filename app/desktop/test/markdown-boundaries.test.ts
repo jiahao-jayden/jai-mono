@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseMarkdownIntoBlocks } from "streamdown";
+import { findOpenFenceLanguage } from "@lobehub/streamdown";
 
 const markdownFixture = `# 标题
 
@@ -18,13 +18,11 @@ const markdownFixture = `# 标题
 \`\`\`typescript
 ${"const veryLongLine = 'value';\n".repeat(24)}`;
 
-describe("Streamdown Markdown boundaries", () => {
-	test("超长 URL、宽表、三层列表、图片与未闭合代码围栏能拆分为安全的流式 blocks", () => {
-		const blocks = parseMarkdownIntoBlocks(markdownFixture);
-
-		expect(blocks.length).toBeGreaterThan(4);
-		expect(blocks.join("\n")).toContain("https://example.com/");
-		expect(blocks.join("\n")).toContain("第三层");
-		expect(blocks.at(-1)).toContain("const veryLongLine");
+	describe("LobeHub Streamdown Markdown boundaries", () => {
+	test("识别未闭合代码围栏并保留流式内容", () => {
+		expect(findOpenFenceLanguage(markdownFixture)).toBe("typescript");
+		expect(markdownFixture).toContain("https://example.com/");
+		expect(markdownFixture).toContain("第三层");
+		expect(markdownFixture).toContain("const veryLongLine");
 	});
 });

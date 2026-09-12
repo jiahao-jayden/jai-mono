@@ -1,20 +1,24 @@
 "use client";
 
-import {
-	Cancel01Icon,
-	Copy01Icon,
-	Download04Icon,
-	SquareArrowExpand01Icon,
-	Tick02Icon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { cjk } from "@streamdown/cjk";
-import { code } from "@streamdown/code";
-import { forwardRef, memo, type ReactNode, type SVGProps } from "react";
+import { forwardRef, isValidElement, memo, type HTMLAttributes, type ReactNode, useMemo, useState } from "react";
 import { motion, type HTMLMotionProps, useReducedMotion } from "framer-motion";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
-import { defaultRemarkPlugins, Streamdown } from "streamdown";
+import { Streamdown } from "@lobehub/streamdown";
+import { createHighlighter, renderNodesToHtml, renderTokens } from "@tanstack/highlight/core";
+import { css } from "@tanstack/highlight/languages/css";
+import { html } from "@tanstack/highlight/languages/html";
+import { js } from "@tanstack/highlight/languages/js";
+import { json } from "@tanstack/highlight/languages/json";
+import { jsx } from "@tanstack/highlight/languages/jsx";
+import { markdown } from "@tanstack/highlight/languages/markdown";
+import { python } from "@tanstack/highlight/languages/python";
+import { shell } from "@tanstack/highlight/languages/shell";
+import { sql } from "@tanstack/highlight/languages/sql";
+import { ts } from "@tanstack/highlight/languages/ts";
+import { tsx } from "@tanstack/highlight/languages/tsx";
+import { yaml } from "@tanstack/highlight/languages/yaml";
+import remarkGfm from "remark-gfm";
 import { cn } from "cn";
 import { spring } from "@/lib/springs";
 import { useShape } from "@/lib/shape-context";
@@ -22,31 +26,61 @@ import { remarkDisableSetextH2 } from "@/lib/remark-disable-setext-h2";
 import { useTouchPrimary } from "@/hooks/use-touch-primary";
 import { useIcon } from "@/lib/icon-context";
 import { FileThumbnail } from "@/components/ui/file-thumbnail";
+import { Button } from "@/components/ui/button";
 
-const streamdownPlugins = { cjk, code };
-// Passing remarkPlugins replaces Streamdown's defaults. Keep GFM (tables,
-// task lists, strikethrough) and code metadata before our post-parse fix.
 const streamdownRemarkPlugins = [
-	defaultRemarkPlugins.gfm,
-	defaultRemarkPlugins.codeMeta,
+	remarkGfm,
 	remarkDisableSetextH2,
 ];
-const streamdownControls = {
-	code: { copy: true, download: false },
-	table: { copy: true, download: true, fullscreen: true },
+const languageAliases: Record<string, string> = {
+	bash: "shell",
+	javascript: "js",
+	sh: "shell",
+	shell: "shell",
+	typescript: "ts",
+	xhtml: "html",
+	xml: "html",
+	yml: "yaml",
 };
-// Words settle in as they arrive rather than snapping the whole block. The
-// stagger stays under a frame so a fast stream still reads as continuous text,
-// and `sep: "word"` keeps CJK runs intact instead of animating per glyph.
-const streamdownAnimation = {
-	animation: "fadeIn" as const,
-	duration: 420,
-	easing: "cubic-bezier(0.23, 1, 0.32, 1)",
-	sep: "word" as const,
-	stagger: 12,
-};
+const highlighter = createHighlighter({ languages: [css, html, js, json, jsx, markdown, python, shell, sql, ts, tsx, yaml] });
 
-type StreamdownIconProps = SVGProps<SVGSVGElement> & { size?: number };
+function CodeBlock({ children, ...props }: HTMLAttributes<HTMLPreElement>) {
+	const CopyIcon = useIcon("copy");
+	const CheckIcon = useIcon("check");
+	const [copied, setCopied] = useState(false);
+	const codeElement = isValidElement<{ className?: string; children?: ReactNode }>(children) ? children : undefined;
+	const className = codeElement?.props.className;
+	const language = className?.match(/language-(\S+)/)?.[1] ?? "";
+	const value = String(codeElement?.props.children ?? children).replace(/\n$/, "");
+	const highlighted = useMemo(() => {
+		const lang = languageAliases[language.toLowerCase()] ?? language.toLowerCase();
+		if (!highlighter.listLanguages().includes(lang)) return value;
+		return renderNodesToHtml(renderTokens(highlighter.tokenize(value, { lang }).tokens));
+	}, [language, value]);
+	const copy = async () => {
+		await navigator.clipboard.writeText(value);
+		setCopied(true);
+		window.setTimeout(() => setCopied(false), 1200);
+	};
+
+	return (
+		<div data-streamdown="code-block">
+			<div data-streamdown="code-block-header" data-language={language}>
+				<span>{language}</span>
+			</div>
+			<div data-streamdown="code-block-actions">
+				<Button aria-label="Copy code" onClick={copy} size="icon-xs" variant="ghost" type="button">
+					{copied ? <CheckIcon /> : <CopyIcon />}
+				</Button>
+			</div>
+			<pre {...props} data-streamdown="code-block-body">
+				<code className={className}>
+					{typeof highlighted === "string" ? <span dangerouslySetInnerHTML={{ __html: highlighted }} /> : highlighted}
+				</code>
+			</pre>
+		</div>
+	);
+}
 
 interface ChatMessageAttachment {
   readonly id: string;
@@ -54,20 +88,6 @@ interface ChatMessageAttachment {
   readonly mimeType: string;
   readonly size: number;
 }
-
-function makeStreamdownIcon(icon: Parameters<typeof HugeiconsIcon>[0]["icon"]) {
-	return function StreamdownIcon({ size = 16, strokeWidth: _strokeWidth, ...props }: StreamdownIconProps) {
-		return <HugeiconsIcon icon={icon} size={size} strokeWidth={1.6} {...props} />;
-	};
-}
-
-const streamdownIcons = {
-	CheckIcon: makeStreamdownIcon(Tick02Icon),
-	CopyIcon: makeStreamdownIcon(Copy01Icon),
-	DownloadIcon: makeStreamdownIcon(Download04Icon),
-	Maximize2Icon: makeStreamdownIcon(SquareArrowExpand01Icon),
-	XIcon: makeStreamdownIcon(Cancel01Icon),
-};
 
 export const MarkdownContent = memo(function MarkdownContent({
 	content,
@@ -79,21 +99,14 @@ export const MarkdownContent = memo(function MarkdownContent({
 	className?: string;
 }) {
 	return (
-		<Streamdown
-			aria-live="off"
-			className={cn("chat-markdown", className)}
-			controls={streamdownControls}
-			icons={streamdownIcons}
-			animated={isStreaming ? streamdownAnimation : false}
-			caret={isStreaming ? "block" : undefined}
-			isAnimating={isStreaming}
-			lineNumbers={false}
-			mode={isStreaming ? "streaming" : "static"}
-			plugins={streamdownPlugins}
-			remarkPlugins={streamdownRemarkPlugins}
-		>
-			{content}
-		</Streamdown>
+		<div className={cn("chat-markdown", isStreaming && "chat-markdown-streaming", className)} aria-live="off">
+			<Streamdown
+				components={{ pre: CodeBlock }}
+				granularity={isStreaming ? "word" : "char"}
+				remarkPlugins={streamdownRemarkPlugins}
+				content={content}
+			/>
+		</div>
 	);
 });
 

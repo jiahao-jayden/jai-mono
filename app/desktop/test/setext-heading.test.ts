@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import remarkParse from "remark-parse";
-import { Streamdown } from "streamdown";
+import { Streamdown } from "@lobehub/streamdown";
 import { unified } from "unified";
 import { remarkDisableSetextH2 } from "../src/lib/remark-disable-setext-h2";
 
@@ -30,8 +30,7 @@ describe("remarkDisableSetextH2", () => {
 	test("Streamdown 不再把 footer 渲染为 H2", () => {
 		const html = renderToStaticMarkup(
 			createElement(Streamdown, {
-				children: "✅ All agents reported back!\n├─ Reddit\n└─ GitHub\n---",
-				mode: "static",
+				content: "✅ All agents reported back!\n├─ Reddit\n└─ GitHub\n---",
 				remarkPlugins: [remarkDisableSetextH2],
 			}),
 		);
