@@ -546,7 +546,6 @@ export function AppShell() {
 						path="/chat/:sessionId"
 						element={
 							<ChatColumn
-								key={activeSessionId ?? "new"}
 								session={session}
 								project={project}
 								projects={projects}

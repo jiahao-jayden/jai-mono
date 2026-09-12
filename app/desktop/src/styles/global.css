@@ -516,3 +516,38 @@ html.right-panel-resizing * {
 	-webkit-background-clip: text;
 	animation: shimmer 1.5s ease-in-out infinite;
 }
+
+.logo-scan {
+	pointer-events: none;
+	position: absolute;
+	inset: 0;
+	mask-image: var(--logo-mask);
+	mask-position: center;
+	mask-repeat: no-repeat;
+	mask-size: contain;
+}
+
+.logo-scan::after {
+	content: "";
+	position: absolute;
+	inset: -50%;
+	background: linear-gradient(
+		135deg,
+		transparent 40%,
+		color-mix(in oklch, var(--foreground) 20%, transparent) 47%,
+		color-mix(in oklch, var(--foreground) 55%, transparent) 50%,
+		color-mix(in oklch, var(--foreground) 20%, transparent) 53%,
+		transparent 60%
+	);
+	animation: logo-scan 1.5s ease-in-out infinite;
+}
+
+@keyframes logo-scan {
+	0% {
+		transform: translate(-40%, -40%);
+	}
+	70%,
+	100% {
+		transform: translate(40%, 40%);
+	}
+}

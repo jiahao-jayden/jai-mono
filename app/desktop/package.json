@@ -105,6 +105,7 @@
 		"@vitejs/plugin-react": "^5.2.0",
 		"code-inspector-plugin": "^1.4.5",
 		"electron": "42.7.0",
+		"react-scan": "^0.5.7",
 		"shadcn": "^4.1.2",
 		"tailwindcss": "^4.1.0",
 		"typescript": "catalog:",

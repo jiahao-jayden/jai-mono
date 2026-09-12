@@ -5,7 +5,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { type IconName, useIcon } from "@/lib/icon-context";
 import { cn } from "cn";
 import type { DesktopWebSearchResult } from "../../../shared/desktop-rpc";
-import { collapsePanel, paper, ShimmerLabel, SwapLabel } from "./surfaces";
+import { paper, ShimmerLabel } from "./surfaces";
 import { WebSearchResults } from "./web-search-results";
 
 export interface TimelineStep {
@@ -58,14 +58,11 @@ export function ToolTimeline({
 				<span className={chevronClassName}>
 					<ChevronRight size={14} strokeWidth={1.5} />
 				</span>
-				<SwapLabel active={streaming ? 0 : 1} className="text-start tabular-nums">
-					<ShimmerLabel active={streaming} className="relative inline-block leading-none">
-						{activeLabel}
-					</ShimmerLabel>
-					{restingLabel}
-				</SwapLabel>
+				<ShimmerLabel active={streaming} className="relative inline-block text-start tabular-nums leading-none">
+					{streaming ? activeLabel : restingLabel}
+				</ShimmerLabel>
 			</CollapsibleTrigger>
-			<CollapsibleContent className={cn(collapsePanel, "outline-none")}>
+			<CollapsibleContent className="outline-none">
 				<div className="flex flex-col gap-2.5 ps-4 pt-2.5">
 					{steps.map((step, index) => {
 						const active = streaming && (step.active ?? index === steps.length - 1);

@@ -101,17 +101,22 @@ export function useChat(options: UseChatOptions): Chat {
 			return;
 		}
 
-		setState({
-			agentStatus: "idle",
-			error: undefined,
-			isLoading: true,
-			lastSeq: 0,
-			sessionId,
-			submitting: false,
-			messages: [],
-			todos: undefined,
-			artifacts: [],
-		});
+		const keepLive = stateRef.current.submitting && stateRef.current.sessionId === null;
+		setState(
+			keepLive
+				? { ...stateRef.current, error: undefined, isLoading: false, sessionId }
+				: {
+						agentStatus: "idle",
+						error: undefined,
+						isLoading: true,
+						lastSeq: 0,
+						sessionId,
+						submitting: false,
+						messages: [],
+						todos: undefined,
+						artifacts: [],
+					},
+		);
 		dispatcher ??= createDesktopAgentEventDispatcher();
 		const unsubscribe = dispatcher.subscribe(sessionId, (update) => {
 			setState((current) => applyChatProjectionUpdate(current, update));

@@ -304,7 +304,7 @@ function useTranscriptItemAnimations(items: readonly DesktopTranscriptItem[], lo
 		awaitingSnapshot.current = true;
 	}
 
-	if (awaitingSnapshot.current && !loading) {
+	if (awaitingSnapshot.current && !loading && items.length > 0) {
 		for (const item of items) seenItemIds.current.add(item.id);
 		awaitingSnapshot.current = false;
 	}
@@ -649,13 +649,3 @@ function workItemTurnId(item: WorkItem): string {
 	return item.turnId;
 }
 
-export function TranscriptLoading() {
-	const intl = useIntl();
-	return (
-		<div className="space-y-4 py-6" role="status" aria-label={intl.formatMessage(desktopMessages.transcriptLoading)}>
-			<div className="ml-auto h-12 w-56 animate-pulse rounded-xl bg-secondary no-squircle" />
-			<div className="h-4 w-[72%] animate-pulse rounded bg-foreground/6" />
-			<div className="h-4 w-[58%] animate-pulse rounded bg-foreground/5" />
-		</div>
-	);
-}

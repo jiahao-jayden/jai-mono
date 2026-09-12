@@ -69,8 +69,32 @@ function bunCompat(): Plugin {
 	};
 }
 
+function reactScanDev(): Plugin {
+	const scanScript = path.resolve(import.meta.dirname, "node_modules/react-scan/dist/auto.global.js");
+	return {
+		name: "react-scan-dev",
+		apply: "serve",
+		transformIndexHtml() {
+			if (!fs.existsSync(scanScript)) return;
+			return [
+				{
+					tag: "script",
+					attrs: { src: `/@fs/${scanScript}` },
+					injectTo: "head-prepend",
+				},
+			];
+		},
+	};
+}
+
 export default defineConfig({
-	plugins: [bunCompat(), codeInspectorPlugin({ bundler: "vite", editor: "cursor" }), tailwindcss(), react()],
+	plugins: [
+		bunCompat(),
+		reactScanDev(),
+		codeInspectorPlugin({ bundler: "vite", editor: "cursor" }),
+		tailwindcss(),
+		react(),
+	],
 	resolve: {
 		alias: {
 			"@": path.resolve(import.meta.dirname, "./src"),

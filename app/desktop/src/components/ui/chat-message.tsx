@@ -124,9 +124,10 @@ interface ChatMessageProps
 }
 
 // ─── ChatMessage ──────────────────────────────────────────────────────────
-// A single transcript entry with baked-in entrance + layout motion. Pairs with
-// InputMessage's onSend: render one per sent/received message. `layout="position"`
-// lets earlier messages slide up smoothly when a new one is appended.
+// A single transcript entry with a one-shot entrance. Pairs with
+// InputMessage's onSend: render one per sent/received message. Position
+// changes are owned by the transcript scroller — layout animation here
+// fights that scroll and flashes the whole column.
 const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
   (
     {
@@ -161,7 +162,6 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
         ref={ref}
         role="article"
         aria-label={intl.formatMessage(isUser ? desktopMessages.messageYour : desktopMessages.messageAssistant)}
-        layout={shouldAnimate ? "position" : false}
         initial={shouldAnimate ? { opacity: 0, y: 8 } : false}
         animate={{ opacity: 1, y: 0 }}
         transition={shouldAnimate ? spring.moderate : { duration: 0 }}

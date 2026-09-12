@@ -36,7 +36,7 @@ import { PermissionRequests } from "../../ui/permission-requests";
 import { toast } from "../../ui/toast";
 import { SessionActions } from "../session-actions";
 import { ChatComposer } from "./chat-composer";
-import { TranscriptItems, TranscriptLoading } from "./chat-transcript";
+import { TranscriptItems } from "./chat-transcript";
 import {
 	comfortableScrollTop,
 	isTranscriptAwayFromBottom,
@@ -119,6 +119,10 @@ export function ChatColumn({
 	const [titleDraft, setTitleDraft] = useState("");
 
 	const isNewChat = !session;
+	const showLogo = isNewChat || chat.isLoading;
+	const logoLabel = isNewChat
+		? intl.formatMessage(greetingMessage(), { name: "Jiahao" })
+		: intl.formatMessage(desktopMessages.transcriptLoading);
 	const isAgentWorking = chat.status === "submitted" || chat.status === "streaming";
 	const navigationDisabled = isAgentWorking || !selectedModelRef;
 	const pendingApprovals = chat.messages.filter(
@@ -147,6 +151,7 @@ export function ChatColumn({
 
 	const drag = { WebkitAppRegion: "drag" } as CSSProperties;
 	const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
+	const logoMaskStyle = { "--logo-mask": `url("${logo}")` } as CSSProperties;
 	const startTitleEditing = () => {
 		if (!session) return;
 		cancelTitleEditRef.current = false;
@@ -263,19 +268,24 @@ export function ChatColumn({
 				<span className="h-8 w-[66px] shrink-0" aria-hidden="true" />
 			</header>
 
-			{isNewChat ? (
+			{showLogo ? (
 				<div
 					className="flex min-h-0 flex-1 items-center justify-center"
-					aria-label={intl.formatMessage(greetingMessage(), { name: "Jiahao" })}
+					aria-label={logoLabel}
 					role="img"
 				>
-					<img src={logo} alt="" draggable={false} className="size-20 select-none" />
+					<div className="relative size-20">
+						<img src={logo} alt="" draggable={false} className="size-20 select-none" />
+						{chat.isLoading ? (
+							<span aria-hidden className="logo-scan motion-reduce:hidden" style={logoMaskStyle} />
+						) : null}
+					</div>
 				</div>
 			) : (
 				<div className="relative min-h-0 flex-1">
 					<div
 						ref={scrollRef}
-						className="h-full overflow-y-auto"
+						className="h-full overflow-y-auto [overflow-anchor:none]"
 						onKeyDownCapture={transcriptScroll.onKeyDownCapture}
 						onPointerDown={transcriptScroll.onPointerDown}
 						onPointerMove={transcriptScroll.onPointerMove}
@@ -287,8 +297,7 @@ export function ChatColumn({
 					>
 						<div className="px-5">
 							<div className="mx-auto flex w-full max-w-[896px] flex-col gap-2 py-4">
-								{chat.isLoading ? <TranscriptLoading /> : null}
-								{!chat.isLoading && chat.messages.length === 0 ? (
+								{chat.messages.length === 0 ? (
 									<p className="py-16 text-center text-[13px] text-muted-foreground">
 										{intl.formatMessage(desktopMessages.chatEmpty)}
 									</p>
@@ -675,11 +684,15 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 		const observer = new ResizeObserver(() => {
 			const current = ref.current;
 			if (!current) return;
-			if (stateRef.current.followsNewResponse) stateRef.current.expectedScrollTop = current.scrollTop;
+			if (!stateRef.current.followsNewResponse) {
+				syncMessageScroller();
+				return;
+			}
+			stateRef.current.expectedScrollTop = current.scrollTop;
 			const promptId = stateRef.current.lastUserMessageId;
 			if (promptId) applyTailSpace(measureTailSpace(current, promptId, tailSpaceRef.current));
 			const latestScrollableItem = lastScrollableTranscriptItem(itemsRef.current);
-			if (respondingRef.current && stateRef.current.followsNewResponse && latestScrollableItem) {
+			if (respondingRef.current && latestScrollableItem) {
 				followStreamingResponse(current, latestScrollableItem.id);
 			}
 			syncMessageScroller();
@@ -729,9 +742,15 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 		},
 		[stopFollowing],
 	);
-	const onPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
-		if (event.button === 0) pointerStartRef.current = { x: event.clientX, y: event.clientY };
-	}, []);
+	const onPointerDown = useCallback(
+		(event: PointerEvent<HTMLDivElement>) => {
+			if (event.button === 0) pointerStartRef.current = { x: event.clientX, y: event.clientY };
+			if (event.target instanceof Element && event.target.closest("[data-slot='collapsible-trigger']")) {
+				stopFollowing();
+			}
+		},
+		[stopFollowing],
+	);
 	const onPointerUp = useCallback(() => {
 		pointerStartRef.current = undefined;
 	}, []);
