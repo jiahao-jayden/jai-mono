@@ -4,7 +4,7 @@ import { KindGuard } from "@sinclair/typebox";
 import { panic, Result, type Result as ResultType } from "better-result";
 import type { CodingCommandRegistry } from "../commands";
 import type { JsonObject } from "../core/json";
-import type { CapabilityNoticeProducer, CapabilityNoticeSlot } from "../runtime/create-coding-agent";
+import type { CapabilityNoticeSlot } from "../runtime/create-coding-agent";
 import type { RunAgentExecution } from "../runtime/execution";
 import type { ToolCatalog } from "../runtime/tool-catalog";
 import {
@@ -718,8 +718,14 @@ class ExtensionCatalogRefreshCoordinator {
 		const additions: string[] = [];
 		const removals: string[] = [];
 		const updates: string[] = [];
+		const initial: string[] = [];
 		let hasReplaced = false;
-		for (const binding of this.#bindings.values()) {
+		for (const [catalogId, binding] of this.#bindings) {
+			// An announced binding that was never told is an initial snapshot, not a change.
+			if (binding.presentation === "announced" && binding.lastTold.size === 0 && binding.current.size > 0) {
+				initial.push(renderAnnouncedCatalog(catalogId, binding.current));
+				continue;
+			}
 			const diff = diffCatalog(binding.lastTold, binding.current);
 			for (const [name, description] of diff.added) additions.push(`${name} (${description})`);
 			for (const name of diff.removed) removals.push(name);
@@ -731,7 +737,7 @@ class ExtensionCatalogRefreshCoordinator {
 				hasReplaced = true;
 			}
 		}
-		if (!additions.length && !removals.length && !updates.length) return undefined;
+		if (!additions.length && !removals.length && !updates.length && !initial.length) return undefined;
 		const slot = this.#registries.capabilityNotice;
 		for (const [catalogId, binding] of this.#bindings) {
 			binding.lastTold = binding.current;
@@ -742,16 +748,19 @@ class ExtensionCatalogRefreshCoordinator {
 		if (removals.length) lines.push(`删除: ${removals.join(", ")}`);
 		if (updates.length) lines.push(`更新: ${updates.join(", ")}`);
 		if (hasReplaced) lines.push("之前的工具引用已失效，请用 SearchTools 重新查找。");
-		return { role: "user", content: lines.join("\n"), metadata: { synthetic: true }, timestamp: Date.now() };
+		return {
+			role: "user",
+			content: [...initial, ...lines].join("\n"),
+			metadata: { synthetic: true },
+			timestamp: Date.now(),
+		};
 	}
 
 	announcedSnapshot(): string {
 		const sections: string[] = [];
 		for (const [catalogId, binding] of this.#bindings) {
 			if (binding.presentation !== "announced" || binding.current.size === 0) continue;
-			sections.push(`<available_${catalogId}>`);
-			for (const [name, description] of binding.current) sections.push(`- ${name}: ${description}`);
-			sections.push(`</available_${catalogId}>`);
+			sections.push(renderAnnouncedCatalog(catalogId, binding.current));
 		}
 		return sections.join("\n");
 	}
@@ -920,6 +929,12 @@ function diffCatalog(
 	}
 	for (const name of lastTold.keys()) if (!current.has(name)) removed.push(name);
 	return { added, removed, changed };
+}
+
+function renderAnnouncedCatalog(catalogId: string, tools: ReadonlyMap<string, string>): string {
+	return [`<available_${catalogId}>`, ...[...tools].map(([name, description]) => `- ${name}: ${description}`), `</available_${catalogId}>`].join(
+		"\n",
+	);
 }
 
 async function reportCatalogDiagnostics(

@@ -430,7 +430,13 @@ describe("Capability Change Notice", () => {
 		expect(prepared.isOk()).toBe(true);
 		if (prepared.isErr()) return;
 		const catalog = new ToolCatalog([]);
-		const capabilityNotice: { current?: { produceNotice(): Promise<AgentMessage | undefined>; announcedSnapshot(): string }; lastTold: Map<string, ReadonlyMap<string, string>> } = { lastTold: new Map() };
+		const capabilityNotice: {
+			current?: {
+				produceNotice(): Promise<AgentMessage | undefined>;
+				announcedSnapshot(): string;
+			};
+			lastTold: Map<string, ReadonlyMap<string, string>>;
+		} = { lastTold: new Map() };
 		const activated = await activateExtensions(prepared.value, context, undefined, undefined, {
 			toolCatalog: catalog,
 			capabilityNotice,
@@ -484,7 +490,13 @@ describe("Capability Change Notice", () => {
 		expect(prepared.isOk()).toBe(true);
 		if (prepared.isErr()) return;
 		const catalog = new ToolCatalog([]);
-		const capabilityNotice: { current?: { produceNotice(): Promise<AgentMessage | undefined>; announcedSnapshot(): string }; lastTold: Map<string, ReadonlyMap<string, string>> } = { lastTold: new Map() };
+		const capabilityNotice: {
+			current?: {
+				produceNotice(): Promise<AgentMessage | undefined>;
+				announcedSnapshot(): string;
+			};
+			lastTold: Map<string, ReadonlyMap<string, string>>;
+		} = { lastTold: new Map() };
 		const activated = await activateExtensions(prepared.value, context, undefined, undefined, {
 			toolCatalog: catalog,
 			capabilityNotice,
@@ -494,12 +506,14 @@ describe("Capability Change Notice", () => {
 
 		expect(catalog.search("skill")).toEqual([]);
 
-		const firstNotice = await capabilityNotice.current!.produceNotice();
-		expect(firstNotice).toBeDefined();
-		const firstText = typeof firstNotice!.content === "string" ? firstNotice!.content : "";
+		const firstAnnouncement = await capabilityNotice.current!.produceNotice();
+		expect(firstAnnouncement).toBeDefined();
+		const firstText = typeof firstAnnouncement!.content === "string" ? firstAnnouncement!.content : "";
 		expect(firstText).toContain("SkillOne");
 		expect(firstText).toContain("SkillOne description");
-		expect(firstText).not.toContain("SearchTools");
+		expect(firstText).toContain("<available_skills>");
+		expect(firstText).not.toContain("新增");
+		expect(await capabilityNotice.current!.produceNotice()).toBeUndefined();
 
 		revision = 1;
 		invalidate();
@@ -542,7 +556,13 @@ describe("Capability Change Notice", () => {
 		expect(prepared.isOk()).toBe(true);
 		if (prepared.isErr()) return;
 		const catalog = new ToolCatalog([]);
-		const capabilityNotice: { current?: { produceNotice(): Promise<AgentMessage | undefined>; announcedSnapshot(): string }; lastTold: Map<string, ReadonlyMap<string, string>> } = { lastTold: new Map() };
+		const capabilityNotice: {
+			current?: {
+				produceNotice(): Promise<AgentMessage | undefined>;
+				announcedSnapshot(): string;
+			};
+			lastTold: Map<string, ReadonlyMap<string, string>>;
+		} = { lastTold: new Map() };
 		const activated = await activateExtensions(prepared.value, context, undefined, undefined, {
 			toolCatalog: catalog,
 			capabilityNotice,

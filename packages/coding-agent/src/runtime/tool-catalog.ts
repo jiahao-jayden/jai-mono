@@ -13,7 +13,10 @@ const searchParameters = Type.Object(
 );
 const executeParameters = Type.Object(
 	{
-		toolRef: Type.String({ minLength: 1 }),
+		toolRef: Type.String({
+			minLength: 1,
+			description: "The exact opaque toolRef returned by SearchTools; do not use the tool name.",
+		}),
 		input: Type.Record(Type.String(), Type.Unknown()),
 	},
 	{ additionalProperties: false },
@@ -62,7 +65,8 @@ export class ToolCatalog {
 		this.replace(tools);
 		this.searchTool = {
 			name: "SearchTools",
-			description: "Search the dynamic tool catalog and return a tool reference, description, and input schema.",
+			description:
+				"Search the dynamic tool catalog. When calling ExecuteTool, copy the exact toolRef returned here; do not use the tool name.",
 			parameters: searchParameters,
 			executionMode: "parallel",
 			execute: async (_toolCallId, args): Promise<AgentToolResult> => {
@@ -75,12 +79,13 @@ export class ToolCatalog {
 		};
 		this.executeTool = {
 			name: "ExecuteTool",
-			description: "Execute a dynamic tool returned by SearchTools with input that matches its schema.",
+			description:
+				"Execute a dynamic tool returned by SearchTools. Pass the exact toolRef from SearchTools, not the tool name, and provide input matching its schema.",
 			parameters: executeParameters,
 			executionMode: "parallel",
-			execute: async (): Promise<AgentToolResult> => {
+			execute: async (_toolCallId, args): Promise<AgentToolResult> => {
 				throw new ToolCatalogReferenceUnavailable({
-					message: "The dynamic tool reference is unavailable. SearchTools again before retrying.",
+					message: `The ExecuteTool toolRef "${args.toolRef}" is unavailable. Use the exact toolRef returned by SearchTools, not the tool name; search again before retrying.`,
 				});
 			},
 		};

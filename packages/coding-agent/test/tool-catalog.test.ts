@@ -28,6 +28,17 @@ describe("ToolCatalog", () => {
 		expect(catalog.resolve(match!.toolRef, {} as Record<string, unknown>)?.tool.name).toBe("GitHubReview");
 	});
 
+	test("explains that ExecuteTool needs the returned reference instead of the tool name", async () => {
+		const catalog = new ToolCatalog([catalogTool("GitHubReview", "Read pull request comments")]);
+
+		await expect(
+			catalog.executeTool.execute("execute-1", {
+				toolRef: "GitHubReview",
+				input: {},
+			}),
+		).rejects.toThrow("Use the exact toolRef returned by SearchTools, not the tool name");
+	});
+
 	test("invalidates prior references when the catalog snapshot changes", () => {
 		const catalog = new ToolCatalog([
 			catalogTool("GitHubReview", "Read GitHub pull request comments"),
@@ -39,6 +50,7 @@ describe("ToolCatalog", () => {
 			catalogTool("PagerDutyIncident", "Read PagerDuty incidents"),
 		]);
 		expect(catalog.resolve(match!.toolRef, {})).toBeUndefined();
+		expect(catalog.resolve("GitHubReview", {})).toBeUndefined();
 		expect(catalog.frontdoorTools.map((tool) => tool.name)).toEqual(["SearchTools", "ExecuteTool"]);
 	});
 
