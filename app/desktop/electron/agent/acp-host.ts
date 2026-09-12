@@ -190,7 +190,11 @@ export class DesktopAcpAgentHost {
 		});
 		if (sent.isErr()) pending.reject(sent.error);
 		else pending.resolve();
-		const item = { ...pending.item, status: resolution.decision === "deny" ? "denied" : "allowed" } as const;
+		const item = {
+			...pending.item,
+			status: resolution.decision === "deny" ? "denied" : "allowed",
+			resolvedAt: Date.now(),
+		} as const;
 		pending.runtime.items.set(item.id, item);
 		this.#emitEvent(pending.runtime, {
 			type: "transcript_upsert",
@@ -480,6 +484,7 @@ export class DesktopAcpAgentHost {
 			id: `permission:${projected.request.requestId}`,
 			request: projected.request,
 			status: "pending" as const,
+			requestedAt: Date.now(),
 		};
 		runtime.items.set(item.id, item);
 		this.#pendingPermissions.set(projected.request.requestId, {
@@ -806,7 +811,7 @@ export class DesktopAcpAgentHost {
 			});
 			if (sent.isErr()) pending.reject(sent.error);
 			else pending.resolve();
-			const item = { ...pending.item, status: "cancelled" } as const;
+			const item = { ...pending.item, status: "cancelled", resolvedAt: Date.now() } as const;
 			runtime.items.set(item.id, item);
 			this.#emitEvent(runtime, { type: "transcript_upsert", item });
 		}

@@ -683,6 +683,8 @@ export interface DesktopPermissionItem {
 	readonly id: string;
 	readonly request: DesktopPermissionRequest;
 	readonly status: "pending" | "allowed" | "denied" | "cancelled";
+	readonly requestedAt: number;
+	readonly resolvedAt?: number;
 	readonly approvalOrigin?: "automatic" | "manual";
 }
 

@@ -92,7 +92,7 @@ describe("transcript grouping", () => {
 		expect(steps).toHaveLength(2);
 		expect(steps[1]).toMatchObject({ verb: "Inspect desktop", chip: "Read", active: true });
 		expect(steps[1]?.onSelect).toBeFunction();
-		expect(workTimelineSummary([tool, subagent], false, intl)).toBe("Worked for 1m 30s");
+		expect(workTimelineSummary([tool, subagent], [tool, subagent], true, intl, 90_000)).toBe("Working · 1m 30s");
 
 		const markup = renderToStaticMarkup(
 			createElement(TranscriptItems, { items: [tool, subagent], loading: false, onOpenSubagent: () => {} }),
@@ -215,7 +215,7 @@ describe("transcript grouping", () => {
 			fileChanges: [{ operation: "add", path: "/workspace/index.ts" }],
 		};
 
-		expect(workTimelineSummary([tool], false, intl)).toBe("Worked for 1m 1s");
+		expect(workTimelineSummary([tool], [tool], false, intl)).toBe("Worked for 1m 1s");
 	});
 
 	test("工作时长使用本地化的紧凑单位", () => {
@@ -446,6 +446,7 @@ describe("transcript grouping", () => {
 				summary: { title: "Run bun test" },
 			},
 			status: "pending",
+			requestedAt: 1,
 		};
 		const reply: Extract<DesktopTranscriptItem, { kind: "message" }> = {
 			kind: "message",
@@ -458,5 +459,100 @@ describe("transcript grouping", () => {
 
 		expect(groupTranscriptItems([reply, permission])).toEqual([reply]);
 		expect(renderToStaticMarkup(createElement(TranscriptItem, { item: permission }))).toBe("");
+	});
+
+	test("工作时长从用户发出请求计到这次 run 结束", () => {
+		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:user-1",
+			role: "user",
+			text: "搜一下",
+			status: "complete",
+			timestamp: 0,
+		};
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:search-1",
+			turnId: "operation-1",
+			activityId: "assistant:1",
+			toolCallId: "search-1",
+			toolName: "grep",
+			activityKind: "search",
+			status: "complete",
+			startedAt: 20_000,
+			completedAt: 40_000,
+		};
+		const reply: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:reply",
+			role: "assistant",
+			text: "搜完了。",
+			status: "complete",
+			timestamp: 70_000,
+		};
+
+		expect(workTimelineSummary([user, tool, reply], [tool], false, intl)).toBe("Worked for 1m 10s");
+		expect(workTimelineSummary([user, tool], [tool], true, intl, 55_000)).toBe("Working · 55s");
+
+		const activeMarkup = renderToStaticMarkup(
+			createElement(TranscriptItems, { items: [user, tool], loading: false, responding: true }),
+		);
+		expect(activeMarkup).toContain('aria-expanded="true"');
+
+		const completedMarkup = renderToStaticMarkup(
+			createElement(TranscriptItems, { items: [user, tool, reply], loading: false }),
+		);
+		expect(completedMarkup).toContain('aria-expanded="false"');
+
+		const rememberedMarkup = renderToStaticMarkup(
+			createElement(TranscriptItems, {
+				items: [user, tool, reply],
+				loading: false,
+				openWorkGroups: new Set(["session-1:work:operation-1:tool:search-1"]),
+				workGroupKeyPrefix: "session-1",
+			}),
+		);
+		expect(rememberedMarkup).toContain('aria-expanded="true"');
+	});
+
+	test("权限审批等待不计入工作时长，未完成时数字冻结", () => {
+		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:user-1",
+			role: "user",
+			text: "跑测试",
+			status: "complete",
+			timestamp: 0,
+		};
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:bash-1",
+			turnId: "operation-1",
+			activityId: "assistant:1",
+			toolCallId: "bash-1",
+			toolName: "Bash",
+			activityKind: "execute",
+			status: "running",
+			startedAt: 10_000,
+		};
+		const pending: Extract<DesktopTranscriptItem, { kind: "permission" }> = {
+			kind: "permission",
+			id: "permission:bash-1",
+			request: {
+				requestId: "bash-1",
+				sessionId: "session-1",
+				toolCallId: "bash-1",
+				toolName: "Bash",
+				reason: "needs approval",
+				summary: { title: "Run bun test" },
+			},
+			status: "pending",
+			requestedAt: 15_000,
+		};
+		const resolved = { ...pending, status: "allowed" as const, resolvedAt: 45_000 };
+
+		expect(workTimelineSummary([user, pending, tool], [tool], true, intl, 40_000)).toBe("Working · 15s");
+		expect(workTimelineSummary([user, pending, tool], [tool], true, intl, 80_000)).toBe("Working · 15s");
+		expect(workTimelineSummary([user, resolved, tool], [tool], true, intl, 80_000)).toBe("Working · 50s");
 	});
 });

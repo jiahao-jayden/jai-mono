@@ -44,12 +44,18 @@ const MemoizedWorkProcess = memo(WorkProcess, sameWorkProcess);
 export function TranscriptItems({
 	items,
 	loading,
+	responding = false,
+	openWorkGroups,
+	workGroupKeyPrefix,
 	navigationDisabled = false,
 	onNavigate,
 	onOpenSubagent,
 }: {
 	readonly items: readonly DesktopTranscriptItem[];
 	readonly loading: boolean;
+	readonly responding?: boolean;
+	readonly openWorkGroups?: Set<string>;
+	readonly workGroupKeyPrefix?: string;
 	readonly navigationDisabled?: boolean;
 	readonly onNavigate?: (entryId: string) => Promise<boolean>;
 	readonly onOpenSubagent?: (item: DesktopSubagentItem) => void;
@@ -57,7 +63,7 @@ export function TranscriptItems({
 	const animatedItemIds = useTranscriptItemAnimations(items, loading);
 	const rows = groupTranscriptItems(items);
 
-	return rows.map((row, index) =>
+	return rows.map((row) =>
 		"kind" in row ? (
 			<MemoizedTranscriptItem
 				key={row.id}
@@ -70,7 +76,10 @@ export function TranscriptItems({
 			<MemoizedWorkProcess
 				key={row.id}
 				group={row}
-				settled={index < rows.length - 1}
+				items={items}
+				responding={responding}
+				openWorkGroups={openWorkGroups}
+				openStateKey={workGroupKeyPrefix ? `${workGroupKeyPrefix}:${row.id}` : undefined}
 				onOpenSubagent={onOpenSubagent}
 			/>
 		),
@@ -123,7 +132,7 @@ export function TranscriptItem({
 	readonly onNavigate?: (entryId: string) => Promise<boolean>;
 }) {
 	if (item.kind === "thinking" || item.kind === "narration" || item.kind === "tool" || item.kind === "subagent") {
-		return <WorkProcess group={{ id: `work:${item.id}`, items: [item] }} settled={false} />;
+		return <WorkProcess group={{ id: `work:${item.id}`, items: [item] }} items={[item]} />;
 	}
 	if (item.kind === "message") {
 		if (item.role === "toolResult") return null;
@@ -320,43 +329,58 @@ function useTranscriptItemAnimations(items: readonly DesktopTranscriptItem[], lo
 
 function WorkProcess({
 	group,
-	settled,
+	items,
+	responding = false,
+	openWorkGroups,
+	openStateKey,
 	onOpenSubagent,
 }: {
 	readonly group: WorkGroup;
-	readonly settled: boolean;
+	readonly items: readonly DesktopTranscriptItem[];
+	readonly responding?: boolean;
+	readonly openWorkGroups?: Set<string>;
+	readonly openStateKey?: string;
 	readonly onOpenSubagent?: (item: DesktopSubagentItem) => void;
 }) {
 	const intl = useIntl();
 	const running = group.items.some(isWorkItemRunning);
 	const steps = workTimelineSteps(group.items, intl, { onOpenSubagent });
-	const hasWebSearchResults = group.items.some((item) => item.kind === "tool" && item.webSearchResults !== undefined);
-	const [open, setOpen] = useState(running || hasWebSearchResults);
-	const [now, setNow] = useState(Date.now);
+	const rememberedOpen = openStateKey !== undefined && openWorkGroups?.has(openStateKey);
+	const clock = workRunClock(items, group.items, responding, Date.now());
+	const [open, setOpen] = useState(clock.active || rememberedOpen === true);
+	const [, setNow] = useState(Date.now);
+	const wasActiveRef = useRef(clock.active);
 
-	useEffect(() => {
-		if (running) {
+	useLayoutEffect(() => {
+		const wasActive = wasActiveRef.current;
+		wasActiveRef.current = clock.active;
+		if (clock.active) {
 			setOpen(true);
-		} else if (settled) {
+		} else if (wasActive) {
 			setOpen(false);
+			if (openStateKey) openWorkGroups?.delete(openStateKey);
 		}
-	}, [running, settled]);
+	}, [clock.active, openStateKey, openWorkGroups]);
 
 	useEffect(() => {
-		if (hasWebSearchResults) setOpen(true);
-	}, [hasWebSearchResults]);
-
-	useEffect(() => {
-		if (!running) return;
+		if (!clock.active || clock.paused) return;
 		setNow(Date.now());
 		const interval = window.setInterval(() => setNow(Date.now()), 1_000);
 		return () => window.clearInterval(interval);
-	}, [running]);
+	}, [clock.active, clock.paused]);
 
 	const anchorItem = group.items.at(-1);
 	if (steps.length === 0) return null;
 
-	const label = workTimelineSummary(group.items, running, intl, now);
+	const label = workTimelineSummary(items, group.items, responding, intl);
+	const onOpenChange = (nextOpen: boolean) => {
+		if (clock.active && !nextOpen) return;
+		setOpen(nextOpen);
+		if (openStateKey) {
+			if (nextOpen) openWorkGroups?.add(openStateKey);
+			else openWorkGroups?.delete(openStateKey);
+		}
+	};
 
 	return (
 		<div className="py-0.5" data-transcript-item-id={anchorItem?.id}>
@@ -364,7 +388,7 @@ function WorkProcess({
 				activeLabel={label}
 				className="max-w-none"
 				open={open}
-				onOpenChange={setOpen}
+				onOpenChange={onOpenChange}
 				restingLabel={label}
 				steps={steps}
 				streaming={running}
@@ -376,11 +400,25 @@ function WorkProcess({
 // `onOpenSubagent` is deliberately not compared: it only forwards to shell
 // state setters, so a stale closure behaves identically and the memo stays hot.
 function sameWorkProcess(
-	previous: { readonly group: WorkGroup; readonly settled: boolean },
-	next: { readonly group: WorkGroup; readonly settled: boolean },
+	previous: {
+		readonly group: WorkGroup;
+		readonly items: readonly DesktopTranscriptItem[];
+		readonly responding?: boolean;
+		readonly openWorkGroups?: Set<string>;
+		readonly openStateKey?: string;
+	},
+	next: {
+		readonly group: WorkGroup;
+		readonly items: readonly DesktopTranscriptItem[];
+		readonly responding?: boolean;
+		readonly openWorkGroups?: Set<string>;
+		readonly openStateKey?: string;
+	},
 ): boolean {
-	if (previous.settled !== next.settled) return false;
+	if (previous.responding !== next.responding || previous.openStateKey !== next.openStateKey) return false;
+	if (previous.openWorkGroups !== next.openWorkGroups) return false;
 	if (previous.group.id !== next.group.id || previous.group.items.length !== next.group.items.length) return false;
+	if (previous.items !== next.items) return false;
 	return previous.group.items.every((item, index) => item === next.group.items[index]);
 }
 
@@ -555,26 +593,77 @@ function toolClusterDetails(
 }
 
 export function workTimelineSummary(
-	items: readonly WorkItem[],
-	running: boolean,
+	items: readonly DesktopTranscriptItem[],
+	workItems: readonly WorkItem[],
+	responding: boolean,
 	intl: IntlShape,
 	now = Date.now(),
 ): string {
-	const timedItems = items.filter(
-		(item): item is DesktopToolItem | DesktopSubagentItem =>
-			(item.kind === "tool" || item.kind === "subagent") && item.startedAt !== undefined,
-	);
-	if (timedItems.length === 0) {
-		return intl.formatMessage(running ? desktopMessages.transcriptWorking : desktopMessages.transcriptWorked);
+	const clock = workRunClock(items, workItems, responding, now);
+	if (clock.durationMs === 0 && clock.start === undefined) {
+		return intl.formatMessage(clock.active ? desktopMessages.transcriptWorking : desktopMessages.transcriptWorked);
 	}
-	const startedAt = Math.min(...timedItems.map((item) => item.startedAt!));
-	const completedAt = running
-		? now
-		: Math.max(...timedItems.map((item) => item.completedAt ?? item.startedAt!));
-	const duration = formatWorkDuration(completedAt - startedAt, intl);
-	return intl.formatMessage(running ? desktopMessages.transcriptWorkingDuration : desktopMessages.transcriptWorkedDuration, {
-		duration,
-	});
+	return intl.formatMessage(
+		clock.active ? desktopMessages.transcriptWorkingDuration : desktopMessages.transcriptWorkedDuration,
+		{ duration: formatWorkDuration(clock.durationMs, intl) },
+	);
+}
+
+function workRunClock(
+	items: readonly DesktopTranscriptItem[],
+	workItems: readonly WorkItem[],
+	responding: boolean,
+	now: number,
+): { active: boolean; paused: boolean; durationMs: number; start?: number } {
+	const firstWorkId = workItems[0]?.id;
+	let userAt: number | undefined;
+	let startIndex = 0;
+	for (let index = 0; index < items.length; index++) {
+		const item = items[index]!;
+		if (item.kind === "message" && item.role === "user") {
+			userAt = item.timestamp;
+			startIndex = index;
+		}
+		if (item.id === firstWorkId) break;
+	}
+
+	let pauseMs = 0;
+	let paused = false;
+	let lastAssistantAt: number | undefined;
+	let sawNextUser = false;
+	for (let index = startIndex; index < items.length; index++) {
+		const item = items[index]!;
+		if (index > startIndex && item.kind === "message" && item.role === "user") {
+			sawNextUser = true;
+			break;
+		}
+		if (item.kind === "permission") {
+			if (item.resolvedAt === undefined) paused = true;
+			pauseMs += Math.max(0, (item.resolvedAt ?? now) - item.requestedAt);
+		}
+		if (item.kind === "message" && item.role === "assistant" && item.status === "complete") {
+			lastAssistantAt = item.timestamp;
+		}
+	}
+
+	let workStart: number | undefined;
+	let workEnd: number | undefined;
+	for (const item of workItems) {
+		if (item.kind === "tool" || item.kind === "subagent") {
+			if (item.startedAt !== undefined) workStart = Math.min(workStart ?? item.startedAt, item.startedAt);
+			const end = item.completedAt ?? item.startedAt;
+			if (end !== undefined) workEnd = Math.max(workEnd ?? end, end);
+			continue;
+		}
+		workStart = Math.min(workStart ?? item.timestamp, item.timestamp);
+		workEnd = Math.max(workEnd ?? item.timestamp, item.timestamp);
+	}
+
+	const start = userAt ?? workStart;
+	const active = workItems.some(isWorkItemRunning) || paused || (!sawNextUser && responding);
+	if (start === undefined) return { active, paused, durationMs: 0 };
+	const end = active ? now : (lastAssistantAt ?? workEnd ?? now);
+	return { active, paused, durationMs: Math.max(0, end - start - pauseMs), start };
 }
 
 export function formatWorkDuration(milliseconds: number, intl: IntlShape): string {
@@ -583,7 +672,9 @@ export function formatWorkDuration(milliseconds: number, intl: IntlShape): strin
 	const hours = Math.floor(minutes / 60);
 	const units = [
 		...(hours > 0 ? [intl.formatNumber(hours, { style: "unit", unit: "hour", unitDisplay: "narrow" })] : []),
-		...(minutes % 60 > 0 ? [intl.formatNumber(minutes % 60, { style: "unit", unit: "minute", unitDisplay: "narrow" })] : []),
+		...(minutes % 60 > 0
+			? [intl.formatNumber(minutes % 60, { style: "unit", unit: "minute", unitDisplay: "narrow" })]
+			: []),
 		...(seconds % 60 > 0 || minutes === 0
 			? [intl.formatNumber(seconds % 60, { style: "unit", unit: "second", unitDisplay: "narrow" })]
 			: []),
@@ -648,4 +739,3 @@ function isWorkItem(item: DesktopTranscriptItem): item is WorkItem {
 function workItemTurnId(item: WorkItem): string {
 	return item.turnId;
 }
-

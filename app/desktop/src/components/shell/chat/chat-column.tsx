@@ -113,6 +113,7 @@ export function ChatColumn({
 	const FolderIcon = icons.folder;
 	const FolderOffIcon = icons["folder-off"];
 	const scrollRef = useRef<HTMLDivElement>(null);
+	const openWorkGroupsRef = useRef(new Set<string>());
 	const cancelTitleEditRef = useRef(false);
 	const reducedMotion = useReducedMotion();
 	const [editingTitle, setEditingTitle] = useState(false);
@@ -285,7 +286,7 @@ export function ChatColumn({
 				<div className="relative min-h-0 flex-1">
 					<div
 						ref={scrollRef}
-						className="h-full overflow-y-auto [overflow-anchor:none]"
+						className="h-full overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable]"
 						onKeyDownCapture={transcriptScroll.onKeyDownCapture}
 						onPointerDown={transcriptScroll.onPointerDown}
 						onPointerMove={transcriptScroll.onPointerMove}
@@ -303,8 +304,11 @@ export function ChatColumn({
 									</p>
 								) : null}
 								<TranscriptItems
-									items={transcriptItems}
+									items={chat.messages}
 									loading={chat.isLoading}
+									responding={isAgentWorking}
+									openWorkGroups={openWorkGroupsRef.current}
+									workGroupKeyPrefix={session?.id}
 									navigationDisabled={navigationDisabled}
 									onNavigate={chat.navigate}
 									onOpenSubagent={onOpenSubagent}
@@ -430,11 +434,7 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 	const anchorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	const nativeScrollActiveRef = useRef(false);
 	const scrollEpochRef = useRef(0);
-	const itemsRef = useRef(items);
-	const respondingRef = useRef(responding);
 	const previousRespondingRef = useRef(responding);
-	itemsRef.current = items;
-	respondingRef.current = responding;
 	const responseJustFinished = previousRespondingRef.current && !responding;
 	const [showMessageScroller, setShowMessageScroller] = useState(false);
 	const pointerStartRef = useRef<{ x: number; y: number } | undefined>(undefined);
@@ -681,26 +681,11 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 	useEffect(() => {
 		const element = ref.current;
 		if (!element || typeof ResizeObserver === "undefined") return;
-		const observer = new ResizeObserver(() => {
-			const current = ref.current;
-			if (!current) return;
-			if (!stateRef.current.followsNewResponse) {
-				syncMessageScroller();
-				return;
-			}
-			stateRef.current.expectedScrollTop = current.scrollTop;
-			const promptId = stateRef.current.lastUserMessageId;
-			if (promptId) applyTailSpace(measureTailSpace(current, promptId, tailSpaceRef.current));
-			const latestScrollableItem = lastScrollableTranscriptItem(itemsRef.current);
-			if (respondingRef.current && latestScrollableItem) {
-				followStreamingResponse(current, latestScrollableItem.id);
-			}
-			syncMessageScroller();
-		});
+		const observer = new ResizeObserver(syncMessageScroller);
 		observer.observe(element);
 		if (element.firstElementChild) observer.observe(element.firstElementChild);
 		return () => observer.disconnect();
-	}, [applyTailSpace, followStreamingResponse, ref, syncMessageScroller]);
+	}, [ref, syncMessageScroller]);
 
 	useEffect(() => {
 		return () => {
