@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="DeepSeek Harness 与 Pi Agent 观测和日志收集可复核报告">
+    <title>DeepSeek Harness 与 Pi Agent 如何做 Agent 观测和日志收集</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              ink: '#172033',
+              accent: '#0f766e',
+              paper: '#f8fafc',
+              pi: '#4338ca'
+            }
+          }
+        }
+      };
+    </script>
+  </head>
+  <body class="bg-paper text-ink antialiased">
+    <main class="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:py-16">
+      <header class="border-b border-slate-300 pb-8">
+        <p class="text-sm font-semibold tracking-wide text-accent">RESEARCH REPORT · OBSERVABILITY</p>
+        <h1 class="mt-3 max-w-5xl text-3xl font-semibold leading-tight sm:text-5xl">DeepSeek Harness 与 Pi Agent 如何做 Agent 观测和日志收集</h1>
+        <p class="mt-5 max-w-4xl text-base leading-7 text-slate-700">问题：两套 Agent 如何把运行时事实送入本地 durable store、用户界面与远端 exporter；哪些能力是当前真实接线，哪些只是可选或尚未接入。</p>
+        <div class="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
+          <p>核验日期：<time datetime="2026-08-28">2026-08-28</time></p>
+          <p>DeepSeek：<code>cd5ef8148158c3a752a658978873241fdf8e2bbc</code> · <code>0.1.2-alpha.1</code></p>
+          <p>Pi：<code>56700d42ed65a94a80af7376adb19a9298065164</code> · <code>0.84.3</code></p>
+          <a class="font-medium text-accent underline underline-offset-4" href="deepseek-harness-pi-agent-observability.md">查看完整证据笔记</a>
+        </div>
+      </header>
+
+      <section class="mt-10" data-report-section="conclusions" aria-labelledby="conclusions-title">
+        <div class="flex items-baseline justify-between gap-4">
+          <h2 id="conclusions-title" class="text-2xl font-semibold">直接结论</h2>
+          <p class="text-sm text-slate-600">HTML 仅呈现证据笔记已有结论</p>
+        </div>
+        <ol class="mt-5 grid gap-4 lg:grid-cols-2">
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c1" data-source-ids="s1 s5">
+            <p class="text-sm font-semibold text-accent">结论 01 · 事实模型</p>
+            <p class="mt-2 leading-7">DeepSeek 用单一 append-only <code>SessionEvent</code> ledger 驱动持久化、UI、查询与遥测；Pi 当前 CLI 把 live 事件与 durable v3 对话树分开。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s1">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c2" data-source-ids="s1 s5">
+            <p class="text-sm font-semibold text-accent">结论 02 · 轨迹粒度</p>
+            <p class="mt-2 leading-7">DeepSeek 本地保存 turn、step 与 normalized chunks；Pi 的 message/tool update 只 live，v3 session 主要保存最终消息与分支事实。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s5">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c3" data-source-ids="s2 s7">
+            <p class="text-sm font-semibold text-accent">结论 03 · 远端观测</p>
+            <p class="mt-2 leading-7">DeepSeek 已接入 OTel Logs，但没有 Agent traces/metrics；Pi 的 span schema 已发布，production instrumentation 与 exporter 尚未接入。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s2">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c4" data-source-ids="s2 s3">
+            <p class="text-sm font-semibold text-accent">结论 04 · DeepSeek 外发</p>
+            <p class="mt-2 leading-7">OTel 每个 step 只投影第一条 chunk；另有可发送完整 canonical suffix 的 <code>dsh_session_log</code>，但默认关闭，送达语义也不同。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s3">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c5" data-source-ids="s6 s7">
+            <p class="text-sm font-semibold text-accent">结论 05 · Pi 存储状态</p>
+            <p class="mt-2 leading-7">Pi v4 JSONL 与 SQLite backend 已真实实现，却未接入当前 Coding Agent CLI；当前默认仍是 v3 JSONL，Harness runtime 仍未完成。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s6">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5" data-claim-id="c6" data-source-ids="s8 s9">
+            <p class="text-sm font-semibold text-accent">结论 06 · Pi 边界修正</p>
+            <p class="mt-2 leading-7">Pi 默认不上传 Agent spans，却仍有模型目录、版本、package 与条件性 install 网络行为；部分 provider diagnostics 的 stack 可随最终 assistant message 持久化。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s8">查看来源</a>
+          </li>
+          <li class="border border-slate-300 bg-white p-5 lg:col-span-2" data-claim-id="c7" data-source-ids="s4 s9">
+            <p class="text-sm font-semibold text-accent">结论 07 · shell 与错误</p>
+            <p class="mt-2 leading-7">DeepSeek shell 有 per-stream capture spill 与通用 tool-result spill 两层；Pi stdout/stderr 默认进入同一字节流。两者都不能把临时全文路径视为长期可审计 artifact。</p>
+            <a class="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4" href="#source-s4">查看来源</a>
+          </li>
+        </ol>
+      </section>
+
+      <section class="mt-12" data-report-section="visual" aria-labelledby="visual-title">
+        <h2 id="visual-title" class="text-2xl font-semibold">两套数据链：真实接线与未接入边界</h2>
+        <figure class="mt-5 overflow-x-auto border border-slate-300 bg-white p-4 sm:p-8">
+          <svg class="h-auto min-w-[900px] w-full" viewBox="0 0 1160 600" role="img" aria-labelledby="diagram-title diagram-description">
+            <title id="diagram-title">DeepSeek Harness 与 Pi Agent 的数据链</title>
+            <desc id="diagram-description">上半部分为 DeepSeek：运行时进入 SessionEvent ledger，再分别进入默认 JSONL Zstd、本地 UI 查询与 OTel Logs；另有默认关闭的 dsh_session_log。下半部分为 Pi：运行时 live events 进入 UI 订阅，最终消息进入 v3 JSONL；span schema 到 exporter 的虚线标明未接入。实线表示当前运行路径，虚线表示默认关闭或未接入，文字标签同时编码状态。</desc>
+            <defs>
+              <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+                <path d="M0 0 L9 4.5 L0 9 Z" fill="#64748b"></path>
+              </marker>
+              <marker id="arrow-accent" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+                <path d="M0 0 L9 4.5 L0 9 Z" fill="#0f766e"></path>
+              </marker>
+            </defs>
+
+            <text x="24" y="38" fill="#0f766e" font-size="18" font-weight="700" font-family="system-ui, sans-serif">DEEPSEEK HARNESS</text>
+            <text x="24" y="330" fill="#4338ca" font-size="18" font-weight="700" font-family="system-ui, sans-serif">PI AGENT / CODING AGENT</text>
+
+            <path d="M232 140 H302" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#arrow-accent)"></path>
+            <path d="M512 110 H620" fill="none" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"></path>
+            <path d="M512 140 H620" fill="none" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"></path>
+            <path d="M512 170 C570 170 575 235 620 235" fill="none" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"></path>
+            <path d="M512 190 C700 285 865 250 920 205" fill="none" stroke="#0f766e" stroke-width="3" stroke-dasharray="10 8" marker-end="url(#arrow-accent)"></path>
+            <text x="700" y="278" fill="#0f766e" font-size="13" font-weight="600" font-family="system-ui, sans-serif">可选 · 默认关闭 dsh_session_log</text>
+
+            <rect x="24" y="80" width="208" height="120" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"></rect>
+            <text x="128" y="125" text-anchor="middle" fill="#172033" font-size="18" font-weight="700" font-family="system-ui, sans-serif">Agent runtime</text>
+            <text x="128" y="156" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">provider-normalized stream</text>
+            <text x="128" y="178" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">turn / step / tool</text>
+
+            <rect x="302" y="80" width="210" height="120" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="3"></rect>
+            <text x="407" y="125" text-anchor="middle" fill="#172033" font-size="18" font-weight="700" font-family="system-ui, sans-serif">SessionEvent ledger</text>
+            <text x="407" y="156" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">append-only · seq / time</text>
+            <text x="407" y="178" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">canonical facts</text>
+
+            <rect x="620" y="55" width="230" height="92" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"></rect>
+            <text x="735" y="94" text-anchor="middle" fill="#172033" font-size="17" font-weight="700" font-family="system-ui, sans-serif">Durable store</text>
+            <text x="735" y="121" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">默认 JSONL + Zstd</text>
+
+            <rect x="620" y="165" width="230" height="92" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"></rect>
+            <text x="735" y="204" text-anchor="middle" fill="#172033" font-size="17" font-weight="700" font-family="system-ui, sans-serif">UI / Query</text>
+            <text x="735" y="231" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">Trajectory · ZIP export</text>
+
+            <rect x="920" y="80" width="216" height="120" rx="10" fill="#ecfeff" stroke="#0f766e" stroke-width="2"></rect>
+            <text x="1028" y="119" text-anchor="middle" fill="#172033" font-size="17" font-weight="700" font-family="system-ui, sans-serif">远端出口</text>
+            <text x="1028" y="148" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">OTel Logs：已接线</text>
+            <text x="1028" y="173" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">session_log：默认关闭</text>
+
+            <path d="M232 405 H620" fill="none" stroke="#4338ca" stroke-width="3" marker-end="url(#arrow)"></path>
+            <path d="M232 455 H620" fill="none" stroke="#4338ca" stroke-width="3" marker-end="url(#arrow)"></path>
+            <path d="M850 510 H920" fill="none" stroke="#64748b" stroke-width="3" stroke-dasharray="10 8" marker-end="url(#arrow)"></path>
+            <text x="854" y="493" fill="#475569" font-size="13" font-weight="600" font-family="system-ui, sans-serif">未接入</text>
+
+            <rect x="24" y="370" width="208" height="120" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"></rect>
+            <text x="128" y="415" text-anchor="middle" fill="#172033" font-size="18" font-weight="700" font-family="system-ui, sans-serif">Core Agent runtime</text>
+            <text x="128" y="446" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">live AgentEvent</text>
+            <text x="128" y="468" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">message_end → durable</text>
+
+            <rect x="620" y="350" width="230" height="92" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"></rect>
+            <text x="735" y="389" text-anchor="middle" fill="#172033" font-size="17" font-weight="700" font-family="system-ui, sans-serif">TUI / SDK / JSON / RPC</text>
+            <text x="735" y="416" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">live · 无 replay 保证</text>
+
+            <rect x="620" y="462" width="230" height="92" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"></rect>
+            <text x="735" y="501" text-anchor="middle" fill="#172033" font-size="17" font-weight="700" font-family="system-ui, sans-serif">Durable store</text>
+            <text x="735" y="528" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">当前 CLI：v3 tree JSONL</text>
+
+            <rect x="920" y="462" width="216" height="92" rx="10" fill="#fff" stroke="#64748b" stroke-width="2" stroke-dasharray="9 7"></rect>
+            <text x="1028" y="501" text-anchor="middle" fill="#172033" font-size="17" font-weight="700" font-family="system-ui, sans-serif">Span exporter</text>
+            <text x="1028" y="528" text-anchor="middle" fill="#475569" font-size="14" font-family="system-ui, sans-serif">schema 有 · 运行链未接入</text>
+          </svg>
+          <figcaption class="mt-5 max-w-5xl text-sm leading-6 text-slate-600">实线表示固定版本中当前运行的链路；虚线同时配有“默认关闭”或“未接入”文字，不以颜色单独表达状态。图刻意省略字段级细节；v4 JSONL/SQLite 的状态和网络边界在下表列明。</figcaption>
+        </figure>
+      </section>
+
+      <section class="mt-12" aria-labelledby="comparison-title">
+        <h2 id="comparison-title" class="text-2xl font-semibold">逐维对比</h2>
+        <div class="mt-5 overflow-x-auto border border-slate-300 bg-white">
+          <table class="min-w-full border-collapse text-left text-sm">
+            <thead class="bg-slate-100">
+              <tr>
+                <th class="border-b border-slate-300 px-4 py-3 font-semibold">维度</th>
+                <th class="border-b border-slate-300 px-4 py-3 font-semibold text-accent">DeepSeek Harness</th>
+                <th class="border-b border-slate-300 px-4 py-3 font-semibold text-pi">Pi Agent / Coding Agent</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200">
+              <tr><th class="px-4 py-3 font-medium">事实主干</th><td class="px-4 py-3">单一 SessionEvent ledger</td><td class="px-4 py-3">live events + durable v3 entries 分层</td></tr>
+              <tr><th class="px-4 py-3 font-medium">模型增量</th><td class="px-4 py-3">每条 normalized chunk 本地 durable</td><td class="px-4 py-3">delta 只 live；最终 message durable</td></tr>
+              <tr><th class="px-4 py-3 font-medium">默认存储</th><td class="px-4 py-3">JSONL + Zstd；SQLite 可选</td><td class="px-4 py-3">CLI v3 tree JSONL</td></tr>
+              <tr><th class="px-4 py-3 font-medium">替代存储状态</th><td class="px-4 py-3">SQLite 可装配，非发行默认</td><td class="px-4 py-3">v4 JSONL/SQLite 已实现，CLI 未接入</td></tr>
+              <tr><th class="px-4 py-3 font-medium">shell</th><td class="px-4 py-3">分流捕获；两层 spill；render 后失去交错</td><td class="px-4 py-3">stdout/stderr 同流；全文临时文件</td></tr>
+              <tr><th class="px-4 py-3 font-medium">错误 stack</th><td class="px-4 py-3">durable/ops 白名单无 stack/cause</td><td class="px-4 py-3">部分 assistant diagnostics 可保存 stack</td></tr>
+              <tr><th class="px-4 py-3 font-medium">Agent exporter</th><td class="px-4 py-3">OTel Logs 已接线；无 traces/metrics</td><td class="px-4 py-3">span schema 有；生产链与 exporter 无</td></tr>
+              <tr><th class="px-4 py-3 font-medium">默认网络</th><td class="px-4 py-3">模型 API；反馈触发 OTel</td><td class="px-4 py-3">provider；目录/版本/package 检查；条件性 install ping</td></tr>
+              <tr><th class="px-4 py-3 font-medium">送达</th><td class="px-4 py-3">OTel best effort；session_log 接近 at-least-once</td><td class="px-4 py-3">无 Agent span 远端链可评价</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="mt-12 grid gap-8 lg:grid-cols-2">
+        <section data-report-section="impact" aria-labelledby="impact-title">
+          <h2 id="impact-title" class="text-2xl font-semibold">对 jai-mono 的影响</h2>
+          <div class="mt-5 border-l-4 border-accent bg-white px-5 py-4 leading-7 text-slate-700">
+            <ol class="list-decimal space-y-2 pl-5">
+              <li>坚持 SQLite journal 是唯一 durable owner，从 journal 与 live state 单向投影。</li>
+              <li>分开 durable facts、live events、diagnostic logs 与 traces/metrics，并写明 replay、背压和失败隔离。</li>
+              <li>shell 保存结构化 channel/seq/monotonic offset 与 durable artifact reference，合并文本只作模型投影。</li>
+              <li>远端 telemetry 使用白名单 DTO，默认排除内容、headers、cwd、stack、cause 与 SDK error object。</li>
+              <li>以最终 composition root 测试 endpoint、默认关闭、hard opt-out、redaction 与 shutdown。</li>
+              <li>先完成本地审计 UI；远端关系用 spans、聚合分布用 metrics，可靠上传需明确 outbox 语义。</li>
+            </ol>
+          </div>
+        </section>
+        <section data-report-section="unknowns" aria-labelledby="unknowns-title">
+          <h2 id="unknowns-title" class="text-2xl font-semibold">尚未确认</h2>
+          <div class="mt-5 border border-dashed border-slate-400 bg-white px-5 py-4 leading-7 text-slate-700">
+            <ul class="list-disc space-y-2 pl-5">
+              <li>DeepSeek collector 的服务端 schema、留存、访问控制、地域、二次处理与删除政策。</li>
+              <li>部署方自定义 DeepSeek 插件或 Pi Extension / transport 产生的额外采集与网络行为。</li>
+              <li>Pi v4/Harness 未来何时接入 Coding Agent CLI；规格与已实现 adapter 不代表当前运行事实。</li>
+            </ul>
+          </div>
+        </section>
+      </section>
+
+      <section class="mt-12 border-t border-slate-300 pt-8" data-report-section="sources" aria-labelledby="sources-title">
+        <h2 id="sources-title" class="text-2xl font-semibold">来源索引</h2>
+        <p class="mt-2 text-sm text-slate-600">每项同时回到 Markdown 事实依据与固定 SHA 的官方 permalink。</p>
+        <ol class="mt-5 grid gap-5 text-sm leading-6 text-slate-700 lg:grid-cols-2">
+          <li id="source-s1" class="border border-slate-200 bg-white p-4">
+            <p class="font-medium">[S1] DeepSeek SessionEvent ledger</p>
+            <a class="block text-accent underline underline-offset-4" href="deepseek-harness-pi-agent-observability.md#结论">Markdown：结论与数据链</a>
+            <a class="block break-all text-accent underline underline-offset-4" href="https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/core/session/src/types.ts#L215-L301">官方源码 permalink</a>
+          </li>
+          <li id="source-s2" class="border border-slate-200 bg-white p-4">
+            <p class="font-medium">[S2] DeepSeek OTel Logs 与 first-chunk projection</p>
+            <a class="block text-accent underline underline-offset-4" href="deepseek-harness-pi-agent-observability.md#deepseek-harness">Markdown：DeepSeek 数据链</a>
+            <a class="block break-all text-accent underline underline-offset-4" href="https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-telemetry/src/coordinator.ts#L179-L220">官方源码 permalink</a>
+          </li>
+          <li id="source-s3" class="border border-slate-200 bg-white p-4">
+            <p class="font-medium">[S3] DeepSeek dsh_session_log</p>
+            <a class="block text-accent underline underline-offset-4" href="deepseek-harness-pi-agent-observability.md#deepseek-harness">Markdown：可选外发通道</a>
+            <a class="block break-all text-accent underline underline-offset-4" href="https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/session/session-log-deepseek/src/index.ts#L64-L99">官方源码 permalink</a>
+          </li>
+          <li id="source-s4" class="border border-slate-200 bg-white p-4">
+            <p class="font-medium">[S4] DeepSeek shell 两层 spill</p>
+            <a class="block text-accent underline underline-offset-4" href="deepseek-harness-pi-agent-observability.md#结论">Markdown：结论 8</a>
+            <a class="block break-all text-accent underline underline-offset-4" href="https://github.com/deepseek-ai/deepseek-harness/blob/cd5ef8148158c3a752a658978873241fdf8e2bbc/packages/shell/bash-local/src/index.ts#L173-L197">官方源码 permalink</a>
+          </li>
+          <li id="source-s5" class="border border-slate-200 bg-white p-4">
+            <p class="font-medium">[S5] Pi 当前 AgentSession → v3 JSONL 主链</p>
+            <a class="block text-accent underline underline-offset-4" href="deepseek-harness-pi-agent-observability.md#pi-agent--coding-agent">Markdown：Pi 数据链</a>
+            <a class="block break-all text-accent underline underline-offset-4" href="https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/core/agent-session.ts#L643-L724">官方源码 permalink</a>
+          </li>
+          <li id="source-s6" class="border border-slate-200 bg-white p-4">
+            <p class="font-medium">[S6] Pi v4 JSONL 与 SQLite backend</p>
+            <a class="block text-accent underline underline-offset-4" href="deepseek-harness-pi-agent-observability.md#pi-agent--coding-agent">Markdown：已实现但未接入</a>
+            <a class="block break-all text-accent underline underline-offset-4" href="https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/agent/src/harness/session/jsonl/codec.ts#L203-L239">官方源码 permalink</a>
+          </li>
+          <li id="source-s7" class="border border-slate-200 bg-white p-4">
+            <p class="font-medium">[S7] Pi telemetry contract 与 Harness scaffold</p>
+            <a class="block text-accent underline underline-offset-4" href="deepseek-harness-pi-agent-observability.md#结论">Markdown：结论 4 与 6</a>
+            <a class="block break-all text-accent underline underline-offset-4" href="https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/agent/src/harness/agent-harness.ts#L347-L420">官方源码 permalink</a>
+          </li>
+          <li id="source-s8" class="border border-slate-200 bg-white p-4">
+            <p class="font-medium">[S8] Pi 默认网络与 install ping</p>
+            <a class="block text-accent underline underline-offset-4" href="deepseek-harness-pi-agent-observability.md#结论">Markdown：结论 7</a>
+            <a class="block break-all text-accent underline underline-offset-4" href="https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L1081-L1117">官方源码 permalink</a>
+          </li>
+          <li id="source-s9" class="border border-slate-200 bg-white p-4 lg:col-span-2">
+            <p class="font-medium">[S9] Pi diagnostics stack 与 shell 合流</p>
+            <a class="block text-accent underline underline-offset-4" href="deepseek-harness-pi-agent-observability.md#pi-agent--coding-agent">Markdown：Pi 错误与 shell 边界</a>
+            <a class="block break-all text-accent underline underline-offset-4" href="https://github.com/badlogic/pi-mono/blob/56700d42ed65a94a80af7376adb19a9298065164/packages/ai/src/utils/diagnostics.ts#L1-L37">官方源码 permalink</a>
+          </li>
+        </ol>
+      </section>
+    </main>
+  </body>
+</html>

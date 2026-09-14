@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent 工作过程时间线的实现机制</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { --ink:#172033; --muted:#4b5563; --paper:#f8fafc; --panel:#fff; --line:#cbd5e1; --accent:#0f766e; --soft:#ccfbf1; --code:#0f172a; }
+    @media (prefers-color-scheme: dark) { :root { --ink:#e5e7eb; --muted:#9ca3af; --paper:#0b1220; --panel:#111827; --line:#334155; --accent:#2dd4bf; --soft:#134e4a; --code:#020617; } }
+    body { background:var(--paper); color:var(--ink); } a { color:var(--accent); text-decoration:underline; text-underline-offset:3px; } p,li { line-height:1.8; } code { background:var(--soft); padding:.1em .3em; } details { border:1px solid var(--line); background:var(--panel); } summary { cursor:pointer; padding:.75rem 1rem; font-weight:600; } details > div { border-top:1px solid var(--line); padding:1rem; } blockquote,pre { border-left:3px solid var(--accent); background:var(--paper); padding:.8rem 1rem; margin:1rem 0; overflow:auto; } pre { background:var(--code); color:#e2e8f0; } table { width:100%; border-collapse:collapse; } th,td { border-bottom:1px solid var(--line); padding:.75rem; text-align:left; vertical-align:top; } th { font-weight:600; } [data-plain] { font-size:1.08rem; }
+  </style>
+</head>
+<body>
+  <main class="mx-auto max-w-5xl px-5 py-10 lg:px-10">
+    <header class="border-b pb-8" style="border-color:var(--line)">
+      <h1 class="text-3xl font-semibold tracking-tight">Agent 工作过程时间线的实现机制</h1>
+      <p class="mt-4 max-w-3xl" data-plain>好看的工作过程不是模型假装写日志，而是界面把实际发生的文字、工具和子代理按顺序排进同一条可展开的任务流。</p>
+      <p class="mt-4 text-sm" style="color:var(--muted)">核验日期：2026-09-10。源码固定到文中 SHA；在线文档以当天访问内容为准。证据笔记：<a href="tool-timeline-mechanisms.md">Markdown</a>。</p>
+    </header>
+
+    <section class="mt-10" id="conclusions" data-report-section="conclusions">
+      <h2 class="text-2xl font-semibold">结论</h2>
+      <ol class="mt-5 grid gap-3 md:grid-cols-2">
+        <li class="border p-4" style="border-color:var(--line);background:var(--panel)" data-claim-id="c1" data-source-ids="codex">
+          <p data-plain>一轮用户请求里发生的每一件事，都应是一条可更新的记录。</p><p class="text-sm" style="color:var(--muted)">前提：宿主能获得 started、delta、completed 等事件。</p>
+        </li>
+        <li class="border p-4" style="border-color:var(--line);background:var(--panel)" data-claim-id="c2" data-source-ids="openai">
+          <p data-plain>工具的开始、参数完成和结果是不同事件，必须用调用 ID 连接。</p><p class="text-sm" style="color:var(--muted)">前提：不能只用工具名字，因为同名调用可以并发。</p>
+        </li>
+        <li class="border p-4" style="border-color:var(--line);background:var(--panel)" data-claim-id="c3" data-source-ids="anthropic">
+          <p data-plain>只有模型真的说了话，才显示模型的中间说明。</p><p class="text-sm" style="color:var(--muted)">限制：文本在协议中通常没有“中间”或“最终”的专用标签。</p>
+        </li>
+        <li class="border p-4" style="border-color:var(--line);background:var(--panel)" data-claim-id="c4" data-source-ids="claude">
+          <p data-plain>子代理在主列表里是一条短任务，明细放到展开区或侧栏。</p><p class="text-sm" style="color:var(--muted)">前提：必须有父调用 ID，不能靠标题猜嵌套。</p>
+        </li>
+        <li class="border p-4" style="border-color:var(--line);background:var(--panel)" data-claim-id="c5" data-source-ids="gemini">
+          <p data-plain>历史记录可恢复；正在转的状态不可恢复。</p><p class="text-sm" style="color:var(--muted)">spinner、计时器和订阅只属于当前进程。</p>
+        </li>
+        <li class="border p-4" style="border-color:var(--line);background:var(--panel)" data-claim-id="c6" data-source-ids="openai-node">
+          <p data-plain>“用时”应由本机量出来，而不是猜成供应商的工具耗时。</p><p class="text-sm" style="color:var(--muted)">Response 时间戳只覆盖整条 response。</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="mt-12" id="event" aria-labelledby="event-title">
+      <h2 id="event-title" class="text-2xl font-semibold">事件驱动，而不是事后排版</h2>
+      <p class="mt-4 max-w-3xl" data-plain>界面像施工看板：工人开工、进展和验收各有一笔，而不是等工程结束后凭照片猜发生顺序。</p>
+      <p class="mt-3 max-w-3xl" style="color:var(--muted)">类比的边界：模型流会并发、重试和中断，不能把屏幕上的相邻两行当作因果关系；要靠稳定 ID 和顺序字段。</p>
+      <figure class="mt-6 border p-4" style="border-color:var(--line);background:var(--panel)">
+        <svg viewBox="0 0 900 170" class="w-full" role="img" aria-labelledby="flow-title flow-desc">
+          <title id="flow-title">一次 agent 工作过程的事件流</title><desc id="flow-desc">用户请求创建一轮任务，模型文字、工具与子代理作为条目依次加入；每个条目按 ID 更新，完成后封存。</desc>
+          <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="var(--muted)"/></marker></defs>
+          <path d="M145 85H220M365 85H440M585 85H660" stroke="var(--muted)" stroke-width="2" marker-end="url(#a)"/>
+          <g fill="var(--panel)" stroke="var(--line)" stroke-width="2"><rect x="15" y="45" width="130" height="80" rx="5"/><rect x="220" y="45" width="145" height="80" rx="5"/><rect x="440" y="45" width="145" height="80" rx="5"/><rect x="660" y="45" width="190" height="80" rx="5"/></g>
+          <g fill="var(--ink)" font-family="system-ui" font-size="16" text-anchor="middle"><text x="80" y="78">用户请求</text><text x="80" y="102">创建 turn</text><text x="292" y="78">模型文字</text><text x="292" y="102">实际收到才展示</text><text x="512" y="78">工具 / 子代理</text><text x="512" y="102">按 ID 更新</text><text x="755" y="78">结果与最终回答</text><text x="755" y="102">结束后封存</text></g>
+        </svg>
+        <figcaption class="mt-3 text-sm" style="color:var(--muted)">每个方框是一个可显示条目，不是一个气泡样式。子代理和工具在同一层，子代理内部活动才是它的下级内容。</figcaption>
+      </figure>
+      <details class="mt-6"><summary>证据与原文</summary><div>
+        <p><a href="https://developers.openai.com/codex/app-server">Codex App Server</a>（访问于 2026-09-10）定义了可流式工作过程的层级：</p>
+        <blockquote>- Thread: A conversation between a user and the Codex agent. Threads contain turns.<br>- Turn: A single user request and the agent work that follows. Turns contain items and stream incremental updates.<br>- Item: A unit of input or output (user message, agent message, command runs, file change, tool call, and more).</blockquote>
+      </div></details>
+    </section>
+
+    <section class="mt-12" id="boundary" aria-labelledby="boundary-title">
+      <h2 id="boundary-title" class="text-2xl font-semibold">工具、文本与子代理的结构边界</h2>
+      <p class="mt-4 max-w-3xl" data-plain>工具和文字都有自己的身份证；子代理还带着“我是谁派来的”这张关系卡，UI 不需要靠猜。</p>
+      <p class="mt-3 max-w-3xl" style="color:var(--muted)">所以主时间线应为 subagent 保留一行，点击后再显示下级活动；没有 parent ID 时只能平铺，不能伪造树。</p>
+      <details class="mt-6"><summary>证据与原文</summary><div>
+        <p><a href="https://platform.openai.com/docs/guides/function-calling#streaming">OpenAI Function calling streaming</a>（访问于 2026-09-10）把调用身份分开提供：</p>
+        <blockquote><code>{"type":"response.output_item.added","response_id":"resp_1234xyz","output_index":0,"item":{"type":"function_call","id":"fc_1234xyz","call_id":"call_1234xyz","name":"get_weather","arguments":""}}</code><br><code>{"type":"response.function_call_arguments.delta","response_id":"resp_1234xyz","item_id":"fc_1234xyz","output_index":0,"delta":"location"}</code></blockquote>
+        <p><a href="https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/handle-tool-calls">Anthropic Handle tool calls</a>（访问于 2026-09-10）说明 client 工具结果跨 response：</p>
+        <blockquote>Tool result blocks must immediately follow their corresponding tool use blocks in the message history.<br>You cannot include any messages between the assistant's tool use message and the user's tool result message.</blockquote>
+        <p><a href="https://docs.anthropic.com/en/docs/claude-code/headless">Claude Code Headless</a>（访问于 2026-09-10）说明嵌套关系与默认可见范围：</p>
+        <blockquote>Messages from subagents appear in the stream as `assistant` and `user` messages whose `parent_tool_use_id` field is the ID of the tool call that spawned the subagent.<br>By default, Claude Code emits only subagent `tool_use` and `tool_result` blocks.</blockquote>
+      </div></details>
+    </section>
+
+    <section class="mt-12" id="state" aria-labelledby="state-title">
+      <h2 id="state-title" class="text-2xl font-semibold">可重放事实与易失状态</h2>
+      <p class="mt-4 max-w-3xl" data-plain>会话历史像收据，重开后还能读；加载动画像服务员手势，窗口一关就应消失。</p>
+      <p class="mt-3 max-w-3xl" style="color:var(--muted)">工具耗时需在实际执行器前后记录单调时间；provider 的 response 时间只能用于粗略的整轮耗时。</p>
+      <details class="mt-6"><summary>证据与原文</summary><div>
+        <p><a href="https://github.com/google-gemini/gemini-cli/blob/ed2ac40df67a319bf348bd7e3d10494696b31b38/packages/core/src/services/chatRecordingService.ts#L103-L124">Gemini CLI recording service @ ed2ac40d</a> 的可恢复判定：</p>
+        <pre><code>if (message.type === 'gemini') {
+  return (
+    contentString.trim().length > 0 ||
+    (message.toolCalls?.length ?? 0) > 0 ||
+    (message.thoughts?.length ?? 0) > 0
+  );
+}</code></pre>
+        <p><a href="https://github.com/openai/openai-node/blob/fe2d6a382623b00753f002de539f8a26c936b5be/src/resources/responses/responses.ts#L1043-L1058">OpenAI Node Response type @ fe2d6a3</a> 暴露的是 response 创建时间：</p>
+        <pre><code>/**
+ * Unix timestamp (in seconds) of when this Response was created.
+ */
+created_at: number;
+
+output_text: string;</code></pre>
+      </div></details>
+    </section>
+
+    <section class="mt-12" id="patterns" aria-labelledby="patterns-title">
+      <h2 id="patterns-title" class="text-2xl font-semibold">同类产品的共同模式</h2>
+      <p class="mt-4" data-plain>三个产品的画法不同，但都把结构化事件当事实，再把事实投影成简短、可展开的工具行。</p>
+      <div class="mt-4 overflow-x-auto border" style="border-color:var(--line);background:var(--panel)"><table>
+        <thead><tr><th>维度</th><th>Codex</th><th>Gemini CLI</th><th>Claude Code</th></tr></thead>
+        <tbody>
+          <tr><th>主列表 owner</th><td><a href="https://developers.openai.com/codex/app-server">Turn 中的 Item</a></td><td><a href="https://github.com/google-gemini/gemini-cli/blob/f8541cf7/packages/cli/src/utils/sessionUtils.ts#L297-L309">Gemini message 的 toolCalls</a></td><td><a href="https://docs.anthropic.com/en/docs/claude-code/headless">Agent tool call</a></td></tr>
+          <tr><th>子代理关联</th><td>协作 agent item</td><td>scheduler ID + activity</td><td>parent tool-use ID</td></tr>
+          <tr><th>运行中状态</th><td>item event 的 live projection</td><td>scheduler React state</td><td>stream-json live output</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section class="mt-12" id="coverage" data-report-section="coverage"><h2 class="text-2xl font-semibold">来源覆盖</h2>
+      <p class="mt-4" data-plain>这张表说明本报告查了哪些一手资料，也标出没有把哪些材料当成事实依据。</p>
+      <div class="mt-4 overflow-x-auto border" style="border-color:var(--line);background:var(--panel)"><table><tbody>
+        <tr><th>官方文档 / 源码</th><td>Anthropic、OpenAI、Codex、Gemini CLI、Claude Code 的官方文档或固定 SHA 源码。</td></tr>
+        <tr><th>作者或维护者本人的说法</th><td>查阅三家官方产品与 SDK 文档；未找到更直接且改变结论的个人说明。</td></tr>
+        <tr><th>同类方案</th><td>Codex、Gemini CLI、Claude Code 三种产品模式。</td></tr>
+        <tr><th>issue / PR / 社区实践</th><td>未将社区讨论作为协议事实；官方文档与源码已足够。</td></tr>
+        <tr><th>历史演变</th><td>Claude 记录 forward-subagent-text 门槛；OpenAI changelog 记录 settled tool result 恢复修复。</td></tr>
+      </tbody></table></div>
+    </section>
+
+    <section class="mt-12" id="unknowns" data-report-section="unknowns"><h2 class="text-2xl font-semibold">待验证</h2>
+      <p>无外部协议层面的待验证项。具体落地前仍需核对本项目现有 ACP 流是否持有每个工具的顺序、父级 ID 与终态。</p>
+    </section>
+    <section class="mt-12" id="glossary" data-report-section="glossary"><h2 class="text-2xl font-semibold">术语表</h2>
+      <dl><dt class="mt-3 font-semibold">turn</dt><dd>用户发出一次请求后，agent 为完成这次请求所做的整段工作。</dd><dt class="mt-3 font-semibold">item</dt><dd>这段工作中的一件可单独显示和更新的事，例如一段文字或一次工具调用。</dd><dt class="mt-3 font-semibold">父调用 ID</dt><dd>标记某个子代理由哪次工具调用创建的编号，用它才能可靠显示上下级关系。</dd></dl>
+    </section>
+    <section class="mt-12 border-t pt-8" style="border-color:var(--line)" id="sources" data-report-section="sources"><h2 class="text-2xl font-semibold">来源</h2>
+      <ol class="mt-5 space-y-3 text-sm">
+        <li id="source-codex" data-source-kind="primary"><a href="https://developers.openai.com/codex/app-server">Codex App Server</a>（官方文档，访问于 2026-09-10）</li>
+        <li id="source-openai" data-source-kind="primary"><a href="https://platform.openai.com/docs/guides/function-calling#streaming">OpenAI Function calling streaming</a>（官方文档，访问于 2026-09-10）</li>
+        <li id="source-anthropic" data-source-kind="primary"><a href="https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/handle-tool-calls">Anthropic Handle tool calls</a>（官方文档，访问于 2026-09-10）</li>
+        <li id="source-claude" data-source-kind="primary"><a href="https://docs.anthropic.com/en/docs/claude-code/headless">Claude Code Headless</a>（官方文档，访问于 2026-09-10）</li>
+        <li id="source-gemini" data-source-kind="primary"><a href="https://github.com/google-gemini/gemini-cli/blob/ed2ac40df67a319bf348bd7e3d10494696b31b38/packages/core/src/services/chatRecordingService.ts#L103-L124">Gemini CLI chatRecordingService @ ed2ac40d</a></li>
+        <li id="source-openai-node" data-source-kind="primary"><a href="https://github.com/openai/openai-node/blob/fe2d6a382623b00753f002de539f8a26c936b5be/src/resources/responses/responses.ts#L1043-L1058">OpenAI Node Response type @ fe2d6a3</a></li>
+      </ol>
+    </section>
+    <section class="mt-12" id="impact" data-report-section="impact"><h2 class="text-2xl font-semibold">对本项目的影响</h2>
+      <p class="mt-4 max-w-3xl" data-plain>要做出图二、图三的层次感，关键是把现在已有的事件整理成可靠条目，而不是增加更多卡片、颜色或模型提示词。</p>
+      <ul class="mt-4 list-disc pl-5"><li>工具和子代理进入同一个 turn 内列表；子代理默认是父工具行，点击才开侧栏/明细。</li><li>真实 narration 作普通文本段；没有 narration 时保守显示系统状态。</li><li>不要持久化 spinner、订阅或 in-flight 状态；不要从标题字符串推测关系或用工具名配对结果。</li></ul>
+    </section>
+  </main>
+</body>
+</html>
