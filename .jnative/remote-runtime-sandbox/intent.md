@@ -1,3 +1,5 @@
+> 已于 2026-09-14 迁移至 [GitHub Issue #74](https://github.com/jiahao-jayden/jai-mono/issues/74)。本文件仅保留历史，不再更新任务进度；当前状态以 Issue 为准。
+
 # 需求说明: 可部署的远程 Runtime 与云端 Sandbox
 
 日期:2026-09-01

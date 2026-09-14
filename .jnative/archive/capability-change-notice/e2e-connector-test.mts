@@ -4,7 +4,7 @@
  * Connects to ACP v2 for the agent session and to the desktop-configuration
  * socket to toggle a connector's enabled flag between runs.
  *
- * Usage: bun run .jnative/capability-change-notice/e2e-connector-test.mts
+ * Usage: bun run .jnative/archive/capability-change-notice/e2e-connector-test.mts
  */
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";

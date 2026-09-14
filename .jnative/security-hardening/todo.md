@@ -1,3 +1,5 @@
+> 已于 2026-09-14 迁移至 [GitHub Issue #65](https://github.com/jiahao-jayden/jai-mono/issues/65)。本文件仅保留历史，不再更新任务进度；当前状态以 Issue 为准。
+
 # 工作清单: 补齐 Desktop 侧信任边界与若干实现缺口
 
 进度:0/8

@@ -5,7 +5,7 @@
  * sends a prompt, changes the MCP config, sends another prompt,
  * and inspects the session messages for synthetic notices.
  *
- * Usage: bun run .jnative/capability-change-notice/e2e-test.mts
+ * Usage: bun run .jnative/archive/capability-change-notice/e2e-test.mts
  */
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";

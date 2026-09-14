@@ -25,7 +25,7 @@
 - Anthropic prompt cache：adapter 在 system、最后一个 tool 定义、最后一条 user 消息的最后一个 block 三处打断点（`packages/ai/src/providers/anthropic.ts`）。本方案约定：模型可见 tools 与 system prompt 在 Operation 内不变；所有注入只追加 user 消息。OpenAI 自动前缀缓存同样只要求 append-only。
 - 通知与用户 prompt 是 run 发起时相邻的两条 user 消息。Anthropic Messages API 接受相邻同角色消息并合并为一个 turn；实施第 1 项时用真实请求日志核实一次。
 - Claude Code 的"用户元数据消息 + 末尾注入 + 压缩后重建"只作行为参考（见 [需求说明·参考对象](intent.md#参考对象)）。差异：本仓库 journal 只追加，"重建"实现为把 announced 快照附在压缩摘要之后。
-- 统一前门的缓存依据见 [JAI 统一工具前门](../research/tools/_jai-unified-tool-frontdoor.md)。
+- 统一前门的缓存依据见 [JAI 统一工具前门](../../research/tools/_jai-unified-tool-frontdoor.md)。
 
 ## 需要先想清的事
 | 维度 | 结论 | 依据 |

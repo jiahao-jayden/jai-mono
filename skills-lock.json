@@ -1,23 +1,11 @@
 {
   "version": 1,
   "skills": {
-    "animate": {
-      "source": "emilkowalski/skills",
-      "sourceType": "github",
-      "skillPath": "skills/animate/SKILL.md",
-      "computedHash": "609e30351bf518b21a8cfe87cd1111554855527075d6563605bafe61963252f7"
-    },
     "codebase-design": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/codebase-design/SKILL.md",
       "computedHash": "5a17552cc1482f1a40124bf4e6c9dbd90ac0dbb47e71c07d47369f9e5f2ae3b5"
-    },
-    "find-animation-opportunities": {
-      "source": "emilkowalski/skills",
-      "sourceType": "github",
-      "skillPath": "skills/find-animation-opportunities/SKILL.md",
-      "computedHash": "8fb8492eb8fbed1313cb430b5831d925d9b8964ca24f3c41a6244cbd1fd98732"
     },
     "impeccable": {
       "source": "pbakaus/impeccable",
@@ -35,31 +23,25 @@
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "jn/SKILL.md",
-      "computedHash": "c65d09b64267ac4ce56b3b4f86c91f114a7612b461ae8641c7ee80df782dd9a4"
+      "computedHash": "09c0028a278033dcdbfc3856d5178698f6d052e11b8dce7c8fefe3891e980527"
     },
     "jn-grilling": {
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "jn-grilling/SKILL.md",
-      "computedHash": "c128679686edbe73198e57039831ba6d8bc417406f135715bc6701710d731278"
+      "computedHash": "70b242158335d328bda4260d91ddfb316ab8c2e065c40f6c39970cdf10509a12"
     },
     "jn-intent": {
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "jn-intent/SKILL.md",
-      "computedHash": "2187b188295b807e146d4b8a0327ed2b3ad697e074a488b976e1083d6b8f8e6e"
+      "computedHash": "cc2d14035619ec4e0845fd07a0ab2c4bf97ee18066a7f6287c77c5dec9e10fa5"
     },
     "jn-plan": {
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "jn-plan/SKILL.md",
-      "computedHash": "7ca31f5ba2dae3a40a14ff73e97b72f7b4b435b1d85c8e8d2e96597c61041cae"
-    },
-    "prototype": {
-      "source": "emilkowalski/skills",
-      "sourceType": "github",
-      "skillPath": "skills/prototype/SKILL.md",
-      "computedHash": "f246d1f47566481d9207e1aa574bdee5454257d862919a6591283e9af2f57eab"
+      "computedHash": "236104589d47f49bfcf0d3c7d5033af55fcc314db80875ad8353d5f1dea110a8"
     },
     "renhua": {
       "source": "jiahao-jayden/skills",
@@ -71,25 +53,19 @@
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "research/SKILL.md",
-      "computedHash": "74752727559feeab7b42bbce27a7b55bf4851440e0924a115672af993dadbead"
-    },
-    "review-animations": {
-      "source": "emilkowalski/skills",
-      "sourceType": "github",
-      "skillPath": "skills/review-animations/SKILL.md",
-      "computedHash": "b9f669af5ae280c19a592a94611520335a81de25c88f225bf60ae4b2d66c8c7c"
+      "computedHash": "1c3217216ec4632341cd5ca6e56140a17eb47f8127d48c1706485980f4ffadb8"
     },
     "shadcn": {
       "source": "shadcn/ui",
       "sourceType": "github",
       "skillPath": "skills/shadcn/SKILL.md",
-      "computedHash": "a86630dd9b32722a4ea6846abc6756d5da8f06bdc2343dbc625923cc5c7a758b"
+      "computedHash": "f615de216e085a84e31593ad0fa9062232adc40cd87b7c7ab2b8e49abf6500be"
     },
     "simplify-codebase": {
       "source": "tt-a1i/simplify-codebase",
       "sourceType": "github",
       "skillPath": "SKILL.md",
-      "computedHash": "8b636003d3dd115184b45f8505b30bba2a297159d70e27d884964b92a13fd29c"
+      "computedHash": "d65e57001a635b75687cdf7825e3dfff5d963cdfebb70697376c029c97560340"
     },
     "thermo-nuclear-code-quality-review": {
       "source": "cursor/plugins",

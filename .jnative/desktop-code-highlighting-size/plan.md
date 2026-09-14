@@ -1,3 +1,5 @@
+> 已于 2026-09-14 迁移至 [GitHub Issue #63](https://github.com/jiahao-jayden/jai-mono/issues/63)。本文件仅保留历史，不再更新任务进度；当前状态以 Issue 为准。
+
 # 计划：降低 Desktop 代码高亮资源体积
 
 来源：意图说明 · 日期：2026-09-12 · 状态：✅ 已确认 · 可执行 · 确认日期：2026-09-12

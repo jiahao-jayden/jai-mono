@@ -1,3 +1,5 @@
+> 已于 2026-09-14 迁移至 [GitHub Issue #60](https://github.com/jiahao-jayden/jai-mono/issues/60)。本文件仅保留历史，不再更新任务进度；当前状态以 Issue 为准。
+
 # 计划: Agent 搜索收敛（环境可见、拒绝语义、失败阈值）
 
 来源:[需求说明](intent.md) · 日期:2026-09-13 · 状态:✅ 已确认 · 可执行 · 确认日期:2026-09-14

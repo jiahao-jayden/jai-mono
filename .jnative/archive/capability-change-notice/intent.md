@@ -203,5 +203,5 @@ flowchart LR
 - `RuntimeMcpSettingsController` 同时持有 `save` 与基于 `probeMcpServers` 的 `status`，探测是独立于 Agent runtime 的第三条连接（`app/server/src/runtime-capabilities/mcp-settings.ts`）。
 
 ## 参考对象
-- 统一前门的缓存论证见 [JAI 统一工具前门](../research/tools/_jai-unified-tool-frontdoor.md)。
+- 统一前门的缓存论证见 [JAI 统一工具前门](../../research/tools/_jai-unified-tool-frontdoor.md)。
 - Claude Code 的做法（用户元数据消息承载 skill / MCP 清单、末尾注入热更新提示、压缩后重建）作为行为参考，不严格遵循；本仓库 journal 只能追加，因此"重建第一条消息"等价为"压缩后追加一条新快照"。

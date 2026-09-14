@@ -19,7 +19,7 @@
 - 同步更新 AGENTS.md 的事实归属措辞：Todo 业务语义转归官方 Todo Extension；通用 Extension state 仍由 Coding Agent 管理，Artifact 不变。
 
 ## 外部产品或规范的约定
-参考 [pi-subagents 源码调研](../research/tools/pi-subagents.md)（2026-09-09，固定 SHA e955e29c51b7a6cce37e1108cd2d6c57a77e151c）：只借鉴扩展与通用 SDK 的职责分工，不遵循其默认后台、嵌套授权、恢复存储或工作流行为。该实现同进程调用 createAgentSession，且其工具限制不提供 JAI 所要求的父权限收紧保证。
+参考 [pi-subagents 源码调研](../../research/tools/pi-subagents.md)（2026-09-09，固定 SHA e955e29c51b7a6cce37e1108cd2d6c57a77e151c）：只借鉴扩展与通用 SDK 的职责分工，不遵循其默认后台、嵌套授权、恢复存储或工作流行为。该实现同进程调用 createAgentSession，且其工具限制不提供 JAI 所要求的父权限收紧保证。
 
 不新增外部协议。保留现有 ACP plan 通知的数据格式和 Desktop 展示语义；SDK 的内置工具选择与 Todo 专用读取接口按项目规则直接移除，属于明确的破坏性变更。
 

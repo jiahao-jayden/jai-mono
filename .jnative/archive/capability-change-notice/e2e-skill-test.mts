@@ -5,7 +5,7 @@
  * sends another prompt asking about the notice, and verifies
  * the model mentions the new skill.
  *
- * Usage: bun run .jnative/capability-change-notice/e2e-skill-test.mts
+ * Usage: bun run .jnative/archive/capability-change-notice/e2e-skill-test.mts
  */
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";

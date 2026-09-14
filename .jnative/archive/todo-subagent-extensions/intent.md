@@ -27,4 +27,4 @@ Todo、Subagent 分别作为官方 Extension 提供，通过 SDK 的 extensions 
 - 官方扩展位于 `packages/extension`，通过独立包子路径导出。
 
 ## 参考对象
-[pi-subagents 调研](../research/tools/pi-subagents.md)：只借鉴 Extension 拥有委派规则、复用通用 SDK 执行能力的分工，不要求行为兼容。JAI 仍遵循自身 Extension 契约、权限与持久化约束。
+[pi-subagents 调研](../../research/tools/pi-subagents.md)：只借鉴 Extension 拥有委派规则、复用通用 SDK 执行能力的分工，不要求行为兼容。JAI 仍遵循自身 Extension 契约、权限与持久化约束。

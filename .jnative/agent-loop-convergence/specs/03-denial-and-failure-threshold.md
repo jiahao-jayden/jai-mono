@@ -1,3 +1,5 @@
+> 已于 2026-09-14 迁移至 [GitHub Issue #60](https://github.com/jiahao-jayden/jai-mono/issues/60)。本文件仅保留历史，不再更新任务进度；当前状态以 Issue 为准。
+
 # 03: 拒绝语义核实、连续失败阈值与默认轮次上限
 
 要先完成:01, 02 · 状态:⏸ 等待真实 Desktop 重放

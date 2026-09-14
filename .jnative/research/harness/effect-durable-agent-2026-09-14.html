@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="effect-durable-agent 的机制、成熟度与 JAI 适配判断"><title>effect-durable-agent 调研</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+:root{--ink:#172033;--muted:#566173;--paper:#f5f7fa;--panel:#fff;--line:#d7dde5;--accent:#087f5b;--soft:#e6fcf5;--warn:#9c4f0d;--code:#111827}
+@media(prefers-color-scheme:dark){:root{--ink:#eef2f7;--muted:#aeb8c7;--paper:#0d1117;--panel:#161b22;--line:#30363d;--accent:#5ee0b6;--soft:#123b31;--warn:#f4b267;--code:#05080d}}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:system-ui,-apple-system,"PingFang SC",sans-serif;line-height:1.75}a{color:var(--accent);text-underline-offset:3px}.layout{max-width:1320px;margin:auto;padding:48px 28px;display:grid;grid-template-columns:210px minmax(0,1fr);gap:44px}nav{position:sticky;top:28px;align-self:start;border-left:1px solid var(--line);padding-left:18px}nav a{display:block;margin:8px 0;color:var(--muted);text-decoration:none}main{min-width:0}header{padding-bottom:34px;border-bottom:1px solid var(--line)}h1{font-size:clamp(2rem,4vw,3.7rem);line-height:1.08;max-width:900px;margin:0}h2{font-size:1.65rem;margin:56px 0 18px}h3{font-size:1.15rem;margin:32px 0 12px}header [data-plain]{font-size:1.25rem;max-width:820px}.meta{color:var(--muted);font-size:.92rem}.claims{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:0;list-style:none}.claim{background:var(--panel);border:1px solid var(--line);padding:20px}.claim-top{display:flex;justify-content:space-between}.claim-top a{font:12px ui-monospace,monospace}.muted{color:var(--muted);font-size:.92rem}.plain{font-size:1.08rem;max-width:800px}.analogy{background:var(--panel);border:1px solid var(--line);padding:16px 20px}.so-what{border-left:3px solid var(--accent);padding-left:18px}.diagram{background:var(--panel);border:1px solid var(--line);padding:20px;margin-top:24px}.evidence{background:var(--panel);border:1px solid var(--line);margin-top:24px}.evidence summary{cursor:pointer;padding:14px 18px;font-weight:650}.body{border-top:1px solid var(--line);padding:20px;overflow:hidden}.body h1{font-size:1.9rem}.body pre{background:var(--code);color:#e5e7eb;padding:16px;overflow:auto;border-left:3px solid var(--accent)}.body code{font-family:ui-monospace,monospace}.body table,.data-table{width:100%;border-collapse:collapse;display:block;overflow:auto}.body th,.body td,.data-table th,.data-table td{border-bottom:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}.body blockquote{border-left:3px solid var(--accent);margin-left:0;padding-left:18px}.sources{font-size:.86rem;overflow-wrap:anywhere}.glossary dt{font-weight:700;margin-top:12px}.glossary dd{margin-left:0;color:var(--muted)}
+@media(max-width:820px){.layout{display:block;padding:28px 18px}nav{position:static;border:1px solid var(--line);padding:12px 16px;margin-bottom:30px}.claims{grid-template-columns:1fr}}
+</style></head><body><div class="layout">
+<nav aria-label="目录"><strong>目录</strong><a href="#conclusions">结论</a><a href="#mechanism">运行机制</a><a href="#comparison">成熟度</a><a href="#coverage">来源覆盖</a><a href="#unknowns">待验证</a><a href="#impact">对 JAI 的影响</a><a href="#glossary">术语表</a><a href="#sources">来源</a></nav>
+<main><header><h1>effect-durable-agent 值得 JAI 借鉴什么</h1><p data-plain>它是一套完整的事件驱动 agent runtime；JAI 已经有同类基础，应该只借它逐提交点模拟崩溃的测试方法。</p>
+<p class="meta">核验日期：2026-09-14 · EDA <code>2b613b2</code> / <code>0.1.0-alpha.10</code> · JAI <code>baa66c7</code> · <a href="effect-durable-agent-2026-09-14.md">Markdown 证据笔记</a></p></header>
+
+<section id="conclusions" data-report-section="conclusions"><h2>结论</h2><p class="plain" data-plain>六条结论分别回答它是什么、怎么恢复、风险在哪里、成熟度如何，以及 JAI 应该采取什么动作。</p><ol class="claims">
+<li class="claim" data-claim-id="c1" data-source-ids="s2">
+  <div class="claim-top"><strong>结论 1</strong><a href="#source-s2">S2</a></div>
+  <p data-plain>它以每个 session 的事件史为事实源；Effect 管执行，事件存储管恢复。</p><p class="muted">成立条件：适合愿意用 event + reducer 表达产品状态的应用。</p>
+</li>
+<li class="claim" data-claim-id="c2" data-source-ids="s3">
+  <div class="claim-top"><strong>结论 2</strong><a href="#source-s3">S3</a></div>
+  <p data-plain>重启时重放事件并闭合未完成步骤；已经开始的工具不会被原地再执行。</p><p class="muted">成立条件：远端副作用是否已经发生仍可能不可知。</p>
+</li>
+<li class="claim" data-claim-id="c3" data-source-ids="s4">
+  <div class="claim-top"><strong>结论 3</strong><a href="#source-s4">S4</a></div>
+  <p data-plain>最值得借鉴的是在每个数据库提交点模拟崩溃并冷启动恢复。</p><p class="muted">成立条件：这验证的是提交边界和恢复不变量。</p>
+</li>
+<li class="claim" data-claim-id="c4" data-source-ids="s5">
+  <div class="claim-top"><strong>结论 4</strong><a href="#source-s5">S5</a></div>
+  <p data-plain>外部投递仍可能重复，远端系统需要接受稳定的去重键。</p><p class="muted">成立条件：本地数据库无法与 Slack 等远端 API 原子提交。</p>
+</li>
+<li class="claim" data-claim-id="c5" data-source-ids="s6">
+  <div class="claim-top"><strong>结论 5</strong><a href="#source-s6">S6</a></div>
+  <p data-plain>项目仍是快速变化的单维护者 alpha，适合受控试点。</p><p class="muted">成立条件：需要固定精确版本并承担升级与运维风险。</p>
+</li>
+<li class="claim" data-claim-id="c6" data-source-ids="s7">
+  <div class="claim-top"><strong>结论 6</strong><a href="#source-s7">S7</a></div>
+  <p data-plain>JAI 不需要引入这套框架，只需要补 crash-prefix 测试矩阵。</p><p class="muted">成立条件：统一产品事件史和任意错误 payload 与 JAI 的边界冲突。</p>
+</li></ol></section>
+
+<section id="mechanism"><h2>它到底是什么</h2><p class="plain" data-plain>程序把发生过的事情按顺序记进数据库，当前状态和重启恢复都靠重读这些记录。</p><div class="analogy"><strong>类比：</strong>像餐厅点单本，服务员只往后加新记录，换班后重读点单本就知道做到哪里。这个类比的限制是：远端工具做过什么不一定能从本地点单本完全确认。</div>
+<figure class="diagram"><svg viewBox="0 0 900 210" role="img" aria-labelledby="flow-title flow-desc"><title id="flow-title">一次 durable agent 执行的主路径</title><desc id="flow-desc">输入先写入事件历史，运行时执行模型和工具，再写完成事件；重启从事件历史恢复。</desc><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="var(--accent)"/></marker></defs><g fill="var(--panel)" stroke="var(--line)" stroke-width="2"><rect x="20" y="70" width="155" height="70"/><rect x="250" y="70" width="170" height="70" fill="var(--soft)" stroke="var(--accent)"/><rect x="495" y="70" width="155" height="70"/><rect x="725" y="70" width="155" height="70"/></g><g fill="var(--ink)" font-family="system-ui" font-size="16" text-anchor="middle"><text x="97" y="112">用户命令</text><text x="335" y="102">SQLite</text><text x="335" y="123">事件历史</text><text x="572" y="102">模型 / 工具</text><text x="572" y="123">Effect 执行</text><text x="802" y="102">完成事件</text><text x="802" y="123">与读取模型</text></g><g stroke="var(--accent)" stroke-width="2.5" marker-end="url(#a)"><path d="M175 105H245"/><path d="M420 105H490"/><path d="M650 105H720"/></g><path d="M335 145C335 190 650 190 650 145" fill="none" stroke="var(--warn)" stroke-width="2" stroke-dasharray="6 5"/><text x="492" y="205" fill="var(--warn)" font-family="system-ui" font-size="13" text-anchor="middle">重启时重放记录；远端副作用仍需单独核对</text></svg><figcaption class="muted">主路径只画 durable 边界；token delta 等 live-only 事件不在图中。</figcaption></figure><p class="so-what"><strong>对我们意味着：</strong>JAI 不需要另一套事件 runtime；现有 journal 和 recovery reducer 已经承担这项职责。</p></section>
+
+<section id="comparison"><h2>成熟度与同类位置</h2><p class="plain" data-plain>它比普通 agent loop 更完整，但比 Temporal、Restate、DBOS 年轻得多，升级和运维风险由采用团队承担。</p><div class="analogy"><strong>类比：</strong>像一套刚建成、验收测试很细的新公寓；结构可能不错，但物业、住户案例和长期维修记录还没有形成。类比的限制是软件 API 可以在一次发布中大幅改变。</div><p class="so-what"><strong>对我们意味着：</strong>即使 JAI 缺 durable runtime，也不应把这个 alpha 直接作为组织默认依赖。</p></section>
+
+<section id="coverage" data-report-section="coverage"><h2>来源覆盖</h2><p data-plain>这一部分说明核验覆盖了源码、作者材料、同类方案、GitHub 活动和版本历史，也标出了缺少的外部采用证据。</p></section>
+<section id="unknowns" data-report-section="unknowns"><h2>待验证</h2><ul><li>JAI tests 是否覆盖所有 SQLite transaction 边界。</li><li>各 tool/provider 的幂等、读后校验和补偿能力。</li><li>EDA 真实负载下的 history 增长、catch-up 与 cold-start 成本。</li></ul></section>
+<section id="impact" data-report-section="impact"><h2>对本项目的影响</h2><p data-plain>只补一个测试矩阵：在每个数据库提交点截断并冷启动，确认旧记录不变、恢复判断正确、未知工具副作用仍停驻。</p><p class="so-what">不新增 Effect、统一 reducer registry、replacement-run 抽象或 durable sink。</p></section>
+
+<section><h2>完整证据笔记</h2><p data-plain>下面逐节保留 Markdown 中的所有表格、链接和源码摘录，供工程师复核。</p><details class="evidence" open><summary>证据与原文</summary><article class="body"><h1>effect-durable-agent：机制、成熟度与 JAI 适配判断</h1>
+<p>核验日期：2026-09-14。目标仓库固定为 <a href="https://github.com/advait/effect-durable-agent/tree/2b613b2559b882d4cdba541338718c4e5ba582ef"><code>advait/effect-durable-agent@2b613b2559b882d4cdba541338718c4e5ba582ef</code></a>，包版本 <code>0.1.0-alpha.10</code>；JAI 固定为 <code>baa66c79b77002b46069a2576c3137c981b71ea0</code>。固定版本是为了避免快速变化的 alpha API 混入判断。</p>
+<h2>结论</h2>
+<ol>
+<li><code>effect-durable-agent</code>（EDA）是一套以 <strong>单 session 有序事件史</strong> 为事实源的 agent application runtime，不是把任意 Effect fiber 或普通函数自动变成 Temporal 式 durable workflow。<a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/README.md#L26-L37">统一事件史</a>。成立条件：应用愿意用 event + reducer 表达 agent 和产品状态。</li>
+<li>它的恢复机制是 replay durable events、闭合未完成 lifecycle、必要时创建 replacement run；已经开始但没有终态的 tool 不会原地重跑。<a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/services/session-state.ts#L1652-L1666">启动恢复</a>。限制：远端副作用是否发生仍不可知，Effect interruption 也不能撤销它。</li>
+<li>它最扎实的工程资产是 crash-prefix harness：在每个 durable batch 后截断，冷启动恢复，并验证旧前缀不变、terminal 不重复、projection 可重建。<a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/services/session-state-crash-simulation.test.ts#L241-L274">prefix sweep</a>。</li>
+<li>外部投递仍是 at-least-once。sink 的远端调用与本地 cursor commit 不能组成跨系统原子事务，端到端去重依赖稳定 idempotency key。<a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/examples/002-slack-bridge/sinks.ts#L66-L80">Slack sink</a>。</li>
+<li>截至 2026-09-14，它是测试认真但公共成熟度低的单维护者 alpha：<code>0.1.0-alpha.10</code>、Effect 4 beta、仓库约 45 天、80 commits、10 个 alpha tag。适合有 owner 的受控试点，不适合作为组织默认基础设施。<a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/package.json#L1-L9">发布通道</a>。</li>
+<li>对 JAI 的判断是：<strong>不引入框架，只借 crash-prefix 测试方法。</strong> JAI 已有 SQLite journal、T1/effect/T2、纯 recovery reducer 和 durable/live 分离；EDA 的统一产品事件史、通用 continuation 和宽松错误 payload 反而与当前约束冲突。<a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/types/events/envelope.ts#L91-L97">EDA failure payload</a>。</li>
+</ol>
+<h2>它到底是什么</h2>
+<p>EDA 把 framework events 与 application events 写入同一条 session history。当前状态、LLM prompt、客户端追赶、恢复、测试和外部投递都从这条历史派生；checkpoint 只是缓存。</p>
+<p><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/README.md#L26-L37"><code>README.md#L26-L37</code></a></p>
+<pre><code class="language-md">Framework events and product events are not separate channels. They form the same history and
+transition the same application state.
+
+- **Events** describe what happened.
+- **Reducers** are pure functions that describe how each event changes state.
+- **The durable event history** is the source of truth from which current state is derived.
+
+EDA supplies the framework events and reducers for commands, runs, turns, messages, inference, and
+tool calls. Applications add their own typed events and reducers...
+</code></pre>
+<p>Effect 和 durability 各管一半：Effect 提供 scope、fiber、并发、取消、finalizer、retry 和 tracing；store/event protocol 提供持久化、排序、幂等与 replay。</p>
+<p><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/docs/spec.md#L27-L35"><code>docs/spec.md#L27-L35</code></a></p>
+<pre><code class="language-md">- **Durable events are facts.** They are persisted, sequenced, replayable, and are the crash/recovery source of truth.
+- **Reducers derive state.** Framework state and app state are pure folds over the same ordered event stream.
+- **`SessionState` is the live-process authority.** Every durable append, durable fold, ephemeral position allocation, active-execution mutation, and live publish flows through it.
+- **Effect owns execution.** Model streams, tools, sinks, interruption, scopes, retries, finalizers, and observability are Effect workflows, not detached promises.
+- **The host is pluggable.** The current production host is Cloudflare Durable Objects...
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>负责什么</th>
+<th>当前限制</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Core</td>
+<td>commands、events、reducers、runtime、store ports</td>
+<td>不提供生产持久化</td>
+</tr>
+<tr>
+<td>Host adapter</td>
+<td>Cloudflare Durable Objects / celld、SQLite、alarm、WebSocket</td>
+<td>生产 host 仍围绕 Cloudflare-compatible contract</td>
+</tr>
+<tr>
+<td>Application</td>
+<td>models、tools、product events/reducers、sinks</td>
+<td>必须接受统一 event-sourced model</td>
+</tr>
+</tbody></table>
+<h2>一次消息如何执行与恢复</h2>
+<p>无工具的普通消息在测试中形成 11 个 durable events：</p>
+<p><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/services/session-state-crash-simulation.test.ts#L304-L316"><code>session-state-crash-simulation.test.ts#L304-L316</code></a></p>
+<pre><code class="language-ts">expect(committed.map((entry) =&gt; entry.event.type)).toEqual([
+  &quot;CommandAdmitted&quot;,
+  &quot;UserMessageSubmitted&quot;,
+  &quot;CommandStarted&quot;,
+  &quot;RunStarted&quot;,
+  &quot;TurnStarted&quot;,
+  &quot;InferenceStarted&quot;,
+  &quot;AssistantMessageCommitted&quot;,
+  &quot;InferenceCompleted&quot;,
+  &quot;TurnCompleted&quot;,
+  &quot;RunCompleted&quot;,
+  &quot;CommandCompleted&quot;,
+]);
+</code></pre>
+<p>具体 trace：</p>
+<ol>
+<li><code>submit</code> 把 command admission 和 user message 作为 durable batch 写入。</li>
+<li>scheduler 选中 command，原子写 <code>CommandStarted + RunStarted</code>。</li>
+<li>写 <code>TurnStarted</code> 后，才从 reducer state 投影 prompt。</li>
+<li>写 <code>InferenceStarted</code> 后，才调用 <code>languageModel.streamText</code>。</li>
+<li>完成时依次写 assistant message 和 inference/turn/run/command terminal events。</li>
+<li>重启时先加载 checkpoint 加 tail；checkpoint 缺失或版本不符则从 sequence 0 fold。</li>
+<li>未闭合的 tool/inference/turn/run 会补 failure terminal；符合策略的 command 用新的 replacement run 继续。</li>
+</ol>
+<p>一个 append batch 的原子性来自 Cloudflare Durable Object SQLite transaction；commit 后的 fold/live publish 在事务外，崩溃后通过 replay 补回。</p>
+<p><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent-cloudflare/src/durable-object-store.ts#L319-L328"><code>durable-object-store.ts#L319-L328</code></a></p>
+<pre><code class="language-ts">const row = readEventLogRowByEventId(sql, event.eventId);
+applySynchronousProjections(sql, entry, SequenceNumber.make(row.seq), encoded.factJson);
+return rowToCommittedDurableEvent(sql, row, sessionId);
+};
+
+/** Execute an entire append batch as one synchronous SQLite transaction. */
+const append = (batch: DurableAppendBatch) =&gt;
+  Effect.try({
+    try: () =&gt; storage.transactionSync(() =&gt; batch.entries.map(insertOrRead)),
+</code></pre>
+<p>恢复不会重新调用已经开始的 tool handler，而是先把 open tool 记为 failed。它避免了盲目重放，但没有解决“远端其实已成功、本地 terminal 未落盘”的不确定性。</p>
+<p><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/services/session-state.ts#L1652-L1666"><code>session-state.ts#L1652-L1666</code></a></p>
+<pre><code class="language-ts">for (const tool of plan.openToolCalls) {
+  const error = toolCancelledFailureFromRecord(tool, reason);
+  recoveryEvents.push(
+    yield* events.toolCallFailed({
+      toolCallId: tool.toolCallId,
+      error,
+      promptPart: toolCancelledPromptPartFromRecord(tool, error),
+    }),
+  );
+}
+for (const inference of plan.activeInferences) {
+</code></pre>
+<p>durable sink 也没有消除这个窗口：它先调用远端，再 stage 本地 durable event。示例把稳定 delivery key 交给 Slack 做去重，因为本地事务无法和 Slack API 原子提交。</p>
+<p><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/examples/002-slack-bridge/sinks.ts#L66-L80"><code>examples/002-slack-bridge/sinks.ts#L66-L80</code></a></p>
+<pre><code class="language-ts">const response = yield* Effect.tryPromise({
+  try: () =&gt;
+    env.SLACK_CLIENT.chat.postMessage({
+      channel: state.channelId,
+      text: message.text,
+      client_msg_id: deliveryKey,
+    }),
+  catch: (cause) =&gt; new SlackDeliveryError({ cause }),
+});
+yield* ctx.stageDurableEvent(
+  slackMessageDeliveredEvent({ messageId: message.messageId, deliveryKey, response }),
+);
+</code></pre>
+<h2>真正值得看的测试方法</h2>
+<p>EDA 不只写几个命名回归，而是记录每个 durable batch 后的历史前缀，把每个前缀分别装进新 runtime，再跑启动恢复。</p>
+<p><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/docs/testing.md#L20-L30"><code>docs/testing.md#L20-L30</code></a></p>
+<pre><code class="language-md">- Pure reducers own transition tables and ordering laws.
+- Service contracts own typed error, interruption, retry, and resource semantics.
+- `session-state-control.model.test.ts` owns generated command/control lifecycle invariants.
+- `session-state-crash-simulation.test.ts` owns recovery from every durable batch prefix. Do not replace these prefix sweeps with a few named regressions.
+- `packages/effect-durable-agent-cloudflare/src/session-controller.test.ts` owns the canned-model host journey through admission, streaming, SQLite persistence, reducer checkpoints, hibernation restoration, cold-start replay, and transcript hydration.
+</code></pre>
+<p>每个前缀恢复后，它检查：旧 durable prefix 原样保留、<code>CommandCompleted</code> 只有一次、snapshot 等于完整 history fold 的结果。</p>
+<p><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/services/session-state-crash-simulation.test.ts#L241-L274"><code>session-state-crash-simulation.test.ts#L241-L274</code></a></p>
+<pre><code class="language-ts">for (const checkpoint of recorder.checkpoints) {
+  const recovered = makeDurableCheckpointRecorder();
+  const prefix = reduceCommittedEvents(checkpoint.committed);
+  yield* Effect.gen(function* () {
+    const state = yield* SessionState;
+    const store = yield* EDASessionStore;
+    yield* state.start({ modelSelection });
+    const committed = yield* collectCommitted(store);
+    assert.deepStrictEqual(committed.slice(0, checkpoint.committed.length), checkpoint.committed);
+    assert.strictEqual(committed.filter((entry) =&gt; entry.event.type === &quot;CommandCompleted&quot;).length, 1);
+    assert.deepStrictEqual(yield* state.snapshot(), reduceCommittedEvents(committed));
+</code></pre>
+<h2>成熟度与同类位置</h2>
+<p>EDA 的中心抽象是 application-authored event history。Temporal 的中心是 workflow execution，Restate 是 invocation journal，DBOS 是 Postgres-backed workflow/step checkpoint。</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>EDA</th>
+<th>Temporal</th>
+<th>Restate</th>
+<th>DBOS</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Durable unit</td>
+<td>每 session 的产品 + agent event history</td>
+<td>Workflow execution history</td>
+<td>Service/workflow invocation journal</td>
+<td>Workflow + step checkpoints</td>
+</tr>
+<tr>
+<td>产品状态</td>
+<td>一等，同史同 reducer</td>
+<td>通常在 workflow state 或外部 DB</td>
+<td>object state 与 journal</td>
+<td>应用 DB</td>
+</tr>
+<tr>
+<td>恢复</td>
+<td>fold + repair + replacement run</td>
+<td>deterministic replay</td>
+<td>journal replay</td>
+<td>deterministic replay</td>
+</tr>
+<tr>
+<td>外部副作用</td>
+<td>sink at-least-once，应用幂等</td>
+<td>Activities</td>
+<td>journaled steps/calls</td>
+<td>steps/transactions</td>
+</tr>
+<tr>
+<td>当前成熟度</td>
+<td>alpha、单维护者</td>
+<td>成熟生产基线</td>
+<td>成熟度较高，最接近 durable-agent runtime</td>
+<td>较轻的 Postgres 路线</td>
+</tr>
+<tr>
+<td>不成立条件</td>
+<td>不接受 alpha、统一事件史或 Cloudflare-compatible host</td>
+<td>不接受 control plane 和 deterministic/versioning 约束</td>
+<td>不接受 Restate server/Cloud</td>
+<td>无 Postgres、需要 bundler/serverless</td>
+</tr>
+</tbody></table>
+<p>项目公开发布仍明确使用 alpha tag，并固定 Effect 4 beta。</p>
+<p><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/package.json#L1-L9"><code>package.json#L1-L9</code></a></p>
+<pre><code class="language-json">&quot;name&quot;: &quot;effect-durable-agent&quot;,
+&quot;version&quot;: &quot;0.1.0-alpha.10&quot;,
+&quot;description&quot;: &quot;A host-independent, event-sourced durable state-management and execution layer for agentic applications.&quot;,
+&quot;publishConfig&quot;: {
+  &quot;access&quot;: &quot;public&quot;,
+  &quot;registry&quot;: &quot;https://registry.npmjs.org/&quot;,
+  &quot;tag&quot;: &quot;alpha&quot;
+},
+</code></pre>
+<p>当前 spec 还明确缺少 storage pruning、通用 persisted UI pagination、provider-executed tool replay、durable stdout/stderr/file artifacts 和更多 production hosts。</p>
+<p><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/docs/spec.md#L794-L803"><code>docs/spec.md#L794-L803</code></a></p>
+<pre><code class="language-md">EDA currently does not provide:
+
+- storage pruning/BaseState;
+- generic persisted UI projection items/pagination;
+- coalesced live-state snapshots for reconnect;
+- direct tool ephemerals or per-tool retry policy objects;
+- provider-executed tool projection/replay;
+- durable stdout/stderr chunks or file-change artifacts for sandbox tools;
+- app-side physical payload sidecars/chunking;
+- additional production hosts beyond the Cloudflare-compatible contract.
+</code></pre>
+<h2>来源覆盖</h2>
+<table>
+<thead>
+<tr>
+<th>来源类别</th>
+<th>查到了什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>官方文档 / 源码</td>
+<td>EDA README、spec、testing、releasing、core/Cloudflare 源码与 tests，钉 <code>2b613b2</code>；JAI 钉 <code>baa66c7</code>。</td>
+</tr>
+<tr>
+<td>作者或维护者本人的说法</td>
+<td>README、release docs、PR 均来自 owner <code>advait</code>；未找到独立博客、演讲或第二维护者。</td>
+</tr>
+<tr>
+<td>同类方案</td>
+<td>Temporal、Restate、DBOS，按 durable unit、状态模型、恢复、副作用、部署与不成立条件比较。</td>
+</tr>
+<tr>
+<td>issue / PR / 社区实践</td>
+<td>EDA 有 29 个 PR、0 个独立 issue；HEAD 后 PR #29 仍在扩展 durable tool wait/resume，说明 API 面快速变化。</td>
+</tr>
+<tr>
+<td>历史演变</td>
+<td>2026-07-31 开源；约 45 天内 80 commits、10 个 alpha tag，从 Cloudflare-only 扩到 host-neutral core + celld。</td>
+</tr>
+</tbody></table>
+<h2>待验证</h2>
+<ul>
+<li>JAI 当前 operation tests 是否已经覆盖所有真实 SQLite transaction 边界，而不只是命名场景。</li>
+<li>provider/tool 的实际幂等键、读后校验和补偿能力；它们决定哪些 <code>indeterminate_tool</code> 将来能安全自动恢复。</li>
+<li>EDA 在真实负载下的 event retention、单 session history 增长、WebSocket catch-up 与 cold-start 成本；仓库目前没有公开容量基准。</li>
+</ul>
+<h2>对本项目的影响</h2>
+<h3>直接借鉴</h3>
+<p>给 JAI 现有 durable operation harness 增加 <strong>batch-aligned crash-prefix matrix</strong>：在每个 SQLite commit 边界截断，重开 Runtime Host，断言 journal 前缀不变、恢复 verdict 正确、未知 tool effect 仍 park、live projection 可重建。</p>
+<h3>不引入</h3>
+<ul>
+<li>不引入 Effect runtime。JAI 已有自己的执行、错误、journal 和恢复边界。</li>
+<li>不引入统一 reducer registry。Todo、Artifact、Desktop metadata 各有 durable fact owner。</li>
+<li>不采用一般化的 replacement-run continuation。<code>tool_dispatched</code> 无结果时继续保留 <code>indeterminate_tool</code>。</li>
+<li>不采用 <code>FailurePayload.details: unknown</code>；RPC、事件和 UI 继续使用显式白名单错误 DTO。</li>
+<li>不建 durable sink，直到出现“已提交 Session 事实必须独立、按序、至少一次投递到外部系统”的明确产品用例。</li>
+</ul>
+<p>EDA 的 failure schema 允许任意 details，当前实现还会写入 stack；这与 JAI 的跨进程规则直接冲突。</p>
+<p><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/types/events/envelope.ts#L91-L97"><code>envelope.ts#L91-L97</code></a></p>
+<pre><code class="language-ts">/** Error details stored on failed lifecycle events. */
+export const FailurePayload = Schema.Struct({
+  message: Schema.String,
+  code: Schema.optionalKey(Schema.String),
+  details: Schema.optionalKey(Schema.Unknown),
+});
+export type FailurePayload = typeof FailurePayload.Type;
+</code></pre>
+</article></details></section>
+
+<section id="glossary" data-report-section="glossary"><h2>术语表</h2><dl class="glossary"><dt>durable event</dt><dd>已经提交到持久存储、进程重启后仍能读到的一条事实记录。</dd><dt>reducer</dt><dd>按顺序读取事件并计算当前状态的纯函数。</dd><dt>crash-prefix</dt><dd>在每个数据库提交点截断历史，分别模拟该点之后立刻崩溃。</dd><dt>idempotency key</dt><dd>同一请求重复发送时，让接收方仍只认作一次操作的稳定标识。</dd></dl></section>
+<section id="sources" data-report-section="sources"><h2>来源</h2><ol class="sources">
+<li id="source-s1"><a href="https://github.com/advait/effect-durable-agent/tree/2b613b2559b882d4cdba541338718c4e5ba582ef">S1 · advait/effect-durable-agent/tree/2b613b2559b882d4cdba541338718c4e5ba582ef</a></li>
+<li id="source-s2"><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/README.md#L26-L37">S2 · advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/README.md#L26-L37</a></li>
+<li id="source-s3"><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/services/session-state.ts#L1652-L1666">S3 · advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/services/session-state.ts#L1652-L1666</a></li>
+<li id="source-s4"><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/services/session-state-crash-simulation.test.ts#L241-L274">S4 · advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/services/session-state-crash-simulation.test.ts#L241-L274</a></li>
+<li id="source-s5"><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/examples/002-slack-bridge/sinks.ts#L66-L80">S5 · advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/examples/002-slack-bridge/sinks.ts#L66-L80</a></li>
+<li id="source-s6"><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/package.json#L1-L9">S6 · advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/package.json#L1-L9</a></li>
+<li id="source-s7"><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/types/events/envelope.ts#L91-L97">S7 · advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/types/events/envelope.ts#L91-L97</a></li>
+<li id="source-s8"><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/docs/spec.md#L27-L35">S8 · advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/docs/spec.md#L27-L35</a></li>
+<li id="source-s9"><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/services/session-state-crash-simulation.test.ts#L304-L316">S9 · advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent/src/services/session-state-crash-simulation.test.ts#L304-L316</a></li>
+<li id="source-s10"><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent-cloudflare/src/durable-object-store.ts#L319-L328">S10 · advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/packages/effect-durable-agent-cloudflare/src/durable-object-store.ts#L319-L328</a></li>
+<li id="source-s11"><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/docs/testing.md#L20-L30">S11 · advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/docs/testing.md#L20-L30</a></li>
+<li id="source-s12"><a href="https://registry.npmjs.org/&quot;,">S12 · https://registry.npmjs.org/&quot;,</a></li>
+<li id="source-s13"><a href="https://github.com/advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/docs/spec.md#L794-L803">S13 · advait/effect-durable-agent/blob/2b613b2559b882d4cdba541338718c4e5ba582ef/docs/spec.md#L794-L803</a></li></ol></section>
+</main></div></body></html>
