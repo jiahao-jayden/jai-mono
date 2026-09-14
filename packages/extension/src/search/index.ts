@@ -59,19 +59,21 @@ interface FindCursor {
 
 export class FffSearchRuntime {
 	readonly #finder: FileFinderApi;
+	readonly #basePath: string;
 	readonly #findCursors = new Map<string, FindCursor>();
 	readonly #grepCursors = new Map<string, GrepCursor>();
 	#nextCursor = 0;
 
-	constructor(finder: FileFinderApi) {
+	constructor(finder: FileFinderApi, basePath: string) {
 		this.#finder = finder;
+		this.#basePath = basePath;
 	}
 
 	async find(input: FindInput, signal?: AbortSignal): Promise<CodingExtensionToolResult> {
 		throwIfAborted(signal);
 		const resumed = input.cursor ? this.#findCursors.get(input.cursor) : undefined;
 		if (input.cursor && !resumed) throw fileSearchError("search_failed", "Unknown find cursor");
-		const query = resumed?.query ?? buildQuery(input.path, input.pattern, input.exclude);
+		const query = resumed?.query ?? buildQuery(this.#basePath, input.path, input.pattern, input.exclude);
 		const pageSize = resumed?.pageSize ?? Math.max(1, input.limit ?? DEFAULT_FIND_LIMIT);
 		const pageIndex = resumed?.nextPageIndex ?? 0;
 		const result = this.#finder.fileSearch(query, { pageIndex, pageSize });
@@ -103,7 +105,7 @@ export class FffSearchRuntime {
 		if (input.cursor && !cursor) throw fileSearchError("search_failed", "Unknown grep cursor");
 		const pattern = input.pattern;
 		const mode = resolveGrepMode(pattern);
-		const query = buildQuery(input.path, pattern, input.exclude);
+		const query = buildQuery(this.#basePath, input.path, pattern, input.exclude);
 		const limit = Math.min(MAX_GREP_LIMIT, Math.max(1, input.limit ?? DEFAULT_GREP_LIMIT));
 		const context = Math.min(MAX_CONTEXT, Math.max(0, input.context ?? 0));
 		const result = this.#finder.grep(query, {
@@ -209,7 +211,7 @@ export function createFffSearchExtension(
 			activate: async (context) => {
 				const created = await createFinder(context, options);
 				if (created.isErr()) return created;
-				const next = new FffSearchRuntime(created.value);
+				const next = new FffSearchRuntime(created.value, context.cwd);
 				runtime = next;
 				return Result.ok(next);
 			},
@@ -258,14 +260,19 @@ async function createFinder(
 	}
 }
 
-function buildQuery(path: string | undefined, pattern: string, exclude: string | string[] | undefined): string {
-	const constraints = path ? [validateConstraint(path)] : [];
+function buildQuery(
+	basePath: string,
+	path: string | undefined,
+	pattern: string,
+	exclude: string | string[] | undefined,
+): string {
+	const constraints = path ? [validateConstraint(basePath, path)] : [];
 	const excludes = typeof exclude === "string" ? [exclude] : (exclude ?? []);
-	for (const value of excludes) constraints.push(`!${validateConstraint(value)}`);
+	for (const value of excludes) constraints.push(`!${validateConstraint(basePath, value)}`);
 	return [...constraints, pattern].filter(Boolean).join(" ");
 }
 
-function validateConstraint(value: string): string {
+function validateConstraint(basePath: string, value: string): string {
 	const trimmed = value.trim();
 	if (
 		!trimmed ||
@@ -275,7 +282,10 @@ function validateConstraint(value: string): string {
 		trimmed.startsWith("../") ||
 		trimmed.includes("/../")
 	) {
-		throw fileSearchError("outside_boundary", `Search path must stay inside the workspace: ${value}`);
+		throw fileSearchError(
+			"outside_boundary",
+			`Search path must be relative to workspace root "${basePath}": ${value}`,
+		);
 	}
 	return trimmed;
 }

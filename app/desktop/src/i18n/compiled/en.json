@@ -43,6 +43,7 @@
   "desktop.composer.attachmentLimit": "Attachments must be 20 MB or less in total.",
   "desktop.composer.couldNotAddFiles": "Could not add those files.",
   "desktop.composer.message": "Message",
+  "desktop.composer.projectRequired": "Choose an accessible project before sending a message.",
   "desktop.composer.queueMessage": "Queue message",
   "desktop.composer.sendMessage": "Send message",
   "desktop.composer.stopResponse": "Stop response",

@@ -4,6 +4,7 @@ import { renderToStaticMarkup as renderToStaticMarkupBase } from "react-dom/serv
 import type { ReactNode } from "react";
 import type { DesktopProject } from "../shared/desktop-rpc";
 import enMessages from "../src/i18n/compiled/en.json";
+import { ChatComposer } from "../src/components/shell/chat/chat-composer";
 import { ProjectPicker } from "../src/components/shell/chat/project-picker";
 
 function renderToStaticMarkup(node: ReactNode): string {
@@ -21,6 +22,40 @@ const project: DesktopProject = {
 };
 
 describe("ProjectPicker", () => {
+	test("没有可访问 Project 时不允许发送消息，但仍提示选择 Project", () => {
+		const markup = renderToStaticMarkup(
+			<ChatComposer
+				value="Inspect this"
+				onValueChange={() => {}}
+				onSend={async () => false}
+				onStop={async () => {}}
+				status="ready"
+				disabled={false}
+				queue={[]}
+				onEditQueuedMessage={() => {}}
+				onRemoveQueuedMessage={() => {}}
+				onReorderQueuedMessages={() => {}}
+				projects={[]}
+				projectBusy={false}
+				projectLoading={false}
+				projectLoadError={false}
+				onChooseProject={async () => {}}
+				onRetryProjects={() => {}}
+				selectedModelRef="provider/model"
+				selectedAgentMode="manual"
+				providerLoading={false}
+				providerError={false}
+				onOpenProviderSettings={() => {}}
+				onSelectProviderModel={() => {}}
+				onSelectAgentMode={() => {}}
+			/>,
+		);
+
+		expect(markup).toContain("Choose an accessible project before sending a message.");
+		expect(markup).toContain("disabled");
+		expect(markup).toContain("Project");
+	});
+
 	test("当前 Project 作为可访问的菜单触发器显示", () => {
 		const markup = renderToStaticMarkup(
 			<ProjectPicker

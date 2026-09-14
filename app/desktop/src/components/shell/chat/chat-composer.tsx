@@ -107,6 +107,7 @@ export function ChatComposer({
 	const hasMessageContent = hasDraft || hasAttachments;
 	const isStreaming = status === "streaming";
 	const isSubmitting = status === "submitted";
+	const projectRequired = !project?.available;
 	const stopAction = isStreaming && !hasMessageContent;
 	const submitLabel = intl.formatMessage(
 		stopAction
@@ -116,7 +117,7 @@ export function ChatComposer({
 				: desktopMessages.composerSendMessage,
 	);
 	const composerDisabled = disabled || isSubmitting || registeringAttachments;
-	const submitDisabled = composerDisabled || (!stopAction && !hasMessageContent);
+	const submitDisabled = composerDisabled || (!stopAction && (projectRequired || !hasMessageContent));
 	const composerCommands = useMemo<readonly ComposerCommand[]>(
 		() =>
 			commands.map((command) => ({
@@ -306,11 +307,15 @@ export function ChatComposer({
 					value={value}
 					onValueChange={onValueChange}
 					onSend={() => void submitMessage()}
-					disabled={composerDisabled}
+					disabled={composerDisabled || projectRequired}
 					minRows={1}
 					maxRows={8}
 					placeholder={intl.formatMessage(
-						large ? desktopMessages.composerWorkOn : desktopMessages.composerWriteMessage,
+						projectRequired
+							? desktopMessages.composerProjectRequired
+							: large
+								? desktopMessages.composerWorkOn
+								: desktopMessages.composerWriteMessage,
 					)}
 					sendLabel={submitLabel}
 					files={files}

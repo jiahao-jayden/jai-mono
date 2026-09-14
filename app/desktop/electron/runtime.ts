@@ -51,7 +51,7 @@ export async function createDesktopRuntime(dependencies: {
 	const agentHost = await DesktopAcpAgentHost.open(broadcast, {
 		resolveSessionCwd: async (sessionId) => {
 			const execution = await sessions.resolveExecutionContext(sessionId);
-			return execution.localFileAccess ? execution.cwd : process.cwd();
+			return execution.localFileAccess ? execution.cwd : undefined;
 		},
 	});
 	const attachments = createAttachmentRegistry();

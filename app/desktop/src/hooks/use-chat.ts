@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useIntl } from "react-intl";
+import { desktopMessages } from "@/i18n/messages";
 import { desktop, getDesktopRemoteRpcFailure } from "@/lib/desktop";
 import { createDesktopAgentEventDispatcher, type DesktopAgentProjectionUpdate } from "@/lib/desktop-agent";
 import { invalidateRecentSessions, upsertRecentSession } from "@/lib/desktop-query";
@@ -83,6 +85,8 @@ let dispatcher: ReturnType<typeof createDesktopAgentEventDispatcher> | undefined
  * options rather than read here.
  */
 export function useChat(options: UseChatOptions): Chat {
+	const intl = useIntl();
+	const projectRequiredMessage = intl.formatMessage(desktopMessages.composerProjectRequired);
 	const [state, setState] = useState<ChatRuntimeState>(EMPTY_STATE);
 	const latestOptions = useRef(options);
 	const stateRef = useRef(state);
@@ -161,13 +165,16 @@ export function useChat(options: UseChatOptions): Chat {
 			const failure = getDesktopRemoteRpcFailure(error);
 			setState((previous) => ({
 				...previous,
-				error: chatFailureMessage({ operation: "queue", code: failure?.tag, reason: failure?.reason }),
+				error:
+					failure?.tag === "desktop_agent.workspace_required"
+						? projectRequiredMessage
+						: chatFailureMessage({ operation: "queue", code: failure?.tag, reason: failure?.reason }),
 				submitting: false,
 			}));
 		} finally {
 			dispatchingQueueIdRef.current = undefined;
 		}
-	}, []);
+	}, [projectRequiredMessage]);
 
 	useEffect(() => {
 		const previousAgentStatus = previousAgentStatusRef.current;
@@ -218,7 +225,10 @@ export function useChat(options: UseChatOptions): Chat {
 					const failure = getDesktopRemoteRpcFailure(error);
 					setState((previous) => ({
 						...previous,
-						error: chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
+						error:
+							failure?.tag === "desktop_agent.workspace_required"
+								? projectRequiredMessage
+								: chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
 					}));
 					return false;
 				}
@@ -266,13 +276,16 @@ export function useChat(options: UseChatOptions): Chat {
 				const failure = getDesktopRemoteRpcFailure(error);
 				setState((previous) => ({
 					...previous,
-					error: chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
+					error:
+						failure?.tag === "desktop_agent.workspace_required"
+							? projectRequiredMessage
+							: chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
 					submitting: false,
 				}));
 				return false;
 			}
 		},
-		[],
+		[projectRequiredMessage],
 	);
 
 	const stop = useCallback(async () => {

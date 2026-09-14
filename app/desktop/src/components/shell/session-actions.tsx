@@ -164,9 +164,7 @@ export function SessionActions({
 											index={index}
 											icon={ProjectIcon}
 											label={project.displayName}
-											description={project.path}
 											disabled={pending || !project.available}
-											className="min-h-10 py-1.5"
 											onSelect={() => void move(project.id)}
 										/>
 									);

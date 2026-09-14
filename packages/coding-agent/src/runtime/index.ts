@@ -1,7 +1,7 @@
 export {
-	CodingAgent,
 	type CapabilityNoticeProducer,
 	type CapabilityNoticeSlot,
+	CodingAgent,
 	type CodingAgentPermissionOptions,
 	type CodingAgentRuntimeOptions,
 	type CreateCodingAgentOptions,
@@ -9,5 +9,5 @@ export {
 	type OpenChildSession,
 	type ResolvedCodingProvider,
 } from "./create-coding-agent";
-export { DEFAULT_CODING_AGENT_INSTRUCTIONS } from "./default-instructions";
+export { DEFAULT_CODING_AGENT_INSTRUCTIONS, environmentInstructions } from "./default-instructions";
 export type { CodingExecutionContext } from "./execution-context";

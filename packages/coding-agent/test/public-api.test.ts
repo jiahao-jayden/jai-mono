@@ -75,6 +75,27 @@ describe("public Coding Agent SDK", () => {
 		if (resumed.isOk()) await resumed.value.close();
 	});
 
+	test("adds the immutable workspace environment to the system prompt", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const requests: unknown[] = [];
+		const created = await createCodingAgent({
+			...createInput(root, [assistant("done")], requests),
+			session: { kind: "ephemeral" },
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+
+		try {
+			await created.value.prompt("inspect this workspace");
+			const request = JSON.stringify(requests[0]);
+			expect(request).toContain(`<cwd>${root}</cwd>`);
+			expect(request).toContain("do not search parent directories");
+		} finally {
+			await created.value.close();
+		}
+	});
+
 	test("keeps dynamic catalog tools outside every provider request", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
 		roots.push(root);

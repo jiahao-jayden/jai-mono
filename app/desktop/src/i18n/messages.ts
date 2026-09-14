@@ -87,6 +87,10 @@ export const desktopMessages = defineMessages({
 	composerWorkOn: { id: "desktop.composer.workOn", defaultMessage: "What should the agent work on?" },
 	composerWriteMessage: { id: "desktop.composer.writeMessage", defaultMessage: "Write a message…" },
 	composerMessage: { id: "desktop.composer.message", defaultMessage: "Message" },
+	composerProjectRequired: {
+		id: "desktop.composer.projectRequired",
+		defaultMessage: "Choose an accessible project before sending a message.",
+	},
 	composerAttachmentLimit: {
 		id: "desktop.composer.attachmentLimit",
 		defaultMessage: "Attachments must be 20 MB or less in total.",

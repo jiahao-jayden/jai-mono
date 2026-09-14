@@ -15,10 +15,11 @@ import type { CodingMessageAttachment as InternalCodingAttachment } from "../att
 import { CodingCommandRegistry } from "../commands";
 import { permissionSettingsFromConfig } from "../permissions";
 import {
+	type CapabilityNoticeSlot,
 	createCodingAgent as createInternalCodingAgent,
 	DEFAULT_CODING_AGENT_INSTRUCTIONS,
+	environmentInstructions,
 	type CodingAgent as InternalCodingAgent,
-	type CapabilityNoticeSlot,
 	type OpenChildSession,
 } from "../runtime";
 import { ToolCatalog } from "../runtime/tool-catalog";
@@ -102,8 +103,8 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 		if (preparedExtensions.isErr()) throw preparedExtensions.error;
 		extensions = preparedExtensions.value;
 		const extensionCatalogs = extensions.flatMap((extension) => extension.extension.catalogs ?? []);
-	const extensionToolCatalog = extensionCatalogs.length ? new ToolCatalog([]) : undefined;
-	const capabilityNotice: CapabilityNoticeSlot = input.capabilityNotice ?? { lastTold: new Map() };
+		const extensionToolCatalog = extensionCatalogs.length ? new ToolCatalog([]) : undefined;
+		const capabilityNotice: CapabilityNoticeSlot = input.capabilityNotice ?? { lastTold: new Map() };
 		const extensionToolPermissions = extensionPermissions(extensions);
 		const extensionAuthorizedToolNameSet = extensionAuthorizedToolNames(extensions);
 		const toolPresentations = new Map(builtInToolPresentations());
@@ -117,7 +118,9 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			sessionId,
 			sessionStore: store,
 			appState: emptyPersistedCodingSessionState<TAppState>(),
-			instructions: [DEFAULT_CODING_AGENT_INSTRUCTIONS, input.instructions].filter(Boolean).join("\n\n"),
+			instructions: [DEFAULT_CODING_AGENT_INSTRUCTIONS, environmentInstructions(cwd), input.instructions]
+				.filter(Boolean)
+				.join("\n\n"),
 			configDefinition: sdkConfigDefinition,
 			configOptions: {
 				homeDir: fileCapabilities.homeDirectory,
@@ -156,10 +159,10 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			extensionToolMiddleware: extensionMiddleware(extensions),
 			extensionToolPermissions,
 			extensionAuthorizedToolNames: extensionAuthorizedToolNameSet,
-		...(extensionToolCatalog ? { extensionToolCatalog } : {}),
-		modelRequestObserver: input.modelRequestTelemetryObserver,
-		enabledTools,
-		capabilityNotice,
+			...(extensionToolCatalog ? { extensionToolCatalog } : {}),
+			modelRequestObserver: input.modelRequestTelemetryObserver,
+			enabledTools,
+			capabilityNotice,
 			...(input.openChildSession
 				? {
 						openChildSession: input.openChildSession as unknown as OpenChildSession<
@@ -196,10 +199,10 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				...(extensionToolCatalog ? { toolCatalog: extensionToolCatalog } : {}),
 				capabilityNotice,
 				commands,
-			configChangeWatcher: (listener) =>
-				internal.configStore.watch((event) => {
-					if (event.status === "valid") listener();
-				}),
+				configChangeWatcher: (listener) =>
+					internal.configStore.watch((event) => {
+						if (event.status === "valid") listener();
+					}),
 			},
 		);
 		if (activatedExtensions.isErr()) throw activatedExtensions.error;

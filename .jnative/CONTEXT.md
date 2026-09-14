@@ -84,6 +84,10 @@ _Avoid_: workspace boundary, path boundary, permission boundary, sandbox
 Agent 文件工具可访问的 canonical 路径范围，由 `realpath` 解析后与 workspace root 比较得出，并配合一次性 path capability 与执行前重检防 TOCTOU。它只管文件访问，不管 agent 输出。
 _Avoid_: trust boundary, permission scope
 
+**Environment Context**:
+Coding Agent 在 system prompt 里告诉模型的运行事实：cwd、workspace 根、额外允许读的目录、权限模式，以及越界时先问用户的规则。它只是给模型看的说明，不是边界本身；实际能不能访问由 `Workspace Path Boundary` 与权限规则在执行侧决定。Operation 内不变，不写 journal。
+_Avoid_: workspace boundary, system reminder, project metadata
+
 **Aside DNA**:
 Desktop 视觉的参考对象：`.jnative/research/desktop/aside-chat-dna/` 里从 Aside 浏览器实测得到的 token、尺寸与复刻 `index.html`。数值严格遵循，结构保留三栏。
 _Avoid_: 参考风格, 灵感

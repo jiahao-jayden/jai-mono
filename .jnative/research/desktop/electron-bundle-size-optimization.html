@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Electron Desktop 打包体积优化调研</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { --ink:#172033; --muted:#526071; --paper:#f8fafc; --panel:#fff; --line:#cbd5e1; --accent:#0f766e; --soft:#ccfbf1; }
+    @media (prefers-color-scheme:dark) { :root { --ink:#e5e7eb; --muted:#aab4c2; --paper:#0b1220; --panel:#111827; --line:#334155; --accent:#2dd4bf; --soft:#134e4a; } }
+    body { background:var(--paper); color:var(--ink); } a { color:var(--accent); text-decoration:underline; text-underline-offset:3px; }
+    .panel { background:var(--panel); border:1px solid var(--line); } .plain { line-height:1.8; font-size:1.08rem; }
+    .analogy { border-left:3px solid var(--accent); padding:.75rem 1rem; margin:1rem 0; color:var(--muted); }
+    details { border:1px solid var(--line); background:var(--panel); } summary { cursor:pointer; padding:.75rem 1rem; font-weight:600; }
+    details > div { border-top:1px solid var(--line); padding:1rem; } blockquote { border-left:3px solid var(--accent); padding:.65rem 1rem; margin:.75rem 0; color:var(--muted); white-space:pre-wrap; }
+    pre { background:#0f172a; color:#e2e8f0; padding:1rem; overflow:auto; white-space:pre-wrap; }
+    table { width:100%; border-collapse:collapse; } th,td { border-bottom:1px solid var(--line); padding:.75rem; text-align:left; vertical-align:top; } th { font-weight:600; }
+    dfn { font-weight:600; text-decoration:underline dotted; text-underline-offset:3px; }
+  </style>
+</head>
+<body class="font-sans antialiased">
+  <div class="mx-auto max-w-6xl px-5 py-10 lg:px-8">
+    <header class="border-b border-line pb-8" data-report-section="header">
+      <h1 class="text-3xl font-semibold sm:text-4xl">Electron Desktop 打包体积优化调研</h1>
+      <p class="plain mt-5" data-plain>JAI 的安装包大头来自 Electron 本身，最现实的缩小路径是裁剪应用层 runtime、原生依赖和前端语言资源。</p>
+      <p class="analogy">类比：像行李箱里有一台固定大小的设备，再装入衣物和配件。换小衣物只能省掉配件部分，设备本身不会消失。这个类比在 Electron 多架构构建时会失效，因为同一箱子可能要同时装两套架构配件。</p>
+      <p class="text-sm text-muted">核验日期：2026-09-12。JAI 当前 macOS ARM64 zip 为 119701350 bytes；Electron Framework 约 271M；app.asar 约 14M；Resources/dist 约 24M。<a href=".jnative/research/desktop/electron-bundle-size-optimization.md">查看 Markdown 笔记</a></p>
+    </header>
+
+    <main class="space-y-10 pt-10">
+      <section id="conclusions" data-report-section="conclusions">
+        <h2 class="text-2xl font-semibold">结论</h2>
+        <p class="plain mt-3" data-plain>优化顺序应该从应用真正带进去的文件开始，再处理压缩和更新机制。</p>
+        <p class="analogy">类比：先把不该带的东西从搬家清单删掉，再压缩衣物，最后才研究快递是否支持分批寄送。压缩一个本来就不该带的箱子，收益很小。</p>
+        <div class="mt-6 grid gap-4 md:grid-cols-2">
+          <article class="panel p-5" data-claim-id="c1" data-source-ids="electron-performance">
+            <p class="plain" data-plain>Electron Framework 是固定底座，JAI 应先优化自身资源。</p>
+            <p>JAI 当前 Framework 约 271M，ASAR 和 runtime 只能影响应用层。<a href="https://github.com/electron/electron/blob/bb7a80aa84a1d21f477a9132c8ccf6f03aa8d698/docs/tutorial/performance.md#L37-L47">官方性能文档</a></p>
+          </article>
+          <article class="panel p-5" data-claim-id="c2" data-source-ids="signal-files element-files">
+            <p class="plain" data-plain>第一优先级是给 Desktop 设运行时白名单，只带实际启动需要的文件。</p>
+            <p>Signal 用 `files` 排除源码、测试、map 和通用 prebuild；Element 只把必要壳文件和独立 webapp 资源带入。<a href="https://github.com/signalapp/Signal-Desktop/blob/6aea489bd04f31f6070538ffdbcea9fcf492479d/package.json#L225-L302">Signal</a> · <a href="https://github.com/element-hq/element-desktop/blob/87baf1246be4e94345f84c2b74b75092243c5b35/electron-builder.ts#L93-L126">Element</a></p>
+          </article>
+          <article class="panel p-5" data-claim-id="c3" data-source-ids="element-files">
+            <p class="plain" data-plain>JAI 的 Desktop runtime 不必把 server/dist 的所有入口都复制进安装包。</p>
+            <p>当前 Desktop 启动 `Resources/dist/main.js`；其他 client entrypoint 和 stdio 入口应单独核验后排除。</p>
+          </article>
+          <article class="panel p-5" data-claim-id="c4" data-source-ids="electron-native">
+            <p class="plain" data-plain>原生模块必须匹配 Electron、操作系统和处理器架构，并放在可直接加载的位置。</p>
+            <p>粗暴排除 native 文件会出现构建成功但运行失败。<a href="https://github.com/electron/electron/blob/e86580ed49c20d98a2d4720d5952a593ac69d07a/docs/tutorial/using-native-node-modules.md#L1-L43">Electron native ABI 文档</a></p>
+          </article>
+          <article class="panel p-5" data-claim-id="c5" data-source-ids="jai-fff">
+            <p class="plain" data-plain>FFF 是 JAI 应用层里最明确的原生体积项，应该裁掉开发文件而保留 dylib 和目标架构 binding。</p>
+            <p>当前 `libfff_c.dylib` 约 9.7MB 未压缩，目录还包含 map、声明文件和 README。<a href="https://github.com/electron-userland/electron-builder/issues/9423">native module 收集案例</a></p>
+          </article>
+          <article class="panel p-5" data-claim-id="c6" data-source-ids="signal-build">
+            <p class="plain" data-plain>高亮语言资源应按产品实际支持范围加载。</p>
+            <p>JAI 当前前端 assets 约 13M、317 个文件；Signal 的生产构建明确启用 minify。<a href="https://github.com/signalapp/Signal-Desktop/blob/6aea489bd04f31f6070538ffdbcea9fcf492479d/package.json#L67-L109">Signal 构建配置</a></p>
+          </article>
+          <article class="panel p-5" data-claim-id="c7" data-source-ids="builder-compression">
+            <p class="plain" data-plain>maximum 压缩不是主要体积优化手段。</p>
+            <p>electron-builder 的配置注释写明它通常没有明显体积收益，但会增加构建时间。<a href="https://github.com/electron-userland/electron-builder/blob/99b6c7f1efe761bbd3d0582e158a8f1705f652a0/packages/app-builder-lib/src/options/PlatformSpecificBuildOptions.ts#L1-L20">配置注释</a></p>
+          </article>
+          <article class="panel p-5" data-claim-id="c8" data-source-ids="nsis-web">
+            <p class="plain" data-plain>增量更新优化后续下载，NSIS-Web 优化架构选择，二者都不改变首装应用本体。</p>
+            <p>Windows Web Installer 会按架构下载对应 package；macOS 应继续比较单架构与 universal。<a href="https://github.com/electron-userland/electron-builder/blob/99b6c7f1efe761bbd3d0582e158a8f1705f652a0/website/docs/nsis.md#L1-L12">NSIS-Web 文档</a></p>
+          </article>
+        </div>
+      </section>
+
+      <section id="projects" data-report-section="projects">
+        <h2 class="text-2xl font-semibold">开源项目怎么做</h2>
+        <p class="plain mt-3" data-plain>成熟项目主要通过缩小构建输入、按平台筛依赖、隔离原生模块来控制体积。</p>
+        <p class="analogy">类比：工厂给不同国家的订单装不同插头和说明书，而不是把所有版本都塞进每个箱子。这个类比不适用于 universal 包，因为 universal 的目的就是一箱兼容两种架构。</p>
+        <div class="mt-5 overflow-x-auto panel">
+          <table><thead><tr><th>方案</th><th>构建输入</th><th>归档边界</th><th>原生模块</th><th>限制</th></tr></thead><tbody>
+            <tr><th>VS Code</th><td>生产依赖独立归档，扩展按平台过滤。<a href="https://github.com/microsoft/vscode/blob/a8f49160195d9e967d2d51e8544dc895207518e7/build/lib/asar.ts">源码</a></td><td>node_modules.asar + unpacked</td><td>真实路径内容解包</td><td>universal 可能带两套架构</td></tr>
+            <tr><th>VSCodium</th><td>删除 Copilot 及其构建输入。<a href="https://github.com/VSCodium/vscodium/blob/5a73682ca091082675b10c9dc3f348c1d824d94f/patches/53-ext-copilot-remove-it.patch">patch</a></td><td>沿用 VS Code</td><td>沿用上游</td><td>删除功能改变能力</td></tr>
+            <tr><th>Signal</th><td>Rolldown minify、多入口、files 白名单。<a href="https://github.com/signalapp/Signal-Desktop/blob/6aea489bd04f31f6070538ffdbcea9fcf492479d/package.json#L225-L302">源码</a></td><td>ASAR + .node unpack</td><td>只选平台/架构 prebuild</td><td>sandbox preload 不能共用 require 环境</td></tr>
+            <tr><th>Element</th><td>Web 应用先构建为 webapp.asar。<a href="https://github.com/element-hq/element-desktop/blob/87baf1246be4e94345f84c2b74b75092243c5b35/electron-builder.ts#L93-L126">源码</a></td><td>壳只保留 lib 和必要依赖</td><td>.node unpack，hak 管理</td><td>壳仍需原生模块</td></tr>
+            <tr><th>GitHub Desktop</th><td>手工复制依赖并 prune。<a href="https://github.com/desktop/desktop/blob/8eb43b9bc99d866f89b8ca8f8043bdd80ea0a2a2/script/build.ts">源码</a></td><td>当前 asar:false</td><td>由清理流程维护</td><td>不能证明关闭 ASAR 更小</td></tr>
+          </tbody></table>
+        </div>
+        <details class="mt-5"><summary>证据与原文</summary><div>
+          <blockquote>"node_modules.asar" 与 "node_modules.asar.unpacked" 被 VS Code 的启动解析逻辑区分处理。</blockquote>
+          <blockquote>if (!platforms.has(process.platform)) { return es.readArray([]); }</blockquote>
+          <blockquote>"@github/copilot": "1.0.81-0" 被 VSCodium patch 删除。</blockquote>
+          <blockquote>asar: false, // TODO: Probably wanna enable this down the road.</blockquote>
+        </div></details>
+      </section>
+
+      <section id="boundaries" data-report-section="boundaries">
+        <h2 class="text-2xl font-semibold">重复资源和 ASAR 边界</h2>
+        <p class="plain mt-3" data-plain>需要真实磁盘路径的文件要放在 ASAR 外，但同一个文件只能选择一个外置路径。</p>
+        <p class="analogy">类比：需要拿出来使用的工具放工具箱旁边，但不能既放箱子里又放箱子外。这个类比不覆盖代码加载器的全部路径规则。</p>
+        <p class="mt-4">electron-builder 维护者确认，静态外部资源应使用 <code>extraResources</code> 或 <code>extraFiles</code>，避免同时列入 <code>files</code> 和 <code>asarUnpack</code>。<a href="https://github.com/electron-userland/electron-builder/issues/2290#issuecomment-401005093">维护者回复</a></p>
+        <details class="mt-5"><summary>证据与原文</summary><div>
+          <blockquote>It appears twice in the final package:
+Contents/Resources/app.asar.unpacked/build/a-large-binary-file
+Contents/Resources/app.asar/build/a-large-binary-file</blockquote>
+          <blockquote>Use extraResources instead of asarUnpack for static files.
+Do not specify in files.</blockquote>
+          <blockquote>app.asar.unpacked ... should be shipped together with the app.asar archive.</blockquote>
+        </div></details>
+      </section>
+
+      <section id="evidence" data-report-section="evidence">
+        <h2 class="text-2xl font-semibold">关键原文摘录</h2>
+        <p class="plain mt-3" data-plain>这些摘录把推荐做法和它们的边界固定在项目源码与维护者文档上。</p>
+        <p class="analogy">类比：这是装修施工单上的原始尺寸，结论是施工方案，摘录是量尺留下的数字。类比不代表所有项目的收益可以直接复制。</p>
+        <details open class="mt-5"><summary>官方与维护者原文</summary><div>
+          <blockquote><a href="https://github.com/electron/electron/blob/bb7a80aa84a1d21f477a9132c8ccf6f03aa8d698/docs/tutorial/performance.md#L37-L47">Electron performance</a>
+The most successful strategy for building a performant Electron app is to profile the running code, find the most resource-hungry piece of it, and to optimize it.</blockquote>
+          <blockquote><a href="https://github.com/signalapp/Signal-Desktop/blob/6aea489bd04f31f6070538ffdbcea9fcf492479d/package.json#L225-L302">Signal files</a>
+"!ts/**", "!build", "!**/*.{bak,bnf,flow,patch,markdown,ts,map}", "!**/node_modules/**/prebuilds/**"</blockquote>
+          <blockquote><a href="https://github.com/signalapp/Signal-Desktop/blob/6aea489bd04f31f6070538ffdbcea9fcf492479d/package.json#L67-L109">Signal build</a>
+"build:rolldown:prod": "pnpm build:rolldown --minify"</blockquote>
+          <blockquote><a href="https://github.com/electron/electron/blob/e86580ed49c20d98a2d4720d5952a593ac69d07a/docs/tutorial/using-native-node-modules.md#L1-L43">Electron native modules</a>
+Make sure the native module is compatible with the target platform and architecture for your Electron app.</blockquote>
+          <blockquote><a href="https://github.com/electron-userland/electron-builder/blob/99b6c7f1efe761bbd3d0582e158a8f1705f652a0/packages/app-builder-lib/src/options/PlatformSpecificBuildOptions.ts#L1-L20">electron-builder compression</a>
+maximum doesn't lead to noticeable size difference, but increase build time.</blockquote>
+          <blockquote><a href="https://github.com/electron-userland/electron-builder/issues/9423">native collection issue</a>
+no node modules returned while searching directories</blockquote>
+          <blockquote><a href="https://github.com/electron-userland/electron-builder/blob/99b6c7f1efe761bbd3d0582e158a8f1705f652a0/website/docs/nsis.md#L1-L12">NSIS-Web</a>
+Web Installer automatically detects OS architecture and downloads corresponding package file.</blockquote>
+          <blockquote>Electron 官方建议先检查依赖大小、require 加载资源和实际操作资源。</blockquote>
+          <blockquote>V8 snapshots 主要用于改善应用启动时间，不能直接当作磁盘体积优化。</blockquote>
+          <blockquote>增量更新需要匹配旧版本、manifest、blockmap 和发布文件，配置成功不等于更新链路已验证。</blockquote>
+        </div></details>
+      </section>
+
+      <section id="order" data-report-section="order">
+        <h2 class="text-2xl font-semibold">对 JAI 的建议顺序</h2>
+        <p class="plain mt-3" data-plain>先裁剪 Desktop runtime 和重复文件，再裁剪前端语言资源，最后评估压缩和更新。</p>
+        <p class="analogy">类比：先减轻货物，再选择运输方式，最后安排补发。运输方式无法修复货物清单里多装的一整箱东西。</p>
+        <ol class="mt-5 list-decimal space-y-3 pl-6">
+          <li>建立 Desktop 专用 runtime 目录，只复制 `main.js`、FFF 必需 node_modules 和实际资源。</li>
+          <li>对 FFF staged 目录做 allowlist，保留 dylib、ffi binding、必要 JS 和 package metadata。</li>
+          <li>审计 app.asar、Resources 和 app.asar.unpacked，确保大型文件只出现一次。</li>
+          <li>为 Shiki/代码高亮做语言 allowlist，并跑聊天、代码块、PDF、MCP/native smoke test。</li>
+          <li>最后比较 normal/maximum、首装 zip、解压 app、Framework 和更新 delta。</li>
+        </ol>
+      </section>
+
+      <section id="coverage" data-report-section="coverage">
+        <h2 class="text-2xl font-semibold">来源覆盖</h2>
+        <p class="plain mt-3" data-plain>来源覆盖表说明本次查了哪些证据，以及哪些结论仍需要 JAI 自己实测。</p>
+        <p class="analogy">类比：像审计时列出账本、发票、访谈和历史记录，读者可以看到证据来自哪里。它不能替代对 JAI 新构建的实测。</p>
+        <table class="panel mt-5"><tbody>
+          <tr><th>官方文档 / 源码</th><td>Electron performance、ASAR、native modules、fuses；五个开源 Electron 项目的固定 commit；electron-builder 固定 commit 文档和配置类型。</td></tr>
+          <tr><th>作者或维护者本人的说法</th><td>Electron 官方文档；electron-builder 维护者在 #2290 对重复打包的明确回复。</td></tr>
+          <tr><th>同类方案</th><td>VS Code、VSCodium、Signal Desktop、Element Desktop、GitHub Desktop，统一比较构建输入、归档边界、原生模块、平台产物和限制。</td></tr>
+          <tr><th>issue / PR / 社区实践</th><td>#2290、#2499、#9423，覆盖重复资源、更新元数据和 workspace/native module 收集问题。</td></tr>
+          <tr><th>历史演变</th><td>对照 electron-builder 19.x/26.x、Electron 37 文档与当前构建快照，结论按版本固定，未把旧行为外推到 JAI。</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="unknowns" data-report-section="unknowns">
+        <h2 class="text-2xl font-semibold">待验证</h2>
+        <ul class="mt-4 list-disc space-y-2 pl-6"><li>Desktop runtime allowlist 的最小闭包和实际节省字节数。</li><li>FFF 裁剪后的 zip 节省量。</li><li>Shiki allowlist 对功能和首屏的影响。</li><li>是否有 app.asar、Resources/dist 与 unpacked 的重复大文件。</li><li>universal 与 arm64 单架构产物的首装差异。</li></ul>
+      </section>
+
+      <section id="glossary" data-report-section="glossary">
+        <h2 class="text-2xl font-semibold">术语表</h2>
+        <dl class="mt-4 space-y-3"><dt><dfn>ASAR</dfn></dt><dd>Electron 用来把应用文件集中存放的归档格式。</dd><dt><dfn>native module</dfn></dt><dd>包含平台相关机器码、需要按系统和架构加载的模块。</dd><dt><dfn>universal</dfn></dt><dd>一个 macOS 应用同时包含多种处理器架构代码的发行方式。</dd><dt><dfn>增量更新</dfn></dt><dd>更新时只传输新旧版本之间变化的部分。</dd></dl>
+      </section>
+
+      <section id="sources" data-report-section="sources">
+        <h2 class="text-2xl font-semibold">来源</h2>
+        <ul class="mt-4 list-disc space-y-2 pl-6">
+          <li id="source-electron-performance"><a href="https://github.com/electron/electron/blob/bb7a80aa84a1d21f477a9132c8ccf6f03aa8d698/docs/tutorial/performance.md#L37-L47">Electron performance</a></li>
+          <li id="source-signal-files"><a href="https://github.com/signalapp/Signal-Desktop/blob/6aea489bd04f31f6070538ffdbcea9fcf492479d/package.json#L225-L302">Signal files</a></li>
+          <li id="source-element-files"><a href="https://github.com/element-hq/element-desktop/blob/87baf1246be4e94345f84c2b74b75092243c5b35/electron-builder.ts#L93-L126">Element files</a></li>
+          <li id="source-electron-native"><a href="https://github.com/electron/electron/blob/e86580ed49c20d98a2d4720d5952a593ac69d07a/docs/tutorial/using-native-node-modules.md#L1-L43">Electron native ABI</a></li>
+          <li id="source-jai-fff"><a href="https://github.com/electron-userland/electron-builder/issues/9423">electron-builder native collection issue</a></li>
+          <li id="source-signal-build"><a href="https://github.com/signalapp/Signal-Desktop/blob/6aea489bd04f31f6070538ffdbcea9fcf492479d/package.json#L67-L109">Signal build</a></li>
+          <li id="source-builder-compression"><a href="https://github.com/electron-userland/electron-builder/blob/99b6c7f1efe761bbd3d0582e158a8f1705f652a0/packages/app-builder-lib/src/options/PlatformSpecificBuildOptions.ts#L1-L20">electron-builder compression</a></li>
+          <li id="source-nsis-web"><a href="https://github.com/electron-userland/electron-builder/blob/99b6c7f1efe761bbd3d0582e158a8f1705f652a0/website/docs/nsis.md#L1-L12">NSIS-Web</a></li>
+          <li id="source-vscode-asar"><a href="https://github.com/microsoft/vscode/blob/a8f49160195d9e967d2d51e8544dc895207518e7/build/lib/asar.ts">VS Code ASAR</a></li>
+          <li id="source-vscodium-copilot"><a href="https://github.com/VSCodium/vscodium/blob/5a73682ca091082675b10c9dc3f348c1d824d94f/patches/53-ext-copilot-remove-it.patch">VSCodium dependency patch</a></li>
+          <li id="source-github-desktop"><a href="https://github.com/desktop/desktop/blob/8eb43b9bc99d866f89b8ca8f8043bdd80ea0a2a2/script/build.ts">GitHub Desktop build</a></li>
+          <li id="source-builder-duplicate"><a href="https://github.com/electron-userland/electron-builder/issues/2290#issuecomment-401005093">electron-builder duplicate resource reply</a></li>
+          <li id="source-asar"><a href="https://github.com/electron/electron/blob/fff9483bdcb5dbf5d1d4f2f35ad527ff5068e03d/docs/tutorial/asar-archives.md#L1-L30">Electron ASAR</a></li>
+        </ul>
+      </section>
+
+      <section id="impact" data-report-section="impact">
+        <h2 class="text-2xl font-semibold">对本项目的影响</h2>
+        <p class="plain mt-3" data-plain>JAI 短期可以从应用层拿回数 MB 到十几 MB，几十 MB 的目标需要更换 Electron runtime。</p>
+        <p class="analogy">类比：先把车里的货物和备件减掉能让车轻一些，但发动机的重量仍在那里。要换更小的发动机，属于换车方案。</p>
+        <p class="mt-4">JAI 当前约 120MB 的 zip 中，Framework 是主要固定成本；应用层约 38M。优先做 Desktop 专用 runtime、FFF allowlist、重复资源审计和高亮语言 allowlist。压缩级别、V8 snapshot 和增量更新分别针对构建时间、启动时间和后续更新下载量，不能代替文件裁剪。</p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

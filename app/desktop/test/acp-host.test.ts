@@ -11,6 +11,22 @@ import { DesktopAcpAgentHost } from "../electron/agent/acp-host";
 import type { DesktopAgentEventEnvelope, DesktopToolItem } from "../shared/desktop-rpc";
 
 describe("DesktopAcpAgentHost", () => {
+	test("does not open an ACP session without an accessible workspace", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => undefined,
+		});
+
+		await expect(
+			host.send({ sessionId: "session-1", modelRef: "profile/model", mode: "manual", message: "hello" }),
+		).rejects.toMatchObject({
+			_tag: "desktop_agent.workspace_required",
+		});
+		expect(client.methods).toEqual(["initialize"]);
+		host.close();
+	});
+
 	test("connects through ACP, configures a session, and projects updates without a Coding Agent", async () => {
 		const client = new FakeAcpClient();
 		const events: DesktopAgentEventEnvelope[] = [];
@@ -355,7 +371,7 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
-	test("round-trips the ACP v2 request-permission schema fixture", async () => {
+	test("a rejected ACP permission selects reject_once without cancelling the session", async () => {
 		const client = new FakeAcpClient();
 		const events: DesktopAgentEventEnvelope[] = [];
 		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
@@ -384,17 +400,18 @@ describe("DesktopAcpAgentHost", () => {
 		};
 		client.requestFromHost(officialRequestPermissionFixture);
 
-		host.resolvePermission({ requestId: "tool-1", decision: "alwaysAllow" });
+		host.resolvePermission({ requestId: "tool-1", decision: "deny" });
 
 		expect(client.responses).toContainEqual({
 			jsonrpc: "2.0",
 			id: 18,
-			result: { outcome: { outcome: "selected", optionId: "allow-always" } },
+			result: { outcome: { outcome: "selected", optionId: "reject" } },
 		});
 		expect(events.at(-1)).toMatchObject({
 			sessionId: "session-1",
-			event: { type: "transcript_upsert", item: { kind: "permission", status: "allowed" } },
+			event: { type: "transcript_upsert", item: { kind: "permission", status: "denied" } },
 		});
+		expect(client.notifications.some((notification) => notification.method === "session/cancel")).toBe(false);
 		host.close();
 	});
 

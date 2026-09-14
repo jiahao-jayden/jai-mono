@@ -43,6 +43,7 @@
   "desktop.composer.attachmentLimit": "附件总大小必须不超过 20 MB。",
   "desktop.composer.couldNotAddFiles": "无法添加这些文件。",
   "desktop.composer.message": "消息",
+  "desktop.composer.projectRequired": "请先选择一个可访问的项目。",
   "desktop.composer.queueMessage": "排队发送消息",
   "desktop.composer.sendMessage": "发送消息",
   "desktop.composer.stopResponse": "停止回复",

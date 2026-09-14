@@ -42,7 +42,7 @@ describe("FFF search extension", () => {
 			return;
 		}
 
-		const runtime = new FffSearchRuntime(created.value);
+		const runtime = new FffSearchRuntime(created.value, root);
 		const found = await runtime.find({ pattern: "app" });
 		const foundText = textContent(found.content[0]);
 		expect(foundText).toContain("src/app.ts");
@@ -65,6 +65,7 @@ describe("FFF search extension", () => {
 		expect(textContent(empty.content[0])).toBe("No matches found");
 		await expect(runtime.find({ pattern: "app", path: "../" })).rejects.toMatchObject({
 			_tag: "filesearch.outside_boundary",
+			message: expect.stringContaining(`relative to workspace root "${root}"`),
 		});
 		await expect(runtime.grep({ pattern: "(" })).rejects.toMatchObject({
 			_tag: "filesearch.invalid_pattern",

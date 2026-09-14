@@ -131,6 +131,9 @@
   "desktop.composer.message": {
     "defaultMessage": "Message"
   },
+  "desktop.composer.projectRequired": {
+    "defaultMessage": "Choose an accessible project before sending a message."
+  },
   "desktop.composer.queueMessage": {
     "defaultMessage": "Queue message"
   },

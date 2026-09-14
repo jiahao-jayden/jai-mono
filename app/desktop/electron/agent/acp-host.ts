@@ -49,6 +49,10 @@ class DesktopAcpConnectionClosed extends TaggedError("desktop_agent.acp_connecti
 	readonly message: string;
 }> {}
 
+class DesktopAcpWorkspaceRequired extends TaggedError("desktop_agent.workspace_required")<{
+	readonly message: string;
+}> {}
+
 interface AcpSessionRuntime {
 	readonly sessionId: string;
 	readonly cwd: string;
@@ -70,7 +74,7 @@ export interface DesktopAcpAgentHostOptions {
 	readonly dataDirectory?: string;
 	readonly endpoint?: string;
 	readonly environment?: Readonly<Record<string, string | undefined>>;
-	readonly resolveSessionCwd: (sessionId: string) => Promise<string>;
+	readonly resolveSessionCwd: (sessionId: string) => Promise<string | undefined>;
 	readonly client?: LocalAcpV2Client;
 }
 
@@ -86,7 +90,7 @@ export interface DesktopAcpSendInput extends DesktopAgentMessageInput {
  */
 export class DesktopAcpAgentHost {
 	readonly #emit: DesktopAcpAgentEventSink;
-	readonly #resolveSessionCwd: (sessionId: string) => Promise<string>;
+	readonly #resolveSessionCwd: (sessionId: string) => Promise<string | undefined>;
 	readonly #sessions = new Map<string, AcpSessionRuntime>();
 	readonly #pendingPermissions = new Map<string, PendingPermission>();
 	readonly #client: LocalAcpV2Client;
@@ -282,9 +286,14 @@ export class DesktopAcpAgentHost {
 	}
 
 	async #ensureSession(sessionId: string, modelRef: string, mode: DesktopAgentMode): Promise<AcpSessionRuntime> {
+		const cwd = await this.#resolveSessionCwd(sessionId);
+		if (!cwd) {
+			throw new DesktopAcpWorkspaceRequired({
+				message: "Choose an accessible project before sending a message.",
+			});
+		}
 		const current = this.#sessions.get(sessionId);
 		if (current) return current;
-		const cwd = await this.#resolveSessionCwd(sessionId);
 		const runtime: AcpSessionRuntime = {
 			sessionId,
 			cwd,

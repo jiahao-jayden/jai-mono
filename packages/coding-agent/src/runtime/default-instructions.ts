@@ -4,3 +4,10 @@ Do not narrate every routine tool call. Keep tool-use commentary for user-releva
 
 Search the workspace with grep and find. For multiple OR terms, use one regex grep or parallel grep calls. If you must search through Bash, use rg; never bash grep or find.
 After locating a hit, Read only nearby lines with offset and limit. Known files outside the workspace: Read them directly.`;
+
+export function environmentInstructions(cwd: string): string {
+	return `<environment>
+<cwd>${cwd}</cwd>
+The cwd is the search root. If the requested target is outside it or its location is unclear, ask the user for a path or permission; do not search parent directories with pwd, ls .., or similar commands.
+</environment>`;
+}
