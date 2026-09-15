@@ -3,7 +3,7 @@ name: jn-intent
 description: "澄清需求并生成带图的 RFC 格式 PRD，必须经过 renhua 项目文档编辑。Use when starting a feature, clarifying what to build, or writing/revising a PRD or RFC. Produces content without automatically publishing issues or implementing code."
 ---
 
-生成可以作为父 Issue 正文的 PRD，承载需求和整体设计。只产内容；单独调用不创建 Issues、不自动拆任务或实施。JN 调用时把结果交回入口。
+生成可以作为父 Issue 正文的 PRD，承载 AI 当前意图、需求和整体设计。只产内容；单独调用不创建 Issues、不自动拆任务或实施。JN 调用时把结果交回入口。
 
 ## 先查清事实和取舍
 
@@ -15,7 +15,7 @@ description: "澄清需求并生成带图的 RFC 格式 PRD，必须经过 renhu
 
 ## 写 RFC 和图示
 
-读取 [RFC 与图示模板](references/prd.md)，保持指定章节顺序。把 Grill 的决定、相关证据和整体方案写成一份自足的 PRD，不再生成 intent.md 或 plan.md。无需先判断需求大小。
+读取 [RFC 与图示模板](references/prd.md)，保持指定章节顺序。先写并持续维护 `意图（AI 当前理解）`，再把 Grill 的决定、相关证据和整体方案写成一份自足的 PRD，不再生成 intent.md 或 plan.md。意图至少说明要解决什么、准备交付什么、本轮不做什么、已确定取舍和待确认问题。无需先判断需求大小。
 
 “指南级的介绍”必须有本次范围、不做什么、使用示例和可检查的验收标准。技术部分回到这些示例，解释如何实现以及失败时会发生什么。细到能够拆任务，但不提前堆逐文件实施清单。
 
@@ -29,7 +29,7 @@ PRD 必须包含解释需求的图。默认 Mermaid：至少一张主流程图�
 
 ## 交付标准
 
-- 不看聊天记录也能理解需求、整体设计、本次不做什么，以及如何验收。
+- 不看聊天记录也能理解 AI 当前要做什么、需求、整体设计、本次不做什么，以及如何验收。
 - 接受前必须解决的问题已有答案；仍待实施验证和范围外的问题明确分开。
 - 图示检查语法并预览渲染，核对重要分支、方向、状态和正文一致。不具备渲染条件时标记“图示未验证”，PRD 保持草稿，不声称已通过。
 - 已应用 renhua，且没有因编辑丢失技术事实、限制或验收条件。
