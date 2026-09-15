@@ -1,9 +1,9 @@
 ---
 name: jn-plan
-description: "把 RFC 格式 PRD 拆成有依赖关系、可独立验收的子 Issue 草案。Use when planning, splitting, or revising implementation tickets for a feature. Does not create plan/todo/spec files or publish issues by itself."
+description: "把 RFC 格式 PRD 拆成有依赖关系、可独立验收的子任务草案。Use when planning, splitting, or revising implementation tickets for a feature. Does not create plan/todo/spec files or publish tracker records by itself."
 ---
 
-读取 PRD 和项目现状，把工作拆成子 Issue 正文及依赖清单。单独调用只产内容，发布和调度交给 JN 或用户明确指定的调用方。
+读取 PRD 和项目现状，把工作拆成子任务正文及依赖清单。单独调用只产内容，发布和调度交给 JN 或用户明确指定的调用方。
 
 ## 拆分前
 
@@ -15,7 +15,7 @@ PRD 必须足以说明目标、边界、整体方案和验收；缺少会影响�
 
 按可交付、可检查的行为拆，每项要能在独立上下文中完成；确有必要的准备任务写明交付物和验证方式。不按文件或技术层机械拆，不区分大小需求；一项工作也用同一任务模板。
 
-读取 [子 Issue 模板](references/task.md)。每项写必要背景、范围、约束、验收、前置交付物和适用检查。只摘与本项相关的项目规则原文，标出处；整体设计仍以父 PRD 为准。
+读取 [子任务模板](references/task.md)。每项写必要背景、范围、约束、验收、前置交付物和适用检查。只摘与本项相关的项目规则原文，标出处；整体设计仍以父 PRD 为准。
 
 草稿用 T1、T2 标识，依赖只表示实际需要的前置交付，不把排列顺序当依赖。检查自依赖、循环、重复工作和遗漏；并行任务注明各自范围，避免把同一份代码同时交给多人。不同会话间的代码是否可访问由执行阶段再次检查。
 
@@ -23,6 +23,6 @@ PRD 必须足以说明目标、边界、整体方案和验收；缺少会影响�
 
 ## 交付
 
-交回完整任务正文，以及“草稿标识 / 标题 / 前置任务 / 交付物 / 对应验收”的导览表；没有单独的本地进度文件。发布后由调用方用真实 Issue 链接替换临时标识并建立关系。
+交回完整任务正文，以及“草稿标识 / 标题 / 前置任务 / 交付物 / 对应验收”的导览表；不额外创建 tracker 之外的进度文件。发布后由调用方用真实 Issue 链接或本地相对路径替换临时标识并建立关系。
 
 完整 PRD 和任务拆分一起供用户确认，一次确认覆盖后续实施。JN 已持有相应授权时直接记录，不逐项请求确认。修改既有任务时读取当前正文和执行记录，保留已完成事实，不用全新草稿覆盖用户记录。

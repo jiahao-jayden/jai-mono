@@ -1,0 +1,2 @@
+tracker: github
+fallback: local

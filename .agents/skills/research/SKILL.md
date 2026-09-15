@@ -1,9 +1,9 @@
 ---
 name: research
-description: "针对一个问题做调研，追到一手来源，产出带摘录引证、可独立复核的 Markdown 笔记；用户要求报告或问题包含复杂关系、流程、时间演变、多方案比较或 GitHub issue 讨论时，同时产出完整的可视化 HTML 报告。Use when the user asks to 调研/研究/investigate a topic, compare how other projects solved something, inspect GitHub issues or maintainer responses, verify how a third-party library, protocol or API actually behaves, or needs outside facts before a decision."
+description: "针对一个问题做调研，追到一手来源，产出带摘录引证、可独立复核的 Markdown 笔记；只有用户明确要求 HTML 或网页报告时，才额外生成经过重新组织的解释版 HTML。Use when the user asks to 调研/研究/investigate a topic, compare how other projects solved something, inspect GitHub issues or maintainer responses, verify how a third-party library, protocol or API actually behaves, or needs outside facts before a decision."
 ---
 
-回答一个问题，证据追到一手来源，产出一份别人不用重查就能复核的笔记。用户要求可视化报告，或问题确实存在复杂关系、流程、时间演变、多方案比较或 GitHub issue 讨论时，同时输出 HTML 报告。
+回答一个问题，证据追到一手来源，产出一份别人不用重查就能复核的笔记。默认只交付 Markdown。只有用户明确要求 HTML 或网页报告时才生成 HTML；“调研报告”“讲清楚”“加图”不自动触发网页，可以在 Markdown 中用表格和图解释。
 
 **结论必须可复核，而且在笔记里就能复核。** 读者应当不离开这份笔记就能看到支撑每条结论的原文，再顺着链接走到源头确认。只给链接不给原文的调研，读者要么全信，要么全部重查，两种都等于没做。
 
@@ -108,7 +108,7 @@ GitHub 讨论能提供三种不同东西，写报告时必须分开：
 
 问题跨主题时，按需要被复用的主结论选一个目录，不要复制同一份笔记；从需求工件链接到它即可。没有匹配的主题时，创建一个简短、稳定、能概括一组相关研究的主题目录。生成 HTML 报告时，与 Markdown 保持同目录同名，例如 `.jnative/research/<area>/<topic>.md` 和 `.jnative/research/<area>/<topic>.html`。
 
-Markdown 是事实和引证的唯一依据。HTML 是它的完整可读版加上图，不能在里面新增 Markdown 没有的结论。
+Markdown 是事实和引证的唯一依据。HTML 是围绕用户问题重新组织的解释版，可合并章节、筛选结论并省略无关细节；不得引入笔记没有依据的新事实，也不能省略会改变判断的限制和反证。
 
 ### 引证的形状
 
@@ -231,52 +231,17 @@ python3 <skill-dir>/scripts/check_note.py <note>.md
 
 它检查上面第 1、2 条和骨架结构。检查失败就修，不要靠「这次情况特殊」跳过。
 
-## 7. 可视化 HTML 报告
+## 7. 用户明确要求的 HTML 报告
 
-### 什么时候生成
+只有用户明确要求 HTML 或网页报告才进入本节。已有 HTML 文件、题目涉及流程/架构/对比、引用 GitHub issue，都不是自动生成或更新 HTML 的理由。用户明确要求修改已有 HTML 时，按该范围更新。
 
-用户明确要 HTML、可视化报告、汇报页或可以直接打开的报告时，生成。即使用户没说，只要调研的重点是以下任一项，也同时生成并在交付时说明：
+先完成 Markdown 事实核验，再读取 [`references/visual-report.md`](references/visual-report.md) 和 [`assets/report-template.html`](assets/report-template.html)。模板只提供布局起点，章节按问题重写，不逐节转换 Markdown。
 
-- 组件、系统或参与方之间的关系
-- 有顺序的流程、调用链或状态变化
-- 版本、事件或决策随时间的变化
-- 三个以上方案需要按相同维度比较
+HTML 必须独立回答用户的问题：先给答案和适用条件，再用具体场景解释关键机制或方案差异，最后说明建议和未解决问题。主文不展开源码清单，必要的短证据放在相关结论旁，完整摘录与检索记录通过链接回 Markdown 查看。不把笔记全文塞进折叠区，也不强制每节套“定义、类比、展开、影响”四段。
 
-单点查证、两三条独立结论，或一张表就能说清的对比，不生成 HTML。
+一张图回答一个明确问题。标签使用真实参与者与动作，术语首次出现就地解释，日常类比仅在比实际例子更清楚时使用。正文、图示不能将推断或拟议方案表现成已验证事实。
 
-### HTML 是什么
-
-HTML 的读者和 Markdown 不同。Markdown 给要复核证据的工程师看；HTML 给**所有人**看，包括不写代码的产品、设计、管理者和第一次接触这个领域的人。他们要的不是原文摘录，是"这东西到底是什么、跟我有什么关系"。
-
-所以 HTML 分两层：
-
-- **解释层**在上。每个章节按同一个顺序写：一句话说清是什么 → 一个来自日常生活的类比 → 再展开细节 → 这对读者意味着什么。术语第一次出现时用 `<dfn>` 标出，并在页尾术语表里给一句人话定义。先讲目的，再讲机制；读者不知道一个东西为什么存在之前，不关心它怎么运作
-- **证据层**在下。Markdown 的全部内容——每个章节、每张表、每处摘录、每个链接——原样放进对应章节的折叠区里。想核的人展开看，不想核的人跳过
-
-解释层不许新增 Markdown 没有的结论，只许换一种说法讲同一件事。类比是帮助理解的工具，它一定有不准确的地方，在类比旁边写清楚它在哪里失效。
-
-一致性契约（`check_report.py --note` 会检查）：
-
-- Markdown 的每个 `##` / `###` 章节，HTML 里有对应的一节，标题一致，顺序一致
-- Markdown 的每张表、每处摘录、每个链接，HTML 里都有
-- 每张结论卡片和每个中段章节都有一段 `data-plain` 的人话解释
-- 有术语表；正文里每个 `<dfn>` 术语在术语表里都有定义
-- 图放进它解释的那个章节，一张图回答一个问题；图上的标签用人话，不用代码里的标识符
-
-写法细节、示例和判断标准见 [`references/visual-report.md`](references/visual-report.md)。
-
-### 怎么生成
-
-生成报告前先读 [`references/visual-report.md`](references/visual-report.md) 和 [`assets/report-template.html`](assets/report-template.html)。将它保存为与笔记同名的 `.html` 文件。
-
-如果使用 GitHub issue 或 PR，还要读 [`references/github-issues.md`](references/github-issues.md)。
-
-- 使用模板里的 Tailwind CDN：`https://cdn.tailwindcss.com`。报告打开时需要联网，交付时明确说明这点。
-- Tailwind 负责页面排版；关系、流程和时间线用内嵌 SVG；多方案比较用 HTML 表格。
-- 单张图超过 9 个节点或 12 条关系时，拆成概览和细节两张。
-- 图表必须来自已经核验过的事实。每个结论标记 `data-claim-id`，并用 `data-source-ids` 连到报告中的来源；来源列表包含 Markdown 的全部引证，不挑选。
-- 让图表有标题和说明。SVG 带 `role="img"`、`<title>` 和 `<desc>`；不要用颜色作为唯一的信息来源。
-- 写完解释层后，找一段自己不熟悉领域的话读一遍：碰到一个不认识的词就停下来。用这个标准检查自己的报告，每个会让外行停下来的词都要么换成人话，要么 `<dfn>` 加术语表。
+默认使用内嵌 CSS，离线可阅读正文和图表；来源链接需要联网查看。报告与笔记同目录同名。来源只列报告实际引用的部分；每条主要结论用 `data-claim-id` 和 `data-source-ids` 关联来源，并提供带 `data-note-link` 的完整笔记链接。
 
 生成后运行：
 
@@ -284,4 +249,4 @@ HTML 的读者和 Markdown 不同。Markdown 给要复核证据的工程师看�
 python3 <skill-dir>/scripts/check_report.py <report>.html --note <note>.md
 ```
 
-检查失败就修复；检查只验证报告结构、来源关联和与 Markdown 的一致性，不替代对事实的核验。
+校验器检查结构、来源引用和笔记追溯，不要求标题、顺序、表格、摘录或结论数量一致，也不能判断文字是否好懂。交付前必须按 visual-report 的具体场景复述检查，并在桌面和窄屏预览检查图表、目录和阅读顺序。没有完成预览就说明未验证，不把脚本通过当作报告质量通过。

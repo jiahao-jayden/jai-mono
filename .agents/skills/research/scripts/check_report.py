@@ -4,11 +4,10 @@
 Usage:
     python3 check_report.py report.html [--note note.md]
 
-Without --note this checks that the report keeps its claims connected to
-sources. With --note it also checks that the HTML carries everything the
-Markdown note has: every heading, every table, every link, every excerpt, and
-at least as many claims as conclusions. It does not verify that a source
-actually proves a claim; that remains the researcher's job.
+Checks report structure and source references. With --note, each cited source
+must exist in the evidence note and the report must link back to that note.
+The report may select and reorganize content. This does not verify factual
+support, retention of important caveats, or readability.
 """
 
 from __future__ import annotations
@@ -18,13 +17,13 @@ import re
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from mdnote import parse_note  # noqa: E402
 
-TAILWIND_CDN = "https://cdn.tailwindcss.com"
-REQUIRED_SECTIONS = {"conclusions", "coverage", "sources", "impact", "unknowns", "glossary"}
+REQUIRED_SECTIONS = {"conclusions", "sources", "impact", "unknowns"}
 # Sections that are lists or references and do not need a plain-language lead.
 PLAIN_EXEMPT_SECTIONS = {"sources", "glossary", "unknowns"}
 # Elements whose nesting we track so we can tell what a data-plain or <h2> belongs to.
@@ -39,7 +38,7 @@ class ReportParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.has_main = False
         self.has_title = False
-        self.tailwind_scripts: list[str] = []
+        self.note_links: list[str] = []
         self.sections: set[str] = set()
         self.claims: list[tuple[str, list[str]]] = []
         self.source_ids: set[str] = set()
@@ -47,10 +46,7 @@ class ReportParser(HTMLParser):
         self.source_metadata: dict[str, dict[str, str]] = {}
         self.svg_stack: list[dict[str, bool]] = []
         self.svg_errors: list[str] = []
-        self.headings: list[str] = []
         self.hrefs: set[str] = set()
-        self.table_count = 0
-        self.excerpt_count = 0
         self.plain_errors: list[str] = []
         self.dfn_terms: set[str] = set()
         self.glossary_terms: set[str] = set()
@@ -67,12 +63,6 @@ class ReportParser(HTMLParser):
             self.has_title = True
         elif tag == "main":
             self.has_main = True
-        elif tag == "script" and values.get("src"):
-            self.tailwind_scripts.append(values["src"])
-        elif tag == "table":
-            self.table_count += 1
-        elif tag in {"pre", "blockquote"}:
-            self.excerpt_count += 1
         elif tag in HEADING_TAGS:
             self._heading_buffer = []
             if tag == "h2":
@@ -87,6 +77,8 @@ class ReportParser(HTMLParser):
 
         if tag == "a" and values.get("href"):
             self.hrefs.add(values["href"])
+            if "data-note-link" in values:
+                self.note_links.append(values["href"])
 
         section = values.get("data-report-section")
         if section:
@@ -150,7 +142,6 @@ class ReportParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag in HEADING_TAGS and self._heading_buffer is not None:
             heading = normalize("".join(self._heading_buffer))
-            self.headings.append(heading)
             self._heading_buffer = None
             if tag == "h2":
                 for frame in reversed(self._frames):
@@ -205,8 +196,8 @@ def validate_structure(parser: ReportParser) -> list[str]:
         errors.append("missing <title>")
     if not parser.has_main:
         errors.append("missing <main>")
-    if parser.tailwind_scripts.count(TAILWIND_CDN) != 1:
-        errors.append(f"expected exactly one Tailwind CDN script: {TAILWIND_CDN}")
+    if not parser.note_links:
+        errors.append("missing complete evidence note link (data-note-link)")
 
     missing_sections = REQUIRED_SECTIONS - parser.sections
     if missing_sections:
@@ -257,33 +248,19 @@ def validate_structure(parser: ReportParser) -> list[str]:
     return errors
 
 
-def validate_parity(parser: ReportParser, note_path: Path) -> list[str]:
-    note = parse_note(note_path)
+def validate_sources(parser: ReportParser, note_path: Path, report_path: Path) -> list[str]:
+    note_links = set(parse_note(note_path).links())
     errors: list[str] = []
-
-    html_headings = set(parser.headings)
-    for heading in note.headings():
-        if normalize(heading) not in html_headings:
-            errors.append(f"note heading '{heading}' has no matching <h2>/<h3> in the report")
-
-    note_tables = note.table_count()
-    if parser.table_count < note_tables:
-        errors.append(f"note has {note_tables} tables, report has {parser.table_count}")
-
-    missing_links = sorted(set(note.links()) - parser.hrefs)
-    for url in missing_links:
-        errors.append(f"note link missing from report: {url}")
-
-    note_excerpts = len(note.excerpt_starts())
-    if parser.excerpt_count < note_excerpts:
-        errors.append(
-            f"note has {note_excerpts} excerpts, report has {parser.excerpt_count} <pre>/<blockquote>"
-        )
-
-    conclusions = len(note.conclusion_items())
-    if len(parser.claims) < conclusions:
-        errors.append(f"note has {conclusions} conclusions, report has {len(parser.claims)} data-claim-id")
-
+    if not any(
+        not urlsplit(link).scheme and not urlsplit(link).netloc
+        and (report_path.parent / unquote(urlsplit(link).path)).resolve() == note_path.resolve()
+        for link in parser.note_links
+    ):
+        errors.append("data-note-link must point to the supplied Markdown note")
+    for source_id, links in parser.source_links.items():
+        for link in links:
+            if link not in note_links:
+                errors.append(f"source {source_id!r} link is not in the evidence note: {link}")
     return errors
 
 
@@ -293,14 +270,14 @@ def validate(path: Path, note_path: Path | None) -> list[str]:
     parser.close()
     errors = validate_structure(parser)
     if note_path is not None:
-        errors.extend(validate_parity(parser, note_path))
+        errors.extend(validate_sources(parser, note_path, path))
     return errors
 
 
 def main() -> int:
     arguments = argparse.ArgumentParser(description=__doc__)
     arguments.add_argument("report", type=Path)
-    arguments.add_argument("--note", type=Path, help="the Markdown note this report must mirror")
+    arguments.add_argument("--note", type=Path, help="the evidence note supporting the selected report content")
     args = arguments.parse_args()
     try:
         errors = validate(args.report, args.note)

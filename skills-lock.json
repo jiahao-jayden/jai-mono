@@ -23,7 +23,7 @@
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "jn/SKILL.md",
-      "computedHash": "09c0028a278033dcdbfc3856d5178698f6d052e11b8dce7c8fefe3891e980527"
+      "computedHash": "623643bf3509b0f73ae9f7b7ee2d058c8ed5f26b53a9390f23e32124c64b0fb1"
     },
     "jn-grilling": {
       "source": "jiahao-jayden/skills",
@@ -41,7 +41,7 @@
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "jn-plan/SKILL.md",
-      "computedHash": "236104589d47f49bfcf0d3c7d5033af55fcc314db80875ad8353d5f1dea110a8"
+      "computedHash": "2eb5638ed98113bb05cb889c80642154fc00673856529d81e9a7e422a316b838"
     },
     "renhua": {
       "source": "jiahao-jayden/skills",
@@ -53,7 +53,7 @@
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
       "skillPath": "research/SKILL.md",
-      "computedHash": "1c3217216ec4632341cd5ca6e56140a17eb47f8127d48c1706485980f4ffadb8"
+      "computedHash": "c0dee807601dbdcae24975df16c20e6262abaae8c4779ed1cc13480111844515"
     },
     "shadcn": {
       "source": "shadcn/ui",
