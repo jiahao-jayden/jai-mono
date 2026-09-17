@@ -29,6 +29,7 @@ describe("DesktopAcpAgentHost", () => {
 
 	test("connects through ACP, configures a session, and projects updates without a Coding Agent", async () => {
 		const client = new FakeAcpClient();
+		client.resumeSucceeds = true;
 		const events: DesktopAgentEventEnvelope[] = [];
 		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
 			client,
@@ -64,7 +65,6 @@ describe("DesktopAcpAgentHost", () => {
 		expect(client.methods).toEqual([
 			"initialize",
 			"session/resume",
-			"session/new",
 			"session/set_config_option",
 			"session/set_config_option",
 			"session/prompt",
@@ -86,6 +86,32 @@ describe("DesktopAcpAgentHost", () => {
 			],
 		});
 		expect(events.map((event) => event.seq)).toEqual([1, 2]);
+		host.close();
+	});
+
+	test("resumes and sends a default Session through its durable workspace", async () => {
+		const client = new FakeAcpClient();
+		const cwd = "/jai/workspace/default/2026-09-17/session-1";
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => cwd,
+		});
+
+		await host.ensureSessionProjection("session-1");
+		await host.send({ sessionId: "session-1", modelRef: "profile/model", mode: "manual", message: "continue" });
+
+		expect(client.methods).toEqual([
+			"initialize",
+			"session/resume",
+			"session/set_config_option",
+			"session/set_config_option",
+			"session/prompt",
+		]);
+		expect(client.params[1]).toEqual({
+			sessionId: "session-1",
+			cwd,
+			replayFrom: { type: "start" },
+		});
 		host.close();
 	});
 
@@ -756,9 +782,9 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
-	test("does not create a Session when resume fails because the journal cannot be read", async () => {
+	test("does not recreate a Session when its durable journal is missing", async () => {
 		const client = new FakeAcpClient();
-		client.resumeError = 'Could not load Session "session-1"';
+		client.resumeSucceeds = false;
 		const host = await DesktopAcpAgentHost.open(() => {}, {
 			client,
 			resolveSessionCwd: async () => "/workspace",
@@ -923,8 +949,8 @@ class FakeAcpClient implements LocalAcpV2Client {
 	readonly responses: AcpJsonRpcResponse[] = [];
 	readonly #listeners = new Set<(notification: AcpJsonRpcNotification) => void>();
 	readonly #requests = new Set<(request: AcpJsonRpcRequest) => void>();
-	#resumeCalls = 0;
 	resumeError?: string;
+	resumeSucceeds = true;
 	subagentTranscript?: { readonly items: readonly unknown[] };
 	subagentTranscriptError?: string;
 
@@ -932,9 +958,8 @@ class FakeAcpClient implements LocalAcpV2Client {
 		this.methods.push(method);
 		this.params.push(params);
 		if (method === "session/resume") {
-			this.#resumeCalls += 1;
 			if (this.resumeError) return Result.err({ message: this.resumeError } as AcpLocalClientError);
-			if (this.#resumeCalls === 1) {
+			if (!this.resumeSucceeds) {
 				return Result.err({ message: 'Session "session-1" does not exist' } as AcpLocalClientError);
 			}
 		}

@@ -990,12 +990,6 @@
   "desktop.sidebar.loadingRecentSessions": {
     "defaultMessage": "Loading recent sessions"
   },
-  "desktop.sidebar.moveFailed": {
-    "defaultMessage": "Could not move session"
-  },
-  "desktop.sidebar.moveToProject": {
-    "defaultMessage": "Move to project"
-  },
   "desktop.sidebar.new": {
     "defaultMessage": "New"
   },
@@ -1013,12 +1007,6 @@
   },
   "desktop.sidebar.recentsLoadError": {
     "defaultMessage": "Recents could not be loaded. Try again later."
-  },
-  "desktop.sidebar.removeFromProject": {
-    "defaultMessage": "Remove from project"
-  },
-  "desktop.sidebar.removeFromProjectFailed": {
-    "defaultMessage": "Could not remove from project"
   },
   "desktop.sidebar.rename": {
     "defaultMessage": "Rename"

@@ -72,7 +72,6 @@ interface ChatColumnProps {
 	onChooseProject(project: DesktopProject): Promise<void>;
 	onRetryProjects(): void;
 	onRenameSession(sessionId: string, title: string): Promise<void>;
-	onMoveSession(sessionId: string, projectId: string | null): Promise<void>;
 	onDeleteSession(sessionId: string): Promise<void>;
 	onOpenSubagent?(item: DesktopSubagentItem): void;
 }
@@ -104,7 +103,6 @@ export function ChatColumn({
 	onChooseProject,
 	onRetryProjects,
 	onRenameSession,
-	onMoveSession,
 	onDeleteSession,
 	onOpenSubagent,
 }: ChatColumnProps) {
@@ -255,10 +253,8 @@ export function ChatColumn({
 								<SessionActions
 									key={session.id}
 									session={session}
-									projects={projects}
 									placement="header"
 									onStartRename={startTitleEditing}
-									onMove={onMoveSession}
 									onDelete={onDeleteSession}
 								/>
 							</div>
@@ -383,6 +379,7 @@ export function ChatColumn({
 						onOpenProviderSettings={onOpenProviderSettings}
 						onSelectProviderModel={onSelectProviderModel}
 						onSelectAgentMode={onSelectAgentMode}
+						showProjectPicker={isNewChat}
 						large={isNewChat}
 					/>
 					<ComposerError message={chat.error || projectError} />

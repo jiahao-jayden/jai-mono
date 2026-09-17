@@ -22,7 +22,7 @@ const project: DesktopProject = {
 };
 
 describe("ProjectPicker", () => {
-	test("没有可访问 Project 时不允许发送消息，但仍提示选择 Project", () => {
+	test("默认 workspace Chat 没有 Project 时允许发送消息", () => {
 		const markup = renderToStaticMarkup(
 			<ChatComposer
 				value="Inspect this"
@@ -51,9 +51,45 @@ describe("ProjectPicker", () => {
 			/>,
 		);
 
-		expect(markup).toContain("Choose an accessible project before sending a message.");
-		expect(markup).toContain("disabled");
+		expect(markup).toContain('placeholder="Write a message…"');
+		expect(markup).toContain('aria-label="Send message"');
+		expect(markup).not.toContain('placeholder="Write a message…" disabled');
 		expect(markup).toContain("Project");
+	});
+
+	test("已选但不可用的 Project 继续禁用 Composer 并提示重新关联", () => {
+		const markup = renderToStaticMarkup(
+			<ChatComposer
+				value="Inspect this"
+				onValueChange={() => {}}
+				onSend={async () => false}
+				onStop={async () => {}}
+				status="ready"
+				disabled={false}
+				queue={[]}
+				onEditQueuedMessage={() => {}}
+				onRemoveQueuedMessage={() => {}}
+				onReorderQueuedMessages={() => {}}
+				project={{ ...project, available: false }}
+				projects={[{ ...project, available: false }]}
+				projectBusy={false}
+				projectLoading={false}
+				projectLoadError={false}
+				onChooseProject={async () => {}}
+				onRetryProjects={() => {}}
+				selectedModelRef="provider/model"
+				selectedAgentMode="manual"
+				providerLoading={false}
+				providerError={false}
+				onOpenProviderSettings={() => {}}
+				onSelectProviderModel={() => {}}
+				onSelectAgentMode={() => {}}
+			/>,
+		);
+
+		expect(markup).toContain("Choose an accessible project before sending a message.");
+		expect(markup).toContain('placeholder="Choose an accessible project before sending a message." disabled');
+		expect(markup).toContain("jai-mono (Relink)");
 	});
 
 	test("当前 Project 作为可访问的菜单触发器显示", () => {

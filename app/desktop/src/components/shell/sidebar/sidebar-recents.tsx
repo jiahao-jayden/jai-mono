@@ -1,8 +1,8 @@
+import { cn } from "cn";
 import { useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
-import { cn } from "cn";
-import type { CodingSession, DesktopProject } from "../../../../shared/desktop-rpc";
+import type { CodingSession } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { toast } from "../../ui/toast";
@@ -11,7 +11,6 @@ import { sidebarItemClassName } from "./sidebar-nav";
 
 interface SidebarRecentsProps {
 	sessions: readonly CodingSession[];
-	projects: readonly DesktopProject[];
 	activeSessionId: string | null;
 	loading: boolean;
 	error?: string;
@@ -19,14 +18,12 @@ interface SidebarRecentsProps {
 	loadingMore?: boolean;
 	onSelectSession(sessionId: string): void;
 	onRenameSession(sessionId: string, title: string): Promise<void>;
-	onMoveSession(sessionId: string, projectId: string | null): Promise<void>;
 	onDeleteSession(sessionId: string): Promise<void>;
 	onLoadMore?(): void;
 }
 
 export function SidebarRecents({
 	sessions,
-	projects,
 	activeSessionId,
 	loading,
 	error,
@@ -34,7 +31,6 @@ export function SidebarRecents({
 	loadingMore = false,
 	onSelectSession,
 	onRenameSession,
-	onMoveSession,
 	onDeleteSession,
 	onLoadMore,
 }: SidebarRecentsProps) {
@@ -156,10 +152,8 @@ export function SidebarRecents({
 									</Button>
 									<SessionActions
 										session={session}
-										projects={projects}
 										visible={selected}
 										onStartRename={() => startEditing(session)}
-										onMove={onMoveSession}
 										onDelete={onDeleteSession}
 									/>
 								</>

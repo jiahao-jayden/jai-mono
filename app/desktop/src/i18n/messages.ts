@@ -41,14 +41,7 @@ export const desktopMessages = defineMessages({
 	sidebarSessionActions: { id: "desktop.sidebar.sessionActions", defaultMessage: "Session actions" },
 	sidebarActionsFor: { id: "desktop.sidebar.actionsFor", defaultMessage: "Actions for {title}" },
 	sidebarRename: { id: "desktop.sidebar.rename", defaultMessage: "Rename" },
-	sidebarMoveToProject: { id: "desktop.sidebar.moveToProject", defaultMessage: "Move to project" },
-	sidebarRemoveFromProject: { id: "desktop.sidebar.removeFromProject", defaultMessage: "Remove from project" },
 	sidebarRenameFailed: { id: "desktop.sidebar.renameFailed", defaultMessage: "Could not rename session" },
-	sidebarMoveFailed: { id: "desktop.sidebar.moveFailed", defaultMessage: "Could not move session" },
-	sidebarRemoveFromProjectFailed: {
-		id: "desktop.sidebar.removeFromProjectFailed",
-		defaultMessage: "Could not remove from project",
-	},
 	sidebarDeleteFailed: { id: "desktop.sidebar.deleteFailed", defaultMessage: "Could not delete session" },
 	sidebarDeleteSessionTitle: { id: "desktop.sidebar.deleteSessionTitle", defaultMessage: "Delete session?" },
 	sidebarDeleteSessionDescription: {

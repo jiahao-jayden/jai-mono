@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Result } from "better-result";
@@ -26,10 +26,11 @@ describe("RemoteDesktopSessionCatalog", () => {
 			const project = await catalog.createProject({ path: folder, displayName: "Project" });
 			const session = await catalog.createSession({ projectId: project.id, firstMessage: "  Implement   the feature  " });
 			const canonicalFolder = await realpath(folder);
+			const restored = new RemoteDesktopSessionCatalog(transport);
 
 			expect(transport.journalCreations).toEqual([{ sessionId: "session-1", cwd: canonicalFolder }]);
 			expect(session).toMatchObject({ id: "session-1", projectId: project.id, title: "Implement the feature" });
-			expect(await catalog.resolveExecutionContext(session.id)).toEqual({
+			expect(await restored.resolveExecutionContext(session.id)).toEqual({
 				localFileAccess: true,
 				cwd: canonicalFolder,
 				configRoot: canonicalFolder,
@@ -40,57 +41,208 @@ describe("RemoteDesktopSessionCatalog", () => {
 		}
 	});
 
-	test("keeps title and project policy in Desktop while Catalog writes remain Host-mediated", async () => {
+	test("restores a default Session's durable workspace in a new catalog instance", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-remote-catalog-"));
 		try {
-			const [firstFolder, secondFolder] = [join(root, "first"), join(root, "second")];
+			const transport = new MemoryCatalogTransport();
+			const catalog = new RemoteDesktopSessionCatalog(transport, {
+				dataDirectory: root,
+				createId: sequence("session-1"),
+				now: () => new Date(2026, 8, 17, 12).getTime(),
+			});
+			const session = await catalog.createSession({ firstMessage: "Start" });
+			const cwd = join(root, "workspace", "default", "2026-09-17", session.id);
+			const restored = new RemoteDesktopSessionCatalog(transport);
+
+			expect(transport.journalCreations).toEqual([{ sessionId: session.id, cwd }]);
+			await expect(access(cwd)).resolves.toBeNull();
+			expect(await restored.resolveExecutionContext(session.id)).toEqual({
+				localFileAccess: true,
+				cwd,
+				configRoot: cwd,
+				defaultAllowedDirectories: [cwd],
+			});
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("keeps Project availability separate from durable workspace recovery", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-remote-catalog-"));
+		try {
+			const folder = join(root, "project");
+			await mkdir(folder);
+			const transport = new MemoryCatalogTransport();
+			const catalog = new RemoteDesktopSessionCatalog(transport, {
+				createId: sequence("project-1", "session-1"),
+			});
+			const project = await catalog.createProject({ path: folder });
+			const session = await catalog.createSession({ projectId: project.id, firstMessage: "Start" });
+
+			await rm(folder, { recursive: true, force: true });
+
+			await expect(catalog.resolveExecutionContext(session.id)).rejects.toMatchObject({
+				_tag: "desktop_session_catalog.project_path_invalid",
+			});
+			expect(transport.readSessionCwdCalls).toBe(0);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("relinks every idle Project Session to its new durable workspace", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-remote-catalog-"));
+		try {
+			const firstFolder = join(root, "first-project");
+			const secondFolder = join(root, "second-project");
 			await Promise.all([mkdir(firstFolder), mkdir(secondFolder)]);
 			const transport = new MemoryCatalogTransport();
 			const catalog = new RemoteDesktopSessionCatalog(transport, {
-				createId: sequence("project-1", "project-2", "session-1"),
+				createId: sequence("project-1", "session-1", "session-2"),
 			});
-			const [first, second] = await Promise.all([
-				catalog.createProject({ path: firstFolder }),
-				catalog.createProject({ path: secondFolder }),
+			const project = await catalog.createProject({ path: firstFolder });
+			const sessions = await Promise.all([
+				catalog.createSession({ projectId: project.id, firstMessage: "First" }),
+				catalog.createSession({ projectId: project.id, firstMessage: "Second" }),
 			]);
-			const session = await catalog.createSession({ projectId: first.id, firstMessage: "Fallback" });
+
+			await catalog.relinkProject(project.id, { path: secondFolder }, []);
+			const cwd = await realpath(secondFolder);
+			const restored = new RemoteDesktopSessionCatalog(transport);
+
+			for (const session of sessions) {
+				expect(await restored.resolveExecutionContext(session.id)).toEqual({
+					localFileAccess: true,
+					cwd,
+					configRoot: cwd,
+					defaultAllowedDirectories: [cwd],
+				});
+				expect(await restored.getSession(session.id)).toMatchObject({ projectId: project.id });
+			}
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("refuses a relink while an associated Session is running", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-remote-catalog-"));
+		try {
+			const firstFolder = join(root, "first-project");
+			const secondFolder = join(root, "second-project");
+			await Promise.all([mkdir(firstFolder), mkdir(secondFolder)]);
+			const transport = new MemoryCatalogTransport();
+			const catalog = new RemoteDesktopSessionCatalog(transport, {
+				createId: sequence("project-1", "session-1"),
+			});
+			const project = await catalog.createProject({ path: firstFolder });
+			const session = await catalog.createSession({ projectId: project.id, firstMessage: "First" });
+			const previousCwd = await realpath(firstFolder);
+
+			await expect(catalog.relinkProject(project.id, { path: secondFolder }, [session.id])).rejects.toMatchObject({
+				_tag: "desktop_session_catalog.session_busy",
+			});
+
+			expect(transport.relinkCalls).toBe(0);
+			expect(await catalog.getProject(project.id)).toMatchObject({ canonicalPath: previousCwd });
+			expect(await catalog.resolveExecutionContext(session.id)).toMatchObject({ cwd: previousCwd });
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("reports a missing Host workspace as Session recovery failure", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-remote-catalog-"));
+		try {
+			const transport = new MemoryCatalogTransport();
+			const catalog = new RemoteDesktopSessionCatalog(transport, {
+				dataDirectory: root,
+				createId: sequence("session-1"),
+				now: () => new Date(2026, 8, 17, 12).getTime(),
+			});
+			const session = await catalog.createSession({ firstMessage: "Start" });
+			transport.failReadSessionCwd = true;
+
+			await expect(catalog.resolveExecutionContext(session.id)).rejects.toMatchObject({
+				_tag: "desktop_session_catalog.session_recovery_failed",
+			});
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("removes a failed default Session's workspace and journal before it reaches the catalog", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-remote-catalog-"));
+		try {
+			const transport = new MemoryCatalogTransport();
+			transport.failEnsureSession = true;
+			const catalog = new RemoteDesktopSessionCatalog(transport, {
+				dataDirectory: root,
+				createId: sequence("session-1"),
+				now: () => new Date(2026, 8, 17, 12).getTime(),
+			});
+			const cwd = join(root, "workspace", "default", "2026-09-17", "session-1");
+
+			await expect(catalog.createSession({ firstMessage: "Start" })).rejects.toThrow();
+
+			expect((await catalog.listSessions()).sessions).toEqual([]);
+			expect(transport.journalIds.has("session-1")).toBe(false);
+			await expect(access(cwd)).rejects.toThrow();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("keeps title and project policy in Desktop while Catalog writes remain Host-mediated", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-remote-catalog-"));
+		try {
+			const folder = join(root, "project");
+			await mkdir(folder);
+			const transport = new MemoryCatalogTransport();
+			const catalog = new RemoteDesktopSessionCatalog(transport, {
+				createId: sequence("project-1", "session-1"),
+			});
+			const project = await catalog.createProject({ path: folder });
+			const session = await catalog.createSession({ projectId: project.id, firstMessage: "Fallback" });
 
 			await catalog.markTitleGenerationAttempted(session.id);
 			await catalog.renameSession(session.id, "Manual");
-		const generated = await catalog.setGeneratedTitle(session.id, "Generated");
-		const moved = await catalog.moveSession({ sessionId: session.id, toProjectId: second.id });
+			const generated = await catalog.setGeneratedTitle(session.id, "Generated");
 
 		expect(generated).toMatchObject({ title: "Manual", titleSource: "manual" });
-		expect(moved.projectId).toBe(second.id);
-		expect(await catalog.resolveExecutionContext(session.id)).toMatchObject({
-			localFileAccess: true,
-			cwd: await realpath(secondFolder),
-		});
-		expect(transport.journalRelocations).toEqual([
-			{ sessionId: session.id, cwd: await realpath(secondFolder) },
-		]);
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
 	});
 
 	test("deletes the Host-owned Session journal and Desktop metadata together", async () => {
-		const transport = new MemoryCatalogTransport();
-		const catalog = new RemoteDesktopSessionCatalog(transport, { createId: sequence("session-1") });
-		const session = await catalog.createSession({ firstMessage: "Delete me" });
+		const root = await mkdtemp(join(tmpdir(), "jai-remote-catalog-"));
+		try {
+			const transport = new MemoryCatalogTransport();
+			const catalog = new RemoteDesktopSessionCatalog(transport, {
+				dataDirectory: root,
+				createId: sequence("session-1"),
+			});
+			const session = await catalog.createSession({ firstMessage: "Delete me" });
 
-		await catalog.deleteSession(session.id);
+			await catalog.deleteSession(session.id);
 
-		expect((await catalog.listSessions()).sessions).toEqual([]);
-		expect(transport.journalIds.has(session.id)).toBe(false);
-		await expect(catalog.getSession(session.id)).rejects.toThrow(`Session "${session.id}" does not exist`);
+			expect((await catalog.listSessions()).sessions).toEqual([]);
+			expect(transport.journalIds.has(session.id)).toBe(false);
+			await expect(catalog.getSession(session.id)).rejects.toThrow(`Session "${session.id}" does not exist`);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 });
 
 class MemoryCatalogTransport implements RemoteDesktopSessionCatalogTransport {
 	readonly journalIds = new Set<string>();
 	readonly journalCreations: { readonly sessionId: string; readonly cwd: string }[] = [];
-	readonly journalRelocations: { readonly sessionId: string; readonly cwd: string }[] = [];
+	readonly sessionCwds = new Map<string, string>();
+	readSessionCwdCalls = 0;
+	relinkCalls = 0;
+	failEnsureSession = false;
+	failReadSessionCwd = false;
 	readonly #projects = new Map<string, DesktopCatalogProject>();
 	readonly #sessions = new Map<string, DesktopCatalogSession>();
 
@@ -101,13 +253,18 @@ class MemoryCatalogTransport implements RemoteDesktopSessionCatalogTransport {
 			return Result.ok(input);
 		},
 		relinkProject: async (input) => {
+			this.relinkCalls += 1;
 			this.#projects.set(input.id, input);
+			for (const session of this.#sessions.values()) {
+				if (session.projectId === input.id) this.sessionCwds.set(session.id, input.canonicalPath);
+			}
 			return Result.ok(input);
 		},
 		listSessions: async () => Result.ok({ sessions: [...this.#sessions.values()] } satisfies DesktopCatalogSessionPage),
 		getSession: async (sessionId) => Result.ok(this.#sessions.get(sessionId)),
 		ensureSession: async (input) => {
 			if (!this.journalIds.has(input.sessionId)) return Result.err({ message: "Session journal was not created" } as never);
+			if (this.failEnsureSession) return Result.err({ message: "Desktop catalog is unavailable" } as never);
 			const existing = this.#sessions.get(input.sessionId);
 			if (existing) return Result.ok(existing);
 			const session: DesktopCatalogSession = {
@@ -125,10 +282,9 @@ class MemoryCatalogTransport implements RemoteDesktopSessionCatalogTransport {
 		setGeneratedTitle: async ({ sessionId, title }) =>
 			this.#updateSession(sessionId, (session) => (session.titleSource === "fallback" ? { ...session, title, titleSource: "generated" } : session)),
 		shouldGenerateSessionTitle: async (sessionId) => Result.ok((this.#sessions.get(sessionId)?.titleSource ?? "fallback") === "fallback"),
-		moveSession: async ({ sessionId, projectId }) => this.#updateSession(sessionId, (session) => ({ ...session, projectId })),
 		deleteSession: async (sessionId) => {
-			if (!this.#sessions.delete(sessionId)) return Result.err({ message: "Session not found" } as never);
-			this.journalIds.delete(sessionId);
+			if (!this.journalIds.delete(sessionId)) return Result.err({ message: "Session not found" } as never);
+			this.#sessions.delete(sessionId);
 			return Result.ok(undefined);
 		},
 		close: async () => {},
@@ -136,13 +292,13 @@ class MemoryCatalogTransport implements RemoteDesktopSessionCatalogTransport {
 
 	async createSessionJournal(input: { readonly sessionId: string; readonly cwd: string }): Promise<void> {
 		this.journalIds.add(input.sessionId);
+		this.sessionCwds.set(input.sessionId, input.cwd);
 		this.journalCreations.push(input);
 	}
 
-	async relocateSessionJournal(input: { readonly sessionId: string; readonly cwd: string }): Promise<void> {
-		if (!this.journalIds.has(input.sessionId))
-			throw new Error(`Session journal "${input.sessionId}" was not created`);
-		this.journalRelocations.push(input);
+	async readSessionCwd(sessionId: string): Promise<string | undefined> {
+		this.readSessionCwdCalls += 1;
+		return this.failReadSessionCwd ? undefined : this.sessionCwds.get(sessionId);
 	}
 
 	#requireSession(sessionId: string) {

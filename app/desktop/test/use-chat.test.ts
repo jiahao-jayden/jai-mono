@@ -30,9 +30,12 @@ describe("useChat projection", () => {
 		expect(message).not.toContain("api-key");
 	});
 
-	test("打开失败不把骨架屏留住，也不泄露内部错误", () => {
+	test("Project 不可用与 Session 恢复失败显示不同的可操作提示", () => {
+		expect(
+			chatFailureMessage({ operation: "load", code: "desktop_session_catalog.project_path_invalid" }),
+		).toBe("关联的 Project 目录不可用。请重新关联后重试。");
 		const message = chatFailureMessage({ operation: "load", code: "desktop_agent.acp_request_failed" });
-		expect(message).toBe("会话记录无法打开。这条会话的执行日志已无法读取。");
+		expect(message).toBe("会话恢复失败。请重试；如果仍然失败，请重启应用。");
 		expect(message).not.toContain("Could not load");
 	});
 

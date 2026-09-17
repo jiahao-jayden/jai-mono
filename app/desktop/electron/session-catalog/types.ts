@@ -2,7 +2,6 @@ import type { JsonObject } from "@jai/agent";
 
 export type {
 	CodingSession,
-	MoveSessionInput,
 	Project,
 	SessionListCursor,
 	SessionListPage,

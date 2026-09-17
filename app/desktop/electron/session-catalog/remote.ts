@@ -6,13 +6,12 @@ import { connectJaiRuntimeHost, resolveJaiDataDirectory } from "@jai/server/acp-
 import { connectDesktopCatalogClient, type DesktopCatalogClient } from "@jai/server/desktop-catalog-client";
 import { type Result, TaggedError } from "better-result";
 import { createDesktopRuntimeHostLauncher, resolveDesktopRuntimeHostEntrypoint } from "../runtime-host/entrypoint";
-import { projectNotFoundError, projectPathInvalidError, sessionNotFoundError } from "./errors";
+import { projectNotFoundError, projectPathInvalidError, sessionBusyError, sessionNotFoundError } from "./errors";
 import type {
 	CodingExecutionContext,
 	CodingSession,
 	CreateProjectInput,
 	CreateSessionInput,
-	MoveSessionInput,
 	Project,
 	SessionListCursor,
 	SessionListPage,
@@ -20,7 +19,7 @@ import type {
 
 export interface DesktopSessionCatalogPort {
 	createProject(input: CreateProjectInput): Promise<Project>;
-	relinkProject(projectId: string, input: CreateProjectInput): Promise<Project>;
+	relinkProject(projectId: string, input: CreateProjectInput, runningSessionIds: readonly string[]): Promise<Project>;
 	createSession<TAppState extends JsonObject = JsonObject>(
 		input: CreateSessionInput<TAppState>,
 	): Promise<CodingSession>;
@@ -34,7 +33,6 @@ export interface DesktopSessionCatalogPort {
 	markTitleGenerationAttempted(id: string): Promise<CodingSession>;
 	setGeneratedTitle(id: string, title: string): Promise<CodingSession>;
 	shouldGenerateSessionTitle(id: string): Promise<boolean>;
-	moveSession(input: MoveSessionInput): Promise<CodingSession>;
 	resolveExecutionContext(sessionId: string): Promise<CodingExecutionContext>;
 	close(): Promise<void>;
 }
@@ -43,11 +41,16 @@ export interface DesktopSessionCatalogPort {
 export interface RemoteDesktopSessionCatalogTransport {
 	readonly catalog: DesktopCatalogClient;
 	createSessionJournal(input: { readonly sessionId: string; readonly cwd: string }): Promise<void>;
-	relocateSessionJournal(input: { readonly sessionId: string; readonly cwd: string }): Promise<void>;
+	readSessionCwd(sessionId: string): Promise<string | undefined>;
 }
 
 class DesktopRemoteCatalogFailed extends TaggedError("desktop_session_catalog.remote_failed")<{
 	readonly method: string;
+	readonly message: string;
+	readonly cause?: unknown;
+}> {}
+
+class DesktopSessionRecoveryFailed extends TaggedError("desktop_session_catalog.session_recovery_failed")<{
 	readonly message: string;
 	readonly cause?: unknown;
 }> {}
@@ -60,14 +63,20 @@ class DesktopRemoteCatalogFailed extends TaggedError("desktop_session_catalog.re
 export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 	readonly #transport: RemoteDesktopSessionCatalogTransport;
 	readonly #projects = new Map<string, Project>();
+	readonly #dataDirectory: string;
 	readonly #now: () => number;
 	readonly #createId: () => string;
 
 	constructor(
 		transport: RemoteDesktopSessionCatalogTransport,
-		options: { readonly now?: () => number; readonly createId?: () => string } = {},
+		options: {
+			readonly dataDirectory?: string;
+			readonly now?: () => number;
+			readonly createId?: () => string;
+		} = {},
 	) {
 		this.#transport = transport;
+		this.#dataDirectory = path.resolve(options.dataDirectory ?? resolveJaiDataDirectory());
 		this.#now = options.now ?? Date.now;
 		this.#createId = options.createId ?? randomUUID;
 	}
@@ -96,13 +105,16 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 				cause: connected.error,
 			});
 		}
-		const catalog = new RemoteDesktopSessionCatalog({
-			catalog: connected.value,
-			createSessionJournal: ({ sessionId, cwd }) =>
-				createSessionJournal(dataDirectory, sessionId, cwd, runtimeHostEntrypoint, launchRuntimeHost),
-			relocateSessionJournal: ({ sessionId, cwd }) =>
-				relocateSessionJournal(dataDirectory, sessionId, cwd, runtimeHostEntrypoint, launchRuntimeHost),
-		});
+		const catalog = new RemoteDesktopSessionCatalog(
+			{
+				catalog: connected.value,
+				createSessionJournal: ({ sessionId, cwd }) =>
+					createSessionJournal(dataDirectory, sessionId, cwd, runtimeHostEntrypoint, launchRuntimeHost),
+				readSessionCwd: (sessionId) =>
+					readSessionCwd(dataDirectory, sessionId, runtimeHostEntrypoint, launchRuntimeHost),
+			},
+			{ dataDirectory },
+		);
 		await catalog.#refreshProjects();
 		return catalog;
 	}
@@ -123,8 +135,14 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 		return project;
 	}
 
-	async relinkProject(projectId: string, input: CreateProjectInput): Promise<Project> {
+	async relinkProject(
+		projectId: string,
+		input: CreateProjectInput,
+		runningSessionIds: readonly string[],
+	): Promise<Project> {
 		await this.getProject(projectId);
+		const busySessionId = await this.#findBusyProjectSession(projectId, runningSessionIds);
+		if (busySessionId) throw sessionBusyError(busySessionId);
 		const location = await resolveProjectLocation(input.path, input.displayName);
 		const now = this.#now();
 		const relinked = await this.#transport.catalog.relinkProject({
@@ -147,9 +165,18 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 		if (projectId !== null) await this.getProject(projectId);
 		const id = this.#createId();
 		const title = fallbackTitle(input.firstMessage);
-		await this.#createJournal(id, projectId);
-		const ensured = await this.#transport.catalog.ensureSession({ sessionId: id, projectId, title });
-		return unwrap(ensured, "sessions/ensure");
+		const workspace = projectId === null ? defaultWorkspacePath(this.#dataDirectory, id, this.#now()) : undefined;
+		try {
+			await this.#createJournal(id, projectId, workspace);
+			const session = unwrap(
+				await this.#transport.catalog.ensureSession({ sessionId: id, projectId, title }),
+				"sessions/ensure",
+			);
+			return session;
+		} catch (error) {
+			await this.#rollbackSessionCreation(id, workspace);
+			throw error;
+		}
 	}
 
 	async getProject(id: string): Promise<Project> {
@@ -223,27 +250,23 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 		return unwrap(await this.#transport.catalog.shouldGenerateSessionTitle(id), "sessions/should-generate-title");
 	}
 
-	async moveSession(input: MoveSessionInput): Promise<CodingSession> {
-		await this.getSession(input.sessionId);
-		if (input.toProjectId !== null) await this.getProject(input.toProjectId);
-		const cwd = input.toProjectId === null ? process.cwd() : (await this.getProject(input.toProjectId)).canonicalPath;
-		await this.#transport.relocateSessionJournal({ sessionId: input.sessionId, cwd });
-		return unwrap(
-			await this.#transport.catalog.moveSession({ sessionId: input.sessionId, projectId: input.toProjectId }),
-			"sessions/move",
-		);
-	}
-
 	async resolveExecutionContext(sessionId: string): Promise<CodingExecutionContext> {
 		const session = await this.getSession(sessionId);
-		if (session.projectId === null || !(await this.isProjectAvailable(session.projectId)))
-			return { localFileAccess: false };
-		const project = await this.getProject(session.projectId);
+		if (session.projectId !== null) {
+			const project = await this.getProject(session.projectId);
+			if (!(await this.isProjectAvailable(project.id))) throw projectPathInvalidError(project.path);
+		}
+		const cwd = await this.#transport.readSessionCwd(session.id);
+		if (!cwd) {
+			throw new DesktopSessionRecoveryFailed({
+				message: `Runtime Host has no durable workspace for Session "${session.id}"`,
+			});
+		}
 		return {
 			localFileAccess: true,
-			cwd: project.canonicalPath,
-			configRoot: project.canonicalPath,
-			defaultAllowedDirectories: [project.canonicalPath],
+			cwd,
+			configRoot: cwd,
+			defaultAllowedDirectories: [cwd],
 		};
 	}
 
@@ -257,9 +280,27 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 		for (const project of projects) this.#projects.set(project.id, project);
 	}
 
-	async #createJournal(sessionId: string, projectId: string | null): Promise<void> {
-		const cwd = projectId === null ? process.cwd() : (await this.getProject(projectId)).canonicalPath;
+	async #findBusyProjectSession(projectId: string, runningSessionIds: readonly string[]): Promise<string | undefined> {
+		const running = new Set(runningSessionIds);
+		let cursor: SessionListCursor | undefined;
+		do {
+			const page = await this.listSessions({ limit: 100, ...(cursor ? { cursor } : {}) });
+			const busy = page.sessions.find((session) => session.projectId === projectId && running.has(session.id));
+			if (busy) return busy.id;
+			cursor = page.nextCursor;
+		} while (cursor);
+		return undefined;
+	}
+
+	async #createJournal(sessionId: string, projectId: string | null, workspace: string | undefined): Promise<void> {
+		const cwd = workspace ?? (await this.getProject(projectId!)).canonicalPath;
+		if (workspace) await fs.mkdir(cwd, { recursive: true });
 		await this.#transport.createSessionJournal({ sessionId, cwd });
+	}
+
+	async #rollbackSessionCreation(sessionId: string, workspace: string | undefined): Promise<void> {
+		await this.#transport.catalog.deleteSession(sessionId).catch(() => {});
+		if (workspace) await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
 	}
 }
 
@@ -312,43 +353,59 @@ async function createSessionJournal(
 	}
 }
 
-async function relocateSessionJournal(
+async function readSessionCwd(
 	dataDirectory: string,
 	sessionId: string,
-	cwd: string,
 	runtimeHostEntrypoint: string | undefined,
 	launchRuntimeHost: ReturnType<typeof createDesktopRuntimeHostLauncher>,
-): Promise<void> {
+): Promise<string | undefined> {
 	const connected = await connectJaiRuntimeHost({
 		dataDirectory,
 		...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
 		...(launchRuntimeHost === undefined ? {} : { launchRuntimeHost }),
 	});
-	if (connected.isErr())
-		throw new DesktopRemoteCatalogFailed({
-			method: "session/relocate",
-			message: "Could not connect to Runtime Host for Session relocation",
+	if (connected.isErr()) {
+		throw new DesktopSessionRecoveryFailed({
+			message: "Could not connect to Runtime Host for Session recovery",
 			cause: connected.error,
 		});
+	}
 	try {
 		const initialized = await connected.value.request("initialize", {
 			protocolVersion: 2,
 			capabilities: {},
 			info: { name: "jai-desktop-catalog", version: "0.0.0" },
 		});
-		if (initialized.isErr())
-			throw new DesktopRemoteCatalogFailed({
-				method: "initialize",
+		if (initialized.isErr()) {
+			throw new DesktopSessionRecoveryFailed({
 				message: "Could not initialize Runtime Host",
 				cause: initialized.error,
 			});
-		const relocated = await connected.value.request("session/relocate", { sessionId, cwd });
-		if (relocated.isErr())
-			throw new DesktopRemoteCatalogFailed({
-				method: "session/relocate",
-				message: relocated.error.message,
-				cause: relocated.error,
+		}
+		const listed = await connected.value.request("session/list");
+		if (listed.isErr()) {
+			throw new DesktopSessionRecoveryFailed({
+				message: "Could not read the Runtime Host Session workspace",
+				cause: listed.error,
 			});
+		}
+		const sessions = listed.value;
+		if (!sessions || typeof sessions !== "object" || !("sessions" in sessions) || !Array.isArray(sessions.sessions)) {
+			throw new DesktopSessionRecoveryFailed({
+				message: "Runtime Host returned an invalid Session workspace projection",
+			});
+		}
+		const matching = sessions.sessions.find(
+			(candidate): candidate is { readonly sessionId: string; readonly cwd: string } =>
+				typeof candidate === "object" &&
+				candidate !== null &&
+				"sessionId" in candidate &&
+				candidate.sessionId === sessionId &&
+				"cwd" in candidate &&
+				typeof candidate.cwd === "string" &&
+				path.isAbsolute(candidate.cwd),
+		);
+		return matching?.cwd;
 	} finally {
 		await connected.value.close();
 	}
@@ -397,4 +454,12 @@ function normalizeGeneratedTitle(title: string): string {
 function truncateCodePoints(value: string, maxLength: number): string {
 	const points = [...value];
 	return points.length <= maxLength ? value : `${points.slice(0, maxLength - 1).join("")}…`;
+}
+
+function defaultWorkspacePath(dataDirectory: string, sessionId: string, timestamp: number): string {
+	const date = new Date(timestamp);
+	const day = [date.getFullYear(), date.getMonth() + 1, date.getDate()]
+		.map((part) => part.toString().padStart(2, "0"))
+		.join("-");
+	return path.join(dataDirectory, "workspace", "default", day, sessionId);
 }

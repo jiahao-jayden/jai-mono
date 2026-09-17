@@ -4,7 +4,6 @@ export type {
 	CodingSession,
 	CreateProjectInput,
 	CreateSessionInput,
-	MoveSessionInput,
 	Project,
 	SessionListCursor,
 	SessionListPage,

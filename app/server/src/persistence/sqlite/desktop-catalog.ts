@@ -79,23 +79,35 @@ export class SqliteDesktopCatalogAccess {
 
 	relinkProject(input: DesktopCatalogProject): ResultType<DesktopCatalogProject, DesktopCatalogStorageError> {
 		try {
-			const changed = this.database
-				.prepare(
-					`UPDATE projects
-					 SET display_name = ?, path = ?, canonical_path = ?, updated_at = ?
-					 WHERE id = ?`,
-				)
-				.run(input.displayName, input.path, input.canonicalPath, input.updatedAt, input.id);
-			if (changed.changes === 0) {
-				return Result.err(
-					new DesktopCatalogProjectNotFound({
-						message: `Desktop project "${input.id}" does not exist`,
-						projectId: input.id,
-					}),
-				);
-			}
-			return Result.ok(input);
+			return Result.ok(
+				this.transaction(() => {
+					const changed = this.database
+						.prepare(
+							`UPDATE projects
+							 SET display_name = ?, path = ?, canonical_path = ?, updated_at = ?
+							 WHERE id = ?`,
+						)
+						.run(input.displayName, input.path, input.canonicalPath, input.updatedAt, input.id);
+					if (changed.changes === 0) {
+						throw new DesktopCatalogProjectNotFound({
+							message: `Desktop project "${input.id}" does not exist`,
+							projectId: input.id,
+						});
+					}
+					this.database
+						.prepare(
+							`UPDATE product_session_catalog
+							 SET cwd = ?
+							 WHERE session_id IN (
+								SELECT session_id FROM desktop_session_metadata WHERE project_id = ?
+							 )`,
+						)
+						.run(input.canonicalPath, input.id);
+					return input;
+				}),
+			);
 		} catch (cause) {
+			if (cause instanceof DesktopCatalogProjectNotFound) return Result.err(cause);
 			if (isUniqueViolation(cause)) {
 				return Result.err(
 					new DesktopCatalogProjectPathConflict({
@@ -304,31 +316,6 @@ export class SqliteDesktopCatalogAccess {
 			);
 		} catch (cause) {
 			return Result.err(this.projectError(sessionId, cause));
-		}
-	}
-
-	moveSession(input: {
-		readonly sessionId: string;
-		readonly projectId: string | null;
-	}): ResultType<DesktopCatalogSession, DesktopCatalogStorageError> {
-		try {
-			return Result.ok(
-				this.transaction(() => {
-					const session = this.requireSession(input.sessionId);
-					if (input.projectId !== null) this.requireProject(input.projectId);
-					this.database
-						.prepare(
-							`INSERT INTO desktop_session_metadata
-							 (session_id, project_id, title, title_source, title_generation_attempted_at)
-							 VALUES (?, ?, ?, ?, NULL)
-							 ON CONFLICT(session_id) DO UPDATE SET project_id = excluded.project_id`,
-						)
-						.run(input.sessionId, input.projectId, session.title, session.titleSource);
-					return this.requireSession(input.sessionId);
-				}),
-			);
-		} catch (cause) {
-			return Result.err(this.projectError(input.sessionId, cause));
 		}
 	}
 

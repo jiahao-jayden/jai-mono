@@ -169,13 +169,6 @@ export class DesktopCatalogClient {
 		return this.request("jai/desktop-catalog/sessions/should-generate-title", { sessionId }, boolean);
 	}
 
-	async moveSession(input: {
-		readonly sessionId: string;
-		readonly projectId: string | null;
-	}): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>> {
-		return this.request("jai/desktop-catalog/sessions/move", input, session);
-	}
-
 	close(): Promise<void> {
 		return this.client.close();
 	}

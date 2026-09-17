@@ -21,7 +21,6 @@ import {
 	desktopSessionDeleteInputSchema,
 	desktopSessionIdSchema,
 	desktopSessionListInputSchema,
-	desktopSessionMoveInputSchema,
 	desktopSessionRenameInputSchema,
 	desktopSubagentTranscriptInputSchema,
 	desktopTelemetrySettingsInputSchema,
@@ -53,11 +52,11 @@ export type DesktopRouter = DesktopRouterImplementation<DesktopApi>;
 
 export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 	async function workspaceRootForSession(sessionId: string): Promise<string> {
-		const session = await rt.sessions.getSession(sessionId);
-		if (session.projectId === null || !(await rt.sessions.isProjectAvailable(session.projectId))) {
+		const execution = await rt.sessions.resolveExecutionContext(sessionId);
+		if (!execution.localFileAccess) {
 			throw workspaceFileError({ message: "This session has no accessible workspace." });
 		}
-		return realpath((await rt.sessions.getProject(session.projectId)).canonicalPath);
+		return realpath(execution.cwd);
 	}
 
 	/**
@@ -190,6 +189,7 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				const project = await rt.sessions.relinkProject(
 					parse(desktopSessionIdSchema, projectId, "Invalid project id"),
 					{ path },
+					rt.agentHost.runningSessionIds(),
 				);
 				rt.agentHost.invalidateSessions();
 				return { ...project, available: true } satisfies DesktopProject;
@@ -213,10 +213,6 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				const parsed = parse(desktopSessionRenameInputSchema, input, "Invalid Session rename input");
 				return rt.sessions.renameSession(parsed.sessionId, parsed.title);
 			},
-			async move(_event, input) {
-				const parsed = parse(desktopSessionMoveInputSchema, input, "Invalid Session move input");
-				return rt.agentHost.rebindSession(parsed.sessionId, () => rt.sessions.moveSession(parsed));
-			},
 			async delete(_event, input) {
 				const parsed = parse(desktopSessionDeleteInputSchema, input, "Invalid Session delete input");
 				rt.agentHost.closeSession(parsed.sessionId);
@@ -237,14 +233,13 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			async read(_event, input) {
 				const parsed = parse(desktopArtifactReadInputSchema, input, "Artifact preview request is invalid.");
 				const artifact = await artifactForSession(parsed.sessionId, parsed.artifactId);
-				const session = await rt.sessions.getSession(parsed.sessionId);
-				if (session.projectId === null || !(await rt.sessions.isProjectAvailable(session.projectId))) {
+				const execution = await rt.sessions.resolveExecutionContext(parsed.sessionId);
+				if (!execution.localFileAccess) {
 					throw artifactPreviewError({
-						message: "Artifact preview is unavailable because this session has no accessible project.",
+						message: "Artifact preview is unavailable because this session has no accessible workspace.",
 					});
 				}
-				const project = await rt.sessions.getProject(session.projectId);
-				const artifactPath = await resolveArtifactPath(project.canonicalPath, artifact.path);
+				const artifactPath = await resolveArtifactPath(execution.cwd, artifact.path);
 				try {
 					return { artifact, content: await readFile(artifactPath, "utf8") };
 				} catch (cause) {

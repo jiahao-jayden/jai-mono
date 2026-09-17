@@ -1,6 +1,6 @@
 import { type MotionValue, motion } from "motion/react";
 import logo from "@/assets/icons/chat-area/logo.svg";
-import type { CodingSession, DesktopProject } from "../../../../shared/desktop-rpc";
+import type { CodingSession } from "../../../../shared/desktop-rpc";
 import { SidebarFooter } from "./sidebar-footer";
 import { SidebarHeader } from "./sidebar-header";
 import { SidebarNav } from "./sidebar-nav";
@@ -9,7 +9,6 @@ import { SidebarRecents } from "./sidebar-recents";
 interface SidebarProps {
 	activeView: "chat" | "chats" | "projects" | "project" | "settings";
 	sessions: readonly CodingSession[];
-	projects: readonly DesktopProject[];
 	runningSessionIds: readonly string[];
 	activeSessionId: string | null;
 	loading: boolean;
@@ -24,7 +23,6 @@ interface SidebarProps {
 	onOpenSettings(): void;
 	onSelectSession(sessionId: string): void;
 	onRenameSession(sessionId: string, title: string): Promise<void>;
-	onMoveSession(sessionId: string, projectId: string | null): Promise<void>;
 	onDeleteSession(sessionId: string): Promise<void>;
 	onLoadMore?(): void;
 }
@@ -32,7 +30,6 @@ interface SidebarProps {
 export function Sidebar({
 	activeView,
 	sessions,
-	projects,
 	activeSessionId,
 	loading,
 	error,
@@ -46,7 +43,6 @@ export function Sidebar({
 	onOpenSettings,
 	onSelectSession,
 	onRenameSession,
-	onMoveSession,
 	onDeleteSession,
 	onLoadMore,
 }: SidebarProps) {
@@ -68,7 +64,6 @@ export function Sidebar({
 			/>
 			<SidebarRecents
 				sessions={sessions}
-				projects={projects}
 				activeSessionId={activeSessionId}
 				loading={loading}
 				error={error}
@@ -76,7 +71,6 @@ export function Sidebar({
 				loadingMore={loadingMore}
 				onSelectSession={onSelectSession}
 				onRenameSession={onRenameSession}
-				onMoveSession={onMoveSession}
 				onDeleteSession={onDeleteSession}
 				onLoadMore={onLoadMore}
 			/>

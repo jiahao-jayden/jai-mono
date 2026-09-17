@@ -26,8 +26,3 @@ export interface SessionListPage {
 	readonly sessions: readonly CodingSession[];
 	readonly nextCursor?: SessionListCursor;
 }
-
-export interface MoveSessionInput {
-	readonly sessionId: string;
-	readonly toProjectId: string | null;
-}

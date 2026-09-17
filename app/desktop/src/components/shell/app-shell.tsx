@@ -320,19 +320,11 @@ export function AppShell() {
 		return () => window.removeEventListener("keydown", openSettingsShortcut);
 	}, [openProviderSettings]);
 	const projectSelectionMutation = useMutation({
-		mutationFn: async (candidate: DesktopProject) => {
-			const next = candidate.available ? candidate : await desktop.project.relink(candidate.id);
-			if (!next || !session || session.projectId === next.id) return { project: next };
-			const moved = await desktop.session.move({ sessionId: session.id, toProjectId: next.id });
-			return { project: next, moved };
-		},
-		onSuccess: ({ project: next, moved }) => {
+		mutationFn: async (candidate: DesktopProject) =>
+			candidate.available ? candidate : desktop.project.relink(candidate.id),
+		onSuccess: (next) => {
 			if (!next) return;
 			upsertProject(next);
-			if (moved) {
-				upsertRecentSession(moved);
-				void desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.recents });
-			}
 			setSelectedProjectId(next.id);
 		},
 	});
@@ -341,7 +333,7 @@ export function AppShell() {
 		? intl.formatMessage(desktopMessages.projectsLoadError)
 		: undefined;
 	const chooseProject = async (candidate: DesktopProject) => {
-		if (projectBusy) return;
+		if (projectBusy || session) return;
 		try {
 			await projectSelectionMutation.mutateAsync(candidate);
 		} catch {
@@ -365,10 +357,6 @@ export function AppShell() {
 	const renameSession = async (sessionId: string, title: string) => {
 		const renamed = await desktop.session.rename({ sessionId, title });
 		upsertRecentSession(renamed);
-	};
-	const moveSession = async (sessionId: string, toProjectId: string | null) => {
-		const moved = await desktop.session.move({ sessionId, toProjectId });
-		upsertRecentSession(moved);
 	};
 	const deleteSession = async (sessionId: string) => {
 		await desktop.session.delete({ sessionId });
@@ -435,7 +423,6 @@ export function AppShell() {
 					<Sidebar
 						activeView={activeView}
 						sessions={sessions}
-						projects={projects}
 						runningSessionIds={runningSessionIds}
 						activeSessionId={chatVisible ? activeSessionId : null}
 						loading={sessionRecentsQuery.isLoading}
@@ -453,7 +440,6 @@ export function AppShell() {
 						onOpenSettings={openProviderSettings}
 						onSelectSession={openSession}
 						onRenameSession={renameSession}
-						onMoveSession={moveSession}
 						onDeleteSession={deleteSession}
 						onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
 					/>
@@ -572,7 +558,6 @@ export function AppShell() {
 								onChooseProject={chooseProject}
 								onRetryProjects={() => void projectsQuery.refetch()}
 								onRenameSession={renameSession}
-								onMoveSession={moveSession}
 								onDeleteSession={deleteSession}
 								onOpenSubagent={openSubagent}
 							/>

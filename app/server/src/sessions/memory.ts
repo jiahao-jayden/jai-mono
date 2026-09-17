@@ -385,22 +385,6 @@ export class InMemoryProductSessionPersistence<TAppState extends JsonObject = Js
 		});
 	}
 
-	async relocate(input: {
-		readonly sessionId: string;
-		readonly cwd: string;
-	}): Promise<ResultType<void, ProductSessionNotFound | ProductSessionAdmissionConflict>> {
-		const session = this.#sessions.get(input.sessionId);
-		if (!session)
-			return Result.err(
-				new ProductSessionNotFound({
-					message: `Session "${input.sessionId}" does not exist`,
-					sessionId: input.sessionId,
-				}),
-			);
-		this.#sessions.set(input.sessionId, { ...session, cwd: input.cwd });
-		return Result.ok(undefined);
-	}
-
 	async createJournalOnly(
 		input: CreateJournalOnlySession<TAppState>,
 	): Promise<ResultType<string, ProductSessionAlreadyExists | ProductSessionAdmissionConflict>> {

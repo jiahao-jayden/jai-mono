@@ -1,11 +1,7 @@
 import type { Result } from "better-result";
-import type { AcpJsonRpcRequest, AcpJsonRpcResponse, AcpOutboundMessage } from "../acp-v2/types";
 import type { SqliteDesktopCatalogAccess } from "../../persistence/sqlite/desktop-catalog";
-import type {
-	DesktopCatalogProject,
-	DesktopCatalogSessionCursor,
-	DesktopCatalogStorageError,
-} from "./types";
+import type { AcpJsonRpcRequest, AcpJsonRpcResponse, AcpOutboundMessage } from "../acp-v2/types";
+import type { DesktopCatalogProject, DesktopCatalogSessionCursor, DesktopCatalogStorageError } from "./types";
 
 const methodPrefix = "jai/desktop-catalog/";
 
@@ -87,13 +83,6 @@ export class DesktopCatalogControl {
 				if (!sessionId || !hasOnly(params, ["sessionId"]))
 					return this.error(request.id, -32602, "Invalid Desktop Catalog title-check parameters");
 				return this.project(request.id, this.catalog.shouldGenerateSessionTitle(sessionId));
-			}
-			case "jai/desktop-catalog/sessions/move": {
-				const sessionId = requiredString(params, "sessionId");
-				const projectId = nullableString(params, "projectId");
-				if (!sessionId || projectId === undefined || !hasOnly(params, ["sessionId", "projectId"]))
-					return this.error(request.id, -32602, "Invalid Desktop Catalog Session move parameters");
-				return this.project(request.id, this.catalog.moveSession({ sessionId, projectId }));
 			}
 			default:
 				return this.error(request.id, -32601, `Unsupported Desktop Catalog method "${request.method}"`);

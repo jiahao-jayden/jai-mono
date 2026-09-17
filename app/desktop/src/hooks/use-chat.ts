@@ -431,6 +431,11 @@ export function chatFailureMessage(input: {
 		case "desktop_provider.invalid_model_ref":
 		case "coding_sdk.invalid_model_ref":
 			return "所选模型无效。请重新选择模型。";
+		case "desktop_session_catalog.project_path_invalid":
+			return "关联的 Project 目录不可用。请重新关联后重试。";
+		case "desktop_session_catalog.session_recovery_failed":
+		case "desktop_agent.acp_request_failed":
+			return "会话恢复失败。请重试；如果仍然失败，请重启应用。";
 		case "coding_sdk.unsupported_provider":
 		case "coding_sdk.invalid_provider_configuration":
 			return "当前 Provider 配置无效。请前往 Settings > Providers 检查后重试。";
@@ -463,7 +468,7 @@ function defaultChatFailureMessage(operation: "message" | "queue" | "runtime" | 
 		case "runtime":
 			return "当前响应未完成。请重试。";
 		case "load":
-			return "会话记录无法打开。这条会话的执行日志已无法读取。";
+			return "会话恢复失败。请重试；如果仍然失败，请重启应用。";
 		case "message":
 			return "消息未发送。请稍后重试。";
 	}

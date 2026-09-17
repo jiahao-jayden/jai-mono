@@ -1,8 +1,8 @@
 import { type Static, Type } from "@sinclair/typebox";
 import type { ConnectorActionPermission } from "@jai/connector";
-import type { CodingSession, MoveSessionInput, Project, SessionListCursor, SessionListPage } from "./session";
+import type { CodingSession, Project, SessionListCursor, SessionListPage } from "./session";
 
-export type { CodingSession, MoveSessionInput, Project, SessionListCursor, SessionListPage } from "./session";
+export type { CodingSession, Project, SessionListCursor, SessionListPage } from "./session";
 
 export interface DesktopPermissionRequest {
 	readonly requestId: string;
@@ -839,14 +839,6 @@ export const desktopSessionDeleteInputSchema = Type.Object(
 
 export type DesktopSessionDeleteInput = Static<typeof desktopSessionDeleteInputSchema>;
 
-export const desktopSessionMoveInputSchema = Type.Object(
-	{
-		sessionId: Type.String({ minLength: 1 }),
-		toProjectId: Type.Union([Type.String(), Type.Null()]),
-	},
-	{ additionalProperties: false },
-);
-
 export const desktopSessionListInputSchema = Type.Union([
 	Type.Undefined(),
 	Type.Object(
@@ -929,7 +921,6 @@ export interface DesktopApi {
 			readonly cursor?: SessionListCursor;
 		}): Promise<DesktopSessionListPage>;
 		rename(input: DesktopSessionRenameInput): Promise<CodingSession>;
-		move(input: MoveSessionInput): Promise<CodingSession>;
 		delete(input: DesktopSessionDeleteInput): Promise<void>;
 	};
 	readonly attachment: {

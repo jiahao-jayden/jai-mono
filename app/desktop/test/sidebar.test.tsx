@@ -25,7 +25,6 @@ describe("Sidebar", () => {
 			<Sidebar
 				activeView="chat"
 				sessions={[]}
-				projects={[]}
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
@@ -37,7 +36,6 @@ describe("Sidebar", () => {
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 				onRenameSession={async () => {}}
-				onMoveSession={async () => {}}
 				onDeleteSession={async () => {}}
 			/>,
 		);
@@ -52,7 +50,6 @@ describe("Sidebar", () => {
 			<Sidebar
 				activeView="chat"
 				sessions={[]}
-				projects={[]}
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
@@ -64,7 +61,6 @@ describe("Sidebar", () => {
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 				onRenameSession={async () => {}}
-				onMoveSession={async () => {}}
 				onDeleteSession={async () => {}}
 			/>,
 		);
@@ -83,7 +79,6 @@ describe("Sidebar", () => {
 			<Sidebar
 				activeView="projects"
 				sessions={[]}
-				projects={[]}
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
@@ -95,7 +90,6 @@ describe("Sidebar", () => {
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 				onRenameSession={async () => {}}
-				onMoveSession={async () => {}}
 				onDeleteSession={async () => {}}
 			/>,
 		);
@@ -112,7 +106,6 @@ describe("Sidebar", () => {
 			<Sidebar
 				activeView="chat"
 				sessions={baseSessions}
-				projects={[]}
 				runningSessionIds={[]}
 				activeSessionId="s1"
 				loading={false}
@@ -124,7 +117,6 @@ describe("Sidebar", () => {
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 				onRenameSession={async () => {}}
-				onMoveSession={async () => {}}
 				onDeleteSession={async () => {}}
 			/>,
 		);
@@ -139,7 +131,6 @@ describe("Sidebar", () => {
 			<Sidebar
 				activeView="chat"
 				sessions={baseSessions}
-				projects={[]}
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
@@ -151,7 +142,6 @@ describe("Sidebar", () => {
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 				onRenameSession={async () => {}}
-				onMoveSession={async () => {}}
 				onDeleteSession={async () => {}}
 			/>,
 		);
@@ -168,7 +158,6 @@ describe("Sidebar", () => {
 			<Sidebar
 				activeView="chat"
 				sessions={baseSessions}
-				projects={[]}
 				runningSessionIds={["s1"]}
 				activeSessionId={null}
 				loading={false}
@@ -180,7 +169,6 @@ describe("Sidebar", () => {
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 				onRenameSession={async () => {}}
-				onMoveSession={async () => {}}
 				onDeleteSession={async () => {}}
 			/>,
 		);
@@ -191,6 +179,8 @@ describe("Sidebar", () => {
 		expect(markup).toContain("[text-box:normal]");
 		expect(markup).not.toContain("bg-primary-2");
 		expect(markup).not.toContain("Running");
+		expect(markup).not.toContain("Move to project");
+		expect(markup).not.toContain("Remove from project");
 	});
 
 	test("有下一页时提供可访问的加载更多操作", () => {
@@ -198,7 +188,6 @@ describe("Sidebar", () => {
 			<Sidebar
 				activeView="chat"
 				sessions={baseSessions}
-				projects={[]}
 				runningSessionIds={[]}
 				activeSessionId={null}
 				loading={false}
@@ -212,7 +201,6 @@ describe("Sidebar", () => {
 				onOpenSettings={() => {}}
 				onSelectSession={() => {}}
 				onRenameSession={async () => {}}
-				onMoveSession={async () => {}}
 				onDeleteSession={async () => {}}
 				onLoadMore={() => {}}
 			/>,

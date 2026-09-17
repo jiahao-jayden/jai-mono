@@ -89,7 +89,57 @@ describe("SqliteDesktopCatalogAccess", () => {
 		}
 	});
 
-	test("enforces referential integrity and reports catalog conflicts as typed failures", async () => {
+	test("relinks all associated Session workspaces without changing their Project", async () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const persistence = new SqliteProductSessionPersistence(database);
+			const catalog = new SqliteDesktopCatalogAccess(database);
+			for (const sessionId of ["session-1", "session-2"]) {
+				const created = await persistence.create({
+					id: sessionId,
+					appState: {},
+					runtimeConfiguration: { model: "test/model", mode: "manual" },
+					cwd: "/old-workspace",
+					createdAt,
+				});
+				if (created.isErr()) throw created.error;
+			}
+			const project = {
+				id: "project-1",
+				displayName: "Workspace",
+				path: "/old-workspace",
+				canonicalPath: "/old-workspace",
+				createdAt: 10,
+				updatedAt: 10,
+			};
+			if (catalog.createProject(project).isErr()) throw new Error("Could not create Project");
+			for (const sessionId of ["session-1", "session-2"]) {
+				const ensured = catalog.ensureSession({ sessionId, projectId: project.id, title: sessionId });
+				if (ensured.isErr()) throw ensured.error;
+			}
+
+			const relinked = catalog.relinkProject({
+				...project,
+				path: "/new-workspace",
+				canonicalPath: "/new-workspace",
+				updatedAt: 20,
+			});
+			if (relinked.isErr()) throw relinked.error;
+
+			for (const sessionId of ["session-1", "session-2"]) {
+				const session = await persistence.load(sessionId);
+				if (session.isErr()) throw session.error;
+				expect(session.value.cwd).toBe("/new-workspace");
+				expect(catalog.getSession(sessionId)).toEqual(
+					expect.objectContaining({ value: expect.objectContaining({ projectId: project.id }) }),
+				);
+			}
+		} finally {
+			database.close();
+		}
+	});
+
+	test("rolls back the Project relink when an associated Session workspace cannot update", async () => {
 		const database = new DatabaseSync(":memory:");
 		try {
 			const persistence = new SqliteProductSessionPersistence(database);
@@ -98,10 +148,53 @@ describe("SqliteDesktopCatalogAccess", () => {
 				id: "session-1",
 				appState: {},
 				runtimeConfiguration: { model: "test/model", mode: "manual" },
-				cwd: "/workspace",
+				cwd: "/old-workspace",
 				createdAt,
 			});
 			if (created.isErr()) throw created.error;
+			const project = {
+				id: "project-1",
+				displayName: "Workspace",
+				path: "/old-workspace",
+				canonicalPath: "/old-workspace",
+				createdAt: 10,
+				updatedAt: 10,
+			};
+			if (catalog.createProject(project).isErr()) throw new Error("Could not create Project");
+			const ensured = catalog.ensureSession({ sessionId: "session-1", projectId: project.id, title: "First" });
+			if (ensured.isErr()) throw ensured.error;
+			database.exec(`
+				CREATE TRIGGER reject_session_workspace_relink
+				BEFORE UPDATE OF cwd ON product_session_catalog
+				BEGIN
+					SELECT RAISE(ABORT, 'reject workspace relink');
+				END;
+			`);
+
+			const relinked = catalog.relinkProject({
+				...project,
+				path: "/new-workspace",
+				canonicalPath: "/new-workspace",
+				updatedAt: 20,
+			});
+
+			expect(relinked.isErr()).toBe(true);
+			expect(catalog.getProject(project.id)).toEqual(expect.objectContaining({ value: project }));
+			const session = await persistence.load("session-1");
+			if (session.isErr()) throw session.error;
+			expect(session.value.cwd).toBe("/old-workspace");
+			expect(catalog.getSession("session-1")).toEqual(
+				expect.objectContaining({ value: expect.objectContaining({ projectId: project.id }) }),
+			);
+		} finally {
+			database.close();
+		}
+	});
+
+	test("reports catalog project conflicts as typed failures", async () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const catalog = new SqliteDesktopCatalogAccess(database);
 			const project = {
 				id: "project-1",
 				displayName: "Workspace",
@@ -116,11 +209,6 @@ describe("SqliteDesktopCatalogAccess", () => {
 			expect(duplicate.isErr()).toBe(true);
 			if (duplicate.isOk()) throw new Error("Expected Desktop project path conflict");
 			expect(duplicate.error._tag).toBe("desktop_catalog.project_path_conflict");
-
-			const absentProject = catalog.moveSession({ sessionId: "session-1", projectId: "missing" });
-			expect(absentProject.isErr()).toBe(true);
-			if (absentProject.isOk()) throw new Error("Expected missing Desktop project");
-			expect(absentProject.error._tag).toBe("desktop_catalog.project_not_found");
 		} finally {
 			database.close();
 		}

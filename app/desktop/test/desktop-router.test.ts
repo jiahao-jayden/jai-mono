@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { DesktopRuntime } from "../electron/runtime";
 import { createDesktopRouter } from "../electron/rpc/router";
 
@@ -50,6 +53,7 @@ function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) 
 		oauth: { ...(overrides.oauth as object) },
 		openWith: { ...(overrides.openWith as object) },
 		publish: record("publish"),
+		pickProjectDirectory: (overrides.pickProjectDirectory as DesktopRuntime["pickProjectDirectory"]) ?? record("pickProjectDirectory"),
 		receiveOAuthCallback: record("receiveOAuthCallback"),
 		close: record("close"),
 	} as unknown as DesktopRuntime;
@@ -67,8 +71,13 @@ describe("createDesktopRouter — 输入校验", () => {
 		expect(() => r.session.create(event, {})).toThrow();
 		expect(calls).toEqual([]);
 
-		r.session.create(event, { firstMessage: "hi", projectId: null });
-		expect(calls.map((call) => call.name)).toEqual(["createSession"]);
+		r.session.create(event, { firstMessage: "hi", projectId: "project-1" });
+		expect(calls).toEqual([
+			{
+				name: "createSession",
+				args: [{ firstMessage: "hi", projectId: "project-1" }],
+			},
+		]);
 	});
 
 	test("locale 只接受受限偏好并投影安全快照", () => {
@@ -167,6 +176,42 @@ describe("createDesktopRouter — 行为", () => {
 		expect((await r.session.list(event, undefined)).runningSessionIds).toEqual(["session-9"]);
 	});
 
+	test("project.relink transfers running state and invalidates ACP projections after success", async () => {
+		const relinkCalls: unknown[][] = [];
+		const { router: r, calls } = router({
+			sessions: {
+				relinkProject: (...args: unknown[]) => {
+					relinkCalls.push(args);
+					return { id: "project-1", canonicalPath: "/new-project" };
+				},
+			},
+			agentHost: { runningSessionIds: () => ["session-1"] },
+			pickProjectDirectory: async () => "/new-project",
+		});
+
+		await expect(r.project.relink(event, "project-1")).resolves.toEqual({
+			id: "project-1",
+			canonicalPath: "/new-project",
+			available: true,
+		});
+		expect(relinkCalls).toEqual([["project-1", { path: "/new-project" }, ["session-1"]]]);
+		expect(calls.map((call) => call.name)).toContain("invalidateSessions");
+	});
+
+	test("project.relink preserves ACP projections when the catalog rejects it", async () => {
+		const { router: r, calls } = router({
+			sessions: {
+				relinkProject: async () => {
+					throw new Error('Session "session-1" is busy');
+				},
+			},
+			pickProjectDirectory: async () => "/new-project",
+		});
+
+		await expect(r.project.relink(event, "project-1")).rejects.toThrow('Session "session-1" is busy');
+		expect(calls.map((call) => call.name)).not.toContain("invalidateSessions");
+	});
+
 	test("provider.save 之后失效已打开的 Agent 会话", async () => {
 		const { router: r, calls } = router({ config: { save: async () => ({ profiles: [] }) } });
 		await r.provider.save(event, { profiles: [] } as never);
@@ -231,6 +276,31 @@ describe("createDesktopRouter — 行为", () => {
 		const { router: r, calls } = router();
 		await r.session.delete(event, { sessionId: "session-1" });
 		expect(calls.map((call) => call.name)).toEqual(["closeSession", "deleteSession"]);
+	});
+
+	test("workspace.read 使用 Session 的 durable cwd，而非 Project metadata", async () => {
+		const cwd = await mkdtemp(path.join(tmpdir(), "jai-router-workspace-"));
+		try {
+			await writeFile(path.join(cwd, "note.md"), "durable workspace");
+			const { router: r, calls } = router({
+				sessions: {
+					resolveExecutionContext: async () => ({
+						localFileAccess: true,
+						cwd,
+						configRoot: cwd,
+						defaultAllowedDirectories: [cwd],
+					}),
+				},
+			});
+
+			await expect(r.workspace.read(event, { sessionId: "session-1", path: "note.md" })).resolves.toEqual({
+				path: "note.md",
+				content: "durable workspace",
+			});
+			expect(calls.map((call) => call.name)).not.toContain("getSession");
+		} finally {
+			await rm(cwd, { recursive: true, force: true });
+		}
 	});
 
 	test("theme 读写委托给 theme 服务", () => {

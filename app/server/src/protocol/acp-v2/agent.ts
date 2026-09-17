@@ -52,9 +52,6 @@ export class AcpV2Agent {
 					case "session/resume":
 						response = await this.resumeSession(request);
 						break;
-					case "session/relocate":
-						response = await this.relocateSession(request);
-						break;
 					case "session/prompt":
 						response = await this.prompt(request);
 						break;
@@ -199,17 +196,6 @@ export class AcpV2Agent {
 		// rather than emitting a duplicate after the response.
 		this.drain();
 		return [...projectSnapshot(sessionId, snapshot.value), ...this.respond(request.id, result)];
-	}
-
-	private async relocateSession(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
-		const params = objectParams(request.params);
-		const sessionId = params?.sessionId;
-		const cwd = params?.cwd;
-		if (typeof sessionId !== "string" || typeof cwd !== "string" || !isAbsolute(cwd))
-			return this.respondError(request.id, -32602, "session/relocate requires a sessionId and absolute cwd");
-		const relocated = await this.options.host.relocateSession({ sessionId, cwd });
-		if (relocated.isErr()) return this.respondError(request.id, -32001, relocated.error.message);
-		return this.respond(request.id, {});
 	}
 
 	private async prompt(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {

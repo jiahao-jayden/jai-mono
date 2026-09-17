@@ -107,7 +107,7 @@ export function ChatComposer({
 	const hasMessageContent = hasDraft || hasAttachments;
 	const isStreaming = status === "streaming";
 	const isSubmitting = status === "submitted";
-	const projectRequired = !project?.available;
+	const projectRequired = project?.available === false;
 	const stopAction = isStreaming && !hasMessageContent;
 	const submitLabel = intl.formatMessage(
 		stopAction
