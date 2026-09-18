@@ -329,6 +329,7 @@ export function TranscriptItem({
 		if (item.role === "toolResult") return null;
 		const user = item.role === "user";
 		const messageAlignment = cn("flex py-1", {
+			"min-h-7": !user && item.status === "streaming",
 			"justify-end": user,
 			"justify-start": !user,
 		});
@@ -544,14 +545,15 @@ function WorkProcess({
 
 	useLayoutEffect(() => {
 		const wasActive = wasActiveRef.current;
-		wasActiveRef.current = clock.active;
 		if (clock.active) {
+			wasActiveRef.current = true;
 			setOpen(true);
-		} else if (wasActive) {
+		} else if (wasActive && !responding) {
+			wasActiveRef.current = false;
 			setOpen(false);
 			if (openStateKey) openWorkGroups?.delete(openStateKey);
 		}
-	}, [clock.active, openStateKey, openWorkGroups]);
+	}, [clock.active, openStateKey, openWorkGroups, responding]);
 
 	useEffect(() => {
 		if (!clock.active || clock.paused) return;
@@ -565,7 +567,7 @@ function WorkProcess({
 
 	const label = workTimelineSummary(items, group.items, responding, intl);
 	const onOpenChange = (nextOpen: boolean) => {
-		if (clock.active && !nextOpen) return;
+		if ((clock.active || responding) && !nextOpen) return;
 		setOpen(nextOpen);
 		if (openStateKey) {
 			if (nextOpen) openWorkGroups?.add(openStateKey);
@@ -818,9 +820,9 @@ function workRunClock(
 		if (item.id === firstWorkId) break;
 	}
 
-	let pauseMs = 0;
 	let paused = false;
 	let lastAssistantAt: number | undefined;
+	const permissionWindows: Array<{ requestedAt: number; resolvedAt?: number }> = [];
 	let sawNextUser = false;
 	for (let index = startIndex; index < items.length; index++) {
 		const item = items[index]!;
@@ -830,7 +832,7 @@ function workRunClock(
 		}
 		if (item.kind === "permission") {
 			if (item.resolvedAt === undefined) paused = true;
-			pauseMs += Math.max(0, (item.resolvedAt ?? now) - item.requestedAt);
+			permissionWindows.push({ requestedAt: item.requestedAt, resolvedAt: item.resolvedAt });
 		}
 		if (item.kind === "message" && item.role === "assistant" && item.status === "complete") {
 			lastAssistantAt = item.timestamp;
@@ -850,11 +852,39 @@ function workRunClock(
 		workEnd = Math.max(workEnd ?? item.timestamp, item.timestamp);
 	}
 
-	const start = userAt ?? workStart;
-	const active = workItems.some(isWorkItemRunning) || paused || (!sawNextUser && responding);
+	const start = workStart ?? userAt;
+	const active = workItems.some(isWorkItemRunning) || paused || (responding && isLatestWorkGroup(items, workItems) && !sawNextUser);
 	if (start === undefined) return { active, paused, durationMs: 0 };
-	const end = active ? now : (lastAssistantAt ?? workEnd ?? now);
+	const end = active ? now : (workEnd ?? lastAssistantAt ?? now);
+	const pauseMs = permissionWindows.reduce(
+		(total, permission) => total + pauseOverlapMs(permission, start, end, now),
+		0,
+	);
 	return { active, paused, durationMs: Math.max(0, end - start - pauseMs), start };
+}
+
+function isLatestWorkGroup(items: readonly DesktopTranscriptItem[], workItems: readonly WorkItem[]): boolean {
+	const lastWorkId = workItems.at(-1)?.id;
+	if (!lastWorkId) return false;
+	const lastWorkIndex = items.findIndex((item) => item.id === lastWorkId);
+	if (lastWorkIndex < 0) return false;
+	for (const item of items.slice(lastWorkIndex + 1)) {
+		if (item.kind === "permission") continue;
+		if (item.kind === "message" && item.role === "toolResult") continue;
+		return false;
+	}
+	return true;
+}
+
+function pauseOverlapMs(
+	permission: { requestedAt: number; resolvedAt?: number },
+	start: number,
+	end: number,
+	now: number,
+): number {
+	const pauseStart = Math.max(start, permission.requestedAt);
+	const pauseEnd = Math.min(end, permission.resolvedAt ?? now);
+	return Math.max(0, pauseEnd - pauseStart);
 }
 
 export function formatWorkDuration(milliseconds: number, intl: IntlShape): string {
