@@ -262,7 +262,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
         {children != null && children !== "" && (
           <div
             className={cn(
-              "min-w-0 py-2 text-[14px] wrap-break-word",
+              "min-w-0 text-[14px] wrap-break-word",
               !isUser && "w-full",
               // User keeps the bubble chrome (rounded fill + horizontal padding);
               // the assistant reply is flush-left plain text with no background.
@@ -271,7 +271,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
                     shape.bg,
                     "no-squircle rounded-xl px-3 py-2 text-pretty leading-5 whitespace-pre-wrap bg-secondary text-foreground/85"
                   )
-                : "text-foreground/95 leading-[1.7]"
+                : "text-foreground/95 leading-relaxed"
             )}
           >
             {!isUser && typeof children === "string" ? (

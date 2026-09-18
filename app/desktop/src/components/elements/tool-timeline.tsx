@@ -54,13 +54,13 @@ export function ToolTimeline({
 			onOpenChange={onOpenChange}
 			className={cn("w-full max-w-sm", className)}
 		>
-			<CollapsibleTrigger className="group/trigger flex items-center gap-1.5 rounded-md py-1 text-[14px] text-foreground/55 outline-none transition-colors hover:text-foreground/90">
-				<span className={chevronClassName}>
-					<ChevronRight size={14} strokeWidth={1.5} />
-				</span>
+			<CollapsibleTrigger className="group/trigger inline-flex items-center gap-1 rounded-md pb-2 text-left text-[14px] text-foreground/55 outline-none transition-colors hover:text-foreground/90">
 				<ShimmerLabel active={streaming} className="relative inline-block text-start tabular-nums leading-none">
 					{streaming ? activeLabel : restingLabel}
 				</ShimmerLabel>
+				<span className={chevronClassName}>
+					<ChevronRight size={14} strokeWidth={1.5} />
+				</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent keepMounted={false} className="outline-none">
 				<div className="flex flex-col gap-2.5 ps-4 pt-2.5">

@@ -586,6 +586,7 @@ function WorkProcess({
 				steps={steps}
 				streaming={running}
 			/>
+			<div className="h-px w-full bg-border" />
 		</div>
 	);
 }
@@ -809,33 +810,38 @@ function workRunClock(
 	now: number,
 ): { active: boolean; paused: boolean; durationMs: number; start?: number } {
 	const firstWorkId = workItems[0]?.id;
-	let userAt: number | undefined;
+	let turnStart: number | undefined;
 	let startIndex = 0;
 	for (let index = 0; index < items.length; index++) {
 		const item = items[index]!;
 		if (item.kind === "message" && item.role === "user") {
-			userAt = item.timestamp;
+			turnStart = item.timestamp;
 			startIndex = index;
 		}
 		if (item.id === firstWorkId) break;
+		if (item.kind === "message" && item.role === "assistant" && item.status === "complete") {
+			turnStart = item.timestamp;
+		}
 	}
 
 	let paused = false;
-	let lastAssistantAt: number | undefined;
+	let assistantAfterWorkAt: number | undefined;
 	const permissionWindows: Array<{ requestedAt: number; resolvedAt?: number }> = [];
 	let sawNextUser = false;
+	let sawWork = false;
 	for (let index = startIndex; index < items.length; index++) {
 		const item = items[index]!;
 		if (index > startIndex && item.kind === "message" && item.role === "user") {
 			sawNextUser = true;
 			break;
 		}
+		if (item.id === firstWorkId) sawWork = true;
 		if (item.kind === "permission") {
 			if (item.resolvedAt === undefined) paused = true;
 			permissionWindows.push({ requestedAt: item.requestedAt, resolvedAt: item.resolvedAt });
 		}
-		if (item.kind === "message" && item.role === "assistant" && item.status === "complete") {
-			lastAssistantAt = item.timestamp;
+		if (sawWork && item.kind === "message" && item.role === "assistant" && item.status === "complete") {
+			assistantAfterWorkAt = item.timestamp;
 		}
 	}
 
@@ -844,18 +850,21 @@ function workRunClock(
 	for (const item of workItems) {
 		if (item.kind === "tool" || item.kind === "subagent") {
 			if (item.startedAt !== undefined) workStart = Math.min(workStart ?? item.startedAt, item.startedAt);
-			const end = item.completedAt ?? item.startedAt;
-			if (end !== undefined) workEnd = Math.max(workEnd ?? end, end);
+			if (item.completedAt !== undefined) {
+				workEnd = Math.max(workEnd ?? item.completedAt, item.completedAt);
+			}
 			continue;
 		}
 		workStart = Math.min(workStart ?? item.timestamp, item.timestamp);
 		workEnd = Math.max(workEnd ?? item.timestamp, item.timestamp);
 	}
 
-	const start = workStart ?? userAt;
 	const active = workItems.some(isWorkItemRunning) || paused || (responding && isLatestWorkGroup(items, workItems) && !sawNextUser);
-	if (start === undefined) return { active, paused, durationMs: 0 };
-	const end = active ? now : (workEnd ?? lastAssistantAt ?? now);
+	const start = turnStart ?? workStart;
+	if (start === undefined || (!active && assistantAfterWorkAt === undefined && workEnd === undefined)) {
+		return { active, paused, durationMs: 0 };
+	}
+	const end = active ? now : (assistantAfterWorkAt ?? workEnd ?? start);
 	const pauseMs = permissionWindows.reduce(
 		(total, permission) => total + pauseOverlapMs(permission, start, end, now),
 		0,
@@ -888,19 +897,36 @@ function pauseOverlapMs(
 }
 
 export function formatWorkDuration(milliseconds: number, intl: IntlShape): string {
-	const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
-	const minutes = Math.floor(seconds / 60);
-	const hours = Math.floor(minutes / 60);
-	const units = [
-		...(hours > 0 ? [intl.formatNumber(hours, { style: "unit", unit: "hour", unitDisplay: "narrow" })] : []),
-		...(minutes % 60 > 0
-			? [intl.formatNumber(minutes % 60, { style: "unit", unit: "minute", unitDisplay: "narrow" })]
-			: []),
-		...(seconds % 60 > 0 || minutes === 0
-			? [intl.formatNumber(seconds % 60, { style: "unit", unit: "second", unitDisplay: "narrow" })]
-			: []),
-	];
-	return units.join(" ");
+	const duration = Number.isFinite(milliseconds) ? Math.max(0, milliseconds) : 0;
+	if (duration < 1_000) {
+		return intl.formatNumber(Math.max(1, Math.round(duration)), {
+			style: "unit",
+			unit: "millisecond",
+			unitDisplay: "narrow",
+		});
+	}
+	if (duration < 10_000) {
+		return intl.formatNumber(duration / 1_000, {
+			style: "unit",
+			unit: "second",
+			unitDisplay: "narrow",
+			maximumFractionDigits: 1,
+			minimumFractionDigits: 1,
+		});
+	}
+	const totalSeconds = Math.round(duration / 1_000);
+	const minutes = Math.floor(totalSeconds / 60);
+	const seconds = totalSeconds % 60;
+	if (minutes === 0) {
+		return intl.formatNumber(seconds, { style: "unit", unit: "second", unitDisplay: "narrow" });
+	}
+	if (seconds === 0) {
+		return intl.formatNumber(minutes, { style: "unit", unit: "minute", unitDisplay: "narrow" });
+	}
+	return [
+		intl.formatNumber(minutes, { style: "unit", unit: "minute", unitDisplay: "narrow" }),
+		intl.formatNumber(seconds, { style: "unit", unit: "second", unitDisplay: "narrow" }),
+	].join(" ");
 }
 
 function fileChangeVerb(operation: "add" | "modify" | "delete", intl: IntlShape): string {

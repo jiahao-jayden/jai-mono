@@ -249,8 +249,32 @@ describe("transcript grouping", () => {
 		expect(workTimelineSummary([tool], [tool], false, intl)).toBe("Worked for 1m 1s");
 	});
 
+	test("缺少 activity 时间戳的已完成工作不会从用户消息计时到现在", () => {
+		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:user-1",
+			role: "user",
+			text: "检查一下",
+			status: "complete",
+			timestamp: 0,
+		};
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:read-1",
+			turnId: "turn-1",
+			activityId: "assistant:1",
+			toolCallId: "read-1",
+			toolName: "Read",
+			activityKind: "read",
+			status: "complete",
+		};
+
+		expect(workTimelineSummary([user, tool], [tool], false, intl, 16 * 60 * 60 * 1_000)).toBe("Worked");
+	});
+
 	test("工作时长使用本地化的紧凑单位", () => {
 		expect(formatWorkDuration(3 * 60_000 + 27_000, intl)).toBe("3m 27s");
+		expect(formatWorkDuration(16 * 60 * 60_000 + 17 * 60_000 + 55_000, intl)).toBe("977m 55s");
 	});
 
 	test("context compaction 不会切断同一 turn 的工作日志", () => {
@@ -492,7 +516,7 @@ describe("transcript grouping", () => {
 		expect(renderToStaticMarkup(createElement(TranscriptItem, { item: permission }))).toBe("");
 	});
 
-	test("工作时长按实际 work activity 区间计算", () => {
+	test("工作时长按 turn boundary 到 assistant 完成时间计算", () => {
 		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
 			kind: "message",
 			id: "message:user-1",
@@ -522,11 +546,11 @@ describe("transcript grouping", () => {
 			timestamp: 70_000,
 		};
 
-		expect(workTimelineSummary([user, tool, reply], [tool], false, intl)).toBe("Worked for 20s");
-		expect(workTimelineSummary([user, tool], [tool], true, intl, 55_000)).toBe("Working · 35s");
+		expect(workTimelineSummary([user, tool, reply], [tool], false, intl)).toBe("Worked for 1m 10s");
+		expect(workTimelineSummary([user, tool], [tool], true, intl, 55_000)).toBe("Working · 55s");
 		expect(
 			workTimelineSummary([user, tool, { ...reply, status: "streaming", timestamp: 45_000 }], [tool], true, intl, 70_000),
-		).toBe("Worked for 20s");
+		).toBe("Worked for 40s");
 
 		const activeMarkup = renderToStaticMarkup(
 			createElement(TranscriptItems, { items: [user, tool], loading: false, responding: true }),
@@ -585,8 +609,8 @@ describe("transcript grouping", () => {
 		};
 		const resolved = { ...pending, status: "allowed" as const, resolvedAt: 45_000 };
 
-		expect(workTimelineSummary([user, pending, tool], [tool], true, intl, 40_000)).toBe("Working · 5s");
-		expect(workTimelineSummary([user, pending, tool], [tool], true, intl, 80_000)).toBe("Working · 5s");
-		expect(workTimelineSummary([user, resolved, tool], [tool], true, intl, 80_000)).toBe("Working · 40s");
+		expect(workTimelineSummary([user, pending, tool], [tool], true, intl, 40_000)).toBe("Working · 15s");
+		expect(workTimelineSummary([user, pending, tool], [tool], true, intl, 80_000)).toBe("Working · 15s");
+		expect(workTimelineSummary([user, resolved, tool], [tool], true, intl, 80_000)).toBe("Working · 50s");
 	});
 });
