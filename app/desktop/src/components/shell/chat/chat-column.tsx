@@ -82,6 +82,7 @@ interface ChatColumnProps {
 	onChooseProject(project: DesktopProject): Promise<void>;
 	onRetryProjects(): void;
 	onRenameSession(sessionId: string, title: string): Promise<void>;
+	onArchiveSession(sessionId: string): Promise<void>;
 	onDeleteSession(sessionId: string): Promise<void>;
 	onOpenSubagent?(item: DesktopSubagentItem): void;
 }
@@ -114,6 +115,7 @@ export function ChatColumn({
 	onChooseProject,
 	onRetryProjects,
 	onRenameSession,
+	onArchiveSession,
 	onDeleteSession,
 	onOpenSubagent,
 }: ChatColumnProps) {
@@ -310,7 +312,9 @@ export function ChatColumn({
 									key={session.id}
 									session={session}
 									placement="header"
+									running={isAgentWorking}
 									onStartRename={startTitleEditing}
+									onArchive={onArchiveSession}
 									onDelete={onDeleteSession}
 								/>
 							</div>

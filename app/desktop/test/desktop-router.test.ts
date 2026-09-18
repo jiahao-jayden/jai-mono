@@ -21,6 +21,8 @@ function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) 
 			getSession: record("getSession", { id: "session-1", projectId: null }),
 			listSessions: record("listSessions", { sessions: [], nextCursor: null }),
 			renameSession: record("renameSession", { id: "session-1" }),
+			archiveSession: record("archiveSession", { id: "session-1", archivedAt: 10 }),
+			restoreSession: record("restoreSession", { id: "session-1", archivedAt: null }),
 			deleteSession: record("deleteSession"),
 			listProjects: record("listProjects", []),
 			...(overrides.sessions as object),
@@ -142,6 +144,7 @@ describe("createDesktopRouter — 输入校验", () => {
 		const { router: r } = router();
 		expect(() => r.session.list(event, { limit: 0 })).toThrow();
 		expect(() => r.session.list(event, { limit: 101 })).toThrow();
+		expect(() => r.session.list(event, { archived: "yes" } as never)).toThrow();
 		expect(() => r.session.list(event, { cursor: { id: "a" } })).toThrow();
 		expect(r.session.list(event, undefined)).toBeDefined();
 		expect(r.session.list(event, { limit: 20 })).toBeDefined();
@@ -276,6 +279,25 @@ describe("createDesktopRouter — 行为", () => {
 		const { router: r, calls } = router();
 		await r.session.delete(event, { sessionId: "session-1" });
 		expect(calls.map((call) => call.name)).toEqual(["closeSession", "deleteSession"]);
+	});
+
+	test("session.archive 由 Router 拒绝运行中的 Session，避免 UI 请求竞态", async () => {
+		const { router: r, calls } = router({ agentHost: { runningSessionIds: () => ["session-1"] } });
+
+		await expect(r.session.archive(event, { sessionId: "session-1" })).rejects.toMatchObject({
+			_tag: "desktop_session_catalog.session_busy",
+		});
+
+		expect(calls.map((call) => call.name)).toEqual([]);
+	});
+
+	test("session.archive 和 session.restore 委托 Catalog，而不关闭或修改 Agent", async () => {
+		const { router: r, calls } = router();
+
+		await r.session.archive(event, { sessionId: "session-1" });
+		await r.session.restore(event, { sessionId: "session-1" });
+
+		expect(calls.map((call) => call.name)).toEqual(["runningSessionIds", "archiveSession", "restoreSession"]);
 	});
 
 	test("workspace.read 使用 Session 的 durable cwd，而非 Project metadata", async () => {

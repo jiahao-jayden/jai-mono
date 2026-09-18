@@ -30,6 +30,7 @@ interface SessionRow {
 	readonly title_source: string;
 	readonly updated_at: string;
 	readonly title_generation_attempted_at: number | null;
+	readonly archived_at: number | null;
 }
 
 /**
@@ -135,30 +136,52 @@ export class SqliteDesktopCatalogAccess {
 	}
 
 	listSessions(
-		input: { readonly limit?: number; readonly cursor?: DesktopCatalogSessionCursor } = {},
+		input: {
+			readonly limit?: number;
+			readonly archived?: boolean;
+			readonly cursor?: DesktopCatalogSessionCursor;
+		} = {},
 	): ResultType<DesktopCatalogSessionPage, DesktopCatalogStorageError> {
 		try {
 			const limit = Math.min(Math.max(input.limit ?? 50, 1), 100);
-			const cursorTimestamp = input.cursor ? new Date(input.cursor.lastActivityAt).toISOString() : undefined;
+			const archivedClause = input.archived ? "metadata.archived_at IS NOT NULL" : "metadata.archived_at IS NULL";
+			const sortColumn = input.archived ? "metadata.archived_at" : "journal.updated_at";
+			const cursorTimestamp = input.cursor
+				? input.archived
+					? input.cursor.lastActivityAt
+					: new Date(input.cursor.lastActivityAt).toISOString()
+				: undefined;
 			const rows = input.cursor
 				? (this.database
 						.prepare(
 							`${sessionSelect()}
-							 WHERE journal.updated_at < ?
-							    OR (journal.updated_at = ? AND journal.id < ?)
-							 ORDER BY journal.updated_at DESC, journal.id DESC
+							 WHERE ${archivedClause}
+							   AND (${sortColumn} < ?
+							    OR (${sortColumn} = ? AND journal.id < ?)
+							   )
+							 ORDER BY ${sortColumn} DESC, journal.id DESC
 							 LIMIT ?`,
 						)
 						.all(cursorTimestamp!, cursorTimestamp!, input.cursor.id, limit + 1) as unknown as SessionRow[])
 				: (this.database
-						.prepare(`${sessionSelect()} ORDER BY journal.updated_at DESC, journal.id DESC LIMIT ?`)
+						.prepare(
+							`${sessionSelect()}
+							 WHERE ${archivedClause}
+							 ORDER BY ${sortColumn} DESC, journal.id DESC
+							 LIMIT ?`,
+						)
 						.all(limit + 1) as unknown as SessionRow[]);
 			const sessions = rows.slice(0, limit).map(sessionRow);
 			const last = sessions.at(-1);
 			return Result.ok({
 				sessions,
 				...(rows.length > limit && last
-					? { nextCursor: { lastActivityAt: last.lastActivityAt, id: last.id } }
+					? {
+							nextCursor: {
+								lastActivityAt: input.archived ? last.archivedAt! : last.lastActivityAt,
+								id: last.id,
+							},
+						}
 					: {}),
 			});
 		} catch (cause) {
@@ -241,6 +264,43 @@ export class SqliteDesktopCatalogAccess {
 			);
 		} catch (cause) {
 			return Result.err(this.projectError(input.sessionId, cause));
+		}
+	}
+
+	archiveSession(sessionId: string): ResultType<DesktopCatalogSession, DesktopCatalogStorageError> {
+		try {
+			return Result.ok(
+				this.transaction(() => {
+					const session = this.requireSession(sessionId);
+					this.database
+						.prepare(
+							`INSERT INTO desktop_session_metadata
+							 (session_id, title, title_source, archived_at)
+							 VALUES (?, ?, ?, ?)
+							 ON CONFLICT(session_id) DO UPDATE SET archived_at = excluded.archived_at`,
+						)
+						.run(session.id, session.title, session.titleSource, Date.now());
+					return this.requireSession(sessionId);
+				}),
+			);
+		} catch (cause) {
+			return Result.err(this.projectError(sessionId, cause));
+		}
+	}
+
+	restoreSession(sessionId: string): ResultType<DesktopCatalogSession, DesktopCatalogStorageError> {
+		try {
+			return Result.ok(
+				this.transaction(() => {
+					this.requireSession(sessionId);
+					this.database
+						.prepare("UPDATE desktop_session_metadata SET archived_at = NULL WHERE session_id = ?")
+						.run(sessionId);
+					return this.requireSession(sessionId);
+				}),
+			);
+		} catch (cause) {
+			return Result.err(this.projectError(sessionId, cause));
 		}
 	}
 
@@ -336,11 +396,18 @@ export class SqliteDesktopCatalogAccess {
 				project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
 				title TEXT NOT NULL,
 				title_source TEXT NOT NULL CHECK (title_source IN ('fallback', 'generated', 'manual')),
-				title_generation_attempted_at INTEGER
+				title_generation_attempted_at INTEGER,
+				archived_at INTEGER
 			);
 			CREATE INDEX IF NOT EXISTS desktop_session_metadata_project
 				ON desktop_session_metadata(project_id);
 		`);
+		const metadataColumns = this.database.prepare("PRAGMA table_info(desktop_session_metadata)").all() as unknown as {
+			readonly name: string;
+		}[];
+		if (!metadataColumns.some((column) => column.name === "archived_at")) {
+			this.database.exec("ALTER TABLE desktop_session_metadata ADD COLUMN archived_at INTEGER");
+		}
 	}
 
 	private requireProject(projectId: string): DesktopCatalogProject {
@@ -398,7 +465,8 @@ function sessionSelect(): string {
 		COALESCE(metadata.title, 'New session') AS title,
 		COALESCE(metadata.title_source, 'fallback') AS title_source,
 		journal.updated_at,
-		metadata.title_generation_attempted_at
+		metadata.title_generation_attempted_at,
+		metadata.archived_at
 		FROM session_journals AS journal
 		INNER JOIN product_session_catalog AS product ON product.session_id = journal.id
 		LEFT JOIN desktop_session_metadata AS metadata ON metadata.session_id = journal.id`;
@@ -432,7 +500,8 @@ function sessionRow(row: SessionRow): DesktopCatalogSession {
 		typeof row.title !== "string" ||
 		!isTitleSource(row.title_source) ||
 		typeof row.updated_at !== "string" ||
-		(row.title_generation_attempted_at !== null && typeof row.title_generation_attempted_at !== "number")
+		(row.title_generation_attempted_at !== null && typeof row.title_generation_attempted_at !== "number") ||
+		(row.archived_at !== null && (!Number.isFinite(row.archived_at) || typeof row.archived_at !== "number"))
 	) {
 		throw new DesktopCatalogStorageCorrupted({ message: "Desktop Session Catalog row is invalid" });
 	}
@@ -446,6 +515,7 @@ function sessionRow(row: SessionRow): DesktopCatalogSession {
 		title: row.title,
 		titleSource: row.title_source,
 		lastActivityAt,
+		archivedAt: row.archived_at,
 	};
 }
 

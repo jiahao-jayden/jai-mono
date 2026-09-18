@@ -17,6 +17,7 @@ import {
 	desktopConnectorOAuthApplicationIdSchema,
 	desktopPermissionResolutionSchema,
 	desktopProjectCreateInputSchema,
+	desktopSessionArchiveInputSchema,
 	desktopSessionCreateInputSchema,
 	desktopSessionDeleteInputSchema,
 	desktopSessionIdSchema,
@@ -31,6 +32,7 @@ import {
 } from "../../shared/desktop-rpc";
 import { sortArtifacts } from "../agent/artifacts";
 import type { DesktopRuntime } from "../runtime";
+import { sessionBusyError } from "../session-catalog/errors";
 import {
 	artifactPreviewError,
 	assertWorkspaceRelativePath,
@@ -212,6 +214,15 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			async rename(_event, input) {
 				const parsed = parse(desktopSessionRenameInputSchema, input, "Invalid Session rename input");
 				return rt.sessions.renameSession(parsed.sessionId, parsed.title);
+			},
+			async archive(_event, input) {
+				const parsed = parse(desktopSessionArchiveInputSchema, input, "Invalid Session archive input");
+				if (rt.agentHost.runningSessionIds().includes(parsed.sessionId)) throw sessionBusyError(parsed.sessionId);
+				return rt.sessions.archiveSession(parsed.sessionId);
+			},
+			async restore(_event, input) {
+				const parsed = parse(desktopSessionArchiveInputSchema, input, "Invalid Session restore input");
+				return rt.sessions.restoreSession(parsed.sessionId);
 			},
 			async delete(_event, input) {
 				const parsed = parse(desktopSessionDeleteInputSchema, input, "Invalid Session delete input");

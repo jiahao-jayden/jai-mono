@@ -1,4 +1,3 @@
-import type { Result } from "better-result";
 import { TaggedError } from "better-result";
 
 /** Desktop's durable title provenance; the Host stores but does not interpret it. */
@@ -21,9 +20,11 @@ export interface DesktopCatalogSession {
 	readonly title: string;
 	readonly titleSource: DesktopCatalogTitleSource;
 	readonly lastActivityAt: number;
+	readonly archivedAt: number | null;
 }
 
 export interface DesktopCatalogSessionCursor {
+	/** The value used to sort the current list; archived pages use `archivedAt`. */
 	readonly lastActivityAt: number;
 	readonly id: string;
 }

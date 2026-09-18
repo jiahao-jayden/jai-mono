@@ -21,6 +21,7 @@ import {
 	desktopQueryKeys,
 	getRecentSessions,
 	getRunningSessionIds,
+	invalidateSessionLists,
 	removeRecentSession,
 	sessionRecentsQueryOptions,
 	upsertProject,
@@ -42,12 +43,9 @@ import {
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { ChatColumn } from "./chat/chat-column";
-import { ChatComposer } from "./chat/chat-composer";
-import { ChatsPage } from "./chats-page";
 import { DESKTOP_TOP_BAR_HEIGHT_CLASS, MAC_SIDEBAR_LEADING_POSITION_CLASS } from "./desktop-chrome";
 import { Dock } from "./dock/dock";
 import { useDock } from "./dock/use-dock";
-import { ProjectPage, ProjectsPage } from "./projects-page";
 import { SettingsPage } from "./settings/settings-page";
 import { Sidebar } from "./sidebar/sidebar";
 import { SidebarToggleButton } from "./sidebar/sidebar-toggle-button";
@@ -108,20 +106,8 @@ export function AppShell() {
 	const setSelectedModelRef = useDesktopChatStore((state) => state.setSelectedModelRef);
 	const setSelectedAgentMode = useDesktopChatStore((state) => state.setSelectedAgentMode);
 	const chatRoute = matchPath("/chat/:sessionId", location.pathname);
-	const projectRoute = matchPath("/projects/:projectId", location.pathname);
 	const routeSessionId = chatRoute?.params.sessionId;
 	const activeSessionId = routeSessionId && routeSessionId !== "new" ? routeSessionId : null;
-	const routeProjectId = projectRoute?.params.projectId;
-	const activeView =
-		location.pathname === "/chats"
-			? "chats"
-			: location.pathname === "/projects"
-				? "projects"
-				: location.pathname === "/settings"
-					? "settings"
-					: routeProjectId
-						? "project"
-						: "chat";
 	useEffect(() => {
 		if (activeSessionId) {
 			if (storedSessionId !== activeSessionId) openSessionInStore(activeSessionId);
@@ -129,9 +115,6 @@ export function AppShell() {
 		}
 		if (storedSessionId !== null) newChat();
 	}, [activeSessionId, newChat, openSessionInStore, storedSessionId]);
-	useEffect(() => {
-		if (routeProjectId) setSelectedProjectId(routeProjectId);
-	}, [routeProjectId, setSelectedProjectId]);
 	const projectsQuery = useQuery({
 		queryKey: desktopQueryKeys.projects,
 		queryFn: () => desktop.project.list(),
@@ -166,7 +149,7 @@ export function AppShell() {
 	const projects = projectsQuery.data ?? [];
 	const selectedProject = projects.find((candidate) => candidate.id === selectedProjectId);
 	const projectId = session?.projectId ?? selectedProject?.id ?? null;
-	const newSessionProjectId = routeProjectId ?? projectId;
+	const newSessionProjectId = projectId;
 	const project = projects.find((candidate) => candidate.id === projectId);
 	const enabledModelRefs =
 		providerQuery.data?.profiles.flatMap((profile) =>
@@ -191,7 +174,7 @@ export function AppShell() {
 	});
 	const shellRef = useRef<HTMLDivElement>(null);
 	const contentRef = useRef<HTMLDivElement>(null);
-	const chatVisible = activeView === "chat";
+	const chatVisible = chatRoute !== null;
 	const dockMounted = chatVisible && !!session;
 	const dockVisible = dockMounted && dockOpen;
 	const sidebarWidth = useMotionValue(DEFAULT_SIDEBAR_WIDTH);
@@ -342,6 +325,14 @@ export function AppShell() {
 			// Mutation state drives the recoverable project error UI.
 		}
 	};
+	const relinkProject = async (candidate: DesktopProject) => {
+		if (projectBusy) return;
+		try {
+			await projectSelectionMutation.mutateAsync(candidate);
+		} catch {
+			// Mutation state drives the recoverable project error UI.
+		}
+	};
 	const openNewChat = () => {
 		newChat();
 		setSelectedProjectId(null);
@@ -351,29 +342,28 @@ export function AppShell() {
 		openSessionInStore(sessionId);
 		navigate(`/chat/${sessionId}`);
 	};
-	const openProject = (nextProject: DesktopProject) => {
-		newChat();
-		setSelectedProjectId(nextProject.id);
-		navigate(`/projects/${nextProject.id}`);
-	};
 	const renameSession = async (sessionId: string, title: string) => {
 		const renamed = await desktop.session.rename({ sessionId, title });
 		upsertRecentSession(renamed);
+	};
+	const archiveSession = async (sessionId: string) => {
+		await desktop.session.archive({ sessionId });
+		removeRecentSession(sessionId);
+		await invalidateSessionLists();
+		if (activeSessionId === sessionId) openNewChat();
 	};
 	const deleteSession = async (sessionId: string) => {
 		await desktop.session.delete({ sessionId });
 		removeRecentSession(sessionId);
 		if (activeSessionId === sessionId) openNewChat();
-		void desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.recents });
+		await invalidateSessionLists();
 	};
 	const projectLoadErrorMessage = projectsQuery.isError
 		? intl.formatMessage(desktopMessages.projectsLoadError)
 		: undefined;
-	const projectPageError = projectLoadErrorMessage;
 	const sessionLoadErrorMessage = sessionRecentsQuery.isError
 		? intl.formatMessage(desktopMessages.sidebarRecentsLoadError)
 		: undefined;
-	const pageProject = routeProjectId ? projects.find((candidate) => candidate.id === routeProjectId) : undefined;
 	const projectLoading = projectsQuery.isLoading || projectsQuery.isFetching;
 	const projectLoadError = projectsQuery.isError && projectsQuery.data === undefined;
 	const chatProjectError =
@@ -423,8 +413,8 @@ export function AppShell() {
 			>
 				{sidebarOpen ? (
 					<Sidebar
-						activeView={activeView}
 						macTitleBar={isMac}
+						projects={projects}
 						sessions={sessions}
 						runningSessionIds={runningSessionIds}
 						activeSessionId={chatVisible ? activeSessionId : null}
@@ -432,17 +422,19 @@ export function AppShell() {
 						error={sessionLoadErrorMessage}
 						hasNextPage={sessionRecentsQuery.hasNextPage}
 						loadingMore={sessionRecentsQuery.isFetchingNextPage}
+						projectLoading={projectLoading}
+						projectError={projectLoadErrorMessage}
 						width={sidebarResize.width}
 						onToggleSidebar={() => {
 							visibleSidebarWidth.set(0);
 							setSidebarOpen(false);
 						}}
 						onNewChat={openNewChat}
-						onOpenChats={() => navigate("/chats")}
-						onOpenProjects={() => navigate("/projects")}
 						onOpenSettings={openProviderSettings}
+						onRelinkProject={relinkProject}
 						onSelectSession={openSession}
 						onRenameSession={renameSession}
+						onArchiveSession={archiveSession}
 						onDeleteSession={deleteSession}
 						onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
 					/>
@@ -451,86 +443,6 @@ export function AppShell() {
 			{sidebarOpen ? <ColumnResizeHandle resize={sidebarResize} side="left" /> : null}
 			<div ref={contentRef} className={contentCardClassName}>
 				<Routes>
-					<Route
-						path="/chats"
-						element={
-							<ChatsPage
-								sessions={sessions}
-								projects={projects}
-								loading={sessionRecentsQuery.isLoading}
-								error={sessionLoadErrorMessage}
-								hasNextPage={sessionRecentsQuery.hasNextPage}
-								loadingMore={sessionRecentsQuery.isFetchingNextPage}
-								onNewChat={openNewChat}
-								onSelectSession={openSession}
-								onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
-							/>
-						}
-					/>
-					<Route
-						path="/projects"
-						element={
-							<ProjectsPage
-								projects={projects}
-								sessions={sessions}
-								loading={projectLoading}
-								error={projectPageError}
-								onOpenProject={openProject}
-							/>
-						}
-					/>
-					<Route
-						path="/projects/:projectId"
-						element={
-							pageProject ? (
-								<ProjectPage
-									project={pageProject}
-									sessions={sessions}
-									onBack={() => navigate("/projects")}
-									onSelectSession={openSession}
-									composer={
-										<ChatComposer
-											value={draft}
-											onValueChange={setDraft}
-											onSend={chat.sendMessage}
-											onStop={chat.stop}
-											status={chat.status}
-											disabled={!pageProject.available}
-											queue={queue}
-											onEditQueuedMessage={editQueuedMessage}
-											onRemoveQueuedMessage={removeQueuedMessage}
-											onReorderQueuedMessages={reorderQueuedMessages}
-											project={pageProject}
-											projects={projects}
-											projectBusy={projectBusy}
-											projectLoading={projectLoading}
-											projectLoadError={projectLoadError}
-											onChooseProject={chooseProject}
-											onRetryProjects={() => void projectsQuery.refetch()}
-											providerConfig={providerQuery.data}
-											selectedModelRef={runtimeModelRef}
-											selectedAgentMode={selectedAgentMode}
-											providerLoading={providerQuery.isLoading}
-											providerError={providerQuery.isError}
-											onOpenProviderSettings={openProviderSettings}
-											onSelectProviderModel={setSelectedModelRef}
-											onSelectAgentMode={setSelectedAgentMode}
-											showProjectPicker={false}
-											large
-										/>
-									}
-								/>
-							) : (
-								<ProjectsPage
-									projects={projects}
-									sessions={sessions}
-									loading={projectLoading}
-									error={projectPageError}
-									onOpenProject={openProject}
-								/>
-							)
-						}
-					/>
 					<Route
 						path="/chat/:sessionId"
 						element={
@@ -562,6 +474,7 @@ export function AppShell() {
 								onChooseProject={chooseProject}
 								onRetryProjects={() => void projectsQuery.refetch()}
 								onRenameSession={renameSession}
+								onArchiveSession={archiveSession}
 								onDeleteSession={deleteSession}
 								onOpenSubagent={openSubagent}
 							/>

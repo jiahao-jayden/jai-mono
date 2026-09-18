@@ -31,7 +31,13 @@ export interface DesktopSessionCatalogPort {
 	listProjects(): Promise<readonly Project[]>;
 	isProjectAvailable(projectId: string): Promise<boolean>;
 	getSession(id: string): Promise<CodingSession>;
-	listSessions(input?: { readonly limit?: number; readonly cursor?: SessionListCursor }): Promise<SessionListPage>;
+	listSessions(input?: {
+		readonly limit?: number;
+		readonly archived?: boolean;
+		readonly cursor?: SessionListCursor;
+	}): Promise<SessionListPage>;
+	archiveSession(id: string): Promise<CodingSession>;
+	restoreSession(id: string): Promise<CodingSession>;
 	deleteSession(id: string): Promise<void>;
 	renameSession(id: string, title: string): Promise<CodingSession>;
 	markTitleGenerationAttempted(id: string): Promise<CodingSession>;
@@ -212,9 +218,20 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 
 	async listSessions(input?: {
 		readonly limit?: number;
+		readonly archived?: boolean;
 		readonly cursor?: SessionListCursor;
 	}): Promise<SessionListPage> {
 		return unwrap(await this.#transport.catalog.listSessions(input), "sessions/list");
+	}
+
+	async archiveSession(id: string): Promise<CodingSession> {
+		await this.getSession(id);
+		return unwrap(await this.#transport.catalog.archiveSession(id), "sessions/archive");
+	}
+
+	async restoreSession(id: string): Promise<CodingSession> {
+		await this.getSession(id);
+		return unwrap(await this.#transport.catalog.restoreSession(id), "sessions/restore");
 	}
 
 	async deleteSession(id: string): Promise<void> {

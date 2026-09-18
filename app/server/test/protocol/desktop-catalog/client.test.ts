@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { connectDesktopCatalogClient } from "../../../src/desktop-catalog-client";
+import { Result } from "better-result";
+import { DesktopCatalogClient, connectDesktopCatalogClient } from "../../../src/desktop-catalog-client";
 import { openConfiguredRuntimeHost } from "../../../src/runtime";
 
 describe("Desktop Catalog client", () => {
@@ -36,5 +37,39 @@ describe("Desktop Catalog client", () => {
 			await host.value.close();
 			await rm(dataDirectory, { recursive: true, force: true });
 		}
+	});
+
+	test("sends archive DTOs and parses only the safe Session projection", async () => {
+		const requests: { readonly method: string; readonly params: unknown }[] = [];
+		const client = new DesktopCatalogClient({
+			request: async (method: string, params: unknown) => {
+				requests.push({ method, params });
+				return Result.ok({
+					id: "session-1",
+					projectId: null,
+					title: "Archive me",
+					titleSource: "manual",
+					lastActivityAt: 10,
+					archivedAt: 20,
+				});
+			},
+			close: async () => {},
+		} as never);
+
+		const archived = await client.archiveSession("session-1");
+
+		expect(archived).toEqual(
+			expect.objectContaining({
+				value: {
+					id: "session-1",
+					projectId: null,
+					title: "Archive me",
+					titleSource: "manual",
+					lastActivityAt: 10,
+					archivedAt: 20,
+				},
+			}),
+		);
+		expect(requests).toEqual([{ method: "jai/desktop-catalog/sessions/archive", params: { sessionId: "session-1" } }]);
 	});
 });

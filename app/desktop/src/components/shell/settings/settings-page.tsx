@@ -21,6 +21,7 @@ import type {
 	DesktopWebSearchCredentialId,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
+import { ArchivedChatsSettings } from "./archived-chats-settings";
 import { ConnectorSettings } from "./connector-settings";
 import { GeneralSettings } from "./general-settings";
 import { McpSettings } from "./mcp-settings";
@@ -58,10 +59,11 @@ interface SettingsPageProps {
 	readonly onRefreshMcpStatus: () => Promise<DesktopMcpStatus>;
 }
 
-type SettingsCategory = "general" | "providers" | "web-search" | "connector" | "mcp" | "advanced";
+type SettingsCategory = "general" | "archived" | "providers" | "web-search" | "connector" | "mcp" | "advanced";
 
 const settingsCategories: Record<SettingsCategory, { label: MessageDescriptor; icon: IconName }> = {
 	general: { label: desktopMessages.settingsGeneral, icon: "settings" },
+	archived: { label: desktopMessages.settingsArchivedChats, icon: "archive" },
 	providers: { label: desktopMessages.settingsProviders, icon: "key" },
 	"web-search": { label: desktopMessages.settingsWebSearch, icon: "globe" },
 	connector: { label: desktopMessages.settingsConnector, icon: "link" },
@@ -253,7 +255,7 @@ function ProviderConfigForm({
 		"mx-auto min-h-0 w-full max-w-3xl flex-1",
 		category === "connector" ? "flex overflow-hidden" : "overflow-y-auto",
 	);
-	const providerCategory = category !== "advanced" && category !== "mcp";
+	const providerCategory = category !== "advanced" && category !== "mcp" && category !== "archived";
 
 	const submit = async () => {
 		const validationError = validateProviderDraft(profiles, maxIterations);
@@ -335,6 +337,8 @@ function ProviderConfigForm({
 								setDirty(true);
 							}}
 						/>
+					) : category === "archived" ? (
+						<ArchivedChatsSettings />
 					) : category === "providers" ? (
 						<ProvidersSettings
 							providerPresets={snapshot.providerPresets ?? []}

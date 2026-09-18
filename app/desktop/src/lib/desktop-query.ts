@@ -16,6 +16,7 @@ export const desktopQueryKeys = {
 	mcp: ["desktop", "mcp"] as const,
 	sessions: {
 		recents: ["desktop", "sessions", "recents"] as const,
+		archived: ["desktop", "sessions", "archived"] as const,
 	},
 } as const;
 
@@ -50,9 +51,29 @@ export function sessionRecentsQueryOptions() {
 	});
 }
 
-type SessionRecentsData = InfiniteData<DesktopSessionListPage, SessionListCursor | undefined>;
+export function sessionArchivedQueryOptions() {
+	return infiniteQueryOptions<
+		DesktopSessionListPage,
+		Error,
+		InfiniteData<DesktopSessionListPage, SessionListCursor | undefined>,
+		typeof desktopQueryKeys.sessions.archived,
+		SessionListCursor | undefined
+	>({
+		queryKey: desktopQueryKeys.sessions.archived,
+		initialPageParam: undefined as SessionListCursor | undefined,
+		queryFn: ({ pageParam }) =>
+			desktop.session.list(
+				pageParam
+					? { limit: SESSION_PAGE_SIZE, archived: true, cursor: pageParam }
+					: { limit: SESSION_PAGE_SIZE, archived: true },
+			),
+		getNextPageParam: (page) => page.nextCursor,
+	});
+}
 
-export function getRecentSessions(data: SessionRecentsData | undefined): CodingSession[] {
+type SessionPagesData = InfiniteData<DesktopSessionListPage, SessionListCursor | undefined>;
+
+export function getRecentSessions(data: SessionPagesData | undefined): CodingSession[] {
 	if (!data) return [];
 	const sessions = new Map<string, CodingSession>();
 	const running = new Set<string>();
@@ -68,7 +89,16 @@ export function getRecentSessions(data: SessionRecentsData | undefined): CodingS
 	);
 }
 
-export function getRunningSessionIds(data: SessionRecentsData | undefined): string[] {
+export function getArchivedSessions(data: SessionPagesData | undefined): CodingSession[] {
+	if (!data) return [];
+	const sessions = new Map<string, CodingSession>();
+	for (const page of data.pages) {
+		for (const session of page.sessions) sessions.set(session.id, session);
+	}
+	return [...sessions.values()];
+}
+
+export function getRunningSessionIds(data: SessionPagesData | undefined): string[] {
 	if (!data) return [];
 	return [...new Set(data.pages.flatMap((page) => page.runningSessionIds))];
 }
@@ -84,7 +114,7 @@ export function upsertProject(project: DesktopProject): void {
 }
 
 export function upsertRecentSession(session: CodingSession): void {
-	desktopQueryClient.setQueryData<SessionRecentsData>(desktopQueryKeys.sessions.recents, (current) => {
+	desktopQueryClient.setQueryData<SessionPagesData>(desktopQueryKeys.sessions.recents, (current) => {
 		if (!current || current.pages.length === 0) return current;
 		const exists = current.pages.some((page) => page.sessions.some((candidate) => candidate.id === session.id));
 		const pages = current.pages.map((page, pageIndex) => {
@@ -102,7 +132,7 @@ export function upsertRecentSession(session: CodingSession): void {
 }
 
 export function removeRecentSession(sessionId: string): void {
-	desktopQueryClient.setQueryData<SessionRecentsData>(desktopQueryKeys.sessions.recents, (current) => {
+	desktopQueryClient.setQueryData<SessionPagesData>(desktopQueryKeys.sessions.recents, (current) => {
 		if (!current) return current;
 		return {
 			...current,
@@ -117,4 +147,11 @@ export function removeRecentSession(sessionId: string): void {
 
 export function invalidateRecentSessions(): Promise<void> {
 	return desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.recents });
+}
+
+export function invalidateSessionLists(): Promise<void> {
+	return Promise.all([
+		desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.recents }),
+		desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.archived }),
+	]).then(() => {});
 }

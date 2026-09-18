@@ -15,9 +15,11 @@ export interface CodingSession {
 	readonly title: string;
 	readonly titleSource: SessionTitleSource;
 	readonly lastActivityAt: number;
+	readonly archivedAt: number | null;
 }
 
 export interface SessionListCursor {
+	/** The current list's sort timestamp; archived pages carry `archivedAt`. */
 	readonly lastActivityAt: number;
 	readonly id: string;
 }

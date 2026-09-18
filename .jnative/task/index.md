@@ -1,5 +1,12 @@
 # 当前需求
 
+## Desktop Sidebar：项目文件夹、Chats 与归档工作台
+
+阶段：review
+Tracker：https://github.com/jiahao-jayden/jai-mono/issues/89
+更新时间：2026-09-19
+本地历史：-
+
 ## Session Browser
 
 阶段：review

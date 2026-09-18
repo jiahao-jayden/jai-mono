@@ -60,6 +60,18 @@ export class DesktopCatalogControl {
 				if (!session) return this.error(request.id, -32602, "Invalid Desktop Catalog Session rename parameters");
 				return this.project(request.id, this.catalog.renameSession(session));
 			}
+			case "jai/desktop-catalog/sessions/archive": {
+				const sessionId = requiredString(params, "sessionId");
+				if (!sessionId || !hasOnly(params, ["sessionId"]))
+					return this.error(request.id, -32602, "Invalid Desktop Catalog Session archive parameters");
+				return this.project(request.id, this.catalog.archiveSession(sessionId));
+			}
+			case "jai/desktop-catalog/sessions/restore": {
+				const sessionId = requiredString(params, "sessionId");
+				if (!sessionId || !hasOnly(params, ["sessionId"]))
+					return this.error(request.id, -32602, "Invalid Desktop Catalog Session restore parameters");
+				return this.project(request.id, this.catalog.restoreSession(sessionId));
+			}
 			case "jai/desktop-catalog/sessions/mark-title-generation-attempted": {
 				const sessionId = requiredString(params, "sessionId");
 				const timestamp = params.timestamp;
@@ -151,12 +163,19 @@ function parseProject(value: Record<string, unknown>): DesktopCatalogProject | u
 
 function parseSessionList(
 	value: Record<string, unknown>,
-): { readonly limit?: number; readonly cursor?: DesktopCatalogSessionCursor } | undefined {
+): { readonly limit?: number; readonly archived?: boolean; readonly cursor?: DesktopCatalogSessionCursor } | undefined {
 	const limit = value.limit;
 	if (limit !== undefined && (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1)) return undefined;
+	const archived = value.archived;
+	if (archived !== undefined && typeof archived !== "boolean") return undefined;
 	const rawCursor = value.cursor;
 	if (rawCursor === undefined)
-		return hasOnly(value, ["limit"]) ? { ...(limit === undefined ? {} : { limit }) } : undefined;
+		return hasOnly(value, ["limit", "archived"])
+			? {
+					...(limit === undefined ? {} : { limit }),
+					...(archived === undefined ? {} : { archived }),
+				}
+			: undefined;
 	const cursor = object(rawCursor);
 	if (
 		!cursor ||
@@ -165,12 +184,13 @@ function parseSessionList(
 		typeof cursor.id !== "string" ||
 		!cursor.id ||
 		!hasOnly(cursor, ["lastActivityAt", "id"]) ||
-		!hasOnly(value, ["limit", "cursor"])
+		!hasOnly(value, ["limit", "archived", "cursor"])
 	) {
 		return undefined;
 	}
 	return {
 		...(limit === undefined ? {} : { limit }),
+		...(archived === undefined ? {} : { archived }),
 		cursor: { lastActivityAt: cursor.lastActivityAt, id: cursor.id },
 	};
 }

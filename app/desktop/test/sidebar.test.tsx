@@ -9,203 +9,122 @@ function renderToStaticMarkup(node: ReactNode): string {
 	return renderToStaticMarkupBase(<IntlProvider locale="en" messages={enMessages}>{node}</IntlProvider>);
 }
 
-const baseSessions = [
+const projects = [
 	{
-		id: "s1",
-		title: "Fix CI pipeline",
-		status: "idle" as const,
-		createdAt: Date.now() - 3_600_000,
-		lastActivityAt: Date.now() - 1_800_000,
+		id: "project-active",
+		displayName: "Active project",
+		path: "/active",
+		canonicalPath: "/active",
+		available: true,
+		createdAt: 1,
+		updatedAt: 10,
+	},
+	{
+		id: "project-unavailable",
+		displayName: "Missing project",
+		path: "/missing",
+		canonicalPath: "/missing",
+		available: false,
+		createdAt: 1,
+		updatedAt: 1,
 	},
 ];
 
+const sessions = [
+	{
+		id: "project-chat",
+		projectId: "project-active",
+		title: "Project chat",
+		titleSource: "manual" as const,
+		lastActivityAt: 100,
+		archivedAt: null,
+	},
+	{
+		id: "standalone-chat",
+		projectId: null,
+		title: "Standalone chat",
+		titleSource: "manual" as const,
+		lastActivityAt: 90,
+		archivedAt: null,
+	},
+	{
+		id: "archived-chat",
+		projectId: null,
+		title: "Archived chat",
+		titleSource: "manual" as const,
+		lastActivityAt: 80,
+		archivedAt: 70,
+	},
+];
+
+function renderSidebar(runningSessionIds: readonly string[] = [], activeSessionId = "standalone-chat"): string {
+	return renderToStaticMarkup(
+		<Sidebar
+			projects={projects}
+			sessions={sessions}
+			runningSessionIds={runningSessionIds}
+			activeSessionId={activeSessionId}
+			loading={false}
+			projectLoading={false}
+			onToggleSidebar={() => {}}
+			onNewChat={() => {}}
+			onOpenSettings={() => {}}
+			onRelinkProject={async () => {}}
+			onSelectSession={() => {}}
+			onRenameSession={async () => {}}
+			onArchiveSession={async () => {}}
+			onDeleteSession={async () => {}}
+		/>,
+	);
+}
+
 describe("Sidebar", () => {
-	test("New 左对齐，展开态按钮明确表示收起侧栏", () => {
-		const markup = renderToStaticMarkup(
-			<Sidebar
-				activeView="chat"
-				sessions={[]}
-				runningSessionIds={[]}
-				activeSessionId={null}
-				loading={false}
-				settingsDisabled={false}
-				onToggleSidebar={() => {}}
-				onNewChat={() => {}}
-				onOpenChats={() => {}}
-				onOpenProjects={() => {}}
-				onOpenSettings={() => {}}
-				onSelectSession={() => {}}
-				onRenameSession={async () => {}}
-				onDeleteSession={async () => {}}
-			/>,
-		);
+	test("保留 New、Projects、Chats 与 Settings，移除旧 Recents 导航", () => {
+		const markup = renderSidebar();
 
-		expect(markup).toContain("justify-start");
-		expect(markup).toContain('aria-label="Collapse sidebar"');
-		expect(markup).toContain("rotate-180");
-	});
-
-	test("未开放导航使用 aria-disabled 且无 onClick，hover 保留", () => {
-		const markup = renderToStaticMarkup(
-			<Sidebar
-				activeView="chat"
-				sessions={[]}
-				runningSessionIds={[]}
-				activeSessionId={null}
-				loading={false}
-				settingsDisabled={false}
-				onToggleSidebar={() => {}}
-				onNewChat={() => {}}
-				onOpenChats={() => {}}
-				onOpenProjects={() => {}}
-				onOpenSettings={() => {}}
-				onSelectSession={() => {}}
-				onRenameSession={async () => {}}
-				onDeleteSession={async () => {}}
-			/>,
-		);
-
-		// Navigation items should be aria-disabled buttons, not disabled
-		expect(markup).toContain('aria-disabled="true"');
-		expect(markup).toContain('tabindex="-1"');
-		// Should have hover class
-		expect(markup).toContain("group-hover/button:bg-sidebar-hover");
-		// Should expose the unavailable state in its accessible title.
-		expect(markup).toContain("Search (coming later)");
-	});
-
-	test("Chats 与 Projects 是可用路由入口并显示当前页面", () => {
-		const markup = renderToStaticMarkup(
-			<Sidebar
-				activeView="projects"
-				sessions={[]}
-				runningSessionIds={[]}
-				activeSessionId={null}
-				loading={false}
-				settingsDisabled={false}
-				onToggleSidebar={() => {}}
-				onNewChat={() => {}}
-				onOpenChats={() => {}}
-				onOpenProjects={() => {}}
-				onOpenSettings={() => {}}
-				onSelectSession={() => {}}
-				onRenameSession={async () => {}}
-				onDeleteSession={async () => {}}
-			/>,
-		);
-
-		expect(markup).toContain(">Chats<");
+		expect(markup).toContain(">New<");
 		expect(markup).toContain(">Projects<");
+		expect(markup).toContain(">Chats<");
+		expect(markup).toContain(">Settings<");
+		expect(markup).not.toContain(">Recents<");
+	});
+
+	test("项目是默认收起的目录，缺失目录可重新关联", () => {
+		const markup = renderSidebar();
+
+		expect(markup).toContain('aria-expanded="false"');
+		expect(markup).toContain("Missing project");
+		expect(markup).toContain("Folder unavailable");
+		expect(markup).toContain(">Relink<");
+		expect(markup).not.toContain("Project chat");
+	});
+
+	test("收起的项目仍标识其中正在运行的 Chat", () => {
+		const markup = renderSidebar(["project-chat"]);
+
+		expect(markup).toContain("Agent is working…");
+	});
+
+	test("收起的项目保留其中当前 Chat 的可访问当前态", () => {
+		const markup = renderSidebar([], "project-chat");
+
 		expect(markup).toContain('aria-current="page"');
-		expect(markup).not.toContain("Chats is coming later");
-		expect(markup).not.toContain("Projects is coming later");
+		expect(markup).toContain("Active project");
+		expect(markup).not.toContain("Project chat");
 	});
 
-	test("选中 session 标记 aria-current=page 且有 selected 背景", () => {
-		const markup = renderToStaticMarkup(
-			<Sidebar
-				activeView="chat"
-				sessions={baseSessions}
-				runningSessionIds={[]}
-				activeSessionId="s1"
-				loading={false}
-				settingsDisabled={false}
-				onToggleSidebar={() => {}}
-				onNewChat={() => {}}
-				onOpenChats={() => {}}
-				onOpenProjects={() => {}}
-				onOpenSettings={() => {}}
-				onSelectSession={() => {}}
-				onRenameSession={async () => {}}
-				onDeleteSession={async () => {}}
-			/>,
-		);
+	test("Chats 仅显示未归档且不属于项目的会话", () => {
+		const markup = renderSidebar();
 
+		expect(markup).toContain("Standalone chat");
+		expect(markup).not.toContain("Archived chat");
 		expect(markup).toContain('aria-current="page"');
-		expect(markup).toContain("bg-sidebar-active");
-		expect(markup).toContain("font-normal");
 	});
 
-	test("全部行项目使用 8px 圆角", () => {
-		const markup = renderToStaticMarkup(
-			<Sidebar
-				activeView="chat"
-				sessions={baseSessions}
-				runningSessionIds={[]}
-				activeSessionId={null}
-				loading={false}
-				settingsDisabled={false}
-				onToggleSidebar={() => {}}
-				onNewChat={() => {}}
-				onOpenChats={() => {}}
-				onOpenProjects={() => {}}
-				onOpenSettings={() => {}}
-				onSelectSession={() => {}}
-				onRenameSession={async () => {}}
-				onDeleteSession={async () => {}}
-			/>,
-		);
+	test("会话保留操作菜单入口", () => {
+		const markup = renderSidebar();
 
-		// All interactive rows should use rounded-lg (8px)
-		expect(markup).toContain("rounded-lg");
-		// Should not contain pill-like large radii
-		expect(markup).not.toContain("rounded-[20px]");
-		expect(markup).not.toContain("rounded-2xl");
-	});
-
-	test("session 仅显示标题，hover 时显示操作菜单", () => {
-		const markup = renderToStaticMarkup(
-			<Sidebar
-				activeView="chat"
-				sessions={baseSessions}
-				runningSessionIds={["s1"]}
-				activeSessionId={null}
-				loading={false}
-				settingsDisabled={false}
-				onToggleSidebar={() => {}}
-				onNewChat={() => {}}
-				onOpenChats={() => {}}
-				onOpenProjects={() => {}}
-				onOpenSettings={() => {}}
-				onSelectSession={() => {}}
-				onRenameSession={async () => {}}
-				onDeleteSession={async () => {}}
-			/>,
-		);
-
-		expect(markup).toContain("Fix CI pipeline");
-		expect(markup).toContain('aria-label="Actions for Fix CI pipeline"');
-		expect(markup).toContain("group-hover:visible");
-		expect(markup).toContain("[text-box:normal]");
-		expect(markup).not.toContain("bg-primary-2");
-		expect(markup).not.toContain("Running");
-		expect(markup).not.toContain("Move to project");
-		expect(markup).not.toContain("Remove from project");
-	});
-
-	test("有下一页时提供可访问的加载更多操作", () => {
-		const markup = renderToStaticMarkup(
-			<Sidebar
-				activeView="chat"
-				sessions={baseSessions}
-				runningSessionIds={[]}
-				activeSessionId={null}
-				loading={false}
-				hasNextPage
-				loadingMore={false}
-				settingsDisabled={false}
-				onToggleSidebar={() => {}}
-				onNewChat={() => {}}
-				onOpenChats={() => {}}
-				onOpenProjects={() => {}}
-				onOpenSettings={() => {}}
-				onSelectSession={() => {}}
-				onRenameSession={async () => {}}
-				onDeleteSession={async () => {}}
-				onLoadMore={() => {}}
-			/>,
-		);
-
-		expect(markup).toContain("Load more");
+		expect(markup).toContain('aria-label="Actions for Standalone chat"');
+		expect(markup).toContain("data-session-actions");
 	});
 });

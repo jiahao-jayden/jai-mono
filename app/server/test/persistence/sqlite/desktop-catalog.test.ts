@@ -89,6 +89,132 @@ describe("SqliteDesktopCatalogAccess", () => {
 		}
 	});
 
+	test("archives only Desktop metadata and lists archived Sessions on demand", async () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const persistence = new SqliteProductSessionPersistence(database);
+			const catalog = new SqliteDesktopCatalogAccess(database);
+			const created = await persistence.create({
+				id: "session-1",
+				appState: {},
+				runtimeConfiguration: { model: "test/model", mode: "manual" },
+				cwd: "/workspace",
+				createdAt,
+			});
+			if (created.isErr()) throw created.error;
+			const project = catalog.createProject({
+				id: "project-1",
+				displayName: "Workspace",
+				path: "/workspace",
+				canonicalPath: "/workspace",
+				createdAt: 10,
+				updatedAt: 10,
+			});
+			if (project.isErr()) throw project.error;
+			const ensured = catalog.ensureSession({ sessionId: "session-1", projectId: project.value.id, title: "Archive me" });
+			if (ensured.isErr()) throw ensured.error;
+
+			const archived = catalog.archiveSession("session-1");
+			if (archived.isErr()) throw archived.error;
+
+			expect(archived.value).toMatchObject({
+				id: "session-1",
+				projectId: "project-1",
+				archivedAt: expect.any(Number),
+			});
+			expect(catalog.listSessions()).toEqual(expect.objectContaining({ value: { sessions: [] } }));
+			expect(catalog.listSessions({ archived: true })).toEqual(
+				expect.objectContaining({
+					value: { sessions: [expect.objectContaining({ id: "session-1", archivedAt: expect.any(Number) })] },
+				}),
+			);
+			const journal = await persistence.load("session-1");
+			if (journal.isErr()) throw journal.error;
+			expect(journal.value.cwd).toBe("/workspace");
+
+			const restored = catalog.restoreSession("session-1");
+			if (restored.isErr()) throw restored.error;
+
+			expect(restored.value).toMatchObject({ id: "session-1", archivedAt: null });
+			expect(catalog.listSessions()).toEqual(
+				expect.objectContaining({ value: { sessions: [expect.objectContaining({ id: "session-1", archivedAt: null })] } }),
+			);
+		} finally {
+			database.close();
+		}
+	});
+
+	test("paginates archived Sessions by archive time rather than journal activity", async () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const persistence = new SqliteProductSessionPersistence(database);
+			const catalog = new SqliteDesktopCatalogAccess(database);
+			const sessions = [
+				{ id: "older-chat", createdAt: "2020-01-01T00:00:00.000Z", archivedAt: 10_000 },
+				...Array.from({ length: 50 }, (_, index) => ({
+					id: `chat-${String(index + 1).padStart(2, "0")}`,
+					createdAt: "2026-08-25T12:00:00.000Z",
+					archivedAt: index === 49 ? 9_951 : 10_000 - (index + 1),
+				})),
+			];
+			for (const session of sessions) {
+				const created = await persistence.create({
+					id: session.id,
+					appState: {},
+					runtimeConfiguration: { model: "test/model", mode: "manual" },
+					cwd: "/workspace",
+					createdAt: session.createdAt,
+				});
+				if (created.isErr()) throw created.error;
+				const ensured = catalog.ensureSession({ sessionId: session.id, projectId: null, title: session.id });
+				if (ensured.isErr()) throw ensured.error;
+				const archived = catalog.archiveSession(session.id);
+				if (archived.isErr()) throw archived.error;
+				database.prepare("UPDATE desktop_session_metadata SET archived_at = ? WHERE session_id = ?").run(
+					session.archivedAt,
+					session.id,
+				);
+			}
+
+			const firstPage = catalog.listSessions({ archived: true, limit: 50 });
+			if (firstPage.isErr()) throw firstPage.error;
+			expect(firstPage.value.sessions).toHaveLength(50);
+			expect(firstPage.value.sessions[0]?.id).toBe("older-chat");
+			expect(firstPage.value.nextCursor).toEqual({ lastActivityAt: 9_951, id: "chat-50" });
+
+			const secondPage = catalog.listSessions({ archived: true, limit: 50, cursor: firstPage.value.nextCursor });
+			if (secondPage.isErr()) throw secondPage.error;
+			expect(secondPage.value.sessions.map((session) => session.id)).toEqual(["chat-49"]);
+			expect(secondPage.value.nextCursor).toBeUndefined();
+		} finally {
+			database.close();
+		}
+	});
+
+	test("adds the archive column to an existing Desktop metadata table", () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			database.exec(`
+				CREATE TABLE desktop_session_metadata (
+					session_id TEXT PRIMARY KEY,
+					project_id TEXT,
+					title TEXT NOT NULL,
+					title_source TEXT NOT NULL,
+					title_generation_attempted_at INTEGER
+				);
+			`);
+
+			new SqliteDesktopCatalogAccess(database);
+
+			const columns = database.prepare("PRAGMA table_info(desktop_session_metadata)").all() as {
+				readonly name: string;
+			}[];
+			expect(columns.map((column) => column.name)).toContain("archived_at");
+		} finally {
+			database.close();
+		}
+	});
+
 	test("relinks all associated Session workspaces without changing their Project", async () => {
 		const database = new DatabaseSync(":memory:");
 		try {

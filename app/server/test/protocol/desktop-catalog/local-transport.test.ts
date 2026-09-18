@@ -68,6 +68,26 @@ describe("Desktop Catalog local control transport", () => {
 						value: { sessions: [expect.objectContaining({ id: "session-1", title: "First task" })] },
 					}),
 				);
+
+				const archived = await client.value.request("jai/desktop-catalog/sessions/archive", { sessionId: "session-1" });
+				expect(archived).toEqual(
+					expect.objectContaining({
+						value: expect.objectContaining({ id: "session-1", archivedAt: expect.any(Number) }),
+					}),
+				);
+				const archivedList = await client.value.request("jai/desktop-catalog/sessions/list", { archived: true });
+				expect(archivedList).toEqual(
+					expect.objectContaining({
+						value: { sessions: [expect.objectContaining({ id: "session-1", archivedAt: expect.any(Number) })] },
+					}),
+				);
+
+				const restored = await client.value.request("jai/desktop-catalog/sessions/restore", { sessionId: "session-1" });
+				expect(restored).toEqual(
+					expect.objectContaining({
+						value: expect.objectContaining({ id: "session-1", archivedAt: null }),
+					}),
+				);
 			} finally {
 				await client.value.close();
 				await opened.value.close();

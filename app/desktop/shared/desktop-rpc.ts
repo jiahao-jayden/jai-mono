@@ -851,11 +851,19 @@ export const desktopSessionDeleteInputSchema = Type.Object(
 
 export type DesktopSessionDeleteInput = Static<typeof desktopSessionDeleteInputSchema>;
 
+export const desktopSessionArchiveInputSchema = Type.Object(
+	{ sessionId: Type.String({ minLength: 1 }) },
+	{ additionalProperties: false },
+);
+
+export type DesktopSessionArchiveInput = Static<typeof desktopSessionArchiveInputSchema>;
+
 export const desktopSessionListInputSchema = Type.Union([
 	Type.Undefined(),
 	Type.Object(
 		{
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+			archived: Type.Optional(Type.Boolean()),
 			cursor: Type.Optional(
 				Type.Object(
 					{ lastActivityAt: Type.Number(), id: Type.String() },
@@ -930,9 +938,12 @@ export interface DesktopApi {
 		create(input: DesktopSessionCreateInput): Promise<CodingSession>;
 		list(input?: {
 			readonly limit?: number;
+			readonly archived?: boolean;
 			readonly cursor?: SessionListCursor;
 		}): Promise<DesktopSessionListPage>;
 		rename(input: DesktopSessionRenameInput): Promise<CodingSession>;
+		archive(input: DesktopSessionArchiveInput): Promise<CodingSession>;
+		restore(input: DesktopSessionArchiveInput): Promise<CodingSession>;
 		delete(input: DesktopSessionDeleteInput): Promise<void>;
 	};
 	readonly attachment: {

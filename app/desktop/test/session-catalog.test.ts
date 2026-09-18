@@ -214,6 +214,32 @@ describe("RemoteDesktopSessionCatalog", () => {
 		}
 	});
 
+	test("archives only Desktop Catalog metadata and restores the Session to the active list", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-remote-catalog-"));
+		try {
+			const transport = new MemoryCatalogTransport();
+			const catalog = new RemoteDesktopSessionCatalog(transport, {
+				dataDirectory: root,
+				createId: sequence("session-1"),
+			});
+			const session = await catalog.createSession({ firstMessage: "Archive me" });
+
+			const archived = await catalog.archiveSession(session.id);
+
+			expect(archived).toMatchObject({ id: session.id, archivedAt: expect.any(Number) });
+			expect((await catalog.listSessions()).sessions).toEqual([]);
+			expect((await catalog.listSessions({ archived: true })).sessions).toEqual([archived]);
+			expect(transport.journalIds.has(session.id)).toBe(true);
+
+			const restored = await catalog.restoreSession(session.id);
+
+			expect(restored).toMatchObject({ id: session.id, archivedAt: null });
+			expect((await catalog.listSessions()).sessions).toEqual([restored]);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
 	test("deletes the Host-owned Session journal and Desktop metadata together", async () => {
 		const root = await mkdtemp(join(tmpdir(), "jai-remote-catalog-"));
 		try {
@@ -260,7 +286,12 @@ class MemoryCatalogTransport implements RemoteDesktopSessionCatalogTransport {
 			}
 			return Result.ok(input);
 		},
-		listSessions: async () => Result.ok({ sessions: [...this.#sessions.values()] } satisfies DesktopCatalogSessionPage),
+		listSessions: async ({ archived } = {}) =>
+			Result.ok({
+				sessions: [...this.#sessions.values()].filter((session) =>
+					archived ? session.archivedAt !== null : session.archivedAt === null,
+				),
+			} satisfies DesktopCatalogSessionPage),
 		getSession: async (sessionId) => Result.ok(this.#sessions.get(sessionId)),
 		ensureSession: async (input) => {
 			if (!this.journalIds.has(input.sessionId)) return Result.err({ message: "Session journal was not created" } as never);
@@ -273,11 +304,15 @@ class MemoryCatalogTransport implements RemoteDesktopSessionCatalogTransport {
 				title: input.title,
 				titleSource: "fallback",
 				lastActivityAt: 0,
+				archivedAt: null,
 			};
 			this.#sessions.set(session.id, session);
 			return Result.ok(session);
 		},
 		renameSession: async ({ sessionId, title }) => this.#updateSession(sessionId, (session) => ({ ...session, title, titleSource: "manual" })),
+		archiveSession: async (sessionId) =>
+			this.#updateSession(sessionId, (session) => ({ ...session, archivedAt: Date.now() })),
+		restoreSession: async (sessionId) => this.#updateSession(sessionId, (session) => ({ ...session, archivedAt: null })),
 		markTitleGenerationAttempted: async ({ sessionId }) => this.#requireSession(sessionId),
 		setGeneratedTitle: async ({ sessionId, title }) =>
 			this.#updateSession(sessionId, (session) => (session.titleSource === "fallback" ? { ...session, title, titleSource: "generated" } : session)),

@@ -16,13 +16,17 @@ export function SessionActions({
 	session,
 	visible = true,
 	placement = "sidebar",
+	running = false,
 	onStartRename,
+	onArchive,
 	onDelete,
 }: {
 	readonly session: CodingSession;
 	readonly visible?: boolean;
 	readonly placement?: "sidebar" | "header";
+	readonly running?: boolean;
 	readonly onStartRename: () => void;
+	readonly onArchive?: (sessionId: string) => Promise<void>;
 	readonly onDelete: (sessionId: string) => Promise<void>;
 }) {
 	const intl = useIntl();
@@ -71,6 +75,17 @@ export function SessionActions({
 			setPending(false);
 		}
 	};
+	const archive = async () => {
+		if (pending || !onArchive) return;
+		setPending(true);
+		try {
+			await onArchive(session.id);
+		} catch {
+			toast.add({ title: intl.formatMessage(desktopMessages.sidebarArchiveFailed), type: "error" });
+		} finally {
+			setPending(false);
+		}
+	};
 
 	return (
 		<>
@@ -105,9 +120,18 @@ export function SessionActions({
 						label={intl.formatMessage(desktopMessages.sessionCopyId)}
 						onSelect={() => void copySessionId()}
 					/>
+					{!running && onArchive ? (
+						<MenuItem
+							index={2}
+							icon={icons.archive}
+							label={intl.formatMessage(desktopMessages.sidebarArchive)}
+							onSelect={() => void archive()}
+							disabled={pending}
+						/>
+					) : null}
 					<DropdownSeparator />
 					<MenuItem
-						index={2}
+						index={3}
 						icon={icons.trash}
 						label={intl.formatMessage(desktopMessages.commonDelete)}
 						variant="destructive"

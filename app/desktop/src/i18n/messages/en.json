@@ -501,6 +501,30 @@
   "desktop.settings.app": {
     "defaultMessage": "App"
   },
+  "desktop.settings.archivedAt": {
+    "defaultMessage": "Archived"
+  },
+  "desktop.settings.archivedChats": {
+    "defaultMessage": "Archived Chats"
+  },
+  "desktop.settings.archivedChatsEmpty": {
+    "defaultMessage": "No archived chats."
+  },
+  "desktop.settings.archivedChatsLoadError": {
+    "defaultMessage": "Archived chats could not be loaded."
+  },
+  "desktop.settings.archivedChatsLoading": {
+    "defaultMessage": "Loading archived chats…"
+  },
+  "desktop.settings.archivedDeleteDescription": {
+    "defaultMessage": "“{title}” and its local conversation history will be permanently deleted."
+  },
+  "desktop.settings.archivedDeleteFailed": {
+    "defaultMessage": "Could not delete archived chat"
+  },
+  "desktop.settings.archivedDeleteTitle": {
+    "defaultMessage": "Permanently delete chat?"
+  },
   "desktop.settings.askEveryTime": {
     "defaultMessage": "Ask every time"
   },
@@ -726,6 +750,9 @@
   "desktop.settings.noModelsFetched": {
     "defaultMessage": "No models fetched"
   },
+  "desktop.settings.noProject": {
+    "defaultMessage": "No project"
+  },
   "desktop.settings.notConnected": {
     "defaultMessage": "Not connected"
   },
@@ -815,6 +842,12 @@
   },
   "desktop.settings.reasoningEffort": {
     "defaultMessage": "Reasoning effort"
+  },
+  "desktop.settings.restore": {
+    "defaultMessage": "Restore"
+  },
+  "desktop.settings.restoreFailed": {
+    "defaultMessage": "Could not restore chat"
   },
   "desktop.settings.retry": {
     "defaultMessage": "Retry"
@@ -984,6 +1017,12 @@
   "desktop.sidebar.actionsFor": {
     "defaultMessage": "Actions for {title}"
   },
+  "desktop.sidebar.archive": {
+    "defaultMessage": "Archive"
+  },
+  "desktop.sidebar.archiveFailed": {
+    "defaultMessage": "Could not archive session"
+  },
   "desktop.sidebar.chats": {
     "defaultMessage": "Chats"
   },
@@ -1011,6 +1050,12 @@
   "desktop.sidebar.new": {
     "defaultMessage": "New"
   },
+  "desktop.sidebar.noChats": {
+    "defaultMessage": "New chats will appear here."
+  },
+  "desktop.sidebar.noProjects": {
+    "defaultMessage": "No projects yet."
+  },
   "desktop.sidebar.noRecentSessions": {
     "defaultMessage": "New chats will be saved here."
   },
@@ -1025,6 +1070,9 @@
   },
   "desktop.sidebar.recentsLoadError": {
     "defaultMessage": "Recents could not be loaded. Try again later."
+  },
+  "desktop.sidebar.relink": {
+    "defaultMessage": "Relink"
   },
   "desktop.sidebar.rename": {
     "defaultMessage": "Rename"

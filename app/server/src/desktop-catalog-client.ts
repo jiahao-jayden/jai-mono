@@ -102,7 +102,7 @@ export class DesktopCatalogClient {
 	}
 
 	async listSessions(
-		input: { readonly limit?: number; readonly cursor?: DesktopCatalogSessionCursor } = {},
+		input: { readonly limit?: number; readonly archived?: boolean; readonly cursor?: DesktopCatalogSessionCursor } = {},
 	): Promise<ResultType<DesktopCatalogSessionPage, DesktopCatalogClientError>> {
 		return this.request("jai/desktop-catalog/sessions/list", input, sessionPage);
 	}
@@ -149,6 +149,14 @@ export class DesktopCatalogClient {
 		readonly title: string;
 	}): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>> {
 		return this.request("jai/desktop-catalog/sessions/rename", input, session);
+	}
+
+	async archiveSession(sessionId: string): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>> {
+		return this.request("jai/desktop-catalog/sessions/archive", { sessionId }, session);
+	}
+
+	async restoreSession(sessionId: string): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>> {
+		return this.request("jai/desktop-catalog/sessions/restore", { sessionId }, session);
 	}
 
 	async markTitleGenerationAttempted(input: {
@@ -240,7 +248,8 @@ function session(value: unknown): DesktopCatalogSession | undefined {
 		(value.projectId !== null && typeof value.projectId !== "string") ||
 		typeof value.title !== "string" ||
 		(value.titleSource !== "fallback" && value.titleSource !== "generated" && value.titleSource !== "manual") ||
-		typeof value.lastActivityAt !== "number"
+		typeof value.lastActivityAt !== "number" ||
+		(value.archivedAt !== null && typeof value.archivedAt !== "number")
 	) {
 		return undefined;
 	}
@@ -250,6 +259,7 @@ function session(value: unknown): DesktopCatalogSession | undefined {
 		title: value.title,
 		titleSource: value.titleSource,
 		lastActivityAt: value.lastActivityAt,
+		archivedAt: value.archivedAt,
 	};
 }
 
