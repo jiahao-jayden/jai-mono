@@ -63,7 +63,7 @@ export function ToolTimeline({
 				</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent keepMounted={false} className="outline-none">
-				<div className="flex flex-col gap-2.5 ps-4 pt-2.5">
+				<div className="flex flex-col gap-2.5 ps-4 py-2.5">
 					{steps.map((step, index) => {
 						const active = streaming && (step.active ?? index === steps.length - 1);
 						return <ToolTimelineStep key={step.id} step={step} active={active} />;
