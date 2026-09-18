@@ -1,4 +1,3 @@
-@import "@fontsource-variable/geist/wght.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "tw-shimmer";
@@ -126,7 +125,7 @@ html.right-panel-resizing * {
   --squircle-factor: 1.4;
   --hairline: 0.5px;
   --background: #fff;
-  --foreground: var(--color-neutral-950);
+  --foreground: var(--color-neutral-800);
   --card: var(--surface-primary);
   --card-foreground: var(--foreground);
   --popover: var(--background);
@@ -167,15 +166,15 @@ html.right-panel-resizing * {
   --chart-4: oklch(48.8% 0.243 264.376);
   --chart-5: oklch(42.4% 0.199 265.638);
   --sidebar: #fcfcfc;
-  --sidebar-foreground: oklch(20% 0 0);
+  --sidebar-foreground: var(--foreground);
   --sidebar-muted: oklch(20% 0 0 / 0.55);
   --sidebar-active: rgb(0 0 0 / 0.03);
   --sidebar-hover: rgb(0 0 0 / 0.03);
   --sidebar-accent: var(--sidebar-hover);
   --sidebar-border: var(--border);
-  --font-sans: "Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   --font-heading: var(--font-sans);
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-mono: "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --radius: calc(0.5rem * var(--squircle-factor));
   font-optical-sizing: auto;
   /* Elevation ladder used by <Elevated>: level 1 is the substrate, each step mixes 2% more fg. */
@@ -243,12 +242,11 @@ html.right-panel-resizing * {
     @apply font-sans;
   }
   body {
-    @apply text-foreground antialiased;
+    @apply text-foreground;
     background: transparent;
     font-size: 12px;
     line-height: 18px;
     font-synthesis: none;
-    text-rendering: optimizeLegibility;
   }
   [class*="rounded"] {
     corner-shape: superellipse(var(--squircle-factor));

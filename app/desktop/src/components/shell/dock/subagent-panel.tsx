@@ -134,7 +134,7 @@ function SubagentRow({
 			tabIndex={onOpenHistory ? 0 : undefined}
 		>
 			<div className="flex min-w-0 items-center gap-2.5">
-				<SubagentAvatar item={item} size={28} />
+				<SubagentAvatar item={item} size={20} />
 				<p className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-foreground" title={item.title}>
 					{item.title}
 				</p>

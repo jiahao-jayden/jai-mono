@@ -75,17 +75,27 @@ function CodeBlock({
 		<div data-streamdown="code-block">
 			<div data-streamdown="code-block-header" data-language={language}>
 				<span>{language}</span>
-			</div>
-			<div data-streamdown="code-block-actions">
-				<Button aria-label="Copy code" onClick={copy} size="icon-xs" variant="ghost" type="button">
-					{copied ? <CheckIcon /> : <CopyIcon />}
-				</Button>
+				<div data-streamdown="code-block-actions">
+					<Button aria-label="Copy code" onClick={copy} size="icon-xs" variant="ghost" type="button">
+						{copied ? <CheckIcon /> : <CopyIcon />}
+					</Button>
+				</div>
 			</div>
 			<pre {...props} data-streamdown="code-block-body">
 				<code className={className}>
 					{highlighted === undefined ? value : <span dangerouslySetInnerHTML={{ __html: highlighted }} />}
 				</code>
 			</pre>
+		</div>
+	);
+}
+
+function MarkdownTable({ children, ...props }: HTMLAttributes<HTMLTableElement>) {
+	return (
+		<div data-streamdown="table-wrapper">
+			<table {...props} data-streamdown="table">
+				{children}
+			</table>
 		</div>
 	);
 }
@@ -134,6 +144,7 @@ export const MarkdownContent = memo(function MarkdownContent({
 			<Streamdown
 				components={{
 					pre: (props) => <CodeBlock {...props} isStreaming={isStreaming} />,
+					table: MarkdownTable,
 				}}
 				granularity="word"
 				smoothing="realtime"

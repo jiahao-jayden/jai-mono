@@ -169,7 +169,7 @@ export const TranscriptVirtualList = forwardRef<
 
 		return (
 			<div className="px-5">
-				<div className="relative mx-auto w-full max-w-[896px]" style={{ height: contentHeight }}>
+				<div className="relative mx-auto w-full max-w-184" style={{ height: contentHeight }}>
 					{hasEmptyState ? (
 						<div className="py-16 text-center text-[13px] text-muted-foreground">{emptyState}</div>
 					) : null}
@@ -640,7 +640,7 @@ export function workTimelineSteps(
 				verb: item.title,
 				...(chip ? { chip } : {}),
 				icon: "users",
-				avatar: <SubagentAvatar item={item} size={28} />,
+				avatar: <SubagentAvatar item={item} size={20} />,
 				active: running,
 				...(options.onOpenSubagent ? { onSelect: () => options.onOpenSubagent?.(item) } : {}),
 			};

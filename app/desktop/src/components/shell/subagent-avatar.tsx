@@ -17,7 +17,7 @@ export function SubagentAvatar({
 	readonly className?: string;
 }) {
 	const seed = `jai-subagent-v1:${item.toolCallId}`;
-	const colors = ["#F07818", "#FFB477", "#FFD7B5", "#F0F0F0", "#DCE5E0"];
+	const colors = ["#202020", "#F7F7F3", "#DCE5E0", "#6FAF7B", "#3F8F5F"];
 
 	return (
 		<Avatar

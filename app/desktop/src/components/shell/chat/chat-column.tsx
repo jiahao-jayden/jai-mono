@@ -113,6 +113,7 @@ export function ChatColumn({
 	const icons = useIcons();
 	const FolderIcon = icons.folder;
 	const FolderOffIcon = icons["folder-off"];
+	const MessageIcon = icons["message-circle"];
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const transcriptListRef = useRef<TranscriptVirtualListHandle>(null);
 	const openWorkGroupsRef = useRef(new Set<string>());
@@ -216,6 +217,7 @@ export function ChatColumn({
 					{session ? (
 						<>
 							{projectLabel ? <span className="text-muted-foreground/40">/</span> : null}
+							<MessageIcon size={14} className="shrink-0 text-muted-foreground" />
 							{editingTitle ? (
 								<Input
 									autoFocus
@@ -295,7 +297,7 @@ export function ChatColumn({
 				<div className="relative min-h-0 flex-1">
 					<div
 						ref={scrollRef}
-						className="h-full overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable]"
+						className="h-full overflow-x-clip overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable]"
 						onKeyDownCapture={transcriptScroll.onKeyDownCapture}
 						onPointerDown={transcriptScroll.onPointerDown}
 						onPointerMove={transcriptScroll.onPointerMove}
@@ -326,8 +328,8 @@ export function ChatColumn({
 					/>
 				</div>
 			)}
-			<div className="relative shrink-0 px-4 pb-2 min-[1024px]:px-8">
-				<div className="pointer-events-none absolute right-4 bottom-full left-4 z-10 mb-2 min-[1024px]:right-8 min-[1024px]:left-8">
+			<div className="relative shrink-0 px-5 pb-2">
+				<div className="pointer-events-none absolute right-5 bottom-full left-5 z-10 mb-2">
 					<AnimatePresence initial={false}>
 						{pendingApprovals.length > 0 ? (
 							<PermissionRequests
@@ -345,7 +347,7 @@ export function ChatColumn({
 						) : null}
 					</AnimatePresence>
 				</div>
-				<div className="mx-auto flex w-full max-w-[896px] flex-col gap-2">
+				<div className="mx-auto flex w-full max-w-184 flex-col gap-2">
 					<ChatComposer
 						value={draft}
 						onValueChange={onDraftChange}

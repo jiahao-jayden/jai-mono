@@ -12,6 +12,7 @@ import {
 	workTimelineSummary,
 	workTimelineSteps,
 } from "../src/components/shell/chat/chat-transcript";
+import { MarkdownContent } from "../src/components/ui/chat-message";
 
 const intl = createIntl({ locale: "en", messages: enMessages });
 
@@ -63,6 +64,17 @@ describe("transcript grouping", () => {
 		expect(markup).toContain('data-slot="tool-timeline"');
 		expect(markup).toContain("Worked for 1m");
 		expect(markup).not.toContain("command output");
+	});
+
+	test("Markdown 表格渲染在独立横向滚动容器中", () => {
+		const markup = renderToStaticMarkup(
+			createElement(MarkdownContent, {
+				content: "| Rust | 说明 |\n| --- | --- |\n| `arr.len()` | 长度 |",
+			}),
+		);
+
+		expect(markup).toContain('data-streamdown="table-wrapper"');
+		expect(markup).toContain('data-streamdown="table"');
 	});
 
 	test("子代理和同一轮的工具合并进同一个 ToolTimeline，每个子代理独占一行", () => {

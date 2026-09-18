@@ -5,7 +5,7 @@ colors:
   brand-bamboo: "oklch(0.55 0.10 150)"
   success: "oklch(0.696 0.149 162.4)"
   destructive: "oklch(0.577 0.245 27.325)"
-  fg: "oklch(0.21 0.006 285.9)"
+  fg: "oklch(0.269 0.005 286)"
   bg: "oklch(1 0 0)"
   border-surface: "color-mix(in oklch, var(--foreground) 9%, transparent)"
   surface-primary: "color-mix(in oklch, var(--foreground) 5%, var(--background))"
@@ -19,35 +19,35 @@ colors:
   sidebar-dark-base: "#0e0e0e"
 typography:
   display:
-    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", system-ui, sans-serif'
     fontSize: "20px"
     fontWeight: 500
     lineHeight: 1.3
     letterSpacing: "-0.01em"
   detail-title:
-    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", system-ui, sans-serif'
     fontSize: "16px"
     fontWeight: 500
     letterSpacing: "-0.01em"
   body:
-    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", system-ui, sans-serif'
     fontSize: "14px"
     fontWeight: 400
     lineHeight: "20px"
   panel-body:
-    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", system-ui, sans-serif'
     fontSize: "13px"
     fontWeight: 400
   section-label:
-    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", system-ui, sans-serif'
     fontSize: "12px"
     fontWeight: 500
   meta:
-    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", system-ui, sans-serif'
     fontSize: "12px"
     fontWeight: 500
   micro:
-    fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", system-ui, sans-serif'
     fontSize: "11px"
     fontWeight: 500
   markdown-h2:
@@ -59,7 +59,7 @@ typography:
     fontSize: "1rem"
     fontWeight: 500
   code:
-    fontFamily: '"Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+    fontFamily: '"SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
     fontSize: "13px"
     fontWeight: 400
 rounded:
@@ -118,7 +118,7 @@ components:
 - 单色 alpha 阶梯（`--foreground` + 透明度）派生所有 surface、border、hover、active；不再有第二套色相。
 - 竹叶绿是唯一品牌色，只用于链接、品牌字标、少量焦点、logo 局部、subagent 头像和少量状态点；状态用 emerald（success）/ destructive。
 - 按钮保持黑白和灰阶层级：主要按钮使用 foreground，次要按钮使用 surface，绿色不作为按钮底色。
-- Geist 承担全部 UI 文案，Geist Mono 只标记代码与路径；不再有 serif。
+- macOS 使用系统 UI（SF Pro / PingFang SC），代码与路径使用 SF Mono；非 macOS 退回系统无衬线与等宽字体。
 - macOS 侧栏走 `under-window` vibrancy + `followWindow`，叠加 4px blur / 130% saturation；chat + 右栏 + 拖拽柄包进距窗边 8px、圆角 12px 的内容卡片；非 macOS 用实色 `--sidebar`。
 - 所有 `rounded-*` 元素套 `corner-shape: superellipse()` 做 squircle；显式 `no-squircle` 退出。
 
@@ -130,10 +130,10 @@ components:
 
 ## Typography
 
-**Body Font:** Geist Variable（中文回退至系统无衬线）
-**Mono Font:** Geist Mono Variable（代码与路径）
+**Body Font:** 系统 UI（macOS: SF Pro / PingFang SC）
+**Mono Font:** SF Mono（代码与路径）
 
-不再使用 Source Serif 4 与 Manrope。字重统一在 400（正文）/ 500（标题、标签、段头），不再使用 600/700 做层级；层级靠字号与留白表达。
+不再使用 Geist、Source Serif 4 与 Manrope。字重统一在 400（正文）/ 500（标题、标签、段头），不再使用 600/700 做层级；层级靠字号与留白表达。
 
 ### Hierarchy
 - **Display / Page title:** 20px / 500，用于空态欢迎语和项目详情页标题。
@@ -148,7 +148,7 @@ components:
 
 ## Layout
 
-Desktop shell 是 macOS vibrancy 侧栏 + 一张内容卡片的三栏模式：240px 左侧导航；中间 chat column 最大宽 896px；会话存在且面板开启时显示右侧 task panel。壳层以 1024×640 为最小桌面边界。macOS 红绿灯与侧栏开关共用 46px 顶栏中心线，红绿灯位于 `(16px, 16px)`，侧栏开关左边缘固定在 90px；侧栏脚部 44px、条目 30px；右栏段头 24px、条目 30px。
+Desktop shell 是 macOS vibrancy 侧栏 + 一张内容卡片的三栏模式：240px 左侧导航；中间 chat column 使用居中的 46rem 阅读列；会话存在且面板开启时显示右侧 task panel。壳层以 1024×640 为最小桌面边界。macOS 红绿灯与侧栏开关共用 46px 顶栏中心线，红绿灯位于 `(16px, 16px)`，侧栏开关左边缘固定在 90px；侧栏脚部 44px、条目 30px；右栏段头 24px、条目 30px。
 
 内容卡片距窗边 `m-2 ml-0`、圆角 12px、`bg-[var(--web-content-background)]`、`.5px` 描边 + 软阴影；侧栏收起时卡片 `ml-2`。非 macOS 根底色为实色 `--sidebar`，不做材质。
 
