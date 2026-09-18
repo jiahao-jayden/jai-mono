@@ -297,7 +297,7 @@ interface ModelAvailability {
 
 function modelAvailability(model: DesktopProviderModel, intl: IntlShape): ModelAvailability {
 	if (!model.verified)
-		return { label: intl.formatMessage(desktopMessages.settingsUnverified), selectable: false, verified: false };
+		return { label: intl.formatMessage(desktopMessages.settingsUnverified), selectable: true, verified: false };
 	if (!model.inputModalities?.includes("text") || !model.outputModalities?.includes("text")) {
 		return { label: intl.formatMessage(desktopMessages.settingsTextUnsupported), selectable: false, verified: true };
 	}

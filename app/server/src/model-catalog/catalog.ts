@@ -71,25 +71,45 @@ export class RuntimeModelCatalogInvalid extends TaggedError("runtime_model_catal
 export function normalizeRuntimeModelCatalog(value: unknown): RuntimeModelCatalog {
 	const root = record(value);
 	const providersValue = root ? record(root.providers) : undefined;
-	if (!providersValue)
+	const modelsValue = root ? record(root.models) : undefined;
+	if (!providersValue && !modelsValue)
 		throw new RuntimeModelCatalogInvalid({ message: "Models.dev catalog has an unsupported shape" });
 	const providers: Record<string, RuntimeModelCatalogProvider> = {};
-	for (const [providerId, rawProvider] of Object.entries(providersValue)) {
-		if (!nonEmpty(providerId)) continue;
-		const provider = record(rawProvider);
-		const modelsValue = provider ? record(provider.models) : undefined;
-		if (!modelsValue) continue;
-		const models: Record<string, RuntimeModelCatalogModel> = {};
-		for (const [modelId, rawModel] of Object.entries(modelsValue)) {
+	if (providersValue) {
+		for (const [providerId, rawProvider] of Object.entries(providersValue)) {
+			if (!nonEmpty(providerId)) continue;
+			const provider = record(rawProvider);
+			const providerModels = provider ? record(provider.models) : undefined;
+			if (!providerModels) continue;
+			const models: Record<string, RuntimeModelCatalogModel> = {};
+			for (const [modelId, rawModel] of Object.entries(providerModels)) {
+				if (!nonEmpty(modelId)) continue;
+				const model = normalizeModel(modelId, rawModel);
+				if (model) models[modelId] = model;
+			}
+			providers[providerId] = {
+				id: providerId,
+				name: string(provider?.name) ?? providerId,
+				models,
+			};
+		}
+	}
+	if (modelsValue) {
+		for (const [qualifiedModelId, rawModel] of Object.entries(modelsValue)) {
+			const separator = qualifiedModelId.indexOf("/");
+			if (separator <= 0) continue;
+			const providerId = qualifiedModelId.slice(0, separator);
+			const modelId = qualifiedModelId.slice(separator + 1);
 			if (!nonEmpty(modelId)) continue;
 			const model = normalizeModel(modelId, rawModel);
-			if (model) models[modelId] = model;
+			if (!model) continue;
+			const provider = providers[providerId];
+			providers[providerId] = {
+				id: provider?.id ?? providerId,
+				name: provider?.name ?? providerId,
+				models: { ...provider?.models, [modelId]: model },
+			};
 		}
-		providers[providerId] = {
-			id: providerId,
-			name: string(provider?.name) ?? providerId,
-			models,
-		};
 	}
 	return { providers };
 }
@@ -142,7 +162,8 @@ export function findRuntimeModelCatalogMatch(
 		const model = provider.models[modelId];
 		return model ? [{ providerId, model }] : [];
 	});
-	return matches.length === 1 ? matches[0] : undefined;
+	if (matches.length === 1) return matches[0];
+	return undefined;
 }
 
 function normalizeModel(id: string, value: unknown): RuntimeModelCatalogModel | undefined {

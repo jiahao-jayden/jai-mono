@@ -187,6 +187,7 @@
         "@jai/connector": "workspace:*",
         "@jai/extension": "workspace:*",
         "@jai/telemetry": "workspace:*",
+        "@opencode-ai/models": "^0.0.78",
         "@opentelemetry/api": "1.9.0",
         "@opentelemetry/core": "2.10.0",
         "@opentelemetry/exporter-trace-otlp-proto": "0.221.0",
@@ -990,6 +991,8 @@
     "@open-draft/until": ["@open-draft/until@2.1.0", "", {}, "sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg=="],
 
     "@openapi-contrib/openapi-schema-to-json-schema": ["@openapi-contrib/openapi-schema-to-json-schema@3.2.0", "", { "dependencies": { "fast-deep-equal": "^3.1.3" } }, "sha512-Gj6C0JwCr8arj0sYuslWXUBSP/KnUlEGnPW4qxlXvAl543oaNQgMgIgkQUA6vs5BCCvwTEiL8m/wdWzfl4UvSw=="],
+
+    "@opencode-ai/models": ["@opencode-ai/models@0.0.78", "", { "peerDependencies": { "effect": "4.0.0-beta.83" }, "optionalPeers": ["effect"] }, "sha512-U3AqMbZ1u59tfRGAFoUCXA9X4zrPxjPC4ZZVD/D1lq3AJV9rhB2HacCMsafcOBbUnZH8bVX2eWAmKhxKsHRSPQ=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 

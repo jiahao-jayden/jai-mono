@@ -240,6 +240,11 @@ export function ModelSelector({
 																		className="h-[30px] w-full justify-start rounded-[10px] px-2 text-left outline-none transition-colors duration-75 focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-inset"
 																	>
 																		<span className="flex min-w-0 w-full items-center gap-3 pointer-events-none">
+																			<ProviderIcon
+																				size={15}
+																				strokeWidth={1.5}
+																				className="shrink-0 text-muted-foreground"
+																			/>
 																			<span className="min-w-0 flex-1 truncate text-[13.5px] font-normal text-foreground">
 																				{model.name}
 																			</span>

@@ -113,7 +113,7 @@ export function projectModel(
 	const catalogModel = catalogMatch?.model;
 	return {
 		id,
-		name: catalogModel?.name ?? remoteModelId,
+		name: stripModelDateSuffix(catalogModel?.name ?? (id === remoteModelId ? remoteModelId : id)),
 		remoteModelId,
 		source: catalogModel ? "catalog" : "unverified",
 		verified: Boolean(catalogModel),
@@ -141,6 +141,10 @@ export function projectModel(
 		...(catalogModel?.inputLimit === undefined ? {} : { inputLimit: catalogModel.inputLimit }),
 		...(catalogModel?.maxTokens === undefined ? {} : { maxTokens: catalogModel.maxTokens }),
 	};
+}
+
+function stripModelDateSuffix(modelId: string): string {
+	return modelId.replace(/[- ](?:\d{6}|\d{4})$/, "");
 }
 
 export function validateProviderProfiles(

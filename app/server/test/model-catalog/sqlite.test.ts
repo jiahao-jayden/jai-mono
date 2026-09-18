@@ -41,6 +41,25 @@ describe("Runtime Model Catalog", () => {
 		});
 	});
 
+	test("merges the flat Models.dev catalog and requires exact model IDs", () => {
+		const catalog = normalizeRuntimeModelCatalog({
+			providers: {
+				deepseek: {
+					name: "DeepSeek",
+					models: {
+						"deepseek-v4-flash": { name: "Current DeepSeek V4 Flash", release_date: "2026-09-10" },
+					},
+				},
+			},
+			models: {
+				"deepseek/deepseek-v3-0324": { name: "DeepSeek V3 0324", release_date: "2025-03-24" },
+			},
+		});
+
+		expect(findRuntimeModelCatalogMatch(catalog, undefined, "deepseek-v3-0324")?.model.name).toBe("DeepSeek V3 0324");
+		expect(findRuntimeModelCatalogMatch(catalog, undefined, "deepseek-v3-250324")).toBeUndefined();
+	});
+
 	test("reads a fresh SQLite fact without requesting the network", async () => {
 		const database = new DatabaseSync(":memory:");
 		try {
@@ -62,16 +81,16 @@ describe("Runtime Model Catalog", () => {
 		}
 	});
 
-	test("refreshes a stale SQLite fact with ETag and persists the new timestamp", async () => {
+	test("refreshes a stale SQLite fact through the Models.dev SDK", async () => {
 		const database = new DatabaseSync(":memory:");
 		try {
 			const now = RUNTIME_MODEL_CATALOG_FRESHNESS_MS + 1;
-			let requestHeaders: Headers | undefined;
+			let requestUrl: string | undefined;
 			const store = new SqliteRuntimeModelCatalog(database, {
 				now: () => now,
-				fetcher: async (_input, init) => {
-					requestHeaders = new Headers(init?.headers);
-					return new Response(JSON.stringify(rawCatalog()), { headers: { etag: "new-etag" } });
+				fetcher: async (input) => {
+					requestUrl = String(input);
+					return new Response(JSON.stringify(rawCatalog()));
 				},
 			});
 			insertCatalog(database, 0, rawCatalog(), "old-etag");
@@ -79,10 +98,10 @@ describe("Runtime Model Catalog", () => {
 			if (result.isErr()) throw result.error;
 			const stored = database
 				.prepare("SELECT etag, fetched_at FROM runtime_model_catalog WHERE key = 'default'")
-				.get() as unknown as { readonly etag: string; readonly fetched_at: number };
-			expect(requestHeaders?.get("if-none-match")).toBe("old-etag");
+				.get() as unknown as { readonly etag: string | null; readonly fetched_at: number };
+			expect(requestUrl).toBe("https://models.dev/catalog.json");
 			expect(result.value).toMatchObject({ refreshed: true, stale: false });
-			expect(stored).toEqual({ etag: "new-etag", fetched_at: now });
+			expect(stored).toEqual({ etag: null, fetched_at: now });
 			store.close();
 		} finally {
 			database.close();

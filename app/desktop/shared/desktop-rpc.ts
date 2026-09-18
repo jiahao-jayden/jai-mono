@@ -268,12 +268,12 @@ export interface DesktopProviderModel {
 
 export function isDesktopProviderModelRunnable(model: DesktopProviderModel): boolean {
 	return Boolean(
-		model.verified &&
-			model.inputModalities?.includes("text") &&
-			model.outputModalities?.includes("text") &&
-			model.toolCall === true &&
-			model.contextWindow &&
-			model.maxTokens,
+		!model.verified ||
+			(model.inputModalities?.includes("text") &&
+				model.outputModalities?.includes("text") &&
+				model.toolCall === true &&
+				model.contextWindow &&
+				model.maxTokens),
 	);
 }
 

@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { Models } from "@opencode-ai/models";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import {
 	normalizeRuntimeModelCatalog,
@@ -7,8 +8,6 @@ import {
 	type RuntimeModelCatalog,
 	type RuntimeModelCatalogSnapshot,
 } from "./catalog";
-
-const modelsDevCatalogUrl = "https://models.dev/catalog.json";
 
 export type RuntimeModelCatalogFetcher = (
 	input: Parameters<typeof fetch>[0],
@@ -37,17 +36,16 @@ export type RuntimeModelCatalogError =
 
 interface StoredModelCatalog {
 	readonly catalog: RuntimeModelCatalog;
-	readonly etag?: string;
 	readonly fetchedAt: number;
 }
 
 /**
- * The Host's one deep model-catalog module: normalized public metadata, ETag
- * refresh, stale-cache semantics and its SQLite fact all sit behind get /
- * refresh. Desktop receives only the safe read projection.
+ * The Host's one model-catalog module: normalized public metadata, stale-cache
+ * semantics and its SQLite fact all sit behind get / refresh.
  */
 export class SqliteRuntimeModelCatalog {
 	readonly #fetcher: RuntimeModelCatalogFetcher;
+	readonly #client: ReturnType<typeof Models.make>;
 	readonly #now: () => number;
 	#refreshing?: Promise<ResultType<RuntimeModelCatalogSnapshot, RuntimeModelCatalogError>>;
 	#timer?: ReturnType<typeof setTimeout>;
@@ -58,6 +56,7 @@ export class SqliteRuntimeModelCatalog {
 		options: { readonly fetcher?: RuntimeModelCatalogFetcher; readonly now?: () => number } = {},
 	) {
 		this.#fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
+		this.#client = Models.make({ fetch: this.#fetcher as typeof globalThis.fetch });
 		this.#now = options.now ?? Date.now;
 		this.database.exec(`
 			CREATE TABLE IF NOT EXISTS runtime_model_catalog (
@@ -105,32 +104,15 @@ export class SqliteRuntimeModelCatalog {
 		if (current.value && isFresh(current.value, this.#now()))
 			return Result.ok(snapshotFor(current.value, false, this.#now()));
 		try {
-			const headers = new Headers({ accept: "application/json" });
-			if (current.value?.etag) headers.set("if-none-match", current.value.etag);
-			const response = await this.#fetcher(modelsDevCatalogUrl, {
-				headers,
-				signal: AbortSignal.timeout(15_000),
-			});
-			if (response.status === 304 && current.value) {
-				const next = { ...current.value, fetchedAt: this.#now() };
-				const saved = this.write(next);
-				if (saved.isErr()) return saved;
-				return Result.ok(snapshotFor(next, true, this.#now()));
-			}
-			if (!response.ok) {
-				throw new RuntimeModelCatalogFetchFailed({
-					message: `Models.dev catalog request failed with HTTP ${response.status}`,
-				});
-			}
-			const catalog = normalizeRuntimeModelCatalog(await response.json());
-			const etag = response.headers.get("etag") ?? undefined;
-			const next = { catalog, ...(etag ? { etag } : {}), fetchedAt: this.#now() };
+			const catalog = normalizeRuntimeModelCatalog(
+				await this.#client.catalog({ signal: AbortSignal.timeout(15_000) }),
+			);
+			const next = { catalog, fetchedAt: this.#now() };
 			const saved = this.write(next);
 			if (saved.isErr()) return saved;
 			return Result.ok(snapshotFor(next, true, this.#now()));
 		} catch (cause) {
 			if (current.value) return Result.ok(snapshotFor(current.value, false, this.#now()));
-			if (cause instanceof RuntimeModelCatalogFetchFailed) return Result.err(cause);
 			return Result.err(
 				new RuntimeModelCatalogFetchFailed({ message: "Unable to fetch the Models.dev catalog", cause }),
 			);
@@ -140,10 +122,8 @@ export class SqliteRuntimeModelCatalog {
 	private read(): ResultType<StoredModelCatalog | undefined, RuntimeModelCatalogReadFailed> {
 		try {
 			const row = this.database
-				.prepare("SELECT catalog_json, etag, fetched_at FROM runtime_model_catalog WHERE key = 'default'")
-				.get() as unknown as
-				| { readonly catalog_json: string; readonly etag: string | null; readonly fetched_at: number }
-				| undefined;
+				.prepare("SELECT catalog_json, fetched_at FROM runtime_model_catalog WHERE key = 'default'")
+				.get() as unknown as { readonly catalog_json: string; readonly fetched_at: number } | undefined;
 			if (!row) return Result.ok(undefined);
 			const catalog = parseRuntimeModelCatalog(JSON.parse(row.catalog_json));
 			if (!catalog || !Number.isInteger(row.fetched_at) || row.fetched_at < 0) {
@@ -151,7 +131,7 @@ export class SqliteRuntimeModelCatalog {
 					new RuntimeModelCatalogReadFailed({ message: "Runtime Model Catalog fact is corrupted" }),
 				);
 			}
-			return Result.ok({ catalog, ...(row.etag ? { etag: row.etag } : {}), fetchedAt: row.fetched_at });
+			return Result.ok({ catalog, fetchedAt: row.fetched_at });
 		} catch (cause) {
 			return Result.err(
 				new RuntimeModelCatalogReadFailed({ message: "Could not read Runtime Model Catalog", cause }),
@@ -164,13 +144,13 @@ export class SqliteRuntimeModelCatalog {
 			this.database
 				.prepare(
 					`INSERT INTO runtime_model_catalog (key, catalog_json, etag, fetched_at)
-					 VALUES ('default', ?, ?, ?)
+					 VALUES ('default', ?, NULL, ?)
 					 ON CONFLICT(key) DO UPDATE SET
 						catalog_json = excluded.catalog_json,
-						etag = excluded.etag,
+						etag = NULL,
 						fetched_at = excluded.fetched_at`,
 				)
-				.run(JSON.stringify(value.catalog), value.etag ?? null, value.fetchedAt);
+				.run(JSON.stringify(value.catalog), value.fetchedAt);
 			return Result.ok(undefined);
 		} catch (cause) {
 			return Result.err(

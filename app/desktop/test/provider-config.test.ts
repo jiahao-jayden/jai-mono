@@ -18,8 +18,38 @@ import type {
 } from "@jai/server";
 import { Result } from "better-result";
 import { DesktopConfigService } from "../electron/config";
+import { projectModel } from "../electron/config/provider";
+import { isDesktopProviderModelRunnable } from "../shared/desktop-rpc";
 
 describe("DesktopConfigService", () => {
+	test("hides a remote model date suffix without changing the request id", () => {
+		const model = projectModel("deepseek-v4-flash-260425", "deepseek-v4-flash-260425", false, undefined);
+		expect(model.name).toBe("deepseek-v4-flash");
+		expect(model.remoteModelId).toBe("deepseek-v4-flash-260425");
+	});
+
+	test("hides a catalog display date without changing the request id", () => {
+		const model = projectModel("deepseek-v4-flash-0731", "deepseek-v4-flash-0731", false, {
+			providerId: "deepseek",
+			model: { id: "deepseek-v4-flash-0731", name: "DeepSeek V4 Flash 0731" },
+		});
+		expect(model.name).toBe("DeepSeek V4 Flash");
+		expect(model.remoteModelId).toBe("deepseek-v4-flash-0731");
+	});
+
+	test("allows explicitly enabled unverified models to be selected", () => {
+		expect(
+			isDesktopProviderModelRunnable({
+				id: "deepseek-v4-flash-260425",
+				name: "deepseek-v4-flash-260425",
+				remoteModelId: "deepseek-v4-flash-260425",
+				source: "unverified",
+				verified: false,
+				enabled: true,
+			}),
+		).toBe(true);
+	});
+
   test("persists Provider credentials only through the Runtime Host", async () => {
     const homeDir = await mkdtemp(
       join(tmpdir(), "jai-remote-provider-config-"),
