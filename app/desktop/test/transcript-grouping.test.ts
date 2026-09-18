@@ -100,7 +100,7 @@ describe("transcript grouping", () => {
 			createElement(TranscriptItems, { items: [tool, subagent], loading: false, onOpenSubagent: () => {} }),
 		);
 		expect(markup).toContain("Inspect desktop");
-		expect(markup).toContain("<img");
+		expect(markup).toContain("<svg");
 	});
 
 	test("普通搜索工具不会进入 Web Search 来源渲染", () => {

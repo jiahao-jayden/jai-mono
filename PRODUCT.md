@@ -50,8 +50,8 @@ Agent-first 工作空间: 对话为主界面，直接理解并操作本地项目
 ## Brand Commitments
 
 - 名称: PandaWork
-- 品牌色: sky #0ea5e9 (accent) / #0369a1 (deep)；状态色 emerald (success) / destructive
-- 视觉语言: 单色 alpha 阶梯 + sky 品牌色 + macOS 材质壳层（vibrancy 侧栏 + 内容卡片），squircle 圆角
+- 品牌色: 竹叶绿（低饱和点缀）；状态色 emerald (success) / destructive
+- 视觉语言: 黑白单色 alpha 阶梯 + 少量竹叶绿点缀 + macOS 材质壳层（vibrancy 侧栏 + 内容卡片），squircle 圆角
 - 人格: Gentle (温柔) · Crafted (精工) · Alive (有呼吸的)
 - 吉祥物: 🐼 熊猫 (有状态、有微动画，不是静态 logo)
 - 中英双语 UI: 中文用于情感性/面向用户的文案，英文用于产品名词和开发者概念

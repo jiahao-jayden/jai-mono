@@ -2,7 +2,7 @@
 name: "PandaWork Desktop"
 description: "单色 alpha 阶梯 + sky 品牌色 + macOS 材质壳层的本地 AI agent 工作空间。"
 colors:
-  brand-sky: "oklch(0.723 0.167 232.7)"
+  brand-bamboo: "oklch(0.55 0.10 150)"
   success: "oklch(0.696 0.149 162.4)"
   destructive: "oklch(0.577 0.245 27.325)"
   fg: "oklch(0.21 0.006 285.9)"
@@ -110,22 +110,23 @@ components:
 
 ## Overview
 
-桌面界面统一为 Aside 风格：单色 alpha 阶梯承担所有层次，sky 是唯一品牌色，macOS 上侧栏走系统 vibrancy、内容包进一张材质卡片。它仍然不是 IDE，也不是控制面板；对话始终是房间，导航、任务进度和本地上下文只是围绕对话摆放的家具。
+桌面界面统一为 Aside 风格：黑白单色 alpha 阶梯承担所有层次，竹叶绿只做少量品牌点缀，macOS 上侧栏走系统 vibrancy、内容包进一张材质卡片。它仍然不是 IDE，也不是控制面板；对话始终是房间，导航、任务进度和本地上下文只是围绕对话摆放的家具。
 
 人格是 Gentle、Crafted、Alive。Gentle 来自单色阶梯和留白；Crafted 来自 squircle 圆角、精确的像素字号与 `.5px` 描边；Alive 来自短促的状态过渡、shimmer 文本和 agent 时间线，而不是持续抢夺注意力的装饰动画。安静胜过花哨。
 
 **Key Characteristics:**
 - 单色 alpha 阶梯（`--foreground` + 透明度）派生所有 surface、border、hover、active；不再有第二套色相。
-- sky 是唯一品牌色，只用于链接、品牌字标和少量焦点；状态用 emerald（success）/ destructive。
+- 竹叶绿是唯一品牌色，只用于链接、品牌字标、少量焦点、logo 局部、subagent 头像和少量状态点；状态用 emerald（success）/ destructive。
+- 按钮保持黑白和灰阶层级：主要按钮使用 foreground，次要按钮使用 surface，绿色不作为按钮底色。
 - Geist 承担全部 UI 文案，Geist Mono 只标记代码与路径；不再有 serif。
 - macOS 侧栏走 `under-window` vibrancy + `followWindow`，叠加 4px blur / 130% saturation；chat + 右栏 + 拖拽柄包进距窗边 8px、圆角 12px 的内容卡片；非 macOS 用实色 `--sidebar`。
 - 所有 `rounded-*` 元素套 `corner-shape: superellipse()` 做 squircle；显式 `no-squircle` 退出。
 
 ## Colors
 
-色彩以 `--foreground` 的 alpha 阶梯为底：`--surface-primary/secondary/tertiary`、`--border-surface(-strong)`、`--muted-hover`、`--sidebar-active/hover` 全部由 `color-mix(in oklch, var(--foreground) N%, …)` 派生。sky 是唯一品牌色（`--brand`，light `sky-500` / dark `sky-400`），只出现在链接、品牌字标和 `.prose a`。状态色独立：`--success`（emerald）用于完成 / 可用，`--destructive` 用于错误 / 危险。
+色彩以 `--foreground` 的 alpha 阶梯为底：`--surface-primary/secondary/tertiary`、`--border-surface(-strong)`、`--muted-hover`、`--sidebar-active/hover` 全部由 `color-mix(in oklch, var(--foreground) N%, …)` 派生。竹叶绿是唯一品牌色（`--brand`，light `oklch(0.55 0.10 150)` / dark `oklch(0.70 0.10 150)`），只出现在链接、品牌字标、少量焦点和角色素材中。状态色独立：`--success`（emerald）用于完成 / 可用，`--destructive` 用于错误 / 危险。
 
-**The One Brand Color Rule.** 同一视区只让 sky 承担链接与品牌；导航、文件类型、普通装饰一律走单色阶梯，不要做成彩色拼盘。状态色（success / destructive）只在表达运行、完成、错误时出现，不参与品牌。
+**The One Brand Color Rule.** 同一视区只让竹叶绿承担链接与品牌点缀；导航、按钮、文件类型、普通装饰一律走黑白和单色阶梯，不要做成彩色拼盘。状态色（success / destructive）只在表达运行、完成、错误时出现，不参与品牌。
 
 ## Typography
 
@@ -222,13 +223,13 @@ Desktop shell 是 macOS vibrancy 侧栏 + 一张内容卡片的三栏模式：24
 
 ### Do:
 - **Do** 让对话列获得最多空间和最高文字对比。
-- **Do** 把 sky 留给链接与品牌，把 success / destructive 留给状态。
+- **Do** 把竹叶绿留给链接与品牌点缀，把 success / destructive 留给状态。
 - **Do** 用 `--surface-*` tonal layering、`.5px` 描边和留白表达结构。
 - **Do** 为状态同时提供文字、图标或形状线索，并尊重 `prefers-reduced-motion`。
 - **Do** 让中英文 UI 遵循现有分工：中文偏情感与用户文案，英文偏产品名词和开发者概念。
 
 ### Don't:
-- **Don't** 引入第二套色相做导航、文件类型或装饰。
+- **Don't** 引入第二套品牌色做导航、按钮、文件类型或装饰。
 - **Don't** 用 600/700 字重补层级；靠字号和留白。
 - **Don't** 给每张卡片默认加边框、阴影和独立白底；列表去 `divide-y`/`border-y`，用 `gap`。
 - **Don't** 让持续动画、强 glow 或大幅位移抢走对话注意力。
