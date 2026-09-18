@@ -11,10 +11,12 @@ colors:
   surface-primary: "color-mix(in oklch, var(--foreground) 5%, var(--background))"
   surface-secondary: "color-mix(in oklch, var(--foreground) 8%, var(--background))"
   surface-tertiary: "color-mix(in oklch, var(--foreground) 11%, var(--background))"
-  sidebar: "color-mix(in oklch, var(--foreground) 6%, transparent)"
+  sidebar: "macOS light color-mix(in srgb, #fcfcfc 38%, transparent); macOS dark color-mix(in srgb, color-mix(in srgb, #0e0e0e 80%, black) 72%, transparent); opaque elsewhere"
   web-content-background: "color-mix(in oklch, var(--background) 92%, var(--foreground) 3%)"
   dark-fg: "oklch(0.92 0.004 286.3)"
   dark-bg: "oklch(0.18 0.008 286.3)"
+  sidebar-light-base: "#fcfcfc"
+  sidebar-dark-base: "#0e0e0e"
 typography:
   display:
     fontFamily: '"Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
@@ -116,7 +118,7 @@ components:
 - 单色 alpha 阶梯（`--foreground` + 透明度）派生所有 surface、border、hover、active；不再有第二套色相。
 - sky 是唯一品牌色，只用于链接、品牌字标和少量焦点；状态用 emerald（success）/ destructive。
 - Geist 承担全部 UI 文案，Geist Mono 只标记代码与路径；不再有 serif。
-- macOS 侧栏走 vibrancy，chat + 右栏 + 拖拽柄包进距窗边 8px、圆角 12px 的内容卡片；非 macOS 用实色 `--sidebar`。
+- macOS 侧栏走 `under-window` vibrancy + `followWindow`，叠加 4px blur / 130% saturation；chat + 右栏 + 拖拽柄包进距窗边 8px、圆角 12px 的内容卡片；非 macOS 用实色 `--sidebar`。
 - 所有 `rounded-*` 元素套 `corner-shape: superellipse()` 做 squircle；显式 `no-squircle` 退出。
 
 ## Colors
@@ -145,7 +147,7 @@ components:
 
 ## Layout
 
-Desktop shell 是 macOS vibrancy 侧栏 + 一张内容卡片的三栏模式：240px 左侧导航；中间 chat column 最大宽 896px；会话存在且面板开启时显示右侧 task panel。壳层以 1024×640 为最小桌面边界。侧栏 44px 头/脚、30px 条目；chat nav 44px；右栏段头 24px、条目 30px。
+Desktop shell 是 macOS vibrancy 侧栏 + 一张内容卡片的三栏模式：240px 左侧导航；中间 chat column 最大宽 896px；会话存在且面板开启时显示右侧 task panel。壳层以 1024×640 为最小桌面边界。macOS 红绿灯与侧栏开关共用 46px 顶栏中心线，红绿灯位于 `(16px, 16px)`，侧栏开关左边缘固定在 90px；侧栏脚部 44px、条目 30px；右栏段头 24px、条目 30px。
 
 内容卡片距窗边 `m-2 ml-0`、圆角 12px、`bg-[var(--web-content-background)]`、`.5px` 描边 + 软阴影；侧栏收起时卡片 `ml-2`。非 macOS 根底色为实色 `--sidebar`，不做材质。
 
@@ -155,7 +157,7 @@ Desktop shell 是 macOS vibrancy 侧栏 + 一张内容卡片的三栏模式：24
 
 ## Elevation & Depth
 
-系统以 tonal layering（`--surface-primary/secondary/tertiary`）和 `.5px` `--border-surface` 描边为主、低透明阴影为辅。浮层（dropdown / dialog / toast / popover / tooltip）统一用 `bg-popover` + `shadow-[0_0_0_.5px_var(--border-surface-strong),0_10px_15px_-3px_rgb(0_0_0/.1),0_4px_6px_-4px_rgb(0_0_0/.1)]`。composer 用 `--surface-primary` + 20px squircle + `shadow-surface-2`。
+系统以 tonal layering（`--surface-primary/secondary/tertiary`）和 `.5px` `--border-surface` 描边为主、低透明阴影为辅。macOS 亮色侧栏使用 `#fcfcfc` 的 38% 玻璃覆盖层；深色侧栏使用接近 `rgb(11 11 11 / 72%)` 的炭黑玻璃覆盖层；两者都在原生材质上叠加 4px 轻模糊与 130% 饱和度。非 macOS 使用对应主题的实色侧栏。浮层（dropdown / dialog / toast / popover / tooltip）统一用 `bg-popover` + `shadow-[0_0_0_.5px_var(--border-surface-strong),0_10px_15px_-3px_rgb(0_0_0/.1),0_4px_6px_-4px_rgb(0_0_0/.1)]`。composer 用 `--surface-primary` + 20px squircle + `shadow-surface-2`。
 
 `Elevated` 的 `surface-1..8` / `shadow-1..8` 梯子名字保留，值派生自 `--foreground` alpha，不改调用方。
 
@@ -183,7 +185,7 @@ Desktop shell 是 macOS vibrancy 侧栏 + 一张内容卡片的三栏模式：24
 - **Primary:** `--foreground` 实底、`--background` 文字。
 - **Secondary / Tertiary:** `--surface-secondary` / 透明，`--foreground` 文字。
 - **Ghost:** 透明底，hover `--muted-hover`。
-- **Navigation:** `--sidebar-muted` 文字，hover `--sidebar-hover`，active `--sidebar-active` + `--foreground`。
+- **Navigation:** `--sidebar-muted` 文字；亮色 hover / active 使用 black 3%，深色使用 white 4%，active 额外提升文字到 `--foreground`，避免玻璃侧栏出现发白色块。
 - **Hover / Focus:** 80ms 色彩响应；基类统一 `focus-visible:ring-3 ring-ring`。disabled 降低 opacity 并阻断交互。
 - **Loading:** 连续 infinity-path spinner，不改变按钮尺寸。
 

@@ -62,7 +62,7 @@ export function ToolTimeline({
 					{streaming ? activeLabel : restingLabel}
 				</ShimmerLabel>
 			</CollapsibleTrigger>
-			<CollapsibleContent className="outline-none">
+			<CollapsibleContent keepMounted={false} className="outline-none">
 				<div className="flex flex-col gap-2.5 ps-4 pt-2.5">
 					{steps.map((step, index) => {
 						const active = streaming && (step.active ?? index === steps.length - 1);
@@ -127,7 +127,7 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 	return (
 		<Collapsible open={open} onOpenChange={setOpen}>
 			<CollapsibleTrigger className={rowClassName}>{row}</CollapsibleTrigger>
-			<CollapsibleContent className="mt-2 contain-[paint] outline-none">
+			<CollapsibleContent keepMounted={false} className="mt-2 contain-[paint] outline-none">
 				{step.webSearchResults ? (
 					<div className={cn(paper, "max-h-52 overflow-y-auto rounded-lg p-2")}>
 						<WebSearchResults results={step.webSearchResults} />

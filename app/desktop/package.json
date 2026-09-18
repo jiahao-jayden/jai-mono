@@ -35,6 +35,7 @@
 		"@sinclair/typebox": "catalog:",
 		"@tanstack/highlight": "^0.1.0",
 		"@tanstack/react-query": "^5.90.21",
+		"@tanstack/react-virtual": "^3.14.13",
 		"ai": "^6.0.146",
 		"better-result": "^3.0.0",
 		"blobatar": "^2.7.0",

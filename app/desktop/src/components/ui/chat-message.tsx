@@ -1,6 +1,16 @@
 "use client";
 
-import { forwardRef, isValidElement, memo, type HTMLAttributes, type ReactNode, useMemo, useState } from "react";
+import {
+	forwardRef,
+	isValidElement,
+	memo,
+	type HTMLAttributes,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { motion, type HTMLMotionProps, useReducedMotion } from "framer-motion";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
@@ -43,8 +53,13 @@ const languageAliases: Record<string, string> = {
 	yml: "yaml",
 };
 const highlighter = createHighlighter({ languages: [css, html, js, json, jsx, markdown, python, shell, sql, ts, tsx, yaml] });
+const STREAMING_CODE_HIGHLIGHT_INTERVAL_MS = 160;
 
-function CodeBlock({ children, ...props }: HTMLAttributes<HTMLPreElement>) {
+function CodeBlock({
+	children,
+	isStreaming = false,
+	...props
+}: HTMLAttributes<HTMLPreElement> & { readonly isStreaming?: boolean }) {
 	const CopyIcon = useIcon("copy");
 	const CheckIcon = useIcon("check");
 	const [copied, setCopied] = useState(false);
@@ -52,11 +67,7 @@ function CodeBlock({ children, ...props }: HTMLAttributes<HTMLPreElement>) {
 	const className = codeElement?.props.className;
 	const language = className?.match(/language-(\S+)/)?.[1] ?? "";
 	const value = String(codeElement?.props.children ?? children).replace(/\n$/, "");
-	const highlighted = useMemo(() => {
-		const lang = languageAliases[language.toLowerCase()] ?? language.toLowerCase();
-		if (!highlighter.listLanguages().includes(lang)) return value;
-		return renderNodesToHtml(renderTokens(highlighter.tokenize(value, { lang }).tokens));
-	}, [language, value]);
+	const highlighted = useStreamingCodeHighlight(value, language, isStreaming);
 	const copy = async () => {
 		await navigator.clipboard.writeText(value);
 		setCopied(true);
@@ -75,11 +86,62 @@ function CodeBlock({ children, ...props }: HTMLAttributes<HTMLPreElement>) {
 			</div>
 			<pre {...props} data-streamdown="code-block-body">
 				<code className={className}>
-					{typeof highlighted === "string" ? <span dangerouslySetInnerHTML={{ __html: highlighted }} /> : highlighted}
+					{highlighted === undefined ? value : <span dangerouslySetInnerHTML={{ __html: highlighted }} />}
 				</code>
 			</pre>
 		</div>
 	);
+}
+
+function useStreamingCodeHighlight(value: string, language: string, isStreaming: boolean): string | undefined {
+	const latestRef = useRef({ value, language });
+	const [highlighted, setHighlighted] = useState<{ source: string; html: string | undefined }>(() => ({
+		source: value,
+		html: highlightCode(value, language),
+	}));
+	const timerRef = useRef<number | undefined>(undefined);
+	const lastHighlightAtRef = useRef(0);
+	latestRef.current = { value, language };
+
+	const refresh = useCallback(() => {
+		const latest = latestRef.current;
+		setHighlighted({
+			source: latest.value,
+			html: highlightCode(latest.value, latest.language),
+		});
+		lastHighlightAtRef.current = performance.now();
+	}, []);
+
+	useEffect(() => {
+		if (!isStreaming) {
+			if (timerRef.current !== undefined) {
+				window.clearTimeout(timerRef.current);
+				timerRef.current = undefined;
+			}
+			refresh();
+			return;
+		}
+		if (timerRef.current !== undefined) return;
+		const elapsed = performance.now() - lastHighlightAtRef.current;
+		timerRef.current = window.setTimeout(() => {
+			timerRef.current = undefined;
+			refresh();
+		}, Math.max(0, STREAMING_CODE_HIGHLIGHT_INTERVAL_MS - elapsed));
+	}, [isStreaming, language, refresh, value]);
+
+	useEffect(() => {
+		return () => {
+			if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
+		};
+	}, []);
+
+	return highlighted.source === value ? highlighted.html : undefined;
+}
+
+function highlightCode(value: string, language: string): string | undefined {
+	const lang = languageAliases[language.toLowerCase()] ?? language.toLowerCase();
+	if (!lang || !highlighter.listLanguages().includes(lang)) return undefined;
+	return renderNodesToHtml(renderTokens(highlighter.tokenize(value, { lang }).tokens));
 }
 
 interface ChatMessageAttachment {
@@ -101,7 +163,9 @@ export const MarkdownContent = memo(function MarkdownContent({
 	return (
 		<div className={cn("chat-markdown", isStreaming && "chat-markdown-streaming", className)} aria-live="off">
 			<Streamdown
-				components={{ pre: CodeBlock }}
+				components={{
+					pre: (props) => <CodeBlock {...props} isStreaming={isStreaming} />,
+				}}
 				granularity={isStreaming ? "word" : "char"}
 				remarkPlugins={streamdownRemarkPlugins}
 				content={content}

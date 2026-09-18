@@ -14,7 +14,6 @@ import {
 	type WheelEvent,
 } from "react";
 import { useIntl } from "react-intl";
-import { ThinkingOrb } from "thinking-orbs";
 import logo from "@/assets/icons/chat-area/logo-silver.svg";
 import type { Chat } from "@/hooks/use-chat";
 import { desktopMessages } from "@/i18n/messages";
@@ -34,9 +33,10 @@ import { Input } from "../../ui/input";
 import { MessageScroller } from "../../ui/message-scroller";
 import { PermissionRequests } from "../../ui/permission-requests";
 import { toast } from "../../ui/toast";
+import { COLLAPSED_CHAT_CONTENT_PADDING_CLASS, DESKTOP_TOP_BAR_HEIGHT_CLASS } from "../desktop-chrome";
 import { SessionActions } from "../session-actions";
 import { ChatComposer } from "./chat-composer";
-import { TranscriptItems } from "./chat-transcript";
+import { TranscriptVirtualList, type TranscriptVirtualListHandle } from "./chat-transcript";
 import {
 	comfortableScrollTop,
 	isTranscriptAwayFromBottom,
@@ -66,6 +66,7 @@ interface ChatColumnProps {
 	projectLoadError: boolean;
 	projectError?: string;
 	sidebarOpen: boolean;
+	macTitleBar: boolean;
 	onOpenProviderSettings(): void;
 	onSelectProviderModel(modelRef: string): void;
 	onSelectAgentMode(mode: DesktopAgentMode): void;
@@ -97,6 +98,7 @@ export function ChatColumn({
 	projectLoadError,
 	projectError,
 	sidebarOpen,
+	macTitleBar,
 	onOpenProviderSettings,
 	onSelectProviderModel,
 	onSelectAgentMode,
@@ -111,6 +113,7 @@ export function ChatColumn({
 	const FolderIcon = icons.folder;
 	const FolderOffIcon = icons["folder-off"];
 	const scrollRef = useRef<HTMLDivElement>(null);
+	const transcriptListRef = useRef<TranscriptVirtualListHandle>(null);
 	const openWorkGroupsRef = useRef(new Set<string>());
 	const cancelTitleEditRef = useRef(false);
 	const reducedMotion = useReducedMotion();
@@ -124,6 +127,9 @@ export function ChatColumn({
 		: intl.formatMessage(desktopMessages.transcriptLoading);
 	const isAgentWorking = chat.status === "submitted" || chat.status === "streaming";
 	const navigationDisabled = isAgentWorking || !selectedModelRef;
+	const ensureTranscriptItemVisible = useCallback((itemId: string) => {
+		return transcriptListRef.current?.scrollToItem(itemId) ?? false;
+	}, []);
 	const pendingApprovals = chat.messages.filter(
 		(item): item is DesktopPermissionItem => item.kind === "permission" && item.status === "pending",
 	);
@@ -138,6 +144,7 @@ export function ChatColumn({
 		loading: chat.isLoading,
 		responding: isAgentWorking,
 		reducedMotion,
+		ensureItemVisible: ensureTranscriptItemVisible,
 	});
 
 	const projectLabel =
@@ -185,11 +192,15 @@ export function ChatColumn({
 	return (
 		<section className="flex min-w-0 flex-1 flex-col">
 			<header
-				className={cn("flex h-11 shrink-0 items-center justify-between pr-1.5", sidebarOpen ? "pl-1.5" : "pl-28")}
+				className={cn(
+					"flex shrink-0 items-center justify-between pr-1.5",
+					DESKTOP_TOP_BAR_HEIGHT_CLASS,
+					sidebarOpen ? "pl-1.5" : macTitleBar ? COLLAPSED_CHAT_CONTENT_PADDING_CLASS : "pl-10",
+				)}
 				style={drag}
 			>
-			<div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden px-1.5 text-[13px]">
-				{projectLabel ? (
+				<div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden px-1.5 text-[13px]">
+					{projectLabel ? (
 						<>
 							{project && !project.available ? (
 								<FolderOffIcon size={16} className="shrink-0 text-destructive" />
@@ -266,11 +277,7 @@ export function ChatColumn({
 			</header>
 
 			{showLogo ? (
-				<div
-					className="flex min-h-0 flex-1 items-center justify-center"
-					aria-label={logoLabel}
-					role="img"
-				>
+				<div className="flex min-h-0 flex-1 items-center justify-center" aria-label={logoLabel} role="img">
 					<div className="relative size-20">
 						<img src={logo} alt="" draggable={false} className="size-20 select-none" />
 						{chat.isLoading ? (
@@ -292,40 +299,20 @@ export function ChatColumn({
 						onTouchMove={transcriptScroll.onTouchMove}
 						onWheel={transcriptScroll.onWheel}
 					>
-						<div className="px-5">
-							<div className="mx-auto flex w-full max-w-[896px] flex-col gap-2 py-4">
-								{chat.messages.length === 0 ? (
-									<p className="py-16 text-center text-[13px] text-muted-foreground">
-										{intl.formatMessage(desktopMessages.chatEmpty)}
-									</p>
-								) : null}
-								<TranscriptItems
-									items={chat.messages}
-									loading={chat.isLoading}
-									responding={isAgentWorking}
-									openWorkGroups={openWorkGroupsRef.current}
-									workGroupKeyPrefix={session?.id}
-									navigationDisabled={navigationDisabled}
-									onNavigate={chat.navigate}
-									onOpenSubagent={onOpenSubagent}
-								/>
-								{isAgentWorking ? (
-									<div className="flex items-center gap-2 px-1 py-1 text-muted-foreground" role="status">
-										<ThinkingOrb aria-hidden size={64} state="solving" style={{ width: 28, height: 28 }} />
-										<span className="shimmer-text text-[12px] font-medium">
-											{intl.formatMessage(desktopMessages.chatAgentWorking)}
-										</span>
-									</div>
-								) : null}
-								{transcriptScroll.tailSpace > 0 ? (
-									<div
-										aria-hidden="true"
-										className="shrink-0"
-										style={{ height: transcriptScroll.tailSpace }}
-									/>
-								) : null}
-							</div>
-						</div>
+						<TranscriptVirtualList
+							ref={transcriptListRef}
+							items={transcriptItems}
+							loading={chat.isLoading}
+							responding={isAgentWorking}
+							openWorkGroups={openWorkGroupsRef.current}
+							workGroupKeyPrefix={session?.id}
+							navigationDisabled={navigationDisabled}
+							onNavigate={chat.navigate}
+							onOpenSubagent={onOpenSubagent}
+							scrollRef={scrollRef}
+							tailSpace={transcriptScroll.tailSpace}
+							emptyState={intl.formatMessage(desktopMessages.chatEmpty)}
+						/>
 					</div>
 					<MessageScroller
 						onScrollToBottom={transcriptScroll.scrollToBottom}
@@ -410,9 +397,18 @@ interface TranscriptScrollOptions {
 	loading: boolean;
 	responding: boolean;
 	reducedMotion: boolean | null;
+	ensureItemVisible(itemId: string): boolean;
 }
 
-function useTranscriptScroll({ ref, sessionId, items, loading, responding, reducedMotion }: TranscriptScrollOptions) {
+function useTranscriptScroll({
+	ref,
+	sessionId,
+	items,
+	loading,
+	responding,
+	reducedMotion,
+	ensureItemVisible,
+}: TranscriptScrollOptions) {
 	const stateRef = useRef({
 		sessionId,
 		awaitingSnapshot: true,
@@ -619,19 +615,26 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 			const promptId = latestUser.id;
 			stateRef.current.lastUserMessageId = promptId;
 			stateRef.current.followsNewResponse = true;
-			applyTailSpace(measureTailSpace(element, promptId, tailSpaceRef.current));
+			applyTailSpace(measureTailSpace(element, promptId, tailSpaceRef.current, ensureItemVisible));
 			setShowMessageScroller(false);
 			// Anchor the prompt to the top only after the spacer's height commits:
 			// scrolling now would clamp against the stale, spacer-less scrollHeight.
 			if (promptScrollFrameRef.current !== undefined) cancelAnimationFrame(promptScrollFrameRef.current);
 			const scrollEpoch = scrollEpochRef.current;
-			promptScrollFrameRef.current = requestAnimationFrame(() => {
+			const promptAnchorStartedAt = performance.now();
+			const seekPrompt = () => {
 				promptScrollFrameRef.current = undefined;
 				const current = ref.current;
 				if (!current || scrollEpoch !== scrollEpochRef.current || stateRef.current.sessionId !== sessionId) return;
+				if (!scrollPromptIntoReadingPosition(current, promptId, reducedMotion, ensureItemVisible)) {
+					if (performance.now() - promptAnchorStartedAt < 1_000) {
+						promptScrollFrameRef.current = requestAnimationFrame(seekPrompt);
+					}
+					return;
+				}
 				beginAnchoredScroll();
-				scrollPromptIntoReadingPosition(current, promptId, reducedMotion);
-			});
+			};
+			promptScrollFrameRef.current = requestAnimationFrame(seekPrompt);
 			return;
 		}
 
@@ -639,7 +642,7 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 		// the top: it shrinks to zero as a long reply fills the viewport, and
 		// holds just enough for a short reply so the prompt never drops back down.
 		const promptId = stateRef.current.lastUserMessageId;
-		if (promptId) applyTailSpace(measureTailSpace(element, promptId, tailSpaceRef.current));
+		if (promptId) applyTailSpace(measureTailSpace(element, promptId, tailSpaceRef.current, ensureItemVisible));
 
 		const latestScrollableItem = lastScrollableTranscriptItem(items);
 		if (stateRef.current.followsNewResponse && latestScrollableItem && (responding || responseJustFinished)) {
@@ -660,6 +663,7 @@ function useTranscriptScroll({ ref, sessionId, items, loading, responding, reduc
 		ref,
 		sessionId,
 		syncMessageScroller,
+		ensureItemVisible,
 	]);
 
 	useLayoutEffect(() => {
@@ -805,8 +809,14 @@ function findTranscriptItemElement(element: HTMLDivElement, messageId: string): 
  * regardless of the current scrollTop, and returns 0 once the reply below the
  * prompt already fills the viewport.
  */
-function measureTailSpace(element: HTMLDivElement, promptId: string, currentTail: number): number {
+function measureTailSpace(
+	element: HTMLDivElement,
+	promptId: string,
+	currentTail: number,
+	ensureItemVisible: (itemId: string) => boolean,
+): number {
 	const prompt = findTranscriptItemElement(element, promptId);
+	if (!prompt) ensureItemVisible(promptId);
 	if (!prompt) return currentTail;
 	const promptTop = element.scrollTop + prompt.getBoundingClientRect().top - element.getBoundingClientRect().top;
 	const contentBelowPrompt = element.scrollHeight - currentTail - promptTop;
@@ -818,14 +828,19 @@ function scrollPromptIntoReadingPosition(
 	element: HTMLDivElement,
 	messageId: string,
 	reducedMotion: boolean | null,
-): void {
+	ensureItemVisible: (itemId: string) => boolean,
+): boolean {
 	const prompt = findTranscriptItemElement(element, messageId);
-	if (!prompt) return;
+	if (!prompt) {
+		ensureItemVisible(messageId);
+		return false;
+	}
 	const promptTop = element.scrollTop + prompt.getBoundingClientRect().top - element.getBoundingClientRect().top;
 	element.scrollTo({
 		top: promptAnchorScrollTop(promptTop, element.clientHeight),
 		behavior: reducedMotion ? "auto" : "smooth",
 	});
+	return true;
 }
 
 function greetingMessage() {

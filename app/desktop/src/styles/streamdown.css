@@ -7,7 +7,7 @@
 	overflow-wrap: anywhere;
 }
 
-.chat-markdown-streaming > :last-child::after {
+.chat-markdown-streaming:not([style*="--streamdown-caret"]) > :last-child::after {
 	content: "▊";
 	display: inline-block;
 	margin-left: 0.15em;
@@ -375,6 +375,11 @@
 	}
 
 	/* The caret still marks the live end of the stream, it just holds steady. */
+	.chat-markdown-streaming > :last-child::after {
+		animation: none;
+		opacity: 1;
+	}
+
 	.chat-markdown[style*="--streamdown-caret"] > :last-child::after {
 		animation: none;
 		opacity: 1;

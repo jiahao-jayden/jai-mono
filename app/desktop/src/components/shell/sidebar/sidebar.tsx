@@ -8,6 +8,7 @@ import { SidebarRecents } from "./sidebar-recents";
 
 interface SidebarProps {
 	activeView: "chat" | "chats" | "projects" | "project" | "settings";
+	macTitleBar?: boolean;
 	sessions: readonly CodingSession[];
 	runningSessionIds: readonly string[];
 	activeSessionId: string | null;
@@ -29,6 +30,7 @@ interface SidebarProps {
 
 export function Sidebar({
 	activeView,
+	macTitleBar = false,
 	sessions,
 	activeSessionId,
 	loading,
@@ -51,7 +53,7 @@ export function Sidebar({
 			className="flex h-full w-60 shrink-0 flex-col overflow-hidden px-1.5 text-sidebar-foreground"
 			style={width ? { width } : undefined}
 		>
-			<SidebarHeader onToggleSidebar={onToggleSidebar} />
+			<SidebarHeader macTitleBar={macTitleBar} onToggleSidebar={onToggleSidebar} />
 			<div className="flex h-10 shrink-0 items-center gap-2 px-3.5">
 				<img src={logo} alt="" draggable={false} className="size-7 shrink-0 select-none" />
 				<span className="truncate text-[16px] font-medium tracking-[-0.01em] text-foreground">PandaWork</span>

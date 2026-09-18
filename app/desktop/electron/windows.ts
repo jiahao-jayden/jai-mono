@@ -1,5 +1,6 @@
 import { BrowserWindow, shell } from "electron";
 import { join } from "path";
+import { getMacTrafficLightPosition } from "../shared/desktop-chrome";
 
 const isMac = process.platform === "darwin";
 
@@ -20,10 +21,10 @@ export function createMainWindow(): BrowserWindow {
 		minHeight: 640,
 		show: false,
 		frame: !isMac,
-		titleBarStyle: isMac ? "hidden" : undefined,
-		trafficLightPosition: isMac ? { x: 18, y: 15 } : undefined,
-		vibrancy: isMac ? "hud" : undefined,
-		visualEffectState: isMac ? "active" : undefined,
+		titleBarStyle: isMac ? "hiddenInset" : undefined,
+		trafficLightPosition: isMac ? getMacTrafficLightPosition() : undefined,
+		vibrancy: isMac ? "under-window" : undefined,
+		visualEffectState: isMac ? "followWindow" : undefined,
 		backgroundColor: isMac ? "#00000000" : undefined,
 		webPreferences: baseWebPreferences(),
 	});

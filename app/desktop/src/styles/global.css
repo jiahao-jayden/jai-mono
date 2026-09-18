@@ -31,6 +31,16 @@ html.right-panel-resizing * {
 	user-select: none !important;
 }
 
+.app-shell-translucent {
+	--sidebar: color-mix(in srgb, #fcfcfc 38%, transparent);
+	-webkit-backdrop-filter: blur(4px) saturate(130%);
+	backdrop-filter: blur(4px) saturate(130%);
+}
+
+.dark .app-shell-translucent {
+	--sidebar: color-mix(in srgb, color-mix(in srgb, #0e0e0e 80%, black) 72%, transparent);
+}
+
 @theme inline {
   --font-sans: var(--font-sans);
   --font-heading: var(--font-heading);
@@ -156,12 +166,11 @@ html.right-panel-resizing * {
   --chart-3: oklch(54.6% 0.245 262.881);
   --chart-4: oklch(48.8% 0.243 264.376);
   --chart-5: oklch(42.4% 0.199 265.638);
-  /* Wash over the OS hud material; alpha sets how much wallpaper shows through. */
-  --sidebar: oklch(99% 0 0 / 0.72);
+  --sidebar: #fcfcfc;
   --sidebar-foreground: oklch(20% 0 0);
   --sidebar-muted: oklch(20% 0 0 / 0.55);
-  --sidebar-active: oklch(100% 0 0 / 0.9);
-  --sidebar-hover: oklch(100% 0 0 / 0.45);
+  --sidebar-active: rgb(0 0 0 / 0.03);
+  --sidebar-hover: rgb(0 0 0 / 0.03);
   --sidebar-accent: var(--sidebar-hover);
   --sidebar-border: var(--border);
   --font-sans: "Geist Variable", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
@@ -218,11 +227,11 @@ html.right-panel-resizing * {
   --web-content-background: color-mix(in oklab, var(--background) 92%, transparent);
   --tabs-list-bg: oklch(20.5% 0 0 / 0.4);
   --logo-mark: oklch(98.5% 0 0 / 0.1);
-  --sidebar: oklch(22% 0 0 / 0.4);
+  --sidebar: #0e0e0e;
   --sidebar-foreground: oklch(96% 0 0);
   --sidebar-muted: oklch(96% 0 0 / 0.55);
-  --sidebar-active: oklch(98.5% 0 0 / 0.1);
-  --sidebar-hover: oklch(98.5% 0 0 / 0.05);
+  --sidebar-active: rgb(255 255 255 / 0.04);
+  --sidebar-hover: rgb(255 255 255 / 0.04);
   --shadow-color: rgb(0 0 0 / 0.35);
 }
 

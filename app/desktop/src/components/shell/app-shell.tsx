@@ -44,11 +44,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { ChatColumn } from "./chat/chat-column";
 import { ChatComposer } from "./chat/chat-composer";
 import { ChatsPage } from "./chats-page";
+import { DESKTOP_TOP_BAR_HEIGHT_CLASS, MAC_SIDEBAR_LEADING_POSITION_CLASS } from "./desktop-chrome";
 import { Dock } from "./dock/dock";
 import { useDock } from "./dock/use-dock";
 import { ProjectPage, ProjectsPage } from "./projects-page";
 import { SettingsPage } from "./settings/settings-page";
 import { Sidebar } from "./sidebar/sidebar";
+import { SidebarToggleButton } from "./sidebar/sidebar-toggle-button";
 import { TaskPanel } from "./task-panel";
 
 const MIN_SIDEBAR_WIDTH = 200;
@@ -379,7 +381,6 @@ export function AppShell() {
 	const agentStatus = chat.status === "streaming" ? "running" : "idle";
 	const PanelRightIcon = icons["panel-right"];
 	const CheckListIcon = icons["check-list"];
-	const PanelLeftIcon = icons["panel-left-close"];
 	const dockToggleLabel = intl.formatMessage(dockOpen ? desktopMessages.chatHideDock : desktopMessages.chatShowDock);
 	const taskCardToggleLabel = intl.formatMessage(
 		taskCardOpen ? desktopMessages.chatHideTaskCard : desktopMessages.chatShowTaskCard,
@@ -407,12 +408,13 @@ export function AppShell() {
 		"relative flex min-w-0 flex-1 overflow-hidden bg-[var(--web-content-background)] shadow-[0_0_0_var(--hairline)_var(--border-surface-strong),0_2px_10px_-4px_rgb(0_0_0/.1)] transition-[border-radius] duration-200",
 		sidebarOpen ? "rounded-[12px]" : "rounded-r-[12px]",
 	);
+	const isMac = window.desktopRpc.platform.isMac;
+	const shellClassName = cn("relative flex h-screen min-h-160 min-w-5xl overflow-hidden bg-sidebar text-foreground", {
+		"app-shell-translucent": isMac,
+	});
 
 	return (
-		<div
-			ref={shellRef}
-			className="relative flex h-screen min-h-160 min-w-5xl overflow-hidden bg-sidebar text-foreground"
-		>
+		<div ref={shellRef} className={shellClassName}>
 			<motion.div
 				className="relative h-full min-w-0 shrink-0 overflow-hidden"
 				style={{ width: visibleSidebarWidth }}
@@ -422,6 +424,7 @@ export function AppShell() {
 				{sidebarOpen ? (
 					<Sidebar
 						activeView={activeView}
+						macTitleBar={isMac}
 						sessions={sessions}
 						runningSessionIds={runningSessionIds}
 						activeSessionId={chatVisible ? activeSessionId : null}
@@ -552,6 +555,7 @@ export function AppShell() {
 								projectLoadError={projectLoadError}
 								projectError={chatProjectError}
 								sidebarOpen={sidebarOpen}
+								macTitleBar={isMac}
 								onOpenProviderSettings={openProviderSettings}
 								onSelectProviderModel={setSelectedModelRef}
 								onSelectAgentMode={setSelectedAgentMode}
@@ -595,24 +599,20 @@ export function AppShell() {
 				</Routes>
 				{!sidebarOpen ? (
 					<div
-						className="absolute top-0 left-20 z-30 flex h-11 items-center"
+						className={cn(
+							"absolute top-0 z-30 flex items-center",
+							DESKTOP_TOP_BAR_HEIGHT_CLASS,
+							isMac ? MAC_SIDEBAR_LEADING_POSITION_CLASS : "left-1.5",
+						)}
 						style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
 					>
-						<Button
-							type="button"
-							variant="navigation"
-							size="icon-sm"
-							onClick={() => {
+						<SidebarToggleButton
+							expanded={false}
+							onToggle={() => {
 								visibleSidebarWidth.set(sidebarWidth.get());
 								setSidebarOpen(true);
 							}}
-							aria-label={intl.formatMessage(desktopMessages.chatShowSidebar)}
-							title={intl.formatMessage(desktopMessages.chatShowSidebar)}
-							className="rounded-md"
-							style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-						>
-							<PanelLeftIcon size={16} />
-						</Button>
+						/>
 					</div>
 				) : null}
 				{dockMounted ? (

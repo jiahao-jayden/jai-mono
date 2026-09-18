@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
 	applyChatProjectionUpdate,
+	applyTranscriptUpsertBatch,
 	chatFailureMessage,
+	mergeTranscriptUpserts,
 	type ChatRuntimeState,
 } from "../src/hooks/use-chat";
 import type { DesktopAgentProjectionUpdate } from "../src/lib/desktop-agent";
@@ -135,6 +137,43 @@ describe("useChat projection", () => {
 		expect(next.messages[0]).toBe(history);
 		expect(next.messages[1]).toMatchObject({ id: "message-2", text: "partial response" });
 		expect(next.messages[1]).not.toBe(streaming);
+	});
+
+	test("UI flush 合并同一帧的同 ID 增量，并保留最新 seq", () => {
+		const first: DesktopTranscriptItem = {
+			kind: "message",
+			id: "message:assistant",
+			role: "assistant",
+			text: "first",
+			status: "streaming",
+			timestamp: 2,
+		};
+		const second = { ...first, text: "second" };
+		const other: DesktopTranscriptItem = {
+			kind: "message",
+			id: "message:other",
+			role: "assistant",
+			text: "other",
+			status: "streaming",
+			timestamp: 3,
+		};
+		const updates = mergeTranscriptUpserts([
+			{ seq: 2, item: first },
+			{ seq: 3, item: second },
+			{ seq: 4, item: other },
+		]);
+
+		expect(updates).toEqual([
+			{ seq: 3, item: second },
+			{ seq: 4, item: other },
+		]);
+		const next = applyTranscriptUpsertBatch(emptyChatState(), [
+			{ seq: 2, item: first },
+			{ seq: 3, item: second },
+			{ seq: 4, item: other },
+		]);
+		expect(next.lastSeq).toBe(4);
+		expect(next.messages).toEqual([second, other]);
 	});
 
 	test("移除瞬态 transcript 项", () => {

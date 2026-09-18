@@ -1,6 +1,18 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "cn";
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+	forwardRef,
+	memo,
+	type ReactNode,
+	type RefObject,
+	useEffect,
+	useImperativeHandle,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import { type IntlShape, useIntl } from "react-intl";
+import { ThinkingOrb } from "thinking-orbs";
 import { desktopMessages } from "@/i18n/messages";
 import { filesForAttachments } from "@/lib/attachment-files";
 import { type IconName, useIcon } from "@/lib/icon-context";
@@ -21,9 +33,16 @@ import { SubagentAvatar } from "../subagent-avatar";
 
 type WorkItem = DesktopThinkingItem | DesktopNarrationItem | DesktopToolItem | DesktopSubagentItem;
 
-interface WorkGroup {
+export interface WorkGroup {
 	readonly id: string;
 	readonly items: readonly WorkItem[];
+}
+
+export type TranscriptRow = DesktopTranscriptItem | WorkGroup;
+
+export interface TranscriptVirtualListHandle {
+	getItemIndex(itemId: string): number;
+	scrollToItem(itemId: string): boolean;
 }
 
 interface WorkTimelineCluster {
@@ -62,32 +81,144 @@ export function TranscriptItems({
 }) {
 	const animatedItemIds = useTranscriptItemAnimations(items, loading);
 	const rows = groupTranscriptItems(items);
+	const renderOptions = {
+		animatedItemIds,
+		items,
+		responding,
+		openWorkGroups,
+		workGroupKeyPrefix,
+		navigationDisabled,
+		onNavigate,
+		onOpenSubagent,
+	};
 
-	return rows.map((row) =>
-		"kind" in row ? (
-			<MemoizedTranscriptItem
-				key={row.id}
-				animate={animatedItemIds.has(row.id)}
-				item={row}
-				navigationDisabled={navigationDisabled}
-				onNavigate={onNavigate}
-			/>
-		) : (
-			<MemoizedWorkProcess
-				key={row.id}
-				group={row}
-				items={items}
-				responding={responding}
-				openWorkGroups={openWorkGroups}
-				openStateKey={workGroupKeyPrefix ? `${workGroupKeyPrefix}:${row.id}` : undefined}
-				onOpenSubagent={onOpenSubagent}
-			/>
-		),
-	);
+	return rows.map((row) => renderTranscriptRow(row, renderOptions));
 }
 
-export function groupTranscriptItems(items: readonly DesktopTranscriptItem[]): (DesktopTranscriptItem | WorkGroup)[] {
-	const rows: (DesktopTranscriptItem | WorkGroup)[] = [];
+export const TranscriptVirtualList = forwardRef<
+	TranscriptVirtualListHandle,
+	{
+		readonly items: readonly DesktopTranscriptItem[];
+		readonly loading: boolean;
+		readonly responding?: boolean;
+		readonly openWorkGroups?: Set<string>;
+		readonly workGroupKeyPrefix?: string;
+		readonly navigationDisabled?: boolean;
+		readonly onNavigate?: (entryId: string) => Promise<boolean>;
+		readonly onOpenSubagent?: (item: DesktopSubagentItem) => void;
+		readonly scrollRef: RefObject<HTMLDivElement | null>;
+		readonly tailSpace: number;
+		readonly emptyState?: ReactNode;
+	}
+>(
+	(
+		{
+			items,
+			loading,
+			responding = false,
+			openWorkGroups,
+			workGroupKeyPrefix,
+			navigationDisabled = false,
+			onNavigate,
+			onOpenSubagent,
+			scrollRef,
+			tailSpace,
+			emptyState,
+		},
+		ref,
+	) => {
+		const intl = useIntl();
+		const animatedItemIds = useTranscriptItemAnimations(items, loading);
+		const rows = groupTranscriptItems(items);
+		const footerCount = Number(responding) + Number(tailSpace > 0);
+		const count = rows.length + footerCount;
+		const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
+			count,
+			getScrollElement: () => scrollRef.current,
+			estimateSize: (index) => estimateTranscriptVirtualItemSize(index, rows.length, responding, tailSpace),
+			getItemKey: (index) => transcriptVirtualItemKey(index, rows, responding),
+			gap: 8,
+			overscan: 5,
+		});
+		useImperativeHandle(
+			ref,
+			() => ({
+				getItemIndex: (itemId) => rows.findIndex((row) => transcriptRowContainsItem(row, itemId)),
+				scrollToItem: (itemId) => {
+					const index = rows.findIndex((row) => transcriptRowContainsItem(row, itemId));
+					if (index < 0) return false;
+					virtualizer.scrollToIndex(index, { align: "start" });
+					return true;
+				},
+			}),
+			[rows, virtualizer],
+		);
+		const virtualItems = virtualizer.getVirtualItems();
+		const renderOptions = {
+			animatedItemIds,
+			items,
+			responding,
+			openWorkGroups,
+			workGroupKeyPrefix,
+			navigationDisabled,
+			onNavigate,
+			onOpenSubagent,
+		};
+		const hasEmptyState = rows.length === 0 && !responding && tailSpace <= 0 && emptyState !== undefined;
+		const contentHeight = Math.max(virtualizer.getTotalSize() + 32, hasEmptyState ? 160 : 32);
+
+		return (
+			<div className="px-5">
+				<div className="relative mx-auto w-full max-w-[896px]" style={{ height: contentHeight }}>
+					{hasEmptyState ? (
+						<div className="py-16 text-center text-[13px] text-muted-foreground">{emptyState}</div>
+					) : null}
+					{virtualItems.map((virtualItem) => {
+						const row = rows[virtualItem.index];
+						const isWorkingFooter = virtualItem.index === rows.length && responding;
+						const isTailFooter = virtualItem.index === rows.length + Number(responding);
+						const rowStyle = {
+							position: "absolute" as const,
+							top: 0,
+							left: 0,
+							width: "100%",
+							transform: `translateY(${virtualItem.start + 16}px)`,
+						};
+						const tailStyle = { height: tailSpace };
+						const footerContent = isWorkingFooter ? (
+							<div className="flex items-center gap-2 px-1 py-1 text-muted-foreground" role="status">
+								<ThinkingOrb aria-hidden size={64} state="solving" style={{ width: 28, height: 28 }} />
+								<span className="shimmer-text text-[12px] font-medium">
+									{intl.formatMessage(desktopMessages.chatAgentWorking)}
+								</span>
+							</div>
+						) : isTailFooter ? (
+							<div aria-hidden="true" className="shrink-0" style={tailStyle} />
+						) : null;
+						const content = row ? renderTranscriptRow(row, renderOptions) : footerContent;
+
+						return (
+							<div
+								key={virtualItem.key}
+								ref={virtualizer.measureElement}
+								data-index={virtualItem.index}
+								className="absolute right-0 left-0"
+								style={rowStyle}
+							>
+								{content}
+							</div>
+						);
+					})}
+				</div>
+			</div>
+		);
+	},
+);
+
+TranscriptVirtualList.displayName = "TranscriptVirtualList";
+
+export function groupTranscriptItems(items: readonly DesktopTranscriptItem[]): TranscriptRow[] {
+	const rows: TranscriptRow[] = [];
 	const pendingCompactions: DesktopTranscriptItem[] = [];
 
 	for (const item of items) {
@@ -118,6 +249,66 @@ export function groupTranscriptItems(items: readonly DesktopTranscriptItem[]): (
 	const previous = rows.at(-1);
 	if (!previous || "kind" in previous) rows.push(...pendingCompactions);
 	return rows;
+}
+
+function renderTranscriptRow(
+	row: TranscriptRow,
+	options: {
+		readonly animatedItemIds: ReadonlySet<string>;
+		readonly items: readonly DesktopTranscriptItem[];
+		readonly responding: boolean;
+		readonly openWorkGroups?: Set<string>;
+		readonly workGroupKeyPrefix?: string;
+		readonly navigationDisabled: boolean;
+		readonly onNavigate?: (entryId: string) => Promise<boolean>;
+		readonly onOpenSubagent?: (item: DesktopSubagentItem) => void;
+	},
+): ReactNode {
+	if ("kind" in row) {
+		return (
+			<MemoizedTranscriptItem
+				key={row.id}
+				animate={options.animatedItemIds.has(row.id)}
+				item={row}
+				navigationDisabled={options.navigationDisabled}
+				onNavigate={options.onNavigate}
+			/>
+		);
+	}
+
+	return (
+		<MemoizedWorkProcess
+			key={row.id}
+			group={row}
+			items={options.items}
+			responding={options.responding}
+			openWorkGroups={options.openWorkGroups}
+			openStateKey={options.workGroupKeyPrefix ? `${options.workGroupKeyPrefix}:${row.id}` : undefined}
+			onOpenSubagent={options.onOpenSubagent}
+		/>
+	);
+}
+
+function estimateTranscriptVirtualItemSize(
+	index: number,
+	rowCount: number,
+	responding: boolean,
+	tailSpace: number,
+): number {
+	if (index < rowCount) return 96;
+	if (responding && index === rowCount) return 40;
+	return Math.max(1, tailSpace);
+}
+
+function transcriptVirtualItemKey(index: number, rows: readonly TranscriptRow[], responding: boolean): string {
+	if (index < rows.length) return rows[index]!.id;
+	if (responding && index === rows.length) return "agent-working";
+	return "tail-space";
+}
+
+function transcriptRowContainsItem(row: TranscriptRow, itemId: string): boolean {
+	if (row.id === itemId) return true;
+	return !("kind" in row) && row.items.at(-1)?.id === itemId;
 }
 
 export function TranscriptItem({

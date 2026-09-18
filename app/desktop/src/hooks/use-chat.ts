@@ -92,13 +92,46 @@ export function useChat(options: UseChatOptions): Chat {
 	const stateRef = useRef(state);
 	const dispatchingQueueIdRef = useRef<string | undefined>(undefined);
 	const previousAgentStatusRef = useRef<DesktopAgentStatus>("idle");
+	const pendingTranscriptRef = useRef(new Map<string, PendingTranscriptUpsert>());
+	const transcriptFlushFrameRef = useRef<number | undefined>(undefined);
 	latestOptions.current = options;
 	stateRef.current = state;
+
+	const flushPendingTranscript = useCallback(() => {
+		const pending = pendingTranscriptRef.current;
+		if (pending.size === 0) return;
+		pendingTranscriptRef.current = new Map();
+		if (transcriptFlushFrameRef.current !== undefined) {
+			cancelScheduledTranscriptFlush(transcriptFlushFrameRef.current);
+			transcriptFlushFrameRef.current = undefined;
+		}
+		setState((current) => applyTranscriptUpsertBatch(current, [...pending.values()]));
+	}, []);
+	const queueTranscriptUpsert = useCallback(
+		(update: PendingTranscriptUpsert) => {
+			pendingTranscriptRef.current.set(update.item.id, update);
+			if (isCompletedAssistantMessage(update.item)) {
+				flushPendingTranscript();
+				return;
+			}
+			if (transcriptFlushFrameRef.current !== undefined) return;
+			transcriptFlushFrameRef.current = scheduleTranscriptFlush(() => {
+				transcriptFlushFrameRef.current = undefined;
+				flushPendingTranscript();
+			});
+		},
+		[flushPendingTranscript],
+	);
 
 	useEffect(() => {
 		const sessionId = options.id;
 		dispatchingQueueIdRef.current = undefined;
 		previousAgentStatusRef.current = "idle";
+		pendingTranscriptRef.current.clear();
+		if (transcriptFlushFrameRef.current !== undefined) {
+			cancelScheduledTranscriptFlush(transcriptFlushFrameRef.current);
+			transcriptFlushFrameRef.current = undefined;
+		}
 
 		if (!sessionId) {
 			setState(EMPTY_STATE);
@@ -123,6 +156,14 @@ export function useChat(options: UseChatOptions): Chat {
 		);
 		dispatcher ??= createDesktopAgentEventDispatcher();
 		const unsubscribe = dispatcher.subscribe(sessionId, (update) => {
+			if (update.type === "event" && update.envelope.event.type === "transcript_upsert") {
+				queueTranscriptUpsert({
+					seq: update.envelope.seq,
+					item: update.envelope.event.item,
+				});
+				return;
+			}
+			flushPendingTranscript();
 			setState((current) => applyChatProjectionUpdate(current, update));
 		});
 		void dispatcher.refresh(sessionId).catch((error) => {
@@ -137,8 +178,15 @@ export function useChat(options: UseChatOptions): Chat {
 						},
 			);
 		});
-		return unsubscribe;
-	}, [options.id]);
+		return () => {
+			unsubscribe();
+			pendingTranscriptRef.current.clear();
+			if (transcriptFlushFrameRef.current !== undefined) {
+				cancelScheduledTranscriptFlush(transcriptFlushFrameRef.current);
+				transcriptFlushFrameRef.current = undefined;
+			}
+		};
+	}, [flushPendingTranscript, options.id, queueTranscriptUpsert]);
 
 	const dispatchQueueHead = useCallback(async () => {
 		const current = stateRef.current;
@@ -354,6 +402,34 @@ export function applyChatProjectionUpdate(
 	return applyAgentEvent(state, update.envelope.seq, update.envelope.event);
 }
 
+interface PendingTranscriptUpsert {
+	readonly seq: number;
+	readonly item: DesktopTranscriptItem;
+}
+
+export function applyTranscriptUpsertBatch(
+	state: ChatRuntimeState,
+	updates: readonly PendingTranscriptUpsert[],
+): ChatRuntimeState {
+	const merged = mergeTranscriptUpserts(updates);
+	if (merged.length === 0) return state;
+	let messages = state.messages;
+	let lastSeq = state.lastSeq;
+	for (const update of merged) {
+		messages = upsertMessage(messages, update.item);
+		lastSeq = Math.max(lastSeq, update.seq);
+	}
+	return { ...state, isLoading: false, lastSeq, messages };
+}
+
+export function mergeTranscriptUpserts(
+	updates: readonly PendingTranscriptUpsert[],
+): readonly PendingTranscriptUpsert[] {
+	const latest = new Map<string, PendingTranscriptUpsert>();
+	for (const update of updates) latest.set(update.item.id, update);
+	return [...latest.values()];
+}
+
 function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAgentEvent): ChatRuntimeState {
 	switch (event.type) {
 		case "status":
@@ -372,12 +448,7 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 		case "subagent_transcript_changed":
 			return { ...state, lastSeq: seq };
 		case "transcript_upsert":
-			return {
-				...state,
-				isLoading: false,
-				lastSeq: seq,
-				messages: upsertMessage(state.messages, event.item),
-			};
+			return applyTranscriptUpsertBatch(state, [{ seq, item: event.item }]);
 		case "transcript_remove":
 			return {
 				...state,
@@ -403,6 +474,25 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 				submitting: false,
 			};
 	}
+}
+
+function isCompletedAssistantMessage(item: DesktopTranscriptItem): boolean {
+	return item.kind === "message" && item.role === "assistant" && item.status === "complete";
+}
+
+function scheduleTranscriptFlush(callback: () => void): number {
+	if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+		return window.requestAnimationFrame(callback);
+	}
+	return setTimeout(callback, 16) as unknown as number;
+}
+
+function cancelScheduledTranscriptFlush(handle: number): void {
+	if (typeof window !== "undefined" && typeof window.cancelAnimationFrame === "function") {
+		window.cancelAnimationFrame(handle);
+		return;
+	}
+	clearTimeout(handle);
 }
 
 export function chatFailureMessage(input: {

@@ -56,11 +56,13 @@ describe("transcript grouping", () => {
 			startedAt: 0,
 			completedAt: 61_000,
 			summary: "chat-transcript.tsx",
+			details: "command output",
 		};
 
 		const markup = renderToStaticMarkup(createElement(TranscriptItem, { item: tool }));
 		expect(markup).toContain('data-slot="tool-timeline"');
 		expect(markup).toContain("Worked for 1m");
+		expect(markup).not.toContain("command output");
 	});
 
 	test("子代理和同一轮的工具合并进同一个 ToolTimeline，每个子代理独占一行", () => {
@@ -140,7 +142,9 @@ describe("transcript grouping", () => {
 			],
 		};
 
-		const markup = renderToStaticMarkup(createElement(TranscriptItem, { item: tool }));
+		const markup = renderToStaticMarkup(
+			createElement(TranscriptItems, { items: [tool], loading: false, responding: true }),
+		);
 		expect(markup).toContain('data-slot="web-search-results"');
 		expect(markup).toContain("Search web for release notes");
 		expect(markup).not.toContain("Jai release notes");
@@ -198,6 +202,33 @@ describe("transcript grouping", () => {
 		);
 		expect(markup).toContain("Worked for 1m");
 		expect((markup.match(/data-slot=\"tool-timeline\"/g) ?? []).length).toBe(1);
+	});
+
+	test("工作过程追加条目时保留首个 row identity", () => {
+		const firstTool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:read-1",
+			turnId: "operation-1",
+			activityId: "tool:read-1",
+			toolCallId: "read-1",
+			toolName: "Read",
+			activityKind: "read",
+			status: "complete",
+		};
+		const nextTool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			...firstTool,
+			id: "tool:search-1",
+			activityId: "tool:search-1",
+			toolCallId: "search-1",
+			toolName: "Grep",
+			activityKind: "search",
+		};
+
+		const initialRows = groupTranscriptItems([firstTool]);
+		const updatedRows = groupTranscriptItems([firstTool, nextTool]);
+
+		expect(updatedRows[0]?.id).toBe(initialRows[0]?.id);
+		expect(updatedRows[0]).toMatchObject({ items: [firstTool, nextTool] });
 	});
 
 	test("已完成的工具显示从开始到结束的工作时长", () => {
