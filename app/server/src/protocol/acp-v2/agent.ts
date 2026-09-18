@@ -1088,7 +1088,7 @@ function projectSlashInvocation(value: unknown): AcpSlashInvocation | undefined 
 function stateUpdate(
 	sessionId: string,
 	state: "running" | "requires_action" | "idle",
-	stopReason?: "end_turn" | "cancelled" | "error",
+	stopReason?: RuntimeSessionSnapshot["stopReason"],
 	errorMessage?: string,
 ): AcpJsonRpcNotification {
 	return {

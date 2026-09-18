@@ -29,6 +29,7 @@ export interface LocalAcpV2Client {
 	subscribe(listener: (notification: AcpJsonRpcNotification) => void): () => void;
 	/** Receives a Server-initiated ACP request; the caller returns its response with `respond`. */
 	subscribeRequest(listener: (request: AcpJsonRpcRequest) => void): () => void;
+	subscribeDisconnect(listener: (error: AcpLocalClientDisconnected) => void): () => void;
 	respond(response: AcpJsonRpcResponse): ResultType<void, AcpLocalClientDisconnected>;
 	close(): Promise<void>;
 }
@@ -56,6 +57,7 @@ export async function openLocalAcpV2Client(
 class NodeLocalAcpV2Client implements LocalAcpV2Client {
 	readonly #listeners = new Set<(notification: AcpJsonRpcNotification) => void>();
 	readonly #requestListeners = new Set<(request: AcpJsonRpcRequest) => void>();
+	readonly #disconnectListeners = new Set<(error: AcpLocalClientDisconnected) => void>();
 	readonly #pending = new Map<number, (result: ResultType<unknown, AcpLocalClientError>) => void>();
 	#nextRequestId = 1;
 	#closed = false;
@@ -114,6 +116,13 @@ class NodeLocalAcpV2Client implements LocalAcpV2Client {
 	subscribeRequest(listener: (request: AcpJsonRpcRequest) => void): () => void {
 		this.#requestListeners.add(listener);
 		return () => this.#requestListeners.delete(listener);
+	}
+
+	subscribeDisconnect(listener: (error: AcpLocalClientDisconnected) => void): () => void {
+		this.#disconnectListeners.add(listener);
+		const disconnected = this.#disconnect;
+		if (disconnected) queueMicrotask(() => listener(disconnected));
+		return () => this.#disconnectListeners.delete(listener);
 	}
 
 	respond(response: AcpJsonRpcResponse): ResultType<void, AcpLocalClientDisconnected> {
@@ -213,6 +222,13 @@ class NodeLocalAcpV2Client implements LocalAcpV2Client {
 			...(cause === undefined ? {} : { cause }),
 		});
 		this.#disconnect = failure;
+		for (const listener of [...this.#disconnectListeners]) {
+			try {
+				listener(failure);
+			} catch {
+				// Disconnect observers cannot change request cleanup semantics.
+			}
+		}
 		for (const resolve of this.#pending.values()) {
 			resolve(Result.err(failure));
 		}

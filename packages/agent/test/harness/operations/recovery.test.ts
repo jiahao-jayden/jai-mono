@@ -51,7 +51,10 @@ const queuedInput = (operationId = "op-1"): OperationRecord => ({
 	timestamp: "2026-08-25T00:00:03.000Z",
 });
 
-const finished = (operationId = "op-1", outcome: "completed" | "failed" | "aborted" | "blocked" = "completed"): OperationRecord => ({
+const finished = (
+	operationId = "op-1",
+	outcome: "completed" | "failed" | "aborted" | "blocked" | "interrupted" = "completed",
+): OperationRecord => ({
 	type: "operation_finished",
 	operationId,
 	outcome,
@@ -61,7 +64,10 @@ const finished = (operationId = "op-1", outcome: "completed" | "failed" | "abort
 function recover(
 	records: readonly OperationRecord[],
 	entryIds: readonly string[],
-	terminalOutcomeByAssistantEntryId: ReadonlyMap<string, "completed" | "failed" | "aborted" | "blocked"> = new Map(),
+	terminalOutcomeByAssistantEntryId: ReadonlyMap<
+		string,
+		"completed" | "failed" | "aborted" | "blocked" | "interrupted"
+	> = new Map(),
 ) {
 	return recoverOperation(records, { sessionEntryIds: new Set(entryIds), terminalOutcomeByAssistantEntryId });
 }
@@ -158,6 +164,19 @@ describe("recoverOperation", () => {
 			status: "terminal",
 			operationId: "op-1",
 			outcome: "completed",
+			finalization: "durable",
+		});
+	});
+
+	test("an interrupted operation may terminate with an unconsumed queued input", () => {
+		const result = recover([accepted(), queuedInput(), finished("op-1", "interrupted")], ["entry-user-1"]);
+
+		expect(result.isOk()).toBe(true);
+		if (result.isErr()) throw result.error;
+		expect(result.value).toEqual({
+			status: "terminal",
+			operationId: "op-1",
+			outcome: "interrupted",
 			finalization: "durable",
 		});
 	});

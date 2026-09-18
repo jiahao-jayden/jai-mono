@@ -818,7 +818,7 @@ function isOperationRecord(value: unknown): value is OperationRecord {
 				typeof value.text === "string"
 			);
 		case "operation_finished":
-			return typeof value.outcome === "string";
+			return isOperationTerminalOutcome(value.outcome);
 		default:
 			return false;
 	}
@@ -826,6 +826,16 @@ function isOperationRecord(value: unknown): value is OperationRecord {
 
 function isJsonObject(value: unknown): value is JsonObject {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isOperationTerminalOutcome(value: unknown): value is import("@jai/agent").OperationTerminalOutcome {
+	return (
+		value === "completed" ||
+		value === "failed" ||
+		value === "aborted" ||
+		value === "blocked" ||
+		value === "interrupted"
+	);
 }
 
 function isRuntimeSessionConfiguration(value: unknown): value is RuntimeSessionConfiguration {

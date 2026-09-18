@@ -7,6 +7,7 @@ import {
 	type OperationFinished,
 	type OperationRecord,
 	type OperationRecoveryVerdict,
+	type OperationTerminalOutcome,
 	openSession,
 	recoverSessionOperations,
 	type SessionEntry,
@@ -83,7 +84,7 @@ export interface RuntimeCancelOutcome {
 }
 
 export type RuntimeForegroundState = "running" | "requires_action" | "idle";
-export type RuntimeStopReason = "end_turn" | "cancelled" | "error";
+export type RuntimeStopReason = "end_turn" | "cancelled" | "error" | "interrupted";
 
 /** A volatile, one-way projection emitted only after its durable cause is committed. */
 export type RuntimeSessionEvent =
@@ -299,7 +300,7 @@ export class RuntimeHost {
 				this.releaseController(input.id, input.controllerId);
 				return Result.err(recovery.error);
 			}
-			const finalized = await this.finalizeInferredTerminals(found.value, recovery.value);
+			const finalized = await this.finalizeRecoveredOperations(found.value, recovery.value);
 			if (finalized.isErr()) {
 				this.releaseController(input.id, input.controllerId);
 				return finalized;
@@ -443,12 +444,8 @@ export class RuntimeHost {
 		}
 	}
 
-	/**
-	 * A final assistant entry is sufficient to stop execution, but the Host still
-	 * records the derived outcome so future recovery reads one explicit terminal
-	 * fact. This repair runs before a recovered driver can be opened.
-	 */
-	private async finalizeInferredTerminals(
+	/** Commits every terminal fact a fresh Host can safely derive before opening a driver. */
+	private async finalizeRecoveredOperations(
 		state: ProductSessionDurableState,
 		verdicts: readonly OperationRecoveryVerdict[],
 	): Promise<
@@ -460,19 +457,26 @@ export class RuntimeHost {
 			RuntimeHostOpenError
 		>
 	> {
-		const inferred = verdicts.filter(
-			(verdict): verdict is Extract<OperationRecoveryVerdict, { readonly status: "terminal" }> =>
-				verdict.status === "terminal" && verdict.finalization === "inferred",
+		const finalizations = verdicts.flatMap(
+			(verdict): { readonly operationId: string; readonly outcome: OperationTerminalOutcome }[] => {
+				if (verdict.status === "terminal" && verdict.finalization === "inferred") {
+					return [{ operationId: verdict.operationId, outcome: verdict.outcome }];
+				}
+				if (verdict.status === "ready" || verdict.status === "provider_interrupted") {
+					return [{ operationId: verdict.operationId, outcome: "interrupted" }];
+				}
+				return [];
+			},
 		);
-		if (inferred.length === 0) return Result.ok({ state, verdicts });
+		if (finalizations.length === 0) return Result.ok({ state, verdicts });
 
-		for (const verdict of inferred) {
+		for (const finalization of finalizations) {
 			const appended = await this.options.persistence.appendOperation({
 				sessionId: state.id,
 				record: {
 					type: "operation_finished",
-					operationId: verdict.operationId,
-					outcome: verdict.outcome,
+					operationId: finalization.operationId,
+					outcome: finalization.outcome,
 					timestamp: this.#now().toISOString(),
 				},
 			});
@@ -658,9 +662,8 @@ export class RuntimeSession {
 		return admitted;
 	}
 
-	/** Starts exactly one recovered provider-safe operation; indeterminate tools are deliberately parked. */
+	/** Parks the only non-terminal state allowed to survive fresh-Host finalization. */
 	resume(verdicts: readonly OperationRecoveryVerdict[]): Result<void, RuntimeHostRecoveryCorrupted> {
-		if (!this.operationDriver) return Result.ok(undefined);
 		const active = verdicts.filter((verdict) => verdict.status !== "terminal");
 		if (active.length === 0) return Result.ok(undefined);
 		if (active.length > 1) {
@@ -680,9 +683,12 @@ export class RuntimeSession {
 			});
 			return Result.ok(undefined);
 		}
-		this.#active = createActiveOperation(verdict.operationId, queuedInputsFor(verdict));
-		this.startOperation(verdict.operationId);
-		return Result.ok(undefined);
+		return Result.err(
+			new RuntimeHostRecoveryCorrupted({
+				message: `Session "${this.id}" retained a recoverable Operation after fresh-Host finalization`,
+				sessionId: this.id,
+			}),
+		);
 	}
 
 	async recovery(): Promise<Result<readonly OperationRecoveryVerdict[], RuntimeHostRecoveryError>> {
@@ -1129,7 +1135,7 @@ export class RuntimeSession {
 					),
 					`${this.id}:${toolCallId}`,
 					this.#initialAppState(),
-			),
+				),
 			capabilityNotice: this.#capabilityNotice,
 		});
 		if (opened.isErr()) {
@@ -1239,7 +1245,10 @@ export class RuntimeSession {
 				return outcome;
 			}
 			const inferredTerminalOutcome =
-				verdict?.status === "terminal" && verdict.finalization === "inferred" && verdict.outcome !== "blocked"
+				verdict?.status === "terminal" &&
+				verdict.finalization === "inferred" &&
+				verdict.outcome !== "blocked" &&
+				verdict.outcome !== "interrupted"
 					? verdict.outcome
 					: undefined;
 			const terminalOutcome = inferredTerminalOutcome ?? (outcome.isOk() ? outcome.value : "failed");
@@ -1327,7 +1336,8 @@ export class RuntimeSession {
 			return { state: "running" };
 		}
 		const terminal = [...state.operationRecords].reverse().find((record) => record.type === "operation_finished");
-		return terminal ? { state: "idle", stopReason: stopReasonFor(terminal.outcome) } : { state: "idle" };
+		if (!terminal) return { state: "idle" };
+		return { state: "idle", stopReason: stopReasonFor(terminal.outcome) };
 	}
 
 	private publish(event: RuntimeSessionEvent): void {
@@ -1464,12 +1474,14 @@ function createActiveOperation(
 	};
 }
 
-function stopReasonFor(outcome: RuntimeOperationOutcome | "blocked"): RuntimeStopReason {
+function stopReasonFor(outcome: OperationTerminalOutcome): RuntimeStopReason {
 	switch (outcome) {
 		case "completed":
 			return "end_turn";
 		case "aborted":
 			return "cancelled";
+		case "interrupted":
+			return "interrupted";
 		case "failed":
 		case "blocked":
 			return "error";
@@ -1485,16 +1497,6 @@ function usageCost(records: readonly import("@jai/agent").OperationRecord[]): nu
 
 function finiteCost(value: number): number {
 	return Number.isFinite(value) ? value : 0;
-}
-
-function queuedInputsFor(verdict: OperationRecoveryVerdict): readonly RuntimeQueuedInput[] {
-	if (verdict.status !== "ready" && verdict.status !== "provider_interrupted") return [];
-	return (verdict.pendingInputs ?? []).map((input) => ({
-		inputId: input.inputId,
-		delivery: input.delivery,
-		entryId: input.inputEntryId,
-		text: input.text,
-	}));
 }
 
 function hasPendingInputs(verdict: OperationRecoveryVerdict | undefined): boolean {

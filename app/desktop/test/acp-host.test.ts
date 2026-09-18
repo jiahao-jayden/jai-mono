@@ -8,6 +8,7 @@ import type {
 	LocalAcpV2Client,
 } from "@jai/server/acp-client";
 import { DesktopAcpAgentHost } from "../electron/agent/acp-host";
+import type { DesktopRuntimeHostSupervisor } from "../electron/runtime-host/supervisor";
 import type { DesktopAgentEventEnvelope, DesktopToolItem } from "../shared/desktop-rpc";
 
 describe("DesktopAcpAgentHost", () => {
@@ -940,6 +941,67 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
+	test("projects an interrupted Runtime Host operation as a Desktop recovery state", async () => {
+		const client = new FakeAcpClient();
+		const events: DesktopAgentEventEnvelope[] = [];
+		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "state_update",
+					state: "idle",
+					stopReason: "interrupted",
+				},
+			},
+		});
+
+		expect(events.at(-1)).toMatchObject({
+			sessionId: "session-1",
+			event: { type: "status", status: "idle", stopReason: "interrupted" },
+		});
+		expect(events.filter((event) => event.event.type === "runtime_error")).toHaveLength(0);
+		host.close();
+	});
+
+	test("reconnects the ACP client and replays the current Session after a socket disconnect", async () => {
+		const first = new FakeAcpClient();
+		const second = new FakeAcpClient();
+		const supervisor = {
+			connect: async () => Result.ok(second),
+		} as unknown as DesktopRuntimeHostSupervisor;
+		const events: DesktopAgentEventEnvelope[] = [];
+		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
+			client: first,
+			runtimeHostSupervisor: supervisor,
+			resolveSessionCwd: async () => "/workspace",
+		});
+
+		await host.ensureSessionProjection("session-1");
+		first.disconnect();
+		await waitFor(() => second.methods.includes("session/resume"));
+		expect(events).toContainEqual(
+			expect.objectContaining({
+				sessionId: "session-1",
+				event: { type: "connection_status", status: "reconnecting" },
+			}),
+		);
+		expect(events.at(-1)).toMatchObject({
+			sessionId: "session-1",
+			event: { type: "connection_status" },
+		});
+		expect(events.at(-1)?.event).not.toHaveProperty("status");
+
+		expect(second.methods).toEqual(["initialize", "session/resume"]);
+		host.close();
+	});
+
 });
 
 class FakeAcpClient implements LocalAcpV2Client {
@@ -949,6 +1011,7 @@ class FakeAcpClient implements LocalAcpV2Client {
 	readonly responses: AcpJsonRpcResponse[] = [];
 	readonly #listeners = new Set<(notification: AcpJsonRpcNotification) => void>();
 	readonly #requests = new Set<(request: AcpJsonRpcRequest) => void>();
+	readonly #disconnectListeners = new Set<(error: AcpLocalClientError) => void>();
 	resumeError?: string;
 	resumeSucceeds = true;
 	subagentTranscript?: { readonly items: readonly unknown[] };
@@ -987,12 +1050,21 @@ class FakeAcpClient implements LocalAcpV2Client {
 		return () => this.#requests.delete(listener);
 	}
 
+	subscribeDisconnect(listener: (error: AcpLocalClientError) => void): () => void {
+		this.#disconnectListeners.add(listener);
+		return () => this.#disconnectListeners.delete(listener);
+	}
+
 	respond(response: AcpJsonRpcResponse): ResultType<void, AcpLocalClientError> {
 		this.responses.push(response);
 		return Result.ok(undefined);
 	}
 
 	async close(): Promise<void> {}
+
+	disconnect(): void {
+		for (const listener of this.#disconnectListeners) listener({ message: "disconnected" } as AcpLocalClientError);
+	}
 
 	publish(notification: AcpJsonRpcNotification): void {
 		for (const listener of this.#listeners) listener(notification);
@@ -1001,4 +1073,12 @@ class FakeAcpClient implements LocalAcpV2Client {
 	requestFromHost(request: AcpJsonRpcRequest): void {
 		for (const listener of this.#requests) listener(request);
 	}
+}
+
+async function waitFor(condition: () => boolean): Promise<void> {
+	for (let attempt = 0; attempt < 50; attempt += 1) {
+		if (condition()) return;
+		await new Promise((resolve) => setTimeout(resolve, 2));
+	}
+	throw new Error("Timed out waiting for ACP reconnect");
 }

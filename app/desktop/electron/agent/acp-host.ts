@@ -1,9 +1,9 @@
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AcpJsonRpcNotification, AcpJsonRpcRequest, LocalAcpV2Client } from "@jai/server/acp-client";
-import { connectJaiRuntimeHost } from "@jai/server/acp-client";
 import { Result, TaggedError } from "better-result";
 import type {
+	DesktopAgentConnectionStatus,
 	DesktopAgentEvent,
 	DesktopAgentEventEnvelope,
 	DesktopAgentMessageInput,
@@ -11,6 +11,7 @@ import type {
 	DesktopAgentNavigateInput,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
+	DesktopAgentStopReason,
 	DesktopArtifact,
 	DesktopMessageAttachment,
 	DesktopMessageItem,
@@ -28,6 +29,7 @@ import type {
 	DesktopTranscriptItem,
 	DesktopWebSearchResult,
 } from "../../shared/desktop-rpc";
+import type { DesktopRuntimeHostSupervisor } from "../runtime-host/supervisor";
 import { sortArtifacts } from "./artifacts";
 import { desktopAgentError } from "./errors";
 
@@ -68,14 +70,14 @@ interface AcpSessionRuntime {
 	todos?: DesktopTodos;
 	seq: number;
 	closed: boolean;
+	connectionStatus?: DesktopAgentConnectionStatus;
+	stopReason?: DesktopAgentStopReason;
 }
 
 export interface DesktopAcpAgentHostOptions {
-	readonly dataDirectory?: string;
-	readonly endpoint?: string;
-	readonly environment?: Readonly<Record<string, string | undefined>>;
 	readonly resolveSessionCwd: (sessionId: string) => Promise<string | undefined>;
 	readonly client?: LocalAcpV2Client;
+	readonly runtimeHostSupervisor?: DesktopRuntimeHostSupervisor;
 }
 
 export type DesktopAcpAgentEventSink = (envelope: DesktopAgentEventEnvelope) => void;
@@ -93,35 +95,36 @@ export class DesktopAcpAgentHost {
 	readonly #resolveSessionCwd: (sessionId: string) => Promise<string | undefined>;
 	readonly #sessions = new Map<string, AcpSessionRuntime>();
 	readonly #pendingPermissions = new Map<string, PendingPermission>();
-	readonly #client: LocalAcpV2Client;
-	readonly #unsubscribeUpdates: () => void;
-	readonly #unsubscribeRequests: () => void;
+	#client: LocalAcpV2Client;
+	#unsubscribeUpdates: () => void = () => {};
+	#unsubscribeRequests: () => void = () => {};
+	#unsubscribeDisconnect: () => void = () => {};
+	readonly #runtimeHostSupervisor?: DesktopRuntimeHostSupervisor;
+	#reconnectPromise?: Promise<void>;
 	#closed = false;
 
 	private constructor(client: LocalAcpV2Client, emit: DesktopAcpAgentEventSink, options: DesktopAcpAgentHostOptions) {
 		this.#client = client;
 		this.#emit = emit;
 		this.#resolveSessionCwd = options.resolveSessionCwd;
-		this.#unsubscribeUpdates = client.subscribe((notification) => this.#onNotification(notification));
-		this.#unsubscribeRequests = client.subscribeRequest((request) => this.#onRequest(request));
+		this.#runtimeHostSupervisor = options.runtimeHostSupervisor;
+		this.#bindClient(client);
 	}
 
 	static async open(
 		emit: DesktopAcpAgentEventSink,
 		options: DesktopAcpAgentHostOptions,
 	): Promise<DesktopAcpAgentHost> {
-		const runtimeHost = options.client ? undefined : await import("../runtime-host/entrypoint");
-		const runtimeHostEntrypoint = runtimeHost?.resolveDesktopRuntimeHostEntrypoint();
-		const launchRuntimeHost = runtimeHost?.createDesktopRuntimeHostLauncher();
 		const clientResult = options.client
 			? Result.ok(options.client)
-			: await connectJaiRuntimeHost({
-					...(options.dataDirectory === undefined ? {} : { dataDirectory: options.dataDirectory }),
-					...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
-					...(options.environment === undefined ? {} : { environment: options.environment }),
-					...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
-					...(launchRuntimeHost === undefined ? {} : { launchRuntimeHost }),
-				});
+			: options.runtimeHostSupervisor
+				? await options.runtimeHostSupervisor.connect()
+				: undefined;
+		if (!clientResult) {
+			throw new DesktopAcpConnectionFailed({
+				message: "Desktop Agent Host requires an ACP client or Runtime Host Supervisor",
+			});
+		}
 		if (clientResult.isErr()) {
 			throw new DesktopAcpConnectionFailed({
 				message: "Desktop could not connect to the Jai Runtime Host",
@@ -227,6 +230,8 @@ export class DesktopAcpAgentHost {
 		return {
 			sessionId,
 			status: runtime.status,
+			...(runtime.connectionStatus ? { connectionStatus: runtime.connectionStatus } : {}),
+			...(runtime.stopReason ? { stopReason: runtime.stopReason } : {}),
 			items: [...runtime.items.values()].map((item) => structuredClone(item)),
 			...(runtime.todos ? { todos: structuredClone(runtime.todos) } : {}),
 			artifacts: sortArtifacts(runtime.artifacts.values()).map((artifact) => structuredClone(artifact)),
@@ -277,8 +282,7 @@ export class DesktopAcpAgentHost {
 		if (this.#closed) return;
 		this.#closed = true;
 		for (const sessionId of [...this.#sessions.keys()]) this.closeSession(sessionId);
-		this.#unsubscribeUpdates();
-		this.#unsubscribeRequests();
+		this.#unbindClient();
 		for (const pending of this.#pendingPermissions.values())
 			pending.reject(new DesktopAcpConnectionClosed({ message: "ACP connection closed" }));
 		this.#pendingPermissions.clear();
@@ -343,6 +347,10 @@ export class DesktopAcpAgentHost {
 		return { accepted: true };
 	}
 
+	async retryConnection(): Promise<void> {
+		await this.#reconnectClient(true);
+	}
+
 	async #rebuildProjection(runtime: AcpSessionRuntime): Promise<void> {
 		runtime.items.clear();
 		runtime.artifacts.clear();
@@ -384,6 +392,74 @@ export class DesktopAcpAgentHost {
 			return Result.err(new DesktopAcpRequestFailed({ method, message: result.error.message, cause: result.error }));
 		}
 		return Result.ok(result.value);
+	}
+
+	#bindClient(client: LocalAcpV2Client): void {
+		this.#client = client;
+		this.#unsubscribeUpdates = client.subscribe((notification) => this.#onNotification(notification));
+		this.#unsubscribeRequests = client.subscribeRequest((request) => this.#onRequest(request));
+		this.#unsubscribeDisconnect = client.subscribeDisconnect(() => {
+			void this.#reconnectClient();
+		});
+	}
+
+	#unbindClient(): void {
+		this.#unsubscribeUpdates();
+		this.#unsubscribeRequests();
+		this.#unsubscribeDisconnect();
+		this.#unsubscribeUpdates = () => {};
+		this.#unsubscribeRequests = () => {};
+		this.#unsubscribeDisconnect = () => {};
+	}
+
+	async #reconnectClient(resetRestartBudget = false): Promise<void> {
+		if (this.#closed || !this.#runtimeHostSupervisor) return;
+		if (this.#reconnectPromise) {
+			await this.#reconnectPromise;
+			return;
+		}
+		this.#setConnectionForSessions("reconnecting");
+		this.#reconnectPromise = this.#restoreClient(resetRestartBudget).finally(() => {
+			this.#reconnectPromise = undefined;
+		});
+		await this.#reconnectPromise;
+	}
+
+	async #restoreClient(resetRestartBudget: boolean): Promise<void> {
+		for (const runtime of this.#sessions.values()) this.#cancelPendingPermissions(runtime);
+		const connected = await (resetRestartBudget
+			? this.#runtimeHostSupervisor!.retry()
+			: this.#runtimeHostSupervisor!.connect());
+		if (connected.isErr()) {
+			this.#setConnectionForSessions("restart_failed");
+			return;
+		}
+		const initialized = await connected.value.request("initialize", {
+			protocolVersion: 2,
+			capabilities: {},
+			info: { name: "jai-desktop", version: "0.0.0" },
+		});
+		if (initialized.isErr()) {
+			await connected.value.close();
+			this.#setConnectionForSessions("restart_failed");
+			return;
+		}
+		const previous = this.#client;
+		this.#unbindClient();
+		this.#bindClient(connected.value);
+		await previous.close();
+		for (const runtime of this.#sessions.values()) {
+			runtime.configured = false;
+			try {
+				await this.#rebuildProjection(runtime);
+			} catch (error) {
+				this.#emitRuntimeError(
+					runtime,
+					error instanceof Error ? error.message : "Runtime Host session recovery failed",
+				);
+			}
+		}
+		this.#setConnectionForSessions(undefined);
 	}
 
 	#onNotification(notification: AcpJsonRpcNotification): void {
@@ -497,8 +573,13 @@ export class DesktopAcpAgentHost {
 	#stateUpdate(runtime: AcpSessionRuntime, update: Record<string, unknown>): void {
 		const state = update.state;
 		runtime.status = state === "running" || state === "requires_action" ? "running" : "idle";
+		runtime.stopReason = isDesktopAgentStopReason(update.stopReason) ? update.stopReason : undefined;
 		if (runtime.status === "idle") this.#cancelPendingPermissions(runtime);
-		this.#emitEvent(runtime, { type: "status", status: runtime.status });
+		this.#emitEvent(runtime, {
+			type: "status",
+			status: runtime.status,
+			...(runtime.stopReason ? { stopReason: runtime.stopReason } : {}),
+		});
 		if (update.stopReason === "error") {
 			const message =
 				typeof update.errorMessage === "string" && update.errorMessage.trim()
@@ -818,6 +899,16 @@ export class DesktopAcpAgentHost {
 		this.#emitEvent(runtime, { type: "runtime_error", error: { code } });
 	}
 
+	#setConnectionForSessions(status: DesktopAgentConnectionStatus | undefined): void {
+		for (const runtime of this.#sessions.values()) this.#setConnection(runtime, status);
+	}
+
+	#setConnection(runtime: AcpSessionRuntime, status: DesktopAgentConnectionStatus | undefined): void {
+		if (runtime.connectionStatus === status) return;
+		runtime.connectionStatus = status;
+		this.#emitEvent(runtime, { type: "connection_status", ...(status ? { status } : {}) });
+	}
+
 	#emitEvent(runtime: AcpSessionRuntime, event: DesktopAgentEvent): void {
 		if (runtime.closed) return;
 		runtime.seq += 1;
@@ -1034,4 +1125,8 @@ function isWebFetchTool(value: unknown): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isDesktopAgentStopReason(value: unknown): value is DesktopAgentStopReason {
+	return value === "end_turn" || value === "cancelled" || value === "error" || value === "interrupted";
 }

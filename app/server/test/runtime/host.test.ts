@@ -367,6 +367,146 @@ describe("RuntimeHost", () => {
     ).toHaveLength(1);
   });
 
+  test("finalizes a fresh Host's safe unfinished operation as interrupted exactly once", async () => {
+    const persistence = new InMemoryProductSessionPersistence();
+    const firstHost = new RuntimeHost({
+      persistence,
+      createId: ids("session-1", "operation-1"),
+    });
+    const created = await firstHost.openSession({ kind: "new", cwd: "/workspace" });
+    if (created.isErr()) throw created.error;
+    const admitted = await created.value.prompt({ text: "stop after the crash" });
+    if (admitted.isErr()) throw admitted.error;
+    await created.value.close();
+
+    let openedDrivers = 0;
+    const driver: RuntimeOperationDriver = {
+      async openOperation(input) {
+        openedDrivers += 1;
+        return Result.err(
+          new RuntimeOperationOpenFailed({
+            message: "Interrupted recovery must not reopen a driver",
+            sessionId: input.sessionId,
+            operationId: input.operationId,
+          }),
+        );
+      },
+    };
+    const recoveredHost = new RuntimeHost({ persistence, operationDriver: driver });
+    const resumed = await recoveredHost.openSession({ kind: "resume", id: "session-1", cwd: "/workspace" });
+    if (resumed.isErr()) throw resumed.error;
+    expect(openedDrivers).toBe(0);
+    const snapshot = await resumed.value.snapshot();
+    if (snapshot.isErr()) throw snapshot.error;
+    expect(snapshot.value).toMatchObject({
+      state: "idle",
+      stopReason: "interrupted",
+      recovery: [{ status: "terminal", outcome: "interrupted", finalization: "durable" }],
+    });
+
+    await resumed.value.close();
+    const reopened = await recoveredHost.openSession({ kind: "resume", id: "session-1", cwd: "/workspace" });
+    if (reopened.isErr()) throw reopened.error;
+    await reopened.value.close();
+    const durable = await persistence.load("session-1");
+    if (durable.isErr()) throw durable.error;
+    expect(durable.value.operationRecords.filter((record) => record.type === "operation_finished")).toHaveLength(1);
+    expect(durable.value.operationRecords.at(-1)).toMatchObject({
+      type: "operation_finished",
+      outcome: "interrupted",
+    });
+  });
+
+  test("keeps an indeterminate tool out of interrupted recovery and provider execution", async () => {
+    const persistence = new InMemoryProductSessionPersistence();
+    const firstHost = new RuntimeHost({
+      persistence,
+      createId: ids("session-1", "operation-1"),
+    });
+    const created = await firstHost.openSession({ kind: "new", cwd: "/workspace" });
+    if (created.isErr()) throw created.error;
+    const admitted = await created.value.prompt({ text: "run the external tool" });
+    if (admitted.isErr()) throw admitted.error;
+    const attempted = await persistence.appendOperation({
+      sessionId: "session-1",
+      record: {
+        type: "model_attempted",
+        operationId: admitted.value.operationId,
+        attemptId: "attempt-1",
+        assistantEntryId: "assistant-1",
+        modelSnapshotId: "test:model",
+        timestamp: "2026-08-26T00:00:01.000Z",
+      },
+    });
+    if (attempted.isErr()) throw attempted.error;
+    const beforeAssistant = await persistence.load("session-1");
+    if (beforeAssistant.isErr()) throw beforeAssistant.error;
+    const assistant = await persistence.appendEntry({
+      sessionId: "session-1",
+      expectedRevision: beforeAssistant.value.revision,
+      entry: {
+        type: "message",
+        id: "assistant-1",
+        parentId: admitted.value.inputEntryId,
+        timestamp: "2026-08-26T00:00:02.000Z",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "tool dispatched" }],
+          provider: "test",
+          model: "test-model",
+          usage: zeroUsage(),
+          stopReason: "toolUse",
+          timestamp: 0,
+        },
+      },
+    });
+    if (assistant.isErr()) throw assistant.error;
+    const dispatched = await persistence.appendOperation({
+      sessionId: "session-1",
+      record: {
+        type: "tool_dispatched",
+        operationId: admitted.value.operationId,
+        toolCallId: "call-1",
+        toolName: "Write",
+        assistantEntryId: "assistant-1",
+        args: { path: "README.md", content: "changed" },
+        argsHash: "hash-1",
+        resultEntryId: "tool-result-1",
+        timestamp: "2026-08-26T00:00:03.000Z",
+      },
+    });
+    if (dispatched.isErr()) throw dispatched.error;
+    await created.value.close();
+
+    let openedDrivers = 0;
+    const driver: RuntimeOperationDriver = {
+      async openOperation() {
+        openedDrivers += 1;
+        return Result.err(
+          new RuntimeOperationOpenFailed({
+            message: "Indeterminate tool recovery must not reopen a driver",
+            sessionId: "session-1",
+            operationId: "operation-1",
+          }),
+        );
+      },
+    };
+    const recoveredHost = new RuntimeHost({ persistence, operationDriver: driver });
+    const resumed = await recoveredHost.openSession({ kind: "resume", id: "session-1", cwd: "/workspace" });
+    if (resumed.isErr()) throw resumed.error;
+    expect(openedDrivers).toBe(0);
+    const snapshot = await resumed.value.snapshot();
+    if (snapshot.isErr()) throw snapshot.error;
+    expect(snapshot.value).toMatchObject({
+      state: "requires_action",
+      recovery: [{ status: "indeterminate_tool", operationId: "operation-1" }],
+    });
+    await resumed.value.close();
+    const durable = await persistence.load("session-1");
+    if (durable.isErr()) throw durable.error;
+    expect(durable.value.operationRecords.some((record) => record.type === "operation_finished")).toBe(false);
+  });
+
   test("allows only one ephemeral Session Controller at a time", async () => {
     const host = new RuntimeHost({
       persistence: new InMemoryProductSessionPersistence(),

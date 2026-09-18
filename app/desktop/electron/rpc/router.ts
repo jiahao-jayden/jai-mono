@@ -362,6 +362,9 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 					parse(desktopPermissionResolutionSchema, resolution, "Invalid permission resolution"),
 				);
 			},
+			retryConnection() {
+				return rt.agentHost.retryConnection();
+			},
 			async getSnapshot(_event, sessionId) {
 				const parsedSessionId = parse(desktopSessionIdSchema, sessionId, "Invalid session id");
 				const runtimeSnapshot = await rt.agentHost.ensureSessionProjection(parsedSessionId);

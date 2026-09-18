@@ -21,6 +21,7 @@ import { useIcons } from "@/lib/icon-context";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
 	CodingSession,
+	DesktopAgentConnectionStatus,
 	DesktopAgentMode,
 	DesktopPermissionItem,
 	DesktopProject,
@@ -275,6 +276,11 @@ export function ChatColumn({
 				{/* 右上角的任务卡片 / dock 开关由 AppShell 固定在内容卡片角上，这里只留出它们的位置。 */}
 				<span className="h-8 w-[66px] shrink-0" aria-hidden="true" />
 			</header>
+			<RecoveryBanners
+				connectionStatus={chat.connectionStatus}
+				interrupted={chat.stopReason === "interrupted"}
+				onRetryConnection={() => void chat.retryConnection()}
+			/>
 
 			{showLogo ? (
 				<div className="flex min-h-0 flex-1 items-center justify-center" aria-label={logoLabel} role="img">
@@ -373,6 +379,62 @@ export function ChatColumn({
 				</div>
 			</div>
 		</section>
+	);
+}
+
+function RecoveryBanners({
+	connectionStatus,
+	interrupted,
+	onRetryConnection,
+}: {
+	readonly connectionStatus: DesktopAgentConnectionStatus | undefined;
+	readonly interrupted: boolean;
+	onRetryConnection(): void;
+}) {
+	const intl = useIntl();
+	const icons = useIcons();
+	const RefreshIcon = icons["rotate-ccw"];
+	const AlertIcon = icons["shield-alert"];
+	if (!connectionStatus && !interrupted) return null;
+
+	return (
+		<>
+			{connectionStatus ? (
+				<div
+					className="mx-4 mt-1 mb-2 flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-[13px] text-amber-800 min-[1024px]:mx-8 dark:text-amber-200"
+					role="alert"
+					aria-live="polite"
+				>
+					{connectionStatus === "reconnecting" ? (
+						<RefreshIcon size={16} className="shrink-0" />
+					) : (
+						<AlertIcon size={16} className="shrink-0" />
+					)}
+					<span className="min-w-0 flex-1">
+						{intl.formatMessage(
+							connectionStatus === "reconnecting"
+								? desktopMessages.chatRecoveryReconnecting
+								: desktopMessages.chatRecoveryRestartFailed,
+						)}
+					</span>
+					{connectionStatus === "restart_failed" ? (
+						<Button type="button" variant="tertiary" size="sm" onClick={onRetryConnection}>
+							{intl.formatMessage(desktopMessages.chatRecoveryRetryConnection)}
+						</Button>
+					) : null}
+				</div>
+			) : null}
+			{interrupted ? (
+				<div
+					className="mx-4 mt-1 mb-2 flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-[13px] text-amber-800 min-[1024px]:mx-8 dark:text-amber-200"
+					role="status"
+					aria-live="polite"
+				>
+					<AlertIcon size={16} className="shrink-0" />
+					<span className="min-w-0 flex-1">{intl.formatMessage(desktopMessages.chatRecoveryInterrupted)}</span>
+				</div>
+			) : null}
+		</>
 	);
 }
 

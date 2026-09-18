@@ -127,6 +127,10 @@ class FakeLocalClient implements LocalAcpV2Client {
 		return () => this.#requestListeners.delete(listener);
 	}
 
+	subscribeDisconnect(): () => void {
+		return () => {};
+	}
+
 	respond(response: AcpJsonRpcResponse): ResultType<void, AcpLocalClientDisconnected> {
 		this.responses.push(response);
 		return Result.ok(undefined);

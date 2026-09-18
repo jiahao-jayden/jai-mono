@@ -47,6 +47,18 @@
   "desktop.chat.projectsUnavailable": {
     "defaultMessage": "Projects unavailable"
   },
+  "desktop.chat.recovery.interrupted": {
+    "defaultMessage": "This response was interrupted when the Runtime Host stopped."
+  },
+  "desktop.chat.recovery.reconnecting": {
+    "defaultMessage": "Reconnecting to the Runtime Host…"
+  },
+  "desktop.chat.recovery.restartFailed": {
+    "defaultMessage": "The Runtime Host could not be restarted."
+  },
+  "desktop.chat.recovery.retryConnection": {
+    "defaultMessage": "Retry connection"
+  },
   "desktop.chat.renameFailed": {
     "defaultMessage": "Could not rename session"
   },

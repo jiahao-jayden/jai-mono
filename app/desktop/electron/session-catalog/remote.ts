@@ -2,10 +2,14 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { JsonObject } from "@jai/agent";
-import { connectJaiRuntimeHost, resolveJaiDataDirectory } from "@jai/server/acp-client";
+import {
+	type ConnectJaiRuntimeHostOptions,
+	connectJaiRuntimeHost,
+	resolveJaiDataDirectory,
+} from "@jai/server/acp-client";
 import { connectDesktopCatalogClient, type DesktopCatalogClient } from "@jai/server/desktop-catalog-client";
 import { type Result, TaggedError } from "better-result";
-import { createDesktopRuntimeHostLauncher, resolveDesktopRuntimeHostEntrypoint } from "../runtime-host/entrypoint";
+import type { DesktopRuntimeHostSupervisor } from "../runtime-host/supervisor";
 import { projectNotFoundError, projectPathInvalidError, sessionBusyError, sessionNotFoundError } from "./errors";
 import type {
 	CodingExecutionContext,
@@ -81,22 +85,19 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 		this.#createId = options.createId ?? randomUUID;
 	}
 
-	static async open(
-		options: {
-			readonly dataDirectory?: string;
-			readonly environment?: Readonly<Record<string, string | undefined>>;
-			readonly endpoint?: string;
-		} = {},
-	): Promise<RemoteDesktopSessionCatalog> {
-		const dataDirectory = path.resolve(options.dataDirectory ?? resolveJaiDataDirectory(options.environment));
-		const runtimeHostEntrypoint = resolveDesktopRuntimeHostEntrypoint();
-		const launchRuntimeHost = createDesktopRuntimeHostLauncher();
+	static async open(options: {
+		readonly runtimeHostSupervisor: DesktopRuntimeHostSupervisor;
+	}): Promise<RemoteDesktopSessionCatalog> {
+		const dataDirectory = path.resolve(resolveJaiDataDirectory());
+		const runtimeHostSupervisor = options.runtimeHostSupervisor;
+		const runtimeHostEntrypoint = runtimeHostSupervisor.runtimeHostEntrypoint;
+		const launchRuntimeHost: NonNullable<ConnectJaiRuntimeHostOptions["launchRuntimeHost"]> = (input) => {
+			runtimeHostSupervisor.launchRuntimeHost(input);
+		};
 		const connected = await connectDesktopCatalogClient({
 			dataDirectory,
-			...(options.environment === undefined ? {} : { environment: options.environment }),
-			...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
 			...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
-			...(launchRuntimeHost === undefined ? {} : { launchRuntimeHost }),
+			launchRuntimeHost,
 		});
 		if (connected.isErr()) {
 			throw new DesktopRemoteCatalogFailed({
@@ -309,7 +310,7 @@ async function createSessionJournal(
 	sessionId: string,
 	cwd: string,
 	runtimeHostEntrypoint: string | undefined,
-	launchRuntimeHost: ReturnType<typeof createDesktopRuntimeHostLauncher>,
+	launchRuntimeHost: ConnectJaiRuntimeHostOptions["launchRuntimeHost"],
 ): Promise<void> {
 	const connected = await connectJaiRuntimeHost({
 		dataDirectory,
@@ -357,7 +358,7 @@ async function readSessionCwd(
 	dataDirectory: string,
 	sessionId: string,
 	runtimeHostEntrypoint: string | undefined,
-	launchRuntimeHost: ReturnType<typeof createDesktopRuntimeHostLauncher>,
+	launchRuntimeHost: ConnectJaiRuntimeHostOptions["launchRuntimeHost"],
 ): Promise<string | undefined> {
 	const connected = await connectJaiRuntimeHost({
 		dataDirectory,

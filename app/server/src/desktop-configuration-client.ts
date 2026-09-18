@@ -65,6 +65,13 @@ export interface ConnectDesktopConfigurationClientOptions {
 	readonly dataDirectory?: string;
 	/** Optional override for the ACP endpoint used only to ensure the Host is running. */
 	readonly runtimeEndpoint?: string;
+	/** Desktop's packaged Runtime Host entrypoint, when it lives outside app.asar. */
+	readonly runtimeHostEntrypoint?: string;
+	/** Host-owned launcher for a packaged Runtime Host that cannot use Node's child_process. */
+	readonly launchRuntimeHost?: (input: {
+		readonly entrypoint: string;
+		readonly environment: Readonly<Record<string, string | undefined>>;
+	}) => void;
 	/** Optional override for the private Desktop configuration endpoint. */
 	readonly endpoint?: string;
 	readonly retryDelayMs?: number;
@@ -84,6 +91,8 @@ export async function connectDesktopConfigurationClient(
 		environment,
 		dataDirectory,
 		...(options.runtimeEndpoint === undefined ? {} : { endpoint: options.runtimeEndpoint }),
+		...(options.runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint: options.runtimeHostEntrypoint }),
+		...(options.launchRuntimeHost === undefined ? {} : { launchRuntimeHost: options.launchRuntimeHost }),
 		...(options.retryDelayMs === undefined ? {} : { retryDelayMs: options.retryDelayMs }),
 		...(options.retryCount === undefined ? {} : { retryCount: options.retryCount }),
 	});
@@ -736,7 +745,10 @@ function parseMcpStatus(value: unknown): DesktopMcpStatus | undefined {
 		) {
 			return undefined;
 		}
-		if (server.toolCount !== undefined && (typeof server.toolCount !== "number" || !Number.isInteger(server.toolCount) || server.toolCount < 0)) {
+		if (
+			server.toolCount !== undefined &&
+			(typeof server.toolCount !== "number" || !Number.isInteger(server.toolCount) || server.toolCount < 0)
+		) {
 			return undefined;
 		}
 		if (server.error !== undefined && typeof server.error !== "string") return undefined;

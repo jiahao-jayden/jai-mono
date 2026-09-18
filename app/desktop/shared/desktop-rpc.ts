@@ -88,6 +88,8 @@ export interface DesktopUiLocaleSnapshot {
 }
 
 export type DesktopAgentStatus = "idle" | "running";
+export type DesktopAgentConnectionStatus = "reconnecting" | "restart_failed";
+export type DesktopAgentStopReason = "end_turn" | "cancelled" | "error" | "interrupted";
 export interface DesktopProject extends Project {
 	readonly available: boolean;
 }
@@ -719,6 +721,8 @@ export type DesktopTodos = readonly DesktopTodoItem[];
 export interface DesktopAgentSnapshot {
 	readonly sessionId: string;
 	readonly status: DesktopAgentStatus;
+	readonly connectionStatus?: DesktopAgentConnectionStatus;
+	readonly stopReason?: DesktopAgentStopReason;
 	readonly items: readonly DesktopTranscriptItem[];
 	readonly todos?: DesktopTodos;
 	readonly artifacts: readonly DesktopArtifact[];
@@ -726,7 +730,15 @@ export interface DesktopAgentSnapshot {
 }
 
 export type DesktopAgentEvent =
-	| { readonly type: "status"; readonly status: DesktopAgentStatus }
+	| {
+			readonly type: "status";
+			readonly status: DesktopAgentStatus;
+			readonly stopReason?: DesktopAgentStopReason;
+	  }
+	| {
+			readonly type: "connection_status";
+			readonly status?: DesktopAgentConnectionStatus;
+	  }
 	| { readonly type: "transcript_upsert"; readonly item: DesktopTranscriptItem }
 	| { readonly type: "transcript_remove"; readonly id: string }
 	| { readonly type: "subagent_transcript_changed"; readonly toolCallId: string }
@@ -946,6 +958,7 @@ export interface DesktopApi {
 		steer(input: DesktopAgentMessageInput): void;
 		followUp(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;
 		resolvePermission(resolution: DesktopPermissionResolution): void;
+		retryConnection(): Promise<void>;
 		getSnapshot(sessionId: string): Promise<DesktopAgentSnapshot>;
 		getSubagentTranscript(input: DesktopSubagentTranscriptInput): Promise<DesktopSubagentTranscript>;
 		close(sessionId: string): void;

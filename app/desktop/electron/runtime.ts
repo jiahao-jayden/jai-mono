@@ -10,6 +10,7 @@ import { createDesktopLocaleService, type DesktopLocaleService } from "./locale"
 import { DesktopOAuthManager } from "./oauth/manager";
 import { type AttachmentRegistry, createAttachmentRegistry } from "./rpc/attachments";
 import { createBroadcaster } from "./rpc/broadcast";
+import type { DesktopRuntimeHostSupervisor } from "./runtime-host/supervisor";
 import type { DesktopSessionCatalogPort } from "./session-catalog/remote";
 import { createDesktopThemeService, type DesktopThemeService } from "./theme";
 import { createOpenWithService, type OpenWithService } from "./workspace/open-with";
@@ -42,10 +43,11 @@ export type WindowSender = Electron.WebContents;
 
 export async function createDesktopRuntime(dependencies: {
 	readonly sessions: DesktopSessionCatalogPort;
+	readonly runtimeHostSupervisor: DesktopRuntimeHostSupervisor;
 }): Promise<DesktopRuntime> {
-	const { sessions } = dependencies;
+	const { sessions, runtimeHostSupervisor } = dependencies;
 	const broadcast = createBroadcaster();
-	const config = await DesktopConfigService.open();
+	const config = await DesktopConfigService.open({ runtimeHostSupervisor });
 	const locale = createDesktopLocaleService();
 	await config.setAgentLanguage(locale.get().locale);
 	const agentHost = await DesktopAcpAgentHost.open(broadcast, {
@@ -53,6 +55,7 @@ export async function createDesktopRuntime(dependencies: {
 			const execution = await sessions.resolveExecutionContext(sessionId);
 			return execution.localFileAccess ? execution.cwd : undefined;
 		},
+		runtimeHostSupervisor,
 	});
 	const attachments = createAttachmentRegistry();
 	const theme = createDesktopThemeService();
@@ -123,6 +126,7 @@ export async function createDesktopRuntime(dependencies: {
 			await oauth.close();
 			await config.close();
 			await sessions.close();
+			await runtimeHostSupervisor.close();
 			attachments.clear();
 		},
 	};

@@ -190,7 +190,7 @@ describe("manual Effect Gate crash prefixes", () => {
 		expect(projectDurable(manualDurable.value)).toEqual(projectDurable(automaticDurable.value));
 	});
 
-	test("each visible prefix reopens to the same reducer verdict without crossing the gated effect", async () => {
+	test("each visible prefix reopens without crossing the gated effect", async () => {
 		const checkpoints = [
 			{ expected: { type: "model_intent" }, recovery: "ready", providerCalls: 0, toolCalls: 0 },
 			{ expected: { type: "model_request", assistantEntryId: "assistant-1" }, recovery: "provider_interrupted", providerCalls: 0, toolCalls: 0 },
@@ -225,13 +225,17 @@ describe("manual Effect Gate crash prefixes", () => {
 			if (durable.isErr()) throw durable.error;
 			const reduced = recoverSessionOperations(durable.value.operationRecords, recoveryEvidence(durable.value));
 			if (reduced.isErr()) throw reduced.error;
+			expect(reduced.value).toMatchObject([{ status: checkpoint.recovery }]);
 			const reopenedHost = new RuntimeHost({ persistence: scenario.persistence });
 			const reopened = await reopenedHost.openSession({ kind: "resume", id: "session-1", cwd: "/workspace" });
 			if (reopened.isErr()) throw reopened.error;
 			const replay = await reopened.value.recovery();
 			if (replay.isErr()) throw replay.error;
-			expect(replay.value).toEqual(reduced.value);
-			expect(replay.value).toMatchObject([{ status: checkpoint.recovery }]);
+			if (checkpoint.recovery === "indeterminate_tool") {
+				expect(replay.value).toEqual(reduced.value);
+			} else {
+				expect(replay.value).toMatchObject([{ status: "terminal", outcome: "interrupted" }]);
+			}
 			expect(scenario.providerCalls.current).toBe(checkpoint.providerCalls);
 			expect(scenario.toolCalls).toHaveLength(checkpoint.toolCalls);
 			await reopened.value.close();

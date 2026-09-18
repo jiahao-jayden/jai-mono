@@ -6,11 +6,13 @@ import { createDesktopAgentEventDispatcher, type DesktopAgentProjectionUpdate } 
 import { invalidateRecentSessions, upsertRecentSession } from "@/lib/desktop-query";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
+	DesktopAgentConnectionStatus,
 	DesktopAgentCreationFailureReason,
 	DesktopAgentEvent,
 	DesktopAgentMode,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
+	DesktopAgentStopReason,
 	DesktopArtifact,
 	DesktopMessageAttachment,
 	DesktopPermissionResolution,
@@ -46,16 +48,20 @@ export interface Chat {
 	readonly status: ChatStatus;
 	readonly isLoading: boolean;
 	readonly error: string | undefined;
+	readonly connectionStatus: DesktopAgentConnectionStatus | undefined;
+	readonly stopReason: DesktopAgentStopReason | undefined;
 	sendMessage(message: ChatMessageInput): Promise<boolean>;
 	stop(): Promise<void>;
 	navigate(entryId: string): Promise<boolean>;
-	clearError(): void;
+	retryConnection(): Promise<void>;
 	resolvePermission(resolution: DesktopPermissionResolution): Promise<void>;
 }
 
 export interface ChatRuntimeState {
 	readonly agentStatus: DesktopAgentStatus;
 	readonly error: string | undefined;
+	readonly connectionStatus: DesktopAgentConnectionStatus | undefined;
+	readonly stopReason: DesktopAgentStopReason | undefined;
 	readonly isLoading: boolean;
 	readonly lastSeq: number;
 	readonly sessionId: string | null;
@@ -68,6 +74,8 @@ export interface ChatRuntimeState {
 const EMPTY_STATE: ChatRuntimeState = {
 	agentStatus: "idle",
 	error: undefined,
+	connectionStatus: undefined,
+	stopReason: undefined,
 	isLoading: false,
 	lastSeq: 0,
 	sessionId: null,
@@ -145,6 +153,8 @@ export function useChat(options: UseChatOptions): Chat {
 				: {
 						agentStatus: "idle",
 						error: undefined,
+						connectionStatus: undefined,
+						stopReason: undefined,
 						isLoading: true,
 						lastSeq: 0,
 						sessionId,
@@ -366,15 +376,19 @@ export function useChat(options: UseChatOptions): Chat {
 		}
 	}, []);
 
-	const clearError = useCallback(() => {
-		setState((current) => (current.error ? { ...current, error: undefined } : current));
-	}, []);
-
 	const resolvePermission = useCallback(async (resolution: DesktopPermissionResolution) => {
 		try {
 			await desktop.agent.resolvePermission(resolution);
 		} catch {
 			setState((previous) => ({ ...previous, error: "权限响应未提交。" }));
+		}
+	}, []);
+
+	const retryConnection = useCallback(async (): Promise<void> => {
+		try {
+			await desktop.agent.retryConnection();
+		} catch {
+			setState((current) => ({ ...current, connectionStatus: "restart_failed" }));
 		}
 	}, []);
 
@@ -386,10 +400,12 @@ export function useChat(options: UseChatOptions): Chat {
 		status: getChatStatus(state),
 		isLoading: state.isLoading,
 		error: state.error,
+		connectionStatus: state.connectionStatus,
+		stopReason: state.stopReason,
 		sendMessage,
 		stop,
 		navigate,
-		clearError,
+		retryConnection,
 		resolvePermission,
 	};
 }
@@ -436,10 +452,19 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 			return {
 				...state,
 				agentStatus: event.status,
+				stopReason: event.stopReason,
 				error: event.status === "running" ? undefined : state.error,
 				isLoading: false,
 				lastSeq: seq,
 				submitting: event.status === "running" ? false : state.submitting,
+			};
+		case "connection_status":
+			return {
+				...state,
+				isLoading: false,
+				lastSeq: seq,
+				connectionStatus: event.status,
+				submitting: event.status === "reconnecting" ? false : state.submitting,
 			};
 		case "model_catalog_updated":
 			return { ...state, lastSeq: seq };
@@ -568,6 +593,8 @@ function snapshotState(snapshot: DesktopAgentSnapshot): ChatRuntimeState {
 	return {
 		agentStatus: snapshot.status,
 		error: undefined,
+		connectionStatus: snapshot.connectionStatus,
+		stopReason: snapshot.stopReason,
 		isLoading: false,
 		lastSeq: snapshot.lastSeq,
 		sessionId: snapshot.sessionId,

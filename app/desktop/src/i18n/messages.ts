@@ -69,6 +69,19 @@ export const desktopMessages = defineMessages({
 	chatAgentWorking: { id: "desktop.chat.agentWorking", defaultMessage: "Agent is working…" },
 	chatProjectLoading: { id: "desktop.chat.projectLoading", defaultMessage: "Loading project…" },
 	chatProjectsUnavailable: { id: "desktop.chat.projectsUnavailable", defaultMessage: "Projects unavailable" },
+	chatRecoveryReconnecting: {
+		id: "desktop.chat.recovery.reconnecting",
+		defaultMessage: "Reconnecting to the Runtime Host…",
+	},
+	chatRecoveryInterrupted: {
+		id: "desktop.chat.recovery.interrupted",
+		defaultMessage: "This response was interrupted when the Runtime Host stopped.",
+	},
+	chatRecoveryRestartFailed: {
+		id: "desktop.chat.recovery.restartFailed",
+		defaultMessage: "The Runtime Host could not be restarted.",
+	},
+	chatRecoveryRetryConnection: { id: "desktop.chat.recovery.retryConnection", defaultMessage: "Retry connection" },
 	projectsLoadError: {
 		id: "desktop.projects.loadError",
 		defaultMessage: "Projects could not be loaded. Open the menu to retry.",

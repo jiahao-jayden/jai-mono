@@ -128,7 +128,7 @@ export function recoverOperation(
 
 	const pendingInputs = queuedInputs.filter((input) => !evidence.sessionEntryIds.has(input.inputEntryId));
 	if (terminal) {
-		if (pendingInputs.length > 0) {
+		if (pendingInputs.length > 0 && terminal.outcome !== "interrupted") {
 			return corrupted(`Operation "${operationId}" is terminal while accepted input is not in the Session Journal`);
 		}
 		return Result.ok({ status: "terminal", operationId, outcome: terminal.outcome, finalization: "durable" });

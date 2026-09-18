@@ -5,6 +5,7 @@ import { mainLog } from "./logger";
 import { createDesktopRouter } from "./rpc/router";
 import { registerDesktopRpc } from "./rpc/server";
 import { createDesktopRuntime, type DesktopRuntime } from "./runtime";
+import { DesktopRuntimeHostSupervisor } from "./runtime-host/supervisor";
 import { RemoteDesktopSessionCatalog } from "./session-catalog";
 import { createMainWindow } from "./windows";
 
@@ -46,19 +47,28 @@ if (!app.requestSingleInstanceLock()) {
 	void app
 		.whenReady()
 		.then(async () => {
-			const sessionCatalog = await RemoteDesktopSessionCatalog.open();
-			const runtime = await createDesktopRuntime({
-				sessions: sessionCatalog,
-			});
-			desktopRuntime = runtime;
-			runtime.theme.restore();
-			registerDesktopRpc(createDesktopRouter(runtime));
-			createMainWindow();
-			for (const callback of pendingOAuthCallbacks.splice(0)) receiveOAuthCallback(callback);
+			const runtimeHostSupervisor = new DesktopRuntimeHostSupervisor();
+			try {
+				const sessionCatalog = await RemoteDesktopSessionCatalog.open({ runtimeHostSupervisor });
+				const runtime = await createDesktopRuntime({
+					sessions: sessionCatalog,
+					runtimeHostSupervisor,
+				});
+				desktopRuntime = runtime;
+				runtime.theme.restore();
+				registerDesktopRpc(createDesktopRouter(runtime));
+				createMainWindow();
+				for (const callback of pendingOAuthCallbacks.splice(0)) receiveOAuthCallback(callback);
 
-			app.on("activate", () => {
-				if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
-			});
+				app.on("activate", () => {
+					if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+				});
+			} catch (error) {
+				await runtimeHostSupervisor.close().catch((closeError) => {
+					mainLog.warn("Runtime Host Supervisor could not be closed after startup failure:", closeError);
+				});
+				throw error;
+			}
 		})
 		.catch((error) => {
 			mainLog.error("Failed to initialize Desktop runtime:", error);

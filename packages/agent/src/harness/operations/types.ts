@@ -1,10 +1,9 @@
 import type { Usage } from "@jai/ai";
-import type { Result } from "better-result";
 import { TaggedError } from "better-result";
 import type { JsonObject } from "../../core/agent-state";
 
 export type DurableOperationKind = "prompt" | "compaction" | "navigation";
-export type OperationTerminalOutcome = "completed" | "failed" | "aborted" | "blocked";
+export type OperationTerminalOutcome = "completed" | "failed" | "aborted" | "blocked" | "interrupted";
 export type OperationInputDelivery = "steer" | "follow_up";
 
 interface OperationRecordBase {

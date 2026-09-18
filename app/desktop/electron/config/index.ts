@@ -21,6 +21,7 @@ import type {
 	DesktopWebSearchApiKeyRevealResult,
 	DesktopWebSearchCredentialId,
 } from "../../shared/desktop-rpc";
+import type { DesktopRuntimeHostSupervisor } from "../runtime-host/supervisor";
 import { projectRuntimeConnectorConfig, toRuntimeConnector, validateConnectorConfigInput } from "./connector";
 import { projectRuntimeProviderConfig, providerConfigError, validateProviderProfiles } from "./provider";
 import { projectRuntimeTelemetrySettings, toRuntimeTelemetrySettingsInput } from "./telemetry";
@@ -36,11 +37,12 @@ export class DesktopConfigService {
 
 	constructor(private readonly client: DesktopConfigurationClient) {}
 
-	static async open(
-		options: { readonly homeDir?: string; readonly environment?: Readonly<Record<string, string | undefined>> } = {},
-	): Promise<DesktopConfigService> {
+	static async open(options: {
+		readonly runtimeHostSupervisor: DesktopRuntimeHostSupervisor;
+	}): Promise<DesktopConfigService> {
 		const connected = await connectDesktopConfigurationClient({
-			environment: options.environment,
+			runtimeHostEntrypoint: options.runtimeHostSupervisor.runtimeHostEntrypoint,
+			launchRuntimeHost: (input) => options.runtimeHostSupervisor.launchRuntimeHost(input),
 		});
 		if (connected.isErr()) throw connected.error;
 		const service = new DesktopConfigService(connected.value);

@@ -98,6 +98,32 @@ describe("useChat projection", () => {
 		});
 	});
 
+	test("连接状态与中断结果分别通过 snapshot 和事件投影到 Chat", () => {
+		const snapshotState = applyChatProjectionUpdate(emptyChatState(), {
+			type: "snapshot",
+			snapshot: {
+				sessionId: "session-1",
+				status: "idle",
+				connectionStatus: "reconnecting",
+				stopReason: "interrupted",
+				lastSeq: 4,
+				artifacts: [],
+				items: [],
+			},
+		});
+		const connectedState = applyChatProjectionUpdate(snapshotState, {
+			type: "event",
+			envelope: {
+				sessionId: "session-1",
+				seq: 5,
+				event: { type: "connection_status" },
+			},
+		});
+
+		expect(snapshotState).toMatchObject({ connectionStatus: "reconnecting", stopReason: "interrupted" });
+		expect(connectedState).toMatchObject({ connectionStatus: undefined, stopReason: "interrupted" });
+	});
+
 	test("流式 upsert 只替换目标消息，保留历史消息引用", () => {
 		const history: DesktopTranscriptItem = {
 			kind: "message",
@@ -297,6 +323,8 @@ function emptyChatState(): ChatRuntimeState {
 	return {
 		agentStatus: "idle",
 		error: undefined,
+		connectionStatus: undefined,
+		stopReason: undefined,
 		isLoading: true,
 		lastSeq: 0,
 		sessionId: null,

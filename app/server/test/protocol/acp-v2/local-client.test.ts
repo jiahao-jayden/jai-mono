@@ -26,7 +26,9 @@ describe("ACP v2 local client", () => {
 		const connected = await openLocalAcpV2Client(endpoint);
 		if (connected.isErr()) throw connected.error;
 		const notifications: unknown[] = [];
+		const disconnects: unknown[] = [];
 		const unsubscribe = connected.value.subscribe((notification) => notifications.push(notification));
+		const unsubscribeDisconnect = connected.value.subscribeDisconnect((error) => disconnects.push(error));
 		try {
 			const initialized = await connected.value.request("initialize", {
 				protocolVersion: 2,
@@ -49,8 +51,12 @@ describe("ACP v2 local client", () => {
 				{ method: "session/update", params: { update: { sessionUpdate: "user_message" } } },
 				{ method: "session/update", params: { update: { sessionUpdate: "state_update", state: "running" } } },
 			]);
+			await server.value.close();
+			await waitFor(() => disconnects.length === 1);
+			expect(disconnects[0]).toMatchObject({ _tag: "acp_local_client.disconnected", endpoint });
 		} finally {
 			unsubscribe();
+			unsubscribeDisconnect();
 			await connected.value.close();
 			await server.value.close();
 			await rm(directory, { recursive: true, force: true });

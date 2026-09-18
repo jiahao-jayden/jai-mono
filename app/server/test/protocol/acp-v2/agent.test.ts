@@ -83,7 +83,13 @@ describe("ACP v2 Agent adapter", () => {
 			{
 				jsonrpc: "2.0",
 				method: "session/update",
-				params: { sessionId: "session-1", update: { sessionUpdate: "state_update", state: "running" } },
+				params: {
+					sessionId: "session-1",
+					update: {
+						sessionUpdate: "state_update",
+						state: "running",
+					},
+				},
 			},
 		]);
 	});
@@ -1169,7 +1175,14 @@ describe("ACP v2 Agent adapter", () => {
 			{
 				jsonrpc: "2.0",
 				method: "session/update",
-				params: { sessionId: "session-1", update: { sessionUpdate: "state_update", state: "running" } },
+				params: {
+					sessionId: "session-1",
+					update: {
+						sessionUpdate: "state_update",
+						state: "idle",
+						stopReason: "interrupted",
+					},
+				},
 			},
 			{ jsonrpc: "2.0", id: 5, result: {} },
 		]);
