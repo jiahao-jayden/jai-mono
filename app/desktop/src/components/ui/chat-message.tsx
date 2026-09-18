@@ -136,6 +136,7 @@ export const MarkdownContent = memo(function MarkdownContent({
 					pre: (props) => <CodeBlock {...props} isStreaming={isStreaming} />,
 				}}
 				granularity="word"
+				smoothing="realtime"
 				remarkPlugins={streamdownRemarkPlugins}
 				content={content}
 			/>

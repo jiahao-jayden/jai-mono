@@ -7,15 +7,11 @@
 	overflow-wrap: anywhere;
 }
 
-.chat-markdown-streaming:not([style*="--streamdown-caret"]) > :last-child::after {
-	content: "▊";
-	display: inline-block;
-	margin-left: 0.15em;
-	animation: chat-markdown-caret 900ms steps(1, end) infinite;
-}
-
-@keyframes chat-markdown-caret {
-	50% { opacity: 0; }
+/* UI flush already paces incoming content; Streamdown's per-word fade would
+   animate the same update a second time and make the transcript flicker. */
+.chat-markdown .streamdown-animated :is(.stream-char, .stream-block) {
+	opacity: 1 !important;
+	animation: none !important;
 }
 
 .chat-markdown :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, figure, [data-streamdown="code-block"], [data-streamdown="table-wrapper"]) {
@@ -308,34 +304,6 @@
 	outline-offset: 1px;
 }
 
-/* Streaming caret. Streamdown's own caret is the text glyph U+258B, which scales
-   with the font and lands as a heavy block next to 14px body copy. We blank the
-   glyph and draw the mark ourselves: a 1.5px rule at cap height in the foreground,
-   so it reads as a text cursor rather than a character the model emitted. It
-   breathes rather than blinks — a hard blink at this size pulls the eye off the
-   text it accompanies. */
-.chat-markdown[style*="--streamdown-caret"] > :last-child::after {
-	content: "";
-	display: inline-block;
-	width: 1.5px;
-	height: 0.95em;
-	margin-left: 0.12em;
-	border-radius: 1px;
-	background: var(--foreground);
-	vertical-align: -0.12em;
-	animation: chat-caret-breathe 1.4s ease-in-out infinite;
-}
-
-@keyframes chat-caret-breathe {
-	0%,
-	100% {
-		opacity: 1;
-	}
-	50% {
-		opacity: 0.35;
-	}
-}
-
 @keyframes sd-blurIn {
 	0% {
 		opacity: 0;
@@ -374,14 +342,4 @@
 		animation-duration: 0ms !important;
 	}
 
-	/* The caret still marks the live end of the stream, it just holds steady. */
-	.chat-markdown-streaming > :last-child::after {
-		animation: none;
-		opacity: 1;
-	}
-
-	.chat-markdown[style*="--streamdown-caret"] > :last-child::after {
-		animation: none;
-		opacity: 1;
-	}
 }
