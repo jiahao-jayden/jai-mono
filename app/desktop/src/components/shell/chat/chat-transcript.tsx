@@ -859,7 +859,7 @@ function workRunClock(
 			startIndex = index;
 		}
 		if (item.id === firstWorkId) break;
-		if (item.kind === "message" && item.role === "assistant" && item.status === "complete") {
+		if (turnStart === undefined && item.kind === "message" && item.role === "assistant" && item.status === "complete") {
 			turnStart = item.timestamp;
 		}
 	}
@@ -900,16 +900,22 @@ function workRunClock(
 	}
 
 	const active = workItems.some(isWorkItemRunning) || paused || (responding && isLatestWorkGroup(items, workItems) && !sawNextUser);
-	const start = turnStart ?? workStart;
+	const start = clockConsistentWithWork(turnStart, workStart) ? turnStart : workStart;
 	if (start === undefined || (!active && assistantAfterWorkAt === undefined && workEnd === undefined)) {
 		return { active, paused, durationMs: 0 };
 	}
-	const end = active ? now : (assistantAfterWorkAt ?? workEnd ?? start);
+	const messageEnd = clockConsistentWithWork(assistantAfterWorkAt, workEnd) ? assistantAfterWorkAt : undefined;
+	const end = active ? now : (messageEnd ?? workEnd ?? start);
 	const pauseMs = permissionWindows.reduce(
 		(total, permission) => total + pauseOverlapMs(permission, start, end, now),
 		0,
 	);
 	return { active, paused, durationMs: Math.max(0, end - start - pauseMs), start };
+}
+
+function clockConsistentWithWork(messageTime: number | undefined, workTime: number | undefined): boolean {
+	if (messageTime === undefined || workTime === undefined) return messageTime !== undefined;
+	return Math.abs(messageTime - workTime) < 5 * 60_000;
 }
 
 function isLatestWorkGroup(items: readonly DesktopTranscriptItem[], workItems: readonly WorkItem[]): boolean {

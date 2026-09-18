@@ -741,7 +741,7 @@ export class DesktopAcpAgentHost {
 				? { completedAt }
 				: previousTool?.completedAt !== undefined
 					? { completedAt: previousTool.completedAt }
-					: status === "complete" && previousTool?.startedAt !== undefined
+					: status === "complete" && isCurrentTimestamp(previousTool?.startedAt)
 						? { completedAt: Date.now() }
 						: {}),
 			activityKind: activityKind(title),
@@ -803,7 +803,7 @@ export class DesktopAcpAgentHost {
 				? { completedAt }
 				: previousSubagent?.completedAt !== undefined
 					? { completedAt: previousSubagent.completedAt }
-					: status !== "running" && previousSubagent?.startedAt !== undefined
+					: status !== "running" && isCurrentTimestamp(previousSubagent?.startedAt)
 						? { completedAt: Date.now() }
 						: {}),
 			status,
@@ -1055,6 +1055,10 @@ function activityTitleFromMetadata(value: unknown): string | undefined {
 function toolTimestampFromMetadata(value: unknown, field: "startedAt" | "completedAt"): number | undefined {
 	if (!isRecord(value) || !isRecord(value.jai) || typeof value.jai[field] !== "number") return undefined;
 	return Number.isFinite(value.jai[field]) ? value.jai[field] : undefined;
+}
+
+function isCurrentTimestamp(value: number | undefined): boolean {
+	return value !== undefined && Math.abs(Date.now() - value) < 5 * 60_000;
 }
 
 function webSearchResultsFromMetadata(value: unknown): readonly DesktopWebSearchResult[] | undefined {
