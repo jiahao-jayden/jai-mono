@@ -6,9 +6,7 @@ import {
 	memo,
 	type HTMLAttributes,
 	type ReactNode,
-	useCallback,
 	useEffect,
-	useRef,
 	useState,
 } from "react";
 import { motion, type HTMLMotionProps, useReducedMotion } from "framer-motion";
@@ -53,7 +51,6 @@ const languageAliases: Record<string, string> = {
 	yml: "yaml",
 };
 const highlighter = createHighlighter({ languages: [css, html, js, json, jsx, markdown, python, shell, sql, ts, tsx, yaml] });
-const STREAMING_CODE_HIGHLIGHT_INTERVAL_MS = 160;
 
 function CodeBlock({
 	children,
@@ -94,54 +91,26 @@ function CodeBlock({
 }
 
 function useStreamingCodeHighlight(value: string, language: string, isStreaming: boolean): string | undefined {
-	const latestRef = useRef({ value, language });
-	const [highlighted, setHighlighted] = useState<{ source: string; html: string | undefined }>(() => ({
-		source: value,
-		html: highlightCode(value, language),
-	}));
-	const timerRef = useRef<number | undefined>(undefined);
-	const lastHighlightAtRef = useRef(0);
-	latestRef.current = { value, language };
-
-	const refresh = useCallback(() => {
-		const latest = latestRef.current;
-		setHighlighted({
-			source: latest.value,
-			html: highlightCode(latest.value, latest.language),
-		});
-		lastHighlightAtRef.current = performance.now();
-	}, []);
+	const [highlighted, setHighlighted] = useState<{ source: string; html: string | undefined }>({
+		source: "",
+		html: undefined,
+	});
 
 	useEffect(() => {
-		if (!isStreaming) {
-			if (timerRef.current !== undefined) {
-				window.clearTimeout(timerRef.current);
-				timerRef.current = undefined;
-			}
-			refresh();
-			return;
-		}
-		if (timerRef.current !== undefined) return;
-		const elapsed = performance.now() - lastHighlightAtRef.current;
-		timerRef.current = window.setTimeout(() => {
-			timerRef.current = undefined;
-			refresh();
-		}, Math.max(0, STREAMING_CODE_HIGHLIGHT_INTERVAL_MS - elapsed));
-	}, [isStreaming, language, refresh, value]);
+		if (!isStreaming) setHighlighted({ source: value, html: highlightCode(value, language) });
+	}, [isStreaming, language, value]);
 
-	useEffect(() => {
-		return () => {
-			if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
-		};
-	}, []);
-
-	return highlighted.source === value ? highlighted.html : undefined;
+	return !isStreaming && highlighted.source === value ? highlighted.html : undefined;
 }
 
 function highlightCode(value: string, language: string): string | undefined {
 	const lang = languageAliases[language.toLowerCase()] ?? language.toLowerCase();
 	if (!lang || !highlighter.listLanguages().includes(lang)) return undefined;
-	return renderNodesToHtml(renderTokens(highlighter.tokenize(value, { lang }).tokens));
+	try {
+		return renderNodesToHtml(renderTokens(highlighter.tokenize(value, { lang }).tokens));
+	} catch {
+		return undefined;
+	}
 }
 
 interface ChatMessageAttachment {
@@ -166,7 +135,7 @@ export const MarkdownContent = memo(function MarkdownContent({
 				components={{
 					pre: (props) => <CodeBlock {...props} isStreaming={isStreaming} />,
 				}}
-				granularity={isStreaming ? "word" : "char"}
+				granularity="word"
 				remarkPlugins={streamdownRemarkPlugins}
 				content={content}
 			/>
