@@ -20,7 +20,7 @@ JN 用父记录保存 RFC 格式的 PRD，用子任务记录管理任务和依�
 
 ## Tracker 配置
 
-`.jnative/issue-tracker.md` 是可选配置，由用户显式运行 `jn-setup` 创建或修改；普通 JN 不调用 setup、不创建配置。配置存在时按配置执行；不存在时使用内置默认值：GitHub remote 明确且可访问则用 GitHub，否则用本地，fallback 固定为本地。配置为 GitHub 时从 remote 确定仓库，多个合理目标时询问；配置为本地时使用 `.jnative/task/`。具体格式、回退和迁移规则见 [Tracker 操作约定](references/issues.md)。
+`.jnative/issue-tracker.md` 是可选配置，由用户显式运行 `jn-setup` 创建或修改；普通 JN 不调用 setup、不创建配置。配置存在时按配置执行；不存在时使用内置默认值：GitHub remote 明确且可访问则用 GitHub，否则用本地，fallback 固定为本地。GitHub 模式先读 `github_client`，只接受 `gh`；字段缺失时同样只用 `gh` / `gh api`，不使用 GitHub connector 或 GitHub MCP。`gh` 不可用时回退本地，不回退 connector。从 remote 确定仓库，多个合理目标时询问。配置为本地时使用 `.jnative/task/`。具体格式、回退和迁移规则见 [Tracker 操作约定](references/issues.md)。
 
 同一需求只使用一个正式 tracker。已有父记录决定该需求继续写 GitHub 还是本地，不能因暂时失败同时维护两份；切换已有需求必须由用户明确要求迁移。
 
@@ -30,7 +30,7 @@ JN 用父记录保存 RFC 格式的 PRD，用子任务记录管理任务和依�
 
 未指定任务时先读 `.jnative/task/index.md`，缺失、用户要求刷新或条目与 tracker 冲突时再从配置的 tracker 列父需求元数据并刷新视图。只有一个合理候选就用它，多个候选列标题、进度和最近活动供用户选择；不要把所有打开记录都当成 JN 任务。只有用户查询历史或旧需求匹配时才读 `history.md`；新需求进入澄清。
 
-GitHub 以 `jn:prd`、`jn:task` 查找，本地以 frontmatter 的 `jn_type` 查找；历史无标签记录仍按正文和父子关系定位，不因缺标签创建重复需求。读父 PRD、确认记录、全部子任务、依赖和执行记录。用户指定子任务时回读它的父 PRD。tracker 状态优先于聊天里的旧进度，但本会话明确的新决定也要回写，不能因记录滞后重复索要授权。
+GitHub 以 `jn:prd`、`jn:task` 查找，本地以 frontmatter 的 `jn_type` 查找；历史无标签记录仍按正文和父子关系定位，不因缺标签创建重复需求。读父 PRD、确认记录、全部子任务、依赖和执行记录。GitHub 子任务以父 Issue 的 sub-issue 列表和 `sub_issues_summary` 为准，正文链接只作核验。用户指定子任务时回读它的父 PRD。tracker 状态优先于聊天里的旧进度，但本会话明确的新决定也要回写，不能因记录滞后重复索要授权。
 
 | 当前情况 | 下一步 |
 |---|---|
@@ -72,6 +72,6 @@ GitHub Issue 里优先引用可访问的仓库文档和一手来源。完整笔�
 
 ## 汇报
 
-GitHub tracker 模式下，完整 PRD、子任务、执行证据和状态只写入对应 Issue 或评论；聊天中不重复正文，只返回必要的结果、阻塞或待确认事项，以及父/子 Issue 链接。这样可以节省上下文，不牺牲 tracker 中的完整记录。local 模式仍返回对应本地路径。关闭但未计划完成的任务不能算作完成；父需求的进度由子任务读取，不手工复制一张状态表。
+GitHub tracker 模式下，完整 PRD、子任务、执行证据和状态只写入对应 Issue 或评论；聊天中不重复正文，只返回必要的结果、阻塞或待确认事项，以及父/子 Issue 链接。这样可以节省上下文，不牺牲 tracker 中的完整记录。local 模式仍返回对应本地路径。关闭但未计划完成的任务不能算作完成。GitHub 列表上的 `n/m` 只来自原生 sub-issue，正文链接不会产生它；圈上的 completed 含所有 closed 子 Issue，取消项不能当完成。父需求进度仍读子任务真实状态，不手工复制一张状态表。
 
 只在用户要求停下、需要重要决定、没有可做任务或全部验收完成时结束连续执行。检查失败先修复，再决定是否阻塞该项。

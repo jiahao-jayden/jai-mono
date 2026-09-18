@@ -7,9 +7,10 @@
 ```markdown
 tracker: github
 fallback: local
+github_client: gh
 ```
 
-`tracker` 只接受 `github` 或 `local`，`fallback` 只接受 `local`。GitHub 仓库从 remote 获取，不在配置中复制。配置由 `jn-setup` 显式维护；普通 JN 不调用 setup、不创建或修改配置。配置不存在时，GitHub remote 明确且可访问则使用 GitHub，否则使用本地；fallback 始终是本地。
+`tracker` 只接受 `github` 或 `local`，`fallback` 只接受 `local`。`tracker: github` 时必须有 `github_client: gh`，不接受其他值。GitHub 仓库从 remote 获取，不在配置中复制。配置由 `jn-setup` 显式维护；普通 JN 不调用 setup、不创建或修改配置。配置不存在或 `github_client` 缺失时，GitHub 读写仍只用 `gh`；GitHub remote 明确且可访问则使用 GitHub，否则使用本地；fallback 始终是本地。不因 connector / GitHub MCP 可用就改走它们。
 
 - `github`：父 PRD 和任务是 GitHub Issues，状态由 Issue、label、关系和评论承载。
 - `local`：父 PRD 和任务是 `.jnative/task/<feature>/` 下的 Markdown，状态由 frontmatter、链接和执行记录承载。
@@ -37,13 +38,50 @@ local 父需求关闭后，以项目当前日期 `YYYY-MM-DD` 将 `.jnative/task
 
 ## GitHub 发布和关系
 
-使用当前可用的 GitHub connector 或 `gh`。需要未知 API 时先查官方文档或工具 schema，不猜端点、参数、ID；不为这套流程增加专用服务。
+进入 GitHub 模式后先读配置里的 `github_client`。值为 `gh` 或字段缺失时，所有读取和写入只走 `gh` / `gh api`：Issue、评论和标签用 `gh issue`、`gh label`；父子关系、依赖和关闭原因用 `gh api`。需要未知 API 时先查 `gh` 帮助和 GitHub 官方文档，不猜端点、参数、ID；不为这套流程增加专用服务。
 
-1. 先核对仓库、已有父 Issue 和授权范围。对新需求发布父 PRD，再发布子任务。
-2. 草稿用 T1、T2 等任务标识，父需求内不复用；追加任务从未使用的序号继续。每个新子 Issue 正文写父 Issue 链接和草稿标识；创建成功后保留工具返回的完整链接和 ID。
-3. 所有子任务有真实编号后，替换临时依赖引用，建立原生父子关系和依赖。关系只来自实际任务，检查自依赖和循环，不把列表顺序当成依赖。关系或替代链接尚未补齐、核实时，不实施受影响的任务。
-4. 原生关系工具不可用时，父 Issue 附无状态的子任务链接列表，子 Issue 写父链接和“前置任务”链接，并明确注明使用链接回退。调度时沿这些链接读取真实状态，不能因此忽略依赖。
-5. 原生关系可用时以它为准，正文的前置交付物说明保留。发现正文与原生关系冲突时先核实并修正，不自行挑一个继续。
+不使用 GitHub connector、GitHub MCP，以及 `issue_write`、`issue_read`、`list_issues`、`sub_issue_write` 等 connector 工具。这些工具在会话里可见、只要读一眼、或 `gh` 暂时失败，都不能改走 connector；`gh` 不可用时按配置回退本地，不回退 connector。
+
+`gh issue create` 不能挂父 Issue。正文里的 `#65`、任务列表或“前置任务”链接都不会出现列表页上的 `0/8` 进度圈。那个圈只来自 GitHub 原生 **sub-issue**，由 `sub_issues_summary.completed/total` 自动计算。
+
+三种关系不要混：
+
+| 关系 | 作用 | 会不会出进度圈 |
+|---|---|---|
+| sub-issue（父子） | 子任务属于哪个父 PRD | 会 |
+| blocked_by（依赖） | 谁挡住谁，用于调度 | 不会 |
+| 正文链接 / `- [ ] #n` | 给人看 | 不会 |
+
+API 里的 `id` 是 REST 数字数据库 ID，不是 Issue 编号，也不是 `gh issue view --json id` 的 GraphQL node ID。
+
+```bash
+# 取 REST id，并看进度圈是否已出现
+gh api repos/{owner}/{repo}/issues/{number} --jq '{id,number,sub_issues_summary}'
+
+# 已有子 Issue：挂到父 Issue（sub_issue_id 必须是子 Issue 的 REST id）
+gh api repos/{owner}/{repo}/issues/{parent_number}/sub_issues -F sub_issue_id={child_id}
+
+# 或创建子 Issue 时直接带父（parent_issue_id 也是 REST id）
+gh api repos/{owner}/{repo}/issues --input - <<'EOF'
+{"title":"[T1] ...","body":"...","labels":["jn:task","jn:ready"],"parent_issue_id":123456789}
+EOF
+
+# 依赖（调度用，替代不了父子）
+gh api repos/{owner}/{repo}/issues/{blocked_number}/dependencies/blocked_by -F issue_id={blocker_id}
+
+# 发布后必须核验；total 对不上就还没挂上
+gh api repos/{owner}/{repo}/issues/{parent_number} --jq .sub_issues_summary
+gh api repos/{owner}/{repo}/issues/{parent_number}/sub_issues --paginate --jq '.[].number'
+```
+
+1. 先核对仓库、已有父 Issue 和授权范围。对新需求先发父 PRD，再发子任务。
+2. 草稿用 T1、T2 等任务标识，父需求内不复用；追加任务从未使用的序号继续。每个新子 Issue 正文写父 Issue 链接和草稿标识；创建成功后同时保留 number、html_url 和 REST `id`。
+3. 每个子任务创建后立刻挂成该父 Issue 的 sub-issue，再按实际依赖写 `blocked_by`。检查自依赖和循环，不把列表顺序当成依赖。`sub_issues_summary.total` 与子任务数不一致，或依赖未核实时，不实施受影响的任务。
+4. 恢复已有需求时，若父 Issue 已有子任务但 `sub_issues_summary.total` 为 0，补挂 sub-issue，不要只改正文。
+5. sub-issue 或 blocked_by API 不可用时停下说明缺什么；可以在正文保留链接方便阅读，但必须写明进度圈和原生依赖都没有建上。不要把链接回退当成发布完成。
+6. 原生关系以 API 为准，正文的前置交付物说明保留。发现正文与原生关系冲突时先核实并修正。
+
+GitHub 进度圈把所有 closed 子 Issue 算进 `completed`，`not_planned` 也会增加数字。调度和验收仍看关闭原因，取消项不能当完成。
 
 发布前在授权范围内创建缺少的 JN 标签，定义见下节；不要求看板。业务正文更新前重新读取，保留用户的补充；只改本次负责的小节。发现他人正在修改同一段时先协调，不覆盖整份旧快照。
 

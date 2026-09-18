@@ -1,5 +1,12 @@
 # 历史需求
 
+## Desktop Sidebar：项目文件夹、Chats 与归档工作台
+
+结果：completed
+Tracker：https://github.com/jiahao-jayden/jai-mono/issues/89
+归档日期：2026-09-19
+本地历史：-
+
 ## 固定 Workspace 的会话
 
 结果：completed
