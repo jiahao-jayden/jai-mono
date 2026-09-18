@@ -230,6 +230,11 @@ export const desktopMessages = defineMessages({
 	messageResponding: { id: "desktop.message.responding", defaultMessage: "Assistant is responding" },
 	messageComplete: { id: "desktop.message.complete", defaultMessage: "Assistant response complete" },
 	messageJumpLatest: { id: "desktop.message.jumpLatest", defaultMessage: "Jump to latest message" },
+	messageTrailNavigation: { id: "desktop.messageTrail.navigation", defaultMessage: "Message navigation" },
+	messageTrailTick: {
+		id: "desktop.messageTrail.tick",
+		defaultMessage: "Message {ordinal}: {preview}",
+	},
 	permissionRequest: { id: "desktop.permission.request", defaultMessage: "Permission request" },
 	permissionPrevious: { id: "desktop.permission.previous", defaultMessage: "Previous permission" },
 	permissionNext: { id: "desktop.permission.next", defaultMessage: "Next permission" },

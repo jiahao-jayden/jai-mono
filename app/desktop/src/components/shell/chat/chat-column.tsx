@@ -9,6 +9,7 @@ import {
 	useCallback,
 	useEffect,
 	useLayoutEffect,
+	useMemo,
 	useRef,
 	useState,
 	type WheelEvent,
@@ -37,7 +38,14 @@ import { toast } from "../../ui/toast";
 import { COLLAPSED_CHAT_CONTENT_PADDING_CLASS, DESKTOP_TOP_BAR_HEIGHT_CLASS } from "../desktop-chrome";
 import { SessionActions } from "../session-actions";
 import { ChatComposer } from "./chat-composer";
-import { TranscriptVirtualList, type TranscriptVirtualListHandle } from "./chat-transcript";
+import { groupTranscriptItems, TranscriptVirtualList, type TranscriptVirtualListHandle } from "./chat-transcript";
+import { MessageTrail } from "./message-trail";
+import {
+	createActiveTrailStore,
+	deriveMessageTrailAnchors,
+	deriveMessageTrailItems,
+	resolveActiveTrailSnapshot,
+} from "./message-trail-logic";
 import {
 	comfortableScrollTop,
 	isTranscriptAwayFromBottom,
@@ -121,8 +129,11 @@ export function ChatColumn({
 	const reducedMotion = useReducedMotion();
 	const [editingTitle, setEditingTitle] = useState(false);
 	const [titleDraft, setTitleDraft] = useState("");
+	const [messageTrailStore] = useState(createActiveTrailStore);
 
 	const isNewChat = !session;
+	const sessionId = session?.id;
+	const messageTrailSessionRef = useRef(sessionId);
 	const showLogo = isNewChat || chat.isLoading;
 	const logoLabel = isNewChat
 		? intl.formatMessage(greetingMessage(), { name: "Jiahao" })
@@ -139,15 +150,46 @@ export function ChatColumn({
 		pendingApprovals.length > 0
 			? chat.messages.filter((item) => item.kind !== "permission" || item.status !== "pending")
 			: chat.messages;
+	const messageTrailItems = useMemo(() => deriveMessageTrailItems(transcriptItems), [transcriptItems]);
+	const messageTrailAnchors = useMemo(
+		() => deriveMessageTrailAnchors(groupTranscriptItems(transcriptItems)),
+		[transcriptItems],
+	);
+	const onVisibleRowRangeChange = useCallback(
+		(topRowIndex: number, bottomRowIndex: number) => {
+			messageTrailStore.setSnapshot(resolveActiveTrailSnapshot(messageTrailAnchors, topRowIndex, bottomRowIndex));
+		},
+		[messageTrailAnchors, messageTrailStore],
+	);
 	const transcriptScroll = useTranscriptScroll({
 		ref: scrollRef,
-		sessionId: session?.id,
+		sessionId,
 		items: transcriptItems,
 		loading: chat.isLoading,
 		responding: isAgentWorking,
 		reducedMotion,
 		ensureItemVisible: ensureTranscriptItemVisible,
 	});
+	useLayoutEffect(() => {
+		if (messageTrailSessionRef.current === sessionId) return;
+		messageTrailSessionRef.current = sessionId;
+		messageTrailStore.setSnapshot(null);
+	});
+	const jumpToMessageTrailItem = useCallback(
+		(itemId: string) => {
+			transcriptScroll.stopFollowing();
+			const startedAt = performance.now();
+			const seekPrompt = () => {
+				const element = scrollRef.current;
+				if (!element) return;
+				if (scrollPromptIntoReadingPosition(element, itemId, reducedMotion, ensureTranscriptItemVisible)) return;
+				if (performance.now() - startedAt < 1_000) requestAnimationFrame(seekPrompt);
+			};
+			ensureTranscriptItemVisible(itemId);
+			requestAnimationFrame(seekPrompt);
+		},
+		[ensureTranscriptItemVisible, reducedMotion, transcriptScroll],
+	);
 
 	const projectLabel =
 		project?.displayName ??
@@ -236,7 +278,7 @@ export function ChatColumn({
 									}}
 									aria-label={intl.formatMessage(desktopMessages.sessionTitle)}
 									maxLength={80}
-									className="h-7 min-w-0 max-w-64 flex-1 border-transparent bg-muted-hover px-[5px] py-0 text-[13px] leading-[18px] font-medium focus-visible:border-brand"
+									className="h-7 min-w-0 max-w-64 flex-1 border-transparent bg-muted-hover px-1.25 py-0 text-[13px] leading-4.5 font-medium focus-visible:border-brand"
 									style={noDrag}
 								/>
 							) : (
@@ -276,7 +318,7 @@ export function ChatColumn({
 					) : null}
 				</div>
 				{/* 右上角的任务卡片 / dock 开关由 AppShell 固定在内容卡片角上，这里只留出它们的位置。 */}
-				<span className="h-8 w-[66px] shrink-0" aria-hidden="true" />
+				<span className="h-8 w-16.5 shrink-0" aria-hidden="true" />
 			</header>
 			<RecoveryBanners
 				connectionStatus={chat.connectionStatus}
@@ -297,7 +339,7 @@ export function ChatColumn({
 				<div className="relative min-h-0 flex-1">
 					<div
 						ref={scrollRef}
-						className="h-full overflow-x-clip overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable]"
+						className="h-full overflow-x-clip overflow-y-auto scrollbar-gutter-stable [overflow-anchor:none]"
 						onKeyDownCapture={transcriptScroll.onKeyDownCapture}
 						onPointerDown={transcriptScroll.onPointerDown}
 						onPointerMove={transcriptScroll.onPointerMove}
@@ -320,8 +362,14 @@ export function ChatColumn({
 							scrollRef={scrollRef}
 							tailSpace={transcriptScroll.tailSpace}
 							emptyState={intl.formatMessage(desktopMessages.chatEmpty)}
+							onVisibleRowRangeChange={onVisibleRowRangeChange}
 						/>
 					</div>
+					<MessageTrail
+						items={messageTrailItems}
+						activeStore={messageTrailStore}
+						onSelect={jumpToMessageTrailItem}
+					/>
 					<MessageScroller
 						onScrollToBottom={transcriptScroll.scrollToBottom}
 						visible={transcriptScroll.showMessageScroller}
@@ -835,6 +883,7 @@ function useTranscriptScroll({
 		tailSpace,
 		scrollToBottom,
 		showMessageScroller,
+		stopFollowing,
 	};
 }
 

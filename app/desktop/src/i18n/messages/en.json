@@ -210,6 +210,12 @@
   "desktop.message.your": {
     "defaultMessage": "Your message"
   },
+  "desktop.messageTrail.navigation": {
+    "defaultMessage": "Message navigation"
+  },
+  "desktop.messageTrail.tick": {
+    "defaultMessage": "Message {ordinal}: {preview}"
+  },
   "desktop.mode.aria": {
     "defaultMessage": "Agent mode: {mode}"
   },

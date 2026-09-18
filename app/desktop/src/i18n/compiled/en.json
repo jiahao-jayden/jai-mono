@@ -69,6 +69,8 @@
   "desktop.message.jumpLatest": "Jump to latest message",
   "desktop.message.responding": "Assistant is responding",
   "desktop.message.your": "Your message",
+  "desktop.messageTrail.navigation": "Message navigation",
+  "desktop.messageTrail.tick": "Message {ordinal}: {preview}",
   "desktop.mode.aria": "Agent mode: {mode}",
   "desktop.mode.automate": "Automate",
   "desktop.mode.manual": "Manual",

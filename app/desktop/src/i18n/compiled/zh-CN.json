@@ -69,6 +69,8 @@
   "desktop.message.jumpLatest": "跳到最新消息",
   "desktop.message.responding": "Assistant 正在回复",
   "desktop.message.your": "你的消息",
+  "desktop.messageTrail.navigation": "消息导航",
+  "desktop.messageTrail.tick": "消息 {ordinal}：{preview}",
   "desktop.mode.aria": "Agent 模式：{mode}",
   "desktop.mode.automate": "自动执行",
   "desktop.mode.manual": "手动",

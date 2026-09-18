@@ -1,4 +1,4 @@
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { type Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "cn";
 import {
 	forwardRef,
@@ -109,6 +109,7 @@ export const TranscriptVirtualList = forwardRef<
 		readonly scrollRef: RefObject<HTMLDivElement | null>;
 		readonly tailSpace: number;
 		readonly emptyState?: ReactNode;
+		readonly onVisibleRowRangeChange?: (topRowIndex: number, bottomRowIndex: number) => void;
 	}
 >(
 	(
@@ -124,6 +125,7 @@ export const TranscriptVirtualList = forwardRef<
 			scrollRef,
 			tailSpace,
 			emptyState,
+			onVisibleRowRangeChange,
 		},
 		ref,
 	) => {
@@ -132,6 +134,38 @@ export const TranscriptVirtualList = forwardRef<
 		const rows = groupTranscriptItems(items);
 		const footerCount = Number(responding) + Number(tailSpace > 0);
 		const count = rows.length + footerCount;
+		const visibleRangeFrameRef = useRef<number | undefined>(undefined);
+		const visibleRangeRef = useRef<{ top: number; bottom: number } | undefined>(undefined);
+		const visibleRangeCallbackRef = useRef(onVisibleRowRangeChange);
+		useLayoutEffect(() => {
+			visibleRangeCallbackRef.current = onVisibleRowRangeChange;
+		}, [onVisibleRowRangeChange]);
+		const scheduleVisibleRowRange = (instance: Virtualizer<HTMLDivElement, HTMLDivElement>) => {
+			if (visibleRangeFrameRef.current !== undefined) return;
+			visibleRangeFrameRef.current = requestAnimationFrame(() => {
+				visibleRangeFrameRef.current = undefined;
+				const scrollElement = scrollRef.current;
+				const callback = visibleRangeCallbackRef.current;
+				if (!scrollElement || !callback) return;
+				const viewportTop = scrollElement.scrollTop;
+				const viewportBottom = viewportTop + scrollElement.clientHeight;
+				let top = Number.POSITIVE_INFINITY;
+				let bottom = Number.NEGATIVE_INFINITY;
+				for (const item of instance.getVirtualItems()) {
+					const rowStart = item.start + 16;
+					const rowEnd = item.end + 16;
+					if (item.index >= rows.length || rowEnd <= viewportTop || rowStart >= viewportBottom) continue;
+					top = Math.min(top, item.index);
+					bottom = Math.max(bottom, item.index);
+				}
+				if (!Number.isFinite(top) || !Number.isFinite(bottom)) return;
+				const next = { top, bottom };
+				const previous = visibleRangeRef.current;
+				if (previous?.top === next.top && previous.bottom === next.bottom) return;
+				visibleRangeRef.current = next;
+				callback(next.top, next.bottom);
+			});
+		};
 		const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
 			count,
 			getScrollElement: () => scrollRef.current,
@@ -139,6 +173,7 @@ export const TranscriptVirtualList = forwardRef<
 			getItemKey: (index) => transcriptVirtualItemKey(index, rows, responding),
 			gap: 8,
 			overscan: 5,
+			onChange: scheduleVisibleRowRange,
 		});
 		useImperativeHandle(
 			ref,
@@ -154,6 +189,11 @@ export const TranscriptVirtualList = forwardRef<
 			[rows, virtualizer],
 		);
 		const virtualItems = virtualizer.getVirtualItems();
+		useEffect(() => {
+			return () => {
+				if (visibleRangeFrameRef.current !== undefined) cancelAnimationFrame(visibleRangeFrameRef.current);
+			};
+		}, []);
 		const renderOptions = {
 			animatedItemIds,
 			items,
