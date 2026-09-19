@@ -10,8 +10,9 @@ import { WebSearchResults } from "./web-search-results";
 
 export interface TimelineStep {
 	id: string;
-	verb: string;
-	chip?: string;
+	title: string;
+	summary?: string;
+	density?: "compact" | "default";
 	icon: IconName;
 	details?: string;
 	webSearchResults?: readonly DesktopWebSearchResult[];
@@ -85,8 +86,10 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 	useEffect(() => {
 		if (hasWebSearchResults) setOpen(true);
 	}, [hasWebSearchResults]);
+	const density = step.density ?? "compact";
 	const rowClassName = cn(
-		"flex min-w-0 items-center gap-2 text-start text-[14px] text-foreground/55 outline-none",
+		"flex min-w-0 items-center text-start text-foreground/55 outline-none",
+		density === "compact" ? "gap-2 text-[13px] leading-5" : "gap-2 text-[14px] leading-5",
 		(expandable || selectable) && "transition-colors hover:text-foreground/90",
 	);
 	const chevronClassName = cn(
@@ -95,13 +98,15 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 	);
 	const row = (
 		<>
-			{step.avatar ?? <Icon size={14} strokeWidth={1.5} className="shrink-0 text-foreground/35" />}
+			<span className="flex size-5 shrink-0 items-center justify-center">
+				{step.avatar ?? <Icon size={14} strokeWidth={1.5} className="text-foreground/35" />}
+			</span>
 			<ShimmerLabel active={active} className="relative min-w-0 truncate leading-none">
-				{step.verb}
+				{step.title}
 			</ShimmerLabel>
-			{step.chip ? (
-				<span className="max-w-48 truncate rounded-md bg-foreground/6 px-1.5 py-0.5 font-mono text-[11px] text-foreground/70">
-					{step.chip}
+			{step.summary ? (
+				<span className="max-w-56 truncate rounded-md bg-foreground/6 px-1.5 py-0.5 font-mono text-[11px] leading-4 text-foreground/70">
+					{step.summary}
 				</span>
 			) : null}
 			{expandable || selectable ? (

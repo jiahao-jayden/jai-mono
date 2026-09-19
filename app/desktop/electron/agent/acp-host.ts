@@ -602,6 +602,11 @@ export class DesktopAcpAgentHost {
 		const previousMessage = previous?.kind === "message" ? previous : undefined;
 		const previousNarration = previous?.kind === "narration" ? previous : undefined;
 		const previousText = previousMessage?.text ?? previousNarration?.text ?? "";
+		const timestamp =
+			timestampFromMetadata(update._meta) ??
+			previousMessage?.timestamp ??
+			previousNarration?.timestamp ??
+			Date.now();
 		const complete = update.sessionUpdate === "user_message" || update.sessionUpdate === "agent_message";
 		const slashInvocation = role === "user" ? parseSlashInvocation(update.slashInvocation) : undefined;
 		const item: DesktopMessageItem | DesktopNarrationItem =
@@ -613,7 +618,7 @@ export class DesktopAcpAgentHost {
 						activityId: previousNarration.activityId,
 						text: complete ? text : previousText + text,
 						status: complete ? "complete" : "streaming",
-						timestamp: Date.now(),
+						timestamp,
 					}
 				: {
 						kind: "message",
@@ -621,7 +626,7 @@ export class DesktopAcpAgentHost {
 						role,
 						text: complete ? text : previousText + text,
 						status: complete ? "complete" : "streaming",
-						timestamp: Date.now(),
+						timestamp,
 						...(slashInvocation ? { slashInvocation } : {}),
 					};
 		runtime.items.set(id, item);
@@ -1045,6 +1050,11 @@ function operationIdFromMetadata(value: unknown): string | undefined {
 function toolNameFromMetadata(value: unknown): string | undefined {
 	if (!isRecord(value) || !isRecord(value.jai) || typeof value.jai.toolName !== "string") return undefined;
 	return value.jai.toolName;
+}
+
+function timestampFromMetadata(value: unknown): number | undefined {
+	if (!isRecord(value) || !isRecord(value.jai) || typeof value.jai.timestamp !== "number") return undefined;
+	return Number.isFinite(value.jai.timestamp) ? value.jai.timestamp : undefined;
 }
 
 function activityTitleFromMetadata(value: unknown): string | undefined {

@@ -77,6 +77,7 @@ describe("ACP v2 Agent adapter", () => {
 							{ type: "text", text: "inspect this" },
 							{ type: "resource_link", name: "README", uri: "file:///workspace/README.md" },
 						],
+						_meta: { jai: { timestamp: expect.any(Number) } },
 					},
 				},
 			},
@@ -153,11 +154,12 @@ describe("ACP v2 Agent adapter", () => {
 				jsonrpc: "2.0",
 				id: 4,
 				result: {
-					items: [
+						items: [
 						{
 							sessionUpdate: "user_message",
 							messageId: "child-message-1",
 							content: [{ type: "text", text: "inspect files" }],
+							_meta: { jai: { timestamp: 1_788_998_400_000 } },
 						},
 					],
 				},
@@ -591,6 +593,7 @@ describe("ACP v2 Agent adapter", () => {
 						sessionUpdate: "agent_message",
 						messageId: "assistant-1",
 						content: [{ type: "text", text: "done" }],
+						_meta: { jai: { timestamp: 1_787_659_200_000 } },
 					},
 				},
 			},
@@ -1169,6 +1172,7 @@ describe("ACP v2 Agent adapter", () => {
 						sessionUpdate: "user_message",
 						messageId: "operation-1:input",
 						content: [{ type: "text", text: "persist me" }],
+						_meta: { jai: { timestamp: expect.any(Number) } },
 					},
 				},
 			},

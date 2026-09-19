@@ -1,4 +1,4 @@
-import { type Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, type Virtualizer } from "@tanstack/react-virtual";
 import { cn } from "cn";
 import {
 	forwardRef,
@@ -15,7 +15,7 @@ import { type IntlShape, useIntl } from "react-intl";
 import { ThinkingOrb } from "thinking-orbs";
 import { desktopMessages } from "@/i18n/messages";
 import { filesForAttachments } from "@/lib/attachment-files";
-import { type IconName, useIcon } from "@/lib/icon-context";
+import { useIcon } from "@/lib/icon-context";
 import type {
 	DesktopNarrationItem,
 	DesktopSubagentItem,
@@ -30,6 +30,7 @@ import { ChatMessage } from "../../ui/chat-message";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
 import { Tooltip } from "../../ui/tooltip";
 import { SubagentAvatar } from "../subagent-avatar";
+import { resolveToolTimelinePresentation } from "./tool-timeline-presentation";
 
 type WorkItem = DesktopThinkingItem | DesktopNarrationItem | DesktopToolItem | DesktopSubagentItem;
 
@@ -670,16 +671,17 @@ export function workTimelineSteps(
 		const running = cluster.items.some(isWorkItemRunning);
 		if (cluster.kind === "subagent") {
 			const item = cluster.items[0] as DesktopSubagentItem;
-			const chip = running
+			const summary = running
 				? item.activityTitle
 				: item.status === "error"
 					? intl.formatMessage(desktopMessages.subagentFailed)
 					: undefined;
 			return {
 				id: cluster.id,
-				verb: item.title,
-				...(chip ? { chip } : {}),
+				title: item.title,
+				...(summary ? { summary } : {}),
 				icon: "users",
+				density: "compact",
 				avatar: <SubagentAvatar item={item} size={20} />,
 				active: running,
 				...(options.onOpenSubagent ? { onSelect: () => options.onOpenSubagent?.(item) } : {}),
@@ -692,9 +694,10 @@ export function workTimelineSteps(
 				.join("\n\n");
 			return {
 				id: cluster.id,
-				verb: intl.formatMessage(desktopMessages.transcriptThinking),
-				chip: text,
+				title: intl.formatMessage(desktopMessages.transcriptThinking),
+				summary: text,
 				icon: "sparkles",
+				density: "compact",
 				active: running,
 				...(text.length > 160 ? { details: text } : {}),
 			};
@@ -705,45 +708,26 @@ export function workTimelineSteps(
 			const narration = cluster.narrations.map((item) => item.text).join("\n\n");
 			return {
 				id: cluster.id,
-				verb: intl.formatMessage(running ? desktopMessages.transcriptWorking : desktopMessages.transcriptWorked),
-				chip: narration,
+				title: intl.formatMessage(running ? desktopMessages.transcriptWorking : desktopMessages.transcriptWorked),
+				summary: narration,
 				icon: "sparkles",
+				density: "compact",
 				active: running,
 			};
 		}
 
-		const details = toolClusterDetails(cluster.narrations, tools, intl);
-		const webSearchResults = tools.flatMap((tool) => tool.webSearchResults ?? []);
-		const hasWebSearchResults = tools.some((tool) => tool.webSearchResults !== undefined);
-		const presentation = toolPresentation(tools[0]!, running, intl);
-		const label = hasWebSearchResults ? webSearchLabel(tools, running, intl) : presentation.label;
+		const presentation = resolveToolTimelinePresentation(cluster.narrations, tools, running, intl);
 		return {
 			id: cluster.id,
-			verb: label,
-			...(hasWebSearchResults ? {} : { chip: toolClusterChip(tools, intl) }),
+			title: presentation.title,
+			...(presentation.summary ? { summary: presentation.summary } : {}),
 			icon: presentation.icon,
+			density: presentation.density,
 			active: running,
-			...(details ? { details } : {}),
-			...(hasWebSearchResults ? { webSearchResults } : {}),
+			...(presentation.details ? { details: presentation.details } : {}),
+			...(presentation.webSearchResults ? { webSearchResults: presentation.webSearchResults } : {}),
 		};
 	});
-}
-
-function webSearchLabel(tools: readonly DesktopToolItem[], running: boolean, intl: IntlShape): string {
-	const tool = tools.find((item) => item.webSearchResults !== undefined);
-	if (!tool)
-		return intl.formatMessage(
-			running ? desktopMessages.transcriptWebSearching : desktopMessages.transcriptWebSearchResults,
-		);
-	if (!isGenericWebSearchToolName(tool.toolName)) return tool.toolName;
-	if (tool.searchQuery) return tool.searchQuery;
-	return intl.formatMessage(
-		running ? desktopMessages.transcriptWebSearching : desktopMessages.transcriptWebSearchResults,
-	);
-}
-
-function isGenericWebSearchToolName(value: string): boolean {
-	return value.trim().toLowerCase().replaceAll(/[_-]/g, " ") === "web search";
 }
 
 function workTimelineClusters(items: readonly WorkItem[]): readonly WorkTimelineCluster[] {
@@ -791,41 +775,6 @@ function workTimelineClusters(items: readonly WorkItem[]): readonly WorkTimeline
 	return clusters;
 }
 
-function toolClusterChip(items: readonly DesktopToolItem[], intl: IntlShape): string {
-	if (items.length > 1) {
-		const category = items[0]!.activityKind;
-		if (category === "search") return intl.formatMessage(desktopMessages.transcriptSearches, { count: items.length });
-		if (category === "read" || category === "write")
-			return intl.formatMessage(desktopMessages.transcriptFiles, { count: items.length });
-		if (category === "execute")
-			return intl.formatMessage(desktopMessages.transcriptCommands, { count: items.length });
-		if (category === "call") return intl.formatMessage(desktopMessages.transcriptCalls, { count: items.length });
-		return intl.formatMessage(desktopMessages.transcriptActions, { count: items.length });
-	}
-	const tool = items[0]!;
-	return tool.summary ?? humanizeToolName(tool.toolName);
-}
-
-function toolClusterDetails(
-	narrations: readonly DesktopNarrationItem[],
-	tools: readonly DesktopToolItem[],
-	intl: IntlShape,
-): string | undefined {
-	const narration = narrations.map((item) => item.text).join("\n\n");
-	const toolDetails = tools
-		.map((item) => {
-			const summary = toolClusterChip([item], intl);
-			const changedFiles = item.fileChanges
-				?.map((change) => `${fileChangeVerb(change.operation, intl)} ${change.path}`)
-				.join("\n");
-			const details = [item.details, changedFiles].filter(Boolean).join("\n");
-			const body = details ? `\n${details}` : "";
-			return `${humanizeToolName(item.toolName)} · ${summary}${body}`;
-		})
-		.join("\n\n");
-	return [narration, toolDetails].filter(Boolean).join("\n\n") || undefined;
-}
-
 export function workTimelineSummary(
 	items: readonly DesktopTranscriptItem[],
 	workItems: readonly WorkItem[],
@@ -834,7 +783,7 @@ export function workTimelineSummary(
 	now = Date.now(),
 ): string {
 	const clock = workRunClock(items, workItems, responding, now);
-	if (clock.durationMs === 0 && clock.start === undefined) {
+	if (clock.durationMs === 0) {
 		return intl.formatMessage(clock.active ? desktopMessages.transcriptWorking : desktopMessages.transcriptWorked);
 	}
 	return intl.formatMessage(
@@ -859,7 +808,12 @@ function workRunClock(
 			startIndex = index;
 		}
 		if (item.id === firstWorkId) break;
-		if (turnStart === undefined && item.kind === "message" && item.role === "assistant" && item.status === "complete") {
+		if (
+			turnStart === undefined &&
+			item.kind === "message" &&
+			item.role === "assistant" &&
+			item.status === "complete"
+		) {
 			turnStart = item.timestamp;
 		}
 	}
@@ -899,18 +853,38 @@ function workRunClock(
 		workEnd = Math.max(workEnd ?? item.timestamp, item.timestamp);
 	}
 
-	const active = workItems.some(isWorkItemRunning) || paused || (responding && isLatestWorkGroup(items, workItems) && !sawNextUser);
-	const start = clockConsistentWithWork(turnStart, workStart) ? turnStart : workStart;
+	const active =
+		workItems.some(isWorkItemRunning) ||
+		paused ||
+		(responding && isLatestWorkGroup(items, workItems) && !sawNextUser);
+	const start = resolveWorkStart(turnStart, workStart, workEnd);
 	if (start === undefined || (!active && assistantAfterWorkAt === undefined && workEnd === undefined)) {
 		return { active, paused, durationMs: 0 };
 	}
-	const messageEnd = clockConsistentWithWork(assistantAfterWorkAt, workEnd) ? assistantAfterWorkAt : undefined;
-	const end = active ? now : (messageEnd ?? workEnd ?? start);
+	const end = active ? now : (resolveWorkEnd(assistantAfterWorkAt, workEnd) ?? start);
 	const pauseMs = permissionWindows.reduce(
 		(total, permission) => total + pauseOverlapMs(permission, start, end, now),
 		0,
 	);
 	return { active, paused, durationMs: Math.max(0, end - start - pauseMs), start };
+}
+
+function resolveWorkStart(
+	turnStart: number | undefined,
+	workStart: number | undefined,
+	workEnd: number | undefined,
+): number | undefined {
+	if (turnStart === undefined) return workStart;
+	if (workStart === undefined) return turnStart;
+	if (workStart < turnStart && workEnd !== undefined && workEnd >= turnStart) return turnStart;
+	return clockConsistentWithWork(turnStart, workStart) ? turnStart : workStart;
+}
+
+function resolveWorkEnd(messageEnd: number | undefined, workEnd: number | undefined): number | undefined {
+	if (messageEnd === undefined) return workEnd;
+	if (workEnd === undefined) return messageEnd;
+	if (workEnd > messageEnd) return messageEnd;
+	return clockConsistentWithWork(messageEnd, workEnd) ? messageEnd : workEnd;
 }
 
 function clockConsistentWithWork(messageTime: number | undefined, workTime: number | undefined): boolean {
@@ -944,25 +918,27 @@ function pauseOverlapMs(
 
 export function formatWorkDuration(milliseconds: number, intl: IntlShape): string {
 	const duration = Number.isFinite(milliseconds) ? Math.max(0, milliseconds) : 0;
-	if (duration < 1_000) {
-		return intl.formatNumber(Math.max(1, Math.round(duration)), {
-			style: "unit",
-			unit: "millisecond",
-			unitDisplay: "narrow",
-		});
-	}
 	if (duration < 10_000) {
-		return intl.formatNumber(duration / 1_000, {
+		return intl.formatNumber(Math.max(1, Math.round(duration / 1_000)), {
 			style: "unit",
 			unit: "second",
 			unitDisplay: "narrow",
-			maximumFractionDigits: 1,
-			minimumFractionDigits: 1,
 		});
 	}
 	const totalSeconds = Math.round(duration / 1_000);
-	const minutes = Math.floor(totalSeconds / 60);
+	const hours = Math.floor(totalSeconds / 3_600);
+	const minutes = Math.floor((totalSeconds % 3_600) / 60);
 	const seconds = totalSeconds % 60;
+	if (hours > 0) {
+		const parts = [intl.formatNumber(hours, { style: "unit", unit: "hour", unitDisplay: "narrow" })];
+		if (minutes > 0) {
+			parts.push(intl.formatNumber(minutes, { style: "unit", unit: "minute", unitDisplay: "narrow" }));
+		}
+		if (seconds > 0) {
+			parts.push(intl.formatNumber(seconds, { style: "unit", unit: "second", unitDisplay: "narrow" }));
+		}
+		return parts.join(" ");
+	}
 	if (minutes === 0) {
 		return intl.formatNumber(seconds, { style: "unit", unit: "second", unitDisplay: "narrow" });
 	}
@@ -973,56 +949,6 @@ export function formatWorkDuration(milliseconds: number, intl: IntlShape): strin
 		intl.formatNumber(minutes, { style: "unit", unit: "minute", unitDisplay: "narrow" }),
 		intl.formatNumber(seconds, { style: "unit", unit: "second", unitDisplay: "narrow" }),
 	].join(" ");
-}
-
-function fileChangeVerb(operation: "add" | "modify" | "delete", intl: IntlShape): string {
-	switch (operation) {
-		case "add":
-			return intl.formatMessage(desktopMessages.transcriptAdded);
-		case "modify":
-			return intl.formatMessage(desktopMessages.transcriptModified);
-		case "delete":
-			return intl.formatMessage(desktopMessages.transcriptDeleted);
-	}
-}
-
-function toolPresentation(item: DesktopToolItem, running: boolean, intl: IntlShape): { icon: IconName; label: string } {
-	const category = item.activityKind;
-	if (category === "search") {
-		return {
-			icon: "search",
-			label: intl.formatMessage(running ? desktopMessages.transcriptSearching : desktopMessages.transcriptSearched),
-		};
-	}
-	if (category === "read") {
-		return {
-			icon: "file-code",
-			label: intl.formatMessage(running ? desktopMessages.transcriptReading : desktopMessages.transcriptRead),
-		};
-	}
-	if (category === "write") {
-		return {
-			icon: "file-code",
-			label: intl.formatMessage(running ? desktopMessages.transcriptEditing : desktopMessages.transcriptEdited),
-		};
-	}
-	if (category === "call") {
-		return {
-			icon: "link",
-			label: intl.formatMessage(running ? desktopMessages.transcriptCalling : desktopMessages.transcriptCalled),
-		};
-	}
-	// Generic operations do not pretend to be commands or remote service calls.
-	return {
-		icon: "terminal",
-		label: intl.formatMessage(running ? desktopMessages.transcriptRunning : desktopMessages.transcriptRan),
-	};
-}
-
-function humanizeToolName(toolName: string): string {
-	const normalized = toolName.replace(/^[a-z]+__/, "").replace(/([a-z])([A-Z])/g, "$1 $2");
-	const words = normalized.split(/[_\s-]+/).filter(Boolean);
-	return words.map((word) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`).join(" ");
 }
 
 function isWorkItem(item: DesktopTranscriptItem): item is WorkItem {

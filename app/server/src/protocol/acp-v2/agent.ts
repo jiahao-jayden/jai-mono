@@ -615,13 +615,16 @@ function projectEntry(sessionId: string, entry: SessionEntry, operationId?: stri
 					sessionId,
 					entry.id,
 					userPrompt(entry.message),
+					Date.parse(entry.timestamp),
 					projectSlashInvocation(entry.message.metadata?.slashInvocation),
 				),
 			];
 		case "assistant": {
 			const content = agentMessageContent(entry.message);
 			return [
-				...(content.length > 0 ? [agentMessageUpdate(sessionId, entry.id, content)] : []),
+				...(content.length > 0
+					? [agentMessageUpdate(sessionId, entry.id, content, Date.parse(entry.timestamp))]
+					: []),
 				...agentThoughtUpdate(sessionId, entry.id, entry.message, operationId),
 				...toolCallsFromAssistant(sessionId, entry.message, operationId, Date.parse(entry.timestamp)),
 			];
@@ -647,6 +650,7 @@ function agentMessageUpdate(
 	sessionId: string,
 	messageId: string,
 	content: readonly AcpPromptBlock[],
+	timestamp: number,
 ): AcpJsonRpcNotification {
 	return {
 		jsonrpc: "2.0",
@@ -657,6 +661,7 @@ function agentMessageUpdate(
 				sessionUpdate: "agent_message",
 				messageId,
 				content,
+				...messageMetadata(timestamp),
 			},
 		},
 	};
@@ -1043,6 +1048,7 @@ function userMessageUpdate(
 	sessionId: string,
 	messageId: string,
 	content: readonly AcpPromptBlock[],
+	timestamp: number,
 	slashInvocation?: AcpSlashInvocation,
 ): AcpJsonRpcNotification {
 	return {
@@ -1054,10 +1060,15 @@ function userMessageUpdate(
 				sessionUpdate: "user_message",
 				messageId,
 				content,
+				...messageMetadata(timestamp),
 				...(slashInvocation ? { slashInvocation } : {}),
 			},
 		},
 	};
+}
+
+function messageMetadata(timestamp: number): { readonly _meta?: { readonly jai: { readonly timestamp: number } } } {
+	return Number.isFinite(timestamp) ? { _meta: { jai: { timestamp } } } : {};
 }
 
 interface AcpSlashInvocation {

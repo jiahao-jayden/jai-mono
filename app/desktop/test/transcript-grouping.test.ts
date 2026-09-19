@@ -104,7 +104,7 @@ describe("transcript grouping", () => {
 		expect(groupTranscriptItems([tool, subagent])).toEqual([{ id: "work:turn-1:tool:bash-1", items: [tool, subagent] }]);
 		const steps = workTimelineSteps([tool, subagent], intl, { onOpenSubagent: () => {} });
 		expect(steps).toHaveLength(2);
-		expect(steps[1]).toMatchObject({ verb: "Inspect desktop", chip: "Read", active: true });
+		expect(steps[1]).toMatchObject({ title: "Inspect desktop", summary: "Read", active: true });
 		expect(steps[1]?.onSelect).toBeFunction();
 		expect(workTimelineSummary([tool, subagent], [tool, subagent], true, intl, 90_000)).toBe("Working · 1m 30s");
 
@@ -113,6 +113,58 @@ describe("transcript grouping", () => {
 		);
 		expect(markup).toContain("Inspect desktop");
 		expect(markup).toContain("<svg");
+	});
+
+	test("工具展示层为主要类别使用稳定的 Hugeicons 语义映射", () => {
+		const categories = [
+			["search", "search-code"],
+			["read", "file-search"],
+			["write", "file-edit"],
+			["execute", "command"],
+			["call", "api"],
+			["operation", "workflow"],
+		] as const;
+		for (const [activityKind, icon] of categories) {
+			const tool = {
+				kind: "tool",
+				id: `tool:${activityKind}`,
+				turnId: "turn-1",
+				activityId: `activity:${activityKind}`,
+				toolCallId: `call:${activityKind}`,
+				toolName: `unknown_${activityKind}`,
+				activityKind,
+				status: "complete",
+			} satisfies Extract<DesktopTranscriptItem, { kind: "tool" }>;
+			expect(workTimelineSteps([tool], intl)[0]).toMatchObject({ icon, density: "compact" });
+		}
+	});
+
+	test("未知工具使用可读标题和 operation fallback", () => {
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:unknown",
+			turnId: "turn-1",
+			activityId: "activity:unknown",
+			toolCallId: "call:unknown",
+			toolName: "mcp__listResources",
+			activityKind: "operation",
+			status: "complete",
+		};
+		expect(workTimelineSteps([tool], intl)[0]).toMatchObject({ title: "Ran", summary: "List Resources", icon: "workflow" });
+	});
+
+	test("失败子代理保留可选择行并显示失败状态", () => {
+		const subagent: Extract<DesktopTranscriptItem, { kind: "subagent" }> = {
+			kind: "subagent",
+			id: "subagent:error",
+			turnId: "turn-1",
+			toolCallId: "call:error",
+			title: "Inspect desktop",
+			status: "error",
+		};
+		const step = workTimelineSteps([subagent], intl, { onOpenSubagent: () => {} })[0];
+		expect(step).toMatchObject({ title: "Inspect desktop", summary: "Failed", icon: "users", density: "compact" });
+		expect(step?.onSelect).toBeFunction();
 	});
 
 	test("普通搜索工具不会进入 Web Search 来源渲染", () => {
@@ -181,7 +233,7 @@ describe("transcript grouping", () => {
 			webSearchResults: [{ title: "AI Daily", url: "https://example.com/ai-daily" }],
 		};
 
-		expect(workTimelineSteps([tool], intl)[0]?.verb).toBe("latest AI news");
+		expect(workTimelineSteps([tool], intl)[0]?.title).toBe("latest AI news");
 	});
 
 	test("同一运行内的工具只形成一个外层工作过程", () => {
@@ -284,9 +336,91 @@ describe("transcript grouping", () => {
 		expect(workTimelineSummary([user, tool], [tool], false, intl, 16 * 60 * 60 * 1_000)).toBe("Worked");
 	});
 
+	test("零时长工作不会伪装成 1ms", () => {
+		const thinking: Extract<DesktopTranscriptItem, { kind: "thinking" }> = {
+			kind: "thinking",
+			id: "thinking:instant",
+			turnId: "turn-instant",
+			activityId: "activity:instant",
+			text: "",
+			status: "complete",
+			timestamp: 10_000,
+		};
+
+		expect(workTimelineSummary([thinking], [thinking], false, intl)).toBe("Worked");
+	});
+
 	test("工作时长使用本地化的紧凑单位", () => {
+		expect(formatWorkDuration(400, intl)).toBe("1s");
+		expect(formatWorkDuration(9_800, intl)).toBe("10s");
 		expect(formatWorkDuration(3 * 60_000 + 27_000, intl)).toBe("3m 27s");
-		expect(formatWorkDuration(16 * 60 * 60_000 + 17 * 60_000 + 55_000, intl)).toBe("977m 55s");
+		expect(formatWorkDuration(16 * 60 * 60_000 + 17 * 60_000 + 55_000, intl)).toBe("16h 17m 55s");
+	});
+
+	test("不会把本轮用户消息之前的旧工具时间算进工作时长", () => {
+		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:user-stale-clock",
+			role: "user",
+			text: "检查一下",
+			status: "complete",
+			timestamp: 100_000,
+		};
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:stale-clock",
+			turnId: "turn-stale-clock",
+			activityId: "assistant:stale-clock",
+			toolCallId: "stale-clock",
+			toolName: "Read",
+			activityKind: "read",
+			status: "complete",
+			startedAt: 0,
+			completedAt: 101_000,
+		};
+		const reply: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:reply-stale-clock",
+			role: "assistant",
+			text: "完成了。",
+			status: "complete",
+			timestamp: 102_000,
+		};
+
+		expect(workTimelineSummary([user, tool, reply], [tool], false, intl)).toBe("Worked for 2s");
+	});
+
+	test("不会把助手回复之后的旧工具结束时间算进工作时长", () => {
+		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:user-end-boundary",
+			role: "user",
+			text: "检查一下",
+			status: "complete",
+			timestamp: 100_000,
+		};
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:end-boundary",
+			turnId: "turn-end-boundary",
+			activityId: "assistant:end-boundary",
+			toolCallId: "end-boundary",
+			toolName: "Read",
+			activityKind: "read",
+			status: "complete",
+			startedAt: 101_000,
+			completedAt: 500_000,
+		};
+		const reply: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:reply-end-boundary",
+			role: "assistant",
+			text: "完成了。",
+			status: "complete",
+			timestamp: 102_000,
+		};
+
+		expect(workTimelineSummary([user, tool, reply], [tool], false, intl)).toBe("Worked for 2s");
 	});
 
 	test("context compaction 不会切断同一 turn 的工作日志", () => {
@@ -426,9 +560,9 @@ describe("transcript grouping", () => {
 			(item): item is Extract<DesktopTranscriptItem, { kind: "tool" }> => item.kind === "tool",
 		);
 		expect(workTimelineSteps(tools, intl)).toMatchObject([
-			{ verb: "Called", chip: "2 calls" },
-			{ verb: "Called", chip: "pending records" },
-			{ verb: "Called", chip: "2 calls" },
+			{ title: "Called", summary: "2 calls" },
+			{ title: "Called", summary: "pending records" },
+			{ title: "Called", summary: "2 calls" },
 		]);
 		expect((markup.match(/data-slot="tool-timeline"/g) ?? []).length).toBe(1);
 	});
@@ -460,7 +594,7 @@ describe("transcript grouping", () => {
 		];
 
 		expect(workTimelineSteps(tools, intl)).toMatchObject([
-			{ verb: "Called", chip: "5 calls" },
+			{ title: "Called", summary: "5 calls" },
 		]);
 	});
 
@@ -658,6 +792,48 @@ describe("transcript grouping", () => {
 		};
 
 		expect(workTimelineSummary([user, tool, reply], [tool], false, intl, now + 2)).toBe("Worked for 1m 1s");
+	});
+
+	test("回放工具组使用 durable request 和 run 时间", () => {
+		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:user-replayed-narration",
+			role: "user",
+			text: "查询 Jev",
+			status: "complete",
+			timestamp: 0,
+		};
+		const narration: Extract<DesktopTranscriptItem, { kind: "narration" }> = {
+			kind: "narration",
+			id: "message:narration-replayed",
+			turnId: "turn-replayed-narration",
+			activityId: "activity-replayed-narration",
+			text: "我查一下。",
+			status: "complete",
+			timestamp: 15_000,
+		};
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:replayed-narration",
+			turnId: "turn-replayed-narration",
+			activityId: "activity-replayed-narration",
+			toolCallId: "replayed-narration",
+			toolName: "web_search",
+			activityKind: "search",
+			status: "complete",
+			startedAt: 10_000,
+			completedAt: 24_000,
+		};
+		const reply: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:reply-replayed-narration",
+			role: "assistant",
+			text: "查到了。",
+			status: "complete",
+			timestamp: 25_000,
+		};
+
+		expect(workTimelineSummary([user, narration, tool, reply], [narration, tool], false, intl, 26_000)).toBe("Worked for 25s");
 	});
 
 	test("回放工具缺少完成时间时不伪造超长时长", () => {
