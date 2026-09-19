@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type MessageDescriptor, useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { type IconName, useIcon, useIcons } from "@/lib/icon-context";
@@ -246,6 +246,15 @@ function ProviderConfigForm({
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string>();
 	const [dirty, setDirty] = useState(false);
+	useEffect(() => {
+		if (dirty) return;
+		setProfiles(snapshot.profiles.map(toProfileDraft));
+		setSelectedProfileId((currentProfileId) =>
+			snapshot.profiles.some((profile) => profile.id === currentProfileId)
+				? currentProfileId
+				: (snapshot.profiles[0]?.id ?? ""),
+		);
+	}, [dirty, snapshot.profiles]);
 	const canSave =
 		profiles.length > 0 ||
 		snapshot.profiles.length > 0 ||

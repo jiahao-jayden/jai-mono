@@ -264,7 +264,7 @@ function AddProviderMenu({
 					)
 				}
 			/>
-			<DropdownContent align="end" className="w-52">
+			<DropdownContent align="end" className="w-64">
 				{providerPresets.map((preset, index) => (
 					<MenuItem
 						key={preset.id}

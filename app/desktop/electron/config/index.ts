@@ -70,6 +70,7 @@ export class DesktopConfigService {
 	}
 
 	async fetchModels(profileId: string): Promise<DesktopProviderFetchModelsResult> {
+		await this.#loadModelCatalog();
 		const fetched = await this.client.fetchModels(profileId);
 		if (fetched.isErr()) throw fetched.error;
 		return {

@@ -3,6 +3,7 @@
 import {
 	Add01Icon,
 	Alert02Icon,
+	ApiIcon,
 	Archive01Icon,
 	ArrowDown01Icon,
 	ArrowLeft01Icon,
@@ -19,6 +20,7 @@ import {
 	CircleIcon,
 	Clock01Icon,
 	ColorsIcon,
+	CommandLineIcon,
 	ComputerIcon,
 	ComputerTerminal01Icon,
 	Copy01Icon,
@@ -28,6 +30,8 @@ import {
 	EyeIcon,
 	FavouriteIcon,
 	FileCodeIcon,
+	FileEditIcon,
+	FileSearchIcon,
 	Folder01Icon,
 	FolderOffIcon,
 	FolderOpenIcon,
@@ -57,6 +61,7 @@ import {
 	RefreshIcon,
 	Rocket01Icon,
 	Search01Icon,
+	SearchCodeIcon,
 	Settings01Icon,
 	Shield01Icon,
 	SparklesIcon,
@@ -69,14 +74,32 @@ import {
 	UserGroupIcon,
 	UserIcon,
 	ViewOffSlashIcon,
+	WorkflowCircle01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import type { IconType } from "@lobehub/icons";
+import Alibaba from "@lobehub/icons/es/Alibaba";
 import Anthropic from "@lobehub/icons/es/Anthropic";
+import ChatGLM from "@lobehub/icons/es/ChatGLM";
+import Cloudflare from "@lobehub/icons/es/Cloudflare";
 import DeepSeek from "@lobehub/icons/es/DeepSeek";
+import Doubao from "@lobehub/icons/es/Doubao";
+import Gemini from "@lobehub/icons/es/Gemini";
+import Google from "@lobehub/icons/es/Google";
+import Grok from "@lobehub/icons/es/Grok";
+import Groq from "@lobehub/icons/es/Groq";
+import Hunyuan from "@lobehub/icons/es/Hunyuan";
 import Kimi from "@lobehub/icons/es/Kimi";
 import Minimax from "@lobehub/icons/es/Minimax";
+import Mistral from "@lobehub/icons/es/Mistral";
 import OpenAI from "@lobehub/icons/es/OpenAI";
+import Qwen from "@lobehub/icons/es/Qwen";
+import SiliconCloud from "@lobehub/icons/es/SiliconCloud";
+import Tencent from "@lobehub/icons/es/Tencent";
+import Vercel from "@lobehub/icons/es/Vercel";
+import Volcengine from "@lobehub/icons/es/Volcengine";
+import XAI from "@lobehub/icons/es/XAI";
+import Zhipu from "@lobehub/icons/es/Zhipu";
 import { BanIcon, CircleCheckIcon, HandIcon } from "lucide-react";
 import { type ComponentType, createContext, type ReactNode, useContext, useMemo } from "react";
 
@@ -112,6 +135,7 @@ export type IconName =
 	| "arrow-up-right"
 	| "send"
 	| "search"
+	| "search-code"
 	| "loader"
 	| "users"
 	| "lock"
@@ -128,6 +152,7 @@ export type IconName =
 	| "user"
 	| "image"
 	| "link"
+	| "api"
 	| "check"
 	| "check-list"
 	| "rotate-ccw"
@@ -144,9 +169,13 @@ export type IconName =
 	| "panel-right"
 	| "sparkles"
 	| "terminal"
+	| "command"
+	| "workflow"
 	| "key"
 	| "trash"
 	| "file-code"
+	| "file-search"
+	| "file-edit"
 	| "layers"
 	| "stop"
 	| "stop-circle"
@@ -199,6 +228,7 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	"arrow-up-right": createHugeicon(ArrowUpRight03Icon),
 	send: createHugeicon(ArrowUp02Icon),
 	search: createHugeicon(Search01Icon),
+	"search-code": createHugeicon(SearchCodeIcon),
 	loader: createHugeicon(Loading03Icon),
 	users: createHugeicon(UserGroupIcon),
 	lock: createHugeicon(SquareLock01Icon),
@@ -215,6 +245,7 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	user: createHugeicon(UserIcon),
 	image: createHugeicon(Image01Icon),
 	link: createHugeicon(Link01Icon),
+	api: createHugeicon(ApiIcon),
 	check: createHugeicon(Tick01Icon),
 	"check-list": createHugeicon(CheckListIcon),
 	"rotate-ccw": createHugeicon(RefreshIcon),
@@ -230,9 +261,13 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	"panel-right": createHugeicon(PanelRightIcon),
 	sparkles: createHugeicon(SparklesIcon),
 	terminal: createHugeicon(ComputerTerminal01Icon),
+	command: createHugeicon(CommandLineIcon),
+	workflow: createHugeicon(WorkflowCircle01Icon),
 	key: createHugeicon(Key01Icon),
 	trash: createHugeicon(Delete02Icon),
 	"file-code": createHugeicon(FileCodeIcon),
+	"file-search": createHugeicon(FileSearchIcon),
+	"file-edit": createHugeicon(FileEditIcon),
 	layers: createHugeicon(Layers01Icon),
 	stop: createHugeicon(StopIcon),
 	"stop-circle": createHugeicon(StopCircleIcon),
@@ -249,29 +284,85 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	plug: createHugeicon(Plug01Icon),
 };
 
+const anthropicIcon = createBrandIcon(Anthropic);
+const openaiIcon = createBrandIcon(OpenAI);
+const deepseekIcon = createBrandIcon(DeepSeek);
+const minimaxIcon = createBrandIcon(Minimax);
+const kimiIcon = createBrandIcon(Kimi);
+const volcengineIcon = createBrandIcon(Volcengine);
+const googleIcon = createBrandIcon(Google);
+const alibabaIcon = createBrandIcon(Alibaba);
+const zhipuIcon = createBrandIcon(Zhipu);
+const tencentIcon = createBrandIcon(Tencent);
+const siliconCloudIcon = createBrandIcon(SiliconCloud);
+const xaiIcon = createBrandIcon(XAI);
+const mistralIcon = createBrandIcon(Mistral);
+const groqIcon = createBrandIcon(Groq);
+const vercelIcon = createBrandIcon(Vercel);
+const cloudflareIcon = createBrandIcon(Cloudflare);
+const doubaoIcon = createBrandIcon(Doubao);
+const qwenIcon = createBrandIcon(Qwen);
+const chatGlmIcon = createBrandIcon(ChatGLM);
+const geminiIcon = createBrandIcon(Gemini);
+const grokIcon = createBrandIcon(Grok);
+const hunyuanIcon = createBrandIcon(Hunyuan);
+
 const providerBrandIcons: Readonly<Record<string, IconComponent>> = {
-	anthropic: createBrandIcon(Anthropic),
-	deepseek: createBrandIcon(DeepSeek),
-	minimax: createBrandIcon(Minimax),
-	moonshot: createBrandIcon(Kimi),
-	moonshotai: createBrandIcon(Kimi),
-	openai: createBrandIcon(OpenAI),
+	anthropic: anthropicIcon,
+	openai: openaiIcon,
+	deepseek: deepseekIcon,
+	minimax: minimaxIcon,
+	"minimax-cn": minimaxIcon,
+	moonshot: kimiIcon,
+	moonshotai: kimiIcon,
+	"moonshotai-cn": kimiIcon,
+	volcengine: volcengineIcon,
+	google: googleIcon,
+	alibaba: alibabaIcon,
+	"alibaba-cn": alibabaIcon,
+	zhipuai: zhipuIcon,
+	"tencent-tokenhub": tencentIcon,
+	siliconflow: siliconCloudIcon,
+	"siliconflow-cn": siliconCloudIcon,
+	xai: xaiIcon,
+	mistral: mistralIcon,
+	groq: groqIcon,
+	vercel: vercelIcon,
+	"vercel-ai-gateway": vercelIcon,
+	"cloudflare-workers-ai": cloudflareIcon,
 };
 
-function resolveProviderBrandIcon(providerId?: string, modelId?: string): IconComponent {
-	const normalizedProviderId = providerId?.toLocaleLowerCase() ?? "";
-	const explicit = providerBrandIcons[normalizedProviderId];
-	if (explicit) return explicit;
+const modelBrandPrefixes: readonly { readonly prefix: string | RegExp; readonly icon: IconComponent }[] = [
+	{ prefix: "claude-", icon: anthropicIcon },
+	{ prefix: /^(gpt-|chatgpt-|o[1-9]|codex-)/, icon: openaiIcon },
+	{ prefix: "deepseek-", icon: deepseekIcon },
+	{ prefix: "minimax-", icon: minimaxIcon },
+	{ prefix: "kimi-", icon: kimiIcon },
+	{ prefix: "moonshot-", icon: kimiIcon },
+	{ prefix: "doubao-", icon: doubaoIcon },
+	{ prefix: "qwen", icon: qwenIcon },
+	{ prefix: "glm-", icon: chatGlmIcon },
+	{ prefix: "chatglm-", icon: chatGlmIcon },
+	{ prefix: "gemini-", icon: geminiIcon },
+	{ prefix: "grok-", icon: grokIcon },
+	{ prefix: "mistral-", icon: mistralIcon },
+	{ prefix: "codestral-", icon: mistralIcon },
+	{ prefix: "pixtral-", icon: mistralIcon },
+	{ prefix: "ministral-", icon: mistralIcon },
+	{ prefix: "hunyuan-", icon: hunyuanIcon },
+];
 
-	const normalizedModelId = modelId?.toLocaleLowerCase() ?? "";
-	if (normalizedModelId.startsWith("claude-")) return providerBrandIcons.anthropic;
-	if (/^(gpt-|chatgpt-|o[1-9]|codex-)/.test(normalizedModelId)) return providerBrandIcons.openai;
-	if (normalizedModelId.startsWith("deepseek-")) return providerBrandIcons.deepseek;
-	if (normalizedModelId.startsWith("minimax-")) return providerBrandIcons.minimax;
-	if (normalizedModelId.startsWith("kimi-") || normalizedModelId.startsWith("moonshot-")) {
-		return providerBrandIcons.moonshotai;
-	}
-	return defaultIcons.sparkles;
+function resolveProviderBrandIcon(providerId?: string): IconComponent {
+	return providerBrandIcons[providerId?.toLocaleLowerCase() ?? ""] ?? defaultIcons.sparkles;
+}
+
+function resolveModelBrandIcon(modelId?: string): IconComponent {
+	const slash = modelId?.lastIndexOf("/") ?? -1;
+	const family = (slash >= 0 ? modelId?.slice(slash + 1) : modelId)?.trim().toLocaleLowerCase() ?? "";
+	const matched = modelBrandPrefixes.find(({ prefix }) =>
+		typeof prefix === "string" ? family.startsWith(prefix) : prefix.test(family),
+	);
+	return matched?.icon ?? defaultIcons.sparkles;
 }
 
 const IconContext = createContext<Record<IconName, IconComponent> | null>(null);
@@ -303,4 +394,4 @@ function IconProvider({ children, icons }: { children: ReactNode; icons?: Partia
 	return <IconContext.Provider value={value}>{children}</IconContext.Provider>;
 }
 
-export { IconProvider, resolveProviderBrandIcon, useIcon, useIcons };
+export { IconProvider, resolveModelBrandIcon, resolveProviderBrandIcon, useIcon, useIcons };

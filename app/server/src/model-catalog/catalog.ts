@@ -144,8 +144,8 @@ export function findRuntimeModelCatalog(
 }
 
 /**
- * An explicit Provider profile mapping wins. First-party model families use a
- * fixed catalog authority; other IDs need exactly one catalog match.
+ * A mapped Provider profile only searches that catalog. First-party families
+ * and a unique exact ID apply only when no profile authority is set.
  */
 export function findRuntimeModelCatalogMatch(
 	catalog: RuntimeModelCatalog | undefined,
@@ -153,8 +153,10 @@ export function findRuntimeModelCatalogMatch(
 	modelId: string,
 ): RuntimeModelCatalogMatch | undefined {
 	if (!catalog) return undefined;
-	const preferred = preferredProviderId ? catalog.providers[preferredProviderId]?.models[modelId] : undefined;
-	if (preferred && preferredProviderId) return { providerId: preferredProviderId, model: preferred };
+	if (preferredProviderId) {
+		const preferred = matchProviderCatalogModel(catalog.providers[preferredProviderId], modelId);
+		return preferred ? { providerId: preferredProviderId, model: preferred } : undefined;
+	}
 	const defaultProvider = defaultCatalogProviderFor(modelId);
 	const firstParty = defaultProvider ? catalog.providers[defaultProvider]?.models[modelId] : undefined;
 	if (firstParty && defaultProvider) return { providerId: defaultProvider, model: firstParty };
@@ -265,6 +267,22 @@ function interleavedValue(value: unknown): RuntimeModelCatalogModel["interleaved
 		source?.field === "reasoning_details"
 		? { field: source.field }
 		: undefined;
+}
+
+function matchProviderCatalogModel(
+	provider: RuntimeModelCatalogProvider | undefined,
+	modelId: string,
+): RuntimeModelCatalogModel | undefined {
+	if (!provider) return undefined;
+	const exact = provider.models[modelId];
+	if (exact) return exact;
+	const stem = catalogModelStem(modelId);
+	const matches = Object.values(provider.models).filter((model) => catalogModelStem(model.id) === stem);
+	return matches.length === 1 ? matches[0] : undefined;
+}
+
+function catalogModelStem(modelId: string): string {
+	return modelId.trim().toLocaleLowerCase().replace(/-(?:[a-z]+-)?\d{6}$/i, "");
 }
 
 function defaultCatalogProviderFor(modelId: string): string | undefined {

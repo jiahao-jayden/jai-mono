@@ -12,7 +12,7 @@ import type {
 	DesktopProviderProfile,
 	DesktopProviderProfileInput,
 } from "../../shared/desktop-rpc";
-import { DEFAULT_PROVIDER_VENDORS } from "./provider-vendors";
+import { DEFAULT_PROVIDER_VENDORS, findDefaultProviderVendor } from "./provider-vendors";
 
 const profileIdPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
@@ -78,14 +78,16 @@ export function projectRuntimeProviderConfig(
 					...(profile.credentialMask === undefined ? {} : { credentialMask: profile.credentialMask }),
 					...(profile.modelsFetchedAt === undefined ? {} : { modelsFetchedAt: profile.modelsFetchedAt }),
 					models: profile.models
-						.map((model) =>
-							projectModel(
+						.map((model) => {
+							const remoteModelId = model.remoteModelId ?? model.id;
+							const vendor = findDefaultProviderVendor(profile.baseURL ?? "", remoteModelId);
+							return projectModel(
 								model.id,
-								model.remoteModelId ?? model.id,
+								remoteModelId,
 								model.enabled,
-								findRuntimeModelCatalogMatch(catalog, undefined, model.remoteModelId ?? model.id),
-							),
-						)
+								findRuntimeModelCatalogMatch(catalog, vendor?.catalogProvider, remoteModelId),
+							);
+						})
 						.toSorted((left, right) => left.name.localeCompare(right.name)),
 				}),
 			)

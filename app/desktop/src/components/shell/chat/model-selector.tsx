@@ -5,7 +5,7 @@ import { useState } from "react";
 import { type IntlShape, useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { Elevated } from "@/lib/elevated";
-import { type IconComponent, resolveProviderBrandIcon, useIcons } from "@/lib/icon-context";
+import { type IconComponent, resolveModelBrandIcon, resolveProviderBrandIcon, useIcons } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
 import { type DesktopProviderConfigSnapshot, isDesktopProviderModelRunnable } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
@@ -59,7 +59,7 @@ export function ModelSelector({
 				{
 					id: profile.id,
 					name: profile.name,
-					icon: resolveProviderBrandIcon(catalogProvider, runnableModels[0]?.remoteModelId),
+					icon: resolveProviderBrandIcon(catalogProvider),
 					models: runnableModels.map((model) => ({
 						ref: `${profile.id}/${model.id}`,
 						name: model.name,
@@ -226,6 +226,7 @@ export function ModelSelector({
 															) : null}
 															{provider.models.map((model) => {
 																const selected = model.ref === selectedModelRef;
+																const ModelIcon = resolveModelBrandIcon(model.remoteModelId);
 																return (
 																	<Button
 																		key={model.ref}
@@ -240,7 +241,7 @@ export function ModelSelector({
 																		className="h-[30px] w-full justify-start rounded-[10px] px-2 text-left outline-none transition-colors duration-75 focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-inset"
 																	>
 																		<span className="flex min-w-0 w-full items-center gap-3 pointer-events-none">
-																			<ProviderIcon
+																			<ModelIcon
 																				size={15}
 																				strokeWidth={1.5}
 																				className="shrink-0 text-muted-foreground"

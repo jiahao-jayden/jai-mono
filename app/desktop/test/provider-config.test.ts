@@ -16,9 +16,10 @@ import type {
 	RuntimeTelemetrySettingsSnapshot,
 	WorkspaceTrustSnapshot,
 } from "@jai/server";
+import { normalizeRuntimeModelCatalog } from "@jai/server/model-catalog";
 import { Result } from "better-result";
 import { DesktopConfigService } from "../electron/config";
-import { projectModel } from "../electron/config/provider";
+import { projectModel, projectProviderPresets, projectRuntimeProviderConfig } from "../electron/config/provider";
 import { isDesktopProviderModelRunnable } from "../shared/desktop-rpc";
 
 describe("DesktopConfigService", () => {
@@ -35,6 +36,344 @@ describe("DesktopConfigService", () => {
 		});
 		expect(model.name).toBe("DeepSeek V4 Flash");
 		expect(model.remoteModelId).toBe("deepseek-v4-flash-0731");
+	});
+
+	test("matches an Ark list ID to the dated Volcengine catalog revision", () => {
+		const projected = projectRuntimeProviderConfig(
+			{
+				revision: "r1",
+				model: "",
+				profiles: [
+					{
+						id: "ark",
+						name: "Volcengine Ark",
+						adapter: "openai-compatible",
+						baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+						authentication: "api-key",
+						credentialConfigured: true,
+						enabled: true,
+						models: [{ id: "deepseek-v4-flash", enabled: false }],
+					},
+				],
+				connector: { policy: { default: "ask", actions: {} }, connectors: [] },
+				webSearch: {
+					providers: [],
+					fetch: { jina: { credentialConfigured: false } },
+				},
+			},
+			normalizeRuntimeModelCatalog({
+				providers: {
+					deepseek: {
+						name: "DeepSeek",
+						models: {
+							"deepseek-v4-flash": {
+								name: "DeepSeek V4 Flash",
+								limit: { context: 128_000, output: 16_000 },
+							},
+						},
+					},
+					volcengine: {
+						name: "Volcengine Ark",
+						models: {
+							"deepseek-v4-flash-ga-260731": {
+								name: "DeepSeek V4 Flash GA",
+								limit: { context: 1_000_000, output: 384_000 },
+								tool_call: true,
+							},
+						},
+					},
+				},
+			}),
+		);
+
+		expect(projected.profiles[0]?.models).toMatchObject([
+			{
+				remoteModelId: "deepseek-v4-flash",
+				verified: true,
+				metadataProvider: "volcengine",
+				contextWindow: 1_000_000,
+				maxTokens: 384_000,
+				toolCall: true,
+			},
+		]);
+	});
+
+	test("leaves an unmatched Ark list ID unverified instead of using first-party DeepSeek", () => {
+		const projected = projectRuntimeProviderConfig(
+			{
+				revision: "r1",
+				model: "",
+				profiles: [
+					{
+						id: "ark",
+						name: "Volcengine Ark",
+						adapter: "openai-compatible",
+						baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+						authentication: "api-key",
+						credentialConfigured: true,
+						enabled: true,
+						models: [{ id: "deepseek-v4-1-flash", enabled: false }],
+					},
+				],
+				connector: { policy: { default: "ask", actions: {} }, connectors: [] },
+				webSearch: {
+					providers: [],
+					fetch: { jina: { credentialConfigured: false } },
+				},
+			},
+			normalizeRuntimeModelCatalog({
+				providers: {
+					deepseek: {
+						name: "DeepSeek",
+						models: {
+							"deepseek-flash": {
+								name: "DeepSeek V4.1 Flash",
+								limit: { context: 1_000_000, output: 384_000 },
+							},
+						},
+					},
+					volcengine: {
+						name: "Volcengine Ark",
+						models: {
+							"deepseek-v4-flash-ga-260731": {
+								name: "DeepSeek V4 Flash GA",
+								limit: { context: 1_000_000, output: 384_000 },
+							},
+						},
+					},
+				},
+			}),
+		);
+
+		expect(projected.profiles[0]?.models).toMatchObject([
+			{
+				remoteModelId: "deepseek-v4-1-flash",
+				verified: false,
+				source: "unverified",
+			},
+		]);
+		expect(projected.profiles[0]?.models[0]?.contextWindow).toBeUndefined();
+		expect(projected.profiles[0]?.models[0]?.metadataProvider).toBeUndefined();
+	});
+
+	test("uses the configured Volcengine catalog authority for Ark models", () => {
+		const projected = projectRuntimeProviderConfig(
+			{
+				revision: "r1",
+				model: "",
+				profiles: [
+					{
+						id: "ark",
+						name: "Volcengine Ark",
+						adapter: "openai-compatible",
+						baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+						authentication: "api-key",
+						credentialConfigured: true,
+						enabled: true,
+						models: [{ id: "deepseek-v4-flash-ga-260731", enabled: false }],
+					},
+				],
+				connector: { policy: { default: "ask", actions: {} }, connectors: [] },
+				webSearch: {
+					providers: [],
+					fetch: { jina: { credentialConfigured: false } },
+				},
+			},
+			normalizeRuntimeModelCatalog({
+				providers: {
+					deepseek: {
+						name: "DeepSeek",
+						models: {
+							"deepseek-v4-flash-ga-260731": {
+								name: "DeepSeek V4 Flash",
+								limit: { context: 128_000, output: 16_000 },
+							},
+						},
+					},
+					volcengine: {
+						name: "Volcengine Ark",
+						models: {
+							"deepseek-v4-flash-ga-260731": {
+								name: "DeepSeek V4 Flash GA",
+								limit: { context: 1_000_000, output: 384_000 },
+								tool_call: true,
+							},
+						},
+					},
+				},
+			}),
+		);
+
+		expect(projected.profiles[0]?.models).toMatchObject([
+			{
+				remoteModelId: "deepseek-v4-flash-ga-260731",
+				verified: true,
+				metadataProvider: "volcengine",
+				contextWindow: 1_000_000,
+				maxTokens: 384_000,
+				toolCall: true,
+			},
+		]);
+	});
+
+	test("projects curated provider presets with official endpoints", () => {
+		expect(projectProviderPresets()).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: "moonshot",
+					catalogProvider: "moonshotai-cn",
+					baseURL: "https://api.moonshot.cn/v1",
+				}),
+				expect.objectContaining({
+					id: "google",
+					adapter: "openai-compatible",
+					catalogProvider: "google",
+					baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+				}),
+				expect.objectContaining({
+					id: "alibaba-cn",
+					catalogProvider: "alibaba-cn",
+					baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+				}),
+				expect.objectContaining({
+					id: "alibaba",
+					catalogProvider: "alibaba",
+					baseURL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+				}),
+				expect.objectContaining({
+					id: "zhipuai",
+					catalogProvider: "zhipuai",
+					baseURL: "https://open.bigmodel.cn/api/paas/v4/",
+				}),
+				expect.objectContaining({
+					id: "xai",
+					adapter: "openai-responses",
+					catalogProvider: "xai",
+					baseURL: "https://api.x.ai/v1",
+				}),
+				expect.objectContaining({
+					id: "vercel",
+					catalogProvider: "vercel",
+					baseURL: "https://ai-gateway.vercel.sh/v1",
+				}),
+				expect.objectContaining({
+					id: "cloudflare-workers-ai",
+					catalogProvider: "cloudflare-workers-ai",
+					baseURL: "https://api.cloudflare.com/client/v4/accounts/YOUR_ACCOUNT_ID/ai/v1",
+				}),
+			]),
+		);
+	});
+
+	test("uses the configured Alibaba China catalog authority for Qwen models", () => {
+		const projected = projectRuntimeProviderConfig(
+			{
+				revision: "r1",
+				model: "",
+				profiles: [
+					{
+						id: "alibaba-cn",
+						name: "Alibaba Cloud",
+						adapter: "openai-compatible",
+						baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+						authentication: "api-key",
+						credentialConfigured: true,
+						enabled: true,
+						models: [{ id: "qwen-plus", enabled: false }],
+					},
+				],
+				connector: { policy: { default: "ask", actions: {} }, connectors: [] },
+				webSearch: {
+					providers: [],
+					fetch: { jina: { credentialConfigured: false } },
+				},
+			},
+			normalizeRuntimeModelCatalog({
+				providers: {
+					alibaba: {
+						name: "Alibaba",
+						models: {
+							"qwen-plus": {
+								name: "Qwen Plus",
+								limit: { context: 128_000, output: 8_000 },
+							},
+						},
+					},
+					"alibaba-cn": {
+						name: "Alibaba (China)",
+						models: {
+							"qwen-plus": {
+								name: "Qwen Plus",
+								limit: { context: 1_000_000, output: 32_768 },
+								tool_call: true,
+							},
+						},
+					},
+				},
+			}),
+		);
+
+		expect(projected.profiles[0]?.models).toMatchObject([
+			{
+				remoteModelId: "qwen-plus",
+				verified: true,
+				metadataProvider: "alibaba-cn",
+				contextWindow: 1_000_000,
+				maxTokens: 32_768,
+				toolCall: true,
+			},
+		]);
+	});
+
+	test("recognizes Cloudflare Workers AI account URLs as the catalog authority", () => {
+		const projected = projectRuntimeProviderConfig(
+			{
+				revision: "r1",
+				model: "",
+				profiles: [
+					{
+						id: "cloudflare-workers-ai",
+						name: "Cloudflare Workers AI",
+						adapter: "openai-compatible",
+						baseURL: "https://api.cloudflare.com/client/v4/accounts/abc123/ai/v1",
+						authentication: "api-key",
+						credentialConfigured: true,
+						enabled: true,
+						models: [{ id: "@cf/meta/llama-3.1-8b-instruct", enabled: false }],
+					},
+				],
+				connector: { policy: { default: "ask", actions: {} }, connectors: [] },
+				webSearch: {
+					providers: [],
+					fetch: { jina: { credentialConfigured: false } },
+				},
+			},
+			normalizeRuntimeModelCatalog({
+				providers: {
+					"cloudflare-workers-ai": {
+						name: "Cloudflare Workers AI",
+						models: {
+							"@cf/meta/llama-3.1-8b-instruct": {
+								name: "Llama 3.1 8B Instruct",
+								limit: { context: 8_000, output: 2_000 },
+								tool_call: true,
+							},
+						},
+					},
+				},
+			}),
+		);
+
+		expect(projected.profiles[0]?.models).toMatchObject([
+			{
+				remoteModelId: "@cf/meta/llama-3.1-8b-instruct",
+				verified: true,
+				metadataProvider: "cloudflare-workers-ai",
+				contextWindow: 8_000,
+				maxTokens: 2_000,
+				toolCall: true,
+			},
+		]);
 	});
 
 	test("allows explicitly enabled unverified models to be selected", () => {
@@ -241,6 +580,7 @@ describe("DesktopConfigService", () => {
     try {
       const fetched = await service.fetchModels("gateway");
       expect(host.fetches).toEqual(["gateway"]);
+      expect(host.modelCatalogReads).toEqual(["get"]);
       expect(fetched).toMatchObject({
         profileId: "gateway",
         modelCount: 2,
@@ -250,7 +590,14 @@ describe("DesktopConfigService", () => {
         fetched.snapshot.profiles[0]?.models.map(
           (model) => model.remoteModelId,
         ),
-      ).toEqual(["gpt-next", "gpt-test"]);
+      ).toEqual(["gpt-test", "gpt-next"]);
+      expect(
+        fetched.snapshot.profiles[0]?.models.find((model) => model.id === "gpt-test"),
+      ).toMatchObject({
+        source: "catalog",
+        verified: true,
+        metadataProvider: "openai",
+      });
     } finally {
       await service.close();
       await rm(homeDir, { recursive: true, force: true });

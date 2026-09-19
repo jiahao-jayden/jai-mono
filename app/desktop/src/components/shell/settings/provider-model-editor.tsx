@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { type IntlShape, useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
-import { resolveProviderBrandIcon, useIcon } from "@/lib/icon-context";
+import { resolveModelBrandIcon, useIcon } from "@/lib/icon-context";
 import {
 	type DesktopProviderFetchModelsResult,
 	type DesktopProviderModel,
@@ -216,7 +216,7 @@ function ModelCard({
 	readonly intl: IntlShape;
 }) {
 	const ArrowIcon = useIcon("arrow-right");
-	const BrandIcon = resolveProviderBrandIcon(model.metadataProvider, model.remoteModelId);
+	const BrandIcon = resolveModelBrandIcon(model.remoteModelId);
 	return (
 		<TooltipProvider delayDuration={250}>
 			<div className="flex min-w-0 flex-1 flex-col gap-0.5">

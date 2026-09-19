@@ -60,6 +60,85 @@ describe("Runtime Model Catalog", () => {
 		expect(findRuntimeModelCatalogMatch(catalog, undefined, "deepseek-v3-250324")).toBeUndefined();
 	});
 
+	test("uses an explicit provider authority when a model ID is ambiguous", () => {
+		const catalog = normalizeRuntimeModelCatalog({
+			providers: {
+				deepseek: {
+					name: "DeepSeek",
+					models: {
+						"shared-model": {
+							name: "DeepSeek V4 Flash",
+							limit: { context: 128_000, output: 16_000 },
+						},
+					},
+				},
+				volcengine: {
+					name: "Volcengine Ark",
+					models: {
+						"shared-model": {
+							name: "DeepSeek V4 Flash GA",
+							limit: { context: 1_000_000, output: 384_000 },
+						},
+					},
+				},
+			},
+		});
+
+		expect(findRuntimeModelCatalogMatch(catalog, undefined, "shared-model")).toBeUndefined();
+		expect(findRuntimeModelCatalogMatch(catalog, "volcengine", "shared-model")).toMatchObject({
+			providerId: "volcengine",
+			model: { contextWindow: 1_000_000, maxTokens: 384_000 },
+		});
+	});
+
+	test("matches a Volcengine list ID to the dated catalog revision", () => {
+		const catalog = normalizeRuntimeModelCatalog({
+			providers: {
+				deepseek: {
+					name: "DeepSeek",
+					models: {
+						"deepseek-flash": {
+							name: "DeepSeek V4.1 Flash",
+							limit: { context: 1_000_000, output: 384_000 },
+						},
+						"deepseek-v4-flash": {
+							name: "DeepSeek V4 Flash",
+							limit: { context: 128_000, output: 16_000 },
+						},
+					},
+				},
+				volcengine: {
+					name: "Volcengine Ark",
+					models: {
+						"deepseek-v4-flash-ga-260731": {
+							name: "DeepSeek V4 Flash GA",
+							limit: { context: 1_000_000, output: 384_000 },
+						},
+						"deepseek-v4-pro-ga-260813": {
+							name: "DeepSeek V4 Pro GA",
+							limit: { context: 1_000_000, output: 384_000 },
+						},
+					},
+				},
+			},
+		});
+
+		expect(findRuntimeModelCatalogMatch(catalog, undefined, "deepseek-v4-flash")).toMatchObject({
+			providerId: "deepseek",
+			model: { contextWindow: 128_000 },
+		});
+		expect(findRuntimeModelCatalogMatch(catalog, "volcengine", "deepseek-v4-flash")).toMatchObject({
+			providerId: "volcengine",
+			model: { id: "deepseek-v4-flash-ga-260731", contextWindow: 1_000_000 },
+		});
+		expect(findRuntimeModelCatalogMatch(catalog, "volcengine", "deepseek-v4-pro")).toMatchObject({
+			providerId: "volcengine",
+			model: { id: "deepseek-v4-pro-ga-260813", contextWindow: 1_000_000 },
+		});
+		expect(findRuntimeModelCatalogMatch(catalog, "volcengine", "deepseek-v4-1-flash")).toBeUndefined();
+		expect(findRuntimeModelCatalogMatch(catalog, "volcengine", "deepseek-v3-1-terminus")).toBeUndefined();
+	});
+
 	test("reads a fresh SQLite fact without requesting the network", async () => {
 		const database = new DatabaseSync(":memory:");
 		try {
