@@ -149,4 +149,15 @@ describe("NodeExecutionEnvironment", () => {
 			"shell.output_callback_failed",
 		);
 	});
+
+	test("bounds shell output and reports truncation", async () => {
+		const workspace = await temporaryDirectory("jai-shell-limit-");
+		const environment = new NodeExecutionEnvironment({ cwd: workspace });
+		const result = await environment.execute("yes x | head -c 2000000", {
+			cwd: workspace,
+			timeoutMs: 2_000,
+			onOutput: () => undefined,
+		});
+		expect(result.truncated).toBe(true);
+	});
 });

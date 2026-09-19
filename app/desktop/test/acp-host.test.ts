@@ -909,7 +909,7 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
-	test("propagates the server errorMessage on a runtime failure instead of a hardcoded string", async () => {
+	test("projects runtime failures without exposing the server errorMessage", async () => {
 		const client = new FakeAcpClient();
 		const events: DesktopAgentEventEnvelope[] = [];
 		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
@@ -935,7 +935,7 @@ describe("DesktopAcpAgentHost", () => {
 		expect(runtimeError).toMatchObject({
 			event: {
 				type: "runtime_error",
-				error: { code: "Coding Agent failed while executing Operation \"op-1\": model rate limit" },
+				error: { code: "Runtime Host operation failed" },
 			},
 		});
 		host.close();

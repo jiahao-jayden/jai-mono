@@ -705,10 +705,11 @@ export class RuntimeSession {
 		const recovery = recoverDurableState(loaded.value);
 		if (recovery.isErr()) return recovery;
 		const foreground = this.foregroundState(loaded.value, recovery.value);
+		const branchEntryIds = new Set(branchOf(loaded.value.snapshot.entries, loaded.value.snapshot.leafId).map((entry) => entry.id));
 		return Result.ok({
 			entries: loaded.value.snapshot.entries,
 			leafId: loaded.value.snapshot.leafId,
-			operationIdByEntryId: operationIdByEntryId(loaded.value.operationRecords),
+			operationIdByEntryId: operationIdByEntryId(loaded.value.operationRecords, branchEntryIds),
 			recovery: recovery.value,
 			usage: { cost: usageCost(loaded.value.operationRecords) },
 			...foreground,
@@ -1335,7 +1336,10 @@ export class RuntimeSession {
 		if (this.#active || recovery.some((verdict) => verdict.status !== "terminal")) {
 			return { state: "running" };
 		}
-		const terminal = [...state.operationRecords].reverse().find((record) => record.type === "operation_finished");
+		const branchEntryIds = new Set(branchOf(state.snapshot.entries, state.snapshot.leafId).map((entry) => entry.id));
+		const terminal = [...branchOperationRecords(state.operationRecords, branchEntryIds)]
+			.reverse()
+			.find((record) => record.type === "operation_finished");
 		if (!terminal) return { state: "idle" };
 		return { state: "idle", stopReason: stopReasonFor(terminal.outcome) };
 	}
@@ -1506,9 +1510,9 @@ function hasPendingInputs(verdict: OperationRecoveryVerdict | undefined): boolea
 	);
 }
 
-function operationIdByEntryId(records: readonly OperationRecord[]): ReadonlyMap<string, string> {
+function operationIdByEntryId(records: readonly OperationRecord[], branchEntryIds: ReadonlySet<string>): ReadonlyMap<string, string> {
 	const result = new Map<string, string>();
-	for (const record of records) {
+	for (const record of branchOperationRecords(records, branchEntryIds)) {
 		if (record.type === "operation_accepted") {
 			result.set(record.inputEntryId, record.operationId);
 			continue;
@@ -1525,8 +1529,10 @@ function operationIdByEntryId(records: readonly OperationRecord[]): ReadonlyMap<
 function recoverDurableState(
 	state: ProductSessionDurableState,
 ): Result<readonly OperationRecoveryVerdict[], RuntimeHostRecoveryCorrupted> {
-	const recovered = recoverSessionOperations(state.operationRecords, {
-		sessionEntryIds: new Set(state.snapshot.entries.map((entry) => entry.id)),
+	const branch = branchOf(state.snapshot.entries, state.snapshot.leafId);
+	const branchEntryIds = new Set(branch.map((entry) => entry.id));
+	const recovered = recoverSessionOperations(branchOperationRecords(state.operationRecords, branchEntryIds), {
+		sessionEntryIds: branchEntryIds,
 		terminalOutcomeByAssistantEntryId: terminalOutcomeByAssistantEntryId(state),
 	});
 	if (recovered.isOk()) return Result.ok(recovered.value);
@@ -1537,6 +1543,18 @@ function recoverDurableState(
 			cause: recovered.error,
 		}),
 	);
+}
+
+function branchOperationRecords(
+	records: readonly OperationRecord[],
+	branchEntryIds: ReadonlySet<string>,
+): readonly OperationRecord[] {
+	const activeOperationIds = new Set(
+		records.flatMap((record) =>
+			record.type === "operation_accepted" && branchEntryIds.has(record.inputEntryId) ? [record.operationId] : [],
+		),
+	);
+	return records.filter((record) => activeOperationIds.has(record.operationId));
 }
 
 function terminalOutcomeByAssistantEntryId(

@@ -20,3 +20,9 @@ Tracker：https://github.com/jiahao-jayden/jai-mono/issues/75
 Tracker：https://github.com/jiahao-jayden/jai-mono/issues/81
 归档日期：2026-09-18
 本地历史：-
+## Agent Harness 权威状态、执行边界与跨进程协议调整
+
+结果：completed
+Tracker：https://github.com/jiahao-jayden/jai-mono/issues/91
+归档日期：2026-09-19
+本地历史：-

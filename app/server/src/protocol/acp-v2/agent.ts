@@ -386,8 +386,17 @@ export class AcpV2Agent {
 
 	private respondError(id: AcpRequestId | undefined, code: number, message: string): readonly AcpOutboundMessage[] {
 		if (id === undefined) return [];
-		return [{ jsonrpc: "2.0", id, error: { code, message } } satisfies AcpJsonRpcResponse];
+		return [{ jsonrpc: "2.0", id, error: { code, message: safeAcpErrorMessage(code) } } satisfies AcpJsonRpcResponse];
 	}
+}
+
+function safeAcpErrorMessage(code: number): string {
+	if (code === -32600) return "Invalid ACP request";
+	if (code === -32601) return "Unsupported ACP method";
+	if (code === -32602) return "Invalid ACP parameters";
+	if (code === -32002) return "ACP connection is not initialized";
+	if (code === -32004) return "ACP session is not active";
+	return "ACP request failed";
 }
 
 function objectParams(value: unknown): Record<string, unknown> | undefined {

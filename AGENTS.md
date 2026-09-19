@@ -32,6 +32,8 @@
 - Durable journal 只有 SQLite：CLI 与 Desktop 共用 `$JAI_HOME/data.sqlite`（默认 `~/.jai/data.sqlite`）。不得新增 JSONL、双写、重建索引、fallback 或第二种 durable adapter。
 - `session_project_history` 不是当前领域概念；移动 Session 只更新当前项目归属。除非先出现明确的产品查询或审计用例，不得重新引入。
 - Projection 是单向读取模型：可以把 journal / SDK state 转为 RPC DTO、CLI 输出或 UI item，但不得把 projection、UI state、Desktop metadata 写回 journal，也不得把未筛选的内部对象越过进程边界。
+- Operation journal 由 `@jai/agent` operations 持有，是 durable execution fact；动态工具 capability 与 opaque `toolRef` 属于 Coding Agent 的 operation 级 ephemeral state，恢复时不得从废弃分支复活；Desktop transcript 只是 renderer projection，可丢弃并从当前 Session projection 重建。
+- Harness 的四条状态轴必须保持分离：`OperationTerminalOutcome` 是 durable 终态，`OperationRecoveryVerdict.status` 是 reducer 输出，`RuntimeForegroundState` 是当前 Session 前台状态，`RuntimeStopReason` 是对外停止原因。新增状态必须归入现有轴，不能再造第五条轴。
 
 ## 模块、入口与依赖方向
 

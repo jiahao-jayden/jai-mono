@@ -621,6 +621,7 @@ describe("RuntimeHost", () => {
 
     driver.finish("completed");
     await driver.closed;
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const durable = await persistence.load("session-1");
     if (durable.isErr()) throw durable.error;
     expect(durable.value.operationRecords.at(-1)).toMatchObject({
@@ -628,6 +629,29 @@ describe("RuntimeHost", () => {
       operationId: "operation-1",
       outcome: "completed",
     });
+  });
+
+  test("maps an execution failure to the existing failed terminal axis", async () => {
+    const driver = new ControlledOperationDriver();
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = new RuntimeHost({
+      persistence,
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+    const admission = await opened.value.prompt({ text: "fail this" });
+    if (admission.isErr()) throw admission.error;
+    await driver.opened;
+    driver.finish("failed");
+    await driver.closed;
+    const snapshot = await opened.value.snapshot();
+    if (snapshot.isErr()) throw snapshot.error;
+    expect(snapshot.value.stopReason).toBe("error");
+    expect(snapshot.value.recovery).toEqual([
+      { status: "terminal", operationId: admission.value.operationId, outcome: "failed", finalization: "durable" },
+    ]);
   });
 
   test("turns a second active prompt into a durable steer input for the current operation", async () => {
@@ -752,6 +776,7 @@ describe("RuntimeHost", () => {
     if (appendedAssistant.isErr()) throw appendedAssistant.error;
     driver.finish("completed");
     await driver.closed;
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const navigated = await opened.value.navigate("operation-1:input");
     if (navigated.isErr()) throw navigated.error;
@@ -764,6 +789,40 @@ describe("RuntimeHost", () => {
       parentId: "operation-1:input",
       fromId: "assistant-1",
     });
+  });
+
+  test("does not project operation facts from an abandoned branch", async () => {
+    const driver = new ControlledOperationDriver();
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = new RuntimeHost({
+      persistence,
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1", "attempt-1", "assistant-1", "operation-2", "attempt-2", "assistant-2", "branch-1"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+
+    const first = await opened.value.prompt({ text: "keep this" });
+    if (first.isErr()) throw first.error;
+    await driver.opened;
+    driver.finish("completed");
+    await driver.closed;
+    const second = await opened.value.prompt({ text: "abandon this" });
+    if (second.isErr()) throw second.error;
+    await driver.opened;
+    driver.finish("completed");
+    await driver.closed;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const navigated = await opened.value.navigate(first.value.inputEntryId);
+    if (navigated.isErr()) throw navigated.error;
+    const snapshot = await opened.value.snapshot();
+    if (snapshot.isErr()) throw snapshot.error;
+
+    expect(snapshot.value.operationIdByEntryId.has(second.value.inputEntryId)).toBe(false);
+    expect(snapshot.value.recovery).toEqual([
+      { status: "terminal", operationId: first.value.operationId, outcome: "completed", finalization: "durable" },
+    ]);
   });
 
   test("rejects navigation while a live Operation is still active", async () => {

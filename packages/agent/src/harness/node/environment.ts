@@ -30,6 +30,8 @@ export interface NodeExecutionEnvironmentOptions {
 	shellEnv?: Record<string, string>;
 }
 
+const MAX_SHELL_OUTPUT_BYTES = 1_048_576;
+
 interface IssuedPathCapability extends PathCapability {
 	readonly boundary: string;
 }
@@ -375,6 +377,8 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 		let timedOut = false;
 		let aborted = false;
 		let callbackError: unknown;
+		let outputBytes = 0;
+		let outputTruncated = false;
 		let settled = false;
 		let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
 		const stop = () => {
@@ -407,6 +411,20 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 		};
 		const enqueueOutput = (stream: "stdout" | "stderr", text: string) => {
 			if (!text || callbackError) return;
+			const remaining = MAX_SHELL_OUTPUT_BYTES - outputBytes;
+			if (remaining <= 0) {
+				outputTruncated = true;
+				stop();
+				return;
+			}
+			const bytes = Buffer.byteLength(text, "utf8");
+			if (bytes > remaining) {
+				const clipped = Buffer.from(text, "utf8").subarray(0, remaining).toString("utf8");
+				outputBytes += Buffer.byteLength(clipped, "utf8");
+				outputTruncated = true;
+				text = clipped;
+			}
+			outputBytes += bytes > remaining ? 0 : bytes;
 			pendingOutputCallbacks++;
 			pauseOutput();
 			outputQueue = outputQueue
@@ -475,7 +493,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 					{ cause: spawnError },
 				);
 			}
-			return { exitCode, durationMs: Date.now() - startedAt };
+			return { exitCode, durationMs: Date.now() - startedAt, ...(outputTruncated ? { truncated: true } : {}) };
 		} finally {
 			settled = true;
 			clearTimeout(timeout);

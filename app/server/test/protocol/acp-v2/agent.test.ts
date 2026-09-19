@@ -331,7 +331,7 @@ describe("ACP v2 Agent adapter", () => {
 			{
 				jsonrpc: "2.0",
 				id: 2,
-				error: { code: -32601, message: 'Unsupported ACP method "jai/desktop-catalog/projects/list"' },
+				error: { code: -32601, message: "Unsupported ACP method" },
 			},
 		]);
 	});
@@ -552,7 +552,7 @@ describe("ACP v2 Agent adapter", () => {
 			{
 				jsonrpc: "2.0",
 				id: 2,
-				error: { code: -32600, message: "session/cancel must be sent as an ACP notification" },
+				error: { code: -32600, message: "Invalid ACP request" },
 			},
 		]);
 	});

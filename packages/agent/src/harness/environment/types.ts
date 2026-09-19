@@ -74,6 +74,7 @@ export interface ShellExecuteOptions extends AbortOptions {
 export interface ShellResult {
 	exitCode: number | null;
 	durationMs: number;
+	truncated?: boolean;
 }
 
 export interface Shell {

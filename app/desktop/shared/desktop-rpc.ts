@@ -595,7 +595,7 @@ export interface DesktopMessageItem {
 	readonly text: string;
 	readonly status: "streaming" | "complete";
 	readonly timestamp: number;
-	readonly stopReason?: string;
+	readonly stopReason?: DesktopAgentStopReason;
 	readonly slashInvocation?: DesktopSlashInvocation;
 	readonly attachments?: readonly DesktopMessageAttachment[];
 }

@@ -581,11 +581,7 @@ export class DesktopAcpAgentHost {
 			...(runtime.stopReason ? { stopReason: runtime.stopReason } : {}),
 		});
 		if (update.stopReason === "error") {
-			const message =
-				typeof update.errorMessage === "string" && update.errorMessage.trim()
-					? update.errorMessage
-					: "Runtime Host operation failed";
-			this.#emitRuntimeError(runtime, message);
+			this.#emitRuntimeError(runtime, "Runtime Host operation failed");
 		}
 	}
 
