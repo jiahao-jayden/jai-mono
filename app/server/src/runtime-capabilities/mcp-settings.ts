@@ -100,7 +100,7 @@ export class RuntimeMcpSettingsController {
 		}
 		const after = await this.snapshot();
 		if (after.isErr()) return Result.err(new RuntimeMcpSettingsWriteFailed({ message: after.error.message }));
-		return after;
+		return Result.ok(after.value);
 	}
 
 	async status(): Promise<ResultType<{ readonly servers: readonly McpServerStatus[] }, RuntimeMcpSettingsReadFailed>> {
