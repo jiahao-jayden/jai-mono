@@ -399,6 +399,8 @@
   "desktop.task.progress": "进度",
   "desktop.task.progressSummary": "已解决 {resolved}/{total}",
   "desktop.task.terminalSummary": "已完成 {completed} 项 · 已取消 {cancelled} 项",
+  "desktop.terminal.tab": "终端 {number}",
+  "desktop.terminal.title": "终端",
   "desktop.transcript.actions": "{count} 个操作",
   "desktop.transcript.added": "已添加",
   "desktop.transcript.backDescription": "对话将从这里继续；后续内容会保留为分支。",

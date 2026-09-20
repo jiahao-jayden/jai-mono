@@ -11,8 +11,11 @@ import { createDesktopLocaleService, type DesktopLocaleService } from "./locale"
 import { DesktopOAuthManager } from "./oauth/manager";
 import { type AttachmentRegistry, createAttachmentRegistry } from "./rpc/attachments";
 import { createBroadcaster } from "./rpc/broadcast";
+import { createTerminalBroadcaster } from "./rpc/terminal-broadcast";
 import type { DesktopRuntimeHostSupervisor } from "./runtime-host/supervisor";
 import type { DesktopSessionCatalogPort } from "./session-catalog/remote";
+import { TerminalRegistry } from "./terminal";
+import { createNodePtyAdapter } from "./terminal/node-pty";
 import { createDesktopThemeService, type DesktopThemeService } from "./theme";
 import { createOpenWithService, type OpenWithService } from "./workspace/open-with";
 
@@ -30,6 +33,7 @@ export interface DesktopRuntime {
 	readonly locale: DesktopLocaleService;
 	readonly openWith: OpenWithService;
 	readonly commands: DesktopCommandCatalog;
+	readonly terminal: TerminalRegistry;
 	/** Broadcasts an app-wide event to every renderer window. */
 	publish(event: DesktopAgentEvent): void;
 	/** Asks the user for a project folder. Returns undefined when they cancel. */
@@ -65,6 +69,14 @@ export async function createDesktopRuntime(dependencies: {
 			return execution.localFileAccess ? execution.cwd : undefined;
 		},
 		runtimeHostSupervisor,
+	});
+	const terminal = new TerminalRegistry({
+		pty: createNodePtyAdapter(),
+		resolveSessionCwd: async (sessionId) => {
+			const execution = await sessions.resolveExecutionContext(sessionId);
+			return execution.localFileAccess ? execution.cwd : undefined;
+		},
+		publish: createTerminalBroadcaster(),
 	});
 	const attachments = createAttachmentRegistry();
 	const theme = createDesktopThemeService();
@@ -126,6 +138,7 @@ export async function createDesktopRuntime(dependencies: {
 		locale,
 		openWith,
 		commands,
+		terminal,
 		publish,
 		pickProjectDirectory: (sender) => pickProjectDirectory(BrowserWindow.fromWebContents(sender), locale),
 		openPath: (filePath) => shell.openPath(filePath),
@@ -133,6 +146,7 @@ export async function createDesktopRuntime(dependencies: {
 			showNativeContextMenu(BrowserWindow.fromWebContents(sender), items, position),
 		receiveOAuthCallback: (url) => receiveOAuthCallback(url),
 		async close() {
+			await terminal.closeAll();
 			agentHost.close();
 			// The OAuth manager calls into config while closing, so it must finish first.
 			await oauth.close();

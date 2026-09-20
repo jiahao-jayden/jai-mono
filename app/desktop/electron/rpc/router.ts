@@ -27,6 +27,12 @@ import {
 	desktopSessionRenameInputSchema,
 	desktopSubagentTranscriptInputSchema,
 	desktopTelemetrySettingsInputSchema,
+	desktopTerminalAckInputSchema,
+	desktopTerminalListInputSchema,
+	desktopTerminalOpenInputSchema,
+	desktopTerminalResizeInputSchema,
+	desktopTerminalSessionInputSchema,
+	desktopTerminalWriteInputSchema,
 	desktopUiLocalePreferenceSchema,
 	desktopWorkspaceListInputSchema,
 	desktopWorkspaceOpenInputSchema,
@@ -245,6 +251,7 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			},
 			async delete(_event, input) {
 				const parsed = parse(desktopSessionDeleteInputSchema, input, "Invalid Session delete input");
+				await rt.terminal.closeSession(parsed.sessionId);
 				rt.agentHost.closeSession(parsed.sessionId);
 				await rt.sessions.deleteSession(parsed.sessionId);
 			},
@@ -343,6 +350,42 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 						cause,
 					});
 				}
+			},
+		},
+		terminal: {
+			attach(event, input) {
+				const parsed = parse(desktopTerminalListInputSchema, input, "Invalid terminal attach input");
+				return rt.terminal.attach(parsed.sessionId, event.sender.id);
+			},
+			detach(event, input) {
+				const parsed = parse(desktopTerminalListInputSchema, input, "Invalid terminal detach input");
+				rt.terminal.detach(parsed.sessionId, event.sender.id);
+			},
+			async open(event, input) {
+				const parsed = parse(desktopTerminalOpenInputSchema, input, "Invalid terminal open input");
+				const result = await rt.terminal.open(parsed.sessionId, event.sender.id, parsed.cols, parsed.rows);
+				if (result.isErr()) throw result.error;
+				return result.value;
+			},
+			write(_event, input) {
+				const parsed = parse(desktopTerminalWriteInputSchema, input, "Invalid terminal write input");
+				const result = rt.terminal.write(parsed.sessionId, parsed.terminalId, parsed.data);
+				if (result.isErr()) throw result.error;
+			},
+			ack(_event, input) {
+				const parsed = parse(desktopTerminalAckInputSchema, input, "Invalid terminal acknowledgement input");
+				const result = rt.terminal.ack(parsed.sessionId, parsed.terminalId, parsed.bytes);
+				if (result.isErr()) throw result.error;
+			},
+			resize(_event, input) {
+				const parsed = parse(desktopTerminalResizeInputSchema, input, "Invalid terminal resize input");
+				const result = rt.terminal.resize(parsed.sessionId, parsed.terminalId, parsed.cols, parsed.rows);
+				if (result.isErr()) throw result.error;
+			},
+			async close(_event, input) {
+				const parsed = parse(desktopTerminalSessionInputSchema, input, "Invalid terminal close input");
+				const result = await rt.terminal.close(parsed.sessionId, parsed.terminalId);
+				if (result.isErr()) throw result.error;
 			},
 		},
 		command: {

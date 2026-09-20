@@ -167,6 +167,12 @@
   "desktop.dock.filePanel": {
     "defaultMessage": "Files"
   },
+  "desktop.terminal.tab": {
+    "defaultMessage": "Terminal {number}"
+  },
+  "desktop.terminal.title": {
+    "defaultMessage": "Terminal"
+  },
   "desktop.dock.newPanel": {
     "defaultMessage": "New panel"
   },

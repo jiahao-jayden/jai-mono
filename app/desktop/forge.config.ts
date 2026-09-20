@@ -20,7 +20,9 @@ const runtimeHostResource = join(import.meta.dirname, "../server/dist");
 const config: ForgeConfig = {
 	packagerConfig: {
 		appBundleId: "com.jayden.jai",
-		asar: true,
+		asar: {
+			unpack: "**/{*.node,spawn-helper}",
+		},
 		executableName: "JAI",
 		extraResource: [...wasmResources, runtimeHostResource],
 		protocols: [

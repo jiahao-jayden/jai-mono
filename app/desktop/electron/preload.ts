@@ -4,9 +4,12 @@ import { Value } from "@sinclair/typebox/value";
 import {
 	DESKTOP_EVENTS_CHANNEL,
 	DESKTOP_RPC_CHANNEL,
+	DESKTOP_TERMINAL_EVENTS_CHANNEL,
 	type DesktopAgentEventEnvelope,
 	type DesktopBridge,
+	type DesktopTerminalEvent,
 	desktopAgentEventEnvelopeSchema,
+	desktopTerminalEventSchema,
 } from "../shared/desktop-rpc";
 
 const desktopBridge: DesktopBridge = {
@@ -27,6 +30,13 @@ const desktopBridge: DesktopBridge = {
 		};
 		ipcRenderer.on(DESKTOP_EVENTS_CHANNEL, handler);
 		return () => ipcRenderer.removeListener(DESKTOP_EVENTS_CHANNEL, handler);
+	},
+	onTerminalEvent(listener) {
+		const handler = (_event: Electron.IpcRendererEvent, value: unknown) => {
+			if (Value.Check(desktopTerminalEventSchema, value)) listener(value as DesktopTerminalEvent);
+		};
+		ipcRenderer.on(DESKTOP_TERMINAL_EVENTS_CHANNEL, handler);
+		return () => ipcRenderer.removeListener(DESKTOP_TERMINAL_EVENTS_CHANNEL, handler);
 	},
 };
 

@@ -6,6 +6,9 @@ const workspaceRoot = path.resolve(import.meta.dirname, "../..");
 export default defineConfig({
 	build: {
 		reportCompressedSize: false,
+		rollupOptions: {
+			external: ["node-pty"],
+		},
 	},
 	resolve: {
 		alias: [

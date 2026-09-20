@@ -6,6 +6,7 @@ import { MenuItem } from "@/components/ui/menu-item";
 import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
 import type { DesktopSubagentItem } from "../../../../shared/desktop-rpc";
+import { TerminalDrawer } from "../terminal-drawer";
 import { WorkspacePanel } from "../workspace-panel";
 import { SubagentHistoryPanel, SubagentPanel } from "./subagent-panel";
 import type { DockState, DockTab } from "./use-dock";
@@ -21,8 +22,12 @@ export function Dock({ sessionId, dock, subagents }: DockProps) {
 	const icons = useIcons();
 	const PlusIcon = icons.plus;
 	const { activeTab } = dock;
+	const terminalTabs = dock.tabs.filter(
+		(tab): tab is Extract<DockTab, { kind: "terminal" }> => tab.kind === "terminal",
+	);
 	const entries = [
 		{ icon: icons["file-code"], label: intl.formatMessage(desktopMessages.dockFilePanel), open: dock.openFilePanel },
+		{ icon: icons.terminal, label: intl.formatMessage(desktopMessages.terminalTitle), open: dock.openTerminalPanel },
 		{ icon: icons.users, label: intl.formatMessage(desktopMessages.dockSubagentPanel), open: dock.openSubagentPanel },
 	];
 
@@ -41,6 +46,9 @@ export function Dock({ sessionId, dock, subagents }: DockProps) {
 					<DockTabButton
 						key={tab.id}
 						tab={tab}
+						terminalNumber={
+							tab.kind === "terminal" ? terminalTabs.findIndex((candidate) => candidate.id === tab.id) + 1 : null
+						}
 						active={tab.id === activeTab?.id}
 						onSelect={() => dock.selectTab(tab.id)}
 						onClose={() => dock.closeTab(tab.id)}
@@ -74,9 +82,23 @@ export function Dock({ sessionId, dock, subagents }: DockProps) {
 					</DropdownContent>
 				</DropdownMenu>
 			</div>
-			<div className="min-h-0 flex-1">
+			<div className="relative min-h-0 flex-1">
+				{terminalTabs.map((tab) => {
+					const visible = activeTab?.kind === "terminal" && tab.id === activeTab.id;
+					return (
+						<div
+							key={tab.id}
+							className={cn("absolute inset-0", visible ? "z-10" : "pointer-events-none invisible")}
+						>
+							<TerminalDrawer snapshot={tab.snapshot} visible={visible} />
+						</div>
+					);
+				})}
 				{activeTab === null ? (
 					<div className="flex h-full flex-col justify-center gap-2 px-8">
+						{dock.terminalError ? (
+							<div className="px-3 pb-2 text-[12px] text-destructive">{dock.terminalError}</div>
+						) : null}
 						{entries.map((entry) => (
 							<Button
 								key={entry.label}
@@ -99,7 +121,7 @@ export function Dock({ sessionId, dock, subagents }: DockProps) {
 					/>
 				) : activeTab.kind === "subagent-history" ? (
 					<SubagentHistoryPanel sessionId={sessionId} toolCallId={activeTab.toolCallId} title={activeTab.title} />
-				) : (
+				) : activeTab.kind === "terminal" ? null : (
 					<WorkspacePanel sessionId={sessionId} filePath={activeTab.path} onOpenFile={dock.openFile} />
 				)}
 			</div>
@@ -109,11 +131,13 @@ export function Dock({ sessionId, dock, subagents }: DockProps) {
 
 function DockTabButton({
 	tab,
+	terminalNumber,
 	active,
 	onSelect,
 	onClose,
 }: {
 	readonly tab: DockTab;
+	readonly terminalNumber: number | null;
 	readonly active: boolean;
 	onSelect(): void;
 	onClose(): void;
@@ -122,13 +146,21 @@ function DockTabButton({
 	const icons = useIcons();
 	const XIcon = icons.x;
 	const TabIcon =
-		tab.kind === "subagents" ? icons.users : tab.kind === "subagent-history" ? icons.users : icons["file-code"];
+		tab.kind === "terminal"
+			? icons.terminal
+			: tab.kind === "subagents"
+				? icons.users
+				: tab.kind === "subagent-history"
+					? icons.users
+					: icons["file-code"];
 	const label =
-		tab.kind === "subagents"
-			? intl.formatMessage(desktopMessages.dockSubagentPanel)
-			: tab.kind === "subagent-history"
-				? tab.title
-				: (tab.name ?? intl.formatMessage(desktopMessages.workspaceChooseFile));
+		tab.kind === "terminal"
+			? intl.formatMessage(desktopMessages.terminalTab, { number: terminalNumber ?? 1 })
+			: tab.kind === "subagents"
+				? intl.formatMessage(desktopMessages.dockSubagentPanel)
+				: tab.kind === "subagent-history"
+					? tab.title
+					: (tab.name ?? intl.formatMessage(desktopMessages.workspaceChooseFile));
 	const closeLabel = intl.formatMessage(desktopMessages.dockClosePanel, { name: label });
 
 	return (

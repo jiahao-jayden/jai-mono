@@ -6,6 +6,18 @@ import enMessages from "../src/i18n/compiled/en.json";
 import { Dock } from "../src/components/shell/dock/dock";
 import type { DockState, DockTab } from "../src/components/shell/dock/use-dock";
 
+const terminalSnapshot = {
+	sessionId: "session-1",
+	terminalId: "terminal-1",
+	cwd: "/tmp",
+	cols: 120,
+	rows: 30,
+	status: "running" as const,
+	pid: 123,
+	history: "",
+	exitCode: null,
+};
+
 function renderToStaticMarkup(node: ReactNode): string {
 	return renderToStaticMarkupBase(<IntlProvider locale="en" messages={enMessages}>{node}</IntlProvider>);
 }
@@ -15,11 +27,13 @@ function dockState(tabs: readonly DockTab[], activeTabId: string | null): DockSt
 		tabs,
 		activeTab: tabs.find((tab) => tab.id === activeTabId) ?? null,
 		openFilePanel: () => {},
+		openTerminalPanel: () => {},
 		openSubagentPanel: () => {},
 		openSubagentHistory: () => {},
 		openFile: () => {},
 		selectTab: () => {},
 		closeTab: () => {},
+		terminalError: null,
 	};
 }
 
@@ -39,7 +53,18 @@ describe("Dock", () => {
 		expect(markup).toContain('role="tablist"');
 		expect(markup).toContain('aria-label="New panel"');
 		expect(markup).toContain(">Files<");
+		expect(markup).toContain(">Terminal<");
 		expect(markup).toContain(">Subagents<");
+	});
+
+	test("Terminal tab 直接对应一个 PTY", () => {
+		const markup = renderDock(
+			[{ id: "terminal:terminal-1", kind: "terminal", snapshot: terminalSnapshot }],
+			"terminal:terminal-1",
+		);
+
+		expect(markup).toContain("Terminal 1");
+		expect(markup).toContain('aria-label="Close Terminal 1"');
 	});
 
 	test("文件面板与子代理面板并列在同一层标签栏", () => {

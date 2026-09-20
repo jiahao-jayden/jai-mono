@@ -85,7 +85,6 @@ export function AppShell() {
 	const [taskCardOpen, setTaskCardOpen] = useState(true);
 	const [contentWidth, setContentWidth] = useState(Number.POSITIVE_INFINITY);
 	const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
-	const dock = useDock();
 	const storedSessionId = useDesktopChatStore((state) => state.activeSessionId);
 	const draft = useDesktopChatStore(selectDraft);
 	const queue = useDesktopChatStore((state) => state.queue);
@@ -108,6 +107,7 @@ export function AppShell() {
 	const chatRoute = matchPath("/chat/:sessionId", location.pathname);
 	const routeSessionId = chatRoute?.params.sessionId;
 	const activeSessionId = routeSessionId && routeSessionId !== "new" ? routeSessionId : null;
+	const dock = useDock(activeSessionId);
 	useEffect(() => {
 		if (activeSessionId) {
 			if (storedSessionId !== activeSessionId) openSessionInStore(activeSessionId);

@@ -451,6 +451,8 @@
   "desktop.dock.newPanel": "新建面板",
   "desktop.dock.closePanel": "关闭 {name}",
   "desktop.dock.filePanel": "文件",
+  "desktop.terminal.tab": "终端 {number}",
+  "desktop.terminal.title": "终端",
   "desktop.dock.subagentPanel": "子代理",
   "desktop.task.artifacts": "Artifacts",
   "desktop.task.artifactsList": "会话 Artifacts",

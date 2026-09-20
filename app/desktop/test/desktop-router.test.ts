@@ -53,6 +53,7 @@ function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) 
 			...(overrides.config as object),
 		},
 		commands: { list: record("commands.list", []), ...(overrides.commands as object) },
+		terminal: { closeSession: record("terminal.closeSession"), ...(overrides.terminal as object) },
 		oauth: { ...(overrides.oauth as object) },
 		openWith: { ...(overrides.openWith as object) },
 		publish: record("publish"),
@@ -335,10 +336,10 @@ describe("createDesktopRouter — 行为", () => {
 		expect(saves).toBe(0);
 	});
 
-	test("session.delete 先关闭运行中的 Agent，再删除持久化 Session", async () => {
+	test("session.delete 先关闭 Terminal 和运行中的 Agent，再删除持久化 Session", async () => {
 		const { router: r, calls } = router();
 		await r.session.delete(event, { sessionId: "session-1" });
-		expect(calls.map((call) => call.name)).toEqual(["closeSession", "deleteSession"]);
+		expect(calls.map((call) => call.name)).toEqual(["terminal.closeSession", "closeSession", "deleteSession"]);
 	});
 
 	test("session.archive 由 Router 拒绝运行中的 Session，避免 UI 请求竞态", async () => {

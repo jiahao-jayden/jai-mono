@@ -34,6 +34,101 @@ export type DesktopPermissionResolution = Static<typeof desktopPermissionResolut
 
 export const DESKTOP_RPC_CHANNEL = "desktop:rpc";
 export const DESKTOP_EVENTS_CHANNEL = "desktop:events";
+export const DESKTOP_TERMINAL_EVENTS_CHANNEL = "desktop:terminal-events";
+
+export type DesktopTerminalStatus = "running" | "exited" | "error";
+export interface DesktopTerminalSnapshot {
+	readonly sessionId: string;
+	readonly terminalId: string;
+	readonly cwd: string;
+	readonly cols: number;
+	readonly rows: number;
+	readonly status: DesktopTerminalStatus;
+	readonly pid: number | null;
+	readonly history: string;
+	readonly exitCode: number | null;
+}
+export type DesktopTerminalEvent =
+	| { readonly type: "output"; readonly sessionId: string; readonly terminalId: string; readonly data: string; readonly bytes: number }
+	| { readonly type: "status"; readonly sessionId: string; readonly terminalId: string; readonly status: DesktopTerminalStatus; readonly exitCode: number | null }
+	| { readonly type: "cleared"; readonly sessionId: string; readonly terminalId: string }
+	| { readonly type: "restarted"; readonly snapshot: DesktopTerminalSnapshot };
+const desktopTerminalStatusSchema = Type.Union([Type.Literal("running"), Type.Literal("exited"), Type.Literal("error")]);
+const desktopTerminalSnapshotSchema = Type.Object(
+	{
+		sessionId: Type.String({ minLength: 1 }),
+		terminalId: Type.String({ minLength: 1 }),
+		cwd: Type.String({ minLength: 1 }),
+		cols: Type.Integer({ minimum: 20, maximum: 2_000 }),
+		rows: Type.Integer({ minimum: 5, maximum: 1_000 }),
+		status: desktopTerminalStatusSchema,
+		pid: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+		history: Type.String(),
+		exitCode: Type.Union([Type.Integer(), Type.Null()]),
+	},
+	{ additionalProperties: false },
+);
+export const desktopTerminalEventSchema = Type.Union([
+	Type.Object(
+		{
+			type: Type.Literal("output"),
+			sessionId: Type.String({ minLength: 1 }),
+			terminalId: Type.String({ minLength: 1 }),
+			data: Type.String(),
+			bytes: Type.Integer({ minimum: 0 }),
+		},
+		{ additionalProperties: false },
+	),
+	Type.Object(
+		{
+			type: Type.Literal("status"),
+			sessionId: Type.String({ minLength: 1 }),
+			terminalId: Type.String({ minLength: 1 }),
+			status: desktopTerminalStatusSchema,
+			exitCode: Type.Union([Type.Integer(), Type.Null()]),
+		},
+		{ additionalProperties: false },
+	),
+	Type.Object(
+		{ type: Type.Literal("cleared"), sessionId: Type.String({ minLength: 1 }), terminalId: Type.String({ minLength: 1 }) },
+		{ additionalProperties: false },
+	),
+	Type.Object({ type: Type.Literal("restarted"), snapshot: desktopTerminalSnapshotSchema }, { additionalProperties: false }),
+]);
+export const desktopTerminalListInputSchema = Type.Object(
+	{ sessionId: Type.String({ minLength: 1 }) },
+	{ additionalProperties: false },
+);
+const desktopTerminalSessionFields = {
+	sessionId: Type.String({ minLength: 1 }),
+	terminalId: Type.String({ minLength: 1, maxLength: 128 }),
+};
+const desktopTerminalSizeFields = {
+	cols: Type.Integer({ minimum: 20, maximum: 2_000 }),
+	rows: Type.Integer({ minimum: 5, maximum: 1_000 }),
+};
+export const desktopTerminalSessionInputSchema = Type.Object(desktopTerminalSessionFields, { additionalProperties: false });
+export const desktopTerminalOpenInputSchema = Type.Object(
+	{ sessionId: Type.String({ minLength: 1 }), ...desktopTerminalSizeFields },
+	{ additionalProperties: false },
+);
+export const desktopTerminalWriteInputSchema = Type.Object(
+	{ ...desktopTerminalSessionFields, data: Type.String({ maxLength: 1_048_576 }) },
+	{ additionalProperties: false },
+);
+export const desktopTerminalAckInputSchema = Type.Object(
+	{ ...desktopTerminalSessionFields, bytes: Type.Integer({ minimum: 1, maximum: 8_388_608 }) },
+	{ additionalProperties: false },
+);
+export const desktopTerminalResizeInputSchema = Type.Object(
+	{ ...desktopTerminalSessionFields, ...desktopTerminalSizeFields },
+	{ additionalProperties: false },
+);
+export type DesktopTerminalSessionInput = Static<typeof desktopTerminalSessionInputSchema>;
+export type DesktopTerminalOpenInput = Static<typeof desktopTerminalOpenInputSchema>;
+export type DesktopTerminalWriteInput = Static<typeof desktopTerminalWriteInputSchema>;
+export type DesktopTerminalAckInput = Static<typeof desktopTerminalAckInputSchema>;
+export type DesktopTerminalResizeInput = Static<typeof desktopTerminalResizeInputSchema>;
 
 export const jsonValueSchema = Type.Recursive((This) =>
 	Type.Union([
@@ -1009,6 +1104,15 @@ export interface DesktopApi {
 		openApplications(input: DesktopWorkspaceReadInput): Promise<DesktopWorkspaceOpenApplications>;
 		open(input: DesktopWorkspaceOpenInput): Promise<void>;
 	};
+	readonly terminal: {
+		attach(input: { readonly sessionId: string }): readonly DesktopTerminalSnapshot[];
+		detach(input: { readonly sessionId: string }): void;
+		open(input: DesktopTerminalOpenInput): Promise<DesktopTerminalSnapshot>;
+		write(input: DesktopTerminalWriteInput): void;
+		ack(input: DesktopTerminalAckInput): void;
+		resize(input: DesktopTerminalResizeInput): void;
+		close(input: DesktopTerminalSessionInput): Promise<void>;
+	};
 	readonly command: {
 		list(input?: DesktopCommandListInput): Promise<readonly DesktopCommandDescriptor[]>;
 	};
@@ -1044,4 +1148,5 @@ export interface DesktopBridge {
 	getFilePath(file: File): string;
 	invoke(request: DesktopRpcRequest): Promise<DesktopRpcResponse>;
 	onAgentEvent(listener: (event: DesktopAgentEventEnvelope) => void): () => void;
+	onTerminalEvent(listener: (event: DesktopTerminalEvent) => void): () => void;
 }

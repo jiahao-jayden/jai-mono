@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { desktop, getDesktopRemoteRpcFailure } from "@/lib/desktop";
+import type { DesktopTerminalSnapshot } from "../../../../shared/desktop-rpc";
 
 /**
  * 右栏打开的面板实例。文件面板多例（按 path 去重，path 为 null 表示还没选文件），
@@ -6,6 +8,7 @@ import { useState } from "react";
  */
 export type DockTab =
 	| { readonly id: string; readonly kind: "file"; readonly path: string | null; readonly name: string | null }
+	| { readonly id: string; readonly kind: "terminal"; readonly snapshot: DesktopTerminalSnapshot }
 	| { readonly id: typeof SUBAGENTS_TAB_ID; readonly kind: "subagents" }
 	| { readonly id: string; readonly kind: "subagent-history"; readonly toolCallId: string; readonly title: string };
 
@@ -14,9 +17,56 @@ const EMPTY_FILE_TAB_ID = "file:new";
 
 export type DockState = ReturnType<typeof useDock>;
 
-export function useDock() {
+export function useDock(sessionId: string | null) {
 	const [tabs, setTabs] = useState<readonly DockTab[]>([]);
 	const [activeTabId, setActiveTabId] = useState<string | null>(null);
+	const [terminalError, setTerminalError] = useState<string | null>(null);
+
+	useEffect(() => {
+		setTabs([]);
+		setActiveTabId(null);
+		if (!sessionId) return;
+		let current = true;
+		void desktop.terminal
+			.attach({ sessionId })
+			.then((snapshots) => {
+				if (!current) return;
+				const terminalTabs = snapshots.map((snapshot) => ({
+					id: `terminal:${snapshot.terminalId}`,
+					kind: "terminal" as const,
+					snapshot,
+				}));
+				setTabs(terminalTabs);
+				setActiveTabId(terminalTabs[0]?.id ?? null);
+			})
+			.catch(() => {});
+		return () => {
+			current = false;
+			void desktop.terminal.detach({ sessionId });
+		};
+	}, [sessionId]);
+
+	useEffect(() => {
+		if (!sessionId) return;
+		const onTerminalEvent = window.desktopRpc.onTerminalEvent;
+		if (typeof onTerminalEvent !== "function") return;
+		return onTerminalEvent((event) => {
+			const eventSessionId = event.type === "restarted" ? event.snapshot.sessionId : event.sessionId;
+			if (eventSessionId !== sessionId) return;
+			if (event.type === "status") {
+				setTabs((existing) =>
+					existing.map((tab) =>
+						tab.kind === "terminal" && tab.snapshot.terminalId === event.terminalId
+							? {
+									...tab,
+									snapshot: { ...tab.snapshot, status: event.status, exitCode: event.exitCode, pid: null },
+								}
+							: tab,
+					),
+				);
+			}
+		});
+	}, [sessionId]);
 
 	const activate = (tab: DockTab) => {
 		setTabs((current) => (current.some((candidate) => candidate.id === tab.id) ? current : [...current, tab]));
@@ -31,6 +81,21 @@ export function useDock() {
 		},
 		openSubagentPanel() {
 			activate({ id: SUBAGENTS_TAB_ID, kind: "subagents" });
+		},
+		openTerminalPanel() {
+			if (!sessionId) {
+				setTerminalError("No active session");
+				return;
+			}
+			setTerminalError(null);
+			void desktop.terminal
+				.open({ sessionId, cols: 120, rows: 30 })
+				.then((snapshot) => activate({ id: `terminal:${snapshot.terminalId}`, kind: "terminal", snapshot }))
+				.catch((error: unknown) => {
+					const failure = getDesktopRemoteRpcFailure(error);
+					console.error("Could not open terminal", failure?.tag ?? error);
+					setTerminalError(failure?.tag ?? "Terminal could not be started");
+				});
 		},
 		openSubagentHistory(toolCallId: string, title: string) {
 			activate({ id: `subagent-history:${toolCallId}`, kind: "subagent-history", toolCallId, title });
@@ -49,9 +114,14 @@ export function useDock() {
 		selectTab(id: string) {
 			setActiveTabId(id);
 		},
+		terminalError,
 		closeTab(id: string) {
+			const tab = tabs.find((candidate) => candidate.id === id);
 			const index = tabs.findIndex((tab) => tab.id === id);
 			if (index === -1) return;
+			if (tab?.kind === "terminal" && sessionId) {
+				void desktop.terminal.close({ sessionId, terminalId: tab.snapshot.terminalId }).catch(() => {});
+			}
 			const next = tabs.filter((tab) => tab.id !== id);
 			setTabs(next);
 			// 关掉当前 tab 后接管右邻居，没有右邻居就退回左邻居，全关完则露出底层 TaskPanel。

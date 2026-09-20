@@ -275,6 +275,8 @@ export const desktopMessages = defineMessages({
 	dockNewPanel: { id: "desktop.dock.newPanel", defaultMessage: "New panel" },
 	dockClosePanel: { id: "desktop.dock.closePanel", defaultMessage: "Close {name}" },
 	dockFilePanel: { id: "desktop.dock.filePanel", defaultMessage: "Files" },
+	terminalTitle: { id: "desktop.terminal.title", defaultMessage: "Terminal" },
+	terminalTab: { id: "desktop.terminal.tab", defaultMessage: "Terminal {number}" },
 	dockSubagentPanel: { id: "desktop.dock.subagentPanel", defaultMessage: "Subagents" },
 	questionsNone: { id: "desktop.questions.none", defaultMessage: "No questions." },
 	questionsSkip: { id: "desktop.questions.skip", defaultMessage: "Skip" },
@@ -315,7 +317,10 @@ export const desktopMessages = defineMessages({
 	settingsGeneral: { id: "desktop.settings.general", defaultMessage: "General" },
 	settingsArchivedChats: { id: "desktop.settings.archivedChats", defaultMessage: "Archived Chats" },
 	settingsArchivedChatsEmpty: { id: "desktop.settings.archivedChatsEmpty", defaultMessage: "No archived chats." },
-	settingsArchivedChatsLoading: { id: "desktop.settings.archivedChatsLoading", defaultMessage: "Loading archived chats…" },
+	settingsArchivedChatsLoading: {
+		id: "desktop.settings.archivedChatsLoading",
+		defaultMessage: "Loading archived chats…",
+	},
 	settingsArchivedChatsLoadError: {
 		id: "desktop.settings.archivedChatsLoadError",
 		defaultMessage: "Archived chats could not be loaded.",
@@ -324,7 +329,10 @@ export const desktopMessages = defineMessages({
 	settingsNoProject: { id: "desktop.settings.noProject", defaultMessage: "No project" },
 	settingsRestore: { id: "desktop.settings.restore", defaultMessage: "Restore" },
 	settingsRestoreFailed: { id: "desktop.settings.restoreFailed", defaultMessage: "Could not restore chat" },
-	settingsArchivedDeleteTitle: { id: "desktop.settings.archivedDeleteTitle", defaultMessage: "Permanently delete chat?" },
+	settingsArchivedDeleteTitle: {
+		id: "desktop.settings.archivedDeleteTitle",
+		defaultMessage: "Permanently delete chat?",
+	},
 	settingsArchivedDeleteDescription: {
 		id: "desktop.settings.archivedDeleteDescription",
 		defaultMessage: "“{title}” and its local conversation history will be permanently deleted.",

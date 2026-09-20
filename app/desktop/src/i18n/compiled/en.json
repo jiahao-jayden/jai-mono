@@ -399,6 +399,8 @@
   "desktop.task.progress": "Progress",
   "desktop.task.progressSummary": "{resolved} of {total} resolved",
   "desktop.task.terminalSummary": "{completed} completed · {cancelled} cancelled",
+  "desktop.terminal.tab": "Terminal {number}",
+  "desktop.terminal.title": "Terminal",
   "desktop.transcript.actions": "{count, plural, one {# action} other {# actions}}",
   "desktop.transcript.added": "Added",
   "desktop.transcript.backDescription": "The conversation will continue from here; later content will be kept as a branch.",
