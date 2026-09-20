@@ -128,6 +128,7 @@ export function ChatColumn({
 	const transcriptListRef = useRef<TranscriptVirtualListHandle>(null);
 	const openWorkGroupsRef = useRef(new Set<string>());
 	const cancelTitleEditRef = useRef(false);
+	const messageTrailScrollFrameRef = useRef<number | undefined>(undefined);
 	const reducedMotion = useReducedMotion();
 	const [editingTitle, setEditingTitle] = useState(false);
 	const [titleDraft, setTitleDraft] = useState("");
@@ -142,8 +143,8 @@ export function ChatColumn({
 		: intl.formatMessage(desktopMessages.transcriptLoading);
 	const isAgentWorking = chat.status === "submitted" || chat.status === "streaming";
 	const navigationDisabled = isAgentWorking || !selectedModelRef;
-	const ensureTranscriptItemVisible = useCallback((itemId: string) => {
-		return transcriptListRef.current?.scrollToItem(itemId) ?? false;
+	const ensureTranscriptItemVisible = useCallback((itemId: string, behavior: ScrollBehavior = "auto") => {
+		return transcriptListRef.current?.scrollToItem(itemId, behavior) ?? false;
 	}, []);
 	const pendingApprovals = chat.messages.filter(
 		(item): item is DesktopPermissionItem => item.kind === "permission" && item.status === "pending",
@@ -180,17 +181,60 @@ export function ChatColumn({
 	const jumpToMessageTrailItem = useCallback(
 		(itemId: string) => {
 			transcriptScroll.stopFollowing();
+			const element = scrollRef.current;
+			if (!element) return;
+			if (messageTrailScrollFrameRef.current !== undefined) {
+				cancelAnimationFrame(messageTrailScrollFrameRef.current);
+			}
+			const start = element.scrollTop;
+			const animate = (target: number) => {
+				if (reducedMotion) {
+					element.scrollTop = target;
+					return;
+				}
+				const distance = target - start;
+				const duration = Math.min(650, 320 + Math.abs(distance) * 0.06);
+				const startedAt = performance.now();
+				const step = (timestamp: number) => {
+					const progress = Math.min(1, (timestamp - startedAt) / duration);
+					element.scrollTop = start + distance * (1 - (1 - progress) ** 3);
+					if (progress < 1) messageTrailScrollFrameRef.current = requestAnimationFrame(step);
+					else messageTrailScrollFrameRef.current = undefined;
+				};
+				messageTrailScrollFrameRef.current = requestAnimationFrame(step);
+			};
+			const prompt = findTranscriptItemElement(element, itemId);
+			if (prompt) {
+				const promptTop = start + prompt.getBoundingClientRect().top - element.getBoundingClientRect().top;
+				animate(promptAnchorScrollTop(promptTop, element.clientHeight));
+				return;
+			}
+			ensureTranscriptItemVisible(itemId);
 			const startedAt = performance.now();
 			const seekPrompt = () => {
-				const element = scrollRef.current;
-				if (!element) return;
-				if (scrollPromptIntoReadingPosition(element, itemId, reducedMotion, ensureTranscriptItemVisible)) return;
-				if (performance.now() - startedAt < 1_000) requestAnimationFrame(seekPrompt);
+				const mountedPrompt = findTranscriptItemElement(element, itemId);
+				if (!mountedPrompt) {
+					if (performance.now() - startedAt < 1_000) {
+						messageTrailScrollFrameRef.current = requestAnimationFrame(seekPrompt);
+					}
+					return;
+				}
+				const promptTop =
+					element.scrollTop + mountedPrompt.getBoundingClientRect().top - element.getBoundingClientRect().top;
+				element.scrollTop = start;
+				animate(promptAnchorScrollTop(promptTop, element.clientHeight));
 			};
-			ensureTranscriptItemVisible(itemId);
-			requestAnimationFrame(seekPrompt);
+			messageTrailScrollFrameRef.current = requestAnimationFrame(seekPrompt);
 		},
 		[ensureTranscriptItemVisible, reducedMotion, transcriptScroll],
+	);
+	useEffect(
+		() => () => {
+			if (messageTrailScrollFrameRef.current !== undefined) {
+				cancelAnimationFrame(messageTrailScrollFrameRef.current);
+			}
+		},
+		[],
 	);
 
 	const projectLabel =
@@ -513,7 +557,7 @@ interface TranscriptScrollOptions {
 	loading: boolean;
 	responding: boolean;
 	reducedMotion: boolean | null;
-	ensureItemVisible(itemId: string): boolean;
+	ensureItemVisible(itemId: string, behavior?: ScrollBehavior): boolean;
 }
 
 function useTranscriptScroll({
@@ -945,11 +989,11 @@ function scrollPromptIntoReadingPosition(
 	element: HTMLDivElement,
 	messageId: string,
 	reducedMotion: boolean | null,
-	ensureItemVisible: (itemId: string) => boolean,
+	ensureItemVisible: (itemId: string, behavior?: ScrollBehavior) => boolean,
 ): boolean {
 	const prompt = findTranscriptItemElement(element, messageId);
 	if (!prompt) {
-		ensureItemVisible(messageId);
+		ensureItemVisible(messageId, reducedMotion ? "auto" : "smooth");
 		return false;
 	}
 	const promptTop = element.scrollTop + prompt.getBoundingClientRect().top - element.getBoundingClientRect().top;

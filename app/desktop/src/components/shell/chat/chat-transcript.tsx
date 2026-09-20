@@ -43,7 +43,7 @@ export type TranscriptRow = DesktopTranscriptItem | WorkGroup;
 
 export interface TranscriptVirtualListHandle {
 	getItemIndex(itemId: string): number;
-	scrollToItem(itemId: string): boolean;
+	scrollToItem(itemId: string, behavior?: ScrollBehavior): boolean;
 }
 
 interface WorkTimelineCluster {
@@ -180,10 +180,10 @@ export const TranscriptVirtualList = forwardRef<
 			ref,
 			() => ({
 				getItemIndex: (itemId) => rows.findIndex((row) => transcriptRowContainsItem(row, itemId)),
-				scrollToItem: (itemId) => {
+				scrollToItem: (itemId, behavior = "auto") => {
 					const index = rows.findIndex((row) => transcriptRowContainsItem(row, itemId));
 					if (index < 0) return false;
-					virtualizer.scrollToIndex(index, { align: "start" });
+					virtualizer.scrollToIndex(index, { align: "start", behavior });
 					return true;
 				},
 			}),

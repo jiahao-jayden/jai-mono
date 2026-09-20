@@ -28,7 +28,7 @@ interface MessageTrailProps {
 }
 
 const railWidth = 56;
-const tickHeight = 2;
+const tickHitHeight = 10;
 const tickOffset = 14;
 
 export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps) {
@@ -38,7 +38,7 @@ export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps
 	const tooltipRef = useRef<HTMLDivElement>(null);
 	const promptRef = useRef<HTMLDivElement>(null);
 	const assistantRef = useRef<HTMLDivElement>(null);
-	const tickRefs = useRef<Array<HTMLButtonElement | null>>([]);
+	const tickRefs = useRef<Array<HTMLSpanElement | null>>([]);
 	const frameRef = useRef<number | undefined>(undefined);
 	const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	const pointerYRef = useRef<number | null>(null);
@@ -142,7 +142,6 @@ export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps
 		for (let index = 0; index < geometry.centerYs.length; index += 1) {
 			const tick = tickRefs.current[index];
 			if (!tick) continue;
-			tick.style.top = `${geometry.centerYs[index]! - tickHeight / 2}px`;
 			tick.style.width = "6px";
 			tick.style.opacity = `${index === activeIndex ? 0.9 : visibleIndexes.has(index) ? 0.52 : 0.2}`;
 		}
@@ -248,9 +247,6 @@ export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps
 					{items.map((item, index) => (
 						<button
 							key={item.id}
-							ref={(element) => {
-								tickRefs.current[index] = element;
-							}}
 							type="button"
 							tabIndex={visible && index === tabStop ? 0 : -1}
 							aria-current={index === activeIndex ? "location" : undefined}
@@ -259,15 +255,24 @@ export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps
 								ordinal: item.ordinal,
 								preview: item.promptPreview,
 							})}
-							className="absolute rounded-full bg-foreground outline-none transition-[width,opacity] duration-90 ease-out focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
-							style={{ left: tickOffset, height: tickHeight, width: 6, opacity: 0.2, willChange: "width, opacity" }}
+							className="absolute w-10 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							style={{ left: tickOffset - 6, top: geometry!.centerYs[index]! - tickHitHeight / 2, height: tickHitHeight }}
 							onClick={() => onSelect(item.id)}
 							onFocus={() => {
 								focusIndexRef.current = index;
 								showTooltip(index, geometry!);
 								scheduleMagnification();
 							}}
-						/>
+						>
+							<span
+								ref={(element) => {
+									tickRefs.current[index] = element;
+								}}
+								aria-hidden="true"
+								className="absolute top-1/2 left-1.5 h-0.5 -translate-y-1/2 rounded-full bg-foreground transition-[width,opacity] duration-90 ease-out motion-reduce:transition-none"
+								style={{ width: 6, opacity: 0.2, willChange: "width, opacity" }}
+							/>
+						</button>
 					))}
 				</div>
 			</div>
