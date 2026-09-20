@@ -12,7 +12,7 @@ import {
 } from "react";
 import { motion, type HTMLMotionProps, useReducedMotion } from "framer-motion";
 import { useIntl } from "react-intl";
-import type { ThemedToken } from "shiki";
+import type { ThemedToken } from "@shikijs/core";
 import { desktopMessages } from "@/i18n/messages";
 import { Streamdown } from "@lobehub/streamdown";
 import remarkGfm from "remark-gfm";

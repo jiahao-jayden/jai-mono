@@ -41,6 +41,7 @@ describe("chat code highlight", () => {
 	test("未知语言返回失败，不抛错", async () => {
 		expect(await ensureChatLanguage("not-a-real-lang-xyz")).toBe(false);
 		expect(await ensureChatLanguage("")).toBe(false);
+		expect(await ensureChatLanguage("cpp")).toBe(false);
 	});
 
 	test("完成态 rust/go/java/py 有 GitHub 色且无 th-keyword", async () => {
