@@ -1,8 +1,8 @@
+import { cn } from "cn";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { useIcon } from "@/lib/icon-context";
-import { cn } from "cn";
 import type {
 	DesktopMcpServerStatus,
 	DesktopMcpSettingsInput,
@@ -20,14 +20,7 @@ interface McpSettingsProps {
 	readonly onRefreshStatus: () => Promise<DesktopMcpStatus>;
 }
 
-export function McpSettings({
-	snapshot,
-	loading,
-	loadError,
-	onRetry,
-	onSave,
-	onRefreshStatus,
-}: McpSettingsProps) {
+export function McpSettings({ snapshot, loading, loadError, onRetry, onSave, onRefreshStatus }: McpSettingsProps) {
 	const intl = useIntl();
 	const PlugIcon = useIcon("plug");
 	const RefreshIcon = useIcon("rotate-ccw");
@@ -155,13 +148,7 @@ export function McpSettings({
 	);
 }
 
-function McpStatusTable({
-	status,
-	loading,
-}: {
-	readonly status?: DesktopMcpStatus;
-	readonly loading: boolean;
-}) {
+function McpStatusTable({ status, loading }: { readonly status?: DesktopMcpStatus; readonly loading: boolean }) {
 	const intl = useIntl();
 	const servers = status?.servers ?? [];
 
@@ -230,13 +217,9 @@ function McpStatusRow({ server }: { readonly server: DesktopMcpServerStatus }) {
 					<span className={dotClassName} aria-hidden="true" />
 					{statusText}
 				</span>
-				{server.error ? (
-					<p className="mt-0.5 text-[12px] text-muted-foreground">{server.error}</p>
-				) : null}
+				{server.error ? <p className="mt-0.5 text-[12px] text-muted-foreground">{server.error}</p> : null}
 			</td>
-			<td className="px-3 py-2 text-muted-foreground">
-				{server.connected ? server.toolCount : "—"}
-			</td>
+			<td className="px-3 py-2 text-muted-foreground">{server.connected ? server.toolCount : "—"}</td>
 		</tr>
 	);
 }

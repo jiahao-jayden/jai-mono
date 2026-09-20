@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
+import { cn } from "cn";
 import { type ReactNode, useEffect, useState } from "react";
 import { type IntlShape, useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { desktop } from "@/lib/desktop";
 import { desktopQueryKeys } from "@/lib/desktop-query";
 import { useIcon } from "@/lib/icon-context";
-import { cn } from "cn";
 import type {
 	DesktopConnector,
 	DesktopConnectorConfigInput,

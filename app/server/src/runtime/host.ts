@@ -705,7 +705,9 @@ export class RuntimeSession {
 		const recovery = recoverDurableState(loaded.value);
 		if (recovery.isErr()) return recovery;
 		const foreground = this.foregroundState(loaded.value, recovery.value);
-		const branchEntryIds = new Set(branchOf(loaded.value.snapshot.entries, loaded.value.snapshot.leafId).map((entry) => entry.id));
+		const branchEntryIds = new Set(
+			branchOf(loaded.value.snapshot.entries, loaded.value.snapshot.leafId).map((entry) => entry.id),
+		);
 		return Result.ok({
 			entries: loaded.value.snapshot.entries,
 			leafId: loaded.value.snapshot.leafId,
@@ -1510,7 +1512,10 @@ function hasPendingInputs(verdict: OperationRecoveryVerdict | undefined): boolea
 	);
 }
 
-function operationIdByEntryId(records: readonly OperationRecord[], branchEntryIds: ReadonlySet<string>): ReadonlyMap<string, string> {
+function operationIdByEntryId(
+	records: readonly OperationRecord[],
+	branchEntryIds: ReadonlySet<string>,
+): ReadonlyMap<string, string> {
 	const result = new Map<string, string>();
 	for (const record of branchOperationRecords(records, branchEntryIds)) {
 		if (record.type === "operation_accepted") {

@@ -343,7 +343,9 @@ class ManagedMcpServer {
 	}
 }
 
-export function createTransport(server: McpServer): StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport {
+export function createTransport(
+	server: McpServer,
+): StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport {
 	if (server.type === "stdio") {
 		return new StdioClientTransport({
 			command: server.command,

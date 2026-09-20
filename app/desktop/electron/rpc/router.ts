@@ -43,6 +43,7 @@ import {
 import { sortArtifacts } from "../agent/artifacts";
 import type { DesktopRuntime } from "../runtime";
 import { projectRevealFailed, sessionBusyError } from "../session-catalog/errors";
+import { readWorkspaceGitDiff, readWorkspaceGitStatus } from "../workspace/git-status";
 import {
 	artifactPreviewError,
 	assertWorkspaceRelativePath,
@@ -52,7 +53,6 @@ import {
 	WorkspaceFileUnavailable,
 	workspaceFileError,
 } from "../workspace/paths";
-import { readWorkspaceGitDiff, readWorkspaceGitStatus } from "../workspace/git-status";
 import { parse } from "./validate";
 
 export type DesktopRouterImplementation<T> = {
@@ -326,7 +326,11 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				}
 			},
 			async gitStatus(_event, input) {
-				const parsed = parse(desktopWorkspaceGitStatusInputSchema, input, "Workspace Git status request is invalid.");
+				const parsed = parse(
+					desktopWorkspaceGitStatusInputSchema,
+					input,
+					"Workspace Git status request is invalid.",
+				);
 				const result = await readWorkspaceGitStatus(await workspaceRootForSession(parsed.sessionId));
 				if (result.isErr()) throw result.error;
 				return result.value;

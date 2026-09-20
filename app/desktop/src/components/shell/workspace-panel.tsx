@@ -1,5 +1,6 @@
 import type { FileTree, FileTreeDirectoryHandle, FileTreeItemHandle } from "@pierre/trees";
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react";
+import { cn } from "cn";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { useIntl } from "react-intl";
@@ -12,7 +13,6 @@ import { toast } from "@/components/ui/toast";
 import { desktopMessages } from "@/i18n/messages";
 import { desktop } from "@/lib/desktop";
 import { useIcons } from "@/lib/icon-context";
-import { cn } from "cn";
 import type {
 	DesktopWorkspaceEntry,
 	DesktopWorkspaceOpenApplication,

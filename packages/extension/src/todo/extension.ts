@@ -1,7 +1,7 @@
 import { type CodingAgentExtension, defineExtension } from "@jai/coding-agent";
 import { Type } from "@sinclair/typebox";
 import { TaggedError } from "better-result";
-import { TODO_EXTENSION_ID, todoItemSchema, todoStateSchema, type TodoItem, type TodoState } from "./state.js";
+import { TODO_EXTENSION_ID, type TodoItem, type TodoState, todoItemSchema, todoStateSchema } from "./state.js";
 
 class TodoDuplicateId extends TaggedError("coding_todo.duplicate_id")<{
 	readonly data: { readonly id: string };

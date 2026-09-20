@@ -38,7 +38,9 @@ export async function extensionContext<TConfig extends JsonObject, TState extend
 	configChangeWatcher?: (listener: () => void) => () => void,
 ): Promise<ResultType<CodingExtensionContext<TConfig, TState>, CodingExtensionError>> {
 	return Result.gen(async function* () {
-		const configuration = yield* Result.await(extensionConfiguration(extension, context, runtime, configChangeWatcher));
+		const configuration = yield* Result.await(
+			extensionConfiguration(extension, context, runtime, configChangeWatcher),
+		);
 		const state = yield* Result.await(extensionSessionState(extension, sessionState));
 		const requestApproval = async (request: CodingExtensionApprovalRequest, signal?: AbortSignal) => {
 			const valid = assertExtensionApprovalRequest(extension.id, context.sessionId, request);
@@ -223,8 +225,7 @@ async function layeredConfiguration<TConfig extends JsonObject>(
 					return;
 				}
 				value = structuredClone(result.value);
-				for (const listener of listeners)
-					listener({ status: "valid", value: structuredClone(value) });
+				for (const listener of listeners) listener({ status: "valid", value: structuredClone(value) });
 			});
 		});
 	}

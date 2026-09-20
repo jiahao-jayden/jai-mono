@@ -6,7 +6,7 @@ export {
 	AcpLocalClientRequestFailed,
 	openLocalAcpV2Client,
 } from "./local-client";
-export type { OwnedLocalRuntimeHost, OpenLocalRuntimeHostOptions } from "./local-host";
+export type { OpenLocalRuntimeHostOptions, OwnedLocalRuntimeHost } from "./local-host";
 export { LocalRuntimeHostOpenFailed, localAcpV2EndpointFor, openLocalRuntimeHost } from "./local-host";
 export type { NodeLocalAcpV2Server, OpenLocalAcpV2ServerOptions } from "./local-transport";
 export { AcpLocalTransportListenFailed, openLocalAcpV2Server } from "./local-transport";

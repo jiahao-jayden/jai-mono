@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { open, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import { isInside } from "../agent-plugins/package/paths";
 import {
 	type CodingAgentExtension,
 	type CodingExtensionCommandRegistration,
@@ -12,6 +11,7 @@ import {
 } from "@jai/coding-agent";
 import { Type } from "@sinclair/typebox";
 import { Result, TaggedError } from "better-result";
+import { isInside } from "../agent-plugins/package/paths";
 import {
 	type CodingSkillCard,
 	CodingSkillCatalog,
@@ -92,8 +92,7 @@ export function createSkillsExtension(
 			{
 				id: "skills",
 				presentation: "announced",
-				discover: (runtime) =>
-					Result.ok({ tools: runtime.instance.catalog.snapshot.skills.map(skillCatalogTool) }),
+				discover: (runtime) => Result.ok({ tools: runtime.instance.catalog.snapshot.skills.map(skillCatalogTool) }),
 				subscribe: (runtime, invalidate) => runtime.instance.catalog.watch(() => invalidate()),
 			},
 		],

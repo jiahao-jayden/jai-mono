@@ -1,3 +1,4 @@
+import { cn } from "cn";
 import { AnimatePresence, motion, Reorder, useReducedMotion } from "framer-motion";
 import { useIntl } from "react-intl";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,6 @@ import { desktopMessages } from "@/i18n/messages";
 import { fontWeights } from "@/lib/font-weight";
 import { useIcon } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
-import { cn } from "cn";
 import type { QueuedMessage } from "@/stores/chat";
 
 interface ChatMessageQueueProps {

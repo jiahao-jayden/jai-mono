@@ -282,7 +282,10 @@ function matchProviderCatalogModel(
 }
 
 function catalogModelStem(modelId: string): string {
-	return modelId.trim().toLocaleLowerCase().replace(/-(?:[a-z]+-)?\d{6}$/i, "");
+	return modelId
+		.trim()
+		.toLocaleLowerCase()
+		.replace(/-(?:[a-z]+-)?\d{6}$/i, "");
 }
 
 function defaultCatalogProviderFor(modelId: string): string | undefined {

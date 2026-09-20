@@ -102,7 +102,11 @@ export class DesktopCatalogClient {
 	}
 
 	async listSessions(
-		input: { readonly limit?: number; readonly archived?: boolean; readonly cursor?: DesktopCatalogSessionCursor } = {},
+		input: {
+			readonly limit?: number;
+			readonly archived?: boolean;
+			readonly cursor?: DesktopCatalogSessionCursor;
+		} = {},
 	): Promise<ResultType<DesktopCatalogSessionPage, DesktopCatalogClientError>> {
 		return this.request("jai/desktop-catalog/sessions/list", input, sessionPage);
 	}

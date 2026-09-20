@@ -13,10 +13,10 @@ import {
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import {
+	type ActiveTrailStore,
 	computeDockTickStyles,
 	computeFocusedTrailIndex,
 	computeTrailGeometry,
-	type ActiveTrailStore,
 	type MessageTrailItem,
 	type TrailGeometry,
 } from "./message-trail-logic";
@@ -91,7 +91,10 @@ export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps
 		}
 		const visibleY = currentGeometry.centerYs[index]! - viewport.scrollTop;
 		const halfHeight = Math.max(28, tooltip.offsetHeight / 2 + 4);
-		const clampedY = Math.max(halfHeight, Math.min(Math.max(halfHeight, viewport.clientHeight - halfHeight), visibleY));
+		const clampedY = Math.max(
+			halfHeight,
+			Math.min(Math.max(halfHeight, viewport.clientHeight - halfHeight), visibleY),
+		);
 		tooltip.style.top = `${viewport.offsetTop + clampedY}px`;
 		tooltip.style.visibility = "visible";
 		tooltip.dataset.state = "open";
@@ -102,16 +105,17 @@ export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps
 		if (!visible || !geometry) return;
 		const viewport = viewportRef.current;
 		const localPointerY = pointerYRef.current;
-		const focusedIndex = localPointerY === null ? focusIndexRef.current : computeFocusedTrailIndex(
-			localPointerY + (viewport?.scrollTop ?? 0),
-			geometry,
-		);
+		const focusedIndex =
+			localPointerY === null
+				? focusIndexRef.current
+				: computeFocusedTrailIndex(localPointerY + (viewport?.scrollTop ?? 0), geometry);
 		if (focusedIndex === null) {
 			applyRestStyles();
 			hideTooltip();
 			return;
 		}
-		const pointerY = localPointerY === null ? geometry.centerYs[focusedIndex]! : localPointerY + (viewport?.scrollTop ?? 0);
+		const pointerY =
+			localPointerY === null ? geometry.centerYs[focusedIndex]! : localPointerY + (viewport?.scrollTop ?? 0);
 		const styles = computeDockTickStyles(geometry, pointerY, focusedIndex, visibleIndexes);
 		for (let index = 0; index < styles.length; index += 1) {
 			const tick = tickRefs.current[index];
@@ -256,7 +260,11 @@ export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps
 								preview: item.promptPreview,
 							})}
 							className="absolute w-10 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
-							style={{ left: tickOffset - 6, top: geometry!.centerYs[index]! - tickHitHeight / 2, height: tickHitHeight }}
+							style={{
+								left: tickOffset - 6,
+								top: geometry!.centerYs[index]! - tickHitHeight / 2,
+								height: tickHitHeight,
+							}}
 							onClick={() => onSelect(item.id)}
 							onFocus={() => {
 								focusIndexRef.current = index;

@@ -2,11 +2,11 @@ import type { ModelRequestObserver } from "@jai/agent";
 import type { Result } from "better-result";
 import type { JsonObject, JsonValue } from "../core/json";
 import type { PermissionTelemetryObserver } from "../permissions";
+import type { CapabilityNoticeSlot } from "../runtime";
 import type { CodingToolName } from "../tools/names";
 import type { CodingAgentExtension, CodingExtensionRuntimeAdapter } from "./extensions";
 import type { CodingProviderOptions } from "./model";
 import type { CodingToolActivityKind } from "./tool-presentation";
-import type { CapabilityNoticeSlot } from "../runtime";
 
 export type { JsonObject, JsonValue } from "../core/json";
 

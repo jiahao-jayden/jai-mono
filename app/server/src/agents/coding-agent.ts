@@ -91,20 +91,20 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 				operationId: input.operationId,
 				sessionId: input.sessionId,
 			});
-		const created = await createCodingAgent({
-			...configured.value,
-			...(configured.value.extensionRuntime
-				? { extensionRuntime: withRuntimeApprovals(configured.value.extensionRuntime, input) }
-				: {}),
-			...(input.capabilityNotice ? { capabilityNotice: input.capabilityNotice } : {}),
-			permissionMode: permissionModeFor(input.runtimeConfiguration.mode),
-			cwd: input.cwd,
-			session: { kind: "resume", id: input.sessionId, store: input.sessionStore },
-			effectBoundary: input.effectBoundary,
-			modelRequestTelemetryObserver: telemetryObserver,
-			permissionTelemetryObserver: telemetryObserver,
-			...(input.openChildSession ? { openChildSession: input.openChildSession } : {}),
-			requestApproval: (request, signal) =>
+			const created = await createCodingAgent({
+				...configured.value,
+				...(configured.value.extensionRuntime
+					? { extensionRuntime: withRuntimeApprovals(configured.value.extensionRuntime, input) }
+					: {}),
+				...(input.capabilityNotice ? { capabilityNotice: input.capabilityNotice } : {}),
+				permissionMode: permissionModeFor(input.runtimeConfiguration.mode),
+				cwd: input.cwd,
+				session: { kind: "resume", id: input.sessionId, store: input.sessionStore },
+				effectBoundary: input.effectBoundary,
+				modelRequestTelemetryObserver: telemetryObserver,
+				permissionTelemetryObserver: telemetryObserver,
+				...(input.openChildSession ? { openChildSession: input.openChildSession } : {}),
+				requestApproval: (request, signal) =>
 					input.requestApproval(
 						{
 							requestId: request.requestId,

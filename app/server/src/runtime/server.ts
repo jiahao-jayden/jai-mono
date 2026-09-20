@@ -9,8 +9,8 @@ import type { RuntimeOperationDriver } from "../operations";
 import { ProductSqliteDatabase, SqliteDesktopCatalogAccess, SqliteProductSessionPersistence } from "../persistence";
 import type { AcpImplementationInfo } from "../protocol/acp-v2";
 import { type OwnedLocalRuntimeHost, openLocalRuntimeHost } from "../protocol/acp-v2";
-import { InMemoryProductSessionPersistence } from "../sessions";
 import { RuntimeMcpSettingsController } from "../runtime-capabilities";
+import { InMemoryProductSessionPersistence } from "../sessions";
 import { RuntimeTelemetryController } from "../telemetry";
 import { SqliteWorkspaceTrust } from "../workspaces";
 import type { RuntimeHostConfigurationInvalid } from "./configuration";
@@ -106,22 +106,22 @@ export async function openJaiRuntimeServer(
 			initialAppState: () => emptyPersistedCodingSessionState(),
 			configurationPolicy: createRuntimeSessionConfigurationPolicy(agentSettings),
 		});
-	const opened = await openLocalRuntimeHost({
-		dataDirectory: options.dataDirectory,
-		host,
-		info: options.info,
-		desktopCatalog,
-		desktopConfiguration: agentSettings,
-		desktopConnectorOAuth: connectorOAuth,
-		desktopModelCatalog: modelCatalog,
-		desktopWorkspaceTrust: workspaceTrust,
-		...(telemetry ? { desktopTelemetry: telemetry } : {}),
-		desktopMcpSettings: mcpSettings,
-		...(options.endpoint ? { endpoint: options.endpoint } : {}),
-	});
-	if (opened.isErr()) throw opened.error;
-	localHost = opened.value;
-	return Result.ok(new JaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog, telemetry, mcpSettings));
+		const opened = await openLocalRuntimeHost({
+			dataDirectory: options.dataDirectory,
+			host,
+			info: options.info,
+			desktopCatalog,
+			desktopConfiguration: agentSettings,
+			desktopConnectorOAuth: connectorOAuth,
+			desktopModelCatalog: modelCatalog,
+			desktopWorkspaceTrust: workspaceTrust,
+			...(telemetry ? { desktopTelemetry: telemetry } : {}),
+			desktopMcpSettings: mcpSettings,
+			...(options.endpoint ? { endpoint: options.endpoint } : {}),
+		});
+		if (opened.isErr()) throw opened.error;
+		localHost = opened.value;
+		return Result.ok(new JaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog, telemetry, mcpSettings));
 	} catch (error) {
 		await localHost?.close().catch(() => {});
 		connectorOAuth?.close();

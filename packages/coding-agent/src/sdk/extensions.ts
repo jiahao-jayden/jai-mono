@@ -932,9 +932,11 @@ function diffCatalog(
 }
 
 function renderAnnouncedCatalog(catalogId: string, tools: ReadonlyMap<string, string>): string {
-	return [`<available_${catalogId}>`, ...[...tools].map(([name, description]) => `- ${name}: ${description}`), `</available_${catalogId}>`].join(
-		"\n",
-	);
+	return [
+		`<available_${catalogId}>`,
+		...[...tools].map(([name, description]) => `- ${name}: ${description}`),
+		`</available_${catalogId}>`,
+	].join("\n");
 }
 
 async function reportCatalogDiagnostics(

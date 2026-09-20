@@ -49,7 +49,14 @@ export class WebSearchRuntime {
 			return Result.err(new WebSearchNoProviders({ message: "No Web Search Provider is configured" }));
 		const attempts: WebSearchAttemptSummary[] = [];
 		for (const provider of providers) {
-			if (signal?.aborted) return Result.err(new WebSearchProviderFailed({ message: "Web Search request was cancelled", provider: provider.id, kind: "aborted" }));
+			if (signal?.aborted)
+				return Result.err(
+					new WebSearchProviderFailed({
+						message: "Web Search request was cancelled",
+						provider: provider.id,
+						kind: "aborted",
+					}),
+				);
 			const result = await provider.search({ query: query.trim(), limit }, signal);
 			if (result.isOk()) {
 				for (const item of result.value.results) {

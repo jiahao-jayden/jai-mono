@@ -3,8 +3,8 @@ import { join, resolve } from "node:path";
 import {
 	CodingConfigStore,
 	CodingExtensionHostOperationFailed,
-	sdkConfigDefinition,
 	type JsonObject,
+	sdkConfigDefinition,
 } from "@jai/coding-agent";
 import { createMcpExtension } from "@jai/extension/mcp";
 import { createFffSearchExtension } from "@jai/extension/search";

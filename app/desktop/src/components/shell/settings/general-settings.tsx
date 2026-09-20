@@ -72,39 +72,36 @@ export function GeneralSettings({
 							</SelectGroup>
 						</SelectContent>
 					</Select>
-				{localeError ? (
-					<p className="mt-1 text-[11px] text-destructive" role="alert">
-						{intl.formatMessage(desktopMessages.settingsLocaleSaveError)}
-					</p>
-				) : null}
-			</SettingsRow>
+					{localeError ? (
+						<p className="mt-1 text-[11px] text-destructive" role="alert">
+							{intl.formatMessage(desktopMessages.settingsLocaleSaveError)}
+						</p>
+					) : null}
+				</SettingsRow>
 
-			<SettingsRow
-				label={intl.formatMessage(desktopMessages.settingsTheme)}
-				description={intl.formatMessage(desktopMessages.settingsThemeDescription)}
-			>
-				<Select value={theme} onValueChange={onThemeChange}>
-					<SelectTrigger
-						className="w-48"
-						aria-label={intl.formatMessage(desktopMessages.settingsTheme)}
-					/>
-					<SelectContent>
-						<SelectGroup>
-							<SelectItem index={0} value="system">
-								{intl.formatMessage(desktopMessages.settingsFollowSystem)}
-							</SelectItem>
-							<SelectItem index={1} value="light">
-								{intl.formatMessage(desktopMessages.settingsLight)}
-							</SelectItem>
-							<SelectItem index={2} value="dark">
-								{intl.formatMessage(desktopMessages.settingsDark)}
-							</SelectItem>
-						</SelectGroup>
-					</SelectContent>
-				</Select>
-			</SettingsRow>
+				<SettingsRow
+					label={intl.formatMessage(desktopMessages.settingsTheme)}
+					description={intl.formatMessage(desktopMessages.settingsThemeDescription)}
+				>
+					<Select value={theme} onValueChange={onThemeChange}>
+						<SelectTrigger className="w-48" aria-label={intl.formatMessage(desktopMessages.settingsTheme)} />
+						<SelectContent>
+							<SelectGroup>
+								<SelectItem index={0} value="system">
+									{intl.formatMessage(desktopMessages.settingsFollowSystem)}
+								</SelectItem>
+								<SelectItem index={1} value="light">
+									{intl.formatMessage(desktopMessages.settingsLight)}
+								</SelectItem>
+								<SelectItem index={2} value="dark">
+									{intl.formatMessage(desktopMessages.settingsDark)}
+								</SelectItem>
+							</SelectGroup>
+						</SelectContent>
+					</Select>
+				</SettingsRow>
 
-			<SettingsRow label={intl.formatMessage(desktopMessages.settingsMaxIterations)}>
+				<SettingsRow label={intl.formatMessage(desktopMessages.settingsMaxIterations)}>
 					<Input
 						type="number"
 						min={1}

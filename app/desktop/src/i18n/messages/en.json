@@ -167,12 +167,6 @@
   "desktop.dock.filePanel": {
     "defaultMessage": "Files"
   },
-  "desktop.terminal.tab": {
-    "defaultMessage": "Terminal {number}"
-  },
-  "desktop.terminal.title": {
-    "defaultMessage": "Terminal"
-  },
   "desktop.dock.newPanel": {
     "defaultMessage": "New panel"
   },
@@ -1035,6 +1029,9 @@
   "desktop.sidebar.collapse": {
     "defaultMessage": "Collapse sidebar"
   },
+  "desktop.sidebar.copyPath": {
+    "defaultMessage": "Copy path"
+  },
   "desktop.sidebar.deleteFailed": {
     "defaultMessage": "Could not delete session"
   },
@@ -1059,18 +1056,6 @@
   "desktop.sidebar.newChat": {
     "defaultMessage": "New chat"
   },
-  "desktop.sidebar.pin": {
-    "defaultMessage": "Pin"
-  },
-  "desktop.sidebar.pinFailed": {
-    "defaultMessage": "Could not pin session"
-  },
-  "desktop.sidebar.unpin": {
-    "defaultMessage": "Unpin"
-  },
-  "desktop.sidebar.unpinFailed": {
-    "defaultMessage": "Could not unpin session"
-  },
   "desktop.sidebar.noChats": {
     "defaultMessage": "New chats will appear here."
   },
@@ -1080,8 +1065,17 @@
   "desktop.sidebar.noRecentSessions": {
     "defaultMessage": "New chats will be saved here."
   },
+  "desktop.sidebar.pin": {
+    "defaultMessage": "Pin"
+  },
+  "desktop.sidebar.pinFailed": {
+    "defaultMessage": "Could not pin session"
+  },
   "desktop.sidebar.primary": {
     "defaultMessage": "Primary"
+  },
+  "desktop.sidebar.projectActions": {
+    "defaultMessage": "Project actions"
   },
   "desktop.sidebar.projects": {
     "defaultMessage": "Projects"
@@ -1092,26 +1086,20 @@
   "desktop.sidebar.recentsLoadError": {
     "defaultMessage": "Recents could not be loaded. Try again later."
   },
-  "desktop.sidebar.projectActions": {
-    "defaultMessage": "Project actions"
-  },
   "desktop.sidebar.relink": {
     "defaultMessage": "Relink"
-  },
-  "desktop.sidebar.revealFailed": {
-    "defaultMessage": "Could not open the project folder"
-  },
-  "desktop.sidebar.revealInFinder": {
-    "defaultMessage": "Open in Finder"
-  },
-  "desktop.sidebar.copyPath": {
-    "defaultMessage": "Copy path"
   },
   "desktop.sidebar.rename": {
     "defaultMessage": "Rename"
   },
   "desktop.sidebar.renameFailed": {
     "defaultMessage": "Could not rename session"
+  },
+  "desktop.sidebar.revealFailed": {
+    "defaultMessage": "Could not open the project folder"
+  },
+  "desktop.sidebar.revealInFinder": {
+    "defaultMessage": "Open in Finder"
   },
   "desktop.sidebar.searchComingLater": {
     "defaultMessage": "Search (coming later)"
@@ -1124,6 +1112,12 @@
   },
   "desktop.sidebar.settingsShortcut": {
     "defaultMessage": "Settings (⌘,)"
+  },
+  "desktop.sidebar.unpin": {
+    "defaultMessage": "Unpin"
+  },
+  "desktop.sidebar.unpinFailed": {
+    "defaultMessage": "Could not unpin session"
   },
   "desktop.slash.commands": {
     "defaultMessage": "Slash commands"
@@ -1205,6 +1199,12 @@
   },
   "desktop.task.terminalSummary": {
     "defaultMessage": "{completed} completed · {cancelled} cancelled"
+  },
+  "desktop.terminal.tab": {
+    "defaultMessage": "Terminal {number}"
+  },
+  "desktop.terminal.title": {
+    "defaultMessage": "Terminal"
   },
   "desktop.transcript.actions": {
     "defaultMessage": "{count, plural, one {# action} other {# actions}}"
@@ -1314,6 +1314,30 @@
   "desktop.transcript.workingDuration": {
     "defaultMessage": "Working · {duration}"
   },
+  "desktop.workspace.changeStaged": {
+    "defaultMessage": "Staged"
+  },
+  "desktop.workspace.changeStatus": {
+    "defaultMessage": "{status}"
+  },
+  "desktop.workspace.changeUnstaged": {
+    "defaultMessage": "Unstaged"
+  },
+  "desktop.workspace.changes": {
+    "defaultMessage": "Changes"
+  },
+  "desktop.workspace.changesEmpty": {
+    "defaultMessage": "No changes"
+  },
+  "desktop.workspace.changesError": {
+    "defaultMessage": "Could not read changes."
+  },
+  "desktop.workspace.changesLoading": {
+    "defaultMessage": "Loading changes…"
+  },
+  "desktop.workspace.changesRefresh": {
+    "defaultMessage": "Refresh changes"
+  },
   "desktop.workspace.chooseFile": {
     "defaultMessage": "Open a file"
   },
@@ -1326,6 +1350,9 @@
   "desktop.workspace.collapseTree": {
     "defaultMessage": "Collapse file tree"
   },
+  "desktop.workspace.detachedHead": {
+    "defaultMessage": "Detached HEAD"
+  },
   "desktop.workspace.expandTree": {
     "defaultMessage": "Expand file tree"
   },
@@ -1337,6 +1364,12 @@
   },
   "desktop.workspace.filter": {
     "defaultMessage": "Filter workspace files…"
+  },
+  "desktop.workspace.noBranch": {
+    "defaultMessage": "No branch"
+  },
+  "desktop.workspace.notRepository": {
+    "defaultMessage": "This workspace is not a Git repository."
   },
   "desktop.workspace.open": {
     "defaultMessage": "Open"
@@ -1373,6 +1406,36 @@
   },
   "desktop.workspace.readingFile": {
     "defaultMessage": "Reading file…"
+  },
+  "desktop.workspace.review": {
+    "defaultMessage": "Git diff"
+  },
+  "desktop.workspace.reviewBack": {
+    "defaultMessage": "Back to changes"
+  },
+  "desktop.workspace.reviewBinary": {
+    "defaultMessage": "Binary files cannot be reviewed."
+  },
+  "desktop.workspace.reviewError": {
+    "defaultMessage": "Could not read diff."
+  },
+  "desktop.workspace.reviewInvalidEncoding": {
+    "defaultMessage": "This file is not valid UTF-8 text."
+  },
+  "desktop.workspace.reviewLoading": {
+    "defaultMessage": "Loading diff…"
+  },
+  "desktop.workspace.reviewMissing": {
+    "defaultMessage": "This file is unavailable."
+  },
+  "desktop.workspace.reviewNotChanged": {
+    "defaultMessage": "This file has no changes."
+  },
+  "desktop.workspace.reviewSubmodule": {
+    "defaultMessage": "Submodules cannot be reviewed."
+  },
+  "desktop.workspace.reviewTooLarge": {
+    "defaultMessage": "This file is too large to review."
   },
   "desktop.workspace.tree": {
     "defaultMessage": "Workspace file tree"

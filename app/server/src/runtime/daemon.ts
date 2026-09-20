@@ -1,7 +1,7 @@
+import { homedir } from "node:os";
 import { createSubagentExtension } from "@jai/extension/subagent";
 import { createTodoExtension } from "@jai/extension/todo";
 import type { TelemetryContext } from "@jai/telemetry";
-import { homedir } from "node:os";
 import { Result, type Result as ResultType } from "better-result";
 import {
 	CodingAgentOperationDriver,

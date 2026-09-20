@@ -1,8 +1,8 @@
+import { cn } from "cn";
 import { useEffect, useState } from "react";
 import { type MessageDescriptor, useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { type IconName, useIcon, useIcons } from "@/lib/icon-context";
-import { cn } from "cn";
 import type {
 	DesktopConnectorConfigInput,
 	DesktopConnectorConfigSnapshot,
@@ -401,37 +401,37 @@ function ProviderConfigForm({
 								setDirty(true);
 							}}
 						/>
-				) : category === "connector" ? (
-					<ConnectorSettings
-						snapshot={snapshot.connector}
-						value={connector}
-						onStartOAuth={onStartConnectorOAuth}
-						onDisconnectOAuth={onDisconnectConnectorOAuth}
-						onRevealCredential={onRevealConnectorCredential}
-						onChange={(value) => {
-							setConnector(value);
-							setDirty(true);
-						}}
-					/>
-				) : category === "mcp" ? (
-					<McpSettings
-						snapshot={mcp}
-						loading={mcpLoading}
-						loadError={mcpLoadError}
-						onRetry={onRetry}
-						onSave={onSaveMcp}
-						onRefreshStatus={onRefreshMcpStatus}
-					/>
-				) : (
-					<ObservabilitySettings
-						snapshot={telemetry}
-						loading={telemetryLoading}
-						loadError={telemetryLoadError}
-						onRetry={onRetry}
-						onSave={onSaveTelemetry}
-						onRevealCredential={onRevealTelemetryCredential}
-					/>
-				)}
+					) : category === "connector" ? (
+						<ConnectorSettings
+							snapshot={snapshot.connector}
+							value={connector}
+							onStartOAuth={onStartConnectorOAuth}
+							onDisconnectOAuth={onDisconnectConnectorOAuth}
+							onRevealCredential={onRevealConnectorCredential}
+							onChange={(value) => {
+								setConnector(value);
+								setDirty(true);
+							}}
+						/>
+					) : category === "mcp" ? (
+						<McpSettings
+							snapshot={mcp}
+							loading={mcpLoading}
+							loadError={mcpLoadError}
+							onRetry={onRetry}
+							onSave={onSaveMcp}
+							onRefreshStatus={onRefreshMcpStatus}
+						/>
+					) : (
+						<ObservabilitySettings
+							snapshot={telemetry}
+							loading={telemetryLoading}
+							loadError={telemetryLoadError}
+							onRetry={onRetry}
+							onSave={onSaveTelemetry}
+							onRevealCredential={onRevealTelemetryCredential}
+						/>
+					)}
 				</div>
 
 				{providerCategory ? (

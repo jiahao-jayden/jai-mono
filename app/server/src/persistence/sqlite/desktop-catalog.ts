@@ -289,10 +289,7 @@ export class SqliteDesktopCatalogAccess {
 		}
 	}
 
-	setSessionPinned(
-		sessionId: string,
-		pinned: boolean,
-	): ResultType<DesktopCatalogSession, DesktopCatalogStorageError> {
+	setSessionPinned(sessionId: string, pinned: boolean): ResultType<DesktopCatalogSession, DesktopCatalogStorageError> {
 		try {
 			return Result.ok(
 				this.transaction(() => {

@@ -153,7 +153,10 @@ export function computeDockTickStyles(
 	const sigma = Math.max(8, Math.min(22, geometry.spacing * 1.5));
 	return geometry.centerYs.map((centerY, index) => {
 		const distance = centerY - pointerY;
-		const weight = geometry.spacing === 0 ? Number(index === activeIndex) : Math.exp(-(distance * distance) / (2 * sigma * sigma));
+		const weight =
+			geometry.spacing === 0
+				? Number(index === activeIndex)
+				: Math.exp(-(distance * distance) / (2 * sigma * sigma));
 		const opacity = index === activeIndex ? 1 : visibleIndexes.has(index) ? 0.52 : 0.2;
 		return { width: 6 + 24 * weight, opacity };
 	});
