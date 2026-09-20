@@ -7,25 +7,14 @@ import {
 	type HTMLAttributes,
 	type ReactNode,
 	useEffect,
+	useRef,
 	useState,
 } from "react";
 import { motion, type HTMLMotionProps, useReducedMotion } from "framer-motion";
 import { useIntl } from "react-intl";
+import type { ThemedToken } from "shiki";
 import { desktopMessages } from "@/i18n/messages";
 import { Streamdown } from "@lobehub/streamdown";
-import { createHighlighter, renderNodesToHtml, renderTokens } from "@tanstack/highlight/core";
-import { css } from "@tanstack/highlight/languages/css";
-import { html } from "@tanstack/highlight/languages/html";
-import { js } from "@tanstack/highlight/languages/js";
-import { json } from "@tanstack/highlight/languages/json";
-import { jsx } from "@tanstack/highlight/languages/jsx";
-import { markdown } from "@tanstack/highlight/languages/markdown";
-import { python } from "@tanstack/highlight/languages/python";
-import { shell } from "@tanstack/highlight/languages/shell";
-import { sql } from "@tanstack/highlight/languages/sql";
-import { ts } from "@tanstack/highlight/languages/ts";
-import { tsx } from "@tanstack/highlight/languages/tsx";
-import { yaml } from "@tanstack/highlight/languages/yaml";
 import remarkGfm from "remark-gfm";
 import { cn } from "cn";
 import { spring } from "@/lib/springs";
@@ -35,41 +24,50 @@ import { useTouchPrimary } from "@/hooks/use-touch-primary";
 import { useIcon } from "@/lib/icon-context";
 import { FileThumbnail } from "@/components/ui/file-thumbnail";
 import { Button } from "@/components/ui/button";
+import {
+	createChatTokenStream,
+	highlightChatCode,
+	type ChatHighlightTheme,
+} from "@/components/ui/chat-code-highlight";
+import { useResolvedTheme } from "@/stores/theme";
 
 const streamdownRemarkPlugins = [
 	remarkGfm,
 	remarkDisableSetextH2,
 ];
-const languageAliases: Record<string, string> = {
-	bash: "shell",
-	javascript: "js",
-	sh: "shell",
-	shell: "shell",
-	typescript: "ts",
-	xhtml: "html",
-	xml: "html",
-	yml: "yaml",
-};
-const highlighter = createHighlighter({ languages: [css, html, js, json, jsx, markdown, python, shell, sql, ts, tsx, yaml] });
 
 function CodeBlock({
 	children,
 	isStreaming = false,
-	...props
 }: HTMLAttributes<HTMLPreElement> & { readonly isStreaming?: boolean }) {
 	const CopyIcon = useIcon("copy");
 	const CheckIcon = useIcon("check");
 	const [copied, setCopied] = useState(false);
+	const theme = useResolvedTheme() === "dark" ? "github-dark" : "github-light";
 	const codeElement = isValidElement<{ className?: string; children?: ReactNode }>(children) ? children : undefined;
 	const className = codeElement?.props.className;
 	const language = className?.match(/language-(\S+)/)?.[1] ?? "";
 	const value = String(codeElement?.props.children ?? children).replace(/\n$/, "");
-	const highlighted = useStreamingCodeHighlight(value, language, isStreaming);
+	const highlighted = useChatCodeHighlight(value, language, theme, isStreaming);
 	const copy = async () => {
 		await navigator.clipboard.writeText(value);
 		setCopied(true);
 		window.setTimeout(() => setCopied(false), 1200);
 	};
+	const body =
+		highlighted.html != null ? (
+			<div dangerouslySetInnerHTML={{ __html: highlighted.html }} />
+		) : (
+			<pre>
+				<code className={className}>
+					{highlighted.tokens?.map((token, index) => (
+						<span key={index} style={{ color: token.color }}>
+							{token.content}
+						</span>
+					)) ?? value}
+				</code>
+			</pre>
+		);
 
 	return (
 		<div data-streamdown="code-block">
@@ -81,11 +79,7 @@ function CodeBlock({
 					</Button>
 				</div>
 			</div>
-			<pre {...props} data-streamdown="code-block-body">
-				<code className={className}>
-					{highlighted === undefined ? value : <span dangerouslySetInnerHTML={{ __html: highlighted }} />}
-				</code>
-			</pre>
+			<div data-streamdown="code-block-body">{body}</div>
 		</div>
 	);
 }
@@ -100,27 +94,69 @@ function MarkdownTable({ children, ...props }: HTMLAttributes<HTMLTableElement>)
 	);
 }
 
-function useStreamingCodeHighlight(value: string, language: string, isStreaming: boolean): string | undefined {
-	const [highlighted, setHighlighted] = useState<{ source: string; html: string | undefined }>({
-		source: "",
-		html: undefined,
-	});
+function useChatCodeHighlight(
+	value: string,
+	language: string,
+	theme: ChatHighlightTheme,
+	isStreaming: boolean,
+): { html?: string; tokens?: ThemedToken[] } {
+	const [highlighted, setHighlighted] = useState<{ html?: string; tokens?: ThemedToken[] }>({});
+	const streamRef = useRef<{
+		language: string;
+		theme: ChatHighlightTheme;
+		sent: string;
+		tokenizer: Awaited<ReturnType<typeof createChatTokenStream>>;
+		tail: Promise<void>;
+	} | null>(null);
 
 	useEffect(() => {
-		if (!isStreaming) setHighlighted({ source: value, html: highlightCode(value, language) });
-	}, [isStreaming, language, value]);
+		let cancelled = false;
+		void (async () => {
+			if (!isStreaming) {
+				streamRef.current = null;
+				const html = await highlightChatCode(value, language, theme);
+				if (!cancelled) setHighlighted(html === undefined ? {} : { html });
+				return;
+			}
+			const canAppend =
+				streamRef.current != null &&
+				streamRef.current.language === language &&
+				streamRef.current.theme === theme &&
+				streamRef.current.tokenizer != null &&
+				value.startsWith(streamRef.current.sent);
+			if (!canAppend) {
+				streamRef.current = {
+					language,
+					theme,
+					sent: "",
+					tokenizer: await createChatTokenStream(language, theme),
+					tail: Promise.resolve(),
+				};
+			}
+			const session = streamRef.current;
+			if (cancelled || session == null) return;
+			session.tail = session.tail.then(async () => {
+				if (cancelled) return;
+				if (!session.tokenizer) {
+					setHighlighted({});
+					return;
+				}
+				const suffix = value.slice(session.sent.length);
+				if (suffix) await session.tokenizer.enqueue(suffix);
+				session.sent = value;
+				if (!cancelled) {
+					setHighlighted({
+						tokens: [...session.tokenizer.tokensStable, ...session.tokenizer.tokensUnstable],
+					});
+				}
+			});
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [isStreaming, language, theme, value]);
 
-	return !isStreaming && highlighted.source === value ? highlighted.html : undefined;
-}
-
-function highlightCode(value: string, language: string): string | undefined {
-	const lang = languageAliases[language.toLowerCase()] ?? language.toLowerCase();
-	if (!lang || !highlighter.listLanguages().includes(lang)) return undefined;
-	try {
-		return renderNodesToHtml(renderTokens(highlighter.tokenize(value, { lang }).tokens));
-	} catch {
-		return undefined;
-	}
+	return highlighted;
 }
 
 interface ChatMessageAttachment {

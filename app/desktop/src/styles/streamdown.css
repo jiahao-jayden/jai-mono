@@ -184,38 +184,43 @@
 }
 
 .chat-markdown [data-streamdown="code-block-body"] {
+	max-width: 100%;
+	overflow-x: auto;
+}
+
+.chat-markdown [data-streamdown="code-block-body"] pre {
 	margin: 0 !important;
 	max-width: 100%;
 	overflow-x: auto;
 	border: none !important;
 	border-radius: 0 !important;
 	background: transparent !important;
-	padding: 0.5rem 0.6rem !important;
+	padding: 0.5rem 0.6rem;
 	font-family: var(--font-mono);
 	font-size: 13px;
 	font-weight: 400;
 	line-height: 1.5;
+	white-space: pre;
+	overflow-wrap: normal;
+	word-break: normal;
 }
 
-.chat-markdown [data-streamdown="code-block-body"] .th-token {
-	color: color-mix(in oklch, var(--foreground) 88%, var(--background));
+.chat-markdown [data-streamdown="code-block-body"] code {
+	border: none;
+	background: transparent;
+	padding: 0;
+	font-family: inherit;
+	font-size: inherit;
+	line-height: inherit;
 }
 
-.chat-markdown [data-streamdown="code-block-body"] .th-comment,
-.chat-markdown [data-streamdown="code-block-body"] .th-meta {
-	color: color-mix(in oklch, var(--foreground) 52%, var(--background));
+.chat-markdown [data-streamdown="code-block-body"] .shiki {
+	background: transparent !important;
+	font-family: var(--font-mono) !important;
 }
 
-.chat-markdown [data-streamdown="code-block-body"] .th-keyword,
-.chat-markdown [data-streamdown="code-block-body"] .th-operator,
-.chat-markdown [data-streamdown="code-block-body"] .th-type {
-	color: color-mix(in oklch, var(--brand) 78%, var(--foreground));
-}
-
-.chat-markdown [data-streamdown="code-block-body"] .th-string,
-.chat-markdown [data-streamdown="code-block-body"] .th-literal,
-.chat-markdown [data-streamdown="code-block-body"] .th-number {
-	color: color-mix(in oklch, var(--success) 72%, var(--foreground));
+.chat-markdown [data-streamdown="code-block-body"] .shiki * {
+	font-family: inherit !important;
 }
 
 .chat-markdown [data-streamdown="code-block-actions"] {
