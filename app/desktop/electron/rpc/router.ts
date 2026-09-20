@@ -34,6 +34,8 @@ import {
 	desktopTerminalSessionInputSchema,
 	desktopTerminalWriteInputSchema,
 	desktopUiLocalePreferenceSchema,
+	desktopWorkspaceGitDiffInputSchema,
+	desktopWorkspaceGitStatusInputSchema,
 	desktopWorkspaceListInputSchema,
 	desktopWorkspaceOpenInputSchema,
 	desktopWorkspaceReadInputSchema,
@@ -50,6 +52,7 @@ import {
 	WorkspaceFileUnavailable,
 	workspaceFileError,
 } from "../workspace/paths";
+import { readWorkspaceGitDiff, readWorkspaceGitStatus } from "../workspace/git-status";
 import { parse } from "./validate";
 
 export type DesktopRouterImplementation<T> = {
@@ -321,6 +324,18 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				} catch (cause) {
 					throw workspaceFileError({ message: "Workspace file could not be read.", cause });
 				}
+			},
+			async gitStatus(_event, input) {
+				const parsed = parse(desktopWorkspaceGitStatusInputSchema, input, "Workspace Git status request is invalid.");
+				const result = await readWorkspaceGitStatus(await workspaceRootForSession(parsed.sessionId));
+				if (result.isErr()) throw result.error;
+				return result.value;
+			},
+			async gitDiff(_event, input) {
+				const parsed = parse(desktopWorkspaceGitDiffInputSchema, input, "Workspace Git diff request is invalid.");
+				const result = await readWorkspaceGitDiff(await workspaceRootForSession(parsed.sessionId), parsed.path);
+				if (result.isErr()) throw result.error;
+				return result.value;
 			},
 			async openApplications(_event, input) {
 				const parsed = parse(desktopWorkspaceReadInputSchema, input, "Workspace file request is invalid.");

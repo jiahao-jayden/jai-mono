@@ -263,6 +263,59 @@ export interface DesktopWorkspaceFile {
 	readonly content: string;
 }
 
+export type DesktopWorkspaceGitChangeKind = "added" | "conflict" | "deleted" | "modified" | "renamed" | "untracked";
+
+export interface DesktopWorkspaceGitChange {
+	readonly path: string;
+	readonly oldPath?: string;
+	readonly kind: DesktopWorkspaceGitChangeKind;
+	readonly staged: boolean;
+	readonly unstaged: boolean;
+}
+
+export type DesktopWorkspaceGitStatus =
+	| { readonly kind: "not-repository" }
+	| {
+			readonly kind: "repository";
+			readonly rootName: string;
+			readonly branch: string | null;
+			readonly detached: boolean;
+			readonly changes: readonly DesktopWorkspaceGitChange[];
+	  };
+
+export type DesktopWorkspaceGitDiff =
+	| { readonly kind: "not-changed"; readonly path: string }
+	| {
+			readonly kind: "unavailable";
+			readonly path: string;
+			readonly oldPath?: string;
+			readonly reason: "binary" | "invalid-encoding" | "missing" | "submodule" | "too-large";
+	  }
+	| {
+			readonly kind: "text";
+			readonly path: string;
+			readonly oldPath?: string;
+			readonly changeKind: DesktopWorkspaceGitChangeKind;
+			readonly oldContent: string | null;
+			readonly newContent: string | null;
+	  };
+
+export const desktopWorkspaceGitStatusInputSchema = Type.Object(
+	{ sessionId: Type.String({ minLength: 1 }) },
+	{ additionalProperties: false },
+);
+
+export const desktopWorkspaceGitDiffInputSchema = Type.Object(
+	{
+		sessionId: Type.String({ minLength: 1 }),
+		path: Type.String({ minLength: 1 }),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopWorkspaceGitStatusInput = Static<typeof desktopWorkspaceGitStatusInputSchema>;
+export type DesktopWorkspaceGitDiffInput = Static<typeof desktopWorkspaceGitDiffInputSchema>;
+
 export type DesktopWorkspaceOpenTarget = "application" | "cursor" | "default";
 
 /**
@@ -1101,6 +1154,8 @@ export interface DesktopApi {
 	readonly workspace: {
 		list(input: DesktopWorkspaceListInput): Promise<DesktopWorkspaceListResult>;
 		read(input: DesktopWorkspaceReadInput): Promise<DesktopWorkspaceFile>;
+		gitStatus(input: DesktopWorkspaceGitStatusInput): Promise<DesktopWorkspaceGitStatus>;
+		gitDiff(input: DesktopWorkspaceGitDiffInput): Promise<DesktopWorkspaceGitDiff>;
 		openApplications(input: DesktopWorkspaceReadInput): Promise<DesktopWorkspaceOpenApplications>;
 		open(input: DesktopWorkspaceOpenInput): Promise<void>;
 	};
