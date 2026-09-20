@@ -21,6 +21,7 @@ export interface DesktopCatalogSession {
 	readonly titleSource: DesktopCatalogTitleSource;
 	readonly lastActivityAt: number;
 	readonly archivedAt: number | null;
+	readonly pinnedAt: number | null;
 }
 
 export interface DesktopCatalogSessionCursor {

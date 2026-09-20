@@ -305,7 +305,6 @@ export function ChatColumn({
 					{session ? (
 						<>
 							{projectLabel ? <span className="text-muted-foreground/40">/</span> : null}
-							<MessageIcon size={14} className="shrink-0 text-muted-foreground" />
 							{editingTitle ? (
 								<Input
 									autoFocus
@@ -328,40 +327,38 @@ export function ChatColumn({
 									style={noDrag}
 								/>
 							) : (
-								<Button
-									type="button"
-									variant="ghost"
-									size="md"
-									onDoubleClick={startTitleEditing}
-									onKeyDown={(event) => {
-										if (event.key === "F2") {
-											event.preventDefault();
-											startTitleEditing();
-										}
-									}}
-									aria-label={intl.formatMessage(desktopMessages.chatEditSessionTitle, {
-										title: session.title,
-									})}
-									title={intl.formatMessage(desktopMessages.chatRenameHint)}
-									contentClassName="min-w-0 max-w-full"
-									labelClassName="min-w-0 truncate text-left leading-[18px] ![text-box:normal]"
-									className="h-7 min-w-0 max-w-64 shrink justify-start px-1.5 text-[13px] font-medium text-surface-primary-foreground hover:text-foreground"
-									style={noDrag}
-								>
-									{session.title}
-								</Button>
-							)}
-							<div className="shrink-0" style={noDrag}>
 								<SessionActions
 									key={session.id}
 									session={session}
-									placement="header"
 									running={isAgentWorking}
 									onStartRename={startTitleEditing}
 									onArchive={onArchiveSession}
 									onDelete={onDeleteSession}
-								/>
-							</div>
+								>
+									<Button
+										type="button"
+										variant="ghost"
+										size="md"
+										onDoubleClick={startTitleEditing}
+										onKeyDown={(event) => {
+											if (event.key === "F2") {
+												event.preventDefault();
+												startTitleEditing();
+											}
+										}}
+										aria-label={intl.formatMessage(desktopMessages.chatEditSessionTitle, {
+											title: session.title,
+										})}
+										title={intl.formatMessage(desktopMessages.chatRenameHint)}
+										contentClassName="min-w-0 max-w-full"
+										labelClassName="min-w-0 truncate text-left leading-[18px] ![text-box:normal]"
+										className="h-7 min-w-0 max-w-64 shrink justify-start px-1.5 text-[13px] font-medium text-surface-primary-foreground hover:text-foreground"
+										style={noDrag}
+									>
+										{session.title}
+									</Button>
+								</SessionActions>
+							)}
 						</>
 					) : null}
 				</div>

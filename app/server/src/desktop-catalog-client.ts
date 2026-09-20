@@ -159,6 +159,13 @@ export class DesktopCatalogClient {
 		return this.request("jai/desktop-catalog/sessions/restore", { sessionId }, session);
 	}
 
+	async pinSession(
+		sessionId: string,
+		pinned: boolean,
+	): Promise<ResultType<DesktopCatalogSession, DesktopCatalogClientError>> {
+		return this.request("jai/desktop-catalog/sessions/pin", { sessionId, pinned }, session);
+	}
+
 	async markTitleGenerationAttempted(input: {
 		readonly sessionId: string;
 		readonly timestamp: number;
@@ -260,6 +267,7 @@ function session(value: unknown): DesktopCatalogSession | undefined {
 		titleSource: value.titleSource,
 		lastActivityAt: value.lastActivityAt,
 		archivedAt: value.archivedAt,
+		pinnedAt: typeof value.pinnedAt === "number" && Number.isFinite(value.pinnedAt) ? value.pinnedAt : null,
 	};
 }
 

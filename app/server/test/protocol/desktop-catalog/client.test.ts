@@ -67,6 +67,7 @@ describe("Desktop Catalog client", () => {
 					titleSource: "manual",
 					lastActivityAt: 10,
 					archivedAt: 20,
+					pinnedAt: null,
 				},
 			}),
 		);

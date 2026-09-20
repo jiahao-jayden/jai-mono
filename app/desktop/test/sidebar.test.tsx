@@ -38,6 +38,7 @@ const sessions = [
 		titleSource: "manual" as const,
 		lastActivityAt: 100,
 		archivedAt: null,
+		pinnedAt: null,
 	},
 	{
 		id: "standalone-chat",
@@ -46,6 +47,7 @@ const sessions = [
 		titleSource: "manual" as const,
 		lastActivityAt: 90,
 		archivedAt: null,
+		pinnedAt: null,
 	},
 	{
 		id: "archived-chat",
@@ -54,6 +56,7 @@ const sessions = [
 		titleSource: "manual" as const,
 		lastActivityAt: 80,
 		archivedAt: 70,
+		pinnedAt: null,
 	},
 ];
 
@@ -70,8 +73,11 @@ function renderSidebar(runningSessionIds: readonly string[] = [], activeSessionI
 			onNewChat={() => {}}
 			onOpenSettings={() => {}}
 			onRelinkProject={async () => {}}
+			onRevealProject={async () => {}}
+			onNewProjectChat={() => {}}
 			onSelectSession={() => {}}
 			onRenameSession={async () => {}}
+			onPinSession={async () => {}}
 			onArchiveSession={async () => {}}
 			onDeleteSession={async () => {}}
 		/>,
@@ -95,7 +101,6 @@ describe("Sidebar", () => {
 		expect(markup).toContain('aria-expanded="false"');
 		expect(markup).toContain("Missing project");
 		expect(markup).toContain("Folder unavailable");
-		expect(markup).toContain(">Relink<");
 		expect(markup).not.toContain("Project chat");
 	});
 
@@ -121,10 +126,13 @@ describe("Sidebar", () => {
 		expect(markup).toContain('aria-current="page"');
 	});
 
-	test("会话保留操作菜单入口", () => {
+	test("hover 操作：Chat 是置顶和归档，项目是更多和新对话", () => {
 		const markup = renderSidebar();
 
-		expect(markup).toContain('aria-label="Actions for Standalone chat"');
-		expect(markup).toContain("data-session-actions");
+		expect(markup).toContain('aria-label="Pin"');
+		expect(markup).toContain('aria-label="Archive"');
+		expect(markup).toContain('aria-label="Actions for Active project"');
+		expect(markup).toContain('aria-label="Actions for Missing project"');
+		expect(markup).toContain('aria-label="New chat"');
 	});
 });

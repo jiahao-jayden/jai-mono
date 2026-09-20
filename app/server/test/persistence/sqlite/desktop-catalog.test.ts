@@ -135,10 +135,39 @@ describe("SqliteDesktopCatalogAccess", () => {
 			const restored = catalog.restoreSession("session-1");
 			if (restored.isErr()) throw restored.error;
 
-			expect(restored.value).toMatchObject({ id: "session-1", archivedAt: null });
+			expect(restored.value).toMatchObject({ id: "session-1", archivedAt: null, pinnedAt: null });
 			expect(catalog.listSessions()).toEqual(
 				expect.objectContaining({ value: { sessions: [expect.objectContaining({ id: "session-1", archivedAt: null })] } }),
 			);
+		} finally {
+			database.close();
+		}
+	});
+
+	test("pins a Session without changing archive or journal activity", async () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const persistence = new SqliteProductSessionPersistence(database);
+			const catalog = new SqliteDesktopCatalogAccess(database);
+			const created = await persistence.create({
+				id: "session-1",
+				appState: {},
+				runtimeConfiguration: { model: "test/model", mode: "manual" },
+				cwd: "/workspace",
+				createdAt,
+			});
+			if (created.isErr()) throw created.error;
+			const ensured = catalog.ensureSession({ sessionId: "session-1", projectId: null, title: "Pin me" });
+			if (ensured.isErr()) throw ensured.error;
+			expect(ensured.value.pinnedAt).toBeNull();
+
+			const pinned = catalog.setSessionPinned("session-1", true);
+			if (pinned.isErr()) throw pinned.error;
+			expect(pinned.value.pinnedAt).toEqual(expect.any(Number));
+
+			const unpinned = catalog.setSessionPinned("session-1", false);
+			if (unpinned.isErr()) throw unpinned.error;
+			expect(unpinned.value).toMatchObject({ id: "session-1", pinnedAt: null, archivedAt: null });
 		} finally {
 			database.close();
 		}

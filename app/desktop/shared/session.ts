@@ -16,6 +16,7 @@ export interface CodingSession {
 	readonly titleSource: SessionTitleSource;
 	readonly lastActivityAt: number;
 	readonly archivedAt: number | null;
+	readonly pinnedAt: number | null;
 }
 
 export interface SessionListCursor {

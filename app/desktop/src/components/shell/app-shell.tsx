@@ -333,9 +333,12 @@ export function AppShell() {
 			// Mutation state drives the recoverable project error UI.
 		}
 	};
-	const openNewChat = () => {
+	const revealProject = async (candidate: DesktopProject) => {
+		await desktop.project.reveal(candidate.id);
+	};
+	const openNewChat = (projectId: string | null = null) => {
 		newChat();
-		setSelectedProjectId(null);
+		setSelectedProjectId(projectId);
 		navigate("/chat/new");
 	};
 	const openSession = (sessionId: string) => {
@@ -345,6 +348,10 @@ export function AppShell() {
 	const renameSession = async (sessionId: string, title: string) => {
 		const renamed = await desktop.session.rename({ sessionId, title });
 		upsertRecentSession(renamed);
+	};
+	const pinSession = async (sessionId: string, pinned: boolean) => {
+		const next = await desktop.session.pin({ sessionId, pinned });
+		upsertRecentSession(next);
 	};
 	const archiveSession = async (sessionId: string) => {
 		await desktop.session.archive({ sessionId });
@@ -429,11 +436,14 @@ export function AppShell() {
 							visibleSidebarWidth.set(0);
 							setSidebarOpen(false);
 						}}
-						onNewChat={openNewChat}
+						onNewChat={() => openNewChat()}
 						onOpenSettings={openProviderSettings}
 						onRelinkProject={relinkProject}
+						onRevealProject={revealProject}
+						onNewProjectChat={(project) => openNewChat(project.id)}
 						onSelectSession={openSession}
 						onRenameSession={renameSession}
+						onPinSession={pinSession}
 						onArchiveSession={archiveSession}
 						onDeleteSession={deleteSession}
 						onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}

@@ -4,7 +4,7 @@ import {
 	Add01Icon,
 	Alert02Icon,
 	ApiIcon,
-	Archive01Icon,
+	Archive02Icon,
 	ArrowDown01Icon,
 	ArrowLeft01Icon,
 	ArrowRight01Icon,
@@ -56,6 +56,7 @@ import {
 	PanelLeftCloseIcon,
 	PanelRightIcon,
 	PauseIcon,
+	PinIcon,
 	PlayIcon,
 	Plug01Icon,
 	RefreshIcon,
@@ -162,6 +163,7 @@ export type IconName =
 	| "home"
 	| "message-circle"
 	| "archive"
+	| "pin"
 	| "folder"
 	| "folder-off"
 	| "folder-open"
@@ -253,7 +255,8 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	pause: createHugeicon(PauseIcon),
 	home: createHugeicon(Home01Icon),
 	"message-circle": createHugeicon(BubbleChatIcon),
-	archive: createHugeicon(Archive01Icon),
+	archive: createHugeicon(Archive02Icon),
+	pin: createHugeicon(PinIcon),
 	folder: createHugeicon(Folder01Icon),
 	"folder-off": createHugeicon(FolderOffIcon),
 	"folder-open": createHugeicon(FolderOpenIcon),

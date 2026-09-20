@@ -29,6 +29,20 @@ describe("projectDesktopRpcError", () => {
 		expect(JSON.stringify(response)).not.toContain("secret-token");
 	});
 
+	test("project reveal failures do not leak the directory path", () => {
+		class ProjectRevealFailed extends TaggedError("desktop_project.reveal_failed")<{
+			readonly message: string;
+		}> {}
+		const response = projectDesktopRpcError(
+			new ProjectRevealFailed({ message: "Project folder could not be opened." }),
+		);
+		expect(response).toEqual({
+			status: "error",
+			error: { _tag: "desktop_project.reveal_failed", message: "Desktop request failed." },
+		});
+		expect(JSON.stringify(response)).not.toContain("/registered");
+	});
+
 	test("unknown failures use the same safe envelope", () => {
 		const response = projectDesktopRpcError(new Error("Authorization: Bearer secret-token"));
 		expect(response).toEqual({

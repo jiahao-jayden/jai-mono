@@ -1,48 +1,83 @@
-import { cn } from "cn";
-import { useState } from "react";
+import {
+	cloneElement,
+	isValidElement,
+	type MouseEvent,
+	type ReactElement,
+	type ReactNode,
+	useRef,
+	useState,
+} from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { useIcons } from "@/lib/icon-context";
+import { type NativeMenuDescriptor, nativeMenuAnchor, showNativeMenu } from "@/lib/native-menu-icons";
 import type { CodingSession } from "../../../shared/desktop-rpc";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
-import { DropdownContent, DropdownMenu, DropdownSeparator, DropdownTrigger } from "../ui/dropdown";
-import { MenuItem } from "../ui/menu-item";
 import { toast } from "../ui/toast";
+import { SidebarHoverIconButton, SidebarRowHover, SidebarRowHoverActions } from "./sidebar/sidebar-row-hover";
 
 type SessionActionDialog = "delete" | null;
 
+export function sessionContextMenuItems(input: {
+	readonly running: boolean;
+	readonly canArchive: boolean;
+	readonly labels: {
+		readonly rename: string;
+		readonly copyId: string;
+		readonly archive: string;
+		readonly delete: string;
+	};
+}): NativeMenuDescriptor[] {
+	const items: NativeMenuDescriptor[] = [
+		{ id: "rename", label: input.labels.rename, icon: "pencil" },
+		{ id: "copy-id", label: input.labels.copyId, icon: "copy" },
+	];
+	if (!input.running && input.canArchive) {
+		items.push({ id: "archive", label: input.labels.archive, icon: "archive", separatorBefore: true });
+	}
+	items.push({
+		id: "delete",
+		label: input.labels.delete,
+		icon: "trash",
+		destructive: true,
+		separatorBefore: true,
+	});
+	return items;
+}
+
 export function SessionActions({
 	session,
-	visible = true,
-	placement = "sidebar",
 	running = false,
+	hoverActions = false,
 	onStartRename,
+	onPin,
 	onArchive,
 	onDelete,
+	children,
 }: {
 	readonly session: CodingSession;
-	readonly visible?: boolean;
-	readonly placement?: "sidebar" | "header";
 	readonly running?: boolean;
+	readonly hoverActions?: boolean;
 	readonly onStartRename: () => void;
+	readonly onPin?: (sessionId: string, pinned: boolean) => Promise<void>;
 	readonly onArchive?: (sessionId: string) => Promise<void>;
 	readonly onDelete: (sessionId: string) => Promise<void>;
+	readonly children: ReactNode;
 }) {
 	const intl = useIntl();
 	const icons = useIcons();
-	const [menuOpen, setMenuOpen] = useState(false);
+	const PinIcon = icons.pin;
+	const ArchiveIcon = icons.archive;
 	const [dialog, setDialog] = useState<SessionActionDialog>(null);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string>();
-	const MoreVerticalIcon = icons["more-vertical"];
-	const menuSide = placement === "header" ? "bottom" : "right";
-	const triggerVariant = placement === "header" ? "ghost" : "navigation";
-	const triggerClassName = cn("shrink-0 rounded-[6px] text-muted-foreground transition-opacity", {
-		"absolute top-1/2 right-1 size-5 -translate-y-1/2": placement === "sidebar",
-		"invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100":
-			!visible && !menuOpen,
-	});
+	const menuOpenRef = useRef(false);
+	const pinned = session.pinnedAt !== null;
+	const pinLabel = intl.formatMessage(pinned ? desktopMessages.sidebarUnpin : desktopMessages.sidebarPin);
+	const archiveLabel = intl.formatMessage(desktopMessages.sidebarArchive);
+	const canArchive = Boolean(onArchive) && !running;
+
 	const copySessionId = async () => {
 		try {
 			await navigator.clipboard.writeText(session.id);
@@ -86,61 +121,91 @@ export function SessionActions({
 			setPending(false);
 		}
 	};
+	const pin = async () => {
+		if (pending || !onPin) return;
+		setPending(true);
+		try {
+			await onPin(session.id, !pinned);
+		} catch {
+			toast.add({
+				title: intl.formatMessage(pinned ? desktopMessages.sidebarUnpinFailed : desktopMessages.sidebarPinFailed),
+				type: "error",
+			});
+		} finally {
+			setPending(false);
+		}
+	};
+
+	const openMenu = async (event: MouseEvent) => {
+		event.preventDefault();
+		event.stopPropagation();
+		if (pending || menuOpenRef.current) return;
+		menuOpenRef.current = true;
+		try {
+			const id = await showNativeMenu(
+				sessionContextMenuItems({
+					running,
+					canArchive: Boolean(onArchive),
+					labels: {
+						rename: intl.formatMessage(desktopMessages.sidebarRename),
+						copyId: intl.formatMessage(desktopMessages.sessionCopyId),
+						archive: archiveLabel,
+						delete: intl.formatMessage(desktopMessages.commonDelete),
+					},
+				}),
+				nativeMenuAnchor(event),
+			);
+			if (id === "rename") onStartRename();
+			if (id === "copy-id") await copySessionId();
+			if (id === "archive") await archive();
+			if (id === "delete") openDialog();
+		} catch {
+			// The native menu is best-effort.
+		} finally {
+			menuOpenRef.current = false;
+		}
+	};
+
+	const row = isValidElement(children)
+		? cloneElement(children as ReactElement<{ onContextMenu?: (event: MouseEvent) => void }>, {
+				onContextMenu: (event) => void openMenu(event),
+			})
+		: children;
+	const pinButton = onPin ? (
+		<SidebarHoverIconButton
+			label={pinLabel}
+			pressed={pinned}
+			onClick={() => void pin()}
+			onContextMenu={(event) => void openMenu(event)}
+		>
+			<PinIcon size={15} strokeWidth={1.5} />
+		</SidebarHoverIconButton>
+	) : null;
+	const archiveButton = canArchive ? (
+		<SidebarHoverIconButton
+			label={archiveLabel}
+			onClick={() => void archive()}
+			onContextMenu={(event) => void openMenu(event)}
+		>
+			<ArchiveIcon size={15} strokeWidth={1.5} />
+		</SidebarHoverIconButton>
+	) : null;
+	const showHoverActions = hoverActions && (pinButton !== null || archiveButton !== null);
+	const body = showHoverActions ? (
+		<SidebarRowHover>
+			{row}
+			<SidebarRowHoverActions>
+				{pinButton}
+				{archiveButton}
+			</SidebarRowHoverActions>
+		</SidebarRowHover>
+	) : (
+		row
+	);
 
 	return (
 		<>
-			<DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-				<DropdownTrigger
-					render={
-						<Button
-							type="button"
-							variant={triggerVariant}
-							size="icon-xs"
-							active={menuOpen}
-							aria-label={intl.formatMessage(desktopMessages.sidebarActionsFor, { title: session.title })}
-							title={intl.formatMessage(desktopMessages.sidebarSessionActions)}
-							data-session-actions
-							className={triggerClassName}
-						>
-							<MoreVerticalIcon size={14} strokeWidth={1.5} className="rotate-90" />
-						</Button>
-					}
-				/>
-				<DropdownContent side={menuSide} align="start" sideOffset={6} className="w-52">
-					<MenuItem
-						index={0}
-						icon={icons.pencil}
-						label={intl.formatMessage(desktopMessages.sidebarRename)}
-						onSelect={onStartRename}
-						disabled={pending}
-					/>
-					<MenuItem
-						index={1}
-						icon={icons.copy}
-						label={intl.formatMessage(desktopMessages.sessionCopyId)}
-						onSelect={() => void copySessionId()}
-					/>
-					{!running && onArchive ? (
-						<MenuItem
-							index={2}
-							icon={icons.archive}
-							label={intl.formatMessage(desktopMessages.sidebarArchive)}
-							onSelect={() => void archive()}
-							disabled={pending}
-						/>
-					) : null}
-					<DropdownSeparator />
-					<MenuItem
-						index={3}
-						icon={icons.trash}
-						label={intl.formatMessage(desktopMessages.commonDelete)}
-						variant="destructive"
-						onSelect={openDialog}
-						disabled={pending}
-					/>
-				</DropdownContent>
-			</DropdownMenu>
-
+			{body}
 			<Dialog open={dialog === "delete"} onOpenChange={(open) => !open && closeDialog()}>
 				<DialogContent>
 					<DialogHeader>

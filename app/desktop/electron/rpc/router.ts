@@ -15,6 +15,7 @@ import {
 	desktopAttachmentRegistrationInputSchema,
 	desktopCommandListInputSchema,
 	desktopConnectorOAuthApplicationIdSchema,
+	desktopContextMenuShowInputSchema,
 	desktopPermissionResolutionSchema,
 	desktopProjectCreateInputSchema,
 	desktopSessionArchiveInputSchema,
@@ -22,6 +23,7 @@ import {
 	desktopSessionDeleteInputSchema,
 	desktopSessionIdSchema,
 	desktopSessionListInputSchema,
+	desktopSessionPinInputSchema,
 	desktopSessionRenameInputSchema,
 	desktopSubagentTranscriptInputSchema,
 	desktopTelemetrySettingsInputSchema,
@@ -32,7 +34,7 @@ import {
 } from "../../shared/desktop-rpc";
 import { sortArtifacts } from "../agent/artifacts";
 import type { DesktopRuntime } from "../runtime";
-import { sessionBusyError } from "../session-catalog/errors";
+import { projectRevealFailed, sessionBusyError } from "../session-catalog/errors";
 import {
 	artifactPreviewError,
 	assertWorkspaceRelativePath,
@@ -103,6 +105,12 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				await rt.config.setAgentLanguage(snapshot.locale);
 				rt.agentHost.invalidateSessions();
 				return snapshot;
+			},
+		},
+		contextMenu: {
+			show(event, input) {
+				const parsed = parse(desktopContextMenuShowInputSchema, input, "Invalid context menu input");
+				return rt.showContextMenu(event.sender, parsed.items, parsed.position);
 			},
 		},
 		provider: {
@@ -196,6 +204,13 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				rt.agentHost.invalidateSessions();
 				return { ...project, available: true } satisfies DesktopProject;
 			},
+			async reveal(_event, projectId) {
+				const id = parse(desktopSessionIdSchema, projectId, "Invalid project id");
+				const project = await rt.sessions.getProject(id);
+				if (!(await rt.sessions.isProjectAvailable(project.id))) throw projectRevealFailed();
+				const failure = await rt.openPath(project.canonicalPath);
+				if (failure) throw projectRevealFailed();
+			},
 		},
 		session: {
 			create(_event, input) {
@@ -223,6 +238,10 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			async restore(_event, input) {
 				const parsed = parse(desktopSessionArchiveInputSchema, input, "Invalid Session restore input");
 				return rt.sessions.restoreSession(parsed.sessionId);
+			},
+			async pin(_event, input) {
+				const parsed = parse(desktopSessionPinInputSchema, input, "Invalid Session pin input");
+				return rt.sessions.pinSession(parsed.sessionId, parsed.pinned);
 			},
 			async delete(_event, input) {
 				const parsed = parse(desktopSessionDeleteInputSchema, input, "Invalid Session delete input");

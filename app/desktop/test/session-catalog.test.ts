@@ -305,6 +305,7 @@ class MemoryCatalogTransport implements RemoteDesktopSessionCatalogTransport {
 				titleSource: "fallback",
 				lastActivityAt: 0,
 				archivedAt: null,
+				pinnedAt: null,
 			};
 			this.#sessions.set(session.id, session);
 			return Result.ok(session);
@@ -313,6 +314,8 @@ class MemoryCatalogTransport implements RemoteDesktopSessionCatalogTransport {
 		archiveSession: async (sessionId) =>
 			this.#updateSession(sessionId, (session) => ({ ...session, archivedAt: Date.now() })),
 		restoreSession: async (sessionId) => this.#updateSession(sessionId, (session) => ({ ...session, archivedAt: null })),
+		pinSession: async (sessionId, pinned) =>
+			this.#updateSession(sessionId, (session) => ({ ...session, pinnedAt: pinned ? Date.now() : null })),
 		markTitleGenerationAttempted: async ({ sessionId }) => this.#requireSession(sessionId),
 		setGeneratedTitle: async ({ sessionId, title }) =>
 			this.#updateSession(sessionId, (session) => (session.titleSource === "fallback" ? { ...session, title, titleSource: "generated" } : session)),

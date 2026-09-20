@@ -1050,6 +1050,21 @@
   "desktop.sidebar.new": {
     "defaultMessage": "New"
   },
+  "desktop.sidebar.newChat": {
+    "defaultMessage": "New chat"
+  },
+  "desktop.sidebar.pin": {
+    "defaultMessage": "Pin"
+  },
+  "desktop.sidebar.pinFailed": {
+    "defaultMessage": "Could not pin session"
+  },
+  "desktop.sidebar.unpin": {
+    "defaultMessage": "Unpin"
+  },
+  "desktop.sidebar.unpinFailed": {
+    "defaultMessage": "Could not unpin session"
+  },
   "desktop.sidebar.noChats": {
     "defaultMessage": "New chats will appear here."
   },
@@ -1071,8 +1086,20 @@
   "desktop.sidebar.recentsLoadError": {
     "defaultMessage": "Recents could not be loaded. Try again later."
   },
+  "desktop.sidebar.projectActions": {
+    "defaultMessage": "Project actions"
+  },
   "desktop.sidebar.relink": {
     "defaultMessage": "Relink"
+  },
+  "desktop.sidebar.revealFailed": {
+    "defaultMessage": "Could not open the project folder"
+  },
+  "desktop.sidebar.revealInFinder": {
+    "defaultMessage": "Open in Finder"
+  },
+  "desktop.sidebar.copyPath": {
+    "defaultMessage": "Copy path"
   },
   "desktop.sidebar.rename": {
     "defaultMessage": "Rename"

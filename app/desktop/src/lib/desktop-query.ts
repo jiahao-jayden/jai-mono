@@ -81,8 +81,10 @@ export function getRecentSessions(data: SessionPagesData | undefined): CodingSes
 		for (const session of page.sessions) sessions.set(session.id, session);
 		for (const sessionId of page.runningSessionIds) running.add(sessionId);
 	}
+	// ponytail: 只重排已加载页。更旧的置顶会话要等翻页进来才会到顶部；升级路径是独立 pinned query。
 	return [...sessions.values()].toSorted(
 		(left, right) =>
+			Number(right.pinnedAt !== null) - Number(left.pinnedAt !== null) ||
 			Number(running.has(right.id)) - Number(running.has(left.id)) ||
 			right.lastActivityAt - left.lastActivityAt ||
 			right.id.localeCompare(left.id),

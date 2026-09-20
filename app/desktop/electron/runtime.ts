@@ -1,11 +1,12 @@
 import { TaggedError } from "better-result";
 import { app, BrowserWindow, dialog, shell } from "electron";
-import type { DesktopAgentEvent } from "../shared/desktop-rpc";
+import type { DesktopAgentEvent, DesktopContextMenuItem, DesktopContextMenuPosition } from "../shared/desktop-rpc";
 import enMessages from "../src/i18n/compiled/en.json";
 import zhCnMessages from "../src/i18n/compiled/zh-CN.json";
 import { DesktopAcpAgentHost } from "./agent/acp-host";
 import { createDesktopCommandCatalog, type DesktopCommandCatalog } from "./commands/catalog";
 import { DesktopConfigService } from "./config";
+import { showNativeContextMenu } from "./context-menu";
 import { createDesktopLocaleService, type DesktopLocaleService } from "./locale";
 import { DesktopOAuthManager } from "./oauth/manager";
 import { type AttachmentRegistry, createAttachmentRegistry } from "./rpc/attachments";
@@ -33,6 +34,14 @@ export interface DesktopRuntime {
 	publish(event: DesktopAgentEvent): void;
 	/** Asks the user for a project folder. Returns undefined when they cancel. */
 	pickProjectDirectory(sender: WindowSender): Promise<string | undefined>;
+	/** Opens a path in the OS file manager. Empty string means success. */
+	openPath(filePath: string): Promise<string>;
+	/** Shows a native OS context menu on the sender window. */
+	showContextMenu(
+		sender: WindowSender,
+		items: readonly DesktopContextMenuItem[],
+		position?: DesktopContextMenuPosition,
+	): Promise<string | null>;
 	/** Completes a Connector OAuth flow and tells the renderer how it went. */
 	receiveOAuthCallback(url: string): Promise<void>;
 	close(): Promise<void>;
@@ -119,6 +128,9 @@ export async function createDesktopRuntime(dependencies: {
 		commands,
 		publish,
 		pickProjectDirectory: (sender) => pickProjectDirectory(BrowserWindow.fromWebContents(sender), locale),
+		openPath: (filePath) => shell.openPath(filePath),
+		showContextMenu: (sender, items, position) =>
+			showNativeContextMenu(BrowserWindow.fromWebContents(sender), items, position),
 		receiveOAuthCallback: (url) => receiveOAuthCallback(url),
 		async close() {
 			agentHost.close();

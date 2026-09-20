@@ -25,8 +25,11 @@ interface SidebarProps {
 	onNewChat(): void;
 	onOpenSettings(): void;
 	onRelinkProject(project: DesktopProject): Promise<void>;
+	onRevealProject(project: DesktopProject): Promise<void>;
+	onNewProjectChat(project: DesktopProject): void;
 	onSelectSession(sessionId: string): void;
 	onRenameSession(sessionId: string, title: string): Promise<void>;
+	onPinSession(sessionId: string, pinned: boolean): Promise<void>;
 	onArchiveSession(sessionId: string): Promise<void>;
 	onDeleteSession(sessionId: string): Promise<void>;
 	onLoadMore?(): void;
@@ -49,8 +52,11 @@ export function Sidebar({
 	onNewChat,
 	onOpenSettings,
 	onRelinkProject,
+	onRevealProject,
+	onNewProjectChat,
 	onSelectSession,
 	onRenameSession,
+	onPinSession,
 	onArchiveSession,
 	onDeleteSession,
 	onLoadMore,
@@ -81,8 +87,11 @@ export function Sidebar({
 				projectError={projectError}
 				onCreateProject={() => setCreatingProject(true)}
 				onRelinkProject={onRelinkProject}
+				onRevealProject={onRevealProject}
+				onNewProjectChat={onNewProjectChat}
 				onSelectSession={onSelectSession}
 				onRenameSession={onRenameSession}
+				onPinSession={onPinSession}
 				onArchiveSession={onArchiveSession}
 				onDeleteSession={onDeleteSession}
 				onLoadMore={onLoadMore}

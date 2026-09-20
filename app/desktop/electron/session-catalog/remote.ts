@@ -38,6 +38,7 @@ export interface DesktopSessionCatalogPort {
 	}): Promise<SessionListPage>;
 	archiveSession(id: string): Promise<CodingSession>;
 	restoreSession(id: string): Promise<CodingSession>;
+	pinSession(id: string, pinned: boolean): Promise<CodingSession>;
 	deleteSession(id: string): Promise<void>;
 	renameSession(id: string, title: string): Promise<CodingSession>;
 	markTitleGenerationAttempted(id: string): Promise<CodingSession>;
@@ -232,6 +233,11 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 	async restoreSession(id: string): Promise<CodingSession> {
 		await this.getSession(id);
 		return unwrap(await this.#transport.catalog.restoreSession(id), "sessions/restore");
+	}
+
+	async pinSession(id: string, pinned: boolean): Promise<CodingSession> {
+		await this.getSession(id);
+		return unwrap(await this.#transport.catalog.pinSession(id, pinned), "sessions/pin");
 	}
 
 	async deleteSession(id: string): Promise<void> {

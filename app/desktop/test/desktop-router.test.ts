@@ -23,6 +23,7 @@ function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) 
 			renameSession: record("renameSession", { id: "session-1" }),
 			archiveSession: record("archiveSession", { id: "session-1", archivedAt: 10 }),
 			restoreSession: record("restoreSession", { id: "session-1", archivedAt: null }),
+			pinSession: record("pinSession", { id: "session-1", pinnedAt: 10 }),
 			deleteSession: record("deleteSession"),
 			listProjects: record("listProjects", []),
 			...(overrides.sessions as object),
@@ -56,6 +57,8 @@ function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) 
 		openWith: { ...(overrides.openWith as object) },
 		publish: record("publish"),
 		pickProjectDirectory: (overrides.pickProjectDirectory as DesktopRuntime["pickProjectDirectory"]) ?? record("pickProjectDirectory"),
+		openPath: (overrides.openPath as DesktopRuntime["openPath"]) ?? record("openPath", ""),
+		showContextMenu: (overrides.showContextMenu as DesktopRuntime["showContextMenu"]) ?? record("showContextMenu", null),
 		receiveOAuthCallback: record("receiveOAuthCallback"),
 		close: record("close"),
 	} as unknown as DesktopRuntime;
@@ -215,6 +218,63 @@ describe("createDesktopRouter — 行为", () => {
 		expect(calls.map((call) => call.name)).not.toContain("invalidateSessions");
 	});
 
+	test("project.reveal opens the catalog directory and ignores renderer paths", async () => {
+		const { router: r, calls } = router({
+			sessions: {
+				getProject: () => ({ id: "project-1", canonicalPath: "/registered/project" }),
+				isProjectAvailable: () => true,
+			},
+		});
+
+		await expect(r.project.reveal(event, "project-1")).resolves.toBeUndefined();
+		expect(calls.filter((call) => call.name === "openPath")).toEqual([
+			{ name: "openPath", args: ["/registered/project"] },
+		]);
+		expect(() => r.project.reveal(event, "")).toThrow();
+	});
+
+	test("project.reveal does not open unavailable directories", async () => {
+		const { router: r, calls } = router({
+			sessions: {
+				getProject: () => ({ id: "project-1", canonicalPath: "/missing/project" }),
+				isProjectAvailable: () => false,
+			},
+		});
+
+		await expect(r.project.reveal(event, "project-1")).rejects.toThrow("Project folder could not be opened.");
+		expect(calls.map((call) => call.name)).not.toContain("openPath");
+	});
+
+	test("contextMenu.show 把校验后的条目交给原生菜单", async () => {
+		const { router: r, calls } = router();
+		expect(() => r.contextMenu.show(event, { items: [] })).toThrow();
+		expect(() => r.contextMenu.show(event, { items: [{ id: "a", label: "A", extra: 1 }] })).toThrow();
+		expect(() => r.contextMenu.show(event, { items: [{ id: "a", label: "A", icon: "pencil" }] })).toThrow();
+		expect(() =>
+			r.contextMenu.show(event, { items: [{ id: "a", label: "A", iconDataUrl: "https://example.com/x.png" }] }),
+		).toThrow();
+		expect(r.contextMenu.show(event, { items: [{ id: "a", label: "A" }], position: { x: 12, y: 34 } })).toBeNull();
+		expect(calls.filter((call) => call.name === "showContextMenu")).toEqual([
+			{
+				name: "showContextMenu",
+				args: [undefined, [{ id: "a", label: "A" }], { x: 12, y: 34 }],
+			},
+		]);
+	});
+
+	test("project.reveal hides the OS open failure", async () => {
+		const { router: r } = router({
+			sessions: {
+				getProject: () => ({ id: "project-1", canonicalPath: "/registered/project" }),
+				isProjectAvailable: () => true,
+			},
+			openPath: async () => "ENOENT: /secret/path",
+		});
+
+		await expect(r.project.reveal(event, "project-1")).rejects.toThrow("Project folder could not be opened.");
+		await expect(r.project.reveal(event, "project-1")).rejects.not.toThrow("/secret/path");
+	});
+
 	test("provider.save 之后失效已打开的 Agent 会话", async () => {
 		const { router: r, calls } = router({ config: { save: async () => ({ profiles: [] }) } });
 		await r.provider.save(event, { profiles: [] } as never);
@@ -298,6 +358,16 @@ describe("createDesktopRouter — 行为", () => {
 		await r.session.restore(event, { sessionId: "session-1" });
 
 		expect(calls.map((call) => call.name)).toEqual(["runningSessionIds", "archiveSession", "restoreSession"]);
+	});
+
+	test("session.pin 委托 Catalog，并拒绝未知字段", async () => {
+		const { router: r, calls } = router();
+
+		expect(() => r.session.pin(event, { sessionId: "session-1", extra: true } as never)).toThrow();
+		expect(calls).toEqual([]);
+
+		await r.session.pin(event, { sessionId: "session-1", pinned: true });
+		expect(calls.map((call) => call.name)).toEqual(["pinSession"]);
 	});
 
 	test("workspace.read 使用 Session 的 durable cwd，而非 Project metadata", async () => {

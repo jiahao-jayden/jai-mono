@@ -31,6 +31,7 @@ interface SessionRow {
 	readonly updated_at: string;
 	readonly title_generation_attempted_at: number | null;
 	readonly archived_at: number | null;
+	readonly pinned_at: number | null;
 }
 
 /**
@@ -288,6 +289,30 @@ export class SqliteDesktopCatalogAccess {
 		}
 	}
 
+	setSessionPinned(
+		sessionId: string,
+		pinned: boolean,
+	): ResultType<DesktopCatalogSession, DesktopCatalogStorageError> {
+		try {
+			return Result.ok(
+				this.transaction(() => {
+					const session = this.requireSession(sessionId);
+					this.database
+						.prepare(
+							`INSERT INTO desktop_session_metadata
+							 (session_id, project_id, title, title_source, pinned_at)
+							 VALUES (?, ?, ?, ?, ?)
+							 ON CONFLICT(session_id) DO UPDATE SET pinned_at = excluded.pinned_at`,
+						)
+						.run(session.id, session.projectId, session.title, session.titleSource, pinned ? Date.now() : null);
+					return this.requireSession(sessionId);
+				}),
+			);
+		} catch (cause) {
+			return Result.err(this.projectError(sessionId, cause));
+		}
+	}
+
 	restoreSession(sessionId: string): ResultType<DesktopCatalogSession, DesktopCatalogStorageError> {
 		try {
 			return Result.ok(
@@ -408,6 +433,9 @@ export class SqliteDesktopCatalogAccess {
 		if (!metadataColumns.some((column) => column.name === "archived_at")) {
 			this.database.exec("ALTER TABLE desktop_session_metadata ADD COLUMN archived_at INTEGER");
 		}
+		if (!metadataColumns.some((column) => column.name === "pinned_at")) {
+			this.database.exec("ALTER TABLE desktop_session_metadata ADD COLUMN pinned_at INTEGER");
+		}
 	}
 
 	private requireProject(projectId: string): DesktopCatalogProject {
@@ -466,7 +494,8 @@ function sessionSelect(): string {
 		COALESCE(metadata.title_source, 'fallback') AS title_source,
 		journal.updated_at,
 		metadata.title_generation_attempted_at,
-		metadata.archived_at
+		metadata.archived_at,
+		metadata.pinned_at
 		FROM session_journals AS journal
 		INNER JOIN product_session_catalog AS product ON product.session_id = journal.id
 		LEFT JOIN desktop_session_metadata AS metadata ON metadata.session_id = journal.id`;
@@ -501,7 +530,8 @@ function sessionRow(row: SessionRow): DesktopCatalogSession {
 		!isTitleSource(row.title_source) ||
 		typeof row.updated_at !== "string" ||
 		(row.title_generation_attempted_at !== null && typeof row.title_generation_attempted_at !== "number") ||
-		(row.archived_at !== null && (!Number.isFinite(row.archived_at) || typeof row.archived_at !== "number"))
+		(row.archived_at !== null && (!Number.isFinite(row.archived_at) || typeof row.archived_at !== "number")) ||
+		(row.pinned_at !== null && (!Number.isFinite(row.pinned_at) || typeof row.pinned_at !== "number"))
 	) {
 		throw new DesktopCatalogStorageCorrupted({ message: "Desktop Session Catalog row is invalid" });
 	}
@@ -516,6 +546,7 @@ function sessionRow(row: SessionRow): DesktopCatalogSession {
 		titleSource: row.title_source,
 		lastActivityAt,
 		archivedAt: row.archived_at,
+		pinnedAt: row.pinned_at,
 	};
 }
 

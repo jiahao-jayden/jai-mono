@@ -7,8 +7,10 @@ import type { CodingSession, DesktopProject } from "../../../../shared/desktop-r
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { toast } from "../../ui/toast";
+import { ProjectActions } from "../project-actions";
 import { SessionActions } from "../session-actions";
 import { sidebarItemClassName } from "./sidebar-nav";
+import { sidebarRowHoverReserveClassName } from "./sidebar-row-hover";
 
 interface SidebarSessionsProps {
 	readonly projects: readonly DesktopProject[];
@@ -23,8 +25,11 @@ interface SidebarSessionsProps {
 	readonly projectError?: string;
 	readonly onCreateProject: () => void;
 	readonly onRelinkProject: (project: DesktopProject) => Promise<void>;
+	readonly onRevealProject: (project: DesktopProject) => Promise<void>;
+	readonly onNewProjectChat: (project: DesktopProject) => void;
 	readonly onSelectSession: (sessionId: string) => void;
 	readonly onRenameSession: (sessionId: string, title: string) => Promise<void>;
+	readonly onPinSession: (sessionId: string, pinned: boolean) => Promise<void>;
 	readonly onArchiveSession: (sessionId: string) => Promise<void>;
 	readonly onDeleteSession: (sessionId: string) => Promise<void>;
 	onLoadMore?(): void;
@@ -43,8 +48,11 @@ export function SidebarSessions({
 	projectError,
 	onCreateProject,
 	onRelinkProject,
+	onRevealProject,
+	onNewProjectChat,
 	onSelectSession,
 	onRenameSession,
+	onPinSession,
 	onArchiveSession,
 	onDeleteSession,
 	onLoadMore,
@@ -64,11 +72,6 @@ export function SidebarSessions({
 			if (!session.projectId) continue;
 			const current = grouped.get(session.projectId) ?? [];
 			grouped.set(session.projectId, [...current, session]);
-		}
-		for (const projectSessions of grouped.values()) {
-			projectSessions.sort(
-				(left, right) => right.lastActivityAt - left.lastActivityAt || right.id.localeCompare(left.id),
-			);
 		}
 		return grouped;
 	}, [activeSessions]);
@@ -111,6 +114,10 @@ export function SidebarSessions({
 			});
 		}
 	};
+	const startProjectChat = (project: DesktopProject) => {
+		setExpandedProjectIds((current) => new Set(current).add(project.id));
+		onNewProjectChat(project);
+	};
 	const toggleProject = (projectId: string) => {
 		setExpandedProjectIds((current) => {
 			const next = new Set(current);
@@ -122,9 +129,15 @@ export function SidebarSessions({
 	const renderSession = (session: CodingSession, nested = false) => {
 		const selected = session.id === activeSessionId;
 		const editing = session.id === editingSessionId;
-		const rowClassName = cn(sidebarItemClassName, nested ? "pl-7" : "pr-7", {
-			"shadow-[0_0_0_.5px_rgb(0_0_0/.05)]": selected,
-		});
+		const rowClassName = cn(
+			sidebarItemClassName,
+			sidebarRowHoverReserveClassName,
+			"group-hover/row:text-sidebar-foreground",
+			{
+				"pl-8": nested,
+				"shadow-[0_0_0_.5px_rgb(0_0_0/.05)]": selected,
+			},
+		);
 		if (editing) {
 			return (
 				<Input
@@ -147,13 +160,22 @@ export function SidebarSessions({
 					maxLength={80}
 					className={cn(
 						"h-7.5 rounded-lg border-transparent bg-sidebar-active py-0 text-[13px] leading-4.5 font-normal focus-visible:border-border-surface-strong focus-visible:shadow-none! focus-visible:ring-0",
-						nested ? "px-1.75 pl-7" : "px-1.75",
+						nested ? "px-1.75 pl-8" : "px-1.75",
 					)}
 				/>
 			);
 		}
 		return (
-			<div className="group relative" key={session.id}>
+			<SessionActions
+				key={session.id}
+				session={session}
+				running={runningSessionIdSet.has(session.id)}
+				hoverActions
+				onStartRename={() => startEditing(session)}
+				onPin={onPinSession}
+				onArchive={onArchiveSession}
+				onDelete={onDeleteSession}
+			>
 				<Button
 					type="button"
 					variant="navigation"
@@ -174,15 +196,7 @@ export function SidebarSessions({
 				>
 					<span className="block truncate">{session.title}</span>
 				</Button>
-				<SessionActions
-					session={session}
-					visible={selected}
-					running={runningSessionIdSet.has(session.id)}
-					onStartRename={() => startEditing(session)}
-					onArchive={onArchiveSession}
-					onDelete={onDeleteSession}
-				/>
-			</div>
+			</SessionActions>
 		);
 	};
 
@@ -238,48 +252,51 @@ export function SidebarSessions({
 						const hasRunningSession = projectSessions.some((session) => runningSessionIdSet.has(session.id));
 						const hasHiddenActiveSession =
 							!expanded && projectSessions.some((session) => session.id === activeSessionId);
-						const projectIcon = project.available ? icons.folder : icons["folder-off"];
+						const projectIcon = project.available
+							? expanded
+								? icons["folder-open"]
+								: icons.folder
+							: icons["folder-off"];
 						const projectLabel = intl.formatMessage(
 							project.available ? desktopMessages.projectsAvailable : desktopMessages.projectsFolderUnavailable,
 						);
 						return (
-							<div className="relative" key={project.id}>
-								<Button
-									type="button"
-									variant="navigation"
-									size="md"
-									onClick={() => toggleProject(project.id)}
-									aria-expanded={expanded}
-									aria-current={hasHiddenActiveSession ? "page" : undefined}
-									active={hasHiddenActiveSession}
-									leadingIcon={projectIcon}
-									trailingIcon={expanded ? icons["chevron-down"] : icons["chevron-right"]}
-									className={cn(sidebarItemClassName, { "pr-14": !project.available })}
+							<div key={project.id}>
+								<ProjectActions
+									project={project}
+									onRelink={onRelinkProject}
+									onReveal={onRevealProject}
+									onNewChat={startProjectChat}
 								>
-									<span className="flex min-w-0 items-center gap-1.5">
-										<span className="truncate">{project.displayName}</span>
-										{hasRunningSession ? (
-											<>
-												<span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
-												<span className="sr-only">
-													{intl.formatMessage(desktopMessages.chatAgentWorking)}
-												</span>
-											</>
-										) : null}
-										<span className="sr-only">{projectLabel}</span>
-									</span>
-								</Button>
-								{!project.available ? (
 									<Button
 										type="button"
 										variant="navigation"
-										size="sm"
-										onClick={() => void onRelinkProject(project)}
-										className="absolute top-0 right-5 h-7.5 px-1.5 text-[11px] text-destructive"
+										size="md"
+										onClick={() => toggleProject(project.id)}
+										aria-expanded={expanded}
+										aria-current={hasHiddenActiveSession ? "page" : undefined}
+										active={hasHiddenActiveSession}
+										leadingIcon={projectIcon}
+										className={cn(
+											sidebarItemClassName,
+											sidebarRowHoverReserveClassName,
+											"group-hover/row:text-sidebar-foreground",
+										)}
 									>
-										{intl.formatMessage(desktopMessages.sidebarRelink)}
+										<span className="flex min-w-0 items-center gap-1.5">
+											<span className="truncate">{project.displayName}</span>
+											{hasRunningSession ? (
+												<>
+													<span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
+													<span className="sr-only">
+														{intl.formatMessage(desktopMessages.chatAgentWorking)}
+													</span>
+												</>
+											) : null}
+											<span className="sr-only">{projectLabel}</span>
+										</span>
 									</Button>
-								) : null}
+								</ProjectActions>
 								{expanded ? (
 									<div className="mt-0.5 space-y-0.5">
 										{projectSessions.map((session) => renderSession(session, true))}

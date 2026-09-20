@@ -72,6 +72,12 @@ export class DesktopCatalogControl {
 					return this.error(request.id, -32602, "Invalid Desktop Catalog Session restore parameters");
 				return this.project(request.id, this.catalog.restoreSession(sessionId));
 			}
+			case "jai/desktop-catalog/sessions/pin": {
+				const sessionId = requiredString(params, "sessionId");
+				if (!sessionId || typeof params.pinned !== "boolean" || !hasOnly(params, ["sessionId", "pinned"]))
+					return this.error(request.id, -32602, "Invalid Desktop Catalog Session pin parameters");
+				return this.project(request.id, this.catalog.setSessionPinned(sessionId, params.pinned));
+			}
 			case "jai/desktop-catalog/sessions/mark-title-generation-attempted": {
 				const sessionId = requiredString(params, "sessionId");
 				const timestamp = params.timestamp;

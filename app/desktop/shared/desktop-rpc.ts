@@ -858,6 +858,16 @@ export const desktopSessionArchiveInputSchema = Type.Object(
 
 export type DesktopSessionArchiveInput = Static<typeof desktopSessionArchiveInputSchema>;
 
+export const desktopSessionPinInputSchema = Type.Object(
+	{
+		sessionId: Type.String({ minLength: 1 }),
+		pinned: Type.Boolean(),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopSessionPinInput = Static<typeof desktopSessionPinInputSchema>;
+
 export const desktopSessionListInputSchema = Type.Union([
 	Type.Undefined(),
 	Type.Object(
@@ -876,6 +886,39 @@ export const desktopSessionListInputSchema = Type.Union([
 ]);
 
 export const desktopSessionIdSchema = Type.String({ minLength: 1 });
+
+export const desktopContextMenuItemSchema = Type.Object(
+	{
+		id: Type.String({ minLength: 1 }),
+		label: Type.String({ minLength: 1 }),
+		separatorBefore: Type.Optional(Type.Boolean()),
+		destructive: Type.Optional(Type.Boolean()),
+		iconDataUrl: Type.Optional(
+			Type.String({ minLength: 1, maxLength: 64_000, pattern: "^data:image/png;base64," }),
+		),
+	},
+	{ additionalProperties: false },
+);
+
+export const desktopContextMenuPositionSchema = Type.Object(
+	{
+		x: Type.Number(),
+		y: Type.Number(),
+	},
+	{ additionalProperties: false },
+);
+
+export const desktopContextMenuShowInputSchema = Type.Object(
+	{
+		items: Type.Array(desktopContextMenuItemSchema, { minItems: 1 }),
+		position: Type.Optional(desktopContextMenuPositionSchema),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopContextMenuItem = Static<typeof desktopContextMenuItemSchema>;
+export type DesktopContextMenuPosition = Static<typeof desktopContextMenuPositionSchema>;
+export type DesktopContextMenuShowInput = Static<typeof desktopContextMenuShowInputSchema>;
 
 export const desktopSubagentTranscriptInputSchema = Type.Object(
 	{
@@ -905,6 +948,10 @@ export interface DesktopApi {
 		get(): DesktopUiLocaleSnapshot;
 		set(preference: DesktopUiLocalePreference): Promise<DesktopUiLocaleSnapshot>;
 	};
+	readonly contextMenu: {
+		/** Shows a native OS menu. Returns the selected item id, or null if dismissed. */
+		show(input: DesktopContextMenuShowInput): Promise<string | null>;
+	};
 	readonly provider: {
 		get(): Promise<DesktopProviderConfigSnapshot>;
 		save(input: DesktopProviderConfigInput): Promise<DesktopProviderConfigSnapshot>;
@@ -933,6 +980,8 @@ export interface DesktopApi {
 		pickDirectory(): Promise<string | null>;
 		create(input: DesktopProjectCreateInput): Promise<DesktopProject>;
 		relink(projectId: string): Promise<DesktopProject | null>;
+		/** Opens the catalog directory in the OS file manager. */
+		reveal(projectId: string): Promise<void>;
 	};
 	readonly session: {
 		create(input: DesktopSessionCreateInput): Promise<CodingSession>;
@@ -944,6 +993,7 @@ export interface DesktopApi {
 		rename(input: DesktopSessionRenameInput): Promise<CodingSession>;
 		archive(input: DesktopSessionArchiveInput): Promise<CodingSession>;
 		restore(input: DesktopSessionArchiveInput): Promise<CodingSession>;
+		pin(input: DesktopSessionPinInput): Promise<CodingSession>;
 		delete(input: DesktopSessionDeleteInput): Promise<void>;
 	};
 	readonly attachment: {
