@@ -10,6 +10,7 @@ import { WebSearchResults } from "./web-search-results";
 
 export interface TimelineStep {
 	id: string;
+	kind?: "activity" | "narration";
 	title: string;
 	summary?: string;
 	density?: "compact" | "default";
@@ -114,6 +115,13 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 		"ms-auto inline-flex shrink-0 opacity-60 transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
 		open && "rotate-90",
 	);
+	if (step.kind === "narration") {
+		return (
+			<div className="min-w-0 text-start text-[13px] leading-5 text-foreground/85">
+				<span className="min-w-0 whitespace-pre-wrap">{step.title}</span>
+			</div>
+		);
+	}
 	const row = (
 		<>
 			<span className="flex size-5 shrink-0 items-center justify-center">

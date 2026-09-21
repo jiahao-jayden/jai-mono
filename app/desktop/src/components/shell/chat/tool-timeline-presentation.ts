@@ -1,7 +1,7 @@
 import type { IntlShape } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import type { IconName } from "@/lib/icon-context";
-import type { DesktopNarrationItem, DesktopToolItem, DesktopWebSearchResult } from "../../../../shared/desktop-rpc";
+import type { DesktopToolItem, DesktopWebSearchResult } from "../../../../shared/desktop-rpc";
 
 export interface ToolTimelinePresentation {
 	readonly icon: IconName;
@@ -13,12 +13,11 @@ export interface ToolTimelinePresentation {
 }
 
 export function resolveToolTimelinePresentation(
-	narrations: readonly DesktopNarrationItem[],
 	tools: readonly DesktopToolItem[],
 	running: boolean,
 	intl: IntlShape,
 ): ToolTimelinePresentation {
-	const details = toolClusterDetails(narrations, tools, intl);
+	const details = toolClusterDetails(tools, intl);
 	const webSearchResults = tools.flatMap((tool) => tool.webSearchResults ?? []);
 	const hasWebSearchResults = tools.some((tool) => tool.webSearchResults !== undefined);
 	const firstTool = tools[0];
@@ -27,7 +26,6 @@ export function resolveToolTimelinePresentation(
 			icon: "sparkles",
 			density: "compact",
 			title: intl.formatMessage(running ? desktopMessages.transcriptWorking : desktopMessages.transcriptWorked),
-			summary: narrations.map((item) => item.text).join("\n\n"),
 			...(details ? { details } : {}),
 		};
 	}
@@ -123,12 +121,7 @@ function fileChangeVerb(operation: "add" | "modify" | "delete", intl: IntlShape)
 	}
 }
 
-function toolClusterDetails(
-	narrations: readonly DesktopNarrationItem[],
-	tools: readonly DesktopToolItem[],
-	intl: IntlShape,
-): string | undefined {
-	const narration = narrations.map((item) => item.text).join("\n\n");
+function toolClusterDetails(tools: readonly DesktopToolItem[], intl: IntlShape): string | undefined {
 	const toolDetails = tools
 		.map((item) => {
 			const summary = toolClusterChip([item], intl);
@@ -140,5 +133,5 @@ function toolClusterDetails(
 			return `${humanizeToolName(item.toolName)} · ${summary}${body}`;
 		})
 		.join("\n\n");
-	return [narration, toolDetails].filter(Boolean).join("\n\n") || undefined;
+	return toolDetails || undefined;
 }

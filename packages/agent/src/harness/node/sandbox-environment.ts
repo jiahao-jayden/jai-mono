@@ -9,7 +9,7 @@ import { NodeExecutionEnvironment, type NodeExecutionEnvironmentOptions } from "
 
 const STDERR_TAIL_BYTES = 8_192;
 const require = createRequire(import.meta.url);
-const sandboxCliPath = join(dirname(require.resolve("@anthropic-ai/sandbox-runtime")), "cli.js");
+let sandboxCliPath: string | undefined;
 
 /**
  * Runs every Shell call in a separate sandbox-runtime CLI process. The CLI owns
@@ -35,6 +35,9 @@ export class SandboxedNodeExecutionEnvironment extends NodeExecutionEnvironment 
 		const policy = this.currentExecutionPolicy();
 		if (!policy) throw new Error("Sandboxed Shell execution reached spawn without an ExecutionPolicy");
 		await ensureSandboxAvailable();
+		if (sandboxCliPath === undefined) {
+			sandboxCliPath = join(dirname(require.resolve("@anthropic-ai/sandbox-runtime")), "cli.js");
+		}
 		const policyController = new AbortController();
 		this.#activePolicies.add(policyController);
 		const signal = options.signal

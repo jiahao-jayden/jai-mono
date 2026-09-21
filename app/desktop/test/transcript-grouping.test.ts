@@ -6,6 +6,7 @@ import enMessages from "../src/i18n/compiled/en.json";
 import type { DesktopTranscriptItem } from "../shared/desktop-rpc";
 import {
 	groupTranscriptItems,
+	sameWorkProcess,
 	TranscriptItem,
 	TranscriptItems,
 	formatWorkDuration,
@@ -295,6 +296,66 @@ describe("transcript grouping", () => {
 		expect(updatedRows[0]).toMatchObject({ items: [firstTool, nextTool] });
 	});
 
+	test("历史工作过程忽略无关 transcript 更新，但保留计时状态更新", () => {
+		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:user",
+			role: "user",
+			text: "检查",
+			status: "complete",
+			timestamp: 0,
+		};
+		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
+			kind: "tool",
+			id: "tool:read",
+			turnId: "turn-1",
+			activityId: "activity-1",
+			toolCallId: "read",
+			toolName: "Read",
+			activityKind: "read",
+			status: "complete",
+			startedAt: 1_000,
+			completedAt: 2_000,
+		};
+		const reply: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			kind: "message",
+			id: "message:reply",
+			role: "assistant",
+			text: "完成",
+			status: "complete",
+			timestamp: 3_000,
+		};
+		const nextUser: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			...user,
+			id: "message:next-user",
+			text: "继续",
+			timestamp: 4_000,
+		};
+		const streaming: Extract<DesktopTranscriptItem, { kind: "message" }> = {
+			...reply,
+			id: "message:streaming",
+			text: "处理中",
+			status: "streaming",
+			timestamp: 5_000,
+		};
+		const group = { id: "work:turn-1:tool:read", items: [tool] };
+		const previousItems = [user, tool, reply, nextUser, streaming];
+		const nextItems = [user, tool, reply, nextUser, { ...streaming, text: "处理中…" }];
+
+		expect(
+			sameWorkProcess(
+				{ group, items: previousItems, responding: true },
+				{ group: { ...group }, items: nextItems, responding: true },
+			),
+		).toBe(true);
+		expect(
+			sameWorkProcess(
+				{ group, items: [user, tool], responding: true },
+				{ group: { ...group }, items: [user, tool], responding: false },
+			),
+		).toBe(false);
+	});
+
 	test("已完成的工具显示从开始到结束的工作时长", () => {
 		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
 			kind: "tool",
@@ -473,7 +534,7 @@ describe("transcript grouping", () => {
 				id: "message:assistant-1:0",
 				turnId: "message:user-1",
 				activityId: "message:assistant-1",
-				text: "我先确认有哪些可用操作。",
+				text: "我先确认有哪些可用操作。\n\n",
 				status: "complete",
 				timestamp: 2,
 			},
@@ -556,6 +617,28 @@ describe("transcript grouping", () => {
 
 		const markup = renderToStaticMarkup(createElement(TranscriptItems, { items, loading: false }));
 		expect(markup).toContain("Worked");
+		const workItems = items.filter(
+			(item): item is Extract<
+				DesktopTranscriptItem,
+				{ kind: "thinking" | "narration" | "tool" | "subagent" }
+			> =>
+				item.kind === "thinking" ||
+				item.kind === "narration" ||
+				item.kind === "tool" ||
+				item.kind === "subagent",
+		);
+		expect(workTimelineSteps(workItems, intl)).toMatchObject([
+			{ kind: "narration", title: "我先确认有哪些可用操作。" },
+			{ title: "Called", summary: "2 calls" },
+			{ kind: "narration", title: "连接已就绪，继续执行。" },
+			{ title: "Called", summary: "pending records" },
+			{ title: "Called", summary: "2 calls" },
+		]);
+		expect(workTimelineSteps(workItems, intl)[1]?.details).not.toContain("我先确认");
+		const activeMarkup = renderToStaticMarkup(
+			createElement(TranscriptItems, { items: items.slice(0, -1), loading: false, responding: true }),
+		);
+		expect(activeMarkup).toContain("我先确认有哪些可用操作。");
 		const tools = items.filter(
 			(item): item is Extract<DesktopTranscriptItem, { kind: "tool" }> => item.kind === "tool",
 		);

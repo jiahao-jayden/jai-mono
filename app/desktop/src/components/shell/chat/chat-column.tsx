@@ -146,13 +146,20 @@ export function ChatColumn({
 	const ensureTranscriptItemVisible = useCallback((itemId: string, behavior: ScrollBehavior = "auto") => {
 		return transcriptListRef.current?.scrollToItem(itemId, behavior) ?? false;
 	}, []);
-	const pendingApprovals = chat.messages.filter(
-		(item): item is DesktopPermissionItem => item.kind === "permission" && item.status === "pending",
+	const pendingApprovals = useMemo(
+		() =>
+			chat.messages.filter(
+				(item): item is DesktopPermissionItem => item.kind === "permission" && item.status === "pending",
+			),
+		[chat.messages],
 	);
-	const transcriptItems =
-		pendingApprovals.length > 0
-			? chat.messages.filter((item) => item.kind !== "permission" || item.status !== "pending")
-			: chat.messages;
+	const transcriptItems = useMemo(
+		() =>
+			pendingApprovals.length > 0
+				? chat.messages.filter((item) => item.kind !== "permission" || item.status !== "pending")
+				: chat.messages,
+		[chat.messages, pendingApprovals],
+	);
 	const messageTrailItems = useMemo(() => deriveMessageTrailItems(transcriptItems), [transcriptItems]);
 	const messageTrailAnchors = useMemo(
 		() => deriveMessageTrailAnchors(groupTranscriptItems(transcriptItems)),

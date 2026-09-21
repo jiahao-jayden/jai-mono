@@ -631,7 +631,7 @@ function WorkProcess({
 
 // `onOpenSubagent` is deliberately not compared: it only forwards to shell
 // state setters, so a stale closure behaves identically and the memo stays hot.
-function sameWorkProcess(
+export function sameWorkProcess(
 	previous: {
 		readonly group: WorkGroup;
 		readonly items: readonly DesktopTranscriptItem[];
@@ -647,11 +647,20 @@ function sameWorkProcess(
 		readonly openStateKey?: string;
 	},
 ): boolean {
-	if (previous.responding !== next.responding || previous.openStateKey !== next.openStateKey) return false;
+	if (previous.openStateKey !== next.openStateKey) return false;
 	if (previous.openWorkGroups !== next.openWorkGroups) return false;
 	if (previous.group.id !== next.group.id || previous.group.items.length !== next.group.items.length) return false;
-	if (previous.items !== next.items) return false;
-	return previous.group.items.every((item, index) => item === next.group.items[index]);
+	if (!previous.group.items.every((item, index) => item === next.group.items[index])) return false;
+
+	const now = Date.now();
+	const previousClock = workRunClock(previous.items, previous.group.items, previous.responding ?? false, now);
+	const nextClock = workRunClock(next.items, next.group.items, next.responding ?? false, now);
+	return (
+		previousClock.active === nextClock.active &&
+		previousClock.paused === nextClock.paused &&
+		previousClock.durationMs === nextClock.durationMs &&
+		previousClock.start === nextClock.start
+	);
 }
 
 function isWorkItemRunning(item: WorkItem): boolean {
@@ -665,7 +674,19 @@ export function workTimelineSteps(
 	options: WorkTimelineOptions = {},
 ): TimelineStep[] {
 	return workTimelineClusters(items).map((cluster) => {
-		const running = cluster.items.some(isWorkItemRunning);
+		const running = [...cluster.items, ...cluster.narrations].some(isWorkItemRunning);
+		if (cluster.kind === "narration") {
+			return {
+				id: cluster.id,
+				kind: "narration",
+				title: cluster.narrations
+					.map((item) => item.text.trim())
+					.filter(Boolean)
+					.join("\n\n"),
+				icon: "sparkles",
+				active: running,
+			};
+		}
 		if (cluster.kind === "subagent") {
 			const item = cluster.items[0] as DesktopSubagentItem;
 			const summary = running
@@ -702,18 +723,15 @@ export function workTimelineSteps(
 
 		const tools = cluster.items.filter((item): item is DesktopToolItem => item.kind === "tool");
 		if (tools.length === 0) {
-			const narration = cluster.narrations.map((item) => item.text).join("\n\n");
 			return {
 				id: cluster.id,
 				title: intl.formatMessage(running ? desktopMessages.transcriptWorking : desktopMessages.transcriptWorked),
-				summary: narration,
 				icon: "sparkles",
-				density: "compact",
 				active: running,
 			};
 		}
 
-		const presentation = resolveToolTimelinePresentation(cluster.narrations, tools, running, intl);
+		const presentation = resolveToolTimelinePresentation(tools, running, intl);
 		return {
 			id: cluster.id,
 			title: presentation.title,
@@ -729,11 +747,24 @@ export function workTimelineSteps(
 
 function workTimelineClusters(items: readonly WorkItem[]): readonly WorkTimelineCluster[] {
 	const clusters: WorkTimelineCluster[] = [];
-	let pendingNarrations: DesktopNarrationItem[] = [];
 
 	for (const item of items) {
 		if (item.kind === "narration") {
-			pendingNarrations = [...pendingNarrations, item];
+			const previous = clusters.at(-1);
+			if (previous?.kind === "narration" && previous.activityId === item.activityId) {
+				clusters[clusters.length - 1] = {
+					...previous,
+					narrations: [...previous.narrations, item],
+				};
+			} else {
+				clusters.push({
+					id: `timeline:${item.id}`,
+					kind: "narration",
+					activityId: item.activityId,
+					items: [],
+					narrations: [item],
+				});
+			}
 			continue;
 		}
 
@@ -745,7 +776,6 @@ function workTimelineClusters(items: readonly WorkItem[]): readonly WorkTimeline
 			clusters[clusters.length - 1] = {
 				...previous,
 				items: [...previous.items, item],
-				narrations: [...previous.narrations, ...pendingNarrations],
 			};
 		} else {
 			clusters.push({
@@ -753,20 +783,9 @@ function workTimelineClusters(items: readonly WorkItem[]): readonly WorkTimeline
 				kind,
 				activityId,
 				items: [item],
-				narrations: pendingNarrations,
+				narrations: [],
 			});
 		}
-		pendingNarrations = [];
-	}
-
-	if (pendingNarrations.length > 0) {
-		clusters.push({
-			id: `timeline:${pendingNarrations[0]!.id}`,
-			kind: "narration",
-			activityId: pendingNarrations[0]!.activityId,
-			items: [],
-			narrations: pendingNarrations,
-		});
 	}
 
 	return clusters;
