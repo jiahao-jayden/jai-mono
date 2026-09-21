@@ -1,4 +1,5 @@
 import type { EffectBoundary, JsonObject, SessionHandle, SessionStore } from "@jai/agent";
+import type { PermissionApprovalQueue, SessionAllowRules } from "@jai/coding-agent";
 import type { Result } from "better-result";
 import { TaggedError } from "better-result";
 import type { RuntimeSessionConfiguration } from "../sessions";
@@ -123,11 +124,17 @@ export interface RuntimeApprovalRequest {
 	readonly operationId: string;
 	readonly toolCallId: string;
 	readonly toolName: string;
+	readonly cwd?: string;
+	readonly reason?: string;
 	readonly title: string;
 	readonly description?: string;
+	readonly command?: string;
+	readonly path?: string;
 	readonly risk?: "low" | "medium" | "high";
 	readonly canAlwaysAllow: boolean;
 	readonly rememberScope?: "session" | "project-local";
+	readonly suggestedRule?: string;
+	readonly suggestedRules?: readonly string[];
 }
 
 export type RuntimeApprovalDecision = "deny" | "allowOnce" | "alwaysAllow";
@@ -152,6 +159,12 @@ export interface RuntimeOperationOpenInput {
 	readonly pendingInputs?: readonly RuntimeQueuedInput[];
 	/** Current Session Controller's approval interaction, mediated by the Host. */
 	readonly requestApproval: RuntimeApprovalHandler;
+	/** Volatile grants shared by all Operations in the live Session. */
+	readonly sessionAllowRules?: SessionAllowRules;
+	/** Canonical workspace identity bound to the Session grants. */
+	readonly sessionGrantWorkspaceRoot?: string;
+	/** FIFO shared by all approvals in the live Session. */
+	readonly approvalQueue?: PermissionApprovalQueue;
 	/**
 	 * Opens a journal-only child session for a subagent, identified by the
 	 * SpawnAgent tool call id. Child journals persist in the same SQLite

@@ -1,4 +1,5 @@
 import type { JsonObject } from "@jai/coding-agent";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 export type McpStdioServer = JsonObject & {
 	readonly name: string;
@@ -40,8 +41,5 @@ export interface McpExtensionOptions {
 
 export interface McpToolMetadata {
 	readonly name: string;
-	readonly annotations?: {
-		readonly title?: string;
-		readonly readOnlyHint?: boolean;
-	};
+	readonly annotations?: ToolAnnotations;
 }

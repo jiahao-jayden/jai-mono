@@ -62,11 +62,17 @@ export class FffSearchRuntime {
 	readonly #basePath: string;
 	readonly #findCursors = new Map<string, FindCursor>();
 	readonly #grepCursors = new Map<string, GrepCursor>();
+	readonly #canReadWorkspacePath: (path: string) => boolean | Promise<boolean>;
 	#nextCursor = 0;
 
-	constructor(finder: FileFinderApi, basePath: string) {
+	constructor(
+		finder: FileFinderApi,
+		basePath: string,
+		canReadWorkspacePath: (path: string) => boolean | Promise<boolean>,
+	) {
 		this.#finder = finder;
 		this.#basePath = basePath;
+		this.#canReadWorkspacePath = canReadWorkspacePath;
 	}
 
 	async find(input: FindInput, signal?: AbortSignal): Promise<CodingExtensionToolResult> {
@@ -80,20 +86,22 @@ export class FffSearchRuntime {
 		if (!result.ok) throw fileSearchError("search_failed", result.error);
 		throwIfAborted(signal);
 
+		const visibleItems = await this.#visibleItems(result.value.items);
+		const filtered = visibleItems.length !== result.value.items.length;
 		const nextCursor =
-			result.value.totalMatched > pageIndex * pageSize + result.value.items.length
+			!filtered && result.value.totalMatched > pageIndex * pageSize + result.value.items.length
 				? this.#storeFindCursor({ query, pageSize, nextPageIndex: pageIndex + 1 })
 				: undefined;
-		const text = result.value.items.length
-			? result.value.items
+		const text = visibleItems.length
+			? visibleItems
 					.map((item) => `${item.relativePath}${annotation(item.gitStatus, item.totalFrecencyScore)}`)
 					.join("\n")
 			: "No files found matching pattern";
 		return {
 			content: [{ type: "text", text: appendCursor(text, nextCursor) }],
 			details: {
-				count: result.value.items.length,
-				totalMatched: result.value.totalMatched,
+				count: visibleItems.length,
+				totalMatched: visibleItems.length,
 				...(nextCursor ? { cursor: nextCursor } : {}),
 			},
 		};
@@ -124,9 +132,12 @@ export class FffSearchRuntime {
 		}
 		throwIfAborted(signal);
 
-		const nextCursor = result.value.nextCursor ? this.#storeGrepCursor(result.value.nextCursor) : undefined;
+		const visibleItems = await this.#visibleItems(result.value.items);
+		const filtered = visibleItems.length !== result.value.items.length;
+		const nextCursor =
+			!filtered && result.value.nextCursor ? this.#storeGrepCursor(result.value.nextCursor) : undefined;
 		const text = formatGrep(
-			result.value.items.map((item) => ({
+			visibleItems.map((item) => ({
 				path: item.relativePath,
 				line: item.lineNumber,
 				text: item.lineContent,
@@ -139,8 +150,8 @@ export class FffSearchRuntime {
 		return {
 			content: [{ type: "text", text: appendCursor(text, nextCursor) }],
 			details: {
-				matches: result.value.totalMatched,
-				totalFiles: result.value.totalFiles,
+				matches: visibleItems.length,
+				totalFiles: new Set(visibleItems.map((item) => item.relativePath)).size,
 				...(nextCursor ? { cursor: nextCursor } : {}),
 			},
 		};
@@ -150,6 +161,13 @@ export class FffSearchRuntime {
 		this.#findCursors.clear();
 		this.#grepCursors.clear();
 		this.#finder.destroy();
+	}
+
+	// ponytail: one permission check per result, so a page costs a canonicalization per hit.
+	// Upgrade path is a prefix-tree check over the compiled policy rather than per-path realpath.
+	async #visibleItems<T extends { readonly relativePath: string }>(items: readonly T[]): Promise<T[]> {
+		const readable = await Promise.all(items.map((item) => this.#canReadWorkspacePath(item.relativePath)));
+		return items.filter((_item, index) => readable[index] === true);
 	}
 
 	#storeFindCursor(cursor: FindCursor): string {
@@ -211,7 +229,11 @@ export function createFffSearchExtension(
 			activate: async (context) => {
 				const created = await createFinder(context, options);
 				if (created.isErr()) return created;
-				const next = new FffSearchRuntime(created.value, context.cwd);
+				const next = new FffSearchRuntime(
+					created.value,
+					context.cwd,
+					context.canReadWorkspacePath ?? (() => false),
+				);
 				runtime = next;
 				return Result.ok(next);
 			},

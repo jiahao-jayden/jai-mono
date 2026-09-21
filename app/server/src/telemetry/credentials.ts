@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { DatabaseSync } from "node:sqlite";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
+import type { DatabaseSync } from "../persistence/sqlite/driver";
 
 export interface LangfuseTelemetryCredentials {
 	readonly publicKey: string;
@@ -168,7 +168,8 @@ export class SqliteLangfuseTelemetryCredentials {
 					 WHERE key = 'default'`,
 				)
 				.get() as unknown;
-			if (row === undefined) return Result.ok(undefined);
+			// Node returns `undefined` for a missing row; Bun's binding returns `null`.
+			if (row === undefined || row === null) return Result.ok(undefined);
 			if (!isStoredCredentials(row)) {
 				return Result.err(
 					new LangfuseTelemetryCredentialsCorrupted({

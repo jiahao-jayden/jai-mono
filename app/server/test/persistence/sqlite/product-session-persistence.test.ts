@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "../../../src/persistence/sqlite/driver";
 import { RuntimeHost } from "../../../src/runtime";
 import { SqliteProductSessionPersistence } from "../../../src/persistence";
 
@@ -57,7 +58,7 @@ describe("SqliteProductSessionPersistence", () => {
 	});
 
 	test("rejects a stale prompt without recording either half of the admission", async () => {
-		const persistence = new SqliteProductSessionPersistence(new (await import("node:sqlite")).DatabaseSync(":memory:"));
+		const persistence = new SqliteProductSessionPersistence(new DatabaseSync(":memory:"));
 		const host = new RuntimeHost({
 			persistence,
 			createId: ids("session-1", "operation-1", "operation-2"),
@@ -147,7 +148,6 @@ describe("SqliteProductSessionPersistence", () => {
 	});
 
 	test("does not project leftover product_session_catalog.title into Product Session info", async () => {
-		const { DatabaseSync } = await import("node:sqlite");
 		const database = new DatabaseSync(":memory:");
 		const persistence = new SqliteProductSessionPersistence(database);
 		const created = await persistence.create({
@@ -171,7 +171,6 @@ describe("SqliteProductSessionPersistence", () => {
 	});
 
 	test("keeps the Session Journal while discarding unsupported Operation records", async () => {
-		const { DatabaseSync } = await import("node:sqlite");
 		const database = new DatabaseSync(":memory:");
 		const persistence = new SqliteProductSessionPersistence(database);
 		const created = await persistence.create({

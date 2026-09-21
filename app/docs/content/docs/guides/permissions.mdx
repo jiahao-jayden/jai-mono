@@ -3,18 +3,30 @@ title: 权限
 description: 配置 permission mode，实现可取消、可关联工具调用的授权回调，并理解不可绕过的安全限制。
 ---
 
-持久化规则写在 `.jai/settings.json` 的 `permission` tree，按工具名分组。`permissions` 只保留 mode、额外目录和 bypass 限制，不再使用 `allow` / `ask` / `deny` 字符串列表。
+用户声明的持久化规则写在配置的 `permission` tree，按受保护的 action 分组。用户选择项目级记忆授权时，规则写入用户配置的 `permissionGrants`，并以 canonical workspace 路径分组，不写入项目仓库。`permissions` 只保留 mode、额外目录和 bypass 限制，不再使用 `allow` / `ask` / `deny` 字符串列表。
 
 ```json
 {
   "permission": {
-    "bash": { "npm test *": "allow", "git push *": "ask" },
-    "read": { "**/.env": "deny" },
-    "edit": { "src/**": "allow" }
+    "process.exec": { "npm test *": "allow", "git push *": "ask" },
+    "file.read": { "**/.env": "deny" },
+    "file.write": { "src/**": "allow" }
   },
   "permissions": {
     "defaultMode": "default",
     "additionalDirectories": ["../shared"]
+  }
+}
+```
+
+`permissionGrants` 由宿主在成功保存后生成，不能覆盖当前 `permission` 中的显式 `deny`：
+
+```json
+{
+  "permissionGrants": {
+    "/workspace/project": {
+      "process.exec": { "npm test *": "allow" }
+    }
   }
 }
 ```

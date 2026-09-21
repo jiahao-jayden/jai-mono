@@ -120,6 +120,12 @@ export interface CodingExtensionContext<
 	/** The Host-resolved workspace that may participate in project configuration. */
 	readonly workspace: CodingExtensionWorkspace;
 	readonly permissionMode: CodingPermissionMode;
+	/**
+	 * A core-owned read boundary for extensions that discover workspace paths.
+	 * It deliberately returns only a boolean, never the underlying policy or
+	 * grant, so extensions cannot reinterpret permission configuration.
+	 */
+	readonly canReadWorkspacePath?: (path: string) => boolean | Promise<boolean>;
 	readonly configuration: CodingExtensionConfigurationStore<TConfig>;
 	readonly sessionState: CodingExtensionSessionStateStore<TState>;
 	requestApproval(

@@ -14,6 +14,7 @@
 		"test": "bun test"
 	},
 	"dependencies": {
+		"@anthropic-ai/sandbox-runtime": "0.0.77",
 		"@jai/ai": "workspace:*",
 		"@sinclair/typebox": "catalog:",
 		"better-result": "^3.0.0"

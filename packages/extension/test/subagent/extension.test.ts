@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { access } from "node:fs/promises";
+import { InMemorySessionStore } from "@jai/agent";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createCodingAgent, defineExtension, type CodingAgentEvent } from "@jai/coding-agent";
 import { Type } from "@sinclair/typebox";
@@ -75,6 +76,55 @@ test("Subagent installs with Todo, isolates history and catalog search, streams 
 		expect(end).toMatchObject({ isError: false });
 		expect(JSON.stringify(end)).not.toContain('"cause"');
 		expect(JSON.stringify(end)).not.toContain('"stack"');
+	} finally {
+		await created.value.close();
+	}
+});
+
+test("explicit tool.invoke deny prevents creating a child Agent", async () => {
+	const root = await temporaryDirectory();
+	const homeDirectory = join(root, "home");
+	await mkdir(join(homeDirectory, ".jai"), { recursive: true });
+	await writeFile(
+		join(homeDirectory, ".jai", "settings.json"),
+		JSON.stringify({
+			$schema: "https://jai.dev/schemas/coding-agent-sdk-v1.json",
+			schemaVersion: 1,
+			permission: { "tool.invoke": { SpawnAgent: "deny" } },
+			permissions: { defaultMode: "default", additionalDirectories: [] },
+		}),
+	);
+	const requests: unknown[] = [];
+	const permissions: unknown[] = [];
+	const input = createInput(
+		root,
+		[
+			assistantToolCall("SpawnAgent", "blocked-spawn", { title: "Blocked", task: "must not run" }),
+			assistant("parent handled denial"),
+		],
+		requests,
+	);
+	const created = await createCodingAgent({
+		...input,
+		fileCapabilities: { ...input.fileCapabilities!, homeDirectory },
+		session: { kind: "new", id: "subagent-tool-deny", store: new InMemorySessionStore() },
+		permissionTelemetryObserver: { observePermissionEvent: (event) => permissions.push(event) },
+		extensions: [createSubagentExtension()],
+	});
+	if (created.isErr()) throw created.error;
+	try {
+		await created.value.prompt("delegate");
+		expect(requests).toHaveLength(2);
+		expect(JSON.stringify((requests[1] as any).messages)).toContain("Permission denied");
+		expect(permissions).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: "permission_decided",
+					toolName: "SpawnAgent",
+					decision: "deny",
+				}),
+			]),
+		);
 	} finally {
 		await created.value.close();
 	}

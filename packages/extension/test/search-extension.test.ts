@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { FileFinder } from "@ff-labs/fff-node";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { InMemorySessionStore } from "@jai/agent";
+import { createCodingAgent } from "@jai/coding-agent";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CodingExtensionToolResult } from "@jai/coding-agent";
 import { FffSearchRuntime, createFffSearchExtension } from "../src/search";
+import { assistant, assistantToolCall, createInput } from "./sdk-fixture";
 
 const roots: string[] = [];
 
@@ -42,7 +45,7 @@ describe("FFF search extension", () => {
 			return;
 		}
 
-		const runtime = new FffSearchRuntime(created.value, root);
+		const runtime = new FffSearchRuntime(created.value, root, () => true);
 		const found = await runtime.find({ pattern: "app" });
 		const foundText = textContent(found.content[0]);
 		expect(foundText).toContain("src/app.ts");
@@ -79,6 +82,90 @@ describe("FFF search extension", () => {
 
 		runtime.close();
 		expect(created.value.isDestroyed).toBe(true);
+	});
+
+	test("在投影到模型前过滤当前权限拒绝的路径及其缓存游标", async () => {
+		const root = await temporaryDirectory();
+		await writeFile(join(root, "public.txt"), "visible needle\n");
+		await writeFile(join(root, ".env"), "PRIVATE_TOKEN=needle-secret\n");
+		const created = FileFinder.create({
+			basePath: root,
+			aiMode: true,
+			enableFsRootScanning: false,
+			enableHomeDirScanning: false,
+		});
+		expect(created.ok).toBe(true);
+		if (!created.ok) return;
+		const ready = await created.value.waitForIndexReady(15_000);
+		expect(ready.ok && ready.value).toBe(true);
+		if (!ready.ok || !ready.value) {
+			created.value.destroy();
+			return;
+		}
+
+		const runtime = new FffSearchRuntime(created.value, root, (path) => path !== ".env");
+		const found = await runtime.find({ pattern: "env" });
+		const matches = await runtime.grep({ pattern: "needle" });
+		const foundText = textContent(found.content[0]);
+		const matchText = textContent(matches.content[0]);
+
+		expect(foundText).not.toContain(".env");
+		expect(matchText).toContain("public.txt");
+		expect(matchText).toContain("visible needle");
+		expect(matchText).not.toContain(".env");
+		expect(matchText).not.toContain("needle-secret");
+		expect(matches.details).toEqual({ matches: 1, totalFiles: 1 });
+		runtime.close();
+	});
+
+	test("SDK 以当前 file.read 规则过滤 grep 的模型输出", async () => {
+		const root = await temporaryDirectory();
+		const outside = await temporaryDirectory();
+		const homeDirectory = join(root, "home");
+		await Promise.all([
+			writeFile(join(root, "public.txt"), "visible needle\n"),
+			writeFile(join(root, ".env"), "PRIVATE_TOKEN=needle-secret\n"),
+			writeFile(join(outside, "secret.txt"), "SYMLINK_SECRET=needle-secret\n"),
+			symlink(join(outside, "secret.txt"), join(root, "linked-secret.txt")),
+			mkdir(join(homeDirectory, ".jai"), { recursive: true }),
+		]);
+		await writeFile(
+			join(homeDirectory, ".jai", "settings.json"),
+			JSON.stringify({
+				$schema: "https://jai.dev/schemas/coding-agent-sdk-v1.json",
+				schemaVersion: 1,
+				permission: { "file.read": { ".env": "deny" } },
+				permissions: { defaultMode: "default", additionalDirectories: [] },
+			}),
+		);
+		const requests: any[] = [];
+		const input = createInput(
+			root,
+			[assistantToolCall("grep", "search-private", { pattern: "needle" }), assistant("search complete")],
+			requests,
+		);
+		const created = await createCodingAgent({
+			...input,
+			fileCapabilities: { ...input.fileCapabilities!, homeDirectory },
+			session: { kind: "new", id: "search-file-deny", store: new InMemorySessionStore() },
+			requestApproval: async () => "allowOnce" as const,
+			extensions: [createFffSearchExtension({ dataDirectory: join(root, "fff") })],
+		});
+		expect(created.isOk()).toBe(true);
+		if (created.isErr()) return;
+		try {
+			expect((await created.value.prompt("search the workspace")).isOk()).toBe(true);
+			expect(requests).toHaveLength(2);
+			const projectedResult = JSON.stringify(requests[1].messages);
+			expect(projectedResult).toContain("public.txt");
+			expect(projectedResult).toContain("visible needle");
+			expect(projectedResult).not.toContain(".env");
+			expect(projectedResult).not.toContain("needle-secret");
+			expect(projectedResult).not.toContain("linked-secret.txt");
+			expect(projectedResult).not.toContain("SYMLINK_SECRET");
+		} finally {
+			await created.value.close();
+		}
 	});
 });
 

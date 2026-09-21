@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "./driver";
 
 /** One process-owned SQLite connection shared by Server adapters. */
 export class ProductSqliteDatabase {

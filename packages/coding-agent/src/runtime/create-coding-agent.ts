@@ -1,3 +1,5 @@
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
 import {
 	Agent,
 	type AgentCompactionOptions,
@@ -17,7 +19,7 @@ import {
 	type ToolExecutionMode,
 	type ToolMiddleware,
 } from "@jai/agent";
-import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
+import { createSafeShellEnvironment, SandboxedNodeExecutionEnvironment } from "@jai/agent/node/environment";
 import type { Model, Provider, ToolCall } from "@jai/ai";
 import type { TObject } from "@sinclair/typebox";
 import { attachmentUserMessage, CodingAttachmentRun, type CodingMessageAttachment } from "../attachments";
@@ -30,11 +32,16 @@ import {
 	type ResolvedCodingSettings,
 } from "../config";
 import {
+	canonicalWorkspaceRoot,
+	compileExecutionPolicy,
 	createPermissionMiddleware,
+	createPermissionRequest,
 	type ExtensionToolPermissionResolver,
-	type PermissionAction,
+	evaluatePermission,
 	type PermissionApprovalDecision,
+	type PermissionApprovalQueue,
 	type PermissionApprovalRequest,
+	type PermissionEffect,
 	type PermissionSettings,
 	type PermissionTelemetryObserver,
 	permissionSettingsFromConfig,
@@ -80,6 +87,12 @@ export interface CodingAgentPermissionOptions<TSchema extends TObject> {
 	readonly persistProjectLocalAllowRules?: (rules: readonly string[]) => void | Promise<void>;
 	/** 可选旁路，观察权限事实而不参与判定或审批。 */
 	readonly telemetryObserver?: PermissionTelemetryObserver;
+	/** Host-owned grant table shared by every Operation in one live Session. */
+	readonly sessionAllowRules?: Record<string, PermissionEffect | Record<string, PermissionEffect>>;
+	/** Workspace identity bound to the shared Session grant table. */
+	readonly sessionGrantWorkspaceRoot?: string;
+	/** Host-owned FIFO that keeps one Operation's approvals one at a time. */
+	readonly approvalQueue?: PermissionApprovalQueue;
 }
 
 export interface CodingAgentRuntimeOptions {
@@ -146,6 +159,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	readonly #commands?: CodingCommandRegistry;
 	readonly #attachments: CodingAttachmentRun;
 	readonly #capabilityNotice?: CapabilityNoticeSlot;
+	readonly #canReadWorkspacePath: (path: string) => boolean;
 
 	constructor(
 		agent: Agent<TAppState>,
@@ -155,6 +169,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		commands: CodingCommandRegistry | undefined,
 		attachments: CodingAttachmentRun,
 		runAgent: RunAgentExecution,
+		canReadWorkspacePath: (path: string) => boolean,
 		capabilityNotice?: CapabilityNoticeSlot,
 	) {
 		this.#agent = agent;
@@ -164,6 +179,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#commands = commands;
 		this.#attachments = attachments;
 		this.runAgent = runAgent;
+		this.#canReadWorkspacePath = canReadWorkspacePath;
 		this.#capabilityNotice = capabilityNotice;
 	}
 
@@ -173,6 +189,10 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 
 	get state() {
 		return this.#agent.state;
+	}
+
+	canReadWorkspacePath(path: string): boolean {
+		return this.#canReadWorkspacePath(path);
 	}
 
 	updateAppState(update: (current: TAppState) => TAppState): Promise<void> {
@@ -297,7 +317,30 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		options.permissions?.selectSettings ??
 		((snapshot: ConfigSnapshot<TSchema>) =>
 			permissionSettingsFromConfig(snapshot.settings as Readonly<Record<string, unknown>>));
-	const sessionAllowRules = {};
+	const sessionAllowRules = options.permissions?.sessionAllowRules ?? {};
+	const permissionWorkspaceRoot = options.executionContext.localFileAccess
+		? options.executionContext.cwd
+		: process.cwd();
+	const protectedPaths = options.executionContext.localFileAccess
+		? options.executionContext.protectedPaths
+		: undefined;
+	const canReadWorkspacePath = (path: string): boolean => {
+		try {
+			const canonicalPath = realpathSync.native(resolve(permissionWorkspaceRoot, path));
+			return (
+				evaluatePermission(
+					createPermissionRequest(
+						"Read",
+						{ path: canonicalPath },
+						canonicalWorkspaceRoot(permissionWorkspaceRoot),
+					),
+					selectPermissionSettings(runtime.snapshot),
+				).behavior === "allow"
+			);
+		} catch {
+			return false;
+		}
+	};
 	const persistProjectLocalAllowRules =
 		options.permissions?.persistProjectLocalAllowRules ??
 		(async (rules: readonly string[]) => {
@@ -334,7 +377,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		});
 	}
 	const toolEnvironment = options.executionContext.localFileAccess
-		? new NodeExecutionEnvironment({
+		? new SandboxedNodeExecutionEnvironment({
 				cwd: options.executionContext.cwd,
 				shellPath: options.tools?.shell,
 			})
@@ -355,7 +398,28 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		requestApproval: options.permissions?.requestApproval,
 		persistProjectLocalAllowRules,
 		pathCapabilities: toolEnvironment,
+		...(toolEnvironment
+			? {
+					executionPolicy: {
+						scope: toolEnvironment,
+						compile: () =>
+							compileExecutionPolicy({
+								workspaceRoot: canonicalWorkspaceRoot(permissionWorkspaceRoot),
+								version: runtime.snapshot.revision,
+								settings: selectPermissionSettings(runtime.snapshot),
+								environment: createSafeShellEnvironment(),
+								protectedPaths,
+							}),
+					},
+				}
+			: {}),
 		sessionAllowRules,
+		...(options.permissions?.sessionGrantWorkspaceRoot
+			? { sessionGrantWorkspaceRoot: options.permissions.sessionGrantWorkspaceRoot }
+			: options.executionContext.localFileAccess
+				? { sessionGrantWorkspaceRoot: options.executionContext.cwd }
+				: {}),
+		approvalQueue: options.permissions?.approvalQueue,
 		telemetryObserver: options.permissions?.telemetryObserver,
 	});
 	const runAgent: RunAgentExecution = async ({
@@ -459,7 +523,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				async (_input, next) => {
 					const result = await next();
 					const snapshot = options.capabilityNotice?.current?.announcedSnapshot();
-					if (snapshot && snapshot.trim()) return { ...result, summary: `${result.summary}\n\n${snapshot}` };
+					if (snapshot?.trim()) return { ...result, summary: `${result.summary}\n\n${snapshot}` };
 					return result;
 				},
 			],
@@ -469,7 +533,10 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		onObserverError: resolvedAgentOptions.onObserverError,
 	});
 	const stopConfigWatch = configStore.watch((event) => {
-		if (!runtime.closed && event.status === "valid") runtime.snapshot = event.snapshot;
+		if (!runtime.closed && event.status === "valid") {
+			if (event.snapshot.revision !== runtime.snapshot.revision) toolEnvironment?.cancelActivePolicies();
+			runtime.snapshot = event.snapshot;
+		}
 	});
 	return new CodingAgent(
 		agent,
@@ -479,6 +546,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		options.commands,
 		attachments,
 		runAgent,
+		canReadWorkspacePath,
 		options.capabilityNotice,
 	);
 }
@@ -501,39 +569,43 @@ async function persistBashAllowRules<TSchema extends TObject>(
 	rules: readonly string[],
 ): Promise<ConfigSnapshot<TSchema> | undefined> {
 	const patterns = [
-		...new Set(rules.flatMap((rule) => (rule.startsWith("bash:") ? [rule.slice("bash:".length)] : []))),
+		...new Set(
+			rules.flatMap((rule) => (rule.startsWith("process.exec:") ? [rule.slice("process.exec:".length)] : [])),
+		),
 	];
-	if (patterns.length === 0) return;
+	const projectRoot = store.options.projectRoot;
+	const workspaceRoot = projectRoot ? canonicalWorkspaceRoot(projectRoot) : undefined;
+	if (patterns.length === 0 || !workspaceRoot) return;
 	for (let attempt = 0; attempt < 2; attempt++) {
-		const scope = await store.readScope("project-local");
+		const scope = await store.readScope("user");
 		const settings = structuredClone(scope.settings) as Record<string, unknown>;
-		const permission = isRecord(settings.permission) ? { ...settings.permission } : {};
-		const currentBash = permission.bash;
-		const bash: Record<string, PermissionAction> =
-			currentBash === "allow" || currentBash === "ask" || currentBash === "deny"
-				? { "*": currentBash }
-				: isRecord(currentBash)
-					? Object.fromEntries(
-							Object.entries(currentBash).filter(
-								(entry): entry is [string, PermissionAction] =>
-									entry[1] === "allow" || entry[1] === "ask" || entry[1] === "deny",
-							),
-						)
-					: {};
-		for (const pattern of patterns) {
-			delete bash[pattern];
-			bash[pattern] = "allow";
-		}
-		permission.bash = bash;
-		settings.permission = permission;
+		const grants = isRecord(settings.permissionGrants) ? { ...settings.permissionGrants } : {};
+		const workspaceGrants = isRecord(grants[workspaceRoot]) ? { ...grants[workspaceRoot] } : {};
+		const processRules = normalizeRuleMap(workspaceGrants["process.exec"]);
+		for (const pattern of patterns) processRules[pattern] = "allow";
+		workspaceGrants["process.exec"] = processRules;
+		grants[workspaceRoot] = workspaceGrants;
+		settings.permissionGrants = grants;
 		try {
-			return await store.writeScope("project-local", settings as Partial<ResolvedCodingSettings<TSchema>>, {
+			return await store.writeScope("user", settings as Partial<ResolvedCodingSettings<TSchema>>, {
 				expectedRevision: scope.revision,
 			});
 		} catch (error) {
 			if (!isRecord(error) || error._tag !== "coding_config.write_conflict" || attempt === 1) throw error;
 		}
 	}
+}
+
+/** A stored rule value is either one effect for every pattern, or a pattern map. */
+function normalizeRuleMap(value: unknown): Record<string, PermissionEffect> {
+	if (value === "allow" || value === "ask" || value === "deny") return { "*": value };
+	if (!isRecord(value)) return {};
+	return Object.fromEntries(
+		Object.entries(value).filter(
+			(entry): entry is [string, PermissionEffect] =>
+				entry[1] === "allow" || entry[1] === "ask" || entry[1] === "deny",
+		),
+	);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

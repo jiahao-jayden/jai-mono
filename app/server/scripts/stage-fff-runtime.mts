@@ -10,6 +10,8 @@ const fffDirectory = dirname(require.resolve("@ff-labs/fff-node/package.json"));
 const fffRequire = createRequire(join(fffDirectory, "package.json"));
 const ffiDirectory = dirname(fffRequire.resolve("ffi-rs/package.json"));
 const ffiRequire = createRequire(join(ffiDirectory, "package.json"));
+const sandboxDirectory = dirname(require.resolve("@anthropic-ai/sandbox-runtime/package.json"));
+const sandboxRequire = createRequire(join(sandboxDirectory, "package.json"));
 
 await rm(destination, { recursive: true, force: true });
 await mkdir(destination, { recursive: true });
@@ -18,6 +20,10 @@ await stagePackage("@ff-labs/fff-node", fffDirectory);
 await stagePackage(getNpmPackageName(), dirname(fffRequire.resolve(`${getNpmPackageName()}/package.json`)));
 await stagePackage("ffi-rs", ffiDirectory);
 await stagePackage(ffiBindingPackage(), dirname(ffiRequire.resolve(`${ffiBindingPackage()}/package.json`)));
+await stagePackage("@anthropic-ai/sandbox-runtime", sandboxDirectory);
+for (const packageName of ["@pondwader/socks5-server", "commander", "node-forge", "zod"]) {
+	await stagePackage(packageName, dirname(sandboxRequire.resolve(`${packageName}/package.json`)));
+}
 
 async function stagePackage(packageName: string, packageDirectory: string): Promise<void> {
 	await cp(packageDirectory, join(destination, packageName), { recursive: true });

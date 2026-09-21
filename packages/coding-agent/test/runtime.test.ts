@@ -17,6 +17,7 @@ import {
 	mergePermissionConfigs,
 	permissionConfigFields,
 	permissionConfigSchema,
+	permissionGrantConfigSchema,
 	permissionSettingsSchema,
 } from "../src/permissions";
 import { createCodingAgent } from "../src/runtime";
@@ -27,11 +28,16 @@ const definition = defineCodingConfig({
 	schemaVersion: 1,
 	schemaUrl: "https://jai.test/coding-agent-settings-v1.json",
 	schema: Type.Object(
-		{ permission: Type.Optional(permissionConfigSchema), permissions: permissionSettingsSchema },
+		{
+			permission: Type.Optional(permissionConfigSchema),
+			permissionGrants: Type.Optional(permissionGrantConfigSchema),
+			permissions: permissionSettingsSchema,
+		},
 		{ additionalProperties: false },
 	),
 	fields: {
 		permission: { merge: "custom", project: "trusted", mergeValues: mergePermissionConfigs },
+		permissionGrants: { merge: "replace", project: "never", default: {} },
 		permissions: permissionConfigFields,
 	},
 });
@@ -125,9 +131,9 @@ describe("createCodingAgent", () => {
 		}
 	});
 
-	test("Bash Always allow 原子写入 project-local permission", async () => {
+	test("Bash Always allow 原子写入按工作区隔离的 user permissionGrants", async () => {
 		const fixture = await createFixture();
-		const settingsPath = join(fixture.executionContext.configRoot, ".jai", "settings.local.json");
+		const settingsPath = join(fixture.configOptions.homeDir, ".jai", "settings.json");
 		const approvals: (readonly string[])[] = [];
 		const codingAgent = await createCodingAgent({
 			...fixture,
@@ -151,8 +157,12 @@ describe("createCodingAgent", () => {
 		try {
 			await codingAgent.invoke("run printf");
 			const document = JSON.parse(await readFile(settingsPath, "utf8"));
-			expect(document.permission.bash).toEqual({ "printf *": "allow", "date *": "allow" });
-			expect(approvals).toEqual([["bash:printf *", "bash:date *"]]);
+			const workspaceRoot = await realpath(fixture.executionContext.cwd);
+			expect(document.permissionGrants[workspaceRoot]["process.exec"]).toEqual({
+				"printf *": "allow",
+				"date *": "allow",
+			});
+			expect(approvals).toEqual([["process.exec:printf *", "process.exec:date *"]]);
 		} finally {
 			codingAgent.close();
 		}

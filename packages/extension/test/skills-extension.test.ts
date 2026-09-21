@@ -87,7 +87,7 @@ describe("Skills Extension", () => {
 		expect(automaticSkillList).toContain("Manual review");
 		expect(automaticSkillList).toContain("private-review");
 		expect(automaticSkillList).toContain("Private review");
-		expect(automaticSkillList).not.toContain("<available_skills>");
+		expect(automaticSkillList).toContain("<available_skills>");
 		expect(JSON.stringify(requests[1])).toContain("# Manual instructions");
 		expect(JSON.stringify(requests[2])).toContain("# Private instructions");
 		const sessionMessages = JSON.stringify(created.value.state.messages);
@@ -239,7 +239,7 @@ describe("Skills Extension", () => {
 		expect(await created.value.prompt("first request")).toMatchObject({ status: "ok" });
 		const firstMessages = (requests[0] as { messages: Array<{ role: string; content: string }> }).messages;
 		const firstNotice = firstMessages.find(
-			(message) => message.role === "user" && message.content.includes("新增:"),
+			(message) => message.role === "user" && message.content.includes("<available_skills>"),
 		);
 		expect(firstNotice).toBeDefined();
 		expect(firstNotice!.content).toContain("alpha");

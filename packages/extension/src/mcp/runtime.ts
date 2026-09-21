@@ -285,6 +285,14 @@ class ManagedMcpServer {
 
 	#createTool(tool: McpRemoteTool): CodingExtensionTool<McpExtensionConfiguration, {}, McpExtensionRuntime> {
 		const originalName = tool.name;
+		// MCP defaults are readOnlyHint=false and destructiveHint=true. These are
+		// untrusted descriptions, so even a declared read stays sensitive.
+		const sideEffect =
+			tool.annotations?.readOnlyHint === true
+				? "read"
+				: tool.annotations?.destructiveHint === false
+					? "write"
+					: "destructive";
 		return {
 			name: `mcp__${sanitize(this.#options.namespace)}__${sanitize(this.#server.name)}__${sanitize(originalName)}`,
 			description: tool.description?.trim() || `MCP tool ${originalName} from ${this.#server.name}`,
@@ -292,7 +300,11 @@ class ManagedMcpServer {
 			executionMode: "parallel",
 			authorization: {
 				owner: "core",
-				permission: { sideEffect: "read", reason: `Calls MCP tool "${originalName}" on ${this.#server.name}.` },
+				permission: {
+					sideEffect,
+					dataSensitivity: "sensitive",
+					reason: `Calls MCP tool "${originalName}" on ${this.#server.name}; remote annotations are untrusted hints.`,
+				},
 			},
 			presentation: mcpToolPresentation(tool),
 			execute: async (_runtime, call) => this.#callTool(originalName, call.args, call.signal),

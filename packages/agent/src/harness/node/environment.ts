@@ -12,12 +12,14 @@ import type {
 	AbortOptions,
 	AtomicWriteOptions,
 	ExecutionEnvironment,
+	ExecutionPolicyScope,
 	FileStat,
 	PathCapability,
 	PathCapabilityManager,
 	ResolvedPath,
 	ResolvePathOptions,
 	ShellExecuteOptions,
+	ShellExecutionPolicy,
 	ShellResult,
 	TempFileOptions,
 	TemporaryFile,
@@ -31,6 +33,15 @@ export interface NodeExecutionEnvironmentOptions {
 }
 
 const MAX_SHELL_OUTPUT_BYTES = 1_048_576;
+const safeShellEnvironmentNames = new Set(["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR"]);
+
+/** What one Shell backend contributes on top of the shared process lifecycle. */
+interface ProcessSpec {
+	readonly file: string;
+	readonly args: readonly string[];
+	readonly environment: Readonly<Record<string, string>>;
+	readonly spawnFailure: (error: unknown) => never;
+}
 
 interface IssuedPathCapability extends PathCapability {
 	readonly boundary: string;
@@ -81,7 +92,7 @@ async function realpathIfExists(target: string): Promise<string | undefined> {
 
 async function resolveExecutable(
 	command: string,
-	environment: NodeJS.ProcessEnv = process.env,
+	environment: Readonly<Record<string, string | undefined>> = process.env,
 ): Promise<string | undefined> {
 	const candidates =
 		command.includes("/") || command.includes("\\")
@@ -115,17 +126,18 @@ function fileSystemFailure(error: unknown, resource: string): never {
 	});
 }
 
-export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapabilityManager {
+export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapabilityManager, ExecutionPolicyScope {
 	readonly #cwd: string;
 	readonly #shellPath?: string;
-	readonly #shellEnv?: Record<string, string>;
+	readonly #shellEnv: Readonly<Record<string, string>>;
 	readonly #issuedCapabilities = new WeakSet<PathCapability>();
 	readonly #activeCapability = new AsyncLocalStorage<IssuedPathCapability>();
+	readonly #activeExecutionPolicy = new AsyncLocalStorage<ShellExecutionPolicy>();
 
 	constructor(options: NodeExecutionEnvironmentOptions) {
 		this.#cwd = options.cwd;
 		this.#shellPath = options.shellPath;
-		this.#shellEnv = options.shellEnv;
+		this.#shellEnv = createSafeShellEnvironment(options.shellEnv);
 	}
 
 	async createPathCapability(input: string, options: ResolvePathOptions): Promise<PathCapability> {
@@ -145,6 +157,14 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 		}
 		this.#issuedCapabilities.delete(capability);
 		return this.#activeCapability.run(capability as IssuedPathCapability, operation);
+	}
+
+	withExecutionPolicy<T>(policy: ShellExecutionPolicy, operation: () => Promise<T>): Promise<T> {
+		return this.#activeExecutionPolicy.run(policy, operation);
+	}
+
+	protected currentExecutionPolicy(): ShellExecutionPolicy | undefined {
+		return this.#activeExecutionPolicy.getStore();
 	}
 
 	async resolvePath(input: string, options: ResolvePathOptions): Promise<ResolvedPath> {
@@ -351,19 +371,40 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 
 	async execute(command: string, options: ShellExecuteOptions): Promise<ShellResult> {
 		if (options.signal?.aborted) throw shellError("aborted", "Operation aborted");
+		const environment = this.#activeExecutionPolicy.getStore()?.environment ?? this.#shellEnv;
 		const shellCommand = options.shell ?? this.#shellPath ?? process.env.SHELL ?? "/bin/sh";
-		const shell = await resolveExecutable(
-			shellCommand,
-			this.#shellEnv ? { ...process.env, ...this.#shellEnv } : process.env,
-		);
+		const shell = await resolveExecutable(shellCommand, environment);
 		if (!shell) {
 			throw shellError("shell_unavailable", `Shell not found: ${shellCommand}`);
 		}
+		return this.runProcess(
+			{
+				file: shell,
+				args: ["-c", command],
+				environment,
+				spawnFailure: (error) => {
+					throw shellError(
+						isNotFound(error) ? "shell_unavailable" : "spawn_failed",
+						error instanceof Error ? error.message : String(error),
+						{ cause: error },
+					);
+				},
+			},
+			options,
+		);
+	}
+
+	/**
+	 * Runs one detached process tree with bounded output, backpressure, timeout and
+	 * abort. A sandboxed subclass reuses it so the two cannot drift apart on
+	 * cancellation, truncation or output-callback semantics.
+	 */
+	protected async runProcess(spec: ProcessSpec, options: ShellExecuteOptions): Promise<ShellResult> {
 		const startedAt = Date.now();
-		const child = spawn(shell, ["-lc", command], {
+		const child = spawn(spec.file, [...spec.args], {
 			cwd: options.cwd,
 			detached: process.platform !== "win32",
-			env: this.#shellEnv ? { ...process.env, ...this.#shellEnv } : process.env,
+			env: spec.environment,
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 		let spawnError: unknown;
@@ -486,13 +527,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 			}
 			if (aborted || options.signal?.aborted) throw shellError("aborted", "Operation aborted");
 			if (timedOut) throw shellError("timeout", `Command timed out after ${options.timeoutMs}ms`);
-			if (spawnError) {
-				throw shellError(
-					isNotFound(spawnError) ? "shell_unavailable" : "spawn_failed",
-					spawnError instanceof Error ? spawnError.message : String(spawnError),
-					{ cause: spawnError },
-				);
-			}
+			if (spawnError) spec.spawnFailure(spawnError);
 			return { exitCode, durationMs: Date.now() - startedAt, ...(outputTruncated ? { truncated: true } : {}) };
 		} finally {
 			settled = true;
@@ -503,4 +538,23 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 			child.stderr?.off("data", onStderr);
 		}
 	}
+}
+
+/**
+ * Shells never inherit the host's complete environment. Callers may explicitly
+ * add values, while provider credentials and arbitrary host variables stay absent.
+ */
+export function createSafeShellEnvironment(
+	overrides: Readonly<Record<string, string>> = {},
+	source: Readonly<Record<string, string | undefined>> = process.env,
+): Readonly<Record<string, string>> {
+	const environment: Record<string, string> = {};
+	for (const [name, value] of Object.entries(source)) {
+		if ((safeShellEnvironmentNames.has(name) || name.startsWith("LC_")) && typeof value === "string") {
+			environment[name] = value;
+		}
+	}
+	for (const [name, value] of Object.entries(overrides)) environment[name] = value;
+	if (!environment.PATH) environment.PATH = "/usr/bin:/bin";
+	return Object.freeze(environment);
 }

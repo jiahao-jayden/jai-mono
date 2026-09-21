@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "../../../src/persistence/sqlite/driver";
 import { SqliteDesktopCatalogAccess, SqliteProductSessionPersistence } from "../../../src/persistence";
 
 const createdAt = "2026-08-25T12:00:00.000Z";

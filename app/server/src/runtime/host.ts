@@ -14,6 +14,7 @@ import {
 	type SessionSnapshot,
 } from "@jai/agent";
 import type { AssistantMessage } from "@jai/ai";
+import { createPermissionApprovalQueue, type PermissionApprovalQueue, type SessionAllowRules } from "@jai/coding-agent";
 import { Result, TaggedError } from "better-result";
 import {
 	OperationEffectBoundary,
@@ -555,6 +556,7 @@ export class RuntimeSession {
 	#suspended?: RuntimeOperationExecutionFailed;
 	#usageCost: number;
 	readonly #pendingApprovals = new Map<string, PendingRuntimeApproval>();
+	readonly #sessionAllowRules: SessionAllowRules = {};
 	readonly #listeners = new Set<(event: RuntimeSessionEvent) => void>();
 	readonly #initialAppState: () => JsonObject;
 	readonly #capabilityNotice: import("@jai/coding-agent").CapabilityNoticeSlot = { lastTold: new Map() };
@@ -1121,6 +1123,9 @@ export class RuntimeSession {
 			}),
 			pendingInputs: active.pendingInputs,
 			requestApproval: (request, signal) => this.requestApproval(request, signal),
+			sessionAllowRules: this.#sessionAllowRules,
+			sessionGrantWorkspaceRoot: this.info.cwd,
+			approvalQueue: active.approvalQueue,
 			openChildSession: (toolCallId) =>
 				openSession(
 					new JournalOnlySessionStore(
@@ -1199,6 +1204,7 @@ export class RuntimeSession {
 		outcome: Result<RuntimeOperationOutcome, RuntimeOperationExecutionFailed>,
 	): Promise<Result<RuntimeOperationOutcome, RuntimeOperationExecutionFailed | RuntimeHostIndeterminateTool>> {
 		return this.enqueue(async () => {
+			this.cancelPendingApprovalsForOperation(active, "Operation reached a terminal state");
 			const loaded = await this.persistence.load(this.id);
 			if (loaded.isErr()) {
 				return Result.err(
@@ -1396,34 +1402,28 @@ export class RuntimeSession {
 		if (request.sessionId !== this.id) {
 			return Promise.reject(this.approvalCancelled(request.requestId, "Approval belongs to another Session"));
 		}
+		if (request.operationId !== this.#active?.operationId) {
+			return Promise.reject(this.approvalCancelled(request.requestId, "Approval belongs to an inactive Operation"));
+		}
 		if (this.#pendingApprovals.has(request.requestId)) {
 			return Promise.reject(this.approvalCancelled(request.requestId, "Approval request is already pending"));
 		}
 		return new Promise<RuntimeApprovalDecision>((resolve, reject) => {
 			const onAbort = signal
 				? () => {
-						const pending = this.#takeApproval(request.requestId);
-						pending?.reject(this.approvalCancelled(request.requestId, "Approval request was cancelled"));
+						this.#takeApproval(request.requestId)?.reject(
+							this.approvalCancelled(request.requestId, "Approval request was cancelled"),
+						);
 					}
 				: undefined;
 			if (signal?.aborted) {
-				onAbort?.();
+				reject(this.approvalCancelled(request.requestId, "Approval request was cancelled"));
 				return;
 			}
-			this.#pendingApprovals.set(request.requestId, {
-				request,
-				resolve,
-				reject,
-				signal,
-				onAbort,
-			});
+			this.#pendingApprovals.set(request.requestId, { request, resolve, reject, signal, onAbort });
 			signal?.addEventListener("abort", onAbort!, { once: true });
 			this.publish({ type: "approval_requested", request });
-			this.publish({
-				type: "state_changed",
-				state: "requires_action",
-				operationId: request.operationId,
-			});
+			this.publish({ type: "state_changed", state: "requires_action", operationId: request.operationId });
 		});
 	};
 
@@ -1441,6 +1441,14 @@ export class RuntimeSession {
 		}
 	}
 
+	private cancelPendingApprovalsForOperation(operation: ActiveOperation, message: string): void {
+		for (const requestId of [...this.#pendingApprovals.keys()]) {
+			if (this.#pendingApprovals.get(requestId)?.request.operationId !== operation.operationId) continue;
+			this.#takeApproval(requestId)?.reject(this.approvalCancelled(requestId, message));
+		}
+		operation.approvalQueue.cancel(this.approvalCancelled(operation.operationId, message));
+	}
+
 	private approvalCancelled(requestId: string, message: string): RuntimeHostApprovalCancelled {
 		return new RuntimeHostApprovalCancelled({
 			message,
@@ -1453,6 +1461,8 @@ export class RuntimeSession {
 interface ActiveOperation {
 	readonly operationId: string;
 	readonly pendingInputs: RuntimeQueuedInput[];
+	/** Serializes this Operation's approvals; the Session shows one request at a time. */
+	readonly approvalQueue: PermissionApprovalQueue;
 	abortRequested: boolean;
 	resource?: RuntimeOperation;
 	stopObserving?: () => void;
@@ -1477,6 +1487,7 @@ function createActiveOperation(
 		operationId,
 		pendingInputs: [...pendingInputs],
 		abortRequested: false,
+		approvalQueue: createPermissionApprovalQueue(),
 	};
 }
 

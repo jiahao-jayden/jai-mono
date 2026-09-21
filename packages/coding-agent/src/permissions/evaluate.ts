@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { bashScanFromArgs } from "./bash-parser";
@@ -6,19 +7,23 @@ import { invalidPermissionCallError } from "./errors";
 import {
 	bashAlwaysPattern,
 	commandBasename,
+	executableIndex,
 	findExecutesCommands,
 	flattenPermissionConfig,
 	isDestructiveBashCommand,
 	matchesPermissionConfigRule,
-	permissionName,
 	splitBashCommand,
 } from "./rules";
-import type {
-	PermissionCall,
-	PermissionDecision,
-	PermissionEffect,
-	PermissionSettings,
-	ResolvedPermissionSettings,
+import {
+	type CanonicalToolName,
+	isPermissionAction,
+	type PermissionAction,
+	type PermissionDecision,
+	type PermissionEffect,
+	type PermissionRequest,
+	type PermissionSettings,
+	type PermissionTarget,
+	type ResolvedPermissionSettings,
 } from "./types";
 
 const readOnlyCommands = new Set([
@@ -42,220 +47,265 @@ const readOnlyCommands = new Set([
 const readOnlyGitCommands = new Set(["branch", "diff", "log", "show", "status"]);
 const strippedWrappers = new Set(["builtin", "command", "nice", "noglob", "nohup", "stdbuf", "time", "timeout"]);
 
+/** Converts validated tool arguments into stable resource targets before any policy is evaluated. */
+export function createPermissionRequest(
+	toolName: string,
+	args: Readonly<Record<string, unknown>>,
+	workspaceRoot: string,
+): PermissionRequest {
+	const canonical = canonicalToolName(toolName);
+	if (!isAbsolute(workspaceRoot)) throw invalidPermissionCallError(toolName, "workspaceRoot must be absolute");
+	if (canonical === "Bash") {
+		const command = stringArg(args, "command");
+		if (!command) throw invalidPermissionCallError(toolName, "Bash permission calls require command");
+		return { workspaceRoot, targets: bashTargets(canonical, command, bashScanFromArgs(args)) };
+	}
+	const path = stringArg(args, "path");
+	if (!path) throw invalidPermissionCallError(toolName, `${canonical} permission calls require path`);
+	return {
+		workspaceRoot,
+		targets: [
+			{
+				toolName: canonical,
+				action: canonical === "Read" ? "file.read" : "file.write",
+				resource: { kind: "path", path },
+			},
+		],
+	};
+}
+
+/** Builds a stable permission target for a validated catalog tool. */
+export function createExtensionPermissionRequest(
+	toolName: string,
+	workspaceRoot: string,
+	risk?: "destructive",
+): PermissionRequest {
+	if (!toolName.trim())
+		throw invalidPermissionCallError(toolName, "Extension permission calls require a tool identity");
+	if (!isAbsolute(workspaceRoot)) throw invalidPermissionCallError(toolName, "workspaceRoot must be absolute");
+	return {
+		workspaceRoot,
+		targets: [
+			{
+				toolName,
+				action: "tool.invoke",
+				resource: { kind: "tool", identity: toolName },
+				...(risk ? { risk } : {}),
+			},
+		],
+	};
+}
+
 export function evaluatePermission(
-	call: PermissionCall,
+	request: PermissionRequest,
 	settings: PermissionSettings | ResolvedPermissionSettings = {},
 ): PermissionDecision {
 	const resolved = normalizePermissionSettings(settings);
-	validateCall(call);
-	if (call.toolName === "Bash" && isCircuitBreakerCommand(stringArg(call, "command"))) {
-		return decision(
-			"deny",
-			"danger-layer",
-			"Deleting the filesystem root or home directory is not allowed",
-			undefined,
-			{
-				permission: "bash",
-				risk: "destructive",
-			},
-		);
-	}
-	const bashRisk = bashRiskDecision(call);
-	if (bashRisk) return bashRisk;
-	// Mode boundaries outrank the `permission` tree. A persisted Always Allow must not
-	// disable Plan mode or an administrator's `disableBypassPermissionsMode`.
-	if (
-		resolved.defaultMode === "plan" &&
-		(isEditCall(call) || (call.toolName === "Bash" && !isReadOnlyBash(stringArg(call, "command"))))
-	) {
-		return decision("deny", "mode", "Plan mode only allows read-only work");
-	}
-	if (resolved.defaultMode === "bypassPermissions" && resolved.disableBypassPermissionsMode === "disable") {
-		return decision("deny", "mode", "Bypass Permissions is disabled by configuration");
-	}
-	if (resolved.permission && Object.keys(resolved.permission).length > 0) {
-		return evaluateConfiguredPermission(call, resolved);
-	}
-
-	if (resolved.defaultMode === "dontAsk") {
-		return decision("deny", "mode", "Don't Ask denies calls without a matching Allow rule");
-	}
-	if (resolved.defaultMode === "bypassPermissions") {
-		return decision("allow", "mode", "Bypass Permissions mode");
-	}
-
-	if (isReadCall(call)) {
-		return isInsideReadableBoundary(call, resolved.additionalDirectories)
-			? decision("allow", "built-in", "Read is inside the workspace boundary")
-			: decision("ask", "built-in", "Read is outside the workspace boundary");
-	}
-	if (isEditCall(call)) {
-		if (resolved.defaultMode === "acceptEdits" && isInsideReadableBoundary(call, resolved.additionalDirectories)) {
-			return decision("allow", "mode", "Accept Edits allows changes inside the workspace boundary");
-		}
-		return decision("ask", "built-in", "File modifications require confirmation");
-	}
-	if (call.toolName === "Bash") {
-		return evaluateDefaultBash(call);
-	}
-	return decision("ask", "built-in", "Unknown permission behavior");
+	validateRequest(request);
+	const decisions = request.targets.map((target) => evaluateTarget(request, target, resolved));
+	return aggregateDecisions(request.targets, decisions);
 }
 
-function evaluateDefaultBash(call: PermissionCall): PermissionDecision {
-	const command = stringArg(call, "command");
-	const scan = bashScanFromArgs(call.args);
-	const subcommands = scan?.patterns ?? splitBashCommand(command);
-	if (!subcommands || subcommands.length === 0) {
-		return decision("ask", "danger-layer", "Bash command could not be parsed safely", undefined, {
-			permission: "bash",
-			risk: "opaque",
-		});
-	}
-	const asked = subcommands.filter((subcommand) => !isReadOnlySubcommand(subcommand));
-	if (asked.length === 0) {
-		return decision("allow", "built-in", "Built-in safe Bash command", undefined, {
-			permission: "bash",
-			patterns: subcommands,
-		});
-	}
-	return decision("ask", "built-in", `No bash permission rule matched for: ${asked[0]}`, undefined, {
-		permission: "bash",
-		patterns: asked,
-		alwaysPatterns: unique(asked.map((subcommand) => bashAlwaysPattern(subcommand) ?? `${subcommand} *`)),
-	});
-}
-
-function evaluateConfiguredPermission(call: PermissionCall, settings: ResolvedPermissionSettings): PermissionDecision {
-	if (call.toolName === "Bash") {
-		const command = stringArg(call, "command");
-		const scan = bashScanFromArgs(call.args);
-		const subcommands = scan?.patterns ?? splitBashCommand(command);
-		if (!subcommands || subcommands.length === 0) {
-			return decision("ask", "danger-layer", "Bash command could not be parsed safely", undefined, {
-				permission: "bash",
-				risk: "opaque",
-			});
-		}
-		const decisions = subcommands.map((subcommand) => configuredBashDecision(call, settings, subcommand));
-		const denied = decisions.find((item) => item.behavior === "deny");
-		if (denied) return denied;
-		const asked = decisions.filter((item) => item.behavior === "ask");
-		if (asked.length > 0) {
-			const first = asked[0]!;
-			return decision("ask", first.source, first.reason, first.rule, {
-				permission: "bash",
-				patterns: asked.flatMap((item) => item.patterns ?? []),
-				alwaysPatterns: unique(asked.flatMap((item) => item.alwaysPatterns ?? [])),
-			});
-		}
-		return decision("allow", "rule", "All Bash command nodes are allowed", undefined, {
-			permission: "bash",
-			patterns: subcommands,
-		});
-	}
-	return configuredRuleDecision(call, settings);
-}
-
-function configuredBashDecision(
-	call: PermissionCall,
+function evaluateTarget(
+	request: PermissionRequest,
+	target: PermissionTarget,
 	settings: ResolvedPermissionSettings,
-	command: string,
 ): PermissionDecision {
-	const matched = flattenPermissionConfig(settings.permission).findLast((rule) =>
-		matchesPermissionConfigRule(rule, call, command),
+	const rule = matchingRule(settings.permission, target, request.workspaceRoot);
+	const projectGrant = matchingRule(
+		settings.permissionGrants?.[canonicalWorkspaceRoot(request.workspaceRoot)],
+		target,
+		request.workspaceRoot,
 	);
-	if (matched) return configuredRuleDecision(call, settings, command);
-	if (isReadOnlySubcommand(command)) {
-		return decision("allow", "built-in", "Built-in safe Bash command", undefined, {
-			permission: "bash",
-			patterns: [command],
-		});
+	const grant = projectGrant ?? matchingRule(settings.sessionGrants, target, request.workspaceRoot);
+	if (rule?.action === "deny") return ruleDecision(target, rule);
+	if (settings.defaultMode === "bypassPermissions" && settings.disableBypassPermissionsMode === "disable") {
+		return decision("deny", "mode", "Bypass Permissions is disabled by configuration", target);
 	}
-	return decision("ask", "built-in", `No bash permission rule matched for: ${command}`, undefined, {
-		permission: "bash",
-		patterns: [command],
-		alwaysPatterns: [bashAlwaysPattern(command) ?? `${command} *`],
-	});
-}
-
-function bashRiskDecision(call: PermissionCall): PermissionDecision | undefined {
-	if (call.toolName !== "Bash") return undefined;
-	const command = stringArg(call, "command");
-	const scan = bashScanFromArgs(call.args);
-	if (scan?.destructive || isDestructiveBashCommand(command)) {
-		return decision("ask", "danger-layer", "Destructive Bash operation requires approval", undefined, {
-			permission: "bash",
+	if (settings.defaultMode === "plan" && !isReadOnlyTarget(target)) {
+		return decision("deny", "mode", "Plan mode only allows read-only work", target);
+	}
+	if (target.resource.kind === "command" && isCircuitBreakerCommand(target.resource.command)) {
+		return decision("deny", "danger-layer", "Deleting the filesystem root or home directory is not allowed", target, {
 			risk: "destructive",
 		});
 	}
-	if (scan?.opaque) {
-		return decision("ask", "danger-layer", "Bash command could not be parsed safely", undefined, {
-			permission: "bash",
+	if (
+		target.risk === "destructive" ||
+		(target.resource.kind === "command" && isDestructiveBashCommand(target.resource.command))
+	) {
+		if (settings.defaultMode === "dontAsk") {
+			return decision("deny", "mode", "Don't Ask denies risky calls without a matching Allow rule", target);
+		}
+		return decision("ask", "danger-layer", "Destructive Bash operation requires approval", target, {
+			risk: "destructive",
+		});
+	}
+	if (target.risk === "opaque") {
+		if (settings.defaultMode === "dontAsk") {
+			return decision("deny", "mode", "Don't Ask denies opaque calls without a matching Allow rule", target);
+		}
+		return decision("ask", "danger-layer", "Permission target could not be parsed safely", target, {
 			risk: "opaque",
 		});
 	}
+	if (rule?.action === "ask" && grant?.action === "allow") {
+		return ruleDecision(target, grant, projectGrant ? "project-grant" : "session-grant");
+	}
+	if (rule) return ruleDecision(target, rule);
+	if (grant?.action === "allow") {
+		return ruleDecision(target, grant, projectGrant ? "project-grant" : "session-grant");
+	}
+	if (settings.defaultMode === "dontAsk") {
+		return decision("deny", "mode", "Don't Ask denies calls without a matching Allow rule", target);
+	}
+	if (settings.defaultMode === "bypassPermissions")
+		return decision("allow", "mode", "Bypass Permissions mode", target);
+	return builtInDecision(request, target, settings);
 }
 
-function configuredRuleDecision(
-	call: PermissionCall,
+function builtInDecision(
+	request: PermissionRequest,
+	target: PermissionTarget,
 	settings: ResolvedPermissionSettings,
-	command?: string,
 ): PermissionDecision {
-	const permission = permissionName(call.toolName);
-	const matched = flattenPermissionConfig(settings.permission).findLast((rule) =>
-		matchesPermissionConfigRule(rule, call, command),
+	if (target.action === "file.read") {
+		return isInsideReadableBoundary(request.workspaceRoot, target.resource, settings.additionalDirectories)
+			? decision("allow", "built-in", "Read is inside the workspace boundary", target)
+			: decision("ask", "built-in", "Read is outside the workspace boundary", target);
+	}
+	if (target.action === "file.write") {
+		if (
+			settings.defaultMode === "acceptEdits" &&
+			isInsideReadableBoundary(request.workspaceRoot, target.resource, settings.additionalDirectories)
+		) {
+			return decision("allow", "mode", "Accept Edits allows changes inside the workspace boundary", target);
+		}
+		return decision("ask", "built-in", "File modifications require confirmation", target);
+	}
+	if (target.action === "tool.invoke") {
+		return decision("ask", "built-in", `No tool permission rule matched for: ${resourceText(target)}`, target);
+	}
+	if (target.resource.kind === "command" && isReadOnlySubcommand(target.resource.command)) {
+		return decision("allow", "built-in", "Built-in safe Bash command", target);
+	}
+	return decision("ask", "built-in", `No process permission rule matched for: ${resourceText(target)}`, target);
+}
+
+function matchingRule(
+	config: PermissionSettings["permission"] | undefined,
+	target: PermissionTarget,
+	workspaceRoot: string,
+) {
+	const matches = flattenPermissionConfig(config).filter((rule) =>
+		matchesPermissionConfigRule(rule, target, workspaceRoot),
 	);
-	if (!matched)
-		return decision("ask", "built-in", `No ${permission} permission rule matched`, undefined, { permission });
-	return decision(
-		matched.action,
-		"rule",
-		`Matched ${matched.action} permission rule`,
-		`${permission}:${matched.pattern}`,
-		{
-			permission,
-			patterns: command ? [command] : undefined,
-			alwaysPatterns: command ? [bashAlwaysPattern(command) ?? `${command} *`] : undefined,
-		},
+	return (
+		matches.find((rule) => rule.action === "deny") ??
+		matches.find((rule) => rule.action === "ask") ??
+		matches.find((rule) => rule.action === "allow")
 	);
 }
 
-function validateCall(call: PermissionCall): void {
-	if (!isAbsolute(call.workspaceRoot)) {
-		throw invalidPermissionCallError(call.toolName, "workspaceRoot must be absolute");
+function ruleDecision(
+	target: PermissionTarget,
+	rule: { readonly permission: PermissionAction; readonly pattern: string; readonly action: PermissionEffect },
+	source: "rule" | "session-grant" | "project-grant" = "rule",
+): PermissionDecision {
+	return decision(rule.action, source, `Matched ${rule.action} permission rule`, target, {
+		rule: `${rule.permission}:${rule.pattern}`,
+	});
+}
+
+function aggregateDecisions(
+	targets: readonly PermissionTarget[],
+	decisions: readonly PermissionDecision[],
+): PermissionDecision {
+	const selected =
+		decisions.find((item) => item.behavior === "deny") ??
+		decisions.find((item) => item.behavior === "ask") ??
+		decisions[0]!;
+	const commandTargets = targets.filter((target) => target.resource.kind === "command");
+	const patterns = commandTargets.map((target) => (target.resource.kind === "command" ? target.resource.command : ""));
+	const askedCommands = commandTargets.filter((_target, index) => decisions[index]?.behavior === "ask");
+	const alwaysPatterns = unique(
+		askedCommands.flatMap((target) =>
+			target.resource.kind === "command"
+				? [bashAlwaysPattern(target.resource.command) ?? `${target.resource.command} *`]
+				: [],
+		),
+	);
+	return {
+		...selected,
+		...(patterns.length > 0 ? { patterns } : {}),
+		...(alwaysPatterns.length > 0 ? { alwaysPatterns } : {}),
+	};
+}
+
+function validateRequest(request: PermissionRequest): void {
+	if (!isAbsolute(request.workspaceRoot))
+		throw invalidPermissionCallError("unknown", "workspaceRoot must be absolute");
+	if (request.targets.length === 0)
+		throw invalidPermissionCallError("unknown", "Permission request must contain at least one target");
+	for (const target of request.targets) {
+		if (!target.toolName.trim())
+			throw invalidPermissionCallError("unknown", "Permission target tool must not be empty");
+		if (!isPermissionAction(target.action)) {
+			throw invalidPermissionCallError(target.toolName, `Unknown permission action: ${String(target.action)}`);
+		}
+		if (!target.resource || typeof target.resource !== "object") {
+			throw invalidPermissionCallError(target.toolName, "Permission target requires a resource");
+		}
+		if (target.resource.kind === "path" && !target.resource.path)
+			throw invalidPermissionCallError(target.toolName, "Path target must not be empty");
+		if (target.resource.kind === "command" && !target.resource.command)
+			throw invalidPermissionCallError(target.toolName, "Command target must not be empty");
+		if (target.resource.kind === "tool" && !target.resource.identity)
+			throw invalidPermissionCallError(target.toolName, "Tool target must not be empty");
+		if (target.resource.kind !== "path" && target.resource.kind !== "command" && target.resource.kind !== "tool") {
+			throw invalidPermissionCallError(target.toolName, "Unknown permission resource kind");
+		}
 	}
-	if (call.toolName === "Bash" && !stringArg(call, "command")) {
-		throw invalidPermissionCallError(call.toolName, "Bash permission calls require command");
-	}
-	if ((isReadCall(call) || isEditCall(call)) && !pathArg(call)) {
-		throw invalidPermissionCallError(call.toolName, `${call.toolName} permission calls require path`);
-	}
 }
 
-function isReadCall(call: PermissionCall): boolean {
-	return call.toolName === "Read";
+function bashTargets(
+	toolName: CanonicalToolName,
+	command: string,
+	scan: ReturnType<typeof bashScanFromArgs>,
+): PermissionTarget[] {
+	const patterns = scan?.patterns.length ? scan.patterns : (splitBashCommand(command) ?? [command]);
+	return patterns.map((value) => ({
+		toolName,
+		action: "process.exec",
+		resource: { kind: "command", command: value },
+		...(scan?.opaque
+			? { risk: "opaque" as const }
+			: scan?.destructive || isDestructiveBashCommand(value)
+				? { risk: "destructive" as const }
+				: {}),
+	}));
 }
 
-function isEditCall(call: PermissionCall): boolean {
-	return call.toolName === "Write" || call.toolName === "Edit";
+function isReadOnlyTarget(target: PermissionTarget): boolean {
+	if (target.action === "file.read") return true;
+	return (
+		target.action === "process.exec" &&
+		target.resource.kind === "command" &&
+		isReadOnlySubcommand(target.resource.command)
+	);
 }
 
-function pathArg(call: PermissionCall): string {
-	return stringArg(call, "path");
-}
-
-function stringArg(call: PermissionCall, key: string): string {
-	const value = call.args[key];
-	return typeof value === "string" ? value : "";
-}
-
-function isInsideReadableBoundary(call: PermissionCall, additionalDirectories: readonly string[]): boolean {
-	const input = pathArg(call);
-	const target = resolve(call.workspaceRoot, input);
+function isInsideReadableBoundary(
+	workspaceRoot: string,
+	resource: PermissionTarget["resource"],
+	additionalDirectories: readonly string[],
+): boolean {
+	if (resource.kind !== "path") return false;
+	const target = resolve(workspaceRoot, resource.path);
 	const roots = [
-		resolve(call.workspaceRoot),
+		resolve(workspaceRoot),
 		...additionalDirectories.map((directory) =>
-			isAbsolute(directory) ? resolve(directory) : resolve(call.workspaceRoot, directory),
+			isAbsolute(directory) ? resolve(directory) : resolve(workspaceRoot, directory),
 		),
 	];
 	return roots.some((root) => isWithin(root, target));
@@ -266,15 +316,9 @@ function isWithin(root: string, target: string): boolean {
 	return fromRoot === "" || (!isAbsolute(fromRoot) && fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`));
 }
 
-function isReadOnlyBash(command: string): boolean {
+function isReadOnlySubcommand(command: string): boolean {
 	if (command.includes("$(") || command.includes("`") || /(^|[^<])>(?!>)/.test(command) || />>|<\(|>\(/.test(command))
 		return false;
-	const subcommands = splitBashCommand(command);
-	if (!subcommands) return false;
-	return subcommands.every(isReadOnlySubcommand);
-}
-
-function isReadOnlySubcommand(command: string): boolean {
 	const tokens = shellWords(command);
 	if (!tokens || tokens.length === 0) return false;
 	let index = 0;
@@ -286,21 +330,16 @@ function isReadOnlySubcommand(command: string): boolean {
 	}
 	const invoked = tokens[index];
 	if (!invoked) return false;
-	// Basename so `/usr/bin/git` classifies like `git` instead of falling through as unknown.
 	const executable = commandBasename(invoked);
 	if (executable === "git") return readOnlyGitCommand(tokens.slice(index + 1));
-	if (executable === "find" && tokens.slice(index + 1).some(findExecutesCommands)) {
-		return false;
-	}
+	if (executable === "find" && tokens.slice(index + 1).some(findExecutesCommands)) return false;
 	return readOnlyCommands.has(executable);
 }
 
 function readOnlyGitCommand(args: readonly string[]): boolean {
 	const subcommand = args.find((arg) => !arg.startsWith("-"));
 	if (subcommand === undefined || !readOnlyGitCommands.has(subcommand)) return false;
-	// `git branch` only reads while it lists; -d/-D/-m/-M mutate refs.
-	if (subcommand === "branch") return !args.some((arg) => /^-[dDmMc]$|^--(delete|move|copy|force)$/.test(arg));
-	return true;
+	return subcommand !== "branch" || !args.some((arg) => /^-[dDmMc]$|^--(delete|move|copy|force)$/.test(arg));
 }
 
 function shellWords(command: string): string[] | undefined {
@@ -341,16 +380,20 @@ function shellWords(command: string): string[] | undefined {
 	return words;
 }
 
-function isCircuitBreakerCommand(command: string): boolean {
+function isCircuitBreakerCommand(command: string, depth = 0): boolean {
+	// Bound nested eval analysis; excessive nesting cannot disable the fixed safety boundary.
+	if (depth > 16) return true;
 	const subcommands = splitBashCommand(command);
 	if (!subcommands) return false;
 	return subcommands.some((subcommand) => {
 		const tokens = shellWords(subcommand);
 		if (!tokens) return false;
-		// Matched by basename so `/bin/rm -rf /` trips the breaker like a bare `rm` does.
+		const runIndex = executableIndex(tokens);
+		if (tokens[runIndex] === "eval") {
+			return isCircuitBreakerCommand(tokens.slice(runIndex + 1).join(" "), depth + 1);
+		}
 		const rmIndex = tokens.findLastIndex((token) => commandBasename(token) === "rm");
 		if (rmIndex < 0) return false;
-
 		let recursive = false;
 		let force = false;
 		let optionsEnded = false;
@@ -381,22 +424,55 @@ function isRootOrHomeTarget(target: string): boolean {
 	return resolve(target) === resolve("/") || resolve(target) === resolve(homedir());
 }
 
-function unique(values: readonly string[]): string[] {
-	return [...new Set(values)];
+function canonicalToolName(value: string): CanonicalToolName {
+	if (isCanonicalTool(value)) return value;
+	throw invalidPermissionCallError(value, "Tool has no registered permission policy");
+}
+
+function isCanonicalTool(value: unknown): value is CanonicalToolName {
+	return value === "Read" || value === "Write" || value === "Edit" || value === "Bash";
+}
+
+function stringArg(args: Readonly<Record<string, unknown>>, key: string): string {
+	const value = args[key];
+	return typeof value === "string" ? value : "";
+}
+
+function resourceText(target: PermissionTarget): string {
+	return target.resource.kind === "path"
+		? target.resource.path
+		: target.resource.kind === "command"
+			? target.resource.command
+			: target.resource.identity;
 }
 
 function decision(
 	behavior: PermissionEffect,
 	source: PermissionDecision["source"],
 	reason: string,
-	rule?: string,
-	extra?: Pick<PermissionDecision, "permission" | "patterns" | "alwaysPatterns" | "risk">,
+	target: PermissionTarget,
+	extra: { readonly rule?: string; readonly risk?: PermissionDecision["risk"] } = {},
 ): PermissionDecision {
 	return {
 		behavior,
 		source,
 		reason,
-		...(rule === undefined ? {} : { rule }),
-		...extra,
+		...(extra.rule === undefined ? {} : { rule: extra.rule }),
+		permission: target.action,
+		...(extra.risk === undefined ? {} : { risk: extra.risk }),
 	};
+}
+
+function unique(values: readonly string[]): string[] {
+	return [...new Set(values)];
+}
+
+/** Resolves to the canonical root used to key workspace-scoped grants. */
+export function canonicalWorkspaceRoot(value: string): string {
+	const absolute = resolve(value);
+	try {
+		return realpathSync.native(absolute);
+	} catch {
+		return absolute;
+	}
 }

@@ -9,6 +9,7 @@ import {
 	createCodingAgent,
 	type JsonObject,
 	type JsonValue,
+	redactCommand,
 } from "@jai/coding-agent";
 import { NoopTelemetryContext, type TelemetryContext } from "@jai/telemetry";
 import { Result, type Result as ResultType } from "better-result";
@@ -112,14 +113,23 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 							operationId: input.operationId,
 							toolCallId: request.toolCallId,
 							toolName: request.toolName,
+							cwd: input.cwd,
+							reason: request.reason,
 							title: request.summary.title,
 							...(request.summary.description ? { description: request.summary.description } : {}),
+							...(request.summary.command ? { command: redactCommand(request.summary.command) } : {}),
+							...(request.summary.path ? { path: request.summary.path } : {}),
 							...(request.summary.risk ? { risk: request.summary.risk } : {}),
 							canAlwaysAllow: request.canAlwaysAllow,
 							...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),
+							...(request.suggestedRule ? { suggestedRule: redactCommand(request.suggestedRule) } : {}),
+							...(request.suggestedRules ? { suggestedRules: request.suggestedRules.map(redactCommand) } : {}),
 						},
 						signal,
 					),
+				sessionAllowRules: input.sessionAllowRules,
+				sessionGrantWorkspaceRoot: input.sessionGrantWorkspaceRoot,
+				approvalQueue: input.approvalQueue,
 			});
 			if (created.isErr()) {
 				telemetryObserver.close();
@@ -197,6 +207,8 @@ function withRuntimeApprovals(
 					operationId: input.operationId,
 					toolCallId: request.toolCallId,
 					toolName: `extension:${request.extensionId}`,
+					cwd: input.cwd,
+					reason: request.reason,
 					title: request.presentation.title,
 					...(request.presentation.description ? { description: request.presentation.description } : {}),
 					risk: approvalRisk(request.sideEffect),

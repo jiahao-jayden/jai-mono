@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeExecutionEnvironment } from "../../../src/node/environment";
+import { createSafeShellEnvironment, NodeExecutionEnvironment } from "../../../src/node/environment";
 
 const temporaryDirectories: string[] = [];
 async function temporaryDirectory(prefix: string): Promise<string> {
@@ -159,5 +159,32 @@ describe("NodeExecutionEnvironment", () => {
 			onOutput: () => undefined,
 		});
 		expect(result.truncated).toBe(true);
+	});
+
+	test("Shell policy only receives its explicit environment allowlist", async () => {
+		const workspace = await temporaryDirectory("jai-shell-environment-");
+		const environment = new NodeExecutionEnvironment({ cwd: workspace });
+		const shellEnvironment = createSafeShellEnvironment({}, { PATH: process.env.PATH, API_TOKEN: "host-secret" });
+		expect(shellEnvironment.API_TOKEN).toBeUndefined();
+		const output: string[] = [];
+		await environment.withExecutionPolicy(
+			{
+				version: "policy-env",
+				workspaceRoot: workspace,
+				writableRoots: [workspace],
+				deniedReadPaths: [],
+				deniedWritePaths: [],
+				environment: shellEnvironment,
+			},
+			() =>
+				environment.execute('printf "${API_TOKEN-unset}"', {
+					cwd: workspace,
+					timeoutMs: 1_000,
+					onOutput: (chunk) => {
+						output.push(chunk.text);
+					},
+				}),
+		);
+		expect(output.join("")).toBe("unset");
 	});
 });

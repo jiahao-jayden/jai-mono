@@ -114,6 +114,10 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				cwd,
 				configRoot: fileCapabilities.workspaceDirectory,
 				defaultAllowedDirectories: [cwd] as readonly [string, ...string[]],
+				protectedPaths: [
+					path.join(fileCapabilities.workspaceDirectory, ".jai"),
+					path.join(fileCapabilities.homeDirectory, ".jai"),
+				],
 			},
 			sessionId,
 			sessionStore: store,
@@ -146,6 +150,9 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 						input.permissionMode,
 					),
 				telemetryObserver: input.permissionTelemetryObserver,
+				...(input.sessionAllowRules ? { sessionAllowRules: input.sessionAllowRules } : {}),
+				...(input.sessionGrantWorkspaceRoot ? { sessionGrantWorkspaceRoot: input.sessionGrantWorkspaceRoot } : {}),
+				...(input.approvalQueue ? { approvalQueue: input.approvalQueue } : {}),
 			},
 			extensionTools: extensionTools(extensions),
 			extensionBeforeModelCall: async (messages) => {
@@ -188,6 +195,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 					trusted: fileCapabilities.workspaceTrusted,
 				},
 				permissionMode: input.permissionMode ?? "default",
+				canReadWorkspacePath: (path) => internal.canReadWorkspacePath(path),
 			},
 			input.extensionRuntime,
 			createExtensionSessionStateAdapter(internal),

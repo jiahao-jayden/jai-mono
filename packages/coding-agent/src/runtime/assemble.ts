@@ -1,5 +1,5 @@
 import type { AgentHookMap, AgentTool, ToolMiddleware } from "@jai/agent";
-import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
+import type { NodeExecutionEnvironment } from "@jai/agent/node/environment";
 import { type CodingToolOptions, createCodingTools } from "../tools";
 import type { CodingToolName } from "../tools/names";
 import type { CodingExecutionContext } from "./execution-context";
@@ -25,17 +25,13 @@ export interface AssembledAgentCapabilities {
 }
 
 export function assembleAgentCapabilities(input: AssembleAgentCapabilitiesInput): AssembledAgentCapabilities {
-	const codingTools = input.executionContext.localFileAccess
-		? createCodingTools(
-				{ cwd: input.executionContext.cwd, ...input.toolOptions },
-				input.toolEnvironment ??
-					new NodeExecutionEnvironment({
-						cwd: input.executionContext.cwd,
-						shellPath: input.toolOptions?.shell,
-					}),
-				input.enabledTools,
-			)
-		: [];
+	// Without a caller-provided environment there are no local tools at all, so a
+	// missing sandbox can never silently degrade into unrestricted host execution.
+	const environment = input.toolEnvironment;
+	const codingTools =
+		input.executionContext.localFileAccess && environment
+			? createCodingTools({ cwd: input.executionContext.cwd, ...input.toolOptions }, environment, input.enabledTools)
+			: [];
 	return {
 		tools: [...(input.extraTools ?? []), ...(input.extensionTools ?? []), ...codingTools],
 		aroundToolCall: [

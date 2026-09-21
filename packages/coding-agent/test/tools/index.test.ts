@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
 import * as sdk from "../../src/tools";
+
+const environment = (shell?: string) => new NodeExecutionEnvironment({ cwd: process.cwd(), ...(shell ? { shellPath: shell } : {}) });
 
 describe("createCodingTools", () => {
 	test("returns the stable built-in tool set", () => {
-		const tools = sdk.createCodingTools({ cwd: process.cwd() });
+		const tools = sdk.createCodingTools({ cwd: process.cwd() }, environment());
 
 		expect(tools.map((tool) => tool.name)).toEqual(["Read", "Bash", "Edit", "Write"]);
 		expect(tools.map((tool) => tool.executionMode)).toEqual([
@@ -24,10 +27,10 @@ describe("createCodingTools", () => {
 
 	test("maps shell and timeout options into the Node environment", async () => {
 		const missing = `${process.cwd()}/definitely-missing`;
-		const shellTools = sdk.createCodingTools({ cwd: process.cwd(), shell: missing });
+		const shellTools = sdk.createCodingTools({ cwd: process.cwd(), shell: missing }, environment(missing));
 		await expect(shellTools[1]!.execute("bash-1", { command: "true" })).rejects.toThrow("Shell not found");
 
-		const timeoutTools = sdk.createCodingTools({ cwd: process.cwd(), timeoutMs: 10 });
+		const timeoutTools = sdk.createCodingTools({ cwd: process.cwd(), timeoutMs: 10 }, environment());
 		await expect(timeoutTools[1]!.execute("bash-2", { command: "sleep 1" })).rejects.toThrow(
 			"Command timed out",
 		);

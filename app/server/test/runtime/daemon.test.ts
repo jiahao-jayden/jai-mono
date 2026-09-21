@@ -292,7 +292,7 @@ describe("Runtime Host daemon composition", () => {
 		await mkdir(workspace, { recursive: true });
 		await writeCodingConfig(join(homeDirectory, ".jai", "settings.json"), {});
 		await writeCodingConfig(join(workspace, ".jai", "settings.json"), {
-			permission: { bash: { "mkdir .desktop-source-config": "allow" } },
+			permission: { "process.exec": { "mkdir .desktop-source-config": "allow" } },
 		});
 		await createSkill(join(homeDirectory, ".jai", "skills", "home-skill"), "home-skill");
 		await createSkill(join(workspace, ".agents", "skills", "workspace-skill"), "workspace-skill");

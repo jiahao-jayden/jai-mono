@@ -1,4 +1,3 @@
-import type { DatabaseSync } from "node:sqlite";
 import { Result, type Result as ResultType } from "better-result";
 import {
 	type DesktopCatalogProject,
@@ -13,6 +12,7 @@ import {
 	DesktopCatalogStorageFailed,
 	type DesktopCatalogTitleSource,
 } from "../../protocol/desktop-catalog/types";
+import type { DatabaseSync } from "./driver";
 
 interface ProjectRow {
 	readonly id: string;

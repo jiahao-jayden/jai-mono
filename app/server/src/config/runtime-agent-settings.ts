@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import type { DatabaseSync } from "node:sqlite";
 import { AnthropicProvider, OpenAIProvider, OpenAIResponsesProvider, type Provider } from "@jai/ai";
 import type { CodingProviderOptions, JsonObject } from "@jai/coding-agent";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
+import type { DatabaseSync } from "../persistence/sqlite/driver";
 
 export type RuntimeProviderAdapter = "anthropic" | "openai-compatible" | "openai-responses";
 export type RuntimeProviderAuthentication = "api-key" | "none";

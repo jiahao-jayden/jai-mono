@@ -4,6 +4,7 @@ import {
 	mergePermissionConfigs,
 	permissionConfigFields,
 	permissionConfigSchema,
+	permissionGrantConfigSchema,
 	permissionSettingsSchema,
 } from "../permissions";
 
@@ -35,6 +36,7 @@ export const sdkConfigDefinition = defineCodingConfig({
 	schema: Type.Object(
 		{
 			permission: Type.Optional(permissionConfigSchema),
+			permissionGrants: Type.Optional(permissionGrantConfigSchema),
 			permissions: permissionSettingsSchema,
 			telemetry: Type.Optional(Type.Unknown()),
 			mcp: Type.Optional(Type.Unknown()),
@@ -43,6 +45,7 @@ export const sdkConfigDefinition = defineCodingConfig({
 	),
 	fields: {
 		permission: { merge: "custom", project: "trusted", default: {}, mergeValues: mergePermissionConfigs },
+		permissionGrants: { merge: "replace", project: "never", default: {} },
 		permissions: permissionConfigFields,
 		telemetry: {
 			merge: "replace",

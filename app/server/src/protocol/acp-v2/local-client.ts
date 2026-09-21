@@ -1,4 +1,4 @@
-import { createConnection, type Socket } from "node:net";
+import { Socket } from "node:net";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { AcpJsonRpcNotification, AcpJsonRpcRequest, AcpJsonRpcResponse } from "./types";
 
@@ -38,9 +38,11 @@ export interface LocalAcpV2Client {
 export async function openLocalAcpV2Client(
 	endpoint: string,
 ): Promise<ResultType<LocalAcpV2Client, AcpLocalClientConnectFailed>> {
-	const socket = createConnection(endpoint);
+	const socket = new Socket();
+	const connection = connected(socket);
+	socket.connect(endpoint);
 	try {
-		await connected(socket);
+		await connection;
 		return Result.ok(new NodeLocalAcpV2Client(endpoint, socket));
 	} catch (error) {
 		socket.destroy();
@@ -246,7 +248,7 @@ function connected(socket: Socket): Promise<void> {
 			socket.off("error", onError);
 			resolve();
 		};
-		socket.once("error", onError);
+		socket.on("error", onError);
 		socket.once("connect", onConnect);
 	});
 }

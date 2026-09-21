@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { DatabaseSync } from "node:sqlite";
 import { SqliteRuntimeAgentSettings } from "../../src/config";
+import { DatabaseSync } from "../../src/persistence/sqlite/driver";
 
 describe("Runtime Agent Settings", () => {
   test("persists Provider profiles as Server facts while projecting credentials safely", () => {

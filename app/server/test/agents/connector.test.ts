@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { DatabaseSync } from "node:sqlite";
 import { createRuntimeConnectorAgentAssembly } from "../../src/agents";
 import { SqliteRuntimeAgentSettings } from "../../src/config";
+import { DatabaseSync } from "../../src/persistence/sqlite/driver";
 import type { CodingExtensionRuntime, JsonObject } from "@jai/coding-agent";
 import { Result } from "better-result";
 

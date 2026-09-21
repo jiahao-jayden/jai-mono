@@ -2,26 +2,35 @@ import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import type {
 	AgentToolResult,
+	ExecutionPolicyScope,
 	PathCapability,
 	PathCapabilityManager,
 	ResolvePathOptions,
+	ShellExecutionPolicy,
 	ToolMiddleware,
 } from "@jai/agent";
+import type { Result as ResultType } from "better-result";
 import type { JsonObject } from "../core/json";
 import type { PermissionApprovalDecision, PermissionRequestSummary, PermissionRisk } from "./approval";
 import { bashPermissionScanArgument, scanBashCommand } from "./bash-parser";
 import { mergePermissionConfigs } from "./definition";
-import { permissionAbortedError, permissionApprovalUnavailableError, permissionDeniedError } from "./errors";
-import { evaluatePermission } from "./evaluate";
+import {
+	permissionAbortedError,
+	permissionApprovalUnavailableError,
+	permissionDeniedError,
+	permissionGrantSaveFailedError,
+} from "./errors";
+import { createExtensionPermissionRequest, createPermissionRequest, evaluatePermission } from "./evaluate";
 import { bashAlwaysPattern } from "./rules";
 import type { PermissionTelemetryEvent, PermissionTelemetryObserver } from "./telemetry";
 import type { CodingExtensionToolCall, CodingToolPermission } from "./tool-permission";
 import {
 	type CanonicalToolName,
 	canonicalToolNames,
-	type PermissionAction,
 	type PermissionConfig,
 	type PermissionDecision,
+	type PermissionEffect,
+	type PermissionRequest,
 	type PermissionSettings,
 } from "./types";
 
@@ -61,16 +70,150 @@ export interface PermissionMiddlewareOptions {
 	readonly persistProjectLocalAllowRules?: (rules: readonly string[]) => void | Promise<void>;
 	readonly pathCapabilities?: PathCapabilityManager;
 	readonly sessionAllowRules?: SessionAllowRules;
+	/** Canonical workspace binding for the shared Session grant table. */
+	readonly sessionGrantWorkspaceRoot?: string;
+	/** Serializes approvals for a live Session. Without one, each call prompts immediately. */
+	readonly approvalQueue?: PermissionApprovalQueue;
+	/** Compiles and binds a fresh per-call Shell policy after application-level approval. */
+	readonly executionPolicy?: {
+		readonly scope: ExecutionPolicyScope;
+		readonly compile: () =>
+			| ResultType<ShellExecutionPolicy, unknown>
+			| Promise<ResultType<ShellExecutionPolicy, unknown>>;
+	};
 	/** Optional side-channel that observes permission facts without influencing them. */
 	readonly telemetryObserver?: PermissionTelemetryObserver;
 }
 
-export type SessionAllowRules = Record<string, PermissionAction | Record<string, PermissionAction>>;
+export type SessionAllowRules = Record<string, PermissionEffect | Record<string, PermissionEffect>>;
+
+export interface PermissionApprovalQueue {
+	enqueue<T>(run: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T>;
+	cancel(error: unknown): void;
+}
+
+/** Runs each approval immediately; a caller without a FIFO has nothing to serialize against. */
+const unqueuedApprovals: PermissionApprovalQueue = {
+	enqueue: (run, signal) =>
+		signal?.aborted
+			? Promise.reject(permissionAbortedError("permission"))
+			: run(signal ?? new AbortController().signal),
+	cancel: () => {},
+};
+
+/** A small in-memory FIFO. It owns no durable facts and is scoped to one live Operation. */
+export function createPermissionApprovalQueue(): PermissionApprovalQueue {
+	type Entry = {
+		readonly run: (signal: AbortSignal) => Promise<unknown>;
+		readonly controller: AbortController;
+		readonly signal?: AbortSignal;
+		readonly resolve: (value: unknown) => void;
+		readonly reject: (reason: unknown) => void;
+		onAbort?: () => void;
+		started: boolean;
+		settled: boolean;
+	};
+	const entries: Entry[] = [];
+	let running = false;
+	let active: Entry | undefined;
+	let cancellation: unknown;
+
+	const pump = (): void => {
+		if (running) return;
+		const entry = entries.shift();
+		if (!entry) return;
+		if (entry.settled || entry.signal?.aborted || cancellation !== undefined) {
+			if (!entry.settled) {
+				entry.settled = true;
+				entry.reject(cancellation ?? permissionAbortedError("permission"));
+			}
+			pump();
+			return;
+		}
+		running = true;
+		active = entry;
+		entry.started = true;
+		void Promise.resolve()
+			.then(() => entry.run(entry.controller.signal))
+			.then(
+				(value) => settle(entry, undefined, value),
+				(error) => settle(entry, error),
+			);
+	};
+
+	const settle = (entry: Entry, error: unknown, value?: unknown): void => {
+		if (entry.onAbort) entry.signal?.removeEventListener("abort", entry.onAbort);
+		if (!entry.settled) {
+			entry.settled = true;
+			if (error === undefined) entry.resolve(value);
+			else entry.reject(error);
+		}
+		if (active === entry) {
+			active = undefined;
+			running = false;
+			pump();
+		}
+	};
+
+	return {
+		enqueue<T>(run: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
+			return new Promise<T>((resolve, reject) => {
+				const entry: Entry = {
+					run,
+					controller: new AbortController(),
+					signal,
+					resolve: (value) => resolve(value as T),
+					reject,
+					started: false,
+					settled: false,
+				};
+				entry.onAbort = () => {
+					if (entry.settled) return;
+					entry.controller.abort();
+					settle(entry, permissionAbortedError("permission"));
+				};
+				if (signal?.aborted) {
+					entry.onAbort();
+					return;
+				}
+				signal?.addEventListener("abort", entry.onAbort, { once: true });
+				entries.push(entry);
+				pump();
+			});
+		},
+		cancel(error: unknown): void {
+			cancellation = error;
+			if (active) {
+				active.controller.abort();
+				settle(active, error);
+			}
+			for (const entry of entries.splice(0)) {
+				if (entry.onAbort) entry.signal?.removeEventListener("abort", entry.onAbort);
+				if (!entry.settled) {
+					entry.settled = true;
+					entry.reject(error);
+				}
+			}
+			if (!running) pump();
+		},
+	};
+}
 
 export function createPermissionMiddleware(options: PermissionMiddlewareOptions): ToolMiddleware {
 	const sessionAllowRules = options.sessionAllowRules ?? {};
+	const approvalQueue = options.approvalQueue ?? unqueuedApprovals;
 	return async (context, next) => {
-		if (options.extensionAuthorizedToolNames?.has(context.tool.name)) return next();
+		const workspaceRoot = currentWorkspaceRoot(options.workspaceRoot);
+		if (options.extensionAuthorizedToolNames?.has(context.tool.name)) {
+			return evaluateExtensionAuthorizationBoundary(
+				context.tool.name,
+				workspaceRoot,
+				() => currentSettings(options.settings),
+				context.toolCall.id,
+				options.telemetryObserver,
+				next,
+			);
+		}
 		const extensionPermission =
 			options.coreToolPermissions?.get(context.tool.name) ??
 			options.extensionToolPermissions?.get(context.tool.name);
@@ -79,8 +222,10 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 				context.tool.name,
 				context.args,
 				extensionPermission,
-				await currentSettings(options.settings),
+				() => currentSettings(options.settings),
+				workspaceRoot,
 				options.requestApproval,
+				approvalQueue,
 				context.toolCall.id,
 				context.signal,
 				options.telemetryObserver,
@@ -88,15 +233,20 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 			);
 		}
 		const toolName = canonicalToolName(context.tool.name);
-		const workspaceRoot = currentWorkspaceRoot(options.workspaceRoot);
+		let settled = false;
+		const settleOnce = (outcome: Parameters<typeof settlePermission>[2]): void => {
+			if (settled) return;
+			settled = true;
+			settlePermission(options.telemetryObserver, context.toolCall.id, outcome);
+		};
 		const settings = await currentSettings(options.settings);
-		const effective = withSessionRules(settings, sessionAllowRules);
+		const effective = withSessionRules(settings, sessionAllowRules, options.sessionGrantWorkspaceRoot, workspaceRoot);
 		const permissionArgs = await argsForPermission(toolName, context.args);
-		const call = { toolName, args: permissionArgs, workspaceRoot };
+		const call = createPermissionRequest(toolName, permissionArgs, workspaceRoot);
 		const initial = evaluatePermission(call, effective);
 		observePermissionDecision(options.telemetryObserver, context.toolCall.id, toolName, initial, "initial");
 		if (initial.behavior === "deny") {
-			settlePermission(options.telemetryObserver, context.toolCall.id, "denied");
+			settleOnce("denied");
 			throw permissionDeniedError(toolName, initial.reason);
 		}
 		const capability = await createPathCapability(
@@ -119,21 +269,20 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 			);
 		}
 		if (canonicalDecision.behavior === "deny") {
-			settlePermission(options.telemetryObserver, context.toolCall.id, "denied");
+			settleOnce("denied");
 			throw permissionDeniedError(toolName, canonicalDecision.reason);
 		}
 		if (initial.behavior === "allow" && canonicalDecision.behavior === "allow") {
-			settlePermission(options.telemetryObserver, context.toolCall.id, "allowed");
-			return capability && options.pathCapabilities
-				? options.pathCapabilities.withPathCapability(capability, next)
-				: next();
+			settleOnce("allowed");
+			return executeApproved(options, toolName, capability, next);
 		}
-		if (!options.requestApproval) {
-			settlePermission(options.telemetryObserver, context.toolCall.id, "denied");
+		const requestApproval = options.requestApproval;
+		if (!requestApproval) {
+			settleOnce("denied");
 			throw permissionApprovalUnavailableError(toolName);
 		}
 		if (context.signal?.aborted) {
-			settlePermission(options.telemetryObserver, context.toolCall.id, "cancelled");
+			settleOnce("cancelled");
 			throw permissionAbortedError(toolName);
 		}
 
@@ -155,107 +304,160 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 					}
 				: {}),
 		};
-		observePermission(options.telemetryObserver, {
-			type: "approval_requested",
-			approvalId: request.requestId,
-			toolCallId: context.toolCall.id,
-			toolName,
-		});
-		let approval: PermissionApprovalDecision;
-		try {
-			approval = await options.requestApproval(request, context.signal);
-			observePermission(options.telemetryObserver, {
-				type: "approval_decided",
-				approvalId: request.requestId,
-				decision: approval,
-			});
-		} catch (error) {
-			observePermission(options.telemetryObserver, {
-				type: context.signal?.aborted ? "approval_cancelled" : "approval_failed",
-				approvalId: request.requestId,
-			});
-			settlePermission(
-				options.telemetryObserver,
-				context.toolCall.id,
-				context.signal?.aborted ? "cancelled" : "failed",
+		/**
+		 * Re-evaluates against the configuration current at this instant. An approval
+		 * is only valid for the context it was granted in, so this both rejects a
+		 * changed context and reports when approval became unnecessary meanwhile.
+		 */
+		const recheckOrDeny = async (): Promise<boolean> => {
+			const root = currentWorkspaceRoot(options.workspaceRoot);
+			const current = withSessionRules(
+				await currentSettings(options.settings),
+				sessionAllowRules,
+				options.sessionGrantWorkspaceRoot,
+				root,
 			);
+			const rechecked = createPermissionRequest(toolName, permissionArgs, root);
+			const decision = evaluatePermission(rechecked, current);
+			observePermissionDecision(options.telemetryObserver, context.toolCall.id, toolName, decision, "recheck");
+			const canonical = capability
+				? evaluatePermission(canonicalCall(rechecked, capability.canonicalPath), current)
+				: decision;
+			if (capability) {
+				observePermissionDecision(
+					options.telemetryObserver,
+					context.toolCall.id,
+					toolName,
+					canonical,
+					"canonical_recheck",
+				);
+			}
+			if (root !== workspaceRoot || decision.behavior === "deny" || canonical.behavior === "deny") {
+				settleOnce("recheck_denied");
+				throw permissionDeniedError(toolName, "Permission context changed while awaiting approval");
+			}
+			return decision.behavior === "allow" && canonical.behavior === "allow";
+		};
+		const persistGrant = async (grant: NonNullable<ReturnType<typeof suggestedRules>>): Promise<void> => {
+			if (grant.scope !== "session") {
+				try {
+					await options.persistProjectLocalAllowRules?.(grant.rules);
+				} catch (error) {
+					throw permissionGrantSaveFailedError(toolName, error);
+				}
+				return;
+			}
+			rememberSessionAllows(sessionAllowRules, toolName, grant.rules);
+			if (!capability) return;
+			const canonicalSuggested = suggestedRules(
+				toolName,
+				argsWithPath(toolName, context.args, capability.canonicalPath),
+				workspaceRoot,
+				canonicalDecision,
+			);
+			if (canonicalSuggested) rememberSessionAllows(sessionAllowRules, toolName, canonicalSuggested.rules);
+		};
+
+		let approval: PermissionApprovalDecision | undefined;
+		try {
+			approval = await approvalQueue.enqueue(async (queueSignal) => {
+				if (await recheckOrDeny()) return undefined;
+				observePermission(options.telemetryObserver, {
+					type: "approval_requested",
+					approvalId: request.requestId,
+					toolCallId: context.toolCall.id,
+					toolName,
+				});
+				let decision: PermissionApprovalDecision;
+				try {
+					decision = await requestApproval(request, queueSignal);
+				} catch (error) {
+					observePermission(options.telemetryObserver, {
+						type: context.signal?.aborted ? "approval_cancelled" : "approval_failed",
+						approvalId: request.requestId,
+					});
+					throw error;
+				}
+				observePermission(options.telemetryObserver, {
+					type: "approval_decided",
+					approvalId: request.requestId,
+					decision,
+				});
+				if (decision === "deny" || (decision === "alwaysAllow" && !suggested)) return decision;
+				if (queueSignal.aborted || context.signal?.aborted) throw permissionAbortedError(toolName);
+				await recheckOrDeny();
+				if (decision === "alwaysAllow" && suggested) await persistGrant(suggested);
+				return decision;
+			}, context.signal);
+		} catch (error) {
+			settleOnce(context.signal?.aborted ? "cancelled" : "failed");
 			throw error;
 		}
 		if (context.signal?.aborted) {
-			settlePermission(options.telemetryObserver, context.toolCall.id, "cancelled");
+			settleOnce("cancelled");
 			throw permissionAbortedError(toolName);
 		}
 		if (approval === "deny") {
-			settlePermission(options.telemetryObserver, context.toolCall.id, "denied");
+			settleOnce("denied");
 			throw permissionDeniedError(toolName, "User denied the permission request");
 		}
 		if (approval === "alwaysAllow" && !suggested) {
-			settlePermission(options.telemetryObserver, context.toolCall.id, "denied");
+			settleOnce("denied");
 			throw permissionDeniedError(toolName, "Always allow is unavailable for this permission request");
 		}
-
-		const currentRoot = currentWorkspaceRoot(options.workspaceRoot);
-		const current = await currentSettings(options.settings);
-		const rechecked = evaluatePermission(
-			{ toolName, args: permissionArgs, workspaceRoot: currentRoot },
-			withSessionRules(current, sessionAllowRules),
-		);
-		observePermissionDecision(options.telemetryObserver, context.toolCall.id, toolName, rechecked, "recheck");
-		const canonicalRechecked = capability
-			? evaluatePermission(
-					canonicalCall({ toolName, args: permissionArgs, workspaceRoot: currentRoot }, capability.canonicalPath),
-					withSessionRules(current, sessionAllowRules),
-				)
-			: rechecked;
-		if (capability) {
-			observePermissionDecision(
-				options.telemetryObserver,
-				context.toolCall.id,
-				toolName,
-				canonicalRechecked,
-				"canonical_recheck",
-			);
-		}
-		if (currentRoot !== workspaceRoot || rechecked.behavior === "deny" || canonicalRechecked.behavior === "deny") {
-			settlePermission(options.telemetryObserver, context.toolCall.id, "recheck_denied");
-			throw permissionDeniedError(toolName, "Permission context changed while awaiting approval");
-		}
-
-		if (approval === "alwaysAllow" && suggested) {
-			if (suggested.scope === "session") {
-				rememberSessionAllows(sessionAllowRules, toolName, suggested.rules);
-				if (capability) {
-					const canonicalSuggested = suggestedRules(
-						toolName,
-						argsWithPath(toolName, context.args, capability.canonicalPath),
-						workspaceRoot,
-						canonicalDecision,
-					);
-					if (canonicalSuggested) {
-						rememberSessionAllows(sessionAllowRules, toolName, canonicalSuggested.rules);
-					}
-				}
-			} else if (options.persistProjectLocalAllowRules) {
-				await options.persistProjectLocalAllowRules(suggested.rules);
-			}
-		}
-		settlePermission(options.telemetryObserver, context.toolCall.id, "allowed");
-		return capability && options.pathCapabilities
-			? options.pathCapabilities.withPathCapability(capability, next)
-			: next();
+		settleOnce("allowed");
+		return executeApproved(options, toolName, capability, next);
 	};
+}
+
+async function executeApproved(
+	options: PermissionMiddlewareOptions,
+	toolName: CanonicalToolName,
+	capability: PathCapability | undefined,
+	next: () => Promise<AgentToolResult>,
+): Promise<AgentToolResult> {
+	const invoke = () =>
+		capability && options.pathCapabilities ? options.pathCapabilities.withPathCapability(capability, next) : next();
+	if (toolName !== "Bash" || !options.executionPolicy) return invoke();
+	const compiled = await options.executionPolicy.compile();
+	if (compiled.isErr()) throw compiled.error;
+	return options.executionPolicy.scope.withExecutionPolicy(compiled.value, invoke);
 }
 
 export type ExtensionToolPermissionResolver = (
 	call: CodingExtensionToolCall<JsonObject>,
 ) => CodingToolPermission | Promise<CodingToolPermission>;
 
+/**
+ * Extension-owned authorization may keep a prepare → approval → execute transaction
+ * (Connector does this for expiring, single-use tokens). It still cannot bypass an
+ * explicit stable tool deny set by the user. The owner remains responsible for its
+ * own default, grant and mode semantics, which avoids a second approval prompt.
+ */
+async function evaluateExtensionAuthorizationBoundary(
+	toolName: string,
+	workspaceRoot: string,
+	readSettings: () => Promise<PermissionSettings>,
+	toolCallId: string,
+	telemetryObserver: PermissionTelemetryObserver | undefined,
+	next: () => Promise<AgentToolResult>,
+): Promise<AgentToolResult> {
+	const decision = evaluatePermission(createExtensionPermissionRequest(toolName, workspaceRoot), await readSettings());
+	if (decision.behavior === "deny" && decision.source === "rule") {
+		settlePermission(telemetryObserver, toolCallId, "denied");
+		throw permissionDeniedError(toolName, decision.reason);
+	}
+	return next();
+}
+
 async function evaluateExtensionPermission(
 	toolName: string,
 	args: Record<string, unknown>,
 	resolvePermission: ExtensionToolPermissionResolver,
-	settings: PermissionSettings,
+	readSettings: () => Promise<PermissionSettings>,
+	workspaceRoot: string,
 	requestApproval: PermissionMiddlewareOptions["requestApproval"],
+	approvalQueue: PermissionApprovalQueue | undefined,
 	toolCallId: string,
 	signal: AbortSignal | undefined,
 	telemetryObserver: PermissionTelemetryObserver | undefined,
@@ -278,31 +480,31 @@ async function evaluateExtensionPermission(
 	) {
 		throw permissionDeniedError(toolName, "Extension supplied an invalid permission description");
 	}
-	const mode = settings.defaultMode ?? "default";
-	if (mode === "plan" && permission.sideEffect !== "read") {
-		observeExtensionDecision(telemetryObserver, toolCallId, toolName, "deny", permission.sideEffect);
-		settlePermission(telemetryObserver, toolCallId, "denied");
-		throw permissionDeniedError(toolName, "Plan mode only allows read-only work");
-	}
-	if (mode === "dontAsk") {
-		observeExtensionDecision(telemetryObserver, toolCallId, toolName, "deny", permission.sideEffect);
-		settlePermission(telemetryObserver, toolCallId, "denied");
-		throw permissionDeniedError(toolName, "Don't Ask denies Extension tools without an Allow rule");
-	}
-	const needsApproval =
-		permission.sideEffect === "destructive" ||
-		(mode !== "bypassPermissions" &&
-			(permission.sideEffect === "write" ||
-				permission.dataSensitivity === "sensitive" ||
-				permission.dataSensitivity === "secret"));
-	observeExtensionDecision(
-		telemetryObserver,
-		toolCallId,
+	const permissionRequest = createExtensionPermissionRequest(
 		toolName,
-		needsApproval ? "ask" : "allow",
-		permission.sideEffect,
+		workspaceRoot,
+		permission.sideEffect === "destructive" ? "destructive" : undefined,
 	);
-	if (!needsApproval) {
+	const evaluated = evaluatePermission(permissionRequest, await readSettings());
+	// A catalog declaration is still subject to every explicit tool.invoke rule and
+	// mode restriction. In the absence of one, a local read-only tool which does
+	// not expose sensitive data keeps the same built-in treatment as Read. Remote
+	// tools must explicitly declare their sensitivity, so they do not get this
+	// trusted-local default.
+	const initial =
+		evaluated.behavior === "ask" &&
+		evaluated.source === "built-in" &&
+		permission.sideEffect === "read" &&
+		permission.dataSensitivity !== "sensitive" &&
+		permission.dataSensitivity !== "secret"
+			? { ...evaluated, behavior: "allow" as const }
+			: evaluated;
+	observeExtensionDecision(telemetryObserver, toolCallId, toolName, initial.behavior, permission.sideEffect);
+	if (initial.behavior === "deny") {
+		settlePermission(telemetryObserver, toolCallId, "denied");
+		throw permissionDeniedError(toolName, initial.reason);
+	}
+	if (initial.behavior === "allow") {
 		settlePermission(telemetryObserver, toolCallId, "allowed");
 		return next();
 	}
@@ -315,25 +517,25 @@ async function evaluateExtensionPermission(
 		throw permissionAbortedError(toolName);
 	}
 	const requestId = randomUUID();
+	const approvalRequest: PermissionApprovalRequest = {
+		requestId,
+		toolCallId,
+		toolName,
+		args: structuredClone(args),
+		reason: permission.reason,
+		canAlwaysAllow: false,
+		summary: {
+			title: `${toolName} requests permission`,
+			description: permission.reason,
+			risk: permission.sideEffect === "destructive" ? "high" : "medium",
+		},
+	};
 	observePermission(telemetryObserver, { type: "approval_requested", approvalId: requestId, toolCallId, toolName });
 	let approval: PermissionApprovalDecision;
 	try {
-		approval = await requestApproval(
-			{
-				requestId,
-				toolCallId,
-				toolName,
-				args: structuredClone(args),
-				reason: permission.reason,
-				canAlwaysAllow: false,
-				summary: {
-					title: `${toolName} requests permission`,
-					description: permission.reason,
-					risk: permission.sideEffect === "destructive" ? "high" : "medium",
-				},
-			},
-			signal,
-		);
+		approval = await (approvalQueue
+			? approvalQueue.enqueue(() => Promise.resolve(requestApproval(approvalRequest, signal)), signal)
+			: requestApproval(approvalRequest, signal));
 		observePermission(telemetryObserver, { type: "approval_decided", approvalId: requestId, decision: approval });
 	} catch (error) {
 		observePermission(telemetryObserver, {
@@ -350,6 +552,11 @@ async function evaluateExtensionPermission(
 	if (approval !== "allowOnce") {
 		settlePermission(telemetryObserver, toolCallId, "denied");
 		throw permissionDeniedError(toolName, "User denied the permission request");
+	}
+	const rechecked = evaluatePermission(permissionRequest, await readSettings());
+	if (rechecked.behavior === "deny") {
+		settlePermission(telemetryObserver, toolCallId, "recheck_denied");
+		throw permissionDeniedError(toolName, "Permission context changed while awaiting approval");
 	}
 	settlePermission(telemetryObserver, toolCallId, "allowed");
 	return next();
@@ -369,7 +576,7 @@ function observePermissionDecision(
 		decision: decision.behavior,
 		phase,
 		risk: telemetryRisk(decision.risk, decision.source, toolName),
-		source: decision.source,
+		source: decision.source === "session-grant" || decision.source === "project-grant" ? "rule" : decision.source,
 	});
 }
 
@@ -429,11 +636,13 @@ async function argsForPermission(
 	};
 }
 
-function canonicalCall(
-	call: { toolName: CanonicalToolName; args: Readonly<Record<string, unknown>>; workspaceRoot: string },
-	canonicalPath: string,
-) {
-	return { ...call, args: argsWithPath(call.toolName, call.args, canonicalPath) };
+function canonicalCall(call: PermissionRequest, canonicalPath: string): PermissionRequest {
+	return {
+		...call,
+		targets: call.targets.map((target) =>
+			target.resource.kind === "path" ? { ...target, resource: { kind: "path", path: canonicalPath } } : target,
+		),
+	};
 }
 
 function argsWithPath(
@@ -529,12 +738,18 @@ async function currentSettings(
 	return typeof value === "function" ? value() : value;
 }
 
-function withSessionRules(settings: PermissionSettings, sessionRules: PermissionConfig): PermissionSettings {
+function withSessionRules(
+	settings: PermissionSettings,
+	sessionRules: PermissionConfig,
+	grantWorkspaceRoot: string | undefined,
+	workspaceRoot: string,
+): PermissionSettings {
+	if (grantWorkspaceRoot !== undefined && resolve(grantWorkspaceRoot) !== resolve(workspaceRoot)) return settings;
 	return Object.keys(sessionRules).length === 0
 		? settings
 		: {
 				...settings,
-				permission: mergePermissionConfigs([{ value: settings.permission ?? {} }, { value: sessionRules }]),
+				sessionGrants: mergePermissionConfigs([{ value: settings.sessionGrants ?? {} }, { value: sessionRules }]),
 			};
 }
 
@@ -543,9 +758,9 @@ function rememberSessionAllows(
 	toolName: CanonicalToolName,
 	patterns: readonly string[],
 ): void {
-	const permission = toolName === "Read" ? "read" : "edit";
+	const permission = toolName === "Read" ? "file.read" : toolName === "Bash" ? "process.exec" : "file.write";
 	const current = sessionAllow[permission];
-	const next: Record<string, PermissionAction> =
+	const next: Record<string, PermissionEffect> =
 		current === undefined ? {} : typeof current === "string" ? { "*": current } : { ...current };
 	for (const pattern of patterns) next[pattern] = "allow";
 	sessionAllow[permission] = next;
@@ -566,7 +781,7 @@ function suggestedRules(
 	if (toolName === "Bash") {
 		const command = stringArg(args, "command");
 		const patterns = decision.alwaysPatterns ?? (command ? [bashAlwaysPattern(command)].filter(Boolean) : []);
-		const rules = unique(patterns.map((pattern) => `bash:${pattern}`));
+		const rules = unique(patterns.map((pattern) => `process.exec:${pattern}`));
 		return rules.length > 0 ? { rules, scope: "project-local" } : undefined;
 	}
 	if (toolName === "Write" || toolName === "Edit") {
