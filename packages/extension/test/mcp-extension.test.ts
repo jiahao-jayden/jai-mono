@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Result } from "better-result";
 import type { JsonObject } from "@jai/coding-agent";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import {
 	activateExtensions,
 	disposeExtensions,
@@ -21,6 +22,35 @@ const context = {
 };
 
 describe("Official MCP Extension", () => {
+	test.each([
+		{ name: "missing annotations", annotations: undefined, sideEffect: "destructive" },
+		{ name: "empty annotations", annotations: {}, sideEffect: "destructive" },
+		{ name: "read-only hint", annotations: { readOnlyHint: true }, sideEffect: "read" },
+		{ name: "read-only ignores destructive hint", annotations: { readOnlyHint: true, destructiveHint: true }, sideEffect: "read" },
+		{ name: "destructive hint", annotations: { readOnlyHint: false, destructiveHint: true }, sideEffect: "destructive" },
+		{ name: "additive hint", annotations: { destructiveHint: false }, sideEffect: "write" },
+		{ name: "idempotence does not imply read-only", annotations: { idempotentHint: true, openWorldHint: false }, sideEffect: "destructive" },
+	])("maps $name without trusting it as authorization", async ({ annotations, sideEffect }) => {
+		const initialized = await initializeMcp(
+			{ type: "stdio", command: "node", args: ["-e", stdioProbe("echo", annotations)], env: {} },
+			"annotations",
+		);
+		expect(initialized.isOk()).toBe(true);
+		if (initialized.isErr()) throw initialized.error;
+		try {
+			const extension = initialized.value[0]!;
+			const tool = extension.catalogTools[0]!;
+			const permission = extension.permissions.get(tool.name);
+			expect(permission).toBeDefined();
+			expect(await permission!({ toolCallId: "annotation-call", args: { text: "hello" } })).toMatchObject({
+				sideEffect,
+				dataSensitivity: "sensitive",
+			});
+		} finally {
+			await disposeExtensions(initialized.value);
+		}
+	});
+
 	test("replaces a user server with the same trusted-project server instead of deep-merging it", () => {
 		const resolved = resolveMcpConfiguration({
 			user: {
@@ -323,11 +353,12 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 	expect(predicate()).toBe(true);
 }
 
-function stdioProbe(toolName: string): string {
+function stdioProbe(toolName: string, annotations?: ToolAnnotations): string {
 	return [
+		`const annotations=${JSON.stringify(annotations) ?? "undefined"};`,
 		"const readline=require('node:readline');",
 		"const rl=readline.createInterface({input:process.stdin});",
-		"rl.on('line',line=>{const r=JSON.parse(line);if(r.method==='notifications/initialized')return;let result;if(r.method==='initialize')result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'probe',version:'1'}};else if(r.method==='tools/list')result={tools:[{name:'" + toolName + "',description:'Echo input',annotations:{title:'Fetch value',readOnlyHint:true},inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false}}]};else if(r.method==='tools/call')result={content:[{type:'text',text:String(r.params.arguments.text)}]};else result={};if(r.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:r.id,result})+'\\n');});",
+		"rl.on('line',line=>{const r=JSON.parse(line);if(r.method==='notifications/initialized')return;let result;if(r.method==='initialize')result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'probe',version:'1'}};else if(r.method==='tools/list')result={tools:[{name:'" + toolName + "',description:'Echo input',annotations,inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false}}]};else if(r.method==='tools/call')result={content:[{type:'text',text:String(r.params.arguments.text)}]};else result={};if(r.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:r.id,result})+'\\n');});",
 	].join("");
 }
 

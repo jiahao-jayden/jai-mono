@@ -1,4 +1,3 @@
-import type { DatabaseSync } from "node:sqlite";
 import { defaultUserTelemetryPolicy, type UserTelemetryPolicy } from "@jai/coding-agent";
 import {
 	NoopTelemetryContext,
@@ -11,6 +10,7 @@ import {
 } from "@jai/telemetry";
 import type { TelemetryTextOutput } from "@jai/telemetry/node";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
+import type { DatabaseSync } from "../persistence/sqlite/driver";
 import {
 	type LangfuseTelemetryCredentialSnapshot,
 	type LangfuseTelemetryCredentials,

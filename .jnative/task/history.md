@@ -1,5 +1,12 @@
 # 历史需求
 
+## 统一工具权限与本地执行隔离
+
+结果：completed
+Tracker：https://github.com/jiahao-jayden/jai-mono/issues/100
+归档日期：2026-09-21
+本地历史：-
+
 ## Desktop Sidebar：项目文件夹、Chats 与归档工作台
 
 结果：completed

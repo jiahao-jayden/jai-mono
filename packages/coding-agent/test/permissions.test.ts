@@ -2,13 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import type { ToolCallContext } from "@jai/agent";
+import type { ShellExecutionPolicy, ToolCallContext } from "@jai/agent";
 import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { CodingConfigStore, defineCodingConfig } from "../src/config";
 import {
+	compileExecutionPolicy,
 	createPermissionMiddleware,
+	createPermissionApprovalQueue,
+	createPermissionRequest,
 	evaluatePermission,
 	isDestructiveBashCommand,
 	mergePermissionConfigs,
@@ -21,19 +24,59 @@ import {
 	permissionSettingsSchema,
 	scanBashCommand,
 	splitBashCommand,
-	type PermissionCall,
+	type PermissionRequest,
 	type SessionAllowRules,
 } from "../src/permissions";
 
 const workspaceRoot = resolve("/tmp/jai-permission-workspace");
 
 describe("permission rules", () => {
+	test("执行策略把文件规则、Plan、额外目录、控制路径和默认无网络编译为同一份 Shell 契约", () => {
+		const compiled = compileExecutionPolicy({
+			workspaceRoot,
+			version: "config-7",
+			environment: { PATH: "/usr/bin:/bin", LANG: "C" },
+			protectedPaths: [`${workspaceRoot}/.jai`, "/tmp/jai-control.sock"],
+			settings: {
+				defaultMode: "plan",
+				additionalDirectories: ["references"],
+				permission: {
+					"file.read": { ".env": "deny", "src/**": "ask", "docs/**": "allow" },
+					"file.write": { "generated/**": "deny", "/outside": "allow" },
+				},
+			},
+		});
+		expect(compiled.isOk()).toBe(true);
+		if (compiled.isErr()) return;
+		expect(compiled.value).toEqual({
+			version: "config-7",
+			workspaceRoot,
+			writableRoots: [],
+			deniedReadPaths: ["/tmp/jai-control.sock", `${workspaceRoot}/.env`, `${workspaceRoot}/.jai`, `${workspaceRoot}/src`],
+			deniedWritePaths: ["/tmp/jai-control.sock", `${workspaceRoot}/.jai`, `${workspaceRoot}/generated`],
+			environment: { PATH: "/usr/bin:/bin", LANG: "C" },
+		});
+	});
+
+	test("执行策略拒绝不能持续强制的文件 glob", () => {
+		const compiled = compileExecutionPolicy({
+			workspaceRoot,
+			version: "config-8",
+			environment: { PATH: "/usr/bin:/bin" },
+			settings: { permission: { "file.read": { "**/.env": "deny" } } },
+		});
+		expect(compiled).toMatchObject({
+			status: "error",
+			error: { _tag: "coding_execution_policy.unsupported_policy", action: "file.read", pattern: "**/.env" },
+		});
+	});
+
 	test("permission tree 用同一套路径语义匹配 Read 与 Edit/Write", () => {
 		expect(
-			evaluatePermission(call("Read", { path: "src/.env" }), { permission: { read: { "**/.env": "deny" } } }),
+			evaluatePermission(call("Read", { path: "src/.env" }), { permission: { "file.read": { "**/.env": "deny" } } }),
 		).toMatchObject({ behavior: "deny", source: "rule" });
 		expect(
-			evaluatePermission(call("Write", { path: "src/app.ts" }), { permission: { edit: { "/src/**": "allow" } } }),
+			evaluatePermission(call("Write", { path: "src/app.ts" }), { permission: { "file.write": { "/src/**": "allow" } } }),
 		).toMatchObject({ behavior: "allow", source: "rule" });
 	});
 
@@ -69,20 +112,20 @@ describe("permission rules", () => {
 });
 
 describe("permission 配置不得削弱安全边界", () => {
-	const call = (toolName: string, args: Record<string, unknown>): PermissionCall =>
-		({ toolName, workspaceRoot, args }) as PermissionCall;
+	const call = (toolName: string, args: Record<string, unknown>): PermissionRequest =>
+		createPermissionRequest(toolName, args, workspaceRoot);
 
 	test("deny 规则在 permission 配置存在时仍然生效", () => {
 		expect(
 			evaluatePermission(call("Read", { path: `${workspaceRoot}/.env` }), {
 				defaultMode: "default",
-				permission: { read: { "**/.env": "deny" } },
+				permission: { "file.read": { "**/.env": "deny" } },
 			}),
 		).toMatchObject({ behavior: "deny" });
 		expect(
 			evaluatePermission(call("Read", { path: `${workspaceRoot}/.env` }), {
 				defaultMode: "default",
-				permission: { bash: { "ls *": "allow" }, read: { "**/.env": "deny" } },
+				permission: { "process.exec": { "ls *": "allow" }, "file.read": { "**/.env": "deny" } },
 			}),
 		).toMatchObject({ behavior: "deny" });
 	});
@@ -92,7 +135,7 @@ describe("permission 配置不得削弱安全边界", () => {
 			evaluatePermission(call("Bash", { command: "npm test" }), {
 				defaultMode: "bypassPermissions",
 				disableBypassPermissionsMode: "disable",
-				permission: { bash: { "npm *": "allow" } },
+				permission: { "process.exec": { "npm *": "allow" } },
 			}),
 		).toMatchObject({ behavior: "deny", source: "mode" });
 	});
@@ -101,7 +144,7 @@ describe("permission 配置不得削弱安全边界", () => {
 		expect(
 			evaluatePermission(call("Write", { path: `${workspaceRoot}/app.ts` }), {
 				defaultMode: "plan",
-				permission: { edit: "allow" },
+				permission: { "file.write": "allow" },
 			}),
 		).toMatchObject({ behavior: "deny", source: "mode" });
 	});
@@ -136,6 +179,45 @@ describe("permission 配置不得削弱安全边界", () => {
 });
 
 describe("permission middleware", () => {
+	test("Bash 在执行前绑定当前配置编译出的 ExecutionPolicy", async () => {
+		const policies: ShellExecutionPolicy[] = [];
+		let executions = 0;
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: { permission: { "file.read": { ".env": "deny" }, "process.exec": { "printf *": "allow" } } },
+			executionPolicy: {
+				scope: {
+					async withExecutionPolicy(policy, operation) {
+						policies.push(policy);
+						return operation();
+					},
+				},
+				compile: () =>
+					compileExecutionPolicy({
+						workspaceRoot,
+						version: "current-config",
+						settings: {
+							permission: { "file.read": { ".env": "deny" }, "process.exec": { "printf *": "allow" } },
+						},
+						environment: { PATH: "/usr/bin:/bin" },
+					}),
+			},
+		});
+
+		await middleware(context("Bash", { command: "printf policy-bound" }), async () => {
+			executions++;
+			return { content: [] };
+		});
+
+		expect(executions).toBe(1);
+		expect(policies).toEqual([
+			expect.objectContaining({
+				version: "current-config",
+				deniedReadPaths: [`${workspaceRoot}/.env`],
+				}),
+		]);
+	});
+
 	test("Extension-owned authorization bypasses core permission evaluation", async () => {
 		let corePermissionLookups = 0;
 		let coreApprovals = 0;
@@ -171,6 +253,25 @@ describe("permission middleware", () => {
 		});
 	});
 
+	test("Extension-owned transaction 仍受稳定 tool.invoke deny 约束", async () => {
+		let executions = 0;
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: { permission: { "tool.invoke": { "connector__github__create_issue": "deny" } } },
+			extensionAuthorizedToolNames: new Set(["connector__github__create_issue"]),
+			requestApproval: () => "allowOnce",
+		});
+
+		await expect(
+			middleware(context("connector__github__create_issue", { title: "Issue" }), async () => {
+				executions++;
+				return { content: [] };
+			}),
+		).rejects.toMatchObject({ _tag: "coding_permission.denied" });
+
+		expect(executions).toBe(0);
+	});
+
 	test("core-owned Extension authorization remains in the core approval path", async () => {
 		let coreApprovals = 0;
 		let executions = 0;
@@ -195,6 +296,57 @@ describe("permission middleware", () => {
 		});
 
 		expect({ coreApprovals, executions }).toEqual({ coreApprovals: 1, executions: 1 });
+	});
+
+	test("动态工具以稳定 identity 进入统一规则，未知工具不因只读声明放行", async () => {
+		const toolName = "mcp__workspace__files__read_document";
+		const permissions = new Map([
+			[
+				toolName,
+				() => ({ sideEffect: "read" as const, dataSensitivity: "sensitive" as const, reason: "Remote read" }),
+			],
+		]);
+		for (const settings of [
+			{ defaultMode: "plan" as const },
+			{ defaultMode: "dontAsk" as const },
+			{ permission: { "tool.invoke": { "mcp__workspace__files__*": "deny" } } },
+		] satisfies readonly PermissionSettings[]) {
+			let approvals = 0;
+			let executions = 0;
+			const middleware = createPermissionMiddleware({
+				workspaceRoot,
+				settings,
+				extensionToolPermissions: permissions,
+				requestApproval: () => {
+					approvals++;
+					return "allowOnce";
+				},
+			});
+			await expect(
+				middleware(context(toolName, { path: "private.txt" }), async () => {
+					executions++;
+					return { content: [] };
+				}),
+			).rejects.toMatchObject({ _tag: "coding_permission.denied" });
+			expect({ approvals, executions }).toEqual({ approvals: 0, executions: 0 });
+		}
+
+		let approvals = 0;
+		let executions = 0;
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: {},
+			extensionToolPermissions: permissions,
+			requestApproval: () => {
+				approvals++;
+				return "allowOnce";
+			},
+		});
+		await middleware(context(toolName, {}), async () => {
+			executions++;
+			return { content: [] };
+		});
+		expect({ approvals, executions }).toEqual({ approvals: 1, executions: 1 });
 	});
 
 	test("Extension 激活期间重填权限表后，catalog 工具仍可解析", async () => {
@@ -282,6 +434,50 @@ describe("permission middleware", () => {
 		expect({ approvals, executions }).toEqual({ approvals: 1, executions: 2 });
 	});
 
+	test("审批队列在出队时复核并复用前序 Session 授权", async () => {
+		const approvalQueue = createPermissionApprovalQueue();
+		const sessionAllowRules = {};
+		let approvals = 0;
+		let executions = 0;
+		let releaseFirstApproval: (decision: "alwaysAllow") => void = () => {};
+		const firstApproval = new Promise<"alwaysAllow">((resolve) => {
+			releaseFirstApproval = resolve;
+		});
+		let markFirstApprovalRequested: () => void = () => {};
+		const firstApprovalRequested = new Promise<void>((resolve) => {
+			markFirstApprovalRequested = resolve;
+		});
+		const middleware = createPermissionMiddleware({
+			workspaceRoot,
+			settings: {},
+			sessionAllowRules,
+			approvalQueue,
+			requestApproval: () => {
+				approvals++;
+				if (approvals === 1) {
+					markFirstApprovalRequested();
+					return firstApproval;
+				}
+				return "allowOnce";
+			},
+		});
+
+		const first = middleware(context("Write", { path: "src/queued.ts" }), async () => {
+			executions++;
+			return { content: [] };
+		});
+		await firstApprovalRequested;
+		const second = middleware(context("Write", { path: "src/queued.ts" }), async () => {
+			executions++;
+			return { content: [] };
+		});
+		await Bun.sleep(0);
+		releaseFirstApproval("alwaysAllow");
+		await Promise.all([first, second]);
+
+		expect({ approvals, executions }).toEqual({ approvals: 1, executions: 2 });
+	});
+
 	test("权限遥测投影三种判定、重检拒绝与取消，且不含调用内容", async () => {
 		const events: PermissionTelemetryEvent[] = [];
 		let settings: PermissionSettings = {};
@@ -290,7 +486,7 @@ describe("permission middleware", () => {
 			settings: () => settings,
 		telemetryObserver: { observePermissionEvent: (event) => events.push(event) },
 		requestApproval: () => {
-				settings = { permission: { edit: { "**": "deny" } } };
+				settings = { permission: { "file.write": { "**": "deny" } } };
 				return "allowOnce";
 			},
 		});
@@ -410,14 +606,14 @@ describe("permission middleware", () => {
 			},
 		});
 		await middleware(context("Bash", { command: "npm test" }), async () => ({ content: [] }));
-		expect(persisted).toEqual([["bash:npm test *"]]);
+		expect(persisted).toEqual([["process.exec:npm test *"]]);
 	});
 
 	test("已授权命令与内置安全命令组成的 Bash compound 直接允许", async () => {
 		let approvals = 0;
 		const middleware = createPermissionMiddleware({
 			workspaceRoot,
-			settings: { permission: { bash: { "agent-browser *": "allow" } } },
+			settings: { permission: { "process.exec": { "agent-browser *": "allow" } } },
 			requestApproval() {
 				approvals++;
 				return "allowOnce";
@@ -438,7 +634,7 @@ describe("permission middleware", () => {
 		let persisted: readonly string[] | undefined;
 		const middleware = createPermissionMiddleware({
 			workspaceRoot,
-			settings: { permission: { bash: {} } },
+			settings: { permission: { "process.exec": {} } },
 			requestApproval(request) {
 				suggestedRules = request.suggestedRules;
 				return "alwaysAllow";
@@ -448,7 +644,7 @@ describe("permission middleware", () => {
 			},
 		});
 		await middleware(context("Bash", { command: "npm test && cargo check" }), async () => ({ content: [] }));
-		expect(suggestedRules).toEqual(["bash:npm test *", "bash:cargo check *"]);
+		expect(suggestedRules).toEqual(["process.exec:npm test *", "process.exec:cargo check *"]);
 		expect(persisted).toEqual(suggestedRules);
 	});
 
@@ -456,7 +652,7 @@ describe("permission middleware", () => {
 		let asked = false;
 		const middleware = createPermissionMiddleware({
 			workspaceRoot,
-			settings: { permission: { bash: { "git push *": "deny" } } },
+			settings: { permission: { "process.exec": { "git push *": "deny" } } },
 			requestApproval: () => {
 				asked = true;
 				return "allowOnce";
@@ -468,11 +664,66 @@ describe("permission middleware", () => {
 		expect(asked).toBe(false);
 	});
 
+	test("危险命令在 Deny、Plan、Don't Ask 下均不进入审批", async () => {
+		for (const settings of [
+			{ permission: { "process.exec": { "rm -rf build": "deny" as const } } },
+			{ defaultMode: "plan" as const },
+			{ defaultMode: "dontAsk" as const },
+		]) {
+			let approvals = 0;
+			let executions = 0;
+			const middleware = createPermissionMiddleware({
+				workspaceRoot,
+				settings,
+				requestApproval: () => {
+					approvals++;
+					return "allowOnce";
+				},
+			});
+			await expect(
+				middleware(context("Bash", { command: "rm -rf build" }), async () => {
+					executions++;
+					return { content: [] };
+				}),
+			).rejects.toMatchObject({ _tag: "coding_permission.denied" });
+			expect({ approvals, executions }).toEqual({ approvals: 0, executions: 0 });
+		}
+	});
+
+	test("DontAsk 不因无关规则进入审批，会话授权也不能覆盖新 Deny", async () => {
+		let approvals = 0;
+		const dontAsk = createPermissionMiddleware({
+			workspaceRoot,
+			settings: { defaultMode: "dontAsk", permission: { "file.read": { "**/.env": "deny" } } },
+			requestApproval: () => {
+				approvals++;
+				return "allowOnce";
+			},
+		});
+		await expect(dontAsk(context("Bash", { command: "npm test" }), async () => ({ content: [] }))).rejects.toMatchObject({
+			_tag: "coding_permission.denied",
+		});
+
+		const sessionDeny = createPermissionMiddleware({
+			workspaceRoot,
+			settings: { permission: { "process.exec": { "npm test": "deny" } } },
+			sessionAllowRules: { "process.exec": { "npm test": "allow" } },
+			requestApproval: () => {
+				approvals++;
+				return "allowOnce";
+			},
+		});
+		await expect(sessionDeny(context("Bash", { command: "npm test" }), async () => ({ content: [] }))).rejects.toMatchObject({
+			_tag: "coding_permission.denied",
+		});
+		expect(approvals).toBe(0);
+	});
+
 	test("危险 Bash 不提供 Always allow 且拒绝伪造响应", async () => {
 		let canAlwaysAllow: boolean | undefined;
 		const middleware = createPermissionMiddleware({
 			workspaceRoot,
-			settings: { permission: { bash: "allow" } },
+			settings: { permission: { "process.exec": "allow" } },
 			requestApproval(request) {
 				canAlwaysAllow = request.canAlwaysAllow;
 				return "alwaysAllow";
@@ -563,30 +814,30 @@ describe("permission evaluation", () => {
 		expect(
 			evaluatePermission(request, {
 				permission: {
-					bash: {
+					"process.exec": {
 						"git push origin main": "allow",
 						"git push *": "ask",
 						"git *": "deny",
 					},
 				},
 			}),
-		).toMatchObject({ behavior: "deny", source: "rule", permission: "bash" });
+		).toMatchObject({ behavior: "deny", source: "rule", permission: "process.exec" });
 	});
 
-	test("有序 permission 使用最后匹配规则并默认 Ask", () => {
+	test("permission 规则顺序与具体程度不影响 Deny 优先", () => {
 		const request = call("Bash", { command: "git status --short" });
 		expect(
 			evaluatePermission(request, {
 				permission: {
-					bash: {
+					"process.exec": {
 						"git *": "deny",
 						"git status *": "allow",
 					},
 				},
 			}),
-		).toMatchObject({ behavior: "allow", source: "rule", permission: "bash" });
-		expect(evaluatePermission(call("Bash", { command: "npm test" }), { permission: { bash: {} } }).behavior).toBe("ask");
-		expect(evaluatePermission(call("Bash", { command: "tail -1" }), { permission: { bash: {} } }).behavior).toBe(
+		).toMatchObject({ behavior: "deny", source: "rule", permission: "process.exec" });
+		expect(evaluatePermission(call("Bash", { command: "npm test" }), { permission: { "process.exec": {} } }).behavior).toBe("ask");
+		expect(evaluatePermission(call("Bash", { command: "tail -1" }), { permission: { "process.exec": {} } }).behavior).toBe(
 			"allow",
 		);
 	});
@@ -594,24 +845,24 @@ describe("permission evaluation", () => {
 	test("有序 permission 对 compound Bash 的每个子命令分别求权", () => {
 		const request = call("Bash", { command: "git status && bun test" });
 		expect(
-			evaluatePermission(request, { permission: { bash: { "git status": "allow", "*": "ask" } } }).behavior,
+			evaluatePermission(request, { permission: { "process.exec": { "git status": "allow", "*": "ask" } } }).behavior,
 		).toBe("ask");
 		expect(
 			evaluatePermission(request, {
-				permission: { bash: { "*": "ask", "git status": "allow", "bun test": "allow" } },
+				permission: { "process.exec": { "*": "ask", "git status": "allow", "bun test": "allow" } },
 			}),
-		).toMatchObject({ behavior: "allow", patterns: ["git status", "bun test"] });
+		).toMatchObject({ behavior: "ask", patterns: ["git status", "bun test"] });
 	});
 
 	test("显式 Ask 与 Deny 优先于 Bash 内置安全规则", () => {
 		const request = call("Bash", { command: "tail -1" });
-		expect(evaluatePermission(request, { permission: { bash: { "tail *": "ask" } } }).behavior).toBe("ask");
-		expect(evaluatePermission(request, { permission: { bash: { "tail *": "deny" } } }).behavior).toBe("deny");
+		expect(evaluatePermission(request, { permission: { "process.exec": { "tail *": "ask" } } }).behavior).toBe("ask");
+		expect(evaluatePermission(request, { permission: { "process.exec": { "tail *": "deny" } } }).behavior).toBe("deny");
 	});
 
 	test("不可覆盖风险层让删除命令始终 Ask", () => {
 		for (const command of ["rm -rf build", "find . -delete", "git clean -fd", "echo value > output.txt"]) {
-			expect(evaluatePermission(call("Bash", { command }), { permission: { bash: "allow" } })).toMatchObject({
+			expect(evaluatePermission(call("Bash", { command }), { permission: { "process.exec": "allow" } })).toMatchObject({
 				behavior: "ask",
 				source: "danger-layer",
 				risk: "destructive",
@@ -621,9 +872,9 @@ describe("permission evaluation", () => {
 
 	test("Allow compound Bash 要求每个子命令分别匹配", () => {
 		const request = call("Bash", { command: "git status && npm test" });
-		expect(evaluatePermission(request, { permission: { bash: { "git status": "allow" } } }).behavior).toBe("ask");
+		expect(evaluatePermission(request, { permission: { "process.exec": { "git status": "allow" } } }).behavior).toBe("ask");
 		expect(
-			evaluatePermission(request, { permission: { bash: { "git status": "allow", "npm test": "allow" } } }),
+			evaluatePermission(request, { permission: { "process.exec": { "git status": "allow", "npm test": "allow" } } }),
 		).toMatchObject({ behavior: "allow", source: "rule" });
 	});
 
@@ -656,13 +907,13 @@ describe("permission evaluation", () => {
 		expect(
 			evaluatePermission(call("Write", { path: "src/app.ts" }), {
 				defaultMode: "plan",
-				permission: { edit: { "src/app.ts": "allow" } },
+				permission: { "file.write": { "src/app.ts": "allow" } },
 			}),
 		).toMatchObject({ behavior: "deny", source: "mode" });
 		expect(
 			evaluatePermission(call("Bash", { command: "bun test" }), {
 				defaultMode: "plan",
-				permission: { bash: { "bun test": "allow" } },
+				permission: { "process.exec": { "bun test": "allow" } },
 			}),
 		).toMatchObject({ behavior: "deny", source: "mode" });
 	});
@@ -682,9 +933,25 @@ describe("permission evaluation", () => {
 		expect(
 			evaluatePermission(call("Bash", { command: "npm test" }), {
 				defaultMode: "dontAsk",
-				permission: { bash: { "npm test": "allow" } },
+				permission: { "process.exec": { "npm test": "allow" } },
 			}).behavior,
 		).toBe("allow");
+	});
+
+	test("未知 Target action、tool 与旧配置字段都明确失败", () => {
+		expect(() => createPermissionRequest("LegacyTool", {}, workspaceRoot)).toThrow("no registered permission policy");
+		expect(() =>
+		evaluatePermission({
+			workspaceRoot,
+			targets: [
+				{
+					toolName: "Bash",
+					action: "bash" as never,
+					resource: { kind: "command", command: "npm test" },
+				},
+			],
+		}),
+	).toThrow("Unknown permission action");
 	});
 });
 
@@ -693,6 +960,7 @@ describe("permission settings schema", () => {
 		expect(Value.Check(permissionSettingsSchema, { defaultMode: "default" })).toBe(true);
 		expect(Value.Check(permissionSettingsSchema, { defaultMode: "auto" })).toBe(false);
 		expect(Value.Check(permissionSettingsSchema, { managed: true })).toBe(false);
+		expect(Value.Check(permissionConfigSchema, { bash: { "npm test": "allow" } })).toBe(false);
 	});
 
 	test("normalize 补齐默认值", () => {
@@ -730,7 +998,7 @@ describe("permission settings schema", () => {
 				`${JSON.stringify({
 					$schema: definition.schemaUrl,
 					schemaVersion: 1,
-					permission: { bash: { "npm test *": "allow" }, read: { "**/.env": "deny" } },
+					permission: { "process.exec": { "npm test *": "allow" }, "file.read": { "**/.env": "deny" } },
 					permissions: { additionalDirectories: ["../shared"] },
 				})}\n`,
 			);
@@ -742,7 +1010,7 @@ describe("permission settings schema", () => {
 				},
 			});
 			expect((await store.setWorkspaceTrusted(true)).settings).toEqual({
-				permission: { bash: { "npm test *": "allow" }, read: { "**/.env": "deny" } },
+				permission: { "process.exec": { "npm test *": "allow" }, "file.read": { "**/.env": "deny" } },
 				permissions: {
 					defaultMode: "default",
 					additionalDirectories: ["../shared"],
@@ -784,8 +1052,8 @@ describe("approval request summary", () => {
 	});
 });
 
-function call(toolName: PermissionCall["toolName"], args: Record<string, unknown>): PermissionCall {
-	return { toolName, args, workspaceRoot };
+function call(toolName: string, args: Record<string, unknown>): PermissionRequest {
+	return createPermissionRequest(toolName, args, workspaceRoot);
 }
 
 function context(toolName: string, args: Record<string, unknown>, signal?: AbortSignal): ToolCallContext {

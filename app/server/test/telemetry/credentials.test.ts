@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "../../src/persistence/sqlite/driver";
 import { SqliteLangfuseTelemetryCredentials } from "../../src/telemetry";
 
 describe("Langfuse telemetry credentials", () => {

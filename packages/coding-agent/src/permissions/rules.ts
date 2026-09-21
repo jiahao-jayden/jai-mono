@@ -1,12 +1,20 @@
 import { homedir } from "node:os";
 import { isAbsolute, resolve, sep } from "node:path";
-import type { CanonicalToolName, PermissionCall, PermissionConfig, PermissionEffect } from "./types";
+import {
+	isPermissionAction,
+	type PermissionAction,
+	type PermissionConfig,
+	type PermissionEffect,
+	type PermissionTarget,
+} from "./types";
 
 export interface PermissionConfigRule {
-	readonly permission: string;
+	readonly permission: PermissionAction;
 	readonly pattern: string;
 	readonly action: PermissionEffect;
 }
+
+const assignment = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
 const bashArity: Readonly<Record<string, number>> = {
 	"agent-browser": 2,
@@ -36,38 +44,41 @@ export function flattenPermissionConfig(config: PermissionConfig | undefined): P
 	if (!config) return [];
 	const rules: PermissionConfigRule[] = [];
 	for (const [permission, value] of Object.entries(config)) {
+		if (!isPermissionAction(permission)) continue;
 		if (typeof value === "string") {
-			rules.push({ permission, pattern: "*", action: value });
+			if (value === "allow" || value === "ask" || value === "deny")
+				rules.push({ permission, pattern: "*", action: value });
 			continue;
 		}
-		for (const [pattern, action] of Object.entries(value)) rules.push({ permission, pattern, action });
+		for (const [pattern, action] of Object.entries(value)) {
+			if (action === "allow" || action === "ask" || action === "deny") rules.push({ permission, pattern, action });
+		}
 	}
 	return rules;
 }
 
-export function permissionName(toolName: CanonicalToolName): string {
-	switch (toolName) {
-		case "Read":
-			return "read";
-		case "Write":
-		case "Edit":
-			return "edit";
-		case "Bash":
-			return "bash";
-	}
-}
-
 export function matchesPermissionConfigRule(
 	rule: PermissionConfigRule,
-	call: PermissionCall,
-	command?: string,
+	target: PermissionTarget,
+	workspaceRoot: string,
 ): boolean {
-	if (!wildcardExpression(rule.permission, false).test(permissionName(call.toolName))) return false;
-	if (call.toolName === "Bash") return matchBash(rule.pattern, command ?? stringArg(call.args, "command"));
-	if (call.toolName === "Read" || call.toolName === "Write" || call.toolName === "Edit") {
-		return matchPath(rule.pattern, stringArg(call.args, "path"), call.workspaceRoot);
+	if (rule.permission !== target.action) return false;
+	if (target.resource.kind === "command") return matchBash(rule.pattern, target.resource.command);
+	if (target.resource.kind === "path") return matchPath(rule.pattern, target.resource.path, workspaceRoot);
+	return wildcardExpression(rule.pattern, false).test(target.resource.identity);
+}
+
+/**
+ * Index of the token that actually runs. `VAR=value` assignments and the `builtin`,
+ * `command` and `env` prefixes all hide the real executable from a naive first-token read.
+ */
+export function executableIndex(tokens: readonly string[]): number {
+	let index = tokens.findIndex((token) => !assignment.test(token));
+	while (["builtin", "command", "env"].includes(commandBasename(tokens[index] ?? ""))) {
+		index++;
+		while (tokens[index] === "--" || assignment.test(tokens[index] ?? "")) index++;
 	}
-	return rule.pattern === "*";
+	return index;
 }
 
 export function bashAlwaysPattern(command: string): string | undefined {
@@ -75,7 +86,7 @@ export function bashAlwaysPattern(command: string): string | undefined {
 	if (!rawTokens || rawTokens.length === 0) return undefined;
 	// Skip `VAR=value` assignments so a rule is suggested for the command itself rather than a
 	// particular environment value.
-	const tokens = rawTokens.slice(rawTokens.findIndex((token) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)));
+	const tokens = rawTokens.slice(rawTokens.findIndex((token) => !assignment.test(token)));
 	if (tokens.length === 0) return undefined;
 	let best: string | undefined;
 	let arity = 0;
@@ -98,17 +109,24 @@ export function isDestructiveBashCommand(command: string): boolean {
 		const tokens = shellWords(subcommand);
 		if (!tokens || tokens.length === 0) return true;
 		if (tokens.includes("sudo") || tokens.includes("doas")) return true;
-		const invoked = tokens.find((token) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token));
+		const runIndex = executableIndex(tokens);
+		const invoked = tokens[runIndex];
 		if (!invoked) return true;
 		// Compared by basename so an absolute path (`/bin/rm`) cannot slip past the name checks below.
 		const executable = commandBasename(invoked);
+		if (["eval", "source", "."].includes(executable)) return true;
 		if (["rm", "rmdir", "unlink", "trash"].includes(executable)) return true;
 		if (executable === "find" && tokens.some((token) => findExecutesCommands(token))) return true;
 		if (executable === "git" && tokens.includes("clean")) return true;
 		if (executable === "git" && tokens.includes("reset") && tokens.includes("--hard")) return true;
 		if (executable === "git" && tokens.includes("checkout") && tokens.includes("--")) return true;
-		if (["sh", "bash", "zsh", "node", "python", "python3", "perl", "ruby"].includes(executable)) {
-			return tokens.some((token) => token === "-c" || token.includes("$()") || token.includes("`"));
+		if (
+			["sh", "bash", "zsh", "dash", "ksh", "fish", "node", "python", "python3", "perl", "ruby"].includes(executable)
+		) {
+			const args = tokens.slice(runIndex + 1);
+			// Script files, stdin and inline code all execute code invisible to static command rules.
+			// Only an isolated informational invocation is safe without the dynamic execution risk floor.
+			return !(args.length === 1 && ["--version", "--help"].includes(args[0]!));
 		}
 		return false;
 	});
@@ -182,11 +200,6 @@ function hasDestructiveRedirection(command: string): boolean {
 
 function isShellBoundary(character: string | undefined): boolean {
 	return character === undefined || /[\s;|&)]/.test(character);
-}
-
-function stringArg(args: Readonly<Record<string, unknown>>, key: string): string {
-	const value = args[key];
-	return typeof value === "string" ? value : "";
 }
 
 function shellWords(command: string): string[] | undefined {

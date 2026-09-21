@@ -88,12 +88,15 @@ export function projectPermissionRequest(
 	sessionId: string,
 	request: PermissionApprovalRequest,
 ): CodingPermissionRequest {
+	const args: Record<string, JsonValue> = {};
+	if (request.summary.path) args.path = request.summary.path;
+	if (request.summary.command) args.command = redactCommand(request.summary.command);
 	return {
 		requestId: request.requestId,
 		sessionId,
 		toolCallId: request.toolCallId,
 		toolName: request.toolName,
-		args: projectJson(request.args) as Readonly<Record<string, JsonValue>>,
+		args,
 		reason: request.reason,
 		canAlwaysAllow: request.canAlwaysAllow,
 		summary: request.summary,
@@ -101,6 +104,16 @@ export function projectPermissionRequest(
 		...(request.suggestedRules ? { suggestedRules: request.suggestedRules } : {}),
 		...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),
 	};
+}
+
+/** Strips secret-shaped arguments before a command string crosses a process boundary. */
+export function redactCommand(command: string): string {
+	return command
+		.replace(
+			/((?:^|\s)(?:[A-Z_][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|KEY)|(?:--?)(?:token|secret|password|api[-_]?key))=?)\S+/gi,
+			"$1[redacted]",
+		)
+		.replace(/((?:--?)(?:token|secret|password|api[-_]?key)\s+)\S+/gi, "$1[redacted]");
 }
 
 export class CodingEventProjector {

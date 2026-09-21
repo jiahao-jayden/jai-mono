@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
-import type { DatabaseSync } from "node:sqlite";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
+import type { DatabaseSync } from "../persistence/sqlite/driver";
 
 /** A safe projection of the latest durable trust fact for one canonical workspace root. */
 export interface WorkspaceTrustSnapshot {

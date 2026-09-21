@@ -64,6 +64,21 @@ export interface ShellOutputChunk {
 	text: string;
 }
 
+/** Immutable per-call contract for a Shell process tree. */
+export interface ShellExecutionPolicy {
+	readonly version: string;
+	readonly workspaceRoot: string;
+	readonly writableRoots: readonly string[];
+	readonly deniedReadPaths: readonly string[];
+	readonly deniedWritePaths: readonly string[];
+	readonly environment: Readonly<Record<string, string>>;
+}
+
+/** Binds one immutable policy to the current asynchronous tool execution. */
+export interface ExecutionPolicyScope {
+	withExecutionPolicy<T>(policy: ShellExecutionPolicy, operation: () => Promise<T>): Promise<T>;
+}
+
 export interface ShellExecuteOptions extends AbortOptions {
 	cwd: string;
 	shell?: string;

@@ -589,6 +589,13 @@ function projectPermissionRequest(sessionId: string, request: RuntimeApprovalReq
 				status: "pending",
 			},
 		},
+		...(request.reason ? { reason: request.reason } : {}),
+		...(request.command ? { command: request.command } : {}),
+		...(request.path ? { path: request.path } : {}),
+		...(request.cwd ? { cwd: request.cwd } : {}),
+		...(request.suggestedRule ? { suggestedRule: request.suggestedRule } : {}),
+		...(request.suggestedRules ? { suggestedRules: request.suggestedRules } : {}),
+		...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),
 		options: [
 			{ optionId: "allow-once", name: "Allow once", kind: "allow_once" },
 			...(request.canAlwaysAllow ? [{ optionId: "allow-always", name: "Always allow", kind: "allow_always" }] : []),

@@ -4,7 +4,7 @@ import { Result } from "better-result";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "../../src/persistence/sqlite/driver";
 import {
 	RuntimeTelemetryConfigurationInvalid,
 	RuntimeTelemetryController,

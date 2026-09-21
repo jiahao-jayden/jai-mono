@@ -1,11 +1,13 @@
 import { type Static, Type } from "@sinclair/typebox";
 import type { ConfigFieldTree } from "../config";
-import type {
-	PermissionAction,
-	PermissionConfig,
-	PermissionMode,
-	PermissionSettings,
-	ResolvedPermissionSettings,
+import {
+	isPermissionAction,
+	type PermissionConfig,
+	type PermissionEffect,
+	type PermissionGrantConfig,
+	type PermissionMode,
+	type PermissionSettings,
+	type ResolvedPermissionSettings,
 } from "./types";
 
 export const permissionActionSchema = Type.Union([Type.Literal("allow"), Type.Literal("ask"), Type.Literal("deny")]);
@@ -13,7 +15,19 @@ export const permissionRuleValueSchema = Type.Union([
 	permissionActionSchema,
 	Type.Record(Type.String({ minLength: 1 }), permissionActionSchema),
 ]);
-export const permissionConfigSchema = Type.Record(Type.String({ minLength: 1 }), permissionRuleValueSchema);
+export const permissionConfigSchema = Type.Partial(
+	Type.Object(
+		{
+			"file.read": permissionRuleValueSchema,
+			"file.write": permissionRuleValueSchema,
+			"process.exec": permissionRuleValueSchema,
+			"tool.invoke": permissionRuleValueSchema,
+		},
+		{ additionalProperties: false },
+	),
+);
+
+export const permissionGrantConfigSchema = Type.Record(Type.String({ minLength: 1 }), permissionConfigSchema);
 
 const permissionModeSchema = Type.Union([
 	Type.Literal("default"),
@@ -50,12 +64,13 @@ export const permissionConfigFields = {
 } satisfies ConfigFieldTree;
 
 export function mergePermissionConfigs(candidates: readonly { readonly value: unknown }[]): PermissionConfig {
-	const merged: Record<string, PermissionAction | Record<string, PermissionAction>> = {};
+	const merged: Record<string, PermissionEffect | Record<string, PermissionEffect>> = {};
 	for (const candidate of candidates) {
 		if (!isRecord(candidate.value)) continue;
 		for (const [permission, value] of Object.entries(candidate.value)) {
+			if (!isPermissionAction(permission)) continue;
 			if (typeof value === "string") {
-				merged[permission] = value as PermissionAction;
+				if (value === "allow" || value === "ask" || value === "deny") merged[permission] = value;
 				continue;
 			}
 			if (!isRecord(value)) continue;
@@ -79,6 +94,12 @@ export function normalizePermissionSettings(settings: PermissionSettings = {}): 
 		...(settings.permission && Object.keys(settings.permission).length > 0
 			? { permission: Object.freeze(settings.permission) }
 			: {}),
+		...(settings.sessionGrants && Object.keys(settings.sessionGrants).length > 0
+			? { sessionGrants: Object.freeze(settings.sessionGrants) }
+			: {}),
+		...(settings.permissionGrants && Object.keys(settings.permissionGrants).length > 0
+			? { permissionGrants: Object.freeze(settings.permissionGrants) }
+			: {}),
 		additionalDirectories: Object.freeze(unique(settings.additionalDirectories)),
 		...(settings.disableBypassPermissionsMode === "disable"
 			? { disableBypassPermissionsMode: "disable" as const }
@@ -94,6 +115,9 @@ export function permissionSettingsFromConfig(
 	return {
 		...policy,
 		...(isRecord(settings.permission) ? { permission: settings.permission as PermissionConfig } : {}),
+		...(isRecord(settings.permissionGrants)
+			? { permissionGrants: settings.permissionGrants as PermissionGrantConfig }
+			: {}),
 		...(mode ? { defaultMode: mode } : {}),
 	};
 }

@@ -31,7 +31,13 @@ export function createSubagentExtension(): CodingAgentExtension<{}, {}, { active
 					},
 					{ additionalProperties: false },
 				),
-				authorization: { owner: "extension" },
+				authorization: {
+					owner: "core",
+					permission: {
+						sideEffect: "read",
+						reason: "Starts an isolated child that remains within the parent Agent permissions",
+					},
+				},
 				presentation: { title: (_runtime, args) => (typeof args.title === "string" ? args.title : "SpawnAgent") },
 				executionMode: "parallel",
 				async execute(runtime, call) {

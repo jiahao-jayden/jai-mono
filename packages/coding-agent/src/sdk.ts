@@ -4,6 +4,11 @@ export {
 	CodingCommandRegistrationFailed,
 } from "./commands";
 export { CodingConfigStore } from "./config/store";
+export {
+	createPermissionApprovalQueue,
+	type PermissionApprovalQueue,
+	type SessionAllowRules,
+} from "./permissions";
 export type { CapabilityNoticeSlot } from "./runtime/create-coding-agent";
 export {
 	defaultUserTelemetryPolicy,
@@ -71,7 +76,7 @@ export type {
 } from "./sdk/extensions";
 export { defineExtension } from "./sdk/extensions";
 export type { CodingProviderOptions } from "./sdk/model";
-export { codingArtifactsFromAppState } from "./sdk/project";
+export { codingArtifactsFromAppState, redactCommand } from "./sdk/project";
 export {
 	emptyPersistedCodingSessionState,
 	type PersistedCodingSessionState,

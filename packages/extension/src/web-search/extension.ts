@@ -4,6 +4,7 @@ import {
 	type CodingExtensionTool,
 	type CodingExtensionToolResult,
 	defineExtension,
+	type JsonObject,
 } from "@jai/coding-agent";
 import { type Static, Type } from "@sinclair/typebox";
 import { Result } from "better-result";
@@ -31,8 +32,8 @@ type FetchInput = Static<typeof fetchParameters>;
 
 export function createWebSearchExtension(
 	options: WebSearchExtensionOptions = {},
-): CodingAgentExtension<{}, {}, WebSearchRuntime> {
-	const searchTool: CodingExtensionTool<{}, {}, WebSearchRuntime, typeof searchParameters> = {
+): CodingAgentExtension<JsonObject, JsonObject, WebSearchRuntime> {
+	const searchTool: CodingExtensionTool<JsonObject, JsonObject, WebSearchRuntime, typeof searchParameters> = {
 		name: "web_search",
 		description: "Search the public web and return structured titles, URLs, snippets, and available page content.",
 		parameters: searchParameters,
@@ -64,7 +65,7 @@ export function createWebSearchExtension(
 			};
 		},
 	};
-	const fetchTool: CodingExtensionTool<{}, {}, WebSearchRuntime, typeof fetchParameters> = {
+	const fetchTool: CodingExtensionTool<JsonObject, JsonObject, WebSearchRuntime, typeof fetchParameters> = {
 		name: "web_fetch",
 		description:
 			"Fetch readable public web content from an HTTP(S) URL with redirect, host, MIME, timeout, and size limits.",

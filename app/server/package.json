@@ -35,6 +35,7 @@
 		"test": "bun test"
 	},
 	"dependencies": {
+		"@anthropic-ai/sandbox-runtime": "0.0.77",
 		"@ff-labs/fff-node": "0.10.5",
 		"@jai/agent": "workspace:*",
 		"@jai/ai": "workspace:*",

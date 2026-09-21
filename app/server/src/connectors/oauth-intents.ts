@@ -1,6 +1,6 @@
-import type { DatabaseSync } from "node:sqlite";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { SqliteRuntimeAgentSettings } from "../config";
+import type { DatabaseSync } from "../persistence/sqlite/driver";
 
 export type RuntimeConnectorOAuthIntentStatus = "started" | "completed" | "failed" | "interrupted";
 

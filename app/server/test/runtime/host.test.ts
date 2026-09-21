@@ -1024,6 +1024,100 @@ describe("RuntimeHost", () => {
     });
   });
 
+  test("rejects pre-aborted and foreign-operation approvals without publishing a pending request", async () => {
+    const driver = new ControlledOperationDriver();
+    const host = new RuntimeHost({
+      persistence: new InMemoryProductSessionPersistence(),
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+    const requests: string[] = [];
+    const unsubscribe = opened.value.subscribe((event) => {
+      if (event.type === "approval_requested") requests.push(event.request.requestId);
+    });
+    try {
+      const prompted = await opened.value.prompt({ text: "ask first" });
+      if (prompted.isErr()) throw prompted.error;
+      const input = await driver.opened;
+      const request = {
+        requestId: "cancelled-approval",
+        sessionId: input.sessionId,
+        operationId: input.operationId,
+        toolCallId: "tool-1",
+        toolName: "Bash",
+        title: "Bash requests permission",
+        canAlwaysAllow: false,
+      };
+      await expect(Promise.resolve(input.requestApproval(request, AbortSignal.abort())))
+        .rejects.toMatchObject({ _tag: "runtime_host.approval_cancelled" });
+      await expect(Promise.resolve(input.requestApproval({ ...request, operationId: "old-operation" })))
+        .rejects.toMatchObject({ _tag: "runtime_host.approval_cancelled" });
+      expect(requests).toEqual([]);
+      const snapshot = await opened.value.snapshot();
+      if (snapshot.isErr()) throw snapshot.error;
+      expect(snapshot.value.state).toBe("running");
+    } finally {
+      unsubscribe();
+      driver.finish("completed");
+      await driver.closed;
+    }
+  });
+
+  test("serializes approvals, rejects duplicate replies, and settles the queue at Operation completion", async () => {
+    const driver = new ControlledOperationDriver();
+    const host = new RuntimeHost({
+      persistence: new InMemoryProductSessionPersistence(),
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+    const requests: string[] = [];
+    const unsubscribe = opened.value.subscribe((event) => {
+      if (event.type === "approval_requested") requests.push(event.request.requestId);
+    });
+    try {
+      const prompted = await opened.value.prompt({ text: "queue tools" });
+      if (prompted.isErr()) throw prompted.error;
+      const input = await driver.opened;
+      const request = {
+        sessionId: input.sessionId,
+        operationId: input.operationId,
+        toolCallId: "tool-1",
+        toolName: "Bash",
+        title: "Bash requests permission",
+        canAlwaysAllow: false,
+      };
+      const queue = input.approvalQueue!;
+      const ask = (requestId: string) =>
+        queue.enqueue((signal) => Promise.resolve(input.requestApproval({ ...request, requestId }, signal)));
+      const first = ask("first");
+      const rest = Promise.allSettled([ask("second"), ask("third")]);
+      await Promise.resolve();
+      expect(requests).toEqual(["first"]);
+      expect((await opened.value.respondToApproval({ requestId: "first", decision: "allowOnce" })).isOk()).toBe(true);
+      expect(await first).toBe("allowOnce");
+      expect(requests).toEqual(["first", "second"]);
+      expect((await opened.value.respondToApproval({ requestId: "first", decision: "allowOnce" })).isErr()).toBe(true);
+      driver.finish("completed");
+      await driver.closed;
+      expect(await rest).toMatchObject([
+        { status: "rejected", reason: { _tag: "runtime_host.approval_cancelled" } },
+        { status: "rejected", reason: { _tag: "runtime_host.approval_cancelled" } },
+      ]);
+      expect(requests).toEqual(["first", "second"]);
+      expect((await opened.value.respondToApproval({ requestId: "second", decision: "allowOnce" })).isErr()).toBe(true);
+      await expect(Promise.resolve(input.requestApproval({ ...request, requestId: "late" })))
+        .rejects.toMatchObject({ _tag: "runtime_host.approval_cancelled" });
+    } finally {
+      unsubscribe();
+      driver.finish("completed");
+      await driver.closed;
+    }
+  });
+
   test("projects a pending approval as requires_action, then resumes after one approved decision", async () => {
     const driver = new ControlledOperationDriver();
     const host = new RuntimeHost({

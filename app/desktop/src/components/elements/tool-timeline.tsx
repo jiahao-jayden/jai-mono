@@ -10,6 +10,7 @@ import { WebSearchResults } from "./web-search-results";
 
 export interface TimelineStep {
 	id: string;
+	kind?: "activity" | "narration";
 	title: string;
 	summary?: string;
 	density?: "compact" | "default";
@@ -33,6 +34,8 @@ export interface ToolTimelineProps {
 	className?: string;
 }
 
+const UNANIMATED_TIMELINE_THRESHOLD = 20;
+
 export function ToolTimeline({
 	steps,
 	streaming,
@@ -47,6 +50,32 @@ export function ToolTimeline({
 		"inline-flex shrink-0 opacity-60 transition-transform duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
 		open && "rotate-90",
 	);
+	const headerClassName = "inline-flex items-center gap-1 pb-2 text-left text-[14px] text-foreground/55";
+	const stepsClassName = "flex flex-col gap-2.5 ps-4 py-2.5";
+	const timelineSteps = (
+		<div className={stepsClassName}>
+			{steps.map((step) => (
+				<ToolTimelineStep key={step.id} step={step} active={false} />
+			))}
+		</div>
+	);
+
+	if (streaming) {
+		return (
+			<div className={cn("w-full max-w-sm", className)}>
+				<div className={headerClassName}>
+					<ShimmerLabel active className="relative inline-block text-start tabular-nums leading-none">
+						{activeLabel}
+					</ShimmerLabel>
+				</div>
+				<div className={stepsClassName}>
+					{steps.map((step, index) => (
+						<ToolTimelineStep key={step.id} step={step} active={step.active ?? index === steps.length - 1} />
+					))}
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<Collapsible
@@ -56,21 +85,20 @@ export function ToolTimeline({
 			className={cn("w-full max-w-sm", className)}
 		>
 			<CollapsibleTrigger className="group/trigger inline-flex items-center gap-1 rounded-md pb-2 text-left text-[14px] text-foreground/55 outline-none transition-colors hover:text-foreground/90">
-				<ShimmerLabel active={streaming} className="relative inline-block text-start tabular-nums leading-none">
-					{streaming ? activeLabel : restingLabel}
+				<ShimmerLabel active={false} className="relative inline-block text-start tabular-nums leading-none">
+					{restingLabel}
 				</ShimmerLabel>
 				<span className={chevronClassName}>
 					<ChevronRight size={14} strokeWidth={1.5} />
 				</span>
 			</CollapsibleTrigger>
-			<CollapsibleContent keepMounted={false} className="outline-none">
-				<div className="flex flex-col gap-2.5 ps-4 py-2.5">
-					{steps.map((step, index) => {
-						const active = streaming && (step.active ?? index === steps.length - 1);
-						return <ToolTimelineStep key={step.id} step={step} active={active} />;
-					})}
-				</div>
-			</CollapsibleContent>
+			{steps.length >= UNANIMATED_TIMELINE_THRESHOLD ? (
+				open ? timelineSteps : null
+			) : (
+				<CollapsibleContent keepMounted={false} className="outline-none">
+					{timelineSteps}
+				</CollapsibleContent>
+			)}
 		</Collapsible>
 	);
 }
@@ -87,6 +115,7 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 		if (hasWebSearchResults) setOpen(true);
 	}, [hasWebSearchResults]);
 	const density = step.density ?? "compact";
+	const containmentClassName = "[content-visibility:auto] [contain-intrinsic-size:auto_24px]";
 	const rowClassName = cn(
 		"flex min-w-0 items-center text-start text-foreground/55 outline-none",
 		density === "compact" ? "gap-2 text-[13px] leading-5" : "gap-2 text-[14px] leading-5",
@@ -96,6 +125,14 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 		"ms-auto inline-flex shrink-0 opacity-60 transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
 		open && "rotate-90",
 	);
+	const detailsRows = Math.min(12, Math.max(3, step.details?.split("\n").length ?? 3));
+	if (step.kind === "narration") {
+		return (
+			<div className={cn("min-w-0 text-start text-[13px] leading-5 text-foreground/85", containmentClassName)}>
+				<span className="min-w-0 whitespace-pre-wrap">{step.title}</span>
+			</div>
+		);
+	}
 	const row = (
 		<>
 			<span className="flex size-5 shrink-0 items-center justify-center">
@@ -119,28 +156,44 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 
 	if (selectable) {
 		return (
-			<button type="button" onClick={step.onSelect} className={cn(rowClassName, "max-w-full cursor-pointer self-start")}>
+			<button
+				type="button"
+				onClick={step.onSelect}
+				className={cn(rowClassName, containmentClassName, "max-w-full cursor-pointer self-start")}
+			>
 				{row}
 			</button>
 		);
 	}
 
 	if (!expandable) {
-		return <div className={rowClassName}>{row}</div>;
+		return <div className={cn(rowClassName, containmentClassName)}>{row}</div>;
 	}
 
 	return (
-		<Collapsible open={open} onOpenChange={setOpen}>
+		<Collapsible open={open} onOpenChange={setOpen} className={containmentClassName}>
 			<CollapsibleTrigger className={rowClassName}>{row}</CollapsibleTrigger>
-			<CollapsibleContent keepMounted={false} className="mt-2 contain-[paint] outline-none">
+			<CollapsibleContent
+				keepMounted={false}
+				className="mt-2 !h-auto transition-none! data-[ending-style]:!h-auto data-[starting-style]:!h-auto contain-[paint] outline-none"
+			>
 				{step.webSearchResults ? (
 					<div className={cn(paper, "max-h-52 overflow-y-auto rounded-lg p-2")}>
 						<WebSearchResults results={step.webSearchResults} />
 					</div>
 				) : (
-					<pre className={cn(paper, "max-h-64 overflow-auto rounded-lg px-3 py-2.5 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-foreground/70")}>
-						{step.details}
-					</pre>
+					<textarea
+						aria-label={step.title}
+						className={cn(
+							paper,
+							"w-full resize-none overflow-auto rounded-lg px-3 py-2.5 font-mono text-[11.5px] leading-relaxed text-foreground/70 outline-none focus-visible:ring-1 focus-visible:ring-ring",
+						)}
+						readOnly
+						rows={detailsRows}
+						spellCheck={false}
+						value={step.details}
+						wrap="off"
+					/>
 				)}
 			</CollapsibleContent>
 		</Collapsible>

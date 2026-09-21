@@ -964,6 +964,9 @@ function projectPermission(
 	const subject = isRecord(params.subject) && isRecord(params.subject.toolCall) ? params.subject.toolCall : {};
 	const toolCallId = typeof subject.toolCallId === "string" ? subject.toolCallId : `permission-${String(request.id)}`;
 	const title = typeof params.title === "string" ? params.title : "Permission required";
+	const description = typeof params.description === "string" ? params.description : undefined;
+	const command = typeof params.command === "string" ? params.command : undefined;
+	const path = typeof params.path === "string" ? params.path : undefined;
 	const options = Array.isArray(params.options) ? params.options : [];
 	return {
 		request: {
@@ -971,9 +974,19 @@ function projectPermission(
 			sessionId: runtime.sessionId,
 			toolCallId,
 			toolName: typeof subject.title === "string" ? subject.title : "Tool",
-			reason: title,
+			reason: typeof params.reason === "string" ? params.reason : title,
 			canAlwaysAllow: options.some((option) => isRecord(option) && option.optionId === "allow-always"),
-			summary: { title, ...(typeof params.description === "string" ? { description: params.description } : {}) },
+			summary: {
+				title,
+				...(description ? { description } : {}),
+				...(command ? { command } : {}),
+				...(path ? { path } : {}),
+			},
+			...(typeof params.suggestedRule === "string" ? { suggestedRule: params.suggestedRule } : {}),
+			...(typeof params.rememberScope === "string" &&
+			(params.rememberScope === "session" || params.rememberScope === "project-local")
+				? { rememberScope: params.rememberScope }
+				: {}),
 		},
 	};
 }

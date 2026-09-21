@@ -1,6 +1,5 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { type JsonObject, type OperationRecord, replay, type SessionEntry, type StoredSession } from "@jai/agent";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { RuntimeSessionConfiguration } from "../../sessions";
@@ -17,6 +16,7 @@ import {
 	type RuntimeConfigurationAppend,
 	type SessionEntryAppend,
 } from "../../sessions";
+import { DatabaseSync } from "./driver";
 
 interface SessionRow {
 	readonly id: string;

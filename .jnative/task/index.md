@@ -14,13 +14,6 @@ Tracker：https://github.com/jiahao-jayden/jai-mono/issues/108
 更新时间：2026-09-20
 本地历史：-
 
-## 统一工具权限与本地执行隔离
-
-阶段：awaiting-confirmation
-Tracker：https://github.com/jiahao-jayden/jai-mono/issues/100
-更新时间：2026-09-19
-本地历史：-
-
 ## Session Browser
 
 阶段：review

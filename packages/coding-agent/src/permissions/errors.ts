@@ -21,6 +21,19 @@ class PermissionAborted extends TaggedError("coding_permission.aborted")<{
 	readonly toolName: string;
 }> {}
 
+class PermissionGrantSaveFailed extends TaggedError("coding_permission.grant_save_failed")<{
+	readonly message: string;
+	readonly toolName: string;
+	readonly scope: "project";
+	readonly cause?: unknown;
+}> {}
+
+class ExecutionPolicyUnsupported extends TaggedError("coding_execution_policy.unsupported_policy")<{
+	readonly action: "file.read" | "file.write";
+	readonly message: string;
+	readonly pattern: string;
+}> {}
+
 export function invalidPermissionCallError(toolName: string, message: string) {
 	return new InvalidPermissionCall({
 		message,
@@ -48,4 +61,17 @@ export function permissionAbortedError(toolName: string) {
 		message: `Permission request aborted for ${toolName}`,
 		toolName,
 	});
+}
+
+export function permissionGrantSaveFailedError(toolName: string, cause?: unknown) {
+	return new PermissionGrantSaveFailed({
+		message: `Could not save project permission grant for ${toolName}`,
+		toolName,
+		scope: "project",
+		...(cause === undefined ? {} : { cause }),
+	});
+}
+
+export function executionPolicyUnsupportedError(action: "file.read" | "file.write", pattern: string, message: string) {
+	return new ExecutionPolicyUnsupported({ action, pattern, message });
 }

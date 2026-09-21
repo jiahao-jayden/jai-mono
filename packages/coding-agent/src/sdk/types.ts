@@ -1,7 +1,7 @@
 import type { ModelRequestObserver } from "@jai/agent";
 import type { Result } from "better-result";
 import type { JsonObject, JsonValue } from "../core/json";
-import type { PermissionTelemetryObserver } from "../permissions";
+import type { PermissionApprovalQueue, PermissionTelemetryObserver, SessionAllowRules } from "../permissions";
 import type { CapabilityNoticeSlot } from "../runtime";
 import type { CodingToolName } from "../tools/names";
 import type { CodingAgentExtension, CodingExtensionRuntimeAdapter } from "./extensions";
@@ -209,6 +209,12 @@ export interface CodingAgentCreateOptions {
 	readonly requestApproval?: CodingApprovalHandler;
 	/** 可选旁路，观察权限事实而不参与判定或审批。 */
 	readonly permissionTelemetryObserver?: PermissionTelemetryObserver;
+	/** Host-owned grant table shared across Operations in one live Session. */
+	readonly sessionAllowRules?: SessionAllowRules;
+	/** Workspace identity bound to the shared Session grant table. */
+	readonly sessionGrantWorkspaceRoot?: string;
+	/** Host-owned approval FIFO shared across Operations in one live Session. */
+	readonly approvalQueue?: PermissionApprovalQueue;
 	/** 可选旁路，在实际 provider 请求打开前观察最终模型上下文。 */
 	readonly modelRequestTelemetryObserver?: ModelRequestObserver;
 	/** Enables only these built-in tools. Extension tools remain extension-owned. */

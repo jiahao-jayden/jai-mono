@@ -1,5 +1,5 @@
 import { type AgentTool, createHarnessTools } from "@jai/agent";
-import { NodeExecutionEnvironment } from "@jai/agent/node/environment";
+import type { NodeExecutionEnvironment } from "@jai/agent/node/environment";
 import type { CodingToolName } from "./names";
 import type { CodingToolOptions } from "./types";
 
@@ -7,10 +7,7 @@ export type { CodingToolOptions } from "./types";
 
 export function createCodingTools(
 	options: CodingToolOptions,
-	environment = new NodeExecutionEnvironment({
-		cwd: options.cwd,
-		shellPath: options.shell,
-	}),
+	environment: NodeExecutionEnvironment,
 	enabledTools?: ReadonlySet<CodingToolName>,
 ): AgentTool[] {
 	const tools = createHarnessTools({

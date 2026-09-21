@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { DatabaseSync } from "node:sqlite";
 import { type JsonObject, openSession, type SessionEntry } from "@jai/agent";
+import { DatabaseSync } from "../../src/persistence/sqlite/driver";
 import { JournalOnlySessionStore } from "../../src/sessions";
 import { SqliteProductSessionPersistence } from "../../src/persistence";
 

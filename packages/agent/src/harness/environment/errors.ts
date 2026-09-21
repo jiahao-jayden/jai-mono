@@ -24,6 +24,7 @@ export type ShellErrorReason =
 	| "aborted"
 	| "timeout"
 	| "shell_unavailable"
+	| "sandbox_unavailable"
 	| "spawn_failed"
 	| "output_callback_failed"
 	| "execution_failed";

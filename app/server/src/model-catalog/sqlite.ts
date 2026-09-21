@@ -1,6 +1,6 @@
-import type { DatabaseSync } from "node:sqlite";
 import { Models } from "@opencode-ai/models";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
+import type { DatabaseSync } from "../persistence/sqlite/driver";
 import {
 	normalizeRuntimeModelCatalog,
 	parseRuntimeModelCatalog,
