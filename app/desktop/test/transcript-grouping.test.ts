@@ -701,7 +701,7 @@ describe("transcript grouping", () => {
 		const activeMarkup = renderToStaticMarkup(
 			createElement(TranscriptItems, { items: [user, tool], loading: false, responding: true }),
 		);
-		expect(activeMarkup).toContain('aria-expanded="true"');
+		expect(activeMarkup).toContain("Searched");
 
 		const completedMarkup = renderToStaticMarkup(
 			createElement(TranscriptItems, { items: [user, tool, reply], loading: false }),

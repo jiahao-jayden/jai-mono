@@ -576,7 +576,6 @@ function WorkProcess({
 	readonly onOpenSubagent?: (item: DesktopSubagentItem) => void;
 }) {
 	const intl = useIntl();
-	const running = group.items.some(isWorkItemRunning);
 	const steps = workTimelineSteps(group.items, intl, { onOpenSubagent });
 	const rememberedOpen = openStateKey !== undefined && openWorkGroups?.has(openStateKey);
 	const clock = workRunClock(items, group.items, responding, Date.now());
@@ -585,16 +584,15 @@ function WorkProcess({
 	const wasActiveRef = useRef(clock.active);
 
 	useLayoutEffect(() => {
-		const wasActive = wasActiveRef.current;
 		if (clock.active) {
 			wasActiveRef.current = true;
 			setOpen(true);
-		} else if (wasActive && !responding) {
+		} else if (wasActiveRef.current) {
 			wasActiveRef.current = false;
 			setOpen(false);
 			if (openStateKey) openWorkGroups?.delete(openStateKey);
 		}
-	}, [clock.active, openStateKey, openWorkGroups, responding]);
+	}, [clock.active, openStateKey, openWorkGroups]);
 
 	useEffect(() => {
 		if (!clock.active || clock.paused) return;
@@ -608,7 +606,6 @@ function WorkProcess({
 
 	const label = workTimelineSummary(items, group.items, responding, intl);
 	const onOpenChange = (nextOpen: boolean) => {
-		if ((clock.active || responding) && !nextOpen) return;
 		setOpen(nextOpen);
 		if (openStateKey) {
 			if (nextOpen) openWorkGroups?.add(openStateKey);
@@ -625,9 +622,9 @@ function WorkProcess({
 				onOpenChange={onOpenChange}
 				restingLabel={label}
 				steps={steps}
-				streaming={running}
+				streaming={clock.active}
 			/>
-			<div className="h-px w-full bg-border" />
+			{!clock.active && <div className="h-px w-full bg-border" />}
 		</div>
 	);
 }

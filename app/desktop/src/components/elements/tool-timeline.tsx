@@ -47,6 +47,25 @@ export function ToolTimeline({
 		"inline-flex shrink-0 opacity-60 transition-transform duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
 		open && "rotate-90",
 	);
+	const headerClassName = "inline-flex items-center gap-1 pb-2 text-left text-[14px] text-foreground/55";
+	const stepsClassName = "flex flex-col gap-2.5 ps-4 py-2.5";
+
+	if (streaming) {
+		return (
+			<div className={cn("w-full max-w-sm", className)}>
+				<div className={headerClassName}>
+					<ShimmerLabel active className="relative inline-block text-start tabular-nums leading-none">
+						{activeLabel}
+					</ShimmerLabel>
+				</div>
+				<div className={stepsClassName}>
+					{steps.map((step, index) => (
+						<ToolTimelineStep key={step.id} step={step} active={step.active ?? index === steps.length - 1} />
+					))}
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<Collapsible
@@ -56,19 +75,18 @@ export function ToolTimeline({
 			className={cn("w-full max-w-sm", className)}
 		>
 			<CollapsibleTrigger className="group/trigger inline-flex items-center gap-1 rounded-md pb-2 text-left text-[14px] text-foreground/55 outline-none transition-colors hover:text-foreground/90">
-				<ShimmerLabel active={streaming} className="relative inline-block text-start tabular-nums leading-none">
-					{streaming ? activeLabel : restingLabel}
+				<ShimmerLabel active={false} className="relative inline-block text-start tabular-nums leading-none">
+					{restingLabel}
 				</ShimmerLabel>
 				<span className={chevronClassName}>
 					<ChevronRight size={14} strokeWidth={1.5} />
 				</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent keepMounted={false} className="outline-none">
-				<div className="flex flex-col gap-2.5 ps-4 py-2.5">
-					{steps.map((step, index) => {
-						const active = streaming && (step.active ?? index === steps.length - 1);
-						return <ToolTimelineStep key={step.id} step={step} active={active} />;
-					})}
+				<div className={stepsClassName}>
+					{steps.map((step) => (
+						<ToolTimelineStep key={step.id} step={step} active={false} />
+					))}
 				</div>
 			</CollapsibleContent>
 		</Collapsible>
