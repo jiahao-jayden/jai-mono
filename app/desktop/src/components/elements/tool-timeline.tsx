@@ -173,7 +173,10 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 	return (
 		<Collapsible open={open} onOpenChange={setOpen} className={containmentClassName}>
 			<CollapsibleTrigger className={rowClassName}>{row}</CollapsibleTrigger>
-			<CollapsibleContent keepMounted={false} className="mt-2 contain-[paint] outline-none">
+			<CollapsibleContent
+				keepMounted={false}
+				className="mt-2 !h-auto transition-none! data-[ending-style]:!h-auto data-[starting-style]:!h-auto contain-[paint] outline-none"
+			>
 				{step.webSearchResults ? (
 					<div className={cn(paper, "max-h-52 overflow-y-auto rounded-lg p-2")}>
 						<WebSearchResults results={step.webSearchResults} />
