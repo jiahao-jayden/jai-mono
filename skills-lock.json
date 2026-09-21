@@ -43,6 +43,12 @@
       "skillPath": "jn-plan/SKILL.md",
       "computedHash": "2eb5638ed98113bb05cb889c80642154fc00673856529d81e9a7e422a316b838"
     },
+    "lieflat-less-ai-tone": {
+      "source": "larashero3-dotcom/lieflat-less-ai-tone",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "158a0dd503d7019695a83df74806193ca2ddcc6e0cbfca00904bee003fe85fbb"
+    },
     "renhua": {
       "source": "jiahao-jayden/skills",
       "sourceType": "github",
