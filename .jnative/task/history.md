@@ -1,5 +1,12 @@
 # 历史需求
 
+## Harness Playbook 问题核验与分阶段收敛
+
+结果：completed
+Tracker：[本地 PRD](../archive/2026-09-21/harness-playbook-convergence/prd.md)
+归档日期：2026-09-21
+本地历史：-
+
 ## 统一工具权限与本地执行隔离
 
 结果：completed

@@ -165,7 +165,10 @@ export class DesktopAcpAgentHost {
 		const runtime = this.#requireSession(sessionId);
 		this.#cancelPendingPermissions(runtime);
 		const sent = this.#client.notify("session/cancel", { sessionId });
-		if (sent.isErr()) this.#emitRuntimeError(runtime, sent.error.message);
+		if (sent.isErr()) {
+			this.#emitRuntimeError(runtime, sent.error.message);
+			throw sent.error;
+		}
 	}
 
 	steer(input: DesktopAgentMessageInput): void {

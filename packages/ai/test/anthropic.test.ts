@@ -119,6 +119,24 @@ describe("AnthropicProvider · 出向翻译", () => {
 		expect(message.stopReason).toBe("toolUse");
 	});
 
+	it("rejects truncated tool input instead of emitting an empty call", async () => {
+		streamEvents = [
+			{ type: "message_start", message: { usage: { input_tokens: 1, output_tokens: 0 } } },
+			{ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "toolu_1", name: "read_file" } },
+			{ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: '{"path":' } },
+			{ type: "content_block_stop", index: 0 },
+		];
+
+		const { events, message } = await collect(ctx());
+
+		expect(events.map((event) => event.type)).toEqual(["start", "toolcall_start", "toolcall_delta", "error"]);
+		expect(message.stopReason).toBe("error");
+		expect(message.error).toMatchObject({
+			code: "ai_provider.invalid_tool_arguments",
+			type: "provider_protocol",
+		});
+	});
+
 	it("accumulates thinking with signature", async () => {
 		streamEvents = [
 			{ type: "message_start", message: { usage: { input_tokens: 3, output_tokens: 0 } } },

@@ -152,6 +152,9 @@
   "desktop.composer.sendMessage": {
     "defaultMessage": "Send message"
   },
+  "desktop.composer.steerMessage": {
+    "defaultMessage": "Steer"
+  },
   "desktop.composer.stopResponse": {
     "defaultMessage": "Stop response"
   },
@@ -468,11 +471,17 @@
   "desktop.questions.skip": {
     "defaultMessage": "Skip"
   },
+  "desktop.queue.editMessage": {
+    "defaultMessage": "Edit queued message: {label}"
+  },
   "desktop.queue.messagePosition": {
     "defaultMessage": "Queued message {position} of {total}: {label}"
   },
   "desktop.queue.removeMessage": {
     "defaultMessage": "Remove queued message: {label}"
+  },
+  "desktop.queue.steerMessage": {
+    "defaultMessage": "Steer queued message: {label}"
   },
   "desktop.session.copyId": {
     "defaultMessage": "Copy session ID"

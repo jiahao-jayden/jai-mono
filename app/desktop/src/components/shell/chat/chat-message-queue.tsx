@@ -1,5 +1,6 @@
 import { cn } from "cn";
 import { AnimatePresence, motion, Reorder, useReducedMotion } from "framer-motion";
+import { useState } from "react";
 import { useIntl } from "react-intl";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -14,9 +15,18 @@ interface ChatMessageQueueProps {
 	onEdit(messageId: string): void;
 	onRemove(messageId: string): void;
 	onReorder(messageIds: readonly string[]): void;
+	onSteer(message: QueuedMessage): Promise<boolean>;
+	readonly steerEnabled: boolean;
 }
 
-export function ChatMessageQueue({ messages, onEdit, onRemove, onReorder }: ChatMessageQueueProps) {
+export function ChatMessageQueue({
+	messages,
+	onEdit,
+	onRemove,
+	onReorder,
+	onSteer,
+	steerEnabled,
+}: ChatMessageQueueProps) {
 	const reducedMotion = useReducedMotion() ?? false;
 	const messageList = [...messages];
 
@@ -30,13 +40,14 @@ export function ChatMessageQueue({ messages, onEdit, onRemove, onReorder }: Chat
 				animate={{ height: "auto", opacity: 1 }}
 				exit={{ height: 0, opacity: 0 }}
 				transition={{ ...spring.moderate, bounce: 0 }}
-				className="overflow-hidden"
+				className="relative z-1 -mb-px overflow-hidden rounded-t-xl border border-b-0 border-border-surface bg-muted/45 p-1 pb-1.5"
+				data-im-queue
 			>
 				<Reorder.Group
 					axis="y"
 					values={messageList}
 					onReorder={(next) => onReorder(next.map((message) => message.id))}
-					className="flex flex-col gap-1 pb-1"
+					className="flex flex-col gap-0.5"
 				>
 					<AnimatePresence initial={false}>
 						{messageList.map((message, index) => (
@@ -48,6 +59,8 @@ export function ChatMessageQueue({ messages, onEdit, onRemove, onReorder }: Chat
 								reducedMotion={reducedMotion}
 								onEdit={onEdit}
 								onRemove={onRemove}
+								onSteer={onSteer}
+								steerEnabled={steerEnabled}
 							/>
 						))}
 					</AnimatePresence>
@@ -64,12 +77,32 @@ interface QueuedMessageRowProps {
 	readonly reducedMotion: boolean;
 	onEdit(messageId: string): void;
 	onRemove(messageId: string): void;
+	onSteer(message: QueuedMessage): Promise<boolean>;
+	readonly steerEnabled: boolean;
 }
 
-function QueuedMessageRow({ message, index, total, reducedMotion, onEdit, onRemove }: QueuedMessageRowProps) {
+function QueuedMessageRow({
+	message,
+	index,
+	total,
+	reducedMotion,
+	onEdit,
+	onRemove,
+	onSteer,
+	steerEnabled,
+}: QueuedMessageRowProps) {
 	const intl = useIntl();
-	const XIcon = useIcon("x");
+	const SteerIcon = useIcon("corner-down-right");
+	const EditIcon = useIcon("pencil");
+	const DeleteIcon = useIcon("trash");
+	const [steering, setSteering] = useState(false);
 	const label = message.text;
+	const steer = async () => {
+		if (!steerEnabled || steering) return;
+		setSteering(true);
+		await onSteer(message);
+		setSteering(false);
+	};
 
 	return (
 		<Reorder.Item
@@ -92,27 +125,60 @@ function QueuedMessageRow({ message, index, total, reducedMotion, onEdit, onRemo
 				}
 			}}
 			className={cn(
-				"group/qrow flex h-8 items-center gap-2 rounded-lg bg-muted px-2.5",
-				"cursor-grab text-[13px] text-foreground/85 select-none outline-none active:cursor-grabbing",
+				"group/qrow flex min-h-8 items-center gap-2 rounded-lg px-2 py-0.5",
+				"cursor-grab text-[13px] text-foreground/85 select-none outline-none hover:bg-muted active:cursor-grabbing",
 				"focus-visible:ring-1 focus-visible:ring-[color:var(--ring)]",
 			)}
 			style={{ fontVariationSettings: fontWeights.normal }}
 		>
-			<span className="min-w-0 flex-1 truncate py-1 -my-1 [text-box:trim-both_cap_alphabetic]">{label}</span>
+			<SteerIcon size={14} className="shrink-0 text-muted-foreground" />
+			<span className="-my-1 min-w-0 flex-1 truncate py-1 [text-box:trim-both_cap_alphabetic]">{label}</span>
+			<Button
+				type="button"
+				variant="secondary"
+				size="sm"
+				onPointerDown={(event) => event.stopPropagation()}
+				onClick={(event) => {
+					event.stopPropagation();
+					void steer();
+				}}
+				disabled={!steerEnabled || steering}
+				loading={steering}
+				leadingIcon={SteerIcon}
+				aria-label={intl.formatMessage(desktopMessages.queuedMessageSteer, { label })}
+				className="h-6 shrink-0 px-2"
+			>
+				{intl.formatMessage(desktopMessages.composerSteerMessage)}
+			</Button>
+			<Tooltip content={intl.formatMessage(desktopMessages.queuedMessageEdit, { label })} side="top">
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-xs"
+					onPointerDown={(event) => event.stopPropagation()}
+					onClick={(event) => {
+						event.stopPropagation();
+						onEdit(message.id);
+					}}
+					aria-label={intl.formatMessage(desktopMessages.queuedMessageEdit, { label })}
+				>
+					<EditIcon />
+				</Button>
+			</Tooltip>
 			<Tooltip content={intl.formatMessage(desktopMessages.commonRemove)} side="top">
 				<Button
 					type="button"
 					variant="ghost"
-					size="icon"
+					size="icon-xs"
 					onPointerDown={(event) => event.stopPropagation()}
 					onClick={(event) => {
 						event.stopPropagation();
 						onRemove(message.id);
 					}}
 					aria-label={intl.formatMessage(desktopMessages.queuedMessageRemove, { label })}
-					className="size-5 shrink-0 text-muted-foreground opacity-100 hover:bg-muted-hover hover:text-foreground sm:opacity-0 sm:group-hover/qrow:opacity-100 sm:focus-visible:opacity-100"
+					className="shrink-0"
 				>
-					<XIcon size={13} strokeWidth={2.5} />
+					<DeleteIcon />
 				</Button>
 			</Tooltip>
 		</Reorder.Item>

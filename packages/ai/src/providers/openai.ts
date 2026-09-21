@@ -4,7 +4,7 @@ import type {
 	ChatCompletionCreateParamsStreaming,
 	ChatCompletionMessageParam,
 } from "openai/resources/chat/completions";
-import { createAssistantMessage, runAdapterStream } from "../adapter";
+import { createAssistantMessage, parseToolArguments, runAdapterStream } from "../adapter";
 import { AssistantMessageEventStream } from "../event-stream";
 import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
 import { assertNativeToolCallProtocol } from "../tool-protocol";
@@ -441,11 +441,7 @@ function finalizeBlocks(output: AssistantMessage, state: StreamState): Assistant
 		if (block.type === "toolCall") {
 			block.id = tcState.id;
 			block.name = tcState.name;
-			try {
-				block.arguments = tcState.partialArgs ? JSON.parse(tcState.partialArgs) : {};
-			} catch {
-				block.arguments = {};
-			}
+			block.arguments = parseToolArguments("openai-compatible", block.name, tcState.partialArgs);
 			events.push({
 				type: "toolcall_end",
 				contentIndex: tcState.contentIndex,

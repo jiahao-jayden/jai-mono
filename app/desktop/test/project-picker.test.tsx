@@ -35,6 +35,7 @@ describe("ProjectPicker", () => {
 				onEditQueuedMessage={() => {}}
 				onRemoveQueuedMessage={() => {}}
 				onReorderQueuedMessages={() => {}}
+				onSteerQueuedMessage={async () => false}
 				projects={[]}
 				projectBusy={false}
 				projectLoading={false}
@@ -70,6 +71,7 @@ describe("ProjectPicker", () => {
 				onEditQueuedMessage={() => {}}
 				onRemoveQueuedMessage={() => {}}
 				onReorderQueuedMessages={() => {}}
+				onSteerQueuedMessage={async () => false}
 				project={{ ...project, available: false }}
 				projects={[{ ...project, available: false }]}
 				projectBusy={false}
@@ -90,6 +92,41 @@ describe("ProjectPicker", () => {
 		expect(markup).toContain("Choose an accessible project before sending a message.");
 		expect(markup).toContain('placeholder="Choose an accessible project before sending a message." disabled');
 		expect(markup).toContain("jai-mono (Relink)");
+	});
+
+	test("停止请求提交后显示 loading 状态并阻止重复点击", () => {
+		const markup = renderToStaticMarkup(
+			<ChatComposer
+				value=""
+				onValueChange={() => {}}
+				onSend={async () => false}
+				onStop={async () => {}}
+				status="stopping"
+				disabled={false}
+				queue={[]}
+				onEditQueuedMessage={() => {}}
+				onRemoveQueuedMessage={() => {}}
+				onReorderQueuedMessages={() => {}}
+				onSteerQueuedMessage={async () => false}
+				projects={[]}
+				projectBusy={false}
+				projectLoading={false}
+				projectLoadError={false}
+				onChooseProject={async () => {}}
+				onRetryProjects={() => {}}
+				selectedModelRef="provider/model"
+				selectedAgentMode="manual"
+				providerLoading={false}
+				providerError={false}
+				onOpenProviderSettings={() => {}}
+				onSelectProviderModel={() => {}}
+				onSelectAgentMode={() => {}}
+			/>,
+		);
+
+		expect(markup).toContain('aria-label="Stop response"');
+		expect(markup).toContain('disabled=""');
+		expect(markup).toContain("spinner-move");
 	});
 
 	test("当前 Project 作为可访问的菜单触发器显示", () => {

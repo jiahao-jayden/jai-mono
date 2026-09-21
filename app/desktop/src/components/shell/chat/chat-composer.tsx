@@ -38,6 +38,7 @@ interface ChatComposerProps {
 	onEditQueuedMessage(messageId: string): void;
 	onRemoveQueuedMessage(messageId: string): void;
 	onReorderQueuedMessages(messageIds: readonly string[]): void;
+	onSteerQueuedMessage(message: QueuedMessage): Promise<boolean>;
 	project?: DesktopProject;
 	projects: readonly DesktopProject[];
 	projectBusy: boolean;
@@ -61,6 +62,18 @@ const MAX_MESSAGE_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const ALL_FILES_ACCEPT = "*/*";
 const COMPOSER_FILE_PREVIEW_SIZE = 120;
 
+export function resolveComposerEnterDelivery(input: {
+	readonly key: string;
+	readonly shiftKey: boolean;
+	readonly metaKey: boolean;
+	readonly ctrlKey: boolean;
+	readonly isStreaming: boolean;
+}): "queue" | "steer" | undefined {
+	if (input.key !== "Enter" || input.shiftKey) return undefined;
+	if (input.isStreaming && (input.metaKey || input.ctrlKey)) return "steer";
+	return "queue";
+}
+
 export function ChatComposer({
 	value,
 	onValueChange,
@@ -72,6 +85,7 @@ export function ChatComposer({
 	onEditQueuedMessage,
 	onRemoveQueuedMessage,
 	onReorderQueuedMessages,
+	onSteerQueuedMessage,
 	project,
 	projects,
 	projectBusy,
@@ -107,8 +121,9 @@ export function ChatComposer({
 	const hasMessageContent = hasDraft || hasAttachments;
 	const isStreaming = status === "streaming";
 	const isSubmitting = status === "submitted";
+	const isStopping = status === "stopping";
 	const projectRequired = project?.available === false;
-	const stopAction = isStreaming && !hasMessageContent;
+	const stopAction = (isStreaming || isStopping) && !hasMessageContent;
 	const submitLabel = intl.formatMessage(
 		stopAction
 			? desktopMessages.composerStopResponse
@@ -116,7 +131,7 @@ export function ChatComposer({
 				? desktopMessages.composerQueueMessage
 				: desktopMessages.composerSendMessage,
 	);
-	const composerDisabled = disabled || isSubmitting || registeringAttachments;
+	const composerDisabled = disabled || isSubmitting || isStopping || registeringAttachments;
 	const submitDisabled = composerDisabled || (!stopAction && (projectRequired || !hasMessageContent));
 	const composerCommands = useMemo<readonly ComposerCommand[]>(
 		() =>
@@ -222,20 +237,23 @@ export function ChatComposer({
 			setRegisteringAttachments(false);
 		}
 	};
-	const submitMessage = async () => {
-		if (stopAction) {
-			void onStop();
-			return;
-		}
-		const accepted = await onSend({ text: value, mode: selectedAgentMode, attachments });
-		if (accepted) {
-			const ids = attachments.map((attachment) => attachment.id);
-			if (ids.length > 0) void desktop.attachment.release(ids);
-			setFiles([]);
-			setAttachments([]);
-			setAttachmentError(undefined);
-		}
-	};
+	const submitMessage = useCallback(
+		async (delivery: "queue" | "steer" = "queue") => {
+			if (stopAction) {
+				void onStop();
+				return;
+			}
+			const accepted = await onSend({ text: value, mode: selectedAgentMode, attachments, delivery });
+			if (accepted) {
+				const ids = attachments.map((attachment) => attachment.id);
+				if (ids.length > 0) void desktop.attachment.release(ids);
+				setFiles([]);
+				setAttachments([]);
+				setAttachmentError(undefined);
+			}
+		},
+		[attachments, onSend, onStop, selectedAgentMode, stopAction, value],
+	);
 	const onSubmit = () => void submitMessage();
 	const pickerDisabled = composerDisabled || isStreaming;
 	const selectCommand = useCallback(
@@ -247,6 +265,18 @@ export function ChatComposer({
 	);
 	const handleSlashCommandKeyDown = useCallback(
 		(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+			const delivery = resolveComposerEnterDelivery({
+				key: event.key,
+				shiftKey: event.shiftKey,
+				metaKey: event.metaKey,
+				ctrlKey: event.ctrlKey,
+				isStreaming,
+			});
+			if (delivery === "steer") {
+				event.preventDefault();
+				void submitMessage("steer");
+				return;
+			}
 			if (!commandSuggestionsOpen || matchingCommands.length === 0) return;
 			if (event.key === "ArrowDown" && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
 				event.preventDefault();
@@ -271,7 +301,16 @@ export function ChatComposer({
 				setDismissedSlashValue(value);
 			}
 		},
-		[commandByName, commandSuggestionsOpen, matchingCommands.length, selectedCommand, selectCommand, value],
+		[
+			commandByName,
+			commandSuggestionsOpen,
+			isStreaming,
+			matchingCommands.length,
+			selectedCommand,
+			selectCommand,
+			submitMessage,
+			value,
+		],
 	);
 
 	return (
@@ -281,6 +320,8 @@ export function ChatComposer({
 				onEdit={onEditQueuedMessage}
 				onRemove={onRemoveQueuedMessage}
 				onReorder={onReorderQueuedMessages}
+				onSteer={onSteerQueuedMessage}
+				steerEnabled={isStreaming}
 			/>
 			<div className="relative">
 				<ComposerMenu
@@ -334,6 +375,7 @@ export function ChatComposer({
 							className="rounded-full no-squircle"
 							onClick={onSubmit}
 							disabled={submitDisabled}
+							loading={isStopping}
 							aria-label={submitLabel}
 						>
 							{stopAction ? (

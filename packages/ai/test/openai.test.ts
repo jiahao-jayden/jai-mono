@@ -180,6 +180,23 @@ describe("OpenAIProvider · 出向翻译", () => {
 		expect(message.usage.output).toBe(5);
 	});
 
+	it("rejects malformed streamed tool arguments instead of emitting an empty call", async () => {
+		streamChunks = [
+			chunk({ tool_calls: [{ index: 0, id: "call_1", function: { name: "read_file", arguments: '{"path":' } }] }),
+			chunk({}, "tool_calls"),
+		];
+
+		const { events, message } = await collect(ctx());
+
+		expect(events.map((event) => event.type)).toEqual(["start", "toolcall_start", "toolcall_delta", "error"]);
+		expect(message.stopReason).toBe("error");
+		expect(message.error).toEqual({
+			message: 'openai-compatible returned malformed JSON arguments for tool "read_file".',
+			code: "ai_provider.invalid_tool_arguments",
+			type: "provider_protocol",
+		});
+	});
+
 	it("rejects a complete XML text tool call when native tools are missing", async () => {
 		streamChunks = [
 			chunk({ content: '<invoke name="read_file"><parameter name="path">/x</parameter></invoke>' }),
@@ -439,6 +456,45 @@ describe("OpenAIResponsesProvider", () => {
 		});
 		expect(message.stopReason).toBe("toolUse");
 		expect(message.usage).toMatchObject({ input: 12, output: 8, cacheRead: 3, reasoning: 5, totalTokens: 20 });
+	});
+
+	it("rejects non-object function arguments instead of emitting a tool call", async () => {
+		responseEvents = [
+			{
+				type: "response.output_item.added",
+				output_index: 0,
+				sequence_number: 1,
+				item: {
+					type: "function_call",
+					id: "fc_1",
+					call_id: "call_1",
+					name: "read_file",
+					arguments: "",
+					status: "in_progress",
+				},
+			},
+			{
+				type: "response.output_item.done",
+				output_index: 0,
+				sequence_number: 2,
+				item: {
+					type: "function_call",
+					id: "fc_1",
+					call_id: "call_1",
+					name: "read_file",
+					arguments: "[]",
+					status: "completed",
+				},
+			},
+		];
+
+		const { events, message } = await collectResponses(ctx());
+
+		expect(events.map((event) => event.type)).toEqual(["start", "toolcall_start", "error"]);
+		expect(message.error).toMatchObject({
+			code: "ai_provider.invalid_tool_arguments",
+			type: "provider_protocol",
+		});
 	});
 
 	it("builds stateless Responses input and restores encrypted reasoning items", async () => {

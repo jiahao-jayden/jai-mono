@@ -20,12 +20,13 @@ import type {
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
 
-export type ChatStatus = "ready" | "submitted" | "streaming" | "error";
+export type ChatStatus = "ready" | "submitted" | "streaming" | "stopping" | "error";
 
 export interface ChatMessageInput {
 	readonly text: string;
 	readonly mode: DesktopAgentMode;
 	readonly attachments?: readonly DesktopMessageAttachment[];
+	readonly delivery?: "queue" | "steer";
 }
 
 export interface UseChatOptions {
@@ -51,6 +52,7 @@ export interface Chat {
 	readonly connectionStatus: DesktopAgentConnectionStatus | undefined;
 	readonly stopReason: DesktopAgentStopReason | undefined;
 	sendMessage(message: ChatMessageInput): Promise<boolean>;
+	steerQueuedMessage(message: QueuedMessage): Promise<boolean>;
 	stop(): Promise<void>;
 	navigate(entryId: string): Promise<boolean>;
 	retryConnection(): Promise<void>;
@@ -66,9 +68,24 @@ export interface ChatRuntimeState {
 	readonly lastSeq: number;
 	readonly sessionId: string | null;
 	readonly submitting: boolean;
+	readonly stopping: boolean;
 	readonly messages: readonly DesktopTranscriptItem[];
 	readonly todos: DesktopTodos | undefined;
 	readonly artifacts: readonly DesktopArtifact[];
+}
+
+interface QueuedMessageSteerOperation {
+	readonly message: QueuedMessage;
+	readonly sessionId: string;
+	readonly modelRef: string;
+	steer(input: {
+		readonly sessionId: string;
+		readonly message: string;
+		readonly modelRef: string;
+		readonly mode: DesktopAgentMode;
+	}): Promise<void>;
+	onAccepted(messageId: string): void;
+	onRejected(error: unknown): void;
 }
 
 const EMPTY_STATE: ChatRuntimeState = {
@@ -80,12 +97,33 @@ const EMPTY_STATE: ChatRuntimeState = {
 	lastSeq: 0,
 	sessionId: null,
 	submitting: false,
+	stopping: false,
 	messages: [],
 	todos: undefined,
 	artifacts: [],
 };
 
 let dispatcher: ReturnType<typeof createDesktopAgentEventDispatcher> | undefined;
+
+export function shouldDispatchQueueHead(previous: DesktopAgentStatus, current: DesktopAgentStatus): boolean {
+	return previous === "running" && current === "idle";
+}
+
+export async function runQueuedMessageSteer(operation: QueuedMessageSteerOperation): Promise<boolean> {
+	try {
+		await operation.steer({
+			sessionId: operation.sessionId,
+			message: operation.message.text,
+			modelRef: operation.modelRef,
+			mode: operation.message.mode,
+		});
+		operation.onAccepted(operation.message.id);
+		return true;
+	} catch (error) {
+		operation.onRejected(error);
+		return false;
+	}
+}
 
 /**
  * Adapts the Desktop RPC snapshot/event stream into the UI-facing subset of
@@ -159,6 +197,7 @@ export function useChat(options: UseChatOptions): Chat {
 						lastSeq: 0,
 						sessionId,
 						submitting: false,
+						stopping: false,
 						messages: [],
 						todos: undefined,
 						artifacts: [],
@@ -237,13 +276,13 @@ export function useChat(options: UseChatOptions): Chat {
 	useEffect(() => {
 		const previousAgentStatus = previousAgentStatusRef.current;
 		previousAgentStatusRef.current = state.agentStatus;
-		if (previousAgentStatus === "running" && state.agentStatus === "idle") {
+		if (shouldDispatchQueueHead(previousAgentStatus, state.agentStatus)) {
 			void dispatchQueueHead();
 		}
 	}, [dispatchQueueHead, state.agentStatus]);
 
 	const sendMessage = useCallback(
-		async ({ text: rawText, mode, attachments = [] }: ChatMessageInput): Promise<boolean> => {
+		async ({ text: rawText, mode, attachments = [], delivery = "queue" }: ChatMessageInput): Promise<boolean> => {
 			const text = rawText.trim();
 			const fallbackFirstMessage =
 				text || `Attached ${attachments.length} file${attachments.length === 1 ? "" : "s"}`;
@@ -270,8 +309,13 @@ export function useChat(options: UseChatOptions): Chat {
 					setState((previous) => ({ ...previous, error: "请先选择可用模型。" }));
 					return false;
 				}
+				if (delivery === "queue") {
+					latest.onMessageQueued(text, mode);
+					latest.onMessageAccepted(current.sessionId);
+					return true;
+				}
 				try {
-					await desktop.agent.followUp({
+					await desktop.agent.steer({
 						sessionId: current.sessionId,
 						message: text,
 						modelRef: latest.modelRef,
@@ -346,13 +390,40 @@ export function useChat(options: UseChatOptions): Chat {
 		[projectRequiredMessage],
 	);
 
+	const steerQueuedMessage = useCallback(
+		async (message: QueuedMessage): Promise<boolean> => {
+			const current = stateRef.current;
+			const latest = latestOptions.current;
+			if (!current.sessionId || current.agentStatus !== "running" || !latest.modelRef) return false;
+			return runQueuedMessageSteer({
+				message,
+				sessionId: current.sessionId,
+				modelRef: latest.modelRef,
+				steer: (input) => desktop.agent.steer(input),
+				onAccepted: latest.onQueuedMessageAccepted,
+				onRejected: (error) => {
+					const failure = getDesktopRemoteRpcFailure(error);
+					setState((previous) => ({
+						...previous,
+						error:
+							failure?.tag === "desktop_agent.workspace_required"
+								? projectRequiredMessage
+								: chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
+					}));
+				},
+			});
+		},
+		[projectRequiredMessage],
+	);
+
 	const stop = useCallback(async () => {
 		const current = stateRef.current;
-		if (!current.sessionId || current.agentStatus !== "running") return;
+		if (!current.sessionId || current.agentStatus !== "running" || current.stopping) return;
+		setState((previous) => ({ ...previous, error: undefined, stopping: true }));
 		try {
 			await desktop.agent.abort(current.sessionId);
 		} catch {
-			setState((previous) => ({ ...previous, error: "未能停止当前响应。" }));
+			setState((previous) => ({ ...previous, error: "未能停止当前响应。", stopping: false }));
 		}
 	}, []);
 
@@ -403,6 +474,7 @@ export function useChat(options: UseChatOptions): Chat {
 		connectionStatus: state.connectionStatus,
 		stopReason: state.stopReason,
 		sendMessage,
+		steerQueuedMessage,
 		stop,
 		navigate,
 		retryConnection,
@@ -457,6 +529,7 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 				isLoading: false,
 				lastSeq: seq,
 				submitting: event.status === "running" ? false : state.submitting,
+				stopping: event.status === "idle" ? false : state.stopping,
 			};
 		case "connection_status":
 			return {
@@ -465,6 +538,7 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 				lastSeq: seq,
 				connectionStatus: event.status,
 				submitting: event.status === "reconnecting" ? false : state.submitting,
+				stopping: event.status === "reconnecting" ? false : state.stopping,
 			};
 		case "model_catalog_updated":
 			return { ...state, lastSeq: seq };
@@ -497,6 +571,7 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 				isLoading: false,
 				lastSeq: seq,
 				submitting: false,
+				stopping: false,
 			};
 	}
 }
@@ -599,6 +674,7 @@ function snapshotState(snapshot: DesktopAgentSnapshot): ChatRuntimeState {
 		lastSeq: snapshot.lastSeq,
 		sessionId: snapshot.sessionId,
 		submitting: false,
+		stopping: false,
 		messages: [...snapshot.items],
 		todos: snapshot.todos,
 		artifacts: [...snapshot.artifacts],
@@ -607,6 +683,7 @@ function snapshotState(snapshot: DesktopAgentSnapshot): ChatRuntimeState {
 
 function getChatStatus(state: ChatRuntimeState): ChatStatus {
 	if (state.error) return "error";
+	if (state.stopping) return "stopping";
 	if (state.agentStatus === "running") return "streaming";
 	if (state.submitting) return "submitted";
 	return "ready";

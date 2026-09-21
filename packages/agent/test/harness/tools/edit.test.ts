@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { TaggedError } from "better-result";
 import { createEditTool } from "../../../src";
+import { MAX_EDIT_FILE_BYTES } from "../../../src/harness/tools/edit";
 import { createNodeToolOptions } from "./support";
 
 const temporaryDirectories: string[] = [];
@@ -20,6 +22,80 @@ afterEach(async () => {
 });
 
 describe("edit tool", () => {
+	test("allows files below and exactly at the Edit size boundary", async () => {
+		for (const size of [MAX_EDIT_FILE_BYTES - 1, MAX_EDIT_FILE_BYTES]) {
+			const cwd = await createWorkspace();
+			await writeFile(join(cwd, "file.txt"), "before");
+			const options = createNodeToolOptions(cwd);
+			const originalStat = options.environment.stat.bind(options.environment);
+			options.environment.stat = async (path, statOptions) => ({
+				...(await originalStat(path, statOptions)),
+				size,
+			});
+			const tool = createEditTool(options.workspace);
+
+			await tool.execute(`edit-${size}`, {
+				path: "file.txt",
+				edits: [{ oldText: "before", newText: "after" }],
+			});
+
+			expect(await readFile(join(cwd, "file.txt"), "utf8")).toBe("after");
+		}
+	});
+
+	test("rejects an oversized file before reading its contents", async () => {
+		const cwd = await createWorkspace();
+		await writeFile(join(cwd, "file.txt"), "before");
+		const options = createNodeToolOptions(cwd);
+		let readCalls = 0;
+		options.environment.stat = async () => ({ kind: "file", size: MAX_EDIT_FILE_BYTES + 1, mtimeMs: 1 });
+		options.environment.readFile = async () => {
+			readCalls++;
+			return new Uint8Array();
+		};
+		const tool = createEditTool(options.workspace);
+
+		await expect(
+			tool.execute("edit-large", {
+				path: "file.txt",
+				edits: [{ oldText: "before", newText: "after" }],
+			}),
+		).rejects.toMatchObject({
+			_tag: "tool.edit.file_too_large",
+			actualBytes: MAX_EDIT_FILE_BYTES + 1,
+			maxBytes: MAX_EDIT_FILE_BYTES,
+		});
+		expect(readCalls).toBe(0);
+	});
+
+	test("preserves filesystem stat failures without reading the file", async () => {
+		class StatFailed extends TaggedError("filesystem.stat_failed")<{ readonly message: string }> {}
+		const cwd = await createWorkspace();
+		await writeFile(join(cwd, "file.txt"), "before");
+		const options = createNodeToolOptions(cwd);
+		const failure = new StatFailed({ message: "stat failed" });
+		let readCalls = 0;
+		options.environment.stat = async () => {
+			throw failure;
+		};
+		options.environment.readFile = async () => {
+			readCalls++;
+			return new Uint8Array();
+		};
+		const tool = createEditTool(options.workspace);
+
+		try {
+			await tool.execute("edit-stat", {
+				path: "file.txt",
+				edits: [{ oldText: "before", newText: "after" }],
+			});
+			expect.unreachable("Edit should preserve the stat failure");
+		} catch (error) {
+			expect(error).toBe(failure);
+		}
+		expect(readCalls).toBe(0);
+	});
+
 	test("applies multiple replacements against the original file", async () => {
 		const cwd = await createWorkspace();
 		await writeFile(join(cwd, "file.txt"), "alpha\nmiddle\nomega");

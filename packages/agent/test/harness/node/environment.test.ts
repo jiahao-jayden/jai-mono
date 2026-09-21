@@ -25,6 +25,26 @@ async function expectErrorCode(promise: Promise<unknown>, code: string): Promise
 	}
 }
 
+function processExists(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return typeof error === "object" && error !== null && "code" in error && error.code === "EPERM";
+	}
+}
+
+async function waitForFile(path: string): Promise<string> {
+	for (let attempt = 0; attempt < 100; attempt++) {
+		try {
+			return await readFile(path, "utf8");
+		} catch {
+			await Bun.sleep(10);
+		}
+	}
+	throw new Error(`Timed out waiting for ${path}`);
+}
+
 describe("NodeExecutionEnvironment", () => {
 	test("canonicalizes existing and missing paths and rejects boundary escapes", async () => {
 		const workspace = await temporaryDirectory("jai-env-");
@@ -149,6 +169,37 @@ describe("NodeExecutionEnvironment", () => {
 			"shell.output_callback_failed",
 		);
 	});
+
+	test.skipIf(process.platform === "win32")(
+		"hard-kills a TERM-ignoring descendant after the parent shell exits",
+		async () => {
+			const workspace = await temporaryDirectory("jai-shell-group-");
+			const scriptPath = join(workspace, "ignore-term.mjs");
+			const pidPath = join(workspace, "descendant.pid");
+			await writeFile(
+				scriptPath,
+				`import { writeFileSync } from "node:fs";\nprocess.on("SIGTERM", () => {});\nwriteFileSync(${JSON.stringify(pidPath)}, String(process.pid));\nsetInterval(() => {}, 1000);\n`,
+			);
+			const environment = new NodeExecutionEnvironment({ cwd: workspace });
+			const controller = new AbortController();
+			const execution = environment.execute(
+				`${JSON.stringify(process.execPath)} ${JSON.stringify(scriptPath)} </dev/null >/dev/null 2>&1 & wait`,
+				{ cwd: workspace, timeoutMs: 10_000, signal: controller.signal },
+			);
+			const descendantPid = Number.parseInt(await waitForFile(pidPath), 10);
+			expect(processExists(descendantPid)).toBe(true);
+
+			controller.abort();
+			await expectErrorCode(execution, "shell.aborted");
+			await Bun.sleep(1_200);
+
+			try {
+				expect(processExists(descendantPid)).toBe(false);
+			} finally {
+				if (processExists(descendantPid)) process.kill(descendantPid, "SIGKILL");
+			}
+		},
+	);
 
 	test("bounds shell output and reports truncation", async () => {
 		const workspace = await temporaryDirectory("jai-shell-limit-");

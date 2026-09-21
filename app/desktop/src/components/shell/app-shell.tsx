@@ -375,7 +375,7 @@ export function AppShell() {
 	const projectLoadError = projectsQuery.isError && projectsQuery.data === undefined;
 	const chatProjectError =
 		projectError || (projectsQuery.isError ? intl.formatMessage(desktopMessages.projectsLoadError) : undefined);
-	const agentStatus = chat.status === "streaming" ? "running" : "idle";
+	const agentStatus = chat.status === "streaming" || chat.status === "stopping" ? "running" : "idle";
 	const PanelRightIcon = icons["panel-right"];
 	const CheckListIcon = icons["check-list"];
 	const dockToggleLabel = intl.formatMessage(dockOpen ? desktopMessages.chatHideDock : desktopMessages.chatShowDock);

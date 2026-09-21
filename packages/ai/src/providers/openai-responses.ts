@@ -7,7 +7,7 @@ import type {
 	ResponseStreamEvent,
 	ResponseUsage,
 } from "openai/resources/responses/responses";
-import { createAssistantMessage, runAdapterStream } from "../adapter";
+import { createAssistantMessage, parseToolArguments, runAdapterStream } from "../adapter";
 import { AssistantMessageEventStream } from "../event-stream";
 import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
 import { assertNativeToolCallProtocol } from "../tool-protocol";
@@ -374,11 +374,7 @@ function finishOutputItem(
 		if (block.type !== "toolCall") return [];
 		block.id = item.call_id;
 		block.name = item.name;
-		try {
-			block.arguments = item.arguments ? JSON.parse(item.arguments) : {};
-		} catch {
-			block.arguments = {};
-		}
+		block.arguments = parseToolArguments("openai-responses", block.name, item.arguments);
 		toolCall.closed = true;
 		return [{ type: "toolcall_end", contentIndex: toolCall.contentIndex, toolCall: block, partial: output }];
 	}
@@ -419,11 +415,7 @@ function finalizeBlocks(output: AssistantMessage, state: ResponsesStreamState): 
 		if (toolCall.closed) continue;
 		const block = output.content[toolCall.contentIndex];
 		if (block.type !== "toolCall") continue;
-		try {
-			block.arguments = toolCall.partialArgs ? JSON.parse(toolCall.partialArgs) : {};
-		} catch {
-			block.arguments = {};
-		}
+		block.arguments = parseToolArguments("openai-responses", block.name, toolCall.partialArgs);
 		events.push({ type: "toolcall_end", contentIndex: toolCall.contentIndex, toolCall: block, partial: output });
 	}
 	return events;

@@ -4,12 +4,54 @@ import {
 	applyTranscriptUpsertBatch,
 	chatFailureMessage,
 	mergeTranscriptUpserts,
+	runQueuedMessageSteer,
+	shouldDispatchQueueHead,
 	type ChatRuntimeState,
 } from "../src/hooks/use-chat";
 import type { DesktopAgentProjectionUpdate } from "../src/lib/desktop-agent";
 import type { DesktopTranscriptItem } from "../shared/desktop-rpc";
 
 describe("useChat projection", () => {
+	test("只在运行状态回到空闲时触发队列自动排空", () => {
+		expect(shouldDispatchQueueHead("running", "idle")).toBe(true);
+		expect(shouldDispatchQueueHead("idle", "idle")).toBe(false);
+		expect(shouldDispatchQueueHead("running", "running")).toBe(false);
+	});
+
+	test("队列 Steer 失败时不确认移除消息", async () => {
+		const accepted: string[] = [];
+		const rejected: unknown[] = [];
+		const result = await runQueuedMessageSteer({
+			message: { id: "queued-1", text: "Keep this", mode: "manual" },
+			sessionId: "session-1",
+			modelRef: "provider/model",
+			steer: async () => {
+				throw new Error("steer failed");
+			},
+			onAccepted: (messageId) => accepted.push(messageId),
+			onRejected: (error) => rejected.push(error),
+		});
+
+		expect(result).toBe(false);
+		expect(accepted).toEqual([]);
+		expect(rejected).toHaveLength(1);
+	});
+
+	test("队列 Steer 成功后只确认当前消息", async () => {
+		const accepted: string[] = [];
+		const result = await runQueuedMessageSteer({
+			message: { id: "queued-1", text: "Use this now", mode: "manual" },
+			sessionId: "session-1",
+			modelRef: "provider/model",
+			steer: async () => {},
+			onAccepted: (messageId) => accepted.push(messageId),
+			onRejected: () => expect.unreachable("Successful Steer must not reject"),
+		});
+
+		expect(result).toBe(true);
+		expect(accepted).toEqual(["queued-1"]);
+	});
+
 	test("将可恢复的 Provider 失败映射为可操作提示", () => {
 		expect(
 			chatFailureMessage({ operation: "message", code: "desktop_provider.model_inventory_missing" }),
@@ -122,6 +164,34 @@ describe("useChat projection", () => {
 
 		expect(snapshotState).toMatchObject({ connectionStatus: "reconnecting", stopReason: "interrupted" });
 		expect(connectedState).toMatchObject({ connectionStatus: undefined, stopReason: "interrupted" });
+	});
+
+	test("停止中的瞬态状态只在 Runtime 回到 idle 后清除", () => {
+		const stoppingState = {
+			...emptyChatState(),
+			sessionId: "session-1",
+			agentStatus: "running" as const,
+			stopping: true,
+		};
+		const stillStopping = applyChatProjectionUpdate(stoppingState, {
+			type: "event",
+			envelope: {
+				sessionId: "session-1",
+				seq: 1,
+				event: { type: "status", status: "running" },
+			},
+		});
+		const stopped = applyChatProjectionUpdate(stillStopping, {
+			type: "event",
+			envelope: {
+				sessionId: "session-1",
+				seq: 2,
+				event: { type: "status", status: "idle", stopReason: "cancelled" },
+			},
+		});
+
+		expect(stillStopping.stopping).toBe(true);
+		expect(stopped).toMatchObject({ agentStatus: "idle", stopping: false, stopReason: "cancelled" });
 	});
 
 	test("流式 upsert 只替换目标消息，保留历史消息引用", () => {
@@ -329,6 +399,7 @@ function emptyChatState(): ChatRuntimeState {
 		lastSeq: 0,
 		sessionId: null,
 		submitting: false,
+		stopping: false,
 		messages: [],
 		todos: undefined,
 		artifacts: [],

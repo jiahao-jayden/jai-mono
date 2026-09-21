@@ -141,7 +141,8 @@ export function ChatColumn({
 	const logoLabel = isNewChat
 		? intl.formatMessage(greetingMessage(), { name: "Jiahao" })
 		: intl.formatMessage(desktopMessages.transcriptLoading);
-	const isAgentWorking = chat.status === "submitted" || chat.status === "streaming";
+	const isAgentWorking =
+		chat.status === "submitted" || chat.status === "streaming" || chat.status === "stopping";
 	const navigationDisabled = isAgentWorking || !selectedModelRef;
 	const ensureTranscriptItemVisible = useCallback((itemId: string, behavior: ScrollBehavior = "auto") => {
 		return transcriptListRef.current?.scrollToItem(itemId, behavior) ?? false;
@@ -459,6 +460,7 @@ export function ChatColumn({
 						onEditQueuedMessage={onEditQueuedMessage}
 						onRemoveQueuedMessage={onRemoveQueuedMessage}
 						onReorderQueuedMessages={onReorderQueuedMessages}
+						onSteerQueuedMessage={chat.steerQueuedMessage}
 						project={project}
 						projects={projects}
 						projectBusy={projectBusy}

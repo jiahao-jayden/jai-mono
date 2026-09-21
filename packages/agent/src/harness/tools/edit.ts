@@ -13,6 +13,7 @@ const editParameters = Type.Object(
 	{ additionalProperties: false },
 );
 type EditErrorInit = { readonly message: string };
+export const MAX_EDIT_FILE_BYTES = 10 * 1024 * 1024;
 class EmptyOldText extends TaggedError("tool.edit.empty_old_text")<EditErrorInit> {}
 class NoChange extends TaggedError("tool.edit.no_change")<EditErrorInit> {}
 class TextNotFound extends TaggedError("tool.edit.text_not_found")<EditErrorInit> {}
@@ -21,6 +22,9 @@ class OverlappingEdits extends TaggedError("tool.edit.overlapping_edits")<EditEr
 class EditAborted extends TaggedError("tool.edit.aborted")<EditErrorInit> {}
 class InvalidUtf8 extends TaggedError("tool.edit.invalid_utf8")<EditErrorInit> {}
 class FileChanged extends TaggedError("tool.edit.file_changed")<EditErrorInit> {}
+class FileTooLarge extends TaggedError("tool.edit.file_too_large")<
+	EditErrorInit & { readonly actualBytes: number; readonly maxBytes: number }
+> {}
 
 function editError(
 	reason:
@@ -31,8 +35,9 @@ function editError(
 		| "overlapping_edits"
 		| "aborted"
 		| "invalid_utf8"
-		| "file_changed",
-	init: EditErrorInit,
+		| "file_changed"
+		| "file_too_large",
+	init: EditErrorInit & { readonly actualBytes?: number; readonly maxBytes?: number },
 ) {
 	switch (reason) {
 		case "empty_old_text":
@@ -51,6 +56,12 @@ function editError(
 			return new InvalidUtf8(init);
 		case "file_changed":
 			return new FileChanged(init);
+		case "file_too_large":
+			return new FileTooLarge({
+				message: init.message,
+				actualBytes: init.actualBytes!,
+				maxBytes: init.maxBytes!,
+			});
 	}
 }
 
@@ -141,6 +152,20 @@ function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
 	return true;
 }
 
+async function assertEditableFileSize(
+	options: WorkspaceToolOptions,
+	path: string,
+	signal?: AbortSignal,
+): Promise<void> {
+	const file = await options.fileSystem.stat(path, { signal });
+	if (file.size <= MAX_EDIT_FILE_BYTES) return;
+	throw editError("file_too_large", {
+		message: `File is too large for Edit: ${file.size} bytes exceeds the ${MAX_EDIT_FILE_BYTES} byte limit. Split the file or use a chunked editing workflow.`,
+		actualBytes: file.size,
+		maxBytes: MAX_EDIT_FILE_BYTES,
+	});
+}
+
 export function createEditTool(options: WorkspaceToolOptions): AgentTool<typeof editParameters, EditToolDetails> {
 	return {
 		name: "Edit",
@@ -158,6 +183,7 @@ export function createEditTool(options: WorkspaceToolOptions): AgentTool<typeof 
 			});
 			return withFileMutationQueue(options.fileSystem, resolved.canonicalPath, async () => {
 				if (signal?.aborted) throw editError("aborted", { message: "Operation aborted" });
+				await assertEditableFileSize(options, resolved.path, signal);
 				const originalBytes = await options.fileSystem.readFile(resolved.path, { signal });
 				const hasBom =
 					originalBytes.length >= 3 &&
@@ -176,6 +202,7 @@ export function createEditTool(options: WorkspaceToolOptions): AgentTool<typeof 
 				const located = locateEdits(normalized.text, args.edits);
 				const firstChangedLine = normalized.text.slice(0, located[0]!.start).split("\n").length;
 				const updated = applyLocatedEdits(rawContent, normalized, located);
+				await assertEditableFileSize(options, resolved.path, signal);
 				const currentBytes = await options.fileSystem.readFile(resolved.path, { signal });
 				if (!equalBytes(currentBytes, originalBytes)) {
 					throw editError("file_changed", { message: `File changed while editing: ${args.path}` });

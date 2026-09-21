@@ -10,7 +10,7 @@ import type {
 	RawMessageStartEvent,
 	RawMessageStreamEvent,
 } from "@anthropic-ai/sdk/resources/messages.js";
-import { createAssistantMessage, runAdapterStream } from "../adapter";
+import { createAssistantMessage, parseToolArguments, runAdapterStream } from "../adapter";
 import { AssistantMessageEventStream } from "../event-stream";
 import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
 import { assertNativeToolCallProtocol } from "../tool-protocol";
@@ -471,11 +471,7 @@ function applyBlockStop(
 		];
 	}
 	if (block.type === "toolCall") {
-		try {
-			block.arguments = state.partialJson ? JSON.parse(state.partialJson) : {};
-		} catch {
-			block.arguments = {};
-		}
+		block.arguments = parseToolArguments("anthropic", block.name, state.partialJson ?? "");
 		return [
 			{
 				type: "toolcall_end",

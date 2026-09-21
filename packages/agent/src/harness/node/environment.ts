@@ -43,6 +43,15 @@ interface ProcessSpec {
 	readonly spawnFailure: (error: unknown) => never;
 }
 
+function processGroupExists(processGroupId: number): boolean {
+	try {
+		process.kill(-processGroupId, 0);
+		return true;
+	} catch (error) {
+		return !(typeof error === "object" && error !== null && "code" in error && error.code === "ESRCH");
+	}
+}
+
 interface IssuedPathCapability extends PathCapability {
 	readonly boundary: string;
 }
@@ -424,18 +433,20 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 		let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
 		const stop = () => {
 			if (!child.pid) return;
+			const processGroupId = child.pid;
 			try {
-				if (process.platform !== "win32") process.kill(-child.pid, "SIGTERM");
+				if (process.platform !== "win32") process.kill(-processGroupId, "SIGTERM");
 				else child.kill();
 			} catch {
 				child.kill();
 			}
 			forceKillTimer ??= setTimeout(() => {
 				try {
-					if (child.pid && process.platform !== "win32") process.kill(-child.pid, "SIGKILL");
+					if (process.platform !== "win32") process.kill(-processGroupId, "SIGKILL");
 					else child.kill("SIGKILL");
 				} catch {}
 			}, 1_000);
+			forceKillTimer.unref();
 		};
 		const stdoutDecoder = new StringDecoder("utf8");
 		const stderrDecoder = new StringDecoder("utf8");
@@ -532,7 +543,9 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 		} finally {
 			settled = true;
 			clearTimeout(timeout);
-			if (forceKillTimer) clearTimeout(forceKillTimer);
+			if (forceKillTimer && (process.platform === "win32" || !child.pid || !processGroupExists(child.pid))) {
+				clearTimeout(forceKillTimer);
+			}
 			options.signal?.removeEventListener("abort", abort);
 			child.stdout?.off("data", onStdout);
 			child.stderr?.off("data", onStderr);

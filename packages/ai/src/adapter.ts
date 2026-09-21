@@ -23,6 +23,36 @@ class RequestAborted extends TaggedError("request.aborted")<{
 	readonly message: string;
 }> {}
 
+export class InvalidToolArguments extends TaggedError("ai_provider.invalid_tool_arguments")<{
+	readonly adapter: string;
+	readonly toolName: string;
+	readonly message: string;
+	readonly cause?: unknown;
+}> {}
+
+export function parseToolArguments(adapter: string, toolName: string, raw: string): Record<string, unknown> {
+	if (!raw) return {};
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (cause) {
+		throw new InvalidToolArguments({
+			adapter,
+			toolName,
+			message: `${adapter} returned malformed JSON arguments for tool "${toolName}".`,
+			cause,
+		});
+	}
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		throw new InvalidToolArguments({
+			adapter,
+			toolName,
+			message: `${adapter} returned non-object JSON arguments for tool "${toolName}".`,
+		});
+	}
+	return parsed as Record<string, unknown>;
+}
+
 export function createAssistantMessage(provider: string, model: string): AssistantMessage {
 	return {
 		role: "assistant",
@@ -83,6 +113,13 @@ export async function runAdapterStream<TChunk>(
 
 /** 只保留 SDK Error 上稳定、可序列化的诊断字段。 */
 export function normalizeProviderError(error: unknown): ProviderErrorInfo {
+	if (error instanceof InvalidToolArguments) {
+		return {
+			message: error.message,
+			code: error._tag,
+			type: "provider_protocol",
+		};
+	}
 	if (error instanceof ModelOutputProtocolViolation) {
 		return {
 			message: error.message,

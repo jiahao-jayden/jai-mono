@@ -360,6 +360,19 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
+	test("surfaces a failed cancel notification to the Desktop RPC caller", async () => {
+		const client = new FakeAcpClient();
+		client.notifyError = new Error("cancel write failed") as AcpLocalClientError;
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+
+		expect(() => host.abort("session-1")).toThrow("cancel write failed");
+		host.close();
+	});
+
 	test("cancels a pending ACP permission when the Session becomes idle", async () => {
 		const client = new FakeAcpClient();
 		const events: DesktopAgentEventEnvelope[] = [];
@@ -1014,6 +1027,7 @@ class FakeAcpClient implements LocalAcpV2Client {
 	readonly #disconnectListeners = new Set<(error: AcpLocalClientError) => void>();
 	resumeError?: string;
 	resumeSucceeds = true;
+	notifyError?: AcpLocalClientError;
 	subagentTranscript?: { readonly items: readonly unknown[] };
 	subagentTranscriptError?: string;
 
@@ -1037,6 +1051,7 @@ class FakeAcpClient implements LocalAcpV2Client {
 
 	notify(method: string, params?: unknown): ResultType<void, AcpLocalClientError> {
 		this.notifications.push({ method, params });
+		if (this.notifyError) return Result.err(this.notifyError);
 		return Result.ok(undefined);
 	}
 
