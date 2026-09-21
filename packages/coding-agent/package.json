@@ -35,13 +35,11 @@
 		"better-result": "^3.0.0",
 		"openai": "^6.45.0",
 		"tree-sitter-bash": "0.25.0",
-		"web-tree-sitter": "0.25.10",
-		"yaml": "^2.8.1"
+		"web-tree-sitter": "0.25.10"
 	},
 	"devDependencies": {
 		"@jai/agent": "workspace:*",
 		"@jai/ai": "workspace:*",
-		"@jai/connector": "workspace:*",
 		"tsup": "^8.5.1",
 		"typescript": "~5.8.3",
 		"@jai/telemetry": "workspace:*"
