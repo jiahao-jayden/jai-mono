@@ -80,3 +80,14 @@
 9. 单个代码文件可以达到约 800 行；是否拆分以职责边界和可导航性为准，而非行数本身。需要拆分时，尽量以文件夹进行领域级拆分，而非无意义地把内容平铺在同一个文件夹。
 
 10. 禁止一个函数少于 3 行，不要做无意义的函数封装
+
+<!-- CODEGRAPH_START -->
+## CodeGraph
+
+In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
+
+- **MCP tool** (when available): `codegraph_explore` answers most code questions in one call — the relevant symbols' verbatim source plus the call paths between them, including dynamic-dispatch hops grep can't follow. Name a file or symbol in the query to read its current line-numbered source. If it's listed but deferred, load it by name via tool search.
+- **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
+
+If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
+<!-- CODEGRAPH_END -->
