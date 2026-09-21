@@ -66,7 +66,7 @@ function TerminalViewport({
 			allowProposedApi: false,
 			convertEol: false,
 			cursorBlink: true,
-			fontFamily: '"IBM Plex Mono", ui-monospace, monospace',
+			fontFamily: '"SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace',
 			fontSize: 12,
 			lineHeight: 1.25,
 			scrollback: 5_000,
