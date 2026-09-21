@@ -34,6 +34,8 @@ export interface ToolTimelineProps {
 	className?: string;
 }
 
+const UNANIMATED_TIMELINE_THRESHOLD = 20;
+
 export function ToolTimeline({
 	steps,
 	streaming,
@@ -50,6 +52,13 @@ export function ToolTimeline({
 	);
 	const headerClassName = "inline-flex items-center gap-1 pb-2 text-left text-[14px] text-foreground/55";
 	const stepsClassName = "flex flex-col gap-2.5 ps-4 py-2.5";
+	const timelineSteps = (
+		<div className={stepsClassName}>
+			{steps.map((step) => (
+				<ToolTimelineStep key={step.id} step={step} active={false} />
+			))}
+		</div>
+	);
 
 	if (streaming) {
 		return (
@@ -83,13 +92,13 @@ export function ToolTimeline({
 					<ChevronRight size={14} strokeWidth={1.5} />
 				</span>
 			</CollapsibleTrigger>
-			<CollapsibleContent keepMounted={false} className="outline-none">
-				<div className={stepsClassName}>
-					{steps.map((step) => (
-						<ToolTimelineStep key={step.id} step={step} active={false} />
-					))}
-				</div>
-			</CollapsibleContent>
+			{steps.length >= UNANIMATED_TIMELINE_THRESHOLD ? (
+				open ? timelineSteps : null
+			) : (
+				<CollapsibleContent keepMounted={false} className="outline-none">
+					{timelineSteps}
+				</CollapsibleContent>
+			)}
 		</Collapsible>
 	);
 }
@@ -106,6 +115,7 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 		if (hasWebSearchResults) setOpen(true);
 	}, [hasWebSearchResults]);
 	const density = step.density ?? "compact";
+	const containmentClassName = "[content-visibility:auto] [contain-intrinsic-size:auto_24px]";
 	const rowClassName = cn(
 		"flex min-w-0 items-center text-start text-foreground/55 outline-none",
 		density === "compact" ? "gap-2 text-[13px] leading-5" : "gap-2 text-[14px] leading-5",
@@ -115,9 +125,10 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 		"ms-auto inline-flex shrink-0 opacity-60 transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
 		open && "rotate-90",
 	);
+	const detailsRows = Math.min(12, Math.max(3, step.details?.split("\n").length ?? 3));
 	if (step.kind === "narration") {
 		return (
-			<div className="min-w-0 text-start text-[13px] leading-5 text-foreground/85">
+			<div className={cn("min-w-0 text-start text-[13px] leading-5 text-foreground/85", containmentClassName)}>
 				<span className="min-w-0 whitespace-pre-wrap">{step.title}</span>
 			</div>
 		);
@@ -145,18 +156,22 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 
 	if (selectable) {
 		return (
-			<button type="button" onClick={step.onSelect} className={cn(rowClassName, "max-w-full cursor-pointer self-start")}>
+			<button
+				type="button"
+				onClick={step.onSelect}
+				className={cn(rowClassName, containmentClassName, "max-w-full cursor-pointer self-start")}
+			>
 				{row}
 			</button>
 		);
 	}
 
 	if (!expandable) {
-		return <div className={rowClassName}>{row}</div>;
+		return <div className={cn(rowClassName, containmentClassName)}>{row}</div>;
 	}
 
 	return (
-		<Collapsible open={open} onOpenChange={setOpen}>
+		<Collapsible open={open} onOpenChange={setOpen} className={containmentClassName}>
 			<CollapsibleTrigger className={rowClassName}>{row}</CollapsibleTrigger>
 			<CollapsibleContent keepMounted={false} className="mt-2 contain-[paint] outline-none">
 				{step.webSearchResults ? (
@@ -164,9 +179,18 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 						<WebSearchResults results={step.webSearchResults} />
 					</div>
 				) : (
-					<pre className={cn(paper, "max-h-64 overflow-auto rounded-lg px-3 py-2.5 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-foreground/70")}>
-						{step.details}
-					</pre>
+					<textarea
+						aria-label={step.title}
+						className={cn(
+							paper,
+							"w-full resize-none overflow-auto rounded-lg px-3 py-2.5 font-mono text-[11.5px] leading-relaxed text-foreground/70 outline-none focus-visible:ring-1 focus-visible:ring-ring",
+						)}
+						readOnly
+						rows={detailsRows}
+						spellCheck={false}
+						value={step.details}
+						wrap="off"
+					/>
 				)}
 			</CollapsibleContent>
 		</Collapsible>
