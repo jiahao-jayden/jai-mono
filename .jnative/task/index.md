@@ -1,5 +1,12 @@
 # 当前需求
 
+## Model Compatibility Resolution 与 Quirks Harness
+
+阶段：clarifying
+Tracker：https://github.com/jiahao-jayden/jai-mono/issues/123
+更新时间：2026-09-22
+本地历史：-
+
 ## Desktop 聊天代码高亮改回 Shiki 流式着色
 
 阶段：review
