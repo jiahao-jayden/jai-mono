@@ -117,6 +117,22 @@ export const desktopMessages = defineMessages({
 		defaultMessage: "Attachments must be 20 MB or less in total.",
 	},
 	composerCouldNotAddFiles: { id: "desktop.composer.couldNotAddFiles", defaultMessage: "Could not add those files." },
+	sessionUsageAria: { id: "desktop.sessionUsage.aria", defaultMessage: "Session usage" },
+	sessionUsageTitle: { id: "desktop.sessionUsage.title", defaultMessage: "Usage" },
+	sessionUsageTrigger: {
+		id: "desktop.sessionUsage.trigger",
+		defaultMessage: "{tokens} tok · {cost}",
+	},
+	sessionUsageEmptyTrigger: { id: "desktop.sessionUsage.emptyTrigger", defaultMessage: "Usage" },
+	sessionUsageEmpty: {
+		id: "desktop.sessionUsage.empty",
+		defaultMessage: "No token usage on this branch yet.",
+	},
+	sessionUsageTotal: { id: "desktop.sessionUsage.total", defaultMessage: "Total" },
+	sessionUsageInput: { id: "desktop.sessionUsage.input", defaultMessage: "Input" },
+	sessionUsageOutput: { id: "desktop.sessionUsage.output", defaultMessage: "Output" },
+	sessionUsageCache: { id: "desktop.sessionUsage.cache", defaultMessage: "Cache" },
+	sessionUsageCost: { id: "desktop.sessionUsage.cost", defaultMessage: "Cost" },
 	queuedMessagePosition: {
 		id: "desktop.queue.messagePosition",
 		defaultMessage: "Queued message {position} of {total}: {label}",
@@ -317,7 +333,75 @@ export const desktopMessages = defineMessages({
 	inputAskAnything: { id: "desktop.input.askAnything", defaultMessage: "Ask me anything…" },
 	inputDropFiles: { id: "desktop.input.dropFiles", defaultMessage: "Drop files here to add to chat" },
 	settingsTitle: { id: "desktop.settings.title", defaultMessage: "Settings" },
+	settingsIntegrations: { id: "desktop.settings.integrations", defaultMessage: "Integrations" },
+	settingsBackToApp: { id: "desktop.settings.backToApp", defaultMessage: "Back to app" },
+	settingsSearch: { id: "desktop.settings.search", defaultMessage: "Search settings" },
 	settingsGeneral: { id: "desktop.settings.general", defaultMessage: "General" },
+	settingsProfile: { id: "desktop.settings.profile", defaultMessage: "Profile" },
+	settingsProfileLoading: {
+		id: "desktop.settings.profileLoading",
+		defaultMessage: "Loading profile usage…",
+	},
+	settingsProfileLoadError: {
+		id: "desktop.settings.profileLoadError",
+		defaultMessage: "Profile usage could not be loaded.",
+	},
+	settingsProfileRefresh: { id: "desktop.settings.profileRefresh", defaultMessage: "Refresh" },
+	settingsProfileUsage: { id: "desktop.settings.profileUsage", defaultMessage: "Usage" },
+	settingsProfileUsageDescription: {
+		id: "desktop.settings.profileUsageDescription",
+		defaultMessage: "Local totals from current-branch journal facts. Provider quotas are not included.",
+	},
+	settingsProfilePrompts: { id: "desktop.settings.profilePrompts", defaultMessage: "Prompts" },
+	settingsProfileLifetimeTokens: {
+		id: "desktop.settings.profileLifetimeTokens",
+		defaultMessage: "Lifetime tokens",
+	},
+	settingsProfilePeakDay: { id: "desktop.settings.profilePeakDay", defaultMessage: "Peak day" },
+	settingsProfilePeakDayValue: {
+		id: "desktop.settings.profilePeakDayValue",
+		defaultMessage: "{tokens} · {date}",
+	},
+	settingsProfileSettledAttempts: {
+		id: "desktop.settings.profileSettledAttempts",
+		defaultMessage: "Settled attempts",
+	},
+	settingsProfileTokensEmpty: {
+		id: "desktop.settings.profileTokensEmpty",
+		defaultMessage: "No token telemetry on current branches yet.",
+	},
+	settingsProfileTokensUnavailableWithPrompts: {
+		id: "desktop.settings.profileTokensUnavailableWithPrompts",
+		defaultMessage: "Prompts are recorded, but no provider token telemetry is available yet.",
+	},
+	settingsProfileHeatmap: {
+		id: "desktop.settings.profileHeatmap",
+		defaultMessage: "Token activity",
+	},
+	settingsProfileHeatmapAria: {
+		id: "desktop.settings.profileHeatmapAria",
+		defaultMessage: "Token usage heatmap by local date",
+	},
+	settingsProfileHeatmapTooltip: {
+		id: "desktop.settings.profileHeatmapTooltip",
+		defaultMessage: "{date}: {tokens} tokens",
+	},
+	settingsProfileHeatmapLegend: {
+		id: "desktop.settings.profileHeatmapLegend",
+		defaultMessage: "Each cell is tokens settled that local calendar day.",
+	},
+	settingsProfileModels: {
+		id: "desktop.settings.profileModels",
+		defaultMessage: "Provider / Model",
+	},
+	settingsProfileModelsEmpty: {
+		id: "desktop.settings.profileModelsEmpty",
+		defaultMessage: "No provider or model token distribution yet.",
+	},
+	settingsProfileTokensUnit: {
+		id: "desktop.settings.profileTokensUnit",
+		defaultMessage: "{tokens} tokens",
+	},
 	settingsArchivedChats: { id: "desktop.settings.archivedChats", defaultMessage: "Archived Chats" },
 	settingsArchivedChatsEmpty: { id: "desktop.settings.archivedChatsEmpty", defaultMessage: "No archived chats." },
 	settingsArchivedChatsLoading: {

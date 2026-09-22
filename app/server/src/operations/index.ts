@@ -17,5 +17,7 @@ export {
 	type RuntimeOperationOutcome,
 	type RuntimeOperationPreflightInput,
 	type RuntimeQueuedInput,
+	type RuntimeSessionUsage,
+	projectRuntimeSessionUsage,
 	type RuntimeWebSearchDetails,
 } from "./runtime";

@@ -489,6 +489,36 @@
   "desktop.session.title": {
     "defaultMessage": "Session title"
   },
+  "desktop.sessionUsage.aria": {
+    "defaultMessage": "Session usage"
+  },
+  "desktop.sessionUsage.cache": {
+    "defaultMessage": "Cache"
+  },
+  "desktop.sessionUsage.cost": {
+    "defaultMessage": "Cost"
+  },
+  "desktop.sessionUsage.empty": {
+    "defaultMessage": "No token usage on this branch yet."
+  },
+  "desktop.sessionUsage.emptyTrigger": {
+    "defaultMessage": "Usage"
+  },
+  "desktop.sessionUsage.input": {
+    "defaultMessage": "Input"
+  },
+  "desktop.sessionUsage.output": {
+    "defaultMessage": "Output"
+  },
+  "desktop.sessionUsage.title": {
+    "defaultMessage": "Usage"
+  },
+  "desktop.sessionUsage.total": {
+    "defaultMessage": "Total"
+  },
+  "desktop.sessionUsage.trigger": {
+    "defaultMessage": "{tokens} tok · {cost}"
+  },
   "desktop.settings.accountAccess": {
     "defaultMessage": "Account access"
   },
@@ -548,6 +578,9 @@
   },
   "desktop.settings.authorizationExpired": {
     "defaultMessage": "Authorization expired. Try again."
+  },
+  "desktop.settings.backToApp": {
+    "defaultMessage": "Back to app"
   },
   "desktop.settings.blocked": {
     "defaultMessage": "Blocked"
@@ -635,6 +668,9 @@
   },
   "desktop.settings.high": {
     "defaultMessage": "High"
+  },
+  "desktop.settings.integrations": {
+    "defaultMessage": "Integrations"
   },
   "desktop.settings.interfaceLanguage": {
     "defaultMessage": "Interface language"
@@ -780,11 +816,71 @@
   "desktop.settings.positiveMaxIterations": {
     "defaultMessage": "Max iterations must be a positive integer."
   },
+  "desktop.settings.profile": {
+    "defaultMessage": "Profile"
+  },
+  "desktop.settings.profileHeatmap": {
+    "defaultMessage": "Token activity"
+  },
+  "desktop.settings.profileHeatmapAria": {
+    "defaultMessage": "Token usage heatmap by local date"
+  },
+  "desktop.settings.profileHeatmapLegend": {
+    "defaultMessage": "Each cell is tokens settled that local calendar day."
+  },
+  "desktop.settings.profileHeatmapTooltip": {
+    "defaultMessage": "{date}: {tokens} tokens"
+  },
   "desktop.settings.profileIdDuplicate": {
     "defaultMessage": "Profile ID \"{id}\" is duplicated."
   },
   "desktop.settings.profileIdInvalid": {
     "defaultMessage": "Profile ID \"{id}\" is invalid."
+  },
+  "desktop.settings.profileLifetimeTokens": {
+    "defaultMessage": "Lifetime tokens"
+  },
+  "desktop.settings.profileLoadError": {
+    "defaultMessage": "Profile usage could not be loaded."
+  },
+  "desktop.settings.profileLoading": {
+    "defaultMessage": "Loading profile usage…"
+  },
+  "desktop.settings.profileModels": {
+    "defaultMessage": "Provider / Model"
+  },
+  "desktop.settings.profileModelsEmpty": {
+    "defaultMessage": "No provider or model token distribution yet."
+  },
+  "desktop.settings.profilePeakDay": {
+    "defaultMessage": "Peak day"
+  },
+  "desktop.settings.profilePeakDayValue": {
+    "defaultMessage": "{tokens} · {date}"
+  },
+  "desktop.settings.profilePrompts": {
+    "defaultMessage": "Prompts"
+  },
+  "desktop.settings.profileRefresh": {
+    "defaultMessage": "Refresh"
+  },
+  "desktop.settings.profileSettledAttempts": {
+    "defaultMessage": "Settled attempts"
+  },
+  "desktop.settings.profileTokensEmpty": {
+    "defaultMessage": "No token telemetry on current branches yet."
+  },
+  "desktop.settings.profileTokensUnavailableWithPrompts": {
+    "defaultMessage": "Prompts are recorded, but no provider token telemetry is available yet."
+  },
+  "desktop.settings.profileTokensUnit": {
+    "defaultMessage": "{tokens} tokens"
+  },
+  "desktop.settings.profileUsage": {
+    "defaultMessage": "Usage"
+  },
+  "desktop.settings.profileUsageDescription": {
+    "defaultMessage": "Local totals from current-branch journal facts. Provider quotas are not included."
   },
   "desktop.settings.providerAdapter": {
     "defaultMessage": "Adapter"
@@ -869,6 +965,9 @@
   },
   "desktop.settings.saveBeforeFetchModels": {
     "defaultMessage": "Save connection changes before fetching models."
+  },
+  "desktop.settings.search": {
+    "defaultMessage": "Search settings"
   },
   "desktop.settings.status": {
     "defaultMessage": "Status"

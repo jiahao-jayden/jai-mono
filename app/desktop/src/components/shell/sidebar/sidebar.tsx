@@ -6,7 +6,9 @@ import { CreateProjectDialog } from "../create-project-dialog";
 import { SidebarFooter } from "./sidebar-footer";
 import { SidebarHeader } from "./sidebar-header";
 import { SidebarNav } from "./sidebar-nav";
+import { SidebarSettings } from "./sidebar-settings";
 import { SidebarSessions } from "./sidebar-sessions";
+import type { SettingsCategory } from "../settings/settings-navigation";
 
 interface SidebarProps {
 	macTitleBar?: boolean;
@@ -33,6 +35,10 @@ interface SidebarProps {
 	onArchiveSession(sessionId: string): Promise<void>;
 	onDeleteSession(sessionId: string): Promise<void>;
 	onLoadMore?(): void;
+	settingsMode?: boolean;
+	settingsCategory?: SettingsCategory;
+	onSettingsCategoryChange?(category: SettingsCategory): void;
+	onBackFromSettings?(): void;
 }
 
 export function Sidebar({
@@ -60,6 +66,10 @@ export function Sidebar({
 	onArchiveSession,
 	onDeleteSession,
 	onLoadMore,
+	settingsMode = false,
+	settingsCategory = "general",
+	onSettingsCategoryChange,
+	onBackFromSettings,
 }: SidebarProps) {
 	const [creatingProject, setCreatingProject] = useState(false);
 
@@ -69,35 +79,47 @@ export function Sidebar({
 			style={width ? { width } : undefined}
 		>
 			<SidebarHeader macTitleBar={macTitleBar} onToggleSidebar={onToggleSidebar} />
-			<div className="flex h-10 shrink-0 items-center gap-2 px-3.5">
-				<img src={logo} alt="" draggable={false} className="size-7 shrink-0 select-none" />
-				<span className="truncate text-[16px] font-medium tracking-[-0.01em] text-foreground">PandaWork</span>
-			</div>
-			<SidebarNav onNewChat={onNewChat} />
-			<SidebarSessions
-				projects={projects}
-				sessions={sessions}
-				runningSessionIds={runningSessionIds}
-				activeSessionId={activeSessionId}
-				loading={loading}
-				error={error}
-				hasNextPage={hasNextPage}
-				loadingMore={loadingMore}
-				projectLoading={projectLoading}
-				projectError={projectError}
-				onCreateProject={() => setCreatingProject(true)}
-				onRelinkProject={onRelinkProject}
-				onRevealProject={onRevealProject}
-				onNewProjectChat={onNewProjectChat}
-				onSelectSession={onSelectSession}
-				onRenameSession={onRenameSession}
-				onPinSession={onPinSession}
-				onArchiveSession={onArchiveSession}
-				onDeleteSession={onDeleteSession}
-				onLoadMore={onLoadMore}
-			/>
-			<SidebarFooter onOpenSettings={onOpenSettings} />
-			<CreateProjectDialog open={creatingProject} onOpenChange={setCreatingProject} />
+			{!settingsMode ? (
+				<div className="flex h-10 shrink-0 items-center gap-2 px-3.5">
+					<img src={logo} alt="" draggable={false} className="size-7 shrink-0 select-none" />
+					<span className="truncate text-[16px] font-medium tracking-[-0.01em] text-foreground">PandaWork</span>
+				</div>
+			) : null}
+			{settingsMode ? (
+				<SidebarSettings
+					category={settingsCategory}
+					onCategoryChange={onSettingsCategoryChange ?? (() => undefined)}
+					onBack={onBackFromSettings ?? onNewChat}
+				/>
+			) : (
+				<>
+					<SidebarNav onNewChat={onNewChat} />
+					<SidebarSessions
+						projects={projects}
+						sessions={sessions}
+						runningSessionIds={runningSessionIds}
+						activeSessionId={activeSessionId}
+						loading={loading}
+						error={error}
+						hasNextPage={hasNextPage}
+						loadingMore={loadingMore}
+						projectLoading={projectLoading}
+						projectError={projectError}
+						onCreateProject={() => setCreatingProject(true)}
+						onRelinkProject={onRelinkProject}
+						onRevealProject={onRevealProject}
+						onNewProjectChat={onNewProjectChat}
+						onSelectSession={onSelectSession}
+						onRenameSession={onRenameSession}
+						onPinSession={onPinSession}
+						onArchiveSession={onArchiveSession}
+						onDeleteSession={onDeleteSession}
+						onLoadMore={onLoadMore}
+					/>
+					<SidebarFooter onOpenSettings={onOpenSettings} />
+					<CreateProjectDialog open={creatingProject} onOpenChange={setCreatingProject} />
+				</>
+			)}
 		</motion.aside>
 	);
 }

@@ -26,6 +26,7 @@ import {
 	type RuntimeOperationPreflightInput,
 	type RuntimeQueuedInput,
 	type RuntimeWebSearchDetails,
+	projectRuntimeSessionUsage,
 } from "../operations";
 import type { RuntimeCapabilitySource } from "../runtime-capabilities";
 
@@ -290,7 +291,7 @@ class CodingAgentOperation implements RuntimeOperation {
 					return;
 				}
 				if (event.type === "tool_reserved") return;
-				this.publish({ type: "usage_settled", cost: event.usage.cost.total });
+				this.publish({ type: "usage_settled", usage: projectRuntimeSessionUsage(event.usage) });
 			});
 		}
 		this.#stopAgentObservation = this.agent.subscribe((event) => {

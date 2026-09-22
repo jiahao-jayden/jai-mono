@@ -3,7 +3,7 @@ import type { MouseEvent, ReactNode } from "react";
 import { Button } from "../../ui/button";
 
 export const sidebarRowHoverReserveClassName =
-	"transition-[padding] duration-150 ease-out group-hover/row:pr-[4.75rem] group-focus-within/row:pr-[4.75rem]";
+	"transition-[padding] duration-150 ease-out group-hover/row:pr-[3.5rem] group-focus-within/row:pr-[3.5rem]";
 
 export function SidebarRowHover({ children }: { readonly children: ReactNode }) {
 	return (

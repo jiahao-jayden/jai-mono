@@ -16,9 +16,11 @@ import type {
 	DesktopArtifact,
 	DesktopMessageAttachment,
 	DesktopPermissionResolution,
+	DesktopSessionUsage,
 	DesktopTodos,
 	DesktopTranscriptItem,
 } from "../../shared/desktop-rpc";
+import { EMPTY_DESKTOP_SESSION_USAGE } from "../../shared/desktop-rpc";
 
 export type ChatStatus = "ready" | "submitted" | "streaming" | "stopping" | "error";
 
@@ -46,6 +48,7 @@ export interface Chat {
 	readonly messages: readonly DesktopTranscriptItem[];
 	readonly todos: DesktopTodos | undefined;
 	readonly artifacts: readonly DesktopArtifact[];
+	readonly usage: DesktopSessionUsage;
 	readonly status: ChatStatus;
 	readonly isLoading: boolean;
 	readonly error: string | undefined;
@@ -72,6 +75,7 @@ export interface ChatRuntimeState {
 	readonly messages: readonly DesktopTranscriptItem[];
 	readonly todos: DesktopTodos | undefined;
 	readonly artifacts: readonly DesktopArtifact[];
+	readonly usage: DesktopSessionUsage;
 }
 
 interface QueuedMessageSteerOperation {
@@ -101,6 +105,7 @@ const EMPTY_STATE: ChatRuntimeState = {
 	messages: [],
 	todos: undefined,
 	artifacts: [],
+	usage: EMPTY_DESKTOP_SESSION_USAGE,
 };
 
 let dispatcher: ReturnType<typeof createDesktopAgentEventDispatcher> | undefined;
@@ -201,6 +206,7 @@ export function useChat(options: UseChatOptions): Chat {
 						messages: [],
 						todos: undefined,
 						artifacts: [],
+						usage: EMPTY_DESKTOP_SESSION_USAGE,
 					},
 		);
 		dispatcher ??= createDesktopAgentEventDispatcher();
@@ -468,6 +474,7 @@ export function useChat(options: UseChatOptions): Chat {
 		messages: state.messages,
 		todos: state.todos,
 		artifacts: state.artifacts,
+		usage: state.usage,
 		status: getChatStatus(state),
 		isLoading: state.isLoading,
 		error: state.error,
@@ -563,6 +570,8 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 				lastSeq: seq,
 				artifacts: upsertArtifact(state.artifacts, event.artifact),
 			};
+		case "usage_changed":
+			return { ...state, isLoading: false, lastSeq: seq, usage: event.usage };
 		case "runtime_error":
 			return {
 				...state,
@@ -678,6 +687,7 @@ function snapshotState(snapshot: DesktopAgentSnapshot): ChatRuntimeState {
 		messages: [...snapshot.items],
 		todos: snapshot.todos,
 		artifacts: [...snapshot.artifacts],
+		usage: snapshot.usage,
 	};
 }
 

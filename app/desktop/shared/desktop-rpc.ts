@@ -866,6 +866,66 @@ export interface DesktopTodoItem {
 /** 来自 ACP plan 的 Todo 只读投影；业务状态由 Todo Extension 维护。 */
 export type DesktopTodos = readonly DesktopTodoItem[];
 
+/**
+ * Current-branch session usage. All fields are finite numbers.
+ * Zeros mean empty branch or provider-reported zero — not a separate unknown sentinel.
+ */
+export interface DesktopSessionUsage {
+	readonly inputTokens: number;
+	readonly outputTokens: number;
+	readonly cacheReadTokens: number;
+	readonly cacheWriteTokens: number;
+	readonly totalTokens: number;
+	readonly cost: number;
+}
+
+export const EMPTY_DESKTOP_SESSION_USAGE: DesktopSessionUsage = {
+	inputTokens: 0,
+	outputTokens: 0,
+	cacheReadTokens: 0,
+	cacheWriteTokens: 0,
+	totalTokens: 0,
+	cost: 0,
+};
+
+/** Profile lifetime token projection. Same empty/finite semantics as session usage. */
+export type DesktopProfileTokenAvailability = "empty" | "complete" | "partial";
+
+export interface DesktopProfileTokenDay {
+	readonly date: string;
+	readonly totalTokens: number;
+}
+
+export interface DesktopProfileTokenModelShare {
+	readonly provider: string;
+	readonly modelId: string;
+	readonly totalTokens: number;
+}
+
+export interface DesktopProfileTokenStats {
+	readonly availability: DesktopProfileTokenAvailability;
+	readonly totalTokens: number;
+	readonly peakDayTokens: number;
+	readonly peakDayDate: string;
+	readonly days: readonly DesktopProfileTokenDay[];
+	readonly models: readonly DesktopProfileTokenModelShare[];
+	readonly promptCount: number;
+	readonly settledAttemptCount: number;
+	readonly missingUsageAttemptCount: number;
+}
+
+export const EMPTY_DESKTOP_PROFILE_TOKEN_STATS: DesktopProfileTokenStats = {
+	availability: "empty",
+	totalTokens: 0,
+	peakDayTokens: 0,
+	peakDayDate: "",
+	days: [],
+	models: [],
+	promptCount: 0,
+	settledAttemptCount: 0,
+	missingUsageAttemptCount: 0,
+};
+
 export interface DesktopAgentSnapshot {
 	readonly sessionId: string;
 	readonly status: DesktopAgentStatus;
@@ -874,6 +934,7 @@ export interface DesktopAgentSnapshot {
 	readonly items: readonly DesktopTranscriptItem[];
 	readonly todos?: DesktopTodos;
 	readonly artifacts: readonly DesktopArtifact[];
+	readonly usage: DesktopSessionUsage;
 	readonly lastSeq: number;
 }
 
@@ -892,6 +953,7 @@ export type DesktopAgentEvent =
 	| { readonly type: "subagent_transcript_changed"; readonly toolCallId: string }
 	| { readonly type: "todos_replace"; readonly todos: DesktopTodos }
 	| { readonly type: "artifact_upsert"; readonly artifact: DesktopArtifact }
+	| { readonly type: "usage_changed"; readonly usage: DesktopSessionUsage }
 	| { readonly type: "model_catalog_updated" }
 	| { readonly type: "connector_oauth_completed"; readonly connectorId: string }
 	| { readonly type: "connector_oauth_failed"; readonly connectorId: string }
@@ -1121,6 +1183,10 @@ export interface DesktopApi {
 		revealCredential(connectorId: string, credentialKey: string): Promise<DesktopConnectorCredentialRevealResult>;
 		startOAuth(connectorId: string): Promise<DesktopConnectorOAuthStartResult>;
 		disconnectOAuth(connectorId: string): Promise<DesktopProviderConfigSnapshot>;
+	};
+	readonly profile: {
+		/** Durable current-branch token aggregation across catalog Sessions. */
+		getTokenStats(): Promise<DesktopProfileTokenStats>;
 	};
 	readonly project: {
 		list(): Promise<DesktopProject[]>;

@@ -18,6 +18,7 @@ import type {
 	DesktopMessageAttachment,
 	DesktopProject,
 	DesktopProviderConfigSnapshot,
+	DesktopSessionUsage,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { InputMessage } from "../../ui/input-message";
@@ -26,6 +27,7 @@ import { ChatMessageQueue } from "./chat-message-queue";
 import { MessageAttachmentPicker } from "./message-attachment-picker";
 import { ModelSelector } from "./model-selector";
 import { ProjectPicker } from "./project-picker";
+import { SessionUsageButton } from "./session-usage";
 
 interface ChatComposerProps {
 	value: string;
@@ -54,6 +56,7 @@ interface ChatComposerProps {
 	onOpenProviderSettings(): void;
 	onSelectProviderModel(modelRef: string): void;
 	onSelectAgentMode(mode: DesktopAgentMode): void;
+	usage?: DesktopSessionUsage;
 	large?: boolean;
 	showProjectPicker?: boolean;
 }
@@ -101,6 +104,7 @@ export function ChatComposer({
 	onOpenProviderSettings,
 	onSelectProviderModel,
 	onSelectAgentMode,
+	usage,
 	large = false,
 	showProjectPicker = true,
 }: ChatComposerProps) {
@@ -415,7 +419,8 @@ export function ChatComposer({
 						onSelect={onSelectAgentMode}
 					/>
 				</div>
-				<div className="flex min-w-0 items-center">
+				<div className="flex min-w-0 items-center gap-1">
+					<SessionUsageButton usage={usage} />
 					<ModelSelector
 						config={providerConfig}
 						selectedModelRef={selectedModelRef}

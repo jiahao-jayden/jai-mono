@@ -1,8 +1,7 @@
-"use client";
-
 import {
 	Add01Icon,
 	Alert02Icon,
+	Analytics01Icon,
 	ApiIcon,
 	Archive02Icon,
 	ArrowDown01Icon,
@@ -33,6 +32,7 @@ import {
 	FileEditIcon,
 	FileSearchIcon,
 	Folder01Icon,
+	Folder02Icon,
 	FolderOffIcon,
 	FolderOpenIcon,
 	Forward01Icon,
@@ -56,6 +56,7 @@ import {
 	PanelLeftCloseIcon,
 	PanelRightIcon,
 	PauseIcon,
+	PencilEdit02Icon,
 	PinIcon,
 	PlayIcon,
 	Plug01Icon,
@@ -191,7 +192,8 @@ export type IconName =
 	| "eye-off"
 	| "skip-forward"
 	| "corner-down-right"
-	| "plug";
+	| "plug"
+	| "analytics";
 
 function createHugeicon(icon: IconSvgElement): IconComponent {
 	return function Hugeicon(props) {
@@ -259,7 +261,7 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	pin: createHugeicon(PinIcon),
 	folder: createHugeicon(Folder01Icon),
 	"folder-off": createHugeicon(FolderOffIcon),
-	"folder-open": createHugeicon(FolderOpenIcon),
+	"folder-open": createHugeicon(Folder02Icon),
 	"panel-left-close": createHugeicon(PanelLeftCloseIcon),
 	"panel-right": createHugeicon(PanelRightIcon),
 	sparkles: createHugeicon(SparklesIcon),
@@ -279,12 +281,13 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	"permission-ask": HandIcon,
 	"permission-deny": BanIcon,
 	inbox: createHugeicon(InboxIcon),
-	pencil: createHugeicon(Edit01Icon),
+	pencil: createHugeicon(PencilEdit02Icon),
 	eye: createHugeicon(EyeIcon),
 	"eye-off": createHugeicon(ViewOffSlashIcon),
 	"skip-forward": createHugeicon(Forward01Icon),
 	"corner-down-right": createHugeicon(ArrowTurnForwardIcon),
 	plug: createHugeicon(Plug01Icon),
+	analytics: createHugeicon(Analytics01Icon),
 };
 
 const anthropicIcon = createBrandIcon(Anthropic);

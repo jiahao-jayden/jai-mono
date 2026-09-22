@@ -13,6 +13,14 @@ describe("DesktopAgentEventDispatcher", () => {
 			status: "running",
 			items: [],
 			artifacts: [],
+			usage: {
+				inputTokens: 0,
+				outputTokens: 0,
+				cacheReadTokens: 0,
+				cacheWriteTokens: 0,
+				totalTokens: 0,
+				cost: 0,
+			},
 			lastSeq: 1,
 		};
 		const updates: DesktopAgentProjectionUpdate[] = [];

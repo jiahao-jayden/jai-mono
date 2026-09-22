@@ -9,6 +9,7 @@ import {
 } from "@jai/server/acp-client";
 import { connectDesktopCatalogClient, type DesktopCatalogClient } from "@jai/server/desktop-catalog-client";
 import { type Result, TaggedError } from "better-result";
+import type { DesktopProfileTokenStats } from "../../shared/desktop-rpc";
 import type { DesktopRuntimeHostSupervisor } from "../runtime-host/supervisor";
 import { projectNotFoundError, projectPathInvalidError, sessionBusyError, sessionNotFoundError } from "./errors";
 import type {
@@ -45,6 +46,7 @@ export interface DesktopSessionCatalogPort {
 	setGeneratedTitle(id: string, title: string): Promise<CodingSession>;
 	shouldGenerateSessionTitle(id: string): Promise<boolean>;
 	resolveExecutionContext(sessionId: string): Promise<CodingExecutionContext>;
+	getProfileTokenStats(): Promise<DesktopProfileTokenStats>;
 	close(): Promise<void>;
 }
 
@@ -53,6 +55,7 @@ export interface RemoteDesktopSessionCatalogTransport {
 	readonly catalog: DesktopCatalogClient;
 	createSessionJournal(input: { readonly sessionId: string; readonly cwd: string }): Promise<void>;
 	readSessionCwd(sessionId: string): Promise<string | undefined>;
+	getProfileTokenStats(): Promise<DesktopProfileTokenStats>;
 }
 
 class DesktopRemoteCatalogFailed extends TaggedError("desktop_session_catalog.remote_failed")<{
@@ -120,6 +123,7 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 					createSessionJournal(dataDirectory, sessionId, cwd, runtimeHostEntrypoint, launchRuntimeHost),
 				readSessionCwd: (sessionId) =>
 					readSessionCwd(dataDirectory, sessionId, runtimeHostEntrypoint, launchRuntimeHost),
+				getProfileTokenStats: () => fetchProfileTokenStats(dataDirectory, runtimeHostEntrypoint, launchRuntimeHost),
 			},
 			{ dataDirectory },
 		);
@@ -294,6 +298,10 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 		};
 	}
 
+	async getProfileTokenStats(): Promise<DesktopProfileTokenStats> {
+		return this.#transport.getProfileTokenStats();
+	}
+
 	async close(): Promise<void> {
 		await this.#transport.catalog.close();
 	}
@@ -433,6 +441,121 @@ async function readSessionCwd(
 	} finally {
 		await connected.value.close();
 	}
+}
+
+async function fetchProfileTokenStats(
+	dataDirectory: string,
+	runtimeHostEntrypoint: string | undefined,
+	launchRuntimeHost: ConnectJaiRuntimeHostOptions["launchRuntimeHost"],
+): Promise<DesktopProfileTokenStats> {
+	const connected = await connectJaiRuntimeHost({
+		dataDirectory,
+		...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
+		...(launchRuntimeHost === undefined ? {} : { launchRuntimeHost }),
+	});
+	if (connected.isErr()) {
+		throw new DesktopSessionRecoveryFailed({
+			message: "Could not connect to Runtime Host for Profile token stats",
+			cause: connected.error,
+		});
+	}
+	try {
+		const initialized = await connected.value.request("initialize", {
+			protocolVersion: 2,
+			capabilities: {},
+			info: { name: "jai-desktop-profile", version: "0.0.0" },
+		});
+		if (initialized.isErr()) {
+			throw new DesktopSessionRecoveryFailed({
+				message: "Could not initialize Runtime Host for Profile token stats",
+				cause: initialized.error,
+			});
+		}
+		const response = await connected.value.request("jai/profile/token-stats", {});
+		if (response.isErr()) {
+			throw new DesktopSessionRecoveryFailed({
+				message: "Could not load Profile token stats",
+				cause: response.error,
+			});
+		}
+		const parsed = parseProfileTokenStats(response.value);
+		if (!parsed) {
+			throw new DesktopSessionRecoveryFailed({
+				message: "Runtime Host returned an invalid Profile token stats projection",
+			});
+		}
+		return parsed;
+	} finally {
+		await connected.value.close();
+	}
+}
+
+function parseProfileTokenStats(value: unknown): DesktopProfileTokenStats | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const record = value as Record<string, unknown>;
+	if (
+		(record.availability !== "empty" && record.availability !== "complete" && record.availability !== "partial") ||
+		typeof record.totalTokens !== "number" ||
+		!Number.isFinite(record.totalTokens) ||
+		typeof record.peakDayTokens !== "number" ||
+		!Number.isFinite(record.peakDayTokens) ||
+		typeof record.peakDayDate !== "string" ||
+		!Array.isArray(record.days) ||
+		!Array.isArray(record.models) ||
+		typeof record.promptCount !== "number" ||
+		!Number.isFinite(record.promptCount) ||
+		typeof record.settledAttemptCount !== "number" ||
+		!Number.isFinite(record.settledAttemptCount) ||
+		typeof record.missingUsageAttemptCount !== "number" ||
+		!Number.isFinite(record.missingUsageAttemptCount)
+	) {
+		return undefined;
+	}
+	const days: { date: string; totalTokens: number }[] = [];
+	for (const day of record.days) {
+		if (
+			!day ||
+			typeof day !== "object" ||
+			typeof (day as { date?: unknown }).date !== "string" ||
+			typeof (day as { totalTokens?: unknown }).totalTokens !== "number" ||
+			!Number.isFinite((day as { totalTokens: number }).totalTokens)
+		) {
+			return undefined;
+		}
+		days.push({
+			date: (day as { date: string }).date,
+			totalTokens: (day as { totalTokens: number }).totalTokens,
+		});
+	}
+	const models: { provider: string; modelId: string; totalTokens: number }[] = [];
+	for (const model of record.models) {
+		if (
+			!model ||
+			typeof model !== "object" ||
+			typeof (model as { provider?: unknown }).provider !== "string" ||
+			typeof (model as { modelId?: unknown }).modelId !== "string" ||
+			typeof (model as { totalTokens?: unknown }).totalTokens !== "number" ||
+			!Number.isFinite((model as { totalTokens: number }).totalTokens)
+		) {
+			return undefined;
+		}
+		models.push({
+			provider: (model as { provider: string }).provider,
+			modelId: (model as { modelId: string }).modelId,
+			totalTokens: (model as { totalTokens: number }).totalTokens,
+		});
+	}
+	return {
+		availability: record.availability,
+		totalTokens: record.totalTokens,
+		peakDayTokens: record.peakDayTokens,
+		peakDayDate: record.peakDayDate,
+		days,
+		models,
+		promptCount: record.promptCount,
+		settledAttemptCount: record.settledAttemptCount,
+		missingUsageAttemptCount: record.missingUsageAttemptCount,
+	};
 }
 
 function unwrap<T>(result: Result<T, { readonly message: string; readonly cause?: unknown }>, method: string): T {

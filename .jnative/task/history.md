@@ -1,5 +1,12 @@
 # 历史需求
 
+## Harness Usage 仪表盘、分支过滤与 Quirks 分层
+
+结果：completed
+Tracker：https://github.com/jiahao-jayden/jai-mono/issues/118
+归档日期：2026-09-22
+本地历史：-
+
 ## Harness Playbook 问题核验与分阶段收敛
 
 结果：completed

@@ -1015,6 +1015,70 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
+	test("projects usage_update into snapshot and live usage_changed events", async () => {
+		const client = new FakeAcpClient();
+		const events: DesktopAgentEventEnvelope[] = [];
+		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+
+		await host.ensureSessionProjection("session-1");
+		expect(host.getSnapshot("session-1").usage).toEqual({
+			inputTokens: 0,
+			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			totalTokens: 0,
+			cost: 0,
+		});
+
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "usage_update",
+					inputTokens: 10,
+					outputTokens: 4,
+					cacheReadTokens: 2,
+					cacheWriteTokens: 1,
+					totalTokens: 17,
+					cost: 0.03,
+				},
+			},
+		});
+
+		expect(events.at(-1)).toMatchObject({
+			sessionId: "session-1",
+			event: {
+				type: "usage_changed",
+				usage: {
+					inputTokens: 10,
+					outputTokens: 4,
+					cacheReadTokens: 2,
+					cacheWriteTokens: 1,
+					totalTokens: 17,
+					cost: 0.03,
+				},
+			},
+		});
+		expect(host.getSnapshot("session-1").usage.totalTokens).toBe(17);
+
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: { sessionUpdate: "usage_update", cost: 1 },
+			},
+		});
+		expect(host.getSnapshot("session-1").usage.totalTokens).toBe(17);
+
+		host.close();
+	});
+
 });
 
 class FakeAcpClient implements LocalAcpV2Client {

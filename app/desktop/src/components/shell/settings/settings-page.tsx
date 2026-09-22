@@ -1,8 +1,8 @@
 import { cn } from "cn";
 import { useEffect, useState } from "react";
-import { type MessageDescriptor, useIntl } from "react-intl";
+import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
-import { type IconName, useIcon, useIcons } from "@/lib/icon-context";
+import { useIcon } from "@/lib/icon-context";
 import type {
 	DesktopConnectorConfigInput,
 	DesktopConnectorConfigSnapshot,
@@ -26,6 +26,7 @@ import { ConnectorSettings } from "./connector-settings";
 import { GeneralSettings } from "./general-settings";
 import { McpSettings } from "./mcp-settings";
 import { ObservabilitySettings } from "./observability-settings";
+import { ProfileSettings } from "./profile-settings";
 import {
 	type ProfileDraft,
 	type ProviderDraftValidationError,
@@ -34,6 +35,7 @@ import {
 } from "./provider-settings-types";
 import { ProvidersSettings } from "./providers-settings";
 import { WebSearchSettings } from "./web-search-settings";
+import { settingsCategories, type SettingsCategory } from "./settings-navigation";
 
 interface SettingsPageProps {
 	readonly snapshot?: DesktopProviderConfigSnapshot;
@@ -57,19 +59,9 @@ interface SettingsPageProps {
 	readonly mcpLoadError: boolean;
 	readonly onSaveMcp: (input: DesktopMcpSettingsInput) => Promise<DesktopMcpSettingsSnapshot>;
 	readonly onRefreshMcpStatus: () => Promise<DesktopMcpStatus>;
+	readonly category: SettingsCategory;
+	readonly onCategoryChange: (category: SettingsCategory) => void;
 }
-
-type SettingsCategory = "general" | "archived" | "providers" | "web-search" | "connector" | "mcp" | "advanced";
-
-const settingsCategories: Record<SettingsCategory, { label: MessageDescriptor; icon: IconName }> = {
-	general: { label: desktopMessages.settingsGeneral, icon: "settings" },
-	archived: { label: desktopMessages.settingsArchivedChats, icon: "archive" },
-	providers: { label: desktopMessages.settingsProviders, icon: "key" },
-	"web-search": { label: desktopMessages.settingsWebSearch, icon: "globe" },
-	connector: { label: desktopMessages.settingsConnector, icon: "link" },
-	mcp: { label: desktopMessages.settingsMcp, icon: "plug" },
-	advanced: { label: desktopMessages.settingsAdvanced, icon: "layers" },
-};
 
 export function SettingsPage({
 	snapshot,
@@ -93,6 +85,8 @@ export function SettingsPage({
 	mcpLoadError,
 	onSaveMcp,
 	onRefreshMcpStatus,
+	category,
+	onCategoryChange,
 }: SettingsPageProps) {
 	const [fetchingProfileId, setFetchingProfileId] = useState<string>();
 	const [lastFetch, setLastFetch] = useState<DesktopProviderFetchModelsResult>();
@@ -129,6 +123,8 @@ export function SettingsPage({
 			mcpLoadError={mcpLoadError}
 			onSaveMcp={onSaveMcp}
 			onRefreshMcpStatus={onRefreshMcpStatus}
+			category={category}
+			onCategoryChange={onCategoryChange}
 			fetchingProfileId={fetchingProfileId}
 			lastFetch={lastFetch}
 			onRetry={onRetry}
@@ -210,6 +206,8 @@ interface ProviderConfigFormProps {
 	readonly onRefreshMcpStatus: () => Promise<DesktopMcpStatus>;
 	readonly fetchingProfileId?: string;
 	readonly lastFetch?: DesktopProviderFetchModelsResult;
+	readonly category: SettingsCategory;
+	readonly onCategoryChange: (category: SettingsCategory) => void;
 }
 
 function ProviderConfigForm({
@@ -234,9 +232,10 @@ function ProviderConfigForm({
 	onRefreshMcpStatus,
 	fetchingProfileId,
 	lastFetch,
+	category,
+	onCategoryChange,
 }: ProviderConfigFormProps) {
 	const intl = useIntl();
-	const [category, setCategory] = useState<SettingsCategory>("general");
 	const [profiles, setProfiles] = useState<ProfileDraft[]>(() => snapshot.profiles.map(toProfileDraft));
 	const [selectedProfileId, setSelectedProfileId] = useState(snapshot.profiles[0]?.id ?? "");
 	const [maxIterations, setMaxIterations] = useState(snapshot.maxIterations?.toString() ?? "");
@@ -264,7 +263,11 @@ function ProviderConfigForm({
 		"mx-auto min-h-0 w-full max-w-3xl flex-1",
 		category === "connector" ? "flex overflow-hidden" : "overflow-y-auto",
 	);
-	const providerCategory = category !== "advanced" && category !== "mcp" && category !== "archived";
+	const providerCategory =
+		category !== "advanced" &&
+		category !== "mcp" &&
+		category !== "archived" &&
+		category !== "profile";
 
 	const submit = async () => {
 		const validationError = validateProviderDraft(profiles, maxIterations);
@@ -326,9 +329,7 @@ function ProviderConfigForm({
 				if (providerCategory) void submit();
 			}}
 		>
-			<SettingsSidebar category={category} onCategoryChange={(nextCategory) => setCategory(nextCategory)} />
-
-			<div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-primary shadow-surface-1 my-2 mr-2">
+			<div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-primary shadow-surface-1">
 				<h1 className="mx-auto w-full max-w-3xl shrink-0 px-8 pt-7 text-[22px] font-medium tracking-tight">
 					{intl.formatMessage(settingsCategories[category].label)}
 				</h1>
@@ -346,6 +347,8 @@ function ProviderConfigForm({
 								setDirty(true);
 							}}
 						/>
+					) : category === "profile" ? (
+						<ProfileSettings />
 					) : category === "archived" ? (
 						<ArchivedChatsSettings />
 					) : category === "providers" ? (
@@ -382,7 +385,7 @@ function ProviderConfigForm({
 										);
 									}
 									setSelectedProfileId(profileId);
-									setCategory("providers");
+									onCategoryChange("providers");
 								} catch (_cause) {
 									setError(intl.formatMessage(desktopMessages.settingsFetchModelsError));
 								}
@@ -453,54 +456,6 @@ function ProviderConfigForm({
 				) : null}
 			</div>
 		</form>
-	);
-}
-
-function SettingsSidebar({
-	category,
-	onCategoryChange,
-}: {
-	readonly category: SettingsCategory;
-	readonly onCategoryChange: (category: SettingsCategory) => void;
-}) {
-	const intl = useIntl();
-	const icons = useIcons();
-	const categoryIds = Object.keys(settingsCategories) as SettingsCategory[];
-
-	return (
-		<aside className="flex w-48 shrink-0 flex-col">
-			<div className="h-11 shrink-0" aria-hidden="true" />
-			<h2 className="px-4 pb-2 text-[12px] font-medium text-muted-foreground">
-				{intl.formatMessage(desktopMessages.settingsTitle)}
-			</h2>
-			<nav
-				className="flex min-h-0 flex-1 flex-col gap-0.5 px-2"
-				aria-label={intl.formatMessage(desktopMessages.settingsTitle)}
-			>
-				{categoryIds.map((id) => {
-					const item = settingsCategories[id];
-					const isActive = category === id;
-					const itemClassName = cn(
-						"h-8 w-full justify-start gap-2 rounded-lg px-2 text-left text-[14px] text-foreground",
-						{ "bg-active font-medium": isActive },
-					);
-					return (
-						<Button
-							type="button"
-							variant="ghost"
-							size="md"
-							leadingIcon={icons[item.icon]}
-							key={id}
-							onClick={() => onCategoryChange(id)}
-							aria-current={isActive ? "page" : undefined}
-							className={itemClassName}
-						>
-							{intl.formatMessage(item.label)}
-						</Button>
-					);
-				})}
-			</nav>
-		</aside>
 	);
 }
 

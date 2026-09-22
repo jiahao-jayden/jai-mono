@@ -1,4 +1,5 @@
 import type { EffectBoundary, JsonObject, SessionHandle, SessionStore } from "@jai/agent";
+import type { Usage } from "@jai/ai";
 import type { PermissionApprovalQueue, SessionAllowRules } from "@jai/coding-agent";
 import type { Result } from "better-result";
 import { TaggedError } from "better-result";
@@ -24,6 +25,37 @@ export interface RuntimeWebSearchDetails {
 }
 
 /**
+ * Whitelisted token + cost projection for one settle delta or a branch cumulative.
+ *
+ * All fields are finite numbers. No `usage_settled` on the current branch yields
+ * zeros (empty). Provider-reported zeros stay zeros; non-finite values coerce to 0.
+ * Never carries cause, stack, or raw SDK objects.
+ */
+export interface RuntimeSessionUsage {
+	readonly inputTokens: number;
+	readonly outputTokens: number;
+	readonly cacheReadTokens: number;
+	readonly cacheWriteTokens: number;
+	readonly totalTokens: number;
+	readonly cost: number;
+}
+
+export function projectRuntimeSessionUsage(usage: Usage): RuntimeSessionUsage {
+	return {
+		inputTokens: finiteNumber(usage.input),
+		outputTokens: finiteNumber(usage.output),
+		cacheReadTokens: finiteNumber(usage.cacheRead),
+		cacheWriteTokens: finiteNumber(usage.cacheWrite),
+		totalTokens: finiteNumber(usage.totalTokens),
+		cost: finiteNumber(usage.cost.total),
+	};
+}
+
+function finiteNumber(value: number): number {
+	return Number.isFinite(value) ? value : 0;
+}
+
+/**
  * Whitelisted, disposable progress emitted by a running Operation.
  *
  * These are intentionally not a second journal: message and tool terminal
@@ -35,7 +67,8 @@ export type RuntimeOperationEvent =
 	/** Emitted only after the matching durable `usage_settled` ledger fact commits. */
 	| {
 			readonly type: "usage_settled";
-			readonly cost: number;
+			/** Delta for this settle; Host adds it into the branch cumulative. */
+			readonly usage: RuntimeSessionUsage;
 	  }
 	| {
 			readonly type: "message_chunk";

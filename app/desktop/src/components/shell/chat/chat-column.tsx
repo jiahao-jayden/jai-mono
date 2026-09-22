@@ -476,6 +476,7 @@ export function ChatColumn({
 						onOpenProviderSettings={onOpenProviderSettings}
 						onSelectProviderModel={onSelectProviderModel}
 						onSelectAgentMode={onSelectAgentMode}
+						usage={chat.usage}
 						showProjectPicker={isNewChat}
 						large={isNewChat}
 					/>

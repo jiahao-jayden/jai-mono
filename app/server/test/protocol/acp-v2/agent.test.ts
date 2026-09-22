@@ -7,6 +7,7 @@ import {
 	RuntimeOperationExecutionFailed,
 	type RuntimeOperationEvent,
 	type RuntimeOperationOpenInput,
+	projectRuntimeSessionUsage,
 } from "../../../src/operations";
 import { RuntimeHost } from "../../../src/runtime";
 import {
@@ -359,12 +360,23 @@ describe("ACP v2 Agent adapter", () => {
 			params: { sessionId: "session-1", prompt: [{ type: "text", text: "count usage" }] },
 		});
 		await driver.opened;
-		driver.emit({ type: "usage_settled", cost: 0.0125 });
+		driver.emit({ type: "usage_settled", usage: projectRuntimeSessionUsage(usage(0.0125)) });
 		expect(liveAgent.drain()).toEqual([
 			{
 				jsonrpc: "2.0",
 				method: "session/update",
-				params: { sessionId: "session-1", update: { sessionUpdate: "usage_update", cost: 0.0125 } },
+				params: {
+					sessionId: "session-1",
+					update: {
+						sessionUpdate: "usage_update",
+						inputTokens: 1,
+						outputTokens: 1,
+						cacheReadTokens: 0,
+						cacheWriteTokens: 0,
+						totalTokens: 2,
+						cost: 0.0125,
+					},
+				},
 			},
 		]);
 		driver.finish("completed");
@@ -421,7 +433,18 @@ describe("ACP v2 Agent adapter", () => {
 		expect(resumed).toContainEqual(
 			expect.objectContaining({
 				method: "session/update",
-				params: { sessionId: "session-2", update: { sessionUpdate: "usage_update", cost: 0.0125 } },
+				params: {
+					sessionId: "session-2",
+					update: {
+						sessionUpdate: "usage_update",
+						inputTokens: 1,
+						outputTokens: 1,
+						cacheReadTokens: 0,
+						cacheWriteTokens: 0,
+						totalTokens: 2,
+						cost: 0.0125,
+					},
+				},
 			}),
 		);
 		await replayAgent.close();

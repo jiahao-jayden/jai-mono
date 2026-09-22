@@ -101,6 +101,14 @@ describe("useChat projection", () => {
 				status: "idle",
 				lastSeq: 4,
 				artifacts: [],
+				usage: {
+					inputTokens: 0,
+					outputTokens: 0,
+					cacheReadTokens: 0,
+					cacheWriteTokens: 0,
+					totalTokens: 0,
+					cost: 0,
+				},
 				items: [
 					{
 						kind: "message",
@@ -150,6 +158,14 @@ describe("useChat projection", () => {
 				stopReason: "interrupted",
 				lastSeq: 4,
 				artifacts: [],
+				usage: {
+					inputTokens: 0,
+					outputTokens: 0,
+					cacheReadTokens: 0,
+					cacheWriteTokens: 0,
+					totalTokens: 0,
+					cost: 0,
+				},
 				items: [],
 			},
 		});
@@ -301,6 +317,14 @@ describe("useChat projection", () => {
 				status: "idle",
 				items: [],
 				artifacts: [],
+				usage: {
+					inputTokens: 0,
+					outputTokens: 0,
+					cacheReadTokens: 0,
+					cacheWriteTokens: 0,
+					totalTokens: 0,
+					cost: 0,
+				},
 				lastSeq: 2,
 				todos: {
 					version: 1,
@@ -387,6 +411,34 @@ describe("useChat projection", () => {
 			expect.objectContaining({ id: "artifact:preview.html" }),
 		]);
 	});
+	test("usage_changed updates Chat runtime usage", () => {
+		const next = applyChatProjectionUpdate(emptyChatState(), {
+			type: "event",
+			envelope: {
+				sessionId: "session-1",
+				seq: 2,
+				event: {
+					type: "usage_changed",
+					usage: {
+						inputTokens: 3,
+						outputTokens: 1,
+						cacheReadTokens: 0,
+						cacheWriteTokens: 0,
+						totalTokens: 4,
+						cost: 0.01,
+					},
+				},
+			},
+		});
+		expect(next.usage).toEqual({
+			inputTokens: 3,
+			outputTokens: 1,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			totalTokens: 4,
+			cost: 0.01,
+		});
+	});
 });
 
 function emptyChatState(): ChatRuntimeState {
@@ -403,5 +455,13 @@ function emptyChatState(): ChatRuntimeState {
 		messages: [],
 		todos: undefined,
 		artifacts: [],
+		usage: {
+			inputTokens: 0,
+			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			totalTokens: 0,
+			cost: 0,
+		},
 	};
 }

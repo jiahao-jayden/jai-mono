@@ -47,6 +47,7 @@ import { DESKTOP_TOP_BAR_HEIGHT_CLASS, MAC_SIDEBAR_LEADING_POSITION_CLASS } from
 import { Dock } from "./dock/dock";
 import { useDock } from "./dock/use-dock";
 import { SettingsPage } from "./settings/settings-page";
+import type { SettingsCategory } from "./settings/settings-navigation";
 import { Sidebar } from "./sidebar/sidebar";
 import { SidebarToggleButton } from "./sidebar/sidebar-toggle-button";
 import { TaskPanel } from "./task-panel";
@@ -83,6 +84,7 @@ export function AppShell() {
 	const [sidebarOpen, setSidebarOpen] = useState(true);
 	const [dockOpen, setDockOpen] = useState(false);
 	const [taskCardOpen, setTaskCardOpen] = useState(true);
+	const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("general");
 	const [contentWidth, setContentWidth] = useState(Number.POSITIVE_INFINITY);
 	const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
 	const storedSessionId = useDesktopChatStore((state) => state.activeSessionId);
@@ -105,6 +107,7 @@ export function AppShell() {
 	const setSelectedModelRef = useDesktopChatStore((state) => state.setSelectedModelRef);
 	const setSelectedAgentMode = useDesktopChatStore((state) => state.setSelectedAgentMode);
 	const chatRoute = matchPath("/chat/:sessionId", location.pathname);
+	const settingsRoute = location.pathname === "/settings";
 	const routeSessionId = chatRoute?.params.sessionId;
 	const activeSessionId = routeSessionId && routeSessionId !== "new" ? routeSessionId : null;
 	const dock = useDock(activeSessionId);
@@ -403,7 +406,7 @@ export function AppShell() {
 	);
 	const contentCardClassName = cn(
 		"relative flex min-w-0 flex-1 overflow-hidden bg-[var(--web-content-background)] shadow-[0_0_0_var(--hairline)_var(--border-surface-strong),0_2px_10px_-4px_rgb(0_0_0/.1)] transition-[border-radius] duration-200",
-		sidebarOpen ? "rounded-[12px]" : "rounded-r-[12px]",
+		settingsRoute ? "rounded-none shadow-none" : sidebarOpen ? "rounded-[12px]" : "rounded-r-[12px]",
 	);
 	const isMac = window.desktopRpc.platform.isMac;
 	const shellClassName = cn("relative flex h-screen min-h-160 min-w-5xl overflow-hidden bg-sidebar text-foreground", {
@@ -418,39 +421,43 @@ export function AppShell() {
 				aria-hidden={!sidebarOpen}
 				inert={!sidebarOpen}
 			>
-				{sidebarOpen ? (
-					<Sidebar
-						macTitleBar={isMac}
-						projects={projects}
-						sessions={sessions}
-						runningSessionIds={runningSessionIds}
-						activeSessionId={chatVisible ? activeSessionId : null}
-						loading={sessionRecentsQuery.isLoading}
-						error={sessionLoadErrorMessage}
-						hasNextPage={sessionRecentsQuery.hasNextPage}
-						loadingMore={sessionRecentsQuery.isFetchingNextPage}
-						projectLoading={projectLoading}
-						projectError={projectLoadErrorMessage}
-						width={sidebarResize.width}
-						onToggleSidebar={() => {
-							visibleSidebarWidth.set(0);
-							setSidebarOpen(false);
-						}}
-						onNewChat={() => openNewChat()}
-						onOpenSettings={openProviderSettings}
-						onRelinkProject={relinkProject}
-						onRevealProject={revealProject}
-						onNewProjectChat={(project) => openNewChat(project.id)}
-						onSelectSession={openSession}
-						onRenameSession={renameSession}
-						onPinSession={pinSession}
-						onArchiveSession={archiveSession}
-						onDeleteSession={deleteSession}
-						onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
-					/>
-				) : null}
+			{sidebarOpen ? (
+				<Sidebar
+							macTitleBar={isMac}
+							projects={projects}
+							sessions={sessions}
+							runningSessionIds={runningSessionIds}
+							activeSessionId={chatVisible ? activeSessionId : null}
+							loading={sessionRecentsQuery.isLoading}
+							error={sessionLoadErrorMessage}
+							hasNextPage={sessionRecentsQuery.hasNextPage}
+							loadingMore={sessionRecentsQuery.isFetchingNextPage}
+							projectLoading={projectLoading}
+							projectError={projectLoadErrorMessage}
+							width={sidebarResize.width}
+							onToggleSidebar={() => {
+								visibleSidebarWidth.set(0);
+								setSidebarOpen(false);
+							}}
+							onNewChat={() => openNewChat()}
+							onOpenSettings={openProviderSettings}
+							onRelinkProject={relinkProject}
+							onRevealProject={revealProject}
+							onNewProjectChat={(project) => openNewChat(project.id)}
+							onSelectSession={openSession}
+							onRenameSession={renameSession}
+							onPinSession={pinSession}
+							onArchiveSession={archiveSession}
+							onDeleteSession={deleteSession}
+							onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
+							settingsMode={settingsRoute}
+							settingsCategory={settingsCategory}
+							onSettingsCategoryChange={setSettingsCategory}
+							onBackFromSettings={() => navigate("/chat/new")}
+				/>
+			) : null}
 			</motion.div>
-			{sidebarOpen ? <ColumnResizeHandle resize={sidebarResize} side="left" /> : null}
+			{!settingsRoute && sidebarOpen ? <ColumnResizeHandle resize={sidebarResize} side="left" /> : null}
 			<div ref={contentRef} className={contentCardClassName}>
 				<Routes>
 					<Route
@@ -515,6 +522,8 @@ export function AppShell() {
 								mcpLoadError={mcpQuery.isError && !mcpQuery.isFetching}
 								onSaveMcp={saveMcpSettings}
 								onRefreshMcpStatus={refreshMcpStatus}
+								category={settingsCategory}
+								onCategoryChange={setSettingsCategory}
 							/>
 						}
 					/>

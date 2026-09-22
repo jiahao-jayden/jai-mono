@@ -26,6 +26,17 @@ function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) 
 			pinSession: record("pinSession", { id: "session-1", pinnedAt: 10 }),
 			deleteSession: record("deleteSession"),
 			listProjects: record("listProjects", []),
+			getProfileTokenStats: record("getProfileTokenStats", {
+				availability: "empty",
+				totalTokens: 0,
+				peakDayTokens: 0,
+				peakDayDate: "",
+				days: [],
+				models: [],
+				promptCount: 0,
+				settledAttemptCount: 0,
+				missingUsageAttemptCount: 0,
+			}),
 			...(overrides.sessions as object),
 		},
 		agentHost: {

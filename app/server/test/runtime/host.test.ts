@@ -5,9 +5,11 @@ import { Result } from "better-result";
 import {
   type RuntimeOperation,
   type RuntimeOperationDriver,
+  type RuntimeOperationEvent,
   RuntimeOperationExecutionFailed,
   RuntimeOperationOpenFailed,
   type RuntimeOperationOpenInput,
+  projectRuntimeSessionUsage,
 } from "../../src/operations";
 import {
   InMemoryProductSessionPersistence,
@@ -19,6 +21,56 @@ import { RuntimeHost } from "../../src/runtime";
 function ids(...values: string[]): () => string {
   let index = 0;
   return () => values[index++] ?? `id-${index}`;
+}
+
+function usage(totalCost: number) {
+  return {
+    input: 1,
+    output: 1,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 2,
+    cost: { input: totalCost, output: 0, cacheRead: 0, cacheWrite: 0, total: totalCost },
+  };
+}
+
+function settledUsageEvent(totalCost: number): RuntimeOperationEvent {
+  return { type: "usage_settled", usage: projectRuntimeSessionUsage(usage(totalCost)) };
+}
+
+async function settleDurableUsage(
+  persistence: InMemoryProductSessionPersistence,
+  input: {
+    readonly sessionId: string;
+    readonly operationId: string;
+    readonly attemptId: string;
+    readonly assistantEntryId: string;
+    readonly cost: number;
+  },
+): Promise<void> {
+  const attempted = await persistence.appendOperation({
+    sessionId: input.sessionId,
+    record: {
+      type: "model_attempted",
+      operationId: input.operationId,
+      attemptId: input.attemptId,
+      assistantEntryId: input.assistantEntryId,
+      modelSnapshotId: "test:test-model",
+      timestamp: "2026-09-22T00:00:00.000Z",
+    },
+  });
+  if (attempted.isErr()) throw attempted.error;
+  const settled = await persistence.appendOperation({
+    sessionId: input.sessionId,
+    record: {
+      type: "usage_settled",
+      operationId: input.operationId,
+      attemptId: input.attemptId,
+      usage: usage(input.cost),
+      timestamp: "2026-09-22T00:00:01.000Z",
+    },
+  });
+  if (settled.isErr()) throw settled.error;
 }
 
 describe("RuntimeHost", () => {
@@ -825,6 +877,207 @@ describe("RuntimeHost", () => {
     ]);
   });
 
+  test("excludes abandoned-branch usage_settled from Snapshot Usage after Rewind", async () => {
+    const driver = new ControlledOperationDriver();
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = new RuntimeHost({
+      persistence,
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1", "operation-2", "branch-1"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+
+    const first = await opened.value.prompt({ text: "keep this" });
+    if (first.isErr()) throw first.error;
+    await driver.opened;
+    await settleDurableUsage(persistence, {
+      sessionId: "session-1",
+      operationId: first.value.operationId,
+      attemptId: "attempt-1",
+      assistantEntryId: "assistant-1",
+      cost: 1.5,
+    });
+    driver.finish("completed");
+    await driver.closed;
+
+    const second = await opened.value.prompt({ text: "abandon this" });
+    if (second.isErr()) throw second.error;
+    await driver.opened;
+    await settleDurableUsage(persistence, {
+      sessionId: "session-1",
+      operationId: second.value.operationId,
+      attemptId: "attempt-2",
+      assistantEntryId: "assistant-2",
+      cost: 2.5,
+    });
+    driver.finish("completed");
+    await driver.closed;
+
+    const beforeRewind = await opened.value.snapshot();
+    if (beforeRewind.isErr()) throw beforeRewind.error;
+    expect(beforeRewind.value.usage).toEqual({
+      inputTokens: 2,
+      outputTokens: 2,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 4,
+      cost: 4,
+    });
+
+    const navigated = await opened.value.navigate(first.value.inputEntryId);
+    if (navigated.isErr()) throw navigated.error;
+    const afterRewind = await opened.value.snapshot();
+    if (afterRewind.isErr()) throw afterRewind.error;
+    expect(afterRewind.value.usage).toEqual({
+      inputTokens: 1,
+      outputTokens: 1,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 2,
+      cost: 1.5,
+    });
+    expect(afterRewind.value.operationIdByEntryId.has(second.value.inputEntryId)).toBe(false);
+    expect(afterRewind.value.recovery).toEqual([
+      { status: "terminal", operationId: first.value.operationId, outcome: "completed", finalization: "durable" },
+    ]);
+  });
+
+  test("resets live usage_changed accumulation to the current branch after Rewind", async () => {
+    const driver = new ControlledOperationDriver();
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = new RuntimeHost({
+      persistence,
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1", "operation-2", "branch-1", "operation-3"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+
+    const usageEvents: Array<{ cost: number; totalTokens: number }> = [];
+    opened.value.subscribe((event) => {
+      if (event.type === "usage_changed") {
+        usageEvents.push({ cost: event.usage.cost, totalTokens: event.usage.totalTokens });
+      }
+    });
+
+    const first = await opened.value.prompt({ text: "keep this" });
+    if (first.isErr()) throw first.error;
+    await driver.opened;
+    await settleDurableUsage(persistence, {
+      sessionId: "session-1",
+      operationId: first.value.operationId,
+      attemptId: "attempt-1",
+      assistantEntryId: "assistant-1",
+      cost: 1,
+    });
+    driver.emit(settledUsageEvent(1));
+    driver.finish("completed");
+    await driver.closed;
+
+    const second = await opened.value.prompt({ text: "abandon this" });
+    if (second.isErr()) throw second.error;
+    await driver.opened;
+    await settleDurableUsage(persistence, {
+      sessionId: "session-1",
+      operationId: second.value.operationId,
+      attemptId: "attempt-2",
+      assistantEntryId: "assistant-2",
+      cost: 3,
+    });
+    driver.emit(settledUsageEvent(3));
+    driver.finish("completed");
+    await driver.closed;
+    expect(usageEvents.at(-1)).toEqual({ cost: 4, totalTokens: 4 });
+
+    const navigated = await opened.value.navigate(first.value.inputEntryId);
+    if (navigated.isErr()) throw navigated.error;
+    expect(usageEvents.at(-1)).toEqual({ cost: 1, totalTokens: 2 });
+
+    const third = await opened.value.prompt({ text: "continue on kept branch" });
+    if (third.isErr()) throw third.error;
+    await driver.opened;
+    driver.emit(settledUsageEvent(0.5));
+    driver.finish("completed");
+    await driver.closed;
+    expect(usageEvents.at(-1)).toEqual({ cost: 1.5, totalTokens: 4 });
+
+    const snapshot = await opened.value.snapshot();
+    if (snapshot.isErr()) throw snapshot.error;
+    expect(snapshot.value.usage).toEqual({
+      inputTokens: 1,
+      outputTokens: 1,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 2,
+      cost: 1,
+    });
+  });
+
+  test("Resume after Rewind initializes usage from the current branch only", async () => {
+    const driver = new ControlledOperationDriver();
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = new RuntimeHost({
+      persistence,
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1", "operation-2", "branch-1"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+
+    const first = await opened.value.prompt({ text: "keep this" });
+    if (first.isErr()) throw first.error;
+    await driver.opened;
+    await settleDurableUsage(persistence, {
+      sessionId: "session-1",
+      operationId: first.value.operationId,
+      attemptId: "attempt-1",
+      assistantEntryId: "assistant-1",
+      cost: 2,
+    });
+    driver.finish("completed");
+    await driver.closed;
+
+    const second = await opened.value.prompt({ text: "abandon this" });
+    if (second.isErr()) throw second.error;
+    await driver.opened;
+    await settleDurableUsage(persistence, {
+      sessionId: "session-1",
+      operationId: second.value.operationId,
+      attemptId: "attempt-2",
+      assistantEntryId: "assistant-2",
+      cost: 5,
+    });
+    driver.finish("completed");
+    await driver.closed;
+
+    const navigated = await opened.value.navigate(first.value.inputEntryId);
+    if (navigated.isErr()) throw navigated.error;
+    await opened.value.close();
+
+    const resumedHost = new RuntimeHost({
+      persistence,
+      operationDriver: new ControlledOperationDriver(),
+      createId: ids("unused"),
+    });
+    const resumed = await resumedHost.openSession({ kind: "resume", id: "session-1", cwd: "/workspace" });
+    if (resumed.isErr()) throw resumed.error;
+    const snapshot = await resumed.value.snapshot();
+    if (snapshot.isErr()) throw snapshot.error;
+    expect(snapshot.value.usage).toEqual({
+      inputTokens: 1,
+      outputTokens: 1,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 2,
+      cost: 2,
+    });
+    expect(snapshot.value.recovery).toEqual([
+      { status: "terminal", operationId: first.value.operationId, outcome: "completed", finalization: "durable" },
+    ]);
+    expect(snapshot.value.operationIdByEntryId.has(second.value.inputEntryId)).toBe(false);
+  });
+
   test("rejects navigation while a live Operation is still active", async () => {
     const driver = new ControlledOperationDriver();
     const persistence = new InMemoryProductSessionPersistence();
@@ -1200,8 +1453,6 @@ function configuredSessionPolicy(): RuntimeSessionConfigurationPolicy {
 }
 
 class ControlledOperationDriver implements RuntimeOperationDriver {
-  readonly opened: Promise<RuntimeOperationOpenInput>;
-  readonly closed: Promise<void>;
   abortCalls = 0;
   openCalls = 0;
   queuedInputs: Array<{
@@ -1210,25 +1461,39 @@ class ControlledOperationDriver implements RuntimeOperationDriver {
     readonly entryId: string;
     readonly text: string;
   }> = [];
-  #resolveOpened!: (input: RuntimeOperationOpenInput) => void;
+  #opens: RuntimeOperationOpenInput[] = [];
+  #openWaiters: Array<(input: RuntimeOperationOpenInput) => void> = [];
+  #pendingOpen?: RuntimeOperationOpenInput;
+  #closed!: Promise<void>;
   #resolveClosed!: () => void;
+  #closedResolved = false;
   #resolveOutcome!: (outcome: "completed" | "failed" | "aborted") => void;
-  #outcome = new Promise<"completed" | "failed" | "aborted">((resolve) => {
-    this.#resolveOutcome = resolve;
-  });
+  #outcome!: Promise<"completed" | "failed" | "aborted">;
+  #listeners = new Set<(event: RuntimeOperationEvent) => void>();
 
   constructor() {
-    this.opened = new Promise((resolve) => {
-      this.#resolveOpened = resolve;
+    this.#armOutcome();
+    this.#armClosed();
+  }
+
+  get opened(): Promise<RuntimeOperationOpenInput> {
+    const buffered = this.#opens.shift();
+    if (buffered) return Promise.resolve(buffered);
+    return new Promise((resolve) => {
+      this.#openWaiters.push(resolve);
     });
-    this.closed = new Promise((resolve) => {
-      this.#resolveClosed = resolve;
-    });
+  }
+
+  get closed(): Promise<void> {
+    return this.#closed;
   }
 
   async openOperation(input: RuntimeOperationOpenInput) {
     this.openCalls += 1;
-    this.#resolveOpened(input);
+    this.#armOutcome();
+    this.#armClosed();
+    this.#listeners.clear();
+    this.#pendingOpen = input;
     return Result.ok<RuntimeOperation, never>({
       abort: async () => {
         this.abortCalls += 1;
@@ -1240,13 +1505,48 @@ class ControlledOperationDriver implements RuntimeOperationDriver {
         return Result.ok<void, RuntimeOperationExecutionFailed>(undefined);
       },
       awaitOutcome: async () => Result.ok(await this.#outcome),
+      subscribe: (listener) => {
+        this.#listeners.add(listener);
+        this.#releaseOpened();
+        return () => {
+          this.#listeners.delete(listener);
+        };
+      },
       close: async () => {
+        if (this.#closedResolved) return;
+        this.#closedResolved = true;
         this.#resolveClosed();
       },
     });
   }
 
+  emit(event: RuntimeOperationEvent): void {
+    for (const listener of [...this.#listeners]) listener(event);
+  }
+
   finish(outcome: "completed" | "failed" | "aborted"): void {
     this.#resolveOutcome(outcome);
+  }
+
+  #releaseOpened(): void {
+    const input = this.#pendingOpen;
+    if (!input) return;
+    this.#pendingOpen = undefined;
+    const openWaiter = this.#openWaiters.shift();
+    if (openWaiter) openWaiter(input);
+    else this.#opens.push(input);
+  }
+
+  #armOutcome(): void {
+    this.#outcome = new Promise<"completed" | "failed" | "aborted">((resolve) => {
+      this.#resolveOutcome = resolve;
+    });
+  }
+
+  #armClosed(): void {
+    this.#closedResolved = false;
+    this.#closed = new Promise<void>((resolve) => {
+      this.#resolveClosed = resolve;
+    });
   }
 }

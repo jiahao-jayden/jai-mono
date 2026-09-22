@@ -18,6 +18,7 @@ import type {
 	DesktopNarrationItem,
 	DesktopPermissionRequest,
 	DesktopPermissionResolution,
+	DesktopSessionUsage,
 	DesktopSubagentItem,
 	DesktopSubagentTranscript,
 	DesktopThinkingItem,
@@ -29,6 +30,7 @@ import type {
 	DesktopTranscriptItem,
 	DesktopWebSearchResult,
 } from "../../shared/desktop-rpc";
+import { EMPTY_DESKTOP_SESSION_USAGE } from "../../shared/desktop-rpc";
 import type { DesktopRuntimeHostSupervisor } from "../runtime-host/supervisor";
 import { sortArtifacts } from "./artifacts";
 import { desktopAgentError } from "./errors";
@@ -68,6 +70,7 @@ interface AcpSessionRuntime {
 	readonly terminalOutput: Map<string, string>;
 	readonly hiddenToolCallIds: Set<string>;
 	todos?: DesktopTodos;
+	usage: DesktopSessionUsage;
 	seq: number;
 	closed: boolean;
 	connectionStatus?: DesktopAgentConnectionStatus;
@@ -229,7 +232,16 @@ export class DesktopAcpAgentHost {
 
 	getSnapshot(sessionId: string): DesktopAgentSnapshot {
 		const runtime = this.#sessions.get(sessionId);
-		if (!runtime) return { sessionId, status: "idle", items: [], artifacts: [], lastSeq: 0 };
+		if (!runtime) {
+			return {
+				sessionId,
+				status: "idle",
+				items: [],
+				artifacts: [],
+				usage: EMPTY_DESKTOP_SESSION_USAGE,
+				lastSeq: 0,
+			};
+		}
 		return {
 			sessionId,
 			status: runtime.status,
@@ -238,6 +250,7 @@ export class DesktopAcpAgentHost {
 			items: [...runtime.items.values()].map((item) => structuredClone(item)),
 			...(runtime.todos ? { todos: structuredClone(runtime.todos) } : {}),
 			artifacts: sortArtifacts(runtime.artifacts.values()).map((artifact) => structuredClone(artifact)),
+			usage: { ...runtime.usage },
 			lastSeq: runtime.seq,
 		};
 	}
@@ -313,6 +326,7 @@ export class DesktopAcpAgentHost {
 			terminalToolCallIds: new Map(),
 			terminalOutput: new Map(),
 			hiddenToolCallIds: new Set(),
+			usage: { ...EMPTY_DESKTOP_SESSION_USAGE },
 			seq: 0,
 			closed: false,
 		};
@@ -514,6 +528,9 @@ export class DesktopAcpAgentHost {
 			case "plan_update":
 				this.#planUpdate(runtime, update);
 				return;
+			case "usage_update":
+				this.#usageUpdate(runtime, update);
+				return;
 		}
 	}
 
@@ -535,6 +552,7 @@ export class DesktopAcpAgentHost {
 			terminalToolCallIds: new Map(),
 			terminalOutput: new Map(),
 			hiddenToolCallIds: new Set(),
+			usage: { ...EMPTY_DESKTOP_SESSION_USAGE },
 			seq: 0,
 			closed: true,
 		};
@@ -876,6 +894,13 @@ export class DesktopAcpAgentHost {
 		this.#emitEvent(runtime, { type: "todos_replace", todos });
 	}
 
+	#usageUpdate(runtime: AcpSessionRuntime, update: Record<string, unknown>): void {
+		const usage = readSessionUsage(update);
+		if (!usage) return;
+		runtime.usage = usage;
+		this.#emitEvent(runtime, { type: "usage_changed", usage });
+	}
+
 	/**
 	 * ACP requests that the Client complete every pending permission interaction
 	 * with its explicit cancelled outcome before it stops presenting the Session.
@@ -1151,6 +1176,30 @@ function isWebFetchTool(value: unknown): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readSessionUsage(update: Record<string, unknown>): DesktopSessionUsage | undefined {
+	const inputTokens = finiteToken(update.inputTokens);
+	const outputTokens = finiteToken(update.outputTokens);
+	const cacheReadTokens = finiteToken(update.cacheReadTokens);
+	const cacheWriteTokens = finiteToken(update.cacheWriteTokens);
+	const totalTokens = finiteToken(update.totalTokens);
+	const cost = finiteToken(update.cost);
+	if (
+		inputTokens === undefined ||
+		outputTokens === undefined ||
+		cacheReadTokens === undefined ||
+		cacheWriteTokens === undefined ||
+		totalTokens === undefined ||
+		cost === undefined
+	) {
+		return undefined;
+	}
+	return { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, cost };
+}
+
+function finiteToken(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function isDesktopAgentStopReason(value: unknown): value is DesktopAgentStopReason {

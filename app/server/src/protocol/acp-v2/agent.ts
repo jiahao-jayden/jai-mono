@@ -2,7 +2,7 @@ import { isAbsolute } from "node:path";
 import { type AgentMessage, branchOf, type JsonValue, type SessionEntry } from "@jai/agent";
 import type { ToolFileChange } from "@jai/ai";
 import { type TodoItem, todosFromExtensionState } from "@jai/extension/todo";
-import type { RuntimeOperationContent, RuntimeWebSearchDetails } from "../../operations";
+import type { RuntimeOperationContent, RuntimeSessionUsage, RuntimeWebSearchDetails } from "../../operations";
 import type {
 	RuntimeApprovalRequest,
 	RuntimeSession,
@@ -69,6 +69,9 @@ export class AcpV2Agent {
 						break;
 					case "session/close":
 						response = await this.closeSession(request);
+						break;
+					case "jai/profile/token-stats":
+						response = await this.profileTokenStats(request);
 						break;
 					default:
 						response = this.respondError(request.id, -32601, `Unsupported ACP method "${request.method}"`);
@@ -157,6 +160,15 @@ export class AcpV2Agent {
 				updatedAt: session.updatedAt,
 			}));
 		return this.respond(request.id, { sessions });
+	}
+
+	private async profileTokenStats(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
+		if (request.params !== undefined && objectParams(request.params) === undefined) {
+			return this.respondError(request.id, -32602, "Invalid jai/profile/token-stats parameters");
+		}
+		const projected = await this.options.host.profileTokenStats();
+		if (projected.isErr()) return this.respondError(request.id, -32001, projected.error.message);
+		return this.respond(request.id, projected.value);
 	}
 
 	private async resumeSession(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
@@ -539,7 +551,7 @@ function projectSnapshot(sessionId: string, snapshot: RuntimeSessionSnapshot): r
 		...branchOf(snapshot.entries, snapshot.leafId).flatMap((entry) =>
 			projectEntry(sessionId, entry, snapshot.operationIdByEntryId.get(entry.id)),
 		),
-		...(snapshot.usage.cost === 0 ? [] : [usageUpdate(sessionId, snapshot.usage.cost)]),
+		...(isEmptyUsage(snapshot.usage) ? [] : [usageUpdate(sessionId, snapshot.usage)]),
 		stateUpdate(sessionId, snapshot.state, snapshot.stopReason),
 	];
 }
@@ -549,7 +561,7 @@ function projectRuntimeEvent(sessionId: string, event: RuntimeSessionEvent): rea
 		case "entry_appended":
 			return projectEntry(sessionId, event.entry, event.operationId);
 		case "usage_changed":
-			return [usageUpdate(sessionId, event.cost)];
+			return [usageUpdate(sessionId, event.usage)];
 		case "operation_event":
 			return projectOperationEvent(sessionId, event.operationId, event.event);
 		case "state_changed":
@@ -1133,12 +1145,34 @@ function stateUpdate(
 	};
 }
 
-function usageUpdate(sessionId: string, cost: number): AcpJsonRpcNotification {
+function usageUpdate(sessionId: string, usage: RuntimeSessionUsage): AcpJsonRpcNotification {
 	return {
 		jsonrpc: "2.0",
 		method: "session/update",
-		params: { sessionId, update: { sessionUpdate: "usage_update", cost } },
+		params: {
+			sessionId,
+			update: {
+				sessionUpdate: "usage_update",
+				inputTokens: usage.inputTokens,
+				outputTokens: usage.outputTokens,
+				cacheReadTokens: usage.cacheReadTokens,
+				cacheWriteTokens: usage.cacheWriteTokens,
+				totalTokens: usage.totalTokens,
+				cost: usage.cost,
+			},
+		},
 	};
+}
+
+function isEmptyUsage(usage: RuntimeSessionUsage): boolean {
+	return (
+		usage.inputTokens === 0 &&
+		usage.outputTokens === 0 &&
+		usage.cacheReadTokens === 0 &&
+		usage.cacheWriteTokens === 0 &&
+		usage.totalTokens === 0 &&
+		usage.cost === 0
+	);
 }
 
 function planUpdate(sessionId: string, todos: readonly TodoItem[]): AcpJsonRpcNotification {

@@ -259,6 +259,11 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				await rt.sessions.deleteSession(parsed.sessionId);
 			},
 		},
+		profile: {
+			getTokenStats() {
+				return rt.sessions.getProfileTokenStats();
+			},
+		},
 		attachment: {
 			register(_event, input) {
 				return rt.attachments.register(

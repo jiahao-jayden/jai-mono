@@ -339,6 +339,20 @@ class MemoryCatalogTransport implements RemoteDesktopSessionCatalogTransport {
 		return this.failReadSessionCwd ? undefined : this.sessionCwds.get(sessionId);
 	}
 
+	async getProfileTokenStats() {
+		return {
+			availability: "empty" as const,
+			totalTokens: 0,
+			peakDayTokens: 0,
+			peakDayDate: "",
+			days: [],
+			models: [],
+			promptCount: 0,
+			settledAttemptCount: 0,
+			missingUsageAttemptCount: 0,
+		};
+	}
+
 	#requireSession(sessionId: string) {
 		const session = this.#sessions.get(sessionId);
 		return session ? Result.ok(session) : Result.err({ message: "Session not found" } as never);

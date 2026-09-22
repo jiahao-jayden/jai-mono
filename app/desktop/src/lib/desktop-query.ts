@@ -14,6 +14,7 @@ export const desktopQueryKeys = {
 	providerConfig: ["desktop", "provider-config"] as const,
 	telemetry: ["desktop", "telemetry"] as const,
 	mcp: ["desktop", "mcp"] as const,
+	profileTokenStats: ["desktop", "profile-token-stats"] as const,
 	sessions: {
 		recents: ["desktop", "sessions", "recents"] as const,
 		archived: ["desktop", "sessions", "archived"] as const,

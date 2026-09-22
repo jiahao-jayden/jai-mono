@@ -27,7 +27,10 @@ import {
 	RuntimeOperationExecutionFailed,
 	type RuntimeOperationOutcome,
 	type RuntimeQueuedInput,
+	type RuntimeSessionUsage,
+	projectRuntimeSessionUsage,
 } from "../operations";
+export type { RuntimeSessionUsage } from "../operations";
 import type {
 	ProductSessionAdmissionConflict,
 	ProductSessionDurableState,
@@ -39,6 +42,12 @@ import type {
 	RuntimeSessionConfigurationPolicy,
 	RuntimeSessionConfigurationSnapshot,
 } from "../sessions";
+import { branchOperationRecords } from "./branch-operations";
+import {
+	branchSessionUsage,
+	projectProfileTokenStats,
+	type RuntimeProfileTokenStats,
+} from "./profile-token-stats";
 import {
 	createUnconfiguredRuntimeSessionConfigurationPolicy,
 	isRuntimeSessionMode,
@@ -96,9 +105,9 @@ export type RuntimeSessionEvent =
 			readonly operationId?: string;
 	  }
 	| {
-			/** A durable usage ledger update, projected as a cumulative client-facing cost. */
+			/** A durable usage ledger update, projected as cumulative branch usage. */
 			readonly type: "usage_changed";
-			readonly cost: number;
+			readonly usage: RuntimeSessionUsage;
 	  }
 	| {
 			/** Ephemeral display progress. Replay always derives from durable Session entries instead. */
@@ -137,8 +146,8 @@ export interface RuntimeSessionSnapshot {
 	/** Read-only projection of existing Operation records for replay grouping. */
 	readonly operationIdByEntryId: ReadonlyMap<string, string>;
 	readonly recovery: readonly OperationRecoveryVerdict[];
-	/** Cumulative durable model cost, including discarded responses. */
-	readonly usage: { readonly cost: number };
+	/** Cumulative durable usage on the current Session branch, including discarded responses on that branch. */
+	readonly usage: RuntimeSessionUsage;
 	readonly state: RuntimeForegroundState;
 	readonly stopReason?: RuntimeStopReason;
 }
@@ -275,6 +284,38 @@ export class RuntimeHost {
 				cause: result.error,
 			}),
 		);
+	}
+
+	/**
+	 * Read-only Profile projection over every catalog Session's current branch.
+	 * Deleted journals are already gone from persistence.list / load.
+	 */
+	async profileTokenStats(): Promise<Result<RuntimeProfileTokenStats, RuntimeHostPromptRejected>> {
+		const listed = await this.options.persistence.list();
+		if (listed.isErr()) {
+			return Result.err(
+				new RuntimeHostPromptRejected({
+					message: "Could not list Sessions for Profile token stats",
+					sessionId: listed.error.sessionId,
+					cause: listed.error,
+				}),
+			);
+		}
+		const states: ProductSessionDurableState[] = [];
+		for (const info of listed.value) {
+			const loaded = await this.options.persistence.load(info.id);
+			if (loaded.isErr()) {
+				return Result.err(
+					new RuntimeHostPromptRejected({
+						message: `Could not load Session "${info.id}" for Profile token stats`,
+						sessionId: info.id,
+						cause: loaded.error,
+					}),
+				);
+			}
+			states.push(loaded.value);
+		}
+		return Result.ok(projectProfileTokenStats(states));
 	}
 
 	async openSession(input: RuntimeSessionSelection): Promise<Result<RuntimeSession, RuntimeHostOpenError>> {
@@ -554,7 +595,7 @@ export class RuntimeSession {
 	 * terminal outcome in the meantime.
 	 */
 	#suspended?: RuntimeOperationExecutionFailed;
-	#usageCost: number;
+	#usage: RuntimeSessionUsage;
 	readonly #pendingApprovals = new Map<string, PendingRuntimeApproval>();
 	readonly #sessionAllowRules: SessionAllowRules = {};
 	readonly #listeners = new Set<(event: RuntimeSessionEvent) => void>();
@@ -576,7 +617,7 @@ export class RuntimeSession {
 		this.id = state.id;
 		this.info = state;
 		this.#initialAppState = initialAppState;
-		this.#usageCost = usageCost(state.operationRecords);
+		this.#usage = branchUsage(state);
 	}
 
 	/** Host-only reconnect seam. No journal recovery is allowed while this driver is live. */
@@ -706,18 +747,18 @@ export class RuntimeSession {
 		if (loaded.isErr()) return Result.err(this.reject(loaded.error));
 		const recovery = recoverDurableState(loaded.value);
 		if (recovery.isErr()) return recovery;
-		const foreground = this.foregroundState(loaded.value, recovery.value);
-		const branchEntryIds = new Set(
-			branchOf(loaded.value.snapshot.entries, loaded.value.snapshot.leafId).map((entry) => entry.id),
-		);
-		return Result.ok({
-			entries: loaded.value.snapshot.entries,
-			leafId: loaded.value.snapshot.leafId,
-			operationIdByEntryId: operationIdByEntryId(loaded.value.operationRecords, branchEntryIds),
-			recovery: recovery.value,
-			usage: { cost: usageCost(loaded.value.operationRecords) },
-			...foreground,
-		});
+			const foreground = this.foregroundState(loaded.value, recovery.value);
+			const branchEntryIds = new Set(
+				branchOf(loaded.value.snapshot.entries, loaded.value.snapshot.leafId).map((entry) => entry.id),
+			);
+			return Result.ok({
+				entries: loaded.value.snapshot.entries,
+				leafId: loaded.value.snapshot.leafId,
+				operationIdByEntryId: operationIdByEntryId(loaded.value.operationRecords, branchEntryIds),
+				recovery: recovery.value,
+				usage: branchUsage(loaded.value),
+				...foreground,
+			});
 	}
 
 	/** Loads a journal-only child session snapshot for subagent history replay. */
@@ -812,7 +853,12 @@ export class RuntimeSession {
 				expectedRevision: loaded.value.revision,
 			});
 			if (appended.isErr()) return Result.err(this.reject(appended.error));
+			const afterNavigate = await this.persistence.load(this.id);
+			if (afterNavigate.isErr()) return Result.err(this.reject(afterNavigate.error));
+			const previousUsage = this.#usage;
+			this.#usage = branchUsage(afterNavigate.value);
 			this.publish({ type: "entry_appended", entry });
+			if (!usageEqual(this.#usage, previousUsage)) this.publish({ type: "usage_changed", usage: this.#usage });
 			return Result.ok(undefined);
 		});
 	}
@@ -1163,9 +1209,9 @@ export class RuntimeSession {
 		active.resource = opened.value;
 		active.stopObserving = opened.value.subscribe?.((event) => {
 			if (event.type === "usage_settled") {
-				const previousCost = this.#usageCost;
-				this.#usageCost += finiteCost(event.cost);
-				if (this.#usageCost !== previousCost) this.publish({ type: "usage_changed", cost: this.#usageCost });
+				const previousUsage = this.#usage;
+				this.#usage = addUsage(this.#usage, event.usage);
+				if (!usageEqual(this.#usage, previousUsage)) this.publish({ type: "usage_changed", usage: this.#usage });
 				return;
 			}
 			this.publish({
@@ -1505,15 +1551,41 @@ function stopReasonFor(outcome: OperationTerminalOutcome): RuntimeStopReason {
 	}
 }
 
-function usageCost(records: readonly import("@jai/agent").OperationRecord[]): number {
-	return records.reduce(
-		(total, record) => (record.type === "usage_settled" ? total + finiteCost(record.usage.cost.total) : total),
-		0,
+function emptyUsage(): RuntimeSessionUsage {
+	return {
+		inputTokens: 0,
+		outputTokens: 0,
+		cacheReadTokens: 0,
+		cacheWriteTokens: 0,
+		totalTokens: 0,
+		cost: 0,
+	};
+}
+
+function addUsage(left: RuntimeSessionUsage, right: RuntimeSessionUsage): RuntimeSessionUsage {
+	return {
+		inputTokens: left.inputTokens + right.inputTokens,
+		outputTokens: left.outputTokens + right.outputTokens,
+		cacheReadTokens: left.cacheReadTokens + right.cacheReadTokens,
+		cacheWriteTokens: left.cacheWriteTokens + right.cacheWriteTokens,
+		totalTokens: left.totalTokens + right.totalTokens,
+		cost: left.cost + right.cost,
+	};
+}
+
+function usageEqual(left: RuntimeSessionUsage, right: RuntimeSessionUsage): boolean {
+	return (
+		left.inputTokens === right.inputTokens &&
+		left.outputTokens === right.outputTokens &&
+		left.cacheReadTokens === right.cacheReadTokens &&
+		left.cacheWriteTokens === right.cacheWriteTokens &&
+		left.totalTokens === right.totalTokens &&
+		left.cost === right.cost
 	);
 }
 
-function finiteCost(value: number): number {
-	return Number.isFinite(value) ? value : 0;
+function branchUsage(state: ProductSessionDurableState): RuntimeSessionUsage {
+	return branchSessionUsage(state);
 }
 
 function hasPendingInputs(verdict: OperationRecoveryVerdict | undefined): boolean {
@@ -1549,7 +1621,7 @@ function recoverDurableState(
 	const branchEntryIds = new Set(branch.map((entry) => entry.id));
 	const recovered = recoverSessionOperations(branchOperationRecords(state.operationRecords, branchEntryIds), {
 		sessionEntryIds: branchEntryIds,
-		terminalOutcomeByAssistantEntryId: terminalOutcomeByAssistantEntryId(state),
+		terminalOutcomeByAssistantEntryId: terminalOutcomeByAssistantEntryId(state, branchEntryIds),
 	});
 	if (recovered.isOk()) return Result.ok(recovered.value);
 	return Result.err(
@@ -1561,26 +1633,18 @@ function recoverDurableState(
 	);
 }
 
-function branchOperationRecords(
-	records: readonly OperationRecord[],
-	branchEntryIds: ReadonlySet<string>,
-): readonly OperationRecord[] {
-	const activeOperationIds = new Set(
-		records.flatMap((record) =>
-			record.type === "operation_accepted" && branchEntryIds.has(record.inputEntryId) ? [record.operationId] : [],
-		),
-	);
-	return records.filter((record) => activeOperationIds.has(record.operationId));
-}
-
 function terminalOutcomeByAssistantEntryId(
 	state: ProductSessionDurableState,
+	branchEntryIds: ReadonlySet<string>,
 ): ReadonlyMap<string, OperationFinished["outcome"]> {
 	const attemptedAssistantEntryIds = new Set(
-		state.operationRecords.flatMap((record) => (record.type === "model_attempted" ? [record.assistantEntryId] : [])),
+		branchOperationRecords(state.operationRecords, branchEntryIds).flatMap((record) =>
+			record.type === "model_attempted" ? [record.assistantEntryId] : [],
+		),
 	);
 	const outcomes = new Map<string, OperationFinished["outcome"]>();
 	for (const entry of state.snapshot.entries) {
+		if (!branchEntryIds.has(entry.id)) continue;
 		if (entry.type !== "message" || entry.message.role !== "assistant") continue;
 		if (!attemptedAssistantEntryIds.has(entry.id)) continue;
 		const outcome = terminalOutcomeForAssistant(entry.message);

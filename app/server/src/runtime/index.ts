@@ -4,6 +4,16 @@ export {
 	type OpenConfiguredRuntimeHostOptions,
 	openConfiguredRuntimeHost,
 } from "./daemon";
+export { branchOperationRecords } from "./branch-operations";
+export {
+	branchSessionUsage,
+	emptyProfileTokenStats,
+	projectProfileTokenStats,
+	type RuntimeProfileTokenAvailability,
+	type RuntimeProfileTokenDay,
+	type RuntimeProfileTokenModelShare,
+	type RuntimeProfileTokenStats,
+} from "./profile-token-stats";
 export {
 	type PromptAdmission,
 	type RuntimeCancelOutcome,
@@ -28,6 +38,7 @@ export {
 	type RuntimeSessionEvent,
 	type RuntimeSessionSelection,
 	type RuntimeSessionSnapshot,
+	type RuntimeSessionUsage,
 	type RuntimeStopReason,
 } from "./host";
 export {
