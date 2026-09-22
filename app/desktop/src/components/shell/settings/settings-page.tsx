@@ -323,7 +323,7 @@ function ProviderConfigForm({
 
 	return (
 		<form
-			className="flex h-full min-h-0 flex-1 bg-muted-hover"
+			className="flex h-full min-h-0 flex-1 bg-background"
 			onSubmit={(event) => {
 				event.preventDefault();
 				if (providerCategory) void submit();
