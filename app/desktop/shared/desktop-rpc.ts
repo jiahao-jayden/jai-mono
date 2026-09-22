@@ -366,7 +366,7 @@ export interface DesktopWorkspaceOpenApplications {
 export type DesktopProviderAdapter = "anthropic" | "openai-compatible" | "openai-responses";
 export type DesktopProviderAuthentication = "api-key" | "none";
 export type DesktopModelModality = "text" | "image" | "audio" | "video" | "pdf";
-export type DesktopModelSource = "catalog" | "unverified";
+export type DesktopModelSource = "catalog" | "fixture" | "unverified";
 
 export interface DesktopModelCost {
 	readonly input?: number;

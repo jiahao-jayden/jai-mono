@@ -229,6 +229,7 @@ function ModelCard({
 							</span>
 						</Tooltip>
 					</div>
+					{model.family ? <Badge color="gray" size="sm">{model.family}</Badge> : null}
 					<ModelCapabilities model={model} />
 					{availability.selectable ? null : (
 						<Badge color={availability.verified ? "amber" : "orange"} size="sm">

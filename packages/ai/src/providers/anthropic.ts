@@ -10,7 +10,7 @@ import type {
 	RawMessageStartEvent,
 	RawMessageStreamEvent,
 } from "@anthropic-ai/sdk/resources/messages.js";
-import { createAssistantMessage, parseToolArguments, runAdapterStream } from "../adapter";
+import { createAssistantMessage, mergeProviderOptions, parseToolArguments, runAdapterStream } from "../adapter";
 import { AssistantMessageEventStream } from "../event-stream";
 import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
 import { assertNativeToolCallProtocol } from "../tool-protocol";
@@ -98,12 +98,13 @@ export class AnthropicProvider implements Provider {
 
 				const params = buildParams(model, context, options);
 				const providerOpts = options?.providerOptions?.[this.id] ?? options?.providerOptions?.[this.adapter];
-				const body = providerOpts ? { ...params, ...providerOpts } : params;
+				const body = mergeProviderOptions("anthropic", params, providerOpts, [
+					...Object.keys(params),
+					"system",
+					"tools",
+				]);
 
-				return client.messages.create(
-					body as MessageCreateParamsStreaming,
-					options?.signal ? { signal: options.signal } : undefined,
-				);
+				return client.messages.create(body, options?.signal ? { signal: options.signal } : undefined);
 			},
 			step: (event) => translateEvent(output, blockStates, event),
 			// Anthropic 每个 block 都有显式 stop 事件，不需要收尾

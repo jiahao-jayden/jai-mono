@@ -7,7 +7,8 @@ import type {
 	ResponseStreamEvent,
 	ResponseUsage,
 } from "openai/resources/responses/responses";
-import { createAssistantMessage, parseToolArguments, runAdapterStream } from "../adapter";
+import { createAssistantMessage, mergeProviderOptions, parseToolArguments, runAdapterStream } from "../adapter";
+import { resolveRequestPolicy } from "../compatibility";
 import { AssistantMessageEventStream } from "../event-stream";
 import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
 import { assertNativeToolCallProtocol } from "../tool-protocol";
@@ -111,11 +112,11 @@ export class OpenAIResponsesProvider implements Provider {
 				const client = options?.apiKey ? this.createClient(options.apiKey) : this.client;
 				const params = buildParams(model, context, options);
 				const providerOpts = options?.providerOptions?.[this.id] ?? options?.providerOptions?.[this.adapter];
-				const body = providerOpts ? { ...params, ...providerOpts } : params;
-				return client.responses.create(
-					body as ResponseCreateParamsStreaming,
-					options?.signal ? { signal: options.signal } : undefined,
-				);
+				const body = mergeProviderOptions("openai-responses", params, providerOpts, [
+					...Object.keys(params).filter((field) => field !== "reasoning"),
+					"tools",
+				]);
+				return client.responses.create(body, options?.signal ? { signal: options.signal } : undefined);
 			},
 			step: (event) => applyEvent(output, state, event),
 			finalize: () => finalizeBlocks(output, state),
@@ -134,6 +135,7 @@ export class OpenAIResponsesProvider implements Provider {
 }
 
 function buildParams(model: Model, context: Context, options?: StreamOptions): ResponseCreateParamsStreaming {
+	const policy = resolveRequestPolicy(model.compatibilityProfile, { reasoningRequested: model.reasoning });
 	return {
 		model: model.remoteModelId ?? model.id,
 		stream: true,
@@ -143,8 +145,8 @@ function buildParams(model: Model, context: Context, options?: StreamOptions): R
 		input: convertMessages(transformMessagesForModel(context.messages, model)),
 		max_output_tokens: options?.maxTokens ?? model.maxTokens,
 		...(options?.temperature === undefined ? {} : { temperature: options.temperature }),
-		...(context.tools.length === 0 ? {} : { tools: convertTools(context.tools) }),
-		...(model.reasoning ? { reasoning: { summary: "auto" } } : {}),
+		...(context.tools.length === 0 ? {} : { tools: convertTools(context.tools, policy.supportsStrictTools) }),
+		...(policy.reasoningEnabled ? { reasoning: { summary: "auto" } } : {}),
 	};
 }
 
@@ -218,13 +220,13 @@ function convertToolResult(message: ToolResultMessage): ResponseInputItem {
 	};
 }
 
-function convertTools(tools: Tool[]): OpenAI.Responses.FunctionTool[] {
+function convertTools(tools: Tool[], supportsStrictTools: boolean): OpenAI.Responses.FunctionTool[] {
 	return tools.map((tool) => ({
 		type: "function",
 		name: tool.name,
 		description: tool.description,
 		parameters: tool.parameters as Record<string, unknown>,
-		strict: true,
+		strict: supportsStrictTools,
 	}));
 }
 

@@ -1,4 +1,22 @@
-export { type AdapterSpec, createAssistantMessage, normalizeProviderError, runAdapterStream } from "./adapter";
+export {
+	type AdapterSpec,
+	createAssistantMessage,
+	mergeProviderOptions,
+	normalizeProviderError,
+	ProviderOptionsConflict,
+	runAdapterStream,
+} from "./adapter";
+export {
+	CompatibilityResolutionError,
+	type CompatibilityRule,
+	type CompatibilityRuleField,
+	type CompatibilityRules,
+	type CompatibilitySource,
+	type ModelIdentity,
+	type ResolvedCompatibilityProfile,
+	resolveCompatibilityProfile,
+	resolveRequestPolicy,
+} from "./compatibility";
 export { AssistantMessageEventStream, EventStream } from "./event-stream";
 export * from "./provider";
 export { AnthropicProvider, type AnthropicProviderConfig } from "./providers/anthropic";

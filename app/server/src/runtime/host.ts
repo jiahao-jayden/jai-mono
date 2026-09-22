@@ -43,11 +43,7 @@ import type {
 	RuntimeSessionConfigurationSnapshot,
 } from "../sessions";
 import { branchOperationRecords } from "./branch-operations";
-import {
-	branchSessionUsage,
-	projectProfileTokenStats,
-	type RuntimeProfileTokenStats,
-} from "./profile-token-stats";
+import { branchSessionUsage, projectProfileTokenStats, type RuntimeProfileTokenStats } from "./profile-token-stats";
 import {
 	createUnconfiguredRuntimeSessionConfigurationPolicy,
 	isRuntimeSessionMode,
@@ -689,7 +685,10 @@ export class RuntimeSession {
 				inputEntry,
 				operation,
 			});
-			if (accepted.isErr()) return Result.err(this.reject(accepted.error));
+			if (accepted.isErr()) {
+				this.operationDriver?.discardPreflight?.(operationId);
+				return Result.err(this.reject(accepted.error));
+			}
 			if (this.operationDriver) this.#active = createActiveOperation(operationId);
 			this.publish({ type: "entry_appended", entry: inputEntry, operationId });
 			return Result.ok({ operationId, inputEntryId });
@@ -747,18 +746,18 @@ export class RuntimeSession {
 		if (loaded.isErr()) return Result.err(this.reject(loaded.error));
 		const recovery = recoverDurableState(loaded.value);
 		if (recovery.isErr()) return recovery;
-			const foreground = this.foregroundState(loaded.value, recovery.value);
-			const branchEntryIds = new Set(
-				branchOf(loaded.value.snapshot.entries, loaded.value.snapshot.leafId).map((entry) => entry.id),
-			);
-			return Result.ok({
-				entries: loaded.value.snapshot.entries,
-				leafId: loaded.value.snapshot.leafId,
-				operationIdByEntryId: operationIdByEntryId(loaded.value.operationRecords, branchEntryIds),
-				recovery: recovery.value,
-				usage: branchUsage(loaded.value),
-				...foreground,
-			});
+		const foreground = this.foregroundState(loaded.value, recovery.value);
+		const branchEntryIds = new Set(
+			branchOf(loaded.value.snapshot.entries, loaded.value.snapshot.leafId).map((entry) => entry.id),
+		);
+		return Result.ok({
+			entries: loaded.value.snapshot.entries,
+			leafId: loaded.value.snapshot.leafId,
+			operationIdByEntryId: operationIdByEntryId(loaded.value.operationRecords, branchEntryIds),
+			recovery: recovery.value,
+			usage: branchUsage(loaded.value),
+			...foreground,
+		});
 	}
 
 	/** Loads a journal-only child session snapshot for subagent history replay. */

@@ -19,7 +19,12 @@ import type {
 import { normalizeRuntimeModelCatalog } from "@jai/server/model-catalog";
 import { Result } from "better-result";
 import { DesktopConfigService } from "../electron/config";
-import { projectModel, projectProviderPresets, projectRuntimeProviderConfig } from "../electron/config/provider";
+import {
+	projectModel,
+	projectProviderPresets,
+	projectRuntimeProviderConfig,
+	validateProviderProfiles,
+} from "../electron/config/provider";
 import { isDesktopProviderModelRunnable } from "../shared/desktop-rpc";
 
 describe("DesktopConfigService", () => {
@@ -98,7 +103,7 @@ describe("DesktopConfigService", () => {
 		]);
 	});
 
-	test("leaves an unmatched Ark list ID unverified instead of using first-party DeepSeek", () => {
+	test("projects reviewed metadata for a confirmed Ark model missing from Models.dev", () => {
 		const projected = projectRuntimeProviderConfig(
 			{
 				revision: "r1",
@@ -147,13 +152,24 @@ describe("DesktopConfigService", () => {
 
 		expect(projected.profiles[0]?.models).toMatchObject([
 			{
+				name: "DeepSeek V4.1 Flash",
 				remoteModelId: "deepseek-v4-1-flash",
-				verified: false,
-				source: "unverified",
+				verified: true,
+				source: "fixture",
+				metadataProvider: "volcengine",
+				contextWindow: 1_000_000,
+				maxTokens: 384_000,
+				inputModalities: ["text", "image"],
+				outputModalities: ["text"],
+				toolCall: true,
 			},
 		]);
-		expect(projected.profiles[0]?.models[0]?.contextWindow).toBeUndefined();
-		expect(projected.profiles[0]?.models[0]?.metadataProvider).toBeUndefined();
+		expect(projected.profiles[0]?.models[0]).toMatchObject({
+			family: "flash",
+			reasoning: true,
+			compatibility: { maxTokensField: "max_tokens", reasoningFormat: "deepseek", supportsThinking: true },
+		});
+		expect(() => validateProviderProfiles(projected.profiles, undefined)).not.toThrow();
 	});
 
 	test("uses the configured Volcengine catalog authority for Ark models", () => {
@@ -214,6 +230,55 @@ describe("DesktopConfigService", () => {
 				toolCall: true,
 			},
 		]);
+	});
+
+	test("projects confirmed Volcengine DeepSeek family compatibility into the model list", () => {
+		const projected = projectRuntimeProviderConfig(
+			{
+				revision: "r1",
+				model: "",
+				profiles: [
+					{
+						id: "ark",
+						name: "Volcengine Ark",
+						adapter: "openai-compatible",
+						baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+						authentication: "api-key",
+						credentialConfigured: true,
+						enabled: true,
+						models: [{ id: "deepseek-flash", enabled: false }],
+					},
+				],
+				connector: { policy: { default: "ask", actions: {} }, connectors: [] },
+				webSearch: { providers: [], fetch: { jina: { credentialConfigured: false } } },
+			},
+			normalizeRuntimeModelCatalog({
+				providers: {
+					volcengine: {
+						name: "Volcengine Ark",
+						models: {
+							"deepseek-flash": {
+								name: "DeepSeek V4.1",
+								family: "deepseek-v4",
+								reasoning: true,
+								interleaved: { field: "reasoning_content" },
+							},
+						},
+					},
+				},
+			}),
+		);
+
+		expect(projected.profiles[0]?.models[0]).toMatchObject({
+			remoteModelId: "deepseek-flash",
+			family: "deepseek-v4",
+			reasoning: true,
+			compatibility: {
+				maxTokensField: "max_tokens",
+				reasoningFormat: "deepseek",
+				supportsThinking: true,
+			},
+		});
 	});
 
 	test("projects curated provider presets with official endpoints", () => {

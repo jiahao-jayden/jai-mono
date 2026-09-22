@@ -131,7 +131,12 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				workspaceTrusted: fileCapabilities.workspaceTrusted,
 			},
 			resolveProvider: () => {
-				const runtime = resolveSdkModel(input.model, input.provider);
+				const runtime = resolveSdkModel(
+					input.model,
+					input.provider,
+					input.compatibilityProfile,
+					input.modelMetadata,
+				);
 				modelRuntime = runtime;
 				return runtime;
 			},

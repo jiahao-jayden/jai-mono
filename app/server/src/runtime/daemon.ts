@@ -8,6 +8,7 @@ import {
 	createRuntimeConnectorAgentAssembly,
 	createRuntimeWebSearchAgentAssembly,
 } from "../agents";
+import { resolveRuntimeModelCompatibilityProfile, resolveRuntimeModelMetadata } from "../model-catalog";
 import { RuntimeOperationOpenFailed } from "../operations";
 import type { AcpImplementationInfo } from "../protocol/acp-v2";
 import { DesktopLocalRuntimeCapabilitySource, type RuntimeCapabilitySource } from "../runtime-capabilities";
@@ -42,7 +43,7 @@ export async function openConfiguredRuntimeHost(
 	const opened = await openJaiRuntimeServer({
 		dataDirectory,
 		homeDirectory,
-		createOperationDriver: ({ agentSettings, workspaceTrust, telemetry }) => {
+		createOperationDriver: ({ agentSettings, modelCatalog, workspaceTrust, telemetry }) => {
 			const capabilitySource =
 				options.capabilitySource ??
 				new DesktopLocalRuntimeCapabilitySource({
@@ -102,8 +103,34 @@ export async function openConfiguredRuntimeHost(
 								}),
 							);
 						}
+						const catalogSnapshot = modelCatalog.get();
+						const operationCatalog = catalogSnapshot.isOk()
+							? catalogSnapshot.value
+							: { stale: false, refreshed: false };
+						const compatibilityProfile = resolveRuntimeModelCompatibilityProfile(
+							input.runtimeConfiguration.model,
+							current.value.provider,
+							operationCatalog,
+							current.value.model,
+						);
+						if (compatibilityProfile.isErr()) {
+							return Result.err(
+								new RuntimeOperationOpenFailed({
+									message: `Runtime Host compatibility profile cannot open Operation "${input.operationId}"`,
+									sessionId: input.sessionId,
+									operationId: input.operationId,
+									cause: compatibilityProfile.error,
+								}),
+							);
+						}
 						return Result.ok({
 							model: current.value.model,
+							compatibilityProfile: compatibilityProfile.value,
+							modelMetadata: resolveRuntimeModelMetadata(
+								input.runtimeConfiguration.model,
+								current.value.provider,
+								operationCatalog,
+							),
 							...(current.value.provider ? { provider: current.value.provider } : {}),
 							...(current.value.maxTurns ? { maxTurns: current.value.maxTurns } : {}),
 							...(current.value.instructions ? { instructions: current.value.instructions } : {}),

@@ -1,57 +1,101 @@
+import { type Static, Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { TaggedError } from "better-result";
 
 export const RUNTIME_MODEL_CATALOG_FRESHNESS_MS = 48 * 60 * 60 * 1_000;
 
-export type RuntimeModelCatalogModality = "text" | "image" | "audio" | "video" | "pdf";
+const MODALITIES = ["text", "image", "audio", "video", "pdf"] as const;
+const INTERLEAVED_FIELDS = ["reasoning", "reasoning_content", "reasoning_details"] as const;
 
-export interface RuntimeModelCatalogCost {
-	readonly input?: number;
-	readonly output?: number;
-	readonly cacheRead?: number;
-	readonly cacheWrite?: number;
-	readonly reasoning?: number;
-}
+const NonEmptyString = Type.String({ minLength: 1 });
+const PositiveInteger = Type.Integer({ minimum: 1 });
+const Modalities = Type.Array(Type.Union(MODALITIES.map((modality) => Type.Literal(modality))), {
+	minItems: 1,
+	uniqueItems: true,
+});
+const strict = { additionalProperties: false } as const;
 
-export interface RuntimeModelCatalogModel {
-	readonly id: string;
-	readonly name: string;
-	readonly description?: string;
-	readonly family?: string;
-	readonly status?: string;
-	readonly releaseDate?: string;
-	readonly lastUpdated?: string;
-	readonly knowledge?: string;
-	readonly openWeights?: boolean;
-	readonly attachment?: boolean;
-	readonly reasoning?: boolean;
-	readonly reasoningOptions?: readonly string[];
-	readonly temperature?: boolean;
-	readonly interleaved?: true | { readonly field: "reasoning" | "reasoning_content" | "reasoning_details" };
-	readonly toolCall?: boolean;
-	readonly structuredOutput?: boolean;
-	readonly inputModalities?: readonly RuntimeModelCatalogModality[];
-	readonly outputModalities?: readonly RuntimeModelCatalogModality[];
-	readonly cost?: RuntimeModelCatalogCost;
-	readonly contextWindow?: number;
-	readonly inputLimit?: number;
-	readonly maxTokens?: number;
-}
+const CostSchema = Type.Object(
+	{
+		input: Type.Optional(Type.Number()),
+		output: Type.Optional(Type.Number()),
+		cacheRead: Type.Optional(Type.Number()),
+		cacheWrite: Type.Optional(Type.Number()),
+		reasoning: Type.Optional(Type.Number()),
+	},
+	{ ...strict, minProperties: 1 },
+);
 
-export interface RuntimeModelCatalogProvider {
-	readonly id: string;
-	readonly name: string;
-	readonly models: Readonly<Record<string, RuntimeModelCatalogModel>>;
-}
+const ModelSchema = Type.Object(
+	{
+		id: NonEmptyString,
+		name: NonEmptyString,
+		description: Type.Optional(NonEmptyString),
+		family: Type.Optional(NonEmptyString),
+		status: Type.Optional(NonEmptyString),
+		releaseDate: Type.Optional(NonEmptyString),
+		lastUpdated: Type.Optional(NonEmptyString),
+		knowledge: Type.Optional(NonEmptyString),
+		openWeights: Type.Optional(Type.Boolean()),
+		attachment: Type.Optional(Type.Boolean()),
+		reasoning: Type.Optional(Type.Boolean()),
+		reasoningOptions: Type.Optional(Type.Array(NonEmptyString, { minItems: 1, uniqueItems: true })),
+		temperature: Type.Optional(Type.Boolean()),
+		interleaved: Type.Optional(
+			Type.Union([
+				Type.Literal(true),
+				Type.Object({ field: Type.Union(INTERLEAVED_FIELDS.map((field) => Type.Literal(field))) }, strict),
+			]),
+		),
+		toolCall: Type.Optional(Type.Boolean()),
+		structuredOutput: Type.Optional(Type.Boolean()),
+		inputModalities: Type.Optional(Modalities),
+		outputModalities: Type.Optional(Modalities),
+		cost: Type.Optional(CostSchema),
+		contextWindow: Type.Optional(PositiveInteger),
+		inputLimit: Type.Optional(PositiveInteger),
+		maxTokens: Type.Optional(PositiveInteger),
+	},
+	strict,
+);
 
+const ProviderSchema = Type.Object(
+	{ id: NonEmptyString, name: NonEmptyString, models: Type.Record(NonEmptyString, ModelSchema) },
+	strict,
+);
+
+const CatalogSchema = Type.Object({ providers: Type.Record(NonEmptyString, ProviderSchema) }, strict);
+
+const SnapshotSchema = Type.Union([
+	Type.Object(
+		{
+			catalog: CatalogSchema,
+			fetchedAt: Type.Integer({ minimum: 0 }),
+			stale: Type.Boolean(),
+			refreshed: Type.Boolean(),
+		},
+		strict,
+	),
+	Type.Object({ stale: Type.Boolean(), refreshed: Type.Boolean() }, strict),
+]);
+
+export type RuntimeModelCatalogModality = (typeof MODALITIES)[number];
+export type RuntimeModelCatalogCost = Static<typeof CostSchema>;
+export type RuntimeModelCatalogModel = Static<typeof ModelSchema>;
+export type RuntimeModelCatalogProvider = Static<typeof ProviderSchema>;
 /** Safe, normalized public metadata used by Host and Desktop projections. */
-export interface RuntimeModelCatalog {
-	readonly providers: Readonly<Record<string, RuntimeModelCatalogProvider>>;
-}
+export type RuntimeModelCatalog = Static<typeof CatalogSchema>;
 
 export interface RuntimeModelCatalogMatch {
 	readonly providerId: string;
 	readonly model: RuntimeModelCatalogModel;
 }
+
+export type RuntimeModelCatalogMatchResolution =
+	| { readonly kind: "exact"; readonly match: RuntimeModelCatalogMatch }
+	| { readonly kind: "revision"; readonly match: RuntimeModelCatalogMatch }
+	| { readonly kind: "ambiguous"; readonly providerIds: readonly string[] }
+	| { readonly kind: "unknown" };
 
 export interface RuntimeModelCatalogSnapshot {
 	readonly catalog?: RuntimeModelCatalog;
@@ -114,25 +158,14 @@ export function normalizeRuntimeModelCatalog(value: unknown): RuntimeModelCatalo
 	return { providers };
 }
 
+/** Validates an already-normalized catalog read back from SQLite. */
 export function parseRuntimeModelCatalog(value: unknown): RuntimeModelCatalog | undefined {
-	try {
-		const catalog = normalizeRuntimeModelCatalog(value);
-		return sameJson(value, catalog) ? catalog : undefined;
-	} catch {
-		return undefined;
-	}
+	return Value.Check(CatalogSchema, value) ? value : undefined;
 }
 
+/** Validates a snapshot received over RPC; `catalog` and `fetchedAt` are present together or not at all. */
 export function parseRuntimeModelCatalogSnapshot(value: unknown): RuntimeModelCatalogSnapshot | undefined {
-	const candidate = record(value);
-	if (!candidate || typeof candidate.stale !== "boolean" || typeof candidate.refreshed !== "boolean") return undefined;
-	if (candidate.catalog === undefined) {
-		return candidate.fetchedAt === undefined ? { stale: candidate.stale, refreshed: candidate.refreshed } : undefined;
-	}
-	const fetchedAt = candidate.fetchedAt;
-	if (typeof fetchedAt !== "number" || !Number.isInteger(fetchedAt) || fetchedAt < 0) return undefined;
-	const catalog = parseRuntimeModelCatalog(candidate.catalog);
-	return catalog ? { catalog, fetchedAt, stale: candidate.stale, refreshed: candidate.refreshed } : undefined;
+	return Value.Check(SnapshotSchema, value) ? value : undefined;
 }
 
 export function findRuntimeModelCatalog(
@@ -144,6 +177,41 @@ export function findRuntimeModelCatalog(
 }
 
 /**
+ * Classifies catalog identity without pretending a dated provider revision is
+ * an exact model identity. Callers that resolve compatibility rules should
+ * only use the `exact` result as an identity-level match.
+ */
+export function resolveRuntimeModelCatalogMatch(
+	catalog: RuntimeModelCatalog | undefined,
+	preferredProviderId: string | undefined,
+	modelId: string,
+): RuntimeModelCatalogMatchResolution {
+	if (!catalog) return { kind: "unknown" };
+	if (preferredProviderId) {
+		const provider = catalog.providers[preferredProviderId];
+		if (!provider) return { kind: "unknown" };
+		const exact = provider.models[modelId];
+		if (exact) return { kind: "exact", match: { providerId: preferredProviderId, model: exact } };
+		const revision = matchProviderCatalogModel(provider, modelId);
+		return revision
+			? { kind: "revision", match: { providerId: preferredProviderId, model: revision } }
+			: { kind: "unknown" };
+	}
+
+	const defaultProvider = defaultCatalogProviderFor(modelId);
+	const firstParty = defaultProvider ? catalog.providers[defaultProvider]?.models[modelId] : undefined;
+	if (firstParty && defaultProvider)
+		return { kind: "exact", match: { providerId: defaultProvider, model: firstParty } };
+	const matches = Object.entries(catalog.providers).flatMap(([providerId, provider]) => {
+		const model = provider.models[modelId];
+		return model ? [{ providerId, model }] : [];
+	});
+	if (matches.length === 1) return { kind: "exact", match: matches[0] };
+	if (matches.length > 1) return { kind: "ambiguous", providerIds: matches.map((entry) => entry.providerId).sort() };
+	return { kind: "unknown" };
+}
+
+/**
  * A mapped Provider profile only searches that catalog. First-party families
  * and a unique exact ID apply only when no profile authority is set.
  */
@@ -152,121 +220,77 @@ export function findRuntimeModelCatalogMatch(
 	preferredProviderId: string | undefined,
 	modelId: string,
 ): RuntimeModelCatalogMatch | undefined {
-	if (!catalog) return undefined;
-	if (preferredProviderId) {
-		const preferred = matchProviderCatalogModel(catalog.providers[preferredProviderId], modelId);
-		return preferred ? { providerId: preferredProviderId, model: preferred } : undefined;
-	}
-	const defaultProvider = defaultCatalogProviderFor(modelId);
-	const firstParty = defaultProvider ? catalog.providers[defaultProvider]?.models[modelId] : undefined;
-	if (firstParty && defaultProvider) return { providerId: defaultProvider, model: firstParty };
-	const matches = Object.entries(catalog.providers).flatMap(([providerId, provider]) => {
-		const model = provider.models[modelId];
-		return model ? [{ providerId, model }] : [];
-	});
-	if (matches.length === 1) return matches[0];
-	return undefined;
+	const result = resolveRuntimeModelCatalogMatch(catalog, preferredProviderId, modelId);
+	return result.kind === "exact" || result.kind === "revision" ? result.match : undefined;
 }
 
+/**
+ * Maps one Models.dev model onto the allowlisted product shape. Invalid fields
+ * are dropped individually so a single upstream typo does not hide a model.
+ */
 function normalizeModel(id: string, value: unknown): RuntimeModelCatalogModel | undefined {
 	const source = record(value);
 	if (!source) return undefined;
 	const modalities = record(source.modalities);
 	const limit = record(source.limit);
-	const cost = record(source.cost);
-	const interleaved = interleavedValue(source.interleaved);
 	return {
 		id,
 		name: string(source.name) ?? id,
-		...(string(source.description) ? { description: string(source.description)! } : {}),
-		...(string(source.family) ? { family: string(source.family)! } : {}),
-		...(string(source.status) ? { status: string(source.status)! } : {}),
-		...(string(source.release_date ?? source.releaseDate)
-			? { releaseDate: string(source.release_date ?? source.releaseDate)! }
-			: {}),
-		...(string(source.last_updated ?? source.lastUpdated)
-			? { lastUpdated: string(source.last_updated ?? source.lastUpdated)! }
-			: {}),
-		...(string(source.knowledge) ? { knowledge: string(source.knowledge)! } : {}),
-		...(boolean(source.open_weights ?? source.openWeights) === undefined
-			? {}
-			: { openWeights: boolean(source.open_weights ?? source.openWeights)! }),
-		...(boolean(source.attachment) === undefined ? {} : { attachment: boolean(source.attachment)! }),
-		...(boolean(source.reasoning) === undefined ? {} : { reasoning: boolean(source.reasoning)! }),
-		...(reasoningOptions(source.reasoning_options ?? source.reasoningOptions).length
-			? { reasoningOptions: reasoningOptions(source.reasoning_options ?? source.reasoningOptions) }
-			: {}),
-		...(boolean(source.temperature) === undefined ? {} : { temperature: boolean(source.temperature)! }),
-		...(interleaved === undefined ? {} : { interleaved }),
-		...(boolean(source.tool_call ?? source.toolCall) === undefined
-			? {}
-			: { toolCall: boolean(source.tool_call ?? source.toolCall)! }),
-		...(boolean(source.structured_output ?? source.structuredOutput) === undefined
-			? {}
-			: { structuredOutput: boolean(source.structured_output ?? source.structuredOutput)! }),
-		...(modalitiesFor(modalities?.input ?? source.inputModalities).length
-			? { inputModalities: modalitiesFor(modalities?.input ?? source.inputModalities) }
-			: {}),
-		...(modalitiesFor(modalities?.output ?? source.outputModalities).length
-			? { outputModalities: modalitiesFor(modalities?.output ?? source.outputModalities) }
-			: {}),
-		...(normalizedCost(cost) === undefined ? {} : { cost: normalizedCost(cost)! }),
-		...(positiveInteger(limit?.context ?? source.contextWindow) === undefined
-			? {}
-			: { contextWindow: positiveInteger(limit?.context ?? source.contextWindow)! }),
-		...(positiveInteger(limit?.input ?? source.inputLimit) === undefined
-			? {}
-			: { inputLimit: positiveInteger(limit?.input ?? source.inputLimit)! }),
-		...(positiveInteger(limit?.output ?? source.maxTokens) === undefined
-			? {}
-			: { maxTokens: positiveInteger(limit?.output ?? source.maxTokens)! }),
+		description: string(source.description),
+		family: string(source.family),
+		status: string(source.status),
+		releaseDate: string(source.release_date),
+		lastUpdated: string(source.last_updated),
+		knowledge: string(source.knowledge),
+		openWeights: boolean(source.open_weights),
+		attachment: boolean(source.attachment),
+		reasoning: boolean(source.reasoning),
+		reasoningOptions: reasoningOptions(source.reasoning_options),
+		temperature: boolean(source.temperature),
+		interleaved: interleavedValue(source.interleaved),
+		toolCall: boolean(source.tool_call),
+		structuredOutput: boolean(source.structured_output),
+		inputModalities: modalitiesFor(modalities?.input),
+		outputModalities: modalitiesFor(modalities?.output),
+		cost: normalizedCost(record(source.cost)),
+		contextWindow: positiveInteger(limit?.context),
+		inputLimit: positiveInteger(limit?.input),
+		maxTokens: positiveInteger(limit?.output),
 	};
 }
 
-function reasoningOptions(value: unknown): readonly string[] {
-	if (!Array.isArray(value)) return [];
-	return [
-		...new Set(
-			value.flatMap((option) =>
-				typeof option === "string" && option
-					? [option]
-					: record(option) && Array.isArray(option.values)
-						? option.values.filter(nonEmpty)
-						: [],
-			),
-		),
-	];
+function reasoningOptions(value: unknown): string[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const options = value.flatMap((option) => {
+		if (nonEmpty(option)) return [option];
+		const group = record(option);
+		return group && Array.isArray(group.values) ? group.values.filter(nonEmpty) : [];
+	});
+	return options.length ? [...new Set(options)] : undefined;
 }
 
-function modalitiesFor(value: unknown): readonly RuntimeModelCatalogModality[] {
-	if (!Array.isArray(value)) return [];
-	return [...new Set(value.filter(isModality))];
+function modalitiesFor(value: unknown): RuntimeModelCatalogModality[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const modalities = value.filter(isModality);
+	return modalities.length ? [...new Set(modalities)] : undefined;
 }
 
 function normalizedCost(value: Record<string, unknown> | undefined): RuntimeModelCatalogCost | undefined {
 	if (!value) return undefined;
 	const cost = {
-		...(finite(value.input) === undefined ? {} : { input: finite(value.input)! }),
-		...(finite(value.output) === undefined ? {} : { output: finite(value.output)! }),
-		...(finite(value.cache_read ?? value.cacheRead) === undefined
-			? {}
-			: { cacheRead: finite(value.cache_read ?? value.cacheRead)! }),
-		...(finite(value.cache_write ?? value.cacheWrite) === undefined
-			? {}
-			: { cacheWrite: finite(value.cache_write ?? value.cacheWrite)! }),
-		...(finite(value.reasoning) === undefined ? {} : { reasoning: finite(value.reasoning)! }),
+		input: finite(value.input),
+		output: finite(value.output),
+		cacheRead: finite(value.cache_read),
+		cacheWrite: finite(value.cache_write),
+		reasoning: finite(value.reasoning),
 	};
-	return Object.keys(cost).length === 0 ? undefined : cost;
+	return Object.values(cost).some((price) => price !== undefined) ? cost : undefined;
 }
 
-function interleavedValue(value: unknown): RuntimeModelCatalogModel["interleaved"] | undefined {
+function interleavedValue(value: unknown): RuntimeModelCatalogModel["interleaved"] {
 	if (value === true) return true;
-	const source = record(value);
-	return source?.field === "reasoning" ||
-		source?.field === "reasoning_content" ||
-		source?.field === "reasoning_details"
-		? { field: source.field }
-		: undefined;
+	const field = INTERLEAVED_FIELDS.find((candidate) => candidate === record(value)?.field);
+	return field ? { field } : undefined;
 }
 
 function matchProviderCatalogModel(
@@ -299,10 +323,6 @@ function defaultCatalogProviderFor(modelId: string): string | undefined {
 	return undefined;
 }
 
-function sameJson(source: unknown, normalized: RuntimeModelCatalog): boolean {
-	return JSON.stringify(source) === JSON.stringify(normalized);
-}
-
 function record(value: unknown): Record<string, unknown> | undefined {
 	return typeof value === "object" && value !== null && !Array.isArray(value)
 		? (value as Record<string, unknown>)
@@ -330,5 +350,5 @@ function positiveInteger(value: unknown): number | undefined {
 }
 
 function isModality(value: unknown): value is RuntimeModelCatalogModality {
-	return value === "text" || value === "image" || value === "audio" || value === "video" || value === "pdf";
+	return MODALITIES.includes(value as RuntimeModelCatalogModality);
 }

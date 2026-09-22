@@ -6,6 +6,8 @@ import {
 	RUNTIME_MODEL_CATALOG_FRESHNESS_MS,
 	SqliteRuntimeModelCatalog,
 } from "../../src";
+import { parseRuntimeModelCatalogSnapshot, resolveRuntimeModelCatalogMatch } from "../../src/model-catalog/catalog";
+import { resolveRuntimeModelCompatibilityProfile, resolveRuntimeModelMetadata } from "../../src/model-catalog";
 
 describe("Runtime Model Catalog", () => {
 	test("normalizes only allowlisted public metadata and retains deterministic model matching", () => {
@@ -35,6 +37,11 @@ describe("Runtime Model Catalog", () => {
 			maxTokens: 16_000,
 		});
 		expect(JSON.stringify(model)).not.toContain("must not persist");
+		const stored = JSON.parse(JSON.stringify(catalog));
+		expect(parseRuntimeModelCatalogSnapshot({ catalog: stored, fetchedAt: 1, stale: false, refreshed: false })).toBeDefined();
+		stored.providers.openai.models["gpt-test"].credentials = "leaked";
+		expect(parseRuntimeModelCatalogSnapshot({ catalog: stored, fetchedAt: 1, stale: false, refreshed: false })).toBeUndefined();
+		expect(parseRuntimeModelCatalogSnapshot({ fetchedAt: 1, stale: false, refreshed: false })).toBeUndefined();
 		expect(findRuntimeModelCatalogMatch(catalog, undefined, "gpt-test")).toMatchObject({
 			providerId: "openai",
 			model: { name: "GPT Test" },
@@ -89,6 +96,11 @@ describe("Runtime Model Catalog", () => {
 			providerId: "volcengine",
 			model: { contextWindow: 1_000_000, maxTokens: 384_000 },
 		});
+		expect(resolveRuntimeModelCatalogMatch(catalog, undefined, "shared-model")).toEqual({
+			kind: "ambiguous",
+			providerIds: ["deepseek", "volcengine"],
+		});
+		expect(resolveRuntimeModelCatalogMatch(catalog, "volcengine", "shared-model")).toMatchObject({ kind: "exact" });
 	});
 
 	test("matches a Volcengine list ID to the dated catalog revision", () => {
@@ -97,7 +109,7 @@ describe("Runtime Model Catalog", () => {
 				deepseek: {
 					name: "DeepSeek",
 					models: {
-						"deepseek-flash": {
+						"deepseek-v4-1-flash": {
 							name: "DeepSeek V4.1 Flash",
 							limit: { context: 1_000_000, output: 384_000 },
 						},
@@ -137,6 +149,106 @@ describe("Runtime Model Catalog", () => {
 		});
 		expect(findRuntimeModelCatalogMatch(catalog, "volcengine", "deepseek-v4-1-flash")).toBeUndefined();
 		expect(findRuntimeModelCatalogMatch(catalog, "volcengine", "deepseek-v3-1-terminus")).toBeUndefined();
+		expect(resolveRuntimeModelCatalogMatch(catalog, "volcengine", "deepseek-v4-flash")).toMatchObject({ kind: "revision" });
+		expect(resolveRuntimeModelCatalogMatch(catalog, "volcengine", "deepseek-v4-1-flash")).toEqual({ kind: "unknown" });
+	});
+
+	test("freezes exact catalog identity and leaves revision and ambiguity unknown", () => {
+		const catalog = normalizeRuntimeModelCatalog({
+			providers: {
+				openai: { models: { "gpt-test": { family: "gpt", interleaved: { field: "reasoning" } } } },
+				gateway: { models: { "shared": { family: "shared-a" } } },
+				other: { models: { "shared": { family: "shared-b" } } },
+			},
+		});
+		const exact = resolveRuntimeModelCompatibilityProfile("openai/gpt-test", undefined, {
+			catalog,
+			stale: false,
+			refreshed: false,
+		});
+		if (exact.isErr()) throw exact.error;
+		expect(exact.value).toMatchObject({
+			identity: { provider: "openai", remoteModelId: "gpt-test", family: "gpt" },
+			rules: { reasoningFormat: "openai" },
+		});
+		const custom = resolveRuntimeModelCompatibilityProfile("gateway/gpt-test", undefined, {
+			catalog,
+			stale: false,
+			refreshed: false,
+		});
+		if (custom.isErr()) throw custom.error;
+		expect(custom.value.identity.family).toBeUndefined();
+
+		const unknown = resolveRuntimeModelCompatibilityProfile("openai/gpt-test-2026", undefined, {
+			catalog,
+			stale: false,
+			refreshed: false,
+		});
+		if (unknown.isErr()) throw unknown.error;
+		expect(unknown.value.identity.family).toBeUndefined();
+
+		const ambiguous = resolveRuntimeModelCompatibilityProfile("openai/shared", undefined, {
+			catalog,
+			stale: false,
+			refreshed: false,
+		});
+		if (ambiguous.isErr()) throw ambiguous.error;
+		expect(ambiguous.value.identity.family).toBeUndefined();
+	});
+
+	test("inherits a confirmed DeepSeek family policy through a Volcengine model identity", () => {
+		const catalog = normalizeRuntimeModelCatalog({
+			providers: {
+				volcengine: {
+					models: {
+						"deepseek-v4-1-flash": {
+							family: "deepseek-v4",
+							reasoning: true,
+							interleaved: { field: "reasoning_content" },
+						},
+					},
+				},
+			},
+		});
+		const result = resolveRuntimeModelCompatibilityProfile("volcengine/deepseek-v4-1-flash", undefined, {
+			catalog,
+			stale: false,
+			refreshed: false,
+		});
+		if (result.isErr()) throw result.error;
+		expect(result.value.identity).toMatchObject({ provider: "volcengine", family: "deepseek-v4" });
+		expect(result.value.rules).toMatchObject({
+			maxTokensField: "max_tokens",
+			reasoningFormat: "deepseek",
+			supportsThinking: true,
+			streamHealing: { specialTokens: true, repeatedReasoningDelta: true },
+		});
+	});
+
+	test("inherits the confirmed DeepSeek 4.1 family through the Volcengine flash alias", () => {
+		const catalogSnapshot = {
+			catalog: normalizeRuntimeModelCatalog({ providers: { volcengine: { models: {} } } }),
+			stale: false,
+			refreshed: false,
+		};
+		const provider = { baseUrl: "https://ark.cn-beijing.volces.com/api/v3" };
+		const result = resolveRuntimeModelCompatibilityProfile(
+			"custom-profile/deepseek-v4-1-flash",
+			provider,
+			catalogSnapshot,
+		);
+		if (result.isErr()) throw result.error;
+		expect(result.value.identity.family).toBe("flash");
+		expect(result.value.rules).toMatchObject({
+			maxTokensField: "max_tokens",
+			reasoningFormat: "deepseek",
+			supportsThinking: true,
+		});
+		expect(resolveRuntimeModelMetadata("custom-profile/deepseek-v4-1-flash", provider, catalogSnapshot)).toMatchObject({
+			id: "deepseek-v4-1-flash",
+			contextWindow: 1_000_000,
+			maxTokens: 384_000,
+		});
 	});
 
 	test("reads a fresh SQLite fact without requesting the network", async () => {

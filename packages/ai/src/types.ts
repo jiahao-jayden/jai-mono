@@ -1,4 +1,5 @@
 import type { TSchema } from "@sinclair/typebox";
+import type { ResolvedCompatibilityProfile } from "./compatibility";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
@@ -132,19 +133,6 @@ export interface ModelCapabilities {
 	structuredOutput?: boolean;
 }
 
-export interface OpenAICompatibility {
-	maxTokensField?: "max_tokens" | "max_completion_tokens";
-	supportsUsageInStreaming?: boolean;
-	supportsStrictTools?: boolean;
-	reasoningFormat?: "openai" | "deepseek" | "none";
-}
-
-export interface AnthropicCompatibility {
-	supportsThinking?: boolean;
-}
-
-export type ModelCompatibility = OpenAICompatibility | AnthropicCompatibility;
-
 export interface Model<TApi extends Api = Api> {
 	id: string;
 	/** Provider-facing model id. Defaults to id for legacy callers. */
@@ -161,13 +149,8 @@ export interface Model<TApi extends Api = Api> {
 	cost: ModelCost;
 	contextWindow: number;
 	maxTokens: number;
-	compatibility?: TApi extends "openai-chat-completions"
-		? OpenAICompatibility
-		: TApi extends "openai-responses"
-			? OpenAICompatibility
-			: TApi extends "anthropic-messages"
-				? AnthropicCompatibility
-				: ModelCompatibility;
+	/** Immutable compatibility result selected before the request starts. */
+	compatibilityProfile?: ResolvedCompatibilityProfile;
 }
 
 /* -------------------------------------------------------------------------- */

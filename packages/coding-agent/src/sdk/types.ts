@@ -5,7 +5,7 @@ import type { PermissionApprovalQueue, PermissionTelemetryObserver, SessionAllow
 import type { CapabilityNoticeSlot } from "../runtime";
 import type { CodingToolName } from "../tools/names";
 import type { CodingAgentExtension, CodingExtensionRuntimeAdapter } from "./extensions";
-import type { CodingProviderOptions } from "./model";
+import type { CodingModelMetadata, CodingProviderOptions } from "./model";
 import type { CodingToolActivityKind } from "./tool-presentation";
 
 export type { JsonObject, JsonValue } from "../core/json";
@@ -187,6 +187,10 @@ export interface CodingAgentFileCapabilities {
 
 export interface CodingAgentCreateOptions {
 	readonly model: string;
+	/** Operation-scoped compatibility snapshot resolved by the Host. */
+	readonly compatibilityProfile?: import("@jai/ai").ResolvedCompatibilityProfile;
+	/** Operation-scoped model limits resolved by the Host. */
+	readonly modelMetadata?: CodingModelMetadata;
 	readonly provider?: CodingProviderOptions;
 	readonly extensions?: readonly CodingAgentExtension<any, any, any>[];
 	/** Host adapter for extension-owned configuration and approval workflows. */

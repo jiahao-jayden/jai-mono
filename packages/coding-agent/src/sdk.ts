@@ -75,7 +75,7 @@ export type {
 	CodingTurnEndInput,
 } from "./sdk/extensions";
 export { defineExtension } from "./sdk/extensions";
-export type { CodingProviderOptions } from "./sdk/model";
+export type { CodingModelMetadata, CodingProviderOptions } from "./sdk/model";
 export { codingArtifactsFromAppState, redactCommand } from "./sdk/project";
 export {
 	emptyPersistedCodingSessionState,

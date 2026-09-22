@@ -14,3 +14,9 @@ export {
 	type RuntimeModelCatalogProvider,
 	type RuntimeModelCatalogSnapshot,
 } from "./model-catalog/catalog";
+export {
+	CONFIRMED_MODEL_FIXTURES,
+	resolveConfirmedModelFixture,
+	resolveRuntimeModelCompatibilityProfile,
+	type ConfirmedModelFixture,
+} from "./model-catalog/compatibility";

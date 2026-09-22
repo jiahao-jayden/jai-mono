@@ -61,6 +61,7 @@ export interface CodingAgentOperationDriverOptions {
  */
 export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 	readonly #telemetry: TelemetryContext;
+	readonly #prepared = new Map<string, CodingAgentOperationOptions>();
 
 	constructor(private readonly options: CodingAgentOperationDriverOptions) {
 		this.#telemetry = options.telemetry ?? new NoopTelemetryContext();
@@ -69,7 +70,9 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 	async preflight(input: RuntimeOperationPreflightInput): Promise<ResultType<void, RuntimeOperationOpenFailed>> {
 		try {
 			const configured = await this.#resolveOptions(input);
-			return configured.isOk() ? Result.ok(undefined) : Result.err(configured.error);
+			if (configured.isErr()) return Result.err(configured.error);
+			this.#prepared.set(input.operationId, configured.value);
+			return Result.ok(undefined);
 		} catch (cause) {
 			return Result.err(
 				new RuntimeOperationOpenFailed({
@@ -82,11 +85,17 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 		}
 	}
 
+	discardPreflight(operationId: string): void {
+		this.#prepared.delete(operationId);
+	}
+
 	async openOperation(
 		input: RuntimeOperationOpenInput,
 	): Promise<ResultType<RuntimeOperation, RuntimeOperationOpenFailed>> {
 		try {
-			const configured = await this.#resolveOptions(input);
+			const configuredValue = this.#prepared.get(input.operationId);
+			this.#prepared.delete(input.operationId);
+			const configured = configuredValue ? Result.ok(configuredValue) : await this.#resolveOptions(input);
 			if (configured.isErr()) return Result.err(configured.error);
 			const telemetryObserver = new CodingAgentTelemetryObserver({
 				telemetry: this.#telemetry,

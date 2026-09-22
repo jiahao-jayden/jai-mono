@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import { Type } from "@sinclair/typebox";
 import type { StreamOptions } from "../src/provider";
+import type { ResolvedCompatibilityProfile } from "../src/compatibility";
 import type { AssistantMessage, AssistantMessageEvent, Context, Model, Tool } from "../src/types";
 
 let streamChunks: unknown[] = [];
@@ -71,6 +72,19 @@ function model(over: Partial<Model> = {}): Model {
 		contextWindow: 128000,
 		maxTokens: 4096,
 		...over,
+	};
+}
+
+function compatibilityProfile(rules: ResolvedCompatibilityProfile["rules"]): ResolvedCompatibilityProfile {
+	const identity = {
+		provider: "openai-compatible",
+		adapter: "openai-compatible" as const,
+		remoteModelId: "gpt-5",
+		endpoint: "https://api.openai.com/v1",
+	};
+	return {
+		identity,
+		rules,
 	};
 }
 
@@ -291,6 +305,24 @@ describe("OpenAIProvider · 出向翻译", () => {
 		expect(message.stopReason).toBe("stop");
 	});
 
+	it("applies each explicitly enabled reasoning healing strategy at most once", async () => {
+		streamChunks = [
+			chunk({ reasoning_content: "<think>first" }),
+			chunk({ reasoning_content: "<think>first" }),
+			chunk({ reasoning_content: "<|end_of_text|>second" }),
+			chunk({}, "stop"),
+		];
+		const m = model({
+			reasoning: true,
+			compatibilityProfile: compatibilityProfile({
+				reasoningFormat: "deepseek",
+				streamHealing: { thinkingFence: true, specialTokens: true, repeatedReasoningDelta: true },
+			}),
+		});
+		const { message } = await collect(ctx({ messages: [{ role: "user", content: "hi", timestamp: 0 }] }), m);
+		expect(message.content).toEqual([{ type: "thinking", thinking: "firstsecond", thinkingSignature: "reasoning_content" }]);
+	});
+
 	it("closes a reasoning-only stream (no text, no tool call)", async () => {
 		streamChunks = [
 			chunk({ reasoning_content: "only reasoning" }),
@@ -341,11 +373,53 @@ describe("OpenAIProvider · 入向翻译", () => {
 
 		await collect(
 			ctx({ messages: [{ role: "user", content: "hi", timestamp: 0 }] }),
-			model({ compatibility: { maxTokensField: "max_tokens" } }),
+			model({ compatibilityProfile: compatibilityProfile({ maxTokensField: "max_tokens" }) }),
 		);
 
 		expect(capturedParams.max_tokens).toBe(4096);
 		expect(capturedParams.max_completion_tokens).toBeUndefined();
+	});
+
+	it("uses the resolved profile for request policy", async () => {
+		streamChunks = [chunk({ content: "ok" }), chunk({}, "stop")];
+		await collect(
+			ctx({ tools: [readTool] }),
+			model({
+				compatibilityProfile: compatibilityProfile({
+					maxTokensField: "max_tokens",
+					supportsUsageInStreaming: false,
+					supportsStrictTools: true,
+				}),
+			}),
+		);
+
+		expect(capturedParams.max_tokens).toBe(4096);
+		expect(capturedParams.max_completion_tokens).toBeUndefined();
+		expect(capturedParams.stream_options).toBeUndefined();
+		expect(capturedParams.tools[0].function.strict).toBe(true);
+	});
+
+	it("uses the profile reasoning format to select the streamed field", async () => {
+		streamChunks = [chunk({ reasoning: "wrong field", reasoning_content: "deep thought" }), chunk({}, "stop")];
+		const { message } = await collect(
+			ctx(),
+			model({
+				reasoning: false,
+				compatibilityProfile: compatibilityProfile({ reasoningFormat: "deepseek" }),
+			}),
+		);
+
+		expect(message.content).toEqual([{ type: "thinking", thinking: "deep thought", thinkingSignature: "reasoning_content" }]);
+
+		streamChunks = [chunk({ reasoning: "open thought", reasoning_content: "wrong field" }), chunk({}, "stop")];
+		const openai = await collect(
+			ctx(),
+			model({
+				reasoning: false,
+				compatibilityProfile: compatibilityProfile({ reasoningFormat: "openai" }),
+			}),
+		);
+		expect(openai.message.content).toEqual([{ type: "thinking", thinking: "open thought", thinkingSignature: "reasoning" }]);
 	});
 
 	it("applies constrained provider options to the selected adapter", async () => {
@@ -357,6 +431,17 @@ describe("OpenAIProvider · 入向翻译", () => {
 
 		expect(capturedParams.reasoning_effort).toBe("high");
 		expect(capturedParams.ignored).toBeUndefined();
+	});
+
+	it("rejects provider options that bypass resolved request policy", async () => {
+		streamChunks = [chunk({ content: "ok" }), chunk({}, "stop")];
+		const { message } = await collect(
+			ctx(),
+			model({ compatibilityProfile: compatibilityProfile({ maxTokensField: "max_tokens" }) }),
+			{ providerOptions: { "openai-compatible": { max_tokens: 1 } } },
+		);
+		expect(message.stopReason).toBe("error");
+		expect(message.error).toMatchObject({ code: "ai_provider.options_conflict" });
 	});
 });
 
@@ -602,5 +687,18 @@ describe("OpenAIResponsesProvider", () => {
 			"done",
 		]);
 		expect(message.content).toEqual([{ type: "text", text: "done" }]);
+	});
+
+	it("uses the resolved profile for Responses reasoning and strict tools", async () => {
+		responseEvents = [{ type: "response.output_text.delta", item_id: "msg_1", delta: "ok" }, { type: "response.completed", response: { usage: {} } }];
+		await collectResponses(
+			ctx({ tools: [readTool] }),
+			responsesModel({
+				compatibilityProfile: compatibilityProfile({ supportsThinking: false, supportsStrictTools: false }),
+			}),
+		);
+
+		expect(capturedResponseParams.reasoning).toBeUndefined();
+		expect(capturedResponseParams.tools[0].strict).toBe(false);
 	});
 });

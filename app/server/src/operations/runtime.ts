@@ -241,5 +241,7 @@ export interface RuntimeOperationDriver {
 	 * effect. A rejected preflight must prevent durable prompt admission.
 	 */
 	preflight?(input: RuntimeOperationPreflightInput): Promise<Result<void, RuntimeOperationOpenFailed>>;
+	/** Drops a preflight snapshot when durable admission is rejected. */
+	discardPreflight?(operationId: string): void;
 	openOperation(input: RuntimeOperationOpenInput): Promise<Result<RuntimeOperation, RuntimeOperationOpenFailed>>;
 }

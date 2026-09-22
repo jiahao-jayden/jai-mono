@@ -30,6 +30,31 @@ export class InvalidToolArguments extends TaggedError("ai_provider.invalid_tool_
 	readonly cause?: unknown;
 }> {}
 
+export class ProviderOptionsConflict extends TaggedError("ai_provider.options_conflict")<{
+	readonly adapter: string;
+	readonly field: string;
+	readonly message: string;
+}> {}
+
+export function mergeProviderOptions<T extends object>(
+	adapter: string,
+	base: T,
+	override: Record<string, unknown> | undefined,
+	protectedFields: readonly string[] = Object.keys(base),
+): T {
+	if (!override) return base;
+	const protectedSet = new Set(protectedFields);
+	const conflict = Object.keys(override).find((field) => protectedSet.has(field));
+	if (conflict) {
+		throw new ProviderOptionsConflict({
+			adapter,
+			field: conflict,
+			message: `Provider options cannot override resolved request field "${conflict}"`,
+		});
+	}
+	return { ...base, ...override } as T;
+}
+
 export function parseToolArguments(adapter: string, toolName: string, raw: string): Record<string, unknown> {
 	if (!raw) return {};
 	let parsed: unknown;
@@ -114,6 +139,13 @@ export async function runAdapterStream<TChunk>(
 /** 只保留 SDK Error 上稳定、可序列化的诊断字段。 */
 export function normalizeProviderError(error: unknown): ProviderErrorInfo {
 	if (error instanceof InvalidToolArguments) {
+		return {
+			message: error.message,
+			code: error._tag,
+			type: "provider_protocol",
+		};
+	}
+	if (error instanceof ProviderOptionsConflict) {
 		return {
 			message: error.message,
 			code: error._tag,

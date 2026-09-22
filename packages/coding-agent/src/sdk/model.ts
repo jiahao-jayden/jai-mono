@@ -1,4 +1,11 @@
-import { AnthropicProvider, type Model, OpenAIProvider, OpenAIResponsesProvider, type Provider } from "@jai/ai";
+import {
+	AnthropicProvider,
+	type Model,
+	OpenAIProvider,
+	OpenAIResponsesProvider,
+	type Provider,
+	type ResolvedCompatibilityProfile,
+} from "@jai/ai";
 import { CodingSdkFailure } from "./project";
 
 export interface CodingProviderOptions {
@@ -9,12 +16,22 @@ export interface CodingProviderOptions {
 	readonly authentication?: "bearer" | "x-api-key" | "none";
 }
 
+export interface CodingModelMetadata {
+	readonly contextWindow?: number;
+	readonly maxTokens?: number;
+}
+
 export interface ResolvedSdkModel {
 	readonly model: Model;
 	readonly provider: Provider;
 }
 
-export function resolveSdkModel(modelRef: string, options: CodingProviderOptions | undefined): ResolvedSdkModel {
+export function resolveSdkModel(
+	modelRef: string,
+	options: CodingProviderOptions | undefined,
+	compatibilityProfile?: ResolvedCompatibilityProfile,
+	metadata?: CodingModelMetadata,
+): ResolvedSdkModel {
 	const { providerKind, modelId } = parseModelReference(modelRef);
 	const provider = createProvider(providerKind, options);
 	return {
@@ -32,8 +49,9 @@ export function resolveSdkModel(modelRef: string, options: CodingProviderOptions
 			input: ["text", "image"],
 			capabilities: { toolCall: true },
 			cost: {},
-			contextWindow: 128_000,
-			maxTokens: 8_192,
+			contextWindow: metadata?.contextWindow ?? 128_000,
+			maxTokens: metadata?.maxTokens ?? 8_192,
+			compatibilityProfile,
 		},
 	};
 }

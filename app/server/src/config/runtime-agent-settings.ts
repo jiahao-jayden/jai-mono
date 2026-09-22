@@ -960,7 +960,7 @@ export function resolveRuntimeAgentOptions(
 		);
 	}
 	const selected = Object.values(profile.models).find((model) => (model.remoteModelId ?? model.id) === remoteModelId);
-	if (!selected || !selected.enabled) {
+	if (!selected?.enabled) {
 		return Result.err(
 			new RuntimeAgentSettingsInvalid({
 				message: `Model "${settings.model}" is not enabled in Provider profile "${profileId}"`,

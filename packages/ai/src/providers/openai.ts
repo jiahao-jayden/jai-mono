@@ -4,7 +4,8 @@ import type {
 	ChatCompletionCreateParamsStreaming,
 	ChatCompletionMessageParam,
 } from "openai/resources/chat/completions";
-import { createAssistantMessage, parseToolArguments, runAdapterStream } from "../adapter";
+import { createAssistantMessage, mergeProviderOptions, parseToolArguments, runAdapterStream } from "../adapter";
+import { resolveRequestPolicy } from "../compatibility";
 import { AssistantMessageEventStream } from "../event-stream";
 import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
 import { assertNativeToolCallProtocol } from "../tool-protocol";
@@ -16,13 +17,13 @@ import type {
 	ImageContent,
 	Message,
 	Model,
-	OpenAICompatibility,
 	StopReason,
 	TextContent,
 	Tool,
 	ToolResultMessage,
 	Usage,
 } from "../types";
+import type { CompatibilityRules, ResolvedRequestPolicy } from "../compatibility";
 import { zeroCost } from "../utils";
 
 export interface OpenAIProviderConfig {
@@ -46,6 +47,8 @@ interface StreamState {
 	textStarted: boolean;
 	thinkingStarted: boolean;
 	toolCalls: Map<number, ToolCallState>;
+	lastReasoningDelta?: string;
+	healing: { thinkingFence: boolean; specialTokens: boolean; repeatedReasoningDelta: boolean };
 }
 
 // 入口：Provider 类
@@ -95,23 +98,25 @@ export class OpenAIProvider implements Provider {
 			textStarted: false,
 			thinkingStarted: false,
 			toolCalls: new Map(),
+			healing: { thinkingFence: false, specialTokens: false, repeatedReasoningDelta: false },
 		};
+		const policy = resolveRequestPolicy(model.compatibilityProfile, { reasoningRequested: model.reasoning });
 
 		await runAdapterStream(eventStream, output, options?.signal, {
 			request: async () => {
 				const client = options?.apiKey ? this.createClient(options.apiKey) : this.client;
 
-				const compat = (model.compatibility ?? {}) as OpenAICompatibility;
-				const params = buildParams(model, context, options, compat);
+				const params = buildParams(model, context, options, policy);
 				const providerOpts = options?.providerOptions?.[this.id] ?? options?.providerOptions?.[this.adapter];
-				const body = providerOpts ? { ...params, ...providerOpts } : params;
+				const body = mergeProviderOptions("openai-compatible", params, providerOpts, [
+					...Object.keys(params),
+					"stream_options",
+					"tools",
+				]);
 
-				return client.chat.completions.create(
-					body as ChatCompletionCreateParamsStreaming,
-					options?.signal ? { signal: options.signal } : undefined,
-				);
+				return client.chat.completions.create(body, options?.signal ? { signal: options.signal } : undefined);
 			},
-			step: (chunk) => applyChunk(output, state, chunk, model.reasoning === true),
+			step: (chunk) => applyChunk(output, state, chunk, policy, model.compatibilityProfile?.rules),
 			// OpenAI 没有 block stop 事件，流结束时关闭所有还开着的 block
 			finalize: () => finalizeBlocks(output, state),
 			validate: () => assertNativeToolCallProtocol(output, context.tools),
@@ -150,7 +155,7 @@ function buildParams(
 	model: Model,
 	context: Context,
 	options: StreamOptions | undefined,
-	compat: OpenAICompatibility,
+	policy: ResolvedRequestPolicy,
 ): ChatCompletionCreateParamsStreaming {
 	const params: ChatCompletionCreateParamsStreaming = {
 		model: model.remoteModelId ?? model.id,
@@ -158,12 +163,12 @@ function buildParams(
 		messages: convertMessages(transformMessagesForModel(context.messages, model), context.systemPrompt),
 	};
 
-	if (compat.supportsUsageInStreaming !== false) {
+	if (policy.supportsUsageInStreaming) {
 		params.stream_options = { include_usage: true };
 	}
 
 	const maxTokens = options?.maxTokens ?? model.maxTokens;
-	if (compat.maxTokensField === "max_tokens") {
+	if (policy.maxTokensField === "max_tokens") {
 		(params as unknown as Record<string, unknown>).max_tokens = maxTokens;
 	} else {
 		params.max_completion_tokens = maxTokens;
@@ -174,7 +179,7 @@ function buildParams(
 	}
 
 	if (context.tools.length > 0) {
-		params.tools = convertTools(context.tools, compat);
+		params.tools = convertTools(context.tools, policy.supportsStrictTools);
 	}
 
 	return params;
@@ -278,7 +283,7 @@ function convertToolResult(msg: ToolResultMessage): ChatCompletionMessageParam {
 	} as ChatCompletionMessageParam;
 }
 
-function convertTools(tools: Tool[], compat: OpenAICompatibility): OpenAI.Chat.Completions.ChatCompletionTool[] {
+function convertTools(tools: Tool[], strict: boolean): OpenAI.Chat.Completions.ChatCompletionTool[] {
 	return tools.map((tool) => {
 		const base: OpenAI.Chat.Completions.ChatCompletionTool = {
 			type: "function",
@@ -288,7 +293,7 @@ function convertTools(tools: Tool[], compat: OpenAICompatibility): OpenAI.Chat.C
 				parameters: tool.parameters as Record<string, unknown>,
 			},
 		};
-		if (compat.supportsStrictTools) {
+		if (strict) {
 			base.function.strict = true;
 		}
 		return base;
@@ -301,7 +306,8 @@ function applyChunk(
 	output: AssistantMessage,
 	state: StreamState,
 	chunk: ChatCompletionChunk,
-	reasoning: boolean,
+	policy: ResolvedRequestPolicy,
+	rules: CompatibilityRules | undefined,
 ): AssistantMessageEvent[] {
 	const events: AssistantMessageEvent[] = [];
 
@@ -320,12 +326,23 @@ function applyChunk(
 	if (!delta) return events;
 
 	// reasoning / thinking：嗅探 reasoning_content 和 reasoning 字段
-	if (reasoning) {
+	if (policy.reasoningEnabled) {
 		const raw = delta as Record<string, unknown>;
-		const reasoningDelta = (raw.reasoning_content as string | undefined) ?? (raw.reasoning as string | undefined);
-		const field = raw.reasoning_content ? "reasoning_content" : raw.reasoning ? "reasoning" : undefined;
+		const preferredField =
+			rules?.reasoningFormat === "deepseek"
+				? "reasoning_content"
+				: rules?.reasoningFormat === "openai"
+					? "reasoning"
+					: undefined;
+		const reasoningDelta = preferredField
+			? (raw[preferredField] as string | undefined)
+			: ((raw.reasoning_content as string | undefined) ?? (raw.reasoning as string | undefined));
+		const field =
+			preferredField ?? (raw.reasoning_content ? "reasoning_content" : raw.reasoning ? "reasoning" : undefined);
 
 		if (typeof reasoningDelta === "string" && reasoningDelta.length > 0) {
+			const normalized = healReasoningDelta(reasoningDelta, state, rules?.streamHealing);
+			if (!normalized) return events;
 			if (!state.thinkingStarted) {
 				state.thinkingStarted = true;
 				output.content.push({
@@ -341,12 +358,12 @@ function applyChunk(
 			}
 			const block = output.content[output.content.length - 1];
 			if (block.type === "thinking") {
-				block.thinking += reasoningDelta;
+				block.thinking += normalized;
 			}
 			events.push({
 				type: "thinking_delta",
 				contentIndex: output.content.length - 1,
-				delta: reasoningDelta,
+				delta: normalized,
 				partial: output,
 			});
 		}
@@ -426,6 +443,34 @@ function applyChunk(
 	}
 
 	return events;
+}
+
+function healReasoningDelta(
+	reasoningDelta: string,
+	state: StreamState,
+	healing: CompatibilityRules["streamHealing"],
+): string {
+	let normalized = reasoningDelta;
+	if (healing?.thinkingFence && !state.healing.thinkingFence) {
+		const cleaned = normalized.replace(/^\s*<\/?think>\s*/i, "");
+		if (cleaned !== normalized) state.healing.thinkingFence = true;
+		normalized = cleaned;
+	}
+	if (healing?.specialTokens && !state.healing.specialTokens) {
+		const cleaned = normalized.replace(/<\|(?:begin|end)_of_text\|>/gi, "");
+		if (cleaned !== normalized) state.healing.specialTokens = true;
+		normalized = cleaned;
+	}
+	if (
+		healing?.repeatedReasoningDelta &&
+		!state.healing.repeatedReasoningDelta &&
+		state.lastReasoningDelta === reasoningDelta
+	) {
+		state.healing.repeatedReasoningDelta = true;
+		normalized = "";
+	}
+	state.lastReasoningDelta = reasoningDelta;
+	return normalized;
 }
 
 function finalizeBlocks(output: AssistantMessage, state: StreamState): AssistantMessageEvent[] {

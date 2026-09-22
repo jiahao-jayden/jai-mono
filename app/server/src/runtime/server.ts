@@ -34,6 +34,8 @@ export interface OpenJaiRuntimeServerOptions {
 	 */
 	readonly createOperationDriver: (input: {
 		readonly agentSettings: SqliteRuntimeAgentSettings;
+		/** Server-owned catalog read model used to resolve new Operation snapshots. */
+		readonly modelCatalog: SqliteRuntimeModelCatalog;
 		/** Host-owned durable Workspace trust facts; no raw SQLite access escapes composition. */
 		readonly workspaceTrust: SqliteWorkspaceTrust;
 		/** Stable Host-owned context; it may swap exporters between Operations. */
@@ -66,6 +68,7 @@ export async function openJaiRuntimeServer(
 		const desktopCatalog = new SqliteDesktopCatalogAccess(database.connection);
 		const agentSettings = new SqliteRuntimeAgentSettings(database.connection);
 		const workspaceTrust = new SqliteWorkspaceTrust(database.connection);
+		modelCatalog = new SqliteRuntimeModelCatalog(database.connection);
 		mcpSettings = new RuntimeMcpSettingsController({ homeDirectory: options.homeDirectory });
 		if (!options.telemetry) {
 			const openedTelemetry = await RuntimeTelemetryController.open({
@@ -83,10 +86,13 @@ export async function openJaiRuntimeServer(
 		}
 		const assembled = options.createOperationDriver({
 			agentSettings,
+			modelCatalog,
 			workspaceTrust,
 			telemetry: telemetryContext,
 		});
 		if (assembled.isErr()) {
+			modelCatalog.close();
+			modelCatalog = undefined;
 			database.close();
 			database = undefined;
 			await telemetry?.close();
@@ -96,7 +102,6 @@ export async function openJaiRuntimeServer(
 		connectorOAuth = new RuntimeConnectorOAuth(agentSettings, {
 			intents: new SqliteRuntimeConnectorOAuthIntentStore(database.connection),
 		});
-		modelCatalog = new SqliteRuntimeModelCatalog(database.connection);
 		const recoveredOAuth = connectorOAuth.recover();
 		if (recoveredOAuth.isErr()) throw recoveredOAuth.error;
 		const host = new RuntimeHost({

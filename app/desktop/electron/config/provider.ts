@@ -1,7 +1,10 @@
 import type { RuntimeAgentSettingsSnapshot } from "@jai/server";
+import type { CompatibilityRules } from "@jai/ai";
 import {
 	findRuntimeModelCatalog,
 	findRuntimeModelCatalogMatch,
+	resolveConfirmedModelFixture,
+	resolveRuntimeModelCompatibilityProfile,
 	type RuntimeModelCatalog,
 } from "@jai/server/model-catalog";
 import { TaggedError } from "better-result";
@@ -86,6 +89,9 @@ export function projectRuntimeProviderConfig(
 								remoteModelId,
 								model.enabled,
 								findRuntimeModelCatalogMatch(catalog, vendor?.catalogProvider, remoteModelId),
+								catalog,
+								vendor?.catalogProvider,
+								profile.adapter,
 							);
 						})
 						.toSorted((left, right) => left.name.localeCompare(right.name)),
@@ -111,37 +117,65 @@ export function projectModel(
 	remoteModelId: string,
 	enabled: boolean,
 	catalogMatch: ReturnType<typeof findRuntimeModelCatalogMatch>,
+	catalog?: RuntimeModelCatalog,
+	catalogProvider?: string,
+	adapter?: DesktopProviderProfile["adapter"],
 ): DesktopProviderModel {
-	const catalogModel = catalogMatch?.model;
+	const confirmedFixture = catalogProvider ? resolveConfirmedModelFixture(catalogProvider, remoteModelId) : undefined;
+	const modelMetadata = catalogMatch?.model ?? confirmedFixture?.model;
+	const compatibilityResult = catalogProvider
+		? resolveRuntimeModelCompatibilityProfile(
+				`${catalogProvider}/${remoteModelId}`,
+				undefined,
+				{ catalog, stale: false, refreshed: false },
+				adapter ? `${adapter}/${remoteModelId}` : undefined,
+			)
+		: undefined;
+	const compatibility = compatibilityResult?.isOk() ? compatibilityResult.value : undefined;
+	const resolvedReasoning = modelMetadata?.reasoning ?? compatibility?.rules.supportsThinking;
 	return {
 		id,
-		name: stripModelDateSuffix(catalogModel?.name ?? (id === remoteModelId ? remoteModelId : id)),
+		name: stripModelDateSuffix(modelMetadata?.name ?? (id === remoteModelId ? remoteModelId : id)),
 		remoteModelId,
-		source: catalogModel ? "catalog" : "unverified",
-		verified: Boolean(catalogModel),
+		source: catalogMatch ? "catalog" : confirmedFixture ? "fixture" : "unverified",
+		verified: Boolean(modelMetadata),
 		enabled,
-		...(catalogMatch ? { metadataProvider: catalogMatch.providerId } : {}),
-		...(catalogModel?.description ? { description: catalogModel.description } : {}),
-		...(catalogModel?.family ? { family: catalogModel.family } : {}),
-		...(catalogModel?.status ? { status: catalogModel.status } : {}),
-		...(catalogModel?.releaseDate ? { releaseDate: catalogModel.releaseDate } : {}),
-		...(catalogModel?.lastUpdated ? { lastUpdated: catalogModel.lastUpdated } : {}),
-		...(catalogModel?.knowledge ? { knowledge: catalogModel.knowledge } : {}),
-		...(catalogModel?.openWeights === undefined ? {} : { openWeights: catalogModel.openWeights }),
-		...(catalogModel?.attachment === undefined ? {} : { attachment: catalogModel.attachment }),
-		...(catalogModel?.reasoning === undefined ? {} : { reasoning: catalogModel.reasoning }),
-		...(catalogModel?.reasoningOptions ? { reasoningOptions: catalogModel.reasoningOptions } : {}),
-		...(catalogModel?.temperature === undefined ? {} : { temperature: catalogModel.temperature }),
-		...(catalogModel?.interleaved === undefined ? {} : { interleaved: Boolean(catalogModel.interleaved) }),
-		...(catalogModel?.inputModalities ? { input: catalogModel.inputModalities.filter(isExecutableInput) } : {}),
-		...(catalogModel?.inputModalities ? { inputModalities: catalogModel.inputModalities } : {}),
-		...(catalogModel?.outputModalities ? { outputModalities: catalogModel.outputModalities } : {}),
-		...(catalogModel?.toolCall === undefined ? {} : { toolCall: catalogModel.toolCall }),
-		...(catalogModel?.structuredOutput === undefined ? {} : { structuredOutput: catalogModel.structuredOutput }),
-		...(catalogModel?.cost ? { cost: catalogModel.cost } : {}),
-		...(catalogModel?.contextWindow === undefined ? {} : { contextWindow: catalogModel.contextWindow }),
-		...(catalogModel?.inputLimit === undefined ? {} : { inputLimit: catalogModel.inputLimit }),
-		...(catalogModel?.maxTokens === undefined ? {} : { maxTokens: catalogModel.maxTokens }),
+		metadataProvider: catalogMatch?.providerId ?? confirmedFixture?.provider,
+		description: modelMetadata?.description,
+		family: modelMetadata?.family,
+		status: modelMetadata?.status,
+		releaseDate: modelMetadata?.releaseDate,
+		lastUpdated: modelMetadata?.lastUpdated,
+		knowledge: modelMetadata?.knowledge,
+		openWeights: modelMetadata?.openWeights,
+		attachment: modelMetadata?.attachment,
+		reasoning: resolvedReasoning,
+		reasoningOptions: modelMetadata?.reasoningOptions,
+		temperature: modelMetadata?.temperature,
+		interleaved: modelMetadata?.interleaved === undefined ? undefined : Boolean(modelMetadata.interleaved),
+		input: modelMetadata?.inputModalities?.filter(isExecutableInput),
+		inputModalities: modelMetadata?.inputModalities,
+		outputModalities: modelMetadata?.outputModalities,
+		toolCall: modelMetadata?.toolCall,
+		structuredOutput: modelMetadata?.structuredOutput,
+		cost: modelMetadata?.cost,
+		contextWindow: modelMetadata?.contextWindow,
+		inputLimit: modelMetadata?.inputLimit,
+		maxTokens: modelMetadata?.maxTokens,
+		compatibility:
+			compatibility && Object.keys(compatibility.rules).length > 0
+				? projectCompatibility(compatibility.rules)
+				: undefined,
+	};
+}
+
+function projectCompatibility(rules: CompatibilityRules): DesktopProviderModel["compatibility"] {
+	return {
+		maxTokensField: rules.maxTokensField,
+		supportsUsageInStreaming: rules.supportsUsageInStreaming,
+		supportsStrictTools: rules.supportsStrictTools,
+		reasoningFormat: rules.reasoningFormat,
+		supportsThinking: rules.supportsThinking,
 	};
 }
 
@@ -191,13 +225,20 @@ export function validateProviderProfiles(
 				!model.name.trim() ||
 				typeof model.remoteModelId !== "string" ||
 				!model.remoteModelId.trim() ||
-				(source !== "unverified" && source !== "catalog") ||
+				(source !== "unverified" && source !== "catalog" && source !== "fixture") ||
 				!isModelMetadataValid(model as unknown as DesktopProviderModel, profile.adapter)
 			) {
 				throw invalidInput(`Invalid model in Provider profile "${profile.id}"`);
 			}
 			if (source === "catalog" && (!catalog || !findRuntimeModelCatalog(catalog, undefined, model.remoteModelId))) {
 				throw invalidInput(`Catalog model "${profile.id}/${model.id}" is unavailable`);
+			}
+			const vendor = findDefaultProviderVendor(profile.baseURL, model.remoteModelId);
+			if (
+				source === "fixture" &&
+				(!vendor || !resolveConfirmedModelFixture(vendor.catalogProvider, model.remoteModelId))
+			) {
+				throw invalidInput(`Model fixture "${profile.id}/${model.id}" is unavailable`);
 			}
 			if (modelIds.has(model.id)) throw invalidInput(`Duplicate model "${profile.id}/${model.id}"`);
 			modelIds.add(model.id);
@@ -206,7 +247,7 @@ export function validateProviderProfiles(
 }
 
 function isModelMetadataValid(model: DesktopProviderModel, adapter: DesktopProviderProfileInput["adapter"]): boolean {
-	if (typeof model.verified !== "boolean" || model.verified !== (model.source === "catalog")) return false;
+	if (typeof model.verified !== "boolean" || model.verified !== (model.source !== "unverified")) return false;
 	if (typeof model.enabled !== "boolean") return false;
 	if (model.reasoning !== undefined && typeof model.reasoning !== "boolean") return false;
 	if (model.toolCall !== undefined && typeof model.toolCall !== "boolean") return false;
@@ -234,7 +275,7 @@ function isModelMetadataValid(model: DesktopProviderModel, adapter: DesktopProvi
 			model.compatibility.reasoningFormat === undefined
 		);
 	}
-	return model.compatibility.supportsThinking === undefined;
+	return true;
 }
 
 function isCost(value: DesktopProviderModel["cost"]): boolean {

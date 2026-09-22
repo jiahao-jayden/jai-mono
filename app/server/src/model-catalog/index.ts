@@ -13,6 +13,7 @@ export {
 	type RuntimeModelCatalogProvider,
 	type RuntimeModelCatalogSnapshot,
 } from "./catalog";
+export { resolveRuntimeModelCompatibilityProfile, resolveRuntimeModelMetadata } from "./compatibility";
 export {
 	type RuntimeModelCatalogError,
 	type RuntimeModelCatalogFetcher,
