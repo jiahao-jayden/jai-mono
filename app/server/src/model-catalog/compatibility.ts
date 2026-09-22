@@ -58,10 +58,10 @@ export const CONFIRMED_MODEL_FIXTURES: readonly ConfirmedModelFixture[] = [
 	{
 		provider: "volcengine",
 		endpoint: "https://ark.cn-beijing.volces.com/api/v3",
-		remoteModelId: "deepseek-v4-1-flash",
+		remoteModelId: "deepseek-v4-1-flash-260910",
 		canonicalModelId: "deepseek-flash",
 		model: {
-			id: "deepseek-v4-1-flash",
+			id: "deepseek-v4-1-flash-260910",
 			name: "DeepSeek V4.1 Flash",
 			family: "flash",
 			attachment: true,
@@ -73,7 +73,7 @@ export const CONFIRMED_MODEL_FIXTURES: readonly ConfirmedModelFixture[] = [
 			contextWindow: 1_000_000,
 			maxTokens: 384_000,
 		},
-		provenance: "Volcengine model identity; DeepSeek V4.1 Flash model card; oh-my-pi reviewed fixtures",
+		provenance: "Ark GET /api/v3/models (2026-09-23); DeepSeek V4.1 Flash model card; oh-my-pi reviewed fixtures",
 	},
 ];
 

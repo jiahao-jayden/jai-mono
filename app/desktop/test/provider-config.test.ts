@@ -25,12 +25,13 @@ import {
 	projectRuntimeProviderConfig,
 	validateProviderProfiles,
 } from "../electron/config/provider";
-import { isDesktopProviderModelRunnable } from "../shared/desktop-rpc";
+import { Value } from "@sinclair/typebox/value";
+import { isDesktopProviderModelRunnable, jsonValueSchema } from "../shared/desktop-rpc";
 
 describe("DesktopConfigService", () => {
-	test("hides a remote model date suffix without changing the request id", () => {
+	test("keeps the full remote model id as the name of an unrecognized model", () => {
 		const model = projectModel("deepseek-v4-flash-260425", "deepseek-v4-flash-260425", false, undefined);
-		expect(model.name).toBe("deepseek-v4-flash");
+		expect(model.name).toBe("deepseek-v4-flash-260425");
 		expect(model.remoteModelId).toBe("deepseek-v4-flash-260425");
 	});
 
@@ -117,7 +118,7 @@ describe("DesktopConfigService", () => {
 						authentication: "api-key",
 						credentialConfigured: true,
 						enabled: true,
-						models: [{ id: "deepseek-v4-1-flash", enabled: false }],
+						models: [{ id: "deepseek-v4-1-flash-260910", enabled: false }],
 					},
 				],
 				connector: { policy: { default: "ask", actions: {} }, connectors: [] },
@@ -153,7 +154,7 @@ describe("DesktopConfigService", () => {
 		expect(projected.profiles[0]?.models).toMatchObject([
 			{
 				name: "DeepSeek V4.1 Flash",
-				remoteModelId: "deepseek-v4-1-flash",
+				remoteModelId: "deepseek-v4-1-flash-260910",
 				verified: true,
 				source: "fixture",
 				metadataProvider: "volcengine",
@@ -170,6 +171,40 @@ describe("DesktopConfigService", () => {
 			compatibility: { maxTokensField: "max_tokens", reasoningFormat: "deepseek", supportsThinking: true },
 		});
 		expect(() => validateProviderProfiles(projected.profiles, undefined)).not.toThrow();
+		expect(Value.Check(jsonValueSchema, projected)).toBe(true);
+	});
+
+	test("saves Ark catalog models under the same authority used to project them", () => {
+		const catalog = normalizeRuntimeModelCatalog({
+			providers: {
+				volcengine: { models: { "doubao-seed-evolving": { limit: { context: 256_000, output: 256_000 } } } },
+				"volcengine-coding-plan": { models: { "doubao-seed-evolving": { limit: { context: 256_000, output: 32_000 } } } },
+			},
+		});
+		const projected = projectRuntimeProviderConfig(
+			{
+				revision: "r1",
+				model: "",
+				profiles: [
+					{
+						id: "ark",
+						name: "Volcengine Ark",
+						adapter: "openai-compatible",
+						baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+						authentication: "api-key",
+						credentialConfigured: true,
+						enabled: true,
+						models: [{ id: "doubao-seed-evolving", enabled: true }],
+					},
+				],
+				connector: { policy: { default: "ask", actions: {} }, connectors: [] },
+				webSearch: { providers: [], fetch: { jina: { credentialConfigured: false } } },
+			},
+			catalog,
+		);
+
+		expect(projected.profiles[0]?.models[0]).toMatchObject({ source: "catalog", metadataProvider: "volcengine" });
+		expect(() => validateProviderProfiles(projected.profiles, catalog)).not.toThrow();
 	});
 
 	test("uses the configured Volcengine catalog authority for Ark models", () => {

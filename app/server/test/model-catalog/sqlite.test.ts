@@ -153,6 +153,16 @@ describe("Runtime Model Catalog", () => {
 		expect(resolveRuntimeModelCatalogMatch(catalog, "volcengine", "deepseek-v4-1-flash")).toEqual({ kind: "unknown" });
 	});
 
+	test("does not fold a product variant into its base model when stripping revisions", () => {
+		const catalog = normalizeRuntimeModelCatalog({
+			providers: { volcengine: { models: { "glm-5-3-flash-260828": { name: "GLM-5.3-Flash" } } } },
+		});
+		expect(findRuntimeModelCatalogMatch(catalog, "volcengine", "glm-5-3-260814")).toBeUndefined();
+		expect(findRuntimeModelCatalogMatch(catalog, "volcengine", "glm-5-3-flash-260826")).toMatchObject({
+			model: { id: "glm-5-3-flash-260828" },
+		});
+	});
+
 	test("freezes exact catalog identity and leaves revision and ambiguity unknown", () => {
 		const catalog = normalizeRuntimeModelCatalog({
 			providers: {
@@ -233,7 +243,7 @@ describe("Runtime Model Catalog", () => {
 		};
 		const provider = { baseUrl: "https://ark.cn-beijing.volces.com/api/v3" };
 		const result = resolveRuntimeModelCompatibilityProfile(
-			"custom-profile/deepseek-v4-1-flash",
+			"custom-profile/deepseek-v4-1-flash-260910",
 			provider,
 			catalogSnapshot,
 		);
@@ -244,8 +254,10 @@ describe("Runtime Model Catalog", () => {
 			reasoningFormat: "deepseek",
 			supportsThinking: true,
 		});
-		expect(resolveRuntimeModelMetadata("custom-profile/deepseek-v4-1-flash", provider, catalogSnapshot)).toMatchObject({
-			id: "deepseek-v4-1-flash",
+		expect(
+			resolveRuntimeModelMetadata("custom-profile/deepseek-v4-1-flash-260910", provider, catalogSnapshot),
+		).toMatchObject({
+			id: "deepseek-v4-1-flash-260910",
 			contextWindow: 1_000_000,
 			maxTokens: 384_000,
 		});

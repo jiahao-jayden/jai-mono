@@ -1,11 +1,11 @@
-import type { RuntimeAgentSettingsSnapshot } from "@jai/server";
 import type { CompatibilityRules } from "@jai/ai";
+import type { RuntimeAgentSettingsSnapshot } from "@jai/server";
 import {
 	findRuntimeModelCatalog,
 	findRuntimeModelCatalogMatch,
+	type RuntimeModelCatalog,
 	resolveConfirmedModelFixture,
 	resolveRuntimeModelCompatibilityProfile,
-	type RuntimeModelCatalog,
 } from "@jai/server/model-catalog";
 import { TaggedError } from "better-result";
 import type {
@@ -135,7 +135,7 @@ export function projectModel(
 	const resolvedReasoning = modelMetadata?.reasoning ?? compatibility?.rules.supportsThinking;
 	return {
 		id,
-		name: stripModelDateSuffix(modelMetadata?.name ?? (id === remoteModelId ? remoteModelId : id)),
+		name: modelMetadata?.name ? stripModelDateSuffix(modelMetadata.name) : id,
 		remoteModelId,
 		source: catalogMatch ? "catalog" : confirmedFixture ? "fixture" : "unverified",
 		verified: Boolean(modelMetadata),
@@ -230,10 +230,13 @@ export function validateProviderProfiles(
 			) {
 				throw invalidInput(`Invalid model in Provider profile "${profile.id}"`);
 			}
-			if (source === "catalog" && (!catalog || !findRuntimeModelCatalog(catalog, undefined, model.remoteModelId))) {
+			const vendor = findDefaultProviderVendor(profile.baseURL, model.remoteModelId);
+			if (
+				source === "catalog" &&
+				(!catalog || !findRuntimeModelCatalog(catalog, vendor?.catalogProvider, model.remoteModelId))
+			) {
 				throw invalidInput(`Catalog model "${profile.id}/${model.id}" is unavailable`);
 			}
-			const vendor = findDefaultProviderVendor(profile.baseURL, model.remoteModelId);
 			if (
 				source === "fixture" &&
 				(!vendor || !resolveConfirmedModelFixture(vendor.catalogProvider, model.remoteModelId))

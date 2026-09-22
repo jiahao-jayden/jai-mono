@@ -12,7 +12,7 @@ import { Button } from "../../ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../ui/collapsible";
 import { Input } from "../../ui/input";
 import { Switch } from "../../ui/switch";
-import { Tooltip, TooltipProvider } from "../../ui/tooltip";
+import { TooltipProvider } from "../../ui/tooltip";
 import { ModelCapabilities } from "../model-capabilities";
 import type { ProfileDraft } from "./provider-settings-types";
 
@@ -217,19 +217,29 @@ function ModelCard({
 }) {
 	const ArrowIcon = useIcon("arrow-right");
 	const BrandIcon = resolveModelBrandIcon(model.remoteModelId);
+	const showsRemoteId = model.name !== model.remoteModelId;
+	const hasModalities = Boolean(model.inputModalities || model.outputModalities);
+	const limits = [
+		[desktopMessages.settingsModelContext, model.contextWindow],
+		[desktopMessages.settingsModelInput, model.inputLimit],
+		[desktopMessages.settingsModelOutput, model.maxTokens],
+	] as const;
+	const knownLimits = limits.filter(([, value]) => value !== undefined);
+	const limitsTitle = intl.formatMessage(desktopMessages.settingsModelLimits, {
+		context: formatLimit(model.contextWindow, intl),
+		input: formatLimit(model.inputLimit, intl),
+		output: formatLimit(model.maxTokens, intl),
+	});
+	const modalitiesTitle = intl.formatMessage(desktopMessages.settingsModelInputOutput, {
+		input: formatModalities(model.inputModalities),
+		output: formatModalities(model.outputModalities),
+	});
 	return (
 		<TooltipProvider delayDuration={250}>
 			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<div className="flex min-w-0 items-center gap-2">
 					{BrandIcon ? <BrandIcon size={17} className="shrink-0 text-muted-foreground/75" /> : null}
-					<div className="min-w-0 flex-1">
-						<Tooltip content={model.remoteModelId} side="top" sideOffset={6}>
-							<span className="block w-fit max-w-full truncate text-[13px] font-medium text-foreground">
-								{model.name}
-							</span>
-						</Tooltip>
-					</div>
-					{model.family ? <Badge color="gray" size="sm">{model.family}</Badge> : null}
+					<span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{model.name}</span>
 					<ModelCapabilities model={model} />
 					{availability.selectable ? null : (
 						<Badge color={availability.verified ? "amber" : "orange"} size="sm">
@@ -237,54 +247,32 @@ function ModelCard({
 						</Badge>
 					)}
 				</div>
-				<div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-					<div
-						className="flex min-w-0 items-center gap-1.5"
-						title={intl.formatMessage(desktopMessages.settingsModelInputOutput, {
-							input: formatModalities(model.inputModalities),
-							output: formatModalities(model.outputModalities),
-						})}
-					>
-						<span className="truncate text-muted-foreground/80">{formatModalities(model.inputModalities)}</span>
-						<ArrowIcon size={11} className="shrink-0 text-muted-foreground" />
-						<span className="truncate text-muted-foreground/80">{formatModalities(model.outputModalities)}</span>
+				{showsRemoteId || hasModalities || knownLimits.length > 0 ? (
+					<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground/80">
+						{showsRemoteId ? (
+							<span className="min-w-0 truncate font-mono text-muted-foreground" title={model.remoteModelId}>
+								{model.remoteModelId}
+							</span>
+						) : null}
+						{hasModalities ? (
+							<span className="flex min-w-0 items-center gap-1.5" title={modalitiesTitle}>
+								<span className="truncate">{formatModalities(model.inputModalities)}</span>
+								<ArrowIcon size={11} className="shrink-0" />
+								<span className="truncate">{formatModalities(model.outputModalities)}</span>
+							</span>
+						) : null}
+						{knownLimits.length > 0 ? (
+							<span className="flex items-center gap-1.5" title={limitsTitle}>
+								{knownLimits.map(([message, value], index) => (
+									<span key={message.id} className="flex items-center gap-1.5">
+										{index > 0 ? <span className="text-muted-foreground/50">·</span> : null}
+										{intl.formatMessage(message, { value: formatCompactLimit(value, intl) })}
+									</span>
+								))}
+							</span>
+						) : null}
 					</div>
-					<span className="text-muted-foreground/45" aria-hidden="true">
-						·
-					</span>
-					<div
-						className="flex items-center gap-1.5"
-						title={intl.formatMessage(desktopMessages.settingsModelLimits, {
-							context: formatLimit(model.contextWindow, intl),
-							input: formatLimit(model.inputLimit, intl),
-							output: formatLimit(model.maxTokens, intl),
-						})}
-					>
-						<span>
-							<span className="text-muted-foreground/80">
-								{intl.formatMessage(desktopMessages.settingsModelContext, {
-									value: formatCompactLimit(model.contextWindow, intl),
-								})}
-							</span>
-						</span>
-						<span className="text-muted-foreground/50">·</span>
-						<span>
-							<span className="text-muted-foreground/80">
-								{intl.formatMessage(desktopMessages.settingsModelInput, {
-									value: formatCompactLimit(model.inputLimit, intl),
-								})}
-							</span>
-						</span>
-						<span className="text-muted-foreground/50">·</span>
-						<span>
-							<span className="text-muted-foreground/80">
-								{intl.formatMessage(desktopMessages.settingsModelOutput, {
-									value: formatCompactLimit(model.maxTokens, intl),
-								})}
-							</span>
-						</span>
-					</div>
-				</div>
+				) : null}
 			</div>
 		</TooltipProvider>
 	);

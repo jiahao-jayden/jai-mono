@@ -309,7 +309,7 @@ function catalogModelStem(modelId: string): string {
 	return modelId
 		.trim()
 		.toLocaleLowerCase()
-		.replace(/-(?:[a-z]+-)?\d{6}$/i, "");
+		.replace(/-(?:ga-)?\d{6}$/i, "");
 }
 
 function defaultCatalogProviderFor(modelId: string): string | undefined {

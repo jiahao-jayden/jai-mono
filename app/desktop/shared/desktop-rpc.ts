@@ -137,7 +137,8 @@ export const jsonValueSchema = Type.Recursive((This) =>
 		Type.Number(),
 		Type.String(),
 		Type.Array(This),
-		Type.Record(Type.String(), This),
+		// Structured clone carries `key: undefined`; it reads the same as an omitted optional field.
+		Type.Record(Type.String(), Type.Union([This, Type.Undefined()])),
 	]),
 );
 
