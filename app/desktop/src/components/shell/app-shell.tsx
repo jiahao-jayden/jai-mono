@@ -406,7 +406,7 @@ export function AppShell() {
 	);
 	const contentCardClassName = cn(
 		"relative flex min-w-0 flex-1 overflow-hidden bg-[var(--web-content-background)] shadow-[0_0_0_var(--hairline)_var(--border-surface-strong),0_2px_10px_-4px_rgb(0_0_0/.1)] transition-[border-radius] duration-200",
-		settingsRoute ? "rounded-none shadow-none" : sidebarOpen ? "rounded-[12px]" : "rounded-r-[12px]",
+		settingsRoute ? "rounded-l-[12px] shadow-none" : sidebarOpen ? "rounded-[12px]" : "rounded-r-[12px]",
 	);
 	const isMac = window.desktopRpc.platform.isMac;
 	const shellClassName = cn("relative flex h-screen min-h-160 min-w-5xl overflow-hidden bg-sidebar text-foreground", {
