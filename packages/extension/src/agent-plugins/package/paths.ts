@@ -33,5 +33,5 @@ function pluginPathError(
 	message: string,
 	cause?: unknown,
 ): AgentPluginLoadFailed {
-	return new AgentPluginLoadFailed({ reason, path: pathValue, message, ...(cause === undefined ? {} : { cause }) });
+	return new AgentPluginLoadFailed({ reason, path: pathValue, message, cause });
 }

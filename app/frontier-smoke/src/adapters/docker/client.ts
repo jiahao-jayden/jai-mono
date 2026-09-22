@@ -44,7 +44,7 @@ export class NodeDockerClient implements DockerClient {
 				child = spawn("docker", arguments_, {
 					env: { ...process.env, ...options.environment },
 					stdio: "pipe",
-					...(options.signal === undefined ? {} : { signal: options.signal }),
+					signal: options.signal,
 				});
 			} catch {
 				resolve(

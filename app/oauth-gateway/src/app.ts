@@ -263,11 +263,12 @@ function normalizeTokenResponse(
 	return Result.ok({
 		accessToken: value.access_token,
 		tokenType,
-		...(typeof value.refresh_token === "string" && value.refresh_token.length > 0
-			? { refreshToken: value.refresh_token }
-			: {}),
-		...(expiresIn === undefined ? {} : { expiresIn }),
-		...(typeof value.scope === "string" ? { scope: value.scope } : {}),
+		refreshToken:
+			typeof value.refresh_token === "string" && value.refresh_token.length > 0
+				? value.refresh_token
+				: undefined,
+		expiresIn,
+		scope: typeof value.scope === "string" ? value.scope : undefined,
 	});
 }
 

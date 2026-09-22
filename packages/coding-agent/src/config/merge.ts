@@ -72,9 +72,9 @@ function mergeTree(
 
 		const nestedSources: ConfigSourceValue[] = [];
 		for (const source of sources) {
-			if (!Object.hasOwn(source.value, key)) continue;
 			const nested = source.value[key];
-			if (isPlainObject(nested)) nestedSources.push({ ...source, value: nested });
+			if (nested === undefined || !isPlainObject(nested)) continue;
+			nestedSources.push({ ...source, value: nested });
 		}
 		const nested = mergeTree(field, nestedSources, workspaceTrusted, path, provenance);
 		if (Object.keys(nested).length > 0) output[key] = nested;
@@ -98,7 +98,7 @@ function candidatesFor(
 		) {
 			continue;
 		}
-		if (!Object.hasOwn(source.value, key)) continue;
+		if (source.value[key] === undefined) continue;
 		candidates.push({ source: source.source, sourceFile: source.sourceFile, value: source.value[key] });
 	}
 	return candidates;

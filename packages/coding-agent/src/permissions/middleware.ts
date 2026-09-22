@@ -296,13 +296,9 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 			reason: initial.behavior === "ask" ? initial.reason : canonicalDecision.reason,
 			canAlwaysAllow: Boolean(suggested),
 			summary: approvalSummary(toolName, permissionArgs, decided),
-			...(suggested
-				? {
-						suggestedRule: formatSuggestedRule(toolName, suggested.rules[0]!),
-						suggestedRules: suggested.rules.map((rule) => formatSuggestedRule(toolName, rule)),
-						rememberScope: suggested.scope,
-					}
-				: {}),
+			suggestedRule: suggested ? formatSuggestedRule(toolName, suggested.rules[0]!) : undefined,
+			suggestedRules: suggested ? suggested.rules.map((rule) => formatSuggestedRule(toolName, rule)) : undefined,
+			rememberScope: suggested?.scope,
 		};
 		/**
 		 * Re-evaluates against the configuration current at this instant. An approval
@@ -466,7 +462,7 @@ async function evaluateExtensionPermission(
 	const permission = await resolvePermission({
 		toolCallId,
 		args: structuredClone(args) as JsonObject,
-		...(signal ? { signal } : {}),
+		signal,
 	});
 	if (
 		(permission.sideEffect !== "read" &&
@@ -681,7 +677,7 @@ function pathResolveOptions(
 		base: workspaceRoot,
 		boundary: workspaceRoot,
 		mustExist: toolName !== "Write",
-		...(toolName === "Read" || toolName === "Edit" ? { expectedKind: "file" as const } : {}),
+		expectedKind: toolName === "Read" || toolName === "Edit" ? ("file" as const) : undefined,
 		signal,
 	};
 }
@@ -705,8 +701,8 @@ function approvalSummary(
 	const command = toolName === "Bash" ? stringArgument(args, "command") : undefined;
 	return {
 		title: `${toolName} requests permission`,
-		...(command ? { command } : {}),
-		...(path ? { path } : {}),
+		command: command || undefined,
+		path: path || undefined,
 		risk: riskOf(decision),
 	};
 }

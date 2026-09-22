@@ -26,7 +26,7 @@ export function resolveToolTimelinePresentation(
 			icon: "sparkles",
 			density: "compact",
 			title: intl.formatMessage(running ? desktopMessages.transcriptWorking : desktopMessages.transcriptWorked),
-			...(details ? { details } : {}),
+			details: details || undefined,
 		};
 	}
 
@@ -35,9 +35,9 @@ export function resolveToolTimelinePresentation(
 		icon: toolIcon(firstTool, hasWebSearchResults),
 		density: "compact",
 		title: label,
-		...(hasWebSearchResults ? {} : { summary: toolClusterChip(tools, intl) }),
-		...(details ? { details } : {}),
-		...(hasWebSearchResults ? { webSearchResults } : {}),
+		summary: hasWebSearchResults ? undefined : toolClusterChip(tools, intl),
+		details: details || undefined,
+		webSearchResults: hasWebSearchResults ? webSearchResults : undefined,
 	};
 }
 

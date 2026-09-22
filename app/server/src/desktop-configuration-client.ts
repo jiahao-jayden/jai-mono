@@ -3,8 +3,6 @@ import type {
 	RuntimeAgentSettingsInput,
 	RuntimeAgentSettingsModelFetchResult,
 	RuntimeAgentSettingsSnapshot,
-	RuntimeProviderModel,
-	RuntimeProviderProfileProjection,
 	RuntimeWebSearchCredentialId,
 } from "./config";
 import type { RuntimeConnectorOAuthCompletion, RuntimeConnectorOAuthStart } from "./connectors";
@@ -17,6 +15,21 @@ import {
 	openLocalAcpV2Client,
 } from "./protocol/acp-v2/local-client";
 import { localDesktopConfigurationEndpointFor } from "./protocol/desktop-configuration";
+import {
+	agentSettingsSnapshotSchema,
+	mcpSettingsSnapshotSchema,
+	mcpStatusSchema,
+	modelFetchResultSchema,
+	oauthCompletionSchema,
+	oauthStartSchema,
+	readDto,
+	revealedApiKeySchema,
+	revealedConnectorCredentialSchema,
+	revealedTelemetryCredentialSchema,
+	revealedWebSearchKeySchema,
+	telemetrySettingsSnapshotSchema,
+	workspaceTrustSnapshotSchema,
+} from "./protocol/desktop-configuration/projection";
 import { resolveJaiDataDirectory } from "./runtime/paths";
 import type {
 	RuntimeTelemetryCredentialId,
@@ -90,11 +103,11 @@ export async function connectDesktopConfigurationClient(
 	const runtime = await connectJaiRuntimeHost({
 		environment,
 		dataDirectory,
-		...(options.runtimeEndpoint === undefined ? {} : { endpoint: options.runtimeEndpoint }),
-		...(options.runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint: options.runtimeHostEntrypoint }),
-		...(options.launchRuntimeHost === undefined ? {} : { launchRuntimeHost: options.launchRuntimeHost }),
-		...(options.retryDelayMs === undefined ? {} : { retryDelayMs: options.retryDelayMs }),
-		...(options.retryCount === undefined ? {} : { retryCount: options.retryCount }),
+		endpoint: options.runtimeEndpoint,
+		runtimeHostEntrypoint: options.runtimeHostEntrypoint,
+		launchRuntimeHost: options.launchRuntimeHost,
+		retryDelayMs: options.retryDelayMs,
+		retryCount: options.retryCount,
 	});
 	if (runtime.isErr()) return Result.err(runtime.error);
 	await runtime.value.close();
@@ -139,7 +152,7 @@ export class DesktopConfigurationClient {
 	): Promise<ResultType<RuntimeAgentSettingsModelFetchResult, DesktopConfigurationClientError>> {
 		const response = await this.client.request("jai/desktop-configuration/fetch-models", { profileId });
 		if (response.isErr()) return Result.err(response.error);
-		const result = parseModelFetchResult(response.value);
+		const result = readDto(modelFetchResultSchema, response.value);
 		if (result) return Result.ok(result);
 		return Result.err(
 			new DesktopConfigurationClientResponseInvalid({
@@ -154,13 +167,8 @@ export class DesktopConfigurationClient {
 	): Promise<ResultType<{ readonly profileId: string; readonly apiKey: string }, DesktopConfigurationClientError>> {
 		const response = await this.client.request("jai/desktop-configuration/reveal-api-key", { profileId });
 		if (response.isErr()) return Result.err(response.error);
-		if (
-			record(response.value) &&
-			typeof response.value.profileId === "string" &&
-			typeof response.value.apiKey === "string"
-		) {
-			return Result.ok({ profileId: response.value.profileId, apiKey: response.value.apiKey });
-		}
+		const revealed = readDto(revealedApiKeySchema, response.value);
+		if (revealed) return Result.ok(revealed);
 		return Result.err(
 			new DesktopConfigurationClientResponseInvalid({
 				method: "jai/desktop-configuration/reveal-api-key",
@@ -181,16 +189,8 @@ export class DesktopConfigurationClient {
 			credentialId,
 		});
 		if (response.isErr()) return Result.err(response.error);
-		if (
-			record(response.value) &&
-			isRuntimeWebSearchCredentialId(response.value.credentialId) &&
-			typeof response.value.apiKey === "string"
-		) {
-			return Result.ok({
-				credentialId: response.value.credentialId,
-				apiKey: response.value.apiKey,
-			});
-		}
+		const revealed = readDto(revealedWebSearchKeySchema, response.value);
+		if (revealed) return Result.ok(revealed);
 		return Result.err(
 			new DesktopConfigurationClientResponseInvalid({
 				method: "jai/desktop-configuration/reveal-web-search-api-key",
@@ -213,18 +213,8 @@ export class DesktopConfigurationClient {
 			credentialKey,
 		});
 		if (response.isErr()) return Result.err(response.error);
-		if (
-			record(response.value) &&
-			typeof response.value.connectorId === "string" &&
-			typeof response.value.credentialKey === "string" &&
-			typeof response.value.value === "string"
-		) {
-			return Result.ok({
-				connectorId: response.value.connectorId,
-				credentialKey: response.value.credentialKey,
-				value: response.value.value,
-			});
-		}
+		const revealed = readDto(revealedConnectorCredentialSchema, response.value);
+		if (revealed) return Result.ok(revealed);
 		return Result.err(
 			new DesktopConfigurationClientResponseInvalid({
 				method: "jai/desktop-configuration/reveal-connector-credential",
@@ -245,13 +235,8 @@ export class DesktopConfigurationClient {
 			credentialId,
 		});
 		if (response.isErr()) return Result.err(response.error);
-		if (
-			record(response.value) &&
-			(response.value.credentialId === "public" || response.value.credentialId === "secret") &&
-			typeof response.value.value === "string"
-		) {
-			return Result.ok({ credentialId: response.value.credentialId, value: response.value.value });
-		}
+		const revealed = readDto(revealedTelemetryCredentialSchema, response.value);
+		if (revealed) return Result.ok(revealed);
 		return Result.err(
 			new DesktopConfigurationClientResponseInvalid({
 				method: "jai/desktop-configuration/telemetry/reveal-credential",
@@ -265,7 +250,7 @@ export class DesktopConfigurationClient {
 	): Promise<ResultType<RuntimeConnectorOAuthStart, DesktopConfigurationClientError>> {
 		const response = await this.client.request("jai/desktop-configuration/connector-oauth/start", { connectorId });
 		if (response.isErr()) return Result.err(response.error);
-		const started = parseOAuthStart(response.value);
+		const started = readOAuthStart(response.value);
 		if (started) return Result.ok(started);
 		return Result.err(
 			new DesktopConfigurationClientResponseInvalid({
@@ -280,7 +265,7 @@ export class DesktopConfigurationClient {
 	): Promise<ResultType<RuntimeConnectorOAuthCompletion, DesktopConfigurationClientError>> {
 		const response = await this.client.request("jai/desktop-configuration/connector-oauth/complete", { callbackUrl });
 		if (response.isErr()) return Result.err(response.error);
-		const completed = parseOAuthCompletion(response.value);
+		const completed = readDto(oauthCompletionSchema, response.value);
 		if (completed) return Result.ok(completed);
 		return Result.err(
 			new DesktopConfigurationClientResponseInvalid({
@@ -338,7 +323,7 @@ export class DesktopConfigurationClient {
 	async getMcpStatus(): Promise<ResultType<DesktopMcpStatus, DesktopConfigurationClientError>> {
 		const response = await this.client.request("jai/desktop-configuration/mcp/status", {});
 		if (response.isErr()) return Result.err(response.error);
-		const status = parseMcpStatus(response.value);
+		const status = readDto(mcpStatusSchema, response.value);
 		if (status) return Result.ok(status);
 		return Result.err(
 			new DesktopConfigurationClientResponseInvalid({
@@ -358,7 +343,7 @@ export class DesktopConfigurationClient {
 	): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>> {
 		const response = await this.client.request(method, params);
 		if (response.isErr()) return Result.err(response.error);
-		const snapshot = parseSnapshot(response.value);
+		const snapshot = readDto(agentSettingsSnapshotSchema, response.value);
 		if (snapshot) return Result.ok(snapshot);
 		return Result.err(
 			new DesktopConfigurationClientResponseInvalid({
@@ -389,7 +374,7 @@ export class DesktopConfigurationClient {
 	): Promise<ResultType<WorkspaceTrustSnapshot, DesktopConfigurationClientError>> {
 		const response = await this.client.request(method, params);
 		if (response.isErr()) return Result.err(response.error);
-		const trust = parseWorkspaceTrustSnapshot(response.value);
+		const trust = readDto(workspaceTrustSnapshotSchema, response.value);
 		if (trust) return Result.ok(trust);
 		return Result.err(
 			new DesktopConfigurationClientResponseInvalid({
@@ -405,7 +390,7 @@ export class DesktopConfigurationClient {
 	): Promise<ResultType<RuntimeTelemetrySettingsSnapshot, DesktopConfigurationClientError>> {
 		const response = await this.client.request(method, params);
 		if (response.isErr()) return Result.err(response.error);
-		const telemetry = parseTelemetrySnapshot(response.value);
+		const telemetry = readDto(telemetrySettingsSnapshotSchema, response.value);
 		if (telemetry) return Result.ok(telemetry);
 		return Result.err(
 			new DesktopConfigurationClientResponseInvalid({
@@ -421,7 +406,7 @@ export class DesktopConfigurationClient {
 	): Promise<ResultType<DesktopMcpSettingsSnapshot, DesktopConfigurationClientError>> {
 		const response = await this.client.request(method, params);
 		if (response.isErr()) return Result.err(response.error);
-		const snapshot = parseMcpSnapshot(response.value);
+		const snapshot = readDto(mcpSettingsSnapshotSchema, response.value);
 		if (snapshot) return Result.ok(snapshot);
 		return Result.err(
 			new DesktopConfigurationClientResponseInvalid({
@@ -432,334 +417,14 @@ export class DesktopConfigurationClient {
 	}
 }
 
-function parseTelemetrySnapshot(value: unknown): RuntimeTelemetrySettingsSnapshot | undefined {
-	if (!record(value) || !record(value.credential)) return undefined;
-	if (
-		(value.policyRevision !== null && typeof value.policyRevision !== "string") ||
-		typeof value.enabled !== "boolean" ||
-		value.exporter !== "langfuse-otlp" ||
-		typeof value.environmentOverride !== "boolean" ||
-		(value.endpoint !== undefined && typeof value.endpoint !== "string") ||
-		(value.configurationError !== undefined && typeof value.configurationError !== "string") ||
-		(value.credential.revision !== null && typeof value.credential.revision !== "string") ||
-		typeof value.credential.configured !== "boolean" ||
-		(value.credential.publicKeyMask !== undefined && typeof value.credential.publicKeyMask !== "string") ||
-		(value.credential.secretKeyMask !== undefined && typeof value.credential.secretKeyMask !== "string")
-	) {
-		return undefined;
-	}
-	return {
-		credential: {
-			revision: value.credential.revision,
-			configured: value.credential.configured,
-			...(value.credential.publicKeyMask === undefined ? {} : { publicKeyMask: value.credential.publicKeyMask }),
-			...(value.credential.secretKeyMask === undefined ? {} : { secretKeyMask: value.credential.secretKeyMask }),
-		},
-		enabled: value.enabled,
-		...(value.endpoint === undefined ? {} : { endpoint: value.endpoint }),
-		environmentOverride: value.environmentOverride,
-		exporter: "langfuse-otlp",
-		policyRevision: value.policyRevision,
-		...(value.configurationError === undefined ? {} : { configurationError: value.configurationError }),
-	};
-}
-
-function parseSnapshot(value: unknown): RuntimeAgentSettingsSnapshot | undefined {
-	if (
-		!record(value) ||
-		(value.revision !== null && typeof value.revision !== "string") ||
-		typeof value.model !== "string" ||
-		!Array.isArray(value.profiles)
-	) {
-		return undefined;
-	}
-	const connector = parseConnector(value.connector);
-	if (!connector) return undefined;
-	const webSearch = parseWebSearch(value.webSearch);
-	if (!webSearch) return undefined;
-	if (
-		value.maxTurns !== undefined &&
-		(typeof value.maxTurns !== "number" || !Number.isInteger(value.maxTurns) || value.maxTurns < 1)
-	) {
-		return undefined;
-	}
-	if (value.language !== undefined && (typeof value.language !== "string" || !language(value.language)))
-		return undefined;
-	const profiles = value.profiles.map(parseProfile);
-	if (profiles.some((profile) => profile === undefined)) return undefined;
-	return {
-		revision: value.revision,
-		model: value.model,
-		...(value.maxTurns === undefined ? {} : { maxTurns: value.maxTurns }),
-		...(value.language === undefined ? {} : { language: value.language }),
-		profiles: profiles as RuntimeProviderProfileProjection[],
-		connector,
-		webSearch,
-	};
-}
-
-function parseWebSearch(value: unknown): RuntimeAgentSettingsSnapshot["webSearch"] | undefined {
-	if (!record(value) || !Array.isArray(value.providers)) return undefined;
-	const providers = value.providers.map((provider) => {
-		if (
-			!record(provider) ||
-			(provider.id !== "exa" && provider.id !== "parallel" && provider.id !== "anysearch") ||
-			typeof provider.enabled !== "boolean" ||
-			(provider.order !== undefined &&
-				(typeof provider.order !== "number" || !Number.isInteger(provider.order) || provider.order < 1)) ||
-			typeof provider.credentialConfigured !== "boolean" ||
-			(provider.credentialMask !== undefined && typeof provider.credentialMask !== "string")
-		) {
-			return undefined;
-		}
-		return {
-			id: provider.id,
-			enabled: provider.enabled,
-			...(provider.order === undefined ? {} : { order: provider.order }),
-			credentialConfigured: provider.credentialConfigured,
-			...(provider.credentialMask === undefined ? {} : { credentialMask: provider.credentialMask }),
-		};
-	});
-	if (providers.some((provider) => provider === undefined)) return undefined;
-	if (!record(value.fetch) || !record(value.fetch.jina)) return undefined;
-	if (
-		!Object.keys(value.fetch).every((key) => key === "jina") ||
-		!Object.keys(value.fetch.jina).every((key) => key === "credentialConfigured" || key === "credentialMask") ||
-		typeof value.fetch.jina.credentialConfigured !== "boolean" ||
-		(value.fetch.jina.credentialMask !== undefined && typeof value.fetch.jina.credentialMask !== "string")
-	) {
-		return undefined;
-	}
-	return {
-		providers: providers as RuntimeAgentSettingsSnapshot["webSearch"]["providers"],
-		fetch: {
-			jina: {
-				credentialConfigured: value.fetch.jina.credentialConfigured,
-				...(value.fetch.jina.credentialMask === undefined
-					? {}
-					: { credentialMask: value.fetch.jina.credentialMask }),
-			},
-		},
-	};
-}
-
-function language(value: string): boolean {
-	return /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(value);
-}
-
-function parseConnector(value: unknown): RuntimeAgentSettingsSnapshot["connector"] | undefined {
-	if (!record(value) || !record(value.policy) || !Array.isArray(value.connectors)) return undefined;
-	if (
-		!permission(value.policy.default) ||
-		!record(value.policy.actions) ||
-		!Object.values(value.policy.actions).every(permission)
-	)
-		return undefined;
-	const connectors = value.connectors.map((connector) => {
-		if (
-			!record(connector) ||
-			typeof connector.id !== "string" ||
-			typeof connector.enabled !== "boolean" ||
-			!Array.isArray(connector.credentials)
-		)
-			return undefined;
-		const credentials = connector.credentials.map((credential) =>
-			record(credential) &&
-			typeof credential.key === "string" &&
-			typeof credential.configured === "boolean" &&
-			(credential.mask === undefined || typeof credential.mask === "string")
-				? {
-						key: credential.key,
-						configured: credential.configured,
-						...(credential.mask === undefined ? {} : { mask: credential.mask }),
-					}
-				: undefined,
-		);
-		if (credentials.some((credential) => credential === undefined)) return undefined;
-		if (
-			connector.oauth !== undefined &&
-			(!record(connector.oauth) ||
-				typeof connector.oauth.connected !== "boolean" ||
-				!Array.isArray(connector.oauth.scopes) ||
-				connector.oauth.scopes.some((scope) => typeof scope !== "string") ||
-				(connector.oauth.expiresAt !== undefined &&
-					(typeof connector.oauth.expiresAt !== "number" || !Number.isInteger(connector.oauth.expiresAt))))
-		)
-			return undefined;
-		return {
-			id: connector.id,
-			enabled: connector.enabled,
-			credentials: credentials as RuntimeAgentSettingsSnapshot["connector"]["connectors"][number]["credentials"],
-			...(connector.oauth === undefined
-				? {}
-				: { oauth: connector.oauth as RuntimeAgentSettingsSnapshot["connector"]["connectors"][number]["oauth"] }),
-		};
-	});
-	if (connectors.some((connector) => connector === undefined)) return undefined;
-	return {
-		policy: {
-			default: value.policy.default,
-			actions: value.policy.actions as Record<
-				string,
-				RuntimeAgentSettingsSnapshot["connector"]["policy"]["default"]
-			>,
-		},
-		connectors: connectors as RuntimeAgentSettingsSnapshot["connector"]["connectors"],
-	};
-}
-
-function parseModelFetchResult(value: unknown): RuntimeAgentSettingsModelFetchResult | undefined {
-	if (
-		!record(value) ||
-		typeof value.profileId !== "string" ||
-		typeof value.modelCount !== "number" ||
-		!Number.isInteger(value.modelCount) ||
-		value.modelCount < 0 ||
-		typeof value.fetchedAt !== "number" ||
-		!Number.isInteger(value.fetchedAt) ||
-		value.fetchedAt < 0
-	) {
-		return undefined;
-	}
-	const snapshot = parseSnapshot(value.snapshot);
-	return snapshot
-		? { profileId: value.profileId, modelCount: value.modelCount, fetchedAt: value.fetchedAt, snapshot }
-		: undefined;
-}
-
-function parseProfile(value: unknown): RuntimeProviderProfileProjection | undefined {
-	if (!record(value) || !Array.isArray(value.models)) return undefined;
-	if (
-		typeof value.id !== "string" ||
-		typeof value.name !== "string" ||
-		!adapter(value.adapter) ||
-		!authentication(value.authentication) ||
-		typeof value.credentialConfigured !== "boolean" ||
-		typeof value.enabled !== "boolean" ||
-		(value.baseURL !== undefined && typeof value.baseURL !== "string") ||
-		(value.credentialMask !== undefined && typeof value.credentialMask !== "string") ||
-		(value.modelsFetchedAt !== undefined &&
-			(typeof value.modelsFetchedAt !== "number" ||
-				!Number.isInteger(value.modelsFetchedAt) ||
-				value.modelsFetchedAt < 0))
-	) {
-		return undefined;
-	}
-	const models = value.models.map(parseModel);
-	if (models.some((model) => model === undefined)) return undefined;
-	return {
-		id: value.id,
-		name: value.name,
-		adapter: value.adapter,
-		...(value.baseURL === undefined ? {} : { baseURL: value.baseURL }),
-		authentication: value.authentication,
-		credentialConfigured: value.credentialConfigured,
-		...(value.credentialMask === undefined ? {} : { credentialMask: value.credentialMask }),
-		enabled: value.enabled,
-		...(value.modelsFetchedAt === undefined ? {} : { modelsFetchedAt: value.modelsFetchedAt }),
-		models: models as RuntimeProviderModel[],
-	};
-}
-
-function parseModel(value: unknown): RuntimeProviderModel | undefined {
-	if (!record(value) || typeof value.id !== "string" || typeof value.enabled !== "boolean") return undefined;
-	if (value.remoteModelId !== undefined && typeof value.remoteModelId !== "string") return undefined;
-	return {
-		id: value.id,
-		...(value.remoteModelId === undefined ? {} : { remoteModelId: value.remoteModelId }),
-		enabled: value.enabled,
-	};
-}
-
-function parseOAuthStart(value: unknown): RuntimeConnectorOAuthStart | undefined {
-	if (!record(value) || typeof value.connectorId !== "string" || typeof value.authorizationUrl !== "string")
-		return undefined;
-	if (typeof value.expiresAt !== "number" || !Number.isInteger(value.expiresAt) || value.expiresAt <= 0)
-		return undefined;
+function readOAuthStart(value: unknown): RuntimeConnectorOAuthStart | undefined {
+	const started = readDto(oauthStartSchema, value);
+	if (!started) return undefined;
 	try {
-		const url = new URL(value.authorizationUrl);
+		const url = new URL(started.authorizationUrl);
 		if (url.protocol !== "https:" && url.protocol !== "http:") return undefined;
 	} catch {
 		return undefined;
 	}
-	return { connectorId: value.connectorId, authorizationUrl: value.authorizationUrl, expiresAt: value.expiresAt };
-}
-
-function parseOAuthCompletion(value: unknown): RuntimeConnectorOAuthCompletion | undefined {
-	if (!record(value) || typeof value.connectorId !== "string") return undefined;
-	const snapshot = parseSnapshot(value.snapshot);
-	return snapshot ? { connectorId: value.connectorId, snapshot } : undefined;
-}
-
-function parseWorkspaceTrustSnapshot(value: unknown): WorkspaceTrustSnapshot | undefined {
-	if (
-		!record(value) ||
-		typeof value.workspacePath !== "string" ||
-		typeof value.trusted !== "boolean" ||
-		(value.updatedAt !== undefined && typeof value.updatedAt !== "string")
-	) {
-		return undefined;
-	}
-	return {
-		workspacePath: value.workspacePath,
-		trusted: value.trusted,
-		...(value.updatedAt === undefined ? {} : { updatedAt: value.updatedAt }),
-	};
-}
-
-function adapter(value: unknown): value is RuntimeProviderProfileProjection["adapter"] {
-	return value === "anthropic" || value === "openai-compatible" || value === "openai-responses";
-}
-
-function authentication(value: unknown): value is RuntimeProviderProfileProjection["authentication"] {
-	return value === "api-key" || value === "none";
-}
-
-function permission(value: unknown): value is RuntimeAgentSettingsSnapshot["connector"]["policy"]["default"] {
-	return value === "ask" || value === "allow" || value === "deny";
-}
-
-function record(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isRuntimeWebSearchCredentialId(value: unknown): value is RuntimeWebSearchCredentialId {
-	return value === "jina" || value === "exa" || value === "parallel" || value === "anysearch";
-}
-
-function parseMcpSnapshot(value: unknown): DesktopMcpSettingsSnapshot | undefined {
-	if (!record(value)) return undefined;
-	if (value.revision !== null && typeof value.revision !== "string") return undefined;
-	if (value.mcp !== undefined && value.mcp !== null && !record(value.mcp)) return undefined;
-	return { revision: value.revision, mcp: value.mcp };
-}
-
-function parseMcpStatus(value: unknown): DesktopMcpStatus | undefined {
-	if (!record(value) || !Array.isArray(value.servers)) return undefined;
-	const servers = value.servers.map((server) => {
-		if (
-			!record(server) ||
-			typeof server.name !== "string" ||
-			(server.type !== "stdio" && server.type !== "streamable-http" && server.type !== "sse") ||
-			typeof server.connected !== "boolean"
-		) {
-			return undefined;
-		}
-		if (
-			server.toolCount !== undefined &&
-			(typeof server.toolCount !== "number" || !Number.isInteger(server.toolCount) || server.toolCount < 0)
-		) {
-			return undefined;
-		}
-		if (server.error !== undefined && typeof server.error !== "string") return undefined;
-		return {
-			name: server.name,
-			type: server.type,
-			connected: server.connected,
-			...(server.toolCount === undefined ? {} : { toolCount: server.toolCount }),
-			...(server.error === undefined ? {} : { error: server.error }),
-		};
-	});
-	if (servers.some((server) => server === undefined)) return undefined;
-	return { servers: servers as readonly DesktopMcpServerStatus[] };
+	return started;
 }

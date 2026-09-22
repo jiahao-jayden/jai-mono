@@ -129,7 +129,7 @@ export class OpenAIResponsesProvider implements Provider {
 			apiKey,
 			baseURL: this.baseURL,
 			defaultHeaders: this.headers,
-			...(this.authentication === "none" ? { fetch: withoutAuthentication } : {}),
+			fetch: this.authentication === "none" ? withoutAuthentication : undefined,
 		});
 	}
 }
@@ -144,9 +144,9 @@ function buildParams(model: Model, context: Context, options?: StreamOptions): R
 		instructions: context.systemPrompt || undefined,
 		input: convertMessages(transformMessagesForModel(context.messages, model)),
 		max_output_tokens: options?.maxTokens ?? model.maxTokens,
-		...(options?.temperature === undefined ? {} : { temperature: options.temperature }),
-		...(context.tools.length === 0 ? {} : { tools: convertTools(context.tools, policy.supportsStrictTools) }),
-		...(policy.reasoningEnabled ? { reasoning: { summary: "auto" } } : {}),
+		temperature: options?.temperature,
+		tools: context.tools.length === 0 ? undefined : convertTools(context.tools, policy.supportsStrictTools),
+		reasoning: policy.reasoningEnabled ? { summary: "auto" } : undefined,
 	};
 }
 
@@ -274,7 +274,7 @@ function applyEvent(
 		case "response.failed":
 			throw new ResponsesRequestFailed({
 				message: event.response.error?.message ?? "OpenAI response failed",
-				...(event.response.error?.code ? { code: event.response.error.code } : {}),
+				code: event.response.error?.code || undefined,
 			});
 		default:
 			return [];

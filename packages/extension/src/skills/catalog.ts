@@ -319,8 +319,8 @@ async function readSkill(
 		directory: skillDirectory,
 		canonicalDirectory,
 		source: root.source,
-		...(parsed.license === undefined ? {} : { license: parsed.license }),
-		...(parsed.compatibility === undefined ? {} : { compatibility: parsed.compatibility }),
+		license: parsed.license,
+		compatibility: parsed.compatibility,
 		allowedTools: parsed.allowedTools,
 		metadata: parsed.metadata,
 	};
@@ -383,8 +383,8 @@ export function validateSkillFrontmatter(
 	return {
 		name,
 		description,
-		...(license === undefined ? {} : { license }),
-		...(compatibility === undefined ? {} : { compatibility }),
+		license,
+		compatibility,
 		allowedTools,
 		metadata,
 	};
@@ -462,5 +462,5 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function invalidSkillDocument(message: string, cause?: unknown) {
-	return new InvalidSkillDocument({ message, ...(cause === undefined ? {} : { cause }) });
+	return new InvalidSkillDocument({ message, cause });
 }

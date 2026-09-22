@@ -64,11 +64,11 @@ function toExtensionTool(tool: AgentPluginRuntime["tools"][number]): CodingExten
 		description: agentTool.description,
 		parameters: agentTool.parameters,
 		presentation: {
-			...(tool.presentation.activityKind ? { activityKind: tool.presentation.activityKind } : {}),
-			...(tool.presentation.title ? { title: (_runtime, args) => tool.presentation.title!(args) } : {}),
-			...(tool.presentation.resolveActivityKind
-				? { resolveActivityKind: (_runtime, args) => tool.presentation.resolveActivityKind!(args) }
-				: {}),
+			activityKind: tool.presentation.activityKind || undefined,
+			title: tool.presentation.title ? (_runtime, args) => tool.presentation.title!(args) : undefined,
+			resolveActivityKind: tool.presentation.resolveActivityKind
+				? (_runtime, args) => tool.presentation.resolveActivityKind!(args)
+				: undefined,
 		},
 		authorization: {
 			owner: "core",
@@ -78,12 +78,12 @@ function toExtensionTool(tool: AgentPluginRuntime["tools"][number]): CodingExten
 				reason: `Runs external MCP tool "${agentTool.name}" from an Agent Plugins package.`,
 			},
 		},
-		...(agentTool.executionMode ? { executionMode: agentTool.executionMode } : {}),
+		executionMode: agentTool.executionMode || undefined,
 		execute: async (_runtime, { toolCallId, args, signal }): Promise<CodingExtensionToolResult> => {
 			const result = await agentTool.execute(toolCallId, args, signal);
 			return {
 				content: result.content,
-				...(result.terminate ? { terminate: true } : {}),
+				terminate: result.terminate || undefined,
 			};
 		},
 	};

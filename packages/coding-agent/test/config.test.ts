@@ -9,6 +9,8 @@ import {
 	defineCodingConfig,
 	resolveCodingConfigPaths,
 } from "../src/config";
+import { projectScopeFieldIssues } from "../src/config/definition";
+import { mergeCodingConfig } from "../src/config/merge";
 
 const roots: string[] = [];
 const schemaUrl = "https://jai.test/schemas/coding-settings-v1.json";
@@ -138,6 +140,17 @@ describe("CodingConfigStore", () => {
 			limit: 40,
 		});
 		expect((await store.setWorkspaceTrusted(true)).settings.name).toBe("project");
+	});
+
+	test("值为 undefined 的字段与缺失字段一样，不覆盖默认值", () => {
+		const present = { source: "user" as const, value: { name: undefined, nested: undefined, telemetry: undefined } };
+		const absent = { source: "user" as const, value: {} };
+		expect(mergeCodingConfig(definition.fields, [present], true)).toEqual(
+			mergeCodingConfig(definition.fields, [absent], true),
+		);
+		expect(projectScopeFieldIssues(definition.fields, "project-shared", { telemetry: undefined })).toEqual(
+			projectScopeFieldIssues(definition.fields, "project-shared", {}),
+		);
 	});
 
 	test("project scope 直接拒绝 user-only 字段，不受 workspace trust 影响", async () => {

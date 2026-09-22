@@ -51,7 +51,7 @@ export function parseFrontierSmokeOptions(
 			model,
 			outputDirectory,
 			maxTurns,
-			...(dataDirectory ? { dataDirectory: path.resolve(dataDirectory) } : {}),
+			dataDirectory: dataDirectory ? path.resolve(dataDirectory) : undefined,
 			help: false,
 		});
 	} catch (error) {

@@ -91,7 +91,7 @@ export class DesktopOAuthManager {
 			if (state) this.#connectorsByState.delete(state);
 			throw new DesktopOAuthAuthorizationFailed({
 				message: cause instanceof Error ? cause.message : "OAuth authorization could not be completed",
-				data: { ...(pending ? { connectorId: pending.connectorId } : {}) },
+				data: { connectorId: pending?.connectorId },
 				cause,
 			});
 		}

@@ -175,12 +175,12 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
 			throw new CliUsageError({ message: "--no-session-persistence cannot be combined with --session-id" });
 		}
 		return {
-			...(prompt === undefined ? {} : { prompt }),
+			prompt,
 			outputFormat,
 			cwd,
-			...(model === undefined ? {} : { model }),
-			...(mode === undefined ? {} : { mode }),
-			...(parsed.values["session-id"] === undefined ? {} : { sessionId: parsed.values["session-id"] }),
+			model,
+			mode,
+			sessionId: parsed.values["session-id"],
 			noSessionPersistence: parsed.values["no-session-persistence"] ?? false,
 			printMode: normalized.printMode,
 			interactive: !normalized.printMode && Boolean(input.isTTY),
@@ -239,7 +239,7 @@ async function openCliSession(client: LocalAcpV2Client, options: CliOptions): Pr
 	}
 	const created = await client.request("session/new", {
 		cwd: options.cwd,
-		...(options.noSessionPersistence ? { ephemeral: true } : {}),
+		ephemeral: options.noSessionPersistence ? true : undefined,
 	});
 	if (created.isErr()) throw new CliRuntimeError({ message: created.error.message });
 	if (!isRecord(created.value) || typeof created.value.sessionId !== "string") {
@@ -432,7 +432,7 @@ export function projectCliPromptResult(
 			stop_reason: outcome.stopReason,
 			tool_calls: outcome.toolCalls,
 			tool_errors: outcome.toolErrors,
-			...(outcome.errorMessage === undefined ? {} : { error_message: outcome.errorMessage }),
+			error_message: outcome.errorMessage,
 		},
 		duration_ms: outcome.durationMs,
 	};
@@ -654,8 +654,8 @@ function projectCliError(error: unknown): JsonObject {
 			message: error.message,
 			phase: error.phase,
 			retryable: error.retryable,
-			...(error.details === undefined ? {} : { details: error.details }),
-		};
+			details: error.details,
+		} as JsonObject;
 	}
 	if (error instanceof CliRuntimeError) return { code: "cli.runtime_unavailable", message: error.message };
 	if (error instanceof CliUsageError) return { code: "cli.usage_invalid", message: error.message };

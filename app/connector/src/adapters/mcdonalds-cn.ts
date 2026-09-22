@@ -236,7 +236,7 @@ async function executeMcDonaldsCn(
 		const response = await fetcher(url, {
 			method: spec.method,
 			headers,
-			...(body === undefined ? {} : { body }),
+			body,
 			signal: context.signal,
 		});
 		const payload: unknown = await response.json().catch(() => undefined);
@@ -248,7 +248,7 @@ async function executeMcDonaldsCn(
 					data: {
 						connectorId: "mcdonalds_cn",
 						actionId: action.actionId,
-						...(retryAfter === undefined ? {} : { retryAfterMs: retryAfter }),
+						retryAfterMs: retryAfter,
 					},
 				}),
 			);

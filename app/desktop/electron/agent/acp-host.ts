@@ -245,10 +245,10 @@ export class DesktopAcpAgentHost {
 		return {
 			sessionId,
 			status: runtime.status,
-			...(runtime.connectionStatus ? { connectionStatus: runtime.connectionStatus } : {}),
-			...(runtime.stopReason ? { stopReason: runtime.stopReason } : {}),
+			connectionStatus: runtime.connectionStatus || undefined,
+			stopReason: runtime.stopReason || undefined,
 			items: [...runtime.items.values()].map((item) => structuredClone(item)),
-			...(runtime.todos ? { todos: structuredClone(runtime.todos) } : {}),
+			todos: runtime.todos ? structuredClone(runtime.todos) : undefined,
 			artifacts: sortArtifacts(runtime.artifacts.values()).map((artifact) => structuredClone(artifact)),
 			usage: { ...runtime.usage },
 			lastSeq: runtime.seq,
@@ -358,7 +358,7 @@ export class DesktopAcpAgentHost {
 		const response = await this.#request("session/prompt", {
 			sessionId: runtime.sessionId,
 			prompt,
-			...(delivery ? { delivery } : {}),
+			delivery: delivery || undefined,
 		});
 		if (response.isErr()) throw response.error;
 		return { accepted: true };
@@ -599,7 +599,7 @@ export class DesktopAcpAgentHost {
 		this.#emitEvent(runtime, {
 			type: "status",
 			status: runtime.status,
-			...(runtime.stopReason ? { stopReason: runtime.stopReason } : {}),
+			stopReason: runtime.stopReason || undefined,
 		});
 		if (update.stopReason === "error") {
 			this.#emitRuntimeError(runtime, "Runtime Host operation failed");
@@ -644,7 +644,7 @@ export class DesktopAcpAgentHost {
 						text: complete ? text : previousText + text,
 						status: complete ? "complete" : "streaming",
 						timestamp,
-						...(slashInvocation ? { slashInvocation } : {}),
+						slashInvocation: slashInvocation || undefined,
 					};
 		runtime.items.set(id, item);
 		this.#emitEvent(runtime, { type: "transcript_upsert", item });
@@ -768,9 +768,9 @@ export class DesktopAcpAgentHost {
 						: {}),
 			activityKind: activityKind(title),
 			status,
-			...(previousTool?.summary ? { summary: previousTool.summary } : {}),
-			...(details ? { details } : {}),
-			...(searchQuery ? { searchQuery } : {}),
+			summary: previousTool?.summary || undefined,
+			details: details || undefined,
+			searchQuery: searchQuery || undefined,
 			...(webSearchResults !== undefined
 				? { webSearchResults }
 				: previousTool?.webSearchResults
@@ -829,7 +829,7 @@ export class DesktopAcpAgentHost {
 						? { completedAt: Date.now() }
 						: {}),
 			status,
-			...(activityTitle ? { activityTitle } : {}),
+			activityTitle: activityTitle || undefined,
 		};
 		runtime.items.set(id, item);
 		this.#emitEvent(runtime, { type: "transcript_upsert", item });
@@ -935,7 +935,7 @@ export class DesktopAcpAgentHost {
 	#setConnection(runtime: AcpSessionRuntime, status: DesktopAgentConnectionStatus | undefined): void {
 		if (runtime.connectionStatus === status) return;
 		runtime.connectionStatus = status;
-		this.#emitEvent(runtime, { type: "connection_status", ...(status ? { status } : {}) });
+		this.#emitEvent(runtime, { type: "connection_status", status });
 	}
 
 	#emitEvent(runtime: AcpSessionRuntime, event: DesktopAgentEvent): void {
@@ -996,6 +996,11 @@ function projectPermission(
 	const command = typeof params.command === "string" ? params.command : undefined;
 	const path = typeof params.path === "string" ? params.path : undefined;
 	const options = Array.isArray(params.options) ? params.options : [];
+	const rememberScope =
+		typeof params.rememberScope === "string" &&
+		(params.rememberScope === "session" || params.rememberScope === "project-local")
+			? params.rememberScope
+			: undefined;
 	return {
 		request: {
 			requestId: toolCallId,
@@ -1006,15 +1011,12 @@ function projectPermission(
 			canAlwaysAllow: options.some((option) => isRecord(option) && option.optionId === "allow-always"),
 			summary: {
 				title,
-				...(description ? { description } : {}),
-				...(command ? { command } : {}),
-				...(path ? { path } : {}),
+				description: description || undefined,
+				command: command || undefined,
+				path: path || undefined,
 			},
-			...(typeof params.suggestedRule === "string" ? { suggestedRule: params.suggestedRule } : {}),
-			...(typeof params.rememberScope === "string" &&
-			(params.rememberScope === "session" || params.rememberScope === "project-local")
-				? { rememberScope: params.rememberScope }
-				: {}),
+			suggestedRule: typeof params.suggestedRule === "string" ? params.suggestedRule : undefined,
+			rememberScope,
 		},
 	};
 }

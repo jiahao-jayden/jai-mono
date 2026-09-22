@@ -52,7 +52,7 @@ export class DesktopLocalRuntimeCapabilitySource implements RuntimeCapabilitySou
 			const agentPlugins = await createRuntimeAgentPluginsExtension({
 				dataDirectory: join(this.options.dataDirectory, "agent-plugins", input.sessionId),
 				homeDirectory: this.#homeDirectory,
-				...(trust.isOk() && trust.value.trusted ? { trustedWorkspacePath: trust.value.workspacePath } : {}),
+				trustedWorkspacePath: trust.isOk() && trust.value.trusted ? trust.value.workspacePath : undefined,
 			});
 			const fileCapabilities = {
 				homeDirectory: this.#homeDirectory,

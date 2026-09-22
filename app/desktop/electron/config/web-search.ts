@@ -13,16 +13,14 @@ export function projectRuntimeWebSearchConfig(snapshot: RuntimeAgentSettingsSnap
 		providers: snapshot.webSearch.providers.map((provider) => ({
 			id: provider.id,
 			enabled: provider.enabled,
-			...(provider.order === undefined ? {} : { order: provider.order }),
+			order: provider.order,
 			credentialConfigured: provider.credentialConfigured,
-			...(provider.credentialMask === undefined ? {} : { credentialMask: provider.credentialMask }),
+			credentialMask: provider.credentialMask,
 		})),
 		fetch: {
 			jina: {
 				credentialConfigured: snapshot.webSearch.fetch.jina.credentialConfigured,
-				...(snapshot.webSearch.fetch.jina.credentialMask === undefined
-					? {}
-					: { credentialMask: snapshot.webSearch.fetch.jina.credentialMask }),
+				credentialMask: snapshot.webSearch.fetch.jina.credentialMask,
 			},
 		},
 	};
@@ -33,11 +31,11 @@ export function toRuntimeWebSearchInput(input: DesktopWebSearchConfigInput) {
 		providers: input.providers.map((provider) => ({
 			id: provider.id,
 			enabled: provider.enabled,
-			...(provider.order === undefined ? {} : { order: provider.order }),
-			...(provider.apiKey === undefined ? {} : { apiKey: provider.apiKey }),
-			...(provider.clearApiKey === undefined ? {} : { clearApiKey: provider.clearApiKey }),
+			order: provider.order,
+			apiKey: provider.apiKey,
+			clearApiKey: provider.clearApiKey,
 		})),
-		...(input.fetch === undefined ? {} : { fetch: input.fetch }),
+		fetch: input.fetch,
 	};
 }
 

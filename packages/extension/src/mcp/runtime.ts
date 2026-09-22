@@ -65,7 +65,7 @@ export class McpExtensionRuntime {
 			tools.push(...discovered.value);
 		}
 		const diagnostics = this.#diagnostics.splice(0, this.#diagnostics.length);
-		return Result.ok({ tools, ...(diagnostics.length ? { diagnostics } : {}) });
+		return Result.ok({ tools, diagnostics: diagnostics.length ? diagnostics : undefined });
 	}
 
 	subscribe(invalidate: () => void): () => void {
@@ -363,7 +363,7 @@ export function createTransport(
 			command: server.command,
 			args: [...server.args],
 			env: { ...server.env },
-			...(server.cwd === undefined ? {} : { cwd: server.cwd }),
+			cwd: server.cwd,
 		});
 	}
 	const headers = filterGeneratedHeaders(server.headers);
@@ -435,7 +435,8 @@ function createRestrictedFetch(
 				response.status === 303 || ((response.status === 301 || response.status === 302) && method === "POST");
 			currentInit = {
 				...currentInit,
-				...(switchToGet ? { method: "GET", body: undefined } : {}),
+				method: switchToGet ? "GET" : currentInit.method,
+				body: switchToGet ? undefined : currentInit.body,
 				headers,
 				redirect: "manual",
 			};
@@ -480,8 +481,8 @@ function jsonSchemaToTypeBox(schema: unknown): TSchema {
 			return Type.Array(jsonSchemaToTypeBox(schema.items));
 		case "string":
 			return Type.String({
-				...(typeof schema.minLength === "number" ? { minLength: schema.minLength } : {}),
-				...(typeof schema.maxLength === "number" ? { maxLength: schema.maxLength } : {}),
+				minLength: typeof schema.minLength === "number" ? schema.minLength : undefined,
+				maxLength: typeof schema.maxLength === "number" ? schema.maxLength : undefined,
 			});
 		case "number":
 			return Type.Number();

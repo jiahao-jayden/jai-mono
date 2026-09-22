@@ -271,7 +271,7 @@ export function validatePromptCommandFrontmatter(
 	const argumentHint = optionalString(value, "argument-hint", MAX_ARGUMENT_HINT_LENGTH);
 	return {
 		description: description ?? `Prompt template /${name}`,
-		...(argumentHint === undefined ? {} : { argumentHint }),
+		argumentHint,
 	};
 }
 
@@ -327,7 +327,7 @@ async function readCommand(
 		name,
 		displayName: name,
 		description: frontmatter.description,
-		...(frontmatter.argumentHint === undefined ? {} : { argumentHint: frontmatter.argumentHint }),
+		argumentHint: frontmatter.argumentHint,
 		contentRevision: createHash("sha256").update(content).digest("hex"),
 		location: canonicalLocation,
 		directory: path.dirname(commandPath),
@@ -395,5 +395,5 @@ function isNodeError(error: unknown, code: string): error is NodeJS.ErrnoExcepti
 }
 
 function invalidCommandDocument(message: string, cause?: unknown): InvalidCommandDocument {
-	return new InvalidCommandDocument({ message, ...(cause === undefined ? {} : { cause }) });
+	return new InvalidCommandDocument({ message, cause });
 }

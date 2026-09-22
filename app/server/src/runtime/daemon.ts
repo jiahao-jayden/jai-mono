@@ -49,7 +49,7 @@ export async function openConfiguredRuntimeHost(
 				new DesktopLocalRuntimeCapabilitySource({
 					dataDirectory,
 					workspaceTrust,
-					...(options.homeDirectory === undefined ? {} : { homeDirectory: options.homeDirectory }),
+					homeDirectory: options.homeDirectory,
 				});
 			const bootstrapModel = environment.JAI_MODEL?.trim();
 			if (bootstrapModel) {
@@ -131,10 +131,10 @@ export async function openConfiguredRuntimeHost(
 								current.value.provider,
 								operationCatalog,
 							),
-							...(current.value.provider ? { provider: current.value.provider } : {}),
-							...(current.value.maxTurns ? { maxTurns: current.value.maxTurns } : {}),
-							...(current.value.instructions ? { instructions: current.value.instructions } : {}),
-							...(current.value.providerOptions ? { providerOptions: current.value.providerOptions } : {}),
+							provider: current.value.provider || undefined,
+							maxTurns: current.value.maxTurns || undefined,
+							instructions: current.value.instructions || undefined,
+							providerOptions: current.value.providerOptions || undefined,
 							extensions: [
 								createTodoExtension(),
 								createSubagentExtension(),
@@ -149,7 +149,7 @@ export async function openConfiguredRuntimeHost(
 				}),
 			);
 		},
-		...(options.telemetry === undefined ? {} : { telemetry: options.telemetry }),
+		telemetry: options.telemetry,
 		telemetryEnvironment: environment,
 		telemetryErrorOutput: process.stderr,
 		info: options.info ?? {
@@ -157,7 +157,7 @@ export async function openConfiguredRuntimeHost(
 			title: "Jai",
 			version: environment.JAI_VERSION ?? "0.0.0",
 		},
-		...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
+		endpoint: options.endpoint,
 	});
 	return opened;
 }

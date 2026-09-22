@@ -141,9 +141,9 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				return runtime;
 			},
 			resolveAgentOptions: () => ({
-				...(input.maxTurns === undefined ? {} : { maxIterations: input.maxTurns }),
-				...(input.providerOptions === undefined ? {} : { providerOptions: input.providerOptions }),
-				...(input.effectBoundary ? { effectBoundary: input.effectBoundary as EffectBoundary } : {}),
+				maxIterations: input.maxTurns,
+				providerOptions: input.providerOptions,
+				effectBoundary: input.effectBoundary ? (input.effectBoundary as EffectBoundary) : undefined,
 			}),
 			permissions: {
 				requestApproval: input.requestApproval
@@ -155,9 +155,9 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 						input.permissionMode,
 					),
 				telemetryObserver: input.permissionTelemetryObserver,
-				...(input.sessionAllowRules ? { sessionAllowRules: input.sessionAllowRules } : {}),
-				...(input.sessionGrantWorkspaceRoot ? { sessionGrantWorkspaceRoot: input.sessionGrantWorkspaceRoot } : {}),
-				...(input.approvalQueue ? { approvalQueue: input.approvalQueue } : {}),
+				sessionAllowRules: input.sessionAllowRules,
+				sessionGrantWorkspaceRoot: input.sessionGrantWorkspaceRoot,
+				approvalQueue: input.approvalQueue,
 			},
 			extensionTools: extensionTools(extensions),
 			extensionBeforeModelCall: async (messages) => {
@@ -171,17 +171,13 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			extensionToolMiddleware: extensionMiddleware(extensions),
 			extensionToolPermissions,
 			extensionAuthorizedToolNames: extensionAuthorizedToolNameSet,
-			...(extensionToolCatalog ? { extensionToolCatalog } : {}),
+			extensionToolCatalog,
 			modelRequestObserver: input.modelRequestTelemetryObserver,
 			enabledTools,
 			capabilityNotice,
-			...(input.openChildSession
-				? {
-						openChildSession: input.openChildSession as unknown as OpenChildSession<
-							PersistedCodingSessionState<TAppState>
-						>,
-					}
-				: {}),
+			openChildSession: input.openChildSession
+				? (input.openChildSession as unknown as OpenChildSession<PersistedCodingSessionState<TAppState>>)
+				: undefined,
 			agent: input.compactionSummaryInstructions
 				? {
 						compaction: {
@@ -209,7 +205,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				permissions: extensionToolPermissions,
 				authorizedToolNames: extensionAuthorizedToolNameSet,
 				toolPresentations,
-				...(extensionToolCatalog ? { toolCatalog: extensionToolCatalog } : {}),
+				toolCatalog: extensionToolCatalog,
 				capabilityNotice,
 				commands,
 				configChangeWatcher: (listener) =>
@@ -307,7 +303,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 			extensions: projectJson(state.appState.extensions) as JsonObject,
 			artifacts: [...this.#artifacts.values()].sort((left, right) => right.updatedAt - left.updatedAt),
 			appState: structuredClone(state.appState.appState) as TAppState,
-			...(state.error ? { error: projectJson(state.error) as JsonObject } : {}),
+			error: state.error ? (projectJson(state.error) as JsonObject) : undefined,
 		};
 	}
 
@@ -402,7 +398,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 							content: input.text,
 							timestamp: Date.now(),
 						},
-						...(input.entryId === undefined ? {} : { entryId: input.entryId }),
+						entryId: input.entryId,
 					})),
 				);
 				return {

@@ -47,7 +47,7 @@ export async function oauthJsonRequest(
 					data: {
 						connectorId,
 						actionId,
-						...(retryAfterMs(response) === undefined ? {} : { retryAfterMs: retryAfterMs(response) }),
+						retryAfterMs: retryAfterMs(response),
 					},
 				}),
 			);

@@ -115,7 +115,7 @@ export function projectRuntimeConnectorConfig(settings: RuntimeConnectorProjecti
 					return {
 						...definitionCredential,
 						configured: credential?.configured === true,
-						...(credential?.mask === undefined ? {} : { mask: credential.mask }),
+						mask: credential?.mask,
 					};
 				}),
 				actions: actionCatalog
@@ -128,11 +128,7 @@ export function projectRuntimeConnectorConfig(settings: RuntimeConnectorProjecti
 						permission:
 							settings.policy.actions[`${action.connectorId}.${action.actionId}`] ?? settings.policy.default,
 					})),
-				...(oauth
-					? {
-							oauth: connector?.oauth ?? { connected: false, scopes: [] },
-						}
-					: {}),
+				oauth: oauth ? (connector?.oauth ?? { connected: false, scopes: [] }) : undefined,
 			};
 		}),
 		policy: { default: settings.policy.default, actions: { ...settings.policy.actions } },

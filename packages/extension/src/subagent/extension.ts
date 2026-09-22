@@ -1,4 +1,4 @@
-import { type CodingAgentExtension, defineExtension } from "@jai/coding-agent";
+import { type CodingAgentExtension, defineExtension, type JsonValue } from "@jai/coding-agent";
 import { Type } from "@sinclair/typebox";
 import { Result, TaggedError } from "better-result";
 
@@ -50,7 +50,8 @@ export function createSubagentExtension(): CodingAgentExtension<{}, {}, { active
 					runtime.instance.active++;
 					let activityTitle: string | undefined;
 					const update = (status: "running" | "complete" | "error") => {
-						const details = { title, status, ...(activityTitle ? { activityTitle } : {}) };
+						const details: Record<string, JsonValue> = { title, status };
+						if (activityTitle) details.activityTitle = activityTitle;
 						call.onUpdate?.({ content: [], details });
 						return details;
 					};

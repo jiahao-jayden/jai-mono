@@ -73,8 +73,8 @@ export function validateSkillFrontmatter(
 	return {
 		name,
 		description,
-		...(license === undefined ? {} : { license }),
-		...(compatibility === undefined ? {} : { compatibility }),
+		license,
+		compatibility,
 		allowedTools: allowedTools?.split(/\s+/).filter(Boolean) ?? [],
 		metadata: metadata as Record<string, string>,
 	};
@@ -90,7 +90,7 @@ function optionalString(
 }
 
 function invalid(message: string, cause?: unknown): InvalidPluginSkillDocument {
-	return new InvalidPluginSkillDocument({ message, ...(cause === undefined ? {} : { cause }) });
+	return new InvalidPluginSkillDocument({ message, cause });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

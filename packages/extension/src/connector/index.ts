@@ -222,8 +222,8 @@ function jsonSchemaToTypeBox(schema: JsonSchema): TSchema {
 			return Type.Array(schema.items ? jsonSchemaToTypeBox(schema.items) : Type.Unknown());
 		case "string":
 			return Type.String({
-				...(schema.minLength === undefined ? {} : { minLength: schema.minLength }),
-				...(schema.maxLength === undefined ? {} : { maxLength: schema.maxLength }),
+				minLength: schema.minLength,
+				maxLength: schema.maxLength,
 			});
 		case "number":
 			return Type.Number();
@@ -246,7 +246,7 @@ function literalSchema(value: JsonValue): TSchema[] {
 }
 
 function requestContext(sessionId: string, requestId: string, signal?: AbortSignal) {
-	return { sessionId, requestId, ...(signal ? { signal } : {}) };
+	return { sessionId, requestId, signal: signal || undefined };
 }
 
 function textResult(value: unknown): CodingExtensionToolResult {

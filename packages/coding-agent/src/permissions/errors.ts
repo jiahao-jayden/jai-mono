@@ -68,7 +68,7 @@ export function permissionGrantSaveFailedError(toolName: string, cause?: unknown
 		message: `Could not save project permission grant for ${toolName}`,
 		toolName,
 		scope: "project",
-		...(cause === undefined ? {} : { cause }),
+		cause,
 	});
 }
 

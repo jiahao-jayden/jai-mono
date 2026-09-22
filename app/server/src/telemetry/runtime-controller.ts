@@ -303,11 +303,11 @@ export class RuntimeTelemetryController {
 		return {
 			credential,
 			enabled: policy.policy.enabled,
-			...(policy.policy.endpoint === undefined ? {} : { endpoint: policy.policy.endpoint }),
+			endpoint: policy.policy.endpoint,
 			environmentOverride: false,
 			exporter: policy.policy.exporter,
 			policyRevision: policy.revision,
-			...(configurationError === undefined ? {} : { configurationError }),
+			configurationError: configurationError,
 		};
 	}
 
@@ -351,7 +351,7 @@ export function parseRuntimeTelemetrySettingsInput(value: unknown): ParsedRuntim
 	const policy: UserTelemetryPolicy = {
 		enabled: value.enabled,
 		exporter: "langfuse-otlp",
-		...(endpoint === undefined ? {} : { endpoint }),
+		endpoint: endpoint,
 	};
 	return {
 		credentialChange:
@@ -510,7 +510,7 @@ function environmentOverrideSnapshot(configurationError?: string): RuntimeTeleme
 		environmentOverride: true,
 		exporter: "langfuse-otlp",
 		policyRevision: null,
-		...(configurationError === undefined ? {} : { configurationError }),
+		configurationError: configurationError,
 	};
 }
 

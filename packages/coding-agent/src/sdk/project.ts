@@ -100,9 +100,9 @@ export function projectPermissionRequest(
 		reason: request.reason,
 		canAlwaysAllow: request.canAlwaysAllow,
 		summary: request.summary,
-		...(request.suggestedRule ? { suggestedRule: request.suggestedRule } : {}),
-		...(request.suggestedRules ? { suggestedRules: request.suggestedRules } : {}),
-		...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),
+		suggestedRule: request.suggestedRule,
+		suggestedRules: request.suggestedRules,
+		rememberScope: request.rememberScope,
 	};
 }
 
@@ -150,7 +150,7 @@ export class CodingEventProjector {
 				return {
 					type: "message_end",
 					message: projectMessage(event.message),
-					...(event.entryId ? { entryId: event.entryId } : {}),
+					entryId: event.entryId,
 				};
 			case "message_discard":
 				return { type: "message_discard" };
@@ -260,7 +260,7 @@ export function projectMessage(message: AgentMessage): CodingAgentMessage {
 										}
 									: { type: "image", image: content.image, mimeType: content.mimeType },
 							),
-				...(message.metadata ? { metadata: projectJson(message.metadata) as JsonObject } : {}),
+				metadata: message.metadata ? (projectJson(message.metadata) as JsonObject) : undefined,
 				timestamp: message.timestamp,
 			};
 		case "assistant":
@@ -307,14 +307,10 @@ export function projectMessage(message: AgentMessage): CodingAgentMessage {
 							}
 						: { type: "image", image: content.image, mimeType: content.mimeType },
 				),
-				...(message.fileChanges
-					? {
-							fileChanges: message.fileChanges.map((change) => ({
-								operation: change.operation,
-								path: change.path,
-							})),
-						}
-					: {}),
+				fileChanges: message.fileChanges?.map((change) => ({
+					operation: change.operation,
+					path: change.path,
+				})),
 				isError: message.isError,
 				timestamp: message.timestamp,
 			};
@@ -371,7 +367,7 @@ function projectUsage(usage: import("@jai/ai").Usage): CodingAssistantMessage["u
 		output: usage.output,
 		cacheRead: usage.cacheRead,
 		cacheWrite: usage.cacheWrite,
-		...(usage.reasoning === undefined ? {} : { reasoning: usage.reasoning }),
+		reasoning: usage.reasoning,
 		totalTokens: usage.totalTokens,
 		cost: {
 			input: usage.cost.input,

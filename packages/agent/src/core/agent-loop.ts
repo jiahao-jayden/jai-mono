@@ -382,11 +382,11 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 	const reservation = await reserveModelEffect(config, request, signal);
 	await pauseBeforeEffect(config, {
 		type: "model_request",
-		...(reservation ? { assistantEntryId: reservation.entryId } : {}),
+		assistantEntryId: reservation?.entryId,
 	});
 	observeModelRequest(config, {
 		context: llmContext,
-		...(reservation ? { assistantEntryId: reservation.entryId } : {}),
+		assistantEntryId: reservation?.entryId,
 	});
 
 	// 调用 LLM
@@ -537,7 +537,7 @@ async function executeToolCallBatch(run: AgentLoopRuntime, toolCalls: ToolCall[]
 			toolCallId: outcome.toolCall.id,
 			toolName: outcome.toolCall.name,
 			content: outcome.result.content,
-			...(outcome.result.fileChanges ? { fileChanges: outcome.result.fileChanges } : {}),
+			fileChanges: outcome.result.fileChanges,
 			isError: outcome.isError,
 			timestamp: Date.now(),
 		};
@@ -629,7 +629,7 @@ async function executeToolCall(run: AgentLoopRuntime, resolved: ResolvedToolCall
 				type: "tool_execute",
 				toolCallId: toolCall.id,
 				toolName: toolCall.name,
-				...(resultEntryId ? { resultEntryId } : {}),
+				resultEntryId,
 			});
 			await emit({
 				type: "tool_execution_start",
@@ -674,7 +674,7 @@ async function executeToolCall(run: AgentLoopRuntime, resolved: ResolvedToolCall
 		toolCall: reportedToolCall,
 		result,
 		isError,
-		...(resultEntryId ? { resultEntryId } : {}),
+		resultEntryId,
 	};
 
 	// 5. 无论成功失败，都用 execution_end 闭合本次调用生命周期。

@@ -280,7 +280,7 @@ async function executeAMap(
 					data: {
 						connectorId: "amap",
 						actionId: action.actionId,
-						...(retryAfter === undefined ? {} : { retryAfterMs: retryAfter }),
+						retryAfterMs: retryAfter,
 					},
 				}),
 			);

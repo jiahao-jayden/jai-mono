@@ -79,8 +79,8 @@ function policyFromConfiguration(value: JsonObject): NonNullable<RuntimeConnecto
 		return undefined;
 	}
 	return {
-		...(policy.default === undefined ? {} : { default: policy.default }),
-		...(actions === undefined ? {} : { actions: actions as Record<string, RuntimeConnectorPermission> }),
+		default: policy.default,
+		actions: actions as Record<string, RuntimeConnectorPermission>,
 	};
 }
 

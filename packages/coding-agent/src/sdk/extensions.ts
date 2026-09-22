@@ -310,7 +310,7 @@ export function extensionMiddleware(extensions: readonly InitializedExtension[])
 		const validation = validateToolArguments(context.tool, { ...context.toolCall, arguments: args });
 		if (validation.isErr()) {
 			throw extensionContractViolation({
-				...(transformedBy ? { extensionId: transformedBy.id } : {}),
+				extensionId: transformedBy?.id,
 				message: validation.error.message,
 			});
 		}
@@ -596,16 +596,13 @@ function mapExtensionTools(
 		const presentation = tool.presentation;
 		if (presentation) {
 			toolPresentations.set(tool.name, {
-				...(presentation.activityKind ? { activityKind: presentation.activityKind } : {}),
-				...(presentation.title
-					? { title: (args) => presentation.title!(extensionRuntime(extension), args as JsonObject) }
-					: {}),
-				...(presentation.resolveActivityKind
-					? {
-							resolveActivityKind: (args) =>
-								presentation.resolveActivityKind!(extensionRuntime(extension), args as JsonObject),
-						}
-					: {}),
+				activityKind: presentation.activityKind,
+				title: presentation.title
+					? (args) => presentation.title!(extensionRuntime(extension), args as JsonObject)
+					: undefined,
+				resolveActivityKind: presentation.resolveActivityKind
+					? (args) => presentation.resolveActivityKind!(extensionRuntime(extension), args as JsonObject)
+					: undefined,
 			});
 		}
 		return {
@@ -614,7 +611,7 @@ function mapExtensionTools(
 				return tool.description;
 			},
 			parameters: tool.parameters,
-			...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
+			executionMode: tool.executionMode,
 			execute: (...args) => executeExtensionTool(tool, extensionRuntime(extension), extension.runAgent, ...args),
 		} satisfies AgentTool;
 	});
@@ -896,7 +893,7 @@ class ExtensionCatalogRefreshCoordinator {
 				"extensionId" in error && typeof error.extensionId === "string"
 					? error.extensionId
 					: (this.#extensions[0]?.id ?? "unknown-extension"),
-			...("catalogId" in error && typeof error.catalogId === "string" ? { catalogId: error.catalogId } : {}),
+			catalogId: "catalogId" in error && typeof error.catalogId === "string" ? error.catalogId : undefined,
 		});
 	}
 

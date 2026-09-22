@@ -431,13 +431,9 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				const parsed = parse(desktopAgentMessageInputSchema, input, "Invalid agent message input");
 				return rt.agentHost.send({
 					...parsed,
-					...(parsed.attachments
-						? {
-								resolvedAttachments: parsed.attachments.map((attachment) =>
-									rt.attachments.resolve(attachment.id),
-								),
-							}
-						: {}),
+					resolvedAttachments: parsed.attachments
+						? parsed.attachments.map((attachment) => rt.attachments.resolve(attachment.id))
+						: undefined,
 				});
 			},
 			navigate(_event, input) {
@@ -485,7 +481,7 @@ async function projectCommands(
 	workspaceTrusted: boolean,
 ): Promise<readonly DesktopCommandDescriptor[]> {
 	const commands = await runtime.commands.list({
-		...(workspaceDirectory === undefined ? {} : { workspaceDirectory }),
+		workspaceDirectory,
 		workspaceTrusted,
 	});
 	return commands.map((command) => ({
@@ -493,6 +489,6 @@ async function projectCommands(
 		displayName: command.displayName,
 		description: command.description,
 		commandKind: command.kind,
-		...(command.argumentHint === undefined ? {} : { argumentHint: command.argumentHint }),
+		argumentHint: command.argumentHint,
 	}));
 }

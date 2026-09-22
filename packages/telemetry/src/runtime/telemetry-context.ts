@@ -131,9 +131,9 @@ class RuntimeTelemetryContext implements TelemetryContext {
 			events: [],
 			id: `span-${this.#nextSpanId++}`,
 			name: options.name,
-			...(parent === undefined ? {} : { parentId: parent.id }),
-			...(runId === undefined ? {} : { runId }),
-			...(sessionId === undefined ? {} : { sessionId }),
+			parentId: parent?.id,
+			runId,
+			sessionId,
 			startedAtMs: this.#readNow(),
 			traceId: parent?.traceId ?? this.#readTraceId(),
 			traceName: parent?.traceName ?? options.name,
@@ -211,7 +211,7 @@ class RuntimeTelemetryContext implements TelemetryContext {
 			if (status.kind === "ok") return { kind: "ok" };
 			return {
 				kind: "error",
-				...(isTelemetryErrorCategory(status.name) ? { name: status.name } : {}),
+				name: isTelemetryErrorCategory(status.name) ? status.name : undefined,
 				message: projectContentReference(status.message),
 			};
 		} catch {
@@ -293,16 +293,16 @@ class RuntimeTelemetrySpan<Name extends TelemetrySpanName> implements TelemetryS
 function createSpanRecord(state: RuntimeSpanState): TelemetrySpanRecord {
 	return {
 		attributes: cloneAttributes(state.attributes),
-		...(state.endedAtMs === undefined ? {} : { endedAtMs: state.endedAtMs }),
+		endedAtMs: state.endedAtMs,
 		events: state.events.map(cloneEventRecord),
 		id: state.id,
 		name: state.name,
-		...(state.parentId === undefined ? {} : { parentId: state.parentId }),
-		...(state.runId === undefined ? {} : { runId: state.runId }),
+		parentId: state.parentId,
+		runId: state.runId,
 		schemaVersion: 1,
-		...(state.sessionId === undefined ? {} : { sessionId: state.sessionId }),
+		sessionId: state.sessionId,
 		startedAtMs: state.startedAtMs,
-		...(state.status === undefined ? {} : { status: cloneStatus(state.status) }),
+		status: state.status === undefined ? undefined : cloneStatus(state.status),
 		traceId: state.traceId,
 		traceName: state.traceName,
 	};
@@ -311,16 +311,16 @@ function createSpanRecord(state: RuntimeSpanState): TelemetrySpanRecord {
 function cloneSpanRecord(record: TelemetrySpanRecord): TelemetrySpanRecord {
 	return {
 		attributes: cloneAttributes(record.attributes),
-		...(record.endedAtMs === undefined ? {} : { endedAtMs: record.endedAtMs }),
+		endedAtMs: record.endedAtMs,
 		events: record.events.map(cloneEventRecord),
 		id: record.id,
 		name: record.name,
-		...(record.parentId === undefined ? {} : { parentId: record.parentId }),
-		...(record.runId === undefined ? {} : { runId: record.runId }),
+		parentId: record.parentId,
+		runId: record.runId,
 		schemaVersion: 1,
-		...(record.sessionId === undefined ? {} : { sessionId: record.sessionId }),
+		sessionId: record.sessionId,
 		startedAtMs: record.startedAtMs,
-		...(record.status === undefined ? {} : { status: cloneStatus(record.status) }),
+		status: record.status === undefined ? undefined : cloneStatus(record.status),
 		traceId: record.traceId,
 		traceName: record.traceName,
 	};
@@ -351,8 +351,8 @@ function cloneStatus(status: TelemetrySpanStatus): TelemetrySpanStatus {
 	if (status.kind === "ok") return { kind: "ok" };
 	return {
 		kind: "error",
-		...(status.name === undefined ? {} : { name: status.name }),
-		...(status.message === undefined ? {} : { message: cloneContentReference(status.message) }),
+		name: status.name,
+		message: status.message === undefined ? undefined : cloneContentReference(status.message),
 	};
 }
 
@@ -365,13 +365,10 @@ function cloneContentReference(reference: TelemetryContentReference): TelemetryC
 
 function cloneSpanContent(content: TelemetrySpanContent): TelemetrySpanContent | undefined {
 	if (!isRecord(content)) return undefined;
-	const input = Object.hasOwn(content, "input") ? cloneContentValue(content.input) : undefined;
-	const output = Object.hasOwn(content, "output") ? cloneContentValue(content.output) : undefined;
+	const input = content.input === undefined ? undefined : cloneContentValue(content.input);
+	const output = content.output === undefined ? undefined : cloneContentValue(content.output);
 	if (input === undefined && output === undefined) return undefined;
-	return {
-		...(input === undefined ? {} : { input }),
-		...(output === undefined ? {} : { output }),
-	} as TelemetrySpanContent;
+	return { input, output } as TelemetrySpanContent;
 }
 
 function cloneContentValue(value: unknown): TelemetryContentValue | undefined {

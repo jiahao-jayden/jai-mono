@@ -539,7 +539,7 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 			if (aborted || options.signal?.aborted) throw shellError("aborted", "Operation aborted");
 			if (timedOut) throw shellError("timeout", `Command timed out after ${options.timeoutMs}ms`);
 			if (spawnError) spec.spawnFailure(spawnError);
-			return { exitCode, durationMs: Date.now() - startedAt, ...(outputTruncated ? { truncated: true } : {}) };
+			return { exitCode, durationMs: Date.now() - startedAt, truncated: outputTruncated || undefined };
 		} finally {
 			settled = true;
 			clearTimeout(timeout);

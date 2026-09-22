@@ -122,8 +122,8 @@ export class AcpV2Agent {
 		const opened = await this.options.host.openSession({
 			kind: "new",
 			cwd,
-			...(requestedId === undefined ? {} : { id: requestedId }),
-			...(ephemeral === true ? { ephemeral: true } : {}),
+			id: requestedId,
+			ephemeral: ephemeral === true ? true : undefined,
 			controllerId: this.#controllerId,
 		});
 		if (opened.isErr()) return this.respondError(request.id, -32001, opened.error.message);
@@ -136,9 +136,7 @@ export class AcpV2Agent {
 		}
 		return this.respond(request.id, {
 			sessionId: opened.value.id,
-			...(configOptions(configuration.value).length > 0
-				? { configOptions: configOptions(configuration.value) }
-				: {}),
+			configOptions: configOptions(configuration.value).length > 0 ? configOptions(configuration.value) : undefined,
 		});
 	}
 
@@ -225,7 +223,7 @@ export class AcpV2Agent {
 		const admission = await session.prompt({
 			text: promptText(prompt),
 			metadata: promptMetadata(prompt),
-			...(delivery ? { delivery } : {}),
+			delivery: delivery || undefined,
 		});
 		if (admission.isErr()) return this.respondError(request.id, -32001, admission.error.message);
 
@@ -441,8 +439,8 @@ function parsePrompt(value: unknown): readonly AcpPromptBlock[] | undefined {
 				blocks.push({
 					type: "resource_link",
 					uri: block.uri,
-					...(typeof block.name === "string" ? { name: block.name } : {}),
-					...(typeof block.title === "string" || block.title === null ? { title: block.title } : {}),
+					name: typeof block.name === "string" ? block.name : undefined,
+					title: typeof block.title === "string" || block.title === null ? block.title : undefined,
 				});
 				break;
 			default:
@@ -513,7 +511,7 @@ function configOptions(snapshot: RuntimeSessionConfigurationSnapshot): readonly 
 			options: models.map((model) => ({
 				value: model.value,
 				name: model.name,
-				...(model.description ? { description: model.description } : {}),
+				description: model.description || undefined,
 			})),
 		},
 		{
@@ -591,7 +589,7 @@ function projectPermissionRequest(sessionId: string, request: RuntimeApprovalReq
 	return {
 		sessionId,
 		title: request.title,
-		...(request.description ? { description: request.description } : {}),
+		description: request.description || undefined,
 		subject: {
 			type: "tool_call",
 			toolCall: {
@@ -601,13 +599,13 @@ function projectPermissionRequest(sessionId: string, request: RuntimeApprovalReq
 				status: "pending",
 			},
 		},
-		...(request.reason ? { reason: request.reason } : {}),
-		...(request.command ? { command: request.command } : {}),
-		...(request.path ? { path: request.path } : {}),
-		...(request.cwd ? { cwd: request.cwd } : {}),
-		...(request.suggestedRule ? { suggestedRule: request.suggestedRule } : {}),
-		...(request.suggestedRules ? { suggestedRules: request.suggestedRules } : {}),
-		...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),
+		reason: request.reason || undefined,
+		command: request.command || undefined,
+		path: request.path || undefined,
+		cwd: request.cwd || undefined,
+		suggestedRule: request.suggestedRule || undefined,
+		suggestedRules: request.suggestedRules || undefined,
+		rememberScope: request.rememberScope || undefined,
 		options: [
 			{ optionId: "allow-once", name: "Allow once", kind: "allow_once" },
 			...(request.canAlwaysAllow ? [{ optionId: "allow-always", name: "Always allow", kind: "allow_always" }] : []),
@@ -823,7 +821,7 @@ function projectOperationEvent(
 					kind: event.kind,
 					status: "in_progress",
 					rawInput: event.rawInput,
-					...(event.terminal ? { content: [terminalReference(event.terminal.terminalId)] } : {}),
+					content: event.terminal ? [terminalReference(event.terminal.terminalId)] : undefined,
 					operationId,
 					toolName: event.toolName,
 				}),
@@ -1089,7 +1087,7 @@ function userMessageUpdate(
 				messageId,
 				content,
 				...messageMetadata(timestamp),
-				...(slashInvocation ? { slashInvocation } : {}),
+				slashInvocation: slashInvocation || undefined,
 			},
 		},
 	};
@@ -1138,8 +1136,8 @@ function stateUpdate(
 			update: {
 				sessionUpdate: "state_update",
 				state,
-				...(stopReason ? { stopReason } : {}),
-				...(errorMessage ? { errorMessage } : {}),
+				stopReason: stopReason || undefined,
+				errorMessage: errorMessage || undefined,
 			},
 		},
 	};

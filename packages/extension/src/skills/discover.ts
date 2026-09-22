@@ -37,7 +37,7 @@ export async function discoverSkillsCommands(
 			displayName: command.displayName,
 			description: command.description,
 			kind: "file" as const,
-			...(command.argumentHint === undefined ? {} : { argumentHint: command.argumentHint }),
+			argumentHint: command.argumentHint,
 		}));
 		return [...commands, ...skills].toSorted((left, right) => left.name.localeCompare(right.name));
 	} finally {

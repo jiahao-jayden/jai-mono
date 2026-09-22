@@ -65,13 +65,13 @@ export function loadOAuthServicesFromEnvironment(
 			id: definition.id,
 			authorizationEndpoint: definition.authorizationEndpoint,
 			tokenEndpoint: definition.tokenEndpoint,
-			...(definition.revokeEndpoint === undefined ? {} : { revokeEndpoint: definition.revokeEndpoint }),
+			revokeEndpoint: definition.revokeEndpoint,
 			clientId,
 			clientSecret,
 			gatewayCallbackUrl: definition.gatewayCallbackUrl,
 			applicationCallbackUrl: definition.applicationCallbackUrl,
 			scopes: definition.scopes,
-			...(definition.authorizationParams ? { authorizationParams: definition.authorizationParams } : {}),
+			authorizationParams: definition.authorizationParams || undefined,
 		});
 	}
 	return Result.ok(services);
@@ -80,7 +80,7 @@ export function loadOAuthServicesFromEnvironment(
 		return Result.err(
 			new OAuthGatewayConfigurationInvalid({
 				message: "OAuth Gateway service configuration is invalid",
-				data: { reason, ...(oauthServiceId === undefined ? {} : { oauthServiceId }) },
+				data: { reason, oauthServiceId },
 			}),
 		);
 	}
@@ -117,13 +117,13 @@ function parseDefinition(value: unknown): OAuthServiceEnvironmentDefinition | un
 		id,
 		authorizationEndpoint,
 		tokenEndpoint,
-		...(revokeEndpoint === undefined ? {} : { revokeEndpoint }),
+		revokeEndpoint,
 		clientIdEnv,
 		clientSecretEnv,
 		gatewayCallbackUrl,
 		applicationCallbackUrl,
 		scopes,
-		...(authorizationParams === undefined ? {} : { authorizationParams }),
+		authorizationParams,
 	};
 }
 

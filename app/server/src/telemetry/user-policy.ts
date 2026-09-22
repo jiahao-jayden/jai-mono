@@ -63,7 +63,7 @@ export class UserTelemetryPolicyStore {
 				revision: current.revision,
 				policy: policy.isOk() ? policy.value : defaultUserTelemetryPolicy,
 				environmentOverride: hasRuntimeTelemetryEnvironmentOverride(this.#environment),
-				...(policy.isErr() ? { configurationError: policy.error.message } : {}),
+				configurationError: policy.isErr() ? policy.error.message : undefined,
 			});
 		} catch (cause) {
 			return Result.err(
@@ -123,7 +123,7 @@ export function parseUserTelemetryPolicy(value: unknown): ResultType<UserTelemet
 	return Result.ok({
 		enabled: value.enabled,
 		exporter: value.exporter,
-		...(endpoint === undefined ? {} : { endpoint }),
+		endpoint: endpoint,
 	});
 }
 

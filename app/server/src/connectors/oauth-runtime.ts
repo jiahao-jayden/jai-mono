@@ -61,7 +61,7 @@ export class RuntimeConnectorOAuth {
 		this.#flow = new OAuthFlowManager({
 			client: new OAuthGatewayClient({
 				endpoint: options.gatewayEndpoint ?? defaultOAuthGatewayEndpoint,
-				...(options.fetcher === undefined ? {} : { fetcher: options.fetcher }),
+				fetcher: options.fetcher,
 			}),
 			now: this.#now,
 			ttlMs: options.flowTtlMs ?? defaultOAuthFlowTtlMs,
@@ -127,8 +127,11 @@ export class RuntimeConnectorOAuth {
 				connectorId: application.id,
 				accessToken: token.value.accessToken,
 				tokenType: token.value.tokenType,
-				...(token.value.refreshToken === undefined ? {} : { refreshToken: token.value.refreshToken }),
-				...(token.value.expiresIn === undefined ? {} : { expiresAt: this.#now() + token.value.expiresIn * 1_000 }),
+				refreshToken: token.value.refreshToken,
+				expiresAt:
+					token.value.expiresIn === undefined
+						? undefined
+						: this.#now() + token.value.expiresIn * 1_000,
 				scopes: scopes.length > 0 ? scopes : application.scopes,
 			},
 			this.nowIso(),
@@ -260,8 +263,8 @@ function parseCallback(rawUrl: string): ResultType<
 	return Result.ok({
 		oauthServiceId,
 		state,
-		...(code ? { code } : {}),
-		...(error ? { error } : {}),
-		...(errorDescription ? { errorDescription } : {}),
+		code: code || undefined,
+		error: error || undefined,
+		errorDescription: errorDescription || undefined,
 	});
 }

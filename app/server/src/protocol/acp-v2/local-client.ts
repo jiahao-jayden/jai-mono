@@ -84,7 +84,7 @@ class NodeLocalAcpV2Client implements LocalAcpV2Client {
 			this.#pending.set(id, (result) => {
 				resolve(result);
 			});
-			const sent = this.send({ jsonrpc: "2.0", id, method, ...(params === undefined ? {} : { params }) });
+			const sent = this.send({ jsonrpc: "2.0", id, method, params: params });
 			if (sent.isErr()) {
 				this.#pending.delete(id);
 				resolve(Result.err(sent.error));
@@ -107,7 +107,7 @@ class NodeLocalAcpV2Client implements LocalAcpV2Client {
 	}
 
 	notify(method: string, params?: unknown): ResultType<void, AcpLocalClientDisconnected> {
-		return this.send({ jsonrpc: "2.0", method, ...(params === undefined ? {} : { params }) });
+		return this.send({ jsonrpc: "2.0", method, params: params });
 	}
 
 	subscribe(listener: (notification: AcpJsonRpcNotification) => void): () => void {
@@ -174,7 +174,7 @@ class NodeLocalAcpV2Client implements LocalAcpV2Client {
 					jsonrpc: "2.0",
 					id: message.id,
 					method: message.method,
-					...(message.params === undefined ? {} : { params: message.params }),
+					params: message.params,
 				};
 				for (const listener of [...this.#requestListeners]) {
 					try {
@@ -221,7 +221,7 @@ class NodeLocalAcpV2Client implements LocalAcpV2Client {
 		const failure = new AcpLocalClientDisconnected({
 			message: `Local ACP v2 endpoint "${this.endpoint}" disconnected`,
 			endpoint: this.endpoint,
-			...(cause === undefined ? {} : { cause }),
+			cause: cause,
 		});
 		this.#disconnect = failure;
 		for (const listener of [...this.#disconnectListeners]) {

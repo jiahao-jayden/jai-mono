@@ -76,13 +76,13 @@ export function createDefaultConnectorService(options: DefaultConnectorServiceOp
 	const googleCalendarConnection = readOAuthConnection("google_calendar", googleCalendarSettings);
 	const githubConnection = readOAuthConnection("github", githubSettings);
 	const credentials = {
-		...(context7ApiKey ? { context7: { apiKey: context7ApiKey } } : {}),
-		...(amapApiKey ? { amap: { apiKey: amapApiKey } } : {}),
-		...(mcdonaldsCnCredential && mcdonaldsCnConnected ? { mcdonalds_cn: mcdonaldsCnCredential } : {}),
-		...(googleDriveConnection.credentials ? { google_drive: googleDriveConnection.credentials } : {}),
-		...(googleGmailConnection.credentials ? { google_gmail: googleGmailConnection.credentials } : {}),
-		...(googleCalendarConnection.credentials ? { google_calendar: googleCalendarConnection.credentials } : {}),
-		...(githubConnection.credentials ? { github: githubConnection.credentials } : {}),
+		context7: context7ApiKey ? { apiKey: context7ApiKey } : undefined,
+		amap: amapApiKey ? { apiKey: amapApiKey } : undefined,
+		mcdonalds_cn: mcdonaldsCnCredential && mcdonaldsCnConnected ? mcdonaldsCnCredential : undefined,
+		google_drive: googleDriveConnection.credentials || undefined,
+		google_gmail: googleGmailConnection.credentials || undefined,
+		google_calendar: googleCalendarConnection.credentials || undefined,
+		github: githubConnection.credentials || undefined,
 	};
 	const connections: readonly ConnectionRecord[] = [
 		{
@@ -128,6 +128,14 @@ export function createDefaultConnectorService(options: DefaultConnectorServiceOp
 			scopes: githubConnection.scopes,
 		},
 	];
+	const hasDisabledSetting =
+		context7Settings?.enabled === false ||
+		amapSettings?.enabled === false ||
+		mcdonaldsCnSettings?.enabled === false ||
+		googleDriveSettings?.enabled === false ||
+		googleGmailSettings?.enabled === false ||
+		googleCalendarSettings?.enabled === false ||
+		githubSettings?.enabled === false;
 	const serviceOptions: MemoryConnectorServiceOptions = {
 		adapters: [
 			createContext7Adapter(options),
@@ -139,30 +147,28 @@ export function createDefaultConnectorService(options: DefaultConnectorServiceOp
 		connections,
 		policy: {
 			...options.policy,
-			...(context7Settings?.enabled === false ||
-			amapSettings?.enabled === false ||
-			mcdonaldsCnSettings?.enabled === false ||
-			googleDriveSettings?.enabled === false ||
-			googleGmailSettings?.enabled === false ||
-			googleCalendarSettings?.enabled === false ||
-			githubSettings?.enabled === false
-				? {
-						disabledConnectors: [
-							...new Set([
-								...(options.policy?.disabledConnectors ?? []),
-								...(context7Settings?.enabled === false ? ["context7"] : []),
-								...(amapSettings?.enabled === false ? ["amap"] : []),
-								...(mcdonaldsCnSettings?.enabled === false ? ["mcdonalds_cn"] : []),
-								...(googleDriveSettings?.enabled === false ? ["google_drive"] : []),
-								...(googleGmailSettings?.enabled === false ? ["google_gmail"] : []),
-								...(googleCalendarSettings?.enabled === false ? ["google_calendar"] : []),
-								...(githubSettings?.enabled === false ? ["github"] : []),
-							]),
-						],
-					}
-				: {}),
+			disabledConnectors: hasDisabledSetting
+				? [
+						...new Set([
+							...(options.policy?.disabledConnectors ?? []),
+							...(context7Settings?.enabled === false ? ["context7"] : []),
+							...(amapSettings?.enabled === false ? ["amap"] : []),
+							...(mcdonaldsCnSettings?.enabled === false ? ["mcdonalds_cn"] : []),
+							...(googleDriveSettings?.enabled === false ? ["google_drive"] : []),
+							...(googleGmailSettings?.enabled === false ? ["google_gmail"] : []),
+							...(googleCalendarSettings?.enabled === false ? ["google_calendar"] : []),
+							...(githubSettings?.enabled === false ? ["github"] : []),
+						]),
+					]
+				: options.policy?.disabledConnectors,
 		},
-		...(Object.keys(credentials).length > 0 ? { credentials } : {}),
+		credentials: Object.values(credentials).some((value) => value !== undefined)
+			? (Object.fromEntries(
+					Object.entries(credentials).filter(
+						(entry): entry is [string, Readonly<Record<string, string>>] => entry[1] !== undefined,
+					),
+				) as NonNullable<MemoryConnectorServiceOptions["credentials"]>)
+			: undefined,
 	};
 	return new MemoryConnectorService(serviceOptions);
 }
@@ -197,6 +203,6 @@ function readMcDonaldsCnCredentialFromSettings(
 		appId: credentials.appId,
 		merchantId: credentials.merchantId,
 		signingKey: credentials.signingKey,
-		...(credentials.environment ? { environment: credentials.environment } : {}),
+		environment: credentials.environment || undefined,
 	};
 }

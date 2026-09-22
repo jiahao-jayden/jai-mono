@@ -697,12 +697,12 @@ export function workTimelineSteps(
 			return {
 				id: cluster.id,
 				title: item.title,
-				...(summary ? { summary } : {}),
+				summary: summary || undefined,
 				icon: "users",
 				density: "compact",
 				avatar: <SubagentAvatar item={item} size={20} />,
 				active: running,
-				...(options.onOpenSubagent ? { onSelect: () => options.onOpenSubagent?.(item) } : {}),
+				onSelect: options.onOpenSubagent ? () => options.onOpenSubagent?.(item) : undefined,
 			};
 		}
 		if (cluster.kind === "thinking") {
@@ -717,7 +717,7 @@ export function workTimelineSteps(
 				icon: "sparkles",
 				density: "compact",
 				active: running,
-				...(text.length > 160 ? { details: text } : {}),
+				details: text.length > 160 ? text : undefined,
 			};
 		}
 
@@ -735,12 +735,12 @@ export function workTimelineSteps(
 		return {
 			id: cluster.id,
 			title: presentation.title,
-			...(presentation.summary ? { summary: presentation.summary } : {}),
+			summary: presentation.summary || undefined,
 			icon: presentation.icon,
 			density: presentation.density,
 			active: running,
-			...(presentation.details ? { details: presentation.details } : {}),
-			...(presentation.webSearchResults ? { webSearchResults: presentation.webSearchResults } : {}),
+			details: presentation.details || undefined,
+			webSearchResults: presentation.webSearchResults || undefined,
 		};
 	});
 }

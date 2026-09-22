@@ -1007,9 +1007,9 @@ describe("DesktopAcpAgentHost", () => {
 		);
 		expect(events.at(-1)).toMatchObject({
 			sessionId: "session-1",
-			event: { type: "connection_status" },
+			event: { type: "connection_status", status: undefined },
 		});
-		expect(events.at(-1)?.event).not.toHaveProperty("status");
+		expect(events.at(-1)?.event).toMatchObject({ type: "connection_status", status: undefined });
 
 		expect(second.methods).toEqual(["initialize", "session/resume"]);
 		host.close();

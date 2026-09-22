@@ -157,8 +157,8 @@ function parseClientRequest(value: unknown): ParsedClientMessage {
 		return {
 			kind: "request",
 			method: value.method,
-			...(typeof value.id === "string" || typeof value.id === "number" ? { id: value.id } : {}),
-			...(value.params === undefined ? {} : { params: value.params }),
+			id: typeof value.id === "string" || typeof value.id === "number" ? value.id : undefined,
+			params: value.params,
 		};
 	}
 	if ((typeof value.id === "string" || typeof value.id === "number") && ("result" in value || "error" in value)) {

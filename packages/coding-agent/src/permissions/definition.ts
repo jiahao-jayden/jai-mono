@@ -91,19 +91,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function normalizePermissionSettings(settings: PermissionSettings = {}): ResolvedPermissionSettings {
 	return Object.freeze({
 		defaultMode: settings.defaultMode ?? "default",
-		...(settings.permission && Object.keys(settings.permission).length > 0
-			? { permission: Object.freeze(settings.permission) }
-			: {}),
-		...(settings.sessionGrants && Object.keys(settings.sessionGrants).length > 0
-			? { sessionGrants: Object.freeze(settings.sessionGrants) }
-			: {}),
-		...(settings.permissionGrants && Object.keys(settings.permissionGrants).length > 0
-			? { permissionGrants: Object.freeze(settings.permissionGrants) }
-			: {}),
+		permission:
+			settings.permission && Object.keys(settings.permission).length > 0
+				? Object.freeze(settings.permission)
+				: undefined,
+		sessionGrants:
+			settings.sessionGrants && Object.keys(settings.sessionGrants).length > 0
+				? Object.freeze(settings.sessionGrants)
+				: undefined,
+		permissionGrants:
+			settings.permissionGrants && Object.keys(settings.permissionGrants).length > 0
+				? Object.freeze(settings.permissionGrants)
+				: undefined,
 		additionalDirectories: Object.freeze(unique(settings.additionalDirectories)),
-		...(settings.disableBypassPermissionsMode === "disable"
-			? { disableBypassPermissionsMode: "disable" as const }
-			: {}),
+		disableBypassPermissionsMode: settings.disableBypassPermissionsMode === "disable" ? "disable" : undefined,
 	});
 }
 
@@ -114,11 +115,11 @@ export function permissionSettingsFromConfig(
 	const policy = isRecord(settings.permissions) ? (settings.permissions as PermissionSettings) : {};
 	return {
 		...policy,
-		...(isRecord(settings.permission) ? { permission: settings.permission as PermissionConfig } : {}),
-		...(isRecord(settings.permissionGrants)
-			? { permissionGrants: settings.permissionGrants as PermissionGrantConfig }
-			: {}),
-		...(mode ? { defaultMode: mode } : {}),
+		permission: isRecord(settings.permission) ? (settings.permission as PermissionConfig) : policy.permission,
+		permissionGrants: isRecord(settings.permissionGrants)
+			? (settings.permissionGrants as PermissionGrantConfig)
+			: policy.permissionGrants,
+		defaultMode: mode || policy.defaultMode,
 	};
 }
 

@@ -49,7 +49,7 @@ function createClientProxy(path: readonly string[]): unknown {
 				throw new RemoteRpcError({
 					message: response.error.message,
 					remoteTag: response.error._tag,
-					...(response.error.reason ? { remoteReason: response.error.reason } : {}),
+					remoteReason: response.error.reason || undefined,
 				});
 			}
 			return response.value;
@@ -63,7 +63,7 @@ export function getDesktopRemoteRpcFailure(error: unknown): DesktopRemoteRpcFail
 	if (!(error instanceof RemoteRpcError)) return undefined;
 	return {
 		tag: error.remoteTag,
-		...(error.remoteReason ? { reason: error.remoteReason } : {}),
+		reason: error.remoteReason || undefined,
 	};
 }
 

@@ -138,7 +138,7 @@ function parseStdio(root: string, value: Record<string, unknown>): Omit<AgentPlu
 		command: value.command,
 		args: args as string[],
 		env: env as Record<string, string>,
-		...(typeof value.cwd === "string" ? { cwd: value.cwd } : {}),
+		cwd: typeof value.cwd === "string" ? value.cwd : undefined,
 	};
 }
 

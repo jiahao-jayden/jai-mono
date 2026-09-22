@@ -237,9 +237,9 @@ function normalizeResult(value: unknown): WebSearchResult | undefined {
 	return {
 		title: title.trim(),
 		url: value.url.trim(),
-		...(snippet ? { snippet: snippet.trim() } : {}),
-		...(content ? { content: content.trim() } : {}),
-		...(publishedDate ? { publishedDate: publishedDate.trim() } : {}),
+		snippet: snippet ? snippet.trim() : undefined,
+		content: content ? content.trim() : undefined,
+		publishedDate: publishedDate ? publishedDate.trim() : undefined,
 	};
 }
 

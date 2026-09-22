@@ -178,8 +178,8 @@ function parseSessionList(
 	if (rawCursor === undefined)
 		return hasOnly(value, ["limit", "archived"])
 			? {
-					...(limit === undefined ? {} : { limit }),
-					...(archived === undefined ? {} : { archived }),
+					limit: limit,
+					archived: archived,
 				}
 			: undefined;
 	const cursor = object(rawCursor);
@@ -195,8 +195,8 @@ function parseSessionList(
 		return undefined;
 	}
 	return {
-		...(limit === undefined ? {} : { limit }),
-		...(archived === undefined ? {} : { archived }),
+		limit: limit,
+		archived: archived,
 		cursor: { lastActivityAt: cursor.lastActivityAt, id: cursor.id },
 	};
 }

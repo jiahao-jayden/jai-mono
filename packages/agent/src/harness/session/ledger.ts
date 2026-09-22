@@ -78,7 +78,7 @@ export class SessionLedger<TAppState extends JsonObject> {
 		let entry!: MessageEntry;
 		await this.enqueueAppend(() => {
 			const node = this.nextNode();
-			entry = { type: "message", ...node, ...(entryId ? { id: entryId } : {}), message };
+			entry = { type: "message", ...node, id: entryId ?? node.id, message };
 			return entry;
 		});
 		return entry;
@@ -178,7 +178,7 @@ function entryEffect(entry: TreeEntry<JsonObject>): EffectGateAction {
 		type: "session_entry",
 		entryId: entry.id,
 		entryType: entry.type,
-		...(entry.type === "message" ? { messageRole: entry.message.role } : {}),
+		messageRole: entry.type === "message" ? entry.message.role : undefined,
 	};
 }
 

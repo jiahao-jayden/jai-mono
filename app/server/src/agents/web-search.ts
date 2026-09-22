@@ -20,8 +20,8 @@ export function createRuntimeWebSearchAgentAssembly(
 	).map(([id, provider]) => ({
 		id,
 		enabled: provider.enabled,
-		...(provider.order === undefined ? {} : { order: provider.order }),
-		...(provider.apiKey === undefined ? {} : { apiKey: provider.apiKey }),
+		order: provider.order,
+		apiKey: provider.apiKey,
 	}));
 	return Result.ok({
 		extensions: [

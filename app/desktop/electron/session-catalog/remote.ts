@@ -8,6 +8,8 @@ import {
 	resolveJaiDataDirectory,
 } from "@jai/server/acp-client";
 import { connectDesktopCatalogClient, type DesktopCatalogClient } from "@jai/server/desktop-catalog-client";
+import { Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { type Result, TaggedError } from "better-result";
 import type { DesktopProfileTokenStats } from "../../shared/desktop-rpc";
 import type { DesktopRuntimeHostSupervisor } from "../runtime-host/supervisor";
@@ -106,7 +108,7 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 		};
 		const connected = await connectDesktopCatalogClient({
 			dataDirectory,
-			...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
+			runtimeHostEntrypoint,
 			launchRuntimeHost,
 		});
 		if (connected.isErr()) {
@@ -316,7 +318,7 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 		const running = new Set(runningSessionIds);
 		let cursor: SessionListCursor | undefined;
 		do {
-			const page = await this.listSessions({ limit: 100, ...(cursor ? { cursor } : {}) });
+			const page = await this.listSessions({ limit: 100, cursor });
 			const busy = page.sessions.find((session) => session.projectId === projectId && running.has(session.id));
 			if (busy) return busy.id;
 			cursor = page.nextCursor;
@@ -345,8 +347,8 @@ async function createSessionJournal(
 ): Promise<void> {
 	const connected = await connectJaiRuntimeHost({
 		dataDirectory,
-		...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
-		...(launchRuntimeHost === undefined ? {} : { launchRuntimeHost }),
+		runtimeHostEntrypoint,
+		launchRuntimeHost,
 	});
 	if (connected.isErr())
 		throw new DesktopRemoteCatalogFailed({
@@ -393,8 +395,8 @@ async function readSessionCwd(
 ): Promise<string | undefined> {
 	const connected = await connectJaiRuntimeHost({
 		dataDirectory,
-		...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
-		...(launchRuntimeHost === undefined ? {} : { launchRuntimeHost }),
+		runtimeHostEntrypoint,
+		launchRuntimeHost,
 	});
 	if (connected.isErr()) {
 		throw new DesktopSessionRecoveryFailed({
@@ -421,21 +423,14 @@ async function readSessionCwd(
 				cause: listed.error,
 			});
 		}
-		const sessions = listed.value;
-		if (!sessions || typeof sessions !== "object" || !("sessions" in sessions) || !Array.isArray(sessions.sessions)) {
+		if (!Value.Check(sessionListSchema, listed.value)) {
 			throw new DesktopSessionRecoveryFailed({
 				message: "Runtime Host returned an invalid Session workspace projection",
 			});
 		}
-		const matching = sessions.sessions.find(
-			(candidate): candidate is { readonly sessionId: string; readonly cwd: string } =>
-				typeof candidate === "object" &&
-				candidate !== null &&
-				"sessionId" in candidate &&
-				candidate.sessionId === sessionId &&
-				"cwd" in candidate &&
-				typeof candidate.cwd === "string" &&
-				path.isAbsolute(candidate.cwd),
+		const matching = listed.value.sessions.find(
+			(candidate) =>
+				candidate.sessionId === sessionId && typeof candidate.cwd === "string" && path.isAbsolute(candidate.cwd),
 		);
 		return matching?.cwd;
 	} finally {
@@ -450,8 +445,8 @@ async function fetchProfileTokenStats(
 ): Promise<DesktopProfileTokenStats> {
 	const connected = await connectJaiRuntimeHost({
 		dataDirectory,
-		...(runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint }),
-		...(launchRuntimeHost === undefined ? {} : { launchRuntimeHost }),
+		runtimeHostEntrypoint,
+		launchRuntimeHost,
 	});
 	if (connected.isErr()) {
 		throw new DesktopSessionRecoveryFailed({
@@ -490,72 +485,35 @@ async function fetchProfileTokenStats(
 	}
 }
 
+const finiteNumber = Type.Number({ minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER });
+const sessionListSchema = Type.Object(
+	{
+		sessions: Type.Array(
+			Type.Object(
+				{
+					sessionId: Type.String(),
+					cwd: Type.Optional(Type.String()),
+				},
+				{ additionalProperties: true },
+			),
+		),
+	},
+	{ additionalProperties: true },
+);
+const profileTokenStatsSchema = Type.Object({
+	availability: Type.Union([Type.Literal("empty"), Type.Literal("complete"), Type.Literal("partial")]),
+	totalTokens: finiteNumber,
+	peakDayTokens: finiteNumber,
+	peakDayDate: Type.String(),
+	days: Type.Array(Type.Object({ date: Type.String(), totalTokens: finiteNumber })),
+	models: Type.Array(Type.Object({ provider: Type.String(), modelId: Type.String(), totalTokens: finiteNumber })),
+	promptCount: finiteNumber,
+	settledAttemptCount: finiteNumber,
+	missingUsageAttemptCount: finiteNumber,
+});
+
 function parseProfileTokenStats(value: unknown): DesktopProfileTokenStats | undefined {
-	if (!value || typeof value !== "object") return undefined;
-	const record = value as Record<string, unknown>;
-	if (
-		(record.availability !== "empty" && record.availability !== "complete" && record.availability !== "partial") ||
-		typeof record.totalTokens !== "number" ||
-		!Number.isFinite(record.totalTokens) ||
-		typeof record.peakDayTokens !== "number" ||
-		!Number.isFinite(record.peakDayTokens) ||
-		typeof record.peakDayDate !== "string" ||
-		!Array.isArray(record.days) ||
-		!Array.isArray(record.models) ||
-		typeof record.promptCount !== "number" ||
-		!Number.isFinite(record.promptCount) ||
-		typeof record.settledAttemptCount !== "number" ||
-		!Number.isFinite(record.settledAttemptCount) ||
-		typeof record.missingUsageAttemptCount !== "number" ||
-		!Number.isFinite(record.missingUsageAttemptCount)
-	) {
-		return undefined;
-	}
-	const days: { date: string; totalTokens: number }[] = [];
-	for (const day of record.days) {
-		if (
-			!day ||
-			typeof day !== "object" ||
-			typeof (day as { date?: unknown }).date !== "string" ||
-			typeof (day as { totalTokens?: unknown }).totalTokens !== "number" ||
-			!Number.isFinite((day as { totalTokens: number }).totalTokens)
-		) {
-			return undefined;
-		}
-		days.push({
-			date: (day as { date: string }).date,
-			totalTokens: (day as { totalTokens: number }).totalTokens,
-		});
-	}
-	const models: { provider: string; modelId: string; totalTokens: number }[] = [];
-	for (const model of record.models) {
-		if (
-			!model ||
-			typeof model !== "object" ||
-			typeof (model as { provider?: unknown }).provider !== "string" ||
-			typeof (model as { modelId?: unknown }).modelId !== "string" ||
-			typeof (model as { totalTokens?: unknown }).totalTokens !== "number" ||
-			!Number.isFinite((model as { totalTokens: number }).totalTokens)
-		) {
-			return undefined;
-		}
-		models.push({
-			provider: (model as { provider: string }).provider,
-			modelId: (model as { modelId: string }).modelId,
-			totalTokens: (model as { totalTokens: number }).totalTokens,
-		});
-	}
-	return {
-		availability: record.availability,
-		totalTokens: record.totalTokens,
-		peakDayTokens: record.peakDayTokens,
-		peakDayDate: record.peakDayDate,
-		days,
-		models,
-		promptCount: record.promptCount,
-		settledAttemptCount: record.settledAttemptCount,
-		missingUsageAttemptCount: record.missingUsageAttemptCount,
-	};
+	return Value.Check(profileTokenStatsSchema, value) ? value : undefined;
 }
 
 function unwrap<T>(result: Result<T, { readonly message: string; readonly cause?: unknown }>, method: string): T {

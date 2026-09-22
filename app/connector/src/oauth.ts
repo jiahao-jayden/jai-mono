@@ -87,7 +87,7 @@ export class OAuthFlowManager {
 					oauthServiceId,
 					state,
 					codeChallenge,
-					...(scopes === undefined ? {} : { scopes }),
+					scopes,
 				})
 				.toString(),
 			state,
@@ -260,7 +260,7 @@ export class OAuthGatewayClient {
 						oauthServiceId,
 						operation,
 						status: response.status,
-						...(typeof remote?.code === "string" ? { code: remote.code } : {}),
+						code: typeof remote?.code === "string" ? remote.code : undefined,
 					},
 				}),
 			);
@@ -295,9 +295,9 @@ function normalizeTokenResponse(value: unknown): ResultType<OAuthTokenResponse, 
 	return Result.ok({
 		accessToken: value.accessToken,
 		tokenType: value.tokenType,
-		...(typeof value.refreshToken === "string" ? { refreshToken: value.refreshToken } : {}),
-		...(value.expiresIn === undefined ? {} : { expiresIn: value.expiresIn }),
-		...(typeof value.scope === "string" ? { scope: value.scope } : {}),
+		refreshToken: typeof value.refreshToken === "string" ? value.refreshToken : undefined,
+		expiresIn: value.expiresIn === undefined ? undefined : value.expiresIn,
+		scope: typeof value.scope === "string" ? value.scope : undefined,
 	});
 }
 

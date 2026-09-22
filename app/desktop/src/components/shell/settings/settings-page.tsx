@@ -151,7 +151,7 @@ function toWebSearchInput(snapshot: DesktopWebSearchConfigSnapshot): DesktopWebS
 		providers: snapshot.providers.map((provider) => ({
 			id: provider.id,
 			enabled: provider.enabled,
-			...(provider.order === undefined ? {} : { order: provider.order }),
+			order: provider.order,
 		})),
 		fetch: { jina: {} },
 	};
@@ -293,20 +293,20 @@ function ProviderConfigForm({
 		try {
 			const savedSnapshot = await onSave({
 				revision: snapshot.revision,
-				...(maxIterations ? { maxIterations: Number(maxIterations) } : {}),
-				...(reasoningEffort ? { reasoningEffort: reasoningEffort as "low" | "medium" | "high" } : {}),
+				maxIterations: maxIterations ? Number(maxIterations) : undefined,
+				reasoningEffort: reasoningEffort ? (reasoningEffort as "low" | "medium" | "high") : undefined,
 				connector,
 				webSearch,
 				profiles: profiles.map(
 					({ credentialConfigured: _configured, credentialMask: _mask, persistedId, ...profile }) => ({
 						id: profile.id,
-						...(persistedId && persistedId !== profile.id ? { previousId: persistedId } : {}),
+						previousId: persistedId && persistedId !== profile.id ? persistedId : undefined,
 						name: profile.name,
 						adapter: profile.adapter,
 						baseURL: profile.baseURL,
 						authentication: profile.authentication,
-						...(profile.apiKey ? { apiKey: profile.apiKey } : {}),
-						...(profile.clearApiKey ? { clearApiKey: true } : {}),
+						apiKey: profile.apiKey || undefined,
+						clearApiKey: profile.clearApiKey ? true : undefined,
 						models: profile.models,
 					}),
 				),

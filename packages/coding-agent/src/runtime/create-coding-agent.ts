@@ -306,7 +306,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		: options.instructions;
 	const resolvedAgentOptions = {
 		...options.agent,
-		...(options.resolveAgentOptions ? await options.resolveAgentOptions(snapshot, { provider, model }) : {}),
+		...(await options.resolveAgentOptions?.(snapshot, { provider, model })),
 	};
 	const sessionHandle = await openSession(
 		options.sessionStore,
@@ -398,27 +398,23 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		requestApproval: options.permissions?.requestApproval,
 		persistProjectLocalAllowRules,
 		pathCapabilities: toolEnvironment,
-		...(toolEnvironment
+		executionPolicy: toolEnvironment
 			? {
-					executionPolicy: {
-						scope: toolEnvironment,
-						compile: () =>
-							compileExecutionPolicy({
-								workspaceRoot: canonicalWorkspaceRoot(permissionWorkspaceRoot),
-								version: runtime.snapshot.revision,
-								settings: selectPermissionSettings(runtime.snapshot),
-								environment: createSafeShellEnvironment(),
-								protectedPaths,
-							}),
-					},
+					scope: toolEnvironment,
+					compile: () =>
+						compileExecutionPolicy({
+							workspaceRoot: canonicalWorkspaceRoot(permissionWorkspaceRoot),
+							version: runtime.snapshot.revision,
+							settings: selectPermissionSettings(runtime.snapshot),
+							environment: createSafeShellEnvironment(),
+							protectedPaths,
+						}),
 				}
-			: {}),
+			: undefined,
 		sessionAllowRules,
-		...(options.permissions?.sessionGrantWorkspaceRoot
-			? { sessionGrantWorkspaceRoot: options.permissions.sessionGrantWorkspaceRoot }
-			: options.executionContext.localFileAccess
-				? { sessionGrantWorkspaceRoot: options.executionContext.cwd }
-				: {}),
+		sessionGrantWorkspaceRoot:
+			options.permissions?.sessionGrantWorkspaceRoot ||
+			(options.executionContext.localFileAccess ? options.executionContext.cwd : undefined),
 		approvalQueue: options.permissions?.approvalQueue,
 		telemetryObserver: options.permissions?.telemetryObserver,
 	});
@@ -450,16 +446,16 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			provider,
 			tools: childCapabilities.tools.filter(allowed),
 			instructions: [resolvedInstructions, instructions].filter(Boolean).join("\n\n"),
-			...(childSessionHandle ? { sessionHandle: childSessionHandle as SessionHandle<JsonObject> } : {}),
+			sessionHandle: childSessionHandle ? (childSessionHandle as SessionHandle<JsonObject>) : undefined,
 			temperature: resolvedAgentOptions.temperature,
 			maxTokens: resolvedAgentOptions.maxTokens,
 			providerOptions: resolvedAgentOptions.providerOptions,
 			maxIterations: resolvedAgentOptions.maxIterations,
 			toolExecution: resolvedAgentOptions.toolExecution,
 			compaction: resolvedAgentOptions.compaction,
-			...(childToolCatalog
-				? { toolCallResolver: (toolCall) => resolveCatalogToolCall(childToolCatalog, toolCall) }
-				: {}),
+			toolCallResolver: childToolCatalog
+				? (toolCall) => resolveCatalogToolCall(childToolCatalog, toolCall)
+				: undefined,
 			hooks: {
 				aroundToolCall: childCapabilities.aroundToolCall,
 				onEvent: childCapabilities.onEvent,
@@ -510,9 +506,9 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		maxIterations: resolvedAgentOptions.maxIterations,
 		toolExecution: resolvedAgentOptions.toolExecution,
 		compaction: resolvedAgentOptions.compaction,
-		...(extensionToolCatalog.current
-			? { toolCallResolver: (toolCall) => resolveCatalogToolCall(extensionToolCatalog.current!, toolCall) }
-			: {}),
+		toolCallResolver: extensionToolCatalog.current
+			? (toolCall) => resolveCatalogToolCall(extensionToolCatalog.current!, toolCall)
+			: undefined,
 		effectBoundary: resolvedAgentOptions.effectBoundary,
 		modelRequestObserver: options.modelRequestObserver,
 		hooks: {

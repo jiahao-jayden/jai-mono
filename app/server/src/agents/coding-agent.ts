@@ -104,17 +104,15 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 			});
 			const created = await createCodingAgent({
 				...configured.value,
-				...(configured.value.extensionRuntime
-					? { extensionRuntime: withRuntimeApprovals(configured.value.extensionRuntime, input) }
-					: {}),
-				...(input.capabilityNotice ? { capabilityNotice: input.capabilityNotice } : {}),
+				extensionRuntime: configured.value.extensionRuntime ? withRuntimeApprovals(configured.value.extensionRuntime, input) : undefined,
+				capabilityNotice: input.capabilityNotice || undefined,
 				permissionMode: permissionModeFor(input.runtimeConfiguration.mode),
 				cwd: input.cwd,
 				session: { kind: "resume", id: input.sessionId, store: input.sessionStore },
 				effectBoundary: input.effectBoundary,
 				modelRequestTelemetryObserver: telemetryObserver,
 				permissionTelemetryObserver: telemetryObserver,
-				...(input.openChildSession ? { openChildSession: input.openChildSession } : {}),
+				openChildSession: input.openChildSession || undefined,
 				requestApproval: (request, signal) =>
 					input.requestApproval(
 						{
@@ -126,14 +124,14 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 							cwd: input.cwd,
 							reason: request.reason,
 							title: request.summary.title,
-							...(request.summary.description ? { description: request.summary.description } : {}),
-							...(request.summary.command ? { command: redactCommand(request.summary.command) } : {}),
-							...(request.summary.path ? { path: request.summary.path } : {}),
-							...(request.summary.risk ? { risk: request.summary.risk } : {}),
+							description: request.summary.description || undefined,
+							command: request.summary.command ? redactCommand(request.summary.command) : undefined,
+							path: request.summary.path || undefined,
+							risk: request.summary.risk || undefined,
 							canAlwaysAllow: request.canAlwaysAllow,
-							...(request.rememberScope ? { rememberScope: request.rememberScope } : {}),
-							...(request.suggestedRule ? { suggestedRule: redactCommand(request.suggestedRule) } : {}),
-							...(request.suggestedRules ? { suggestedRules: request.suggestedRules.map(redactCommand) } : {}),
+							rememberScope: request.rememberScope || undefined,
+							suggestedRule: request.suggestedRule ? redactCommand(request.suggestedRule) : undefined,
+							suggestedRules: request.suggestedRules ? request.suggestedRules.map(redactCommand) : undefined,
 						},
 						signal,
 					),
@@ -193,7 +191,7 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 			...configured.value,
 			fileCapabilities: capabilities.value.fileCapabilities,
 			extensions: [...(configured.value.extensions ?? []), ...capabilities.value.extensions],
-			...(extensionRuntime ? { extensionRuntime } : {}),
+			extensionRuntime: extensionRuntime || undefined,
 		});
 	}
 }
@@ -220,7 +218,7 @@ function withRuntimeApprovals(
 					cwd: input.cwd,
 					reason: request.reason,
 					title: request.presentation.title,
-					...(request.presentation.description ? { description: request.presentation.description } : {}),
+					description: request.presentation.description || undefined,
 					risk: approvalRisk(request.sideEffect),
 					canAlwaysAllow: true,
 				},
@@ -400,7 +398,7 @@ class CodingAgentOperation implements RuntimeOperation {
 					title: event.title,
 					kind: acpToolKind(event.activityKind),
 					rawInput: jsonObject(event.args),
-					...(terminal ? { terminal } : {}),
+					terminal: terminal || undefined,
 				});
 				return;
 			}

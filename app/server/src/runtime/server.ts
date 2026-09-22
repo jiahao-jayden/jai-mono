@@ -120,9 +120,9 @@ export async function openJaiRuntimeServer(
 			desktopConnectorOAuth: connectorOAuth,
 			desktopModelCatalog: modelCatalog,
 			desktopWorkspaceTrust: workspaceTrust,
-			...(telemetry ? { desktopTelemetry: telemetry } : {}),
+			desktopTelemetry: telemetry || undefined,
 			desktopMcpSettings: mcpSettings,
-			...(options.endpoint ? { endpoint: options.endpoint } : {}),
+			endpoint: options.endpoint || undefined,
 		});
 		if (opened.isErr()) throw opened.error;
 		localHost = opened.value;

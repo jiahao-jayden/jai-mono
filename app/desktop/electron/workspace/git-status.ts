@@ -83,7 +83,7 @@ export async function readWorkspaceGitDiff(
 			return Result.ok({
 				kind: "unavailable",
 				path: change.path,
-				...(change.oldPath ? { oldPath: change.oldPath } : {}),
+				oldPath: change.oldPath || undefined,
 				reason: unavailableReason,
 			} satisfies DesktopWorkspaceGitDiff);
 		}
@@ -94,14 +94,14 @@ export async function readWorkspaceGitDiff(
 			return Result.ok({
 				kind: "unavailable",
 				path: change.path,
-				...(change.oldPath ? { oldPath: change.oldPath } : {}),
+				oldPath: change.oldPath || undefined,
 				reason: "invalid-encoding",
 			} satisfies DesktopWorkspaceGitDiff);
 		}
 		return Result.ok({
 			kind: "text",
 			path: change.path,
-			...(change.oldPath ? { oldPath: change.oldPath } : {}),
+			oldPath: change.oldPath || undefined,
 			changeKind: change.kind,
 			oldContent: oldContent.value,
 			newContent: newContent.value,
@@ -229,7 +229,7 @@ export function parsePorcelainV2(output: string): ResultType<
 		}
 		changes.push({
 			path: filePath.value,
-			...(oldPath ? { oldPath } : {}),
+			oldPath: oldPath || undefined,
 			kind: changeKind(recordType, xy),
 			staged: recordType === "u" || xy[0] !== ".",
 			unstaged: recordType === "u" || xy[1] !== ".",

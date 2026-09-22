@@ -58,7 +58,7 @@ export async function runFrontierSmoke(
 	if (revision.isErr()) return revision;
 	const model = await resolveLocalModelSource({
 		model: options.model,
-		...(options.dataDirectory === undefined ? {} : { dataDirectory: options.dataDirectory }),
+		dataDirectory: options.dataDirectory,
 	});
 	if (model.isErr()) return model;
 	const outputDirectory = await reserveTrialDirectory(options.outputDirectory);
@@ -539,7 +539,7 @@ async function collectArtifacts(
 			sourcePath,
 			status: "collected",
 			outputPath: join("artifacts", `${index}-${basename(sourcePath)}`),
-			...(digest === undefined ? {} : { sha256: digest }),
+			sha256: digest,
 		});
 	}
 	return artifacts;
@@ -623,8 +623,8 @@ function baseResult(
 		networkPolicy: "model-gateway-only",
 		timing: { startedAt: startedAt.toISOString(), totalDurationMs: Math.max(0, Date.now() - startedAt.getTime()) },
 		artifacts,
-		...(extra.cli === undefined ? {} : { cli: extra.cli }),
-		...(extra.failure === undefined ? {} : { failure: extra.failure }),
+		cli: extra.cli,
+		failure: extra.failure,
 	};
 }
 

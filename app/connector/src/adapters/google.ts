@@ -269,11 +269,12 @@ function executeDrive(
 			context,
 		);
 	}
+	const parents = stringArrayInput(input, "parents");
 	const body = {
 		name: stringInput(input, "name"),
-		...(typeof input.mimeType === "string" ? { mimeType: input.mimeType } : {}),
-		...(typeof input.description === "string" ? { description: input.description } : {}),
-		...(stringArrayInput(input, "parents").length > 0 ? { parents: stringArrayInput(input, "parents") } : {}),
+		mimeType: typeof input.mimeType === "string" ? input.mimeType : undefined,
+		description: typeof input.description === "string" ? input.description : undefined,
+		parents: parents.length > 0 ? parents : undefined,
 	};
 	return oauthJsonRequest(
 		"google_drive",
@@ -328,7 +329,7 @@ function executeGmail(
 	}
 	const body = {
 		raw: stringInput(input, "raw"),
-		...(typeof input.threadId === "string" ? { threadId: input.threadId } : {}),
+		threadId: typeof input.threadId === "string" ? input.threadId : undefined,
 	};
 	return oauthJsonRequest(
 		"google_gmail",
@@ -372,8 +373,8 @@ function executeCalendar(
 		summary: stringInput(input, "summary"),
 		start: { dateTime: stringInput(input, "start") },
 		end: { dateTime: stringInput(input, "end") },
-		...(typeof input.description === "string" ? { description: input.description } : {}),
-		...(typeof input.location === "string" ? { location: input.location } : {}),
+		description: typeof input.description === "string" ? input.description : undefined,
+		location: typeof input.location === "string" ? input.location : undefined,
 	};
 	return oauthJsonRequest(
 		"google_calendar",

@@ -305,7 +305,7 @@ export function WorkspacePanel({ sessionId, filePath, onOpenFile }: WorkspacePan
 					sessionId,
 					path: filePath,
 					target,
-					...(target === "application" && applicationId ? { applicationId } : {}),
+					applicationId: target === "application" && applicationId ? applicationId : undefined,
 				});
 			} catch {
 				toast.add({

@@ -78,8 +78,8 @@ export function projectRuntimeProviderConfig(
 					baseURL: profile.baseURL ?? "",
 					authentication: profile.authentication,
 					credentialConfigured: profile.credentialConfigured,
-					...(profile.credentialMask === undefined ? {} : { credentialMask: profile.credentialMask }),
-					...(profile.modelsFetchedAt === undefined ? {} : { modelsFetchedAt: profile.modelsFetchedAt }),
+					credentialMask: profile.credentialMask,
+					modelsFetchedAt: profile.modelsFetchedAt,
 					models: profile.models
 						.map((model) => {
 							const remoteModelId = model.remoteModelId ?? model.id;
@@ -303,9 +303,9 @@ function invalidInput(message: string) {
 export function safeDiscoveryErrorData(cause: unknown, adapter: string | undefined) {
 	const data = isRecord(cause) && isRecord(cause.data) ? cause.data : {};
 	return {
-		...(adapter ? { adapter } : {}),
-		...(typeof data.status === "number" ? { status: data.status } : {}),
-		...(typeof data.requestId === "string" ? { requestId: data.requestId } : {}),
+		adapter: adapter || undefined,
+		status: typeof data.status === "number" ? data.status : undefined,
+		requestId: typeof data.requestId === "string" ? data.requestId : undefined,
 	};
 }
 

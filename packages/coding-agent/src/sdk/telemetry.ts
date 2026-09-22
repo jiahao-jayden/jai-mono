@@ -263,7 +263,7 @@ export class CodingAgentTelemetryObserver implements ModelRequestObserver, Permi
 		if (!approval) return;
 		const waitMs = elapsedSince(approval.startedAtMs, this.#readNow());
 		approval.span.setAttributes({
-			...(decision ? { decision } : {}),
+			decision,
 			outcome,
 			waitMs,
 		});
@@ -370,13 +370,9 @@ export class CodingAgentTelemetryObserver implements ModelRequestObserver, Permi
 		span.addEvent({ name: "jai.tool_call.dispatched" });
 		if (span.contentCaptureEnabled) {
 			const args = projectContentValue(event.args);
-			span.recordContent({
-				input: {
-					toolCallId,
-					toolName,
-					...(args === undefined ? {} : { arguments: args }),
-				},
-			});
+			const input: Record<string, TelemetryContentValue> = { toolCallId, toolName };
+			if (args !== undefined) input.arguments = args;
+			span.recordContent({ input });
 		}
 		this.#activeTools.set(toolCallId, { span, startedAtMs: this.#readNow() });
 	}
@@ -390,12 +386,9 @@ export class CodingAgentTelemetryObserver implements ModelRequestObserver, Permi
 		if (!active) return;
 		if (event && active.span.contentCaptureEnabled) {
 			const result = projectContentValue(event.result);
-			active.span.recordContent({
-				output: {
-					isError: event.isError,
-					...(result === undefined ? {} : { result }),
-				},
-			});
+			const output: Record<string, TelemetryContentValue> = { isError: event.isError };
+			if (result !== undefined) output.result = result;
+			active.span.recordContent({ output });
 		}
 		const durationMs = elapsedSince(active.startedAtMs, this.#readNow());
 		active.span.setAttributes({ durationMs });
@@ -471,7 +464,7 @@ export class CodingAgentTelemetryObserver implements ModelRequestObserver, Permi
 				inputTokens: usage.input,
 				outputCost: usage.cost.output,
 				outputTokens: usage.output,
-				...(usage.reasoning === undefined ? {} : { reasoningTokens: usage.reasoning }),
+				reasoningTokens: usage.reasoning,
 				totalCost: usage.cost.total,
 				totalTokens: usage.totalTokens,
 			});
@@ -540,14 +533,13 @@ function projectModelMessage(message: Message): TelemetryContentValue {
 					if (content.type === "text") return [{ type: "text", text: content.text }];
 					if (content.type === "thinking") return [];
 					const argumentsValue = projectContentValue(content.arguments);
-					return [
-						{
-							type: "toolCall",
-							id: content.id,
-							name: content.name,
-							...(argumentsValue === undefined ? {} : { arguments: argumentsValue }),
-						},
-					];
+					const toolCall: Record<string, TelemetryContentValue> = {
+						type: "toolCall",
+						id: content.id,
+						name: content.name,
+					};
+					if (argumentsValue !== undefined) toolCall.arguments = argumentsValue;
+					return [toolCall];
 				}),
 			};
 		case "toolResult":
@@ -575,14 +567,13 @@ function projectAssistantOutput(message: CodingAssistantMessage): TelemetryConte
 			if (content.type === "text") return [{ type: "text", text: content.text }];
 			if (content.type === "thinking") return [];
 			const argumentsValue = projectContentValue(content.arguments);
-			return [
-				{
-					type: "toolCall",
-					id: content.id,
-					name: content.name,
-					...(argumentsValue === undefined ? {} : { arguments: argumentsValue }),
-				},
-			];
+			const toolCall: Record<string, TelemetryContentValue> = {
+				type: "toolCall",
+				id: content.id,
+				name: content.name,
+			};
+			if (argumentsValue !== undefined) toolCall.arguments = argumentsValue;
+			return [toolCall];
 		}),
 	};
 }
@@ -605,10 +596,9 @@ function projectContentValue(value: unknown, ancestors = new Set<object>()): Tel
 	try {
 		const record = value as Record<string, unknown>;
 		if (record.type === "image") {
-			return {
-				type: "image",
-				...(typeof record.mimeType === "string" ? { mimeType: record.mimeType } : {}),
-			};
+			const image: Record<string, TelemetryContentValue> = { type: "image" };
+			if (typeof record.mimeType === "string") image.mimeType = record.mimeType;
+			return image;
 		}
 		const projected: Record<string, TelemetryContentValue> = {};
 		for (const [key, item] of Object.entries(record)) {

@@ -90,7 +90,7 @@ export function createExtensionPermissionRequest(
 				toolName,
 				action: "tool.invoke",
 				resource: { kind: "tool", identity: toolName },
-				...(risk ? { risk } : {}),
+				risk,
 			},
 		],
 	};
@@ -237,8 +237,8 @@ function aggregateDecisions(
 	);
 	return {
 		...selected,
-		...(patterns.length > 0 ? { patterns } : {}),
-		...(alwaysPatterns.length > 0 ? { alwaysPatterns } : {}),
+		patterns: patterns.length > 0 ? patterns : selected.patterns,
+		alwaysPatterns: alwaysPatterns.length > 0 ? alwaysPatterns : selected.alwaysPatterns,
 	};
 }
 
@@ -278,11 +278,11 @@ function bashTargets(
 		toolName,
 		action: "process.exec",
 		resource: { kind: "command", command: value },
-		...(scan?.opaque
-			? { risk: "opaque" as const }
+		risk: scan?.opaque
+			? ("opaque" as const)
 			: scan?.destructive || isDestructiveBashCommand(value)
-				? { risk: "destructive" as const }
-				: {}),
+				? ("destructive" as const)
+				: undefined,
 	}));
 }
 
@@ -457,9 +457,9 @@ function decision(
 		behavior,
 		source,
 		reason,
-		...(extra.rule === undefined ? {} : { rule: extra.rule }),
+		rule: extra.rule,
 		permission: target.action,
-		...(extra.risk === undefined ? {} : { risk: extra.risk }),
+		risk: extra.risk,
 	};
 }
 

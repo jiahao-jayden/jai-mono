@@ -125,5 +125,5 @@ function expandPlaceholders(value: string, root: string, data: string): string {
 }
 
 function connectionError(serverName: string, message: string, cause?: unknown): AgentPluginMcpConnectionFailed {
-	return new AgentPluginMcpConnectionFailed({ serverName, message, ...(cause === undefined ? {} : { cause }) });
+	return new AgentPluginMcpConnectionFailed({ serverName, message, cause });
 }

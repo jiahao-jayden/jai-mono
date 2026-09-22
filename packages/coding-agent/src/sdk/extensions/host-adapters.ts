@@ -265,8 +265,8 @@ async function resolveLayeredConfig<TConfig extends JsonObject>(
 	if (projectLayer.isErr()) return projectLayer;
 	try {
 		const resolved = await declaration.resolve({
-			...(userLayer.value === undefined ? {} : { user: structuredClone(userLayer.value) }),
-			...(projectLayer.value === undefined ? {} : { project: structuredClone(projectLayer.value) }),
+			user: userLayer.value === undefined ? undefined : structuredClone(userLayer.value),
+			project: projectLayer.value === undefined ? undefined : structuredClone(projectLayer.value),
 		});
 		if (resolved.isErr()) {
 			return Result.err(

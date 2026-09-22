@@ -498,7 +498,7 @@ export class SqliteRuntimeAgentSettings {
 		if (settings.isErr()) return Result.err(settings.error);
 		return resolveRuntimeAgentOptions({
 			...settings.value,
-			...(model === undefined ? {} : { model }),
+			model: model ?? settings.value.model,
 		});
 	}
 
@@ -664,15 +664,15 @@ export class SqliteRuntimeAgentSettings {
 		if (current.isErr()) return Result.err(current.error);
 		const connectors = current.value.settings.connector?.connectors ?? {};
 		const connector = connectors[input.connectorId];
-		const credentials = {
+		const credentials: Record<string, string> = {
 			...(connector?.credentials ?? {}),
 			accessToken: input.accessToken,
 			tokenType: input.tokenType,
 			scopes: input.scopes.join(" "),
-			...(input.refreshToken === undefined ? {} : { refreshToken: input.refreshToken }),
-			...(input.expiresAt === undefined ? {} : { expiresAt: String(input.expiresAt) }),
-			...(options.oauthIntentId === undefined ? {} : { oauthIntentId: options.oauthIntentId }),
 		};
+		if (input.refreshToken !== undefined) credentials.refreshToken = input.refreshToken;
+		if (input.expiresAt !== undefined) credentials.expiresAt = String(input.expiresAt);
+		if (options.oauthIntentId !== undefined) credentials.oauthIntentId = options.oauthIntentId;
 		return this.persist(
 			{
 				...current.value.settings,
@@ -722,7 +722,7 @@ export class SqliteRuntimeAgentSettings {
 						[connectorId]: {
 							...connectorWithoutCredentials,
 							enabled: connector?.enabled ?? true,
-							...(Object.keys(credentials).length ? { credentials } : {}),
+							credentials: Object.keys(credentials).length ? credentials : undefined,
 						},
 					},
 				},
@@ -927,12 +927,12 @@ export function parseRuntimeAgentSettingsInput(value: unknown): RuntimeAgentSett
 	return {
 		revision: value.revision,
 		model: value.model,
-		...(maxTurns === undefined ? {} : { maxTurns }),
-		...(language === undefined ? {} : { language }),
-		...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+		maxTurns: maxTurns,
+		language: language,
+		reasoningEffort: reasoningEffort,
 		providers: providers as RuntimeProviderProfileInput[],
-		...(value.connector === undefined ? {} : { connector: value.connector }),
-		...(value.webSearch === undefined ? {} : { webSearch: value.webSearch }),
+		connector: value.connector,
+		webSearch: value.webSearch,
 	};
 }
 
@@ -948,7 +948,7 @@ export function resolveRuntimeAgentOptions(
 	if (!profile) {
 		return Result.ok({
 			model: settings.model,
-			...(settings.maxTurns ? { maxTurns: settings.maxTurns } : {}),
+			maxTurns: settings.maxTurns || undefined,
 			...execution.value,
 		});
 	}
@@ -978,12 +978,12 @@ export function resolveRuntimeAgentOptions(
 	return Result.ok({
 		model,
 		provider: {
-			...(profile.apiKey ? { apiKey: profile.apiKey } : {}),
-			...(profile.baseURL ? { baseUrl: profile.baseURL } : {}),
-			...(profile.headers ? { headers: profile.headers } : {}),
+			apiKey: profile.apiKey || undefined,
+			baseUrl: profile.baseURL || undefined,
+			headers: profile.headers || undefined,
 			authentication: providerAuthentication(profile.adapter, profile.authentication),
 		},
-		...(settings.maxTurns ? { maxTurns: settings.maxTurns } : {}),
+		maxTurns: settings.maxTurns || undefined,
 		...execution.value,
 	});
 }
@@ -996,7 +996,7 @@ function resolveExecutionOptions(
 	if (!settings.reasoningEffort) return Result.ok(instructions ? { instructions } : {});
 	if (providerKind === "openai") {
 		return Result.ok({
-			...(instructions ? { instructions } : {}),
+			instructions: instructions || undefined,
 			providerOptions: {
 				openai: {
 					reasoning: { effort: settings.reasoningEffort, summary: "auto" },
@@ -1006,7 +1006,7 @@ function resolveExecutionOptions(
 	}
 	if (providerKind === "openai-compatible") {
 		return Result.ok({
-			...(instructions ? { instructions } : {}),
+			instructions: instructions || undefined,
 			providerOptions: {
 				"openai-compatible": { reasoning_effort: settings.reasoningEffort },
 			},
@@ -1056,14 +1056,14 @@ function parseProfileInput(value: unknown): RuntimeProviderProfileInput | undefi
 	if (models.some((model) => model === undefined)) return undefined;
 	return {
 		id: value.id,
-		...(value.previousId === undefined ? {} : { previousId: value.previousId }),
+		previousId: value.previousId,
 		name: value.name,
 		adapter: value.adapter,
-		...(value.baseURL === undefined ? {} : { baseURL: value.baseURL }),
+		baseURL: value.baseURL,
 		authentication: value.authentication,
-		...(value.apiKey === undefined ? {} : { apiKey: value.apiKey }),
-		...(value.clearApiKey === undefined ? {} : { clearApiKey: value.clearApiKey }),
-		...(value.headers === undefined ? {} : { headers: value.headers }),
+		apiKey: value.apiKey,
+		clearApiKey: value.clearApiKey,
+		headers: value.headers,
 		enabled: value.enabled,
 		models: models as RuntimeProviderModel[],
 	};
@@ -1080,7 +1080,7 @@ function parseProviderModel(value: unknown): RuntimeProviderModel | undefined {
 	}
 	return {
 		id: value.id,
-		...(value.remoteModelId === undefined ? {} : { remoteModelId: value.remoteModelId }),
+		remoteModelId: value.remoteModelId,
 		enabled: value.enabled,
 	};
 }
@@ -1117,21 +1117,19 @@ function settingsFromInput(
 			? current.webSearch
 			: normalizeWebSearchSettings(input.webSearch, current.webSearch);
 	if (webSearch instanceof RuntimeAgentSettingsInvalid) return Result.err(webSearch);
+	const connector =
+		input.connector === undefined
+			? current.connector
+			: mergeConnectorSettings(input.connector, current.connector);
 	return validateSettings({
 		model: input.model.trim(),
-		...(input.maxTurns === undefined ? {} : { maxTurns: input.maxTurns }),
-		...(input.language === undefined ? {} : { language: input.language }),
-		...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
+		maxTurns: input.maxTurns,
+		language: input.language,
+		reasoningEffort: input.reasoningEffort,
 		providers,
 		extensions: current.extensions,
-		...(input.connector === undefined
-			? current.connector === undefined
-				? {}
-				: { connector: current.connector }
-			: {
-					connector: mergeConnectorSettings(input.connector, current.connector),
-				}),
-		...(webSearch === undefined ? {} : { webSearch }),
+		connector,
+		webSearch,
 	});
 }
 
@@ -1197,20 +1195,20 @@ function normalizeProfile(
 		}
 		models[id] = {
 			id,
-			...(remoteModelId ? { remoteModelId } : {}),
+			remoteModelId: remoteModelId || undefined,
 			enabled: model.enabled,
 		};
 	}
 	return Result.ok({
 		name: input.name.trim(),
 		adapter: input.adapter,
-		...(baseURL ? { baseURL } : {}),
+		baseURL: baseURL || undefined,
 		authentication: input.authentication,
-		...(apiKey ? { apiKey } : {}),
-		...(headers ? { headers } : {}),
+		apiKey: apiKey || undefined,
+		headers: headers || undefined,
 		enabled: input.enabled,
 		models,
-		...(previous?.modelInventory === undefined ? {} : { modelInventory: previous.modelInventory }),
+		modelInventory: previous?.modelInventory,
 	});
 }
 
@@ -1298,10 +1296,10 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 				id: profileId,
 				name: parsed.name,
 				adapter: parsed.adapter,
-				...(parsed.baseURL ? { baseURL: parsed.baseURL } : {}),
+				baseURL: parsed.baseURL || undefined,
 				authentication: parsed.authentication,
-				...(parsed.apiKey ? { apiKey: parsed.apiKey } : {}),
-				...(parsed.headers ? { headers: parsed.headers } : {}),
+				apiKey: parsed.apiKey || undefined,
+				headers: parsed.headers || undefined,
 				enabled: parsed.enabled,
 				models: Object.values(parsed.models),
 			},
@@ -1310,24 +1308,24 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 		if (normalized.isErr()) return Result.err(normalized.error);
 		providers[profileId] = {
 			...normalized.value,
-			...(parsed.modelInventory === undefined ? {} : { modelInventory: parsed.modelInventory }),
+			modelInventory: parsed.modelInventory,
 		};
 	}
 	const settings: RuntimeAgentSettings = {
 		model: value.model.trim(),
-		...(maxTurns === undefined ? {} : { maxTurns }),
-		...(language === undefined ? {} : { language }),
-		...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+		maxTurns,
+		language,
+		reasoningEffort,
 		providers,
 		extensions: structuredClone(value.extensions) as Readonly<Record<string, JsonObject>>,
-		...(value.connector === undefined
-			? {}
-			: {
-					connector: structuredClone(value.connector) as RuntimeConnectorSettings,
-				}),
-		...(value.webSearch === undefined
-			? {}
-			: { webSearch: structuredClone(value.webSearch) as RuntimeWebSearchSettings }),
+		connector:
+			value.connector === undefined
+				? undefined
+				: (structuredClone(value.connector) as RuntimeConnectorSettings),
+		webSearch:
+			value.webSearch === undefined
+				? undefined
+				: (structuredClone(value.webSearch) as RuntimeWebSearchSettings),
 	};
 	const separator = settings.model.indexOf("/");
 	const profileId = separator > 0 ? settings.model.slice(0, separator) : "";
@@ -1374,13 +1372,13 @@ function parseStoredProfile(value: unknown): RuntimeProviderProfile | undefined 
 	return {
 		name: value.name,
 		adapter: value.adapter,
-		...(value.baseURL === undefined ? {} : { baseURL: value.baseURL }),
+		baseURL: value.baseURL,
 		authentication: value.authentication,
-		...(value.apiKey === undefined ? {} : { apiKey: value.apiKey }),
-		...(value.headers === undefined ? {} : { headers: value.headers }),
+		apiKey: value.apiKey,
+		headers: value.headers,
 		enabled: value.enabled,
 		models,
-		...(value.modelInventory === undefined ? {} : { modelInventory: value.modelInventory }),
+		modelInventory: value.modelInventory,
 	};
 }
 
@@ -1388,22 +1386,38 @@ function projectSnapshot(settings: RuntimeAgentSettings, revision: string): Runt
 	return {
 		revision,
 		model: settings.model,
-		...(settings.maxTurns === undefined ? {} : { maxTurns: settings.maxTurns }),
-		...(settings.language === undefined ? {} : { language: settings.language }),
-		...(settings.reasoningEffort === undefined ? {} : { reasoningEffort: settings.reasoningEffort }),
+		maxTurns: settings.maxTurns,
+		language: settings.language,
+		reasoningEffort: settings.reasoningEffort,
 		profiles: Object.entries(settings.providers)
-			.map(([id, profile]) => ({
-				id,
-				name: profile.name,
-				adapter: profile.adapter,
-				...(profile.baseURL ? { baseURL: profile.baseURL } : {}),
-				authentication: profile.authentication,
-				credentialConfigured: Boolean(profile.apiKey),
-				...(profile.apiKey ? { credentialMask: maskCredential(profile.apiKey) } : {}),
-				enabled: profile.enabled,
-				...(profile.modelInventory === undefined ? {} : { modelsFetchedAt: profile.modelInventory.fetchedAt }),
-				models: projectModels(profile),
-			}))
+			.map(([id, profile]) => {
+				const projected: {
+					id: string;
+					name: string;
+					adapter: RuntimeProviderAdapter;
+					baseURL?: string;
+					authentication: RuntimeProviderAuthentication;
+					credentialConfigured: boolean;
+					credentialMask?: string;
+					enabled: boolean;
+					modelsFetchedAt?: number;
+					models: readonly RuntimeProviderModel[];
+				} = {
+					id,
+					name: profile.name,
+					adapter: profile.adapter,
+					baseURL: profile.baseURL || undefined,
+					authentication: profile.authentication,
+					credentialConfigured: Boolean(profile.apiKey),
+					credentialMask: profile.apiKey ? maskCredential(profile.apiKey) : undefined,
+					enabled: profile.enabled,
+					models: projectModels(profile),
+				};
+				if (profile.modelInventory !== undefined) {
+					projected.modelsFetchedAt = profile.modelInventory.fetchedAt;
+				}
+				return projected;
+			})
 			.sort((left, right) => left.name.localeCompare(right.name)),
 		connector: projectConnector(settings.connector),
 		webSearch: projectWebSearch(settings.webSearch),
@@ -1420,7 +1434,8 @@ function projectModels(profile: RuntimeProviderProfile): readonly RuntimeProvide
 			const configured = configuredByRemoteId.get(remoteModelId);
 			return {
 				id: configured?.id ?? remoteModelId,
-				...(configured?.remoteModelId || configured?.id !== remoteModelId ? { remoteModelId } : {}),
+				remoteModelId:
+					configured?.remoteModelId || configured?.id !== remoteModelId ? remoteModelId : undefined,
 				enabled: configured?.enabled ?? false,
 			};
 		})
@@ -1437,8 +1452,8 @@ async function discoverModels(profileId: string, profile: RuntimeProviderProfile
 	const shared = {
 		id: profileId,
 		apiKey,
-		...(profile.baseURL === undefined ? {} : { baseURL: profile.baseURL }),
-		...(profile.headers === undefined ? {} : { headers: profile.headers }),
+		baseURL: profile.baseURL,
+		headers: profile.headers,
 	};
 	const provider: Provider =
 		profile.adapter === "anthropic"
@@ -1496,20 +1511,18 @@ function projectConnector(value: RuntimeConnectorSettings | undefined): RuntimeC
 					.map(([key, credential]) => ({
 						key,
 						configured: Boolean(credential),
-						...(credential ? { mask: maskCredential(credential) } : {}),
+						mask: credential ? maskCredential(credential) : undefined,
 					}))
 					.toSorted((left, right) => left.key.localeCompare(right.key)),
-				...(connector.credentials?.accessToken
+				oauth: connector.credentials?.accessToken
 					? {
-							oauth: {
-								connected: true,
-								scopes: connector.credentials.scopes?.split(/[\s,]+/u).filter(Boolean) ?? [],
-								...(Number.isFinite(Number(connector.credentials.expiresAt))
-									? { expiresAt: Number(connector.credentials.expiresAt) }
-									: {}),
-							},
+							connected: true,
+							scopes: connector.credentials.scopes?.split(/[\s,]+/u).filter(Boolean) ?? [],
+							expiresAt: Number.isFinite(Number(connector.credentials.expiresAt))
+								? Number(connector.credentials.expiresAt)
+								: undefined,
 						}
-					: {}),
+					: undefined,
 			}))
 			.toSorted((left, right) => left.id.localeCompare(right.id)),
 	};
@@ -1609,8 +1622,8 @@ function normalizeWebSearchSettings(
 		}
 		providers[provider.id] = {
 			enabled: provider.enabled,
-			...(provider.order === undefined ? {} : { order: provider.order }),
-			...(apiKey ? { apiKey } : {}),
+			order: provider.order,
+			apiKey: apiKey || undefined,
 		};
 	}
 	return {
@@ -1679,9 +1692,9 @@ function projectWebSearch(settings: RuntimeWebSearchSettings | undefined): Runti
 			return {
 				id,
 				enabled: provider.enabled,
-				...(provider.order === undefined ? {} : { order: provider.order }),
+				order: provider.order,
 				credentialConfigured: Boolean(provider.apiKey),
-				...(provider.apiKey ? { credentialMask: maskCredential(provider.apiKey) } : {}),
+				credentialMask: provider.apiKey ? maskCredential(provider.apiKey) : undefined,
 			};
 		}),
 		fetch: projectWebFetch(fetch),
@@ -1717,7 +1730,7 @@ function projectWebFetch(settings: RuntimeWebFetchSettings): RuntimeWebFetchSett
 	return {
 		jina: {
 			credentialConfigured: Boolean(settings.jina.apiKey),
-			...(settings.jina.apiKey ? { credentialMask: maskCredential(settings.jina.apiKey) } : {}),
+			credentialMask: settings.jina.apiKey ? maskCredential(settings.jina.apiKey) : undefined,
 		},
 	};
 }

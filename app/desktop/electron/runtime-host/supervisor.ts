@@ -53,8 +53,8 @@ export class DesktopRuntimeHostSupervisor {
 			throw new Error("Runtime Host Supervisor is closed");
 		}
 		return connectJaiRuntimeHost({
-			...(this.#runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint: this.#runtimeHostEntrypoint }),
-			...(this.#launcher === undefined ? {} : { launchRuntimeHost: (input) => this.#launch(input) }),
+			runtimeHostEntrypoint: this.#runtimeHostEntrypoint,
+			launchRuntimeHost: this.#launcher === undefined ? undefined : (input) => this.#launch(input),
 		});
 	}
 

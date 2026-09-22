@@ -210,4 +210,46 @@ describe("telemetry context", () => {
 		await waitForFanout();
 		expect(JSON.stringify(genericRecords)).not.toContain("must-not-reach-any-sink");
 	});
+
+	test("explicit undefined content fields match omitted fields", async () => {
+		const contentRecords: unknown[] = [];
+		const telemetry = createTelemetryContext({
+			contentSink: {
+				recordContent(record): void {
+					contentRecords.push(record);
+				},
+			},
+		});
+		const run = telemetry.startSpan({ name: "jai.run", attributes: { operationId: "operation", runId: "run" } });
+		const turn = telemetry.startSpan({ name: "jai.turn", parent: run, attributes: { turnId: "turn" } });
+		const omitted = telemetry.startSpan({
+			name: "jai.tool_call",
+			parent: turn,
+			attributes: { toolCallId: "omitted", toolName: "read" },
+		});
+		const explicit = telemetry.startSpan({
+			name: "jai.tool_call",
+			parent: turn,
+			attributes: { toolCallId: "explicit", toolName: "read" },
+		});
+
+		omitted.recordContent({ output: { result: "ok" } });
+		explicit.recordContent({ input: undefined, output: { result: "ok" } });
+		await waitForFanout();
+
+		expect(contentRecords).toEqual([
+			{
+				content: { output: { result: "ok" } },
+				schemaVersion: 1,
+				spanId: omitted.id,
+				traceId: expect.any(String),
+			},
+			{
+				content: { output: { result: "ok" } },
+				schemaVersion: 1,
+				spanId: explicit.id,
+				traceId: expect.any(String),
+			},
+		]);
+	});
 });

@@ -81,6 +81,10 @@
 
 10. 禁止一个函数少于 3 行，不要做无意义的函数封装
 
+11. 不要用 `...(cond ? { key } : {})` 省略可选字段。直接写 `key: value`，值为 `undefined` 即可。需要保留前面 spread 里的同名字段时，写 `key: value ?? base.key`。不要在内部代码里模拟 `exactOptionalPropertyTypes`。`URLSearchParams`、`Headers` 和进程 `env` 会把 `undefined` 变成字符串 `"undefined"`，只在这几个构造点丢掉 `undefined`。
+
+12. `unknown` 进入本仓库类型时用 `@sinclair/typebox`：RPC/IPC 请求与响应、SQLite 读回、协议参数、插件 manifest、第三方 catalog。类型从 schema 推导（`Static<typeof schema>`），边界上用 `Value.Check`；白名单 DTO 设 `additionalProperties: false`，请求和响应两端共用同一份 schema。值已经有类型、只是在构造对象时直接赋值。对方 SDK 已有 schema 就用对方的。凭据保留、清单匹配这类领域规则留在领域函数里。
+
 <!-- CODEGRAPH_START -->
 ## CodeGraph
 

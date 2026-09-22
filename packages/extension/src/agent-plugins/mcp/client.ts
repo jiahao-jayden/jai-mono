@@ -69,7 +69,7 @@ function createTransport(
 			command: server.command,
 			args: [...server.args],
 			env: { ...server.env },
-			...(server.cwd ? { cwd: server.cwd } : {}),
+			cwd: server.cwd || undefined,
 		});
 	}
 	const headers = { ...server.headers };

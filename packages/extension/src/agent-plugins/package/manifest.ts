@@ -115,14 +115,14 @@ function validateManifest(
 	const manifest = {
 		$schema: AGENT_PLUGINS_SCHEMA,
 		name: value.name,
-		...(typeof value.version === "string" ? { version: value.version } : {}),
-		...(typeof value.description === "string" ? { description: value.description } : {}),
-		...(isRecord(value.author) ? { author: value.author as AgentPluginManifestV1["author"] } : {}),
-		...(typeof value.homepage === "string" ? { homepage: value.homepage } : {}),
-		...(typeof value.repository === "string" ? { repository: value.repository } : {}),
-		...(typeof value.license === "string" ? { license: value.license } : {}),
-		...(Array.isArray(value.keywords) ? { keywords: value.keywords as string[] } : {}),
-		...(extensions ? { extensions } : {}),
+		version: typeof value.version === "string" ? value.version : undefined,
+		description: typeof value.description === "string" ? value.description : undefined,
+		author: isRecord(value.author) ? (value.author as AgentPluginManifestV1["author"]) : undefined,
+		homepage: typeof value.homepage === "string" ? value.homepage : undefined,
+		repository: typeof value.repository === "string" ? value.repository : undefined,
+		license: typeof value.license === "string" ? value.license : undefined,
+		keywords: Array.isArray(value.keywords) ? (value.keywords as string[]) : undefined,
+		extensions: extensions || undefined,
 	};
 	return { manifest, diagnostics };
 }
@@ -132,7 +132,7 @@ function invalidManifest(message: string, location: string, cause?: unknown): Ag
 		reason: "invalid_manifest",
 		path: location,
 		message,
-		...(cause === undefined ? {} : { cause }),
+		cause,
 	});
 }
 

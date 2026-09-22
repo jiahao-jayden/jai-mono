@@ -358,7 +358,7 @@ export function useChat(options: UseChatOptions): Chat {
 						message: text,
 						modelRef: latest.modelRef,
 						mode,
-						...(attachments.length > 0 ? { attachments } : {}),
+						attachments: attachments.length > 0 ? attachments : undefined,
 					});
 					latest.onMessageAccepted(current.sessionId);
 					return true;
@@ -375,7 +375,7 @@ export function useChat(options: UseChatOptions): Chat {
 					message: text,
 					modelRef: latest.modelRef,
 					mode,
-					...(attachments.length > 0 ? { attachments } : {}),
+					attachments: attachments.length > 0 ? attachments : undefined,
 				});
 				latest.onMessageAccepted(session.id);
 				void invalidateRecentSessions();

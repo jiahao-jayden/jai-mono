@@ -176,14 +176,13 @@ export class SqliteDesktopCatalogAccess {
 			const last = sessions.at(-1);
 			return Result.ok({
 				sessions,
-				...(rows.length > limit && last
-					? {
-							nextCursor: {
+				nextCursor:
+					rows.length > limit && last
+						? {
 								lastActivityAt: input.archived ? last.archivedAt! : last.lastActivityAt,
 								id: last.id,
-							},
-						}
-					: {}),
+							}
+						: undefined,
 			});
 		} catch (cause) {
 			return Result.err(this.failed("Could not list Desktop Sessions", cause));

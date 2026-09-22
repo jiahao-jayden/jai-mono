@@ -9,6 +9,7 @@ import {
 	type CodingExtensionTool,
 	type CodingExtensionToolResult,
 	defineExtension,
+	type JsonValue,
 } from "@jai/coding-agent";
 import { type Static, Type } from "@sinclair/typebox";
 import { Result, type Result as ResultType } from "better-result";
@@ -97,13 +98,14 @@ export class FffSearchRuntime {
 					.map((item) => `${item.relativePath}${annotation(item.gitStatus, item.totalFrecencyScore)}`)
 					.join("\n")
 			: "No files found matching pattern";
+		const details: Record<string, JsonValue> = {
+			count: visibleItems.length,
+			totalMatched: visibleItems.length,
+		};
+		if (nextCursor) details.cursor = nextCursor;
 		return {
 			content: [{ type: "text", text: appendCursor(text, nextCursor) }],
-			details: {
-				count: visibleItems.length,
-				totalMatched: visibleItems.length,
-				...(nextCursor ? { cursor: nextCursor } : {}),
-			},
+			details,
 		};
 	}
 
@@ -147,13 +149,14 @@ export class FffSearchRuntime {
 				score: item.totalFrecencyScore,
 			})),
 		);
+		const details: Record<string, JsonValue> = {
+			matches: visibleItems.length,
+			totalFiles: new Set(visibleItems.map((item) => item.relativePath)).size,
+		};
+		if (nextCursor) details.cursor = nextCursor;
 		return {
 			content: [{ type: "text", text: appendCursor(text, nextCursor) }],
-			details: {
-				matches: visibleItems.length,
-				totalFiles: new Set(visibleItems.map((item) => item.relativePath)).size,
-				...(nextCursor ? { cursor: nextCursor } : {}),
-			},
+			details,
 		};
 	}
 
@@ -257,12 +260,8 @@ async function createFinder(
 			aiMode: true,
 			enableFsRootScanning: false,
 			enableHomeDirScanning: false,
-			...(dataDirectory
-				? {
-						frecencyDbPath: join(dataDirectory, "frecency"),
-						historyDbPath: join(dataDirectory, "history"),
-					}
-				: {}),
+			frecencyDbPath: dataDirectory ? join(dataDirectory, "frecency") : undefined,
+			historyDbPath: dataDirectory ? join(dataDirectory, "history") : undefined,
 		});
 		if (!created.ok) {
 			return Result.err(

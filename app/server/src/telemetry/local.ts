@@ -130,10 +130,10 @@ function resolveOtlpTelemetryOptions(
 		endpoint,
 		publicKey,
 		secretKey,
-		...(timeoutMs.value === undefined ? {} : { timeoutMs: timeoutMs.value }),
-		...(maxQueueSize.value === undefined ? {} : { maxQueueSize: maxQueueSize.value }),
-		...(maxBatchSize.value === undefined ? {} : { maxBatchSize: maxBatchSize.value }),
-		...(shutdownTimeoutMs.value === undefined ? {} : { shutdownTimeoutMs: shutdownTimeoutMs.value }),
+		timeoutMs: timeoutMs.value,
+		maxQueueSize: maxQueueSize.value,
+		maxBatchSize: maxBatchSize.value,
+		shutdownTimeoutMs: shutdownTimeoutMs.value,
 	});
 }
 

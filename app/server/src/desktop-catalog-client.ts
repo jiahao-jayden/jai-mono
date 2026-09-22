@@ -57,11 +57,11 @@ export async function connectDesktopCatalogClient(
 	const runtime = await connectJaiRuntimeHost({
 		environment,
 		dataDirectory,
-		...(options.runtimeEndpoint === undefined ? {} : { endpoint: options.runtimeEndpoint }),
-		...(options.runtimeHostEntrypoint === undefined ? {} : { runtimeHostEntrypoint: options.runtimeHostEntrypoint }),
-		...(options.launchRuntimeHost === undefined ? {} : { launchRuntimeHost: options.launchRuntimeHost }),
-		...(options.retryDelayMs === undefined ? {} : { retryDelayMs: options.retryDelayMs }),
-		...(options.retryCount === undefined ? {} : { retryCount: options.retryCount }),
+		endpoint: options.runtimeEndpoint,
+		runtimeHostEntrypoint: options.runtimeHostEntrypoint,
+		launchRuntimeHost: options.launchRuntimeHost,
+		retryDelayMs: options.retryDelayMs,
+		retryCount: options.retryCount,
 	});
 	if (runtime.isErr()) return Result.err(runtime.error);
 	await runtime.value.close();

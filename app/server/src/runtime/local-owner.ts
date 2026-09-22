@@ -80,7 +80,7 @@ async function acquire(
 			new RuntimeHostAlreadyOwned({
 				message: `A Runtime Host already owns "${lockPath}"`,
 				lockPath,
-				...(ownerPid === undefined ? {} : { pid: ownerPid }),
+				pid: ownerPid,
 			}),
 		);
 	}

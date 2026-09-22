@@ -92,7 +92,7 @@ function collectProjectScopeFieldIssues(
 ): Array<{ path: string; message: string }> {
 	const issues: Array<{ path: string; message: string }> = [];
 	for (const [key, field] of Object.entries(fields)) {
-		if (!Object.hasOwn(settings, key)) continue;
+		if (settings[key] === undefined) continue;
 		const path = parentPath ? `${parentPath}/${key}` : `/${key}`;
 		if (isFieldRule(field)) {
 			if (field.project === "never") {

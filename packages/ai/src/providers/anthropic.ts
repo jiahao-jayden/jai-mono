@@ -118,7 +118,7 @@ export class AnthropicProvider implements Provider {
 			apiKey,
 			baseURL: this.baseURL,
 			defaultHeaders: this.headers,
-			...(this.authentication === "none" ? { fetch: withoutAuthentication } : {}),
+			fetch: this.authentication === "none" ? withoutAuthentication : undefined,
 		});
 	}
 }

@@ -29,5 +29,5 @@ export function providerFailure(
 	status?: number,
 	cause?: unknown,
 ): WebSearchProviderFailed {
-	return new WebSearchProviderFailed({ provider, kind, message, ...(status === undefined ? {} : { status }), cause });
+	return new WebSearchProviderFailed({ provider, kind, message, status, cause });
 }

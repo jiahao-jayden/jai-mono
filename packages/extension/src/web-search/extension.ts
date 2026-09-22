@@ -5,6 +5,7 @@ import {
 	type CodingExtensionToolResult,
 	defineExtension,
 	type JsonObject,
+	type JsonValue,
 } from "@jai/coding-agent";
 import { type Static, Type } from "@sinclair/typebox";
 import { Result } from "better-result";
@@ -54,13 +55,13 @@ export function createWebSearchExtension(
 				content: [{ type: "text", text: formatSearchResponse(result.value) }],
 				details: {
 					provider: result.value.provider,
-					results: result.value.results.map((item) => ({
-						title: item.title,
-						url: item.url,
-						...(item.snippet ? { snippet: item.snippet } : {}),
-						...(item.content ? { content: item.content } : {}),
-						...(item.publishedDate ? { publishedDate: item.publishedDate } : {}),
-					})),
+					results: result.value.results.map((item) => {
+						const entry: Record<string, JsonValue> = { title: item.title, url: item.url };
+						if (item.snippet) entry.snippet = item.snippet;
+						if (item.content) entry.content = item.content;
+						if (item.publishedDate) entry.publishedDate = item.publishedDate;
+						return entry;
+					}),
 				},
 			};
 		},

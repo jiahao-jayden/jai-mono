@@ -174,14 +174,10 @@ function resolveServer(name: string, value: unknown): ResultType<McpServer, Codi
 				new CodingExtensionOperationFailed({ message: `MCP stdio server "${name}" has invalid options` }),
 			);
 		}
-		return Result.ok({
-			name,
-			type: "stdio",
-			command: value.command,
-			args,
-			env,
-			...(typeof value.cwd === "string" ? { cwd: value.cwd } : {}),
-		});
+		if (typeof value.cwd === "string") {
+			return Result.ok({ name, type: "stdio" as const, command: value.command, args, env, cwd: value.cwd });
+		}
+		return Result.ok({ name, type: "stdio" as const, command: value.command, args, env });
 	}
 	if (value.type === "streamable-http" || value.type === "sse") {
 		if (typeof value.url !== "string" || !isAllowedRemoteUrl(value.url)) {

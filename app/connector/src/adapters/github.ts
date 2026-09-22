@@ -225,10 +225,11 @@ async function executeGitHub(
 		);
 	}
 	if (action.actionId === "create_issue") {
+		const labels = stringArrayInput(input, "labels");
 		const body = {
 			title: stringInput(input, "title"),
-			...(typeof input.body === "string" ? { body: input.body } : {}),
-			...(stringArrayInput(input, "labels").length > 0 ? { labels: stringArrayInput(input, "labels") } : {}),
+			body: typeof input.body === "string" ? input.body : undefined,
+			labels: labels.length > 0 ? labels : undefined,
 		};
 		return oauthJsonRequest(
 			"github",
@@ -242,7 +243,7 @@ async function executeGitHub(
 	}
 	const body = {
 		ref: stringInput(input, "ref"),
-		...(isJsonObject(input.inputs) ? { inputs: input.inputs } : {}),
+		inputs: isJsonObject(input.inputs) ? input.inputs : undefined,
 	};
 	const workflowId = encodeURIComponent(stringInput(input, "workflowId"));
 	const result = await oauthJsonRequest(

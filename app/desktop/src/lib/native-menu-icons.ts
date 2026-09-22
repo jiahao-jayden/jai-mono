@@ -20,8 +20,8 @@ function toDesktopItem(item: NativeMenuDescriptor): DesktopContextMenuItem {
 	return {
 		id: item.id,
 		label: item.label,
-		...(item.separatorBefore === true ? { separatorBefore: true } : {}),
-		...(item.destructive === true ? { destructive: true } : {}),
+		separatorBefore: item.separatorBefore === true ? true : undefined,
+		destructive: item.destructive === true ? true : undefined,
 	};
 }
 

@@ -62,7 +62,7 @@ function nativeContextMenuTemplate(
 		const icon = createContextMenuIcon(item.iconDataUrl) ?? (item.destructive ? getDestructiveMenuIcon() : undefined);
 		template.push({
 			label: platform === "darwin" ? `${item.label}${MAC_CONTEXT_MENU_LABEL_TRAILING_PADDING}` : item.label,
-			...(icon ? { icon } : {}),
+			icon: icon || undefined,
 			click: () => onSelect(item.id),
 		});
 	}

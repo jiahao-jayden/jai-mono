@@ -149,7 +149,7 @@ export class WebFetchRuntime {
 		const request = await this.#request(`${JINA_READER_URL}${url.toString()}`, signal, {
 			accept: "text/markdown, text/plain",
 			"x-return-format": "markdown",
-			...(this.#jinaApiKey ? { authorization: `Bearer ${this.#jinaApiKey}` } : {}),
+			authorization: this.#jinaApiKey ? `Bearer ${this.#jinaApiKey}` : undefined,
 		});
 		if (request.isErr()) return request;
 		const response = request.value.response;
@@ -231,7 +231,7 @@ export class WebFetchRuntime {
 	async #request(
 		url: string,
 		signal?: AbortSignal,
-		headers: Record<string, string> = {
+		headers: Record<string, string | undefined> = {
 			accept: "text/html, text/plain, text/markdown, application/json, application/xml, text/xml",
 		},
 	): Promise<ResultType<WebFetchRequest, WebFetchFailed>> {
@@ -249,7 +249,9 @@ export class WebFetchRuntime {
 			const response = await this.#transport(url, {
 				method: "GET",
 				redirect: "manual",
-				headers,
+				headers: Object.fromEntries(
+					Object.entries(headers).filter((entry): entry is [string, string] => entry[1] !== undefined),
+				),
 				signal: combined,
 			});
 			return Result.ok({ response, signal: combined, timeoutSignal: timeout });

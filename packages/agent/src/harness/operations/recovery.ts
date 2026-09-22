@@ -140,7 +140,7 @@ export function recoverOperation(
 			status: "provider_interrupted",
 			operationId,
 			attemptId: latestAttempt.attemptId,
-			...(pendingInputs.length === 0 ? {} : { pendingInputs }),
+			pendingInputs: pendingInputs.length === 0 ? undefined : pendingInputs,
 		});
 	}
 	if (latestAttempt) {
@@ -155,7 +155,11 @@ export function recoverOperation(
 		}
 	}
 
-	return Result.ok({ status: "ready", operationId, ...(pendingInputs.length === 0 ? {} : { pendingInputs }) });
+	return Result.ok({
+		status: "ready",
+		operationId,
+		pendingInputs: pendingInputs.length === 0 ? undefined : pendingInputs,
+	});
 }
 
 /**

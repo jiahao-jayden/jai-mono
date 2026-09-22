@@ -24,7 +24,7 @@ export async function resolveLocalModelSource(
 		);
 	}
 	const connected = await connectDesktopConfigurationClient({
-		...(input.dataDirectory === undefined ? {} : { dataDirectory: input.dataDirectory }),
+		dataDirectory: input.dataDirectory,
 	});
 	if (connected.isErr()) {
 		return Result.err(
@@ -76,7 +76,7 @@ export async function resolveLocalModelSource(
 			adapter: profile.adapter,
 			upstreamBaseUrl,
 			upstreamAuthentication: profile.authentication,
-			...(credential.value?.apiKey === undefined ? {} : { upstreamApiKey: credential.value.apiKey }),
+			upstreamApiKey: credential.value?.apiKey,
 			remoteModelId: configuredModel.remoteModelId ?? configuredModel.id,
 		});
 	} finally {

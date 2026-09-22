@@ -136,7 +136,7 @@ async function executeContext7(
 					data: {
 						connectorId: "context7",
 						actionId: action.actionId,
-						...(retryAfter === undefined ? {} : { retryAfterMs: retryAfter }),
+						retryAfterMs: retryAfter,
 					},
 				}),
 			);

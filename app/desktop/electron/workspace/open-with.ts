@@ -75,12 +75,12 @@ export function createOpenWithService(
 						id: application.id,
 						name: application.name,
 						isDefault: application.isDefault,
-						...(iconDataUrl ? { iconDataUrl } : {}),
+						iconDataUrl: iconDataUrl || undefined,
 					};
 				}),
 			);
 			const defaultApplication = applicationDtos.find((application) => application.isDefault);
-			return { applications: applicationDtos, ...(defaultApplication ? { defaultApplication } : {}) };
+			return { applications: applicationDtos, defaultApplication };
 		},
 
 		async openWithApplication(applicationId, filePath) {

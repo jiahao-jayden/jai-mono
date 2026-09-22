@@ -237,16 +237,15 @@ function projectOtlpSpan(record: TelemetrySpanRecord, content: TelemetrySpanCont
 		kind: SpanKind.INTERNAL,
 		links: [],
 		name: record.name,
-		...(record.parentId === undefined
-			? {}
-			: {
-					parentSpanContext: {
+		parentSpanContext:
+			record.parentId === undefined
+				? undefined
+				: {
 						isRemote: false,
 						spanId: otlpIdentifier(record.parentId, 16),
 						traceFlags: TraceFlags.SAMPLED,
 						traceId,
 					},
-				}),
 		resource: resourceFromAttributes({ "service.name": "jai-agent" }),
 		spanContext: () => ({
 			isRemote: false,
@@ -340,12 +339,12 @@ function projectSpanAttributes(record: TelemetrySpanRecord, content: TelemetrySp
 }
 
 function mergeSpanContent(current: TelemetrySpanContent | undefined, next: TelemetrySpanContent): TelemetrySpanContent {
-	return {
-		...(current?.input === undefined ? {} : { input: current.input }),
-		...(current?.output === undefined ? {} : { output: current.output }),
-		...(next.input === undefined ? {} : { input: next.input }),
-		...(next.output === undefined ? {} : { output: next.output }),
-	} as TelemetrySpanContent;
+	const input = next.input === undefined ? current?.input : next.input;
+	const output = next.output === undefined ? current?.output : next.output;
+	if (input !== undefined && output !== undefined) return { input, output };
+	if (input !== undefined) return { input };
+	if (output !== undefined) return { output };
+	return next;
 }
 
 function serializeContent(value: TelemetryContentValue | undefined): string | undefined {

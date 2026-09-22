@@ -669,7 +669,7 @@ export class RuntimeSession {
 					role: "user",
 					content: input.text,
 					timestamp: timestamp.getTime(),
-					...(input.metadata ? { metadata: input.metadata } : {}),
+					metadata: input.metadata || undefined,
 				},
 			};
 			const operation: OperationAccepted = {
@@ -1334,7 +1334,7 @@ export class RuntimeSession {
 				state: "idle",
 				operationId: active.operationId,
 				stopReason: stopReasonFor(terminalOutcome),
-				...(outcome.isErr() ? { errorMessage: outcome.error.message } : {}),
+				errorMessage: outcome.isErr() ? outcome.error.message : undefined,
 			});
 			return inferredTerminalOutcome ? Result.ok(inferredTerminalOutcome) : outcome;
 		});
@@ -1364,7 +1364,7 @@ export class RuntimeSession {
 		}
 		return Result.ok({
 			cancelled: outcome.value === "aborted",
-			...(outcome.value === "aborted" ? { operationId: active.operationId } : {}),
+			operationId: outcome.value === "aborted" ? active.operationId : undefined,
 		});
 	}
 

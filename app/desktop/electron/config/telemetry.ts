@@ -14,19 +14,15 @@ export function projectRuntimeTelemetrySettings(
 		credential: {
 			revision: snapshot.credential.revision,
 			configured: snapshot.credential.configured,
-			...(snapshot.credential.publicKeyMask === undefined
-				? {}
-				: { publicKeyMask: snapshot.credential.publicKeyMask }),
-			...(snapshot.credential.secretKeyMask === undefined
-				? {}
-				: { secretKeyMask: snapshot.credential.secretKeyMask }),
+			publicKeyMask: snapshot.credential.publicKeyMask,
+			secretKeyMask: snapshot.credential.secretKeyMask,
 		},
 		enabled: snapshot.enabled,
-		...(snapshot.endpoint === undefined ? {} : { endpoint: snapshot.endpoint }),
+		endpoint: snapshot.endpoint,
 		environmentOverride: snapshot.environmentOverride,
 		exporter: "langfuse-otlp",
 		policyRevision: snapshot.policyRevision,
-		...(snapshot.configurationError === undefined ? {} : { configurationError: snapshot.configurationError }),
+		configurationError: snapshot.configurationError,
 	};
 }
 
@@ -66,12 +62,12 @@ export function toRuntimeTelemetrySettingsInput(input: DesktopTelemetrySettingsI
 	return {
 		credentialRevision: input.credentialRevision,
 		enabled: input.enabled,
-		...(endpoint === undefined ? {} : { endpoint }),
+		endpoint,
 		exporter: "langfuse-otlp",
 		policyRevision: input.policyRevision,
-		...(publicKey === undefined ? {} : { publicKey }),
-		...(secretKey === undefined ? {} : { secretKey }),
-		...(input.clearCredentials === true ? { clearCredentials: true } : {}),
+		publicKey,
+		secretKey,
+		clearCredentials: input.clearCredentials === true ? true : undefined,
 	};
 }
 

@@ -73,11 +73,12 @@ export function ObservabilitySettings({
 			const saved = await onSave({
 				credentialRevision: snapshot.credential.revision,
 				enabled: nextEnabled,
-				...(normalizedEndpoint ? { endpoint: normalizedEndpoint } : {}),
+				endpoint: normalizedEndpoint || undefined,
 				exporter: "langfuse-otlp",
 				policyRevision: snapshot.policyRevision,
-				...(clearCredentials ? { clearCredentials: true } : {}),
-				...(replacingCredentials ? { publicKey: normalizedPublicKey, secretKey: normalizedSecretKey } : {}),
+				clearCredentials: clearCredentials ? true : undefined,
+				publicKey: replacingCredentials ? normalizedPublicKey : undefined,
+				secretKey: replacingCredentials ? normalizedSecretKey : undefined,
 			});
 			setEnabled(saved.enabled);
 			setEndpoint(saved.endpoint ?? "");

@@ -56,8 +56,8 @@ export function modelDiscoveryFailed(adapter: string, cause: unknown): ModelDisc
 		message: "Unable to fetch models from the configured provider",
 		data: {
 			adapter,
-			...(status === undefined ? {} : { status }),
-			...(requestId === undefined ? {} : { requestId }),
+			status,
+			requestId,
 		},
 		cause,
 	});
