@@ -1,0 +1,14 @@
+engine biome(1.0)
+language js(typescript)
+
+JsSpread(argument = $arg) where {
+	$arg <: or {
+		`($cond ? $value : {})`,
+		`($cond ? {} : $value)`
+	},
+	register_diagnostic(
+		span = $arg,
+		message = "不要用 ...(cond ? { key } : {}) 省略可选字段，直接写 key: value（undefined 即可）",
+		severity = "error"
+	)
+}

@@ -1,6 +1,6 @@
 {
 	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-	"plugins": ["./plugins/no-classname-concat.grit"],
+	"plugins": ["./plugins/no-classname-concat.grit", "./plugins/no-conditional-spread.grit"],
 	"linter": {
 		"enabled": true,
 		"rules": {
