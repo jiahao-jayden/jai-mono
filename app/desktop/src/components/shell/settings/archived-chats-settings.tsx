@@ -69,7 +69,7 @@ export function ArchivedChatsSettings() {
 				) : null}
 				{listError ? (
 					<p
-						className="mt-5 rounded-lg bg-destructive/8 px-3 py-2 text-[12px] leading-relaxed text-destructive"
+						className="mt-5 rounded-xl bg-destructive/8 px-3 py-2 text-[12px] leading-relaxed text-destructive"
 						role="alert"
 					>
 						{listError}
@@ -98,7 +98,7 @@ export function ArchivedChatsSettings() {
 								: "";
 							return (
 								<div
-									className="flex min-w-0 items-center gap-4 rounded-lg bg-surface-secondary px-4 py-3"
+									className="flex min-w-0 items-center gap-4 rounded-xl bg-surface-secondary px-4 py-3"
 									key={session.id}
 								>
 									<div className="min-w-0 flex-1">

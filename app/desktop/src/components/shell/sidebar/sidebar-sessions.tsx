@@ -133,10 +133,7 @@ export function SidebarSessions({
 			sidebarItemClassName,
 			sidebarRowHoverReserveClassName,
 			"group-hover/row:text-sidebar-foreground",
-			{
-				"pl-8": nested,
-				"shadow-[0_0_0_.5px_rgb(0_0_0/.05)]": selected,
-			},
+			{ "pl-8": nested },
 		);
 		if (editing) {
 			return (
@@ -203,7 +200,7 @@ export function SidebarSessions({
 	return (
 		<div className="scrollbar-hidden mt-3.5 min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
 			<section aria-labelledby="sidebar-projects-heading">
-				<div className="flex h-6 items-center justify-between px-1.5">
+				<div className="flex h-6 items-center justify-between px-2">
 					<span
 						id="sidebar-projects-heading"
 						className="text-[12px] font-medium tracking-[-0.005em] text-sidebar-muted"
@@ -308,7 +305,7 @@ export function SidebarSessions({
 				</div>
 			</section>
 			<section className="mt-4" aria-labelledby="sidebar-chats-heading">
-				<div className="flex h-6 items-center px-1.5">
+				<div className="flex h-6 items-center">
 					<Button
 						id="sidebar-chats-heading"
 						type="button"
@@ -318,7 +315,7 @@ export function SidebarSessions({
 						aria-expanded={chatsExpanded}
 						aria-controls="sidebar-chats-list"
 						trailingIcon={chatsExpanded ? icons["chevron-down"] : icons["chevron-right"]}
-						className="h-6 w-full justify-between px-0 text-[12px] font-medium tracking-[-0.005em] text-sidebar-muted"
+						className="h-6 w-full justify-between px-2 text-[12px] font-medium tracking-[-0.005em] text-sidebar-muted [&>span:first-child]:bg-transparent!"
 					>
 						{intl.formatMessage(desktopMessages.sidebarChats)}
 					</Button>

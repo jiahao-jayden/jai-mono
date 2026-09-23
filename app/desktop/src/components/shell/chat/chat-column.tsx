@@ -546,7 +546,7 @@ function RecoveryBanners({
 function ComposerError({ message }: { message?: string }) {
 	return message ? (
 		<div
-			className="mb-6 rounded-2xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-[14px] leading-5 no-squircle animate-[sd-slideUp_.25s_ease-out_both]"
+			className="mb-6 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-[14px] leading-5 no-squircle animate-[sd-slideUp_.25s_ease-out_both]"
 			role="alert"
 			aria-live="assertive"
 		>

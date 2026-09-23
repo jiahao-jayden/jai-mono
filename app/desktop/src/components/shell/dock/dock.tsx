@@ -166,10 +166,8 @@ function DockTabButton({
 	return (
 		<div
 			className={cn(
-				"group flex h-7 min-w-0 max-w-44 shrink-0 items-center rounded-md pr-0.5 text-[13px] transition-colors duration-150",
-				active
-					? "bg-surface-primary text-foreground shadow-[0_0_0_var(--hairline)_var(--border-surface),0_1px_2px_-1px_rgb(0_0_0/.08)]"
-					: "text-muted-foreground hover:bg-muted-hover hover:text-foreground",
+				"group flex h-7 min-w-0 max-w-44 shrink-0 items-center rounded-lg pr-0.5 text-[13px] transition-colors duration-150",
+				active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted-hover hover:text-foreground",
 			)}
 		>
 			<Button
@@ -179,7 +177,7 @@ function DockTabButton({
 				role="tab"
 				aria-selected={active}
 				onClick={onSelect}
-				className="h-7 min-w-0 flex-1 rounded-md px-2 text-inherit hover:text-inherit [&>span:first-child]:bg-transparent!"
+				className="h-7 min-w-0 flex-1 rounded-lg px-2 text-inherit hover:text-inherit [&>span:first-child]:bg-transparent!"
 				contentClassName="min-w-0"
 				labelClassName="flex min-w-0 items-center gap-1.5"
 			>

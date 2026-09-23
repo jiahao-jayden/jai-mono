@@ -26,7 +26,7 @@ export function SidebarToggleButton({ expanded, onToggle }: SidebarToggleButtonP
 			onClick={onToggle}
 			aria-label={label}
 			title={label}
-			className="rounded-md"
+			className="rounded-lg"
 			style={noDrag}
 		>
 			<PanelLeftIcon size={16} className={cn({ "rotate-180": expanded })} />

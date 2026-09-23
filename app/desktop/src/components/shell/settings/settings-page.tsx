@@ -329,7 +329,7 @@ function ProviderConfigForm({
 				if (providerCategory) void submit();
 			}}
 		>
-			<div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-primary shadow-surface-1">
+			<div className="flex min-w-0 flex-1 flex-col overflow-hidden">
 				<h1 className="mx-auto w-full max-w-3xl shrink-0 px-8 pt-7 text-[22px] font-medium tracking-tight">
 					{intl.formatMessage(settingsCategories[category].label)}
 				</h1>

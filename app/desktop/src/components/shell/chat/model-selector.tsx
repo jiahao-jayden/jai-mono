@@ -238,7 +238,7 @@ export function ModelSelector({
 																		onClick={() => chooseModel(model.ref)}
 																		contentClassName="w-full min-w-0 justify-start"
 																		labelClassName="flex min-w-0 w-full"
-																		className="h-[30px] w-full justify-start rounded-[10px] px-2 text-left outline-none transition-colors duration-75 focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-inset"
+																		className="h-[30px] w-full justify-start rounded-lg px-2 text-left outline-none transition-colors duration-75 focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-inset"
 																	>
 																		<span className="flex min-w-0 w-full items-center gap-3 pointer-events-none">
 																			<ModelIcon

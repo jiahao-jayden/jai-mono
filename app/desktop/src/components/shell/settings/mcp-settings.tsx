@@ -169,7 +169,7 @@ function McpStatusTable({ status, loading }: { readonly status?: DesktopMcpStatu
 	}
 
 	return (
-		<div className="overflow-hidden rounded-lg border border-border">
+		<div className="overflow-hidden rounded-xl border border-border">
 			<table className="w-full text-[13px]">
 				<thead>
 					<tr className="border-b border-border bg-muted-hover text-left text-[12px] text-muted-foreground">

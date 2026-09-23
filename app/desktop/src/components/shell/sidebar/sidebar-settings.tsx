@@ -11,7 +11,7 @@ import {
 } from "../settings/settings-navigation";
 
 const settingsItemClassName =
-	"h-7 w-full justify-start gap-2 rounded-md px-2 text-left text-[12px] font-normal text-sidebar-foreground";
+	"h-7 w-full justify-start gap-2 rounded-lg px-2 text-left text-[12px] font-normal text-sidebar-foreground";
 
 interface SidebarSettingsProps {
 	category: SettingsCategory;
@@ -62,7 +62,7 @@ export function SidebarSettings({ category, onCategoryChange, onBack }: SidebarS
 					placeholder={intl.formatMessage(desktopMessages.settingsSearch)}
 					aria-label={intl.formatMessage(desktopMessages.settingsSearch)}
 					density="compact"
-					className="h-7 rounded-md border-0 bg-surface-secondary pl-8 text-[12px] shadow-none"
+					className="h-7 rounded-lg border-0 bg-surface-secondary pl-8 text-[12px] shadow-none"
 				/>
 			</div>
 			<nav aria-label={intl.formatMessage(desktopMessages.settingsTitle)} className="flex flex-col">

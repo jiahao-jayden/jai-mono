@@ -22,7 +22,7 @@ export function SidebarFooter({ onOpenSettings }: SidebarFooterProps) {
 				leadingIcon={icons.settings}
 				onClick={onOpenSettings}
 				title={intl.formatMessage(desktopMessages.sidebarSettingsShortcut)}
-				className="h-7 gap-1.5 rounded-md px-1.5 text-[13px] font-normal text-sidebar-muted"
+				className="h-7 gap-1.5 rounded-lg px-1.5 text-[13px] font-normal text-sidebar-muted"
 			>
 				{intl.formatMessage(desktopMessages.sidebarSettings)}
 			</Button>
@@ -34,7 +34,7 @@ export function SidebarFooter({ onOpenSettings }: SidebarFooterProps) {
 				tabIndex={-1}
 				aria-label={searchLabel}
 				title={searchLabel}
-				className="cursor-default rounded-md"
+				className="cursor-default rounded-lg"
 			>
 				<SearchIcon size={16} />
 			</Button>

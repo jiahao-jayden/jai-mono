@@ -99,7 +99,7 @@ export function ProfileTokenDashboard({
 			</div>
 
 			{tokensUnavailable ? (
-				<p className="rounded-lg bg-muted/60 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground" role="status">
+				<p className="rounded-xl bg-muted/60 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground" role="status">
 					{stats.promptCount > 0
 						? intl.formatMessage(desktopMessages.settingsProfileTokensUnavailableWithPrompts)
 						: intl.formatMessage(desktopMessages.settingsProfileTokensEmpty)}
@@ -150,7 +150,7 @@ export function ProfileTokenDashboard({
 
 function StatCard({ label, value }: { readonly label: string; readonly value: string }) {
 	return (
-		<div className="rounded-lg border border-border/70 px-3 py-2.5">
+		<div className="rounded-xl border border-border/70 px-3 py-2.5">
 			<div className="text-[11px] text-muted-foreground">{label}</div>
 			<div className="mt-1 truncate text-[16px] font-medium tabular-nums tracking-tight">{value}</div>
 		</div>
