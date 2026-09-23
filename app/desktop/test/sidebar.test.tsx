@@ -104,10 +104,13 @@ describe("Sidebar", () => {
 		expect(markup).not.toContain("Project chat");
 	});
 
-	test("收起的项目仍标识其中正在运行的 Chat", () => {
-		const markup = renderSidebar(["project-chat"]);
+	test("运行中的 Chat 用 loading 替代 hover 操作，收起的项目不再标识运行态", () => {
+		expect(renderSidebar(["project-chat"])).not.toContain("Agent is working…");
 
+		const markup = renderSidebar(["standalone-chat"]);
 		expect(markup).toContain("Agent is working…");
+		expect(markup).not.toContain('aria-label="Pin"');
+		expect(markup).not.toContain('aria-label="Archive"');
 	});
 
 	test("收起的项目保留其中当前 Chat 的可访问当前态", () => {

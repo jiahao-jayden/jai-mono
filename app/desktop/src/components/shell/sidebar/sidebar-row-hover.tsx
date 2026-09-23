@@ -1,9 +1,32 @@
 import { cn } from "cn";
-import type { MouseEvent, ReactNode } from "react";
+import { useReducedMotion } from "motion/react";
+import { type MouseEvent, type ReactNode, useEffect, useState } from "react";
+import { spinners } from "unicode-animations";
 import { Button } from "../../ui/button";
 
 export const sidebarRowHoverReserveClassName =
 	"transition-[padding] duration-150 ease-out group-hover/row:pr-[3.5rem] group-focus-within/row:pr-[3.5rem]";
+
+export const sidebarRowSpinnerReserveClassName = "pr-8";
+
+export function SidebarRowSpinner({ label }: { readonly label: string }) {
+	const reduceMotion = useReducedMotion() ?? false;
+	const [frame, setFrame] = useState(0);
+	const { frames, interval } = spinners.braille;
+
+	useEffect(() => {
+		if (reduceMotion) return;
+		const timer = setInterval(() => setFrame((current) => (current + 1) % frames.length), interval);
+		return () => clearInterval(timer);
+	}, [frames.length, interval, reduceMotion]);
+
+	return (
+		<div className="pointer-events-none absolute top-1/2 right-1.5 flex size-5 -translate-y-1/2 items-center justify-center font-mono text-[13px] leading-none text-sidebar-muted">
+			<span aria-hidden="true">{frames[frame]}</span>
+			<span className="sr-only">{label}</span>
+		</div>
+	);
+}
 
 export function SidebarRowHover({ children }: { readonly children: ReactNode }) {
 	return (

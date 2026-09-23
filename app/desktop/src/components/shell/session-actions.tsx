@@ -15,7 +15,12 @@ import type { CodingSession } from "../../../shared/desktop-rpc";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { toast } from "../ui/toast";
-import { SidebarHoverIconButton, SidebarRowHover, SidebarRowHoverActions } from "./sidebar/sidebar-row-hover";
+import {
+	SidebarHoverIconButton,
+	SidebarRowHover,
+	SidebarRowHoverActions,
+	SidebarRowSpinner,
+} from "./sidebar/sidebar-row-hover";
 
 type SessionActionDialog = "delete" | null;
 
@@ -191,7 +196,12 @@ export function SessionActions({
 		</SidebarHoverIconButton>
 	) : null;
 	const showHoverActions = hoverActions && (pinButton !== null || archiveButton !== null);
-	const body = showHoverActions ? (
+	const body = hoverActions && running ? (
+		<SidebarRowHover>
+			{row}
+			<SidebarRowSpinner label={intl.formatMessage(desktopMessages.chatAgentWorking)} />
+		</SidebarRowHover>
+	) : showHoverActions ? (
 		<SidebarRowHover>
 			{row}
 			<SidebarRowHoverActions>

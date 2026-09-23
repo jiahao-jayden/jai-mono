@@ -372,7 +372,7 @@ export function ComposerModelTrigger({
 			aria-expanded={open}
 			data-slot="composer-model-trigger"
 			className={cn(
-				"text-foreground/55 hover:bg-foreground/[0.06] hover:text-foreground/90 dark:hover:bg-foreground/[0.09] flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] transition-colors",
+				"text-foreground/55 hover:bg-hover hover:text-foreground/90 flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] transition-colors",
 				className,
 			)}
 			{...props}

@@ -10,7 +10,7 @@ import { toast } from "../../ui/toast";
 import { ProjectActions } from "../project-actions";
 import { SessionActions } from "../session-actions";
 import { sidebarItemClassName } from "./sidebar-nav";
-import { sidebarRowHoverReserveClassName } from "./sidebar-row-hover";
+import { sidebarRowHoverReserveClassName, sidebarRowSpinnerReserveClassName } from "./sidebar-row-hover";
 
 interface SidebarSessionsProps {
 	readonly projects: readonly DesktopProject[];
@@ -129,12 +129,12 @@ export function SidebarSessions({
 	const renderSession = (session: CodingSession, nested = false) => {
 		const selected = session.id === activeSessionId;
 		const editing = session.id === editingSessionId;
-		const rowClassName = cn(
-			sidebarItemClassName,
-			sidebarRowHoverReserveClassName,
-			"group-hover/row:text-sidebar-foreground",
-			{ "pl-8": nested },
-		);
+		const running = runningSessionIdSet.has(session.id);
+		const rowClassName = cn(sidebarItemClassName, "group-hover/row:text-sidebar-foreground", {
+			[sidebarRowHoverReserveClassName]: !running,
+			[sidebarRowSpinnerReserveClassName]: running,
+			"pl-8": nested,
+		});
 		if (editing) {
 			return (
 				<Input
@@ -166,7 +166,7 @@ export function SidebarSessions({
 			<SessionActions
 				key={session.id}
 				session={session}
-				running={runningSessionIdSet.has(session.id)}
+				running={running}
 				hoverActions
 				onStartRename={() => startEditing(session)}
 				onPin={onPinSession}
@@ -246,7 +246,6 @@ export function SidebarSessions({
 					{sortedProjects.map((project) => {
 						const expanded = expandedProjectIds.has(project.id);
 						const projectSessions = sessionsByProject.get(project.id) ?? [];
-						const hasRunningSession = projectSessions.some((session) => runningSessionIdSet.has(session.id));
 						const hasHiddenActiveSession =
 							!expanded && projectSessions.some((session) => session.id === activeSessionId);
 						const projectIcon = project.available
@@ -282,14 +281,6 @@ export function SidebarSessions({
 									>
 										<span className="flex min-w-0 items-center gap-1.5">
 											<span className="truncate">{project.displayName}</span>
-											{hasRunningSession ? (
-												<>
-													<span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
-													<span className="sr-only">
-														{intl.formatMessage(desktopMessages.chatAgentWorking)}
-													</span>
-												</>
-											) : null}
 											<span className="sr-only">{projectLabel}</span>
 										</span>
 									</Button>
