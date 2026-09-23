@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { useIcon } from "@/lib/icon-context";
@@ -21,6 +21,7 @@ import type {
 	DesktopWebSearchCredentialId,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
+import { DESKTOP_TOP_BAR_HEIGHT_CLASS } from "../desktop-chrome";
 import { ArchivedChatsSettings } from "./archived-chats-settings";
 import { ConnectorSettings } from "./connector-settings";
 import { GeneralSettings } from "./general-settings";
@@ -37,6 +38,9 @@ import {
 import { ProvidersSettings } from "./providers-settings";
 import { type SettingsCategory, settingsCategories } from "./settings-navigation";
 import { WebSearchSettings } from "./web-search-settings";
+
+const windowDragClassName = cn("absolute inset-x-0 top-0 z-10", DESKTOP_TOP_BAR_HEIGHT_CLASS);
+const windowDragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
 
 interface SettingsPageProps {
 	readonly snapshot?: DesktopProviderConfigSnapshot;
@@ -325,12 +329,13 @@ function ProviderConfigForm({
 
 	return (
 		<form
-			className="flex h-full min-h-0 flex-1 bg-background"
+			className="relative flex h-full min-h-0 flex-1 bg-background"
 			onSubmit={(event) => {
 				event.preventDefault();
 				if (providerCategory) void submit();
 			}}
 		>
+			<div aria-hidden="true" className={windowDragClassName} style={windowDragStyle} />
 			<div className="flex min-w-0 flex-1 flex-col overflow-hidden">
 				<h1 className="mx-auto w-full max-w-3xl shrink-0 px-8 pt-7 text-[22px] font-medium tracking-tight">
 					{intl.formatMessage(settingsCategories[category].label)}

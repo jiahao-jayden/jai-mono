@@ -5,9 +5,10 @@ import { useIcons } from "@/lib/icon-context";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import {
+	matchesSettingsCategory,
+	type SettingsCategory,
 	settingsCategories,
 	settingsCategoryGroups,
-	type SettingsCategory,
 } from "../settings/settings-navigation";
 
 const settingsItemClassName =
@@ -32,7 +33,7 @@ export function SidebarSettings({ category, onCategoryChange, onBack }: SidebarS
 				.map((group) => ({
 					...group,
 					categories: group.categories.filter((id) =>
-						intl.formatMessage(settingsCategories[id].label).toLowerCase().includes(normalizedQuery),
+						matchesSettingsCategory(id, intl.formatMessage(settingsCategories[id].label), normalizedQuery),
 					),
 				}))
 				.filter((group) => group.categories.length > 0),
@@ -62,7 +63,7 @@ export function SidebarSettings({ category, onCategoryChange, onBack }: SidebarS
 					placeholder={intl.formatMessage(desktopMessages.settingsSearch)}
 					aria-label={intl.formatMessage(desktopMessages.settingsSearch)}
 					density="compact"
-					className="h-7 rounded-lg border-0 bg-surface-secondary pl-8 text-[12px] shadow-none"
+					className="h-7 rounded-lg border-0 bg-sidebar-hover pl-8 text-[12px] shadow-[0_0_0_.5px_var(--border-surface)] focus-visible:bg-sidebar-active"
 				/>
 			</div>
 			<nav aria-label={intl.formatMessage(desktopMessages.settingsTitle)} className="flex flex-col">
