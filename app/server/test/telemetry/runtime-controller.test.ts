@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createTelemetryContext, type TelemetryContentSink, type TelemetrySink } from "@jai/telemetry";
 import { Result } from "better-result";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "../../src/persistence/sqlite/driver";
@@ -254,6 +254,42 @@ describe("Runtime telemetry controller", () => {
 			database.close();
 		}
 	});
+
+	test("writes local telemetry jsonl while Langfuse stays off and settings stay unlocked", async () => {
+		const dataDirectory = await temporaryDataDirectory();
+		const database = new DatabaseSync(":memory:");
+		try {
+			const controller = await openController({ dataDirectory, recorded: [], closed: [], database });
+			const snapshot = await controller.snapshot();
+			if (snapshot.isErr()) throw snapshot.error;
+			expect(snapshot.value.environmentOverride).toBe(false);
+			expect(snapshot.value.enabled).toBe(false);
+
+			const run = controller.context.startSpan({
+				name: "jai.run",
+				attributes: { operationId: "local-span", runId: "local-span" },
+			});
+			run.recordContent({ input: "prompt-secret-do-not-log" });
+			run.setStatus({ kind: "ok" });
+			const file = join(dataDirectory, "logs", "runtime-host", "telemetry.jsonl");
+			let text = "";
+			await waitFor(async () => {
+				try {
+					text = await readFile(file, "utf8");
+				} catch {
+					text = "";
+				}
+				return text.includes("local-span");
+			});
+			expect(text).not.toContain("prompt-secret-do-not-log");
+
+			const saved = await controller.save(settingsInput());
+			expect(saved.isOk()).toBe(true);
+			await controller.close();
+		} finally {
+			database.close();
+		}
+	});
 });
 
 async function openController(input: {
@@ -325,9 +361,9 @@ async function temporaryDataDirectory(): Promise<string> {
 	return root;
 }
 
-async function waitFor(predicate: () => boolean): Promise<void> {
+async function waitFor(predicate: () => boolean | Promise<boolean>): Promise<void> {
 	const deadline = Date.now() + 5_000;
-	while (!predicate()) {
+	while (!(await predicate())) {
 		if (Date.now() >= deadline) throw new Error("Timed out waiting for telemetry state");
 		await new Promise<void>((resolve) => setTimeout(resolve, 5));
 	}

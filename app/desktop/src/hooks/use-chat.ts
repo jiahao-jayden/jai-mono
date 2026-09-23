@@ -52,6 +52,7 @@ export interface Chat {
 	readonly status: ChatStatus;
 	readonly isLoading: boolean;
 	readonly error: string | undefined;
+	readonly errorKey: number;
 	readonly connectionStatus: DesktopAgentConnectionStatus | undefined;
 	readonly stopReason: DesktopAgentStopReason | undefined;
 	sendMessage(message: ChatMessageInput): Promise<boolean>;
@@ -60,11 +61,13 @@ export interface Chat {
 	navigate(entryId: string): Promise<boolean>;
 	retryConnection(): Promise<void>;
 	resolvePermission(resolution: DesktopPermissionResolution): Promise<void>;
+	dismissError(): void;
 }
 
 export interface ChatRuntimeState {
 	readonly agentStatus: DesktopAgentStatus;
 	readonly error: string | undefined;
+	readonly errorKey: number;
 	readonly connectionStatus: DesktopAgentConnectionStatus | undefined;
 	readonly stopReason: DesktopAgentStopReason | undefined;
 	readonly isLoading: boolean;
@@ -95,6 +98,7 @@ interface QueuedMessageSteerOperation {
 const EMPTY_STATE: ChatRuntimeState = {
 	agentStatus: "idle",
 	error: undefined,
+	errorKey: 0,
 	connectionStatus: undefined,
 	stopReason: undefined,
 	isLoading: false,
@@ -142,6 +146,7 @@ export function useChat(options: UseChatOptions): Chat {
 	const latestOptions = useRef(options);
 	const stateRef = useRef(state);
 	const dispatchingQueueIdRef = useRef<string | undefined>(undefined);
+	const blockedQueueIdRef = useRef<string | undefined>(undefined);
 	const previousAgentStatusRef = useRef<DesktopAgentStatus>("idle");
 	const pendingTranscriptRef = useRef(new Map<string, PendingTranscriptUpsert>());
 	const transcriptFlushFrameRef = useRef<number | undefined>(undefined);
@@ -177,6 +182,7 @@ export function useChat(options: UseChatOptions): Chat {
 	useEffect(() => {
 		const sessionId = options.id;
 		dispatchingQueueIdRef.current = undefined;
+		blockedQueueIdRef.current = undefined;
 		previousAgentStatusRef.current = "idle";
 		pendingTranscriptRef.current.clear();
 		if (transcriptFlushFrameRef.current !== undefined) {
@@ -196,6 +202,7 @@ export function useChat(options: UseChatOptions): Chat {
 				: {
 						agentStatus: "idle",
 						error: undefined,
+						errorKey: 0,
 						connectionStatus: undefined,
 						stopReason: undefined,
 						isLoading: true,
@@ -228,8 +235,9 @@ export function useChat(options: UseChatOptions): Chat {
 					? previous
 					: {
 							...previous,
-							error: chatFailureMessage({ operation: "load", code: failure?.tag }),
-							isLoading: false,
+							...withChatError(previous, chatFailureMessage({ operation: "load", code: failure?.tag }), {
+								isLoading: false,
+							}),
 						},
 			);
 		});
@@ -248,9 +256,10 @@ export function useChat(options: UseChatOptions): Chat {
 		const latest = latestOptions.current;
 		const head = latest.queue[0];
 		if (!head || !current.sessionId || current.agentStatus !== "idle" || current.error) return;
-		if (dispatchingQueueIdRef.current) return;
+		if (head.id === blockedQueueIdRef.current || dispatchingQueueIdRef.current) return;
 		if (!latest.modelRef) {
-			setState((previous) => ({ ...previous, error: "请先选择可用模型。", submitting: false }));
+			blockedQueueIdRef.current = head.id;
+			setState((previous) => withChatError(previous, "请先选择可用模型。", { submitting: false }));
 			return;
 		}
 
@@ -266,14 +275,16 @@ export function useChat(options: UseChatOptions): Chat {
 			latest.onQueuedMessageAccepted(head.id);
 		} catch (error) {
 			const failure = getDesktopRemoteRpcFailure(error);
-			setState((previous) => ({
-				...previous,
-				error:
+			blockedQueueIdRef.current = head.id;
+			setState((previous) =>
+				withChatError(
+					previous,
 					failure?.tag === "desktop_agent.workspace_required"
 						? projectRequiredMessage
 						: chatFailureMessage({ operation: "queue", code: failure?.tag, reason: failure?.reason }),
-				submitting: false,
-			}));
+					{ submitting: false },
+				),
+			);
 		} finally {
 			dispatchingQueueIdRef.current = undefined;
 		}
@@ -287,6 +298,13 @@ export function useChat(options: UseChatOptions): Chat {
 		}
 	}, [dispatchQueueHead, state.agentStatus]);
 
+	useEffect(() => {
+		const headId = options.queue[0]?.id;
+		if (!blockedQueueIdRef.current || headId === blockedQueueIdRef.current) return;
+		blockedQueueIdRef.current = undefined;
+		void dispatchQueueHead();
+	}, [dispatchQueueHead, options.queue]);
+
 	const sendMessage = useCallback(
 		async ({ text: rawText, mode, attachments = [], delivery = "queue" }: ChatMessageInput): Promise<boolean> => {
 			const text = rawText.trim();
@@ -298,21 +316,15 @@ export function useChat(options: UseChatOptions): Chat {
 
 			if (current.agentStatus === "running") {
 				if (attachments.length > 0) {
-					setState((previous) => ({
-						...previous,
-						error: "请等待当前响应结束后再发送附件。",
-					}));
+					setState((previous) => withChatError(previous, "请等待当前响应结束后再发送附件。"));
 					return false;
 				}
 				if (!current.sessionId) {
-					setState((previous) => ({
-						...previous,
-						error: "当前会话尚未准备好，请稍后重试。",
-					}));
+					setState((previous) => withChatError(previous, "当前会话尚未准备好，请稍后重试。"));
 					return false;
 				}
 				if (!latest.modelRef) {
-					setState((previous) => ({ ...previous, error: "请先选择可用模型。" }));
+					setState((previous) => withChatError(previous, "请先选择可用模型。"));
 					return false;
 				}
 				if (delivery === "queue") {
@@ -331,22 +343,23 @@ export function useChat(options: UseChatOptions): Chat {
 					return true;
 				} catch (error) {
 					const failure = getDesktopRemoteRpcFailure(error);
-					setState((previous) => ({
-						...previous,
-						error:
+					setState((previous) =>
+						withChatError(
+							previous,
 							failure?.tag === "desktop_agent.workspace_required"
 								? projectRequiredMessage
 								: chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
-					}));
+						),
+					);
 					return false;
 				}
 			}
 			if (latest.queue.length > 0) {
-				setState((previous) => ({ ...previous, error: "请先处理队列中的消息。" }));
+				setState((previous) => withChatError(previous, "请先处理队列中的消息。"));
 				return false;
 			}
 			if (!latest.modelRef) {
-				setState((previous) => ({ ...previous, error: "请先选择可用模型。" }));
+				setState((previous) => withChatError(previous, "请先选择可用模型。"));
 				return false;
 			}
 
@@ -382,14 +395,15 @@ export function useChat(options: UseChatOptions): Chat {
 				return true;
 			} catch (error) {
 				const failure = getDesktopRemoteRpcFailure(error);
-				setState((previous) => ({
-					...previous,
-					error:
+				setState((previous) =>
+					withChatError(
+						previous,
 						failure?.tag === "desktop_agent.workspace_required"
 							? projectRequiredMessage
 							: chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
-					submitting: false,
-				}));
+						{ submitting: false },
+					),
+				);
 				return false;
 			}
 		},
@@ -409,13 +423,14 @@ export function useChat(options: UseChatOptions): Chat {
 				onAccepted: latest.onQueuedMessageAccepted,
 				onRejected: (error) => {
 					const failure = getDesktopRemoteRpcFailure(error);
-					setState((previous) => ({
-						...previous,
-						error:
+					setState((previous) =>
+						withChatError(
+							previous,
 							failure?.tag === "desktop_agent.workspace_required"
 								? projectRequiredMessage
 								: chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
-					}));
+						),
+					);
 				},
 			});
 		},
@@ -429,7 +444,7 @@ export function useChat(options: UseChatOptions): Chat {
 		try {
 			await desktop.agent.abort(current.sessionId);
 		} catch {
-			setState((previous) => ({ ...previous, error: "未能停止当前响应。", stopping: false }));
+			setState((previous) => withChatError(previous, "未能停止当前响应。", { stopping: false }));
 		}
 	}, []);
 
@@ -457,9 +472,18 @@ export function useChat(options: UseChatOptions): Chat {
 		try {
 			await desktop.agent.resolvePermission(resolution);
 		} catch {
-			setState((previous) => ({ ...previous, error: "权限响应未提交。" }));
+			setState((previous) => withChatError(previous, "权限响应未提交。"));
 		}
 	}, []);
+
+	const dismissError = useCallback(() => {
+		const current = stateRef.current;
+		if (!current.error) return;
+		const next = { ...current, error: undefined };
+		stateRef.current = next;
+		setState(next);
+		void dispatchQueueHead();
+	}, [dispatchQueueHead]);
 
 	const retryConnection = useCallback(async (): Promise<void> => {
 		try {
@@ -478,6 +502,7 @@ export function useChat(options: UseChatOptions): Chat {
 		status: getChatStatus(state),
 		isLoading: state.isLoading,
 		error: state.error,
+		errorKey: state.errorKey,
 		connectionStatus: state.connectionStatus,
 		stopReason: state.stopReason,
 		sendMessage,
@@ -486,6 +511,7 @@ export function useChat(options: UseChatOptions): Chat {
 		navigate,
 		retryConnection,
 		resolvePermission,
+		dismissError,
 	};
 }
 
@@ -573,15 +599,13 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 		case "usage_changed":
 			return { ...state, isLoading: false, lastSeq: seq, usage: event.usage };
 		case "runtime_error":
-			return {
-				...state,
+			return withChatError(state, chatFailureMessage({ operation: "runtime", code: event.error.code }), {
 				agentStatus: "idle",
-				error: chatFailureMessage({ operation: "runtime", code: event.error.code }),
 				isLoading: false,
 				lastSeq: seq,
 				submitting: false,
 				stopping: false,
-			};
+			});
 	}
 }
 
@@ -641,9 +665,6 @@ export function chatFailureMessage(input: {
 		case "desktop_agent.creation_failed":
 			return agentCreationFailureMessage(input.reason);
 		default:
-			if (input.operation === "runtime" && input.code && input.code !== "Runtime Host operation failed") {
-				return input.code;
-			}
 			return defaultChatFailureMessage(input.operation);
 	}
 }
@@ -673,10 +694,19 @@ function defaultChatFailureMessage(operation: "message" | "queue" | "runtime" | 
 	}
 }
 
+function withChatError(
+	state: ChatRuntimeState,
+	error: string,
+	patch: Partial<ChatRuntimeState> = {},
+): ChatRuntimeState {
+	return { ...state, ...patch, error, errorKey: state.errorKey + 1 };
+}
+
 function snapshotState(snapshot: DesktopAgentSnapshot): ChatRuntimeState {
 	return {
 		agentStatus: snapshot.status,
 		error: undefined,
+		errorKey: 0,
 		connectionStatus: snapshot.connectionStatus,
 		stopReason: snapshot.stopReason,
 		isLoading: false,

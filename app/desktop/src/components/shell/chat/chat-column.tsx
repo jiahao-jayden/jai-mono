@@ -141,8 +141,7 @@ export function ChatColumn({
 	const logoLabel = isNewChat
 		? intl.formatMessage(greetingMessage(), { name: "Jiahao" })
 		: intl.formatMessage(desktopMessages.transcriptLoading);
-	const isAgentWorking =
-		chat.status === "submitted" || chat.status === "streaming" || chat.status === "stopping";
+	const isAgentWorking = chat.status === "submitted" || chat.status === "streaming" || chat.status === "stopping";
 	const navigationDisabled = isAgentWorking || !selectedModelRef;
 	const ensureTranscriptItemVisible = useCallback((itemId: string, behavior: ScrollBehavior = "auto") => {
 		return transcriptListRef.current?.scrollToItem(itemId, behavior) ?? false;
@@ -244,6 +243,28 @@ export function ChatColumn({
 		},
 		[],
 	);
+
+	const toastedErrorKey = useRef<number | undefined>(undefined);
+	const toastedProjectError = useRef<string | undefined>(undefined);
+	useEffect(() => {
+		if (!chat.error) {
+			toastedErrorKey.current = undefined;
+			return;
+		}
+		if (toastedErrorKey.current === chat.errorKey) return;
+		toastedErrorKey.current = chat.errorKey;
+		toast.add({ title: chat.error, type: "error" });
+		chat.dismissError();
+	}, [chat.dismissError, chat.error, chat.errorKey]);
+	useEffect(() => {
+		if (!projectError) {
+			toastedProjectError.current = undefined;
+			return;
+		}
+		if (toastedProjectError.current === projectError) return;
+		toastedProjectError.current = projectError;
+		toast.add({ title: projectError, type: "error" });
+	}, [projectError]);
 
 	const projectLabel =
 		project?.displayName ??
@@ -480,7 +501,6 @@ export function ChatColumn({
 						showProjectPicker={isNewChat}
 						large={isNewChat}
 					/>
-					<ComposerError message={chat.error || projectError} />
 				</div>
 			</div>
 		</section>
@@ -541,20 +561,6 @@ function RecoveryBanners({
 			) : null}
 		</>
 	);
-}
-
-function ComposerError({ message }: { message?: string }) {
-	return message ? (
-		<div
-			className="mb-6 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-[14px] leading-5 no-squircle animate-[sd-slideUp_.25s_ease-out_both]"
-			role="alert"
-			aria-live="assertive"
-		>
-			<div className="flex items-start gap-2">
-				<p className="m-0 flex-1 min-w-0 font-medium text-destructive">{message}</p>
-			</div>
-		</div>
-	) : null;
 }
 
 interface TranscriptScrollOptions {

@@ -20,6 +20,6 @@ if (opened.isErr()) {
 	});
 	process.once("SIGINT", stop);
 	process.once("SIGTERM", stop);
-	process.stderr.write(`jai-runtime-host: listening on ${server.endpoint}\n`);
+	server.log.scope("runtime").info("listening", { endpoint: server.endpoint });
 	await stopped;
 }

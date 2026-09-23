@@ -1,6 +1,8 @@
+import { mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
-import { app, BrowserWindow } from "electron";
+import { resolveJaiDataDirectory } from "@jai/server/acp-client";
+import { app, BrowserWindow, Menu, type MenuItemConstructorOptions, shell } from "electron";
 import { mainLog } from "./logger";
 import { createDesktopRouter } from "./rpc/router";
 import { registerDesktopRpc } from "./rpc/server";
@@ -47,6 +49,7 @@ if (!app.requestSingleInstanceLock()) {
 	void app
 		.whenReady()
 		.then(async () => {
+			installApplicationMenu();
 			const runtimeHostSupervisor = new DesktopRuntimeHostSupervisor();
 			try {
 				const sessionCatalog = await RemoteDesktopSessionCatalog.open({ runtimeHostSupervisor });
@@ -137,6 +140,33 @@ function isConnectorOAuthCallback(value: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+function installApplicationMenu(): void {
+	const chinese = app.getLocale().toLowerCase().startsWith("zh");
+	const help: MenuItemConstructorOptions = {
+		label: chinese ? "帮助" : "Help",
+		submenu: [
+			{
+				label: chinese ? "打开日志目录" : "Open Logs",
+				click: () => {
+					const logsDirectory = join(resolveJaiDataDirectory(), "logs");
+					void mkdir(logsDirectory, { recursive: true }).finally(() => {
+						void shell.openPath(logsDirectory);
+					});
+				},
+			},
+		],
+	};
+	const template: MenuItemConstructorOptions[] = [
+		{ role: "fileMenu" },
+		{ role: "editMenu" },
+		{ role: "viewMenu" },
+		{ role: "windowMenu" },
+		help,
+	];
+	if (process.platform === "darwin") template.unshift({ role: "appMenu" });
+	Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function focusMainWindow(): void {

@@ -1,5 +1,7 @@
+import { join } from "node:path";
 import { defaultUserTelemetryPolicy, type UserTelemetryPolicy } from "@jai/coding-agent";
 import {
+	createTelemetryContext,
 	NoopTelemetryContext,
 	type TelemetryContext,
 	type TelemetrySpan,
@@ -8,7 +10,7 @@ import {
 	type TelemetrySpanStatus,
 	type TelemetryStartSpanOptions,
 } from "@jai/telemetry";
-import type { TelemetryTextOutput } from "@jai/telemetry/node";
+import { JsonlFileTelemetrySink, type TelemetryTextOutput } from "@jai/telemetry/node";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { DatabaseSync } from "../persistence/sqlite/driver";
 import {
@@ -18,6 +20,7 @@ import {
 } from "./credentials";
 import { hasRuntimeTelemetryEnvironmentOverride } from "./environment";
 import { type ResolvedRuntimeTelemetry, resolveRuntimeTelemetry } from "./local";
+import { MirroredTelemetryContext } from "./mirrored-context";
 import type { UserTelemetryPolicySnapshot } from "./user-policy";
 import { UserTelemetryPolicyStore } from "./user-policy";
 
@@ -84,19 +87,29 @@ export class RuntimeTelemetryController {
 	readonly #policy: UserTelemetryPolicyStore;
 	readonly #resolve: typeof resolveRuntimeTelemetry;
 	readonly #context: SwitchingTelemetryContext;
+	readonly #localContext: TelemetryContext;
 	#closed = false;
 	#configurationError?: string;
 
 	private constructor(
 		policy: UserTelemetryPolicyStore,
 		credentials: SqliteLangfuseTelemetryCredentials,
-		options: Omit<OpenRuntimeTelemetryControllerOptions, "database" | "dataDirectory">,
+		options: Omit<OpenRuntimeTelemetryControllerOptions, "database">,
 	) {
 		this.#policy = policy;
 		this.#credentials = credentials;
 		this.#environment = options.environment;
 		this.#errorOutput = options.errorOutput;
 		this.#resolve = options.resolve ?? resolveRuntimeTelemetry;
+		this.#localContext = createTelemetryContext({
+			sinks: [
+				new JsonlFileTelemetrySink({
+					path: join(options.dataDirectory, "logs", "runtime-host", "telemetry.jsonl"),
+					maxBytes: 10 * 1024 * 1024,
+					maxFiles: 10,
+				}),
+			],
+		});
 		this.#context = new SwitchingTelemetryContext();
 		this.context = this.#context;
 	}
@@ -185,7 +198,7 @@ export class RuntimeTelemetryController {
 			}
 			persistedCredential = saved.value;
 		}
-		this.#context.replace(resolved.value);
+		this.#activate(resolved.value);
 		this.#configurationError = undefined;
 		return Result.ok(this.#project(persistedPolicy, persistedCredential));
 	}
@@ -229,33 +242,45 @@ export class RuntimeTelemetryController {
 			const resolved = this.#resolve({ environment: this.#environment, errorOutput: this.#errorOutput });
 			if (resolved.isErr()) {
 				this.#configurationError = resolved.error.message;
+				this.#activate({ context: new NoopTelemetryContext() });
 				return Result.ok(undefined);
 			}
-			this.#context.replace(resolved.value);
+			this.#activate(resolved.value);
 			return Result.ok(undefined);
 		}
 		const policy = await this.#policy.snapshot();
 		if (policy.isErr()) {
 			this.#configurationError = policy.error.message;
+			this.#activate({ context: new NoopTelemetryContext() });
 			return Result.ok(undefined);
 		}
 		if (policy.value.configurationError) {
 			this.#configurationError = policy.value.configurationError;
+			this.#activate({ context: new NoopTelemetryContext() });
 			return Result.ok(undefined);
 		}
 		const credential = this.#credentials.readForExporter();
 		if (credential.isErr()) {
 			this.#configurationError = credential.error.message;
+			this.#activate({ context: new NoopTelemetryContext() });
 			return Result.ok(undefined);
 		}
 		const resolved = this.#resolvePolicy(policy.value.policy, credential.value);
 		if (resolved.isErr()) {
 			// A telemetry-only failure never prevents the Host from accepting Agent work.
 			this.#configurationError = resolved.error.message;
+			this.#activate({ context: new NoopTelemetryContext() });
 			return Result.ok(undefined);
 		}
-		this.#context.replace(resolved.value);
+		this.#activate(resolved.value);
 		return Result.ok(undefined);
+	}
+
+	#activate(resource: ResolvedRuntimeTelemetry): void {
+		this.#context.replace({
+			close: resource.close,
+			context: new MirroredTelemetryContext(resource.context, this.#localContext),
+		});
 	}
 
 	#candidateCredentials(

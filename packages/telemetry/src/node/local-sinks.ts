@@ -7,11 +7,13 @@ export interface TelemetryTextOutput {
 }
 
 /** 当前日志文件之外，最多保留多少个较旧的轮转副本。 */
-export interface JsonlFileTelemetrySinkOptions {
+export interface RotatingTextFileOptions {
 	readonly maxBytes: number;
 	readonly maxFiles: number;
 	readonly path: string;
 }
+
+export type JsonlFileTelemetrySinkOptions = RotatingTextFileOptions;
 
 /** 仅写 stderr；宿主负责传入与协议 stdout 完全分离的输出流。 */
 export function createJsonlStderrTelemetrySink(output: TelemetryTextOutput): TelemetrySink {
@@ -31,22 +33,23 @@ export class JsonlFileTelemetrySink implements TelemetrySink {
 	}
 
 	record(record: TelemetrySpanRecord): Promise<void> {
-		const write = this.#writeTail.then(() => this.#append(record));
+		const write = this.#writeTail.then(() => appendRotatingTextFile(this.options, serializeRecord(record)));
 		this.#writeTail = write.catch(() => undefined);
 		return write;
 	}
+}
 
-	async #append(record: TelemetrySpanRecord): Promise<void> {
-		const line = serializeRecord(record);
-		const bytes = Buffer.byteLength(line);
-		if (bytes > this.options.maxBytes) return;
-		await mkdir(dirname(this.options.path), { recursive: true });
-		const existingBytes = await existingFileSize(this.options.path);
-		if (existingBytes > 0 && existingBytes + bytes > this.options.maxBytes) {
-			await rotateFile(this.options);
-		}
-		await appendFile(this.options.path, line, "utf8");
+/** 追加一行文本，并按大小轮转。调用方负责把对同一路径的写入串行化。 */
+export async function appendRotatingTextFile(options: RotatingTextFileOptions, text: string): Promise<void> {
+	assertFileOptions(options);
+	const bytes = Buffer.byteLength(text);
+	if (bytes > options.maxBytes) return;
+	await mkdir(dirname(options.path), { recursive: true });
+	const existingBytes = await existingFileSize(options.path);
+	if (existingBytes > 0 && existingBytes + bytes > options.maxBytes) {
+		await rotateFile(options);
 	}
+	await appendFile(options.path, text, "utf8");
 }
 
 function serializeRecord(record: TelemetrySpanRecord): string {

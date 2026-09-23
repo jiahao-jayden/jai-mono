@@ -49,18 +49,24 @@ export function createDesktopRuntimeHostLauncher(): DesktopRuntimeHostLauncher |
 			managedRuntimeHostProcess(
 				spawn(process.env.JAI_RUNTIME_NODE_EXECUTABLE ?? "node", [entrypoint], {
 					stdio: ["ignore", "ignore", "pipe"],
-					env: environment,
+					env: runtimeHostProcessEnv(environment),
 				}),
 			);
 	}
 	return ({ entrypoint, environment }) =>
 		managedRuntimeHostProcess(
 			electron.utilityProcess.fork(entrypoint, [], {
-				env: environment,
+				env: runtimeHostProcessEnv(environment),
 				stdio: "pipe",
 				serviceName: "JAI Runtime Host",
 			}),
 		);
+}
+
+function runtimeHostProcessEnv(environment: Readonly<Record<string, string | undefined>>): NodeJS.ProcessEnv {
+	const env: NodeJS.ProcessEnv = { ...environment };
+	if (env.NO_COLOR === undefined && env.FORCE_COLOR === undefined) env.FORCE_COLOR = "1";
+	return env;
 }
 
 interface RuntimeHostChildLike {

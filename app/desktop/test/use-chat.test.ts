@@ -83,9 +83,35 @@ describe("useChat projection", () => {
 		expect(message).not.toContain("Could not load");
 	});
 
-	test("runtime 失败展示服务端返回的具体错误消息", () => {
-		const message = chatFailureMessage({ operation: "runtime", code: "Coding Agent failed while executing Operation \"op-1\": model rate limit" });
-		expect(message).toBe("Coding Agent failed while executing Operation \"op-1\": model rate limit");
+	test("runtime 失败不把服务端原文带进用户提示", () => {
+		const message = chatFailureMessage({
+			operation: "runtime",
+			code: 'Coding Agent failed while executing Operation "op-1": model rate limit api_key=secret',
+		});
+		expect(message).toBe("当前响应未完成。请重试。");
+		expect(message).not.toContain("api_key");
+		expect(message).not.toContain("rate limit");
+	});
+
+	test("连续两次相同的 runtime 错误都会产生新的 errorKey", () => {
+		const event = {
+			type: "event" as const,
+			envelope: {
+				sessionId: "session-1",
+				seq: 1,
+				event: {
+					type: "runtime_error" as const,
+					error: { code: "provider blew up api_key=secret" },
+				},
+			},
+		};
+		const first = applyChatProjectionUpdate(emptyChatState(), { ...event, envelope: { ...event.envelope, seq: 1 } });
+		const second = applyChatProjectionUpdate(first, { ...event, envelope: { ...event.envelope, seq: 2 } });
+		expect(first.error).toBe("当前响应未完成。请重试。");
+		expect(first.error).not.toContain("api_key");
+		expect(first.errorKey).toBe(1);
+		expect(second.error).toBe(first.error);
+		expect(second.errorKey).toBe(2);
 	});
 
 	test("runtime 失败在缺少具体消息时回退到泛化提示", () => {
@@ -445,6 +471,7 @@ function emptyChatState(): ChatRuntimeState {
 	return {
 		agentStatus: "idle",
 		error: undefined,
+		errorKey: 0,
 		connectionStatus: undefined,
 		stopReason: undefined,
 		isLoading: true,

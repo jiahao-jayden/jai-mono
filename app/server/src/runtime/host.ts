@@ -16,8 +16,10 @@ import {
 import type { AssistantMessage } from "@jai/ai";
 import { createPermissionApprovalQueue, type PermissionApprovalQueue, type SessionAllowRules } from "@jai/coding-agent";
 import { Result, TaggedError } from "better-result";
+import type { HostLog } from "../logging";
 import {
 	OperationEffectBoundary,
+	projectRuntimeSessionUsage,
 	type RuntimeApprovalDecision,
 	type RuntimeApprovalHandler,
 	type RuntimeApprovalRequest,
@@ -28,9 +30,10 @@ import {
 	type RuntimeOperationOutcome,
 	type RuntimeQueuedInput,
 	type RuntimeSessionUsage,
-	projectRuntimeSessionUsage,
 } from "../operations";
+
 export type { RuntimeSessionUsage } from "../operations";
+
 import type {
 	ProductSessionAdmissionConflict,
 	ProductSessionDurableState,
@@ -42,8 +45,6 @@ import type {
 	RuntimeSessionConfigurationPolicy,
 	RuntimeSessionConfigurationSnapshot,
 } from "../sessions";
-import { branchOperationRecords } from "./branch-operations";
-import { branchSessionUsage, projectProfileTokenStats, type RuntimeProfileTokenStats } from "./profile-token-stats";
 import {
 	createUnconfiguredRuntimeSessionConfigurationPolicy,
 	isRuntimeSessionMode,
@@ -51,6 +52,8 @@ import {
 	type RuntimeSessionConfigurationInvalid,
 	RuntimeSessionStore,
 } from "../sessions";
+import { branchOperationRecords } from "./branch-operations";
+import { branchSessionUsage, projectProfileTokenStats, type RuntimeProfileTokenStats } from "./profile-token-stats";
 
 export type RuntimeSessionSelection<TAppState extends JsonObject = JsonObject> =
 	| {
@@ -246,6 +249,8 @@ export interface RuntimeHostOptions {
 	readonly configurationPolicy?: RuntimeSessionConfigurationPolicy;
 	readonly createId?: () => string;
 	readonly now?: () => Date;
+	/** Process diagnostic log. Absent in tests that do not care about host.log. */
+	readonly log?: HostLog;
 }
 
 export class RuntimeHost {
@@ -549,6 +554,7 @@ export class RuntimeHost {
 				if (this.#liveSessions.get(state.id) === session) this.#liveSessions.delete(state.id);
 			},
 			this.#initialAppState,
+			this.options.log,
 		);
 		if (!discardWhenClosed) this.#liveSessions.set(state.id, session);
 		return session;
@@ -609,6 +615,7 @@ export class RuntimeSession {
 		private readonly discardWhenClosed: boolean,
 		private readonly releaseLiveSession: () => void,
 		initialAppState: () => JsonObject,
+		private readonly log?: HostLog,
 	) {
 		this.id = state.id;
 		this.info = state;
@@ -1329,12 +1336,21 @@ export class RuntimeSession {
 			}
 			if (this.#active === active) this.#active = undefined;
 			this.releaseLiveSessionIfDetached();
+			const stopReason = stopReasonFor(terminalOutcome);
+			const errorMessage = outcome.isErr() ? outcome.error.message : undefined;
+			if (stopReason === "error") {
+				this.log?.error("agent stopped", {
+					sessionId: this.id,
+					operationId: active.operationId,
+					errorMessage,
+				});
+			}
 			this.publish({
 				type: "state_changed",
 				state: "idle",
 				operationId: active.operationId,
-				stopReason: stopReasonFor(terminalOutcome),
-				errorMessage: outcome.isErr() ? outcome.error.message : undefined,
+				stopReason,
+				errorMessage,
 			});
 			return inferredTerminalOutcome ? Result.ok(inferredTerminalOutcome) : outcome;
 		});

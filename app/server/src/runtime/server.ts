@@ -4,6 +4,7 @@ import type { TelemetryContext } from "@jai/telemetry";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import { createRuntimeSessionConfigurationPolicy, SqliteRuntimeAgentSettings } from "../config";
 import { RuntimeConnectorOAuth, SqliteRuntimeConnectorOAuthIntentStore } from "../connectors";
+import { type HostLog, openHostLog } from "../logging";
 import { SqliteRuntimeModelCatalog } from "../model-catalog";
 import type { RuntimeOperationDriver } from "../operations";
 import { ProductSqliteDatabase, SqliteDesktopCatalogAccess, SqliteProductSessionPersistence } from "../persistence";
@@ -62,6 +63,11 @@ export async function openJaiRuntimeServer(
 	let modelCatalog: SqliteRuntimeModelCatalog | undefined;
 	let telemetry: RuntimeTelemetryController | undefined;
 	let mcpSettings: RuntimeMcpSettingsController | undefined;
+	const log = openHostLog({
+		dataDirectory: options.dataDirectory,
+		environment: options.telemetryEnvironment,
+		stderr: options.telemetryErrorOutput ?? process.stderr,
+	});
 	try {
 		database = await ProductSqliteDatabase.open(join(options.dataDirectory, "data.sqlite"));
 		const persistence = new SqliteProductSessionPersistence(database.connection);
@@ -97,6 +103,8 @@ export async function openJaiRuntimeServer(
 			database = undefined;
 			await telemetry?.close();
 			telemetry = undefined;
+			log.scope("runtime").error("failed to open runtime host", { message: assembled.error.message });
+			await log.close();
 			return Result.err(assembled.error);
 		}
 		connectorOAuth = new RuntimeConnectorOAuth(agentSettings, {
@@ -110,6 +118,7 @@ export async function openJaiRuntimeServer(
 			operationDriver: assembled.value,
 			initialAppState: () => emptyPersistedCodingSessionState(),
 			configurationPolicy: createRuntimeSessionConfigurationPolicy(agentSettings),
+			log: log.scope("session"),
 		});
 		const opened = await openLocalRuntimeHost({
 			dataDirectory: options.dataDirectory,
@@ -126,8 +135,13 @@ export async function openJaiRuntimeServer(
 		});
 		if (opened.isErr()) throw opened.error;
 		localHost = opened.value;
-		return Result.ok(new JaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog, telemetry, mcpSettings));
+		return Result.ok(
+			new JaiRuntimeServer(localHost, database, connectorOAuth, modelCatalog, telemetry, mcpSettings, log),
+		);
 	} catch (error) {
+		const message = error instanceof Error ? error.message : "unknown";
+		log.scope("runtime").error("failed to open runtime host", { message });
+		await log.close().catch(() => undefined);
 		await localHost?.close().catch(() => {});
 		connectorOAuth?.close();
 		modelCatalog?.close();
@@ -156,6 +170,7 @@ export class JaiRuntimeServer {
 		private readonly modelCatalog: SqliteRuntimeModelCatalog,
 		private readonly telemetry: RuntimeTelemetryController | undefined,
 		private readonly mcpSettings: RuntimeMcpSettingsController | undefined,
+		readonly log: HostLog,
 	) {
 		this.#localHost = localHost;
 	}
@@ -190,7 +205,11 @@ export class JaiRuntimeServer {
 						try {
 							this.database.close();
 						} finally {
-							await this.telemetry?.close();
+							try {
+								await this.telemetry?.close();
+							} finally {
+								await this.log.close();
+							}
 						}
 					}
 				}
