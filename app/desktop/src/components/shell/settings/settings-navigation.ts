@@ -10,7 +10,8 @@ export type SettingsCategory =
 	| "web-search"
 	| "connector"
 	| "mcp"
-	| "advanced";
+	| "advanced"
+	| "logs";
 
 export const settingsCategories: Record<SettingsCategory, { label: MessageDescriptor; icon: IconName }> = {
 	general: { label: desktopMessages.settingsGeneral, icon: "settings" },
@@ -21,12 +22,13 @@ export const settingsCategories: Record<SettingsCategory, { label: MessageDescri
 	connector: { label: desktopMessages.settingsConnector, icon: "link" },
 	mcp: { label: desktopMessages.settingsMcp, icon: "plug" },
 	advanced: { label: desktopMessages.settingsAdvanced, icon: "layers" },
+	logs: { label: desktopMessages.settingsLogs, icon: "file-search" },
 };
 
 export const settingsCategoryGroups = [
 	{
 		label: desktopMessages.settingsTitle,
-		categories: ["general", "profile", "archived"] as const,
+		categories: ["general", "profile", "archived", "logs"] as const,
 	},
 	{
 		label: desktopMessages.settingsIntegrations,

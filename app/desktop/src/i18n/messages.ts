@@ -470,6 +470,50 @@ export const desktopMessages = defineMessages({
 	settingsWebSearchJinaClearKey: { id: "desktop.settings.webSearchJinaClearKey", defaultMessage: "Clear API key" },
 	settingsConnector: { id: "desktop.settings.connector", defaultMessage: "Connector" },
 	settingsAdvanced: { id: "desktop.settings.advanced", defaultMessage: "Advanced" },
+	settingsLogs: { id: "desktop.settings.logs", defaultMessage: "Logs" },
+	settingsLogsDescription: {
+		id: "desktop.settings.logsDescription",
+		defaultMessage: "Attach these when you report a problem. Each view shows only the most recent {limit}.",
+	},
+	settingsLogsSourceAgent: { id: "desktop.settings.logsSourceAgent", defaultMessage: "Agent" },
+	settingsLogsSourceAgentDescription: {
+		id: "desktop.settings.logsSourceAgentDescription",
+		defaultMessage: "Why a model request or tool call failed.",
+	},
+	settingsLogsSourceApp: { id: "desktop.settings.logsSourceApp", defaultMessage: "App" },
+	settingsLogsSourceAppDescription: {
+		id: "desktop.settings.logsSourceAppDescription",
+		defaultMessage: "Window, background service, and crash records.",
+	},
+	settingsLogsSourceTrace: { id: "desktop.settings.logsSourceTrace", defaultMessage: "Traces" },
+	settingsLogsSourceTraceDescription: {
+		id: "desktop.settings.logsSourceTraceDescription",
+		defaultMessage: "Timing and token usage per run. No conversation content.",
+	},
+	settingsLogsMeta: { id: "desktop.settings.logsMeta", defaultMessage: "{size} · Updated {time}" },
+	settingsLogsEmpty: { id: "desktop.settings.logsEmpty", defaultMessage: "Nothing recorded yet." },
+	settingsLogsRefresh: { id: "desktop.settings.logsRefresh", defaultMessage: "Refresh" },
+	settingsLogsReveal: { id: "desktop.settings.logsReveal", defaultMessage: "Show in Finder" },
+	settingsLogsClear: { id: "desktop.settings.logsClear", defaultMessage: "Clear" },
+	settingsLogsClearConfirm: { id: "desktop.settings.logsClearConfirm", defaultMessage: "Confirm clear" },
+	settingsLogsTruncated: {
+		id: "desktop.settings.logsTruncated",
+		defaultMessage: "Showing the last {limit} of {size}.",
+	},
+	settingsLogsActionFailed: {
+		id: "desktop.settings.logsActionFailed",
+		defaultMessage: "That did not work. Try again.",
+	},
+	settingsLogsRotated: {
+		id: "desktop.settings.logsRotated",
+		defaultMessage: "{count, plural, =0 {No older logs} one {# older log · {size}} other {# older logs · {size}}}",
+	},
+	settingsLogsDeleteRotated: { id: "desktop.settings.logsDeleteRotated", defaultMessage: "Delete older logs" },
+	settingsLogsDeletedRotated: {
+		id: "desktop.settings.logsDeletedRotated",
+		defaultMessage: "Deleted {count, plural, one {# older log} other {# older logs}}.",
+	},
+	settingsLogsOpenFolder: { id: "desktop.settings.logsOpenFolder", defaultMessage: "Open log folder" },
 	settingsMcp: { id: "desktop.settings.mcp", defaultMessage: "MCP" },
 	settingsMcpDescription: {
 		id: "desktop.settings.mcpDescription",

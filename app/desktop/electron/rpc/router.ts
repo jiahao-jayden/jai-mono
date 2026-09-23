@@ -1,5 +1,6 @@
-import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
+import { resolveJaiDataDirectory } from "@jai/server/acp-client";
 import type { IpcMainInvokeEvent } from "electron";
 import {
 	type DesktopApi,
@@ -16,6 +17,7 @@ import {
 	desktopCommandListInputSchema,
 	desktopConnectorOAuthApplicationIdSchema,
 	desktopContextMenuShowInputSchema,
+	desktopLogFileInputSchema,
 	desktopPermissionResolutionSchema,
 	desktopProjectCreateInputSchema,
 	desktopProjectExpandedInputSchema,
@@ -43,6 +45,7 @@ import {
 	desktopWorkspaceReadInputSchema,
 } from "../../shared/desktop-rpc";
 import { sortArtifacts } from "../agent/artifacts";
+import { clearLogFile, deleteRotatedLogs, listLogFiles, readLogTail, resolveLogFile } from "../logs";
 import type { DesktopRuntime } from "../runtime";
 import { projectRevealFailed, sessionBusyError } from "../session-catalog/errors";
 import { readWorkspaceGitDiff, readWorkspaceGitStatus } from "../workspace/git-status";
@@ -103,6 +106,34 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			},
 			set(_event, theme) {
 				rt.theme.set(theme);
+			},
+		},
+		logs: {
+			list() {
+				return listLogFiles(resolveJaiDataDirectory());
+			},
+			read(_event, input) {
+				const parsed = parse(desktopLogFileInputSchema, input, "Invalid log file");
+				return readLogTail(resolveJaiDataDirectory(), parsed.id);
+			},
+			async clear(_event, input) {
+				const parsed = parse(desktopLogFileInputSchema, input, "Invalid log file");
+				await clearLogFile(resolveJaiDataDirectory(), parsed.id);
+			},
+			async deleteRotated() {
+				return { deleted: await deleteRotatedLogs(resolveJaiDataDirectory()) };
+			},
+			async reveal(_event, input) {
+				const parsed = parse(desktopLogFileInputSchema, input, "Invalid log file");
+				const { shell } = await import("electron");
+				shell.showItemInFolder(resolveLogFile(resolveJaiDataDirectory(), parsed.id));
+			},
+			async openDirectory() {
+				const { shell } = await import("electron");
+				const directory = path.join(resolveJaiDataDirectory(), "logs");
+				await mkdir(directory, { recursive: true });
+				const error = await shell.openPath(directory);
+				if (error) throw new Error("Could not open the logs folder");
 			},
 		},
 		locale: {

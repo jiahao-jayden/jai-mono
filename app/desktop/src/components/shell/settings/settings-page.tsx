@@ -24,6 +24,7 @@ import { Button } from "../../ui/button";
 import { ArchivedChatsSettings } from "./archived-chats-settings";
 import { ConnectorSettings } from "./connector-settings";
 import { GeneralSettings } from "./general-settings";
+import { LogsSettings } from "./logs-settings";
 import { McpSettings } from "./mcp-settings";
 import { ObservabilitySettings } from "./observability-settings";
 import { ProfileSettings } from "./profile-settings";
@@ -34,8 +35,8 @@ import {
 	validateProviderDraft,
 } from "./provider-settings-types";
 import { ProvidersSettings } from "./providers-settings";
+import { type SettingsCategory, settingsCategories } from "./settings-navigation";
 import { WebSearchSettings } from "./web-search-settings";
-import { settingsCategories, type SettingsCategory } from "./settings-navigation";
 
 interface SettingsPageProps {
 	readonly snapshot?: DesktopProviderConfigSnapshot;
@@ -267,7 +268,8 @@ function ProviderConfigForm({
 		category !== "advanced" &&
 		category !== "mcp" &&
 		category !== "archived" &&
-		category !== "profile";
+		category !== "profile" &&
+		category !== "logs";
 
 	const submit = async () => {
 		const validationError = validateProviderDraft(profiles, maxIterations);
@@ -416,6 +418,8 @@ function ProviderConfigForm({
 								setDirty(true);
 							}}
 						/>
+					) : category === "logs" ? (
+						<LogsSettings />
 					) : category === "mcp" ? (
 						<McpSettings
 							snapshot={mcp}

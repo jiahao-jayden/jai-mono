@@ -1111,6 +1111,36 @@ export const desktopSessionListInputSchema = Type.Union([
 
 export const desktopSessionIdSchema = Type.String({ minLength: 1 });
 
+/** 设置页一次最多读这么多字节。更早的内容留在磁盘上。 */
+export const DESKTOP_LOG_TAIL_BYTES = 64 * 1024;
+
+export const desktopLogFileInputSchema = Type.Object(
+	{
+		id: Type.String({
+			minLength: 1,
+			maxLength: 200,
+			pattern: "^(desktop|runtime-host)/[A-Za-z0-9][A-Za-z0-9._-]*$",
+		}),
+	},
+	{ additionalProperties: false },
+);
+
+export interface DesktopLogFile {
+	readonly id: string;
+	readonly name: string;
+	readonly directory: "desktop" | "runtime-host";
+	readonly bytes: number;
+	readonly modifiedAt: number;
+	readonly active: boolean;
+}
+
+export interface DesktopLogTail {
+	readonly id: string;
+	readonly text: string;
+	readonly truncated: boolean;
+	readonly bytes: number;
+}
+
 export const desktopContextMenuItemSchema = Type.Object(
 	{
 		id: Type.String({ minLength: 1 }),
@@ -1167,6 +1197,14 @@ export interface DesktopApi {
 	readonly theme: {
 		get(): DesktopTheme;
 		set(theme: DesktopTheme): void;
+	};
+	readonly logs: {
+		list(): Promise<readonly DesktopLogFile[]>;
+		read(input: { readonly id: string }): Promise<DesktopLogTail>;
+		clear(input: { readonly id: string }): Promise<void>;
+		deleteRotated(): Promise<{ readonly deleted: number }>;
+		reveal(input: { readonly id: string }): Promise<void>;
+		openDirectory(): Promise<void>;
 	};
 	readonly locale: {
 		get(): DesktopUiLocaleSnapshot;
