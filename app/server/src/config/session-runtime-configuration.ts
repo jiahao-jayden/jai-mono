@@ -24,7 +24,7 @@ export function createRuntimeSessionConfigurationPolicy(
 		async initialConfiguration() {
 			const snapshot = settings.snapshot();
 			if (snapshot.isErr()) return Result.err(reject(snapshot.error));
-			return Result.ok({ model: snapshot.value.model, mode: "manual" });
+			return Result.ok({ model: snapshot.value.model, mode: snapshot.value.agentMode ?? "manual" });
 		},
 		async listModels() {
 			const configured = settings.read();

@@ -116,6 +116,41 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
+	test("adopts the Session's remembered model and mode and forwards later configuration changes", async () => {
+		const client = new FakeAcpClient();
+		const configOptions = (model: string, mode: string) => [
+			{ configId: "model", currentValue: model },
+			{ configId: "mode", currentValue: mode },
+		];
+		client.resumeResult = { configOptions: configOptions("profile/remembered", "plan") };
+		const events: DesktopAgentEventEnvelope[] = [];
+		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+
+		const snapshot = await host.ensureSessionProjection("session-1");
+		expect(snapshot.configuration).toEqual({ modelRef: "profile/remembered", mode: "plan" });
+
+		await host.send({ sessionId: "session-1", modelRef: "profile/remembered", mode: "plan", message: "hi" });
+		expect(client.methods).toEqual(["initialize", "session/resume", "session/prompt"]);
+
+		client.publish({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: { sessionUpdate: "config_option_update", configOptions: configOptions("profile/other", "manual") },
+			},
+		});
+		expect(events.at(-1)?.event).toEqual({
+			type: "configuration_changed",
+			configuration: { modelRef: "profile/other", mode: "manual" },
+		});
+		expect(host.getSnapshot("session-1").configuration).toEqual({ modelRef: "profile/other", mode: "manual" });
+		host.close();
+	});
+
 	test("projects ACP message chunks before the final assistant message", async () => {
 		const client = new FakeAcpClient();
 		const host = await DesktopAcpAgentHost.open(() => {}, {
@@ -1119,6 +1154,7 @@ class FakeAcpClient implements LocalAcpV2Client {
 	readonly #disconnectListeners = new Set<(error: AcpLocalClientError) => void>();
 	resumeError?: string;
 	resumeSucceeds = true;
+	resumeResult: unknown = {};
 	notifyError?: AcpLocalClientError;
 	subagentTranscript?: { readonly items: readonly unknown[] };
 	subagentTranscriptError?: string;
@@ -1131,6 +1167,7 @@ class FakeAcpClient implements LocalAcpV2Client {
 			if (!this.resumeSucceeds) {
 				return Result.err({ message: 'Session "session-1" does not exist' } as AcpLocalClientError);
 			}
+			return Result.ok(this.resumeResult);
 		}
 		if (method === "session/subagent_transcript") {
 			if (this.subagentTranscriptError) {

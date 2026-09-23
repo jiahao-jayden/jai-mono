@@ -61,7 +61,7 @@ describe("ChatMessageQueue", () => {
 	test("renders the stacked queue actions without replacing the queued message", () => {
 		const markup = renderToStaticMarkup(
 			<ChatMessageQueue
-				messages={[{ id: "queued-1", text: "Inspect the failing test", mode: "manual" }]}
+				messages={[{ id: "queued-1", text: "Inspect the failing test", mode: "manual", modelRef: "p/a" }]}
 				onEdit={() => {}}
 				onRemove={() => {}}
 				onReorder={() => {}}

@@ -17,6 +17,7 @@ import type {
 	DesktopMessageAttachment,
 	DesktopPermissionResolution,
 	DesktopRunTiming,
+	DesktopSessionConfiguration,
 	DesktopSessionUsage,
 	DesktopTodos,
 	DesktopTranscriptItem,
@@ -35,12 +36,14 @@ export interface ChatMessageInput {
 export interface UseChatOptions {
 	readonly id: string | null;
 	readonly newSessionProjectId: string | null;
+	/** Preferred model when the Session has none of its own (new chats, or its model was disabled). */
 	readonly modelRef: string;
 	readonly mode: DesktopAgentMode;
+	readonly availableModelRefs: readonly string[];
 	readonly queue: readonly QueuedMessage[];
 	onSessionCreated(sessionId: string): void;
 	onMessageAccepted(sessionId: string): void;
-	onMessageQueued(text: string, mode: DesktopAgentMode): void;
+	onMessageQueued(text: string, mode: DesktopAgentMode, modelRef: string): void;
 	onQueuedMessageAccepted(messageId: string): void;
 }
 
@@ -57,6 +60,10 @@ export interface Chat {
 	readonly errorKey: number;
 	readonly connectionStatus: DesktopAgentConnectionStatus | undefined;
 	readonly stopReason: DesktopAgentStopReason | undefined;
+	/** Model and mode the next message will use. */
+	readonly modelRef: string;
+	readonly mode: DesktopAgentMode;
+	configure(selection: DesktopSessionConfiguration): Promise<void>;
 	sendMessage(message: ChatMessageInput): Promise<boolean>;
 	steerQueuedMessage(message: QueuedMessage): Promise<boolean>;
 	stop(): Promise<void>;
@@ -82,6 +89,7 @@ export interface ChatRuntimeState {
 	readonly todos: DesktopTodos | undefined;
 	readonly artifacts: readonly DesktopArtifact[];
 	readonly usage: DesktopSessionUsage;
+	readonly configuration: DesktopSessionConfiguration | undefined;
 }
 
 interface QueuedMessageSteerOperation {
@@ -114,9 +122,22 @@ const EMPTY_STATE: ChatRuntimeState = {
 	todos: undefined,
 	artifacts: [],
 	usage: EMPTY_DESKTOP_SESSION_USAGE,
+	configuration: undefined,
 };
 
 let dispatcher: ReturnType<typeof createDesktopAgentEventDispatcher> | undefined;
+
+/** First candidate that is still enabled, else the first enabled model; disabled picks fall back silently. */
+export function resolveChatModelRef(
+	candidates: readonly (string | undefined)[],
+	availableModelRefs: readonly string[],
+): string {
+	return (
+		candidates.find((candidate) => candidate !== undefined && availableModelRefs.includes(candidate)) ??
+		availableModelRefs[0] ??
+		""
+	);
+}
 
 export function shouldDispatchQueueHead(previous: DesktopAgentStatus, current: DesktopAgentStatus): boolean {
 	return previous === "running" && current === "idle";
@@ -154,7 +175,10 @@ export function useChat(options: UseChatOptions): Chat {
 	const previousAgentStatusRef = useRef<DesktopAgentStatus>("idle");
 	const pendingTranscriptRef = useRef(new Map<string, PendingTranscriptUpsert>());
 	const transcriptFlushFrameRef = useRef<number | undefined>(undefined);
-	latestOptions.current = options;
+	const sessionConfiguration = state.sessionId === options.id ? state.configuration : undefined;
+	const modelRef = resolveChatModelRef([sessionConfiguration?.modelRef, options.modelRef], options.availableModelRefs);
+	const mode = sessionConfiguration?.mode ?? options.mode;
+	latestOptions.current = { ...options, modelRef, mode };
 	stateRef.current = state;
 
 	const flushPendingTranscript = useCallback(() => {
@@ -219,6 +243,7 @@ export function useChat(options: UseChatOptions): Chat {
 						todos: undefined,
 						artifacts: [],
 						usage: EMPTY_DESKTOP_SESSION_USAGE,
+						configuration: undefined,
 					},
 		);
 		dispatcher ??= createDesktopAgentEventDispatcher();
@@ -262,7 +287,8 @@ export function useChat(options: UseChatOptions): Chat {
 		const head = latest.queue[0];
 		if (!head || !current.sessionId || current.agentStatus !== "idle" || current.error) return;
 		if (head.id === blockedQueueIdRef.current || dispatchingQueueIdRef.current) return;
-		if (!latest.modelRef) {
+		const headModelRef = resolveChatModelRef([head.modelRef, latest.modelRef], latest.availableModelRefs);
+		if (!headModelRef) {
 			blockedQueueIdRef.current = head.id;
 			setState((previous) => withChatError(previous, "请先选择可用模型。", { submitting: false }));
 			return;
@@ -274,7 +300,7 @@ export function useChat(options: UseChatOptions): Chat {
 			await desktop.agent.send({
 				sessionId: current.sessionId,
 				message: head.text,
-				modelRef: latest.modelRef,
+				modelRef: headModelRef,
 				mode: head.mode,
 			});
 			latest.onQueuedMessageAccepted(head.id);
@@ -333,7 +359,7 @@ export function useChat(options: UseChatOptions): Chat {
 					return false;
 				}
 				if (delivery === "queue") {
-					latest.onMessageQueued(text, mode);
+					latest.onMessageQueued(text, mode, latest.modelRef);
 					latest.onMessageAccepted(current.sessionId);
 					return true;
 				}
@@ -419,11 +445,12 @@ export function useChat(options: UseChatOptions): Chat {
 		async (message: QueuedMessage): Promise<boolean> => {
 			const current = stateRef.current;
 			const latest = latestOptions.current;
-			if (!current.sessionId || current.agentStatus !== "running" || !latest.modelRef) return false;
+			const modelRef = resolveChatModelRef([message.modelRef, latest.modelRef], latest.availableModelRefs);
+			if (!current.sessionId || current.agentStatus !== "running" || !modelRef) return false;
 			return runQueuedMessageSteer({
 				message,
 				sessionId: current.sessionId,
-				modelRef: latest.modelRef,
+				modelRef,
 				steer: (input) => desktop.agent.steer(input),
 				onAccepted: latest.onQueuedMessageAccepted,
 				onRejected: (error) => {
@@ -490,6 +517,24 @@ export function useChat(options: UseChatOptions): Chat {
 		void dispatchQueueHead();
 	}, [dispatchQueueHead]);
 
+	const configure = useCallback(async (selection: DesktopSessionConfiguration): Promise<void> => {
+		const sessionId = stateRef.current.sessionId;
+		if (!sessionId) return;
+		setState((previous) => (previous.sessionId === sessionId ? { ...previous, configuration: selection } : previous));
+		try {
+			await desktop.agent.configure({ sessionId, ...selection });
+		} catch (error) {
+			const failure = getDesktopRemoteRpcFailure(error);
+			setState((previous) =>
+				withChatError(
+					previous,
+					chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
+				),
+			);
+			void dispatcher?.refresh(sessionId);
+		}
+	}, []);
+
 	const retryConnection = useCallback(async (): Promise<void> => {
 		try {
 			await desktop.agent.retryConnection();
@@ -511,6 +556,9 @@ export function useChat(options: UseChatOptions): Chat {
 		errorKey: state.errorKey,
 		connectionStatus: state.connectionStatus,
 		stopReason: state.stopReason,
+		modelRef,
+		mode,
+		configure,
 		sendMessage,
 		steerQueuedMessage,
 		stop,
@@ -610,6 +658,8 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 			};
 		case "usage_changed":
 			return { ...state, isLoading: false, lastSeq: seq, usage: event.usage };
+		case "configuration_changed":
+			return { ...state, lastSeq: seq, configuration: event.configuration };
 		case "runtime_error":
 			return withChatError(state, chatFailureMessage({ operation: "runtime", code: event.error.code }), {
 				agentStatus: "idle",
@@ -731,6 +781,7 @@ function snapshotState(snapshot: DesktopAgentSnapshot): ChatRuntimeState {
 		todos: snapshot.todos,
 		artifacts: [...snapshot.artifacts],
 		usage: snapshot.usage,
+		configuration: snapshot.configuration,
 	};
 }
 

@@ -4,6 +4,7 @@ import {
 	applyTranscriptUpsertBatch,
 	chatFailureMessage,
 	mergeTranscriptUpserts,
+	resolveChatModelRef,
 	runQueuedMessageSteer,
 	shouldDispatchQueueHead,
 	type ChatRuntimeState,
@@ -12,6 +13,14 @@ import type { DesktopAgentProjectionUpdate } from "../src/lib/desktop-agent";
 import type { DesktopTranscriptItem } from "../shared/desktop-rpc";
 
 describe("useChat projection", () => {
+	test("会话模型优先，其次全局记住的模型，都被禁用时退回第一个启用模型", () => {
+		const enabled = ["p/a", "p/b"];
+		expect(resolveChatModelRef(["p/b", "p/a"], enabled)).toBe("p/b");
+		expect(resolveChatModelRef(["p/off", "p/a"], enabled)).toBe("p/a");
+		expect(resolveChatModelRef([undefined, "p/off"], enabled)).toBe("p/a");
+		expect(resolveChatModelRef(["p/a"], [])).toBe("");
+	});
+
 	test("只在运行状态回到空闲时触发队列自动排空", () => {
 		expect(shouldDispatchQueueHead("running", "idle")).toBe(true);
 		expect(shouldDispatchQueueHead("idle", "idle")).toBe(false);
@@ -22,7 +31,7 @@ describe("useChat projection", () => {
 		const accepted: string[] = [];
 		const rejected: unknown[] = [];
 		const result = await runQueuedMessageSteer({
-			message: { id: "queued-1", text: "Keep this", mode: "manual" },
+			message: { id: "queued-1", text: "Keep this", mode: "manual", modelRef: "p/a" },
 			sessionId: "session-1",
 			modelRef: "provider/model",
 			steer: async () => {
@@ -40,7 +49,7 @@ describe("useChat projection", () => {
 	test("队列 Steer 成功后只确认当前消息", async () => {
 		const accepted: string[] = [];
 		const result = await runQueuedMessageSteer({
-			message: { id: "queued-1", text: "Use this now", mode: "manual" },
+			message: { id: "queued-1", text: "Use this now", mode: "manual", modelRef: "p/a" },
 			sessionId: "session-1",
 			modelRef: "provider/model",
 			steer: async () => {},

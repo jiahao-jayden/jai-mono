@@ -26,7 +26,7 @@ import {
 	validateProviderProfiles,
 } from "../electron/config/provider";
 import { Value } from "@sinclair/typebox/value";
-import { isDesktopProviderModelRunnable, jsonValueSchema } from "../shared/desktop-rpc";
+import { type DesktopAgentMode, isDesktopProviderModelRunnable, jsonValueSchema } from "../shared/desktop-rpc";
 
 describe("DesktopConfigService", () => {
 	test("keeps the full remote model id as the name of an unrecognized model", () => {
@@ -543,6 +543,41 @@ describe("DesktopConfigService", () => {
     }
   });
 
+	test("remembers the composer model and mode in the Runtime Host using the Host's own model ref", async () => {
+		const host = new FakeDesktopConfigurationClient({
+			revision: "r1",
+			model: "gateway/vendor-gpt-a",
+			profiles: [
+				{
+					id: "gateway",
+					name: "Gateway",
+					adapter: "openai-compatible",
+					authentication: "none",
+					credentialConfigured: false,
+					enabled: true,
+					models: [
+						{ id: "gpt-a", remoteModelId: "vendor-gpt-a", enabled: true },
+						{ id: "gpt-b", remoteModelId: "vendor-gpt-b", enabled: true },
+					],
+				},
+			],
+		});
+		const service = new DesktopConfigService(host);
+		try {
+			const initial = await service.get();
+			const [profile] = initial.profiles;
+			const refs = profile?.models.map((model) => `${profile.id}/${model.remoteModelId}`);
+			expect(refs).toContain(initial.selectedModelRef);
+			expect(initial).toMatchObject({ selectedModelRef: "gateway/vendor-gpt-a", selectedAgentMode: "manual" });
+
+			const saved = await service.setSelection({ modelRef: "gateway/vendor-gpt-b", mode: "plan" });
+			expect(host.lastSelection).toEqual({ model: "gateway/vendor-gpt-b", agentMode: "plan" });
+			expect(saved).toMatchObject({ selectedModelRef: "gateway/vendor-gpt-b", selectedAgentMode: "plan" });
+		} finally {
+			await service.close();
+		}
+	});
+
 	test("forwards Web Search keys, clear commands, and optional order without storing a Desktop copy", async () => {
 		const host = new FakeDesktopConfigurationClient({
       webSearch: {
@@ -938,6 +973,7 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
 	readonly modelCatalogReads: string[] = [];
 	lastSaved?: RuntimeAgentSettingsInput;
 	lastLanguage?: string;
+	lastSelection?: { readonly model: string; readonly agentMode: DesktopAgentMode };
 	lastTelemetrySaved?: RuntimeTelemetrySettingsInput;
 	#snapshot: RuntimeAgentSettingsSnapshot;
 	#telemetrySnapshot: RuntimeTelemetrySettingsSnapshot;
@@ -1036,6 +1072,12 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
 	async setLanguage(language: string) {
 		this.lastLanguage = language;
 		this.#snapshot = { ...this.#snapshot, revision: "r2", language };
+		return Result.ok(this.#snapshot);
+	}
+
+	async setSelection(selection: { readonly model: string; readonly agentMode: DesktopAgentMode }) {
+		this.lastSelection = selection;
+		this.#snapshot = { ...this.#snapshot, revision: "r2", model: selection.model, agentMode: selection.agentMode };
 		return Result.ok(this.#snapshot);
 	}
 

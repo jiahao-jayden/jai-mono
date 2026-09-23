@@ -1,8 +1,11 @@
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AcpJsonRpcNotification, AcpJsonRpcRequest, LocalAcpV2Client } from "@jai/server/acp-client";
+import { Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { Result, TaggedError } from "better-result";
 import type {
+	DesktopAgentConfigureInput,
 	DesktopAgentConnectionStatus,
 	DesktopAgentEvent,
 	DesktopAgentEventEnvelope,
@@ -19,6 +22,7 @@ import type {
 	DesktopPermissionRequest,
 	DesktopPermissionResolution,
 	DesktopRunTiming,
+	DesktopSessionConfiguration,
 	DesktopSessionUsage,
 	DesktopSubagentItem,
 	DesktopSubagentTranscript,
@@ -155,6 +159,11 @@ export class DesktopAcpAgentHost {
 		return this.#admitPrompt(input);
 	}
 
+	async configure(input: DesktopAgentConfigureInput): Promise<void> {
+		const runtime = await this.#ensureSession(input.sessionId, input.modelRef, input.mode);
+		await this.#setConfiguration(runtime, input.modelRef, input.mode);
+	}
+
 	async navigate(input: DesktopAgentNavigateInput): Promise<void> {
 		const runtime = await this.#ensureSession(input.sessionId, input.modelRef, input.mode);
 		await this.#setConfiguration(runtime, input.modelRef, input.mode);
@@ -255,6 +264,7 @@ export class DesktopAcpAgentHost {
 			todos: runtime.todos ? structuredClone(runtime.todos) : undefined,
 			artifacts: sortArtifacts(runtime.artifacts.values()).map((artifact) => structuredClone(artifact)),
 			usage: { ...runtime.usage },
+			configuration: runtime.modelRef ? { modelRef: runtime.modelRef, mode: runtime.mode } : undefined,
 			lastSeq: runtime.seq,
 		};
 	}
@@ -337,7 +347,10 @@ export class DesktopAcpAgentHost {
 		};
 		this.#sessions.set(sessionId, runtime);
 		const resumed = await this.#client.request("session/resume", { sessionId, cwd, replayFrom: { type: "start" } });
-		if (resumed.isOk()) return runtime;
+		if (resumed.isOk()) {
+			this.#applyConfiguration(runtime, resumed.value);
+			return runtime;
+		}
 		this.#sessions.delete(sessionId);
 		throw new DesktopAcpRequestFailed({
 			method: "session/resume",
@@ -386,6 +399,17 @@ export class DesktopAcpAgentHost {
 			replayFrom: { type: "start" },
 		});
 		if (replayed.isErr()) throw replayed.error;
+		this.#applyConfiguration(runtime, replayed.value);
+	}
+
+	/** Adopts the Host's remembered Session model/mode so the next prompt only sends real changes. */
+	#applyConfiguration(runtime: AcpSessionRuntime, response: unknown): DesktopSessionConfiguration | undefined {
+		const configuration = readSessionConfiguration(response);
+		if (!configuration) return undefined;
+		runtime.modelRef = configuration.modelRef;
+		runtime.mode = configuration.mode;
+		runtime.configured = true;
+		return configuration;
 	}
 
 	async #setConfiguration(runtime: AcpSessionRuntime, modelRef: string, mode: DesktopAgentMode): Promise<void> {
@@ -537,6 +561,11 @@ export class DesktopAcpAgentHost {
 			case "usage_update":
 				this.#usageUpdate(runtime, update);
 				return;
+			case "config_option_update": {
+				const configuration = this.#applyConfiguration(runtime, update);
+				if (configuration) this.#emitEvent(runtime, { type: "configuration_changed", configuration });
+				return;
+			}
 			case "operation_update":
 				this.#operationUpdate(runtime, update);
 				return;
@@ -1196,6 +1225,21 @@ function isWebSearchTool(value: unknown): boolean {
 function isWebFetchTool(value: unknown): boolean {
 	if (typeof value !== "string") return false;
 	return value.trim().toLowerCase().replaceAll(/[_-]/g, " ") === "web fetch";
+}
+
+const sessionConfigOptionsSchema = Type.Object({
+	configOptions: Type.Array(Type.Object({ configId: Type.String(), currentValue: Type.Unknown() })),
+});
+
+function readSessionConfiguration(value: unknown): DesktopSessionConfiguration | undefined {
+	if (!Value.Check(sessionConfigOptionsSchema, value)) return undefined;
+	const current = (configId: string) =>
+		value.configOptions.find((option) => option.configId === configId)?.currentValue;
+	const modelRef = current("model");
+	const mode = current("mode");
+	if (typeof modelRef !== "string" || !modelRef) return undefined;
+	if (mode !== "manual" && mode !== "automate" && mode !== "plan") return undefined;
+	return { modelRef, mode };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

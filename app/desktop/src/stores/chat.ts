@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import type { DesktopAgentMode } from "../../shared/desktop-rpc";
 
+/** A queued message keeps the model and mode it was queued with, independent of the run in progress. */
 export interface QueuedMessage {
 	readonly id: string;
 	readonly text: string;
 	readonly mode: DesktopAgentMode;
+	readonly modelRef: string;
 }
 
 interface DesktopChatStore {
@@ -12,16 +14,18 @@ interface DesktopChatStore {
 	drafts: Record<string, string>;
 	queue: QueuedMessage[];
 	selectedProjectId: string | null;
-	selectedModelRef: string;
-	selectedAgentMode: DesktopAgentMode;
+	/** null until the user picks one this run; the Runtime Host remembers the last pick across launches. */
+	selectedModelRef: string | null;
+	selectedAgentMode: DesktopAgentMode | null;
 	openSession(sessionId: string): void;
 	newChat(): void;
 	setDraft(value: string): void;
 	clearDraft(sessionId: string): void;
 	sessionCreated(sessionId: string): void;
-	enqueueMessage(text: string, mode: DesktopAgentMode): void;
+	enqueueMessage(text: string, mode: DesktopAgentMode, modelRef: string): void;
 	acceptQueuedMessage(messageId: string): void;
-	editQueuedMessage(messageId: string): void;
+	/** Moves the message back into the draft and returns it so its model and mode can be restored. */
+	editQueuedMessage(messageId: string): QueuedMessage | undefined;
 	removeQueuedMessage(messageId: string): void;
 	reorderQueuedMessages(orderedIds: readonly string[]): void;
 	setSelectedProjectId(projectId: string | null): void;
@@ -36,8 +40,8 @@ export const useDesktopChatStore = create<DesktopChatStore>((set, get) => ({
 	drafts: {},
 	queue: [],
 	selectedProjectId: null,
-	selectedModelRef: "",
-	selectedAgentMode: "manual",
+	selectedModelRef: null,
+	selectedAgentMode: null,
 
 	openSession(sessionId) {
 		if (get().activeSessionId === sessionId) return;
@@ -74,9 +78,9 @@ export const useDesktopChatStore = create<DesktopChatStore>((set, get) => ({
 		});
 	},
 
-	enqueueMessage(text, mode) {
+	enqueueMessage(text, mode, modelRef) {
 		set((state) => ({
-			queue: [...state.queue, { id: crypto.randomUUID(), text, mode }],
+			queue: [...state.queue, { id: crypto.randomUUID(), text, mode, modelRef }],
 		}));
 	},
 
@@ -89,13 +93,13 @@ export const useDesktopChatStore = create<DesktopChatStore>((set, get) => ({
 	editQueuedMessage(messageId) {
 		const state = get();
 		const message = state.queue.find((candidate) => candidate.id === messageId);
-		if (!message) return;
+		if (!message) return undefined;
 		const key = draftKey(state.activeSessionId);
 		set({
 			drafts: { ...state.drafts, [key]: message.text },
 			queue: state.queue.filter((candidate) => candidate.id !== messageId),
-			selectedAgentMode: message.mode,
 		});
+		return message;
 	},
 
 	removeQueuedMessage(messageId) {

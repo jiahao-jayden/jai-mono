@@ -11,6 +11,7 @@ const NullableString = Type.Union([Type.String(), Type.Null()]);
 const NonNegativeInteger = Type.Integer({ minimum: 0 });
 const PositiveInteger = Type.Integer({ minimum: 1 });
 const Language = Type.String({ pattern: "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$" });
+const AgentMode = literals(["manual", "automate", "plan"] as const);
 const Permission = literals(["ask", "allow", "deny"] as const);
 const WebSearchProviderId = literals(["exa", "parallel", "anysearch"] as const);
 const WebSearchCredentialId = literals(["exa", "parallel", "anysearch", "jina"] as const);
@@ -72,6 +73,7 @@ export const agentSettingsSnapshotSchema = Type.Object(
 	{
 		revision: NullableString,
 		model: Type.String(),
+		agentMode: Type.Optional(AgentMode),
 		maxTurns: Type.Optional(PositiveInteger),
 		language: Type.Optional(Language),
 		reasoningEffort: Type.Optional(literals(["low", "medium", "high"] as const)),
@@ -219,6 +221,7 @@ export const objectParamsSchema = Type.Record(Type.String(), Type.Unknown());
 export const emptyParamsSchema = Type.Object({}, strict);
 export const profileIdParamsSchema = Type.Object({ profileId: Type.String() }, strict);
 export const languageParamsSchema = Type.Object({ language: Type.String() }, strict);
+export const selectionParamsSchema = Type.Object({ model: Type.String(), agentMode: AgentMode }, strict);
 export const webSearchCredentialParamsSchema = Type.Object({ credentialId: WebSearchCredentialId }, strict);
 export const connectorCredentialParamsSchema = Type.Object(
 	{ connectorId: Type.String(), credentialKey: Type.String() },

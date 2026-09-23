@@ -20,6 +20,7 @@ import {
 	objectParamsSchema,
 	profileIdParamsSchema,
 	readDto,
+	selectionParamsSchema,
 	telemetryCredentialParamsSchema,
 	webSearchCredentialParamsSchema,
 	workspacePathParamsSchema,
@@ -63,6 +64,11 @@ export class DesktopConfigurationControl {
 				const language = readDto(languageParamsSchema, params);
 				if (!language) return this.error(request.id, -32602, "Invalid Desktop configuration language parameters");
 				return this.project(request.id, this.settings.setLanguage(language.language));
+			}
+			case "jai/desktop-configuration/set-selection": {
+				const selection = readDto(selectionParamsSchema, params);
+				if (!selection) return this.error(request.id, -32602, "Invalid Desktop configuration selection parameters");
+				return this.project(request.id, this.settings.setSelection(selection));
 			}
 			case "jai/desktop-configuration/telemetry/get": {
 				if (!readDto(emptyParamsSchema, params))

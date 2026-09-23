@@ -451,6 +451,9 @@ export interface DesktopProviderPreset {
 
 export interface DesktopProviderConfigSnapshot {
 	readonly revision: string | null;
+	/** Last model picked in the composer; may name a model that has since been disabled. */
+	readonly selectedModelRef: string;
+	readonly selectedAgentMode: DesktopAgentMode;
 	readonly maxIterations?: number;
 	readonly reasoningEffort?: "low" | "medium" | "high";
 	readonly providerPresets: readonly DesktopProviderPreset[];
@@ -948,7 +951,14 @@ export interface DesktopAgentSnapshot {
 	readonly todos?: DesktopTodos;
 	readonly artifacts: readonly DesktopArtifact[];
 	readonly usage: DesktopSessionUsage;
+	/** Model and mode the Runtime Host remembers for this Session; absent until known. */
+	readonly configuration?: DesktopSessionConfiguration;
 	readonly lastSeq: number;
+}
+
+export interface DesktopSessionConfiguration {
+	readonly modelRef: string;
+	readonly mode: DesktopAgentMode;
 }
 
 export type DesktopAgentEvent =
@@ -968,6 +978,7 @@ export type DesktopAgentEvent =
 	| { readonly type: "todos_replace"; readonly todos: DesktopTodos }
 	| { readonly type: "artifact_upsert"; readonly artifact: DesktopArtifact }
 	| { readonly type: "usage_changed"; readonly usage: DesktopSessionUsage }
+	| { readonly type: "configuration_changed"; readonly configuration: DesktopSessionConfiguration }
 	| { readonly type: "model_catalog_updated" }
 	| { readonly type: "connector_oauth_completed"; readonly connectorId: string }
 	| { readonly type: "connector_oauth_failed"; readonly connectorId: string }
@@ -997,8 +1008,29 @@ export interface DesktopAgentSessionInput {
 
 export type DesktopAgentMode = "manual" | "automate" | "plan";
 
+export const desktopProviderSelectionInputSchema = Type.Object(
+	{
+		modelRef: Type.String({ pattern: "/" }),
+		mode: Type.Union([Type.Literal("manual"), Type.Literal("automate"), Type.Literal("plan")]),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopProviderSelectionInput = Static<typeof desktopProviderSelectionInputSchema>;
+
+export const desktopAgentConfigureInputSchema = Type.Object(
+	{
+		sessionId: Type.String({ minLength: 1 }),
+		modelRef: Type.String({ pattern: "/" }),
+		mode: Type.Union([Type.Literal("manual"), Type.Literal("automate"), Type.Literal("plan")]),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopAgentConfigureInput = Static<typeof desktopAgentConfigureInputSchema>;
+
 /**
- * `modelRef` is `<profileId>/<modelId>`, so it must carry a separator.
+ * `modelRef` is `<profileId>/<remoteModelId>`, the same id the Runtime Host validates, so it must carry a separator.
  *
  * The type stays hand-written because callers pass `readonly` arrays and
  * TypeBox's `Static` always produces a mutable one; the schema is what the
@@ -1230,6 +1262,7 @@ export interface DesktopApi {
 	readonly provider: {
 		get(): Promise<DesktopProviderConfigSnapshot>;
 		save(input: DesktopProviderConfigInput): Promise<DesktopProviderConfigSnapshot>;
+		setSelection(input: DesktopProviderSelectionInput): Promise<DesktopProviderConfigSnapshot>;
 		fetchModels(profileId: string): Promise<DesktopProviderFetchModelsResult>;
 		revealApiKey(profileId: string): Promise<DesktopProviderApiKeyRevealResult>;
 		revealWebSearchApiKey(credentialId: DesktopWebSearchCredentialId): Promise<DesktopWebSearchApiKeyRevealResult>;
@@ -1310,6 +1343,7 @@ export interface DesktopApi {
 	readonly agent: {
 		send(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;
 		navigate(input: DesktopAgentNavigateInput): Promise<void>;
+		configure(input: DesktopAgentConfigureInput): Promise<void>;
 		abort(sessionId: string): void;
 		steer(input: DesktopAgentMessageInput): void;
 		followUp(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;

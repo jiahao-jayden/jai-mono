@@ -10,6 +10,7 @@ import {
 	type DesktopProviderConfigInput,
 	type DesktopWorkspaceFile,
 	type DesktopWorkspaceListResult,
+	desktopAgentConfigureInputSchema,
 	desktopAgentMessageInputSchema,
 	desktopAgentNavigateInputSchema,
 	desktopArtifactReadInputSchema,
@@ -22,6 +23,7 @@ import {
 	desktopProjectCreateInputSchema,
 	desktopProjectExpandedInputSchema,
 	desktopProjectReorderInputSchema,
+	desktopProviderSelectionInputSchema,
 	desktopSessionArchiveInputSchema,
 	desktopSessionCreateInputSchema,
 	desktopSessionDeleteInputSchema,
@@ -163,6 +165,9 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				const snapshot = await rt.config.save(input as DesktopProviderConfigInput);
 				rt.agentHost.invalidateSessions();
 				return snapshot;
+			},
+			setSelection(_event, input) {
+				return rt.config.setSelection(parse(desktopProviderSelectionInputSchema, input, "Invalid model selection"));
 			},
 			async fetchModels(_event, profileId) {
 				const result = await rt.config.fetchModels(profileId);
@@ -484,6 +489,11 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			navigate(_event, input) {
 				return rt.agentHost.navigate(
 					parse(desktopAgentNavigateInputSchema, input, "Invalid agent navigation input"),
+				);
+			},
+			configure(_event, input) {
+				return rt.agentHost.configure(
+					parse(desktopAgentConfigureInputSchema, input, "Invalid agent configuration input"),
 				);
 			},
 			abort(_event, sessionId) {

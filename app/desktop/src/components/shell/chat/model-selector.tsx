@@ -61,7 +61,7 @@ export function ModelSelector({
 					name: profile.name,
 					icon: resolveProviderBrandIcon(catalogProvider),
 					models: runnableModels.map((model) => ({
-						ref: `${profile.id}/${model.id}`,
+						ref: `${profile.id}/${model.remoteModelId}`,
 						name: model.name,
 						remoteModelId: model.remoteModelId,
 						providerId: profile.id,
@@ -358,14 +358,14 @@ function resolveModelStatus(
 	}
 	const separator = modelRef.indexOf("/");
 	const profileId = modelRef.slice(0, separator);
-	const modelId = modelRef.slice(separator + 1);
+	const remoteModelId = modelRef.slice(separator + 1);
 	const profile = config?.profiles.find((candidate) => candidate.id === profileId);
-	const model = profile?.models.find((candidate) => candidate.id === modelId);
+	const model = profile?.models.find((candidate) => candidate.remoteModelId === remoteModelId);
 	const credentialReady = profile?.authentication === "none" || profile?.credentialConfigured === true;
 	return {
 		label: model?.name ?? modelRef,
 		title: credentialReady
-			? `${profile?.name ?? profileId} · ${model?.name ?? modelId}`
+			? `${profile?.name ?? profileId} · ${model?.name ?? remoteModelId}`
 			: intl.formatMessage(desktopMessages.modelCredentialRequired),
 	};
 }

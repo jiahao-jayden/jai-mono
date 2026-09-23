@@ -31,6 +31,7 @@ import {
 	workspaceTrustSnapshotSchema,
 } from "./protocol/desktop-configuration/projection";
 import { resolveJaiDataDirectory } from "./runtime/paths";
+import type { RuntimeSessionMode } from "./sessions";
 import type {
 	RuntimeTelemetryCredentialId,
 	RuntimeTelemetrySettingsInput,
@@ -145,6 +146,13 @@ export class DesktopConfigurationClient {
 		language: string,
 	): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>> {
 		return this.request("jai/desktop-configuration/set-language", { language });
+	}
+
+	async setSelection(selection: {
+		readonly model: string;
+		readonly agentMode: RuntimeSessionMode;
+	}): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>> {
+		return this.request("jai/desktop-configuration/set-selection", selection);
 	}
 
 	async fetchModels(

@@ -3,6 +3,7 @@ import { AnthropicProvider, OpenAIProvider, OpenAIResponsesProvider, type Provid
 import type { CodingProviderOptions, JsonObject } from "@jai/coding-agent";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { DatabaseSync } from "../persistence/sqlite/driver";
+import { isRuntimeSessionMode, type RuntimeSessionMode } from "../sessions";
 
 export type RuntimeProviderAdapter = "anthropic" | "openai-compatible" | "openai-responses";
 export type RuntimeProviderAuthentication = "api-key" | "none";
@@ -156,6 +157,8 @@ export interface RuntimeWebFetchSettingsProjection {
  */
 export interface RuntimeAgentSettings {
 	readonly model: string;
+	/** Mode new Sessions start in; the last one the user picked. */
+	readonly agentMode?: RuntimeSessionMode;
 	readonly maxTurns?: number;
 	readonly language?: string;
 	readonly reasoningEffort?: RuntimeReasoningEffort;
@@ -218,6 +221,7 @@ export interface RuntimeAgentSettingsSnapshot {
 	/** null means the Host is ready to be configured but has no durable settings yet. */
 	readonly revision: string | null;
 	readonly model: string;
+	readonly agentMode?: RuntimeSessionMode;
 	readonly maxTurns?: number;
 	readonly language?: string;
 	readonly reasoningEffort?: RuntimeReasoningEffort;
@@ -421,6 +425,26 @@ export class SqliteRuntimeAgentSettings {
 			return this.insertInitial({ revision: null, model: "", language, providers: [] }, now);
 		}
 		return this.persist({ ...current.value.settings, language }, current.value.revision, now);
+	}
+
+	/** Remembers the composer's model and mode so the next Session and app launch start from them. */
+	setSelection(
+		selection: { readonly model: string; readonly agentMode: string },
+		now = new Date().toISOString(),
+	): ResultType<RuntimeAgentSettingsSnapshot, RuntimeAgentSettingsWriteError> {
+		const { model, agentMode } = selection;
+		if (!validModelReference(model) || !isRuntimeSessionMode(agentMode)) {
+			return Result.err(new RuntimeAgentSettingsInvalid({ message: "Runtime Agent selection is invalid" }));
+		}
+		const current = this.current();
+		if (current.isErr()) {
+			if (current.error._tag !== "runtime_config.agent_settings_missing") return Result.err(current.error);
+			return Result.err(new RuntimeAgentSettingsInvalid({ message: `Model "${model}" is not configured` }));
+		}
+		const next = { ...current.value.settings, model, agentMode };
+		const resolved = resolveRuntimeAgentOptions(next);
+		if (resolved.isErr()) return Result.err(resolved.error);
+		return this.persist(next, current.value.revision, now);
 	}
 
 	/**
@@ -1122,7 +1146,8 @@ function settingsFromInput(
 			? current.connector
 			: mergeConnectorSettings(input.connector, current.connector);
 	return validateSettings({
-		model: input.model.trim(),
+		model: repairDefaultModel(input.model.trim(), providers, current.providers),
+		agentMode: current.agentMode,
 		maxTurns: input.maxTurns,
 		language: input.language,
 		reasoningEffort: input.reasoningEffort,
@@ -1131,6 +1156,29 @@ function settingsFromInput(
 		connector,
 		webSearch,
 	});
+}
+
+/**
+ * A save that disables or removes the default model moves the default to the first enabled one,
+ * so new Sessions and other hosts never start from a model they cannot run. Models outside any
+ * Provider profile (built-in provider refs) are left untouched.
+ */
+function repairDefaultModel(
+	model: string,
+	providers: Readonly<Record<string, RuntimeProviderProfile>>,
+	previous: Readonly<Record<string, RuntimeProviderProfile>>,
+): string {
+	const separator = model.indexOf("/");
+	const profileId = separator > 0 ? model.slice(0, separator) : "";
+	if (!profileId || (!providers[profileId] && !previous[profileId])) return model;
+	const enabled = Object.entries(providers).flatMap(([id, profile]) =>
+		profile.enabled
+			? Object.values(profile.models)
+					.filter((candidate) => candidate.enabled)
+					.map((candidate) => `${id}/${candidate.remoteModelId ?? candidate.id}`)
+			: [],
+	);
+	return enabled.includes(model) ? model : (enabled[0] ?? "");
 }
 
 function emptySettings(model: string): RuntimeAgentSettings {
@@ -1217,6 +1265,7 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 		!isRecord(value) ||
 		!hasOnly(value, [
 			"model",
+			"agentMode",
 			"maxTurns",
 			"language",
 			"reasoningEffort",
@@ -1236,6 +1285,14 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 		return Result.err(
 			new RuntimeAgentSettingsInvalid({
 				message: "Runtime Agent model must use <provider-or-profile>/<model>",
+			}),
+		);
+	}
+	const agentMode = value.agentMode;
+	if (agentMode !== undefined && (typeof agentMode !== "string" || !isRuntimeSessionMode(agentMode))) {
+		return Result.err(
+			new RuntimeAgentSettingsInvalid({
+				message: "Runtime Agent mode must be manual, automate, or plan",
 			}),
 		);
 	}
@@ -1313,6 +1370,7 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 	}
 	const settings: RuntimeAgentSettings = {
 		model: value.model.trim(),
+		agentMode,
 		maxTurns,
 		language,
 		reasoningEffort,
@@ -1386,6 +1444,7 @@ function projectSnapshot(settings: RuntimeAgentSettings, revision: string): Runt
 	return {
 		revision,
 		model: settings.model,
+		agentMode: settings.agentMode,
 		maxTurns: settings.maxTurns,
 		language: settings.language,
 		reasoningEffort: settings.reasoningEffort,

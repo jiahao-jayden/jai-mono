@@ -30,6 +30,7 @@ import {
 import { useIcons } from "@/lib/icon-context";
 import { selectDraft, useDesktopChatStore } from "@/stores/chat";
 import {
+	type DesktopAgentMode,
 	type DesktopArtifact,
 	type DesktopMcpSettingsInput,
 	type DesktopProject,
@@ -91,8 +92,8 @@ export function AppShell() {
 	const draft = useDesktopChatStore(selectDraft);
 	const queue = useDesktopChatStore((state) => state.queue);
 	const selectedProjectId = useDesktopChatStore((state) => state.selectedProjectId);
-	const selectedModelRef = useDesktopChatStore((state) => state.selectedModelRef);
-	const selectedAgentMode = useDesktopChatStore((state) => state.selectedAgentMode);
+	const pickedModelRef = useDesktopChatStore((state) => state.selectedModelRef);
+	const pickedAgentMode = useDesktopChatStore((state) => state.selectedAgentMode);
 	const openSessionInStore = useDesktopChatStore((state) => state.openSession);
 	const newChat = useDesktopChatStore((state) => state.newChat);
 	const setDraft = useDesktopChatStore((state) => state.setDraft);
@@ -165,14 +166,14 @@ export function AppShell() {
 		providerQuery.data?.profiles.flatMap((profile) =>
 			profile.models
 				.filter((model) => model.enabled && isDesktopProviderModelRunnable(model))
-				.map((model) => `${profile.id}/${model.id}`),
+				.map((model) => `${profile.id}/${model.remoteModelId}`),
 		) ?? [];
-	const runtimeModelRef = enabledModelRefs.includes(selectedModelRef) ? selectedModelRef : (enabledModelRefs[0] ?? "");
 	const chat = useChat({
 		id: activeSessionId,
 		newSessionProjectId,
-		modelRef: runtimeModelRef,
-		mode: selectedAgentMode,
+		modelRef: pickedModelRef ?? providerQuery.data?.selectedModelRef ?? "",
+		mode: pickedAgentMode ?? providerQuery.data?.selectedAgentMode ?? "manual",
+		availableModelRefs: enabledModelRefs,
 		queue,
 		onSessionCreated: (sessionId) => {
 			sessionCreated(sessionId);
@@ -249,6 +250,17 @@ export function AppShell() {
 		});
 	}, [chat.artifacts]);
 
+	const applySelection = (modelRef: string, mode: DesktopAgentMode) => {
+		setSelectedModelRef(modelRef);
+		setSelectedAgentMode(mode);
+		if (!modelRef) return;
+		void chat.configure({ modelRef, mode });
+		// A lost default write only means the next new chat starts from the previous pick.
+		void desktop.provider.setSelection({ modelRef, mode }).then(
+			(snapshot) => desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, snapshot),
+			() => undefined,
+		);
+	};
 	const updateProviderConfig = async (input: DesktopProviderConfigInput) => {
 		const snapshot = await desktop.provider.save(input);
 		desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, snapshot);
@@ -479,12 +491,15 @@ export function AppShell() {
 								draft={draft}
 								queue={queue}
 								onDraftChange={setDraft}
-								onEditQueuedMessage={editQueuedMessage}
+								onEditQueuedMessage={(messageId) => {
+									const message = editQueuedMessage(messageId);
+									if (message) applySelection(message.modelRef, message.mode);
+								}}
 								onRemoveQueuedMessage={removeQueuedMessage}
 								onReorderQueuedMessages={reorderQueuedMessages}
 								providerConfig={providerQuery.data}
-								selectedModelRef={runtimeModelRef}
-								selectedAgentMode={selectedAgentMode}
+								selectedModelRef={chat.modelRef}
+								selectedAgentMode={chat.mode}
 								providerLoading={providerQuery.isLoading}
 								providerError={providerQuery.isError}
 								projectBusy={projectBusy}
@@ -494,8 +509,8 @@ export function AppShell() {
 								sidebarOpen={sidebarOpen}
 								macTitleBar={isMac}
 								onOpenProviderSettings={openProviderSettings}
-								onSelectProviderModel={setSelectedModelRef}
-								onSelectAgentMode={setSelectedAgentMode}
+								onSelectProviderModel={(modelRef) => applySelection(modelRef, chat.mode)}
+								onSelectAgentMode={(mode) => applySelection(chat.modelRef, mode)}
 								onChooseProject={chooseProject}
 								onRetryProjects={() => void projectsQuery.refetch()}
 								onRenameSession={renameSession}

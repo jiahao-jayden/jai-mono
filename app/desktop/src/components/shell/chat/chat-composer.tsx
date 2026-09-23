@@ -263,7 +263,9 @@ export function ChatComposer({
 	const onSubmit = () => void submitMessage();
 	const pickerDisabled = composerDisabled || isStreaming;
 	const contextWindow = providerConfig?.profiles
-		.flatMap((profile) => profile.models.filter((model) => `${profile.id}/${model.id}` === selectedModelRef))
+		.flatMap((profile) =>
+			profile.models.filter((model) => `${profile.id}/${model.remoteModelId}` === selectedModelRef),
+		)
 		.at(0)?.contextWindow;
 	const selectCommand = useCallback(
 		(command: DesktopCommandDescriptor) => {
@@ -418,11 +420,7 @@ export function ChatComposer({
 					leftSlot={({ openFilePicker }) => (
 						<>
 							<MessageAttachmentPicker disabled={pickerDisabled} onOpen={() => openFilePicker()} />
-							<AgentModeControl
-								mode={selectedAgentMode}
-								disabled={isStreaming || isSubmitting}
-								onSelect={onSelectAgentMode}
-							/>
+							<AgentModeControl mode={selectedAgentMode} disabled={isSubmitting} onSelect={onSelectAgentMode} />
 						</>
 					)}
 					rightSlot={
@@ -433,7 +431,7 @@ export function ChatComposer({
 								selectedModelRef={selectedModelRef}
 								loading={providerLoading}
 								error={providerError}
-								disabled={isStreaming || isSubmitting || providerLoading}
+								disabled={isSubmitting || providerLoading}
 								onSelect={onSelectProviderModel}
 								onManage={onOpenProviderSettings}
 							/>

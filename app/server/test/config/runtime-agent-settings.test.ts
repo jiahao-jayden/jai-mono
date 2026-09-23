@@ -147,6 +147,71 @@ describe("Runtime Agent Settings", () => {
     }
   });
 
+  test("remembers the composer selection and keeps its mode across a full save", () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      const settings = new SqliteRuntimeAgentSettings(database);
+      const initialized = settings.write({
+        revision: null,
+        model: "gateway/gpt-a",
+        providers: [
+          {
+            id: "gateway",
+            name: "Gateway",
+            adapter: "openai-compatible",
+            authentication: "none",
+            enabled: true,
+            models: [
+              { id: "gpt-a", enabled: true },
+              { id: "gpt-b", enabled: true },
+              { id: "gpt-off", enabled: false },
+            ],
+          },
+        ],
+      });
+      if (initialized.isErr()) throw initialized.error;
+
+      const selected = settings.setSelection({ model: "gateway/gpt-b", agentMode: "plan" });
+      if (selected.isErr()) throw selected.error;
+      expect(selected.value).toMatchObject({ model: "gateway/gpt-b", agentMode: "plan" });
+
+      expect(settings.setSelection({ model: "gateway/gpt-off", agentMode: "manual" })).toMatchObject({
+        status: "error",
+        error: { _tag: "runtime_config.agent_settings_invalid" },
+      });
+      expect(settings.setSelection({ model: "gateway/gpt-a", agentMode: "yolo" })).toMatchObject({
+        status: "error",
+        error: { _tag: "runtime_config.agent_settings_invalid" },
+      });
+
+      const resaved = settings.write({
+        revision: selected.value.revision,
+        model: selected.value.model,
+        maxTurns: 4,
+        providers: selected.value.profiles.map(
+          ({ credentialConfigured: _configured, credentialMask: _mask, ...profile }) => profile,
+        ),
+      });
+      if (resaved.isErr()) throw resaved.error;
+      expect(resaved.value).toMatchObject({ model: "gateway/gpt-b", agentMode: "plan", maxTurns: 4 });
+
+      const disabled = settings.write({
+        revision: resaved.value.revision,
+        model: resaved.value.model,
+        providers: resaved.value.profiles.map(
+          ({ credentialConfigured: _configured, credentialMask: _mask, ...profile }) => ({
+            ...profile,
+            models: profile.models.map((model) => (model.id === "gpt-b" ? { ...model, enabled: false } : model)),
+          }),
+        ),
+      });
+      if (disabled.isErr()) throw disabled.error;
+      expect(disabled.value.model).toBe("gateway/gpt-a");
+    } finally {
+      database.close();
+    }
+  });
+
   test("rejects a configured reasoning effort when the selected model has no supported request option", () => {
     const database = new DatabaseSync(":memory:");
     try {

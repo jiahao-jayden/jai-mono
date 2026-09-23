@@ -13,6 +13,7 @@ import type {
 	DesktopProviderConfigInput,
 	DesktopProviderConfigSnapshot,
 	DesktopProviderFetchModelsResult,
+	DesktopProviderSelectionInput,
 	DesktopTelemetryCredentialId,
 	DesktopTelemetryCredentialRevealResult,
 	DesktopTelemetrySettingsInput,
@@ -62,6 +63,12 @@ export class DesktopConfigService {
 		const savedRemote = await this.client.save(toRuntimeInput(input, remote));
 		if (savedRemote.isErr()) throw savedRemote.error;
 		return this.#project(savedRemote.value);
+	}
+
+	async setSelection(input: DesktopProviderSelectionInput): Promise<DesktopProviderConfigSnapshot> {
+		const saved = await this.client.setSelection({ model: input.modelRef, agentMode: input.mode });
+		if (saved.isErr()) throw saved.error;
+		return this.#project(saved.value);
 	}
 
 	async setAgentLanguage(language: DesktopUiLocale): Promise<void> {
@@ -195,6 +202,8 @@ export class DesktopConfigService {
 	#project(remote: RuntimeAgentSettingsSnapshot): DesktopProviderConfigSnapshot {
 		return {
 			...projectRuntimeProviderConfig(remote, this.#catalog),
+			selectedModelRef: remote.model,
+			selectedAgentMode: remote.agentMode ?? "manual",
 			maxIterations: remote.maxTurns,
 			reasoningEffort: remote.reasoningEffort,
 			connector: projectRuntimeConnectorConfig(remote.connector),
