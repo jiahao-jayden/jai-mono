@@ -1015,6 +1015,31 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
+	test("merges operation_update boundaries into run timings", async () => {
+		const client = new FakeAcpClient();
+		const events: DesktopAgentEventEnvelope[] = [];
+		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+		const publish = (update: Record<string, unknown>) =>
+			client.publish({
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: { sessionId: "session-1", update: { sessionUpdate: "operation_update", ...update } },
+			});
+
+		publish({ operationId: "op-1", startedAt: 1_000 });
+		publish({ operationId: "op-1", finishedAt: 4_000 });
+
+		expect(events.at(-1)).toMatchObject({
+			event: { type: "run_upsert", run: { operationId: "op-1", startedAt: 1_000, finishedAt: 4_000 } },
+		});
+		expect(host.getSnapshot("session-1").runs).toEqual([{ operationId: "op-1", startedAt: 1_000, finishedAt: 4_000 }]);
+		host.close();
+	});
+
 	test("projects usage_update into snapshot and live usage_changed events", async () => {
 		const client = new FakeAcpClient();
 		const events: DesktopAgentEventEnvelope[] = [];

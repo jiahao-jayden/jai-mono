@@ -87,6 +87,10 @@ describe("ACP v2 local transport", () => {
       });
       expect(await client.next()).toMatchObject({
         method: "session/update",
+        params: { update: { sessionUpdate: "operation_update", operationId: "operation-1" } },
+      });
+      expect(await client.next()).toMatchObject({
+        method: "session/update",
         params: { update: { sessionUpdate: "state_update", state: "running" } },
       });
       await driver.opened;
@@ -104,6 +108,10 @@ describe("ACP v2 local transport", () => {
       });
       driver.finish("completed");
       await driver.closed;
+      expect(await client.next()).toMatchObject({
+        method: "session/update",
+        params: { update: { sessionUpdate: "operation_update", operationId: "operation-1" } },
+      });
       expect(await client.next()).toMatchObject({
         method: "session/update",
         params: {
@@ -337,6 +345,7 @@ describe("ACP v2 local transport", () => {
           prompt: [{ type: "text", text: "needs approval" }],
         },
       });
+      await client.next();
       await client.next();
       await client.next();
       await client.next();

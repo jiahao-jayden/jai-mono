@@ -95,6 +95,13 @@ export interface RuntimeCancelOutcome {
 export type RuntimeForegroundState = "running" | "requires_action" | "idle";
 export type RuntimeStopReason = "end_turn" | "cancelled" | "error" | "interrupted";
 
+/** Wall-clock bounds of one Operation, read from its durable accepted/finished records. */
+export interface RuntimeOperationTiming {
+	readonly operationId: string;
+	readonly startedAt?: number;
+	readonly finishedAt?: number;
+}
+
 /** A volatile, one-way projection emitted only after its durable cause is committed. */
 export type RuntimeSessionEvent =
 	| {
@@ -113,6 +120,11 @@ export type RuntimeSessionEvent =
 			readonly type: "operation_event";
 			readonly operationId: string;
 			readonly event: RuntimeOperationEvent;
+	  }
+	| {
+			/** An Operation boundary was durably recorded; fields absent here are unchanged. */
+			readonly type: "operation_timing";
+			readonly timing: RuntimeOperationTiming;
 	  }
 	| {
 			readonly type: "state_changed";
@@ -144,6 +156,7 @@ export interface RuntimeSessionSnapshot {
 	readonly leafId: string | null;
 	/** Read-only projection of existing Operation records for replay grouping. */
 	readonly operationIdByEntryId: ReadonlyMap<string, string>;
+	readonly operationTimings: readonly RuntimeOperationTiming[];
 	readonly recovery: readonly OperationRecoveryVerdict[];
 	/** Cumulative durable usage on the current Session branch, including discarded responses on that branch. */
 	readonly usage: RuntimeSessionUsage;
@@ -698,6 +711,7 @@ export class RuntimeSession {
 			}
 			if (this.operationDriver) this.#active = createActiveOperation(operationId);
 			this.publish({ type: "entry_appended", entry: inputEntry, operationId });
+			this.publish({ type: "operation_timing", timing: { operationId, startedAt: timestamp.getTime() } });
 			return Result.ok({ operationId, inputEntryId });
 		});
 		if (admitted.isOk() && !this.#suspended) {
@@ -761,6 +775,7 @@ export class RuntimeSession {
 			entries: loaded.value.snapshot.entries,
 			leafId: loaded.value.snapshot.leafId,
 			operationIdByEntryId: operationIdByEntryId(loaded.value.operationRecords, branchEntryIds),
+			operationTimings: operationTimings(loaded.value.operationRecords, branchEntryIds),
 			recovery: recovery.value,
 			usage: branchUsage(loaded.value),
 			...foreground,
@@ -991,6 +1006,10 @@ export class RuntimeSession {
 				record: terminal,
 			});
 			if (appended.isErr()) return Result.err(this.reject(appended.error));
+			this.publish({
+				type: "operation_timing",
+				timing: { operationId: active.operationId, finishedAt: Date.parse(terminal.timestamp) },
+			});
 			this.publish({
 				type: "state_changed",
 				state: "idle",
@@ -1336,6 +1355,10 @@ export class RuntimeSession {
 			}
 			if (this.#active === active) this.#active = undefined;
 			this.releaseLiveSessionIfDetached();
+			this.publish({
+				type: "operation_timing",
+				timing: { operationId: active.operationId, finishedAt: Date.parse(terminal.timestamp) },
+			});
 			const stopReason = stopReasonFor(terminalOutcome);
 			const errorMessage = outcome.isErr() ? outcome.error.message : undefined;
 			if (stopReason === "error") {
@@ -1627,6 +1650,26 @@ function operationIdByEntryId(
 		if (record.type === "tool_dispatched") result.set(record.resultEntryId, record.operationId);
 	}
 	return result;
+}
+
+function operationTimings(
+	records: readonly OperationRecord[],
+	branchEntryIds: ReadonlySet<string>,
+): readonly RuntimeOperationTiming[] {
+	const result = new Map<string, RuntimeOperationTiming>();
+	for (const record of branchOperationRecords(records, branchEntryIds)) {
+		if (record.type === "operation_accepted") {
+			result.set(record.operationId, { operationId: record.operationId, startedAt: Date.parse(record.timestamp) });
+		} else if (record.type === "operation_finished") {
+			const started = result.get(record.operationId);
+			result.set(record.operationId, {
+				operationId: record.operationId,
+				startedAt: started?.startedAt,
+				finishedAt: Date.parse(record.timestamp),
+			});
+		}
+	}
+	return [...result.values()];
 }
 
 function recoverDurableState(

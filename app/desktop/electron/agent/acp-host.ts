@@ -18,6 +18,7 @@ import type {
 	DesktopNarrationItem,
 	DesktopPermissionRequest,
 	DesktopPermissionResolution,
+	DesktopRunTiming,
 	DesktopSessionUsage,
 	DesktopSubagentItem,
 	DesktopSubagentTranscript,
@@ -65,6 +66,7 @@ interface AcpSessionRuntime {
 	configured: boolean;
 	status: DesktopAgentStatus;
 	readonly items: Map<string, DesktopTranscriptItem>;
+	readonly runs: Map<string, DesktopRunTiming>;
 	readonly artifacts: Map<string, DesktopArtifact>;
 	readonly terminalToolCallIds: Map<string, string>;
 	readonly terminalOutput: Map<string, string>;
@@ -237,6 +239,7 @@ export class DesktopAcpAgentHost {
 				sessionId,
 				status: "idle",
 				items: [],
+				runs: [],
 				artifacts: [],
 				usage: EMPTY_DESKTOP_SESSION_USAGE,
 				lastSeq: 0,
@@ -248,6 +251,7 @@ export class DesktopAcpAgentHost {
 			connectionStatus: runtime.connectionStatus || undefined,
 			stopReason: runtime.stopReason || undefined,
 			items: [...runtime.items.values()].map((item) => structuredClone(item)),
+			runs: [...runtime.runs.values()].map((run) => ({ ...run })),
 			todos: runtime.todos ? structuredClone(runtime.todos) : undefined,
 			artifacts: sortArtifacts(runtime.artifacts.values()).map((artifact) => structuredClone(artifact)),
 			usage: { ...runtime.usage },
@@ -273,7 +277,7 @@ export class DesktopAcpAgentHost {
 		});
 		if (result.isErr()) throw result.error;
 		const value = result.value as { readonly items?: readonly unknown[] };
-		return { items: value.items ? this.#projectSubagentItems(value.items) : [] };
+		return value.items ? this.#projectSubagentTranscript(value.items) : { items: [], runs: [] };
 	}
 
 	getArtifact(sessionId: string, artifactId: string): DesktopArtifact | undefined {
@@ -322,6 +326,7 @@ export class DesktopAcpAgentHost {
 			configured: false,
 			status: "idle",
 			items: new Map(),
+			runs: new Map(),
 			artifacts: new Map(),
 			terminalToolCallIds: new Map(),
 			terminalOutput: new Map(),
@@ -370,6 +375,7 @@ export class DesktopAcpAgentHost {
 
 	async #rebuildProjection(runtime: AcpSessionRuntime): Promise<void> {
 		runtime.items.clear();
+		runtime.runs.clear();
 		runtime.artifacts.clear();
 		runtime.terminalToolCallIds.clear();
 		runtime.terminalOutput.clear();
@@ -531,7 +537,22 @@ export class DesktopAcpAgentHost {
 			case "usage_update":
 				this.#usageUpdate(runtime, update);
 				return;
+			case "operation_update":
+				this.#operationUpdate(runtime, update);
+				return;
 		}
+	}
+
+	#operationUpdate(runtime: AcpSessionRuntime, update: Record<string, unknown>): void {
+		if (typeof update.operationId !== "string") return;
+		const previous = runtime.runs.get(update.operationId);
+		const run: DesktopRunTiming = {
+			operationId: update.operationId,
+			startedAt: finiteNumber(update.startedAt) ?? previous?.startedAt,
+			finishedAt: finiteNumber(update.finishedAt) ?? previous?.finishedAt,
+		};
+		runtime.runs.set(run.operationId, run);
+		this.#emitEvent(runtime, { type: "run_upsert", run });
 	}
 
 	/**
@@ -539,7 +560,7 @@ export class DesktopAcpAgentHost {
 	 * a disposable runtime. The runtime is marked closed so #emitEvent is a no-op;
 	 * items still accumulate in runtime.items for collection.
 	 */
-	#projectSubagentItems(items: readonly unknown[]): readonly DesktopTranscriptItem[] {
+	#projectSubagentTranscript(items: readonly unknown[]): DesktopSubagentTranscript {
 		const runtime: AcpSessionRuntime = {
 			sessionId: "subagent-transcript",
 			cwd: "",
@@ -548,6 +569,7 @@ export class DesktopAcpAgentHost {
 			configured: true,
 			status: "idle",
 			items: new Map(),
+			runs: new Map(),
 			artifacts: new Map(),
 			terminalToolCallIds: new Map(),
 			terminalOutput: new Map(),
@@ -560,7 +582,7 @@ export class DesktopAcpAgentHost {
 			if (!isRecord(item) || typeof item.sessionUpdate !== "string") continue;
 			this.#processUpdate(runtime, item);
 		}
-		return [...runtime.items.values()];
+		return { items: [...runtime.items.values()], runs: [...runtime.runs.values()] };
 	}
 
 	#onRequest(request: AcpJsonRpcRequest): void {
@@ -1181,12 +1203,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readSessionUsage(update: Record<string, unknown>): DesktopSessionUsage | undefined {
-	const inputTokens = finiteToken(update.inputTokens);
-	const outputTokens = finiteToken(update.outputTokens);
-	const cacheReadTokens = finiteToken(update.cacheReadTokens);
-	const cacheWriteTokens = finiteToken(update.cacheWriteTokens);
-	const totalTokens = finiteToken(update.totalTokens);
-	const cost = finiteToken(update.cost);
+	const inputTokens = finiteNumber(update.inputTokens);
+	const outputTokens = finiteNumber(update.outputTokens);
+	const cacheReadTokens = finiteNumber(update.cacheReadTokens);
+	const cacheWriteTokens = finiteNumber(update.cacheWriteTokens);
+	const totalTokens = finiteNumber(update.totalTokens);
+	const cost = finiteNumber(update.cost);
 	if (
 		inputTokens === undefined ||
 		outputTokens === undefined ||
@@ -1200,7 +1222,7 @@ function readSessionUsage(update: Record<string, unknown>): DesktopSessionUsage 
 	return { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, cost };
 }
 
-function finiteToken(value: unknown): number | undefined {
+function finiteNumber(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 

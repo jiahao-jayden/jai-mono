@@ -126,6 +126,7 @@ describe("useChat projection", () => {
 				sessionId: "session-1",
 				status: "idle",
 				lastSeq: 4,
+				runs: [],
 				artifacts: [],
 				usage: {
 					inputTokens: 0,
@@ -183,6 +184,7 @@ describe("useChat projection", () => {
 				connectionStatus: "reconnecting",
 				stopReason: "interrupted",
 				lastSeq: 4,
+				runs: [],
 				artifacts: [],
 				usage: {
 					inputTokens: 0,
@@ -342,6 +344,7 @@ describe("useChat projection", () => {
 				sessionId: "session-1",
 				status: "idle",
 				items: [],
+				runs: [],
 				artifacts: [],
 				usage: {
 					inputTokens: 0,
@@ -465,6 +468,26 @@ describe("useChat projection", () => {
 			cost: 0.01,
 		});
 	});
+
+	test("run_upsert replaces the timing of the same run", () => {
+		const started = applyChatProjectionUpdate(emptyChatState(), {
+			type: "event",
+			envelope: {
+				sessionId: "session-1",
+				seq: 1,
+				event: { type: "run_upsert", run: { operationId: "op-1", startedAt: 1_000 } },
+			},
+		});
+		const finished = applyChatProjectionUpdate(started, {
+			type: "event",
+			envelope: {
+				sessionId: "session-1",
+				seq: 2,
+				event: { type: "run_upsert", run: { operationId: "op-1", startedAt: 1_000, finishedAt: 4_000 } },
+			},
+		});
+		expect(finished.runs).toEqual([{ operationId: "op-1", startedAt: 1_000, finishedAt: 4_000 }]);
+	});
 });
 
 function emptyChatState(): ChatRuntimeState {
@@ -480,6 +503,7 @@ function emptyChatState(): ChatRuntimeState {
 		submitting: false,
 		stopping: false,
 		messages: [],
+		runs: [],
 		todos: undefined,
 		artifacts: [],
 		usage: {

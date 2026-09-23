@@ -88,6 +88,18 @@ describe("ACP v2 Agent adapter", () => {
 				params: {
 					sessionId: "session-1",
 					update: {
+						sessionUpdate: "operation_update",
+						operationId: "operation-1",
+						startedAt: expect.any(Number),
+					},
+				},
+			},
+			{
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: {
+					sessionId: "session-1",
+					update: {
 						sessionUpdate: "state_update",
 						state: "running",
 					},
@@ -161,6 +173,12 @@ describe("ACP v2 Agent adapter", () => {
 							messageId: "child-message-1",
 							content: [{ type: "text", text: "inspect files" }],
 							_meta: { jai: { timestamp: 1_788_998_400_000 } },
+						},
+						{
+							sessionUpdate: "operation_update",
+							operationId: "child:tool-call-1",
+							startedAt: 1_788_998_400_000,
+							finishedAt: 1_788_998_400_000,
 						},
 					],
 				},
@@ -546,6 +564,14 @@ describe("ACP v2 Agent adapter", () => {
 				method: "session/update",
 				params: {
 					sessionId: "session-1",
+					update: { sessionUpdate: "operation_update", operationId: "operation-1", finishedAt: expect.any(Number) },
+				},
+			},
+			{
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: {
+					sessionId: "session-1",
 					update: { sessionUpdate: "state_update", state: "idle", stopReason: "cancelled" },
 				},
 			},
@@ -625,6 +651,14 @@ describe("ACP v2 Agent adapter", () => {
 		driver.finish("completed");
 		await driver.closed;
 		expect(agent.drain()).toEqual([
+			{
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: {
+					sessionId: "session-1",
+					update: { sessionUpdate: "operation_update", operationId: "operation-1", finishedAt: expect.any(Number) },
+				},
+			},
 			{
 				jsonrpc: "2.0",
 				method: "session/update",
@@ -1196,6 +1230,19 @@ describe("ACP v2 Agent adapter", () => {
 						messageId: "operation-1:input",
 						content: [{ type: "text", text: "persist me" }],
 						_meta: { jai: { timestamp: expect.any(Number) } },
+					},
+				},
+			},
+			{
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: {
+					sessionId: "session-1",
+					update: {
+						sessionUpdate: "operation_update",
+						operationId: "operation-1",
+						startedAt: expect.any(Number),
+						finishedAt: expect.any(Number),
 					},
 				},
 			},

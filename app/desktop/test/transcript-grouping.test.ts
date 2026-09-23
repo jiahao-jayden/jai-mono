@@ -63,7 +63,7 @@ describe("transcript grouping", () => {
 
 		const markup = renderToStaticMarkup(createElement(TranscriptItem, { item: tool }));
 		expect(markup).toContain('data-slot="tool-timeline"');
-		expect(markup).toContain("Worked for 1m");
+		expect(markup).toContain(">Worked<");
 		expect(markup).not.toContain("command output");
 	});
 
@@ -107,7 +107,9 @@ describe("transcript grouping", () => {
 		expect(steps).toHaveLength(2);
 		expect(steps[1]).toMatchObject({ title: "Inspect desktop", summary: "Read", active: true });
 		expect(steps[1]?.onSelect).toBeFunction();
-		expect(workTimelineSummary([tool, subagent], [tool, subagent], true, intl, 90_000)).toBe("Working · 1m 30s");
+		expect(
+			workTimelineSummary([tool, subagent], [tool, subagent], { operationId: "turn-1", startedAt: 0 }, true, intl, 90_000),
+		).toBe("Working · 1m 30s");
 
 		const markup = renderToStaticMarkup(
 			createElement(TranscriptItems, { items: [tool, subagent], loading: false, onOpenSubagent: () => {} }),
@@ -263,9 +265,13 @@ describe("transcript grouping", () => {
 			{ id: "work:operation-1:tool:read-1", items: [firstTool, secondTool] },
 		]);
 		const markup = renderToStaticMarkup(
-			createElement(TranscriptItems, { items: [firstTool, secondTool], loading: false }),
+			createElement(TranscriptItems, {
+				items: [firstTool, secondTool],
+				runs: [{ operationId: "operation-1", startedAt: 0, finishedAt: 61_000 }],
+				loading: false,
+			}),
 		);
-		expect(markup).toContain("Worked for 1m");
+		expect(markup).toContain("Worked for 1m 1s");
 		expect((markup.match(/data-slot=\"tool-timeline\"/g) ?? []).length).toBe(1);
 	});
 
@@ -371,10 +377,12 @@ describe("transcript grouping", () => {
 			fileChanges: [{ operation: "add", path: "/workspace/index.ts" }],
 		};
 
-		expect(workTimelineSummary([tool], [tool], false, intl)).toBe("Worked for 1m 1s");
+		expect(
+			workTimelineSummary([tool], [tool], { operationId: "turn-1", startedAt: 0, finishedAt: 61_000 }, false, intl),
+		).toBe("Worked for 1m 1s");
 	});
 
-	test("缺少 activity 时间戳的已完成工作不会从用户消息计时到现在", () => {
+	test("没有 run 时间时不显示时长，也不从用户消息计时到现在", () => {
 		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
 			kind: "message",
 			id: "message:user-1",
@@ -394,7 +402,7 @@ describe("transcript grouping", () => {
 			status: "complete",
 		};
 
-		expect(workTimelineSummary([user, tool], [tool], false, intl, 16 * 60 * 60 * 1_000)).toBe("Worked");
+		expect(workTimelineSummary([user, tool], [tool], undefined, false, intl, 16 * 60 * 60 * 1_000)).toBe("Worked");
 	});
 
 	test("零时长工作不会伪装成 1ms", () => {
@@ -408,7 +416,15 @@ describe("transcript grouping", () => {
 			timestamp: 10_000,
 		};
 
-		expect(workTimelineSummary([thinking], [thinking], false, intl)).toBe("Worked");
+		expect(
+			workTimelineSummary(
+				[thinking],
+				[thinking],
+				{ operationId: "turn-instant", startedAt: 10_000, finishedAt: 10_000 },
+				false,
+				intl,
+			),
+		).toBe("Worked");
 	});
 
 	test("工作时长使用本地化的紧凑单位", () => {
@@ -416,72 +432,6 @@ describe("transcript grouping", () => {
 		expect(formatWorkDuration(9_800, intl)).toBe("10s");
 		expect(formatWorkDuration(3 * 60_000 + 27_000, intl)).toBe("3m 27s");
 		expect(formatWorkDuration(16 * 60 * 60_000 + 17 * 60_000 + 55_000, intl)).toBe("16h 17m 55s");
-	});
-
-	test("不会把本轮用户消息之前的旧工具时间算进工作时长", () => {
-		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
-			kind: "message",
-			id: "message:user-stale-clock",
-			role: "user",
-			text: "检查一下",
-			status: "complete",
-			timestamp: 100_000,
-		};
-		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
-			kind: "tool",
-			id: "tool:stale-clock",
-			turnId: "turn-stale-clock",
-			activityId: "assistant:stale-clock",
-			toolCallId: "stale-clock",
-			toolName: "Read",
-			activityKind: "read",
-			status: "complete",
-			startedAt: 0,
-			completedAt: 101_000,
-		};
-		const reply: Extract<DesktopTranscriptItem, { kind: "message" }> = {
-			kind: "message",
-			id: "message:reply-stale-clock",
-			role: "assistant",
-			text: "完成了。",
-			status: "complete",
-			timestamp: 102_000,
-		};
-
-		expect(workTimelineSummary([user, tool, reply], [tool], false, intl)).toBe("Worked for 2s");
-	});
-
-	test("不会把助手回复之后的旧工具结束时间算进工作时长", () => {
-		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
-			kind: "message",
-			id: "message:user-end-boundary",
-			role: "user",
-			text: "检查一下",
-			status: "complete",
-			timestamp: 100_000,
-		};
-		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
-			kind: "tool",
-			id: "tool:end-boundary",
-			turnId: "turn-end-boundary",
-			activityId: "assistant:end-boundary",
-			toolCallId: "end-boundary",
-			toolName: "Read",
-			activityKind: "read",
-			status: "complete",
-			startedAt: 101_000,
-			completedAt: 500_000,
-		};
-		const reply: Extract<DesktopTranscriptItem, { kind: "message" }> = {
-			kind: "message",
-			id: "message:reply-end-boundary",
-			role: "assistant",
-			text: "完成了。",
-			status: "complete",
-			timestamp: 102_000,
-		};
-
-		expect(workTimelineSummary([user, tool, reply], [tool], false, intl)).toBe("Worked for 2s");
 	});
 
 	test("context compaction 不会切断同一 turn 的工作日志", () => {
@@ -745,7 +695,7 @@ describe("transcript grouping", () => {
 		expect(renderToStaticMarkup(createElement(TranscriptItem, { item: permission }))).toBe("");
 	});
 
-	test("工作时长按 turn boundary 到 assistant 完成时间计算", () => {
+	test("工作时长按 run 起止计算，run 未结束且工作阶段已结束时不显示数字", () => {
 		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
 			kind: "message",
 			id: "message:user-1",
@@ -775,11 +725,20 @@ describe("transcript grouping", () => {
 			timestamp: 70_000,
 		};
 
-		expect(workTimelineSummary([user, tool, reply], [tool], false, intl)).toBe("Worked for 1m 10s");
-		expect(workTimelineSummary([user, tool], [tool], true, intl, 55_000)).toBe("Working · 55s");
+		const finished = { operationId: "operation-1", startedAt: 0, finishedAt: 70_000 };
+		const running = { operationId: "operation-1", startedAt: 0 };
+		expect(workTimelineSummary([user, tool, reply], [tool], finished, false, intl)).toBe("Worked for 1m 10s");
+		expect(workTimelineSummary([user, tool], [tool], running, true, intl, 55_000)).toBe("Working · 55s");
 		expect(
-			workTimelineSummary([user, tool, { ...reply, status: "streaming", timestamp: 45_000 }], [tool], true, intl, 70_000),
-		).toBe("Worked for 40s");
+			workTimelineSummary(
+				[user, tool, { ...reply, status: "streaming", timestamp: 45_000 }],
+				[tool],
+				running,
+				true,
+				intl,
+				70_000,
+			),
+		).toBe("Worked");
 
 		const activeMarkup = renderToStaticMarkup(
 			createElement(TranscriptItems, { items: [user, tool], loading: false, responding: true }),
@@ -800,136 +759,6 @@ describe("transcript grouping", () => {
 			}),
 		);
 		expect(rememberedMarkup).toContain('aria-expanded="true"');
-	});
-
-	test("工具调用前的 assistant 消息不会覆盖用户消息作为 turn 起点", () => {
-		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
-			kind: "message",
-			id: "message:user-1",
-			role: "user",
-			text: "检查一下",
-			status: "complete",
-			timestamp: 1_000,
-		};
-		const toolRequest: Extract<DesktopTranscriptItem, { kind: "message" }> = {
-			kind: "message",
-			id: "message:tool-request",
-			role: "assistant",
-			text: "我先检查。",
-			status: "complete",
-			timestamp: 1_001,
-		};
-		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
-			kind: "tool",
-			id: "tool:read-1",
-			turnId: "operation-1",
-			activityId: "assistant:1",
-			toolCallId: "read-1",
-			toolName: "Read",
-			activityKind: "read",
-			status: "complete",
-			startedAt: 2_000,
-			completedAt: 61_000,
-		};
-		const reply: Extract<DesktopTranscriptItem, { kind: "message" }> = {
-			kind: "message",
-			id: "message:reply",
-			role: "assistant",
-			text: "完成了。",
-			status: "complete",
-			timestamp: 62_000,
-		};
-
-		expect(workTimelineSummary([user, toolRequest, tool, reply], [tool], false, intl)).toBe("Worked for 1m 1s");
-	});
-
-	test("回放时不混用当前消息时间和 journal 工具时间", () => {
-		const now = 1_800_000_000_000;
-		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
-			kind: "message",
-			id: "message:user-replayed",
-			role: "user",
-			text: "检查一下",
-			status: "complete",
-			timestamp: now,
-		};
-		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
-			kind: "tool",
-			id: "tool:read-replayed",
-			turnId: "operation-replayed",
-			activityId: "assistant:replayed",
-			toolCallId: "read-replayed",
-			toolName: "Read",
-			activityKind: "read",
-			status: "complete",
-			startedAt: 10_000,
-			completedAt: 71_000,
-		};
-		const reply: Extract<DesktopTranscriptItem, { kind: "message" }> = {
-			kind: "message",
-			id: "message:reply-replayed",
-			role: "assistant",
-			text: "完成了。",
-			status: "complete",
-			timestamp: now + 1,
-		};
-
-		expect(workTimelineSummary([user, tool, reply], [tool], false, intl, now + 2)).toBe("Worked for 1m 1s");
-	});
-
-	test("回放工具组使用 durable request 和 run 时间", () => {
-		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
-			kind: "message",
-			id: "message:user-replayed-narration",
-			role: "user",
-			text: "查询 Jev",
-			status: "complete",
-			timestamp: 0,
-		};
-		const narration: Extract<DesktopTranscriptItem, { kind: "narration" }> = {
-			kind: "narration",
-			id: "message:narration-replayed",
-			turnId: "turn-replayed-narration",
-			activityId: "activity-replayed-narration",
-			text: "我查一下。",
-			status: "complete",
-			timestamp: 15_000,
-		};
-		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
-			kind: "tool",
-			id: "tool:replayed-narration",
-			turnId: "turn-replayed-narration",
-			activityId: "activity-replayed-narration",
-			toolCallId: "replayed-narration",
-			toolName: "web_search",
-			activityKind: "search",
-			status: "complete",
-			startedAt: 10_000,
-			completedAt: 24_000,
-		};
-		const reply: Extract<DesktopTranscriptItem, { kind: "message" }> = {
-			kind: "message",
-			id: "message:reply-replayed-narration",
-			role: "assistant",
-			text: "查到了。",
-			status: "complete",
-			timestamp: 25_000,
-		};
-
-		expect(workTimelineSummary([user, narration, tool, reply], [narration, tool], false, intl, 26_000)).toBe("Worked for 25s");
-	});
-
-	test("回放工具缺少完成时间时不伪造超长时长", () => {
-		const now = 1_800_000_000_000;
-		const user: Extract<DesktopTranscriptItem, { kind: "message" }> = {
-			kind: "message", id: "message:user-missing-end", role: "user", text: "检查", status: "complete", timestamp: now,
-		};
-		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
-			kind: "tool", id: "tool:missing-end", turnId: "operation-missing-end", activityId: "assistant:missing-end",
-			toolCallId: "missing-end", toolName: "Read", activityKind: "read", status: "complete", startedAt: 10_000,
-		};
-
-		expect(workTimelineSummary([user, tool], [tool], false, intl, now)).toBe("Worked");
 	});
 
 	test("权限审批等待不计入工作时长，未完成时数字冻结", () => {
@@ -968,8 +797,9 @@ describe("transcript grouping", () => {
 		};
 		const resolved = { ...pending, status: "allowed" as const, resolvedAt: 45_000 };
 
-		expect(workTimelineSummary([user, pending, tool], [tool], true, intl, 40_000)).toBe("Working · 15s");
-		expect(workTimelineSummary([user, pending, tool], [tool], true, intl, 80_000)).toBe("Working · 15s");
-		expect(workTimelineSummary([user, resolved, tool], [tool], true, intl, 80_000)).toBe("Working · 50s");
+		const run = { operationId: "operation-1", startedAt: 0 };
+		expect(workTimelineSummary([user, pending, tool], [tool], run, true, intl, 40_000)).toBe("Working · 15s");
+		expect(workTimelineSummary([user, pending, tool], [tool], run, true, intl, 80_000)).toBe("Working · 15s");
+		expect(workTimelineSummary([user, resolved, tool], [tool], run, true, intl, 80_000)).toBe("Working · 50s");
 	});
 });

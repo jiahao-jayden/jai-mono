@@ -71,9 +71,11 @@ export function resolveComposerEnterDelivery(input: {
 	readonly metaKey: boolean;
 	readonly ctrlKey: boolean;
 	readonly isStreaming: boolean;
-}): "queue" | "steer" | undefined {
+	readonly hasMessageContent: boolean;
+}): "queue" | "steer" | "stop" | undefined {
 	if (input.key !== "Enter" || input.shiftKey) return undefined;
 	if (input.isStreaming && (input.metaKey || input.ctrlKey)) return "steer";
+	if (input.isStreaming && !input.hasMessageContent) return "stop";
 	return "queue";
 }
 
@@ -275,10 +277,16 @@ export function ChatComposer({
 				metaKey: event.metaKey,
 				ctrlKey: event.ctrlKey,
 				isStreaming,
+				hasMessageContent,
 			});
 			if (delivery === "steer") {
 				event.preventDefault();
 				void submitMessage("steer");
+				return;
+			}
+			if (delivery === "stop") {
+				event.preventDefault();
+				void submitMessage();
 				return;
 			}
 			if (!commandSuggestionsOpen || matchingCommands.length === 0) return;
@@ -308,6 +316,7 @@ export function ChatComposer({
 		[
 			commandByName,
 			commandSuggestionsOpen,
+			hasMessageContent,
 			isStreaming,
 			matchingCommands.length,
 			selectedCommand,

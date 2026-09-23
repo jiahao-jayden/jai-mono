@@ -124,6 +124,10 @@ describe("RuntimeHost", () => {
     expect(snapshot.value.operationIdByEntryId.get("operation-1:input")).toBe(
       "operation-1",
     );
+    const accepted = durable.value.operationRecords[0]!;
+    expect(snapshot.value.operationTimings).toEqual([
+      { operationId: "operation-1", startedAt: Date.parse(accepted.timestamp) },
+    ]);
   });
 
   test("resumes an existing durable Session without creating another one", async () => {

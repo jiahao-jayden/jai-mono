@@ -827,6 +827,7 @@ export interface DesktopSubagentTranscriptInput {
 /** Read-only projection of a subagent's journal transcript. */
 export interface DesktopSubagentTranscript {
 	readonly items: readonly DesktopTranscriptItem[];
+	readonly runs: readonly DesktopRunTiming[];
 }
 
 export interface DesktopPermissionItem {
@@ -927,12 +928,20 @@ export const EMPTY_DESKTOP_PROFILE_TOKEN_STATS: DesktopProfileTokenStats = {
 	missingUsageAttemptCount: 0,
 };
 
+/** Durable bounds of one run (Operation); a work group's `turnId` is its `operationId`. */
+export interface DesktopRunTiming {
+	readonly operationId: string;
+	readonly startedAt?: number;
+	readonly finishedAt?: number;
+}
+
 export interface DesktopAgentSnapshot {
 	readonly sessionId: string;
 	readonly status: DesktopAgentStatus;
 	readonly connectionStatus?: DesktopAgentConnectionStatus;
 	readonly stopReason?: DesktopAgentStopReason;
 	readonly items: readonly DesktopTranscriptItem[];
+	readonly runs: readonly DesktopRunTiming[];
 	readonly todos?: DesktopTodos;
 	readonly artifacts: readonly DesktopArtifact[];
 	readonly usage: DesktopSessionUsage;
@@ -951,6 +960,7 @@ export type DesktopAgentEvent =
 	  }
 	| { readonly type: "transcript_upsert"; readonly item: DesktopTranscriptItem }
 	| { readonly type: "transcript_remove"; readonly id: string }
+	| { readonly type: "run_upsert"; readonly run: DesktopRunTiming }
 	| { readonly type: "subagent_transcript_changed"; readonly toolCallId: string }
 	| { readonly type: "todos_replace"; readonly todos: DesktopTodos }
 	| { readonly type: "artifact_upsert"; readonly artifact: DesktopArtifact }

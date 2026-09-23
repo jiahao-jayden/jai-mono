@@ -15,7 +15,7 @@ function renderToStaticMarkup(node: ReactNode): string {
 }
 
 describe("ChatMessageQueue", () => {
-	test("running composer queues Enter and steers Ctrl/Cmd+Enter", () => {
+	test("running composer queues Enter, steers Ctrl/Cmd+Enter, stops on empty Enter", () => {
 		expect(
 			resolveComposerEnterDelivery({
 				key: "Enter",
@@ -23,6 +23,7 @@ describe("ChatMessageQueue", () => {
 				metaKey: false,
 				ctrlKey: false,
 				isStreaming: true,
+				hasMessageContent: true,
 			}),
 		).toBe("queue");
 		expect(
@@ -30,8 +31,19 @@ describe("ChatMessageQueue", () => {
 				key: "Enter",
 				shiftKey: false,
 				metaKey: false,
+				ctrlKey: false,
+				isStreaming: true,
+				hasMessageContent: false,
+			}),
+		).toBe("stop");
+		expect(
+			resolveComposerEnterDelivery({
+				key: "Enter",
+				shiftKey: false,
+				metaKey: false,
 				ctrlKey: true,
 				isStreaming: true,
+				hasMessageContent: true,
 			}),
 		).toBe("steer");
 		expect(
@@ -41,6 +53,7 @@ describe("ChatMessageQueue", () => {
 				metaKey: true,
 				ctrlKey: false,
 				isStreaming: true,
+				hasMessageContent: true,
 			}),
 		).toBe("steer");
 	});

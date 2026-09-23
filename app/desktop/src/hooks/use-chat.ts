@@ -16,6 +16,7 @@ import type {
 	DesktopArtifact,
 	DesktopMessageAttachment,
 	DesktopPermissionResolution,
+	DesktopRunTiming,
 	DesktopSessionUsage,
 	DesktopTodos,
 	DesktopTranscriptItem,
@@ -46,6 +47,7 @@ export interface UseChatOptions {
 export interface Chat {
 	readonly id: string | null;
 	readonly messages: readonly DesktopTranscriptItem[];
+	readonly runs: readonly DesktopRunTiming[];
 	readonly todos: DesktopTodos | undefined;
 	readonly artifacts: readonly DesktopArtifact[];
 	readonly usage: DesktopSessionUsage;
@@ -76,6 +78,7 @@ export interface ChatRuntimeState {
 	readonly submitting: boolean;
 	readonly stopping: boolean;
 	readonly messages: readonly DesktopTranscriptItem[];
+	readonly runs: readonly DesktopRunTiming[];
 	readonly todos: DesktopTodos | undefined;
 	readonly artifacts: readonly DesktopArtifact[];
 	readonly usage: DesktopSessionUsage;
@@ -107,6 +110,7 @@ const EMPTY_STATE: ChatRuntimeState = {
 	submitting: false,
 	stopping: false,
 	messages: [],
+	runs: [],
 	todos: undefined,
 	artifacts: [],
 	usage: EMPTY_DESKTOP_SESSION_USAGE,
@@ -211,6 +215,7 @@ export function useChat(options: UseChatOptions): Chat {
 						submitting: false,
 						stopping: false,
 						messages: [],
+						runs: [],
 						todos: undefined,
 						artifacts: [],
 						usage: EMPTY_DESKTOP_SESSION_USAGE,
@@ -496,6 +501,7 @@ export function useChat(options: UseChatOptions): Chat {
 	return {
 		id: options.id,
 		messages: state.messages,
+		runs: state.runs,
 		todos: state.todos,
 		artifacts: state.artifacts,
 		usage: state.usage,
@@ -586,6 +592,12 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 				...state,
 				lastSeq: seq,
 				messages: state.messages.filter((item) => item.id !== event.id),
+			};
+		case "run_upsert":
+			return {
+				...state,
+				lastSeq: seq,
+				runs: [...state.runs.filter((run) => run.operationId !== event.run.operationId), event.run],
 			};
 		case "todos_replace":
 			return { ...state, isLoading: false, lastSeq: seq, todos: event.todos };
@@ -715,6 +727,7 @@ function snapshotState(snapshot: DesktopAgentSnapshot): ChatRuntimeState {
 		submitting: false,
 		stopping: false,
 		messages: [...snapshot.items],
+		runs: [...snapshot.runs],
 		todos: snapshot.todos,
 		artifacts: [...snapshot.artifacts],
 		usage: snapshot.usage,

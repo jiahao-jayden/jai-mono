@@ -8,6 +8,7 @@ import {
 	useEffect,
 	useImperativeHandle,
 	useLayoutEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -18,6 +19,7 @@ import { filesForAttachments } from "@/lib/attachment-files";
 import { useIcon } from "@/lib/icon-context";
 import type {
 	DesktopNarrationItem,
+	DesktopRunTiming,
 	DesktopSubagentItem,
 	DesktopThinkingItem,
 	DesktopToolActivityKind,
@@ -60,9 +62,15 @@ interface WorkTimelineOptions {
 
 const MemoizedTranscriptItem = memo(TranscriptItem);
 const MemoizedWorkProcess = memo(WorkProcess, sameWorkProcess);
+const NO_RUNS: readonly DesktopRunTiming[] = [];
+
+function useRunsByOperationId(runs: readonly DesktopRunTiming[]): ReadonlyMap<string, DesktopRunTiming> {
+	return useMemo(() => new Map(runs.map((run) => [run.operationId, run])), [runs]);
+}
 
 export function TranscriptItems({
 	items,
+	runs = NO_RUNS,
 	loading,
 	responding = false,
 	openWorkGroups,
@@ -72,6 +80,7 @@ export function TranscriptItems({
 	onOpenSubagent,
 }: {
 	readonly items: readonly DesktopTranscriptItem[];
+	readonly runs?: readonly DesktopRunTiming[];
 	readonly loading: boolean;
 	readonly responding?: boolean;
 	readonly openWorkGroups?: Set<string>;
@@ -81,10 +90,12 @@ export function TranscriptItems({
 	readonly onOpenSubagent?: (item: DesktopSubagentItem) => void;
 }) {
 	const animatedItemIds = useTranscriptItemAnimations(items, loading);
+	const runByOperationId = useRunsByOperationId(runs);
 	const rows = groupTranscriptItems(items);
 	const renderOptions = {
 		animatedItemIds,
 		items,
+		runs: runByOperationId,
 		responding,
 		openWorkGroups,
 		workGroupKeyPrefix,
@@ -100,6 +111,7 @@ export const TranscriptVirtualList = forwardRef<
 	TranscriptVirtualListHandle,
 	{
 		readonly items: readonly DesktopTranscriptItem[];
+		readonly runs?: readonly DesktopRunTiming[];
 		readonly loading: boolean;
 		readonly responding?: boolean;
 		readonly openWorkGroups?: Set<string>;
@@ -116,6 +128,7 @@ export const TranscriptVirtualList = forwardRef<
 	(
 		{
 			items,
+			runs = NO_RUNS,
 			loading,
 			responding = false,
 			openWorkGroups,
@@ -132,6 +145,7 @@ export const TranscriptVirtualList = forwardRef<
 	) => {
 		const intl = useIntl();
 		const animatedItemIds = useTranscriptItemAnimations(items, loading);
+		const runByOperationId = useRunsByOperationId(runs);
 		const rows = groupTranscriptItems(items);
 		const footerCount = Number(responding) + Number(tailSpace > 0);
 		const count = rows.length + footerCount;
@@ -198,6 +212,7 @@ export const TranscriptVirtualList = forwardRef<
 		const renderOptions = {
 			animatedItemIds,
 			items,
+			runs: runByOperationId,
 			responding,
 			openWorkGroups,
 			workGroupKeyPrefix,
@@ -297,6 +312,7 @@ function renderTranscriptRow(
 	options: {
 		readonly animatedItemIds: ReadonlySet<string>;
 		readonly items: readonly DesktopTranscriptItem[];
+		readonly runs: ReadonlyMap<string, DesktopRunTiming>;
 		readonly responding: boolean;
 		readonly openWorkGroups?: Set<string>;
 		readonly workGroupKeyPrefix?: string;
@@ -322,6 +338,7 @@ function renderTranscriptRow(
 			key={row.id}
 			group={row}
 			items={options.items}
+			run={options.runs.get(workItemTurnId(row.items[0]!))}
 			responding={options.responding}
 			openWorkGroups={options.openWorkGroups}
 			openStateKey={options.workGroupKeyPrefix ? `${options.workGroupKeyPrefix}:${row.id}` : undefined}
@@ -563,6 +580,7 @@ function useTranscriptItemAnimations(items: readonly DesktopTranscriptItem[], lo
 function WorkProcess({
 	group,
 	items,
+	run,
 	responding = false,
 	openWorkGroups,
 	openStateKey,
@@ -570,6 +588,7 @@ function WorkProcess({
 }: {
 	readonly group: WorkGroup;
 	readonly items: readonly DesktopTranscriptItem[];
+	readonly run?: DesktopRunTiming;
 	readonly responding?: boolean;
 	readonly openWorkGroups?: Set<string>;
 	readonly openStateKey?: string;
@@ -578,7 +597,7 @@ function WorkProcess({
 	const intl = useIntl();
 	const steps = workTimelineSteps(group.items, intl, { onOpenSubagent });
 	const rememberedOpen = openStateKey !== undefined && openWorkGroups?.has(openStateKey);
-	const clock = workRunClock(items, group.items, responding, Date.now());
+	const clock = workRunClock(items, group.items, run, responding, Date.now());
 	const [open, setOpen] = useState(clock.active || rememberedOpen === true);
 	const [, setNow] = useState(Date.now);
 	const wasActiveRef = useRef(clock.active);
@@ -604,7 +623,7 @@ function WorkProcess({
 	const anchorItem = group.items.at(-1);
 	if (steps.length === 0) return null;
 
-	const label = workTimelineSummary(items, group.items, responding, intl);
+	const label = workTimelineSummary(items, group.items, run, responding, intl);
 	const onOpenChange = (nextOpen: boolean) => {
 		setOpen(nextOpen);
 		if (openStateKey) {
@@ -635,6 +654,7 @@ export function sameWorkProcess(
 	previous: {
 		readonly group: WorkGroup;
 		readonly items: readonly DesktopTranscriptItem[];
+		readonly run?: DesktopRunTiming;
 		readonly responding?: boolean;
 		readonly openWorkGroups?: Set<string>;
 		readonly openStateKey?: string;
@@ -642,6 +662,7 @@ export function sameWorkProcess(
 	next: {
 		readonly group: WorkGroup;
 		readonly items: readonly DesktopTranscriptItem[];
+		readonly run?: DesktopRunTiming;
 		readonly responding?: boolean;
 		readonly openWorkGroups?: Set<string>;
 		readonly openStateKey?: string;
@@ -649,17 +670,23 @@ export function sameWorkProcess(
 ): boolean {
 	if (previous.openStateKey !== next.openStateKey) return false;
 	if (previous.openWorkGroups !== next.openWorkGroups) return false;
+	if (previous.run !== next.run) return false;
 	if (previous.group.id !== next.group.id || previous.group.items.length !== next.group.items.length) return false;
 	if (!previous.group.items.every((item, index) => item === next.group.items[index])) return false;
 
 	const now = Date.now();
-	const previousClock = workRunClock(previous.items, previous.group.items, previous.responding ?? false, now);
-	const nextClock = workRunClock(next.items, next.group.items, next.responding ?? false, now);
+	const previousClock = workRunClock(
+		previous.items,
+		previous.group.items,
+		previous.run,
+		previous.responding ?? false,
+		now,
+	);
+	const nextClock = workRunClock(next.items, next.group.items, next.run, next.responding ?? false, now);
 	return (
 		previousClock.active === nextClock.active &&
 		previousClock.paused === nextClock.paused &&
-		previousClock.durationMs === nextClock.durationMs &&
-		previousClock.start === nextClock.start
+		previousClock.durationMs === nextClock.durationMs
 	);
 }
 
@@ -794,11 +821,12 @@ function workTimelineClusters(items: readonly WorkItem[]): readonly WorkTimeline
 export function workTimelineSummary(
 	items: readonly DesktopTranscriptItem[],
 	workItems: readonly WorkItem[],
+	run: DesktopRunTiming | undefined,
 	responding: boolean,
 	intl: IntlShape,
 	now = Date.now(),
 ): string {
-	const clock = workRunClock(items, workItems, responding, now);
+	const clock = workRunClock(items, workItems, run, responding, now);
 	if (clock.durationMs === 0) {
 		return intl.formatMessage(clock.active ? desktopMessages.transcriptWorking : desktopMessages.transcriptWorked);
 	}
@@ -808,104 +836,49 @@ export function workTimelineSummary(
 	);
 }
 
+/** The duration is the run's durable wall-clock span; transcript items only decide whether it is still active. */
 function workRunClock(
 	items: readonly DesktopTranscriptItem[],
 	workItems: readonly WorkItem[],
+	run: DesktopRunTiming | undefined,
 	responding: boolean,
 	now: number,
-): { active: boolean; paused: boolean; durationMs: number; start?: number } {
+): { active: boolean; paused: boolean; durationMs: number } {
 	const firstWorkId = workItems[0]?.id;
-	let turnStart: number | undefined;
 	let startIndex = 0;
 	for (let index = 0; index < items.length; index++) {
 		const item = items[index]!;
-		if (item.kind === "message" && item.role === "user") {
-			turnStart = item.timestamp;
-			startIndex = index;
-		}
+		if (item.kind === "message" && item.role === "user") startIndex = index;
 		if (item.id === firstWorkId) break;
-		if (
-			turnStart === undefined &&
-			item.kind === "message" &&
-			item.role === "assistant" &&
-			item.status === "complete"
-		) {
-			turnStart = item.timestamp;
-		}
 	}
 
 	let paused = false;
-	let assistantAfterWorkAt: number | undefined;
 	const permissionWindows: Array<{ requestedAt: number; resolvedAt?: number }> = [];
 	let sawNextUser = false;
-	let sawWork = false;
 	for (let index = startIndex; index < items.length; index++) {
 		const item = items[index]!;
 		if (index > startIndex && item.kind === "message" && item.role === "user") {
 			sawNextUser = true;
 			break;
 		}
-		if (item.id === firstWorkId) sawWork = true;
 		if (item.kind === "permission") {
 			if (item.resolvedAt === undefined) paused = true;
 			permissionWindows.push({ requestedAt: item.requestedAt, resolvedAt: item.resolvedAt });
 		}
-		if (sawWork && item.kind === "message" && item.role === "assistant" && item.status === "complete") {
-			assistantAfterWorkAt = item.timestamp;
-		}
-	}
-
-	let workStart: number | undefined;
-	let workEnd: number | undefined;
-	for (const item of workItems) {
-		if (item.kind === "tool" || item.kind === "subagent") {
-			if (item.startedAt !== undefined) workStart = Math.min(workStart ?? item.startedAt, item.startedAt);
-			if (item.completedAt !== undefined) {
-				workEnd = Math.max(workEnd ?? item.completedAt, item.completedAt);
-			}
-			continue;
-		}
-		workStart = Math.min(workStart ?? item.timestamp, item.timestamp);
-		workEnd = Math.max(workEnd ?? item.timestamp, item.timestamp);
 	}
 
 	const active =
 		workItems.some(isWorkItemRunning) ||
 		paused ||
 		(responding && isLatestWorkGroup(items, workItems) && !sawNextUser);
-	const start = resolveWorkStart(turnStart, workStart, workEnd);
-	if (start === undefined || (!active && assistantAfterWorkAt === undefined && workEnd === undefined)) {
-		return { active, paused, durationMs: 0 };
-	}
-	const end = active ? now : (resolveWorkEnd(assistantAfterWorkAt, workEnd) ?? start);
+	const start = run?.startedAt;
+	const end = run?.finishedAt ?? (active ? now : undefined);
+	if (start === undefined || end === undefined) return { active, paused, durationMs: 0 };
 	const pauseMs = permissionWindows.reduce(
 		(total, permission) => total + pauseOverlapMs(permission, start, end, now),
 		0,
 	);
-	return { active, paused, durationMs: Math.max(0, end - start - pauseMs), start };
-}
-
-function resolveWorkStart(
-	turnStart: number | undefined,
-	workStart: number | undefined,
-	workEnd: number | undefined,
-): number | undefined {
-	if (turnStart === undefined) return workStart;
-	if (workStart === undefined) return turnStart;
-	if (workStart < turnStart && workEnd !== undefined && workEnd >= turnStart) return turnStart;
-	return clockConsistentWithWork(turnStart, workStart) ? turnStart : workStart;
-}
-
-function resolveWorkEnd(messageEnd: number | undefined, workEnd: number | undefined): number | undefined {
-	if (messageEnd === undefined) return workEnd;
-	if (workEnd === undefined) return messageEnd;
-	if (workEnd > messageEnd) return messageEnd;
-	return clockConsistentWithWork(messageEnd, workEnd) ? messageEnd : workEnd;
-}
-
-function clockConsistentWithWork(messageTime: number | undefined, workTime: number | undefined): boolean {
-	if (messageTime === undefined || workTime === undefined) return messageTime !== undefined;
-	return Math.abs(messageTime - workTime) < 5 * 60_000;
+	return { active, paused, durationMs: Math.max(0, end - start - pauseMs) };
 }
 
 function isLatestWorkGroup(items: readonly DesktopTranscriptItem[], workItems: readonly WorkItem[]): boolean {

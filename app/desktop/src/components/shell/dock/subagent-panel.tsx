@@ -242,7 +242,11 @@ export function SubagentHistoryPanel({
 						{intl.formatMessage(desktopMessages.subagentHistoryEmpty)}
 					</p>
 				) : (
-					<TranscriptItems items={items as readonly DesktopTranscriptItem[]} loading={loading} />
+					<TranscriptItems
+						items={items as readonly DesktopTranscriptItem[]}
+						runs={transcript?.runs}
+						loading={loading}
+					/>
 				)}
 			</div>
 		</section>

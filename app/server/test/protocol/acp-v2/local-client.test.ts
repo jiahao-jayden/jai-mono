@@ -46,9 +46,10 @@ describe("ACP v2 local client", () => {
 			});
 			if (prompted.isErr()) throw prompted.error;
 			expect(prompted.value).toEqual({});
-			await waitFor(() => notifications.length === 2);
+			await waitFor(() => notifications.length === 3);
 			expect(notifications).toMatchObject([
 				{ method: "session/update", params: { update: { sessionUpdate: "user_message" } } },
+				{ method: "session/update", params: { update: { sessionUpdate: "operation_update", operationId: "operation-1" } } },
 				{ method: "session/update", params: { update: { sessionUpdate: "state_update", state: "running" } } },
 			]);
 			await server.value.close();

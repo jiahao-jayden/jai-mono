@@ -5,6 +5,7 @@ import { type TodoItem, todosFromExtensionState } from "@jai/extension/todo";
 import type { RuntimeOperationContent, RuntimeSessionUsage, RuntimeWebSearchDetails } from "../../operations";
 import type {
 	RuntimeApprovalRequest,
+	RuntimeOperationTiming,
 	RuntimeSession,
 	RuntimeSessionEvent,
 	RuntimeSessionSnapshot,
@@ -264,12 +265,20 @@ export class AcpV2Agent {
 				: this.respondError(request.id, -32001, snapshot.error.message);
 		}
 		const operationId = `child:${toolCallId}`;
-		const items = snapshot.value.entries.flatMap((entry) =>
-			projectEntry(sessionId, entry, operationId).flatMap((notification) => {
-				const params = notification.params;
-				return isObject(params) && isObject(params.update) ? [params.update] : [];
-			}),
-		);
+		const entries = snapshot.value.entries;
+		// A child journal has no Operation records; its run spans its own first and last entry.
+		const timing: RuntimeOperationTiming = {
+			operationId,
+			startedAt: entries.length > 0 ? Date.parse(entries[0]!.timestamp) : undefined,
+			finishedAt: entries.length > 0 ? Date.parse(entries.at(-1)!.timestamp) : undefined,
+		};
+		const items = [
+			...entries.flatMap((entry) => projectEntry(sessionId, entry, operationId)),
+			operationUpdate(sessionId, timing),
+		].flatMap((notification) => {
+			const params = notification.params;
+			return isObject(params) && isObject(params.update) ? [params.update] : [];
+		});
 		return this.respond(request.id, { items });
 	}
 
@@ -549,6 +558,7 @@ function projectSnapshot(sessionId: string, snapshot: RuntimeSessionSnapshot): r
 		...branchOf(snapshot.entries, snapshot.leafId).flatMap((entry) =>
 			projectEntry(sessionId, entry, snapshot.operationIdByEntryId.get(entry.id)),
 		),
+		...snapshot.operationTimings.map((timing) => operationUpdate(sessionId, timing)),
 		...(isEmptyUsage(snapshot.usage) ? [] : [usageUpdate(sessionId, snapshot.usage)]),
 		stateUpdate(sessionId, snapshot.state, snapshot.stopReason),
 	];
@@ -562,6 +572,8 @@ function projectRuntimeEvent(sessionId: string, event: RuntimeSessionEvent): rea
 			return [usageUpdate(sessionId, event.usage)];
 		case "operation_event":
 			return projectOperationEvent(sessionId, event.operationId, event.event);
+		case "operation_timing":
+			return [operationUpdate(sessionId, event.timing)];
 		case "state_changed":
 			return [stateUpdate(sessionId, event.state, event.stopReason, event.errorMessage)];
 		case "configuration_changed":
@@ -1157,6 +1169,22 @@ function usageUpdate(sessionId: string, usage: RuntimeSessionUsage): AcpJsonRpcN
 				cacheWriteTokens: usage.cacheWriteTokens,
 				totalTokens: usage.totalTokens,
 				cost: usage.cost,
+			},
+		},
+	};
+}
+
+function operationUpdate(sessionId: string, timing: RuntimeOperationTiming): AcpJsonRpcNotification {
+	return {
+		jsonrpc: "2.0",
+		method: "session/update",
+		params: {
+			sessionId,
+			update: {
+				sessionUpdate: "operation_update",
+				operationId: timing.operationId,
+				startedAt: Number.isFinite(timing.startedAt) ? timing.startedAt : undefined,
+				finishedAt: Number.isFinite(timing.finishedAt) ? timing.finishedAt : undefined,
 			},
 		},
 	};

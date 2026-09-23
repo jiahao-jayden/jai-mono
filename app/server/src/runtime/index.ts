@@ -33,6 +33,7 @@ export {
 	RuntimeHostSessionControllerHeld,
 	RuntimeHostSessionNotFound,
 	type RuntimeHostSnapshotError,
+	type RuntimeOperationTiming,
 	type RuntimePromptInput,
 	RuntimeSession,
 	type RuntimeSessionEvent,

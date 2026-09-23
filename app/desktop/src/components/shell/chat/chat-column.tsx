@@ -426,6 +426,7 @@ export function ChatColumn({
 						<TranscriptVirtualList
 							ref={transcriptListRef}
 							items={transcriptItems}
+							runs={chat.runs}
 							loading={chat.isLoading}
 							responding={isAgentWorking}
 							openWorkGroups={openWorkGroupsRef.current}
