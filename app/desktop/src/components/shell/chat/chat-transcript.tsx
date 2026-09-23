@@ -712,12 +712,12 @@ export function workTimelineSteps(
 				.join("\n\n");
 			return {
 				id: cluster.id,
+				kind: "thinking",
 				title: intl.formatMessage(desktopMessages.transcriptThinking),
-				summary: text,
-				icon: "sparkles",
+				icon: "lightbulb",
 				density: "compact",
 				active: running,
-				details: text.length > 160 ? text : undefined,
+				details: text.trim() ? text : undefined,
 			};
 		}
 

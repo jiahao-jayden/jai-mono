@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { type IconName, useIcon } from "@/lib/icon-context";
 import { cn } from "cn";
@@ -10,7 +10,7 @@ import { WebSearchResults } from "./web-search-results";
 
 export interface TimelineStep {
 	id: string;
-	kind?: "activity" | "narration";
+	kind?: "activity" | "narration" | "thinking";
 	title: string;
 	summary?: string;
 	density?: "compact" | "default";
@@ -114,6 +114,12 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 	useEffect(() => {
 		if (hasWebSearchResults) setOpen(true);
 	}, [hasWebSearchResults]);
+	const thinkingRef = useRef<HTMLDivElement>(null);
+	const followThinkingRef = useRef(true);
+	useLayoutEffect(() => {
+		const element = thinkingRef.current;
+		if (element && followThinkingRef.current) element.scrollTop = element.scrollHeight;
+	}, [step.details]);
 	const density = step.density ?? "compact";
 	const containmentClassName = "[content-visibility:auto] [contain-intrinsic-size:auto_24px]";
 	const rowClassName = cn(
@@ -138,7 +144,7 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 			<span className="flex size-5 shrink-0 items-center justify-center">
 				{step.avatar ?? <Icon size={14} strokeWidth={1.5} className="text-foreground/35" />}
 			</span>
-			<ShimmerLabel active={active} className="relative min-w-0 truncate leading-none">
+			<ShimmerLabel active={active} className="relative min-w-0 truncate">
 				{step.title}
 			</ShimmerLabel>
 			{step.summary ? (
@@ -180,6 +186,17 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 				{step.webSearchResults ? (
 					<div className={cn(paper, "max-h-52 overflow-y-auto rounded-lg p-2")}>
 						<WebSearchResults results={step.webSearchResults} />
+					</div>
+				) : step.kind === "thinking" ? (
+					<div
+						ref={thinkingRef}
+						onScroll={(event) => {
+							const element = event.currentTarget;
+							followThinkingRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 8;
+						}}
+						className="max-h-36 overflow-y-auto overscroll-contain border-s border-foreground/10 ps-3 text-[13px] leading-relaxed whitespace-pre-wrap break-words text-foreground/60"
+					>
+						{step.details}
 					</div>
 				) : (
 					<textarea
