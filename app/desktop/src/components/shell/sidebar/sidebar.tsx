@@ -1,14 +1,15 @@
 import { type MotionValue, motion } from "motion/react";
 import { useState } from "react";
 import logo from "@/assets/icons/chat-area/logo.svg";
+import "@fontsource/outfit/latin-600.css";
 import type { CodingSession, DesktopProject } from "../../../../shared/desktop-rpc";
 import { CreateProjectDialog } from "../create-project-dialog";
+import type { SettingsCategory } from "../settings/settings-navigation";
 import { SidebarFooter } from "./sidebar-footer";
 import { SidebarHeader } from "./sidebar-header";
 import { SidebarNav } from "./sidebar-nav";
-import { SidebarSettings } from "./sidebar-settings";
 import { SidebarSessions } from "./sidebar-sessions";
-import type { SettingsCategory } from "../settings/settings-navigation";
+import { SidebarSettings } from "./sidebar-settings";
 
 interface SidebarProps {
 	macTitleBar?: boolean;
@@ -84,7 +85,9 @@ export function Sidebar({
 			{!settingsMode ? (
 				<div className="flex h-10 shrink-0 items-center gap-2 px-3.5">
 					<img src={logo} alt="" draggable={false} className="size-7 shrink-0 select-none" />
-					<span className="truncate text-[16px] font-medium tracking-[-0.01em] text-foreground">PandaWork</span>
+					<span className="truncate [font-family:Outfit,var(--font-sans)] text-[18px] font-[600] tracking-[-0.02em] text-foreground">
+						PandaWork
+					</span>
 				</div>
 			) : null}
 			{settingsMode ? (

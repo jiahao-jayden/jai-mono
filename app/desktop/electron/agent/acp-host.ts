@@ -1209,17 +1209,19 @@ function readSessionUsage(update: Record<string, unknown>): DesktopSessionUsage 
 	const cacheWriteTokens = finiteNumber(update.cacheWriteTokens);
 	const totalTokens = finiteNumber(update.totalTokens);
 	const cost = finiteNumber(update.cost);
+	const contextTokens = finiteNumber(update.contextTokens);
 	if (
 		inputTokens === undefined ||
 		outputTokens === undefined ||
 		cacheReadTokens === undefined ||
 		cacheWriteTokens === undefined ||
 		totalTokens === undefined ||
-		cost === undefined
+		cost === undefined ||
+		contextTokens === undefined
 	) {
 		return undefined;
 	}
-	return { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, cost };
+	return { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, cost, contextTokens };
 }
 
 function finiteNumber(value: unknown): number | undefined {

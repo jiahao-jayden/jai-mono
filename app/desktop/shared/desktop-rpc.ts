@@ -879,6 +879,8 @@ export interface DesktopSessionUsage {
 	readonly cacheWriteTokens: number;
 	readonly totalTokens: number;
 	readonly cost: number;
+	/** Size of the latest request on the branch: how full the context window is. */
+	readonly contextTokens: number;
 }
 
 export const EMPTY_DESKTOP_SESSION_USAGE: DesktopSessionUsage = {
@@ -888,6 +890,7 @@ export const EMPTY_DESKTOP_SESSION_USAGE: DesktopSessionUsage = {
 	cacheWriteTokens: 0,
 	totalTokens: 0,
 	cost: 0,
+	contextTokens: 0,
 };
 
 /** Profile lifetime token projection. Same empty/finite semantics as session usage. */

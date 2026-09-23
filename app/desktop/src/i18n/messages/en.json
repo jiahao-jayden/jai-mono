@@ -495,14 +495,14 @@
   "desktop.sessionUsage.cache": {
     "defaultMessage": "Cache"
   },
+  "desktop.sessionUsage.context": {
+    "defaultMessage": "Context"
+  },
   "desktop.sessionUsage.cost": {
     "defaultMessage": "Cost"
   },
   "desktop.sessionUsage.empty": {
     "defaultMessage": "No token usage on this branch yet."
-  },
-  "desktop.sessionUsage.emptyTrigger": {
-    "defaultMessage": "Usage"
   },
   "desktop.sessionUsage.input": {
     "defaultMessage": "Input"
@@ -516,9 +516,6 @@
   "desktop.sessionUsage.total": {
     "defaultMessage": "Total"
   },
-  "desktop.sessionUsage.trigger": {
-    "defaultMessage": "{tokens} tok · {cost}"
-  },
   "desktop.settings.accountAccess": {
     "defaultMessage": "Account access"
   },
@@ -527,66 +524,6 @@
   },
   "desktop.settings.advanced": {
     "defaultMessage": "Advanced"
-  },
-  "desktop.settings.logs": {
-    "defaultMessage": "Logs"
-  },
-  "desktop.settings.logsActionFailed": {
-    "defaultMessage": "That did not work. Try again."
-  },
-  "desktop.settings.logsClear": {
-    "defaultMessage": "Clear"
-  },
-  "desktop.settings.logsClearConfirm": {
-    "defaultMessage": "Confirm clear"
-  },
-  "desktop.settings.logsDeletedRotated": {
-    "defaultMessage": "Deleted {count, plural, one {# older log} other {# older logs}}."
-  },
-  "desktop.settings.logsDeleteRotated": {
-    "defaultMessage": "Delete older logs"
-  },
-  "desktop.settings.logsDescription": {
-    "defaultMessage": "Attach these when you report a problem. Each view shows only the most recent {limit}."
-  },
-  "desktop.settings.logsEmpty": {
-    "defaultMessage": "Nothing recorded yet."
-  },
-  "desktop.settings.logsMeta": {
-    "defaultMessage": "{size} · Updated {time}"
-  },
-  "desktop.settings.logsOpenFolder": {
-    "defaultMessage": "Open log folder"
-  },
-  "desktop.settings.logsRefresh": {
-    "defaultMessage": "Refresh"
-  },
-  "desktop.settings.logsReveal": {
-    "defaultMessage": "Show in Finder"
-  },
-  "desktop.settings.logsRotated": {
-    "defaultMessage": "{count, plural, =0 {No older logs} one {# older log · {size}} other {# older logs · {size}}}"
-  },
-  "desktop.settings.logsSourceAgent": {
-    "defaultMessage": "Agent"
-  },
-  "desktop.settings.logsSourceAgentDescription": {
-    "defaultMessage": "Why a model request or tool call failed."
-  },
-  "desktop.settings.logsSourceApp": {
-    "defaultMessage": "App"
-  },
-  "desktop.settings.logsSourceAppDescription": {
-    "defaultMessage": "Window, background service, and crash records."
-  },
-  "desktop.settings.logsSourceTrace": {
-    "defaultMessage": "Traces"
-  },
-  "desktop.settings.logsSourceTraceDescription": {
-    "defaultMessage": "Timing and token usage per run. No conversation content."
-  },
-  "desktop.settings.logsTruncated": {
-    "defaultMessage": "Showing the last {limit} of {size}."
   },
   "desktop.settings.agentDefaults": {
     "defaultMessage": "Agent Defaults"
@@ -749,6 +686,66 @@
   },
   "desktop.settings.localeSaveError": {
     "defaultMessage": "Interface language could not be saved. Try again."
+  },
+  "desktop.settings.logs": {
+    "defaultMessage": "Logs"
+  },
+  "desktop.settings.logsActionFailed": {
+    "defaultMessage": "That did not work. Try again."
+  },
+  "desktop.settings.logsClear": {
+    "defaultMessage": "Clear"
+  },
+  "desktop.settings.logsClearConfirm": {
+    "defaultMessage": "Confirm clear"
+  },
+  "desktop.settings.logsDeleteRotated": {
+    "defaultMessage": "Delete older logs"
+  },
+  "desktop.settings.logsDeletedRotated": {
+    "defaultMessage": "Deleted {count, plural, one {# older log} other {# older logs}}."
+  },
+  "desktop.settings.logsDescription": {
+    "defaultMessage": "Attach these when you report a problem. Each view shows only the most recent {limit}."
+  },
+  "desktop.settings.logsEmpty": {
+    "defaultMessage": "Nothing recorded yet."
+  },
+  "desktop.settings.logsMeta": {
+    "defaultMessage": "{size} · Updated {time}"
+  },
+  "desktop.settings.logsOpenFolder": {
+    "defaultMessage": "Open log folder"
+  },
+  "desktop.settings.logsRefresh": {
+    "defaultMessage": "Refresh"
+  },
+  "desktop.settings.logsReveal": {
+    "defaultMessage": "Show in Finder"
+  },
+  "desktop.settings.logsRotated": {
+    "defaultMessage": "{count, plural, =0 {No older logs} one {# older log · {size}} other {# older logs · {size}}}"
+  },
+  "desktop.settings.logsSourceAgent": {
+    "defaultMessage": "Agent"
+  },
+  "desktop.settings.logsSourceAgentDescription": {
+    "defaultMessage": "Why a model request or tool call failed."
+  },
+  "desktop.settings.logsSourceApp": {
+    "defaultMessage": "App"
+  },
+  "desktop.settings.logsSourceAppDescription": {
+    "defaultMessage": "Window, background service, and crash records."
+  },
+  "desktop.settings.logsSourceTrace": {
+    "defaultMessage": "Traces"
+  },
+  "desktop.settings.logsSourceTraceDescription": {
+    "defaultMessage": "Timing and token usage per run. No conversation content."
+  },
+  "desktop.settings.logsTruncated": {
+    "defaultMessage": "Showing the last {limit} of {size}."
   },
   "desktop.settings.low": {
     "defaultMessage": "Low"

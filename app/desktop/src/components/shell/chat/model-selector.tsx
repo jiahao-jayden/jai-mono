@@ -125,7 +125,7 @@ export function ModelSelector({
 						onMouseEnter={() => setHovered(true)}
 						onMouseLeave={() => setHovered(false)}
 						aria-label={intl.formatMessage(desktopMessages.modelAria, { label: triggerLabel })}
-						className="min-w-0 max-w-60 justify-start"
+						className="h-8 min-w-0 max-w-60 justify-start text-[14px] text-foreground/80"
 						contentClassName="min-w-0"
 						labelClassName="flex min-w-0 items-center whitespace-nowrap"
 					/>

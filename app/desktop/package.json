@@ -19,6 +19,7 @@
 		"@atlaskit/pragmatic-drag-and-drop": "^3.1.0",
 		"@atlaskit/pragmatic-drag-and-drop-hitbox": "^2.2.2",
 		"@base-ui/react": "^1.4.0",
+		"@fontsource/outfit": "^5.3.0",
 		"@hugeicons/core-free-icons": "^4.1.1",
 		"@hugeicons/react": "^1.1.6",
 		"@jai/agent": "workspace:*",

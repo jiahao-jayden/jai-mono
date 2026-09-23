@@ -18,7 +18,7 @@ export function MessageScroller({ visible, onScrollToBottom }: MessageScrollerPr
 	const content = visible ? (
 		<motion.div
 			animate={{ opacity: 1, y: 0 }}
-			className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2"
+			className="absolute bottom-10 left-1/2 z-10 -translate-x-1/2"
 			exit={{ opacity: 0, y: verticalOffset }}
 			initial={{ opacity: 0, y: verticalOffset }}
 			transition={{ duration: transitionDuration, ease: "easeOut" }}

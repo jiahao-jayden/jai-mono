@@ -62,6 +62,7 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 						active={open}
 						disabled={disabled}
 						aria-label={intl.formatMessage(desktopMessages.modeAria, { mode: modeLabel })}
+						className="h-8 text-[14px] text-foreground/80"
 						labelClassName="flex items-center [text-box:normal]"
 					>
 						<span className="inline-flex items-center gap-1">
@@ -77,7 +78,7 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 									exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
 									transition={spring.moderate}
 								>
-									<Icon size={14} strokeWidth={1.5} />
+									<Icon size={16} strokeWidth={1.75} />
 									<span>{modeLabel}</span>
 								</motion.span>
 							</AnimatePresence>
@@ -89,7 +90,7 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 					</Button>
 				}
 			/>
-			<DropdownContent checkedIndex={agentModes.indexOf(mode)} sideOffset={6} size="sm" className="w-44">
+			<DropdownContent checkedIndex={agentModes.indexOf(mode)} side="top" sideOffset={6} size="sm" className="w-44">
 				{agentModes.map((candidate, index) => {
 					const option = agentModeMeta[candidate];
 					const optionLabel = intl.formatMessage(option.message);

@@ -927,6 +927,7 @@ describe("RuntimeHost", () => {
       cacheWriteTokens: 0,
       totalTokens: 4,
       cost: 4,
+      contextTokens: 2,
     });
 
     const navigated = await opened.value.navigate(first.value.inputEntryId);
@@ -940,6 +941,7 @@ describe("RuntimeHost", () => {
       cacheWriteTokens: 0,
       totalTokens: 2,
       cost: 1.5,
+      contextTokens: 2,
     });
     expect(afterRewind.value.operationIdByEntryId.has(second.value.inputEntryId)).toBe(false);
     expect(afterRewind.value.recovery).toEqual([
@@ -1015,6 +1017,7 @@ describe("RuntimeHost", () => {
       cacheWriteTokens: 0,
       totalTokens: 2,
       cost: 1,
+      contextTokens: 2,
     });
   });
 
@@ -1075,6 +1078,7 @@ describe("RuntimeHost", () => {
       cacheWriteTokens: 0,
       totalTokens: 2,
       cost: 2,
+      contextTokens: 2,
     });
     expect(snapshot.value.recovery).toEqual([
       { status: "terminal", operationId: first.value.operationId, outcome: "completed", finalization: "durable" },

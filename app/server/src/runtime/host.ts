@@ -1597,6 +1597,7 @@ function emptyUsage(): RuntimeSessionUsage {
 		cacheWriteTokens: 0,
 		totalTokens: 0,
 		cost: 0,
+		contextTokens: 0,
 	};
 }
 
@@ -1608,6 +1609,7 @@ function addUsage(left: RuntimeSessionUsage, right: RuntimeSessionUsage): Runtim
 		cacheWriteTokens: left.cacheWriteTokens + right.cacheWriteTokens,
 		totalTokens: left.totalTokens + right.totalTokens,
 		cost: left.cost + right.cost,
+		contextTokens: right.contextTokens,
 	};
 }
 
@@ -1618,7 +1620,8 @@ function usageEqual(left: RuntimeSessionUsage, right: RuntimeSessionUsage): bool
 		left.cacheReadTokens === right.cacheReadTokens &&
 		left.cacheWriteTokens === right.cacheWriteTokens &&
 		left.totalTokens === right.totalTokens &&
-		left.cost === right.cost
+		left.cost === right.cost &&
+		left.contextTokens === right.contextTokens
 	);
 }
 

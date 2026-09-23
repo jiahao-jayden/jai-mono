@@ -119,11 +119,7 @@ export const desktopMessages = defineMessages({
 	composerCouldNotAddFiles: { id: "desktop.composer.couldNotAddFiles", defaultMessage: "Could not add those files." },
 	sessionUsageAria: { id: "desktop.sessionUsage.aria", defaultMessage: "Session usage" },
 	sessionUsageTitle: { id: "desktop.sessionUsage.title", defaultMessage: "Usage" },
-	sessionUsageTrigger: {
-		id: "desktop.sessionUsage.trigger",
-		defaultMessage: "{tokens} tok · {cost}",
-	},
-	sessionUsageEmptyTrigger: { id: "desktop.sessionUsage.emptyTrigger", defaultMessage: "Usage" },
+	sessionUsageContext: { id: "desktop.sessionUsage.context", defaultMessage: "Context" },
 	sessionUsageEmpty: {
 		id: "desktop.sessionUsage.empty",
 		defaultMessage: "No token usage on this branch yet.",

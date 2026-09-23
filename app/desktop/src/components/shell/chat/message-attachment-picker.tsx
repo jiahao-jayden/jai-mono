@@ -24,19 +24,19 @@ export function MessageAttachmentPicker({ disabled, onOpen }: MessageAttachmentP
 				render={
 					<Button
 						type="button"
-						variant="secondary"
-						size="icon-sm"
+						variant="ghost"
+						size="icon"
 						disabled={disabled}
 						active={open}
 						aria-label={triggerLabel}
 						title={triggerLabel}
-						className="rounded-full no-squircle"
+						className="rounded-full no-squircle text-foreground [&_svg]:size-5 [&_svg]:stroke-[1.75]"
 					>
-						<PlusIcon size={16} strokeWidth={1.5} />
+						<PlusIcon size={20} strokeWidth={1.75} />
 					</Button>
 				}
 			/>
-			<DropdownContent className="w-60" sideOffset={6}>
+			<DropdownContent className="w-60" side="top" sideOffset={6}>
 				<MenuItem
 					index={0}
 					icon={icons.image}

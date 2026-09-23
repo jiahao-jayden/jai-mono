@@ -1056,6 +1056,7 @@ describe("DesktopAcpAgentHost", () => {
 			cacheWriteTokens: 0,
 			totalTokens: 0,
 			cost: 0,
+			contextTokens: 0,
 		});
 
 		client.publish({
@@ -1071,6 +1072,7 @@ describe("DesktopAcpAgentHost", () => {
 					cacheWriteTokens: 1,
 					totalTokens: 17,
 					cost: 0.03,
+					contextTokens: 17,
 				},
 			},
 		});
@@ -1086,6 +1088,7 @@ describe("DesktopAcpAgentHost", () => {
 					cacheWriteTokens: 1,
 					totalTokens: 17,
 					cost: 0.03,
+					contextTokens: 17,
 				},
 			},
 		});

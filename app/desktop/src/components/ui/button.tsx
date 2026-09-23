@@ -166,7 +166,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         <span
           aria-hidden
           className={cn(
-            "absolute inset-0 rounded-[inherit] transition-[background-color,transform] duration-80",
+            "absolute inset-0 rounded-[inherit] [corner-shape:inherit] transition-[background-color,transform] duration-80",
             !isDisabled && "group-active/button:scale-[0.98]",
             bgClass
           )}

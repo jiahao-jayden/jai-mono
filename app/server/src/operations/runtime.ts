@@ -38,6 +38,12 @@ export interface RuntimeSessionUsage {
 	readonly cacheWriteTokens: number;
 	readonly totalTokens: number;
 	readonly cost: number;
+	/**
+	 * Size of the latest request, not a sum: the context the next turn starts from.
+	 * ponytail: stays at the pre-compaction size until the next request settles; switch to
+	 * `estimateContextTokens` over the projected context if that lag matters.
+	 */
+	readonly contextTokens: number;
 }
 
 export function projectRuntimeSessionUsage(usage: Usage): RuntimeSessionUsage {
@@ -48,6 +54,7 @@ export function projectRuntimeSessionUsage(usage: Usage): RuntimeSessionUsage {
 		cacheWriteTokens: finiteNumber(usage.cacheWrite),
 		totalTokens: finiteNumber(usage.totalTokens),
 		cost: finiteNumber(usage.cost.total),
+		contextTokens: finiteNumber(usage.totalTokens),
 	};
 }
 

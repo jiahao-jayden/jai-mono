@@ -9,6 +9,7 @@ import {
 	formatSessionCost,
 	formatSessionTokens,
 	isEmptySessionUsage,
+	resolveContextRatio,
 	SessionUsageButton,
 } from "../src/components/shell/chat/session-usage";
 
@@ -27,6 +28,7 @@ const emptyUsage: DesktopSessionUsage = {
 	cacheWriteTokens: 0,
 	totalTokens: 0,
 	cost: 0,
+	contextTokens: 0,
 };
 
 const filledUsage: DesktopSessionUsage = {
@@ -36,6 +38,7 @@ const filledUsage: DesktopSessionUsage = {
 	cacheWriteTokens: 20,
 	totalTokens: 1660,
 	cost: 0.0425,
+	contextTokens: 32_000,
 };
 
 describe("SessionUsageButton", () => {
@@ -52,13 +55,15 @@ describe("SessionUsageButton", () => {
 		expect(formatSessionTokens(1660)).toBe("1,660");
 	});
 
-	test("renders a discoverable Usage entry for empty and filled states", () => {
+	test("fills the ring with the latest request size over the model context window", () => {
+		expect(resolveContextRatio(32_000, 128_000)).toBe(0.25);
+		expect(resolveContextRatio(200_000, 128_000)).toBe(1);
+		expect(resolveContextRatio(32_000, undefined)).toBe(0);
+
 		const emptyMarkup = renderToStaticMarkup(<SessionUsageButton usage={emptyUsage} />);
 		expect(emptyMarkup).toContain('aria-label="Session usage"');
-		expect(emptyMarkup).toContain(">Usage<");
 
-		const filledMarkup = renderToStaticMarkup(<SessionUsageButton usage={filledUsage} />);
-		expect(filledMarkup).toContain("1,660 tok");
-		expect(filledMarkup).toContain("$0.0425");
+		const filledMarkup = renderToStaticMarkup(<SessionUsageButton usage={filledUsage} contextWindow={128_000} />);
+		expect(filledMarkup).toContain("Context 32K / 128K · 25%");
 	});
 });

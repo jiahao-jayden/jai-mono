@@ -1169,6 +1169,7 @@ function usageUpdate(sessionId: string, usage: RuntimeSessionUsage): AcpJsonRpcN
 				cacheWriteTokens: usage.cacheWriteTokens,
 				totalTokens: usage.totalTokens,
 				cost: usage.cost,
+				contextTokens: usage.contextTokens,
 			},
 		},
 	};

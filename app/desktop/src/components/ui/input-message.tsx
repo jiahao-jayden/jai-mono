@@ -238,12 +238,12 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
     // focus > rest) over a constant soft drop, so the stroke gains contrast
     // without appearing to thicken. Inline because Tailwind `shadow-*`
     // mangles multi-layer arbitrary values.
-    const EDGE_DROP = "0 1px 2px var(--shadow-color)";
+    const EDGE_DROP = "0 12px 40px -12px rgb(0 0 0 / 0.14), 0 2px 8px -2px rgb(0 0 0 / 0.05)";
     const edgeShadow = dragOver
       ? `0 0 0 2px var(--brand), ${EDGE_DROP}`
       : focusVisible
-        ? `0 0 0 1px var(--border-surface-strong), ${EDGE_DROP}`
-        : `0 0 0 1px var(--border-surface), ${EDGE_DROP}`;
+        ? `0 0 0 1px var(--border-surface), ${EDGE_DROP}`
+        : `0 0 0 1px color-mix(in oklab, var(--border-surface) 45%, transparent), ${EDGE_DROP}`;
 
     const handleSend = useCallback(() => {
       if (!canSend) return;
@@ -475,8 +475,8 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
           // than layering a second colored border beside it — so hover / focus
           // bump *contrast* without ever appearing to thicken the stroke.
           "relative flex flex-col overflow-hidden transition-[box-shadow,color] duration-80",
-          "bg-surface-primary",
-          "rounded-[20px] no-squircle",
+          "bg-surface-primary dark:bg-popover",
+          "rounded-[26px] no-squircle",
           clickToFocus && !disabled && "cursor-text",
           disabled && "opacity-50 pointer-events-none",
           className
@@ -573,15 +573,14 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
             className={cn(
               "w-full resize-none bg-transparent outline-none focus-visible:shadow-none",
               "text-[14px] leading-relaxed text-surface-primary-foreground placeholder:text-muted-foreground",
-              // Aside `.composer.compact`: editor row inset 32px each side for
-              // the absolutely positioned lead / trail buttons, plus 10px text pad.
-              "py-2 pr-[42px] pl-[42px]"
+              "px-4 pt-3 pb-0.5"
             )}
             style={{ fontVariationSettings: fontWeights.normal }}
             {...restTextareaProps}
           />
-          <div className="absolute bottom-[5px] left-[5px] flex items-center gap-1">{leftContent}</div>
-          <div className="absolute right-[5px] bottom-[5px] flex items-center gap-1">
+          <div className="flex items-center justify-between gap-2 px-2 pb-2">
+            <div className="flex min-w-0 items-center gap-1.5">{leftContent}</div>
+            <div className="flex min-w-0 shrink-0 items-center gap-2">
               {rightContent}
               {submitSlot ?? (
                 <Button
@@ -615,6 +614,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
                   </AnimatePresence>
                 </Button>
               )}
+            </div>
           </div>
         </SurfaceProvider>
       </div>

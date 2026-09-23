@@ -262,6 +262,9 @@ export function ChatComposer({
 	);
 	const onSubmit = () => void submitMessage();
 	const pickerDisabled = composerDisabled || isStreaming;
+	const contextWindow = providerConfig?.profiles
+		.flatMap((profile) => profile.models.filter((model) => `${profile.id}/${model.id}` === selectedModelRef))
+		.at(0)?.contextWindow;
 	const selectCommand = useCallback(
 		(command: DesktopCommandDescriptor) => {
 			setDismissedSlashValue(undefined);
@@ -336,6 +339,20 @@ export function ChatComposer({
 				onSteer={onSteerQueuedMessage}
 				steerEnabled={isStreaming}
 			/>
+			{showProjectPicker ? (
+				<div className="flex items-center px-1 pb-1">
+					<ProjectPicker
+						project={project}
+						projects={projects}
+						disabled={isStreaming || isSubmitting}
+						busy={projectBusy}
+						loading={projectLoading}
+						loadError={projectLoadError}
+						onChoose={onChooseProject}
+						onRetry={onRetryProjects}
+					/>
+				</div>
+			) : null}
 			<div className="relative">
 				<ComposerMenu
 					open={commandSuggestionsOpen}
@@ -362,7 +379,7 @@ export function ChatComposer({
 					onValueChange={onValueChange}
 					onSend={() => void submitMessage()}
 					disabled={composerDisabled || projectRequired}
-					minRows={1}
+					minRows={2}
 					maxRows={8}
 					placeholder={intl.formatMessage(
 						projectRequired
@@ -384,7 +401,7 @@ export function ChatComposer({
 						<Button
 							type="button"
 							variant="primary"
-							size="icon-sm"
+							size="icon"
 							className="rounded-full no-squircle"
 							onClick={onSubmit}
 							disabled={submitDisabled}
@@ -399,8 +416,29 @@ export function ChatComposer({
 						</Button>
 					}
 					leftSlot={({ openFilePicker }) => (
-						<MessageAttachmentPicker disabled={pickerDisabled} onOpen={() => openFilePicker()} />
+						<>
+							<MessageAttachmentPicker disabled={pickerDisabled} onOpen={() => openFilePicker()} />
+							<AgentModeControl
+								mode={selectedAgentMode}
+								disabled={isStreaming || isSubmitting}
+								onSelect={onSelectAgentMode}
+							/>
+						</>
 					)}
+					rightSlot={
+						<>
+							<SessionUsageButton usage={usage} contextWindow={contextWindow} />
+							<ModelSelector
+								config={providerConfig}
+								selectedModelRef={selectedModelRef}
+								loading={providerLoading}
+								error={providerError}
+								disabled={isStreaming || isSubmitting || providerLoading}
+								onSelect={onSelectProviderModel}
+								onManage={onOpenProviderSettings}
+							/>
+						</>
+					}
 				/>
 			</div>
 			{attachmentError ? (
@@ -408,39 +446,6 @@ export function ChatComposer({
 					{attachmentError}
 				</p>
 			) : null}
-			<div className="flex items-center justify-between py-1">
-				<div className="flex min-w-0 items-center">
-					{showProjectPicker ? (
-						<ProjectPicker
-							project={project}
-							projects={projects}
-							disabled={isStreaming || isSubmitting}
-							busy={projectBusy}
-							loading={projectLoading}
-							loadError={projectLoadError}
-							onChoose={onChooseProject}
-							onRetry={onRetryProjects}
-						/>
-					) : null}
-					<AgentModeControl
-						mode={selectedAgentMode}
-						disabled={isStreaming || isSubmitting}
-						onSelect={onSelectAgentMode}
-					/>
-				</div>
-				<div className="flex min-w-0 items-center gap-1">
-					<SessionUsageButton usage={usage} />
-					<ModelSelector
-						config={providerConfig}
-						selectedModelRef={selectedModelRef}
-						loading={providerLoading}
-						error={providerError}
-						disabled={isStreaming || isSubmitting || providerLoading}
-						onSelect={onSelectProviderModel}
-						onManage={onOpenProviderSettings}
-					/>
-				</div>
-			</div>
 		</div>
 	);
 }

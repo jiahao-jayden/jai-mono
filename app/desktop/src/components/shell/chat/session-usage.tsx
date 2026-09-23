@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { Elevated } from "@/lib/elevated";
-import { useIcons } from "@/lib/icon-context";
 import type { DesktopSessionUsage } from "../../../../shared/desktop-rpc";
 import { EMPTY_DESKTOP_SESSION_USAGE } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
@@ -31,22 +30,28 @@ export function formatSessionTokens(value: number): string {
 	return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
 }
 
+const RING_RADIUS = 6.5;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+export function resolveContextRatio(contextTokens: number, contextWindow: number | undefined): number {
+	if (!contextWindow || contextWindow <= 0) return 0;
+	return Math.min(1, Math.max(0, contextTokens / contextWindow));
+}
+
 export function SessionUsageButton({
 	usage = EMPTY_DESKTOP_SESSION_USAGE,
+	contextWindow,
 }: {
 	readonly usage?: DesktopSessionUsage;
+	readonly contextWindow?: number;
 }) {
 	const intl = useIntl();
-	const icons = useIcons();
-	const AnalyticsIcon = icons.analytics;
 	const [open, setOpen] = useState(false);
 	const empty = isEmptySessionUsage(usage);
-	const triggerLabel = empty
-		? intl.formatMessage(desktopMessages.sessionUsageEmptyTrigger)
-		: intl.formatMessage(desktopMessages.sessionUsageTrigger, {
-				tokens: formatSessionTokens(usage.totalTokens),
-				cost: formatSessionCost(usage.cost),
-			});
+	const ratio = resolveContextRatio(usage.contextTokens, contextWindow);
+	const compact = (value: number) => intl.formatNumber(value, { notation: "compact", maximumFractionDigits: 1 });
+	const contextLabel = contextWindow
+		? `${compact(usage.contextTokens)} / ${compact(contextWindow)} · ${Math.round(ratio * 100)}%`
+		: compact(usage.contextTokens);
 	const cacheTokens = usage.cacheReadTokens + usage.cacheWriteTokens;
 
 	return (
@@ -56,17 +61,29 @@ export function SessionUsageButton({
 					<Button
 						type="button"
 						variant="ghost"
-						size="chip"
+						size="icon"
 						active={open}
 						aria-label={intl.formatMessage(desktopMessages.sessionUsageAria)}
-						className="min-w-0 max-w-52 justify-start"
-						contentClassName="min-w-0"
-						labelClassName="flex min-w-0 items-center gap-1.5 whitespace-nowrap"
+						title={`${intl.formatMessage(desktopMessages.sessionUsageContext)} ${contextLabel}`}
+						className={cn("rounded-full", ratio >= 0.9 ? "text-destructive" : "text-muted-foreground")}
 					/>
 				}
 			>
-				<AnalyticsIcon size={14} className="shrink-0 opacity-60" />
-				<span className="min-w-0 truncate">{triggerLabel}</span>
+				<svg viewBox="0 0 16 16" aria-hidden="true" className="-rotate-90">
+					<circle cx="8" cy="8" r={RING_RADIUS} fill="none" strokeWidth="2" className="stroke-foreground/12" />
+					<circle
+						cx="8"
+						cy="8"
+						r={RING_RADIUS}
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+						strokeLinecap={ratio > 0 ? "round" : "butt"}
+						strokeDasharray={RING_CIRCUMFERENCE}
+						strokeDashoffset={RING_CIRCUMFERENCE * (1 - ratio)}
+						className="transition-[stroke-dashoffset] duration-300 ease-out"
+					/>
+				</svg>
 			</Popover.Trigger>
 			<Popover.Portal>
 				<Popover.Positioner side="top" align="end" sideOffset={8} className="z-50 outline-none">
@@ -83,6 +100,11 @@ export function SessionUsageButton({
 							</p>
 						) : (
 							<ul className="flex flex-col gap-1.5 text-[12.5px]">
+								<UsageRow
+									label={intl.formatMessage(desktopMessages.sessionUsageContext)}
+									value={contextLabel}
+									emphasized
+								/>
 								<UsageRow
 									label={intl.formatMessage(desktopMessages.sessionUsageTotal)}
 									value={formatSessionTokens(usage.totalTokens)}

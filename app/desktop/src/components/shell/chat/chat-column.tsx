@@ -413,7 +413,7 @@ export function ChatColumn({
 				<div className="relative min-h-0 flex-1">
 					<div
 						ref={scrollRef}
-						className="h-full overflow-x-clip overflow-y-auto scrollbar-gutter-stable [overflow-anchor:none]"
+						className="h-full overflow-x-clip overflow-y-auto pb-6 scrollbar-gutter-stable [overflow-anchor:none]"
 						onKeyDownCapture={transcriptScroll.onKeyDownCapture}
 						onPointerDown={transcriptScroll.onPointerDown}
 						onPointerMove={transcriptScroll.onPointerMove}
@@ -451,7 +451,7 @@ export function ChatColumn({
 					/>
 				</div>
 			)}
-			<div className="relative shrink-0 px-5 pb-2">
+			<div className={cn("relative z-10 shrink-0 px-5 pb-3", { "-mt-6": !showLogo })}>
 				<div className="pointer-events-none absolute right-5 bottom-full left-5 z-10 mb-2">
 					<AnimatePresence initial={false}>
 						{pendingApprovals.length > 0 ? (
