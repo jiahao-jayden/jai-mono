@@ -27,6 +27,8 @@ import type {
 export interface DesktopSessionCatalogPort {
 	createProject(input: CreateProjectInput): Promise<Project>;
 	relinkProject(projectId: string, input: CreateProjectInput, runningSessionIds: readonly string[]): Promise<Project>;
+	reorderProjects(projectIds: readonly string[]): Promise<void>;
+	setProjectExpanded(projectId: string, expanded: boolean): Promise<void>;
 	createSession<TAppState extends JsonObject = JsonObject>(
 		input: CreateSessionInput<TAppState>,
 	): Promise<CodingSession>;
@@ -38,6 +40,7 @@ export interface DesktopSessionCatalogPort {
 		readonly limit?: number;
 		readonly archived?: boolean;
 		readonly cursor?: SessionListCursor;
+		readonly projectId?: string | null;
 	}): Promise<SessionListPage>;
 	archiveSession(id: string): Promise<CodingSession>;
 	restoreSession(id: string): Promise<CodingSession>;
@@ -172,6 +175,20 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 		return project;
 	}
 
+	async reorderProjects(projectIds: readonly string[]): Promise<void> {
+		const projects = unwrap(await this.#transport.catalog.reorderProjects(projectIds), "projects/reorder");
+		this.#projects.clear();
+		for (const project of projects) this.#projects.set(project.id, project);
+	}
+
+	async setProjectExpanded(projectId: string, expanded: boolean): Promise<void> {
+		const project = unwrap(
+			await this.#transport.catalog.setProjectExpanded(projectId, expanded),
+			"projects/set-expanded",
+		);
+		this.#projects.set(project.id, project);
+	}
+
 	async createSession<TAppState extends JsonObject = JsonObject>(
 		input: CreateSessionInput<TAppState>,
 	): Promise<CodingSession> {
@@ -227,6 +244,7 @@ export class RemoteDesktopSessionCatalog implements DesktopSessionCatalogPort {
 		readonly limit?: number;
 		readonly archived?: boolean;
 		readonly cursor?: SessionListCursor;
+		readonly projectId?: string | null;
 	}): Promise<SessionListPage> {
 		return unwrap(await this.#transport.catalog.listSessions(input), "sessions/list");
 	}

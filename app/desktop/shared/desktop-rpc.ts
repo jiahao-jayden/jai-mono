@@ -1035,6 +1035,18 @@ export const desktopProjectCreateInputSchema = Type.Object(
 
 export type DesktopProjectCreateInput = Static<typeof desktopProjectCreateInputSchema>;
 
+export const desktopProjectReorderInputSchema = Type.Array(Type.String({ minLength: 1 }), { uniqueItems: true });
+
+export const desktopProjectExpandedInputSchema = Type.Object(
+	{
+		projectId: Type.String({ minLength: 1 }),
+		expanded: Type.Boolean(),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopProjectExpandedInput = Static<typeof desktopProjectExpandedInputSchema>;
+
 export const desktopSessionCreateInputSchema = Type.Object(
 	{
 		projectId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
@@ -1085,6 +1097,7 @@ export const desktopSessionListInputSchema = Type.Union([
 		{
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
 			archived: Type.Optional(Type.Boolean()),
+			projectId: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
 			cursor: Type.Optional(
 				Type.Object(
 					{ lastActivityAt: Type.Number(), id: Type.String() },
@@ -1195,15 +1208,20 @@ export interface DesktopApi {
 		pickDirectory(): Promise<string | null>;
 		create(input: DesktopProjectCreateInput): Promise<DesktopProject>;
 		relink(projectId: string): Promise<DesktopProject | null>;
+		/** Persists the sidebar order; must list every project exactly once. */
+		reorder(projectIds: readonly string[]): Promise<void>;
+		setExpanded(input: DesktopProjectExpandedInput): Promise<void>;
 		/** Opens the catalog directory in the OS file manager. */
 		reveal(projectId: string): Promise<void>;
 	};
 	readonly session: {
 		create(input: DesktopSessionCreateInput): Promise<CodingSession>;
+		get(sessionId: string): Promise<CodingSession>;
 		list(input?: {
 			readonly limit?: number;
 			readonly archived?: boolean;
 			readonly cursor?: SessionListCursor;
+			readonly projectId?: string | null;
 		}): Promise<DesktopSessionListPage>;
 		rename(input: DesktopSessionRenameInput): Promise<CodingSession>;
 		archive(input: DesktopSessionArchiveInput): Promise<CodingSession>;

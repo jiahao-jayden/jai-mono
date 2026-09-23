@@ -1,7 +1,7 @@
 import type { Result } from "better-result";
 import type { SqliteDesktopCatalogAccess } from "../../persistence/sqlite/desktop-catalog";
 import type { AcpJsonRpcRequest, AcpJsonRpcResponse, AcpOutboundMessage } from "../acp-v2/types";
-import type { DesktopCatalogProject, DesktopCatalogSessionCursor, DesktopCatalogStorageError } from "./types";
+import type { DesktopCatalogProjectInput, DesktopCatalogSessionCursor, DesktopCatalogStorageError } from "./types";
 
 const methodPrefix = "jai/desktop-catalog/";
 
@@ -32,6 +32,22 @@ export class DesktopCatalogControl {
 				const project = parseProject(params);
 				if (!project) return this.error(request.id, -32602, "Invalid Desktop Catalog project relink parameters");
 				return this.project(request.id, this.catalog.relinkProject(project));
+			}
+			case "jai/desktop-catalog/projects/reorder": {
+				const projectIds = params.projectIds;
+				if (
+					!Array.isArray(projectIds) ||
+					!projectIds.every((id) => typeof id === "string" && id.trim()) ||
+					!hasOnly(params, ["projectIds"])
+				)
+					return this.error(request.id, -32602, "Invalid Desktop Catalog project reorder parameters");
+				return this.project(request.id, this.catalog.reorderProjects(projectIds as string[]));
+			}
+			case "jai/desktop-catalog/projects/set-expanded": {
+				const projectId = requiredString(params, "projectId");
+				if (!projectId || typeof params.expanded !== "boolean" || !hasOnly(params, ["projectId", "expanded"]))
+					return this.error(request.id, -32602, "Invalid Desktop Catalog project expanded parameters");
+				return this.project(request.id, this.catalog.setProjectExpanded(projectId, params.expanded));
 			}
 			case "jai/desktop-catalog/sessions/list": {
 				const input = parseSessionList(params);
@@ -144,7 +160,7 @@ function isEmpty(value: Record<string, unknown>): boolean {
 	return Object.keys(value).length === 0;
 }
 
-function parseProject(value: Record<string, unknown>): DesktopCatalogProject | undefined {
+function parseProject(value: Record<string, unknown>): DesktopCatalogProjectInput | undefined {
 	const id = requiredString(value, "id");
 	const displayName = requiredString(value, "displayName");
 	const path = requiredString(value, "path");
@@ -167,19 +183,29 @@ function parseProject(value: Record<string, unknown>): DesktopCatalogProject | u
 	return { id, displayName, path, canonicalPath, createdAt, updatedAt };
 }
 
-function parseSessionList(
-	value: Record<string, unknown>,
-): { readonly limit?: number; readonly archived?: boolean; readonly cursor?: DesktopCatalogSessionCursor } | undefined {
+function parseSessionList(value: Record<string, unknown>):
+	| {
+			readonly limit?: number;
+			readonly archived?: boolean;
+			readonly cursor?: DesktopCatalogSessionCursor;
+			readonly projectId?: string | null;
+	  }
+	| undefined {
 	const limit = value.limit;
 	if (limit !== undefined && (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1)) return undefined;
 	const archived = value.archived;
 	if (archived !== undefined && typeof archived !== "boolean") return undefined;
+	const projectId = value.projectId;
+	if (projectId !== undefined && projectId !== null && (typeof projectId !== "string" || !projectId.trim()))
+		return undefined;
+	const normalizedProjectId = projectId === null || typeof projectId === "string" ? projectId : undefined;
 	const rawCursor = value.cursor;
 	if (rawCursor === undefined)
-		return hasOnly(value, ["limit", "archived"])
+		return hasOnly(value, ["limit", "archived", "projectId"])
 			? {
 					limit: limit,
 					archived: archived,
+					projectId: normalizedProjectId,
 				}
 			: undefined;
 	const cursor = object(rawCursor);
@@ -190,13 +216,14 @@ function parseSessionList(
 		typeof cursor.id !== "string" ||
 		!cursor.id ||
 		!hasOnly(cursor, ["lastActivityAt", "id"]) ||
-		!hasOnly(value, ["limit", "archived", "cursor"])
+		!hasOnly(value, ["limit", "archived", "projectId", "cursor"])
 	) {
 		return undefined;
 	}
 	return {
 		limit: limit,
 		archived: archived,
+		projectId: normalizedProjectId,
 		cursor: { lastActivityAt: cursor.lastActivityAt, id: cursor.id },
 	};
 }

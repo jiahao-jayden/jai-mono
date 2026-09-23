@@ -148,7 +148,14 @@ export function AppShell() {
 	const sessionRecentsQuery = useInfiniteQuery(sessionRecentsQueryOptions());
 	const sessions = getRecentSessions(sessionRecentsQuery.data);
 	const runningSessionIds = getRunningSessionIds(sessionRecentsQuery.data);
-	const session = sessions.find((candidate) => candidate.id === activeSessionId);
+	const activeSessionQuery = useQuery({
+		queryKey: [...desktopQueryKeys.sessions.byId, activeSessionId],
+		queryFn: () => desktop.session.get(activeSessionId!),
+		enabled: activeSessionId !== null,
+	});
+	const session =
+		sessions.find((candidate) => candidate.id === activeSessionId) ??
+		(activeSessionQuery.data?.id === activeSessionId ? activeSessionQuery.data : undefined);
 	const projects = projectsQuery.data ?? [];
 	const selectedProject = projects.find((candidate) => candidate.id === selectedProjectId);
 	const projectId = session?.projectId ?? selectedProject?.id ?? null;
@@ -428,6 +435,7 @@ export function AppShell() {
 							sessions={sessions}
 							runningSessionIds={runningSessionIds}
 							activeSessionId={chatVisible ? activeSessionId : null}
+							activeProjectId={chatVisible ? (session?.projectId ?? null) : null}
 							loading={sessionRecentsQuery.isLoading}
 							error={sessionLoadErrorMessage}
 							hasNextPage={sessionRecentsQuery.hasNextPage}

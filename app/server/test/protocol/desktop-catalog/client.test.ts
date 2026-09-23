@@ -30,6 +30,10 @@ describe("Desktop Catalog client", () => {
 				const listed = await client.value.listProjects();
 				if (listed.isErr()) throw listed.error;
 				expect(listed.value).toEqual([created.value]);
+				const expanded = await client.value.setProjectExpanded("project-1", true);
+				expect(expanded.isOk() && expanded.value.expanded).toBe(true);
+				const reordered = await client.value.reorderProjects(["project-1"]);
+				expect(reordered.isOk() && reordered.value.map((project) => project.id)).toEqual(["project-1"]);
 			} finally {
 				await client.value.close();
 			}

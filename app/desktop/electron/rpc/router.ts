@@ -18,6 +18,8 @@ import {
 	desktopContextMenuShowInputSchema,
 	desktopPermissionResolutionSchema,
 	desktopProjectCreateInputSchema,
+	desktopProjectExpandedInputSchema,
+	desktopProjectReorderInputSchema,
 	desktopSessionArchiveInputSchema,
 	desktopSessionCreateInputSchema,
 	desktopSessionDeleteInputSchema,
@@ -213,6 +215,15 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				rt.agentHost.invalidateSessions();
 				return { ...project, available: true } satisfies DesktopProject;
 			},
+			reorder(_event, projectIds) {
+				return rt.sessions.reorderProjects(
+					parse(desktopProjectReorderInputSchema, projectIds, "Invalid project reorder input"),
+				);
+			},
+			setExpanded(_event, input) {
+				const parsed = parse(desktopProjectExpandedInputSchema, input, "Invalid project expanded input");
+				return rt.sessions.setProjectExpanded(parsed.projectId, parsed.expanded);
+			},
 			async reveal(_event, projectId) {
 				const id = parse(desktopSessionIdSchema, projectId, "Invalid project id");
 				const project = await rt.sessions.getProject(id);
@@ -226,6 +237,9 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				return rt.sessions.createSession(
 					parse(desktopSessionCreateInputSchema, input, "Invalid Session create input"),
 				);
+			},
+			get(_event, sessionId) {
+				return rt.sessions.getSession(parse(desktopSessionIdSchema, sessionId, "Invalid Session id"));
 			},
 			async list(_event, input) {
 				return {

@@ -89,10 +89,17 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 			this.transaction(() => {
 				this.database
 					.prepare(
-						`INSERT INTO session_journals (id, revision, initial_app_state_json, created_at, updated_at)
-						 VALUES (?, ?, ?, ?, ?)`,
+						`INSERT INTO session_journals (id, revision, initial_app_state_json, created_at, updated_at, last_prompt_at)
+						 VALUES (?, ?, ?, ?, ?, ?)`,
 					)
-					.run(input.id, crypto.randomUUID(), JSON.stringify(input.appState), input.createdAt, input.createdAt);
+					.run(
+						input.id,
+						crypto.randomUUID(),
+						JSON.stringify(input.appState),
+						input.createdAt,
+						input.createdAt,
+						input.createdAt,
+					);
 				this.database
 					.prepare("INSERT INTO session_fact_sequences (session_id, next_sequence) VALUES (?, 0)")
 					.run(input.id);
@@ -210,8 +217,8 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 
 				const revision = crypto.randomUUID();
 				this.database
-					.prepare("UPDATE session_journals SET revision = ?, updated_at = ? WHERE id = ?")
-					.run(revision, input.inputEntry.timestamp, input.sessionId);
+					.prepare("UPDATE session_journals SET revision = ?, updated_at = ?, last_prompt_at = ? WHERE id = ?")
+					.run(revision, input.inputEntry.timestamp, input.inputEntry.timestamp, input.sessionId);
 				this.database
 					.prepare("UPDATE product_session_catalog SET updated_at = ? WHERE session_id = ?")
 					.run(input.inputEntry.timestamp, input.sessionId);
@@ -372,10 +379,10 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 				const revision = crypto.randomUUID();
 				this.database
 					.prepare(
-						`INSERT INTO session_journals (id, revision, initial_app_state_json, created_at, updated_at)
-						 VALUES (?, ?, ?, ?, ?)`,
+						`INSERT INTO session_journals (id, revision, initial_app_state_json, created_at, updated_at, last_prompt_at)
+						 VALUES (?, ?, ?, ?, ?, ?)`,
 					)
-					.run(input.id, revision, JSON.stringify(input.appState), input.createdAt, input.createdAt);
+					.run(input.id, revision, JSON.stringify(input.appState), input.createdAt, input.createdAt, input.createdAt);
 				this.database
 					.prepare("INSERT INTO session_fact_sequences (session_id, next_sequence) VALUES (?, 0)")
 					.run(input.id);
@@ -470,7 +477,8 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 				revision TEXT NOT NULL,
 				initial_app_state_json TEXT NOT NULL,
 				created_at TEXT NOT NULL,
-				updated_at TEXT NOT NULL
+				updated_at TEXT NOT NULL,
+				last_prompt_at TEXT
 			);
 			CREATE TABLE IF NOT EXISTS session_fact_sequences (
 				session_id TEXT PRIMARY KEY REFERENCES session_journals(id) ON DELETE CASCADE,
@@ -517,6 +525,13 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 					ON DELETE CASCADE
 			);
 		`);
+		const journalColumns = this.database.prepare("PRAGMA table_info(session_journals)").all() as unknown as {
+			readonly name: string;
+		}[];
+		if (!journalColumns.some((column) => column.name === "last_prompt_at")) {
+			this.database.exec("ALTER TABLE session_journals ADD COLUMN last_prompt_at TEXT");
+			this.database.exec("UPDATE session_journals SET last_prompt_at = updated_at WHERE last_prompt_at IS NULL");
+		}
 	}
 
 	private read(sessionId: string): ProductSessionDurableState<TAppState> | undefined {

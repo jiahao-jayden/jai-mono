@@ -16,6 +16,7 @@ interface SidebarProps {
 	sessions: readonly CodingSession[];
 	runningSessionIds: readonly string[];
 	activeSessionId: string | null;
+	activeProjectId: string | null;
 	loading: boolean;
 	error?: string;
 	hasNextPage?: boolean;
@@ -47,6 +48,7 @@ export function Sidebar({
 	sessions,
 	runningSessionIds,
 	activeSessionId,
+	activeProjectId,
 	loading,
 	error,
 	hasNextPage = false,
@@ -99,6 +101,7 @@ export function Sidebar({
 						sessions={sessions}
 						runningSessionIds={runningSessionIds}
 						activeSessionId={activeSessionId}
+						activeProjectId={activeProjectId}
 						loading={loading}
 						error={error}
 						hasNextPage={hasNextPage}

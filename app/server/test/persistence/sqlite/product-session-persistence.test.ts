@@ -262,4 +262,99 @@ describe("SqliteProductSessionPersistence", () => {
 		await resumed.value.close();
 	});
 
+	test("records last prompt time on admission and leaves it unchanged when a later entry is appended", async () => {
+		const database = new DatabaseSync(":memory:");
+		const persistence = new SqliteProductSessionPersistence(database);
+		const created = await persistence.create({
+			id: "session-1",
+			appState: {},
+			runtimeConfiguration: { model: "profile/model", mode: "manual" },
+			cwd: "/workspace",
+			createdAt: "2026-08-25T10:00:00.000Z",
+		});
+		if (created.isErr()) throw created.error;
+		expect(lastPromptAt(database, "session-1")).toBe("2026-08-25T10:00:00.000Z");
+
+		const admitted = await persistence.admitPrompt({
+			sessionId: "session-1",
+			inputEntry: {
+				type: "message",
+				id: "operation-1:input",
+				parentId: null,
+				timestamp: "2026-08-25T10:00:01.000Z",
+				message: { role: "user", content: "你好", timestamp: Date.parse("2026-08-25T10:00:01.000Z") },
+			},
+			operation: {
+				type: "operation_accepted",
+				operationId: "operation-1",
+				kind: "prompt",
+				inputEntryId: "operation-1:input",
+				startLeafId: null,
+				timestamp: "2026-08-25T10:00:01.000Z",
+			},
+		});
+		if (admitted.isErr()) throw admitted.error;
+		expect(lastPromptAt(database, "session-1")).toBe("2026-08-25T10:00:01.000Z");
+
+		const loaded = await persistence.load("session-1");
+		if (loaded.isErr()) throw loaded.error;
+		const appended = await persistence.appendEntry({
+			sessionId: "session-1",
+			expectedRevision: loaded.value.revision,
+			entry: {
+				type: "message",
+				id: "assistant-1",
+				parentId: "operation-1:input",
+				timestamp: "2026-08-25T10:00:02.000Z",
+				message: {
+					role: "assistant",
+					content: [{ type: "text", text: "你好！" }],
+					provider: "openai-compatible",
+					model: "deepseek-v4-flash",
+					usage: {
+						input: 1,
+						output: 1,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 2,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
+					stopReason: "stop",
+					timestamp: Date.parse("2026-08-25T10:00:02.000Z"),
+				},
+			},
+		});
+		if (appended.isErr()) throw appended.error;
+		expect(lastPromptAt(database, "session-1")).toBe("2026-08-25T10:00:01.000Z");
+	});
+
+	test("backfills last prompt time from journal activity on an existing database", () => {
+		const database = new DatabaseSync(":memory:");
+		database.exec(`
+			CREATE TABLE session_journals (
+				id TEXT PRIMARY KEY,
+				revision TEXT NOT NULL,
+				initial_app_state_json TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			);
+		`);
+		database
+			.prepare(
+				`INSERT INTO session_journals (id, revision, initial_app_state_json, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?)`,
+			)
+			.run("session-1", "rev", "{}", "2026-08-25T09:00:00.000Z", "2026-08-25T10:00:00.000Z");
+
+		new SqliteProductSessionPersistence(database);
+
+		expect(lastPromptAt(database, "session-1")).toBe("2026-08-25T10:00:00.000Z");
+	});
 });
+
+function lastPromptAt(database: DatabaseSync, sessionId: string): string | null {
+	const row = database.prepare("SELECT last_prompt_at FROM session_journals WHERE id = ?").get(sessionId) as
+		| { readonly last_prompt_at: string | null }
+		| undefined;
+	return row?.last_prompt_at ?? null;
+}

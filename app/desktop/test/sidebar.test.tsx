@@ -4,7 +4,6 @@ import { renderToStaticMarkup as renderToStaticMarkupBase } from "react-dom/serv
 import type { ReactNode } from "react";
 import enMessages from "../src/i18n/compiled/en.json";
 import { Sidebar } from "../src/components/shell/sidebar/sidebar";
-
 function renderToStaticMarkup(node: ReactNode): string {
 	return renderToStaticMarkupBase(<IntlProvider locale="en" messages={enMessages}>{node}</IntlProvider>);
 }
@@ -18,6 +17,7 @@ const projects = [
 		available: true,
 		createdAt: 1,
 		updatedAt: 10,
+		expanded: false,
 	},
 	{
 		id: "project-unavailable",
@@ -27,6 +27,7 @@ const projects = [
 		available: false,
 		createdAt: 1,
 		updatedAt: 1,
+		expanded: false,
 	},
 ];
 
@@ -80,6 +81,7 @@ function renderSidebar(runningSessionIds: readonly string[] = [], activeSessionI
 			onPinSession={async () => {}}
 			onArchiveSession={async () => {}}
 			onDeleteSession={async () => {}}
+			activeProjectId={sessions.find((session) => session.id === activeSessionId)?.projectId ?? null}
 		/>,
 	);
 }

@@ -7,6 +7,7 @@ export interface Project {
 	readonly canonicalPath: string;
 	readonly createdAt: number;
 	readonly updatedAt: number;
+	readonly expanded: boolean;
 }
 
 export interface CodingSession {

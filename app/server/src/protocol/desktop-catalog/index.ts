@@ -7,6 +7,7 @@ export {
 } from "./local-transport";
 export {
 	type DesktopCatalogProject,
+	type DesktopCatalogProjectInput,
 	DesktopCatalogProjectNotFound,
 	DesktopCatalogProjectPathConflict,
 	type DesktopCatalogSession,

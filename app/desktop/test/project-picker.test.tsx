@@ -18,6 +18,7 @@ const project: DesktopProject = {
 	canonicalPath: "/code/jai-mono",
 	createdAt: 1,
 	updatedAt: 1,
+	expanded: false,
 	available: true,
 };
 

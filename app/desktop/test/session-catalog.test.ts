@@ -275,16 +275,24 @@ class MemoryCatalogTransport implements RemoteDesktopSessionCatalogTransport {
 	readonly catalog: DesktopCatalogClient = {
 		listProjects: async () => Result.ok([...this.#projects.values()]),
 		createProject: async (input) => {
-			this.#projects.set(input.id, input);
-			return Result.ok(input);
+			const project = { ...input, expanded: false };
+			this.#projects.set(input.id, project);
+			return Result.ok(project);
 		},
 		relinkProject: async (input) => {
 			this.relinkCalls += 1;
-			this.#projects.set(input.id, input);
+			const project = { ...input, expanded: this.#projects.get(input.id)?.expanded ?? false };
+			this.#projects.set(input.id, project);
 			for (const session of this.#sessions.values()) {
 				if (session.projectId === input.id) this.sessionCwds.set(session.id, input.canonicalPath);
 			}
-			return Result.ok(input);
+			return Result.ok(project);
+		},
+		reorderProjects: async () => Result.ok([...this.#projects.values()]),
+		setProjectExpanded: async (projectId, expanded) => {
+			const project = { ...this.#projects.get(projectId)!, expanded };
+			this.#projects.set(projectId, project);
+			return Result.ok(project);
 		},
 		listSessions: async ({ archived } = {}) =>
 			Result.ok({

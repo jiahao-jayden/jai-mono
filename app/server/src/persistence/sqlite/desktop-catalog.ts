@@ -1,6 +1,7 @@
 import { Result, type Result as ResultType } from "better-result";
 import {
 	type DesktopCatalogProject,
+	type DesktopCatalogProjectInput,
 	DesktopCatalogProjectNotFound,
 	DesktopCatalogProjectPathConflict,
 	type DesktopCatalogSession,
@@ -21,14 +22,17 @@ interface ProjectRow {
 	readonly canonical_path: string;
 	readonly created_at: number;
 	readonly updated_at: number;
+	readonly expanded: number;
 }
+
+const projectSelect = `SELECT id, display_name, path, canonical_path, created_at, updated_at, expanded FROM projects`;
 
 interface SessionRow {
 	readonly id: string;
 	readonly project_id: string | null;
 	readonly title: string;
 	readonly title_source: string;
-	readonly updated_at: string;
+	readonly last_prompt_at: string;
 	readonly title_generation_attempted_at: number | null;
 	readonly archived_at: number | null;
 	readonly pinned_at: number | null;
@@ -46,10 +50,7 @@ export class SqliteDesktopCatalogAccess {
 	listProjects(): ResultType<readonly DesktopCatalogProject[], DesktopCatalogStorageError> {
 		try {
 			const rows = this.database
-				.prepare(
-					`SELECT id, display_name, path, canonical_path, created_at, updated_at
-					 FROM projects ORDER BY created_at ASC, id ASC`,
-				)
+				.prepare(`${projectSelect} ORDER BY sort_order ASC, created_at DESC, id ASC`)
 				.all() as unknown as ProjectRow[];
 			return Result.ok(rows.map(projectRow));
 		} catch (cause) {
@@ -57,15 +58,15 @@ export class SqliteDesktopCatalogAccess {
 		}
 	}
 
-	createProject(input: DesktopCatalogProject): ResultType<DesktopCatalogProject, DesktopCatalogStorageError> {
+	createProject(input: DesktopCatalogProjectInput): ResultType<DesktopCatalogProject, DesktopCatalogStorageError> {
 		try {
 			this.database
 				.prepare(
-					`INSERT INTO projects (id, display_name, path, canonical_path, created_at, updated_at)
-					 VALUES (?, ?, ?, ?, ?, ?)`,
+					`INSERT INTO projects (id, display_name, path, canonical_path, created_at, updated_at, sort_order, expanded)
+					 VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM projects), 0)`,
 				)
 				.run(input.id, input.displayName, input.path, input.canonicalPath, input.createdAt, input.updatedAt);
-			return Result.ok(input);
+			return Result.ok({ ...input, expanded: false });
 		} catch (cause) {
 			if (isUniqueViolation(cause)) {
 				return Result.err(
@@ -79,7 +80,7 @@ export class SqliteDesktopCatalogAccess {
 		}
 	}
 
-	relinkProject(input: DesktopCatalogProject): ResultType<DesktopCatalogProject, DesktopCatalogStorageError> {
+	relinkProject(input: DesktopCatalogProjectInput): ResultType<DesktopCatalogProject, DesktopCatalogStorageError> {
 		try {
 			return Result.ok(
 				this.transaction(() => {
@@ -105,7 +106,7 @@ export class SqliteDesktopCatalogAccess {
 							 )`,
 						)
 						.run(input.canonicalPath, input.id);
-					return input;
+					return this.requireProject(input.id);
 				}),
 			);
 		} catch (cause) {
@@ -122,14 +123,63 @@ export class SqliteDesktopCatalogAccess {
 		}
 	}
 
+	/** Persists the user's sidebar order; `projectIds` must list every cataloged project exactly once. */
+	reorderProjects(
+		projectIds: readonly string[],
+	): ResultType<readonly DesktopCatalogProject[], DesktopCatalogStorageError> {
+		try {
+			this.transaction(() => {
+				const { count } = this.database.prepare("SELECT COUNT(*) AS count FROM projects").get() as {
+					readonly count: number;
+				};
+				if (count !== projectIds.length || new Set(projectIds).size !== projectIds.length) {
+					throw new DesktopCatalogStorageFailed({
+						message: "Desktop project order must list every project exactly once",
+					});
+				}
+				const update = this.database.prepare("UPDATE projects SET sort_order = ? WHERE id = ?");
+				projectIds.forEach((projectId, index) => {
+					if (update.run(index, projectId).changes === 0) {
+						throw new DesktopCatalogProjectNotFound({
+							message: `Desktop project "${projectId}" does not exist`,
+							projectId,
+						});
+					}
+				});
+			});
+			return this.listProjects();
+		} catch (cause) {
+			if (cause instanceof DesktopCatalogProjectNotFound || cause instanceof DesktopCatalogStorageFailed)
+				return Result.err(cause);
+			return Result.err(this.failed("Could not reorder Desktop projects", cause));
+		}
+	}
+
+	setProjectExpanded(
+		projectId: string,
+		expanded: boolean,
+	): ResultType<DesktopCatalogProject, DesktopCatalogStorageError> {
+		try {
+			const changed = this.database
+				.prepare("UPDATE projects SET expanded = ? WHERE id = ?")
+				.run(expanded ? 1 : 0, projectId);
+			if (changed.changes === 0) {
+				return Result.err(
+					new DesktopCatalogProjectNotFound({
+						message: `Desktop project "${projectId}" does not exist`,
+						projectId,
+					}),
+				);
+			}
+			return Result.ok(this.requireProject(projectId));
+		} catch (cause) {
+			return Result.err(this.failed(`Could not update Desktop project "${projectId}"`, cause));
+		}
+	}
+
 	getProject(projectId: string): ResultType<DesktopCatalogProject | undefined, DesktopCatalogStorageError> {
 		try {
-			const row = this.database
-				.prepare(
-					`SELECT id, display_name, path, canonical_path, created_at, updated_at
-					 FROM projects WHERE id = ?`,
-				)
-				.get(projectId) as ProjectRow | undefined;
+			const row = this.database.prepare(`${projectSelect} WHERE id = ?`).get(projectId) as ProjectRow | undefined;
 			return Result.ok(row ? projectRow(row) : undefined);
 		} catch (cause) {
 			return Result.err(this.failed(`Could not load Desktop project "${projectId}"`, cause));
@@ -141,37 +191,36 @@ export class SqliteDesktopCatalogAccess {
 			readonly limit?: number;
 			readonly archived?: boolean;
 			readonly cursor?: DesktopCatalogSessionCursor;
+			readonly projectId?: string | null;
 		} = {},
 	): ResultType<DesktopCatalogSessionPage, DesktopCatalogStorageError> {
 		try {
 			const limit = Math.min(Math.max(input.limit ?? 50, 1), 100);
-			const archivedClause = input.archived ? "metadata.archived_at IS NOT NULL" : "metadata.archived_at IS NULL";
-			const sortColumn = input.archived ? "metadata.archived_at" : "journal.updated_at";
-			const cursorTimestamp = input.cursor
-				? input.archived
+			const filters = [input.archived ? "metadata.archived_at IS NOT NULL" : "metadata.archived_at IS NULL"];
+			const parameters: Array<string | number> = [];
+			if (input.projectId === null) {
+				filters.push("metadata.project_id IS NULL");
+			} else if (input.projectId !== undefined) {
+				filters.push("metadata.project_id = ?");
+				parameters.push(input.projectId);
+			}
+			const sortColumn = input.archived ? "metadata.archived_at" : "journal.last_prompt_at";
+			if (input.cursor) {
+				const cursorTimestamp = input.archived
 					? input.cursor.lastActivityAt
-					: new Date(input.cursor.lastActivityAt).toISOString()
-				: undefined;
-			const rows = input.cursor
-				? (this.database
-						.prepare(
-							`${sessionSelect()}
-							 WHERE ${archivedClause}
-							   AND (${sortColumn} < ?
-							    OR (${sortColumn} = ? AND journal.id < ?)
-							   )
-							 ORDER BY ${sortColumn} DESC, journal.id DESC
-							 LIMIT ?`,
-						)
-						.all(cursorTimestamp!, cursorTimestamp!, input.cursor.id, limit + 1) as unknown as SessionRow[])
-				: (this.database
-						.prepare(
-							`${sessionSelect()}
-							 WHERE ${archivedClause}
-							 ORDER BY ${sortColumn} DESC, journal.id DESC
-							 LIMIT ?`,
-						)
-						.all(limit + 1) as unknown as SessionRow[]);
+					: new Date(input.cursor.lastActivityAt).toISOString();
+				filters.push(`(${sortColumn} < ? OR (${sortColumn} = ? AND journal.id < ?))`);
+				parameters.push(cursorTimestamp, cursorTimestamp, input.cursor.id);
+			}
+			parameters.push(limit + 1);
+			const rows = this.database
+				.prepare(
+					`${sessionSelect()}
+					 WHERE ${filters.join(" AND ")}
+					 ORDER BY ${sortColumn} DESC, journal.id DESC
+					 LIMIT ?`,
+				)
+				.all(...parameters) as unknown as SessionRow[];
 			const sessions = rows.slice(0, limit).map(sessionRow);
 			const last = sessions.at(-1);
 			return Result.ok({
@@ -410,7 +459,9 @@ export class SqliteDesktopCatalogAccess {
 				path TEXT NOT NULL,
 				canonical_path TEXT NOT NULL UNIQUE,
 				created_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL
+				updated_at INTEGER NOT NULL,
+				sort_order INTEGER NOT NULL DEFAULT 0,
+				expanded INTEGER NOT NULL DEFAULT 0
 			);
 			CREATE TABLE IF NOT EXISTS desktop_session_metadata (
 				session_id TEXT PRIMARY KEY REFERENCES session_journals(id) ON DELETE CASCADE,
@@ -431,6 +482,15 @@ export class SqliteDesktopCatalogAccess {
 		}
 		if (!metadataColumns.some((column) => column.name === "pinned_at")) {
 			this.database.exec("ALTER TABLE desktop_session_metadata ADD COLUMN pinned_at INTEGER");
+		}
+		const projectColumns = this.database.prepare("PRAGMA table_info(projects)").all() as unknown as {
+			readonly name: string;
+		}[];
+		if (!projectColumns.some((column) => column.name === "sort_order")) {
+			this.database.exec("ALTER TABLE projects ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+		}
+		if (!projectColumns.some((column) => column.name === "expanded")) {
+			this.database.exec("ALTER TABLE projects ADD COLUMN expanded INTEGER NOT NULL DEFAULT 0");
 		}
 	}
 
@@ -488,7 +548,7 @@ function sessionSelect(): string {
 	return `SELECT journal.id, metadata.project_id,
 		COALESCE(metadata.title, 'New session') AS title,
 		COALESCE(metadata.title_source, 'fallback') AS title_source,
-		journal.updated_at,
+		journal.last_prompt_at,
 		metadata.title_generation_attempted_at,
 		metadata.archived_at,
 		metadata.pinned_at
@@ -504,7 +564,8 @@ function projectRow(row: ProjectRow): DesktopCatalogProject {
 		typeof row.path !== "string" ||
 		typeof row.canonical_path !== "string" ||
 		typeof row.created_at !== "number" ||
-		typeof row.updated_at !== "number"
+		typeof row.updated_at !== "number" ||
+		(row.expanded !== 0 && row.expanded !== 1)
 	) {
 		throw new DesktopCatalogStorageCorrupted({ message: "Desktop project row is invalid" });
 	}
@@ -515,6 +576,7 @@ function projectRow(row: ProjectRow): DesktopCatalogProject {
 		canonicalPath: row.canonical_path,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
+		expanded: row.expanded === 1,
 	};
 }
 
@@ -524,14 +586,14 @@ function sessionRow(row: SessionRow): DesktopCatalogSession {
 		(row.project_id !== null && typeof row.project_id !== "string") ||
 		typeof row.title !== "string" ||
 		!isTitleSource(row.title_source) ||
-		typeof row.updated_at !== "string" ||
+		typeof row.last_prompt_at !== "string" ||
 		(row.title_generation_attempted_at !== null && typeof row.title_generation_attempted_at !== "number") ||
 		(row.archived_at !== null && (!Number.isFinite(row.archived_at) || typeof row.archived_at !== "number")) ||
 		(row.pinned_at !== null && (!Number.isFinite(row.pinned_at) || typeof row.pinned_at !== "number"))
 	) {
 		throw new DesktopCatalogStorageCorrupted({ message: "Desktop Session Catalog row is invalid" });
 	}
-	const lastActivityAt = Date.parse(row.updated_at);
+	const lastActivityAt = Date.parse(row.last_prompt_at);
 	if (!Number.isFinite(lastActivityAt)) {
 		throw new DesktopCatalogStorageCorrupted({ message: "Desktop Session Catalog timestamp is invalid" });
 	}

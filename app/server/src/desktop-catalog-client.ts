@@ -9,6 +9,7 @@ import {
 import { localDesktopCatalogEndpointFor } from "./protocol/desktop-catalog/local-endpoint";
 import type {
 	DesktopCatalogProject,
+	DesktopCatalogProjectInput,
 	DesktopCatalogSession,
 	DesktopCatalogSessionCursor,
 	DesktopCatalogSessionPage,
@@ -90,15 +91,28 @@ export class DesktopCatalogClient {
 	}
 
 	async createProject(
-		input: DesktopCatalogProject,
+		input: DesktopCatalogProjectInput,
 	): Promise<ResultType<DesktopCatalogProject, DesktopCatalogClientError>> {
 		return this.request("jai/desktop-catalog/projects/create", input, project);
 	}
 
 	async relinkProject(
-		input: DesktopCatalogProject,
+		input: DesktopCatalogProjectInput,
 	): Promise<ResultType<DesktopCatalogProject, DesktopCatalogClientError>> {
 		return this.request("jai/desktop-catalog/projects/relink", input, project);
+	}
+
+	async reorderProjects(
+		projectIds: readonly string[],
+	): Promise<ResultType<readonly DesktopCatalogProject[], DesktopCatalogClientError>> {
+		return this.request("jai/desktop-catalog/projects/reorder", { projectIds }, projects);
+	}
+
+	async setProjectExpanded(
+		projectId: string,
+		expanded: boolean,
+	): Promise<ResultType<DesktopCatalogProject, DesktopCatalogClientError>> {
+		return this.request("jai/desktop-catalog/projects/set-expanded", { projectId, expanded }, project);
 	}
 
 	async listSessions(
@@ -106,6 +120,7 @@ export class DesktopCatalogClient {
 			readonly limit?: number;
 			readonly archived?: boolean;
 			readonly cursor?: DesktopCatalogSessionCursor;
+			readonly projectId?: string | null;
 		} = {},
 	): Promise<ResultType<DesktopCatalogSessionPage, DesktopCatalogClientError>> {
 		return this.request("jai/desktop-catalog/sessions/list", input, sessionPage);
@@ -224,7 +239,8 @@ function project(value: unknown): DesktopCatalogProject | undefined {
 		typeof value.path !== "string" ||
 		typeof value.canonicalPath !== "string" ||
 		typeof value.createdAt !== "number" ||
-		typeof value.updatedAt !== "number"
+		typeof value.updatedAt !== "number" ||
+		typeof value.expanded !== "boolean"
 	) {
 		return undefined;
 	}
@@ -235,6 +251,7 @@ function project(value: unknown): DesktopCatalogProject | undefined {
 		canonicalPath: value.canonicalPath,
 		createdAt: value.createdAt,
 		updatedAt: value.updatedAt,
+		expanded: value.expanded,
 	};
 }
 

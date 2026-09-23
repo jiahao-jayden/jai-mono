@@ -334,7 +334,7 @@ describe("SqliteDesktopCatalogAccess", () => {
 			});
 
 			expect(relinked.isErr()).toBe(true);
-			expect(catalog.getProject(project.id)).toEqual(expect.objectContaining({ value: project }));
+			expect(catalog.getProject(project.id)).toEqual(expect.objectContaining({ value: { ...project, expanded: false } }));
 			const session = await persistence.load("session-1");
 			if (session.isErr()) throw session.error;
 			expect(session.value.cwd).toBe("/old-workspace");
@@ -364,6 +364,53 @@ describe("SqliteDesktopCatalogAccess", () => {
 			expect(duplicate.isErr()).toBe(true);
 			if (duplicate.isOk()) throw new Error("Expected Desktop project path conflict");
 			expect(duplicate.error._tag).toBe("desktop_catalog.project_path_conflict");
+		} finally {
+			database.close();
+		}
+	});
+
+	test("persists the user's project order and expanded state; new projects go first", () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const catalog = new SqliteDesktopCatalogAccess(database);
+			for (const id of ["a", "b", "c"]) {
+				const created = catalog.createProject({
+					id,
+					displayName: id,
+					path: `/${id}`,
+					canonicalPath: `/${id}`,
+					createdAt: 10,
+					updatedAt: 10,
+				});
+				if (created.isErr()) throw created.error;
+				expect(created.value.expanded).toBe(false);
+			}
+			const ids = () => catalog.listProjects().unwrap().map((project) => project.id);
+			expect(ids()).toEqual(["c", "b", "a"]);
+
+			expect(catalog.reorderProjects(["a", "c", "b"]).unwrap().map((project) => project.id)).toEqual(["a", "c", "b"]);
+			expect(catalog.reorderProjects(["a", "c"]).isErr()).toBe(true);
+			expect(catalog.reorderProjects(["a", "c", "missing"]).isErr()).toBe(true);
+			expect(ids()).toEqual(["a", "c", "b"]);
+
+			expect(catalog.setProjectExpanded("c", true).unwrap().expanded).toBe(true);
+			expect(catalog.setProjectExpanded("missing", true).isErr()).toBe(true);
+
+			catalog.createProject({
+				id: "d",
+				displayName: "d",
+				path: "/d",
+				canonicalPath: "/d",
+				createdAt: 20,
+				updatedAt: 20,
+			});
+			const reopened = new SqliteDesktopCatalogAccess(database).listProjects().unwrap();
+			expect(reopened.map((project) => [project.id, project.expanded])).toEqual([
+				["d", false],
+				["a", false],
+				["c", true],
+				["b", false],
+			]);
 		} finally {
 			database.close();
 		}
@@ -441,4 +488,102 @@ describe("SqliteDesktopCatalogAccess", () => {
 			database.close();
 		}
 	});
+
+	test("lists sessions by last prompt time and filters them by project", async () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const persistence = new SqliteProductSessionPersistence(database);
+			const catalog = new SqliteDesktopCatalogAccess(database);
+			const project = catalog.createProject({
+				id: "project-1",
+				displayName: "Workspace",
+				path: "/workspace",
+				canonicalPath: "/workspace",
+				createdAt: 10,
+				updatedAt: 10,
+			});
+			if (project.isErr()) throw project.error;
+			for (const session of [
+				{ id: "session-old", createdAt: "2026-08-25T10:00:00.000Z", projectId: "project-1" },
+				{ id: "session-new", createdAt: "2026-08-25T11:00:00.000Z", projectId: null },
+			] as const) {
+				const created = await persistence.create({
+					id: session.id,
+					appState: {},
+					runtimeConfiguration: { model: "test/model", mode: "manual" },
+					cwd: "/workspace",
+					createdAt: session.createdAt,
+				});
+				if (created.isErr()) throw created.error;
+				const ensured = catalog.ensureSession({
+					sessionId: session.id,
+					projectId: session.projectId,
+					title: session.id,
+				});
+				if (ensured.isErr()) throw ensured.error;
+			}
+
+			expect(sessionIds(catalog.listSessions({ projectId: null }))).toEqual(["session-new"]);
+			expect(sessionIds(catalog.listSessions({ projectId: "project-1" }))).toEqual(["session-old"]);
+
+			const admitted = await persistence.admitPrompt({
+				sessionId: "session-old",
+				inputEntry: {
+					type: "message",
+					id: "operation-1:input",
+					parentId: null,
+					timestamp: "2026-08-25T12:00:00.000Z",
+					message: { role: "user", content: "继续", timestamp: Date.parse("2026-08-25T12:00:00.000Z") },
+				},
+				operation: {
+					type: "operation_accepted",
+					operationId: "operation-1",
+					kind: "prompt",
+					inputEntryId: "operation-1:input",
+					startLeafId: null,
+					timestamp: "2026-08-25T12:00:00.000Z",
+				},
+			});
+			if (admitted.isErr()) throw admitted.error;
+			expect(sessionIds(catalog.listSessions())).toEqual(["session-old", "session-new"]);
+
+			const loaded = await persistence.load("session-old");
+			if (loaded.isErr()) throw loaded.error;
+			const appended = await persistence.appendEntry({
+				sessionId: "session-old",
+				expectedRevision: loaded.value.revision,
+				entry: {
+					type: "message",
+					id: "assistant-1",
+					parentId: "operation-1:input",
+					timestamp: "2026-08-25T13:00:00.000Z",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "好" }],
+						provider: "openai-compatible",
+						model: "test",
+						usage: {
+							input: 1,
+							output: 1,
+							cacheRead: 0,
+							cacheWrite: 0,
+							totalTokens: 2,
+							cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+						},
+						stopReason: "stop",
+						timestamp: Date.parse("2026-08-25T13:00:00.000Z"),
+					},
+				},
+			});
+			if (appended.isErr()) throw appended.error;
+			expect(sessionIds(catalog.listSessions())).toEqual(["session-old", "session-new"]);
+		} finally {
+			database.close();
+		}
+	});
 });
+
+function sessionIds(listed: ReturnType<SqliteDesktopCatalogAccess["listSessions"]>): string[] {
+	if (listed.isErr()) throw listed.error;
+	return listed.value.sessions.map((session) => session.id);
+}

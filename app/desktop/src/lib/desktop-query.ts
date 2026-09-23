@@ -16,7 +16,10 @@ export const desktopQueryKeys = {
 	mcp: ["desktop", "mcp"] as const,
 	profileTokenStats: ["desktop", "profile-token-stats"] as const,
 	sessions: {
-		recents: ["desktop", "sessions", "recents"] as const,
+		lists: ["desktop", "sessions", "lists"] as const,
+		chats: ["desktop", "sessions", "lists", "chats"] as const,
+		project: (projectId: string) => ["desktop", "sessions", "lists", "project", projectId] as const,
+		byId: ["desktop", "sessions", "by-id"] as const,
 		archived: ["desktop", "sessions", "archived"] as const,
 	},
 } as const;
@@ -39,14 +42,36 @@ export function sessionRecentsQueryOptions() {
 		DesktopSessionListPage,
 		Error,
 		InfiniteData<DesktopSessionListPage, SessionListCursor | undefined>,
-		typeof desktopQueryKeys.sessions.recents,
+		typeof desktopQueryKeys.sessions.chats,
 		SessionListCursor | undefined
 	>({
-		queryKey: desktopQueryKeys.sessions.recents,
+		queryKey: desktopQueryKeys.sessions.chats,
 		initialPageParam: undefined as SessionListCursor | undefined,
 		queryFn: ({ pageParam }) =>
 			desktop.session.list(
-				pageParam ? { limit: SESSION_PAGE_SIZE, cursor: pageParam } : { limit: SESSION_PAGE_SIZE },
+				pageParam
+					? { limit: SESSION_PAGE_SIZE, cursor: pageParam, projectId: null }
+					: { limit: SESSION_PAGE_SIZE, projectId: null },
+			),
+		getNextPageParam: (page) => page.nextCursor,
+	});
+}
+
+export function projectSessionsQueryOptions(projectId: string) {
+	return infiniteQueryOptions<
+		DesktopSessionListPage,
+		Error,
+		InfiniteData<DesktopSessionListPage, SessionListCursor | undefined>,
+		ReturnType<typeof desktopQueryKeys.sessions.project>,
+		SessionListCursor | undefined
+	>({
+		queryKey: desktopQueryKeys.sessions.project(projectId),
+		initialPageParam: undefined as SessionListCursor | undefined,
+		queryFn: ({ pageParam }) =>
+			desktop.session.list(
+				pageParam
+					? { limit: SESSION_PAGE_SIZE, cursor: pageParam, projectId }
+					: { limit: SESSION_PAGE_SIZE, projectId },
 			),
 		getNextPageParam: (page) => page.nextCursor,
 	});
@@ -109,33 +134,65 @@ export function getRunningSessionIds(data: SessionPagesData | undefined): string
 export function upsertProject(project: DesktopProject): void {
 	desktopQueryClient.setQueryData<DesktopProject[]>(desktopQueryKeys.projects, (current = []) => {
 		const index = current.findIndex((candidate) => candidate.id === project.id);
-		if (index < 0) return [...current, project];
+		if (index < 0) return [project, ...current];
 		const next = [...current];
 		next[index] = project;
 		return next;
 	});
 }
 
-export function upsertRecentSession(session: CodingSession): void {
-	desktopQueryClient.setQueryData<SessionPagesData>(desktopQueryKeys.sessions.recents, (current) => {
-		if (!current || current.pages.length === 0) return current;
-		const exists = current.pages.some((page) => page.sessions.some((candidate) => candidate.id === session.id));
-		const pages = current.pages.map((page, pageIndex) => {
-			const index = page.sessions.findIndex((candidate) => candidate.id === session.id);
-			if (index < 0) {
-				if (exists || pageIndex !== 0) return page;
-				return { ...page, sessions: [session, ...page.sessions] };
-			}
-			const sessions = [...page.sessions];
-			sessions[index] = session;
-			return { ...page, sessions };
-		});
-		return { ...current, pages };
+function resyncProjectsOnFailure(request: Promise<void>): Promise<void> {
+	return request.catch(() => desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.projects }));
+}
+
+export function reorderProjects(projectIds: readonly string[]): Promise<void> {
+	desktopQueryClient.setQueryData<DesktopProject[]>(desktopQueryKeys.projects, (current = []) => {
+		const byId = new Map(current.map((project) => [project.id, project]));
+		return projectIds.flatMap((id) => byId.get(id) ?? []);
 	});
+	return resyncProjectsOnFailure(desktop.project.reorder(projectIds));
+}
+
+export function setProjectExpanded(projectId: string, expanded: boolean): Promise<void> {
+	desktopQueryClient.setQueryData<DesktopProject[]>(desktopQueryKeys.projects, (current = []) =>
+		current.map((project) => (project.id === projectId ? { ...project, expanded } : project)),
+	);
+	return resyncProjectsOnFailure(desktop.project.setExpanded({ projectId, expanded }));
+}
+
+function withSession(current: SessionPagesData, session: CodingSession, insert: boolean): SessionPagesData {
+	const exists = current.pages.some((page) => page.sessions.some((candidate) => candidate.id === session.id));
+	return {
+		...current,
+		pages: current.pages.map((page, pageIndex) => {
+			const index = page.sessions.findIndex((candidate) => candidate.id === session.id);
+			if (index >= 0) {
+				const sessions = [...page.sessions];
+				sessions[index] = session;
+				return { ...page, sessions };
+			}
+			if (insert && !exists && pageIndex === 0) return { ...page, sessions: [session, ...page.sessions] };
+			return page;
+		}),
+	};
+}
+
+export function upsertRecentSession(session: CodingSession): void {
+	desktopQueryClient.setQueriesData<SessionPagesData>({ queryKey: desktopQueryKeys.sessions.lists }, (current) =>
+		current ? withSession(current, session, false) : current,
+	);
+	const queryKey =
+		session.projectId === null
+			? desktopQueryKeys.sessions.chats
+			: desktopQueryKeys.sessions.project(session.projectId);
+	desktopQueryClient.setQueryData<SessionPagesData>(queryKey, (current) =>
+		current && current.pages.length > 0 ? withSession(current, session, true) : current,
+	);
+	desktopQueryClient.setQueryData([...desktopQueryKeys.sessions.byId, session.id], session);
 }
 
 export function removeRecentSession(sessionId: string): void {
-	desktopQueryClient.setQueryData<SessionPagesData>(desktopQueryKeys.sessions.recents, (current) => {
+	desktopQueryClient.setQueriesData<SessionPagesData>({ queryKey: desktopQueryKeys.sessions.lists }, (current) => {
 		if (!current) return current;
 		return {
 			...current,
@@ -146,15 +203,16 @@ export function removeRecentSession(sessionId: string): void {
 			})),
 		};
 	});
+	desktopQueryClient.removeQueries({ queryKey: [...desktopQueryKeys.sessions.byId, sessionId] });
 }
 
 export function invalidateRecentSessions(): Promise<void> {
-	return desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.recents });
+	return desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.lists });
 }
 
 export function invalidateSessionLists(): Promise<void> {
 	return Promise.all([
-		desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.recents }),
+		desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.lists }),
 		desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.sessions.archived }),
 	]).then(() => {});
 }

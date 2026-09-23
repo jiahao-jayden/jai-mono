@@ -1,7 +1,28 @@
+import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
+import {
+	draggable,
+	dropTargetForElements,
+	monitorForElements,
+} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { pointerOutsideOfPreview } from "@atlaskit/pragmatic-drag-and-drop/element/pointer-outside-of-preview";
+import { setCustomNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview";
+import { attachClosestEdge } from "@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge/attach-closest-edge";
+import { extractClosestEdge } from "@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge/extract-closest-edge";
+import type { Edge } from "@atlaskit/pragmatic-drag-and-drop-hitbox/types";
+import { getReorderDestinationIndex } from "@atlaskit/pragmatic-drag-and-drop-hitbox/util/get-reorder-destination-index";
+import { reorderWithEdge } from "@atlaskit/pragmatic-drag-and-drop-hitbox/util/reorder-with-edge";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { cn } from "cn";
-import { useMemo, useRef, useState } from "react";
+import { type ReactNode, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
+import {
+	getRecentSessions,
+	projectSessionsQueryOptions,
+	reorderProjects,
+	setProjectExpanded,
+} from "@/lib/desktop-query";
 import { useIcons } from "@/lib/icon-context";
 import type { CodingSession, DesktopProject } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
@@ -12,11 +33,25 @@ import { SessionActions } from "../session-actions";
 import { sidebarItemClassName } from "./sidebar-nav";
 import { sidebarRowHoverReserveClassName, sidebarRowSpinnerReserveClassName } from "./sidebar-row-hover";
 
+const projectDragKey = Symbol("sidebar-project");
+
+type ProjectDragData = {
+	readonly [projectDragKey]: true;
+	readonly index: number;
+};
+
+function isProjectDragData(
+	data: Record<string | symbol, unknown>,
+): data is Record<string | symbol, unknown> & ProjectDragData {
+	return data[projectDragKey] === true && typeof data.index === "number";
+}
+
 interface SidebarSessionsProps {
 	readonly projects: readonly DesktopProject[];
 	readonly sessions: readonly CodingSession[];
 	readonly runningSessionIds: readonly string[];
 	readonly activeSessionId: string | null;
+	readonly activeProjectId: string | null;
 	readonly loading: boolean;
 	readonly error?: string;
 	readonly hasNextPage?: boolean;
@@ -40,6 +75,7 @@ export function SidebarSessions({
 	sessions,
 	runningSessionIds,
 	activeSessionId,
+	activeProjectId,
 	loading,
 	error,
 	hasNextPage = false,
@@ -60,31 +96,11 @@ export function SidebarSessions({
 	const intl = useIntl();
 	const icons = useIcons();
 	const PlusIcon = icons.plus;
-	const [expandedProjectIds, setExpandedProjectIds] = useState<ReadonlySet<string>>(() => new Set());
 	const [chatsExpanded, setChatsExpanded] = useState(true);
 	const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
 	const [editingTitle, setEditingTitle] = useState("");
 	const cancelEditRef = useRef(false);
-	const activeSessions = useMemo(() => sessions.filter((session) => session.archivedAt === null), [sessions]);
-	const sessionsByProject = useMemo(() => {
-		const grouped = new Map<string, CodingSession[]>();
-		for (const session of activeSessions) {
-			if (!session.projectId) continue;
-			const current = grouped.get(session.projectId) ?? [];
-			grouped.set(session.projectId, [...current, session]);
-		}
-		return grouped;
-	}, [activeSessions]);
-	const sortedProjects = useMemo(
-		() =>
-			projects.toSorted((left, right) => {
-				const leftActivity = sessionsByProject.get(left.id)?.[0]?.lastActivityAt ?? left.updatedAt;
-				const rightActivity = sessionsByProject.get(right.id)?.[0]?.lastActivityAt ?? right.updatedAt;
-				return rightActivity - leftActivity || left.displayName.localeCompare(right.displayName);
-			}),
-		[projects, sessionsByProject],
-	);
-	const ungroupedSessions = activeSessions.filter((session) => session.projectId === null);
+	const ungroupedSessions = sessions.filter((session) => session.archivedAt === null && session.projectId === null);
 	const runningSessionIdSet = useMemo(() => new Set(runningSessionIds), [runningSessionIds]);
 
 	const startEditing = (session: CodingSession) => {
@@ -114,17 +130,29 @@ export function SidebarSessions({
 			});
 		}
 	};
+	useEffect(
+		() =>
+			monitorForElements({
+				canMonitor: ({ source }) => isProjectDragData(source.data),
+				onDrop: ({ source, location }) => {
+					const target = location.current.dropTargets[0];
+					if (!target || !isProjectDragData(source.data) || !isProjectDragData(target.data)) return;
+					const reorder = {
+						startIndex: source.data.index,
+						indexOfTarget: target.data.index,
+						closestEdgeOfTarget: extractClosestEdge(target.data),
+						axis: "vertical" as const,
+					};
+					if (getReorderDestinationIndex(reorder) === reorder.startIndex) return;
+					void reorderProjects(reorderWithEdge({ ...reorder, list: projects.map((project) => project.id) }));
+				},
+			}),
+		[projects],
+	);
+
 	const startProjectChat = (project: DesktopProject) => {
-		setExpandedProjectIds((current) => new Set(current).add(project.id));
+		if (!project.expanded) void setProjectExpanded(project.id, true);
 		onNewProjectChat(project);
-	};
-	const toggleProject = (projectId: string) => {
-		setExpandedProjectIds((current) => {
-			const next = new Set(current);
-			if (next.has(projectId)) next.delete(projectId);
-			else next.add(projectId);
-			return next;
-		});
 	};
 	const renderSession = (session: CodingSession, nested = false) => {
 		const selected = session.id === activeSessionId;
@@ -238,62 +266,27 @@ export function SidebarSessions({
 							{projectError}
 						</p>
 					) : null}
-					{!projectLoading && !projectError && sortedProjects.length === 0 ? (
+					{!projectLoading && !projectError && projects.length === 0 ? (
 						<p className="px-2 py-1.5 text-[13px] leading-4.5 text-sidebar-muted">
 							{intl.formatMessage(desktopMessages.sidebarNoProjects)}
 						</p>
 					) : null}
-					{sortedProjects.map((project) => {
-						const expanded = expandedProjectIds.has(project.id);
-						const projectSessions = sessionsByProject.get(project.id) ?? [];
-						const hasHiddenActiveSession =
-							!expanded && projectSessions.some((session) => session.id === activeSessionId);
-						const projectIcon = project.available
-							? expanded
-								? icons["folder-open"]
-								: icons.folder
-							: icons["folder-off"];
-						const projectLabel = intl.formatMessage(
-							project.available ? desktopMessages.projectsAvailable : desktopMessages.projectsFolderUnavailable,
-						);
-						return (
-							<div key={project.id}>
-								<ProjectActions
-									project={project}
-									onRelink={onRelinkProject}
-									onReveal={onRevealProject}
-									onNewChat={startProjectChat}
-								>
-									<Button
-										type="button"
-										variant="navigation"
-										size="md"
-										onClick={() => toggleProject(project.id)}
-										aria-expanded={expanded}
-										aria-current={hasHiddenActiveSession ? "page" : undefined}
-										active={hasHiddenActiveSession}
-										leadingIcon={projectIcon}
-										className={cn(
-											sidebarItemClassName,
-											sidebarRowHoverReserveClassName,
-											"group-hover/row:text-sidebar-foreground",
-										)}
-									>
-										<span className="flex min-w-0 items-center gap-1.5">
-											<span className="truncate">{project.displayName}</span>
-											<span className="sr-only">{projectLabel}</span>
-										</span>
-									</Button>
-								</ProjectActions>
-								{expanded ? (
-									<div className="mt-0.5 space-y-0.5">
-										{projectSessions.map((session) => renderSession(session, true))}
-									</div>
-								) : null}
-							</div>
-						);
-					})}
 				</div>
+				<ul aria-labelledby="sidebar-projects-heading" className="space-y-0.5">
+					{projects.map((project, index) => (
+						<ProjectRow
+							key={project.id}
+							project={project}
+							index={index}
+							active={project.id === activeProjectId}
+							onToggle={() => void setProjectExpanded(project.id, !project.expanded)}
+							onRelink={onRelinkProject}
+							onReveal={onRevealProject}
+							onNewChat={startProjectChat}
+							renderSession={(session) => renderSession(session, true)}
+						/>
+					))}
+				</ul>
 			</section>
 			<section className="mt-4" aria-labelledby="sidebar-chats-heading">
 				<div className="flex h-6 items-center">
@@ -313,7 +306,7 @@ export function SidebarSessions({
 				</div>
 				{chatsExpanded ? (
 					<div id="sidebar-chats-list" className="mt-1 space-y-0.5">
-						{loading && activeSessions.length === 0 ? (
+						{loading && ungroupedSessions.length === 0 ? (
 							<div
 								className="space-y-0.5"
 								role="status"
@@ -355,6 +348,158 @@ export function SidebarSessions({
 					</div>
 				) : null}
 			</section>
+		</div>
+	);
+}
+
+function ProjectRow({
+	project,
+	index,
+	active,
+	onToggle,
+	onRelink,
+	onReveal,
+	onNewChat,
+	renderSession,
+}: {
+	readonly project: DesktopProject;
+	readonly index: number;
+	readonly active: boolean;
+	readonly onToggle: () => void;
+	readonly onRelink: (project: DesktopProject) => Promise<void>;
+	readonly onReveal: (project: DesktopProject) => Promise<void>;
+	readonly onNewChat: (project: DesktopProject) => void;
+	readonly renderSession: (session: CodingSession) => ReactNode;
+}) {
+	const intl = useIntl();
+	const icons = useIcons();
+	const expanded = project.expanded;
+	const hasHiddenActiveSession = !expanded && active;
+	const projectIcon = project.available ? (expanded ? icons["folder-open"] : icons.folder) : icons["folder-off"];
+	const projectLabel = intl.formatMessage(
+		project.available ? desktopMessages.projectsAvailable : desktopMessages.projectsFolderUnavailable,
+	);
+	const ProjectIcon = projectIcon;
+	const rowRef = useRef<HTMLLIElement>(null);
+	const handleRef = useRef<HTMLButtonElement>(null);
+	const [dragging, setDragging] = useState(false);
+	const [dropEdge, setDropEdge] = useState<Edge | null>(null);
+	const [previewContainer, setPreviewContainer] = useState<HTMLElement | null>(null);
+
+	useEffect(() => {
+		const row = rowRef.current;
+		const handle = handleRef.current;
+		if (!row || !handle) return;
+		const data: ProjectDragData = { [projectDragKey]: true, index };
+		return combine(
+			draggable({
+				element: handle,
+				getInitialData: () => data,
+				onGenerateDragPreview: ({ nativeSetDragImage }) =>
+					setCustomNativeDragPreview({
+						nativeSetDragImage,
+						getOffset: pointerOutsideOfPreview({ x: "12px", y: "4px" }),
+						render: ({ container }) => {
+							setPreviewContainer(container);
+							return () => setPreviewContainer(null);
+						},
+					}),
+				onDragStart: () => setDragging(true),
+				onDrop: () => setDragging(false),
+			}),
+			dropTargetForElements({
+				element: row,
+				canDrop: ({ source }) => isProjectDragData(source.data),
+				getData: ({ input, element }) =>
+					attachClosestEdge(data, { input, element, allowedEdges: ["top", "bottom"] }),
+				onDrag: ({ self, source }) => {
+					if (!isProjectDragData(source.data)) return;
+					const edge = extractClosestEdge(self.data);
+					const destination = getReorderDestinationIndex({
+						startIndex: source.data.index,
+						indexOfTarget: index,
+						closestEdgeOfTarget: edge,
+						axis: "vertical",
+					});
+					setDropEdge(destination === source.data.index ? null : edge);
+				},
+				onDragLeave: () => setDropEdge(null),
+				onDrop: () => setDropEdge(null),
+			}),
+		);
+	}, [index]);
+
+	return (
+		<li ref={rowRef} className="relative">
+			{dropEdge ? (
+				<div
+					aria-hidden="true"
+					className={cn("pointer-events-none absolute inset-x-1 z-10 flex h-2 items-center", {
+						"-top-1.25": dropEdge === "top",
+						"-bottom-1.25": dropEdge === "bottom",
+					})}
+				>
+					<span className="size-2 shrink-0 rounded-full border-[1.5px] border-primary" />
+					<span className="h-0.5 flex-1 rounded-full bg-primary" />
+				</div>
+			) : null}
+			{previewContainer
+				? createPortal(
+						<div className="flex items-center gap-1.5 rounded-md border border-border bg-popover px-2 py-1 text-[13px] leading-4.5 text-popover-foreground">
+							<ProjectIcon size={14} strokeWidth={1.5} />
+							<span className="max-w-48 truncate">{project.displayName}</span>
+						</div>,
+						previewContainer,
+					)
+				: null}
+			<ProjectActions project={project} onRelink={onRelink} onReveal={onReveal} onNewChat={onNewChat}>
+				<Button
+					ref={handleRef}
+					type="button"
+					variant="navigation"
+					size="md"
+					onClick={onToggle}
+					aria-expanded={expanded}
+					aria-current={hasHiddenActiveSession ? "page" : undefined}
+					active={hasHiddenActiveSession}
+					leadingIcon={projectIcon}
+					className={cn(
+						sidebarItemClassName,
+						sidebarRowHoverReserveClassName,
+						"group-hover/row:text-sidebar-foreground",
+						{ "opacity-40": dragging },
+					)}
+				>
+					<span className="flex min-w-0 items-center gap-1.5">
+						<span className="truncate">{project.displayName}</span>
+						<span className="sr-only">{projectLabel}</span>
+					</span>
+				</Button>
+			</ProjectActions>
+			{expanded ? <ProjectSessionList projectId={project.id} renderSession={renderSession} /> : null}
+		</li>
+	);
+}
+
+function ProjectSessionList({
+	projectId,
+	renderSession,
+}: {
+	readonly projectId: string;
+	readonly renderSession: (session: CodingSession) => ReactNode;
+}) {
+	const query = useInfiniteQuery(projectSessionsQueryOptions(projectId));
+	const sessions = getRecentSessions(query.data);
+	const onScroll = (event: UIEvent<HTMLDivElement>) => {
+		const element = event.currentTarget;
+		const nearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
+		if (nearBottom && query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage();
+	};
+	if (query.isLoading) return <div className="mt-0.5 h-7.5 animate-pulse rounded-lg bg-foreground/5" />;
+	if (sessions.length === 0) return null;
+	return (
+		<div className="mt-0.5 max-h-64 overflow-y-auto overscroll-contain scrollbar-auto" onScroll={onScroll}>
+			<div className="space-y-0.5">{sessions.map((session) => renderSession(session))}</div>
 		</div>
 	);
 }

@@ -11,7 +11,11 @@ export interface DesktopCatalogProject {
 	readonly canonicalPath: string;
 	readonly createdAt: number;
 	readonly updatedAt: number;
+	/** Sidebar preference; list order is the persisted user order. */
+	readonly expanded: boolean;
 }
+
+export type DesktopCatalogProjectInput = Omit<DesktopCatalogProject, "expanded">;
 
 /** Desktop-owned list metadata attached to an Agent Session Journal. */
 export interface DesktopCatalogSession {
