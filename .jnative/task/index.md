@@ -1,5 +1,12 @@
 # 当前需求
 
+## 会话权限、交互模式与模型参数控制
+
+阶段：ready
+Tracker：https://github.com/jiahao-jayden/jai-mono/issues/130
+更新时间：2026-09-24
+本地历史：-
+
 ## Model Compatibility Resolution 与 Quirks Harness
 
 阶段：clarifying
