@@ -6,6 +6,7 @@ import {
 	CodingAgentTelemetryObserver,
 	type CodingExtensionApprovalDecision,
 	type CodingExtensionRuntimeAdapter,
+	type CodingPermissionMode,
 	createCodingAgent,
 	type JsonObject,
 	type JsonValue,
@@ -15,6 +16,7 @@ import { NoopTelemetryContext, type TelemetryContext } from "@jai/telemetry";
 import { Result, type Result as ResultType } from "better-result";
 import {
 	type OperationEffectBoundary,
+	projectRuntimeSessionUsage,
 	type RuntimeOperation,
 	type RuntimeOperationContent,
 	type RuntimeOperationDriver,
@@ -26,7 +28,6 @@ import {
 	type RuntimeOperationPreflightInput,
 	type RuntimeQueuedInput,
 	type RuntimeWebSearchDetails,
-	projectRuntimeSessionUsage,
 } from "../operations";
 import type { RuntimeCapabilitySource } from "../runtime-capabilities";
 
@@ -104,9 +105,11 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 			});
 			const created = await createCodingAgent({
 				...configured.value,
-				extensionRuntime: configured.value.extensionRuntime ? withRuntimeApprovals(configured.value.extensionRuntime, input) : undefined,
+				extensionRuntime: configured.value.extensionRuntime
+					? withRuntimeApprovals(configured.value.extensionRuntime, input)
+					: undefined,
 				capabilityNotice: input.capabilityNotice || undefined,
-				permissionMode: permissionModeFor(input.runtimeConfiguration.mode),
+				permissionMode: permissionModeFor(input.runtimeConfiguration),
 				cwd: input.cwd,
 				session: { kind: "resume", id: input.sessionId, store: input.sessionStore },
 				effectBoundary: input.effectBoundary,
@@ -256,17 +259,15 @@ function mergeExtensionRuntimes(
 	};
 }
 
-function permissionModeFor(
-	mode: RuntimeOperationOpenInput["runtimeConfiguration"]["mode"],
-): "default" | "bypassPermissions" | "plan" {
-	switch (mode) {
-		case "manual":
-			return "default";
-		case "automate":
-			return "bypassPermissions";
-		case "plan":
-			return "plan";
-	}
+/**
+ * Projects the Session's independent permission and interaction choices onto
+ * the single Coding Agent permission mode. Plan intent wins because a planning
+ * turn must never modify the workspace, whatever the permission policy.
+ * Every Session permission mode is a Coding Agent mode of the same name; the
+ * Coding Agent owns what each one allows, including `auto` review.
+ */
+function permissionModeFor(configuration: RuntimeOperationOpenInput["runtimeConfiguration"]): CodingPermissionMode {
+	return configuration.interactionMode === "plan" ? "plan" : configuration.permissionMode;
 }
 
 class CodingAgentOperation implements RuntimeOperation {

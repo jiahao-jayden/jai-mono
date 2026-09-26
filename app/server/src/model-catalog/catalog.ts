@@ -6,6 +6,12 @@ export const RUNTIME_MODEL_CATALOG_FRESHNESS_MS = 48 * 60 * 60 * 1_000;
 
 const MODALITIES = ["text", "image", "audio", "video", "pdf"] as const;
 const INTERLEAVED_FIELDS = ["reasoning", "reasoning_content", "reasoning_details"] as const;
+/**
+ * The request protocol of a model's declared Fast mode. Models.dev ships the
+ * native body; only these two known shapes are recognized, so an unfamiliar
+ * body never becomes a request field.
+ */
+const FAST_MODE_PROTOCOLS = ["anthropic-speed", "openai-priority"] as const;
 
 const NonEmptyString = Type.String({ minLength: 1 });
 const PositiveInteger = Type.Integer({ minimum: 1 });
@@ -39,7 +45,9 @@ const ModelSchema = Type.Object(
 		openWeights: Type.Optional(Type.Boolean()),
 		attachment: Type.Optional(Type.Boolean()),
 		reasoning: Type.Optional(Type.Boolean()),
+		/** Declared effort values; toggle and token-budget controls carry none. */
 		reasoningOptions: Type.Optional(Type.Array(NonEmptyString, { minItems: 1, uniqueItems: true })),
+		fastMode: Type.Optional(Type.Union(FAST_MODE_PROTOCOLS.map((protocol) => Type.Literal(protocol)))),
 		temperature: Type.Optional(Type.Boolean()),
 		interleaved: Type.Optional(
 			Type.Union([
@@ -80,6 +88,7 @@ const SnapshotSchema = Type.Union([
 ]);
 
 export type RuntimeModelCatalogModality = (typeof MODALITIES)[number];
+export type RuntimeModelCatalogFastModeProtocol = (typeof FAST_MODE_PROTOCOLS)[number];
 export type RuntimeModelCatalogCost = Static<typeof CostSchema>;
 export type RuntimeModelCatalogModel = Static<typeof ModelSchema>;
 export type RuntimeModelCatalogProvider = Static<typeof ProviderSchema>;
@@ -246,6 +255,7 @@ function normalizeModel(id: string, value: unknown): RuntimeModelCatalogModel | 
 		attachment: boolean(source.attachment),
 		reasoning: boolean(source.reasoning),
 		reasoningOptions: reasoningOptions(source.reasoning_options),
+		fastMode: fastModeProtocol(record(record(record(record(source.experimental)?.modes)?.fast)?.provider)?.body),
 		temperature: boolean(source.temperature),
 		interleaved: interleavedValue(source.interleaved),
 		toolCall: boolean(source.tool_call),
@@ -267,6 +277,13 @@ function reasoningOptions(value: unknown): string[] | undefined {
 		return group && Array.isArray(group.values) ? group.values.filter(nonEmpty) : [];
 	});
 	return options.length ? [...new Set(options)] : undefined;
+}
+
+function fastModeProtocol(body: unknown): RuntimeModelCatalogFastModeProtocol | undefined {
+	const fields = record(body);
+	if (fields?.speed === "fast") return "anthropic-speed";
+	if (fields?.service_tier === "priority") return "openai-priority";
+	return undefined;
 }
 
 function modalitiesFor(value: unknown): RuntimeModelCatalogModality[] | undefined {

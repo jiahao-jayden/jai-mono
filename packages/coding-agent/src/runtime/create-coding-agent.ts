@@ -20,7 +20,7 @@ import {
 	type ToolMiddleware,
 } from "@jai/agent";
 import { createSafeShellEnvironment, SandboxedNodeExecutionEnvironment } from "@jai/agent/node/environment";
-import type { Model, Provider, ToolCall } from "@jai/ai";
+import type { Model, Provider, ReasoningLevel, ToolCall } from "@jai/ai";
 import type { TObject } from "@sinclair/typebox";
 import { attachmentUserMessage, CodingAttachmentRun, type CodingMessageAttachment } from "../attachments";
 import type { CodingCommandDispatch, CodingCommandRegistry } from "../commands";
@@ -42,6 +42,7 @@ import {
 	type PermissionApprovalQueue,
 	type PermissionApprovalRequest,
 	type PermissionEffect,
+	type PermissionReviewOptions,
 	type PermissionSettings,
 	type PermissionTelemetryObserver,
 	permissionSettingsFromConfig,
@@ -93,12 +94,16 @@ export interface CodingAgentPermissionOptions<TSchema extends TObject> {
 	readonly sessionGrantWorkspaceRoot?: string;
 	/** Host-owned FIFO that keeps one Operation's approvals one at a time. */
 	readonly approvalQueue?: PermissionApprovalQueue;
+	/** Automatic reviewer consulted in `auto` mode before `requestApproval`. */
+	readonly review?: PermissionReviewOptions;
 }
 
 export interface CodingAgentRuntimeOptions {
 	readonly temperature?: number;
 	readonly maxTokens?: number;
 	readonly providerOptions?: Record<string, Record<string, unknown>>;
+	readonly reasoningLevel?: ReasoningLevel;
+	readonly fastMode?: boolean;
 	readonly maxIterations?: number;
 	readonly toolExecution?: ToolExecutionMode;
 	readonly compaction?: AgentCompactionOptions;
@@ -417,6 +422,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			(options.executionContext.localFileAccess ? options.executionContext.cwd : undefined),
 		approvalQueue: options.permissions?.approvalQueue,
 		telemetryObserver: options.permissions?.telemetryObserver,
+		review: options.permissions?.review,
 	});
 	const runAgent: RunAgentExecution = async ({
 		prompt,
@@ -450,6 +456,8 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			temperature: resolvedAgentOptions.temperature,
 			maxTokens: resolvedAgentOptions.maxTokens,
 			providerOptions: resolvedAgentOptions.providerOptions,
+			reasoningLevel: resolvedAgentOptions.reasoningLevel,
+			fastMode: resolvedAgentOptions.fastMode,
 			maxIterations: resolvedAgentOptions.maxIterations,
 			toolExecution: resolvedAgentOptions.toolExecution,
 			compaction: resolvedAgentOptions.compaction,
@@ -503,6 +511,8 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		temperature: resolvedAgentOptions.temperature,
 		maxTokens: resolvedAgentOptions.maxTokens,
 		providerOptions: resolvedAgentOptions.providerOptions,
+		reasoningLevel: resolvedAgentOptions.reasoningLevel,
+		fastMode: resolvedAgentOptions.fastMode,
 		maxIterations: resolvedAgentOptions.maxIterations,
 		toolExecution: resolvedAgentOptions.toolExecution,
 		compaction: resolvedAgentOptions.compaction,

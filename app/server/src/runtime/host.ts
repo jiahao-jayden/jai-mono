@@ -47,7 +47,7 @@ import type {
 } from "../sessions";
 import {
 	createUnconfiguredRuntimeSessionConfigurationPolicy,
-	isRuntimeSessionMode,
+	isRuntimeSessionConfiguration,
 	JournalOnlySessionStore,
 	type RuntimeSessionConfigurationInvalid,
 	RuntimeSessionStore,
@@ -1043,16 +1043,17 @@ export class RuntimeSession {
 		current: RuntimeSessionConfiguration,
 		input: RuntimeSessionConfigurationChange,
 	): Promise<Result<RuntimeSessionConfiguration, RuntimeHostConfigurationRejected>> {
-		if (input.configId === "mode") {
-			if (!isRuntimeSessionMode(input.value)) {
+		if (input.configId !== "model") {
+			const next = { ...current, [input.configId]: input.value };
+			if (!isRuntimeSessionConfiguration(next)) {
 				return Result.err(
 					new RuntimeHostConfigurationRejected({
-						message: `Unsupported Session mode "${input.value}"`,
+						message: `Unsupported Session ${input.configId} "${String(input.value)}"`,
 						sessionId: this.id,
 					}),
 				);
 			}
-			return Result.ok({ ...current, mode: input.value });
+			return Result.ok(next);
 		}
 
 		const models = await this.configurationPolicy.listModels();

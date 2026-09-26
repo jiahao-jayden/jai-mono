@@ -30,7 +30,6 @@ import {
 import { useIcons } from "@/lib/icon-context";
 import { selectDraft, useDesktopChatStore } from "@/stores/chat";
 import {
-	type DesktopAgentMode,
 	type DesktopArtifact,
 	type DesktopMcpSettingsInput,
 	type DesktopProject,
@@ -41,14 +40,15 @@ import {
 	type DesktopWebSearchCredentialId,
 	isDesktopProviderModelRunnable,
 } from "../../../shared/desktop-rpc";
+import { type DesktopSessionControls, defaultDesktopSessionControls } from "../../../shared/session-controls";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { ChatColumn } from "./chat/chat-column";
 import { DESKTOP_TOP_BAR_HEIGHT_CLASS, MAC_SIDEBAR_LEADING_POSITION_CLASS } from "./desktop-chrome";
 import { Dock } from "./dock/dock";
 import { useDock } from "./dock/use-dock";
-import { SettingsPage } from "./settings/settings-page";
 import type { SettingsCategory } from "./settings/settings-navigation";
+import { SettingsPage } from "./settings/settings-page";
 import { Sidebar } from "./sidebar/sidebar";
 import { SidebarToggleButton } from "./sidebar/sidebar-toggle-button";
 import { TaskPanel } from "./task-panel";
@@ -93,7 +93,7 @@ export function AppShell() {
 	const queue = useDesktopChatStore((state) => state.queue);
 	const selectedProjectId = useDesktopChatStore((state) => state.selectedProjectId);
 	const pickedModelRef = useDesktopChatStore((state) => state.selectedModelRef);
-	const pickedAgentMode = useDesktopChatStore((state) => state.selectedAgentMode);
+	const pickedControls = useDesktopChatStore((state) => state.selectedControls);
 	const openSessionInStore = useDesktopChatStore((state) => state.openSession);
 	const newChat = useDesktopChatStore((state) => state.newChat);
 	const setDraft = useDesktopChatStore((state) => state.setDraft);
@@ -106,7 +106,7 @@ export function AppShell() {
 	const reorderQueuedMessages = useDesktopChatStore((state) => state.reorderQueuedMessages);
 	const setSelectedProjectId = useDesktopChatStore((state) => state.setSelectedProjectId);
 	const setSelectedModelRef = useDesktopChatStore((state) => state.setSelectedModelRef);
-	const setSelectedAgentMode = useDesktopChatStore((state) => state.setSelectedAgentMode);
+	const setSelectedControls = useDesktopChatStore((state) => state.setSelectedControls);
 	const chatRoute = matchPath("/chat/:sessionId", location.pathname);
 	const settingsRoute = location.pathname === "/settings";
 	const routeSessionId = chatRoute?.params.sessionId;
@@ -172,7 +172,7 @@ export function AppShell() {
 		id: activeSessionId,
 		newSessionProjectId,
 		modelRef: pickedModelRef ?? providerQuery.data?.selectedModelRef ?? "",
-		mode: pickedAgentMode ?? providerQuery.data?.selectedAgentMode ?? "manual",
+		controls: pickedControls ?? defaultDesktopSessionControls,
 		availableModelRefs: enabledModelRefs,
 		queue,
 		onSessionCreated: (sessionId) => {
@@ -250,13 +250,16 @@ export function AppShell() {
 		});
 	}, [chat.artifacts]);
 
-	const applySelection = (modelRef: string, mode: DesktopAgentMode) => {
+	const applySelection = (modelRef: string, controls: DesktopSessionControls) => {
+		const modelChanged = modelRef !== chat.modelRef;
 		setSelectedModelRef(modelRef);
-		setSelectedAgentMode(mode);
+		setSelectedControls(controls);
 		if (!modelRef) return;
-		void chat.configure({ modelRef, mode });
+		void chat.configure({ modelRef, controls });
+		// Only the model is remembered for new chats; Session controls always start from the Host defaults.
 		// A lost default write only means the next new chat starts from the previous pick.
-		void desktop.provider.setSelection({ modelRef, mode }).then(
+		if (!modelChanged) return;
+		void desktop.provider.setSelection({ modelRef }).then(
 			(snapshot) => desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, snapshot),
 			() => undefined,
 		);
@@ -440,42 +443,42 @@ export function AppShell() {
 				aria-hidden={!sidebarOpen}
 				inert={!sidebarOpen}
 			>
-			{sidebarOpen ? (
-				<Sidebar
-							macTitleBar={isMac}
-							projects={projects}
-							sessions={sessions}
-							runningSessionIds={runningSessionIds}
-							activeSessionId={chatVisible ? activeSessionId : null}
-							activeProjectId={chatVisible ? (session?.projectId ?? null) : null}
-							loading={sessionRecentsQuery.isLoading}
-							error={sessionLoadErrorMessage}
-							hasNextPage={sessionRecentsQuery.hasNextPage}
-							loadingMore={sessionRecentsQuery.isFetchingNextPage}
-							projectLoading={projectLoading}
-							projectError={projectLoadErrorMessage}
-							width={sidebarResize.width}
-							onToggleSidebar={() => {
-								visibleSidebarWidth.set(0);
-								setSidebarOpen(false);
-							}}
-							onNewChat={() => openNewChat()}
-							onOpenSettings={openProviderSettings}
-							onRelinkProject={relinkProject}
-							onRevealProject={revealProject}
-							onNewProjectChat={(project) => openNewChat(project.id)}
-							onSelectSession={openSession}
-							onRenameSession={renameSession}
-							onPinSession={pinSession}
-							onArchiveSession={archiveSession}
-							onDeleteSession={deleteSession}
-							onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
-							settingsMode={settingsRoute}
-							settingsCategory={settingsCategory}
-							onSettingsCategoryChange={setSettingsCategory}
-							onBackFromSettings={() => navigate("/chat/new")}
-				/>
-			) : null}
+				{sidebarOpen ? (
+					<Sidebar
+						macTitleBar={isMac}
+						projects={projects}
+						sessions={sessions}
+						runningSessionIds={runningSessionIds}
+						activeSessionId={chatVisible ? activeSessionId : null}
+						activeProjectId={chatVisible ? (session?.projectId ?? null) : null}
+						loading={sessionRecentsQuery.isLoading}
+						error={sessionLoadErrorMessage}
+						hasNextPage={sessionRecentsQuery.hasNextPage}
+						loadingMore={sessionRecentsQuery.isFetchingNextPage}
+						projectLoading={projectLoading}
+						projectError={projectLoadErrorMessage}
+						width={sidebarResize.width}
+						onToggleSidebar={() => {
+							visibleSidebarWidth.set(0);
+							setSidebarOpen(false);
+						}}
+						onNewChat={() => openNewChat()}
+						onOpenSettings={openProviderSettings}
+						onRelinkProject={relinkProject}
+						onRevealProject={revealProject}
+						onNewProjectChat={(project) => openNewChat(project.id)}
+						onSelectSession={openSession}
+						onRenameSession={renameSession}
+						onPinSession={pinSession}
+						onArchiveSession={archiveSession}
+						onDeleteSession={deleteSession}
+						onLoadMore={() => void sessionRecentsQuery.fetchNextPage()}
+						settingsMode={settingsRoute}
+						settingsCategory={settingsCategory}
+						onSettingsCategoryChange={setSettingsCategory}
+						onBackFromSettings={() => navigate("/chat/new")}
+					/>
+				) : null}
 			</motion.div>
 			{!settingsRoute && sidebarOpen ? <ColumnResizeHandle resize={sidebarResize} side="left" /> : null}
 			<div ref={contentRef} className={contentCardClassName}>
@@ -493,13 +496,13 @@ export function AppShell() {
 								onDraftChange={setDraft}
 								onEditQueuedMessage={(messageId) => {
 									const message = editQueuedMessage(messageId);
-									if (message) applySelection(message.modelRef, message.mode);
+									if (message) applySelection(message.modelRef, message.controls);
 								}}
 								onRemoveQueuedMessage={removeQueuedMessage}
 								onReorderQueuedMessages={reorderQueuedMessages}
 								providerConfig={providerQuery.data}
 								selectedModelRef={chat.modelRef}
-								selectedAgentMode={chat.mode}
+								selectedControls={chat.controls}
 								providerLoading={providerQuery.isLoading}
 								providerError={providerQuery.isError}
 								projectBusy={projectBusy}
@@ -509,8 +512,8 @@ export function AppShell() {
 								sidebarOpen={sidebarOpen}
 								macTitleBar={isMac}
 								onOpenProviderSettings={openProviderSettings}
-								onSelectProviderModel={(modelRef) => applySelection(modelRef, chat.mode)}
-								onSelectAgentMode={(mode) => applySelection(chat.modelRef, mode)}
+								onSelectProviderModel={(modelRef) => applySelection(modelRef, chat.controls)}
+								onSelectControls={(controls) => applySelection(chat.modelRef, controls)}
 								onChooseProject={chooseProject}
 								onRetryProjects={() => void projectsQuery.refetch()}
 								onRenameSession={renameSession}

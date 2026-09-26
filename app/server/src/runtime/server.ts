@@ -72,6 +72,13 @@ export async function openJaiRuntimeServer(
 		database = await ProductSqliteDatabase.open(join(options.dataDirectory, "data.sqlite"));
 		const persistence = new SqliteProductSessionPersistence(database.connection);
 		const desktopCatalog = new SqliteDesktopCatalogAccess(database.connection);
+		const incompatibleSessions = persistence.deleteSessionsWithIncompatibleConfiguration();
+		if (incompatibleSessions.isErr()) throw incompatibleSessions.error;
+		if (incompatibleSessions.value.length > 0) {
+			log.scope("runtime").warn("deleted sessions with incompatible runtime configuration", {
+				count: incompatibleSessions.value.length,
+			});
+		}
 		const agentSettings = new SqliteRuntimeAgentSettings(database.connection);
 		const workspaceTrust = new SqliteWorkspaceTrust(database.connection);
 		modelCatalog = new SqliteRuntimeModelCatalog(database.connection);

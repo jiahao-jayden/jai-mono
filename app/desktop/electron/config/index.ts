@@ -66,7 +66,7 @@ export class DesktopConfigService {
 	}
 
 	async setSelection(input: DesktopProviderSelectionInput): Promise<DesktopProviderConfigSnapshot> {
-		const saved = await this.client.setSelection({ model: input.modelRef, agentMode: input.mode });
+		const saved = await this.client.setSelection({ model: input.modelRef });
 		if (saved.isErr()) throw saved.error;
 		return this.#project(saved.value);
 	}
@@ -203,9 +203,8 @@ export class DesktopConfigService {
 		return {
 			...projectRuntimeProviderConfig(remote, this.#catalog),
 			selectedModelRef: remote.model,
-			selectedAgentMode: remote.agentMode ?? "manual",
 			maxIterations: remote.maxTurns,
-			reasoningEffort: remote.reasoningEffort,
+			auxiliaryModel: { modelRef: remote.auxiliaryModel.model },
 			connector: projectRuntimeConnectorConfig(remote.connector),
 			webSearch: projectRuntimeWebSearchConfig(remote),
 		};
@@ -221,7 +220,7 @@ function toRuntimeInput(
 		model: selectDefaultModel(input, current.model),
 		maxTurns: input.maxIterations,
 		language: current.language,
-		reasoningEffort: input.reasoningEffort,
+		auxiliaryModel: input.auxiliaryModel === undefined ? undefined : { model: input.auxiliaryModel.modelRef },
 		connector: input.connector === undefined ? undefined : toRuntimeConnector(input.connector),
 		webSearch: input.webSearch === undefined ? undefined : toRuntimeWebSearchInput(input.webSearch),
 		providers: input.profiles.map((profile) => ({
@@ -269,14 +268,20 @@ function validateInput(
 }
 
 function isRuntimePresentationInput(
-	input: Pick<DesktopProviderConfigInput, "maxIterations" | "reasoningEffort">,
+	input: Pick<DesktopProviderConfigInput, "maxIterations" | "auxiliaryModel">,
 ): boolean {
 	return !(
 		(input.maxIterations !== undefined && (!Number.isInteger(input.maxIterations) || input.maxIterations < 1)) ||
-		(input.reasoningEffort !== undefined &&
-			input.reasoningEffort !== "low" &&
-			input.reasoningEffort !== "medium" &&
-			input.reasoningEffort !== "high")
+		(input.auxiliaryModel !== undefined && !isAuxiliaryModelSelection(input.auxiliaryModel))
+	);
+}
+
+/** Shape only: the Runtime Host validates the model reference and owns the choice. */
+function isAuxiliaryModelSelection(value: unknown): boolean {
+	return (
+		isRecord(value) &&
+		Object.keys(value).every((key) => key === "modelRef") &&
+		(value.modelRef === undefined || (typeof value.modelRef === "string" && value.modelRef.trim().length > 0))
 	);
 }
 

@@ -104,7 +104,10 @@ export class AnthropicProvider implements Provider {
 					"tools",
 				]);
 
-				return client.messages.create(body, options?.signal ? { signal: options.signal } : undefined);
+				return client.messages.create(body, {
+					signal: options?.signal,
+					headers: options?.fastMode ? fastModeHeaders(this.headers) : undefined,
+				});
 			},
 			step: (event) => translateEvent(output, blockStates, event),
 			// Anthropic 每个 block 都有显式 stop 事件，不需要收尾
@@ -164,11 +167,33 @@ function buildParams(model: Model, context: Context, options?: StreamOptions): M
 		params.temperature = options.temperature;
 	}
 
+	// Effort works with or without extended thinking, so `thinking` is left to
+	// the model default: newer models reject `thinking: disabled`, older ones
+	// reject `adaptive`. Anthropic has no `none` / `minimal` effort.
+	const effort = anthropicEfforts.find((value) => value === options?.reasoningLevel);
+	if (effort) {
+		params.output_config = { effort };
+	}
+
+	if (options?.fastMode) {
+		// Fast mode is still beta-only in the SDK types.
+		(params as MessageCreateParamsStreaming & { speed?: "fast" }).speed = "fast";
+	}
+
 	if (context.tools.length > 0) {
 		params.tools = convertTools(context.tools);
 	}
 
 	return params;
+}
+
+const anthropicEfforts = ["low", "medium", "high", "xhigh", "max"] as const;
+const FAST_MODE_BETA = "fast-mode-2026-02-01";
+
+/** Appends the fast-mode beta to any `anthropic-beta` value the profile already sends. */
+function fastModeHeaders(profileHeaders: Readonly<Record<string, string>> | undefined): Record<string, string> {
+	const existing = Object.entries(profileHeaders ?? {}).find(([name]) => name.toLowerCase() === "anthropic-beta")?.[1];
+	return { "anthropic-beta": existing ? `${existing},${FAST_MODE_BETA}` : FAST_MODE_BETA };
 }
 
 function convertMessages(messages: Message[]): MessageParam[] {

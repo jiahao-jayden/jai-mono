@@ -4,21 +4,29 @@ import { useIntl } from "react-intl";
 import { useDesktopLocale } from "@/i18n/locale";
 import { desktopMessages } from "@/i18n/messages";
 import { useThemeStore } from "@/stores/theme";
+import { type DesktopProviderProfile, isDesktopProviderModelRunnable } from "../../../../shared/desktop-rpc";
 import { Input } from "../../ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "../../ui/select";
 
+/** Model refs are always `profile/model`, so this value cannot collide with one. */
+const FOLLOW_SESSION_MODEL = "follow-session";
+
 interface GeneralSettingsProps {
 	readonly maxIterations: string;
-	readonly reasoningEffort: string;
 	readonly onMaxIterationsChange: (value: string) => void;
-	readonly onReasoningEffortChange: (value: string) => void;
+	/** Saved profiles; only their enabled, runnable models can review permissions. */
+	readonly profiles: readonly DesktopProviderProfile[];
+	/** Absent follows the Session model. */
+	readonly auxiliaryModelRef: string | undefined;
+	readonly onAuxiliaryModelChange: (modelRef: string | undefined) => void;
 }
 
 export function GeneralSettings({
 	maxIterations,
-	reasoningEffort,
 	onMaxIterationsChange,
-	onReasoningEffortChange,
+	profiles,
+	auxiliaryModelRef,
+	onAuxiliaryModelChange,
 }: GeneralSettingsProps) {
 	const intl = useIntl();
 	const { preference, setPreference } = useDesktopLocale();
@@ -42,6 +50,13 @@ export function GeneralSettings({
 	const onThemeChange = (value: string) => {
 		if (value === "light" || value === "dark" || value === "system") setTheme(value);
 	};
+	const auxiliaryModels = profiles.flatMap((profile) =>
+		profile.models
+			.filter((model) => model.enabled && isDesktopProviderModelRunnable(model))
+			.map((model) => ({ ref: `${profile.id}/${model.remoteModelId}`, label: `${profile.name} · ${model.name}` })),
+	);
+	const auxiliaryModelUnavailable =
+		auxiliaryModelRef !== undefined && !auxiliaryModels.some((model) => model.ref === auxiliaryModelRef);
 
 	return (
 		<div className="px-8 py-6">
@@ -101,6 +116,45 @@ export function GeneralSettings({
 					</Select>
 				</SettingsRow>
 
+				<SettingsRow
+					label={intl.formatMessage(desktopMessages.settingsAuxiliaryModel)}
+					description={intl.formatMessage(desktopMessages.settingsAuxiliaryModelDescription)}
+				>
+					<Select
+						value={auxiliaryModelRef ?? FOLLOW_SESSION_MODEL}
+						onValueChange={(value) => onAuxiliaryModelChange(value === FOLLOW_SESSION_MODEL ? undefined : value)}
+					>
+						<SelectTrigger
+							className="w-48"
+							aria-label={intl.formatMessage(desktopMessages.settingsAuxiliaryModel)}
+						/>
+						<SelectContent>
+							<SelectGroup>
+								<SelectItem index={0} value={FOLLOW_SESSION_MODEL}>
+									{intl.formatMessage(desktopMessages.settingsAuxiliaryModelFollowSession)}
+								</SelectItem>
+								{auxiliaryModels.map((model, position) => (
+									<SelectItem key={model.ref} index={position + 1} value={model.ref}>
+										{model.label}
+									</SelectItem>
+								))}
+								{auxiliaryModelUnavailable ? (
+									<SelectItem index={auxiliaryModels.length + 1} value={auxiliaryModelRef}>
+										{intl.formatMessage(desktopMessages.settingsAuxiliaryModelUnavailable, {
+											model: auxiliaryModelRef,
+										})}
+									</SelectItem>
+								) : null}
+							</SelectGroup>
+						</SelectContent>
+					</Select>
+					{auxiliaryModelUnavailable ? (
+						<p className="mt-1 text-[11px] text-destructive" role="alert">
+							{intl.formatMessage(desktopMessages.settingsAuxiliaryModelUnavailableHint)}
+						</p>
+					) : null}
+				</SettingsRow>
+
 				<SettingsRow label={intl.formatMessage(desktopMessages.settingsMaxIterations)}>
 					<Input
 						type="number"
@@ -110,34 +164,6 @@ export function GeneralSettings({
 						placeholder={intl.formatMessage(desktopMessages.settingsUnlimited)}
 						aria-label={intl.formatMessage(desktopMessages.settingsMaxIterations)}
 					/>
-				</SettingsRow>
-
-				<SettingsRow label={intl.formatMessage(desktopMessages.settingsReasoningEffort)}>
-					<Select
-						value={reasoningEffort || "none"}
-						onValueChange={(value) => onReasoningEffortChange(value === "none" ? "" : value)}
-					>
-						<SelectTrigger
-							className="w-48"
-							aria-label={intl.formatMessage(desktopMessages.settingsReasoningEffort)}
-						/>
-						<SelectContent>
-							<SelectGroup>
-								<SelectItem index={0} value="none">
-									{intl.formatMessage(desktopMessages.settingsDefault)}
-								</SelectItem>
-								<SelectItem index={1} value="low">
-									{intl.formatMessage(desktopMessages.settingsLow)}
-								</SelectItem>
-								<SelectItem index={2} value="medium">
-									{intl.formatMessage(desktopMessages.settingsMedium)}
-								</SelectItem>
-								<SelectItem index={3} value="high">
-									{intl.formatMessage(desktopMessages.settingsHigh)}
-								</SelectItem>
-							</SelectGroup>
-						</SelectContent>
-					</Select>
 				</SettingsRow>
 			</div>
 		</div>

@@ -39,7 +39,7 @@ test("tool completion cancels and joins unawaited executions and revokes its sav
 			sessionId: "test",
 			cwd: process.cwd(),
 			workspace: { directory: process.cwd(), trusted: false },
-			permissionMode: "default",
+			permissionMode: "ask",
 		},
 		undefined,
 		undefined,
@@ -100,7 +100,7 @@ test("a host without execution services reports unavailable, and unknown defects
 			sessionId: "test",
 			cwd: process.cwd(),
 			workspace: { directory: process.cwd(), trusted: false },
-			permissionMode: "default",
+			permissionMode: "ask",
 		},
 	);
 	if (initialized.isErr()) throw initialized.error;

@@ -1,5 +1,14 @@
 /** Client-safe Model Catalog projection helpers. This entry never imports SQLite. */
 export {
+	type ReasoningLevel,
+	type RuntimeModelCapabilities,
+	reasoningLevelSchema,
+	reasoningLevels,
+	resolveEffectiveReasoningLevel,
+	resolveRuntimeModelCapabilities,
+	runtimeModelCapabilitiesSchema,
+} from "./model-catalog/capabilities";
+export {
 	findRuntimeModelCatalog,
 	findRuntimeModelCatalogMatch,
 	normalizeRuntimeModelCatalog,
@@ -16,7 +25,7 @@ export {
 } from "./model-catalog/catalog";
 export {
 	CONFIRMED_MODEL_FIXTURES,
+	type ConfirmedModelFixture,
 	resolveConfirmedModelFixture,
 	resolveRuntimeModelCompatibilityProfile,
-	type ConfirmedModelFixture,
 } from "./model-catalog/compatibility";

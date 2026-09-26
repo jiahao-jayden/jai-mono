@@ -7,8 +7,14 @@ import {
 	CodingAgentOperationDriver,
 	createRuntimeConnectorAgentAssembly,
 	createRuntimeWebSearchAgentAssembly,
+	resolveOperationAuxiliaryModel,
 } from "../agents";
-import { resolveRuntimeModelCompatibilityProfile, resolveRuntimeModelMetadata } from "../model-catalog";
+import {
+	resolveEffectiveReasoningLevel,
+	resolveRuntimeModelCapabilities,
+	resolveRuntimeModelCompatibilityProfile,
+	resolveRuntimeModelMetadata,
+} from "../model-catalog";
 import { RuntimeOperationOpenFailed } from "../operations";
 import type { AcpImplementationInfo } from "../protocol/acp-v2";
 import { DesktopLocalRuntimeCapabilitySource, type RuntimeCapabilitySource } from "../runtime-capabilities";
@@ -123,18 +129,34 @@ export async function openConfiguredRuntimeHost(
 								}),
 							);
 						}
+						const modelMetadata = resolveRuntimeModelMetadata(
+							input.runtimeConfiguration.model,
+							current.value.provider,
+							operationCatalog,
+						);
+						const sdkProvider = current.value.model.slice(0, current.value.model.indexOf("/"));
+						// No catalog entry means no capabilities, so neither control reaches the provider.
+						const capabilities = resolveRuntimeModelCapabilities(
+							modelMetadata,
+							sdkProvider === "openai"
+								? "openai-responses"
+								: sdkProvider === "anthropic" || sdkProvider === "openai-compatible"
+									? sdkProvider
+									: undefined,
+						);
 						return Result.ok({
 							model: current.value.model,
 							compatibilityProfile: compatibilityProfile.value,
-							modelMetadata: resolveRuntimeModelMetadata(
-								input.runtimeConfiguration.model,
-								current.value.provider,
-								operationCatalog,
-							),
+							modelMetadata,
 							provider: current.value.provider || undefined,
 							maxTurns: current.value.maxTurns || undefined,
 							instructions: current.value.instructions || undefined,
-							providerOptions: current.value.providerOptions || undefined,
+							reasoningLevel: resolveEffectiveReasoningLevel(
+								input.runtimeConfiguration.reasoningLevel,
+								capabilities.reasoningLevels,
+							),
+							fastMode: input.runtimeConfiguration.fastMode && capabilities.supportsFastMode,
+							auxiliaryModel: resolveOperationAuxiliaryModel(agentSettings, operationCatalog),
 							extensions: [
 								createTodoExtension(),
 								createSubagentExtension(),

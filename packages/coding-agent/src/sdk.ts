@@ -95,6 +95,7 @@ export type {
 	CodingApprovalHandler,
 	CodingAssistantMessage,
 	CodingAttachment,
+	CodingAuxiliaryModel,
 	CodingEffectBoundary,
 	CodingFileChange,
 	CodingImageContent,

@@ -3,15 +3,20 @@ export { JournalOnlySessionStore, RuntimeSessionStore } from "./agent-store";
 export {
 	createUnconfiguredRuntimeSessionConfigurationPolicy,
 	defaultRuntimeSessionConfiguration,
-	isRuntimeSessionMode,
+	isRuntimeSessionConfiguration,
 	type RuntimeSessionConfiguration,
 	type RuntimeSessionConfigurationChange,
 	RuntimeSessionConfigurationInvalid,
 	type RuntimeSessionConfigurationPolicy,
 	type RuntimeSessionConfigurationSnapshot,
-	type RuntimeSessionMode,
+	type RuntimeSessionInteractionMode,
 	type RuntimeSessionModelOption,
-	runtimeSessionModes,
+	type RuntimeSessionPermissionMode,
+	runtimeSessionConfigurationSchema,
+	runtimeSessionInteractionModeSchema,
+	runtimeSessionInteractionModes,
+	runtimeSessionPermissionModeSchema,
+	runtimeSessionPermissionModes,
 } from "./configuration";
 export { InMemoryProductSessionPersistence } from "./memory";
 export {

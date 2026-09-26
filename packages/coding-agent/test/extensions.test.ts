@@ -17,7 +17,7 @@ const context = {
 	sessionId: "extension-session",
 	cwd: "/workspace",
 	workspace: { directory: "/workspace", trusted: true },
-	permissionMode: "default" as const,
+	permissionMode: "ask" as const,
 };
 
 function catalogTool(name: string, title: string): CodingExtensionTool {

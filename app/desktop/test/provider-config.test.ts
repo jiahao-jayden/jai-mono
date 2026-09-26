@@ -26,7 +26,7 @@ import {
 	validateProviderProfiles,
 } from "../electron/config/provider";
 import { Value } from "@sinclair/typebox/value";
-import { type DesktopAgentMode, isDesktopProviderModelRunnable, jsonValueSchema } from "../shared/desktop-rpc";
+import { isDesktopProviderModelRunnable, jsonValueSchema } from "../shared/desktop-rpc";
 
 describe("DesktopConfigService", () => {
 	test("keeps the full remote model id as the name of an unrecognized model", () => {
@@ -101,6 +101,45 @@ describe("DesktopConfigService", () => {
 				maxTokens: 384_000,
 				toolCall: true,
 			},
+		]);
+	});
+
+	test("projects unified model capabilities for the profile's own adapter", () => {
+		const profile = (id: string, adapter: "anthropic" | "openai-compatible") => ({
+			id,
+			name: id,
+			adapter,
+			authentication: "api-key" as const,
+			credentialConfigured: true,
+			enabled: true,
+			models: [{ id: "claude-opus-5", enabled: true }],
+		});
+		const projected = projectRuntimeProviderConfig(
+			{
+				revision: "r1",
+				model: "",
+				profiles: [profile("anthropic", "anthropic"), profile("gateway", "openai-compatible")],
+				connector: { policy: { default: "ask", actions: {} }, connectors: [] },
+				webSearch: { providers: [], fetch: { jina: { credentialConfigured: false } } },
+			},
+			normalizeRuntimeModelCatalog({
+				providers: {
+					anthropic: {
+						name: "Anthropic",
+						models: {
+							"claude-opus-5": {
+								reasoning_options: [{ type: "effort", values: ["low", "medium", "high", "xhigh", "max"] }],
+								experimental: { modes: { fast: { provider: { body: { speed: "fast" } } } } },
+							},
+						},
+					},
+				},
+			}),
+		);
+
+		expect(projected.profiles.map((entry) => entry.models[0]?.capabilities)).toEqual([
+			{ reasoningLevels: ["low", "medium", "high", "xhigh", "max"], supportsFastMode: true },
+			{ reasoningLevels: ["low", "medium", "high", "xhigh", "max"], supportsFastMode: false },
 		]);
 	});
 
@@ -485,6 +524,7 @@ describe("DesktopConfigService", () => {
 				source: "unverified",
 				verified: false,
 				enabled: true,
+				capabilities: { reasoningLevels: [], supportsFastMode: false },
 			}),
 		).toBe(true);
 	});
@@ -543,7 +583,7 @@ describe("DesktopConfigService", () => {
     }
   });
 
-	test("remembers the composer model and mode in the Runtime Host using the Host's own model ref", async () => {
+	test("remembers the composer model in the Runtime Host using the Host's own model ref", async () => {
 		const host = new FakeDesktopConfigurationClient({
 			revision: "r1",
 			model: "gateway/vendor-gpt-a",
@@ -568,11 +608,37 @@ describe("DesktopConfigService", () => {
 			const [profile] = initial.profiles;
 			const refs = profile?.models.map((model) => `${profile.id}/${model.remoteModelId}`);
 			expect(refs).toContain(initial.selectedModelRef);
-			expect(initial).toMatchObject({ selectedModelRef: "gateway/vendor-gpt-a", selectedAgentMode: "manual" });
+			expect(initial).toMatchObject({ selectedModelRef: "gateway/vendor-gpt-a" });
+			expect(initial).not.toHaveProperty("selectedAgentMode");
+			expect(profile?.models.map((model) => model.capabilities)).toEqual([
+				{ reasoningLevels: [], supportsFastMode: false },
+				{ reasoningLevels: [], supportsFastMode: false },
+			]);
 
-			const saved = await service.setSelection({ modelRef: "gateway/vendor-gpt-b", mode: "plan" });
-			expect(host.lastSelection).toEqual({ model: "gateway/vendor-gpt-b", agentMode: "plan" });
-			expect(saved).toMatchObject({ selectedModelRef: "gateway/vendor-gpt-b", selectedAgentMode: "plan" });
+			const saved = await service.setSelection({ modelRef: "gateway/vendor-gpt-b" });
+			expect(host.lastSelection).toEqual({ model: "gateway/vendor-gpt-b" });
+			expect(saved).toMatchObject({ selectedModelRef: "gateway/vendor-gpt-b" });
+		} finally {
+			await service.close();
+		}
+	});
+
+	test("projects and submits the auxiliary review model without deciding anything itself", async () => {
+		const host = new FakeDesktopConfigurationClient({ revision: "r1", auxiliaryModel: { model: "gateway/aux-mini" } });
+		const service = new DesktopConfigService(host);
+		try {
+			expect(await service.get()).toMatchObject({ auxiliaryModel: { modelRef: "gateway/aux-mini" } });
+
+			await service.save({ revision: "r1", profiles: [] });
+			expect(host.lastSaved?.auxiliaryModel).toBeUndefined();
+
+			const followed = await service.save({ revision: "r2", profiles: [], auxiliaryModel: {} });
+			expect(host.lastSaved?.auxiliaryModel).toEqual({ model: undefined });
+			expect(followed.auxiliaryModel).toEqual({ modelRef: undefined });
+
+			await expect(
+				service.save({ revision: "r2", profiles: [], auxiliaryModel: { modelRef: " " } }),
+			).rejects.toThrow("Invalid Provider configuration");
 		} finally {
 			await service.close();
 		}
@@ -973,7 +1039,7 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
 	readonly modelCatalogReads: string[] = [];
 	lastSaved?: RuntimeAgentSettingsInput;
 	lastLanguage?: string;
-	lastSelection?: { readonly model: string; readonly agentMode: DesktopAgentMode };
+	lastSelection?: { readonly model: string };
 	lastTelemetrySaved?: RuntimeTelemetrySettingsInput;
 	#snapshot: RuntimeAgentSettingsSnapshot;
 	#telemetrySnapshot: RuntimeTelemetrySettingsSnapshot;
@@ -991,9 +1057,7 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
       ...(snapshot.language === undefined
         ? {}
         : { language: snapshot.language }),
-      ...(snapshot.reasoningEffort === undefined
-        ? {}
-        : { reasoningEffort: snapshot.reasoningEffort }),
+      auxiliaryModel: snapshot.auxiliaryModel ?? {},
       profiles: snapshot.profiles ?? [],
       connector: snapshot.connector ?? {
         policy: { default: "ask", actions: {} },
@@ -1041,9 +1105,7 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
       model: input.model,
       ...(input.maxTurns === undefined ? {} : { maxTurns: input.maxTurns }),
       ...(input.language === undefined ? {} : { language: input.language }),
-      ...(input.reasoningEffort === undefined
-        ? {}
-        : { reasoningEffort: input.reasoningEffort }),
+      auxiliaryModel: input.auxiliaryModel ?? this.#snapshot.auxiliaryModel,
       profiles: input.providers.map((profile) => ({
         id: profile.id,
         name: profile.name,
@@ -1075,9 +1137,9 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
 		return Result.ok(this.#snapshot);
 	}
 
-	async setSelection(selection: { readonly model: string; readonly agentMode: DesktopAgentMode }) {
+	async setSelection(selection: { readonly model: string }) {
 		this.lastSelection = selection;
-		this.#snapshot = { ...this.#snapshot, revision: "r2", model: selection.model, agentMode: selection.agentMode };
+		this.#snapshot = { ...this.#snapshot, revision: "r2", model: selection.model };
 		return Result.ok(this.#snapshot);
 	}
 

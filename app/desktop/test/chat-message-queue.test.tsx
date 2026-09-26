@@ -5,6 +5,7 @@ import { renderToStaticMarkup as renderToStaticMarkupBase } from "react-dom/serv
 import { ChatMessageQueue } from "../src/components/shell/chat/chat-message-queue";
 import { resolveComposerEnterDelivery } from "../src/components/shell/chat/chat-composer";
 import enMessages from "../src/i18n/compiled/en.json";
+import { defaultDesktopSessionControls } from "../shared/session-controls";
 
 function renderToStaticMarkup(node: ReactNode): string {
 	return renderToStaticMarkupBase(
@@ -61,7 +62,14 @@ describe("ChatMessageQueue", () => {
 	test("renders the stacked queue actions without replacing the queued message", () => {
 		const markup = renderToStaticMarkup(
 			<ChatMessageQueue
-				messages={[{ id: "queued-1", text: "Inspect the failing test", mode: "manual", modelRef: "p/a" }]}
+				messages={[
+					{
+						id: "queued-1",
+						text: "Inspect the failing test",
+						controls: defaultDesktopSessionControls,
+						modelRef: "p/a",
+					},
+				]}
 				onEdit={() => {}}
 				onRemove={() => {}}
 				onReorder={() => {}}

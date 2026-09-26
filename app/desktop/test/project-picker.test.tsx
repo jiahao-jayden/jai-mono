@@ -3,6 +3,7 @@ import { IntlProvider } from "react-intl";
 import { renderToStaticMarkup as renderToStaticMarkupBase } from "react-dom/server";
 import type { ReactNode } from "react";
 import type { DesktopProject } from "../shared/desktop-rpc";
+import { defaultDesktopSessionControls } from "../shared/session-controls";
 import enMessages from "../src/i18n/compiled/en.json";
 import { ChatComposer } from "../src/components/shell/chat/chat-composer";
 import { ProjectPicker } from "../src/components/shell/chat/project-picker";
@@ -44,12 +45,12 @@ describe("ProjectPicker", () => {
 				onChooseProject={async () => {}}
 				onRetryProjects={() => {}}
 				selectedModelRef="provider/model"
-				selectedAgentMode="manual"
+				selectedControls={defaultDesktopSessionControls}
 				providerLoading={false}
 				providerError={false}
 				onOpenProviderSettings={() => {}}
 				onSelectProviderModel={() => {}}
-				onSelectAgentMode={() => {}}
+				onSelectControls={() => {}}
 			/>,
 		);
 
@@ -81,12 +82,12 @@ describe("ProjectPicker", () => {
 				onChooseProject={async () => {}}
 				onRetryProjects={() => {}}
 				selectedModelRef="provider/model"
-				selectedAgentMode="manual"
+				selectedControls={defaultDesktopSessionControls}
 				providerLoading={false}
 				providerError={false}
 				onOpenProviderSettings={() => {}}
 				onSelectProviderModel={() => {}}
-				onSelectAgentMode={() => {}}
+				onSelectControls={() => {}}
 			/>,
 		);
 
@@ -116,12 +117,12 @@ describe("ProjectPicker", () => {
 				onChooseProject={async () => {}}
 				onRetryProjects={() => {}}
 				selectedModelRef="provider/model"
-				selectedAgentMode="manual"
+				selectedControls={defaultDesktopSessionControls}
 				providerLoading={false}
 				providerError={false}
 				onOpenProviderSettings={() => {}}
 				onSelectProviderModel={() => {}}
-				onSelectAgentMode={() => {}}
+				onSelectControls={() => {}}
 			/>,
 		);
 

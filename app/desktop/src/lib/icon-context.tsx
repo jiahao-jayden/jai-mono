@@ -1,5 +1,6 @@
 import {
 	Add01Icon,
+	AiSecurity02Icon,
 	Alert02Icon,
 	Analytics01Icon,
 	ApiIcon,
@@ -68,6 +69,7 @@ import {
 	Shield01Icon,
 	SparklesIcon,
 	SquareLock01Icon,
+	SquareUnlock02Icon,
 	StarIcon,
 	StopCircleIcon,
 	StopIcon,
@@ -141,6 +143,7 @@ export type IconName =
 	| "loader"
 	| "users"
 	| "lock"
+	| "unlock"
 	| "mail"
 	| "bell"
 	| "shield"
@@ -171,6 +174,7 @@ export type IconName =
 	| "panel-left-close"
 	| "panel-right"
 	| "sparkles"
+	| "ai-security"
 	| "terminal"
 	| "command"
 	| "workflow"
@@ -236,6 +240,7 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	loader: createHugeicon(Loading03Icon),
 	users: createHugeicon(UserGroupIcon),
 	lock: createHugeicon(SquareLock01Icon),
+	unlock: createHugeicon(SquareUnlock02Icon),
 	mail: createHugeicon(Mail01Icon),
 	bell: createHugeicon(Notification01Icon),
 	shield: createHugeicon(Shield01Icon),
@@ -265,6 +270,7 @@ export const defaultIcons: Record<IconName, IconComponent> = {
 	"panel-left-close": createHugeicon(PanelLeftCloseIcon),
 	"panel-right": createHugeicon(PanelRightIcon),
 	sparkles: createHugeicon(SparklesIcon),
+	"ai-security": createHugeicon(AiSecurity02Icon),
 	terminal: createHugeicon(ComputerTerminal01Icon),
 	command: createHugeicon(CommandLineIcon),
 	workflow: createHugeicon(WorkflowCircle01Icon),

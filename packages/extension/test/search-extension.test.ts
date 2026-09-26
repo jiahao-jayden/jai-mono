@@ -135,7 +135,7 @@ describe("FFF search extension", () => {
 				$schema: "https://jai.dev/schemas/coding-agent-sdk-v1.json",
 				schemaVersion: 1,
 				permission: { "file.read": { ".env": "deny" } },
-				permissions: { defaultMode: "default", additionalDirectories: [] },
+				permissions: { defaultMode: "ask", additionalDirectories: [] },
 			}),
 		);
 		const requests: any[] = [];

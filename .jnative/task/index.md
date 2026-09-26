@@ -2,7 +2,7 @@
 
 ## 会话权限、交互模式与模型参数控制
 
-阶段：ready
+阶段：in-progress
 Tracker：https://github.com/jiahao-jayden/jai-mono/issues/130
 更新时间：2026-09-24
 本地历史：-

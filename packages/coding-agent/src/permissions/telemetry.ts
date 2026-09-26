@@ -3,6 +3,7 @@ import type {
 	TelemetryPermissionDecision,
 	TelemetryPermissionOutcome,
 	TelemetryPermissionPhase,
+	TelemetryPermissionReviewFailure,
 	TelemetryPermissionRisk,
 	TelemetryPermissionSource,
 } from "@jai/telemetry";
@@ -32,6 +33,12 @@ export type PermissionTelemetryEvent =
 	| {
 			readonly type: "approval_cancelled" | "approval_failed";
 			readonly approvalId: string;
+	  }
+	| {
+			readonly type: "permission_reviewed";
+			readonly toolCallId: string;
+			readonly verdict: TelemetryPermissionDecision;
+			readonly failure?: TelemetryPermissionReviewFailure;
 	  }
 	| {
 			readonly type: "permission_settled";

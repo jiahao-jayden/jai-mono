@@ -30,7 +30,7 @@ describe("Coding Agent Runtime Capability Source", () => {
 			sessionId: "session-1",
 			operationId: "operation-1",
 			cwd: "/requested/cwd",
-			runtimeConfiguration: { model: "openai/model", mode: "manual" },
+			runtimeConfiguration: { model: "openai/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 		});
 
 		expect(preflight?.isOk()).toBe(true);
@@ -62,7 +62,7 @@ describe("Coding Agent Runtime Capability Source", () => {
 			sessionId: "session-1",
 			operationId: "operation-1",
 			cwd: "/requested/cwd",
-			runtimeConfiguration: { model: "openai/model", mode: "manual" },
+			runtimeConfiguration: { model: "openai/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 		});
 
 		expect(preflight).toMatchObject({

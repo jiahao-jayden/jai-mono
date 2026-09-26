@@ -1,5 +1,3 @@
-"use client";
-
 import { cn } from "cn";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
@@ -8,46 +6,47 @@ import { desktopMessages } from "@/i18n/messages";
 import type { IconName } from "@/lib/icon-context";
 import { useIcons } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
-import type { DesktopAgentMode } from "../../../../shared/desktop-rpc";
+import { type DesktopPermissionMode, desktopPermissionModes } from "../../../../shared/session-controls";
 import { Button } from "../../ui/button";
 import { DropdownContent, DropdownMenu, DropdownTrigger } from "../../ui/dropdown";
 import { MenuItem } from "../../ui/menu-item";
 
-interface AgentModeMeta {
-	readonly icon: IconName;
-	readonly message: (typeof desktopMessages)[keyof typeof desktopMessages];
-}
+type Message = (typeof desktopMessages)[keyof typeof desktopMessages];
 
-const agentModes: readonly DesktopAgentMode[] = ["manual", "automate", "plan"];
-
-const agentModeMeta: Readonly<Record<DesktopAgentMode, AgentModeMeta>> = {
-	manual: {
-		icon: "shield",
-		message: desktopMessages.modeManual,
+const permissionModeMeta: Readonly<
+	Record<DesktopPermissionMode, { readonly icon: IconName; readonly label: Message; readonly description: Message }>
+> = {
+	ask: {
+		icon: "permission-ask",
+		label: desktopMessages.permissionModeAsk,
+		description: desktopMessages.permissionModeAskDescription,
 	},
-	automate: {
-		icon: "rocket",
-		message: desktopMessages.modeAutomate,
+	allow: {
+		icon: "unlock",
+		label: desktopMessages.permissionModeAllow,
+		description: desktopMessages.permissionModeAllowDescription,
 	},
-	plan: {
-		icon: "brain",
-		message: desktopMessages.modePlan,
+	auto: {
+		icon: "ai-security",
+		label: desktopMessages.permissionModeAuto,
+		description: desktopMessages.permissionModeAutoDescription,
 	},
 };
 
-interface AgentModeControlProps {
+interface PermissionModeControlProps {
 	readonly disabled?: boolean;
-	readonly mode: DesktopAgentMode;
-	readonly onSelect: (mode: DesktopAgentMode) => void;
+	readonly value: DesktopPermissionMode;
+	readonly onChange: (mode: DesktopPermissionMode) => void;
 }
 
-export function AgentModeControl({ disabled = false, mode, onSelect }: AgentModeControlProps) {
+/** Chooses how tool calls get permission. Interaction mode (Plan) lives in the `+` menu, not here. */
+export function PermissionModeControl({ disabled = false, value, onChange }: PermissionModeControlProps) {
 	const intl = useIntl();
 	const icons = useIcons();
 	const reducedMotion = useReducedMotion() ?? false;
 	const [open, setOpen] = useState(false);
-	const meta = agentModeMeta[mode];
-	const modeLabel = intl.formatMessage(meta.message);
+	const meta = permissionModeMeta[value];
+	const modeLabel = intl.formatMessage(meta.label);
 	const Icon = icons[meta.icon];
 	const ChevronDownIcon = icons["chevron-down"];
 
@@ -61,17 +60,15 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 						size="chip"
 						active={open}
 						disabled={disabled}
-						aria-label={intl.formatMessage(desktopMessages.modeAria, { mode: modeLabel })}
+						aria-label={intl.formatMessage(desktopMessages.permissionModeAria, { mode: modeLabel })}
+						title={intl.formatMessage(meta.description)}
 						className="h-8 text-[14px] text-foreground/80"
 						labelClassName="flex items-center [text-box:normal]"
 					>
 						<span className="inline-flex items-center gap-1">
-							{/* Quiet Swap: the icon+label cross-swap in place on mode change
-							    (state indication); the tinted background/colour transitions via
-							    the Button's own transition-colors. The chevron stays put. */}
 							<AnimatePresence mode="popLayout" initial={false}>
 								<motion.span
-									key={mode}
+									key={value}
 									className="inline-flex items-center gap-1.5"
 									initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
 									animate={{ opacity: 1, y: 0 }}
@@ -90,18 +87,24 @@ export function AgentModeControl({ disabled = false, mode, onSelect }: AgentMode
 					</Button>
 				}
 			/>
-			<DropdownContent checkedIndex={agentModes.indexOf(mode)} side="top" sideOffset={6} size="sm" className="w-44">
-				{agentModes.map((candidate, index) => {
-					const option = agentModeMeta[candidate];
-					const optionLabel = intl.formatMessage(option.message);
+			<DropdownContent
+				checkedIndex={desktopPermissionModes.indexOf(value)}
+				side="top"
+				sideOffset={6}
+				size="sm"
+				className="w-72"
+			>
+				{desktopPermissionModes.map((mode, index) => {
+					const option = permissionModeMeta[mode];
 					return (
 						<MenuItem
-							key={candidate}
+							key={mode}
 							index={index}
 							icon={icons[option.icon]}
-							label={optionLabel}
-							checked={candidate === mode}
-							onSelect={() => onSelect(candidate)}
+							label={intl.formatMessage(option.label)}
+							description={intl.formatMessage(option.description)}
+							checked={mode === value}
+							onSelect={() => onChange(mode)}
 						/>
 					);
 				})}

@@ -12,8 +12,10 @@ import {
   projectRuntimeSessionUsage,
 } from "../../src/operations";
 import {
+  defaultRuntimeSessionConfiguration,
   InMemoryProductSessionPersistence,
   RuntimeSessionConfigurationInvalid,
+  type RuntimeSessionConfiguration,
   type RuntimeSessionConfigurationPolicy,
 } from "../../src/sessions";
 import { RuntimeHost } from "../../src/runtime";
@@ -1193,26 +1195,112 @@ describe("RuntimeHost", () => {
     });
     if (changed.isErr()) throw changed.error;
     const runtimeInput = await driver.opened;
-    expect(runtimeInput.runtimeConfiguration).toEqual({
-      model: "profile/model-a",
-      mode: "manual",
-    });
+    const initial = { ...defaultRuntimeSessionConfiguration, model: "profile/model-a" };
+    expect(runtimeInput.runtimeConfiguration).toEqual(initial);
 
     const durable = await persistence.load("session-1");
     if (durable.isErr()) throw durable.error;
-    expect(durable.value.runtimeConfiguration).toEqual({
-      model: "profile/model-b",
-      mode: "manual",
-    });
+    expect(durable.value.runtimeConfiguration).toEqual({ ...initial, model: "profile/model-b" });
     expect(durable.value.operationRuntimeConfigurations).toEqual([
       {
         operationId: "operation-1",
-        configuration: { model: "profile/model-a", mode: "manual" },
+        configuration: initial,
       },
     ]);
 
     driver.finish("completed");
     await driver.closed;
+  });
+
+  test("new Sessions start from the default permission and interaction modes with no reasoning choice", async () => {
+    const host = new RuntimeHost({
+      persistence: new InMemoryProductSessionPersistence(),
+      configurationPolicy: configuredSessionPolicy(),
+      createId: ids("session-1"),
+    });
+    const opened = await host.openSession({ kind: "new" });
+    if (opened.isErr()) throw opened.error;
+    const snapshot = await opened.value.configuration();
+    if (snapshot.isErr()) throw snapshot.error;
+    expect(snapshot.value.configuration).toEqual({
+      model: "profile/model-a",
+      permissionMode: "ask",
+      interactionMode: "normal",
+      fastMode: false,
+    });
+    expect(snapshot.value.configuration.reasoningLevel).toBeUndefined();
+  });
+
+  test("keeps permission, interaction and model controls independent", async () => {
+    const host = new RuntimeHost({
+      persistence: new InMemoryProductSessionPersistence(),
+      configurationPolicy: configuredSessionPolicy(),
+      createId: ids("session-1"),
+    });
+    const opened = await host.openSession({ kind: "new" });
+    if (opened.isErr()) throw opened.error;
+    const session = opened.value;
+
+    const planned = await session.setConfiguration({ configId: "interactionMode", value: "plan" });
+    if (planned.isErr()) throw planned.error;
+    const permitted = await session.setConfiguration({ configId: "permissionMode", value: "allow" });
+    if (permitted.isErr()) throw permitted.error;
+    expect(permitted.value.configuration).toMatchObject({ permissionMode: "allow", interactionMode: "plan" });
+
+    const reasoned = await session.setConfiguration({ configId: "reasoningLevel", value: "xhigh" });
+    if (reasoned.isErr()) throw reasoned.error;
+    const fast = await session.setConfiguration({ configId: "fastMode", value: true });
+    if (fast.isErr()) throw fast.error;
+    const switched = await session.setConfiguration({ configId: "model", value: "profile/model-b" });
+    if (switched.isErr()) throw switched.error;
+    expect(switched.value.configuration).toEqual({
+      model: "profile/model-b",
+      permissionMode: "allow",
+      interactionMode: "plan",
+      reasoningLevel: "xhigh",
+      fastMode: true,
+    });
+
+    const cleared = await session.setConfiguration({ configId: "reasoningLevel", value: undefined });
+    if (cleared.isErr()) throw cleared.error;
+    expect(cleared.value.configuration.reasoningLevel).toBeUndefined();
+
+    const rejected = await session.setConfiguration({
+      configId: "permissionMode",
+      value: "automate" as unknown as "ask",
+    });
+    expect(rejected.isErr() && rejected.error._tag).toBe("runtime_host.configuration_rejected");
+  });
+
+  test("serializes concurrent configuration changes so no axis is lost", async () => {
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = new RuntimeHost({
+      persistence,
+      configurationPolicy: configuredSessionPolicy(),
+      createId: ids("session-1"),
+    });
+    const opened = await host.openSession({ kind: "new" });
+    if (opened.isErr()) throw opened.error;
+    const session = opened.value;
+
+    const results = await Promise.all([
+      session.setConfiguration({ configId: "permissionMode", value: "ask" }),
+      session.setConfiguration({ configId: "interactionMode", value: "plan" }),
+      session.setConfiguration({ configId: "reasoningLevel", value: "low" }),
+      session.setConfiguration({ configId: "fastMode", value: true }),
+      session.setConfiguration({ configId: "model", value: "profile/model-b" }),
+    ]);
+    for (const result of results) if (result.isErr()) throw result.error;
+
+    const durable = await persistence.load("session-1");
+    if (durable.isErr()) throw durable.error;
+    expect(durable.value.runtimeConfiguration).toEqual({
+      model: "profile/model-b",
+      permissionMode: "ask",
+      interactionMode: "plan",
+      reasoningLevel: "low",
+      fastMode: true,
+    });
   });
 
   test("publishes a configuration projection only after its configuration fact is durable", async () => {
@@ -1228,19 +1316,21 @@ describe("RuntimeHost", () => {
     const unsubscribe = opened.value.subscribe((event) => events.push(event));
     try {
       const changed = await opened.value.setConfiguration({
-        configId: "mode",
+        configId: "interactionMode",
         value: "plan",
       });
       if (changed.isErr()) throw changed.error;
-      expect(changed.value.configuration).toEqual({
+      const planned: RuntimeSessionConfiguration = {
+        ...defaultRuntimeSessionConfiguration,
         model: "profile/model-a",
-        mode: "plan",
-      });
+        interactionMode: "plan",
+      };
+      expect(changed.value.configuration).toEqual(planned);
       expect(events).toEqual([
         {
           type: "configuration_changed",
           configuration: {
-            configuration: { model: "profile/model-a", mode: "plan" },
+            configuration: planned,
             models: [
               { value: "profile/model-a", name: "Model A" },
               { value: "profile/model-b", name: "Model B" },
@@ -1443,7 +1533,7 @@ function configuredSessionPolicy(): RuntimeSessionConfigurationPolicy {
   ] as const;
   return {
     async initialConfiguration() {
-      return Result.ok({ model: "profile/model-a", mode: "manual" });
+      return Result.ok({ ...defaultRuntimeSessionConfiguration, model: "profile/model-a" });
     },
     async listModels() {
       return Result.ok(models);

@@ -7,6 +7,12 @@
       "skillPath": "skills/engineering/codebase-design/SKILL.md",
       "computedHash": "5a17552cc1482f1a40124bf4e6c9dbd90ac0dbb47e71c07d47369f9e5f2ae3b5"
     },
+    "hugeicons": {
+      "source": "hugeicons/hugeicons",
+      "sourceType": "github",
+      "skillPath": "skills/hugeicons/SKILL.md",
+      "computedHash": "4e65a89ca4417259b58c4e5c079d83fb977da214028334f504f18af820bbadcf"
+    },
     "impeccable": {
       "source": "pbakaus/impeccable",
       "sourceType": "github",

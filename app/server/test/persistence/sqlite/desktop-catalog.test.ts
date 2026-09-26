@@ -13,7 +13,7 @@ describe("SqliteDesktopCatalogAccess", () => {
 			const created = await persistence.create({
 				id: "session-1",
 				appState: {},
-				runtimeConfiguration: { model: "test/model", mode: "manual" },
+				runtimeConfiguration: { model: "test/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 				cwd: "/workspace",
 				createdAt,
 			});
@@ -66,7 +66,7 @@ describe("SqliteDesktopCatalogAccess", () => {
 			const parent = await persistence.create({
 				id: "session-1",
 				appState: {},
-				runtimeConfiguration: { model: "test/model", mode: "manual" },
+				runtimeConfiguration: { model: "test/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 				cwd: "/workspace",
 				createdAt,
 			});
@@ -97,7 +97,7 @@ describe("SqliteDesktopCatalogAccess", () => {
 			const created = await persistence.create({
 				id: "session-1",
 				appState: {},
-				runtimeConfiguration: { model: "test/model", mode: "manual" },
+				runtimeConfiguration: { model: "test/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 				cwd: "/workspace",
 				createdAt,
 			});
@@ -152,7 +152,7 @@ describe("SqliteDesktopCatalogAccess", () => {
 			const created = await persistence.create({
 				id: "session-1",
 				appState: {},
-				runtimeConfiguration: { model: "test/model", mode: "manual" },
+				runtimeConfiguration: { model: "test/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 				cwd: "/workspace",
 				createdAt,
 			});
@@ -190,7 +190,7 @@ describe("SqliteDesktopCatalogAccess", () => {
 				const created = await persistence.create({
 					id: session.id,
 					appState: {},
-					runtimeConfiguration: { model: "test/model", mode: "manual" },
+					runtimeConfiguration: { model: "test/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 					cwd: "/workspace",
 					createdAt: session.createdAt,
 				});
@@ -253,7 +253,7 @@ describe("SqliteDesktopCatalogAccess", () => {
 				const created = await persistence.create({
 					id: sessionId,
 					appState: {},
-					runtimeConfiguration: { model: "test/model", mode: "manual" },
+					runtimeConfiguration: { model: "test/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 					cwd: "/old-workspace",
 					createdAt,
 				});
@@ -302,7 +302,7 @@ describe("SqliteDesktopCatalogAccess", () => {
 			const created = await persistence.create({
 				id: "session-1",
 				appState: {},
-				runtimeConfiguration: { model: "test/model", mode: "manual" },
+				runtimeConfiguration: { model: "test/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 				cwd: "/old-workspace",
 				createdAt,
 			});
@@ -424,7 +424,7 @@ describe("SqliteDesktopCatalogAccess", () => {
 			const created = await persistence.create({
 				id: "session-1",
 				appState: {},
-				runtimeConfiguration: { model: "test/model", mode: "manual" },
+				runtimeConfiguration: { model: "test/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 				cwd: "/workspace",
 				createdAt,
 			});
@@ -451,7 +451,7 @@ describe("SqliteDesktopCatalogAccess", () => {
 			const created = await persistence.create({
 				id: "session-1",
 				appState: {},
-				runtimeConfiguration: { model: "test/model", mode: "manual" },
+				runtimeConfiguration: { model: "test/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 				cwd: "/workspace",
 				createdAt,
 			});
@@ -510,7 +510,7 @@ describe("SqliteDesktopCatalogAccess", () => {
 				const created = await persistence.create({
 					id: session.id,
 					appState: {},
-					runtimeConfiguration: { model: "test/model", mode: "manual" },
+					runtimeConfiguration: { model: "test/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 					cwd: "/workspace",
 					createdAt: session.createdAt,
 				});

@@ -1,4 +1,13 @@
 export {
+	type ReasoningLevel,
+	type RuntimeModelCapabilities,
+	reasoningLevelSchema,
+	reasoningLevels,
+	resolveEffectiveReasoningLevel,
+	resolveRuntimeModelCapabilities,
+	runtimeModelCapabilitiesSchema,
+} from "./capabilities";
+export {
 	findRuntimeModelCatalog,
 	findRuntimeModelCatalogMatch,
 	normalizeRuntimeModelCatalog,
@@ -6,6 +15,7 @@ export {
 	RUNTIME_MODEL_CATALOG_FRESHNESS_MS,
 	type RuntimeModelCatalog,
 	type RuntimeModelCatalogCost,
+	type RuntimeModelCatalogFastModeProtocol,
 	RuntimeModelCatalogInvalid,
 	type RuntimeModelCatalogMatch,
 	type RuntimeModelCatalogModality,

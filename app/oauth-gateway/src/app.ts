@@ -264,9 +264,7 @@ function normalizeTokenResponse(
 		accessToken: value.access_token,
 		tokenType,
 		refreshToken:
-			typeof value.refresh_token === "string" && value.refresh_token.length > 0
-				? value.refresh_token
-				: undefined,
+			typeof value.refresh_token === "string" && value.refresh_token.length > 0 ? value.refresh_token : undefined,
 		expiresIn,
 		scope: typeof value.scope === "string" ? value.scope : undefined,
 	});

@@ -102,14 +102,14 @@ describe("SqliteProductSessionPersistence", () => {
 		const created = await persistence.create({
 			id: "session-1",
 			appState: {},
-			runtimeConfiguration: { model: "profile/model-a", mode: "manual" },
+			runtimeConfiguration: { model: "profile/model-a", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 			cwd: "/workspace",
 			createdAt: "2026-08-25T10:00:00.000Z",
 		});
 		if (created.isErr()) throw created.error;
 		const configured = await persistence.appendRuntimeConfiguration({
 			sessionId: "session-1",
-			configuration: { model: "profile/model-b", mode: "plan" },
+			configuration: { model: "profile/model-b", permissionMode: "allow", interactionMode: "plan", reasoningLevel: "high", fastMode: true },
 			timestamp: "2026-08-25T10:01:00.000Z",
 		});
 		if (configured.isErr()) throw configured.error;
@@ -137,11 +137,11 @@ describe("SqliteProductSessionPersistence", () => {
 		const reopened = await SqliteProductSessionPersistence.open(databasePath);
 		const loaded = await reopened.load("session-1");
 		if (loaded.isErr()) throw loaded.error;
-		expect(loaded.value.runtimeConfiguration).toEqual({ model: "profile/model-b", mode: "plan" });
+		expect(loaded.value.runtimeConfiguration).toEqual({ model: "profile/model-b", permissionMode: "allow", interactionMode: "plan", reasoningLevel: "high", fastMode: true });
 		expect(loaded.value.operationRuntimeConfigurations).toEqual([
 			{
 				operationId: "operation-1",
-				configuration: { model: "profile/model-b", mode: "plan" },
+				configuration: { model: "profile/model-b", permissionMode: "allow", interactionMode: "plan", reasoningLevel: "high", fastMode: true },
 			},
 		]);
 		reopened.close();
@@ -153,7 +153,7 @@ describe("SqliteProductSessionPersistence", () => {
 		const created = await persistence.create({
 			id: "session-1",
 			appState: {},
-			runtimeConfiguration: { model: "profile/model-a", mode: "manual" },
+			runtimeConfiguration: { model: "profile/model-a", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 			cwd: "/workspace",
 			createdAt: "2026-08-25T10:00:00.000Z",
 		});
@@ -176,7 +176,7 @@ describe("SqliteProductSessionPersistence", () => {
 		const created = await persistence.create({
 			id: "session-1",
 			appState: {},
-			runtimeConfiguration: { model: "profile/model", mode: "manual" },
+			runtimeConfiguration: { model: "profile/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 			cwd: "/workspace",
 			createdAt: "2026-08-25T10:00:00.000Z",
 		});
@@ -268,7 +268,7 @@ describe("SqliteProductSessionPersistence", () => {
 		const created = await persistence.create({
 			id: "session-1",
 			appState: {},
-			runtimeConfiguration: { model: "profile/model", mode: "manual" },
+			runtimeConfiguration: { model: "profile/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 			cwd: "/workspace",
 			createdAt: "2026-08-25T10:00:00.000Z",
 		});
@@ -350,7 +350,128 @@ describe("SqliteProductSessionPersistence", () => {
 
 		expect(lastPromptAt(database, "session-1")).toBe("2026-08-25T10:00:00.000Z");
 	});
+
+	test("deletes a Session with any undecodable configuration fact, including history bound to an Operation", async () => {
+		const database = new DatabaseSync(":memory:");
+		const persistence = new SqliteProductSessionPersistence(database);
+		for (const id of ["current", "legacy-latest", "legacy-history"]) {
+			const created = await persistence.create({
+				id,
+				appState: {},
+				runtimeConfiguration: { ...currentConfiguration },
+				cwd: "/workspace",
+				createdAt: "2026-09-01T00:00:00.000Z",
+			});
+			if (created.isErr()) throw created.error;
+		}
+		const appended = await persistence.appendRuntimeConfiguration({
+			sessionId: "legacy-history",
+			configuration: { ...currentConfiguration, interactionMode: "plan" },
+			timestamp: "2026-09-01T00:01:00.000Z",
+		});
+		if (appended.isErr()) throw appended.error;
+		const rewrite = database.prepare(
+			"UPDATE product_session_runtime_configurations SET configuration_json = ? WHERE session_id = ? AND sequence = ?",
+		);
+		// Only the older fact of "legacy-history" is retired; its latest fact still decodes.
+		rewrite.run(JSON.stringify({ model: "profile/model", mode: "plan" }), "legacy-history", 0);
+		rewrite.run(JSON.stringify({ model: "profile/model", mode: "manual" }), "legacy-latest", 0);
+
+		const deleted = persistence.deleteSessionsWithIncompatibleConfiguration();
+		if (deleted.isErr()) throw deleted.error;
+		expect(deleted.value).toEqual(["legacy-history", "legacy-latest"]);
+
+		const listed = await persistence.list();
+		if (listed.isErr()) throw listed.error;
+		expect(listed.value.map((session) => session.id)).toEqual(["current"]);
+		for (const id of ["legacy-latest", "legacy-history"]) {
+			const loaded = await persistence.load(id);
+			expect(loaded.isErr() && loaded.error._tag).toBe("product_sessions.not_found");
+		}
+		const leftovers = database
+			.prepare("SELECT COUNT(*) AS count FROM product_session_runtime_configurations WHERE session_id != 'current'")
+			.get() as { readonly count: number };
+		expect(leftovers.count).toBe(0);
+
+		const again = persistence.deleteSessionsWithIncompatibleConfiguration();
+		if (again.isErr()) throw again.error;
+		expect(again.value).toEqual([]);
+	});
+
+	test("refuses to write a configuration that does not match the Session configuration contract", async () => {
+		const persistence = new SqliteProductSessionPersistence(new DatabaseSync(":memory:"));
+		const legacy = { model: "profile/model", mode: "manual" } as unknown as typeof currentConfiguration;
+		const created = await persistence.create({
+			id: "legacy",
+			appState: {},
+			runtimeConfiguration: legacy,
+			cwd: "/workspace",
+			createdAt: "2026-09-01T00:00:00.000Z",
+		});
+		expect(created.isErr() && created.error._tag).toBe("product_sessions.admission_conflict");
+		expect((await persistence.load("legacy")).isErr()).toBe(true);
+
+		const current = await persistence.create({
+			id: "current",
+			appState: {},
+			runtimeConfiguration: { ...currentConfiguration },
+			cwd: "/workspace",
+			createdAt: "2026-09-01T00:00:00.000Z",
+		});
+		if (current.isErr()) throw current.error;
+		const appended = await persistence.appendRuntimeConfiguration({
+			sessionId: "current",
+			configuration: { ...currentConfiguration, reasoningLevel: "ultra" } as unknown as typeof currentConfiguration,
+			timestamp: "2026-09-01T00:01:00.000Z",
+		});
+		expect(appended.isErr() && appended.error._tag).toBe("product_sessions.admission_conflict");
+		const loaded = await persistence.load("current");
+		if (loaded.isErr()) throw loaded.error;
+		expect(loaded.value.runtimeConfiguration).toEqual(currentConfiguration);
+	});
+
+	test("keeps every concurrently appended configuration fact in order with the last one current", async () => {
+		const database = new DatabaseSync(":memory:");
+		const persistence = new SqliteProductSessionPersistence(database);
+		const created = await persistence.create({
+			id: "session-1",
+			appState: {},
+			runtimeConfiguration: { ...currentConfiguration },
+			cwd: "/workspace",
+			createdAt: "2026-09-01T00:00:00.000Z",
+		});
+		if (created.isErr()) throw created.error;
+		const levels = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+		const appended = await Promise.all(
+			levels.map((reasoningLevel, index) =>
+				persistence.appendRuntimeConfiguration({
+					sessionId: "session-1",
+					configuration: { ...currentConfiguration, reasoningLevel },
+					timestamp: `2026-09-01T00:0${index + 1}:00.000Z`,
+				}),
+			),
+		);
+		for (const result of appended) if (result.isErr()) throw result.error;
+
+		const stored = database
+			.prepare(
+				"SELECT sequence, configuration_json FROM product_session_runtime_configurations WHERE session_id = ? ORDER BY sequence",
+			)
+			.all("session-1") as unknown as { readonly sequence: number; readonly configuration_json: string }[];
+		expect(stored.map((row) => row.sequence)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+		expect(stored.slice(1).map((row) => JSON.parse(row.configuration_json).reasoningLevel)).toEqual([...levels]);
+		const loaded = await persistence.load("session-1");
+		if (loaded.isErr()) throw loaded.error;
+		expect(loaded.value.runtimeConfiguration).toEqual({ ...currentConfiguration, reasoningLevel: "max" });
+	});
 });
+
+const currentConfiguration = {
+	model: "profile/model",
+	permissionMode: "ask",
+	interactionMode: "normal",
+	fastMode: false,
+} as const satisfies import("../../../src/sessions").RuntimeSessionConfiguration;
 
 function lastPromptAt(database: DatabaseSync, sessionId: string): string | null {
 	const row = database.prepare("SELECT last_prompt_at FROM session_journals WHERE id = ?").get(sessionId) as

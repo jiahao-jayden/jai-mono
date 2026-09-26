@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProductSqliteDatabase, SqliteDesktopCatalogAccess } from "../../src/persistence";
 import { SqliteRuntimeAgentSettings } from "../../src/config";
+import { SqliteRuntimeModelCatalog } from "../../src/model-catalog";
 import { connectDesktopConfigurationClient } from "../../src/desktop-configuration-client";
 import { openLocalAcpV2Client } from "../../src/acp-client";
 import { localDesktopCatalogEndpointFor } from "../../src/protocol/desktop-catalog";
@@ -32,6 +33,7 @@ describe("Runtime Host daemon composition", () => {
 				expect(snapshot.value).toEqual({
 					revision: null,
 					model: "",
+					auxiliaryModel: {},
 					profiles: [],
 					connector: { policy: { default: "ask", actions: {} }, connectors: [] },
 					webSearch: {
@@ -284,6 +286,92 @@ describe("Runtime Host daemon composition", () => {
 		}
 	});
 
+	test("deletes Sessions stored with the retired manual/automate/plan configuration before serving any Client", async () => {
+		const dataDirectory = await mkdtemp(join(tmpdir(), "jai-runtime-daemon-"));
+		temporaryDirectories.push(dataDirectory);
+		const seeded = await ProductSqliteDatabase.open(join(dataDirectory, "data.sqlite"));
+		try {
+			const persistence = new SqliteProductSessionPersistence(seeded.connection);
+			const catalog = new SqliteDesktopCatalogAccess(seeded.connection);
+			for (const id of ["legacy-session", "current-session"]) {
+				const created = await persistence.create({
+					id,
+					appState: {},
+					runtimeConfiguration: {
+						model: "openai/example",
+						permissionMode: "ask",
+						interactionMode: "normal",
+						fastMode: false,
+					},
+					cwd: "/workspace",
+					createdAt: "2026-09-01T00:00:00.000Z",
+				});
+				if (created.isErr()) throw created.error;
+				const metadata = catalog.ensureSession({ sessionId: id, projectId: null, title: id });
+				if (metadata.isErr()) throw metadata.error;
+			}
+			// Rewrites the stored fact into the shape written before #131; only raw SQL can still produce it.
+			seeded.connection
+				.prepare("UPDATE product_session_runtime_configurations SET configuration_json = ? WHERE session_id = ?")
+				.run(JSON.stringify({ model: "openai/example", mode: "automate" }), "legacy-session");
+		} finally {
+			seeded.close();
+		}
+
+		const opened = await openConfiguredRuntimeHost({
+			environment: { JAI_MODEL: "openai/example", JAI_VERSION: "test" },
+			dataDirectory,
+			endpoint: join(dataDirectory, "runtime.sock"),
+		});
+		if (opened.isErr()) throw opened.error;
+		try {
+			const client = await openLocalAcpV2Client(opened.value.endpoint);
+			if (client.isErr()) throw client.error;
+			try {
+				const initialized = await client.value.request("initialize", {
+					protocolVersion: 2,
+					capabilities: {},
+					info: { name: "test-client", version: "1.0.0" },
+				});
+				if (initialized.isErr()) throw initialized.error;
+				const listed = await client.value.request("session/list", {});
+				if (listed.isErr()) throw listed.error;
+				expect(
+					(listed.value as { readonly sessions: readonly { readonly sessionId: string }[] }).sessions.map(
+						(session) => session.sessionId,
+					),
+				).toEqual(["current-session"]);
+				const resumed = await client.value.request("session/resume", {
+					sessionId: "legacy-session",
+					cwd: "/workspace",
+				});
+				expect(resumed.isErr()).toBe(true);
+				const current = await client.value.request("session/resume", {
+					sessionId: "current-session",
+					cwd: "/workspace",
+				});
+				if (current.isErr()) throw current.error;
+			} finally {
+				await client.value.close();
+			}
+		} finally {
+			await opened.value.close();
+		}
+
+		const database = await ProductSqliteDatabase.open(join(dataDirectory, "data.sqlite"));
+		try {
+			const catalog = new SqliteDesktopCatalogAccess(database.connection);
+			const legacy = catalog.getSession("legacy-session");
+			if (legacy.isErr()) throw legacy.error;
+			expect(legacy.value).toBeUndefined();
+			const kept = catalog.getSession("current-session");
+			if (kept.isErr()) throw kept.error;
+			expect(kept.value).toMatchObject({ id: "current-session" });
+		} finally {
+			database.close();
+		}
+	});
+
 	test("assembles user and trusted workspace capabilities into a live Host-owned Coding Agent operation", async () => {
 		const dataDirectory = await mkdtemp(join(tmpdir(), "jai-runtime-daemon-"));
 		temporaryDirectories.push(dataDirectory);
@@ -395,6 +483,233 @@ describe("Runtime Host daemon composition", () => {
 			expect(typeof skillTool?.description).toBe("string");
 			expect(skillTool?.description).toContain("Load an Agent Skill by name");
 			expect((await stat(join(workspace, ".desktop-source-config"))).isDirectory()).toBe(true);
+		} finally {
+			await opened.value.close();
+			provider.stop(true);
+		}
+	});
+
+	test("dispatches the Session's reasoning level resolved downwards and Fast mode only as the catalog allows", async () => {
+		const dataDirectory = await mkdtemp(join(tmpdir(), "jai-runtime-daemon-"));
+		temporaryDirectories.push(dataDirectory);
+		const seeded = await ProductSqliteDatabase.open(join(dataDirectory, "data.sqlite"));
+		try {
+			new SqliteRuntimeModelCatalog(seeded.connection).close();
+			const catalog = {
+				providers: {
+					local: {
+						id: "local",
+						name: "Local",
+						models: {
+							"test-model": {
+								id: "test-model",
+								name: "Test model",
+								reasoningOptions: ["low", "medium", "high"],
+								fastMode: "anthropic-speed",
+							},
+						},
+					},
+				},
+			};
+			seeded.connection
+				.prepare("INSERT INTO runtime_model_catalog (key, catalog_json, etag, fetched_at) VALUES ('default', ?, NULL, ?)")
+				.run(JSON.stringify(catalog), Date.now());
+		} finally {
+			seeded.close();
+		}
+		const providerRequests: Record<string, unknown>[] = [];
+		const provider = Bun.serve({
+			port: 0,
+			fetch: async (request) => {
+				providerRequests.push((await request.json()) as Record<string, unknown>);
+				return new Response(anthropicTextEvents("done"), { headers: { "content-type": "text/event-stream" } });
+			},
+		});
+		const opened = await openConfiguredRuntimeHost({
+			dataDirectory,
+			homeDirectory: join(dataDirectory, "home"),
+			environment: {},
+			endpoint: join(dataDirectory, "runtime.sock"),
+		});
+		if (opened.isErr()) throw opened.error;
+		try {
+			const configuration = await connectDesktopConfigurationClient({
+				dataDirectory,
+				runtimeEndpoint: opened.value.endpoint,
+				environment: {},
+			});
+			if (configuration.isErr()) throw configuration.error;
+			try {
+				const saved = await configuration.value.save({
+					revision: null,
+					model: "local/test-model",
+					providers: [
+						{
+							id: "local",
+							name: "Local test provider",
+							adapter: "anthropic",
+							baseURL: provider.url.toString(),
+							authentication: "api-key",
+							apiKey: "test-key",
+							enabled: true,
+							models: [{ id: "test-model", enabled: true }],
+						},
+					],
+				});
+				if (saved.isErr()) throw saved.error;
+			} finally {
+				await configuration.value.close();
+			}
+
+			const client = await openLocalAcpV2Client(opened.value.endpoint);
+			if (client.isErr()) throw client.error;
+			const updates: unknown[] = [];
+			const unsubscribe = client.value.subscribe((update) => updates.push(update));
+			try {
+				const initialized = await client.value.request("initialize", {
+					protocolVersion: 2,
+					capabilities: {},
+					info: { name: "test-client", version: "1.0.0" },
+				});
+				if (initialized.isErr()) throw initialized.error;
+				const created = await client.value.request("session/new", { cwd: dataDirectory, ephemeral: true });
+				if (created.isErr()) throw created.error;
+				const sessionId = (created.value as { readonly sessionId: string }).sessionId;
+				for (const change of [
+					{ configId: "reasoningLevel", type: "id", value: "xhigh" },
+					{ configId: "fastMode", type: "boolean", value: true },
+				]) {
+					const set = await client.value.request("session/set_config_option", { sessionId, ...change });
+					if (set.isErr()) throw set.error;
+				}
+				const prompted = await client.value.request("session/prompt", {
+					sessionId,
+					prompt: [{ type: "text", text: "hi" }],
+				});
+				if (prompted.isErr()) throw prompted.error;
+				await waitFor(() => updates.some((update) => JSON.stringify(update).includes('"state":"idle"')));
+			} finally {
+				unsubscribe();
+				await client.value.close();
+			}
+
+		expect(providerRequests).toHaveLength(1);
+		expect(providerRequests[0]).toMatchObject({ output_config: { effort: "high" }, speed: "fast" });
+	} finally {
+		await opened.value.close();
+		provider.stop(true);
+	}
+	});
+
+	test("passes Session permission and interaction modes through ACP to the Coding Agent Operation", async () => {
+		const dataDirectory = await mkdtemp(join(tmpdir(), "jai-runtime-daemon-"));
+		temporaryDirectories.push(dataDirectory);
+		const providerRequests: Record<string, unknown>[] = [];
+		const responses = [
+			anthropicToolCallEvents([{ id: "tool-1", name: "Write", arguments: { path: "note.txt", content: "hi" } }]),
+			anthropicTextEvents("plan blocked the write"),
+			anthropicToolCallEvents([{ id: "tool-2", name: "Write", arguments: { path: "note.txt", content: "hi" } }]),
+			anthropicTextEvents("done"),
+		];
+		const provider = Bun.serve({
+			port: 0,
+			fetch: async (request) => {
+				providerRequests.push((await request.json()) as Record<string, unknown>);
+				const response = responses.shift();
+				return new Response(response ?? "No fake provider response left", {
+					status: response ? 200 : 500,
+					headers: { "content-type": "text/event-stream" },
+				});
+			},
+		});
+		const opened = await openConfiguredRuntimeHost({
+			dataDirectory,
+			homeDirectory: join(dataDirectory, "home"),
+			environment: {},
+			endpoint: join(dataDirectory, "runtime.sock"),
+		});
+		if (opened.isErr()) throw opened.error;
+		try {
+			const configuration = await connectDesktopConfigurationClient({
+				dataDirectory,
+				runtimeEndpoint: opened.value.endpoint,
+				environment: {},
+			});
+			if (configuration.isErr()) throw configuration.error;
+			try {
+				const saved = await configuration.value.save({
+					revision: null,
+					model: "local/test-model",
+					providers: [
+						{
+							id: "local",
+							name: "Local test provider",
+							adapter: "anthropic",
+							baseURL: provider.url.toString(),
+							authentication: "api-key",
+							apiKey: "test-key",
+							enabled: true,
+							models: [{ id: "test-model", enabled: true }],
+						},
+					],
+				});
+				if (saved.isErr()) throw saved.error;
+			} finally {
+				await configuration.value.close();
+			}
+
+			const client = await openLocalAcpV2Client(opened.value.endpoint);
+			if (client.isErr()) throw client.error;
+			const updates: unknown[] = [];
+			const unsubscribe = client.value.subscribe((update) => updates.push(update));
+			try {
+				const initialized = await client.value.request("initialize", {
+					protocolVersion: 2,
+					capabilities: {},
+					info: { name: "test-client", version: "1.0.0" },
+				});
+				if (initialized.isErr()) throw initialized.error;
+				const created = await client.value.request("session/new", { cwd: dataDirectory, ephemeral: true });
+				if (created.isErr()) throw created.error;
+				const sessionId = (created.value as { readonly sessionId: string }).sessionId;
+
+				for (const change of [
+					{ configId: "permissionMode", type: "id", value: "allow" },
+					{ configId: "interactionMode", type: "id", value: "plan" },
+				]) {
+					const set = await client.value.request("session/set_config_option", { sessionId, ...change });
+					if (set.isErr()) throw set.error;
+				}
+				const firstPrompt = await client.value.request("session/prompt", {
+					sessionId,
+					prompt: [{ type: "text", text: "Write a note" }],
+				});
+				if (firstPrompt.isErr()) throw firstPrompt.error;
+				await waitFor(() => updates.filter((u) => JSON.stringify(u).includes('"state":"idle"')).length >= 1);
+				expect(await stat(join(dataDirectory, "note.txt")).then(() => true).catch(() => false)).toBe(false);
+
+				const normal = await client.value.request("session/set_config_option", {
+					sessionId,
+					configId: "interactionMode",
+					type: "id",
+					value: "normal",
+				});
+				if (normal.isErr()) throw normal.error;
+				const secondPrompt = await client.value.request("session/prompt", {
+					sessionId,
+					prompt: [{ type: "text", text: "Write a note" }],
+				});
+				if (secondPrompt.isErr()) throw secondPrompt.error;
+				await waitFor(() => updates.filter((u) => JSON.stringify(u).includes('"state":"idle"')).length >= 2);
+				expect(await stat(join(dataDirectory, "note.txt")).then((s) => s.isFile()).catch(() => false)).toBe(true);
+			} finally {
+				unsubscribe();
+				await client.value.close();
+			}
+
+			for (const request of providerRequests) {
+				expect(request.speed).toBeUndefined();
+			}
 		} finally {
 			await opened.value.close();
 			provider.stop(true);

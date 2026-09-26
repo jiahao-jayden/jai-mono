@@ -20,6 +20,7 @@ export {
 	type TelemetryPermissionDecision,
 	type TelemetryPermissionOutcome,
 	type TelemetryPermissionPhase,
+	type TelemetryPermissionReviewFailure,
 	type TelemetryPermissionRisk,
 	type TelemetryPermissionSource,
 	type TelemetrySink,

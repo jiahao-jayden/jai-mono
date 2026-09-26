@@ -5,7 +5,8 @@ export const canonicalToolNameSchema = Type.Union(canonicalToolNames.map((name) 
 
 export type CanonicalToolName = (typeof canonicalToolNames)[number];
 export type PermissionEffect = "allow" | "ask" | "deny";
-export type PermissionMode = "default" | "acceptEdits" | "plan" | "dontAsk" | "bypassPermissions";
+/** `auto` lets the Host's reviewer answer built-in asks before the user. */
+export type PermissionMode = "ask" | "allow" | "auto" | "plan";
 
 export const permissionActions = ["file.read", "file.write", "process.exec", "tool.invoke"] as const;
 export type PermissionAction = (typeof permissionActions)[number];
@@ -24,7 +25,6 @@ export interface PermissionSettings {
 	readonly permissionGrants?: PermissionGrantConfig;
 	readonly defaultMode?: PermissionMode;
 	readonly additionalDirectories?: readonly string[];
-	readonly disableBypassPermissionsMode?: "disable";
 }
 
 export interface ResolvedPermissionSettings {
@@ -33,7 +33,6 @@ export interface ResolvedPermissionSettings {
 	readonly sessionGrants?: PermissionConfig;
 	readonly permissionGrants?: PermissionGrantConfig;
 	readonly additionalDirectories: readonly string[];
-	readonly disableBypassPermissionsMode?: "disable";
 }
 
 export interface PermissionPathResource {

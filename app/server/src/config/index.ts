@@ -1,6 +1,8 @@
 export {
 	parseRuntimeAgentSettingsInput,
 	type ResolvedRuntimeAgentOptions,
+	type ResolvedRuntimeAuxiliaryModel,
+	type ResolvedRuntimeModelConnection,
 	type RuntimeAgentSettings,
 	RuntimeAgentSettingsCorrupted,
 	type RuntimeAgentSettingsInput,
@@ -13,6 +15,7 @@ export {
 	type RuntimeAgentSettingsSnapshot,
 	RuntimeAgentSettingsWriteConflict,
 	type RuntimeAgentSettingsWriteError,
+	type RuntimeAuxiliaryModelSettings,
 	type RuntimeConnectorCredentialProjection,
 	type RuntimeConnectorOAuthTokenInput,
 	type RuntimeConnectorPermission,

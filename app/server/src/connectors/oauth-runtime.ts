@@ -128,10 +128,7 @@ export class RuntimeConnectorOAuth {
 				accessToken: token.value.accessToken,
 				tokenType: token.value.tokenType,
 				refreshToken: token.value.refreshToken,
-				expiresAt:
-					token.value.expiresIn === undefined
-						? undefined
-						: this.#now() + token.value.expiresIn * 1_000,
+				expiresAt: token.value.expiresIn === undefined ? undefined : this.#now() + token.value.expiresIn * 1_000,
 				scopes: scopes.length > 0 ? scopes : application.scopes,
 			},
 			this.nowIso(),

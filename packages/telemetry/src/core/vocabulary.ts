@@ -88,6 +88,10 @@ const eventAttributeSchemas: Record<TelemetryEventName, readonly AttributeSchema
 		{ key: "source", kind: "string" },
 	],
 	"jai.permission.settled": [{ key: "outcome", kind: "string" }],
+	"jai.permission.reviewed": [
+		{ key: "failure", kind: "string" },
+		{ key: "verdict", kind: "string" },
+	],
 	"jai.approval.requested": [],
 	"jai.approval.decided": [{ key: "decision", kind: "string" }],
 	"jai.approval.settled": [
@@ -109,6 +113,7 @@ export const eventSpanNames: Readonly<Record<TelemetryEventName, TelemetrySpanNa
 	"jai.tool_call.settled": "jai.tool_call",
 	"jai.permission.decided": "jai.permission",
 	"jai.permission.settled": "jai.permission",
+	"jai.permission.reviewed": "jai.permission",
 	"jai.approval.requested": "jai.approval",
 	"jai.approval.decided": "jai.approval",
 	"jai.approval.settled": "jai.approval",

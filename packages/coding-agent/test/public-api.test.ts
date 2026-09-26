@@ -41,7 +41,7 @@ describe("public Coding Agent SDK", () => {
 		const created = await createCodingAgent({
 			...input,
 			session: { kind: "new", id: "public-session", store: await openStore(root) },
-			permissionMode: "default",
+			permissionMode: "ask",
 		});
 		expect(created.isOk()).toBe(true);
 		if (created.isErr()) return;
@@ -159,7 +159,7 @@ describe("public Coding Agent SDK", () => {
 		const created = await createCodingAgent({
 			...createInput(root, [assistant("steering consumed")]),
 			session: { kind: "new", id: "reserved-input-session", store },
-			permissionMode: "bypassPermissions",
+			permissionMode: "allow",
 		});
 		expect(created.isOk()).toBe(true);
 		if (created.isErr()) return;
@@ -411,7 +411,7 @@ describe("public Coding Agent SDK", () => {
 		const created = await createCodingAgent({
 			...input,
 			session: { kind: "new", id: "artifact-session", store: await openStore(root) },
-			permissionMode: "bypassPermissions",
+			permissionMode: "allow",
 		});
 		expect(created.isOk()).toBe(true);
 		if (created.isErr()) return;
@@ -443,7 +443,7 @@ describe("public Coding Agent SDK", () => {
 		const created = await createCodingAgent({
 			...input,
 			session: { kind: "ephemeral" },
-			permissionMode: "bypassPermissions",
+			permissionMode: "allow",
 		});
 		expect(created.isOk()).toBe(true);
 		if (created.isErr()) return;
@@ -631,7 +631,7 @@ describe("public Coding Agent SDK", () => {
 		const created = await createCodingAgent({
 			...input,
 			session: { kind: "ephemeral" },
-			permissionMode: "bypassPermissions",
+			permissionMode: "allow",
 		});
 		expect(created.isOk()).toBe(true);
 		if (created.isErr()) return;
@@ -755,7 +755,7 @@ describe("public Coding Agent SDK", () => {
 				assistantToolCall("ExtensionWrite", "extension-write", { value: "original" }),
 				assistant("done"),
 			]),
-			permissionMode: "acceptEdits",
+			permissionMode: "allow",
 			requestApproval: () => {
 				approvals++;
 				return "allowOnce";
@@ -931,7 +931,7 @@ describe("public Coding Agent SDK", () => {
 		});
 		const destructiveCreated = await createCodingAgent({
 			...createInput(root, [assistantToolCall("ExtensionDestroy", "destroy", {}), assistant("done")]),
-			permissionMode: "bypassPermissions",
+			permissionMode: "allow",
 			extensions: [destructive],
 		});
 		expect(destructiveCreated.isOk()).toBe(true);

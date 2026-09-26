@@ -394,6 +394,8 @@ async function attemptModelCall(run: AgentLoopRuntime, request: AgentContext): P
 		temperature: config.temperature,
 		maxTokens: config.maxTokens,
 		providerOptions: config.providerOptions,
+		reasoningLevel: config.reasoningLevel,
+		fastMode: config.fastMode,
 		signal,
 	});
 

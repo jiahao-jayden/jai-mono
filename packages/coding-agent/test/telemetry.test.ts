@@ -438,6 +438,22 @@ describe("Coding Agent telemetry observer", () => {
 		now += 15;
 		observer.observePermissionEvent({ type: "approval_cancelled", approvalId: "approval-cancelled" });
 		observer.observePermissionEvent({ type: "permission_settled", toolCallId: "call-cancelled", outcome: "cancelled" });
+		observer.observePermissionEvent({
+			type: "permission_decided",
+			toolCallId: "call-reviewed",
+			toolName: "Write",
+			decision: "ask",
+			phase: "initial",
+			risk: "medium",
+			source: "built-in",
+		});
+		observer.observePermissionEvent({
+			type: "permission_reviewed",
+			toolCallId: "call-reviewed",
+			verdict: "ask",
+			failure: "timeout",
+		});
+		observer.observePermissionEvent({ type: "permission_settled", toolCallId: "call-reviewed", outcome: "allowed" });
 		observer.observeAgentEvent({ type: "turn_end", message: completed, toolResults: [] });
 		observer.observeAgentEvent({ type: "agent_end", messages: [completed] });
 		await telemetry.waitForSettledSpans();
@@ -465,6 +481,14 @@ describe("Coding Agent telemetry observer", () => {
 		expect(approval.parentId).toBe(rechecked?.id);
 		expect(approval.attributes).toMatchObject({ decision: "allowOnce", outcome: "approved", waitMs: 475 });
 		expect(cancelledApproval?.attributes).toMatchObject({ outcome: "cancelled", waitMs: 15 });
+		const reviewed = telemetry.spans.find(
+			(record) => record.name === "jai.permission" && record.attributes.toolCallId === "call-reviewed",
+		);
+		expect(reviewed?.events).toContainEqual({
+			name: "jai.permission.reviewed",
+			attributes: { verdict: "ask", failure: "timeout" },
+			timestampMs: expect.any(Number),
+		});
 		expect(telemetry.spans.every((record) => record.endedAtMs !== undefined)).toBe(true);
 	});
 });

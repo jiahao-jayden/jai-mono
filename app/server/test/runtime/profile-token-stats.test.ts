@@ -37,7 +37,9 @@ function session(input: {
 		journalFacts: [],
 		runtimeConfiguration: {
 			model: "test/model",
-			mode: "manual",
+			permissionMode: "ask",
+			interactionMode: "normal",
+			fastMode: false,
 		},
 		operationRuntimeConfigurations: [],
 	};

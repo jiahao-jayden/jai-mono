@@ -136,7 +136,7 @@ async function runTelemetryOperation(telemetry?: TelemetryContext) {
 	const opened = await host.openSession({ kind: "new", cwd: root });
 	if (opened.isErr()) throw opened.error;
 	try {
-		const configured = await opened.value.setConfiguration({ configId: "mode", value: "automate" });
+		const configured = await opened.value.setConfiguration({ configId: "permissionMode", value: "allow" });
 		if (configured.isErr()) throw configured.error;
 		const prompted = await opened.value.prompt({ text: "sk-fake-prompt" });
 		if (prompted.isErr()) throw prompted.error;

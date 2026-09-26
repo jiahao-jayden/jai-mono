@@ -82,7 +82,7 @@ describe("JournalOnlySessionStore", () => {
 		const created = await persistence.create({
 			id: "parent-1",
 			appState: {},
-			runtimeConfiguration: { model: "test", mode: "manual" },
+			runtimeConfiguration: { model: "test", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 			cwd: "/workspace",
 			createdAt: new Date().toISOString(),
 		});

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { ShellExecutionPolicy, ToolCallContext } from "@jai/agent";
@@ -118,26 +118,16 @@ describe("permission 配置不得削弱安全边界", () => {
 	test("deny 规则在 permission 配置存在时仍然生效", () => {
 		expect(
 			evaluatePermission(call("Read", { path: `${workspaceRoot}/.env` }), {
-				defaultMode: "default",
+				defaultMode: "ask",
 				permission: { "file.read": { "**/.env": "deny" } },
 			}),
 		).toMatchObject({ behavior: "deny" });
 		expect(
 			evaluatePermission(call("Read", { path: `${workspaceRoot}/.env` }), {
-				defaultMode: "default",
+				defaultMode: "ask",
 				permission: { "process.exec": { "ls *": "allow" }, "file.read": { "**/.env": "deny" } },
 			}),
 		).toMatchObject({ behavior: "deny" });
-	});
-
-	test("disableBypassPermissionsMode 在 permission 配置存在时仍然生效", () => {
-		expect(
-			evaluatePermission(call("Bash", { command: "npm test" }), {
-				defaultMode: "bypassPermissions",
-				disableBypassPermissionsMode: "disable",
-				permission: { "process.exec": { "npm *": "allow" } },
-			}),
-		).toMatchObject({ behavior: "deny", source: "mode" });
 	});
 
 	test("plan 模式在 permission 配置存在时仍然拒绝写操作", () => {
@@ -152,7 +142,7 @@ describe("permission 配置不得削弱安全边界", () => {
 	test("按 basename 分类命令，绝对路径不能绕过熔断与危险判定", () => {
 		for (const command of ["rm -rf /", "/bin/rm -rf /", "/usr/bin/rm -rf ~"]) {
 			expect(isDestructiveBashCommand(command)).toBe(true);
-			expect(evaluatePermission(call("Bash", { command }), { defaultMode: "bypassPermissions" })).toMatchObject({
+			expect(evaluatePermission(call("Bash", { command }), { defaultMode: "allow" })).toMatchObject({
 				behavior: "deny",
 			});
 		}
@@ -160,18 +150,18 @@ describe("permission 配置不得削弱安全边界", () => {
 
 	test("find 的 -execdir/-okdir 与 -exec 同样不算只读", () => {
 		for (const command of ["find . -exec ls {} +", "find . -execdir rm -rf {} +", "find . -okdir rm {} ;"]) {
-			expect(evaluatePermission(call("Bash", { command }), { defaultMode: "default" })).toMatchObject({
+			expect(evaluatePermission(call("Bash", { command }), { defaultMode: "ask" })).toMatchObject({
 				behavior: "ask",
 			});
 		}
 	});
 
 	test("git branch 删除/改名不算只读", () => {
-		expect(evaluatePermission(call("Bash", { command: "git branch" }), { defaultMode: "default" })).toMatchObject({
+		expect(evaluatePermission(call("Bash", { command: "git branch" }), { defaultMode: "ask" })).toMatchObject({
 			behavior: "allow",
 		});
 		for (const command of ["git branch -D main", "git branch -m old new"]) {
-			expect(evaluatePermission(call("Bash", { command }), { defaultMode: "default" })).toMatchObject({
+			expect(evaluatePermission(call("Bash", { command }), { defaultMode: "ask" })).toMatchObject({
 				behavior: "ask",
 			});
 		}
@@ -308,7 +298,6 @@ describe("permission middleware", () => {
 		]);
 		for (const settings of [
 			{ defaultMode: "plan" as const },
-			{ defaultMode: "dontAsk" as const },
 			{ permission: { "tool.invoke": { "mcp__workspace__files__*": "deny" } } },
 		] satisfies readonly PermissionSettings[]) {
 			let approvals = 0;
@@ -547,7 +536,7 @@ describe("permission middleware", () => {
 		let executions = 0;
 		const middleware = createPermissionMiddleware({
 			workspaceRoot,
-			settings: { defaultMode: "dontAsk" },
+			settings: { defaultMode: "ask" },
 		});
 		await expect(
 			middleware(context("mcp__plugin__server__tool", {}), async () => {
@@ -664,11 +653,10 @@ describe("permission middleware", () => {
 		expect(asked).toBe(false);
 	});
 
-	test("危险命令在 Deny、Plan、Don't Ask 下均不进入审批", async () => {
+	test("危险命令在 Deny、Plan 下不进入审批，Ask 会进入审批", async () => {
 		for (const settings of [
 			{ permission: { "process.exec": { "rm -rf build": "deny" as const } } },
 			{ defaultMode: "plan" as const },
-			{ defaultMode: "dontAsk" as const },
 		]) {
 			let approvals = 0;
 			let executions = 0;
@@ -688,25 +676,35 @@ describe("permission middleware", () => {
 			).rejects.toMatchObject({ _tag: "coding_permission.denied" });
 			expect({ approvals, executions }).toEqual({ approvals: 0, executions: 0 });
 		}
-	});
-
-	test("DontAsk 不因无关规则进入审批，会话授权也不能覆盖新 Deny", async () => {
 		let approvals = 0;
-		const dontAsk = createPermissionMiddleware({
+		const ask = createPermissionMiddleware({
 			workspaceRoot,
-			settings: { defaultMode: "dontAsk", permission: { "file.read": { "**/.env": "deny" } } },
+			settings: { defaultMode: "ask" },
 			requestApproval: () => {
 				approvals++;
 				return "allowOnce";
 			},
 		});
-		await expect(dontAsk(context("Bash", { command: "npm test" }), async () => ({ content: [] }))).rejects.toMatchObject({
-			_tag: "coding_permission.denied",
+		await ask(context("Bash", { command: "rm -rf build" }), async () => ({ content: [] }));
+		expect(approvals).toBe(1);
+	});
+
+	test("Ask 不因无关规则进入审批，会话授权也不能覆盖新 Deny", async () => {
+		let approvals = 0;
+		const ask = createPermissionMiddleware({
+			workspaceRoot,
+			settings: { defaultMode: "ask", permission: { "file.read": { "**/.env": "deny" } } },
+			requestApproval: () => {
+				approvals++;
+				return "allowOnce";
+			},
 		});
+		await ask(context("Bash", { command: "npm test" }), async () => ({ content: [] }));
+		expect(approvals).toBe(1);
 
 		const sessionDeny = createPermissionMiddleware({
 			workspaceRoot,
-			settings: { permission: { "process.exec": { "npm test": "deny" } } },
+			settings: { defaultMode: "allow", permission: { "process.exec": { "npm test": "deny" } } },
 			sessionAllowRules: { "process.exec": { "npm test": "allow" } },
 			requestApproval: () => {
 				approvals++;
@@ -716,7 +714,7 @@ describe("permission middleware", () => {
 		await expect(sessionDeny(context("Bash", { command: "npm test" }), async () => ({ content: [] }))).rejects.toMatchObject({
 			_tag: "coding_permission.denied",
 		});
-		expect(approvals).toBe(0);
+		expect(approvals).toBe(1);
 	});
 
 	test("危险 Bash 不提供 Always allow 且拒绝伪造响应", async () => {
@@ -765,7 +763,7 @@ describe("permission middleware", () => {
 			let approvals = 0;
 			const middleware = createPermissionMiddleware({
 				workspaceRoot: workspace,
-				settings: {},
+				settings: { defaultMode: "ask" },
 				pathCapabilities: environment,
 				requestApproval: () => {
 					approvals++;
@@ -802,7 +800,7 @@ describe("permission evaluation", () => {
 
 	test("root/home rm -rf circuit breaker 固定拒绝", () => {
 		for (const command of ["rm -rf /", "rm -r -f ~", "rm --recursive --force $HOME", "rm -rf ${HOME}"]) {
-			expect(evaluatePermission(call("Bash", { command }), { defaultMode: "bypassPermissions" })).toMatchObject({
+			expect(evaluatePermission(call("Bash", { command }), { defaultMode: "allow" })).toMatchObject({
 				behavior: "deny",
 				source: "danger-layer",
 			});
@@ -888,13 +886,50 @@ describe("permission evaluation", () => {
 		).toBe("allow");
 	});
 
-	test("Accept Edits 仅自动允许边界内修改", () => {
+	test("Allow 仅自动允许边界内修改", () => {
 		expect(
-			evaluatePermission(call("Write", { path: "src/app.ts" }), { defaultMode: "acceptEdits" }).behavior,
+			evaluatePermission(call("Write", { path: "src/app.ts" }), { defaultMode: "allow" }).behavior,
 		).toBe("allow");
 		expect(
-			evaluatePermission(call("Edit", { path: "../other/app.ts" }), { defaultMode: "acceptEdits" }).behavior,
+			evaluatePermission(call("Edit", { path: "../other/app.ts" }), { defaultMode: "allow" }).behavior,
 		).toBe("ask");
+	});
+
+	test("Allow 跳过常规确认但不跨越 workspace 边界", () => {
+		const bypass = { defaultMode: "allow" } as const;
+		expect(evaluatePermission(call("Write", { path: "src/app.ts" }), bypass).behavior).toBe("allow");
+		expect(evaluatePermission(call("Read", { path: "../other/secret.txt" }), bypass)).toMatchObject({
+			behavior: "ask",
+			source: "mode",
+		});
+		expect(evaluatePermission(call("Edit", { path: "/etc/hosts" }), bypass)).toMatchObject({
+			behavior: "ask",
+			source: "mode",
+		});
+		expect(
+			evaluatePermission(call("Write", { path: "../shared/app.ts" }), {
+				...bypass,
+				additionalDirectories: ["../shared"],
+			}).behavior,
+		).toBe("allow");
+		expect(evaluatePermission(call("Bash", { command: "npm test" }), bypass).behavior).toBe("allow");
+	});
+
+	test("工作区位于符号链接目录下时，规范化后的路径仍算在边界内", async () => {
+		const real = await mkdtemp(join(tmpdir(), "jai-permission-real-"));
+		const linked = `${real}-link`;
+		await symlink(real, linked);
+		try {
+			const canonicalTarget = join(await realpath(real), "src", "app.ts");
+			const request = createPermissionRequest("Write", { path: canonicalTarget }, linked);
+			expect(evaluatePermission(request, { defaultMode: "allow" }).behavior).toBe("allow");
+			expect(evaluatePermission(request, { defaultMode: "allow" }).behavior).toBe("allow");
+			const escaped = createPermissionRequest("Write", { path: join(tmpdir(), "elsewhere.txt") }, linked);
+			expect(evaluatePermission(escaped, { defaultMode: "allow" }).behavior).toBe("ask");
+		} finally {
+			await unlink(linked);
+			await rm(real, { recursive: true, force: true });
+		}
 	});
 
 	test("Plan 模式只允许只读操作，显式 Allow 不能绕过", () => {
@@ -922,17 +957,17 @@ describe("permission evaluation", () => {
 		expect(evaluatePermission(call("Bash", { command: "git status && ls -la" })).behavior).toBe("allow");
 		expect(evaluatePermission(call("Bash", { command: "echo value > output.txt" })).behavior).toBe("ask");
 		expect(
-			evaluatePermission(call("Bash", { command: "rm -rf /" }), { defaultMode: "bypassPermissions" }).behavior,
+			evaluatePermission(call("Bash", { command: "rm -rf /" }), { defaultMode: "allow" }).behavior,
 		).toBe("deny");
 	});
 
-	test("Don't Ask 拒绝未预授权调用，显式 Allow 仍生效", () => {
-		expect(evaluatePermission(call("Bash", { command: "npm test" }), { defaultMode: "dontAsk" }).behavior).toBe(
-			"deny",
+	test("Ask 对未匹配规则发起确认，显式 Allow 仍生效", () => {
+		expect(evaluatePermission(call("Bash", { command: "npm test" }), { defaultMode: "ask" }).behavior).toBe(
+			"ask",
 		);
 		expect(
 			evaluatePermission(call("Bash", { command: "npm test" }), {
-				defaultMode: "dontAsk",
+				defaultMode: "ask",
 				permission: { "process.exec": { "npm test": "allow" } },
 			}).behavior,
 		).toBe("allow");
@@ -957,7 +992,7 @@ describe("permission evaluation", () => {
 
 describe("permission settings schema", () => {
 	test("Auto 与未知字段 fail closed", () => {
-		expect(Value.Check(permissionSettingsSchema, { defaultMode: "default" })).toBe(true);
+		expect(Value.Check(permissionSettingsSchema, { defaultMode: "ask" })).toBe(true);
 		expect(Value.Check(permissionSettingsSchema, { defaultMode: "auto" })).toBe(false);
 		expect(Value.Check(permissionSettingsSchema, { managed: true })).toBe(false);
 		expect(Value.Check(permissionConfigSchema, { bash: { "npm test": "allow" } })).toBe(false);
@@ -965,7 +1000,7 @@ describe("permission settings schema", () => {
 
 	test("normalize 补齐默认值", () => {
 		expect(normalizePermissionSettings({ additionalDirectories: ["../shared", "../shared"] })).toEqual({
-			defaultMode: "default",
+			defaultMode: "ask",
 			additionalDirectories: ["../shared"],
 		});
 	});
@@ -1005,14 +1040,14 @@ describe("permission settings schema", () => {
 			expect((await store.load()).settings).toEqual({
 				permission: {},
 				permissions: {
-					defaultMode: "default",
+					defaultMode: "ask",
 					additionalDirectories: [],
 				},
 			});
 			expect((await store.setWorkspaceTrusted(true)).settings).toEqual({
 				permission: { "process.exec": { "npm test *": "allow" }, "file.read": { "**/.env": "deny" } },
 				permissions: {
-					defaultMode: "default",
+					defaultMode: "ask",
 					additionalDirectories: ["../shared"],
 				},
 			});

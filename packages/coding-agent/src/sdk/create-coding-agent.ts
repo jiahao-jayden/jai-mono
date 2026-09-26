@@ -13,7 +13,7 @@ import type { Model, Provider } from "@jai/ai";
 import { Result, type Result as ResultType } from "better-result";
 import type { CodingMessageAttachment as InternalCodingAttachment } from "../attachments";
 import { CodingCommandRegistry } from "../commands";
-import { permissionSettingsFromConfig } from "../permissions";
+import { PermissionReviewFailed, permissionSettingsFromConfig } from "../permissions";
 import {
 	type CapabilityNoticeSlot,
 	createCodingAgent as createInternalCodingAgent,
@@ -42,6 +42,7 @@ import {
 	prepareExtensions,
 } from "./extensions";
 import { resolveSdkModel } from "./model";
+import { createModelPermissionReviewer, type ResolvedReviewModel } from "./permission-review";
 import {
 	agentClosedFailure,
 	artifactsFromAppState,
@@ -143,6 +144,8 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			resolveAgentOptions: () => ({
 				maxIterations: input.maxTurns,
 				providerOptions: input.providerOptions,
+				reasoningLevel: input.reasoningLevel,
+				fastMode: input.fastMode,
 				effectBoundary: input.effectBoundary ? (input.effectBoundary as EffectBoundary) : undefined,
 			}),
 			permissions: {
@@ -158,6 +161,10 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				sessionAllowRules: input.sessionAllowRules,
 				sessionGrantWorkspaceRoot: input.sessionGrantWorkspaceRoot,
 				approvalQueue: input.approvalQueue,
+				review: createModelPermissionReviewer({
+					resolveModel: () => resolveReviewModel(input.auxiliaryModel, modelRuntime),
+					messages: (): readonly AgentMessage[] => internal.state.messages,
+				}),
 			},
 			extensionTools: extensionTools(extensions),
 			extensionBeforeModelCall: async (messages) => {
@@ -195,7 +202,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 					directory: fileCapabilities.workspaceDirectory,
 					trusted: fileCapabilities.workspaceTrusted,
 				},
-				permissionMode: input.permissionMode ?? "default",
+				permissionMode: input.permissionMode ?? "ask",
 				canReadWorkspacePath: (path) => internal.canReadWorkspacePath(path),
 			},
 			input.extensionRuntime,
@@ -605,6 +612,39 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		} catch (error) {
 			return Promise.resolve(Result.err(projectError(error, "admission")));
 		}
+	}
+}
+
+/** The auxiliary model when the Host chose one; otherwise the Agent's own resolved model. */
+function resolveReviewModel(
+	auxiliary: CodingAgentCreateOptions["auxiliaryModel"],
+	session: ResolvedReviewModel | undefined,
+): ResultType<ResolvedReviewModel, PermissionReviewFailed> {
+	if (auxiliary?.kind === "unavailable") {
+		return Result.err(
+			new PermissionReviewFailed({
+				reason: "unavailable",
+				message: "The configured auxiliary model is unavailable",
+			}),
+		);
+	}
+	if (!auxiliary) {
+		return session
+			? Result.ok(session)
+			: Result.err(new PermissionReviewFailed({ reason: "unavailable", message: "Session model is not resolved" }));
+	}
+	try {
+		return Result.ok(
+			resolveSdkModel(auxiliary.model, auxiliary.provider, auxiliary.compatibilityProfile, auxiliary.modelMetadata),
+		);
+	} catch (cause) {
+		return Result.err(
+			new PermissionReviewFailed({
+				reason: "unavailable",
+				message: "The configured auxiliary model could not be resolved",
+				cause,
+			}),
+		);
 	}
 }
 

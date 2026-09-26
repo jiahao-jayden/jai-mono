@@ -93,7 +93,7 @@ export type CodingAgentMessage =
 export type CodingAssistantMessage = Extract<CodingAgentMessage, { readonly role: "assistant" }>;
 export type CodingToolResult = Extract<CodingAgentMessage, { readonly role: "toolResult" }>;
 
-export type CodingPermissionMode = "default" | "acceptEdits" | "plan" | "dontAsk" | "bypassPermissions";
+export type CodingPermissionMode = "ask" | "allow" | "auto" | "plan";
 export type { CodingToolName } from "../tools/names";
 
 export type CodingSdkErrorPhase =
@@ -185,6 +185,22 @@ export interface CodingAgentFileCapabilities {
 	readonly workspaceTrusted: boolean;
 }
 
+/**
+ * Model for background judgements the Agent makes on its own; today only the
+ * `auto` permission review. Auxiliary requests never enable reasoning.
+ * `unavailable` marks a Host-selected model that could not be resolved: each
+ * review then falls back to asking the user instead of switching models.
+ */
+export type CodingAuxiliaryModel =
+	| {
+			readonly kind: "model";
+			readonly model: string;
+			readonly provider?: CodingProviderOptions;
+			readonly compatibilityProfile?: import("@jai/ai").ResolvedCompatibilityProfile;
+			readonly modelMetadata?: CodingModelMetadata;
+	  }
+	| { readonly kind: "unavailable" };
+
 export interface CodingAgentCreateOptions {
 	readonly model: string;
 	/** Operation-scoped compatibility snapshot resolved by the Host. */
@@ -203,9 +219,19 @@ export interface CodingAgentCreateOptions {
 	readonly fileCapabilities?: CodingAgentFileCapabilities;
 	readonly session?: CodingSessionSelection;
 	readonly permissionMode?: CodingPermissionMode;
+	/** Omitted: auxiliary judgements use this Agent's own `model` and `provider`. */
+	readonly auxiliaryModel?: CodingAuxiliaryModel;
 	readonly maxTurns?: number;
 	/** Provider-neutral request options supplied by the product runtime. */
 	readonly providerOptions?: Record<string, Record<string, unknown>>;
+	/**
+	 * Reasoning level the Host already resolved against this model's
+	 * capabilities; omitted sends no reasoning parameter. Auxiliary requests
+	 * never inherit it.
+	 */
+	readonly reasoningLevel?: import("@jai/ai").ReasoningLevel;
+	/** Set only when the Host confirmed this model supports Fast mode. */
+	readonly fastMode?: boolean;
 	readonly instructions?: string;
 	readonly compactionSummaryInstructions?: string;
 	/** Optional host-owned durable effect protocol for model and tool execution. */

@@ -199,6 +199,12 @@ export class CodingAgentTelemetryObserver implements ModelRequestObserver, Permi
 			case "permission_decided":
 				this.#observePermissionDecision(event);
 				return;
+			case "permission_reviewed":
+				this.#activePermissions.get(event.toolCallId)?.span.addEvent({
+					name: "jai.permission.reviewed",
+					attributes: { verdict: event.verdict, failure: event.failure },
+				});
+				return;
 			case "permission_settled":
 				this.#settlePermission(event.toolCallId, event.outcome);
 				return;

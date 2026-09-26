@@ -1,5 +1,5 @@
 import { branchOf, type OperationRecord } from "@jai/agent";
-import { type RuntimeSessionUsage, projectRuntimeSessionUsage } from "../operations";
+import { projectRuntimeSessionUsage, type RuntimeSessionUsage } from "../operations";
 import type { ProductSessionDurableState } from "../sessions";
 import { branchOperationRecords } from "./branch-operations";
 
@@ -58,9 +58,7 @@ export function emptyProfileTokenStats(): RuntimeProfileTokenStats {
 	};
 }
 
-export function projectProfileTokenStats(
-	sessions: readonly ProductSessionDurableState[],
-): RuntimeProfileTokenStats {
+export function projectProfileTokenStats(sessions: readonly ProductSessionDurableState[]): RuntimeProfileTokenStats {
 	const dayTotals = new Map<string, number>();
 	const modelTotals = new Map<string, { provider: string; modelId: string; totalTokens: number }>();
 	let totalTokens = 0;

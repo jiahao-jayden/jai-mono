@@ -23,13 +23,13 @@ import type { QueuedMessage } from "@/stores/chat";
 import type {
 	CodingSession,
 	DesktopAgentConnectionStatus,
-	DesktopAgentMode,
 	DesktopPermissionItem,
 	DesktopProject,
 	DesktopProviderConfigSnapshot,
 	DesktopSubagentItem,
 	DesktopTranscriptItem,
 } from "../../../../shared/desktop-rpc";
+import type { DesktopSessionControls } from "../../../../shared/session-controls";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { MessageScroller } from "../../ui/message-scroller";
@@ -67,7 +67,7 @@ interface ChatColumnProps {
 	onReorderQueuedMessages(orderedIds: readonly string[]): void;
 	providerConfig?: DesktopProviderConfigSnapshot;
 	selectedModelRef: string;
-	selectedAgentMode: DesktopAgentMode;
+	selectedControls: DesktopSessionControls;
 	providerLoading: boolean;
 	providerError: boolean;
 	projectBusy: boolean;
@@ -78,7 +78,7 @@ interface ChatColumnProps {
 	macTitleBar: boolean;
 	onOpenProviderSettings(): void;
 	onSelectProviderModel(modelRef: string): void;
-	onSelectAgentMode(mode: DesktopAgentMode): void;
+	onSelectControls(controls: DesktopSessionControls): void;
 	onChooseProject(project: DesktopProject): Promise<void>;
 	onRetryProjects(): void;
 	onRenameSession(sessionId: string, title: string): Promise<void>;
@@ -100,7 +100,7 @@ export function ChatColumn({
 	onReorderQueuedMessages,
 	providerConfig,
 	selectedModelRef,
-	selectedAgentMode,
+	selectedControls,
 	providerLoading,
 	providerError,
 	projectBusy,
@@ -111,7 +111,7 @@ export function ChatColumn({
 	macTitleBar,
 	onOpenProviderSettings,
 	onSelectProviderModel,
-	onSelectAgentMode,
+	onSelectControls,
 	onChooseProject,
 	onRetryProjects,
 	onRenameSession,
@@ -123,7 +123,6 @@ export function ChatColumn({
 	const icons = useIcons();
 	const FolderIcon = icons.folder;
 	const FolderOffIcon = icons["folder-off"];
-	const MessageIcon = icons["message-circle"];
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const transcriptListRef = useRef<TranscriptVirtualListHandle>(null);
 	const openWorkGroupsRef = useRef(new Set<string>());
@@ -492,12 +491,12 @@ export function ChatColumn({
 						onRetryProjects={onRetryProjects}
 						providerConfig={providerConfig}
 						selectedModelRef={selectedModelRef}
-						selectedAgentMode={selectedAgentMode}
+						selectedControls={selectedControls}
 						providerLoading={providerLoading}
 						providerError={providerError}
 						onOpenProviderSettings={onOpenProviderSettings}
 						onSelectProviderModel={onSelectProviderModel}
-						onSelectAgentMode={onSelectAgentMode}
+						onSelectControls={onSelectControls}
 						usage={chat.usage}
 						showProjectPicker={isNewChat}
 						large={isNewChat}

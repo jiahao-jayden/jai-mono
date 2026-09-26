@@ -11,6 +11,7 @@ import {
 } from "../../../src/operations";
 import { RuntimeHost } from "../../../src/runtime";
 import {
+	defaultRuntimeSessionConfiguration,
 	InMemoryProductSessionPersistence,
 	RuntimeSessionConfigurationInvalid,
 	type RuntimeSessionConfigurationPolicy,
@@ -281,7 +282,10 @@ describe("ACP v2 Agent adapter", () => {
 					sessionId: "session-1",
 					configOptions: [
 						{ configId: "model", category: "model", type: "select", currentValue: "profile/model-a" },
-						{ configId: "mode", category: "mode", type: "select", currentValue: "manual" },
+						{ configId: "permissionMode", type: "select", currentValue: "ask" },
+						{ configId: "interactionMode", category: "mode", type: "select", currentValue: "normal" },
+						{ configId: "reasoningLevel", category: "thought_level", type: "select", currentValue: "default" },
+						{ configId: "fastMode", category: "model_config", type: "boolean", currentValue: false },
 					],
 				},
 			},
@@ -324,7 +328,73 @@ describe("ACP v2 Agent adapter", () => {
 
 		const durable = await persistence.load("session-1");
 		if (durable.isErr()) throw durable.error;
-		expect(durable.value.runtimeConfiguration).toEqual({ model: "profile/model-b", mode: "manual" });
+		expect(durable.value.runtimeConfiguration).toEqual({
+			...defaultRuntimeSessionConfiguration,
+			model: "profile/model-b",
+		});
+	});
+
+	test("sets each Session control axis through its own ACP config option", async () => {
+		const persistence = new InMemoryProductSessionPersistence();
+		const agent = new AcpV2Agent({
+			host: new RuntimeHost({
+				persistence,
+				configurationPolicy: configuredSessionPolicy(),
+				createId: ids("session-1"),
+			}),
+			info: { name: "jai", version: "0.0.0" },
+		});
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: { protocolVersion: 2, capabilities: {}, info: { name: "test-client", version: "1.0.0" } },
+		});
+		await agent.handle({ jsonrpc: "2.0", id: 2, method: "session/new", params: { cwd: "/workspace" } });
+		const set = (id: number, params: Record<string, unknown>) =>
+			agent.handle({
+				jsonrpc: "2.0",
+				id,
+				method: "session/set_config_option",
+				params: { sessionId: "session-1", ...params },
+			});
+
+		for (const [id, params] of [
+			[3, { configId: "permissionMode", type: "id", value: "allow" }],
+			[4, { configId: "interactionMode", type: "id", value: "plan" }],
+			[5, { configId: "reasoningLevel", type: "id", value: "max" }],
+			[6, { configId: "fastMode", type: "boolean", value: true }],
+		] as const) {
+			const response = await set(id, params);
+			expect(response[0]).toHaveProperty("result");
+		}
+		const loaded = await persistence.load("session-1");
+		if (loaded.isErr()) throw loaded.error;
+		expect(loaded.value.runtimeConfiguration).toEqual({
+			model: "profile/model-a",
+			permissionMode: "allow",
+			interactionMode: "plan",
+			reasoningLevel: "max",
+			fastMode: true,
+		});
+
+		const cleared = await set(7, { configId: "reasoningLevel", type: "id", value: "default" });
+		const options = (cleared[0] as { readonly result: { readonly configOptions: readonly Record<string, unknown>[] } })
+			.result.configOptions;
+		expect(options.find((option) => option.configId === "reasoningLevel")).toMatchObject({ currentValue: "default" });
+		const afterClear = await persistence.load("session-1");
+		if (afterClear.isErr()) throw afterClear.error;
+		expect(afterClear.value.runtimeConfiguration.reasoningLevel).toBeUndefined();
+
+		for (const [id, params] of [
+			[8, { configId: "mode", type: "id", value: "automate" }],
+			[9, { configId: "permissionMode", type: "id", value: "manual" }],
+			[10, { configId: "interactionMode", type: "id", value: "debug" }],
+			[11, { configId: "reasoningLevel", type: "id", value: "ultra" }],
+			[12, { configId: "fastMode", type: "id", value: "true" }],
+		] as const) {
+			expect(await set(id, params)).toMatchObject([{ id, error: { code: -32602 } }]);
+		}
 	});
 
 	test("does not expose Desktop Catalog control methods through the ACP Agent adapter", async () => {
@@ -1437,7 +1507,7 @@ function configuredSessionPolicy(): RuntimeSessionConfigurationPolicy {
 	] as const;
 	return {
 		async initialConfiguration() {
-			return Result.ok({ model: "profile/model-a", mode: "manual" });
+			return Result.ok({ ...defaultRuntimeSessionConfiguration, model: "profile/model-a" });
 		},
 		async listModels() {
 			return Result.ok(models);

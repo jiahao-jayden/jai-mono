@@ -4,7 +4,9 @@ import type {
 	ChatCompletionCreateParamsStreaming,
 	ChatCompletionMessageParam,
 } from "openai/resources/chat/completions";
+import type { ReasoningEffort } from "openai/resources/shared";
 import { createAssistantMessage, mergeProviderOptions, parseToolArguments, runAdapterStream } from "../adapter";
+import type { CompatibilityRules, ResolvedRequestPolicy } from "../compatibility";
 import { resolveRequestPolicy } from "../compatibility";
 import { AssistantMessageEventStream } from "../event-stream";
 import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
@@ -23,7 +25,6 @@ import type {
 	ToolResultMessage,
 	Usage,
 } from "../types";
-import type { CompatibilityRules, ResolvedRequestPolicy } from "../compatibility";
 import { zeroCost } from "../utils";
 
 export interface OpenAIProviderConfig {
@@ -176,6 +177,15 @@ function buildParams(
 
 	if (options?.temperature !== undefined) {
 		params.temperature = options.temperature;
+	}
+
+	if (options?.reasoningLevel !== undefined) {
+		// The SDK's effort union lags behind models that already accept `max`.
+		params.reasoning_effort = options.reasoningLevel as ReasoningEffort;
+	}
+
+	if (options?.fastMode) {
+		params.service_tier = "priority";
 	}
 
 	if (context.tools.length > 0) {

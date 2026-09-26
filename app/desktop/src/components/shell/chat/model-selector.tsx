@@ -8,9 +8,11 @@ import { Elevated } from "@/lib/elevated";
 import { type IconComponent, resolveModelBrandIcon, resolveProviderBrandIcon, useIcons } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
 import { type DesktopProviderConfigSnapshot, isDesktopProviderModelRunnable } from "../../../../shared/desktop-rpc";
+import type { DesktopSessionControls } from "../../../../shared/session-controls";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { TooltipProvider } from "../../ui/tooltip";
+import { ModelControls } from "./model-controls";
 
 interface ModelSelectorProps {
 	config?: DesktopProviderConfigSnapshot;
@@ -18,7 +20,9 @@ interface ModelSelectorProps {
 	loading: boolean;
 	error: boolean;
 	disabled: boolean;
+	controls: DesktopSessionControls;
 	onSelect(modelRef: string): void;
+	onControlsChange(controls: DesktopSessionControls): void;
 	onManage(): void;
 }
 
@@ -28,7 +32,9 @@ export function ModelSelector({
 	loading,
 	error,
 	disabled,
+	controls,
 	onSelect,
+	onControlsChange,
 	onManage,
 }: ModelSelectorProps) {
 	const intl = useIntl();
@@ -66,6 +72,7 @@ export function ModelSelector({
 						remoteModelId: model.remoteModelId,
 						providerId: profile.id,
 						providerName: profile.name,
+						capabilities: model.capabilities,
 					})),
 				},
 			];
@@ -159,7 +166,7 @@ export function ModelSelector({
 				<Popover.Positioner side="top" align="end" sideOffset={8} className="z-50 outline-none">
 					<Popover.Popup
 						render={<Elevated offset={2} shadowLevel={5} />}
-						className="flex max-h-[min(440px,calc(100vh-120px))] w-[min(220px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg bg-popover outline-none transition-[opacity,transform] duration-150 ease-out data-starting-style:scale-[.96] data-starting-style:translate-y-[-2px] data-starting-style:opacity-0 data-ending-style:scale-[.96] data-ending-style:translate-y-[-2px] data-ending-style:opacity-0"
+						className="flex max-h-[min(440px,calc(100vh-120px))] w-[min(260px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg bg-popover outline-none transition-[opacity,transform] duration-150 ease-out data-starting-style:scale-[.96] data-starting-style:translate-y-[-2px] data-starting-style:opacity-0 data-ending-style:scale-[.96] data-ending-style:translate-y-[-2px] data-ending-style:opacity-0"
 					>
 						<div className="flex h-8 shrink-0 items-center gap-2 px-3">
 							<SearchIcon size={15} strokeWidth={1.5} className="shrink-0 text-muted-foreground" />
@@ -275,6 +282,14 @@ export function ModelSelector({
 								</TooltipProvider>
 							</div>
 						</div>
+						{selectedModel ? (
+							<ModelControls
+								capabilities={selectedModel.capabilities}
+								controls={controls}
+								disabled={disabled}
+								onChange={onControlsChange}
+							/>
+						) : null}
 						{singleProvider && (
 							<div className="flex shrink-0 items-center border-t border-border px-2 py-1">
 								<Button

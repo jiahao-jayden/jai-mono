@@ -2,9 +2,24 @@ import { TaggedError } from "better-result";
 import type { AssistantMessageEventStream } from "./event-stream";
 import type { Context, Model, ProviderAdapter } from "./types";
 
+/**
+ * Provider 无关的 reasoning 档位，从少到多排列。顺序是契约：调用方按它
+ * 向下收敛到模型支持的档位，adapter 负责映射到各自的原生参数。
+ */
+export const reasoningLevels = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+export type ReasoningLevel = (typeof reasoningLevels)[number];
+
 export interface StreamOptions {
 	/** 采样温度，不传则用 provider 默认值 */
 	temperature?: number;
+	/**
+	 * 已按模型能力解析过的 reasoning 档位；不传则不发 reasoning 参数，由 provider
+	 * 使用默认行为。adapter 无法表达的档位同样省略，不会换成别的档位。
+	 */
+	reasoningLevel?: ReasoningLevel;
+	/** 已确认模型支持时才为 true；adapter 映射到各自的优先/快速服务参数。 */
+	fastMode?: boolean;
 	/** 本次回复的输出 token 上限，不传则用 model.maxTokens */
 	maxTokens?: number;
 	/** 中断信号；触发后 stream 以 error 事件（reason: "aborted"）终止 */

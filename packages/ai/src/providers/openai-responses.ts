@@ -7,10 +7,17 @@ import type {
 	ResponseStreamEvent,
 	ResponseUsage,
 } from "openai/resources/responses/responses";
+import type { ReasoningEffort } from "openai/resources/shared";
 import { createAssistantMessage, mergeProviderOptions, parseToolArguments, runAdapterStream } from "../adapter";
 import { resolveRequestPolicy } from "../compatibility";
 import { AssistantMessageEventStream } from "../event-stream";
-import { type ModelDiscoveryOptions, modelDiscoveryFailed, type Provider, type StreamOptions } from "../provider";
+import {
+	type ModelDiscoveryOptions,
+	modelDiscoveryFailed,
+	type Provider,
+	type ReasoningLevel,
+	type StreamOptions,
+} from "../provider";
 import { assertNativeToolCallProtocol } from "../tool-protocol";
 import { transformMessagesForModel } from "../transform-messages";
 import type {
@@ -113,7 +120,7 @@ export class OpenAIResponsesProvider implements Provider {
 				const params = buildParams(model, context, options);
 				const providerOpts = options?.providerOptions?.[this.id] ?? options?.providerOptions?.[this.adapter];
 				const body = mergeProviderOptions("openai-responses", params, providerOpts, [
-					...Object.keys(params).filter((field) => field !== "reasoning"),
+					...Object.keys(params).filter((field) => field !== "reasoning" || options?.reasoningLevel !== undefined),
 					"tools",
 				]);
 				return client.responses.create(body, options?.signal ? { signal: options.signal } : undefined);
@@ -146,7 +153,20 @@ function buildParams(model: Model, context: Context, options?: StreamOptions): R
 		max_output_tokens: options?.maxTokens ?? model.maxTokens,
 		temperature: options?.temperature,
 		tools: context.tools.length === 0 ? undefined : convertTools(context.tools, policy.supportsStrictTools),
-		reasoning: policy.reasoningEnabled ? { summary: "auto" } : undefined,
+		reasoning: reasoningParam(policy.reasoningEnabled, options?.reasoningLevel),
+		service_tier: options?.fastMode ? "priority" : undefined,
+	};
+}
+
+function reasoningParam(
+	summarize: boolean,
+	level: ReasoningLevel | undefined,
+): ResponseCreateParamsStreaming["reasoning"] {
+	if (level === undefined) return summarize ? { summary: "auto" } : undefined;
+	return {
+		// The SDK's effort union lags behind models that already accept `max`.
+		effort: level as ReasoningEffort,
+		summary: summarize && level !== "none" ? "auto" : undefined,
 	};
 }
 

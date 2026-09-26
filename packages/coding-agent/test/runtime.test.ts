@@ -75,7 +75,7 @@ describe("createCodingAgent", () => {
 		try {
 			const messages = await codingAgent.invoke("hello");
 			expect(messages.at(-1)?.role).toBe("assistant");
-			expect(resolvedMode).toBe("default");
+			expect(resolvedMode).toBe("ask");
 			expect(contexts[0]?.tools.map((tool) => tool.name)).toEqual(["Read", "Bash", "Edit", "Write"]);
 			expect(JSON.stringify((await fixture.sessionStore.load("session-1"))?.snapshot.entries)).toContain(
 				'"type":"message"',

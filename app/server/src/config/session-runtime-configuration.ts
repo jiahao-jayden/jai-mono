@@ -1,6 +1,6 @@
 import { Result } from "better-result";
 import {
-	type RuntimeSessionConfiguration,
+	defaultRuntimeSessionConfiguration,
 	RuntimeSessionConfigurationInvalid,
 	type RuntimeSessionConfigurationPolicy,
 	type RuntimeSessionModelOption,
@@ -24,7 +24,7 @@ export function createRuntimeSessionConfigurationPolicy(
 		async initialConfiguration() {
 			const snapshot = settings.snapshot();
 			if (snapshot.isErr()) return Result.err(reject(snapshot.error));
-			return Result.ok({ model: snapshot.value.model, mode: snapshot.value.agentMode ?? "manual" });
+			return Result.ok({ ...defaultRuntimeSessionConfiguration, model: snapshot.value.model });
 		},
 		async listModels() {
 			const configured = settings.read();

@@ -9,7 +9,6 @@ import type {
 	DesktopAgentConnectionStatus,
 	DesktopAgentCreationFailureReason,
 	DesktopAgentEvent,
-	DesktopAgentMode,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
 	DesktopAgentStopReason,
@@ -18,6 +17,7 @@ import type {
 	DesktopPermissionResolution,
 	DesktopRunTiming,
 	DesktopSessionConfiguration,
+	DesktopSessionControls,
 	DesktopSessionUsage,
 	DesktopTodos,
 	DesktopTranscriptItem,
@@ -28,7 +28,7 @@ export type ChatStatus = "ready" | "submitted" | "streaming" | "stopping" | "err
 
 export interface ChatMessageInput {
 	readonly text: string;
-	readonly mode: DesktopAgentMode;
+	readonly controls: DesktopSessionControls;
 	readonly attachments?: readonly DesktopMessageAttachment[];
 	readonly delivery?: "queue" | "steer";
 }
@@ -38,12 +38,13 @@ export interface UseChatOptions {
 	readonly newSessionProjectId: string | null;
 	/** Preferred model when the Session has none of its own (new chats, or its model was disabled). */
 	readonly modelRef: string;
-	readonly mode: DesktopAgentMode;
+	/** Preferred Session controls when the Session has none of its own yet. */
+	readonly controls: DesktopSessionControls;
 	readonly availableModelRefs: readonly string[];
 	readonly queue: readonly QueuedMessage[];
 	onSessionCreated(sessionId: string): void;
 	onMessageAccepted(sessionId: string): void;
-	onMessageQueued(text: string, mode: DesktopAgentMode, modelRef: string): void;
+	onMessageQueued(text: string, controls: DesktopSessionControls, modelRef: string): void;
 	onQueuedMessageAccepted(messageId: string): void;
 }
 
@@ -60,9 +61,9 @@ export interface Chat {
 	readonly errorKey: number;
 	readonly connectionStatus: DesktopAgentConnectionStatus | undefined;
 	readonly stopReason: DesktopAgentStopReason | undefined;
-	/** Model and mode the next message will use. */
+	/** Model and Session controls the next message will use. */
 	readonly modelRef: string;
-	readonly mode: DesktopAgentMode;
+	readonly controls: DesktopSessionControls;
 	configure(selection: DesktopSessionConfiguration): Promise<void>;
 	sendMessage(message: ChatMessageInput): Promise<boolean>;
 	steerQueuedMessage(message: QueuedMessage): Promise<boolean>;
@@ -100,7 +101,7 @@ interface QueuedMessageSteerOperation {
 		readonly sessionId: string;
 		readonly message: string;
 		readonly modelRef: string;
-		readonly mode: DesktopAgentMode;
+		readonly controls: DesktopSessionControls;
 	}): Promise<void>;
 	onAccepted(messageId: string): void;
 	onRejected(error: unknown): void;
@@ -149,7 +150,7 @@ export async function runQueuedMessageSteer(operation: QueuedMessageSteerOperati
 			sessionId: operation.sessionId,
 			message: operation.message.text,
 			modelRef: operation.modelRef,
-			mode: operation.message.mode,
+			controls: operation.message.controls,
 		});
 		operation.onAccepted(operation.message.id);
 		return true;
@@ -177,8 +178,8 @@ export function useChat(options: UseChatOptions): Chat {
 	const transcriptFlushFrameRef = useRef<number | undefined>(undefined);
 	const sessionConfiguration = state.sessionId === options.id ? state.configuration : undefined;
 	const modelRef = resolveChatModelRef([sessionConfiguration?.modelRef, options.modelRef], options.availableModelRefs);
-	const mode = sessionConfiguration?.mode ?? options.mode;
-	latestOptions.current = { ...options, modelRef, mode };
+	const controls = sessionConfiguration?.controls ?? options.controls;
+	latestOptions.current = { ...options, modelRef, controls };
 	stateRef.current = state;
 
 	const flushPendingTranscript = useCallback(() => {
@@ -301,7 +302,7 @@ export function useChat(options: UseChatOptions): Chat {
 				sessionId: current.sessionId,
 				message: head.text,
 				modelRef: headModelRef,
-				mode: head.mode,
+				controls: head.controls,
 			});
 			latest.onQueuedMessageAccepted(head.id);
 		} catch (error) {
@@ -337,7 +338,7 @@ export function useChat(options: UseChatOptions): Chat {
 	}, [dispatchQueueHead, options.queue]);
 
 	const sendMessage = useCallback(
-		async ({ text: rawText, mode, attachments = [], delivery = "queue" }: ChatMessageInput): Promise<boolean> => {
+		async ({ text: rawText, controls, attachments = [], delivery = "queue" }: ChatMessageInput): Promise<boolean> => {
 			const text = rawText.trim();
 			const fallbackFirstMessage =
 				text || `Attached ${attachments.length} file${attachments.length === 1 ? "" : "s"}`;
@@ -359,7 +360,7 @@ export function useChat(options: UseChatOptions): Chat {
 					return false;
 				}
 				if (delivery === "queue") {
-					latest.onMessageQueued(text, mode, latest.modelRef);
+					latest.onMessageQueued(text, controls, latest.modelRef);
 					latest.onMessageAccepted(current.sessionId);
 					return true;
 				}
@@ -368,7 +369,7 @@ export function useChat(options: UseChatOptions): Chat {
 						sessionId: current.sessionId,
 						message: text,
 						modelRef: latest.modelRef,
-						mode,
+						controls,
 					});
 					latest.onMessageAccepted(current.sessionId);
 					return true;
@@ -401,7 +402,7 @@ export function useChat(options: UseChatOptions): Chat {
 						sessionId: current.sessionId,
 						message: text,
 						modelRef: latest.modelRef,
-						mode,
+						controls,
 						attachments: attachments.length > 0 ? attachments : undefined,
 					});
 					latest.onMessageAccepted(current.sessionId);
@@ -418,7 +419,7 @@ export function useChat(options: UseChatOptions): Chat {
 					sessionId: session.id,
 					message: text,
 					modelRef: latest.modelRef,
-					mode,
+					controls,
 					attachments: attachments.length > 0 ? attachments : undefined,
 				});
 				latest.onMessageAccepted(session.id);
@@ -491,7 +492,7 @@ export function useChat(options: UseChatOptions): Chat {
 				sessionId: current.sessionId,
 				entryId,
 				modelRef: latest.modelRef,
-				mode: latest.mode,
+				controls: latest.controls,
 			});
 			await dispatcher?.refresh(current.sessionId);
 			return true;
@@ -557,7 +558,7 @@ export function useChat(options: UseChatOptions): Chat {
 		connectionStatus: state.connectionStatus,
 		stopReason: state.stopReason,
 		modelRef,
-		mode,
+		controls,
 		configure,
 		sendMessage,
 		steerQueuedMessage,

@@ -3,11 +3,9 @@ import { AnthropicProvider, OpenAIProvider, OpenAIResponsesProvider, type Provid
 import type { CodingProviderOptions, JsonObject } from "@jai/coding-agent";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
 import type { DatabaseSync } from "../persistence/sqlite/driver";
-import { isRuntimeSessionMode, type RuntimeSessionMode } from "../sessions";
 
 export type RuntimeProviderAdapter = "anthropic" | "openai-compatible" | "openai-responses";
 export type RuntimeProviderAuthentication = "api-key" | "none";
-export type RuntimeReasoningEffort = "low" | "medium" | "high";
 
 /** Durable, non-secret model selection inside a configured Provider profile. */
 export interface RuntimeProviderModel {
@@ -152,16 +150,24 @@ export interface RuntimeWebFetchSettingsProjection {
 }
 
 /**
+ * The auxiliary model used for background judgements; today only `auto`
+ * permission review. An absent `model` follows the Session model, which is
+ * only known per Operation, so it is never resolved here.
+ */
+export interface RuntimeAuxiliaryModelSettings {
+	readonly model?: string;
+}
+
+/**
  * Canonical product configuration used to assemble a Coding Agent. Secrets
  * stay in this Server-side fact; clients receive only a safe projection.
  */
 export interface RuntimeAgentSettings {
 	readonly model: string;
-	/** Mode new Sessions start in; the last one the user picked. */
-	readonly agentMode?: RuntimeSessionMode;
 	readonly maxTurns?: number;
 	readonly language?: string;
-	readonly reasoningEffort?: RuntimeReasoningEffort;
+	/** Stored only while a model is chosen; absent means "follow the Session model". */
+	readonly auxiliaryModel?: RuntimeAuxiliaryModelSettings;
 	readonly providers: Readonly<Record<string, RuntimeProviderProfile>>;
 	readonly extensions: Readonly<Record<string, JsonObject>>;
 	readonly connector?: RuntimeConnectorSettings;
@@ -190,7 +196,8 @@ export interface RuntimeAgentSettingsInput {
 	readonly model: string;
 	readonly maxTurns?: number;
 	readonly language?: string;
-	readonly reasoningEffort?: RuntimeReasoningEffort;
+	/** Omitted keeps the stored choice; `{}` returns to following the Session model. */
+	readonly auxiliaryModel?: RuntimeAuxiliaryModelSettings;
 	readonly providers: readonly RuntimeProviderProfileInput[];
 	readonly connector?: RuntimeConnectorSettings;
 	readonly webSearch?: RuntimeWebSearchSettingsInput;
@@ -221,10 +228,9 @@ export interface RuntimeAgentSettingsSnapshot {
 	/** null means the Host is ready to be configured but has no durable settings yet. */
 	readonly revision: string | null;
 	readonly model: string;
-	readonly agentMode?: RuntimeSessionMode;
 	readonly maxTurns?: number;
 	readonly language?: string;
-	readonly reasoningEffort?: RuntimeReasoningEffort;
+	readonly auxiliaryModel: RuntimeAuxiliaryModelSettings;
 	readonly profiles: readonly RuntimeProviderProfileProjection[];
 	readonly connector: RuntimeConnectorProjection;
 	readonly webSearch: RuntimeWebSearchSettingsProjection;
@@ -235,7 +241,14 @@ export interface ResolvedRuntimeAgentOptions {
 	readonly provider?: CodingProviderOptions;
 	readonly maxTurns?: number;
 	readonly instructions?: string;
-	readonly providerOptions?: Record<string, Record<string, unknown>>;
+}
+
+/** An SDK model reference and its connection, without any Session execution options. */
+export type ResolvedRuntimeModelConnection = Pick<ResolvedRuntimeAgentOptions, "model" | "provider">;
+
+export interface ResolvedRuntimeAuxiliaryModel extends ResolvedRuntimeModelConnection {
+	/** The stored `<profile>/<model>` reference, used to look up catalog metadata. */
+	readonly reference: string;
 }
 
 export class RuntimeAgentSettingsMissing extends TaggedError("runtime_config.agent_settings_missing")<{
@@ -304,6 +317,18 @@ export class SqliteRuntimeAgentSettings {
 				updated_at TEXT NOT NULL
 			);
 		`);
+		// Data migration: settings once held the composer's `manual / automate /
+		// plan` mode (#131) and a global `low / medium / high` reasoning effort
+		// (#133). Both moved to per-Session configuration, and strict validation
+		// would otherwise reject the whole settings row. Removing only those keys
+		// keeps every other setting, including Provider credentials, intact.
+		this.database.exec(`
+			UPDATE runtime_agent_settings
+			SET settings_json = json_remove(settings_json, '$.agentMode', '$.reasoningEffort')
+			WHERE CASE WHEN json_valid(settings_json)
+				THEN json_type(settings_json, '$.agentMode') IS NOT NULL OR json_type(settings_json, '$.reasoningEffort') IS NOT NULL
+				ELSE 0 END;
+		`);
 	}
 
 	subscribe(listener: () => void): () => void {
@@ -360,6 +385,7 @@ export class SqliteRuntimeAgentSettings {
 				return Result.ok({
 					revision: null,
 					model: "",
+					auxiliaryModel: {},
 					profiles: [],
 					connector: projectConnector(undefined),
 					webSearch: projectWebSearch(undefined),
@@ -427,13 +453,13 @@ export class SqliteRuntimeAgentSettings {
 		return this.persist({ ...current.value.settings, language }, current.value.revision, now);
 	}
 
-	/** Remembers the composer's model and mode so the next Session and app launch start from them. */
+	/** Remembers the composer's model so the next Session and app launch start from it. */
 	setSelection(
-		selection: { readonly model: string; readonly agentMode: string },
+		selection: { readonly model: string },
 		now = new Date().toISOString(),
 	): ResultType<RuntimeAgentSettingsSnapshot, RuntimeAgentSettingsWriteError> {
-		const { model, agentMode } = selection;
-		if (!validModelReference(model) || !isRuntimeSessionMode(agentMode)) {
+		const { model } = selection;
+		if (!validModelReference(model)) {
 			return Result.err(new RuntimeAgentSettingsInvalid({ message: "Runtime Agent selection is invalid" }));
 		}
 		const current = this.current();
@@ -441,7 +467,7 @@ export class SqliteRuntimeAgentSettings {
 			if (current.error._tag !== "runtime_config.agent_settings_missing") return Result.err(current.error);
 			return Result.err(new RuntimeAgentSettingsInvalid({ message: `Model "${model}" is not configured` }));
 		}
-		const next = { ...current.value.settings, model, agentMode };
+		const next = { ...current.value.settings, model };
 		const resolved = resolveRuntimeAgentOptions(next);
 		if (resolved.isErr()) return Result.err(resolved.error);
 		return this.persist(next, current.value.revision, now);
@@ -524,6 +550,24 @@ export class SqliteRuntimeAgentSettings {
 			...settings.value,
 			model: model ?? settings.value.model,
 		});
+	}
+
+	/**
+	 * Resolves the configured auxiliary model's connection only: auxiliary
+	 * requests never inherit instructions, reasoning or other provider options.
+	 * `undefined` means none is configured and the Session model is used.
+	 */
+	resolveAuxiliaryModel(): ResultType<
+		ResolvedRuntimeAuxiliaryModel | undefined,
+		RuntimeAgentSettingsReadError | RuntimeAgentSettingsInvalid
+	> {
+		const settings = this.read();
+		if (settings.isErr()) return Result.err(settings.error);
+		const reference = settings.value.auxiliaryModel?.model;
+		if (reference === undefined) return Result.ok(undefined);
+		const connection = resolveModelConnection(settings.value, reference);
+		if (connection.isErr()) return Result.err(connection.error);
+		return Result.ok({ reference, ...connection.value });
 	}
 
 	/**
@@ -927,7 +971,7 @@ export function parseRuntimeAgentSettingsInput(value: unknown): RuntimeAgentSett
 			"model",
 			"maxTurns",
 			"language",
-			"reasoningEffort",
+			"auxiliaryModel",
 			"providers",
 			"connector",
 			"webSearch",
@@ -941,8 +985,7 @@ export function parseRuntimeAgentSettingsInput(value: unknown): RuntimeAgentSett
 		return undefined;
 	const language = value.language;
 	if (language !== undefined && (typeof language !== "string" || !languagePattern.test(language))) return undefined;
-	const reasoningEffort = value.reasoningEffort;
-	if (reasoningEffort !== undefined && !isReasoningEffort(reasoningEffort)) return undefined;
+	if (value.auxiliaryModel !== undefined && !isAuxiliaryModelSettings(value.auxiliaryModel)) return undefined;
 	if (!Array.isArray(value.providers)) return undefined;
 	if (value.connector !== undefined && !isRuntimeConnectorSettings(value.connector)) return undefined;
 	if (value.webSearch !== undefined && !isRuntimeWebSearchSettingsInput(value.webSearch)) return undefined;
@@ -953,7 +996,7 @@ export function parseRuntimeAgentSettingsInput(value: unknown): RuntimeAgentSett
 		model: value.model,
 		maxTurns: maxTurns,
 		language: language,
-		reasoningEffort: reasoningEffort,
+		auxiliaryModel: value.auxiliaryModel,
 		providers: providers as RuntimeProviderProfileInput[],
 		connector: value.connector,
 		webSearch: value.webSearch,
@@ -963,19 +1006,25 @@ export function parseRuntimeAgentSettingsInput(value: unknown): RuntimeAgentSett
 export function resolveRuntimeAgentOptions(
 	settings: RuntimeAgentSettings,
 ): ResultType<ResolvedRuntimeAgentOptions, RuntimeAgentSettingsInvalid> {
-	const separator = settings.model.indexOf("/");
-	const profileId = separator > 0 ? settings.model.slice(0, separator) : "";
-	const remoteModelId = separator > 0 ? settings.model.slice(separator + 1) : "";
+	const connection = resolveModelConnection(settings, settings.model);
+	if (connection.isErr()) return connection;
+	return Result.ok({
+		...connection.value,
+		maxTurns: settings.maxTurns || undefined,
+		instructions: settings.language ? `Respond in ${settings.language}.` : undefined,
+	});
+}
+
+/** Maps a `<profile>/<model>` reference onto the SDK model reference and its Provider connection. */
+function resolveModelConnection(
+	settings: RuntimeAgentSettings,
+	modelReference: string,
+): ResultType<ResolvedRuntimeModelConnection, RuntimeAgentSettingsInvalid> {
+	const separator = modelReference.indexOf("/");
+	const profileId = separator > 0 ? modelReference.slice(0, separator) : "";
+	const remoteModelId = separator > 0 ? modelReference.slice(separator + 1) : "";
 	const profile = profileId ? settings.providers[profileId] : undefined;
-	const execution = resolveExecutionOptions(settings, profile ? sdkProviderKind(profile.adapter) : profileId);
-	if (execution.isErr()) return execution;
-	if (!profile) {
-		return Result.ok({
-			model: settings.model,
-			maxTurns: settings.maxTurns || undefined,
-			...execution.value,
-		});
-	}
+	if (!profile) return Result.ok({ model: modelReference });
 	if (!profile.enabled) {
 		return Result.err(
 			new RuntimeAgentSettingsInvalid({
@@ -987,7 +1036,7 @@ export function resolveRuntimeAgentOptions(
 	if (!selected?.enabled) {
 		return Result.err(
 			new RuntimeAgentSettingsInvalid({
-				message: `Model "${settings.model}" is not enabled in Provider profile "${profileId}"`,
+				message: `Model "${modelReference}" is not enabled in Provider profile "${profileId}"`,
 			}),
 		);
 	}
@@ -998,49 +1047,15 @@ export function resolveRuntimeAgentOptions(
 			}),
 		);
 	}
-	const model = `${sdkProviderKind(profile.adapter)}/${selected.remoteModelId ?? selected.id}`;
 	return Result.ok({
-		model,
+		model: `${sdkProviderKind(profile.adapter)}/${selected.remoteModelId ?? selected.id}`,
 		provider: {
 			apiKey: profile.apiKey || undefined,
 			baseUrl: profile.baseURL || undefined,
 			headers: profile.headers || undefined,
 			authentication: providerAuthentication(profile.adapter, profile.authentication),
 		},
-		maxTurns: settings.maxTurns || undefined,
-		...execution.value,
 	});
-}
-
-function resolveExecutionOptions(
-	settings: RuntimeAgentSettings,
-	providerKind: string,
-): ResultType<Pick<ResolvedRuntimeAgentOptions, "instructions" | "providerOptions">, RuntimeAgentSettingsInvalid> {
-	const instructions = settings.language ? `Respond in ${settings.language}.` : undefined;
-	if (!settings.reasoningEffort) return Result.ok(instructions ? { instructions } : {});
-	if (providerKind === "openai") {
-		return Result.ok({
-			instructions: instructions || undefined,
-			providerOptions: {
-				openai: {
-					reasoning: { effort: settings.reasoningEffort, summary: "auto" },
-				},
-			},
-		});
-	}
-	if (providerKind === "openai-compatible") {
-		return Result.ok({
-			instructions: instructions || undefined,
-			providerOptions: {
-				"openai-compatible": { reasoning_effort: settings.reasoningEffort },
-			},
-		});
-	}
-	return Result.err(
-		new RuntimeAgentSettingsInvalid({
-			message: `Model "${settings.model}" does not support a configured reasoning effort`,
-		}),
-	);
 }
 
 function parseProfileInput(value: unknown): RuntimeProviderProfileInput | undefined {
@@ -1142,15 +1157,12 @@ function settingsFromInput(
 			: normalizeWebSearchSettings(input.webSearch, current.webSearch);
 	if (webSearch instanceof RuntimeAgentSettingsInvalid) return Result.err(webSearch);
 	const connector =
-		input.connector === undefined
-			? current.connector
-			: mergeConnectorSettings(input.connector, current.connector);
+		input.connector === undefined ? current.connector : mergeConnectorSettings(input.connector, current.connector);
 	return validateSettings({
 		model: repairDefaultModel(input.model.trim(), providers, current.providers),
-		agentMode: current.agentMode,
 		maxTurns: input.maxTurns,
 		language: input.language,
-		reasoningEffort: input.reasoningEffort,
+		auxiliaryModel: input.auxiliaryModel === undefined ? current.auxiliaryModel : input.auxiliaryModel,
 		providers,
 		extensions: current.extensions,
 		connector,
@@ -1265,10 +1277,9 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 		!isRecord(value) ||
 		!hasOnly(value, [
 			"model",
-			"agentMode",
 			"maxTurns",
 			"language",
-			"reasoningEffort",
+			"auxiliaryModel",
 			"providers",
 			"extensions",
 			"connector",
@@ -1288,14 +1299,6 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 			}),
 		);
 	}
-	const agentMode = value.agentMode;
-	if (agentMode !== undefined && (typeof agentMode !== "string" || !isRuntimeSessionMode(agentMode))) {
-		return Result.err(
-			new RuntimeAgentSettingsInvalid({
-				message: "Runtime Agent mode must be manual, automate, or plan",
-			}),
-		);
-	}
 	const maxTurns = value.maxTurns;
 	if (maxTurns !== undefined && (typeof maxTurns !== "number" || !Number.isInteger(maxTurns) || maxTurns < 1)) {
 		return Result.err(
@@ -1312,14 +1315,14 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 			}),
 		);
 	}
-	const reasoningEffort = value.reasoningEffort;
-	if (reasoningEffort !== undefined && !isReasoningEffort(reasoningEffort)) {
+	if (value.auxiliaryModel !== undefined && !isAuxiliaryModelSettings(value.auxiliaryModel)) {
 		return Result.err(
 			new RuntimeAgentSettingsInvalid({
-				message: "Runtime Agent reasoning effort is invalid",
+				message: "Runtime Agent auxiliary model must use <provider-or-profile>/<model>",
 			}),
 		);
 	}
+	const auxiliaryModel = value.auxiliaryModel?.model?.trim();
 	if (
 		!isRecord(value.providers) ||
 		!isJsonObjectRecord(value.extensions) ||
@@ -1368,28 +1371,18 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 			modelInventory: parsed.modelInventory,
 		};
 	}
-	const settings: RuntimeAgentSettings = {
+	return Result.ok({
 		model: value.model.trim(),
-		agentMode,
 		maxTurns,
 		language,
-		reasoningEffort,
+		auxiliaryModel: auxiliaryModel ? { model: auxiliaryModel } : undefined,
 		providers,
 		extensions: structuredClone(value.extensions) as Readonly<Record<string, JsonObject>>,
 		connector:
-			value.connector === undefined
-				? undefined
-				: (structuredClone(value.connector) as RuntimeConnectorSettings),
+			value.connector === undefined ? undefined : (structuredClone(value.connector) as RuntimeConnectorSettings),
 		webSearch:
-			value.webSearch === undefined
-				? undefined
-				: (structuredClone(value.webSearch) as RuntimeWebSearchSettings),
-	};
-	const separator = settings.model.indexOf("/");
-	const profileId = separator > 0 ? settings.model.slice(0, separator) : "";
-	const profile = profileId ? settings.providers[profileId] : undefined;
-	const execution = resolveExecutionOptions(settings, profile ? sdkProviderKind(profile.adapter) : profileId);
-	return execution.isErr() ? execution : Result.ok(settings);
+			value.webSearch === undefined ? undefined : (structuredClone(value.webSearch) as RuntimeWebSearchSettings),
+	});
 }
 
 function parseStoredProfile(value: unknown): RuntimeProviderProfile | undefined {
@@ -1444,10 +1437,9 @@ function projectSnapshot(settings: RuntimeAgentSettings, revision: string): Runt
 	return {
 		revision,
 		model: settings.model,
-		agentMode: settings.agentMode,
 		maxTurns: settings.maxTurns,
 		language: settings.language,
-		reasoningEffort: settings.reasoningEffort,
+		auxiliaryModel: { model: settings.auxiliaryModel?.model },
 		profiles: Object.entries(settings.providers)
 			.map(([id, profile]) => {
 				const projected: {
@@ -1493,8 +1485,7 @@ function projectModels(profile: RuntimeProviderProfile): readonly RuntimeProvide
 			const configured = configuredByRemoteId.get(remoteModelId);
 			return {
 				id: configured?.id ?? remoteModelId,
-				remoteModelId:
-					configured?.remoteModelId || configured?.id !== remoteModelId ? remoteModelId : undefined,
+				remoteModelId: configured?.remoteModelId || configured?.id !== remoteModelId ? remoteModelId : undefined,
 				enabled: configured?.enabled ?? false,
 			};
 		})
@@ -1873,8 +1864,16 @@ function isAdapter(value: unknown): value is RuntimeProviderAdapter {
 	return value === "anthropic" || value === "openai-compatible" || value === "openai-responses";
 }
 
-function isReasoningEffort(value: unknown): value is RuntimeReasoningEffort {
-	return value === "low" || value === "medium" || value === "high";
+/**
+ * Only the reference shape is checked: a chosen model may be disabled later,
+ * and the Operation that cannot resolve it asks the user instead of reviewing.
+ */
+function isAuxiliaryModelSettings(value: unknown): value is RuntimeAuxiliaryModelSettings {
+	return (
+		isRecord(value) &&
+		hasOnly(value, ["model"]) &&
+		(value.model === undefined || (typeof value.model === "string" && validModelReference(value.model.trim())))
+	);
 }
 
 function isAuthentication(value: unknown): value is RuntimeProviderAuthentication {

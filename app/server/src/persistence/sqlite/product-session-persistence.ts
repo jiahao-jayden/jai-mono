@@ -2,9 +2,9 @@ import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { type JsonObject, type OperationRecord, replay, type SessionEntry, type StoredSession } from "@jai/agent";
 import { Result, type Result as ResultType, TaggedError } from "better-result";
-import type { RuntimeSessionConfiguration } from "../../sessions";
 import {
 	type CreateJournalOnlySession,
+	isRuntimeSessionConfiguration,
 	type OperationRecordAppend,
 	ProductSessionAdmissionConflict,
 	ProductSessionAlreadyExists,
@@ -14,6 +14,7 @@ import {
 	type ProductSessionPersistence,
 	type PromptAdmissionTransaction,
 	type RuntimeConfigurationAppend,
+	type RuntimeSessionConfiguration,
 	type SessionEntryAppend,
 } from "../../sessions";
 import { DatabaseSync } from "./driver";
@@ -38,6 +39,11 @@ interface OperationRow {
 
 interface RuntimeConfigurationRow {
 	readonly sequence: number;
+	readonly configuration_json: string;
+}
+
+interface StoredRuntimeConfigurationRow {
+	readonly session_id: string;
 	readonly configuration_json: string;
 }
 
@@ -85,6 +91,14 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 	async create(
 		input: import("../../sessions").CreateProductSession<TAppState>,
 	): Promise<ResultType<void, ProductSessionAlreadyExists | ProductSessionAdmissionConflict>> {
+		if (!isRuntimeSessionConfiguration(input.runtimeConfiguration)) {
+			return Result.err(
+				new ProductSessionAdmissionConflict({
+					message: `Runtime configuration for Session "${input.id}" is invalid`,
+					sessionId: input.id,
+				}),
+			);
+		}
 		try {
 			this.transaction(() => {
 				this.database
@@ -382,7 +396,14 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 						`INSERT INTO session_journals (id, revision, initial_app_state_json, created_at, updated_at, last_prompt_at)
 						 VALUES (?, ?, ?, ?, ?, ?)`,
 					)
-					.run(input.id, revision, JSON.stringify(input.appState), input.createdAt, input.createdAt, input.createdAt);
+					.run(
+						input.id,
+						revision,
+						JSON.stringify(input.appState),
+						input.createdAt,
+						input.createdAt,
+						input.createdAt,
+					);
 				this.database
 					.prepare("INSERT INTO session_fact_sequences (session_id, next_sequence) VALUES (?, 0)")
 					.run(input.id);
@@ -460,6 +481,42 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 					`Could not append Session Journal entry for Session "${input.sessionId}"`,
 					error,
 				),
+			);
+		}
+	}
+
+	/**
+	 * Deletes every Session whose stored Runtime configuration does not decode
+	 * with the current contract, and returns their ids. Sessions written before
+	 * permission, interaction and model controls were split (`manual /
+	 * automate / plan`) are not migrated: product decision in #130/#131.
+	 *
+	 * Any undecodable fact condemns the whole Session because accepted
+	 * Operations point at historical configuration facts that recovery must
+	 * read. Deleting the journal row cascades to entries, Operation records,
+	 * configuration facts, the Session catalog and Desktop Catalog metadata,
+	 * matching Desktop's own Session deletion. The Runtime Host calls this once
+	 * at startup, before any Session can be listed, resumed or prompted; after
+	 * that, an undecodable fact is corruption and reads keep failing loudly.
+	 */
+	deleteSessionsWithIncompatibleConfiguration(): ResultType<readonly string[], ProductSessionAdmissionConflict> {
+		try {
+			const deleted = this.transaction(() => {
+				const rows = this.database
+					.prepare("SELECT session_id, configuration_json FROM product_session_runtime_configurations")
+					.all() as unknown as StoredRuntimeConfigurationRow[];
+				const incompatible = new Set<string>();
+				for (const row of rows) {
+					if (!decodesRuntimeSessionConfiguration(row.configuration_json)) incompatible.add(row.session_id);
+				}
+				const remove = this.database.prepare("DELETE FROM session_journals WHERE id = ?");
+				for (const sessionId of incompatible) remove.run(sessionId);
+				return [...incompatible].sort();
+			});
+			return Result.ok(deleted);
+		} catch (error) {
+			return Result.err(
+				this.conflict("", "Could not delete Sessions with incompatible Runtime configuration", error),
 			);
 		}
 	}
@@ -853,12 +910,12 @@ function isOperationTerminalOutcome(value: unknown): value is import("@jai/agent
 	);
 }
 
-function isRuntimeSessionConfiguration(value: unknown): value is RuntimeSessionConfiguration {
-	return (
-		isJsonObject(value) &&
-		typeof value.model === "string" &&
-		(value.mode === "manual" || value.mode === "automate" || value.mode === "plan")
-	);
+function decodesRuntimeSessionConfiguration(raw: string): boolean {
+	try {
+		return isRuntimeSessionConfiguration(JSON.parse(raw) as unknown);
+	} catch {
+		return false;
+	}
 }
 
 function isUniqueViolation(error: unknown): boolean {

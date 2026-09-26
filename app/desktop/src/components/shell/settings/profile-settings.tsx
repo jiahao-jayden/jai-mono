@@ -6,9 +6,9 @@ import { desktopQueryKeys } from "@/lib/desktop-query";
 import { useIcon } from "@/lib/icon-context";
 import type { DesktopProfileTokenStats } from "../../../../shared/desktop-rpc";
 import { EMPTY_DESKTOP_PROFILE_TOKEN_STATS } from "../../../../shared/desktop-rpc";
+import { ActivityHeatmap } from "../../ui/activity-heatmap";
 import { Button } from "../../ui/button";
 import { formatSessionTokens } from "../chat/session-usage";
-import { ActivityHeatmap } from "../../ui/activity-heatmap";
 
 export function ProfileSettings() {
 	const intl = useIntl();
@@ -99,17 +99,20 @@ export function ProfileTokenDashboard({
 			</div>
 
 			{tokensUnavailable ? (
-				<p className="rounded-xl bg-muted/60 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground" role="status">
+				<p
+					className="rounded-xl bg-muted/60 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground"
+					role="status"
+				>
 					{stats.promptCount > 0
 						? intl.formatMessage(desktopMessages.settingsProfileTokensUnavailableWithPrompts)
 						: intl.formatMessage(desktopMessages.settingsProfileTokensEmpty)}
 				</p>
 			) : null}
 
-		<section className="flex flex-col gap-3">
-			<h3 className="text-[13px] font-medium">{intl.formatMessage(desktopMessages.settingsProfileHeatmap)}</h3>
-			<ActivityHeatmap days={stats.days} empty={tokensUnavailable} />
-		</section>
+			<section className="flex flex-col gap-3">
+				<h3 className="text-[13px] font-medium">{intl.formatMessage(desktopMessages.settingsProfileHeatmap)}</h3>
+				<ActivityHeatmap days={stats.days} empty={tokensUnavailable} />
+			</section>
 
 			<section className="flex flex-col gap-3">
 				<h3 className="text-[13px] font-medium">{intl.formatMessage(desktopMessages.settingsProfileModels)}</h3>

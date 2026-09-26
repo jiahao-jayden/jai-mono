@@ -10,6 +10,11 @@ import type {
 import { DesktopAcpAgentHost } from "../electron/agent/acp-host";
 import type { DesktopRuntimeHostSupervisor } from "../electron/runtime-host/supervisor";
 import type { DesktopAgentEventEnvelope, DesktopToolItem } from "../shared/desktop-rpc";
+import { defaultDesktopSessionControls, type DesktopSessionControls } from "../shared/session-controls";
+
+const controls = defaultDesktopSessionControls;
+/** An unconfigured runtime sends every Session config option once, model first. */
+const initialConfigurationCalls = Array.from({ length: 5 }, () => "session/set_config_option");
 
 describe("DesktopAcpAgentHost", () => {
 	test("does not open an ACP session without an accessible workspace", async () => {
@@ -20,7 +25,7 @@ describe("DesktopAcpAgentHost", () => {
 		});
 
 		await expect(
-			host.send({ sessionId: "session-1", modelRef: "profile/model", mode: "manual", message: "hello" }),
+			host.send({ sessionId: "session-1", modelRef: "profile/model", controls, message: "hello" }),
 		).rejects.toMatchObject({
 			_tag: "desktop_agent.workspace_required",
 		});
@@ -37,7 +42,7 @@ describe("DesktopAcpAgentHost", () => {
 			resolveSessionCwd: async () => "/workspace",
 		});
 
-		await host.send({ sessionId: "session-1", modelRef: "profile/model", mode: "manual", message: "hello" });
+		await host.send({ sessionId: "session-1", modelRef: "profile/model", controls, message: "hello" });
 		client.publish({
 			jsonrpc: "2.0",
 			method: "session/update",
@@ -66,8 +71,7 @@ describe("DesktopAcpAgentHost", () => {
 		expect(client.methods).toEqual([
 			"initialize",
 			"session/resume",
-			"session/set_config_option",
-			"session/set_config_option",
+			...initialConfigurationCalls,
 			"session/prompt",
 		]);
 		expect(host.getSnapshot("session-1")).toMatchObject({
@@ -99,13 +103,12 @@ describe("DesktopAcpAgentHost", () => {
 		});
 
 		await host.ensureSessionProjection("session-1");
-		await host.send({ sessionId: "session-1", modelRef: "profile/model", mode: "manual", message: "continue" });
+		await host.send({ sessionId: "session-1", modelRef: "profile/model", controls, message: "continue" });
 
 		expect(client.methods).toEqual([
 			"initialize",
 			"session/resume",
-			"session/set_config_option",
-			"session/set_config_option",
+			...initialConfigurationCalls,
 			"session/prompt",
 		]);
 		expect(client.params[1]).toEqual({
@@ -116,13 +119,22 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
-	test("adopts the Session's remembered model and mode and forwards later configuration changes", async () => {
+	test("adopts the Session's remembered configuration and forwards only changed options", async () => {
 		const client = new FakeAcpClient();
-		const configOptions = (model: string, mode: string) => [
+		const configOptions = (model: string, remembered: DesktopSessionControls) => [
 			{ configId: "model", currentValue: model },
-			{ configId: "mode", currentValue: mode },
+			{ configId: "permissionMode", currentValue: remembered.permissionMode },
+			{ configId: "interactionMode", currentValue: remembered.interactionMode },
+			{ configId: "reasoningLevel", currentValue: remembered.reasoningLevel ?? "default" },
+			{ configId: "fastMode", currentValue: remembered.fastMode },
 		];
-		client.resumeResult = { configOptions: configOptions("profile/remembered", "plan") };
+		const planned: DesktopSessionControls = {
+			permissionMode: "allow",
+			interactionMode: "plan",
+			reasoningLevel: "high",
+			fastMode: true,
+		};
+		client.resumeResult = { configOptions: configOptions("profile/remembered", planned) };
 		const events: DesktopAgentEventEnvelope[] = [];
 		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
 			client,
@@ -130,24 +142,52 @@ describe("DesktopAcpAgentHost", () => {
 		});
 
 		const snapshot = await host.ensureSessionProjection("session-1");
-		expect(snapshot.configuration).toEqual({ modelRef: "profile/remembered", mode: "plan" });
+		expect(snapshot.configuration).toEqual({ modelRef: "profile/remembered", controls: planned });
 
-		await host.send({ sessionId: "session-1", modelRef: "profile/remembered", mode: "plan", message: "hi" });
+		await host.send({ sessionId: "session-1", modelRef: "profile/remembered", controls: planned, message: "hi" });
 		expect(client.methods).toEqual(["initialize", "session/resume", "session/prompt"]);
+
+		await host.send({
+			sessionId: "session-1",
+			modelRef: "profile/remembered",
+			controls: { ...planned, reasoningLevel: undefined, fastMode: false },
+			message: "again",
+		});
+		expect(client.params.slice(3, 5)).toEqual([
+			{ sessionId: "session-1", configId: "reasoningLevel", type: "id", value: "default" },
+			{ sessionId: "session-1", configId: "fastMode", type: "boolean", value: false },
+		]);
 
 		client.publish({
 			jsonrpc: "2.0",
 			method: "session/update",
 			params: {
 				sessionId: "session-1",
-				update: { sessionUpdate: "config_option_update", configOptions: configOptions("profile/other", "manual") },
+				update: { sessionUpdate: "config_option_update", configOptions: configOptions("profile/other", controls) },
 			},
 		});
 		expect(events.at(-1)?.event).toEqual({
 			type: "configuration_changed",
-			configuration: { modelRef: "profile/other", mode: "manual" },
+			configuration: { modelRef: "profile/other", controls },
 		});
-		expect(host.getSnapshot("session-1").configuration).toEqual({ modelRef: "profile/other", mode: "manual" });
+		expect(host.getSnapshot("session-1").configuration).toEqual({ modelRef: "profile/other", controls });
+		host.close();
+	});
+
+	test("ignores a Host configuration that still uses the retired single mode option", async () => {
+		const client = new FakeAcpClient();
+		client.resumeResult = {
+			configOptions: [
+				{ configId: "model", currentValue: "profile/remembered" },
+				{ configId: "mode", currentValue: "automate" },
+			],
+		};
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		const snapshot = await host.ensureSessionProjection("session-1");
+		expect(snapshot.configuration).toBeUndefined();
 		host.close();
 	});
 
@@ -263,7 +303,7 @@ describe("DesktopAcpAgentHost", () => {
 			client,
 			resolveSessionCwd: async () => "/workspace",
 		});
-		host.steer({ sessionId: "session-1", modelRef: "profile/model", mode: "manual", message: "change direction" });
+		host.steer({ sessionId: "session-1", modelRef: "profile/model", controls, message: "change direction" });
 		await new Promise<void>((resolve) => setTimeout(resolve, 0));
 		expect(client.methods).toContain("session/prompt");
 		expect(client.params.at(-1)).toMatchObject({ delivery: "steer" });
@@ -279,7 +319,7 @@ describe("DesktopAcpAgentHost", () => {
 		await host.followUp({
 			sessionId: "session-1",
 			modelRef: "profile/model",
-			mode: "manual",
+			controls,
 			message: "then summarize",
 		});
 		expect(client.methods).toContain("session/prompt");
@@ -301,7 +341,7 @@ describe("DesktopAcpAgentHost", () => {
 			sessionId: "session-1",
 			entryId: "operation-1:input",
 			modelRef: "profile/model",
-			mode: "manual",
+			controls,
 		});
 		expect(client.methods).toContain("session/navigate");
 		expect(client.params.find((params) => params && typeof params === "object" && "entryId" in params)).toMatchObject({

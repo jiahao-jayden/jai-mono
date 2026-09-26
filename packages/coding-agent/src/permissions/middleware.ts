@@ -12,6 +12,7 @@ import type {
 import type { Result as ResultType } from "better-result";
 import type { JsonObject } from "../core/json";
 import type { PermissionApprovalDecision, PermissionRequestSummary, PermissionRisk } from "./approval";
+import { type PermissionApprovalQueue, unqueuedApprovals } from "./approval-queue";
 import { bashPermissionScanArgument, scanBashCommand } from "./bash-parser";
 import { mergePermissionConfigs } from "./definition";
 import {
@@ -21,6 +22,7 @@ import {
 	permissionGrantSaveFailedError,
 } from "./errors";
 import { createExtensionPermissionRequest, createPermissionRequest, evaluatePermission } from "./evaluate";
+import { isReviewableDecision, type PermissionReviewOptions, reviewPermission } from "./review";
 import { bashAlwaysPattern } from "./rules";
 import type { PermissionTelemetryEvent, PermissionTelemetryObserver } from "./telemetry";
 import type { CodingExtensionToolCall, CodingToolPermission } from "./tool-permission";
@@ -83,121 +85,11 @@ export interface PermissionMiddlewareOptions {
 	};
 	/** Optional side-channel that observes permission facts without influencing them. */
 	readonly telemetryObserver?: PermissionTelemetryObserver;
+	/** Answers built-in `ask` decisions before the user while the mode is `auto`; see `./review`. */
+	readonly review?: PermissionReviewOptions;
 }
 
 export type SessionAllowRules = Record<string, PermissionEffect | Record<string, PermissionEffect>>;
-
-export interface PermissionApprovalQueue {
-	enqueue<T>(run: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T>;
-	cancel(error: unknown): void;
-}
-
-/** Runs each approval immediately; a caller without a FIFO has nothing to serialize against. */
-const unqueuedApprovals: PermissionApprovalQueue = {
-	enqueue: (run, signal) =>
-		signal?.aborted
-			? Promise.reject(permissionAbortedError("permission"))
-			: run(signal ?? new AbortController().signal),
-	cancel: () => {},
-};
-
-/** A small in-memory FIFO. It owns no durable facts and is scoped to one live Operation. */
-export function createPermissionApprovalQueue(): PermissionApprovalQueue {
-	type Entry = {
-		readonly run: (signal: AbortSignal) => Promise<unknown>;
-		readonly controller: AbortController;
-		readonly signal?: AbortSignal;
-		readonly resolve: (value: unknown) => void;
-		readonly reject: (reason: unknown) => void;
-		onAbort?: () => void;
-		started: boolean;
-		settled: boolean;
-	};
-	const entries: Entry[] = [];
-	let running = false;
-	let active: Entry | undefined;
-	let cancellation: unknown;
-
-	const pump = (): void => {
-		if (running) return;
-		const entry = entries.shift();
-		if (!entry) return;
-		if (entry.settled || entry.signal?.aborted || cancellation !== undefined) {
-			if (!entry.settled) {
-				entry.settled = true;
-				entry.reject(cancellation ?? permissionAbortedError("permission"));
-			}
-			pump();
-			return;
-		}
-		running = true;
-		active = entry;
-		entry.started = true;
-		void Promise.resolve()
-			.then(() => entry.run(entry.controller.signal))
-			.then(
-				(value) => settle(entry, undefined, value),
-				(error) => settle(entry, error),
-			);
-	};
-
-	const settle = (entry: Entry, error: unknown, value?: unknown): void => {
-		if (entry.onAbort) entry.signal?.removeEventListener("abort", entry.onAbort);
-		if (!entry.settled) {
-			entry.settled = true;
-			if (error === undefined) entry.resolve(value);
-			else entry.reject(error);
-		}
-		if (active === entry) {
-			active = undefined;
-			running = false;
-			pump();
-		}
-	};
-
-	return {
-		enqueue<T>(run: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
-			return new Promise<T>((resolve, reject) => {
-				const entry: Entry = {
-					run,
-					controller: new AbortController(),
-					signal,
-					resolve: (value) => resolve(value as T),
-					reject,
-					started: false,
-					settled: false,
-				};
-				entry.onAbort = () => {
-					if (entry.settled) return;
-					entry.controller.abort();
-					settle(entry, permissionAbortedError("permission"));
-				};
-				if (signal?.aborted) {
-					entry.onAbort();
-					return;
-				}
-				signal?.addEventListener("abort", entry.onAbort, { once: true });
-				entries.push(entry);
-				pump();
-			});
-		},
-		cancel(error: unknown): void {
-			cancellation = error;
-			if (active) {
-				active.controller.abort();
-				settle(active, error);
-			}
-			for (const entry of entries.splice(0)) {
-				if (entry.onAbort) entry.signal?.removeEventListener("abort", entry.onAbort);
-				if (!entry.settled) {
-					entry.settled = true;
-					entry.reject(error);
-				}
-			}
-			if (!running) pump();
-		},
-	};
-}
 
 export function createPermissionMiddleware(options: PermissionMiddlewareOptions): ToolMiddleware {
 	const sessionAllowRules = options.sessionAllowRules ?? {};
@@ -225,6 +117,7 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 				() => currentSettings(options.settings),
 				workspaceRoot,
 				options.requestApproval,
+				options.review,
 				approvalQueue,
 				context.toolCall.id,
 				context.signal,
@@ -276,8 +169,12 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 			settleOnce("allowed");
 			return executeApproved(options, toolName, capability, next);
 		}
+		const review =
+			settings.defaultMode === "auto" && isReviewableDecision([initial, canonicalDecision])
+				? options.review
+				: undefined;
 		const requestApproval = options.requestApproval;
-		if (!requestApproval) {
+		if (!requestApproval && !review) {
 			settleOnce("denied");
 			throw permissionApprovalUnavailableError(toolName);
 		}
@@ -358,6 +255,37 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 		try {
 			approval = await approvalQueue.enqueue(async (queueSignal) => {
 				if (await recheckOrDeny()) return undefined;
+				if (review) {
+					const reviewed = await reviewPermission(
+						review,
+						{
+							toolName,
+							action: decided.permission ?? call.targets[0]!.action,
+							workspaceRoot,
+							reason: request.reason,
+							risk: request.summary.risk ?? "medium",
+							command: request.summary.command,
+							path: capability?.canonicalPath ?? request.summary.path,
+						},
+						queueSignal,
+						context.toolCall.id,
+						options.telemetryObserver,
+					);
+					if (queueSignal.aborted || context.signal?.aborted) throw permissionAbortedError(toolName);
+					if (reviewed.decision === "deny") {
+						settleOnce("denied");
+						throw permissionDeniedError(toolName, reviewDeniedReason(reviewed.reason));
+					}
+					if (reviewed.decision === "allow") {
+						// Review grants exactly this call: nothing is remembered, and the context is rechecked.
+						await recheckOrDeny();
+						return "allowOnce";
+					}
+				}
+				if (!requestApproval) {
+					settleOnce("denied");
+					throw permissionApprovalUnavailableError(toolName);
+				}
 				observePermission(options.telemetryObserver, {
 					type: "approval_requested",
 					approvalId: request.requestId,
@@ -453,7 +381,8 @@ async function evaluateExtensionPermission(
 	readSettings: () => Promise<PermissionSettings>,
 	workspaceRoot: string,
 	requestApproval: PermissionMiddlewareOptions["requestApproval"],
-	approvalQueue: PermissionApprovalQueue | undefined,
+	reviewOptions: PermissionReviewOptions | undefined,
+	approvalQueue: PermissionApprovalQueue,
 	toolCallId: string,
 	signal: AbortSignal | undefined,
 	telemetryObserver: PermissionTelemetryObserver | undefined,
@@ -481,7 +410,8 @@ async function evaluateExtensionPermission(
 		workspaceRoot,
 		permission.sideEffect === "destructive" ? "destructive" : undefined,
 	);
-	const evaluated = evaluatePermission(permissionRequest, await readSettings());
+	const settings = await readSettings();
+	const evaluated = evaluatePermission(permissionRequest, settings);
 	// A catalog declaration is still subject to every explicit tool.invoke rule and
 	// mode restriction. In the absence of one, a local read-only tool which does
 	// not expose sensitive data keeps the same built-in treatment as Read. Remote
@@ -504,9 +434,15 @@ async function evaluateExtensionPermission(
 		settlePermission(telemetryObserver, toolCallId, "allowed");
 		return next();
 	}
-	if (!requestApproval) {
+	// Secret-bearing tools always reach the user; review may only stand in for an ordinary built-in ask.
+	const review =
+		settings.defaultMode === "auto" && initial.source === "built-in" && permission.dataSensitivity !== "secret"
+			? reviewOptions
+			: undefined;
+	const noApprovalHandler = "No approval handler is configured for this Extension tool";
+	if (!requestApproval && !review) {
 		settlePermission(telemetryObserver, toolCallId, "denied");
-		throw permissionDeniedError(toolName, "No approval handler is configured for this Extension tool");
+		throw permissionDeniedError(toolName, noApprovalHandler);
 	}
 	if (signal?.aborted) {
 		settlePermission(telemetryObserver, toolCallId, "cancelled");
@@ -526,18 +462,50 @@ async function evaluateExtensionPermission(
 			risk: permission.sideEffect === "destructive" ? "high" : "medium",
 		},
 	};
-	observePermission(telemetryObserver, { type: "approval_requested", approvalId: requestId, toolCallId, toolName });
-	let approval: PermissionApprovalDecision;
+	let approval: { readonly decision: PermissionApprovalDecision; readonly denial?: string };
 	try {
-		approval = await (approvalQueue
-			? approvalQueue.enqueue(() => Promise.resolve(requestApproval(approvalRequest, signal)), signal)
-			: requestApproval(approvalRequest, signal));
-		observePermission(telemetryObserver, { type: "approval_decided", approvalId: requestId, decision: approval });
+		approval = await approvalQueue.enqueue(async (queueSignal) => {
+			if (review) {
+				const reviewed = await reviewPermission(
+					review,
+					{
+						toolName,
+						action: "tool.invoke",
+						workspaceRoot,
+						reason: permission.reason,
+						risk: approvalRequest.summary.risk ?? "medium",
+						sideEffect: permission.sideEffect,
+					},
+					queueSignal,
+					toolCallId,
+					telemetryObserver,
+				);
+				if (reviewed.decision === "allow") return { decision: "allowOnce" as const };
+				if (reviewed.decision === "deny") {
+					return { decision: "deny" as const, denial: reviewDeniedReason(reviewed.reason) };
+				}
+			}
+			if (!requestApproval) return { decision: "deny" as const, denial: noApprovalHandler };
+			observePermission(telemetryObserver, {
+				type: "approval_requested",
+				approvalId: requestId,
+				toolCallId,
+				toolName,
+			});
+			let decision: PermissionApprovalDecision;
+			try {
+				decision = await requestApproval(approvalRequest, signal);
+			} catch (error) {
+				observePermission(telemetryObserver, {
+					type: signal?.aborted ? "approval_cancelled" : "approval_failed",
+					approvalId: requestId,
+				});
+				throw error;
+			}
+			observePermission(telemetryObserver, { type: "approval_decided", approvalId: requestId, decision });
+			return { decision };
+		}, signal);
 	} catch (error) {
-		observePermission(telemetryObserver, {
-			type: signal?.aborted ? "approval_cancelled" : "approval_failed",
-			approvalId: requestId,
-		});
 		settlePermission(telemetryObserver, toolCallId, signal?.aborted ? "cancelled" : "failed");
 		throw error;
 	}
@@ -545,9 +513,9 @@ async function evaluateExtensionPermission(
 		settlePermission(telemetryObserver, toolCallId, "cancelled");
 		throw permissionAbortedError(toolName);
 	}
-	if (approval !== "allowOnce") {
+	if (approval.decision !== "allowOnce") {
 		settlePermission(telemetryObserver, toolCallId, "denied");
-		throw permissionDeniedError(toolName, "User denied the permission request");
+		throw permissionDeniedError(toolName, approval.denial ?? "User denied the permission request");
 	}
 	const rechecked = evaluatePermission(permissionRequest, await readSettings());
 	if (rechecked.behavior === "deny") {
@@ -556,6 +524,12 @@ async function evaluateExtensionPermission(
 	}
 	settlePermission(telemetryObserver, toolCallId, "allowed");
 	return next();
+}
+
+function reviewDeniedReason(reason: string | undefined): string {
+	return reason
+		? `Automatic permission review denied the request: ${reason}`
+		: "Automatic permission review denied the request";
 }
 
 function observePermissionDecision(

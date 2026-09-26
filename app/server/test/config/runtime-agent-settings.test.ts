@@ -3,6 +3,40 @@ import { SqliteRuntimeAgentSettings } from "../../src/config";
 import { DatabaseSync } from "../../src/persistence/sqlite/driver";
 
 describe("Runtime Agent Settings", () => {
+  test("drops the retired agent mode and global reasoning effort from stored settings and keeps everything else", () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      new SqliteRuntimeAgentSettings(database);
+      database
+        .prepare("INSERT INTO runtime_agent_settings (key, settings_json, updated_at) VALUES ('default', ?, ?)")
+        .run(
+          JSON.stringify({
+            model: "openai/legacy",
+            agentMode: "automate",
+            reasoningEffort: "high",
+            maxTurns: 7,
+            providers: {},
+            extensions: {},
+          }),
+          "2026-09-01T00:00:00.000Z",
+        );
+
+      const reopened = new SqliteRuntimeAgentSettings(database);
+      const snapshot = reopened.snapshot();
+      if (snapshot.isErr()) throw snapshot.error;
+      expect(snapshot.value).toMatchObject({ model: "openai/legacy", maxTurns: 7 });
+      expect(snapshot.value).not.toHaveProperty("agentMode");
+      expect(snapshot.value).not.toHaveProperty("reasoningEffort");
+      const stored = database.prepare("SELECT settings_json FROM runtime_agent_settings").get() as {
+        readonly settings_json: string;
+      };
+      expect(JSON.parse(stored.settings_json)).not.toHaveProperty("agentMode");
+      expect(JSON.parse(stored.settings_json)).not.toHaveProperty("reasoningEffort");
+    } finally {
+      database.close();
+    }
+  });
+
   test("persists Provider profiles as Server facts while projecting credentials safely", () => {
     const database = new DatabaseSync(":memory:");
     try {
@@ -21,7 +55,6 @@ describe("Runtime Agent Settings", () => {
         model: "gateway/gpt-test",
         maxTurns: 12,
         language: "zh-CN",
-        reasoningEffort: "high",
         providers: [
           {
             id: "gateway",
@@ -41,7 +74,6 @@ describe("Runtime Agent Settings", () => {
         model: "gateway/gpt-test",
         maxTurns: 12,
         language: "zh-CN",
-        reasoningEffort: "high",
         profiles: [
           {
             id: "gateway",
@@ -63,7 +95,6 @@ describe("Runtime Agent Settings", () => {
         },
         maxTurns: 12,
         instructions: "Respond in zh-CN.",
-        providerOptions: { "openai-compatible": { reasoning_effort: "high" } },
       });
     } finally {
       database.close();
@@ -147,7 +178,7 @@ describe("Runtime Agent Settings", () => {
     }
   });
 
-  test("remembers the composer selection and keeps its mode across a full save", () => {
+  test("remembers the composer model selection across a full save", () => {
     const database = new DatabaseSync(":memory:");
     try {
       const settings = new SqliteRuntimeAgentSettings(database);
@@ -171,15 +202,15 @@ describe("Runtime Agent Settings", () => {
       });
       if (initialized.isErr()) throw initialized.error;
 
-      const selected = settings.setSelection({ model: "gateway/gpt-b", agentMode: "plan" });
+      const selected = settings.setSelection({ model: "gateway/gpt-b" });
       if (selected.isErr()) throw selected.error;
-      expect(selected.value).toMatchObject({ model: "gateway/gpt-b", agentMode: "plan" });
+      expect(selected.value).toMatchObject({ model: "gateway/gpt-b" });
 
-      expect(settings.setSelection({ model: "gateway/gpt-off", agentMode: "manual" })).toMatchObject({
+      expect(settings.setSelection({ model: "gateway/gpt-off" })).toMatchObject({
         status: "error",
         error: { _tag: "runtime_config.agent_settings_invalid" },
       });
-      expect(settings.setSelection({ model: "gateway/gpt-a", agentMode: "yolo" })).toMatchObject({
+      expect(settings.setSelection({ model: "not-a-model-ref" })).toMatchObject({
         status: "error",
         error: { _tag: "runtime_config.agent_settings_invalid" },
       });
@@ -193,7 +224,7 @@ describe("Runtime Agent Settings", () => {
         ),
       });
       if (resaved.isErr()) throw resaved.error;
-      expect(resaved.value).toMatchObject({ model: "gateway/gpt-b", agentMode: "plan", maxTurns: 4 });
+      expect(resaved.value).toMatchObject({ model: "gateway/gpt-b", maxTurns: 4 });
 
       const disabled = settings.write({
         revision: resaved.value.revision,
@@ -207,25 +238,6 @@ describe("Runtime Agent Settings", () => {
       });
       if (disabled.isErr()) throw disabled.error;
       expect(disabled.value.model).toBe("gateway/gpt-a");
-    } finally {
-      database.close();
-    }
-  });
-
-  test("rejects a configured reasoning effort when the selected model has no supported request option", () => {
-    const database = new DatabaseSync(":memory:");
-    try {
-      const settings = new SqliteRuntimeAgentSettings(database);
-      const saved = settings.write({
-        revision: null,
-        model: "anthropic/claude-test",
-        reasoningEffort: "low",
-        providers: [],
-      });
-      expect(saved).toMatchObject({
-        status: "error",
-        error: { _tag: "runtime_config.agent_settings_invalid" },
-      });
     } finally {
       database.close();
     }

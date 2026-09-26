@@ -91,7 +91,7 @@ test("explicit tool.invoke deny prevents creating a child Agent", async () => {
 			$schema: "https://jai.dev/schemas/coding-agent-sdk-v1.json",
 			schemaVersion: 1,
 			permission: { "tool.invoke": { SpawnAgent: "deny" } },
-			permissions: { defaultMode: "default", additionalDirectories: [] },
+			permissions: { defaultMode: "ask", additionalDirectories: [] },
 		}),
 	);
 	const requests: unknown[] = [];
@@ -130,7 +130,7 @@ test("explicit tool.invoke deny prevents creating a child Agent", async () => {
 	}
 });
 
-for (const mode of ["plan", "dontAsk", "default"] as const) {
+for (const mode of ["plan", "ask"] as const) {
 	test(`child Write keeps ${mode} permissions`, async () => {
 		const root = await temporaryDirectory();
 		const file = join(root, "child.txt");
@@ -153,7 +153,7 @@ for (const mode of ["plan", "dontAsk", "default"] as const) {
 		if (created.isErr()) throw created.error;
 		try {
 			await created.value.prompt("delegate");
-			if (mode === "default") {
+			if (mode === "ask") {
 				await access(file);
 				expect(approvals).toBe(1);
 			} else {

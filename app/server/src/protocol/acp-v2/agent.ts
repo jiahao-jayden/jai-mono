@@ -10,7 +10,8 @@ import type {
 	RuntimeSessionEvent,
 	RuntimeSessionSnapshot,
 } from "../../runtime";
-import type { RuntimeSessionConfigurationChange, RuntimeSessionConfigurationSnapshot } from "../../sessions";
+import type { RuntimeSessionConfigurationSnapshot } from "../../sessions";
+import { parseSessionConfigurationChange, projectSessionConfigOptions } from "./session-config-options";
 import type {
 	AcpJsonRpcNotification,
 	AcpJsonRpcRequest,
@@ -135,9 +136,10 @@ export class AcpV2Agent {
 			this.detach(opened.value.id);
 			return this.respondError(request.id, -32001, configuration.error.message);
 		}
+		const configOptions = projectSessionConfigOptions(configuration.value);
 		return this.respond(request.id, {
 			sessionId: opened.value.id,
-			configOptions: configOptions(configuration.value).length > 0 ? configOptions(configuration.value) : undefined,
+			configOptions: configOptions.length > 0 ? configOptions : undefined,
 		});
 	}
 
@@ -197,8 +199,8 @@ export class AcpV2Agent {
 			this.detach(sessionId);
 			return this.respondError(request.id, -32001, configuration.error.message);
 		}
-		const result =
-			configOptions(configuration.value).length > 0 ? { configOptions: configOptions(configuration.value) } : {};
+		const configOptions = projectSessionConfigOptions(configuration.value);
+		const result = configOptions.length > 0 ? { configOptions } : {};
 		if (replayFrom === "none") return this.respond(request.id, result);
 		const snapshot = await opened.value.snapshot();
 		if (snapshot.isErr()) return this.respondError(request.id, -32001, snapshot.error.message);
@@ -283,24 +285,21 @@ export class AcpV2Agent {
 	}
 
 	private async setConfigOption(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
-		const params = objectParams(request.params);
-		const sessionId = params?.sessionId;
-		const configuration = parseConfigurationChange(params);
-		if (typeof sessionId !== "string" || !configuration) {
-			return this.respondError(request.id, -32602, "Invalid session/set_config_option parameters");
-		}
+		const parsed = parseSessionConfigurationChange(request.params);
+		if (!parsed) return this.respondError(request.id, -32602, "Invalid session/set_config_option parameters");
+		const { sessionId, change } = parsed;
 		const session = this.#sessions.get(sessionId);
 		if (!session) {
 			return this.respondError(request.id, -32004, `Session "${sessionId}" is not active on this ACP connection`);
 		}
 		const available = await session.configuration();
 		if (available.isErr()) return this.respondError(request.id, -32001, available.error.message);
-		if (configOptions(available.value).length === 0) {
+		if (projectSessionConfigOptions(available.value).length === 0) {
 			return this.respondError(request.id, -32602, "Session configuration options are unavailable");
 		}
-		const updated = await session.setConfiguration(configuration);
+		const updated = await session.setConfiguration(change);
 		if (updated.isErr()) return this.respondError(request.id, -32001, updated.error.message);
-		return this.respond(request.id, { configOptions: configOptions(updated.value) });
+		return this.respond(request.id, { configOptions: projectSessionConfigOptions(updated.value) });
 	}
 
 	private async cancel(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
@@ -487,58 +486,6 @@ function parseReplayFrom(value: unknown): "none" | "start" | "invalid" {
 	return "start";
 }
 
-function parseConfigurationChange(
-	value: Record<string, unknown> | undefined,
-): RuntimeSessionConfigurationChange | undefined {
-	if (value?.type !== "id" || typeof value.value !== "string") return undefined;
-	if (value.configId === "model") return { configId: "model", value: value.value };
-	if (value.configId === "mode") {
-		return value.value === "manual" || value.value === "automate" || value.value === "plan"
-			? { configId: "mode", value: value.value }
-			: undefined;
-	}
-	return undefined;
-}
-
-function configOptions(snapshot: RuntimeSessionConfigurationSnapshot): readonly object[] {
-	const models = [...snapshot.models];
-	if (snapshot.configuration.model && !models.some((model) => model.value === snapshot.configuration.model)) {
-		models.push({
-			value: snapshot.configuration.model,
-			name: snapshot.configuration.model,
-			description: "This model is no longer available in the current Runtime Host configuration.",
-		});
-	}
-	if (models.length === 0) return [];
-	return [
-		{
-			configId: "model",
-			name: "Model",
-			category: "model",
-			type: "select",
-			currentValue: snapshot.configuration.model,
-			options: models.map((model) => ({
-				value: model.value,
-				name: model.name,
-				description: model.description || undefined,
-			})),
-		},
-		{
-			configId: "mode",
-			name: "Session Mode",
-			description: "Controls how the Agent requests permission.",
-			category: "mode",
-			type: "select",
-			currentValue: snapshot.configuration.mode,
-			options: [
-				{ value: "manual", name: "Ask", description: "Request permission before making changes." },
-				{ value: "automate", name: "Auto", description: "Use the configured autonomous permission policy." },
-				{ value: "plan", name: "Plan", description: "Plan changes without making workspace modifications." },
-			],
-		},
-	];
-}
-
 function configOptionUpdate(
 	sessionId: string,
 	configuration: RuntimeSessionConfigurationSnapshot,
@@ -548,7 +495,7 @@ function configOptionUpdate(
 		method: "session/update",
 		params: {
 			sessionId,
-			update: { sessionUpdate: "config_option_update", configOptions: configOptions(configuration) },
+			update: { sessionUpdate: "config_option_update", configOptions: projectSessionConfigOptions(configuration) },
 		},
 	};
 }

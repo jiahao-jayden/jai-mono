@@ -196,22 +196,23 @@ export function SessionActions({
 		</SidebarHoverIconButton>
 	) : null;
 	const showHoverActions = hoverActions && (pinButton !== null || archiveButton !== null);
-	const body = hoverActions && running ? (
-		<SidebarRowHover>
-			{row}
-			<SidebarRowSpinner label={intl.formatMessage(desktopMessages.chatAgentWorking)} />
-		</SidebarRowHover>
-	) : showHoverActions ? (
-		<SidebarRowHover>
-			{row}
-			<SidebarRowHoverActions>
-				{pinButton}
-				{archiveButton}
-			</SidebarRowHoverActions>
-		</SidebarRowHover>
-	) : (
-		row
-	);
+	const body =
+		hoverActions && running ? (
+			<SidebarRowHover>
+				{row}
+				<SidebarRowSpinner label={intl.formatMessage(desktopMessages.chatAgentWorking)} />
+			</SidebarRowHover>
+		) : showHoverActions ? (
+			<SidebarRowHover>
+				{row}
+				<SidebarRowHoverActions>
+					{pinButton}
+					{archiveButton}
+				</SidebarRowHoverActions>
+			</SidebarRowHover>
+		) : (
+			row
+		);
 
 	return (
 		<>

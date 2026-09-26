@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { DesktopRuntime } from "../electron/runtime";
 import { createDesktopRouter } from "../electron/rpc/router";
+import { defaultDesktopSessionControls } from "../shared/session-controls";
 
 /** The router only ever reaches the runtime, so a partial stand-in is enough. */
 function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) {
@@ -107,7 +108,7 @@ describe("createDesktopRouter — 输入校验", () => {
 
 	test("agent.send 要求 modelRef 带 profile 分隔符", () => {
 		const { router: r, calls } = router();
-		const base = { sessionId: "s1", message: "hello", mode: "manual" as const };
+		const base = { sessionId: "s1", message: "hello", controls: defaultDesktopSessionControls };
 		expect(() => r.agent.send(event, { ...base, modelRef: "no-separator" })).toThrow();
 		expect(calls).toEqual([]);
 
@@ -115,19 +116,41 @@ describe("createDesktopRouter — 输入校验", () => {
 		expect(calls.map((call) => call.name)).toEqual(["send"]);
 	});
 
-	test("agent.send 拒绝空消息与非法 mode", () => {
-		const { router: r } = router();
+	test("agent.send 拒绝空消息、旧 mode 字段与非法会话控制", () => {
+		const { router: r, calls } = router();
 		const base = { sessionId: "s1", modelRef: "p/m" };
-		expect(() => r.agent.send(event, { ...base, message: "", mode: "manual" })).toThrow();
-		expect(() => r.agent.send(event, { ...base, message: "hi", mode: "yolo" })).toThrow();
+		const controls = defaultDesktopSessionControls;
+		expect(() => r.agent.send(event, { ...base, message: "", controls })).toThrow();
+		expect(() => r.agent.send(event, { ...base, message: "hi", mode: "manual" })).toThrow();
+		expect(() => r.agent.send(event, { ...base, message: "hi", controls, mode: "manual" })).toThrow();
+		expect(() =>
+			r.agent.send(event, { ...base, message: "hi", controls: { ...controls, permissionMode: "automate" } }),
+		).toThrow();
+		expect(() =>
+			r.agent.send(event, { ...base, message: "hi", controls: { ...controls, interactionMode: "debug" } }),
+		).toThrow();
+		expect(() =>
+			r.agent.send(event, { ...base, message: "hi", controls: { ...controls, reasoningLevel: "ultra" } }),
+		).toThrow();
+		expect(() => r.agent.send(event, { ...base, message: "hi", controls: { ...controls, fastMode: "yes" } })).toThrow();
+		expect(calls).toEqual([]);
+
+		r.agent.send(event, {
+			...base,
+			message: "hi",
+			controls: { permissionMode: "auto", interactionMode: "plan", reasoningLevel: "xhigh", fastMode: true },
+		});
+		expect(calls.map((call) => call.name)).toEqual(["send"]);
 	});
 
-	test("agent.navigate 校验 entry、model 和 mode", () => {
+	test("agent.navigate 校验 entry、model 和会话控制", () => {
 		const { router: r, calls } = router();
-		const base = { sessionId: "s1", entryId: "entry-1", modelRef: "p/m", mode: "manual" as const };
+		const base = { sessionId: "s1", entryId: "entry-1", modelRef: "p/m", controls: defaultDesktopSessionControls };
 		expect(() => r.agent.navigate(event, { ...base, entryId: "" })).toThrow();
 		expect(() => r.agent.navigate(event, { ...base, modelRef: "missing-separator" })).toThrow();
-		expect(() => r.agent.navigate(event, { ...base, mode: "yolo" })).toThrow();
+		expect(() =>
+			r.agent.navigate(event, { ...base, controls: { ...base.controls, permissionMode: "manual" } }),
+		).toThrow();
 		expect(calls).toEqual([]);
 
 		r.agent.navigate(event, base);

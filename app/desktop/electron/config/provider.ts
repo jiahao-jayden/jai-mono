@@ -5,6 +5,7 @@ import {
 	findRuntimeModelCatalogMatch,
 	type RuntimeModelCatalog,
 	resolveConfirmedModelFixture,
+	resolveRuntimeModelCapabilities,
 	resolveRuntimeModelCompatibilityProfile,
 } from "@jai/server/model-catalog";
 import { TaggedError } from "better-result";
@@ -150,7 +151,6 @@ export function projectModel(
 		openWeights: modelMetadata?.openWeights,
 		attachment: modelMetadata?.attachment,
 		reasoning: resolvedReasoning,
-		reasoningOptions: modelMetadata?.reasoningOptions,
 		temperature: modelMetadata?.temperature,
 		interleaved: modelMetadata?.interleaved === undefined ? undefined : Boolean(modelMetadata.interleaved),
 		input: modelMetadata?.inputModalities?.filter(isExecutableInput),
@@ -166,6 +166,7 @@ export function projectModel(
 			compatibility && Object.keys(compatibility.rules).length > 0
 				? projectCompatibility(compatibility.rules)
 				: undefined,
+		capabilities: resolveRuntimeModelCapabilities(modelMetadata, adapter),
 	};
 }
 

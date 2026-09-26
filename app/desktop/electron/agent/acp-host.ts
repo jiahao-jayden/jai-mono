@@ -1,8 +1,6 @@
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AcpJsonRpcNotification, AcpJsonRpcRequest, LocalAcpV2Client } from "@jai/server/acp-client";
-import { Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import { Result, TaggedError } from "better-result";
 import type {
 	DesktopAgentConfigureInput,
@@ -10,7 +8,6 @@ import type {
 	DesktopAgentEvent,
 	DesktopAgentEventEnvelope,
 	DesktopAgentMessageInput,
-	DesktopAgentMode,
 	DesktopAgentNavigateInput,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
@@ -23,6 +20,7 @@ import type {
 	DesktopPermissionResolution,
 	DesktopRunTiming,
 	DesktopSessionConfiguration,
+	DesktopSessionControls,
 	DesktopSessionUsage,
 	DesktopSubagentItem,
 	DesktopSubagentTranscript,
@@ -36,9 +34,11 @@ import type {
 	DesktopWebSearchResult,
 } from "../../shared/desktop-rpc";
 import { EMPTY_DESKTOP_SESSION_USAGE } from "../../shared/desktop-rpc";
+import { defaultDesktopSessionControls } from "../../shared/session-controls";
 import type { DesktopRuntimeHostSupervisor } from "../runtime-host/supervisor";
 import { sortArtifacts } from "./artifacts";
 import { desktopAgentError } from "./errors";
+import { readSessionConfiguration, sessionConfigurationChanges } from "./session-configuration";
 
 /** Canonical tool name registered by `@jai/extension/subagent`. */
 const SUBAGENT_TOOL_NAME = "SpawnAgent";
@@ -66,7 +66,7 @@ interface AcpSessionRuntime {
 	readonly sessionId: string;
 	readonly cwd: string;
 	modelRef: string;
-	mode: DesktopAgentMode;
+	controls: DesktopSessionControls;
 	configured: boolean;
 	status: DesktopAgentStatus;
 	readonly items: Map<string, DesktopTranscriptItem>;
@@ -160,13 +160,13 @@ export class DesktopAcpAgentHost {
 	}
 
 	async configure(input: DesktopAgentConfigureInput): Promise<void> {
-		const runtime = await this.#ensureSession(input.sessionId, input.modelRef, input.mode);
-		await this.#setConfiguration(runtime, input.modelRef, input.mode);
+		const runtime = await this.#ensureSession(input.sessionId, input.modelRef, input.controls);
+		await this.#setConfiguration(runtime, input.modelRef, input.controls);
 	}
 
 	async navigate(input: DesktopAgentNavigateInput): Promise<void> {
-		const runtime = await this.#ensureSession(input.sessionId, input.modelRef, input.mode);
-		await this.#setConfiguration(runtime, input.modelRef, input.mode);
+		const runtime = await this.#ensureSession(input.sessionId, input.modelRef, input.controls);
+		await this.#setConfiguration(runtime, input.modelRef, input.controls);
 		const response = await this.#request("session/navigate", {
 			sessionId: runtime.sessionId,
 			entryId: input.entryId,
@@ -264,14 +264,16 @@ export class DesktopAcpAgentHost {
 			todos: runtime.todos ? structuredClone(runtime.todos) : undefined,
 			artifacts: sortArtifacts(runtime.artifacts.values()).map((artifact) => structuredClone(artifact)),
 			usage: { ...runtime.usage },
-			configuration: runtime.modelRef ? { modelRef: runtime.modelRef, mode: runtime.mode } : undefined,
+			configuration: runtime.modelRef
+				? { modelRef: runtime.modelRef, controls: { ...runtime.controls } }
+				: undefined,
 			lastSeq: runtime.seq,
 		};
 	}
 
 	/** Rebuilds a disposable projection from the Host's durable Session facts. */
 	async ensureSessionProjection(sessionId: string): Promise<DesktopAgentSnapshot> {
-		await this.#ensureSession(sessionId, "", "manual");
+		await this.#ensureSession(sessionId, "", defaultDesktopSessionControls);
 		return this.getSnapshot(sessionId);
 	}
 
@@ -280,7 +282,7 @@ export class DesktopAcpAgentHost {
 		readonly sessionId: string;
 		readonly toolCallId: string;
 	}): Promise<DesktopSubagentTranscript> {
-		await this.#ensureSession(input.sessionId, "", "manual");
+		await this.#ensureSession(input.sessionId, "", defaultDesktopSessionControls);
 		const result = await this.#request("session/subagent_transcript", {
 			sessionId: input.sessionId,
 			toolCallId: input.toolCallId,
@@ -319,7 +321,11 @@ export class DesktopAcpAgentHost {
 		void this.#client.close();
 	}
 
-	async #ensureSession(sessionId: string, modelRef: string, mode: DesktopAgentMode): Promise<AcpSessionRuntime> {
+	async #ensureSession(
+		sessionId: string,
+		modelRef: string,
+		controls: DesktopSessionControls,
+	): Promise<AcpSessionRuntime> {
 		const cwd = await this.#resolveSessionCwd(sessionId);
 		if (!cwd) {
 			throw new DesktopAcpWorkspaceRequired({
@@ -332,7 +338,7 @@ export class DesktopAcpAgentHost {
 			sessionId,
 			cwd,
 			modelRef,
-			mode,
+			controls,
 			configured: false,
 			status: "idle",
 			items: new Map(),
@@ -363,8 +369,8 @@ export class DesktopAcpAgentHost {
 		input: DesktopAcpSendInput,
 		delivery?: "steer" | "follow_up",
 	): Promise<{ readonly accepted: true }> {
-		const runtime = await this.#ensureSession(input.sessionId, input.modelRef, input.mode);
-		await this.#setConfiguration(runtime, input.modelRef, input.mode);
+		const runtime = await this.#ensureSession(input.sessionId, input.modelRef, input.controls);
+		await this.#setConfiguration(runtime, input.modelRef, input.controls);
 		const prompt = [
 			{ type: "text", text: input.message } as const,
 			...(input.resolvedAttachments ?? []).map((attachment) => ({
@@ -402,34 +408,31 @@ export class DesktopAcpAgentHost {
 		this.#applyConfiguration(runtime, replayed.value);
 	}
 
-	/** Adopts the Host's remembered Session model/mode so the next prompt only sends real changes. */
+	/** Adopts the Host's remembered Session configuration so the next prompt only sends real changes. */
 	#applyConfiguration(runtime: AcpSessionRuntime, response: unknown): DesktopSessionConfiguration | undefined {
 		const configuration = readSessionConfiguration(response);
 		if (!configuration) return undefined;
 		runtime.modelRef = configuration.modelRef;
-		runtime.mode = configuration.mode;
+		runtime.controls = configuration.controls;
 		runtime.configured = true;
 		return configuration;
 	}
 
-	async #setConfiguration(runtime: AcpSessionRuntime, modelRef: string, mode: DesktopAgentMode): Promise<void> {
-		const options: readonly [string, string][] = [
-			["model", modelRef],
-			["mode", mode],
-		];
-		for (const [configId, value] of options) {
-			if (runtime.configured && configId === "model" && runtime.modelRef === value) continue;
-			if (runtime.configured && configId === "mode" && runtime.mode === value) continue;
+	async #setConfiguration(
+		runtime: AcpSessionRuntime,
+		modelRef: string,
+		controls: DesktopSessionControls,
+	): Promise<void> {
+		const known = runtime.configured ? { modelRef: runtime.modelRef, controls: runtime.controls } : undefined;
+		for (const change of sessionConfigurationChanges(known, { modelRef, controls })) {
 			const updated = await this.#request("session/set_config_option", {
 				sessionId: runtime.sessionId,
-				configId,
-				type: "id",
-				value,
+				...change,
 			});
 			if (updated.isErr()) throw updated.error;
-			if (configId === "model") runtime.modelRef = value;
-			else runtime.mode = value as DesktopAgentMode;
 		}
+		runtime.modelRef = modelRef;
+		runtime.controls = controls;
 		runtime.configured = true;
 	}
 
@@ -594,7 +597,7 @@ export class DesktopAcpAgentHost {
 			sessionId: "subagent-transcript",
 			cwd: "",
 			modelRef: "",
-			mode: "manual",
+			controls: defaultDesktopSessionControls,
 			configured: true,
 			status: "idle",
 			items: new Map(),
@@ -1225,21 +1228,6 @@ function isWebSearchTool(value: unknown): boolean {
 function isWebFetchTool(value: unknown): boolean {
 	if (typeof value !== "string") return false;
 	return value.trim().toLowerCase().replaceAll(/[_-]/g, " ") === "web fetch";
-}
-
-const sessionConfigOptionsSchema = Type.Object({
-	configOptions: Type.Array(Type.Object({ configId: Type.String(), currentValue: Type.Unknown() })),
-});
-
-function readSessionConfiguration(value: unknown): DesktopSessionConfiguration | undefined {
-	if (!Value.Check(sessionConfigOptionsSchema, value)) return undefined;
-	const current = (configId: string) =>
-		value.configOptions.find((option) => option.configId === configId)?.currentValue;
-	const modelRef = current("model");
-	const mode = current("mode");
-	if (typeof modelRef !== "string" || !modelRef) return undefined;
-	if (mode !== "manual" && mode !== "automate" && mode !== "plan") return undefined;
-	return { modelRef, mode };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

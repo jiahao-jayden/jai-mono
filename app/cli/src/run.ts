@@ -20,7 +20,11 @@ import {
 import { TaggedError } from "better-result";
 
 type OutputFormat = "text" | "json" | "stream-json";
-type CliSessionMode = "manual" | "automate" | "plan";
+// Mirrors the Runtime Host's ACP option values; the Host validates them again on set_config_option.
+const CLI_PERMISSION_MODES = ["ask", "allow", "auto"] as const;
+const CLI_INTERACTION_MODES = ["normal", "plan"] as const;
+type CliPermissionMode = (typeof CLI_PERMISSION_MODES)[number];
+type CliInteractionMode = (typeof CLI_INTERACTION_MODES)[number];
 type JsonObject = Record<string, JsonValue>;
 
 export interface CliUsage {
@@ -60,7 +64,8 @@ interface CliOptions {
 	readonly outputFormat: OutputFormat;
 	readonly cwd: string;
 	readonly model?: string;
-	readonly mode?: CliSessionMode;
+	readonly permissionMode?: CliPermissionMode;
+	readonly interactionMode?: CliInteractionMode;
 	readonly sessionId?: string;
 	readonly noSessionPersistence: boolean;
 	readonly printMode: boolean;
@@ -149,7 +154,8 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
 				"output-format": { type: "string", default: "text" },
 				cwd: { type: "string" },
 				model: { type: "string" },
-				mode: { type: "string" },
+				"permission-mode": { type: "string" },
+				"interaction-mode": { type: "string" },
 				"session-id": { type: "string" },
 				"no-session-persistence": { type: "boolean", default: false },
 				help: { type: "boolean", short: "h", default: false },
@@ -160,9 +166,13 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
 		if (outputFormat !== "text" && outputFormat !== "json" && outputFormat !== "stream-json") {
 			throw new CliUsageError({ message: `Unsupported output format: ${String(outputFormat)}` });
 		}
-		const mode = parsed.values.mode;
-		if (mode !== undefined && mode !== "manual" && mode !== "automate" && mode !== "plan") {
-			throw new CliUsageError({ message: `Unsupported session mode: ${String(mode)}` });
+		const permissionMode = parsed.values["permission-mode"];
+		if (permissionMode !== undefined && !isOneOf(CLI_PERMISSION_MODES, permissionMode)) {
+			throw new CliUsageError({ message: `Unsupported permission mode: ${permissionMode}` });
+		}
+		const interactionMode = parsed.values["interaction-mode"];
+		if (interactionMode !== undefined && !isOneOf(CLI_INTERACTION_MODES, interactionMode)) {
+			throw new CliUsageError({ message: `Unsupported interaction mode: ${interactionMode}` });
 		}
 		const model = parsed.values.model?.trim();
 		if (parsed.values.model !== undefined && !model) {
@@ -179,7 +189,8 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
 			outputFormat,
 			cwd,
 			model,
-			mode,
+			permissionMode,
+			interactionMode,
 			sessionId: parsed.values["session-id"],
 			noSessionPersistence: parsed.values["no-session-persistence"] ?? false,
 			printMode: normalized.printMode,
@@ -249,18 +260,25 @@ async function openCliSession(client: LocalAcpV2Client, options: CliOptions): Pr
 }
 
 async function configureCliSession(client: LocalAcpV2Client, sessionId: string, options: CliOptions): Promise<void> {
-	for (const change of [
-		...(options.model === undefined ? [] : [{ configId: "model", value: options.model } as const]),
-		...(options.mode === undefined ? [] : [{ configId: "mode", value: options.mode } as const]),
-	]) {
+	const changes: readonly (readonly [configId: string, value: string | undefined])[] = [
+		["model", options.model],
+		["permissionMode", options.permissionMode],
+		["interactionMode", options.interactionMode],
+	];
+	for (const [configId, value] of changes) {
+		if (value === undefined) continue;
 		const updated = await client.request("session/set_config_option", {
 			sessionId,
 			type: "id",
-			configId: change.configId,
-			value: change.value,
+			configId,
+			value,
 		});
 		if (updated.isErr()) throw new CliRuntimeError({ message: updated.error.message });
 	}
+}
+
+function isOneOf<const T extends string>(values: readonly T[], value: string): value is T {
+	return (values as readonly string[]).includes(value);
 }
 
 async function runInteractive(session: CliSession): Promise<void> {
@@ -663,7 +681,7 @@ function projectCliError(error: unknown): JsonObject {
 }
 
 function helpText(): string {
-	return `Jai coding agent\n\nUsage:\n  jai [prompt]\n  jai -p [prompt] [options]\n  cat task.md | jai -p [options]\n\nOptions:\n  -p, --print [text]               Run one non-interactive prompt\n      --output-format <format>     text | json | stream-json\n      --cwd <path>                 Workspace root (default: current directory)\n      --model <model>              Select an enabled Runtime Host model\n      --mode <mode>                manual | automate | plan (default: Host setting)\n      --session-id <id>            Resume a durable session\n      --no-session-persistence    Run in a Host-managed connection-scoped Session\n  -h, --help                       Show this help\n  -v, --version                    Show the CLI version\n`;
+	return `Jai coding agent\n\nUsage:\n  jai [prompt]\n  jai -p [prompt] [options]\n  cat task.md | jai -p [options]\n\nOptions:\n  -p, --print [text]               Run one non-interactive prompt\n      --output-format <format>     text | json | stream-json\n      --cwd <path>                 Workspace root (default: current directory)\n      --model <model>              Select an enabled Runtime Host model\n      --permission-mode <mode>     ask | allow | auto (default: ask)\n      --interaction-mode <mode>    normal | plan (default: normal)\n      --session-id <id>            Resume a durable session\n      --no-session-persistence    Run in a Host-managed connection-scoped Session\n  -h, --help                       Show this help\n  -v, --version                    Show the CLI version\n`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

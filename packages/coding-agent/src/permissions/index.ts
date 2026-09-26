@@ -1,4 +1,5 @@
 export type { PermissionApprovalDecision } from "./approval";
+export { createPermissionApprovalQueue, type PermissionApprovalQueue } from "./approval-queue";
 export { scanBashCommand } from "./bash-parser";
 export {
 	mergePermissionConfigs,
@@ -21,13 +22,20 @@ export {
 	type ExecutionPolicyCompileInput,
 } from "./execution-policy";
 export {
-	createPermissionApprovalQueue,
 	createPermissionMiddleware,
 	type ExtensionToolPermissionResolver,
-	type PermissionApprovalQueue,
 	type PermissionApprovalRequest,
 	type SessionAllowRules,
 } from "./middleware";
+export {
+	type PermissionReviewer,
+	PermissionReviewFailed,
+	type PermissionReviewFailureReason,
+	type PermissionReviewOptions,
+	type PermissionReviewRequest,
+	type PermissionReviewVerdict,
+	permissionReviewVerdictSchema,
+} from "./review";
 export { isDestructiveBashCommand, splitBashCommand } from "./rules";
 export type { PermissionTelemetryEvent, PermissionTelemetryObserver } from "./telemetry";
 export type { CodingExtensionToolCall, CodingToolPermission } from "./tool-permission";

@@ -43,6 +43,8 @@ export type TelemetryPermissionRisk = "low" | "medium" | "high";
 export type TelemetryPermissionSource = "rule" | "mode" | "built-in" | "danger-layer" | "extension";
 export type TelemetryPermissionPhase = "initial" | "canonical" | "recheck" | "canonical_recheck";
 export type TelemetryPermissionOutcome = "allowed" | "denied" | "recheck_denied" | "cancelled" | "failed";
+/** Why an automatic permission review produced no verdict; every failure falls back to asking the user. */
+export type TelemetryPermissionReviewFailure = "timeout" | "unavailable" | "failed" | "invalid_output" | "aborted";
 export type TelemetryApprovalDecision = "deny" | "allowOnce" | "alwaysAllow";
 export type TelemetryApprovalOutcome = "approved" | "denied" | "cancelled" | "failed";
 
@@ -164,6 +166,14 @@ export interface TelemetryEventDefinitions {
 	readonly "jai.permission.settled": {
 		readonly span: "jai.permission";
 		readonly attributes: { readonly outcome: TelemetryPermissionOutcome };
+	};
+	/** `auto` mode review of a gated call; a failed review records `failure` with an `ask` verdict. */
+	readonly "jai.permission.reviewed": {
+		readonly span: "jai.permission";
+		readonly attributes: {
+			readonly verdict: TelemetryPermissionDecision;
+			readonly failure?: TelemetryPermissionReviewFailure;
+		};
 	};
 	readonly "jai.approval.requested": { readonly span: "jai.approval"; readonly attributes: Record<never, never> };
 	readonly "jai.approval.decided": {

@@ -23,7 +23,7 @@ describe("Desktop Catalog local control transport", () => {
 			const created = await persistence.create({
 				id: "session-1",
 				appState: {},
-				runtimeConfiguration: { model: "test/model", mode: "manual" },
+				runtimeConfiguration: { model: "test/model", permissionMode: "ask", interactionMode: "normal", fastMode: false },
 				cwd: "/workspace",
 				createdAt: "2026-08-25T12:00:00.000Z",
 			});

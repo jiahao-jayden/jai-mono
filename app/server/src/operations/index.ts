@@ -4,6 +4,7 @@ export {
 	type OperationEffectEvent,
 } from "./effect-boundary";
 export {
+	projectRuntimeSessionUsage,
 	type RuntimeApprovalDecision,
 	type RuntimeApprovalHandler,
 	type RuntimeApprovalRequest,
@@ -18,6 +19,5 @@ export {
 	type RuntimeOperationPreflightInput,
 	type RuntimeQueuedInput,
 	type RuntimeSessionUsage,
-	projectRuntimeSessionUsage,
 	type RuntimeWebSearchDetails,
 } from "./runtime";

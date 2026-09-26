@@ -38,8 +38,8 @@ describeE2E("jai CLI provider subprocess", () => {
 					"--no-session-persistence",
 					"--model",
 					"test/mock",
-					"--mode",
-					"automate",
+					"--permission-mode",
+					"allow",
 				],
 				cwd: resolve(import.meta.dir, ".."),
 				env: {

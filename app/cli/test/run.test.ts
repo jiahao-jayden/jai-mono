@@ -18,17 +18,30 @@ describe("jai CLI options", () => {
 		});
 	});
 
-	test("forwards model and session mode selection to the Runtime Host", () => {
-		expect(parseCliOptions(["-p", "hello", "--model", "openai/gpt", "--mode", "automate"])).toMatchObject({
+	test("forwards model, permission and interaction selection to the Runtime Host", () => {
+		expect(
+			parseCliOptions([
+				"-p",
+				"hello",
+				"--model",
+				"openai/gpt",
+				"--permission-mode",
+				"allow",
+				"--interaction-mode",
+				"plan",
+			]),
+		).toMatchObject({
 			model: "openai/gpt",
-			mode: "automate",
+			permissionMode: "allow",
+			interactionMode: "plan",
 		});
-		expect(() => parseCliOptions(["-p", "hello", "--mode", "bypassPermissions"])).toThrow(
-			"Unsupported session mode",
+		expect(() => parseCliOptions(["-p", "hello", "--permission-mode", "automate"])).toThrow(
+			"Unsupported permission mode",
 		);
-		expect(() => parseCliOptions(["-p", "hello", "--permission-mode", "bypassPermissions"])).toThrow(
-			"Unknown option",
+		expect(() => parseCliOptions(["-p", "hello", "--interaction-mode", "debug"])).toThrow(
+			"Unsupported interaction mode",
 		);
+		expect(() => parseCliOptions(["-p", "hello", "--mode", "automate"])).toThrow("Unknown option");
 	});
 
 	test("accepts a bare -p for stdin print mode", () => {

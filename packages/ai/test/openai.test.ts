@@ -701,4 +701,46 @@ describe("OpenAIResponsesProvider", () => {
 		expect(capturedResponseParams.reasoning).toBeUndefined();
 		expect(capturedResponseParams.tools[0].strict).toBe(false);
 	});
+
+	it("maps reasoning levels and Fast mode onto Responses parameters", async () => {
+		const completed = [{ type: "response.completed", response: { usage: {} } }];
+		responseEvents = completed;
+		await collectResponses(ctx(), responsesModel(), { reasoningLevel: "max", fastMode: true });
+		expect(capturedResponseParams.reasoning).toEqual({ effort: "max", summary: "auto" });
+		expect(capturedResponseParams.service_tier).toBe("priority");
+
+		responseEvents = completed;
+		await collectResponses(ctx(), responsesModel(), { reasoningLevel: "none" });
+		expect(capturedResponseParams.reasoning).toEqual({ effort: "none", summary: undefined });
+		expect(capturedResponseParams.service_tier).toBeUndefined();
+
+		responseEvents = completed;
+		await collectResponses(ctx(), responsesModel());
+		expect(capturedResponseParams.reasoning).toEqual({ summary: "auto" });
+	});
+
+	it("does not let provider options override a resolved reasoning level", async () => {
+		responseEvents = [{ type: "response.completed", response: { usage: {} } }];
+		const { message } = await collectResponses(ctx(), responsesModel(), {
+			reasoningLevel: "low",
+			providerOptions: { "openai-responses": { reasoning: { effort: "high" } } },
+		});
+		expect(message.error).toMatchObject({ code: "ai_provider.options_conflict" });
+	});
+});
+
+describe("OpenAIProvider · reasoning 与 Fast mode", () => {
+	it("maps the resolved level to reasoning_effort and Fast mode to the priority tier", async () => {
+		streamChunks = [chunk({}, "stop")];
+		await collect(ctx(), model(), { reasoningLevel: "minimal", fastMode: true });
+		expect(capturedParams.reasoning_effort).toBe("minimal");
+		expect(capturedParams.service_tier).toBe("priority");
+	});
+
+	it("omits both parameters when nothing was resolved", async () => {
+		streamChunks = [chunk({}, "stop")];
+		await collect(ctx(), model(), { fastMode: false });
+		expect("reasoning_effort" in capturedParams).toBe(false);
+		expect("service_tier" in capturedParams).toBe(false);
+	});
 });

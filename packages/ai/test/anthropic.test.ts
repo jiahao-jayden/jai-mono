@@ -1,10 +1,12 @@
 import { beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
+import type { StreamOptions } from "../src/provider";
 import type { AssistantMessageEvent, Context, Model } from "../src/types";
 
 // mock SDK 的可变状态：每个用例设置流事件 / 捕获请求体 / 触发异常
 let streamEvents: unknown[] = [];
 let listedModels: unknown[] = [];
 let capturedParams: any;
+let capturedRequestOptions: any;
 let throwError: Error | undefined;
 
 async function* gen(events: unknown[]): AsyncGenerator<unknown> {
@@ -14,8 +16,9 @@ async function* gen(events: unknown[]): AsyncGenerator<unknown> {
 mock.module("@anthropic-ai/sdk", () => ({
 	default: class MockAnthropic {
 		messages = {
-			create: async (params: unknown) => {
+			create: async (params: unknown, requestOptions: unknown) => {
 				capturedParams = params;
+				capturedRequestOptions = requestOptions;
 				if (throwError) throw throwError;
 				return gen(streamEvents);
 			},
@@ -57,9 +60,13 @@ function model(): Model {
 	};
 }
 
-async function collect(context: Context): Promise<{ events: AssistantMessageEvent[]; message: any }> {
-	const provider = new AnthropicProvider({ apiKey: "test" });
-	const stream = provider.stream(model(), context);
+async function collect(
+	context: Context,
+	options?: StreamOptions,
+	headers?: Record<string, string>,
+): Promise<{ events: AssistantMessageEvent[]; message: any }> {
+	const provider = new AnthropicProvider({ apiKey: "test", headers });
+	const stream = provider.stream(model(), context, options);
 	const events: AssistantMessageEvent[] = [];
 	for await (const e of stream) events.push(e);
 	const message = await stream.result();
@@ -249,5 +256,38 @@ describe("AnthropicProvider · 入向翻译", () => {
 		expect(capturedParams.tools).toHaveLength(2);
 		expect(capturedParams.tools[0].cache_control).toBeUndefined();
 		expect(capturedParams.tools[1].cache_control).toEqual({ type: "ephemeral" });
+	});
+});
+
+describe("AnthropicProvider · reasoning 与 Fast mode", () => {
+	const finished = [
+		{ type: "message_start", message: { usage: { input_tokens: 1, output_tokens: 0 } } },
+		{ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } },
+	];
+
+	it("maps effort levels to output_config without touching thinking", async () => {
+		streamEvents = finished;
+		await collect(ctx(), { reasoningLevel: "xhigh" });
+		expect(capturedParams.output_config).toEqual({ effort: "xhigh" });
+		expect(capturedParams.thinking).toBeUndefined();
+		expect(capturedParams.speed).toBeUndefined();
+		expect(capturedRequestOptions.headers).toBeUndefined();
+	});
+
+	it("omits levels Anthropic cannot express instead of substituting another", async () => {
+		for (const reasoningLevel of ["none", "minimal"] as const) {
+			streamEvents = finished;
+			await collect(ctx(), { reasoningLevel });
+			expect(capturedParams.output_config).toBeUndefined();
+		}
+	});
+
+	it("sends Fast mode with its beta, keeping betas the profile already sends", async () => {
+		streamEvents = finished;
+		await collect(ctx(), { fastMode: true }, { "Anthropic-Beta": "context-1m-2025-08-07" });
+		expect(capturedParams.speed).toBe("fast");
+		expect(capturedRequestOptions.headers).toEqual({
+			"anthropic-beta": "context-1m-2025-08-07,fast-mode-2026-02-01",
+		});
 	});
 });

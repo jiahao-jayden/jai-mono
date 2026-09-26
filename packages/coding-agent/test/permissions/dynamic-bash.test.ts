@@ -30,15 +30,15 @@ describe("dynamic Bash execution boundary", () => {
 			expect(scan.value.destructive).toBe(true);
 			const request = createPermissionRequest("Bash", { command, __jaiPermissionBashScan: scan.value }, workspaceRoot);
 			expect(evaluatePermission(request, {
-				defaultMode: "bypassPermissions",
+				defaultMode: "allow",
 				permission: { "process.exec": "allow" },
 				sessionGrants: { "process.exec": "allow" },
 			})).toMatchObject({ behavior: "ask", source: "danger-layer" });
-			for (const defaultMode of ["plan", "dontAsk"] as const) {
+			for (const defaultMode of ["plan", "ask"] as const) {
 				expect(evaluatePermission(request, { defaultMode, permission: { "process.exec": "allow" } }).behavior).toBe("deny");
 			}
 			expect(evaluatePermission(request, {
-				defaultMode: "bypassPermissions", permission: { "process.exec": "deny" },
+				defaultMode: "allow", permission: { "process.exec": "deny" },
 			})).toMatchObject({ behavior: "deny", source: "rule" });
 		});
 	}
@@ -59,7 +59,7 @@ describe("dynamic Bash execution boundary", () => {
 			if (scan.isErr()) return;
 			const request = createPermissionRequest("Bash", { command, __jaiPermissionBashScan: scan.value }, workspaceRoot);
 			expect(evaluatePermission(request, {
-				defaultMode: "bypassPermissions", permission: { "process.exec": "allow" },
+				defaultMode: "allow", permission: { "process.exec": "allow" },
 			})).toMatchObject({ behavior: "deny", source: "danger-layer" });
 		});
 	}

@@ -1,8 +1,22 @@
 import { type Static, Type } from "@sinclair/typebox";
 import type { ConnectorActionPermission } from "@jai/connector";
 import type { CodingSession, Project, SessionListCursor, SessionListPage } from "./session";
+import {
+	type DesktopModelCapabilities,
+	type DesktopSessionConfiguration,
+	type DesktopSessionControls,
+	desktopSessionControlsSchema,
+} from "./session-controls";
 
 export type { CodingSession, Project, SessionListCursor, SessionListPage } from "./session";
+export type {
+	DesktopInteractionMode,
+	DesktopModelCapabilities,
+	DesktopPermissionMode,
+	DesktopReasoningLevel,
+	DesktopSessionConfiguration,
+	DesktopSessionControls,
+} from "./session-controls";
 
 export interface DesktopPermissionRequest {
 	readonly requestId: string;
@@ -401,7 +415,6 @@ export interface DesktopProviderModel {
 	readonly knowledge?: string;
 	readonly openWeights?: boolean;
 	readonly reasoning?: boolean;
-	readonly reasoningOptions?: readonly string[];
 	readonly temperature?: boolean;
 	readonly attachment?: boolean;
 	readonly interleaved?: boolean;
@@ -415,6 +428,8 @@ export interface DesktopProviderModel {
 	readonly inputLimit?: number;
 	readonly maxTokens?: number;
 	readonly compatibility?: DesktopModelCompatibility;
+	/** Unified reasoning and Fast mode support; drives which model controls the composer offers. */
+	readonly capabilities: DesktopModelCapabilities;
 }
 
 export function isDesktopProviderModelRunnable(model: DesktopProviderModel): boolean {
@@ -449,13 +464,21 @@ export interface DesktopProviderPreset {
 	readonly authentication: "api-key";
 }
 
+/**
+ * Which model reviews tool calls in `auto` permission mode. The Runtime Host
+ * owns the choice and the review itself; Desktop only shows and submits it.
+ */
+export interface DesktopAuxiliaryModelSelection {
+	readonly modelRef?: string;
+}
+
 export interface DesktopProviderConfigSnapshot {
 	readonly revision: string | null;
 	/** Last model picked in the composer; may name a model that has since been disabled. */
 	readonly selectedModelRef: string;
-	readonly selectedAgentMode: DesktopAgentMode;
 	readonly maxIterations?: number;
-	readonly reasoningEffort?: "low" | "medium" | "high";
+	/** Model for `auto` permission review; `modelRef` absent means it follows the Session model. */
+	readonly auxiliaryModel: DesktopAuxiliaryModelSelection;
 	readonly providerPresets: readonly DesktopProviderPreset[];
 	readonly profiles: readonly DesktopProviderProfile[];
 	readonly connector: DesktopConnectorConfigSnapshot;
@@ -638,7 +661,8 @@ export interface DesktopProviderProfileInput {
 export interface DesktopProviderConfigInput {
 	readonly revision: string | null;
 	readonly maxIterations?: number;
-	readonly reasoningEffort?: "low" | "medium" | "high";
+	/** Omitted keeps the saved choice; `{}` returns to following the Session model. */
+	readonly auxiliaryModel?: DesktopAuxiliaryModelSelection;
 	readonly profiles: readonly DesktopProviderProfileInput[];
 	readonly connector?: DesktopConnectorConfigInput;
 	readonly webSearch?: DesktopWebSearchConfigInput;
@@ -951,14 +975,9 @@ export interface DesktopAgentSnapshot {
 	readonly todos?: DesktopTodos;
 	readonly artifacts: readonly DesktopArtifact[];
 	readonly usage: DesktopSessionUsage;
-	/** Model and mode the Runtime Host remembers for this Session; absent until known. */
+	/** Model and Session controls the Runtime Host remembers for this Session; absent until known. */
 	readonly configuration?: DesktopSessionConfiguration;
 	readonly lastSeq: number;
-}
-
-export interface DesktopSessionConfiguration {
-	readonly modelRef: string;
-	readonly mode: DesktopAgentMode;
 }
 
 export type DesktopAgentEvent =
@@ -1006,12 +1025,9 @@ export interface DesktopAgentSessionInput {
 	readonly sessionId: string;
 }
 
-export type DesktopAgentMode = "manual" | "automate" | "plan";
-
 export const desktopProviderSelectionInputSchema = Type.Object(
 	{
 		modelRef: Type.String({ pattern: "/" }),
-		mode: Type.Union([Type.Literal("manual"), Type.Literal("automate"), Type.Literal("plan")]),
 	},
 	{ additionalProperties: false },
 );
@@ -1022,7 +1038,7 @@ export const desktopAgentConfigureInputSchema = Type.Object(
 	{
 		sessionId: Type.String({ minLength: 1 }),
 		modelRef: Type.String({ pattern: "/" }),
-		mode: Type.Union([Type.Literal("manual"), Type.Literal("automate"), Type.Literal("plan")]),
+		controls: desktopSessionControlsSchema,
 	},
 	{ additionalProperties: false },
 );
@@ -1041,7 +1057,7 @@ export const desktopAgentMessageInputSchema = Type.Object(
 		sessionId: Type.String({ minLength: 1 }),
 		message: Type.String({ minLength: 1 }),
 		modelRef: Type.String({ pattern: "/" }),
-		mode: Type.Union([Type.Literal("manual"), Type.Literal("automate"), Type.Literal("plan")]),
+		controls: desktopSessionControlsSchema,
 		attachments: Type.Optional(Type.Array(desktopMessageAttachmentSchema)),
 	},
 	{ additionalProperties: false },
@@ -1050,7 +1066,7 @@ export const desktopAgentMessageInputSchema = Type.Object(
 export interface DesktopAgentMessageInput extends DesktopAgentSessionInput {
 	readonly message: string;
 	readonly modelRef: string;
-	readonly mode: DesktopAgentMode;
+	readonly controls: DesktopSessionControls;
 	readonly attachments?: readonly DesktopMessageAttachment[];
 }
 
@@ -1059,7 +1075,7 @@ export const desktopAgentNavigateInputSchema = Type.Object(
 		sessionId: Type.String({ minLength: 1 }),
 		entryId: Type.String({ minLength: 1 }),
 		modelRef: Type.String({ pattern: "/" }),
-		mode: Type.Union([Type.Literal("manual"), Type.Literal("automate"), Type.Literal("plan")]),
+		controls: desktopSessionControlsSchema,
 	},
 	{ additionalProperties: false },
 );
@@ -1067,7 +1083,7 @@ export const desktopAgentNavigateInputSchema = Type.Object(
 export interface DesktopAgentNavigateInput extends DesktopAgentSessionInput {
 	readonly entryId: string;
 	readonly modelRef: string;
-	readonly mode: DesktopAgentMode;
+	readonly controls: DesktopSessionControls;
 }
 
 export const desktopProjectCreateInputSchema = Type.Object(

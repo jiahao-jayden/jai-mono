@@ -187,7 +187,7 @@ function extensionContext(input: {
 		sessionId: "session-1",
 		cwd: "/workspace",
 		workspace: { directory: "/workspace", trusted: true },
-		permissionMode: input.permissionMode ?? "default",
+		permissionMode: input.permissionMode ?? "ask",
 		configuration: {
 			get value() {
 				return structuredClone(value);

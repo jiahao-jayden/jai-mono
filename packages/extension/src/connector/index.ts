@@ -24,7 +24,7 @@ export interface ConnectorExtensionOptions {
 }
 
 class ConnectorExtensionPermissionDenied extends TaggedError("connector_extension.permission_denied")<{
-	readonly data: { readonly actionId: string; readonly reason: "denied" | "dont_ask" | "plan" };
+	readonly data: { readonly actionId: string; readonly reason: "denied" | "ask" | "plan" };
 	readonly message: string;
 }> {}
 
@@ -129,10 +129,10 @@ async function executeConnectorAction(
 			});
 		}
 		if (prepared.approvalMode === "ask") {
-			if (context.permissionMode === "dontAsk") {
+			if (context.permissionMode === "ask") {
 				throw new ConnectorExtensionPermissionDenied({
-					message: "Don't Ask mode denies Connector Actions that require approval",
-					data: { actionId: prepared.actionId, reason: "dont_ask" },
+					message: "Ask mode requires approval for Connector Actions",
+					data: { actionId: prepared.actionId, reason: "ask" },
 				});
 			}
 			const approval = await context.requestApproval(

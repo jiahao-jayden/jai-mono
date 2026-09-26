@@ -150,6 +150,8 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 			temperature: options.temperature,
 			maxTokens: options.maxTokens,
 			providerOptions: options.providerOptions,
+			reasoningLevel: options.reasoningLevel,
+			fastMode: options.fastMode,
 			maxIterations: options.maxIterations,
 			toolExecution: options.toolExecution,
 			toolCallResolver: options.toolCallResolver,

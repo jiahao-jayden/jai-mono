@@ -5,6 +5,7 @@ import type {
 	Message,
 	Model,
 	Provider,
+	ReasoningLevel,
 	TextContent,
 	Tool,
 	ToolCall,
@@ -206,6 +207,10 @@ export interface AgentLoopConfig {
 	maxTokens?: number;
 	/** Provider adapter 的受限请求选项，按 provider id 或 adapter 名分组。 */
 	providerOptions?: Record<string, Record<string, unknown>>;
+	/** 已按模型能力解析的 reasoning 档位，透传给 provider。 */
+	reasoningLevel?: ReasoningLevel;
+	/** 已确认模型支持的 Fast mode，透传给 provider。 */
+	fastMode?: boolean;
 	/** 单次 invoke 中可发起的最大 model turn 数。 */
 	maxIterations?: number;
 	/** 工具执行模式，默认 "parallel"。 */

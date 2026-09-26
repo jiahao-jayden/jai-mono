@@ -11,6 +11,7 @@ import {
 } from "../src/hooks/use-chat";
 import type { DesktopAgentProjectionUpdate } from "../src/lib/desktop-agent";
 import type { DesktopTranscriptItem } from "../shared/desktop-rpc";
+import { defaultDesktopSessionControls } from "../shared/session-controls";
 
 describe("useChat projection", () => {
 	test("会话模型优先，其次全局记住的模型，都被禁用时退回第一个启用模型", () => {
@@ -31,7 +32,7 @@ describe("useChat projection", () => {
 		const accepted: string[] = [];
 		const rejected: unknown[] = [];
 		const result = await runQueuedMessageSteer({
-			message: { id: "queued-1", text: "Keep this", mode: "manual", modelRef: "p/a" },
+			message: { id: "queued-1", text: "Keep this", controls: defaultDesktopSessionControls, modelRef: "p/a" },
 			sessionId: "session-1",
 			modelRef: "provider/model",
 			steer: async () => {
@@ -46,19 +47,26 @@ describe("useChat projection", () => {
 		expect(rejected).toHaveLength(1);
 	});
 
-	test("队列 Steer 成功后只确认当前消息", async () => {
+	test("队列 Steer 成功后只确认当前消息，并带上它排队时的会话控制", async () => {
 		const accepted: string[] = [];
+		const steered: unknown[] = [];
+		const controls = { ...defaultDesktopSessionControls, interactionMode: "plan" as const };
 		const result = await runQueuedMessageSteer({
-			message: { id: "queued-1", text: "Use this now", mode: "manual", modelRef: "p/a" },
+			message: { id: "queued-1", text: "Use this now", controls, modelRef: "p/a" },
 			sessionId: "session-1",
 			modelRef: "provider/model",
-			steer: async () => {},
+			steer: async (input) => {
+				steered.push(input);
+			},
 			onAccepted: (messageId) => accepted.push(messageId),
 			onRejected: () => expect.unreachable("Successful Steer must not reject"),
 		});
 
 		expect(result).toBe(true);
 		expect(accepted).toEqual(["queued-1"]);
+		expect(steered).toEqual([
+			{ sessionId: "session-1", message: "Use this now", modelRef: "provider/model", controls },
+		]);
 	});
 
 	test("将可恢复的 Provider 失败映射为可操作提示", () => {

@@ -1,11 +1,11 @@
 import { create } from "zustand";
-import type { DesktopAgentMode } from "../../shared/desktop-rpc";
+import type { DesktopSessionControls } from "../../shared/session-controls";
 
-/** A queued message keeps the model and mode it was queued with, independent of the run in progress. */
+/** A queued message keeps the model and Session controls it was queued with, independent of the run in progress. */
 export interface QueuedMessage {
 	readonly id: string;
 	readonly text: string;
-	readonly mode: DesktopAgentMode;
+	readonly controls: DesktopSessionControls;
 	readonly modelRef: string;
 }
 
@@ -16,21 +16,22 @@ interface DesktopChatStore {
 	selectedProjectId: string | null;
 	/** null until the user picks one this run; the Runtime Host remembers the last pick across launches. */
 	selectedModelRef: string | null;
-	selectedAgentMode: DesktopAgentMode | null;
+	/** null until the user changes a control this run; new Sessions start from the Host defaults. */
+	selectedControls: DesktopSessionControls | null;
 	openSession(sessionId: string): void;
 	newChat(): void;
 	setDraft(value: string): void;
 	clearDraft(sessionId: string): void;
 	sessionCreated(sessionId: string): void;
-	enqueueMessage(text: string, mode: DesktopAgentMode, modelRef: string): void;
+	enqueueMessage(text: string, controls: DesktopSessionControls, modelRef: string): void;
 	acceptQueuedMessage(messageId: string): void;
-	/** Moves the message back into the draft and returns it so its model and mode can be restored. */
+	/** Moves the message back into the draft and returns it so its model and controls can be restored. */
 	editQueuedMessage(messageId: string): QueuedMessage | undefined;
 	removeQueuedMessage(messageId: string): void;
 	reorderQueuedMessages(orderedIds: readonly string[]): void;
 	setSelectedProjectId(projectId: string | null): void;
 	setSelectedModelRef(modelRef: string): void;
-	setSelectedAgentMode(mode: DesktopAgentMode): void;
+	setSelectedControls(controls: DesktopSessionControls): void;
 }
 
 const NEW_CHAT_DRAFT_KEY = "__new_chat__";
@@ -41,16 +42,16 @@ export const useDesktopChatStore = create<DesktopChatStore>((set, get) => ({
 	queue: [],
 	selectedProjectId: null,
 	selectedModelRef: null,
-	selectedAgentMode: null,
+	selectedControls: null,
 
 	openSession(sessionId) {
 		if (get().activeSessionId === sessionId) return;
-		set({ activeSessionId: sessionId, queue: [] });
+		set({ activeSessionId: sessionId, queue: [], selectedControls: null });
 	},
 
 	newChat() {
 		if (get().activeSessionId === null) return;
-		set({ activeSessionId: null, queue: [] });
+		set({ activeSessionId: null, queue: [], selectedControls: null });
 	},
 
 	setDraft(value) {
@@ -78,9 +79,9 @@ export const useDesktopChatStore = create<DesktopChatStore>((set, get) => ({
 		});
 	},
 
-	enqueueMessage(text, mode, modelRef) {
+	enqueueMessage(text, controls, modelRef) {
 		set((state) => ({
-			queue: [...state.queue, { id: crypto.randomUUID(), text, mode, modelRef }],
+			queue: [...state.queue, { id: crypto.randomUUID(), text, controls, modelRef }],
 		}));
 	},
 
@@ -128,8 +129,8 @@ export const useDesktopChatStore = create<DesktopChatStore>((set, get) => ({
 		set({ selectedModelRef });
 	},
 
-	setSelectedAgentMode(selectedAgentMode) {
-		set({ selectedAgentMode });
+	setSelectedControls(selectedControls) {
+		set({ selectedControls });
 	},
 }));
 

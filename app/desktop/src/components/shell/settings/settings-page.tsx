@@ -244,7 +244,7 @@ function ProviderConfigForm({
 	const [profiles, setProfiles] = useState<ProfileDraft[]>(() => snapshot.profiles.map(toProfileDraft));
 	const [selectedProfileId, setSelectedProfileId] = useState(snapshot.profiles[0]?.id ?? "");
 	const [maxIterations, setMaxIterations] = useState(snapshot.maxIterations?.toString() ?? "");
-	const [reasoningEffort, setReasoningEffort] = useState(snapshot.reasoningEffort ?? "");
+	const [auxiliaryModelRef, setAuxiliaryModelRef] = useState(snapshot.auxiliaryModel.modelRef);
 	const [connector, setConnector] = useState<DesktopConnectorConfigInput>(() => toConnectorInput(snapshot.connector));
 	const [webSearch, setWebSearch] = useState<DesktopWebSearchConfigInput>(() => toWebSearchInput(snapshot.webSearch));
 	const [saving, setSaving] = useState(false);
@@ -258,7 +258,8 @@ function ProviderConfigForm({
 				? currentProfileId
 				: (snapshot.profiles[0]?.id ?? ""),
 		);
-	}, [dirty, snapshot.profiles]);
+		setAuxiliaryModelRef(snapshot.auxiliaryModel.modelRef);
+	}, [dirty, snapshot.profiles, snapshot.auxiliaryModel.modelRef]);
 	const canSave =
 		profiles.length > 0 ||
 		snapshot.profiles.length > 0 ||
@@ -300,7 +301,7 @@ function ProviderConfigForm({
 			const savedSnapshot = await onSave({
 				revision: snapshot.revision,
 				maxIterations: maxIterations ? Number(maxIterations) : undefined,
-				reasoningEffort: reasoningEffort ? (reasoningEffort as "low" | "medium" | "high") : undefined,
+				auxiliaryModel: { modelRef: auxiliaryModelRef },
 				connector,
 				webSearch,
 				profiles: profiles.map(
@@ -319,6 +320,7 @@ function ProviderConfigForm({
 			});
 			setProfiles(savedSnapshot.profiles.map(toProfileDraft));
 			setWebSearch(toWebSearchInput(savedSnapshot.webSearch));
+			setAuxiliaryModelRef(savedSnapshot.auxiliaryModel.modelRef);
 			setDirty(false);
 		} catch (_cause) {
 			setError(intl.formatMessage(desktopMessages.settingsProviderSaveError));
@@ -344,13 +346,14 @@ function ProviderConfigForm({
 					{category === "general" ? (
 						<GeneralSettings
 							maxIterations={maxIterations}
-							reasoningEffort={reasoningEffort}
 							onMaxIterationsChange={(value) => {
 								setMaxIterations(value);
 								setDirty(true);
 							}}
-							onReasoningEffortChange={(value) => {
-								setReasoningEffort(value);
+							profiles={snapshot.profiles}
+							auxiliaryModelRef={auxiliaryModelRef}
+							onAuxiliaryModelChange={(modelRef) => {
+								setAuxiliaryModelRef(modelRef);
 								setDirty(true);
 							}}
 						/>

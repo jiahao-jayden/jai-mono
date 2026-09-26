@@ -29,19 +29,13 @@ export const permissionConfigSchema = Type.Partial(
 
 export const permissionGrantConfigSchema = Type.Record(Type.String({ minLength: 1 }), permissionConfigSchema);
 
-const permissionModeSchema = Type.Union([
-	Type.Literal("default"),
-	Type.Literal("acceptEdits"),
-	Type.Literal("plan"),
-	Type.Literal("dontAsk"),
-	Type.Literal("bypassPermissions"),
-]);
+/** Modes a settings file may choose as its default; `auto` remains Host-owned. */
+const permissionModeSchema = Type.Union([Type.Literal("ask"), Type.Literal("plan"), Type.Literal("allow")]);
 
 export const permissionSettingsSchema = Type.Object(
 	{
 		defaultMode: Type.Optional(permissionModeSchema),
 		additionalDirectories: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-		disableBypassPermissionsMode: Type.Optional(Type.Literal("disable")),
 	},
 	{ additionalProperties: false },
 );
@@ -49,17 +43,12 @@ export const permissionSettingsSchema = Type.Object(
 export type PermissionSettingsDocument = Static<typeof permissionSettingsSchema>;
 
 export const permissionConfigFields = {
-	defaultMode: { merge: "replace", project: "trusted", default: "default" },
+	defaultMode: { merge: "replace", project: "trusted", default: "ask" },
 	additionalDirectories: {
 		merge: "appendUnique",
 		project: "trusted",
 		default: [],
 		uniqueBy: (value) => String(value),
-	},
-	disableBypassPermissionsMode: {
-		merge: "restrictOnly",
-		project: "always",
-		combineRestrictions: () => "disable",
 	},
 } satisfies ConfigFieldTree;
 
@@ -90,7 +79,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function normalizePermissionSettings(settings: PermissionSettings = {}): ResolvedPermissionSettings {
 	return Object.freeze({
-		defaultMode: settings.defaultMode ?? "default",
+		defaultMode: settings.defaultMode ?? "ask",
 		permission:
 			settings.permission && Object.keys(settings.permission).length > 0
 				? Object.freeze(settings.permission)
@@ -104,7 +93,6 @@ export function normalizePermissionSettings(settings: PermissionSettings = {}): 
 				? Object.freeze(settings.permissionGrants)
 				: undefined,
 		additionalDirectories: Object.freeze(unique(settings.additionalDirectories)),
-		disableBypassPermissionsMode: settings.disableBypassPermissionsMode === "disable" ? "disable" : undefined,
 	});
 }
 

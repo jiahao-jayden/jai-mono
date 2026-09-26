@@ -119,9 +119,6 @@ function evaluateTarget(
 	);
 	const grant = projectGrant ?? matchingRule(settings.sessionGrants, target, request.workspaceRoot);
 	if (rule?.action === "deny") return ruleDecision(target, rule);
-	if (settings.defaultMode === "bypassPermissions" && settings.disableBypassPermissionsMode === "disable") {
-		return decision("deny", "mode", "Bypass Permissions is disabled by configuration", target);
-	}
 	if (settings.defaultMode === "plan" && !isReadOnlyTarget(target)) {
 		return decision("deny", "mode", "Plan mode only allows read-only work", target);
 	}
@@ -134,17 +131,11 @@ function evaluateTarget(
 		target.risk === "destructive" ||
 		(target.resource.kind === "command" && isDestructiveBashCommand(target.resource.command))
 	) {
-		if (settings.defaultMode === "dontAsk") {
-			return decision("deny", "mode", "Don't Ask denies risky calls without a matching Allow rule", target);
-		}
 		return decision("ask", "danger-layer", "Destructive Bash operation requires approval", target, {
 			risk: "destructive",
 		});
 	}
 	if (target.risk === "opaque") {
-		if (settings.defaultMode === "dontAsk") {
-			return decision("deny", "mode", "Don't Ask denies opaque calls without a matching Allow rule", target);
-		}
 		return decision("ask", "danger-layer", "Permission target could not be parsed safely", target, {
 			risk: "opaque",
 		});
@@ -156,11 +147,16 @@ function evaluateTarget(
 	if (grant?.action === "allow") {
 		return ruleDecision(target, grant, projectGrant ? "project-grant" : "session-grant");
 	}
-	if (settings.defaultMode === "dontAsk") {
-		return decision("deny", "mode", "Don't Ask denies calls without a matching Allow rule", target);
+	if (settings.defaultMode === "allow") {
+		// Allow skips routine prompts, not the workspace boundary or danger layer.
+		if (
+			target.resource.kind === "path" &&
+			!isInsideReadableBoundary(request.workspaceRoot, target.resource, settings.additionalDirectories)
+		) {
+			return decision("ask", "mode", "Allow mode does not cross the workspace boundary", target);
+		}
+		return decision("allow", "mode", "Allow mode", target);
 	}
-	if (settings.defaultMode === "bypassPermissions")
-		return decision("allow", "mode", "Bypass Permissions mode", target);
 	return builtInDecision(request, target, settings);
 }
 
@@ -176,10 +172,10 @@ function builtInDecision(
 	}
 	if (target.action === "file.write") {
 		if (
-			settings.defaultMode === "acceptEdits" &&
+			settings.defaultMode === "allow" &&
 			isInsideReadableBoundary(request.workspaceRoot, target.resource, settings.additionalDirectories)
 		) {
-			return decision("allow", "mode", "Accept Edits allows changes inside the workspace boundary", target);
+			return decision("allow", "mode", "Allow mode permits changes inside the workspace boundary", target);
 		}
 		return decision("ask", "built-in", "File modifications require confirmation", target);
 	}
@@ -302,12 +298,16 @@ function isInsideReadableBoundary(
 ): boolean {
 	if (resource.kind !== "path") return false;
 	const target = resolve(workspaceRoot, resource.path);
-	const roots = [
+	const lexicalRoots = [
 		resolve(workspaceRoot),
 		...additionalDirectories.map((directory) =>
 			isAbsolute(directory) ? resolve(directory) : resolve(workspaceRoot, directory),
 		),
 	];
+	// A target is checked twice: lexically, and again after the middleware canonicalizes it
+	// through symlinks. The canonical form must match a canonical root, or a workspace under a
+	// symlinked directory (macOS `/var` -> `/private/var`) would look like it is outside itself.
+	const roots = [...lexicalRoots, ...lexicalRoots.map(canonicalWorkspaceRoot)];
 	return roots.some((root) => isWithin(root, target));
 }
 

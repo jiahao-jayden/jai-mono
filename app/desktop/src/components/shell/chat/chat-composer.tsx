@@ -13,19 +13,19 @@ import { desktop, desktopFilePath } from "@/lib/desktop";
 import { useIcons } from "@/lib/icon-context";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
-	DesktopAgentMode,
 	DesktopCommandDescriptor,
 	DesktopMessageAttachment,
 	DesktopProject,
 	DesktopProviderConfigSnapshot,
 	DesktopSessionUsage,
 } from "../../../../shared/desktop-rpc";
+import type { DesktopSessionControls } from "../../../../shared/session-controls";
 import { Button } from "../../ui/button";
 import { InputMessage } from "../../ui/input-message";
-import { AgentModeControl } from "./agent-mode-control";
 import { ChatMessageQueue } from "./chat-message-queue";
-import { MessageAttachmentPicker } from "./message-attachment-picker";
+import { ComposerAddMenu, PlanModeChip } from "./composer-add-menu";
 import { ModelSelector } from "./model-selector";
+import { PermissionModeControl } from "./permission-mode-control";
 import { ProjectPicker } from "./project-picker";
 import { SessionUsageButton } from "./session-usage";
 
@@ -50,12 +50,12 @@ interface ChatComposerProps {
 	onRetryProjects(): void;
 	providerConfig?: DesktopProviderConfigSnapshot;
 	selectedModelRef: string;
-	selectedAgentMode: DesktopAgentMode;
+	selectedControls: DesktopSessionControls;
 	providerLoading: boolean;
 	providerError: boolean;
 	onOpenProviderSettings(): void;
 	onSelectProviderModel(modelRef: string): void;
-	onSelectAgentMode(mode: DesktopAgentMode): void;
+	onSelectControls(controls: DesktopSessionControls): void;
 	usage?: DesktopSessionUsage;
 	large?: boolean;
 	showProjectPicker?: boolean;
@@ -100,12 +100,12 @@ export function ChatComposer({
 	onRetryProjects,
 	providerConfig,
 	selectedModelRef,
-	selectedAgentMode,
+	selectedControls,
 	providerLoading,
 	providerError,
 	onOpenProviderSettings,
 	onSelectProviderModel,
-	onSelectAgentMode,
+	onSelectControls,
 	usage,
 	large = false,
 	showProjectPicker = true,
@@ -249,7 +249,7 @@ export function ChatComposer({
 				void onStop();
 				return;
 			}
-			const accepted = await onSend({ text: value, mode: selectedAgentMode, attachments, delivery });
+			const accepted = await onSend({ text: value, controls: selectedControls, attachments, delivery });
 			if (accepted) {
 				const ids = attachments.map((attachment) => attachment.id);
 				if (ids.length > 0) void desktop.attachment.release(ids);
@@ -258,7 +258,7 @@ export function ChatComposer({
 				setAttachmentError(undefined);
 			}
 		},
-		[attachments, onSend, onStop, selectedAgentMode, stopAction, value],
+		[attachments, onSend, onStop, selectedControls, stopAction, value],
 	);
 	const onSubmit = () => void submitMessage();
 	const pickerDisabled = composerDisabled || isStreaming;
@@ -419,8 +419,26 @@ export function ChatComposer({
 					}
 					leftSlot={({ openFilePicker }) => (
 						<>
-							<MessageAttachmentPicker disabled={pickerDisabled} onOpen={() => openFilePicker()} />
-							<AgentModeControl mode={selectedAgentMode} disabled={isSubmitting} onSelect={onSelectAgentMode} />
+							<ComposerAddMenu
+								disabled={isSubmitting}
+								attachmentsDisabled={pickerDisabled}
+								interactionMode={selectedControls.interactionMode}
+								onOpenFiles={() => openFilePicker()}
+								onInteractionModeChange={(interactionMode) =>
+									onSelectControls({ ...selectedControls, interactionMode })
+								}
+							/>
+							<PermissionModeControl
+								value={selectedControls.permissionMode}
+								disabled={isSubmitting}
+								onChange={(permissionMode) => onSelectControls({ ...selectedControls, permissionMode })}
+							/>
+							{selectedControls.interactionMode === "plan" ? (
+								<PlanModeChip
+									disabled={isSubmitting}
+									onTurnOff={() => onSelectControls({ ...selectedControls, interactionMode: "normal" })}
+								/>
+							) : null}
 						</>
 					)}
 					rightSlot={
@@ -432,7 +450,9 @@ export function ChatComposer({
 								loading={providerLoading}
 								error={providerError}
 								disabled={isSubmitting || providerLoading}
+								controls={selectedControls}
 								onSelect={onSelectProviderModel}
+								onControlsChange={onSelectControls}
 								onManage={onOpenProviderSettings}
 							/>
 						</>
