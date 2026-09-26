@@ -3,7 +3,7 @@ import { SqliteRuntimeAgentSettings } from "../../src/config";
 import { DatabaseSync } from "../../src/persistence/sqlite/driver";
 
 describe("Runtime Agent Settings", () => {
-  test("drops the retired agent mode and global reasoning effort from stored settings and keeps everything else", () => {
+  test("rejects removed global agent controls instead of silently rewriting stored settings", () => {
     const database = new DatabaseSync(":memory:");
     try {
       new SqliteRuntimeAgentSettings(database);
@@ -21,17 +21,8 @@ describe("Runtime Agent Settings", () => {
           "2026-09-01T00:00:00.000Z",
         );
 
-      const reopened = new SqliteRuntimeAgentSettings(database);
-      const snapshot = reopened.snapshot();
-      if (snapshot.isErr()) throw snapshot.error;
-      expect(snapshot.value).toMatchObject({ model: "openai/legacy", maxTurns: 7 });
-      expect(snapshot.value).not.toHaveProperty("agentMode");
-      expect(snapshot.value).not.toHaveProperty("reasoningEffort");
-      const stored = database.prepare("SELECT settings_json FROM runtime_agent_settings").get() as {
-        readonly settings_json: string;
-      };
-      expect(JSON.parse(stored.settings_json)).not.toHaveProperty("agentMode");
-      expect(JSON.parse(stored.settings_json)).not.toHaveProperty("reasoningEffort");
+      const snapshot = new SqliteRuntimeAgentSettings(database).snapshot();
+      expect(snapshot.isErr()).toBe(true);
     } finally {
       database.close();
     }

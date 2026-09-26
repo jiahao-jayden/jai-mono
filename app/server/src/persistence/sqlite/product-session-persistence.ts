@@ -42,11 +42,6 @@ interface RuntimeConfigurationRow {
 	readonly configuration_json: string;
 }
 
-interface StoredRuntimeConfigurationRow {
-	readonly session_id: string;
-	readonly configuration_json: string;
-}
-
 interface OperationRuntimeConfigurationRow {
 	readonly operation_id: string;
 	readonly configuration_json: string;
@@ -485,42 +480,6 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 		}
 	}
 
-	/**
-	 * Deletes every Session whose stored Runtime configuration does not decode
-	 * with the current contract, and returns their ids. Sessions written before
-	 * permission, interaction and model controls were split (`manual /
-	 * automate / plan`) are not migrated: product decision in #130/#131.
-	 *
-	 * Any undecodable fact condemns the whole Session because accepted
-	 * Operations point at historical configuration facts that recovery must
-	 * read. Deleting the journal row cascades to entries, Operation records,
-	 * configuration facts, the Session catalog and Desktop Catalog metadata,
-	 * matching Desktop's own Session deletion. The Runtime Host calls this once
-	 * at startup, before any Session can be listed, resumed or prompted; after
-	 * that, an undecodable fact is corruption and reads keep failing loudly.
-	 */
-	deleteSessionsWithIncompatibleConfiguration(): ResultType<readonly string[], ProductSessionAdmissionConflict> {
-		try {
-			const deleted = this.transaction(() => {
-				const rows = this.database
-					.prepare("SELECT session_id, configuration_json FROM product_session_runtime_configurations")
-					.all() as unknown as StoredRuntimeConfigurationRow[];
-				const incompatible = new Set<string>();
-				for (const row of rows) {
-					if (!decodesRuntimeSessionConfiguration(row.configuration_json)) incompatible.add(row.session_id);
-				}
-				const remove = this.database.prepare("DELETE FROM session_journals WHERE id = ?");
-				for (const sessionId of incompatible) remove.run(sessionId);
-				return [...incompatible].sort();
-			});
-			return Result.ok(deleted);
-		} catch (error) {
-			return Result.err(
-				this.conflict("", "Could not delete Sessions with incompatible Runtime configuration", error),
-			);
-		}
-	}
-
 	close(): void {
 		if (this.#ownsDatabase) this.database.close();
 	}
@@ -908,14 +867,6 @@ function isOperationTerminalOutcome(value: unknown): value is import("@jai/agent
 		value === "blocked" ||
 		value === "interrupted"
 	);
-}
-
-function decodesRuntimeSessionConfiguration(raw: string): boolean {
-	try {
-		return isRuntimeSessionConfiguration(JSON.parse(raw) as unknown);
-	} catch {
-		return false;
-	}
 }
 
 function isUniqueViolation(error: unknown): boolean {

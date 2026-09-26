@@ -317,18 +317,6 @@ export class SqliteRuntimeAgentSettings {
 				updated_at TEXT NOT NULL
 			);
 		`);
-		// Data migration: settings once held the composer's `manual / automate /
-		// plan` mode (#131) and a global `low / medium / high` reasoning effort
-		// (#133). Both moved to per-Session configuration, and strict validation
-		// would otherwise reject the whole settings row. Removing only those keys
-		// keeps every other setting, including Provider credentials, intact.
-		this.database.exec(`
-			UPDATE runtime_agent_settings
-			SET settings_json = json_remove(settings_json, '$.agentMode', '$.reasoningEffort')
-			WHERE CASE WHEN json_valid(settings_json)
-				THEN json_type(settings_json, '$.agentMode') IS NOT NULL OR json_type(settings_json, '$.reasoningEffort') IS NOT NULL
-				ELSE 0 END;
-		`);
 	}
 
 	subscribe(listener: () => void): () => void {

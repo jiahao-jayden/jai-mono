@@ -45,8 +45,7 @@ export type RuntimeSessionInteractionMode = (typeof runtimeSessionInteractionMod
  * meaningful "unset" state distinct from off, so it is a plain boolean.
  *
  * The schema is strict on purpose: a stored configuration that does not
- * decode (for example the retired `manual / automate / plan` shape) is not
- * migrated; its Session is deleted at Runtime Host startup.
+ * decode is invalid and cannot be admitted or resumed.
  */
 export const runtimeSessionConfigurationSchema = Type.Object(
 	{

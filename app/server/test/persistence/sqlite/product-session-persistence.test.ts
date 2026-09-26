@@ -351,53 +351,6 @@ describe("SqliteProductSessionPersistence", () => {
 		expect(lastPromptAt(database, "session-1")).toBe("2026-08-25T10:00:00.000Z");
 	});
 
-	test("deletes a Session with any undecodable configuration fact, including history bound to an Operation", async () => {
-		const database = new DatabaseSync(":memory:");
-		const persistence = new SqliteProductSessionPersistence(database);
-		for (const id of ["current", "legacy-latest", "legacy-history"]) {
-			const created = await persistence.create({
-				id,
-				appState: {},
-				runtimeConfiguration: { ...currentConfiguration },
-				cwd: "/workspace",
-				createdAt: "2026-09-01T00:00:00.000Z",
-			});
-			if (created.isErr()) throw created.error;
-		}
-		const appended = await persistence.appendRuntimeConfiguration({
-			sessionId: "legacy-history",
-			configuration: { ...currentConfiguration, interactionMode: "plan" },
-			timestamp: "2026-09-01T00:01:00.000Z",
-		});
-		if (appended.isErr()) throw appended.error;
-		const rewrite = database.prepare(
-			"UPDATE product_session_runtime_configurations SET configuration_json = ? WHERE session_id = ? AND sequence = ?",
-		);
-		// Only the older fact of "legacy-history" is retired; its latest fact still decodes.
-		rewrite.run(JSON.stringify({ model: "profile/model", mode: "plan" }), "legacy-history", 0);
-		rewrite.run(JSON.stringify({ model: "profile/model", mode: "manual" }), "legacy-latest", 0);
-
-		const deleted = persistence.deleteSessionsWithIncompatibleConfiguration();
-		if (deleted.isErr()) throw deleted.error;
-		expect(deleted.value).toEqual(["legacy-history", "legacy-latest"]);
-
-		const listed = await persistence.list();
-		if (listed.isErr()) throw listed.error;
-		expect(listed.value.map((session) => session.id)).toEqual(["current"]);
-		for (const id of ["legacy-latest", "legacy-history"]) {
-			const loaded = await persistence.load(id);
-			expect(loaded.isErr() && loaded.error._tag).toBe("product_sessions.not_found");
-		}
-		const leftovers = database
-			.prepare("SELECT COUNT(*) AS count FROM product_session_runtime_configurations WHERE session_id != 'current'")
-			.get() as { readonly count: number };
-		expect(leftovers.count).toBe(0);
-
-		const again = persistence.deleteSessionsWithIncompatibleConfiguration();
-		if (again.isErr()) throw again.error;
-		expect(again.value).toEqual([]);
-	});
-
 	test("refuses to write a configuration that does not match the Session configuration contract", async () => {
 		const persistence = new SqliteProductSessionPersistence(new DatabaseSync(":memory:"));
 		const legacy = { model: "profile/model", mode: "manual" } as unknown as typeof currentConfiguration;
