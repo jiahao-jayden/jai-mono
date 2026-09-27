@@ -49,6 +49,14 @@ function renderComposer(controls: DesktopSessionControls, status: "ready" | "sub
 }
 
 describe("Composer Session controls", () => {
+	test("Auto permission mode stays accented in the composer; other modes keep the neutral chip", () => {
+		const auto = renderComposer({ ...defaultDesktopSessionControls, permissionMode: "auto" });
+		const ask = renderComposer({ ...defaultDesktopSessionControls, permissionMode: "ask" });
+
+		expect(auto).toMatch(/aria-label="Permissions: Auto"[^>]*text-caution|text-caution[^>]*aria-label="Permissions: Auto"/);
+		expect(ask).not.toContain("text-caution");
+	});
+
 	test("permission dropdown shows the current permission mode, not the retired agent modes", () => {
 		const markup = renderComposer({ ...defaultDesktopSessionControls, permissionMode: "allow" });
 

@@ -93,7 +93,9 @@ interface MenuItemProps extends HTMLAttributes<HTMLDivElement> {
   checked?: boolean;
   onSelect?: () => void;
   disabled?: boolean;
-  variant?: "default" | "destructive";
+  /** `accent` marks an option with a wider blast radius (e.g. a permission mode
+   *  that decides on the user's behalf); it always shows in the caution color. */
+  variant?: "default" | "destructive" | "accent";
   submenu?: boolean;
   /** Popup-only (inside DropdownContent): whether activating the item closes
    *  the menu. Ignored in the inline Dropdown panel. @default true */
@@ -139,6 +141,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
     const labelTextClass = isSm ? "text-[13.5px]" : "text-[14px]";
     const descriptionTextClass = isSm ? "text-[11px]" : "text-[12px]";
     const checkedWeight = fontWeights.normal;
+    const accented = variant === "accent";
 
     const mergeRef = (node: HTMLDivElement | null) => {
       (internalRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
@@ -181,9 +184,11 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
                 "col-start-1 row-start-1 transition-[color,stroke-width] duration-80",
                 variant === "destructive"
                   ? "text-destructive"
-                  : isActive || checked
-                    ? "text-foreground"
-                    : "text-muted-foreground"
+                  : accented
+                    ? "text-caution"
+                    : isActive || checked
+                      ? "text-foreground"
+                      : "text-muted-foreground"
               )}
             />
           </span>
@@ -204,7 +209,9 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
                 "col-start-1 row-start-1 truncate transition-[font-variation-settings] duration-80",
                 variant === "destructive"
                   ? "text-destructive"
-                  : "text-foreground"
+                  : accented
+                    ? "text-caution"
+                    : "text-foreground"
               )}
               style={{
                 fontVariationSettings: checked
@@ -216,7 +223,13 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
             </span>
           </span>
           {description ? (
-            <span className={cn("mt-1 block truncate leading-none text-muted-foreground/70", descriptionTextClass)}>
+            <span
+              className={cn(
+                "mt-1 block truncate leading-none",
+                accented ? "text-caution/70" : "text-muted-foreground/70",
+                descriptionTextClass
+              )}
+            >
               {description}
             </span>
           ) : null}
@@ -229,7 +242,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
           />
         ) : null}
         {checked ? (
-          <CheckIcon size={16} strokeWidth={2} className="shrink-0 text-foreground" />
+          <CheckIcon size={16} strokeWidth={2} className={cn("shrink-0", accented ? "text-caution" : "text-foreground")} />
         ) : null}
       </>
     );

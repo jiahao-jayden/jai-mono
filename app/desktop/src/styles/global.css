@@ -88,6 +88,7 @@ html.right-panel-resizing * {
   --color-hover: var(--hover);
   --color-active: var(--active);
   --color-brand: var(--brand);
+  --color-caution: var(--caution);
   --color-success: var(--success);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-muted-hover: var(--muted-hover);
@@ -156,6 +157,8 @@ html.right-panel-resizing * {
   --destructive-foreground: oklch(97.1% 0.013 17.38);
   --success: var(--color-emerald-500);
   --brand: oklch(0.55 0.10 150);
+  /* Options that act on the user's behalf (e.g. Auto permissions). */
+  --caution: #e25505;
   --border: oklch(14.5% 0 0 / 0.1);
   --border-surface: oklch(14.5% 0 0 / 0.1);
   --border-surface-strong: oklch(14.5% 0 0 / 0.15);
@@ -226,6 +229,7 @@ html.right-panel-resizing * {
   --destructive: var(--color-red-400);
   --success: var(--color-emerald-400);
   --brand: oklch(0.70 0.10 150);
+  --caution: #fe8549;
   --border: oklch(98.5% 0 0 / 0.1);
   --border-surface: oklch(98.5% 0 0 / 0.15);
   --border-surface-strong: oklch(98.5% 0 0 / 0.2);

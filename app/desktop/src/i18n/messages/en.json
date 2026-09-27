@@ -459,6 +459,18 @@
   "desktop.permissionMode.auto": {
     "defaultMessage": "Auto"
   },
+  "desktop.permissionMode.autoConfirm.action": {
+    "defaultMessage": "Turn on Auto"
+  },
+  "desktop.permissionMode.autoConfirm.reviewer": {
+    "defaultMessage": "Actions that need permission go to a reviewer model first. It runs routine ones, blocks the ones it rejects, and asks you when it isn't sure."
+  },
+  "desktop.permissionMode.autoConfirm.risk": {
+    "defaultMessage": "The reviewer can misjudge, and every review uses extra tokens. It uses the session model unless you choose an auxiliary model in Settings > General."
+  },
+  "desktop.permissionMode.autoConfirm.title": {
+    "defaultMessage": "Turn on Auto permissions?"
+  },
   "desktop.permissionMode.autoDescription": {
     "defaultMessage": "Let a reviewer model decide routine actions; ask when uncertain"
   },

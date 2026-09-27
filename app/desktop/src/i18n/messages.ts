@@ -316,6 +316,24 @@ export const desktopMessages = defineMessages({
 		id: "desktop.permissionMode.autoDescription",
 		defaultMessage: "Let a reviewer model decide routine actions; ask when uncertain",
 	},
+	permissionModeAutoConfirmTitle: {
+		id: "desktop.permissionMode.autoConfirm.title",
+		defaultMessage: "Turn on Auto permissions?",
+	},
+	permissionModeAutoConfirmReviewer: {
+		id: "desktop.permissionMode.autoConfirm.reviewer",
+		defaultMessage:
+			"Actions that need permission go to a reviewer model first. It runs routine ones, blocks the ones it rejects, and asks you when it isn't sure.",
+	},
+	permissionModeAutoConfirmRisk: {
+		id: "desktop.permissionMode.autoConfirm.risk",
+		defaultMessage:
+			"The reviewer can misjudge, and every review uses extra tokens. It uses the session model unless you choose an auxiliary model in Settings > General.",
+	},
+	permissionModeAutoConfirmAction: {
+		id: "desktop.permissionMode.autoConfirm.action",
+		defaultMessage: "Turn on Auto",
+	},
 	interactionModeLabel: { id: "desktop.interactionMode.label", defaultMessage: "Mode" },
 	interactionModeNormal: { id: "desktop.interactionMode.normal", defaultMessage: "Normal" },
 	interactionModeNormalDescription: {
