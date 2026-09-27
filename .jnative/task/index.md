@@ -51,7 +51,7 @@ Tracker：https://github.com/jiahao-jayden/jai-mono/issues/74
 
 ## Agent 搜索收敛
 
-阶段：blocked
+阶段：awaiting-confirmation
 Tracker：https://github.com/jiahao-jayden/jai-mono/issues/60
-更新时间：2026-09-14
+更新时间：2026-09-27
 本地历史：-
