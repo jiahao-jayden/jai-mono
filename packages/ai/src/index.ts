@@ -3,7 +3,9 @@ export {
 	createAssistantMessage,
 	mergeProviderOptions,
 	normalizeProviderError,
+	type ProviderFailureKind,
 	ProviderOptionsConflict,
+	providerFailureKind,
 	runAdapterStream,
 } from "./adapter";
 export {

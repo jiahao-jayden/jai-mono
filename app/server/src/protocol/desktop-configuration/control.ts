@@ -1,6 +1,13 @@
+import { ModelDiscoveryFailed } from "@jai/ai";
 import type { Result } from "better-result";
-import { parseRuntimeAgentSettingsInput, type SqliteRuntimeAgentSettings } from "../../config";
+import {
+	parseRuntimeAgentSettingsInput,
+	type RuntimeAgentSettingsModelFetchError,
+	RuntimeAgentSettingsModelFetchFailed,
+	type SqliteRuntimeAgentSettings,
+} from "../../config";
 import type { RuntimeConnectorOAuth } from "../../connectors";
+import { redactSecrets } from "../../logging/redact";
 import type { SqliteRuntimeModelCatalog } from "../../model-catalog";
 import type { RuntimeMcpSettingsController, RuntimeMcpSettingsInput } from "../../runtime-capabilities";
 import {
@@ -88,8 +95,14 @@ export class DesktopConfigurationControl {
 			case "jai/desktop-configuration/fetch-models": {
 				const profile = readDto(profileIdParamsSchema, params);
 				if (!profile) return this.error(request.id, -32602, "Invalid Provider model fetch parameters");
-				const fetched = await this.settings.fetchModels(profile.profileId);
-				if (fetched.isErr()) return this.error(request.id, -32001, fetched.error.message);
+				// Re-fetching a model list is the user's re-sync gesture, so catalog metadata is re-synced too.
+				const [fetched] = await Promise.all([
+					this.settings.fetchModels(profile.profileId),
+					this.modelCatalog?.refresh({ force: true }),
+				]);
+				if (fetched.isErr()) {
+					return this.error(request.id, -32001, fetched.error.message, modelDiscoveryErrorData(fetched.error));
+				}
 				return [{ jsonrpc: "2.0", id: request.id, result: fetched.value } satisfies AcpJsonRpcResponse];
 			}
 			case "jai/desktop-configuration/reveal-api-key": {
@@ -194,7 +207,31 @@ export class DesktopConfigurationControl {
 		return [{ jsonrpc: "2.0", id, result: result.value } satisfies AcpJsonRpcResponse];
 	}
 
-	private error(id: string | number, code: number, message: string): readonly AcpOutboundMessage[] {
-		return [{ jsonrpc: "2.0", id, error: { code, message } satisfies AcpJsonRpcResponse["error"] }];
+	private error(
+		id: string | number,
+		code: number,
+		message: string,
+		data?: ModelDiscoveryErrorData,
+	): readonly AcpOutboundMessage[] {
+		return [
+			{
+				jsonrpc: "2.0",
+				id,
+				error: { code, message: redactSecrets(message), data } satisfies AcpJsonRpcResponse["error"],
+			},
+		];
 	}
+}
+
+type ModelDiscoveryErrorData = { readonly status?: number; readonly requestId?: string };
+
+/**
+ * Only the endpoint's HTTP status and request id cross to Desktop as structured data for classification;
+ * the error message itself is redacted before it is sent.
+ */
+function modelDiscoveryErrorData(error: RuntimeAgentSettingsModelFetchError): ModelDiscoveryErrorData | undefined {
+	if (!(error instanceof RuntimeAgentSettingsModelFetchFailed) || !(error.cause instanceof ModelDiscoveryFailed)) {
+		return undefined;
+	}
+	return { status: error.cause.data.status, requestId: error.cause.data.requestId };
 }

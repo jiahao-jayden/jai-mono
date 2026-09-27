@@ -16,6 +16,9 @@ interface ProjectPickerProps {
 	readonly busy: boolean;
 	readonly loading: boolean;
 	readonly loadError: boolean;
+	/** Controlled so a failure notice can open the picker. */
+	readonly open: boolean;
+	readonly onOpenChange: (open: boolean) => void;
 	readonly onChoose: (project: DesktopProject) => Promise<void>;
 	readonly onRetry: () => void;
 }
@@ -27,12 +30,13 @@ export function ProjectPicker({
 	busy,
 	loading,
 	loadError,
+	open,
+	onOpenChange,
 	onChoose,
 	onRetry,
 }: ProjectPickerProps) {
 	const intl = useIntl();
 	const icons = useIcons();
-	const [open, setOpen] = useState(false);
 	const [creating, setCreating] = useState(false);
 	const FolderIcon = icons.folder;
 	const FolderOffIcon = icons["folder-off"];
@@ -42,19 +46,17 @@ export function ProjectPicker({
 		? intl.formatMessage(desktopMessages.projectPickerUpdating)
 		: loading && projects.length === 0
 			? intl.formatMessage(desktopMessages.projectPickerLoading)
-			: loadError
-				? intl.formatMessage(desktopMessages.projectPickerUnavailable)
-				: project
-					? project.available
-						? project.displayName
-						: intl.formatMessage(desktopMessages.projectPickerRelinkLabel, { name: project.displayName })
-					: intl.formatMessage(desktopMessages.projectPickerWorkIn);
+			: project
+				? project.available
+					? project.displayName
+					: intl.formatMessage(desktopMessages.projectPickerRelinkLabel, { name: project.displayName })
+				: intl.formatMessage(desktopMessages.projectPickerWorkIn);
 	const triggerDisabled = disabled || busy || (loading && projects.length === 0);
 	const checkedIndex = projects.findIndex((candidate) => candidate.id === project?.id);
 
 	return (
 		<>
-			<DropdownMenu open={open} onOpenChange={setOpen} disabled={triggerDisabled}>
+			<DropdownMenu open={open} onOpenChange={onOpenChange} disabled={triggerDisabled}>
 				<DropdownTrigger
 					render={
 						<Button

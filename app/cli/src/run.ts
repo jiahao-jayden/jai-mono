@@ -16,7 +16,10 @@ import {
 	type AcpPromptBlock,
 	connectJaiRuntimeHost,
 	type LocalAcpV2Client,
+	type RuntimeFailure,
+	runtimeFailureSchema,
 } from "@jai/server/acp-client";
+import { Value } from "@sinclair/typebox/value";
 import { TaggedError } from "better-result";
 
 type OutputFormat = "text" | "json" | "stream-json";
@@ -46,7 +49,9 @@ export interface CliDiagnostics {
 	readonly stop_reason: string;
 	readonly tool_calls: number;
 	readonly tool_errors: number;
+	/** Runtime Host 已脱敏、截断的失败详情。 */
 	readonly error_message?: string;
+	readonly error_code?: RuntimeFailure["code"];
 }
 
 export interface CliResult {
@@ -324,7 +329,7 @@ class CliSession {
 	#pending?: { readonly resolve: (value: CliPromptOutcome) => void };
 	#text = "";
 	#stopReason = "none";
-	#errorMessage?: string;
+	#failure?: RuntimeFailure;
 	#totalCostUsd = 0;
 	#startedAt = 0;
 	#toolStates = new Map<string, "pending" | "in_progress" | "completed" | "failed">();
@@ -344,7 +349,7 @@ class CliSession {
 		if (this.#pending) throw new CliRuntimeError({ message: `Session "${this.id}" is already running` });
 		this.#text = "";
 		this.#stopReason = "none";
-		this.#errorMessage = undefined;
+		this.#failure = undefined;
 		this.#totalCostUsd = 0;
 		this.#toolStates.clear();
 		this.#startedAt = Date.now();
@@ -396,7 +401,7 @@ class CliSession {
 		}
 		if (update.sessionUpdate !== "state_update" || update.state !== "idle") return;
 		this.#stopReason = typeof update.stopReason === "string" ? update.stopReason : "none";
-		this.#errorMessage = typeof update.errorMessage === "string" ? update.errorMessage : undefined;
+		this.#failure = Value.Check(runtimeFailureSchema, update.failure) ? update.failure : undefined;
 		const pending = this.#pending;
 		this.#pending = undefined;
 		pending?.resolve({
@@ -406,7 +411,7 @@ class CliSession {
 			toolCalls: this.#toolStates.size,
 			toolErrors: [...this.#toolStates.values()].filter((status) => status === "failed").length,
 			durationMs: Math.max(0, Date.now() - this.#startedAt),
-			errorMessage: this.#errorMessage,
+			failure: this.#failure,
 		});
 	}
 
@@ -431,7 +436,7 @@ export interface CliPromptOutcome {
 	readonly toolCalls: number;
 	readonly toolErrors: number;
 	readonly durationMs: number;
-	readonly errorMessage?: string;
+	readonly failure?: RuntimeFailure;
 }
 
 /** Safe, final runtime facts for a non-interactive CLI invocation. */
@@ -450,7 +455,8 @@ export function projectCliPromptResult(
 			stop_reason: outcome.stopReason,
 			tool_calls: outcome.toolCalls,
 			tool_errors: outcome.toolErrors,
-			error_message: outcome.errorMessage,
+			error_message: outcome.failure?.detail,
+			error_code: outcome.failure?.code,
 		},
 		duration_ms: outcome.durationMs,
 	};

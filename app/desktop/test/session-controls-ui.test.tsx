@@ -33,6 +33,8 @@ function renderComposer(controls: DesktopSessionControls, status: "ready" | "sub
 			projectBusy={false}
 			projectLoading={false}
 			projectLoadError={false}
+			projectPickerOpen={false}
+			onProjectPickerOpenChange={() => {}}
 			onChooseProject={async () => {}}
 			onRetryProjects={() => {}}
 			selectedModelRef="provider/model"
@@ -84,6 +86,7 @@ describe("ModelControls", () => {
 		const markup = render(
 			<ModelControls
 				capabilities={{ reasoningLevels: [], supportsFastMode: false }}
+				reasoning={false}
 				controls={{ ...defaultDesktopSessionControls, reasoningLevel: "high", fastMode: true }}
 				disabled={false}
 				onChange={() => {}}
@@ -93,10 +96,27 @@ describe("ModelControls", () => {
 		expect(markup).toBe("");
 	});
 
+	test("shows a read-only model default for a reasoning model without declared levels", () => {
+		const markup = render(
+			<ModelControls
+				capabilities={{ reasoningLevels: [], supportsFastMode: false }}
+				reasoning
+				controls={{ ...defaultDesktopSessionControls, reasoningLevel: "high" }}
+				disabled={false}
+				onChange={() => {}}
+			/>,
+		);
+
+		expect(markup).toContain("Reasoning");
+		expect(markup).toContain("Model default");
+		expect(markup).not.toContain('role="slider"');
+	});
+
 	test("shows the level the model will receive for a higher stored wish", () => {
 		const markup = render(
 			<ModelControls
 				capabilities={{ reasoningLevels: ["low", "medium", "high"], supportsFastMode: false }}
+				reasoning
 				controls={{ ...defaultDesktopSessionControls, reasoningLevel: "max" }}
 				disabled={false}
 				onChange={() => {}}
@@ -112,6 +132,7 @@ describe("ModelControls", () => {
 		const markup = render(
 			<ModelControls
 				capabilities={{ reasoningLevels: ["high", "xhigh"], supportsFastMode: true }}
+				reasoning
 				controls={{ ...defaultDesktopSessionControls, reasoningLevel: "low", fastMode: true }}
 				disabled
 				onChange={() => {}}
@@ -128,6 +149,7 @@ describe("ModelControls", () => {
 			render(
 				<ModelControls
 					capabilities={{ reasoningLevels: ["low", "medium", "high"], supportsFastMode: false }}
+					reasoning
 					controls={{ ...defaultDesktopSessionControls, reasoningLevel }}
 					disabled={false}
 					onChange={() => {}}

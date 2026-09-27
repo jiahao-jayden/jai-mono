@@ -67,6 +67,24 @@ describe("Runtime Model Catalog", () => {
 		expect(findRuntimeModelCatalogMatch(catalog, undefined, "deepseek-v3-250324")).toBeUndefined();
 	});
 
+	test("keeps provider-scoped reasoning options over the flat registry entry", () => {
+		const catalog = normalizeRuntimeModelCatalog({
+			providers: {
+				anthropic: {
+					models: {
+						"claude-opus-5-5": {
+							name: "Claude Opus 5.5",
+							reasoning_options: [{ type: "effort", values: ["low", "high", "max"] }],
+						},
+					},
+				},
+			},
+			models: { "anthropic/claude-opus-5-5": { name: "Claude Opus 5.5", reasoning: true } },
+		});
+
+		expect(catalog.providers.anthropic?.models["claude-opus-5-5"]?.reasoningOptions).toEqual(["low", "high", "max"]);
+	});
+
 	test("uses an explicit provider authority when a model ID is ambiguous", () => {
 		const catalog = normalizeRuntimeModelCatalog({
 			providers: {
@@ -151,6 +169,35 @@ describe("Runtime Model Catalog", () => {
 		expect(findRuntimeModelCatalogMatch(catalog, "volcengine", "deepseek-v3-1-terminus")).toBeUndefined();
 		expect(resolveRuntimeModelCatalogMatch(catalog, "volcengine", "deepseek-v4-flash")).toMatchObject({ kind: "revision" });
 		expect(resolveRuntimeModelCatalogMatch(catalog, "volcengine", "deepseek-v4-1-flash")).toEqual({ kind: "unknown" });
+	});
+
+	test("resolves gateway-namespaced IDs through their upstream model identity", () => {
+		const catalog = normalizeRuntimeModelCatalog({
+			providers: {
+				anthropic: { models: { "claude-opus-4-5": { name: "Claude Opus 4.5", family: "claude-opus" } } },
+				openrouter: { models: { "anthropic/claude-opus-4-5": { name: "OpenRouter Opus" } } },
+			},
+		});
+		expect(findRuntimeModelCatalogMatch(catalog, "anthropic", "claude/claude-opus-4-5")).toMatchObject({
+			providerId: "anthropic",
+			model: { name: "Claude Opus 4.5" },
+		});
+		expect(findRuntimeModelCatalogMatch(catalog, undefined, "claude/claude-opus-4-5")?.providerId).toBe("anthropic");
+		expect(findRuntimeModelCatalogMatch(catalog, "openrouter", "anthropic/claude-opus-4-5")?.model.name).toBe(
+			"OpenRouter Opus",
+		);
+		expect(findRuntimeModelCatalogMatch(catalog, undefined, "cursor/claude-opus-4-5-thinking-high")).toBeUndefined();
+		expect(resolveRuntimeModelCatalogMatch(catalog, undefined, "claude/claude-opus-4-5-260425")).toMatchObject({
+			kind: "revision",
+			match: { providerId: "anthropic" },
+		});
+		expect(
+			resolveRuntimeModelMetadata("custom-gateway/claude/claude-opus-4-5", undefined, {
+				catalog,
+				stale: false,
+				refreshed: false,
+			})?.name,
+		).toBe("Claude Opus 4.5");
 	});
 
 	test("does not fold a product variant into its base model when stripping revisions", () => {
@@ -278,6 +325,30 @@ describe("Runtime Model Catalog", () => {
 			if (result.isErr()) throw result.error;
 			expect(result.value).toMatchObject({ refreshed: false, stale: false });
 			expect(result.value.catalog?.providers.openai?.models["gpt-test"]?.name).toBe("GPT Test");
+			store.close();
+		} finally {
+			database.close();
+		}
+	});
+
+	test("a forced refresh re-syncs a fresh SQLite fact", async () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const now = 1_000_000;
+			let requests = 0;
+			const store = new SqliteRuntimeModelCatalog(database, {
+				now: () => now,
+				fetcher: async () => {
+					requests++;
+					return new Response(JSON.stringify(rawCatalog()));
+				},
+			});
+			insertCatalog(database, now - 1, { providers: {} });
+			const result = await store.refresh({ force: true });
+			if (result.isErr()) throw result.error;
+			expect(requests).toBe(1);
+			expect(result.value.refreshed).toBe(true);
+			expect(result.value.catalog?.providers.openai?.models["gpt-test"]?.reasoningOptions).toEqual(["low", "high"]);
 			store.close();
 		} finally {
 			database.close();

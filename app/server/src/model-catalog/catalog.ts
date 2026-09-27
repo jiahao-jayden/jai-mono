@@ -156,11 +156,13 @@ export function normalizeRuntimeModelCatalog(value: unknown): RuntimeModelCatalo
 			if (!nonEmpty(modelId)) continue;
 			const model = normalizeModel(modelId, rawModel);
 			if (!model) continue;
+			// The flat registry lacks provider-scoped fields (reasoning_options, experimental modes),
+			// so it only fills models the provider section does not already describe.
 			const provider = providers[providerId];
 			providers[providerId] = {
 				id: provider?.id ?? providerId,
 				name: provider?.name ?? providerId,
-				models: { ...provider?.models, [modelId]: model },
+				models: { [modelId]: model, ...provider?.models },
 			};
 		}
 	}
@@ -189,16 +191,31 @@ export function findRuntimeModelCatalog(
  * Classifies catalog identity without pretending a dated provider revision is
  * an exact model identity. Callers that resolve compatibility rules should
  * only use the `exact` result as an identity-level match.
+ *
+ * Gateways namespace upstream IDs (`claude/claude-opus-4-5`); when the full ID
+ * is unknown, the last path segment is resolved as the upstream identity.
  */
 export function resolveRuntimeModelCatalogMatch(
 	catalog: RuntimeModelCatalog | undefined,
 	preferredProviderId: string | undefined,
 	modelId: string,
 ): RuntimeModelCatalogMatchResolution {
+	const result = resolveCatalogIdentity(catalog, preferredProviderId, modelId);
+	const upstreamModelId = modelId.slice(modelId.lastIndexOf("/") + 1);
+	return result.kind === "unknown" && upstreamModelId && upstreamModelId !== modelId
+		? resolveCatalogIdentity(catalog, preferredProviderId, upstreamModelId)
+		: result;
+}
+
+/** A preferred provider absent from the catalog (e.g. a custom profile ID) carries no authority. */
+function resolveCatalogIdentity(
+	catalog: RuntimeModelCatalog | undefined,
+	preferredProviderId: string | undefined,
+	modelId: string,
+): RuntimeModelCatalogMatchResolution {
 	if (!catalog) return { kind: "unknown" };
-	if (preferredProviderId) {
-		const provider = catalog.providers[preferredProviderId];
-		if (!provider) return { kind: "unknown" };
+	const provider = preferredProviderId ? catalog.providers[preferredProviderId] : undefined;
+	if (preferredProviderId && provider) {
 		const exact = provider.models[modelId];
 		if (exact) return { kind: "exact", match: { providerId: preferredProviderId, model: exact } };
 		const revision = matchProviderCatalogModel(provider, modelId);
@@ -208,9 +225,12 @@ export function resolveRuntimeModelCatalogMatch(
 	}
 
 	const defaultProvider = defaultCatalogProviderFor(modelId);
-	const firstParty = defaultProvider ? catalog.providers[defaultProvider]?.models[modelId] : undefined;
-	if (firstParty && defaultProvider)
-		return { kind: "exact", match: { providerId: defaultProvider, model: firstParty } };
+	const firstParty = defaultProvider ? catalog.providers[defaultProvider] : undefined;
+	const firstPartyModel = matchProviderCatalogModel(firstParty, modelId);
+	if (firstPartyModel && defaultProvider) {
+		const match = { providerId: defaultProvider, model: firstPartyModel };
+		return firstPartyModel.id === modelId ? { kind: "exact", match } : { kind: "revision", match };
+	}
 	const matches = Object.entries(catalog.providers).flatMap(([providerId, provider]) => {
 		const model = provider.models[modelId];
 		return model ? [{ providerId, model }] : [];

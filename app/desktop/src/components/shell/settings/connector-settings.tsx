@@ -268,21 +268,29 @@ function ConnectorTableRow({
 						<span className="sr-only">{intl.formatMessage(desktopMessages.settingsConnectedStatus)}</span>
 					</span>
 				) : isOAuth ? (
-					<Button
-						type="button"
-						variant="tertiary"
-						size="sm"
-						loading={authorizing}
-						title={oauthError ?? undefined}
-						onClick={(event) => {
-							event.stopPropagation();
-							void startOAuth();
-						}}
-					>
-						{intl.formatMessage(
-							oauthError ? desktopMessages.settingsRetryConnect : desktopMessages.settingsConnect,
-						)}
-					</Button>
+					<>
+						<Button
+							type="button"
+							variant="tertiary"
+							size="sm"
+							loading={authorizing}
+							title={oauthError ?? undefined}
+							onClick={(event) => {
+								event.stopPropagation();
+								void startOAuth();
+							}}
+						>
+							{intl.formatMessage(
+								oauthError ? desktopMessages.settingsRetryConnect : desktopMessages.settingsConnect,
+							)}
+						</Button>
+						{/* The row only has room for the retry label; the reason is announced here and shown as the tooltip. */}
+						{oauthError ? (
+							<span className="sr-only" role="alert">
+								{oauthError}
+							</span>
+						) : null}
+					</>
 				) : (
 					<Button
 						type="button"
@@ -366,7 +374,7 @@ function ConnectorDetailPage({
 		return () => window.clearTimeout(timeout);
 	}, [authorizationExpiresAt, authorizing, intl.formatMessage]);
 
-	useQuery({
+	const oauthStatus = useQuery({
 		queryKey: desktopQueryKeys.providerConfig,
 		queryFn: () => desktop.provider.get(),
 		enabled: authorizing,
@@ -374,6 +382,7 @@ function ConnectorDetailPage({
 		refetchIntervalInBackground: true,
 		retry: false,
 	});
+	const oauthStatusFailed = authorizing && oauthStatus.isError;
 
 	const startOAuth = async () => {
 		setAuthorizing(true);
@@ -476,9 +485,14 @@ function ConnectorDetailPage({
 												: desktopMessages.settingsConnect,
 									)}
 								</Button>
-								{authorizing ? (
+								{authorizing && !oauthStatusFailed ? (
 									<p className="mt-3 text-[12px] text-muted-foreground" role="status" aria-live="polite">
 										{intl.formatMessage(desktopMessages.settingsWaitingForApproval)}
+									</p>
+								) : null}
+								{oauthStatusFailed ? (
+									<p className="mt-3 text-[12px] leading-relaxed text-destructive" role="alert">
+										{intl.formatMessage(desktopMessages.settingsOAuthStatusError)}
 									</p>
 								) : null}
 							</>

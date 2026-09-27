@@ -42,6 +42,8 @@ describe("ProjectPicker", () => {
 				projectBusy={false}
 				projectLoading={false}
 				projectLoadError={false}
+				projectPickerOpen={false}
+				onProjectPickerOpenChange={() => {}}
 				onChooseProject={async () => {}}
 				onRetryProjects={() => {}}
 				selectedModelRef="provider/model"
@@ -79,6 +81,8 @@ describe("ProjectPicker", () => {
 				projectBusy={false}
 				projectLoading={false}
 				projectLoadError={false}
+				projectPickerOpen={false}
+				onProjectPickerOpenChange={() => {}}
 				onChooseProject={async () => {}}
 				onRetryProjects={() => {}}
 				selectedModelRef="provider/model"
@@ -114,6 +118,8 @@ describe("ProjectPicker", () => {
 				projectBusy={false}
 				projectLoading={false}
 				projectLoadError={false}
+				projectPickerOpen={false}
+				onProjectPickerOpenChange={() => {}}
 				onChooseProject={async () => {}}
 				onRetryProjects={() => {}}
 				selectedModelRef="provider/model"
@@ -140,6 +146,8 @@ describe("ProjectPicker", () => {
 				busy={false}
 				loading={false}
 				loadError={false}
+				open={false}
+				onOpenChange={() => {}}
 				onChoose={async () => {}}
 				onRetry={() => {}}
 			/>,
@@ -159,6 +167,8 @@ describe("ProjectPicker", () => {
 				busy={false}
 				loading={false}
 				loadError={false}
+				open={false}
+				onOpenChange={() => {}}
 				onChoose={async () => {}}
 				onRetry={() => {}}
 			/>,
@@ -168,7 +178,7 @@ describe("ProjectPicker", () => {
 		expect(markup).toContain("This folder is unavailable");
 	});
 
-	test("加载失败不会伪装成空 Project", () => {
+	test("加载失败只在侧栏报错，Project Picker 不再单独显示错误文案", () => {
 		const markup = renderToStaticMarkup(
 			<ProjectPicker
 				projects={[]}
@@ -176,12 +186,15 @@ describe("ProjectPicker", () => {
 				busy={false}
 				loading={false}
 				loadError
+				open={false}
+				onOpenChange={() => {}}
 				onChoose={async () => {}}
 				onRetry={() => {}}
 			/>,
 		);
 
-		expect(markup).toContain("Projects unavailable");
-		expect(markup).not.toContain("Choose project");
+		expect(markup).not.toContain("Projects unavailable");
+		expect(markup).not.toContain('role="alert"');
+		expect(markup).not.toContain('disabled=""');
 	});
 });

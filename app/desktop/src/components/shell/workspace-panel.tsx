@@ -9,9 +9,9 @@ import { MarkdownContent } from "@/components/ui/chat-message";
 import { DropdownContent, DropdownMenu, DropdownTrigger } from "@/components/ui/dropdown";
 import { Input } from "@/components/ui/input";
 import { MenuItem } from "@/components/ui/menu-item";
-import { toast } from "@/components/ui/toast";
 import { desktopMessages } from "@/i18n/messages";
-import { desktop } from "@/lib/desktop";
+import { desktop, getDesktopRemoteRpcFailure } from "@/lib/desktop";
+import { notifyFailure } from "@/lib/failure";
 import { useIcons } from "@/lib/icon-context";
 import type {
 	DesktopWorkspaceEntry,
@@ -117,6 +117,7 @@ export function WorkspacePanel({ sessionId, filePath, onOpenFile }: WorkspacePan
 	const [file, setFile] = useState<WorkspaceFileState>({ status: "empty" });
 	const [query, setQuery] = useState("");
 	const [error, setError] = useState<string | null>(null);
+	const [directoryError, setDirectoryError] = useState<string | null>(null);
 	const [openingTarget, setOpeningTarget] = useState<"default" | "cursor" | null>(null);
 	const [openingApplicationId, setOpeningApplicationId] = useState<string | null>(null);
 	const [openApplications, setOpenApplications] = useState<DesktopWorkspaceOpenApplications | null>(null);
@@ -150,12 +151,10 @@ export function WorkspacePanel({ sessionId, filePath, onOpenFile }: WorkspacePan
 						if (entry.kind === "directory") directoryPathsRef.current.add(entry.path);
 					}
 					setError(null);
+					setDirectoryError(null);
 				} catch {
-					setError(
-						directoryPath
-							? intl.formatMessage(desktopMessages.workspaceReadDirectory)
-							: intl.formatMessage(desktopMessages.workspaceReadRoot),
-					);
+					if (directoryPath) setDirectoryError(intl.formatMessage(desktopMessages.workspaceReadDirectory));
+					else setError(intl.formatMessage(desktopMessages.workspaceReadRoot));
 				} finally {
 					setLoadingPaths((current) => {
 						const next = new Set(current);
@@ -272,6 +271,7 @@ export function WorkspacePanel({ sessionId, filePath, onOpenFile }: WorkspacePan
 			.then((result) => {
 				if (!cancelled) setOpenApplications(result);
 			})
+			// Without the application list the default and Cursor open actions still work, so this degrades silently.
 			.catch(() => {
 				if (!cancelled) setOpenApplications({ applications: [] });
 			});
@@ -291,6 +291,7 @@ export function WorkspacePanel({ sessionId, filePath, onOpenFile }: WorkspacePan
 		: intl.formatMessage(desktopMessages.workspaceOpenDefaultShort);
 	const previewInitial = reducedMotion ? { opacity: 0 } : { opacity: 0, transform: "translateY(4px)" };
 	const treeLoading = loadingPaths.size > 0;
+	const treeStatusRole = error ? "alert" : "status";
 	const treeHostStyle = {
 		"--trees-bg-override": "var(--surface-tertiary)",
 		"--trees-selected-bg-override": "color-mix(in oklch, var(--foreground) 11%, var(--surface-tertiary))",
@@ -307,22 +308,21 @@ export function WorkspacePanel({ sessionId, filePath, onOpenFile }: WorkspacePan
 					target,
 					applicationId: target === "application" && applicationId ? applicationId : undefined,
 				});
-			} catch {
-				toast.add({
+			} catch (error) {
+				notifyFailure(getDesktopRemoteRpcFailure(error), intl, {
 					title: intl.formatMessage(
 						target === "cursor"
 							? desktopMessages.workspaceOpenCursorError
 							: desktopMessages.workspaceOpenFileError,
 					),
-					description: intl.formatMessage(desktopMessages.workspaceOpenFileError),
-					type: "error",
+					dedupeKey: `workspace-open:${filePath}`,
 				});
 			} finally {
 				if (target === "application") setOpeningApplicationId(null);
 				else setOpeningTarget(null);
 			}
 		},
-		[filePath, sessionId, intl.formatMessage],
+		[filePath, sessionId, intl],
 	);
 	const defaultOpenIcon = defaultOpenApplication?.iconDataUrl ? (
 		<img src={defaultOpenApplication.iconDataUrl} alt="" className="size-4 shrink-0" />
@@ -457,7 +457,10 @@ export function WorkspacePanel({ sessionId, filePath, onOpenFile }: WorkspacePan
 									{intl.formatMessage(desktopMessages.workspaceReadingFile)}
 								</div>
 							) : file.status === "error" ? (
-								<div className="flex h-full min-h-72 flex-col items-center justify-center px-5 text-center">
+								<div
+									role="alert"
+									className="flex h-full min-h-72 flex-col items-center justify-center px-5 text-center"
+								>
 									<FileIcon size={22} className="text-muted-foreground" />
 									<p className="mt-3 text-[13px] font-medium">
 										{intl.formatMessage(desktopMessages.workspaceFileUnavailable)}
@@ -505,14 +508,24 @@ export function WorkspacePanel({ sessionId, filePath, onOpenFile }: WorkspacePan
 					</div>
 					<div className="min-h-0 min-w-0 flex-1 overflow-hidden px-1.5 pb-2.5">
 						{rootLoaded ? (
-							<PierreFileTree
-								model={treeModel}
-								className="pierre-trees-host"
-								style={treeHostStyle}
-								aria-label={intl.formatMessage(desktopMessages.workspaceTree)}
-							/>
+							<>
+								{directoryError ? (
+									<p role="alert" className="px-3 py-1.5 text-[12px] text-destructive">
+										{directoryError}
+									</p>
+								) : null}
+								<PierreFileTree
+									model={treeModel}
+									className="pierre-trees-host"
+									style={treeHostStyle}
+									aria-label={intl.formatMessage(desktopMessages.workspaceTree)}
+								/>
+							</>
 						) : (
-							<div className="flex items-center gap-2 px-3 py-4 text-[12px] text-muted-foreground">
+							<div
+								role={treeStatusRole}
+								className="flex items-center gap-2 px-3 py-4 text-[12px] text-muted-foreground"
+							>
 								{treeLoading ? <LoadingIcon size={14} className="animate-spin" /> : null}
 								{error ?? intl.formatMessage(desktopMessages.workspaceReading)}
 							</div>

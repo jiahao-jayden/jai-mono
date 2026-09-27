@@ -14,20 +14,22 @@ function applyToDOM(theme: DesktopTheme): void {
 
 interface ThemeState {
 	theme: DesktopTheme;
-	setTheme: (theme: DesktopTheme) => void;
+	/** Applies immediately; rejects when the preference could not be persisted for the next launch. */
+	setTheme: (theme: DesktopTheme) => Promise<void>;
 }
 
 export const useThemeStore = create<ThemeState>((set) => ({
 	theme: "system",
 
 	setTheme(theme: DesktopTheme) {
-		desktop.theme.set(theme).catch(() => {});
 		applyToDOM(theme);
 		set({ theme });
+		return desktop.theme.set(theme);
 	},
 }));
 
 export async function initTheme(): Promise<void> {
+	// Startup has no user action to report against; the system theme is a usable fallback.
 	const theme: DesktopTheme = (await desktop.theme.get().catch(() => "system" as const)) ?? "system";
 	useThemeStore.setState({ theme });
 	applyToDOM(theme);

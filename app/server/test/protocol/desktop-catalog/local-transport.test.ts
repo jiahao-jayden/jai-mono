@@ -97,4 +97,29 @@ describe("Desktop Catalog local control transport", () => {
 			await rm(directory, { recursive: true, force: true });
 		}
 	});
+
+	test("redacts credentials from error messages before they leave the control channel", async () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const control = new DesktopCatalogControl(new SqliteDesktopCatalogAccess(database));
+			const response = await control.handle({
+				jsonrpc: "2.0",
+				id: 1,
+				method: "jai/desktop-catalog/Bearer sk-catalog-secret",
+				params: {},
+			});
+			expect(response).toEqual([
+				{
+					jsonrpc: "2.0",
+					id: 1,
+					error: {
+						code: -32601,
+						message: 'Unsupported Desktop Catalog method "jai/desktop-catalog/Bearer [REDACTED]"',
+					},
+				},
+			]);
+		} finally {
+			database.close();
+		}
+	});
 });

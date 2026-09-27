@@ -1,4 +1,5 @@
 import type { Result } from "better-result";
+import { redactSecrets } from "../../logging/redact";
 import type { SqliteDesktopCatalogAccess } from "../../persistence/sqlite/desktop-catalog";
 import type { AcpJsonRpcRequest, AcpJsonRpcResponse, AcpOutboundMessage } from "../acp-v2/types";
 import type { DesktopCatalogProjectInput, DesktopCatalogSessionCursor, DesktopCatalogStorageError } from "./types";
@@ -132,7 +133,9 @@ export class DesktopCatalogControl {
 	}
 
 	private error(id: string | number, code: number, message: string): readonly AcpOutboundMessage[] {
-		return [{ jsonrpc: "2.0", id, error: { code, message } satisfies AcpJsonRpcResponse["error"] }];
+		return [
+			{ jsonrpc: "2.0", id, error: { code, message: redactSecrets(message) } satisfies AcpJsonRpcResponse["error"] },
+		];
 	}
 }
 

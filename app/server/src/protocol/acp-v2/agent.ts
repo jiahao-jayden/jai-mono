@@ -12,15 +12,16 @@ import type {
 } from "../../runtime";
 import type { RuntimeSessionConfigurationSnapshot } from "../../sessions";
 import { parseSessionConfigurationChange, projectSessionConfigOptions } from "./session-config-options";
-import type {
-	AcpJsonRpcNotification,
-	AcpJsonRpcRequest,
-	AcpJsonRpcResponse,
-	AcpOutboundMessage,
-	AcpPromptBlock,
-	AcpPromptMetadata,
-	AcpRequestId,
-	AcpV2AgentOptions,
+import {
+	ACP_RETRY_UNAVAILABLE,
+	type AcpJsonRpcNotification,
+	type AcpJsonRpcRequest,
+	type AcpJsonRpcResponse,
+	type AcpOutboundMessage,
+	type AcpPromptBlock,
+	type AcpPromptMetadata,
+	type AcpRequestId,
+	type AcpV2AgentOptions,
 } from "./types";
 
 const ACP_V2 = 2;
@@ -59,6 +60,9 @@ export class AcpV2Agent {
 						break;
 					case "session/navigate":
 						response = await this.navigate(request);
+						break;
+					case "session/retry":
+						response = await this.retry(request);
 						break;
 					case "session/subagent_transcript":
 						response = await this.subagentTranscript(request);
@@ -249,6 +253,22 @@ export class AcpV2Agent {
 		return this.respond(request.id, {});
 	}
 
+	private async retry(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
+		const sessionId = objectParams(request.params)?.sessionId;
+		if (typeof sessionId !== "string")
+			return this.respondError(request.id, -32602, "Invalid session/retry parameters");
+		const session = this.#sessions.get(sessionId);
+		if (!session) {
+			return this.respondError(request.id, -32004, `Session "${sessionId}" is not active on this ACP connection`);
+		}
+		const admission = await session.retry();
+		if (admission.isErr()) {
+			const code = admission.error._tag === "runtime_host.retry_unavailable" ? ACP_RETRY_UNAVAILABLE : -32001;
+			return this.respondError(request.id, code, admission.error.message);
+		}
+		return this.respond(request.id, {});
+	}
+
 	private async subagentTranscript(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
 		const params = objectParams(request.params);
 		const sessionId = params?.sessionId;
@@ -414,6 +434,7 @@ function safeAcpErrorMessage(code: number): string {
 	if (code === -32602) return "Invalid ACP parameters";
 	if (code === -32002) return "ACP connection is not initialized";
 	if (code === -32004) return "ACP session is not active";
+	if (code === ACP_RETRY_UNAVAILABLE) return "ACP retry is unavailable";
 	return "ACP request failed";
 }
 
@@ -507,7 +528,7 @@ function projectSnapshot(sessionId: string, snapshot: RuntimeSessionSnapshot): r
 		),
 		...snapshot.operationTimings.map((timing) => operationUpdate(sessionId, timing)),
 		...(isEmptyUsage(snapshot.usage) ? [] : [usageUpdate(sessionId, snapshot.usage)]),
-		stateUpdate(sessionId, snapshot.state, snapshot.stopReason),
+		stateUpdate(sessionId, snapshot),
 	];
 }
 
@@ -522,7 +543,7 @@ function projectRuntimeEvent(sessionId: string, event: RuntimeSessionEvent): rea
 		case "operation_timing":
 			return [operationUpdate(sessionId, event.timing)];
 		case "state_changed":
-			return [stateUpdate(sessionId, event.state, event.stopReason, event.errorMessage)];
+			return [stateUpdate(sessionId, event)];
 		case "configuration_changed":
 			return [configOptionUpdate(sessionId, event.configuration)];
 		case "approval_requested":
@@ -1083,9 +1104,7 @@ function projectSlashInvocation(value: unknown): AcpSlashInvocation | undefined 
 
 function stateUpdate(
 	sessionId: string,
-	state: "running" | "requires_action" | "idle",
-	stopReason?: RuntimeSessionSnapshot["stopReason"],
-	errorMessage?: string,
+	source: Pick<RuntimeSessionSnapshot, "state" | "stopReason" | "operationId" | "failure">,
 ): AcpJsonRpcNotification {
 	return {
 		jsonrpc: "2.0",
@@ -1094,9 +1113,10 @@ function stateUpdate(
 			sessionId,
 			update: {
 				sessionUpdate: "state_update",
-				state,
-				stopReason: stopReason || undefined,
-				errorMessage: errorMessage || undefined,
+				state: source.state,
+				stopReason: source.stopReason || undefined,
+				operationId: source.operationId || undefined,
+				failure: source.failure,
 			},
 		},
 	};

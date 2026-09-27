@@ -46,6 +46,8 @@ interface ChatComposerProps {
 	projectBusy: boolean;
 	projectLoading: boolean;
 	projectLoadError: boolean;
+	projectPickerOpen: boolean;
+	onProjectPickerOpenChange(open: boolean): void;
 	onChooseProject(project: DesktopProject): Promise<void>;
 	onRetryProjects(): void;
 	providerConfig?: DesktopProviderConfigSnapshot;
@@ -96,6 +98,8 @@ export function ChatComposer({
 	projectBusy,
 	projectLoading,
 	projectLoadError,
+	projectPickerOpen,
+	onProjectPickerOpenChange,
 	onChooseProject,
 	onRetryProjects,
 	providerConfig,
@@ -160,6 +164,7 @@ export function ChatComposer({
 			.then((next) => {
 				if (!disposed) setCommands(next);
 			})
+			// Without the command list the composer still sends plain text, so the failure stays silent.
 			.catch(() => {
 				if (!disposed) setCommands([]);
 			});
@@ -183,7 +188,7 @@ export function ChatComposer({
 	useEffect(() => {
 		return () => {
 			const ids = attachmentRef.current.map((attachment) => attachment.id);
-			if (ids.length > 0) void desktop.attachment.release(ids);
+			if (ids.length > 0) desktop.attachment.release(ids).catch(ignoreAttachmentReleaseFailure);
 		};
 	}, []);
 
@@ -206,7 +211,7 @@ export function ChatComposer({
 		const removedIds = previousFiles.flatMap((file, index) =>
 			nextKeys.has(fileKey(file)) || !previousAttachments[index] ? [] : [previousAttachments[index]!.id],
 		);
-		if (removedIds.length > 0) void desktop.attachment.release(removedIds);
+		if (removedIds.length > 0) desktop.attachment.release(removedIds).catch(ignoreAttachmentReleaseFailure);
 
 		setFiles(nextFiles);
 		setAttachments(nextExisting);
@@ -252,7 +257,7 @@ export function ChatComposer({
 			const accepted = await onSend({ text: value, controls: selectedControls, attachments, delivery });
 			if (accepted) {
 				const ids = attachments.map((attachment) => attachment.id);
-				if (ids.length > 0) void desktop.attachment.release(ids);
+				if (ids.length > 0) desktop.attachment.release(ids).catch(ignoreAttachmentReleaseFailure);
 				setFiles([]);
 				setAttachments([]);
 				setAttachmentError(undefined);
@@ -350,6 +355,8 @@ export function ChatComposer({
 						busy={projectBusy}
 						loading={projectLoading}
 						loadError={projectLoadError}
+						open={projectPickerOpen}
+						onOpenChange={onProjectPickerOpenChange}
 						onChoose={onChooseProject}
 						onRetry={onRetryProjects}
 					/>
@@ -467,3 +474,6 @@ export function ChatComposer({
 		</div>
 	);
 }
+
+// Release only drops the main-process attachment registration, which the window discards on close anyway.
+function ignoreAttachmentReleaseFailure(): void {}

@@ -15,7 +15,7 @@ import { useIntl } from "react-intl";
 import { matchPath, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
 import { useChat } from "@/hooks/use-chat";
 import { desktopMessages } from "@/i18n/messages";
-import { desktop } from "@/lib/desktop";
+import { desktop, getDesktopRemoteRpcFailure } from "@/lib/desktop";
 import {
 	desktopQueryClient,
 	desktopQueryKeys,
@@ -27,6 +27,7 @@ import {
 	upsertProject,
 	upsertRecentSession,
 } from "@/lib/desktop-query";
+import { notifyFailure } from "@/lib/failure";
 import { useIcons } from "@/lib/icon-context";
 import { selectDraft, useDesktopChatStore } from "@/stores/chat";
 import {
@@ -257,11 +258,11 @@ export function AppShell() {
 		if (!modelRef) return;
 		void chat.configure({ modelRef, controls });
 		// Only the model is remembered for new chats; Session controls always start from the Host defaults.
-		// A lost default write only means the next new chat starts from the previous pick.
 		if (!modelChanged) return;
 		void desktop.provider.setSelection({ modelRef }).then(
 			(snapshot) => desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, snapshot),
-			() => undefined,
+			(error: unknown) =>
+				notifyFailure(getDesktopRemoteRpcFailure(error), intl, { dedupeKey: "default-model-save" }),
 		);
 	};
 	const updateProviderConfig = async (input: DesktopProviderConfigInput) => {
@@ -337,26 +338,26 @@ export function AppShell() {
 			upsertProject(next);
 			setSelectedProjectId(next.id);
 		},
+		onError: (error, candidate) =>
+			notifyFailure(getDesktopRemoteRpcFailure(error), intl, {
+				title: intl.formatMessage(desktopMessages.projectsRelinkFailed),
+				dedupeKey: `project-relink:${candidate.id}`,
+			}),
 	});
 	const projectBusy = projectSelectionMutation.isPending;
-	const projectError = projectSelectionMutation.isError
-		? intl.formatMessage(desktopMessages.projectsLoadError)
-		: undefined;
+	// The mutation's onError already reports the failure; callers only wait for it to settle.
+	const selectProject = (candidate: DesktopProject) =>
+		projectSelectionMutation.mutateAsync(candidate).then(
+			() => undefined,
+			() => undefined,
+		);
 	const chooseProject = async (candidate: DesktopProject) => {
 		if (projectBusy || session) return;
-		try {
-			await projectSelectionMutation.mutateAsync(candidate);
-		} catch {
-			// Mutation state drives the recoverable project error UI.
-		}
+		await selectProject(candidate);
 	};
 	const relinkProject = async (candidate: DesktopProject) => {
 		if (projectBusy) return;
-		try {
-			await projectSelectionMutation.mutateAsync(candidate);
-		} catch {
-			// Mutation state drives the recoverable project error UI.
-		}
+		await selectProject(candidate);
 	};
 	const revealProject = async (candidate: DesktopProject) => {
 		await desktop.project.reveal(candidate.id);
@@ -390,16 +391,14 @@ export function AppShell() {
 		if (activeSessionId === sessionId) openNewChat();
 		await invalidateSessionLists();
 	};
-	const projectLoadErrorMessage = projectsQuery.isError
-		? intl.formatMessage(desktopMessages.projectsLoadError)
-		: undefined;
-	const sessionLoadErrorMessage = sessionRecentsQuery.isError
-		? intl.formatMessage(desktopMessages.sidebarRecentsLoadError)
-		: undefined;
+	// A failed background refresh keeps the previous list; only an empty, failed load is an error.
+	const sessionLoadErrorMessage =
+		sessionRecentsQuery.isError && sessionRecentsQuery.data === undefined
+			? intl.formatMessage(desktopMessages.sidebarRecentsLoadError)
+			: undefined;
 	const projectLoading = projectsQuery.isLoading || projectsQuery.isFetching;
 	const projectLoadError = projectsQuery.isError && projectsQuery.data === undefined;
-	const chatProjectError =
-		projectError || (projectsQuery.isError ? intl.formatMessage(desktopMessages.projectsLoadError) : undefined);
+	const retryProjects = () => void projectsQuery.refetch();
 	const agentStatus = chat.status === "streaming" || chat.status === "stopping" ? "running" : "idle";
 	const PanelRightIcon = icons["panel-right"];
 	const CheckListIcon = icons["check-list"];
@@ -451,12 +450,14 @@ export function AppShell() {
 						runningSessionIds={runningSessionIds}
 						activeSessionId={chatVisible ? activeSessionId : null}
 						activeProjectId={chatVisible ? (session?.projectId ?? null) : null}
-						loading={sessionRecentsQuery.isLoading}
+						loading={sessionRecentsQuery.isLoading || sessionRecentsQuery.isFetching}
 						error={sessionLoadErrorMessage}
+						onRetryRecents={() => void sessionRecentsQuery.refetch()}
 						hasNextPage={sessionRecentsQuery.hasNextPage}
 						loadingMore={sessionRecentsQuery.isFetchingNextPage}
 						projectLoading={projectLoading}
-						projectError={projectLoadErrorMessage}
+						projectLoadError={projectsQuery.isError}
+						onRetryProjects={retryProjects}
 						width={sidebarResize.width}
 						onToggleSidebar={() => {
 							visibleSidebarWidth.set(0);
@@ -508,14 +509,13 @@ export function AppShell() {
 								projectBusy={projectBusy}
 								projectLoading={projectLoading}
 								projectLoadError={projectLoadError}
-								projectError={chatProjectError}
 								sidebarOpen={sidebarOpen}
 								macTitleBar={isMac}
 								onOpenProviderSettings={openProviderSettings}
 								onSelectProviderModel={(modelRef) => applySelection(modelRef, chat.controls)}
 								onSelectControls={(controls) => applySelection(chat.modelRef, controls)}
 								onChooseProject={chooseProject}
-								onRetryProjects={() => void projectsQuery.refetch()}
+								onRetryProjects={retryProjects}
 								onRenameSession={renameSession}
 								onArchiveSession={archiveSession}
 								onDeleteSession={deleteSession}

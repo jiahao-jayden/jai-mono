@@ -51,5 +51,6 @@ export function useDesktopLocale(): DesktopLocaleContextValue {
 }
 
 export async function initLocale(): Promise<DesktopUiLocaleSnapshot> {
+	// Runs before the UI (and its toasts) exist; English with a system preference keeps the app usable.
 	return desktop.locale.get().catch(() => DEFAULT_LOCALE_SNAPSHOT);
 }

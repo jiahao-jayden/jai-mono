@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownContent, DropdownMenu, DropdownTrigger } from "@/components/ui/dropdown";
 import { MenuItem } from "@/components/ui/menu-item";
 import { desktopMessages } from "@/i18n/messages";
+import { presentFailure } from "@/lib/failure";
 import { useIcons } from "@/lib/icon-context";
 import type { DesktopSubagentItem } from "../../../../shared/desktop-rpc";
 import { TerminalDrawer } from "../terminal-drawer";
@@ -21,7 +22,9 @@ export function Dock({ sessionId, dock, subagents }: DockProps) {
 	const intl = useIntl();
 	const icons = useIcons();
 	const PlusIcon = icons.plus;
+	const XIcon = icons.x;
 	const { activeTab } = dock;
+	const terminalFailure = dock.terminalError ? presentFailure(dock.terminalError, intl) : null;
 	const terminalTabs = dock.tabs.filter(
 		(tab): tab is Extract<DockTab, { kind: "terminal" }> => tab.kind === "terminal",
 	);
@@ -82,6 +85,27 @@ export function Dock({ sessionId, dock, subagents }: DockProps) {
 					</DropdownContent>
 				</DropdownMenu>
 			</div>
+			{terminalFailure ? (
+				<div
+					role="alert"
+					className="flex shrink-0 items-start gap-2 border-b border-[var(--border-surface)] py-2 pr-2 pl-3 text-[12px] leading-relaxed text-destructive"
+				>
+					<p className="min-w-0 flex-1">
+						<span className="font-medium">{terminalFailure.title}</span> {terminalFailure.description}
+					</p>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						aria-label={intl.formatMessage(desktopMessages.commonDismiss)}
+						title={intl.formatMessage(desktopMessages.commonDismiss)}
+						onClick={dock.dismissTerminalError}
+						className="shrink-0 text-muted-foreground"
+					>
+						<XIcon size={11} />
+					</Button>
+				</div>
+			) : null}
 			<div className="relative min-h-0 flex-1">
 				{terminalTabs.map((tab) => {
 					const visible = activeTab?.kind === "terminal" && tab.id === activeTab.id;
@@ -96,9 +120,6 @@ export function Dock({ sessionId, dock, subagents }: DockProps) {
 				})}
 				{activeTab === null ? (
 					<div className="flex h-full flex-col justify-center gap-2 px-8">
-						{dock.terminalError ? (
-							<div className="px-3 pb-2 text-[12px] text-destructive">{dock.terminalError}</div>
-						) : null}
 						{entries.map((entry) => (
 							<Button
 								key={entry.label}

@@ -2,8 +2,10 @@ import { cn } from "cn";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
-import { desktop } from "@/lib/desktop";
+import { desktop, getDesktopRemoteRpcFailure } from "@/lib/desktop";
+import { presentFailure } from "@/lib/failure";
 import type {
+	DesktopFailure,
 	DesktopSubagentItem,
 	DesktopSubagentTranscript,
 	DesktopTranscriptItem,
@@ -158,7 +160,7 @@ export function SubagentHistoryPanel({
 }) {
 	const intl = useIntl();
 	const [transcript, setTranscript] = useState<DesktopSubagentTranscript | null>(null);
-	const [error, setError] = useState<string | null>(null);
+	const [error, setError] = useState<DesktopFailure | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -178,8 +180,8 @@ export function SubagentHistoryPanel({
 			try {
 				const result = await desktop.agent.getSubagentTranscript({ sessionId, toolCallId });
 				if (!cancelled) setTranscript(result);
-			} catch (err) {
-				if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+			} catch (cause) {
+				if (!cancelled) setError(getDesktopRemoteRpcFailure(cause));
 			} finally {
 				loading = false;
 				if (pending && !cancelled) {
@@ -218,6 +220,7 @@ export function SubagentHistoryPanel({
 
 	const items = transcript?.items ?? [];
 	const loading = transcript === null && error === null;
+	const presentedError = error ? presentFailure(error, intl) : null;
 
 	return (
 		<section
@@ -235,8 +238,10 @@ export function SubagentHistoryPanel({
 					<p className="px-3 py-4 text-[13px] text-muted-foreground">
 						{intl.formatMessage(desktopMessages.subagentHistoryLoading)}
 					</p>
-				) : error ? (
-					<p className="px-3 py-4 text-[13px] text-destructive">{error}</p>
+				) : presentedError ? (
+					<p className="px-3 py-4 text-[13px] text-destructive" role="alert">
+						<span className="font-medium">{presentedError.title}</span> {presentedError.description}
+					</p>
 				) : items.length === 0 ? (
 					<p className="px-3 py-4 text-[13px] text-muted-foreground">
 						{intl.formatMessage(desktopMessages.subagentHistoryEmpty)}

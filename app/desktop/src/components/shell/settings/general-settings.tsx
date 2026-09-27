@@ -3,6 +3,8 @@ import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useDesktopLocale } from "@/i18n/locale";
 import { desktopMessages } from "@/i18n/messages";
+import { getDesktopRemoteRpcFailure } from "@/lib/desktop";
+import { notifyFailure } from "@/lib/failure";
 import { useThemeStore } from "@/stores/theme";
 import { type DesktopProviderProfile, isDesktopProviderModelRunnable } from "../../../../shared/desktop-rpc";
 import { Input } from "../../ui/input";
@@ -48,7 +50,10 @@ export function GeneralSettings({
 		}
 	};
 	const onThemeChange = (value: string) => {
-		if (value === "light" || value === "dark" || value === "system") setTheme(value);
+		if (value !== "light" && value !== "dark" && value !== "system") return;
+		setTheme(value).catch((error: unknown) =>
+			notifyFailure(getDesktopRemoteRpcFailure(error), intl, { dedupeKey: "theme-save" }),
+		);
 	};
 	const auxiliaryModels = profiles.flatMap((profile) =>
 		profile.models

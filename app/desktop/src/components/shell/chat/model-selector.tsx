@@ -73,6 +73,7 @@ export function ModelSelector({
 						providerId: profile.id,
 						providerName: profile.name,
 						capabilities: model.capabilities,
+						reasoning: model.reasoning === true,
 					})),
 				},
 			];
@@ -285,6 +286,7 @@ export function ModelSelector({
 						{selectedModel ? (
 							<ModelControls
 								capabilities={selectedModel.capabilities}
+								reasoning={selectedModel.reasoning}
 								controls={controls}
 								disabled={disabled}
 								onChange={onControlsChange}

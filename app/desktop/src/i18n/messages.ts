@@ -42,6 +42,10 @@ export const desktopMessages = defineMessages({
 		id: "desktop.sidebar.recentsLoadError",
 		defaultMessage: "Recents could not be loaded. Try again later.",
 	},
+	sidebarProjectSessionsLoadError: {
+		id: "desktop.sidebar.projectSessionsLoadError",
+		defaultMessage: "Chats could not be loaded.",
+	},
 	sidebarNoRecentSessions: { id: "desktop.sidebar.noRecentSessions", defaultMessage: "New chats will be saved here." },
 	sessionTitle: { id: "desktop.session.title", defaultMessage: "Session title" },
 	sidebarLoadingMore: { id: "desktop.sidebar.loadingMore", defaultMessage: "Loading more…" },
@@ -82,24 +86,151 @@ export const desktopMessages = defineMessages({
 	chatEmpty: { id: "desktop.chat.empty", defaultMessage: "This session has no messages yet." },
 	chatAgentWorking: { id: "desktop.chat.agentWorking", defaultMessage: "Agent is working…" },
 	chatProjectLoading: { id: "desktop.chat.projectLoading", defaultMessage: "Loading project…" },
-	chatProjectsUnavailable: { id: "desktop.chat.projectsUnavailable", defaultMessage: "Projects unavailable" },
-	chatRecoveryReconnecting: {
-		id: "desktop.chat.recovery.reconnecting",
-		defaultMessage: "Reconnecting to the Runtime Host…",
-	},
-	chatRecoveryInterrupted: {
-		id: "desktop.chat.recovery.interrupted",
-		defaultMessage: "This response was interrupted when the Runtime Host stopped.",
-	},
-	chatRecoveryRestartFailed: {
-		id: "desktop.chat.recovery.restartFailed",
-		defaultMessage: "The Runtime Host could not be restarted.",
-	},
+	chatNoticeCopyDetails: { id: "desktop.chat.notice.copyDetails", defaultMessage: "Copy details" },
 	chatRecoveryRetryConnection: { id: "desktop.chat.recovery.retryConnection", defaultMessage: "Retry connection" },
+	failureProviderAuthFailedTitle: {
+		id: "desktop.failure.providerAuthFailed.title",
+		defaultMessage: "Model authentication failed",
+	},
+	failureProviderAuthFailedDescription: {
+		id: "desktop.failure.providerAuthFailed.description",
+		defaultMessage: "The model service rejected the credentials. Check the API key or sign in to the gateway again.",
+	},
+	failureProviderRateLimitedTitle: {
+		id: "desktop.failure.providerRateLimited.title",
+		defaultMessage: "Model rate limit reached",
+	},
+	failureProviderRateLimitedDescription: {
+		id: "desktop.failure.providerRateLimited.description",
+		defaultMessage: "The model service is limiting requests. Wait a moment and try again.",
+	},
+	failureProviderContextOverflowTitle: {
+		id: "desktop.failure.providerContextOverflow.title",
+		defaultMessage: "Conversation is too long",
+	},
+	failureProviderContextOverflowDescription: {
+		id: "desktop.failure.providerContextOverflow.description",
+		defaultMessage:
+			"The conversation exceeds the model's context window. Start a new chat or switch to a model with a larger context.",
+	},
+	failureProviderInvalidRequestTitle: {
+		id: "desktop.failure.providerInvalidRequest.title",
+		defaultMessage: "Model rejected the request",
+	},
+	failureProviderInvalidRequestDescription: {
+		id: "desktop.failure.providerInvalidRequest.description",
+		defaultMessage:
+			"The model service could not process this request. Check the model settings or try another model.",
+	},
+	failureProviderUnavailableTitle: {
+		id: "desktop.failure.providerUnavailable.title",
+		defaultMessage: "Model service unavailable",
+	},
+	failureProviderUnavailableDescription: {
+		id: "desktop.failure.providerUnavailable.description",
+		defaultMessage: "The model service is temporarily unavailable. Try again later.",
+	},
+	failureProviderNetworkTitle: {
+		id: "desktop.failure.providerNetwork.title",
+		defaultMessage: "Could not reach the model service",
+	},
+	failureProviderNetworkDescription: {
+		id: "desktop.failure.providerNetwork.description",
+		defaultMessage: "Check your network connection or the gateway address, then try again.",
+	},
+	failureProviderCredentialRequiredTitle: {
+		id: "desktop.failure.providerCredentialRequired.title",
+		defaultMessage: "Model credentials required",
+	},
+	failureProviderCredentialRequiredDescription: {
+		id: "desktop.failure.providerCredentialRequired.description",
+		defaultMessage: "The current model has no usable credentials. Add them in Provider settings.",
+	},
+	failureProviderModelUnavailableTitle: {
+		id: "desktop.failure.providerModelUnavailable.title",
+		defaultMessage: "No model available",
+	},
+	failureProviderModelUnavailableDescription: {
+		id: "desktop.failure.providerModelUnavailable.description",
+		defaultMessage: "Choose an enabled model before sending.",
+	},
+	failureRuntimeOperationFailedTitle: {
+		id: "desktop.failure.runtimeOperationFailed.title",
+		defaultMessage: "Response did not finish",
+	},
+	failureRuntimeOperationFailedDescription: {
+		id: "desktop.failure.runtimeOperationFailed.description",
+		defaultMessage: "The agent stopped because of an error. Try again.",
+	},
+	failureRuntimeInterruptedTitle: {
+		id: "desktop.failure.runtimeInterrupted.title",
+		defaultMessage: "Response was interrupted",
+	},
+	failureRuntimeInterruptedDescription: {
+		id: "desktop.failure.runtimeInterrupted.description",
+		defaultMessage: "The Runtime Host stopped before the response finished. Try again.",
+	},
+	failureConfigurationInvalidTitle: {
+		id: "desktop.failure.configurationInvalid.title",
+		defaultMessage: "Settings file is invalid",
+	},
+	failureConfigurationInvalidDescription: {
+		id: "desktop.failure.configurationInvalid.description",
+		defaultMessage:
+			"A .jai/settings.json or settings.local.json file has settings JAI can't read. Fix the file named in the details, then send again.",
+	},
+	failureRuntimeRetryUnavailableTitle: {
+		id: "desktop.failure.runtimeRetryUnavailable.title",
+		defaultMessage: "Can't retry right now",
+	},
+	failureRuntimeRetryUnavailableDescription: {
+		id: "desktop.failure.runtimeRetryUnavailable.description",
+		defaultMessage: "Only a failed last turn can be retried, and only while the session is idle.",
+	},
+	failureConnectionReconnectingTitle: {
+		id: "desktop.failure.connectionReconnecting.title",
+		defaultMessage: "Reconnecting",
+	},
+	failureConnectionReconnectingDescription: {
+		id: "desktop.failure.connectionReconnecting.description",
+		defaultMessage: "Desktop is reconnecting to the Runtime Host.",
+	},
+	failureConnectionRestartFailedTitle: {
+		id: "desktop.failure.connectionRestartFailed.title",
+		defaultMessage: "Runtime Host unavailable",
+	},
+	failureConnectionRestartFailedDescription: {
+		id: "desktop.failure.connectionRestartFailed.description",
+		defaultMessage: "Desktop could not reconnect to the Runtime Host. Retry the connection to try again.",
+	},
+	failureSessionWorkspaceRequiredTitle: {
+		id: "desktop.failure.sessionWorkspaceRequired.title",
+		defaultMessage: "Project required",
+	},
+	failureSessionWorkspaceRequiredDescription: {
+		id: "desktop.failure.sessionWorkspaceRequired.description",
+		defaultMessage: "Choose an accessible project before continuing.",
+	},
+	failureRequestFailedTitle: { id: "desktop.failure.requestFailed.title", defaultMessage: "Action failed" },
+	failureRequestFailedDescription: {
+		id: "desktop.failure.requestFailed.description",
+		defaultMessage: "Desktop could not complete this action. Try again.",
+	},
+	failureUnknownTitle: { id: "desktop.failure.unknown.title", defaultMessage: "Request failed" },
+	failureUnknownDescription: {
+		id: "desktop.failure.unknown.description",
+		defaultMessage: "An unexpected error occurred. Copy the details if you need to report it.",
+	},
+	failureActionOpenProviderSettings: {
+		id: "desktop.failure.action.openProviderSettings",
+		defaultMessage: "Open settings",
+	},
+	failureActionChooseProject: { id: "desktop.failure.action.chooseProject", defaultMessage: "Choose project" },
 	projectsLoadError: {
 		id: "desktop.projects.loadError",
-		defaultMessage: "Projects could not be loaded. Open the menu to retry.",
+		defaultMessage: "Projects could not be loaded.",
 	},
+	projectsRelinkFailed: { id: "desktop.projects.relinkFailed", defaultMessage: "Could not relink project" },
 	chatRenameFailed: { id: "desktop.chat.renameFailed", defaultMessage: "Could not rename session" },
 	composerStopResponse: { id: "desktop.composer.stopResponse", defaultMessage: "Stop response" },
 	composerQueueMessage: { id: "desktop.composer.queueMessage", defaultMessage: "Queue message" },
@@ -140,7 +271,6 @@ export const desktopMessages = defineMessages({
 	attachmentsDescription: { id: "desktop.attachments.description", defaultMessage: "Files and photos up to 20 MB" },
 	projectPickerUpdating: { id: "desktop.projectPicker.updating", defaultMessage: "Updating project…" },
 	projectPickerLoading: { id: "desktop.projectPicker.loading", defaultMessage: "Loading projects…" },
-	projectPickerUnavailable: { id: "desktop.projectPicker.unavailable", defaultMessage: "Projects unavailable" },
 	projectPickerRelink: {
 		id: "desktop.projectPicker.relink",
 		defaultMessage: "This folder is unavailable. Choose it to relink.",
@@ -571,6 +701,14 @@ export const desktopMessages = defineMessages({
 		id: "desktop.settings.mcpStatusEmpty",
 		defaultMessage: "No MCP servers configured.",
 	},
+	settingsMcpStatusError: {
+		id: "desktop.settings.mcpStatusError",
+		defaultMessage: "Could not refresh MCP server status.",
+	},
+	settingsMcpServerConnectError: {
+		id: "desktop.settings.mcpServerConnectError",
+		defaultMessage: "Could not connect to this server.",
+	},
 	settingsLoading: { id: "desktop.settings.loading", defaultMessage: "Loading settings…" },
 	settingsUnavailable: { id: "desktop.settings.unavailable", defaultMessage: "Settings unavailable" },
 	settingsUnsavedChanges: { id: "desktop.settings.unsavedChanges", defaultMessage: "Unsaved changes" },
@@ -757,6 +895,10 @@ export const desktopMessages = defineMessages({
 	settingsOAuthStartError: {
 		id: "desktop.settings.oauthStartError",
 		defaultMessage: "Unable to start OAuth authorization.",
+	},
+	settingsOAuthStatusError: {
+		id: "desktop.settings.oauthStatusError",
+		defaultMessage: "Could not check the authorization status. Still retrying…",
 	},
 	settingsOAuthDisconnectError: {
 		id: "desktop.settings.oauthDisconnectError",

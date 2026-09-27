@@ -1,9 +1,11 @@
 import {
+	type BranchEntry,
 	branchOf,
 	type JsonObject,
 	type JsonValue,
 	type MessageEntry,
 	type OperationAccepted,
+	type OperationFailureInfo,
 	type OperationFinished,
 	type OperationRecord,
 	type OperationRecoveryVerdict,
@@ -13,10 +15,11 @@ import {
 	type SessionEntry,
 	type SessionSnapshot,
 } from "@jai/agent";
-import type { AssistantMessage } from "@jai/ai";
+import { type AssistantMessage, type ProviderFailureKind, providerFailureKind, type UserMessage } from "@jai/ai";
 import { createPermissionApprovalQueue, type PermissionApprovalQueue, type SessionAllowRules } from "@jai/coding-agent";
 import { Result, TaggedError } from "better-result";
 import type { HostLog } from "../logging";
+import { redactSecrets } from "../logging/redact";
 import {
 	OperationEffectBoundary,
 	projectRuntimeSessionUsage,
@@ -53,6 +56,7 @@ import {
 	RuntimeSessionStore,
 } from "../sessions";
 import { branchOperationRecords } from "./branch-operations";
+import { RUNTIME_FAILURE_DETAIL_LIMIT, type RuntimeFailure } from "./failure";
 import { branchSessionUsage, projectProfileTokenStats, type RuntimeProfileTokenStats } from "./profile-token-stats";
 
 export type RuntimeSessionSelection<TAppState extends JsonObject = JsonObject> =
@@ -131,7 +135,7 @@ export type RuntimeSessionEvent =
 			readonly state: RuntimeForegroundState;
 			readonly operationId?: string;
 			readonly stopReason?: RuntimeStopReason;
-			readonly errorMessage?: string;
+			readonly failure?: RuntimeFailure;
 	  }
 	| {
 			readonly type: "configuration_changed";
@@ -162,6 +166,10 @@ export interface RuntimeSessionSnapshot {
 	readonly usage: RuntimeSessionUsage;
 	readonly state: RuntimeForegroundState;
 	readonly stopReason?: RuntimeStopReason;
+	/** The Operation that produced `stopReason`. */
+	readonly operationId?: string;
+	/** Present only when idle and the branch's last terminal Operation failed or was interrupted. */
+	readonly failure?: RuntimeFailure;
 }
 
 export class RuntimeHostSessionNotFound extends TaggedError("runtime_host.session_not_found")<{
@@ -210,6 +218,12 @@ export class RuntimeHostSessionBusy extends TaggedError("runtime_host.session_bu
 	readonly message: string;
 }> {}
 
+/** `session/retry` preconditions failed; the journal is unchanged. */
+export class RuntimeHostRetryUnavailable extends TaggedError("runtime_host.retry_unavailable")<{
+	readonly sessionId: string;
+	readonly message: string;
+}> {}
+
 export class RuntimeHostApprovalNotFound extends TaggedError("runtime_host.approval_not_found")<{
 	readonly sessionId: string;
 	readonly requestId: string;
@@ -243,6 +257,7 @@ export type RuntimeHostCancelError =
 	| RuntimeHostRecoveryCorrupted
 	| RuntimeHostIndeterminateTool;
 export type RuntimeHostPromptError = RuntimeHostPromptRejected | RuntimeHostSessionBusy | RuntimeHostIndeterminateTool;
+export type RuntimeHostRetryError = RuntimeHostPromptRejected | RuntimeHostRetryUnavailable;
 export type RuntimeHostSnapshotError = RuntimeHostPromptRejected | RuntimeHostRecoveryCorrupted;
 export type RuntimeHostApprovalError = RuntimeHostPromptRejected | RuntimeHostApprovalNotFound;
 export type RuntimeHostConfigurationError = RuntimeHostPromptRejected | RuntimeHostConfigurationRejected;
@@ -665,55 +680,134 @@ export class RuntimeSession {
 			}
 			if (this.#indeterminate) return Result.err(this.#indeterminate);
 			if (this.operationDriver && this.#active) return this.queueActiveInput(this.#active, input);
-			const operationId = this.createId();
 			const loaded = await this.persistence.load(this.id);
 			if (loaded.isErr()) return Result.err(this.reject(loaded.error));
-			if (this.operationDriver?.preflight) {
-				const prepared = await this.operationDriver.preflight({
-					sessionId: this.id,
-					cwd: this.info.cwd,
-					operationId,
-					runtimeConfiguration: loaded.value.runtimeConfiguration,
-				});
-				if (prepared.isErr()) return Result.err(this.reject(prepared.error));
-			}
-			const inputEntryId = `${operationId}:input`;
-
-			const timestamp = this.now();
-			const inputEntry: MessageEntry = {
-				type: "message",
-				id: inputEntryId,
-				parentId: loaded.value.snapshot.leafId,
-				timestamp: timestamp.toISOString(),
-				message: {
-					role: "user",
-					content: input.text,
-					timestamp: timestamp.getTime(),
-					metadata: input.metadata || undefined,
-				},
-			};
-			const operation: OperationAccepted = {
-				type: "operation_accepted",
-				operationId,
-				kind: "prompt",
-				inputEntryId,
-				startLeafId: loaded.value.snapshot.leafId,
-				timestamp: timestamp.toISOString(),
-			};
-			const accepted = await this.persistence.admitPrompt({
-				sessionId: this.id,
-				inputEntry,
-				operation,
-			});
-			if (accepted.isErr()) {
-				this.operationDriver?.discardPreflight?.(operationId);
-				return Result.err(this.reject(accepted.error));
-			}
-			if (this.operationDriver) this.#active = createActiveOperation(operationId);
-			this.publish({ type: "entry_appended", entry: inputEntry, operationId });
-			this.publish({ type: "operation_timing", timing: { operationId, startedAt: timestamp.getTime() } });
-			return Result.ok({ operationId, inputEntryId });
+			return this.admit(loaded.value, { content: input.text, metadata: input.metadata || undefined });
 		});
+		return this.startAdmitted(admitted);
+	}
+
+	/**
+	 * Moves the leaf back before the current branch's last failed or interrupted
+	 * Operation and re-admits that Operation's journal input under the Session's
+	 * current configuration, in one queued step and one persistence transaction.
+	 */
+	async retry(): Promise<Result<PromptAdmission, RuntimeHostRetryError>> {
+		if (this.#closed) return Result.err(this.closed());
+		const admitted = await this.enqueue(async (): Promise<Result<PromptAdmission, RuntimeHostRetryError>> => {
+			const unavailable = (message: string) =>
+				Result.err(new RuntimeHostRetryUnavailable({ message, sessionId: this.id }));
+			if (this.#suspended || this.#indeterminate) {
+				return unavailable(`Session "${this.id}" has an Operation that must be recovered first`);
+			}
+			if (this.#active)
+				return unavailable(`Session "${this.id}" is running Operation "${this.#active.operationId}"`);
+			const loaded = await this.persistence.load(this.id);
+			if (loaded.isErr()) return Result.err(this.reject(loaded.error));
+			const recovered = recoverDurableState(loaded.value);
+			if (recovered.isErr()) return Result.err(this.reject(recovered.error));
+			if (recovered.value.some((verdict) => verdict.status !== "terminal")) {
+				return unavailable(`Session "${this.id}" has a non-terminal Operation`);
+			}
+			const { snapshot, operationRecords } = loaded.value;
+			const onBranch = branchOperationRecords(
+				operationRecords,
+				new Set(branchOf(snapshot.entries, snapshot.leafId).map((entry) => entry.id)),
+			);
+			const terminal = onBranch.findLast(
+				(record): record is OperationFinished => record.type === "operation_finished",
+			);
+			if (!terminal || (terminal.outcome !== "failed" && terminal.outcome !== "interrupted")) {
+				return unavailable(`Session "${this.id}" did not end its last turn with a failure`);
+			}
+			const accepted = onBranch.find(
+				(record): record is OperationAccepted =>
+					record.type === "operation_accepted" && record.operationId === terminal.operationId,
+			);
+			const input = snapshot.entries.find((entry) => entry.id === accepted?.inputEntryId);
+			if (input?.type !== "message" || input.message.role !== "user" || snapshot.leafId === null) {
+				return Result.err(
+					new RuntimeHostPromptRejected({
+						message: `Operation "${terminal.operationId}" has no durable user input to retry`,
+						sessionId: this.id,
+					}),
+				);
+			}
+			const admission = await this.admit(loaded.value, input.message, {
+				parentId: input.parentId,
+				fromId: snapshot.leafId,
+			});
+			if (admission.isErr()) return admission;
+			const afterRetry = await this.persistence.load(this.id);
+			if (afterRetry.isOk()) {
+				const previousUsage = this.#usage;
+				this.#usage = branchUsage(afterRetry.value);
+				if (!usageEqual(this.#usage, previousUsage)) this.publish({ type: "usage_changed", usage: this.#usage });
+			}
+			return admission;
+		});
+		return this.startAdmitted(admitted);
+	}
+
+	/** Durable prompt admission shared by a new prompt and a retry; runs inside the Session queue. */
+	private async admit(
+		state: ProductSessionDurableState,
+		message: Pick<UserMessage, "content" | "metadata">,
+		branchFrom?: { readonly parentId: string | null; readonly fromId: string },
+	): Promise<Result<PromptAdmission, RuntimeHostPromptRejected>> {
+		const operationId = this.createId();
+		if (this.operationDriver?.preflight) {
+			const prepared = await this.operationDriver.preflight({
+				sessionId: this.id,
+				cwd: this.info.cwd,
+				operationId,
+				runtimeConfiguration: state.runtimeConfiguration,
+			});
+			if (prepared.isErr()) return Result.err(this.reject(prepared.error));
+		}
+		const inputEntryId = `${operationId}:input`;
+		const timestamp = this.now();
+		const branch: BranchEntry | undefined = branchFrom && {
+			type: "branch",
+			id: `${operationId}:branch`,
+			parentId: branchFrom.parentId,
+			fromId: branchFrom.fromId,
+			timestamp: timestamp.toISOString(),
+		};
+		const startLeafId = branch ? branch.id : state.snapshot.leafId;
+		const inputEntry: MessageEntry = {
+			type: "message",
+			id: inputEntryId,
+			parentId: startLeafId,
+			timestamp: timestamp.toISOString(),
+			message: {
+				role: "user",
+				content: message.content,
+				timestamp: timestamp.getTime(),
+				metadata: message.metadata,
+			},
+		};
+		const operation: OperationAccepted = {
+			type: "operation_accepted",
+			operationId,
+			kind: "prompt",
+			inputEntryId,
+			startLeafId,
+			timestamp: timestamp.toISOString(),
+		};
+		const accepted = await this.persistence.admitPrompt({ sessionId: this.id, branch, inputEntry, operation });
+		if (accepted.isErr()) {
+			this.operationDriver?.discardPreflight?.(operationId);
+			return Result.err(this.reject(accepted.error));
+		}
+		if (this.operationDriver) this.#active = createActiveOperation(operationId);
+		if (branch) this.publish({ type: "entry_appended", entry: branch });
+		this.publish({ type: "entry_appended", entry: inputEntry, operationId });
+		this.publish({ type: "operation_timing", timing: { operationId, startedAt: timestamp.getTime() } });
+		return Result.ok({ operationId, inputEntryId });
+	}
+
+	private startAdmitted<E>(admitted: Result<PromptAdmission, E>): Result<PromptAdmission, E> {
 		if (admitted.isOk() && !this.#suspended) {
 			this.publish({
 				type: "state_changed",
@@ -1339,6 +1433,7 @@ export class RuntimeSession {
 				operationId: active.operationId,
 				outcome: terminalOutcome,
 				timestamp: this.now().toISOString(),
+				error: outcome.isErr() && terminalOutcome === "failed" ? operationFailureInfo(outcome.error) : undefined,
 			};
 			const appended = await this.persistence.appendOperation({
 				sessionId: this.id,
@@ -1360,13 +1455,14 @@ export class RuntimeSession {
 				type: "operation_timing",
 				timing: { operationId: active.operationId, finishedAt: Date.parse(terminal.timestamp) },
 			});
+			const failure = resolveRuntimeFailure(loaded.value, terminal);
 			const stopReason = stopReasonFor(terminalOutcome);
-			const errorMessage = outcome.isErr() ? outcome.error.message : undefined;
 			if (stopReason === "error") {
 				this.log?.error("agent stopped", {
 					sessionId: this.id,
 					operationId: active.operationId,
-					errorMessage,
+					code: failure?.code,
+					errorMessage: failure?.detail,
 				});
 			}
 			this.publish({
@@ -1374,7 +1470,7 @@ export class RuntimeSession {
 				state: "idle",
 				operationId: active.operationId,
 				stopReason,
-				errorMessage,
+				failure,
 			});
 			return inferredTerminalOutcome ? Result.ok(inferredTerminalOutcome) : outcome;
 		});
@@ -1420,7 +1516,7 @@ export class RuntimeSession {
 	private foregroundState(
 		state: ProductSessionDurableState,
 		recovery: readonly OperationRecoveryVerdict[],
-	): Pick<RuntimeSessionSnapshot, "state" | "stopReason"> {
+	): Pick<RuntimeSessionSnapshot, "state" | "stopReason" | "operationId" | "failure"> {
 		if (this.#suspended) return { state: "requires_action" };
 		if (this.#indeterminate || recovery.some((verdict) => verdict.status === "indeterminate_tool")) {
 			return { state: "requires_action" };
@@ -1434,7 +1530,12 @@ export class RuntimeSession {
 			.reverse()
 			.find((record) => record.type === "operation_finished");
 		if (!terminal) return { state: "idle" };
-		return { state: "idle", stopReason: stopReasonFor(terminal.outcome) };
+		return {
+			state: "idle",
+			stopReason: stopReasonFor(terminal.outcome),
+			operationId: terminal.operationId,
+			failure: resolveRuntimeFailure(state, terminal),
+		};
 	}
 
 	private publish(event: RuntimeSessionEvent): void {
@@ -1635,6 +1736,93 @@ function hasPendingInputs(verdict: OperationRecoveryVerdict | undefined): boolea
 		(verdict?.status === "ready" || verdict?.status === "provider_interrupted") &&
 		(verdict.pendingInputs?.length ?? 0) > 0
 	);
+}
+
+const providerFailures: Record<ProviderFailureKind, Omit<RuntimeFailure, "detail">> = {
+	auth_failed: { code: "provider.auth_failed", retryable: false, action: "open_provider_settings" },
+	rate_limited: { code: "provider.rate_limited", retryable: true, action: "retry" },
+	context_overflow: { code: "provider.context_overflow", retryable: false },
+	invalid_request: { code: "provider.invalid_request", retryable: false },
+	unavailable: { code: "provider.unavailable", retryable: true, action: "retry" },
+	network: { code: "provider.network", retryable: true, action: "retry" },
+	unknown: { code: "unknown", retryable: false },
+};
+
+/**
+ * Derives a terminal Operation's failure from durable facts only, so live events and replay agree.
+ * A provider failure is recorded on the Operation's failed assistant entry; any other `Err` is recorded
+ * on `operation_finished.error`.
+ */
+function resolveRuntimeFailure(
+	state: ProductSessionDurableState,
+	terminal: OperationFinished,
+): RuntimeFailure | undefined {
+	if (terminal.outcome === "interrupted") return { code: "runtime.interrupted", retryable: true, action: "retry" };
+	if (terminal.outcome !== "failed") return undefined;
+	const assistantEntryIds = new Set(
+		state.operationRecords.flatMap((record) =>
+			record.type === "model_attempted" && record.operationId === terminal.operationId
+				? [record.assistantEntryId]
+				: [],
+		),
+	);
+	const failed = state.snapshot.entries.findLast(
+		(entry) =>
+			assistantEntryIds.has(entry.id) &&
+			entry.type === "message" &&
+			entry.message.role === "assistant" &&
+			(entry.message.stopReason === "error" || entry.message.stopReason === "contextOverflow"),
+	);
+	if (failed?.type === "message" && failed.message.role === "assistant") {
+		return {
+			...providerFailures[providerFailureKind(failed.message.error, failed.message.stopReason)],
+			detail: failureDetail(failed.message.error?.message),
+		};
+	}
+	// A settings file the user must fix; retrying the same turn cannot succeed.
+	if (terminal.error && CONFIGURATION_FAILURE_CODES.has(terminal.error.code)) {
+		return { code: "configuration.invalid", retryable: false, detail: failureDetail(terminal.error.message) };
+	}
+	return {
+		code: "runtime.operation_failed",
+		retryable: true,
+		action: "retry",
+		detail: failureDetail(terminal.error?.message),
+	};
+}
+
+const CONFIGURATION_FAILURE_CODES = new Set([
+	"coding_config.validation_failed",
+	"coding_config.parse_failed",
+	"coding_config.unsupported_version",
+]);
+
+/**
+ * The innermost identifiable error in the cause chain, redacted before it becomes a durable fact. The
+ * Coding Agent SDK projects errors into `CodingSdkError`, whose `code` (preferred over `_tag`) carries
+ * the original tag such as `coding_config.validation_failed`.
+ */
+function operationFailureInfo(error: unknown): OperationFailureInfo | undefined {
+	let found: OperationFailureInfo | undefined;
+	let cause = error;
+	for (let depth = 0; depth < 8 && typeof cause === "object" && cause !== null; depth++) {
+		const record = cause as {
+			readonly _tag?: unknown;
+			readonly code?: unknown;
+			readonly message?: unknown;
+			readonly cause?: unknown;
+		};
+		const code = typeof record.code === "string" ? record.code : record._tag;
+		if (typeof code === "string" && typeof record.message === "string") {
+			found = { code, message: failureDetail(record.message) ?? "" };
+		}
+		cause = record.cause;
+	}
+	return found;
+}
+
+function failureDetail(message: string | undefined): string | undefined {
+	return message ? redactSecrets(message).slice(0, RUNTIME_FAILURE_DETAIL_LIMIT) : undefined;
 }
 
 function operationIdByEntryId(

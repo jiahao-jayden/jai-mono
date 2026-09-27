@@ -6,6 +6,7 @@ export {
 	type ModelAttempted,
 	type OperationAccepted,
 	OperationCorruptedLog,
+	type OperationFailureInfo,
 	type OperationFinished,
 	type OperationInputDelivery,
 	OperationJournalAlreadyExists,

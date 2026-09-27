@@ -46,6 +46,7 @@ function router(overrides: Partial<Record<keyof DesktopRuntime, unknown>> = {}) 
 			abort: record("abort"),
 			invalidateSessions: record("invalidateSessions"),
 			navigate: record("navigate"),
+			retry: record("retry", { accepted: true as const }),
 			send: record("send", { accepted: true as const }),
 			resolvePermission: record("resolvePermission"),
 			...(overrides.agentHost as object),
@@ -155,6 +156,17 @@ describe("createDesktopRouter — 输入校验", () => {
 
 		r.agent.navigate(event, base);
 		expect(calls.map((call) => call.name)).toEqual(["navigate"]);
+	});
+
+	test("agent.retry 只接受会话与配置，不接受替换内容", () => {
+		const { router: r, calls } = router();
+		const base = { sessionId: "s1", modelRef: "p/m", controls: defaultDesktopSessionControls };
+		expect(() => r.agent.retry(event, { ...base, message: "replaced" })).toThrow();
+		expect(() => r.agent.retry(event, { ...base, modelRef: "missing-separator" })).toThrow();
+		expect(calls).toEqual([]);
+
+		r.agent.retry(event, base);
+		expect(calls).toEqual([{ name: "retry", args: [base] }]);
 	});
 
 	test("workspace.open 只在 application 目标下接受 applicationId", () => {

@@ -17,8 +17,9 @@ import type {
 	WorkspaceTrustSnapshot,
 } from "@jai/server";
 import { normalizeRuntimeModelCatalog } from "@jai/server/model-catalog";
-import { Result } from "better-result";
+import { Result, TaggedError } from "better-result";
 import { DesktopConfigService } from "../electron/config";
+import { projectDesktopRpcError } from "../electron/rpc/error";
 import {
 	projectModel,
 	projectProviderPresets,
@@ -141,6 +142,39 @@ describe("DesktopConfigService", () => {
 			{ reasoningLevels: ["low", "medium", "high", "xhigh", "max"], supportsFastMode: true },
 			{ reasoningLevels: ["low", "medium", "high", "xhigh", "max"], supportsFastMode: false },
 		]);
+	});
+
+	test("verifies a gateway-namespaced model through its upstream vendor catalog", () => {
+		const projected = projectRuntimeProviderConfig(
+			{
+				revision: "r1",
+				model: "",
+				profiles: [
+					{
+						id: "gateway",
+						name: "Gateway",
+						adapter: "openai-compatible",
+						baseURL: "http://127.0.0.1:3425/v1",
+						authentication: "none",
+						credentialConfigured: false,
+						enabled: true,
+						models: [{ id: "claude/claude-opus-5", enabled: false }],
+					},
+				],
+				connector: { policy: { default: "ask", actions: {} }, connectors: [] },
+				webSearch: { providers: [], fetch: { jina: { credentialConfigured: false } } },
+			},
+			normalizeRuntimeModelCatalog({
+				providers: { anthropic: { models: { "claude-opus-5": { name: "Claude Opus 5", tool_call: true } } } },
+			}),
+		);
+
+		expect(projected.profiles[0]?.models[0]).toMatchObject({
+			name: "Claude Opus 5",
+			remoteModelId: "claude/claude-opus-5",
+			verified: true,
+			metadataProvider: "anthropic",
+		});
 	});
 
 	test("projects reviewed metadata for a confirmed Ark model missing from Models.dev", () => {
@@ -756,6 +790,51 @@ describe("DesktopConfigService", () => {
     }
   });
 
+  test("classifies a failed model-list request by HTTP status and keeps the upstream message out", async () => {
+    const host = new FakeDesktopConfigurationClient({
+      revision: "r1",
+      model: "",
+      profiles: [],
+    });
+    const service = new DesktopConfigService(host);
+    const requestFailed = (data: unknown) =>
+      new AcpLocalClientRequestFailed({
+        endpoint: "test",
+        requestId: 1,
+        code: -32001,
+        message: "Could not fetch models: Bearer sk-upstream-secret",
+        data,
+      }) as DesktopConfigurationClientError;
+    try {
+      for (const [status, code] of [
+        [401, "provider.auth_failed"],
+        [403, "provider.auth_failed"],
+        [429, "provider.rate_limited"],
+        [502, "provider.unavailable"],
+        [404, "provider.invalid_request"],
+        [undefined, "provider.network"],
+      ] as const) {
+        host.fetchError = requestFailed({ status, requestId: "req_1" });
+        const projected = projectDesktopRpcError(await service.fetchModels("gateway").catch((error: unknown) => error));
+        expect(projected.error._tag).toBe("desktop_provider_config.model_fetch_failed");
+        expect(projected.error.failure.code).toBe(code);
+        expect(projected.error.failure.detail).toBe(
+          status === undefined ? "status=none requestId=req_1" : `status=${status} requestId=req_1`,
+        );
+        expect(JSON.stringify(projected)).not.toContain("sk-upstream-secret");
+      }
+
+      host.fetchError = requestFailed(undefined);
+      const rejected = projectDesktopRpcError(await service.fetchModels("gateway").catch((error: unknown) => error));
+      expect(rejected.error).toMatchObject({
+        _tag: "acp_local_client.request_failed",
+        failure: { code: "request.failed", retryable: true },
+      });
+    } finally {
+      await service.close();
+    }
+  });
+
   test("uses the Host-owned model inventory rather than a Desktop SQLite cache", async () => {
     const homeDir = await mkdtemp(
       join(tmpdir(), "jai-remote-provider-models-"),
@@ -1030,6 +1109,7 @@ describe("DesktopConfigService", () => {
 
 class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
   readonly fetches: string[] = [];
+  fetchError?: DesktopConfigurationClientError;
   readonly oauthStarts: string[] = [];
   readonly oauthCallbacks: string[] = [];
   readonly oauthDisconnects: string[] = [];
@@ -1145,6 +1225,7 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
 
   async fetchModels(profileId: string) {
     this.fetches.push(profileId);
+    if (this.fetchError) return Result.err(this.fetchError);
     const profile = this.#snapshot.profiles.find(
       (candidate) => candidate.id === profileId,
     );
@@ -1419,3 +1500,11 @@ function projectWebSearch(
 function telemetryCredentialMask(value: string): string {
 	return `•••• ${value.slice(-4)}`;
 }
+
+class AcpLocalClientRequestFailed extends TaggedError("acp_local_client.request_failed")<{
+	readonly endpoint: string;
+	readonly requestId: number;
+	readonly code: number;
+	readonly message: string;
+	readonly data?: unknown;
+}> {}

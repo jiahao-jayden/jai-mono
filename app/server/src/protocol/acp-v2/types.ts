@@ -3,6 +3,13 @@ import type { RuntimeHost } from "../../runtime";
 
 export type AcpRequestId = string | number;
 
+/**
+ * JSON-RPC server error code for a `session/retry` whose preconditions failed
+ * (`runtime_host.retry_unavailable`). Response messages are generic, so clients
+ * identify this failure by code only.
+ */
+export const ACP_RETRY_UNAVAILABLE = -32005;
+
 export interface AcpJsonRpcRequest {
 	readonly jsonrpc: "2.0";
 	readonly id?: AcpRequestId;
@@ -15,7 +22,7 @@ export interface AcpJsonRpcResponse {
 	/** JSON-RPC requires `null` for parse/invalid-request errors with no usable id. */
 	readonly id: AcpRequestId | null;
 	readonly result?: unknown;
-	readonly error?: { readonly code: number; readonly message: string };
+	readonly error?: { readonly code: number; readonly message: string; readonly data?: unknown };
 }
 
 export interface AcpJsonRpcNotification {

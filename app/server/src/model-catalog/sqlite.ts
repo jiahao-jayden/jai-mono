@@ -80,9 +80,12 @@ export class SqliteRuntimeModelCatalog {
 		return refreshed;
 	}
 
-	async refresh(): Promise<ResultType<RuntimeModelCatalogSnapshot, RuntimeModelCatalogError>> {
-		if (this.#refreshing) return this.#refreshing;
-		const request = this.refreshOnce();
+	/** `force` bypasses freshness for an explicit user re-sync; failures still fall back to the stored fact. */
+	async refresh(
+		options: { readonly force?: boolean } = {},
+	): Promise<ResultType<RuntimeModelCatalogSnapshot, RuntimeModelCatalogError>> {
+		if (this.#refreshing && !options.force) return this.#refreshing;
+		const request = this.refreshOnce(options.force === true);
 		this.#refreshing = request;
 		try {
 			return await request;
@@ -98,10 +101,12 @@ export class SqliteRuntimeModelCatalog {
 		this.#timer = undefined;
 	}
 
-	private async refreshOnce(): Promise<ResultType<RuntimeModelCatalogSnapshot, RuntimeModelCatalogError>> {
+	private async refreshOnce(
+		force: boolean,
+	): Promise<ResultType<RuntimeModelCatalogSnapshot, RuntimeModelCatalogError>> {
 		const current = this.read();
 		if (current.isErr()) return current;
-		if (current.value && isFresh(current.value, this.#now()))
+		if (!force && current.value && isFresh(current.value, this.#now()))
 			return Result.ok(snapshotFor(current.value, false, this.#now()));
 		try {
 			const catalog = normalizeRuntimeModelCatalog(

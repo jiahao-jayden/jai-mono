@@ -92,11 +92,12 @@ export function ObservabilitySettings({
 	};
 
 	if (!snapshot) {
+		const loadStateRole = loadError ? "alert" : "status";
 		return (
 			<div className="flex min-h-0 flex-1 items-center justify-center px-8 py-10 text-center">
 				<div className="max-w-80">
 					<LockIcon className="mx-auto mb-3 size-5 text-muted-foreground" />
-					<p className="text-[14px] font-semibold">
+					<p className="text-[14px] font-semibold" role={loadStateRole}>
 						{intl.formatMessage(loading ? desktopMessages.settingsLoading : desktopMessages.settingsUnavailable)}
 					</p>
 					{loadError ? (

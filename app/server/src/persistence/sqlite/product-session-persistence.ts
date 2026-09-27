@@ -13,6 +13,7 @@ import {
 	ProductSessionNotFound,
 	type ProductSessionPersistence,
 	type PromptAdmissionTransaction,
+	promptAdmissionConflict,
 	type RuntimeConfigurationAppend,
 	type RuntimeSessionConfiguration,
 	type SessionEntryAppend,
@@ -183,21 +184,23 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 						message: `Session "${input.sessionId}" does not exist`,
 						sessionId: input.sessionId,
 					});
-				this.assertPromptAdmission(state, input);
+				const conflict = promptAdmissionConflict(state.snapshot.leafId, input);
+				if (conflict) throw conflict;
 
-				const entrySequence = this.nextSequence(input.sessionId);
-				this.database
-					.prepare(
-						`INSERT INTO session_journal_entries (session_id, sequence, entry_id, entry_type, entry_json)
-						 VALUES (?, ?, ?, ?, ?)`,
-					)
-					.run(
-						input.sessionId,
-						entrySequence,
-						input.inputEntry.id,
-						input.inputEntry.type,
-						JSON.stringify(input.inputEntry),
-					);
+				for (const entry of input.branch ? [input.branch, input.inputEntry] : [input.inputEntry]) {
+					this.database
+						.prepare(
+							`INSERT INTO session_journal_entries (session_id, sequence, entry_id, entry_type, entry_json)
+							 VALUES (?, ?, ?, ?, ?)`,
+						)
+						.run(
+							input.sessionId,
+							this.nextSequence(input.sessionId),
+							entry.id,
+							entry.type,
+							JSON.stringify(entry),
+						);
+				}
 
 				const operationSequence = this.nextSequence(input.sessionId);
 				this.database
@@ -707,30 +710,6 @@ export class SqliteProductSessionPersistence<TAppState extends JsonObject = Json
 		};
 	}
 
-	private assertPromptAdmission(
-		state: ProductSessionDurableState<TAppState>,
-		input: PromptAdmissionTransaction,
-	): void {
-		if (state.snapshot.leafId !== input.inputEntry.parentId) {
-			throw new ProductSessionAdmissionConflict({
-				message: `Prompt admission for Session "${input.sessionId}" used a stale leaf`,
-				sessionId: input.sessionId,
-			});
-		}
-		if (input.operation.inputEntryId !== input.inputEntry.id) {
-			throw new ProductSessionAdmissionConflict({
-				message: `Prompt admission for Session "${input.sessionId}" does not link its input entry`,
-				sessionId: input.sessionId,
-			});
-		}
-		if (input.operation.startLeafId !== input.inputEntry.parentId) {
-			throw new ProductSessionAdmissionConflict({
-				message: `Prompt admission for Session "${input.sessionId}" has inconsistent start leaf`,
-				sessionId: input.sessionId,
-			});
-		}
-	}
-
 	private nextSequence(sessionId: string): number {
 		const row = this.database
 			.prepare("SELECT next_sequence FROM session_fact_sequences WHERE session_id = ?")
@@ -849,7 +828,13 @@ function isOperationRecord(value: unknown): value is OperationRecord {
 				typeof value.text === "string"
 			);
 		case "operation_finished":
-			return isOperationTerminalOutcome(value.outcome);
+			return (
+				isOperationTerminalOutcome(value.outcome) &&
+				(value.error === undefined ||
+					(isJsonObject(value.error) &&
+						typeof value.error.code === "string" &&
+						typeof value.error.message === "string"))
+			);
 		default:
 			return false;
 	}

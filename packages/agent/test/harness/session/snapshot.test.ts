@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyEntry, emptySnapshot, replay } from "../../../src/harness";
+import { applyEntry, branchOf, contextMessages, emptySnapshot, replay } from "../../../src/harness";
 import { appStateEntry, chain, compactionEntry, defaultAppState, messageEntry } from "../../support/fixtures";
 
 describe("applyEntry", () => {
@@ -34,6 +34,20 @@ describe("applyEntry", () => {
 		expect(next.appState).toEqual({ resolved: false });
 		expect(next.leafId).toBe(leafId);
 		expect(next.updatedAt).toBe("2026-01-01T00:00:02.000Z");
+	});
+
+	test("a branch entry with a null parent returns the leaf to the Session start", () => {
+		const { entries } = chain(appStateEntry("e0", true), messageEntry("e1", "failed"));
+		const root = { type: "branch" as const, id: "e2", parentId: null, fromId: "e1", timestamp: "t" };
+		const retried = { ...messageEntry("e3", "failed"), parentId: "e2" };
+		const snapshot = replay(defaultAppState, [...entries, root, retried], "t");
+
+		expect(snapshot.leafId).toBe("e3");
+		expect(snapshot.appState).toEqual({ resolved: false });
+		expect(branchOf(snapshot.entries, snapshot.leafId).map((entry) => entry.id)).toEqual(["e2", "e3"]);
+		expect(contextMessages(branchOf(snapshot.entries, snapshot.leafId))).toEqual([
+			{ role: "user", content: "failed", timestamp: 0 },
+		]);
 	});
 
 	test("replay folds a whole log", () => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { desktop, getDesktopRemoteRpcFailure } from "@/lib/desktop";
-import type { DesktopTerminalSnapshot } from "../../../../shared/desktop-rpc";
+import type { DesktopFailure, DesktopTerminalSnapshot } from "../../../../shared/desktop-rpc";
 
 /**
  * 右栏打开的面板实例。文件面板多例（按 path 去重，path 为 null 表示还没选文件），
@@ -20,11 +20,12 @@ export type DockState = ReturnType<typeof useDock>;
 export function useDock(sessionId: string | null) {
 	const [tabs, setTabs] = useState<readonly DockTab[]>([]);
 	const [activeTabId, setActiveTabId] = useState<string | null>(null);
-	const [terminalError, setTerminalError] = useState<string | null>(null);
+	const [terminalError, setTerminalError] = useState<DesktopFailure | null>(null);
 
 	useEffect(() => {
 		setTabs([]);
 		setActiveTabId(null);
+		setTerminalError(null);
 		if (!sessionId) return;
 		let current = true;
 		void desktop.terminal
@@ -39,10 +40,13 @@ export function useDock(sessionId: string | null) {
 				setTabs(terminalTabs);
 				setActiveTabId(terminalTabs[0]?.id ?? null);
 			})
-			.catch(() => {});
+			.catch((error: unknown) => {
+				if (current) setTerminalError(getDesktopRemoteRpcFailure(error));
+			});
 		return () => {
 			current = false;
-			void desktop.terminal.detach({ sessionId });
+			// Detach runs on unmount with no user waiting; a stale attachment is dropped when the window closes.
+			desktop.terminal.detach({ sessionId }).catch(() => undefined);
 		};
 	}, [sessionId]);
 
@@ -84,18 +88,14 @@ export function useDock(sessionId: string | null) {
 		},
 		openTerminalPanel() {
 			if (!sessionId) {
-				setTerminalError("No active session");
+				setTerminalError({ code: "request.failed", retryable: false });
 				return;
 			}
 			setTerminalError(null);
 			void desktop.terminal
 				.open({ sessionId, cols: 120, rows: 30 })
 				.then((snapshot) => activate({ id: `terminal:${snapshot.terminalId}`, kind: "terminal", snapshot }))
-				.catch((error: unknown) => {
-					const failure = getDesktopRemoteRpcFailure(error);
-					console.error("Could not open terminal", failure?.tag ?? error);
-					setTerminalError(failure?.tag ?? "Terminal could not be started");
-				});
+				.catch((error: unknown) => setTerminalError(getDesktopRemoteRpcFailure(error)));
 		},
 		openSubagentHistory(toolCallId: string, title: string) {
 			activate({ id: `subagent-history:${toolCallId}`, kind: "subagent-history", toolCallId, title });
@@ -115,12 +115,17 @@ export function useDock(sessionId: string | null) {
 			setActiveTabId(id);
 		},
 		terminalError,
+		dismissTerminalError() {
+			setTerminalError(null);
+		},
 		closeTab(id: string) {
 			const tab = tabs.find((candidate) => candidate.id === id);
 			const index = tabs.findIndex((tab) => tab.id === id);
 			if (index === -1) return;
 			if (tab?.kind === "terminal" && sessionId) {
-				void desktop.terminal.close({ sessionId, terminalId: tab.snapshot.terminalId }).catch(() => {});
+				void desktop.terminal
+					.close({ sessionId, terminalId: tab.snapshot.terminalId })
+					.catch((error: unknown) => setTerminalError(getDesktopRemoteRpcFailure(error)));
 			}
 			const next = tabs.filter((tab) => tab.id !== id);
 			setTabs(next);

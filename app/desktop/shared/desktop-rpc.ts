@@ -156,19 +156,55 @@ export const jsonValueSchema = Type.Recursive((This) =>
 	]),
 );
 
-const desktopAgentCreationFailureReasonSchema = Type.Union([
-	Type.Literal("model_unavailable"),
-	Type.Literal("provider_configuration_invalid"),
-	Type.Literal("agent_initialization_failed"),
-]);
+/**
+ * Safe failure DTO crossing IPC and agent events. The renderer derives every
+ * user-facing string from `code`; `detail` is already redacted and only shown
+ * as copyable diagnostics.
+ */
+export const desktopFailureSchema = Type.Object(
+	{
+		code: Type.Union([
+			Type.Literal("provider.auth_failed"),
+			Type.Literal("provider.rate_limited"),
+			Type.Literal("provider.context_overflow"),
+			Type.Literal("provider.invalid_request"),
+			Type.Literal("provider.unavailable"),
+			Type.Literal("provider.network"),
+			Type.Literal("provider.credential_required"),
+			Type.Literal("provider.model_unavailable"),
+			Type.Literal("runtime.operation_failed"),
+			Type.Literal("runtime.interrupted"),
+			Type.Literal("configuration.invalid"),
+			Type.Literal("runtime.retry_unavailable"),
+			Type.Literal("connection.reconnecting"),
+			Type.Literal("connection.restart_failed"),
+			Type.Literal("session.workspace_required"),
+			Type.Literal("request.failed"),
+			Type.Literal("unknown"),
+		]),
+		retryable: Type.Boolean(),
+		action: Type.Optional(
+			Type.Union([
+				Type.Literal("retry"),
+				Type.Literal("open_provider_settings"),
+				Type.Literal("reconnect"),
+				Type.Literal("choose_project"),
+				Type.Literal("choose_model"),
+			]),
+		),
+		detail: Type.Optional(Type.String({ maxLength: 2_000 })),
+	},
+	{ additionalProperties: false },
+);
 
-export type DesktopAgentCreationFailureReason = Static<typeof desktopAgentCreationFailureReasonSchema>;
+export type DesktopFailure = Static<typeof desktopFailureSchema>;
+export type DesktopFailureCode = DesktopFailure["code"];
 
 const errorEnvelopeSchema = Type.Object(
 	{
 		_tag: Type.String({ minLength: 1 }),
 		message: Type.String(),
-		reason: Type.Optional(desktopAgentCreationFailureReasonSchema),
+		failure: desktopFailureSchema,
 	},
 	{ additionalProperties: false },
 );
@@ -197,9 +233,16 @@ export interface DesktopUiLocaleSnapshot {
 	readonly locale: DesktopUiLocale;
 }
 
-export type DesktopAgentStatus = "idle" | "running";
+const desktopAgentStatusSchema = Type.Union([Type.Literal("idle"), Type.Literal("running")]);
+const desktopAgentStopReasonSchema = Type.Union([
+	Type.Literal("end_turn"),
+	Type.Literal("cancelled"),
+	Type.Literal("error"),
+	Type.Literal("interrupted"),
+]);
+export type DesktopAgentStatus = Static<typeof desktopAgentStatusSchema>;
 export type DesktopAgentConnectionStatus = "reconnecting" | "restart_failed";
-export type DesktopAgentStopReason = "end_turn" | "cancelled" | "error" | "interrupted";
+export type DesktopAgentStopReason = Static<typeof desktopAgentStopReasonSchema>;
 export interface DesktopProject extends Project {
 	readonly available: boolean;
 }
@@ -970,6 +1013,10 @@ export interface DesktopAgentSnapshot {
 	readonly status: DesktopAgentStatus;
 	readonly connectionStatus?: DesktopAgentConnectionStatus;
 	readonly stopReason?: DesktopAgentStopReason;
+	/** Operation that produced the current state; with `failure`, it identifies the failed last turn. */
+	readonly operationId?: string;
+	/** Failure of the current branch's last Operation; absent once a new Operation runs or succeeds. */
+	readonly failure?: DesktopFailure;
 	readonly items: readonly DesktopTranscriptItem[];
 	readonly runs: readonly DesktopRunTiming[];
 	readonly todos?: DesktopTodos;
@@ -980,12 +1027,19 @@ export interface DesktopAgentSnapshot {
 	readonly lastSeq: number;
 }
 
+const desktopAgentStatusEventSchema = Type.Object(
+	{
+		type: Type.Literal("status"),
+		status: desktopAgentStatusSchema,
+		stopReason: Type.Optional(desktopAgentStopReasonSchema),
+		operationId: Type.Optional(Type.String({ minLength: 1 })),
+		failure: Type.Optional(desktopFailureSchema),
+	},
+	{ additionalProperties: false },
+);
+
 export type DesktopAgentEvent =
-	| {
-			readonly type: "status";
-			readonly status: DesktopAgentStatus;
-			readonly stopReason?: DesktopAgentStopReason;
-	  }
+	| Static<typeof desktopAgentStatusEventSchema>
 	| {
 			readonly type: "connection_status";
 			readonly status?: DesktopAgentConnectionStatus;
@@ -1000,11 +1054,7 @@ export type DesktopAgentEvent =
 	| { readonly type: "configuration_changed"; readonly configuration: DesktopSessionConfiguration }
 	| { readonly type: "model_catalog_updated" }
 	| { readonly type: "connector_oauth_completed"; readonly connectorId: string }
-	| { readonly type: "connector_oauth_failed"; readonly connectorId: string }
-	| {
-			readonly type: "runtime_error";
-			readonly error: { readonly code: string };
-	  };
+	| { readonly type: "connector_oauth_failed"; readonly connectorId: string };
 
 export interface DesktopAgentEventEnvelope {
 	readonly sessionId: string;
@@ -1012,11 +1062,18 @@ export interface DesktopAgentEventEnvelope {
 	readonly event: DesktopAgentEvent;
 }
 
+/** Only `status` carries a failure DTO, so it is the one event checked field by field. */
 export const desktopAgentEventEnvelopeSchema = Type.Object(
 	{
 		sessionId: Type.String({ minLength: 1 }),
 		seq: Type.Integer({ minimum: 1 }),
-		event: jsonValueSchema,
+		event: Type.Union([
+			desktopAgentStatusEventSchema,
+			Type.Intersect([
+				Type.Record(Type.String(), Type.Union([jsonValueSchema, Type.Undefined()])),
+				Type.Object({ type: Type.Not(Type.Literal("status")) }),
+			]),
+		]),
 	},
 	{ additionalProperties: false },
 );
@@ -1044,6 +1101,18 @@ export const desktopAgentConfigureInputSchema = Type.Object(
 );
 
 export type DesktopAgentConfigureInput = Static<typeof desktopAgentConfigureInputSchema>;
+
+/** Retry carries only the configuration to apply; the retried input always comes from the Session journal. */
+export const desktopAgentRetryInputSchema = Type.Object(
+	{
+		sessionId: Type.String({ minLength: 1 }),
+		modelRef: Type.String({ pattern: "/" }),
+		controls: desktopSessionControlsSchema,
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopAgentRetryInput = Static<typeof desktopAgentRetryInputSchema>;
 
 /**
  * `modelRef` is `<profileId>/<remoteModelId>`, the same id the Runtime Host validates, so it must carry a separator.
@@ -1359,9 +1428,10 @@ export interface DesktopApi {
 	readonly agent: {
 		send(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;
 		navigate(input: DesktopAgentNavigateInput): Promise<void>;
+		retry(input: DesktopAgentRetryInput): Promise<{ readonly accepted: true }>;
 		configure(input: DesktopAgentConfigureInput): Promise<void>;
 		abort(sessionId: string): void;
-		steer(input: DesktopAgentMessageInput): void;
+		steer(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;
 		followUp(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }>;
 		resolvePermission(resolution: DesktopPermissionResolution): void;
 		retryConnection(): Promise<void>;

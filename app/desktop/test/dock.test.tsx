@@ -34,6 +34,7 @@ function dockState(tabs: readonly DockTab[], activeTabId: string | null): DockSt
 		selectTab: () => {},
 		closeTab: () => {},
 		terminalError: null,
+		dismissTerminalError: () => {},
 	};
 }
 
@@ -55,6 +56,26 @@ describe("Dock", () => {
 		expect(markup).toContain(">Files<");
 		expect(markup).toContain(">Terminal<");
 		expect(markup).toContain(">Subagents<");
+	});
+
+	test("terminal 操作失败时在 Dock 顶部就地提示，打开终端 tab 时也可见", () => {
+		const markup = renderToStaticMarkup(
+			<Dock
+				sessionId="session-1"
+				dock={{
+					...dockState(
+						[{ id: "terminal:terminal-1", kind: "terminal", snapshot: terminalSnapshot }],
+						"terminal:terminal-1",
+					),
+					terminalError: { code: "request.failed", retryable: true },
+				}}
+				subagents={[]}
+			/>,
+		);
+
+		expect(markup).toContain('role="alert"');
+		expect(markup).toContain("Action failed");
+		expect(markup).toContain('aria-label="Dismiss"');
 	});
 
 	test("Terminal tab 直接对应一个 PTY", () => {

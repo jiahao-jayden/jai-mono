@@ -9,6 +9,8 @@ import {
 } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
+import { getDesktopRemoteRpcFailure } from "@/lib/desktop";
+import { notifyFailure } from "@/lib/failure";
 import { useIcons } from "@/lib/icon-context";
 import { type NativeMenuDescriptor, nativeMenuAnchor, showNativeMenu } from "@/lib/native-menu-icons";
 import type { DesktopProject } from "../../../shared/desktop-rpc";
@@ -39,6 +41,7 @@ export function ProjectActions({
 	children,
 }: {
 	readonly project: DesktopProject;
+	/** Reports its own failure, shared with relinking from the project picker. */
 	readonly onRelink: (project: DesktopProject) => Promise<void>;
 	readonly onReveal: (project: DesktopProject) => Promise<void>;
 	readonly onNewChat?: (project: DesktopProject) => void;
@@ -66,8 +69,11 @@ export function ProjectActions({
 		setPending(true);
 		try {
 			await onReveal(project);
-		} catch {
-			toast.add({ title: intl.formatMessage(desktopMessages.sidebarRevealFailed), type: "error" });
+		} catch (error) {
+			notifyFailure(getDesktopRemoteRpcFailure(error), intl, {
+				title: intl.formatMessage(desktopMessages.sidebarRevealFailed),
+				dedupeKey: `project-reveal:${project.id}`,
+			});
 		} finally {
 			setPending(false);
 		}
@@ -77,8 +83,6 @@ export function ProjectActions({
 		setPending(true);
 		try {
 			await onRelink(project);
-		} catch {
-			toast.add({ title: intl.formatMessage(desktopMessages.projectsLoadError), type: "error" });
 		} finally {
 			setPending(false);
 		}

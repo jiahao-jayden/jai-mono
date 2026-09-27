@@ -21,6 +21,7 @@
       "dependencies": {
         "@jai/coding-agent": "workspace:*",
         "@jai/server": "workspace:*",
+        "@sinclair/typebox": "catalog:",
         "better-result": "^3.0.0",
         "tree-sitter-bash": "0.25.0",
         "web-tree-sitter": "0.25.10",

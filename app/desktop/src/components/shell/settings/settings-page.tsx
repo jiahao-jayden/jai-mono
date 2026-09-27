@@ -2,6 +2,8 @@ import { cn } from "cn";
 import { type CSSProperties, useEffect, useState } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
+import { getDesktopRemoteRpcFailure } from "@/lib/desktop";
+import { presentFailure } from "@/lib/failure";
 import { useIcon } from "@/lib/icon-context";
 import type {
 	DesktopConnectorConfigInput,
@@ -21,6 +23,7 @@ import type {
 	DesktopWebSearchCredentialId,
 } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
+import { CopyButton } from "../../ui/copy-button";
 import { DESKTOP_TOP_BAR_HEIGHT_CLASS } from "../desktop-chrome";
 import { ArchivedChatsSettings } from "./archived-chats-settings";
 import { ConnectorSettings } from "./connector-settings";
@@ -173,11 +176,12 @@ function ProviderLoadState({
 }) {
 	const intl = useIntl();
 	const SettingsIcon = useIcon("settings");
+	const role = error ? "alert" : "status";
 
 	return (
 		<div className="flex h-full min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
 			<SettingsIcon className="mb-3 size-5 text-muted-foreground" />
-			<p className="text-[14px] font-semibold">
+			<p className="text-[14px] font-semibold" role={role}>
 				{intl.formatMessage(loading ? desktopMessages.settingsLoading : desktopMessages.settingsUnavailable)}
 			</p>
 			{error ? (
@@ -187,6 +191,13 @@ function ProviderLoadState({
 			) : null}
 		</div>
 	);
+}
+
+interface SettingsFormError {
+	/** Names the action that failed when `message` is the failure code's generic explanation. */
+	readonly title?: string;
+	readonly message: string;
+	readonly detail?: string;
 }
 
 interface ProviderConfigFormProps {
@@ -248,7 +259,7 @@ function ProviderConfigForm({
 	const [connector, setConnector] = useState<DesktopConnectorConfigInput>(() => toConnectorInput(snapshot.connector));
 	const [webSearch, setWebSearch] = useState<DesktopWebSearchConfigInput>(() => toWebSearchInput(snapshot.webSearch));
 	const [saving, setSaving] = useState(false);
-	const [error, setError] = useState<string>();
+	const [error, setError] = useState<SettingsFormError>();
 	const [dirty, setDirty] = useState(false);
 	useEffect(() => {
 		if (dirty) return;
@@ -279,7 +290,7 @@ function ProviderConfigForm({
 	const submit = async () => {
 		const validationError = validateProviderDraft(profiles, maxIterations);
 		if (validationError) {
-			setError(formatProviderValidationError(validationError, intl));
+			setError({ message: formatProviderValidationError(validationError, intl) });
 			return;
 		}
 		if (
@@ -292,7 +303,7 @@ function ProviderConfigForm({
 				);
 			})
 		) {
-			setError(intl.formatMessage(desktopMessages.settingsWebSearchApiKeyRequired));
+			setError({ message: intl.formatMessage(desktopMessages.settingsWebSearchApiKeyRequired) });
 			return;
 		}
 		setSaving(true);
@@ -323,7 +334,7 @@ function ProviderConfigForm({
 			setAuxiliaryModelRef(savedSnapshot.auxiliaryModel.modelRef);
 			setDirty(false);
 		} catch (_cause) {
-			setError(intl.formatMessage(desktopMessages.settingsProviderSaveError));
+			setError({ message: intl.formatMessage(desktopMessages.settingsProviderSaveError) });
 		} finally {
 			setSaving(false);
 		}
@@ -373,7 +384,7 @@ function ProviderConfigForm({
 							onSelectedProfileChange={setSelectedProfileId}
 							onFetchModels={async (profileId) => {
 								if (dirty) {
-									setError(intl.formatMessage(desktopMessages.settingsSaveBeforeFetchModels));
+									setError({ message: intl.formatMessage(desktopMessages.settingsSaveBeforeFetchModels) });
 									return;
 								}
 								setError(undefined);
@@ -396,8 +407,13 @@ function ProviderConfigForm({
 									}
 									setSelectedProfileId(profileId);
 									onCategoryChange("providers");
-								} catch (_cause) {
-									setError(intl.formatMessage(desktopMessages.settingsFetchModelsError));
+								} catch (cause) {
+									const presented = presentFailure(getDesktopRemoteRpcFailure(cause), intl);
+									setError({
+										title: intl.formatMessage(desktopMessages.settingsFetchModelsError),
+										message: presented.description,
+										detail: presented.detail,
+									});
 								}
 							}}
 							onRevealApiKey={onRevealApiKey}
@@ -452,9 +468,19 @@ function ProviderConfigForm({
 				{providerCategory ? (
 					<div className="flex shrink-0 items-center justify-end gap-3 border-t border-border px-8 py-3">
 						{error ? (
-							<p className="mr-auto max-w-115 text-[12px] leading-relaxed text-destructive" role="alert">
-								{error}
-							</p>
+							<div className="mr-auto flex max-w-115 items-center gap-2" role="alert">
+								<p className="min-w-0 text-[12px] leading-relaxed text-destructive">
+									{error.title ? <span className="block font-medium">{error.title}</span> : null}
+									{error.message}
+								</p>
+								{error.detail ? (
+									<CopyButton
+										text={error.detail}
+										label={intl.formatMessage(desktopMessages.chatNoticeCopyDetails)}
+										className="shrink-0"
+									/>
+								) : null}
+							</div>
 						) : dirty ? (
 							<p className="mr-auto flex items-center gap-1.5 text-[12px] text-muted-foreground" role="status">
 								<span className="size-1.5 rounded-full bg-amber-500" aria-hidden="true" />

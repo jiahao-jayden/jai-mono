@@ -93,7 +93,11 @@ export function WorkspaceChanges({
 						spin
 					/>
 				) : state.status === "error" ? (
-					<ChangesEmpty icon={FolderOffIcon} message={intl.formatMessage(desktopMessages.workspaceChangesError)} />
+					<ChangesEmpty
+						icon={FolderOffIcon}
+						message={intl.formatMessage(desktopMessages.workspaceChangesError)}
+						role="alert"
+					/>
 				) : state.value.kind === "not-repository" ? (
 					<ChangesEmpty
 						icon={FolderOffIcon}
@@ -158,13 +162,18 @@ function ChangesEmpty({
 	icon: Icon,
 	message,
 	spin = false,
+	role,
 }: {
 	readonly icon: ReturnType<typeof useIcons>["folder"];
 	readonly message: string;
 	readonly spin?: boolean;
+	readonly role?: "alert";
 }) {
 	return (
-		<div className="flex h-full min-h-64 flex-col items-center justify-center px-6 text-center text-muted-foreground">
+		<div
+			role={role}
+			className="flex h-full min-h-64 flex-col items-center justify-center px-6 text-center text-muted-foreground"
+		>
 			<Icon size={22} className={cn({ "animate-spin": spin })} />
 			<p className="mt-3 text-[12px] leading-5">{message}</p>
 		</div>

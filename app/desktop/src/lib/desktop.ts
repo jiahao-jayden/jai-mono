@@ -3,8 +3,8 @@ import { Value } from "@sinclair/typebox/value";
 import { TaggedError } from "better-result";
 import {
 	type AsyncRpcClient,
-	type DesktopAgentCreationFailureReason,
 	type DesktopApi,
+	type DesktopFailure,
 	type DesktopRpcRequest,
 	jsonValueSchema,
 } from "../../shared/desktop-rpc";
@@ -17,14 +17,9 @@ class InvalidRpcArguments extends TaggedError("desktop_rpc.invalid_arguments")<{
 
 class RemoteRpcError extends TaggedError("desktop_rpc.remote_error")<{
 	readonly message: string;
-	readonly remoteReason?: DesktopAgentCreationFailureReason;
+	readonly failure: DesktopFailure;
 	readonly remoteTag: string;
 }> {}
-
-export interface DesktopRemoteRpcFailure {
-	readonly reason?: DesktopAgentCreationFailureReason;
-	readonly tag: string;
-}
 
 function createClientProxy(path: readonly string[]): unknown {
 	const callable = () => {};
@@ -49,7 +44,7 @@ function createClientProxy(path: readonly string[]): unknown {
 				throw new RemoteRpcError({
 					message: response.error.message,
 					remoteTag: response.error._tag,
-					remoteReason: response.error.reason || undefined,
+					failure: response.error.failure,
 				});
 			}
 			return response.value;
@@ -59,12 +54,9 @@ function createClientProxy(path: readonly string[]): unknown {
 
 export const desktop = createClientProxy([]) as AsyncRpcClient<DesktopApi>;
 
-export function getDesktopRemoteRpcFailure(error: unknown): DesktopRemoteRpcFailure | undefined {
-	if (!(error instanceof RemoteRpcError)) return undefined;
-	return {
-		tag: error.remoteTag,
-		reason: error.remoteReason || undefined,
-	};
+/** Failure carried by a Desktop RPC rejection; any other thrown value (renderer bug, closed bridge) is `unknown`. */
+export function getDesktopRemoteRpcFailure(error: unknown): DesktopFailure {
+	return error instanceof RemoteRpcError ? error.failure : { code: "unknown", retryable: false };
 }
 
 export function desktopFilePath(file: File): string {

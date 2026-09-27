@@ -1,6 +1,13 @@
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { AcpJsonRpcNotification, AcpJsonRpcRequest, LocalAcpV2Client } from "@jai/server/acp-client";
+import {
+	ACP_RETRY_UNAVAILABLE,
+	type AcpJsonRpcNotification,
+	type AcpJsonRpcRequest,
+	type LocalAcpV2Client,
+	runtimeFailureSchema,
+} from "@jai/server/acp-client";
+import { Value } from "@sinclair/typebox/value";
 import { Result, TaggedError } from "better-result";
 import type {
 	DesktopAgentConfigureInput,
@@ -9,10 +16,12 @@ import type {
 	DesktopAgentEventEnvelope,
 	DesktopAgentMessageInput,
 	DesktopAgentNavigateInput,
+	DesktopAgentRetryInput,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
 	DesktopAgentStopReason,
 	DesktopArtifact,
+	DesktopFailure,
 	DesktopMessageAttachment,
 	DesktopMessageItem,
 	DesktopNarrationItem,
@@ -81,6 +90,8 @@ interface AcpSessionRuntime {
 	closed: boolean;
 	connectionStatus?: DesktopAgentConnectionStatus;
 	stopReason?: DesktopAgentStopReason;
+	operationId?: string;
+	failure?: DesktopFailure;
 }
 
 export interface DesktopAcpAgentHostOptions {
@@ -175,22 +186,37 @@ export class DesktopAcpAgentHost {
 		await this.#rebuildProjection(runtime);
 	}
 
+	/** Runtime Host re-admits the failed turn from its journal; Desktop only supplies the current configuration. */
+	async retry(input: DesktopAgentRetryInput): Promise<{ readonly accepted: true }> {
+		const runtime = await this.#ensureSession(input.sessionId, input.modelRef, input.controls);
+		await this.#setConfiguration(runtime, input.modelRef, input.controls);
+		const retried = await this.#client.request("session/retry", { sessionId: runtime.sessionId });
+		if (retried.isErr()) {
+			if (retried.error._tag === "acp_local_client.request_failed" && retried.error.code === ACP_RETRY_UNAVAILABLE) {
+				throw desktopAgentError("retry_unavailable", {
+					message: "The last turn cannot be retried now",
+					data: { sessionId: runtime.sessionId },
+				});
+			}
+			throw new DesktopAcpRequestFailed({
+				method: "session/retry",
+				message: retried.error.message,
+				cause: retried.error,
+			});
+		}
+		await this.#rebuildProjection(runtime);
+		return { accepted: true };
+	}
+
 	abort(sessionId: string): void {
 		const runtime = this.#requireSession(sessionId);
 		this.#cancelPendingPermissions(runtime);
 		const sent = this.#client.notify("session/cancel", { sessionId });
-		if (sent.isErr()) {
-			this.#emitRuntimeError(runtime, sent.error.message);
-			throw sent.error;
-		}
+		if (sent.isErr()) throw sent.error;
 	}
 
-	steer(input: DesktopAgentMessageInput): void {
-		void this.#admitPrompt(input, "steer").catch((error) => {
-			const runtime = this.#sessions.get(input.sessionId);
-			if (runtime)
-				this.#emitRuntimeError(runtime, error instanceof Error ? error.message : "Could not send steering input");
-		});
+	steer(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }> {
+		return this.#admitPrompt(input, "steer");
 	}
 
 	followUp(input: DesktopAgentMessageInput): Promise<{ readonly accepted: true }> {
@@ -259,6 +285,8 @@ export class DesktopAcpAgentHost {
 			status: runtime.status,
 			connectionStatus: runtime.connectionStatus || undefined,
 			stopReason: runtime.stopReason || undefined,
+			operationId: runtime.operationId,
+			failure: runtime.failure ? { ...runtime.failure } : undefined,
 			items: [...runtime.items.values()].map((item) => structuredClone(item)),
 			runs: [...runtime.runs.values()].map((run) => ({ ...run })),
 			todos: runtime.todos ? structuredClone(runtime.todos) : undefined,
@@ -449,7 +477,8 @@ export class DesktopAcpAgentHost {
 		this.#unsubscribeUpdates = client.subscribe((notification) => this.#onNotification(notification));
 		this.#unsubscribeRequests = client.subscribeRequest((request) => this.#onRequest(request));
 		this.#unsubscribeDisconnect = client.subscribeDisconnect(() => {
-			void this.#reconnectClient();
+			// Without an RPC caller, a failed recovery is already visible as the Session's `restart_failed` status.
+			this.#reconnectClient().catch(() => undefined);
 		});
 	}
 
@@ -498,18 +527,18 @@ export class DesktopAcpAgentHost {
 		this.#unbindClient();
 		this.#bindClient(connected.value);
 		await previous.close();
+		let recoveryFailure: unknown;
 		for (const runtime of this.#sessions.values()) {
 			runtime.configured = false;
 			try {
 				await this.#rebuildProjection(runtime);
+				this.#setConnection(runtime, undefined);
 			} catch (error) {
-				this.#emitRuntimeError(
-					runtime,
-					error instanceof Error ? error.message : "Runtime Host session recovery failed",
-				);
+				recoveryFailure ??= error;
+				this.#setConnection(runtime, "restart_failed");
 			}
 		}
-		this.#setConnectionForSessions(undefined);
+		if (recoveryFailure) throw recoveryFailure;
 	}
 
 	#onNotification(notification: AcpJsonRpcNotification): void {
@@ -649,15 +678,17 @@ export class DesktopAcpAgentHost {
 		const state = update.state;
 		runtime.status = state === "running" || state === "requires_action" ? "running" : "idle";
 		runtime.stopReason = isDesktopAgentStopReason(update.stopReason) ? update.stopReason : undefined;
+		runtime.operationId =
+			typeof update.operationId === "string" && update.operationId ? update.operationId : undefined;
+		runtime.failure = projectRuntimeFailure(update.failure);
 		if (runtime.status === "idle") this.#cancelPendingPermissions(runtime);
 		this.#emitEvent(runtime, {
 			type: "status",
 			status: runtime.status,
 			stopReason: runtime.stopReason || undefined,
+			operationId: runtime.operationId,
+			failure: runtime.failure,
 		});
-		if (update.stopReason === "error") {
-			this.#emitRuntimeError(runtime, "Runtime Host operation failed");
-		}
 	}
 
 	#messageUpdate(runtime: AcpSessionRuntime, update: Record<string, unknown>, role: "user" | "assistant"): void {
@@ -978,10 +1009,6 @@ export class DesktopAcpAgentHost {
 		}
 	}
 
-	#emitRuntimeError(runtime: AcpSessionRuntime, code: string): void {
-		this.#emitEvent(runtime, { type: "runtime_error", error: { code } });
-	}
-
 	#setConnectionForSessions(status: DesktopAgentConnectionStatus | undefined): void {
 		for (const runtime of this.#sessions.values()) this.#setConnection(runtime, status);
 	}
@@ -1258,6 +1285,13 @@ function readSessionUsage(update: Record<string, unknown>): DesktopSessionUsage 
 
 function finiteNumber(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** The Runtime Host failure is a protocol model; Desktop copies only whitelisted fields and degrades anything unrecognised to `unknown`. */
+function projectRuntimeFailure(value: unknown): DesktopFailure | undefined {
+	if (value === undefined) return undefined;
+	if (!Value.Check(runtimeFailureSchema, value)) return { code: "unknown", retryable: false };
+	return { code: value.code, retryable: value.retryable, action: value.action, detail: value.detail };
 }
 
 function isDesktopAgentStopReason(value: unknown): value is DesktopAgentStopReason {

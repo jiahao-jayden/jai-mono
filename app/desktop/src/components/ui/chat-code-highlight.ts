@@ -89,6 +89,7 @@ export async function ensureChatLanguage(language: string): Promise<boolean> {
 	if (!lang) return false;
 	const highlighter = await getChatHighlighter();
 	if (highlighter.getLoadedLanguages().includes(lang)) return true;
+	// Highlighting is decoration: on failure the block renders as plain code with nothing lost, so stay silent.
 	try {
 		await highlighter.loadLanguage(lang);
 		return true;

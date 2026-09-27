@@ -24,7 +24,12 @@ import type {
 } from "../../shared/desktop-rpc";
 import type { DesktopRuntimeHostSupervisor } from "../runtime-host/supervisor";
 import { projectRuntimeConnectorConfig, toRuntimeConnector, validateConnectorConfigInput } from "./connector";
-import { projectRuntimeProviderConfig, providerConfigError, validateProviderProfiles } from "./provider";
+import {
+	projectRuntimeProviderConfig,
+	providerConfigError,
+	safeDiscoveryErrorData,
+	validateProviderProfiles,
+} from "./provider";
 import { projectRuntimeTelemetrySettings, toRuntimeTelemetrySettingsInput } from "./telemetry";
 import { projectRuntimeWebSearchConfig, toRuntimeWebSearchInput, validateWebSearchConfigInput } from "./web-search";
 
@@ -77,9 +82,19 @@ export class DesktopConfigService {
 	}
 
 	async fetchModels(profileId: string): Promise<DesktopProviderFetchModelsResult> {
-		await this.#loadModelCatalog();
 		const fetched = await this.client.fetchModels(profileId);
-		if (fetched.isErr()) throw fetched.error;
+		if (fetched.isErr()) {
+			// Only a failed endpoint request carries discovery data; other rejections keep their own tag.
+			if (fetched.error._tag !== "acp_local_client.request_failed" || !isRecord(fetched.error.data)) {
+				throw fetched.error;
+			}
+			throw providerConfigError("model_fetch_failed", {
+				message: `Could not fetch models for Provider profile "${profileId}"`,
+				data: { profileId, ...safeDiscoveryErrorData(fetched.error) },
+				cause: fetched.error,
+			});
+		}
+		await this.#loadModelCatalog();
 		return {
 			profileId: fetched.value.profileId,
 			modelCount: fetched.value.modelCount,

@@ -1,4 +1,5 @@
 import type {
+	BranchEntry,
 	JsonObject,
 	MessageEntry,
 	OperationAccepted,
@@ -50,9 +51,14 @@ export interface ProductOperationRuntimeConfiguration {
 	readonly configuration: RuntimeSessionConfiguration;
 }
 
-/** Atomic unit for ACP prompt admission: Session input plus Operation acceptance. */
+/**
+ * Atomic unit for ACP prompt admission: Session input plus Operation acceptance.
+ * A retry also carries the `branch` entry that moves the leaf back before the
+ * failed input; it is committed in the same transaction, parented by the input.
+ */
 export interface PromptAdmissionTransaction {
 	readonly sessionId: string;
+	readonly branch?: BranchEntry;
 	readonly inputEntry: MessageEntry;
 	readonly operation: OperationAccepted;
 }
@@ -92,6 +98,25 @@ export class ProductSessionAdmissionConflict extends TaggedError("product_sessio
 	readonly message: string;
 	readonly cause?: unknown;
 }> {}
+
+/** The leaf and link invariants every adapter checks inside its admission transaction. */
+export function promptAdmissionConflict(
+	leafId: string | null,
+	input: PromptAdmissionTransaction,
+): ProductSessionAdmissionConflict | undefined {
+	const fromLeafId = input.branch ? input.branch.fromId : input.inputEntry.parentId;
+	const startLeafId = input.branch ? input.branch.id : leafId;
+	let reason: string;
+	if (fromLeafId !== leafId) reason = "used a stale leaf";
+	else if (input.operation.inputEntryId !== input.inputEntry.id) reason = "does not link its input entry";
+	else if (input.inputEntry.parentId !== startLeafId || input.operation.startLeafId !== startLeafId) {
+		reason = "has inconsistent start leaf";
+	} else return undefined;
+	return new ProductSessionAdmissionConflict({
+		message: `Prompt admission for Session "${input.sessionId}" ${reason}`,
+		sessionId: input.sessionId,
+	});
+}
 
 /** Input for creating a journal-only Session that never enters the product catalog. */
 export interface CreateJournalOnlySession<TAppState extends JsonObject = JsonObject> {

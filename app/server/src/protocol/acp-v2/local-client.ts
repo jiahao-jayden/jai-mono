@@ -13,6 +13,8 @@ export class AcpLocalClientRequestFailed extends TaggedError("acp_local_client.r
 	readonly requestId: number;
 	readonly code: number;
 	readonly message: string;
+	/** JSON-RPC `error.data`; unvalidated, so readers check the shape they expect. */
+	readonly data?: unknown;
 }> {}
 
 export class AcpLocalClientDisconnected extends TaggedError("acp_local_client.disconnected")<{
@@ -100,6 +102,7 @@ class NodeLocalAcpV2Client implements LocalAcpV2Client {
 					endpoint: this.endpoint,
 					requestId: typeof response.id === "number" ? response.id : -1,
 					code: response.error.code,
+					data: response.error.data,
 				}),
 			);
 		}
@@ -210,7 +213,7 @@ class NodeLocalAcpV2Client implements LocalAcpV2Client {
 				...(isObject(message.error) &&
 				typeof message.error.code === "number" &&
 				typeof message.error.message === "string"
-					? { error: { code: message.error.code, message: message.error.message } }
+					? { error: { code: message.error.code, message: message.error.message, data: message.error.data } }
 					: { result: message.result }),
 			}),
 		);

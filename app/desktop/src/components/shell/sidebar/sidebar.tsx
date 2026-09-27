@@ -20,10 +20,12 @@ interface SidebarProps {
 	activeProjectId: string | null;
 	loading: boolean;
 	error?: string;
+	onRetryRecents(): void;
 	hasNextPage?: boolean;
 	loadingMore?: boolean;
 	projectLoading: boolean;
-	projectError?: string;
+	projectLoadError: boolean;
+	onRetryProjects(): void;
 	width?: MotionValue<number>;
 	onToggleSidebar(): void;
 	onNewChat(): void;
@@ -52,10 +54,12 @@ export function Sidebar({
 	activeProjectId,
 	loading,
 	error,
+	onRetryRecents,
 	hasNextPage = false,
 	loadingMore = false,
 	projectLoading,
-	projectError,
+	projectLoadError,
+	onRetryProjects,
 	width,
 	onToggleSidebar,
 	onNewChat,
@@ -107,10 +111,12 @@ export function Sidebar({
 						activeProjectId={activeProjectId}
 						loading={loading}
 						error={error}
+						onRetryRecents={onRetryRecents}
 						hasNextPage={hasNextPage}
 						loadingMore={loadingMore}
 						projectLoading={projectLoading}
-						projectError={projectError}
+						projectLoadError={projectLoadError}
+						onRetryProjects={onRetryProjects}
 						onCreateProject={() => setCreatingProject(true)}
 						onRelinkProject={onRelinkProject}
 						onRevealProject={onRevealProject}

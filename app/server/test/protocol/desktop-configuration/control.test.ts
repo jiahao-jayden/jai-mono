@@ -9,6 +9,9 @@ import {
 	SqliteWorkspaceTrust,
 	RuntimeTelemetryController,
 } from "../../../src";
+import { modelDiscoveryFailed } from "@jai/ai";
+import { Result } from "better-result";
+import { RuntimeAgentSettingsModelFetchFailed } from "../../../src/config";
 import { DesktopConfigurationControl } from "../../../src/protocol/desktop-configuration";
 
 describe("Desktop configuration control", () => {
@@ -63,6 +66,31 @@ describe("Desktop configuration control", () => {
 		} finally {
 			database.close();
 			await rm(dataDirectory, { recursive: true, force: true });
+		}
+	});
+
+	test("redacts credentials from error messages before they leave the control channel", async () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			const control = new DesktopConfigurationControl(new SqliteRuntimeAgentSettings(database));
+			const response = await control.handle({
+				jsonrpc: "2.0",
+				id: 1,
+				method: "jai/desktop-configuration/Bearer sk-control-secret",
+				params: {},
+			});
+			expect(response).toEqual([
+				{
+					jsonrpc: "2.0",
+					id: 1,
+					error: {
+						code: -32601,
+						message: 'Unsupported Desktop configuration method "jai/desktop-configuration/Bearer [REDACTED]"',
+					},
+				},
+			]);
+		} finally {
+			database.close();
 		}
 	});
 
@@ -290,5 +318,41 @@ describe("Desktop configuration control", () => {
 		} finally {
 			database.close();
 		}
+	});
+	test("sends only the discovery status and request id of a failed model fetch", async () => {
+		const discovery = modelDiscoveryFailed("openai-compatible", {
+			status: 401,
+			requestID: "req_1",
+			message: "401 invalid api key sk-upstream-secret",
+		});
+		const settings = {
+			fetchModels: async (profileId: string) =>
+				Result.err(
+					new RuntimeAgentSettingsModelFetchFailed({
+						message: `Could not fetch models for Provider profile "${profileId}"`,
+						profileId,
+						cause: discovery,
+					}),
+				),
+		} as unknown as SqliteRuntimeAgentSettings;
+		const control = new DesktopConfigurationControl(settings);
+		const response = await control.handle({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "jai/desktop-configuration/fetch-models",
+			params: { profileId: "gateway" },
+		});
+		expect(response).toEqual([
+			{
+				jsonrpc: "2.0",
+				id: 1,
+				error: {
+					code: -32001,
+					message: 'Could not fetch models for Provider profile "gateway"',
+					data: { status: 401, requestId: "req_1" },
+				},
+			},
+		]);
+		expect(JSON.stringify(response)).not.toContain("sk-upstream-secret");
 	});
 });

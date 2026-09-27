@@ -8,6 +8,7 @@ import type { DesktopProject } from "../../../shared/desktop-rpc";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { toast } from "../ui/toast";
 
 export function CreateProjectDialog({
 	open,
@@ -55,7 +56,10 @@ export function CreateProjectDialog({
 	};
 
 	const pickDirectory = async () => {
-		const picked = await desktop.project.pickDirectory();
+		const picked = await desktop.project.pickDirectory().catch(() => {
+			toast.add({ title: intl.formatMessage(desktopMessages.nativeProjectPickerError), type: "error" });
+			return null;
+		});
 		if (!picked) return;
 		setDirectory(picked);
 		if (!name.trim()) setName(picked.split(/[\\/]/).filter(Boolean).at(-1) ?? "");

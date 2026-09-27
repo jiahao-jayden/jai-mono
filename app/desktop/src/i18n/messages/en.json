@@ -41,20 +41,11 @@
   "desktop.chat.newDescription": {
     "defaultMessage": "Start a chat or hand a task to a local agent."
   },
+  "desktop.chat.notice.copyDetails": {
+    "defaultMessage": "Copy details"
+  },
   "desktop.chat.projectLoading": {
     "defaultMessage": "Loading project…"
-  },
-  "desktop.chat.projectsUnavailable": {
-    "defaultMessage": "Projects unavailable"
-  },
-  "desktop.chat.recovery.interrupted": {
-    "defaultMessage": "This response was interrupted when the Runtime Host stopped."
-  },
-  "desktop.chat.recovery.reconnecting": {
-    "defaultMessage": "Reconnecting to the Runtime Host…"
-  },
-  "desktop.chat.recovery.restartFailed": {
-    "defaultMessage": "The Runtime Host could not be restarted."
   },
   "desktop.chat.recovery.retryConnection": {
     "defaultMessage": "Retry connection"
@@ -181,6 +172,114 @@
   },
   "desktop.dock.subagentPanel": {
     "defaultMessage": "Subagents"
+  },
+  "desktop.failure.action.chooseProject": {
+    "defaultMessage": "Choose project"
+  },
+  "desktop.failure.action.openProviderSettings": {
+    "defaultMessage": "Open settings"
+  },
+  "desktop.failure.configurationInvalid.description": {
+    "defaultMessage": "A .jai/settings.json or settings.local.json file has settings JAI can't read. Fix the file named in the details, then send again."
+  },
+  "desktop.failure.configurationInvalid.title": {
+    "defaultMessage": "Settings file is invalid"
+  },
+  "desktop.failure.connectionReconnecting.description": {
+    "defaultMessage": "Desktop is reconnecting to the Runtime Host."
+  },
+  "desktop.failure.connectionReconnecting.title": {
+    "defaultMessage": "Reconnecting"
+  },
+  "desktop.failure.connectionRestartFailed.description": {
+    "defaultMessage": "Desktop could not reconnect to the Runtime Host. Retry the connection to try again."
+  },
+  "desktop.failure.connectionRestartFailed.title": {
+    "defaultMessage": "Runtime Host unavailable"
+  },
+  "desktop.failure.providerAuthFailed.description": {
+    "defaultMessage": "The model service rejected the credentials. Check the API key or sign in to the gateway again."
+  },
+  "desktop.failure.providerAuthFailed.title": {
+    "defaultMessage": "Model authentication failed"
+  },
+  "desktop.failure.providerContextOverflow.description": {
+    "defaultMessage": "The conversation exceeds the model's context window. Start a new chat or switch to a model with a larger context."
+  },
+  "desktop.failure.providerContextOverflow.title": {
+    "defaultMessage": "Conversation is too long"
+  },
+  "desktop.failure.providerCredentialRequired.description": {
+    "defaultMessage": "The current model has no usable credentials. Add them in Provider settings."
+  },
+  "desktop.failure.providerCredentialRequired.title": {
+    "defaultMessage": "Model credentials required"
+  },
+  "desktop.failure.providerInvalidRequest.description": {
+    "defaultMessage": "The model service could not process this request. Check the model settings or try another model."
+  },
+  "desktop.failure.providerInvalidRequest.title": {
+    "defaultMessage": "Model rejected the request"
+  },
+  "desktop.failure.providerModelUnavailable.description": {
+    "defaultMessage": "Choose an enabled model before sending."
+  },
+  "desktop.failure.providerModelUnavailable.title": {
+    "defaultMessage": "No model available"
+  },
+  "desktop.failure.providerNetwork.description": {
+    "defaultMessage": "Check your network connection or the gateway address, then try again."
+  },
+  "desktop.failure.providerNetwork.title": {
+    "defaultMessage": "Could not reach the model service"
+  },
+  "desktop.failure.providerRateLimited.description": {
+    "defaultMessage": "The model service is limiting requests. Wait a moment and try again."
+  },
+  "desktop.failure.providerRateLimited.title": {
+    "defaultMessage": "Model rate limit reached"
+  },
+  "desktop.failure.providerUnavailable.description": {
+    "defaultMessage": "The model service is temporarily unavailable. Try again later."
+  },
+  "desktop.failure.providerUnavailable.title": {
+    "defaultMessage": "Model service unavailable"
+  },
+  "desktop.failure.requestFailed.description": {
+    "defaultMessage": "Desktop could not complete this action. Try again."
+  },
+  "desktop.failure.requestFailed.title": {
+    "defaultMessage": "Action failed"
+  },
+  "desktop.failure.runtimeInterrupted.description": {
+    "defaultMessage": "The Runtime Host stopped before the response finished. Try again."
+  },
+  "desktop.failure.runtimeInterrupted.title": {
+    "defaultMessage": "Response was interrupted"
+  },
+  "desktop.failure.runtimeOperationFailed.description": {
+    "defaultMessage": "The agent stopped because of an error. Try again."
+  },
+  "desktop.failure.runtimeOperationFailed.title": {
+    "defaultMessage": "Response did not finish"
+  },
+  "desktop.failure.runtimeRetryUnavailable.description": {
+    "defaultMessage": "Only a failed last turn can be retried, and only while the session is idle."
+  },
+  "desktop.failure.runtimeRetryUnavailable.title": {
+    "defaultMessage": "Can't retry right now"
+  },
+  "desktop.failure.sessionWorkspaceRequired.description": {
+    "defaultMessage": "Choose an accessible project before continuing."
+  },
+  "desktop.failure.sessionWorkspaceRequired.title": {
+    "defaultMessage": "Project required"
+  },
+  "desktop.failure.unknown.description": {
+    "defaultMessage": "An unexpected error occurred. Copy the details if you need to report it."
+  },
+  "desktop.failure.unknown.title": {
+    "defaultMessage": "Request failed"
   },
   "desktop.fastMode.label": {
     "defaultMessage": "Fast mode"
@@ -351,23 +450,17 @@
   "desktop.permissionMode.aria": {
     "defaultMessage": "Permissions: {mode}"
   },
-  "desktop.permissionMode.auto": {
-    "defaultMessage": "Auto"
-  },
-  "desktop.permissionMode.autoDescription": {
-    "defaultMessage": "Let a reviewer model decide routine actions; ask when uncertain"
-  },
-  "desktop.permissionMode.bypass": {
-    "defaultMessage": "Skip permission checks"
-  },
-  "desktop.permissionMode.bypassDescription": {
-    "defaultMessage": "Run tools without permission checks"
-  },
   "desktop.permissionMode.ask": {
     "defaultMessage": "Ask"
   },
   "desktop.permissionMode.askDescription": {
     "defaultMessage": "Ask before actions that need permission"
+  },
+  "desktop.permissionMode.auto": {
+    "defaultMessage": "Auto"
+  },
+  "desktop.permissionMode.autoDescription": {
+    "defaultMessage": "Let a reviewer model decide routine actions; ask when uncertain"
   },
   "desktop.projectCreate.browse": {
     "defaultMessage": "Choose folder"
@@ -417,9 +510,6 @@
   "desktop.projectPicker.retry": {
     "defaultMessage": "Retry loading projects"
   },
-  "desktop.projectPicker.unavailable": {
-    "defaultMessage": "Projects unavailable"
-  },
   "desktop.projectPicker.updating": {
     "defaultMessage": "Updating project…"
   },
@@ -451,7 +541,7 @@
     "defaultMessage": "Last updated"
   },
   "desktop.projects.loadError": {
-    "defaultMessage": "Projects could not be loaded. Open the menu to retry."
+    "defaultMessage": "Projects could not be loaded."
   },
   "desktop.projects.loading": {
     "defaultMessage": "Loading projects"
@@ -473,6 +563,9 @@
   },
   "desktop.projects.recents": {
     "defaultMessage": "Recents"
+  },
+  "desktop.projects.relinkFailed": {
+    "defaultMessage": "Could not relink project"
   },
   "desktop.projects.search": {
     "defaultMessage": "Search projects"
@@ -852,6 +945,9 @@
   "desktop.settings.mcpSaveError": {
     "defaultMessage": "Could not save MCP configuration."
   },
+  "desktop.settings.mcpServerConnectError": {
+    "defaultMessage": "Could not connect to this server."
+  },
   "desktop.settings.mcpStatusColumnServer": {
     "defaultMessage": "Server"
   },
@@ -872,6 +968,9 @@
   },
   "desktop.settings.mcpStatusEmpty": {
     "defaultMessage": "No MCP servers configured."
+  },
+  "desktop.settings.mcpStatusError": {
+    "defaultMessage": "Could not refresh MCP server status."
   },
   "desktop.settings.modelContext": {
     "defaultMessage": "{value} context"
@@ -932,6 +1031,9 @@
   },
   "desktop.settings.oauthStartError": {
     "defaultMessage": "Unable to start OAuth authorization."
+  },
+  "desktop.settings.oauthStatusError": {
+    "defaultMessage": "Could not check the authorization status. Still retrying…"
   },
   "desktop.settings.observability": {
     "defaultMessage": "Observability"
@@ -1307,6 +1409,9 @@
   },
   "desktop.sidebar.projectActions": {
     "defaultMessage": "Project actions"
+  },
+  "desktop.sidebar.projectSessionsLoadError": {
+    "defaultMessage": "Chats could not be loaded."
   },
   "desktop.sidebar.projects": {
     "defaultMessage": "Projects"

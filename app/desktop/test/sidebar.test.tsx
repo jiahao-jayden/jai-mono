@@ -61,7 +61,12 @@ const sessions = [
 	},
 ];
 
-function renderSidebar(runningSessionIds: readonly string[] = [], activeSessionId = "standalone-chat"): string {
+function renderSidebar(
+	runningSessionIds: readonly string[] = [],
+	activeSessionId = "standalone-chat",
+	projectLoadError = false,
+	recentsError?: string,
+): string {
 	return renderToStaticMarkup(
 		<Sidebar
 			projects={projects}
@@ -69,7 +74,11 @@ function renderSidebar(runningSessionIds: readonly string[] = [], activeSessionI
 			runningSessionIds={runningSessionIds}
 			activeSessionId={activeSessionId}
 			loading={false}
+			error={recentsError}
+			onRetryRecents={() => {}}
 			projectLoading={false}
+			projectLoadError={projectLoadError}
+			onRetryProjects={() => {}}
 			onToggleSidebar={() => {}}
 			onNewChat={() => {}}
 			onOpenSettings={() => {}}
@@ -95,6 +104,14 @@ describe("Sidebar", () => {
 		expect(markup).toContain(">Chats<");
 		expect(markup).toContain(">Settings<");
 		expect(markup).not.toContain(">Recents<");
+	});
+
+	test("最近会话加载失败时给出可重试的提示", () => {
+		const markup = renderSidebar([], "standalone-chat", false, "Recents could not be loaded. Try again later.");
+
+		expect(markup).toContain("Recents could not be loaded");
+		expect(markup.match(/role="alert"/g)).toHaveLength(1);
+		expect(markup).toContain(">Retry<");
 	});
 
 	test("项目是默认收起的目录，缺失目录可重新关联", () => {
@@ -139,5 +156,12 @@ describe("Sidebar", () => {
 		expect(markup).toContain('aria-label="Actions for Active project"');
 		expect(markup).toContain('aria-label="Actions for Missing project"');
 		expect(markup).toContain('aria-label="New chat"');
+	});
+
+	test("项目加载失败只在侧栏就地显示，并提供重试", () => {
+		expect(renderSidebar()).not.toContain("Projects could not be loaded.");
+
+		const markup = renderSidebar([], "standalone-chat", true);
+		expect(markup).toMatch(/role="alert"[^>]*>.*Projects could not be loaded\..*>Retry</);
 	});
 });

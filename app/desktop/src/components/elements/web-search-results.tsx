@@ -58,6 +58,7 @@ function WebsiteFavicon({ url }: { readonly url: string }) {
 			alt=""
 			loading="lazy"
 			referrerPolicy="no-referrer"
+			// Many sites have no favicon.ico; the globe fallback is expected, not a failure worth reporting.
 			onError={() => setFailed(true)}
 		/>
 	);

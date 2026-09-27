@@ -18,11 +18,12 @@ import { useIntl } from "react-intl";
 import logo from "@/assets/icons/chat-area/logo-silver.svg";
 import type { Chat } from "@/hooks/use-chat";
 import { desktopMessages } from "@/i18n/messages";
+import { getDesktopRemoteRpcFailure } from "@/lib/desktop";
+import { notifyFailure } from "@/lib/failure";
 import { useIcons } from "@/lib/icon-context";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
 	CodingSession,
-	DesktopAgentConnectionStatus,
 	DesktopPermissionItem,
 	DesktopProject,
 	DesktopProviderConfigSnapshot,
@@ -34,11 +35,11 @@ import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { MessageScroller } from "../../ui/message-scroller";
 import { PermissionRequests } from "../../ui/permission-requests";
-import { toast } from "../../ui/toast";
 import { COLLAPSED_CHAT_CONTENT_PADDING_CLASS, DESKTOP_TOP_BAR_HEIGHT_CLASS } from "../desktop-chrome";
 import { SessionActions } from "../session-actions";
 import { ChatComposer } from "./chat-composer";
 import { groupTranscriptItems, TranscriptVirtualList, type TranscriptVirtualListHandle } from "./chat-transcript";
+import { ComposerNotice } from "./composer-notice";
 import { MessageTrail } from "./message-trail";
 import {
 	createActiveTrailStore,
@@ -73,7 +74,6 @@ interface ChatColumnProps {
 	projectBusy: boolean;
 	projectLoading: boolean;
 	projectLoadError: boolean;
-	projectError?: string;
 	sidebarOpen: boolean;
 	macTitleBar: boolean;
 	onOpenProviderSettings(): void;
@@ -106,7 +106,6 @@ export function ChatColumn({
 	projectBusy,
 	projectLoading,
 	projectLoadError,
-	projectError,
 	sidebarOpen,
 	macTitleBar,
 	onOpenProviderSettings,
@@ -131,6 +130,7 @@ export function ChatColumn({
 	const reducedMotion = useReducedMotion();
 	const [editingTitle, setEditingTitle] = useState(false);
 	const [titleDraft, setTitleDraft] = useState("");
+	const [projectPickerOpen, setProjectPickerOpen] = useState(false);
 	const [messageTrailStore] = useState(createActiveTrailStore);
 
 	const isNewChat = !session;
@@ -243,35 +243,9 @@ export function ChatColumn({
 		[],
 	);
 
-	const toastedErrorKey = useRef<number | undefined>(undefined);
-	const toastedProjectError = useRef<string | undefined>(undefined);
-	useEffect(() => {
-		if (!chat.error) {
-			toastedErrorKey.current = undefined;
-			return;
-		}
-		if (toastedErrorKey.current === chat.errorKey) return;
-		toastedErrorKey.current = chat.errorKey;
-		toast.add({ title: chat.error, type: "error" });
-		chat.dismissError();
-	}, [chat.dismissError, chat.error, chat.errorKey]);
-	useEffect(() => {
-		if (!projectError) {
-			toastedProjectError.current = undefined;
-			return;
-		}
-		if (toastedProjectError.current === projectError) return;
-		toastedProjectError.current = projectError;
-		toast.add({ title: projectError, type: "error" });
-	}, [projectError]);
-
+	// A project load failure is reported once, in the sidebar, so the header just omits the project.
 	const projectLabel =
-		project?.displayName ??
-		(projectLoading
-			? intl.formatMessage(desktopMessages.chatProjectLoading)
-			: projectLoadError
-				? intl.formatMessage(desktopMessages.chatProjectsUnavailable)
-				: null);
+		project?.displayName ?? (projectLoading ? intl.formatMessage(desktopMessages.chatProjectLoading) : null);
 
 	const drag = { WebkitAppRegion: "drag" } as CSSProperties;
 	const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
@@ -298,11 +272,10 @@ export function ChatColumn({
 
 		try {
 			await onRenameSession(session.id, title);
-		} catch {
-			toast.add({
+		} catch (error) {
+			notifyFailure(getDesktopRemoteRpcFailure(error), intl, {
 				title: intl.formatMessage(desktopMessages.chatRenameFailed),
-				description: intl.formatMessage(desktopMessages.chatRenameFailed),
-				type: "error",
+				dedupeKey: `session-rename:${session.id}`,
 			});
 		}
 	};
@@ -393,11 +366,6 @@ export function ChatColumn({
 				{/* 右上角的任务卡片 / dock 开关由 AppShell 固定在内容卡片角上，这里只留出它们的位置。 */}
 				<span className="h-8 w-16.5 shrink-0" aria-hidden="true" />
 			</header>
-			<RecoveryBanners
-				connectionStatus={chat.connectionStatus}
-				interrupted={chat.stopReason === "interrupted"}
-				onRetryConnection={() => void chat.retryConnection()}
-			/>
 
 			{showLogo ? (
 				<div className="flex min-h-0 flex-1 items-center justify-center" aria-label={logoLabel} role="img">
@@ -470,6 +438,14 @@ export function ChatColumn({
 					</AnimatePresence>
 				</div>
 				<div className="mx-auto flex w-full max-w-184 flex-col gap-2">
+					<ComposerNotice
+						notice={chat.notice}
+						onDismiss={chat.dismissNotice}
+						onRetry={chat.retry}
+						onReconnect={() => void chat.retryConnection()}
+						onOpenProviderSettings={onOpenProviderSettings}
+						onChooseProject={isNewChat ? () => setProjectPickerOpen(true) : undefined}
+					/>
 					<ChatComposer
 						value={draft}
 						onValueChange={onDraftChange}
@@ -487,6 +463,8 @@ export function ChatColumn({
 						projectBusy={projectBusy}
 						projectLoading={projectLoading}
 						projectLoadError={projectLoadError}
+						projectPickerOpen={projectPickerOpen}
+						onProjectPickerOpenChange={setProjectPickerOpen}
 						onChooseProject={onChooseProject}
 						onRetryProjects={onRetryProjects}
 						providerConfig={providerConfig}
@@ -504,62 +482,6 @@ export function ChatColumn({
 				</div>
 			</div>
 		</section>
-	);
-}
-
-function RecoveryBanners({
-	connectionStatus,
-	interrupted,
-	onRetryConnection,
-}: {
-	readonly connectionStatus: DesktopAgentConnectionStatus | undefined;
-	readonly interrupted: boolean;
-	onRetryConnection(): void;
-}) {
-	const intl = useIntl();
-	const icons = useIcons();
-	const RefreshIcon = icons["rotate-ccw"];
-	const AlertIcon = icons["shield-alert"];
-	if (!connectionStatus && !interrupted) return null;
-
-	return (
-		<>
-			{connectionStatus ? (
-				<div
-					className="mx-4 mt-1 mb-2 flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-[13px] text-amber-800 min-[1024px]:mx-8 dark:text-amber-200"
-					role="alert"
-					aria-live="polite"
-				>
-					{connectionStatus === "reconnecting" ? (
-						<RefreshIcon size={16} className="shrink-0" />
-					) : (
-						<AlertIcon size={16} className="shrink-0" />
-					)}
-					<span className="min-w-0 flex-1">
-						{intl.formatMessage(
-							connectionStatus === "reconnecting"
-								? desktopMessages.chatRecoveryReconnecting
-								: desktopMessages.chatRecoveryRestartFailed,
-						)}
-					</span>
-					{connectionStatus === "restart_failed" ? (
-						<Button type="button" variant="tertiary" size="sm" onClick={onRetryConnection}>
-							{intl.formatMessage(desktopMessages.chatRecoveryRetryConnection)}
-						</Button>
-					) : null}
-				</div>
-			) : null}
-			{interrupted ? (
-				<div
-					className="mx-4 mt-1 mb-2 flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-[13px] text-amber-800 min-[1024px]:mx-8 dark:text-amber-200"
-					role="status"
-					aria-live="polite"
-				>
-					<AlertIcon size={16} className="shrink-0" />
-					<span className="min-w-0 flex-1">{intl.formatMessage(desktopMessages.chatRecoveryInterrupted)}</span>
-				</div>
-			) : null}
-		</>
 	);
 }
 

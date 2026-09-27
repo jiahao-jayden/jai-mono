@@ -2,15 +2,15 @@ import { describe, expect, test } from "bun:test";
 import {
 	applyChatProjectionUpdate,
 	applyTranscriptUpsertBatch,
-	chatFailureMessage,
 	mergeTranscriptUpserts,
 	resolveChatModelRef,
+	resolveChatNotice,
 	runQueuedMessageSteer,
 	shouldDispatchQueueHead,
 	type ChatRuntimeState,
 } from "../src/hooks/use-chat";
 import type { DesktopAgentProjectionUpdate } from "../src/lib/desktop-agent";
-import type { DesktopTranscriptItem } from "../shared/desktop-rpc";
+import { type DesktopAgentEvent, type DesktopTranscriptItem, EMPTY_DESKTOP_SESSION_USAGE } from "../shared/desktop-rpc";
 import { defaultDesktopSessionControls } from "../shared/session-controls";
 
 describe("useChat projection", () => {
@@ -69,71 +69,118 @@ describe("useChat projection", () => {
 		]);
 	});
 
-	test("将可恢复的 Provider 失败映射为可操作提示", () => {
-		expect(
-			chatFailureMessage({ operation: "message", code: "desktop_provider.model_inventory_missing" }),
-		).toBe("此 Provider 尚未获取模型清单。请前往 Settings > Providers 获取模型后重试。");
-		expect(
-			chatFailureMessage({ operation: "message", code: "desktop_provider.model_not_verified" }),
-		).toBe("所选模型尚未完成能力验证。请在 Settings > Providers 选择可用模型。");
-		expect(
-			chatFailureMessage({
-				operation: "message",
-				code: "desktop_agent.creation_failed",
-				reason: "provider_configuration_invalid",
+	test("status 事件的 failure 与 operationId 进入 operationFailure，并在新一轮运行时清空", () => {
+		const failure = { code: "provider.auth_failed", retryable: false, action: "open_provider_settings" } as const;
+		const statusEvent = (seq: number, event: Extract<DesktopAgentEvent, { type: "status" }>) =>
+			({ type: "event", envelope: { sessionId: "session-1", seq, event } }) as const;
+		const first = applyChatProjectionUpdate(
+			emptyChatState(),
+			statusEvent(1, { type: "status", status: "idle", stopReason: "error", operationId: "op-1", failure }),
+		);
+		const second = applyChatProjectionUpdate(
+			first,
+			statusEvent(2, { type: "status", status: "idle", stopReason: "error", operationId: "op-1", failure }),
+		);
+		const running = applyChatProjectionUpdate(
+			second,
+			statusEvent(3, { type: "status", status: "running", operationId: "op-2" }),
+		);
+
+		expect(first.operationFailure).toEqual({ failure, operationId: "op-1" });
+		expect(first.error).toBeUndefined();
+		expect(second.operationFailure).toEqual({ failure, operationId: "op-1" });
+		expect(running.operationFailure).toBeUndefined();
+	});
+
+	test("提示位只显示最近一次失败，新一轮运行或成功后清空", () => {
+		const auth = { code: "provider.auth_failed", retryable: false, action: "open_provider_settings" } as const;
+		const unavailable = { code: "provider.unavailable", retryable: true, action: "retry" } as const;
+		const failedTwice = [
+			statusUpdate(1, { type: "status", status: "idle", stopReason: "error", operationId: "op-1", failure: auth }),
+			statusUpdate(2, {
+				type: "status",
+				status: "idle",
+				stopReason: "error",
+				operationId: "op-2",
+				failure: unavailable,
 			}),
-		).toBe("当前 Provider 配置无效。请前往 Settings > Providers 检查后重试。");
-	});
-
-	test("未知失败不将原始错误内容带入用户提示", () => {
-		const message = chatFailureMessage({ operation: "message", code: "provider.request_failed" });
-		expect(message).toBe("消息未发送。请稍后重试。");
-		expect(message).not.toContain("api-key");
-	});
-
-	test("Project 不可用与 Session 恢复失败显示不同的可操作提示", () => {
-		expect(
-			chatFailureMessage({ operation: "load", code: "desktop_session_catalog.project_path_invalid" }),
-		).toBe("关联的 Project 目录不可用。请重新关联后重试。");
-		const message = chatFailureMessage({ operation: "load", code: "desktop_agent.acp_request_failed" });
-		expect(message).toBe("会话恢复失败。请重试；如果仍然失败，请重启应用。");
-		expect(message).not.toContain("Could not load");
-	});
-
-	test("runtime 失败不把服务端原文带进用户提示", () => {
-		const message = chatFailureMessage({
-			operation: "runtime",
-			code: 'Coding Agent failed while executing Operation "op-1": model rate limit api_key=secret',
+		].reduce(applyChatProjectionUpdate, emptyChatState());
+		expect(resolveChatNotice(failedTwice, new Set())).toEqual({
+			kind: "operation",
+			failure: unavailable,
+			operationId: "op-2",
 		});
-		expect(message).toBe("当前响应未完成。请重试。");
-		expect(message).not.toContain("api_key");
-		expect(message).not.toContain("rate limit");
+
+		const running = applyChatProjectionUpdate(
+			failedTwice,
+			statusUpdate(3, { type: "status", status: "running", operationId: "op-3" }),
+		);
+		expect(resolveChatNotice(running, new Set())).toBeUndefined();
+		const succeeded = applyChatProjectionUpdate(
+			running,
+			statusUpdate(4, { type: "status", status: "idle", stopReason: "end_turn", operationId: "op-3" }),
+		);
+		expect(resolveChatNotice(succeeded, new Set())).toBeUndefined();
 	});
 
-	test("连续两次相同的 runtime 错误都会产生新的 errorKey", () => {
-		const event = {
-			type: "event" as const,
-			envelope: {
-				sessionId: "session-1",
-				seq: 1,
-				event: {
-					type: "runtime_error" as const,
-					error: { code: "provider blew up api_key=secret" },
-				},
-			},
+	test("关闭按 operationId 记忆，新的失败 operationId 重新显示", () => {
+		const failure = { code: "provider.auth_failed", retryable: false, action: "open_provider_settings" } as const;
+		const dismissed = new Set(["op-1"]);
+		const first = applyChatProjectionUpdate(
+			emptyChatState(),
+			statusUpdate(1, { type: "status", status: "idle", stopReason: "error", operationId: "op-1", failure }),
+		);
+		expect(resolveChatNotice(first, dismissed)).toBeUndefined();
+		const next = applyChatProjectionUpdate(
+			first,
+			statusUpdate(2, { type: "status", status: "idle", stopReason: "error", operationId: "op-2", failure }),
+		);
+		expect(resolveChatNotice(next, dismissed)).toEqual({ kind: "operation", failure, operationId: "op-2" });
+	});
+
+	test("连接提示优先于失败卡片，恢复后回到失败卡片；发送被拒排在最后", () => {
+		const failure = { code: "runtime.interrupted", retryable: true, action: "retry" } as const;
+		const rejected = { code: "provider.model_unavailable", retryable: false, action: "choose_model" } as const;
+		const failed = {
+			...applyChatProjectionUpdate(
+				emptyChatState(),
+				statusUpdate(1, { type: "status", status: "idle", stopReason: "interrupted", operationId: "op-1", failure }),
+			),
+			error: rejected,
 		};
-		const first = applyChatProjectionUpdate(emptyChatState(), { ...event, envelope: { ...event.envelope, seq: 1 } });
-		const second = applyChatProjectionUpdate(first, { ...event, envelope: { ...event.envelope, seq: 2 } });
-		expect(first.error).toBe("当前响应未完成。请重试。");
-		expect(first.error).not.toContain("api_key");
-		expect(first.errorKey).toBe(1);
-		expect(second.error).toBe(first.error);
-		expect(second.errorKey).toBe(2);
+		const disconnected = applyChatProjectionUpdate(failed, {
+			type: "event",
+			envelope: { sessionId: "session-1", seq: 2, event: { type: "connection_status", status: "reconnecting" } },
+		});
+		expect(resolveChatNotice(disconnected, new Set())).toEqual({ kind: "connection", status: "reconnecting" });
+
+		const restored = applyChatProjectionUpdate(disconnected, {
+			type: "event",
+			envelope: { sessionId: "session-1", seq: 3, event: { type: "connection_status", status: undefined } },
+		});
+		expect(resolveChatNotice(restored, new Set())).toEqual({ kind: "operation", failure, operationId: "op-1" });
+		expect(resolveChatNotice(restored, new Set(["op-1"]))).toEqual({ kind: "send", failure: rejected });
 	});
 
-	test("runtime 失败在缺少具体消息时回退到泛化提示", () => {
-		const message = chatFailureMessage({ operation: "runtime", code: "Runtime Host operation failed" });
-		expect(message).toBe("当前响应未完成。请重试。");
+	test("snapshot 恢复最近一次 Operation 失败，但不把它当成新的请求错误", () => {
+		const failure = { code: "runtime.interrupted", retryable: true, action: "retry" } as const;
+		const state = applyChatProjectionUpdate(emptyChatState(), {
+			type: "snapshot",
+			snapshot: {
+				sessionId: "session-1",
+				status: "idle",
+				stopReason: "interrupted",
+				operationId: "op-7",
+				failure,
+				lastSeq: 3,
+				items: [],
+				runs: [],
+				artifacts: [],
+				usage: EMPTY_DESKTOP_SESSION_USAGE,
+			},
+		});
+		expect(state.operationFailure).toEqual({ failure, operationId: "op-7" });
+		expect(state.error).toBeUndefined();
 	});
 
 	test("snapshot 替换本地消息，增量按 item id upsert", () => {
@@ -192,7 +239,7 @@ describe("useChat projection", () => {
 		});
 	});
 
-	test("连接状态与中断结果分别通过 snapshot 和事件投影到 Chat", () => {
+	test("连接状态通过 snapshot 和事件投影到 Chat", () => {
 		const snapshotState = applyChatProjectionUpdate(emptyChatState(), {
 			type: "snapshot",
 			snapshot: {
@@ -223,8 +270,8 @@ describe("useChat projection", () => {
 			},
 		});
 
-		expect(snapshotState).toMatchObject({ connectionStatus: "reconnecting", stopReason: "interrupted" });
-		expect(connectedState).toMatchObject({ connectionStatus: undefined, stopReason: "interrupted" });
+		expect(snapshotState.connectionStatus).toBe("reconnecting");
+		expect(connectedState.connectionStatus).toBeUndefined();
 	});
 
 	test("停止中的瞬态状态只在 Runtime 回到 idle 后清除", () => {
@@ -252,7 +299,7 @@ describe("useChat projection", () => {
 		});
 
 		expect(stillStopping.stopping).toBe(true);
-		expect(stopped).toMatchObject({ agentStatus: "idle", stopping: false, stopReason: "cancelled" });
+		expect(stopped).toMatchObject({ agentStatus: "idle", stopping: false });
 	});
 
 	test("流式 upsert 只替换目标消息，保留历史消息引用", () => {
@@ -507,13 +554,19 @@ describe("useChat projection", () => {
 	});
 });
 
+function statusUpdate(
+	seq: number,
+	event: Extract<DesktopAgentEvent, { type: "status" }>,
+): DesktopAgentProjectionUpdate {
+	return { type: "event", envelope: { sessionId: "session-1", seq, event } };
+}
+
 function emptyChatState(): ChatRuntimeState {
 	return {
 		agentStatus: "idle",
 		error: undefined,
-		errorKey: 0,
+		operationFailure: undefined,
 		connectionStatus: undefined,
-		stopReason: undefined,
 		isLoading: true,
 		lastSeq: 0,
 		sessionId: null,

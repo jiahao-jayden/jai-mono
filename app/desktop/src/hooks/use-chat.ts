@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useIntl } from "react-intl";
-import { desktopMessages } from "@/i18n/messages";
 import { desktop, getDesktopRemoteRpcFailure } from "@/lib/desktop";
 import { createDesktopAgentEventDispatcher, type DesktopAgentProjectionUpdate } from "@/lib/desktop-agent";
 import { invalidateRecentSessions, upsertRecentSession } from "@/lib/desktop-query";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
 	DesktopAgentConnectionStatus,
-	DesktopAgentCreationFailureReason,
 	DesktopAgentEvent,
 	DesktopAgentSnapshot,
 	DesktopAgentStatus,
-	DesktopAgentStopReason,
 	DesktopArtifact,
+	DesktopFailure,
 	DesktopMessageAttachment,
 	DesktopPermissionResolution,
 	DesktopRunTiming,
@@ -24,7 +21,7 @@ import type {
 } from "../../shared/desktop-rpc";
 import { EMPTY_DESKTOP_SESSION_USAGE } from "../../shared/desktop-rpc";
 
-export type ChatStatus = "ready" | "submitted" | "streaming" | "stopping" | "error";
+export type ChatStatus = "ready" | "submitted" | "streaming" | "stopping";
 
 export interface ChatMessageInput {
 	readonly text: string;
@@ -48,6 +45,31 @@ export interface UseChatOptions {
 	onQueuedMessageAccepted(messageId: string): void;
 }
 
+/** Failure of the current branch's last Operation, as projected by the Runtime Host. */
+export interface ChatOperationFailure {
+	readonly failure: DesktopFailure;
+	/** Identifies the failed turn, e.g. to remember a dismissal per Operation. */
+	readonly operationId: string | undefined;
+}
+
+/** The single notice above the composer, in priority order: connection, last Operation failure, rejected send. */
+export type ChatNotice =
+	| { readonly kind: "connection"; readonly status: DesktopAgentConnectionStatus }
+	| ({ readonly kind: "operation" } & ChatOperationFailure)
+	| { readonly kind: "send"; readonly failure: DesktopFailure };
+
+export function resolveChatNotice(
+	state: Pick<ChatRuntimeState, "connectionStatus" | "operationFailure" | "error">,
+	dismissedOperationIds: ReadonlySet<string>,
+): ChatNotice | undefined {
+	if (state.connectionStatus) return { kind: "connection", status: state.connectionStatus };
+	const operation = state.operationFailure;
+	if (operation && !(operation.operationId && dismissedOperationIds.has(operation.operationId))) {
+		return { kind: "operation", ...operation };
+	}
+	return state.error ? { kind: "send", failure: state.error } : undefined;
+}
+
 export interface Chat {
 	readonly id: string | null;
 	readonly messages: readonly DesktopTranscriptItem[];
@@ -57,10 +79,7 @@ export interface Chat {
 	readonly usage: DesktopSessionUsage;
 	readonly status: ChatStatus;
 	readonly isLoading: boolean;
-	readonly error: string | undefined;
-	readonly errorKey: number;
-	readonly connectionStatus: DesktopAgentConnectionStatus | undefined;
-	readonly stopReason: DesktopAgentStopReason | undefined;
+	readonly notice: ChatNotice | undefined;
 	/** Model and Session controls the next message will use. */
 	readonly modelRef: string;
 	readonly controls: DesktopSessionControls;
@@ -69,17 +88,19 @@ export interface Chat {
 	steerQueuedMessage(message: QueuedMessage): Promise<boolean>;
 	stop(): Promise<void>;
 	navigate(entryId: string): Promise<boolean>;
+	/** Retries the failed last turn with the current model and controls; resolves to the rejection, if any. */
+	retry(): Promise<DesktopFailure | undefined>;
 	retryConnection(): Promise<void>;
 	resolvePermission(resolution: DesktopPermissionResolution): Promise<void>;
-	dismissError(): void;
+	dismissNotice(): void;
 }
 
 export interface ChatRuntimeState {
 	readonly agentStatus: DesktopAgentStatus;
-	readonly error: string | undefined;
-	readonly errorKey: number;
+	/** Latest request failure or rejected send, shown until dismissed or the next send. */
+	readonly error: DesktopFailure | undefined;
+	readonly operationFailure: ChatOperationFailure | undefined;
 	readonly connectionStatus: DesktopAgentConnectionStatus | undefined;
-	readonly stopReason: DesktopAgentStopReason | undefined;
 	readonly isLoading: boolean;
 	readonly lastSeq: number;
 	readonly sessionId: string | null;
@@ -110,9 +131,8 @@ interface QueuedMessageSteerOperation {
 const EMPTY_STATE: ChatRuntimeState = {
 	agentStatus: "idle",
 	error: undefined,
-	errorKey: 0,
+	operationFailure: undefined,
 	connectionStatus: undefined,
-	stopReason: undefined,
 	isLoading: false,
 	lastSeq: 0,
 	sessionId: null,
@@ -125,6 +145,14 @@ const EMPTY_STATE: ChatRuntimeState = {
 	usage: EMPTY_DESKTOP_SESSION_USAGE,
 	configuration: undefined,
 };
+
+const MODEL_UNAVAILABLE: DesktopFailure = {
+	code: "provider.model_unavailable",
+	retryable: false,
+	action: "choose_model",
+};
+// ponytail: local send rejections without a dedicated code (attachments while running, pending queue, Session not ready) use `request.failed`; add codes if the composer notice needs specific copy.
+const SEND_REJECTED: DesktopFailure = { code: "request.failed", retryable: true };
 
 let dispatcher: ReturnType<typeof createDesktopAgentEventDispatcher> | undefined;
 
@@ -166,9 +194,9 @@ export async function runQueuedMessageSteer(operation: QueuedMessageSteerOperati
  * options rather than read here.
  */
 export function useChat(options: UseChatOptions): Chat {
-	const intl = useIntl();
-	const projectRequiredMessage = intl.formatMessage(desktopMessages.composerProjectRequired);
 	const [state, setState] = useState<ChatRuntimeState>(EMPTY_STATE);
+	// Renderer-only: a dismissed failure returns after reload because the snapshot re-derives it from the journal.
+	const [dismissedOperationIds, setDismissedOperationIds] = useState<ReadonlySet<string>>(() => new Set());
 	const latestOptions = useRef(options);
 	const stateRef = useRef(state);
 	const dispatchingQueueIdRef = useRef<string | undefined>(undefined);
@@ -231,9 +259,8 @@ export function useChat(options: UseChatOptions): Chat {
 				: {
 						agentStatus: "idle",
 						error: undefined,
-						errorKey: 0,
+						operationFailure: undefined,
 						connectionStatus: undefined,
-						stopReason: undefined,
 						isLoading: true,
 						lastSeq: 0,
 						sessionId,
@@ -260,16 +287,10 @@ export function useChat(options: UseChatOptions): Chat {
 			setState((current) => applyChatProjectionUpdate(current, update));
 		});
 		void dispatcher.refresh(sessionId).catch((error) => {
-			const failure = getDesktopRemoteRpcFailure(error);
 			setState((previous) =>
 				previous.sessionId !== sessionId
 					? previous
-					: {
-							...previous,
-							...withChatError(previous, chatFailureMessage({ operation: "load", code: failure?.tag }), {
-								isLoading: false,
-							}),
-						},
+					: withChatError(previous, getDesktopRemoteRpcFailure(error), { isLoading: false }),
 			);
 		});
 		return () => {
@@ -286,12 +307,12 @@ export function useChat(options: UseChatOptions): Chat {
 		const current = stateRef.current;
 		const latest = latestOptions.current;
 		const head = latest.queue[0];
-		if (!head || !current.sessionId || current.agentStatus !== "idle" || current.error) return;
+		if (!head || !current.sessionId || current.agentStatus !== "idle") return;
 		if (head.id === blockedQueueIdRef.current || dispatchingQueueIdRef.current) return;
 		const headModelRef = resolveChatModelRef([head.modelRef, latest.modelRef], latest.availableModelRefs);
 		if (!headModelRef) {
 			blockedQueueIdRef.current = head.id;
-			setState((previous) => withChatError(previous, "请先选择可用模型。", { submitting: false }));
+			setState((previous) => withChatError(previous, MODEL_UNAVAILABLE, { submitting: false }));
 			return;
 		}
 
@@ -306,21 +327,12 @@ export function useChat(options: UseChatOptions): Chat {
 			});
 			latest.onQueuedMessageAccepted(head.id);
 		} catch (error) {
-			const failure = getDesktopRemoteRpcFailure(error);
 			blockedQueueIdRef.current = head.id;
-			setState((previous) =>
-				withChatError(
-					previous,
-					failure?.tag === "desktop_agent.workspace_required"
-						? projectRequiredMessage
-						: chatFailureMessage({ operation: "queue", code: failure?.tag, reason: failure?.reason }),
-					{ submitting: false },
-				),
-			);
+			setState((previous) => withChatError(previous, getDesktopRemoteRpcFailure(error), { submitting: false }));
 		} finally {
 			dispatchingQueueIdRef.current = undefined;
 		}
-	}, [projectRequiredMessage]);
+	}, []);
 
 	useEffect(() => {
 		const previousAgentStatus = previousAgentStatusRef.current;
@@ -347,16 +359,12 @@ export function useChat(options: UseChatOptions): Chat {
 			if ((!text && attachments.length === 0) || current.submitting) return false;
 
 			if (current.agentStatus === "running") {
-				if (attachments.length > 0) {
-					setState((previous) => withChatError(previous, "请等待当前响应结束后再发送附件。"));
-					return false;
-				}
-				if (!current.sessionId) {
-					setState((previous) => withChatError(previous, "当前会话尚未准备好，请稍后重试。"));
+				if (attachments.length > 0 || !current.sessionId) {
+					setState((previous) => withChatError(previous, SEND_REJECTED));
 					return false;
 				}
 				if (!latest.modelRef) {
-					setState((previous) => withChatError(previous, "请先选择可用模型。"));
+					setState((previous) => withChatError(previous, MODEL_UNAVAILABLE));
 					return false;
 				}
 				if (delivery === "queue") {
@@ -374,24 +382,16 @@ export function useChat(options: UseChatOptions): Chat {
 					latest.onMessageAccepted(current.sessionId);
 					return true;
 				} catch (error) {
-					const failure = getDesktopRemoteRpcFailure(error);
-					setState((previous) =>
-						withChatError(
-							previous,
-							failure?.tag === "desktop_agent.workspace_required"
-								? projectRequiredMessage
-								: chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
-						),
-					);
+					setState((previous) => withChatError(previous, getDesktopRemoteRpcFailure(error)));
 					return false;
 				}
 			}
 			if (latest.queue.length > 0) {
-				setState((previous) => withChatError(previous, "请先处理队列中的消息。"));
+				setState((previous) => withChatError(previous, SEND_REJECTED));
 				return false;
 			}
 			if (!latest.modelRef) {
-				setState((previous) => withChatError(previous, "请先选择可用模型。"));
+				setState((previous) => withChatError(previous, MODEL_UNAVAILABLE));
 				return false;
 			}
 
@@ -426,49 +426,31 @@ export function useChat(options: UseChatOptions): Chat {
 				void invalidateRecentSessions();
 				return true;
 			} catch (error) {
-				const failure = getDesktopRemoteRpcFailure(error);
-				setState((previous) =>
-					withChatError(
-						previous,
-						failure?.tag === "desktop_agent.workspace_required"
-							? projectRequiredMessage
-							: chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
-						{ submitting: false },
-					),
-				);
+				setState((previous) => withChatError(previous, getDesktopRemoteRpcFailure(error), { submitting: false }));
 				return false;
 			}
 		},
-		[projectRequiredMessage],
+		[],
 	);
 
-	const steerQueuedMessage = useCallback(
-		async (message: QueuedMessage): Promise<boolean> => {
-			const current = stateRef.current;
-			const latest = latestOptions.current;
-			const modelRef = resolveChatModelRef([message.modelRef, latest.modelRef], latest.availableModelRefs);
-			if (!current.sessionId || current.agentStatus !== "running" || !modelRef) return false;
-			return runQueuedMessageSteer({
-				message,
-				sessionId: current.sessionId,
-				modelRef,
-				steer: (input) => desktop.agent.steer(input),
-				onAccepted: latest.onQueuedMessageAccepted,
-				onRejected: (error) => {
-					const failure = getDesktopRemoteRpcFailure(error);
-					setState((previous) =>
-						withChatError(
-							previous,
-							failure?.tag === "desktop_agent.workspace_required"
-								? projectRequiredMessage
-								: chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
-						),
-					);
-				},
-			});
-		},
-		[projectRequiredMessage],
-	);
+	const steerQueuedMessage = useCallback(async (message: QueuedMessage): Promise<boolean> => {
+		const current = stateRef.current;
+		const latest = latestOptions.current;
+		const modelRef = resolveChatModelRef([message.modelRef, latest.modelRef], latest.availableModelRefs);
+		if (!current.sessionId || current.agentStatus !== "running" || !modelRef) return false;
+		return runQueuedMessageSteer({
+			message,
+			sessionId: current.sessionId,
+			modelRef,
+			steer: async (input) => {
+				await desktop.agent.steer(input);
+			},
+			onAccepted: latest.onQueuedMessageAccepted,
+			onRejected: (error) => {
+				setState((previous) => withChatError(previous, getDesktopRemoteRpcFailure(error)));
+			},
+		});
+	}, []);
 
 	const stop = useCallback(async () => {
 		const current = stateRef.current;
@@ -476,8 +458,8 @@ export function useChat(options: UseChatOptions): Chat {
 		setState((previous) => ({ ...previous, error: undefined, stopping: true }));
 		try {
 			await desktop.agent.abort(current.sessionId);
-		} catch {
-			setState((previous) => withChatError(previous, "未能停止当前响应。", { stopping: false }));
+		} catch (error) {
+			setState((previous) => withChatError(previous, getDesktopRemoteRpcFailure(error), { stopping: false }));
 		}
 	}, []);
 
@@ -504,19 +486,36 @@ export function useChat(options: UseChatOptions): Chat {
 	const resolvePermission = useCallback(async (resolution: DesktopPermissionResolution) => {
 		try {
 			await desktop.agent.resolvePermission(resolution);
-		} catch {
-			setState((previous) => withChatError(previous, "权限响应未提交。"));
+		} catch (error) {
+			setState((previous) => withChatError(previous, getDesktopRemoteRpcFailure(error)));
 		}
 	}, []);
 
-	const dismissError = useCallback(() => {
-		const current = stateRef.current;
-		if (!current.error) return;
-		const next = { ...current, error: undefined };
-		stateRef.current = next;
-		setState(next);
-		void dispatchQueueHead();
-	}, [dispatchQueueHead]);
+	const notice = resolveChatNotice(state, dismissedOperationIds);
+	const dismissNotice = () => {
+		if (notice?.kind === "operation" && notice.operationId) {
+			const operationId = notice.operationId;
+			setDismissedOperationIds((current) => new Set(current).add(operationId));
+		} else if (notice?.kind === "operation") {
+			setState((previous) => ({ ...previous, operationFailure: undefined }));
+		} else if (notice?.kind === "send") {
+			setState((previous) => ({ ...previous, error: undefined }));
+		}
+	};
+
+	const retry = useCallback(async (): Promise<DesktopFailure | undefined> => {
+		const sessionId = stateRef.current.sessionId;
+		const latest = latestOptions.current;
+		if (!latest.modelRef) return MODEL_UNAVAILABLE;
+		if (!sessionId) return undefined;
+		try {
+			await desktop.agent.retry({ sessionId, modelRef: latest.modelRef, controls: latest.controls });
+			await dispatcher?.refresh(sessionId);
+			return undefined;
+		} catch (error) {
+			return getDesktopRemoteRpcFailure(error);
+		}
+	}, []);
 
 	const configure = useCallback(async (selection: DesktopSessionConfiguration): Promise<void> => {
 		const sessionId = stateRef.current.sessionId;
@@ -525,13 +524,7 @@ export function useChat(options: UseChatOptions): Chat {
 		try {
 			await desktop.agent.configure({ sessionId, ...selection });
 		} catch (error) {
-			const failure = getDesktopRemoteRpcFailure(error);
-			setState((previous) =>
-				withChatError(
-					previous,
-					chatFailureMessage({ operation: "message", code: failure?.tag, reason: failure?.reason }),
-				),
-			);
+			setState((previous) => withChatError(previous, getDesktopRemoteRpcFailure(error)));
 			void dispatcher?.refresh(sessionId);
 		}
 	}, []);
@@ -553,10 +546,7 @@ export function useChat(options: UseChatOptions): Chat {
 		usage: state.usage,
 		status: getChatStatus(state),
 		isLoading: state.isLoading,
-		error: state.error,
-		errorKey: state.errorKey,
-		connectionStatus: state.connectionStatus,
-		stopReason: state.stopReason,
+		notice,
 		modelRef,
 		controls,
 		configure,
@@ -564,9 +554,10 @@ export function useChat(options: UseChatOptions): Chat {
 		steerQueuedMessage,
 		stop,
 		navigate,
+		retry,
 		retryConnection,
 		resolvePermission,
-		dismissError,
+		dismissNotice,
 	};
 }
 
@@ -612,7 +603,7 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 			return {
 				...state,
 				agentStatus: event.status,
-				stopReason: event.stopReason,
+				operationFailure: event.failure ? { failure: event.failure, operationId: event.operationId } : undefined,
 				error: event.status === "running" ? undefined : state.error,
 				isLoading: false,
 				lastSeq: seq,
@@ -661,14 +652,6 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 			return { ...state, isLoading: false, lastSeq: seq, usage: event.usage };
 		case "configuration_changed":
 			return { ...state, lastSeq: seq, configuration: event.configuration };
-		case "runtime_error":
-			return withChatError(state, chatFailureMessage({ operation: "runtime", code: event.error.code }), {
-				agentStatus: "idle",
-				isLoading: false,
-				lastSeq: seq,
-				submitting: false,
-				stopping: false,
-			});
 	}
 }
 
@@ -691,87 +674,20 @@ function cancelScheduledTranscriptFlush(handle: number): void {
 	clearTimeout(handle);
 }
 
-export function chatFailureMessage(input: {
-	readonly code?: string;
-	readonly operation: "message" | "queue" | "runtime" | "load";
-	readonly reason?: DesktopAgentCreationFailureReason;
-}): string {
-	switch (input.code) {
-		case "desktop_provider.missing_credentials":
-		case "coding_sdk.missing_credentials":
-			return "当前模型尚未配置凭证。请前往 Settings > Providers 完成配置。";
-		case "desktop_provider.model_inventory_missing":
-			return "此 Provider 尚未获取模型清单。请前往 Settings > Providers 获取模型后重试。";
-		case "desktop_provider.model_not_verified":
-			return "所选模型尚未完成能力验证。请在 Settings > Providers 选择可用模型。";
-		case "desktop_provider.model_capability_unsupported":
-			return "所选模型不支持 Agent 所需的工具调用能力。请更换模型。";
-		case "desktop_provider.model_not_found":
-			return "所选模型已不在 Provider 的最新清单中。请重新获取模型并选择可用模型。";
-		case "desktop_provider.model_disabled":
-			return "所选模型已被禁用。请在 Settings > Providers 启用后重试。";
-		case "desktop_provider.profile_not_found":
-			return "当前模型所属的 Provider 已不存在。请重新选择模型。";
-		case "desktop_provider.profile_disabled":
-			return "当前 Provider 已被禁用。请启用后重试。";
-		case "desktop_provider.invalid_model_ref":
-		case "coding_sdk.invalid_model_ref":
-			return "所选模型无效。请重新选择模型。";
-		case "desktop_session_catalog.project_path_invalid":
-			return "关联的 Project 目录不可用。请重新关联后重试。";
-		case "desktop_session_catalog.session_recovery_failed":
-		case "desktop_agent.acp_request_failed":
-			return "会话恢复失败。请重试；如果仍然失败，请重启应用。";
-		case "coding_sdk.unsupported_provider":
-		case "coding_sdk.invalid_provider_configuration":
-			return "当前 Provider 配置无效。请前往 Settings > Providers 检查后重试。";
-		case "desktop_agent.creation_failed":
-			return agentCreationFailureMessage(input.reason);
-		default:
-			return defaultChatFailureMessage(input.operation);
-	}
-}
-
-function agentCreationFailureMessage(reason: DesktopAgentCreationFailureReason | undefined): string {
-	switch (reason) {
-		case "model_unavailable":
-			return "模型运行时未初始化。请重新选择模型后重试。";
-		case "provider_configuration_invalid":
-			return "当前 Provider 配置无效。请前往 Settings > Providers 检查后重试。";
-		case "agent_initialization_failed":
-		case undefined:
-			return "Agent 未能启动。请重试；如果仍然失败，请重启应用。";
-	}
-}
-
-function defaultChatFailureMessage(operation: "message" | "queue" | "runtime" | "load"): string {
-	switch (operation) {
-		case "queue":
-			return "队列消息未发送。请稍后重试。";
-		case "runtime":
-			return "当前响应未完成。请重试。";
-		case "load":
-			return "会话恢复失败。请重试；如果仍然失败，请重启应用。";
-		case "message":
-			return "消息未发送。请稍后重试。";
-	}
-}
-
 function withChatError(
 	state: ChatRuntimeState,
-	error: string,
+	error: DesktopFailure,
 	patch: Partial<ChatRuntimeState> = {},
 ): ChatRuntimeState {
-	return { ...state, ...patch, error, errorKey: state.errorKey + 1 };
+	return { ...state, ...patch, error };
 }
 
 function snapshotState(snapshot: DesktopAgentSnapshot): ChatRuntimeState {
 	return {
 		agentStatus: snapshot.status,
 		error: undefined,
-		errorKey: 0,
+		operationFailure: snapshot.failure ? { failure: snapshot.failure, operationId: snapshot.operationId } : undefined,
 		connectionStatus: snapshot.connectionStatus,
-		stopReason: snapshot.stopReason,
 		isLoading: false,
 		lastSeq: snapshot.lastSeq,
 		sessionId: snapshot.sessionId,
@@ -787,7 +703,6 @@ function snapshotState(snapshot: DesktopAgentSnapshot): ChatRuntimeState {
 }
 
 function getChatStatus(state: ChatRuntimeState): ChatStatus {
-	if (state.error) return "error";
 	if (state.stopping) return "stopping";
 	if (state.agentStatus === "running") return "streaming";
 	if (state.submitting) return "submitted";

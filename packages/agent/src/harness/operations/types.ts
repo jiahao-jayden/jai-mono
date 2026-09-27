@@ -61,6 +61,17 @@ export interface InputQueued extends OperationRecordBase {
 export interface OperationFinished extends OperationRecordBase {
 	readonly type: "operation_finished";
 	readonly outcome: OperationTerminalOutcome;
+	/**
+	 * Why a failed Operation ended outside a model attempt (provider failures stay on the assistant
+	 * entry). The Host writes it already redacted; it is diagnostic, never replayed to the model.
+	 */
+	readonly error?: OperationFailureInfo;
+}
+
+export interface OperationFailureInfo {
+	/** The innermost error tag or code, e.g. `coding_config.validation_failed`. */
+	readonly code: string;
+	readonly message: string;
 }
 
 /**

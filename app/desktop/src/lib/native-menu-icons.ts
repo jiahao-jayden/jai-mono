@@ -28,6 +28,7 @@ function toDesktopItem(item: NativeMenuDescriptor): DesktopContextMenuItem {
 async function rasterizeMenuIcon(name: IconName): Promise<string | null> {
 	const cached = iconDataUrlCache.get(name);
 	if (cached) return cached;
+	// A menu item without its icon still works; the next menu open retries because failures are not cached.
 	const pending = rasterize(name)
 		.catch(() => null)
 		.then((dataUrl) => {

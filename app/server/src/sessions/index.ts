@@ -32,6 +32,7 @@ export {
 	ProductSessionNotFound,
 	type ProductSessionPersistence,
 	type PromptAdmissionTransaction,
+	promptAdmissionConflict,
 	type RuntimeConfigurationAppend,
 	type SessionEntryAppend,
 } from "./types";

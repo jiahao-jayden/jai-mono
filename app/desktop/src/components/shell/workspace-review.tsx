@@ -122,7 +122,11 @@ export function WorkspaceReview({
 				{state.status === "loading" ? (
 					<ReviewEmpty icon={LoadingIcon} message={intl.formatMessage(desktopMessages.workspaceReviewLoading)} />
 				) : state.status === "error" ? (
-					<ReviewEmpty icon={FileIcon} message={intl.formatMessage(desktopMessages.workspaceReviewError)} />
+					<ReviewEmpty
+						icon={FileIcon}
+						message={intl.formatMessage(desktopMessages.workspaceReviewError)}
+						role="alert"
+					/>
 				) : state.value.kind === "not-changed" ? (
 					<ReviewEmpty icon={FileIcon} message={intl.formatMessage(desktopMessages.workspaceReviewNotChanged)} />
 				) : state.value.kind === "unavailable" ? (
@@ -138,12 +142,17 @@ export function WorkspaceReview({
 function ReviewEmpty({
 	icon: Icon,
 	message,
+	role,
 }: {
 	readonly icon: ReturnType<typeof useIcons>["folder"];
 	readonly message: string;
+	readonly role?: "alert";
 }) {
 	return (
-		<div className="flex h-full min-h-64 flex-col items-center justify-center px-6 text-center text-muted-foreground">
+		<div
+			role={role}
+			className="flex h-full min-h-64 flex-col items-center justify-center px-6 text-center text-muted-foreground"
+		>
 			<Icon size={22} />
 			<p className="mt-3 max-w-80 text-[12px] leading-5">{message}</p>
 		</div>

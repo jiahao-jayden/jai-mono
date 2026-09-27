@@ -13,6 +13,7 @@ import {
 	desktopAgentConfigureInputSchema,
 	desktopAgentMessageInputSchema,
 	desktopAgentNavigateInputSchema,
+	desktopAgentRetryInputSchema,
 	desktopArtifactReadInputSchema,
 	desktopAttachmentRegistrationInputSchema,
 	desktopCommandListInputSchema,
@@ -47,7 +48,14 @@ import {
 	desktopWorkspaceReadInputSchema,
 } from "../../shared/desktop-rpc";
 import { sortArtifacts } from "../agent/artifacts";
-import { clearLogFile, deleteRotatedLogs, listLogFiles, readLogTail, resolveLogFile } from "../logs";
+import {
+	clearLogFile,
+	DesktopLogsOpenFailed,
+	deleteRotatedLogs,
+	listLogFiles,
+	readLogTail,
+	resolveLogFile,
+} from "../logs";
 import type { DesktopRuntime } from "../runtime";
 import { projectRevealFailed, sessionBusyError } from "../session-catalog/errors";
 import { readWorkspaceGitDiff, readWorkspaceGitStatus } from "../workspace/git-status";
@@ -135,7 +143,7 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				const directory = path.join(resolveJaiDataDirectory(), "logs");
 				await mkdir(directory, { recursive: true });
 				const error = await shell.openPath(directory);
-				if (error) throw new Error("Could not open the logs folder");
+				if (error) throw new DesktopLogsOpenFailed({ message: "Could not open the logs folder" });
 			},
 		},
 		locale: {
@@ -491,6 +499,9 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 					parse(desktopAgentNavigateInputSchema, input, "Invalid agent navigation input"),
 				);
 			},
+			retry(_event, input) {
+				return rt.agentHost.retry(parse(desktopAgentRetryInputSchema, input, "Invalid agent retry input"));
+			},
 			configure(_event, input) {
 				return rt.agentHost.configure(
 					parse(desktopAgentConfigureInputSchema, input, "Invalid agent configuration input"),
@@ -500,7 +511,7 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				rt.agentHost.abort(parse(desktopSessionIdSchema, sessionId, "Invalid session id"));
 			},
 			steer(_event, input) {
-				rt.agentHost.steer(parse(desktopAgentMessageInputSchema, input, "Invalid agent message input"));
+				return rt.agentHost.steer(parse(desktopAgentMessageInputSchema, input, "Invalid agent message input"));
 			},
 			followUp(_event, input) {
 				return rt.agentHost.followUp(parse(desktopAgentMessageInputSchema, input, "Invalid agent message input"));

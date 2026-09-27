@@ -9,6 +9,8 @@ import {
 } from "react";
 import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
+import { getDesktopRemoteRpcFailure } from "@/lib/desktop";
+import { notifyFailure } from "@/lib/failure";
 import { useIcons } from "@/lib/icon-context";
 import { type NativeMenuDescriptor, nativeMenuAnchor, showNativeMenu } from "@/lib/native-menu-icons";
 import type { CodingSession } from "../../../shared/desktop-rpc";
@@ -120,8 +122,11 @@ export function SessionActions({
 		setPending(true);
 		try {
 			await onArchive(session.id);
-		} catch {
-			toast.add({ title: intl.formatMessage(desktopMessages.sidebarArchiveFailed), type: "error" });
+		} catch (error) {
+			notifyFailure(getDesktopRemoteRpcFailure(error), intl, {
+				title: intl.formatMessage(desktopMessages.sidebarArchiveFailed),
+				dedupeKey: `session-archive:${session.id}`,
+			});
 		} finally {
 			setPending(false);
 		}
@@ -131,10 +136,10 @@ export function SessionActions({
 		setPending(true);
 		try {
 			await onPin(session.id, !pinned);
-		} catch {
-			toast.add({
+		} catch (error) {
+			notifyFailure(getDesktopRemoteRpcFailure(error), intl, {
 				title: intl.formatMessage(pinned ? desktopMessages.sidebarUnpinFailed : desktopMessages.sidebarPinFailed),
-				type: "error",
+				dedupeKey: `session-pin:${session.id}`,
 			});
 		} finally {
 			setPending(false);

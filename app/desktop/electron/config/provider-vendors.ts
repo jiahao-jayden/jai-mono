@@ -191,7 +191,8 @@ export function findDefaultProviderVendor(baseURL: string, modelId: string): Def
 			: vendor.baseURL?.replace(/\/+$/, "") === normalizedBaseURL,
 	);
 	if (configuredVendor) return configuredVendor;
-	const normalizedModelId = modelId.trim().toLocaleLowerCase();
+	// Gateway IDs such as `claude/claude-opus-4-5` keep the upstream vendor ID as the last segment.
+	const normalizedModelId = modelId.trim().toLocaleLowerCase().split("/").at(-1) ?? "";
 	return DEFAULT_PROVIDER_VENDORS.find((vendor) =>
 		vendor.modelIdPrefixes.some((prefix) => normalizedModelId.startsWith(prefix)),
 	);

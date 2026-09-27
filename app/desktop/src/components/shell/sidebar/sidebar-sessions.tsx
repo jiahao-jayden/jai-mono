@@ -15,19 +15,20 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { cn } from "cn";
 import { type ReactNode, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useIntl } from "react-intl";
+import { type IntlShape, useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
+import { getDesktopRemoteRpcFailure } from "@/lib/desktop";
 import {
 	getRecentSessions,
 	projectSessionsQueryOptions,
 	reorderProjects,
 	setProjectExpanded,
 } from "@/lib/desktop-query";
+import { notifyFailure } from "@/lib/failure";
 import { useIcons } from "@/lib/icon-context";
 import type { CodingSession, DesktopProject } from "../../../../shared/desktop-rpc";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
-import { toast } from "../../ui/toast";
 import { ProjectActions } from "../project-actions";
 import { SessionActions } from "../session-actions";
 import { sidebarItemClassName } from "./sidebar-nav";
@@ -46,6 +47,10 @@ function isProjectDragData(
 	return data[projectDragKey] === true && typeof data.index === "number";
 }
 
+function notifyProjectLayoutFailed(intl: IntlShape, error: unknown): void {
+	notifyFailure(getDesktopRemoteRpcFailure(error), intl, { dedupeKey: "project-layout" });
+}
+
 interface SidebarSessionsProps {
 	readonly projects: readonly DesktopProject[];
 	readonly sessions: readonly CodingSession[];
@@ -53,11 +58,15 @@ interface SidebarSessionsProps {
 	readonly activeSessionId: string | null;
 	readonly activeProjectId: string | null;
 	readonly loading: boolean;
+	/** Shown only when no recent sessions could be loaded; a failed background refresh keeps the list. */
 	readonly error?: string;
+	readonly onRetryRecents: () => void;
 	readonly hasNextPage?: boolean;
 	readonly loadingMore?: boolean;
 	readonly projectLoading: boolean;
-	readonly projectError?: string;
+	/** The only place a project list failure is shown. */
+	readonly projectLoadError: boolean;
+	readonly onRetryProjects: () => void;
 	readonly onCreateProject: () => void;
 	readonly onRelinkProject: (project: DesktopProject) => Promise<void>;
 	readonly onRevealProject: (project: DesktopProject) => Promise<void>;
@@ -78,10 +87,12 @@ export function SidebarSessions({
 	activeProjectId,
 	loading,
 	error,
+	onRetryRecents,
 	hasNextPage = false,
 	loadingMore = false,
 	projectLoading,
-	projectError,
+	projectLoadError,
+	onRetryProjects,
 	onCreateProject,
 	onRelinkProject,
 	onRevealProject,
@@ -122,14 +133,14 @@ export function SidebarSessions({
 		if (!title || title === session.title) return;
 		try {
 			await onRenameSession(session.id, title);
-		} catch {
-			toast.add({
+		} catch (error) {
+			notifyFailure(getDesktopRemoteRpcFailure(error), intl, {
 				title: intl.formatMessage(desktopMessages.sidebarRenameFailed),
-				description: intl.formatMessage(desktopMessages.sidebarRenameFailed),
-				type: "error",
+				dedupeKey: `session-rename:${session.id}`,
 			});
 		}
 	};
+	const notifyProjectLayoutFailure = (error: unknown) => notifyProjectLayoutFailed(intl, error);
 	useEffect(
 		() =>
 			monitorForElements({
@@ -144,14 +155,16 @@ export function SidebarSessions({
 						axis: "vertical" as const,
 					};
 					if (getReorderDestinationIndex(reorder) === reorder.startIndex) return;
-					void reorderProjects(reorderWithEdge({ ...reorder, list: projects.map((project) => project.id) }));
+					reorderProjects(reorderWithEdge({ ...reorder, list: projects.map((project) => project.id) })).catch(
+						(error: unknown) => notifyProjectLayoutFailed(intl, error),
+					);
 				},
 			}),
-		[projects],
+		[projects, intl],
 	);
 
 	const startProjectChat = (project: DesktopProject) => {
-		if (!project.expanded) void setProjectExpanded(project.id, true);
+		if (!project.expanded) setProjectExpanded(project.id, true).catch(notifyProjectLayoutFailure);
 		onNewProjectChat(project);
 	};
 	const renderSession = (session: CodingSession, nested = false) => {
@@ -258,15 +271,25 @@ export function SidebarSessions({
 							))}
 						</div>
 					) : null}
-					{projectError ? (
-						<p
-							className="rounded-lg bg-destructive/8 px-2 py-2 text-[12px] leading-relaxed text-destructive"
+					{projectLoadError ? (
+						<div
+							className="flex items-center justify-between gap-2 rounded-lg bg-destructive/8 py-1 pr-1 pl-2 text-[12px] leading-relaxed text-destructive"
 							role="alert"
 						>
-							{projectError}
-						</p>
+							<span className="min-w-0">{intl.formatMessage(desktopMessages.projectsLoadError)}</span>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								loading={projectLoading}
+								onClick={onRetryProjects}
+								className="shrink-0"
+							>
+								{intl.formatMessage(desktopMessages.commonRetry)}
+							</Button>
+						</div>
 					) : null}
-					{!projectLoading && !projectError && projects.length === 0 ? (
+					{!projectLoading && !projectLoadError && projects.length === 0 ? (
 						<p className="px-2 py-1.5 text-[13px] leading-4.5 text-sidebar-muted">
 							{intl.formatMessage(desktopMessages.sidebarNoProjects)}
 						</p>
@@ -279,7 +302,9 @@ export function SidebarSessions({
 							project={project}
 							index={index}
 							active={project.id === activeProjectId}
-							onToggle={() => void setProjectExpanded(project.id, !project.expanded)}
+							onToggle={() =>
+								setProjectExpanded(project.id, !project.expanded).catch(notifyProjectLayoutFailure)
+							}
 							onRelink={onRelinkProject}
 							onReveal={onRevealProject}
 							onNewChat={startProjectChat}
@@ -318,12 +343,22 @@ export function SidebarSessions({
 							</div>
 						) : null}
 						{error ? (
-							<p
-								className="rounded-lg bg-destructive/8 px-2 py-2 text-[12px] leading-relaxed text-destructive"
+							<div
+								className="flex items-center justify-between gap-2 rounded-lg bg-destructive/8 py-1 pr-1 pl-2 text-[12px] leading-relaxed text-destructive"
 								role="alert"
 							>
-								{intl.formatMessage(desktopMessages.sidebarRecentsLoadError)}
-							</p>
+								<span className="min-w-0">{error}</span>
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									loading={loading}
+									onClick={onRetryRecents}
+									className="shrink-0"
+								>
+									{intl.formatMessage(desktopMessages.commonRetry)}
+								</Button>
+							</div>
 						) : null}
 						{!loading && !error && ungroupedSessions.length === 0 ? (
 							<p className="px-2 py-1.5 text-[13px] leading-4.5 text-sidebar-muted">
@@ -488,6 +523,7 @@ function ProjectSessionList({
 	readonly projectId: string;
 	readonly renderSession: (session: CodingSession) => ReactNode;
 }) {
+	const intl = useIntl();
 	const query = useInfiniteQuery(projectSessionsQueryOptions(projectId));
 	const sessions = getRecentSessions(query.data);
 	const onScroll = (event: UIEvent<HTMLDivElement>) => {
@@ -496,6 +532,26 @@ function ProjectSessionList({
 		if (nearBottom && query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage();
 	};
 	if (query.isLoading) return <div className="mt-0.5 h-7.5 animate-pulse rounded-lg bg-foreground/5" />;
+	if (query.isError && sessions.length === 0) {
+		return (
+			<div
+				className="mt-0.5 flex items-center justify-between gap-2 rounded-lg bg-destructive/8 py-1 pr-1 pl-8 text-[12px] leading-relaxed text-destructive"
+				role="alert"
+			>
+				<span className="min-w-0">{intl.formatMessage(desktopMessages.sidebarProjectSessionsLoadError)}</span>
+				<Button
+					type="button"
+					variant="ghost"
+					size="sm"
+					loading={query.isFetching}
+					onClick={() => void query.refetch()}
+					className="shrink-0"
+				>
+					{intl.formatMessage(desktopMessages.commonRetry)}
+				</Button>
+			</div>
+		);
+	}
 	if (sessions.length === 0) return null;
 	return (
 		<div className="mt-0.5 max-h-64 overflow-y-auto overscroll-contain scrollbar-auto" onScroll={onScroll}>

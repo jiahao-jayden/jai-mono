@@ -12,9 +12,16 @@ class DesktopAgentNavigationFailed extends TaggedError("desktop_agent.navigation
 class DesktopAgentUnsupportedOperation extends TaggedError(
 	"desktop_agent.unsupported_operation",
 )<DesktopAgentErrorInit> {}
+class DesktopAgentRetryUnavailable extends TaggedError("desktop_agent.retry_unavailable")<DesktopAgentErrorInit> {}
 
 export function desktopAgentError(
-	reason: "factory_unavailable" | "session_not_found" | "session_busy" | "navigation_failed" | "unsupported_operation",
+	reason:
+		| "factory_unavailable"
+		| "session_not_found"
+		| "session_busy"
+		| "navigation_failed"
+		| "unsupported_operation"
+		| "retry_unavailable",
 	init: DesktopAgentErrorInit,
 ) {
 	switch (reason) {
@@ -28,5 +35,7 @@ export function desktopAgentError(
 			return new DesktopAgentNavigationFailed(init);
 		case "unsupported_operation":
 			return new DesktopAgentUnsupportedOperation(init);
+		case "retry_unavailable":
+			return new DesktopAgentRetryUnavailable(init);
 	}
 }

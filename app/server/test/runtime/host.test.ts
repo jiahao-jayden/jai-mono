@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { zeroUsage } from "@jai/ai";
-import { recoverOperation } from "@jai/agent";
+import { branchOf, type JsonValue, recoverOperation, type SessionEntry } from "@jai/agent";
 import { Result } from "better-result";
 import {
   type RuntimeOperation,
@@ -559,6 +559,8 @@ describe("RuntimeHost", () => {
       state: "requires_action",
       recovery: [{ status: "indeterminate_tool", operationId: "operation-1" }],
     });
+    const retried = await resumed.value.retry();
+    expect(retried.isErr() && retried.error._tag).toBe("runtime_host.retry_unavailable");
     await resumed.value.close();
     const durable = await persistence.load("session-1");
     if (durable.isErr()) throw durable.error;
@@ -689,6 +691,48 @@ describe("RuntimeHost", () => {
     });
   });
 
+  test("classifies an invalid settings file as a non-retryable configuration failure", async () => {
+    const driver: RuntimeOperationDriver = {
+      async openOperation(input) {
+        return Result.err(
+          new RuntimeOperationOpenFailed({
+            message: `Coding Agent could not open Operation "${input.operationId}": Invalid coding configuration in /p/.jai/settings.local.json`,
+            sessionId: input.sessionId,
+            operationId: input.operationId,
+            cause: {
+              code: "coding_config.validation_failed",
+              message: "Invalid coding configuration in /p/.jai/settings.local.json",
+              retryable: false,
+              phase: "runtime_creation",
+            },
+          }),
+        );
+      },
+    };
+    const host = new RuntimeHost({
+      persistence: new InMemoryProductSessionPersistence(),
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+    const admission = await opened.value.prompt({ text: "hello" });
+    if (admission.isErr()) throw admission.error;
+
+    let failure: unknown;
+    for (let attempt = 0; attempt < 50 && !failure; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const snapshot = await opened.value.snapshot();
+      if (snapshot.isErr()) throw snapshot.error;
+      failure = snapshot.value.failure;
+    }
+    expect(failure).toEqual({
+      code: "configuration.invalid",
+      retryable: false,
+      detail: "Invalid coding configuration in /p/.jai/settings.local.json",
+    });
+  });
+
   test("maps an execution failure to the existing failed terminal axis", async () => {
     const driver = new ControlledOperationDriver();
     const persistence = new InMemoryProductSessionPersistence();
@@ -707,9 +751,99 @@ describe("RuntimeHost", () => {
     const snapshot = await opened.value.snapshot();
     if (snapshot.isErr()) throw snapshot.error;
     expect(snapshot.value.stopReason).toBe("error");
+    expect(snapshot.value.failure).toEqual({ code: "runtime.operation_failed", retryable: true, action: "retry" });
     expect(snapshot.value.recovery).toEqual([
       { status: "terminal", operationId: admission.value.operationId, outcome: "failed", finalization: "durable" },
     ]);
+  });
+
+  test("derives the snapshot failure from the branch's last terminal Operation", async () => {
+    const driver = new ControlledOperationDriver();
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = new RuntimeHost({
+      persistence,
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1", "operation-2", "branch-1"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+    const appendAssistant = async (
+      operationId: string,
+      entryId: string,
+      message: { readonly stopReason: "stop" | "error"; readonly error?: { readonly message: string; readonly status: number } },
+    ) => {
+      const attempted = await persistence.appendOperation({
+        sessionId: "session-1",
+        record: {
+          type: "model_attempted",
+          operationId,
+          attemptId: `${entryId}:attempt`,
+          assistantEntryId: entryId,
+          modelSnapshotId: "test:test-model",
+          timestamp: "2026-09-26T00:00:00.000Z",
+        },
+      });
+      if (attempted.isErr()) throw attempted.error;
+      const loaded = await persistence.load("session-1");
+      if (loaded.isErr()) throw loaded.error;
+      const appended = await persistence.appendEntry({
+        sessionId: "session-1",
+        expectedRevision: loaded.value.revision,
+        entry: {
+          type: "message",
+          id: entryId,
+          parentId: loaded.value.snapshot.leafId,
+          timestamp: "2026-09-26T00:00:01.000Z",
+          message: {
+            role: "assistant",
+            content: [],
+            provider: "test",
+            model: "test-model",
+            usage: zeroUsage(),
+            stopReason: message.stopReason,
+            error: message.error,
+            timestamp: 0,
+          },
+        },
+      });
+      if (appended.isErr()) throw appended.error;
+    };
+    const failure = async () => {
+      const snapshot = await opened.value.snapshot();
+      if (snapshot.isErr()) throw snapshot.error;
+      return snapshot.value.failure;
+    };
+
+    const first = await opened.value.prompt({ text: "hi" });
+    if (first.isErr()) throw first.error;
+    await driver.opened;
+    await appendAssistant("operation-1", "assistant-1", {
+      stopReason: "error",
+      error: { message: "invalid x-api-key", status: 401 },
+    });
+    driver.finish("failed");
+    await driver.closed;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(await failure()).toEqual({
+      code: "provider.auth_failed",
+      retryable: false,
+      action: "open_provider_settings",
+      detail: "invalid x-api-key",
+    });
+
+    const second = await opened.value.prompt({ text: "again" });
+    if (second.isErr()) throw second.error;
+    await driver.opened;
+    expect(await failure()).toBeUndefined();
+    await appendAssistant("operation-2", "assistant-2", { stopReason: "stop" });
+    driver.finish("completed");
+    await driver.closed;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(await failure()).toBeUndefined();
+
+    const navigated = await opened.value.navigate(first.value.inputEntryId);
+    if (navigated.isErr()) throw navigated.error;
+    expect(await failure()).toMatchObject({ code: "provider.auth_failed" });
   });
 
   test("turns a second active prompt into a durable steer input for the current operation", async () => {
@@ -1523,6 +1657,142 @@ describe("RuntimeHost", () => {
       driver.finish("completed");
       await driver.closed;
     }
+  });
+});
+
+describe("RuntimeSession.retry", () => {
+  const acpV2Prompt: JsonValue[] = [
+    { type: "text", text: "hi" },
+    { type: "resource_link", uri: "file:///workspace/a.png", name: "a.png" },
+  ];
+
+  async function failTurn(driver: ControlledOperationDriver): Promise<void> {
+    await driver.opened;
+    driver.finish("failed");
+    await driver.closed;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  test("re-admits a failed first message from its journal input under the current configuration", async () => {
+    const driver = new ControlledOperationDriver();
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = new RuntimeHost({
+      persistence,
+      operationDriver: driver,
+      configurationPolicy: configuredSessionPolicy(),
+      createId: ids("session-1", "operation-1", "operation-2"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+    const first = await opened.value.prompt({ text: "hi\n[Resource link: a.png]", metadata: { acpV2Prompt } });
+    if (first.isErr()) throw first.error;
+    await failTurn(driver);
+    const configured = await opened.value.setConfiguration({ configId: "model", value: "profile/model-b" });
+    if (configured.isErr()) throw configured.error;
+
+    const retried = await opened.value.retry();
+    if (retried.isErr()) throw retried.error;
+    expect(retried.value).toEqual({ operationId: "operation-2", inputEntryId: "operation-2:input" });
+    expect((await driver.opened).runtimeConfiguration.model).toBe("profile/model-b");
+
+    const snapshot = await opened.value.snapshot();
+    if (snapshot.isErr()) throw snapshot.error;
+    expect(snapshot.value).toMatchObject({ state: "running", leafId: "operation-2:input" });
+    expect(snapshot.value.failure).toBeUndefined();
+    const branch = branchOf(snapshot.value.entries as SessionEntry[], snapshot.value.leafId);
+    expect(branch).toMatchObject([
+      { type: "branch", id: "operation-2:branch", parentId: null, fromId: "operation-1:input" },
+      {
+        type: "message",
+        id: "operation-2:input",
+        parentId: "operation-2:branch",
+        message: { role: "user", content: "hi\n[Resource link: a.png]", metadata: { acpV2Prompt } },
+      },
+    ]);
+    driver.finish("completed");
+    await driver.closed;
+  });
+
+  test("branches back to the failed input's parent and admits only one of two concurrent retries", async () => {
+    const driver = new ControlledOperationDriver();
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = new RuntimeHost({
+      persistence,
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1", "operation-2", "operation-3", "operation-4"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+    const first = await opened.value.prompt({ text: "first" });
+    if (first.isErr()) throw first.error;
+    await driver.opened;
+    driver.finish("completed");
+    await driver.closed;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const second = await opened.value.prompt({ text: "second" });
+    if (second.isErr()) throw second.error;
+    await failTurn(driver);
+
+    const results = await Promise.all([opened.value.retry(), opened.value.retry()]);
+    expect(results.filter((result) => result.isOk())).toHaveLength(1);
+    const rejected = results.find((result) => result.isErr());
+    expect(rejected?.isErr() && rejected.error._tag).toBe("runtime_host.retry_unavailable");
+
+    await driver.opened;
+    const loaded = await persistence.load("session-1");
+    if (loaded.isErr()) throw loaded.error;
+    const branch = branchOf(loaded.value.snapshot.entries, loaded.value.snapshot.leafId);
+    expect(branch.map((entry) => entry.id)).toEqual(["operation-1:input", "operation-3:branch", "operation-3:input"]);
+    expect(branch[1]).toMatchObject({ parentId: "operation-1:input", fromId: "operation-2:input" });
+    expect(
+      branch.filter((entry) => entry.type === "message" && entry.message.content === "second"),
+    ).toHaveLength(1);
+    expect(loaded.value.operationRecords.filter((record) => record.type === "operation_accepted")).toHaveLength(3);
+    driver.finish("completed");
+    await driver.closed;
+  });
+
+  test("rejects a retry without a failed last turn and leaves the journal unchanged", async () => {
+    const driver = new ControlledOperationDriver();
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = new RuntimeHost({
+      persistence,
+      operationDriver: driver,
+      createId: ids("session-1", "operation-1"),
+    });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+    const expectUnavailable = async () => {
+      const before = await persistence.load("session-1");
+      if (before.isErr()) throw before.error;
+      const retried = await opened.value.retry();
+      expect(retried.isErr() && retried.error._tag).toBe("runtime_host.retry_unavailable");
+      const after = await persistence.load("session-1");
+      if (after.isErr()) throw after.error;
+      expect(after.value.revision).toBe(before.value.revision);
+      expect(after.value.journalFacts).toEqual(before.value.journalFacts);
+    };
+
+    await expectUnavailable();
+    const admitted = await opened.value.prompt({ text: "work" });
+    if (admitted.isErr()) throw admitted.error;
+    await driver.opened;
+    await expectUnavailable();
+    driver.finish("completed");
+    await driver.closed;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expectUnavailable();
+  });
+
+  test("rejects a retry while a durable Operation is not terminal", async () => {
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = new RuntimeHost({ persistence, createId: ids("session-1", "operation-1") });
+    const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
+    if (opened.isErr()) throw opened.error;
+    const admitted = await opened.value.prompt({ text: "no driver" });
+    if (admitted.isErr()) throw admitted.error;
+    const retried = await opened.value.retry();
+    expect(retried.isErr() && retried.error._tag).toBe("runtime_host.retry_unavailable");
   });
 });
 

@@ -5,6 +5,7 @@ export {
 	type OpenConfiguredRuntimeHostOptions,
 	openConfiguredRuntimeHost,
 } from "./daemon";
+export { type RuntimeFailure, runtimeFailureSchema } from "./failure";
 export {
 	type PromptAdmission,
 	type RuntimeCancelOutcome,
@@ -20,6 +21,8 @@ export {
 	RuntimeHostPromptRejected,
 	RuntimeHostRecoveryCorrupted,
 	type RuntimeHostRecoveryError,
+	type RuntimeHostRetryError,
+	RuntimeHostRetryUnavailable,
 	RuntimeHostSessionAlreadyExists,
 	RuntimeHostSessionControllerHeld,
 	RuntimeHostSessionNotFound,

@@ -19,7 +19,12 @@ import type {
 	RuntimeConfigurationAppend,
 	SessionEntryAppend,
 } from "./types";
-import { ProductSessionAdmissionConflict, ProductSessionAlreadyExists, ProductSessionNotFound } from "./types";
+import {
+	ProductSessionAdmissionConflict,
+	ProductSessionAlreadyExists,
+	ProductSessionNotFound,
+	promptAdmissionConflict,
+} from "./types";
 
 /**
  * Test/ephemeral implementation of the Runtime Host persistence interface.
@@ -165,26 +170,14 @@ export class InMemoryProductSessionPersistence<TAppState extends JsonObject = Js
 		return this.#enqueue(input.sessionId, async () => {
 			const loaded = await this.load(input.sessionId);
 			if (loaded.isErr()) return loaded;
-			if (loaded.value.snapshot.leafId !== input.inputEntry.parentId) {
+			const conflict = promptAdmissionConflict(loaded.value.snapshot.leafId, input);
+			if (conflict) return Result.err(conflict);
+			const entries = input.branch ? [input.branch, input.inputEntry] : [input.inputEntry];
+			// SessionStore appends cannot be rolled back, so every write-time conflict is checked up front.
+			if (entries.some((entry) => loaded.value.snapshot.entries.some((existing) => existing.id === entry.id))) {
 				return Result.err(
 					new ProductSessionAdmissionConflict({
-						message: `Prompt admission for Session "${input.sessionId}" used a stale leaf`,
-						sessionId: input.sessionId,
-					}),
-				);
-			}
-			if (input.operation.inputEntryId !== input.inputEntry.id) {
-				return Result.err(
-					new ProductSessionAdmissionConflict({
-						message: `Prompt admission for Session "${input.sessionId}" does not link its input entry`,
-						sessionId: input.sessionId,
-					}),
-				);
-			}
-			if (input.operation.startLeafId !== input.inputEntry.parentId) {
-				return Result.err(
-					new ProductSessionAdmissionConflict({
-						message: `Prompt admission for Session "${input.sessionId}" has inconsistent start leaf`,
+						message: `Prompt admission for Session "${input.sessionId}" reuses an existing entry id`,
 						sessionId: input.sessionId,
 					}),
 				);
@@ -207,7 +200,8 @@ export class InMemoryProductSessionPersistence<TAppState extends JsonObject = Js
 						}),
 					);
 				}
-				await this.#sessionStore.append(input.sessionId, input.inputEntry, stored.revision);
+				let revision = stored.revision;
+				for (const entry of entries) revision = await this.#sessionStore.append(input.sessionId, entry, revision);
 			} catch (error) {
 				return Result.err(
 					new ProductSessionAdmissionConflict({
@@ -231,10 +225,14 @@ export class InMemoryProductSessionPersistence<TAppState extends JsonObject = Js
 					);
 				}
 				facts.push(
-					{ sequence: nextSequence, kind: "entry", entry: structuredClone(input.inputEntry) },
-					{ sequence: nextSequence + 1, kind: "operation", record: structuredClone(input.operation) },
+					...entries.map((entry, index) => ({
+						sequence: nextSequence + index,
+						kind: "entry" as const,
+						entry: structuredClone(entry),
+					})),
+					{ sequence: nextSequence + entries.length, kind: "operation", record: structuredClone(input.operation) },
 				);
-				this.#nextJournalSequence.set(input.sessionId, nextSequence + 2);
+				this.#nextJournalSequence.set(input.sessionId, nextSequence + entries.length + 1);
 				const runtimeConfiguration = this.#runtimeConfigurations.get(input.sessionId);
 				const operationConfigurations = this.#operationRuntimeConfigurations.get(input.sessionId);
 				if (!runtimeConfiguration || !operationConfigurations) {

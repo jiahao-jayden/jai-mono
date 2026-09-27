@@ -141,8 +141,12 @@ export function upsertProject(project: DesktopProject): void {
 	});
 }
 
+/** Rolls the optimistic layout back to the catalog, then rejects so the caller can tell the user. */
 function resyncProjectsOnFailure(request: Promise<void>): Promise<void> {
-	return request.catch(() => desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.projects }));
+	return request.catch(async (error: unknown) => {
+		await desktopQueryClient.invalidateQueries({ queryKey: desktopQueryKeys.projects });
+		throw error;
+	});
 }
 
 export function reorderProjects(projectIds: readonly string[]): Promise<void> {

@@ -24,6 +24,7 @@ import { useTouchPrimary } from "@/hooks/use-touch-primary";
 import { useIcon } from "@/lib/icon-context";
 import { FileThumbnail } from "@/components/ui/file-thumbnail";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import {
 	createChatTokenStream,
 	highlightChatCode,
@@ -40,6 +41,7 @@ function CodeBlock({
 	children,
 	isStreaming = false,
 }: HTMLAttributes<HTMLPreElement> & { readonly isStreaming?: boolean }) {
+	const intl = useIntl();
 	const CopyIcon = useIcon("copy");
 	const CheckIcon = useIcon("check");
 	const [copied, setCopied] = useState(false);
@@ -50,7 +52,12 @@ function CodeBlock({
 	const value = String(codeElement?.props.children ?? children).replace(/\n$/, "");
 	const highlighted = useChatCodeHighlight(value, language, theme, isStreaming);
 	const copy = async () => {
-		await navigator.clipboard.writeText(value);
+		try {
+			await navigator.clipboard.writeText(value);
+		} catch {
+			toast.add({ title: intl.formatMessage(desktopMessages.commonCopyFailed), type: "error" });
+			return;
+		}
 		setCopied(true);
 		window.setTimeout(() => setCopied(false), 1200);
 	};

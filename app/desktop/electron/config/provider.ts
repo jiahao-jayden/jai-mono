@@ -301,10 +301,10 @@ function invalidInput(message: string) {
 	return providerConfigError("invalid_input", { message });
 }
 
-export function safeDiscoveryErrorData(cause: unknown, adapter: string | undefined) {
+/** Keeps only the HTTP status and request id of a failed model-list request; the upstream message never leaves the Host. */
+export function safeDiscoveryErrorData(cause: unknown) {
 	const data = isRecord(cause) && isRecord(cause.data) ? cause.data : {};
 	return {
-		adapter: adapter || undefined,
 		status: typeof data.status === "number" ? data.status : undefined,
 		requestId: typeof data.requestId === "string" ? data.requestId : undefined,
 	};

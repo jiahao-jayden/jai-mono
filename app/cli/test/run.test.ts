@@ -185,4 +185,29 @@ describe("run diagnostics", () => {
 			duration_ms: 987,
 		});
 	});
+
+	test("projects the Runtime Host failure code and redacted detail into diagnostics", () => {
+		expect(
+			projectCliPromptResult("session-1", {
+				text: "",
+				stopReason: "error",
+				totalCostUsd: 0,
+				toolCalls: 0,
+				toolErrors: 0,
+				durationMs: 5,
+				failure: {
+					code: "provider.auth_failed",
+					retryable: false,
+					action: "open_provider_settings",
+					detail: "401 Bearer [REDACTED]",
+				},
+			}).diagnostics,
+		).toEqual({
+			stop_reason: "error",
+			tool_calls: 0,
+			tool_errors: 0,
+			error_message: "401 Bearer [REDACTED]",
+			error_code: "provider.auth_failed",
+		});
+	});
 });

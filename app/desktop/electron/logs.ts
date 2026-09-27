@@ -1,6 +1,9 @@
 import { lstat, open, readdir, truncate, unlink } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
+import { TaggedError } from "better-result";
 import { DESKTOP_LOG_TAIL_BYTES, type DesktopLogFile, type DesktopLogTail } from "../shared/desktop-rpc";
+
+export class DesktopLogsOpenFailed extends TaggedError("desktop_logs.open_failed")<{ readonly message: string }> {}
 
 const LOG_DIRECTORIES = ["desktop", "runtime-host"] as const;
 const LOG_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;

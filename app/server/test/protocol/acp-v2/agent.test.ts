@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Result } from "better-result";
 import { AcpV2Agent } from "../../../src/protocol/acp-v2";
+import { ACP_RETRY_UNAVAILABLE } from "../../../src/protocol/acp-v2/types";
 import {
 	type RuntimeOperation,
 	type RuntimeOperationDriver,
@@ -103,6 +104,7 @@ describe("ACP v2 Agent adapter", () => {
 					update: {
 						sessionUpdate: "state_update",
 						state: "running",
+						operationId: "operation-1",
 					},
 				},
 			},
@@ -644,7 +646,7 @@ describe("ACP v2 Agent adapter", () => {
 				method: "session/update",
 				params: {
 					sessionId: "session-1",
-					update: { sessionUpdate: "state_update", state: "idle", stopReason: "cancelled" },
+					update: { sessionUpdate: "state_update", state: "idle", stopReason: "cancelled", operationId: "operation-1" },
 				},
 			},
 		]);
@@ -736,10 +738,90 @@ describe("ACP v2 Agent adapter", () => {
 				method: "session/update",
 				params: {
 					sessionId: "session-1",
-					update: { sessionUpdate: "state_update", state: "idle", stopReason: "end_turn" },
+					update: { sessionUpdate: "state_update", state: "idle", stopReason: "end_turn", operationId: "operation-1" },
 				},
 			},
 		]);
+	});
+
+	test("projects a provider failure as a redacted, truncated state_update failure on live and replay", async () => {
+		const driver = new ProjectionDriver();
+		const persistence = new InMemoryProductSessionPersistence();
+		const host = new RuntimeHost({ persistence, operationDriver: driver, createId: ids("session-1", "operation-1") });
+		const agent = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: { protocolVersion: 2, capabilities: {}, info: { name: "test-client", version: "1.0.0" } },
+		});
+		await agent.handle({ jsonrpc: "2.0", id: 2, method: "session/new", params: { cwd: "/workspace" } });
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 3,
+			method: "session/prompt",
+			params: { sessionId: "session-1", prompt: [{ type: "text", text: "hi" }] },
+		});
+		await driver.opened;
+
+		const attempted = await persistence.appendOperation({
+			sessionId: "session-1",
+			record: {
+				type: "model_attempted",
+				operationId: "operation-1",
+				attemptId: "attempt-1",
+				assistantEntryId: "assistant-1",
+				modelSnapshotId: "test:test-model",
+				timestamp: "2026-08-25T12:00:00.000Z",
+			},
+		});
+		if (attempted.isErr()) throw attempted.error;
+		await driver.appendAssistant("", `502 OAuth access token is invalid. Bearer sk-live-secret ${"x".repeat(3000)}`);
+		expect(agent.drain()).toEqual([]);
+
+		driver.finish("failed");
+		await driver.closed;
+		const expected = {
+			sessionUpdate: "state_update",
+			state: "idle",
+			stopReason: "error",
+			operationId: "operation-1",
+			failure: {
+				code: "provider.auth_failed",
+				retryable: false,
+				action: "open_provider_settings",
+				detail: `502 OAuth access token is invalid. Bearer [REDACTED] ${"x".repeat(3000)}`.slice(0, 2000),
+			},
+		};
+		const live = agent.drain();
+		expect(live.at(-1)).toEqual({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: { sessionId: "session-1", update: expected },
+		});
+		expect(JSON.stringify(live)).not.toContain("agent_error");
+		expect(JSON.stringify(live)).not.toContain("errorMessage");
+		await agent.close();
+
+		const replayer = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		await replayer.handle({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: { protocolVersion: 2, capabilities: {}, info: { name: "test-client", version: "1.0.0" } },
+		});
+		const replayed = await replayer.handle({
+			jsonrpc: "2.0",
+			id: 2,
+			method: "session/resume",
+			params: { sessionId: "session-1", cwd: "/workspace", replayFrom: { type: "start" } },
+		});
+		expect(replayed.at(-2)).toEqual({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: { sessionId: "session-1", update: expected },
+		});
+		expect(JSON.stringify(replayed)).not.toContain("agent_error");
 	});
 
 	test("projects disposable live chunks while durable entries remain the replay frontier", async () => {
@@ -1327,6 +1409,8 @@ describe("ACP v2 Agent adapter", () => {
 						sessionUpdate: "state_update",
 						state: "idle",
 						stopReason: "interrupted",
+						operationId: "operation-1",
+						failure: { code: "runtime.interrupted", retryable: true, action: "retry" },
 					},
 				},
 			},
@@ -1498,6 +1582,76 @@ describe("ACP v2 Agent adapter", () => {
 		expect(JSON.stringify(replayed)).not.toContain("assistant-1");
 	});
 
+	test("session/retry re-admits the failed turn and reports an unavailable retry by code", async () => {
+		const persistence = new InMemoryProductSessionPersistence();
+		const driver = new ProjectionDriver();
+		const host = new RuntimeHost({
+			persistence,
+			operationDriver: driver,
+			createId: ids("session-1", "operation-1", "operation-2"),
+		});
+		const agent = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: { protocolVersion: 2, capabilities: {}, info: { name: "test-client", version: "1.0.0" } },
+		});
+		const detached = await agent.handle({
+			jsonrpc: "2.0",
+			id: 2,
+			method: "session/retry",
+			params: { sessionId: "session-1" },
+		});
+		expect(detached).toContainEqual({
+			jsonrpc: "2.0",
+			id: 2,
+			error: { code: -32004, message: "ACP session is not active" },
+		});
+		await agent.handle({ jsonrpc: "2.0", id: 3, method: "session/new", params: { cwd: "/workspace" } });
+		const nothingFailed = await agent.handle({
+			jsonrpc: "2.0",
+			id: 4,
+			method: "session/retry",
+			params: { sessionId: "session-1" },
+		});
+		expect(nothingFailed).toContainEqual({
+			jsonrpc: "2.0",
+			id: 4,
+			error: { code: ACP_RETRY_UNAVAILABLE, message: "ACP retry is unavailable" },
+		});
+
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 5,
+			method: "session/prompt",
+			params: { sessionId: "session-1", prompt: [{ type: "text", text: "start" }] },
+		});
+		await driver.opened;
+		await driver.appendAssistant("", "boom");
+		driver.finish("failed");
+		await driver.closed;
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const retried = await agent.handle({
+			jsonrpc: "2.0",
+			id: 6,
+			method: "session/retry",
+			params: { sessionId: "session-1" },
+		});
+		expect(retried).toContainEqual({ jsonrpc: "2.0", id: 6, result: {} });
+		const replayed = await agent.handle({
+			jsonrpc: "2.0",
+			id: 7,
+			method: "session/resume",
+			params: { sessionId: "session-1", cwd: "/workspace", replayFrom: { type: "start" } },
+		});
+		const userMessages = replayed.filter(
+			(message) => "params" in message && JSON.stringify(message.params).includes('"sessionUpdate":"user_message"'),
+		);
+		expect(userMessages).toHaveLength(1);
+		expect(JSON.stringify(userMessages[0])).toContain("operation-2:input");
+	});
 });
 
 function configuredSessionPolicy(): RuntimeSessionConfigurationPolicy {
@@ -1574,7 +1728,7 @@ class ProjectionDriver implements RuntimeOperationDriver {
 		});
 	}
 
-	async appendAssistant(text: string): Promise<void> {
+	async appendAssistant(text: string, error?: string): Promise<void> {
 		const input = this.#input;
 		if (!input) throw new Error("Operation was not opened");
 		const stored = await input.sessionStore.load(input.sessionId);
@@ -1588,7 +1742,7 @@ class ProjectionDriver implements RuntimeOperationDriver {
 				timestamp: "2026-08-25T12:00:00.000Z",
 				message: {
 					role: "assistant",
-					content: [{ type: "text", text }],
+					content: text ? [{ type: "text", text }] : [],
 					provider: "test",
 					model: "test-model",
 					usage: {
@@ -1599,7 +1753,8 @@ class ProjectionDriver implements RuntimeOperationDriver {
 						totalTokens: 0,
 						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 					},
-					stopReason: "stop",
+					stopReason: error ? "error" : "stop",
+					error: error ? { message: error, status: 502 } : undefined,
 					timestamp: Date.now(),
 				},
 			},

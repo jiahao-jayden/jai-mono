@@ -187,3 +187,37 @@ export function normalizeProviderError(error: unknown): ProviderErrorInfo {
 
 	return result;
 }
+
+export type ProviderFailureKind =
+	| "auth_failed"
+	| "rate_limited"
+	| "context_overflow"
+	| "invalid_request"
+	| "unavailable"
+	| "network"
+	| "unknown";
+
+const AUTH_CODE_PATTERN = /auth|permission|api[_-]?key|unauthori[sz]ed|forbidden/iu;
+const RATE_LIMIT_CODE_PATTERN = /rate[_-]?limit/iu;
+// ponytail: gateways that wrap an upstream 401 in a 5xx only reveal it in free text; this can misfire on
+// unrelated messages. Replace with a structured field once gateways expose the upstream status.
+const WRAPPED_AUTH_MESSAGE_PATTERN = /\b401\b|unauthori[sz]ed|authenticat|invalid[ _-]?api[ _-]?key|oauth/iu;
+const NETWORK_PATTERN =
+	/network|timed? ?out|timeout|connection (?:error|refused|reset)|fetch failed|socket hang up|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|UND_ERR/iu;
+
+/** Classifies a recorded provider failure; the caller owns the mapping to wire codes and user actions. */
+export function providerFailureKind(error: ProviderErrorInfo | undefined, stopReason: StopReason): ProviderFailureKind {
+	if (stopReason === "contextOverflow") return "context_overflow";
+	if (!error) return "unknown";
+	const code = `${error.code ?? ""} ${error.type ?? ""}`;
+	if (/context_length_exceeded/iu.test(code)) return "context_overflow";
+	const status = error.status;
+	if (status === 401 || status === 403 || AUTH_CODE_PATTERN.test(code)) return "auth_failed";
+	if (status === 429 || RATE_LIMIT_CODE_PATTERN.test(code)) return "rate_limited";
+	if (status !== undefined && status >= 500) {
+		return WRAPPED_AUTH_MESSAGE_PATTERN.test(error.message) ? "auth_failed" : "unavailable";
+	}
+	if (status !== undefined && status >= 400) return "invalid_request";
+	if (status === undefined && NETWORK_PATTERN.test(`${code} ${error.message}`)) return "network";
+	return "unknown";
+}

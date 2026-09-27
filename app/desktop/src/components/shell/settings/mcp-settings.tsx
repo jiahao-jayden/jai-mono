@@ -29,6 +29,7 @@ export function McpSettings({ snapshot, loading, loadError, onRetry, onSave, onR
 	const [error, setError] = useState<string>();
 	const [status, setStatus] = useState<DesktopMcpStatus>();
 	const [statusLoading, setStatusLoading] = useState(false);
+	const [statusFailed, setStatusFailed] = useState(false);
 
 	const initialJson = useMemo(() => stringifyMcp(snapshot?.mcp), [snapshot]);
 
@@ -42,8 +43,10 @@ export function McpSettings({ snapshot, loading, loadError, onRetry, onSave, onR
 		try {
 			const result = await onRefreshStatus();
 			setStatus(result);
+			setStatusFailed(false);
 		} catch {
 			setStatus(undefined);
+			setStatusFailed(true);
 		} finally {
 			setStatusLoading(false);
 		}
@@ -74,11 +77,12 @@ export function McpSettings({ snapshot, loading, loadError, onRetry, onSave, onR
 	};
 
 	if (!snapshot) {
+		const loadStateRole = loadError ? "alert" : "status";
 		return (
 			<div className="flex min-h-0 flex-1 items-center justify-center px-8 py-10 text-center">
 				<div className="max-w-80">
 					<PlugIcon className="mx-auto mb-3 size-5 text-muted-foreground" />
-					<p className="text-[14px] font-semibold">
+					<p className="text-[14px] font-semibold" role={loadStateRole}>
 						{intl.formatMessage(loading ? desktopMessages.settingsLoading : desktopMessages.settingsUnavailable)}
 					</p>
 					{loadError ? (
@@ -143,12 +147,20 @@ export function McpSettings({ snapshot, loading, loadError, onRetry, onSave, onR
 				</p>
 			) : null}
 
-			<McpStatusTable status={status} loading={statusLoading} />
+			<McpStatusTable status={status} loading={statusLoading} failed={statusFailed} />
 		</div>
 	);
 }
 
-function McpStatusTable({ status, loading }: { readonly status?: DesktopMcpStatus; readonly loading: boolean }) {
+export function McpStatusTable({
+	status,
+	loading,
+	failed,
+}: {
+	readonly status?: DesktopMcpStatus;
+	readonly loading: boolean;
+	readonly failed: boolean;
+}) {
 	const intl = useIntl();
 	const servers = status?.servers ?? [];
 
@@ -156,6 +168,14 @@ function McpStatusTable({ status, loading }: { readonly status?: DesktopMcpStatu
 		return (
 			<p className="text-[13px] text-muted-foreground" role="status">
 				{intl.formatMessage(desktopMessages.settingsMcpRefreshing)}
+			</p>
+		);
+	}
+
+	if (failed) {
+		return (
+			<p className="text-[13px] text-destructive" role="alert">
+				{intl.formatMessage(desktopMessages.settingsMcpStatusError)}
 			</p>
 		);
 	}
@@ -217,7 +237,12 @@ function McpStatusRow({ server }: { readonly server: DesktopMcpServerStatus }) {
 					<span className={dotClassName} aria-hidden="true" />
 					{statusText}
 				</span>
-				{server.error ? <p className="mt-0.5 text-[12px] text-muted-foreground">{server.error}</p> : null}
+				{/* The Host's probe text is a fixed English sentence naming the server, with no cause worth copying. */}
+				{server.error ? (
+					<p className="mt-0.5 text-[12px] text-muted-foreground" role="alert">
+						{intl.formatMessage(desktopMessages.settingsMcpServerConnectError)}
+					</p>
+				) : null}
 			</td>
 			<td className="px-3 py-2 text-muted-foreground">{server.connected ? server.toolCount : "—"}</td>
 		</tr>

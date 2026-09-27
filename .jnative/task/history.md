@@ -1,5 +1,12 @@
 # 历史需求
 
+## 统一错误提示：Failure 分类、聊天提示位与 Toast 重做
+
+结果：completed
+Tracker：https://github.com/jiahao-jayden/jai-mono/issues/136
+归档日期：2026-09-27
+本地历史：-
+
 ## Harness Usage 仪表盘、分支过滤与 Quirks 分层
 
 结果：completed

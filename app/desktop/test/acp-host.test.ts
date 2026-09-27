@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { Result, type Result as ResultType } from "better-result";
-import type {
-	AcpJsonRpcNotification,
-	AcpJsonRpcRequest,
-	AcpJsonRpcResponse,
-	AcpLocalClientError,
-	LocalAcpV2Client,
+import {
+	ACP_RETRY_UNAVAILABLE,
+	type AcpJsonRpcNotification,
+	type AcpJsonRpcRequest,
+	type AcpJsonRpcResponse,
+	type AcpLocalClientError,
+	AcpLocalClientRequestFailed,
+	type LocalAcpV2Client,
 } from "@jai/server/acp-client";
 import { DesktopAcpAgentHost } from "../electron/agent/acp-host";
 import type { DesktopRuntimeHostSupervisor } from "../electron/runtime-host/supervisor";
@@ -327,6 +329,48 @@ describe("DesktopAcpAgentHost", () => {
 			delivery: "follow_up",
 			prompt: [{ type: "text", text: "then summarize" }],
 		});
+		host.close();
+	});
+
+	test("retry applies changed configuration before session/retry and classifies an unavailable retry", async () => {
+		const client = new FakeAcpClient();
+		client.resumeResult = {
+			configOptions: [
+				{ configId: "model", currentValue: "profile/model-a" },
+				{ configId: "permissionMode", currentValue: controls.permissionMode },
+				{ configId: "interactionMode", currentValue: controls.interactionMode },
+				{ configId: "reasoningLevel", currentValue: controls.reasoningLevel ?? "default" },
+				{ configId: "fastMode", currentValue: controls.fastMode },
+			],
+		};
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+
+		await expect(host.retry({ sessionId: "session-1", modelRef: "profile/model-b", controls })).resolves.toEqual({
+			accepted: true,
+		});
+		expect(client.methods).toEqual([
+			"initialize",
+			"session/resume",
+			"session/set_config_option",
+			"session/retry",
+			"session/resume",
+		]);
+		expect(client.params[2]).toMatchObject({ sessionId: "session-1", configId: "model", value: "profile/model-b" });
+		expect(client.params[3]).toEqual({ sessionId: "session-1" });
+
+		client.retryError = new AcpLocalClientRequestFailed({
+			endpoint: "test",
+			requestId: 1,
+			code: ACP_RETRY_UNAVAILABLE,
+			message: "ACP retry is unavailable",
+		});
+		await expect(host.retry({ sessionId: "session-1", modelRef: "profile/model-b", controls })).rejects.toMatchObject(
+			{ _tag: "desktop_agent.retry_unavailable" },
+		);
 		host.close();
 	});
 
@@ -997,7 +1041,7 @@ describe("DesktopAcpAgentHost", () => {
 		host.close();
 	});
 
-	test("projects runtime failures without exposing the server errorMessage", async () => {
+	test("converts a state_update failure into the status event and snapshot, with no transcript error item", async () => {
 		const client = new FakeAcpClient();
 		const events: DesktopAgentEventEnvelope[] = [];
 		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
@@ -1005,27 +1049,118 @@ describe("DesktopAcpAgentHost", () => {
 			resolveSessionCwd: async () => "/workspace",
 		});
 		await host.ensureSessionProjection("session-1");
+		for (const update of [
+			{ sessionUpdate: "agent_error", messageId: "assistant-1", message: "raw server message" },
+			{
+				sessionUpdate: "state_update",
+				state: "idle",
+				stopReason: "error",
+				operationId: "op-1",
+				errorMessage: "Coding Agent failed while executing Operation: model rate limit api_key=secret",
+				failure: {
+					code: "provider.auth_failed",
+					retryable: false,
+					action: "open_provider_settings",
+					detail: "502 Bearer [REDACTED]",
+				},
+			},
+		]) {
+			client.publish({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "session-1", update } });
+		}
+
+		const failure = {
+			code: "provider.auth_failed",
+			retryable: false,
+			action: "open_provider_settings",
+			detail: "502 Bearer [REDACTED]",
+		};
+		expect(events.at(-1)?.event).toEqual({
+			type: "status",
+			status: "idle",
+			stopReason: "error",
+			operationId: "op-1",
+			failure,
+		});
+		const snapshot = host.getSnapshot("session-1");
+		expect(snapshot).toMatchObject({ operationId: "op-1", failure });
+		expect(snapshot.items).toEqual([]);
+		expect(JSON.stringify(events)).not.toContain("api_key");
+		expect(JSON.stringify(events)).not.toContain("raw server message");
+		expect(events.map((event) => event.event.type)).toEqual(["status"]);
+
 		client.publish({
 			jsonrpc: "2.0",
 			method: "session/update",
-			params: {
-				sessionId: "session-1",
-				update: {
-					sessionUpdate: "state_update",
-					state: "idle",
-					stopReason: "error",
-					errorMessage: "Coding Agent failed while executing Operation \"op-1\": model rate limit",
-				},
-			},
+			params: { sessionId: "session-1", update: { sessionUpdate: "state_update", state: "running", operationId: "op-2" } },
 		});
+		expect(host.getSnapshot("session-1")).toMatchObject({ status: "running", operationId: "op-2", failure: undefined });
+		host.close();
+	});
 
-		const runtimeError = events.find((e) => e.event.type === "runtime_error");
-		expect(runtimeError).toMatchObject({
-			event: {
-				type: "runtime_error",
-				error: { code: "Runtime Host operation failed" },
-			},
+	test("degrades an unrecognised failure code or shape to unknown", async () => {
+		const client = new FakeAcpClient();
+		const events: DesktopAgentEventEnvelope[] = [];
+		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
+			client,
+			resolveSessionCwd: async () => "/workspace",
 		});
+		await host.ensureSessionProjection("session-1");
+		for (const failure of [
+			{ code: "provider.brand_new", retryable: true, detail: "kept out" },
+			{ code: "provider.auth_failed", retryable: false, stack: "at secret()" },
+		]) {
+			client.publish({
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: { sessionId: "session-1", update: { sessionUpdate: "state_update", state: "idle", stopReason: "error", failure } },
+			});
+			expect(events.at(-1)?.event).toMatchObject({ type: "status", failure: { code: "unknown", retryable: false } });
+			expect(host.getSnapshot("session-1").failure).toEqual({ code: "unknown", retryable: false });
+		}
+		expect(JSON.stringify(events)).not.toContain("kept out");
+		expect(JSON.stringify(events)).not.toContain("secret()");
+		host.close();
+	});
+
+	test("rejects a failed steer to the RPC caller instead of emitting an event", async () => {
+		const client = new FakeAcpClient();
+		const events: DesktopAgentEventEnvelope[] = [];
+		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+		client.promptError = "prompt rejected";
+
+		await expect(
+			host.steer({ sessionId: "session-1", modelRef: "profile/model", controls, message: "change direction" }),
+		).rejects.toMatchObject({ _tag: "desktop_agent.acp_request_failed", method: "session/prompt" });
+		expect(events).toEqual([]);
+		host.close();
+	});
+
+	test("marks a Session whose projection cannot be rebuilt as restart_failed and rejects the reconnect caller", async () => {
+		const first = new FakeAcpClient();
+		const second = new FakeAcpClient();
+		second.resumeError = "Session is gone";
+		const supervisor = {
+			connect: async () => Result.ok(second),
+			retry: async () => Result.ok(second),
+		} as unknown as DesktopRuntimeHostSupervisor;
+		const events: DesktopAgentEventEnvelope[] = [];
+		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
+			client: first,
+			runtimeHostSupervisor: supervisor,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+
+		await expect(host.retryConnection()).rejects.toMatchObject({
+			_tag: "desktop_agent.acp_request_failed",
+			method: "session/resume",
+		});
+		expect(events.at(-1)?.event).toEqual({ type: "connection_status", status: "restart_failed" });
+		expect(host.getSnapshot("session-1").connectionStatus).toBe("restart_failed");
 		host.close();
 	});
 
@@ -1054,7 +1189,7 @@ describe("DesktopAcpAgentHost", () => {
 			sessionId: "session-1",
 			event: { type: "status", status: "idle", stopReason: "interrupted" },
 		});
-		expect(events.filter((event) => event.event.type === "runtime_error")).toHaveLength(0);
+		expect(events).toHaveLength(1);
 		host.close();
 	});
 
@@ -1196,6 +1331,8 @@ class FakeAcpClient implements LocalAcpV2Client {
 	resumeSucceeds = true;
 	resumeResult: unknown = {};
 	notifyError?: AcpLocalClientError;
+	retryError?: AcpLocalClientError;
+	promptError?: string;
 	subagentTranscript?: { readonly items: readonly unknown[] };
 	subagentTranscriptError?: string;
 
@@ -1208,6 +1345,10 @@ class FakeAcpClient implements LocalAcpV2Client {
 				return Result.err({ message: 'Session "session-1" does not exist' } as AcpLocalClientError);
 			}
 			return Result.ok(this.resumeResult);
+		}
+		if (method === "session/retry" && this.retryError) return Result.err(this.retryError);
+		if (method === "session/prompt" && this.promptError) {
+			return Result.err({ message: this.promptError } as AcpLocalClientError);
 		}
 		if (method === "session/subagent_transcript") {
 			if (this.subagentTranscriptError) {
