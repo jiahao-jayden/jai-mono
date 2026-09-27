@@ -1,6 +1,7 @@
 import { BrowserWindow, shell } from "electron";
 import { join } from "path";
 import { getMacTrafficLightPosition } from "../shared/desktop-chrome";
+import { shouldOpenExternalUrl } from "./external-url";
 
 const isMac = process.platform === "darwin";
 
@@ -33,6 +34,11 @@ export function createMainWindow(): BrowserWindow {
 	win.webContents.setWindowOpenHandler((details: Electron.HandlerDetails) => {
 		shell.openExternal(details.url);
 		return { action: "deny" };
+	});
+	win.webContents.on("will-navigate", (details) => {
+		if (!shouldOpenExternalUrl(win.webContents.getURL(), details.url)) return;
+		details.preventDefault();
+		shell.openExternal(details.url);
 	});
 
 	if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {

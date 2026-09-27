@@ -4,6 +4,7 @@ import {
 	forwardRef,
 	isValidElement,
 	memo,
+	type ComponentProps,
 	type HTMLAttributes,
 	type ReactNode,
 	useEffect,
@@ -88,6 +89,17 @@ function CodeBlock({
 			</div>
 			<div data-streamdown="code-block-body">{body}</div>
 		</div>
+	);
+}
+
+function MarkdownLink({ node: _node, href, children, ...props }: ComponentProps<"a"> & { readonly node?: unknown }) {
+	const external = typeof href === "string" && href.length > 0 && !href.startsWith("#");
+	const target = external ? "_blank" : undefined;
+	const rel = external ? "noopener noreferrer" : undefined;
+	return (
+		<a {...props} href={href} target={target} rel={rel}>
+			{children}
+		</a>
 	);
 }
 
@@ -186,6 +198,7 @@ export const MarkdownContent = memo(function MarkdownContent({
 		<div className={cn("chat-markdown", isStreaming && "chat-markdown-streaming", className)} aria-live="off">
 			<Streamdown
 				components={{
+					a: MarkdownLink,
 					pre: (props) => <CodeBlock {...props} isStreaming={isStreaming} />,
 					table: MarkdownTable,
 				}}
