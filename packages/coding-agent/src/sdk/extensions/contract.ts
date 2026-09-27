@@ -354,9 +354,11 @@ export interface CodingExtensionToolCatalog<
 	readonly id: string;
 	/**
 	 * How catalog entries reach the model. `searchable` (default) entries go into the
-	 * `SearchTools` directory and are loaded on demand. `announced` entries never enter
-	 * the directory; core injects the full list as a capability notice on first run and
-	 * after compaction, with incremental diffs on subsequent runs.
+	 * `SearchTools` directory and are loaded on demand. A change notice names the server,
+	 * or the tool when it has no server, and does not include tool descriptions.
+	 * `announced` entries never enter the directory; core injects the full list as a
+	 * capability notice on first run and after compaction, with incremental diffs on
+	 * subsequent runs.
 	 */
 	readonly presentation?: "searchable" | "announced";
 	discover(

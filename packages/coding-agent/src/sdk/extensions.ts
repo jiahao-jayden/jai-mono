@@ -716,25 +716,33 @@ class ExtensionCatalogRefreshCoordinator {
 		const removals: string[] = [];
 		const updates: string[] = [];
 		const initial: string[] = [];
-		let hasReplaced = false;
+		const searchableAdded = new Set<string>();
+		const searchableRemoved = new Set<string>();
 		for (const [catalogId, binding] of this.#bindings) {
 			// An announced binding that was never told is an initial snapshot, not a change.
 			if (binding.presentation === "announced" && binding.lastTold.size === 0 && binding.current.size > 0) {
 				initial.push(renderAnnouncedCatalog(catalogId, binding.current));
 				continue;
 			}
+			// Searchable tools stay behind SearchTools. The notice names the server (or the
+			// tool, when it has no server) and stops there. Pasting each tool description
+			// reads as a user request to call it.
+			if (binding.presentation === "searchable") {
+				const previous = searchableGroups(binding.lastTold);
+				const current = searchableGroups(binding.current);
+				for (const name of current) if (!previous.has(name)) searchableAdded.add(name);
+				for (const name of previous) if (!current.has(name)) searchableRemoved.add(name);
+				continue;
+			}
 			const diff = diffCatalog(binding.lastTold, binding.current);
 			for (const [name, description] of diff.added) additions.push(`${name} (${description})`);
 			for (const name of diff.removed) removals.push(name);
 			for (const [name, description] of diff.changed) updates.push(`${name} (${description})`);
-			if (
-				binding.presentation === "searchable" &&
-				(diff.added.length || diff.removed.length || diff.changed.length)
-			) {
-				hasReplaced = true;
-			}
 		}
-		if (!additions.length && !removals.length && !updates.length && !initial.length) return undefined;
+		const searchableNotice = renderSearchableNotice(searchableAdded, searchableRemoved);
+		if (!additions.length && !removals.length && !updates.length && !initial.length && !searchableNotice) {
+			return undefined;
+		}
 		const slot = this.#registries.capabilityNotice;
 		for (const [catalogId, binding] of this.#bindings) {
 			binding.lastTold = binding.current;
@@ -744,7 +752,7 @@ class ExtensionCatalogRefreshCoordinator {
 		if (additions.length) lines.push(`新增: ${additions.join(", ")}`);
 		if (removals.length) lines.push(`删除: ${removals.join(", ")}`);
 		if (updates.length) lines.push(`更新: ${updates.join(", ")}`);
-		if (hasReplaced) lines.push("之前的工具引用已失效，请用 SearchTools 重新查找。");
+		if (searchableNotice) lines.push(searchableNotice);
 		return {
 			role: "user",
 			content: [...initial, ...lines].join("\n"),
@@ -926,6 +934,32 @@ function diffCatalog(
 	}
 	for (const name of lastTold.keys()) if (!current.has(name)) removed.push(name);
 	return { added, removed, changed };
+}
+
+/** MCP tools are `mcp__<namespace>__<server>__<tool>`. The notice names the server once. */
+function searchableGroup(name: string): string {
+	const parts = name.split("__");
+	if (parts.length >= 4 && parts[0] === "mcp" && parts[2]) return parts[2];
+	return name;
+}
+
+function searchableGroups(tools: ReadonlyMap<string, string>): Set<string> {
+	return new Set([...tools.keys()].map(searchableGroup));
+}
+
+function renderSearchableNotice(added: ReadonlySet<string>, removed: ReadonlySet<string>): string | undefined {
+	if (added.size === 0 && removed.size === 0) return undefined;
+	const lines = ["<tools>"];
+	if (added.size > 0) {
+		lines.push("Added:");
+		for (const name of [...added].sort()) lines.push(`- ${name}`);
+	}
+	if (removed.size > 0) {
+		lines.push("Removed:");
+		for (const name of [...removed].sort()) lines.push(`- ${name}`);
+	}
+	lines.push("</tools>");
+	return lines.join("\n");
 }
 
 function renderAnnouncedCatalog(catalogId: string, tools: ReadonlyMap<string, string>): string {

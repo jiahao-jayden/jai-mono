@@ -456,13 +456,69 @@ describe("Capability Change Notice", () => {
 		expect(secondNotice!.role).toBe("user");
 		expect((secondNotice as { metadata: unknown }).metadata).toEqual({ synthetic: true });
 		const text = typeof secondNotice!.content === "string" ? secondNotice!.content : "";
-		expect(text).toContain("ToolBeta");
-		expect(text).toContain("ToolAlpha");
-		expect(text).toContain("SearchTools");
+		expect(text).toContain("<tools>");
+		expect(text).toContain("- ToolBeta");
+		expect(text).toContain("- ToolAlpha");
+		expect(text).not.toContain("description");
+		expect(text).not.toContain("SearchTools");
 
 		const thirdNotice = await capabilityNotice.current!.produceNotice();
 		expect(thirdNotice).toBeUndefined();
 
+		await disposeExtensions(prepared.value);
+	});
+
+	test("searchable MCP tools are announced once by server, without tool descriptions", async () => {
+		let tools: ReturnType<typeof catalogTool>[] = [];
+		let invalidate: (() => void) | undefined;
+		const extension = defineExtension({
+			id: "late-mcp",
+			catalogs: [
+				{
+					id: "tools",
+					discover: () => Result.ok({ tools }),
+					subscribe: (_runtime, notify) => {
+						invalidate = notify;
+						return () => {};
+					},
+				},
+			],
+		});
+		const prepared = prepareExtensions([extension]);
+		expect(prepared.isOk()).toBe(true);
+		if (prepared.isErr()) return;
+		const capabilityNotice: {
+			current?: {
+				produceNotice(): Promise<AgentMessage | undefined>;
+				announcedSnapshot(): string;
+			};
+			lastTold: Map<string, ReadonlyMap<string, string>>;
+		} = { lastTold: new Map() };
+		const activated = await activateExtensions(prepared.value, context, undefined, undefined, {
+			toolCatalog: new ToolCatalog([]),
+			capabilityNotice,
+		});
+		expect(activated.isOk()).toBe(true);
+		if (activated.isErr() || !invalidate) return;
+
+		expect(await capabilityNotice.current!.produceNotice()).toBeUndefined();
+
+		tools = [
+			catalogTool("mcp__mcp__we0__get_account", "Account"),
+			catalogTool("mcp__mcp__we0__list_websites", "Websites"),
+		];
+		invalidate();
+		await flushCatalogRefresh();
+
+		const notice = await capabilityNotice.current!.produceNotice();
+		expect(notice).toBeDefined();
+		const text = typeof notice!.content === "string" ? notice!.content : "";
+		expect(text).toBe("<tools>\nAdded:\n- we0\n</tools>");
+		expect(text).not.toContain("get_account");
+		expect(text).not.toContain("list_websites");
+		expect(text).not.toContain("SearchTools");
+
+		expect(await capabilityNotice.current!.produceNotice()).toBeUndefined();
 		await disposeExtensions(prepared.value);
 	});
 
@@ -580,9 +636,11 @@ describe("Capability Change Notice", () => {
 		const notice = await capabilityNotice.current!.produceNotice();
 		expect(notice).toBeDefined();
 		const text = typeof notice!.content === "string" ? notice!.content : "";
-		expect(text).toContain("Tool2");
-		expect(text).toContain("Tool1");
-		expect(text).toContain("SearchTools");
+		expect(text).toContain("<tools>");
+		expect(text).toContain("- Tool2");
+		expect(text).toContain("- Tool1");
+		expect(text).not.toContain("description");
+		expect(text).not.toContain("SearchTools");
 
 		const next = await capabilityNotice.current!.produceNotice();
 		expect(next).toBeUndefined();
