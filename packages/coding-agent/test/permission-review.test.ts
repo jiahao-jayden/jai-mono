@@ -219,7 +219,10 @@ describe("model-backed auto review through the public SDK", () => {
 		expect(review.output_config).toBeUndefined();
 		expect(review.speed).toBeUndefined();
 		expect(review.tools).toBeUndefined();
-		expect(JSON.stringify(review)).toContain("Write a note saying hi");
+		const encodedReview = JSON.stringify(review);
+		expect(encodedReview).toContain("Write a note saying hi");
+		expect(encodedReview).toContain("read-only retrieval from an external tool or service");
+		expect(encodedReview).not.toContain("stays inside the workspace");
 		expect(session.agentRequests[0]).toMatchObject({
 			thinking: { type: "enabled" },
 			output_config: { effort: "high" },
