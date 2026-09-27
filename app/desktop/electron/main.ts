@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { resolveJaiDataDirectory } from "@jai/server/acp-client";
-import { app, BrowserWindow, Menu, type MenuItemConstructorOptions, shell } from "electron";
+import { app, BrowserWindow, Menu, type MenuItemConstructorOptions, nativeImage, shell } from "electron";
 import { mainLog } from "./logger";
 import { createDesktopRouter } from "./rpc/router";
 import { registerDesktopRpc } from "./rpc/server";
@@ -49,6 +49,7 @@ if (!app.requestSingleInstanceLock()) {
 	void app
 		.whenReady()
 		.then(async () => {
+			installDockIcon();
 			installApplicationMenu();
 			const runtimeHostSupervisor = new DesktopRuntimeHostSupervisor();
 			try {
@@ -140,6 +141,18 @@ function isConnectorOAuthCallback(value: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+/** Unpackaged macOS keeps Electron's dock icon. Packaged builds use the icns from Forge. */
+function installDockIcon(): void {
+	if (!isMac || app.isPackaged) return;
+	const iconPath = join(app.getAppPath(), "../../img/logo-dock.png");
+	const icon = nativeImage.createFromPath(iconPath);
+	if (icon.isEmpty()) {
+		mainLog.warn("Development dock icon could not be loaded:", iconPath);
+		return;
+	}
+	app.dock?.setIcon(icon);
 }
 
 function installApplicationMenu(): void {

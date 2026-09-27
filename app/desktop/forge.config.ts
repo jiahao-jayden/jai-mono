@@ -24,6 +24,8 @@ const config: ForgeConfig = {
 			unpack: "**/{*.node,spawn-helper}",
 		},
 		executableName: "JAI",
+		// Packager appends .icns / .png / .ico from img/logo-dock.*.
+		icon: join(import.meta.dirname, "../../img/logo-dock"),
 		extraResource: [...wasmResources, runtimeHostResource],
 		protocols: [
 			{
