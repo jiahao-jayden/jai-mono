@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+/*
+ * Palette follows DESIGN.md: one ink color and its alpha ladder carry every
+ * layer; bamboo green is the only brand hue (links, wordmark, focus). The warm
+ * cream ground is sampled from the hero painting. Light theme only for now —
+ * the painting and the single screenshot set are both light.
+ */
+:root {
+	--page: #f4f0e6;
+	--surface: #fbf9f3;
+	--ink: #1f1d18;
+	--brand: oklch(0.55 0.1 150);
+	/* Same corner curve as app/desktop/src/styles/global.css. */
+	--squircle-factor: 1.4;
+}
+
+@theme inline {
+	--color-page: var(--page);
+	--color-surface: var(--surface);
+	--color-ink: var(--ink);
+	--color-ink-secondary: color-mix(in oklch, var(--ink) 72%, var(--page));
+	--color-ink-tertiary: color-mix(in oklch, var(--ink) 60%, var(--page));
+	--color-line: color-mix(in oklch, var(--ink) 12%, transparent);
+	--color-line-strong: color-mix(in oklch, var(--ink) 22%, transparent);
+	--color-wash: color-mix(in oklch, var(--ink) 5%, transparent);
+	--color-brand: var(--brand);
+
+	--font-sans:
+		-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+		"Segoe UI", system-ui, sans-serif;
+	/*
+	 * Only the zh layout loads Noto Serif SC. Every var() needs a default: one
+	 * undefined custom property invalidates the whole font-family declaration.
+	 */
+	--font-display: var(--font-instrument-serif, Georgia), var(--font-noto-serif-sc, "Songti SC"), serif;
+}
+
+@layer base {
+	html {
+		background: var(--page);
+		color: var(--ink);
+		font-family: var(--font-sans);
+		-webkit-font-smoothing: antialiased;
+		scroll-behavior: smooth;
+		scroll-padding-top: 5rem;
+	}
+
+	::selection {
+		background: color-mix(in oklch, var(--brand) 22%, transparent);
+	}
+
+	:focus-visible {
+		outline: 2px solid var(--brand);
+		outline-offset: 3px;
+	}
+
+	[class*="rounded"] {
+		corner-shape: superellipse(var(--squircle-factor));
+	}
+
+	.rounded-full {
+		corner-shape: superellipse(1);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		html {
+			scroll-behavior: auto;
+		}
+	}
+}
+
+/*
+ * One painting, three crops. Each crop is a complete utility rather than a
+ * modifier on a shared base class, because Tailwind does not guarantee the
+ * order of two custom utilities that both set background-size. The source is
+ * 1672px wide, so a single file serves every density.
+ */
+@utility painting-hero {
+	background: url("/bg.webp") 50% 45% / cover no-repeat;
+}
+
+/* Sky and clouds only, as a backdrop for framed screenshots and panels. */
+@utility painting-sky {
+	background: url("/bg.webp") 70% 8% / 220% auto no-repeat;
+}
+
+/* The rock and the panda, for the closing section. */
+@utility painting-rock {
+	background: url("/bg.webp") 38% 85% / cover no-repeat;
+}
+
+/*
+ * Sections rise in as they scroll into view. Scroll-driven animation needs no
+ * JavaScript; browsers without it (and reduced-motion users) just see content.
+ */
+@supports (animation-timeline: view()) {
+	@media (prefers-reduced-motion: no-preference) {
+		.reveal {
+			animation: reveal linear both;
+			animation-timeline: view();
+			animation-range: entry 0% entry 40%;
+		}
+	}
+}
+
+@keyframes reveal {
+	from {
+		opacity: 0;
+		transform: translateY(16px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
