@@ -36,17 +36,17 @@ _Avoid_: global configuration, generic deep merge
 `@jai/extension/mcp` 提供的 MCP capability provider，拥有 per-session transport、client、重连、tool projection 与 server 配置解析；Coding Agent 仅通过通用动态 catalog 装配其工具。
 _Avoid_: Coding Agent MCP runtime, host-managed MCP client, Agent Plugin discovery
 
-**Capability Change Notice**:
-Operation 内工具目录或 skill 清单发生变化时写进 Session journal 的一条 user 消息：带 `metadata.synthetic: true`，只给模型看、用户界面不显示。`announced` 含名字与一句描述；`searchable` 放在一个 `<mcp>` 块里，按 server 列出工具名（没有 server 时只列工具名），不附工具描述和 schema，只提示先用 `SearchTools` 取参数再 `ExecuteTool`。首次 run 发全量，之后只发 Added/Removed。它只在用户下一条消息进来、新 run 发起时作为初始输入第一条投递，不打断进行中的 run，不走 `steer`。
-_Avoid_: system reminder, steer message, tools_changed event
+**Capability Inventory**:
+模型在 provider tools 之外能用到的能力清单，分三类：`tool`（声明了延迟加载的非 MCP 工具，包括默认 catalog 条目与 `loading: "deferred"` 的静态扩展工具）、`mcp`（MCP 工具，按 server 分组）、`skill`（Agent Skills，附一句描述）。`tool`/`mcp` 的 schema 只经 `SearchTools` 按需返回；`skill` 只走 Skill 工具。Current Inventory 是 catalog 刷新后的运行时内存状态，由 coding-agent 的 catalog 协调器产出。
+_Avoid_: tool registry, capability binding, catalog snapshot
 
-**Capability Binding**:
-coding-agent core 为每个 catalog 持有的"上一次告知模型的条目集合"，用来和当前 discover 结果比对得到差异。它是每个 Operation 的内存状态，打开时重建，不持久化；extension 不持有也不读取它。
-_Avoid_: discovery cache, tool registry snapshot, catalog store
+**Told Inventory**:
+当前分支上模型最近一次被告知的 Capability Inventory。它不是单独保存的状态，而是从 journal 中最近一次压缩之后最后一条 Capability Notice 的 `metadata.capabilityInventory` 折叠得出，所以 Host 重启、分支切换、压缩都直接继承 journal 语义：压缩后为空，下一轮重新发全量。
+_Avoid_: lastTold, last-told binding, notice cache
 
-**Catalog Presentation**:
-Extension catalog 声明条目如何到达模型：`searchable` 进 `SearchTools` 目录，schema 按需搜索，工具名以 `<mcp>` 全量加增量通知告知模型；`announced` 不进目录，由 core 以全量清单加增量通知的形式注入。压缩时两类的当前全量清单都附在压缩摘要后。Skill 是目前唯一的 `announced` catalog。
-_Avoid_: tool visibility, static tool, dynamic tool
+**Capability Notice**:
+run 起点追加在用户输入之前的一条隐藏 synthetic user 消息（`metadata.synthetic: true`，UI 不显示），正文是 `<tool>`/`<mcp>`/`<skill>` 标签：Told Inventory 为空的类别列全量，其余只列 `Added`/`Removed`（skill 另有 `Updated`）；没有差异就不追加。`metadata.capabilityInventory` 带本次告知后的完整清单，作为下一次折叠的基线。它不打断进行中的 run，不走 `steer`；同一 run 内自动压缩后，剩余轮次要等下一条用户输入才重新看到清单。
+_Avoid_: system reminder, steer message, tools_changed event, capability change notice
 
 **Telemetry Context**:
 领域代码可见的全部观测接口，只暴露 `startSpan`；返回的 span 提供 `addEvent`、`setAttributes`、`setStatus`。它是一个 port，不知道数据流向哪里，也不拥有任何长期保存的数据。整体替换为 no-op 时，Agent、工具、Journal 与用户结果的行为必须完全不变。

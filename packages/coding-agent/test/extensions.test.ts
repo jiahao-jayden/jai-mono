@@ -1,14 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "@sinclair/typebox";
 import { Result } from "better-result";
-import { type AgentMessage } from "@jai/agent";
 import {
 	CodingExtensionHostOperationFailed,
 	CodingExtensionOperationFailed,
+	type CodingAgentExtension,
 	defineExtension,
 	type CodingExtensionTool,
 	type JsonObject,
 } from "../src/sdk";
+import type { CapabilityInventory } from "../src/runtime/capability-inventory";
 import { ToolCatalog } from "../src/runtime/tool-catalog";
 import { builtInToolPresentations } from "../src/sdk/tool-presentation";
 import { activateExtensions, disposeExtensions, initializeExtensions, prepareExtensions } from "../src/sdk/extensions";
@@ -406,237 +407,66 @@ describe("Extension Runtime", () => {
 	});
 });
 
-describe("Capability Change Notice", () => {
-	test("searchable catalog lists tool names on first run and diffs after invalidation", async () => {
-		let revision = 0;
-		let invalidate: (() => void) | undefined;
-		const extension = defineExtension({
-			id: "searchable-catalog",
-			catalogs: [
-				{
-					id: "tools",
-					discover: () => {
-						if (revision === 0) return Result.ok({ tools: [catalogTool("ToolAlpha", "Alpha")] });
-						return Result.ok({ tools: [catalogTool("ToolBeta", "Beta")] });
-					},
-					subscribe: (_runtime, notify) => {
-						invalidate = notify;
-						return () => {};
-					},
-				},
-			],
-		});
-		const prepared = prepareExtensions([extension]);
-		expect(prepared.isOk()).toBe(true);
-		if (prepared.isErr()) return;
+describe("Current Capability Inventory", () => {
+	async function activateCatalogs(catalogs: CodingAgentExtension["catalogs"]) {
+		const prepared = prepareExtensions([defineExtension({ id: "inventory-catalogs", catalogs })]);
+		if (prepared.isErr()) throw prepared.error;
 		const catalog = new ToolCatalog([]);
-		const capabilityNotice: {
-			current?: {
-				produceNotice(): Promise<AgentMessage | undefined>;
-				catalogSnapshot(): string;
-			};
-			lastTold: Map<string, ReadonlyMap<string, string>>;
-		} = { lastTold: new Map() };
+		const inventory: { current?: () => Promise<CapabilityInventory> } = {};
 		const activated = await activateExtensions(prepared.value, context, undefined, undefined, {
 			toolCatalog: catalog,
-			capabilityNotice,
+			capabilityInventory: inventory,
 		});
-		expect(activated.isOk()).toBe(true);
-		if (activated.isErr() || !invalidate) return;
+		if (activated.isErr()) throw activated.error;
+		return { prepared: prepared.value, catalog, read: () => inventory.current!() };
+	}
 
-		const firstNotice = await capabilityNotice.current!.produceNotice();
-		expect((firstNotice as { metadata: unknown }).metadata).toEqual({ synthetic: true });
-		const firstText = typeof firstNotice!.content === "string" ? firstNotice!.content : "";
-		expect(firstText).toStartWith("<mcp>\n");
-		expect(firstText).toContain("SearchTools");
-		expect(firstText).toContain("- ToolAlpha\n</mcp>");
-		expect(firstText).not.toContain("Alpha description");
-		expect(await capabilityNotice.current!.produceNotice()).toBeUndefined();
+	test("classifies catalog entries by inventory kind and keeps skills out of SearchTools", async () => {
+		const { prepared, catalog, read } = await activateCatalogs([
+			{ id: "actions", discover: () => Result.ok({ tools: [catalogTool("ConnectorAction", "Action")] }) },
+			{
+				id: "mcp",
+				inventory: "mcp",
+				discover: () => Result.ok({ tools: [catalogTool("mcp__mcp__we0__get_account", "Account")] }),
+			},
+			{ id: "skills", inventory: "skill", discover: () => Result.ok({ tools: [catalogTool("brainstorming", "Skill")] }) },
+		]);
 
-		revision = 1;
-		invalidate();
-		await flushCatalogRefresh();
-
-		const secondNotice = await capabilityNotice.current!.produceNotice();
-		const secondText = typeof secondNotice!.content === "string" ? secondNotice!.content : "";
-		expect(secondText).toContain("Added:\n- ToolBeta\nRemoved:\n- ToolAlpha\n</mcp>");
-		expect(await capabilityNotice.current!.produceNotice()).toBeUndefined();
-		expect(catalog.search("beta")).toEqual([expect.objectContaining({ name: "ToolBeta" })]);
-
-		await disposeExtensions(prepared.value);
+		expect(await read()).toEqual({
+			tool: ["ConnectorAction"],
+			mcp: ["mcp__mcp__we0__get_account"],
+			skill: [{ name: "brainstorming", description: "brainstorming description" }],
+		});
+		expect(catalog.search("brainstorming")).toEqual([]);
+		expect(catalog.search("account")).toEqual([expect.objectContaining({ name: "mcp__mcp__we0__get_account" })]);
+		await disposeExtensions(prepared);
 	});
 
-	test("searchable MCP tools are grouped by server and kept in the compaction snapshot", async () => {
-		let tools: ReturnType<typeof catalogTool>[] = [];
-		let invalidate: (() => void) | undefined;
-		const extension = defineExtension({
-			id: "late-mcp",
-			catalogs: [
-				{
-					id: "tools",
-					discover: () => Result.ok({ tools }),
-					subscribe: (_runtime, notify) => {
-						invalidate = notify;
-						return () => {};
-					},
-				},
-			],
-		});
-		const prepared = prepareExtensions([extension]);
-		expect(prepared.isOk()).toBe(true);
-		if (prepared.isErr()) return;
-		const capabilityNotice: {
-			current?: {
-				produceNotice(): Promise<AgentMessage | undefined>;
-				catalogSnapshot(): string;
-			};
-			lastTold: Map<string, ReadonlyMap<string, string>>;
-		} = { lastTold: new Map() };
-		const activated = await activateExtensions(prepared.value, context, undefined, undefined, {
-			toolCatalog: new ToolCatalog([]),
-			capabilityNotice,
-		});
-		expect(activated.isOk()).toBe(true);
-		if (activated.isErr() || !invalidate) return;
-
-		expect(await capabilityNotice.current!.produceNotice()).toBeUndefined();
-
-		tools = [
-			catalogTool("mcp__mcp__we0__get_account", "Account"),
-			catalogTool("mcp__mcp__we0__list_websites", "Websites"),
-		];
-		invalidate();
-		await flushCatalogRefresh();
-
-		const notice = await capabilityNotice.current!.produceNotice();
-		const text = typeof notice!.content === "string" ? notice!.content : "";
-		expect(text).toContain("SearchTools to get its toolRef and input schema.\n- we0: get_account, list_websites\n</mcp>");
-		expect(text).not.toContain("Account");
-		expect(await capabilityNotice.current!.produceNotice()).toBeUndefined();
-		expect(capabilityNotice.current!.catalogSnapshot()).toContain("<mcp>");
-		expect(capabilityNotice.current!.catalogSnapshot()).toContain("- we0: get_account, list_websites");
-		await disposeExtensions(prepared.value);
-	});
-
-	test("announced catalog produces full list on first run, incremental after change", async () => {
+	test("reflects the latest refresh once coalesced invalidations settle", async () => {
 		let revision = 0;
 		let invalidate: (() => void) | undefined;
-		const extension = defineExtension({
-			id: "announced-catalog",
-			catalogs: [
-				{
-					id: "skills",
-					presentation: "announced",
-					discover: () => {
-						if (revision === 0) return Result.ok({ tools: [catalogTool("SkillOne", "First")] });
-						return Result.ok({ tools: [catalogTool("SkillOne", "First"), catalogTool("SkillTwo", "Second")] });
-					},
-					subscribe: (_runtime, notify) => {
-						invalidate = notify;
-						return () => {};
-					},
+		const { prepared, catalog, read } = await activateCatalogs([
+			{
+				id: "tools",
+				discover: () => {
+					revision += 1;
+					return Result.ok({ tools: [catalogTool(`Tool${revision}`, `Revision ${revision}`)] });
 				},
-			],
-		});
-		const prepared = prepareExtensions([extension]);
-		expect(prepared.isOk()).toBe(true);
-		if (prepared.isErr()) return;
-		const catalog = new ToolCatalog([]);
-		const capabilityNotice: {
-			current?: {
-				produceNotice(): Promise<AgentMessage | undefined>;
-				catalogSnapshot(): string;
-			};
-			lastTold: Map<string, ReadonlyMap<string, string>>;
-		} = { lastTold: new Map() };
-		const activated = await activateExtensions(prepared.value, context, undefined, undefined, {
-			toolCatalog: catalog,
-			capabilityNotice,
-		});
-		expect(activated.isOk()).toBe(true);
-		if (activated.isErr() || !invalidate) return;
-
-		expect(catalog.search("skill")).toEqual([]);
-
-		const firstAnnouncement = await capabilityNotice.current!.produceNotice();
-		expect(firstAnnouncement).toBeDefined();
-		const firstText = typeof firstAnnouncement!.content === "string" ? firstAnnouncement!.content : "";
-		expect(firstText).toContain("SkillOne");
-		expect(firstText).toContain("SkillOne description");
-		expect(firstText).toContain("<available_skills>");
-		expect(firstText).not.toContain("新增");
-		expect(await capabilityNotice.current!.produceNotice()).toBeUndefined();
-
-		revision = 1;
-		invalidate();
-		await flushCatalogRefresh();
-
-		const secondNotice = await capabilityNotice.current!.produceNotice();
-		expect(secondNotice).toBeDefined();
-		const secondText = typeof secondNotice!.content === "string" ? secondNotice!.content : "";
-		expect(secondText).toContain("SkillTwo");
-		expect(secondText).not.toContain("SkillOne");
-
-		const snapshot = capabilityNotice.current!.catalogSnapshot();
-		expect(snapshot).toContain("SkillOne");
-		expect(snapshot).toContain("SkillTwo");
-		expect(snapshot).toContain("<available_skills>");
-
-		await disposeExtensions(prepared.value);
-	});
-
-	test("multiple invalidations within one run coalesce into a single notice", async () => {
-		let revision = 0;
-		let invalidate: (() => void) | undefined;
-		const extension = defineExtension({
-			id: "coalesce-catalog",
-			catalogs: [
-				{
-					id: "tools",
-					discover: () => {
-						revision += 1;
-						return Result.ok({ tools: [catalogTool(`Tool${revision}`, `Revision ${revision}`)] });
-					},
-					subscribe: (_runtime, notify) => {
-						invalidate = notify;
-						return () => {};
-					},
+				subscribe: (_runtime, notify) => {
+					invalidate = notify;
+					return () => {};
 				},
-			],
-		});
-		const prepared = prepareExtensions([extension]);
-		expect(prepared.isOk()).toBe(true);
-		if (prepared.isErr()) return;
-		const catalog = new ToolCatalog([]);
-		const capabilityNotice: {
-			current?: {
-				produceNotice(): Promise<AgentMessage | undefined>;
-				catalogSnapshot(): string;
-			};
-			lastTold: Map<string, ReadonlyMap<string, string>>;
-		} = { lastTold: new Map() };
-		const activated = await activateExtensions(prepared.value, context, undefined, undefined, {
-			toolCatalog: catalog,
-			capabilityNotice,
-		});
-		expect(activated.isOk()).toBe(true);
-		if (activated.isErr() || !invalidate) return;
+			},
+		]);
+		expect((await read()).tool).toEqual(["Tool1"]);
 
-		await capabilityNotice.current!.produceNotice();
+		invalidate!();
+		invalidate!();
+		invalidate!();
 
-		invalidate();
-		invalidate();
-		invalidate();
-		await flushCatalogRefresh();
-
-		const notice = await capabilityNotice.current!.produceNotice();
-		const text = typeof notice!.content === "string" ? notice!.content : "";
-		expect(text.match(/<mcp>/g)).toHaveLength(1);
-		expect(text).toContain("Added:\n- Tool2\nRemoved:\n- Tool1");
-		expect(await capabilityNotice.current!.produceNotice()).toBeUndefined();
+		expect((await read()).tool).toEqual(["Tool2"]);
 		expect(catalog.search("tool2")).toEqual([expect.objectContaining({ name: "Tool2" })]);
-
-		await disposeExtensions(prepared.value);
+		await disposeExtensions(prepared);
 	});
 });
 

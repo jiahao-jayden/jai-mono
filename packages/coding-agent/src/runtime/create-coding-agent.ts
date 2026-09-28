@@ -50,6 +50,7 @@ import {
 import type { CodingToolOptions } from "../tools";
 import type { CodingToolName } from "../tools/names";
 import { assembleAgentCapabilities } from "./assemble";
+import { type CapabilityInventory, createCapabilityNotice, foldToldInventory } from "./capability-inventory";
 import type { OpenChildSession, RunAgentExecution } from "./execution";
 import type { CodingExecutionContext } from "./execution-context";
 import type { ToolCatalog } from "./tool-catalog";
@@ -57,21 +58,11 @@ import type { ToolCatalog } from "./tool-catalog";
 export type { OpenChildSession };
 
 /**
- * Produces capability change notices and announced catalog snapshots. Owned by the
- * catalog refresh coordinator (SDK layer); the runtime layer calls it through a slot
- * so the two layers stay decoupled.
+ * Reads the Current Inventory. The catalog refresh coordinator (SDK layer) fills it after
+ * Extension activation, which happens after this Agent is constructed.
  */
-export interface CapabilityNoticeProducer {
-	/** Diffs current catalog state against the last told binding; returns a synthetic user message if non-empty. */
-	produceNotice(): Promise<AgentMessage | undefined>;
-	/** Renders every catalog's current entries as a fixed paragraph for compaction summaries. */
-	catalogSnapshot(): string;
-}
-
-export interface CapabilityNoticeSlot {
-	current?: CapabilityNoticeProducer;
-	/** Per-catalog last-told-model snapshot, surviving across Operations within a session. */
-	readonly lastTold: Map<string, ReadonlyMap<string, string>>;
+export interface CapabilityInventorySlot {
+	current?: () => Promise<CapabilityInventory>;
 }
 
 export interface ResolvedCodingProvider {
@@ -142,8 +133,8 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 	) => CodingAgentRuntimeOptions | Promise<CodingAgentRuntimeOptions>;
 	/** Host-supplied factory that opens a journal-only child session for each subagent invocation. */
 	readonly openChildSession?: OpenChildSession<TAppState>;
-	/** Filled by the catalog refresh coordinator after activation; read at run start to inject capability notices. */
-	readonly capabilityNotice?: CapabilityNoticeSlot;
+	/** Read at run start and diffed against the Told Inventory folded from the journal. */
+	readonly capabilityInventory?: CapabilityInventorySlot;
 }
 
 interface ExtensionToolCatalogSlot {
@@ -163,7 +154,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	readonly #stopConfigWatch: () => void;
 	readonly #commands?: CodingCommandRegistry;
 	readonly #attachments: CodingAttachmentRun;
-	readonly #capabilityNotice?: CapabilityNoticeSlot;
+	readonly #capabilityInventory?: CapabilityInventorySlot;
 	readonly #canReadWorkspacePath: (path: string) => boolean;
 
 	constructor(
@@ -175,7 +166,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		attachments: CodingAttachmentRun,
 		runAgent: RunAgentExecution,
 		canReadWorkspacePath: (path: string) => boolean,
-		capabilityNotice?: CapabilityNoticeSlot,
+		capabilityInventory?: CapabilityInventorySlot,
 	) {
 		this.#agent = agent;
 		this.configStore = configStore;
@@ -185,7 +176,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.#attachments = attachments;
 		this.runAgent = runAgent;
 		this.#canReadWorkspacePath = canReadWorkspacePath;
-		this.#capabilityNotice = capabilityNotice;
+		this.#capabilityInventory = capabilityInventory;
 	}
 
 	get configSnapshot(): ConfigSnapshot<TSchema> {
@@ -234,8 +225,16 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		});
 	}
 
+	/** Runs while idle, so the journal already holds every notice this branch was given. */
+	async #capabilityNotice(): Promise<AgentMessage | undefined> {
+		const readCurrent = this.#capabilityInventory?.current;
+		if (!readCurrent) return undefined;
+		const told = foldToldInventory(this.#agent.messagesSinceCompaction());
+		return createCapabilityNotice(told, await readCurrent(), Date.now());
+	}
+
 	async #prependCapabilityNotice(input: AgentInput): Promise<AgentInput> {
-		const notice = await this.#capabilityNotice?.current?.produceNotice();
+		const notice = await this.#capabilityNotice();
 		if (!notice) return input;
 		if (Array.isArray(input)) return [notice, ...input];
 		if (typeof input === "string") return [notice, { role: "user", content: input, timestamp: Date.now() }];
@@ -245,7 +244,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 	async #prependNoticeEntries(
 		input: readonly { readonly message: AgentMessage; readonly entryId?: string }[],
 	): Promise<readonly { readonly message: AgentMessage; readonly entryId?: string }[]> {
-		const notice = await this.#capabilityNotice?.current?.produceNotice();
+		const notice = await this.#capabilityNotice();
 		if (!notice) return input;
 		return [{ message: notice }, ...input];
 	}
@@ -524,15 +523,6 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		hooks: {
 			...hooks,
 			beforeModelCall,
-			aroundCompact: [
-				...(hooks?.aroundCompact ?? []),
-				async (_input, next) => {
-					const result = await next();
-					const snapshot = options.capabilityNotice?.current?.catalogSnapshot();
-					if (snapshot?.trim()) return { ...result, summary: `${result.summary}\n\n${snapshot}` };
-					return result;
-				},
-			],
 			aroundToolCall: capabilities.aroundToolCall,
 			onEvent: capabilities.onEvent,
 		},
@@ -553,7 +543,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		attachments,
 		runAgent,
 		canReadWorkspacePath,
-		options.capabilityNotice,
+		options.capabilityInventory,
 	);
 }
 

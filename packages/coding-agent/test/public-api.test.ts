@@ -151,11 +151,125 @@ describe("public Coding Agent SDK", () => {
 		expect(providerToolNames(requests[1])).toEqual(providerToolNames(requests[0]));
 		// The model only searches for tools it knows exist, so the first request names them before the user prompt.
 		const firstRequest = JSON.stringify(requests[0]);
-		expect(firstRequest).toContain("<mcp>");
+		expect(firstRequest).toContain("<tool>");
 		expect(firstRequest).toContain("- CatalogEcho");
 		expect(firstRequest).not.toContain("Echoes a catalog result");
-		expect(firstRequest.indexOf("<mcp>")).toBeLessThan(firstRequest.indexOf("use the catalog"));
+		expect(firstRequest.indexOf("<tool>")).toBeLessThan(firstRequest.indexOf("use the catalog"));
 		await created.value.close();
+	});
+
+	test("reaches a deferred static tool only through the catalog while keeping its own permission", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const requests: unknown[] = [];
+		const approvals: string[] = [];
+		const executed: string[] = [];
+		const created = await createCodingAgent({
+			...createInput(
+				root,
+				[
+					assistantToolCall("SearchTools", "search", { query: "deferred" }),
+					assistantToolCall("ExecuteTool", "execute", { toolRef: "DeferredWrite", input: { value: "x" } }),
+					assistant("done"),
+				],
+				requests,
+			),
+			session: { kind: "ephemeral" },
+			permissionMode: "ask",
+			requestApproval: (request) => {
+				approvals.push(request.toolName);
+				return "allowOnce";
+			},
+			extensions: [
+				defineExtension({
+					id: "deferred-static",
+					tools: [
+						{
+							name: "DeferredWrite",
+							description: "Writes deferred state",
+							loading: "deferred",
+							parameters: Type.Object({ value: Type.String() }),
+							authorization: { owner: "core", permission: { sideEffect: "write", reason: "Writes state" } },
+							execute: async (_runtime, { args }) => {
+								executed.push(String(args.value));
+								return { content: [{ type: "text", text: "written" }] };
+							},
+						},
+					],
+				}),
+			],
+		});
+		if (created.isErr()) throw created.error;
+
+		expect((await created.value.prompt("write deferred state")).isOk()).toBe(true);
+		await created.value.close();
+		for (const request of requests) expect(providerToolNames(request)).not.toContain("DeferredWrite");
+		expect(providerToolNames(requests[0])).toContain("SearchTools");
+		expect(JSON.stringify(requests[0])).toContain("<tool>");
+		expect(JSON.stringify(requests[0])).toContain("- DeferredWrite");
+		expect(JSON.stringify(requests[1])).toContain('\\"toolRef\\":\\"DeferredWrite\\"');
+		expect(approvals).toEqual(["DeferredWrite"]);
+		expect(executed).toEqual(["x"]);
+	});
+
+	test("tells each Session branch its Capability Inventory once and only appends later differences", async () => {
+		const root = await mkdtemp(join(tmpdir(), "jai-coding-agent-public-"));
+		roots.push(root);
+		const store = await openStore(root);
+		const requests: unknown[] = [];
+		const catalogExtension = (names: readonly string[]) =>
+			defineExtension({
+				id: "inventory-catalog",
+				catalogs: [
+					{
+						id: "tools",
+						inventory: "mcp",
+						discover: () =>
+							Result.ok({
+								tools: names.map((name) => ({
+									name,
+									description: `${name} description`,
+									parameters: Type.Object({}),
+									authorization: { owner: "core", permission: { sideEffect: "read", reason: "read" } },
+									execute: async () => ({ content: [{ type: "text", text: name }] }),
+								})),
+							}),
+					},
+				],
+			});
+		const open = async (kind: "new" | "resume", names: readonly string[], replies: number) => {
+			const created = await createCodingAgent({
+				...createInput(
+					root,
+					Array.from({ length: replies }, () => assistant("ok")),
+					requests,
+				),
+				session: { kind, id: "inventory-session", store },
+				extensions: [catalogExtension(names)],
+			});
+			if (created.isErr()) throw created.error;
+			return created.value;
+		};
+		const noticesIn = (request: unknown) => JSON.stringify(request).split("<mcp>").length - 1;
+
+		const first = await open("new", ["mcp__mcp__we0__get_account"], 2);
+		await first.prompt("one");
+		await first.prompt("two");
+		await first.close();
+		expect(noticesIn(requests[0])).toBe(1);
+		expect(JSON.stringify(requests[0])).toContain("- we0: get_account");
+		expect(noticesIn(requests[1])).toBe(1);
+
+		const resumed = await open("resume", ["mcp__mcp__we0__get_account"], 1);
+		await resumed.prompt("three");
+		await resumed.close();
+		expect(noticesIn(requests[2])).toBe(1);
+
+		const changed = await open("resume", ["mcp__mcp__we0__get_account", "mcp__mcp__we0__get_website"], 1);
+		await changed.prompt("four");
+		await changed.close();
+		expect(noticesIn(requests[3])).toBe(2);
+		expect(JSON.stringify(requests[3])).toContain("Added:\\n- we0: get_website");
 	});
 
 	test("writes a Host-reserved queued input at its exact Session Journal identity", async () => {

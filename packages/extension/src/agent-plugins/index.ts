@@ -48,6 +48,7 @@ export async function createAgentPluginsExtension(options: AgentPluginRuntimeOpt
 		catalogs: [
 			{
 				id: "mcp",
+				inventory: "mcp",
 				discover: async (runtime) => Result.ok({ tools: runtime.instance.tools.map(toExtensionTool) }),
 			} satisfies CodingExtensionToolCatalog<any, any, AgentPluginRuntime>,
 		],

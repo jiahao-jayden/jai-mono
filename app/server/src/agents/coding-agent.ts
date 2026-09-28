@@ -108,7 +108,6 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 				extensionRuntime: configured.value.extensionRuntime
 					? withRuntimeApprovals(configured.value.extensionRuntime, input)
 					: undefined,
-				capabilityNotice: input.capabilityNotice || undefined,
 				permissionMode: permissionModeFor(input.runtimeConfiguration),
 				cwd: input.cwd,
 				session: { kind: "resume", id: input.sessionId, store: input.sessionStore },

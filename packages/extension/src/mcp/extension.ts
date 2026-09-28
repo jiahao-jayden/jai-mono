@@ -110,6 +110,7 @@ export function createMcpExtension(
 		catalogs: [
 			{
 				id: CATALOG_ID,
+				inventory: "mcp",
 				discover: (runtime) => runtime.instance.discover(),
 				subscribe: (runtime, invalidate) => runtime.instance.subscribe(invalidate),
 			},

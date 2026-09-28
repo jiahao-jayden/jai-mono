@@ -4,7 +4,12 @@ import { KindGuard } from "@sinclair/typebox";
 import { panic, Result, type Result as ResultType } from "better-result";
 import type { CodingCommandRegistry } from "../commands";
 import type { JsonObject } from "../core/json";
-import type { CapabilityNoticeSlot } from "../runtime/create-coding-agent";
+import {
+	type CapabilityInventory,
+	type CapabilitySkillEntry,
+	createCapabilityInventory,
+} from "../runtime/capability-inventory";
+import type { CapabilityInventorySlot } from "../runtime/create-coding-agent";
 import type { RunAgentExecution } from "../runtime/execution";
 import type { ToolCatalog } from "../runtime/tool-catalog";
 import {
@@ -96,6 +101,8 @@ export interface InitializedExtension {
 	runtime?: CodingExtensionRuntime<any, any, any>;
 	runAgent?: RunAgentExecution;
 	readonly tools: AgentTool[];
+	/** Static tools declared `loading: "deferred"`; they join the SearchTools catalog instead of `tools`. */
+	readonly deferredTools: AgentTool[];
 	readonly catalogTools: AgentTool[];
 	readonly toolPresentations: Map<string, CodingToolPresentation>;
 	readonly permissions: Map<string, ResolvedExtensionToolPermission>;
@@ -150,7 +157,7 @@ interface ExtensionActivationRegistries {
 	readonly authorizedToolNames?: Set<string>;
 	readonly toolPresentations?: Map<string, CodingToolPresentation>;
 	readonly toolCatalog?: ToolCatalog;
-	readonly capabilityNotice?: CapabilityNoticeSlot;
+	readonly capabilityInventory?: CapabilityInventorySlot;
 	readonly commands?: CodingCommandRegistry;
 	/** Fires when the host config store reloads a valid snapshot; layered configurations use this to re-resolve. */
 	readonly configChangeWatcher?: (listener: () => void) => () => void;
@@ -180,7 +187,7 @@ export async function activateExtensions(
 		const initializedRuntime = { ...initializedContext.value, instance: instance.value };
 		extension.runtime = initializedRuntime;
 	}
-	if (initialized.some((extension) => extension.extension.catalogs?.length)) {
+	if (initialized.some((extension) => extension.extension.catalogs?.length || extension.deferredTools.length)) {
 		const coordinator = new ExtensionCatalogRefreshCoordinator(initialized, registries);
 		for (const extension of initialized) catalogRefreshCoordinators.set(extension, coordinator);
 		const initialSnapshot = await coordinator.initialize();
@@ -541,14 +548,18 @@ function createInitializedExtension(extension: CodingAgentExtension<any, any, an
 		extension,
 		runtime: undefined,
 		tools: [],
+		deferredTools: [],
 		catalogTools: [],
 		toolPresentations: new Map<string, CodingToolPresentation>(),
 		permissions: new Map<string, ResolvedExtensionToolPermission>(),
 		extensionAuthorizedToolNames: [],
 	};
-	const staticToolMappings = mapExtensionTools(initialized, extension.tools ?? []);
+	const definitions = extension.tools ?? [];
+	const staticToolMappings = mapExtensionTools(initialized, definitions);
 	extensionToolMappings.set(initialized, { staticTools: staticToolMappings, catalogs: new Map() });
-	initialized.tools.push(...staticToolMappings.tools);
+	staticToolMappings.tools.forEach((tool, index) => {
+		(definitions[index]?.loading === "deferred" ? initialized.deferredTools : initialized.tools).push(tool);
+	});
 	rebuildExtensionCatalogProjection(initialized);
 	return initialized;
 }
@@ -676,10 +687,8 @@ async function discoverCatalogTools(
 	return Result.ok(discoveredCatalogs);
 }
 
-interface CatalogBinding {
-	readonly presentation: "searchable" | "announced";
-	lastTold: ReadonlyMap<string, string>;
-	current: ReadonlyMap<string, string>;
+function catalogInventoryKind(extension: InitializedExtension, catalogId: string): "tool" | "mcp" | "skill" {
+	return extension.extension.catalogs?.find((catalog) => catalog.id === catalogId)?.inventory ?? "tool";
 }
 
 class ExtensionCatalogRefreshCoordinator {
@@ -687,7 +696,6 @@ class ExtensionCatalogRefreshCoordinator {
 	readonly #subscriptionDisposers: Array<() => void | Promise<void>> = [];
 	readonly #extensions: readonly InitializedExtension[];
 	readonly #registries: ExtensionActivationRegistries;
-	readonly #bindings = new Map<string, CatalogBinding>();
 	#refreshRequested = false;
 	#refreshTail: Promise<void> = Promise.resolve();
 	#closed = false;
@@ -700,7 +708,9 @@ class ExtensionCatalogRefreshCoordinator {
 	async initialize(): Promise<ResultType<void, CodingExtensionError>> {
 		const discovered = await this.#discoverAndCommit();
 		if (discovered.isErr()) return discovered;
-		if (this.#registries.capabilityNotice) this.#registries.capabilityNotice.current = this;
+		if (this.#registries.capabilityInventory) {
+			this.#registries.capabilityInventory.current = () => this.currentInventory();
+		}
 		return this.#subscribe();
 	}
 
@@ -710,65 +720,23 @@ class ExtensionCatalogRefreshCoordinator {
 		this.#refreshTail = this.#refreshTail.then(() => this.#drainRefreshes());
 	}
 
-	async produceNotice(): Promise<AgentMessage | undefined> {
+	/** The Current Inventory after pending refreshes settle. What the model was told lives in the journal. */
+	async currentInventory(): Promise<CapabilityInventory> {
 		await this.#refreshTail;
-		const additions: string[] = [];
-		const removals: string[] = [];
-		const updates: string[] = [];
-		const initial: string[] = [];
-		const searchableTold = new Set<string>();
-		const searchableCurrent = new Set<string>();
-		for (const [catalogId, binding] of this.#bindings) {
-			// An announced binding that was never told is an initial snapshot, not a change.
-			if (binding.presentation === "announced" && binding.lastTold.size === 0 && binding.current.size > 0) {
-				initial.push(renderAnnouncedCatalog(catalogId, binding.current));
-				continue;
+		const tool: string[] = [];
+		const mcp: string[] = [];
+		const skill: CapabilitySkillEntry[] = [];
+		for (const extension of this.#extensions) {
+			for (const deferred of extension.deferredTools) tool.push(deferred.name);
+			for (const [catalogId, mapping] of extensionToolMappings.get(extension)?.catalogs ?? []) {
+				const kind = catalogInventoryKind(extension, catalogId);
+				for (const entry of mapping.tools) {
+					if (kind === "skill") skill.push({ name: entry.name, description: entry.description });
+					else (kind === "mcp" ? mcp : tool).push(entry.name);
+				}
 			}
-			if (binding.presentation === "searchable") {
-				for (const name of binding.lastTold.keys()) searchableTold.add(name);
-				for (const name of binding.current.keys()) searchableCurrent.add(name);
-				continue;
-			}
-			const diff = diffCatalog(binding.lastTold, binding.current);
-			for (const [name, description] of diff.added) additions.push(`${name} (${description})`);
-			for (const name of diff.removed) removals.push(name);
-			for (const [name, description] of diff.changed) updates.push(`${name} (${description})`);
 		}
-		const searchableNotice = renderSearchableNotice(searchableTold, searchableCurrent);
-		if (!additions.length && !removals.length && !updates.length && !initial.length && !searchableNotice) {
-			return undefined;
-		}
-		const slot = this.#registries.capabilityNotice;
-		for (const [catalogId, binding] of this.#bindings) {
-			binding.lastTold = binding.current;
-			slot?.lastTold.set(catalogId, binding.current);
-		}
-		const lines: string[] = [];
-		if (additions.length) lines.push(`新增: ${additions.join(", ")}`);
-		if (removals.length) lines.push(`删除: ${removals.join(", ")}`);
-		if (updates.length) lines.push(`更新: ${updates.join(", ")}`);
-		if (searchableNotice) lines.push(searchableNotice);
-		return {
-			role: "user",
-			content: [...initial, ...lines].join("\n"),
-			metadata: { synthetic: true },
-			timestamp: Date.now(),
-		};
-	}
-
-	catalogSnapshot(): string {
-		const sections: string[] = [];
-		const searchable = new Set<string>();
-		for (const [catalogId, binding] of this.#bindings) {
-			if (binding.presentation === "searchable") {
-				for (const name of binding.current.keys()) searchable.add(name);
-				continue;
-			}
-			if (binding.current.size > 0) sections.push(renderAnnouncedCatalog(catalogId, binding.current));
-		}
-		const searchableSection = renderSearchableNotice(new Set(), searchable);
-		if (searchableSection) sections.push(searchableSection);
-		return sections.join("\n");
+		return createCapabilityInventory({ tool, mcp, skill });
 	}
 
 	async dispose(): Promise<ResultType<void, CodingExtensionError>> {
@@ -859,26 +827,12 @@ class ExtensionCatalogRefreshCoordinator {
 		if (this.#closed) return Result.ok(undefined);
 		const catalogTools: AgentTool[] = [];
 		for (const extension of this.#extensions) {
+			catalogTools.push(...extension.deferredTools);
 			const mappings = new Map<string, MappedExtensionTools>();
 			for (const [catalogId, tools] of discovered.get(extension) ?? []) {
 				const mapping = mapExtensionTools(extension, tools);
 				mappings.set(catalogId, mapping);
-				const presentation =
-					extension.extension.catalogs?.find((c) => c.id === catalogId)?.presentation ?? "searchable";
-				const current = new Map(mapping.tools.map((tool) => [tool.name, tool.description] as const));
-				const existing = this.#bindings.get(catalogId);
-				if (existing) {
-					existing.current = current;
-				} else {
-					const slot = this.#registries.capabilityNotice;
-					const savedLastTold = slot?.lastTold.get(catalogId);
-					this.#bindings.set(catalogId, {
-						presentation,
-						lastTold: savedLastTold ? new Map(savedLastTold) : new Map(),
-						current,
-					});
-				}
-				if (presentation === "searchable") catalogTools.push(...mapping.tools);
+				if (catalogInventoryKind(extension, catalogId) !== "skill") catalogTools.push(...mapping.tools);
 			}
 			const currentMappings = toolMappingState(extension);
 			currentMappings.catalogs.clear();
@@ -911,73 +865,6 @@ class ExtensionCatalogRefreshCoordinator {
 			// Diagnostics are observer-only and cannot prevent a later catalog refresh.
 		}
 	}
-}
-
-function diffCatalog(
-	lastTold: ReadonlyMap<string, string>,
-	current: ReadonlyMap<string, string>,
-): {
-	added: readonly [string, string][];
-	removed: readonly string[];
-	changed: readonly [string, string][];
-} {
-	const added: [string, string][] = [];
-	const removed: string[] = [];
-	const changed: [string, string][] = [];
-	for (const [name, description] of current) {
-		const previous = lastTold.get(name);
-		if (previous === undefined) added.push([name, description]);
-		else if (previous !== description) changed.push([name, description]);
-	}
-	for (const name of lastTold.keys()) if (!current.has(name)) removed.push(name);
-	return { added, removed, changed };
-}
-
-/**
- * Searchable tools keep their schemas behind SearchTools, but the model only searches
- * for tools it knows exist. The notice lists names without descriptions so it reads
- * as world state rather than a request to call them.
- */
-function renderSearchableNotice(told: ReadonlySet<string>, current: ReadonlySet<string>): string | undefined {
-	const added = [...current].filter((name) => !told.has(name));
-	const removed = [...told].filter((name) => !current.has(name));
-	if (added.length === 0 && removed.length === 0) return undefined;
-	const lines = [
-		"<mcp>",
-		"These tools can be called through ExecuteTool. Before first use, search the tool name with SearchTools to get its toolRef and input schema.",
-	];
-	if (told.size === 0) {
-		lines.push(...renderToolGroups(added));
-	} else {
-		if (added.length > 0) lines.push("Added:", ...renderToolGroups(added));
-		if (removed.length > 0) lines.push("Removed:", ...renderToolGroups(removed));
-	}
-	lines.push("</mcp>");
-	return lines.join("\n");
-}
-
-/** MCP tools are `mcp__<namespace>__<server>__<tool>`; each server is listed once. */
-function renderToolGroups(names: readonly string[]): string[] {
-	const groups = new Map<string, string[]>();
-	for (const name of names) {
-		const parts = name.split("__");
-		const isMcp = parts.length >= 4 && parts[0] === "mcp" && parts[2];
-		const group = isMcp ? parts[2]! : name;
-		const tools = groups.get(group) ?? [];
-		if (isMcp) tools.push(parts.slice(3).join("__"));
-		groups.set(group, tools);
-	}
-	return [...groups]
-		.sort(([a], [b]) => a.localeCompare(b))
-		.map(([group, tools]) => (tools.length ? `- ${group}: ${tools.sort().join(", ")}` : `- ${group}`));
-}
-
-function renderAnnouncedCatalog(catalogId: string, tools: ReadonlyMap<string, string>): string {
-	return [
-		`<available_${catalogId}>`,
-		...[...tools].map(([name, description]) => `- ${name}: ${description}`),
-		`</available_${catalogId}>`,
-	].join("\n");
 }
 
 async function reportCatalogDiagnostics(

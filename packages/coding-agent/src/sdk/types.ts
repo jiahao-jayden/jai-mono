@@ -2,7 +2,6 @@ import type { ModelRequestObserver } from "@jai/agent";
 import type { Result } from "better-result";
 import type { JsonObject, JsonValue } from "../core/json";
 import type { PermissionApprovalQueue, PermissionTelemetryObserver, SessionAllowRules } from "../permissions";
-import type { CapabilityNoticeSlot } from "../runtime";
 import type { CodingToolName } from "../tools/names";
 import type { CodingAgentExtension, CodingExtensionRuntimeAdapter } from "./extensions";
 import type { CodingModelMetadata, CodingProviderOptions } from "./model";
@@ -256,8 +255,6 @@ export interface CodingAgentCreateOptions {
 	 * subagent invocation. When omitted, subagent transcripts are not persisted.
 	 */
 	readonly openChildSession?: (toolCallId: string) => Promise<unknown>;
-	/** Host-supplied capability notice slot; when omitted a fresh per-call slot is created. Passing a shared slot lets the last-told-model binding survive across Operations within a session. */
-	readonly capabilityNotice?: CapabilityNoticeSlot;
 }
 
 export interface CodingPromptOptions {

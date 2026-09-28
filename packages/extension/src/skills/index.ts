@@ -91,7 +91,7 @@ export function createSkillsExtension(
 		catalogs: [
 			{
 				id: "skills",
-				presentation: "announced",
+				inventory: "skill",
 				discover: (runtime) => Result.ok({ tools: runtime.instance.catalog.snapshot.skills.map(skillCatalogTool) }),
 				subscribe: (runtime, invalidate) => runtime.instance.catalog.watch(() => invalidate()),
 			},

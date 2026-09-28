@@ -221,6 +221,11 @@ export interface CodingExtensionTool<
 	) => CodingExtensionToolResult | Promise<CodingExtensionToolResult>;
 	readonly presentation?: CodingExtensionToolPresentation<TConfig, TState, TInstance>;
 	readonly executionMode?: "sequential" | "parallel";
+	/**
+	 * Static `tools` only. `deferred` keeps the tool out of provider tools: it is listed by
+	 * name in the `<tool>` inventory and reached through `SearchTools` / `ExecuteTool`.
+	 */
+	readonly loading?: "eager" | "deferred";
 }
 
 /** A Coding Agent SDK projection. It does not affect execution or authorization. */
@@ -353,14 +358,11 @@ export interface CodingExtensionToolCatalog<
 > {
 	readonly id: string;
 	/**
-	 * How catalog entries reach the model. `searchable` (default) entries go into the
-	 * `SearchTools` directory and are loaded on demand. A change notice names the server,
-	 * or the tool when it has no server, and does not include tool descriptions.
-	 * `announced` entries never enter the directory; core injects the full list as a
-	 * capability notice on first run and after compaction, with incremental diffs on
-	 * subsequent runs.
+	 * Which Capability Inventory kind lists these entries. `tool` (default) and `mcp`
+	 * entries go into the `SearchTools` directory and are listed by name; `skill` entries
+	 * never enter the directory and are listed with their descriptions.
 	 */
-	readonly presentation?: "searchable" | "announced";
+	readonly inventory?: "tool" | "mcp" | "skill";
 	discover(
 		runtime: CodingExtensionRuntime<TConfig, TState, TInstance>,
 		signal?: AbortSignal,

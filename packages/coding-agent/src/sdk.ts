@@ -9,7 +9,6 @@ export {
 	type PermissionApprovalQueue,
 	type SessionAllowRules,
 } from "./permissions";
-export type { CapabilityNoticeSlot } from "./runtime/create-coding-agent";
 export {
 	defaultUserTelemetryPolicy,
 	sdkConfigDefinition,

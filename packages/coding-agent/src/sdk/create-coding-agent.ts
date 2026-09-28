@@ -15,7 +15,7 @@ import type { CodingMessageAttachment as InternalCodingAttachment } from "../att
 import { CodingCommandRegistry } from "../commands";
 import { PermissionReviewFailed, permissionSettingsFromConfig } from "../permissions";
 import {
-	type CapabilityNoticeSlot,
+	type CapabilityInventorySlot,
 	createCodingAgent as createInternalCodingAgent,
 	DEFAULT_CODING_AGENT_INSTRUCTIONS,
 	environmentInstructions,
@@ -103,9 +103,11 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 		const preparedExtensions = prepareExtensions(input.extensions ?? []);
 		if (preparedExtensions.isErr()) throw preparedExtensions.error;
 		extensions = preparedExtensions.value;
-		const extensionCatalogs = extensions.flatMap((extension) => extension.extension.catalogs ?? []);
-		const extensionToolCatalog = extensionCatalogs.length ? new ToolCatalog([]) : undefined;
-		const capabilityNotice: CapabilityNoticeSlot = input.capabilityNotice ?? { lastTold: new Map() };
+		const hasSearchableTools = extensions.some(
+			(extension) => extension.extension.catalogs?.length || extension.deferredTools.length,
+		);
+		const extensionToolCatalog = hasSearchableTools ? new ToolCatalog([]) : undefined;
+		const capabilityInventory: CapabilityInventorySlot = {};
 		const extensionToolPermissions = extensionPermissions(extensions);
 		const extensionAuthorizedToolNameSet = extensionAuthorizedToolNames(extensions);
 		const toolPresentations = new Map(builtInToolPresentations());
@@ -181,7 +183,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			extensionToolCatalog,
 			modelRequestObserver: input.modelRequestTelemetryObserver,
 			enabledTools,
-			capabilityNotice,
+			capabilityInventory,
 			openChildSession: input.openChildSession
 				? (input.openChildSession as unknown as OpenChildSession<PersistedCodingSessionState<TAppState>>)
 				: undefined,
@@ -213,7 +215,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				authorizedToolNames: extensionAuthorizedToolNameSet,
 				toolPresentations,
 				toolCatalog: extensionToolCatalog,
-				capabilityNotice,
+				capabilityInventory,
 				commands,
 				configChangeWatcher: (listener) =>
 					internal.configStore.watch((event) => {
