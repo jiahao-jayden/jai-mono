@@ -279,6 +279,14 @@ export interface RuntimeHostOptions {
 	readonly now?: () => Date;
 	/** Process diagnostic log. Absent in tests that do not care about host.log. */
 	readonly log?: HostLog;
+	/**
+	 * Fired after a durable Session's turn reaches a terminal idle state
+	 * (`stopReason === "end_turn"`). Product composition uses this to schedule
+	 * async side effects such as session-title generation. Ephemeral Sessions
+	 * never fire this callback. The callback must not throw; the Host treats it
+	 * as fire-and-forget and never awaits it.
+	 */
+	readonly onTurnEnded?: (sessionId: string) => void;
 }
 
 export class RuntimeHost {
@@ -286,6 +294,7 @@ export class RuntimeHost {
 	readonly #now: () => Date;
 	readonly #initialAppState: () => JsonObject;
 	readonly #configurationPolicy: RuntimeSessionConfigurationPolicy;
+	readonly #onTurnEnded: ((sessionId: string) => void) | undefined;
 	readonly #controllers = new Map<string, string>();
 	/**
 	 * Durable Sessions that still belong to this Host process. A reconnect must
@@ -301,6 +310,7 @@ export class RuntimeHost {
 		this.#now = options.now ?? (() => new Date());
 		this.#initialAppState = options.initialAppState ?? (() => ({}));
 		this.#configurationPolicy = options.configurationPolicy ?? createUnconfiguredRuntimeSessionConfigurationPolicy();
+		this.#onTurnEnded = options.onTurnEnded;
 	}
 
 	async listSessions(): Promise<Result<readonly ProductSessionInfo[], RuntimeHostPromptRejected>> {
@@ -585,6 +595,22 @@ export class RuntimeHost {
 			this.options.log,
 		);
 		if (!discardWhenClosed) this.#liveSessions.set(state.id, session);
+		if (!discardWhenClosed && this.#onTurnEnded) {
+			session.subscribe((event) => {
+				if (
+					event.type === "state_changed" &&
+					event.state === "idle" &&
+					event.stopReason === "end_turn" &&
+					this.#onTurnEnded
+				) {
+					try {
+						this.#onTurnEnded(state.id);
+					} catch {
+						// Title generation is a disposable side effect; it must never break the Host.
+					}
+				}
+			});
+		}
 		return session;
 	}
 

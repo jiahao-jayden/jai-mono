@@ -16,6 +16,7 @@ import { RuntimeTelemetryController } from "../telemetry";
 import { SqliteWorkspaceTrust } from "../workspaces";
 import type { RuntimeHostConfigurationInvalid } from "./configuration";
 import { RuntimeHost } from "./host";
+import { SessionTitleGenerator } from "./session-title";
 
 export class JaiRuntimeServerOpenFailed extends TaggedError("runtime_server.open_failed")<{
 	readonly dataDirectory: string;
@@ -112,6 +113,13 @@ export async function openJaiRuntimeServer(
 		});
 		const recoveredOAuth = connectorOAuth.recover();
 		if (recoveredOAuth.isErr()) throw recoveredOAuth.error;
+		const titleGenerator = new SessionTitleGenerator({
+			catalog: desktopCatalog,
+			persistence,
+			agentSettings,
+			now: () => new Date(),
+			log: log.scope("session-title"),
+		});
 		const host = new RuntimeHost({
 			persistence,
 			createEphemeralPersistence: () => new InMemoryProductSessionPersistence(),
@@ -119,6 +127,7 @@ export async function openJaiRuntimeServer(
 			initialAppState: () => emptyPersistedCodingSessionState(),
 			configurationPolicy: createRuntimeSessionConfigurationPolicy(agentSettings),
 			log: log.scope("session"),
+			onTurnEnded: (sessionId) => titleGenerator.schedule(sessionId),
 		});
 		const opened = await openLocalRuntimeHost({
 			dataDirectory: options.dataDirectory,

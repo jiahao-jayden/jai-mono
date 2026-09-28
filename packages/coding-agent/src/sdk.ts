@@ -74,7 +74,8 @@ export type {
 	CodingTurnEndInput,
 } from "./sdk/extensions";
 export { defineExtension } from "./sdk/extensions";
-export type { CodingModelMetadata, CodingProviderOptions } from "./sdk/model";
+export type { CodingModelMetadata, CodingProviderOptions, ResolvedSdkModel } from "./sdk/model";
+export { resolveSdkModel } from "./sdk/model";
 export { codingArtifactsFromAppState, redactCommand } from "./sdk/project";
 export {
 	emptyPersistedCodingSessionState,
@@ -82,6 +83,7 @@ export {
 } from "./sdk/session-state";
 export type { CodingAgentTelemetryEffectEvent, CodingAgentTelemetryObserverOptions } from "./sdk/telemetry";
 export { CodingAgentTelemetryObserver } from "./sdk/telemetry";
+export { generateSessionTitle } from "./sdk/title";
 export type { CodingToolActivityKind, CodingToolPresentation } from "./sdk/tool-presentation";
 export type {
 	CodingAgent,

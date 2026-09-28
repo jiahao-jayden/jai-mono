@@ -61,6 +61,7 @@ import {
 	emptyPersistedCodingSessionState,
 	type PersistedCodingSessionState,
 } from "./session-state";
+import { generateSessionTitle } from "./title";
 import { builtInToolPresentations } from "./tool-presentation";
 import { resolveCodingToolSelection } from "./tool-selection";
 import type {
@@ -472,46 +473,12 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 
 	async generateTitle(firstMessage: string): Promise<ResultType<string, CodingSdkError>> {
 		if (this.#closed) return Result.err(closedError());
-		try {
-			const assistantText = this.state.messages
-				.filter((message) => message.role === "assistant")
-				.flatMap((message) => message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])))
-				.join("\n")
-				.slice(0, 2_000);
-			const stream = this.#provider.stream(
-				this.#model,
-				{
-					systemPrompt:
-						"Generate a concise session title of at most 8 words. Return only the title, without quotes or punctuation.",
-					messages: [
-						{
-							role: "user",
-							content: `User request:\n${firstMessage.slice(0, 2_000)}\n\nAssistant response:\n${assistantText}`,
-							timestamp: Date.now(),
-						},
-					],
-					tools: [],
-				},
-				{ temperature: 0, maxTokens: 32 },
-			);
-			const result = await stream.result();
-			if (result.stopReason === "error" || result.stopReason === "aborted") {
-				throw new CodingSdkFailure({
-					phase: "model",
-					code: "coding_sdk.title_generation_failed",
-					message: "Session title generation failed",
-				});
-			}
-			return Result.ok(
-				result.content
-					.flatMap((part) => (part.type === "text" ? [part.text] : []))
-					.join("")
-					.trim()
-					.replace(/^["'“”‘’]+|["'“”‘’]+$/g, ""),
-			);
-		} catch (error) {
-			return Result.err(projectError(error, "model"));
-		}
+		const assistantText = this.state.messages
+			.filter((message) => message.role === "assistant")
+			.flatMap((message) => message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])))
+			.join("\n")
+			.slice(0, 2_000);
+		return generateSessionTitle(this.#provider, this.#model, firstMessage, assistantText);
 	}
 
 	async abort(): Promise<ResultType<void, CodingSdkError>> {
