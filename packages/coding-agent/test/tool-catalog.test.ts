@@ -28,30 +28,47 @@ describe("ToolCatalog", () => {
 		expect(catalog.resolve(match!.toolRef, {} as Record<string, unknown>)?.tool.name).toBe("GitHubReview");
 	});
 
-	test("explains that ExecuteTool needs the returned reference instead of the tool name", async () => {
+	test("explains that a removed toolRef is no longer in the catalog", async () => {
 		const catalog = new ToolCatalog([catalogTool("GitHubReview", "Read pull request comments")]);
 
 		await expect(
 			catalog.executeTool.execute("execute-1", {
-				toolRef: "GitHubReview",
+				toolRef: "LinearIssue",
 				input: {},
 			}),
-		).rejects.toThrow("Use the exact toolRef returned by SearchTools, not the tool name");
+		).rejects.toThrow('toolRef "LinearIssue" is not in the current tool catalog');
 	});
 
-	test("invalidates prior references when the catalog snapshot changes", () => {
+	test("keeps refs of remaining tools across catalog refreshes and drops removed ones", () => {
 		const catalog = new ToolCatalog([
 			catalogTool("GitHubReview", "Read GitHub pull request comments"),
 			catalogTool("LinearIssue", "Read Linear issues"),
 		]);
-		const [match] = catalog.search("github");
+		const [github] = catalog.search("github");
+		const [linear] = catalog.search("linear");
 		catalog.replace([
 			catalogTool("GitHubReview", "Review pull requests with updated metadata"),
 			catalogTool("PagerDutyIncident", "Read PagerDuty incidents"),
 		]);
-		expect(catalog.resolve(match!.toolRef, {})).toBeUndefined();
-		expect(catalog.resolve("GitHubReview", {})).toBeUndefined();
+
+		expect(github?.toolRef).toBe("GitHubReview");
+		expect(catalog.search("github")[0]?.toolRef).toBe(github?.toolRef);
+		expect(catalog.resolve(github!.toolRef, {})?.tool.description).toBe("Review pull requests with updated metadata");
+		expect(catalog.resolve(linear!.toolRef, {})).toBeUndefined();
 		expect(catalog.frontdoorTools.map((tool) => tool.name)).toEqual(["SearchTools", "ExecuteTool"]);
+	});
+
+	test("resolves a ref to the current schema after the tool's input schema changes", () => {
+		const catalog = new ToolCatalog([catalogTool("GitHubReview", "Read pull request comments")]);
+		const [first] = catalog.search("github");
+		const changed: AgentTool = {
+			...catalogTool("GitHubReview", "Read pull request comments"),
+			parameters: Type.Object({ pullRequest: Type.String() }),
+		};
+		catalog.replace([changed]);
+
+		// Agent core validates ExecuteTool input against this schema, so stale input fails with a schema error.
+		expect(catalog.resolve(first!.toolRef, {})?.tool.parameters).toBe(changed.parameters);
 	});
 
 	test("scopes only dynamic tools without changing the front door", () => {

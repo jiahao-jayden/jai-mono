@@ -33,6 +33,8 @@ export interface McpExtensionOptions {
 	readonly id?: string;
 	/** Prefixes generated tools and prevents conflicts between multiple official MCP Extensions. */
 	readonly namespace?: string;
+	/** Maximum time allowed for one MCP tool call before local cancellation. */
+	readonly toolTimeoutMs?: number;
 	/** First retry delay in milliseconds. */
 	readonly initialRetryDelayMs?: number;
 	/** Upper bound for exponential reconnect delay in milliseconds. */

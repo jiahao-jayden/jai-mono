@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { AgentTool, AgentToolResult } from "@jai/agent";
 import { Type } from "@sinclair/typebox";
 import { panic, TaggedError } from "better-result";
@@ -15,7 +14,7 @@ const executeParameters = Type.Object(
 	{
 		toolRef: Type.String({
 			minLength: 1,
-			description: "The exact opaque toolRef returned by SearchTools; do not use the tool name.",
+			description: "The toolRef returned by SearchTools. It stays valid for the whole session; reuse it directly.",
 		}),
 		input: Type.Record(Type.String(), Type.Unknown()),
 	},
@@ -46,12 +45,18 @@ class ToolCatalogReferenceUnavailable extends TaggedError("tool_catalog.referenc
 /**
  * Owns the dynamic capability snapshot. Model-visible front-door schemas never
  * change as catalogs refresh; resolved tools still execute through Agent core.
+ *
+ * A toolRef is the tool name itself. Stable refs let the model call ExecuteTool
+ * again without searching first, and they line up with external hints that name
+ * a tool (for example an MCP `next_action.tool`). Schema drift needs no
+ * fingerprint in the ref: Agent core validates the input against the current
+ * schema and returns that error to the model.
  */
 export class ToolCatalog {
 	readonly searchTool: AgentTool<typeof searchParameters>;
 	readonly executeTool: AgentTool<typeof executeParameters>;
 	#tools: readonly AgentTool[];
-	#references = new Map<string, AgentTool>();
+	#byName = new Map<string, AgentTool>();
 	readonly #limit: number;
 
 	constructor(tools: readonly AgentTool[], options: { readonly limit?: number } = {}) {
@@ -66,7 +71,7 @@ export class ToolCatalog {
 		this.searchTool = {
 			name: "SearchTools",
 			description:
-				"Search the dynamic tool catalog. When calling ExecuteTool, copy the exact toolRef returned here; do not use the tool name.",
+				"Search the dynamic tool catalog for tools you have not found yet. A returned toolRef stays valid for the whole session: call ExecuteTool with it directly next time and do not search for the same tool again.",
 			parameters: searchParameters,
 			executionMode: "parallel",
 			execute: async (_toolCallId, args): Promise<AgentToolResult> => {
@@ -80,12 +85,12 @@ export class ToolCatalog {
 		this.executeTool = {
 			name: "ExecuteTool",
 			description:
-				"Execute a dynamic tool returned by SearchTools. Pass the exact toolRef from SearchTools, not the tool name, and provide input matching its schema.",
+				"Execute a dynamic tool found by SearchTools. Pass its toolRef and input matching its schema. A toolRef returned earlier in this session can be reused without searching again.",
 			parameters: executeParameters,
 			executionMode: "parallel",
 			execute: async (_toolCallId, args): Promise<AgentToolResult> => {
 				throw new ToolCatalogReferenceUnavailable({
-					message: `The ExecuteTool toolRef "${args.toolRef}" is unavailable. Use the exact toolRef returned by SearchTools, not the tool name; search again before retrying.`,
+					message: `The ExecuteTool toolRef "${args.toolRef}" is not in the current tool catalog. It may have been removed; use SearchTools to find an available tool.`,
 				});
 			},
 		};
@@ -104,11 +109,14 @@ export class ToolCatalog {
 		return new ToolCatalog(this.#tools.filter(allow), { limit: this.#limit });
 	}
 
-	/** Replaces the whole dynamic snapshot, making every prior reference stale. */
+	/**
+	 * Publishes a new live catalog; refs of tools that remain keep resolving.
+	 * The frontdoor remains fixed so catalog refreshes do not change provider tools.
+	 */
 	replace(tools: readonly AgentTool[]): void {
 		validateCatalogTools(tools);
 		this.#tools = [...tools];
-		this.#references = new Map(tools.map((tool) => [randomUUID(), tool]));
+		this.#byName = new Map(tools.map((tool) => [tool.name, tool]));
 	}
 
 	search(query: string, requestedLimit?: number): readonly ToolCatalogMatch[] {
@@ -124,7 +132,7 @@ export class ToolCatalog {
 			.slice(0, limit)
 			.map((entry) => entry.tool);
 		return matches.map((tool) => ({
-			toolRef: this.#referenceFor(tool),
+			toolRef: tool.name,
 			name: tool.name,
 			description: tool.description,
 			inputSchema: tool.parameters,
@@ -132,16 +140,9 @@ export class ToolCatalog {
 	}
 
 	resolve(toolRef: string, input: Record<string, unknown>) {
-		const tool = this.#references.get(toolRef);
+		const tool = this.#byName.get(toolRef);
 		if (!tool) return;
 		return { tool, input };
-	}
-
-	#referenceFor(tool: AgentTool): string {
-		for (const [reference, candidate] of this.#references) {
-			if (candidate === tool) return reference;
-		}
-		return panic(`Catalog reference for tool "${tool.name}" is missing`);
 	}
 }
 

@@ -25,6 +25,7 @@ interface McpRuntimeOptions {
 	readonly extensionId: string;
 	readonly catalogId: string;
 	readonly namespace: string;
+	readonly toolTimeoutMs: number;
 	readonly initialRetryDelayMs: number;
 	readonly maxRetryDelayMs: number;
 }
@@ -325,11 +326,9 @@ class ManagedMcpServer {
 			});
 		}
 		try {
-			const result = await client.callTool(
-				{ name: toolName, arguments: args },
-				undefined,
-				signal ? { signal } : undefined,
-			);
+			const timeoutSignal = AbortSignal.timeout(this.#options.toolTimeoutMs);
+			const callSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+			const result = await client.callTool({ name: toolName, arguments: args }, undefined, { signal: callSignal });
 			if (!("content" in result)) {
 				return { content: [{ type: "text", text: JSON.stringify(result.toolResult ?? result) ?? "" }] };
 			}

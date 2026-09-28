@@ -37,7 +37,7 @@ _Avoid_: global configuration, generic deep merge
 _Avoid_: Coding Agent MCP runtime, host-managed MCP client, Agent Plugin discovery
 
 **Capability Change Notice**:
-Operation 内工具目录或 skill 清单发生变化时写进 Session journal 的一条 user 消息：带 `metadata.synthetic: true`，只给模型看、用户界面不显示。`announced` 含名字与一句描述；`searchable` 只列 server（没有 server 时列工具名），不附工具描述，也不要求立刻搜索。它只在用户下一条消息进来、新 run 发起时作为初始输入第一条投递，不打断进行中的 run，不走 `steer`。
+Operation 内工具目录或 skill 清单发生变化时写进 Session journal 的一条 user 消息：带 `metadata.synthetic: true`，只给模型看、用户界面不显示。`announced` 含名字与一句描述；`searchable` 放在一个 `<mcp>` 块里，按 server 列出工具名（没有 server 时只列工具名），不附工具描述和 schema，只提示先用 `SearchTools` 取参数再 `ExecuteTool`。首次 run 发全量，之后只发 Added/Removed。它只在用户下一条消息进来、新 run 发起时作为初始输入第一条投递，不打断进行中的 run，不走 `steer`。
 _Avoid_: system reminder, steer message, tools_changed event
 
 **Capability Binding**:
@@ -45,7 +45,7 @@ coding-agent core 为每个 catalog 持有的"上一次告知模型的条目集�
 _Avoid_: discovery cache, tool registry snapshot, catalog store
 
 **Catalog Presentation**:
-Extension catalog 声明条目如何到达模型：`searchable` 进 `SearchTools` 目录、按需搜索，变更通知只列 server 或工具名；`announced` 不进目录，由 core 以全量清单加增量通知的形式注入，压缩时当前全量清单附在压缩摘要后。Skill 是目前唯一的 `announced` catalog。
+Extension catalog 声明条目如何到达模型：`searchable` 进 `SearchTools` 目录，schema 按需搜索，工具名以 `<mcp>` 全量加增量通知告知模型；`announced` 不进目录，由 core 以全量清单加增量通知的形式注入。压缩时两类的当前全量清单都附在压缩摘要后。Skill 是目前唯一的 `announced` catalog。
 _Avoid_: tool visibility, static tool, dynamic tool
 
 **Telemetry Context**:

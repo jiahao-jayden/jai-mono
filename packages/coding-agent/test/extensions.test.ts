@@ -407,7 +407,7 @@ describe("Extension Runtime", () => {
 });
 
 describe("Capability Change Notice", () => {
-	test("searchable catalog produces no notice on first run, diff notice after invalidation", async () => {
+	test("searchable catalog lists tool names on first run and diffs after invalidation", async () => {
 		let revision = 0;
 		let invalidate: (() => void) | undefined;
 		const extension = defineExtension({
@@ -433,7 +433,7 @@ describe("Capability Change Notice", () => {
 		const capabilityNotice: {
 			current?: {
 				produceNotice(): Promise<AgentMessage | undefined>;
-				announcedSnapshot(): string;
+				catalogSnapshot(): string;
 			};
 			lastTold: Map<string, ReadonlyMap<string, string>>;
 		} = { lastTold: new Map() };
@@ -445,30 +445,28 @@ describe("Capability Change Notice", () => {
 		if (activated.isErr() || !invalidate) return;
 
 		const firstNotice = await capabilityNotice.current!.produceNotice();
-		expect(firstNotice).toBeUndefined();
+		expect((firstNotice as { metadata: unknown }).metadata).toEqual({ synthetic: true });
+		const firstText = typeof firstNotice!.content === "string" ? firstNotice!.content : "";
+		expect(firstText).toStartWith("<mcp>\n");
+		expect(firstText).toContain("SearchTools");
+		expect(firstText).toContain("- ToolAlpha\n</mcp>");
+		expect(firstText).not.toContain("Alpha description");
+		expect(await capabilityNotice.current!.produceNotice()).toBeUndefined();
 
 		revision = 1;
 		invalidate();
 		await flushCatalogRefresh();
 
 		const secondNotice = await capabilityNotice.current!.produceNotice();
-		expect(secondNotice).toBeDefined();
-		expect(secondNotice!.role).toBe("user");
-		expect((secondNotice as { metadata: unknown }).metadata).toEqual({ synthetic: true });
-		const text = typeof secondNotice!.content === "string" ? secondNotice!.content : "";
-		expect(text).toContain("<tools>");
-		expect(text).toContain("- ToolBeta");
-		expect(text).toContain("- ToolAlpha");
-		expect(text).not.toContain("description");
-		expect(text).not.toContain("SearchTools");
-
-		const thirdNotice = await capabilityNotice.current!.produceNotice();
-		expect(thirdNotice).toBeUndefined();
+		const secondText = typeof secondNotice!.content === "string" ? secondNotice!.content : "";
+		expect(secondText).toContain("Added:\n- ToolBeta\nRemoved:\n- ToolAlpha\n</mcp>");
+		expect(await capabilityNotice.current!.produceNotice()).toBeUndefined();
+		expect(catalog.search("beta")).toEqual([expect.objectContaining({ name: "ToolBeta" })]);
 
 		await disposeExtensions(prepared.value);
 	});
 
-	test("searchable MCP tools are announced once by server, without tool descriptions", async () => {
+	test("searchable MCP tools are grouped by server and kept in the compaction snapshot", async () => {
 		let tools: ReturnType<typeof catalogTool>[] = [];
 		let invalidate: (() => void) | undefined;
 		const extension = defineExtension({
@@ -490,7 +488,7 @@ describe("Capability Change Notice", () => {
 		const capabilityNotice: {
 			current?: {
 				produceNotice(): Promise<AgentMessage | undefined>;
-				announcedSnapshot(): string;
+				catalogSnapshot(): string;
 			};
 			lastTold: Map<string, ReadonlyMap<string, string>>;
 		} = { lastTold: new Map() };
@@ -511,14 +509,12 @@ describe("Capability Change Notice", () => {
 		await flushCatalogRefresh();
 
 		const notice = await capabilityNotice.current!.produceNotice();
-		expect(notice).toBeDefined();
 		const text = typeof notice!.content === "string" ? notice!.content : "";
-		expect(text).toBe("<tools>\nAdded:\n- we0\n</tools>");
-		expect(text).not.toContain("get_account");
-		expect(text).not.toContain("list_websites");
-		expect(text).not.toContain("SearchTools");
-
+		expect(text).toContain("SearchTools to get its toolRef and input schema.\n- we0: get_account, list_websites\n</mcp>");
+		expect(text).not.toContain("Account");
 		expect(await capabilityNotice.current!.produceNotice()).toBeUndefined();
+		expect(capabilityNotice.current!.catalogSnapshot()).toContain("<mcp>");
+		expect(capabilityNotice.current!.catalogSnapshot()).toContain("- we0: get_account, list_websites");
 		await disposeExtensions(prepared.value);
 	});
 
@@ -549,7 +545,7 @@ describe("Capability Change Notice", () => {
 		const capabilityNotice: {
 			current?: {
 				produceNotice(): Promise<AgentMessage | undefined>;
-				announcedSnapshot(): string;
+				catalogSnapshot(): string;
 			};
 			lastTold: Map<string, ReadonlyMap<string, string>>;
 		} = { lastTold: new Map() };
@@ -581,7 +577,7 @@ describe("Capability Change Notice", () => {
 		expect(secondText).toContain("SkillTwo");
 		expect(secondText).not.toContain("SkillOne");
 
-		const snapshot = capabilityNotice.current!.announcedSnapshot();
+		const snapshot = capabilityNotice.current!.catalogSnapshot();
 		expect(snapshot).toContain("SkillOne");
 		expect(snapshot).toContain("SkillTwo");
 		expect(snapshot).toContain("<available_skills>");
@@ -615,7 +611,7 @@ describe("Capability Change Notice", () => {
 		const capabilityNotice: {
 			current?: {
 				produceNotice(): Promise<AgentMessage | undefined>;
-				announcedSnapshot(): string;
+				catalogSnapshot(): string;
 			};
 			lastTold: Map<string, ReadonlyMap<string, string>>;
 		} = { lastTold: new Map() };
@@ -634,16 +630,11 @@ describe("Capability Change Notice", () => {
 		await flushCatalogRefresh();
 
 		const notice = await capabilityNotice.current!.produceNotice();
-		expect(notice).toBeDefined();
 		const text = typeof notice!.content === "string" ? notice!.content : "";
-		expect(text).toContain("<tools>");
-		expect(text).toContain("- Tool2");
-		expect(text).toContain("- Tool1");
-		expect(text).not.toContain("description");
-		expect(text).not.toContain("SearchTools");
-
-		const next = await capabilityNotice.current!.produceNotice();
-		expect(next).toBeUndefined();
+		expect(text.match(/<mcp>/g)).toHaveLength(1);
+		expect(text).toContain("Added:\n- Tool2\nRemoved:\n- Tool1");
+		expect(await capabilityNotice.current!.produceNotice()).toBeUndefined();
+		expect(catalog.search("tool2")).toEqual([expect.objectContaining({ name: "Tool2" })]);
 
 		await disposeExtensions(prepared.value);
 	});

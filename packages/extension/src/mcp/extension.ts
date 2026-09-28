@@ -13,6 +13,7 @@ import type { McpExtensionConfiguration, McpExtensionOptions, McpServer } from "
 
 const DEFAULT_INITIAL_RETRY_DELAY_MS = 500;
 const DEFAULT_MAX_RETRY_DELAY_MS = 30_000;
+const DEFAULT_TOOL_TIMEOUT_MS = 120_000;
 const CATALOG_ID = "tools";
 
 const rawStdioServerSchema = Type.Object(
@@ -96,6 +97,7 @@ export function createMcpExtension(
 		initialRetryDelayMs,
 		positiveDelay(options.maxRetryDelayMs, DEFAULT_MAX_RETRY_DELAY_MS),
 	);
+	const toolTimeoutMs = positiveDelay(options.toolTimeoutMs, DEFAULT_TOOL_TIMEOUT_MS);
 	return defineExtension({
 		id,
 		configuration: {
@@ -118,6 +120,7 @@ export function createMcpExtension(
 					extensionId: id,
 					catalogId: CATALOG_ID,
 					namespace,
+					toolTimeoutMs,
 					initialRetryDelayMs,
 					maxRetryDelayMs,
 				});

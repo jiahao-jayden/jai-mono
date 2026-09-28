@@ -149,6 +149,12 @@ describe("public Coding Agent SDK", () => {
 		expect(providerToolNames(requests[0])).toContain("ExecuteTool");
 		expect(providerToolNames(requests[0])).not.toContain("CatalogEcho");
 		expect(providerToolNames(requests[1])).toEqual(providerToolNames(requests[0]));
+		// The model only searches for tools it knows exist, so the first request names them before the user prompt.
+		const firstRequest = JSON.stringify(requests[0]);
+		expect(firstRequest).toContain("<mcp>");
+		expect(firstRequest).toContain("- CatalogEcho");
+		expect(firstRequest).not.toContain("Echoes a catalog result");
+		expect(firstRequest.indexOf("<mcp>")).toBeLessThan(firstRequest.indexOf("use the catalog"));
 		await created.value.close();
 	});
 

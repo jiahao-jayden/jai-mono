@@ -716,22 +716,17 @@ class ExtensionCatalogRefreshCoordinator {
 		const removals: string[] = [];
 		const updates: string[] = [];
 		const initial: string[] = [];
-		const searchableAdded = new Set<string>();
-		const searchableRemoved = new Set<string>();
+		const searchableTold = new Set<string>();
+		const searchableCurrent = new Set<string>();
 		for (const [catalogId, binding] of this.#bindings) {
 			// An announced binding that was never told is an initial snapshot, not a change.
 			if (binding.presentation === "announced" && binding.lastTold.size === 0 && binding.current.size > 0) {
 				initial.push(renderAnnouncedCatalog(catalogId, binding.current));
 				continue;
 			}
-			// Searchable tools stay behind SearchTools. The notice names the server (or the
-			// tool, when it has no server) and stops there. Pasting each tool description
-			// reads as a user request to call it.
 			if (binding.presentation === "searchable") {
-				const previous = searchableGroups(binding.lastTold);
-				const current = searchableGroups(binding.current);
-				for (const name of current) if (!previous.has(name)) searchableAdded.add(name);
-				for (const name of previous) if (!current.has(name)) searchableRemoved.add(name);
+				for (const name of binding.lastTold.keys()) searchableTold.add(name);
+				for (const name of binding.current.keys()) searchableCurrent.add(name);
 				continue;
 			}
 			const diff = diffCatalog(binding.lastTold, binding.current);
@@ -739,7 +734,7 @@ class ExtensionCatalogRefreshCoordinator {
 			for (const name of diff.removed) removals.push(name);
 			for (const [name, description] of diff.changed) updates.push(`${name} (${description})`);
 		}
-		const searchableNotice = renderSearchableNotice(searchableAdded, searchableRemoved);
+		const searchableNotice = renderSearchableNotice(searchableTold, searchableCurrent);
 		if (!additions.length && !removals.length && !updates.length && !initial.length && !searchableNotice) {
 			return undefined;
 		}
@@ -761,12 +756,18 @@ class ExtensionCatalogRefreshCoordinator {
 		};
 	}
 
-	announcedSnapshot(): string {
+	catalogSnapshot(): string {
 		const sections: string[] = [];
+		const searchable = new Set<string>();
 		for (const [catalogId, binding] of this.#bindings) {
-			if (binding.presentation !== "announced" || binding.current.size === 0) continue;
-			sections.push(renderAnnouncedCatalog(catalogId, binding.current));
+			if (binding.presentation === "searchable") {
+				for (const name of binding.current.keys()) searchable.add(name);
+				continue;
+			}
+			if (binding.current.size > 0) sections.push(renderAnnouncedCatalog(catalogId, binding.current));
 		}
+		const searchableSection = renderSearchableNotice(new Set(), searchable);
+		if (searchableSection) sections.push(searchableSection);
 		return sections.join("\n");
 	}
 
@@ -873,11 +874,7 @@ class ExtensionCatalogRefreshCoordinator {
 					const savedLastTold = slot?.lastTold.get(catalogId);
 					this.#bindings.set(catalogId, {
 						presentation,
-						lastTold: savedLastTold
-							? new Map(savedLastTold)
-							: presentation === "searchable"
-								? current
-								: new Map(),
+						lastTold: savedLastTold ? new Map(savedLastTold) : new Map(),
 						current,
 					});
 				}
@@ -936,30 +933,43 @@ function diffCatalog(
 	return { added, removed, changed };
 }
 
-/** MCP tools are `mcp__<namespace>__<server>__<tool>`. The notice names the server once. */
-function searchableGroup(name: string): string {
-	const parts = name.split("__");
-	if (parts.length >= 4 && parts[0] === "mcp" && parts[2]) return parts[2];
-	return name;
-}
-
-function searchableGroups(tools: ReadonlyMap<string, string>): Set<string> {
-	return new Set([...tools.keys()].map(searchableGroup));
-}
-
-function renderSearchableNotice(added: ReadonlySet<string>, removed: ReadonlySet<string>): string | undefined {
-	if (added.size === 0 && removed.size === 0) return undefined;
-	const lines = ["<tools>"];
-	if (added.size > 0) {
-		lines.push("Added:");
-		for (const name of [...added].sort()) lines.push(`- ${name}`);
+/**
+ * Searchable tools keep their schemas behind SearchTools, but the model only searches
+ * for tools it knows exist. The notice lists names without descriptions so it reads
+ * as world state rather than a request to call them.
+ */
+function renderSearchableNotice(told: ReadonlySet<string>, current: ReadonlySet<string>): string | undefined {
+	const added = [...current].filter((name) => !told.has(name));
+	const removed = [...told].filter((name) => !current.has(name));
+	if (added.length === 0 && removed.length === 0) return undefined;
+	const lines = [
+		"<mcp>",
+		"These tools can be called through ExecuteTool. Before first use, search the tool name with SearchTools to get its toolRef and input schema.",
+	];
+	if (told.size === 0) {
+		lines.push(...renderToolGroups(added));
+	} else {
+		if (added.length > 0) lines.push("Added:", ...renderToolGroups(added));
+		if (removed.length > 0) lines.push("Removed:", ...renderToolGroups(removed));
 	}
-	if (removed.size > 0) {
-		lines.push("Removed:");
-		for (const name of [...removed].sort()) lines.push(`- ${name}`);
-	}
-	lines.push("</tools>");
+	lines.push("</mcp>");
 	return lines.join("\n");
+}
+
+/** MCP tools are `mcp__<namespace>__<server>__<tool>`; each server is listed once. */
+function renderToolGroups(names: readonly string[]): string[] {
+	const groups = new Map<string, string[]>();
+	for (const name of names) {
+		const parts = name.split("__");
+		const isMcp = parts.length >= 4 && parts[0] === "mcp" && parts[2];
+		const group = isMcp ? parts[2]! : name;
+		const tools = groups.get(group) ?? [];
+		if (isMcp) tools.push(parts.slice(3).join("__"));
+		groups.set(group, tools);
+	}
+	return [...groups]
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([group, tools]) => (tools.length ? `- ${group}: ${tools.sort().join(", ")}` : `- ${group}`));
 }
 
 function renderAnnouncedCatalog(catalogId: string, tools: ReadonlyMap<string, string>): string {

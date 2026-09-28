@@ -64,8 +64,8 @@ export type { OpenChildSession };
 export interface CapabilityNoticeProducer {
 	/** Diffs current catalog state against the last told binding; returns a synthetic user message if non-empty. */
 	produceNotice(): Promise<AgentMessage | undefined>;
-	/** Renders all announced catalogs' current entries as a fixed paragraph for compaction summaries. */
-	announcedSnapshot(): string;
+	/** Renders every catalog's current entries as a fixed paragraph for compaction summaries. */
+	catalogSnapshot(): string;
 }
 
 export interface CapabilityNoticeSlot {
@@ -528,7 +528,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 				...(hooks?.aroundCompact ?? []),
 				async (_input, next) => {
 					const result = await next();
-					const snapshot = options.capabilityNotice?.current?.announcedSnapshot();
+					const snapshot = options.capabilityNotice?.current?.catalogSnapshot();
 					if (snapshot?.trim()) return { ...result, summary: `${result.summary}\n\n${snapshot}` };
 					return result;
 				},
