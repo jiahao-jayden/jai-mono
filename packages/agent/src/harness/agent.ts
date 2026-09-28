@@ -181,6 +181,18 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		return this.agent.getSession();
 	}
 
+	/**
+	 * Model-visible messages of the current branch appended after its latest compaction entry
+	 * (the whole branch when it was never compacted). Reads the durable ledger, so it lags a
+	 * running turn; callers read it while idle.
+	 */
+	messagesSinceCompaction(): readonly AgentMessage[] {
+		const branch = this.ledger.log;
+		const latest = this.ledger.latestCompaction;
+		const start = latest ? branch.findIndex((entry) => entry.id === latest.id) + 1 : 0;
+		return contextMessages(branch.slice(start));
+	}
+
 	setToolResolver(resolveTools: (staticTools: readonly AgentTool[]) => readonly AgentTool[]): void {
 		this.resolveTools = resolveTools;
 	}
