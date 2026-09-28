@@ -76,6 +76,12 @@ export class DesktopConfigService {
 		return this.#project(saved.value);
 	}
 
+	async setAutoCompaction(enabled: boolean): Promise<DesktopProviderConfigSnapshot> {
+		const saved = await this.client.setAutoCompaction(enabled);
+		if (saved.isErr()) throw saved.error;
+		return this.#project(saved.value);
+	}
+
 	async setAgentLanguage(language: DesktopUiLocale): Promise<void> {
 		const saved = await this.client.setLanguage(language);
 		if (saved.isErr()) throw saved.error;
@@ -222,6 +228,7 @@ export class DesktopConfigService {
 			auxiliaryModel: { modelRef: remote.auxiliaryModel.model },
 			connector: projectRuntimeConnectorConfig(remote.connector),
 			webSearch: projectRuntimeWebSearchConfig(remote),
+			autoCompaction: remote.autoCompaction,
 		};
 	}
 }

@@ -1,6 +1,6 @@
 import type { EffectBoundary, JsonObject, SessionHandle, SessionStore } from "@jai/agent";
 import type { Usage } from "@jai/ai";
-import type { PermissionApprovalQueue, SessionAllowRules } from "@jai/coding-agent";
+import type { CodingContextMeasurement, PermissionApprovalQueue, SessionAllowRules } from "@jai/coding-agent";
 import type { Result } from "better-result";
 import { TaggedError } from "better-result";
 import type { RuntimeSessionConfiguration } from "../sessions";
@@ -25,7 +25,8 @@ export interface RuntimeWebSearchDetails {
 }
 
 /**
- * Whitelisted token + cost projection for one settle delta or a branch cumulative.
+ * Whitelisted token projection for one settle delta or a branch cumulative. Cost is omitted:
+ * provider price tables are too incomplete for it to be shown as a fact.
  *
  * All fields are finite numbers. No `usage_settled` on the current branch yields
  * zeros (empty). Provider-reported zeros stay zeros; non-finite values coerce to 0.
@@ -37,7 +38,6 @@ export interface RuntimeSessionUsage {
 	readonly cacheReadTokens: number;
 	readonly cacheWriteTokens: number;
 	readonly totalTokens: number;
-	readonly cost: number;
 	/**
 	 * Size of the latest request, not a sum: the context the next turn starts from.
 	 * ponytail: stays at the pre-compaction size until the next request settles; switch to
@@ -53,7 +53,6 @@ export function projectRuntimeSessionUsage(usage: Usage): RuntimeSessionUsage {
 		cacheReadTokens: finiteNumber(usage.cacheRead),
 		cacheWriteTokens: finiteNumber(usage.cacheWrite),
 		totalTokens: finiteNumber(usage.totalTokens),
-		cost: finiteNumber(usage.cost.total),
 		contextTokens: finiteNumber(usage.totalTokens),
 	};
 }
@@ -136,7 +135,30 @@ export type RuntimeOperationEvent =
 			readonly toolCallId: string;
 			readonly toolName: "web_search";
 			readonly webSearch: RuntimeWebSearchDetails;
+	  }
+	| {
+			/** Volatile per-category estimate of the context sent with the next model request. */
+			readonly type: "context_measured";
+			readonly measurement: RuntimeContextMeasurement;
+	  }
+	| {
+			/** Success is not reported here: it is the durable compaction entry itself. */
+			readonly type: "compaction_progress";
+			readonly status: "compacting" | "failed";
 	  };
+
+/** Token estimates only; tool names are its one string field and already appear in the transcript. */
+export type RuntimeContextMeasurement = CodingContextMeasurement;
+
+export interface RuntimeCompactInput {
+	readonly sessionId: string;
+	readonly cwd: string;
+	/** Scopes configuration resolution and telemetry; never written to the Operation Journal. */
+	readonly operationId: string;
+	readonly runtimeConfiguration: RuntimeSessionConfiguration;
+	readonly sessionStore: SessionStore<JsonObject>;
+	readonly onContextMeasured: (measurement: RuntimeContextMeasurement) => void;
+}
 
 /** The small safe subset of SDK tool output that a Host may display live. */
 export type RuntimeOperationContent =
@@ -249,4 +271,9 @@ export interface RuntimeOperationDriver {
 	/** Drops a preflight snapshot when durable admission is rejected. */
 	discardPreflight?(operationId: string): void;
 	openOperation(input: RuntimeOperationOpenInput): Promise<Result<RuntimeOperation, RuntimeOperationOpenFailed>>;
+	/**
+	 * Summarizes the idle Session's current branch. Like automatic compaction it appends only a
+	 * compaction entry to the Session Journal; it performs no tool effect and admits no Operation.
+	 */
+	compact?(input: RuntimeCompactInput): Promise<Result<void, RuntimeOperationExecutionFailed>>;
 }

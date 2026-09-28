@@ -21,6 +21,7 @@ const failuresByTag: Readonly<Record<string, DesktopFailure>> = {
 		action: "choose_project",
 	},
 	"desktop_agent.retry_unavailable": { code: "runtime.retry_unavailable", retryable: false },
+	"desktop_agent.compaction_unavailable": { code: "runtime.compaction_unavailable", retryable: false },
 	"desktop_agent.acp_connection_failed": connectionFailed,
 	"desktop_agent.acp_connection_closed": connectionFailed,
 	"desktop_agent.acp_request_failed": transientRequestFailed,

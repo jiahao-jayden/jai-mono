@@ -1062,7 +1062,6 @@ describe("RuntimeHost", () => {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
       totalTokens: 4,
-      cost: 4,
       contextTokens: 2,
     });
 
@@ -1076,7 +1075,6 @@ describe("RuntimeHost", () => {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
       totalTokens: 2,
-      cost: 1.5,
       contextTokens: 2,
     });
     expect(afterRewind.value.operationIdByEntryId.has(second.value.inputEntryId)).toBe(false);
@@ -1096,10 +1094,10 @@ describe("RuntimeHost", () => {
     const opened = await host.openSession({ kind: "new", cwd: "/workspace" });
     if (opened.isErr()) throw opened.error;
 
-    const usageEvents: Array<{ cost: number; totalTokens: number }> = [];
+    const usageEvents: number[] = [];
     opened.value.subscribe((event) => {
       if (event.type === "usage_changed") {
-        usageEvents.push({ cost: event.usage.cost, totalTokens: event.usage.totalTokens });
+        usageEvents.push(event.usage.totalTokens);
       }
     });
 
@@ -1130,11 +1128,11 @@ describe("RuntimeHost", () => {
     driver.emit(settledUsageEvent(3));
     driver.finish("completed");
     await driver.closed;
-    expect(usageEvents.at(-1)).toEqual({ cost: 4, totalTokens: 4 });
+    expect(usageEvents.at(-1)).toBe(4);
 
     const navigated = await opened.value.navigate(first.value.inputEntryId);
     if (navigated.isErr()) throw navigated.error;
-    expect(usageEvents.at(-1)).toEqual({ cost: 1, totalTokens: 2 });
+    expect(usageEvents.at(-1)).toBe(2);
 
     const third = await opened.value.prompt({ text: "continue on kept branch" });
     if (third.isErr()) throw third.error;
@@ -1142,7 +1140,7 @@ describe("RuntimeHost", () => {
     driver.emit(settledUsageEvent(0.5));
     driver.finish("completed");
     await driver.closed;
-    expect(usageEvents.at(-1)).toEqual({ cost: 1.5, totalTokens: 4 });
+    expect(usageEvents.at(-1)).toBe(4);
 
     const snapshot = await opened.value.snapshot();
     if (snapshot.isErr()) throw snapshot.error;
@@ -1152,7 +1150,6 @@ describe("RuntimeHost", () => {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
       totalTokens: 2,
-      cost: 1,
       contextTokens: 2,
     });
   });
@@ -1213,7 +1210,6 @@ describe("RuntimeHost", () => {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
       totalTokens: 2,
-      cost: 2,
       contextTokens: 2,
     });
     expect(snapshot.value.recovery).toEqual([

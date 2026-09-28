@@ -18,6 +18,7 @@ import {
 import type { SqliteWorkspaceTrust } from "../../workspaces";
 import type { AcpJsonRpcRequest, AcpJsonRpcResponse, AcpOutboundMessage } from "../acp-v2/types";
 import {
+	autoCompactionParamsSchema,
 	callbackUrlParamsSchema,
 	connectorCredentialParamsSchema,
 	connectorIdParamsSchema,
@@ -71,6 +72,12 @@ export class DesktopConfigurationControl {
 				const language = readDto(languageParamsSchema, params);
 				if (!language) return this.error(request.id, -32602, "Invalid Desktop configuration language parameters");
 				return this.project(request.id, this.settings.setLanguage(language.language));
+			}
+			case "jai/desktop-configuration/set-auto-compaction": {
+				const input = readDto(autoCompactionParamsSchema, params);
+				if (!input)
+					return this.error(request.id, -32602, "Invalid Desktop configuration auto-compaction parameters");
+				return this.project(request.id, this.settings.setAutoCompaction(input.enabled));
 			}
 			case "jai/desktop-configuration/set-selection": {
 				const selection = readDto(selectionParamsSchema, params);

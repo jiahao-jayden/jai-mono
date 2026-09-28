@@ -29,6 +29,7 @@ import type {
 	DesktopPermissionResolution,
 	DesktopRunTiming,
 	DesktopSessionConfiguration,
+	DesktopSessionContext,
 	DesktopSessionControls,
 	DesktopSessionUsage,
 	DesktopSubagentItem,
@@ -42,7 +43,7 @@ import type {
 	DesktopTranscriptItem,
 	DesktopWebSearchResult,
 } from "../../shared/desktop-rpc";
-import { EMPTY_DESKTOP_SESSION_USAGE } from "../../shared/desktop-rpc";
+import { desktopSessionContextSchema, EMPTY_DESKTOP_SESSION_USAGE } from "../../shared/desktop-rpc";
 import { defaultDesktopSessionControls } from "../../shared/session-controls";
 import type { DesktopRuntimeHostSupervisor } from "../runtime-host/supervisor";
 import { sortArtifacts } from "./artifacts";
@@ -86,6 +87,7 @@ interface AcpSessionRuntime {
 	readonly hiddenToolCallIds: Set<string>;
 	todos?: DesktopTodos;
 	usage: DesktopSessionUsage;
+	context?: DesktopSessionContext;
 	seq: number;
 	closed: boolean;
 	connectionStatus?: DesktopAgentConnectionStatus;
@@ -292,6 +294,7 @@ export class DesktopAcpAgentHost {
 			todos: runtime.todos ? structuredClone(runtime.todos) : undefined,
 			artifacts: sortArtifacts(runtime.artifacts.values()).map((artifact) => structuredClone(artifact)),
 			usage: { ...runtime.usage },
+			context: runtime.context ? structuredClone(runtime.context) : undefined,
 			configuration: runtime.modelRef
 				? { modelRef: runtime.modelRef, controls: { ...runtime.controls } }
 				: undefined,
@@ -318,6 +321,24 @@ export class DesktopAcpAgentHost {
 		if (result.isErr()) throw result.error;
 		const value = result.value as { readonly items?: readonly unknown[] };
 		return value.items ? this.#projectSubagentTranscript(value.items) : { items: [], runs: [] };
+	}
+
+	async compact(sessionId: string): Promise<void> {
+		const runtime = await this.#ensureSession(sessionId, "", defaultDesktopSessionControls);
+		const compacted = await this.#client.request("jai/session/compact", { sessionId: runtime.sessionId });
+		if (compacted.isOk()) return;
+		// The Host answers every compaction rejection (nothing to compact, busy branch) as a request failure.
+		if (compacted.error._tag === "acp_local_client.request_failed") {
+			throw desktopAgentError("compaction_unavailable", {
+				message: "The current branch cannot be compacted now",
+				data: { sessionId: runtime.sessionId },
+			});
+		}
+		throw new DesktopAcpRequestFailed({
+			method: "jai/session/compact",
+			message: compacted.error.message,
+			cause: compacted.error,
+		});
 	}
 
 	getArtifact(sessionId: string, artifactId: string): DesktopArtifact | undefined {
@@ -427,6 +448,7 @@ export class DesktopAcpAgentHost {
 		runtime.terminalToolCallIds.clear();
 		runtime.terminalOutput.clear();
 		runtime.todos = undefined;
+		runtime.context = undefined;
 		const replayed = await this.#request("session/resume", {
 			sessionId: runtime.sessionId,
 			cwd: runtime.cwd,
@@ -592,6 +614,12 @@ export class DesktopAcpAgentHost {
 				return;
 			case "usage_update":
 				this.#usageUpdate(runtime, update);
+				return;
+			case "context_update":
+				this.#contextUpdate(runtime, update);
+				return;
+			case "compaction_update":
+				this.#compactionUpdate(runtime, update);
 				return;
 			case "config_option_update": {
 				const configuration = this.#applyConfiguration(runtime, update);
@@ -987,6 +1015,43 @@ export class DesktopAcpAgentHost {
 	}
 
 	/**
+	 * A running compaction has no durable id yet, so it shows as one live marker that the durable
+	 * entry replaces, or that disappears when the compaction gives up.
+	 */
+	#compactionUpdate(runtime: AcpSessionRuntime, update: Record<string, unknown>): void {
+		const liveId = "compaction:live";
+		if (update.status === "compacting") {
+			const item: DesktopTranscriptItem = {
+				kind: "compaction",
+				id: liveId,
+				timestamp: Date.now(),
+				status: "compacting",
+			};
+			runtime.items.set(item.id, item);
+			this.#emitEvent(runtime, { type: "transcript_upsert", item });
+			return;
+		}
+		if (runtime.items.delete(liveId)) this.#emitEvent(runtime, { type: "transcript_remove", id: liveId });
+		if (update.status !== "complete" || typeof update.compactionId !== "string") return;
+		const item: DesktopTranscriptItem = {
+			kind: "compaction",
+			id: `compaction:${update.compactionId}`,
+			timestamp: finiteNumber(update.timestamp) ?? Date.now(),
+			status: "complete",
+		};
+		runtime.items.set(item.id, item);
+		this.#emitEvent(runtime, { type: "transcript_upsert", item });
+	}
+
+	/** `context: null` clears a measurement that no longer describes the current branch. */
+	#contextUpdate(runtime: AcpSessionRuntime, update: Record<string, unknown>): void {
+		const context = update.context;
+		if (context !== null && !Value.Check(desktopSessionContextSchema, context)) return;
+		runtime.context = context ?? undefined;
+		this.#emitEvent(runtime, { type: "context_changed", context: runtime.context });
+	}
+
+	/**
 	 * ACP requests that the Client complete every pending permission interaction
 	 * with its explicit cancelled outcome before it stops presenting the Session.
 	 * The Host maps that back to the SDK's fail-closed decision; this method only
@@ -1267,7 +1332,6 @@ function readSessionUsage(update: Record<string, unknown>): DesktopSessionUsage 
 	const cacheReadTokens = finiteNumber(update.cacheReadTokens);
 	const cacheWriteTokens = finiteNumber(update.cacheWriteTokens);
 	const totalTokens = finiteNumber(update.totalTokens);
-	const cost = finiteNumber(update.cost);
 	const contextTokens = finiteNumber(update.contextTokens);
 	if (
 		inputTokens === undefined ||
@@ -1275,12 +1339,11 @@ function readSessionUsage(update: Record<string, unknown>): DesktopSessionUsage 
 		cacheReadTokens === undefined ||
 		cacheWriteTokens === undefined ||
 		totalTokens === undefined ||
-		cost === undefined ||
 		contextTokens === undefined
 	) {
 		return undefined;
 	}
-	return { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, cost, contextTokens };
+	return { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, contextTokens };
 }
 
 function finiteNumber(value: unknown): number | undefined {

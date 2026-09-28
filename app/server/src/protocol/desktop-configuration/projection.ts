@@ -74,6 +74,7 @@ export const agentSettingsSnapshotSchema = Type.Object(
 		model: Type.String(),
 		maxTurns: Type.Optional(PositiveInteger),
 		language: Type.Optional(Language),
+		autoCompaction: Type.Boolean(),
 		/** `model` absent: auxiliary judgements (`auto` permission review) follow the Session model. */
 		auxiliaryModel: Type.Object({ model: Type.Optional(Type.String({ minLength: 1 })) }, strict),
 		profiles: Type.Array(ProviderProfile),
@@ -220,6 +221,7 @@ export const objectParamsSchema = Type.Record(Type.String(), Type.Unknown());
 export const emptyParamsSchema = Type.Object({}, strict);
 export const profileIdParamsSchema = Type.Object({ profileId: Type.String() }, strict);
 export const languageParamsSchema = Type.Object({ language: Type.String() }, strict);
+export const autoCompactionParamsSchema = Type.Object({ enabled: Type.Boolean() }, strict);
 export const selectionParamsSchema = Type.Object({ model: Type.String() }, strict);
 export const webSearchCredentialParamsSchema = Type.Object({ credentialId: WebSearchCredentialId }, strict);
 export const connectorCredentialParamsSchema = Type.Object(

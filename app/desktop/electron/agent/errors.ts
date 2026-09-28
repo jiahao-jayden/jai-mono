@@ -13,6 +13,9 @@ class DesktopAgentUnsupportedOperation extends TaggedError(
 	"desktop_agent.unsupported_operation",
 )<DesktopAgentErrorInit> {}
 class DesktopAgentRetryUnavailable extends TaggedError("desktop_agent.retry_unavailable")<DesktopAgentErrorInit> {}
+class DesktopAgentCompactionUnavailable extends TaggedError(
+	"desktop_agent.compaction_unavailable",
+)<DesktopAgentErrorInit> {}
 
 export function desktopAgentError(
 	reason:
@@ -21,7 +24,8 @@ export function desktopAgentError(
 		| "session_busy"
 		| "navigation_failed"
 		| "unsupported_operation"
-		| "retry_unavailable",
+		| "retry_unavailable"
+		| "compaction_unavailable",
 	init: DesktopAgentErrorInit,
 ) {
 	switch (reason) {
@@ -37,5 +41,7 @@ export function desktopAgentError(
 			return new DesktopAgentUnsupportedOperation(init);
 		case "retry_unavailable":
 			return new DesktopAgentRetryUnavailable(init);
+		case "compaction_unavailable":
+			return new DesktopAgentCompactionUnavailable(init);
 	}
 }

@@ -97,6 +97,7 @@ export type {
 	CodingAssistantMessage,
 	CodingAttachment,
 	CodingAuxiliaryModel,
+	CodingContextMeasurement,
 	CodingEffectBoundary,
 	CodingFileChange,
 	CodingImageContent,

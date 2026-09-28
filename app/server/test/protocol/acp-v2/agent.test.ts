@@ -3,6 +3,8 @@ import { Result } from "better-result";
 import { AcpV2Agent } from "../../../src/protocol/acp-v2";
 import { ACP_RETRY_UNAVAILABLE } from "../../../src/protocol/acp-v2/types";
 import {
+	type RuntimeCompactInput,
+	type RuntimeContextMeasurement,
 	type RuntimeOperation,
 	type RuntimeOperationDriver,
 	RuntimeOperationExecutionFailed,
@@ -22,6 +24,18 @@ function ids(...values: string[]): () => string {
 	let index = 0;
 	return () => values[index++] ?? `id-${index}`;
 }
+
+const contextMeasurement: RuntimeContextMeasurement = {
+	contextWindow: 1_000,
+	compactAtTokens: 800,
+	systemPrompt: 10,
+	toolDefinitions: 5,
+	userMessages: 3,
+	assistantText: 2,
+	thinking: 1,
+	toolInputs: 1,
+	toolOutputs: [{ toolName: "Read", tokens: 8 }],
+};
 
 describe("ACP v2 Agent adapter", () => {
 	test("accepts an ACP prompt only after Runtime Host durable admission, then projects user and running updates", async () => {
@@ -427,7 +441,7 @@ describe("ACP v2 Agent adapter", () => {
 		]);
 	});
 
-	test("projects a cumulative usage cost after settlement and replays it from the durable ledger", async () => {
+	test("projects cumulative usage after settlement and replays it from the durable ledger", async () => {
 		const livePersistence = new InMemoryProductSessionPersistence();
 		const driver = new ProjectionDriver();
 		const liveHost = new RuntimeHost({
@@ -464,7 +478,6 @@ describe("ACP v2 Agent adapter", () => {
 						cacheReadTokens: 0,
 						cacheWriteTokens: 0,
 						totalTokens: 2,
-						cost: 0.0125,
 						contextTokens: 2,
 					},
 				},
@@ -533,13 +546,115 @@ describe("ACP v2 Agent adapter", () => {
 						cacheReadTokens: 0,
 						cacheWriteTokens: 0,
 						totalTokens: 2,
-						cost: 0.0125,
 						contextTokens: 2,
 					},
 				},
 			}),
 		);
 		await replayAgent.close();
+	});
+
+	test("pairs a request's context measurement with its settled usage and replays it on resume", async () => {
+		const persistence = new InMemoryProductSessionPersistence();
+		const driver = new ProjectionDriver();
+		const host = new RuntimeHost({ persistence, operationDriver: driver, createId: ids("session-1", "operation-1") });
+		const agent = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: { protocolVersion: 2, capabilities: {}, info: { name: "test-client", version: "1.0.0" } },
+		});
+		await agent.handle({ jsonrpc: "2.0", id: 2, method: "session/new", params: { cwd: "/workspace" } });
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 3,
+			method: "session/prompt",
+			params: { sessionId: "session-1", prompt: [{ type: "text", text: "measure" }] },
+		});
+		await driver.opened;
+		agent.drain();
+		driver.emit({ type: "context_measured", measurement: contextMeasurement });
+		expect(agent.drain()).toEqual([]);
+		driver.emit({ type: "usage_settled", usage: projectRuntimeSessionUsage(usage(0)) });
+		const context = {
+			usedTokens: 2,
+			contextWindow: 1_000,
+			compactAtTokens: 800,
+			categories: { systemPrompt: 10, toolDefinitions: 5, userMessages: 3, assistantText: 2, thinking: 1, toolInputs: 1 },
+			toolOutputs: [{ toolName: "Read", tokens: 8 }],
+		};
+		expect(agent.drain()).toContainEqual({
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: { sessionId: "session-1", update: { sessionUpdate: "context_update", context } },
+		});
+		driver.finish("completed");
+		await driver.closed;
+
+		const resumed = await agent.handle({
+			jsonrpc: "2.0",
+			id: 4,
+			method: "session/resume",
+			params: { sessionId: "session-1", cwd: "/workspace", replayFrom: { type: "start" } },
+		});
+		expect(resumed).toContainEqual(
+			expect.objectContaining({
+				params: { sessionId: "session-1", update: { sessionUpdate: "context_update", context } },
+			}),
+		);
+		await agent.close();
+	});
+
+	test("jai/session/compact runs the driver compaction and publishes the calibrated context", async () => {
+		const compacted: RuntimeCompactInput[] = [];
+		const host = new RuntimeHost({
+			persistence: new InMemoryProductSessionPersistence(),
+			operationDriver: {
+				openOperation: async () => {
+					throw new Error("no prompt in this test");
+				},
+				compact: async (input) => {
+					compacted.push(input);
+					input.onContextMeasured(contextMeasurement);
+					return Result.ok(undefined);
+				},
+			},
+			createId: ids("session-1", "compaction-1"),
+		});
+		const agent = new AcpV2Agent({ host, info: { name: "jai", version: "0.0.0" } });
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: { protocolVersion: 2, capabilities: {}, info: { name: "test-client", version: "1.0.0" } },
+		});
+		await agent.handle({ jsonrpc: "2.0", id: 2, method: "session/new", params: { cwd: "/workspace" } });
+		const response = await agent.handle({
+			jsonrpc: "2.0",
+			id: 3,
+			method: "jai/session/compact",
+			params: { sessionId: "session-1" },
+		});
+		expect(compacted.map((input) => input.sessionId)).toEqual(["session-1"]);
+		expect(response).toContainEqual({ jsonrpc: "2.0", id: 3, result: {} });
+		expect(response).toContainEqual(
+			expect.objectContaining({
+				params: {
+					sessionId: "session-1",
+					update: { sessionUpdate: "compaction_update", compactionId: "live", status: "compacting" },
+				},
+			}),
+		);
+		expect(response).toContainEqual(
+			expect.objectContaining({
+				params: {
+					sessionId: "session-1",
+					update: { sessionUpdate: "context_update", context: expect.objectContaining({ usedTokens: 30 }) },
+				},
+			}),
+		);
+		await agent.close();
 	});
 
 	test("projects the durable Coding Agent Todo list as an ACP plan with its cancelled status", async () => {

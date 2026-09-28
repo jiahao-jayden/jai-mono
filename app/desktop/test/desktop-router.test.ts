@@ -185,6 +185,24 @@ describe("createDesktopRouter — 输入校验", () => {
 		expect(() => r.agent.abort(event, 42)).toThrow();
 	});
 
+	test("agent.compact 与 provider.setAutoCompaction 校验参数后委托", () => {
+		const calls: { name: string; args: readonly unknown[] }[] = [];
+		const { router: r } = router({
+			agentHost: { compact: (...args: unknown[]) => calls.push({ name: "compact", args }) },
+			config: { setAutoCompaction: (...args: unknown[]) => calls.push({ name: "setAutoCompaction", args }) },
+		});
+		expect(() => r.agent.compact(event, "")).toThrow();
+		expect(() => r.provider.setAutoCompaction(event, "false" as never)).toThrow();
+		expect(calls).toEqual([]);
+
+		r.agent.compact(event, "session-1");
+		r.provider.setAutoCompaction(event, false);
+		expect(calls).toEqual([
+			{ name: "compact", args: ["session-1"] },
+			{ name: "setAutoCompaction", args: [false] },
+		]);
+	});
+
 	test("connector.startOAuth 只接受已知 application id", () => {
 		const { router: r } = router();
 		expect(() => r.connector.startOAuth(event, "evil_connector")).toThrow();

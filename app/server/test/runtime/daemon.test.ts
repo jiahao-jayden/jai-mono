@@ -33,6 +33,7 @@ describe("Runtime Host daemon composition", () => {
 				expect(snapshot.value).toEqual({
 					revision: null,
 					model: "",
+					autoCompaction: true,
 					auxiliaryModel: {},
 					profiles: [],
 					connector: { policy: { default: "ask", actions: {} }, connectors: [] },

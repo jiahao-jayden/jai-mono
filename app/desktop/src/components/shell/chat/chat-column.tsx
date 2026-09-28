@@ -476,6 +476,8 @@ export function ChatColumn({
 						onSelectProviderModel={onSelectProviderModel}
 						onSelectControls={onSelectControls}
 						usage={chat.usage}
+						context={chat.context}
+						onCompact={session ? chat.compact : undefined}
 						showProjectPicker={isNewChat}
 						large={isNewChat}
 					/>

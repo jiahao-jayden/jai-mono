@@ -19,7 +19,7 @@ describe("DesktopAgentEventDispatcher", () => {
 				cacheReadTokens: 0,
 				cacheWriteTokens: 0,
 				totalTokens: 0,
-				cost: 0,
+				contextTokens: 0,
 			},
 			lastSeq: 1,
 		};

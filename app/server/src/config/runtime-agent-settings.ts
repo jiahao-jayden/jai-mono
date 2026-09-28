@@ -166,6 +166,8 @@ export interface RuntimeAgentSettings {
 	readonly model: string;
 	readonly maxTurns?: number;
 	readonly language?: string;
+	/** Absent means on; stored only once the user turns automatic compaction off. */
+	readonly autoCompaction?: boolean;
 	/** Stored only while a model is chosen; absent means "follow the Session model". */
 	readonly auxiliaryModel?: RuntimeAuxiliaryModelSettings;
 	readonly providers: Readonly<Record<string, RuntimeProviderProfile>>;
@@ -230,6 +232,7 @@ export interface RuntimeAgentSettingsSnapshot {
 	readonly model: string;
 	readonly maxTurns?: number;
 	readonly language?: string;
+	readonly autoCompaction: boolean;
 	readonly auxiliaryModel: RuntimeAuxiliaryModelSettings;
 	readonly profiles: readonly RuntimeProviderProfileProjection[];
 	readonly connector: RuntimeConnectorProjection;
@@ -241,6 +244,7 @@ export interface ResolvedRuntimeAgentOptions {
 	readonly provider?: CodingProviderOptions;
 	readonly maxTurns?: number;
 	readonly instructions?: string;
+	readonly autoCompaction: boolean;
 }
 
 /** An SDK model reference and its connection, without any Session execution options. */
@@ -373,6 +377,7 @@ export class SqliteRuntimeAgentSettings {
 				return Result.ok({
 					revision: null,
 					model: "",
+					autoCompaction: true,
 					auxiliaryModel: {},
 					profiles: [],
 					connector: projectConnector(undefined),
@@ -439,6 +444,19 @@ export class SqliteRuntimeAgentSettings {
 			return this.insertInitial({ revision: null, model: "", language, providers: [] }, now);
 		}
 		return this.persist({ ...current.value.settings, language }, current.value.revision, now);
+	}
+
+	setAutoCompaction(
+		enabled: boolean,
+		now = new Date().toISOString(),
+	): ResultType<RuntimeAgentSettingsSnapshot, RuntimeAgentSettingsWriteError> {
+		const autoCompaction = enabled ? undefined : false;
+		const current = this.current();
+		if (current.isErr()) {
+			if (current.error._tag !== "runtime_config.agent_settings_missing") return Result.err(current.error);
+			return this.insertInitial({ revision: null, model: "", providers: [] }, now, autoCompaction);
+		}
+		return this.persist({ ...current.value.settings, autoCompaction }, current.value.revision, now);
 	}
 
 	/** Remembers the composer's model so the next Session and app launch start from it. */
@@ -839,8 +857,9 @@ export class SqliteRuntimeAgentSettings {
 	private insertInitial(
 		input: RuntimeAgentSettingsInput,
 		now: string,
+		autoCompaction?: boolean,
 	): ResultType<RuntimeAgentSettingsSnapshot, RuntimeAgentSettingsWriteError> {
-		const initial = settingsFromInput(input, emptySettings(input.model));
+		const initial = settingsFromInput(input, { ...emptySettings(input.model), autoCompaction });
 		if (initial.isErr()) return Result.err(initial.error);
 		try {
 			this.database
@@ -1000,6 +1019,7 @@ export function resolveRuntimeAgentOptions(
 		...connection.value,
 		maxTurns: settings.maxTurns || undefined,
 		instructions: settings.language ? `Respond in ${settings.language}.` : undefined,
+		autoCompaction: settings.autoCompaction ?? true,
 	});
 }
 
@@ -1150,6 +1170,7 @@ function settingsFromInput(
 		model: repairDefaultModel(input.model.trim(), providers, current.providers),
 		maxTurns: input.maxTurns,
 		language: input.language,
+		autoCompaction: current.autoCompaction,
 		auxiliaryModel: input.auxiliaryModel === undefined ? current.auxiliaryModel : input.auxiliaryModel,
 		providers,
 		extensions: current.extensions,
@@ -1267,6 +1288,7 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 			"model",
 			"maxTurns",
 			"language",
+			"autoCompaction",
 			"auxiliaryModel",
 			"providers",
 			"extensions",
@@ -1300,6 +1322,13 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 		return Result.err(
 			new RuntimeAgentSettingsInvalid({
 				message: "Runtime Agent language must be a valid language tag",
+			}),
+		);
+	}
+	if (value.autoCompaction !== undefined && typeof value.autoCompaction !== "boolean") {
+		return Result.err(
+			new RuntimeAgentSettingsInvalid({
+				message: "Runtime Agent autoCompaction must be a boolean",
 			}),
 		);
 	}
@@ -1363,6 +1392,7 @@ function validateSettings(value: unknown): ResultType<RuntimeAgentSettings, Runt
 		model: value.model.trim(),
 		maxTurns,
 		language,
+		autoCompaction: value.autoCompaction === false ? false : undefined,
 		auxiliaryModel: auxiliaryModel ? { model: auxiliaryModel } : undefined,
 		providers,
 		extensions: structuredClone(value.extensions) as Readonly<Record<string, JsonObject>>,
@@ -1427,6 +1457,7 @@ function projectSnapshot(settings: RuntimeAgentSettings, revision: string): Runt
 		model: settings.model,
 		maxTurns: settings.maxTurns,
 		language: settings.language,
+		autoCompaction: settings.autoCompaction ?? true,
 		auxiliaryModel: { model: settings.auxiliaryModel?.model },
 		profiles: Object.entries(settings.providers)
 			.map(([id, profile]) => {

@@ -147,6 +147,12 @@ export class DesktopConfigurationClient {
 		return this.request("jai/desktop-configuration/set-language", { language });
 	}
 
+	async setAutoCompaction(
+		enabled: boolean,
+	): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>> {
+		return this.request("jai/desktop-configuration/set-auto-compaction", { enabled });
+	}
+
 	async setSelection(selection: {
 		readonly model: string;
 	}): Promise<ResultType<RuntimeAgentSettingsSnapshot, DesktopConfigurationClientError>> {

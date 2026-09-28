@@ -1,5 +1,11 @@
 export { compact } from "./compact";
-export { estimateContextTokens, estimateTokens, resolveCompactionSettings, shouldCompact } from "./estimate";
+export {
+	estimateContextBreakdown,
+	estimateContextTokens,
+	estimateTokens,
+	resolveCompactionSettings,
+	shouldCompact,
+} from "./estimate";
 export { isContextOverflow } from "./overflow";
 export { type CompactionCut, findCompactionCut, projectCompactedMessages } from "./projection";
 export type {
@@ -10,5 +16,6 @@ export type {
 	CompactionResult,
 	CompactionSettings,
 	CompactionTrigger,
+	ContextBreakdown,
 	ContextTokenEstimate,
 } from "./types";

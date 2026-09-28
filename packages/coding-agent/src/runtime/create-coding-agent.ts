@@ -9,6 +9,7 @@ import {
 	type AgentInput,
 	type AgentMessage,
 	type AgentTool,
+	type CompactionOutcome,
 	type EffectBoundary,
 	type JsonObject,
 	type ModelRequestObserver,
@@ -277,6 +278,10 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 
 	navigate(entryId: string): Promise<void> {
 		return this.#agent.navigate(entryId);
+	}
+
+	compact(signal?: AbortSignal): Promise<CompactionOutcome> {
+		return this.#agent.compact(signal);
 	}
 
 	async #dispatchCommand(input: AgentInput): Promise<CodingCommandDispatch | undefined> {

@@ -198,7 +198,7 @@ describe("useChat projection", () => {
 					cacheReadTokens: 0,
 					cacheWriteTokens: 0,
 					totalTokens: 0,
-					cost: 0,
+					contextTokens: 0,
 				},
 				items: [
 					{
@@ -256,7 +256,7 @@ describe("useChat projection", () => {
 					cacheReadTokens: 0,
 					cacheWriteTokens: 0,
 					totalTokens: 0,
-					cost: 0,
+					contextTokens: 0,
 				},
 				items: [],
 			},
@@ -384,7 +384,6 @@ describe("useChat projection", () => {
 		const compaction: DesktopTranscriptItem = {
 			kind: "compaction",
 			id: "compaction:pending:1",
-			summary: "",
 			timestamp: 1,
 			status: "compacting",
 		};
@@ -416,7 +415,7 @@ describe("useChat projection", () => {
 					cacheReadTokens: 0,
 					cacheWriteTokens: 0,
 					totalTokens: 0,
-					cost: 0,
+					contextTokens: 0,
 				},
 				lastSeq: 2,
 				todos: {
@@ -518,7 +517,7 @@ describe("useChat projection", () => {
 						cacheReadTokens: 0,
 						cacheWriteTokens: 0,
 						totalTokens: 4,
-						cost: 0.01,
+						contextTokens: 4,
 					},
 				},
 			},
@@ -529,8 +528,35 @@ describe("useChat projection", () => {
 			cacheReadTokens: 0,
 			cacheWriteTokens: 0,
 			totalTokens: 4,
-			cost: 0.01,
+			contextTokens: 4,
 		});
+	});
+
+	test("context_changed replaces and clears the Chat context measurement", () => {
+		const context = {
+			usedTokens: 100,
+			contextWindow: 1_000,
+			categories: {
+				systemPrompt: 1,
+				toolDefinitions: 0,
+				userMessages: 0,
+				assistantText: 0,
+				thinking: 0,
+				toolInputs: 0,
+			},
+			toolOutputs: [],
+		};
+		const measured = applyChatProjectionUpdate(emptyChatState(), {
+			type: "event",
+			envelope: { sessionId: "session-1", seq: 2, event: { type: "context_changed", context } },
+		});
+		expect(measured.context).toEqual(context);
+		const cleared = applyChatProjectionUpdate(measured, {
+			type: "event",
+			envelope: { sessionId: "session-1", seq: 3, event: { type: "context_changed", context: undefined } },
+		});
+		expect(cleared.context).toBeUndefined();
+		expect(cleared.lastSeq).toBe(3);
 	});
 
 	test("run_upsert replaces the timing of the same run", () => {
@@ -582,7 +608,9 @@ function emptyChatState(): ChatRuntimeState {
 			cacheReadTokens: 0,
 			cacheWriteTokens: 0,
 			totalTokens: 0,
-			cost: 0,
+			contextTokens: 0,
 		},
+		context: undefined,
+		configuration: undefined,
 	};
 }

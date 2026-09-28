@@ -176,6 +176,7 @@ export const desktopFailureSchema = Type.Object(
 			Type.Literal("runtime.interrupted"),
 			Type.Literal("configuration.invalid"),
 			Type.Literal("runtime.retry_unavailable"),
+			Type.Literal("runtime.compaction_unavailable"),
 			Type.Literal("connection.reconnecting"),
 			Type.Literal("connection.restart_failed"),
 			Type.Literal("session.workspace_required"),
@@ -526,6 +527,7 @@ export interface DesktopProviderConfigSnapshot {
 	readonly profiles: readonly DesktopProviderProfile[];
 	readonly connector: DesktopConnectorConfigSnapshot;
 	readonly webSearch: DesktopWebSearchConfigSnapshot;
+	readonly autoCompaction: boolean;
 }
 
 export type DesktopWebSearchProviderId = "exa" | "parallel" | "anysearch";
@@ -913,7 +915,6 @@ export interface DesktopPermissionItem {
 export interface DesktopCompactionItem {
 	readonly kind: "compaction";
 	readonly id: string;
-	readonly summary: string;
 	readonly timestamp: number;
 	readonly status: "compacting" | "complete";
 }
@@ -948,7 +949,6 @@ export interface DesktopSessionUsage {
 	readonly cacheReadTokens: number;
 	readonly cacheWriteTokens: number;
 	readonly totalTokens: number;
-	readonly cost: number;
 	/** Size of the latest request on the branch: how full the context window is. */
 	readonly contextTokens: number;
 }
@@ -959,9 +959,45 @@ export const EMPTY_DESKTOP_SESSION_USAGE: DesktopSessionUsage = {
 	cacheReadTokens: 0,
 	cacheWriteTokens: 0,
 	totalTokens: 0,
-	cost: 0,
 	contextTokens: 0,
 };
+
+const tokenCountSchema = Type.Number({ minimum: 0 });
+
+/**
+ * Volatile context-window measurement of the current branch's latest request.
+ * `usedTokens` is provider-reported; category and tool figures are estimates
+ * that are only meaningful as proportions of their sum.
+ */
+export const desktopSessionContextSchema = Type.Object(
+	{
+		usedTokens: tokenCountSchema,
+		contextWindow: Type.Number({ exclusiveMinimum: 0 }),
+		/** Absent when automatic compaction is off. */
+		compactAtTokens: Type.Optional(tokenCountSchema),
+		categories: Type.Object(
+			{
+				systemPrompt: tokenCountSchema,
+				toolDefinitions: tokenCountSchema,
+				userMessages: tokenCountSchema,
+				assistantText: tokenCountSchema,
+				thinking: tokenCountSchema,
+				toolInputs: tokenCountSchema,
+			},
+			{ additionalProperties: false },
+		),
+		toolOutputs: Type.Array(
+			Type.Object(
+				{ toolName: Type.String({ minLength: 1, maxLength: 200 }), tokens: tokenCountSchema },
+				{ additionalProperties: false },
+			),
+			{ maxItems: 200 },
+		),
+	},
+	{ additionalProperties: false },
+);
+
+export type DesktopSessionContext = Static<typeof desktopSessionContextSchema>;
 
 /** Profile lifetime token projection. Same empty/finite semantics as session usage. */
 export type DesktopProfileTokenAvailability = "empty" | "complete" | "partial";
@@ -1022,6 +1058,8 @@ export interface DesktopAgentSnapshot {
 	readonly todos?: DesktopTodos;
 	readonly artifacts: readonly DesktopArtifact[];
 	readonly usage: DesktopSessionUsage;
+	/** Absent until the Runtime Host measures a request on the current branch. */
+	readonly context?: DesktopSessionContext;
 	/** Model and Session controls the Runtime Host remembers for this Session; absent until known. */
 	readonly configuration?: DesktopSessionConfiguration;
 	readonly lastSeq: number;
@@ -1051,6 +1089,7 @@ export type DesktopAgentEvent =
 	| { readonly type: "todos_replace"; readonly todos: DesktopTodos }
 	| { readonly type: "artifact_upsert"; readonly artifact: DesktopArtifact }
 	| { readonly type: "usage_changed"; readonly usage: DesktopSessionUsage }
+	| { readonly type: "context_changed"; readonly context?: DesktopSessionContext }
 	| { readonly type: "configuration_changed"; readonly configuration: DesktopSessionConfiguration }
 	| { readonly type: "model_catalog_updated" }
 	| { readonly type: "connector_oauth_completed"; readonly connectorId: string }
@@ -1090,6 +1129,8 @@ export const desktopProviderSelectionInputSchema = Type.Object(
 );
 
 export type DesktopProviderSelectionInput = Static<typeof desktopProviderSelectionInputSchema>;
+
+export const desktopAutoCompactionInputSchema = Type.Boolean();
 
 export const desktopAgentConfigureInputSchema = Type.Object(
 	{
@@ -1348,6 +1389,7 @@ export interface DesktopApi {
 		get(): Promise<DesktopProviderConfigSnapshot>;
 		save(input: DesktopProviderConfigInput): Promise<DesktopProviderConfigSnapshot>;
 		setSelection(input: DesktopProviderSelectionInput): Promise<DesktopProviderConfigSnapshot>;
+		setAutoCompaction(enabled: boolean): Promise<DesktopProviderConfigSnapshot>;
 		fetchModels(profileId: string): Promise<DesktopProviderFetchModelsResult>;
 		revealApiKey(profileId: string): Promise<DesktopProviderApiKeyRevealResult>;
 		revealWebSearchApiKey(credentialId: DesktopWebSearchCredentialId): Promise<DesktopWebSearchApiKeyRevealResult>;
@@ -1437,6 +1479,8 @@ export interface DesktopApi {
 		retryConnection(): Promise<void>;
 		getSnapshot(sessionId: string): Promise<DesktopAgentSnapshot>;
 		getSubagentTranscript(input: DesktopSubagentTranscriptInput): Promise<DesktopSubagentTranscript>;
+		/** Compacts the idle current branch; the result arrives as `context_changed` and transcript events. */
+		compact(sessionId: string): Promise<void>;
 		close(sessionId: string): void;
 	};
 }

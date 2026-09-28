@@ -251,6 +251,12 @@
   "desktop.failure.requestFailed.title": {
     "defaultMessage": "Action failed"
   },
+  "desktop.failure.runtimeCompactionUnavailable.description": {
+    "defaultMessage": "There may be nothing to compact yet, or the session is busy. Try again once it's idle."
+  },
+  "desktop.failure.runtimeCompactionUnavailable.title": {
+    "defaultMessage": "Can't compact right now"
+  },
   "desktop.failure.runtimeInterrupted.description": {
     "defaultMessage": "The Runtime Host stopped before the response finished. Try again."
   },
@@ -660,17 +666,65 @@
   "desktop.session.title": {
     "defaultMessage": "Session title"
   },
+  "desktop.sessionContext.assistantText": {
+    "defaultMessage": "Assistant Text"
+  },
+  "desktop.sessionContext.autoCompaction": {
+    "defaultMessage": "Automatic Compaction"
+  },
+  "desktop.sessionContext.autoCompactionFailed": {
+    "defaultMessage": "Couldn't change automatic compaction"
+  },
+  "desktop.sessionContext.barLabel": {
+    "defaultMessage": "{used} of {window} context tokens used"
+  },
+  "desktop.sessionContext.compactAt": {
+    "defaultMessage": "Compact at {tokens}"
+  },
+  "desktop.sessionContext.compactNow": {
+    "defaultMessage": "Compact Now"
+  },
+  "desktop.sessionContext.compacting": {
+    "defaultMessage": "Compacting…"
+  },
+  "desktop.sessionContext.hideBreakdown": {
+    "defaultMessage": "Hide Context Breakdown"
+  },
+  "desktop.sessionContext.pending": {
+    "defaultMessage": "Breakdown appears after the next request"
+  },
+  "desktop.sessionContext.showBreakdown": {
+    "defaultMessage": "Show Context Breakdown"
+  },
+  "desktop.sessionContext.systemPrompt": {
+    "defaultMessage": "System Prompt"
+  },
+  "desktop.sessionContext.thinking": {
+    "defaultMessage": "Thinking"
+  },
+  "desktop.sessionContext.title": {
+    "defaultMessage": "Context Window"
+  },
+  "desktop.sessionContext.toolDefinitions": {
+    "defaultMessage": "Tool Definitions"
+  },
+  "desktop.sessionContext.toolInputs": {
+    "defaultMessage": "Tool Inputs"
+  },
+  "desktop.sessionContext.toolOutputs": {
+    "defaultMessage": "Tool Outputs"
+  },
+  "desktop.sessionContext.userMessages": {
+    "defaultMessage": "User Messages"
+  },
   "desktop.sessionUsage.aria": {
-    "defaultMessage": "Session usage"
+    "defaultMessage": "Context window"
   },
   "desktop.sessionUsage.cache": {
     "defaultMessage": "Cache"
   },
   "desktop.sessionUsage.context": {
     "defaultMessage": "Context"
-  },
-  "desktop.sessionUsage.cost": {
-    "defaultMessage": "Cost"
   },
   "desktop.sessionUsage.empty": {
     "defaultMessage": "No token usage on this branch yet."
@@ -682,7 +736,7 @@
     "defaultMessage": "Output"
   },
   "desktop.sessionUsage.title": {
-    "defaultMessage": "Usage"
+    "defaultMessage": "Token Usage"
   },
   "desktop.sessionUsage.total": {
     "defaultMessage": "Total"

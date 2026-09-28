@@ -196,6 +196,16 @@ export class CodingEventProjector {
 				return { type: "compaction_start", trigger: event.trigger, tokensBefore: event.tokensBefore };
 			case "compaction_end":
 				return { type: "compaction_end", outcome: projectJson(event.outcome) };
+			case "context_measured":
+				return {
+					type: "context_measured",
+					measurement: {
+						contextWindow: event.contextWindow,
+						compactAtTokens: event.compactAtTokens,
+						...event.breakdown,
+						toolOutputs: event.breakdown.toolOutputs.map((output) => ({ ...output })),
+					},
+				};
 		}
 	}
 

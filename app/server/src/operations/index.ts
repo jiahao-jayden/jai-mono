@@ -8,6 +8,8 @@ export {
 	type RuntimeApprovalDecision,
 	type RuntimeApprovalHandler,
 	type RuntimeApprovalRequest,
+	type RuntimeCompactInput,
+	type RuntimeContextMeasurement,
 	type RuntimeOperation,
 	type RuntimeOperationContent,
 	type RuntimeOperationDriver,

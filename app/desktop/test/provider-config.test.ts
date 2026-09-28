@@ -652,6 +652,10 @@ describe("DesktopConfigService", () => {
 			const saved = await service.setSelection({ modelRef: "gateway/vendor-gpt-b" });
 			expect(host.lastSelection).toEqual({ model: "gateway/vendor-gpt-b" });
 			expect(saved).toMatchObject({ selectedModelRef: "gateway/vendor-gpt-b" });
+
+			expect(initial.autoCompaction).toBe(true);
+			expect(await service.setAutoCompaction(false)).toMatchObject({ autoCompaction: false });
+			expect(await service.get()).toMatchObject({ autoCompaction: false, selectedModelRef: "gateway/vendor-gpt-b" });
 		} finally {
 			await service.close();
 		}
@@ -1137,6 +1141,7 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
       ...(snapshot.language === undefined
         ? {}
         : { language: snapshot.language }),
+      autoCompaction: snapshot.autoCompaction ?? true,
       auxiliaryModel: snapshot.auxiliaryModel ?? {},
       profiles: snapshot.profiles ?? [],
       connector: snapshot.connector ?? {
@@ -1183,6 +1188,7 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
     this.#snapshot = {
       revision: "r2",
       model: input.model,
+      autoCompaction: this.#snapshot.autoCompaction,
       ...(input.maxTurns === undefined ? {} : { maxTurns: input.maxTurns }),
       ...(input.language === undefined ? {} : { language: input.language }),
       auxiliaryModel: input.auxiliaryModel ?? this.#snapshot.auxiliaryModel,
@@ -1214,6 +1220,11 @@ class FakeDesktopConfigurationClient implements DesktopConfigurationClient {
 	async setLanguage(language: string) {
 		this.lastLanguage = language;
 		this.#snapshot = { ...this.#snapshot, revision: "r2", language };
+		return Result.ok(this.#snapshot);
+	}
+
+	async setAutoCompaction(enabled: boolean) {
+		this.#snapshot = { ...this.#snapshot, revision: "r2", autoCompaction: enabled };
 		return Result.ok(this.#snapshot);
 	}
 

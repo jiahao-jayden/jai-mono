@@ -22,8 +22,24 @@ export interface ContextTokenEstimate {
 	lastUsageIndex: number | null;
 }
 
-/** threshold：主动到阈值；overflow：provider 已经拒绝了请求。 */
-export type CompactionTrigger = "threshold" | "overflow";
+/** threshold：主动到阈值；overflow：provider 已经拒绝了请求；manual：宿主在空闲时显式要求。 */
+export type CompactionTrigger = "threshold" | "overflow" | "manual";
+
+/**
+ * 一次模型请求上下文按内容类别的估算体积，口径与 `estimateTokens` 相同（字符数 / 4）。
+ * 只用于展示各类别的占比；绝对大小以 provider 回报的 usage 为准。
+ */
+export interface ContextBreakdown {
+	readonly systemPrompt: number;
+	readonly toolDefinitions: number;
+	/** 含压缩摘要：它以 user 消息的形式进入上下文。 */
+	readonly userMessages: number;
+	readonly assistantText: number;
+	readonly thinking: number;
+	readonly toolInputs: number;
+	/** 按工具名聚合，体积降序；同体积按名称排序，保证结果确定。 */
+	readonly toolOutputs: readonly { readonly toolName: string; readonly tokens: number }[];
+}
 
 export interface CompactionDecisionInput {
 	/** 已完成 Prompt 组装与既有 projection 的本次请求 context */

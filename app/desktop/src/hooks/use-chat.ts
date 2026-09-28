@@ -14,6 +14,7 @@ import type {
 	DesktopPermissionResolution,
 	DesktopRunTiming,
 	DesktopSessionConfiguration,
+	DesktopSessionContext,
 	DesktopSessionControls,
 	DesktopSessionUsage,
 	DesktopTodos,
@@ -77,6 +78,7 @@ export interface Chat {
 	readonly todos: DesktopTodos | undefined;
 	readonly artifacts: readonly DesktopArtifact[];
 	readonly usage: DesktopSessionUsage;
+	readonly context: DesktopSessionContext | undefined;
 	readonly status: ChatStatus;
 	readonly isLoading: boolean;
 	readonly notice: ChatNotice | undefined;
@@ -90,6 +92,8 @@ export interface Chat {
 	navigate(entryId: string): Promise<boolean>;
 	/** Retries the failed last turn with the current model and controls; resolves to the rejection, if any. */
 	retry(): Promise<DesktopFailure | undefined>;
+	/** Compacts the idle current branch; resolves to the rejection, if any. */
+	compact(): Promise<DesktopFailure | undefined>;
 	retryConnection(): Promise<void>;
 	resolvePermission(resolution: DesktopPermissionResolution): Promise<void>;
 	dismissNotice(): void;
@@ -111,6 +115,7 @@ export interface ChatRuntimeState {
 	readonly todos: DesktopTodos | undefined;
 	readonly artifacts: readonly DesktopArtifact[];
 	readonly usage: DesktopSessionUsage;
+	readonly context: DesktopSessionContext | undefined;
 	readonly configuration: DesktopSessionConfiguration | undefined;
 }
 
@@ -143,6 +148,7 @@ const EMPTY_STATE: ChatRuntimeState = {
 	todos: undefined,
 	artifacts: [],
 	usage: EMPTY_DESKTOP_SESSION_USAGE,
+	context: undefined,
 	configuration: undefined,
 };
 
@@ -271,6 +277,7 @@ export function useChat(options: UseChatOptions): Chat {
 						todos: undefined,
 						artifacts: [],
 						usage: EMPTY_DESKTOP_SESSION_USAGE,
+						context: undefined,
 						configuration: undefined,
 					},
 		);
@@ -517,6 +524,17 @@ export function useChat(options: UseChatOptions): Chat {
 		}
 	}, []);
 
+	const compact = useCallback(async (): Promise<DesktopFailure | undefined> => {
+		const current = stateRef.current;
+		if (!current.sessionId || current.agentStatus === "running" || current.submitting) return undefined;
+		try {
+			await desktop.agent.compact(current.sessionId);
+			return undefined;
+		} catch (error) {
+			return getDesktopRemoteRpcFailure(error);
+		}
+	}, []);
+
 	const configure = useCallback(async (selection: DesktopSessionConfiguration): Promise<void> => {
 		const sessionId = stateRef.current.sessionId;
 		if (!sessionId) return;
@@ -544,6 +562,7 @@ export function useChat(options: UseChatOptions): Chat {
 		todos: state.todos,
 		artifacts: state.artifacts,
 		usage: state.usage,
+		context: state.context,
 		status: getChatStatus(state),
 		isLoading: state.isLoading,
 		notice,
@@ -555,6 +574,7 @@ export function useChat(options: UseChatOptions): Chat {
 		stop,
 		navigate,
 		retry,
+		compact,
 		retryConnection,
 		resolvePermission,
 		dismissNotice,
@@ -650,6 +670,8 @@ function applyAgentEvent(state: ChatRuntimeState, seq: number, event: DesktopAge
 			};
 		case "usage_changed":
 			return { ...state, isLoading: false, lastSeq: seq, usage: event.usage };
+		case "context_changed":
+			return { ...state, lastSeq: seq, context: event.context };
 		case "configuration_changed":
 			return { ...state, lastSeq: seq, configuration: event.configuration };
 	}
@@ -698,6 +720,7 @@ function snapshotState(snapshot: DesktopAgentSnapshot): ChatRuntimeState {
 		todos: snapshot.todos,
 		artifacts: [...snapshot.artifacts],
 		usage: snapshot.usage,
+		context: snapshot.context,
 		configuration: snapshot.configuration,
 	};
 }

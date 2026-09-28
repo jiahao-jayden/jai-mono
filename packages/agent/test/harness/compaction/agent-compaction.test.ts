@@ -14,6 +14,7 @@ import {
 	type AgentHookMap,
 	type AgentMessage,
 	type CompactionEvent,
+	estimateContextBreakdown,
 } from "../../../src";
 import { defaultAppState, model, testInstructions, type AppState } from "../../support/fixtures";
 
@@ -433,5 +434,122 @@ describe("Agent compaction", () => {
 			outcome: { status: "error", error: { code: "unknown", message: expect.any(String) } },
 		});
 		expect(contexts[0]?.messages).toHaveLength(5);
+	});
+
+	test("automatic: false skips threshold compaction but still measures the request", async () => {
+		const contexts: Context[] = [];
+		const events: AgentEvent[] = [];
+		const agent = new Agent({
+			model: smallModel,
+			provider: scripted([reply("answer")], contexts),
+			instructions: "identity",
+			messages: longHistory(),
+			compaction: { settings, automatic: false },
+		});
+		agent.subscribe((event) => {
+			events.push(event);
+		});
+
+		await agent.invoke("next question");
+
+		expect(contexts).toHaveLength(1);
+		expect(compactionEvents(events)).toHaveLength(0);
+		const measured = events.find((event) => event.type === "context_measured");
+		expect(measured).toMatchObject({ contextWindow: 2_000, compactAtTokens: undefined });
+	});
+
+	test("reports the automatic threshold with each measured request", async () => {
+		const events: AgentEvent[] = [];
+		const agent = new Agent({
+			model: roomyModel,
+			provider: scripted([reply("answer")]),
+			instructions: "identity",
+			messages: longHistory(),
+			compaction: { settings },
+		});
+		agent.subscribe((event) => {
+			events.push(event);
+		});
+
+		await agent.invoke("next question");
+
+		const measured = events.find((event) => event.type === "context_measured");
+		expect(measured).toMatchObject({ contextWindow: 100_000, compactAtTokens: 100_000 - settings.reserveTokens });
+		if (measured?.type !== "context_measured") return;
+		expect(measured.breakdown.systemPrompt).toBe(Math.ceil("identity".length / 4));
+		expect(measured.breakdown.userMessages).toBeGreaterThan(2_000);
+	});
+
+	test("compact() summarizes an idle branch on request even with automatic compaction off", async () => {
+		const contexts: Context[] = [];
+		const events: AgentEvent[] = [];
+		const agent = new Agent({
+			model: roomyModel,
+			provider: scripted([reply("SUMMARY"), reply("answer")], contexts),
+			instructions: "identity",
+			messages: longHistory(),
+			compaction: { settings, automatic: false },
+		});
+		agent.subscribe((event) => {
+			events.push(event);
+		});
+
+		const outcome = await agent.compact();
+		expect(outcome.status).toBe("success");
+		expect(compactionEvents(events)[0]).toMatchObject({ type: "compaction_start", trigger: "manual" });
+		expect(events.at(-1)?.type).toBe("context_measured");
+
+		await agent.invoke("next question");
+		expect(summaryText(contexts[1]?.messages as AgentMessage[])).toContain("<summary>\nSUMMARY\n</summary>");
+	});
+
+	test("compact() is unavailable when compaction is disabled entirely", async () => {
+		const agent = new Agent({
+			model: roomyModel,
+			provider: scripted([]),
+			instructions: "identity",
+			messages: longHistory(),
+			compaction: false,
+		});
+		await expect(agent.compact()).rejects.toMatchObject({ _tag: "agent.compaction_unavailable" });
+	});
+});
+
+describe("estimateContextBreakdown", () => {
+	test("buckets assistant parts and groups tool outputs by tool name", () => {
+		const assistant: AssistantMessage = {
+			...reply(""),
+			content: [
+				{ type: "thinking", thinking: "t".repeat(400) },
+				{ type: "text", text: "a".repeat(40) },
+				{ type: "toolCall", id: "c1", name: "Read", arguments: { path: "x" } },
+			],
+		};
+		const toolResult = (toolName: string, text: string): AgentMessage => ({
+			role: "toolResult",
+			toolCallId: `${toolName}-call`,
+			toolName,
+			content: [{ type: "text", text }],
+			isError: false,
+			timestamp: 0,
+		});
+		const breakdown = estimateContextBreakdown({
+			systemPrompt: "s".repeat(80),
+			tools: [],
+			messages: [
+				user("u".repeat(40)),
+				assistant,
+				toolResult("Read", "r".repeat(400)),
+				toolResult("Grep", "g".repeat(40)),
+				toolResult("Read", "r".repeat(400)),
+			],
+		});
+
+		expect(breakdown.systemPrompt).toBe(20);
+		expect(breakdown.thinking).toBeGreaterThan(100);
+		expect(breakdown.toolInputs).toBeGreaterThan(0);
+		expect(breakdown.assistantText).toBeLessThan(breakdown.thinking);
+		expect(breakdown.toolOutputs.map((output) => output.toolName)).toEqual(["Read", "Grep"]);
+		expect(breakdown.toolOutputs[0]!.tokens).toBeGreaterThan(200);
 	});
 });

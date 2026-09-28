@@ -3,7 +3,7 @@ import { TaggedError } from "better-result";
 import type { AgentContext, AgentMessage } from "../../core/types";
 import type { SessionEntry } from "../session/types";
 import { safeJson } from "./serialize";
-import type { CompactionSettings, ContextTokenEstimate } from "./types";
+import type { CompactionSettings, ContextBreakdown, ContextTokenEstimate } from "./types";
 
 const CHARS_PER_TOKEN = 4;
 /** 图片按固定占位计价：base64 字符数与实际 token 数没有可用的换算关系。 */
@@ -33,13 +33,58 @@ function contextChars(context: AgentContext): number {
 }
 
 function messageChars(message: AgentMessage): number {
-	const envelope = message.role.length + (message.role === "toolResult" ? message.toolName.length : 0);
-	if (typeof message.content === "string") return envelope + message.content.length;
+	if (typeof message.content === "string") return messageEnvelopeChars(message) + message.content.length;
 
-	return message.content.reduce(
-		(total, part) => total + (part.type === "image" ? IMAGE_CHARS : safeJson(part).length),
-		envelope,
-	);
+	return message.content.reduce((total, part) => total + partChars(part), messageEnvelopeChars(message));
+}
+
+function messageEnvelopeChars(message: AgentMessage): number {
+	return message.role.length + (message.role === "toolResult" ? message.toolName.length : 0);
+}
+
+function partChars(part: Exclude<AgentMessage["content"], string>[number]): number {
+	return part.type === "image" ? IMAGE_CHARS : safeJson(part).length;
+}
+
+/** 与 `estimateTokens(context)` 同一把尺子，只是按内容类别分桶；各桶单独取整。 */
+export function estimateContextBreakdown(context: AgentContext): ContextBreakdown {
+	const chars = { userMessages: 0, assistantText: 0, thinking: 0, toolInputs: 0 };
+	const toolOutputs = new Map<string, number>();
+	for (const message of context.messages) {
+		if (message.role === "toolResult") {
+			toolOutputs.set(message.toolName, (toolOutputs.get(message.toolName) ?? 0) + messageChars(message));
+			continue;
+		}
+		if (message.role === "user") {
+			chars.userMessages += messageChars(message);
+			continue;
+		}
+		if (typeof message.content === "string") {
+			chars.assistantText += messageChars(message);
+			continue;
+		}
+		chars.assistantText += messageEnvelopeChars(message);
+		for (const part of message.content) {
+			if (part.type === "thinking") chars.thinking += partChars(part);
+			else if (part.type === "toolCall") chars.toolInputs += partChars(part);
+			else chars.assistantText += partChars(part);
+		}
+	}
+	return {
+		systemPrompt: toTokens(context.systemPrompt.length),
+		toolDefinitions: toTokens(safeJson(context.tools).length),
+		userMessages: toTokens(chars.userMessages),
+		assistantText: toTokens(chars.assistantText),
+		thinking: toTokens(chars.thinking),
+		toolInputs: toTokens(chars.toolInputs),
+		toolOutputs: [...toolOutputs]
+			.map(([toolName, toolChars]) => ({ toolName, tokens: toTokens(toolChars) }))
+			.sort((left, right) => right.tokens - left.tokens || left.toolName.localeCompare(right.toolName)),
+	};
+}
+
+function toTokens(chars: number): number {
+	return Math.ceil(chars / CHARS_PER_TOKEN);
 }
 
 /**

@@ -17,6 +17,7 @@ import { Result, type Result as ResultType } from "better-result";
 import {
 	type OperationEffectBoundary,
 	projectRuntimeSessionUsage,
+	type RuntimeCompactInput,
 	type RuntimeOperation,
 	type RuntimeOperationContent,
 	type RuntimeOperationDriver,
@@ -88,6 +89,41 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 
 	discardPreflight(operationId: string): void {
 		this.#prepared.delete(operationId);
+	}
+
+	/**
+	 * Opens the same Coding Agent a prompt would (so the measured context includes its tools and
+	 * instructions), compacts, and closes it. No tool runs, so no approval handler is wired.
+	 */
+	async compact(input: RuntimeCompactInput): Promise<ResultType<void, RuntimeOperationExecutionFailed>> {
+		const failed = (message: string, cause?: unknown) =>
+			new RuntimeOperationExecutionFailed({
+				message,
+				sessionId: input.sessionId,
+				operationId: input.operationId,
+				cause,
+			});
+		const configured = await this.#resolveOptions(input);
+		if (configured.isErr()) return Result.err(failed(configured.error.message, configured.error));
+		const created = await createCodingAgent({
+			...configured.value,
+			permissionMode: permissionModeFor(input.runtimeConfiguration),
+			cwd: input.cwd,
+			session: { kind: "resume", id: input.sessionId, store: input.sessionStore },
+		});
+		if (created.isErr())
+			return Result.err(failed(`Coding Agent could not open: ${created.error.message}`, created.error));
+		const agent = created.value;
+		const stopObserving = agent.subscribe((event) => {
+			if (event.type === "context_measured") input.onContextMeasured(event.measurement);
+		});
+		try {
+			const compacted = await agent.compact();
+			return compacted.isOk() ? Result.ok(undefined) : Result.err(failed(compacted.error.message, compacted.error));
+		} finally {
+			stopObserving();
+			await agent.close();
+		}
 	}
 
 	async openOperation(
@@ -438,6 +474,16 @@ class CodingAgentOperation implements RuntimeOperation {
 				});
 				return;
 			}
+			case "context_measured":
+				this.publish({ type: "context_measured", measurement: event.measurement });
+				return;
+			case "compaction_start":
+				this.publish({ type: "compaction_progress", status: "compacting" });
+				return;
+			case "compaction_end":
+				if (jsonObject(event.outcome).status === "error")
+					this.publish({ type: "compaction_progress", status: "failed" });
+				return;
 			default:
 				return;
 		}

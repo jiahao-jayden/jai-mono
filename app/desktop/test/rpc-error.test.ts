@@ -36,8 +36,15 @@ describe("projectDesktopRpcError", () => {
 		}> {}
 		class Terminal extends TaggedError("desktop_terminal.spawn_failed")<{ readonly message: string }> {}
 
+		class CompactionUnavailable extends TaggedError("desktop_agent.compaction_unavailable")<{
+			readonly message: string;
+		}> {}
 		expect(projectDesktopRpcError(new RetryUnavailable({ message: "x" })).error.failure).toEqual({
 			code: "runtime.retry_unavailable",
+			retryable: false,
+		});
+		expect(projectDesktopRpcError(new CompactionUnavailable({ message: "x" })).error.failure).toEqual({
+			code: "runtime.compaction_unavailable",
 			retryable: false,
 		});
 		expect(projectDesktopRpcError(new CredentialRequired({ message: "x" })).error.failure).toEqual({

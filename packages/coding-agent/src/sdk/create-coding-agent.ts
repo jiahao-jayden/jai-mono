@@ -188,13 +188,12 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			openChildSession: input.openChildSession
 				? (input.openChildSession as unknown as OpenChildSession<PersistedCodingSessionState<TAppState>>)
 				: undefined,
-			agent: input.compactionSummaryInstructions
-				? {
-						compaction: {
-							summaryInstructions: input.compactionSummaryInstructions,
-						},
-					}
-				: {},
+			agent: {
+				compaction: {
+					summaryInstructions: input.compactionSummaryInstructions,
+					automatic: input.autoCompaction ?? true,
+				},
+			},
 		});
 		const activatedExtensions = await activateExtensions(
 			extensions,
@@ -469,6 +468,25 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		} catch (error) {
 			return Result.err(projectError(error, "navigation"));
 		}
+	}
+
+	compact(signal?: AbortSignal): Promise<ResultType<void, CodingSdkError>> {
+		const run = this.#tail.then(async () => {
+			if (this.#closed) throw agentClosedFailure();
+			const outcome = await this.#internal.compact(signal);
+			if (outcome.status === "error") {
+				throw new CodingSdkFailure({
+					phase: "compaction",
+					code: `compaction.${outcome.error.code}`,
+					message: outcome.error.message,
+				});
+			}
+		});
+		this.#tail = run.catch(() => undefined);
+		return run.then(
+			() => Result.ok(undefined),
+			(error) => Result.err(projectError(error, "compaction")),
+		);
 	}
 
 	async generateTitle(firstMessage: string): Promise<ResultType<string, CodingSdkError>> {

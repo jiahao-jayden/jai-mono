@@ -12,7 +12,13 @@ import type {
 	RetryModelCall,
 } from "../core/types";
 import { compact } from "./compaction/compact";
-import { estimateContextTokens, estimateTokens, resolveCompactionSettings, shouldCompact } from "./compaction/estimate";
+import {
+	estimateContextBreakdown,
+	estimateContextTokens,
+	estimateTokens,
+	resolveCompactionSettings,
+	shouldCompact,
+} from "./compaction/estimate";
 import { hasUncompactedTruncation, isContextOverflow } from "./compaction/overflow";
 import { isSafeCutPoint, projectWithCompaction } from "./compaction/projection";
 import {
@@ -25,7 +31,7 @@ import {
 	compactionFailure,
 	isCompactionFailure,
 } from "./compaction/types";
-import type { AgentEvent, AgentEventListener, AgentRun } from "./events";
+import type { AgentEvent, AgentEventListener, AgentRun, CompactionOutcome } from "./events";
 import { type AgentHookMap, type BeforeModelCallPhase, HookHost } from "./hooks";
 import { restoreFromSnapshot } from "./session/agent-binding";
 import { SessionLedger } from "./session/ledger";
@@ -44,9 +50,13 @@ export interface DefaultCompactionOptions {
 	settings?: Partial<CompactionSettings>;
 	/** 追加到默认摘要 Prompt 末尾的领域要求，例如"保留所有文件路径"。 */
 	summaryInstructions?: string;
+	/**
+	 * false 只关闭阈值压缩与 overflow 自动恢复，`compact()` 仍按这里的参数工作。默认 true。
+	 */
+	automatic?: boolean;
 }
 
-/** false 表示关闭主动压缩与 overflow 自动恢复；不用 { enabled: false } 是为了不出现"已关闭但仍带参数"。 */
+/** false 表示完全不压缩，`compact()` 也不可用；只关自动压缩用 `{ automatic: false }`。 */
 export type AgentCompactionOptions = false | DefaultCompactionOptions;
 
 /** 表面只留 hooks 一个扩展入口，执行器的 seam 不再从这里透出去。 */
@@ -73,6 +83,7 @@ type AgentCommonOptions<TAppState extends JsonObject> = Omit<
 interface CompactionRuntime {
 	settings: CompactionSettings;
 	summaryInstructions?: string;
+	automatic: boolean;
 }
 
 /**
@@ -383,7 +394,7 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		const projected = await this.projectContext(context, "initial");
 
 		const compaction = this.compaction;
-		if (!compaction) return projected;
+		if (!compaction?.automatic) return this.measured(projected);
 
 		const input: CompactionDecisionInput = {
 			context: projected,
@@ -395,11 +406,51 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 		// 上一次响应被截断时无条件压一次：provider 已经说过这个 context 装不下了，
 		// 这条路径不经过 shouldCompact hooks，外层取消不了。
 		const due = hasUncompactedTruncation(this.ledger.log) || (await this.decideCompaction(input));
-		if (!due) return projected;
+		if (!due) return this.measured(projected);
 
 		const compacted = await this.runCompaction("threshold", input);
 		// 压缩改变了消息序列，上一遍 hook 的产出对不上新下标，只能重跑。
-		return compacted ? await this.projectContext(context, "after_compaction") : projected;
+		return this.measured(
+			compacted.status === "success" ? await this.projectContext(context, "after_compaction") : projected,
+		);
+	}
+
+	/**
+	 * 空闲时由宿主显式触发的压缩，与自动压缩共用同一段生命周期（事件、校验、落盘）。
+	 * 自动压缩关闭时仍然可用；摘要失败以 error outcome 返回，durable 写入失败才抛出。
+	 */
+	async compact(signal?: AbortSignal): Promise<CompactionOutcome> {
+		const compaction = this.compaction;
+		if (!compaction) throw new CompactionUnavailable({ message: "Compaction is disabled for this Agent" });
+		if (this.agent.state.isRunning) throw new SessionBusyError({ message: "Cannot compact while a run is active" });
+		await this.appStateWrites;
+
+		const messages = this.agent.state.messages;
+		const context: AgentContext = {
+			systemPrompt: this.agent.state.systemPrompt,
+			messages: this.ledger.project(messages),
+			tools: this.resolveTools ? [...this.resolveTools(this.staticTools)] : [...this.staticTools],
+		};
+		const outcome = await this.runCompaction(
+			"manual",
+			{ context, entries: this.ledger.log, model: this.model, settings: compaction.settings },
+			signal,
+		);
+		if (outcome.status === "success") await this.measured({ ...context, messages: this.ledger.project(messages) });
+		return outcome;
+	}
+
+	private async measured(context: AgentContext): Promise<AgentContext> {
+		const compaction = this.compaction;
+		await this.publish({
+			type: "context_measured",
+			breakdown: estimateContextBreakdown(context),
+			contextWindow: this.model.contextWindow,
+			compactAtTokens: compaction?.automatic
+				? this.model.contextWindow - compaction.settings.reserveTokens
+				: undefined,
+		});
+		return context;
 	}
 
 	/**
@@ -408,27 +459,27 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 	 */
 	private async onModelError(error: AssistantMessage, context: AgentContext): Promise<RetryModelCall | undefined> {
 		const recovery = await this.hooks.runModelError(error, context.messages, this.agent.signal);
-		if (recovery) return { type: "retry", context: { ...context, messages: recovery.messages } };
+		if (recovery) return { type: "retry", context: await this.measured({ ...context, messages: recovery.messages }) };
 
 		const compaction = this.compaction;
-		if (!compaction || !isContextOverflow(error)) return undefined;
+		if (!compaction?.automatic || !isContextOverflow(error)) return undefined;
 
 		// 收到的 context 是第一次请求实际使用的版本，可能已含旧投影与 beforeModelCall 的裁剪，
 		// 因此前后都用全量估算，比较的才是同一把尺子。
 		const before = estimateTokens(context);
-		const entry = await this.runCompaction("overflow", {
+		const outcome = await this.runCompaction("overflow", {
 			context,
 			entries: this.ledger.log,
 			model: this.model,
 			settings: compaction.settings,
 		});
-		if (!entry) return undefined;
+		if (outcome.status !== "success") return undefined;
 
 		const compacted = await this.projectContext(context, "overflow_retry");
 		const after = estimateTokens(compacted);
 
 		if (after >= before || shouldCompact(after, this.model, compaction.settings)) return undefined;
-		return { type: "retry", context: compacted };
+		return { type: "retry", context: await this.measured(compacted) };
 	}
 
 	/**
@@ -461,9 +512,12 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 	private async runCompaction(
 		trigger: CompactionTrigger,
 		input: CompactionDecisionInput,
-	): Promise<CompactionEntry | undefined> {
+		signal: AbortSignal | undefined = this.agent.signal,
+	): Promise<CompactionOutcome> {
 		const compaction = this.compaction;
-		if (!compaction) return undefined;
+		if (!compaction) {
+			return { status: "error", error: { code: "unknown", message: "Compaction is disabled for this Agent" } };
+		}
 
 		await this.publish({ type: "compaction_start", trigger, tokensBefore: estimateTokens(input.context) });
 
@@ -475,22 +529,20 @@ export class Agent<TAppState extends JsonObject = JsonObject> {
 				trigger,
 				previous: this.ledger.latestCompaction,
 				summaryInstructions: compaction.summaryInstructions,
-				signal: this.agent.signal,
+				signal,
 			};
 			const result = await this.hooks.runAroundCompact(compactInput, () => compact(compactInput));
 
 			const entry = await this.ledger.appendCompaction(this.verify(result, input));
-			await this.publish({ type: "compaction_end", trigger, outcome: { status: "success", entry } });
-			return entry;
+			const outcome: CompactionOutcome = { status: "success", entry };
+			await this.publish({ type: "compaction_end", trigger, outcome });
+			return outcome;
 		} catch (error) {
-			await this.publish({
-				type: "compaction_end",
-				trigger,
-				outcome: { status: "error", error: toErrorInfo(error) },
-			});
+			const outcome: CompactionOutcome = { status: "error", error: toErrorInfo(error) };
+			await this.publish({ type: "compaction_end", trigger, outcome });
 			// 摘要失败只是放弃这次压缩；durable 写入失败必须让 run 失败，否则会静默丢历史。
 			if (isSessionError(error)) throw error;
-			return undefined;
+			return outcome;
 		}
 	}
 
@@ -562,12 +614,17 @@ class ConflictingDurableSource extends TaggedError("agent.conflicting_durable_so
 	readonly message: string;
 }> {}
 
+export class CompactionUnavailable extends TaggedError("agent.compaction_unavailable")<{
+	readonly message: string;
+}> {}
+
 function resolveCompaction(model: Model, options: AgentCompactionOptions | undefined): CompactionRuntime | undefined {
 	if (options === false) return undefined;
 
 	return {
 		settings: resolveCompactionSettings(model, options?.settings),
 		summaryInstructions: options?.summaryInstructions,
+		automatic: options?.automatic ?? true,
 	};
 }
 

@@ -64,6 +64,10 @@ const failureCopy: Readonly<
 		title: desktopMessages.failureRuntimeRetryUnavailableTitle,
 		description: desktopMessages.failureRuntimeRetryUnavailableDescription,
 	},
+	"runtime.compaction_unavailable": {
+		title: desktopMessages.failureRuntimeCompactionUnavailableTitle,
+		description: desktopMessages.failureRuntimeCompactionUnavailableDescription,
+	},
 	"connection.reconnecting": {
 		title: desktopMessages.failureConnectionReconnectingTitle,
 		description: desktopMessages.failureConnectionReconnectingDescription,

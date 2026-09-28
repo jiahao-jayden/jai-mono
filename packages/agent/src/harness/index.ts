@@ -2,6 +2,7 @@ export {
 	Agent,
 	type AgentCompactionOptions,
 	type AgentOptions,
+	CompactionUnavailable,
 	type DefaultCompactionOptions,
 } from "./agent";
 export * from "./compaction";
@@ -12,6 +13,7 @@ export type {
 	AgentRun,
 	CompactionEvent,
 	CompactionOutcome,
+	ContextMeasuredEvent,
 } from "./events";
 export type {
 	AgentHookMap,

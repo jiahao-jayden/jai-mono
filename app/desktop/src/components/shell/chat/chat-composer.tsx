@@ -9,14 +9,18 @@ import {
 import type { ChatMessageInput, ChatStatus } from "@/hooks/use-chat";
 import { desktopMessages } from "@/i18n/messages";
 import { rememberAttachmentFiles } from "@/lib/attachment-files";
-import { desktop, desktopFilePath } from "@/lib/desktop";
+import { desktop, desktopFilePath, getDesktopRemoteRpcFailure } from "@/lib/desktop";
+import { desktopQueryClient, desktopQueryKeys } from "@/lib/desktop-query";
+import { notifyFailure } from "@/lib/failure";
 import { useIcons } from "@/lib/icon-context";
 import type { QueuedMessage } from "@/stores/chat";
 import type {
 	DesktopCommandDescriptor,
+	DesktopFailure,
 	DesktopMessageAttachment,
 	DesktopProject,
 	DesktopProviderConfigSnapshot,
+	DesktopSessionContext,
 	DesktopSessionUsage,
 } from "../../../../shared/desktop-rpc";
 import type { DesktopSessionControls } from "../../../../shared/session-controls";
@@ -59,6 +63,9 @@ interface ChatComposerProps {
 	onSelectProviderModel(modelRef: string): void;
 	onSelectControls(controls: DesktopSessionControls): void;
 	usage?: DesktopSessionUsage;
+	context?: DesktopSessionContext;
+	/** Absent when there is no Session to compact. */
+	onCompact?(): Promise<DesktopFailure | undefined>;
 	large?: boolean;
 	showProjectPicker?: boolean;
 }
@@ -111,6 +118,8 @@ export function ChatComposer({
 	onSelectProviderModel,
 	onSelectControls,
 	usage,
+	context,
+	onCompact,
 	large = false,
 	showProjectPicker = true,
 }: ChatComposerProps) {
@@ -272,6 +281,21 @@ export function ChatComposer({
 			profile.models.filter((model) => `${profile.id}/${model.remoteModelId}` === selectedModelRef),
 		)
 		.at(0)?.contextWindow;
+	const setAutoCompaction = (enabled: boolean) => {
+		const withAutoCompaction = (value: boolean) => (current: DesktopProviderConfigSnapshot | undefined) =>
+			current && { ...current, autoCompaction: value };
+		desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, withAutoCompaction(enabled));
+		void desktop.provider.setAutoCompaction(enabled).then(
+			(snapshot) => desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, snapshot),
+			(error: unknown) => {
+				desktopQueryClient.setQueryData(desktopQueryKeys.providerConfig, withAutoCompaction(!enabled));
+				notifyFailure(getDesktopRemoteRpcFailure(error), intl, {
+					title: intl.formatMessage(desktopMessages.sessionContextAutoCompactionFailed),
+					dedupeKey: "auto-compaction-save",
+				});
+			},
+		);
+	};
 	const selectCommand = useCallback(
 		(command: DesktopCommandDescriptor) => {
 			setDismissedSlashValue(undefined);
@@ -450,7 +474,15 @@ export function ChatComposer({
 					)}
 					rightSlot={
 						<>
-							<SessionUsageButton usage={usage} contextWindow={contextWindow} />
+							<SessionUsageButton
+								usage={usage}
+								context={context}
+								contextWindow={contextWindow}
+								autoCompaction={providerConfig?.autoCompaction}
+								onAutoCompactionChange={setAutoCompaction}
+								onCompact={onCompact}
+								compactDisabled={status !== "ready"}
+							/>
 							<ModelSelector
 								config={providerConfig}
 								selectedModelRef={selectedModelRef}

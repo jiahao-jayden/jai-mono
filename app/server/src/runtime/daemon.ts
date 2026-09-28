@@ -151,6 +151,7 @@ export async function openConfiguredRuntimeHost(
 							provider: current.value.provider || undefined,
 							maxTurns: current.value.maxTurns || undefined,
 							instructions: current.value.instructions || undefined,
+							autoCompaction: current.value.autoCompaction,
 							reasoningLevel: resolveEffectiveReasoningLevel(
 								input.runtimeConfiguration.reasoningLevel,
 								capabilities.reasoningLevels,

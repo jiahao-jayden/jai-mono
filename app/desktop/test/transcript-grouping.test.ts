@@ -27,7 +27,6 @@ describe("transcript grouping", () => {
 		const compaction: DesktopTranscriptItem = {
 			kind: "compaction",
 			id: "compaction:1",
-			summary: "Earlier context",
 			timestamp: 1,
 			status: "complete",
 		};
@@ -452,7 +451,6 @@ describe("transcript grouping", () => {
 		const compaction: Extract<DesktopTranscriptItem, { kind: "compaction" }> = {
 			kind: "compaction",
 			id: "compaction:1",
-			summary: "Earlier context",
 			timestamp: 1,
 			status: "complete",
 		};

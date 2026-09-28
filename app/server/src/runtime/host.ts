@@ -26,6 +26,7 @@ import {
 	type RuntimeApprovalDecision,
 	type RuntimeApprovalHandler,
 	type RuntimeApprovalRequest,
+	type RuntimeContextMeasurement,
 	type RuntimeOperation,
 	type RuntimeOperationDriver,
 	type RuntimeOperationEvent,
@@ -57,7 +58,12 @@ import {
 } from "../sessions";
 import { branchOperationRecords } from "./branch-operations";
 import { RUNTIME_FAILURE_DETAIL_LIMIT, type RuntimeFailure } from "./failure";
-import { branchSessionUsage, projectProfileTokenStats, type RuntimeProfileTokenStats } from "./profile-token-stats";
+import {
+	addUsage,
+	branchSessionUsage,
+	projectProfileTokenStats,
+	type RuntimeProfileTokenStats,
+} from "./profile-token-stats";
 
 export type RuntimeSessionSelection<TAppState extends JsonObject = JsonObject> =
 	| {
@@ -146,6 +152,16 @@ export type RuntimeSessionEvent =
 			readonly request: RuntimeApprovalRequest;
 	  }
 	| {
+			/** Volatile context-window picture; absent when the current branch has not been measured yet. */
+			readonly type: "context_changed";
+			readonly context?: RuntimeSessionContext;
+	  }
+	| {
+			/** Automatic or manual compaction started or gave up; success is the compaction entry. */
+			readonly type: "compaction_progress";
+			readonly status: "compacting" | "failed";
+	  }
+	| {
 			/** A durable entry appended to a child journal by a subagent. */
 			readonly type: "child_entry_appended";
 			readonly parentSessionId: string;
@@ -170,6 +186,18 @@ export interface RuntimeSessionSnapshot {
 	readonly operationId?: string;
 	/** Present only when idle and the branch's last terminal Operation failed or was interrupted. */
 	readonly failure?: RuntimeFailure;
+	/** Volatile: lost on Host restart and rebuilt by the next model request. */
+	readonly context?: RuntimeSessionContext;
+}
+
+/**
+ * What the next model request will carry. Category sizes are estimates meant for proportions;
+ * `usedTokens` is the provider-reported size of the measured request, so the two are paired
+ * only once that request's usage settles.
+ */
+export interface RuntimeSessionContext {
+	readonly usedTokens: number;
+	readonly measurement: RuntimeContextMeasurement;
 }
 
 export class RuntimeHostSessionNotFound extends TaggedError("runtime_host.session_not_found")<{
@@ -236,6 +264,13 @@ export class RuntimeHostConfigurationRejected extends TaggedError("runtime_host.
 	readonly cause?: unknown;
 }> {}
 
+/** The summary could not be produced or the driver cannot compact; the journal is unchanged. */
+export class RuntimeHostCompactionFailed extends TaggedError("runtime_host.compaction_failed")<{
+	readonly sessionId: string;
+	readonly message: string;
+	readonly cause?: unknown;
+}> {}
+
 class RuntimeHostApprovalCancelled extends TaggedError("runtime_host.approval_cancelled")<{
 	readonly sessionId: string;
 	readonly requestId: string;
@@ -261,6 +296,7 @@ export type RuntimeHostRetryError = RuntimeHostPromptRejected | RuntimeHostRetry
 export type RuntimeHostSnapshotError = RuntimeHostPromptRejected | RuntimeHostRecoveryCorrupted;
 export type RuntimeHostApprovalError = RuntimeHostPromptRejected | RuntimeHostApprovalNotFound;
 export type RuntimeHostConfigurationError = RuntimeHostPromptRejected | RuntimeHostConfigurationRejected;
+export type RuntimeHostCompactError = RuntimeHostPromptError | RuntimeHostCompactionFailed;
 
 export interface RuntimeHostOptions {
 	readonly persistence: ProductSessionPersistence;
@@ -652,6 +688,9 @@ export class RuntimeSession {
 	 */
 	#suspended?: RuntimeOperationExecutionFailed;
 	#usage: RuntimeSessionUsage;
+	/** Measured before the in-flight request; paired with its usage once that settles. */
+	#pendingMeasurement?: RuntimeContextMeasurement;
+	#context?: RuntimeSessionContext;
 	readonly #pendingApprovals = new Map<string, PendingRuntimeApproval>();
 	readonly #sessionAllowRules: SessionAllowRules = {};
 	readonly #listeners = new Set<(event: RuntimeSessionEvent) => void>();
@@ -769,6 +808,7 @@ export class RuntimeSession {
 				this.#usage = branchUsage(afterRetry.value);
 				if (!usageEqual(this.#usage, previousUsage)) this.publish({ type: "usage_changed", usage: this.#usage });
 			}
+			this.forgetContext();
 			return admission;
 		});
 		return this.startAdmitted(admitted);
@@ -898,7 +938,70 @@ export class RuntimeSession {
 			recovery: recovery.value,
 			usage: branchUsage(loaded.value),
 			...foreground,
+			context: this.#context,
 		});
+	}
+
+	/**
+	 * Summarizes the idle current branch now. Runs in the Session queue like navigation, so a
+	 * prompt submitted meanwhile is admitted only after the compaction entry is durable.
+	 */
+	async compact(): Promise<Result<void, RuntimeHostCompactError>> {
+		if (this.#closed) return Result.err(this.closed());
+		return this.enqueue(async (): Promise<Result<void, RuntimeHostCompactError>> => {
+			const busy = this.#suspended ?? this.#active;
+			if (busy) {
+				return Result.err(
+					new RuntimeHostSessionBusy({
+						message: `Session "${this.id}" cannot compact while Operation "${busy.operationId}" is active`,
+						sessionId: this.id,
+						operationId: busy.operationId,
+					}),
+				);
+			}
+			if (this.#indeterminate) return Result.err(this.#indeterminate);
+			const driver = this.operationDriver;
+			if (!driver?.compact) {
+				return Result.err(
+					new RuntimeHostCompactionFailed({ message: "This Runtime Host cannot compact", sessionId: this.id }),
+				);
+			}
+			const loaded = await this.persistence.load(this.id);
+			if (loaded.isErr()) return Result.err(this.reject(loaded.error));
+			this.publish({ type: "compaction_progress", status: "compacting" });
+			const compacted = await driver.compact({
+				sessionId: this.id,
+				cwd: this.info.cwd,
+				operationId: this.createId(),
+				runtimeConfiguration: loaded.value.runtimeConfiguration,
+				sessionStore: new RuntimeSessionStore(this.persistence, (_sessionId, entry) =>
+					this.publish({ type: "entry_appended", entry }),
+				),
+				onContextMeasured: (measurement) => this.setContext(calibratedContext(measurement, this.#context)),
+			});
+			if (compacted.isErr()) {
+				this.publish({ type: "compaction_progress", status: "failed" });
+				return Result.err(
+					new RuntimeHostCompactionFailed({
+						message: compacted.error.message,
+						sessionId: this.id,
+						cause: compacted.error,
+					}),
+				);
+			}
+			return Result.ok(undefined);
+		});
+	}
+
+	private setContext(context: RuntimeSessionContext | undefined): void {
+		this.#context = context;
+		this.publish({ type: "context_changed", context });
+	}
+
+	/** A branch change makes the last measurement describe a context the next request will not send. */
+	private forgetContext(): void {
+		this.#pendingMeasurement = undefined;
+		if (this.#context) this.setContext(undefined);
 	}
 
 	/** Loads a journal-only child session snapshot for subagent history replay. */
@@ -999,6 +1102,7 @@ export class RuntimeSession {
 			this.#usage = branchUsage(afterNavigate.value);
 			this.publish({ type: "entry_appended", entry });
 			if (!usageEqual(this.#usage, previousUsage)) this.publish({ type: "usage_changed", usage: this.#usage });
+			this.forgetContext();
 			return Result.ok(undefined);
 		});
 	}
@@ -1356,6 +1460,19 @@ export class RuntimeSession {
 				const previousUsage = this.#usage;
 				this.#usage = addUsage(this.#usage, event.usage);
 				if (!usageEqual(this.#usage, previousUsage)) this.publish({ type: "usage_changed", usage: this.#usage });
+				const measurement = this.#pendingMeasurement;
+				if (measurement && event.usage.contextTokens > 0) {
+					this.#pendingMeasurement = undefined;
+					this.setContext({ usedTokens: event.usage.contextTokens, measurement });
+				}
+				return;
+			}
+			if (event.type === "context_measured") {
+				this.#pendingMeasurement = event.measurement;
+				return;
+			}
+			if (event.type === "compaction_progress") {
+				this.publish({ type: "compaction_progress", status: event.status });
 				return;
 			}
 			this.publish({
@@ -1715,28 +1832,31 @@ function stopReasonFor(outcome: OperationTerminalOutcome): RuntimeStopReason {
 	}
 }
 
-function emptyUsage(): RuntimeSessionUsage {
-	return {
-		inputTokens: 0,
-		outputTokens: 0,
-		cacheReadTokens: 0,
-		cacheWriteTokens: 0,
-		totalTokens: 0,
-		cost: 0,
-		contextTokens: 0,
-	};
+/**
+ * A manual compaction has no provider-reported size until the next request, so the new estimate
+ * is scaled by how far the last paired estimate was from its provider-reported size.
+ * ponytail: one ratio for the whole context; CJK text and code estimate differently, so the figure
+ * drifts until the next request settles and replaces it.
+ */
+function calibratedContext(
+	measurement: RuntimeContextMeasurement,
+	previous: RuntimeSessionContext | undefined,
+): RuntimeSessionContext {
+	const previousEstimate = previous ? estimatedContextTokens(previous.measurement) : 0;
+	const ratio = previous && previousEstimate > 0 ? previous.usedTokens / previousEstimate : 1;
+	return { usedTokens: Math.round(estimatedContextTokens(measurement) * ratio), measurement };
 }
 
-function addUsage(left: RuntimeSessionUsage, right: RuntimeSessionUsage): RuntimeSessionUsage {
-	return {
-		inputTokens: left.inputTokens + right.inputTokens,
-		outputTokens: left.outputTokens + right.outputTokens,
-		cacheReadTokens: left.cacheReadTokens + right.cacheReadTokens,
-		cacheWriteTokens: left.cacheWriteTokens + right.cacheWriteTokens,
-		totalTokens: left.totalTokens + right.totalTokens,
-		cost: left.cost + right.cost,
-		contextTokens: right.contextTokens,
-	};
+function estimatedContextTokens(measurement: RuntimeContextMeasurement): number {
+	return (
+		measurement.systemPrompt +
+		measurement.toolDefinitions +
+		measurement.userMessages +
+		measurement.assistantText +
+		measurement.thinking +
+		measurement.toolInputs +
+		measurement.toolOutputs.reduce((total, output) => total + output.tokens, 0)
+	);
 }
 
 function usageEqual(left: RuntimeSessionUsage, right: RuntimeSessionUsage): boolean {
@@ -1746,7 +1866,6 @@ function usageEqual(left: RuntimeSessionUsage, right: RuntimeSessionUsage): bool
 		left.cacheReadTokens === right.cacheReadTokens &&
 		left.cacheWriteTokens === right.cacheWriteTokens &&
 		left.totalTokens === right.totalTokens &&
-		left.cost === right.cost &&
 		left.contextTokens === right.contextTokens
 	);
 }

@@ -187,6 +187,14 @@ export const desktopMessages = defineMessages({
 		id: "desktop.failure.runtimeRetryUnavailable.description",
 		defaultMessage: "Only a failed last turn can be retried, and only while the session is idle.",
 	},
+	failureRuntimeCompactionUnavailableTitle: {
+		id: "desktop.failure.runtimeCompactionUnavailable.title",
+		defaultMessage: "Can't compact right now",
+	},
+	failureRuntimeCompactionUnavailableDescription: {
+		id: "desktop.failure.runtimeCompactionUnavailable.description",
+		defaultMessage: "There may be nothing to compact yet, or the session is busy. Try again once it's idle.",
+	},
 	failureConnectionReconnectingTitle: {
 		id: "desktop.failure.connectionReconnecting.title",
 		defaultMessage: "Reconnecting",
@@ -248,8 +256,46 @@ export const desktopMessages = defineMessages({
 		defaultMessage: "Attachments must be 20 MB or less in total.",
 	},
 	composerCouldNotAddFiles: { id: "desktop.composer.couldNotAddFiles", defaultMessage: "Could not add those files." },
-	sessionUsageAria: { id: "desktop.sessionUsage.aria", defaultMessage: "Session usage" },
-	sessionUsageTitle: { id: "desktop.sessionUsage.title", defaultMessage: "Usage" },
+	sessionUsageAria: { id: "desktop.sessionUsage.aria", defaultMessage: "Context window" },
+	sessionUsageTitle: { id: "desktop.sessionUsage.title", defaultMessage: "Token Usage" },
+	sessionContextTitle: { id: "desktop.sessionContext.title", defaultMessage: "Context Window" },
+	sessionContextBarLabel: {
+		id: "desktop.sessionContext.barLabel",
+		defaultMessage: "{used} of {window} context tokens used",
+	},
+	sessionContextCompactAt: { id: "desktop.sessionContext.compactAt", defaultMessage: "Compact at {tokens}" },
+	sessionContextPending: {
+		id: "desktop.sessionContext.pending",
+		defaultMessage: "Breakdown appears after the next request",
+	},
+	sessionContextShowBreakdown: {
+		id: "desktop.sessionContext.showBreakdown",
+		defaultMessage: "Show Context Breakdown",
+	},
+	sessionContextHideBreakdown: {
+		id: "desktop.sessionContext.hideBreakdown",
+		defaultMessage: "Hide Context Breakdown",
+	},
+	sessionContextCompactNow: { id: "desktop.sessionContext.compactNow", defaultMessage: "Compact Now" },
+	sessionContextCompacting: { id: "desktop.sessionContext.compacting", defaultMessage: "Compacting…" },
+	sessionContextAutoCompaction: {
+		id: "desktop.sessionContext.autoCompaction",
+		defaultMessage: "Automatic Compaction",
+	},
+	sessionContextAutoCompactionFailed: {
+		id: "desktop.sessionContext.autoCompactionFailed",
+		defaultMessage: "Couldn't change automatic compaction",
+	},
+	sessionContextToolOutputs: { id: "desktop.sessionContext.toolOutputs", defaultMessage: "Tool Outputs" },
+	sessionContextThinking: { id: "desktop.sessionContext.thinking", defaultMessage: "Thinking" },
+	sessionContextSystemPrompt: { id: "desktop.sessionContext.systemPrompt", defaultMessage: "System Prompt" },
+	sessionContextToolDefinitions: {
+		id: "desktop.sessionContext.toolDefinitions",
+		defaultMessage: "Tool Definitions",
+	},
+	sessionContextToolInputs: { id: "desktop.sessionContext.toolInputs", defaultMessage: "Tool Inputs" },
+	sessionContextUserMessages: { id: "desktop.sessionContext.userMessages", defaultMessage: "User Messages" },
+	sessionContextAssistantText: { id: "desktop.sessionContext.assistantText", defaultMessage: "Assistant Text" },
 	sessionUsageContext: { id: "desktop.sessionUsage.context", defaultMessage: "Context" },
 	sessionUsageEmpty: {
 		id: "desktop.sessionUsage.empty",
@@ -259,7 +305,6 @@ export const desktopMessages = defineMessages({
 	sessionUsageInput: { id: "desktop.sessionUsage.input", defaultMessage: "Input" },
 	sessionUsageOutput: { id: "desktop.sessionUsage.output", defaultMessage: "Output" },
 	sessionUsageCache: { id: "desktop.sessionUsage.cache", defaultMessage: "Cache" },
-	sessionUsageCost: { id: "desktop.sessionUsage.cost", defaultMessage: "Cost" },
 	queuedMessagePosition: {
 		id: "desktop.queue.messagePosition",
 		defaultMessage: "Queued message {position} of {total}: {label}",

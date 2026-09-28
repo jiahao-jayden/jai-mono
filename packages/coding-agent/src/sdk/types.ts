@@ -233,6 +233,8 @@ export interface CodingAgentCreateOptions {
 	readonly fastMode?: boolean;
 	readonly instructions?: string;
 	readonly compactionSummaryInstructions?: string;
+	/** false 只关闭阈值与 overflow 自动压缩；`compact()` 仍可用。默认开启。 */
+	readonly autoCompaction?: boolean;
 	/** Optional host-owned durable effect protocol for model and tool execution. */
 	readonly effectBoundary?: CodingEffectBoundary;
 	readonly requestApproval?: CodingApprovalHandler;
@@ -369,7 +371,29 @@ export type CodingAgentEvent =
 			readonly trigger: string;
 			readonly tokensBefore: number;
 	  }
-	| { readonly type: "compaction_end"; readonly outcome: JsonValue };
+	| { readonly type: "compaction_end"; readonly outcome: JsonValue }
+	| {
+			/** Emitted before each model request and after a manual compaction; purely observational. */
+			readonly type: "context_measured";
+			readonly measurement: CodingContextMeasurement;
+	  };
+
+/**
+ * Estimated size of each content category in the next model context (characters / 4, the
+ * compaction heuristic). Use it for proportions; provider usage is the authoritative total.
+ */
+export interface CodingContextMeasurement {
+	readonly contextWindow: number;
+	/** Automatic compaction threshold; absent while automatic compaction is off. */
+	readonly compactAtTokens?: number;
+	readonly systemPrompt: number;
+	readonly toolDefinitions: number;
+	readonly userMessages: number;
+	readonly assistantText: number;
+	readonly thinking: number;
+	readonly toolInputs: number;
+	readonly toolOutputs: readonly { readonly toolName: string; readonly tokens: number }[];
+}
 
 export interface CodingAgentArtifact {
 	readonly id: string;
@@ -400,6 +424,8 @@ export interface CodingAgent<TAppState extends JsonObject = JsonObject> {
 	followUp(input: string | CodingQueuedInput): Promise<Result<void, CodingSdkError>>;
 	waitForIdle(): Promise<Result<void, CodingSdkError>>;
 	navigate(entryId: string): Promise<Result<void, CodingSdkError>>;
+	/** Summarizes the idle current branch now; a summary that could not be produced is an Err. */
+	compact(signal?: AbortSignal): Promise<Result<void, CodingSdkError>>;
 	generateTitle(firstMessage: string): Promise<Result<string, CodingSdkError>>;
 	abort(): Promise<Result<void, CodingSdkError>>;
 	subscribe(listener: (event: CodingAgentEvent) => void): () => void;

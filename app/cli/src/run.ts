@@ -60,7 +60,6 @@ export interface CliResult {
 	readonly text: string;
 	readonly messages: readonly CodingAgentMessage[];
 	readonly usage: CliUsage;
-	readonly total_cost_usd: number;
 	readonly diagnostics: CliDiagnostics;
 }
 
@@ -315,7 +314,6 @@ async function runOne(session: CliSession, prompt: string): Promise<void> {
 			type: "result",
 			session_id: result.sessionId,
 			text: result.text,
-			total_cost_usd: result.total_cost_usd,
 			diagnostics: result.diagnostics,
 			duration_ms: result.duration_ms,
 		});
@@ -330,7 +328,6 @@ class CliSession {
 	#text = "";
 	#stopReason = "none";
 	#failure?: RuntimeFailure;
-	#totalCostUsd = 0;
 	#startedAt = 0;
 	#toolStates = new Map<string, "pending" | "in_progress" | "completed" | "failed">();
 
@@ -350,7 +347,6 @@ class CliSession {
 		this.#text = "";
 		this.#stopReason = "none";
 		this.#failure = undefined;
-		this.#totalCostUsd = 0;
 		this.#toolStates.clear();
 		this.#startedAt = Date.now();
 		const completed = new Promise<CliPromptOutcome>((resolve) => {
@@ -388,10 +384,6 @@ class CliSession {
 			}
 			return;
 		}
-		if (update.sessionUpdate === "usage_update" && typeof update.cost === "number" && Number.isFinite(update.cost)) {
-			this.#totalCostUsd = update.cost;
-			return;
-		}
 		if (update.sessionUpdate === "tool_call_update" && typeof update.toolCallId === "string") {
 			const status = update.status;
 			if (status === "pending" || status === "in_progress" || status === "completed" || status === "failed") {
@@ -407,7 +399,6 @@ class CliSession {
 		pending?.resolve({
 			text: this.#text,
 			stopReason: this.#stopReason,
-			totalCostUsd: this.#totalCostUsd,
 			toolCalls: this.#toolStates.size,
 			toolErrors: [...this.#toolStates.values()].filter((status) => status === "failed").length,
 			durationMs: Math.max(0, Date.now() - this.#startedAt),
@@ -432,7 +423,6 @@ class CliSession {
 export interface CliPromptOutcome {
 	readonly text: string;
 	readonly stopReason: string;
-	readonly totalCostUsd: number;
 	readonly toolCalls: number;
 	readonly toolErrors: number;
 	readonly durationMs: number;
@@ -450,7 +440,6 @@ export function projectCliPromptResult(
 		type: "result",
 		sessionId,
 		text: outcome.text,
-		total_cost_usd: outcome.totalCostUsd,
 		diagnostics: {
 			stop_reason: outcome.stopReason,
 			tool_calls: outcome.toolCalls,
@@ -509,10 +498,6 @@ export function projectCliResult(sessionId: string, messages: readonly CodingAge
 		text: finalAssistantText(messages),
 		messages,
 		usage: aggregateUsage(messages),
-		total_cost_usd: messages.reduce(
-			(total, message) => (message.role === "assistant" ? total + finiteNumber(message.usage.cost.total) : total),
-			0,
-		),
 		diagnostics: {
 			stop_reason: lastAssistant ? projectStopReason(lastAssistant.stopReason) : "none",
 			tool_calls: toolResults.length,

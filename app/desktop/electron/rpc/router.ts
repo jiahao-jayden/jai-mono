@@ -16,6 +16,7 @@ import {
 	desktopAgentRetryInputSchema,
 	desktopArtifactReadInputSchema,
 	desktopAttachmentRegistrationInputSchema,
+	desktopAutoCompactionInputSchema,
 	desktopCommandListInputSchema,
 	desktopConnectorOAuthApplicationIdSchema,
 	desktopContextMenuShowInputSchema,
@@ -176,6 +177,11 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 			},
 			setSelection(_event, input) {
 				return rt.config.setSelection(parse(desktopProviderSelectionInputSchema, input, "Invalid model selection"));
+			},
+			setAutoCompaction(_event, enabled) {
+				return rt.config.setAutoCompaction(
+					parse(desktopAutoCompactionInputSchema, enabled, "Invalid automatic compaction setting"),
+				);
 			},
 			async fetchModels(_event, profileId) {
 				const result = await rt.config.fetchModels(profileId);
@@ -533,6 +539,9 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 				return rt.agentHost.getSubagentTranscript(
 					parse(desktopSubagentTranscriptInputSchema, input, "Invalid subagent transcript request"),
 				);
+			},
+			compact(_event, sessionId) {
+				return rt.agentHost.compact(parse(desktopSessionIdSchema, sessionId, "Invalid session id"));
 			},
 			close(_event, sessionId) {
 				rt.agentHost.closeSession(parse(desktopSessionIdSchema, sessionId, "Invalid session id"));

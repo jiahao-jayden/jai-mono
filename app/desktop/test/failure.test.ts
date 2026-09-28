@@ -14,7 +14,7 @@ const codes = desktopFailureSchema.properties.code.anyOf.map((literal) => litera
 
 describe("presentFailure", () => {
 	test("has localized copy for every failure code in both locales", () => {
-		expect(codes).toHaveLength(17);
+		expect(codes).toHaveLength(18);
 		for (const code of codes) {
 			const en = presentFailure({ code, retryable: false }, locales.en);
 			const zh = presentFailure({ code, retryable: false }, locales["zh-CN"]);

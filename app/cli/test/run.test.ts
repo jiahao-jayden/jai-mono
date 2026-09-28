@@ -119,7 +119,6 @@ describe("jai CLI options", () => {
 		expect(projectCliResult("session-1", [message])).toMatchObject({
 			text: "done",
 			usage: { input_tokens: 10, output_tokens: 4, total_tokens: 14 },
-			total_cost_usd: 0.03,
 		});
 	});
 });
@@ -171,7 +170,6 @@ describe("run diagnostics", () => {
 			projectCliPromptResult("session-1", {
 				text: "done",
 				stopReason: "end_turn",
-				totalCostUsd: 0.0125,
 				toolCalls: 3,
 				toolErrors: 1,
 				durationMs: 987,
@@ -180,7 +178,6 @@ describe("run diagnostics", () => {
 			type: "result",
 			sessionId: "session-1",
 			text: "done",
-			total_cost_usd: 0.0125,
 			diagnostics: { stop_reason: "end_turn", tool_calls: 3, tool_errors: 1 },
 			duration_ms: 987,
 		});
@@ -191,7 +188,6 @@ describe("run diagnostics", () => {
 			projectCliPromptResult("session-1", {
 				text: "",
 				stopReason: "error",
-				totalCostUsd: 0,
 				toolCalls: 0,
 				toolErrors: 0,
 				durationMs: 5,

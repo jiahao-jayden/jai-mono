@@ -191,19 +191,19 @@ function emptyUsage(): RuntimeSessionUsage {
 		cacheReadTokens: 0,
 		cacheWriteTokens: 0,
 		totalTokens: 0,
-		cost: 0,
 		contextTokens: 0,
 	};
 }
 
-function addUsage(left: RuntimeSessionUsage, right: RuntimeSessionUsage): RuntimeSessionUsage {
+export function addUsage(left: RuntimeSessionUsage, right: RuntimeSessionUsage): RuntimeSessionUsage {
 	return {
 		inputTokens: left.inputTokens + right.inputTokens,
 		outputTokens: left.outputTokens + right.outputTokens,
 		cacheReadTokens: left.cacheReadTokens + right.cacheReadTokens,
 		cacheWriteTokens: left.cacheWriteTokens + right.cacheWriteTokens,
 		totalTokens: left.totalTokens + right.totalTokens,
-		cost: left.cost + right.cost,
-		contextTokens: right.contextTokens,
+		// Aborted or failed attempts settle all-zero usage because the provider never reported it;
+		// that means "unknown", so the context size stays at the last attempt that did report.
+		contextTokens: right.contextTokens > 0 ? right.contextTokens : left.contextTokens,
 	};
 }

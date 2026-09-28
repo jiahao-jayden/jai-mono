@@ -86,7 +86,21 @@ describe("Runtime Agent Settings", () => {
         },
         maxTurns: 12,
         instructions: "Respond in zh-CN.",
+        autoCompaction: true,
       });
+
+      const disabled = settings.setAutoCompaction(false);
+      if (disabled.isErr()) throw disabled.error;
+      expect(disabled.value.autoCompaction).toBe(false);
+      const resolvedDisabled = settings.resolveOptions();
+      if (resolvedDisabled.isErr()) throw resolvedDisabled.error;
+      expect(resolvedDisabled.value.autoCompaction).toBe(false);
+      const relanguaged = settings.setLanguage("en");
+      if (relanguaged.isErr()) throw relanguaged.error;
+      expect(relanguaged.value.autoCompaction).toBe(false);
+      const reenabled = settings.setAutoCompaction(true);
+      if (reenabled.isErr()) throw reenabled.error;
+      expect(reenabled.value.autoCompaction).toBe(true);
     } finally {
       database.close();
     }

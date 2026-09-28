@@ -1265,7 +1265,6 @@ describe("DesktopAcpAgentHost", () => {
 			cacheReadTokens: 0,
 			cacheWriteTokens: 0,
 			totalTokens: 0,
-			cost: 0,
 			contextTokens: 0,
 		});
 
@@ -1281,7 +1280,6 @@ describe("DesktopAcpAgentHost", () => {
 					cacheReadTokens: 2,
 					cacheWriteTokens: 1,
 					totalTokens: 17,
-					cost: 0.03,
 					contextTokens: 17,
 				},
 			},
@@ -1297,11 +1295,11 @@ describe("DesktopAcpAgentHost", () => {
 					cacheReadTokens: 2,
 					cacheWriteTokens: 1,
 					totalTokens: 17,
-					cost: 0.03,
 					contextTokens: 17,
 				},
 			},
 		});
+		expect(events.at(-1)?.event).not.toHaveProperty("usage.cost");
 		expect(host.getSnapshot("session-1").usage.totalTokens).toBe(17);
 
 		client.publish({
@@ -1309,11 +1307,99 @@ describe("DesktopAcpAgentHost", () => {
 			method: "session/update",
 			params: {
 				sessionId: "session-1",
-				update: { sessionUpdate: "usage_update", cost: 1 },
+				update: { sessionUpdate: "usage_update", totalTokens: 1 },
 			},
 		});
 		expect(host.getSnapshot("session-1").usage.totalTokens).toBe(17);
 
+		host.close();
+	});
+
+	test("projects context_update into snapshot, replays it on resume and clears it on null", async () => {
+		const client = new FakeAcpClient();
+		const context = {
+			usedTokens: 51_705,
+			contextWindow: 1_000_000,
+			compactAtTokens: 980_000,
+			categories: {
+				systemPrompt: 400,
+				toolDefinitions: 300,
+				userMessages: 100,
+				assistantText: 100,
+				thinking: 50,
+				toolInputs: 50,
+			},
+			toolOutputs: [{ toolName: "Read", tokens: 123 }],
+		};
+		client.resumeUpdates = [{ sessionUpdate: "context_update", context }];
+		const events: DesktopAgentEventEnvelope[] = [];
+		const host = await DesktopAcpAgentHost.open((event) => events.push(event), {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		const publish = (update: Record<string, unknown>) =>
+			client.publish({
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: { sessionId: "session-1", update: { sessionUpdate: "context_update", ...update } },
+			});
+
+		expect((await host.ensureSessionProjection("session-1")).context).toEqual(context);
+		expect(events.at(-1)?.event).toEqual({ type: "context_changed", context });
+
+		publish({ context: { ...context, usedTokens: -1 } });
+		expect(host.getSnapshot("session-1").context).toEqual(context);
+
+		const { compactAtTokens: _off, ...withoutThreshold } = context;
+		publish({ context: withoutThreshold });
+		expect(host.getSnapshot("session-1").context).toEqual(withoutThreshold);
+
+		publish({ context: null });
+		expect(host.getSnapshot("session-1").context).toBeUndefined();
+		expect(events.at(-1)?.event).toEqual({ type: "context_changed", context: undefined });
+		host.close();
+	});
+
+	test("shows a live compaction marker until the durable entry replaces it or the compaction fails", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, { client, resolveSessionCwd: async () => "/workspace" });
+		await host.ensureSessionProjection("session-1");
+		const publish = (update: Record<string, unknown>) =>
+			client.publish({
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: { sessionId: "session-1", update: { sessionUpdate: "compaction_update", ...update } },
+			});
+		const compactions = () => host.getSnapshot("session-1").items.filter((item) => item.kind === "compaction");
+
+		publish({ compactionId: "live", status: "compacting" });
+		expect(compactions()).toMatchObject([{ id: "compaction:live", status: "compacting" }]);
+		publish({ compactionId: "live", status: "failed" });
+		expect(compactions()).toEqual([]);
+
+		publish({ compactionId: "live", status: "compacting" });
+		publish({ compactionId: "entry-1", status: "complete", timestamp: 42 });
+		expect(compactions()).toEqual([{ kind: "compaction", id: "compaction:entry-1", timestamp: 42, status: "complete" }]);
+		host.close();
+	});
+
+	test("compacts through jai/session/compact and projects a Host rejection as compaction_unavailable", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => undefined, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+
+		await host.compact("session-1");
+		expect(client.methods.at(-1)).toBe("jai/session/compact");
+		expect(client.params.at(-1)).toEqual({ sessionId: "session-1" });
+
+		client.compactError = { _tag: "acp_local_client.request_failed", message: "Nothing to compact" } as AcpLocalClientError;
+		await expect(host.compact("session-1")).rejects.toMatchObject({ _tag: "desktop_agent.compaction_unavailable" });
+
+		client.compactError = { _tag: "acp_local_client.disconnected", message: "closed" } as AcpLocalClientError;
+		await expect(host.compact("session-1")).rejects.toMatchObject({ _tag: "desktop_agent.acp_request_failed" });
 		host.close();
 	});
 
@@ -1335,6 +1421,9 @@ class FakeAcpClient implements LocalAcpV2Client {
 	promptError?: string;
 	subagentTranscript?: { readonly items: readonly unknown[] };
 	subagentTranscriptError?: string;
+	/** Replayed as `session/update` notifications before `session/resume` answers, like the Host snapshot. */
+	resumeUpdates: readonly Record<string, unknown>[] = [];
+	compactError?: AcpLocalClientError;
 
 	async request(method: string, params?: unknown): Promise<ResultType<unknown, AcpLocalClientError>> {
 		this.methods.push(method);
@@ -1344,8 +1433,13 @@ class FakeAcpClient implements LocalAcpV2Client {
 			if (!this.resumeSucceeds) {
 				return Result.err({ message: 'Session "session-1" does not exist' } as AcpLocalClientError);
 			}
+			const sessionId = (params as { readonly sessionId: string }).sessionId;
+			for (const update of this.resumeUpdates) {
+				this.publish({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update } });
+			}
 			return Result.ok(this.resumeResult);
 		}
+		if (method === "jai/session/compact" && this.compactError) return Result.err(this.compactError);
 		if (method === "session/retry" && this.retryError) return Result.err(this.retryError);
 		if (method === "session/prompt" && this.promptError) {
 			return Result.err({ message: this.promptError } as AcpLocalClientError);

@@ -7,6 +7,7 @@ import type {
 	RuntimeApprovalRequest,
 	RuntimeOperationTiming,
 	RuntimeSession,
+	RuntimeSessionContext,
 	RuntimeSessionEvent,
 	RuntimeSessionSnapshot,
 } from "../../runtime";
@@ -78,6 +79,9 @@ export class AcpV2Agent {
 						break;
 					case "jai/profile/token-stats":
 						response = await this.profileTokenStats(request);
+						break;
+					case "jai/session/compact":
+						response = await this.compact(request);
 						break;
 					default:
 						response = this.respondError(request.id, -32601, `Unsupported ACP method "${request.method}"`);
@@ -250,6 +254,19 @@ export class AcpV2Agent {
 		}
 		const navigated = await session.navigate(entryId);
 		if (navigated.isErr()) return this.respondError(request.id, -32001, navigated.error.message);
+		return this.respond(request.id, {});
+	}
+
+	private async compact(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
+		const sessionId = objectParams(request.params)?.sessionId;
+		if (typeof sessionId !== "string")
+			return this.respondError(request.id, -32602, "Invalid jai/session/compact parameters");
+		const session = this.#sessions.get(sessionId);
+		if (!session) {
+			return this.respondError(request.id, -32004, `Session "${sessionId}" is not active on this ACP connection`);
+		}
+		const compacted = await session.compact();
+		if (compacted.isErr()) return this.respondError(request.id, -32001, compacted.error.message);
 		return this.respond(request.id, {});
 	}
 
@@ -528,6 +545,7 @@ function projectSnapshot(sessionId: string, snapshot: RuntimeSessionSnapshot): r
 		),
 		...snapshot.operationTimings.map((timing) => operationUpdate(sessionId, timing)),
 		...(isEmptyUsage(snapshot.usage) ? [] : [usageUpdate(sessionId, snapshot.usage)]),
+		...(snapshot.context ? [contextUpdate(sessionId, snapshot.context)] : []),
 		stateUpdate(sessionId, snapshot),
 	];
 }
@@ -546,6 +564,10 @@ function projectRuntimeEvent(sessionId: string, event: RuntimeSessionEvent): rea
 			return [stateUpdate(sessionId, event)];
 		case "configuration_changed":
 			return [configOptionUpdate(sessionId, event.configuration)];
+		case "context_changed":
+			return [contextUpdate(sessionId, event.context)];
+		case "compaction_progress":
+			return [compactionUpdate(sessionId, { compactionId: LIVE_COMPACTION_ID, status: event.status })];
 		case "approval_requested":
 			return [];
 		case "child_entry_appended":
@@ -611,6 +633,15 @@ function projectEntry(sessionId: string, entry: SessionEntry, operationId?: stri
 		const extensions = entry.value.extensions;
 		const todos = isObject(extensions) ? todosFromExtensionState(extensions) : undefined;
 		return todos ? [planUpdate(sessionId, todos.items)] : [];
+	}
+	if (entry.type === "compaction") {
+		return [
+			compactionUpdate(sessionId, {
+				compactionId: entry.id,
+				status: "complete",
+				timestamp: Date.parse(entry.timestamp),
+			}),
+		];
 	}
 	if (entry.type !== "message") return [];
 	switch (entry.message.role) {
@@ -772,7 +803,9 @@ function projectOperationEvent(
 ): readonly AcpJsonRpcNotification[] {
 	switch (event.type) {
 		case "usage_settled":
-			// RuntimeSession converts this durable ledger signal into `usage_changed`.
+		case "context_measured":
+		case "compaction_progress":
+			// RuntimeSession re-publishes these as Session-level events.
 			return [];
 		case "message_chunk":
 			return [
@@ -1135,8 +1168,66 @@ function usageUpdate(sessionId: string, usage: RuntimeSessionUsage): AcpJsonRpcN
 				cacheReadTokens: usage.cacheReadTokens,
 				cacheWriteTokens: usage.cacheWriteTokens,
 				totalTokens: usage.totalTokens,
-				cost: usage.cost,
 				contextTokens: usage.contextTokens,
+			},
+		},
+	};
+}
+
+/**
+ * A compaction in progress has no durable id yet, so its live marker uses this one id; the
+ * client replaces it with the durable entry's marker, or drops it on `failed`.
+ */
+const LIVE_COMPACTION_ID = "live";
+
+function compactionUpdate(
+	sessionId: string,
+	compaction: {
+		readonly compactionId: string;
+		readonly status: "compacting" | "complete" | "failed";
+		readonly timestamp?: number;
+	},
+): AcpJsonRpcNotification {
+	return {
+		jsonrpc: "2.0",
+		method: "session/update",
+		params: {
+			sessionId,
+			update: {
+				sessionUpdate: "compaction_update",
+				compactionId: compaction.compactionId,
+				status: compaction.status,
+				timestamp: compaction.timestamp,
+			},
+		},
+	};
+}
+
+/** `context: null` clears a measurement that no longer describes the current branch. */
+function contextUpdate(sessionId: string, context: RuntimeSessionContext | undefined): AcpJsonRpcNotification {
+	return {
+		jsonrpc: "2.0",
+		method: "session/update",
+		params: {
+			sessionId,
+			update: {
+				sessionUpdate: "context_update",
+				context: context
+					? {
+							usedTokens: context.usedTokens,
+							contextWindow: context.measurement.contextWindow,
+							compactAtTokens: context.measurement.compactAtTokens,
+							categories: {
+								systemPrompt: context.measurement.systemPrompt,
+								toolDefinitions: context.measurement.toolDefinitions,
+								userMessages: context.measurement.userMessages,
+								assistantText: context.measurement.assistantText,
+								thinking: context.measurement.thinking,
+								toolInputs: context.measurement.toolInputs,
+							},
+							toolOutputs: context.measurement.toolOutputs.map(({ toolName, tokens }) => ({ toolName, tokens })),
+						}
+					: null,
 			},
 		},
 	};
@@ -1164,8 +1255,7 @@ function isEmptyUsage(usage: RuntimeSessionUsage): boolean {
 		usage.outputTokens === 0 &&
 		usage.cacheReadTokens === 0 &&
 		usage.cacheWriteTokens === 0 &&
-		usage.totalTokens === 0 &&
-		usage.cost === 0
+		usage.totalTokens === 0
 	);
 }
 

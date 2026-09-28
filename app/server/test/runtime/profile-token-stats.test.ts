@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { OperationRecord, SessionEntry } from "@jai/agent";
 import type { ProductSessionDurableState } from "../../src/sessions";
-import { emptyProfileTokenStats, projectProfileTokenStats } from "../../src/runtime/profile-token-stats";
+import {
+	branchSessionUsage,
+	emptyProfileTokenStats,
+	projectProfileTokenStats,
+} from "../../src/runtime/profile-token-stats";
 
 function usage(totalTokens: number) {
 	return {
@@ -314,5 +318,38 @@ describe("projectProfileTokenStats", () => {
 		expect(stats.promptCount).toBe(2);
 		expect(stats.settledAttemptCount).toBe(1);
 		expect(stats.missingUsageAttemptCount).toBe(1);
+	});
+});
+
+describe("branchSessionUsage", () => {
+	test("an aborted attempt with unreported usage keeps the last known context size", () => {
+		const settled = (attemptId: string, totalTokens: number): OperationRecord => ({
+			type: "usage_settled",
+			operationId: "op-1",
+			attemptId,
+			usage: usage(totalTokens),
+			timestamp: "2026-09-20T12:00:02.000Z",
+		});
+		const result = branchSessionUsage(
+			session({
+				id: "s1",
+				leafId: "u1",
+				entries: [userEntry("u1")],
+				records: [
+					{
+						type: "operation_accepted",
+						operationId: "op-1",
+						kind: "prompt",
+						inputEntryId: "u1",
+						startLeafId: null,
+						timestamp: "2026-09-20T12:00:00.000Z",
+					},
+					settled("a1", 51_705),
+					settled("a2", 0),
+				],
+			}),
+		);
+		expect(result.totalTokens).toBe(51_705);
+		expect(result.contextTokens).toBe(51_705);
 	});
 });
