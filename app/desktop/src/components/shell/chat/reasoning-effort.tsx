@@ -482,13 +482,13 @@ export function ReasoningEffort({ levels, value, disabled = false, onChange }: R
 				onPointerCancel={onPointerUp}
 				onKeyDown={onKeyDown}
 				className={cn(
-					"absolute bottom-0 left-0 right-0 h-8 cursor-grab rounded-2xl outline-none focus-visible:outline-2 focus-visible:outline-[#006aff] focus-visible:outline-offset-[3px]",
+					"absolute bottom-0 left-0 right-0 h-8 cursor-grab rounded-2xl outline-none focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-[3px]",
 					dragging && "cursor-grabbing",
 					disabled && "pointer-events-none opacity-50",
 				)}
 			>
 				<div
-					className="pointer-events-none absolute bottom-0 left-0 top-0 rounded-2xl bg-[linear-gradient(90deg,#006aff,#0059d4)] shadow-[inset_0_1px_1px_rgba(255,255,255,0.16)]"
+					className="pointer-events-none absolute bottom-0 left-0 top-0 rounded-2xl bg-[linear-gradient(90deg,color-mix(in_oklch,var(--brand)_55%,white),color-mix(in_oklch,var(--brand)_78%,white))] shadow-[inset_0_1px_1px_rgba(255,255,255,0.16)]"
 					style={{ width: fillW, opacity: fillOpacity }}
 				/>
 				{atMax ? (
@@ -507,7 +507,7 @@ export function ReasoningEffort({ levels, value, disabled = false, onChange }: R
 							className={cn(
 								"pointer-events-none absolute top-1/2 z-[3] w-[1.5px] -ml-[0.75px] -translate-y-1/2 rounded-[1px] bg-[color:var(--ss-tick)]",
 								onThumb && "bg-black/45",
-								index === active && !onThumb && "bg-[#66a6ff]",
+								index === active && !onThumb && "bg-[color-mix(in_oklch,var(--brand)_40%,white)]",
 							)}
 							style={{ left: x, height: tickHeights[index] }}
 						/>

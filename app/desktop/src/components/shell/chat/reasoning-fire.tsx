@@ -1,7 +1,7 @@
 /*
  * WebGL2 particle trail shown at the highest reasoning level.
  * Adapted from https://github.com/2768651338/dsh-effort-slider (useWebglFire / shaders):
- * the slider value is fixed at the track end, the palette is retuned to the desktop accent blue,
+ * the slider value is fixed at the track end, the palette follows the theme's `--brand` color,
  * and the loop lives only while the component is mounted.
  *
  * Copyright (c) 2026, dsh-web-ui-custom contributors
@@ -39,6 +39,7 @@ const FRAG_SIM = `#version 300 es
 precision highp float;
 in vec2 v_uv; out vec4 fc;
 uniform float u_time, u_slider, u_elapsed;
+uniform vec3 u_brand;
 uniform sampler2D u_back;
 float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 void main(){
@@ -99,8 +100,8 @@ void main(){
   float leadF=sin(leadD*100.0+t*20.0*ts+h2*6.28)*0.5+0.5;
   float leadSpark=leadZone*step(0.6,h2)*leadF*intensity*es*0.5;
   float total=energy+edge+leadSpark;
-  vec3 ember=vec3(0.04,0.16,0.52);
-  vec3 glow=vec3(0.32,0.66,1.0);
+  vec3 ember=mix(u_brand,vec3(1.0),0.15)*0.5;
+  vec3 glow=mix(u_brand,vec3(1.0),0.5);
   vec3 wht=vec3(0.94,0.98,1.0);
   float temp=1.0-dn;
   vec3 col=mix(ember,glow,temp);
@@ -195,6 +196,20 @@ function createTarget(gl: WebGL2RenderingContext, width: number, height: number)
 	return { fbo, tex };
 }
 
+/**
+ * The theme's `--brand` as 0–1 sRGB channels. Computed colors stay in oklch, so a 1×1 2D canvas does
+ * the conversion; read once per mount, since the fire remounts whenever the top level is chosen.
+ */
+function brandRgb(element: HTMLElement): readonly [number, number, number] {
+	const context = document.createElement("canvas").getContext("2d");
+	const brand = getComputedStyle(element).getPropertyValue("--brand").trim();
+	if (!context || !brand) return [0.32, 0.66, 1];
+	context.fillStyle = brand;
+	context.fillRect(0, 0, 1, 1);
+	const [red = 0, green = 0, blue = 0] = context.getImageData(0, 0, 1, 1).data;
+	return [red / 255, green / 255, blue / 255];
+}
+
 /** Starts the render loop on `canvas`; returns the cleanup, or nothing when WebGL2 is unavailable. */
 function startFire(canvas: HTMLCanvasElement): (() => void) | undefined {
 	const gl = canvas.getContext?.("webgl2", { antialias: false, preserveDrawingBuffer: false }) ?? null;
@@ -218,6 +233,7 @@ function startFire(canvas: HTMLCanvasElement): (() => void) | undefined {
 		simSlider: gl.getUniformLocation(sim, "u_slider"),
 		simElapsed: gl.getUniformLocation(sim, "u_elapsed"),
 		simBack: gl.getUniformLocation(sim, "u_back"),
+		simBrand: gl.getUniformLocation(sim, "u_brand"),
 		blurDir: gl.getUniformLocation(blur, "u_dir"),
 		blurExt: gl.getUniformLocation(blur, "u_ext"),
 		blurTex: gl.getUniformLocation(blur, "u_tex"),
@@ -233,6 +249,7 @@ function startFire(canvas: HTMLCanvasElement): (() => void) | undefined {
 	let [simA, simB] = targets as [Target, Target, Target, Target];
 	const [, , blurH, blurV] = targets as [Target, Target, Target, Target];
 
+	const brand = brandRgb(canvas);
 	const start = performance.now();
 	let raf = 0;
 	const frame = (now: number) => {
@@ -244,6 +261,7 @@ function startFire(canvas: HTMLCanvasElement): (() => void) | undefined {
 		gl.uniform1f(u.simTime, now * 0.001 * SPEED);
 		gl.uniform1f(u.simSlider, SLIDER_END);
 		gl.uniform1f(u.simElapsed, ((now - start) / 1000) * SPEED);
+		gl.uniform3f(u.simBrand, brand[0], brand[1], brand[2]);
 		gl.bindTexture(gl.TEXTURE_2D, simA.tex);
 		gl.uniform1i(u.simBack, 0);
 		gl.drawArrays(gl.TRIANGLES, 0, 6);
