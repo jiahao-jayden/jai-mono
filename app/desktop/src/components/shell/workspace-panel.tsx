@@ -199,6 +199,13 @@ export function WorkspacePanel({ sessionId, filePath, onOpenFile }: WorkspacePan
 		fileTreeSearchMode: "hide-non-matches",
 		search: false,
 		density: "compact",
+		// Lowercase names sit below the row's geometric center. Chevron already
+		// has its own transform, so only the file badge moves.
+		unsafeCSS: `
+			[data-item-section="icon"] > svg:not([data-icon-name="file-tree-icon-chevron"]) {
+				transform: translateY(1px);
+			}
+		`,
 		onSelectionChange: (selectedPaths) => {
 			if (selectionSyncRef.current) {
 				selectionSyncRef.current = false;

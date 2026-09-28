@@ -382,13 +382,14 @@ html.right-panel-resizing * {
 	--trees-border-color-override: color-mix(in oklch, var(--foreground) 9%, transparent);
 	--trees-border-radius-override: calc(var(--radius) * 0.5);
 
-	/* Layout — editorial breathing room, not IDE-compact */
+	/* Layout — built-in symbols are 16×16. A narrower slot lets the glyph
+	   overflow into the label; 1px gap made the badge sit on the filename. */
 	--trees-padding-inline-override: 0.5rem;
 	--trees-item-padding-x-override: 0.5rem;
 	--trees-item-margin-x-override: 0.25rem;
-	--trees-item-row-gap-override: 1px;
+	--trees-item-row-gap-override: 8px;
 	--trees-level-gap-override: 0.875rem;
-	--trees-icon-width-override: 14px;
+	--trees-icon-width-override: 16px;
 	--trees-icon-nudge-override: 0px;
 
 	/* Selected row — editorial whisper.

@@ -1,5 +1,12 @@
 # 历史需求
 
+## Agent 搜索收敛
+
+结果：completed
+Tracker：https://github.com/jiahao-jayden/jai-mono/issues/60
+归档日期：2026-09-28
+本地历史：-
+
 ## 统一错误提示：Failure 分类、聊天提示位与 Toast 重做
 
 结果：completed
