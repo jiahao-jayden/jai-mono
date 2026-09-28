@@ -4,6 +4,7 @@ import {
 	WebSearchAllProvidersFailed,
 	WebSearchInvalidQuery,
 	WebSearchProviderFailed,
+	WebFetchRuntime,
 	WebSearchRuntime,
 	createWebSearchExtension,
 	type WebSearchProvider,
@@ -37,6 +38,34 @@ describe("web search runtime", () => {
 		const result = await runtime.search("jai", 5);
 		expect(result).toEqual(Result.ok({ provider: "anysearch", results: [] }));
 		expect(called).toEqual(["exa", "parallel", "anysearch"]);
+	});
+
+	test("search excerpts never stand in for a fetched page", async () => {
+		const fetched: string[] = [];
+		const runtime = new WebSearchRuntime({
+			providers: [
+				provider(
+					"anysearch",
+					Result.ok({
+						provider: "anysearch",
+						results: [{ title: "Page", url: "https://example.com/page", content: "Excerpt only" }],
+					}),
+					[],
+				),
+			],
+			random: () => 0,
+			fetcher: new WebFetchRuntime({
+				lookup: async () => ["93.184.216.34"],
+				transport: async (url) => {
+					fetched.push(url);
+					return new Response("# Page\n\nFull article.", { status: 200, headers: { "content-type": "text/markdown" } });
+				},
+			}),
+		});
+		await runtime.search("jai", 5);
+		const page = await runtime.fetcher.fetch("https://example.com/page");
+		expect(fetched).toEqual(["https://r.jina.ai/https://example.com/page"]);
+		expect(page.isOk() && page.value.content).toContain("Full article.");
 	});
 
 	test("does not fail over on authentication or invalid request failures", async () => {

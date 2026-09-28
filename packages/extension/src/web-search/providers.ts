@@ -232,13 +232,13 @@ function normalizeResult(value: unknown): WebSearchResult | undefined {
 	if (!isRecord(value) || typeof value.url !== "string" || !value.url.trim()) return undefined;
 	const title = firstString(value.title, value.name) ?? value.url;
 	const snippet = firstString(value.snippet, value.description, value.excerpt, value.text);
-	const content = firstString(value.content, value.text, value.excerpts);
+	const content = firstString(value.content, value.text, value.excerpts)?.trim();
 	const publishedDate = firstString(value.publishedDate, value.published_date, value.publishedAt);
 	return {
 		title: title.trim(),
 		url: value.url.trim(),
 		snippet: snippet ? snippet.trim() : undefined,
-		content: content ? content.trim() : undefined,
+		content: content && content !== snippet?.trim() ? content : undefined,
 		publishedDate: publishedDate ? publishedDate.trim() : undefined,
 	};
 }

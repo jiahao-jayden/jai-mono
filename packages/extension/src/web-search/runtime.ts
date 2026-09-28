@@ -58,20 +58,7 @@ export class WebSearchRuntime {
 					}),
 				);
 			const result = await provider.search({ query: query.trim(), limit }, signal);
-			if (result.isOk()) {
-				for (const item of result.value.results) {
-					if (item.content) {
-						this.fetcher.remember({
-							url: item.url,
-							title: item.title,
-							content: item.content,
-							mimeType: "text/plain",
-							redirects: [],
-						});
-					}
-				}
-				return result;
-			}
+			if (result.isOk()) return result;
 			attempts.push({ provider: provider.id, kind: result.error.kind });
 			if (!isFailoverFailure(result.error)) return Result.err(result.error);
 		}

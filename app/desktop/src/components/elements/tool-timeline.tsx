@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { type IconName, useIcon } from "@/lib/icon-context";
 import { cn } from "cn";
@@ -123,15 +123,11 @@ function ToolTimelineStep({
 	readonly contained: boolean;
 }) {
 	const hasWebSearchResults = step.webSearchResults !== undefined;
-	const [open, setOpen] = useState(hasWebSearchResults);
+	const [open, setOpen] = useState(false);
 	const Icon = useIcon(step.icon);
 	const ChevronRight = useIcon("chevron-right");
 	const selectable = step.onSelect !== undefined;
 	const expandable = !selectable && Boolean(step.details || hasWebSearchResults);
-
-	useEffect(() => {
-		if (hasWebSearchResults) setOpen(true);
-	}, [hasWebSearchResults]);
 	const thinkingRef = useRef<HTMLDivElement>(null);
 	const followThinkingRef = useRef(true);
 	useLayoutEffect(() => {
@@ -202,7 +198,7 @@ function ToolTimelineStep({
 				className="mt-2 !h-auto transition-none! data-[ending-style]:!h-auto data-[starting-style]:!h-auto contain-[paint] outline-none"
 			>
 				{step.webSearchResults ? (
-					<div className={cn(paper, "max-h-52 overflow-y-auto rounded-lg p-2")}>
+					<div className={cn(paper, "max-h-52 overflow-y-auto overscroll-contain scrollbar-gutter-stable rounded-lg p-2")}>
 						<WebSearchResults results={step.webSearchResults} />
 					</div>
 				) : step.kind === "thinking" ? (

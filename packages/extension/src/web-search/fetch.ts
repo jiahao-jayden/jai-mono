@@ -55,10 +55,6 @@ export class WebFetchRuntime {
 		this.#timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
 	}
 
-	remember(response: WebFetchResponse): void {
-		this.#cache.set(response.url, response);
-	}
-
 	async fetch(
 		input: string,
 		refresh = false,

@@ -14,6 +14,7 @@ import {
 	workTimelineSteps,
 } from "../src/components/shell/chat/chat-transcript";
 import { MarkdownContent } from "../src/components/ui/chat-message";
+import { WebSearchResults } from "../src/components/elements/web-search-results";
 
 const intl = createIntl({ locale: "en", messages: enMessages });
 
@@ -192,7 +193,7 @@ describe("transcript grouping", () => {
 		);
 	});
 
-	test("Web Search 逐行渲染可打开的来源结果", () => {
+	test("Web Search 完成后默认收起来源结果，来源逐行可打开", () => {
 		const tool: Extract<DesktopTranscriptItem, { kind: "tool" }> = {
 			kind: "tool",
 			id: "tool:web-search-1",
@@ -212,14 +213,17 @@ describe("transcript grouping", () => {
 		const markup = renderToStaticMarkup(
 			createElement(TranscriptItems, { items: [tool], loading: false, responding: true }),
 		);
-		expect(markup).toContain('data-slot="web-search-results"');
+		expect(markup).not.toContain('data-slot="web-search-results"');
+		expect(markup).toContain('aria-expanded="false"');
 		expect(markup).toContain("Search web for release notes");
 		expect(markup).not.toContain("Jai release notes");
-		expect(markup).toContain("Jai releases");
-		expect(markup).toContain("Jai changelog");
-		expect(markup).toContain('href="https://example.com/releases"');
-		expect(markup).toContain('src="https://example.com/favicon.ico"');
 		expect(markup).not.toContain("Web Search · Web Search");
+
+		const results = renderToStaticMarkup(createElement(WebSearchResults, { results: tool.webSearchResults ?? [] }));
+		expect(results).toContain("Jai releases");
+		expect(results).toContain("Jai changelog");
+		expect(results).toContain('href="https://example.com/releases"');
+		expect(results).toContain('src="https://example.com/favicon.ico"');
 	});
 
 	test("Web Search 使用关键词作为通用工具名的结果标题", () => {

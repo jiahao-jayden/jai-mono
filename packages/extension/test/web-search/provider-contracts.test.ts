@@ -33,7 +33,6 @@ describe("web search provider contracts", () => {
 						title: "Exa result",
 						url: "https://example.com",
 						snippet: "Extracted page text",
-						content: "Extracted page text",
 					},
 				],
 			}),
