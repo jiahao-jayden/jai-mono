@@ -14,6 +14,15 @@
   "desktop.attachments.description": {
     "defaultMessage": "Files and photos up to 20 MB"
   },
+  "desktop.backgroundTasks.collapse": {
+    "defaultMessage": "Hide background tasks"
+  },
+  "desktop.backgroundTasks.expand": {
+    "defaultMessage": "Show background tasks"
+  },
+  "desktop.backgroundTasks.running": {
+    "defaultMessage": "{count} background {count, plural, one {task} other {tasks}} running"
+  },
   "desktop.chat.afternoon": {
     "defaultMessage": "Good afternoon, {name}"
   },
@@ -1556,6 +1565,12 @@
   },
   "desktop.subagent.running": {
     "defaultMessage": "Running"
+  },
+  "desktop.subagent.stop": {
+    "defaultMessage": "Stop {title}"
+  },
+  "desktop.subagent.stopFailed": {
+    "defaultMessage": "Could not stop the subagent. Try again."
   },
   "desktop.subagent.stopped": {
     "defaultMessage": "Task stopped"

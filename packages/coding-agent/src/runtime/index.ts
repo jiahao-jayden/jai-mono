@@ -1,4 +1,13 @@
 export {
+	type BackgroundAgentEntry,
+	type BackgroundAgentListener,
+	type BackgroundAgentOutcome,
+	type BackgroundAgentRegistration,
+	type BackgroundAgentStatus,
+	BackgroundAgentStore,
+	createBackgroundAgentStore,
+} from "./background";
+export {
 	type CapabilityInventorySlot,
 	CodingAgent,
 	type CodingAgentPermissionOptions,

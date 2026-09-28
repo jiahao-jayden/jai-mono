@@ -176,6 +176,7 @@ export class CodingAgentOperationDriver implements RuntimeOperationDriver {
 				sessionAllowRules: input.sessionAllowRules,
 				sessionGrantWorkspaceRoot: input.sessionGrantWorkspaceRoot,
 				approvalQueue: input.approvalQueue,
+				backgroundAgents: input.backgroundAgents,
 			});
 			if (created.isErr()) {
 				telemetryObserver.close();
@@ -463,6 +464,10 @@ class CodingAgentOperation implements RuntimeOperation {
 				return;
 			}
 			case "tool_execution_end": {
+				if (event.toolName === "SpawnAgent" && !event.isError) {
+					this.observeBackgrounded(event);
+					return;
+				}
 				if (event.toolName !== "web_search" || event.isError) return;
 				const webSearch = projectWebSearchDetails(event.result);
 				if (!webSearch) return;
@@ -487,6 +492,18 @@ class CodingAgentOperation implements RuntimeOperation {
 			default:
 				return;
 		}
+	}
+
+	private observeBackgrounded(event: Extract<CodingAgentEvent, { readonly type: "tool_execution_end" }>): void {
+		const details = jsonObject(event.result).details;
+		if (!isJsonObject(details) || details.status !== "background_running") return;
+		if (typeof details.agentId !== "string" || typeof details.title !== "string") return;
+		this.publish({
+			type: "tool_backgrounded",
+			toolCallId: event.toolCallId,
+			agentId: details.agentId,
+			title: details.title,
+		});
 	}
 
 	private startAssistantMessage(): void {

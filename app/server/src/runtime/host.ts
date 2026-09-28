@@ -16,7 +16,12 @@ import {
 	type SessionSnapshot,
 } from "@jai/agent";
 import { type AssistantMessage, type ProviderFailureKind, providerFailureKind, type UserMessage } from "@jai/ai";
-import { createPermissionApprovalQueue, type PermissionApprovalQueue, type SessionAllowRules } from "@jai/coding-agent";
+import {
+	createBackgroundAgentStore,
+	createPermissionApprovalQueue,
+	type PermissionApprovalQueue,
+	type SessionAllowRules,
+} from "@jai/coding-agent";
 import { Result, TaggedError } from "better-result";
 import type { HostLog } from "../logging";
 import { redactSecrets } from "../logging/redact";
@@ -169,6 +174,14 @@ export type RuntimeSessionEvent =
 			readonly toolCallId: string;
 			readonly entry: SessionEntry<JsonObject>;
 			readonly operationId?: string;
+	  }
+	| {
+			/** A detached background child settled; no Operation carries it. */
+			readonly type: "background_agent_end";
+			readonly toolCallId: string;
+			readonly agentId: string;
+			readonly title: string;
+			readonly status: "complete" | "error" | "stopped";
 	  };
 
 export interface RuntimeSessionSnapshot {
@@ -693,6 +706,7 @@ export class RuntimeSession {
 	#context?: RuntimeSessionContext;
 	readonly #pendingApprovals = new Map<string, PendingRuntimeApproval>();
 	readonly #sessionAllowRules: SessionAllowRules = {};
+	readonly #backgroundAgents = createBackgroundAgentStore();
 	readonly #listeners = new Set<(event: RuntimeSessionEvent) => void>();
 	readonly #initialAppState: () => JsonObject;
 
@@ -713,6 +727,15 @@ export class RuntimeSession {
 		this.info = state;
 		this.#initialAppState = initialAppState;
 		this.#usage = branchUsage(state);
+		this.#backgroundAgents.subscribe((entry) => {
+			this.publish({
+				type: "background_agent_end",
+				toolCallId: entry.toolCallId,
+				agentId: entry.agentId,
+				title: entry.title,
+				status: entry.status === "complete" ? "complete" : entry.stopped ? "stopped" : "error",
+			});
+		});
 	}
 
 	/** Host-only reconnect seam. No journal recovery is allowed while this driver is live. */
@@ -1012,6 +1035,11 @@ export class RuntimeSession {
 		const loaded = await this.persistence.loadJournalOnly(childSessionId);
 		if (loaded.isErr()) return Result.err(loaded.error);
 		return Result.ok(loaded.value.snapshot);
+	}
+
+	/** Aborts one running background subagent. Unknown or settled ids report false. */
+	stopSubagent(toolCallId: string): boolean {
+		return this.#backgroundAgents.abort(toolCallId);
 	}
 
 	async navigate(entryId: string): Promise<Result<void, RuntimeHostPromptError>> {
@@ -1421,6 +1449,7 @@ export class RuntimeSession {
 			sessionAllowRules: this.#sessionAllowRules,
 			sessionGrantWorkspaceRoot: this.info.cwd,
 			approvalQueue: active.approvalQueue,
+			backgroundAgents: this.#backgroundAgents,
 			openChildSession: (toolCallId) =>
 				openSession(
 					new JournalOnlySessionStore(

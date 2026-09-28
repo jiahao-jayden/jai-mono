@@ -4,7 +4,7 @@ import type { RunAgentExecution } from "../../runtime/execution";
 import { projectMessages } from "../project";
 import type { CodingExtensionRuntime, CodingExtensionTool, CodingExtensionToolExecutionCall } from "./contract";
 
-/** Every child belongs to one tool call; even an unawaited child is aborted and joined. */
+/** Every foreground child belongs to one tool call and is aborted and joined with it. Detached children outlive their tool call but stay bound to the parent run signal. */
 export async function executeExtensionTool(
 	tool: CodingExtensionTool<any, any, any>,
 	runtime: CodingExtensionRuntime<any, any, any>,
@@ -15,13 +15,8 @@ export async function executeExtensionTool(
 	const callSignal = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal;
 	const pending = new Set<Promise<unknown>>();
 	const runAgent = async (input: Parameters<CodingExtensionToolExecutionCall["runAgent"]>[0]) => {
-		if (callSignal.aborted)
-			return Result.err({
-				code: "coding_execution.aborted",
-				message: "Agent execution was cancelled",
-				phase: "lifecycle" as const,
-				retryable: false,
-			});
+		const detached = input.detached === true;
+		const agentSignal = detached ? signal : callSignal;
 		if (!executeAgent)
 			return Result.err({
 				code: "coding_execution.unavailable",
@@ -29,12 +24,19 @@ export async function executeExtensionTool(
 				phase: "runtime_creation" as const,
 				retryable: false,
 			});
-		const execution = executeAgent({ ...input, toolCallId, signal: callSignal });
-		pending.add(execution);
+		if (agentSignal?.aborted)
+			return Result.err({
+				code: "coding_execution.aborted",
+				message: "Agent execution was cancelled",
+				phase: "lifecycle" as const,
+				retryable: false,
+			});
+		const execution = executeAgent({ ...input, toolCallId, signal: agentSignal ?? callSignal });
+		if (!detached) pending.add(execution);
 		try {
 			const messages = await execution;
 			const last = messages.findLast((message) => message.role === "assistant");
-			if (callSignal.aborted || last?.stopReason === "aborted")
+			if (agentSignal?.aborted || last?.stopReason === "aborted")
 				return Result.err({
 					code: "coding_execution.aborted",
 					message: "Agent execution was cancelled",

@@ -10,6 +10,15 @@ export {
 	type SessionAllowRules,
 } from "./permissions";
 export {
+	type BackgroundAgentEntry,
+	type BackgroundAgentListener,
+	type BackgroundAgentOutcome,
+	type BackgroundAgentRegistration,
+	type BackgroundAgentStatus,
+	BackgroundAgentStore,
+	createBackgroundAgentStore,
+} from "./runtime/background";
+export {
 	defaultUserTelemetryPolicy,
 	sdkConfigDefinition,
 	type UserTelemetryPolicy,

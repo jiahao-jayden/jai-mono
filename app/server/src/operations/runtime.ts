@@ -1,6 +1,11 @@
 import type { EffectBoundary, JsonObject, SessionHandle, SessionStore } from "@jai/agent";
 import type { Usage } from "@jai/ai";
-import type { CodingContextMeasurement, PermissionApprovalQueue, SessionAllowRules } from "@jai/coding-agent";
+import type {
+	BackgroundAgentStore,
+	CodingContextMeasurement,
+	PermissionApprovalQueue,
+	SessionAllowRules,
+} from "@jai/coding-agent";
 import type { Result } from "better-result";
 import { TaggedError } from "better-result";
 import type { RuntimeSessionConfiguration } from "../sessions";
@@ -142,6 +147,13 @@ export type RuntimeOperationEvent =
 			readonly measurement: RuntimeContextMeasurement;
 	  }
 	| {
+			/** A SpawnAgent call settled into background mode; the child keeps running. */
+			readonly type: "tool_backgrounded";
+			readonly toolCallId: string;
+			readonly agentId: string;
+			readonly title: string;
+	  }
+	| {
 			/** Success is not reported here: it is the durable compaction entry itself. */
 			readonly type: "compaction_progress";
 			readonly status: "compacting" | "failed";
@@ -233,6 +245,8 @@ export interface RuntimeOperationOpenInput {
 	 * database but never enter the product session catalog.
 	 */
 	readonly openChildSession?: (toolCallId: string) => Promise<SessionHandle<JsonObject>>;
+	/** Background registry shared by all Operations in the live Session. */
+	readonly backgroundAgents?: BackgroundAgentStore;
 }
 
 /** Read-only readiness check that must complete before prompt admission. */

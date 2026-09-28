@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { InMemorySessionStore } from "@jai/agent";
 import { access, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createCodingAgent, defineExtension, type CodingAgentEvent } from "@jai/coding-agent";
+import { createBackgroundAgentStore, createCodingAgent, defineExtension, type CodingAgentEvent } from "@jai/coding-agent";
 import { Type } from "@sinclair/typebox";
 import { Result } from "better-result";
 import { createSubagentExtension } from "../../src/subagent";
@@ -329,4 +329,244 @@ test("old built-in selection is rejected and repeated extension installation fai
 	});
 	expect(created.isErr()).toBe(true);
 	if (created.isOk()) await created.value.close();
+});
+
+test("background SpawnAgent returns an agentId and GetAgentResult collects its result", async () => {
+	const root = await temporaryDirectory();
+	const requests: any[] = [];
+	let parentTurns = 0;
+	const input = createInput(
+		root,
+		async (request) => {
+			if (request.tools?.some((tool: any) => tool.name === "SpawnAgent")) {
+				parentTurns++;
+				if (parentTurns === 1)
+					return assistantToolCall("SpawnAgent", "spawn-bg", {
+						title: "Slow",
+						task: "child-only task",
+						run_in_background: true,
+					});
+				if (parentTurns === 2) return assistantToolCall("GetAgentResult", "collect", { agentId: "bg-1" });
+				return assistant("parent complete");
+			}
+			return assistant("child final");
+		},
+		requests,
+	);
+	const created = await createCodingAgent({ ...input, tools: [], extensions: [createSubagentExtension()] });
+	if (created.isErr()) throw created.error;
+	const events: CodingAgentEvent[] = [];
+	created.value.subscribe((event) => {
+		events.push(event);
+	});
+	try {
+		const result = await created.value.prompt("parent secret history");
+		if (result.isErr()) throw result.error;
+		const childRequest = requests.find((request: any) =>
+			JSON.stringify(request.messages ?? []).includes("child-only task"),
+		);
+		const childTools = ((childRequest?.tools ?? []) as any[]).map((tool: any) => tool.name);
+		expect(childTools).not.toContain("SpawnAgent");
+		expect(childTools).not.toContain("GetAgentResult");
+		expect(JSON.stringify(childRequest)).not.toContain("parent secret history");
+		const spawnEnd = events.find((event) => event.type === "tool_execution_end" && event.toolName === "SpawnAgent");
+		expect(spawnEnd).toMatchObject({ isError: false });
+		expect(JSON.stringify(spawnEnd)).toContain("bg-1");
+		const transcript = JSON.stringify(result.value.messages);
+		expect(transcript).toContain("child final");
+	} finally {
+		await created.value.close();
+	}
+});
+
+test("GetAgentResult timeoutMs 0 reports running, a blocking wait collects the result", async () => {
+	const root = await temporaryDirectory();
+	const requests: any[] = [];
+	const gate = Promise.withResolvers<void>();
+	let parentTurns = 0;
+	const input = createInput(
+		root,
+		async (request) => {
+			if (request.tools?.some((tool: any) => tool.name === "SpawnAgent")) {
+				parentTurns++;
+				if (parentTurns === 1)
+					return assistantToolCall("SpawnAgent", "spawn-bg", {
+						title: "Slow",
+						task: "gated task",
+						run_in_background: true,
+					});
+				if (parentTurns === 2)
+					return assistantToolCall("GetAgentResult", "poll", { agentId: "bg-1", timeoutMs: 0 });
+				if (parentTurns === 3) {
+					gate.resolve();
+					return assistantToolCall("GetAgentResult", "wait", { agentId: "bg-1" });
+				}
+				return assistant("parent complete");
+			}
+			await gate.promise;
+			return assistant("child final");
+		},
+		requests,
+	);
+	const created = await createCodingAgent({ ...input, tools: [], extensions: [createSubagentExtension()] });
+	if (created.isErr()) throw created.error;
+	try {
+		const result = await created.value.prompt("delegate slow work");
+		if (result.isErr()) throw result.error;
+		const transcript = JSON.stringify(result.value.messages);
+		expect(transcript).toContain("still running");
+		expect(transcript).toContain("child final");
+	} finally {
+		gate.resolve();
+		await created.value.close();
+	}
+});
+
+test("unknown agentId fails and completion is announced before a later model call", async () => {
+	const root = await temporaryDirectory();
+	const requests: any[] = [];
+	const gate = Promise.withResolvers<void>();
+	let parentTurns = 0;
+	const input = createInput(
+		root,
+		async (request) => {
+			if (request.tools?.some((tool: any) => tool.name === "SpawnAgent")) {
+				parentTurns++;
+				if (parentTurns === 1)
+					return assistantToolCall("SpawnAgent", "spawn-bg", {
+						title: "Slow",
+						task: "gated task",
+						run_in_background: true,
+					});
+				if (parentTurns === 2) return assistantToolCall("GetAgentResult", "bad", { agentId: "bg-9" });
+				return assistant("parent complete");
+			}
+			await gate.promise;
+			return assistant("child final");
+		},
+		requests,
+	);
+	const created = await createCodingAgent({ ...input, tools: [], extensions: [createSubagentExtension()] });
+	if (created.isErr()) throw created.error;
+	const events: CodingAgentEvent[] = [];
+	created.value.subscribe((event) => {
+		events.push(event);
+	});
+	try {
+		expect((await created.value.prompt("delegate")).isOk()).toBe(true);
+		expect(JSON.stringify(events)).toContain("Unknown background agent");
+		gate.resolve();
+		let announced = false;
+		for (let attempt = 0; attempt < 50 && !announced; attempt++) {
+			expect((await created.value.prompt("nudge")).isOk()).toBe(true);
+			announced = requests.some((request: any) =>
+				JSON.stringify(request.messages ?? []).includes("Background subagent"),
+			);
+		}
+		expect(announced).toBe(true);
+	} finally {
+		gate.resolve();
+		await created.value.close();
+	}
+});
+
+test("background agents are visible to a later agent sharing one store", async () => {
+	const root = await temporaryDirectory();
+	const store = createBackgroundAgentStore();
+	const gate = Promise.withResolvers<void>();
+	const firstInput = createInput(root, async (request) => {
+		if (request.tools?.some((tool: any) => tool.name === "SpawnAgent")) {
+			const text = JSON.stringify(request.messages);
+			if (!text.includes("started as bg-1"))
+				return assistantToolCall("SpawnAgent", "spawn-bg", {
+					title: "Slow",
+					task: "gated task",
+					run_in_background: true,
+				});
+			return assistant("parent one done");
+		}
+		await gate.promise;
+		return assistant("child final");
+	});
+	const first = await createCodingAgent({
+		...firstInput,
+		tools: [],
+		extensions: [createSubagentExtension()],
+		backgroundAgents: store,
+	});
+	if (first.isErr()) throw first.error;
+	const secondInput = createInput(root, async (request) => {
+		const text = JSON.stringify(request.messages);
+		if (text.includes("collect background")) {
+			if (text.includes("child final")) return assistant("parent two done");
+			return assistantToolCall("GetAgentResult", "wait", { agentId: "bg-1" });
+		}
+		if (text.includes("still running")) return assistant("parent two done");
+		return assistantToolCall("GetAgentResult", "poll", { agentId: "bg-1", timeoutMs: 0 });
+	});
+	const second = await createCodingAgent({
+		...secondInput,
+		tools: [],
+		extensions: [createSubagentExtension()],
+		backgroundAgents: store,
+	});
+	if (second.isErr()) throw second.error;
+	try {
+		expect((await first.value.prompt("delegate slow work")).isOk()).toBe(true);
+		const polled = await second.value.prompt("check background");
+		if (polled.isErr()) throw polled.error;
+		expect(JSON.stringify(polled.value.messages)).toContain("still running");
+		gate.resolve();
+		const collected = await second.value.prompt("collect background");
+		if (collected.isErr()) throw collected.error;
+		expect(JSON.stringify(collected.value.messages)).toContain("child final");
+	} finally {
+		gate.resolve();
+		await first.value.close();
+		await second.value.close();
+	}
+});
+
+test("stopBackgroundAgent aborts a running background child as stopped", async () => {
+	const root = await temporaryDirectory();
+	const gate = Promise.withResolvers<void>();
+	const input = createInput(root, async (request) => {
+		if (request.tools?.some((tool: any) => tool.name === "SpawnAgent")) {
+			const text = JSON.stringify(request.messages);
+			if (text.includes("collect background")) {
+				if (text.includes("was stopped")) return assistant("parent done");
+				return assistantToolCall("GetAgentResult", "collect", { agentId: "bg-1" });
+			}
+			if (!text.includes("started as bg-1"))
+				return assistantToolCall("SpawnAgent", "spawn-bg", {
+					title: "Slow",
+					task: "gated task",
+					run_in_background: true,
+				});
+			if (!text.includes("still running"))
+				return assistantToolCall("GetAgentResult", "poll", { agentId: "bg-1", timeoutMs: 0 });
+			return assistant("parent done");
+		}
+		await gate.promise;
+		return assistant("child final");
+	});
+	const created = await createCodingAgent({ ...input, tools: [], extensions: [createSubagentExtension()] });
+	if (created.isErr()) throw created.error;
+	const events: CodingAgentEvent[] = [];
+	created.value.subscribe((event) => {
+		events.push(event);
+	});
+	try {
+		expect((await created.value.prompt("delegate slow work")).isOk()).toBe(true);
+		const stopped = await created.value.stopBackgroundAgent("spawn-bg");
+		if (stopped.isErr()) throw stopped.error;
+		expect(stopped.value.stopped).toBe(true);
+		expect((await created.value.prompt("collect background")).isOk()).toBe(true);
+		const end = events.find((event) => event.type === "background_agent_end");
+		expect(end).toMatchObject({ toolCallId: "spawn-bg", agentId: "bg-1", status: "stopped" });
+		expect(JSON.stringify(events)).toContain("was stopped");
+	} finally {
+		gate.resolve();
+		await created.value.close();
+	}
 });

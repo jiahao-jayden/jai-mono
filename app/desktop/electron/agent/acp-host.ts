@@ -85,6 +85,8 @@ interface AcpSessionRuntime {
 	readonly terminalToolCallIds: Map<string, string>;
 	readonly terminalOutput: Map<string, string>;
 	readonly hiddenToolCallIds: Set<string>;
+	/** SpawnAgent calls whose child is still running after the tool result was journaled. */
+	readonly backgroundToolCallIds: Set<string>;
 	todos?: DesktopTodos;
 	usage: DesktopSessionUsage;
 	context?: DesktopSessionContext;
@@ -323,6 +325,21 @@ export class DesktopAcpAgentHost {
 		return value.items ? this.#projectSubagentTranscript(value.items) : { items: [], runs: [] };
 	}
 
+	/** Aborts one running background subagent; the status flip arrives as a transcript event. */
+	async stopSubagent(input: {
+		readonly sessionId: string;
+		readonly toolCallId: string;
+	}): Promise<{ readonly stopped: boolean }> {
+		this.#requireSession(input.sessionId);
+		const result = await this.#request("session/stop_subagent", {
+			sessionId: input.sessionId,
+			toolCallId: input.toolCallId,
+		});
+		if (result.isErr()) throw result.error;
+		const value = result.value as { readonly stopped?: unknown };
+		return { stopped: value.stopped === true };
+	}
+
 	async compact(sessionId: string): Promise<void> {
 		const runtime = await this.#ensureSession(sessionId, "", defaultDesktopSessionControls);
 		const compacted = await this.#client.request("jai/session/compact", { sessionId: runtime.sessionId });
@@ -396,6 +413,7 @@ export class DesktopAcpAgentHost {
 			terminalToolCallIds: new Map(),
 			terminalOutput: new Map(),
 			hiddenToolCallIds: new Set(),
+			backgroundToolCallIds: new Set(),
 			usage: { ...EMPTY_DESKTOP_SESSION_USAGE },
 			seq: 0,
 			closed: false,
@@ -663,6 +681,7 @@ export class DesktopAcpAgentHost {
 			terminalToolCallIds: new Map(),
 			terminalOutput: new Map(),
 			hiddenToolCallIds: new Set(),
+			backgroundToolCallIds: new Set(),
 			usage: { ...EMPTY_DESKTOP_SESSION_USAGE },
 			seq: 0,
 			closed: true,
@@ -912,15 +931,21 @@ export class DesktopAcpAgentHost {
 		const rawInput = isRecord(update.rawInput) ? update.rawInput : undefined;
 		const rawTitle = typeof rawInput?.title === "string" ? rawInput.title.trim() : "";
 		const title = rawTitle || previousSubagent?.title || SUBAGENT_TOOL_NAME;
+		if (backgroundFromMetadata(update._meta)) runtime.backgroundToolCallIds.add(update.toolCallId);
+		if (backgroundSettledFromMetadata(update._meta)) runtime.backgroundToolCallIds.delete(update.toolCallId);
+		const stillBackground = runtime.backgroundToolCallIds.has(update.toolCallId);
+		const reportedStatus =
+			update.status === "failed" ? "error" : update.status === "completed" ? "complete" : undefined;
+		// The SpawnAgent tool result is journaled as completed the moment the child is
+		// detached. That update must not hide the card while the child is still running.
 		const status =
-			update.status === "failed"
-				? "error"
-				: update.status === "completed"
-					? "complete"
-					: (previousSubagent?.status ?? "running");
+			stillBackground && reportedStatus !== undefined
+				? "running"
+				: (reportedStatus ?? previousSubagent?.status ?? "running");
 		const activityTitle = activityTitleFromMetadata(update._meta) ?? previousSubagent?.activityTitle;
 		const startedAt = toolTimestampFromMetadata(update._meta, "startedAt");
 		const completedAt = toolTimestampFromMetadata(update._meta, "completedAt");
+		const stopped = stoppedFromMetadata(update._meta) ?? previousSubagent?.stopped ?? false;
 		const item: DesktopSubagentItem = {
 			kind: "subagent",
 			id,
@@ -943,6 +968,7 @@ export class DesktopAcpAgentHost {
 						: {}),
 			status,
 			activityTitle: activityTitle || undefined,
+			stopped: stopped || undefined,
 		};
 		runtime.items.set(id, item);
 		this.#emitEvent(runtime, { type: "transcript_upsert", item });
@@ -1245,6 +1271,20 @@ function timestampFromMetadata(value: unknown): number | undefined {
 function activityTitleFromMetadata(value: unknown): string | undefined {
 	if (!isRecord(value) || !isRecord(value.jai) || typeof value.jai.activityTitle !== "string") return undefined;
 	return value.jai.activityTitle.trim().slice(0, 200) || undefined;
+}
+
+function stoppedFromMetadata(value: unknown): boolean | undefined {
+	if (!isRecord(value) || !isRecord(value.jai)) return undefined;
+	if (value.jai.stopped === true) return true;
+	return undefined;
+}
+
+function backgroundFromMetadata(value: unknown): boolean {
+	return isRecord(value) && isRecord(value.jai) && value.jai.background === true;
+}
+
+function backgroundSettledFromMetadata(value: unknown): boolean {
+	return isRecord(value) && isRecord(value.jai) && value.jai.backgroundSettled === true;
 }
 
 function toolTimestampFromMetadata(value: unknown, field: "startedAt" | "completedAt"): number | undefined {

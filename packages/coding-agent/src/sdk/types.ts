@@ -2,6 +2,7 @@ import type { ModelRequestObserver } from "@jai/agent";
 import type { Result } from "better-result";
 import type { JsonObject, JsonValue } from "../core/json";
 import type { PermissionApprovalQueue, PermissionTelemetryObserver, SessionAllowRules } from "../permissions";
+import type { BackgroundAgentStore } from "../runtime/background";
 import type { CodingToolName } from "../tools/names";
 import type { CodingAgentExtension, CodingExtensionRuntimeAdapter } from "./extensions";
 import type { CodingModelMetadata, CodingProviderOptions } from "./model";
@@ -257,6 +258,12 @@ export interface CodingAgentCreateOptions {
 	 * subagent invocation. When omitted, subagent transcripts are not persisted.
 	 */
 	readonly openChildSession?: (toolCallId: string) => Promise<unknown>;
+	/**
+	 * Host-owned background registry shared across Operations in one live
+	 * Session. Omitted: background agents stay visible only to the Operation
+	 * that started them.
+	 */
+	readonly backgroundAgents?: BackgroundAgentStore;
 }
 
 export interface CodingPromptOptions {
@@ -376,6 +383,14 @@ export type CodingAgentEvent =
 			/** Emitted before each model request and after a manual compaction; purely observational. */
 			readonly type: "context_measured";
 			readonly measurement: CodingContextMeasurement;
+	  }
+	| {
+			/** A detached background child settled, possibly after its Operation ended. */
+			readonly type: "background_agent_end";
+			readonly toolCallId: string;
+			readonly agentId: string;
+			readonly title: string;
+			readonly status: "complete" | "error" | "stopped";
 	  };
 
 /**
@@ -428,6 +443,8 @@ export interface CodingAgent<TAppState extends JsonObject = JsonObject> {
 	compact(signal?: AbortSignal): Promise<Result<void, CodingSdkError>>;
 	generateTitle(firstMessage: string): Promise<Result<string, CodingSdkError>>;
 	abort(): Promise<Result<void, CodingSdkError>>;
+	/** Aborts one background agent by its tool call id. Unknown or settled ids fail. */
+	stopBackgroundAgent(toolCallId: string): Promise<Result<{ readonly stopped: boolean }, CodingSdkError>>;
 	subscribe(listener: (event: CodingAgentEvent) => void): () => void;
 	close(): Promise<Result<void, CodingSdkError>>;
 }

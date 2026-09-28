@@ -188,6 +188,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			openChildSession: input.openChildSession
 				? (input.openChildSession as unknown as OpenChildSession<PersistedCodingSessionState<TAppState>>)
 				: undefined,
+			backgroundAgents: input.backgroundAgents,
 			agent: {
 				compaction: {
 					summaryInstructions: input.compactionSummaryInstructions,
@@ -206,6 +207,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				},
 				permissionMode: input.permissionMode ?? "ask",
 				canReadWorkspacePath: (path) => internal.canReadWorkspacePath(path),
+				backgroundAgents: internal.backgroundAgents,
 			},
 			input.extensionRuntime,
 			createExtensionSessionStateAdapter(internal),
@@ -259,6 +261,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 	readonly #pendingArtifacts = new Map<string, CodingAgentArtifact>();
 	readonly #listeners = new Set<(event: CodingAgentEvent) => void>();
 	readonly #stopArtifactProjection: () => void;
+	readonly #stopBackgroundProjection: () => void;
 	readonly #eventProjector: CodingEventProjector;
 	#closed = false;
 	#running = false;
@@ -296,6 +299,17 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 			const projected = this.#eventProjector.project(event);
 			if (this.#listeners.size === 0) return;
 			for (const listener of this.#listeners) listener(projected);
+		});
+		this.#stopBackgroundProjection = this.#internal.backgroundAgents.subscribe((entry) => {
+			if (this.#listeners.size === 0) return;
+			const backgroundEvent: CodingAgentEvent = {
+				type: "background_agent_end",
+				toolCallId: entry.toolCallId,
+				agentId: entry.agentId,
+				title: entry.title,
+				status: entry.status === "complete" ? "complete" : entry.stopped ? "stopped" : "error",
+			};
+			for (const listener of this.#listeners) listener(backgroundEvent);
 		});
 	}
 
@@ -516,6 +530,11 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		};
 	}
 
+	async stopBackgroundAgent(toolCallId: string): Promise<ResultType<{ readonly stopped: boolean }, CodingSdkError>> {
+		if (this.#closed) return Result.err(closedError());
+		return Result.ok({ stopped: this.#internal.stopBackgroundAgent(toolCallId) });
+	}
+
 	async close(): Promise<ResultType<void, CodingSdkError>> {
 		if (this.#closed) return Result.ok(undefined);
 		let failure: unknown;
@@ -527,6 +546,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 			await this.#settlementTail;
 			await this.#artifactWriteTail;
 			this.#stopArtifactProjection();
+			this.#stopBackgroundProjection();
 			this.#internal.close();
 			if (this.#ephemeralDirectory) await rm(this.#ephemeralDirectory, { recursive: true, force: true });
 		} catch (error) {

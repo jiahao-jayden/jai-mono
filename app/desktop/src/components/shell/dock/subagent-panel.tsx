@@ -4,12 +4,14 @@ import { useIntl } from "react-intl";
 import { desktopMessages } from "@/i18n/messages";
 import { desktop, getDesktopRemoteRpcFailure } from "@/lib/desktop";
 import { presentFailure } from "@/lib/failure";
+import { useIcons } from "@/lib/icon-context";
 import type {
 	DesktopFailure,
 	DesktopSubagentItem,
 	DesktopSubagentTranscript,
 	DesktopTranscriptItem,
 } from "../../../../shared/desktop-rpc";
+import { Button } from "../../ui/button";
 import { NextStep } from "../../ui/next-step";
 import { TranscriptItems } from "../chat/chat-transcript";
 import { SubagentAvatar } from "../subagent-avatar";
@@ -17,9 +19,11 @@ import { SubagentAvatar } from "../subagent-avatar";
 export function SubagentPanel({
 	items,
 	onOpenHistory,
+	onStopSubagent,
 }: {
 	readonly items: readonly DesktopSubagentItem[];
 	readonly onOpenHistory?: (item: DesktopSubagentItem) => void;
+	readonly onStopSubagent?: (item: DesktopSubagentItem) => void;
 }) {
 	const intl = useIntl();
 	const active = items.filter((item) => item.status === "running");
@@ -35,6 +39,7 @@ export function SubagentPanel({
 				label={intl.formatMessage(desktopMessages.subagentActive)}
 				items={active}
 				onOpenHistory={onOpenHistory}
+				onStopSubagent={onStopSubagent}
 			>
 				<p className="px-1 text-[13px] text-muted-foreground">
 					{intl.formatMessage(desktopMessages.subagentPanelEmpty)}
@@ -55,11 +60,13 @@ function SubagentGroup({
 	label,
 	items,
 	onOpenHistory,
+	onStopSubagent,
 	children,
 }: {
 	readonly label: string;
 	readonly items: readonly DesktopSubagentItem[];
 	readonly onOpenHistory?: (item: DesktopSubagentItem) => void;
+	readonly onStopSubagent?: (item: DesktopSubagentItem) => void;
 	readonly children?: ReactNode;
 }) {
 	return (
@@ -73,7 +80,12 @@ function SubagentGroup({
 			{items.length > 0 ? (
 				<ul className="flex flex-col gap-0.5" aria-label={label}>
 					{items.map((item) => (
-						<SubagentRow key={item.id} item={item} onOpenHistory={onOpenHistory} />
+						<SubagentRow
+							key={item.id}
+							item={item}
+							onOpenHistory={onOpenHistory}
+							onStopSubagent={item.status === "running" ? onStopSubagent : undefined}
+						/>
 					))}
 				</ul>
 			) : null}
@@ -84,11 +96,15 @@ function SubagentGroup({
 function SubagentRow({
 	item,
 	onOpenHistory,
+	onStopSubagent,
 }: {
 	readonly item: DesktopSubagentItem;
 	readonly onOpenHistory?: (item: DesktopSubagentItem) => void;
+	readonly onStopSubagent?: (item: DesktopSubagentItem) => void;
 }) {
 	const intl = useIntl();
+	const icons = useIcons();
+	const StopIcon = icons.stop;
 	const ref = useRef<HTMLLIElement>(null);
 	const running = item.status === "running";
 	const complete = item.status === "complete";
@@ -140,6 +156,20 @@ function SubagentRow({
 				<p className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-foreground" title={item.title}>
 					{item.title}
 				</p>
+				{onStopSubagent ? (
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						aria-label={intl.formatMessage(desktopMessages.subagentStop, { title: item.title })}
+						onClick={(event) => {
+							event.stopPropagation();
+							onStopSubagent(item);
+						}}
+					>
+						<StopIcon className="block !size-[11px] [&_path]:fill-current [&_path]:stroke-none" />
+					</Button>
+				) : null}
 			</div>
 			<NextStep value={item.activityTitle ?? fallbackActivity} className={cn(activityClassName, "pl-7.5")} />
 		</li>
@@ -247,11 +277,13 @@ export function SubagentHistoryPanel({
 						{intl.formatMessage(desktopMessages.subagentHistoryEmpty)}
 					</p>
 				) : (
-					<TranscriptItems
-						items={items as readonly DesktopTranscriptItem[]}
-						runs={transcript?.runs}
-						loading={loading}
-					/>
+					<div className="px-3 py-4">
+						<TranscriptItems
+							items={items as readonly DesktopTranscriptItem[]}
+							runs={transcript?.runs}
+							loading={loading}
+						/>
+					</div>
 				)}
 			</div>
 		</section>

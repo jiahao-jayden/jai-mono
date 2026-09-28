@@ -540,6 +540,11 @@ export function createDesktopRouter(rt: DesktopRuntime): DesktopRouter {
 					parse(desktopSubagentTranscriptInputSchema, input, "Invalid subagent transcript request"),
 				);
 			},
+			stopSubagent(_event, input) {
+				return rt.agentHost.stopSubagent(
+					parse(desktopSubagentTranscriptInputSchema, input, "Invalid stop subagent request"),
+				);
+			},
 			compact(_event, sessionId) {
 				return rt.agentHost.compact(parse(desktopSessionIdSchema, sessionId, "Invalid session id"));
 			},

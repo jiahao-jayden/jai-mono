@@ -783,6 +783,78 @@ describe("DesktopAcpAgentHost", () => {
 				activityTitle: "Read",
 			}),
 		]);
+		const failedItem = host.getSnapshot("session-1").items[0];
+		expect(failedItem && "stopped" in failedItem ? failedItem.stopped : undefined).toBeUndefined();
+		host.close();
+	});
+
+	test("marks user-stopped subagents stopped while ordinary failures stay unstopped", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+		const publish = (update: Record<string, unknown>) =>
+			client.publish({
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: { sessionId: "session-1", update: { sessionUpdate: "tool_call_update", toolCallId: "tool-1", ...update } },
+			});
+		publish({
+			title: "SpawnAgent",
+			kind: "other",
+			status: "pending",
+			rawInput: { title: "Slow research", task: "Wait" },
+			_meta: { jai: { operationId: "operation-1", toolName: "SpawnAgent" } },
+		});
+		publish({
+			status: "failed",
+			content: [],
+			_meta: { jai: { operationId: "operation-1", toolName: "SpawnAgent", stopped: true } },
+		});
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({ kind: "subagent", status: "error", stopped: true }),
+		]);
+		host.close();
+	});
+
+	test("keeps a background subagent running after its tool result is journaled", async () => {
+		const client = new FakeAcpClient();
+		const host = await DesktopAcpAgentHost.open(() => {}, {
+			client,
+			resolveSessionCwd: async () => "/workspace",
+		});
+		await host.ensureSessionProjection("session-1");
+		const publish = (update: Record<string, unknown>) =>
+			client.publish({
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: { sessionId: "session-1", update: { sessionUpdate: "tool_call_update", toolCallId: "tool-1", ...update } },
+			});
+		publish({
+			title: "SpawnAgent",
+			kind: "other",
+			status: "in_progress",
+			rawInput: { title: "Long wait", task: "sleep" },
+			_meta: { jai: { operationId: "operation-1", toolName: "SpawnAgent", background: true } },
+		});
+		publish({
+			status: "completed",
+			content: [],
+			_meta: { jai: { operationId: "operation-1", toolName: "SpawnAgent", completedAt: 1_700_000_000_000 } },
+		});
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({ kind: "subagent", title: "Long wait", status: "running" }),
+		]);
+		publish({
+			status: "completed",
+			content: [],
+			_meta: { jai: { operationId: "operation-1", toolName: "SpawnAgent", backgroundSettled: true } },
+		});
+		expect(host.getSnapshot("session-1").items).toEqual([
+			expect.objectContaining({ kind: "subagent", status: "complete" }),
+		]);
 		host.close();
 	});
 

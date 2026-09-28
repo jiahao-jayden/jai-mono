@@ -889,6 +889,8 @@ export interface DesktopSubagentItem {
 	readonly completedAt?: number;
 	readonly status: "running" | "complete" | "error";
 	readonly activityTitle?: string;
+	/** True when an error status was caused by a user stop rather than a failure. */
+	readonly stopped?: boolean;
 }
 
 export interface DesktopSubagentTranscriptInput {
@@ -1479,6 +1481,8 @@ export interface DesktopApi {
 		retryConnection(): Promise<void>;
 		getSnapshot(sessionId: string): Promise<DesktopAgentSnapshot>;
 		getSubagentTranscript(input: DesktopSubagentTranscriptInput): Promise<DesktopSubagentTranscript>;
+		/** Aborts one running background subagent; the status flip arrives as a transcript event. */
+		stopSubagent(input: DesktopSubagentTranscriptInput): Promise<{ readonly stopped: boolean }>;
 		/** Compacts the idle current branch; the result arrives as `context_changed` and transcript events. */
 		compact(sessionId: string): Promise<void>;
 		close(sessionId: string): void;

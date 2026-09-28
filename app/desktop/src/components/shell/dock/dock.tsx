@@ -16,9 +16,10 @@ interface DockProps {
 	readonly sessionId: string;
 	readonly dock: DockState;
 	readonly subagents: readonly DesktopSubagentItem[];
+	readonly onStopSubagent?: (item: DesktopSubagentItem) => void;
 }
 
-export function Dock({ sessionId, dock, subagents }: DockProps) {
+export function Dock({ sessionId, dock, subagents, onStopSubagent }: DockProps) {
 	const intl = useIntl();
 	const icons = useIcons();
 	const PlusIcon = icons.plus;
@@ -139,6 +140,7 @@ export function Dock({ sessionId, dock, subagents }: DockProps) {
 					<SubagentPanel
 						items={subagents}
 						onOpenHistory={(item) => dock.openSubagentHistory(item.toolCallId, item.title)}
+						onStopSubagent={onStopSubagent}
 					/>
 				) : activeTab.kind === "subagent-history" ? (
 					<SubagentHistoryPanel sessionId={sessionId} toolCallId={activeTab.toolCallId} title={activeTab.title} />

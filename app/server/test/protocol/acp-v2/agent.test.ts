@@ -1974,3 +1974,75 @@ class ProjectionDriver implements RuntimeOperationDriver {
 		for (const listener of [...this.#listeners]) listener(event);
 	}
 }
+
+test("backgrounded subagent projects in_progress and stop_subagent routes to the session", async () => {
+	const driver = new ProjectionDriver();
+	const agent = new AcpV2Agent({
+		host: new RuntimeHost({
+			persistence: new InMemoryProductSessionPersistence(),
+			operationDriver: driver,
+			createId: ids("session-1", "operation-1"),
+		}),
+		info: { name: "jai", version: "0.0.0" },
+	});
+	await agent.handle({
+		jsonrpc: "2.0",
+		id: 1,
+		method: "initialize",
+		params: { protocolVersion: 2, capabilities: {}, info: { name: "test-client", version: "1.0.0" } },
+	});
+	await agent.handle({ jsonrpc: "2.0", id: 2, method: "session/new", params: { cwd: "/workspace" } });
+	await agent.handle({
+		jsonrpc: "2.0",
+		id: 3,
+		method: "session/prompt",
+		params: { sessionId: "session-1", prompt: [{ type: "text", text: "delegate" }] },
+	});
+	await driver.opened;
+	agent.drain();
+	driver.emit({ type: "tool_backgrounded", toolCallId: "spawn-1", agentId: "bg-1", title: "Slow" });
+	expect(agent.drain()).toEqual([
+		{
+			jsonrpc: "2.0",
+			method: "session/update",
+			params: {
+				sessionId: "session-1",
+				update: {
+					sessionUpdate: "tool_call_update",
+					toolCallId: "spawn-1",
+					title: "Slow",
+					kind: "other",
+					status: "in_progress",
+					_meta: { jai: { operationId: "operation-1", toolName: "SpawnAgent", background: true } },
+				},
+			},
+		},
+	]);
+	expect(
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 4,
+			method: "session/stop_subagent",
+			params: { sessionId: "session-1", toolCallId: "spawn-1" },
+		}),
+	).toEqual([{ jsonrpc: "2.0", id: 4, result: { stopped: false } }]);
+	expect(
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 5,
+			method: "session/stop_subagent",
+			params: { sessionId: "session-1" },
+		}),
+	).toMatchObject([{ id: 5, error: { code: -32602 } }]);
+	expect(
+		await agent.handle({
+			jsonrpc: "2.0",
+			id: 6,
+			method: "session/stop_subagent",
+			params: { sessionId: "session-9", toolCallId: "spawn-1" },
+		}),
+	).toMatchObject([{ id: 6, error: { code: -32004 } }]);
+	driver.finish("completed");
+	await driver.closed;
+	await agent.close();
+});

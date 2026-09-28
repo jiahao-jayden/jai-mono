@@ -51,6 +51,7 @@ import {
 import type { CodingToolOptions } from "../tools";
 import type { CodingToolName } from "../tools/names";
 import { assembleAgentCapabilities } from "./assemble";
+import { type BackgroundAgentStore, createBackgroundAgentStore } from "./background";
 import { type CapabilityInventory, createCapabilityNotice, foldToldInventory } from "./capability-inventory";
 import type { OpenChildSession, RunAgentExecution } from "./execution";
 import type { CodingExecutionContext } from "./execution-context";
@@ -136,6 +137,12 @@ export interface CreateCodingAgentOptions<TSchema extends TObject, TAppState ext
 	readonly openChildSession?: OpenChildSession<TAppState>;
 	/** Read at run start and diffed against the Told Inventory folded from the journal. */
 	readonly capabilityInventory?: CapabilityInventorySlot;
+	/**
+	 * Host-owned background registry shared across Operations in one live
+	 * Session (same pattern as `sessionAllowRules` / `approvalQueue`). Omitted:
+	 * this Agent gets a private registry that dies with it.
+	 */
+	readonly backgroundAgents?: BackgroundAgentStore;
 }
 
 interface ExtensionToolCatalogSlot {
@@ -150,6 +157,7 @@ interface RuntimeState<TSchema extends TObject> {
 export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject = JsonObject> {
 	readonly configStore: CodingConfigStore<TSchema>;
 	readonly runAgent: RunAgentExecution;
+	readonly backgroundAgents: BackgroundAgentStore;
 	readonly #agent: Agent<TAppState>;
 	readonly #runtime: RuntimeState<TSchema>;
 	readonly #stopConfigWatch: () => void;
@@ -168,6 +176,7 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		runAgent: RunAgentExecution,
 		canReadWorkspacePath: (path: string) => boolean,
 		capabilityInventory?: CapabilityInventorySlot,
+		backgroundAgents?: BackgroundAgentStore,
 	) {
 		this.#agent = agent;
 		this.configStore = configStore;
@@ -178,6 +187,12 @@ export class CodingAgent<TSchema extends TObject, TAppState extends JsonObject =
 		this.runAgent = runAgent;
 		this.#canReadWorkspacePath = canReadWorkspacePath;
 		this.#capabilityInventory = capabilityInventory;
+		this.backgroundAgents = backgroundAgents ?? createBackgroundAgentStore();
+	}
+
+	/** Aborts one detached background child. Returns false when unknown or already settled. */
+	stopBackgroundAgent(toolCallId: string): boolean {
+		return this.backgroundAgents.abort(toolCallId);
 	}
 
 	get configSnapshot(): ConfigSnapshot<TSchema> {
@@ -428,6 +443,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		telemetryObserver: options.permissions?.telemetryObserver,
 		review: options.permissions?.review,
 	});
+	const backgroundAgents = options.backgroundAgents ?? createBackgroundAgentStore();
 	const runAgent: RunAgentExecution = async ({
 		prompt,
 		instructions,
@@ -435,8 +451,12 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		signal,
 		onActivity,
 		toolCallId,
+		detached = false,
+		agentId,
+		title,
 	}) => {
 		signal?.throwIfAborted();
+		if (detached && (!agentId || !title)) throw new Error("Detached runAgent requires agentId and title");
 		const allowed = (tool: AgentTool) => !excludeTools.includes(tool.name);
 		const childToolCatalog = extensionToolCatalog.current?.createScope(allowed);
 		const childCapabilities = assembleAgentCapabilities({
@@ -479,6 +499,10 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 			if (activity) onActivity?.(activity);
 		});
 		const abortChild = () => child.abort();
+		if (detached) {
+			backgroundAgents.register({ toolCallId, agentId: agentId as string, title: title as string });
+			backgroundAgents.bindAbort(toolCallId, abortChild);
+		}
 		signal?.addEventListener("abort", abortChild, { once: true });
 
 		try {
@@ -549,6 +573,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		runAgent,
 		canReadWorkspacePath,
 		options.capabilityInventory,
+		backgroundAgents,
 	);
 }
 

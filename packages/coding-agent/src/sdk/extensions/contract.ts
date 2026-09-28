@@ -8,6 +8,7 @@ import type {
 } from "../../commands";
 import type { JsonObject, JsonValue } from "../../core/json";
 import type { CodingExtensionToolCall, CodingToolPermission } from "../../permissions/tool-permission";
+import type { BackgroundAgentStore } from "../../runtime/background";
 import type { CodingExtensionError, CodingExtensionOperationFailed } from "../extension-errors";
 import type { CodingToolActivityKind } from "../tool-presentation";
 import type { CodingAgentMessage, CodingPermissionMode, CodingSdkError } from "../types";
@@ -128,6 +129,11 @@ export interface CodingExtensionContext<
 	readonly canReadWorkspacePath?: (path: string) => boolean | Promise<boolean>;
 	readonly configuration: CodingExtensionConfigurationStore<TConfig>;
 	readonly sessionState: CodingExtensionSessionStateStore<TState>;
+	/**
+	 * Session-scoped background registry shared across Operations. Absent in
+	 * hosts without background support; extensions must fall back to local state.
+	 */
+	readonly backgroundAgents?: BackgroundAgentStore;
 	requestApproval(
 		request: CodingExtensionApprovalRequest,
 		signal?: AbortSignal,
@@ -187,7 +193,7 @@ export interface CodingExtensionToolResult {
 	readonly terminate?: boolean;
 }
 
-/** Valid only until the owning tool call settles. No session or provider handles escape. */
+/** Valid only until the owning tool call settles, unless started `detached`. No session or provider handles escape. */
 export interface CodingExtensionToolExecutionCall extends CodingExtensionToolCall<JsonObject> {
 	readonly onUpdate?: (update: CodingExtensionToolResult) => void;
 	runAgent(input: {
@@ -195,6 +201,15 @@ export interface CodingExtensionToolExecutionCall extends CodingExtensionToolCal
 		readonly instructions: string;
 		readonly excludeTools?: readonly string[];
 		readonly onActivity?: (toolName: string) => void;
+		/**
+		 * Starts a background child that outlives this tool call. The child stays
+		 * bound to the parent run signal, so a parent abort still cancels it.
+		 */
+		readonly detached?: boolean;
+		/** Model-visible background handle. Required when `detached` is true. */
+		readonly agentId?: string;
+		/** User-visible background title. Required when `detached` is true. */
+		readonly title?: string;
 	}): Promise<ResultType<readonly CodingAgentMessage[], CodingSdkError>>;
 }
 

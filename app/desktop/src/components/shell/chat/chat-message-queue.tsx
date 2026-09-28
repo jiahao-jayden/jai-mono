@@ -36,35 +36,38 @@ export function ChatMessageQueue({
 		<AnimatePresence initial={false}>
 			<motion.div
 				key="queue-row"
-				initial={{ height: 0, opacity: 0 }}
-				animate={{ height: "auto", opacity: 1 }}
-				exit={{ height: 0, opacity: 0 }}
+				initial={{ height: 0, marginBottom: 0, opacity: 0 }}
+				animate={{ height: "auto", marginBottom: -26, opacity: 1 }}
+				exit={{ height: 0, marginBottom: 0, opacity: 0 }}
 				transition={{ ...spring.moderate, bounce: 0 }}
-				className="relative z-1 -mb-px overflow-hidden rounded-t-xl border border-b-0 border-border-surface bg-muted/45 p-1 pb-1.5"
+				className="relative overflow-hidden rounded-t-2xl border border-b-0 border-border-surface bg-muted/45"
 				data-im-queue
 			>
-				<Reorder.Group
-					axis="y"
-					values={messageList}
-					onReorder={(next) => onReorder(next.map((message) => message.id))}
-					className="flex flex-col gap-0.5"
-				>
-					<AnimatePresence initial={false}>
-						{messageList.map((message, index) => (
-							<QueuedMessageRow
-								key={message.id}
-								message={message}
-								index={index}
-								total={messageList.length}
-								reducedMotion={reducedMotion}
-								onEdit={onEdit}
-								onRemove={onRemove}
-								onSteer={onSteer}
-								steerEnabled={steerEnabled}
-							/>
-						))}
-					</AnimatePresence>
-				</Reorder.Group>
+				{/* pb-8 = 26px tucked under the composer's rounded top + 6px breathing room. */}
+				<div className="p-1 pb-8">
+					<Reorder.Group
+						axis="y"
+						values={messageList}
+						onReorder={(next) => onReorder(next.map((message) => message.id))}
+						className="flex flex-col gap-0.5"
+					>
+						<AnimatePresence initial={false}>
+							{messageList.map((message, index) => (
+								<QueuedMessageRow
+									key={message.id}
+									message={message}
+									index={index}
+									total={messageList.length}
+									reducedMotion={reducedMotion}
+									onEdit={onEdit}
+									onRemove={onRemove}
+									onSteer={onSteer}
+									steerEnabled={steerEnabled}
+								/>
+							))}
+						</AnimatePresence>
+					</Reorder.Group>
+				</div>
 			</motion.div>
 		</AnimatePresence>
 	);

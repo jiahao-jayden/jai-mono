@@ -68,6 +68,9 @@ export class AcpV2Agent {
 					case "session/subagent_transcript":
 						response = await this.subagentTranscript(request);
 						break;
+					case "session/stop_subagent":
+						response = await this.stopSubagent(request);
+						break;
 					case "session/set_config_option":
 						response = await this.setConfigOption(request);
 						break;
@@ -319,6 +322,20 @@ export class AcpV2Agent {
 			return isObject(params) && isObject(params.update) ? [params.update] : [];
 		});
 		return this.respond(request.id, { items });
+	}
+
+	private async stopSubagent(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
+		const params = objectParams(request.params);
+		const sessionId = params?.sessionId;
+		const toolCallId = params?.toolCallId;
+		if (typeof sessionId !== "string" || typeof toolCallId !== "string" || !toolCallId.trim()) {
+			return this.respondError(request.id, -32602, "Invalid session/stop_subagent parameters");
+		}
+		const session = this.#sessions.get(sessionId);
+		if (!session) {
+			return this.respondError(request.id, -32004, `Session "${sessionId}" is not active on this ACP connection`);
+		}
+		return this.respond(request.id, { stopped: session.stopSubagent(toolCallId) });
 	}
 
 	private async setConfigOption(request: AcpJsonRpcRequest): Promise<readonly AcpOutboundMessage[]> {
@@ -583,6 +600,16 @@ function projectRuntimeEvent(sessionId: string, event: RuntimeSessionEvent): rea
 						},
 					},
 				},
+			];
+		case "background_agent_end":
+			return [
+				toolCallUpdate(sessionId, {
+					toolCallId: event.toolCallId,
+					status: event.status === "complete" ? "completed" : "failed",
+					stopped: event.status === "stopped" ? true : undefined,
+					toolName: "SpawnAgent",
+					backgroundSettled: true,
+				}),
 			];
 	}
 }
@@ -867,6 +894,18 @@ function projectOperationEvent(
 					operationId,
 				}),
 			];
+		case "tool_backgrounded":
+			return [
+				toolCallUpdate(sessionId, {
+					toolCallId: event.toolCallId,
+					title: event.title,
+					kind: "other",
+					status: "in_progress",
+					operationId,
+					toolName: "SpawnAgent",
+					background: true,
+				}),
+			];
 		case "tool_content_chunk":
 			return [
 				{
@@ -954,9 +993,26 @@ function toolCallUpdate(
 		readonly activityTitle?: string;
 		readonly startedAt?: number;
 		readonly completedAt?: number;
+		/** True when a failed tool call was stopped by the user rather than erroring. */
+		readonly stopped?: boolean;
+		/** The SpawnAgent call returned while its child keeps running. */
+		readonly background?: boolean;
+		/** The background child itself settled; a plain tool result must not clear it. */
+		readonly backgroundSettled?: boolean;
 	},
 ): AcpJsonRpcNotification {
-	const { operationId, webSearch, toolName, activityTitle, startedAt, completedAt, ...toolUpdate } = update;
+	const {
+		operationId,
+		webSearch,
+		toolName,
+		activityTitle,
+		startedAt,
+		completedAt,
+		stopped,
+		background,
+		backgroundSettled,
+		...toolUpdate
+	} = update;
 	return {
 		jsonrpc: "2.0",
 		method: "session/update",
@@ -965,7 +1021,17 @@ function toolCallUpdate(
 			update: {
 				sessionUpdate: "tool_call_update",
 				...toolUpdate,
-				...toolMetadata({ operationId, webSearch, toolName, activityTitle, startedAt, completedAt }),
+				...toolMetadata({
+					operationId,
+					webSearch,
+					toolName,
+					activityTitle,
+					startedAt,
+					completedAt,
+					stopped,
+					background,
+					backgroundSettled,
+				}),
 			},
 		},
 	};
@@ -978,6 +1044,9 @@ interface ToolMetadata {
 	readonly activityTitle?: string;
 	readonly startedAt?: number;
 	readonly completedAt?: number;
+	readonly stopped?: boolean;
+	readonly background?: boolean;
+	readonly backgroundSettled?: boolean;
 }
 
 function toolMetadata(fields: ToolMetadata): { readonly _meta?: { readonly jai: ToolMetadata } } {

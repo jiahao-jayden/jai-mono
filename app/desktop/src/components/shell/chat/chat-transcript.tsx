@@ -719,7 +719,7 @@ export function workTimelineSteps(
 			const summary = running
 				? item.activityTitle
 				: item.status === "error"
-					? intl.formatMessage(desktopMessages.subagentFailed)
+					? intl.formatMessage(item.stopped ? desktopMessages.subagentStopped : desktopMessages.subagentFailed)
 					: undefined;
 			return {
 				id: cluster.id,

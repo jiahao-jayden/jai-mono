@@ -14,6 +14,7 @@ import {
 import { useIntl } from "react-intl";
 import { matchPath, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
 import { useChat } from "@/hooks/use-chat";
+import { useStopSubagent } from "@/hooks/use-stop-subagent";
 import { desktopMessages } from "@/i18n/messages";
 import { desktop, getDesktopRemoteRpcFailure } from "@/lib/desktop";
 import {
@@ -184,6 +185,7 @@ export function AppShell() {
 		onMessageQueued: enqueueMessage,
 		onQueuedMessageAccepted: acceptQueuedMessage,
 	});
+	const stopSubagent = useStopSubagent(session?.id);
 	const shellRef = useRef<HTMLDivElement>(null);
 	const contentRef = useRef<HTMLDivElement>(null);
 	const chatVisible = chatRoute !== null;
@@ -655,6 +657,7 @@ export function AppShell() {
 							sessionId={session.id}
 							dock={dock}
 							subagents={chat.messages.filter((item) => item.kind === "subagent")}
+							onStopSubagent={stopSubagent}
 						/>
 					</motion.div>
 				) : null}

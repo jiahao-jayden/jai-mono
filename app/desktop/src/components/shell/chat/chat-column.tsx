@@ -17,6 +17,7 @@ import {
 import { useIntl } from "react-intl";
 import logo from "@/assets/icons/chat-area/logo-silver.svg";
 import type { Chat } from "@/hooks/use-chat";
+import { useStopSubagent } from "@/hooks/use-stop-subagent";
 import { desktopMessages } from "@/i18n/messages";
 import { getDesktopRemoteRpcFailure } from "@/lib/desktop";
 import { notifyFailure } from "@/lib/failure";
@@ -39,6 +40,7 @@ import { COLLAPSED_CHAT_CONTENT_PADDING_CLASS, DESKTOP_TOP_BAR_HEIGHT_CLASS } fr
 import { SessionActions } from "../session-actions";
 import { ChatComposer } from "./chat-composer";
 import { groupTranscriptItems, TranscriptVirtualList, type TranscriptVirtualListHandle } from "./chat-transcript";
+import { ComposerBackgroundTasks } from "./composer-background-tasks";
 import { ComposerNotice } from "./composer-notice";
 import { MessageTrail } from "./message-trail";
 import {
@@ -164,6 +166,14 @@ export function ChatColumn({
 		() => deriveMessageTrailAnchors(groupTranscriptItems(transcriptItems)),
 		[transcriptItems],
 	);
+	const runningSubagents = useMemo(
+		() =>
+			chat.messages.filter(
+				(item): item is DesktopSubagentItem => item.kind === "subagent" && item.status === "running",
+			),
+		[chat.messages],
+	);
+	const stopSubagent = useStopSubagent(sessionId);
 	const onVisibleRowRangeChange = useCallback(
 		(topRowIndex: number, bottomRowIndex: number) => {
 			messageTrailStore.setSnapshot(resolveActiveTrailSnapshot(messageTrailAnchors, topRowIndex, bottomRowIndex));
@@ -419,7 +429,7 @@ export function ChatColumn({
 				</div>
 			)}
 			<div className={cn("relative z-10 shrink-0 px-5 pb-3", { "-mt-6": !showLogo })}>
-				<div className="pointer-events-none absolute right-5 bottom-full left-5 z-10 mb-2">
+				<div className="pointer-events-none absolute right-5 bottom-full left-5 z-10 mb-2 flex flex-col gap-2">
 					<AnimatePresence initial={false}>
 						{pendingApprovals.length > 0 ? (
 							<PermissionRequests
@@ -446,41 +456,49 @@ export function ChatColumn({
 						onOpenProviderSettings={onOpenProviderSettings}
 						onChooseProject={isNewChat ? () => setProjectPickerOpen(true) : undefined}
 					/>
-					<ChatComposer
-						value={draft}
-						onValueChange={onDraftChange}
-						onSend={chat.sendMessage}
-						onStop={chat.stop}
-						status={chat.status}
-						disabled={project?.available === false}
-						queue={queue}
-						onEditQueuedMessage={onEditQueuedMessage}
-						onRemoveQueuedMessage={onRemoveQueuedMessage}
-						onReorderQueuedMessages={onReorderQueuedMessages}
-						onSteerQueuedMessage={chat.steerQueuedMessage}
-						project={project}
-						projects={projects}
-						projectBusy={projectBusy}
-						projectLoading={projectLoading}
-						projectLoadError={projectLoadError}
-						projectPickerOpen={projectPickerOpen}
-						onProjectPickerOpenChange={setProjectPickerOpen}
-						onChooseProject={onChooseProject}
-						onRetryProjects={onRetryProjects}
-						providerConfig={providerConfig}
-						selectedModelRef={selectedModelRef}
-						selectedControls={selectedControls}
-						providerLoading={providerLoading}
-						providerError={providerError}
-						onOpenProviderSettings={onOpenProviderSettings}
-						onSelectProviderModel={onSelectProviderModel}
-						onSelectControls={onSelectControls}
-						usage={chat.usage}
-						context={chat.context}
-						onCompact={session ? chat.compact : undefined}
-						showProjectPicker={isNewChat}
-						large={isNewChat}
-					/>
+					<div>
+						<ComposerBackgroundTasks
+							items={runningSubagents}
+							inset={queue.length > 0}
+							onOpenSubagent={onOpenSubagent}
+							onStopSubagent={stopSubagent}
+						/>
+						<ChatComposer
+							value={draft}
+							onValueChange={onDraftChange}
+							onSend={chat.sendMessage}
+							onStop={chat.stop}
+							status={chat.status}
+							disabled={project?.available === false}
+							queue={queue}
+							onEditQueuedMessage={onEditQueuedMessage}
+							onRemoveQueuedMessage={onRemoveQueuedMessage}
+							onReorderQueuedMessages={onReorderQueuedMessages}
+							onSteerQueuedMessage={chat.steerQueuedMessage}
+							project={project}
+							projects={projects}
+							projectBusy={projectBusy}
+							projectLoading={projectLoading}
+							projectLoadError={projectLoadError}
+							projectPickerOpen={projectPickerOpen}
+							onProjectPickerOpenChange={setProjectPickerOpen}
+							onChooseProject={onChooseProject}
+							onRetryProjects={onRetryProjects}
+							providerConfig={providerConfig}
+							selectedModelRef={selectedModelRef}
+							selectedControls={selectedControls}
+							providerLoading={providerLoading}
+							providerError={providerError}
+							onOpenProviderSettings={onOpenProviderSettings}
+							onSelectProviderModel={onSelectProviderModel}
+							onSelectControls={onSelectControls}
+							usage={chat.usage}
+							context={chat.context}
+							onCompact={session ? chat.compact : undefined}
+							showProjectPicker={isNewChat}
+							large={isNewChat}
+						/>
+					</div>
 				</div>
 			</div>
 		</section>
