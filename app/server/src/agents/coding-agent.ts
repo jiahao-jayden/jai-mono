@@ -464,7 +464,7 @@ class CodingAgentOperation implements RuntimeOperation {
 				return;
 			}
 			case "tool_execution_end": {
-				if (event.toolName === "SpawnAgent" && !event.isError) {
+				if (!event.isError) {
 					this.observeBackgrounded(event);
 					return;
 				}
@@ -503,6 +503,7 @@ class CodingAgentOperation implements RuntimeOperation {
 			toolCallId: event.toolCallId,
 			agentId: details.agentId,
 			title: details.title,
+			toolName: event.toolName,
 		});
 	}
 

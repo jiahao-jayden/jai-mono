@@ -58,6 +58,26 @@ describe("bash tool", () => {
 		await expect(run).rejects.toThrow("Command aborted");
 	});
 
+	test("starts long-running commands in the background", async () => {
+		const cwd = await createWorkspace();
+		const tool = createBashTool(createNodeToolOptions(cwd).bash);
+
+		const result = await tool.execute("bash-background", {
+			command: "sleep 30",
+			runInBackground: true,
+		});
+
+		expect(result.details?.backgroundProcessId).toBeTypeOf("number");
+		expect(result.content[0]).toEqual({
+			type: "text",
+			text: expect.stringContaining("Started background command"),
+		});
+
+		const pid = result.details?.backgroundProcessId;
+		expect(pid).toBeTypeOf("number");
+		process.kill(pid!, "SIGTERM");
+	});
+
 	test("keeps full output in a temporary file when truncated", async () => {
 		const cwd = await createWorkspace();
 		const tool = createBashTool(createNodeToolOptions(cwd).bash);

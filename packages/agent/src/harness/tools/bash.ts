@@ -16,6 +16,7 @@ const bashParameters = Type.Object(
 	{
 		command: Type.String({ minLength: 1 }),
 		timeoutMs: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_TIMEOUT_MS })),
+		runInBackground: Type.Optional(Type.Boolean()),
 	},
 	{ additionalProperties: false },
 );
@@ -49,6 +50,7 @@ export interface BashToolDetails {
 	exitCode: number | null;
 	durationMs: number;
 	timedOut: boolean;
+	backgroundProcessId?: number;
 	fullOutputPath?: string;
 	truncation?: TruncationDetails;
 }
@@ -67,10 +69,10 @@ export function createBashTool(options: BashToolOptions): AgentTool<typeof bashP
 	return {
 		name: "Bash",
 		description:
-			"Execute a POSIX shell command in the workspace with timeout, cancellation, and bounded output. Do not use grep, find, cat, ls, head, or tail to explore the workspace; search with the grep or find tools, or rg if Bash search is required. Read files with Read.",
+			"Execute a POSIX shell command in the workspace with timeout, cancellation, and bounded output. Set runInBackground to true for long-running commands such as npm run dev; it returns after starting the command. Do not use grep, find, cat, ls, head, or tail to explore the workspace; search with the grep or find tools, or rg if Bash search is required. Read files with Read.",
 		parameters: bashParameters,
 		executionMode: "sequential",
-		async execute(_toolCallId, args, signal, onUpdate) {
+		async execute(toolCallId, args, signal, onUpdate) {
 			const cwd = await options.fileSystem.resolvePath(".", {
 				base: options.workspaceRoot,
 				boundary: options.workspaceRoot,
@@ -97,6 +99,7 @@ export function createBashTool(options: BashToolOptions): AgentTool<typeof bashP
 			let updateTimer: ReturnType<typeof setTimeout> | undefined;
 			let updateDirty = false;
 			let keepOutput = false;
+			let backgroundTask: { readonly agentId: string; readonly title: string } | undefined;
 			const snapshot = (): { text: string; truncation?: TruncationDetails; truncated: boolean } => {
 				const totalLines = sawOutput ? newlineCount + (lastCharacterWasNewline ? 0 : 1) : 0;
 				const result = truncateText(tail, {
@@ -160,6 +163,18 @@ export function createBashTool(options: BashToolOptions): AgentTool<typeof bashP
 					shellResult = await options.shell.execute(args.command, {
 						cwd: cwd.path,
 						timeoutMs,
+						background: args.runInBackground,
+						onBackgroundStarted: args.runInBackground
+							? ({ pid, stop, settled }) => {
+									backgroundTask = options.background?.start({
+										toolCallId,
+										command: args.command,
+										pid,
+										stop,
+										settled,
+									});
+								}
+							: undefined,
 						signal,
 						onOutput: (chunk) => append(chunk.text),
 					});
@@ -184,6 +199,20 @@ export function createBashTool(options: BashToolOptions): AgentTool<typeof bashP
 					});
 				}
 				const final = snapshot();
+				if (shellResult.backgroundProcessId !== undefined) {
+					return {
+						content: [{ type: "text", text: "Started background command." }],
+						details: {
+							exitCode: null,
+							durationMs: shellResult.durationMs,
+							timedOut: false,
+							backgroundProcessId: shellResult.backgroundProcessId,
+							status: "background_running",
+							agentId: backgroundTask?.agentId,
+							title: backgroundTask?.title,
+						},
+					};
+				}
 				const text = final.text || "(no output)";
 				keepOutput = final.truncated;
 				const details: BashToolDetails = {

@@ -307,6 +307,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 				toolCallId: entry.toolCallId,
 				agentId: entry.agentId,
 				title: entry.title,
+				toolName: "SpawnAgent",
 				status: entry.status === "complete" ? "complete" : entry.stopped ? "stopped" : "error",
 			};
 			for (const listener of this.#listeners) listener(backgroundEvent);

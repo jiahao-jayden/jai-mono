@@ -96,7 +96,7 @@ export type RuntimeOperationEvent =
 			readonly type: "tool_started";
 			readonly toolCallId: string;
 			/** Canonical SDK tool identity; display titles are not a protocol discriminator. */
-			readonly toolName: string;
+			readonly toolName?: string;
 			readonly title: string;
 			readonly kind: "read" | "edit" | "search" | "execute" | "other";
 			readonly rawInput: JsonObject;
@@ -152,6 +152,7 @@ export type RuntimeOperationEvent =
 			readonly toolCallId: string;
 			readonly agentId: string;
 			readonly title: string;
+			readonly toolName?: string;
 	  }
 	| {
 			/** Success is not reported here: it is the durable compaction entry itself. */

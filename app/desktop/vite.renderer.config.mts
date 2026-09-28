@@ -90,7 +90,7 @@ function reactScanDev(): Plugin {
 export default defineConfig({
 	plugins: [
 		bunCompat(),
-		reactScanDev(),
+		// reactScanDev(),
 		codeInspectorPlugin({ bundler: "vite", editor: "cursor" }),
 		tailwindcss(),
 		react(),

@@ -2,6 +2,7 @@ import type { AgentHookMap, AgentTool, ToolMiddleware } from "@jai/agent";
 import type { NodeExecutionEnvironment } from "@jai/agent/node/environment";
 import { type CodingToolOptions, createCodingTools } from "../tools";
 import type { CodingToolName } from "../tools/names";
+import type { BackgroundAgentStore } from "./background";
 import type { CodingExecutionContext } from "./execution-context";
 
 export interface AssembleAgentCapabilitiesInput {
@@ -16,6 +17,7 @@ export interface AssembleAgentCapabilitiesInput {
 	readonly extraTools?: readonly AgentTool[];
 	readonly extraAroundToolCall?: readonly ToolMiddleware[];
 	readonly extraOnEvent?: AgentHookMap["onEvent"];
+	readonly backgroundAgents?: BackgroundAgentStore;
 }
 
 export interface AssembledAgentCapabilities {
@@ -30,7 +32,12 @@ export function assembleAgentCapabilities(input: AssembleAgentCapabilitiesInput)
 	const environment = input.toolEnvironment;
 	const codingTools =
 		input.executionContext.localFileAccess && environment
-			? createCodingTools({ cwd: input.executionContext.cwd, ...input.toolOptions }, environment, input.enabledTools)
+			? createCodingTools(
+					{ cwd: input.executionContext.cwd, ...input.toolOptions },
+					environment,
+					input.enabledTools,
+					input.backgroundAgents,
+				)
 			: [];
 	return {
 		tools: [...(input.extraTools ?? []), ...(input.extensionTools ?? []), ...codingTools],

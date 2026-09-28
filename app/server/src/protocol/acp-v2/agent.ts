@@ -863,7 +863,7 @@ function projectOperationEvent(
 					rawInput: event.rawInput,
 					content: event.terminal ? [terminalReference(event.terminal.terminalId)] : undefined,
 					operationId,
-					toolName: event.toolName,
+					toolName: event.toolName ?? "SpawnAgent",
 				}),
 			];
 			if (event.terminal) {
@@ -902,7 +902,7 @@ function projectOperationEvent(
 					kind: "other",
 					status: "in_progress",
 					operationId,
-					toolName: "SpawnAgent",
+					toolName: event.toolName,
 					background: true,
 				}),
 			];

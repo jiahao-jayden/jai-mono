@@ -835,7 +835,11 @@ export class DesktopAcpAgentHost {
 	#toolUpdate(runtime: AcpSessionRuntime, update: Record<string, unknown>): void {
 		if (typeof update.toolCallId !== "string") return;
 		const subagentId = `subagent:${update.toolCallId}`;
-		if (toolNameFromMetadata(update._meta) === SUBAGENT_TOOL_NAME || runtime.items.has(subagentId)) {
+		if (
+			toolNameFromMetadata(update._meta) === SUBAGENT_TOOL_NAME ||
+			backgroundFromMetadata(update._meta) ||
+			runtime.items.has(subagentId)
+		) {
 			this.#subagentUpdate(runtime, update, subagentId);
 			return;
 		}
@@ -930,7 +934,9 @@ export class DesktopAcpAgentHost {
 		if (!turnId) return;
 		const rawInput = isRecord(update.rawInput) ? update.rawInput : undefined;
 		const rawTitle = typeof rawInput?.title === "string" ? rawInput.title.trim() : "";
-		const title = rawTitle || previousSubagent?.title || SUBAGENT_TOOL_NAME;
+		const rawCommand = typeof rawInput?.command === "string" ? rawInput.command.trim() : "";
+		const toolName = toolNameFromMetadata(update._meta);
+		const title = rawTitle || rawCommand || previousSubagent?.title || toolName || SUBAGENT_TOOL_NAME;
 		if (backgroundFromMetadata(update._meta)) runtime.backgroundToolCallIds.add(update.toolCallId);
 		if (backgroundSettledFromMetadata(update._meta)) runtime.backgroundToolCallIds.delete(update.toolCallId);
 		const stillBackground = runtime.backgroundToolCallIds.has(update.toolCallId);

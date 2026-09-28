@@ -83,7 +83,7 @@ export type CodingAgentMessage =
 	| {
 			readonly role: "toolResult";
 			readonly toolCallId: string;
-			readonly toolName: string;
+			readonly toolName?: string;
 			readonly content: readonly (CodingTextContent | CodingImageContent)[];
 			readonly fileChanges?: readonly CodingFileChange[];
 			readonly isError: boolean;
@@ -390,6 +390,7 @@ export type CodingAgentEvent =
 			readonly toolCallId: string;
 			readonly agentId: string;
 			readonly title: string;
+			readonly toolName?: string;
 			readonly status: "complete" | "error" | "stopped";
 	  };
 

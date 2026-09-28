@@ -83,6 +83,13 @@ export interface ShellExecuteOptions extends AbortOptions {
 	cwd: string;
 	shell?: string;
 	timeoutMs: number;
+	/** Starts the command and returns without waiting for its process tree. */
+	background?: boolean;
+	onBackgroundStarted?: (input: {
+		readonly pid: number;
+		readonly stop: () => void;
+		readonly settled: Promise<number | null>;
+	}) => void;
 	onOutput?: (chunk: ShellOutputChunk) => void | Promise<void>;
 }
 
@@ -90,6 +97,7 @@ export interface ShellResult {
 	exitCode: number | null;
 	durationMs: number;
 	truncated?: boolean;
+	backgroundProcessId?: number;
 }
 
 export interface Shell {

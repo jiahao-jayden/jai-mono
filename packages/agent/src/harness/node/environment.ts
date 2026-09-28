@@ -414,8 +414,26 @@ export class NodeExecutionEnvironment implements ExecutionEnvironment, PathCapab
 			cwd: options.cwd,
 			detached: process.platform !== "win32",
 			env: spec.environment,
-			stdio: ["ignore", "pipe", "pipe"],
+			stdio: options.background ? "ignore" : ["ignore", "pipe", "pipe"],
 		});
+		if (options.background) {
+			// The detached process owns its stdio and process group. Do not retain a
+			// handle in the agent: this is intentionally volatile host state.
+			const settled = new Promise<number | null>((resolve) => {
+				child.once("close", resolve);
+				child.once("error", () => resolve(null));
+			});
+			const stop = () => {
+				if (!child.pid) return;
+				try {
+					if (process.platform !== "win32") process.kill(-child.pid, "SIGTERM");
+					else child.kill();
+				} catch {}
+			};
+			options.onBackgroundStarted?.({ pid: child.pid!, stop, settled });
+			child.unref();
+			return { exitCode: null, durationMs: Date.now() - startedAt, backgroundProcessId: child.pid };
+		}
 		let spawnError: unknown;
 		const completion = new Promise<number | null>((resolve) => {
 			child.once("close", resolve);

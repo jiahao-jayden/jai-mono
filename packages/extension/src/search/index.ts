@@ -268,11 +268,16 @@ async function createFinder(
 				new CodingExtensionOperationFailed({ message: `FFF could not initialize: ${created.error}` }),
 			);
 		}
-		const ready = await created.value.waitForIndexReady(INDEX_TIMEOUT_MS);
-		if (!ready.ok || !ready.value) {
+		// Warmup (bigram / mmap) can stay incomplete after the file walk, and
+		// waitForIndexReady then fails the whole Operation. Find and grep already
+		// read the scanned file list; warmup continues in the background.
+		const scanned = await created.value.waitForScan(INDEX_TIMEOUT_MS);
+		if (!scanned.ok || !scanned.value) {
 			created.value.destroy();
 			return Result.err(
-				new CodingExtensionOperationFailed({ message: ready.ok ? "FFF index did not become ready" : ready.error }),
+				new CodingExtensionOperationFailed({
+					message: scanned.ok ? "FFF file scan did not finish" : scanned.error,
+				}),
 			);
 		}
 		return Result.ok(created.value);

@@ -460,6 +460,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 		const allowed = (tool: AgentTool) => !excludeTools.includes(tool.name);
 		const childToolCatalog = extensionToolCatalog.current?.createScope(allowed);
 		const childCapabilities = assembleAgentCapabilities({
+			backgroundAgents,
 			kind: "isolated",
 			executionContext: options.executionContext,
 			toolOptions: options.tools,
@@ -517,6 +518,7 @@ export async function createCodingAgent<TSchema extends TObject, TAppState exten
 	};
 	const primaryTools = extensionToolCatalog.current?.frontdoorTools ?? [];
 	const capabilities = assembleAgentCapabilities({
+		backgroundAgents,
 		kind: "primary",
 		executionContext: options.executionContext,
 		toolOptions: options.tools,
