@@ -52,10 +52,11 @@ export function ToolTimeline({
 	);
 	const headerClassName = "inline-flex items-center gap-1 pb-2 text-left text-[14px] text-foreground/55";
 	const stepsClassName = "flex flex-col gap-2.5 ps-4 py-2.5";
+	const animated = steps.length < UNANIMATED_TIMELINE_THRESHOLD;
 	const timelineSteps = (
 		<div className={stepsClassName}>
 			{steps.map((step) => (
-				<ToolTimelineStep key={step.id} step={step} active={false} />
+				<ToolTimelineStep key={step.id} step={step} active={false} contained={!animated} />
 			))}
 		</div>
 	);
@@ -70,7 +71,12 @@ export function ToolTimeline({
 				</div>
 				<div className={stepsClassName}>
 					{steps.map((step, index) => (
-						<ToolTimelineStep key={step.id} step={step} active={step.active ?? index === steps.length - 1} />
+						<ToolTimelineStep
+							key={step.id}
+							step={step}
+							active={step.active ?? index === steps.length - 1}
+							contained
+						/>
 					))}
 				</div>
 			</div>
@@ -92,18 +98,30 @@ export function ToolTimeline({
 					<ChevronRight size={14} strokeWidth={1.5} />
 				</span>
 			</CollapsibleTrigger>
-			{steps.length >= UNANIMATED_TIMELINE_THRESHOLD ? (
-				open ? timelineSteps : null
-			) : (
+			{animated ? (
 				<CollapsibleContent keepMounted={false} className="outline-none">
 					{timelineSteps}
 				</CollapsibleContent>
-			)}
+			) : open ? (
+				timelineSteps
+			) : null}
 		</Collapsible>
 	);
 }
 
-function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; readonly active: boolean }) {
+function ToolTimelineStep({
+	step,
+	active,
+	contained,
+}: {
+	readonly step: TimelineStep;
+	readonly active: boolean;
+	/**
+	 * `content-visibility: auto` skips rows clipped by a closed Collapsible panel, so the panel
+	 * would measure placeholder heights and snap after opening. Only unanimated lists opt in.
+	 */
+	readonly contained: boolean;
+}) {
 	const hasWebSearchResults = step.webSearchResults !== undefined;
 	const [open, setOpen] = useState(hasWebSearchResults);
 	const Icon = useIcon(step.icon);
@@ -121,7 +139,7 @@ function ToolTimelineStep({ step, active }: { readonly step: TimelineStep; reado
 		if (element && followThinkingRef.current) element.scrollTop = element.scrollHeight;
 	}, [step.details]);
 	const density = step.density ?? "compact";
-	const containmentClassName = "[content-visibility:auto] [contain-intrinsic-size:auto_24px]";
+	const containmentClassName = contained ? "[content-visibility:auto] [contain-intrinsic-size:auto_24px]" : undefined;
 	const rowClassName = cn(
 		"flex min-w-0 items-center text-start text-foreground/55 outline-none",
 		density === "compact" ? "gap-2 text-[13px] leading-5" : "gap-2 text-[14px] leading-5",
