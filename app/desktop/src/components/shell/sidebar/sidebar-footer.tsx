@@ -10,11 +10,9 @@ interface SidebarFooterProps {
 export function SidebarFooter({ onOpenSettings }: SidebarFooterProps) {
 	const intl = useIntl();
 	const icons = useIcons();
-	const SearchIcon = icons.search;
-	const searchLabel = intl.formatMessage(desktopMessages.sidebarSearchComingLater);
 
 	return (
-		<div className="flex h-11 shrink-0 items-center justify-between pr-1.5 pl-1">
+		<div className="flex h-11 shrink-0 items-center px-1">
 			<Button
 				type="button"
 				variant="navigation"
@@ -22,21 +20,9 @@ export function SidebarFooter({ onOpenSettings }: SidebarFooterProps) {
 				leadingIcon={icons.settings}
 				onClick={onOpenSettings}
 				title={intl.formatMessage(desktopMessages.sidebarSettingsShortcut)}
-				className="h-7 gap-1.5 rounded-lg px-1.5 text-[13px] font-normal text-sidebar-muted"
+				className="h-7 w-full justify-start gap-1.5 rounded-lg px-1.5 text-[13px] font-normal text-sidebar-muted"
 			>
 				{intl.formatMessage(desktopMessages.sidebarSettings)}
-			</Button>
-			<Button
-				type="button"
-				variant="navigation"
-				size="icon-sm"
-				aria-disabled="true"
-				tabIndex={-1}
-				aria-label={searchLabel}
-				title={searchLabel}
-				className="cursor-default rounded-lg"
-			>
-				<SearchIcon size={16} />
 			</Button>
 		</div>
 	);
