@@ -72,10 +72,12 @@ export function ButtonLink({
 	href,
 	variant,
 	children,
+	className,
 }: {
 	href: string;
 	variant: keyof typeof buttonVariants;
 	children: ReactNode;
+	className?: string;
 }) {
 	return (
 		<a
@@ -83,6 +85,7 @@ export function ButtonLink({
 			className={cn(
 				"inline-flex h-11 items-center justify-center gap-2 rounded-[10px] px-5 font-medium text-[14px] transition-colors",
 				buttonVariants[variant],
+				className,
 			)}
 		>
 			{children}

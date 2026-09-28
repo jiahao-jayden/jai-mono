@@ -1,8 +1,8 @@
 import { cn } from "cn";
 
 const SCREENSHOTS = {
-	overview: { width: 2542, height: 1702 },
-	artifact: { width: 2534, height: 1718 },
+	overview: { width: 2498, height: 1652 },
+	artifact: { width: 2486, height: 1646 },
 } as const;
 
 /**

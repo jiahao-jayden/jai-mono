@@ -21,6 +21,8 @@ export const LOCALE_TAG: Record<Locale, string> = { en: "en", zh: "zh-CN" };
  */
 export const DOWNLOAD_URL: string | null = null;
 
+export const GITHUB_URL = "https://github.com/jiahao-jayden/jai-mono";
+
 /**
  * Canonical origin used for canonical/hreflang/OG URLs. Set `SITE_URL` when
  * building for deployment; local builds use the dev server origin.

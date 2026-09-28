@@ -13,6 +13,7 @@ export const zh = {
 		download: "下载",
 		switchLocale: "EN",
 		home: "PandaWork 首页",
+		github: "在 GitHub 上查看 PandaWork",
 	},
 	hero: {
 		badge: "早期预览 · 优先支持 macOS",
@@ -45,7 +46,7 @@ export const zh = {
 				description: "会话、Todo 进度、产出文件与上下文压缩，重启之后依然都在。",
 			},
 		],
-		screenshotAlt: "PandaWork 正在生成调研报告，右侧显示进度、产出与 Artifacts 面板",
+		screenshotAlt: "PandaWork 设置页：界面语言、主题、辅助模型与最大迭代次数",
 	},
 	models: {
 		eyebrow: "模型",

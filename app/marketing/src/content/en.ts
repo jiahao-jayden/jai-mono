@@ -13,6 +13,7 @@ export const en = {
 		download: "Download",
 		switchLocale: "中文",
 		home: "PandaWork home",
+		github: "PandaWork on GitHub",
 	},
 	hero: {
 		badge: "Early preview · macOS first",
@@ -46,7 +47,7 @@ export const en = {
 				description: "Sessions, todo progress, output files and context compaction survive every restart.",
 			},
 		],
-		screenshotAlt: "PandaWork producing a research report with progress, outputs and artifacts panels",
+		screenshotAlt: "PandaWork settings for language, theme, auxiliary model and max iterations",
 	},
 	models: {
 		eyebrow: "Models",

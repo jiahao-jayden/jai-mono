@@ -22,6 +22,7 @@ export interface LandingCopy {
 		download: string;
 		switchLocale: string;
 		home: string;
+		github: string;
 	};
 	hero: {
 		badge: string;
