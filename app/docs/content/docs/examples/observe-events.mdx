@@ -1,48 +1,69 @@
 ---
-title: 观察事件
-description: 把 Agent streaming message、工具执行与 compaction 事件接入宿主 UI。
+title: 示例：观测事件流
+description: 订阅 15 种事件：流式渲染、工具进度、压缩与后台结算。
 ---
 
-订阅应在运行前建立，并在宿主不再需要更新时取消。工具事件的 `toolCallId` 可用于关联 start、update 与 end；它不是错误 DTO 的字段。
+# 示例：观测事件流
 
 ```ts
-// @docs-compile
 import { createCodingAgent } from "@jai/coding-agent";
 
-const created = await createCodingAgent({
-  model: "openai/gpt-4.1-mini",
-  cwd: ".",
-  session: { kind: "ephemeral" },
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-sonnet-4-5",
+  cwd: process.cwd(),
+})).value;
+
+// 按 contentIndex 维护各内容块的增量文本
+const blocks = new Map<number, string>();
+
+const unsubscribe = agent.subscribe((event) => {
+  switch (event.type) {
+    case "agent_start":
+      console.log("▶ 运行开始");
+      break;
+    case "message_update": {
+      const ae = event.assistantEvent;
+      if (ae.type === "text_delta") {
+        blocks.set(ae.contentIndex, (blocks.get(ae.contentIndex) ?? "") + ae.delta);
+        process.stdout.write(ae.delta);
+      } else if (ae.type === "thinking_delta") {
+        // 思考过程：可折叠显示
+      } else if (ae.type === "toolcall_end") {
+        console.log(`\n[调用] ${ae.toolCall.name}`);
+      } else if (ae.type === "done") {
+        console.log(`\n[结束] reason=${ae.reason}`);
+      }
+      break;
+    }
+    case "tool_execution_start":
+      console.log(`[工具开始] ${event.toolName} — ${event.title}`);
+      break;
+    case "tool_execution_end":
+      console.log(`[工具结束] ${event.toolName} isError=${event.isError}`);
+      break;
+    case "compaction_start":
+      console.log(`[压缩] trigger=${event.trigger}`);
+      break;
+    case "background_agent_end":
+      console.log(`[后台结算] ${event.title}: ${event.status}`);
+      break;
+    case "agent_end":
+      console.log("■ 运行结束，共", event.messages.length, "条消息");
+      break;
+  }
 });
 
-if (created.isErr()) {
-  console.error(created.error);
-} else {
-  const agent = created.value;
-  const unsubscribe = agent.subscribe((event) => {
-    switch (event.type) {
-      case "message_update":
-        if (event.assistantEvent.type === "text_delta") {
-          console.log(event.assistantEvent.delta);
-        }
-        break;
-      case "tool_execution_start":
-        console.log("工具开始", event.toolCallId, event.toolName, event.title);
-        break;
-      case "tool_execution_end":
-        console.log("工具结束", event.toolCallId, event.isError);
-        break;
-    }
-  });
-  try {
-    const run = await agent.prompt("解释当前目录的架构，并报告你调用的工具。");
-    if (run.isErr()) console.error(run.error);
-  } finally {
-    unsubscribe();
-    const closed = await agent.close();
-    if (closed.isErr()) console.error(closed.error);
-  }
-}
+await agent.prompt("用 Bash 跑一下测试，顺便看看 git 状态");
+await agent.waitForIdle();
+
+unsubscribe();
+await agent.close();
 ```
 
-事件和 state 是 JSON-safe 投影，但内容仍可能包含路径、命令与模型输出。UI 层应继续根据当前用户和视图的权限投影最小字段。
+注意：
+
+- `subscribe` 回调是同步调用的，不要在里面做重型 IO。
+- `message_update` 的 `message` 字段是当前 assistant 消息的最新快照，
+  也可以直接用它整体重渲染，而不是自己拼 delta。
+- `background_agent_end` 可能在其 Operation 结束后才到达——不要假设它
+  一定在某次 `prompt` 返回前出现。

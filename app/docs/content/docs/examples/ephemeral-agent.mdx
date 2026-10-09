@@ -1,35 +1,43 @@
 ---
-title: Ephemeral Agent
-description: 为一次性只读分析创建 ephemeral Agent，并在完成后关闭资源。
+title: 示例：临时 Agent
+description: 一次性任务的 ephemeral 会话：创建、运行、关闭即焚。
 ---
 
-ephemeral session 适合不需要恢复的单次任务。SDK 在临时目录保存运行所需 session 数据，并在 `close()` 时删除。
+# 示例：临时 Agent
+
+适合一次性任务：代码审查、单文件生成、快速问答。不需要 store，不需要
+`fileCapabilities`，`close()` 后临时目录自动删除。
 
 ```ts
-// @docs-compile
 import { createCodingAgent } from "@jai/coding-agent";
 
-const created = await createCodingAgent({
-  model: "openai/gpt-4.1-mini",
-  cwd: ".",
-  session: { kind: "ephemeral" },
-  permissionMode: "plan",
-  instructions: "只分析并给出计划，不修改文件。",
-});
-
-if (created.isErr()) {
-  console.error(created.error);
-} else {
+async function reviewFile(path: string) {
+  const created = await createCodingAgent({
+    model: "anthropic/claude-sonnet-4-5",
+    cwd: process.cwd(),
+    permissionMode: "plan", // 只读：连审批都不需要，直接 deny 写操作
+    // session 缺省 { kind: "ephemeral" }
+  });
+  if (created.isErr()) throw new Error(created.error.message);
   const agent = created.value;
+
   try {
-    const run = await agent.prompt("评估当前项目主要模块的重构风险。");
-    if (run.isErr()) console.error(run.error);
-    else console.dir(run.value.messages, { depth: null });
+    const result = await agent.prompt(
+      `审查 ${path}，列出 bug 和改进点，只读不要写文件`
+    );
+    if (result.isErr()) throw new Error(result.error.message);
+    const last = result.value.messages.at(-1);
+    return last;
   } finally {
-    const closed = await agent.close();
-    if (closed.isErr()) console.error(closed.error);
+    await agent.close(); // 删除临时目录
   }
 }
 ```
 
-`plan` 固定拒绝写入和可写 Bash，因此适合分析、审查和方案生成。进程崩溃或宿主没有调用 `close()` 时，不能承诺临时目录已经清理；把关闭动作纳入宿主自身的资源生命周期。
+要点：
+
+- `permissionMode: "plan"` 让 agent 只能读不能写，适合审查/分析类任务，
+  省掉审批接线。
+- ephemeral 会话的 `fileCapabilities` 由 SDK 自动生成为隔离临时目录，
+  `workspaceTrusted: false`——项目级配置与扩展资源不参与。
+- 多次 `prompt` 调用串行排队；临时 agent 用完一定 `close()`。

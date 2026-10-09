@@ -1,38 +1,132 @@
 ---
-title: State 与 Events
-description: 读取不可变状态快照，订阅 streaming、工具执行与 compaction 事件，并处理 JSON-safe 数据边界。
+title: 状态与事件
+description: 15 种 CodingAgentEvent、消息与状态 DTO，以及 subscribe 机制。
 ---
 
-`agent.state` 是当前快照，包含 `sessionId`、`status`、`messages`、`todos`、`artifacts`、`appState` 与可选 `error`。读取 `appState` 时 SDK 会 clone 数据，调用方不能通过引用修改内部状态。
+# 状态与事件
 
-`subscribe(listener)` 观察后续事件，并返回 unsubscribe：
+## 事件流
+
+没有 RxJS，没有 AsyncIterator。事件机制只有一种：
 
 ```ts
-const unsubscribe = agent.subscribe((event) => {
-  if (event.type === "tool_execution_start") {
-    console.log("工具开始", event.toolCallId, event.toolName, event.args);
-  }
-  if (event.type === "message_update" && event.assistantEvent.type === "text_delta") {
-    process.stdout.write(event.assistantEvent.delta);
-  }
+const unsubscribe = agent.subscribe((event: CodingAgentEvent) => {
+  // 同步调用
 });
+unsubscribe(); // 取消订阅
+```
 
-try {
-  const result = await agent.prompt("解释这个仓库的主要模块。");
-  if (result.isErr()) console.error(result.error);
-} finally {
-  unsubscribe();
+内部 `AgentEvent` 产生后，经 `CodingEventProjector` 投影为公开的
+`CodingAgentEvent` 再分发。`prompt` / `advance` 的 `Result` 则一次性返回
+整轮的 `CodingRunResult { sessionId, messages, state }`。
+
+## 15 种事件
+
+```ts
+export type CodingAgentEvent =
+  | { readonly type: "agent_start" }
+  | { readonly type: "agent_end"; readonly messages: readonly CodingAgentMessage[] }
+  | { readonly type: "turn_start" }
+  | { readonly type: "turn_end"; readonly message: CodingAssistantMessage; readonly toolResults: readonly CodingToolResult[] }
+  | { readonly type: "message_start"; readonly message: CodingAgentMessage }
+  | { readonly type: "message_update"; readonly message: CodingAssistantMessage; readonly assistantEvent: AssistantEvent }
+  | { readonly type: "message_end"; readonly message: CodingAgentMessage; readonly entryId?: string }
+  | { readonly type: "message_discard" }
+  | { readonly type: "tool_execution_start"; readonly toolCallId: string; readonly toolName: string; readonly activityKind: CodingToolActivityKind; readonly title: string; readonly args: JsonValue }
+  | { readonly type: "tool_execution_update"; readonly toolCallId: string; readonly toolName: string; readonly activityKind: CodingToolActivityKind; readonly partial: JsonValue }
+  | { readonly type: "tool_execution_end"; readonly toolCallId: string; readonly toolName: string; readonly activityKind: CodingToolActivityKind; readonly result: JsonValue; readonly isError: boolean }
+  | { readonly type: "compaction_start"; readonly trigger: string; readonly tokensBefore: number }
+  | { readonly type: "compaction_end"; readonly outcome: JsonValue }
+  | { readonly type: "context_measured"; readonly measurement: CodingContextMeasurement }
+  | { readonly type: "background_agent_end"; readonly toolCallId: string; readonly agentId: string; readonly title: string; readonly toolName?: string; readonly status: "complete" | "error" | "stopped" };
+```
+
+语义速查：
+
+| 事件 | 触发时机 |
+|---|---|
+| `agent_start` / `agent_end` | 一轮 `prompt`/`advance` 运行的开始/结束 |
+| `turn_start` / `turn_end` | 每一轮"模型调用 → 工具执行"循环的开始/结束 |
+| `message_start` / `message_update` / `message_end` | assistant 消息的开始/流式增量/结束 |
+| `message_discard` | 消息被丢弃（不进入历史） |
+| `tool_execution_start` / `update` / `end` | 工具调用的开始/进度/结束（含 `isError`） |
+| `compaction_start` / `compaction_end` | 上下文压缩的开始/结束 |
+| `context_measured` | 每次模型请求前（及手动压缩后）的上下文体量观测，纯观测不干预 |
+| `background_agent_end` | 分离的后台子 agent 结算（可能在其 Operation 结束后才到达） |
+
+### message_update 的 13 种子事件
+
+```ts
+type AssistantEvent =
+  | { readonly type: "start" }
+  | { readonly type: "text_start"; readonly contentIndex: number }
+  | { readonly type: "text_delta"; readonly contentIndex: number; readonly delta: string }
+  | { readonly type: "text_end"; readonly contentIndex: number; readonly content: string }
+  | { readonly type: "thinking_start"; readonly contentIndex: number }
+  | { readonly type: "thinking_delta"; readonly contentIndex: number; readonly delta: string }
+  | { readonly type: "thinking_end"; readonly contentIndex: number; readonly content: string }
+  | { readonly type: "toolcall_start"; readonly contentIndex: number }
+  | { readonly type: "toolcall_delta"; readonly contentIndex: number; readonly delta: string }
+  | { readonly type: "toolcall_end"; readonly contentIndex: number; readonly toolCall: CodingToolCall }
+  | { readonly type: "done"; readonly reason: CodingStopReason; readonly message: CodingAssistantMessage }
+  | { readonly type: "error"; readonly reason: "error" | "aborted"; readonly error: CodingAssistantMessage };
+```
+
+> 注意是 13 种：`start` 不带 `contentIndex`，其余流式事件都带。
+> 结束原因 `CodingStopReason = "stop" | "length" | "toolUse" | "contextOverflow"
+> | "iterationLimit" | "error" | "aborted"`。
+
+流式渲染的典型写法：按 `contentIndex` 把 `text_delta` 拼接到对应内容块，
+`text_end` / `thinking_end` / `toolcall_end` 时拿到完整块。
+
+### context_measured
+
+```ts
+export interface CodingContextMeasurement {
+  readonly contextWindow: number;
+  /** 自动压缩阈值；自动压缩关闭时缺席 */
+  readonly compactAtTokens?: number;
+  readonly systemPrompt: number;
+  readonly toolDefinitions: number;
+  readonly userMessages: number;
+  readonly assistantText: number;
+  readonly thinking: number;
+  readonly toolInputs: number;
+  readonly toolOutputs: readonly { readonly toolName: string; readonly tokens: number }[];
 }
 ```
 
-事件覆盖 Agent、turn、message、tool execution 与 compaction：
+数值是"字符数 / 4"的压缩启发式估算，用于看比例；provider 返回的 usage
+才是权威总量。
 
-- `agent_start` / `agent_end`
-- `turn_start` / `turn_end`
-- `message_start` / `message_update` / `message_end`
-- `tool_execution_start` / `tool_execution_update` / `tool_execution_end`
-- `compaction_start` / `compaction_end`
+## 状态 DTO
 
-公开消息、工具参数、工具结果、compaction outcome 与 state error 都是 JSON-safe 数据。JSON-safe 不代表内容可直接展示：跨进程或 UI 边界仍应按用途投影白名单 DTO，避免无意显示 prompt、路径、命令或模型输出中的敏感内容。
+`agent.state`（`CodingAgentState<TAppState>`）是实时投影的快照，包含：
 
-完整字段见 [State 与 Events API](/docs/api-reference/state-and-events)，可运行模式见 [观察事件](/docs/examples/observe-events)。
+- `messages: readonly CodingAgentMessage[]`——本轮/历史消息（user /
+  assistant / tool-result，JSON 安全）。
+- 会话级派生状态：todo 进度、artifacts（`codingArtifactsFromAppState`
+  可从 appState 提取）、权限摘要、上下文用量等。
+- `TAppState extends JsonObject` 泛型：Host 可挂载自己的应用状态。
+
+`CodingAgentMessage` 区分三种角色，assistant 消息携带内容块
+（text / thinking / tool-call）与 `stopReason`、`usage`；tool-result 消息
+携带 `fileChanges`（受限白名单：只有文件副作用能进 tool-result fact，
+`details` 不行）。
+
+`CodingToolActivityKind = "search" | "read" | "write" | "execute" | "call"
+| "operation"` 用于 `tool_execution_*` 事件的 `activityKind`，驱动 UI 的
+图标/文案映射（`CodingToolPresentation`）。
+
+## 附件
+
+`prompt` 的第二个参数可带附件：
+
+```ts
+await agent.prompt("看看这张截图", {
+  attachments: [{ id, filename, mimeType, size, sourcePath, image? }],
+});
+```
+
+`CodingAttachment.image?: () => Promise<CodingImageContent>` 是懒加载的图片
+内容——只有图片附件需要提供，调用时才真正读取。

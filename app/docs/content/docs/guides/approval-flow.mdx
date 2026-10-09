@@ -1,0 +1,89 @@
+---
+title: 审批流程实战
+description: 用 requestApproval 回调实现审批 UI：三种决策、串行队列与 alwaysAllow。
+---
+
+# 审批流程实战
+
+> **旧文档勘误**：旧版 `approval-flow.mdx` 示例中出现了
+> `permissionMode: "default"`——该取值在代码中不存在。本文示例使用合法取值。
+
+## 最小可用：命令行审批
+
+```ts
+import { createCodingAgent } from "@jai/coding-agent";
+import readline from "node:readline/promises";
+
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-sonnet-4-5",
+  cwd: process.cwd(),
+  permissionMode: "ask",
+  requestApproval: async (request) => {
+    const { summary } = request;
+    console.log(`\n[审批] ${summary.title}`);
+    if (summary.description) console.log(`  ${summary.description}`);
+    if (summary.command) console.log(`  $ ${summary.command}`);
+    if (summary.path) console.log(`  路径: ${summary.path}`);
+    console.log(`  风险: ${summary.risk ?? "未知"}${request.canAlwaysAllow ? "（可记住）" : ""}`);
+
+    const answer = await rl.question("允许？(y=本次 / a=总是 / n=拒绝) ");
+    if (answer === "a" && request.canAlwaysAllow) return "alwaysAllow";
+    return answer === "y" ? "allowOnce" : "deny";
+  },
+})).value;
+
+await agent.prompt("把 README 翻译成中文并写回文件");
+await agent.close();
+rl.close();
+```
+
+## 三种决策的去向
+
+| 决策 | 效果 |
+|---|---|
+| `deny` | 拒绝。本轮该工具调用失败，agent 会看到拒绝结果并调整 |
+| `allowOnce` | 仅本次放行，不记忆 |
+| `alwaysAllow` | 持久化建议规则：Bash → `project-local` scope，Read/Write/Edit → `session` scope（写入 `sessionAllowRules`） |
+
+`alwaysAllow` 只有在 `request.canAlwaysAllow` 为 true 时才有意义；
+`suggestedRule` / `suggestedRules` 给 UI 展示"将记住规则：…"用；
+`rememberScope` 告诉你这次记住的规则会落到 `session` 还是 `project-local`。
+
+## 跨 Operation 共享：审批队列与授权表
+
+多个 `createCodingAgent` 调用（同一 live Session 的多次 Operation）可以共享
+审批状态，避免重复弹窗：
+
+```ts
+import { createCodingAgent, createPermissionApprovalQueue } from "@jai/coding-agent";
+
+const approvalQueue = createPermissionApprovalQueue(); // 内存内 FIFO：同时最多展示一个审批
+const sessionAllowRules = {};                          // Host 拥有的可变授权表
+
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-sonnet-4-5",
+  approvalQueue,
+  sessionAllowRules,
+  sessionGrantWorkspaceRoot: process.cwd(),
+  requestApproval: myApprovalUI,
+})).value;
+```
+
+用户点"总是允许"（session scope）后，SDK 会自动写入 `sessionAllowRules`，
+同 Session 后续 Operation 的同类请求直接放行，不再弹窗。
+
+## auto 模式：模型代答
+
+```ts
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-sonnet-4-5",
+  permissionMode: "auto",   // settings 文件里配不了，只能 Host 经 SDK 传
+  // …reviewer 由 Host 侧装配；SDK 内置 createModelPermissionReviewer（30s 超时）
+  requestApproval: myApprovalUI, // reviewer 失败/超时/回退为 ask 时兜底
+})).value;
+```
+
+记住 `auto` 的安全契约：reviewer 任何失败都回退为 `ask`，
+"review 永远不能静默放行"，且模型 reviewer 只能返回 `allowOnce`。

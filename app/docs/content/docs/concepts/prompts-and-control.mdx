@@ -21,7 +21,7 @@ const steered = await agent.steer("先停止修改，只总结已经发现的问
 const queued = await agent.followUp("接着列出三个最小修复方案。");
 ```
 
-两者都只接受非空字符串，并返回 `Result<void, CodingSdkError>`。附件只由 `prompt(text, { attachments })` 消费；不要向 `steer()` 或 `followUp()` 传对象。
+两者都接受 `string | CodingQueuedInput`（后者是 Host 预留的会话条目身份，用于在安全检查点投递输入），传入空字符串会返回 `coding_sdk.empty_prompt` 错误。附件只由 `prompt(text, { attachments })` 消费；不要向 `steer()` 或 `followUp()` 传附件。
 
 ## 生命周期控制
 

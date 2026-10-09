@@ -1,29 +1,69 @@
 ---
 title: Jai Coding Agent SDK
-description: 用一个稳定的 TypeScript API 创建、运行和管理 coding agent。
+description: 在 TypeScript 应用中创建和运行 coding agent：模型、会话、权限、工具与公开 API。
 ---
 
-`@jai/coding-agent` 是面向 Node.js 宿主的公开 SDK。它负责 Agent 执行循环、内置 coding tools、会话、权限求值、状态和事件投影；Desktop、CLI 等产品自己的配置、模型目录、插件发现与 UI 留在各自宿主中。
+# Jai Coding Agent SDK
 
-## 从这里开始
+`@jai/coding-agent` 是 jai-mono 的公开 SDK：在你的 TypeScript 应用里创建、
+运行和管理 coding agent。它提供 Agent 生命周期、内置工具（Read / Bash /
+Edit / Write）、权限审批、会话持久化、扩展机制，以及 JSON 安全的事件、
+状态与错误 DTO。
 
-- [SDK 概览](/docs/quickstart/overview)：理解 SDK 与宿主的职责边界。
-- [安装](/docs/quickstart/installation)：准备 Node.js 项目和模型凭据。
-- [创建第一个 Agent](/docs/quickstart/create-your-first-agent)：以只读方式运行一次 prompt。
+Desktop 应用、headless `jai` CLI、WorkBuddy 评测 harness 都通过这个 SDK
+运行 Agent——它们只负责各自的 UI / TTY / subprocess 宿主层，不复制 Agent
+loop、工具、权限或 session runtime。
 
-## 核心 API
+## 分层架构
 
-```ts
-import { createCodingAgent } from "@jai/coding-agent";
-
-const created = await createCodingAgent({
-  model: "openai/gpt-4.1-mini",
-  cwd: process.cwd(),
-  session: { kind: "ephemeral" },
-  permissionMode: "plan",
-});
+```text
+你的应用（Host）
+        │  createCodingAgent({ model, provider, cwd, session, ... })
+        v
+@jai/coding-agent      公开 SDK：Agent 创建、权限、会话、扩展、事件/状态 DTO
+        │
+        v
+@jai/agent             内部：agent loop、harness、hooks、compaction、durable session
+        │
+        v
+@jai/ai                内部：provider-neutral 消息、流式事件、模型注册表
+        │
+        v
+Anthropic / OpenAI / OpenAI-compatible API
 ```
 
-创建、运行和关闭都返回 `better-result` 的 `Result`。先处理 `isErr()`，再读取 `value`；不要把预期的 SDK 失败改为异常控制流。
+关键边界（代码事实）：
 
-模型字符串使用 `<provider>/<model>` 格式。内置 provider 是 `anthropic`、`openai` 和 `openai-compatible`；默认分别读取 `ANTHROPIC_API_KEY` 或 `OPENAI_API_KEY`。自定义 endpoint 与认证方式通过 `provider` 配置。
+- SDK 公开 API **严格等于 `src/sdk.ts` 的具名导出**——没有 `export *`。
+  `@jai/ai` 的 `Provider` / `Message`、`@jai/agent` 的 `Agent` 等底层类型
+  **没有被 re-export**，SDK 消费者 import 不到。SDK 用 `Coding*` 前缀的投影
+  类型（如 `CodingAgentEvent`、`CodingAgentState`）重新包装了它们。
+- Jai 产品级默认配置（用户/项目配置、provider 目录、插件发现、数据目录约定）
+  **不在 SDK 里**，由各产品宿主（Desktop / CLI / WorkBuddy）各自实现。
+  SDK 只接收 Host 传进来的显式参数。
+- `@jai/extension` 提供官方扩展（connector、agent-plugins、skills、
+  web-search、todo、subagent 等），以 `CodingAgentExtension` 纯数据对象的形式
+  经 `extensions` 选项装配进 SDK。
+
+## 能力一览
+
+| 能力 | 入口 |
+|---|---|
+| 创建 Agent | `createCodingAgent({ model: "anthropic/claude-..." })` |
+| 运行一轮 | `agent.prompt("...")` → `Result<CodingRunResult>` |
+| 实时事件 | `agent.subscribe((event) => ...)`（15 种事件） |
+| 会话 | `ephemeral`（缺省）/ `new` / `resume` |
+| 权限审批 | `permissionMode: "ask" \| "allow" \| "auto" \| "plan"` + `requestApproval` 回调 |
+| 内置工具 | `Read`、`Bash`、`Edit`、`Write`（可白名单/黑名单裁剪） |
+| 扩展 | `defineExtension({ id, tools, hooks, catalogs, ... })` |
+| 后台执行 | Bash `runInBackground` + `BackgroundAgentStore` |
+| 可观测 | `CodingAgentTelemetryObserver`（span：`jai.run → jai.turn → …`） |
+| 错误 | `CodingSdkError { code, message, retryable, phase }`（9 个 phase） |
+
+## 从哪里开始
+
+1. [安装](/docs/quickstart/installation)——前置条件与安装命令。
+2. [创建你的第一个 Agent](/docs/quickstart/first-agent)——10 行代码跑通
+   prompt → 事件 → 结果 → 关闭的完整链路。
+3. [架构](/docs/concepts/architecture)——理解"Host 拥有产品配置"的设计原则，
+   再决定哪些选项该由你的应用来填。
