@@ -1,61 +1,54 @@
 ---
 title: 安装
-description: 准备 Node.js、TypeScript 与模型凭据，并安装公开 SDK。
+description: 准备 Node.js 环境与模型凭据，在 monorepo 内使用 @jai/coding-agent。
 ---
+
+# 安装
 
 ## 前置条件
 
-- Node.js 20 或更新版本。
-- 一个 TypeScript 项目。
-- OpenAI 或 Anthropic 的 API key，以及账户可访问的模型 ID。
+- **Node.js 20 或更新版本**（`packages/coding-agent` 的 engines 字段要求 `>=20`）。
+- [Bun](https://bun.sh/)（仓库的包管理与测试用 Bun）。
+- 一个可用的模型 provider：Anthropic、OpenAI，或任何兼容 OpenAI API 的服务
+  （本地 Ollama / LM Studio、自托管网关均可），以及对应的 API key。
 
-<Steps>
-  <Step title="初始化项目">
+## 在 monorepo 内使用
 
-```bash
-mkdir jai-agent-quickstart
-cd jai-agent-quickstart
-npm init -y
-npm pkg set type=module
-```
-  </Step>
-  <Step title="安装 SDK">
+`@jai/coding-agent` 尚未发布到 npm。目前在仓库内开发，直接 clone 后安装依赖：
 
 ```bash
-npm install @jai/coding-agent
-npm install --save-dev typescript tsx @types/node
+git clone https://github.com/jiahao-jayden/jai-mono.git
+cd jai-mono
+bun install
 ```
 
-    也可以使用 `pnpm add`、`bun add` 或 `yarn add`。
-  </Step>
-  <Step title="配置 TypeScript">
+workspace 内的包通过 workspace 协议互相引用，`@jai/coding-agent` 开箱即用。
+npm 发布后，这里会更新为 `npm install @jai/coding-agent`。
 
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "strict": true,
-    "skipLibCheck": true
-  }
-}
-```
-  </Step>
-  <Step title="设置模型凭据">
-
-```bash
-export OPENAI_API_KEY="sk-..."
-```
-
-    使用 Anthropic 时改为 `ANTHROPIC_API_KEY`。模型 ID 在创建 Agent 时直接写入 `model`，例如 `openai/gpt-4.1-mini` 或 `anthropic/claude-sonnet-4-20250514`。
-  </Step>
-</Steps>
-
-应用只需要从正式 root 入口导入：
+## 验证安装
 
 ```ts
-import { createCodingAgent, type CodingAgentCreateOptions } from "@jai/coding-agent";
+import { createCodingAgent, resolveSdkModel } from "@jai/coding-agent";
+
+// 只解析 model 字符串，不发起网络请求
+const resolved = resolveSdkModel("anthropic/claude-sonnet-4-5", {
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+console.log(resolved.model.id, resolved.provider.id);
 ```
 
-不要安装或导入 `@jai/ai` 来构造模型对象，也不要 deep import SDK 内部模块。继续：[创建第一个 Agent](/docs/quickstart/create-your-first-agent)。
+model 字符串格式为 `"<provider>/<model>"`（按**第一个** `/` 分隔，
+modelId 本身可以含 `/`）。provider 前缀只允许三者：
+
+| 前缀 | 实际 API 协议 |
+|---|---|
+| `anthropic` | Anthropic Messages API |
+| `openai` | OpenAI Responses API |
+| `openai-compatible` | OpenAI Chat Completions 兼容协议 |
+
+`provider.apiKey` 缺省读取环境变量 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`，
+`baseUrl` 缺省读取 `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`。
+格式不对（缺少 `/`、以 `/` 开头或结尾）会得到
+`coding_sdk.invalid_model_ref`；前缀不在三者之内会得到
+`coding_sdk.unsupported_provider`。详见 [API：createCodingAgent](/docs/api-reference/create-coding-agent)
+和 [API：错误](/docs/api-reference/errors)。

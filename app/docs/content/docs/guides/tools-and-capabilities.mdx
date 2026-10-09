@@ -1,82 +1,101 @@
 ---
-title: 工具与动态能力
-description: 选择内置工具，并通过公开 Extension API 增加工具、skills 与 hooks。
+title: 内置工具
+description: Read、Bash、Edit、Write 四个内置工具的参数、输出与裁剪方式。
 ---
 
-SDK 的内置工具名由 `CodingToolName` 定义：
+# 内置工具
 
-`Read`、`Bash`、`Edit`、`Write`。Todo 和 Subagent 由可选的官方 Extension 提供，不在内置工具名单中。
+SDK 层只有 **4 个**内置工具（`CodingToolName = "Read" | "Bash" | "Edit" |
+"Write"`，由常量派生，不可扩展）：
 
-默认启用四个核心工具。`tools` 用于建立白名单，`excludeTools` 在最后移除工具；两个列表重叠时排除优先。文件搜索由 Runtime Host 装配的 `find`、`grep` Extension 提供，不是内置工具名。
+> **澄清**：没有 `find` / `grep` 工具。Bash 工具的描述文字里会建议用
+> `grep`/`find`（或 `rg`）做搜索，但那是指 shell 命令。真正的
+> `find`/`grep` 工具由 `@jai/extension` 的 `jai.fff-search` 扩展提供，
+> 需作为扩展装配。
+
+## Read
+
+`"Read a UTF-8 text file with line numbers."`（可并行执行）
 
 ```ts
-const created = await createCodingAgent({
-  model: "openai/gpt-4.1-mini",
-  cwd: process.cwd(),
-  tools: ["Read", "Edit", "Write", "Bash"],
-  excludeTools: ["Bash"],
+{ path: string; offset?: number /* >= 1 */; limit?: number /* 1..max */ }
+```
+
+输出 content 行格式为 `${行号}|${内容}`，超长行追加 `… [line truncated]`。
+`details`（仅日志/UI，不进 LLM 上下文）：
+`{ path, startLine, endLine, totalLines, truncated, nextOffset?, truncation? }`。
+
+## Bash
+
+`"Execute a POSIX shell command in the workspace with timeout, cancellation,
+and bounded output."`（串行执行）
+
+```ts
+{ command: string /* minLength 1 */; timeoutMs?: number /* 1..600_000，缺省 120_000 */; runInBackground?: boolean }
+```
+
+- 非零退出码会抛错（tag `tool.bash.non_zero_exit`），不返回结果。
+- `runInBackground: true` 用于 `npm run dev` 这类长 running 命令：调用立即
+  返回，后台继续跑。成功时 `details` 额外带 `status: "background_running"`、
+  `agentId`、`title`（这三个字段实际返回但未在 `BashToolDetails` 接口声明）。
+  详见 [后台 Agent](/docs/guides/background-agents)。
+
+## Edit
+
+`"Edit one UTF-8 text file using exact, unique, non-overlapping replacements."`
+（串行执行）
+
+```ts
+{ path: string; edits: Array<{ oldText: string; newText: string }> /* minItems 1 */ }
+```
+
+精确、唯一、不重叠的文本替换；匹配失败时先重读文件再试。文件上限 10MB。
+`fileChanges: [{ operation: "modify", path }]`。
+
+## Write
+
+`"Create or completely overwrite a UTF-8 text file."`（串行执行）
+
+```ts
+{ path: string; content: string }
+```
+
+父目录自动创建。`fileChanges: [{ operation: "add" | "modify", path }]`。
+
+## 工具输出结构
+
+所有工具统一返回 `AgentToolResult`：
+
+```ts
+export interface AgentToolResult<TDetails = unknown> {
+  /** 回给模型的内容（包进 ToolResultMessage 送回 LLM） */
+  content: (TextContent | ImageContent)[];
+  /** 完成的文件副作用——可进入 tool-result fact 的受限白名单 */
+  fileChanges?: readonly ToolFileChange[];
+  /** 给日志/UI 的结构化数据，不进 LLM 上下文 */
+  details?: TDetails;
+  /** 提示 agent 在本批工具执行完后停止（整批都为 true 才早停） */
+  terminate?: boolean;
+}
+```
+
+三者的去向不同：`content` 给模型看，`fileChanges` 是唯一能进入
+tool-result fact 的文件副作用声明，`details` 只给 Host 的日志/UI。
+
+## 裁剪内置工具
+
+```ts
+await createCodingAgent({
+  model: "anthropic/claude-sonnet-4-5",
+  tools: ["Read", "Bash"],        // 白名单：只启用这两个
+  excludeTools: ["Bash"],          // 黑名单：在白名单之后再移除；重叠时排除优先
 });
 ```
 
-这会只保留 `Read`、`Edit` 和 `Write`。非法工具名会让创建返回 `coding_sdk.invalid_tool_selection`。工具选择只影响 SDK 内置工具，不会删除 Extension 自己提供的工具。
+- 省略 `tools` 则启用全部 4 个。
+- 两者都必须是已知内置工具名，否则抛 `coding_sdk.invalid_tool_selection`。
+- 扩展提供的工具不受影响（扩展工具是扩展自己的）。
 
-## Extension 能力
-
-通过 `defineExtension()` 在顶层声明 tools、skills、hooks、configuration、session state 与 tool catalogs。工具名不能与内置工具或其他 extension 重名。`lifecycle.activate()` 只能创建每个 session 私有的 instance；工具和 hooks 从 `runtime` 取得它，`deactivate()` 负责逆序释放。
-
-```ts
-import { Type } from "@sinclair/typebox";
-import { createCodingAgent, defineExtension } from "@jai/coding-agent";
-
-const branchExtension = defineExtension({
-  id: "current-branch",
-  tools: [
-    {
-      name: "CurrentBranch",
-      description: "Return the branch selected by the host.",
-      parameters: Type.Object({}),
-      authorization: {
-        owner: "core",
-        permission: { sideEffect: "read", reason: "Reads host-provided branch metadata." },
-      },
-      execute: async () => ({
-        content: [{ type: "text", text: "main" }],
-      }),
-    },
-  ],
-});
-
-const created = await createCodingAgent({
-  model: "openai/gpt-4.1-mini",
-  extensions: [branchExtension],
-});
-```
-
-每个 Extension 在 activation 时获得 `{ sessionId, cwd, permissionMode, configuration, sessionState }`。`beforeAgentStart` 可以阻止公开 prompt；`beforeModelCall` 只能追加本次请求的受限 system context；`beforeToolCall` 可以继续、改写参数或 block。`turnStart`、`turnEnd`、`afterModelCall`、`afterToolCall` 与 `agentSettled` 都是 observer，失败仅报告 diagnostic。
-
-MCP 等连接后才能枚举的工具使用 `catalogs`。模型初始只看到 core 的 `SearchTools`；搜索到的至多 8 个真实工具从下一次模型请求开始可用。一次新搜索会替换已激活集合，因此不会把完整 catalog 长期堆进 context。
-
-`sessionState` 是 session-local、schema 校验并可恢复的 extension namespace；公开的 `agent.state.appState` 不包含它。完整生命周期与动态工具约束见 [Extension 架构提案](/docs/concepts/extensions-architecture)。
-
-普通 Extension tool 使用 `authorization.owner: "core"`，所以仍由 SDK 的 permission mode、
-rules 与 approval handler 管理。只有已实现完整授权事务的 Extension 才能声明
-`authorization: { owner: "extension" }`；这会让 core 不再对同一次 tool call 额外审批。
-
-Extension capability 不公开 `mcpServers`。Jai Agent Plugin 的发现与 MCP descriptor 适配属于 `@jai/extension` 和 Desktop/CLI 宿主；最终传给 SDK 的是静态 capabilities 与 catalog descriptor。
-
-## Todo 与 Subagent
-
-```ts
-import { createCodingAgent } from "@jai/coding-agent";
-import { createTodoExtension } from "@jai/extension/todo";
-import { createSubagentExtension } from "@jai/extension/subagent";
-
-const created = await createCodingAgent({
-  model: "openai/gpt-4.1-mini",
-  extensions: [createTodoExtension(), createSubagentExtension()],
-});
-```
-
-不安装时不注册两项工具。`SpawnAgent` 等待最终文本，同一会话最多同时运行 4 个子任务，超限立即返回错误。子任务复用模型和工作目录，不包含父消息，也不包含 Todo/Subagent 工具。所有子工具仍经过原权限链；父调用取消时，子执行随之停止并清理。
-
-Extension 工具的第二个参数提供 `onUpdate` 和 `runAgent`。`onUpdate` 发送普通工具进度；`runAgent({ prompt, instructions, excludeTools, onActivity })` 返回带安全消息 DTO 的 Result。执行能力只在这次工具调用期间有效，调用结束时取消并等待未结束的子执行，不能保存后用作后台任务接口。子执行不新增持久化会话，也不重新启动父 Extension 的会话/轮次钩子。
+权限侧：工具调用会映射到 `PermissionAction`（Read→`file.read`、
+Write/Edit→`file.write`、Bash→`process.exec`、扩展工具→`tool.invoke`），
+再走 [权限评估](/docs/guides/permissions)。

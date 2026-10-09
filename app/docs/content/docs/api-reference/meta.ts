@@ -7,9 +7,7 @@ export default defineMeta({
 	pages: [
 		"create-coding-agent",
 		"coding-agent",
-		"host-and-configuration",
-		"state-and-events",
-		"errors-and-tools",
-		"public-api-and-limitations",
+		"errors",
+		"exports",
 	],
 });

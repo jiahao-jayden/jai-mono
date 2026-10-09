@@ -1,0 +1,69 @@
+---
+title: 后台 Agent
+description: Bash runInBackground、BackgroundAgentStore 与 stopBackgroundAgent。
+---
+
+# 后台 Agent
+
+长 running 任务（`npm run dev`、长时间测试、大仓库索引）可以用后台方式跑，
+不阻塞当前对话。
+
+## Bash 的 runInBackground
+
+```ts
+// agent 内部调用 Bash 时传 runInBackground: true，调用立即返回
+// { command, timeoutMs?, runInBackground?: boolean }
+```
+
+成功时工具 `details` 额外返回 `status: "background_running"`、`agentId`、
+`title`（注意：这三个字段实际返回，但未在 `BashToolDetails` 接口中声明，
+消费时请做运行时兼容）。
+
+## BackgroundAgentStore
+
+```ts
+import { createBackgroundAgentStore } from "@jai/coding-agent";
+
+const backgroundAgents = createBackgroundAgentStore();
+
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-sonnet-4-5",
+  backgroundAgents, // 跨 Operation 共享；省略则后台 agent 只对启动它的 Operation 可见
+})).value;
+```
+
+条目结构：
+
+```ts
+export interface BackgroundAgentEntry {
+  readonly toolCallId: string;
+  readonly agentId: string;
+  readonly title: string;
+  status: "running" | "complete" | "error";
+  stopped: boolean;       // 是否由显式 stop 导致结算
+  activity?: string;
+  text?: string;
+  error?: string;
+  notified: boolean;
+  readonly settled: Promise<void>;
+}
+```
+
+结算时 SDK 会合成 `background_agent_end` 事件推送给订阅者
+（`status: "complete" | "error" | "stopped"`）——**可能在其 Operation
+结束后才到达**，UI 侧要处理"迟到的结算"。
+
+## 停止后台 agent
+
+```ts
+// 按 tool call id 中止；未知或已结束的 id 返回失败
+const r = await agent.stopBackgroundAgent(toolCallId);
+if (r.isOk() && r.value.stopped) console.log("已停止");
+```
+
+## 边界
+
+- `BackgroundAgentStore` **严格内存内、永不持久化**（源码注释原话）。
+  进程重启即丢失；需要跨进程的后台任务请由 Host 自己实现。
+- 后台子 agent 的 transcript 持久化是另一回事，由 `openChildSession`
+  工厂控制（见 [会话](/docs/concepts/sessions-and-lifecycle)），与前台/后台无关。

@@ -1,0 +1,56 @@
+---
+title: 上下文压缩
+description: autoCompaction、手动 compact()、compaction 事件与观测。
+---
+
+# 上下文压缩
+
+长会话的上下文会膨胀。SDK 提供自动 + 手动两层压缩机制。
+
+## 自动压缩
+
+`createCodingAgent` 的 `autoCompaction` 选项缺省为 `true`。
+设为 `false` 时**只关闭**阈值触发与 overflow 触发的自动压缩；
+手动 `compact()` 仍然可用。
+
+触发来源（`compaction_start` 事件的 `trigger`）：
+
+| trigger | 含义 |
+|---|---|
+| `threshold` | 上下文用量达到 `compactAtTokens` 阈值 |
+| `overflow` | 模型返回 `contextOverflow` 停止原因后的重试压缩 |
+| `manual` | Host 调用 `agent.compact()` |
+
+压缩策略（`CompactionSettings`）：`reserveTokens`（为新一轮预留）、
+`tailTurns`（保留最近 N 轮原文）、`preserveRecentTokens`。压缩后旧消息被
+替换为摘要；摘要指令可通过 `compactionSummaryInstructions` 自定义。
+
+## 手动压缩
+
+```ts
+const result = await agent.compact();           // 立即压缩当前分支（要求 idle）
+const result2 = await agent.compact(abortSignal); // 可传入 AbortSignal
+```
+
+- 只能在 agent 空闲时调用；摘要生成失败时返回 Err（phase `compaction`），
+  而不是静默跳过。
+- 压缩是分支感知的：`navigate(entryId)` 切换分支后，压缩作用于当前分支。
+
+## 事件与观测
+
+- `compaction_start { trigger, tokensBefore }` / `compaction_end { outcome }`。
+- `context_measured { measurement }`：每次模型请求**前**（以及手动压缩后）
+  发出，纯观测。`measurement.compactAtTokens` 在自动压缩关闭时缺席。
+  数值是字符数/4 的启发式估算，看比例用；provider 的 usage 才是权威总量。
+
+典型用法：在 UI 里监听 `compaction_start` 显示"正在压缩上下文…"，
+用 `context_measured` 画上下文用量条：
+
+```ts
+agent.subscribe((event) => {
+  if (event.type === "context_measured") {
+    const m = event.measurement;
+    updateContextBar(m); // systemPrompt + toolDefinitions + userMessages + ...
+  }
+});
+```

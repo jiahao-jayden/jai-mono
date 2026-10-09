@@ -1,0 +1,117 @@
+---
+title: 扩展
+description: CodingAgentExtension 契约：hooks、工具、catalog、命令、配置与生命周期。
+---
+
+# 扩展
+
+扩展是一个纯数据对象，用 `defineExtension`（恒等函数，保留字面量类型推断）
+定义，通过 `createCodingAgent` 的 `extensions` 数组装配。SDK 对数组做 id
+唯一校验。
+
+```ts
+export interface CodingAgentExtension<
+  TConfig extends JsonObject = JsonObject,
+  TState extends JsonObject = JsonObject,
+  TInstance = undefined,
+> {
+  readonly id: string;
+  readonly configuration?: CodingExtensionConfiguration<TConfig>;
+  readonly sessionState?: CodingExtensionSessionState<TState>;
+  readonly tools?: readonly CodingExtensionTool<TConfig, TState, TInstance>[];
+  readonly hooks?: CodingExtensionHooks<TConfig, TState, TInstance>;
+  readonly catalogs?: readonly CodingExtensionToolCatalog<TConfig, TState, TInstance>[];
+  readonly lifecycle?: CodingExtensionLifecycle<TConfig, TState, TInstance>;
+}
+```
+
+泛型：`TConfig` = 扩展配置类型，`TState` = 会话状态类型，`TInstance` =
+`activate` 返回的实例类型（注入 `CodingExtensionRuntime.instance`）。
+
+```ts
+import { defineExtension } from "@jai/coding-agent";
+
+const myExtension = defineExtension({
+  id: "my-extension",
+  tools: [ /* ... */ ],
+  hooks: {
+    beforeToolCall: async (runtime, input) => { /* ... */ },
+  },
+});
+
+await createCodingAgent({ model: "...", extensions: [myExtension] });
+```
+
+## 生命周期
+
+- `activate(context)`：返回 `Result<TInstance, CodingExtensionOperationFailed>`
+  （同步/异步均可）。抛异常或返回 Err 会被包装为
+  `CodingExtensionActivationFailed`，导致 `createCodingAgent` 整体失败。
+- `deactivate(runtime)`：`agent.close()` 时逆序调用，失败包装为
+  `CodingExtensionDeactivationFailed`。
+
+## 9 个 hooks
+
+`CodingExtensionHooks`（按触发顺序）：
+
+| hook | 触发点 |
+|---|---|
+| `beforeAgentStart` | 每次 `prompt`/`advance` 运行前；可 **block 整轮**（抛 `CodingExtensionPolicyBlocked`） |
+| `sessionStart` | 会话启动时 |
+| `turnStart` / `turnEnd` | 每个模型→工具循环的开始/结束 |
+| `beforeModelCall` / `afterModelCall` | 模型请求前后 |
+| `beforeToolCall` / `afterToolCall` | 工具调用前后 |
+| `agentSettled` | 整轮运行落定后 |
+
+## 工具的三种来源
+
+1. **静态 `tools`**：直接声明的工具列表，随 agent 一起装配。
+2. **动态 `catalogs`**：工具目录 + `subscribe` 发现机制。工具很多时用
+   `loading: "deferred"` 延迟加载——模型先看到 `SearchTools` /
+   `ExecuteTool` 两个元工具，按需拉取真实工具（测试证实 catalog 场景下
+   provider 只能看到这两个名字）。
+3. **扩展命令**（`CodingExtensionCommand`）：`/xxx` 风格的斜杠命令，有独立的
+   注册/执行错误类（`CodingCommandRegistrationFailed` /
+   `CodingCommandExecutionFailed`）。
+
+扩展工具的权限走 `tool.invoke` action，其 identity 是稳定目录身份
+（operation-local 的工具引用不会进入持久化规则）。
+
+## 配置：两种模式
+
+- **`user | project`（scoped）**：用户级与项目级两层配置。
+- **`layered`**：多层叠加配置（如 MCP 扩展用的就是 layered）。
+
+配置的读写、审批工作流、diagnostic 上报走 Host 传入的
+`extensionRuntime: CodingExtensionRuntimeAdapter`——又是"产品配置归 Host
+所有"原则的体现。
+
+## 会话状态
+
+`sessionState` 让扩展拥有自己的会话级状态（`TState extends JsonObject`），
+通过 `CodingExtensionSessionStateStore` 读写，随会话持久化。
+
+## 官方扩展（`@jai/extension`）
+
+| 扩展 | 提供 |
+|---|---|
+| `connector` | Connector 扩展（工具名形如 `connector__<id>__<action>`） |
+| `agent-plugins` | Agent Plugins（id `agent-plugins`，目录 `mcp`；向 skills 扩展外泄 skill 描述符 `skillCards`） |
+| `jai.skills` | `Skill` 工具 |
+| `jai.fff-search` | `find` / `grep` 工具 |
+| `jai.web-search` | `web_search` / `web_fetch` 工具 |
+| `mcp` | MCP（layered 配置） |
+| `jai.todo` | `UpdateTodos` 工具 |
+| `jai.subagent` | `SpawnAgent` / `GetAgentResult`（subagent 委托；固定 `SUBAGENT_INSTRUCTIONS`，递归工具被排除） |
+
+注意：subagent 委托**不在 `@jai/agent`**，而是由 `jai.subagent` 扩展实现。
+子包导出：`@jai/extension/connector`、`@jai/extension/agent-plugins`、
+`@jai/extension/skills`。
+
+## 扩展错误
+
+13 个 `CodingExtension*` 错误类全部从 SDK 入口导出
+（如 `CodingExtensionActivationFailed`、`CodingExtensionHookFailed`、
+`CodingExtensionPolicyBlocked`），另有联合类型 `CodingExtensionError`。
+构造参数除 `CodingExtensionOperationFailed`（`{ message, cause? }`）外，
+均为 `{ message, extensionId?, catalogId?, hook?, operation?, reason?, cause? }`。

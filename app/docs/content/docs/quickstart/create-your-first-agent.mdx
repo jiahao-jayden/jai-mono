@@ -1,54 +1,70 @@
 ---
-title: 创建第一个 Agent
-description: 创建一个 ephemeral、只读的 Agent，读取当前目录并正确处理 Result 与资源关闭。
+title: 创建你的第一个 Agent
+description: 用 createCodingAgent 创建 agent，发送 prompt，订阅事件，读取结果并关闭。
 ---
 
-在项目根目录新建 `agent.ts`。下面的文件只依赖 `@jai/coding-agent`；默认从 `OPENAI_API_KEY` 读取凭据。
+# 创建你的第一个 Agent
+
+下面 30 行代码走通 SDK 的完整链路：创建 → 订阅事件 → prompt → 结果 → 关闭。
 
 ```ts
-// @docs-compile
 import { createCodingAgent } from "@jai/coding-agent";
 
 const created = await createCodingAgent({
-  model: "openai/gpt-4.1-mini",
-  cwd: ".",
-  session: { kind: "ephemeral" },
-  permissionMode: "plan",
-  instructions: "只读取和分析文件，不修改项目。",
+  model: "anthropic/claude-sonnet-4-5",
+  provider: { apiKey: process.env.ANTHROPIC_API_KEY },
+  cwd: "/path/to/your/project",
+  // session 缺省为 { kind: "ephemeral" }：临时会话，用完即焚
 });
 
 if (created.isErr()) {
-  console.error(`[${created.error.phase}] ${created.error.code}: ${created.error.message}`);
-} else {
-  const agent = created.value;
-  try {
-    const run = await agent.prompt("读取当前项目的 README，用中文总结项目用途和主要使用方法。");
-    if (run.isErr()) {
-      console.error(`[${run.error.phase}] ${run.error.code}: ${run.error.message}`);
-    } else {
-      const text = run.value.messages
-        .filter((message) => message.role === "assistant")
-        .flatMap((message) => message.content)
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
-        .join("\n");
-      console.log(text);
-    }
-  } finally {
-    const closed = await agent.close();
-    if (closed.isErr()) console.error(closed.error);
-  }
+  console.error(created.error.code, created.error.message);
+  process.exit(1);
 }
+const agent = created.value;
+
+// 订阅事件：流式文本、工具调用都会以回调推送
+const unsubscribe = agent.subscribe((event) => {
+  if (event.type === "message_update" && event.assistantEvent.type === "text_delta") {
+    process.stdout.write(event.assistantEvent.delta);
+  }
+  if (event.type === "tool_execution_start") {
+    console.log(`\n[tool] ${event.toolName}`);
+  }
+});
+
+const result = await agent.prompt("列出这个目录下的文件，并告诉我这是什么项目");
+
+if (result.isOk()) {
+  const last = result.value.messages.at(-1);
+  console.log("\n--- done ---", last?.role);
+}
+
+unsubscribe();
+await agent.close();
 ```
 
-运行：
+## 要点
 
-```bash
-npx tsx agent.ts
-```
+1. **`createCodingAgent` 是 async 的**，返回
+   `Promise<Result<CodingAgent, CodingSdkError>>`（`better-result`）。
+   用 `result.isOk()` / `result.isErr()` 判断，成功时取 `result.value`。
+   创建失败（如 model 字符串非法、扩展激活失败）的 phase 是 `runtime_creation`。
+2. **`model` 是唯一必填字段**，格式 `"provider/model"`。
+   `provider.apiKey` 缺省会读 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` 环境变量，
+   所以本地开发时常常连 `provider` 都可以省略。
+3. **`prompt` 发送一轮新提示并运行到结束**，返回整轮的
+   `CodingRunResult { sessionId, messages, state }`。空字符串会直接返回
+   `coding_sdk.empty_prompt` 错误（phase `admission`）。
+4. **事件是回调式推送**：`subscribe(listener)` 返回取消订阅函数。
+   没有 RxJS / AsyncIterator 风格的流。`agent.state` 是一个 getter，
+   每次读取都实时投影当前状态。
+5. **`close()` 必须调用**：它会 abort 运行中的任务、等待落盘、逆序 dispose
+   扩展，并删除 ephemeral 会话的临时目录。重复 close 是安全的（返回 ok）。
 
-`plan` 固定拒绝 `Write`、`Edit` 和可写 Bash 操作，适合分析、审查与方案生成。首次运行会请求模型并产生相应费用。把模型改为你的账户可访问的模型 ID；SDK 不要求你手工维护模型 metadata。
+## 下一步
 
-`createCodingAgent()`、`prompt()` 和 `close()` 的可恢复失败都通过 `Result` 返回。缺少 API key、模型不可用或 session 无效时，先检查 `error.code` 与 `error.phase`；`finally` 中始终尝试关闭 Agent。
-
-接下来阅读 [创建配置](/docs/concepts/host-authorities) 和 [错误处理](/docs/guides/errors)。
+- 想让会话在多次 `prompt` 之间持久化、或跨进程恢复 → [会话](/docs/concepts/sessions-and-lifecycle)。
+- 想在工具执行前弹出"是否允许"确认框 → [权限与审批](/docs/guides/permissions)。
+- 想看清 15 种事件分别在什么时候触发 → [状态与事件](/docs/concepts/state-and-events)。
+- 想给 agent 加自定义工具或 MCP → [扩展](/docs/concepts/extensions)。

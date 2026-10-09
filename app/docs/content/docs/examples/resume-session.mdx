@@ -1,52 +1,47 @@
 ---
-title: 恢复 Session
-description: 恢复已有 durable session，读取已持久化状态并继续同一上下文。
+title: 示例：恢复会话
+description: 用 resume 按 id 恢复持久会话，并处理三种恢复错误。
 ---
 
-`resume` 只打开已存在的 session；不会为了方便而创建缺失 ID。
+# 示例：恢复会话
 
 ```ts
-// @docs-compile
-import { createCodingAgent, type CodingSessionStore } from "@jai/coding-agent";
+import { createCodingAgent } from "@jai/coding-agent";
 
-const sessionId = "issue-482";
-declare const sessionStore: CodingSessionStore;
-const resumed = await createCodingAgent({
-  model: "openai/gpt-4.1-mini",
-  cwd: ".",
-  fileCapabilities: {
-    homeDirectory: "/Users/alice",
-    workspaceDirectory: "/workspace/repository",
-    workspaceTrusted: true,
-  },
-  session: {
-    kind: "resume",
-    id: sessionId,
-    store: sessionStore,
-  },
-});
+async function resumeSession(sessionId: string, store: object) {
+  const resumed = await createCodingAgent({
+    model: "anthropic/claude-sonnet-4-5",
+    cwd: "/path/to/project",
+    session: { kind: "resume", id: sessionId, store },
+    fileCapabilities: {
+      homeDirectory: "/Users/you",
+      workspaceDirectory: "/path/to/project",
+      workspaceTrusted: true,
+    },
+  });
 
-if (resumed.isErr()) {
-  if (resumed.error.code === "coding_sdk.session_not_found") {
-    console.error(`找不到 Session：${sessionId}`);
-  } else {
-    console.error(resumed.error);
+  if (resumed.isErr()) {
+    switch (resumed.error.code) {
+      case "coding_sdk.session_not_found":
+        console.error(`会话 ${sessionId} 不存在`);
+        break;
+      case "coding_sdk.session_format_invalid":
+        console.error("会话记录不是当前版本格式（需要 version === 1）");
+        break;
+      default:
+        console.error(resumed.error.code, resumed.error.message);
+    }
+    return;
   }
-} else {
+
   const agent = resumed.value;
-  try {
-    console.dir({
-      messages: agent.state.messages,
-      extensions: agent.state.extensions,
-      artifacts: agent.state.artifacts,
-    });
-    const continued = await agent.prompt("继续上次分析，并列出下一步。");
-    if (continued.isErr()) console.error(continued.error);
-  } finally {
-    const closed = await agent.close();
-    if (closed.isErr()) console.error(closed.error);
-  }
+  // 历史消息已恢复，state.messages 可直接读
+  console.log("已恢复，历史消息数:", agent.state.messages.length);
+
+  await agent.prompt("继续之前的工作");
+  await agent.close();
 }
 ```
 
-恢复后，messages、app state、Todos 和持久化的 Artifact catalog 都可从 `state` 读取。找不到时先让用户明确选择新 ID，再单独调用 `new`。
+恢复是"按 id 打开 journal"：消息、压缩记录、分支、扩展会话状态都会回来。
+`navigate(entryId)` 可在分支间移动（失败 phase 为 `navigation`）。

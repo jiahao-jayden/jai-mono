@@ -1,36 +1,79 @@
 ---
 title: CodingAgent
-description: 查阅 CodingAgent 的状态、消息、控制、订阅和关闭方法。
+description: Agent 实例的 12 个公开方法：prompt、steer、compact、subscribe 等。
 ---
 
+# `CodingAgent`
+
+所有方法都返回 `Promise<Result<…, CodingSdkError>>`（`better-result`）。
+没有 `stream()` / `send()` 方法——`prompt` 即发送并运行到结束。
+
 ```ts
-interface CodingAgent<TAppState extends JsonObject = JsonObject> {
+export interface CodingAgent<TAppState extends JsonObject = JsonObject> {
   readonly sessionId: string;
-  readonly state: CodingAgentState<TAppState>;
+  readonly state: CodingAgentState<TAppState>;   // getter：实时投影
   prompt(prompt: string, options?: CodingPromptOptions): Promise<Result<CodingRunResult<TAppState>, CodingSdkError>>;
-  steer(prompt: string): Promise<Result<void, CodingSdkError>>;
-  followUp(prompt: string): Promise<Result<void, CodingSdkError>>;
+  advance(inputs?: readonly CodingQueuedInput[]): Promise<Result<CodingRunResult<TAppState>, CodingSdkError>>;
+  steer(input: string | CodingQueuedInput): Promise<Result<void, CodingSdkError>>;
+  followUp(input: string | CodingQueuedInput): Promise<Result<void, CodingSdkError>>;
   waitForIdle(): Promise<Result<void, CodingSdkError>>;
+  navigate(entryId: string): Promise<Result<void, CodingSdkError>>;
+  compact(signal?: AbortSignal): Promise<Result<void, CodingSdkError>>;
   generateTitle(firstMessage: string): Promise<Result<string, CodingSdkError>>;
   abort(): Promise<Result<void, CodingSdkError>>;
+  stopBackgroundAgent(toolCallId: string): Promise<Result<{ readonly stopped: boolean }, CodingSdkError>>;
   subscribe(listener: (event: CodingAgentEvent) => void): () => void;
   close(): Promise<Result<void, CodingSdkError>>;
 }
 ```
 
-## 运行与控制
+## 方法说明
 
-- `prompt(text, options?)`：提交一次完整运行；附件通过 `options.attachments` 提供。
-- `steer(text)`：在当前运行中发送优先处理的文字指令。
-- `followUp(text)`：把文字加入当前运行后的队列。
-- `abort()`：请求取消当前运行。
-- `waitForIdle()`：等待已经接纳的工作结束。
-- `generateTitle(firstMessage)`：生成短标题。
+| 方法 | 语义 |
+|---|---|
+| `prompt(text, options?)` | 发送一轮新提示并运行到结束。空字符串（trim 后）直接 `coding_sdk.empty_prompt`（phase `admission`）。运行前过扩展 `beforeAgentStart` hook，被 block 则抛 `CodingExtensionPolicyBlocked`。多次调用串行排队 |
+| `advance(inputs?)` | 推进**已准入**的 durable 输入，不再追加第二条 user 消息。`CodingQueuedInput = { text; entryId? }`——Host 预留的会话条目身份，用于安全检查点投递输入 |
+| `steer(input)` | 运行中"转向"：向内部 agent 注入一条 user 消息，打断/引导当前运行。空输入同样 `coding_sdk.empty_prompt` |
+| `followUp(input)` | 跟进输入：排队一条 user 消息，等当前运行结束后再处理 |
+| `waitForIdle()` | 等待排队运行全部结束、agent 回到 idle |
+| `navigate(entryId)` | 按 journal entryId 导航（分支/回退）；失败 phase 为 `navigation` |
+| `compact(signal?)` | 立即对 idle 的当前分支做摘要压缩；摘要生成失败返回 Err（phase `compaction`） |
+| `generateTitle(firstMessage)` | 无状态标题生成：取当前消息中 assistant 文本（前 2000 字符）+ 首条用户消息，调已解析的 provider/model 生成 ≤8 词标题；可在 idle 时调用 |
+| `abort()` | 中止当前运行 |
+| `stopBackgroundAgent(toolCallId)` | 按 tool call id 中止一个后台 agent；未知或已结束的 id 返回失败 |
+| `subscribe(listener)` | 订阅 `CodingAgentEvent`；返回取消订阅函数。listener 为空时不做事件投影 |
+| `close()` | abort → 等排队/落定/artifact 写完 → 停订阅 → 逆序 dispose 扩展 → 删除 ephemeral 临时目录。重复 close 返回 ok |
 
-`prompt`、`steer` 与 `followUp` 都拒绝空白字符串。多个 prompt 由 SDK 串行化；不要在宿主侧基于 state 手工管理队列。
+`CodingPromptOptions = { attachments?: readonly CodingAttachment[] }`，
+附件见 [状态与事件](/docs/concepts/state-and-events)。
 
-## 状态与释放
+`prompt` / `advance` 返回的 `CodingRunResult<TAppState> = { sessionId;
+messages: readonly CodingAgentMessage[]; state: CodingAgentState<TAppState> }`。
 
-`sessionId` 在 Agent 生命周期内稳定。`state` 是快照；`appState` 经过 clone，不能通过引用修改 SDK 状态。`subscribe()` 返回取消订阅函数；`close()` 关闭 Agent 并释放 session/runtime 资源。关闭后再调用运行或控制方法会返回 lifecycle error。
+## steer vs followUp
 
-参见 [Prompts 与控制](/docs/concepts/prompts-and-control) 与 [State 与 Events API](/docs/api-reference/state-and-events)。
+两者都接受 `string | CodingQueuedInput`，区别在时机：
+
+- `steer`：**打断当前运行**，立即注入——用于"停下，换个方向"。
+- `followUp`：**排队**，等当前运行结束后再处理——用于"做完这个再看这个"。
+
+## 完整示例
+
+```ts
+const agent = (await createCodingAgent({ model: "openai-compatible/qwen3-coder" })).value;
+
+const off = agent.subscribe((e) => {
+  if (e.type === "agent_end") console.log("round done:", e.messages.length, "messages");
+});
+
+// 后台跑长任务，前台继续对话
+await agent.prompt("先帮我看看 package.json 里有哪些脚本");
+// …稍后打断并转向
+await agent.steer("别管脚本了，直接跑测试");
+// …排队一个后续问题
+await agent.followUp("测试挂了的话把报错贴出来");
+await agent.waitForIdle();
+
+off();
+await agent.close();
+```
