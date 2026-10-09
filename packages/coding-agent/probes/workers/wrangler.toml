@@ -1,0 +1,8 @@
+# Runs the SDK inside real workerd. From this directory: `bunx wrangler dev --local`, then `curl localhost:8787`.
+name = "jai-sdk-workers-probe"
+main = "worker.ts"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[alias]
+"@jai/agent/node/environment" = "./node-environment.ts"
