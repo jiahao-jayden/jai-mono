@@ -45,8 +45,8 @@ SDK **不**做这些事，全部留给 Host（你的应用）：
   `provider` 选项）。
 - 扩展的发现与安装（SDK 只接受你显式传入的 `extensions` 数组，并做 id
   唯一校验）。
-- 持久会话的存储后端（`CodingSessionStore` 是 `object` 类型别名——Host
-  自有的 Session Journal 适配器，SDK 只当不透明对象传递）。
+- 持久会话的存储后端（`CodingSessionStore` 是 Host 自有的 append-only
+  Session Journal 适配器接口，SDK 导出 `InMemorySessionStore` 作参考实现）。
 - 审批 UI（SDK 只调用你传入的 `requestApproval` 回调）。
 
 这就是为什么 `createCodingAgent` 有 30 个字段：它把"决策权"交给 Host，

@@ -1,4 +1,4 @@
-import type { ModelRequestObserver } from "@jai/agent";
+import type { ModelRequestObserver, SessionStore } from "@jai/agent";
 import type { Result } from "better-result";
 import type { JsonObject, JsonValue } from "../core/json";
 import type { PermissionApprovalQueue, PermissionTelemetryObserver, SessionAllowRules } from "../permissions";
@@ -115,10 +115,12 @@ export interface CodingSdkError {
 }
 
 /**
- * Host-owned Session Journal adapter. Its durable representation and lifecycle
- * remain owned by the Agent journal rather than this SDK.
+ * Host-owned Session Journal adapter: an append-only store with optimistic revisions
+ * (`append` must reject a stale `expectedRevision` with `SessionConflictError`). Entries are
+ * opaque to the store; fold them with `applyEntry` / `emptySnapshot`. `InMemorySessionStore` is a
+ * reference implementation.
  */
-export type CodingSessionStore = object;
+export type CodingSessionStore = SessionStore;
 
 /** Host-owned effect recovery protocol supplied only by product runtimes. */
 export type CodingEffectBoundary = object;

@@ -29,7 +29,9 @@ export type CodingSessionSelection =
 持久会话（`new` / `resume`）必须同时提供：
 
 1. **`store: CodingSessionStore`**——Host 自有的 Session Journal 适配器。
-   类型上是 `object` 别名，SDK 把它当不透明对象传给内部 journal 层。
+   即 `load` / `create` / `append(id, entry, expectedRevision)` / `delete` 四个方法；
+   `append` 遇到过期 revision 必须抛 `SessionConflictError`，entry 对 store 不透明，
+   用 `applyEntry` / `emptySnapshot` 折叠 snapshot；`InMemorySessionStore` 是参考实现。
    Journal 是 append-only 树（消息 / 应用状态 / 压缩记录 / 分支记录），
    事件先落盘再发布；durable 写入失败会让整轮运行失败。
 2. **`fileCapabilities`**——Host 选定的本地配置与扩展资源根目录：

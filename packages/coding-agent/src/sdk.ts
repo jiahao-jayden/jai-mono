@@ -3,6 +3,15 @@ export {
 	CodingCommandExecutionFailed,
 	CodingCommandRegistrationFailed,
 } from "./commands";
+export {
+	applyEntry,
+	emptySnapshot,
+	InMemorySessionStore,
+	SessionConflictError,
+	type SessionEntry,
+	type SessionSnapshot,
+	type StoredSession,
+} from "@jai/agent";
 export { CodingConfigStore } from "./config/store";
 export {
 	createPermissionApprovalQueue,

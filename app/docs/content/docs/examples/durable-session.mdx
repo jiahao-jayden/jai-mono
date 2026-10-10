@@ -6,22 +6,15 @@ description: new 会话的 Host store 接线与 fileCapabilities。
 # 示例：持久会话
 
 `new` / `resume` 需要 Host 提供两样东西：`store`（Session Journal 适配器）
-和 `fileCapabilities`（本地配置根目录）。下面用 SDK 自带的工具函数搭一个
-最小可用的内存 store 示意——**生产环境请实现真正的持久化后端**
-（如 SQLite），内存 store 重启即丢。
+和 `fileCapabilities`（本地配置根目录）。下面用 SDK 导出的 `InMemorySessionStore`
+作参考实现——**生产环境请实现真正的持久化后端**（如 SQLite），内存 store 重启即丢。
+自实现 store 时：`append` 遇到过期的 `expectedRevision` 必须抛 `SessionConflictError`，
+entry 对 store 不透明，用 `applyEntry` / `emptySnapshot` 折叠出 snapshot。
 
 ```ts
-import {
-  createCodingAgent,
-  emptyPersistedCodingSessionState,
-} from "@jai/coding-agent";
+import { createCodingAgent, InMemorySessionStore } from "@jai/coding-agent";
 
-// 示意：极简内存 store。CodingSessionStore 是 object 别名，
-// SDK 只把它当不透明对象传给内部 journal 层。
-const memoryRecords = new Map<string, unknown>();
-const store = {
-  // Host 按内部 journal 协议实现 load/create/append/delete…
-};
+const store = new InMemorySessionStore();
 
 const created = await createCodingAgent({
   model: "anthropic/claude-sonnet-4-5",
@@ -58,6 +51,5 @@ await agent.close();
 - 缺 `fileCapabilities` 时创建直接失败，
   code `coding_sdk.file_capabilities_required`（phase `runtime_creation`），
   不是运行时才报错。
-- `emptyPersistedCodingSessionState()` 可用于初始化一条空的持久化快照。
 - 同一 `sessionId` 多次 `createCodingAgent({ session: { kind: "resume", id,
   store } })` 即可恢复（见下一节）。

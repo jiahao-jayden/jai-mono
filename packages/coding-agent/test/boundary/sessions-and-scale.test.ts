@@ -2,6 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { InMemorySessionStore } from "@jai/agent";
+import {
+	applyEntry,
+	type CodingSessionStore,
+	emptySnapshot,
+	SessionConflictError,
+	type StoredSession,
+} from "../../src/sdk";
 import { lastAssistant, settleWithin, useBoundaryFixture } from "./harness";
 
 const fixture = useBoundaryFixture();
@@ -15,7 +22,50 @@ const session = (env: Env, id: string, store: object, kind: "new" | "resume" = "
 	} as never);
 const jaiTempDirectories = async () => (await readdir(tmpdir())).filter((name) => name.startsWith("jai-coding-agent-")).length;
 
+// A host store written against the public exports only, with JSON-serialised records as a real
+// database would hold them.
+function hostStore(): CodingSessionStore {
+	const rows = new Map<string, string>();
+	const read = (id: string) => {
+		const row = rows.get(id);
+		return row ? (JSON.parse(row) as StoredSession) : undefined;
+	};
+	return {
+		async load(id) {
+			return read(id);
+		},
+		async create(id, appState) {
+			if (rows.has(id)) throw new SessionConflictError({ message: "exists" });
+			rows.set(id, JSON.stringify({ snapshot: emptySnapshot(appState, new Date().toISOString()), revision: "0", readOnly: false }));
+			return "0";
+		},
+		async append(id, entry, expectedRevision) {
+			const current = read(id);
+			if (!current || current.revision !== expectedRevision) throw new SessionConflictError({ message: "stale revision" });
+			const revision = String(Number(current.revision) + 1);
+			rows.set(id, JSON.stringify({ ...current, snapshot: applyEntry(current.snapshot, entry), revision }));
+			return revision;
+		},
+		async delete(id) {
+			rows.delete(id);
+		},
+	};
+}
+
 describe("persistent session boundary", () => {
+	test("a host store built from the public exports persists and resumes a session", async () => {
+		const env = await fixture.prepare();
+		const store = hostStore();
+		fixture.script({ kind: "text", text: "first" });
+		const first = await session(env, "host-1", store);
+		if (first.isErr()) throw new Error(first.error.message);
+		await first.value.prompt("hello");
+		await first.value.close();
+		const resumed = await session(env, "host-1", store, "resume");
+		if (resumed.isErr()) throw new Error(resumed.error.message);
+		expect(resumed.value.state.messages).toHaveLength(2);
+	});
+
 	test("resume replays the stored transcript to the model", async () => {
 		const env = await fixture.prepare();
 		const store = new InMemorySessionStore();

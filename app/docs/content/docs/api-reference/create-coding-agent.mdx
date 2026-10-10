@@ -20,12 +20,13 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 | 字段 | 必选 | 类型 | 说明 |
 |---|---|---|---|
 | `model` | ✅ | `string` | **唯一必填**。格式 `"<provider>/<model>"`（按第一个 `/` 分隔）。provider 前缀仅限 `anthropic` \| `openai` \| `openai-compatible`；非法抛 `coding_sdk.invalid_model_ref` / `coding_sdk.unsupported_provider` |
-| `provider` | | `CodingProviderOptions` | `{ apiKey?; baseUrl?; headers?; authentication?: "bearer" \| "x-api-key" \| "none" }`。anthropic 强制 `x-api-key`；openai 系仅 `bearer`/`none`。`bearer` 时 apiKey 缺省读 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`；baseUrl 缺省读 `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL`，必须 HTTPS 或 loopback HTTP、无 userinfo |
+| `provider` | | `CodingProviderOptions` | `{ apiKey?; baseUrl?; headers?; idleTimeoutMs?; authentication?: "bearer" \| "x-api-key" \| "none" }`。anthropic 强制 `x-api-key`；openai 系仅 `bearer`/`none`。`bearer` 时 apiKey 缺省读 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`；baseUrl 缺省读 `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL`，必须 HTTPS 或 loopback HTTP、无 userinfo。`idleTimeoutMs`：provider 流静默（无响应头、无数据）超过该毫秒数则本次运行以 `stopReason: "error"` 结束（`state.error.code === "ai_provider.idle_timeout"`），默认 `300000`，`Infinity` 关闭 |
 | `cwd` | | `string` | 工作目录；缺省 `process.cwd()`。会拼入 system prompt 的环境指令 |
 | `instructions` | | `string` | 追加到默认 system prompt 之后的自定义指令（最终 = 默认指令 + 环境指令 + 本字段，`\n\n` 连接） |
 | `session` | | `CodingSessionSelection` | 缺省 `{ kind: "ephemeral" }`。`new`/`resume` 需同时提供 `store` 与 `fileCapabilities` |
 | `permissionMode` | | `"ask" \| "allow" \| "auto" \| "plan"` | 缺省 `"ask"` |
 | `protectConfigDirectories` | | `boolean` | 缺省 `false`。为 `true` 时，内置文件工具在任何权限模式下都不能读写 workspace、home、`cwd` 下的 `.jai/`（Shell 沙箱始终保护前两者）。缺省不限制，agent 能否改自己的配置由使用者通过权限规则决定 |
+| `hookTimeoutMs` | | `number` | 阻塞型 Extension hook（`beforeAgentStart`、`beforeModelCall`）的最长耗时，超时按 hook 失败处理；默认 `30000`，`Infinity` 关闭 |
 | `requestApproval` | | `CodingApprovalHandler` | 审批回调 `(request, signal?) => "deny" \| "allowOnce" \| "alwaysAllow"`；缺省无（审批不可用） |
 | `extensions` | | `readonly CodingAgentExtension[]` | 扩展数组；SDK 做 id 唯一校验 |
 | `maxTurns` | | `number` | 单次运行的最大迭代轮数，正整数，默认 `100`；传 `Infinity` 取消限制。非法值返回 `coding_sdk.invalid_options` |
