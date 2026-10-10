@@ -8,9 +8,8 @@ const exists = (path: string) => Bun.file(path).exists();
 
 describe("approval decision boundary", () => {
 	// requestApproval is typed `"deny" | "allowOnce" | "alwaysAllow"`, but JS callers and `as any`
-	// handlers can return anything. The permission middleware only checks `=== "deny"`, so every
-	// other value (false, null, undefined, "no", {}) executes the tool. Fail-open.
-	test.failing.each([
+	// handlers can return anything; every other value must deny.
+	test.each([
 		["false", false],
 		["null", null],
 		["undefined", undefined],

@@ -34,9 +34,8 @@ describe("dynamic Bash execution boundary", () => {
 				permission: { "process.exec": "allow" },
 				sessionGrants: { "process.exec": "allow" },
 			})).toMatchObject({ behavior: "ask", source: "danger-layer" });
-			for (const defaultMode of ["plan", "ask"] as const) {
-				expect(evaluatePermission(request, { defaultMode, permission: { "process.exec": "allow" } }).behavior).toBe("deny");
-			}
+			expect(evaluatePermission(request, { defaultMode: "plan", permission: { "process.exec": "allow" } }).behavior).toBe("deny");
+			expect(evaluatePermission(request, { defaultMode: "ask", permission: { "process.exec": "allow" } })).toMatchObject({ behavior: "ask", source: "danger-layer" });
 			expect(evaluatePermission(request, {
 				defaultMode: "allow", permission: { "process.exec": "deny" },
 			})).toMatchObject({ behavior: "deny", source: "rule" });

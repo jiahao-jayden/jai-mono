@@ -11,7 +11,12 @@ import type {
 } from "@jai/agent";
 import type { Result as ResultType } from "better-result";
 import type { JsonObject } from "../core/json";
-import type { PermissionApprovalDecision, PermissionRequestSummary, PermissionRisk } from "./approval";
+import {
+	normalizeApprovalDecision,
+	type PermissionApprovalDecision,
+	type PermissionRequestSummary,
+	type PermissionRisk,
+} from "./approval";
 import { type PermissionApprovalQueue, unqueuedApprovals } from "./approval-queue";
 import { bashPermissionScanArgument, scanBashCommand } from "./bash-parser";
 import { mergePermissionConfigs } from "./definition";
@@ -294,7 +299,7 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions)
 				});
 				let decision: PermissionApprovalDecision;
 				try {
-					decision = await requestApproval(request, queueSignal);
+					decision = normalizeApprovalDecision(await requestApproval(request, queueSignal));
 				} catch (error) {
 					observePermission(options.telemetryObserver, {
 						type: context.signal?.aborted ? "approval_cancelled" : "approval_failed",
@@ -494,7 +499,7 @@ async function evaluateExtensionPermission(
 			});
 			let decision: PermissionApprovalDecision;
 			try {
-				decision = await requestApproval(approvalRequest, signal);
+				decision = normalizeApprovalDecision(await requestApproval(approvalRequest, signal));
 			} catch (error) {
 				observePermission(telemetryObserver, {
 					type: signal?.aborted ? "approval_cancelled" : "approval_failed",
