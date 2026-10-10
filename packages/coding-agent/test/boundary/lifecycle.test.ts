@@ -80,9 +80,6 @@ describe("lifecycle boundary", () => {
 		expect(seen).toBe(1);
 	});
 
-	// A throwing public listener is isolated from the run (this part holds) but it also stops
-	// delivery to every listener registered after it, because the fan-out loop in
-	// src/sdk/create-coding-agent.ts is not wrapped per listener.
 	test("a throwing listener does not fail the run", async () => {
 		await fixture.prepare();
 		fixture.script({ kind: "text", text: "ok" });
@@ -93,13 +90,16 @@ describe("lifecycle boundary", () => {
 		expect(lastAssistant(await agent.prompt("x")).stopReason).toBe("stop");
 	});
 
-	test.failing("a throwing listener does not starve later listeners", async () => {
+	test("a throwing or rejecting listener does not starve later listeners", async () => {
 		await fixture.prepare();
 		fixture.script({ kind: "text", text: "ok" });
 		const agent = await fixture.open();
 		agent.subscribe(() => {
 			throw new Error("listener bug");
 		});
+		agent.subscribe((async () => {
+			throw new Error("async listener bug");
+		}) as never);
 		let delivered = 0;
 		agent.subscribe(() => {
 			delivered += 1;

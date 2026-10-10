@@ -322,7 +322,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 			}
 			const projected = this.#eventProjector.project(event);
 			if (this.#listeners.size === 0) return;
-			for (const listener of this.#listeners) listener(projected);
+			this.#dispatch(projected);
 		});
 		this.#stopBackgroundProjection = this.#internal.backgroundAgents.subscribe((entry) => {
 			if (this.#listeners.size === 0) return;
@@ -334,8 +334,21 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 				toolName: "SpawnAgent",
 				status: entry.status === "complete" ? "complete" : entry.stopped ? "stopped" : "error",
 			};
-			for (const listener of this.#listeners) listener(backgroundEvent);
+			this.#dispatch(backgroundEvent);
 		});
+	}
+
+	/** One failing listener (sync throw or async rejection) must not starve later listeners or fail the run. */
+	#dispatch(event: CodingAgentEvent): void {
+		const report = (error: unknown) => console.error("[coding-agent] event listener failed", error);
+		for (const listener of [...this.#listeners]) {
+			try {
+				const returned: unknown = listener(event);
+				if (returned instanceof Promise) returned.catch(report);
+			} catch (error) {
+				report(error);
+			}
+		}
 	}
 
 	get sessionId(): string {
