@@ -1,8 +1,3 @@
-export type { CodingCommandKind } from "./commands";
-export {
-	CodingCommandExecutionFailed,
-	CodingCommandRegistrationFailed,
-} from "./commands";
 export {
 	applyEntry,
 	emptySnapshot,
@@ -12,6 +7,11 @@ export {
 	type SessionSnapshot,
 	type StoredSession,
 } from "@jai/agent";
+export type { CodingCommandKind } from "./commands";
+export {
+	CodingCommandExecutionFailed,
+	CodingCommandRegistrationFailed,
+} from "./commands";
 export { CodingConfigStore } from "./config/store";
 export {
 	createPermissionApprovalQueue,
