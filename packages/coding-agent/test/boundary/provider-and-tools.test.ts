@@ -222,14 +222,15 @@ describe("tool execution boundary", () => {
 		expect(peak).toBe(100);
 	});
 
-	test("a 10 MB extension tool result is sent to the model uncapped", async () => {
+	test("a 10 MB extension tool result is cut deterministically before it reaches the model", async () => {
 		await fixture.prepare();
 		fixture.script({ kind: "tool", name: "Echo", args: {} }, { kind: "text", text: "done" });
 		const agent = await fixture.open({
 			extensions: [echo(() => ({ content: [{ type: "text", text: "z".repeat(10_000_000) }] }))],
 		});
 		await agent.prompt("x");
-		// Documented limit: output caps exist only on built-in tools; extension tools must cap themselves.
-		expect(JSON.stringify(fixture.mock.requests.at(-1)?.body).length).toBeGreaterThan(10_000_000);
+		const sent = JSON.stringify(fixture.mock.requests.at(-1)?.body);
+		expect(sent.length).toBeLessThan(250_000);
+		expect(sent).toContain("[output truncated: 9800000 characters omitted]");
 	});
 });
