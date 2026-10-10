@@ -80,7 +80,7 @@ import type {
 	JsonObject,
 	JsonValue,
 } from "./types";
-import { DEFAULT_HOOK_TIMEOUT_MS, resolveMaxIterations, validateCreateOptions } from "./validate-options";
+import { DEFAULT_HOOK_TIMEOUT_MS, validateCreateOptions } from "./validate-options";
 
 /** Adds the symlink-resolved spelling: the permission layer evaluates both the requested and the canonical path. */
 function withCanonicalPaths(paths: readonly string[]): string[] {
@@ -166,7 +166,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				return runtime;
 			},
 			resolveAgentOptions: () => ({
-				maxIterations: resolveMaxIterations(input.maxTurns),
+				maxIterations: input.maxTurns,
 				providerOptions: input.providerOptions,
 				reasoningLevel: input.reasoningLevel,
 				fastMode: input.fastMode,

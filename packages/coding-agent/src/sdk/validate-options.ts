@@ -4,9 +4,6 @@ import { Value } from "@sinclair/typebox/value";
 import { CodingSdkFailure, isRecord } from "./project";
 import type { CodingAgentCreateOptions } from "./types";
 
-/** Fuse for an unattended run; pass `maxTurns: Infinity` to opt out explicitly. */
-export const DEFAULT_MAX_TURNS = 100;
-
 /** Deadline for Extension hooks that block the run (`beforeAgentStart`, `beforeModelCall`). */
 export const DEFAULT_HOOK_TIMEOUT_MS = 30_000;
 
@@ -16,11 +13,6 @@ const permissionModeSchema = Type.Union([
 	Type.Literal("auto"),
 	Type.Literal("plan"),
 ]);
-
-export function resolveMaxIterations(maxTurns: number | undefined): number | undefined {
-	if (maxTurns === Number.POSITIVE_INFINITY) return undefined;
-	return maxTurns ?? DEFAULT_MAX_TURNS;
-}
 
 function invalidOptions(message: string): CodingSdkFailure {
 	return new CodingSdkFailure({ phase: "runtime_creation", code: "coding_sdk.invalid_options", message });
@@ -37,12 +29,8 @@ export async function validateCreateOptions(input: CodingAgentCreateOptions): Pr
 	if (hookTimeoutMs !== undefined && !(typeof hookTimeoutMs === "number" && hookTimeoutMs > 0)) {
 		throw invalidOptions("hookTimeoutMs must be a positive number or Infinity");
 	}
-	if (
-		maxTurns !== undefined &&
-		maxTurns !== Number.POSITIVE_INFINITY &&
-		!(Number.isInteger(maxTurns) && maxTurns > 0)
-	) {
-		throw invalidOptions("maxTurns must be a positive integer or Infinity");
+	if (maxTurns !== undefined && !(Number.isInteger(maxTurns) && maxTurns > 0)) {
+		throw invalidOptions("maxTurns must be a positive integer");
 	}
 	if (permissionMode !== undefined && !Value.Check(permissionModeSchema, permissionMode)) {
 		throw invalidOptions("permissionMode must be one of ask, allow, auto, plan");

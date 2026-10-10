@@ -149,7 +149,7 @@ export async function openConfiguredRuntimeHost(
 							compatibilityProfile: compatibilityProfile.value,
 							modelMetadata,
 							provider: current.value.provider || undefined,
-							maxTurns: current.value.maxTurns || Number.POSITIVE_INFINITY,
+							maxTurns: current.value.maxTurns || undefined,
 							instructions: current.value.instructions || undefined,
 							autoCompaction: current.value.autoCompaction,
 							reasoningLevel: resolveEffectiveReasoningLevel(

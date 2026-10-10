@@ -183,18 +183,11 @@ describe("tool execution boundary", () => {
 		expect(fixture.mock.requests).toHaveLength(3);
 	});
 
-	test("a runaway tool loop stops at the default of 100 turns when maxTurns is omitted", async () => {
+	// Deliberately unbounded by default (same as pi and Codex); hosts running unattended set maxTurns.
+	test("without maxTurns a tool loop is not cut off by the SDK", async () => {
 		await fixture.prepare();
 		fixture.script({ kind: "tool", name: "Echo", args: {} });
 		const agent = await fixture.open({ extensions: [echo(ok)] });
-		expect(lastAssistant(await agent.prompt("x")).stopReason).toBe("iterationLimit");
-		expect(fixture.mock.requests).toHaveLength(100);
-	});
-
-	test("maxTurns: Infinity removes the limit", async () => {
-		await fixture.prepare();
-		fixture.script({ kind: "tool", name: "Echo", args: {} });
-		const agent = await fixture.open({ maxTurns: Number.POSITIVE_INFINITY, extensions: [echo(ok)] });
 		let turns = 0;
 		agent.subscribe((event) => {
 			if (event.type === "turn_start" && ++turns >= 120) void agent.abort();

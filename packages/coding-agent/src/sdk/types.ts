@@ -231,8 +231,9 @@ export interface CodingAgentCreateOptions {
 	/** Omitted: auxiliary judgements use this Agent's own `model` and `provider`. */
 	readonly auxiliaryModel?: CodingAuxiliaryModel;
 	/**
-	 * Model turns allowed per run. A positive integer; default 100. Pass `Infinity` to remove the
-	 * limit. Any other value is rejected with `coding_sdk.invalid_options`.
+	 * Model turns allowed per run. A positive integer; omitted means no limit (a model stuck
+	 * calling tools runs until the host aborts, so set this for unattended runs). Any other value
+	 * is rejected with `coding_sdk.invalid_options`.
 	 */
 	readonly maxTurns?: number;
 	/**

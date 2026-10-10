@@ -29,7 +29,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 | `hookTimeoutMs` | | `number` | 阻塞型 Extension hook（`beforeAgentStart`、`beforeModelCall`）的最长耗时，超时按 hook 失败处理；默认 `30000`，`Infinity` 关闭 |
 | `requestApproval` | | `CodingApprovalHandler` | 审批回调 `(request, signal?) => "deny" \| "allowOnce" \| "alwaysAllow"`；缺省无（审批不可用） |
 | `extensions` | | `readonly CodingAgentExtension[]` | 扩展数组；SDK 做 id 唯一校验 |
-| `maxTurns` | | `number` | 单次运行的最大迭代轮数，正整数，默认 `100`；传 `Infinity` 取消限制。非法值返回 `coding_sdk.invalid_options` |
+| `maxTurns` | | `number` | 单次运行的最大迭代轮数，正整数，缺省不限制（无人值守运行建议显式设置）。非法值返回 `coding_sdk.invalid_options` |
 
 ## 模型能力相关（Host 解析后传入）
 
