@@ -2,6 +2,7 @@ export type { PermissionApprovalDecision } from "./approval";
 export { createPermissionApprovalQueue, type PermissionApprovalQueue } from "./approval-queue";
 export { scanBashCommand } from "./bash-parser";
 export {
+	denyFileSubtrees,
 	mergePermissionConfigs,
 	normalizePermissionSettings,
 	permissionConfigFields,

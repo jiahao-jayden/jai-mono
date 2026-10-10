@@ -25,6 +25,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 | `instructions` | | `string` | 追加到默认 system prompt 之后的自定义指令（最终 = 默认指令 + 环境指令 + 本字段，`\n\n` 连接） |
 | `session` | | `CodingSessionSelection` | 缺省 `{ kind: "ephemeral" }`。`new`/`resume` 需同时提供 `store` 与 `fileCapabilities` |
 | `permissionMode` | | `"ask" \| "allow" \| "auto" \| "plan"` | 缺省 `"ask"` |
+| `protectConfigDirectories` | | `boolean` | 缺省 `false`。为 `true` 时，内置文件工具在任何权限模式下都不能读写 workspace、home、`cwd` 下的 `.jai/`（Shell 沙箱始终保护前两者）。缺省不限制，agent 能否改自己的配置由使用者通过权限规则决定 |
 | `requestApproval` | | `CodingApprovalHandler` | 审批回调 `(request, signal?) => "deny" \| "allowOnce" \| "alwaysAllow"`；缺省无（审批不可用） |
 | `extensions` | | `readonly CodingAgentExtension[]` | 扩展数组；SDK 做 id 唯一校验 |
 | `maxTurns` | | `number` | 最大迭代轮数（内部 `maxIterations`） |

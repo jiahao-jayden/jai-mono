@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { InMemorySessionStore } from "@jai/agent";
 import { toolResults, useBoundaryFixture } from "./harness";
 
 const fixture = useBoundaryFixture();
@@ -136,17 +137,57 @@ describe("workspace path boundary, even in allow mode", () => {
 	});
 });
 
-describe("protected configuration paths", () => {
-	// `protectedPaths` (<workspace>/.jai and <home>/.jai) only feed the Bash sandbox policy. The
-	// built-in Write/Edit tools can still create project config in allow mode, which a later trusted
-	// session loads as policy (and a malformed `{}` makes every later createCodingAgent fail with
-	// coding_config.validation_failed).
-	test.failing("Write cannot create <workspace>/.jai/settings.json in allow mode", async () => {
+describe("protected configuration paths (protectConfigDirectories)", () => {
+	const writeSettings = async (workspace: string, target: string, extra: object) => {
+		fixture.script({ kind: "tool", name: "Write", args: { path: target, content: "{}" } }, { kind: "text", text: "done" });
+		const agent = await fixture.open({ cwd: workspace, permissionMode: "allow", ...extra });
+		return toolResults(await agent.prompt("x"));
+	};
+
+	test("is off by default: the host decides whether the agent may edit .jai", async () => {
 		const { workspace } = await fixture.prepare();
 		const settings = join(workspace, ".jai", "settings.json");
-		fixture.script({ kind: "tool", name: "Write", args: { path: settings, content: "{}" } }, { kind: "text", text: "done" });
-		const agent = await fixture.open({ cwd: workspace, permissionMode: "allow" });
-		await agent.prompt("x");
+		await writeSettings(workspace, settings, {});
+		expect(await exists(settings)).toBe(true);
+	});
+
+	test("denies Write/Read of cwd, workspace and home .jai even in allow mode", async () => {
+		const { workspace, home } = await fixture.prepare();
+		const targets = [join(workspace, ".jai", "settings.json"), join(home, ".jai", "settings.json")];
+		for (const target of targets) {
+			const [result] = await writeSettings(workspace, target, {
+				protectConfigDirectories: true,
+				fileCapabilities: { homeDirectory: home, workspaceDirectory: workspace, workspaceTrusted: true },
+				session: { kind: "new", store: new InMemorySessionStore() },
+			});
+			expect(result).toMatchObject({ isError: true });
+			expect(result?.text).toContain("Permission denied");
+			expect(await exists(target)).toBe(false);
+		}
+	});
+
+	test("also covers an ephemeral session, whose file capabilities point at a temp directory", async () => {
+		const { workspace } = await fixture.prepare();
+		const settings = join(workspace, ".jai", "settings.json");
+		const [result] = await writeSettings(workspace, settings, { protectConfigDirectories: true });
+		expect(result?.text).toContain("Permission denied");
 		expect(await exists(settings)).toBe(false);
+	});
+
+	test("keeps ordinary workspace writes working and survives a blanket allow rule", async () => {
+		const { workspace } = await fixture.prepare();
+		const ordinary = join(workspace, "notes.txt");
+		const [result] = await writeSettings(workspace, ordinary, { protectConfigDirectories: true });
+		expect(result?.isError).toBe(false);
+		expect(await exists(ordinary)).toBe(true);
+	});
+
+	test("denies a symlink that points into .jai", async () => {
+		const { workspace } = await fixture.prepare();
+		await mkdir(join(workspace, ".jai"), { recursive: true });
+		await symlink(join(workspace, ".jai"), join(workspace, "innocent"));
+		const [result] = await writeSettings(workspace, join(workspace, "innocent", "settings.json"), { protectConfigDirectories: true });
+		expect(result?.text).toContain("Permission denied");
+		expect(await exists(join(workspace, ".jai", "settings.json"))).toBe(false);
 	});
 });

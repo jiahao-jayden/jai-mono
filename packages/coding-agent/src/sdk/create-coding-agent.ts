@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -13,7 +14,7 @@ import type { Model, Provider } from "@jai/ai";
 import { Result, type Result as ResultType } from "better-result";
 import type { CodingMessageAttachment as InternalCodingAttachment } from "../attachments";
 import { CodingCommandRegistry } from "../commands";
-import { PermissionReviewFailed, permissionSettingsFromConfig } from "../permissions";
+import { denyFileSubtrees, PermissionReviewFailed, permissionSettingsFromConfig } from "../permissions";
 import {
 	type CapabilityInventorySlot,
 	createCodingAgent as createInternalCodingAgent,
@@ -80,6 +81,21 @@ import type {
 	JsonValue,
 } from "./types";
 
+/** Adds the symlink-resolved spelling: the permission layer evaluates both the requested and the canonical path. */
+function withCanonicalPaths(paths: readonly string[]): string[] {
+	return [...new Set(paths.flatMap((target) => [path.resolve(target), canonicalizeAncestor(path.resolve(target))]))];
+}
+
+/** realpath of the nearest existing ancestor plus the not-yet-created remainder. */
+function canonicalizeAncestor(target: string): string {
+	try {
+		return realpathSync.native(target);
+	} catch {
+		const parent = path.dirname(target);
+		return parent === target ? target : path.join(canonicalizeAncestor(parent), path.basename(target));
+	}
+}
+
 export async function createCodingAgent<TAppState extends JsonObject = JsonObject>(
 	input: CodingAgentCreateOptions,
 ): Promise<ResultType<CodingAgent<TAppState>, CodingSdkError>> {
@@ -112,16 +128,18 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 		const extensionToolPermissions = extensionPermissions(extensions);
 		const extensionAuthorizedToolNameSet = extensionAuthorizedToolNames(extensions);
 		const toolPresentations = new Map(builtInToolPresentations());
+		const protectedPaths = [
+			path.join(fileCapabilities.workspaceDirectory, ".jai"),
+			path.join(fileCapabilities.homeDirectory, ".jai"),
+			...(input.protectConfigDirectories ? [path.join(cwd, ".jai")] : []),
+		];
 		const internal = await createInternalCodingAgent<CodingSchema, PersistedCodingSessionState<TAppState>>({
 			executionContext: {
 				localFileAccess: true,
 				cwd,
 				configRoot: fileCapabilities.workspaceDirectory,
 				defaultAllowedDirectories: [cwd] as readonly [string, ...string[]],
-				protectedPaths: [
-					path.join(fileCapabilities.workspaceDirectory, ".jai"),
-					path.join(fileCapabilities.homeDirectory, ".jai"),
-				],
+				protectedPaths,
 			},
 			sessionId,
 			sessionStore: store,
@@ -155,11 +173,17 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				requestApproval: input.requestApproval
 					? (request, signal) => input.requestApproval!(projectPermissionRequest(sessionId, request), signal)
 					: undefined,
-				selectSettings: (snapshot) =>
-					permissionSettingsFromConfig(
+				selectSettings: (snapshot) => {
+					const settings = permissionSettingsFromConfig(
 						snapshot.settings as Readonly<Record<string, unknown>>,
 						input.permissionMode,
-					),
+					);
+					if (!input.protectConfigDirectories) return settings;
+					return {
+						...settings,
+						permission: denyFileSubtrees(settings.permission, withCanonicalPaths(protectedPaths)),
+					};
+				},
 				telemetryObserver: input.permissionTelemetryObserver,
 				sessionAllowRules: input.sessionAllowRules,
 				sessionGrantWorkspaceRoot: input.sessionGrantWorkspaceRoot,

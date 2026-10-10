@@ -219,6 +219,13 @@ export interface CodingAgentCreateOptions {
 	readonly fileCapabilities?: CodingAgentFileCapabilities;
 	readonly session?: CodingSessionSelection;
 	readonly permissionMode?: CodingPermissionMode;
+	/**
+	 * Default false. When true, the built-in file tools may not read or write `.jai/` under the
+	 * workspace, the home directory or `cwd`, in any permission mode; the Shell sandbox already
+	 * always protects the first two. Left off, whether the agent may edit its own configuration is
+	 * the host's decision (use permission rules or `permissionMode` to restrict it).
+	 */
+	readonly protectConfigDirectories?: boolean;
 	/** Omitted: auxiliary judgements use this Agent's own `model` and `provider`. */
 	readonly auxiliaryModel?: CodingAuxiliaryModel;
 	readonly maxTurns?: number;
