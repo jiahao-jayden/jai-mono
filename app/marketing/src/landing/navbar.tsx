@@ -8,6 +8,7 @@ export function Navbar({ locale, copy, downloadHref }: { locale: Locale; copy: L
 		{ href: "#features", label: copy.nav.features },
 		{ href: "#models", label: copy.nav.models },
 		{ href: "#privacy", label: copy.nav.privacy },
+		{ href: "/docs/", label: copy.nav.docs },
 	];
 
 	return (

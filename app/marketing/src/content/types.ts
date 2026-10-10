@@ -19,6 +19,7 @@ export interface LandingCopy {
 		features: string;
 		models: string;
 		privacy: string;
+		docs: string;
 		download: string;
 		switchLocale: string;
 		home: string;

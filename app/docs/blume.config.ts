@@ -6,9 +6,12 @@ export default defineConfig({
 	content: {
 		sources: [{ type: "filesystem", root: "content" }],
 	},
+	logo: { href: "/docs" },
 	navigation: {
 		sidebar: {
 			display: "group",
 		},
 	},
+	// Standalone `blume dev` has no landing page. The marketing mount does not publish this redirect.
+	redirects: [{ from: "/", to: "/docs" }],
 });

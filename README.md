@@ -101,7 +101,7 @@ bun run cli:pack
 | --- | --- |
 | `app/desktop` | Electron desktop application and React UI |
 | `app/cli` | Headless `jai` CLI for interactive and automation hosts |
-| `app/docs` | Blume-powered public SDK, CLI and WorkBuddy documentation site |
+| `app/docs` | Blume docs site, published at `/docs` on the marketing site |
 | `packages/ai` | Provider-neutral model types, streaming protocol and provider adapters |
 | `packages/agent` | Core agent loop, harness, tools, hooks, sessions and compaction |
 | `packages/coding-agent` | Public Coding Agent SDK used by Desktop, CLI and external hosts |

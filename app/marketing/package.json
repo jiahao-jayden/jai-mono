@@ -4,10 +4,10 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "next dev --port 4322",
-		"build": "next build",
-		"preview": "next build && wrangler dev",
-		"deploy": "next build && wrangler deploy",
+		"dev": "bun ./scripts/mount-docs.ts && next dev --port 4322",
+		"build": "bun ./scripts/mount-docs.ts && next build",
+		"preview": "bun run build && wrangler dev",
+		"deploy": "bun run build && wrangler deploy",
 		"typecheck": "tsc --noEmit",
 		"test": "bun test"
 	},

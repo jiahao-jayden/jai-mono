@@ -10,6 +10,7 @@ export const zh = {
 		features: "功能",
 		models: "模型",
 		privacy: "隐私",
+		docs: "文档",
 		download: "下载",
 		switchLocale: "EN",
 		home: "PandaWork 首页",

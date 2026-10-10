@@ -1,6 +1,6 @@
 # @jai/marketing
 
-The public PandaWork landing page: a single bilingual page (`/` English, `/zh/` Chinese) built with the Next.js App Router as a fully static export and served by a Cloudflare Worker with static assets only.
+The public PandaWork landing page: a bilingual page (`/` English, `/zh/` Chinese) plus the docs site at `/docs`. The landing page is a Next.js static export. `/docs` is the Blume site in `app/docs`, copied into `public/` before Next builds. Cloudflare Workers static assets serve `out/`.
 
 ## Commands
 
@@ -8,8 +8,8 @@ Run inside `app/marketing`:
 
 | Command | What it does |
 | --- | --- |
-| `bun run dev` | Dev server on http://localhost:4322 |
-| `bun run build` | Static export into `out/` |
+| `bun run dev` | Build the docs site into `public/`, then the dev server on http://localhost:4322 |
+| `bun run build` | Build the docs site, then static-export the landing page and `/docs` into `out/` |
 | `bun run preview` | Build, then serve `out/` through `wrangler dev` |
 | `bun run deploy` | Build, then `wrangler deploy` (run `bunx wrangler login` once first) |
 | `bun run typecheck` / `bun test` | Types and copy-parity tests |

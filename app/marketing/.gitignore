@@ -1,5 +1,17 @@
 .next/
 out/
+# Built from app/docs by scripts/mount-docs.ts
+/public/_astro
+/public/_headers
+/public/docs
+/public/docs.md
+/public/docs.mdx
+/public/agent-readability.json
+/public/blume-search.json
+/public/index.md
+/public/index.mdx
+/public/llms-full.txt
+/public/llms.txt
 .wrangler/
 next-env.d.ts
 *.tsbuildinfo

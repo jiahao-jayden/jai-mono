@@ -30,7 +30,7 @@
 - `app/desktop`：Electron 桌面端，通过 `@jai/server` 的 client 入口连接 Runtime Host。
 - `app/cli`：命令行宿主，同样是 Runtime Host 的 ACP client。
 - `app/connector`、`app/oauth-gateway`：Connector adapter 与无状态 OAuth Gateway。
-- `app/frontier-smoke`、`app/docs`：冒烟评测与文档站。
+- `app/frontier-smoke`、`app/docs`：冒烟评测与文档站。文档站由 `app/marketing` 在构建时挂到 `/docs`。
 
 # 架构与目录规则
 

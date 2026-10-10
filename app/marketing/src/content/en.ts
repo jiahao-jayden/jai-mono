@@ -10,6 +10,7 @@ export const en = {
 		features: "Features",
 		models: "Models",
 		privacy: "Privacy",
+		docs: "Docs",
 		download: "Download",
 		switchLocale: "中文",
 		home: "PandaWork home",
