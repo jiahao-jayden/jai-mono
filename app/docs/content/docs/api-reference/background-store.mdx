@@ -1,0 +1,101 @@
+---
+title: BackgroundAgentStore 与后台作业
+description: 异步长任务注册表 BackgroundAgentStore、createBackgroundAgentStore 与后台生命周期。
+---
+
+当通过 `Bash` 工具发起长生命周期的异步命令（`runInBackground: true`）时，命令会在后台以子进程形式持续运行。为了在整场会话中对其进行监管、状态查询和主动取消，宿主可以通过 `BackgroundAgentStore` 管理这些作业。
+
+```ts
+import {
+  BackgroundAgentStore,
+  createBackgroundAgentStore,
+  type BackgroundAgentEntry,
+  type BackgroundAgentStatus,
+} from "@jai/coding-agent";
+```
+
+---
+
+## `createBackgroundAgentStore`
+
+创建后台任务注册表实例：
+
+```ts
+export function createBackgroundAgentStore(): BackgroundAgentStore
+```
+
+- **会话级宿主所有（Host-Owned）**：由宿主创建并持有，在同一个 Live Session 的多次调用间共享。
+- **纯内存结构**：内部保存运行中的子进程 Handle、未完成的 Promise 与取消回调，因此该 Store **严格在内存中维护，不随会话落盘持久化**。
+
+---
+
+## `BackgroundAgentStore` 类接口
+
+```ts
+export class BackgroundAgentStore {
+  /** 注册一条新的后台作业 */
+  register(input: BackgroundAgentRegistration): BackgroundAgentEntry;
+
+  /** 根据工具调用 ID 获取对应的后台任务 */
+  get(toolCallId: string): BackgroundAgentEntry | undefined;
+
+  /** 获取当前所有正在运行或已结算的后台作业列表 */
+  list(): readonly BackgroundAgentEntry[];
+
+  /** 主动中止指定的后台作业 */
+  abort(toolCallId: string): boolean;
+
+  /** 监听任何后台任务的状态结算变更 */
+  subscribe(listener: BackgroundAgentListener): () => void;
+}
+```
+
+---
+
+## `BackgroundAgentEntry` 数据结构
+
+```ts
+export interface BackgroundAgentEntry {
+  readonly toolCallId: string;           // 触发该任务的工具调用 ID
+  readonly agentId: string;              // SDK 分配的后台任务唯一 ID（如 "bg-1"）
+  readonly title: string;                // 命令的简要说明或标题
+  status: "running" | "complete" | "error"; // 当前状态
+  stopped: boolean;                      // 是否由显式调用 stopBackgroundAgent 中止
+  activity?: string;                     // 最新动态说明
+  text?: string;                         // 进程最终输出的文本结果
+  error?: string;                        // 异常或非零退出码信息
+  readonly settled: Promise<void>;       // 等待该作业完全终结的 Promise
+}
+```
+
+---
+
+## 接入与使用示例
+
+```ts
+import { createCodingAgent, createBackgroundAgentStore } from "@jai/coding-agent";
+
+// 1. 初始化后台注册表
+const backgroundStore = createBackgroundAgentStore();
+
+// 2. 注入 Agent 选项
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  cwd: process.cwd(),
+  backgroundAgents: backgroundStore,
+})).value;
+
+// 3. 监听全局后台任务结束
+backgroundStore.subscribe((entry) => {
+  console.log(`[后台作业结束] ID: ${entry.agentId}, 状态: ${entry.status}`);
+});
+
+// 4. 用户提交长任务（内部调用 Bash 并指定 runInBackground: true）
+await agent.prompt("启动本地测试服务并在后台监听文件改动");
+
+// 5. 随时主动终止指定的后台作业
+const runningJobs = backgroundStore.list().filter((j) => j.status === "running");
+if (runningJobs[0]) {
+  await agent.stopBackgroundAgent(runningJobs[0].toolCallId);
+}
+```

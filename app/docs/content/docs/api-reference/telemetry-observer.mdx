@@ -1,0 +1,89 @@
+---
+title: CodingAgentTelemetryObserver 遥测观察器
+description: 链路追踪观察器 CodingAgentTelemetryObserver、分层 Span 树采集与数据脱敏。
+---
+
+在生产级应用中，我们需要监控 Agent 在执行过程中的耗时分布、流式 Token 到达延迟、工具执行性能与人工审批等待时间。
+
+`CodingAgentTelemetryObserver` 是 SDK 提供的开箱即用遥测观察器，能够无缝挂载到 Agent 的各个观测旁路上。
+
+```ts
+import {
+  CodingAgentTelemetryObserver,
+  type CodingAgentTelemetryObserverOptions,
+  type CodingAgentTelemetryEffectEvent,
+} from "@jai/coding-agent";
+```
+
+---
+
+## 构造函数与选项
+
+```ts
+export class CodingAgentTelemetryObserver {
+  constructor(options: CodingAgentTelemetryObserverOptions);
+}
+
+export interface CodingAgentTelemetryObserverOptions {
+  /** 宿主提供的遥测上下文接口实现（对接 OpenTelemetry、Langfuse 等） */
+  readonly telemetry: TelemetryContext;
+
+  /** 当前操作的唯一标识符（Operation ID） */
+  readonly operationId: string;
+
+  /** 当前会话标识符（Session ID） */
+  readonly sessionId: string;
+
+  /** 可选：单调时钟函数，默认使用 Date.now */
+  readonly now?: () => number;
+}
+```
+
+---
+
+## 挂载方式
+
+观察器同时实现了 `ModelRequestObserver` 与 `PermissionTelemetryObserver` 接口，可以直接挂载到 `createCodingAgent` 的两处旁路参数上：
+
+```ts
+import { CodingAgentTelemetryObserver, createCodingAgent } from "@jai/coding-agent";
+
+// 1. 实例化观察器
+const observer = new CodingAgentTelemetryObserver({
+  telemetry: myHostTelemetryContext,
+  operationId: "op-run-7718",
+  sessionId: "session-abc-123",
+});
+
+// 2. 挂载到 Agent 旁路
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  cwd: process.cwd(),
+  permissionTelemetryObserver: observer,   // 记录权限分析与审批等待耗时
+  modelRequestTelemetryObserver: observer, // 记录模型请求上下文与实际发出参数
+})).value;
+
+// 3. 消费标准事件
+agent.subscribe((event) => {
+  observer.observeAgentEvent(event);
+});
+```
+
+---
+
+## 分层 Span 追踪树
+
+观察器在内部将执行过程结构化为层次清晰的调用 Span 树：
+
+```text
+jai.run                           # 单次任务整体生命周期
+└── jai.turn                      # 单一交互轮次（模型推理 + 工具执行）
+    ├── jai.model_attempt         # 大模型 API 连接建立
+    │   └── jai.model_stream      # 流式数据消费（记录首字延迟 TTFT 与总时长）
+    ├── jai.tool_call             # 具体工具执行生命周期
+    └── jai.permission            # 权限静态评估
+        └── jai.approval          # 等待用户人工审批响应的耗时
+```
+
+- **严格隐私安全**：Span 的属性中仅记录确定性的元数据（如 `sessionId`、`toolName`、`toolCallId`、`contentIndex`）。真实的文件内容、代码片段或模型输出不会直接被泄露至通用日志 Sink 中。
+- **异常静默隔离**：观察器内部包含完善的防护包裹，遥测上报失败或网络波动绝不会引起 Agent 核心执行循环抛错。

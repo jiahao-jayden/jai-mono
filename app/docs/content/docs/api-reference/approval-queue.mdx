@@ -1,0 +1,92 @@
+---
+title: PermissionApprovalQueue 与授权规则
+description: 人工审批排队机制 createPermissionApprovalQueue、先进先出队列与跨轮次授权表 SessionAllowRules。
+---
+
+在图形用户界面（GUI）或复杂交互应用中，Agent 可能会在同一轮次中并发发起多个需要审批的工具调用。如果直接并发唤起弹窗，会导致界面上多个确认窗口叠放闪烁，体验极差。
+
+SDK 提供了 `createPermissionApprovalQueue` 保证审批弹窗严格**先进先出（FIFO）单发串行**，并配合 `SessionAllowRules` 实现会话级“总是允许”的规则沉淀。
+
+```ts
+import {
+  createPermissionApprovalQueue,
+  type PermissionApprovalQueue,
+  type SessionAllowRules,
+} from "@jai/coding-agent";
+```
+
+---
+
+## `createPermissionApprovalQueue`
+
+创建一个内存中的排队队列实例：
+
+```ts
+export function createPermissionApprovalQueue(): PermissionApprovalQueue
+```
+
+### 队列工作机制
+- **先进先出（FIFO）**：当多个工具并发触发权限审批时，队列确保前一个审批没有得到用户明确决定（`deny` / `allowOnce` / `alwaysAllow`）之前，后续的审批请求在后台等待，绝不会并发向宿主触发 `requestApproval`。
+- **跨 Agent 共享**：队列是一个纯内存引用对象。同一个长期会话（Session）中的多次 `createCodingAgent` 调用（多次 Operation）可以共享同一个队列实例。
+
+---
+
+## `SessionAllowRules`（会话授权记忆表）
+
+```ts
+export type SessionAllowRules = Record<
+  string,
+  PermissionEffect | Record<string, PermissionEffect>
+>;
+```
+
+这是一个宿主所有的普通对象。当它被传入 `createCodingAgent` 后：
+
+```ts
+// 宿主创建并持有
+const sessionAllowRules: SessionAllowRules = {};
+
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  cwd: process.cwd(),
+  sessionAllowRules,                      // 注入授权表
+  sessionGrantWorkspaceRoot: process.cwd(),// 绑定当前工作区
+  requestApproval: myCustomModalHandler,
+})).value;
+```
+
+### 自动沉淀逻辑
+1. 用户在审批 UI 中点击了“总是允许”（`alwaysAllow`），且当前操作的作用域（`rememberScope`）属于 `session`；
+2. SDK 自动将对应的放行规则（如 `file.read: allow` 或特定 glob pattern）写入宿主传入的 `sessionAllowRules` 对象中；
+3. 在当前会话的后续任何轮次中，只要是在绑定的 `sessionGrantWorkspaceRoot` 下发起的同类工具操作，权限引擎在求值时直接命中规则放行，不再弹出任何弹窗打扰用户。
+
+---
+
+## 典型组装模式
+
+```ts
+import {
+  createCodingAgent,
+  createPermissionApprovalQueue,
+  type SessionAllowRules,
+} from "@jai/coding-agent";
+
+// 1. 初始化会话级共享状态
+const approvalQueue = createPermissionApprovalQueue();
+const sessionAllowRules: SessionAllowRules = {};
+
+// 2. 注入 Agent 实例
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  cwd: "/path/to/project",
+  permissionMode: "ask",
+  approvalQueue,
+  sessionAllowRules,
+  sessionGrantWorkspaceRoot: "/path/to/project",
+  requestApproval: async (request, signal) => {
+    // 渲染 UI 弹窗
+    const decision = await showModal(request);
+    return decision; // "deny" | "allowOnce" | "alwaysAllow"
+  },
+})).value;
+```

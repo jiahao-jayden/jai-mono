@@ -7,6 +7,11 @@ export default defineMeta({
 	pages: [
 		"create-coding-agent",
 		"coding-agent",
+		"session-store",
+		"define-extension",
+		"approval-queue",
+		"background-store",
+		"telemetry-observer",
 		"errors",
 		"exports",
 	],

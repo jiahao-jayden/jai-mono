@@ -1,0 +1,155 @@
+---
+title: defineExtension 与扩展规范
+description: 声明式扩展工厂 defineExtension、CodingAgentExtension 接口规范与 9 阶生命周期 Hooks。
+---
+
+`defineExtension` 是 SDK 提供的强类型扩展定义函数。扩展是纯数据对象，通过声明工具、生命周期 Hooks、动态目录和会话状态为 Agent 注入领域能力。
+
+```ts
+import { defineExtension, type CodingAgentExtension } from "@jai/coding-agent";
+```
+
+---
+
+## 函数签名
+
+```ts
+export function defineExtension<
+  TConfig extends JsonObject = JsonObject,
+  TState extends JsonObject = JsonObject,
+  TInstance = undefined,
+>(
+  definition: CodingAgentExtension<TConfig, TState, TInstance>,
+): CodingAgentExtension<TConfig, TState, TInstance>
+```
+
+`defineExtension` 运行时是一个恒等函数（Identity Function），核心作用是在 TypeScript 编译期保留用户传入的对象字面量与泛型推导，使工具参数 Schema、钩子上下文与运行实例保持严格类型对齐。
+
+---
+
+## `CodingAgentExtension` 接口结构
+
+```ts
+export interface CodingAgentExtension<
+  TConfig extends JsonObject = JsonObject,
+  TState extends JsonObject = JsonObject,
+  TInstance = undefined,
+> {
+  /** 扩展的全局唯一字符串标识符（SDK 在初始化时会做冲突排重） */
+  readonly id: string;
+
+  /** 静态工具定义列表，随着扩展激活直接注入 Agent 可用工具集 */
+  readonly tools?: readonly CodingExtensionTool<TConfig, TState, TInstance>[];
+
+  /** 生命周期事件拦截钩子集合 */
+  readonly hooks?: CodingExtensionHooks<TConfig, TState, TInstance>;
+
+  /** 动态工具发现目录（支持二阶段延迟加载 Deferred Catalog） */
+  readonly catalogs?: readonly CodingExtensionToolCatalog<TConfig, TState, TInstance>[];
+
+  /** 扩展专属的会话状态 Schema 与持久化配置 */
+  readonly sessionState?: CodingExtensionSessionState<TState>;
+
+  /** 扩展激活与注销生命周期逻辑 */
+  readonly lifecycle?: CodingExtensionLifecycle<TConfig, TState, TInstance>;
+}
+```
+
+---
+
+## 工具定义规范（CodingExtensionTool）
+
+```ts
+export interface CodingExtensionTool<TConfig, TState, TInstance> {
+  readonly name: string;
+  readonly description: string;
+  readonly parameters: TSchema; // TypeBox 或兼容的 JSON Schema
+  readonly executionMode?: "parallel" | "serial"; // 是否允许并发执行（默认 serial）
+  readonly authorization?: {
+    readonly owner: "core" | "extension";
+    readonly permission?: {
+      readonly sideEffect: "read" | "write" | "destructive";
+      readonly reason: string;
+    };
+  };
+  readonly execute: (
+    runtime: CodingExtensionRuntime<TConfig, TState, TInstance>,
+    call: CodingExtensionToolExecutionCall,
+  ) => Promise<CodingExtensionToolResult>;
+}
+```
+
+- **`executionMode`**：只读工具可标记为 `"parallel"`，在模型一次发起多个只读调用时并发执行以缩减延迟。
+- **`authorization.sideEffect`**：标记操作副作用类型，供权限评估引擎进行风险分级（低、中、高）与人工审批拦截。
+
+---
+
+## 9 阶生命周期 Hooks
+
+```ts
+export interface CodingExtensionHooks<TConfig, TState, TInstance> {
+  /** 任务准入阶段：在 prompt 开始前执行，抛出异常可主动阻断整轮任务 */
+  beforeAgentStart?: (runtime: Runtime, input: CodingBeforeAgentStartInput) => Promise<void>;
+
+  /** 会话启动或跨进程恢复时触发 */
+  sessionStart?: (runtime: Runtime) => Promise<void>;
+
+  /** 原子推理轮次开始 */
+  turnStart?: (runtime: Runtime) => Promise<void>;
+
+  /** 向大模型发出请求前：可追加临时上下文 */
+  beforeModelCall?: (runtime: Runtime, input: CodingBeforeModelCallInput) => Promise<void>;
+
+  /** 收到模型响应后、派发工具调用前：可审查模型原始输出 */
+  afterModelCall?: (runtime: Runtime, input: { assistantMessage: CodingAssistantMessage }) => Promise<void>;
+
+  /** 工具执行前：可打印调用参数日志 */
+  beforeToolCall?: (runtime: Runtime, input: CodingBeforeToolCallInput) => Promise<void>;
+
+  /** 工具执行后：可捕获工具产生的文本或文件变动 */
+  afterToolCall?: (runtime: Runtime, input: CodingAfterToolCallInput) => Promise<void>;
+
+  /** 原子推理轮次结束 */
+  turnEnd?: (runtime: Runtime, input: CodingTurnEndInput) => Promise<void>;
+
+  /** 整场任务运行落定（成功完成或因错误退出） */
+  agentSettled?: (runtime: Runtime, input: CodingAgentSettledInput) => Promise<void>;
+}
+```
+
+---
+
+## 完整代码示例
+
+```ts
+import { defineExtension, createCodingAgent } from "@jai/coding-agent";
+import { Type } from "@sinclair/typebox";
+
+const notificationExtension = defineExtension({
+  id: "team.notifier",
+  tools: [
+    {
+      name: "send_alert",
+      description: "向开发群发送任务进度告警通知",
+      parameters: Type.Object({
+        level: Type.Union([Type.Literal("info"), Type.Literal("warning")]),
+        message: Type.String(),
+      }),
+      execute: async (runtime, call) => {
+        // 调用外部通知接口
+        return { content: [{ type: "text", text: "通知已成功送达" }] };
+      },
+    },
+  ],
+  hooks: {
+    agentSettled: async (runtime, input) => {
+      console.log(`[告警扩展] 会话任务落定，累计耗时状态: ${input.status}`);
+    },
+  },
+});
+
+const agent = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  extensions: [notificationExtension],
+});
+```
