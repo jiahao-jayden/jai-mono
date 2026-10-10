@@ -1,54 +1,70 @@
 ---
 title: 上下文压缩
-description: autoCompaction、手动 compact()、compaction 事件与观测。
+description: 了解自动与手动会话压缩机制，在超长任务中保持上下文连贯与成本可控。
 ---
 
-长会话的上下文会膨胀。SDK 提供自动 + 手动两层压缩机制。
+在涉及多轮对话与大量代码读写的长任务中，消息历史会快速膨胀并触及模型的上下文窗口上限（Context Window）。SDK 内置了智能切点推导与摘要替换机制，确保会话持续推进。
 
-## 自动压缩
+## 自动压缩（Auto Compaction）
 
-`createCodingAgent` 的 `autoCompaction` 选项缺省为 `true`。
-设为 `false` 时**只关闭**阈值触发与 overflow 触发的自动压缩；
-手动 `compact()` 仍然可用。
-
-触发来源（`compaction_start` 事件的 `trigger`）：
-
-| trigger | 含义 |
-|---|---|
-| `threshold` | 上下文用量达到 `compactAtTokens` 阈值 |
-| `overflow` | 模型返回 `contextOverflow` 停止原因后的重试压缩 |
-| `manual` | Host 调用 `agent.compact()` |
-
-压缩策略（`CompactionSettings`）：`reserveTokens`（为新一轮预留）、
-`tailTurns`（保留最近 N 轮原文）、`preserveRecentTokens`。压缩后旧消息被
-替换为摘要；摘要指令可通过 `compactionSummaryInstructions` 自定义。
-
-## 手动压缩
+创建 Agent 实例时，`autoCompaction` 选项默认开启：
 
 ```ts
-const result = await agent.compact();           // 立即压缩当前分支（要求 idle）
-const result2 = await agent.compact(abortSignal); // 可传入 AbortSignal
+const agent = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  autoCompaction: true, // 默认开启
+  // 可选：指定模型生成摘要时的引导提示
+  compactionSummaryInstructions: "重点保留修改过的文件清单、未完成的 TODO 以及关键测试错误日志",
+});
 ```
 
-- 只能在 agent 空闲时调用；摘要生成失败时返回 Err（phase `compaction`），
-  而不是静默跳过。
-- 压缩是分支感知的：`navigate(entryId)` 切换分支后，压缩作用于当前分支。
+### 触发条件
 
-## 事件与观测
+自动压缩通常在两种情况下发生（体现在 `compaction_start` 的 `trigger` 字段中）：
 
-- `compaction_start { trigger, tokensBefore }` / `compaction_end { outcome }`。
-- `context_measured { measurement }`：每次模型请求**前**（以及手动压缩后）
-  发出，纯观测。`measurement.compactAtTokens` 在自动压缩关闭时缺席。
-  数值是字符数/4 的启发式估算，看比例用；provider 的 usage 才是权威总量。
+1. **`threshold`（阈值触发）**：当前会话上下文估算 Token 数达到预警安全线（通常为窗口上限的 85%~90%），在发起新请求前自动执行修剪。
+2. **`overflow`（溢出兜底）**：模型服务端明确返回窗口溢出（`contextOverflow`）错误时，SDK 自动回退、执行紧急压缩并透明重试。
 
-典型用法：在 UI 里监听 `compaction_start` 显示"正在压缩上下文…"，
-用 `context_measured` 画上下文用量条：
+### 压缩算法要点
+
+- **保留最新轮次**：压缩时会自动保留末尾若干轮最近对话的完整细节，防止用户刚发送的指导信息被截断。
+- **成对保留保护**：算法会自动探测工具调用（ToolCall）与工具执行结果（ToolResult）的配对边界，绝不会切断单次调用的中间状态，避免下游模型因协议碎片报错。
+- **历史摘要替换**：被裁剪掉的较早历史记录会被单向投影为一条紧凑的系统/用户摘要消息，承载核心上下文继续流转。
+
+## 手动压缩（Manual Compaction）
+
+宿主可在业务逻辑决定的适当时机（例如一个大功能模块重构完成并测试通过后）主动触发压缩：
+
+```ts
+// 当 agent 处于 idle 状态时调用
+const result = await agent.compact();
+
+if (result.isOk()) {
+  console.log("手动压缩完成，会话已精简");
+} else {
+  console.error("压缩失败:", result.error.message);
+}
+```
+
+也可以为耗时的摘要生成过程传入 `AbortSignal` 进行超时或取消控制：
+
+```ts
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 15_000);
+
+await agent.compact(controller.signal);
+```
+
+## 事件观测
+
+压缩过程是完全可观测的。通过订阅事件可以获知压缩的始末：
 
 ```ts
 agent.subscribe((event) => {
-  if (event.type === "context_measured") {
-    const m = event.measurement;
-    updateContextBar(m); // systemPrompt + toolDefinitions + userMessages + ...
+  if (event.type === "compaction_start") {
+    console.log(`[压缩中] 触发来源: ${event.trigger}, 压缩前 Token: ${event.tokensBefore}`);
+  } else if (event.type === "compaction_end") {
+    console.log("[压缩完成] 会话历史已更新");
   }
 });
 ```

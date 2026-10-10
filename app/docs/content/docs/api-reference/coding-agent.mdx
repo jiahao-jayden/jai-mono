@@ -1,15 +1,15 @@
 ---
 title: CodingAgent
-description: Agent 实例的 12 个公开方法：prompt、steer、compact、subscribe 等。
+description: Agent 实例方法参考，包含任务触发、运行中干预、会话压缩与生命周期方法。
 ---
 
-所有方法都返回 `Promise<Result<…, CodingSdkError>>`（`better-result`）。
-没有 `stream()` / `send()` 方法——`prompt` 即发送并运行到结束。
+`CodingAgent` 接口是 Agent 运行时的主要交互把手。所有涉及异步控制的方法均统一返回 `Promise<Result<T, CodingSdkError>>`。
 
 ```ts
 export interface CodingAgent<TAppState extends JsonObject = JsonObject> {
   readonly sessionId: string;
-  readonly state: CodingAgentState<TAppState>;   // getter：实时投影
+  readonly state: CodingAgentState<TAppState>;
+
   prompt(prompt: string, options?: CodingPromptOptions): Promise<Result<CodingRunResult<TAppState>, CodingSdkError>>;
   advance(inputs?: readonly CodingQueuedInput[]): Promise<Result<CodingRunResult<TAppState>, CodingSdkError>>;
   steer(input: string | CodingQueuedInput): Promise<Result<void, CodingSdkError>>;
@@ -25,53 +25,59 @@ export interface CodingAgent<TAppState extends JsonObject = JsonObject> {
 }
 ```
 
-## 方法说明
+---
 
-| 方法 | 语义 |
-|---|---|
-| `prompt(text, options?)` | 发送一轮新提示并运行到结束。空字符串（trim 后）直接 `coding_sdk.empty_prompt`（phase `admission`）。运行前过扩展 `beforeAgentStart` hook，被 block 则抛 `CodingExtensionPolicyBlocked`。多次调用串行排队 |
-| `advance(inputs?)` | 推进**已准入**的 durable 输入，不再追加第二条 user 消息。`CodingQueuedInput = { text; entryId? }`——Host 预留的会话条目身份，用于安全检查点投递输入 |
-| `steer(input)` | 运行中"转向"：向内部 agent 注入一条 user 消息，打断/引导当前运行。空输入同样 `coding_sdk.empty_prompt` |
-| `followUp(input)` | 跟进输入：排队一条 user 消息，等当前运行结束后再处理 |
-| `waitForIdle()` | 等待排队运行全部结束、agent 回到 idle |
-| `navigate(entryId)` | 按 journal entryId 导航（分支/回退）；失败 phase 为 `navigation` |
-| `compact(signal?)` | 立即对 idle 的当前分支做摘要压缩；摘要生成失败返回 Err（phase `compaction`） |
-| `generateTitle(firstMessage)` | 无状态标题生成：取当前消息中 assistant 文本（前 2000 字符）+ 首条用户消息，调已解析的 provider/model 生成 ≤8 词标题；可在 idle 时调用 |
-| `abort()` | 中止当前运行 |
-| `stopBackgroundAgent(toolCallId)` | 按 tool call id 中止一个后台 agent；未知或已结束的 id 返回失败 |
-| `subscribe(listener)` | 订阅 `CodingAgentEvent`；返回取消订阅函数。listener 为空时不做事件投影 |
-| `close()` | abort → 等排队/落定/artifact 写完 → 停订阅 → 逆序 dispose 扩展 → 删除 ephemeral 临时目录。重复 close 返回 ok |
+## 属性列表
 
-`CodingPromptOptions = { attachments?: readonly CodingAttachment[] }`，
-附件见 [状态与事件](/docs/concepts/state-and-events)。
+### `sessionId`
+`string`。当前会话的唯一标识符。
 
-`prompt` / `advance` 返回的 `CodingRunResult<TAppState> = { sessionId;
-messages: readonly CodingAgentMessage[]; state: CodingAgentState<TAppState> }`。
+### `state`
+`CodingAgentState<TAppState>`。当前会话的只读状态投影快照，每次访问均实时计算：
+- `status`：`"idle"` \| `"running"` \| `"aborted"` \| `"closed"`
+- `messages`：包含本会话历史全部对话条目的只读数组
+- `artifacts`：会话中生成或修改的代码文件产物清单
+- `appState`：宿主自定义挂载的应用状态
+- `extensions`：扩展命名空间内部的只读状态集合
 
-## steer vs followUp
+---
 
-两者都接受 `string | CodingQueuedInput`，区别在时机：
+## 核心方法
 
-- `steer`：**打断当前运行**，立即注入——用于"停下，换个方向"。
-- `followUp`：**排队**，等当前运行结束后再处理——用于"做完这个再看这个"。
+### `prompt(prompt, options?)`
+提交一条新的用户提示词并驱动 Agent 运行至本次执行结束。
+- 若入参仅包含空白字符，将直接返回 `coding_sdk.empty_prompt` 错误。
+- 多个并发 `prompt` 调用会自动在内部排队，按提交顺序串行执行。
+- `options.attachments`：可选的附件列表（包含本地图片或参考文件）。
 
-## 完整示例
+### `steer(input)`
+在 Agent 执行期间进行**插队纠偏**。立即向内部循环注入一条高优先级指令，打断后续计划并调整执行方向。
 
-```ts
-const agent = (await createCodingAgent({ model: "openai-compatible/qwen3-coder" })).value;
+### `followUp(input)`
+向就绪队列中追加一条后续任务。当前整轮运行彻底结束后，Agent 会自动提取并开始执行此输入。
 
-const off = agent.subscribe((e) => {
-  if (e.type === "agent_end") console.log("round done:", e.messages.length, "messages");
-});
+### `abort()`
+请求主动取消当前正在执行的任务轮次。
 
-// 后台跑长任务，前台继续对话
-await agent.prompt("先帮我看看 package.json 里有哪些脚本");
-// …稍后打断并转向
-await agent.steer("别管脚本了，直接跑测试");
-// …排队一个后续问题
-await agent.followUp("测试挂了的话把报错贴出来");
-await agent.waitForIdle();
+### `waitForIdle()`
+返回一个 Promise，等待当前所有排队的任务与工具彻底结束并回归 `idle` 状态。
 
-off();
-await agent.close();
-```
+### `compact(signal?)`
+在 Agent 处于空闲状态时，立即对当前分支的上下文执行一次摘要压缩。
+
+### `generateTitle(firstMessage)`
+基于首条用户消息与模型初始回答，调用当前模型快速生成一段不超过 8 个词的精炼会话标题。
+
+### `stopBackgroundAgent(toolCallId)`
+根据工具调用 ID 主动终止一个正在后台运行的异步 Shell 作业。
+
+### `subscribe(listener)`
+注册同步事件监听函数，实时捕获流式文本增量（`text_delta`）、思考过程（`thinking_delta`）、工具进度与生命周期变更。返回注销监听函数。
+
+### `close()`
+优雅销毁 Agent 实例：
+1. 取消正在执行的作业；
+2. 等待未落盘的日志完成持久化；
+3. 逆序调用并释放已激活的扩展插件（`deactivate`）；
+4. 如果是临时会话（`ephemeral`），清理本地临时工作目录。
+- 重复调用 `close()` 是安全的（幂等返回成功）。

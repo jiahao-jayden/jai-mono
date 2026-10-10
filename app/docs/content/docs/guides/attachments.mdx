@@ -1,33 +1,42 @@
 ---
 title: 附件
-description: 向一次 prompt 提交本地文件或图片，并理解附件的 run-scoped 生命周期。
+description: 向单次 prompt 提交本地文件或图片附件，理解 run-scoped 生命周期。
 ---
 
-附件只在一次 `prompt()` 运行内有效。调用方负责准备文件元数据，并在图片附件上提供可选的 `image()` 投影：
+在对话中，用户经常需要上传本地截图、报错日志或参考规范。SDK 支持通过 `prompt()` 的第二个参数携带附件数据。
+
+## 发送带有附件的 Prompt
 
 ```ts
-const screenshot = {
-  id: "shot-1",
-  filename: "error.png",
+import { createCodingAgent, type CodingAttachment } from "@jai/coding-agent";
+
+// 构造附件元数据
+const imageAttachment: CodingAttachment = {
+  id: "att-screenshot-1",
+  filename: "error-stack.png",
   mimeType: "image/png",
-  size: 42_000,
-  sourcePath: "/absolute/path/to/error.png",
+  size: 32_400,
+  sourcePath: "/Users/username/Desktop/error-stack.png",
+  // 图片附件通过懒加载异步函数返回 Base64 编码数据
   image: async () => ({
-    type: "image" as const,
-    image: "base64-encoded-image",
+    type: "image",
+    image: "iVBORw0KGgoAAAANSUhEUg...", // base64 数据
     mimeType: "image/png",
   }),
 };
 
-const result = await agent.prompt("分析这张截图中的错误信息，并给出排查步骤。", {
-  attachments: [screenshot],
+// 发起带有附件的任务
+const result = await agent.prompt("分析截图中的前端布局错误，并修改对应页面代码", {
+  attachments: [imageAttachment],
 });
 ```
 
-`id` 在本次 run 内必须唯一。`sourcePath` 是宿主已经验证过的实际本地文件路径：非图片附件会以文件名和绝对路径作为模型上下文，模型可直接用 Read、Edit、Write 或 Bash 操作它；`image()` 返回模型可消费的 base64 image content。SDK 只在这次 prompt 中投影附件内容，运行结束后不会再投影它们。
+## 附件的作用域与生命周期
 
-附件不由 `steer()` 或 `followUp()` 消费；它们只接收文字。要发送另一份文件，使用新的 `prompt(text, { attachments })`。
+- **单轮运行有效（Run-Scoped）**：附件内容仅在当前发起的这一次 `prompt` 中被组装进上下文。后续轮次中模型能记住之前提取的关键结论，但附件原始数据不会被反复冗余发送，避免浪费多模态 Token。
+- **动态路径可见性**：普通文本文件类附件提供有效的 `sourcePath` 之后，模型在上下文里会感知到该文件的物理绝对路径，并可按需调用内置的 `Read` 工具读取全文。
+- **干预控制隔离**：`steer()` 与 `followUp()` 不接收附件，只接受纯文本干预指令。如需追加新的参考图片或文件，请发起新的 `prompt()` 调用。
 
 :::warning
-附件元数据和文件路径可能包含敏感信息。跨进程或展示到 UI 前，应单独投影 filename、大小和经过授权的预览信息；不要直接把内部路径或 base64 内容作为通用事件数据传递。
+附件中可能包含开发者本地敏感路径或包含私有界面的截图。跨进程传输至前端 UI 时，应只传输 `filename`、`size` 与必要的缩略预览，避免直接在事件总线中广播全量原始数据。
 :::

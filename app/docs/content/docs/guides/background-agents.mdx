@@ -1,67 +1,72 @@
 ---
-title: 后台 Agent
-description: Bash runInBackground、BackgroundAgentStore 与 stopBackgroundAgent。
+title: 后台任务
+description: 使用 Bash runInBackground 异步执行长任务、管理后台注册表与主动取消。
 ---
 
-长 running 任务（`npm run dev`、长时间测试、大仓库索引）可以用后台方式跑，
-不阻塞当前对话。
+开发过程中经常遇到长时间运行的命令（如 `npm run dev` 启动本地开发服务、耗时数分钟的测试套件构建、或者是代码库大范围静态分析）。将这类命令放到前台会阻塞 Agent 与用户的实时对话流。
 
-## Bash 的 runInBackground
+SDK 支持后台异步作业管理机制。
 
-```ts
-// agent 内部调用 Bash 时传 runInBackground: true，调用立即返回
-// { command, timeoutMs?, runInBackground?: boolean }
-```
+## 启动后台命令
 
-成功时工具 `details` 额外返回 `status: "background_running"`、`agentId`、
-`title`（注意：这三个字段实际返回，但未在 `BashToolDetails` 接口中声明，
-消费时请做运行时兼容）。
-
-## BackgroundAgentStore
+当 Agent 发起 `Bash` 工具调用并指定 `runInBackground: true` 时，命令将在工作区后台启动并立即返回：
 
 ```ts
-import { createBackgroundAgentStore } from "@jai/coding-agent";
-
-const backgroundAgents = createBackgroundAgentStore();
-
-const agent = (await createCodingAgent({
-  model: "anthropic/claude-sonnet-4-5",
-  backgroundAgents, // 跨 Operation 共享；省略则后台 agent 只对启动它的 Operation 可见
-})).value;
-```
-
-条目结构：
-
-```ts
-export interface BackgroundAgentEntry {
-  readonly toolCallId: string;
-  readonly agentId: string;
-  readonly title: string;
-  status: "running" | "complete" | "error";
-  stopped: boolean;       // 是否由显式 stop 导致结算
-  activity?: string;
-  text?: string;
-  error?: string;
-  notified: boolean;
-  readonly settled: Promise<void>;
+// 模型发起的调用参数示例
+{
+  command: "bun run dev",
+  runInBackground: true
 }
 ```
 
-结算时 SDK 会合成 `background_agent_end` 事件推送给订阅者
-（`status: "complete" | "error" | "stopped"`）——**可能在其 Operation
-结束后才到达**，UI 侧要处理"迟到的结算"。
+工具调用在确认子进程成功派生后即刻向模型返回就绪状态，附带后台作业的 `agentId` 和 `title`，前台对话随后继续进行。
 
-## 停止后台 agent
+## 共享后台任务注册表（BackgroundAgentStore）
+
+为了在同一个会话的多次连续调用间追踪并管理这些后台作业，宿主可以传入 `BackgroundAgentStore` 实例：
 
 ```ts
-// 按 tool call id 中止；未知或已结束的 id 返回失败
-const r = await agent.stopBackgroundAgent(toolCallId);
-if (r.isOk() && r.value.stopped) console.log("已停止");
+import { createCodingAgent, createBackgroundAgentStore } from "@jai/coding-agent";
+
+// 创建内存中的后台任务注册表
+const backgroundAgents = createBackgroundAgentStore();
+
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  cwd: process.cwd(),
+  backgroundAgents, // 挂载共享注册表
+})).value;
 ```
 
-## 边界
+挂载该 Store 后，即使启动该命令的当前这一轮 `prompt()` 已经执行结束，后台作业依然由 Store 持续监管。
 
-- `BackgroundAgentStore` **严格内存内、永不持久化**（源码注释原话）。
-  进程重启即丢失；需要跨进程的后台任务请由 Host 自己实现。
-- 后台子 agent 的 transcript 持久化是另一回事，由 `openChildSession`
-  工厂控制（见 [会话](/docs/concepts/sessions-and-lifecycle)），与前台/后台无关。
+## 监听后台任务结算（`background_agent_end`）
+
+当后台进程执行完毕、抛错退出或被主动终止时，SDK 会通过事件流派发 `background_agent_end`：
+
+```ts
+agent.subscribe((event) => {
+  if (event.type === "background_agent_end") {
+    console.log(`[后台任务结算] ${event.title}`);
+    console.log(`状态: ${event.status}`); // "complete" | "error" | "stopped"
+    console.log(`关联 toolCallId: ${event.toolCallId}`);
+  }
+});
+```
+
+:::note
+后台任务的执行时长不受单次 prompt 生命周期的约束。该事件可能在 Agent 处于空闲（idle）或者正在处理其他任务时随时到达，宿主 UI 应妥善处理异步状态通知。
+:::
+
+## 主动停止后台任务
+
+宿主可以通过 `toolCallId` 主动中止指定的后台进程：
+
+```ts
+// 中止指定的后台作业
+const result = await agent.stopBackgroundAgent(toolCallId);
+
+if (result.isOk() && result.value.stopped) {
+  console.log("后台任务已成功终止");
+}
+```

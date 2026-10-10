@@ -3,65 +3,48 @@ title: Jai Coding Agent SDK
 description: 在 TypeScript 应用中创建和运行 coding agent：模型、会话、权限、工具与公开 API。
 ---
 
-`@jai/coding-agent` 是 jai-mono 的公开 SDK：在你的 TypeScript 应用里创建、
-运行和管理 coding agent。它提供 Agent 生命周期、内置工具（Read / Bash /
-Edit / Write）、权限审批、会话持久化、扩展机制，以及 JSON 安全的事件、
-状态与错误 DTO。
+`@jai/coding-agent` 是面向 Node.js 与 TypeScript 环境的 Coding Agent SDK。它封装了完整的 Agent 执行循环、内置工程工具（Read、Bash、Edit、Write）、基于 AST 的安全权限审批、分支会话持久化与上下文压缩，对外提供类型安全且纯净的事件与状态 DTO。
 
-Desktop 应用、headless `jai` CLI、WorkBuddy 评测 harness 都通过这个 SDK
-运行 Agent——它们只负责各自的 UI / TTY / subprocess 宿主层，不复制 Agent
-loop、工具、权限或 session runtime。
+Desktop 桌面端、无头 `jai` CLI 与自动化评测 Harness 均基于此 SDK 构建。宿主只负责各自的 UI 渲染、交互输入与配置加载，核心执行与状态管理均由 SDK 驱动。
 
 ## 分层架构
 
 ```text
 你的应用（Host）
         │  createCodingAgent({ model, provider, cwd, session, ... })
-        v
-@jai/coding-agent      公开 SDK：Agent 创建、权限、会话、扩展、事件/状态 DTO
+        ▼
+@jai/coding-agent      公开 SDK：Agent 生命周期、权限、会话、扩展与事件状态 DTO
         │
-        v
-@jai/agent             内部：agent loop、harness、hooks、compaction、durable session
+        ▼
+@jai/agent             执行引擎：Agent loop、harness、hooks、compaction、journal
         │
-        v
-@jai/ai                内部：provider-neutral 消息、流式事件、模型注册表
+        ▼
+@jai/ai                模型适配层：provider-neutral 流式协议与多厂商适配
         │
-        v
-Anthropic / OpenAI / OpenAI-compatible API
+        ▼
+Anthropic / OpenAI / OpenAI-compatible 服务端
 ```
 
-关键边界（代码事实）：
+- **类型安全与纯净边界**：SDK 导出的 API 经过严格封装。内部引擎（`@jai/agent`）与模型抽象（`@jai/ai`）的内部类型均被投影为以 `Coding*` 为前缀的 DTO（如 `CodingAgentEvent`、`CodingAgentState`），外部调用方不会直接接触到底层实现细节。
+- **配置权归属宿主**：本地配置文件解析（如 `~/.jai/settings.json`）、模型厂商目录匹配与凭据获取由宿主应用负责，SDK 只接收结构化、显式的配置参数。
+- **模块化扩展支持**：官方扩展（如连接器、MCP、技能库、网页搜索、任务清单、子 Agent）均以声明式 `CodingAgentExtension` 对象的形式，通过 `extensions` 配置装配。
 
-- SDK 公开 API **严格等于 `src/sdk.ts` 的具名导出**——没有 `export *`。
-  `@jai/ai` 的 `Provider` / `Message`、`@jai/agent` 的 `Agent` 等底层类型
-  **没有被 re-export**，SDK 消费者 import 不到。SDK 用 `Coding*` 前缀的投影
-  类型（如 `CodingAgentEvent`、`CodingAgentState`）重新包装了它们。
-- Jai 产品级默认配置（用户/项目配置、provider 目录、插件发现、数据目录约定）
-  **不在 SDK 里**，由各产品宿主（Desktop / CLI / WorkBuddy）各自实现。
-  SDK 只接收 Host 传进来的显式参数。
-- `@jai/extension` 提供官方扩展（connector、agent-plugins、skills、
-  web-search、todo、subagent 等），以 `CodingAgentExtension` 纯数据对象的形式
-  经 `extensions` 选项装配进 SDK。
+## 核心能力
 
-## 能力一览
+| 能力模块 | 调用方式 | 说明 |
+|---|---|---|
+| 创建 Agent | `createCodingAgent({ model: "anthropic/claude-3-7-sonnet" })` | 初始化 Agent 实例，返回统一 Result |
+| 交互执行 | `agent.prompt("...")` | 提交任务提示词并运行至终态 |
+| 实时事件 | `agent.subscribe((event) => ...)` | 订阅 15 种生命周期、流式文本与工具执行事件 |
+| 会话管理 | `session: { kind: "ephemeral" \| "new" \| "resume" }` | 支持临时会话与基于持久化 Journal 的多轮会话 |
+| 权限审批 | `permissionMode: "ask" \| "allow" \| "auto" \| "plan"` | 细粒度权限控制与交互式审批回调 `requestApproval` |
+| 内置工具 | `Read`、`Bash`、`Edit`、`Write` | 开箱即用的工程操作工具，支持白名单与黑名单裁剪 |
+| 功能扩展 | `defineExtension({ id, tools, hooks, ... })` | 声明自定义工具、生命周期 Hooks 与动态工具目录 |
+| 后台任务 | Bash `runInBackground` + `BackgroundAgentStore` | 异步执行耗时任务，不阻塞前台对话 |
+| 观测遥测 | `CodingAgentTelemetryObserver` | 提供标准链路追踪与耗时 Span 采集 |
 
-| 能力 | 入口 |
-|---|---|
-| 创建 Agent | `createCodingAgent({ model: "anthropic/claude-..." })` |
-| 运行一轮 | `agent.prompt("...")` → `Result<CodingRunResult>` |
-| 实时事件 | `agent.subscribe((event) => ...)`（15 种事件） |
-| 会话 | `ephemeral`（缺省）/ `new` / `resume` |
-| 权限审批 | `permissionMode: "ask" \| "allow" \| "auto" \| "plan"` + `requestApproval` 回调 |
-| 内置工具 | `Read`、`Bash`、`Edit`、`Write`（可白名单/黑名单裁剪） |
-| 扩展 | `defineExtension({ id, tools, hooks, catalogs, ... })` |
-| 后台执行 | Bash `runInBackground` + `BackgroundAgentStore` |
-| 可观测 | `CodingAgentTelemetryObserver`（span：`jai.run → jai.turn → …`） |
-| 错误 | `CodingSdkError { code, message, retryable, phase }`（9 个 phase） |
+## 快速上手路径
 
-## 从哪里开始
-
-1. [安装](/docs/quickstart/installation)——前置条件与安装命令。
-2. [创建你的第一个 Agent](/docs/quickstart/first-agent)——10 行代码跑通
-   prompt → 事件 → 结果 → 关闭的完整链路。
-3. [架构](/docs/concepts/architecture)——理解"Host 拥有产品配置"的设计原则，
-   再决定哪些选项该由你的应用来填。
+1. [安装与前置条件](/docs/quickstart/installation)：配置 Node.js 环境与模型访问凭据。
+2. [创建你的第一个 Agent](/docs/quickstart/create-your-first-agent)：30 行代码跑通创建、流式输出、工具调用与关闭全流程。
+3. [核心概念：架构分工](/docs/concepts/architecture)：了解宿主与 SDK 的权责边界，明确应用层该如何接线。

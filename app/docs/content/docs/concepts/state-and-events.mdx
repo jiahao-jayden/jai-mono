@@ -1,24 +1,26 @@
 ---
 title: 状态与事件
-description: 15 种 CodingAgentEvent、消息与状态 DTO，以及 subscribe 机制。
+description: 订阅执行事件、消费流式文本、监听工具进度与读取只读状态快照。
 ---
 
-## 事件流
+Agent 的执行过程是一个持续的状态机。为了支持平滑的 UI 渲染与进度感知，SDK 提供了确定性的同步事件订阅机制，同时维护只读的状态投影。
 
-没有 RxJS，没有 AsyncIterator。事件机制只有一种：
+## 订阅机制
+
+调用 `agent.subscribe()` 注册事件监听函数，方法返回值即为注销函数：
 
 ```ts
 const unsubscribe = agent.subscribe((event: CodingAgentEvent) => {
-  // 同步调用
+  // 事件处理逻辑
 });
-unsubscribe(); // 取消订阅
+
+// 在不需要监听时注销（例如组件卸载）
+unsubscribe();
 ```
 
-内部 `AgentEvent` 产生后，经 `CodingEventProjector` 投影为公开的
-`CodingAgentEvent` 再分发。`prompt` / `advance` 的 `Result` 则一次性返回
-整轮的 `CodingRunResult { sessionId, messages, state }`。
+所有事件均以同构的 Discriminated Union 形式呈现，具有严格的类型推断支持。
 
-## 15 种事件
+## 核心事件全景
 
 ```ts
 export type CodingAgentEvent =
@@ -39,92 +41,53 @@ export type CodingAgentEvent =
   | { readonly type: "background_agent_end"; readonly toolCallId: string; readonly agentId: string; readonly title: string; readonly toolName?: string; readonly status: "complete" | "error" | "stopped" };
 ```
 
-语义速查：
+### 流式文本与思考过程（`message_update`）
 
-| 事件 | 触发时机 |
-|---|---|
-| `agent_start` / `agent_end` | 一轮 `prompt`/`advance` 运行的开始/结束 |
-| `turn_start` / `turn_end` | 每一轮"模型调用 → 工具执行"循环的开始/结束 |
-| `message_start` / `message_update` / `message_end` | assistant 消息的开始/流式增量/结束 |
-| `message_discard` | 消息被丢弃（不进入历史） |
-| `tool_execution_start` / `update` / `end` | 工具调用的开始/进度/结束（含 `isError`） |
-| `compaction_start` / `compaction_end` | 上下文压缩的开始/结束 |
-| `context_measured` | 每次模型请求前（及手动压缩后）的上下文体量观测，纯观测不干预 |
-| `background_agent_end` | 分离的后台子 agent 结算（可能在其 Operation 结束后才到达） |
-
-### message_update 的 13 种子事件
+在模型生成过程中，`message_update` 会高频触发。其内部的 `assistantEvent` 包含增量细节：
 
 ```ts
-type AssistantEvent =
-  | { readonly type: "start" }
-  | { readonly type: "text_start"; readonly contentIndex: number }
-  | { readonly type: "text_delta"; readonly contentIndex: number; readonly delta: string }
-  | { readonly type: "text_end"; readonly contentIndex: number; readonly content: string }
-  | { readonly type: "thinking_start"; readonly contentIndex: number }
-  | { readonly type: "thinking_delta"; readonly contentIndex: number; readonly delta: string }
-  | { readonly type: "thinking_end"; readonly contentIndex: number; readonly content: string }
-  | { readonly type: "toolcall_start"; readonly contentIndex: number }
-  | { readonly type: "toolcall_delta"; readonly contentIndex: number; readonly delta: string }
-  | { readonly type: "toolcall_end"; readonly contentIndex: number; readonly toolCall: CodingToolCall }
-  | { readonly type: "done"; readonly reason: CodingStopReason; readonly message: CodingAssistantMessage }
-  | { readonly type: "error"; readonly reason: "error" | "aborted"; readonly error: CodingAssistantMessage };
-```
-
-> 注意是 13 种：`start` 不带 `contentIndex`，其余流式事件都带。
-> 结束原因 `CodingStopReason = "stop" | "length" | "toolUse" | "contextOverflow"
-> | "iterationLimit" | "error" | "aborted"`。
-
-流式渲染的典型写法：按 `contentIndex` 把 `text_delta` 拼接到对应内容块，
-`text_end` / `thinking_end` / `toolcall_end` 时拿到完整块。
-
-### context_measured
-
-```ts
-export interface CodingContextMeasurement {
-  readonly contextWindow: number;
-  /** 自动压缩阈值；自动压缩关闭时缺席 */
-  readonly compactAtTokens?: number;
-  readonly systemPrompt: number;
-  readonly toolDefinitions: number;
-  readonly userMessages: number;
-  readonly assistantText: number;
-  readonly thinking: number;
-  readonly toolInputs: number;
-  readonly toolOutputs: readonly { readonly toolName: string; readonly tokens: number }[];
+if (event.type === "message_update") {
+  const sub = event.assistantEvent;
+  switch (sub.type) {
+    case "text_delta":
+      // 常规正文 Token 增量
+      renderToken(sub.contentIndex, sub.delta);
+      break;
+    case "thinking_delta":
+      // 深度思考 / Reasoning Token 增量
+      renderThinking(sub.contentIndex, sub.delta);
+      break;
+    case "toolcall_end":
+      // 模型完成了一个工具调用参数的组装
+      notifyToolCallReady(sub.toolCall);
+      break;
+  }
 }
 ```
 
-数值是"字符数 / 4"的压缩启发式估算，用于看比例；provider 返回的 usage
-才是权威总量。
+每个内容块携带唯一的 `contentIndex`，方便在复杂的多块输出（如交替出现的思考块、文本块与工具调用块）中正确定位。
 
-## 状态 DTO
+### 工具执行生命周期
 
-`agent.state`（`CodingAgentState<TAppState>`）是实时投影的快照，包含：
+工具从调用到结束派发三阶段事件：
 
-- `messages: readonly CodingAgentMessage[]`——本轮/历史消息（user /
-  assistant / tool-result，JSON 安全）。
-- 会话级派生状态：todo 进度、artifacts（`codingArtifactsFromAppState`
-  可从 appState 提取）、权限摘要、上下文用量等。
-- `TAppState extends JsonObject` 泛型：Host 可挂载自己的应用状态。
+1. **`tool_execution_start`**：工具开始执行，携带 `toolName`、操作标题 `title`、分类 `activityKind`（如 `"read"`、`"execute"`、`"search"`）与参数。
+2. **`tool_execution_update`**：长耗时工具（如终端持续输出、大文件读取）发送部分增量结果 `partial`。
+3. **`tool_execution_end`**：工具执行完成，包含最终结果 `result` 与是否报错的标记 `isError`。
 
-`CodingAgentMessage` 区分三种角色，assistant 消息携带内容块
-（text / thinking / tool-call）与 `stopReason`、`usage`；tool-result 消息
-携带 `fileChanges`（受限白名单：只有文件副作用能进 tool-result fact，
-`details` 不行）。
+### 上下文测量（`context_measured`）
 
-`CodingToolActivityKind = "search" | "read" | "write" | "execute" | "call"
-| "operation"` 用于 `tool_execution_*` 事件的 `activityKind`，驱动 UI 的
-图标/文案映射（`CodingToolPresentation`）。
+在每次向大模型发起调用前以及压缩完成后，SDK 会派发 `context_measured` 事件。它提供了当前上下文用量的估算细分（System Prompt、工具定义、历史消息、推理块各自占用的 Token 估算），可用于渲染会话窗口用量指示器。
 
-## 附件
+## 状态快照（`agent.state`）
 
-`prompt` 的第二个参数可带附件：
+除了事件流之外，宿主可随时通过 `agent.state` 读取当前的不可变状态快照：
 
 ```ts
-await agent.prompt("看看这张截图", {
-  attachments: [{ id, filename, mimeType, size, sourcePath, image? }],
-});
+const { status, messages, artifacts, appState } = agent.state;
 ```
 
-`CodingAttachment.image?: () => Promise<CodingImageContent>` 是懒加载的图片
-内容——只有图片附件需要提供，调用时才真正读取。
+- `status`：`"idle"`（空闲就绪）、`"running"`（正在执行）、`"aborted"`（已中断）或 `"closed"`（已销毁）。
+- `messages`：包含本会话全部有效对话条目的只读数组。
+- `artifacts`：会话中生成或修改的代码文件产物索引。
+- `appState`：宿主自定义挂载的应用状态数据。

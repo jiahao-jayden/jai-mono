@@ -1,146 +1,92 @@
 ---
 title: 权限与审批
-description: 四档 permissionMode、规则语法、审批回调、危险命令扫描与会话授权。
+description: 掌握四档权限模式、规则模式匹配、敏感命令扫描与人工审批回调。
 ---
 
-> **旧文档勘误**：旧版文档中 permissionMode 的取值（如 `"default"`）在代码中
-> 根本不存在。本文按源码重写，请以此为准。
+让自主 Agent 在本地项目中执行写文件或 Shell 脚本时，安全隔离至关重要。SDK 提供了多层防护体系：模式预设、静态 AST 语法扫描、工作区逃逸拦截与可扩展的人工审批回调。
 
-## 四档模式
+## 四档权限模式
+
+通过 `permissionMode` 选项指定全局授权基调：
 
 ```ts
 export type CodingPermissionMode = "ask" | "allow" | "auto" | "plan";
 ```
 
-缺省 `"ask"`。行为差异：
+| 模式 | 运行机制 | 适用场景 |
+|---|---|---|
+| `ask`（默认） | 工作区内的只读操作直接放行；写文件、未知命令、敏感命令一律暂停并触发 `requestApproval` | 绝大多数日常开发与人机协同交互 |
+| `allow` | 工作区内的文件读写直接执行；但越界访问、破坏性命令与高危操作仍然会触发拦截与审批 | 开发者信任的特定自动化流水线 |
+| `auto` | 遇到本需询问的操作时，先由宿主配置的后台审核器（如辅助模型或规则引擎）进行异步评估，未通过或超时才回退为人工审批 | 期望提升流畅度、减少确认打扰的高阶场景 |
+| `plan` | 强只读模式：拒绝所有产生副作用的写文件与非只读命令，仅生成方案或分析报告 | 纯代码审查、架构诊断与只读梳理任务 |
 
-| 模式 | 语义 |
-|---|---|
-| `ask`（缺省） | 无规则命中时按内置判定：工作区内**读**文件允许；**写**文件、未知命令、未知工具调用一律弹审批 |
-| `allow` | 跳过常规审批，但**不**跳过工作区边界和危险层：边界内读写直接允许，跨边界读仍弹审批，破坏性/不透明命令仍弹审批 |
-| `auto` | 对纯 built-in 的 `ask`，先由 Host 提供的 reviewer（模型或自定义）在后台代答 `allow/deny/ask`；reviewer 任何失败（超时/不可用/抛错/非法输出）都回退为 `ask`——"review 永远不能静默放行" |
-| `plan` | 只读规划模式：非只读目标直接 `deny`（"Plan mode only allows read-only work"） |
+## 静态规则配置（PermissionSettings）
 
-注意：`auto` 是 **Host 专属**——settings 文件的 schema 只有
-`ask | plan | allow` 三档（"auto remains Host-owned"），只能由 Host 经 SDK
-的 `permissionMode` 选项传入。
-
-## 规则语法
+如果需要为特定目录或命令配置持久化规则，可以在宿主层组装权限配置规则：
 
 ```ts
-export type PermissionAction = "file.read" | "file.write" | "process.exec" | "tool.invoke";
-export type PermissionEffect = "allow" | "ask" | "deny";
-
-export interface PermissionSettings {
-  readonly permission?: PermissionConfig;          // 全局规则
-  readonly sessionGrants?: PermissionConfig;       // 会话级授权
-  readonly permissionGrants?: PermissionGrantConfig; // 按 workspace 区分的授权表
-  readonly defaultMode?: PermissionMode;
-  readonly additionalDirectories?: readonly string[]; // 视为工作区边界内
-}
-```
-
-每个 action 的值要么是全局 effect，要么是 `pattern → effect` 映射表：
-
-```ts
-const settings: PermissionSettings = {
+const settings = {
   defaultMode: "ask",
   permission: {
+    // 允许读取工作区内所有文件
     "file.read": "allow",
-    "file.write": { "**/*.log": "deny", "src/**": "allow" },
-    "process.exec": { "git *": "allow", "rm *": "ask" },
+    // 保护敏感目录，允许修改 src
+    "file.write": {
+      "**/*.env*": "deny",
+      ".git/**": "deny",
+      "src/**": "allow",
+    },
+    // 白名单允许常用只读工具命令，危险命令弹窗确认
+    "process.exec": {
+      "git status": "allow",
+      "git diff": "allow",
+      "npm test": "allow",
+      "rm *": "ask",
+    },
   },
-  additionalDirectories: ["~/shared-docs"],
 };
 ```
 
-匹配规则（`src/permissions/rules.ts` 实现要点）：
+### 路径与命令匹配规则
 
-- 路径 pattern：`//` 前缀 = 绝对路径；`~` / `~/` = 家目录；以 `/` 开头 =
-  workspace 相对；其余也按 workspace 相对解析。
-- `*` 不跨目录分隔符，`**/` 匹配任意层级。
-- Bash pattern 以 `" *"` 结尾时做前缀匹配（如 `"git *"` 匹配所有 git 命令）。
+- 路径规则基于 glob 规范。以 `/` 开头或相对路径均按工作区根目录解析；`~` 开头按用户家目录解析。
+- `*` 匹配单个目录层级内的内容；`**` 跨越任意目录层级。
+- 命令行规则以空格结尾（如 `"git *"`）时表示前缀匹配，涵盖其所有子命令与参数组合。
 
-判定优先级（从高到低）：显式 `deny` 规则 → `plan` 模式（非只读 deny）→
-circuit-breaker（`rm -rf /` 或 `$HOME`）→ 破坏性/不透明命令（danger-layer，
-`ask`）→ `ask` 规则可被 grant 覆盖为 allow → 普通规则 → grant →
-`allow` 模式 → 内置规则。多 target 聚合：`deny > ask > allow`。
+## 敏感与破坏性命令拦截
 
-## 审批回调
+对于 `Bash` 工具发起的命令，SDK 在求值前会经过内置防御层：
 
-当判定结果为 `ask` 且需要用户决策时，SDK 调用 Host 传入的
-`requestApproval`：
+1. **AST 结构化分析**：基于 Tree-sitter 对输入的 Shell 命令进行抽象语法树解析，拆解管道、复合语句（`;`、`&&`、`||`）与命令包装器（如 `nohup`、`sudo`、`timeout`），获取底层真实执行的可执行文件。
+2. **熔断保护（Circuit Breaker）**：诸如针对根目录或家目录的无差别删除命令（如 `rm -rf /` 或 `rm -rf ~`），即使在 `allow` 模式下也会被底层硬性熔断阻断，不会直接放行。
+3. **敏感信息脱敏**：审批请求中的命令如果携带形如 `TOKEN=xxx`、`--password yyy` 的参数，在传递给审批 UI 时会被自动替换为 `[redacted]`，防止密钥泄漏。
+
+## 审批回调接口（`requestApproval`）
+
+当操作需要人工介入时，SDK 调用宿主传入的异步回调函数：
 
 ```ts
 export type CodingPermissionDecision = "deny" | "allowOnce" | "alwaysAllow";
 
-export type CodingApprovalHandler = (
-  request: CodingPermissionRequest,
-  signal?: AbortSignal,
-) => CodingPermissionDecision | Promise<CodingPermissionDecision>;
+const agent = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  permissionMode: "ask",
+  requestApproval: async (request, signal) => {
+    const { summary, canAlwaysAllow } = request;
+    
+    // 渲染审批内容给用户
+    console.log(`[待审批操作] ${summary.title}`);
+    if (summary.command) console.log(`命令: $ ${summary.command}`);
+    if (summary.path) console.log(`目标路径: ${summary.path}`);
+    console.log(`风险等级: ${summary.risk}`); // "low" | "medium" | "high"
+
+    // 返回决策
+    // "deny": 拒绝执行
+    // "allowOnce": 仅本次放行
+    // "alwaysAllow": 本次放行并在此会话中记住该规则
+    return "allowOnce";
+  },
+});
 ```
 
-```ts
-export interface CodingPermissionRequest {
-  readonly requestId: string;
-  readonly sessionId: string;
-  readonly toolCallId: string;
-  readonly toolName: string;
-  readonly args: Readonly<Record<string, JsonValue>>;
-  readonly reason: string;
-  readonly canAlwaysAllow: boolean;
-  /** 可直接渲染的摘要（含评估出的风险等级） */
-  readonly summary: CodingPermissionSummary; // { title, description?, command?, path?, risk?: "low"|"medium"|"high" }
-  readonly suggestedRule?: string;
-  readonly suggestedRules?: readonly string[];
-  readonly rememberScope?: "session" | "project-local";
-}
-```
-
-决策语义：
-
-- `deny`——拒绝执行。
-- `allowOnce`——仅本次放行（`auto` 模式的模型 reviewer 也只能返回此档，不记忆）。
-- `alwaysAllow`——持久化建议规则：Bash 的 scope 为 `project-local`，
-  Read/Write/Edit 的 scope 为 `session`（写入 `sessionAllowRules`）。
-
-安全细节：`request.args` 里只放 `summary.path` / `summary.command`，
-command 已经过 `redactCommand` 脱敏（`*TOKEN/*SECRET/*PASSWORD/*KEY`
-环境变量式参数和 `--token` 等 flag 的值会被替换为 `[redacted]`）。
-
-审批是串行的：`createPermissionApprovalQueue()` 创建内存内 FIFO，
-保证同一 live Session 同时最多展示一个审批请求（Host 可在多个
-`createCodingAgent` 调用间共享同一个 queue）。
-
-## 会话级授权表
-
-```ts
-export type SessionAllowRules = Record<string, PermissionEffect | Record<string, PermissionEffect>>;
-```
-
-这是 Host 拥有的可变对象（类型别名，不是类），通过 `sessionAllowRules`
-选项传入，在同 live Session 的多次 Operation 间共享。用户在审批 UI 点
-`alwaysAllow` 且 scope 为 `session` 时，SDK 会按工具映射
-（Read→`file.read`、Bash→`process.exec`、Write/Edit→`file.write`）写入此表。
-`sessionGrantWorkspaceRoot` 与当前 workspace 不一致时不参与合并。
-
-## 危险命令扫描
-
-Bash 命令在权限评估前过两层扫描：
-
-1. **tree-sitter-bash 解析**（wasm）：结构化识别命令形态。
-2. **静态规则**：`isDestructiveBashCommand` 标记破坏性（`rm -rf`、
-   格式化磁盘等）与不透明（curl 管道 bash 等）命令。
-
-硬禁令：`rm -rf /` 或 `$HOME` 直接走 circuit-breaker 拒绝
-（`PermissionDecisionSource = "danger-layer"`），不经过审批。
-
-## auto 模式的 reviewer
-
-`auto` 模式需要 Host 提供 reviewer（`PermissionReviewOptions { review:
-PermissionReviewer; timeoutMs }`）。SDK 内置了一个基于模型的 reviewer
-（`createModelPermissionReviewer`，30s 超时，评审前先对命令做
-`redactCommand` 脱敏）。reviewer 返回非法值、超时、抛错、不可用时一律
-回退为 `ask`。
-
-实战接线示例见 [审批流程](/docs/guides/approval-flow)。
+实战接入示例请查看 [审批流程实战](/docs/guides/approval-flow)。

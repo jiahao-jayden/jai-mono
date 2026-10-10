@@ -1,76 +1,58 @@
 ---
 title: 可观测性
-description: CodingAgentTelemetryObserver：SDK 侧的 span 与事件观测。
+description: 使用 CodingAgentTelemetryObserver 收集执行链路、性能 Span 与操作指标。
 ---
 
-> **旧文档勘误**：旧版 `observability.mdx` 讲的是 Desktop 的 UI 面板，
-> 不是 SDK。SDK 侧的可观测性是下面这个 observer。
+在生产级应用中，我们需要洞察 Agent 执行过程中的耗时分布、Token 消耗以及每一次工具调用的上下文。SDK 内置了轻量级、无外部强依赖的可观测性接口。
 
-## CodingAgentTelemetryObserver
+## 遥测观察器（CodingAgentTelemetryObserver）
+
+`CodingAgentTelemetryObserver` 实现了 SDK 内置的遥测旁路接口：
 
 ```ts
-import { CodingAgentTelemetryObserver } from "@jai/coding-agent";
+import { CodingAgentTelemetryObserver, createCodingAgent } from "@jai/coding-agent";
 
+// 初始化遥测观察器
 const observer = new CodingAgentTelemetryObserver({
-  telemetry,      // TelemetryContext（@jai/telemetry 契约）
-  operationId,    // 本次 Operation 标识
-  sessionId,      // 会话标识
-  // now?: () => number  // 测试可注入单调时钟；生产缺省 Date.now
+  telemetry: customTelemetryContext, // 宿主实现的 Telemetry 上下文
+  operationId: "op-123456",
+  sessionId: "session-abc",
+});
+
+// 在创建 Agent 时注入旁路监听
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  cwd: process.cwd(),
+  permissionTelemetryObserver: observer,   // 记录权限评估与审批流转
+  modelRequestTelemetryObserver: observer, // 记录模型请求上下文与实际发出参数
+})).value;
+
+// 还可以显式消费普通生命周期事件
+agent.subscribe((event) => {
+  observer.observeAgentEvent(event);
 });
 ```
 
-它同时实现 `ModelRequestObserver` 与 `PermissionTelemetryObserver`，
-可直接挂到 `createCodingAgent` 的两个旁路选项上：
+所有 `observe*` 方法在内部均包裹了安全的错误隔离机制，任何遥测异常都不会干扰 Agent 核心业务流程的推进。
 
-```ts
-await createCodingAgent({
-  model: "anthropic/claude-sonnet-4-5",
-  permissionTelemetryObserver: observer,  // 只观察权限事实，不参与判定
-  modelRequestTelemetryObserver: observer, // provider 请求发出前观察最终上下文
-});
-```
+## 标准 Span 追踪树
 
-另外三个手动调用的观测点：
-
-```ts
-observer.observeAgentEvent(event);   // CodingAgentEvent
-observer.observeEffectEvent({ type: "model_reserved" | "tool_reserved", ... }); // 稳定 identity，不带参数/结果/内容
-observer.observeModelRequest(observation);
-observer.observePermissionEvent(event);
-observer.close(); // 标记 aborted，结算未完成 span
-```
-
-## span 层级
-
-`startSpan` 的 name 构成的树：
+观察器按照层次化的调用树组装执行追踪数据：
 
 ```text
-jai.run
-└── jai.turn
-    ├── jai.model_attempt
-    │   └── jai.model_stream
-    ├── jai.tool_call
-    └── jai.permission
-        └── jai.approval
+jai.run                           # 单次完整任务根执行
+└── jai.turn                      # 单一交互轮次（模型请求 + 工具执行）
+    ├── jai.model_attempt         # 向模型服务端发起连接
+    │   └── jai.model_stream      # 消费流式响应并组装内容
+    ├── jai.tool_call             # 具体的工具调用生命周期与耗时
+    └── jai.permission            # 权限判定分析
+        └── jai.approval          # 人工审批等待耗时
 ```
 
-固定词汇表：7 个 `jai.*` span 名、17 个事件名（`@jai/telemetry` 的
-`vocabulary.ts`）。投影函数强制"原文内容绝不进入通用 sink"——span 只带
-稳定 identity（如 `assistantEntryId`、`toolCallId`、`toolName`），不带参数、
-结果或消息内容。
+## 隐私与脱敏原则
 
-## 用户遥测策略
+为了保证日志在经过集中采集与上报时不泄漏用户源码与机密凭据，SDK 的遥测层强制执行脱敏：
 
-```ts
-import { defaultUserTelemetryPolicy } from "@jai/coding-agent";
-// UserTelemetryPolicy：控制内容捕获开关等
-```
-
-`observer.enabled` 的判定：`!closed && (run?.contentCaptureEnabled ??
-telemetry.contentCaptureEnabled)`。所有 `observe*` 方法内部 try/catch，
-观测异常会被吞掉，不影响 agent 运行。
-
-> `@jai/telemetry` 包本身是 private 的内部契约层（`TelemetryContext` /
-> `TelemetrySpan` / `TelemetrySink` 端口 + `NoopTelemetryContext` /
-> `InMemoryTelemetryContext` + `./node` 的 JSONL 文件 sink），不是 SDK 公开
-> API——Host 实现 `TelemetryContext` 端口即可对接。
+- 追踪 Span 的元数据中仅包含确定性的标识符（如 `sessionId`、`toolName`、`toolCallId`、`contentIndex`）。
+- 具体的模型输入文本、文件内容、Shell 执行参数以及输出结果不会无序扩散到通用遥测 Sink 中。
+- 敏感指令（如 `TOKEN=...` 或包含密码的参数）会在权限判定阶段通过内置脱敏器预先过滤。

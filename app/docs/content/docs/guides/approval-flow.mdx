@@ -1,87 +1,95 @@
 ---
 title: 审批流程实战
-description: 用 requestApproval 回调实现审批 UI：三种决策、串行队列与 alwaysAllow。
+description: 实现交互式人工确认界面，处理三种决策分支并维护会话级授权记忆。
 ---
 
-> **旧文档勘误**：旧版 `approval-flow.mdx` 示例中出现了
-> `permissionMode: "default"`——该取值在代码中不存在。本文示例使用合法取值。
+本指南演示如何在命令行或应用界面中接入完整的审批生命周期。
 
-## 最小可用：命令行审批
+## 命令行交互审批实现
+
+下面是一个使用 Node.js 原生 `readline` 实现的终端确认流：
 
 ```ts
 import { createCodingAgent } from "@jai/coding-agent";
 import readline from "node:readline/promises";
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
 
-const agent = (await createCodingAgent({
-  model: "anthropic/claude-sonnet-4-5",
+const created = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
   cwd: process.cwd(),
   permissionMode: "ask",
   requestApproval: async (request) => {
-    const { summary } = request;
-    console.log(`\n[审批] ${summary.title}`);
-    if (summary.description) console.log(`  ${summary.description}`);
-    if (summary.command) console.log(`  $ ${summary.command}`);
-    if (summary.path) console.log(`  路径: ${summary.path}`);
-    console.log(`  风险: ${summary.risk ?? "未知"}${request.canAlwaysAllow ? "（可记住）" : ""}`);
+    const { summary, canAlwaysAllow } = request;
+    
+    console.log("\n---------------- 权限审批请求 ----------------");
+    console.log(`操作类型: ${summary.title}`);
+    if (summary.description) console.log(`说明:     ${summary.description}`);
+    if (summary.command)     console.log(`执行命令: $ ${summary.command}`);
+    if (summary.path)        console.log(`修改路径: ${summary.path}`);
+    console.log(`评估风险: ${summary.risk ?? "未知"}`);
 
-    const answer = await rl.question("允许？(y=本次 / a=总是 / n=拒绝) ");
-    if (answer === "a" && request.canAlwaysAllow) return "alwaysAllow";
-    return answer === "y" ? "allowOnce" : "deny";
+    const promptText = canAlwaysAllow
+      ? "是否允许？(y = 本次允许 / a = 总是允许 / n = 拒绝): "
+      : "是否允许？(y = 本次允许 / n = 拒绝): ";
+
+    const answer = (await rl.question(promptText)).trim().toLowerCase();
+
+    if (answer === "a" && canAlwaysAllow) {
+      return "alwaysAllow";
+    }
+    if (answer === "y") {
+      return "allowOnce";
+    }
+    return "deny";
   },
-})).value;
+});
 
-await agent.prompt("把 README 翻译成中文并写回文件");
+if (created.isErr()) {
+  console.error("Agent 初始化失败:", created.error.message);
+  process.exit(1);
+}
+
+const agent = created.value;
+await agent.prompt("把项目中的配置文件从 .env.example 复制为 .env.local 并填入默认项");
+
 await agent.close();
 rl.close();
 ```
 
-## 三种决策的去向
+## 三种决策的实际效果
 
-| 决策 | 效果 |
-|---|---|
-| `deny` | 拒绝。本轮该工具调用失败，agent 会看到拒绝结果并调整 |
-| `allowOnce` | 仅本次放行，不记忆 |
-| `alwaysAllow` | 持久化建议规则：Bash → `project-local` scope，Read/Write/Edit → `session` scope（写入 `sessionAllowRules`） |
+用户作出的决定会影响当前工具的执行行为及后续操作：
 
-`alwaysAllow` 只有在 `request.canAlwaysAllow` 为 true 时才有意义；
-`suggestedRule` / `suggestedRules` 给 UI 展示"将记住规则：…"用；
-`rememberScope` 告诉你这次记住的规则会落到 `session` 还是 `project-local`。
+| 决策结果 | 对当前工具调用的影响 | 对后续操作的影响 |
+|---|---|---|
+| `deny` | 工具执行立即终止，并向模型返回权限拒绝通知；模型可根据拒绝结果反思并调整策略 | 不记录任何放行规则 |
+| `allowOnce` | 当前这一条具体的工具调用被临时放行并正常执行 | 后续若再次触发同类工具调用，依然会弹出审批询问 |
+| `alwaysAllow` | 当前工具调用直接放行 | 将对应建议规则（`suggestedRules`）写入当前会话或项目的授权表，后续同类操作自动静默放行 |
 
-## 跨 Operation 共享：审批队列与授权表
+## 会话级授权表（`sessionAllowRules`）
 
-多个 `createCodingAgent` 调用（同一 live Session 的多次 Operation）可以共享
-审批状态，避免重复弹窗：
+在图形界面（如 Desktop）中，当用户针对某种操作勾选了“不再提示”或点击了“总是允许”时，宿主可以维护一个跨轮次共享的授权表，避免在一次会长对话中频繁弹出相同确认弹窗：
 
 ```ts
 import { createCodingAgent, createPermissionApprovalQueue } from "@jai/coding-agent";
 
-const approvalQueue = createPermissionApprovalQueue(); // 内存内 FIFO：同时最多展示一个审批
-const sessionAllowRules = {};                          // Host 拥有的可变授权表
+// 1. 创建跨调用共享的内存审批队列（确保界面同一时间最多只弹一个审批浮层）
+const approvalQueue = createPermissionApprovalQueue();
+
+// 2. 宿主所持有的会话授权规则对象
+const sessionAllowRules = {};
 
 const agent = (await createCodingAgent({
-  model: "anthropic/claude-sonnet-4-5",
+  model: "anthropic/claude-3-7-sonnet",
   approvalQueue,
   sessionAllowRules,
   sessionGrantWorkspaceRoot: process.cwd(),
-  requestApproval: myApprovalUI,
+  requestApproval: myCustomModalHandler,
 })).value;
 ```
 
-用户点"总是允许"（session scope）后，SDK 会自动写入 `sessionAllowRules`，
-同 Session 后续 Operation 的同类请求直接放行，不再弹窗。
-
-## auto 模式：模型代答
-
-```ts
-const agent = (await createCodingAgent({
-  model: "anthropic/claude-sonnet-4-5",
-  permissionMode: "auto",   // settings 文件里配不了，只能 Host 经 SDK 传
-  // …reviewer 由 Host 侧装配；SDK 内置 createModelPermissionReviewer（30s 超时）
-  requestApproval: myApprovalUI, // reviewer 失败/超时/回退为 ask 时兜底
-})).value;
-```
-
-记住 `auto` 的安全契约：reviewer 任何失败都回退为 `ask`，
-"review 永远不能静默放行"，且模型 reviewer 只能返回 `allowOnce`。
+当用户选择 `alwaysAllow` 且规则作用域属于 `session` 时，SDK 会自动把放行规则写入宿主传入的 `sessionAllowRules` 对象中，后续调用该工作区内的相同工具操作即可无感放行。

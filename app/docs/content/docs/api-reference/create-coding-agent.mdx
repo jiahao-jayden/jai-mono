@@ -1,7 +1,11 @@
 ---
 title: createCodingAgent
-description: 创建函数的签名与全部 30 个选项字段。
+description: 核心初始化函数 createCodingAgent 的函数签名与完整配置选项索引。
 ---
+
+`createCodingAgent` 是 SDK 的唯一主入口，用于配置并实例化一个 Coding Agent 运行时。
+
+## 函数签名
 
 ```ts
 export async function createCodingAgent<TAppState extends JsonObject = JsonObject>(
@@ -9,68 +13,51 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 ): Promise<Result<CodingAgent<TAppState>, CodingSdkError>>
 ```
 
-`TAppState` 是 Host 挂载的应用状态类型（缺省 `JsonObject`）。
-创建失败（模型未解析、扩展激活失败、持久会话缺 `fileCapabilities` 等）
-返回 `Result.err`，phase 为 `runtime_creation`。
+- **`TAppState`**：泛型参数，允许宿主挂载自定义的应用状态模型（默认为 `JsonObject`）。
+- **返回值**：`Promise<Result<CodingAgent<TAppState>, CodingSdkError>>`。成功时 `result.value` 包含可操作的 Agent 实例；失败时 `result.error` 包含标准错误对象（错误阶段为 `runtime_creation`）。
 
-## 必填与常用
+---
 
-| 字段 | 必选 | 类型 | 说明 |
-|---|---|---|---|
-| `model` | ✅ | `string` | **唯一必填**。格式 `"<provider>/<model>"`（按第一个 `/` 分隔）。provider 前缀仅限 `anthropic` \| `openai` \| `openai-compatible`；非法抛 `coding_sdk.invalid_model_ref` / `coding_sdk.unsupported_provider` |
-| `provider` | | `CodingProviderOptions` | `{ apiKey?; baseUrl?; headers?; idleTimeoutMs?; authentication?: "bearer" \| "x-api-key" \| "none" }`。anthropic 强制 `x-api-key`；openai 系仅 `bearer`/`none`。`bearer` 时 apiKey 缺省读 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`；baseUrl 缺省读 `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL`，必须 HTTPS 或 loopback HTTP、无 userinfo。`idleTimeoutMs`：provider 流静默（无响应头、无数据）超过该毫秒数则本次运行以 `stopReason: "error"` 结束（`state.error.code === "ai_provider.idle_timeout"`），默认 `300000`，`Infinity` 关闭 |
-| `cwd` | | `string` | 工作目录；缺省 `process.cwd()`。会拼入 system prompt 的环境指令 |
-| `instructions` | | `string` | 追加到默认 system prompt 之后的自定义指令（最终 = 默认指令 + 环境指令 + 本字段，`\n\n` 连接） |
-| `session` | | `CodingSessionSelection` | 缺省 `{ kind: "ephemeral" }`。`new`/`resume` 需同时提供 `store` 与 `fileCapabilities` |
-| `permissionMode` | | `"ask" \| "allow" \| "auto" \| "plan"` | 缺省 `"ask"` |
-| `protectConfigDirectories` | | `boolean` | 缺省 `false`。为 `true` 时，内置文件工具在任何权限模式下都不能读写 workspace、home、`cwd` 下的 `.jai/`（Shell 沙箱始终保护前两者）。缺省不限制，agent 能否改自己的配置由使用者通过权限规则决定 |
-| `hookTimeoutMs` | | `number` | 阻塞型 Extension hook（`beforeAgentStart`、`beforeModelCall`）的最长耗时，超时按 hook 失败处理；默认 `30000`，`Infinity` 关闭 |
-| `requestApproval` | | `CodingApprovalHandler` | 审批回调 `(request, signal?) => "deny" \| "allowOnce" \| "alwaysAllow"`；缺省无（审批不可用） |
-| `extensions` | | `readonly CodingAgentExtension[]` | 扩展数组；SDK 做 id 唯一校验 |
-| `maxTurns` | | `number` | 单次运行的最大迭代轮数，正整数，缺省不限制（无人值守运行建议显式设置）。非法值返回 `coding_sdk.invalid_options` |
+## 核心配置选项
 
-## 模型能力相关（Host 解析后传入）
+| 字段 | 类型 | 是否必填 | 说明 |
+|---|---|:---:|---|
+| `model` | `string` | **必填** | 模型引用标识，格式为 `"<provider>/<modelId>"`。支持 `anthropic`、`openai` 与 `openai-compatible`。 |
+| `cwd` | `string` | 可选 | 绑定的工作目录绝对路径。内置工具的文件读写与 Shell 命令均在此目录下执行。缺省为 `process.cwd()`。 |
+| `provider` | `CodingProviderOptions` | 可选 | 自定义 Provider 配置，包含 `apiKey`、`baseUrl`、自定义 `headers` 与 `idleTimeoutMs`。 |
+| `instructions` | `string` | 可选 | 附加的系统提示词（追加于默认工程系统提示词之后）。 |
+| `session` | `CodingSessionSelection` | 可选 | 会话模式：`ephemeral`（默认内存会话）、`new`（新建持久会话）或 `resume`（恢复已有会话）。 |
+| `permissionMode` | `CodingPermissionMode` | 可选 | 全局权限模式：`"ask"`（默认）、`"allow"`、`"auto"` 或 `"plan"`。 |
+| `requestApproval` | `CodingApprovalHandler` | 可选 | 异步审批回调函数：当命中需要人工确认的高危或未知操作时调用。 |
+| `tools` | `readonly CodingToolName[]` | 可选 | 内置工具白名单。若指定，则仅激活列表中的内置工具。可选值：`"Read" \| "Bash" \| "Edit" \| "Write"`。 |
+| `excludeTools` | `readonly CodingToolName[]` | 可选 | 内置工具黑名单。与 `tools` 重叠时，排除规则优先。 |
+| `extensions` | `readonly CodingAgentExtension[]` | 可选 | 装配自定义或官方扩展插件列表。SDK 内部会校验每个扩展的 `id` 唯一性。 |
+| `maxTurns` | `number` | 可选 | 单次任务执行允许的最大往返交互轮次。默认无硬性限制。 |
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `modelMetadata` | `CodingModelMetadata` | `{ contextWindow?; maxTokens? }`；缺省 `contextWindow: 128_000`、`maxTokens: 8_192` |
-| `compatibilityProfile` | `ResolvedCompatibilityProfile`（`@jai/ai`） | operation 级兼容性快照 |
-| `providerOptions` | `Record<string, Record<string, unknown>>` | provider 无关的请求选项，由产品 runtime 提供 |
-| `reasoningLevel` | `ReasoningLevel`（`@jai/ai`） | Host 已针对模型能力解析好的推理等级；省略则不发 reasoning 参数；辅助请求不继承 |
-| `fastMode` | `boolean` | 仅当 Host 确认模型支持 Fast 模式时设置 |
-| `auxiliaryModel` | `CodingAuxiliaryModel` | 权限 `auto` 模式做后台判断的辅助模型；省略则复用本 agent 的 model/provider；`{ kind: "unavailable" }` 则回退为向用户提问 |
+---
 
-`resolveSdkModel(modelRef, providerOptions?, compatibilityProfile?, metadata?)`
-可单独调用做解析，返回 `{ model, provider }`（`@jai/ai` 类型），不发起网络请求。
+## 高级会话与持久化参数
 
-## 会话与持久化
+用于接入企业级存储或复杂环境上下文：
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `fileCapabilities` | `CodingAgentFileCapabilities` | `{ homeDirectory; workspaceDirectory; workspaceTrusted }`。持久会话（`new`/`resume`）**必填**，缺失抛 `coding_sdk.file_capabilities_required`；ephemeral 会话忽略，改用隔离临时目录 |
-| `sessionAllowRules` | `SessionAllowRules` | Host 拥有的跨 Operation 共享授权表 |
-| `sessionGrantWorkspaceRoot` | `string` | 与共享授权表绑定的 workspace 标识 |
-| `approvalQueue` | `PermissionApprovalQueue` | 跨 Operation 共享的审批 FIFO（`createPermissionApprovalQueue()` 创建）；缺省每个审批立即弹 |
-| `openChildSession` | `(toolCallId: string) => Promise<unknown>` | 每次 subagent 调用打开 journal-only 子会话的 Host 工厂；省略则子 transcript 不持久化 |
-| `effectBoundary` | `CodingEffectBoundary` | Host 拥有的 durable effect 协议，仅产品 runtime 提供 |
-| `backgroundAgents` | `BackgroundAgentStore` | 跨 Operation 共享的后台 registry；省略则后台 agent 只对启动它的 Operation 可见 |
+| `fileCapabilities` | `CodingAgentFileCapabilities` | 包含 `homeDirectory`、`workspaceDirectory` 与 `workspaceTrusted`。在使用 `new` 或 `resume` 会话时**必选**。 |
+| `sessionAllowRules` | `SessionAllowRules` | 宿主持有的跨调用授权记忆表，用于免除已选择“总是允许”的重复确认。 |
+| `sessionGrantWorkspaceRoot` | `string` | 绑定到会话授权记忆表的工作区根路径。 |
+| `approvalQueue` | `PermissionApprovalQueue` | 跨调用共享的人工审批先进先出（FIFO）队列，保证界面弹窗有序单发。 |
+| `backgroundAgents` | `BackgroundAgentStore` | 跨轮次共享的后台任务注册表，用于托管异步 Shell 进程。 |
+| `autoCompaction` | `boolean` | 是否开启上下文自动压缩，默认为 `true`。 |
+| `compactionSummaryInstructions` | `string` | 自动压缩时要求模型生成摘要的偏好指令。 |
 
-## 工具与压缩
+---
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `tools` | `readonly CodingToolName[]` | 白名单：只启用这些内置工具；扩展工具不受影响 |
-| `excludeTools` | `readonly CodingToolName[]` | 黑名单：在 `tools` 选择后移除；重叠时排除优先；非法名抛 `coding_sdk.invalid_tool_selection` |
-| `autoCompaction` | `boolean` | 缺省 `true`；`false` 只关闭阈值/overflow 自动压缩，`compact()` 仍可用 |
-| `compactionSummaryInstructions` | `string` | 压缩摘要的自定义指令 |
-
-## 扩展与观测旁路
+## 观测与扩展旁路
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `extensionRuntime` | `CodingExtensionRuntimeAdapter` | Host 适配器：扩展配置读写、审批、diagnostic 上报 |
-| `permissionTelemetryObserver` | `PermissionTelemetryObserver` | 只观察权限事实、不参与判定的旁路 |
-| `modelRequestTelemetryObserver` | `ModelRequestObserver`（`@jai/agent`） | 在 provider 请求发出前观察最终模型上下文的旁路 |
-
-另见：[CodingAgent 方法](/docs/api-reference/coding-agent) · [会话](/docs/concepts/sessions-and-lifecycle) ·
-[权限](/docs/guides/permissions) · [错误](/docs/api-reference/errors)。
+| `permissionTelemetryObserver` | `PermissionTelemetryObserver` | 仅观察权限求值结果与审批决策的旁路监听器，不参与流程干预。 |
+| `modelRequestTelemetryObserver` | `ModelRequestObserver` | 在模型请求组装完毕、向外部网络发送前观察完整上下文的旁路监听器。 |
+| `extensionRuntime` | `CodingExtensionRuntimeAdapter` | 为扩展插件提供宿主级环境交互（配置存取、诊断上报）的适配接口。 |
+| `protectConfigDirectories` | `boolean` | 默认 `false`。开启后将严格保护工作区与家目录下的 `.jai/` 配置目录免受内置工具修改。 |
+| `hookTimeoutMs` | `number` | 阻塞型扩展钩子（如 `beforeAgentStart`）的执行超时上限（毫秒，默认 30,000）。 |

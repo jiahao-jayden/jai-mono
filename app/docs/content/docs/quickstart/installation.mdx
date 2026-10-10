@@ -1,18 +1,17 @@
 ---
 title: 安装
-description: 准备 Node.js 环境与模型凭据，在 monorepo 内使用 @jai/coding-agent。
+description: 准备运行环境、安装依赖与配置大语言模型访问凭据。
 ---
 
-## 前置条件
+## 环境要求
 
-- **Node.js 20 或更新版本**（`packages/coding-agent` 的 engines 字段要求 `>=20`）。
-- [Bun](https://bun.sh/)（仓库的包管理与测试用 Bun）。
-- 一个可用的模型 provider：Anthropic、OpenAI，或任何兼容 OpenAI API 的服务
-  （本地 Ollama / LM Studio、自托管网关均可），以及对应的 API key。
+- **Node.js**：20.0.0 或更高版本。
+- **包管理器**：推荐使用 [Bun](https://bun.sh/)（与 monorepo 开发环境保持一致），亦支持 pnpm 或 npm。
+- **模型服务**：已激活的 Anthropic、OpenAI 或任意兼容 OpenAI Chat Completions 协议的第三方/本地服务端点（如 Ollama、vLLM、LM Studio），并准备好相应的 API Key。
 
-## 在 monorepo 内使用
+## 获取 SDK
 
-`@jai/coding-agent` 尚未发布到 npm。目前在仓库内开发，直接 clone 后安装依赖：
+在当前 monorepo 环境中，各应用通过 workspace 协议直接引用：
 
 ```bash
 git clone https://github.com/jiahao-jayden/jai-mono.git
@@ -20,33 +19,48 @@ cd jai-mono
 bun install
 ```
 
-workspace 内的包通过 workspace 协议互相引用，`@jai/coding-agent` 开箱即用。
-npm 发布后，这里会更新为 `npm install @jai/coding-agent`。
+在你的 Node.js 或 TypeScript 项目中，安装 SDK 包：
 
-## 验证安装
-
-```ts
-import { createCodingAgent, resolveSdkModel } from "@jai/coding-agent";
-
-// 只解析 model 字符串，不发起网络请求
-const resolved = resolveSdkModel("anthropic/claude-sonnet-4-5", {
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-console.log(resolved.model.id, resolved.provider.id);
+```bash
+npm install @jai/coding-agent
+# 或
+bun add @jai/coding-agent
 ```
 
-model 字符串格式为 `"<provider>/<model>"`（按**第一个** `/` 分隔，
-modelId 本身可以含 `/`）。provider 前缀只允许三者：
+## 配置模型凭据
 
-| 前缀 | 实际 API 协议 |
-|---|---|
-| `anthropic` | Anthropic Messages API |
-| `openai` | OpenAI Responses API |
-| `openai-compatible` | OpenAI Chat Completions 兼容协议 |
+SDK 默认从标准环境变量中读取访问密钥和服务端地址：
 
-`provider.apiKey` 缺省读取环境变量 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`，
-`baseUrl` 缺省读取 `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`。
-格式不对（缺少 `/`、以 `/` 开头或结尾）会得到
-`coding_sdk.invalid_model_ref`；前缀不在三者之内会得到
-`coding_sdk.unsupported_provider`。详见 [API：createCodingAgent](/docs/api-reference/create-coding-agent)
-和 [API：错误](/docs/api-reference/errors)。
+| 模型厂商 | 密钥环境变量 | 地址环境变量（可选） |
+|---|---|---|
+| Anthropic | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
+| OpenAI | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
+| OpenAI-Compatible | 显式传入 `apiKey` | 显式传入 `baseUrl` |
+
+在终端中导出环境变量：
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+# 或者
+export OPENAI_API_KEY="sk-..."
+```
+
+## 验证模型标识
+
+SDK 提供静态解析辅助函数 `resolveSdkModel`，可在不发起真实网络调用的前提下校验模型字符串与提供商配置：
+
+```ts
+import { resolveSdkModel } from "@jai/coding-agent";
+
+// 模型标识格式为 "<provider>/<modelId>"
+const resolved = resolveSdkModel("anthropic/claude-3-7-sonnet", {
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+console.log("Provider:", resolved.provider.id); // "anthropic"
+console.log("Model:", resolved.model.id);       // "claude-3-7-sonnet"
+```
+
+前缀限定为 `anthropic`、`openai` 或 `openai-compatible`。若格式错误或前缀不受支持，函数将抛出明确的输入校验异常。
+
+准备就绪后，继续阅读：[创建第一个 Agent](/docs/quickstart/create-your-first-agent)。

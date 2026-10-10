@@ -1,79 +1,52 @@
 ---
 title: 会话
-description: ephemeral、new、resume 三种会话，以及持久化所需的 fileCapabilities。
+description: ephemeral、new 与 resume 三种会话模式，以及基于 Journal 的持久化机制。
 ---
 
-`createCodingAgent` 的 `session` 选项决定会话的生命周期：
+SDK 的会话系统负责维护 Agent 的上下文历史、工具执行记录、中间产物与状态演进。会话生命周期由 `session` 字段指定：
 
 ```ts
 export type CodingSessionSelection =
+  | { readonly kind: "ephemeral" }
   | { readonly kind: "new"; readonly id?: string; readonly store: CodingSessionStore }
-  | { readonly kind: "resume"; readonly id: string; readonly store: CodingSessionStore }
-  | { readonly kind: "ephemeral" };
+  | { readonly kind: "resume"; readonly id: string; readonly store: CodingSessionStore };
 ```
 
-缺省为 `{ kind: "ephemeral" }`。
+## 三种会话模式
 
-## 三种会话
+| 模式 | 适用场景 | 依赖要求 | 生命周期特征 |
+|---|---|---|---|
+| `ephemeral` | 快速单次任务、代码审查、一次性脚本执行 | 无需额外配置 | 在隔离的临时文件夹中运行，`close()` 时自动全量销毁 |
+| `new` | 新建多轮对话、交互式任务、需要中断恢复的长期项目 | 需提供 `store` 与 `fileCapabilities` | 生成唯一的 `sessionId`，操作流水按 Append-only Journal 持久化 |
+| `resume` | 重新连接已有对话、跨应用重启恢复上下文 | 需提供已记录该 ID 的 `store` 与 `fileCapabilities` | 自动回放历史 Journal 并重建状态，无缝继续会话 |
 
-| kind | 语义 | 要求 |
-|---|---|---|
-| `ephemeral` | 临时会话：内存 store + 隔离临时目录（`jai-coding-agent-<随机>`），`close()` 时递归删除 | 无 |
-| `new` | 新建持久会话；`id` 可选，缺省 `coding-<randomUUID()>` | Host 的 `store` **+** `fileCapabilities` |
-| `resume` | 按 `id` 恢复已有会话 | Host 的 `store` **+** `fileCapabilities` |
+## 持久化会话要求
 
-## 持久会话的两个必填项
+启用 `new` 或 `resume` 模式时，宿主必须同时提供以下两项核心参数：
 
-持久会话（`new` / `resume`）必须同时提供：
+### 1. 存储驱动（`store: CodingSessionStore`）
+`CodingSessionStore` 负责以追加写入（Append-only）的形式保存每一次会话条目（Entry）。条目包括用户输入、模型响应、工具副作用、上下文压缩摘要与分支记录。
 
-1. **`store: CodingSessionStore`**——Host 自有的 Session Journal 适配器。
-   即 `load` / `create` / `append(id, entry, expectedRevision)` / `delete` 四个方法；
-   `append` 遇到过期 revision 必须抛 `SessionConflictError`，entry 对 store 不透明，
-   用 `applyEntry` / `emptySnapshot` 折叠 snapshot；`InMemorySessionStore` 是参考实现。
-   Journal 是 append-only 树（消息 / 应用状态 / 压缩记录 / 分支记录），
-   事件先落盘再发布；durable 写入失败会让整轮运行失败。
-2. **`fileCapabilities`**——Host 选定的本地配置与扩展资源根目录：
+SDK 导出了轻量的内存实现 `InMemorySessionStore` 用于开发与测试。在实际生产场景中，宿主通常实现基于 SQLite 或数据库的 Store 适配器。
 
-   ```ts
-   export interface CodingAgentFileCapabilities {
-     /** 用户根目录：放 `.jai/settings.json` 与扩展资源 */
-     readonly homeDirectory: string;
-     /** workspace 根目录：放项目配置与扩展资源 */
-     readonly workspaceDirectory: string;
-     /** 是否允许项目级配置与扩展资源参与 */
-     readonly workspaceTrusted: boolean;
-   }
-   ```
+### 2. 本地文件权责（`fileCapabilities`）
+明确应用与项目的根路径，确立安全隔离与本地资源可见性：
 
-   缺失时创建直接失败：`coding_sdk.file_capabilities_required`
-   （phase `runtime_creation`）。
+```ts
+const fileCapabilities: CodingAgentFileCapabilities = {
+  // 用户家目录路径：用于存储全局配置
+  homeDirectory: "/Users/username",
+  // 项目工作区路径：用于存放项目级配置与本地资源
+  workspaceDirectory: "/Users/username/projects/my-app",
+  // 是否信任该工作区（信任后才允许读取项目级配置规则）
+  workspaceTrusted: true,
+};
+```
 
-恢复时的校验错误码（phase `session`）：
+## 会话状态与查询
 
-| code | 含义 |
-|---|---|
-| `coding_sdk.session_not_found` | `resume` 的 id 在 store 中无记录 |
-| `coding_sdk.session_exists` | `new` 的 id 在 store 中已存在 |
-| `coding_sdk.session_format_invalid` | 记录存在但不是当前 Coding Agent 会话格式（要求 `version === 1`） |
+Agent 实例在运行过程中提供实时的只读状态：
 
-## 会话内状态
-
-- `agent.sessionId`：只读，会话标识。
-- `agent.state`：实时投影的 `CodingAgentState`（消息列表、todo、artifacts、
-  权限摘要等），每次读取都是当前快照。详见 [状态与事件](state-and-events.md)。
-- `emptyPersistedCodingSessionState()`：构造一个空的持久化快照，供 Host
-  初始化 store 时使用。
-- `generateSessionTitle(provider, model, firstMessage, assistantText)`：
-  无状态的标题生成工具（≤8 词），失败返回
-  `coding_sdk.title_generation_failed`。
-
-## 子会话与后台 agent
-
-- `openChildSession(toolCallId)`：Host 提供的工厂，每次 subagent 调用时打开
-  一个 journal-only 子会话。省略则子 agent 的 transcript 不持久化。
-- `backgroundAgents: BackgroundAgentStore`：跨 Operation 共享的后台 registry。
-  省略则后台 agent 只对启动它的 Operation 可见。详见
-  [后台 Agent](/docs/guides/background-agents)。
-
-注意：`BackgroundAgentStore` 是严格内存内的（"never persisted"），重启进程
-即丢失；需要跨进程的后台任务请由 Host 自己实现。
+- `agent.sessionId`：会话的全局唯一标识。
+- `agent.state`：不可变的状态快照对象（包含消息流 `messages`、当前待办 `todos`、文件产物 `artifacts`、当前运行状态 `status`）。该属性是一个 Getter，每次读取时基于内部状态机即时投影。
+- `agent.close()`：优雅关闭当前会话。执行中的任务将被安全取消，等待未写入的 Journal 落盘，并销毁挂载的扩展插件。

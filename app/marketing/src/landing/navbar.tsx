@@ -47,6 +47,7 @@ export function Navbar({ locale, copy, downloadHref }: { locale: Locale; copy: L
 						aria-label={copy.nav.github}
 						className="flex size-8 items-center justify-center rounded-md text-ink-secondary transition-colors hover:text-ink"
 					>
+						<span className="sr-only">{copy.nav.github}</span>
 						<svg viewBox="0 0 16 16" aria-hidden="true" className="size-5">
 							<path
 								fill="currentColor"

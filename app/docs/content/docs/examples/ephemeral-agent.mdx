@@ -1,41 +1,49 @@
 ---
-title: 示例：临时 Agent
-description: 一次性任务的 ephemeral 会话：创建、运行、关闭即焚。
+title: 示例：临时任务 Agent
+description: 创建即用即焚的 Ephemeral 会话，适用于单次代码审查、诊断分析与临时脚本。
 ---
 
-适合一次性任务：代码审查、单文件生成、快速问答。不需要 store，不需要
-`fileCapabilities`，`close()` 后临时目录自动删除。
+临时会话（Ephemeral）无需提供外部数据库存储与复杂的权限配置，在隔离的临时沙箱中执行，适合 CI 自动化流水线、代码审查 Bot 或单次问答工具。
 
 ```ts
 import { createCodingAgent } from "@jai/coding-agent";
 
-async function reviewFile(path: string) {
+async function reviewPullRequest(filePath: string) {
+  // 1. 初始化只读规划模式的临时 Agent
   const created = await createCodingAgent({
-    model: "anthropic/claude-sonnet-4-5",
+    model: "anthropic/claude-3-7-sonnet",
     cwd: process.cwd(),
-    permissionMode: "plan", // 只读：连审批都不需要，直接 deny 写操作
-    // session 缺省 { kind: "ephemeral" }
+    // 采用 plan 模式：自动拒绝任何写入或命令执行，专注于安全只读分析
+    permissionMode: "plan",
+    // session 缺省即为 { kind: "ephemeral" }
   });
-  if (created.isErr()) throw new Error(created.error.message);
+
+  if (created.isErr()) {
+    throw new Error(`初始化失败: ${created.error.message}`);
+  }
   const agent = created.value;
 
   try {
+    // 2. 提交代码审查任务
     const result = await agent.prompt(
-      `审查 ${path}，列出 bug 和改进点，只读不要写文件`
+      `审查文件 ${filePath}：重点检查边界异常处理、内存泄漏风险与代码风格，输出精简的审查报告`,
     );
-    if (result.isErr()) throw new Error(result.error.message);
-    const last = result.value.messages.at(-1);
-    return last;
+
+    if (result.isErr()) {
+      throw new Error(`执行失败: ${result.error.message}`);
+    }
+
+    // 3. 读取最终的模型输出
+    const lastMessage = result.value.messages.at(-1);
+    return lastMessage;
   } finally {
-    await agent.close(); // 删除临时目录
+    // 4. 显式释放资源并自动销毁临时目录
+    await agent.close();
   }
 }
 ```
 
-要点：
+## 关键要点
 
-- `permissionMode: "plan"` 让 agent 只能读不能写，适合审查/分析类任务，
-  省掉审批接线。
-- ephemeral 会话的 `fileCapabilities` 由 SDK 自动生成为隔离临时目录，
-  `workspaceTrusted: false`——项目级配置与扩展资源不参与。
-- 多次 `prompt` 调用串行排队；临时 agent 用完一定 `close()`。
+- **免审批接线**：配合 `permissionMode: "plan"`，Agent 将只能读取文件，遇到写操作直接拦截，无需在终端或界面中弹窗等待用户确认。
+- **自动清理**：`close()` 会递归删除本次运行建立的所有临时工作目录，不留磁盘垃圾。

@@ -1,48 +1,57 @@
 ---
 title: 创建配置
-description: 理解 createCodingAgent 的模型、目录、session、权限、工具与 extension 配置。
+description: 了解 createCodingAgent 的基础配置、提供商选项与宿主控制参数。
 ---
 
-`createCodingAgent()` 直接接收公开配置，不需要先构造 Host。产品级配置由 Desktop、CLI 或你的应用在调用前解析；传给 SDK 的只有执行本次 Agent 所需的最小数据。
+`createCodingAgent` 函数接收一个清晰的配置对象。宿主负责解析自身的用户设置与环境参数，并将本次执行所需的配置注入 SDK。
 
-## 最小配置
+## 基础配置示例
 
 ```ts
 import { createCodingAgent } from "@jai/coding-agent";
 
 const created = await createCodingAgent({
-  model: "openai/gpt-4.1-mini",
+  model: "openai/gpt-4o",
   cwd: process.cwd(),
-  session: { kind: "ephemeral" },
   permissionMode: "plan",
+  session: { kind: "ephemeral" },
 });
 ```
 
-`model` 必须使用 `<provider>/<model>`：provider 为 `anthropic`、`openai` 或 `openai-compatible`。`cwd` 省略时默认为 `process.cwd()`；`session` 省略时使用 ephemeral session。
+- `model`：必填。格式为 `<provider>/<modelId>`，支持 `anthropic`、`openai` 与 `openai-compatible`。
+- `cwd`：工作目录路径。内置工具的所有相对路径操作与命令执行均以该目录为基准。缺省值为 `process.cwd()`。
+- `session`：会话模式。缺省为临时内存会话 `{ kind: "ephemeral" }`。
 
-## Provider 配置
+## 自定义 Provider 选项
 
-默认凭据来自环境变量。需要独立 key、兼容服务地址或自定义 header 时传入 `provider`：
+当使用代理网关、自建兼容服务或需要独立注入 API 凭据时，可以使用 `provider` 字段：
 
 ```ts
 const created = await createCodingAgent({
-  model: "openai-compatible/local-model",
+  model: "openai-compatible/deepseek-coder",
   provider: {
-    baseUrl: "http://127.0.0.1:8080/v1",
-    authentication: "none",
+    baseUrl: "https://api.your-gateway.com/v1",
+    apiKey: "sk-your-key",
+    headers: {
+      "X-Custom-Tenant": "prod-01",
+    },
+    // 可选：流式响应无数据到达的空闲超时时间（毫秒），默认 300000（5分钟）
+    idleTimeoutMs: 120_000,
   },
-  cwd: process.cwd(),
 });
 ```
 
-`anthropic` 只支持 `x-api-key` 认证；`openai` 和 `openai-compatible` 支持 `bearer` 或 `none`。`baseUrl` 必须是 HTTPS，或没有用户名和密码的 loopback HTTP URL。
+- `anthropic` 协议使用 `x-api-key` 请求头鉴权。
+- `openai` 及 `openai-compatible` 协议支持 Bearer Token 或免鉴权模式（`authentication: "none"`）。
+- `baseUrl` 必须为合法的 HTTPS 地址，或本地回环 HTTP 地址（如 `http://127.0.0.1:11434`）。
 
-## 调用方可控制的行为
+## 行为与上下文控制
 
-- `session`：选择 `new`、`resume` 或 `ephemeral`，并为 durable session 提供目录。
-- `permissionMode` 和 `requestApproval`：选择默认安全策略，并在需要时请求用户决定。
-- `tools` / `excludeTools`：选择内置工具；`excludeTools` 在重叠时优先。
-- `extensions`：提供自定义工具、skills、hooks 以及它们的释放逻辑。
-- `maxTurns`、`instructions`、`compactionSummaryInstructions`：控制单次执行与 prompt 组成。
+除了基础参数外，宿主还可以通过以下选项精细调整 Agent 的行为逻辑：
 
-模型目录、Jai config、Agent Plugin 的发现与装配、Connector client 及其 UI 都不是 root SDK 参数。它们属于各宿主的业务层，宿主可把最终结果投影为 `model`、`provider`、`extensions` 和 `requestApproval`。
+- **系统指令注入**：`instructions` 字段的内容将作为额外系统指令追加到提示词尾部，用于约定代码风格或项目背景。
+- **轮次限制**：`maxTurns` 设定单次任务允许的最大往返交互轮次，防止 Agent 在死循环或复杂试错中耗尽预算。
+- **工具裁剪**：通过 `tools`（白名单）或 `excludeTools`（黑名单）限制内置工具的可用范围。
+- **上下文压缩策略**：`autoCompaction` 控制是否在会话 Token 达到上限前自动触发压缩，`compactionSummaryInstructions` 可定制压缩摘要的内容偏好。
+
+完整选项清单请参考 [API 参考：createCodingAgent](/docs/api-reference/create-coding-agent)。

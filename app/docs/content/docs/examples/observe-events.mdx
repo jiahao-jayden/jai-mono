@@ -1,67 +1,75 @@
 ---
 title: 示例：观测事件流
-description: 订阅 15 种事件：流式渲染、工具进度、压缩与后台结算。
+description: 完整订阅流式文本渲染、思考过程、工具调用与上下文压缩事件。
 ---
+
+本示例展示如何在终端中完整接入 Agent 的事件总线，渲染实时的流式打字效果与工具进度条。
 
 ```ts
 import { createCodingAgent } from "@jai/coding-agent";
 
-const agent = (await createCodingAgent({
-  model: "anthropic/claude-sonnet-4-5",
+const created = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
   cwd: process.cwd(),
-})).value;
+});
 
-// 按 contentIndex 维护各内容块的增量文本
-const blocks = new Map<number, string>();
+if (created.isErr()) {
+  console.error("创建失败:", created.error.message);
+  process.exit(1);
+}
 
+const agent = created.value;
+
+// 1. 订阅事件流
 const unsubscribe = agent.subscribe((event) => {
   switch (event.type) {
     case "agent_start":
-      console.log("▶ 运行开始");
+      console.log("▶ [任务启动]");
       break;
+
     case "message_update": {
       const ae = event.assistantEvent;
       if (ae.type === "text_delta") {
-        blocks.set(ae.contentIndex, (blocks.get(ae.contentIndex) ?? "") + ae.delta);
+        // 模型输出常规文本 Token
         process.stdout.write(ae.delta);
       } else if (ae.type === "thinking_delta") {
-        // 思考过程：可折叠显示
+        // 模型输出思考过程（Reasoning）Token，可折叠或灰色打印
+        process.stdout.write(`\x1b[90m${ae.delta}\x1b[0m`);
       } else if (ae.type === "toolcall_end") {
-        console.log(`\n[调用] ${ae.toolCall.name}`);
-      } else if (ae.type === "done") {
-        console.log(`\n[结束] reason=${ae.reason}`);
+        // 参数组装就绪
+        console.log(`\n⚙ [模型请求调用工具] ${ae.toolCall.name}`);
       }
       break;
     }
+
     case "tool_execution_start":
-      console.log(`[工具开始] ${event.toolName} — ${event.title}`);
+      console.log(`\n⏳ [工具开始执行] ${event.toolName} -> ${event.title}`);
       break;
+
     case "tool_execution_end":
-      console.log(`[工具结束] ${event.toolName} isError=${event.isError}`);
+      const statusIcon = event.isError ? "❌" : "✅";
+      console.log(`${statusIcon} [工具执行完毕] ${event.toolName}`);
       break;
+
     case "compaction_start":
-      console.log(`[压缩] trigger=${event.trigger}`);
+      console.log(`\n✂ [上下文自动压缩] 触发原因: ${event.trigger}`);
       break;
+
     case "background_agent_end":
-      console.log(`[后台结算] ${event.title}: ${event.status}`);
+      console.log(`\n🏁 [后台任务完成] ${event.title} (状态: ${event.status})`);
       break;
+
     case "agent_end":
-      console.log("■ 运行结束，共", event.messages.length, "条消息");
+      console.log("\n■ [整轮执行结束]");
       break;
   }
 });
 
-await agent.prompt("用 Bash 跑一下测试，顺便看看 git 状态");
+// 2. 发起任务并等待空闲
+await agent.prompt("分析当前目录下的 git 状态，如果有改动，给出精炼的修改摘要");
 await agent.waitForIdle();
 
+// 3. 注销监听与安全退出
 unsubscribe();
 await agent.close();
 ```
-
-注意：
-
-- `subscribe` 回调是同步调用的，不要在里面做重型 IO。
-- `message_update` 的 `message` 字段是当前 assistant 消息的最新快照，
-  也可以直接用它整体重渲染，而不是自己拼 delta。
-- `background_agent_end` 可能在其 Operation 结束后才到达——不要假设它
-  一定在某次 `prompt` 返回前出现。

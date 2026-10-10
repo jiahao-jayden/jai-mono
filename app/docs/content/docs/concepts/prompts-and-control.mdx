@@ -1,34 +1,49 @@
 ---
 title: Prompts 与控制
-description: 使用 prompt、steer、followUp、abort、waitForIdle 和 generateTitle 控制一个运行中的 Agent。
+description: 掌握任务提交、运行中转向（steer）、后续排队（followUp）与任务取消。
 ---
 
-`prompt()` 提交一次完整运行；返回的 `Result` 包含本次运行的消息和结束后的状态。多个 prompt 会按照调用顺序串行执行。
+Agent 的主循环运行支持细粒度的控制指令。宿主不仅可以提交新的任务，还可以在任务执行过程中动态调整方向或排队后续工作。
+
+## 提交任务：`prompt`
+
+`prompt()` 提交一轮新的任务提示词，驱动 Agent 运行至本次执行结束：
 
 ```ts
-const run = await agent.prompt("检查当前目录的测试失败原因，并给出修复计划。");
-if (run.isErr()) {
-  console.error(run.error);
+const run = await agent.prompt("分析当前项目的单元测试覆盖率，找出缺少测试的核心模块");
+
+if (run.isOk()) {
+  console.log("执行完成，最新状态:", run.value.state.status);
+  console.log("产生消息数:", run.value.messages.length);
 } else {
-  console.log(run.value.state.status);
+  console.error("执行出错:", run.error.code, run.error.message);
 }
 ```
 
-在运行期间，`steer()` 发送一条优先处理的文字指令，`followUp()` 则把文字加入后续队列：
+并发调用 `prompt()` 时，后续调用不会打断正在进行的工作，而是自动进入串行等待队列，在前一个任务结束后按序执行。
+
+## 动态控制：`steer` 与 `followUp`
+
+当 Agent 正在执行耗时较长的多步操作时，宿主可以通过 `steer` 或 `followUp` 介入流程：
 
 ```ts
-const steered = await agent.steer("先停止修改，只总结已经发现的问题。");
-const queued = await agent.followUp("接着列出三个最小修复方案。");
+// 1. 中途纠偏转向：打断当前正在思考或执行的子流程，优先处理新指令
+await agent.steer("暂停当前测试，先修复刚才发现的那个类型错误");
+
+// 2. 追加后续计划：将输入放入就绪队列，当前完整任务结束后立刻跟进
+await agent.followUp("修复完成后，重新跑一遍全量测试确认没有回归");
 ```
 
-两者都接受 `string | CodingQueuedInput`（后者是 Host 预留的会话条目身份，用于在安全检查点投递输入），传入空字符串会返回 `coding_sdk.empty_prompt` 错误。附件只由 `prompt(text, { attachments })` 消费；不要向 `steer()` 或 `followUp()` 传附件。
+### 两种干预方式的区别
 
-## 生命周期控制
+| 控制方法 | 触发时机 | 典型场景 |
+|---|---|---|
+| `agent.steer(text)` | **立即插队**：中断后续工具调用的调度，插入当前轮次成为最高优先级指导 | 用户发现 Agent 走错方向，需要紧急刹车或重新明确目标 |
+| `agent.followUp(text)` | **自然排队**：等待当前整轮任务完全落定后，自动发起下一轮调用 | 用户在 Agent 操作期间想到了补充需求，按顺序承接处理 |
 
-- `abort()`：请求取消当前运行；仍应等待调用的 Result，并根据事件更新 UI。abort 之后运行不再等待忽略取消信号的工具或审批回调（它们会在后台继续跑完，结果被丢弃），因此 `prompt()` 与 `close()` 不会被它们卡住。
-- 扩展工具的文本输出超过 200000 字符时会在写入会话前被截断并附带说明，内置工具有各自的上限。
-- `waitForIdle()`：等待已接纳的工作结束，适合在切换视图或关闭前同步状态。
-- `generateTitle(firstMessage)`：基于首条用户消息生成短标题，返回 `Result<string, CodingSdkError>`。
-- `close()`：取消当前工作、等待队列收尾并释放资源。关闭后不再提交 prompt 或控制指令。
+## 生命周期与安全中断
 
-不要用 `state.status === "running"` 自己实现队列控制。状态是显示快照；调用方法与它们的 `Result` 才是并发和生命周期边界。
+- **`agent.abort()`**：主动向 Agent 发出取消信号。正在等待模型返回或工具执行的流程将停止推进。
+- **`agent.waitForIdle()`**：返回一个 Promise，等待当前所有排队的任务与工具彻底结束并回归空闲状态（`idle`）。常用于用户关闭窗口或切换工作区前的安全等待。
+- **`agent.generateTitle(firstMessage)`**：基于首条用户消息和初始响应，使用当前模型快速生成一段精准简短的会话标题（8 个词以内），便于在宿主 UI 的侧边栏展示。
+- **`agent.close()`**：终止内部任务、完成日志刷盘、调用各扩展的 `deactivate` 钩子并清理临时沙箱目录。重复调用 `close()` 是幂等且安全的。

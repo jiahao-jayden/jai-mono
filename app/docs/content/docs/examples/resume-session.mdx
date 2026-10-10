@@ -1,45 +1,62 @@
 ---
-title: 示例：恢复会话
-description: 用 resume 按 id 恢复持久会话，并处理三种恢复错误。
+title: 示例：恢复已有会话
+description: 按 sessionId 回放历史 Journal，恢复 Agent 状态机并继续后续任务。
 ---
 
-```ts
-import { createCodingAgent, type CodingSessionStore } from "@jai/coding-agent";
+当用户重新打开应用或需要在后台服务重启后承接未完成的任务时，可以使用 `session: { kind: "resume" }` 恢复会话。
 
-async function resumeSession(sessionId: string, store: CodingSessionStore) {
+```ts
+import {
+  createCodingAgent,
+  type CodingSessionStore,
+  type CodingAgentFileCapabilities,
+} from "@jai/coding-agent";
+
+async function resumeExistingWork(
+  sessionId: string,
+  store: CodingSessionStore,
+  fileCapabilities: CodingAgentFileCapabilities,
+) {
+  // 1. 指定已有会话 ID 重新建立连接
   const resumed = await createCodingAgent({
-    model: "anthropic/claude-sonnet-4-5",
-    cwd: "/path/to/project",
-    session: { kind: "resume", id: sessionId, store },
-    fileCapabilities: {
-      homeDirectory: "/Users/you",
-      workspaceDirectory: "/path/to/project",
-      workspaceTrusted: true,
+    model: "anthropic/claude-3-7-sonnet",
+    cwd: fileCapabilities.workspaceDirectory,
+    session: {
+      kind: "resume",
+      id: sessionId,
+      store,
     },
+    fileCapabilities,
   });
 
   if (resumed.isErr()) {
+    // 针对不同恢复异常进行友好提示
     switch (resumed.error.code) {
       case "coding_sdk.session_not_found":
-        console.error(`会话 ${sessionId} 不存在`);
+        console.error(`未在存储中找到会话: ${sessionId}`);
         break;
       case "coding_sdk.session_format_invalid":
-        console.error("会话记录不是当前版本格式（需要 version === 1）");
+        console.error("会话数据格式不兼容或版本过旧");
         break;
       default:
-        console.error(resumed.error.code, resumed.error.message);
+        console.error("恢复会话失败:", resumed.error.message);
     }
     return;
   }
 
   const agent = resumed.value;
-  // 历史消息已恢复，state.messages 可直接读
-  console.log("已恢复，历史消息数:", agent.state.messages.length);
 
-  await agent.prompt("继续之前的工作");
+  // 2. 验证历史记录是否已无缝恢复
+  console.log("成功恢复会话，当前历史消息条数:", agent.state.messages.length);
+
+  // 3. 继续推进后续对话
+  await agent.prompt("接着上一次的进度，运行全量测试并告诉我结果");
+
   await agent.close();
 }
 ```
 
-恢复是"按 id 打开 journal"：消息、压缩记录、分支、扩展会话状态都会回来。
-`navigate(entryId)` 可在分支间移动（失败 phase 为 `navigation`）。
+## 关键要点
+
+- **状态一致性**：恢复过程会自动回放该会话下的所有日志条目，包含先前的对话历史、上下文压缩摘要、扩展内部状态以及代码产物清单。
+- **平滑继续**：恢复后的 Agent 实例与初次创建无异，支持全部控制方法（`prompt`、`steer`、`followUp`、`subscribe` 等）。

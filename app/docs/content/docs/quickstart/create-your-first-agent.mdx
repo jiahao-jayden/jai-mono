@@ -1,68 +1,62 @@
 ---
 title: 创建你的第一个 Agent
-description: 用 createCodingAgent 创建 agent，发送 prompt，订阅事件，读取结果并关闭。
+description: 用 30 行代码走通实例创建、实时事件流订阅、Prompt 执行与安全销毁。
 ---
 
-下面 30 行代码走通 SDK 的完整链路：创建 → 订阅事件 → prompt → 结果 → 关闭。
+下面的示例展示了如何创建一个执行当前目录分析的 Agent 实例，并实时监听流式输出与工具调用过程。
 
 ```ts
 import { createCodingAgent } from "@jai/coding-agent";
 
+// 1. 创建 Agent 实例
 const created = await createCodingAgent({
-  model: "anthropic/claude-sonnet-4-5",
-  provider: { apiKey: process.env.ANTHROPIC_API_KEY },
-  cwd: "/path/to/your/project",
-  // session 缺省为 { kind: "ephemeral" }：临时会话，用完即焚
+  model: "anthropic/claude-3-7-sonnet",
+  cwd: process.cwd(),
+  // 缺省时 session 为 { kind: "ephemeral" }，即临时会话，销毁后不留持久化文件
 });
 
 if (created.isErr()) {
-  console.error(created.error.code, created.error.message);
+  console.error("Agent 初始化失败:", created.error.code, created.error.message);
   process.exit(1);
 }
 const agent = created.value;
 
-// 订阅事件：流式文本、工具调用都会以回调推送
+// 2. 订阅运行事件（文本流、工具执行状态）
 const unsubscribe = agent.subscribe((event) => {
+  // 模型流式输出增量文本
   if (event.type === "message_update" && event.assistantEvent.type === "text_delta") {
     process.stdout.write(event.assistantEvent.delta);
   }
+  // 工具调用开始
   if (event.type === "tool_execution_start") {
-    console.log(`\n[tool] ${event.toolName}`);
+    console.log(`\n[执行工具] ${event.toolName}: ${event.title}`);
   }
 });
 
-const result = await agent.prompt("列出这个目录下的文件，并告诉我这是什么项目");
+// 3. 提交任务提示词
+const result = await agent.prompt("分析当前目录下的 package.json，总结项目名称与主要依赖");
 
 if (result.isOk()) {
-  const last = result.value.messages.at(-1);
-  console.log("\n--- done ---", last?.role);
+  console.log("\n--- 任务完成 ---");
+} else {
+  console.error("\n--- 任务失败 ---", result.error.message);
 }
 
+// 4. 清理订阅并释放资源
 unsubscribe();
 await agent.close();
 ```
 
-## 要点
+## 核心设计要点
 
-1. **`createCodingAgent` 是 async 的**，返回
-   `Promise<Result<CodingAgent, CodingSdkError>>`（`better-result`）。
-   用 `result.isOk()` / `result.isErr()` 判断，成功时取 `result.value`。
-   创建失败（如 model 字符串非法、扩展激活失败）的 phase 是 `runtime_creation`。
-2. **`model` 是唯一必填字段**，格式 `"provider/model"`。
-   `provider.apiKey` 缺省会读 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` 环境变量，
-   所以本地开发时常常连 `provider` 都可以省略。
-3. **`prompt` 发送一轮新提示并运行到结束**，返回整轮的
-   `CodingRunResult { sessionId, messages, state }`。空字符串会直接返回
-   `coding_sdk.empty_prompt` 错误（phase `admission`）。
-4. **事件是回调式推送**：`subscribe(listener)` 返回取消订阅函数。
-   没有 RxJS / AsyncIterator 风格的流。`agent.state` 是一个 getter，
-   每次读取都实时投影当前状态。
-5. **`close()` 必须调用**：它会 abort 运行中的任务、等待落盘、逆序 dispose
-   扩展，并删除 ephemeral 会话的临时目录。重复 close 是安全的（返回 ok）。
+- **无抛错设计与 Result 模式**：SDK 的异步操作普遍采用 `better-result` 的 `Result<T, E>` 类型。通过 `result.isOk()` 或 `result.isErr()` 显式处理结果分支，避免在常规业务流中滥用 `try/catch`。
+- **配置即入参**：`model` 是唯一的必填字段。若工作区环境已有对应的 API Key 环境变量，`provider` 对象可以完全省略。
+- **纯粹的流式回调**：调用 `agent.subscribe()` 注册同步监听器，返回值即为注销回调函数。通过监听 `message_update` 事件可以极为轻松地对接控制台流式渲染或前端界面展示。
+- **显式生命周期闭环**：任务全部处理完毕后，必须调用 `await agent.close()`。该调用将优雅等待所有未落盘的日志完成写入、逆序销毁已激活的扩展插件，并回收临时沙箱目录。
 
-## 下一步
+## 进阶探索
 
-- 想让会话在多次 `prompt` 之间持久化、或跨进程恢复 → [会话](/docs/concepts/sessions-and-lifecycle)。
-- 想在工具执行前弹出"是否允许"确认框 → [权限与审批](/docs/guides/permissions)。
-- 想看清 15 种事件分别在什么时候触发 → [状态与事件](/docs/concepts/state-and-events)。
-- 想给 agent 加自定义工具或 MCP → [扩展](/docs/concepts/extensions)。
+- **多轮对话持久化**：了解如何对接存储适配器以跨进程恢复历史记录 → [会话生命周期](/docs/concepts/sessions-and-lifecycle)。
+- **拦截高危操作**：配置人工确认界面与敏感命令拦截规则 → [权限与审批](/docs/guides/permissions)。
+- **事件流规范**：查看所有 15 种事件结构与字段定义 → [状态与事件](/docs/concepts/state-and-events)。
+- **扩展与插件**：为 Agent 增加自定义工具或接入外部服务 → [扩展机制](/docs/concepts/extensions)。

@@ -1,33 +1,34 @@
 ---
 title: SDK 概览
-description: 了解公开 SDK 与 Desktop、CLI 等宿主产品各自负责的边界。
+description: 了解 Coding Agent SDK 的定位、执行链路与宿主分工边界。
 ---
 
-Coding Agent SDK 把执行循环封装为一个宿主可控的 TypeScript API。调用方给出模型、当前目录和产品策略；SDK 负责模型请求、内置工具、会话、事件和 `Result` 投影。
+Coding Agent SDK 将复杂的自主编码循环封装为简洁可控的 TypeScript API。宿主（Host）传入模型标识、工作目录与安全策略；SDK 负责编排模型请求、调用工程工具、管理状态事件，并通过 `Result` 模式向外输出。
 
-## 一次调用经过什么
+## 执行链路
 
-1. 调用方用 `createCodingAgent()` 提供模型引用、可选 Provider 配置、`cwd` 和 session。
-2. SDK 创建或恢复会话，装配选中的内置工具和 extensions。
-3. 宿主调用 `prompt()`；并发 prompt 按进入顺序串行执行。
-4. 工具调用先经过权限层，必要时调用 `requestApproval()`。
-5. 宿主从 `Result`、`state` 和 `subscribe()` 取得 JSON-safe 运行数据。
-6. 宿主调用 `close()` 释放资源；ephemeral session 的临时目录同时删除。
+一个标准的 Agent 任务调用会经过以下阶段：
+
+1. **实例构建**：通过 `createCodingAgent()` 传入模型规格、Provider 配置、工作目录 `cwd` 与会话模式。
+2. **环境就绪**：SDK 创建或恢复会话上下文，完成内置工具（Read、Bash、Edit、Write）与扩展的初始化。
+3. **任务派发**：宿主调用 `prompt()` 发起任务。若同时发起多个调用，内部任务队列将严格按进入顺序串行处理。
+4. **工具拦截与授权**：工具执行前经过权限策略层评估；若命中敏感操作或处于询问模式，触发宿主提供的 `requestApproval()` 审批回调。
+5. **事件流转与状态投影**：执行过程中持续通过 `subscribe()` 向宿主派发实时事件（流式 Token、工具状态、上下文压缩通知），并将状态投影为 JSON-safe 的只读结构。
+6. **资源回收**：任务结束后调用 `close()` 关闭实例，释放网络连接并自动清理临时文件。
 
 ## 宿主与 SDK 的分工
 
-| 宿主提供 | SDK 提供 |
-| --- | --- |
-| 模型引用、API key、base URL | Agent 执行循环与 provider 创建 |
-| `cwd` 与 session 存储目录 | 内置工具、权限求值和 durable session |
-| 授权 UI 或策略 | prompt 队列、abort、close |
-| 产品级模型目录、插件发现、连接器 | JSON-safe state / event DTO |
-| 自定义 extension | extension 的初始化、工具与 hook 生命周期 |
+| 关注点 | 宿主（Host）职责 | SDK 职责 |
+|---|---|---|
+| 模型与服务 | 解析配置目录，提供 API Key 与自定义 Base URL | 创建 Provider 适配器，处理流式请求与协议转换 |
+| 工作区与存储 | 指定工作目录路径，注入会话持久化存储驱动 | 规范化路径计算，实现基于 Journal 的会话恢复 |
+| 安全边界 | 呈现审批 UI，决定用户授权与策略分支 | 基于 AST 静态分析危险命令，阻断路径逃逸与越权 |
+| 扩展能力 | 发现并装配应用级扩展与 MCP 连接器 | 提供扩展生命周期容器，派发上下文钩子 |
 
-Desktop 维护自己的 Jai config、Models.dev catalog、插件目录和审批 UI；CLI 也维护自己的 session-layout/plugin-directory 适配。它们不通过一个额外的共享“产品层”耦合。
+宿主（无论是 Desktop 桌面端还是 CLI 工具）专注于 UI 交互、用户配置持久化与审批流程；SDK 则专注于确定的执行逻辑、工具边界与上下文管理。
 
 :::note
-`requestApproval` 和 extension callbacks 是进程内函数，不是远程协议。跨进程发送 state、event 或审批数据时，仍应按 UI 用途做白名单 DTO 投影；不要传递 stack、cause、Provider 对象或未筛选的 SDK 错误对象。
+审批回调 `requestApproval` 与扩展钩子均为进程内函数。如果你的应用需要通过 IPC 或 WebSocket 跨进程传递数据，建议使用结构化的白名单 DTO，避免直接向前端传输未经序列化的原始异常堆栈或内部对象。
 :::
 
-下一步：[安装](/docs/quickstart/installation) → [创建第一个 Agent](/docs/quickstart/create-your-first-agent)。
+下一步：[安装与环境准备](/docs/quickstart/installation) → [创建第一个 Agent](/docs/quickstart/create-your-first-agent)。

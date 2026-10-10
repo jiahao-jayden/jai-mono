@@ -1,53 +1,61 @@
 ---
-title: 示例：持久会话
-description: new 会话的 Host store 接线与 fileCapabilities。
+title: 示例：持久化会话
+description: 建立多轮连续对话、注入 SessionStore 适配器与配置文件权责。
 ---
 
-`new` / `resume` 需要 Host 提供两样东西：`store`（Session Journal 适配器）
-和 `fileCapabilities`（本地配置根目录）。下面用 SDK 导出的 `InMemorySessionStore`
-作参考实现——**生产环境请实现真正的持久化后端**（如 SQLite），内存 store 重启即丢。
-自实现 store 时：`append` 遇到过期的 `expectedRevision` 必须抛 `SessionConflictError`，
-entry 对 store 不透明，用 `applyEntry` / `emptySnapshot` 折叠出 snapshot。
+在构建交互式桌面端或 CLI 应用时，用户希望与 Agent 进行多轮迭代，且历史上下文能够安全落盘。本示例展示如何通过 `session: { kind: "new" }` 创建持久化会话。
 
 ```ts
-import { createCodingAgent, InMemorySessionStore } from "@jai/coding-agent";
+import {
+  createCodingAgent,
+  InMemorySessionStore,
+  type CodingAgentFileCapabilities,
+} from "@jai/coding-agent";
 
+// 1. 准备存储驱动（生产环境推荐对接 SQLite 等持久存储）
 const store = new InMemorySessionStore();
 
+// 2. 声明本会话的物理工作区与配置边界
+const fileCapabilities: CodingAgentFileCapabilities = {
+  homeDirectory: "/Users/username",
+  workspaceDirectory: "/Users/username/projects/my-web-app",
+  workspaceTrusted: true, // 信任此工作区以读取项目级自定义规则
+};
+
+// 3. 创建持久化会话实例
 const created = await createCodingAgent({
-  model: "anthropic/claude-sonnet-4-5",
-  cwd: "/path/to/project",
+  model: "anthropic/claude-3-7-sonnet",
+  cwd: fileCapabilities.workspaceDirectory,
   session: {
     kind: "new",
-    // id 可选，缺省 coding-<randomUUID()>
     store,
+    // id 为可选参数，缺省时自动生成如 "coding-uuid" 格式的标识
   },
-  fileCapabilities: {
-    homeDirectory: "/Users/you",          // 放 .jai/settings.json
-    workspaceDirectory: "/path/to/project",
-    workspaceTrusted: true,               // 允许项目级配置参与
-  },
-  requestApproval: async () => "deny", // 示例：默认拒绝，可换成真实 UI
+  fileCapabilities,
+  permissionMode: "ask",
+  // 简化的审批回调
+  requestApproval: async () => "allowOnce",
 });
 
 if (created.isErr()) {
-  // coding_sdk.file_capabilities_required：忘了传 fileCapabilities
-  console.error(created.error.code, created.error.message);
+  console.error("创建失败:", created.error.code, created.error.message);
   process.exit(1);
 }
+
 const agent = created.value;
-console.log("sessionId:", agent.sessionId); // 下次 resume 用这个 id
+console.log("新建会话 ID:", agent.sessionId);
 
-await agent.prompt("初始化项目脚手架");
-await agent.prompt("再补一个 README"); // 同一会话，上下文连续
+// 第一轮任务：生成脚手架
+await agent.prompt("在 src/math.ts 中实现加减乘除四个基础算术函数，并导出它们");
 
+// 第二轮任务：基于上一轮的上下文继续编写测试
+await agent.prompt("为刚刚创建的 math.ts 编写对应的单元测试文件 test/math.test.ts");
+
+// 优雅关闭实例
 await agent.close();
 ```
 
-关键点：
+## 关键要点
 
-- 缺 `fileCapabilities` 时创建直接失败，
-  code `coding_sdk.file_capabilities_required`（phase `runtime_creation`），
-  不是运行时才报错。
-- 同一 `sessionId` 多次 `createCodingAgent({ session: { kind: "resume", id,
-  store } })` 即可恢复（见下一节）。
+- **连续上下文**：在同一个 Agent 实例上多次调用 `agent.prompt()`，后续轮次会自动继承先前的消息历史与工具变更记录。
+- **保存会话 ID**：记录下 `agent.sessionId`，后续即便当前进程退出，只要底层数据已写入 `store`，就可以随时通过 `kind: "resume"` 重新接入。

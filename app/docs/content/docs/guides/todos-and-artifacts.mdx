@@ -1,59 +1,63 @@
 ---
 title: Todos 与 Artifacts
-description: 从公开状态读取 Agent 维护的 Todo 列表和 Markdown/HTML artifact 目录。
+description: 获取 Agent 维护的任务清单与生成的技术文档或代码产物目录。
 ---
 
-Todo 由可选的 `@jai/extension/todo` 提供。安装后，`UpdateTodos` 每次替换完整列表。公开项包含：
+在自主完成复杂重构或长线开发任务时，Agent 会维护两项高价值的派生数据：**任务清单（Todos）** 与 **产物目录（Artifacts）**。宿主可直接将其渲染在交互界面的侧边栏或进度看板中。
 
-```ts
-type TodoItem = {
-  id: string;
-  content: string;
-  status: "pending" | "in_progress" | "completed" | "cancelled";
-};
-```
+## 待办清单（Todos）
+
+任务清单通常由官方扩展包 `@jai/extension/todo` 驱动。当 Agent 拆解出多步开发计划时，会自主更新这份待办列表。
 
 ```ts
 import { createCodingAgent } from "@jai/coding-agent";
 import { createTodoExtension, todosFromExtensionState } from "@jai/extension/todo";
 
-const result = await createCodingAgent({
-  model: "openai/gpt-4.1-mini",
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
   extensions: [createTodoExtension()],
-});
-if (result.isOk()) {
-  const agent = result.value;
-  await agent.prompt("Plan the work");
-  const todos = todosFromExtensionState(agent.state.extensions);
-  console.log(todos?.items);
-  await agent.close();
+})).value;
+
+await agent.prompt("为当前工程添加国际化支持，先拆解实施步骤");
+
+// 从扩展状态中读取最新待办列表
+const todos = todosFromExtensionState(agent.state.extensions);
+
+if (todos) {
+  for (const item of todos.items) {
+    console.log(`[${item.status}] ${item.content}`);
+    // item.status: "pending" | "in_progress" | "completed" | "cancelled"
+  }
 }
 ```
 
-`state.extensions` 是只读 JSON 快照。Todo 通过现有 Extension sessionState 写入 journal；无状态时读取返回 `undefined`，主动清空后返回 `items: []`。不再读取旧顶层 `appState.todos`。
+待办状态随着会话执行自动保持更新，并通过 Journal 与整个会话一同持久化。
 
-## Artifacts
+## 产物清单（Artifacts）
 
-成功的 `Write` 或 `Edit` 在目标文件为 Markdown 或 HTML 时会登记 artifact。公开项包含 `id`、`toolCallId`、`path`、`format` 与 `updatedAt`：
+当 Agent 成功调用 `Write` 或 `Edit` 创建或修改了技术方案、设计说明（`.md`）或交互预览文件（`.html`）时，SDK 会自动提取并维护一份产物目录：
 
 ```ts
-for (const artifact of agent.state.artifacts) {
-  console.log(artifact.format, artifact.path);
+// 直接从当前不可变状态中读取产物
+const artifacts = agent.state.artifacts;
+
+for (const artifact of artifacts) {
+  console.log(`产物类型: ${artifact.format}`); // "markdown" | "html"
+  console.log(`产物路径: ${artifact.path}`);
+  console.log(`更新时间: ${new Date(artifact.updatedAt).toLocaleTimeString()}`);
 }
 ```
 
-Artifact ID 是 `artifact:<path>`；同一路径的更新会替换目录项，列表按更新时间由新到旧排列，并可持久化到 durable session 的 app state。
-
-`codingArtifactsFromAppState(appState)` 是从已持久化 JSON app state 恢复并排序 artifact catalog 的公开 helper：
+- **按需排序**：产物列表默认按修改时间从新到旧排列。若同一文件被多次迭代，仅保留最新的产物条目。
+- **状态恢复**：如果宿主需要从已持久化的底层 AppState 还原产物元数据列表，可以使用 SDK 导出的工具函数：
 
 ```ts
-import { codingArtifactsFromAppState, type JsonObject } from "@jai/coding-agent";
+import { codingArtifactsFromAppState } from "@jai/coding-agent";
 
-function restoreArtifacts(appState: JsonObject) {
-  return codingArtifactsFromAppState(appState);
-}
+// 从持久化存储中反序列化产物目录
+const restoredArtifacts = codingArtifactsFromAppState(persistedAppState);
 ```
 
 :::note
-Artifact 是目录元数据，不包含文件内容，也不证明文件仍存在。读取、打开或展示文件仍须经过宿主的路径和权限决策。
+产物元数据记录了关键文件的位置与变更时间，本身不内嵌完整文件文本，从而避免占用会话存储。宿主应按需调用文件系统读取实际内容并在 UI 中渲染。
 :::
