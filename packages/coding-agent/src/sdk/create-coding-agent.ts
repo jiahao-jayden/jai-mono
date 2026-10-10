@@ -80,7 +80,7 @@ import type {
 	JsonObject,
 	JsonValue,
 } from "./types";
-import { resolveMaxIterations, validateCreateOptions } from "./validate-options";
+import { DEFAULT_HOOK_TIMEOUT_MS, resolveMaxIterations, validateCreateOptions } from "./validate-options";
 
 /** Adds the symlink-resolved spelling: the permission layer evaluates both the requested and the canonical path. */
 function withCanonicalPaths(paths: readonly string[]): string[] {
@@ -105,6 +105,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 	let extensions: readonly InitializedExtension[] = [];
 	try {
 		await validateCreateOptions(input);
+		const hookTimeoutMs = input.hookTimeoutMs ?? DEFAULT_HOOK_TIMEOUT_MS;
 		const session = input.session ?? { kind: "ephemeral" as const };
 		const sessionId = resolveSessionId(session);
 		const cwd = input.cwd ?? process.cwd();
@@ -198,7 +199,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			extensionTools: extensionTools(extensions),
 			extensionBeforeModelCall: async (messages) => {
 				await notifyExtensionTurnStart(extensions);
-				const transformed = await extensionBeforeModelCall(extensions, messages);
+				const transformed = await extensionBeforeModelCall(extensions, messages, hookTimeoutMs);
 				// The internal Agent hook cannot return Result, so this is the adapter seam that rethrows it.
 				if (transformed.isErr()) throw transformed.error;
 				return transformed.value;
@@ -267,6 +268,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				ephemeralDirectory,
 				extensions,
 				toolPresentations,
+				hookTimeoutMs,
 			),
 		);
 	} catch (error) {
@@ -282,6 +284,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 	readonly #model: Model;
 	readonly #provider: Provider;
 	readonly #ephemeralDirectory?: string;
+	readonly #hookTimeoutMs: number;
 	readonly #extensions: readonly InitializedExtension[];
 	readonly #artifacts = new Map<string, CodingAgentArtifact>();
 	readonly #pendingArtifacts = new Map<string, CodingAgentArtifact>();
@@ -303,7 +306,9 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		ephemeralDirectory?: string,
 		extensions: readonly InitializedExtension[] = [],
 		toolPresentations = builtInToolPresentations(),
+		hookTimeoutMs = DEFAULT_HOOK_TIMEOUT_MS,
 	) {
+		this.#hookTimeoutMs = hookTimeoutMs;
 		this.#internal = internal;
 		this.#sessionId = sessionId;
 		this.#model = modelRuntime.model;
@@ -386,7 +391,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 					message: "Prompt must not be empty",
 				});
 			}
-			const admission = await extensionBeforeAgentStart(this.#extensions, prompt);
+			const admission = await extensionBeforeAgentStart(this.#extensions, prompt, this.#hookTimeoutMs);
 			if (admission.isErr()) throw admission.error;
 			if (admission.value) {
 				throw new CodingExtensionPolicyBlocked({

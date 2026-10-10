@@ -660,7 +660,7 @@ async function executeToolCall(run: AgentLoopRuntime, resolved: ResolvedToolCall
 			return middleware(ctx, () => dispatch(index + 1));
 		};
 
-		result = await dispatch(0);
+		result = await raceAbort(dispatch(0), signal);
 	} catch (error) {
 		if (isEffectGateInterrupted(error)) throw error;
 		// 工具执行错误不能成为阻塞，而是让 agent-loop 可见
@@ -689,6 +689,21 @@ async function executeToolCall(run: AgentLoopRuntime, resolved: ResolvedToolCall
 	});
 
 	return outcome;
+}
+
+/**
+ * Stops waiting once the run is aborted. A tool, middleware or approval handler that ignores its
+ * signal keeps running in the background, but can no longer hold the run (or `close()`) hostage;
+ * a late rejection is swallowed because the run has already recorded the aborted result.
+ */
+function raceAbort<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+	if (!signal) return work;
+	return new Promise<T>((resolve, reject) => {
+		const onAbort = () => reject(new ToolAborted({ message: "Tool execution aborted" }));
+		signal.addEventListener("abort", onAbort, { once: true });
+		work.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+		if (signal.aborted) onAbort();
+	});
 }
 
 function finalArguments(tool: AgentTool, toolCall: ToolCall, args: Record<string, unknown>): Record<string, unknown> {

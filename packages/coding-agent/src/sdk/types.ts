@@ -233,6 +233,11 @@ export interface CodingAgentCreateOptions {
 	 * limit. Any other value is rejected with `coding_sdk.invalid_options`.
 	 */
 	readonly maxTurns?: number;
+	/**
+	 * Milliseconds an Extension `beforeAgentStart` or `beforeModelCall` hook may take before it is
+	 * failed as `CodingExtensionHookFailed`. Default 30000; `Infinity` removes the deadline.
+	 */
+	readonly hookTimeoutMs?: number;
 	/** Provider-neutral request options supplied by the product runtime. */
 	readonly providerOptions?: Record<string, Record<string, unknown>>;
 	/**

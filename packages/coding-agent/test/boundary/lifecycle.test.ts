@@ -123,10 +123,9 @@ describe("uncooperative callbacks", () => {
 		],
 	});
 
-	// abort() itself returns, but the run it aborted keeps waiting on the uncooperative callback:
-	// prompt() never settles and close() blocks behind it. Hosts must enforce a deadline inside
-	// every extension tool and approval handler; the SDK does not.
-	test.failing("a tool that ignores its abort signal still lets prompt() settle after abort()", async () => {
+	// abort() stops waiting for a tool or approval handler that ignores its signal; the callback
+	// keeps running in the background but no longer holds prompt() or close().
+	test("a tool that ignores its abort signal still lets prompt() settle after abort()", async () => {
 		await fixture.prepare();
 		fixture.script({ kind: "tool", name: "Hang", args: {} });
 		const agent = await fixture.open({ extensions: [hangingTool] });
@@ -136,7 +135,7 @@ describe("uncooperative callbacks", () => {
 		expect(await settleWithin(run, 1000)).not.toBe("timeout");
 	});
 
-	test.failing("close() returns while a tool that ignores its abort signal is running", async () => {
+	test("close() returns while a tool that ignores its abort signal is running", async () => {
 		await fixture.prepare();
 		fixture.script({ kind: "tool", name: "Hang", args: {} });
 		const agent = await fixture.open({ extensions: [hangingTool] });
@@ -145,7 +144,7 @@ describe("uncooperative callbacks", () => {
 		expect(await settleWithin(agent.close(), 1000)).not.toBe("timeout");
 	});
 
-	test.failing("a never-settling approval handler still lets prompt() settle after abort()", async () => {
+	test("a never-settling approval handler still lets prompt() settle after abort()", async () => {
 		const { workspace } = await fixture.prepare();
 		fixture.script({ kind: "tool", name: "Write", args: { path: `${workspace}/x.txt`, content: "x" } });
 		const agent = await fixture.open({ cwd: workspace, permissionMode: "ask", requestApproval: () => new Promise(() => {}) });
@@ -155,12 +154,21 @@ describe("uncooperative callbacks", () => {
 		expect(await settleWithin(run, 1000)).not.toBe("timeout");
 	});
 
-	// ponytail: no hook timeout exists. Ceiling: one stuck beforeAgentStart hook stalls the
-	// prompt for the lifetime of the process. Upgrade path: race hooks against a configurable deadline.
-	test.failing("a hanging beforeAgentStart hook cannot stall prompt() indefinitely", async () => {
+	test("a hanging beforeAgentStart hook fails the prompt at hookTimeoutMs", async () => {
 		await fixture.prepare();
 		const stuck = defineExtension({ id: "stuck-hook", hooks: { beforeAgentStart: () => new Promise(() => {}) } });
-		const agent = await fixture.open({ extensions: [stuck] });
+		const agent = await fixture.open({ extensions: [stuck], hookTimeoutMs: 100 });
+		const result = await settleWithin(agent.prompt("x"), 1500);
+		expect(result).not.toBe("timeout");
+		expect(result !== "timeout" && result.isErr() && result.error.code).toBe("coding_extension.hook_failed");
+	});
+
+	test("a hanging beforeModelCall hook fails the run instead of stalling it", async () => {
+		await fixture.prepare();
+		fixture.script({ kind: "text", text: "ok" });
+		const stuck = defineExtension({ id: "stuck-model-hook", hooks: { beforeModelCall: () => new Promise(() => {}) } });
+		const agent = await fixture.open({ extensions: [stuck], hookTimeoutMs: 100 });
 		expect(await settleWithin(agent.prompt("x"), 1500)).not.toBe("timeout");
+		expect(fixture.mock.requests).toHaveLength(0);
 	});
 });

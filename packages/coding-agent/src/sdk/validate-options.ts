@@ -7,6 +7,9 @@ import type { CodingAgentCreateOptions } from "./types";
 /** Fuse for an unattended run; pass `maxTurns: Infinity` to opt out explicitly. */
 export const DEFAULT_MAX_TURNS = 100;
 
+/** Deadline for Extension hooks that block the run (`beforeAgentStart`, `beforeModelCall`). */
+export const DEFAULT_HOOK_TIMEOUT_MS = 30_000;
+
 const permissionModeSchema = Type.Union([
 	Type.Literal("ask"),
 	Type.Literal("allow"),
@@ -30,7 +33,10 @@ function invalidOptions(message: string): CodingSdkFailure {
  */
 export async function validateCreateOptions(input: CodingAgentCreateOptions): Promise<void> {
 	if (!isRecord(input)) throw invalidOptions("Options must be an object");
-	const { maxTurns, permissionMode, cwd } = input;
+	const { maxTurns, permissionMode, cwd, hookTimeoutMs } = input;
+	if (hookTimeoutMs !== undefined && !(typeof hookTimeoutMs === "number" && hookTimeoutMs > 0)) {
+		throw invalidOptions("hookTimeoutMs must be a positive number or Infinity");
+	}
 	if (
 		maxTurns !== undefined &&
 		maxTurns !== Number.POSITIVE_INFINITY &&
