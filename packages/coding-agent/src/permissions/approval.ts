@@ -1,4 +1,5 @@
 import { type Static, Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 
 export const permissionApprovalDecisionSchema = Type.Union([
 	Type.Literal("deny"),
@@ -22,3 +23,11 @@ export const permissionRequestSummarySchema = Type.Object(
 export type PermissionApprovalDecision = Static<typeof permissionApprovalDecisionSchema>;
 export type PermissionRequestSummary = Static<typeof permissionRequestSummarySchema>;
 export type PermissionRisk = Static<typeof permissionRiskSchema>;
+
+/**
+ * The approval handler is host code and may be plain JS: anything outside the three decisions
+ * (false, null, undefined, "no") must deny rather than fall through to execution.
+ */
+export function normalizeApprovalDecision(value: unknown): PermissionApprovalDecision {
+	return Value.Check(permissionApprovalDecisionSchema, value) ? value : "deny";
+}

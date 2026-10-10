@@ -30,6 +30,7 @@
 		"test:consumer": "node ./scripts/test-consumer.mjs"
 	},
 	"dependencies": {
+		"@anthropic-ai/sandbox-runtime": "0.0.77",
 		"@anthropic-ai/sdk": "^0.110.0",
 		"@sinclair/typebox": "^0.34.49",
 		"better-result": "^3.0.0",

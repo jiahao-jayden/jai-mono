@@ -35,6 +35,8 @@ export interface AnthropicProviderConfig {
 	apiKey: string;
 	baseURL?: string;
 	headers?: Readonly<Record<string, string>>;
+	/** Milliseconds without any stream data before the run fails; default 300000, `Infinity` disables. */
+	idleTimeoutMs?: number;
 	authentication?: "x-api-key" | "none";
 }
 
@@ -55,12 +57,14 @@ export class AnthropicProvider implements Provider {
 	private readonly client: Anthropic;
 	private readonly baseURL?: string;
 	private readonly headers?: Readonly<Record<string, string>>;
+	private readonly idleTimeoutMs?: number;
 	private readonly authentication: "x-api-key" | "none";
 
 	constructor(config: AnthropicProviderConfig) {
 		this.id = config.id ?? this.adapter;
 		this.baseURL = config.baseURL;
 		this.headers = config.headers;
+		this.idleTimeoutMs = config.idleTimeoutMs;
 		this.authentication = config.authentication ?? "x-api-key";
 		this.client = this.createClient(config.apiKey);
 	}
@@ -92,28 +96,34 @@ export class AnthropicProvider implements Provider {
 		const output = createAssistantMessage(this.id, model.id);
 		const blockStates = new Map<number, BlockState>();
 
-		await runAdapterStream(eventStream, output, options?.signal, {
-			request: async () => {
-				const client = options?.apiKey ? this.createClient(options.apiKey) : this.client;
+		await runAdapterStream(
+			eventStream,
+			output,
+			options?.signal,
+			{
+				request: async (signal) => {
+					const client = options?.apiKey ? this.createClient(options.apiKey) : this.client;
 
-				const params = buildParams(model, context, options);
-				const providerOpts = options?.providerOptions?.[this.id] ?? options?.providerOptions?.[this.adapter];
-				const body = mergeProviderOptions("anthropic", params, providerOpts, [
-					...Object.keys(params),
-					"system",
-					"tools",
-				]);
+					const params = buildParams(model, context, options);
+					const providerOpts = options?.providerOptions?.[this.id] ?? options?.providerOptions?.[this.adapter];
+					const body = mergeProviderOptions("anthropic", params, providerOpts, [
+						...Object.keys(params),
+						"system",
+						"tools",
+					]);
 
-				return client.messages.create(body, {
-					signal: options?.signal,
-					headers: options?.fastMode ? fastModeHeaders(this.headers) : undefined,
-				});
+					return client.messages.create(body, {
+						signal,
+						headers: options?.fastMode ? fastModeHeaders(this.headers) : undefined,
+					});
+				},
+				step: (event) => translateEvent(output, blockStates, event),
+				// Anthropic 每个 block 都有显式 stop 事件，不需要收尾
+				finalize: () => [],
+				validate: () => assertNativeToolCallProtocol(output, context.tools),
 			},
-			step: (event) => translateEvent(output, blockStates, event),
-			// Anthropic 每个 block 都有显式 stop 事件，不需要收尾
-			finalize: () => [],
-			validate: () => assertNativeToolCallProtocol(output, context.tools),
-		});
+			this.idleTimeoutMs,
+		);
 	}
 
 	private createClient(apiKey: string): Anthropic {

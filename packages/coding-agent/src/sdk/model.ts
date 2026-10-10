@@ -12,6 +12,11 @@ export interface CodingProviderOptions {
 	readonly apiKey?: string;
 	readonly baseUrl?: string;
 	readonly headers?: Readonly<Record<string, string>>;
+	/**
+	 * Milliseconds the provider stream may stay silent (no response headers, no chunk) before the run
+	 * ends with `stopReason: "error"`. Default 300000; `Infinity` disables the watchdog.
+	 */
+	readonly idleTimeoutMs?: number;
 	/** OpenAI-compatible local endpoints can explicitly opt out of authentication. */
 	readonly authentication?: "bearer" | "x-api-key" | "none";
 }
@@ -114,6 +119,7 @@ function createProvider(
 			apiKey: apiKey!,
 			baseURL,
 			headers: options?.headers,
+			idleTimeoutMs: options?.idleTimeoutMs,
 			authentication: "x-api-key",
 		});
 	}
@@ -122,6 +128,7 @@ function createProvider(
 		apiKey: apiKey ?? "not-required",
 		baseURL,
 		headers: options?.headers,
+		idleTimeoutMs: options?.idleTimeoutMs,
 		authentication: authentication === "none" ? ("none" as const) : ("bearer" as const),
 	};
 	return providerKind === "openai" ? new OpenAIResponsesProvider(config) : new OpenAIProvider(config);

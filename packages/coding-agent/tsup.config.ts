@@ -23,4 +23,5 @@ export default defineConfig({
 	splitting: false,
 	treeshake: true,
 	noExternal: [/^@jai\//],
+	external: ["@anthropic-ai/sandbox-runtime"],
 });

@@ -6,6 +6,7 @@ import {
 	type PermissionEffect,
 	type PermissionGrantConfig,
 	type PermissionMode,
+	type PermissionRuleValue,
 	type PermissionSettings,
 	type ResolvedPermissionSettings,
 } from "./types";
@@ -71,6 +72,24 @@ export function mergePermissionConfigs(candidates: readonly { readonly value: un
 		}
 	}
 	return merged;
+}
+
+/**
+ * Adds `deny` rules for every subtree in `paths` (absolute) to both file actions. A deny rule wins over
+ * any allow/ask/grant, and a blanket string rule such as `"file.write": "allow"` is kept as the `*` pattern.
+ */
+export function denyFileSubtrees(config: PermissionConfig | undefined, paths: readonly string[]): PermissionConfig {
+	const denied: Record<string, PermissionEffect> = {};
+	for (const path of paths) {
+		denied[`/${path}`] = "deny";
+		denied[`/${path}/**`] = "deny";
+	}
+	const result: Record<string, PermissionRuleValue> = { ...config };
+	for (const action of ["file.read", "file.write"] as const) {
+		const existing = config?.[action];
+		result[action] = { ...(typeof existing === "string" ? { "*": existing } : existing), ...denied };
+	}
+	return result;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
