@@ -3,8 +3,6 @@ title: 示例：持久会话
 description: new 会话的 Host store 接线与 fileCapabilities。
 ---
 
-# 示例：持久会话
-
 `new` / `resume` 需要 Host 提供两样东西：`store`（Session Journal 适配器）
 和 `fileCapabilities`（本地配置根目录）。下面用 SDK 导出的 `InMemorySessionStore`
 作参考实现——**生产环境请实现真正的持久化后端**（如 SQLite），内存 store 重启即丢。

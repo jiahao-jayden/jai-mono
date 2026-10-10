@@ -3,8 +3,6 @@ title: CodingAgent
 description: Agent 实例的 12 个公开方法：prompt、steer、compact、subscribe 等。
 ---
 
-# `CodingAgent`
-
 所有方法都返回 `Promise<Result<…, CodingSdkError>>`（`better-result`）。
 没有 `stream()` / `send()` 方法——`prompt` 即发送并运行到结束。
 
