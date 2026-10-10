@@ -1,46 +1,78 @@
 ---
 title: createCodingAgent
-description: 查阅创建函数的签名、输入配置、Result 输出和 session 创建约束。
+description: 创建函数的签名与全部 30 个选项字段。
 ---
 
-```ts
-function createCodingAgent<TAppState extends JsonObject = JsonObject>(
-  options: CodingAgentCreateOptions,
-): Promise<Result<CodingAgent<TAppState>, CodingSdkError>>;
-```
-
-创建阶段会校验 session 和工具选择，验证静态 Extension capability、activate 每-session instance 并建立模型与 runtime。可恢复失败返回 `Err<CodingSdkError>`；处理 `Result`，不要用 try/catch 替代正常错误分支。
+# `createCodingAgent`
 
 ```ts
-import { createCodingAgent, type CodingSessionStore, type JsonObject } from "@jai/coding-agent";
-
-type MyAppState = JsonObject & { readonly activeView?: string };
-declare const sessionStore: CodingSessionStore;
-
-const created = await createCodingAgent<MyAppState>({
-  model: "anthropic/claude-sonnet-4-20250514",
-  cwd: process.cwd(),
-  fileCapabilities: {
-    homeDirectory: process.env.HOME ?? process.cwd(),
-    workspaceDirectory: process.cwd(),
-    workspaceTrusted: true,
-  },
-  session: { kind: "new", store: sessionStore },
-  permissionMode: "default",
-  maxTurns: 30,
-});
-
-if (created.isErr()) console.error(created.error);
+export async function createCodingAgent<TAppState extends JsonObject = JsonObject>(
+  input: CodingAgentCreateOptions,
+): Promise<Result<CodingAgent<TAppState>, CodingSdkError>>
 ```
 
-## 创建约束
+`TAppState` 是 Host 挂载的应用状态类型（缺省 `JsonObject`）。
+创建失败（模型未解析、扩展激活失败、持久会话缺 `fileCapabilities` 等）
+返回 `Result.err`，phase 为 `runtime_creation`。
 
-- `new` 若 ID 已存在则失败。
-- `resume` 若 ID 不存在则失败。
-- `ephemeral` 使用临时存储，并由 `close()` 删除。
-- persistent session 必须由 Host 提供 `fileCapabilities`；其 user/workspace JSON 与 Skills 只从这些根读取。
-- `instructions` 追加到 SDK 默认 coding instructions。
-- `compactionSummaryInstructions` 只配置 compaction summary。
-- `tools` 只启用列出的内置工具；`excludeTools` 最后应用，重叠时排除优先。
+## 必填与常用
 
-详见 [创建配置](/docs/api-reference/host-and-configuration) 与 [工具与动态能力](/docs/guides/tools-and-capabilities)。
+| 字段 | 必选 | 类型 | 说明 |
+|---|---|---|---|
+| `model` | ✅ | `string` | **唯一必填**。格式 `"<provider>/<model>"`（按第一个 `/` 分隔）。provider 前缀仅限 `anthropic` \| `openai` \| `openai-compatible`；非法抛 `coding_sdk.invalid_model_ref` / `coding_sdk.unsupported_provider` |
+| `provider` | | `CodingProviderOptions` | `{ apiKey?; baseUrl?; headers?; idleTimeoutMs?; authentication?: "bearer" \| "x-api-key" \| "none" }`。anthropic 强制 `x-api-key`；openai 系仅 `bearer`/`none`。`bearer` 时 apiKey 缺省读 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`；baseUrl 缺省读 `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL`，必须 HTTPS 或 loopback HTTP、无 userinfo。`idleTimeoutMs`：provider 流静默（无响应头、无数据）超过该毫秒数则本次运行以 `stopReason: "error"` 结束（`state.error.code === "ai_provider.idle_timeout"`），默认 `300000`，`Infinity` 关闭 |
+| `cwd` | | `string` | 工作目录；缺省 `process.cwd()`。会拼入 system prompt 的环境指令 |
+| `instructions` | | `string` | 追加到默认 system prompt 之后的自定义指令（最终 = 默认指令 + 环境指令 + 本字段，`\n\n` 连接） |
+| `session` | | `CodingSessionSelection` | 缺省 `{ kind: "ephemeral" }`。`new`/`resume` 需同时提供 `store` 与 `fileCapabilities` |
+| `permissionMode` | | `"ask" \| "allow" \| "auto" \| "plan"` | 缺省 `"ask"` |
+| `protectConfigDirectories` | | `boolean` | 缺省 `false`。为 `true` 时，内置文件工具在任何权限模式下都不能读写 workspace、home、`cwd` 下的 `.jai/`（Shell 沙箱始终保护前两者）。缺省不限制，agent 能否改自己的配置由使用者通过权限规则决定 |
+| `hookTimeoutMs` | | `number` | 阻塞型 Extension hook（`beforeAgentStart`、`beforeModelCall`）的最长耗时，超时按 hook 失败处理；默认 `30000`，`Infinity` 关闭 |
+| `requestApproval` | | `CodingApprovalHandler` | 审批回调 `(request, signal?) => "deny" \| "allowOnce" \| "alwaysAllow"`；缺省无（审批不可用） |
+| `extensions` | | `readonly CodingAgentExtension[]` | 扩展数组；SDK 做 id 唯一校验 |
+| `maxTurns` | | `number` | 单次运行的最大迭代轮数，正整数，缺省不限制（无人值守运行建议显式设置）。非法值返回 `coding_sdk.invalid_options` |
+
+## 模型能力相关（Host 解析后传入）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `modelMetadata` | `CodingModelMetadata` | `{ contextWindow?; maxTokens? }`；缺省 `contextWindow: 128_000`、`maxTokens: 8_192` |
+| `compatibilityProfile` | `ResolvedCompatibilityProfile`（`@jai/ai`） | operation 级兼容性快照 |
+| `providerOptions` | `Record<string, Record<string, unknown>>` | provider 无关的请求选项，由产品 runtime 提供 |
+| `reasoningLevel` | `ReasoningLevel`（`@jai/ai`） | Host 已针对模型能力解析好的推理等级；省略则不发 reasoning 参数；辅助请求不继承 |
+| `fastMode` | `boolean` | 仅当 Host 确认模型支持 Fast 模式时设置 |
+| `auxiliaryModel` | `CodingAuxiliaryModel` | 权限 `auto` 模式做后台判断的辅助模型；省略则复用本 agent 的 model/provider；`{ kind: "unavailable" }` 则回退为向用户提问 |
+
+`resolveSdkModel(modelRef, providerOptions?, compatibilityProfile?, metadata?)`
+可单独调用做解析，返回 `{ model, provider }`（`@jai/ai` 类型），不发起网络请求。
+
+## 会话与持久化
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `fileCapabilities` | `CodingAgentFileCapabilities` | `{ homeDirectory; workspaceDirectory; workspaceTrusted }`。持久会话（`new`/`resume`）**必填**，缺失抛 `coding_sdk.file_capabilities_required`；ephemeral 会话忽略，改用隔离临时目录 |
+| `sessionAllowRules` | `SessionAllowRules` | Host 拥有的跨 Operation 共享授权表 |
+| `sessionGrantWorkspaceRoot` | `string` | 与共享授权表绑定的 workspace 标识 |
+| `approvalQueue` | `PermissionApprovalQueue` | 跨 Operation 共享的审批 FIFO（`createPermissionApprovalQueue()` 创建）；缺省每个审批立即弹 |
+| `openChildSession` | `(toolCallId: string) => Promise<unknown>` | 每次 subagent 调用打开 journal-only 子会话的 Host 工厂；省略则子 transcript 不持久化 |
+| `effectBoundary` | `CodingEffectBoundary` | Host 拥有的 durable effect 协议，仅产品 runtime 提供 |
+| `backgroundAgents` | `BackgroundAgentStore` | 跨 Operation 共享的后台 registry；省略则后台 agent 只对启动它的 Operation 可见 |
+
+## 工具与压缩
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `tools` | `readonly CodingToolName[]` | 白名单：只启用这些内置工具；扩展工具不受影响 |
+| `excludeTools` | `readonly CodingToolName[]` | 黑名单：在 `tools` 选择后移除；重叠时排除优先；非法名抛 `coding_sdk.invalid_tool_selection` |
+| `autoCompaction` | `boolean` | 缺省 `true`；`false` 只关闭阈值/overflow 自动压缩，`compact()` 仍可用 |
+| `compactionSummaryInstructions` | `string` | 压缩摘要的自定义指令 |
+
+## 扩展与观测旁路
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `extensionRuntime` | `CodingExtensionRuntimeAdapter` | Host 适配器：扩展配置读写、审批、diagnostic 上报 |
+| `permissionTelemetryObserver` | `PermissionTelemetryObserver` | 只观察权限事实、不参与判定的旁路 |
+| `modelRequestTelemetryObserver` | `ModelRequestObserver`（`@jai/agent`） | 在 provider 请求发出前观察最终模型上下文的旁路 |
+
+另见：[CodingAgent 方法](/docs/api-reference/coding-agent) · [会话](/docs/concepts/sessions-and-lifecycle) ·
+[权限](/docs/guides/permissions) · [错误](/docs/api-reference/errors)。

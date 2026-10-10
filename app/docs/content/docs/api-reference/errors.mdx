@@ -1,0 +1,107 @@
+---
+title: 错误
+description: CodingSdkError 结构、9 个 phase、实际错误码表与扩展错误类。
+---
+
+# 错误
+
+## `CodingSdkError`
+
+所有公开方法的 `Result.err` 载荷都是这个结构：
+
+```ts
+export interface CodingSdkError {
+  readonly code: string;      // 如 "coding_sdk.session_not_found"
+  readonly message: string;   // 人类可读
+  readonly retryable: boolean;
+  readonly phase: CodingSdkErrorPhase;
+}
+
+export type CodingSdkErrorPhase =
+  | "runtime_creation"   // createCodingAgent 阶段
+  | "session"            // 会话创建/恢复/校验
+  | "admission"          // 输入准入（空 prompt 等）
+  | "model"              // 模型解析与 provider 调用
+  | "tool"               // 工具执行
+  | "permission"         // 权限评估与审批
+  | "compaction"         // 上下文压缩
+  | "navigation"         // navigate(entryId)
+  | "lifecycle";         // close 后调用等生命周期错误
+```
+
+> 旧文档漏了 `"navigation"`。`retryable` 规则：仅 `model` / `tool`
+> phase 为 `true`（如 provider 429 限流），其余为 `false`。
+
+## 实际错误码表
+
+以下均为源码中实际出现的 code：
+
+| code | phase | 触发条件 |
+|---|---|---|
+| `coding_sdk.model_unavailable` | `runtime_creation` | 模型解析失败 |
+| `coding_sdk.file_capabilities_required` | `runtime_creation` | 持久会话缺 `fileCapabilities` |
+| `coding_sdk.invalid_tool_selection` | `runtime_creation` | `tools`/`excludeTools` 含未知工具名 |
+| `coding_sdk.invalid_model_ref` | `model` | model 字符串格式非法（缺 `/`、首尾 `/`） |
+| `coding_sdk.unsupported_provider` | `model` | provider 前缀不在三者之内 |
+| `coding_sdk.title_generation_failed` | `model` | `generateTitle` 失败 |
+| `coding_sdk.session_not_found` | `session` | `resume` 的 id 无记录 |
+| `coding_sdk.session_exists` | `session` | `new` 的 id 已存在 |
+| `coding_sdk.session_format_invalid` | `session` | 记录不是当前会话格式（`version === 1`） |
+| `coding_sdk.empty_prompt` | `admission` | `prompt`/`steer` 空字符串 |
+| `coding_sdk.agent_closed` | `lifecycle` | close 后继续调用 |
+
+处理模式：
+
+```ts
+const result = await agent.prompt("...");
+if (result.isErr()) {
+  const err = result.error;
+  if (err.retryable) {
+    // model/tool phase：可退避重试
+  } else {
+    // 向用户展示 err.message；err.code 可做分支
+  }
+}
+```
+
+## 扩展错误类
+
+13 个 `CodingExtension*` 类全部从 SDK 入口导出，另有联合类型
+`CodingExtensionError`：
+
+| 类 | tag |
+|---|---|
+| `CodingExtensionActivationFailed` | `coding_extension.activation_failed` |
+| `CodingExtensionDeactivationFailed` | `coding_extension.deactivation_failed` |
+| `CodingExtensionHookFailed` | `coding_extension.hook_failed` |
+| `CodingExtensionPolicyBlocked` | `coding_extension.policy_blocked` |
+| `CodingExtensionContractViolation` | `coding_extension.contract_violation` |
+| `CodingExtensionCapabilityConflict` | `coding_extension.capability_conflict` |
+| `CodingExtensionCatalogDiscoveryFailed` | `coding_extension.catalog_discovery_failed` |
+| `CodingExtensionConfigurationUnavailable` | `coding_extension.configuration_unavailable` |
+| `CodingExtensionConfigurationResolutionFailed` | `coding_extension.configuration_resolution_failed` |
+| `CodingExtensionSessionStateUnavailable` | `coding_extension.session_state_unavailable` |
+| `CodingExtensionPersistentApprovalUnavailable` | `coding_extension.persistent_approval_unavailable` |
+| `CodingExtensionApprovalAborted` | `coding_extension.approval_aborted` |
+| `CodingExtensionHostOperationFailed` | `coding_extension.host_operation_failed` |
+| `CodingExtensionOperationFailed` | `coding_extension.operation_failed` |
+
+构造参数：除 `CodingExtensionOperationFailed` 接受 `{ message; cause? }`
+外，其余均为 `{ message; extensionId?; catalogId?; hook?; operation?;
+reason?; cause? }`，其中 `operation` 限于
+`"configuration_read" | "configuration_write" | "approval" |
+"session_state_read" | "session_state_write"`。
+
+另有两个命令错误类：`CodingCommandRegistrationFailed`、
+`CodingCommandExecutionFailed`（`{ message; command?; extensionId?; cause? }`）。
+
+> 注意：`permissions` / `config` 包内部的错误类**本身未导出**
+> （模块私有，只有工厂函数公开）。文档和业务代码中应以行为或
+> `CodingSdkError.code` 描述它们，不要试图 import 类名。
+
+## 工具错误 vs SDK 错误
+
+工具执行失败（如 Bash 非零退出码 `tool.bash.non_zero_exit`）发生在 tool
+phase：`tool_execution_end` 事件的 `isError: true` 会先到达，`prompt` 的
+`Result` 是否为 Err 取决于失败是否致命。可重试的 provider 错误
+（429/5xx）表现为 `retryable: true` 的 `model` phase 错误。

@@ -233,7 +233,8 @@ export function projectError(error: unknown, phase: CodingSdkErrorPhase): Coding
 	return {
 		code,
 		message,
-		retryable: reportedPhase === "model" || reportedPhase === "tool",
+		// SDK-raised failures (invalid options, unsupported provider, closed agent) are deterministic.
+		retryable: !(error instanceof CodingSdkFailure) && (reportedPhase === "model" || reportedPhase === "tool"),
 		phase: reportedPhase,
 	};
 }

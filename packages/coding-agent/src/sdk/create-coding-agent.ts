@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -13,7 +14,7 @@ import type { Model, Provider } from "@jai/ai";
 import { Result, type Result as ResultType } from "better-result";
 import type { CodingMessageAttachment as InternalCodingAttachment } from "../attachments";
 import { CodingCommandRegistry } from "../commands";
-import { PermissionReviewFailed, permissionSettingsFromConfig } from "../permissions";
+import { denyFileSubtrees, PermissionReviewFailed, permissionSettingsFromConfig } from "../permissions";
 import {
 	type CapabilityInventorySlot,
 	createCodingAgent as createInternalCodingAgent,
@@ -79,6 +80,22 @@ import type {
 	JsonObject,
 	JsonValue,
 } from "./types";
+import { DEFAULT_HOOK_TIMEOUT_MS, validateCreateOptions } from "./validate-options";
+
+/** Adds the symlink-resolved spelling: the permission layer evaluates both the requested and the canonical path. */
+function withCanonicalPaths(paths: readonly string[]): string[] {
+	return [...new Set(paths.flatMap((target) => [path.resolve(target), canonicalizeAncestor(path.resolve(target))]))];
+}
+
+/** realpath of the nearest existing ancestor plus the not-yet-created remainder. */
+function canonicalizeAncestor(target: string): string {
+	try {
+		return realpathSync.native(target);
+	} catch {
+		const parent = path.dirname(target);
+		return parent === target ? target : path.join(canonicalizeAncestor(parent), path.basename(target));
+	}
+}
 
 export async function createCodingAgent<TAppState extends JsonObject = JsonObject>(
 	input: CodingAgentCreateOptions,
@@ -87,6 +104,8 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 	let modelRuntime: { readonly model: Model; readonly provider: Provider } | undefined;
 	let extensions: readonly InitializedExtension[] = [];
 	try {
+		await validateCreateOptions(input);
+		const hookTimeoutMs = input.hookTimeoutMs ?? DEFAULT_HOOK_TIMEOUT_MS;
 		const session = input.session ?? { kind: "ephemeral" as const };
 		const sessionId = resolveSessionId(session);
 		const cwd = input.cwd ?? process.cwd();
@@ -112,16 +131,18 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 		const extensionToolPermissions = extensionPermissions(extensions);
 		const extensionAuthorizedToolNameSet = extensionAuthorizedToolNames(extensions);
 		const toolPresentations = new Map(builtInToolPresentations());
+		const protectedPaths = [
+			path.join(fileCapabilities.workspaceDirectory, ".jai"),
+			path.join(fileCapabilities.homeDirectory, ".jai"),
+			...(input.protectConfigDirectories ? [path.join(cwd, ".jai")] : []),
+		];
 		const internal = await createInternalCodingAgent<CodingSchema, PersistedCodingSessionState<TAppState>>({
 			executionContext: {
 				localFileAccess: true,
 				cwd,
 				configRoot: fileCapabilities.workspaceDirectory,
 				defaultAllowedDirectories: [cwd] as readonly [string, ...string[]],
-				protectedPaths: [
-					path.join(fileCapabilities.workspaceDirectory, ".jai"),
-					path.join(fileCapabilities.homeDirectory, ".jai"),
-				],
+				protectedPaths,
 			},
 			sessionId,
 			sessionStore: store,
@@ -155,11 +176,17 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				requestApproval: input.requestApproval
 					? (request, signal) => input.requestApproval!(projectPermissionRequest(sessionId, request), signal)
 					: undefined,
-				selectSettings: (snapshot) =>
-					permissionSettingsFromConfig(
+				selectSettings: (snapshot) => {
+					const settings = permissionSettingsFromConfig(
 						snapshot.settings as Readonly<Record<string, unknown>>,
 						input.permissionMode,
-					),
+					);
+					if (!input.protectConfigDirectories) return settings;
+					return {
+						...settings,
+						permission: denyFileSubtrees(settings.permission, withCanonicalPaths(protectedPaths)),
+					};
+				},
 				telemetryObserver: input.permissionTelemetryObserver,
 				sessionAllowRules: input.sessionAllowRules,
 				sessionGrantWorkspaceRoot: input.sessionGrantWorkspaceRoot,
@@ -172,7 +199,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 			extensionTools: extensionTools(extensions),
 			extensionBeforeModelCall: async (messages) => {
 				await notifyExtensionTurnStart(extensions);
-				const transformed = await extensionBeforeModelCall(extensions, messages);
+				const transformed = await extensionBeforeModelCall(extensions, messages, hookTimeoutMs);
 				// The internal Agent hook cannot return Result, so this is the adapter seam that rethrows it.
 				if (transformed.isErr()) throw transformed.error;
 				return transformed.value;
@@ -241,6 +268,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				ephemeralDirectory,
 				extensions,
 				toolPresentations,
+				hookTimeoutMs,
 			),
 		);
 	} catch (error) {
@@ -256,6 +284,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 	readonly #model: Model;
 	readonly #provider: Provider;
 	readonly #ephemeralDirectory?: string;
+	readonly #hookTimeoutMs: number;
 	readonly #extensions: readonly InitializedExtension[];
 	readonly #artifacts = new Map<string, CodingAgentArtifact>();
 	readonly #pendingArtifacts = new Map<string, CodingAgentArtifact>();
@@ -277,7 +306,9 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		ephemeralDirectory?: string,
 		extensions: readonly InitializedExtension[] = [],
 		toolPresentations = builtInToolPresentations(),
+		hookTimeoutMs = DEFAULT_HOOK_TIMEOUT_MS,
 	) {
+		this.#hookTimeoutMs = hookTimeoutMs;
 		this.#internal = internal;
 		this.#sessionId = sessionId;
 		this.#model = modelRuntime.model;
@@ -298,7 +329,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 			}
 			const projected = this.#eventProjector.project(event);
 			if (this.#listeners.size === 0) return;
-			for (const listener of this.#listeners) listener(projected);
+			this.#dispatch(projected);
 		});
 		this.#stopBackgroundProjection = this.#internal.backgroundAgents.subscribe((entry) => {
 			if (this.#listeners.size === 0) return;
@@ -310,8 +341,21 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 				toolName: "SpawnAgent",
 				status: entry.status === "complete" ? "complete" : entry.stopped ? "stopped" : "error",
 			};
-			for (const listener of this.#listeners) listener(backgroundEvent);
+			this.#dispatch(backgroundEvent);
 		});
+	}
+
+	/** One failing listener (sync throw or async rejection) must not starve later listeners or fail the run. */
+	#dispatch(event: CodingAgentEvent): void {
+		const report = (error: unknown) => console.error("[coding-agent] event listener failed", error);
+		for (const listener of [...this.#listeners]) {
+			try {
+				const returned: unknown = listener(event);
+				if (returned instanceof Promise) returned.catch(report);
+			} catch (error) {
+				report(error);
+			}
+		}
 	}
 
 	get sessionId(): string {
@@ -340,14 +384,14 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		let admittedEpoch: number | undefined;
 		const run = this.#tail.then(async () => {
 			if (this.#closed) throw agentClosedFailure();
-			if (!prompt.trim()) {
+			if (typeof prompt !== "string" || !prompt.trim()) {
 				throw new CodingSdkFailure({
 					phase: "admission",
 					code: "coding_sdk.empty_prompt",
 					message: "Prompt must not be empty",
 				});
 			}
-			const admission = await extensionBeforeAgentStart(this.#extensions, prompt);
+			const admission = await extensionBeforeAgentStart(this.#extensions, prompt, this.#hookTimeoutMs);
 			if (admission.isErr()) throw admission.error;
 			if (admission.value) {
 				throw new CodingExtensionPolicyBlocked({

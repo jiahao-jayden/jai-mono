@@ -1,44 +1,78 @@
 ---
 title: 可观测性
-description: 在 Desktop 中配置 Langfuse OTLP telemetry，并了解设置文件、密钥与环境变量的边界。
+description: CodingAgentTelemetryObserver：SDK 侧的 span 与事件观测。
 ---
 
-JAI 默认不发送 telemetry。要把 Coding Agent 的 telemetry 导出到 Langfuse，在 Desktop 中打开 **Settings → Advanced → Observability**，填写 Langfuse OTLP endpoint、Public Key 和 Secret Key，然后启用 telemetry。
+# 可观测性
 
-endpoint 应指向 Langfuse Cloud 或自托管实例的 `/api/public/otel` 路径。保存后，后续 Operation 立即采用新设置；已开始的 Operation 仍由开始时的 exporter 完成。
+> **旧文档勘误**：旧版 `observability.mdx` 讲的是 Desktop 的 UI 面板，
+> 不是 SDK。SDK 侧的可观测性是下面这个 observer。
 
-观测配置无效、key pair 不完整或环境变量不完整时，Runtime Host 继续运行，telemetry 会退回 no-op。Desktop 会显示配置错误，并可以直接保存有效设置修复它；无效保存不会替换已经生效的 exporter。
+## CodingAgentTelemetryObserver
 
-## 保存位置
+```ts
+import { CodingAgentTelemetryObserver } from "@jai/coding-agent";
 
-`~/.jai/settings.json` 保存的是非秘密 policy：开关、exporter 和 endpoint。例如，保留现有文件的 `$schema` 与 `schemaVersion` 后，`telemetry` 部分可以是：
-
-```json
-{
-  "telemetry": {
-    "enabled": true,
-    "exporter": "langfuse-otlp",
-    "endpoint": "https://cloud.langfuse.com/api/public/otel"
-  }
-}
+const observer = new CodingAgentTelemetryObserver({
+  telemetry,      // TelemetryContext（@jai/telemetry 契约）
+  operationId,    // 本次 Operation 标识
+  sessionId,      // 会话标识
+  // now?: () => number  // 测试可注入单调时钟；生产缺省 Date.now
+});
 ```
 
-Langfuse Public Key 和 Secret Key 不会写入 `settings.json`。它们只由本机 Runtime Host 保存到 `$JAI_HOME/data.sqlite`，默认路径是 `~/.jai/data.sqlite`。Settings 只显示已配置状态和掩码，不能重新显示原始 key。
+它同时实现 `ModelRequestObserver` 与 `PermissionTelemetryObserver`，
+可直接挂到 `createCodingAgent` 的两个旁路选项上：
 
-不要在项目的 `.jai/settings.json` 或 `.jai/settings.local.json` 中添加 `telemetry`。这两个 project scope 一旦包含 telemetry，配置会被拒绝；代码仓库不能决定何时向远端观测服务发送数据。
-
-## Headless 覆盖
-
-CLI、CI 或其他 headless Runtime Host 可以用环境变量配置 Langfuse：
-
-```bash
-export JAI_TELEMETRY_OTLP_ENDPOINT="https://cloud.langfuse.com/api/public/otel"
-export JAI_TELEMETRY_LANGFUSE_PUBLIC_KEY="<Langfuse Public Key>"
-export JAI_TELEMETRY_LANGFUSE_SECRET_KEY="<Langfuse Secret Key>"
+```ts
+await createCodingAgent({
+  model: "anthropic/claude-sonnet-4-5",
+  permissionTelemetryObserver: observer,  // 只观察权限事实，不参与判定
+  modelRequestTelemetryObserver: observer, // provider 请求发出前观察最终上下文
+});
 ```
 
-只要任一 `JAI_TELEMETRY_*` 变量存在，Runtime Host 就完全使用环境变量配置，不会和 `settings.json` 或本机保存的 key 逐项合并。Desktop 会显示环境覆盖状态并禁用本地编辑。运行 exporter 需要同时提供上面三个变量。
+另外三个手动调用的观测点：
 
-## 删除配置
+```ts
+observer.observeAgentEvent(event);   // CodingAgentEvent
+observer.observeEffectEvent({ type: "model_reserved" | "tool_reserved", ... }); // 稳定 identity，不带参数/结果/内容
+observer.observeModelRequest(observation);
+observer.observePermissionEvent(event);
+observer.close(); // 标记 aborted，结算未完成 span
+```
 
-在 **Settings → Advanced → Observability** 中关闭 telemetry 后，后续 Operation 不再导出。选择清除保存的 keys 会同时关闭 telemetry，并从本机 credential store 删除 Langfuse key pair。
+## span 层级
+
+`startSpan` 的 name 构成的树：
+
+```text
+jai.run
+└── jai.turn
+    ├── jai.model_attempt
+    │   └── jai.model_stream
+    ├── jai.tool_call
+    └── jai.permission
+        └── jai.approval
+```
+
+固定词汇表：7 个 `jai.*` span 名、17 个事件名（`@jai/telemetry` 的
+`vocabulary.ts`）。投影函数强制"原文内容绝不进入通用 sink"——span 只带
+稳定 identity（如 `assistantEntryId`、`toolCallId`、`toolName`），不带参数、
+结果或消息内容。
+
+## 用户遥测策略
+
+```ts
+import { defaultUserTelemetryPolicy } from "@jai/coding-agent";
+// UserTelemetryPolicy：控制内容捕获开关等
+```
+
+`observer.enabled` 的判定：`!closed && (run?.contentCaptureEnabled ??
+telemetry.contentCaptureEnabled)`。所有 `observe*` 方法内部 try/catch，
+观测异常会被吞掉，不影响 agent 运行。
+
+> `@jai/telemetry` 包本身是 private 的内部契约层（`TelemetryContext` /
+> `TelemetrySpan` / `TelemetrySink` 端口 + `NoopTelemetryContext` /
+> `InMemoryTelemetryContext` + `./node` 的 JSONL 文件 sink），不是 SDK 公开
+> API——Host 实现 `TelemetryContext` 端口即可对接。

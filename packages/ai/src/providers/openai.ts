@@ -32,6 +32,8 @@ export interface OpenAIProviderConfig {
 	apiKey: string;
 	baseURL?: string;
 	headers?: Readonly<Record<string, string>>;
+	/** Milliseconds without any stream data before the run fails; default 300000, `Infinity` disables. */
+	idleTimeoutMs?: number;
 	authentication?: "bearer" | "none";
 }
 
@@ -60,12 +62,14 @@ export class OpenAIProvider implements Provider {
 	private readonly client: OpenAI;
 	private readonly baseURL?: string;
 	private readonly headers?: Readonly<Record<string, string>>;
+	private readonly idleTimeoutMs?: number;
 	private readonly authentication: "bearer" | "none";
 
 	constructor(config: OpenAIProviderConfig) {
 		this.id = config.id ?? this.adapter;
 		this.baseURL = config.baseURL;
 		this.headers = config.headers;
+		this.idleTimeoutMs = config.idleTimeoutMs;
 		this.authentication = config.authentication ?? "bearer";
 		this.client = this.createClient(config.apiKey);
 	}
@@ -103,25 +107,31 @@ export class OpenAIProvider implements Provider {
 		};
 		const policy = resolveRequestPolicy(model.compatibilityProfile, { reasoningRequested: model.reasoning });
 
-		await runAdapterStream(eventStream, output, options?.signal, {
-			request: async () => {
-				const client = options?.apiKey ? this.createClient(options.apiKey) : this.client;
+		await runAdapterStream(
+			eventStream,
+			output,
+			options?.signal,
+			{
+				request: async (signal) => {
+					const client = options?.apiKey ? this.createClient(options.apiKey) : this.client;
 
-				const params = buildParams(model, context, options, policy);
-				const providerOpts = options?.providerOptions?.[this.id] ?? options?.providerOptions?.[this.adapter];
-				const body = mergeProviderOptions("openai-compatible", params, providerOpts, [
-					...Object.keys(params),
-					"stream_options",
-					"tools",
-				]);
+					const params = buildParams(model, context, options, policy);
+					const providerOpts = options?.providerOptions?.[this.id] ?? options?.providerOptions?.[this.adapter];
+					const body = mergeProviderOptions("openai-compatible", params, providerOpts, [
+						...Object.keys(params),
+						"stream_options",
+						"tools",
+					]);
 
-				return client.chat.completions.create(body, options?.signal ? { signal: options.signal } : undefined);
+					return client.chat.completions.create(body, { signal });
+				},
+				step: (chunk) => applyChunk(output, state, chunk, policy, model.compatibilityProfile?.rules),
+				// OpenAI 没有 block stop 事件，流结束时关闭所有还开着的 block
+				finalize: () => finalizeBlocks(output, state),
+				validate: () => assertNativeToolCallProtocol(output, context.tools),
 			},
-			step: (chunk) => applyChunk(output, state, chunk, policy, model.compatibilityProfile?.rules),
-			// OpenAI 没有 block stop 事件，流结束时关闭所有还开着的 block
-			finalize: () => finalizeBlocks(output, state),
-			validate: () => assertNativeToolCallProtocol(output, context.tools),
-		});
+			this.idleTimeoutMs,
+		);
 	}
 
 	private createClient(apiKey: string): OpenAI {

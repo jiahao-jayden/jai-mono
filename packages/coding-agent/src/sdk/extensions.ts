@@ -350,14 +350,31 @@ export function extensionMiddleware(extensions: readonly InitializedExtension[])
 	};
 }
 
+/**
+ * Blocking hooks sit on the run's critical path, so a hook that never settles would stall the run
+ * (and `close()`) forever. Observer hooks are not bounded: nothing waits on them for model progress.
+ */
+function withHookDeadline<T>(work: Promise<T> | T, timeoutMs: number): Promise<T> {
+	if (!Number.isFinite(timeoutMs)) return Promise.resolve(work);
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const deadline = new Promise<never>((_, reject) => {
+		timer = setTimeout(() => reject(new Error(`Hook did not settle within ${timeoutMs}ms`)), timeoutMs);
+	});
+	return Promise.race([Promise.resolve(work), deadline]).finally(() => clearTimeout(timer));
+}
+
 export async function extensionBeforeAgentStart(
 	extensions: readonly InitializedExtension[],
 	prompt: string,
+	hookTimeoutMs: number,
 ): Promise<ResultType<{ readonly extensionId: string; readonly reason: string } | undefined, CodingExtensionError>> {
 	for (const extension of extensions) {
 		let result: CodingBeforeAgentStartResult | undefined;
 		try {
-			result = await extension.extension.hooks?.beforeAgentStart?.(extensionRuntime(extension), { prompt });
+			result = await withHookDeadline(
+				extension.extension.hooks?.beforeAgentStart?.(extensionRuntime(extension), { prompt }),
+				hookTimeoutMs,
+			);
 		} catch (error) {
 			return Result.err(extensionHookFailed(extension.id, "before_agent_start", error));
 		}
@@ -369,6 +386,7 @@ export async function extensionBeforeAgentStart(
 export async function extensionBeforeModelCall(
 	extensions: readonly InitializedExtension[],
 	messages: readonly AgentMessage[],
+	hookTimeoutMs: number,
 ): Promise<ResultType<AgentMessage[], CodingExtensionError>> {
 	// Shallow copy: Extensions only append system context here (they receive no messages and cannot
 	// reach the existing ones), so deep-cloning the whole transcript on every model call buys nothing.
@@ -376,7 +394,10 @@ export async function extensionBeforeModelCall(
 	for (const extension of extensions) {
 		let result: CodingBeforeModelCallResult | undefined;
 		try {
-			result = await extension.extension.hooks?.beforeModelCall?.(extensionRuntime(extension), {});
+			result = await withHookDeadline(
+				extension.extension.hooks?.beforeModelCall?.(extensionRuntime(extension), {}),
+				hookTimeoutMs,
+			);
 		} catch (error) {
 			return Result.err(extensionHookFailed(extension.id, "before_model_call", error));
 		}

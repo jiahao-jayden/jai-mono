@@ -6,9 +6,11 @@ export default defineMeta({
 	collapsed: false,
 	pages: [
 		"host-authorities",
+		"architecture",
 		"sessions-and-lifecycle",
 		"prompts-and-control",
 		"state-and-events",
-		"extensions-architecture",
+		"compaction",
+		"extensions",
 	],
 });

@@ -1,0 +1,73 @@
+---
+title: 架构
+description: SDK 四层分工、Host 边界，以及"产品配置归 Host 所有"的设计原则。
+---
+
+# 架构
+
+## 四层分工
+
+```text
+┌─────────────────────────────────────────────┐
+│ 你的应用（Host）                             │
+│  UI / TTY / subprocess；config、model 目录、  │
+│  插件发现、数据目录、审批 UI                   │
+└──────────────────┬──────────────────────────┘
+                   │ createCodingAgent({...})
+┌──────────────────v──────────────────────────┐
+│ @jai/coding-agent（公开 SDK）                │
+│  Agent 创建/生命周期、权限、会话、扩展、        │
+│  JSON 安全的事件/状态/错误 DTO                 │
+└──────────────────┬──────────────────────────┘
+┌──────────────────v──────────────────────────┐
+│ @jai/agent（内部）                           │
+│  agent loop、harness、hooks、compaction、      │
+│  durable session journal                     │
+└──────────────────┬──────────────────────────┘
+┌──────────────────v──────────────────────────┘
+│ @jai/ai（内部）                              │
+│  provider-neutral 消息、流式协议、模型注册表    │
+│  Anthropic / OpenAI / OpenAI-compatible 适配  │
+└─────────────────────────────────────────────┘
+```
+
+`@jai/coding-agent` 的构建把 `@jai/*` 全部打进 `dist`（tsup
+`noExternal: [/^@jai\//]`），所以 npm 用户只需要装一个包。但源码层面，
+**公开 API 严格等于 `src/sdk.ts` 的具名导出**——底层包的 `Provider`、
+`Agent`、`Message` 等类型没有被 re-export，文档和代码都不应把它们当公开 API。
+
+## 核心原则：产品配置归 Host 所有
+
+SDK **不**做这些事，全部留给 Host（你的应用）：
+
+- 用户/项目两级配置文件的读写（`~/.jai/settings.json` 这类约定是产品层的）。
+- provider 与模型的目录/列表（SDK 只接受你解析好的 `model` 字符串和
+  `provider` 选项）。
+- 扩展的发现与安装（SDK 只接受你显式传入的 `extensions` 数组，并做 id
+  唯一校验）。
+- 持久会话的存储后端（`CodingSessionStore` 是 Host 自有的 append-only
+  Session Journal 适配器接口，SDK 导出 `InMemorySessionStore` 作参考实现）。
+- 审批 UI（SDK 只调用你传入的 `requestApproval` 回调）。
+
+这就是为什么 `createCodingAgent` 有 30 个字段：它把"决策权"交给 Host，
+自己只负责"执行"。Desktop、CLI、WorkBuddy 三个宿主共用同一套执行语义，
+差异只在 Host 层。
+
+## 数据流向
+
+一次 `prompt` 的内部路径（简化）：
+
+```text
+prompt(text)
+  → 扩展 beforeAgentStart hook（可 block 整轮）
+  → Agent loop（@jai/agent）
+      → beforeModelCall hooks → provider.stream(model, context)
+      → 流式事件 → toolcall → 权限评估 → 审批（如需）
+      → 工具执行 → 结果回填 → 下一轮
+  → 事件经 CodingEventProjector 投影为 CodingAgentEvent
+  → subscribe 监听器 / prompt 的 Result
+```
+
+权限评估、危险命令扫描、compaction 都发生在 SDK 内部，但它们的**输入**
+（规则、mode、审批回调、compaction 指令）全部由 Host 提供。详见
+[权限与审批](/docs/guides/permissions)、[上下文压缩](/docs/concepts/compaction)。

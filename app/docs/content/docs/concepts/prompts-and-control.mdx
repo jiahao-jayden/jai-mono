@@ -21,11 +21,12 @@ const steered = await agent.steer("先停止修改，只总结已经发现的问
 const queued = await agent.followUp("接着列出三个最小修复方案。");
 ```
 
-两者都只接受非空字符串，并返回 `Result<void, CodingSdkError>`。附件只由 `prompt(text, { attachments })` 消费；不要向 `steer()` 或 `followUp()` 传对象。
+两者都接受 `string | CodingQueuedInput`（后者是 Host 预留的会话条目身份，用于在安全检查点投递输入），传入空字符串会返回 `coding_sdk.empty_prompt` 错误。附件只由 `prompt(text, { attachments })` 消费；不要向 `steer()` 或 `followUp()` 传附件。
 
 ## 生命周期控制
 
-- `abort()`：请求取消当前运行；仍应等待调用的 Result，并根据事件更新 UI。
+- `abort()`：请求取消当前运行；仍应等待调用的 Result，并根据事件更新 UI。abort 之后运行不再等待忽略取消信号的工具或审批回调（它们会在后台继续跑完，结果被丢弃），因此 `prompt()` 与 `close()` 不会被它们卡住。
+- 扩展工具的文本输出超过 200000 字符时会在写入会话前被截断并附带说明，内置工具有各自的上限。
 - `waitForIdle()`：等待已接纳的工作结束，适合在切换视图或关闭前同步状态。
 - `generateTitle(firstMessage)`：基于首条用户消息生成短标题，返回 `Result<string, CodingSdkError>`。
 - `close()`：取消当前工作、等待队列收尾并释放资源。关闭后不再提交 prompt 或控制指令。

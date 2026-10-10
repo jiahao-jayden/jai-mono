@@ -1,0 +1,72 @@
+---
+title: 公开 API 总览
+description: SDK 入口导出的全部符号，以及明确不公开的边界。
+---
+
+# 公开 API 总览
+
+> **旧文档勘误**：旧版 `public-api-and-limitations.mdx` 声称"只有 3 个
+> root value exports"。实际 `src/sdk.ts` 有 **20 条具名导出**，且没有任何
+> `export *`——下面是完整清单。
+
+## 值导出（函数 / 类）
+
+| 导出 | 来源 | 用途 |
+|---|---|---|
+| `createCodingAgent` | `sdk/create-coding-agent` | 创建 agent（唯一主入口） |
+| `defineExtension` | `sdk/extensions` | 定义扩展（恒等函数，保留字面量类型） |
+| `resolveSdkModel` | `sdk/model` | 解析 `"provider/model"` 字符串为 `{ model, provider }` |
+| `generateSessionTitle` | `sdk/title` | 无状态会话标题生成 |
+| `emptyPersistedCodingSessionState` | `sdk/session-state` | 构造空持久化快照 |
+| `redactCommand` | `sdk/project` | 脱敏命令中的密钥形态参数 |
+| `codingArtifactsFromAppState` | `sdk/project` | 从 appState 提取 artifacts |
+| `createPermissionApprovalQueue` | `permissions` | 创建审批 FIFO 队列 |
+| `CodingConfigStore` | `config/store` | 配置存储 |
+| `sdkConfigDefinition` | `sdk/config` | SDK 配置定义 |
+| `defaultUserTelemetryPolicy` | `sdk/config` | 缺省遥测策略 |
+| `CodingAgentTelemetryObserver` | `sdk/telemetry` | 遥测观察器（span：`jai.run → jai.turn → …`） |
+| `BackgroundAgentStore` | `runtime/background` | 后台 agent 注册表（类） |
+| `createBackgroundAgentStore` | `runtime/background` | 创建后台 agent 注册表 |
+| `CodingCommandExecutionFailed` | `commands` | 命令执行错误类 |
+| `CodingCommandRegistrationFailed` | `commands` | 命令注册错误类 |
+| 13 个 `CodingExtension*Failed` 类 | `sdk/extension-errors` | 扩展错误类（见 [错误](/docs/api-reference/errors)） |
+
+## 类型导出（选列）
+
+`CodingAgent`、`CodingAgentCreateOptions`、`CodingAgentEvent`、
+`CodingAgentMessage`、`CodingAgentState`、`CodingRunResult`、
+`CodingPromptOptions`、`CodingQueuedInput`、`CodingSessionSelection`、
+`CodingSessionStore`、`InMemorySessionStore`、`SessionConflictError`、`CodingApprovalHandler`、`CodingPermissionRequest`、
+`CodingPermissionDecision`、`CodingPermissionMode`、`CodingPermissionSummary`、
+`PermissionApprovalQueue`、`SessionAllowRules`、`CodingAgentExtension` 及
+40+ 个扩展相关类型、`CodingAgentTelemetryEffectEvent`、
+`CodingToolName`、`CodingToolActivityKind`、`CodingToolPresentation`、
+`CodingSdkError`、`CodingSdkErrorPhase`、`CodingAttachment`、
+`CodingAuxiliaryModel`、`CodingContextMeasurement`、`CodingEffectBoundary`、
+`CodingAgentFileCapabilities`、`CodingAgentArtifact`、`CodingFileChange`、
+`CodingImageContent`、`JsonObject`、`JsonValue`、
+`BackgroundAgentEntry/Listener/Outcome/Registration/Status`、
+`UserTelemetryPolicy`、`CodingCommandKind`。
+
+## 明确不公开的
+
+以下在代码中存在，但**没有**从 SDK 入口导出，业务代码 import 不到，
+文档也不应将其当作公开 API：
+
+- `@jai/ai` 的 `Provider`、`Message`、`AssistantMessageEvent`、
+  `ModelRegistry`（SDK 用 `Coding*` 投影类型重新包装）。
+- `@jai/agent` 的 `Agent` facade、`CoreAgent`、harness、hooks
+  （`beforeModelCall` / `aroundToolCall` 等 6 个内部 hook）。
+- `packages/telemetry` 的全部内容（private 包，零依赖遥测契约层）。
+- `permissions` / `config` 包内部的错误类（模块私有，只有工厂函数公开）。
+- `@jai/extension` 的具体扩展实现（通过 `extensions` 选项传入对象，
+  不直接 import 内部模块——`@jai/extension/*` 子路径是另一个包的导出）。
+
+## 包的发布形态
+
+`@jai/coding-agent`：`version 0.1.0`，`publishConfig.access: public`，
+`engines.node >= 20`。npm 入口 `dist/sdk.js` + `dist/sdk.d.ts`
+（tsup 构建，把 `@jai/*` 打进 dist，消费者只需装一个包）。
+
+> 与仓库 `README.md` "均为 private、0.0.0、尚未发布"的表述矛盾，
+> 发布前请与 owner 确认 npm 实际状态。

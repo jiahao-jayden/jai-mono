@@ -5,6 +5,29 @@ import { projectMessages } from "../project";
 import type { CodingExtensionRuntime, CodingExtensionTool, CodingExtensionToolExecutionCall } from "./contract";
 
 /** Every foreground child belongs to one tool call and is aborted and joined with it. Detached children outlive their tool call but stay bound to the parent run signal. */
+/**
+ * Built-in tools bound their own output; an Extension tool that returns megabytes would otherwise go
+ * to the model verbatim and be re-sent on every later turn. Cutting here, before the result is
+ * journaled, keeps the history prefix byte-stable across turns and resumes.
+ */
+export const MAX_EXTENSION_TOOL_TEXT_CHARS = 200_000;
+
+function capTextContent<T extends { readonly type: string }>(content: readonly T[]): T[] {
+	let remaining = MAX_EXTENSION_TOOL_TEXT_CHARS;
+	return content.map((block) => {
+		if (block.type !== "text") return block;
+		const { text } = block as unknown as { text: string };
+		if (text.length <= remaining) {
+			remaining -= text.length;
+			return block;
+		}
+		const omitted = text.length - remaining;
+		const kept = text.slice(0, remaining);
+		remaining = 0;
+		return { ...block, text: `${kept}\n[output truncated: ${omitted} characters omitted]` };
+	});
+}
+
 export async function executeExtensionTool(
 	tool: CodingExtensionTool<any, any, any>,
 	runtime: CodingExtensionRuntime<any, any, any>,
@@ -64,7 +87,7 @@ export async function executeExtensionTool(
 			runAgent,
 			onUpdate: onUpdate ? (update) => onUpdate({ ...update, content: [...update.content] }) : undefined,
 		});
-		return { ...result, content: [...result.content] };
+		return { ...result, content: capTextContent(result.content) };
 	} finally {
 		lifetime.abort();
 		await Promise.allSettled(pending);

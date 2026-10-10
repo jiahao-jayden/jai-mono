@@ -1,3 +1,12 @@
+export {
+	applyEntry,
+	emptySnapshot,
+	InMemorySessionStore,
+	SessionConflictError,
+	type SessionEntry,
+	type SessionSnapshot,
+	type StoredSession,
+} from "@jai/agent";
 export type { CodingCommandKind } from "./commands";
 export {
 	CodingCommandExecutionFailed,

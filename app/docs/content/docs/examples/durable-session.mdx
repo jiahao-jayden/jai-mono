@@ -1,52 +1,55 @@
 ---
-title: 创建 Durable Session
-description: 创建具名 durable session，处理重复 ID，并在运行结束后安全关闭 Agent。
+title: 示例：持久会话
+description: new 会话的 Host store 接线与 fileCapabilities。
 ---
 
-`new` 创建一个可恢复的 session。Journal store 由宿主提供；同一 store 中重复 ID 会返回 `coding_sdk.session_exists`。
+# 示例：持久会话
+
+`new` / `resume` 需要 Host 提供两样东西：`store`（Session Journal 适配器）
+和 `fileCapabilities`（本地配置根目录）。下面用 SDK 导出的 `InMemorySessionStore`
+作参考实现——**生产环境请实现真正的持久化后端**（如 SQLite），内存 store 重启即丢。
+自实现 store 时：`append` 遇到过期的 `expectedRevision` 必须抛 `SessionConflictError`，
+entry 对 store 不透明，用 `applyEntry` / `emptySnapshot` 折叠出 snapshot。
 
 ```ts
-// @docs-compile
-import { createCodingAgent, type CodingSessionStore } from "@jai/coding-agent";
+import { createCodingAgent, InMemorySessionStore } from "@jai/coding-agent";
 
-declare const sessionStore: CodingSessionStore;
+const store = new InMemorySessionStore();
 
 const created = await createCodingAgent({
-  model: "openai/gpt-4.1-mini",
-  cwd: ".",
-  fileCapabilities: {
-    homeDirectory: "/Users/alice",
-    workspaceDirectory: "/workspace/repository",
-    workspaceTrusted: true,
-  },
+  model: "anthropic/claude-sonnet-4-5",
+  cwd: "/path/to/project",
   session: {
     kind: "new",
-    id: "issue-482",
-    store: sessionStore,
+    // id 可选，缺省 coding-<randomUUID()>
+    store,
   },
-  permissionMode: "plan",
-  maxTurns: 20,
+  fileCapabilities: {
+    homeDirectory: "/Users/you",          // 放 .jai/settings.json
+    workspaceDirectory: "/path/to/project",
+    workspaceTrusted: true,               // 允许项目级配置参与
+  },
+  requestApproval: async () => "deny", // 示例：默认拒绝，可换成真实 UI
 });
 
 if (created.isErr()) {
-  if (created.error.code === "coding_sdk.session_exists") {
-    console.error('Session "issue-482" 已存在；请改用 resume 或选择新 ID。');
-  } else {
-    console.error(created.error);
-  }
-} else {
-  const agent = created.value;
-  try {
-    const run = await agent.prompt("分析 issue 482 的可能原因并给出修复计划。");
-    if (run.isErr()) console.error(run.error);
-    else console.dir(run.value.state, { depth: null });
-  } finally {
-    const closed = await agent.close();
-    if (closed.isErr()) console.error(closed.error);
-  }
+  // coding_sdk.file_capabilities_required：忘了传 fileCapabilities
+  console.error(created.error.code, created.error.message);
+  process.exit(1);
 }
+const agent = created.value;
+console.log("sessionId:", agent.sessionId); // 下次 resume 用这个 id
+
+await agent.prompt("初始化项目脚手架");
+await agent.prompt("再补一个 README"); // 同一会话，上下文连续
+
+await agent.close();
 ```
 
-durable state 写入 Host 提供的 Session Journal store。SDK 不提供 session 列表或命名 API；产品负责索引、展示和清理，再在需要时传入 `resume`。
+关键点：
 
-接着看 [恢复 Session](/docs/examples/resume-session)。
+- 缺 `fileCapabilities` 时创建直接失败，
+  code `coding_sdk.file_capabilities_required`（phase `runtime_creation`），
+  不是运行时才报错。
+- 同一 `sessionId` 多次 `createCodingAgent({ session: { kind: "resume", id,
+  store } })` 即可恢复（见下一节）。

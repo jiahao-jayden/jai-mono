@@ -875,7 +875,7 @@ describe("public Coding Agent SDK", () => {
 				assistantToolCall("ExtensionWrite", "extension-write", { value: "original" }),
 				assistant("done"),
 			]),
-			permissionMode: "allow",
+			permissionMode: "ask",
 			requestApproval: () => {
 				approvals++;
 				return "allowOnce";

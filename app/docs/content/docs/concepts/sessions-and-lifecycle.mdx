@@ -1,49 +1,81 @@
 ---
-title: Sessions 与生命周期
-description: 选择 durable 或 ephemeral session，并在宿主生命周期结束时安全关闭 Agent。
+title: 会话
+description: ephemeral、new、resume 三种会话，以及持久化所需的 fileCapabilities。
 ---
 
-`CodingSessionSelection` 有三种形式：
+# 会话
+
+`createCodingAgent` 的 `session` 选项决定会话的生命周期：
 
 ```ts
-{ kind: "new", store: CodingSessionStore, id?: string }
-{ kind: "resume", id: string, store: CodingSessionStore }
-{ kind: "ephemeral" }
+export type CodingSessionSelection =
+  | { readonly kind: "new"; readonly id?: string; readonly store: CodingSessionStore }
+  | { readonly kind: "resume"; readonly id: string; readonly store: CodingSessionStore }
+  | { readonly kind: "ephemeral" };
 ```
 
-## 三种选择
+缺省为 `{ kind: "ephemeral" }`。
 
-- `new`：创建 durable session。省略 `id` 时 SDK 生成 ID；指定已存在 ID 会返回 `coding_sdk.session_exists`。
-- `resume`：只恢复已有 session。不存在时返回 `coding_sdk.session_not_found`，不会静默新建。
-- `ephemeral`：在系统临时目录创建 session；成功 `close()` 后删除该目录。
+## 三种会话
 
-```ts
-import { createCodingAgent, type CodingSessionStore } from "@jai/coding-agent";
+| kind | 语义 | 要求 |
+|---|---|---|
+| `ephemeral` | 临时会话：内存 store + 隔离临时目录（`jai-coding-agent-<随机>`），`close()` 时递归删除 | 无 |
+| `new` | 新建持久会话；`id` 可选，缺省 `coding-<randomUUID()>` | Host 的 `store` **+** `fileCapabilities` |
+| `resume` | 按 `id` 恢复已有会话 | Host 的 `store` **+** `fileCapabilities` |
 
-declare const sessionStore: CodingSessionStore;
+## 持久会话的两个必填项
 
-const created = await createCodingAgent({
-  model: "openai/gpt-4.1-mini",
-  cwd: process.cwd(),
-  fileCapabilities: {
-    homeDirectory: process.env.HOME ?? process.cwd(),
-    workspaceDirectory: process.cwd(),
-    workspaceTrusted: true,
-  },
-  session: {
-    kind: "new",
-    id: "issue-482",
-    store: sessionStore,
-  },
-});
-```
+持久会话（`new` / `resume`）必须同时提供：
 
-SDK 通过 Host-owned store 持久化 Agent 消息和 app state，但不提供“列出所有 session”的 root API。会话 ID 的索引、列表、名称和清理策略属于宿主产品。
+1. **`store: CodingSessionStore`**——Host 自有的 Session Journal 适配器。
+   即 `load` / `create` / `append(id, entry, expectedRevision)` / `delete` 四个方法；
+   `append` 遇到过期 revision 必须抛 `SessionConflictError`，entry 对 store 不透明，
+   用 `applyEntry` / `emptySnapshot` 折叠 snapshot；`InMemorySessionStore` 是参考实现。
+   Journal 是 append-only 树（消息 / 应用状态 / 压缩记录 / 分支记录），
+   事件先落盘再发布；durable 写入失败会让整轮运行失败。
+2. **`fileCapabilities`**——Host 选定的本地配置与扩展资源根目录：
 
-## 状态迁移
+   ```ts
+   export interface CodingAgentFileCapabilities {
+     /** 用户根目录：放 `.jai/settings.json` 与扩展资源 */
+     readonly homeDirectory: string;
+     /** workspace 根目录：放项目配置与扩展资源 */
+     readonly workspaceDirectory: string;
+     /** 是否允许项目级配置与扩展资源参与 */
+     readonly workspaceTrusted: boolean;
+   }
+   ```
 
-创建后通常为 `idle`；执行 prompt 时为 `running`；运行错误会投影为 `aborted`；调用 `close()` 后为 `closed`。通过 `agent.state` 读取快照。
+   缺失时创建直接失败：`coding_sdk.file_capabilities_required`
+   （phase `runtime_creation`）。
 
-`close()` 是宿主资源边界的一部分：它会中止当前工作、等待已接纳的队列和 artifact 写入，然后释放 runtime。无论 prompt 成功或失败，都应在 `finally` 中调用它。进程崩溃或没有调用 `close()` 时，SDK 不保证 ephemeral 临时目录已清理。
+恢复时的校验错误码（phase `session`）：
 
-参见 [创建 Durable Session](/docs/examples/durable-session)、[恢复 Session](/docs/examples/resume-session) 和 [Ephemeral Agent](/docs/examples/ephemeral-agent)。
+| code | 含义 |
+|---|---|
+| `coding_sdk.session_not_found` | `resume` 的 id 在 store 中无记录 |
+| `coding_sdk.session_exists` | `new` 的 id 在 store 中已存在 |
+| `coding_sdk.session_format_invalid` | 记录存在但不是当前 Coding Agent 会话格式（要求 `version === 1`） |
+
+## 会话内状态
+
+- `agent.sessionId`：只读，会话标识。
+- `agent.state`：实时投影的 `CodingAgentState`（消息列表、todo、artifacts、
+  权限摘要等），每次读取都是当前快照。详见 [状态与事件](state-and-events.md)。
+- `emptyPersistedCodingSessionState()`：构造一个空的持久化快照，供 Host
+  初始化 store 时使用。
+- `generateSessionTitle(provider, model, firstMessage, assistantText)`：
+  无状态的标题生成工具（≤8 词），失败返回
+  `coding_sdk.title_generation_failed`。
+
+## 子会话与后台 agent
+
+- `openChildSession(toolCallId)`：Host 提供的工厂，每次 subagent 调用时打开
+  一个 journal-only 子会话。省略则子 agent 的 transcript 不持久化。
+- `backgroundAgents: BackgroundAgentStore`：跨 Operation 共享的后台 registry。
+  省略则后台 agent 只对启动它的 Operation 可见。详见
+  [后台 Agent](/docs/guides/background-agents)。
+
+注意：`BackgroundAgentStore` 是严格内存内的（"never persisted"），重启进程
+即丢失；需要跨进程的后台任务请由 Host 自己实现。

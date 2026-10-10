@@ -1,4 +1,4 @@
-import type { ModelRequestObserver } from "@jai/agent";
+import type { ModelRequestObserver, SessionStore } from "@jai/agent";
 import type { Result } from "better-result";
 import type { JsonObject, JsonValue } from "../core/json";
 import type { PermissionApprovalQueue, PermissionTelemetryObserver, SessionAllowRules } from "../permissions";
@@ -115,10 +115,12 @@ export interface CodingSdkError {
 }
 
 /**
- * Host-owned Session Journal adapter. Its durable representation and lifecycle
- * remain owned by the Agent journal rather than this SDK.
+ * Host-owned Session Journal adapter: an append-only store with optimistic revisions
+ * (`append` must reject a stale `expectedRevision` with `SessionConflictError`). Entries are
+ * opaque to the store; fold them with `applyEntry` / `emptySnapshot`. `InMemorySessionStore` is a
+ * reference implementation.
  */
-export type CodingSessionStore = object;
+export type CodingSessionStore = SessionStore;
 
 /** Host-owned effect recovery protocol supplied only by product runtimes. */
 export type CodingEffectBoundary = object;
@@ -219,9 +221,26 @@ export interface CodingAgentCreateOptions {
 	readonly fileCapabilities?: CodingAgentFileCapabilities;
 	readonly session?: CodingSessionSelection;
 	readonly permissionMode?: CodingPermissionMode;
+	/**
+	 * Default false. When true, the built-in file tools may not read or write `.jai/` under the
+	 * workspace, the home directory or `cwd`, in any permission mode; the Shell sandbox already
+	 * always protects the first two. Left off, whether the agent may edit its own configuration is
+	 * the host's decision (use permission rules or `permissionMode` to restrict it).
+	 */
+	readonly protectConfigDirectories?: boolean;
 	/** Omitted: auxiliary judgements use this Agent's own `model` and `provider`. */
 	readonly auxiliaryModel?: CodingAuxiliaryModel;
+	/**
+	 * Model turns allowed per run. A positive integer; omitted means no limit (a model stuck
+	 * calling tools runs until the host aborts, so set this for unattended runs). Any other value
+	 * is rejected with `coding_sdk.invalid_options`.
+	 */
 	readonly maxTurns?: number;
+	/**
+	 * Milliseconds an Extension `beforeAgentStart` or `beforeModelCall` hook may take before it is
+	 * failed as `CodingExtensionHookFailed`. Default 30000; `Infinity` removes the deadline.
+	 */
+	readonly hookTimeoutMs?: number;
 	/** Provider-neutral request options supplied by the product runtime. */
 	readonly providerOptions?: Record<string, Record<string, unknown>>;
 	/**

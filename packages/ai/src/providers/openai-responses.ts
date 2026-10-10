@@ -40,6 +40,8 @@ export interface OpenAIResponsesProviderConfig {
 	apiKey: string;
 	baseURL?: string;
 	headers?: Readonly<Record<string, string>>;
+	/** Milliseconds without any stream data before the run fails; default 300000, `Infinity` disables. */
+	idleTimeoutMs?: number;
 	authentication?: "bearer" | "none";
 }
 
@@ -72,12 +74,14 @@ export class OpenAIResponsesProvider implements Provider {
 	private readonly client: OpenAI;
 	private readonly baseURL?: string;
 	private readonly headers?: Readonly<Record<string, string>>;
+	private readonly idleTimeoutMs?: number;
 	private readonly authentication: "bearer" | "none";
 
 	constructor(config: OpenAIResponsesProviderConfig) {
 		this.id = config.id ?? this.adapter;
 		this.baseURL = config.baseURL;
 		this.headers = config.headers;
+		this.idleTimeoutMs = config.idleTimeoutMs;
 		this.authentication = config.authentication ?? "bearer";
 		this.client = this.createClient(config.apiKey);
 	}
@@ -114,21 +118,29 @@ export class OpenAIResponsesProvider implements Provider {
 			hasToolCalls: false,
 		};
 
-		await runAdapterStream(eventStream, output, options?.signal, {
-			request: async () => {
-				const client = options?.apiKey ? this.createClient(options.apiKey) : this.client;
-				const params = buildParams(model, context, options);
-				const providerOpts = options?.providerOptions?.[this.id] ?? options?.providerOptions?.[this.adapter];
-				const body = mergeProviderOptions("openai-responses", params, providerOpts, [
-					...Object.keys(params).filter((field) => field !== "reasoning" || options?.reasoningLevel !== undefined),
-					"tools",
-				]);
-				return client.responses.create(body, options?.signal ? { signal: options.signal } : undefined);
+		await runAdapterStream(
+			eventStream,
+			output,
+			options?.signal,
+			{
+				request: async (signal) => {
+					const client = options?.apiKey ? this.createClient(options.apiKey) : this.client;
+					const params = buildParams(model, context, options);
+					const providerOpts = options?.providerOptions?.[this.id] ?? options?.providerOptions?.[this.adapter];
+					const body = mergeProviderOptions("openai-responses", params, providerOpts, [
+						...Object.keys(params).filter(
+							(field) => field !== "reasoning" || options?.reasoningLevel !== undefined,
+						),
+						"tools",
+					]);
+					return client.responses.create(body, { signal });
+				},
+				step: (event) => applyEvent(output, state, event),
+				finalize: () => finalizeBlocks(output, state),
+				validate: () => assertNativeToolCallProtocol(output, context.tools),
 			},
-			step: (event) => applyEvent(output, state, event),
-			finalize: () => finalizeBlocks(output, state),
-			validate: () => assertNativeToolCallProtocol(output, context.tools),
-		});
+			this.idleTimeoutMs,
+		);
 	}
 
 	private createClient(apiKey: string): OpenAI {
