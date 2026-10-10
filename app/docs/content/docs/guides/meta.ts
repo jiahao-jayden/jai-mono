@@ -1,8 +1,18 @@
 import { defineMeta } from "blume";
 
 export default defineMeta({
-	title: "集成指南",
-	order: 3,
+	title: "集成与实战指南",
+	order: 4,
 	collapsed: false,
-	pages: ["permissions", "tools-and-capabilities", "approval-flow", "background-agents", "observability", "attachments", "todos-and-artifacts"],
+	pages: [
+		"permissions-and-approval",
+		"tools-development",
+		"sqlite-store",
+		"frontend-integration",
+		"headless-and-ci",
+		"background-agents",
+		"observability",
+		"attachments",
+		"todos-and-artifacts",
+	],
 });

@@ -1,0 +1,65 @@
+---
+title: 子 Agent 委托机制
+description: 使用 jai.subagent 派生子 Agent，实现并行调研、独立会话隔离与递归调用防死锁。
+---
+
+在解决复杂架构重构或全仓排查时，将海量的探索性代码阅读堆砌在主 Agent 的上下文中，极易导致主会话迅速溢出或注意力被细枝末节分散。
+
+SDK 提供了子 Agent 委托能力：主 Agent 可以像调度下级开发工程师一样，派生出一个或多个独立的**子 Agent（Subagent）**完成特定子任务，最终仅接收提炼后的结论汇报。
+
+---
+
+## 运作原理与隔离设计
+
+```text
+主 Agent 会话 (Session Main)
+  ├── 1. 用户要求："调查项目中所有第三方 API 调用并评估合规性"
+  ├── 2. 主 Agent 调用 SpawnAgent({ prompt: "深入 packages/ 扫描外呼请求..." })
+  │      │
+  │      ▼
+  │    子 Agent 独立会话 (Session Child - 完全隔离的上下文)
+  │      ├── 读取数十个源码文件 (占用 10 万 Token)
+  │      └── 完成深入分析，返回精炼结论给主 Agent
+  │
+  └── 3. 主 Agent 仅将 500 Token 的最终结论并入主上下文，维持干净的决策流
+```
+
+### 核心隔离契约
+- **上下文彻底解耦**：子 Agent 的海量文件阅读与试错过程只存在于子会话内部，不会污染主会话的上下文与 Token 预算。
+- **防止递归派发（Anti-Recursion）**：SDK 会从子 Agent 的可用工具集中强制剔除 `SpawnAgent`，防止大模型发生不可控的自我递归派生与循环死锁。
+- **独立生命周期**：若配置了 `openChildSession` 工厂，子 Agent 的执行流水将作为子 Journal 独立落盘，便于调试回溯。
+
+---
+
+## 装配 Subagent 扩展
+
+引入 `@jai/extension/subagent`：
+
+```ts
+import { createCodingAgent } from "@jai/coding-agent";
+import { createSubagentExtension } from "@jai/extension/subagent";
+
+const subagentExtension = createSubagentExtension();
+
+const agent = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  extensions: [subagentExtension],
+  // 可选：持久化子 Agent 日志的工厂回调
+  openChildSession: async (toolCallId) => {
+    console.log(`[子 Agent 启动] 关联 ToolCall: ${toolCallId}`);
+  },
+});
+
+// 主 Agent 在面对大范围排查时会自主决定派生子 Agent
+await agent.prompt("分析当前单测套件的所有失败用例，梳理出修复清单");
+
+await agent.close();
+```
+
+---
+
+## 典型应用场景
+
+1. **并行独立探索**：同时派生多个子 Agent 分头评估不同的技术选型或排查不同的模块。
+2. **纯净代码生成**：由子 Agent 在隔离沙箱中进行大量试错与单元测试验证，确认通过后只将最终补丁提交给主 Agent 审核落地。
+3. **安全隔离审查**：让子 Agent 以只读模式去阅读不可信的外部文档或仓库，降低潜在 Prompt 注入（Prompt Injection）对主控流程的干扰。

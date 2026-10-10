@@ -13,5 +13,10 @@ export default defineConfig({
 		},
 	},
 	// Standalone `blume dev` has no landing page. The marketing mount does not publish this redirect.
-	redirects: [{ from: "/", to: "/docs" }],
+	redirects: [
+		{ from: "/", to: "/docs" },
+		{ from: "/docs/guides/permissions", to: "/docs/guides/permissions-and-approval" },
+		{ from: "/docs/guides/approval-flow", to: "/docs/guides/permissions-and-approval" },
+		{ from: "/docs/guides/tools-and-capabilities", to: "/docs/guides/tools-development" },
+	],
 });

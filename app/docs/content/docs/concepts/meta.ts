@@ -5,12 +5,13 @@ export default defineMeta({
 	order: 2,
 	collapsed: false,
 	pages: [
-		"host-authorities",
 		"architecture",
-		"sessions-and-lifecycle",
-		"prompts-and-control",
-		"state-and-events",
+		"agent-loop-and-steering",
+		"kv-cache",
+		"journal-and-recovery",
+		"sandbox-and-security",
 		"compaction",
-		"extensions",
+		"sessions-and-lifecycle",
+		"host-authorities",
 	],
 });

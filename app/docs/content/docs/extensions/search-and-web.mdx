@@ -1,0 +1,66 @@
+---
+title: 代码搜索与联网扩展
+description: 装配工程级符号搜索（find / grep）与联网抓取扩展，赋予 Agent 真实项目感知能力。
+---
+
+虽然 Agent 可以通过 `Bash` 工具直接执行终端命令，但在代码搜索与网页抓取场景下，直接调用原始 Shell 命令存在显著缺陷：
+- 终端 `find` 或 `grep` 可能输出数万行无效内容（如命中 `node_modules` 或构建产物），瞬间撑爆上下文。
+- 缺少结构化分页、超时保护与智能格式化。
+
+SDK 通过官方扩展包提供了经过工程加固的**代码检索**与**联网抓取**能力。
+
+---
+
+## 1. 工程级代码搜索（`jai.fff-search`）
+
+通过专用搜索扩展向 Agent 注入结构化的 `find` 与 `grep` 工具：
+
+```ts
+import { createCodingAgent } from "@jai/coding-agent";
+import { createSearchExtension } from "@jai/extension/search";
+
+const searchExtension = createSearchExtension({
+  // 忽略常见大目录与构建产物
+  defaultIgnorePatterns: ["node_modules", "dist", ".git", ".next", "out"],
+  maxResults: 50, // 限制单次检索返回上限，保护上下文
+});
+
+const agent = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  extensions: [searchExtension],
+});
+
+// 模型将直接调用优化的 find 与 grep 工具进行精准符号定位
+await agent.prompt("找出项目中所有声明了 TaggedError 的文件，并列出其错误 tag 名称");
+```
+
+### 工具优势
+- **边界感知**：自动遵循项目内的 `.gitignore` 规则，主动过滤二进制文件与产物。
+- **保护性截断**：匹配结果过多时，返回统计摘要与建议过滤条件，防止大输出污染上下文。
+
+---
+
+## 2. 联网检索与网页抓取（`jai.web-search`）
+
+赋予 Agent 获取实时最新技术文档、GitHub 变更或外部依赖资料的能力：
+
+```ts
+import { createCodingAgent } from "@jai/coding-agent";
+import { createWebSearchExtension } from "@jai/extension/web-search";
+
+const webExtension = createWebSearchExtension({
+  searchProvider: "tavily", // 或 brave, serpapi, bing
+  apiKey: process.env.TAVILY_API_KEY,
+});
+
+const agent = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  extensions: [webExtension],
+});
+
+await agent.prompt("查阅 React 19 的最新 Server Actions 变更说明，并结合项目代码给出升级建议");
+```
+
+### 包含的核心能力
+- **`web_search`**：提交结构化搜索关键词，返回标题、摘要与来源 URL 列表。
+- **`web_fetch`**：获取指定网页内容，底层内置 HTML 正文提取器（Readability），剔除广告、导航栏与样式杂质，将核心内容转换为干净紧凑的 Markdown 注入上下文。

@@ -1,0 +1,94 @@
+---
+title: MCP 协议集成指南
+description: 接入 Model Context Protocol (MCP) 服务端，支持 stdio 子进程、SSE 远程传输与海量工具延迟加载。
+---
+
+Model Context Protocol (MCP) 是开放的跨生态工具与上下文集成协议。通过官方扩展 `@jai/extension/mcp`，你的 Agent 可以无缝连接现存的数千个 MCP 服务端（如 GitHub、Postgres、Figma、Slack 等）。
+
+## 安装扩展
+
+在工程中引入 MCP 扩展依赖：
+
+```bash
+bun add @jai/extension
+# 或
+npm install @jai/extension
+```
+
+---
+
+## 快速配置 MCP 服务
+
+使用 `createMcpExtension` 声明 MCP 服务端配置：
+
+```ts
+import { createCodingAgent } from "@jai/coding-agent";
+import { createMcpExtension } from "@jai/extension/mcp";
+
+// 1. 配置 MCP 服务列表
+const mcpExtension = createMcpExtension({
+  servers: {
+    // 本地 stdio 子进程服务（例如 GitHub MCP）
+    github: {
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-github"],
+      env: {
+        GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_TOKEN ?? "",
+      },
+    },
+    // 远程 SSE 传输服务
+    databaseProxy: {
+      transport: "sse",
+      url: "https://mcp.internal.mycompany.com/sse",
+      headers: {
+        Authorization: "Bearer sec-xyz",
+      },
+    },
+  },
+});
+
+// 2. 将扩展装配至 Agent
+const agent = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  extensions: [mcpExtension],
+});
+
+// 3. 模型可直接调用 GitHub MCP 的相关工具
+await agent.prompt("查看当前仓库最近开立的 3 个 Pull Request 并汇总其主要变动");
+
+await agent.close();
+```
+
+---
+
+## 海量工具优化：延迟发现（Deferred Catalogs）
+
+某些企业级 MCP 服务（例如大型内部云平台或 ERP 系统）包含成百上千个细分 API。如果将全部工具 Schema 一次性塞入 Context，不仅会迅速消耗数万 Token，还会严重稀释模型的注意力。
+
+MCP 扩展内置了**动态二阶段加载（Deferred Loading）**机制：
+
+```text
+[初始阶段]
+模型仅感知到系统级检索元工具：SearchTools & ExecuteTool (仅占用数百 Token)
+        │
+        ▼
+模型分析用户意图，调用 SearchTools("pull request")
+        │
+        ▼
+MCP 扩展按需拉取匹配的 2-3 个具体工具 Schema 动态注入当前轮次上下文
+        │
+        ▼
+模型精准调用具体工具执行业务操作
+```
+
+- **超高容量**：即便连接包含上千个接口的庞大 MCP 集群，初始上下文开销始终保持恒定。
+- **动态缓存优化**：仅激活当前任务确实需要的工具定义，保护 KV Cache 的整体命中率。
+
+---
+
+## 权限与安全
+
+来自 MCP 扩展的所有工具调用，其操作行为统一映射为 `tool.invoke` 权限动作。
+
+如果连接了第三方或不可信的外部 MCP 服务，同样会严格受到全局 `permissionMode` 的审计约束；在 `ask` 模式下，对外部数据的修改同样会暂停并唤醒宿主的 `requestApproval` 弹窗。

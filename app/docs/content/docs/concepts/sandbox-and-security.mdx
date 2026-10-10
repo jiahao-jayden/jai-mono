@@ -1,0 +1,79 @@
+---
+title: 安全沙箱与 AST 防御
+description: 基于 Tree-sitter 的 Bash AST 静态语法分析、命令包装器剥离、工作区越界检查与沙箱纵深防御。
+---
+
+给大模型赋予终端命令（`Bash`）执行权限是 Autonomous Agent 的核心能力，同时也是最脆弱的安全敞口。依靠传统的正则表达式来匹配敏感命令（如检测字符串中是否包含 `"rm"`）极其脆弱，极易被绕过。
+
+SDK 采用**语法级抽象语法树（AST）分析**与**工作区路径沙箱**构建多层防御体系。
+
+---
+
+## 为什么正则表达式无法防御命令注入？
+
+在 POSIX Shell 中，执行一条命令有无数种语法变形：
+
+1. **环境变量前缀**：`FOO=bar rm -rf dist`（正则若以 `^rm` 开头将直接漏报）。
+2. **命令包装器（Wrappers）**：`nohup nice -n 19 timeout 60s bash -c "..."`。
+3. **复合命令与管道**：`echo "hello" | cat && sudo make install`。
+4. **路径符号链接与相对穿透**：`cat ../../../etc/passwd` 或软链接逃逸。
+
+---
+
+## 基于 Tree-sitter 的 Bash AST 分析
+
+SDK 在底层集成 `tree-sitter-bash`，在命令执行前将其解析为结构化语法树，执行深度审查：
+
+```text
+原始命令: FOO=1 nohup timeout 30s git status --short
+
+  [Tree-sitter 解析]
+         │
+         ▼
+  [递归剥离 Wrappers] ──► 剥离环境变量声明 (FOO=1)
+         │           ──► 递归剥离包装命令 (nohup, timeout 30s)
+         ▼
+  [定位真实可执行体]   ──► 识别出核心命令为 "git"，子命令为 "status"
+         │
+         ▼
+  [风险打标与权限求值] ──► 匹配白名单规则: "git status" 属于只读操作 -> 自动放行
+```
+
+### 包装器递归剥离列表
+SDK 自动递归剥离下列标准包装器与内置命令：
+`builtin`、`command`、`nice`、`noglob`、`nohup`、`stdbuf`、`time`、`timeout`。
+无论命令被嵌套包裹多少层，分析器总能精确定位到底层实际要调用的二进制文件名。
+
+### 复合语句解构
+遇到管道（`|`）或复合控制符（`&&`、`||`、`;`）时，分析器会递归将整行 Shell 命令平铺解构为多个独立的 `PermissionTarget` 列表。只要其中任何一个子命令包含破坏性写操作，整体就必须进入相应的权限审批流程。
+
+---
+
+## 路径规范化与工作区逃逸拦截
+
+内置的文件操作工具（`Read`、`Edit`、`Write`）以及能够解析路径的 Shell 命令，均强制经过路径规范化验证：
+
+```ts
+import { realpathSync } from "node:fs";
+import { relative } from "node:path";
+
+// 示例解析逻辑
+const canonicalTarget = realpathSync(targetPath);
+const rel = relative(workspaceRoot, canonicalTarget);
+
+// 判定真实物理路径是否穿透至工作区外
+const isEscape = rel.startsWith("..") || isAbsolute(rel);
+```
+
+- **符号链接解析**：使用底层系统调用 `realpath` 解析物理路径。如果工作区内部的符号链接指向了外部敏感目录（如 `/etc` 或 `~/.ssh`），系统将准确探测到越界并拒绝访问。
+- **保护性目录隔离**：通过设置 `protectConfigDirectories: true`，可以硬性禁止内置工具对工作区或用户目录下的 `.jai/` 配置文件夹进行任何改写。
+
+---
+
+## 纵深防御：操作系统级沙箱
+
+代码层的 AST 静态分析是第一道屏障，但对于 `node -e "..."` 或编译运行 C 语言等能够执行任意图灵完备代码的场景，静态分析无法洞察其内部行为。
+
+SDK 的生产架构提倡**纵深防御（Defense-in-Depth）**：
+- AST 扫描识别出 `node`、`python` 为通用代码解释器，将其标记为不透明高危操作（`destructive`），强制唤醒人工审批；
+- 底层进程通过操作系统特权隔离（如 Linux cgroups/seccomp 或 macOS Sandbox/容器隔离）限制网络出站与敏感设备访问，杜绝单一防线失效导致的主机失陷。

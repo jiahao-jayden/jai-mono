@@ -1,0 +1,136 @@
+---
+title: 无头模式与 CI/CD 自动化
+description: 在 GitHub Actions 或后台流水线中运行无头 Agent，实现代码审查与自动化单测修复。
+---
+
+除了作为桌面客户端交互使用之外，SDK 非常适合作为无头（Headless）脚本运行在 CI/CD 自动化流水线中。
+
+---
+
+## 典型场景 1：自动 Pull Request 审查
+
+在 GitHub Actions 中，每当有新的 PR 提交时，启动一个无头的只读 Agent 对改动文件进行安全与质量审查：
+
+```ts
+// scripts/ci-pr-review.ts
+import { createCodingAgent } from "@jai/coding-agent";
+
+async function main() {
+  const targetFile = process.argv[2];
+  if (!targetFile) {
+    console.error("用法: bun run ci-pr-review.ts <file-path>");
+    process.exit(1);
+  }
+
+  // 1. 初始化只读规划模式 Agent（严禁在 CI 机器上随意写文件）
+  const created = await createCodingAgent({
+    model: "anthropic/claude-3-7-sonnet",
+    cwd: process.cwd(),
+    permissionMode: "plan", // 强制只读
+    maxTurns: 5,            // 限制预算，最多交互 5 轮
+  });
+
+  if (created.isErr()) {
+    console.error("Agent 启动失败:", created.error.message);
+    process.exit(1);
+  }
+
+  const agent = created.value;
+
+  // 2. 派发代码审查任务
+  const result = await agent.prompt(
+    `审查文件 ${targetFile}。重点关注：1. 是否有潜在内存泄漏；2. 异步是否有缺少异常捕获；3. 边缘情况是否覆盖。用 Markdown 格式输出精炼审查要点。`,
+  );
+
+  await agent.close();
+
+  if (result.isErr()) {
+    console.error("审查执行异常:", result.error.message);
+    process.exit(1);
+  }
+
+  const lastMessage = result.value.messages.at(-1);
+  console.log("\n### 审查意见汇总:\n");
+  console.log(lastMessage?.role === "assistant" ? (lastMessage as any).content[0]?.text : "无明确回复");
+}
+
+main();
+```
+
+---
+
+## 典型场景 2：自动修复单测回归并生成 Patch
+
+如果允许 Agent 实际修改代码以修复测试，可以配置受控的写文件权限：
+
+```ts
+// scripts/ci-auto-fix.ts
+import { createCodingAgent } from "@jai/coding-agent";
+
+async function runAutoFix() {
+  const created = await createCodingAgent({
+    model: "anthropic/claude-3-7-sonnet",
+    cwd: process.cwd(),
+    // 开放工作区内常规读写
+    permissionMode: "allow",
+    // 裁剪工具：仅开放读写与编辑，禁止任意 Bash 命令，保证 CI 沙箱绝对安全
+    tools: ["Read", "Edit", "Write"],
+    maxTurns: 10,
+  });
+
+  const agent = created.value;
+
+  const result = await agent.prompt(
+    "根据刚才生成的 test-results.log 失败报错日志，定位并修改 src/ 目录下的源码使其通过测试",
+  );
+
+  await agent.close();
+
+  if (result.isErr()) {
+    console.error("自动修复失败:", result.error.message);
+    process.exit(1);
+  }
+
+  console.log("已生成修复代码，请检查 git diff");
+}
+
+runAutoFix();
+```
+
+---
+
+## GitHub Actions 工作流配置示例
+
+```yaml
+name: AI Pull Request Review
+on: [pull_request]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v1
+      
+      - name: Install dependencies
+        run: bun install
+        
+      - name: Run Agent Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          bun run scripts/ci-pr-review.ts src/index.ts > review-comment.md
+          
+      - name: Post Comment to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('review-comment.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+```

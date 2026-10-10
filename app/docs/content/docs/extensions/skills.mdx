@@ -1,0 +1,91 @@
+---
+title: Skills 技能体系
+description: 掌握 Agent Skills 规范、SKILL.md 编写标准与渐进式知识按需加载机制。
+---
+
+复杂项目通常包含大量的专有规范、开发约定与最佳实践（例如团队的前端组件规范、后端 API 错误码设计准则、数据库迁移流程）。如果把所有领域的规范一股脑全部塞入 System Prompt，会导致提示词冗长且上下文污染。
+
+SDK 实现了 **Agent Skills（技能体系）**：一种**渐进式披露（Progressive Disclosure）**的领域知识组织方案。
+
+---
+
+## 核心设计：渐进式披露
+
+技能系统的运转分为两阶段：
+
+```text
+1. 初始阶段（低成本广播）
+   System Prompt 仅包含极简的技能清单（Skill Card：名称 + 一句话摘要，仅耗费数十 Token）
+   ┌────────────────────────────────────────────────────────┐
+   │ - git-flow: 团队标准的 Git 分支命名与 PR 提交流程规范       │
+   │ - db-migration: 数据库变更与回滚脚本编写指引               │
+   └────────────────────────────────────────────────────────┘
+
+2. 触发阶段（按需拉取）
+   当用户指令涉及相关领域时，大模型自主调用系统工具：
+   Skill({ skill: "db-migration" })
+   ┌────────────────────────────────────────────────────────┐
+   │ SDK 读取对应的 SKILL.md 全文并注入上下文，模型掌握专有规则 │
+   └────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 编写标准的 `SKILL.md`
+
+在项目的 `.agents/skills/<skill-name>/` 目录下创建 `SKILL.md`：
+
+```markdown
+---
+name: db-migration
+description: 数据库变更脚本编写指南。当需要新增表结构、变更列字段或编写回滚逻辑时使用。
+---
+
+# 数据库迁移规范
+
+编写数据库迁移脚本时必须遵循以下规则：
+
+1. 文件命名必须为 `migrations/<timestamp>_<action>.sql`。
+2. 每一个 DDL 语句必须在紧邻的下方提供对称的 DOWN 回滚语句。
+3. 禁止在生产环境直接执行 `DROP COLUMN`，必须先标记废弃并在下一个主版本移除。
+```
+
+- **Frontmatter 必须完整**：包含用于索引与模型意图识别的 `name` 与精炼的 `description`。
+- **正文即为领域指南**：直给、结构清晰，包含可执行规则与负面禁忌示例。
+
+---
+
+## 装配 Skills 扩展
+
+使用 `@jai/extension/skills` 提供的 `createSkillsExtension`：
+
+```ts
+import { createCodingAgent } from "@jai/coding-agent";
+import { createSkillsExtension } from "@jai/extension/skills";
+
+const skillsExtension = createSkillsExtension({
+  // 配置技能扫描目录
+  directories: [
+    // 项目级技能（团队共享）
+    { path: `${process.cwd()}/.agents/skills`, source: "project" },
+    // 用户级技能（个人常用）
+    { path: `${process.env.HOME}/.agents/skills`, source: "user" },
+  ],
+});
+
+const agent = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  extensions: [skillsExtension],
+});
+
+// 提问触发
+await agent.prompt("我想为用户表新增一个积分字段，请帮我生成迁移文件");
+```
+
+---
+
+## 动态热重载与文件监视
+
+Skills 扩展在底层持有文件监视器（File Watcher）：
+- 当开发者在编辑器中新增、修改或删除 `SKILL.md` 时，扩展会自动重新计算内容哈希并使内部缓存失效。
+- 下一轮交互中，模型即可直接识别到更新后的技能规范，无需重启应用进程。

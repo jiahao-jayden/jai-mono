@@ -1,0 +1,187 @@
+---
+title: 生产级 SQLite 会话存储实战
+description: 实现符合 CodingSessionStore 契约的 SQLite 持久化驱动，支持 Journal 乐观锁与跨重启恢复。
+---
+
+在真实的桌面端或服务端部署中，会话不能仅保存在内存中。SDK 要求持久化存储实现 `CodingSessionStore` 接口。
+
+本指南提供一个基于 Node.js 22 原生内置 `node:sqlite`（或轻量替换为 `better-sqlite3`）的完整生产级实现。
+
+---
+
+## 存储契约与表结构设计
+
+一个严谨的 Agent 会话库需要两张核心表：
+1. **`sessions`**：保存会话基础信息、当前版本修订号（`revision`）与初始状态。
+2. **`session_entries`**：保存按顺序追加的 Journal 条目（用户消息、工具执行结果、压缩摘要等）。
+
+```sql
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  revision TEXT NOT NULL,
+  initial_app_state_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS session_entries (
+  session_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  entry_json TEXT NOT NULL,
+  PRIMARY KEY (session_id, sequence)
+);
+```
+
+---
+
+## 完整的 Store 代码实现
+
+```ts
+import { DatabaseSync } from "node:sqlite";
+import {
+  type CodingSessionStore,
+  SessionConflictError,
+  type SessionEntry,
+  type StoredSession,
+} from "@jai/coding-agent";
+
+export class SqliteSessionStore implements CodingSessionStore {
+  readonly #db: DatabaseSync;
+
+  constructor(dbPath = "sessions.sqlite") {
+    this.#db = new DatabaseSync(dbPath);
+    this.#initSchema();
+  }
+
+  #initSchema(): void {
+    this.#db.exec(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        revision TEXT NOT NULL,
+        initial_app_state_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS session_entries (
+        session_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        entry_json TEXT NOT NULL,
+        PRIMARY KEY (session_id, sequence)
+      );
+    `);
+  }
+
+  async load(id: string): Promise<StoredSession | undefined> {
+    const sessionRow = this.#db
+      .prepare("SELECT * FROM sessions WHERE id = ?")
+      .get(id) as { id: string; revision: string; initial_app_state_json: string } | undefined;
+
+    if (!sessionRow) return undefined;
+
+    const entryRows = this.#db
+      .prepare("SELECT entry_json FROM session_entries WHERE session_id = ? ORDER BY sequence ASC")
+      .all(id) as { entry_json: string }[];
+
+    const entries = entryRows.map((r) => JSON.parse(r.entry_json));
+
+    return {
+      id: sessionRow.id,
+      revision: sessionRow.revision,
+      initialAppState: JSON.parse(sessionRow.initial_app_state_json),
+      entries,
+    };
+  }
+
+  async create(id: string, initialAppState: Record<string, unknown>): Promise<string> {
+    const initialRevision = "rev-1";
+    this.#db
+      .prepare("INSERT INTO sessions (id, revision, initial_app_state_json, created_at) VALUES (?, ?, ?, ?)")
+      .run(id, initialRevision, JSON.stringify(initialAppState), Date.now());
+
+    return initialRevision;
+  }
+
+  async append(id: string, entry: SessionEntry, expectedRevision: string): Promise<string> {
+    // 开启事务处理乐观锁版本校验与日志追加
+    const session = this.#db.prepare("SELECT revision FROM sessions WHERE id = ?").get(id) as
+      | { revision: string }
+      | undefined;
+
+    if (!session || session.revision !== expectedRevision) {
+      throw new SessionConflictError({
+        message: `会话 ${id} 发生并发版本冲突: 期望版本 ${expectedRevision}, 实际版本 ${session?.revision}`,
+      });
+    }
+
+    const nextSeq = ((this.#db
+      .prepare("SELECT MAX(sequence) as max_seq FROM session_entries WHERE session_id = ?")
+      .get(id) as { max_seq: number | null }).max_seq ?? 0) + 1;
+
+    const nextRevision = `rev-${Date.now()}-${nextSeq}`;
+
+    // 写入条目并推进版本号
+    this.#db.prepare("INSERT INTO session_entries (session_id, sequence, entry_json) VALUES (?, ?, ?)").run(
+      id,
+      nextSeq,
+      JSON.stringify(entry),
+    );
+
+    this.#db.prepare("UPDATE sessions SET revision = ? WHERE id = ?").run(nextRevision, id);
+
+    return nextRevision;
+  }
+
+  async delete(id: string): Promise<void> {
+    this.#db.prepare("DELETE FROM session_entries WHERE session_id = ?").run(id);
+    this.#db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+  }
+}
+```
+
+---
+
+## 在 Agent 中挂载使用
+
+```ts
+import { createCodingAgent } from "@jai/coding-agent";
+import { SqliteSessionStore } from "./sqlite-store";
+
+const store = new SqliteSessionStore("my-project-data.sqlite");
+
+// 1. 新建会话
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  cwd: process.cwd(),
+  session: {
+    kind: "new",
+    id: "session-release-2026",
+    store,
+  },
+  fileCapabilities: {
+    homeDirectory: process.env.HOME ?? "",
+    workspaceDirectory: process.cwd(),
+    workspaceTrusted: true,
+  },
+})).value;
+
+await agent.prompt("审查并更新项目中的 CHANGELOG.md");
+await agent.close();
+
+// 2. 进程重启后随时恢复
+const restoredAgent = (await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  cwd: process.cwd(),
+  session: {
+    kind: "resume",
+    id: "session-release-2026",
+    store,
+  },
+  fileCapabilities: {
+    homeDirectory: process.env.HOME ?? "",
+    workspaceDirectory: process.cwd(),
+    workspaceTrusted: true,
+  },
+})).value;
+
+console.log("已恢复历史对话条数:", restoredAgent.state.messages.length);
+await restoredAgent.prompt("接着上一轮的修改，补充一个发布说明");
+await restoredAgent.close();
+```

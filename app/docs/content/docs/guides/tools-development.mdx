@@ -1,0 +1,102 @@
+---
+title: 内置工具与自定义扩展工具开发
+description: 掌握 Read、Bash、Edit、Write 四大内置工具特性，并学会开发强类型的自定义扩展工具。
+---
+
+工程工具是 Agent 与操作系统和代码仓库交互的物理手脚。SDK 既提供了开箱即用的内置工具集，也支持通过扩展无缝扩充专有业务工具。
+
+---
+
+## 四大内置工程工具
+
+SDK 内置了经过生产级打磨的基础工具（`CodingToolName = "Read" | "Bash" | "Edit" | "Write"`）：
+
+### 1. Read（文件读取）
+- **入参**：`{ path: string, offset?: number, limit?: number }`
+- **特性**：按行输出，自动拼接 `${行号}|${内容}` 格式，帮助模型精准定位后续修改锚点；只读工具，支持并行并发调用。
+
+### 2. Bash（Shell 执行）
+- **入参**：`{ command: string, timeoutMs?: number, runInBackground?: boolean }`
+- **特性**：在当前工作区沙箱执行命令，带有超时保护与非零退出码捕获；支持后台异步驻留执行（`runInBackground: true`）。
+
+### 3. Edit（局部文本替换）
+- **入参**：`{ path: string, edits: Array<{ oldText: string, newText: string }> }`
+- **特性**：严格的非重叠、唯一精确匹配替换。若匹配不唯一则主动拒绝修改，避免大模型误改重构。
+
+### 4. Write（文件新建与覆盖）
+- **入参**：`{ path: string, content: string }`
+- **特性**：自动创建不存在的父目录，生成 `.md` 或 `.html` 时自动登记进会话的产物清单（Artifacts）。
+
+### 裁剪内置工具集
+```ts
+const agent = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  tools: ["Read", "Edit"], // 仅开放读取与编辑，禁用命令行与全量覆盖
+});
+```
+
+---
+
+## 开发自定义扩展工具
+
+如果需要给 Agent 增加业务专属工具（例如调用内部微服务、查询监控、触发 CI 构建），可以通过 `defineExtension` 声明：
+
+```ts
+import { defineExtension, createCodingAgent } from "@jai/coding-agent";
+import { Type } from "@sinclair/typebox";
+
+// 1. 声明扩展与自定义工具
+const deployExtension = defineExtension({
+  id: "team.deploy-helper",
+  tools: [
+    {
+      name: "trigger_deploy",
+      description: "向预发环境发起应用发布流水线",
+      // 使用 TypeBox 声明强类型的 JSON Schema
+      parameters: Type.Object({
+        serviceName: Type.String({ description: "微服务名称，如 user-api" }),
+        tag: Type.String({ description: "待发布的 Git Tag 版本号" }),
+        dryRun: Type.Optional(Type.Boolean({ description: "是否仅进行试运行检查" })),
+      }),
+      // 声明安全属性
+      authorization: {
+        owner: "core",
+        permission: {
+          sideEffect: "destructive", // 标记为副作用操作，触发审计
+          reason: "触发外部生产或预发环境的真实部署",
+        },
+      },
+      // 工具执行逻辑
+      execute: async (runtime, call) => {
+        const { serviceName, tag, dryRun } = call.args;
+
+        // 执行网络请求或业务逻辑
+        const deployId = dryRun ? "mock-dry-run-001" : "deploy-live-8921";
+
+        return {
+          // content 数组是直接回传给大模型的文本上下文
+          content: [
+            {
+              type: "text",
+              text: `部署任务已成功派发: 服务=${serviceName}, Tag=${tag}, 任务ID=${deployId}`,
+            },
+          ],
+        };
+      },
+    },
+  ],
+});
+
+// 2. 装配并执行
+const agent = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  extensions: [deployExtension],
+});
+
+await agent.prompt("为 user-api 服务预发布一个 dry-run 部署检查");
+```
+
+### 工具开发的最佳实践
+
+1. **清晰的 Description**：模型的工具选择完全取决于 `description` 的准确度。明确写出“什么时候应该调用本工具”以及“期望得到什么”。
+2. **返回值必须紧凑**：`content` 中的文本会完整进入下一轮模型的上下文，应仅保留必要的核心数据，避免直接塞入无意义的巨大 JSON。

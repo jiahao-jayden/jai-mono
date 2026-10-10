@@ -1,0 +1,197 @@
+---
+title: React 与现代前端集成实战
+description: 将 Agent 事件总线桥接至 React 状态机，实现平滑打字机效果、思考折叠与工具进度条。
+---
+
+在 Web 界面或 Electron 桌面端中，用户期望看到大模型实时流式打字、思考折叠展开以及工具调用的动态状态卡片。
+
+本指南演示如何使用 React 将 `agent.subscribe` 事件流桥接为响应式 UI 状态。
+
+---
+
+## 自定义 Hook：`useCodingAgent`
+
+通过封装自定义 Hook，把 Agent 的同步事件流转换为 React 状态：
+
+```tsx
+import { useEffect, useState, useRef } from "react";
+import type { CodingAgent, CodingAgentMessage } from "@jai/coding-agent";
+
+export interface StreamState {
+  status: "idle" | "running" | "error";
+  messages: readonly CodingAgentMessage[];
+  currentThinking: string;
+  streamingText: string;
+  activeTool: string | null;
+}
+
+export function useCodingAgent(agent: CodingAgent | null) {
+  const [state, setState] = useState<StreamState>({
+    status: "idle",
+    messages: [],
+    currentThinking: "",
+    streamingText: "",
+    activeTool: null,
+  });
+
+  useEffect(() => {
+    if (!agent) return;
+
+    // 初始化时同步当前快照
+    setState((prev) => ({
+      ...prev,
+      messages: agent.state.messages,
+      status: agent.state.status === "running" ? "running" : "idle",
+    }));
+
+    // 订阅事件总线
+    const unsubscribe = agent.subscribe((event) => {
+      switch (event.type) {
+        case "agent_start":
+          setState((prev) => ({
+            ...prev,
+            status: "running",
+            currentThinking: "",
+            streamingText: "",
+            activeTool: null,
+          }));
+          break;
+
+        case "message_update": {
+          const ae = event.assistantEvent;
+          if (ae.type === "thinking_delta") {
+            setState((prev) => ({
+              ...prev,
+              currentThinking: prev.currentThinking + ae.delta,
+            }));
+          } else if (ae.type === "text_delta") {
+            setState((prev) => ({
+              ...prev,
+              streamingText: prev.streamingText + ae.delta,
+            }));
+          }
+          break;
+        }
+
+        case "tool_execution_start":
+          setState((prev) => ({
+            ...prev,
+            activeTool: `${event.toolName} (${event.title})`,
+          }));
+          break;
+
+        case "tool_execution_end":
+          setState((prev) => ({
+            ...prev,
+            activeTool: null,
+          }));
+          break;
+
+        case "agent_end":
+          setState((prev) => ({
+            ...prev,
+            status: "idle",
+            messages: event.messages,
+            streamingText: "",
+            currentThinking: "",
+            activeTool: null,
+          }));
+          break;
+      }
+    });
+
+    return () => unsubscribe();
+  }, [agent]);
+
+  const sendPrompt = async (text: string) => {
+    if (!agent) return;
+    return agent.prompt(text);
+  };
+
+  const abort = async () => {
+    if (!agent) return;
+    return agent.abort();
+  };
+
+  return { ...state, sendPrompt, abort };
+}
+```
+
+---
+
+## 渲染组件示例
+
+```tsx
+import React from "react";
+import { useCodingAgent } from "./useCodingAgent";
+import type { CodingAgent } from "@jai/coding-agent";
+
+export function ChatConsole({ agent }: { agent: CodingAgent }) {
+  const { status, messages, currentThinking, streamingText, activeTool, sendPrompt, abort } =
+    useCodingAgent(agent);
+  const [input, setInput] = React.useState("");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || status === "running") return;
+    sendPrompt(input);
+    setInput("");
+  };
+
+  return (
+    <div className="flex flex-col h-screen max-w-4xl mx-auto p-4">
+      {/* 消息历史渲染区 */}
+      <div className="flex-1 overflow-y-auto space-y-4">
+        {messages.map((msg, idx) => (
+          <div key={idx} className={`p-3 rounded-lg ${msg.role === "user" ? "bg-blue-50" : "bg-gray-50"}`}>
+            <div className="font-semibold text-xs text-gray-500 uppercase">{msg.role}</div>
+            <div className="mt-1 whitespace-pre-wrap">{/* 渲染消息正文 */}</div>
+          </div>
+        ))}
+
+        {/* 正在进行中的思考过程（Reasoning 折叠框） */}
+        {currentThinking && (
+          <details className="p-3 bg-purple-50 text-purple-900 rounded-lg text-sm" open>
+            <summary className="cursor-pointer font-medium">Agent 思考中...</summary>
+            <div className="mt-2 whitespace-pre-wrap font-mono text-xs opacity-80">{currentThinking}</div>
+          </details>
+        )}
+
+        {/* 工具调用进度指示卡片 */}
+        {activeTool && (
+          <div className="flex items-center gap-2 p-2.5 bg-amber-50 text-amber-800 rounded-md text-xs animate-pulse">
+            <span>⚙️</span>
+            <span>正在执行工具: {activeTool}</span>
+          </div>
+        )}
+
+        {/* 实时流式输出的正文 */}
+        {streamingText && (
+          <div className="p-3 bg-gray-50 rounded-lg whitespace-pre-wrap">{streamingText}</div>
+        )}
+      </div>
+
+      {/* 底部输入框与操作栏 */}
+      <form onSubmit={handleSubmit} className="mt-4 flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="给 Agent 派发任务..."
+          disabled={status === "running"}
+          className="flex-1 px-4 py-2 border rounded-md"
+        />
+        {status === "running" ? (
+          <button type="button" onClick={abort} className="px-4 py-2 bg-red-600 text-white rounded-md">
+            取消
+          </button>
+        ) : (
+          <button type="submit" className="px-4 py-2 bg-black text-white rounded-md">
+            发送
+          </button>
+        )}
+      </form>
+    </div>
+  );
+}
+```

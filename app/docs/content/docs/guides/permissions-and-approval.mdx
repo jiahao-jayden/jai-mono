@@ -1,0 +1,125 @@
+---
+title: 权限模式与审批流实战
+description: 配置四档权限基调、编写规则白名单，并实现交互式人工确认与会话级授权记忆。
+---
+
+给 Agent 赋予文件写操作和命令行执行权限时，必须建立清晰的安全边界。本指南介绍如何在应用中配置权限模式，并接入完整的人工审批交互。
+
+---
+
+## 四档权限模式
+
+创建 Agent 时，通过 `permissionMode` 设定安全基调：
+
+```ts
+export type CodingPermissionMode = "ask" | "allow" | "auto" | "plan";
+```
+
+| 模式 | 运行行为 | 推荐场景 |
+|---|---|---|
+| `ask`（默认） | 工作区只读操作直接放行；写文件、未知命令、敏感操作一律挂起并唤起 `requestApproval` | 绝大多数日常开发、代码编写与人机协同交互 |
+| `allow` | 工作区内常规文件修改与构建命令自动放行；高危与未知操作仍受兜底保护 | 开发者完全信任的特定本地自动化脚本 |
+| `auto` | 触发确认时，先由宿主配置的后台审核器（如本地小模型或规则策略）在 30 秒内预评估，未通过时回退为人机审批 | 期望保持最高操作流畅度、减少弹窗打扰的高阶场景 |
+| `plan` | 只读规划模式：任何非只读操作直接一票否决（`deny`），模型仅输出方案或审查报告 | 自动化代码审查（PR Review）、安全审计与代码诊断 |
+
+---
+
+## 编写规则表（PermissionSettings）
+
+如果需要为特定文件类型或命令建立细粒度的持久化策略，可以在宿主中定义规则表：
+
+```ts
+const settings = {
+  defaultMode: "ask",
+  permission: {
+    // 允许读取项目内所有文件
+    "file.read": "allow",
+    // 保护敏感配置文件，放行业务代码
+    "file.write": {
+      "**/*.env*": "deny",
+      ".git/**": "deny",
+      "src/**": "allow",
+    },
+    // 白名单放行常见开发命令，危险命令必须询问
+    "process.exec": {
+      "git status": "allow",
+      "git diff": "allow",
+      "bun test": "allow",
+      "rm *": "ask",
+    },
+  },
+};
+```
+
+---
+
+## 实现交互式审批回调（requestApproval）
+
+当操作需要用户人工介入决策时，SDK 会暂停当前工具执行并调用宿主传入的 `requestApproval` 函数：
+
+```ts
+import { createCodingAgent, type CodingPermissionDecision } from "@jai/coding-agent";
+import readline from "node:readline/promises";
+
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  cwd: process.cwd(),
+  permissionMode: "ask",
+  requestApproval: async (request, signal) => {
+    const { summary, canAlwaysAllow } = request;
+
+    console.log("\n[安全审计拦截] 待执行操作详情:");
+    console.log(`  操作类型: ${summary.title}`);
+    if (summary.command) console.log(`  Shell命令: $ ${summary.command}`);
+    if (summary.path)    console.log(`  目标路径:  ${summary.path}`);
+    console.log(`  风险评估: ${summary.risk ?? "中"}`);
+
+    const options = canAlwaysAllow ? "(y=本次允许 / a=总是允许 / n=拒绝): " : "(y=本次允许 / n=拒绝): ";
+    const ans = (await rl.question(`是否授权？${options}`)).trim().toLowerCase();
+
+    if (ans === "a" && canAlwaysAllow) return "alwaysAllow";
+    if (ans === "y") return "allowOnce";
+    return "deny";
+  },
+})).value;
+
+await agent.prompt("把项目根目录下的临时日志清理掉，并重新编译工程");
+await agent.close();
+rl.close();
+```
+
+---
+
+## 三种决策结果的去向
+
+| 决策结果 | 当次行为 | 状态沉淀 |
+|---|---|---|
+| `deny` | 工具执行立即终止，向模型返回拒绝通知，模型据此反思换用其他方案 | 无持久化变更 |
+| `allowOnce` | 仅为当前这一条工具调用放行，正常执行并返回结果 | 下次出现相同调用仍会再次询问 |
+| `alwaysAllow` | 当前调用放行 | 将放行规则沉淀至当前会话的 `sessionAllowRules` 中，同会话后续同类操作自动静默放行 |
+
+---
+
+## 跨轮次授权共享（sessionAllowRules）
+
+在构建多轮对话应用时，宿主可以持有一个共享的授权记忆对象与先进先出队列，避免在长对话中重复弹出相同弹窗：
+
+```ts
+import { createCodingAgent, createPermissionApprovalQueue } from "@jai/coding-agent";
+
+// 跨调用共享的内存审批 FIFO 队列（确保界面同一时间最多只弹一个审批浮层）
+const approvalQueue = createPermissionApprovalQueue();
+
+// 宿主拥有的会话授权规则对象
+const sessionAllowRules = {};
+
+const agent = (await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  approvalQueue,
+  sessionAllowRules,
+  sessionGrantWorkspaceRoot: process.cwd(),
+  requestApproval: myCustomModalHandler,
+})).value;
+```

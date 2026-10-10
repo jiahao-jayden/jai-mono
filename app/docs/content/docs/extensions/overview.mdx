@@ -1,0 +1,96 @@
+---
+title: 扩展架构总览
+description: 了解声明式纯数据扩展规范、defineExtension API、9 阶生命周期 Hooks 与状态隔离。
+---
+
+Agent 需要接入外部工具、私有知识库与专有业务系统。SDK 采用了纯声明式、强类型的扩展体系：扩展是一个包含元数据、工具函数与事件钩子的普通 JavaScript 对象，由 `defineExtension` 进行定义。
+
+## 声明一个扩展
+
+```ts
+import { defineExtension, createCodingAgent } from "@jai/coding-agent";
+import { Type } from "@sinclair/typebox";
+
+const customDevExtension = defineExtension({
+  id: "my-team.dev-tools",
+  tools: [
+    {
+      name: "run_lint",
+      description: "执行代码规范检查并输出错误行",
+      parameters: Type.Object({
+        fix: Type.Optional(Type.Boolean({ description: "是否自动尝试修复格式问题" })),
+      }),
+      execute: async (runtime, call) => {
+        const shouldFix = Boolean(call.args.fix);
+        // 执行检查逻辑...
+        return {
+          content: [{ type: "text", text: shouldFix ? "已完成自动修复" : "发现 2 处格式警告" }],
+        };
+      },
+    },
+  ],
+  hooks: {
+    beforeAgentStart: async (runtime, input) => {
+      console.log(`[扩展] 任务 "${input.prompt}" 即将开始`);
+    },
+  },
+});
+
+// 装配至 Agent 实例
+const agent = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  extensions: [customDevExtension],
+});
+```
+
+---
+
+## 扩展配置与完整接口定义
+
+`CodingAgentExtension` 接口由以下几个正交的模块构成：
+
+```ts
+export interface CodingAgentExtension<
+  TConfig extends JsonObject = JsonObject,
+  TState extends JsonObject = JsonObject,
+  TInstance = undefined,
+> {
+  readonly id: string;                                                      // 唯一标识
+  readonly configuration?: CodingExtensionConfiguration<TConfig>;            // 静态或分层配置 Schema
+  readonly sessionState?: CodingExtensionSessionState<TState>;               // 随会话持久化的专属状态
+  readonly tools?: readonly CodingExtensionTool<TConfig, TState, TInstance>[]; // 静态工具声明
+  readonly hooks?: CodingExtensionHooks<TConfig, TState, TInstance>;        // 生命周期事件钩子
+  readonly catalogs?: readonly CodingExtensionToolCatalog<TConfig, TState, TInstance>[]; // 动态目录
+  readonly lifecycle?: CodingExtensionLifecycle<TConfig, TState, TInstance>; // 启动与注销
+}
+```
+
+- **`TConfig`**：扩展所需的配置模型类型。
+- **`TState`**：扩展存放在会话持久化存储中的状态数据类型。
+- **`TInstance`**：扩展激活（`activate`）时构造的内部上下文对象（如长连接 Client、缓存池），SDK 会将其自动注入给每个工具与钩子。
+
+---
+
+## 9 阶生命周期 Hooks
+
+扩展可以通过声明钩子无侵入地介入主循环的各个关键阶段：
+
+| Hook 阶段 | 触发时机 | 典型用途 |
+|---|---|---|
+| `beforeAgentStart` | 用户调用 `prompt` / `advance` 之后、进入主循环前 | 权限前置拦截、黑名单过滤、阻断执行 |
+| `sessionStart` | 首次初始化或跨进程恢复会话时 | 加载扩展专属的外部资源或初始化工作区状态 |
+| `turnStart` / `turnEnd` | 每一个原子推理轮次的开始与落定 | 耗时打点、计数器累加 |
+| `beforeModelCall` | 组装完消息即将向 LLM 发起流式请求前 | 临时向当前上下文注入动态前置提示词 |
+| `afterModelCall` | 拿到模型流式响应、派发工具调用前 | 审查模型返回的 ToolCall 参数合法性 |
+| `beforeToolCall` | 任何工具开始调用前 | 打印前置参数日志、鉴权校验 |
+| `afterToolCall` | 任何工具执行完毕后 | 捕获工具产物、收集文件副作用日志 |
+| `agentSettled` | 整场会话进入最终稳定态（空闲或退出）时 | 异步刷新外部看板或发送完成通知 |
+
+---
+
+## 异常隔离
+
+扩展代码运行在安全的容错沙箱中：
+- 扩展执行过程中的非预期异常会被自动包装为标准的 `CodingExtensionError` 派生类。
+- 在 `beforeAgentStart` 中抛出 `CodingExtensionPolicyBlocked` 可以明确、受控地主动阻断整轮任务，向用户输出合规警告。
+- 单个扩展的销毁失败不会阻止其他扩展的依次反注册，确保 `agent.close()` 总能完成资源清理。
