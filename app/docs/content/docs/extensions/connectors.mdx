@@ -1,0 +1,71 @@
+---
+title: SaaS 连接器扩展（Connectors）
+description: 对接第三方协作平台（GitHub、Jira、Linear、Figma 等），支持预备动作与细粒度权限策略。
+---
+
+在企业协作场景中，Agent 需要与外部 SaaS 平台协同（例如查询 Linear Issue 进度、向 GitHub PR 提交行内代码建议、读取 Figma 设计稿标注）。
+
+`@jai/extension/connector` 提供了标准化连接器扩展，支持动作预备（`prepareAction`）与两阶段安全授权。
+
+```ts
+import { createConnectorExtension } from "@jai/extension/connector";
+```
+
+---
+
+## 运作原理与安全策略
+
+连接器操作往往具有外部副作用。扩展支持声明细粒度的动作策略（Action Policy）：
+
+```ts
+import { createCodingAgent } from "@jai/coding-agent";
+import { createConnectorExtension } from "@jai/extension/connector";
+
+// 1. 初始化连接器扩展
+const connectorExtension = createConnectorExtension({
+  client: customConnectorService, // 宿主实现的 Connector 客户端驱动
+});
+
+// 2. 注入 Agent
+const agent = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  extensions: [connectorExtension],
+});
+```
+
+---
+
+## 工具命名规范与命名空间
+
+为了杜绝不同 SaaS 平台动作同名冲突，连接器工具由扩展自动分配统一的结构化命名空间：
+
+```text
+connector__<serviceId>__<actionId>
+```
+
+例如：
+- `connector__linear__list_issues`：查询 Linear 缺陷列表。
+- `connector__github__add_pr_comment`：向指定 PR 发送评审意见。
+- `connector__jira__transition_issue`：变更 Jira 工单流转状态。
+
+---
+
+## 策略分级配置（Policy Configuration）
+
+连接器扩展支持按服务或按动作配置安全模式（`"ask" | "allow" | "deny"`）：
+
+```json
+{
+  "policy": {
+    "default": "ask",
+    "actions": {
+      "connector__github__read_repo": "allow",
+      "connector__linear__create_issue": "ask",
+      "connector__cloud__delete_resource": "deny"
+    }
+  }
+}
+```
+
+- **只读操作放行**：对普通检索与元数据读取配置为 `"allow"`，提升 Agent 协同流畅度。
+- **敏感写操作拦截**：创建工单、修改代码或提交发布等操作配置为 `"ask"`，必须由用户通过审批回调（`requestApproval`）确认后方可执行。

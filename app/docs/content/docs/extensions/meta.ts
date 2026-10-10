@@ -10,5 +10,7 @@ export default defineMeta({
 		"skills",
 		"subagents",
 		"search-and-web",
+		"agent-plugins",
+		"connectors",
 	],
 });

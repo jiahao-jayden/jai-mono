@@ -10,6 +10,7 @@ export default defineMeta({
 		"sqlite-store",
 		"frontend-integration",
 		"headless-and-ci",
+		"cli",
 		"background-agents",
 		"observability",
 		"attachments",

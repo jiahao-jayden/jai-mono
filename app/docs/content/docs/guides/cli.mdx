@@ -1,0 +1,90 @@
+---
+title: jai 命令行工具与管道调用
+description: 使用 headless CLI jai 在终端中进行交互式编程、标准输入管道集成与自动化输出。
+---
+
+除了通过 TypeScript SDK 编程调用之外，jai-mono 还提供了开箱即用的命令行工具 **`jai`**（位于 `app/cli`）。无论是日常在终端与 Agent 协同，还是在自动化脚本与 CI 节点中通过管道无头运行，都可以直接调用 `jai` 命令。
+
+---
+
+## 安装与构建
+
+在 monorepo 内构建 CLI 可执行文件：
+
+```bash
+bun run cli:build
+# 或在全局链接为系统命令
+cd app/cli && npm link
+```
+
+打包为独立的无依赖二进制分发包：
+
+```bash
+bun run cli:pack
+```
+
+---
+
+## 常用命令模式
+
+### 1. 终端交互模式（Interactive Mode）
+直接执行 `jai`，进入带行编辑与流式打字的 TTY 交互终端：
+
+```bash
+jai
+# 指定模型与工作目录
+jai --model anthropic/claude-3-7-sonnet --cwd /path/to/project
+```
+
+### 2. 管道与非交互打印模式（Print Mode：`-p` / `--print`）
+非常适合与其他 Unix 工具链（`cat`、`git diff`、`grep`）配合，将标准输入直接作为 Prompt 执行：
+
+```bash
+# 场景 A：直接通过命令行入参派发单次任务
+jai -p "检查当前工作区的 git status，告诉我有哪些待提交的文件"
+
+# 场景 B：通过管道传递文件内容进行重构
+cat error.log | jai -p "分析这段报错日志并给出可能的原因"
+
+# 场景 C：只读规划审查，不保存持久化会话
+git diff main | jai -p --interaction-mode plan --no-session-persistence
+```
+
+---
+
+## 机器可读的输出格式（`--output-format`）
+
+当你在脚本或外部工作流中消费 `jai` 的输出时，可以使用 `--output-format` 选项切换输出流规范：
+
+| 格式参数 | 说明 | 适用场景 |
+|---|---|---|
+| `text`（默认） | 仅在标准输出打印最终的模型回复文本与人类可读日志 | 终端交互、简单管道 |
+| `json` | 任务结束后输出一个完整的 JSON 结果对象（含 `messages`、`usage`、`diagnostics`） | 自动化测试、批处理分析 |
+| `stream-json` | 按行（Line-delimited JSON）实时输出流式事件（Token 增量、工具状态） | 封装到自建 Web 前端或外部调度引擎 |
+
+### `stream-json` 流式输出示例
+```bash
+jai -p "分析 package.json" --output-format stream-json
+```
+标准输出将按行实时推送 JSON-RPC 事件流，例如：
+```json
+{"type":"event","event":{"type":"message_update","assistantEvent":{"type":"text_delta","delta":"这"}}}
+{"type":"event","event":{"type":"message_update","assistantEvent":{"type":"text_delta","delta":"是"}}}
+```
+
+---
+
+## 常用选项全景速查
+
+```bash
+jai [options] [prompt]
+```
+
+- `-p, --print`：非交互模式，执行一次运行后直接退出。
+- `-m, --model <provider/modelId>`：指定模型（如 `anthropic/claude-3-7-sonnet` 或 `openai/gpt-4o`）。
+- `--permission-mode <ask|allow|auto>`：设置安全审批模式（默认 `ask`）。
+- `--interaction-mode <normal|plan>`：设置为 `plan` 时开启纯只读规划模式。
+- `--session-id <id>`：连接或恢复指定的已有持久化会话。
+- `--no-session-persistence`：使用无状态的临时会话，退出后不向数据库持久化日志。
+- `--output-format <text|json|stream-json>`：设置标准输出格式。
+- `--cwd <path>`：指定执行命令的工作目录绝对路径。

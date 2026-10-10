@@ -12,6 +12,7 @@ export default defineMeta({
 		"approval-queue",
 		"background-store",
 		"telemetry-observer",
+		"helpers",
 		"errors",
 		"exports",
 	],

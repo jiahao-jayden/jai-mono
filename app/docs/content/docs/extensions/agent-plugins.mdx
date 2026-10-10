@@ -1,0 +1,79 @@
+---
+title: Agent Plugins 规范包
+description: 加载符合 agent-plugins.org v1 开放标准的插件目录包，整合 MCP 服务端与 Skills 体系。
+---
+
+[Agent Plugins](https://agent-plugins.org/) 是一个开放、跨厂商中立的 Agent 插件包组织标准。它将社区现存的 **Agent Skills** 与 **MCP Servers** 整合在统一的物理目录包中，解决跨客户端（如 Claude Code、Copilot、Jai）重复配置与格式迁移的问题。
+
+通过官方扩展 `@jai/extension/agent-plugins`，你的 Agent 可以直接发现并加载任意符合标准规范的插件包。
+
+```ts
+import { createAgentPluginsExtension } from "@jai/extension/agent-plugins";
+```
+
+---
+
+## Agent Plugin 目录结构
+
+一个标准的 Agent Plugin v1 插件包具有如下物理结构：
+
+```text
+my-awesome-plugin/
+├── plugin.json         # 核心元数据 Manifest
+├── mcp.json            # 插件包含的 MCP 服务声明（可选）
+└── skills/             # 插件内置的 Agent 技能目录（可选）
+    └── deploy/
+        └── SKILL.md
+```
+
+### `plugin.json` 示例
+```json
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "docker-helper",
+  "version": "1.0.0",
+  "description": "Docker 容器编排与镜像诊断工具包",
+  "author": { "name": "DevOps Team" }
+}
+```
+
+---
+
+## 装配 Agent Plugins 扩展
+
+使用 `createAgentPluginsExtension` 函数扫描并加载指定目录下的插件包：
+
+```ts
+import { createCodingAgent } from "@jai/coding-agent";
+import { createAgentPluginsExtension } from "@jai/extension/agent-plugins";
+
+// 1. 扫描并加载本地插件目录
+const pluginsExtension = await createAgentPluginsExtension({
+  directories: [
+    // 项目级插件（随代码仓库协同）
+    { path: `${process.cwd()}/.plugins`, source: "project" },
+    // 用户级插件（个人通用工具）
+    { path: `${process.env.HOME}/.jai/plugins`, source: "user" },
+  ],
+  dataDirectory: `${process.env.HOME}/.jai/plugin-data`,
+});
+
+// 2. 装配至 Agent 实例
+const agent = await createCodingAgent({
+  model: "anthropic/claude-3-7-sonnet",
+  extensions: [pluginsExtension],
+});
+
+// 3. 插件中声明的 MCP 工具和 Skills 自动对大模型就绪
+await agent.prompt("使用 docker-helper 插件检查当前运行中的容器健康状态");
+
+await agent.close();
+```
+
+---
+
+## 插件加载能力
+
+- **MCP 服务端托管**：插件包 `mcp.json` 中声明的 stdio 或远程 MCP 服务，由扩展在激活（activate）阶段自动派生子进程或发起网络连接，免去手工接线。
+- **Skills 自动导出**：插件包 `skills/` 下声明的技能描述符（`skillCards`）会自动汇入当前会话的技能库中，模型可按需通过 `Skill` 工具渐进式阅读与触发。
+- **诊断隔离**：若某个插件的 Manifest 校验失败或子进程启动异常，扩展会收集结构化诊断信息（`diagnostics`），而不会导致整个 Agent 初始化崩溃。

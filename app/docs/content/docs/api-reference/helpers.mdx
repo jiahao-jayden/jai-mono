@@ -1,0 +1,129 @@
+---
+title: 常用辅助工具函数
+description: SDK 导出的工具函数速查：resolveSdkModel、generateSessionTitle、redactCommand、codingArtifactsFromAppState 等。
+---
+
+除了核心的 Agent 创建和实例接口外，SDK 还导出了一组在构建宿主应用时必不可少的独立纯函数与辅助工具。它们通常无需启动一个完整的 Agent 即可单独调用。
+
+```ts
+import {
+  resolveSdkModel,
+  generateSessionTitle,
+  redactCommand,
+  codingArtifactsFromAppState,
+  defaultUserTelemetryPolicy,
+} from "@jai/coding-agent";
+```
+
+---
+
+## 1. `resolveSdkModel`（静态模型解析）
+
+在不发起任何真实网络调用的情况下，静态解析并校验模型标识字符串（形如 `"<provider>/<modelId>"`）：
+
+```ts
+export function resolveSdkModel(
+  modelRef: string,
+  providerOptions?: CodingProviderOptions,
+  compatibilityProfile?: ResolvedCompatibilityProfile,
+  metadata?: CodingModelMetadata,
+): ResolvedSdkModel
+```
+
+### 示例
+```ts
+import { resolveSdkModel } from "@jai/coding-agent";
+
+const resolved = resolveSdkModel("anthropic/claude-3-7-sonnet", {
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+console.log(resolved.provider.id); // "anthropic"
+console.log(resolved.model.id);    // "claude-3-7-sonnet"
+```
+- **校验边界**：自动验证 provider 是否在 `anthropic`、`openai`、`openai-compatible` 三者之中，并根据 provider 规则提取默认的系统环境变量密钥与基础服务端地址。
+
+---
+
+## 2. `generateSessionTitle`（会话短标题生成）
+
+根据用户发起的首条指令与模型的首次回复文本，调用指定大模型快速生成精炼的会话短标题（8 个词以内），适合在宿主 UI 的侧边栏列表展示：
+
+```ts
+export async function generateSessionTitle(
+  provider: Provider,
+  model: Model,
+  firstMessage: string,
+  assistantText: string,
+): Promise<Result<string, CodingSdkError>>
+```
+
+### 示例
+```ts
+import { generateSessionTitle, resolveSdkModel } from "@jai/coding-agent";
+
+const { provider, model } = resolveSdkModel("openai/gpt-4o");
+
+const titleResult = await generateSessionTitle(
+  provider,
+  model,
+  "请帮我用 React 实现一个虚拟滚动的长列表组件",
+  "好的，我们可以通过监听滚动偏移量与容器高度来只渲染可视区域内的 DOM 项...",
+);
+
+if (titleResult.isOk()) {
+  console.log("生成的会话标题:", titleResult.value); // "React 虚拟滚动列表实现"
+}
+```
+
+---
+
+## 3. `redactCommand`（命令行敏感参数脱敏）
+
+在呈现权限审批弹窗或将执行记录发送给监控遥测前，对 Shell 命令行中的敏感凭据（如 Token、Password、Secret Key）进行自动识别与掩码替换：
+
+```ts
+export function redactCommand(command: string): string
+```
+
+### 示例
+```ts
+import { redactCommand } from "@jai/coding-agent";
+
+const raw = "curl -H 'Authorization: Bearer sk-ant-secret123456' https://api.example.com";
+const safe = redactCommand(raw);
+
+console.log(safe);
+// curl -H 'Authorization: Bearer [redacted]' https://api.example.com
+```
+
+- **脱敏范围**：自动匹配形如 `TOKEN=...`、`KEY=...`、`PASSWORD=...` 的环境变量前缀，以及 `--token`、`--auth` 等常见命令行 Flag 传值。
+
+---
+
+## 4. `codingArtifactsFromAppState`（产物恢复工具）
+
+从持久化存储反序列化的 AppState 中，提取、过滤并按更新时间排序代码产物清单：
+
+```ts
+import { codingArtifactsFromAppState, type JsonObject } from "@jai/coding-agent";
+
+// 从数据库或存储中读回持久化状态
+const artifacts = codingArtifactsFromAppState(persistedAppState);
+
+for (const item of artifacts) {
+  console.log(item.path, item.format, item.updatedAt);
+}
+```
+
+---
+
+## 5. `defaultUserTelemetryPolicy`（默认遥测策略）
+
+获取 SDK 内置推荐的遥测收集策略对象：
+
+```ts
+import { defaultUserTelemetryPolicy } from "@jai/coding-agent";
+
+console.log(defaultUserTelemetryPolicy.contentCaptureEnabled); // 默认严格关闭原始正文抓取
+```
