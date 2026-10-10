@@ -98,14 +98,24 @@ describe("provider failure boundary", () => {
 		expect(lastAssistant(await agent.prompt("x"))).toMatchObject({ stopReason: "stop", content: [] });
 	});
 
-	// ponytail: nothing in the SDK sets a request or total-run deadline; the OpenAI/Anthropic client
-	// default (10 min per request) is the only bound. Ceiling: a stalled provider holds the run, and
-	// on Workers the invocation, for that long. Upgrade path: expose `requestTimeoutMs` and a run deadline.
-	test.failing("a provider that never answers fails the run on its own within a sane deadline", async () => {
+	test("a provider that never answers fails the run at provider.idleTimeoutMs", async () => {
 		await fixture.prepare();
 		fixture.script({ kind: "hang" });
-		const agent = await fixture.open();
-		expect(await settleWithin(agent.prompt("x"), 2000)).not.toBe("timeout");
+		const agent = await fixture.open({ provider: { apiKey: "k", baseUrl: fixture.mock.baseUrl, idleTimeoutMs: 150 } });
+		const result = await settleWithin(agent.prompt("x"), 2000);
+		expect(result).not.toBe("timeout");
+		expect(result !== "timeout" && lastAssistant(result).stopReason).toBe("error");
+		expect(agent.state.error).toMatchObject({ code: "ai_provider.idle_timeout" });
+	});
+
+	test("a stream that stalls mid-response fails the run, not just a missing first byte", async () => {
+		await fixture.prepare();
+		fixture.script({ kind: "text", text: "partial", chunkDelayMs: 1000 });
+		const agent = await fixture.open({ provider: { apiKey: "k", baseUrl: fixture.mock.baseUrl, idleTimeoutMs: 150 } });
+		const result = await settleWithin(agent.prompt("x"), 2000);
+		expect(result).not.toBe("timeout");
+		expect(result !== "timeout" && lastAssistant(result).stopReason).toBe("error");
+		expect(agent.state.error).toMatchObject({ code: "ai_provider.idle_timeout" });
 	});
 });
 
