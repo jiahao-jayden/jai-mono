@@ -28,7 +28,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 | `protectConfigDirectories` | | `boolean` | 缺省 `false`。为 `true` 时，内置文件工具在任何权限模式下都不能读写 workspace、home、`cwd` 下的 `.jai/`（Shell 沙箱始终保护前两者）。缺省不限制，agent 能否改自己的配置由使用者通过权限规则决定 |
 | `requestApproval` | | `CodingApprovalHandler` | 审批回调 `(request, signal?) => "deny" \| "allowOnce" \| "alwaysAllow"`；缺省无（审批不可用） |
 | `extensions` | | `readonly CodingAgentExtension[]` | 扩展数组；SDK 做 id 唯一校验 |
-| `maxTurns` | | `number` | 最大迭代轮数（内部 `maxIterations`） |
+| `maxTurns` | | `number` | 单次运行的最大迭代轮数，正整数，默认 `100`；传 `Infinity` 取消限制。非法值返回 `coding_sdk.invalid_options` |
 
 ## 模型能力相关（Host 解析后传入）
 

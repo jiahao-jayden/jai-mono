@@ -80,6 +80,7 @@ import type {
 	JsonObject,
 	JsonValue,
 } from "./types";
+import { resolveMaxIterations, validateCreateOptions } from "./validate-options";
 
 /** Adds the symlink-resolved spelling: the permission layer evaluates both the requested and the canonical path. */
 function withCanonicalPaths(paths: readonly string[]): string[] {
@@ -103,6 +104,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 	let modelRuntime: { readonly model: Model; readonly provider: Provider } | undefined;
 	let extensions: readonly InitializedExtension[] = [];
 	try {
+		await validateCreateOptions(input);
 		const session = input.session ?? { kind: "ephemeral" as const };
 		const sessionId = resolveSessionId(session);
 		const cwd = input.cwd ?? process.cwd();
@@ -163,7 +165,7 @@ export async function createCodingAgent<TAppState extends JsonObject = JsonObjec
 				return runtime;
 			},
 			resolveAgentOptions: () => ({
-				maxIterations: input.maxTurns,
+				maxIterations: resolveMaxIterations(input.maxTurns),
 				providerOptions: input.providerOptions,
 				reasoningLevel: input.reasoningLevel,
 				fastMode: input.fastMode,
@@ -377,7 +379,7 @@ class PublicCodingAgent<TAppState extends JsonObject> implements CodingAgent<TAp
 		let admittedEpoch: number | undefined;
 		const run = this.#tail.then(async () => {
 			if (this.#closed) throw agentClosedFailure();
-			if (!prompt.trim()) {
+			if (typeof prompt !== "string" || !prompt.trim()) {
 				throw new CodingSdkFailure({
 					phase: "admission",
 					code: "coding_sdk.empty_prompt",

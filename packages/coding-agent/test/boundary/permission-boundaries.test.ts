@@ -68,15 +68,6 @@ describe("permission mode boundary (no approval handler configured)", () => {
 		expect(await exists(target)).toBe(executes);
 		if (reason) expect(result?.text).toContain(reason);
 	});
-
-	test("an unknown permissionMode behaves as ask (fails closed without a handler)", async () => {
-		const { workspace } = await fixture.prepare();
-		const target = join(workspace, "x.txt");
-		fixture.script({ kind: "tool", name: "Write", args: { path: target, content: "x" } }, { kind: "text", text: "done" });
-		const agent = await fixture.open({ cwd: workspace, permissionMode: "yolo" as never });
-		await agent.prompt("x");
-		expect(await exists(target)).toBe(false);
-	});
 });
 
 describe("workspace path boundary, even in allow mode", () => {

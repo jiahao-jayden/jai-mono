@@ -24,9 +24,7 @@ describe("prompt input boundary", () => {
 		}
 	});
 
-	// A JS (non-TypeScript) caller gets an internal TypeError text under `coding_sdk.unknown`
-	// instead of a stable validation code.
-	test.failing("non-string prompt yields a stable validation error code", async () => {
+	test("non-string prompt yields a stable validation error code", async () => {
 		await fixture.prepare();
 		const agent = await fixture.open();
 		const result = await agent.prompt(42 as unknown as string);
@@ -86,25 +84,27 @@ describe("createCodingAgent option boundary", () => {
 		expect(created.isErr()).toBe(true);
 	});
 
-	// Configuration mistakes are permanent; `retryable: true` makes host retry loops spin on them.
-	test.failing("configuration errors are not marked retryable", async () => {
+	// Configuration mistakes are permanent; `retryable: true` would make host retry loops spin on them.
+	test("configuration errors are not marked retryable", async () => {
 		await fixture.prepare();
 		const created = await fixture.tryOpen({ model: "google/gemini" });
 		expect(created.isErr() && created.error.retryable).toBe(false);
 	});
 
-	// ponytail: these values are accepted today. Ceiling: a typo'd option silently changes
-	// behaviour (maxTurns 0 ends every run at once, "yolo" mode degrades to ask). Upgrade path:
-	// validate in createCodingAgent and return phase "runtime_creation".
-	test.failing.each([
+	test.each([
 		["maxTurns NaN", { maxTurns: Number.NaN }],
 		["maxTurns -1", { maxTurns: -1 }],
+		["maxTurns 0", { maxTurns: 0 }],
 		["maxTurns 1.5", { maxTurns: 1.5 }],
 		["unknown permissionMode", { permissionMode: "yolo" }],
 		["nonexistent cwd", { cwd: "/nonexistent/dir/xyz" }],
 	])("invalid option %s is rejected at creation", async (_label, extra) => {
 		await fixture.prepare();
 		const created = await fixture.tryOpen(extra as never);
-		expect(created.isErr()).toBe(true);
+		expect(created.isErr() && created.error).toMatchObject({
+			code: "coding_sdk.invalid_options",
+			phase: "runtime_creation",
+			retryable: false,
+		});
 	});
 });

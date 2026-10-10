@@ -228,6 +228,10 @@ export interface CodingAgentCreateOptions {
 	readonly protectConfigDirectories?: boolean;
 	/** Omitted: auxiliary judgements use this Agent's own `model` and `provider`. */
 	readonly auxiliaryModel?: CodingAuxiliaryModel;
+	/**
+	 * Model turns allowed per run. A positive integer; default 100. Pass `Infinity` to remove the
+	 * limit. Any other value is rejected with `coding_sdk.invalid_options`.
+	 */
 	readonly maxTurns?: number;
 	/** Provider-neutral request options supplied by the product runtime. */
 	readonly providerOptions?: Record<string, Record<string, unknown>>;

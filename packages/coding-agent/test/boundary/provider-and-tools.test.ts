@@ -173,17 +173,24 @@ describe("tool execution boundary", () => {
 		expect(fixture.mock.requests).toHaveLength(3);
 	});
 
-	// ponytail: with maxTurns omitted the loop is unbounded. Ceiling: a model stuck calling tools
-	// burns tokens until the host aborts. Upgrade path: a finite default (e.g. 100) overridable per agent.
-	test.failing("a runaway tool loop stops by itself when maxTurns is omitted", async () => {
+	test("a runaway tool loop stops at the default of 100 turns when maxTurns is omitted", async () => {
 		await fixture.prepare();
 		fixture.script({ kind: "tool", name: "Echo", args: {} });
 		const agent = await fixture.open({ extensions: [echo(ok)] });
+		expect(lastAssistant(await agent.prompt("x")).stopReason).toBe("iterationLimit");
+		expect(fixture.mock.requests).toHaveLength(100);
+	});
+
+	test("maxTurns: Infinity removes the limit", async () => {
+		await fixture.prepare();
+		fixture.script({ kind: "tool", name: "Echo", args: {} });
+		const agent = await fixture.open({ maxTurns: Number.POSITIVE_INFINITY, extensions: [echo(ok)] });
 		let turns = 0;
 		agent.subscribe((event) => {
-			if (event.type === "turn_start" && ++turns >= 200) void agent.abort();
+			if (event.type === "turn_start" && ++turns >= 120) void agent.abort();
 		});
-		expect(lastAssistant(await agent.prompt("x")).stopReason).toBe("iterationLimit");
+		expect(lastAssistant(await agent.prompt("x")).stopReason).toBe("aborted");
+		expect(turns).toBeGreaterThanOrEqual(120);
 	});
 
 	test("parallel tool calls from one turn run concurrently with no cap (100 in flight)", async () => {
