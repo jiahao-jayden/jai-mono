@@ -1,6 +1,6 @@
 {
-	"name": "@jai/coding-agent",
-	"version": "0.1.0",
+	"name": "jai-coding-agent",
+	"version": "0.1.1",
 	"type": "module",
 	"description": "Public SDK for building coding agents.",
 	"engines": {
