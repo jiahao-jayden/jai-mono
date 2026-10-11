@@ -1,13 +1,14 @@
 {
 	"name": "jai-coding-agent",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"type": "module",
 	"description": "Public SDK for building coding agents.",
 	"engines": {
 		"node": ">=20"
 	},
 	"files": [
-		"dist"
+		"dist",
+		"README.md"
 	],
 	"main": "./dist/sdk.js",
 	"types": "./dist/sdk.d.ts",
