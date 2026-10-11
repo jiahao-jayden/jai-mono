@@ -16,7 +16,7 @@ SDK 通过官方扩展包提供了经过工程加固的**代码检索**与**联�
 通过专用搜索扩展向 Agent 注入结构化的 `find` 与 `grep` 工具：
 
 ```ts
-import { createCodingAgent } from "@jai/coding-agent";
+import { createCodingAgent } from "jai-coding-agent";
 import { createSearchExtension } from "@jai/extension/search";
 
 const searchExtension = createSearchExtension({
@@ -45,7 +45,7 @@ await agent.prompt("找出项目中所有声明了 TaggedError 的文件，并�
 赋予 Agent 获取实时最新技术文档、GitHub 变更或外部依赖资料的能力：
 
 ```ts
-import { createCodingAgent } from "@jai/coding-agent";
+import { createCodingAgent } from "jai-coding-agent";
 import { createWebSearchExtension } from "@jai/extension/web-search";
 
 const webExtension = createWebSearchExtension({

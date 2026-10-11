@@ -12,7 +12,7 @@ import {
   redactCommand,
   codingArtifactsFromAppState,
   defaultUserTelemetryPolicy,
-} from "@jai/coding-agent";
+} from "jai-coding-agent";
 ```
 
 ---
@@ -32,7 +32,7 @@ export function resolveSdkModel(
 
 ### 示例
 ```ts
-import { resolveSdkModel } from "@jai/coding-agent";
+import { resolveSdkModel } from "jai-coding-agent";
 
 const resolved = resolveSdkModel("anthropic/claude-3-7-sonnet", {
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -60,7 +60,7 @@ export async function generateSessionTitle(
 
 ### 示例
 ```ts
-import { generateSessionTitle, resolveSdkModel } from "@jai/coding-agent";
+import { generateSessionTitle, resolveSdkModel } from "jai-coding-agent";
 
 const { provider, model } = resolveSdkModel("openai/gpt-4o");
 
@@ -88,7 +88,7 @@ export function redactCommand(command: string): string
 
 ### 示例
 ```ts
-import { redactCommand } from "@jai/coding-agent";
+import { redactCommand } from "jai-coding-agent";
 
 const raw = "curl -H 'Authorization: Bearer sk-ant-secret123456' https://api.example.com";
 const safe = redactCommand(raw);
@@ -106,7 +106,7 @@ console.log(safe);
 从持久化存储反序列化的 AppState 中，提取、过滤并按更新时间排序代码产物清单：
 
 ```ts
-import { codingArtifactsFromAppState, type JsonObject } from "@jai/coding-agent";
+import { codingArtifactsFromAppState, type JsonObject } from "jai-coding-agent";
 
 // 从数据库或存储中读回持久化状态
 const artifacts = codingArtifactsFromAppState(persistedAppState);
@@ -123,7 +123,7 @@ for (const item of artifacts) {
 获取 SDK 内置推荐的遥测收集策略对象：
 
 ```ts
-import { defaultUserTelemetryPolicy } from "@jai/coding-agent";
+import { defaultUserTelemetryPolicy } from "jai-coding-agent";
 
 console.log(defaultUserTelemetryPolicy.contentCaptureEnabled); // 默认严格关闭原始正文抓取
 ```

@@ -5,7 +5,7 @@ sidebar:
   label: SDK 总览
 ---
 
-`@jai/coding-agent` 是面向 Node.js 与 TypeScript 环境的 Coding Agent SDK。它封装了完整的 Agent 执行循环、内置工程工具（Read、Bash、Edit、Write）、基于 AST 的安全权限审批、分支会话持久化与上下文压缩，对外提供类型安全且纯净的事件与状态 DTO。
+`jai-coding-agent` 是面向 Node.js 与 TypeScript 环境的 Coding Agent SDK。它封装了完整的 Agent 执行循环、内置工程工具（Read、Bash、Edit、Write）、基于 AST 的安全权限审批、分支会话持久化与上下文压缩，对外提供类型安全且纯净的事件与状态 DTO。
 
 Desktop 桌面端、无头 `jai` CLI 与自动化评测 Harness 均基于此 SDK 构建。宿主只负责各自的 UI 渲染、交互输入与配置加载，核心执行与状态管理均由 SDK 驱动。
 
@@ -15,7 +15,7 @@ Desktop 桌面端、无头 `jai` CLI 与自动化评测 Harness 均基于此 SDK
 你的应用（Host）
         │  createCodingAgent({ model, provider, cwd, session, ... })
         ▼
-@jai/coding-agent      公开 SDK：Agent 生命周期、权限、会话、扩展与事件状态 DTO
+jai-coding-agent      公开 SDK：Agent 生命周期、权限、会话、扩展与事件状态 DTO
         │
         ▼
 @jai/agent             执行引擎：Agent loop、harness、hooks、compaction、journal

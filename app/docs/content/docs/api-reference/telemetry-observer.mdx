@@ -12,7 +12,7 @@ import {
   CodingAgentTelemetryObserver,
   type CodingAgentTelemetryObserverOptions,
   type CodingAgentTelemetryEffectEvent,
-} from "@jai/coding-agent";
+} from "jai-coding-agent";
 ```
 
 ---
@@ -46,7 +46,7 @@ export interface CodingAgentTelemetryObserverOptions {
 观察器同时实现了 `ModelRequestObserver` 与 `PermissionTelemetryObserver` 接口，可以直接挂载到 `createCodingAgent` 的两处旁路参数上：
 
 ```ts
-import { CodingAgentTelemetryObserver, createCodingAgent } from "@jai/coding-agent";
+import { CodingAgentTelemetryObserver, createCodingAgent } from "jai-coding-agent";
 
 // 1. 实例化观察器
 const observer = new CodingAgentTelemetryObserver({

@@ -13,7 +13,7 @@ description: 在 GitHub Actions 或后台流水线中运行无头 Agent，实现
 
 ```ts
 // scripts/ci-pr-review.ts
-import { createCodingAgent } from "@jai/coding-agent";
+import { createCodingAgent } from "jai-coding-agent";
 
 async function main() {
   const targetFile = process.argv[2];
@@ -65,7 +65,7 @@ main();
 
 ```ts
 // scripts/ci-auto-fix.ts
-import { createCodingAgent } from "@jai/coding-agent";
+import { createCodingAgent } from "jai-coding-agent";
 
 async function runAutoFix() {
   const created = await createCodingAgent({

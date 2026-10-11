@@ -15,7 +15,7 @@ description: 将 Agent 事件总线桥接至 React 状态机，实现平滑打�
 
 ```tsx
 import { useEffect, useState, useRef } from "react";
-import type { CodingAgent, CodingAgentMessage } from "@jai/coding-agent";
+import type { CodingAgent, CodingAgentMessage } from "jai-coding-agent";
 
 export interface StreamState {
   status: "idle" | "running" | "error";
@@ -124,7 +124,7 @@ export function useCodingAgent(agent: CodingAgent | null) {
 ```tsx
 import React from "react";
 import { useCodingAgent } from "./useCodingAgent";
-import type { CodingAgent } from "@jai/coding-agent";
+import type { CodingAgent } from "jai-coding-agent";
 
 export function ChatConsole({ agent }: { agent: CodingAgent }) {
   const { status, messages, currentThinking, streamingText, activeTool, sendPrompt, abort } =

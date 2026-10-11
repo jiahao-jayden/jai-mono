@@ -58,7 +58,7 @@ const settings = {
 当操作需要用户人工介入决策时，SDK 会暂停当前工具执行并调用宿主传入的 `requestApproval` 函数：
 
 ```ts
-import { createCodingAgent, type CodingPermissionDecision } from "@jai/coding-agent";
+import { createCodingAgent, type CodingPermissionDecision } from "jai-coding-agent";
 import readline from "node:readline/promises";
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -107,7 +107,7 @@ rl.close();
 在构建多轮对话应用时，宿主可以持有一个共享的授权记忆对象与先进先出队列，避免在长对话中重复弹出相同弹窗：
 
 ```ts
-import { createCodingAgent, createPermissionApprovalQueue } from "@jai/coding-agent";
+import { createCodingAgent, createPermissionApprovalQueue } from "jai-coding-agent";
 
 // 跨调用共享的内存审批 FIFO 队列（确保界面同一时间最多只弹一个审批浮层）
 const approvalQueue = createPermissionApprovalQueue();

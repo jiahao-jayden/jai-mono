@@ -26,7 +26,7 @@ SDK 支持后台异步作业管理机制。
 为了在同一个会话的多次连续调用间追踪并管理这些后台作业，宿主可以传入 `BackgroundAgentStore` 实例：
 
 ```ts
-import { createCodingAgent, createBackgroundAgentStore } from "@jai/coding-agent";
+import { createCodingAgent, createBackgroundAgentStore } from "jai-coding-agent";
 
 // 创建内存中的后台任务注册表
 const backgroundAgents = createBackgroundAgentStore();

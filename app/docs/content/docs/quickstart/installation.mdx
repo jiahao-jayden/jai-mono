@@ -22,9 +22,9 @@ bun install
 在你的 Node.js 或 TypeScript 项目中，安装 SDK 包：
 
 ```bash
-npm install @jai/coding-agent
+npm install jai-coding-agent
 # 或
-bun add @jai/coding-agent
+bun add jai-coding-agent
 ```
 
 ## 配置模型凭据
@@ -50,7 +50,7 @@ export OPENAI_API_KEY="sk-..."
 SDK 提供静态解析辅助函数 `resolveSdkModel`，可在不发起真实网络调用的前提下校验模型字符串与提供商配置：
 
 ```ts
-import { resolveSdkModel } from "@jai/coding-agent";
+import { resolveSdkModel } from "jai-coding-agent";
 
 // 模型标识格式为 "<provider>/<modelId>"
 const resolved = resolveSdkModel("anthropic/claude-3-7-sonnet", {

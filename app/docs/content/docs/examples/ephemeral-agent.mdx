@@ -6,7 +6,7 @@ description: 创建即用即焚的 Ephemeral 会话，适用于单次代码审�
 临时会话（Ephemeral）无需提供外部数据库存储与复杂的权限配置，在隔离的临时沙箱中执行，适合 CI 自动化流水线、代码审查 Bot 或单次问答工具。
 
 ```ts
-import { createCodingAgent } from "@jai/coding-agent";
+import { createCodingAgent } from "jai-coding-agent";
 
 async function reviewPullRequest(filePath: string) {
   // 1. 初始化只读规划模式的临时 Agent

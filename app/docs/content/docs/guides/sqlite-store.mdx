@@ -42,7 +42,7 @@ import {
   SessionConflictError,
   type SessionEntry,
   type StoredSession,
-} from "@jai/coding-agent";
+} from "jai-coding-agent";
 
 export class SqliteSessionStore implements CodingSessionStore {
   readonly #db: DatabaseSync;
@@ -141,7 +141,7 @@ export class SqliteSessionStore implements CodingSessionStore {
 ## 在 Agent 中挂载使用
 
 ```ts
-import { createCodingAgent } from "@jai/coding-agent";
+import { createCodingAgent } from "jai-coding-agent";
 import { SqliteSessionStore } from "./sqlite-store";
 
 const store = new SqliteSessionStore("my-project-data.sqlite");

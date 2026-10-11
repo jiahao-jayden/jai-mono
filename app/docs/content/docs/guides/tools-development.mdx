@@ -42,7 +42,7 @@ const agent = await createCodingAgent({
 如果需要给 Agent 增加业务专属工具（例如调用内部微服务、查询监控、触发 CI 构建），可以通过 `defineExtension` 声明：
 
 ```ts
-import { defineExtension, createCodingAgent } from "@jai/coding-agent";
+import { defineExtension, createCodingAgent } from "jai-coding-agent";
 import { Type } from "@sinclair/typebox";
 
 // 1. 声明扩展与自定义工具

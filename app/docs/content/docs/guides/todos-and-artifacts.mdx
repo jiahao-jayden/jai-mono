@@ -10,7 +10,7 @@ description: 获取 Agent 维护的任务清单与生成的技术文档或代码
 任务清单通常由官方扩展包 `@jai/extension/todo` 驱动。当 Agent 拆解出多步开发计划时，会自主更新这份待办列表。
 
 ```ts
-import { createCodingAgent } from "@jai/coding-agent";
+import { createCodingAgent } from "jai-coding-agent";
 import { createTodoExtension, todosFromExtensionState } from "@jai/extension/todo";
 
 const agent = (await createCodingAgent({
@@ -52,7 +52,7 @@ for (const artifact of artifacts) {
 - **状态恢复**：如果宿主需要从已持久化的底层 AppState 还原产物元数据列表，可以使用 SDK 导出的工具函数：
 
 ```ts
-import { codingArtifactsFromAppState } from "@jai/coding-agent";
+import { codingArtifactsFromAppState } from "jai-coding-agent";
 
 // 从持久化存储中反序列化产物目录
 const restoredArtifacts = codingArtifactsFromAppState(persistedAppState);
