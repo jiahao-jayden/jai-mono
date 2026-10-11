@@ -4,7 +4,10 @@
 	"private": true,
 	"type": "module",
 	"description": "Jai coding agent CLI",
-	"files": ["dist/main.js", "dist/main.js.map"],
+	"files": [
+		"dist/main.js",
+		"dist/main.js.map"
+	],
 	"bin": {
 		"jai": "./dist/main.js"
 	},
@@ -16,12 +19,12 @@
 		"test:e2e": "CLI_E2E=1 bun test test/provider-e2e.test.ts"
 	},
 	"dependencies": {
-		"@jai/coding-agent": "workspace:*",
 		"@jai/server": "workspace:*",
 		"@sinclair/typebox": "catalog:",
 		"better-result": "^3.0.0",
 		"tree-sitter-bash": "0.25.0",
-		"web-tree-sitter": "0.25.10"
+		"web-tree-sitter": "0.25.10",
+		"jai-coding-agent": "workspace:*"
 	},
 	"devDependencies": {
 		"@jai/ai": "workspace:*",

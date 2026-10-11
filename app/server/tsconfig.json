@@ -6,6 +6,9 @@
 			"@jai/coding-agent": [
 				"../../packages/coding-agent/src/sdk.ts"
 			],
+			"jai-coding-agent": [
+				"../../packages/coding-agent/src/sdk.ts"
+			],
 			"@jai/extension/web-search": [
 				"../../packages/extension/src/web-search/index.ts"
 			],

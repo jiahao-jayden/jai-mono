@@ -3,7 +3,8 @@
 	"compilerOptions": {
 		"noEmit": true,
 		"paths": {
-			"@jai/coding-agent": ["../coding-agent/src/sdk.ts"]
+			"@jai/coding-agent": ["../coding-agent/src/sdk.ts"],
+			"jai-coding-agent": ["../coding-agent/src/sdk.ts"]
 		}
 	},
 	"include": ["src/**/*", "test/**/*"]

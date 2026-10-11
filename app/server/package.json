@@ -4,7 +4,14 @@
 	"private": true,
 	"type": "module",
 	"description": "Jai Runtime Host and ACP v2 Agent adapter.",
-	"files": ["dist/main.js", "dist/stdio-main.js", "dist/acp-client.js", "dist/desktop-catalog-client.js", "dist/desktop-configuration-client.js", "dist/model-catalog-client.js"],
+	"files": [
+		"dist/main.js",
+		"dist/stdio-main.js",
+		"dist/acp-client.js",
+		"dist/desktop-catalog-client.js",
+		"dist/desktop-configuration-client.js",
+		"dist/model-catalog-client.js"
+	],
 	"bin": {
 		"jai-runtime-host": "./dist/main.js",
 		"jai-acp": "./dist/stdio-main.js"
@@ -39,7 +46,6 @@
 		"@ff-labs/fff-node": "0.10.5",
 		"@jai/agent": "workspace:*",
 		"@jai/ai": "workspace:*",
-		"@jai/coding-agent": "workspace:*",
 		"@jai/connector": "workspace:*",
 		"@jai/extension": "workspace:*",
 		"@jai/telemetry": "workspace:*",
@@ -49,7 +55,8 @@
 		"@opentelemetry/exporter-trace-otlp-proto": "0.221.0",
 		"@opentelemetry/resources": "2.10.0",
 		"@opentelemetry/sdk-trace-base": "2.10.0",
-		"better-result": "^3.0.0"
+		"better-result": "^3.0.0",
+		"jai-coding-agent": "workspace:*"
 	},
 	"devDependencies": {
 		"@sinclair/typebox": "^0.34.49",

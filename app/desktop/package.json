@@ -23,7 +23,6 @@
 		"@hugeicons/core-free-icons": "^4.1.1",
 		"@hugeicons/react": "^1.1.6",
 		"@jai/agent": "workspace:*",
-		"@jai/coding-agent": "workspace:*",
 		"@jai/connector": "workspace:*",
 		"@jai/extension": "workspace:*",
 		"@jai/server": "workspace:*",
@@ -69,7 +68,8 @@
 		"unified": "^11.0.5",
 		"unist-util-visit": "^5.1.0",
 		"web-tree-sitter": "0.25.10",
-		"zustand": "^5.0.12"
+		"zustand": "^5.0.12",
+		"jai-coding-agent": "workspace:*"
 	},
 	"devDependencies": {
 		"@electron-forge/cli": "^7.11.2",

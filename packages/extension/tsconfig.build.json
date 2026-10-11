@@ -8,6 +8,9 @@
 		"paths": {
 			"@jai/coding-agent": [
 				"../coding-agent/dist/sdk.d.ts"
+			],
+			"jai-coding-agent": [
+				"../coding-agent/dist/sdk.d.ts"
 			]
 		}
 	},

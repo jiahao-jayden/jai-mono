@@ -56,12 +56,12 @@
 	},
 	"dependencies": {
 		"@ff-labs/fff-node": "0.10.5",
-		"@jai/coding-agent": "0.1.0",
 		"@modelcontextprotocol/sdk": "1.29.0",
 		"@sinclair/typebox": "^0.34.49",
 		"better-result": "^3.0.0",
 		"turndown": "^7.2.4",
-		"yaml": "^2.8.1"
+		"yaml": "^2.8.1",
+		"jai-coding-agent": "workspace:*"
 	},
 	"devDependencies": {
 		"@jai/agent": "workspace:*",
