@@ -132,6 +132,93 @@ describe("RuntimeHost", () => {
     ]);
   });
 
+  test("records pre-dispatch approval pauses in operationTimings for dispatched and denied tool calls", async () => {
+    const persistence = new InMemoryProductSessionPersistence();
+    const host = new RuntimeHost({
+      persistence,
+      createId: ids("session-1", "operation-1"),
+    });
+    const opened = await host.openSession({ kind: "new" });
+    if (opened.isErr()) throw opened.error;
+    await opened.value.prompt({ text: "draw pelican" });
+
+    const loaded1 = await persistence.load("session-1");
+    if (loaded1.isErr()) throw loaded1.error;
+    await persistence.appendOperation({
+      sessionId: "session-1",
+      record: {
+        type: "model_attempted",
+        operationId: "operation-1",
+        attemptId: "attempt-1",
+        assistantEntryId: "assistant-1",
+        modelSnapshotId: "test:model:model",
+        timestamp: "2026-10-17T09:36:43.000Z",
+      },
+    });
+    await persistence.appendEntry({
+      sessionId: "session-1",
+      expectedRevision: loaded1.value.revision,
+      entry: {
+        type: "message",
+        id: "assistant-1",
+        parentId: loaded1.value.snapshot.leafId,
+        timestamp: "2026-10-17T09:38:38.000Z",
+        message: {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "call-1", name: "Bash", arguments: {} }],
+          provider: "test",
+          model: "model",
+          usage: zeroUsage(),
+          stopReason: "toolUse",
+          timestamp: Date.parse("2026-10-17T09:38:38.000Z"),
+        },
+      },
+    });
+    await persistence.appendOperation({
+      sessionId: "session-1",
+      record: {
+        type: "tool_dispatched",
+        operationId: "operation-1",
+        toolCallId: "call-1",
+        toolName: "Bash",
+        assistantEntryId: "assistant-1",
+        args: {},
+        argsHash: "hash",
+        resultEntryId: "result-1",
+        timestamp: "2026-10-17T09:39:21.000Z",
+      },
+    });
+    const loaded2 = await persistence.load("session-1");
+    if (loaded2.isErr()) throw loaded2.error;
+    await persistence.appendEntry({
+      sessionId: "session-1",
+      expectedRevision: loaded2.value.revision,
+      entry: {
+        type: "message",
+        id: "result-1",
+        parentId: "assistant-1",
+        timestamp: "2026-10-17T09:39:22.000Z",
+        message: {
+          role: "toolResult",
+          toolCallId: "call-1",
+          toolName: "Bash",
+          content: [{ type: "text", text: "ok" }],
+          isError: false,
+          timestamp: Date.parse("2026-10-17T09:39:22.000Z"),
+        },
+      },
+    });
+
+    const snapshot = await opened.value.snapshot();
+    if (snapshot.isErr()) throw snapshot.error;
+    expect(snapshot.value.operationTimings[0]?.pauses).toEqual([
+      {
+        startedAt: Date.parse("2026-10-17T09:38:38.000Z"),
+        finishedAt: Date.parse("2026-10-17T09:39:21.000Z"),
+      },
+    ]);
+  });
+
   test("resumes an existing durable Session without creating another one", async () => {
     const persistence = new InMemoryProductSessionPersistence();
     const firstHost = new RuntimeHost({

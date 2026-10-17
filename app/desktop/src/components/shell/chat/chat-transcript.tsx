@@ -845,38 +845,79 @@ function workRunClock(
 	now: number,
 ): { active: boolean; paused: boolean; durationMs: number } {
 	const firstWorkId = workItems[0]?.id;
+	const lastWorkId = workItems.at(-1)?.id;
+	const turnId = workItems[0] ? workItemTurnId(workItems[0]) : undefined;
 	let startIndex = 0;
+	let hasEarlierTurnWork = false;
+	let segmentStartAt: number | undefined;
 	for (let index = 0; index < items.length; index++) {
 		const item = items[index]!;
-		if (item.kind === "message" && item.role === "user") startIndex = index;
 		if (item.id === firstWorkId) break;
+		if (turnId !== undefined && isWorkItem(item) && workItemTurnId(item) === turnId) {
+			hasEarlierTurnWork = true;
+			segmentStartAt = undefined;
+			continue;
+		}
+		if (item.kind === "message" && (item.role === "user" || (hasEarlierTurnWork && item.role === "assistant"))) {
+			startIndex = index;
+			if (hasEarlierTurnWork) segmentStartAt = item.timestamp;
+		}
 	}
 
 	let paused = false;
 	const permissionWindows: Array<{ requestedAt: number; resolvedAt?: number }> = [];
 	let sawNextUser = false;
+	let afterWork = false;
+	let assistantAfterWorkAt: number | undefined;
+	let nextUserAt: number | undefined;
+	let hasLaterTurnWork = false;
 	for (let index = startIndex; index < items.length; index++) {
 		const item = items[index]!;
 		if (index > startIndex && item.kind === "message" && item.role === "user") {
 			sawNextUser = true;
-			break;
+			nextUserAt ??= item.timestamp;
 		}
-		if (item.kind === "permission") {
+		if (afterWork) {
+			if (turnId !== undefined && isWorkItem(item) && workItemTurnId(item) === turnId) {
+				hasLaterTurnWork = true;
+				break;
+			}
+			if (
+				!sawNextUser &&
+				assistantAfterWorkAt === undefined &&
+				item.kind === "message" &&
+				item.role === "assistant" &&
+				item.status === "complete"
+			) {
+				assistantAfterWorkAt = item.timestamp;
+			}
+		}
+		if (!sawNextUser && assistantAfterWorkAt === undefined && item.kind === "permission") {
 			if (item.resolvedAt === undefined) paused = true;
 			permissionWindows.push({ requestedAt: item.requestedAt, resolvedAt: item.resolvedAt });
 		}
+		if (item.id === lastWorkId) afterWork = true;
 	}
 
 	const active =
 		workItems.some(isWorkItemRunning) ||
 		paused ||
-		(responding && isLatestWorkGroup(items, workItems) && !sawNextUser);
-	const start = run?.startedAt;
-	const end = run?.finishedAt ?? (active ? now : undefined);
+		(responding && isLatestWorkGroup(items, workItems) && !sawNextUser && !hasLaterTurnWork);
+	const start = run?.startedAt === undefined ? undefined : hasEarlierTurnWork ? segmentStartAt : run.startedAt;
+	const endedBeforeRunFinish =
+		hasLaterTurnWork || (nextUserAt !== undefined && (run?.finishedAt === undefined || nextUserAt < run.finishedAt));
+	const end = endedBeforeRunFinish
+		? (assistantAfterWorkAt ?? nextUserAt)
+		: (run?.finishedAt ?? (active ? now : undefined));
 	if (start === undefined || end === undefined) return { active, paused, durationMs: 0 };
-	const pauseMs = permissionWindows.reduce(
-		(total, permission) => total + pauseOverlapMs(permission, start, end, now),
-		0,
+	const pauseMs = mergedPauseOverlapMs(
+		[
+			...permissionWindows,
+			...(run?.pauses?.map((pause) => ({ requestedAt: pause.startedAt, resolvedAt: pause.finishedAt })) ?? []),
+		],
+		start,
+		end,
+		now,
 	);
 	return { active, paused, durationMs: Math.max(0, end - start - pauseMs) };
 }
@@ -894,15 +935,29 @@ function isLatestWorkGroup(items: readonly DesktopTranscriptItem[], workItems: r
 	return true;
 }
 
-function pauseOverlapMs(
-	permission: { requestedAt: number; resolvedAt?: number },
+function mergedPauseOverlapMs(
+	pauses: readonly { requestedAt: number; resolvedAt?: number }[],
 	start: number,
 	end: number,
 	now: number,
 ): number {
-	const pauseStart = Math.max(start, permission.requestedAt);
-	const pauseEnd = Math.min(end, permission.resolvedAt ?? now);
-	return Math.max(0, pauseEnd - pauseStart);
+	const intervals = pauses
+		.map((pause) => ({
+			start: Math.max(start, pause.requestedAt),
+			end: Math.min(end, pause.resolvedAt ?? now),
+		}))
+		.filter((interval) => interval.end > interval.start)
+		.sort((left, right) => left.start - right.start);
+	let total = 0;
+	let cursor = start;
+	for (const interval of intervals) {
+		const effectiveStart = Math.max(cursor, interval.start);
+		if (interval.end > effectiveStart) {
+			total += interval.end - effectiveStart;
+			cursor = interval.end;
+		}
+	}
+	return total;
 }
 
 export function formatWorkDuration(milliseconds: number, intl: IntlShape): string {

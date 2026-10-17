@@ -1313,12 +1313,27 @@ describe("DesktopAcpAgentHost", () => {
 			});
 
 		publish({ operationId: "op-1", startedAt: 1_000 });
-		publish({ operationId: "op-1", finishedAt: 4_000 });
+		publish({ operationId: "op-1", finishedAt: 4_000, pauses: [{ startedAt: 1_500, finishedAt: 2_500 }] });
 
 		expect(events.at(-1)).toMatchObject({
-			event: { type: "run_upsert", run: { operationId: "op-1", startedAt: 1_000, finishedAt: 4_000 } },
+			event: {
+				type: "run_upsert",
+				run: {
+					operationId: "op-1",
+					startedAt: 1_000,
+					finishedAt: 4_000,
+					pauses: [{ startedAt: 1_500, finishedAt: 2_500 }],
+				},
+			},
 		});
-		expect(host.getSnapshot("session-1").runs).toEqual([{ operationId: "op-1", startedAt: 1_000, finishedAt: 4_000 }]);
+		expect(host.getSnapshot("session-1").runs).toEqual([
+			{
+				operationId: "op-1",
+				startedAt: 1_000,
+				finishedAt: 4_000,
+				pauses: [{ startedAt: 1_500, finishedAt: 2_500 }],
+			},
+		]);
 		host.close();
 	});
 

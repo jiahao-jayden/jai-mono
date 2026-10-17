@@ -110,11 +110,17 @@ export interface RuntimeCancelOutcome {
 export type RuntimeForegroundState = "running" | "requires_action" | "idle";
 export type RuntimeStopReason = "end_turn" | "cancelled" | "error" | "interrupted";
 
+export interface RuntimeOperationPause {
+	readonly startedAt: number;
+	readonly finishedAt: number;
+}
+
 /** Wall-clock bounds of one Operation, read from its durable accepted/finished records. */
 export interface RuntimeOperationTiming {
 	readonly operationId: string;
 	readonly startedAt?: number;
 	readonly finishedAt?: number;
+	readonly pauses?: readonly RuntimeOperationPause[];
 }
 
 /** A volatile, one-way projection emitted only after its durable cause is committed. */
@@ -957,7 +963,11 @@ export class RuntimeSession {
 			entries: loaded.value.snapshot.entries,
 			leafId: loaded.value.snapshot.leafId,
 			operationIdByEntryId: operationIdByEntryId(loaded.value.operationRecords, branchEntryIds),
-			operationTimings: operationTimings(loaded.value.operationRecords, branchEntryIds),
+			operationTimings: operationTimings(
+				loaded.value.operationRecords,
+				loaded.value.snapshot.entries,
+				branchEntryIds,
+			),
 			recovery: recovery.value,
 			usage: branchUsage(loaded.value),
 			...foreground,
@@ -1621,9 +1631,21 @@ export class RuntimeSession {
 			}
 			if (this.#active === active) this.#active = undefined;
 			this.releaseLiveSessionIfDetached();
+			const branchEntryIds = new Set(
+				branchOf(loaded.value.snapshot.entries, loaded.value.snapshot.leafId).map((entry) => entry.id),
+			);
+			const pauses = operationPausesByOperationId(
+				loaded.value.operationRecords,
+				loaded.value.snapshot.entries,
+				branchEntryIds,
+			).get(active.operationId);
 			this.publish({
 				type: "operation_timing",
-				timing: { operationId: active.operationId, finishedAt: Date.parse(terminal.timestamp) },
+				timing: {
+					operationId: active.operationId,
+					finishedAt: Date.parse(terminal.timestamp),
+					pauses: pauses && pauses.length > 0 ? pauses : undefined,
+				},
 			});
 			const failure = resolveRuntimeFailure(loaded.value, terminal);
 			const stopReason = stopReasonFor(terminalOutcome);
@@ -2003,7 +2025,7 @@ function operationIdByEntryId(
 ): ReadonlyMap<string, string> {
 	const result = new Map<string, string>();
 	for (const record of branchOperationRecords(records, branchEntryIds)) {
-		if (record.type === "operation_accepted") {
+		if (record.type === "operation_accepted" || record.type === "input_queued") {
 			result.set(record.inputEntryId, record.operationId);
 			continue;
 		}
@@ -2018,22 +2040,108 @@ function operationIdByEntryId(
 
 function operationTimings(
 	records: readonly OperationRecord[],
+	entries: readonly SessionEntry[],
 	branchEntryIds: ReadonlySet<string>,
 ): readonly RuntimeOperationTiming[] {
+	const pausesByOperationId = operationPausesByOperationId(records, entries, branchEntryIds);
 	const result = new Map<string, RuntimeOperationTiming>();
 	for (const record of branchOperationRecords(records, branchEntryIds)) {
+		const pauses = pausesByOperationId.get(record.operationId);
 		if (record.type === "operation_accepted") {
-			result.set(record.operationId, { operationId: record.operationId, startedAt: Date.parse(record.timestamp) });
+			result.set(record.operationId, {
+				operationId: record.operationId,
+				startedAt: Date.parse(record.timestamp),
+				pauses: pauses && pauses.length > 0 ? pauses : undefined,
+			});
 		} else if (record.type === "operation_finished") {
 			const started = result.get(record.operationId);
 			result.set(record.operationId, {
 				operationId: record.operationId,
 				startedAt: started?.startedAt,
 				finishedAt: Date.parse(record.timestamp),
+				pauses: pauses && pauses.length > 0 ? pauses : undefined,
 			});
 		}
 	}
 	return [...result.values()];
+}
+
+/**
+ * Time between an assistant response proposing tool calls and those calls being dispatched (or
+ * rejected before dispatch) is approval/gate wait rather than model or tool execution.
+ */
+function operationPausesByOperationId(
+	records: readonly OperationRecord[],
+	entries: readonly SessionEntry[],
+	branchEntryIds: ReadonlySet<string>,
+): ReadonlyMap<string, readonly RuntimeOperationPause[]> {
+	const onBranchRecords = branchOperationRecords(records, branchEntryIds);
+	const operationIdByAssistantId = new Map<string, string>();
+	const dispatchedAtByToolCallId = new Map<string, number>();
+	for (const record of onBranchRecords) {
+		if (record.type === "model_attempted") {
+			operationIdByAssistantId.set(record.assistantEntryId, record.operationId);
+		} else if (record.type === "tool_dispatched") {
+			const timestamp = Date.parse(record.timestamp);
+			if (Number.isFinite(timestamp)) dispatchedAtByToolCallId.set(record.toolCallId, timestamp);
+		}
+	}
+	const resultAtByToolCallId = new Map<string, number>();
+	for (const entry of entries) {
+		if (!branchEntryIds.has(entry.id) || entry.type !== "message" || entry.message.role !== "toolResult") continue;
+		const timestamp = Date.parse(entry.timestamp);
+		if (Number.isFinite(timestamp)) resultAtByToolCallId.set(entry.message.toolCallId, timestamp);
+	}
+
+	const pausesByOperationId = new Map<string, RuntimeOperationPause[]>();
+	for (const entry of entries) {
+		if (!branchEntryIds.has(entry.id) || entry.type !== "message" || entry.message.role !== "assistant") continue;
+		const operationId = operationIdByAssistantId.get(entry.id);
+		const assistantAt = Date.parse(entry.timestamp);
+		if (!operationId || !Number.isFinite(assistantAt)) continue;
+		const toolCallIds = entry.message.content.flatMap((part) => (part.type === "toolCall" ? [part.id] : []));
+		if (toolCallIds.length === 0) continue;
+
+		let maxGateEnd = assistantAt;
+		const activeIntervals: RuntimeOperationPause[] = [];
+		for (const toolCallId of toolCallIds) {
+			const dispatchedAt = dispatchedAtByToolCallId.get(toolCallId);
+			const resultAt = resultAtByToolCallId.get(toolCallId);
+			const gateEnd = dispatchedAt ?? resultAt;
+			if (gateEnd !== undefined && gateEnd > maxGateEnd) maxGateEnd = gateEnd;
+			if (dispatchedAt !== undefined && resultAt !== undefined && resultAt > dispatchedAt) {
+				activeIntervals.push({ startedAt: Math.max(assistantAt, dispatchedAt), finishedAt: resultAt });
+			}
+		}
+		if (maxGateEnd <= assistantAt) continue;
+		const pauses = subtractIntervals({ startedAt: assistantAt, finishedAt: maxGateEnd }, activeIntervals);
+		if (pauses.length === 0) continue;
+		const existing = pausesByOperationId.get(operationId) ?? [];
+		existing.push(...pauses);
+		pausesByOperationId.set(operationId, existing);
+	}
+	return pausesByOperationId;
+}
+
+function subtractIntervals(
+	span: RuntimeOperationPause,
+	exclusions: readonly RuntimeOperationPause[],
+): readonly RuntimeOperationPause[] {
+	const sorted = exclusions
+		.map((interval) => ({
+			startedAt: Math.max(span.startedAt, interval.startedAt),
+			finishedAt: Math.min(span.finishedAt, interval.finishedAt),
+		}))
+		.filter((interval) => interval.finishedAt > interval.startedAt)
+		.sort((left, right) => left.startedAt - right.startedAt);
+	const remaining: RuntimeOperationPause[] = [];
+	let cursor = span.startedAt;
+	for (const interval of sorted) {
+		if (interval.startedAt > cursor) remaining.push({ startedAt: cursor, finishedAt: interval.startedAt });
+		cursor = Math.max(cursor, interval.finishedAt);
+	}
+	if (span.finishedAt > cursor) remaining.push({ startedAt: cursor, finishedAt: span.finishedAt });
+	return remaining;
 }
 
 function recoverDurableState(

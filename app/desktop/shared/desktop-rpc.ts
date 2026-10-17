@@ -1039,11 +1039,17 @@ export const EMPTY_DESKTOP_PROFILE_TOKEN_STATS: DesktopProfileTokenStats = {
 	missingUsageAttemptCount: 0,
 };
 
+export interface DesktopRunPause {
+	readonly startedAt: number;
+	readonly finishedAt: number;
+}
+
 /** Durable bounds of one run (Operation); a work group's `turnId` is its `operationId`. */
 export interface DesktopRunTiming {
 	readonly operationId: string;
 	readonly startedAt?: number;
 	readonly finishedAt?: number;
+	readonly pauses?: readonly DesktopRunPause[];
 }
 
 export interface DesktopAgentSnapshot {

@@ -73,4 +73,47 @@ describe("workTimelineSummary", () => {
 		const thinking = thinkingItem();
 		expect(workTimelineSummary([user, thinking], [thinking], undefined, false, intl, 5_000)).toBe("Worked");
 	});
+
+	test("splits one operation across mid-run user steer inputs and deducts durable pauses without double-counting", () => {
+		const firstWork = thinkingItem({ id: "thinking:1", turnId: "op-1", timestamp: 100_000 });
+		const steerUser: DesktopTranscriptItem = {
+			kind: "message",
+			id: "user-steer",
+			role: "user",
+			text: "你在干嘛",
+			status: "complete",
+			timestamp: 360_000,
+		};
+		const secondWork = thinkingItem({ id: "thinking:2", turnId: "op-1", timestamp: 361_800 });
+		const nextUser: DesktopTranscriptItem = {
+			kind: "message",
+			id: "user-2",
+			role: "user",
+			text: "你存好就行了",
+			status: "complete",
+			timestamp: 370_200,
+		};
+		const items = [user, firstWork, steerUser, secondWork, nextUser];
+
+		// While the steered segment is still running, the first segment keeps its own settled duration.
+		const runningRun = {
+			operationId: "op-1",
+			startedAt: 0,
+			pauses: [{ startedAt: 100_000, finishedAt: 206_000 }],
+		};
+		expect(workTimelineSummary(items, [firstWork], runningRun, true, intl, 362_000)).toBe("Worked for 4m 14s");
+
+		// Once finished, each segment only counts its own span and overlapping pauses.
+		const finishedRun = {
+			operationId: "op-1",
+			startedAt: 0,
+			finishedAt: 370_000,
+			pauses: [
+				{ startedAt: 100_000, finishedAt: 206_000 },
+				{ startedAt: 361_800, finishedAt: 370_000 },
+			],
+		};
+		expect(workTimelineSummary(items, [firstWork], finishedRun, false, intl, 380_000)).toBe("Worked for 4m 14s");
+		expect(workTimelineSummary(items, [secondWork], finishedRun, false, intl, 380_000)).toBe("Worked for 2s");
+	});
 });

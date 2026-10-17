@@ -292,7 +292,7 @@ export class DesktopAcpAgentHost {
 			operationId: runtime.operationId,
 			failure: runtime.failure ? { ...runtime.failure } : undefined,
 			items: [...runtime.items.values()].map((item) => structuredClone(item)),
-			runs: [...runtime.runs.values()].map((run) => ({ ...run })),
+			runs: [...runtime.runs.values()].map((run) => structuredClone(run)),
 			todos: runtime.todos ? structuredClone(runtime.todos) : undefined,
 			artifacts: sortArtifacts(runtime.artifacts.values()).map((artifact) => structuredClone(artifact)),
 			usage: { ...runtime.usage },
@@ -653,10 +653,12 @@ export class DesktopAcpAgentHost {
 	#operationUpdate(runtime: AcpSessionRuntime, update: Record<string, unknown>): void {
 		if (typeof update.operationId !== "string") return;
 		const previous = runtime.runs.get(update.operationId);
+		const pauses = readOperationPauses(update.pauses) ?? previous?.pauses;
 		const run: DesktopRunTiming = {
 			operationId: update.operationId,
 			startedAt: finiteNumber(update.startedAt) ?? previous?.startedAt,
 			finishedAt: finiteNumber(update.finishedAt) ?? previous?.finishedAt,
+			pauses: pauses && pauses.length > 0 ? pauses : undefined,
 		};
 		runtime.runs.set(run.operationId, run);
 		this.#emitEvent(runtime, { type: "run_upsert", run });
@@ -1296,6 +1298,17 @@ function backgroundSettledFromMetadata(value: unknown): boolean {
 function toolTimestampFromMetadata(value: unknown, field: "startedAt" | "completedAt"): number | undefined {
 	if (!isRecord(value) || !isRecord(value.jai) || typeof value.jai[field] !== "number") return undefined;
 	return Number.isFinite(value.jai[field]) ? value.jai[field] : undefined;
+}
+
+function readOperationPauses(value: unknown): DesktopRunTiming["pauses"] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	return value.flatMap((candidate) => {
+		if (!isRecord(candidate)) return [];
+		const startedAt = finiteNumber(candidate.startedAt);
+		const finishedAt = finiteNumber(candidate.finishedAt);
+		if (startedAt === undefined || finishedAt === undefined || finishedAt <= startedAt) return [];
+		return [{ startedAt, finishedAt }];
+	});
 }
 
 function isCurrentTimestamp(value: number | undefined): boolean {

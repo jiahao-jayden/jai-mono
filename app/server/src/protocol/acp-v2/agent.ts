@@ -686,10 +686,10 @@ function projectEntry(sessionId: string, entry: SessionEntry, operationId?: stri
 		case "assistant": {
 			const content = agentMessageContent(entry.message);
 			return [
+				...agentThoughtUpdate(sessionId, entry.id, entry.message, operationId),
 				...(content.length > 0
 					? [agentMessageUpdate(sessionId, entry.id, content, Date.parse(entry.timestamp))]
 					: []),
-				...agentThoughtUpdate(sessionId, entry.id, entry.message, operationId),
 				...toolCallsFromAssistant(sessionId, entry.message, operationId, Date.parse(entry.timestamp)),
 			];
 		}
@@ -1313,6 +1313,7 @@ function operationUpdate(sessionId: string, timing: RuntimeOperationTiming): Acp
 				operationId: timing.operationId,
 				startedAt: Number.isFinite(timing.startedAt) ? timing.startedAt : undefined,
 				finishedAt: Number.isFinite(timing.finishedAt) ? timing.finishedAt : undefined,
+				pauses: timing.pauses && timing.pauses.length > 0 ? timing.pauses : undefined,
 			},
 		},
 	};
