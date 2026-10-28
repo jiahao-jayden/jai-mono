@@ -23,13 +23,33 @@ function bunCompat(): Plugin {
 		}
 	}
 
+	// ponytail: esbuild nodePaths returns the first match, and readdir order is
+	// not version order. @base-ui/react 1.4 imports utils files that only exist
+	// in 0.2.7, while @lobehub/ui still nests 0.2.3. Hoist the newest
+	// @base-ui/utils ahead of the other store folders. Ceiling: every renderer
+	// import of that package gets the newest copy, not the importer's nested
+	// one. Upgrade path: resolve from the importer realpath and drop nodePaths.
+	const baseUiUtilsPaths = extraNodePaths
+		.flatMap((nodeModulesPath) => {
+			const manifestPath = path.join(nodeModulesPath, "@base-ui/utils/package.json");
+			if (!fs.existsSync(manifestPath)) return [];
+			const version = (JSON.parse(fs.readFileSync(manifestPath, "utf8")) as { version?: string }).version ?? "0.0.0";
+			return [{ nodeModulesPath, version }];
+		})
+		.sort((left, right) => right.version.localeCompare(left.version, "en", { numeric: true }))
+		.map((entry) => entry.nodeModulesPath);
+	const versionedNodePaths = [
+		...baseUiUtilsPaths,
+		...extraNodePaths.filter((nodeModulesPath) => !baseUiUtilsPaths.includes(nodeModulesPath)),
+	];
+
 	return {
 		name: "bun-compat",
 		config() {
-			if (extraNodePaths.length === 0) return;
+			if (versionedNodePaths.length === 0) return;
 			return {
 				optimizeDeps: {
-					esbuildOptions: { nodePaths: extraNodePaths },
+					esbuildOptions: { nodePaths: versionedNodePaths },
 				},
 			};
 		},
