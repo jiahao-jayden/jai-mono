@@ -19,6 +19,13 @@
 - 各包目录内：`bun run typecheck`、`bun test`。E2E 需显式开启：`app/cli` 用 `CLI_E2E=1`，`packages/ai` 用 `bun run test:e2e`。
 - 改动后至少跑受影响包的 typecheck 与测试，以及根目录 lint。
 
+# Cursor Cloud
+
+- 安装脚本把 Bun 1.4.4 链到 `/usr/local/bin`，并安装 `bubblewrap` 和 `socat`。Shell sandbox 依赖这两个包；没有它们时 `packages/agent` 的 sandbox 测试会报 `shell.sandbox_unavailable`。
+- 同一脚本下载 Electron 二进制，构建 `packages/coding-agent`、用 `tsc -p tsconfig.build.json` 生成 `packages/extension` 声明，并构建 `app/server` 的 dist。`bun run cli` 读的是这份 dist。`packages/extension` 的 `bun run build` 仍会在 tsup 里解析失败 `@jai/coding-agent`，不要把它当成安装步骤。
+- 无 GPU 的虚拟机里不要直接 `bun run desktop:dev`。用 `cd app/desktop && bun run prepare-runtime && bun x electron-forge start -- --no-sandbox --disable-gpu`。否则 Electron zygote 会退出。
+- 单元测试和 `bun run cli -- --help` 不需要 provider key。`packages/ai` 的 `AI_E2E=1` 和 `app/cli` 的 `CLI_E2E=1` 才需要。
+
 # 仓库地图
 
 - `packages/ai`：Provider 无关的模型流式层。
